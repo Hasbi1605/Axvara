@@ -90,7 +90,7 @@ export async function handleShowProducts(chatId: number, messageId: number, cate
 }
 
 export async function handleShowProduct(chatId: number, messageId: number, requestedProductId: number) {
-  return withLoadingIndicator(chatId, "📦 Memuat produk", async () => {
+  return withLoadingIndicator(chatId, "📦 Memuat produk", async (beforeResult) => {
 
   // Pecundang pasangan WR/SK (tombol lama, hasil cari lama) → tampilkan
   // pemenangnya, cermin redirect 308 PDP web: 1 barang = 1 kartu.
@@ -106,6 +106,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   // Tombol dari pesan katalog lama bisa menunjuk produk yang sudah nonaktif:
   // jawab, jangan diam (spinner berhenti tanpa penjelasan).
   if (!detail || !meta || Number(meta.telegram_enabled) !== 1) {
+    await beforeResult();
     await sendMessage({ chat_id: chatId, text: "Produk ini sedang tidak tersedia. Buka /katalog untuk produk yang ready 🙏", parse_mode: "HTML" });
     return;
   }
@@ -153,6 +154,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
 
   // Product photo = same image as web (free: sendPhoto with product image_url)
   const imageUrl = detail.image?.startsWith("/") ? `https://axvara.tech${detail.image}` : detail.image ?? "";
+  await beforeResult();
   if (imageUrl.startsWith("https://") && text.length <= 1024) {
     const sent = await sendPhoto({
       chat_id: chatId,

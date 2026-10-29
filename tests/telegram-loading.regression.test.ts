@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { safeEditOrSend, withLoadingIndicator } from "@/lib/telegram/api";
+import { safeEditOrSend, sendPhoto, withLoadingIndicator } from "@/lib/telegram/api";
 import { homeKeyboard, qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -15,14 +15,14 @@ function transport() {
   return requests;
 }
 
-it("starts real work immediately and skips the bubble for fast work", async () => {
+it("sends loading immediately, starts real work concurrently and cleans up fast work", async () => {
   const requests = transport();
   const work = vi.fn(async () => 42);
   const result = withLoadingIndicator(12345, "📦 Memuat produk", work);
   expect(work).toHaveBeenCalledOnce();
   expect(await result).toBe(42);
   await vi.runAllTimersAsync();
-  expect(requests).toEqual([]);
+  expect(requests.map(r => r.method)).toEqual(["sendMessage", "deleteMessage"]);
 });
 
 it("animates one bubble with bounded edits only while work is pending, then deletes it", async () => {
@@ -78,6 +78,52 @@ it("aborts an in-flight animation edit when work finishes", async () => {
   expect(await loading).toBe(42);
   expect(aborted).toBe(true);
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it("waits for a slow loading acknowledgement before publishing the result, without aborting creation", async () => {
+  transport();
+  const visible: string[] = [];
+  let loadingSignal: AbortSignal | null | undefined;
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    const method = String(url).split("/").at(-1);
+    if (method === "sendMessage") {
+      loadingSignal = init?.signal;
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      visible.push("loading");
+      return Response.json({ ok: true, result: { message_id: 17 } });
+    }
+    if (method === "sendPhoto") visible.push("result");
+    if (method === "deleteMessage") visible.push("cleanup");
+    return Response.json({ ok: true });
+  });
+  let prepared = false;
+  const loading = withLoadingIndicator(12345, "Memuat", async beforeResult => {
+    prepared = true;
+    await beforeResult();
+    await sendPhoto({ chat_id: 12345, photo: "https://example.test/product.webp" });
+  });
+  expect(prepared).toBe(true);
+  await vi.advanceTimersByTimeAsync(1500);
+  expect(visible).toEqual([]);
+  expect(loadingSignal?.aborted).toBe(false);
+  await vi.advanceTimersByTimeAsync(1000);
+  await loading;
+  expect(visible).toEqual(["loading", "result", "cleanup"]);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("keeps animating while Telegram is uploading the final photo", async () => {
+  const requests = transport();
+  const loading = withLoadingIndicator(12345, "Menyiapkan", async beforeResult => {
+    await beforeResult();
+    await new Promise(resolve => setTimeout(resolve, 2800));
+    return 42;
+  });
+  await vi.advanceTimersByTimeAsync(2500);
+  expect(requests.filter(r => r.method === "editMessageText")).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(300);
+  expect(await loading).toBe(42);
+  expect(requests.at(-1)?.method).toBe("deleteMessage");
 });
 
 it("sends directly when no editable message exists", async () => {

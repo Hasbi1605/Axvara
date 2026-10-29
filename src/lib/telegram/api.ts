@@ -135,11 +135,12 @@ export async function sendChatAction(
   return callApi("sendChatAction", { chat_id: chatId, action });
 }
 
-// One temporary bubble, at most three edits; fast work never shows a spinner.
+// Finish the loading transport before publishing results; aborting sendMessage
+// cannot undo a message Telegram has already accepted.
 export async function withLoadingIndicator<T>(
   chatId: number | string,
   label: string,
-  work: () => Promise<T>,
+  work: (beforeResult: () => Promise<void>) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController();
   const { signal } = controller;
@@ -150,26 +151,26 @@ export async function withLoadingIndicator<T>(
     if (signal.aborted) done();
   });
   let messageId: number | undefined;
+  const started = sendMessage({ chat_id: chatId, text: `${label}\n● ○ ○` })
+    .then(sent => { if (sent.ok && sent.result) messageId = sent.result.message_id; })
+    .catch(() => {});
   const animation = (async () => {
-    await wait(300);
-    if (signal.aborted) return;
-    const sent = await callApi<TelegramMessage>("sendMessage", { chat_id: chatId, text: `${label}\n● ○ ○` }, 1000, signal);
-    if (!sent.ok || !sent.result) return;
-    messageId = sent.result.message_id;
+    await started;
+    if (messageId === undefined) return;
     for (const frame of ["○ ● ○", "○ ○ ●", "Masih memuat…"]) {
       await wait(1200);
       if (signal.aborted) return;
-      const edited = await callApi("editMessageText", { chat_id: chatId, message_id: messageId, text: `${label}\n${frame}` }, 1000, signal);
+      const edited = await callApi("editMessageText", { chat_id: chatId, message_id: messageId, text: `${label}\n${frame}` }, 5000, signal);
       if (!edited.ok) return;
     }
   })().catch(() => {});
   try {
-    return await work();
+    return await work(() => started);
   } finally {
     controller.abort();
     await animation;
     if (messageId !== undefined) {
-      await callApi("deleteMessage", { chat_id: chatId, message_id: messageId }, 1000).catch(() => {});
+      await callApi("deleteMessage", { chat_id: chatId, message_id: messageId }).catch(() => {});
     }
   }
 }

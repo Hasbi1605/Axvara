@@ -12,7 +12,7 @@ import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend, withLoadingIndi
 import type { SendMessageParams } from "@/lib/telegram/types";
 
 vi.mock("@/lib/telegram/api", () => ({
-  sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(), safeEditOrSend: vi.fn(), withLoadingIndicator: vi.fn(async (_chat, _label, work) => work()),
+  sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(), safeEditOrSend: vi.fn(), withLoadingIndicator: vi.fn(async (_chat, _label, work) => work(async () => {})),
 }));
 vi.mock("@/lib/payments/dana-qris", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/payments/dana-qris")>(),

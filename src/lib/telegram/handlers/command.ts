@@ -55,8 +55,8 @@ export async function handleCommand(
   if (cmd === "/start") {
     if (await notifyPaymentMaintenance(chatId)) return;
     // Clear any pending conversational state
+    return withLoadingIndicator(chatId, "🚀 Menyiapkan AXVARA", async (beforeResult) => {
     await clearPendingAction(from);
-    return withLoadingIndicator(chatId, "🚀 Menyiapkan AXVARA", async () => {
     // SITE_URL kosong di sebagian worker (secret write-only yang belum
     // terbaca) → URL relatif membuat Telegram menolak ("URL host is empty").
     // Paksa absolut https axvara.tech bila env kosong.
@@ -70,6 +70,7 @@ export async function handleCommand(
     // agar foto baru langsung terkirim. Retry 1x, lalu fallback teks +
     // keyboard agar sapaan tetap tampil bila Telegram gagal ambil foto.
     const photoUrl = `${siteUrl}/banners/tg-welcome.webp?v=20260928b`;
+    await beforeResult();
     let photoRes = await sendPhoto({
       chat_id: chatId,
       photo: photoUrl,

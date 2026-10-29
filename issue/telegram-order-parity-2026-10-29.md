@@ -7,6 +7,14 @@ serta ikon tindakan. Menggantikan loading bar yang dipulihkan sebelumnya saja;
 guard transaksi di bawah tetap. Pengujian fetch/timer dan router D1 tanpa pesan
 produksi; hasil final dicatat pada changelog.
 
+Audit screenshot lanjutan29Oktober: send loading paralel/debounce300ms dengan
+timeout1detik dapat kalah urutan dari hasil dan kehilangan ID saat Telegram sudah
+menerima pesan. Perbaikan mengirim loading langsung dan memasang barrier respons
+awal sebelum publish hasil; data tetap paralel, animasi tetap hidup selama upload.
+Send/delete kembali timeout existing10detik, edit5detik. Fixture respons2,5detik
+membuktikan loading mendahului hasil dan cleanup; timeout tanpa ID masih ambigu,
+tidak dijanjikan dapat dibatalkan di server Telegram atau diulang otomatis.
+
 Label Google AI Pro Head 18 Bulan ditempeli metadata durasi 1 month oleh
 Telegram, sedangkan web memakai label pembeli kanonis. Audit juga menemukan
 harga varian habis, stok unik mentah, pembatalan non-atomik, pemeriksaan email

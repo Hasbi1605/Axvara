@@ -840,9 +840,15 @@ env, trigger cron, integrasi gateway atau UI web baru.
 
 Koreksi presentasi lanjutan29Oktober: `command.ts` (/start) dan `catalog.ts`
 (handleShowProduct) memakai `api.ts::withLoadingIndicator` dengan callback kerja
-langsung berjalan. Bubble baru sesudah300ms, maksimal3edit berjarak1200ms lalu
-“Masih memuat…”. Selesai/gagal membatalkan timer/edit aktif dan menghapus bubble;
-request dekorasi maksimal1detik, error dekorasi ditelan tanpa menelan error kerja.
+langsung berjalan bersama send loading (tanpa debounce300ms). Callback menerima
+barrier `beforeResult`, dipanggil sebelum sendPhoto/safeEditOrSend hasil atau
+pesan produk tidak tersedia. Barrier menunggu send awal selesai, tanpa mematikan
+animasi selama upload hasil; maksimal3edit berjarak1200ms lalu “Masih memuat…”.
+Send awal tidak dibatalkan saat data siap, memakai timeout existing10detik agar
+ID pesan dari respons lambat tetap tersedia untuk cleanup. Selesai/gagal
+membatalkan timer/edit aktif (timeout5detik) lalu delete (timeout existing10detik).
+Error dekorasi ditelan tanpa menelan error kerja. Timeout kirim tetap ambigu:
+tidak ada retry otomatis atau klaim mampu menghapus pesan tanpa ID respons.
 Tanpa progres persentase, timer transaksi baru, atau background task tak ditunggu.
 `safeEditOrSend` mengirim langsung bila message_id=0; pagination/stepper dan
 ringkasan checkout/email dari callback memakai ID pesan existing. Respons input

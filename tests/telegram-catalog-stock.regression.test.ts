@@ -13,7 +13,7 @@ vi.mock("@/lib/telegram/api", () => ({
   safeEditOrSend: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
   editMessageText: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
   answerCallbackQuery: vi.fn(async () => ({ ok: true })),
-  withLoadingIndicator: vi.fn(async (_chat, _label, work) => work()),
+  withLoadingIndicator: vi.fn(async (_chat, _label, work) => work(async () => {})),
   sendChatAction: vi.fn(async () => ({ ok: true })),
 }));
 

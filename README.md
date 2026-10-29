@@ -701,9 +701,11 @@ palsu; ketentuan/aktivasi/garansi tetap utuh. Modul tambahan
 Pengujian fixture tanpa pesan/order produksi; bukan bukti deployment.
 
 Koreksi presentasi lanjutan owner29Oktober: `/start` dan produk mengambil data
-bersamaan indikator satu bubble tanpa persentase; pekerjaan cepat (<300ms)
-tidak memunculkan bubble. Maksimal3edit, lalu “Masih memuat…”; selesai/gagal
-menghentikan animasi dan menghapus bubble, request dekorasi maksimal1detik.
+bersamaan indikator satu bubble tanpa persentase, dikirim langsung. Hasil
+menunggu respons send loading agar tidak mendahuluinya; animasi tetap berjalan
+selama upload hasil, maksimal3edit lalu “Masih memuat…”. Selesai/gagal
+menghentikan animasi dan menghapus bubble. Send/delete memakai timeout existing
+10detik, edit5detik; timeout kirim tetap ambigu, tidak otomatis dikirim ulang.
 Pagination/stepper dan ringkasan konfirmasi dari tombol mengedit pesan existing;
 balasan input teks, invoice/kredensial tetap pesan terpisah. Ringkasan memakai
 kelompok identitas, nominal dan email masked, bukan tabel monospace. Ikon semantik

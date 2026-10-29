@@ -25,9 +25,11 @@ lama yang bertentangan di bawah.
   Notifikasi lunas memakai lease/backoff bounded pada antrean existing; input
   WA cadangan tidak menimpa percakapan yang sedang aktif.
 - Koreksi presentasi lanjutan owner29Oktober: loading /start dan produk berjalan
-  bersama pekerjaan nyata, tanpa persentase/jeda palsu. Satu bubble hanya bila
-  pekerjaan melewati300ms, maksimal3edit lalu teks masih memuat, dihapus setelah
-  pekerjaan selesai/gagal. Gangguan animasi tidak menggagalkan hasil.
+  bersama pekerjaan nyata, tanpa persentase/jeda palsu. Satu bubble dikirim
+  langsung; hasil menunggu request awal loading selesai agar tidak mendahuluinya.
+  Maksimal3edit lalu teks masih memuat, dihapus setelah pekerjaan selesai/gagal.
+  Gangguan animasi tidak menggagalkan hasil. Respons Telegram yang timeout tetap
+  ambigu, bukan bukti pesan tidak pernah diterima; tanpa retry kirim otomatis.
 - Pagination/stepper dan ringkasan konfirmasi dari tombol memperbarui pesan
   existing; input email teks tetap mendapat balasan baru, invoice/kredensial
   terpisah. Ringkasan memisahkan identitas, jumlah/harga/subtotal dan email masked

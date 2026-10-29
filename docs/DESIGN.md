@@ -559,10 +559,13 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
   serta ketentuan relevan; ketentuan lengkap memiliki pagination per klik.
   Stepper dan ForceReply mengikuti minimum, stok efektif, maksimum100/baris
   serta batas10 unit unik. Koreksi lanjutan owner29Oktober: satu bubble loading
-  bertitik berjalan bersama pekerjaan /start/produk, baru muncul sesudah300ms;
+  bertitik dikirim langsung bersama pekerjaan /start/produk;
   maksimal3edit berjarak1200ms, terakhir “Masih memuat…”, tanpa persentase.
-  Dihapus ketika pekerjaan selesai/gagal, tanpa menunggu putaran animasi;
-  transport dekorasi dibatasi1detik dan edit aktif dibatalkan saat selesai.
+  Hasil menunggu respons pengiriman awal loading, bukan menunggu putaran animasi.
+  Loading tetap bergerak selama pengiriman foto hasil, lalu dihapus setelah
+  selesai/gagal. Send/delete memakai timeout transport existing10detik, edit
+  maksimal5detik dan edit aktif dibatalkan saat selesai. Tidak membatalkan send
+  awal saat data siap karena abort tidak menarik pesan yang sudah diterima Telegram.
   Typing native tetap pada transaksi lain, kegagalan dekorasi tidak menggagalkan hasil.
 - Pagination/stepper dan ringkasan konfirmasi dari tombol memakai bubble existing;
   respons email teks, invoice dan kredensial tetap terpisah. Identitas produk,
