@@ -1,6 +1,11 @@
 # Telegram: konsistensi order dan bahasa pembeli
 
 ## Latar belakang
+Keputusan owner terakhir29Oktober menggantikan loading paralel: restore bar
+persentase lama pada welcome/produk serta tambah sebelum create QRIS satuan/cart.
+Varian habis kembali ❌ + nama dan alert callback khusus `soldout`; tidak membeli
+atau mengubah stok. Efek pecah/blur berasal dari klien Telegram saat delete.
+
 Revisi presentasi lanjutan29Oktober: indikator paralel bounded tanpa persentase,
 edit bubble ringkasan callback, hierarki nominal/email tanpa tabel monospace,
 serta ikon tindakan. Menggantikan loading bar yang dipulihkan sebelumnya saja;

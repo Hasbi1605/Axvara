@@ -13,7 +13,7 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 import {
   queryFirst, execRun, getD1, isD1Mode, transitionPendingOrder, StockReservationError,
 } from "@/lib/db";
-import { sendMessage, sendPhoto, sendChatAction } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
 import { orderStatusKeyboard, qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 import {
   outOfStockMessage, alreadyPendingMessage, errorMessage, invoiceMessage,
@@ -275,6 +275,7 @@ export async function createAndSendVariantInvoice(
       inventoryId = reservedUnit ? Number(reservedUnit.id) : null;
     }
 
+    await showLoadingBar(chatId, "💳 Memuat QRIS pembayaran").catch(() => {});
     const invoiceResult = await createActiveQrisInvoice(orderCode, subtotal);
     invoiceCreated = true;
 

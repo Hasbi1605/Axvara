@@ -700,8 +700,16 @@ palsu; ketentuan/aktivasi/garansi tetap utuh. Modul tambahan
 `telegram/checkout-{approval,email}.ts`, tanpa env/schema/cron/transport baru.
 Pengujian fixture tanpa pesan/order produksi; bukan bukti deployment.
 
-Koreksi presentasi lanjutan owner29Oktober: `/start` dan produk mengambil data
-bersamaan indikator satu bubble tanpa persentase, dikirim langsung. Hasil
+**Koreksi owner terbaru menggantikan loading paralel di bawah:** bar persentase
+lama0/40/70/100% + delete kembali untuk /start/produk dan ditambah saat memuat
+QRIS satuan/keranjang. Urutan animasi selesai dahulu, lalu langkah existing;
+gagal dekorasi tidak menggagalkan hasil. Efek delete mengikuti klien Telegram.
+Varian habis memakai ❌ + nama; ketuk menampilkan popup pilih produk lain tanpa
+membuat order. Callback khusus `soldout`, guard transaksi tetap.
+Catatan loading paralel berikut dipertahankan sebagai histori:
+
+`/start` dan produk mengambil data bersamaan indikator satu bubble tanpa
+persentase, dikirim langsung. Hasil
 menunggu respons send loading agar tidak mendahuluinya; animasi tetap berjalan
 selama upload hasil, maksimal3edit lalu “Masih memuat…”. Selesai/gagal
 menghentikan animasi dan menghapus bubble. Send/delete memakai timeout existing

@@ -14,7 +14,7 @@ vi.mock("@cloudflare/next-on-pages",()=>({getRequestContext:()=>{
  return {ctx:{waitUntil:(task:Promise<unknown>)=>{mocks.tasks.push(task);}}};
 }}));
 vi.mock("@/lib/fulfillment/deliver",()=>({ensureFulfillmentForPaidOrder:mocks.ensure}));
-vi.mock("@/lib/telegram/api",()=>({sendMessage:mocks.send,sendPhoto:vi.fn(async()=>({ok:true})),sendChatAction:vi.fn(),showLoadingBar:vi.fn(),safeEditOrSend:vi.fn()}));
+vi.mock("@/lib/telegram/api",()=>({sendMessage:mocks.send,sendPhoto:vi.fn(async()=>({ok:true})),sendChatAction:vi.fn(),showLoadingBar:vi.fn(async()=>{}),safeEditOrSend:vi.fn()}));
 vi.mock("@/lib/warung-rebahan/order",()=>({createWrOrderLinksForOrder:mocks.wrCreate,processWrPendingOrders:mocks.wrProcess}));
 vi.mock("@/lib/warung-rebahan/client",()=>({isWrAutoOrderEnabled:()=>true}));
 vi.mock("@/lib/sekalipay/order",()=>({createSkOrderLinksForOrder:mocks.skCreate,processSkPendingOrders:mocks.skProcess}));

@@ -2,6 +2,14 @@
 
 ## Order Telegram, 29 Oktober 2026
 
+Koreksi owner terbaru: loading persentase lama0/40/70/100% dipulihkan pada
+/start dan produk, ditambah sebelum create QRIS satuan/keranjang. Animasi selesai
+dan pesan dihapus sebelum langkah berikutnya, best-effort tanpa mutasi transaksi.
+Ini indikator transisi berbasis timer, bukan persentase pekerjaan provider.
+Varian habis memakai ❌ + nama (tanpa suffix Habis); callback `soldout` hanya
+menampilkan alert “Varian produk habis. Silakan pilih produk lain.”, tanpa checkout.
+Ketentuan loading paralel di bawah adalah histori yang digantikan koreksi ini.
+
 Implementasi lokal, disiapkan untuk publikasi CI; bukan bukti deployment.
 Keputusan ini menggantikan presentasi/fallback penerima Telegram pada snapshot
 lama yang bertentangan di bawah.

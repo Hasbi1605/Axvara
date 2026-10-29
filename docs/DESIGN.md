@@ -551,6 +551,13 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
   (reply keyboard persistent sudah terinstal sejak /start pertama).
 
 ### 5.3e Katalog dan pesan Telegram (revisi 29 Oktober 2026)
+Koreksi owner paling akhir: kembali ke bar ▓░0/40/70/100%, jeda400/500/400/300ms
+dan delete existing. Berlaku /start, produk dan memuat QRIS satuan/keranjang;
+selesai sebelum langkah berikutnya. Efek pecah/blur penghapusan mengikuti aplikasi
+Telegram, bukan efek khusus Bot API. Varian habis: ❌ + nama, tanpa teks Habis;
+ketuk memunculkan modal alert agar memilih produk lain. Loading bertitik paralel
+pada catatan di bawah adalah histori yang digantikan, hierarki/copy lain tetap.
+
 Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
 - Katalog → produk sekaligus pilihan varian → jumlah/email → QRIS → status.
   Tombol varian memakai label kanonis dan harga, tanpa menempel durasi/garansi

@@ -8,11 +8,11 @@ import { getCartSummary } from "@/lib/telegram/cart";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { transitionPendingOrder } from "@/lib/db";
 import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
-import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend, withLoadingIndicator } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend, withLoadingIndicator, showLoadingBar } from "@/lib/telegram/api";
 import type { SendMessageParams } from "@/lib/telegram/types";
 
 vi.mock("@/lib/telegram/api", () => ({
-  sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(), safeEditOrSend: vi.fn(), withLoadingIndicator: vi.fn(async (_chat, _label, work) => work(async () => {})),
+  sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(), safeEditOrSend: vi.fn(), showLoadingBar: vi.fn(async () => {}), withLoadingIndicator: vi.fn(async (_chat, _label, work) => work(async () => {})),
 }));
 vi.mock("@/lib/payments/dana-qris", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/payments/dana-qris")>(),
@@ -103,6 +103,7 @@ beforeEach(async () => {
   vi.mocked(sendPhoto).mockResolvedValue({ ok: true });
   vi.mocked(sendChatAction).mockResolvedValue({ ok: true });
   provider.mockImplementation(async (code, amount) => {
+    expect(showLoadingBar).toHaveBeenCalledWith(buyer.id, "💳 Memuat QRIS pembayaran");
     const expiresAt = new Date(Date.now() + 600_000).toISOString();
     const qrisUrl = `https://example.test/${code}.png`;
     fx.sql.prepare(`INSERT INTO payment_transactions

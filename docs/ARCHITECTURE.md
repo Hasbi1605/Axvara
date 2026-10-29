@@ -838,8 +838,18 @@ Status/resend menyajikan semua item dan error parsial secara eksplisit.
 Semantik transport bounded at-least-once, bukan exactly-once. Tidak ada schema,
 env, trigger cron, integrasi gateway atau UI web baru.
 
-Koreksi presentasi lanjutan29Oktober: `command.ts` (/start) dan `catalog.ts`
-(handleShowProduct) memakai `api.ts::withLoadingIndicator` dengan callback kerja
+**Digantikan koreksi owner terakhir29Oktober:** `showLoadingBar` memulihkan
+frame0/40/70/100%, timer400/500/400/300ms, delete dalam finally. Wrapper
+`withLoadingIndicator` menjalankan animasi best-effort sebelum callback existing;
+barrier callback sekarang no-op. Jalur invoice satuan/keranjang memanggil bar
+“💳 Memuat QRIS pembayaran” sesudah order/reservasi durable dan sebelum create
+provider existing; error dekorasi tidak membatalkan transaksi. Tidak menambah
+retry provider atau mengubah snapshot/CAS. `soldout` dijawab tepat satu kali
+oleh webhook lewat answerCallbackQuery(show_alert=true), tidak diteruskan ke
+handler pembelian. Guard grup/claim webhook tetap mendahului alert.
+Paragraf loading paralel berikut adalah histori, bukan kontrak terkini:
+`command.ts` (/start) dan `catalog.ts` (handleShowProduct) memakai
+`api.ts::withLoadingIndicator` dengan callback kerja
 langsung berjalan bersama send loading (tanpa debounce300ms). Callback menerima
 barrier `beforeResult`, dipanggil sebelum sendPhoto/safeEditOrSend hasil atau
 pesan produk tidak tersedia. Barrier menunggu send awal selesai, tanpa mematikan

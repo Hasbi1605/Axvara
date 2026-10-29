@@ -135,43 +135,31 @@ export async function sendChatAction(
   return callApi("sendChatAction", { chat_id: chatId, action });
 }
 
-// Finish the loading transport before publishing results; aborting sendMessage
-// cannot undo a message Telegram has already accepted.
+// Compatibility wrapper for the welcome/product presentation only.
 export async function withLoadingIndicator<T>(
   chatId: number | string,
   label: string,
   work: (beforeResult: () => Promise<void>) => Promise<T>,
 ): Promise<T> {
-  const controller = new AbortController();
-  const { signal } = controller;
-  const wait = (ms: number) => new Promise<void>((resolve) => {
-    const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
-    const timer = setTimeout(done, ms);
-    signal.addEventListener("abort", done, { once: true });
-    if (signal.aborted) done();
-  });
-  let messageId: number | undefined;
-  const started = sendMessage({ chat_id: chatId, text: `${label}\n● ○ ○` })
-    .then(sent => { if (sent.ok && sent.result) messageId = sent.result.message_id; })
-    .catch(() => {});
-  const animation = (async () => {
-    await started;
-    if (messageId === undefined) return;
-    for (const frame of ["○ ● ○", "○ ○ ●", "Masih memuat…"]) {
-      await wait(1200);
-      if (signal.aborted) return;
-      const edited = await callApi("editMessageText", { chat_id: chatId, message_id: messageId, text: `${label}\n${frame}` }, 5000, signal);
+  await showLoadingBar(chatId, label).catch(() => {});
+  return work(async () => {});
+}
+
+export async function showLoadingBar(chatId: number | string, label = "Memuat"): Promise<void> {
+  const bar = (filled: number) => `${"▓".repeat(filled)}${"░".repeat(10 - filled)} ${filled * 10}%`;
+  const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+  const sent = await sendMessage({ chat_id: chatId, text: `${label}\n${bar(0)}` });
+  if (!sent.ok || !sent.result) return;
+  const messageId = sent.result.message_id;
+  try {
+    for (const [delay, filled] of [[400, 4], [500, 7], [400, 10]]) {
+      await wait(delay);
+      const edited = await editMessageText({ chat_id: chatId, message_id: messageId, text: `${label}\n${bar(filled)}` });
       if (!edited.ok) return;
     }
-  })().catch(() => {});
-  try {
-    return await work(() => started);
+    await wait(300);
   } finally {
-    controller.abort();
-    await animation;
-    if (messageId !== undefined) {
-      await callApi("deleteMessage", { chat_id: chatId, message_id: messageId }).catch(() => {});
-    }
+    await callApi("deleteMessage", { chat_id: chatId, message_id: messageId }).catch(() => {});
   }
 }
 

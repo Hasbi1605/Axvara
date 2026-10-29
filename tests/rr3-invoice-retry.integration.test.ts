@@ -57,6 +57,24 @@ async function cron() {
 }
 
 // ─── RR3-05: foto invoice gagal → satu order, retry kirim foto yang sama ───
+it("sold-out variant uses a red cross and one modal alert without starting a purchase", async () => {
+  const { variantsKeyboard } = await import("@/lib/telegram/keyboards");
+  const keyboard = variantsKeyboard(1, [{ id: 1, label: "1 Bulan Private", price: 10000, stock: 0 }]);
+  expect(keyboard.inline_keyboard[0][0]).toEqual({ text: "❌ 1 Bulan Private", callback_data: "soldout" });
+  const { answerCallbackQuery } = await import("@/lib/telegram/api");
+  vi.mocked(answerCallbackQuery).mockClear();
+  const { POST } = await import("@/app/api/telegram/webhook/route");
+  const result = await POST(webhook({ update_id: 77799, callback_query: {
+    id: "soldout-fixture", from: { id: 777, first_name: "Dummy" },
+    message: { message_id: 77, chat: { id: 777, type: "private" } }, data: "soldout",
+  } }));
+  expect(result.status).toBe(200);
+  expect(answerCallbackQuery).toHaveBeenCalledExactlyOnceWith("soldout-fixture", "Varian produk habis. Silakan pilih produk lain.", true);
+  expect(SEND).not.toHaveBeenCalled();
+  expect(PHOTO).not.toHaveBeenCalled();
+  expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()?.n).toBe(0);
+});
+
 describe("RR3-05 failed invoice photo is durably retried without a second order", () => {
   it("cart checkout: first photo timeout, provider recovers, retry sends the same invoice", async () => {
     await insertTestProduct(fixture.sql, "shared", 1);

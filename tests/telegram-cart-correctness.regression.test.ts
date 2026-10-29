@@ -11,6 +11,7 @@ vi.mock("@/lib/telegram/api", () => ({
   sendMessage: vi.fn(async () => ({ ok: true })),
   sendPhoto: vi.fn(async () => ({ ok: true })),
   sendChatAction: vi.fn(async () => ({ ok: true })),
+  showLoadingBar: vi.fn(async () => {}),
   safeEditOrSend: vi.fn(async () => ({ ok: true })),
 }));
 vi.mock("@/lib/telegram/payment-maintenance", () => ({ notifyPaymentMaintenance: async () => false }));

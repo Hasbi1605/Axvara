@@ -235,8 +235,8 @@ describe("Telegram keyboards", () => {
     const buttons = kb.inline_keyboard.flat();
     expect(buttons[0].text).toBe("Anti Limit · Rp26rb");
     expect(buttons[0].callback_data).toBe("var:2");
-    expect(buttons[1].text).toBe("Legal · Habis");
-    expect(buttons[1].callback_data).toBe("noop");
+    expect(buttons[1].text).toBe("❌ Legal");
+    expect(buttons[1].callback_data).toBe("soldout");
     expect(buttons).toContainEqual({ text: "📋 Detail & Ketentuan", callback_data: "terms:7:0" });
   });
 

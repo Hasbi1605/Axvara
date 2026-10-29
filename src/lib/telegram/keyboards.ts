@@ -301,11 +301,11 @@ export function variantsKeyboard(
     const priceStr = buttonPrice(v.price);
     const isOutOfStock = !canBuy(v);
     const text = isOutOfStock
-      ? `${v.label} · Habis`
+      ? `❌ ${v.label}`
       : `${v.label} · ${priceStr}`;
     return [{
       text,
-      callback_data: isOutOfStock ? "noop" : cb.variant(v.id),
+      callback_data: isOutOfStock ? "soldout" : cb.variant(v.id),
     }];
   });
 

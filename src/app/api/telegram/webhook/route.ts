@@ -232,8 +232,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      await answerCallbackQuery(cq.id);
-      await handleCallback(cq.data, cqChatId, messageId, cq.from);
+      if (cq.data === "soldout") {
+        await answerCallbackQuery(cq.id, "Varian produk habis. Silakan pilih produk lain.", true);
+      } else {
+        await answerCallbackQuery(cq.id);
+        await handleCallback(cq.data, cqChatId, messageId, cq.from);
+      }
       await markDone(updateId);
       return NextResponse.json({ ok: true });
     }
