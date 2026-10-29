@@ -217,6 +217,13 @@ merchant/nominal/order/status settlement atau capture/waktu bayar yang cocok.
 Data tidak lengkap, salah merchant/order atau terlambat tidak melunasi otomatis.
 Paid tersimpan dahulu, pengiriman dilanjutkan background server/cron existing.
 
+Koreksi29Oktober: pemeriksaan expiry sesi SDK mendahului pembacaan mutasi di
+dalam gate merchant; sesi valid tidak memicu refresh tambahan. Kegagalan refresh
+atau persist menghentikan pembacaan dan mengikuti pengaman existing. Rilis VPS
+09:50UTC sudah terpasang dan24test fixture lulus. Refresh sesi201 terbukti;
+pembayaran otomatis produksi belum terbukti karena tidak ada invoice aktif saat
+verifikasi akhir. Tiga ACC manual yang dilaporkan owner tidak diproses ulang.
+
 Referensi: [AutoGoPay webhook](https://autogopay.site/docs/webhook),
 [generate QRIS](https://autogopay.site/docs/gopay/qris-generate), serta peringatan
 dashboard owner27Oktober mengenai maksimal1–2generate per transaksi. Cadence

@@ -162,8 +162,10 @@ paid/event/outbox disimpan atomik sebelum background fulfillment existing.
 
 Poller memakai satu loop, gate15/30/60detik menurut umur invoice terbaru, minimal
 15detik meski wake/tick ditekan berulang, dan nol GoBiz saat idle. State gate,
-backoff dan hold per merchant durable; SDK refresh401 satu kali, tanpa refresh
-tambahan dari poller. Sesi mati/restriction/persist gagal menjeda akun sampai
+backoff dan hold per merchant durable. Sejak29Oktober, SDK memeriksa expiry sesi
+sebelum GET di dalam gate; token valid tidak menambah request refresh. Retry401
+tetap satu kali dari SDK, tanpa refresh manual kedua sesudah kegagalan.
+Sesi mati/restriction/persist gagal menjeda akun sampai
 sesi diganti manual. Transport dibatasi GET mutasi + POST token refresh tanpa
 redirect. Ini mengurangi request berulang, bukan jaminan bebas suspend; penyebab
 suspend lama belum diketahui. QA memakai fixture tanpa pembayaran/supplier nyata.
@@ -175,6 +177,10 @@ axvara-gopay-poller, snapshot lengkap di issue/patches/gopay-hardening-2026-10-2
 (ekstrak pada direktori kosong). Detail kontrak/rollout ada di
 [ARCHITECTURE](docs/ARCHITECTURE.md) dan
 [catatan verifikasi](issue/gopay-return-2026-10-27.md).
+Terapkan patch lanjutan `issue/patches/gopay-session-expiry-2026-10-29.patch`
+sesudah snapshot. Pemulihan29Oktober sudah dirilis ke VPS dengan24test lulus
+dan refresh201, tanpa invoice aktif untuk membuktikan pembayaran otomatis baru.
+Lihat [insiden expiry](issue/gopay-session-expiry-2026-10-29.md).
 
 Proxy WR/SK — 26 Oktober 2026: dispatcher egress dipakai bersama dan ditutup
 saat shutdown; URL proxy terkonfigurasi yang invalid menghentikan startup.

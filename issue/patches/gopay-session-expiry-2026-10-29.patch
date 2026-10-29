@@ -1,0 +1,105 @@
+diff --git a/AGENTS.md b/AGENTS.md
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1,6 +1,10 @@
+ # AGENTS.md — axvara-gopay-poller (Poller mutasi GoPay Merchant)
+
+ > Scope: HANYA folder `axvara-gopay-poller/`. Service pribadi 1 akun, bukan multi-tenant.
++
++## Koreksi expiry sesi — 29 Oktober 2026
++- Di dalam gate merchant, panggil SDK `refreshSession()` sebelum feed. SDK memeriksa expiry dan tidak request refresh bila token masih valid di luar buffer; token baru wajib persist sebelum GET. Ini pemeriksaan sebelum request, bukan refresh kedua setelah kegagalan401. Idle/backoff/hold tetap melarang query.
++- Regresi SDK nyata + stub poller: `npm test` 24 test pass. Snapshot27Oktober dilanjutkan patch `axvara/issue/patches/gopay-session-expiry-2026-10-29.patch`. Rilis VPS seluruh dist sudah terpasang29Oktober09:50UTC; sesi expired berhasil refresh201 sekali saat pemulihan. Tidak ada invoice aktif saat verifikasi akhir, sehingga pembayaran otomatis produksi belum terbukti.
+
+ ## Pengaman terkini — 27 Oktober 2026 (menggantikan cadence/refresh lama di bawah)
+ - Owner kembali ke Axvara Digital G564039370, nomor082135277434/NMID ID1024342457479. QR cocok dan sesi/profil/outlet aktif diverifikasi baca-saja; bukan jaminan bebas suspend atau bukti pembayaran end-to-end. Pola AutoGoPay diterapkan sendiri, tanpa memakai layanannya.
+diff --git a/src/index.ts b/src/index.ts
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -122,6 +122,8 @@
+
+ async function getMutations(merchantId: string, since: Date, until: Date): Promise<GoBizTx[]> {
+   const p = loadProvider(merchantId);
++  // The SDK feed only refreshes reactively on 401; honor stored expiry first.
++  await p.refreshSession();
+   const raw = (await (p.transactions as unknown as {
+     list(id: string, q: unknown): Promise<unknown[]>;
+   }).list(merchantId, {
+@@ -205,7 +207,8 @@
+     const waitMs = Math.min(FEED_BACKOFF_BASE_MS * 2 ** Math.min(state.feedErrorStreak - 1, 5), FEED_BACKOFF_MAX_MS);
+     state.backoffUntil = Date.now() + waitMs;
+     save();
+-    app.log.warn({ error: kind, streak: state.feedErrorStreak, waitMs }, "feed error → backoff");
++    const status = (e as { status?: unknown })?.status;
++    app.log.warn({ error: kind, httpStatus: Number.isInteger(status) ? status : undefined, streak: state.feedErrorStreak, waitMs }, "feed error → backoff");
+     return { status: "feed_error_backoff", error: kind, pending: pending.length, waitMs };
+   }
+
+diff --git a/test/merchantid-stub.mjs b/test/merchantid-stub.mjs
+--- a/test/merchantid-stub.mjs
++++ b/test/merchantid-stub.mjs
+@@ -5,6 +5,7 @@
+   this.config=config;
+   if(config.session.account!==config.merchantId) throw new Error('wrong_account_session');
+   this.transactions={list:async merchantId=>{
++    if(!this.sessionChecked) throw new Error('session_expiry_not_checked');
+    if(merchantId!==config.merchantId) throw new Error('wrong_merchant_feed');
+    appendFileSync(process.env.POLLER_TEST_CALLS,JSON.stringify({merchantId,at:Date.now()})+'\n');
+    const feed=fixture[merchantId];
+@@ -16,4 +17,5 @@
+    return feed.transactions.map(t=>({merchantId,currency:'IDR',...t}));
+   }};
+  }
++ async refreshSession(){this.sessionChecked=true;}
+ }
+diff --git a/test/session-refresh.test.mjs b/test/session-refresh.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/test/session-refresh.test.mjs
+@@ -0,0 +1,47 @@
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { GopayProvider } from 'merchantid';
++import { readonlyGoBizFetch } from '../dist/gobiz-transport.js';
++
++for (const expired of [false, true]) {
++ test(`SDK expiry check ${expired ? 'refreshes and persists before feed' : 'makes no refresh request for a valid session'}`, async () => {
++  const calls = [];
++  let persisted = false;
++  const p = new GopayProvider({
++   merchantId: 'fixture', session: {deviceId: 'fixture', tokens: {accessToken: 'old', refreshToken: 'refresh', expiresAt: expired ? 1 : Date.now()+3600000}},
++   onTokenRefreshed: session => {assert.equal(session.tokens.accessToken, 'new'); persisted=true;},
++   fetch: readonlyGoBizFetch(async (input, init) => {
++    const path = new URL(input).pathname;
++    calls.push(path);
++    if(path === '/goid/token') return Response.json({access_token:'new',refresh_token:'rotated',expires_in:1800},{status:201});
++    assert.equal(persisted, expired);
++    assert.equal(init.headers.Authorization, `Bearer ${expired ? 'new' : 'old'}`);
++    return Response.json({transactions:[]});
++   }),
++  });
++  await p.refreshSession();
++  await p.transactions.list('fixture',{startTime:new Date(Date.now()-60000),endTime:new Date()});
++  assert.deepEqual(calls, [...(expired ? ['/goid/token'] : []), '/merchant-analytics/v2/merchants/transactions']);
++ });
++}
++
++test('expiry refresh failure stops before feed, without retrying refresh', async () => {
++ const calls=[];
++ const p=new GopayProvider({
++  merchantId:'fixture',session:{deviceId:'fixture',tokens:{accessToken:'old',refreshToken:'refresh',expiresAt:1}},
++  fetch:readonlyGoBizFetch(async input=>{calls.push(new URL(input).pathname);return Response.json({},{status:429});}),
++ });
++ await assert.rejects(async()=>{await p.refreshSession();await p.transactions.list('fixture',{startTime:new Date(),endTime:new Date()});});
++ assert.deepEqual(calls,['/goid/token']);
++});
++
++test('session persistence failure stops before feed', async () => {
++ const calls=[];
++ const p=new GopayProvider({
++  merchantId:'fixture',session:{deviceId:'fixture',tokens:{accessToken:'old',refreshToken:'refresh',expiresAt:1}},
++  onTokenRefreshed:()=>{throw new Error('session_persist_failed');},
++  fetch:readonlyGoBizFetch(async input=>{calls.push(new URL(input).pathname);return Response.json({access_token:'new',expires_in:1800},{status:201});}),
++ });
++ await assert.rejects(async()=>{await p.refreshSession();await p.transactions.list('fixture',{startTime:new Date(),endTime:new Date()});},/session_persist_failed/);
++ assert.deepEqual(calls,['/goid/token']);
++});

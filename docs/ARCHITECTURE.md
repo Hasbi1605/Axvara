@@ -307,8 +307,10 @@ Invoice/status/waktu/currency/merchant feed tak valid ditolak; beberapa mutasi
 cocok tidak dipilih sembarang. `.session*.poll-state` chmod600/fsync+rename
 menyimpan nextPollAt/backoff/streak/hold dan digest sesi; restart tidak mereset
 batas. Sesi pengganti manual melepas hold, bukan restart biasa atau hapus state.
-SDK merchantid0.1.1 sudah melakukan satu refresh+retry401; poller membuang
-refresh kedua, backoff auth10menit, error biasa30detik→5menit. Refresh token mati,
+Koreksi29Oktober: di dalam gate merchant, SDK `refreshSession()` memeriksa expiry
+sebelum GET feed; token valid di luar buffer tidak membuat request refresh.
+SDK merchantid0.1.1 tetap melakukan satu refresh+retry401; tidak ada refresh
+kedua manual sesudah kegagalan, backoff auth10menit, error biasa30detik→5menit. Refresh token mati,
 persist gagal atau restriction403/423 menjeda akun sampai sesi diganti manual.
 Token di-fsync sebelum callback SDK berhasil. Transport hanya GET feed ke
 api.gojekapi.com dan POST token refresh ke api.gobiz.co.id, redirect manual;
@@ -322,6 +324,10 @@ signature. Pertahankan dua file sesi, env dan state; jangan rollback poller lama
 sesudah receiver baru. Snapshot source lengkap dapat diekstrak ke direktori
 kosong dari `issue/patches/gopay-hardening-2026-10-27.patch`; folder poller bukan
 repo Git. Rincian dan batas verifikasi: `issue/gopay-return-2026-10-27.md`.
+Lanjutkan snapshot dengan `issue/patches/gopay-session-expiry-2026-10-29.patch`.
+Rilis expiry29Oktober terpasang di VPS09:50UTC, 24 test poller lulus; refresh sesi
+201 terverifikasi, tetapi belum ada invoice aktif untuk bukti pembayaran otomatis.
+Detail insiden: `issue/gopay-session-expiry-2026-10-29.md`.
 
 Referensi pola: https://autogopay.site/docs/webhook dan
 https://autogopay.site/docs/gopay/qris-generate. Batas server di atas adalah
