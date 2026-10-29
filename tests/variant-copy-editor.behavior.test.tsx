@@ -14,13 +14,17 @@ import { useState } from "react";
 import { act } from "@testing-library/react";
 import { ProductVariantRows, NonWrFulfillmentPanel } from "@/components/admin/sections/ProductVariantRows";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 const base: VariantCopyEntry = {
   variantId: 13,
   label: "Premium Legal",
   isActive: true,
   wrManaged: true,
+  supplier: "WR",
+  supplierKey: "fixture-key",
+  effectiveTerms: "Detail paket:\n- Paket Premium Ultra HD 4K",
+  effectiveActivation: "1. Login di aplikasi",
   status: "axvara",
   adminStale: false,
   needsReview: false,
@@ -54,6 +58,26 @@ function stubSave(returned: Partial<VariantCopyEntry>) {
 }
 
 describe("VariantCopyEditor", () => {
+  it("SK terisi otomatis; konflik mempertahankan draft dan pratinjau mencakup deskripsi", async () => {
+    const onReload = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 409, json: async () => ({ error: "Teks supplier berubah" }) })));
+    const entry = { ...base, supplier: "SK" as const, wrManaged: false };
+    const view = render(<ToastProvider><VariantCopyEditor variantId={13} entry={entry} loading={false} error={null} onSaved={vi.fn()} onReload={onReload} description={"Syarat & Ketentuan:\n- Aturan bersama"} /></ToastProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /Syarat & Ketentuan/ }));
+    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", base.autoTerms);
+    fireEvent.change(screen.getByLabelText("Syarat & Ketentuan"), { target: { value: "Aturan pakai:\n- Draft SK" } });
+    fireEvent.click(screen.getByRole("button", { name: "Simpan S&K varian" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: /Muat sumber terbaru/ }));
+    expect(onReload).toHaveBeenCalledOnce();
+    view.rerender(<ToastProvider><VariantCopyEditor variantId={13} entry={{ ...entry, autoTerms: "Sumber baru", supplierKey: "new-key" }} loading={false} error={null} onSaved={vi.fn()} description={"Syarat & Ketentuan:\n- Aturan bersama"} /></ToastProvider>);
+    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", "Aturan pakai:\n- Draft SK");
+    fireEvent.click(screen.getByText("Pratinjau setelah disimpan"));
+    expect(screen.getByText("Aturan bersama")).toBeTruthy();
+    expect(screen.getByText("Draft SK")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));
+    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", "Sumber baru");
+  });
   it("own-stock common instructions survive switching the variant accordion", () => {
     vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({})})));
     function Form() {
@@ -103,7 +127,7 @@ describe("VariantCopyEditor", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/admin/variant-copy");
     expect(init?.method).toBe("PUT");
-    expect(JSON.parse(String(init?.body))).toEqual({ variant_id: 13, terms: `${base.autoTerms}\n- Dilarang berbagi akun`, activation: base.autoActivation });
+    expect(JSON.parse(String(init?.body))).toEqual({ variant_id: 13, terms: `${base.autoTerms}\n- Dilarang berbagi akun`, activation: base.autoActivation, supplier_key: base.supplierKey });
     expect(onSaved.mock.calls[0][0]).toMatchObject({ status: "admin", hasOverride: true });
   });
 
@@ -112,7 +136,7 @@ describe("VariantCopyEditor", () => {
     const fetchMock = stubSave({ status: "admin", adminStale: false, needsReview: false });
     renderEditor(stale);
     expect(screen.getByText("WR mengubah teks — suntingan dijeda")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toContain("Pembeli sekarang melihat teks WR terbaru");
+    expect(screen.getByRole("alert").textContent).toContain("Pembeli melihat versi otomatis terbaru");
     expect((screen.getByLabelText("Syarat & Ketentuan") as HTMLTextAreaElement).value).toBe(stale.adminTerms);
     const confirm = screen.getByRole("button", { name: "Tandai sudah ditinjau" }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(false);
@@ -124,15 +148,15 @@ describe("VariantCopyEditor", () => {
   it("'Pakai versi otomatis' menghapus suntingan (teks kosong)", async () => {
     const fetchMock = stubSave({ status: "axvara", hasOverride: false });
     renderEditor({ ...base, status: "admin", hasOverride: true, adminTerms: "Garansi:\n- Garansi 7 hari" });
-    fireEvent.click(screen.getByRole("button", { name: "Pakai versi otomatis" }));
+    fireEvent.click(screen.getByRole("button", { name: "Kembali ke versi otomatis" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ variant_id: 13, terms: "", activation: "" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ variant_id: 13, terms: "", activation: "", supplier_key: base.supplierKey });
   });
 
   it("teks WR yang belum dikurasi diberi ajakan menulis versi Axvara", () => {
     renderEditor({ ...base, status: "pemasok", needsReview: true });
     expect(screen.getByText("Teks WR — belum versi Axvara")).toBeTruthy();
-    expect(screen.getByText(/Tulis versi Axvara di bawah/)).toBeTruthy();
+    expect(screen.getByText(/langsung menyunting teks di bawah/)).toBeTruthy();
   });
 
   it("varian baru (belum punya ID) diminta disimpan dulu", () => {
@@ -195,6 +219,23 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
   }
 
   const wrForm: ProductForm = { name: "Netflix Premium", slug: "netflix-premium", description: "Teks WR", adminDescriptionOverride: "Versi Axvara", wrManaged: true };
+
+  it("dirty teks memblokir Simpan Produk, close dan Escape meminta izin; batal draft membuka simpan", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderModal(wrForm);
+    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Premium Anti Limit · 28 Hari/ }));
+    fireEvent.change(screen.getByLabelText("Syarat & Ketentuan"), { target: { value: "Draft belum disimpan" } });
+    expect(screen.getByRole("button", { name: /Simpan Produk$/ })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("tab", { name: "Foto" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tutup editor produk" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(confirm).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", "Draft belum disimpan");
+    fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));
+    expect(screen.getByRole("button", { name: /Simpan Produk$/ })).toHaveProperty("disabled", false);
+  });
 
   it("empat tab; deskripsi dan S&K per varian hanya ada di tab Deskripsi & S&K", async () => {
     renderModal(wrForm);

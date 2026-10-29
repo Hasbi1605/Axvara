@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
@@ -65,16 +65,33 @@ export function ProductEditorModal({
   // Dimuat saat modal dibuka (bukan saat tab dibuka) agar penanda "perlu
   // ditinjau" di tab langsung akurat; sebelum termuat pakai angka dari daftar.
   const variantCopy = useVariantCopyEntries(editing ? editingId : undefined);
+  const requestClose = useCallback(() => {
+    if (saving || variantCopy.saving) return;
+    if (variantCopy.dirty && !window.confirm("Ada teks varian yang belum disimpan. Buang perubahan teks dan tutup editor?")) return;
+    onRequestClose();
+  }, [saving, variantCopy.saving, variantCopy.dirty, onRequestClose]);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || (!variantCopy.dirty && !variantCopy.saving)) return;
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      requestClose();
+    };
+    const unload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    document.addEventListener("keydown", keydown, true);
+    if (variantCopy.dirty || variantCopy.saving) window.addEventListener("beforeunload", unload);
+    return () => { document.removeEventListener("keydown", keydown, true); window.removeEventListener("beforeunload", unload); };
+  }, [variantCopy.dirty, variantCopy.saving, requestClose]);
   const copyReviewCount = variantCopy.entries.size > 0
     ? [...variantCopy.entries.values()].filter((entry) => entry.isActive && entry.needsReview).length
     : (form.copyReview ?? 0);
   return (
-    <div className="fixed inset-0 z-[80] isolate flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-start sm:overflow-y-auto sm:p-6 sm:pt-10" onMouseDown={(event)=>{if(event.target===event.currentTarget&&!saving){onRequestClose();}}}>
+    <div className="fixed inset-0 z-[80] isolate flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-start sm:overflow-y-auto sm:p-6 sm:pt-10" onMouseDown={(event)=>{if(event.target===event.currentTarget){requestClose();}}}>
           <section role="dialog" aria-modal="true" aria-labelledby="product-editor-title" className="relative z-10 isolate flex max-h-[92dvh] w-full max-w-[880px] flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0B1025] shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl">
             <div className="shrink-0 px-6 pt-6">
             <div className="flex items-center justify-between gap-3">
               <div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#00E5FF]">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-display text-lg font-bold text-white">{editing? "Edit Produk":"Produk Baru"}</h3></div>
-              <button onClick={onRequestClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/15" aria-label="Tutup editor produk"><IosIcon name="close" size={14} tint="white" /></button>
+              <button onClick={requestClose} disabled={saving || variantCopy.saving} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/15 disabled:opacity-50" aria-label="Tutup editor produk"><IosIcon name="close" size={14} tint="white" /></button>
             </div>
 
             {formError && <p className="mt-4 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-200">{formError}</p>}
@@ -313,9 +330,10 @@ export function ProductEditorModal({
             </div>
             </div>
 
-            <div className="shrink-0 flex gap-3 justify-end border-t border-white/10 bg-[#0B1025] px-6 py-4">
-              <button onClick={onRequestClose} disabled={saving} className="h-11 px-5 rounded-full border border-white/10 bg-white/[0.06] text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50">Batal</button>
-              <button onClick={onSave} disabled={saving || uploading} className="h-11 px-6 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition disabled:opacity-60 inline-flex items-center gap-2">
+             <div className="shrink-0 flex flex-wrap gap-3 justify-end border-t border-white/10 bg-[#0B1025] px-6 py-4">
+              {(variantCopy.dirty || variantCopy.saving) && <p role="status" className="w-full text-xs text-[#FFCF55]">{variantCopy.saving ? "Teks varian sedang disimpan…" : "Simpan atau batalkan perubahan teks di panel varian sebelum Simpan Produk."}</p>}
+              <button onClick={requestClose} disabled={saving || variantCopy.saving} className="h-11 px-5 rounded-full border border-white/10 bg-white/[0.06] text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50">Batal</button>
+              <button onClick={onSave} disabled={saving || uploading || variantCopy.dirty || variantCopy.saving} className="h-11 px-6 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition disabled:opacity-60 inline-flex items-center gap-2">
                 {saving ? <Spinner size={16} className="border-[#080C1E]/20 border-t-[#080C1E]" /> : <IosIcon name="checked" size={15} tint="black" />} {saving ? "Menyimpan…" : "Simpan Produk"}
               </button>
             </div>

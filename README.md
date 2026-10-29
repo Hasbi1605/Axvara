@@ -953,6 +953,18 @@ Aktivasi:` untuk bagian yang pindah ke kartu S&K. Detail: `docs/ARCHITECTURE.md`
 
 **S&K dan panduan bersama per varian (2026-10-15).** Untuk stok sendiri, buka tab Varian: S&K bersama serta Cara penggunaan / aktivasi bersama berlaku untuk setiap pembeli varian itu dan tersimpan lewat **Simpan Produk**, termasuk saat membuat varian baru. Stok unik cukup berisi link/akun/key/detail khusus pembeli; impor/hapus stok tetap aksi terpisah yang langsung tersimpan. Modal varian memakai accordion dan stok unique mengikuti inventory. Produk supplier tetap memakai tab Deskripsi & S&K dan tombol tinjauan khusus, agar save produk tidak menyetujui otomatis teks WR yang berubah. Setelah bayar, panel kredensial menggabungkan panduan varian dan S&K/aktivasi deskripsi produk seperti PDP, lalu menampilkan accordion terpisah di bawah detail akses.
 
+**Editor WR/SK (29 Oktober 2026, implementasi lokal).** Teks otomatis langsung
+terisi; sumber asli, override dijeda dan versi pembeli dibedakan. Pratinjau memakai
+gabungan draft varian dan deskripsi form. PUT `/api/admin/variant-copy` wajib
+`supplier_key` dari GET: fingerprint sumber harus cocok dan UPDATE memeriksa ulang
+sumber/override secara atomik; konflik 409 mempertahankan draft. Muat sumber
+terbaru tidak membuang draft. Batalkan perubahan hanya membatalkan draft lokal;
+Kembali ke versi otomatis menghapus override tersimpan. Simpan Produk diblokir
+selama draft/simpan teks; penutupan modal meminta konfirmasi untuk draft dan
+ditahan saat simpan. Mirror WR/SK tidak diedit; badge tinjauan juga membaca SK.
+Stok sendiri tetap di tab Varian. Copy pascabayar memakai katalog terkini dan
+catatan transaksi SK tidak diubah. Verifikasi fixture bukan bukti deployment.
+
 **Muse AI (2026-10-21, ✅ live).** Produk manual 1 miliar token Rp16.000
 menggunakan kolom deskripsi serta S&K/panduan bersama varian existing.
 Login melalui email + web OTP, lalu ganti dan verifikasi email pribadi.

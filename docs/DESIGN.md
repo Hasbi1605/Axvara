@@ -464,6 +464,15 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
     `<details>` teks asli WR, tombol sendiri "Simpan S&K varian" / "Tandai
     sudah ditinjau" / "Pakai versi otomatis". Daftar produk: pill gold
     "S&K perlu ditinjau · N varian" di bawah slug (desktop) / kategori (mobile).
+  - Revisi 29 Oktober 2026 (implementasi lokal): panel supplier berlaku setara
+    WR/SK, textarea memuat override atau salinan otomatis. Override dijeda diberi
+    label terpisah dan detail versi pembeli terkini. Detail sumber asli serta
+    pratinjau gabungan draft/deskripsi memakai parser dan renderer storefront.
+    Empty state tidak mengklaim panduan tersedia. Error simpan tetap inline;
+    Muat sumber terbaru mempertahankan draft, Batalkan perubahan mengembalikan
+    kolom, Kembali ke versi otomatis menghapus override. Simpan Produk terkunci
+    selama draft/simpan teks; X, backdrop, Batal dan Escape meminta konfirmasi
+    untuk draft dan diblokir saat simpan. Ganti tab tidak membuang draft.
 - Badge pengiriman pembeli fulfillment-aware (2026-09-19, live):
   `buyerDeliveryKind()` — WR ikut `wr_delivery_class` (restock = Kirim
   otomatis, selainnya = Made By Order + estimasi supplier); non-WR ikut

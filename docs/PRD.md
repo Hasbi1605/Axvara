@@ -1,5 +1,23 @@
 # PRD — AXVARA
 
+## Editor ketentuan supplier, 29 Oktober 2026
+
+Implementasi lokal; belum merupakan bukti deployment. Tab Deskripsi & S&K
+memuat teks aktual WR/SK yang dapat langsung disunting. Override admin tetap
+terpisah dari mirror supplier; perubahan sumber menjeda override dan menampilkan
+versi otomatis kepada pembeli. Editor membedakan draft admin dijeda, sumber asli,
+dan versi pembeli. Pratinjau menggabungkan draft varian dengan deskripsi di form;
+deskripsi tetap disimpan lewat Simpan Produk. Deskripsi WR punya aksi eksplisit
+menyalin sumber sebagai awal override.
+
+Simpan teks membawa fingerprint sumber yang ditinjau; sumber berubah atau race
+saat UPDATE ditolak 409 tanpa mengubah draft. Muat sumber terbaru mempertahankan
+draft. Tersedia Batalkan perubahan dan Kembali ke versi otomatis. Draft memblokir
+Simpan Produk serta meminta konfirmasi sebelum modal ditutup; saat menyimpan teks,
+modal tidak dapat ditutup. Stok sendiri tetap memakai tab Varian. Pascabayar tetap
+membaca katalog terkini, bukan snapshot order; `seller_note` transaksi SK dalam
+kredensial tidak diubah. Tidak ada migrasi, dependency, env atau mutasi produksi baru.
+
 ## Order Telegram, 29 Oktober 2026
 
 Koreksi owner terbaru: loading persentase lama0/40/70/100% dipulihkan pada

@@ -227,16 +227,17 @@ async function readProducts(req: NextRequest) {
   if (isAdminRequest && isD1Mode()) {
     const copyRows = await queryAll(
       `SELECT pv.product_id, pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
-              wv.wr_terms, wv.wr_delivery_terms
+               wv.wr_terms, wv.wr_delivery_terms, sp.sk_description, sp.sk_seller_note
          FROM product_variants pv
-         LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+          LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
+          LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
         WHERE pv.is_active=1
-          AND (wv.wr_variant_id IS NOT NULL OR pv.admin_terms IS NOT NULL OR pv.admin_activation IS NOT NULL)`,
+          AND (wv.wr_variant_id IS NOT NULL OR sp.sk_variant_id IS NOT NULL OR pv.admin_terms IS NOT NULL OR pv.admin_activation IS NOT NULL)`,
     ).catch(() => [] as Record<string, unknown>[]);
     for (const row of copyRows) {
       const resolution = resolveVariantCopyDetailed(
-        row.wr_terms as string | null,
-        row.wr_delivery_terms as string | null,
+        (row.wr_terms as string | null)?.trim() ? row.wr_terms as string : row.sk_description as string | null,
+        (row.wr_delivery_terms as string | null)?.trim() ? row.wr_delivery_terms as string : row.sk_seller_note as string | null,
         {
           terms: row.admin_terms as string | null,
           activation: row.admin_activation as string | null,

@@ -72,6 +72,7 @@ export function ProductCopyTab({
             <p id={`${overrideId}-hint`} className="text-[11px] leading-4 text-white/35">
               Jika diisi, teks ini yang tampil di storefront dan tidak akan ditimpa sync. Kosongkan untuk kembali memakai deskripsi WR. {FORMAT_HINT}
             </p>
+            {!form.adminDescriptionOverride?.trim() && <button type="button" className="min-h-11 text-xs font-semibold text-[#5cefff]" onClick={() => onSetForm({ ...form, adminDescriptionOverride: form.description ?? "" })}>Gunakan teks sumber sebagai awal</button>}
           </div>
         )}
       </section>
@@ -79,7 +80,7 @@ export function ProductCopyTab({
       {!form.wrManaged && form.supplier !== "SK" ? <p className="rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.04] p-4 text-xs leading-5 text-white/60">S&K dan cara penggunaan bersama diatur pada tab Varian, di bagian pengiriman masing-masing varian. Panduan tersimpan bersama Simpan Produk.</p> : <section aria-labelledby={`${id}-terms-title`}>
         <h4 id={`${id}-terms-title`} className="text-sm font-semibold text-white">Syarat &amp; Ketentuan · Cara Aktivasi</h4>
         <p className="mt-1 text-[11px] leading-4 text-white/40">
-          Per varian. Panel terbuka berisi teks yang sedang tampil di halaman produk. Simpan dengan tombol di dalam panel, terpisah dari Simpan Produk.
+          Sunting langsung teks per varian. Suntingan yang dijeda ditandai terpisah dari versi pembeli. Simpan teks di dalam panel sebelum Simpan Produk.
         </p>
         {loadingVariants ? (
           <p className="mt-3 text-xs text-white/40">Memuat varian…</p>
@@ -99,6 +100,9 @@ export function ProductCopyTab({
                     loading={variantCopy.loading}
                     error={variantCopy.error}
                     onSaved={variantCopy.update}
+                    onStateChange={variantCopy.report}
+                    onReload={variantCopy.reload}
+                    description={form.adminDescriptionOverride?.trim() ? form.adminDescriptionOverride : form.description}
                   />
                 </li>
               );

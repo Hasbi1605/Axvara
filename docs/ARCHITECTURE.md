@@ -2236,6 +2236,26 @@ diimpor komponen client dan `curated.ts` tidak boleh masuk bundle browser
 sebelum dikirim. Bot Telegram/WhatsApp tidak menampilkan deskripsi maupun S&K
 (tetap seperti sebelumnya).
 
+**Koreksi editor 29 Oktober 2026 (implementasi lokal, menggantikan kontrak editor
+WR-only di tabel snapshot di atas).** GET/PUT variant-copy dan badge `copyReview`
+JOIN `sk_products`, dengan fallback WR nonblank lalu `sk_description`/`sk_seller_note`
+seperti katalog. `VariantCopyEntry` menambah `supplier`, `supplierKey` dan teks
+efektif `effectiveTerms`/`effectiveActivation`. PUT wajib `supplier_key` yang sama
+dengan sumber saat dibaca; mismatch 409. UPDATE kondisional memeriksa override lama,
+ID supplier dan teks sumber mentah dalam statement yang sama; zero changes 409.
+Fingerprint SK tidak lagi kosong; supplier tanpa teks tetap fingerprint kosong.
+Sync tetap memiliki mirror, hanya kolom admin yang disunting. Stok sendiri tetap
+disimpan lewat batch Simpan Produk sebagaimana kontrak 15 Oktober.
+
+Editor mempertahankan draft saat reload konflik; override stale ditampilkan
+sebagai draft dijeda, versi efektif dan sumber asli dapat dibandingkan. Preview
+memakai `parseAdminVariantCopy` + `parseProductDescription` + `mergeProductCopy`
+dan renderer storefront. Deskripsi di preview adalah form belum tersimpan, bukan
+janji snapshot pascabayar. `useVariantCopyEntries` mengagregasi dirty/saving agar
+modal menahan Simpan Produk dan penutupan saat saving, serta meminta konfirmasi
+sebelum membuang draft; beforeunload melindungi refresh. Tidak mengubah resolver
+pascabayar katalog terkini atau `formatSkLicenses()` seller_note transaksi.
+
 Format editor varian (`serializeVariantCopy()` ⇄ `parseAdminVariantCopy()`,
 bolak-balik tanpa kehilangan isi untuk ke-83 salinan kurasi — dikunci test):
 S&K = judul `Detail paket:` / `Proses & pengiriman:` / `Aturan pakai:` /

@@ -68,7 +68,7 @@ async function putCopy(body: Record<string, unknown>) {
   return PUT(new NextRequest("http://localhost/api/admin/variant-copy", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ supplier_key: body.variant_id === 1 ? supplierFingerprint(legal.terms, legal.deliveryTerms) : "", ...body }),
   }));
 }
 
@@ -99,6 +99,51 @@ describe("GET /api/admin/variant-copy", () => {
 });
 
 describe("PUT /api/admin/variant-copy → storefront", () => {
+  it("source changes between read and UPDATE fail closed atomically", async () => {
+    fixture.control.beforeRun = async (query) => {
+      if (!query.includes("UPDATE product_variants SET admin_terms")) return;
+      fixture.control.beforeRun = null;
+      fixture.sql.prepare("UPDATE wr_variants SET wr_terms=? WHERE wr_variant_id='var-legal'").run("Hanya boleh 2 perangkat");
+    };
+    const before = adminColumns(1);
+    expect((await putCopy({ variant_id: 1, terms: "Draft tersimpan?", activation: "" })).status).toBe(409);
+    expect(adminColumns(1)).toEqual(before);
+  });
+
+  it("SK: editor, fingerprint, review dan copy pascabayar konsisten dengan storefront", async () => {
+    fixture.sql.exec(`INSERT INTO products(id,name,slug,price,stock,source,sk_auto_managed,sk_product_id) VALUES(3,'SK fixture','sk-copy-fixture',5000,5,'manual',1,'900');
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,sk_variant_id,sk_auto_managed) VALUES(3,3,'SK-COPY','Sharing',5000,5,1,'901',1);
+      INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_variant_name,sk_price,sk_stock,sk_description,sk_seller_note,axvara_product_id,axvara_variant_id) VALUES('901','900','SK fixture','Sharing',3000,5,'Hanya bisa 1 perangkat','1. Buka aplikasi',3,3);`);
+    const [entry] = await getCopy(3);
+    expect(entry).toMatchObject({ supplier: "SK", status: "pemasok", needsReview: true });
+    expect(entry.autoTerms).toContain("Hanya bisa 1 perangkat");
+    expect(entry.autoActivation).toContain("Buka aplikasi");
+    const saved = await putCopy({ variant_id: 3, supplier_key: entry.supplierKey, terms: entry.autoTerms + "\n- Jangan bagikan akun", activation: entry.autoActivation });
+    expect(saved.status).toBe(200);
+    expect((await storefrontVariant("sk-copy-fixture")).copy.source).toBe("admin");
+    const { resolveCredentialTermsForVariants } = await import("@/lib/orders/credential-terms");
+    const copies = await resolveCredentialTermsForVariants([3], createDatabaseAccess(fixture.db));
+    expect(copies.get(3)?.source).toBe("admin");
+    expect(JSON.stringify(copies.get(3))).toContain("Jangan bagikan akun");
+    fixture.sql.exec("UPDATE sk_products SET sk_description='Hanya bisa 2 perangkat' WHERE sk_variant_id='901'");
+    expect((await getCopy(3))[0]).toMatchObject({ supplier: "SK", adminStale: true, needsReview: true });
+    const { GET } = await import("@/app/api/products/route");
+    const list = await (await GET(new NextRequest("http://localhost/api/products"))).json();
+    expect(list.products.find((p: { slug: string }) => p.slug === "sk-copy-fixture").copyReview).toBe(1);
+    expect((await putCopy({ variant_id: 3, supplier_key: entry.supplierKey, terms: "Old draft", activation: "" })).status).toBe(409);
+    const fresh = (await getCopy(3))[0];
+    expect((await putCopy({ variant_id: 3, supplier_key: fresh.supplierKey, terms: "", activation: "" })).status).toBe(200);
+    expect(adminColumns(3).admin_terms).toBeNull();
+  });
+
+  it("refuse unreviewed WR changes and missing source proof without altering draft in DB", async () => {
+    await putCopy({ variant_id: 1, terms: "Garansi:\n- Garansi 7 hari", activation: "" });
+    const before = adminColumns(1);
+    fixture.sql.prepare("UPDATE wr_variants SET wr_terms=? WHERE wr_variant_id='var-legal'").run("Garansi 3 hari");
+    expect((await putCopy({ variant_id: 1, terms: "Old draft", activation: "" })).status).toBe(409);
+    expect((await putCopy({ variant_id: 1, supplier_key: undefined, terms: "Old draft", activation: "" })).status).toBe(400);
+    expect(adminColumns(1)).toEqual(before);
+  });
   it("suntingan tampil di /api/catalog dan dicap sidik jari teks WR saat itu", async () => {
     const [before] = await getCopy(1);
     const res = await putCopy({ variant_id: 1, terms: `${before.autoTerms}\n- Dilarang berbagi akun ke grup`, activation: before.autoActivation });
@@ -185,7 +230,7 @@ describe("WR mengubah teks setelah admin menyunting", () => {
   it("simpan ulang dari panel (setelah meninjau) memakai suntingan lagi", async () => {
     await putCopy({ variant_id: 1, terms: "Aturan pakai:\n- Dilarang berbagi akun", activation: "" });
     fixture.sql.prepare("UPDATE wr_variants SET wr_terms=? WHERE wr_variant_id='var-legal'").run(changedTerms);
-    const res = await putCopy({ variant_id: 1, terms: "Aturan pakai:\n- Dilarang berbagi akun\n- Dilarang login di Smart TV", activation: "" });
+    const res = await putCopy({ variant_id: 1, terms: "Aturan pakai:\n- Dilarang berbagi akun\n- Dilarang login di Smart TV", activation: "", supplier_key: supplierFingerprint(changedTerms, legal.deliveryTerms) });
     expect((await res.json()).variant).toMatchObject({ status: "admin", adminStale: false, needsReview: false });
     expect((await storefrontVariant("netflix-premium")).copy.source).toBe("admin");
   });

@@ -362,17 +362,21 @@ export type VariantCopyEntry = {
   label: string;
   isActive: boolean;
   wrManaged: boolean;
+  supplier: "WR" | "SK" | null;
+  supplierKey: string;
+  effectiveTerms: string;
+  effectiveActivation: string;
   status: "admin" | "axvara" | "pemasok" | "none";
-  /** Ada suntingan admin, tapi WR mengubah teks sejak disimpan (suntingan dijeda). */
+  /** Ada suntingan admin, tapi supplier mengubah teks sejak disimpan (suntingan dijeda). */
   adminStale: boolean;
   needsReview: boolean;
   hasOverride: boolean;
   adminTerms: string;
   adminActivation: string;
-  /** Salinan otomatis (kurasi atau teks WR dirapikan) dalam format editor. */
+  /** Salinan otomatis (kurasi atau teks supplier dirapikan) dalam format editor. */
   autoTerms: string;
   autoActivation: string;
-  /** Teks asli WR saat ini, untuk pembanding. */
+  /** Teks asli supplier saat ini, untuk pembanding. */
   supplierTerms: string;
   supplierActivation: string;
 };
