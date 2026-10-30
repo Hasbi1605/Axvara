@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 
 export function usePediaPrices(slug: string, quantity: number | null, enabled: boolean) {
   const key = `${slug}:${quantity}`;
+  const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{ key: string; prices: Record<number, number>; failed?: boolean } | null>(null);
   useEffect(() => {
     if (!enabled || !quantity || !Number.isSafeInteger(quantity) || quantity > 100_000_000) return;
@@ -19,6 +20,6 @@ export function usePediaPrices(slug: string, quantity: number | null, enabled: b
       } catch { if (!controller.signal.aborted) setResult({ key, prices: {}, failed: true }); }
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [slug, quantity, enabled, key]);
-  return result?.key === key ? result : null;
+  }, [slug, quantity, enabled, key, attempt]);
+  return result?.key === key ? { ...result, retry: () => { setResult(null); setAttempt((n) => n + 1); } } : null;
 }

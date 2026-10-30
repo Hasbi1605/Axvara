@@ -3,14 +3,15 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { useCart } from "@/stores/cart";
 import { useSearch } from "@/stores/search";
-import { useState, useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { useState, useEffect, useRef, type FormEvent } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
 
 export function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const isAdmin = pathname?.startsWith("/admin");
   // Badge = jumlah BARIS varian (lineCount), bukan sum qty — GSuite min 50
   // dalam 1 baris tampil "1". Animasi shake mengikuti perubahan baris.
@@ -31,11 +32,19 @@ export function Navbar() {
     prevCount.current = count;
   }, [count]);
 
+  const scrollToCatalog = () => document.getElementById("katalog")?.scrollIntoView({
+    behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    block: "start",
+  });
   const onSearch = (v: string) => {
     setQ(v);
-    if (v.trim()) {
-      document.getElementById("katalog")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    if (pathname === "/" && v.trim() && !q.trim()) scrollToCatalog();
+  };
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!q.trim()) return;
+    if (pathname !== "/") router.push("/#katalog");
+    else scrollToCatalog();
   };
 
   if (isAdmin) return null;
@@ -64,19 +73,19 @@ export function Navbar() {
           {/* VAULT badge removed */}
         </Link>
 
-        <div className="hidden lg:flex min-w-0 flex-1 max-w-[520px] mx-2">
+        <form role="search" onSubmit={submitSearch} className="hidden lg:flex min-w-0 flex-1 max-w-[520px] mx-2">
           <div className="relative w-full">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60">
+            <button type="submit" aria-label="Jalankan pencarian" className="absolute left-0 top-0 flex h-full w-11 items-center justify-center text-white/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] rounded-full">
               <IosIcon name="search" size={16} tint="white" />
-            </span>
-            <input aria-label="Cari produk Market" value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari AI Gateway, ChatGPT Plus, Canva Pro..." className="w-full h-10 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 focus:bg-white/[0.08] transition" />
+            </button>
+            <input type="search" enterKeyHint="search" aria-label="Cari produk Market" value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari AI Gateway, ChatGPT Plus, Canva Pro..." className="w-full h-10 pl-10 pr-11 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 focus:bg-white/[0.08] transition" />
             {q && (
-              <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label="Clear">
+              <button type="button" onClick={() => setQ("")} className="absolute right-0 top-0 w-11 h-full rounded-full flex items-center justify-center hover:bg-white/10 transition" aria-label="Hapus pencarian">
                 <X className="w-3.5 h-3.5 text-white/70" />
               </button>
             )}
           </div>
-        </div>
+        </form>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           <ServicesMenu active="market" />
@@ -90,31 +99,31 @@ export function Navbar() {
           </nav>
           <button
             onClick={() => setDrawer(true)}
-            className={`relative w-11 h-11 sm:w-auto sm:h-11 sm:px-4 rounded-full bg-[#00E5FF] text-[#080C1E] flex items-center justify-center gap-2 font-semibold text-sm shadow-[0_0_16px_rgba(0,229,255,0.35)] hover:shadow-[0_0_24px_rgba(0,229,255,0.45)] transition ${shake ? "animate-[cartShake_0.55s_cubic-bezier(0.34,1.56,0.64,1)]" : ""}`}
+              className={`relative w-11 h-11 sm:w-auto sm:h-11 sm:px-4 rounded-full bg-[#00E5FF] text-[#080C1E] flex items-center justify-center gap-2 font-semibold text-sm shadow-[0_0_16px_rgba(0,229,255,0.35)] hover:shadow-[0_0_24px_rgba(0,229,255,0.45)] transition ${shake ? "motion-safe:animate-[cartShake_0.55s_cubic-bezier(0.34,1.56,0.64,1)]" : ""}`}
             aria-label="Keranjang"
           >
             <IosIcon name="shopping-bag" size={14} tint="black" />
             <span className="hidden sm:inline">Keranjang</span>
             {count > 0 && (
-              <span className={`absolute -top-1 -right-1 sm:static sm:ml-1 min-w-[20px] h-5 px-1 rounded-full bg-[#FFB800] text-[#080C1E] text-xs font-bold flex items-center justify-center ${shake ? "animate-[cartPop_0.45s_ease-out]" : ""}`}>{count}</span>
+              <span className={`absolute -top-1 -right-1 sm:static sm:ml-1 min-w-[20px] h-5 px-1 rounded-full bg-[#FFB800] text-[#080C1E] text-xs font-bold flex items-center justify-center ${shake ? "motion-safe:animate-[cartPop_0.45s_ease-out]" : ""}`}>{count}</span>
             )}
           </button>
         </div>
       </div>
       {mobileSearch && (
-        <div className="lg:hidden px-4 pb-3">
+        <form role="search" onSubmit={submitSearch} className="lg:hidden px-4 pb-3">
           <div className="relative">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60">
+            <button type="submit" aria-label="Jalankan pencarian" className="absolute left-0 top-0 flex h-full w-11 items-center justify-center text-white/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] rounded-full">
               <IosIcon name="search" size={16} tint="white" />
-            </span>
-            <input aria-label="Cari produk Market" autoFocus value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari produk..." className="w-full h-11 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-base text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40" />
+            </button>
+            <input type="search" enterKeyHint="search" aria-label="Cari produk Market" autoFocus value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari produk..." className="w-full h-11 pl-10 pr-11 rounded-full bg-white/[0.06] border border-white/10 text-base text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40" />
             {q && (
-              <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label="Clear">
+              <button type="button" onClick={() => setQ("")} className="absolute right-0 top-0 w-11 h-full rounded-full flex items-center justify-center hover:bg-white/10 transition" aria-label="Hapus pencarian">
                 <X className="w-3.5 h-3.5 text-white/70" />
               </button>
             )}
           </div>
-        </div>
+        </form>
       )}
     </header>
   );

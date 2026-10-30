@@ -177,22 +177,17 @@ export function PediaOrbit() {
     liteCountRef.current = placements.length;
 
     // Respect prefers-reduced-motion
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     // LCP mobile: animasi orbit ditunda sampai paint pertama selesai agar
     // thread utama fokus ke teks + gambar kartu. Desktop langsung jalan.
-    const deferForLcp = liteRef.current && !reduceMotion;
-    if (reduceMotion) {
-      // Set static positions and exit
-      updatePositions();
-      return;
-    }
+    const deferForLcp = liteRef.current && !motion.matches;
 
     let canAnimate = true;
 
     // Animation loop — all imperative, zero React renders
     const tick = (now: number) => {
       rafRef.current = null;
-      if (!canAnimate || !isVisibleRef.current || document.hidden) return;
+      if (!canAnimate || motion.matches || !isVisibleRef.current || document.hidden) return;
 
       const dt = lastTimeRef.current ? (now - lastTimeRef.current) / 1000 : 0.016;
       lastTimeRef.current = now;
@@ -221,7 +216,7 @@ export function PediaOrbit() {
     };
 
     const startAnimation = () => {
-      if (rafRef.current !== null || !canAnimate || !isVisibleRef.current || document.hidden) return;
+      if (rafRef.current !== null || !canAnimate || motion.matches || !isVisibleRef.current || document.hidden) return;
       lastTimeRef.current = 0;
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -233,6 +228,12 @@ export function PediaOrbit() {
       lastRenderTimeRef.current = 0;
       lastTrailTimeRef.current = 0;
     };
+
+    const onMotionChange = () => {
+      if (motion.matches) stopAnimation();
+      else startAnimation();
+    };
+    motion.addEventListener("change", onMotionChange);
 
     updatePositions();
     if (deferForLcp) {
@@ -279,6 +280,7 @@ export function PediaOrbit() {
       canAnimate = false;
       stopAnimation();
       observer.disconnect();
+      motion.removeEventListener("change", onMotionChange);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [updatePositions]);

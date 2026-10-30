@@ -257,7 +257,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
               </div>
               <p className="mt-3 text-[13px] leading-5 text-white/65">{tier ? `Layanan terpilih menerima ${(tier.min_qty ?? 1).toLocaleString("id-ID")}${tier.max_qty != null ? `–${tier.max_qty.toLocaleString("id-ID")}` : " atau lebih"} per pesanan.${(tier.quantity_step ?? product.step) > 1 ? ` Kelipatan ${(tier.quantity_step ?? product.step).toLocaleString("id-ID")}.` : ""}` : "Pilih layanan untuk melihat batas jumlah per pesanan."}</p>
               {quantityNotice && <p role="status" className="mt-2 text-xs text-amber-200">{quantityNotice}</p>}{inlineError("quantity")}
-              {qty != null && comparison?.failed && <p className="mt-2 text-xs leading-5 text-white/55">Harga terbaru belum dapat dimuat. Harga akan diperiksa kembali sebelum pembayaran.</p>}
+              <div role="status" aria-live="polite">{qty != null && comparison?.failed && <p className="mt-2 text-[13px] leading-5 text-white/65">Harga terbaru belum dapat dimuat. Harga akan diperiksa kembali sebelum pembayaran. <button type="button" disabled={attempted} onClick={comparison.retry} className="min-h-11 font-medium text-[#00E5FF] underline underline-offset-4 disabled:opacity-40">Coba muat harga lagi</button></p>}</div>
             </fieldset></div>
             <div className="mt-8"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded />{inlineError("tier")}</div>
           </section>

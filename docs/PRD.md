@@ -1,5 +1,15 @@
 # PRD — AXVARA
 
+## Pencarian dan pemulihan harga web — 31 Oktober 2026
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Pencarian
+Market tetap memfilter langsung di beranda; Enter/tombol cari dari halaman lain
+membuka katalog dengan query tetap tersimpan dalam state tab. Query kosong tidak
+menavigasi. Anchor katalog memperhitungkan navbar desktop/mobile.
+Pedia menyediakan coba ulang harga secara eksplisit setelah gagal, tanpa mengubah
+jumlah, layanan atau draf. Tidak membuat quote/order saat mencoba ulang harga;
+validasi, consent nominal, penguncian retry pembayaran dan proof tetap existing.
+
 ## Editor ketentuan supplier, 29 Oktober 2026
 
 Implementasi lokal; belum merupakan bukti deployment. Tab Deskripsi & S&K

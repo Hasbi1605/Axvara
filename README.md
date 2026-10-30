@@ -1,5 +1,17 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Perbaikan storefront — 31 Oktober 2026
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Pencarian
+Market dari checkout/detail dapat dikirim dengan Enter atau tombol cari untuk
+membuka katalog tanpa kehilangan query. Anchor menghindari navbar; kontrol cart
+44px dengan label kontekstual dan teks sekunder kartu lebih terbaca. Drawer260ms,
+modal/badge serta scroll pencarian menghormati reduced motion; kedua orbit dapat
+berhenti/mulai saat preferensi berubah tanpa melewati gate visibility existing.
+Gagal harga Pedia menyediakan tombol coba ulang dan status aksesibel, tetap
+menjaga jumlah/layanan/draf dan pemeriksaan harga sebelum pembayaran. Tidak ada
+dependency/env/migrasi/cron baru atau perubahan keamanan/kontrak order.
+
 ## Invoice, kontak dan PIN untuk kredensial, 28 Oktober 2026
 
 ✅ Implementasi lokal untuk publikasi CI. Email produk siap berisi **kredensial

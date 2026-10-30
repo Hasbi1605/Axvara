@@ -27,6 +27,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => navigation.path, useRoute
 beforeEach(() => {
   navigation.path = "/pedia"; navigation.push.mockClear();
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+  vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
   Element.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); usePediaSearch.getState().setQ(""); });

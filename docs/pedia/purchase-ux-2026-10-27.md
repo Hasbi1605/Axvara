@@ -34,6 +34,10 @@ sudah ada. Tidak ada aset baru, badge popularitas, hasil sampling atau klaim mut
    nama tersimpan atau menghapus pembeda lain. Harga acuan per1.000 hanya untuk
    layanan yang menerima1.000; minimum diberi label tersendiri. Harga kosong tidak
    diganti harga minimum seolah-olah merupakan total jumlah yang diminta.
+   Pembaruan31Oktober (lokal untuk publikasi CI): kegagalan GET harga diumumkan
+   lewat live status polite dengan tombol44px “Coba muat harga lagi”. Retry
+   mempertahankan jumlah/layanan/draf, abort respons lama dan tetap debounce300ms;
+   tidak membuat quote/order atau melewati consent harga sebelum pembayaran.
 5. Radio native tetap eksplisit. Pilihan aktif memakai border cyan1px,
    latar#101E30 dan label “Dipilih”; memilih tidak menutup alternatif. Jika filter
    mengecualikan pilihan, pilihan ditampilkan di atas dengan penjelasan. Hitungan

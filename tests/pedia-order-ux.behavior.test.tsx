@@ -7,8 +7,9 @@ import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
 import { ServicePicker } from "@/components/pedia/ServicePicker";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import { usePediaPrices } from "@/components/pedia/usePediaPrices";
 
-vi.mock("@/components/pedia/usePediaPrices", () => ({ usePediaPrices: () => null }));
+vi.mock("@/components/pedia/usePediaPrices", () => ({ usePediaPrices: vi.fn(() => null) }));
 
 const product: PediaCatalogProduct = {
   slug: "followers-instagram", name: "Followers Instagram", platform: "instagram", metric: "followers", target_kind: "profile",
@@ -23,6 +24,7 @@ const product: PediaCatalogProduct = {
 const reply = (data: unknown, status = 200) => ({ ok: status < 400, status, json: async () => data });
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  vi.mocked(usePediaPrices).mockReturnValue(null);
   fetchMock = vi.fn(async () => reply({ quote_token: "signed-token", total: 7300, payable: 7300 }));
   vi.stubGlobal("fetch", fetchMock);
   localStorage.clear();
@@ -59,6 +61,18 @@ async function getQuote() {
 }
 
 describe("Pedia order UX", () => {
+  it("announces price failure and retries without resetting quantity or service", () => {
+    const retry = vi.fn();
+    vi.mocked(usePediaPrices).mockReturnValue({ key: "followers-instagram:250", prices: {}, failed: true, retry });
+    mount(); select();
+    const button = screen.getByRole("button", { name: "Coba muat harga lagi" });
+    expect(button.closest('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
+    fireEvent.click(button);
+    expect(retry).toHaveBeenCalledOnce();
+    expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
+    expect((screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }) as HTMLInputElement).checked).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it("renders saved product copy as escaped text with preserved lines, including SSR", () => {
     const description = 'Followers untuk profil Instagram publik.\nRefill sesuai paket.\n<script>alert("test")</script>';
     const described = { ...product, description_md: description };

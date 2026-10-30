@@ -1,5 +1,19 @@
 # ARCHITECTURE.md — AXVARA
 
+## Interaksi storefront — 31 Oktober 2026
+
+Implementasi lokal untuk publikasi CI, bukan bukti deployment. Navbar Market memakai
+form pencarian native; input beranda memfilter Zustand `useSearch`, sedangkan
+submit dari rute lain memakai router ke `/#katalog` tanpa membuang query. Gulir
+hanya saat mulai mengetik di beranda atau submit, dengan preferensi reduced motion.
+Orbit Market/Pedia memasang listener media query yang dibersihkan saat unmount;
+start/tick tetap dijaga visibility/intersection/preferensi, tanpa loop baru.
+`usePediaPrices` menambah aksi retry lokal: hapus hasil gagal, abort request lama,
+debounce300ms dan GET endpoint harga yang sama. Respons stale tetap diabaikan;
+preview/jumlah kosong atau non-integer tidak meminta harga. OrderClient menyajikan retry melalui
+live status tanpa mengubah draf atau memanggil quote/order. Tidak ada route API,
+schema, env, dependency, cron, provider atau kontrak pembayaran baru.
+
 ## Proof pembeli dan email kredensial, 28 Oktober 2026
 
 ✅ Implementasi lokal untuk publikasi CI, menggantikan kontrak PIN checkout

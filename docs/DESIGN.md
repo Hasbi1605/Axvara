@@ -1,5 +1,19 @@
 # DESIGN.md — AXVARA Design System
 
+## Aksesibilitas storefront dan motion — 31 Oktober 2026
+
+Implementasi lokal untuk publikasi CI. Midnight/Cyan/Gold dan font existing tetap.
+Kontrol keranjang tutup/tambah/kurangi/hapus memiliki hit area44px, ring fokus cyan
+dan nama aksesibel produk+varian. Label terjual serta harga coret memakai putih65%
+(kontras terhitung sekitar7,5–8,1:1 pada gradient kartu existing).
+Drawer masuk260ms; drawer, modal varian dan badge keranjang hanya beranimasi pada
+motion-safe. Reduced motion meniadakan smooth scroll CSS dan scroll pencarian JS.
+Orbit Market/Pedia merespons perubahan preferensi saat terbuka, mempertahankan
+posisi statis serta pause offscreen/tab tersembunyi; lite/performance existing tetap.
+Anchor katalog berjarak144px mobile (termasuk pencarian terbuka),80px mulai lg.
+Gagal harga Pedia tampil inline dengan live status polite dan tombol coba ulang
+minimal44px; fokus keyboard dan pilihan pembeli tetap, tanpa dialog baru.
+
 ## Form akses kredensial, 28 Oktober 2026
 
 ✅ Implementasi lokal untuk publikasi CI. During, ENERGY2/RHYTHM2/MOTION1 mengikuti

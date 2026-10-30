@@ -217,7 +217,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
         // Mobile = bottom-sheet 480px (dikunci, sudah pas). Desktop (sm+) =
         // panel tengah yang dilebarkan (620→660px) + napas lebih lega agar
         // kartu varian 2 kolom tidak sempit dan scroll internal muncul belakangan.
-        className="w-full max-w-[480px] sm:max-w-[620px] lg:max-w-[660px] rounded-t-[24px] sm:rounded-[24px] border border-white/10 p-5 sm:p-7 shadow-[0_24px_64px_rgba(0,0,0,0.6)] animate-[fadeInUp_0.25s_var(--ease-apple)] text-left"
+        className="w-full max-w-[480px] sm:max-w-[620px] lg:max-w-[660px] rounded-t-[24px] sm:rounded-[24px] border border-white/10 p-5 sm:p-7 shadow-[0_24px_64px_rgba(0,0,0,0.6)] motion-safe:animate-[fadeInUp_0.25s_var(--ease-apple)] text-left"
         style={{ background: "#0B1025" }}
         onClick={(e) => e.stopPropagation()}
       >

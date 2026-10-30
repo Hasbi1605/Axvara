@@ -141,7 +141,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
       <CommunityBar />
 
       {/* Katalog with pagination — authoritative D1 data */}
-      <section id="katalog" className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
+      <section id="katalog" className="scroll-mt-36 lg:scroll-mt-20 mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">Katalog Premium</h2>
           <span className="text-xs text-white/40">{filtered.length} produk{filtered.length ? ` • tampil ${paged.length}` : ""}</span>

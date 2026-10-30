@@ -123,7 +123,7 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
             {showCompare && <span className="text-[10px] text-white/30 line-through leading-none">{formatRupiah(product.comparePrice!)}</span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-1">
-            <span className="text-[10px] text-white/35 font-medium">{product.soldCount ? `${product.soldCount} terjual` : "Terjual"}</span>
+            <span className="text-[10px] text-white/65 font-medium">{product.soldCount ? `${product.soldCount} terjual` : "Terjual"}</span>
             <span className="text-[10px] font-semibold text-[#00E5FF]/70 group-hover:text-[#00E5FF]">Lihat detail →</span>
           </div>
         </div>
@@ -177,10 +177,10 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
             <span className="font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
               {formatRupiah(displayPrice)}
             </span>
-            {showCompare && <span className="text-[10px] sm:text-xs text-white/35 line-through leading-none">{formatRupiah(product.comparePrice!)}</span>}
+            {showCompare && <span className="text-[10px] sm:text-xs text-white/65 line-through leading-none">{formatRupiah(product.comparePrice!)}</span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-2">
-            <span className="text-[11px] text-white/35 font-medium tracking-wide">{product.soldCount ? `${product.soldCount} terjual` : "Terjual"}</span>
+            <span className="text-[11px] text-white/65 font-medium tracking-wide">{product.soldCount ? `${product.soldCount} terjual` : "Terjual"}</span>
             <span className="text-[11px] font-semibold text-[#00E5FF]/80 group-hover:text-[#00E5FF] transition">Lihat detail →</span>
           </div>
         </div>
