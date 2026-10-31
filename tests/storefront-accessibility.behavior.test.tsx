@@ -85,6 +85,7 @@ it("guards modal/drawer motion, offsets the catalog and raises informative card 
   expect(read("src/components/storefront/QuickVariantModal.tsx")).toContain("motion-safe:animate-[fadeInUp_");
   expect(read("src/app/(shop)/home-client.tsx")).toMatch(/id="katalog" className="scroll-mt-36/);
   expect(read("src/app/globals.css")).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*html \{ scroll-behavior: auto; \}/);
+  expect(read("src/app/globals.css")).toContain('header input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }');
   const card = read("src/components/storefront/ProductCard.tsx");
   expect(card).toContain('text-[11px] text-white/65 font-medium tracking-wide');
   expect(card).not.toContain("text-white/35");

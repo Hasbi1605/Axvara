@@ -1,5 +1,13 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Koreksi orbit mobile Pedia — 31 Oktober 2026
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Orbit Pedia
+kembali tampil pada mobile/tablet di bawah teks hero seperti Market, desktop tetap
+di kanan; aturan desktop-only16Oktober digantikan. Mode hemat/reduced motion tetap.
+Pencarian navbar Market/Pedia menyisakan X putih custom dengan menyembunyikan
+cancel biru bawaan WebKit/Chromium. Tidak mengubah filter atau kontrak backend.
+
 ## Perbaikan storefront — 31 Oktober 2026
 
 Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Pencarian

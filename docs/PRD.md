@@ -1,5 +1,13 @@
 # PRD — AXVARA
 
+## Orbit Pedia mobile dan pencarian — koreksi 31 Oktober 2026
+
+Implementasi lokal untuk publikasi CI. Orbit Pedia tampil di tengah sesudah teks
+hero pada mobile/tablet dan di kanan pada desktop, mengikuti Market; menggantikan
+ketentuan desktop-only16Oktober. Animasi tetap hemat mobile dan menghormati reduced
+motion/offscreen. Pencarian navbar Market/Pedia hanya menampilkan satu tombol hapus
+custom putih; tombol cancel bawaan WebKit/Chromium disembunyikan tanpa mengubah filter.
+
 ## Pencarian dan pemulihan harga web — 31 Oktober 2026
 
 Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Pencarian

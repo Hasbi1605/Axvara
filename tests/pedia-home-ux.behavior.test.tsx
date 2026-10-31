@@ -37,6 +37,31 @@ function renderPediaHome(products: PediaCatalogProduct[], ordersEnabled?: boolea
 function search(value: string) { fireEvent.change(screen.getByRole("searchbox", { name: "Cari layanan Pedia" }), { target: { value } }); }
 
 describe("Pedia platform-first storefront", () => {
+  it("keeps one orbit visible below hero copy on mobile and right-aligned on desktop", () => {
+    renderPediaHome([product]);
+    const hero = screen.getByRole("heading", { level: 1 }).closest("section")!;
+    const orbit = screen.getByRole("img", { name: "Orbit layanan media sosial AXVARA Pedia" });
+    expect(hero.querySelectorAll('[aria-label="Orbit layanan media sosial AXVARA Pedia"]')).toHaveLength(1);
+    expect(hero.classList.contains("overflow-hidden")).toBe(true);
+    expect(orbit.parentElement?.className).toContain("flex min-w-0 justify-center lg:justify-end");
+    for (let node: HTMLElement | null = orbit; node && node !== hero; node = node.parentElement) {
+      expect(node.classList.contains("hidden")).toBe(false);
+    }
+    expect(screen.getByRole("heading", { level: 1 }).compareDocumentPosition(orbit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+  it("keeps the custom search clear action on desktop and mobile", () => {
+    renderPediaHome([product]);
+    search("insta");
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(usePediaSearch.getState().q).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Cari layanan" }));
+    const mobile = screen.getAllByRole("searchbox", { name: "Cari layanan Pedia" })[1] as HTMLInputElement;
+    expect(mobile.type).toBe("search");
+    fireEvent.change(mobile, { target: { value: "insta" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear" })[1]);
+    expect(mobile.value).toBe("");
+    expect(usePediaSearch.getState().q).toBe("");
+  });
   it("keeps the sticky navbar above the shared fixed scroll rope", () => {
     renderPediaHome([product]);
     const navbar = screen.getByRole("banner");

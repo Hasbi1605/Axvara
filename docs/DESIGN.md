@@ -1,5 +1,14 @@
 # DESIGN.md — AXVARA Design System
 
+## Orbit Pedia mobile dan satu tombol hapus — koreksi 31 Oktober 2026
+
+Implementasi lokal untuk publikasi CI, menggantikan orbit desktop-only16Oktober.
+Hero Pedia memakai satu orbit: tengah di bawah teks pada mobile/tablet, kanan mulai
+lg; jarak tambahan24px sebelum orbit mobile mengikuti Market. Container memotong
+dekorasi di tepi tanpa menambah overflow halaman. Mesin lite8planet/24fps serta
+reduced-motion existing tetap. Navbar kedua layanan menyembunyikan hanya cancel
+bawaan browser pada input search; X putih custom, fokus, semantik searchbox tetap.
+
 ## Aksesibilitas storefront dan motion — 31 Oktober 2026
 
 Implementasi lokal untuk publikasi CI. Midnight/Cyan/Gold dan font existing tetap.

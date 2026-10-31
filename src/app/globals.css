@@ -24,6 +24,9 @@
 
 html { scroll-behavior: smooth; }
 
+/* Navbar search already provides its own accessible clear button. */
+header input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+
 /* Cross-platform system font — webfont Inter/Space Grotesk (next/font CSS
    vars) diutamakan agar Chrome Windows tidak jatuh ke Arial tipis. */
 body {

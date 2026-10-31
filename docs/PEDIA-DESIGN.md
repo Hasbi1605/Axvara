@@ -1,5 +1,14 @@
 # PEDIA-DESIGN.md — Panduan Desain & Style AXVARA PEDIA
 
+## Orbit mobile dipulihkan — koreksi owner 31 Oktober 2026
+
+Implementasi lokal untuk publikasi CI, menggantikan desktop-only pada snapshot
+16Oktober. Satu PediaOrbit tampil di tengah sesudah teks hero pada mobile/tablet,
+di kanan mulai lg seperti Market. Hero overflow-hidden dan wrapper min-w-0 menjaga
+320px tanpa overflow; lite8planet/24fps, scroll sentuh serta reduced motion tetap.
+Input pencarian navbar mempertahankan X putih custom; cancel bawaan browser
+disembunyikan melalui CSS bersama agar tidak ada X biru ganda.
+
 ## Konfigurator terkini — 27 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. [UX pembelian27Oktober](pedia/purchase-ux-2026-10-27.md)

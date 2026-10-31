@@ -1,5 +1,14 @@
 # ARCHITECTURE.md — AXVARA
 
+## Koreksi orbit responsif dan cancel pencarian — 31 Oktober 2026
+
+Implementasi lokal untuk publikasi CI. `PediaHomeClient` tidak lagi menyembunyikan
+orbit di bawah lg: satu instance dengan flex center/mobile dan end/desktop, hero
+overflow-hidden menjaga lebar kecil. Mesin animasi tidak berubah. CSS bersama
+`header input[type="search"]::-webkit-search-cancel-button` meniadakan appearance
+bawaan agar tidak menduplikasi clear custom Navbar/PediaNavbar. Tanpa perubahan
+route permanen, state, API, env, dependency atau pembayaran.
+
 ## Interaksi storefront — 31 Oktober 2026
 
 Implementasi lokal untuk publikasi CI, bukan bukti deployment. Navbar Market memakai
