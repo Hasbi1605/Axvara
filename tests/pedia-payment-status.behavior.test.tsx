@@ -9,7 +9,7 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();route.code='AXP-20261015-TEST1234
 const mock=(value:unknown)=>vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({order:value}),{headers:{'content-type':'application/json'}})));
 it('pending shows the actual QR amount and manual refresh can move to completed',async()=>{
  const fetcher=vi.fn(async()=>new Response(JSON.stringify({order}),{headers:{'content-type':'application/json'}}));vi.stubGlobal('fetch',fetcher);render(<Page/>);
- expect(await screen.findByAltText('QRIS pembayaran')).toBeTruthy();expect(screen.getByText('Rp2.501')).toBeTruthy();
+ expect(await screen.findByAltText('QRIS pembayaran')).toBeTruthy();expect(screen.getAllByText('Rp2.501').some(e=>!e.closest('[hidden]'))).toBe(true);
  fetcher.mockImplementation(async()=>new Response(JSON.stringify({order:{...order,status:'completed',done:100,percent:100,qris:null}}),{headers:{'content-type':'application/json'}}));fireEvent.click(screen.getByRole('button',{name:'Cek pembayaran'}));
  await waitFor(()=>expect(screen.queryByAltText('QRIS pembayaran')).toBeNull());expect(fetcher).toHaveBeenCalledTimes(2);
 });
@@ -101,4 +101,37 @@ it('loads the QRIS image same-origin because the Pedia CSP blocks the Market hos
  const img=await screen.findByAltText('QRIS pembayaran');
  expect(img.getAttribute('src')).toBe('/api/payments/qris/AXP-20261015-TEST1234/image');
  expect(screen.getByRole('link',{name:/Simpan QRIS/}).getAttribute('href')).toBe('/api/payments/qris/AXP-20261015-TEST1234/image');
+});
+const copy={product_name:'Followers Instagram',service_name:'Followers Global',description:'Deskripsi layanan uji.',terms:'Syarat uji satu.\nSyarat uji dua.',instructions:'Panduan uji.'};
+it('uses one narrow column with a collapsed Ringkasan while waiting for payment and no description, terms or guide',async()=>{
+ mock({...order,service_copy:copy});const {container}=render(<Page/>);
+ await screen.findByAltText('QRIS pembayaran');
+ expect(container.firstElementChild?.className).toContain('max-w-[760px]');
+ expect(container.querySelector('aside')).toBeNull();
+ const summary=screen.getByRole('button',{name:/^Ringkasan/});
+ expect(summary.getAttribute('aria-expanded')).toBe('false');
+ fireEvent.click(summary);expect(summary.getAttribute('aria-expanded')).toBe('true');
+ const panel=document.getElementById(summary.getAttribute('aria-controls')!)!;
+ expect(panel.hidden).toBe(false);expect(panel.textContent).toContain('Followers Global');expect(panel.textContent).toContain('100');expect(panel.textContent).toContain('https://instagram.com/buyer');
+ expect(screen.queryByText('Deskripsi uji')).toBeNull();expect(screen.queryByRole('button',{name:'Deskripsi layanan'})).toBeNull();
+ expect(screen.queryByRole('button',{name:'Syarat & ketentuan layanan'})).toBeNull();expect(screen.queryByText(/Panduan/)).toBeNull();
+ expect(screen.queryByText('Syarat uji satu.')).toBeNull();
+});
+it('shows collapsed description and terms right under the order details once paid, with no guide',async()=>{
+ mock({...order,status:'in_progress',done:10,percent:10,qris:null,service_copy:copy});render(<Page/>);
+ await screen.findByRole('region',{name:'Status pesanan'});
+ expect(screen.queryByRole('button',{name:/^Ringkasan/})).toBeNull();
+ const timeline=screen.getByLabelText('Perjalanan pesanan');
+ const description=screen.getByRole('button',{name:'Deskripsi layanan'}),terms=screen.getByRole('button',{name:'Syarat & ketentuan layanan'});
+ expect(timeline.compareDocumentPosition(description)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(description.getAttribute('aria-expanded')).toBe('false');expect(terms.getAttribute('aria-expanded')).toBe('false');
+ expect(screen.queryByRole('button',{name:'Panduan layanan'})).toBeNull();expect(screen.queryByText('Panduan uji.')).toBeNull();
+ fireEvent.click(description);fireEvent.click(terms);
+ expect(screen.getByText('Deskripsi layanan uji.').closest('[hidden]')).toBeNull();
+ expect(document.getElementById(terms.getAttribute('aria-controls')!)!.textContent).toContain('Syarat uji dua.');
+});
+it('omits description and terms accordions when the service has none',async()=>{
+ mock({...order,status:'in_progress',done:10,percent:10,qris:null,service_copy:{...copy,description:'',terms:''}});render(<Page/>);
+ await screen.findByRole('region',{name:'Status pesanan'});
+ expect(screen.queryByRole('button',{name:'Deskripsi layanan'})).toBeNull();expect(screen.queryByRole('button',{name:'Syarat & ketentuan layanan'})).toBeNull();
 });

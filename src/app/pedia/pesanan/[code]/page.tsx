@@ -13,6 +13,7 @@ import { PlatformIcon } from "@/components/pedia/PlatformGrid";
 import { detectPediaLink } from "@/lib/pedia/link";
 import { parseExpiry } from "@/lib/expiry";
 import { SITE } from "@/lib/site";
+import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 import type { PediaServiceCopy } from "@/lib/pedia/service-copy";
 import { isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 
@@ -167,19 +168,51 @@ export default function PediaOrderStatusPage() {
     { label: "Sedang diproses", done: processing, active: processing && !terminal },
     { label: data.status === "partial" ? "Selesai sebagian" : data.status === "canceled" ? "Dibatalkan" : "Selesai", done: terminal && !expired, active: false },
   ];
+  const productName = data.service_copy?.product_name ?? data.product_name;
+  const serviceName = data.service_copy?.service_name ?? data.tier_note ?? data.tier_name;
+  const payable = data.qris ? `Rp${Number(data.qris.payable_amount).toLocaleString("id-ID")}` : null;
+  const row = (label: string, value: React.ReactNode, wrap = false) => <div className="flex justify-between gap-4"><dt className="shrink-0 text-white/60">{label}</dt><dd className={`min-w-0 text-right text-white ${wrap ? "break-all" : ""}`}>{value}</dd></div>;
+  const summary = <dl className="space-y-2.5 text-[13px] leading-5">
+    {row("Produk", productName)}{row("Layanan", serviceName)}{row("Jumlah", data.quantity.toLocaleString("id-ID"))}{row("Link tujuan", data.target, true)}
+    {data.refill_days > 0 && row("Refill", `${data.refill_days} hari`)}{payable && row("Total bayar", payable)}
+  </dl>;
+  const copyBlocks = ([["Deskripsi layanan", data.service_copy?.description], ["Syarat & ketentuan layanan", data.service_copy?.terms]] as const).filter(([, text]) => text);
   return (
-    <div className="mx-auto grid w-full max-w-[1000px] items-start gap-6 px-4 pb-24 pt-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="ax-glass-card order-2 min-w-0 rounded-2xl p-4 sm:p-6 lg:order-1" aria-label="Status pesanan">
+    <div className="mx-auto w-full max-w-[760px] px-4 pb-24 pt-6 sm:px-6">
+      <section className="ax-glass-card ax-liquid relative min-w-0 rounded-2xl p-4 text-left sm:p-6" aria-label="Status pesanan">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button type="button" onClick={() => void copy(data.code)} aria-label="Salin kode pesanan" className="flex min-h-9 min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-left font-mono text-xs text-white/60 hover:text-white"><span className="break-all">{data.code}</span>{copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}</button>
           <StatusPill status={data.status} />
         </div>
-        <div className="mt-6 flex items-center gap-4">
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">{platform ? <PlatformIcon id={platform} size={32} /> : <QrCode size={28} aria-hidden="true" />}</span>
-          <div className="min-w-0"><h1 className="font-display text-2xl font-semibold text-white">{data.service_copy?.product_name ?? data.product_name}</h1><p className="mt-1 text-[13px] leading-5 text-white/60">{data.service_copy?.service_name ?? data.tier_note ?? data.tier_name} · {data.quantity.toLocaleString("id-ID")}</p></div>
-        </div>
-        <p className="mt-3 break-all text-xs leading-5 text-white/50">{data.target}</p>
-        <ol className="mt-8" aria-label="Perjalanan pesanan">
+        {expired ? <div className="mt-6 text-center"><h1 className="font-display text-xl font-semibold text-white">Pesanan kedaluwarsa</h1><p className="mt-3 text-sm leading-6 text-white/60">Pembayaran tidak diterima sebelum batas waktu. Jika pesanan lama memakai kode kredit, hubungi admin untuk penyelesaian manual.</p></div> : pending ? <div className="mt-5 text-center">
+          <h1 className="font-display text-base font-bold text-white sm:text-lg">Pembayaran QRIS</h1>
+          {!data.qris ? <p className="mt-4 text-sm leading-6 text-white/70">Menunggu pembayaran. QRIS belum tersedia. Lanjutkan kembali dari halaman checkout dengan data yang sama, atau hubungi admin dengan kode pesanan ini.</p> : qrExpired ? <><h2 className="mt-4 text-lg font-semibold text-white">QRIS kedaluwarsa</h2><p className="mt-3 text-sm leading-6 text-white/60">Batas pembayaran telah lewat. Jangan membayar QRIS ini. Status pesanan akan diperbarui otomatis.</p></> : <section aria-label="QRIS dinamis" className="mt-4 grid items-center gap-4 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-6 sm:p-4">
+            <div className="min-w-0">
+              <QrisImage key={`${data.qris.image_url}|${data.qris.expires_at}`} src={sameOriginQris(data.qris.image_url)} alt="QRIS pembayaran" />
+              <div className="mt-2 flex items-center justify-center gap-1.5" aria-label="QRIS National Payment Standard"><img src="/brand/qris.svg" alt="Logo QRIS resmi" width={48} height={18} className="h-[18px] w-auto object-contain" draggable={false} /><span className="text-[9px] text-white/55">National Payment Standard</span></div>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">Total bayar</p>
+              <p className="font-display text-2xl font-bold leading-8 text-white">{payable}</p>
+              {(data.qris.unique_code ?? 0) > 0 && <p className="text-[11px] text-white/50">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{data.qris.unique_code}</span></p>}
+              <p className={`mt-1 flex items-center justify-center gap-1.5 font-mono text-[13px] ${seconds < 120 ? "text-red-300" : "text-[#FFB800]"}`}><Clock3 size={13} aria-hidden="true" />Berlaku <span aria-label="Sisa waktu pembayaran">{countdown}</span></p>
+              <p className="mt-1 text-[11px] text-white/50">Bayar tepat sesuai total.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2"><a href={sameOriginQris(data.qris.image_url)} download={`AXVARA-${data.code}-QRIS.png`} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/15 px-2 text-xs font-semibold text-white/75 hover:bg-white/10"><Download size={14} aria-hidden="true" />Simpan QRIS</a><button type="button" disabled={loading} onClick={() => void load(true)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-2 text-xs font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:opacity-50">{loading && <InlineSpinner />}{loading ? "Memeriksa…" : "Cek pembayaran"}</button></div>
+              <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] leading-4 text-white/50" aria-live="polite"><InlineSpinner className="h-3 w-3" /><span>Mengecek pembayaran otomatis tiap 5 detik</span></p>
+            </div>
+          </section>}
+        </div> : <div className="mt-5 flex items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] p-3">
+          <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-300"><Check size={20} /></span>
+          <div className="min-w-0"><h1 className="font-display text-base font-semibold text-white">Pembayaran diterima</h1><p className="mt-0.5 text-xs leading-5 text-white/60">{payable ? `${payable} · ` : ""}Pantau perkembangan pesanan pada halaman ini.</p></div>
+        </div>}
+          {error && <p role="alert" className="mt-4 text-sm text-red-300">{error}</p>}
+        {paid ? <div className="mt-5">
+          <div className="flex items-center gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">{platform ? <PlatformIcon id={platform} size={28} /> : <QrCode size={26} aria-hidden="true" />}</span>
+            <div className="min-w-0"><h2 className="font-display text-lg font-semibold text-white">{productName}</h2><p className="mt-0.5 text-[13px] leading-5 text-white/60">{serviceName} · {data.quantity.toLocaleString("id-ID")}</p></div>
+          </div>
+          <p className="mt-3 break-all text-xs leading-5 text-white/50">{data.target}</p>
+        <ol className="mt-6" aria-label="Perjalanan pesanan">
           {timeline.map((step, i) => <li key={i} aria-current={step.active ? "step" : undefined} className="relative flex gap-4 pb-7 last:pb-0">
             {i < 3 && <span aria-hidden="true" className={`absolute bottom-0 left-[13px] top-7 w-px ${timeline[i + 1].done ? "bg-[#00E5FF]" : "bg-white/10"}`} />}
             <span aria-hidden="true" className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border font-mono text-[11px] ${step.done ? "border-[#00E5FF] bg-[#0F273C] text-[#00E5FF]" : "border-white/15 bg-[#0F1430] text-white/45"} ${step.active ? "ring-4 ring-[#00E5FF]/15" : ""}`}>{step.done && !step.active ? <Check size={14} /> : i + 1}</span>
@@ -191,6 +224,9 @@ export default function PediaOrderStatusPage() {
             </div>
           </li>)}
         </ol>
+        {data.eta_finish && <p className="mt-5 text-xs leading-5 text-white/55">Perkiraan selesai: {data.eta_finish}. Estimasi mengikuti antrean.</p>}
+        {data.refill_days > 0 && <p className="mt-2 text-xs text-white/55">Refill {data.refill_days} hari sesuai ketentuan layanan.</p>}
+        </div> : <div className="mt-4"><MobileCollapsible title="Ringkasan" meta={productName}>{summary}</MobileCollapsible></div>}
           {(data.status === "partial" || data.status === "canceled") && (
             <div className="mt-6 rounded-[20px] border border-[#FFB800]/40 bg-[#FFB800]/5 p-4 text-sm text-white/80">
               <p>{data.status === "partial" ? "Pesanan selesai sebagian." : "Pesanan dibatalkan."} Hubungi admin dengan kode pesanan untuk penyelesaian manual.</p>
@@ -202,14 +238,7 @@ export default function PediaOrderStatusPage() {
               Ada kendala teknis dan admin sedang memeriksa. Tidak perlu order ulang — kami kabari lewat email.
             </div>
           )}
-
-        {data.eta_finish && paid && <p className="mt-5 text-xs leading-5 text-white/55">Perkiraan selesai: {data.eta_finish}. Estimasi mengikuti antrean.</p>}
-        {data.refill_days > 0 && <p className="mt-5 text-xs text-white/55">Refill {data.refill_days} hari sesuai ketentuan layanan.</p>}
-      {data.service_copy && <div className="mt-4 space-y-3">{([
-        ["Deskripsi layanan", data.service_copy.description],
-        ["Syarat & ketentuan layanan", data.service_copy.terms],
-        ["Panduan layanan", data.service_copy.instructions],
-      ] as const).filter(([, text]) => text).map(([label, text]) => <section key={label} aria-label={label} className="ax-glass-card rounded-2xl p-3.5 text-[13px] leading-6 text-white/70"><h3 className="text-sm font-bold text-white">{label}</h3><p className="mt-2 whitespace-pre-line break-words">{text}</p></section>)}</div>}
+        {paid && copyBlocks.length > 0 && <div className="mt-4 space-y-2">{copyBlocks.map(([label, text]) => <MobileCollapsible key={label} title={label}><p className="whitespace-pre-line break-words text-[13px] leading-6 text-white/70">{text}</p></MobileCollapsible>)}</div>}
           {data.refill_eligible && !refillOpen && (
             <button onClick={() => setRefillOpen(true)} className="mt-4 min-h-11 w-full rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 text-sm font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20">
               Ajukan Refill
@@ -233,31 +262,9 @@ export default function PediaOrderStatusPage() {
             </div>
           )}
           {refillMsg && <p className="mt-2 text-center text-[13px] text-white/70">{refillMsg}</p>}
-        {terminal && <div className="mt-8 flex flex-wrap gap-3 border-t border-white/10 pt-6"><a href={data.product_slug ? `/pedia/o/${encodeURIComponent(data.product_slug)}` : "/pedia"} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#00E5FF] px-5 py-3 text-sm font-semibold text-[#080C1E]">Pesan lagi</a><a href="/pedia" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 px-5 py-3 text-sm text-white">Kembali ke katalog</a></div>}
+        {terminal && <div className="mt-6 flex flex-wrap gap-3 border-t border-white/10 pt-5"><a href={data.product_slug ? `/pedia/o/${encodeURIComponent(data.product_slug)}` : "/pedia"} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#00E5FF] px-5 py-3 text-sm font-semibold text-[#080C1E]">Pesan lagi</a><a href="/pedia" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 px-5 py-3 text-sm text-white">Kembali ke katalog</a></div>}
       </section>
-      <aside className="order-1 min-w-0 lg:order-2 lg:sticky lg:top-24">
-        <div className="ax-glass-card ax-liquid relative rounded-2xl p-4 text-center sm:p-5">
-          {expired ? <><h2 className="font-display text-xl font-semibold text-white">Pesanan kedaluwarsa</h2><p className="mt-3 text-sm leading-6 text-white/60">Pembayaran tidak diterima sebelum batas waktu. Jika pesanan lama memakai kode kredit, hubungi admin untuk penyelesaian manual.</p></> : pending ? <>
-            <h2 className="font-display text-base font-bold text-white sm:text-lg">Pembayaran QRIS</h2>
-            {!data.qris ? <p className="mt-5 text-sm leading-6 text-white/70">Menunggu pembayaran. QRIS belum tersedia. Lanjutkan kembali dari halaman checkout dengan data yang sama, atau hubungi admin dengan kode pesanan ini.</p> : qrExpired ? <><h3 className="mt-5 text-lg font-semibold text-white">QRIS kedaluwarsa</h3><p className="mt-3 text-sm leading-6 text-white/60">Batas pembayaran telah lewat. Jangan membayar QRIS ini. Status pesanan akan diperbarui otomatis.</p></> : <>
-              <section aria-label="QRIS dinamis" className="mt-4 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-3 text-center sm:p-4">
-                <QrisImage key={`${data.qris.image_url}|${data.qris.expires_at}`} src={sameOriginQris(data.qris.image_url)} alt="QRIS pembayaran" />
-                <div className="mt-2 flex items-center justify-center gap-1.5" aria-label="QRIS National Payment Standard"><img src="/brand/qris.svg" alt="Logo QRIS resmi" width={48} height={18} className="h-[18px] w-auto object-contain" draggable={false} /><span className="text-[9px] text-white/55">National Payment Standard</span></div>
-                <span className="mt-4 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">Menunggu bayar</span>
-                <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-white/45">Total bayar</p>
-                <p className="font-display text-2xl font-bold leading-8 text-white">Rp{Number(data.qris.payable_amount).toLocaleString("id-ID")}</p>
-                {(data.qris.unique_code ?? 0) > 0 && <p className="text-[11px] text-white/50">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{data.qris.unique_code}</span></p>}
-                <p className={`mt-1 flex items-center justify-center gap-1.5 font-mono text-[13px] ${seconds < 120 ? "text-red-300" : "text-[#FFB800]"}`}><Clock3 size={13} aria-hidden="true" />Berlaku <span aria-label="Sisa waktu pembayaran">{countdown}</span></p>
-                <p className="mt-1 text-[11px] text-white/50">Bayar tepat sesuai total.</p>
-                <div className="mt-3 grid grid-cols-2 gap-2"><a href={sameOriginQris(data.qris.image_url)} download={`AXVARA-${data.code}-QRIS.png`} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/15 px-2 text-xs font-semibold text-white/75 hover:bg-white/10"><Download size={14} aria-hidden="true" />Simpan QRIS</a><button type="button" disabled={loading} onClick={() => void load(true)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-2 text-xs font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:opacity-50">{loading && <InlineSpinner />}{loading ? "Memeriksa…" : "Cek pembayaran"}</button></div>
-                <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] leading-4 text-white/50" aria-live="polite"><InlineSpinner className="h-3 w-3" /><span>Mengecek pembayaran otomatis tiap 5 detik</span></p>
-              </section>
-            </>}
-          </> : <div className="py-6"><span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-300"><Check size={32} /></span><h2 className="mt-4 font-display text-xl font-semibold text-white">Pembayaran diterima</h2>{data.qris && <p className="mt-2 font-display text-2xl font-bold leading-8 text-white">Rp{Number(data.qris.payable_amount).toLocaleString("id-ID")}</p>}<p className="mt-3 text-[13px] leading-6 text-white/60">Pantau perkembangan pesanan pada halaman ini. Status mengikuti pembaruan sistem.</p></div>}
-          {error && <p role="alert" className="mt-4 text-sm text-red-300">{error}</p>}
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-[13px] text-white/60"><span>Butuh bantuan?</span><a href={`${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo, saya ingin menanyakan pesanan Pedia ${data.code}`)}`} className="font-semibold text-[#00E5FF]">WA Admin</a><a href="/pedia/lacak" className="font-semibold text-[#00E5FF]">Lacak lain</a></div>
-      </aside>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-[13px] text-white/60"><span>Butuh bantuan?</span><a href={`${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo, saya ingin menanyakan pesanan Pedia ${data.code}`)}`} className="font-semibold text-[#00E5FF]">WA Admin</a><a href="/pedia/lacak" className="font-semibold text-[#00E5FF]">Lacak lain</a></div>
     </div>
   );
 }
