@@ -57,6 +57,7 @@ export const RATE_LIMITS = {
   "pedia:orders": 10,
   "pedia:credit_check": 10,
   "pedia:refill": 10,
+  "pedia:cancel": 10,
 } as const;
 
 export type RateLimitScope = keyof typeof RATE_LIMITS;

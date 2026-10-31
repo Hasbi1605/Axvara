@@ -114,6 +114,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       refill_days: refillDays,
       refill_eligible: refillEligible,
       paid_at: order.paid_at != null ? String(order.paid_at) : null,
+      buyer_canceled: order.status === "dibatalkan",
       notified_final: item.notified_final_at != null,
       qris: tx ? {
         payable_amount: tx.payable_amount, unique_code: tx.unique_code,

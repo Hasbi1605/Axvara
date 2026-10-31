@@ -9,12 +9,12 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();route.code='AXP-20261015-TEST1234
 const mock=(value:unknown)=>vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({order:value}),{headers:{'content-type':'application/json'}})));
 it('pending shows the actual QR amount and manual refresh can move to completed',async()=>{
  const fetcher=vi.fn(async()=>new Response(JSON.stringify({order}),{headers:{'content-type':'application/json'}}));vi.stubGlobal('fetch',fetcher);render(<Page/>);
- expect(await screen.findByAltText('QRIS pembayaran')).toBeTruthy();expect(screen.getAllByText('Rp2.501').some(e=>!e.closest('[hidden]'))).toBe(true);
- fetcher.mockImplementation(async()=>new Response(JSON.stringify({order:{...order,status:'completed',done:100,percent:100,qris:null}}),{headers:{'content-type':'application/json'}}));fireEvent.click(screen.getByRole('button',{name:'Cek pembayaran'}));
+ expect(await screen.findByAltText('QRIS pembayaran')).toBeTruthy();expect(screen.getAllByText('Rp 2.501').some(e=>!e.closest('[hidden]'))).toBe(true);
+ fetcher.mockImplementation(async()=>new Response(JSON.stringify({order:{...order,status:'completed',done:100,percent:100,qris:null}}),{headers:{'content-type':'application/json'}}));fireEvent.click(screen.getByRole('button',{name:'Cek Pembayaran'}));
  await waitFor(()=>expect(screen.queryByAltText('QRIS pembayaran')).toBeNull());expect(fetcher).toHaveBeenCalledTimes(2);
 });
-it('expired invoices cannot keep showing a scannable QR',async()=>{mock({...order,qris:{...order.qris,expires_at:'2000-01-01'}});render(<Page/>);expect(await screen.findByText('QRIS kedaluwarsa')).toBeTruthy();expect(screen.queryByAltText('QRIS pembayaran')).toBeNull();});
-it('missing invoice and expired order never pretend that payment is complete',async()=>{mock({...order,qris:null});const page=render(<Page/>);expect(await screen.findByText(/QRIS belum tersedia/)).toBeTruthy();expect(screen.queryByText('Dibayar')).toBeNull();page.unmount();mock({...order,status:'expired',qris:null});render(<Page/>);expect(await screen.findByText('Pesanan kedaluwarsa')).toBeTruthy();expect(screen.queryByText('Dibayar')).toBeNull();});
+it('expired invoices cannot keep showing a scannable QR',async()=>{mock({...order,qris:{...order.qris,expires_at:'2000-01-01'}});render(<Page/>);expect(await screen.findByText('QRIS sudah kedaluwarsa')).toBeTruthy();expect(screen.queryByAltText('QRIS pembayaran')).toBeNull();});
+it('missing invoice and expired order never pretend that payment is complete',async()=>{mock({...order,qris:null});const page=render(<Page/>);expect(await screen.findByText(/QRIS belum tersedia/)).toBeTruthy();expect(screen.queryByText('Dibayar')).toBeNull();page.unmount();mock({...order,status:'expired',qris:null});render(<Page/>);expect(await screen.findByText('Pesanan Kedaluwarsa')).toBeTruthy();expect(screen.queryByText('Dibayar')).toBeNull();});
 
 it('removes an expired QR at the server deadline without waiting for another status response',async()=>{
  const deadline=Date.now()+2000;
@@ -22,7 +22,7 @@ it('removes an expired QR at the server deadline without waiting for another sta
  render(<Page/>);await screen.findByAltText('QRIS pembayaran');
  try{
   vi.spyOn(Date,'now').mockReturnValue(deadline+1);
-  expect(await screen.findByText('QRIS kedaluwarsa',{}, {timeout:2000})).toBeTruthy();
+  expect(await screen.findByText('QRIS sudah kedaluwarsa',{}, {timeout:2000})).toBeTruthy();
   expect(screen.queryByAltText('QRIS pembayaran')).toBeNull();
   expect(screen.queryByRole('button',{name:'QR baru'})).toBeNull();
  }finally{vi.restoreAllMocks()}
@@ -33,14 +33,14 @@ it('deduplicates manual payment checks and keeps the visible invoice on a networ
  vi.stubGlobal('fetch',fetcher);render(<Page/>);await screen.findByAltText('QRIS pembayaran');
  let reject!:(error:Error)=>void;
  fetcher.mockImplementationOnce(()=>new Promise((_,r)=>{reject=r}));
- const button=screen.getByRole('button',{name:'Cek pembayaran'});
+ const button=screen.getByRole('button',{name:'Cek Pembayaran'});
  fireEvent.click(button);fireEvent.click(button);
  expect(fetcher).toHaveBeenCalledTimes(2);
  expect(fetcher.mock.calls[1][0]).toContain('?wake=1');
  await act(async()=>{reject(new Error('Koneksi terputus'))});
  expect(await screen.findByRole('alert')).toBeTruthy();
  expect(screen.getByAltText('QRIS pembayaran')).toBeTruthy();
- expect(screen.getByRole('button',{name:'Cek pembayaran'})).toBeTruthy();
+ expect(screen.getByRole('button',{name:'Cek Pembayaran'})).toBeTruthy();
 });
 
 it.each(['in_progress','partial','needs_check','completed'])('shows server state %s without a simulated payment action',async(status)=>{
@@ -61,7 +61,7 @@ it('loads a new invoice during a pending request and ignores the old response',a
  fetcher.mockImplementationOnce(()=>new Promise(r=>{resolve=r}));
  vi.stubGlobal('fetch',fetcher);const page=render(<Page/>);
  route.code='AXP-20261020-NEXT1234';page.rerender(<Page/>);
- await screen.findByText('Pesanan kedaluwarsa');
+ await screen.findByText('Pesanan Kedaluwarsa');
  expect(fetcher).toHaveBeenCalledTimes(2);
  await act(async()=>{resolve(new Response(JSON.stringify({order})))});
  expect(screen.getByText('AXP-20261020-NEXT1234')).toBeTruthy();
@@ -134,4 +134,48 @@ it('omits description and terms accordions when the service has none',async()=>{
  mock({...order,status:'in_progress',done:10,percent:10,qris:null,service_copy:{...copy,description:'',terms:''}});render(<Page/>);
  await screen.findByRole('region',{name:'Status pesanan'});
  expect(screen.queryByRole('button',{name:'Deskripsi layanan'})).toBeNull();expect(screen.queryByRole('button',{name:'Syarat & ketentuan layanan'})).toBeNull();
+});
+it('right action of the pending card is Batalkan Pesanan and Lacak Pesanan is not shown there',async()=>{
+ mock(order);render(<Page/>);await screen.findByAltText('QRIS pembayaran');
+ expect(screen.getByRole('button',{name:'Batalkan Pesanan'})).toBeTruthy();
+ expect(screen.getByRole('link',{name:'Lanjut Belanja'})).toBeTruthy();
+ expect(screen.queryByRole('link',{name:'Lacak Pesanan'})).toBeNull();
+});
+it('cancel asks for the checkout contact, rejects an invalid one locally and can go back',async()=>{
+ const fetcher=vi.fn(async(_url?:string,_init?:RequestInit)=>new Response(JSON.stringify({order}),{headers:{'content-type':'application/json'}}));vi.stubGlobal('fetch',fetcher);
+ render(<Page/>);await screen.findByAltText('QRIS pembayaran');
+ fireEvent.click(screen.getByRole('button',{name:'Batalkan Pesanan'}));
+ const dialog=screen.getByRole('dialog',{name:'Konfirmasi pembatalan pesanan'});expect(dialog).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Ya, Batalkan'}));
+ expect(screen.getByRole('alert').textContent).toContain('No. WA atau email checkout');
+ expect(fetcher.mock.calls.some(c=>String(c[0]).endsWith('/cancel'))).toBe(false);
+ fireEvent.click(screen.getByRole('button',{name:'Kembali'}));
+ expect(screen.queryByRole('dialog',{name:'Konfirmasi pembatalan pesanan'})).toBeNull();expect(screen.getByRole('button',{name:'Batalkan Pesanan'})).toBeTruthy();
+});
+it('cancel posts the contact to the Pedia endpoint and then shows the canceled state without a QR',async()=>{
+ let canceled=false;
+ const fetcher=vi.fn(async(url?:string,_init?:RequestInit)=>{
+  if(String(url).endsWith('/cancel')){canceled=true;return new Response(JSON.stringify({ok:true}),{status:200,headers:{'content-type':'application/json'}});}
+  return new Response(JSON.stringify({order:canceled?{...order,status:'expired',qris:null,buyer_canceled:true}:order}),{headers:{'content-type':'application/json'}});
+ });
+ vi.stubGlobal('fetch',fetcher);render(<Page/>);await screen.findByAltText('QRIS pembayaran');
+ fireEvent.click(screen.getByRole('button',{name:'Batalkan Pesanan'}));
+ fireEvent.change(screen.getByLabelText(/No\. WA atau email checkout/),{target:{value:'081234567890'}});
+ fireEvent.click(screen.getByRole('button',{name:'Ya, Batalkan'}));
+ expect(await screen.findByRole('heading',{name:'Pesanan Dibatalkan'})).toBeTruthy();
+ expect(screen.queryByAltText('QRIS pembayaran')).toBeNull();expect(screen.queryByText('Pesanan Kedaluwarsa')).toBeNull();
+ const call=fetcher.mock.calls.find(c=>String(c[0]).endsWith('/cancel'))!;
+ expect(String(call[0])).toBe(`/api/pedia/orders/${order.code}/cancel`);
+ expect(call[1]?.method).toBe('POST');expect(JSON.parse(String(call[1]?.body))).toEqual({contact:'081234567890'});
+});
+it('a failed cancel keeps the QR and shows the server message',async()=>{
+ const fetcher=vi.fn(async(url?:string,_init?:RequestInit)=>String(url).endsWith('/cancel')
+  ?new Response(JSON.stringify({error:'Pesanan tidak ditemukan atau kontak tidak cocok.'}),{status:404,headers:{'content-type':'application/json'}})
+  :new Response(JSON.stringify({order}),{headers:{'content-type':'application/json'}}));
+ vi.stubGlobal('fetch',fetcher);render(<Page/>);await screen.findByAltText('QRIS pembayaran');
+ fireEvent.click(screen.getByRole('button',{name:'Batalkan Pesanan'}));
+ fireEvent.change(screen.getByLabelText(/No\. WA atau email checkout/),{target:{value:'081200000000'}});
+ fireEvent.click(screen.getByRole('button',{name:'Ya, Batalkan'}));
+ expect((await screen.findByRole('alert')).textContent).toContain('kontak tidak cocok');
+ expect(screen.getByRole('dialog',{name:'Konfirmasi pembatalan pesanan'})).toBeTruthy();
 });

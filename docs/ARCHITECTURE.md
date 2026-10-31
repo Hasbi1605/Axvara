@@ -3117,6 +3117,16 @@ batas bayar di bawah QR halaman pembayaran Market/Pedia dihapus atas keputusan
 owner; batas 15 menit, countdown, dan penanganan pembayaran terlambat tidak
 berubah, dan notice yang sama di invoice Telegram/WA dipertahankan.
 
+Batal mandiri Pedia (31 Oktober 2026): `POST /api/pedia/orders/[code]/cancel`
+(runtime edge, scope rate limit `pedia:cancel` 10/menit). Kode + kontak/akses
+diverifikasi dengan `newOrderAccessFailure`/`buyerOrderAccessMatches` seperti
+refill; hanya `orders.order_kind='pedia'` berstatus `pending`. Transisi lewat
+`transitionPendingOrder(code,"dibatalkan","buyer_cancel",items)` (guard
+`operation_guards`, kalah balapan vs pembayaran = 409), item ditutup oleh
+`expirePediaCheckouts`. `GET /api/pedia/orders/[code]` menambah
+`buyer_canceled:boolean`. Tanpa migrasi/env/cron; invoice provider tidak
+dibatalkan dan pembayaran terlambat tetap masuk Rekonsiliasi.
+
 Koreksi runtime/checkout 2026-10-18: `fetch` API dan PNG memakai
 `redirect: "manual"` lalu menolak non-2xx. Runtime workerd yang dipakai menolak
 `redirect: "error"` sebelum jaringan (direproduksi lokal); penolakan ini sempat
