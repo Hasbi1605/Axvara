@@ -634,6 +634,33 @@ describe("Pedia configurator", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("renders the closed mobile bar as one tappable Rincian strip above a clean price + action row (owner 2026-10-31)", () => {
+    render(<OrderClient product={product} initialTarget="" ordersEnabled />);
+    const bar = document.querySelector(".pedia-mobile-action") as HTMLElement;
+    expect(within(bar).queryByRole("button", { name: /Lihat rincian pesanan/ })).toBeNull();
+    expect(bar.textContent).toContain("Total pesanan");
+    select();
+    const strip = within(bar).getByRole("button", { name: /Lihat rincian pesanan: 250, Followers Indonesia Stabil/ });
+    expect(strip.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(strip.textContent).toContain("Rincian");
+    expect(strip.textContent).toContain("250");
+    expect(within(bar).getAllByRole("button", { name: /Lihat rincian pesanan/ })).toHaveLength(1);
+    expect(bar.textContent).not.toContain("Total pesanan");
+    expect(bar.textContent).toContain("Rp");
+    expect(bar.querySelector("span[aria-hidden='true'].rounded-full")).toBeTruthy();
+    fireEvent.click(strip);
+    expect(screen.getByRole("dialog", { name: "Rincian pesanan" })).toBeTruthy();
+    expect(strip.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("keeps the full pay label accessible while a short visual label is used under 340px", () => {
+    mount();
+    complete();
+    const pay = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" }).at(-1)!;
+    expect(pay.querySelector("span[aria-hidden='true']")?.textContent).toBe("Lanjut bayar");
+    expect(pay.textContent).toContain("Lanjut ke pembayaran");
+  });
+
   it("closes the summary sheet when the step changes and keeps the desktop summary card in the document", () => {
     const { container } = render(<OrderClient product={product} initialTarget="" ordersEnabled />);
     select();
