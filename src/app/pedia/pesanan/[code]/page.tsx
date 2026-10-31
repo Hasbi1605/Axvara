@@ -25,6 +25,12 @@ type Status = {
   qris: { payable_amount: number; unique_code?: number | null; image_url: string; expires_at: string; status: string } | null;
 };
 
+// API mengirim URL absolut domain Market; CSP Pedia (img-src 'self') memblokirnya.
+// Path QRIS identik di kedua host, jadi pakai same-origin.
+const sameOriginQris = (url: string) => {
+  try { const u = new URL(url, "https://x.invalid"); return u.pathname.startsWith("/api/payments/qris/") ? `${u.pathname}${u.search}` : url; } catch { return url; }
+};
+
 function QrisImage({ src, alt }: { src: string; alt: string }) {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -235,7 +241,7 @@ export default function PediaOrderStatusPage() {
             <h2 className="font-display text-base font-bold text-white sm:text-lg">Pembayaran QRIS</h2>
             {!data.qris ? <p className="mt-5 text-sm leading-6 text-white/70">Menunggu pembayaran. QRIS belum tersedia. Lanjutkan kembali dari halaman checkout dengan data yang sama, atau hubungi admin dengan kode pesanan ini.</p> : qrExpired ? <><h3 className="mt-5 text-lg font-semibold text-white">QRIS kedaluwarsa</h3><p className="mt-3 text-sm leading-6 text-white/60">Batas pembayaran telah lewat. Jangan membayar QRIS ini. Status pesanan akan diperbarui otomatis.</p></> : <>
               <section aria-label="QRIS dinamis" className="mt-4 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-3 text-center sm:p-4">
-                <QrisImage key={`${data.qris.image_url}|${data.qris.expires_at}`} src={data.qris.image_url} alt="QRIS pembayaran" />
+                <QrisImage key={`${data.qris.image_url}|${data.qris.expires_at}`} src={sameOriginQris(data.qris.image_url)} alt="QRIS pembayaran" />
                 <div className="mt-2 flex items-center justify-center gap-1.5" aria-label="QRIS National Payment Standard"><img src="/brand/qris.svg" alt="Logo QRIS resmi" width={48} height={18} className="h-[18px] w-auto object-contain" draggable={false} /><span className="text-[9px] text-white/55">National Payment Standard</span></div>
                 <span className="mt-4 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">Menunggu bayar</span>
                 <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-white/45">Total bayar</p>
@@ -243,7 +249,7 @@ export default function PediaOrderStatusPage() {
                 {(data.qris.unique_code ?? 0) > 0 && <p className="text-[11px] text-white/50">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{data.qris.unique_code}</span></p>}
                 <p className={`mt-1 flex items-center justify-center gap-1.5 font-mono text-[13px] ${seconds < 120 ? "text-red-300" : "text-[#FFB800]"}`}><Clock3 size={13} aria-hidden="true" />Berlaku <span aria-label="Sisa waktu pembayaran">{countdown}</span></p>
                 <p className="mt-1 text-[11px] text-white/50">Bayar tepat sesuai total.</p>
-                <div className="mt-3 grid grid-cols-2 gap-2"><a href={data.qris.image_url} download={`AXVARA-${data.code}-QRIS.png`} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/15 px-2 text-xs font-semibold text-white/75 hover:bg-white/10"><Download size={14} aria-hidden="true" />Simpan QRIS</a><button type="button" disabled={loading} onClick={() => void load(true)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-2 text-xs font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:opacity-50">{loading && <InlineSpinner />}{loading ? "Memeriksa…" : "Cek pembayaran"}</button></div>
+                <div className="mt-3 grid grid-cols-2 gap-2"><a href={sameOriginQris(data.qris.image_url)} download={`AXVARA-${data.code}-QRIS.png`} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/15 px-2 text-xs font-semibold text-white/75 hover:bg-white/10"><Download size={14} aria-hidden="true" />Simpan QRIS</a><button type="button" disabled={loading} onClick={() => void load(true)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-2 text-xs font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:opacity-50">{loading && <InlineSpinner />}{loading ? "Memeriksa…" : "Cek pembayaran"}</button></div>
                 <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] leading-4 text-white/50" aria-live="polite"><InlineSpinner className="h-3 w-3" /><span>Mengecek pembayaran otomatis tiap 5 detik</span></p>
               </section>
             </>}

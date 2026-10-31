@@ -96,3 +96,9 @@ it('QR card shows load state, retry on error, unique code and auto-check hint',a
  fireEvent.load(screen.getByAltText('QRIS pembayaran'));expect(screen.queryByText('Memuat QRIS…')).toBeNull();
  expect(screen.getByText('+37')).toBeTruthy();expect(screen.getByText(/Mengecek pembayaran otomatis tiap 5 detik/)).toBeTruthy();expect(document.querySelector('details')).toBeNull();
 });
+it('loads the QRIS image same-origin because the Pedia CSP blocks the Market host',async()=>{
+ mock({...order,qris:{...order.qris,image_url:'https://axvara.tech/api/payments/qris/AXP-20261015-TEST1234/image'}});render(<Page/>);
+ const img=await screen.findByAltText('QRIS pembayaran');
+ expect(img.getAttribute('src')).toBe('/api/payments/qris/AXP-20261015-TEST1234/image');
+ expect(screen.getByRole('link',{name:/Simpan QRIS/}).getAttribute('href')).toBe('/api/payments/qris/AXP-20261015-TEST1234/image');
+});
