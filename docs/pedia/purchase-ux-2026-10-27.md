@@ -86,3 +86,32 @@ Lihat [laporan verifikasi](../../issue/pedia-purchase-ux-2026-10-27.md). Penguku
 Obscura memakai komponen aktual dan snapshot katalog publik yang sama dengan
 audit awal, tanpa request mutasi. Hasil fixture tidak membuktikan pembayaran
 produksi, kualitas akun supplier, atau render perangkat fisik.
+
+## Pembaruan visual 31 Oktober 2026 (lokal, belum dipublikasi)
+
+Menyelaraskan bahasa visual dengan Market tanpa mengubah alur/kontrak: baris layanan
+memakai `ax-glass-card ax-liquid` radius16px; terpilih = border cyan + glow + centang
+terisi (teks "Dipilih" hanya untuk pembaca layar); badge "Pilihan AXVARA" dihapus 31 Oktober atas arahan owner; chip ikon
+wilayah/refill/estimasi; harga20px. Nama layanan yang bentrok setelah akhiran refill
+dilepas mempertahankan akhiran itu. Header platform satu baris dengan harga mulai;
+pill kebutuhan menampilkan harga mulai. Ringkasan: tiga langkah sebelum pilihan,
+total gradien28px sesudahnya. Ketentuan: tiga kartu fakta + callout drop. Animasi
+masuk320ms mengikuti reduced-motion. Katalog/harga tidak berubah.
+
+Revisi owner 31 Oktober (lokal): tanpa Urutkan/dropdown jenis akun; bar kategori segmented glass ringkas di kanan judul "Pilih layanan", tampil di semua produk dengan >1 layanan (kategori kosong dinonaktifkan); total ringkasan satu baris minimalis dengan tipografi harga kartu layanan; header platform tanpa harga mulai/pill keunggulan.
+
+Pill (31 Oktober, lokal): kebutuhan dan kategori satu bahasa dengan pill Market — 32px mobile/36px desktop, tanpa wadah segmented; aktif = `.pedia-pill-active` (glass cyan), tidak aktif = `ax-glass-card`. Tinggi di bawah 32px sengaja dihindari demi target sentuh.
+
+Halaman 2 / langkah Target (31 Oktober, lokal): "Detail layanan terpilih" hanya di langkah 1; checklist dan "Panduan layanan" memakai kartu glass `ax-glass-card` (judul 14px, isi 13px, padding 14px); kolom link/kontak `min-h-11`, 14px; checkbox memakai kotak kustom 20px (cyan saat dicentang, input asli `sr-only` + `peer`, outline fokus lewat `has-[:focus-visible]`); tombol kembali "Layanan" di langkah 2 dihapus, kembali lewat stepper atau "Pilih platform".
+
+Status link langkah Target (31 Oktober, lokal): hanya format — "Format link sesuai" / "Format link tidak sesuai", tanpa klaim verifikasi akun (syarat akun publik ada di teks bantu dan checklist). Menggantikan teks "Format tautan dikenali; akun atau konten belum diverifikasi." pada langkah ini; hero tempel-link beranda belum diubah.
+
+Halaman 3 / langkah Kontak (31 Oktober, lokal): tanpa rekap layanan/jumlah/link dan tanpa "Ubah pesanan" (ringkasan pesanan sudah memuatnya; kembali lewat stepper atau "Pilih platform"); keterangan "Tanpa membuat akun…" tepat di bawah judul; callout amber bergaya "Perlu diketahui"; ketentuan layanan + persetujuan dalam satu kartu `ax-glass-card` berbullet cyan.
+
+Revisi 31 Oktober (lokal): callout "drop" dihapus dari langkah 1 dan 3 (menggantikan "callout drop" pada catatan Ketentuan di atas); langkah Kontak tanpa keterangan di bawah judul, dengan helper di bawah Nomor WhatsApp tentang kontak admin bila pengiriman layanan gagal. Syarat per layanan tetap tampil dari `tier.terms`.
+
+Halaman 4 / status pesanan (31 Oktober, lokal): kartu QRIS selevel Market (kotak cyan, QR berstatus muat + retry, logo QRIS resmi, lencana "Menunggu bayar", total + kode unik bila >0, hitung mundur, baris pengecekan otomatis 5 detik); dua kolom + timeline Pedia dipertahankan; refill memakai cyan; deskripsi/syarat/panduan berupa kartu glass terbuka (tanpa accordion). Tombol "Minta QRIS baru" sengaja tidak ditambahkan (perlu dukungan API/aturan pembayaran).
+
+Tombol kembali (31 Oktober, lokal): ikon "‹" 48px berstyle glass di kiri tombol utama, hanya langkah 2-3 (kartu ringkasan desktop, bar bawah mobile). Langkah 1 memakai "Pilih platform"; langkah 4 tanpa kembali karena pesanan/QRIS sudah dibuat. Setelah data terkunci tombol disembunyikan. Stepper selesai tetap bisa diklik. Gestur/tombol back browser tidak diubah (keluar dari alur; riwayat per-langkah sengaja belum dibuat).
+
+Alur pesan mobile (31 Oktober, lokal; hanya di bawah xl, desktop tidak berubah): footer disembunyikan di `/pedia/p/*` dan `/pedia/o/*` (halaman status tetap berfooter); "Pilih platform" + banner platform menjadi satu baris; stepper menampilkan label langkah aktif saja. Kartu Ringkasan tidak tampil di mobile — bar bawah memuat "jumlah · layanan" dan tombol Total yang membuka bottom sheet rincian (dialog modal: fokus terkunci, Escape/Tutup/backdrop, scroll latar dikunci, fokus kembali ke pemicu). Daftar ketentuan hanya tampil sekali di mobile (langkah 3, tempat persetujuan); Panduan layanan dipotong dua baris pertama di mobile, data kurasi tidak diubah. Input 16px di mobile + `inputMode`/`enterKeyHint`/`autoComplete`. Kolom jumlah satu baris penuh dengan chip yang dapat digeser; kartu layanan berbentuk grid. Belum diuji di iPhone sungguhan.

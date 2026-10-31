@@ -43,7 +43,7 @@ function next() {
   if (screen.queryAllByRole("button", { name: "Lanjut: isi target" }).length) toTarget();
   if (screen.queryAllByRole("button", { name: "Lanjut: kontak" }).length) fireEvent.click(screen.getAllByRole("button", { name: "Lanjut: kontak" })[0]);
 }
-function back() { fireEvent.click(screen.getByRole("button", { name: "Ubah pesanan" })); }
+function back() { fireEvent.click(screen.getByRole("button", { name: "Langkah 1: Layanan" })); }
 function complete() {
   select(); toTarget();
   fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
@@ -90,7 +90,10 @@ describe("Pedia order UX", () => {
     expect(html).not.toContain("<script>");
     select(); toTarget();
     expect(document.getElementById("pedia-target-help")?.textContent).toBe("Gunakan format link seperti contoh pada kolom. Masukkan link profil Instagram. Pastikan akun tidak privat.");
-    expect(screen.getByText("Format link sesuai. Akun atau konten belum diverifikasi.")).toBeTruthy();
+    expect(screen.getByText("Format link sesuai")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/Link profil Instagram/), { target: { value: "bukan link" } });
+    expect(screen.getByText("Format link tidak sesuai")).toBeTruthy();
+    expect(screen.queryByText("Format link sesuai")).toBeNull();
   });
 
   it("omits empty product copy and supports older fixtures without a description", () => {
@@ -257,6 +260,7 @@ describe("Pedia order UX", () => {
     await screen.findByRole("alert");
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(["/api/pedia/quote", "/api/pedia/orders"]);
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ customer_wa: "081234567890", customer_email: "buyer@example.com", quote_token: "same" });
+    expect(screen.queryAllByRole("button", { name: /^Kembali ke langkah/ })).toHaveLength(0);
   });
 
   it("requires explicit changed-price consent before creating an order", async () => {
@@ -461,12 +465,11 @@ describe("Pedia configurator", () => {
     const onSelect = vi.fn();
     render(<ServicePicker product={many} tierId={2} onSelect={onSelect} qty={100} expanded />);
     fireEvent.click(screen.getByRole("button", { name: "Global" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Filter jenis akun" }), { target: { value: "ekonomis" } });
     fireEvent.click(screen.getByRole("button", { name: "Reset filter" }));
     const categories = screen.getByRole("group", { name: "Kategori layanan" });
     expect(within(categories).getAllByRole("button", { pressed: true })[0].textContent).toBe("Semua");
     expect(screen.getAllByRole("radio")).toHaveLength(7);
-    expect((screen.getByRole("combobox", { name: "Filter jenis akun" }) as HTMLSelectElement).value).toBe("");
+    expect(screen.queryByRole("combobox", { name: "Filter jenis akun" })).toBeNull();
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -529,14 +532,19 @@ describe("Pedia configurator", () => {
     expect(screen.getByText("Salin link profil lengkap.")).toBeTruthy();
   });
 
-  it("omits redundant filters for a small uniform catalog and keeps sorting above the list", () => {
-    const uniform = { ...product, tiers: [{ ...product.tiers[1] }, { ...product.tiers[1], id: 3 }] };
-    render(<ServicePicker product={uniform} tierId={null} onSelect={vi.fn()} qty={100} expanded />);
-    expect(screen.queryByRole("group", { name: "Kategori layanan" })).toBeNull();
+  it("shows the same category bar on every multi-service catalog, disables empty ones, hides it for one service, and has no account-type dropdown (owner 2026-10-31)", () => {
+    const uniform = { ...product, tiers: [{ ...product.tiers[1], region: "global" as const }, { ...product.tiers[1], id: 3, region: "global" as const }] };
+    const { unmount } = render(<ServicePicker product={uniform} tierId={null} onSelect={vi.fn()} qty={100} expanded />);
+    const categories = screen.getByRole("group", { name: "Kategori layanan" });
+    expect(within(categories).getAllByRole("button").map((b) => b.textContent)).toEqual(["Semua", "Global", "Indonesia", "Refill"]);
+    expect((within(categories).getByRole("button", { name: "Indonesia" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(categories).getByRole("button", { name: "Global" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByRole("combobox", { name: "Filter jenis akun" })).toBeNull();
-    const sort = screen.getByRole("combobox", { name: "Urutkan layanan" });
-    expect(sort.closest("details")).toBeNull();
-    expect(sort.compareDocumentPosition(screen.getAllByRole("radio")[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Urutkan layanan" })).toBeNull();
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    unmount();
+    render(<ServicePicker product={{ ...product, tiers: [product.tiers[1]] }} tierId={null} onSelect={vi.fn()} qty={100} expanded />);
+    expect(screen.queryByRole("group", { name: "Kategori layanan" })).toBeNull();
   });
 
   it("keeps independent drafts when switching needs, without leaking a profile target into posts", () => {
@@ -546,8 +554,8 @@ describe("Pedia configurator", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
     fireEvent.click(screen.getByRole("button", { name: "Langkah 1: Layanan" }));
     const needs = () => screen.getByRole("navigation", { name: "Jenis layanan Instagram" });
-    fireEvent.click(within(needs()).getByRole("button", { name: "Likes" }));
-    expect(document.activeElement).toBe(within(needs()).getByRole("button", { name: "Likes" }));
+    fireEvent.click(within(needs()).getByRole("button", { name: /^Likes\b/ }));
+    expect(document.activeElement).toBe(within(needs()).getByRole("button", { name: /^Likes\b/ }));
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("");
     expect(screen.getAllByRole("radio").some((r) => (r as HTMLInputElement).checked)).toBe(false);
     fireEvent.click(screen.getByRole("radio"));
@@ -557,14 +565,14 @@ describe("Pedia configurator", () => {
     expect(post.value).toBe("");
     fireEvent.change(post, { target: { value: "https://instagram.com/p/ABC/" } });
     fireEvent.click(screen.getByRole("button", { name: "Langkah 1: Layanan" }));
-    fireEvent.click(within(needs()).getByRole("button", { name: "Followers" }));
+    fireEvent.click(within(needs()).getByRole("button", { name: /^Followers\b/ }));
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
     expect((screen.getByRole("radio", { name: /Indonesia Stabil/ }) as HTMLInputElement).checked).toBe(true);
     toTarget();
     expect((screen.getByLabelText("Link profil Instagram") as HTMLInputElement).value).toBe("https://instagram.com/customer");
     expect((screen.getByRole("checkbox", { name: /Akun publik/ }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Langkah 1: Layanan" }));
-    fireEvent.click(within(needs()).getByRole("button", { name: "Likes" }));
+    fireEvent.click(within(needs()).getByRole("button", { name: /^Likes\b/ }));
     toTarget();
     expect((screen.getByLabelText("Link postingan Instagram") as HTMLInputElement).value).toBe("https://instagram.com/p/ABC/");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -585,5 +593,94 @@ describe("Pedia configurator", () => {
     expect(document.activeElement).toBe(screen.getAllByRole("radio")[1]);
     expect(onSelect).toHaveBeenLastCalledWith(1);
     expect(screen.getAllByRole("radio")).toHaveLength(2);
+  });
+
+  it("shows a back button only on steps 2-3, keeps entered data, and hides it once the order is locked", async () => {
+    mount(); select();
+    expect(screen.queryAllByRole("button", { name: /^Kembali ke langkah/ })).toHaveLength(0);
+    toTarget();
+    expect(screen.queryAllByRole("button", { name: "Kembali ke langkah Layanan" }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
+    next();
+    expect(screen.queryAllByRole("button", { name: "Kembali ke langkah Target" }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole("button", { name: "Kembali ke langkah Target" })[0]);
+    expect((screen.getByLabelText(/Link profil Instagram/) as HTMLInputElement).value).toBe("https://instagram.com/customer");
+    expect((screen.getByRole("checkbox", { name: /Akun publik/ }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getAllByRole("button", { name: "Kembali ke langkah Layanan" })[0]);
+    expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
+  });
+
+  it("opens the order summary as a modal sheet from the mobile bar, traps focus, closes on Escape and returns focus (owner 2026-10-31)", () => {
+    render(<OrderClient product={product} initialTarget="" ordersEnabled />);
+    expect(screen.queryAllByRole("button", { name: /Lihat rincian pesanan/ })).toHaveLength(0);
+    select();
+    const opener = screen.getAllByRole("button", { name: /Lihat rincian pesanan/ }).at(-1)!;
+    expect(opener.getAttribute("aria-haspopup")).toBe("dialog");
+    fireEvent.click(opener);
+    const dialog = screen.getByRole("dialog", { name: "Rincian pesanan" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(within(dialog).getByText("Followers Indonesia Stabil")).toBeTruthy();
+    expect(within(dialog).getByText("250")).toBeTruthy();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.body.style.overflow).toBe("hidden");
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
+    expect(document.activeElement).toBe(opener);
+    fireEvent.click(opener);
+    fireEvent.click(screen.getByRole("button", { name: "Tutup rincian" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("closes the summary sheet when the step changes and keeps the desktop summary card in the document", () => {
+    const { container } = render(<OrderClient product={product} initialTarget="" ordersEnabled />);
+    select();
+    expect(container.querySelector("aside")?.className).toContain("max-xl:hidden");
+    fireEvent.click(screen.getAllByRole("button", { name: /Lihat rincian pesanan/ }).at(-1)!);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Lanjut: isi target" })[0]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("shows the selected service and quantity in the mobile bar without opening the sheet", () => {
+    render(<OrderClient product={product} initialTarget="" ordersEnabled />);
+    select();
+    const bar = document.querySelector(".pedia-mobile-action") as HTMLElement;
+    expect(bar.textContent).toContain("Followers Indonesia Stabil");
+    expect(bar.textContent).toContain("250");
+  });
+
+  it("uses 16px phone inputs with the right keyboard hints so iOS does not zoom (owner 2026-10-31)", () => {
+    render(<OrderClient product={product} initialTarget="" ordersEnabled />);
+    select();
+    const qty = screen.getByLabelText("Jumlah yang dipesan");
+    expect(qty.className).toContain("text-base");
+    expect(qty.getAttribute("inputmode")).toBe("numeric");
+    toTarget();
+    const link = screen.getByLabelText(/^Link profil Instagram/);
+    expect(link.className).toContain("text-base");
+    expect(link.getAttribute("inputmode")).toBe("url");
+    expect(link.getAttribute("enterkeyhint")).toBe("next");
+    fireEvent.change(link, { target: { value: "https://instagram.com/customer" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
+    next();
+    expect(screen.getByLabelText("Nomor WhatsApp").getAttribute("inputmode")).toBe("tel");
+    expect(screen.getByLabelText("Nomor WhatsApp").className).toContain("text-base");
+    expect(screen.getByLabelText("Email").getAttribute("inputmode")).toBe("email");
+    expect(screen.getByLabelText("Email").getAttribute("autocomplete")).toBe("email");
+  });
+
+  it("keeps Panduan to two lines on phones and the full text from xl up", () => {
+    const guided = { ...product, tiers: [{ ...product.tiers[1], instructions: "1. Satu.\n2. Dua.\n3. Tiga.\n4. Empat." }] };
+    render(<OrderClient product={guided} initialTarget="" ordersEnabled />);
+    fireEvent.click(screen.getByRole("radio"));
+    fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
+    toTarget();
+    expect(screen.getByText("1. Satu.").className).not.toContain("max-xl:hidden");
+    expect(screen.getByText("2. Dua.").className).not.toContain("max-xl:hidden");
+    expect(screen.getByText("3. Tiga.").className).toContain("max-xl:hidden");
+    expect(screen.getByText("4. Empat.").className).toContain("max-xl:hidden");
   });
 });

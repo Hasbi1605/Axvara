@@ -87,3 +87,12 @@ it('refreshes pending payments in 5s, catches up after hidden time, then process
   expect(fetcher.mock.calls.every(call=>!String(call[0]).includes('wake=1'))).toBe(true);
  }finally{cleanup();vi.useRealTimers();vi.restoreAllMocks()}
 });
+it('QR card shows load state, retry on error, unique code and auto-check hint',async()=>{
+ mock({...order,qris:{...order.qris,unique_code:37}});render(<Page/>);
+ const img=await screen.findByAltText('QRIS pembayaran');
+ expect(screen.getByText('Memuat QRIS…')).toBeTruthy();
+ fireEvent.error(img);expect(screen.getByText('QRIS gagal dimuat')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Muat ulang QRIS'}));expect(screen.getByText('Memuat QRIS…')).toBeTruthy();
+ fireEvent.load(screen.getByAltText('QRIS pembayaran'));expect(screen.queryByText('Memuat QRIS…')).toBeNull();
+ expect(screen.getByText('+37')).toBeTruthy();expect(screen.getByText(/Mengecek pembayaran otomatis tiap 5 detik/)).toBeTruthy();expect(document.querySelector('details')).toBeNull();
+});

@@ -27,15 +27,16 @@ export function PlatformPageClient({ platform, name, products, initialSlug = "",
     }
   }, [slug]);
 
-  return <div ref={container} className="mx-auto max-w-[1280px] px-4 pb-8 pt-5 sm:px-6 lg:px-8">
-    <a href="/pedia#pedia-catalog" className="inline-flex min-h-11 items-center gap-2 text-sm text-white/55 transition hover:text-white">
+  return <div ref={container} className="mx-auto max-w-[1280px] px-4 pb-8 pt-3 sm:px-6 sm:pt-5 lg:px-8">
+    <a href="/pedia#pedia-catalog" className="hidden min-h-11 items-center gap-2 text-sm text-white/55 transition hover:text-white sm:inline-flex">
       <span aria-hidden="true"><IosIcon name="chevron-left" size={14} tint="white" /></span> Pilih platform
     </a>
-    <header className="mt-3 flex items-center gap-4 rounded-[24px] border border-white/10 p-5 sm:gap-5 sm:p-7" style={{ background: `linear-gradient(115deg, ${color}20, #0F143080 75%)` }}>
-      <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px] border border-white/10 bg-white/[0.04] sm:h-20 sm:w-20">
-        <PlatformIcon id={platform} size={36} className="sm:!h-11 sm:!w-11" />
+    <header className="ax-glass-card ax-liquid relative flex flex-wrap items-center gap-x-3 gap-y-3 overflow-hidden rounded-[20px] p-2.5 sm:mt-2 sm:gap-x-4 sm:p-4 sm:px-5" style={{ background: `linear-gradient(115deg, ${color}26, #0F143080 70%)` }}>
+      <a href="/pedia#pedia-catalog" aria-label="Pilih platform" className="-ml-1 flex h-11 w-9 shrink-0 items-center justify-center sm:hidden"><span aria-hidden="true"><IosIcon name="chevron-left" size={16} tint="white" /></span></a>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] sm:h-14 sm:w-14">
+        <PlatformIcon id={platform} size={24} className="sm:!h-8 sm:!w-8" />
       </span>
-      <div className="min-w-0"><p className="text-[10px] font-medium uppercase tracking-[0.18em] text-white/65 sm:text-xs">AXVARA Pedia</p><h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">{name}</h1><p className="mt-2 text-xs leading-5 text-white/60 sm:text-sm">Pilih kebutuhanmu. Atur jumlah dan tujuan dalam satu tempat.</p></div>
+      <div className="min-w-0 flex-1"><h1 className="font-display text-lg font-semibold tracking-tight text-white sm:text-2xl">{name}</h1></div>
     </header>
     {products.length ? <>
       {product && (isPaymentMaintenanceEnabled() ? <ManualOrderPanel /> : <OrderClient key={product.slug} product={product} initialTarget={product.slug === firstSlug.current ? initialTarget : ""} initialDraft={drafts.current.get(product.slug)} ordersEnabled={ordersEnabled} withinPlatform onLockedChange={setLocked} products={products} onProductChange={(next, draft) => {

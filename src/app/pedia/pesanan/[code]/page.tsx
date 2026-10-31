@@ -7,7 +7,7 @@ import { readPediaContact, rememberPediaContact } from "@/lib/pedia/buyer-sessio
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { StatusPill } from "@/components/pedia/StatusWidgets";
-import { PediaOrderSkeleton } from "@/components/storefront/Skeletons";
+import { InlineSpinner, PediaOrderSkeleton } from "@/components/storefront/Skeletons";
 import { Check, Clock3, Copy, Download, QrCode } from "lucide-react";
 import { PlatformIcon } from "@/components/pedia/PlatformGrid";
 import { detectPediaLink } from "@/lib/pedia/link";
@@ -22,8 +22,21 @@ type Status = {
   quantity: number; target: string; status: string; done: number | null; percent: number | null;
   eta_start: string | null; eta_finish: string | null; refill_days: number;
   refill_eligible: boolean;
-  qris: { payable_amount: number; image_url: string; expires_at: string; status: string } | null;
+  qris: { payable_amount: number; unique_code?: number | null; image_url: string; expires_at: string; status: string } | null;
 };
+
+function QrisImage({ src, alt }: { src: string; alt: string }) {
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [attempt, setAttempt] = useState(0);
+  const url = attempt > 0 ? `${src}${src.includes("?") ? "&" : "?"}retry=${attempt}` : src;
+  return <div className="mx-auto mt-2 w-[224px] max-w-full rounded-xl bg-white p-2.5 sm:w-[240px]"><div className="relative aspect-square w-full">
+    {state !== "ready" && <div role="status" className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-[#080C1E]/[0.04] text-[#080C1E]/60">
+      {state === "loading" ? <><InlineSpinner className="h-7 w-7" tone="dark" /><span className="text-xs font-medium">Memuat QRIS…</span></> : <><span className="text-xs font-semibold text-[#080C1E]/80">QRIS gagal dimuat</span><button type="button" onClick={() => { setState("loading"); setAttempt((n) => n + 1); }} className="h-9 rounded-xl bg-[#080C1E] px-4 text-xs font-bold text-white">Muat ulang QRIS</button></>}
+    </div>}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img key={url} src={url} alt={alt} onLoad={() => setState("ready")} onError={() => setState("error")} className={`h-full w-full rounded-xl object-contain transition-opacity duration-300 ${state === "ready" ? "opacity-100" : "opacity-0"}`} />
+  </div></div>;
+}
 
 export default function PediaOrderStatusPage() {
   const { code } = useParams<{ code: string }>();
@@ -150,7 +163,7 @@ export default function PediaOrderStatusPage() {
   ];
   return (
     <div className="mx-auto grid w-full max-w-[1000px] items-start gap-6 px-4 pb-24 pt-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="ax-glass-card order-2 min-w-0 rounded-[24px] p-5 sm:p-8 lg:order-1" aria-label="Status pesanan">
+      <section className="ax-glass-card order-2 min-w-0 rounded-2xl p-4 sm:p-6 lg:order-1" aria-label="Status pesanan">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button type="button" onClick={() => void copy(data.code)} aria-label="Salin kode pesanan" className="flex min-h-9 min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-left font-mono text-xs text-white/60 hover:text-white"><span className="break-all">{data.code}</span>{copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}</button>
           <StatusPill status={data.status} />
@@ -185,14 +198,14 @@ export default function PediaOrderStatusPage() {
           )}
 
         {data.eta_finish && paid && <p className="mt-5 text-xs leading-5 text-white/55">Perkiraan selesai: {data.eta_finish}. Estimasi mengikuti antrean.</p>}
-        {data.refill_days > 0 && <p className="mt-2 text-xs text-white/55">Refill {data.refill_days} hari sesuai ketentuan layanan.</p>}
-      {data.service_copy && <div className="mt-4 space-y-2">{([
+        {data.refill_days > 0 && <p className="mt-5 text-xs text-white/55">Refill {data.refill_days} hari sesuai ketentuan layanan.</p>}
+      {data.service_copy && <div className="mt-4 space-y-3">{([
         ["Deskripsi layanan", data.service_copy.description],
         ["Syarat & ketentuan layanan", data.service_copy.terms],
         ["Panduan layanan", data.service_copy.instructions],
-      ] as const).filter(([, text]) => text).map(([label, text]) => <details key={label} className="rounded-xl border border-white/10 bg-white/[0.025] p-3"><summary className="cursor-pointer text-sm text-white/75">{label}</summary><p className="mt-3 whitespace-pre-line break-words text-sm leading-6 text-white/60">{text}</p></details>)}</div>}
+      ] as const).filter(([, text]) => text).map(([label, text]) => <section key={label} aria-label={label} className="ax-glass-card rounded-2xl p-3.5 text-[13px] leading-6 text-white/70"><h3 className="text-sm font-bold text-white">{label}</h3><p className="mt-2 whitespace-pre-line break-words">{text}</p></section>)}</div>}
           {data.refill_eligible && !refillOpen && (
-            <button onClick={() => setRefillOpen(true)} className="mt-4 h-12 w-full rounded-[14px] border border-[var(--px-violet)] bg-[var(--px-violet-soft)] text-sm font-bold text-white">
+            <button onClick={() => setRefillOpen(true)} className="mt-4 min-h-11 w-full rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 text-sm font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20">
               Ajukan Refill
             </button>
           )}
@@ -217,16 +230,22 @@ export default function PediaOrderStatusPage() {
         {terminal && <div className="mt-8 flex flex-wrap gap-3 border-t border-white/10 pt-6"><a href={data.product_slug ? `/pedia/o/${encodeURIComponent(data.product_slug)}` : "/pedia"} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#00E5FF] px-5 py-3 text-sm font-semibold text-[#080C1E]">Pesan lagi</a><a href="/pedia" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 px-5 py-3 text-sm text-white">Kembali ke katalog</a></div>}
       </section>
       <aside className="order-1 min-w-0 lg:order-2 lg:sticky lg:top-24">
-        <div className="ax-glass-card rounded-[24px] p-6 text-center">
+        <div className="ax-glass-card ax-liquid relative rounded-2xl p-4 text-center sm:p-5">
           {expired ? <><h2 className="font-display text-xl font-semibold text-white">Pesanan kedaluwarsa</h2><p className="mt-3 text-sm leading-6 text-white/60">Pembayaran tidak diterima sebelum batas waktu. Jika pesanan lama memakai kode kredit, hubungi admin untuk penyelesaian manual.</p></> : pending ? <>
-            <h2 className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/60">Pembayaran QRIS</h2>
+            <h2 className="font-display text-base font-bold text-white sm:text-lg">Pembayaran QRIS</h2>
             {!data.qris ? <p className="mt-5 text-sm leading-6 text-white/70">Menunggu pembayaran. QRIS belum tersedia. Lanjutkan kembali dari halaman checkout dengan data yang sama, atau hubungi admin dengan kode pesanan ini.</p> : qrExpired ? <><h3 className="mt-5 text-lg font-semibold text-white">QRIS kedaluwarsa</h3><p className="mt-3 text-sm leading-6 text-white/60">Batas pembayaran telah lewat. Jangan membayar QRIS ini. Status pesanan akan diperbarui otomatis.</p></> : <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={data.qris.image_url} alt="QRIS pembayaran" className="mx-auto mt-4 aspect-square w-full max-w-[240px] rounded-2xl bg-white p-2" />
-              <p className="mt-5 font-display text-2xl font-bold leading-8 text-white">Rp{Number(data.qris.payable_amount).toLocaleString("id-ID")}</p>
-              <p className="mt-1 text-[13px] text-white/60">Bayar tepat sesuai nominal ini</p>
-              <p className={`mt-4 flex items-center justify-center gap-1.5 font-mono text-sm ${seconds < 120 ? "text-red-300" : "text-[#FFB800]"}`}><Clock3 size={14} aria-hidden="true" /><span aria-label="Sisa waktu pembayaran">{countdown}</span></p>
-              <div className="mt-5 grid grid-cols-2 gap-2.5"><a href={data.qris.image_url} download={`AXVARA-${data.code}-QRIS.png`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 px-2 text-sm text-white/80"><Download size={15} aria-hidden="true" />Simpan QRIS</a><button type="button" disabled={loading} onClick={() => void load(true)} className="min-h-11 rounded-xl bg-[#00E5FF] px-2 text-sm font-semibold text-[#080C1E] disabled:opacity-50">{loading ? "Memeriksa…" : "Cek pembayaran"}</button></div>
+              <section aria-label="QRIS dinamis" className="mt-4 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-3 text-center sm:p-4">
+                <QrisImage key={`${data.qris.image_url}|${data.qris.expires_at}`} src={data.qris.image_url} alt="QRIS pembayaran" />
+                <div className="mt-2 flex items-center justify-center gap-1.5" aria-label="QRIS National Payment Standard"><img src="/brand/qris.svg" alt="Logo QRIS resmi" width={48} height={18} className="h-[18px] w-auto object-contain" draggable={false} /><span className="text-[9px] text-white/55">National Payment Standard</span></div>
+                <span className="mt-4 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">Menunggu bayar</span>
+                <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-white/45">Total bayar</p>
+                <p className="font-display text-2xl font-bold leading-8 text-white">Rp{Number(data.qris.payable_amount).toLocaleString("id-ID")}</p>
+                {(data.qris.unique_code ?? 0) > 0 && <p className="text-[11px] text-white/50">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{data.qris.unique_code}</span></p>}
+                <p className={`mt-1 flex items-center justify-center gap-1.5 font-mono text-[13px] ${seconds < 120 ? "text-red-300" : "text-[#FFB800]"}`}><Clock3 size={13} aria-hidden="true" />Berlaku <span aria-label="Sisa waktu pembayaran">{countdown}</span></p>
+                <p className="mt-1 text-[11px] text-white/50">Bayar tepat sesuai total.</p>
+                <div className="mt-3 grid grid-cols-2 gap-2"><a href={data.qris.image_url} download={`AXVARA-${data.code}-QRIS.png`} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/15 px-2 text-xs font-semibold text-white/75 hover:bg-white/10"><Download size={14} aria-hidden="true" />Simpan QRIS</a><button type="button" disabled={loading} onClick={() => void load(true)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-2 text-xs font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:opacity-50">{loading && <InlineSpinner />}{loading ? "Memeriksa…" : "Cek pembayaran"}</button></div>
+                <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] leading-4 text-white/50" aria-live="polite"><InlineSpinner className="h-3 w-3" /><span>Mengecek pembayaran otomatis tiap 5 detik</span></p>
+              </section>
             </>}
           </> : <div className="py-6"><span aria-hidden="true" className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-300"><Check size={32} /></span><h2 className="mt-4 font-display text-xl font-semibold text-white">Pembayaran diterima</h2>{data.qris && <p className="mt-2 font-display text-2xl font-bold leading-8 text-white">Rp{Number(data.qris.payable_amount).toLocaleString("id-ID")}</p>}<p className="mt-3 text-[13px] leading-6 text-white/60">Pantau perkembangan pesanan pada halaman ini. Status mengikuti pembaruan sistem.</p></div>}
           {error && <p role="alert" className="mt-4 text-sm text-red-300">{error}</p>}
