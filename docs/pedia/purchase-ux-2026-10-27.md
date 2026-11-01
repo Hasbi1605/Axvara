@@ -145,3 +145,9 @@ Bar bawah mobile tertutup (31 Oktober, lokal): satu strip tombol "jumlah · laya
 - `/ketentuan`: kartu Tentang layanan, Syarat target, tiga kartu (Refill & garansi, Pesanan sebagian atau dibatalkan, Yang perlu disiapkan), Konten yang dilarang, catatan amber tentang password, tombol Tanya admin / Lacak pesanan / Lihat cara order. Kata "drop" tetap di Refill & garansi karena ini halaman ketentuan, bukan alur pesan.
 - FAQ Lacak tanpa pertanyaan PIN.
 
+### Target, Kontak dan pesan gagal (1 November 2026, revisi ke-21)
+- Hasil order ambigu (5xx, timeout, respons rusak) menampilkan satu kalimat "Pesanan belum berhasil dibuat. Tekan Coba lagi; kamu tidak akan ditagih dua kali." dengan CTA "Coba lagi"; pesan digulir ke tengah layar. Alasan 4xx/408/429 dari server tetap ditampilkan. Kontrak retry (quote dan kontak sama) tidak berubah.
+- Panduan layanan tidak menampilkan baris yang mengulang alur checkout; teks bantu link berupa contoh singkat + syarat publik.
+- Judul langkah Kontak: "Kontak untuk pesanan ini". Ketentuan layanan menampilkan maks tiga butir penting, sisanya di "Lihat semua ketentuan (n)" sebelum checkbox persetujuan.
+- Tombol bar bawah (<1280px) bertuliskan "Lanjut bayar"; nama aksesibel dan rail desktop tetap "Lanjut ke pembayaran".
+

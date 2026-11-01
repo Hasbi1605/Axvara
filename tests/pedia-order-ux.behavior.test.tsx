@@ -53,7 +53,7 @@ function complete() {
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "buyer@example.com" } });
   fireEvent.click(screen.getByRole("checkbox", { name: /Saya setuju/ }));
 }
-function proceed() { fireEvent.click(screen.getAllByRole("button", { name: /^(Lanjut ke pembayaran|Coba lanjutkan pembayaran|Lanjut: isi target|Lanjut: kontak)$/ })[0]); }
+function proceed() { fireEvent.click(screen.getAllByRole("button", { name: /^(Lanjut ke pembayaran|Coba lagi|Lanjut: isi target|Lanjut: kontak)$/ })[0]); }
 function consent() { fireEvent.click(screen.getAllByRole("button", { name: "Setujui & lanjut ke pembayaran" })[0]); }
 async function getQuote() {
   proceed();
@@ -89,7 +89,7 @@ describe("Pedia order UX", () => {
     expect(html).toContain('&lt;script&gt;alert(&quot;test&quot;)&lt;/script&gt;');
     expect(html).not.toContain("<script>");
     select(); toTarget();
-    expect(document.getElementById("pedia-target-help")?.textContent).toBe("Gunakan format link seperti contoh pada kolom. Masukkan link profil Instagram. Pastikan akun tidak privat.");
+    expect(document.getElementById("pedia-target-help")?.textContent).toBe("Contoh: instagram.com/username. Akun harus publik.");
     expect(screen.getByText("Format link sesuai")).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/Link profil Instagram/), { target: { value: "bukan link" } });
     expect(screen.getByText("Format link tidak sesuai")).toBeTruthy();
@@ -361,12 +361,14 @@ describe("Pedia order UX", () => {
     expect((screen.getByLabelText("Email").closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
     expect(screen.getAllByRole("button", { name: /^Langkah/ }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     await act(async () => { reject(new Error("network lost")); });
-    expect((await screen.findByRole("alert")).textContent).toContain("data yang sama");
+    expect((await screen.findByRole("alert")).textContent).toBe("Pesanan belum berhasil dibuat. Tekan Coba lagi; kamu tidak akan ditagih dua kali.");
+    expect(screen.queryByText(/Data dikunci/)).toBeNull();
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 30 * 60_000);
     fetchMock.mockResolvedValueOnce(reply({ error: "Unavailable" }, status));
     proceed();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Unavailable"));
+    // 5xx tetap ambigu → kalimat sederhana; 408/429 memakai alasan dari server.
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(status >= 500 ? "Pesanan belum berhasil dibuat. Tekan Coba lagi; kamu tidak akan ditagih dua kali." : "Unavailable"));
     expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[2][1].body);
     expect((screen.getByLabelText("Email").closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
   });
@@ -377,7 +379,7 @@ describe("Pedia order UX", () => {
     consent(); await screen.findByRole("alert");
     fetchMock.mockResolvedValueOnce(reply({ code: "bad" }));
     proceed();
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Respons pesanan belum lengkap"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("tidak akan ditagih dua kali"));
     expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[2][1].body);
   });
 
@@ -699,15 +701,35 @@ describe("Pedia configurator", () => {
     expect(screen.getByLabelText("Email").getAttribute("autocomplete")).toBe("email");
   });
 
-  it("keeps Panduan to two lines on phones and the full text from xl up", () => {
-    const guided = { ...product, tiers: [{ ...product.tiers[1], instructions: "1. Satu.\n2. Dua.\n3. Tiga.\n4. Empat." }] };
+  // 2026-11-01 (owner): baris panduan yang hanya mengulang alur checkout tidak ditampilkan.
+  it("drops guide lines that repeat the checkout flow and keeps service-specific ones", () => {
+    const guided = { ...product, tiers: [{ ...product.tiers[1], instructions: "1. Buka target, salin link.\n2. Contoh format: https://x.y/z\n3. Pilih layanan dan jumlah, lalu tempel link target.\n4. Periksa ketentuan, isi WhatsApp serta email, dan lanjutkan ke QRIS.\n5. Setelah pembayaran terkonfirmasi, pantau proses di halaman pesanan.\n6. Matikan mode privat." }] };
     render(<OrderClient product={guided} initialTarget="" ordersEnabled />);
     fireEvent.click(screen.getByRole("radio"));
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
     toTarget();
-    expect(screen.getByText("1. Satu.").className).not.toContain("max-xl:hidden");
-    expect(screen.getByText("2. Dua.").className).not.toContain("max-xl:hidden");
-    expect(screen.getByText("3. Tiga.").className).toContain("max-xl:hidden");
-    expect(screen.getByText("4. Empat.").className).toContain("max-xl:hidden");
+    for (const line of ["1. Buka target, salin link.", "2. Contoh format: https://x.y/z", "6. Matikan mode privat."]) expect(screen.getByText(line)).toBeTruthy();
+    expect(screen.queryByText(/Pilih layanan dan jumlah|Periksa ketentuan, isi|Setelah pembayaran terkonfirmasi/)).toBeNull();
+  });
+
+  it("shows the key service terms first and folds the rest, with a short contact heading", () => {
+    const termed = { ...product, tiers: [{ ...product.tiers[1], terms: "Jumlah per pesanan 10-1.000.\nJumlah dapat diisi sendiri.\nRefill 30 hari.\nJangan mengganti link.\nTunggu pesanan sebelumnya selesai.\nEstimasi dapat berubah." }] };
+    render(<OrderClient product={termed} initialTarget="" ordersEnabled />);
+    fireEvent.click(screen.getByRole("radio"));
+    fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
+    toTarget();
+    fireEvent.change(document.getElementById("pedia-target")!, { target: { value: "https://www.instagram.com/axvara/" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
+    next();
+    expect(screen.getByRole("heading", { level: 2, name: "Kontak untuk pesanan ini" })).toBeTruthy();
+    const details = screen.getByText("Lihat semua ketentuan (6)").closest("details")!;
+    expect(details.open).toBe(false);
+    const top = [...document.querySelectorAll("ul")].find((u) => u.textContent?.includes("Refill 30 hari."))!;
+    expect(top.closest("details")).toBeNull();
+    expect(top.textContent).toContain("Jangan mengganti link.");
+    expect(details.textContent).toContain("Jumlah per pesanan 10-1.000.");
+    expect(details.textContent).toContain("Estimasi dapat berubah.");
+    const pay = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" })[0];
+    expect(pay.querySelector("span[aria-hidden='true']")?.className).toContain("max-xl:inline");
   });
 });
