@@ -1,0 +1,2442 @@
+{
+ "source": "prod pedia_tiers aktif 2026-11-02 (baca-saja)",
+ "rename": [
+  {
+   "id": 30,
+   "product": "likes-instagram",
+   "old": "Likes Global · Ekonomis",
+   "new": "Likes Post Global HQ"
+  },
+  {
+   "id": 33,
+   "product": "likes-youtube",
+   "old": "Likes Global · Ekonomis",
+   "new": "Likes Video Global"
+  },
+  {
+   "id": 39,
+   "product": "subscriber-youtube",
+   "old": "Subscriber Global · Ekonomis",
+   "new": "Subscribers Global"
+  },
+  {
+   "id": 46,
+   "product": "followers-instagram",
+   "old": "Followers Global berpostingan · Refill 365 Days",
+   "new": "Followers Global HQ · Akun berpostingan"
+  },
+  {
+   "id": 47,
+   "product": "followers-instagram",
+   "old": "Followers Global akun lama · Refill 365 Days",
+   "new": "Followers Global HQ · Akun lama"
+  },
+  {
+   "id": 54,
+   "product": "likes-instagram",
+   "old": "Likes Global · Refill 30 Days",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 57,
+   "product": "views-reels-instagram",
+   "old": "Tayangan Indonesia · Ekonomis",
+   "new": "Views Reels Indonesia"
+  },
+  {
+   "id": 61,
+   "product": "saves-instagram",
+   "old": "Saves Indonesia · Ekonomis",
+   "new": "Saves Post Indonesia"
+  },
+  {
+   "id": 64,
+   "product": "shares-instagram",
+   "old": "Share Indonesia · Ekonomis",
+   "new": "Share Post Indonesia"
+  },
+  {
+   "id": 67,
+   "product": "followers-tiktok",
+   "old": "Followers Global · Refill 365 Days",
+   "new": "Followers Global HQ"
+  },
+  {
+   "id": 70,
+   "product": "followers-tiktok",
+   "old": "Followers Global · Refill 30 Days",
+   "new": "Followers Global"
+  },
+  {
+   "id": 71,
+   "product": "followers-tiktok",
+   "old": "Followers Global · Refill 60 Days",
+   "new": "Followers Global"
+  },
+  {
+   "id": 73,
+   "product": "followers-tiktok",
+   "old": "Followers Global · Akun berpostingan",
+   "new": "Followers Global HQ · Akun berpostingan"
+  },
+  {
+   "id": 75,
+   "product": "followers-tiktok",
+   "old": "Followers Indonesia · Ekonomis · Mulai 50",
+   "new": "Followers Indonesia"
+  },
+  {
+   "id": 76,
+   "product": "likes-tiktok",
+   "old": "Likes Global · Refill 30 Days",
+   "new": "Likes Video Global HQ"
+  },
+  {
+   "id": 81,
+   "product": "views-tiktok",
+   "old": "Tayangan Global · Refill 30 Days",
+   "new": "Views Video Global"
+  },
+  {
+   "id": 86,
+   "product": "shares-tiktok",
+   "old": "Share Global · Ekonomis",
+   "new": "Share Video Global"
+  },
+  {
+   "id": 91,
+   "product": "saves-tiktok",
+   "old": "Saves Indonesia · Ekonomis",
+   "new": "Saves Video Indonesia"
+  },
+  {
+   "id": 95,
+   "product": "views-youtube",
+   "old": "Tayangan Indonesia · Ekonomis · Mulai 500",
+   "new": "Views Video Indonesia"
+  },
+  {
+   "id": 96,
+   "product": "views-youtube",
+   "old": "Tayangan Global · Video yang disarankan",
+   "new": "Views Video Global · Yang disarankan"
+  },
+  {
+   "id": 98,
+   "product": "likes-youtube",
+   "old": "Likes Indonesia · Ekonomis",
+   "new": "Likes Video Indonesia"
+  },
+  {
+   "id": 101,
+   "product": "subscriber-youtube",
+   "old": "Subscriber Global · Refill 30 Days",
+   "new": "Subscribers Global"
+  },
+  {
+   "id": 105,
+   "product": "followers-facebook",
+   "old": "Followers Halaman Global · Ekonomis",
+   "new": "Followers Global"
+  },
+  {
+   "id": 107,
+   "product": "followers-facebook",
+   "old": "Followers Halaman Global · Refill 365 Days",
+   "new": "Followers Global"
+  },
+  {
+   "id": 111,
+   "product": "likes-facebook",
+   "old": "Likes Global · Postingan, foto & Reels",
+   "new": "Likes Post Global · Postingan, foto & Reels"
+  },
+  {
+   "id": 113,
+   "product": "likes-facebook",
+   "old": "Likes Global · Ekonomis",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 118,
+   "product": "followers-threads",
+   "old": "Followers Indonesia · Ekonomis · Mulai 5",
+   "new": "Followers Indonesia"
+  },
+  {
+   "id": 120,
+   "product": "likes-threads",
+   "old": "Likes Global · Ekonomis",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 123,
+   "product": "likes-threads",
+   "old": "Likes Indonesia · Ekonomis · Mulai 5",
+   "new": "Likes Post Indonesia"
+  },
+  {
+   "id": 127,
+   "product": "followers-x",
+   "old": "Followers Global · Refill 15 Days",
+   "new": "Followers Global"
+  },
+  {
+   "id": 130,
+   "product": "likes-x",
+   "old": "Likes Global · Ekonomis",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 135,
+   "product": "views-x",
+   "old": "Tayangan Indonesia · Ekonomis",
+   "new": "Views Post Indonesia"
+  },
+  {
+   "id": 137,
+   "product": "members-telegram",
+   "old": "Members Global · Refill 365 Days",
+   "new": "Members Global"
+  },
+  {
+   "id": 143,
+   "product": "reactions-telegram",
+   "old": "Reaksi positif campuran",
+   "new": "Reactions Global · Positif"
+  },
+  {
+   "id": 145,
+   "product": "followers-linkedin",
+   "old": "Followers Global · Refill 30 Days",
+   "new": "Followers Global"
+  },
+  {
+   "id": 146,
+   "product": "followers-perusahaan-linkedin",
+   "old": "Followers Global · Refill 30 Days",
+   "new": "Followers Perusahaan Global"
+  },
+  {
+   "id": 147,
+   "product": "likes-linkedin",
+   "old": "Likes Global · Refill 30 Days",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 149,
+   "product": "likes-linkedin",
+   "old": "Likes Global · Ekonomis · Mulai 50",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 150,
+   "product": "followers-board-pinterest",
+   "old": "Followers Board · Ekonomis",
+   "new": "Followers Board Global"
+  },
+  {
+   "id": 151,
+   "product": "likes-pinterest",
+   "old": "Likes Pin · Ekonomis",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 152,
+   "product": "followers-shopee",
+   "old": "Followers Global · Ekonomis",
+   "new": "Followers Global"
+  },
+  {
+   "id": 155,
+   "product": "plays-spotify",
+   "old": "Plays Global · Ekonomis",
+   "new": "Plays Global"
+  },
+  {
+   "id": 159,
+   "product": "plays-soundcloud",
+   "old": "Plays Global · Ekonomis · Mulai 500",
+   "new": "Plays Global"
+  },
+  {
+   "id": 160,
+   "product": "likes-soundcloud",
+   "old": "Likes Global · Ekonomis",
+   "new": "Likes Global"
+  },
+  {
+   "id": 161,
+   "product": "followers-twitch",
+   "old": "Followers Global · Refill 30 Days",
+   "new": "Followers Global"
+  },
+  {
+   "id": 163,
+   "product": "followers-twitch",
+   "old": "Followers Global · Ekonomis · Mulai 100",
+   "new": "Followers Global"
+  },
+  {
+   "id": 164,
+   "product": "followers-github",
+   "old": "Followers Profil · Ekonomis",
+   "new": "Followers Global"
+  },
+  {
+   "id": 165,
+   "product": "fork-github",
+   "old": "Fork Repository · Ekonomis",
+   "new": "Fork Repository Global"
+  },
+  {
+   "id": 166,
+   "product": "traffic-website",
+   "old": "Traffic Global · Paket umum",
+   "new": "Website Traffic Global"
+  },
+  {
+   "id": 167,
+   "product": "traffic-website",
+   "old": "Traffic Indonesia · Referrer Google",
+   "new": "Website Traffic Indonesia · Referrer Google"
+  },
+  {
+   "id": 168,
+   "product": "traffic-website",
+   "old": "Traffic Global · Referrer Google",
+   "new": "Website Traffic Global · Referrer Google"
+  },
+  {
+   "id": 169,
+   "product": "traffic-website",
+   "old": "Traffic Global · Referrer Facebook",
+   "new": "Website Traffic Global · Referrer Facebook"
+  },
+  {
+   "id": 170,
+   "product": "traffic-website",
+   "old": "Traffic Indonesia · Referrer Amazon.Com",
+   "new": "Website Traffic Indonesia · Referrer Amazon.Com"
+  },
+  {
+   "id": 174,
+   "product": "repost-instagram",
+   "old": "Repost Global · Mulai 0–2 jam",
+   "new": "Repost Global"
+  },
+  {
+   "id": 176,
+   "product": "repost-tiktok",
+   "old": "Repost Global · No Refill",
+   "new": "Repost Global"
+  },
+  {
+   "id": 177,
+   "product": "repost-tiktok",
+   "old": "Repost Indonesia · No Refill",
+   "new": "Repost Indonesia"
+  },
+  {
+   "id": 178,
+   "product": "views-shorts-youtube",
+   "old": "Shorts · Mulai 500 · No Refill AXVARA",
+   "new": "Views Shorts Global"
+  },
+  {
+   "id": 179,
+   "product": "likes-shorts-youtube",
+   "old": "Likes Shorts · No Refill",
+   "new": "Likes Shorts Global"
+  },
+  {
+   "id": 190,
+   "product": "bookmarks-x",
+   "old": "Bookmarks Global · No Refill",
+   "new": "Bookmarks Global"
+  },
+  {
+   "id": 194,
+   "product": "followers-soundcloud",
+   "old": "Followers Global · Kelipatan 100 · No Refill AXVARA",
+   "new": "Followers Global"
+  },
+  {
+   "id": 195,
+   "product": "share-telegram",
+   "old": "Share Postingan · No Refill",
+   "new": "Share Post Global"
+  },
+  {
+   "id": 196,
+   "product": "visits-instagram",
+   "old": "Kunjungan profil · No Refill",
+   "new": "Kunjungan Profil Global"
+  },
+  {
+   "id": 197,
+   "product": "likes-story-instagram",
+   "old": "Likes Story Indonesia · No Refill",
+   "new": "Likes Story Indonesia"
+  },
+  {
+   "id": 199,
+   "product": "members-group-facebook",
+   "old": "Members grup publik · No Refill",
+   "new": "Members Grup Global · Publik"
+  },
+  {
+   "id": 200,
+   "product": "shares-youtube",
+   "old": "Share video · No Refill AXVARA",
+   "new": "Share Video Global"
+  },
+  {
+   "id": 201,
+   "product": "listeners-spotify",
+   "old": "Pendengar global · No Refill AXVARA",
+   "new": "Pendengar Bulanan Global"
+  },
+  {
+   "id": 202,
+   "product": "plays-playlist-spotify",
+   "old": "Plays playlist · No Refill AXVARA",
+   "new": "Plays Playlist Global"
+  },
+  {
+   "id": 203,
+   "product": "connections-linkedin",
+   "old": "Koneksi profil · No Refill",
+   "new": "Koneksi Global"
+  },
+  {
+   "id": 204,
+   "product": "views-linkedin",
+   "old": "Tayangan postingan · No Refill",
+   "new": "Views Post Global"
+  },
+  {
+   "id": 205,
+   "product": "repost-linkedin",
+   "old": "Repost USA · No Refill AXVARA",
+   "new": "Repost Campuran · USA"
+  },
+  {
+   "id": 206,
+   "product": "reactions-linkedin",
+   "old": "Celebrate · No Refill",
+   "new": "Reactions Global · Celebrate"
+  },
+  {
+   "id": 207,
+   "product": "followers-profile-pinterest",
+   "old": "Followers profil · No Refill AXVARA",
+   "new": "Followers Profil Global"
+  },
+  {
+   "id": 208,
+   "product": "repost-soundcloud",
+   "old": "Repost lagu · No Refill",
+   "new": "Repost Global"
+  },
+  {
+   "id": 210,
+   "product": "followers-roblox",
+   "old": "Global · No Refill",
+   "new": "Followers Global"
+  },
+  {
+   "id": 211,
+   "product": "followers-roblox",
+   "old": "Indonesia · No Refill",
+   "new": "Followers Indonesia"
+  },
+  {
+   "id": 212,
+   "product": "members-whatsapp",
+   "old": "Global · No Refill",
+   "new": "Members Channel Global"
+  },
+  {
+   "id": 213,
+   "product": "reactions-whatsapp",
+   "old": "Campuran India · No Refill",
+   "new": "Reactions Post Campuran · India"
+  },
+  {
+   "id": 214,
+   "product": "followers-lazada",
+   "old": "Indonesia · No Refill",
+   "new": "Followers Toko Indonesia"
+  },
+  {
+   "id": 215,
+   "product": "likes-lazada",
+   "old": "Indonesia · No Refill",
+   "new": "Likes Produk Indonesia"
+  },
+  {
+   "id": 217,
+   "product": "followers-kick",
+   "old": "Followers channel · No Refill AXVARA",
+   "new": "Followers Global"
+  },
+  {
+   "id": 218,
+   "product": "views-vimeo",
+   "old": "Tayangan video · No Refill",
+   "new": "Views Video Global"
+  },
+  {
+   "id": 219,
+   "product": "likes-vimeo",
+   "old": "Likes video · No Refill AXVARA",
+   "new": "Likes Video Global"
+  },
+  {
+   "id": 220,
+   "product": "followers-vimeo",
+   "old": "Followers profil · No Refill AXVARA",
+   "new": "Followers Global"
+  },
+  {
+   "id": 221,
+   "product": "followers-tumblr",
+   "old": "Followers blog · No Refill AXVARA",
+   "new": "Followers Global · Blog"
+  },
+  {
+   "id": 222,
+   "product": "followers-reddit",
+   "old": "Followers profil · No Refill AXVARA",
+   "new": "Followers Global"
+  },
+  {
+   "id": 223,
+   "product": "members-reddit",
+   "old": "Subscriber komunitas · No Refill AXVARA",
+   "new": "Members Komunitas Global"
+  },
+  {
+   "id": 224,
+   "product": "views-reddit",
+   "old": "Tayangan postingan · No Refill AXVARA",
+   "new": "Views Post Global"
+  },
+  {
+   "id": 225,
+   "product": "shares-reddit",
+   "old": "Share postingan · No Refill AXVARA",
+   "new": "Share Post Global"
+  },
+  {
+   "id": 226,
+   "product": "followers-dribbble",
+   "old": "Followers desainer · No Refill",
+   "new": "Followers Global · Desainer"
+  },
+  {
+   "id": 227,
+   "product": "likes-dribbble",
+   "old": "Likes shot · No Refill",
+   "new": "Likes Shot Global"
+  },
+  {
+   "id": 228,
+   "product": "plays-mixcloud",
+   "old": "Plays audio · No Refill AXVARA",
+   "new": "Plays Global · Audio"
+  },
+  {
+   "id": 229,
+   "product": "followers-mixcloud",
+   "old": "Followers profil · No Refill AXVARA",
+   "new": "Followers Global"
+  },
+  {
+   "id": 230,
+   "product": "likes-mixcloud",
+   "old": "Likes audio · No Refill AXVARA",
+   "new": "Likes Global · Audio"
+  },
+  {
+   "id": 231,
+   "product": "reposts-mixcloud",
+   "old": "Repost audio · No Refill AXVARA",
+   "new": "Repost Global · Audio"
+  },
+  {
+   "id": 232,
+   "product": "plays-audiomack",
+   "old": "Plays lagu · Kelipatan 1.000 · No Refill AXVARA",
+   "new": "Plays Global"
+  },
+  {
+   "id": 233,
+   "product": "likes-audiomack",
+   "old": "Likes lagu · No Refill",
+   "new": "Likes Global"
+  },
+  {
+   "id": 234,
+   "product": "reposts-audiomack",
+   "old": "Re-up lagu · No Refill",
+   "new": "Repost Global"
+  },
+  {
+   "id": 235,
+   "product": "plays-album-audiomack",
+   "old": "Plays album · No Refill",
+   "new": "Plays Album Global"
+  },
+  {
+   "id": 236,
+   "product": "followers-medium",
+   "old": "Followers penulis · No Refill AXVARA",
+   "new": "Followers Global · Penulis"
+  },
+  {
+   "id": 237,
+   "product": "saves-medium",
+   "old": "Bookmarks artikel · No Refill",
+   "new": "Bookmarks Artikel Global"
+  },
+  {
+   "id": 238,
+   "product": "views-rumble",
+   "old": "Global · No Refill",
+   "new": "Views Video Global"
+  },
+  {
+   "id": 239,
+   "product": "followers-coinmarketcap",
+   "old": "Followers komunitas · No Refill",
+   "new": "Followers Global · Komunitas"
+  },
+  {
+   "id": 240,
+   "product": "views-coinmarketcap",
+   "old": "Tayangan postingan · No Refill",
+   "new": "Views Post Global"
+  },
+  {
+   "id": 241,
+   "product": "views-rutube",
+   "old": "Tayangan video · No Refill",
+   "new": "Views Video Global"
+  },
+  {
+   "id": 242,
+   "product": "plays-tidal",
+   "old": "Plays playlist · No Refill",
+   "new": "Plays Playlist Global"
+  },
+  {
+   "id": 243,
+   "product": "followers-tidal",
+   "old": "Followers playlist · No Refill",
+   "new": "Followers Playlist Global"
+  },
+  {
+   "id": 244,
+   "product": "followers-coub",
+   "old": "Subscriber channel · No Refill AXVARA",
+   "new": "Subscribers Global"
+  },
+  {
+   "id": 245,
+   "product": "likes-coub",
+   "old": "Likes video · No Refill AXVARA",
+   "new": "Likes Video Global"
+  },
+  {
+   "id": 246,
+   "product": "shares-coub",
+   "old": "Share video · No Refill AXVARA",
+   "new": "Share Video Global"
+  },
+  {
+   "id": 247,
+   "product": "followers-reverbnation",
+   "old": "Fans artis · No Refill",
+   "new": "Fans Global · Artis"
+  },
+  {
+   "id": 248,
+   "product": "plays-reverbnation",
+   "old": "Plays lagu · No Refill",
+   "new": "Plays Global"
+  },
+  {
+   "id": 249,
+   "product": "saves-reverbnation",
+   "old": "Saves lagu · No Refill",
+   "new": "Saves Lagu Global"
+  },
+  {
+   "id": 251,
+   "product": "views-story-instagram",
+   "old": "Global · No Refill",
+   "new": "Views Story Global"
+  },
+  {
+   "id": 252,
+   "product": "share-post-facebook",
+   "old": "Global · No Refill",
+   "new": "Share Post Global"
+  },
+  {
+   "id": 253,
+   "product": "repost-threads",
+   "old": "Global · No Refill",
+   "new": "Repost Global"
+  },
+  {
+   "id": 254,
+   "product": "share-threads",
+   "old": "Global · No Refill",
+   "new": "Share Post Global"
+  },
+  {
+   "id": 255,
+   "product": "followers-playlist-spotify",
+   "old": "Global · No Refill",
+   "new": "Followers Playlist Global"
+  },
+  {
+   "id": 256,
+   "product": "saves-spotify",
+   "old": "Global · No Refill",
+   "new": "Saves Lagu Global"
+  },
+  {
+   "id": 258,
+   "product": "followers-instagram",
+   "old": "Followers Indonesia Real · No Refill",
+   "new": "Followers Indonesia Real"
+  },
+  {
+   "id": 259,
+   "product": "followers-instagram",
+   "old": "Followers Global Real · Refill 90 Days · Less Drop",
+   "new": "Followers Global Real"
+  },
+  {
+   "id": 261,
+   "product": "followers-instagram",
+   "old": "Followers Indonesia HQ · Refill 30 Days",
+   "new": "Followers Indonesia HQ"
+  },
+  {
+   "id": 262,
+   "product": "followers-instagram",
+   "old": "Followers Global Real · Refill 365 Days · No Drop",
+   "new": "Followers Global Real"
+  },
+  {
+   "id": 263,
+   "product": "likes-instagram",
+   "old": "Likes Global HQ · Refill 365 Days",
+   "new": "Likes Post Global HQ"
+  },
+  {
+   "id": 268,
+   "product": "likes-instagram",
+   "old": "Likes Indonesia · No Refill · Max 20K",
+   "new": "Likes Post Indonesia"
+  },
+  {
+   "id": 269,
+   "product": "views-reels-instagram",
+   "old": "Views Global HQ · No Refill",
+   "new": "Views Reels Global HQ"
+  },
+  {
+   "id": 270,
+   "product": "views-reels-instagram",
+   "old": "Views Indonesia HQ · No Refill",
+   "new": "Views Reels Indonesia HQ"
+  },
+  {
+   "id": 272,
+   "product": "views-reels-instagram",
+   "old": "Views Global Ekonomis · No Refill",
+   "new": "Views Reels Global"
+  },
+  {
+   "id": 273,
+   "product": "views-reels-instagram",
+   "old": "Views Global Real · No Refill",
+   "new": "Views Reels Global Real"
+  },
+  {
+   "id": 274,
+   "product": "saves-instagram",
+   "old": "Saves Global · No Refill · Max 25K",
+   "new": "Saves Post Global"
+  },
+  {
+   "id": 277,
+   "product": "saves-instagram",
+   "old": "Saves Global HQ · No Refill · No Drop",
+   "new": "Saves Post Global HQ"
+  },
+  {
+   "id": 278,
+   "product": "saves-instagram",
+   "old": "Saves Global Real · No Refill",
+   "new": "Saves Post Global Real"
+  },
+  {
+   "id": 280,
+   "product": "shares-instagram",
+   "old": "Shares Global HQ · No Refill",
+   "new": "Share Post Global HQ"
+  },
+  {
+   "id": 281,
+   "product": "shares-instagram",
+   "old": "Shares Global · No Refill",
+   "new": "Share Post Global"
+  },
+  {
+   "id": 282,
+   "product": "followers-tiktok",
+   "old": "Followers Global Real · No Refill · No Drop",
+   "new": "Followers Global Real"
+  },
+  {
+   "id": 285,
+   "product": "followers-tiktok",
+   "old": "Followers Indonesia · Refill 90 Days",
+   "new": "Followers Indonesia"
+  },
+  {
+   "id": 286,
+   "product": "followers-tiktok",
+   "old": "Followers Global Real · Refill 365 Days",
+   "new": "Followers Global Real"
+  },
+  {
+   "id": 287,
+   "product": "followers-tiktok",
+   "old": "Followers Indonesia Real · No Refill",
+   "new": "Followers Indonesia Real"
+  },
+  {
+   "id": 288,
+   "product": "likes-tiktok",
+   "old": "Likes Indonesia · Refill 30 Days",
+   "new": "Likes Video Indonesia"
+  },
+  {
+   "id": 289,
+   "product": "likes-tiktok",
+   "old": "Likes Global Real · Refill 30 Days",
+   "new": "Likes Video Global Real"
+  },
+  {
+   "id": 290,
+   "product": "likes-tiktok",
+   "old": "Likes Global Real · No Refill",
+   "new": "Likes Video Global Real"
+  },
+  {
+   "id": 291,
+   "product": "likes-tiktok",
+   "old": "Likes Global Ekonomis · No Refill",
+   "new": "Likes Video Global"
+  },
+  {
+   "id": 292,
+   "product": "likes-tiktok",
+   "old": "Likes Indonesia · No Refill",
+   "new": "Likes Video Indonesia"
+  },
+  {
+   "id": 293,
+   "product": "likes-tiktok",
+   "old": "Likes Indonesia HQ · No Refill",
+   "new": "Likes Video Indonesia HQ"
+  },
+  {
+   "id": 295,
+   "product": "views-tiktok",
+   "old": "Views Global HQ · Refill 30 Days · No Drop",
+   "new": "Views Video Global HQ"
+  },
+  {
+   "id": 296,
+   "product": "views-tiktok",
+   "old": "Views Indonesia · Refill 30 Days",
+   "new": "Views Video Indonesia"
+  },
+  {
+   "id": 297,
+   "product": "views-tiktok",
+   "old": "Views Indonesia · No Refill · No Drop",
+   "new": "Views Video Indonesia"
+  },
+  {
+   "id": 298,
+   "product": "views-tiktok",
+   "old": "Views Global HQ · Refill 365 Days · No Drop",
+   "new": "Views Video Global HQ"
+  },
+  {
+   "id": 299,
+   "product": "views-tiktok",
+   "old": "Views Global · No Refill · No Drop",
+   "new": "Views Video Global"
+  },
+  {
+   "id": 301,
+   "product": "saves-tiktok",
+   "old": "Saves Global · Refill 30 Days · Max 10K",
+   "new": "Saves Video Global"
+  },
+  {
+   "id": 302,
+   "product": "saves-tiktok",
+   "old": "Saves Global · No Refill",
+   "new": "Saves Video Global"
+  },
+  {
+   "id": 303,
+   "product": "saves-tiktok",
+   "old": "Saves Indonesia Real · No Refill",
+   "new": "Saves Video Indonesia Real"
+  },
+  {
+   "id": 304,
+   "product": "saves-tiktok",
+   "old": "Saves Global HQ · Refill 30 Days",
+   "new": "Saves Video Global HQ"
+  },
+  {
+   "id": 306,
+   "product": "shares-tiktok",
+   "old": "Shares Global HQ · Refill 30 Days · Max 100K",
+   "new": "Share Video Global HQ"
+  },
+  {
+   "id": 307,
+   "product": "shares-tiktok",
+   "old": "Shares Indonesia Real · No Refill",
+   "new": "Share Video Indonesia Real"
+  },
+  {
+   "id": 309,
+   "product": "shares-tiktok",
+   "old": "Shares Global · Refill 30 Days",
+   "new": "Share Video Global"
+  },
+  {
+   "id": 310,
+   "product": "views-youtube",
+   "old": "Views Global HQ · Refill Lifetime",
+   "new": "Views Video Global HQ"
+  },
+  {
+   "id": 311,
+   "product": "views-youtube",
+   "old": "Views Global · No Refill",
+   "new": "Views Video Global"
+  },
+  {
+   "id": 312,
+   "product": "views-youtube",
+   "old": "Views Global · Refill Lifetime",
+   "new": "Views Video Global"
+  },
+  {
+   "id": 313,
+   "product": "views-youtube",
+   "old": "Views Global Real · Refill Lifetime · No Drop",
+   "new": "Views Video Global Real"
+  },
+  {
+   "id": 316,
+   "product": "likes-youtube",
+   "old": "Likes Global · Refill 30 Days · Max 20K",
+   "new": "Likes Video Global"
+  },
+  {
+   "id": 317,
+   "product": "likes-youtube",
+   "old": "Likes Global Real · Refill 365 Days · No Drop",
+   "new": "Likes Video Global Real"
+  },
+  {
+   "id": 319,
+   "product": "likes-youtube",
+   "old": "Likes Global HQ · Refill 30 Days",
+   "new": "Likes Video Global HQ"
+  },
+  {
+   "id": 320,
+   "product": "likes-youtube",
+   "old": "Likes Global Real · Refill 30 Days · No Drop",
+   "new": "Likes Video Global Real"
+  },
+  {
+   "id": 322,
+   "product": "subscriber-youtube",
+   "old": "Subscribers Global HQ · Refill 30 Days · No Drop · Max 10K",
+   "new": "Subscribers Global HQ"
+  },
+  {
+   "id": 324,
+   "product": "followers-facebook",
+   "old": "Followers Global HQ · Refill 60 Days · No Drop",
+   "new": "Followers Global HQ"
+  },
+  {
+   "id": 325,
+   "product": "followers-facebook",
+   "old": "Followers Global HQ · No Refill · Less Drop",
+   "new": "Followers Global HQ"
+  },
+  {
+   "id": 326,
+   "product": "followers-facebook",
+   "old": "Followers Global · Refill 30 Days · No Drop · Max 100K",
+   "new": "Followers Global"
+  },
+  {
+   "id": 327,
+   "product": "followers-facebook",
+   "old": "Followers Global HQ · Refill 30 Days",
+   "new": "Followers Global HQ"
+  },
+  {
+   "id": 329,
+   "product": "followers-facebook",
+   "old": "Followers Global HQ · Refill 365 Days",
+   "new": "Followers Global HQ"
+  },
+  {
+   "id": 330,
+   "product": "likes-facebook",
+   "old": "Likes Global HQ · Refill 30 Days",
+   "new": "Likes Post Global HQ"
+  },
+  {
+   "id": 331,
+   "product": "likes-facebook",
+   "old": "Likes Global · Refill 30 Days · No Drop · Max 30K",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 332,
+   "product": "likes-facebook",
+   "old": "Likes Global HQ · No Refill · Max 1M",
+   "new": "Likes Post Global HQ"
+  },
+  {
+   "id": 336,
+   "product": "views-facebook",
+   "old": "Views Global HQ · No Refill · Max 90M",
+   "new": "Views Video Global HQ"
+  },
+  {
+   "id": 337,
+   "product": "views-facebook",
+   "old": "Views Global HQ · Refill Lifetime",
+   "new": "Views Video Global HQ"
+  },
+  {
+   "id": 340,
+   "product": "views-facebook",
+   "old": "Views Global · Refill Lifetime",
+   "new": "Views Video Global"
+  },
+  {
+   "id": 341,
+   "product": "members-telegram",
+   "old": "Members Global HQ · Refill 90 Days · No Drop",
+   "new": "Members Global HQ"
+  },
+  {
+   "id": 343,
+   "product": "members-telegram",
+   "old": "Members Global · No Refill · Max 100K",
+   "new": "Members Global"
+  },
+  {
+   "id": 344,
+   "product": "members-telegram",
+   "old": "Members Global HQ · No Refill · No Drop · Max 75K",
+   "new": "Members Global HQ"
+  },
+  {
+   "id": 347,
+   "product": "views-telegram",
+   "old": "Views Global HQ · Refill Lifetime · No Drop",
+   "new": "Views Post Global HQ"
+  },
+  {
+   "id": 348,
+   "product": "views-telegram",
+   "old": "Views Global · No Refill · Max 777.777K",
+   "new": "Views Post Global"
+  },
+  {
+   "id": 351,
+   "product": "views-telegram",
+   "old": "Views Global HQ · No Refill · Max 500K",
+   "new": "Views Post Global HQ"
+  },
+  {
+   "id": 354,
+   "product": "reactions-telegram",
+   "old": "Reactions Global · Refill 30 Days · No Drop",
+   "new": "Reactions Global"
+  },
+  {
+   "id": 355,
+   "product": "followers-shopee",
+   "old": "Followers Indonesia · No Refill",
+   "new": "Followers Indonesia"
+  },
+  {
+   "id": 358,
+   "product": "likes-x",
+   "old": "Likes Global HQ · No Refill · Max 2M",
+   "new": "Likes Post Global HQ"
+  },
+  {
+   "id": 359,
+   "product": "likes-x",
+   "old": "Likes Global HQ · Refill 30 Days · Less Drop",
+   "new": "Likes Post Global HQ"
+  },
+  {
+   "id": 364,
+   "product": "views-x",
+   "old": "Views Global HQ · No Refill",
+   "new": "Views Post Global HQ"
+  },
+  {
+   "id": 365,
+   "product": "views-x",
+   "old": "Views Global · No Refill · No Drop · Max 100M · 5M/hari",
+   "new": "Views Post Global"
+  },
+  {
+   "id": 369,
+   "product": "likes-threads",
+   "old": "Likes Indonesia Real · No Refill",
+   "new": "Likes Post Indonesia Real"
+  },
+  {
+   "id": 370,
+   "product": "followers-threads",
+   "old": "Followers Indonesia Real · No Refill",
+   "new": "Followers Indonesia Real"
+  },
+  {
+   "id": 371,
+   "product": "members-whatsapp",
+   "old": "Members Global HQ · No Refill",
+   "new": "Members Channel Global HQ"
+  },
+  {
+   "id": 372,
+   "product": "comments-instagram",
+   "old": "Komentar Indonesia Real · No Refill · Max 1K",
+   "new": "Komentar Indonesia Real"
+  },
+  {
+   "id": 378,
+   "product": "comments-tiktok",
+   "old": "Komentar Indonesia Real · No Refill · Max 5K",
+   "new": "Komentar Indonesia Real"
+  },
+  {
+   "id": 379,
+   "product": "comments-facebook",
+   "old": "Komentar Indonesia Real · No Refill",
+   "new": "Komentar Indonesia Real"
+  },
+  {
+   "id": 380,
+   "product": "comments-facebook",
+   "old": "Komentar Global HQ · No Refill",
+   "new": "Komentar Global HQ"
+  },
+  {
+   "id": 381,
+   "product": "followers-instagram",
+   "old": "Global Real · No Refill · Max 20K",
+   "new": "Followers Global Real"
+  },
+  {
+   "id": 386,
+   "product": "followers-instagram",
+   "old": "Global HQ · No Refill · Max 1M",
+   "new": "Followers Global HQ"
+  },
+  {
+   "id": 387,
+   "product": "followers-instagram",
+   "old": "Global HQ · Refill 60 Days",
+   "new": "Followers Global HQ"
+  },
+  {
+   "id": 388,
+   "product": "followers-instagram",
+   "old": "Indonesia Real · Refill 30 Days · Less Drop",
+   "new": "Followers Indonesia Real"
+  },
+  {
+   "id": 389,
+   "product": "followers-instagram",
+   "old": "Indonesia Real · Refill 35 Days · Less Drop",
+   "new": "Followers Indonesia Real"
+  },
+  {
+   "id": 390,
+   "product": "followers-instagram",
+   "old": "Indonesia HQ · No Refill",
+   "new": "Followers Indonesia HQ"
+  },
+  {
+   "id": 391,
+   "product": "followers-instagram",
+   "old": "Global Ekonomis · No Refill · High Drop",
+   "new": "Followers Global"
+  },
+  {
+   "id": 393,
+   "product": "followers-instagram",
+   "old": "Global HQ · Refill 90 Days · No Drop",
+   "new": "Followers Global HQ"
+  },
+  {
+   "id": 394,
+   "product": "followers-instagram",
+   "old": "Global · Refill 30 Days",
+   "new": "Followers Global"
+  },
+  {
+   "id": 395,
+   "product": "followers-instagram",
+   "old": "Indonesia · No Refill",
+   "new": "Followers Indonesia"
+  },
+  {
+   "id": 397,
+   "product": "likes-instagram",
+   "old": "Global · Refill 90 Days",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 402,
+   "product": "likes-instagram",
+   "old": "Global · No Refill · Less Drop",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 403,
+   "product": "likes-instagram",
+   "old": "Indonesia Real · No Refill",
+   "new": "Likes Post Indonesia Real"
+  },
+  {
+   "id": 404,
+   "product": "likes-instagram",
+   "old": "Global HQ · Refill 90 Days",
+   "new": "Likes Post Global HQ"
+  },
+  {
+   "id": 406,
+   "product": "likes-instagram",
+   "old": "Global Real · Refill 365 Days",
+   "new": "Likes Post Global Real"
+  },
+  {
+   "id": 407,
+   "product": "likes-instagram",
+   "old": "Global Real · No Refill · Less Drop",
+   "new": "Likes Post Global Real"
+  },
+  {
+   "id": 408,
+   "product": "likes-instagram",
+   "old": "Global HQ · Refill 30 Days · Less Drop",
+   "new": "Likes Post Global HQ"
+  },
+  {
+   "id": 410,
+   "product": "likes-instagram",
+   "old": "Global Real · Refill 30 Days · Less Drop · Max 3M",
+   "new": "Likes Post Global Real"
+  },
+  {
+   "id": 420,
+   "product": "repost-instagram",
+   "old": "Indonesia Real · No Refill · Max 1K",
+   "new": "Repost Indonesia Real"
+  },
+  {
+   "id": 421,
+   "product": "repost-instagram",
+   "old": "Global Real · No Refill · Max 10M",
+   "new": "Repost Global Real"
+  },
+  {
+   "id": 426,
+   "product": "followers-tiktok",
+   "old": "Global · No Refill · Max 5M",
+   "new": "Followers Global"
+  },
+  {
+   "id": 429,
+   "product": "followers-tiktok",
+   "old": "Global Real · Refill 30 Days",
+   "new": "Followers Global Real"
+  },
+  {
+   "id": 435,
+   "product": "likes-tiktok",
+   "old": "Global HQ · Refill Lifetime · No Drop",
+   "new": "Likes Video Global HQ"
+  },
+  {
+   "id": 437,
+   "product": "likes-tiktok",
+   "old": "Global · 10 menit · No Refill",
+   "new": "Likes Video Global · 10 menit"
+  },
+  {
+   "id": 440,
+   "product": "likes-tiktok",
+   "old": "Global HQ · Refill 365 Days",
+   "new": "Likes Video Global HQ"
+  },
+  {
+   "id": 443,
+   "product": "views-tiktok",
+   "old": "Global HQ · No Refill · No Drop · Max 100M",
+   "new": "Views Video Global HQ"
+  },
+  {
+   "id": 446,
+   "product": "views-tiktok",
+   "old": "Global Real · Refill 30 Days",
+   "new": "Views Video Global Real"
+  },
+  {
+   "id": 449,
+   "product": "views-tiktok",
+   "old": "Global Ekonomis · 15 menit · No Refill",
+   "new": "Views Video Global · 15 menit"
+  },
+  {
+   "id": 452,
+   "product": "views-youtube",
+   "old": "Global Real · 15 menit · Refill 30 Days · No Drop",
+   "new": "Views Video Global Real · 15 menit"
+  },
+  {
+   "id": 455,
+   "product": "views-shorts-youtube",
+   "old": "Global HQ · Refill 30 Days · No Drop",
+   "new": "Views Shorts Global HQ"
+  },
+  {
+   "id": 458,
+   "product": "likes-youtube",
+   "old": "Global HQ · Refill Lifetime · Less Drop",
+   "new": "Likes Video Global HQ"
+  },
+  {
+   "id": 460,
+   "product": "likes-youtube",
+   "old": "Global · 15 menit · Refill Lifetime",
+   "new": "Likes Video Global · 15 menit"
+  },
+  {
+   "id": 462,
+   "product": "likes-shorts-youtube",
+   "old": "Global · Refill 30 Days · Max 75K",
+   "new": "Likes Shorts Global"
+  },
+  {
+   "id": 464,
+   "product": "followers-facebook",
+   "old": "Global · Refill 7 Days · No Drop",
+   "new": "Followers Global"
+  },
+  {
+   "id": 467,
+   "product": "likes-facebook",
+   "old": "Global HQ · Refill 15 Days",
+   "new": "Likes Post Global HQ"
+  },
+  {
+   "id": 473,
+   "product": "views-facebook",
+   "old": "Global · 3 menit · No Refill",
+   "new": "Views Video Global · 3 menit"
+  },
+  {
+   "id": 474,
+   "product": "views-facebook",
+   "old": "Global · No Refill",
+   "new": "Views Video Global"
+  },
+  {
+   "id": 475,
+   "product": "members-group-facebook",
+   "old": "Global · Refill 30 Days",
+   "new": "Members Grup Global"
+  },
+  {
+   "id": 479,
+   "product": "reactions-telegram",
+   "old": "Global HQ · Refill Lifetime",
+   "new": "Reactions Global HQ"
+  },
+  {
+   "id": 481,
+   "product": "likes-product-shopee",
+   "old": "Indonesia HQ · No Refill",
+   "new": "Likes Produk Indonesia HQ"
+  },
+  {
+   "id": 482,
+   "product": "likes-product-shopee",
+   "old": "Indonesia Ekonomis · No Refill",
+   "new": "Likes Produk Indonesia"
+  },
+  {
+   "id": 483,
+   "product": "likes-x",
+   "old": "Global · Refill 30 Days",
+   "new": "Likes Post Global"
+  },
+  {
+   "id": 486,
+   "product": "repost-x",
+   "old": "Global HQ · Refill 30 Days",
+   "new": "Repost Global HQ"
+  },
+  {
+   "id": 487,
+   "product": "repost-x",
+   "old": "Indonesia · No Refill · Max 50K",
+   "new": "Repost Indonesia"
+  },
+  {
+   "id": 488,
+   "product": "repost-x",
+   "old": "Global HQ · No Refill",
+   "new": "Repost Global HQ"
+  },
+  {
+   "id": 491,
+   "product": "reactions-whatsapp",
+   "old": "Global HQ · No Refill · Max 100K",
+   "new": "Reactions Post Global HQ"
+  },
+  {
+   "id": 492,
+   "product": "views-live-tiktok",
+   "old": "Global HQ · 15 menit · No Refill",
+   "new": "Live Views Global HQ · 15 menit"
+  },
+  {
+   "id": 493,
+   "product": "views-live-tiktok",
+   "old": "Global · 30 menit · No Refill · Max 10K",
+   "new": "Live Views Global · 30 menit"
+  },
+  {
+   "id": 494,
+   "product": "views-live-tiktok",
+   "old": "Global HQ · 45 menit · No Refill",
+   "new": "Live Views Global HQ · 45 menit"
+  },
+  {
+   "id": 495,
+   "product": "views-live-tiktok",
+   "old": "Global HQ · 120 menit · No Refill",
+   "new": "Live Views Global HQ · 120 menit"
+  },
+  {
+   "id": 496,
+   "product": "views-live-tiktok",
+   "old": "Global HQ · 30 menit · No Refill",
+   "new": "Live Views Global HQ · 30 menit"
+  },
+  {
+   "id": 497,
+   "product": "views-live-tiktok",
+   "old": "Global · 180 menit · No Refill",
+   "new": "Live Views Global · 180 menit"
+  },
+  {
+   "id": 498,
+   "product": "views-live-tiktok",
+   "old": "Global HQ · 180 menit · No Refill",
+   "new": "Live Views Global HQ · 180 menit"
+  },
+  {
+   "id": 500,
+   "product": "likes-live-tiktok",
+   "old": "Global · No Refill · Max 100K",
+   "new": "Live Likes Global"
+  },
+  {
+   "id": 502,
+   "product": "views-live-youtube",
+   "old": "Global HQ · 30 menit · No Refill · Max 5M",
+   "new": "Live Views Global HQ · 30 menit"
+  },
+  {
+   "id": 504,
+   "product": "views-live-youtube",
+   "old": "Global HQ · 60 menit · No Refill · Max 5M",
+   "new": "Live Views Global HQ · 60 menit"
+  },
+  {
+   "id": 505,
+   "product": "views-live-youtube",
+   "old": "Global HQ · 120 menit · No Refill",
+   "new": "Live Views Global HQ · 120 menit"
+  },
+  {
+   "id": 506,
+   "product": "views-live-youtube",
+   "old": "Global · 90 menit · No Refill",
+   "new": "Live Views Global · 90 menit"
+  },
+  {
+   "id": 507,
+   "product": "views-live-youtube",
+   "old": "Global · No Refill",
+   "new": "Live Views Global"
+  },
+  {
+   "id": 508,
+   "product": "views-live-youtube",
+   "old": "Global HQ · 15 menit · No Refill",
+   "new": "Live Views Global HQ · 15 menit"
+  },
+  {
+   "id": 510,
+   "product": "views-live-facebook",
+   "old": "Global · 60 menit · No Refill",
+   "new": "Live Views Global · 60 menit"
+  },
+  {
+   "id": 511,
+   "product": "views-live-facebook",
+   "old": "Global · 180 menit · No Refill",
+   "new": "Live Views Global · 180 menit"
+  },
+  {
+   "id": 512,
+   "product": "views-live-facebook",
+   "old": "Global · 90 menit · No Refill",
+   "new": "Live Views Global · 90 menit"
+  },
+  {
+   "id": 513,
+   "product": "views-live-facebook",
+   "old": "Global · 120 menit · No Refill · Max 20K",
+   "new": "Live Views Global · 120 menit"
+  },
+  {
+   "id": 514,
+   "product": "views-live-facebook",
+   "old": "Global · 300 menit · No Refill · Max 30K",
+   "new": "Live Views Global · 300 menit"
+  },
+  {
+   "id": 516,
+   "product": "views-live-facebook",
+   "old": "Global · 240 menit · No Refill",
+   "new": "Live Views Global · 240 menit"
+  },
+  {
+   "id": 518,
+   "product": "views-live-shopee",
+   "old": "Global Ekonomis · 120 menit · No Refill",
+   "new": "Live Views Global · 120 menit"
+  },
+  {
+   "id": 519,
+   "product": "views-live-shopee",
+   "old": "Global · 180 menit · No Refill",
+   "new": "Live Views Global · 180 menit"
+  },
+  {
+   "id": 520,
+   "product": "views-live-shopee",
+   "old": "Global Ekonomis · No Refill",
+   "new": "Live Views Global"
+  },
+  {
+   "id": 521,
+   "product": "views-live-shopee",
+   "old": "Global Ekonomis · 90 menit · No Refill",
+   "new": "Live Views Global · 90 menit"
+  },
+  {
+   "id": 522,
+   "product": "views-live-shopee",
+   "old": "Global Ekonomis · 360 menit · No Refill",
+   "new": "Live Views Global · 360 menit"
+  },
+  {
+   "id": 523,
+   "product": "views-live-shopee",
+   "old": "Global Ekonomis · 15 menit · No Refill",
+   "new": "Live Views Global · 15 menit"
+  },
+  {
+   "id": 524,
+   "product": "views-live-shopee",
+   "old": "Global Ekonomis · 30 menit · No Refill",
+   "new": "Live Views Global · 30 menit"
+  },
+  {
+   "id": 525,
+   "product": "views-live-shopee",
+   "old": "Global Ekonomis · 60 menit · No Refill",
+   "new": "Live Views Global · 60 menit"
+  },
+  {
+   "id": 527,
+   "product": "watchtime-tiktok",
+   "old": "Global HQ · No Refill · Max 100K",
+   "new": "Watchtime Views Global HQ"
+  },
+  {
+   "id": 528,
+   "product": "comments-custom-instagram",
+   "old": "Indonesia · No Refill",
+   "new": "Komentar Custom Indonesia"
+  },
+  {
+   "id": 529,
+   "product": "comments-custom-instagram",
+   "old": "Indonesia Real · No Refill · Max 200 · 100/hari · Opsi 1",
+   "new": "Komentar Custom Indonesia Real"
+  },
+  {
+   "id": 531,
+   "product": "comments-custom-instagram",
+   "old": "Global · No Refill",
+   "new": "Komentar Custom Global"
+  },
+  {
+   "id": 532,
+   "product": "comments-custom-instagram",
+   "old": "Indonesia HQ · No Refill",
+   "new": "Komentar Custom Indonesia HQ"
+  },
+  {
+   "id": 533,
+   "product": "comments-custom-instagram",
+   "old": "Global HQ · No Refill",
+   "new": "Komentar Custom Global HQ"
+  },
+  {
+   "id": 534,
+   "product": "comments-custom-tiktok",
+   "old": "Indonesia Real · No Refill",
+   "new": "Komentar Custom Indonesia Real"
+  },
+  {
+   "id": 535,
+   "product": "comments-custom-youtube",
+   "old": "Indonesia Real · No Refill",
+   "new": "Komentar Custom Indonesia Real"
+  },
+  {
+   "id": 536,
+   "product": "comments-custom-youtube",
+   "old": "Global HQ · No Refill · No Drop · Max 200 · 90/hari",
+   "new": "Komentar Custom Global HQ"
+  },
+  {
+   "id": 537,
+   "product": "comments-custom-youtube",
+   "old": "Global · Refill 30 Days",
+   "new": "Komentar Custom Global"
+  },
+  {
+   "id": 539,
+   "product": "comments-custom-youtube",
+   "old": "Global · No Refill",
+   "new": "Komentar Custom Global"
+  },
+  {
+   "id": 542,
+   "product": "comments-custom-facebook",
+   "old": "Global HQ · No Refill · No Drop",
+   "new": "Komentar Custom Global HQ"
+  }
+ ],
+ "deactivate": [
+  {
+   "id": 37,
+   "product": "followers-instagram",
+   "old": "Followers Global · Refill 30 Days"
+  },
+  {
+   "id": 41,
+   "product": "likes-tiktok",
+   "old": "Likes Global · Ekonomis"
+  },
+  {
+   "id": 51,
+   "product": "likes-instagram",
+   "old": "Likes Global · Refill 365 Days"
+  },
+  {
+   "id": 56,
+   "product": "views-reels-instagram",
+   "old": "Tayangan Global · Ekonomis"
+  },
+  {
+   "id": 58,
+   "product": "views-reels-instagram",
+   "old": "Tayangan Global · Ekonomis · Mulai 100"
+  },
+  {
+   "id": 60,
+   "product": "saves-instagram",
+   "old": "Saves Global · Kelipatan 100"
+  },
+  {
+   "id": 62,
+   "product": "saves-instagram",
+   "old": "Saves Global · Mulai 20"
+  },
+  {
+   "id": 68,
+   "product": "followers-tiktok",
+   "old": "Followers Global · Ekonomis"
+  },
+  {
+   "id": 74,
+   "product": "followers-tiktok",
+   "old": "Followers Indonesia · Ekonomis · Mulai 100"
+  },
+  {
+   "id": 82,
+   "product": "views-tiktok",
+   "old": "Tayangan Global · Ekonomis"
+  },
+  {
+   "id": 84,
+   "product": "views-tiktok",
+   "old": "Tayangan Global · Refill 30 Days · Mulai 100"
+  },
+  {
+   "id": 85,
+   "product": "views-tiktok",
+   "old": "Tayangan Global · Ekonomis · Mulai 100"
+  },
+  {
+   "id": 88,
+   "product": "shares-tiktok",
+   "old": "Share Global · Ekonomis · Mulai 10"
+  },
+  {
+   "id": 92,
+   "product": "saves-tiktok",
+   "old": "Saves Global · Ekonomis · Mulai 100"
+  },
+  {
+   "id": 94,
+   "product": "views-youtube",
+   "old": "Tayangan Global · Mulai 100"
+  },
+  {
+   "id": 100,
+   "product": "likes-youtube",
+   "old": "Likes Global · Ekonomis · Mulai 10"
+  },
+  {
+   "id": 104,
+   "product": "followers-facebook",
+   "old": "Followers Global · Refill 30 Days"
+  },
+  {
+   "id": 109,
+   "product": "views-facebook",
+   "old": "Tayangan Global · Ekonomis"
+  },
+  {
+   "id": 110,
+   "product": "views-facebook",
+   "old": "Tayangan Global · Ekonomis · Mulai 500"
+  },
+  {
+   "id": 122,
+   "product": "likes-threads",
+   "old": "Likes Global · Ekonomis · Mulai 10"
+  },
+  {
+   "id": 129,
+   "product": "likes-x",
+   "old": "Likes Global · Refill 30 Days"
+  },
+  {
+   "id": 133,
+   "product": "likes-x",
+   "old": "Likes Global · Ekonomis · Mulai 100"
+  },
+  {
+   "id": 134,
+   "product": "views-x",
+   "old": "Tayangan video X · Global"
+  },
+  {
+   "id": 136,
+   "product": "views-x",
+   "old": "Tayangan postingan X · Global"
+  },
+  {
+   "id": 154,
+   "product": "followers-shopee",
+   "old": "Followers Indonesia · Ekonomis · Mulai 1.000"
+  },
+  {
+   "id": 162,
+   "product": "followers-twitch",
+   "old": "Followers Global · Ekonomis"
+  },
+  {
+   "id": 209,
+   "product": "likes-product-shopee",
+   "old": "Likes produk Indonesia · No Refill"
+  },
+  {
+   "id": 250,
+   "product": "views-telegram",
+   "old": "Global · No Refill"
+  },
+  {
+   "id": 257,
+   "product": "followers-instagram",
+   "old": "Followers Global Real · No Refill"
+  },
+  {
+   "id": 260,
+   "product": "followers-instagram",
+   "old": "Followers Indonesia Real · Refill 30 Days · Less Drop"
+  },
+  {
+   "id": 264,
+   "product": "likes-instagram",
+   "old": "Likes Global Real · No Refill · Less Drop"
+  },
+  {
+   "id": 265,
+   "product": "likes-instagram",
+   "old": "Likes Indonesia · No Refill · Max 500"
+  },
+  {
+   "id": 266,
+   "product": "likes-instagram",
+   "old": "Likes Indonesia · No Refill · Max 1.5K"
+  },
+  {
+   "id": 267,
+   "product": "likes-instagram",
+   "old": "Likes Global HQ · Refill 365 Days · No Drop"
+  },
+  {
+   "id": 271,
+   "product": "views-reels-instagram",
+   "old": "Views Global · No Refill"
+  },
+  {
+   "id": 275,
+   "product": "saves-instagram",
+   "old": "Saves Global Ekonomis · No Refill · Max 100K"
+  },
+  {
+   "id": 276,
+   "product": "saves-instagram",
+   "old": "Saves Global · No Refill · Max 100K"
+  },
+  {
+   "id": 279,
+   "product": "saves-instagram",
+   "old": "Saves Global Ekonomis · No Refill · Max 1M"
+  },
+  {
+   "id": 283,
+   "product": "followers-tiktok",
+   "old": "Followers Global Real · No Refill · Less Drop · Max 50K"
+  },
+  {
+   "id": 284,
+   "product": "followers-tiktok",
+   "old": "Followers Global Real · No Refill · Less Drop · Max 5M"
+  },
+  {
+   "id": 294,
+   "product": "views-tiktok",
+   "old": "Views Global HQ · No Refill"
+  },
+  {
+   "id": 300,
+   "product": "saves-tiktok",
+   "old": "Saves Global · Refill 30 Days · Max 100K"
+  },
+  {
+   "id": 305,
+   "product": "saves-tiktok",
+   "old": "Saves Global · Refill 30 Days · Max 2M"
+  },
+  {
+   "id": 308,
+   "product": "shares-tiktok",
+   "old": "Shares Global HQ · Refill 30 Days · Max 100M"
+  },
+  {
+   "id": 314,
+   "product": "views-youtube",
+   "old": "Views Global Real · Refill Lifetime · Max 5M"
+  },
+  {
+   "id": 315,
+   "product": "views-youtube",
+   "old": "Views Global Real · Refill Lifetime · Max 100M"
+  },
+  {
+   "id": 318,
+   "product": "likes-youtube",
+   "old": "Likes Global · No Refill"
+  },
+  {
+   "id": 321,
+   "product": "likes-youtube",
+   "old": "Likes Global · Refill 30 Days · Max 50K"
+  },
+  {
+   "id": 323,
+   "product": "subscriber-youtube",
+   "old": "Subscribers Global HQ · Refill 30 Days · No Drop · Max 30K"
+  },
+  {
+   "id": 328,
+   "product": "followers-facebook",
+   "old": "Followers Global · Refill 30 Days · No Drop · Max 1M"
+  },
+  {
+   "id": 333,
+   "product": "likes-facebook",
+   "old": "Likes Global · Refill 30 Days · No Drop · Max 500K"
+  },
+  {
+   "id": 334,
+   "product": "likes-facebook",
+   "old": "Likes Global HQ · No Refill · Max 500K"
+  },
+  {
+   "id": 335,
+   "product": "likes-facebook",
+   "old": "Likes Global · No Refill"
+  },
+  {
+   "id": 338,
+   "product": "views-facebook",
+   "old": "Views Global HQ · No Refill · Max 100M"
+  },
+  {
+   "id": 339,
+   "product": "views-facebook",
+   "old": "Views Global · No Refill"
+  },
+  {
+   "id": 342,
+   "product": "members-telegram",
+   "old": "Members Global · No Refill · No Drop"
+  },
+  {
+   "id": 345,
+   "product": "members-telegram",
+   "old": "Members Global · No Refill · Max 200K"
+  },
+  {
+   "id": 346,
+   "product": "members-telegram",
+   "old": "Members Global HQ · No Refill · No Drop · Max 100K"
+  },
+  {
+   "id": 349,
+   "product": "views-telegram",
+   "old": "Views Global · No Refill · Max 10M"
+  },
+  {
+   "id": 350,
+   "product": "views-telegram",
+   "old": "Views Global HQ · No Refill · No Drop"
+  },
+  {
+   "id": 352,
+   "product": "views-telegram",
+   "old": "Views Global HQ · No Refill · Max 150K"
+  },
+  {
+   "id": 353,
+   "product": "reactions-telegram",
+   "old": "Reactions Global HQ · Refill Lifetime"
+  },
+  {
+   "id": 356,
+   "product": "followers-shopee",
+   "old": "Followers Indonesia · No Refill · No Drop · Max 50K"
+  },
+  {
+   "id": 357,
+   "product": "followers-shopee",
+   "old": "Followers Indonesia · No Refill · No Drop · Max 1K"
+  },
+  {
+   "id": 360,
+   "product": "likes-x",
+   "old": "Likes Global HQ · No Refill · Max 5K"
+  },
+  {
+   "id": 361,
+   "product": "likes-x",
+   "old": "Likes Global HQ · Refill 30 Days · No Drop"
+  },
+  {
+   "id": 362,
+   "product": "likes-x",
+   "old": "Likes Global HQ · Refill 30 Days"
+  },
+  {
+   "id": 363,
+   "product": "likes-x",
+   "old": "Likes Global · No Refill"
+  },
+  {
+   "id": 366,
+   "product": "views-x",
+   "old": "Views Global · No Refill"
+  },
+  {
+   "id": 367,
+   "product": "views-x",
+   "old": "Views Global · No Refill · No Drop · Max 50M"
+  },
+  {
+   "id": 368,
+   "product": "views-x",
+   "old": "Views Global · No Refill · No Drop · Max 100M · 1M/hari"
+  },
+  {
+   "id": 373,
+   "product": "comments-instagram",
+   "old": "Komentar Indonesia Real · No Refill · Max 1.2K"
+  },
+  {
+   "id": 374,
+   "product": "comments-instagram",
+   "old": "Komentar Indonesia Real · No Refill · Max 2K"
+  },
+  {
+   "id": 375,
+   "product": "comments-instagram",
+   "old": "Komentar Indonesia Real · No Refill · Max 50K"
+  },
+  {
+   "id": 376,
+   "product": "comments-tiktok",
+   "old": "Komentar Indonesia Real · No Refill · Max 20K"
+  },
+  {
+   "id": 377,
+   "product": "comments-tiktok",
+   "old": "Komentar Indonesia Real · No Refill · Max 100"
+  },
+  {
+   "id": 382,
+   "product": "followers-instagram",
+   "old": "Indonesia Real · No Refill"
+  },
+  {
+   "id": 383,
+   "product": "followers-instagram",
+   "old": "Indonesia Real · Refill 30 Days"
+  },
+  {
+   "id": 384,
+   "product": "followers-instagram",
+   "old": "Global HQ · No Refill · Max 100K"
+  },
+  {
+   "id": 385,
+   "product": "followers-instagram",
+   "old": "Global Real · No Refill · Max 100K"
+  },
+  {
+   "id": 392,
+   "product": "followers-instagram",
+   "old": "Global HQ · Refill 60 Days · No Drop"
+  },
+  {
+   "id": 396,
+   "product": "likes-instagram",
+   "old": "Global HQ · Refill 30 Days"
+  },
+  {
+   "id": 398,
+   "product": "likes-instagram",
+   "old": "Global HQ · No Refill · Less Drop · Max 5M"
+  },
+  {
+   "id": 399,
+   "product": "likes-instagram",
+   "old": "Global HQ · No Refill · Less Drop · Max 1M"
+  },
+  {
+   "id": 400,
+   "product": "likes-instagram",
+   "old": "Global Real · No Refill · No Drop"
+  },
+  {
+   "id": 401,
+   "product": "likes-instagram",
+   "old": "Global Real · Refill 30 Days · Less Drop · Max 1M"
+  },
+  {
+   "id": 405,
+   "product": "likes-instagram",
+   "old": "Global HQ · Refill 30 Days · No Drop"
+  },
+  {
+   "id": 409,
+   "product": "likes-instagram",
+   "old": "Indonesia · No Refill"
+  },
+  {
+   "id": 411,
+   "product": "views-reels-instagram",
+   "old": "Global · No Refill"
+  },
+  {
+   "id": 412,
+   "product": "views-reels-instagram",
+   "old": "Global HQ · No Refill"
+  },
+  {
+   "id": 413,
+   "product": "views-reels-instagram",
+   "old": "Global Ekonomis · No Refill"
+  },
+  {
+   "id": 414,
+   "product": "views-reels-instagram",
+   "old": "Indonesia HQ · No Refill"
+  },
+  {
+   "id": 415,
+   "product": "saves-instagram",
+   "old": "Global HQ · No Refill · Max 400K"
+  },
+  {
+   "id": 416,
+   "product": "saves-instagram",
+   "old": "Global · No Refill"
+  },
+  {
+   "id": 417,
+   "product": "saves-instagram",
+   "old": "Global HQ · No Refill · Max 1M"
+  },
+  {
+   "id": 418,
+   "product": "shares-instagram",
+   "old": "Global HQ · No Refill"
+  },
+  {
+   "id": 419,
+   "product": "repost-instagram",
+   "old": "Global Real · No Refill · Max 10K"
+  },
+  {
+   "id": 422,
+   "product": "repost-instagram",
+   "old": "Indonesia Real · No Refill · Max 10K"
+  },
+  {
+   "id": 423,
+   "product": "visits-instagram",
+   "old": "Global · No Refill"
+  },
+  {
+   "id": 424,
+   "product": "followers-tiktok",
+   "old": "Global Real · No Refill · Less Drop · Max 1M"
+  },
+  {
+   "id": 425,
+   "product": "followers-tiktok",
+   "old": "Global Real · No Refill · Max 1M"
+  },
+  {
+   "id": 427,
+   "product": "followers-tiktok",
+   "old": "Global Real · No Refill · Max 5M"
+  },
+  {
+   "id": 428,
+   "product": "followers-tiktok",
+   "old": "Global · No Refill · Max 100K"
+  },
+  {
+   "id": 430,
+   "product": "followers-tiktok",
+   "old": "Global Real · Refill 365 Days · Less Drop · Max 500K"
+  },
+  {
+   "id": 431,
+   "product": "followers-tiktok",
+   "old": "Global · No Refill · Max 500K"
+  },
+  {
+   "id": 432,
+   "product": "followers-tiktok",
+   "old": "Global Real · No Refill · Less Drop · Max 10M"
+  },
+  {
+   "id": 433,
+   "product": "followers-tiktok",
+   "old": "Global Real · No Refill · Less Drop · Max 5M"
+  },
+  {
+   "id": 434,
+   "product": "followers-tiktok",
+   "old": "Global Real · Refill 365 Days · Less Drop · Max 5M"
+  },
+  {
+   "id": 436,
+   "product": "likes-tiktok",
+   "old": "Global Real · Refill 30 Days"
+  },
+  {
+   "id": 438,
+   "product": "likes-tiktok",
+   "old": "Global Ekonomis · No Refill · No Drop"
+  },
+  {
+   "id": 439,
+   "product": "likes-tiktok",
+   "old": "Global · No Refill"
+  },
+  {
+   "id": 441,
+   "product": "views-tiktok",
+   "old": "Global HQ · No Refill"
+  },
+  {
+   "id": 442,
+   "product": "views-tiktok",
+   "old": "Global Ekonomis · No Refill"
+  },
+  {
+   "id": 444,
+   "product": "views-tiktok",
+   "old": "Global · No Refill · Max 99.999K"
+  },
+  {
+   "id": 445,
+   "product": "views-tiktok",
+   "old": "Global HQ · Refill 30 Days"
+  },
+  {
+   "id": 447,
+   "product": "views-tiktok",
+   "old": "Global HQ · No Refill · No Drop · Max 10M"
+  },
+  {
+   "id": 448,
+   "product": "views-tiktok",
+   "old": "Global · No Refill · Max 100M"
+  },
+  {
+   "id": 450,
+   "product": "views-tiktok",
+   "old": "Global · No Refill · Max 5.3M"
+  },
+  {
+   "id": 451,
+   "product": "views-youtube",
+   "old": "Global HQ · Refill Lifetime"
+  },
+  {
+   "id": 453,
+   "product": "views-youtube",
+   "old": "Global · Refill Lifetime"
+  },
+  {
+   "id": 454,
+   "product": "views-youtube",
+   "old": "Global Real · Refill Lifetime · No Drop"
+  },
+  {
+   "id": 456,
+   "product": "likes-youtube",
+   "old": "Global · No Refill · Max 1M"
+  },
+  {
+   "id": 457,
+   "product": "likes-youtube",
+   "old": "Global HQ · Refill 30 Days · No Drop"
+  },
+  {
+   "id": 459,
+   "product": "likes-youtube",
+   "old": "Global · No Refill · Max 25K"
+  },
+  {
+   "id": 461,
+   "product": "likes-youtube",
+   "old": "Global · No Refill · No Drop"
+  },
+  {
+   "id": 463,
+   "product": "likes-shorts-youtube",
+   "old": "Global · Refill 30 Days · Max 5K"
+  },
+  {
+   "id": 465,
+   "product": "likes-facebook",
+   "old": "Global HQ · No Refill · Max 500K"
+  },
+  {
+   "id": 466,
+   "product": "likes-facebook",
+   "old": "Global · No Refill · Max 20K"
+  },
+  {
+   "id": 468,
+   "product": "likes-facebook",
+   "old": "Global Ekonomis · No Refill"
+  },
+  {
+   "id": 469,
+   "product": "likes-facebook",
+   "old": "Global HQ · No Refill · Max 100K"
+  },
+  {
+   "id": 470,
+   "product": "likes-facebook",
+   "old": "Global · Refill 30 Days"
+  },
+  {
+   "id": 471,
+   "product": "likes-facebook",
+   "old": "Global · No Refill · Max 100K"
+  },
+  {
+   "id": 472,
+   "product": "views-facebook",
+   "old": "Global HQ · No Refill"
+  },
+  {
+   "id": 476,
+   "product": "members-telegram",
+   "old": "Global HQ · Refill 90 Days · No Drop · Max 100K"
+  },
+  {
+   "id": 477,
+   "product": "members-telegram",
+   "old": "Global HQ · Refill 90 Days · No Drop · Max 500K"
+  },
+  {
+   "id": 478,
+   "product": "views-telegram",
+   "old": "Global · No Refill"
+  },
+  {
+   "id": 480,
+   "product": "followers-shopee",
+   "old": "Indonesia · No Refill"
+  },
+  {
+   "id": 484,
+   "product": "views-x",
+   "old": "Global HQ · No Refill"
+  },
+  {
+   "id": 485,
+   "product": "views-x",
+   "old": "Global · No Refill"
+  },
+  {
+   "id": 489,
+   "product": "repost-x",
+   "old": "Indonesia · No Refill · Max 10K"
+  },
+  {
+   "id": 490,
+   "product": "reactions-whatsapp",
+   "old": "Global HQ · No Refill · Max 50K"
+  },
+  {
+   "id": 499,
+   "product": "views-live-tiktok",
+   "old": "Global · 30 menit · No Refill · Max 100K"
+  },
+  {
+   "id": 501,
+   "product": "likes-live-tiktok",
+   "old": "Global · No Refill · Max 100M"
+  },
+  {
+   "id": 503,
+   "product": "views-live-youtube",
+   "old": "Global HQ · 30 menit · No Refill · Max 600K"
+  },
+  {
+   "id": 509,
+   "product": "views-live-youtube",
+   "old": "Global HQ · 60 menit · No Refill · Max 600K"
+  },
+  {
+   "id": 515,
+   "product": "views-live-facebook",
+   "old": "Global · 120 menit · No Refill · Max 30K"
+  },
+  {
+   "id": 517,
+   "product": "views-live-facebook",
+   "old": "Global · 300 menit · No Refill · Max 20K"
+  },
+  {
+   "id": 526,
+   "product": "watchtime-tiktok",
+   "old": "Global HQ · No Refill · Max 1M"
+  },
+  {
+   "id": 530,
+   "product": "comments-custom-instagram",
+   "old": "Indonesia Real · No Refill · Max 200 · 100/hari · Opsi 2"
+  },
+  {
+   "id": 538,
+   "product": "comments-custom-youtube",
+   "old": "Global HQ · No Refill"
+  },
+  {
+   "id": 540,
+   "product": "comments-custom-youtube",
+   "old": "Global HQ · No Refill · No Drop · Max 200 · 1K/hari"
+  }
+ ]
+}

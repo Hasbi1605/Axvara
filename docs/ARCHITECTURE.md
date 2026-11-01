@@ -3209,6 +3209,9 @@ tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
   source providersmm → 200 `{ignored:"providersmm_retired"}` tanpa tulis D1;
   overview admin hanya IndoSMM.
 
+### 16.10b Nama layanan Pedia + perapian — migrasi 0089 (2 November 2026)
+Data-only: UPDATE `pedia_tiers.public_name`/`is_active` per id dengan guard `COALESCE(public_name,label_note)` = nama ekspor, idempoten, tanpa DELETE/remap supplier. Order lama memakai snapshot. Katalog publik menambah `price_ref {qty,price}` khusus produk `metric='comments'` (jumlah acuan 10 bila valid, selain itu minimum), dihitung `computePediaPrice` yang sama dengan quote. Generator/manifest: `scripts/curate-pedia-names-20261102.py`, `src/lib/pedia/names-20261102.json`.
+
 ### 16.10a FK tier pesanan Pedia — migrasi 0084 (1 November 2026)
 Rebuild 0062 me-rename `pedia_tiers` ke arsip; SQLite/D1 ikut menulis ulang FK
 `pedia_order_items.tier_id` ke `pedia_tiers_archive0062_prev2` (36 tier lama).

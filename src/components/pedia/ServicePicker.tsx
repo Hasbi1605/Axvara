@@ -8,19 +8,14 @@ import { DROP_LABEL, refillLabel } from "@/lib/pedia/terms";
 const rupiah = (v: number) => `Rp${v.toLocaleString("id-ID")}`;
 const REGION_LABEL: Record<string, string> = { indonesia: "Indonesia", global: "Global", mixed: "Campuran" };
 export function serviceDisplayName(productName: string, t: PediaCatalogTier) { return t.public_name ?? t.label_note ?? productName; }
-// 2026-11-01 (owner): nama di daftar dibuat pendek. Wilayah, Refill/No Refill dan
-// label drop sudah tampil sebagai chip, jadi tidak diulang di nama. Nama lengkap
-// tetap dipakai di ringkasan/snapshot pesanan.
+// 2026-11-02 (owner): nama seragam [Metrik] [Wilayah] [Kualitas], mis.
+// "Followers Indonesia Real", "Views Reels Global". Refill/No Refill dan label
+// drop hanya tampil sebagai chip; sisa label itu pada nama lama dibuang.
 const CHIP_PART = /^(?:Refill\s+(?:\d+\s+(?:hari|Days)|Lifetime)|No Refill|Tanpa refill|No Drop|Less Drop|High Drop)$/i;
-export function shortServiceName(productName: string, metric: string, t: PediaCatalogTier) {
+export function shortServiceName(productName: string, _metric: string, t: PediaCatalogTier) {
   const full = serviceDisplayName(productName, t);
-  const parts = full.split(/\s*·\s*/).filter((p) => !CHIP_PART.test(p.trim()));
-  const lead = (parts[0] ?? "").replace(new RegExp(`^(?:${metric}|${productName.split(" ")[0]})\\s+`, "i"), "");
-  const short = [lead, ...parts.slice(1)].filter(Boolean).join(" · ").trim();
+  const short = full.split(/\s*·\s*/).filter((p) => !CHIP_PART.test(p.trim())).join(" · ").trim();
   return short || full;
-}
-function comparisonName(productName: string, t: PediaCatalogTier) {
-  return serviceDisplayName(productName, t).replace(/\s*·\s*Refill\s+\d+\s+(hari|Days)\s*$/i, "");
 }
 // 2026-11-01 (owner): istilah SMM dipertahankan (Refill 30 Days, No Refill, No Drop, …).
 const DROP_CHIP: Record<string, string> = { no_drop: "border-emerald-300/25 bg-emerald-300/10 text-emerald-200", less_drop: "border-amber-300/25 bg-amber-300/10 text-amber-200", high_drop: "border-red-300/30 bg-red-400/10 text-red-200" };
@@ -79,17 +74,8 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tiers, category, validQuantity, qty, prices]);
   const picked = tiers.find((t) => t.id === tierId);
-  const stripped = tiers.map((t) => comparisonName(product.name, t));
-  void stripped;
-  const shorts = tiers.map((t) => shortServiceName(product.name, product.metric, t));
-  // Nama pendek kembar → nama lengkap agar tetap bisa dibedakan.
-  const withRefill = tiers.map((t, i) => `${shorts[i]} · ${refillLabel(t.refill_days)}`);
-  const nameOf = (t: PediaCatalogTier) => {
-    const i = tiers.indexOf(t), n = shortServiceName(product.name, product.metric, t);
-    if (shorts.filter((x) => x === n).length <= 1) return n;
-    const r = i >= 0 ? withRefill[i] : `${n} · ${refillLabel(t.refill_days)}`;
-    return withRefill.filter((x) => x === r).length <= 1 ? r : comparisonName(product.name, t);
-  };
+  // Nama yang sama dibedakan oleh chip (Refill N Days/drop) di kartu yang sama.
+  const nameOf = (t: PediaCatalogTier) => shortServiceName(product.name, product.metric, t);
   const compact = !expanded && !!picked && !compare;
   const visible = compact && picked ? [picked] : expanded || showAll ? [...relevant] : relevant.slice(0, 3);
   if (!compact && picked && relevant.includes(picked) && !visible.includes(picked)) visible.push(picked);
@@ -130,8 +116,9 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
         const name = nameOf(t);
         const reason = qty != null && !valid ? incompatReason(product, t, qty) : "";
         const selected = t.id === tierId;
-        const priceText = qty != null ? !valid ? "Jumlah tidak tersedia" : exact != null ? rupiah(exact) : pricesSettled ? "Harga belum tersedia" : "Memeriksa harga…" : benchmarkValid && t.price_per_1k != null && t.price_per_1k > 0 ? rupiah(t.price_per_1k) : cheapest ? `Mulai ${rupiah(cheapest.price)}` : "Lihat harga";
-        const priceNote = qty != null && valid ? `untuk ${qty.toLocaleString("id-ID")}` : qty != null ? "Ubah jumlah" : benchmarkValid && t.price_per_1k != null && t.price_per_1k > 0 ? "per 1.000" : cheapest ? `minimum ${cheapest.qty.toLocaleString("id-ID")}` : `Min. ${(t.min_qty ?? 1).toLocaleString("id-ID")}`;
+        const ref = qty == null && t.price_ref && t.price_ref.price > 0 ? t.price_ref : null;
+        const priceText = ref ? rupiah(ref.price) : qty != null ? !valid ? "Jumlah tidak tersedia" : exact != null ? rupiah(exact) : pricesSettled ? "Harga belum tersedia" : "Memeriksa harga…" : benchmarkValid && t.price_per_1k != null && t.price_per_1k > 0 ? rupiah(t.price_per_1k) : cheapest ? `Mulai ${rupiah(cheapest.price)}` : "Lihat harga";
+        const priceNote = ref ? `untuk ${ref.qty.toLocaleString("id-ID")} komentar` : qty != null && valid ? `untuk ${qty.toLocaleString("id-ID")}` : qty != null ? "Ubah jumlah" : benchmarkValid && t.price_per_1k != null && t.price_per_1k > 0 ? "per 1.000" : cheapest ? `minimum ${cheapest.qty.toLocaleString("id-ID")}` : `Min. ${(t.min_qty ?? 1).toLocaleString("id-ID")}`;
         return <Fragment key={t.id}>{showGroup && <p className={`${index ? "pt-3" : ""} text-[12px] font-semibold uppercase tracking-[0.08em] text-white/50`}>{group}</p>}<label style={{ animationDelay: `${Math.min(index, 6) * 35}ms` }} className={`pedia-service-row pedia-rise ax-liquid relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 rounded-[14px] px-3.5 py-3 transition sm:flex sm:items-center duration-200 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF] ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:-translate-y-0.5"} ${selected ? "pedia-tier-selected" : "ax-glass-card ax-glass-cyan"}`}>
           <input type="radio" name="pedia-tier" value={t.id} checked={selected} disabled={disabled} onChange={() => { if (disabled || locked) return; onSelect(t.id); setCompare(false); setShowAll(false); }} className="sr-only" aria-describedby={reason ? `pedia-tier-${t.id}-reason` : undefined} />
           <span aria-hidden="true" className={`row-start-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${selected ? "border-[#00E5FF] bg-[#00E5FF] text-[#080C1E]" : "border-white/40"}`}>{selected && <Check size={12} strokeWidth={3} />}</span>

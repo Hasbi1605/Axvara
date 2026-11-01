@@ -346,6 +346,7 @@ order lama di bawah tetap berlaku untuk jalur yang kompatibel.
 - Statistik supplier dari alat publik IndoSMM bukan API resmi dan bukan uji kualitas AXVARA. Katalog baru lewat manifest + generator; jangan mengedit migrasi 0086 manual.
 - Komentar custom: tier `input_kind='comments'` hanya boleh dipetakan ke layanan tipe "Custom Comments"; jangan menjual layanan Custom Comments tanpa kolom komentar.
 - White label 100%: teks yang dilihat pembeli Pedia tidak boleh menyebut supplier/IndoSMM/ProviderSMM. Teks baru wajib lolos `whiteLabel()`/test leak; admin boleh menyebut IndoSMM.
+- Nama layanan (2 November): [Metrik] [Wilayah] [Kualitas] (+ " · keterangan" bermakna); jangan memasukkan Refill/drop/"Ekonomis"/"Max N" ke nama karena sudah chip. Kurasi berikutnya satu layanan per (wilayah, masa refill, kualitas, keterangan); migrasi data memakai guard nama lama.
 - Spec: `docs/pedia/indosmm-catalog-refill-2026-11-01.md`.
 
 ### Pedia IndoSMM 20 Oktober 2026

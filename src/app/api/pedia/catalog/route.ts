@@ -11,6 +11,14 @@ import { PEDIA_CATALOG_BOUNDS_SQL } from "@/lib/pedia/catalog-queries";
 import { whiteLabel } from "@/lib/pedia/terms";
 import { CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
 
+// Produk komentar: jumlah acuan 10 bila valid, selain itu minimum layanan.
+function commentRefQty(products: Record<string, unknown>[], t: Record<string, unknown>, limits: { min: number; max: number; step: number }): number | null {
+  const p = products.find((x) => Number(x.id) === Number(t.product_id));
+  if (!p || String(p.metric) !== "comments") return null;
+  const ok = (q: number) => q >= limits.min && q <= limits.max && q % (limits.step || 1) === 0;
+  return ok(10) ? 10 : ok(limits.min) ? limits.min : null;
+}
+
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
@@ -50,6 +58,10 @@ export type PediaCatalogTier = {
   refill_pct?: number | null;
   /** Harga jual per 1.000 unit dari rate live (markup tier ini). */
   price_per_1k?: number | null;
+  /** Harga acuan jumlah kecil untuk produk komentar (owner 2026-11-02): harga
+   *  per 1.000 komentar terlihat mahal, jadi kartu memakai harga nyata untuk
+   *  10 komentar (atau minimum layanan). Rumus sama dengan quote. */
+  price_ref?: { qty: number; price: number } | null;
   /** Jumlah contoh untuk chip cepat UI (tetap tunduk min–max + step). */
   quick_quantities?: number[];
 };
@@ -191,6 +203,10 @@ async function readCatalog() {
         supplierRatePer1k: bound.rate, quantity: 1000,
         markupPct: Number(t.markup_pct) || 0, minProfitRp: Number(t.min_profit_rp) || 0, minOrderRp,
       }) : null,
+      price_ref: bound.rate > 0 && commentRefQty(products, t, limits) ? (() => { const q = commentRefQty(products, t, limits)!; return { qty: q, price: computePediaPrice({
+        supplierRatePer1k: bound.rate, quantity: q,
+        markupPct: Number(t.markup_pct) || 0, minProfitRp: Number(t.min_profit_rp) || 0, minOrderRp,
+      }) }; })() : null,
       quick_quantities: [],
     });
     tiersByProduct.set(Number(t.product_id), list);

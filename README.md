@@ -8,7 +8,7 @@ Migrasi0085 menambah `pedia_service_stats` + `pedia_tiers.drop_label/speed_per_d
 0086 menambah 124 layanan IndoSMM + 3 produk komentar, menonaktifkan 6 layanan
 gagal. Istilah SMM (No Drop, Less Drop, High Drop, Refill 30 Days, No Refill) tampil
 dengan penjelasan singkat; halaman `/refill` mendukung refill API dan manual.
-Teks pembeli white label 100% AXVARA tanpa menyebut supplier. Statistik layanan disegarkan cron lite existing maks 1×/jam dari alat publik
+Teks pembeli white label 100% AXVARA tanpa menyebut supplier. Revisi2November: migrasi0089 menyeragamkan nama ([Metrik] [Wilayah] [Kualitas], refill/drop hanya chip) dan merapikan layanan kembar 431→280; harga komentar per 10 komentar. Statistik layanan disegarkan cron lite existing maks 1×/jam dari alat publik
 IndoSMM. Tahap 2: migrasi0087 `input_kind` (komentar custom satu per baris) dan0088 (+162 layanan, live views/likes, watchtime, komentar custom; 432 layanan aktif). Tidak ada env/secret/cron baru. Detail: [spec](docs/pedia/indosmm-catalog-refill-2026-11-01.md).
 
 ## Perbaikan checkout Pedia gagal tersimpan — 1 November 2026

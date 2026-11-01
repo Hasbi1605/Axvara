@@ -438,14 +438,25 @@ describe("Pedia configurator", () => {
     expect(screen.getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["13", "12", "11", "14"]);
     const text = document.getElementById("pedia-tier")!.textContent!;
     expect(text.indexOf("Refill (bergaransi)")).toBeLessThan(text.indexOf("No Refill", text.indexOf("Refill (bergaransi)") + 20));
-    expect(screen.getByRole("radio", { name: /^Indonesia Real · Refill 30 Days/ })).toBeTruthy();
-    expect(screen.getByRole("radio", { name: /^Global Real · No Refill/ })).toBeTruthy();
+    // 2026-11-02: nama lengkap [Metrik] [Wilayah] [Kualitas]; refill/drop hanya chip.
+    expect(screen.getAllByRole("radio", { name: /^Followers Indonesia Real(?! ·)/ })).toHaveLength(2);
+    expect(screen.getAllByRole("radio", { name: /^Followers Global Real(?! ·)/ })).toHaveLength(2);
     expect(text).not.toContain("Followers Indonesia Real · Refill 30 Days");
+    expect(text).not.toContain("· Less Drop");
     expect(screen.getByText("97% sukses").className).toContain("text-emerald-200");
     expect(text).toContain("Avg 1 jam 42 menit");
     const info = screen.getByTestId("inline-info");
     expect(info.textContent).toBe("info 12");
     expect(info.parentElement?.previousElementSibling?.querySelector("input")?.getAttribute("value")).toBe("12");
+  });
+
+  it("shows the real price for 10 comments instead of a per-1.000 price on comment services", () => {
+    const comments = { ...product, metric: "comments", tiers: [{ ...product.tiers[0], id: 21, public_name: "Komentar Indonesia Real", price_per_1k: 315000, price_ref: { qty: 10, price: 3200 } }] };
+    render(<ServicePicker product={comments} tierId={null} onSelect={vi.fn()} qty={null} expanded />);
+    const row = screen.getByRole("radio").closest("label")!;
+    expect(row.textContent).toContain("Rp3.200");
+    expect(row.textContent).toContain("untuk 10 komentar");
+    expect(row.textContent).not.toContain("Rp315.000");
   });
 
   it("shows three real offers first, exposes all alternatives with visible chip filters and result count", () => {

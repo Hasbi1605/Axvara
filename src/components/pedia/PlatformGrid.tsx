@@ -53,6 +53,8 @@ export type ProductCardData = {
   /** Jumlah layanan terkurasi di dalam produk + harga per 1.000 termurah. */
   serviceCount?: number;
   pricePer1k?: number | null;
+  /** Produk komentar: harga acuan untuk N komentar (owner 2026-11-02). */
+  priceRef?: { qty: number; price: number } | null;
   /** Gambar kartu Axvara-style per platform (2026-10-15, permintaan owner):
    *  tile 1600x900 R2 `/r2/products/pedia-platform-<platform>.webp`.
    *  null → fallback panel gradasi brand lama. */
@@ -83,6 +85,7 @@ export function catalogCard(p: PediaCatalogProduct): ProductCardData {
     minPrice: lowest?.price ?? null, minQuantity: lowest?.qty, minTier: lowest?.tier, refillDays: lowest?.refillDays,
     serviceCount: p.tiers.length,
     pricePer1k: per1k.length ? Math.min(...per1k) : null,
+    priceRef: p.tiers.map((t) => t.price_ref).filter((r): r is { qty: number; price: number } => !!r && r.price > 0).sort((a, b) => a.price - b.price || a.qty - b.qty)[0] ?? null,
     image: p.image ?? PLATFORM_CARD_IMAGE[p.platform] ?? null,
   };
 }
@@ -152,7 +155,7 @@ export function ProductCard({ p, index = 0 }: { p: ProductCardData; index?: numb
         <span className="block break-words text-sm font-semibold leading-snug text-white sm:text-base">{p.name}</span>
         {/* 2026-10-12 (owner): tagline AI slop DIHAPUS dari kartu — judul langsung ke harga. */}
         <span className="mt-2 block font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
-          {p.pricePer1k != null ? `Mulai Rp${p.pricePer1k.toLocaleString("id-ID")} /1.000` : p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
+          {p.priceRef ? `Mulai Rp${p.priceRef.price.toLocaleString("id-ID")} /${p.priceRef.qty.toLocaleString("id-ID")} komentar` : p.pricePer1k != null ? `Mulai Rp${p.pricePer1k.toLocaleString("id-ID")} /1.000` : p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
         </span>
         <span className="mt-1 block text-xs text-white/60">
           {p.serviceCount ? `${p.serviceCount} pilihan terkurasi` : "Pilihan terkurasi"}
