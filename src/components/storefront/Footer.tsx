@@ -34,7 +34,8 @@ const SOCIAL_LINKS: { key: SocialKey; label: string; href: string }[] = [
 /** `pediaLayout`: dirender oleh layout Pedia, sehingga path subdomain (`/p/x`) dinormalkan ke `/pedia/p/x`. */
 export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) {
   const shop = (path: string) => `${SITE.webUrl}${path}`;
-  const pedia = (path: string) => `${SITE.pediaUrl}/pedia${path}`;
+  // URL kanonis subdomain: pedia.axvara.tech/lacak, bukan /pedia/lacak (2026-11-01).
+  const pedia = (path: string) => `${SITE.pediaUrl}${path}`;
   const pathname = usePathname();
   const storeSettings = useStoreSettings();
   const [email, setEmail] = useState("");
@@ -144,7 +145,7 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
           <nav aria-label="Bantuan AXVARA">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Bantuan</p>
             <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
-              <li><Link prefetch={false} href={shop("/cara-order")} className="text-white/60 transition hover:text-white">Cara order</Link></li>
+              <li><Link prefetch={false} href={pediaLayout ? pedia("/bantuan#cara-order") : shop("/cara-order")} className="text-white/60 transition hover:text-white">Cara order</Link></li>
               <li><Link prefetch={false} href={pedia("/lacak")} className="text-white/60 transition hover:text-white">Lacak pesanan Pedia</Link></li>
               <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">Lacak pesanan market</Link></li>
               <li><Link prefetch={false} href={pedia("/bantuan")} className="text-white/60 transition hover:text-white">Bantuan Pedia</Link></li>

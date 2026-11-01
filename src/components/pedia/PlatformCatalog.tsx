@@ -8,7 +8,9 @@ import { PlatformIcon } from "./PlatformGrid";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { usePediaSearch } from "@/stores/pedia-search";
 
-export function PlatformCatalog({ products }: { products: PediaCatalogProduct[] }) {
+/** `headingLevel` 1 pada /pedia/layanan (judul utama halaman); beranda memakai 2 karena hero sudah h1. */
+export function PlatformCatalog({ products, headingLevel = 2 }: { products: PediaCatalogProduct[]; headingLevel?: 1 | 2 }) {
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   const [group, setGroup] = useState("");
   const query = usePediaSearch((s) => s.q);
   const setQuery = usePediaSearch((s) => s.setQ);
@@ -17,7 +19,7 @@ export function PlatformCatalog({ products }: { products: PediaCatalogProduct[] 
   const results = products.filter((p) => pediaMatches(query, `${p.name} ${p.platform} ${p.metric} ${p.tiers.map((t) => `${t.public_name ?? ""} ${t.region === "indonesia" ? "Indonesia" : "Global"}`).join(" ")}`));
   return <section id="pedia-catalog" aria-labelledby="pedia-catalog-heading" className="mx-auto max-w-[1280px] scroll-mt-24 px-4 pb-10 pt-2 sm:px-6 lg:px-8">
     <div className="flex items-center justify-between gap-3">
-      <div><h2 id="pedia-catalog-heading" className="font-display text-xl font-bold tracking-tight text-white sm:text-2xl">{query.trim() ? "Hasil pencarian" : "Pilih platform"}</h2>{query.trim() && <p className="mt-1 text-sm text-white/55">Layanan untuk “{query.trim()}”</p>}</div>
+      <div><Heading id="pedia-catalog-heading" className="font-display text-xl font-bold tracking-tight text-white sm:text-2xl">{query.trim() ? "Hasil pencarian" : "Pilih platform"}</Heading>{query.trim() && <p className="mt-1 text-sm text-white/55">Layanan untuk “{query.trim()}”</p>}</div>
       <span className="shrink-0 text-xs text-white/45">{query.trim() ? `${results.length} layanan` : `${available.length} platform`}</span>
     </div>
     {!query.trim() && <div className="-mx-4 mt-4 flex gap-1.5 overflow-x-auto px-4 pb-2 scrollbar-none sm:mx-0 sm:gap-2 sm:px-0" aria-label="Kelompok platform">{PEDIA_GROUPS.filter((g) => !g.id || available.some((p) => p.group === g.id)).map((g) => {

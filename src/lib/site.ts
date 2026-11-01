@@ -30,7 +30,7 @@ export const TG_BOT_HREF = `https://t.me/${SITE.adminTelegram}?start=beli`;
 
 export const AXVARA_SERVICES = [
   { id: "market", name: "AXVARA Market", description: "Aplikasi dan tools premium", href: `${SITE.webUrl}/`, icon: "/brand/axvara-mark.svg" },
-  { id: "pedia", name: "AXVARA Pedia", description: "Followers, likes, dan views", href: `${SITE.pediaUrl}/pedia`, icon: "/brand/pedia-mark.svg" },
+  { id: "pedia", name: "AXVARA Pedia", description: "Followers, likes, dan views", href: `${SITE.pediaUrl}/`, icon: "/brand/pedia-mark.svg" },
 ] as const;
 
 export type AxvaraService = typeof AXVARA_SERVICES[number]["id"];

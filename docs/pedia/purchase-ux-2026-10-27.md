@@ -133,3 +133,15 @@ Bar bawah mobile tertutup (31 Oktober, lokal): satu strip tombol "jumlah · laya
 - Navbar mobile Pedia: tombol Layanan tampil "Layanan" satu baris (`ServicesMenu compact`), nama aksesibel tetap "Layanan AXVARA". Market memakai label dua baris seperti sebelumnya.
 - Header platform desktop: ikon 48px, judul 22px, padding vertikal 12px.
 - Total di ringkasan desktop sebelum jumlah diisi: "—", dengan teks bantu "Isi jumlah untuk melihat total pesananmu." tetap di bawahnya. Bar mobile tetap menulis "Isi jumlah".
+
+### Bantuan, Ketentuan dan Lacak (1 November 2026, revisi ke-20)
+- `/bantuan` mengikuti "Cara order" Market: label kecil, h1, pengantar, empat kartu Cara order bernomor (`#cara-order`), FAQ accordion bergaya Lacak (chevron kanan, tanpa marker bawaan) dan deret tombol. Isi di `src/lib/pedia/help-content.ts`; estimasi mulai merujuk kartu layanan, bukan angka tetap.
+- `/ketentuan` mengikuti "Ketentuan layanan & garansi" Market: kartu per topik, catatan amber dan tombol Tanya admin/Lacak pesanan/Lihat cara order. Seluruh aturan PRD §11 dipertahankan, termasuk kalimat drop.
+- FAQ Lacak tidak menyebut PIN (Pedia tidak memakai PIN) dan menjelaskan pembatalan pesanan belum dibayar.
+- Footer di layout Pedia mengarahkan Cara order ke `/bantuan#cara-order`; tautan Pedia lintas host memakai URL subdomain tanpa prefix `/pedia`. Halaman bantuan/ketentuan/lacak/layanan memiliki canonical tanpa prefix.
+
+### Halaman bantuan dan ketentuan (1 November 2026, revisi ke-20)
+- `/bantuan`: label "Bantuan Pedia", judul, pengantar, bagian `#cara-order` empat kartu bernomor, tiga kelompok FAQ (accordion gaya Lacak, tujuh pertanyaan), tombol Lihat layanan / Lacak pesanan / Tanya admin. Estimasi mulai mengikuti tiap layanan, bukan angka tetap; FAQ menjelaskan batal mandiri untuk pesanan belum bayar.
+- `/ketentuan`: kartu Tentang layanan, Syarat target, tiga kartu (Refill & garansi, Pesanan sebagian atau dibatalkan, Yang perlu disiapkan), Konten yang dilarang, catatan amber tentang password, tombol Tanya admin / Lacak pesanan / Lihat cara order. Kata "drop" tetap di Refill & garansi karena ini halaman ketentuan, bukan alur pesan.
+- FAQ Lacak tanpa pertanyaan PIN.
+

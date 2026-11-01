@@ -1,5 +1,13 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Bantuan dan ketentuan Pedia — 1 November 2026
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. `/bantuan`
+dan `/ketentuan` Pedia mengikuti gaya Cara order dan Ketentuan Market (kartu
+glass, accordion, deret tombol); isi usang diperbarui tanpa mengubah aturan.
+FAQ Lacak tidak lagi menyebut PIN. Footer Pedia membuka Cara order Pedia dan
+tautan lintas host memakai URL subdomain kanonis. Tidak mengubah API/kontrak.
+
 ## Koreksi orbit mobile Pedia — 31 Oktober 2026
 
 Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Orbit Pedia
@@ -550,6 +558,8 @@ Revisi animasi desktop 2026-10-16 ✅ implementasi, publikasi melalui CI: layout
 Revisi copy hero 2026-10-16 ✅ implementasi, publikasi melalui CI: headline beranda Pedia menjadi “Satu tempat untuk / optimasi media sosial”, dengan typewriter cyan Termurah / Termudah / Terpercaya tetap. Baris pendukung di bawah CTA persis “Order cepat tanpa login • Garansi refill • Support WA admin”. Ini perubahan copy atas permintaan owner; kelayakan, masa dan ketentuan refill tetap mengikuti layanan/paket yang dipilih, tanpa perubahan kontrak checkout atau supplier.
 
 Revisi navbar dan lacak 2026-10-16 ✅ implementasi, publikasi melalui CI: hierarki navbar Pedia mengikuti Market: logo → pencarian → Layanan AXVARA → Katalog → Lacak Pesanan → Artikel. Navigasi teks tampil mulai `xl`, dengan pill hover/focus membulat; Artikel menuju URL absolut Market dari `SITE.webUrl`, menggantikan Bantuan di navbar atas. Bantuan tetap tersedia di bottom nav dan footer. `/pedia/lacak` memakai header, kartu form glass, label/hint, tombol loading dan FAQ dengan gaya Market; verifikasi kode AXP + WA/email tetap melalui `POST /api/orders/lookup`, lalu membuka halaman status Pedia setelah berhasil. Riwayat sukses maksimal lima tersimpan lokal di `axp-track-recent` dengan kontak tersamarkan pada UI dan tombol hapus; daftar `axp-orders` maksimal 20 terlipat awal, menyaring entri rusak dan dapat disembunyikan per pesanan. Penyimpanan browser opsional; validasi, timeout jaringan dan penjagaan klik ganda tidak mengubah kontrak server atau supplier. Revisi lanjutan 2026-10-16: pill “WA Admin” dan “Panduan pemesanan” di bawah FAQ lacak dihapus; halaman berakhir pada FAQ sebelum footer bersama.
+
+Revisi halaman bantuan Pedia 2026-11-01 (implementasi; publikasi melalui CI): `/pedia/bantuan` dan `/pedia/ketentuan` mengikuti pola Market `/cara-order` dan `/garansi-replace` (label kecil, judul, pengantar, kartu glass `max-w-[920px]`, deret tombol). Bantuan memuat bagian `#cara-order` empat langkah Pedia (Layanan → Target → Kontak → Bayar) dan FAQ accordion gaya Lacak; isinya di `src/lib/pedia/help-content.ts`. Ketentuan mempertahankan ketujuh poin lama yang dikelompokkan per topik. FAQ Lacak tidak lagi menyebut PIN (Pedia tanpa PIN) dan menambah cara membatalkan pesanan. Footer di layout Pedia mengarahkan "Cara order" ke `/bantuan#cara-order`; tautan Pedia di footer/`AXVARA_SERVICES` memakai URL kanonis subdomain (`pedia.axvara.tech/lacak`, bukan `/pedia/lacak`). Halaman bantuan, ketentuan, katalog (kini `h1`) dan lacak (lewat `lacak/layout.tsx`) punya title dan canonical sendiri. Tidak ada perubahan API/order/pembayaran.
 
 Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan awal pada mobile/desktop, drop/refill tetap. Pilihan yang sudah dipilih dirangkum dan dapat diganti pada semua ukuran. Target GitHub/website/platform baru didukung parser client/server. Harga jumlah bebas dihitung server; order/job/kredit/ledger atomik D1, retry QR sama, kredit pending kedaluwarsa dikembalikan. Copy ketentuan disimpan ke quote/order. Tidak ada order supplier berbayar atau klaim hasil kualitas/drop teruji dalam verifikasi ini.
 

@@ -96,11 +96,11 @@ describe("shared footer", () => {
     expect(screen.getByRole("contentinfo").innerHTML).toBe(content);
     const expected = {
       "AXVARA Market": `${SITE.webUrl}/`,
-      "AXVARA Pedia": `${SITE.pediaUrl}/pedia?utm_source=axvara&utm_medium=footer`,
-      "Lacak pesanan Pedia": `${SITE.pediaUrl}/pedia/lacak`,
+      "AXVARA Pedia": `${SITE.pediaUrl}/?utm_source=axvara&utm_medium=footer`,
+      "Lacak pesanan Pedia": `${SITE.pediaUrl}/lacak`,
       "Lacak pesanan market": `${SITE.webUrl}/lacak-pesanan`,
-      "Bantuan Pedia": `${SITE.pediaUrl}/pedia/bantuan`,
-      "Ketentuan Pedia": `${SITE.pediaUrl}/pedia/ketentuan`,
+      "Bantuan Pedia": `${SITE.pediaUrl}/bantuan`,
+      "Ketentuan Pedia": `${SITE.pediaUrl}/ketentuan`,
       "Ketentuan Market": `${SITE.webUrl}/garansi-replace`,
       "WhatsApp AXVARA": "https://axvara.tech/wa?pesan=Halo%20AXVARA",
       "Grup WA": WA_GROUP_HREF,
@@ -108,6 +108,17 @@ describe("shared footer", () => {
     };
     for (const [name, href] of Object.entries(expected)) expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(href);
     expect(content).not.toMatch(/Bergaransi|Aktivasi 5/);
+  });
+
+  // 2026-11-01: "Cara order" di footer Pedia menuju cara order Pedia, bukan halaman Market.
+  it("points Cara order to the Pedia guide only inside the Pedia layout", () => {
+    route.pathname = "/bantuan";
+    const pedia = render(<Footer pediaLayout />);
+    expect(screen.getByRole("link", { name: "Cara order" }).getAttribute("href")).toBe(`${SITE.pediaUrl}/bantuan#cara-order`);
+    pedia.unmount();
+    route.pathname = "/";
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Cara order" }).getAttribute("href")).toBe(`${SITE.webUrl}/cara-order`);
   });
 
   it.each(["/", "/pedia"])("shows only ecosystem services and help without fetching categories (%s)", (pathname) => {

@@ -48,8 +48,8 @@ function maskContact(contact: string) {
 }
 const FAQ = [
   ["Di mana saya menemukan kode pesanan?", "Kode AXP ditampilkan setelah checkout, di halaman pembayaran dan status pesanan. Jika memesan di browser ini, buka daftar Pesanan di perangkat ini di atas."],
-  ["PIN akses saya hilang?", "PIN 6 karakter hanya ada di email produk siap (cek inbox/spam). Status pesanan tetap bisa dilihat dengan kode + kontak checkout tanpa PIN."],
   ["Sudah bayar QRIS, tetapi status masih menunggu bayar?", "Buka halaman pesanan untuk melihat pembaruan pembayaran otomatis. Pastikan nominal yang dibayar sesuai tagihan. Jika belum berubah, hubungi WA Admin dengan kode pesanan dan bukti pembayaran."],
+  ["Bagaimana membatalkan pesanan?", "Pesanan yang belum dibayar bisa dibatalkan di halaman pembayaran lewat tombol Batalkan Pesanan, dengan WA atau email checkout. Pesanan yang sudah dibayar tidak bisa dibatalkan sendiri; hubungi WA Admin dengan kode pesanan."],
   ["Bagaimana cara mengajukan refill?", "Buka halaman status pesanan. Tombol refill tersedia jika layanan dan pesanan memenuhi ketentuan. Masa garansi refill, batas pengajuan, dan syarat lainnya mengikuti layanan yang kamu pilih."],
 ];
 
