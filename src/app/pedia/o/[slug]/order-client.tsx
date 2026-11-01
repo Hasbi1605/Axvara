@@ -319,7 +319,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
               {quantityNotice && <p role="status" className="mt-2 text-xs text-amber-200">{quantityNotice}</p>}{inlineError("quantity")}
               <div role="status" aria-live="polite">{qty != null && comparison?.failed && <p className="mt-2 text-[13px] leading-5 text-white/65">Harga terbaru belum dapat dimuat. Harga akan diperiksa kembali sebelum pembayaran. <button type="button" disabled={attempted} onClick={comparison.retry} className="min-h-11 font-medium text-[#00E5FF] underline underline-offset-4 disabled:opacity-40">Coba muat harga lagi</button></p>}</div>
             </fieldset></div>
-            <div className="mt-5 xl:mt-6"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded info={(t) => <ServiceInfoCard t={t} />} />{inlineError("tier")}</div>
+            <div className="mt-5 xl:mt-6"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} onClear={() => setTierId(null)} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded info={(t) => <ServiceInfoCard t={t} />} />{inlineError("tier")}</div>
           </section>
         </>}
         {stage === 2 && <section aria-labelledby="pedia-stage-heading">

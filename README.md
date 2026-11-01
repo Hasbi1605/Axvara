@@ -178,7 +178,7 @@ proteksi ini. Bukti regresi dan pembersihan order palsu atas instruksi owner:
 ## UX pembelian Pedia — 27 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. Daftar layanan kini ringkas dengan harga
-di samping nama, filter/urutan di atas, pilihan aktif tetap terlihat saat difilter,
+di samping nama, filter/urutan di atas, pilihan aktif tetap terlihat saat difilter (digantikan1November: filter yang tidak mencakup pilihan melepasnya; ada filter No Refill, hitungan di atas daftar),
 detail terbuka dan CTA di dekat total. Logo platform tetap; pill kebutuhan memakai
 target44px dan aksi “Semua kebutuhan” pada mobile. Draf per kebutuhan tersimpan
 selama halaman terbuka, tanpa membawa target atau quote ke kebutuhan berbeda.

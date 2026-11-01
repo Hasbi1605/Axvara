@@ -94,3 +94,7 @@ sebelum Pedia dibuka penuh.
   Menghentikan pengirim di VPS adalah tugas terpisah.
 - Statistik supplier dapat berubah atau hilang; harga supplier bisa naik tajam,
   guard margin existing tetap berlaku.
+
+## Revisi filter layanan
+
+Revisi filter layanan Pedia 1 November 2026 (implementasi lokal untuk publikasi CI): filter kini Semua/Global/Indonesia/Refill/No Refill. Pilihan layanan yang tidak termasuk filter baru dilepas, tanpa disematkan di atas daftar; teks "Pilihanmu tetap disimpan di atas…" dihapus. Hitungan "N dari M layanan" dan Reset filter berada di atas daftar. Menggantikan aturan 22 Oktober "pemilihan kategori tidak mengganti layanan" dan "hitungan sesudah daftar", serta "pilihan aktif tetap terlihat saat difilter" 27 Oktober.

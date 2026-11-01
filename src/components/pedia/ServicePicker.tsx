@@ -47,8 +47,8 @@ function incompatReason(product: PediaCatalogProduct, t: PediaCatalogTier, qty: 
   return "";
 }
 
-export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pricesSettled = false, locked = false, expanded = false, info }: {
-  product: PediaCatalogProduct; tierId: number | null; onSelect: (id: number) => void; qty: number | null;
+export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices = {}, pricesSettled = false, locked = false, expanded = false, info }: {
+  product: PediaCatalogProduct; tierId: number | null; onSelect: (id: number) => void; onClear?: () => void; qty: number | null;
   prices?: Record<number, number>; pricesSettled?: boolean; locked?: boolean; expanded?: boolean;
   /** 2026-11-01: info layanan dirender tepat di bawah kartu yang dipilih. */
   info?: (t: PediaCatalogTier) => ReactNode;
@@ -57,21 +57,26 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
   const [showAll, setShowAll] = useState(false);
   const [category, setCategory] = useState("");
   const tiers = product.tiers;
-  const count = (id: string) => tiers.filter((t) => id === "" || (id === "refill" ? t.refill_days > 0 : (t.region ?? "global") === id)).length;
+  // 2026-11-01 (owner): filter Refill/No Refill + wilayah. Pilihan yang tidak
+  // termasuk filter baru dilepas (tidak lagi disematkan di atas daftar).
+  const matches = (t: PediaCatalogTier, id: string) => id === "" || (id === "refill" ? t.refill_days > 0 : id === "norefill" ? t.refill_days <= 0 : (t.region ?? "global") === id);
+  const count = (id: string) => tiers.filter((t) => matches(t, id)).length;
   const categories = tiers.length > 1 ? [
     { id: "", label: "Semua" },
     ...["global", "indonesia", ...(tiers.some((t) => t.region === "mixed") ? ["mixed"] : [])].map((id) => ({ id, label: REGION_LABEL[id] })),
     { id: "refill", label: "Refill" },
+    { id: "norefill", label: "No Refill" },
   ] : [];
   const filtersActive = !!category;
   const validQuantity = useCallback((t: PediaCatalogTier) => qty != null && Number.isSafeInteger(qty) && qty >= (t.min_qty ?? 1) && qty <= (t.max_qty ?? Infinity) && qty % (t.quantity_step ?? product.step) === 0, [qty, product.step]);
   const relevant = useMemo(() => {
-    const list = tiers.filter((t) => (!category || (category === "refill" ? t.refill_days > 0 : (t.region ?? "global") === category)));
+    const list = tiers.filter((t) => matches(t, category));
     // 2026-11-01: dikelompokkan Refill (bergaransi) lalu No Refill, masing-masing termurah dulu.
     const price = (t: PediaCatalogTier) => (qty != null && validQuantity(t) ? prices[t.id] ?? t.prices[String(qty)] : undefined) ?? t.price_per_1k ?? Math.min(...Object.values(t.prices), Infinity);
     return [...list].sort((a, b) => Number(b.refill_days > 0) - Number(a.refill_days > 0)
       || Number(validQuantity(b)) - Number(validQuantity(a))
       || price(a) - price(b));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tiers, category, validQuantity, qty, prices]);
   const picked = tiers.find((t) => t.id === tierId);
   const stripped = tiers.map((t) => comparisonName(product.name, t));
@@ -88,8 +93,6 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
   const compact = !expanded && !!picked && !compare;
   const visible = compact && picked ? [picked] : expanded || showAll ? [...relevant] : relevant.slice(0, 3);
   if (!compact && picked && relevant.includes(picked) && !visible.includes(picked)) visible.push(picked);
-  const selectedOutsideFilter = !compact && picked && !relevant.includes(picked);
-  if (selectedOutsideFilter) visible.unshift(picked);
   const resetFilters = () => { setCategory(""); setShowAll(false); };
 
   return <fieldset id="pedia-tier" className="min-w-0" disabled={locked}>
@@ -100,7 +103,7 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
         {!compact && qty != null && <span className="text-white/65">· harga untuk {qty.toLocaleString("id-ID")}</span>}
       </div>
       {categories.length > 1 && <div role="group" aria-label="Kategori layanan" className="flex max-w-full gap-1.5 overflow-x-auto">
-  {categories.map((option) => { const empty = count(option.id) === 0; return <button key={option.id} type="button" disabled={empty} aria-pressed={category === option.id} onClick={() => { setCategory(option.id); setShowAll(false); }} className={`min-h-8 shrink-0 rounded-full border px-3 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 sm:min-h-9 ${category === option.id ? "pedia-pill-active text-[#00E5FF]" : "ax-glass-card border-white/10 text-white/70 hover:bg-white/10 hover:text-white"}`}>{option.label}</button>; })}
+  {categories.map((option) => { const empty = count(option.id) === 0; return <button key={option.id} type="button" disabled={empty} aria-pressed={category === option.id} onClick={() => { setCategory(option.id); setShowAll(false); if (picked && !matches(picked, option.id)) { onClear?.(); setCompare(false); } }} className={`min-h-8 shrink-0 rounded-full border px-3 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 sm:min-h-9 ${category === option.id ? "pedia-pill-active text-[#00E5FF]" : "ax-glass-card border-white/10 text-white/70 hover:bg-white/10 hover:text-white"}`}>{option.label}</button>; })}
       </div>}
       {compact && picked && <button type="button" onClick={() => setCompare(true)} aria-expanded={false} className="min-h-11 shrink-0 whitespace-nowrap text-sm font-medium text-[#00E5FF] disabled:opacity-40">Ganti layanan</button>}
     </div>
@@ -108,7 +111,11 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
       {qty == null && <p className="mt-1 text-[13px] leading-5 text-white/65">Harga acuan ditampilkan per layanan. Isi jumlah untuk membandingkan totalnya.</p>}
     </>}
     {compact && <p className="mt-1 text-xs leading-5 text-white/50">Jumlah, target, dan filter tetap tersimpan saat ganti layanan.</p>}
-    {selectedOutsideFilter && <p className="mt-3 text-[13px] leading-5 text-[#00E5FF]">Pilihanmu tetap disimpan di atas, meski tidak termasuk filter ini.</p>}
+    {!compact && <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-white/65">
+      <span role="status" data-testid="pedia-filter-count">{relevant.length} dari {tiers.length} layanan</span>
+      {filtersActive && <button type="button" onClick={resetFilters} className="min-h-11 px-1 font-medium text-[#00E5FF]">Reset filter</button>}
+      {!expanded && picked && <button type="button" onClick={() => setCompare(false)} className="min-h-11 text-[#00E5FF]">Kembali ke pilihan</button>}
+    </div>}
     <div className="mt-3 space-y-2">
       {visible.map((t, index) => {
         const group = t.refill_days > 0 ? "Refill (bergaransi)" : "No Refill";
@@ -142,10 +149,5 @@ export function ServicePicker({ product, tierId, onSelect, qty, prices = {}, pri
     </div>
     {!relevant.length && <p className="mt-3 rounded-xl border border-white/10 p-4 text-sm text-white/65">Tidak ada pilihan yang cocok untuk filter ini ({relevant.length} dari {tiers.length} layanan).</p>}
     {!expanded && !compact && !showAll && relevant.length > 3 && <button type="button" className="mt-3 min-h-11 w-full rounded-xl border border-white/10 px-3 text-sm text-[#00E5FF] transition hover:bg-white/[0.03]" onClick={() => setShowAll(true)}>Lihat semua {relevant.length} layanan</button>}
-    {!compact && <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-white/65">
-      <span role="status" data-testid="pedia-filter-count">{relevant.length} dari {tiers.length} layanan</span>
-      {filtersActive && <button type="button" onClick={resetFilters} className="min-h-11 px-1 font-medium text-[#00E5FF]">Reset filter</button>}
-      {!expanded && picked && <button type="button" onClick={() => setCompare(false)} className="min-h-11 text-[#00E5FF]">Kembali ke pilihan</button>}
-    </div>}
   </fieldset>;
 }

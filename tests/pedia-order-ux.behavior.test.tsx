@@ -470,18 +470,18 @@ describe("Pedia configurator", () => {
       { ...product.tiers[1], id: 3, public_name: "Global refill", region: "global" },
       { ...product.tiers[0], id: 4, public_name: "Indonesia tanpa refill", region: "indonesia" },
       { ...product.tiers[0], id: 5, public_name: "Campuran", region: "mixed" }];
-    render(<ServicePicker product={{ ...product, tiers }} tierId={2} onSelect={onSelect} qty={100} expanded />);
+    render(<ServicePicker product={{ ...product, tiers }} tierId={null} onSelect={onSelect} qty={100} expanded />);
     const categories = screen.getByRole("group", { name: "Kategori layanan" });
-    const offers = () => screen.getAllByRole("radio").map((r) => r.getAttribute("value")).sort();
-    for (const [label, ids] of [["Semua", ["1", "2", "3", "4", "5"]], ["Global", ["1", "2", "3"]], ["Refill", ["2", "3"]], ["Indonesia", ["2", "4"]], ["Indonesia", ["2", "4"]], ["Semua", ["1", "2", "3", "4", "5"]]] as const) {
+    const offers = () => screen.queryAllByRole("radio").map((r) => r.getAttribute("value")).sort();
+    for (const [label, ids] of [["Semua", ["1", "2", "3", "4", "5"]], ["Global", ["1", "3"]], ["Refill", ["2", "3"]], ["No Refill", ["1", "4", "5"]], ["Indonesia", ["2", "4"]], ["Indonesia", ["2", "4"]], ["Semua", ["1", "2", "3", "4", "5"]]] as const) {
       fireEvent.click(within(categories).getByRole("button", { name: label }));
       expect(within(categories).getAllByRole("button", { pressed: true }).map((b) => b.textContent)).toEqual([label]);
       expect(offers()).toEqual(ids);
     }
     expect(onSelect).not.toHaveBeenCalled();
-    expect((screen.getByRole("radio", { name: /Indonesia Stabil/ }) as HTMLInputElement).checked).toBe(true);
+    // Jumlah hasil berada di atas daftar layanan (owner 2026-11-01).
     const count = screen.getByTestId("pedia-filter-count");
-    expect(screen.getAllByRole("radio").at(-1)!.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByRole("radio")[0].compareDocumentPosition(count) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     expect(screen.getByText("· harga untuk 100")).toBeTruthy();
     expect(within(categories).queryByRole("button", { name: "Tanpa refill" })).toBeNull();
   });
@@ -530,18 +530,23 @@ describe("Pedia configurator", () => {
     expect(container.textContent).not.toContain("Rp5.000");
   });
 
-  it("retains the current selection when comparison filters exclude it", () => {
-    const { rerender } = render(<ServicePicker product={many} tierId={null} onSelect={vi.fn()} qty={null} />);
+  it("drops the selection when the chosen filter excludes it, keeps it when included", () => {
+    const onClear = vi.fn();
+    render(<ServicePicker product={many} tierId={2} onSelect={vi.fn()} onClear={onClear} qty={100} expanded />);
+    fireEvent.click(screen.getByRole("button", { name: "Indonesia" }));
+    expect(onClear).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Global" }));
-    rerender(<ServicePicker product={many} tierId={2} onSelect={vi.fn()} qty={100} />);
-    expect(screen.getByRole("radio").getAttribute("value")).toBe("2");
-    expect((screen.getByRole("radio") as HTMLInputElement).checked).toBe(true);
-    expect(screen.getByRole("button", { name: "Ganti layanan" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Ganti layanan" }));
-    expect(screen.getByRole("status").textContent).toContain("4 dari 7 layanan");
-    expect(screen.getByRole("button", { name: "Global" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getAllByRole("radio")[0].getAttribute("value")).toBe("2");
-    expect(screen.getByText(/Pilihanmu tetap disimpan di atas/)).toBeTruthy();
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole("radio").map((r) => r.getAttribute("value"))).not.toContain("2");
+    expect(screen.queryByText(/Pilihanmu tetap disimpan/)).toBeNull();
+  });
+
+  it("clears the chosen service in the order form when switching to an excluding filter", () => {
+    render(<OrderClient product={many} initialTarget="" ordersEnabled />);
+    fireEvent.click(screen.getAllByRole("radio").find((r) => r.getAttribute("value") === "2")!);
+    expect((screen.getAllByRole("radio").find((r) => r.getAttribute("value") === "2") as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Global" }));
+    expect(screen.getAllByRole("radio").every((r) => !(r as HTMLInputElement).checked)).toBe(true);
   });
 
   it("exposes details without an accordion and places ordering controls before offers", () => {
@@ -595,7 +600,8 @@ describe("Pedia configurator", () => {
     const uniform = { ...product, tiers: [{ ...product.tiers[1], region: "global" as const }, { ...product.tiers[1], id: 3, region: "global" as const }] };
     const { unmount } = render(<ServicePicker product={uniform} tierId={null} onSelect={vi.fn()} qty={100} expanded />);
     const categories = screen.getByRole("group", { name: "Kategori layanan" });
-    expect(within(categories).getAllByRole("button").map((b) => b.textContent)).toEqual(["Semua", "Global", "Indonesia", "Refill"]);
+    expect(within(categories).getAllByRole("button").map((b) => b.textContent)).toEqual(["Semua", "Global", "Indonesia", "Refill", "No Refill"]);
+    expect((within(categories).getByRole("button", { name: "No Refill" }) as HTMLButtonElement).disabled).toBe(true);
     expect((within(categories).getByRole("button", { name: "Indonesia" }) as HTMLButtonElement).disabled).toBe(true);
     expect((within(categories).getByRole("button", { name: "Global" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByRole("combobox", { name: "Filter jenis akun" })).toBeNull();
