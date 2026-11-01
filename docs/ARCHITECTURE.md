@@ -3201,6 +3201,10 @@ tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
   POST refill dan halaman `/pedia/refill`. Mode `api` bila mirror `api_refill=1`,
   `manual` bila bergaransi tanpa tombol API (`refill_status='manual_requested'`,
   Telegram admin, admin `refill_resolve` completed/rejected), `none` untuk No Refill.
+- Komentar custom (0087): `pedia_tiers.input_kind='comments'`, quote field `comments`
+  → `custom_comments` di token/snapshot → dispatch `add` + `comments` (newline).
+  Tipe layanan wajib cocok (`pediaServiceTypeFor`): comments↔"Custom Comments",
+  lainnya↔"Default" di katalog, harga, quote, order, sync, admin.
 - ProviderSMM: cron lite tidak memanggil `/psmm/balance`; `/api/supplier-sync`
   source providersmm → 200 `{ignored:"providersmm_retired"}` tanpa tulis D1;
   overview admin hanya IndoSMM.

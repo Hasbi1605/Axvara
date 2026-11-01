@@ -344,6 +344,7 @@ order lama di bawah tetap berlaku untuk jalur yang kompatibel.
 - Istilah SMM keputusan owner tetap bahasa supplier (No Drop, Less Drop, High Drop, Refill N Days, Refill Lifetime, No Refill, Drop rate, Start time, Speed, Avg time, Success rate) dari `src/lib/pedia/terms.ts`; jangan menerjemahkan ke istilah Indonesia.
 - Layanan High Drop/No Refill boleh dijual dengan label jelas. Refill manual (bergaransi tanpa tombol API) sah: admin meneruskan ke CS IndoSMM lalu `refill_resolve`.
 - Statistik supplier dari alat publik IndoSMM bukan API resmi dan bukan uji kualitas AXVARA. Katalog baru lewat manifest + generator; jangan mengedit migrasi 0086 manual.
+- Komentar custom: tier `input_kind='comments'` hanya boleh dipetakan ke layanan tipe "Custom Comments"; jangan menjual layanan Custom Comments tanpa kolom komentar.
 - White label 100%: teks yang dilihat pembeli Pedia tidak boleh menyebut supplier/IndoSMM/ProviderSMM. Teks baru wajib lolos `whiteLabel()`/test leak; admin boleh menyebut IndoSMM.
 - Spec: `docs/pedia/indosmm-catalog-refill-2026-11-01.md`.
 

@@ -1,6 +1,7 @@
 // POST /api/pedia/quote — Quote bertanda tangan (PD-20, §9.7).
 // Publik + rate-limit pedia:quote 30/mnt/IP. Validasi target, qty (min–max
 // layanan, kelipatan step produk), kredit → quote JWT 30 menit.
+import { pediaServiceTypeFor } from "@/lib/pedia/custom-comments";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -13,6 +14,7 @@ import { isPediaSaleProvider, PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-poli
 import { capturePediaServiceCopy } from "@/lib/pedia/service-copy";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { readJsonBody } from "@/lib/http-body";
+import { checkCustomComments, CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -24,6 +26,7 @@ const schema = z.object({
   quantity: z.coerce.number().int().min(1).max(100_000_000),
   target: z.string().trim().min(1).max(600),
   credit_code: z.string().trim().max(20).optional().default(""),
+  comments: z.string().max(9000).optional(),
 }).refine((v) => v.product_slug || v.product_id, "Produk tidak valid");
 
 export async function POST(req: NextRequest) {
@@ -64,8 +67,8 @@ export async function POST(req: NextRequest) {
   // from the retired provider must requote on IndoSMM instead.
   if (!isPediaSaleProvider(tier.supplier)) return NextResponse.json({ error: "provider_retired", message: "Layanan ini sudah tidak dijual. Pilih layanan lain yang tersedia." }, { status: 409 });
   const live = await db.queryFirst(
-    `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
-    tier.supplier, Number(tier.supplier_service_id),
+    `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type=? AND rate_idr_per_1k>0`,
+    tier.supplier, Number(tier.supplier_service_id), pediaServiceTypeFor(tier.input_kind),
   ).catch(() => null);
   if (!live) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
 
@@ -85,7 +88,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Qty: min–max layanan + kelipatan step produk (PD-06).
-  const limits = pediaBounds(live, tier, Number(product.step));
+  const limits = pediaBounds(tier.input_kind === "comments" ? { ...live, max_qty: Math.min(Number(live.max_qty), CUSTOM_COMMENT_MAX_LINES) } : live, tier, Number(product.step));
   const minQty = limits?.min ?? 1;
   const maxQty = limits?.max ?? 0;
   const step = limits?.step ?? 1;
@@ -111,6 +114,13 @@ export async function POST(req: NextRequest) {
     minOrderRp,
   });
   const unitPrice = total / quantity;
+  // Komentar custom: wajib untuk layanan input_kind=comments, satu per baris, jumlah = quantity.
+  let customComments: string[] | undefined;
+  if (tier.input_kind === "comments") {
+    const checked = checkCustomComments(parsed.data.comments ?? "", quantity);
+    if (!checked.ok) return NextResponse.json({ error: "invalid_comments", message: checked.error }, { status: 422 });
+    customComments = checked.lines;
+  }
   if (!Number.isFinite(total) || total <= 0) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
 
   const { token, quoteId } = await createPediaQuoteToken({
@@ -127,6 +137,7 @@ export async function POST(req: NextRequest) {
     supplier_target: tier.target_format === "username" ? new URL(detected.normalized).pathname.split("/").filter(Boolean)[0]?.replace(/^@/, "") : detected.normalized,
     refill_anchor: tier.refill_anchor === "completed" ? "completed" : "created",
     service_copy: capturePediaServiceCopy(product, tier),
+    ...(customComments ? { custom_comments: customComments } : {}),
   });
   return NextResponse.json({
     ok: true, quote_token: token, quote_id: quoteId,

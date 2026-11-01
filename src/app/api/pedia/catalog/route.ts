@@ -9,6 +9,7 @@ import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { PEDIA_CATALOG_BOUNDS_SQL } from "@/lib/pedia/catalog-queries";
 import { whiteLabel } from "@/lib/pedia/terms";
+import { CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -44,6 +45,8 @@ export type PediaCatalogTier = {
   refill_mode?: "api" | "manual" | "none";
   /** Persen sukses / persen pesanan yang diajukan refill di supplier (7 hari). */
   success_pct?: number | null;
+  /** "comments" = pembeli menulis komentar custom (satu per baris). */
+  input_kind?: "comments" | null;
   refill_pct?: number | null;
   /** Harga jual per 1.000 unit dari rate live (markup tier ini). */
   price_per_1k?: number | null;
@@ -124,7 +127,7 @@ async function readCatalog() {
   const tiers = await db.queryAll(
     `SELECT id, product_id, tier, label_note, refill_days, eta_start, eta_finish,
             package_prices_json, supplier, supplier_service_id,
-            public_name, description_md, terms_md, instructions_md, recommendation_note, min_qty_override, max_qty_override, quantity_step, region, quality, speed_note, drop_risk, drop_label, speed_per_day,
+            public_name, description_md, terms_md, instructions_md, recommendation_note, min_qty_override, max_qty_override, quantity_step, region, quality, speed_note, drop_risk, drop_label, speed_per_day, input_kind,
             is_recommended, sort_order, markup_pct, min_profit_rp
        FROM pedia_tiers WHERE is_active=1 ORDER BY is_recommended DESC, sort_order, id`,
   ).catch(unavailable);
@@ -148,7 +151,8 @@ async function readCatalog() {
     if (t.supplier !== PEDIA_SALE_PROVIDER) continue;
     const bound = boundByService.get(`${t.supplier}:${t.supplier_service_id}`);
     if (!bound || !Number.isSafeInteger(bound.min) || !Number.isSafeInteger(bound.max) || bound.min <= 0 || bound.max < bound.min) continue;
-    const limits = pediaBounds({ min_qty: bound.min, max_qty: bound.max }, t);
+    // Komentar custom dibatasi 200 baris per pesanan (src/lib/pedia/custom-comments.ts).
+    const limits = pediaBounds({ min_qty: bound.min, max_qty: t.input_kind === "comments" ? Math.min(bound.max, CUSTOM_COMMENT_MAX_LINES) : bound.max }, t);
     if (!limits) continue;
     const prices = parseJson(t.package_prices_json, {});
     if (!prices || typeof prices !== "object" || Array.isArray(prices)) continue;
@@ -181,6 +185,7 @@ async function readCatalog() {
       // Data terukur hanya ditampilkan bila sampel cukup (≥5 order/7 hari).
       success_pct: bound.orders >= 5 ? bound.success : null,
       refill_pct: bound.orders >= 5 ? bound.refill : null,
+      input_kind: t.input_kind === "comments" ? "comments" : null,
       recommended: Number(t.is_recommended) === 1,
       price_per_1k: bound.rate > 0 ? computePediaPrice({
         supplierRatePer1k: bound.rate, quantity: 1000,

@@ -17,6 +17,7 @@ import { pediaBounds } from "./bounds";
 //   (`auto_disabled_reason='service_missing'`) + notif.
 // - Pulih otomatis HANYA bila admin mengaktifkan ulang (buka kunci manual).
 
+import { pediaServiceTypeFor } from "@/lib/pedia/custom-comments";
 import type { DatabaseAccess } from "@/lib/db-access";
 import { computePediaPrice, passesMarginGuard } from "@/lib/pedia/pricing";
 import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
@@ -168,7 +169,7 @@ export async function applyPediaDiff(
     const liveRate = Number(t.live_rate);
     const present = Number(t.live_present ?? 0);
     // Layanan hilang dari daftar → nonaktif + notif (PD-33).
-    if (!Number.isFinite(liveRate) || liveRate <= 0 || present !== 1 || t.live_type !== "Default") {
+    if (!Number.isFinite(liveRate) || liveRate <= 0 || present !== 1 || t.live_type !== pediaServiceTypeFor(t.input_kind)) {
       if (Number(t.is_active) === 1) {
         await db.execRun(
           `UPDATE pedia_tiers SET is_active=0, auto_disabled_reason='service_missing',

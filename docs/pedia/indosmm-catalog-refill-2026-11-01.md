@@ -75,6 +75,20 @@ sebelum Pedia dibuka penuh.
 - Jalur refill tertulis per tier. Tab: Produk, Layanan Supplier, Pesanan, Kurasi,
   Pengaturan, Arsip lama. ProviderSMM tidak bisa dipilih.
 
+## Tahap 2 (1 November 2026)
+- Daftar layanan: nama pendek, grup Refill (bergaransi) → No Refill, termurah dulu;
+  chip success rate; Info layanan di bawah kartu terpilih; istilah relevan saja.
+- Komentar custom: `pedia_tiers.input_kind='comments'` (0087). Pembeli menulis satu
+  komentar per baris, jumlah baris = jumlah pesanan (maks 200, 300 karakter/baris,
+  8.000 total). Quote/snapshot menyimpan `custom_comments`; dispatch mengirim
+  `comments` (dipisah baris baru). Tier comments hanya untuk layanan tipe
+  "Custom Comments"; tier lain hanya "Default".
+- 0088: +162 layanan (maks 30 pilihan per kebutuhan, duplikat harga-saja dibuang),
+  produk baru Live Views TikTok/YouTube/Facebook/Shopee, Live Likes TikTok,
+  Watchtime TikTok, Komentar Custom IG/TikTok/YouTube/Facebook. Dry-run produksi:
+  432 tier, 118 produk aktif. Link Shopee Live `live.shopee.co.id/share?session=`.
+- Belum: auto likes/subscriptions, halaman daftar harga reseller.
+
 ## Batas
 - VPS masih mengirim diff ProviderSMM; Pages membalas 200 `ignored` tanpa menulis.
   Menghentikan pengirim di VPS adalah tugas terpisah.

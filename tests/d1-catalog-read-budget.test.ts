@@ -12,12 +12,12 @@ it("D1 catalog reads scale with curated services, including colliding provider I
     const db = await runtime.getD1Database("DB");
     await db.batch([
       db.prepare("CREATE TABLE pedia_products(id INTEGER PRIMARY KEY,is_active INTEGER)"),
-      db.prepare("CREATE TABLE pedia_tiers(id INTEGER PRIMARY KEY,product_id INTEGER,is_active INTEGER,supplier TEXT,supplier_service_id INTEGER)"),
+      db.prepare("CREATE TABLE pedia_tiers(id INTEGER PRIMARY KEY,product_id INTEGER,is_active INTEGER,supplier TEXT,supplier_service_id INTEGER,input_kind TEXT)"),
       db.prepare("CREATE INDEX active_tiers ON pedia_tiers(is_active,product_id)"),
       db.prepare("CREATE TABLE pedia_supplier_services(supplier TEXT,service_id INTEGER,min_qty INTEGER,max_qty INTEGER,rate_idr_per_1k INTEGER,present INTEGER,type TEXT,api_refill INTEGER DEFAULT 0,PRIMARY KEY(supplier,service_id))"),
       db.prepare("CREATE TABLE pedia_service_stats(supplier TEXT,service_id INTEGER,avg_time TEXT,orders_7d INTEGER,success_rate REAL,refill_rate REAL,PRIMARY KEY(supplier,service_id))"),
       db.prepare("INSERT INTO pedia_products VALUES(1,1),(2,0)"),
-      db.prepare("INSERT INTO pedia_tiers VALUES(1,1,1,'providersmm',1),(2,1,1,'indosmm',1),(3,2,1,'providersmm',2),(4,1,0,'providersmm',3),(5,1,1,'providersmm',4)"),
+      db.prepare("INSERT INTO pedia_tiers(id,product_id,is_active,supplier,supplier_service_id) VALUES(1,1,1,'providersmm',1),(2,1,1,'indosmm',1),(3,2,1,'providersmm',2),(4,1,0,'providersmm',3),(5,1,1,'providersmm',4)"),
       db.prepare("INSERT INTO pedia_supplier_services(supplier,service_id,min_qty,max_qty,rate_idr_per_1k,present,type) VALUES('providersmm',1,10,100,1000,1,'Default'),('indosmm',1,20,200,2000,1,'Default'),('providersmm',2,10,100,1000,1,'Default'),('providersmm',3,10,100,1000,1,'Default'),('providersmm',4,10,100,1000,0,'Default')"),
     ]);
     const before = await db.prepare(PEDIA_CATALOG_BOUNDS_SQL).all();

@@ -3,6 +3,7 @@
 // margin per paket; merah bila < min profit — dihitung di UI dari field).
 // POST: buat produk. PUT: ubah produk / tingkat / urutan / aktif.
 // Badge "Nonaktif otomatis" dibaca dari tiers.auto_disabled_reason.
+import { pediaServiceTypeFor } from "@/lib/pedia/custom-comments";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
@@ -64,6 +65,7 @@ const tierSchema = z.object({
   speed_note: z.string().max(120).optional(),
   drop_label: z.enum(["no_drop", "less_drop", "high_drop", "unknown"]).optional(),
   speed_per_day: z.string().trim().max(40).optional(),
+  input_kind: z.enum(["comments", ""]).optional().transform((v) => v === "" ? null : v),
   is_recommended: z.coerce.number().int().min(0).max(1).optional(),
   sort_order: z.coerce.number().int().min(0).max(100000).optional(),
   supplier: z.enum(PEDIA_PROVIDERS).default(PEDIA_SALE_PROVIDER),
@@ -87,7 +89,7 @@ async function reprice(db: DatabaseAccess, id: number, isTier: boolean) {
       WHERE ${isTier ? "t.id" : "t.product_id"}=?`, id,
   );
   for (const tier of affected) {
-    if (!isPediaProvider(tier.supplier) || Number(tier.live_present) !== 1 || tier.live_type !== "Default" || !Number.isFinite(Number(tier.live_rate)) || Number(tier.live_rate) <= 0) {
+    if (!isPediaProvider(tier.supplier) || Number(tier.live_present) !== 1 || tier.live_type !== pediaServiceTypeFor(tier.input_kind) || !Number.isFinite(Number(tier.live_rate)) || Number(tier.live_rate) <= 0) {
       await db.execRun(`UPDATE pedia_tiers SET package_prices_json='{}', is_active=0,
         auto_disabled_reason='service_missing', updated_at=datetime('now') WHERE id=?`, tier.id);
       continue;
@@ -110,7 +112,7 @@ async function validateMapping(db: DatabaseAccess, tier: Record<string, unknown>
   for (const id of [tier.supplier_service_id, tier.backup_service_id].filter((id) => id != null)) {
     const service = await db.queryFirst(`SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=?`, tier.supplier, id);
     if (service && isPediaPremiumToolCandidate(service.name, service.category)) return "premium_tool_excluded";
-    if (!service || Number(service.present) !== 1 || service.type !== "Default" || !Number.isFinite(Number(service.rate_idr_per_1k)) || Number(service.rate_idr_per_1k) <= 0) return "service_unavailable";
+    if (!service || Number(service.present) !== 1 || service.type !== pediaServiceTypeFor(tier.input_kind) || !Number.isFinite(Number(service.rate_idr_per_1k)) || Number(service.rate_idr_per_1k) <= 0) return "service_unavailable";
   }
   return null;
 }
@@ -263,7 +265,7 @@ export async function PUT(request: NextRequest) {
       if (packages.some((qty) => qty % Number(merged.step) !== 0)) return NextResponse.json({ error: "Paket harus sesuai kelipatan jumlah" }, { status: 400 });
     }
     const allow = isTier
-      ? ["label_note", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "target_format", "refill_anchor", "min_qty_override", "max_qty_override", "quantity_step", "region", "quality", "drop_risk", "drop_label", "speed_per_day", "speed_note", "is_recommended", "sort_order", "supplier", "supplier_service_id", "backup_service_id", "price_group", "markup_pct", "min_profit_rp", "refill_days", "eta_start", "eta_finish", "is_active"]
+      ? ["label_note", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "target_format", "refill_anchor", "min_qty_override", "max_qty_override", "quantity_step", "region", "quality", "drop_risk", "drop_label", "speed_per_day", "input_kind", "speed_note", "is_recommended", "sort_order", "supplier", "supplier_service_id", "backup_service_id", "price_group", "markup_pct", "min_profit_rp", "refill_days", "eta_start", "eta_finish", "is_active"]
       : ["slug", "platform", "metric", "target_kind", "name", "tagline", "description_md", "checklist_json", "packages_json", "step", "sort_order", "is_active", "is_featured"];
     const keys = allow.filter((key) => values[key] !== undefined);
     if (!keys.length) return NextResponse.json({ error: "no_changes" }, { status: 400 });

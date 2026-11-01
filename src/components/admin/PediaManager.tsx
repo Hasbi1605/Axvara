@@ -27,7 +27,7 @@ type Product = {
 };
 type Tier = {
   id: number; product_id: number; tier: string; label_note: string | null;
-  drop_label?: string | null; speed_per_day?: string | null;
+  drop_label?: string | null; speed_per_day?: string | null; input_kind?: string | null;
   stat_orders?: number | null; stat_success?: number | null; stat_cancel?: number | null; stat_refill?: number | null; stat_score?: number | null; stat_avg_time?: string | null;
   supplier: PediaProvider; supplier_service_id: number; backup_service_id: number | null;
   price_group: string; markup_pct: number; min_profit_rp: number;
@@ -346,7 +346,7 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
         e.preventDefault(); const f = new FormData(e.currentTarget);
         const body: Row = { kind: "tier", id: t.id, is_active: f.has("is_active") ? 1 : 0 };
         body.supplier = String(f.get("supplier"));
-        for (const k of ["label_note", "price_group", "eta_start", "eta_finish", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "speed_per_day", "drop_label", "region", "quality"]) body[k] = String(f.get(k) ?? "");
+        for (const k of ["label_note", "price_group", "eta_start", "eta_finish", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "speed_per_day", "drop_label", "region", "quality", "input_kind"]) body[k] = String(f.get(k) ?? "");
         for (const k of ["supplier_service_id", "markup_pct", "min_profit_rp", "refill_days"]) body[k] = Number(f.get(k));
         for (const k of ["min_qty_override", "max_qty_override"]) body[k] = f.get(k) ? Number(f.get(k)) : null;
         body.target_format = String(f.get("target_format"));
@@ -368,6 +368,7 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
           <Field label="Estimasi mulai"><input name="eta_start" maxLength={40} defaultValue={t.eta_start ?? ""} className={INPUT} /></Field>
           <Field label="Label drop (supplier)"><select name="drop_label" defaultValue={t.drop_label ?? "unknown"} className={INPUT}><option value="unknown">Belum diketahui</option><option value="no_drop">No Drop</option><option value="less_drop">Less Drop</option><option value="high_drop">High Drop</option></select></Field>
           <Field label="Speed (mis. 10K/hari)"><input name="speed_per_day" maxLength={40} defaultValue={t.speed_per_day ?? ""} className={INPUT} /></Field>
+          <Field label="Input pembeli"><select name="input_kind" defaultValue={t.input_kind ?? ""} className={INPUT}><option value="">Link saja</option><option value="comments">Link + komentar custom (1 per baris)</option></select></Field>
           <Field label="Wilayah"><select name="region" defaultValue={t.region ?? "global"} className={INPUT}><option value="global">Global</option><option value="indonesia">Indonesia</option><option value="mixed">Campuran</option></select></Field>
           <Field label="Kualitas"><select name="quality" defaultValue={t.quality ?? "standar"} className={INPUT}><option value="standar">Standar</option><option value="ekonomis">Ekonomis</option><option value="hq">HQ</option><option value="real">Real</option></select></Field>
           <details className="rounded-xl border border-white/10 p-3 sm:col-span-2 lg:col-span-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-white">Pengaturan lanjutan</summary><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

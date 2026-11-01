@@ -27,7 +27,10 @@ export function ServiceInfoCard({ t }: { t: PediaCatalogTier }) {
     ["Min / Max", `${fmt(t.min_qty ?? 1)} – ${fmt(t.max_qty ?? 1)}`],
     ...(t.success_pct != null ? [["Success rate", `${Math.round(t.success_pct)}% (7 hari)`] as [string, string]] : []),
   ];
-  return <section aria-label="Info layanan" className="ax-glass-card rounded-2xl p-3.5 text-[13px] leading-5">
+  // Hanya istilah yang muncul pada layanan ini; daftar lengkap ada di halaman Refill.
+  const want = new Set(["Drop", t.refill_days <= 0 ? "No Refill" : t.refill_days >= 3650 ? "Refill Lifetime" : "Refill", ...(drop !== "unknown" ? [DROP_LABEL[drop]] : []), ...(level ? ["Drop rate"] : []), ...(t.success_pct != null ? ["Success rate"] : []), ...(t.avg_time ? ["Avg time"] : [])]);
+  const terms = PEDIA_TERMS.filter(({ term }) => want.has(term));
+  return <section aria-label="Info layanan" className="rounded-2xl border border-[#00E5FF]/15 bg-[#00E5FF]/[0.03] p-3.5 text-[13px] leading-5">
     <h3 className="text-sm font-bold text-white">Info layanan</h3>
     <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
       {rows.map(([k, v]) => <div key={k} className="min-w-0"><dt className="text-[11px] text-white/50">{k}</dt><dd className="break-words font-medium text-white">{v}</dd></div>)}
@@ -39,8 +42,8 @@ export function ServiceInfoCard({ t }: { t: PediaCatalogTier }) {
     </div>
     <details className="mt-3 border-t border-white/10 pt-2">
       <summary className="flex min-h-9 cursor-pointer list-none items-center text-[13px] font-semibold text-[#00E5FF] [&::-webkit-details-marker]:hidden">Arti istilah</summary>
-      <dl className="mt-1 space-y-2">{PEDIA_TERMS.map(({ term, meaning }) => <div key={term}><dt className="font-semibold text-white">{term}</dt><dd className="text-white/60">{meaning}</dd></div>)}</dl>
-      <a href="/pedia/refill" className="mt-2 inline-flex min-h-9 items-center font-semibold text-[#00E5FF] underline underline-offset-4">Cara kerja refill</a>
+      <dl className="mt-1 space-y-2">{terms.map(({ term, meaning }) => <div key={term}><dt className="font-semibold text-white">{term}</dt><dd className="text-white/60">{meaning}</dd></div>)}</dl>
+      <a href="/pedia/refill#istilah" className="mt-2 inline-flex min-h-9 items-center font-semibold text-[#00E5FF] underline underline-offset-4">Semua istilah & cara kerja refill</a>
     </details>
   </section>;
 }

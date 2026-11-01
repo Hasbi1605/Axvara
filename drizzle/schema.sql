@@ -1350,6 +1350,8 @@ CREATE TABLE IF NOT EXISTS pedia_tiers (
   -- Migrasi 0085: label drop supplier + speed klaim supplier.
   drop_label TEXT CHECK (drop_label IS NULL OR drop_label IN ('no_drop','less_drop','high_drop','unknown')),
   speed_per_day TEXT,
+  -- Migrasi 0087: 'comments' = pembeli menulis komentar custom.
+  input_kind TEXT CHECK (input_kind IS NULL OR input_kind IN ('comments')),
   UNIQUE(product_id, supplier, supplier_service_id)
 );
 -- Migrasi 0085: kesehatan layanan supplier terukur (7 hari) + avg time.

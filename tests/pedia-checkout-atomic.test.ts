@@ -80,6 +80,27 @@ describe("Pedia checkout money transaction",()=>{
    expect(refillResponse.status).toBe(200);expect(refillSpy.mock.calls[0][0]).toBe(provider);expect(f.sql.prepare("SELECT refill_status FROM pedia_order_items").get()?.refill_status).toBe('submitted');
   });
 
+ // 2026-11-01: komentar custom — satu per baris, jumlah = quantity, dikirim sebagai `comments`.
+ it("custom comments: quote requires matching lines, order snapshots them, dispatch sends them to the supplier",async()=>{
+  const f=seed();f.sql.prepare("UPDATE pedia_supplier_services SET type='Custom Comments'").run();f.sql.prepare("UPDATE pedia_tiers SET input_kind='comments'").run();
+  const {POST:quote}=await import("@/app/api/pedia/quote/route");
+  const ask=(comments?:string,quantity=3)=>quote(new Request("http://x",{method:"POST",body:JSON.stringify({product_id:1,tier_id:1,quantity,target:"https://instagram.com/buyer",...(comments!==undefined?{comments}:{})})}) as never);
+  expect((await ask()).status).toBe(422);
+  const mismatch=await ask("satu\ndua");expect(mismatch.status).toBe(422);expect((await mismatch.json()).message).toContain("harus sama");
+  expect((await ask("a\nb\nc",201)).status).toBe(422);
+  const ok=await ask("Mantap kak 🔥\n\n  Keren banget  \nAuto follow!");expect(ok.status).toBe(200);
+  const {quote_token}=await ok.json();const r=await order(quote_token);expect(r.status).toBe(201);const {code}=await r.json();
+  expect(JSON.parse(String(f.sql.prepare("SELECT snapshot_json FROM pedia_order_items").get()?.snapshot_json)).custom_comments).toEqual(["Mantap kak 🔥","Keren banget","Auto follow!"]);
+  // Default-type service no longer matches a comments tier.
+  f.sql.prepare("UPDATE pedia_supplier_services SET type='Default'").run();expect((await ask("a\nb\nc")).status).toBe(409);
+  f.sql.prepare("UPDATE pedia_supplier_services SET type='Custom Comments'").run();
+  f.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,expires_at) VALUES(?,'dana','static',?,'fixture',2500,2501,'pending','2099-01-01')").run(code,code);
+  const {transitionPendingPaymentToPaid}=await import("@/lib/db");expect(await transitionPendingPaymentToPaid(code)).toBe(true);
+  const calls:unknown[][]=[];const {processPediaPaidOrders}=await import("@/lib/pedia/dispatch");
+  await processPediaPaidOrders((async(action:string,params:unknown)=>{calls.push([action,params]);return {ok:true,data:{order:"S-1"},status:200};}) as never);
+  expect(calls[0]).toEqual(["add",{service:1,link:"https://www.instagram.com/buyer/",quantity:3,comments:"Mantap kak 🔥\nKeren banget\nAuto follow!"}]);
+ });
+
  // 2026-11-01: layanan bergaransi tanpa tombol refill API → diteruskan admin, tanpa panggilan supplier.
  it("manual refill: guaranteed service without API refill is queued for admin, once per 24 hours",async()=>{
   const f=seed();f.sql.prepare("UPDATE pedia_supplier_services SET supplier='indosmm',api_refill=0").run();f.sql.prepare("UPDATE pedia_tiers SET supplier='indosmm',refill_days=30").run();

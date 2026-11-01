@@ -126,7 +126,7 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
 
 async function serviceRate(db: Db, supplier: string, serviceId: number): Promise<number | null> {
   const row = await db.queryFirst(
-    `SELECT rate_idr_per_1k FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
+    `SELECT rate_idr_per_1k FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type IN ('Default','Custom Comments') AND rate_idr_per_1k>0`,
     supplier, serviceId,
   ).catch(() => null);
   return row ? Number(row.rate_idr_per_1k) : null;
@@ -188,6 +188,8 @@ async function dispatchOne(
     service: item.supplier_service_id,
     link: typeof snapshot.supplier_target === "string" && snapshot.supplier_target ? snapshot.supplier_target : item.target_normalized,
     quantity: item.quantity,
+    // Komentar custom (2026-11-01): satu komentar per baris, dari snapshot pesanan.
+    ...(Array.isArray(snapshot.custom_comments) && snapshot.custom_comments.length ? { comments: (snapshot.custom_comments as string[]).join("\n") } : {}),
   }, 30_000, item.order_code, item.supplier);
   if (!res.ok) {
     const kind = res.kind;

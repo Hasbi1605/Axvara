@@ -4,6 +4,7 @@
 // Existing HS256 quotes remain verifiable during their 30-minute lifetime.
 // memuat product_id, tier_id, quantity, target_normalized, unit_price,
 // total, supplier_service_id, supplier_rate_snapshot. Berlaku 30 menit.
+import { checkCustomComments } from "@/lib/pedia/custom-comments";
 import * as jose from "jose";
 import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
 import { readPediaServiceCopy, type PediaServiceCopy } from "./service-copy";
@@ -27,6 +28,8 @@ export type PediaQuotePayload = {
   refill_anchor?: "created" | "completed";
   min_profit_rp?: number;
   service_copy?: PediaServiceCopy;
+  /** 2026-11-01: komentar custom (satu per baris), jumlah = quantity. */
+  custom_comments?: string[];
   jti: string;
 };
 
@@ -83,6 +86,10 @@ export async function verifyPediaQuoteToken(token: string): Promise<PediaQuotePa
     if (p.refill_anchor !== undefined && !["created", "completed"].includes(String(p.refill_anchor))) return null;
     const serviceCopy = p.service_copy === undefined ? undefined : readPediaServiceCopy(p.service_copy);
     if (serviceCopy === null) return null;
+    if (p.custom_comments !== undefined) {
+      if (!Array.isArray(p.custom_comments) || !p.custom_comments.every((c) => typeof c === "string")) return null;
+      if (!checkCustomComments((p.custom_comments as string[]).join("\n"), num(p.quantity)).ok) return null;
+    }
     return {
       purpose: "pedia_quote",
       product_id: num(p.product_id), tier_id: num(p.tier_id),
@@ -99,6 +106,7 @@ export async function verifyPediaQuoteToken(token: string): Promise<PediaQuotePa
       refill_anchor: p.refill_anchor as "created" | "completed" | undefined,
       min_profit_rp: p.min_profit_rp as number | undefined,
       service_copy: serviceCopy,
+      ...(p.custom_comments !== undefined ? { custom_comments: p.custom_comments as string[] } : {}),
       jti: String(payload.jti),
     };
   } catch {

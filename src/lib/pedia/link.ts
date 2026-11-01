@@ -215,6 +215,11 @@ export function detectPediaLink(raw: string, expectedPlatform?: string): PediaLi
   }
 
   // ── Shopee ──
+  // 2026-11-01: Shopee Live — link bagikan live.shopee.co.id/share?...&session=<id>.
+  if (host === "live.shopee.co.id") {
+    const session = new URL(p.raw).searchParams.get("session");
+    return session && /^\d{1,20}$/.test(session) ? result("shopee", "live", `https://live.shopee.co.id/share?from=live&session=${session}`) : null;
+  }
   if (host === "shopee.co.id" || host === "shopee.com") {
     if (seg.length === 1 && /-i\.\d+\.\d+$/.test(seg[0])) return result("shopee", "post", `https://shopee.co.id/${seg[0]}`);
     if (seg.length === 3 && seg[0] === "product" && /^\d+$/.test(seg[1]) && /^\d+$/.test(seg[2])) return result("shopee", "post", `https://shopee.co.id/${seg.join("/")}`);

@@ -8,6 +8,7 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 // Order memakai tabel `orders` existing (order_kind='pedia') agar webhook
 // DANA/GoPay + fulfillment existing langsung bekerja. Job Pedia dibuat di
 // transaksi checkout; dispatch menunggu order lunas.
+import { pediaServiceTypeFor, CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
 import { NextRequest, NextResponse } from "next/server";
 import { assertOrderAccessConfigured, createBuyerAccessSession } from "@/lib/order-access";
 import { z } from "zod";
@@ -106,14 +107,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "service_changed", message: "Layanan berubah. Muat ulang checkout." }, { status: 409 });
   }
   const live = await db.queryFirst(
-    `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
-    tier.supplier, Number(tier.supplier_service_id),
+    `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type=? AND rate_idr_per_1k>0`,
+    tier.supplier, Number(tier.supplier_service_id), pediaServiceTypeFor(tier.input_kind),
   ).catch(() => null);
   if (!live) {
     return NextResponse.json({ error: "Layanan sedang tidak tersedia. Coba lagi nanti." }, { status: 409 });
   }
   const qty = quote.quantity;
-  const limits = pediaBounds(live, tier, Number(product.step));
+  const limits = pediaBounds(tier.input_kind === "comments" ? { ...live, max_qty: Math.min(Number(live.max_qty), CUSTOM_COMMENT_MAX_LINES) } : live, tier, Number(product.step));
   if (!limits || qty < limits.min || qty > limits.max || qty % limits.step !== 0) {
     return NextResponse.json({ error: "Jumlah tidak lagi valid untuk layanan ini. Muat ulang checkout." }, { status: 409 });
   }
@@ -178,7 +179,7 @@ export async function POST(req: NextRequest) {
     pedia: { tier_id: quote.tier_id, quantity: qty, target: quote.target_normalized, unit_price: quote.unit_price, credit_used: creditUsed },
   }]);
   const snapshot = JSON.stringify({ supplier_target: quote.supplier_target ?? quote.target_normalized, refill_anchor: quote.refill_anchor ?? "created", supplier: quote.supplier, supplier_service_id: quote.supplier_service_id,
-    refill_days: quote.refill_days ?? (Number(tier.refill_days) || 0), min_profit_rp: quote.min_profit_rp ?? (Number(tier.min_profit_rp) || 0), service_copy: quote.service_copy });
+    refill_days: quote.refill_days ?? (Number(tier.refill_days) || 0), min_profit_rp: quote.min_profit_rp ?? (Number(tier.min_profit_rp) || 0), service_copy: quote.service_copy, ...(quote.custom_comments ? { custom_comments: quote.custom_comments } : {}) });
   const owned = `EXISTS(SELECT 1 FROM orders WHERE code=? AND quote_id=?)`;
   const statement = (sql: string, ...params: unknown[]) => db.d1!.prepare(sql).bind(...params);
   let claimed = false;

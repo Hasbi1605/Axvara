@@ -9,5 +9,6 @@ export const PEDIA_CATALOG_BOUNDS_SQL = `SELECT DISTINCT
     ON s.supplier=t.supplier AND s.service_id=t.supplier_service_id
   LEFT JOIN pedia_service_stats st
     ON st.supplier=s.supplier AND st.service_id=s.service_id
-  WHERE t.is_active=1 AND s.present=1 AND s.type='Default'
+  WHERE t.is_active=1 AND s.present=1
+    AND s.type=(CASE WHEN t.input_kind='comments' THEN 'Custom Comments' ELSE 'Default' END)
     AND s.rate_idr_per_1k>0`;

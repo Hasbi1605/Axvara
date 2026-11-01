@@ -63,7 +63,7 @@ export function pediaTargetExample(platform: string, kind: string) {
     linkedin: { profile: "https://www.linkedin.com/in/username/", company: "https://www.linkedin.com/company/perusahaan/", post: "https://www.linkedin.com/feed/update/urn:li:activity:123456789/" },
     pinterest: { profile: "https://www.pinterest.com/username/", board: "https://www.pinterest.com/username/nama-board/", post: "https://www.pinterest.com/pin/123456789/" },
     discord: { invite: "https://discord.gg/kodeundangan" },
-    shopee: { post: "https://shopee.co.id/nama-produk-i.123456.789012", shop: "https://shopee.co.id/namatoko" },
+    shopee: { post: "https://shopee.co.id/nama-produk-i.123456.789012", shop: "https://shopee.co.id/namatoko", live: "https://live.shopee.co.id/share?from=live&session=123456789" },
     spotify: { track: "https://open.spotify.com/track/IDlagu", artist: "https://open.spotify.com/artist/3ue1J3iN9SL3UetNZk6HHd", playlist: "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M" },
     soundcloud: { profile: "https://soundcloud.com/username", track: "https://soundcloud.com/username/judul-lagu" },
     twitch: { profile: "https://www.twitch.tv/username" },

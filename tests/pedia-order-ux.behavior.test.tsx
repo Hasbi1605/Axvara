@@ -35,7 +35,7 @@ function mount(enabled = true, target = "https://instagram.com/customer") {
   return render(<OrderClient product={product} initialTarget={target} ordersEnabled={enabled} />);
 }
 function select() {
-  fireEvent.click(screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }));
+  fireEvent.click(screen.getByRole("radio", { name: /Indonesia Stabil/i }));
   fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
 }
 function toTarget() { fireEvent.click(screen.getAllByRole("button", { name: "Lanjut: isi target" })[0]); }
@@ -70,7 +70,7 @@ describe("Pedia order UX", () => {
     fireEvent.click(button);
     expect(retry).toHaveBeenCalledOnce();
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
-    expect((screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: /Indonesia Stabil/i }) as HTMLInputElement).checked).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it("renders saved product copy as escaped text with preserved lines, including SSR", () => {
@@ -163,9 +163,9 @@ describe("Pedia order UX", () => {
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
     // Harga dibandingkan pada jumlah yang sama; layanan tak cocok ditandai.
-    expect(screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }).closest("label")!.textContent).toContain("untuk 250");
-    expect(screen.getByRole("radio", { name: /Followers Global Ekonomis/i }).closest("label")!.textContent).toContain("Jumlah tidak tersedia");
-    fireEvent.click(screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }));
+    expect(screen.getByRole("radio", { name: /Indonesia Stabil/i }).closest("label")!.textContent).toContain("untuk 250");
+    expect(screen.getByRole("radio", { name: /Global Ekonomis/i }).closest("label")!.textContent).toContain("Jumlah tidak tersedia");
+    fireEvent.click(screen.getByRole("radio", { name: /Indonesia Stabil/i }));
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -197,11 +197,11 @@ describe("Pedia order UX", () => {
   it("jumlah bebas divalidasi terhadap min–max layanan terpilih tanpa menghapus jumlah (bukan paket mati)", () => {
     mount(); select();
 
-    const incompatible = screen.getByRole("radio", { name: /Followers Global Ekonomis/i }) as HTMLInputElement;
+    const incompatible = screen.getByRole("radio", { name: /Global Ekonomis/i }) as HTMLInputElement;
     expect(incompatible.disabled).toBe(true);
     fireEvent.click(incompatible);
     expect((screen.getByLabelText("Jumlah yang dipesan") as HTMLInputElement).value).toBe("250");
-    expect((screen.getByRole("radio", { name: /Followers Indonesia Stabil/i }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: /Indonesia Stabil/i }) as HTMLInputElement).checked).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
     // A chosen service can become incompatible when the buyer edits quantity.
 
@@ -322,7 +322,7 @@ describe("Pedia order UX", () => {
     mount(); complete(); await getQuote(); back();
 
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
-    fireEvent.click(screen.getByRole("radio", { name: /Followers Global Ekonomis/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /Global Ekonomis/i }));
     expect(screen.queryByText(/Total pembayaran/)).toBeNull();
     next(); await getQuote(); back(); toTarget();
     fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
@@ -427,10 +427,32 @@ describe("Pedia configurator", () => {
   });
 
   const many = { ...product, tiers: Array.from({ length: 7 }, (_, i) => ({ ...product.tiers[i % 2], id: i + 1, public_name: `Layanan ${i + 1}`, recommended: i === 4 })) };
+  it("groups Refill before No Refill, cheapest first, with short names and inline info for the pick", () => {
+    const tiers: PediaCatalogProduct["tiers"] = [
+      { ...product.tiers[0], id: 11, public_name: "Followers Global Real · No Refill", price_per_1k: 12000, success_pct: 97 },
+      { ...product.tiers[1], id: 12, public_name: "Followers Indonesia Real · Refill 30 Days · Less Drop", price_per_1k: 65000, drop_label: "less_drop" },
+      { ...product.tiers[1], id: 13, public_name: "Followers Global Real · Refill 365 Days · No Drop", price_per_1k: 35000 },
+      { ...product.tiers[0], id: 14, public_name: "Followers Indonesia Real · No Refill", price_per_1k: 57000, eta_start: null, avg_time: "1 jam 42 menit" },
+    ];
+    render(<ServicePicker product={{ ...product, tiers }} tierId={12} onSelect={vi.fn()} qty={null} expanded info={(t) => <p data-testid="inline-info">info {t.id}</p>} />);
+    expect(screen.getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["13", "12", "11", "14"]);
+    const text = document.getElementById("pedia-tier")!.textContent!;
+    expect(text.indexOf("Refill (bergaransi)")).toBeLessThan(text.indexOf("No Refill", text.indexOf("Refill (bergaransi)") + 20));
+    expect(screen.getByRole("radio", { name: /^Indonesia Real · Refill 30 Days/ })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /^Global Real · No Refill/ })).toBeTruthy();
+    expect(text).not.toContain("Followers Indonesia Real · Refill 30 Days");
+    expect(screen.getByText("97% sukses").className).toContain("text-emerald-200");
+    expect(text).toContain("Avg 1 jam 42 menit");
+    const info = screen.getByTestId("inline-info");
+    expect(info.textContent).toBe("info 12");
+    expect(info.parentElement?.previousElementSibling?.querySelector("input")?.getAttribute("value")).toBe("12");
+  });
+
   it("shows three real offers first, exposes all alternatives with visible chip filters and result count", () => {
     render(<ServicePicker product={many} tierId={null} onSelect={vi.fn()} qty={null} />);
     expect(screen.getAllByRole("radio")).toHaveLength(3);
-    expect(screen.getAllByRole("radio")[0].getAttribute("value")).toBe("5");
+    // 2026-11-01: Refill (bergaransi) dulu, lalu termurah; bukan lagi rekomendasi dulu.
+    expect(screen.getAllByRole("radio")[0].getAttribute("value")).toBe("2");
     expect(screen.getByRole("status").textContent).toContain("7 dari 7 layanan");
     expect(screen.getByRole("button", { name: "Semua" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Lihat semua 7 layanan" }));
@@ -487,8 +509,8 @@ describe("Pedia configurator", () => {
 
   it("compares exact prices at the same quantity and never substitutes an incompatible minimum price", () => {
     render(<ServicePicker product={product} tierId={null} onSelect={vi.fn()} qty={250} prices={{ 2: 7050 }} />);
-    const limited = screen.getByRole("radio", { name: /Followers Global Ekonomis/ }).closest("label")!;
-    const eligible = screen.getByRole("radio", { name: /Followers Indonesia Stabil/ }).closest("label")!;
+    const limited = screen.getByRole("radio", { name: /Global Ekonomis/ }).closest("label")!;
+    const eligible = screen.getByRole("radio", { name: /Indonesia Stabil/ }).closest("label")!;
     expect(limited.textContent).toContain("Jumlah tidak tersedia");
     expect(limited.textContent).not.toContain("Rp2.000");
     expect(eligible.textContent).toContain("Rp7.050");
@@ -534,6 +556,29 @@ describe("Pedia configurator", () => {
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
     toTarget();
     expect(screen.getByText("Salin link profil lengkap.")).toBeTruthy();
+  });
+
+  it("custom comments: one per line, count must match quantity, sent with the quote", async () => {
+    const custom = { ...product, tiers: [{ ...product.tiers[1], input_kind: "comments" as const, min_qty: 1, max_qty: 200, quantity_step: 1 }], step: 1 };
+    render(<OrderClient product={custom} initialTarget="https://www.instagram.com/axvara/" ordersEnabled />);
+    fireEvent.click(screen.getByRole("radio"));
+    fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "2" } });
+    toTarget();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Akun publik/ }));
+    const box = screen.getByLabelText(/Isi komentar/);
+    fireEvent.change(box, { target: { value: "Mantap\n" } });
+    expect(document.getElementById("pedia-comments-help")?.textContent).toContain("1 dari 2 komentar");
+    next();
+    expect(screen.getByText("Jumlah komentar (1) harus sama dengan jumlah pesanan (2).")).toBeTruthy();
+    expect(screen.queryByLabelText("Nomor WhatsApp")).toBeNull();
+    fireEvent.change(box, { target: { value: "Mantap\nKeren" } });
+    next();
+    fireEvent.change(screen.getByLabelText("Nomor WhatsApp"), { target: { value: "081234567890" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "buyer@example.com" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Saya setuju/ }));
+    proceed();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ quantity: 2, comments: "Mantap\nKeren" });
   });
 
   it("explains refill, drop label and measured drop rate for the selected service", () => {
@@ -689,7 +734,7 @@ describe("Pedia configurator", () => {
     render(<OrderClient product={product} initialTarget="" ordersEnabled />);
     select();
     const bar = document.querySelector(".pedia-mobile-action") as HTMLElement;
-    expect(bar.textContent).toContain("Followers Indonesia Stabil");
+    expect(bar.textContent).toContain("Indonesia Stabil · Refill 30 Days");
     expect(bar.textContent).toContain("250");
   });
 

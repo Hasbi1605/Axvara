@@ -110,7 +110,7 @@ export function PediaRefillClient() {
       <ul className="mt-3 list-disc space-y-2.5 pl-5 text-sm leading-6 text-white/55">{PEDIA_REFILL_RULES.map((rule) => <li key={rule}>{rule}</li>)}</ul>
     </section>
 
-    <section className="mt-8" aria-labelledby="pedia-refill-terms">
+    <section id="istilah" className="mt-8 scroll-mt-24" aria-labelledby="pedia-refill-terms">
       <h2 id="pedia-refill-terms" className="text-lg font-semibold text-white">Arti istilah</h2>
       <div className="mt-3 space-y-2">{PEDIA_TERMS.map(({ term, meaning }) => <details key={term} className="ax-glass-card rounded-2xl px-4 py-3"><summary className="cursor-pointer list-none text-sm font-semibold text-white [&::-webkit-details-marker]:hidden"><span className="flex min-h-6 items-center justify-between gap-3">{term}<span aria-hidden="true" className="shrink-0"><IosIcon name="chevron" size={14} tint="white" /></span></span></summary><p className="mt-3 text-[13px] leading-6 text-white/60">{meaning}</p></details>)}</div>
     </section>
