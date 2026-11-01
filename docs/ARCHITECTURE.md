@@ -3187,6 +3187,19 @@ Hanya `PEDIA_DISPATCH_ENABLED` yang tidak dikonsumsi runtime dihapus, sehingga
 60 + 4 = 64; keempat env pemilihan/config KlikQRIS serta secret DANA/GoPay lama
 tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
 
+### 16.10a FK tier pesanan Pedia — migrasi 0084 (1 November 2026)
+Rebuild 0062 me-rename `pedia_tiers` ke arsip; SQLite/D1 ikut menulis ulang FK
+`pedia_order_items.tier_id` ke `pedia_tiers_archive0062_prev2` (36 tier lama).
+Akibatnya checkout tier yang dibuat sesudah 0062 (146 dari 152 tier aktif pada
+1 November) gagal `FOREIGN KEY constraint failed` di batch klaim dan dibalas 503
+"Pesanan belum tersimpan". Migrasi 0084 me-rebuild `pedia_order_items` dengan
+definisi schema.sql (FK ke `pedia_tiers`), menyalin semua baris dan memasang ulang
+dua indeks; tabel arsip tier tidak disentuh, tidak ada tabel anak ber-FK ke
+tabel ini. Route `POST /api/pedia/orders` kini mencatat pesan error D1 batch
+(tanpa kontak/target) ke console. Aturan: rebuild tabel induk di D1 wajib
+memeriksa `pragma_foreign_key_list` tabel anak sesudahnya; rename tabel induk
+ke arsip memindahkan FK anak ke arsip tersebut.
+
 ## 17. Penghematan rows_read D1 Free — 2026-10-16
 
 ✅ Implementasi dan verifikasi lokal; publikasi melalui CI. Laporan pekerjaan:

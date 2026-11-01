@@ -1,5 +1,14 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Perbaikan checkout Pedia gagal tersimpan — 1 November 2026
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Sebagian besar
+layanan Pedia gagal dipesan dengan pesan "Pesanan belum tersimpan" karena FK
+`pedia_order_items.tier_id` masih menunjuk tabel arsip tier sejak migrasi 0062.
+Migrasi0084 me-rebuild tabel itu dengan FK ke `pedia_tiers` tanpa mengubah data;
+route order mencatat error D1 ke console. Tidak ada env/cron/kontrak API baru.
+Detail: ARCHITECTURE §16.10a.
+
 ## Bantuan dan ketentuan Pedia — 1 November 2026
 
 Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. `/bantuan`

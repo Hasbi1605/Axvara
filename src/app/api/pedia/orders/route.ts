@@ -194,7 +194,11 @@ export async function POST(req: NextRequest) {
         code,quote.product_id,quote.tier_id,snapshot,quote.target_raw,quote.target_normalized,qty,quote.unit_price,freshTotal,creditUsed,quote.supplier,quote.supplier_service_id,quote.supplier_rate_snapshot,code,quoteIdRow),
     ]);
     claimed = Number(result[0]?.meta?.changes) === 1;
-  } catch {
+  } catch (error) {
+    // 2026-11-01: dulu error ditelan tanpa jejak, sehingga FK tier_id yang
+    // menunjuk tabel arsip (lihat migrasi 0084) tidak terlihat di log. Hanya
+    // pesan D1 + id tier/produk; tanpa kontak, target atau token.
+    console.error("[pedia-orders] claim batch failed", { tier_id: quote.tier_id, product_id: quote.product_id, error: error instanceof Error ? error.message.slice(0, 200) : "unknown" });
     const existing = await db.queryFirst(`SELECT code,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`,quoteIdRow).catch(() => null);
     if (existing) return checkoutResponse(db,existing,true);
     return NextResponse.json({ error: "Pesanan belum tersimpan. Coba lagi dengan data yang sama." }, { status: 503 });
