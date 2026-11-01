@@ -4,7 +4,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { AXVARA_SERVICES, type AxvaraService } from "@/lib/site";
 
-export function ServicesMenu({ active }: { active: AxvaraService }) {
+/** `compact` (Pedia): di bawah `sm` label tampil "Layanan" satu baris; "AXVARA" tetap dibaca pembaca layar. */
+export function ServicesMenu({ active, compact = false }: { active: AxvaraService; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -41,7 +42,7 @@ export function ServicesMenu({ active }: { active: AxvaraService }) {
       <button ref={trigger} type="button" aria-expanded={open} aria-controls={id}
         onClick={(event) => { event.currentTarget.focus(); setOpen((value) => !value); }}
         className="flex min-h-[44px] items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-2 text-xs text-white/80 transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] sm:gap-2 sm:px-3 sm:text-sm">
-        <span className="text-left leading-4">Layanan<span className="block sm:inline"> AXVARA</span></span>
+        <span className="text-left leading-4">Layanan<span className={compact ? "max-sm:sr-only" : "block sm:inline"}> AXVARA</span></span>
         <ChevronDown aria-hidden="true" className={`h-3 w-3 transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`} />
       </button>
       <nav ref={panel} id={id} hidden={!open} aria-label="Layanan AXVARA"

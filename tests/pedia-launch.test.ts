@@ -113,7 +113,7 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
 
   it("Pedia uses the shared footer and cursor effect once + platform headers retain native icons", () => {
     const layout = read("src/app/pedia/layout.tsx");
-    expect(layout).toContain('<Footer />');
+    expect(layout).toContain('<Footer pediaLayout />');
     expect(layout.match(/<Spotlight \/>/g)).toHaveLength(1);
     expect(layout).not.toContain("<footer");
     expect(layout).not.toContain("Axvara Pedia</span> · Naikkan");

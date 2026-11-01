@@ -7,9 +7,11 @@ import { usePediaSearch } from "@/stores/pedia-search";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
 import { SITE } from "@/lib/site";
+import { pediaRoutePath } from "@/lib/pedia/route-path";
 
 export function PediaNavbar() {
-  const path = usePathname();
+  // Subdomain memberi `/` dan `/lacak`; normalkan ke `/pedia...` agar pembandingan rute konsisten.
+  const path = pediaRoutePath(usePathname());
   const router = useRouter();
   const q = usePediaSearch((s) => s.q);
   const setQ = usePediaSearch((s) => s.setQ);
@@ -61,7 +63,7 @@ export function PediaNavbar() {
         </div>
         <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
           {/* Urutan 1:1 Market: ServicesMenu dulu, tombol search sesudahnya. */}
-          <ServicesMenu active="pedia" />
+          <ServicesMenu active="pedia" compact />
           <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Cari layanan" aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>

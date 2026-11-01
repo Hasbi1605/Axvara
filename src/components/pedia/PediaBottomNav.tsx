@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
+import { isPediaOrderFlow, pediaRoutePath } from "@/lib/pedia/route-path";
 
 const TABS: { href: string; label: string; icon: IosIconName; match: (p: string) => boolean }[] = [
   { href: "/pedia", label: "Beranda", icon: "home", match: (p) => p === "/pedia" },
@@ -17,10 +18,11 @@ const TABS: { href: string; label: string; icon: IosIconName; match: (p: string)
 ];
 
 export function PediaBottomNav() {
-  const path = usePathname() ?? "";
+  // 2026-11-01: subdomain memberi `/p/x`; normalkan agar guard + tab aktif berlaku di produksi.
+  const path = pediaRoutePath(usePathname());
   // 2026-10-08: halaman order punya sticky bar sendiri (total + Bayar) —
   // bottom nav disembunyikan agar tidak menumpuk (dua fixed = jelek mobile).
-  if (path.startsWith("/pedia/o/") || path.startsWith("/pedia/p/")) return null;
+  if (isPediaOrderFlow(path)) return null;
   return (
     <nav
       aria-label="Navigasi Pedia"

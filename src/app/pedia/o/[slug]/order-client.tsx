@@ -209,7 +209,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
           {tier.eta_finish && <div className="flex justify-between gap-4"><dt>Estimasi selesai</dt><dd className="text-right text-white/70">{tier.eta_finish}</dd></div>}
           {targetOk && <div><dt>Tujuan</dt><dd className="mt-1 break-all leading-5 text-white/80">{target.trim()}</dd></div>}
         </dl>
-        <div className="mt-4 border-t border-white/10 pt-3"><div className="flex items-baseline justify-between gap-3"><p className="text-[13px] text-white/65">{currentQuote ? "Total terkonfirmasi" : "Total pesanan"}</p><p className={`text-[17px] font-bold leading-6 tracking-[-0.02em] ${packageTotal > 0 || currentQuote ? "text-white" : "text-white/80"}`}>{priceText}</p></div>
+        <div className="mt-4 border-t border-white/10 pt-3"><div className="flex items-baseline justify-between gap-3"><p className="text-[13px] text-white/65">{currentQuote ? "Total terkonfirmasi" : "Total pesanan"}</p><p className={`text-[17px] font-bold leading-6 tracking-[-0.02em] ${packageTotal > 0 || currentQuote ? "text-white" : "text-white/80"}`}>{!currentQuote && !qty ? <><span aria-hidden="true">—</span><span className="sr-only">Belum ada total</span></> : priceText}</p></div>
         {(currentQuote || !qty) && <p className="mt-1 text-[11px] leading-4 text-white/65">{currentQuote ? "Nominal QRIS ditampilkan di halaman pembayaran." : "Isi jumlah untuk melihat total pesananmu."}</p>}</div>
       </> : <div>
         <ol className="space-y-2.5 text-[13px] leading-5 text-white/70">

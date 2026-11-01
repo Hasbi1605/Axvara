@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { AXVARA_SERVICES, SITE, TG_BOT_HREF, waHubLink } from "@/lib/site";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
+import { isPediaOrderFlow, pediaRoutePath } from "@/lib/pedia/route-path";
 
 // Ikon brand satu tone (fill=currentColor) dari Simple Icons versi terbaru
 // (2026-10-03, diverifikasi via cdn.jsdelivr.net/npm/simple-icons@latest):
@@ -30,7 +31,8 @@ const SOCIAL_LINKS: { key: SocialKey; label: string; href: string }[] = [
   { key: "facebook", label: "Facebook AXVARA", href: SITE.social.facebook },
 ];
 
-export function Footer() {
+/** `pediaLayout`: dirender oleh layout Pedia, sehingga path subdomain (`/p/x`) dinormalkan ke `/pedia/p/x`. */
+export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) {
   const shop = (path: string) => `${SITE.webUrl}${path}`;
   const pedia = (path: string) => `${SITE.pediaUrl}/pedia${path}`;
   const pathname = usePathname();
@@ -43,7 +45,8 @@ export function Footer() {
   // Halaman link-in-bio (/link) + hub WA (/wa) tampil tanpa chrome global agar fokus.
   if (pathname === "/link" || pathname === "/wa") return null;
   // Alur pesan Pedia di bawah xl memakai bar bawah sendiri; footer hanya mengalihkan fokus.
-  const orderFlow = !!pathname && (pathname.startsWith("/pedia/p/") || pathname.startsWith("/pedia/o/"));
+  // Di pedia.axvara.tech URL browser tanpa prefix /pedia, jadi path dinormalkan dahulu.
+  const orderFlow = !!pathname && isPediaOrderFlow(pediaLayout ? pediaRoutePath(pathname) : pathname);
 
   const subscribe = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

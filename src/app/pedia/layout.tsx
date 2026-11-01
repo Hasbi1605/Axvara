@@ -33,7 +33,7 @@ export default function PediaLayout({ children }: { children: React.ReactNode })
       <NavigationProgress />
       <CrossAppTransition />
       <main className="pb-10">{children}</main>
-      <Footer />
+      <Footer pediaLayout />
       <PediaBottomNav />
     </div>
   );

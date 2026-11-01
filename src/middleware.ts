@@ -54,7 +54,8 @@ async function routeRequest(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.protocol = "https:";
     url.host = PEDIA_HOST;
-    url.pathname = path.replace(/^\/pedia(\/|$)/, "/$1").replace(/\/$/, "") || "/";
+    // `/pedia/p/x` → `/p/x` (dulu menghasilkan `//p/x`).
+    url.pathname = path.replace(/^\/pedia(?=\/|$)/, "").replace(/\/$/, "") || "/";
     return NextResponse.redirect(url, 308);
   }
 

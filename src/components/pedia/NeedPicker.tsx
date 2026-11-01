@@ -26,6 +26,6 @@ export function NeedPicker({ products, slug, platform, locked, onChange }: {
           {short(product.name.replace(new RegExp(`\\s*${platform}\\s*`, "ig"), " ").trim() || product.name)}
       </button>)}
     </nav>
-    {products.length > 3 && <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} className="min-h-11 whitespace-nowrap text-[13px] font-medium text-[#00E5FF] xl:hidden">{expanded ? "Ringkas kebutuhan" : `Semua kebutuhan (${products.length})`}</button>}
+    {products.length > 3 && <button type="button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded} className="-mb-2 min-h-11 whitespace-nowrap text-[13px] font-medium text-[#00E5FF] xl:hidden">{expanded ? "Ringkas kebutuhan" : `Semua kebutuhan (${products.length})`}</button>}
   </div>;
 }
