@@ -101,6 +101,7 @@ describe("shared footer", () => {
       "Lacak pesanan market": `${SITE.webUrl}/lacak-pesanan`,
       "Bantuan Pedia": `${SITE.pediaUrl}/bantuan`,
       "Ketentuan Pedia": `${SITE.pediaUrl}/ketentuan`,
+      "Refill Pedia": `${SITE.pediaUrl}/refill`,
       "Ketentuan Market": `${SITE.webUrl}/garansi-replace`,
       "WhatsApp AXVARA": "https://axvara.tech/wa?pesan=Halo%20AXVARA",
       "Grup WA": WA_GROUP_HREF,
@@ -126,7 +127,7 @@ describe("shared footer", () => {
     render(<Footer />);
     const services = screen.getByRole("navigation", { name: "Layanan AXVARA" });
     expect(within(services).getAllByRole("link").map((link) => link.textContent)).toEqual(AXVARA_SERVICES.map((service) => service.name));
-    expect(within(screen.getByRole("navigation", { name: "Bantuan AXVARA" })).getAllByRole("link")).toHaveLength(6);
+    expect(within(screen.getByRole("navigation", { name: "Bantuan AXVARA" })).getAllByRole("link")).toHaveLength(7);
     expect(screen.queryByText("Tools")).toBeNull();
     expect(screen.queryByRole("link", { name: "Semua produk" })).toBeNull();
     expect(screen.queryByRole("link", { name: "AI & teknologi" })).toBeNull();

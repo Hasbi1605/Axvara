@@ -62,7 +62,7 @@ describe("Pedia checkout money transaction",()=>{
  });
 
  it.each(["indosmm"] as const)("%s: quote → QR → paid → dispatch → completed → refill preserves the public and private snapshots",async(provider)=>{
-  const f=seed();f.sql.exec("INSERT INTO products(id,slug,name,price,sold_count,is_active) VALUES(1,'market-product','Market product',1000,0,1)");f.sql.prepare("UPDATE pedia_supplier_services SET supplier=?").run(provider);f.sql.prepare("UPDATE pedia_tiers SET supplier=?,target_format='username',refill_days=30,refill_anchor='completed',public_name='Nama tersimpan',terms_md='Refill 30 hari sejak pesanan selesai' ").run(provider);
+  const f=seed();f.sql.exec("INSERT INTO products(id,slug,name,price,sold_count,is_active) VALUES(1,'market-product','Market product',1000,0,1)");f.sql.prepare("UPDATE pedia_supplier_services SET supplier=?,api_refill=1").run(provider);f.sql.prepare("UPDATE pedia_tiers SET supplier=?,target_format='username',refill_days=30,refill_anchor='completed',public_name='Nama tersimpan',terms_md='Refill 30 hari sejak pesanan selesai' ").run(provider);
   const {POST:quote}=await import("@/app/api/pedia/quote/route");const response=await quote(new Request("http://x",{method:"POST",body:JSON.stringify({product_id:1,tier_id:1,quantity:150,target:"https://instagram.com/buyer"})}) as never);expect(response.status).toBe(200);
   const r=await order((await response.json()).quote_token);expect(r.status).toBe(201);const {code,buyer_access_code}=await r.json();
   const {GET:status}=await import("@/app/api/pedia/orders/[code]/route");const get=()=>status(new Request("http://x",{headers:{"x-order-contact":"a@b.com"}}) as never,{params:Promise.resolve({code})});
@@ -79,6 +79,26 @@ describe("Pedia checkout money transaction",()=>{
    const {POST:refill}=await import("@/app/api/pedia/orders/[code]/refill/route");const refillResponse=await refill(new Request("http://x",{method:'POST',body:JSON.stringify({contact:"a@b.com"})}) as never,{params:Promise.resolve({code})});
    expect(refillResponse.status).toBe(200);expect(refillSpy.mock.calls[0][0]).toBe(provider);expect(f.sql.prepare("SELECT refill_status FROM pedia_order_items").get()?.refill_status).toBe('submitted');
   });
+
+ // 2026-11-01: layanan bergaransi tanpa tombol refill API → diteruskan admin, tanpa panggilan supplier.
+ it("manual refill: guaranteed service without API refill is queued for admin, once per 24 hours",async()=>{
+  const f=seed();f.sql.prepare("UPDATE pedia_supplier_services SET supplier='indosmm',api_refill=0").run();f.sql.prepare("UPDATE pedia_tiers SET supplier='indosmm',refill_days=30").run();
+  const {POST:quote}=await import("@/app/api/pedia/quote/route");const response=await quote(new Request("http://x",{method:"POST",body:JSON.stringify({product_id:1,tier_id:1,quantity:150,target:"https://instagram.com/buyer"})}) as never);
+  const r=await order((await response.json()).quote_token);const {code}=await r.json();
+  f.sql.prepare("UPDATE pedia_order_items SET status='completed',supplier_order_id='S-9',completed_at=datetime('now')").run();
+  const {GET:status}=await import("@/app/api/pedia/orders/[code]/route");
+  const before=(await (await status(new Request("http://x",{headers:{"x-order-contact":"a@b.com"}}) as never,{params:Promise.resolve({code})})).json()).order;
+  expect(before.refill).toMatchObject({mode:"manual",eligible:true,days:30,reason:null});
+  const proxy=await import("@/lib/pedia/proxy");const spy=vi.spyOn(proxy,'callPediaProxy');spy.mockClear();
+  const {POST:refill}=await import("@/app/api/pedia/orders/[code]/refill/route");
+  const send=()=>refill(new Request("http://x",{method:'POST',body:JSON.stringify({contact:"a@b.com"})}) as never,{params:Promise.resolve({code})});
+  const first=await send();expect(first.status).toBe(200);expect(await first.json()).toMatchObject({mode:"manual"});
+  expect(spy).not.toHaveBeenCalled();
+  expect(f.sql.prepare("SELECT refill_status FROM pedia_order_items").get()?.refill_status).toBe('manual_requested');
+  const again=await send();expect(again.status).toBe(409);expect((await again.json()).reason).toBe("in_progress");
+  const after=(await (await status(new Request("http://x",{headers:{"x-order-contact":"a@b.com"}}) as never,{params:Promise.resolve({code})})).json()).order;
+  expect(after.refill).toMatchObject({eligible:false,reason:"in_progress",status:"manual_requested",status_label:"Diproses admin"});
+ });
 
  it("automatic Pedia status polling reconciles KlikQRIS once per throttle window; manual wake shares the durable throttle",async()=>{
    const f=seed();const r=await order(await token());expect(r.status).toBe(201);const {code,buyer_access_code}=await r.json();

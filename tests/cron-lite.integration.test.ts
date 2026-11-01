@@ -150,22 +150,21 @@ describe("/api/cron/lite", () => {
     }
   });
 
-  it.each(["read", "write"])("pedia_orders: gagal %s checkpoint saldo ProviderSMM tidak memanggil proxy/notifikasi", async failure => {
+  // 2026-11-01 (owner): ProviderSMM diputus — tidak ada cek saldo/alert walau
+  // penandanya sudah lama, sementara IndoSMM tetap dicek.
+  it("pedia_orders: tidak lagi memanggil saldo ProviderSMM, IndoSMM tetap dicek", async () => {
     const fx = createD1Fixture();
     try {
       vi.stubEnv("CRON_SECRET", "s");
       vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
       vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "test");
-      // The other provider has a healthy independent checkpoint, so no external
-      // request is due. Only the ProviderSMM checkpoint operation is interrupted.
-      fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES('pedia_indosmm_balance_checked_at',datetime('now'))").run();
-      fx.control.fail = query => query.includes("pedia_balance_checked_at")
-        && (failure === "read" ? query.trim().startsWith("SELECT") : query.trim().startsWith("INSERT"));
-      const fetch = vi.fn();
+      const fetch = vi.fn(async () => new Response(JSON.stringify({ balance: "250000", currency: "IDR" }), { status: 200, headers: { "content-type": "application/json" } }));
       vi.stubGlobal("fetch", fetch);
       expect((await call("pedia_orders")).status).toBe(200);
-      expect(fetch).not.toHaveBeenCalled();
-      expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM pedia_supplier_balance_log").get()?.n).toBe(0);
+      const urls = fetch.mock.calls.map((c) => String((c as unknown[])[0]));
+      expect(urls.some((u) => u.includes("/psmm/"))).toBe(false);
+      expect(urls.some((u) => u.includes("/indosmm/balance"))).toBe(true);
+      expect(fx.sql.prepare("SELECT supplier FROM pedia_supplier_balance_log").all()).toEqual([{ supplier: "indosmm" }]);
     } finally { vi.unstubAllGlobals(); fx.close(); }
   });
 

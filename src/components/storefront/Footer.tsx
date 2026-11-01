@@ -149,6 +149,7 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
               <li><Link prefetch={false} href={pedia("/lacak")} className="text-white/60 transition hover:text-white">Lacak pesanan Pedia</Link></li>
               <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">Lacak pesanan market</Link></li>
               <li><Link prefetch={false} href={pedia("/bantuan")} className="text-white/60 transition hover:text-white">Bantuan Pedia</Link></li>
+              <li><Link prefetch={false} href={pedia("/refill")} className="text-white/60 transition hover:text-white">Refill Pedia</Link></li>
               <li><Link prefetch={false} href={pedia("/ketentuan")} className="text-white/60 transition hover:text-white">Ketentuan Pedia</Link></li>
               <li><Link prefetch={false} href={shop("/garansi-replace")} className="text-white/60 transition hover:text-white">Ketentuan Market</Link></li>
             </ul>

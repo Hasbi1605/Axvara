@@ -1,5 +1,16 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Pedia IndoSMM: katalog, drop/refill dan halaman Refill — 1 November 2026
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. ProviderSMM
+diputus: tidak ada cek saldo/notif Telegram, diff VPS ProviderSMM dibalas `ignored`.
+Migrasi0085 menambah `pedia_service_stats` + `pedia_tiers.drop_label/speed_per_day`;
+0086 menambah 124 layanan IndoSMM + 3 produk komentar, menonaktifkan 6 layanan
+gagal. Istilah SMM (No Drop, Less Drop, High Drop, Refill 30 Days, No Refill) tampil
+dengan penjelasan singkat; halaman `/refill` mendukung refill API dan manual.
+Teks pembeli white label 100% AXVARA tanpa menyebut supplier. Statistik layanan disegarkan cron lite existing maks 1×/jam dari alat publik
+IndoSMM. Tidak ada env/secret/cron baru. Detail: [spec](docs/pedia/indosmm-catalog-refill-2026-11-01.md).
+
 ## Perbaikan checkout Pedia gagal tersimpan — 1 November 2026
 
 Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Sebagian besar

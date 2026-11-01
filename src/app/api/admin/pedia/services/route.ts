@@ -80,8 +80,11 @@ export async function GET(request: NextRequest) {
     `SELECT s.*,
        (SELECT GROUP_CONCAT(p.slug || ':' || t.tier, ', ')
           FROM pedia_tiers t JOIN pedia_products p ON p.id=t.product_id
-         WHERE t.supplier=s.supplier AND t.supplier_service_id=s.service_id) AS used_in
-     FROM pedia_supplier_services s ${whereSql}
+         WHERE t.supplier=s.supplier AND t.supplier_service_id=s.service_id) AS used_in,
+       st.avg_time AS stat_avg_time, st.orders_7d AS stat_orders, st.success_rate AS stat_success,
+       st.cancel_rate AS stat_cancel, st.refill_rate AS stat_refill, st.ai_score AS stat_score
+     FROM pedia_supplier_services s
+     LEFT JOIN pedia_service_stats st ON st.supplier=s.supplier AND st.service_id=s.service_id ${whereSql}
       ORDER BY s.supplier, s.service_id LIMIT ? OFFSET ?`,
     ...params, perPage, (page - 1) * perPage,
   );

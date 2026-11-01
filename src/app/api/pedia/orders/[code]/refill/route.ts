@@ -7,7 +7,7 @@ import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider, callPediaProxy } from "@/lib/pedia/proxy";
-import { parseExpiry } from "@/lib/expiry";
+import { pediaRefillState, REFILL_REASON_TEXT } from "@/lib/pedia/refill-policy";
 import { buyerOrderAccessMatches, requiresOrderAccessCode, newOrderAccessFailure } from "@/lib/order-access";
 
 export const runtime = "edge";
@@ -40,20 +40,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Pesanan tidak ditemukan atau kontak tidak cocok." }, { status: 404 });
   }
   const item = await db.queryFirst(
-    `SELECT i.*, t.refill_days FROM pedia_order_items i
-       JOIN pedia_tiers t ON t.id=i.tier_id WHERE i.order_code=?`,
+    `SELECT i.*, t.refill_days, COALESCE(s.api_refill,0) AS api_refill FROM pedia_order_items i
+       JOIN pedia_tiers t ON t.id=i.tier_id
+       LEFT JOIN pedia_supplier_services s ON s.supplier=i.supplier AND s.service_id=i.supplier_service_id
+      WHERE i.order_code=?`,
     clean,
   ).catch(() => null);
   if (!item) return NextResponse.json({ error: "Pesanan tidak ditemukan." }, { status: 404 });
   let snapshot: Record<string, unknown> = {};
   try { snapshot = JSON.parse(String(item.snapshot_json)); } catch { /* legacy */ }
-  const refillDays = Number(snapshot?.refill_days ?? item.refill_days) || 0;
-  if (!isPediaProvider(item.supplier) || !item.supplier_order_id) return NextResponse.json({ error: "Refill tidak tersedia." }, { status: 409 });
-  const created = parseExpiry(String(snapshot.refill_anchor === "completed" ? item.completed_at ?? "" : item.created_at));
-  if (created === null || Date.now() > created + refillDays * 86400000) return NextResponse.json({ error: "Masa refill berakhir." }, { status: 409 });
-  if (refillDays <= 0 || (item.status !== "completed" && item.status !== "partial")) {
-    return NextResponse.json({ error: "Produk ini tidak bergaransi refill." }, { status: 409 });
-  }
+  if (!isPediaProvider(item.supplier)) return NextResponse.json({ error: "Refill tidak tersedia." }, { status: 409 });
+  // 2026-11-01: aturan sama dengan GET/halaman Refill (src/lib/pedia/refill-policy.ts).
+  const state = pediaRefillState(item, snapshot, Number(item.api_refill) === 1);
+  if (!state.eligible) return NextResponse.json({ error: REFILL_REASON_TEXT[state.reason!], reason: state.reason }, { status: 409 });
   // Only conclusive terminal refills may be replaced. In particular a
   // timed-out/requested refill must retain its ID and original dedupe key.
   const claimed = await db.execRun(
@@ -67,6 +66,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   ).catch(() => null);
   if (Number((claimed as { changes?: number })?.changes ?? 0) !== 1) {
     return NextResponse.json({ error: "Refill sebelumnya belum selesai atau sudah diajukan dalam 24 jam terakhir." }, { status: 409 });
+  }
+  if (state.mode === "manual") {
+    // Layanan bergaransi tanpa tombol refill API: admin meneruskan ke CS IndoSMM.
+    await db.execRun(`UPDATE pedia_order_items SET refill_status='manual_requested' WHERE order_code=? AND refill_status='requested'`, clean).catch(() => null);
+    const { notifyPediaNeedsCheck } = await import("@/lib/pedia/notify");
+    await notifyPediaNeedsCheck(db, clean, `Refill manual diminta pembeli. Ajukan ke CS IndoSMM dengan Order ID ${String(item.supplier_order_id ?? "-")}, lalu tandai hasilnya di Admin → Pedia → Pesanan.`).catch(() => null);
+    return NextResponse.json({ ok: true, mode: "manual", message: "Refill diterima dan diproses admin. Biasanya dalam 1×24 jam." });
   }
   // Panggil supplier via proxy (idempoten: refill per order 1×/24 jam sudah diklaim).
   try {
@@ -84,5 +90,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ).catch(() => null);
     }
   } catch { /* status tetap requested; cron/admin menyusul */ }
-  return NextResponse.json({ ok: true, message: "Refill diajukan. Biasanya mulai dalam 24 jam." });
+  return NextResponse.json({ ok: true, mode: "api", message: "Refill diajukan. Biasanya mulai dalam 24 jam." });
 }

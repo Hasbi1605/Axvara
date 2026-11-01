@@ -339,6 +339,14 @@ order lama di bawah tetap berlaku untuk jalur yang kompatibel.
 - Tab Kurasi admin: shortlist authenticated baca-saja, maksimal 200 kandidat awal/20 hasil; estimasi modal jumlah sama bukan bukti mutu. Simpan draf nonaktif/refill0/recommended0; owner memeriksa deskripsi/target/batas/kelipatan sebelum aktivasi. Tidak ada auto-publish/order supplier.
 - `docs/pedia/quality-sampling-2026-10-19.md`: tarif akun IDR/saldo0 dibaca tanpa order. Usulan topup awal Rp50.000 ProviderSMM + Rp100.000 IndoSMM untuk satu putaran 30 sampel estimasi Rp107.864 belum fee; **belum dijalankan**, perlu target owner dan keputusan eksekusi, jangan mengklaim kualitas/drop sudah teruji.
 
+### Pedia IndoSMM 1 November 2026 (terkini)
+- ProviderSMM diputus: jangan menambah cek saldo/notif/penjualan ProviderSMM. Diff VPS ProviderSMM dibalas 200 `ignored`; order/snapshot lama tetap dibaca.
+- Istilah SMM keputusan owner tetap bahasa supplier (No Drop, Less Drop, High Drop, Refill N Days, Refill Lifetime, No Refill, Drop rate, Start time, Speed, Avg time, Success rate) dari `src/lib/pedia/terms.ts`; jangan menerjemahkan ke istilah Indonesia.
+- Layanan High Drop/No Refill boleh dijual dengan label jelas. Refill manual (bergaransi tanpa tombol API) sah: admin meneruskan ke CS IndoSMM lalu `refill_resolve`.
+- Statistik supplier dari alat publik IndoSMM bukan API resmi dan bukan uji kualitas AXVARA. Katalog baru lewat manifest + generator; jangan mengedit migrasi 0086 manual.
+- White label 100%: teks yang dilihat pembeli Pedia tidak boleh menyebut supplier/IndoSMM/ProviderSMM. Teks baru wajib lolos `whiteLabel()`/test leak; admin boleh menyebut IndoSMM.
+- Spec: `docs/pedia/indosmm-catalog-refill-2026-11-01.md`.
+
 ### Pedia IndoSMM 20 Oktober 2026
 - Spec terkini `docs/pedia/indosmm-only-2026-10-20.md` menggantikan dua supplier aktif: hanya IndoSMM untuk penjualan baru, ProviderSMM tetap untuk riwayat/retry checkout tersimpan/dispatch/refill/recovery lama. Jangan ubah provider/snapshot order lama.
 - Quote ProviderSMM tanpa order tersimpan ditolak 409 sebelum reservasi/debit/invoice; retry order tersimpan diperiksa dahulu. Kebijakan server berlaku meski tier lama aktif di DB.

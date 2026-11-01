@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
   // Cabang ProviderSMM (PEDIA, 2026-10-07): diff VPS memakai `source` agar
   // tidak bentrok dengan `supplier` WR/SK yang existing.
   if (body && isPediaProvider(body.source)) {
+    // 2026-11-01 (owner): ProviderSMM diputus. Diff VPS lama dibalas 200 agar
+    // snapshot VPS maju tanpa retry berulang, tetapi tidak ditulis ke D1.
+    if (body.source === "providersmm") return NextResponse.json({ ok: true, ignored: "providersmm_retired" });
     const services = Array.isArray(body.services) ? body.services : null;
     if (!services) return NextResponse.json({ error: "invalid_services" }, { status: 400 });
     if (services.length > 100) return NextResponse.json({ error: "too_many_services" }, { status: 413 });
@@ -59,7 +62,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: message }, { status: /^(invalid_|unsupported_currency)/.test(message) ? 400 : 500 });
     }
     if (result.errors.length) return NextResponse.json({ ok: false, errors: result.errors.slice(0, 3) }, { status: 500 });
-    const prefix = body.source === "providersmm" ? "pedia_diff" : "pedia_indosmm_diff";
+    const prefix = "pedia_indosmm_diff";
     try {
       await db.execRun(
         `INSERT INTO store_settings (key, value, updated_at) VALUES (?, datetime('now'), datetime('now'))

@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   };
   const history = await db.queryAll(
     `SELECT supplier, balance, created_at FROM pedia_supplier_balance_log
-      WHERE supplier IN ('providersmm','indosmm') AND datetime(created_at) > datetime('now', '-7 days')
+      WHERE supplier='indosmm' AND datetime(created_at) > datetime('now', '-7 days')
       ORDER BY id DESC LIMIT 100`,
   );
   return NextResponse.json({

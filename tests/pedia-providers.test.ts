@@ -108,6 +108,18 @@ describe("provider boundary and normalized diff", () => {
     expect((await send({ source: "indosmm", services: [service()], currency: "IDR" })).status).toBe(200);
     expect(fx.sql.prepare(`SELECT value FROM store_settings WHERE key='pedia_indosmm_diff_last_at'`).get()).toBeTruthy();
   });
+  // 2026-11-01 (owner): ProviderSMM diputus — diff lama di-ack tanpa menulis D1.
+  it("supplier-sync acknowledges ProviderSMM diffs without storing them", async () => {
+    const { fx } = await seed();
+    vi.stubEnv("SUPPLIER_SYNC_TOKEN", "test-sync");
+    const { POST } = await import("@/app/api/supplier-sync/route");
+    const before = fx.sql.prepare(`SELECT COUNT(*) n FROM pedia_supplier_services WHERE supplier='providersmm'`).get();
+    const res = await POST(new Request("http://x/", { method: "POST", headers: { "x-supplier-sync-token": "test-sync" }, body: JSON.stringify({ source: "providersmm", services: [{ ...service(), service_id: 777 }], removed_service_ids: [] }) }) as never);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, ignored: "providersmm_retired" });
+    expect(fx.sql.prepare(`SELECT COUNT(*) n FROM pedia_supplier_services WHERE supplier='providersmm'`).get()).toEqual(before);
+    expect(fx.sql.prepare(`SELECT value FROM store_settings WHERE key='pedia_diff_last_at'`).get()).toBeUndefined();
+  });
 });
 
 describe("quote and order provider snapshots", () => {

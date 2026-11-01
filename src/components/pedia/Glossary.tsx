@@ -8,7 +8,7 @@ import { useState } from "react";
 
 const TERMS: { term: string; meaning: string }[] = [
   { term: "HQ (High Quality)", meaning: "Akun berkualitas lebih baik — biasanya berfoto profil dan punya aktivitas. Umumnya lebih stabil, tetapi bukan jaminan tidak akan turun." },
-  { term: "Akun Real", meaning: "Akun yang menyerupai pengguna asli menurut supplier. Tetap klaim layanan, bukan garansi mutlak." },
+  { term: "Akun Real", meaning: "Akun yang menyerupai pengguna asli. Tetap klaim layanan, bukan garansi mutlak." },
   { term: "Refill", meaning: "Pengisian ulang bila jumlah turun selama masa garansi (mis. 30 hari sejak pesanan selesai), sesuai ketentuan layanan." },
   { term: "Tanpa Refill", meaning: "Setelah pesanan selesai, jumlah yang turun tidak diisi ulang. Harganya biasanya lebih murah." },
   { term: "Drop", meaning: "Penurunan jumlah followers/likes/views setelah pengiriman selesai. Semua layanan berpotensi drop; yang membedakan seberapa besar risikonya." },

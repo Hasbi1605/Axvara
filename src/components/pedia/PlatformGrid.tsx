@@ -1,6 +1,7 @@
 // src/components/pedia/PlatformGrid.tsx — Grid platform + ProductCard (PD-01/03).
 // Ikon = logo asli tiap platform (Simple Icons, CC0 — 2026-10-08, permintaan
 // owner), fill currentColor + warna brand per platform.
+import { refillLabel } from "@/lib/pedia/terms";
 import Link from "next/link";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
@@ -159,7 +160,7 @@ export function ProductCard({ p, index = 0 }: { p: ProductCardData; index?: numb
         </span>
         <span className="mt-auto flex items-end justify-between gap-2 pt-3">
           {p.refillDays != null
-            ? <span className={`inline-block rounded-md px-2 py-1 text-[11px] ${p.refillDays > 0 ? "bg-[#00E5FF]/10 text-[#00E5FF]" : "bg-[#FFB800]/10 text-[#FFB800]"}`}>{p.refillDays > 0 ? `Refill ${p.refillDays} hari` : "Tanpa refill"}</span>
+            ? <span className={`inline-block rounded-md px-2 py-1 text-[11px] ${p.refillDays > 0 ? "bg-[#00E5FF]/10 text-[#00E5FF]" : "bg-[#FFB800]/10 text-[#FFB800]"}`}>{refillLabel(p.refillDays)}</span>
             : <span />}
           <span className="text-xs font-semibold text-[#00E5FF]/80 transition group-hover:text-[#00E5FF]">Lihat layanan →</span>
         </span>

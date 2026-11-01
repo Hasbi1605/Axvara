@@ -3,19 +3,24 @@
 import { useCallback, useMemo, useState } from "react";
 import { Check, Clock, Globe2, ShieldCheck } from "lucide-react";
 import type { PediaCatalogProduct, PediaCatalogTier } from "@/app/api/pedia/catalog/route";
+import { DROP_LABEL, refillLabel } from "@/lib/pedia/terms";
 
 const rupiah = (v: number) => `Rp${v.toLocaleString("id-ID")}`;
 const REGION_LABEL: Record<string, string> = { indonesia: "Indonesia", global: "Global", mixed: "Campuran" };
 export function serviceDisplayName(productName: string, t: PediaCatalogTier) { return t.public_name ?? t.label_note ?? productName; }
 function comparisonName(productName: string, t: PediaCatalogTier) {
-  return serviceDisplayName(productName, t).replace(/\s*·\s*Refill\s+\d+\s+hari\s*$/i, "");
+  return serviceDisplayName(productName, t).replace(/\s*·\s*Refill\s+\d+\s+(hari|Days)\s*$/i, "");
 }
+// 2026-11-01 (owner): istilah SMM dipertahankan (Refill 30 Days, No Refill, No Drop, …).
+const DROP_CHIP: Record<string, string> = { no_drop: "border-emerald-300/25 bg-emerald-300/10 text-emerald-200", less_drop: "border-amber-300/25 bg-amber-300/10 text-amber-200", high_drop: "border-red-300/30 bg-red-400/10 text-red-200" };
 export function ServiceChips({ t, eta = false, className = "" }: { t: PediaCatalogTier; eta?: boolean; className?: string }) {
-  const start = t.speed_note || (t.eta_start ? `Mulai ${t.eta_start}` : "Mulai mengikuti antrean");
+  const start = t.eta_start ? `Start ${t.eta_start}` : t.speed_note ? t.speed_note.replace(/^Mulai\b/i, "Start") : "Start mengikuti antrean";
   const chip = "inline-flex min-h-5 items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-1.5 text-[11px] leading-4";
+  const drop = t.drop_label && t.drop_label !== "unknown" ? t.drop_label : null;
   return <span className={`flex flex-wrap gap-1 ${className}`}>
     <span className={`${chip} text-white/75`}><Globe2 size={11} aria-hidden="true" />{REGION_LABEL[t.region ?? "global"]}</span>
-    <span className={`${chip} ${t.refill_days > 0 ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]" : "text-white/60"}`}><ShieldCheck size={11} aria-hidden="true" />{t.refill_days > 0 ? `Refill ${t.refill_days} hari` : "Tanpa refill"}</span>
+    <span className={`${chip} ${t.refill_days > 0 ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]" : "text-white/60"}`}><ShieldCheck size={11} aria-hidden="true" />{refillLabel(t.refill_days)}</span>
+    {drop && <span className={`${chip} ${DROP_CHIP[drop]}`}>{DROP_LABEL[drop]}</span>}
     {eta && <span className={`${chip} text-white/75`}><Clock size={11} aria-hidden="true" />{start}</span>}
   </span>;
 }

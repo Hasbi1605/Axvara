@@ -122,8 +122,9 @@ describe("Pedia order UX", () => {
     expect(qtyInput.getAttribute("placeholder")).toContain("Contoh:");
     expect(document.body.textContent).not.toContain("Isi jumlah dulu");
     expect(document.body.textContent).toContain("Pilih layanan untuk melihat batas jumlah per pesanan.");
-    expect(screen.getByText("Refill 30 hari").className).toContain("text-[#00E5FF]");
-    expect(screen.getByText("Tanpa refill", { selector: "span" }).className).toContain("text-white/60");
+    // 2026-11-01 (owner): istilah SMM dipertahankan.
+    expect(screen.getByText("Refill 30 Days").className).toContain("text-[#00E5FF]");
+    expect(screen.getByText("No Refill", { selector: "span" }).className).toContain("text-white/60");
     expect(screen.queryByRole("button", { name: "Periksa harga" })).toBeNull();
     proceed();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -528,10 +529,21 @@ describe("Pedia configurator", () => {
     expect(screen.getByText("Keterangan terpilih").closest("details")).toBeNull();
     expect(screen.getByText("Syarat refill khusus").closest("details")).toBeNull();
     expect(screen.queryByText("Salin link profil lengkap.")).toBeNull();
-    expect(container.querySelector("details")).toBeNull();
+    // Satu-satunya disclosure di langkah 1 adalah "Arti istilah" (2026-11-01).
+    expect([...container.querySelectorAll("details")].map((d) => d.querySelector("summary")?.textContent)).toEqual(["Arti istilah"]);
     fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "250" } });
     toTarget();
     expect(screen.getByText("Salin link profil lengkap.")).toBeTruthy();
+  });
+
+  it("explains refill, drop label and measured drop rate for the selected service", () => {
+    const info = { ...product, tiers: [{ ...product.tiers[1], refill_days: 30, refill_mode: "manual" as const, drop_label: "high_drop" as const, refill_pct: 12, success_pct: 97, speed_per_day: "10K/hari", avg_time: "19 menit", eta_start: "0–1 jam" }] };
+    render(<OrderClient product={info} initialTarget="" ordersEnabled />);
+    fireEvent.click(screen.getByRole("radio"));
+    const card = screen.getByRole("region", { name: "Info layanan" });
+    for (const text of ["0–1 jam", "10K/hari", "19 menit per 1.000", "97% (7 hari)", "diproses admin", "High Drop", "Saat ini drop besar", "Drop rate: Tinggi", "12% pesanan layanan ini"]) expect(card.textContent).toContain(text);
+    expect(screen.getAllByText("High Drop").some((el) => el.className.includes("text-red-200"))).toBe(true);
+    expect(card.textContent).not.toMatch(/supplier|indosmm/i);
   });
 
   it("shows the same category bar on every multi-service catalog, disables empty ones, hides it for one service, and has no account-type dropdown (owner 2026-10-31)", () => {

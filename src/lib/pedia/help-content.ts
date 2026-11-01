@@ -17,7 +17,8 @@ export const PEDIA_HELP_GROUPS = [
     ["Bagaimana membatalkan pesanan?", "Pesanan yang belum dibayar bisa dibatalkan di halaman pembayaran lewat tombol Batalkan Pesanan, dengan memasukkan WA atau email checkout. Pesanan yang sudah dibayar tidak bisa dibatalkan sendiri; hubungi admin."],
   ] },
   { title: "Garansi & kendala pesanan", items: [
-    ["Bagaimana cara refill?", "Layanan bergaransi bisa refill gratis selama masa garansi lewat tombol Ajukan Refill di halaman pesanan. Masa dan syaratnya mengikuti layanan yang dipilih."],
+    ["Bagaimana cara refill?", "Layanan dengan Refill (mis. Refill 30 Days) bisa diisi ulang gratis saat drop, selama masa refill. Ajukan di halaman Refill Pedia atau halaman pesanan, maksimal 1× per 24 jam. Layanan No Refill tidak bisa diajukan refill."],
+    ["Apa itu No Drop, Less Drop, dan High Drop?", "Label perkiraan drop tiap layanan. No Drop: saat ini belum terlihat drop, tetapi tetap bisa drop. Less Drop: bisa drop sedikit. High Drop: drop besar, cocok bila harga lebih penting dan kamu menerima risikonya. Penjelasan lengkap ada di halaman Refill Pedia."],
     ["Pesanan selesai sebagian atau dibatalkan?", "Hubungi admin dengan kode pesanan. Admin memeriksa dan menyelesaikannya secara manual. Pedia tidak memakai saldo, kredit, atau refund otomatis di website."],
   ] },
 ] as const;

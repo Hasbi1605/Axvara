@@ -8,6 +8,8 @@ import { pediaMargin } from "@/lib/pedia/pricing";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { isPediaSaleProvider, isPediaPremiumToolCandidate, PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { PEDIA_PROVIDERS, type PediaProvider } from "@/lib/pedia/proxy";
+import { refillStatusLabel } from "@/lib/pedia/refill-policy";
+import { pediaServiceHealth, type PediaServiceHealth } from "@/lib/pedia/service-stats";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { ProductCard, catalogCard } from "@/components/pedia/PlatformGrid";
 import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
@@ -25,6 +27,8 @@ type Product = {
 };
 type Tier = {
   id: number; product_id: number; tier: string; label_note: string | null;
+  drop_label?: string | null; speed_per_day?: string | null;
+  stat_orders?: number | null; stat_success?: number | null; stat_cancel?: number | null; stat_refill?: number | null; stat_score?: number | null; stat_avg_time?: string | null;
   supplier: PediaProvider; supplier_service_id: number; backup_service_id: number | null;
   price_group: string; markup_pct: number; min_profit_rp: number;
   refill_days: number; eta_start: string | null; eta_finish: string | null;
@@ -38,7 +42,7 @@ type Tier = {
 };
 type Row = Record<string, unknown>;
 type Catalog = { products: Product[]; tiers: Tier[] };
-const TABS: [SubTab, string][] = [["products", "Produk"], ["curation", "Kurasi"], ["services", "Layanan Supplier"], ["orders", "Pesanan"], ["credits", "Arsip lama"], ["settings", "Pengaturan"]];
+const TABS: [SubTab, string][] = [["products", "Produk"], ["services", "Layanan Supplier"], ["orders", "Pesanan"], ["curation", "Kurasi"], ["settings", "Pengaturan"], ["credits", "Arsip lama"]];
 const TIER_ORDER = ["hemat", "standar", "premium"];
 const PLATFORMS = PEDIA_PLATFORM_CONFIG.map((p) => p.id);
 const STATUS: Record<string, string> = {
@@ -50,7 +54,7 @@ const INPUT = "mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-white/[
 const BUTTON = "inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:opacity-50";
 const PRIMARY = "inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#00E5FF] px-4 text-sm font-bold text-[#07101f] transition hover:bg-[#00E5FF]/90 disabled:opacity-50";
 const EDIT = "inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3.5 text-xs font-bold text-[#080C1E] shadow-sm transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40";
-const PROVIDER_NAMES = { providersmm: "ProviderSMM (riwayat)", indosmm: "IndoSMM" };
+const PROVIDER_NAMES = { providersmm: "ProviderSMM (diputus)", indosmm: "IndoSMM" };
 type ServiceSelection = { supplier: PediaProvider; service_id: number };
 type ProviderHealth = { supplier: PediaProvider; balance: { value: number | null; stale: boolean }; error: string | null; pricing_verified: boolean; last_sync_at: string | null };
 
@@ -172,7 +176,7 @@ function DataTable({ title, columns, children, minWidth = "min-w-[760px]" }: { t
   </div>;
 }
 function SupplierField({ value, onChange, label = "Supplier" }: { value: string; onChange: (value: string) => void; label?: string }) {
-  return <Field label={label}><select className={INPUT} value={value} onChange={(e) => onChange(e.target.value)}><option value="">Semua supplier</option>{PEDIA_PROVIDERS.map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>;
+  return <Field label={label}><select className={INPUT} value={value} onChange={(e) => onChange(e.target.value)}><option value="">Semua supplier</option>{[PEDIA_SALE_PROVIDER].map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>;
 }
 
 export function PediaManager({ initialTab }: { initialTab?: string }) {
@@ -333,15 +337,16 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
       <Field label="Masa refill baru (hari)"><input name="refill_days" type="number" required min={0} max={365} defaultValue={0} className={INPUT} /></Field>
     </fieldset><p className="text-xs text-white/65">Tingkat dibuat nonaktif. ID layanan diverifikasi pada supplier terpilih; periksa modal, harga, ETA, dan ketentuan sebelum aktivasi.</p><button className={PRIMARY} disabled={busy}>Buat tingkat nonaktif</button></form></details>}
     {tiers.map((t) => <details key={t.id} className="border-b border-white/10 pb-3">
-      <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-white"><span className="capitalize">{t.tier}</span> <span className="font-normal text-white/65">/ {PROVIDER_NAMES[t.supplier]} #{t.supplier_service_id} / {t.is_active ? usablePackages(p, t).length ? "Siap" : "Belum siap" : "Nonaktif"}</span></summary>
-      {t.auto_disabled_reason && <p role="status" className="mb-3 text-sm text-amber-300">Nonaktif otomatis: {t.auto_disabled_reason === "legacy_supplier_indosmm_only" ? "ProviderSMM hanya untuk riwayat" : t.auto_disabled_reason === "margin" ? "margin tidak mencukupi" : "layanan supplier hilang"}. Aktivasi penjualan hanya untuk IndoSMM; periksa harga dan layanan terlebih dahulu.</p>}
+      <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-white"><span className="capitalize">{t.tier}</span> <span className="font-normal text-white/65">{t.public_name ? `${t.public_name} ` : ""}/ {PROVIDER_NAMES[t.supplier]} #{t.supplier_service_id} / {t.is_active ? usablePackages(p, t).length ? "Siap" : "Belum siap" : "Nonaktif"}</span> <HealthBadge row={t} /></summary>
+      {t.auto_disabled_reason && <p role="status" className="mb-3 text-sm text-amber-300">Nonaktif otomatis: {t.auto_disabled_reason === "legacy_supplier_indosmm_only" ? "ProviderSMM diputus" : t.auto_disabled_reason === "margin" ? "margin tidak mencukupi" : t.auto_disabled_reason === "supplier_health_20261101" ? "success rate supplier rendah (7 hari)" : "layanan supplier hilang"}. Aktivasi penjualan hanya untuk IndoSMM; periksa harga dan layanan terlebih dahulu.</p>}
       <p className="mb-3 break-words text-xs text-white/65">{t.live_name ?? "Layanan belum tersinkron"} / Batas {t.live_min ?? "-"} sampai {t.live_max ?? "-"}</p>
-      <p className="mb-3 text-xs text-white/65">API refill: {t.live_api_refill === 1 ? "Didukung" : t.live_api_refill === 0 ? "Tidak didukung" : "Belum diketahui"}. Masa refill dikurasi terpisah, bukan garansi penuh. Mapping baru hanya untuk order baru; order lama memakai snapshot supplier asal.</p>
+      <ServiceHealthLine row={t} />
+      <p className="mb-3 text-xs text-white/65">Jalur refill: {Number(t.refill_days) <= 0 ? "No Refill" : t.live_api_refill === 1 ? "otomatis via API IndoSMM" : "manual — pembeli mengajukan, admin meneruskan ke CS IndoSMM"}. Mapping baru hanya untuk order baru; order lama memakai snapshot supplier asal.</p>
       <form key={JSON.stringify(t)} aria-label={`Edit tingkat ${t.tier}`} onSubmit={(e) => {
         e.preventDefault(); const f = new FormData(e.currentTarget);
         const body: Row = { kind: "tier", id: t.id, is_active: f.has("is_active") ? 1 : 0 };
         body.supplier = String(f.get("supplier"));
-        for (const k of ["label_note", "price_group", "eta_start", "eta_finish", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note"]) body[k] = String(f.get(k) ?? "");
+        for (const k of ["label_note", "price_group", "eta_start", "eta_finish", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "speed_per_day", "drop_label", "region", "quality"]) body[k] = String(f.get(k) ?? "");
         for (const k of ["supplier_service_id", "markup_pct", "min_profit_rp", "refill_days"]) body[k] = Number(f.get(k));
         for (const k of ["min_qty_override", "max_qty_override"]) body[k] = f.get(k) ? Number(f.get(k)) : null;
         body.target_format = String(f.get("target_format"));
@@ -351,9 +356,21 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
         void onSave(body, `Tingkat ${t.tier} tersimpan. Periksa status dan harga hasil pembaruan.`);
       }} className="space-y-4">
         <fieldset disabled={busy} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-white sm:col-span-2 lg:col-span-3"><input name="is_active" type="checkbox" defaultChecked={isPediaSaleProvider(t.supplier) && !!t.is_active} />Tampilkan di toko (layanan aktif)</label>
           <Field label="Nama layanan publik"><input name="public_name" maxLength={200} defaultValue={t.public_name ?? ""} className={INPUT} /></Field>
           <Field label="Deskripsi layanan"><textarea name="description_md" maxLength={3000} defaultValue={t.description_md ?? ""} className={INPUT} rows={4} /></Field>
           <Field label="Syarat & ketentuan layanan"><textarea name="terms_md" maxLength={3000} defaultValue={t.terms_md ?? ""} className={INPUT} rows={4} /></Field>
+          <Field label="ID layanan utama"><input name="supplier_service_id" type="number" min={1} required defaultValue={t.supplier_service_id} className={INPUT} /></Field>
+          <Field label="Markup (%)"><input name="markup_pct" type="number" step="any" min={0} max={1000} required defaultValue={t.markup_pct} className={INPUT} /></Field>
+          <Field label="Masa refill kurasi (hari)"><input name="refill_days" type="number" min={0} max={365} required defaultValue={t.refill_days} className={INPUT} /></Field>
+          <Field label="Minimum dari ketentuan layanan"><input name="min_qty_override" type="number" min={1} max={100000000} defaultValue={t.min_qty_override ?? ""} className={INPUT} /></Field>
+          <Field label="Maksimum dari ketentuan layanan"><input name="max_qty_override" type="number" min={1} max={100000000} defaultValue={t.max_qty_override ?? ""} className={INPUT} /></Field>
+          <Field label="Estimasi mulai"><input name="eta_start" maxLength={40} defaultValue={t.eta_start ?? ""} className={INPUT} /></Field>
+          <Field label="Label drop (supplier)"><select name="drop_label" defaultValue={t.drop_label ?? "unknown"} className={INPUT}><option value="unknown">Belum diketahui</option><option value="no_drop">No Drop</option><option value="less_drop">Less Drop</option><option value="high_drop">High Drop</option></select></Field>
+          <Field label="Speed (mis. 10K/hari)"><input name="speed_per_day" maxLength={40} defaultValue={t.speed_per_day ?? ""} className={INPUT} /></Field>
+          <Field label="Wilayah"><select name="region" defaultValue={t.region ?? "global"} className={INPUT}><option value="global">Global</option><option value="indonesia">Indonesia</option><option value="mixed">Campuran</option></select></Field>
+          <Field label="Kualitas"><select name="quality" defaultValue={t.quality ?? "standar"} className={INPUT}><option value="standar">Standar</option><option value="ekonomis">Ekonomis</option><option value="hq">HQ</option><option value="real">Real</option></select></Field>
+          <details className="rounded-xl border border-white/10 p-3 sm:col-span-2 lg:col-span-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-white">Pengaturan lanjutan</summary><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Cara membeli"><textarea name="instructions_md" maxLength={3000} defaultValue={t.instructions_md ?? ""} className={INPUT} rows={4} /></Field>
           <Field label="Alasan rekomendasi"><input name="recommendation_note" maxLength={200} defaultValue={t.recommendation_note ?? ""} className={INPUT} /></Field>
           <Field label="Catatan kualitas"><input name="label_note" maxLength={120} defaultValue={t.label_note ?? ""} className={INPUT} /></Field>
@@ -361,20 +378,15 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
             const form = e.currentTarget.form;
             if (form) { (form.elements.namedItem("supplier_service_id") as HTMLInputElement).value = ""; (form.elements.namedItem("backup_service_id") as HTMLInputElement).value = ""; }
           }}>{(isPediaSaleProvider(t.supplier) ? [PEDIA_SALE_PROVIDER] : PEDIA_PROVIDERS).map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>
-          <Field label="ID layanan utama"><input name="supplier_service_id" type="number" min={1} required defaultValue={t.supplier_service_id} className={INPUT} /></Field>
           <Field label="ID layanan cadangan"><input name="backup_service_id" type="number" min={1} defaultValue={t.backup_service_id ?? ""} className={INPUT} /></Field>
           <Field label="Kelompok harga"><select name="price_group" defaultValue={t.price_group} className={INPUT}>{["G1", "G2", "G3"].map((g) => <option key={g}>{g}</option>)}</select></Field>
-          <Field label="Markup (%)"><input name="markup_pct" type="number" step="any" min={0} max={1000} required defaultValue={t.markup_pct} className={INPUT} /></Field>
           <Field label="Minimum untung (Rp)"><input name="min_profit_rp" type="number" min={0} max={10000000} required defaultValue={t.min_profit_rp} className={INPUT} /></Field>
-          <Field label="Masa refill kurasi (hari)"><input name="refill_days" type="number" min={0} max={365} required defaultValue={t.refill_days} className={INPUT} /></Field>
-          <Field label="Minimum dari ketentuan layanan"><input name="min_qty_override" type="number" min={1} max={100000000} defaultValue={t.min_qty_override ?? ""} className={INPUT} /></Field>
-          <Field label="Maksimum dari ketentuan layanan"><input name="max_qty_override" type="number" min={1} max={100000000} defaultValue={t.max_qty_override ?? ""} className={INPUT} /></Field>
           <Field label="Format target untuk supplier"><select name="target_format" defaultValue={t.target_format ?? "url"} className={INPUT}><option value="url">Link lengkap</option><option value="username">Username dari link profil</option></select></Field>
           <Field label="Awal masa refill"><select name="refill_anchor" defaultValue={t.refill_anchor ?? "created"} className={INPUT}><option value="created">Pesanan dibuat</option><option value="completed">Pesanan selesai</option></select></Field>
           <Field label="Kelipatan layanan"><input name="quantity_step" type="number" min={1} max={100000} defaultValue={t.quantity_step ?? 1} className={INPUT} /></Field>
-          <Field label="Estimasi mulai"><input name="eta_start" maxLength={40} defaultValue={t.eta_start ?? ""} className={INPUT} /></Field>
           <Field label="Estimasi selesai"><input name="eta_finish" maxLength={40} defaultValue={t.eta_finish ?? ""} className={INPUT} /></Field>
-          <label className="flex min-h-11 items-center gap-2 text-sm text-white/80"><input name="is_active" type="checkbox" defaultChecked={isPediaSaleProvider(t.supplier) && !!t.is_active} />Tingkat aktif</label>
+
+          </div></details>
         </fieldset>
         <p className="text-xs text-white/40">Modal, harga dan margin tersimpan. Pratinjau diperbarui setelah simpan.</p><DataTable title={`Harga tingkat ${t.tier}`} columns={["Jumlah", "Modal", "Harga", "Margin", "Status paket"]} minWidth="min-w-[540px]">{packagesOf(p).map((qty) => {
           const price = Number(parse<Record<string, number>>(t.package_prices_json, {})[qty]);
@@ -384,6 +396,27 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
         <button disabled={busy} className={PRIMARY}>Simpan tingkat {t.tier}</button>
       </form>
     </details>)}
+  </div>;
+}
+
+const HEALTH_STYLE: Record<PediaServiceHealth, [string, string]> = {
+  sehat: ["Sehat", "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"],
+  cukup: ["Cukup", "border-amber-300/30 bg-amber-300/10 text-amber-200"],
+  berisiko: ["Berisiko", "border-red-400/30 bg-red-400/10 text-red-200"],
+  belum_ada_data: ["Belum ada data", "border-white/15 bg-white/[0.04] text-white/60"],
+};
+const statOf = (row: Row) => ({ orders_7d: row.stat_orders, success_rate: row.stat_success, cancel_rate: row.stat_cancel, ai_score: row.stat_score });
+/** Badge kesehatan layanan supplier 7 hari (2026-11-01). */
+function HealthBadge({ row }: { row: Row }) {
+  const [label, cls] = HEALTH_STYLE[pediaServiceHealth(statOf(row))];
+  return <span className={`ml-1 inline-flex min-h-5 items-center rounded-full border px-2 text-[11px] font-semibold ${cls}`}>{label}</span>;
+}
+function ServiceHealthLine({ row }: { row: Row }) {
+  const health = pediaServiceHealth(statOf(row));
+  const n = (v: unknown) => v == null ? "-" : `${Math.round(Number(v))}%`;
+  return <div className={`mb-3 rounded-xl border p-3 text-xs ${health === "berisiko" ? "border-red-400/30" : "border-white/10"}`}>
+    <p className="text-white/80">Kesehatan 7 hari: <HealthBadge row={row} /> · {Number(row.stat_orders) || 0} order · success {n(row.stat_success)} · cancel {n(row.stat_cancel)} · drop rate (refill) {n(row.stat_refill)}{row.stat_avg_time ? ` · avg time ${String(row.stat_avg_time)}` : ""}</p>
+    {health === "berisiko" && <p className="mt-1 text-red-200">Banyak pesanan gagal/dibatalkan di supplier. Ganti ID layanan atau nonaktifkan.</p>}
   </div>;
 }
 
@@ -414,7 +447,7 @@ function PediaServicesPanel({ catalog, selected, onSelect, onAssigned }: { catal
     }}><p className="text-sm font-semibold text-white">Pakai layanan {PROVIDER_NAMES[selected.supplier]} #{selected.service_id}</p><p className="text-xs text-white/65">Supplier dan layanan diganti bersama; cadangan dihapus, harga dihitung ulang. Order lama tetap memakai snapshot asal. Buat produk/tingkat melalui tab Produk bila belum ada.</p><div className="grid gap-3 sm:grid-cols-2"><Field label="Produk tujuan"><select required className={INPUT} value={productId} onChange={(e) => setProductId(e.target.value)}><option value="">Pilih produk</option>{catalog.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field><Field label="Tingkat tujuan"><select key={productId} name="tier_id" required className={INPUT} defaultValue=""><option value="">Pilih tingkat</option>{catalog.tiers.filter((t) => t.product_id === Number(productId)).sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier)).map((t) => <option key={t.id} value={t.id}>{t.tier}</option>)}</select></Field></div><div className="flex gap-2"><button className={PRIMARY} disabled={panel.busy}>Hubungkan layanan</button><button type="button" className={BUTTON} disabled={panel.busy} onClick={() => onSelect(null)}>Batal</button></div></form>}
     <DataTable title="Layanan supplier" columns={["Supplier / ID / layanan", "Biaya per 1.000", "Min / maks", "Dipakai di", "Aksi"]}>
       {panel.data.rows.map(r => <tr key={`${r.supplier}:${r.service_id}`}>
-        <td className="min-w-[260px] max-w-md"><p className="font-semibold text-white">{String(r.name)}</p><p className="mt-1 text-xs text-white/40">{PROVIDER_NAMES[r.supplier as PediaProvider]} #{String(r.service_id)} · {Number(r.present) === 1 ? "Tersedia" : "Hilang dari supplier"}</p><p className="mt-1 text-xs">{String(r.type)} · API refill {r.api_refill === 1 ? "Ya" : "Tidak"}</p></td>
+        <td className="min-w-[260px] max-w-md"><p className="font-semibold text-white">{String(r.name)}</p><p className="mt-1 text-xs text-white/40">{PROVIDER_NAMES[r.supplier as PediaProvider]} #{String(r.service_id)} · {Number(r.present) === 1 ? "Tersedia" : "Hilang dari supplier"}</p><p className="mt-1 text-xs text-white/55"><HealthBadge row={r} /> {Number(r.stat_orders) ? `${Number(r.stat_orders)} order/7 hari · success ${Math.round(Number(r.stat_success))}% · refill ${Math.round(Number(r.stat_refill ?? 0))}%` : "Belum ada data 7 hari"}{r.stat_avg_time ? ` · avg time ${String(r.stat_avg_time)}` : ""}</p><p className="mt-1 text-xs">{String(r.type)} · API refill {r.api_refill === 1 ? "Ya" : "Tidak"}</p></td>
         <td className="whitespace-nowrap font-semibold text-white">{formatRupiah(Number(r.rate_idr_per_1k))}</td>
         <td className="whitespace-nowrap text-xs tabular-nums">{String(r.min_qty)} / {String(r.max_qty)}</td>
         <td className="min-w-[160px] text-xs">{String(r.used_in || "Belum dipakai")}</td>
@@ -454,6 +487,14 @@ function PediaOrdersPanel() {
             <p className="mt-2 text-white/50">{String(r.followup_reason).startsWith("historical_") ? "Riwayat lama — periksa bukti penyelesaian sebelumnya. " : ""}Catatan operasional; tidak mengubah status bayar atau memindahkan dana.</p>
           </div>}
 
+          {r.refill_status != null && <div className={`rounded-xl border p-3 ${["manual_requested", "needs_check", "requested"].includes(String(r.refill_status)) ? "border-amber-400/25" : "border-white/10"}`}>
+            <p className="font-semibold text-white">Refill: {refillStatusLabel(r.refill_status)}</p>
+            <p className="mt-1 text-white/50">Diajukan {formatWibDateTime(String(r.refill_last_at ?? "")) ?? "-"}{r.refill_supplier_id ? ` · ID refill ${String(r.refill_supplier_id)}` : ""}</p>
+            {["manual_requested", "needs_check", "requested"].includes(String(r.refill_status)) && <>
+              <p className="mt-2 text-white/60">{r.refill_status === "manual_requested" ? `Layanan ini tanpa tombol refill API. Ajukan ke CS IndoSMM (tiket/WA) dengan Order ID ${String(r.supplier_order_id ?? "-")}, lalu tandai hasilnya.` : "Hasil refill belum pasti. Cek di Riwayat Order IndoSMM, lalu tandai hasilnya."}</p>
+              <div className="mt-2 flex flex-wrap gap-2"><button disabled={panel.busy} className={BUTTON} onClick={() => void panel.write(`/api/admin/pedia/orders/${encodeURIComponent(String(r.order_code))}`, { action: "refill_resolve", refill_outcome: "completed", confirm: true }, "Refill ditandai selesai.", "POST")}>Refill selesai</button><button disabled={panel.busy} className={`${BUTTON} text-red-300`} onClick={() => void panel.write(`/api/admin/pedia/orders/${encodeURIComponent(String(r.order_code))}`, { action: "refill_resolve", refill_outcome: "rejected", confirm: true }, "Refill ditandai ditolak.", "POST")}>Ditolak supplier</button></div>
+            </>}
+          </div>}
           <p className="break-words text-white/40">Snapshot asal: {PROVIDER_NAMES[r.supplier as PediaProvider] ?? "Supplier tidak valid"} / Layanan #{String(r.supplier_service_id)} / ID order {String(r.supplier_order_id ?? "Belum diketahui")}</p>
           <details><summary className="min-h-11 cursor-pointer py-3">Detail pesanan</summary><p>Mulai: {String(r.start_count ?? "-")} / Tersisa: {String(r.remains ?? "-")} / Biaya supplier: {r.supplier_charge == null ? "Belum tersedia" : formatRupiah(Number(r.supplier_charge))}</p><p>{formatWibDateTime(String(r.created_at ?? "")) ?? "-"}</p>{r.last_error ? <p className="mt-2 break-words text-red-300">Kendala: {String(r.last_error)}</p> : null}<OrderAccessAdmin code={String(r.order_code)} /></details>
       {r.status === "needs_check" && <div className="space-y-3">

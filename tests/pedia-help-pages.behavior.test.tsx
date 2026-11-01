@@ -21,7 +21,8 @@ describe("Pedia help page", () => {
     expect(text).toContain("Bagaimana membatalkan pesanan?");
     expect(text).toContain("Mengikuti estimasi mulai di tiap layanan");
     expect(text).not.toMatch(/±5–30 menit|Kode kredit lama/);
-    expect(document.querySelectorAll("details summary").length).toBe(7);
+    expect(document.querySelectorAll("details summary").length).toBe(8);
+    expect(text).toContain("Apa itu No Drop, Less Drop, dan High Drop?");
     for (const name of ["Lihat layanan", "Lacak pesanan", "Tanya admin"]) expect(screen.getByRole("link", { name })).toBeTruthy();
     expect(helpMeta.alternates?.canonical).toBe("/bantuan");
   });

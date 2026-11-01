@@ -57,10 +57,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     `SELECT i.*, p.name AS product_name, p.slug AS product_slug,
             p.platform AS product_platform,
             t.tier AS tier_name, t.label_note, t.refill_days,
-            t.eta_start, t.eta_finish
+            t.eta_start, t.eta_finish, COALESCE(s.api_refill,0) AS api_refill
        FROM pedia_order_items i
        JOIN pedia_products p ON p.id=i.product_id
        JOIN pedia_tiers t ON t.id=i.tier_id
+       LEFT JOIN pedia_supplier_services s ON s.supplier=i.supplier AND s.service_id=i.supplier_service_id
       WHERE i.order_code=?`,
     clean,
   ).catch(() => null);
@@ -81,20 +82,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const done = item.status === "completed" ? qty : remains != null ? qty - remains : null;
   const percent = qty > 0 && done !== null ? (done / qty) * 100 : null;
 
-  // Refill eligibility (PD-25): refill_days>0, completed|partial, dalam masa
-  // garansi (dari updated_at terminal — pendekatan; admin melihat detail),
-  // refill terakhir ≥ 24 jam lalu.
-  const refillDays = Number(snap?.refill_days ?? item.refill_days) || 0;
-  const { parseExpiry } = await import("@/lib/expiry");
-  const refillLast = parseExpiry(String(item.refill_last_at ?? "")) ?? 0;
-  const created = parseExpiry(String(snap.refill_anchor === "completed" ? item.completed_at ?? "" : item.created_at));
-  const refillEligible =
-    refillDays > 0 &&
-    ((item.refill_status == null && item.refill_supplier_id == null && item.refill_last_at == null)
-      || ["completed", "rejected", "canceled", "cancelled", "supplier_rejected"].includes(String(item.refill_status))) &&
-    created !== null && Date.now() <= created + refillDays * 86400000 &&
-    (item.status === "completed" || item.status === "partial") &&
-    (!Number.isFinite(refillLast) || Date.now() - refillLast >= 24 * 3600 * 1000);
+  // Refill (PD-25, 2026-11-01): aturan bersama POST refill + halaman /refill.
+  const { pediaRefillState } = await import("@/lib/pedia/refill-policy");
+  const refill = pediaRefillState(item, snap, Number(item.api_refill) === 1);
+  const refillDays = refill.days;
+  const refillEligible = refill.eligible;
 
   return NextResponse.json({
     ok: true,
@@ -113,6 +105,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       service_copy: readPediaServiceCopy(snap.service_copy),
       refill_days: refillDays,
       refill_eligible: refillEligible,
+      refill,
       paid_at: order.paid_at != null ? String(order.paid_at) : null,
       buyer_canceled: order.status === "dibatalkan",
       notified_final: item.notified_final_at != null,

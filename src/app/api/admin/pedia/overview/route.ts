@@ -1,10 +1,11 @@
 // GET /api/admin/pedia/overview — Ringkasan tab Pedia (§10 Pengaturan + header):
-// saldo ProviderSMM live (best-effort + fallback cache, pola saldo WR/SK),
+// saldo IndoSMM live (best-effort + fallback cache, pola saldo WR/SK),
 // hitung produk/tingkat/pesanan, status diff terakhir, antrean needs_check.
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { callPediaProxy, PEDIA_PROVIDERS } from "@/lib/pedia/proxy";
+import { callPediaProxy } from "@/lib/pedia/proxy";
+import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,8 @@ export async function GET(request: NextRequest) {
   const settings: Record<string, string> = {};
   for (const r of settingsRows) settings[String(r.key)] = String(r.value ?? "");
 
-  const providers = await Promise.all(PEDIA_PROVIDERS.map(async (supplier) => {
+  // 2026-11-01 (owner): ProviderSMM diputus; ringkasan hanya IndoSMM.
+  const providers = await Promise.all([PEDIA_SALE_PROVIDER].map(async (supplier) => {
     const balance: { value: number | null; stale: boolean; history: { balance: number; created_at: string }[] } = { value: null, stale: true, history: [] };
     let error: string | null = null;
     let pricingVerified = false;
@@ -42,8 +44,7 @@ export async function GET(request: NextRequest) {
       else if ((supplier === "indosmm" && res.data.currency !== "IDR") || (res.data.currency != null && res.data.currency !== "IDR") || res.data.balance == null || !Number.isFinite(Number(res.data.balance)) || Number(res.data.balance) < 0) error = "unsupported_currency";
       else {
         balance.value = Number(res.data.balance); balance.stale = false;
-        if (supplier === "providersmm") pricingVerified = true;
-        else {
+        {
           const services = await callPediaProxy<unknown>(supplier, "services", {}, 30_000);
           pricingVerified = services.ok && Array.isArray(services.data) && services.data.length > 0;
           if (!pricingVerified) error = "pricing_unverified";
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
     const history = await db.queryAll(`SELECT balance,created_at FROM pedia_supplier_balance_log WHERE supplier=? ORDER BY id DESC LIMIT 10`, supplier);
     balance.history = history.map((h) => ({ balance: Number(h.balance), created_at: String(h.created_at) }));
     if (balance.value === null && history[0]) balance.value = Number(history[0].balance);
-    const prefix = supplier === "providersmm" ? "pedia_diff" : "pedia_indosmm_diff";
+    const prefix = "pedia_indosmm_diff";
     return { supplier, balance, error, pricing_verified: pricingVerified, last_sync_at: settings[`${prefix}_last_at`] ?? null, last_change_at: settings[`${prefix}_last_change_at`] ?? null };
   }));
   return NextResponse.json({ ok: true, counts, settings, providers, balance: providers[0].balance });

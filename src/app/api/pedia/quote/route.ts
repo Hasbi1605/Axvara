@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
   // INDO-POLICY-20: quotes are issued for the sale supplier only. Tier rows
   // still read both providers from DB (historical recovery), but a new quote
   // from the retired provider must requote on IndoSMM instead.
-  if (!isPediaSaleProvider(tier.supplier)) return NextResponse.json({ error: "provider_retired", message: `Layanan ${String(tier.supplier)} sudah tidak dijual. Pilih layanan ${PEDIA_SALE_PROVIDER} yang tersedia.` }, { status: 409 });
+  if (!isPediaSaleProvider(tier.supplier)) return NextResponse.json({ error: "provider_retired", message: "Layanan ini sudah tidak dijual. Pilih layanan lain yang tersedia." }, { status: 409 });
   const live = await db.queryFirst(
     `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type='Default' AND rate_idr_per_1k>0`,
     tier.supplier, Number(tier.supplier_service_id),

@@ -5,6 +5,7 @@
 // {action:"cancel_manual"} — batalkan sebelum submit + tindak lanjut manual.
 // {action:"mark_handled",note,confirm:true} — catat penyelesaian di luar website.
 // {action:"check_balance"} — cek saldo supplier live (read-only).
+// {action:"refill_resolve",refill_outcome,confirm:true} — tutup refill manual/ambigu (2026-11-01).
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
@@ -16,7 +17,8 @@ export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  action: z.enum(["mark_submitted", "resubmit", "cancel_manual", "cancel_credit", "mark_handled", "check_balance"]),
+  action: z.enum(["mark_submitted", "resubmit", "cancel_manual", "cancel_credit", "mark_handled", "check_balance", "refill_resolve"]),
+  refill_outcome: z.enum(["completed", "rejected"]).optional(),
   note: z.string().trim().min(10).max(1000).optional(),
   supplier_order_id: z.string().trim().max(60).optional(),
   confirm: z.literal(true).optional(),
@@ -49,6 +51,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!parsed.data.note || parsed.data.confirm !== true) return NextResponse.json({ error: "note_and_confirm_required" }, { status: 400 });
     const changed = await db.execRun(`UPDATE pedia_followups SET state='handled',note=?,handled_by=?,handled_at=datetime('now')
       WHERE order_code=? AND state='open'`, parsed.data.note, admin.email, code);
+    return NextResponse.json({ ok: changed.changes === 1 }, { status: changed.changes === 1 ? 200 : 409 });
+  }
+
+  if (action === "refill_resolve") {
+    // Refill manual (tanpa tombol API) atau ambigu: admin sudah memeriksa di
+    // panel IndoSMM/CS lalu menutupnya. Status submitted tetap dipantau cron.
+    if (!parsed.data.refill_outcome || parsed.data.confirm !== true) return NextResponse.json({ error: "outcome_and_confirm_required" }, { status: 400 });
+    const changed = await db.execRun(`UPDATE pedia_order_items SET refill_status=?, updated_at=datetime('now')
+      WHERE order_code=? AND refill_status IN ('manual_requested','needs_check','requested')`, parsed.data.refill_outcome, code);
     return NextResponse.json({ ok: changed.changes === 1 }, { status: changed.changes === 1 ? 200 : 409 });
   }
 

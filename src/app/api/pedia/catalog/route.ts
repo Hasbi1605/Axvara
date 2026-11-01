@@ -8,6 +8,7 @@ import { isPediaProvider } from "@/lib/pedia/proxy";
 import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { PEDIA_CATALOG_BOUNDS_SQL } from "@/lib/pedia/catalog-queries";
+import { whiteLabel } from "@/lib/pedia/terms";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,15 @@ export type PediaCatalogTier = {
   speed_note?: string | null;
   drop_risk?: "rendah" | "sedang" | "tinggi";
   recommended?: boolean;
+  /** 2026-11-01: label drop supplier (No Drop/Less Drop/High Drop), speed, avg time,
+   *  jalur refill (api/manual) dan data terukur 7 hari. Semua opsional untuk fixture lama. */
+  drop_label?: "no_drop" | "less_drop" | "high_drop" | "unknown";
+  speed_per_day?: string | null;
+  avg_time?: string | null;
+  refill_mode?: "api" | "manual" | "none";
+  /** Persen sukses / persen pesanan yang diajukan refill di supplier (7 hari). */
+  success_pct?: number | null;
+  refill_pct?: number | null;
   /** Harga jual per 1.000 unit dari rate live (markup tier ini). */
   price_per_1k?: number | null;
   /** Jumlah contoh untuk chip cepat UI (tetap tunduk min–max + step). */
@@ -114,7 +124,7 @@ async function readCatalog() {
   const tiers = await db.queryAll(
     `SELECT id, product_id, tier, label_note, refill_days, eta_start, eta_finish,
             package_prices_json, supplier, supplier_service_id,
-            public_name, description_md, terms_md, instructions_md, recommendation_note, min_qty_override, max_qty_override, quantity_step, region, quality, speed_note, drop_risk,
+            public_name, description_md, terms_md, instructions_md, recommendation_note, min_qty_override, max_qty_override, quantity_step, region, quality, speed_note, drop_risk, drop_label, speed_per_day,
             is_recommended, sort_order, markup_pct, min_profit_rp
        FROM pedia_tiers WHERE is_active=1 ORDER BY is_recommended DESC, sort_order, id`,
   ).catch(unavailable);
@@ -122,9 +132,11 @@ async function readCatalog() {
   const bounds = await db.queryAll(
     PEDIA_CATALOG_BOUNDS_SQL,
   ).catch(unavailable);
-  const boundByService = new Map<string, { min: number; max: number; rate: number }>();
+  const boundByService = new Map<string, { min: number; max: number; rate: number; apiRefill: boolean; avgTime: string | null; orders: number; success: number | null; refill: number | null }>();
+  const num = (v: unknown) => v == null || !Number.isFinite(Number(v)) ? null : Number(v);
   for (const b of bounds) {
-    boundByService.set(`${b.supplier}:${b.service_id}`, { min: Number(b.min_qty), max: Number(b.max_qty), rate: Number(b.rate_idr_per_1k) });
+    boundByService.set(`${b.supplier}:${b.service_id}`, { min: Number(b.min_qty), max: Number(b.max_qty), rate: Number(b.rate_idr_per_1k), apiRefill: Number(b.api_refill) === 1,
+      avgTime: b.avg_time != null && /\d/.test(String(b.avg_time)) ? String(b.avg_time).slice(0, 40) : null, orders: Number(b.orders_7d) || 0, success: num(b.success_rate), refill: num(b.refill_rate) });
   }
   const { computePediaPrice } = await import("@/lib/pedia/pricing");
   const minOrderRp = Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000;
@@ -146,7 +158,7 @@ async function readCatalog() {
     const dropRisk = ["rendah", "sedang", "tinggi"].includes(String(t.drop_risk)) ? String(t.drop_risk) as PediaCatalogTier["drop_risk"] : "sedang";
     list.push({
       id: Number(t.id), tier: String(t.tier),
-      label_note: t.label_note != null ? String(t.label_note) : null,
+      label_note: t.label_note != null ? whiteLabel(String(t.label_note)) : null,
       refill_days: Number(t.refill_days) || 0,
       eta_start: t.eta_start != null ? String(t.eta_start) : null,
       eta_finish: t.eta_finish != null ? String(t.eta_finish) : null,
@@ -154,14 +166,21 @@ async function readCatalog() {
       prices: Object.fromEntries(
         Object.entries(prices).filter(([k, v]) => Number.isSafeInteger(Number(k)) && Number(k) >= limits.min && Number(k) <= limits.max && Number(k) % limits.step === 0 && typeof v === "number" && Number.isFinite(v) && v > 0),
       ),
-      public_name: t.public_name != null && String(t.public_name).trim() ? String(t.public_name) : null,
-      description: t.description_md != null && String(t.description_md).trim() ? String(t.description_md) : null,
-      terms: t.terms_md != null ? String(t.terms_md) : null,
-      instructions: t.instructions_md != null ? String(t.instructions_md) : null,
-      recommendation_note: t.recommendation_note != null ? String(t.recommendation_note) : null,
+      public_name: t.public_name != null && String(t.public_name).trim() ? whiteLabel(String(t.public_name)) : null,
+      description: t.description_md != null && String(t.description_md).trim() ? whiteLabel(String(t.description_md)) : null,
+      terms: t.terms_md != null ? whiteLabel(String(t.terms_md)) : null,
+      instructions: t.instructions_md != null ? whiteLabel(String(t.instructions_md)) : null,
+      recommendation_note: t.recommendation_note != null ? whiteLabel(String(t.recommendation_note)) : null,
       region, quality,
       speed_note: t.speed_note != null && String(t.speed_note).trim() ? String(t.speed_note) : null,
       drop_risk: dropRisk,
+      drop_label: ["no_drop", "less_drop", "high_drop"].includes(String(t.drop_label)) ? String(t.drop_label) as PediaCatalogTier["drop_label"] : "unknown",
+      speed_per_day: t.speed_per_day != null && String(t.speed_per_day).trim() ? String(t.speed_per_day).slice(0, 40) : null,
+      avg_time: bound.avgTime,
+      refill_mode: (Number(t.refill_days) || 0) <= 0 ? "none" : bound.apiRefill ? "api" : "manual",
+      // Data terukur hanya ditampilkan bila sampel cukup (≥5 order/7 hari).
+      success_pct: bound.orders >= 5 ? bound.success : null,
+      refill_pct: bound.orders >= 5 ? bound.refill : null,
       recommended: Number(t.is_recommended) === 1,
       price_per_1k: bound.rate > 0 ? computePediaPrice({
         supplierRatePer1k: bound.rate, quantity: 1000,
@@ -200,10 +219,10 @@ async function readCatalog() {
     out.push({
       slug: String(p.slug), platform: String(p.platform), metric: String(p.metric),
       target_kind: String(p.target_kind), name: String(p.name),
-      tagline: p.tagline != null ? String(p.tagline) : null,
-      description_md: p.description_md != null ? String(p.description_md) : null,
+      tagline: p.tagline != null ? whiteLabel(String(p.tagline)) : null,
+      description_md: p.description_md != null ? whiteLabel(String(p.description_md)) : null,
       packages, step: Number(p.step) || 1,
-      checklist: (parseJson(p.checklist_json, []) as { id: string; label: string; help?: string }[]),
+      checklist: ([parseJson(p.checklist_json, [])].flat().filter((c) => c && typeof c === "object") as { id: string; label: string; help?: string }[]).map((c) => ({ ...c, label: whiteLabel(String(c.label ?? "")), ...(typeof c.help === "string" ? { help: whiteLabel(c.help) } : {}) })),
       is_featured: Number(p.is_featured) || 0,
       tiers: availableTiers,
       min_price: Number.isFinite(minPrice) ? minPrice : null,

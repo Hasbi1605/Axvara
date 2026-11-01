@@ -1,5 +1,7 @@
 # PEDIA-DESIGN.md — Panduan Desain & Style AXVARA PEDIA
 
+> **1 November 2026:** chip label drop (No Drop hijau, Less Drop kuning, High Drop merah), chip Refill N Days/No Refill, kartu "Info layanan" + "Arti istilah", halaman `/refill` gaya Bantuan. Lihat [spec](pedia/indosmm-catalog-refill-2026-11-01.md).
+
 ## Orbit mobile dipulihkan — koreksi owner 31 Oktober 2026
 
 Implementasi lokal untuk publikasi CI, menggantikan desktop-only pada snapshot

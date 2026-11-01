@@ -26,7 +26,7 @@ export function isPediaLegacyProvider(value: unknown): value is "providersmm" {
 /** Public/admin rejection payload for retired-provider new sales. */
 export const PEDIA_SALE_RETIRED = {
   error: "provider_retired",
-  message: "Layanan ProviderSMM sudah tidak dijual. Muat ulang katalog dan pilih layanan IndoSMM.",
+  message: "Layanan ini sudah tidak dijual. Muat ulang katalog dan pilih layanan lain.",
 } as const;
 
 // Premium-tool guard for IndoSMM curation candidates: Pedia SMM never sells

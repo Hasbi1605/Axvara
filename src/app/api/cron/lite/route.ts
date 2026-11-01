@@ -307,47 +307,8 @@ async function runPediaOrders(db: Db) {
     if (error instanceof QueryBudgetExceeded) throw error;
     out.dispatch_error = error instanceof Error ? error.message.slice(0, 80) : "failed";
   }
-  // Alert saldo: maks 1×/30 mnt (baca penanda dulu — 1 query murah).
-  // Penanda datetime SQLite = UTC (parseExpiry kanonis, bukan Date.parse
-  // mentah yang mengira waktu lokal → selisih 7 jam → cek tiap tick).
-  try {
-    const last = await db.queryFirst(
-      `SELECT value FROM store_settings WHERE key='pedia_balance_checked_at'`,
-    );
-    const { parseExpiry: parseChecked } = await import("@/lib/expiry");
-    const lastMs = last ? (parseChecked(String(last.value)) ?? NaN) : NaN;
-    if (!Number.isFinite(lastMs) || Date.now() - lastMs > 30 * 60 * 1000) {
-      await db.execRun(
-        `INSERT INTO store_settings (key, value, updated_at) VALUES ('pedia_balance_checked_at', datetime('now'), datetime('now'))
-         ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
-      );
-      const { callPsmmProxy } = await import("@/lib/pedia/proxy");
-      const res = await callPsmmProxy<{ balance?: string | number; currency?: string }>("balance", {}, 15_000);
-      if (res.ok) {
-        const v = Number((res.data as { balance?: unknown })?.balance);
-        if (Number.isFinite(v) && v >= 0 && (!res.data.currency || res.data.currency.toUpperCase() === "IDR")) {
-          out.balance = v;
-          await db.execRun(
-            `INSERT INTO pedia_supplier_balance_log (supplier, balance) VALUES ('providersmm', ?)`,
-            v,
-          ).catch(() => null);
-          const alertRp = Number(process.env.PEDIA_BALANCE_ALERT_RP || 100000) || 100000;
-          if (v < alertRp) {
-            // Throttle 6 jam + turun Rp5.000 ada DI DALAM notify (cermin
-            // WR/SK) — di sini cukup panggil; tanpa gate ganda 1 jam yang
-            // dulu bikin spam tiap jam saat saldo stagnan Rp 0.
-            const { notifyPediaLowBalance } = await import("@/lib/pedia/notify");
-            const alerted = await notifyPediaLowBalance(v, db).catch(() => false);
-            if (alerted) out.balance_alerted = true;
-          }
-        } else out.providersmm_balance_error = "unsupported_currency_or_balance";
-      } else {
-        out.providersmm_balance_error = res.kind;
-      }
-    }
-  } catch {
-    if ((out as { budget_exhausted?: boolean }).budget_exhausted) throw new QueryBudgetExceeded();
-  }
+  // 2026-11-01 (owner): ProviderSMM diputus. Saldo/alert ProviderSMM tidak lagi
+  // dicek atau dikirim ke Telegram; hanya IndoSMM yang dipantau.
   // Independent checkpoint and currency gate: one supplier's failure cannot
   // suppress the other. Do not convert undocumented USD account balances.
   if (db.canSpend(5)) {
@@ -375,6 +336,16 @@ async function runPediaOrders(db: Db) {
     } catch (error) {
       if (error instanceof QueryBudgetExceeded) throw error;
       out.indosmm_balance_error = "balance_failed";
+    }
+  }
+  // 2026-11-01: kesehatan layanan IndoSMM 7 hari (maks 1×/jam, 3 statement).
+  if (db.canSpend(3)) {
+    try {
+      const { refreshPediaServiceStats } = await import("@/lib/pedia/service-stats");
+      out.pedia_stats = await refreshPediaServiceStats(db);
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      out.pedia_stats = "failed";
     }
   }
   return out;

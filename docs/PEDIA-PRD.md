@@ -1,5 +1,7 @@
 # PEDIA-PRD.md — AXVARA PEDIA (Toko SMM Kurasi)
 
+> **1 November 2026 (implementasi lokal, publikasi CI):** ProviderSMM diputus; katalog IndoSMM diperluas dengan label drop/refill SMM, statistik supplier 7 hari dan halaman Refill (API + manual). Spesifikasi: [indosmm-catalog-refill-2026-11-01](pedia/indosmm-catalog-refill-2026-11-01.md), menggantikan bagian terkait pada snapshot lama.
+
 ## Konfigurator terkini — 27 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. [UX pembelian27Oktober](pedia/purchase-ux-2026-10-27.md)

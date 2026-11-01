@@ -62,6 +62,8 @@ const tierSchema = z.object({
   quality: z.enum(["ekonomis", "standar", "hq", "real"]).optional(),
   drop_risk: z.enum(["rendah", "sedang", "tinggi"]).optional(),
   speed_note: z.string().max(120).optional(),
+  drop_label: z.enum(["no_drop", "less_drop", "high_drop", "unknown"]).optional(),
+  speed_per_day: z.string().trim().max(40).optional(),
   is_recommended: z.coerce.number().int().min(0).max(1).optional(),
   sort_order: z.coerce.number().int().min(0).max(100000).optional(),
   supplier: z.enum(PEDIA_PROVIDERS).default(PEDIA_SALE_PROVIDER),
@@ -122,10 +124,14 @@ export async function GET(request: NextRequest) {
   const tiers = await db.queryAll(
     `SELECT t.*, s.rate_idr_per_1k AS live_rate, s.name AS live_name, s.type AS live_type,
             s.min_qty AS live_min, s.max_qty AS live_max, s.present AS live_present,
-            s.api_refill AS live_api_refill, s.api_cancel AS live_api_cancel
+            s.api_refill AS live_api_refill, s.api_cancel AS live_api_cancel,
+            st.avg_time AS stat_avg_time, st.orders_7d AS stat_orders, st.success_rate AS stat_success,
+            st.cancel_rate AS stat_cancel, st.refill_rate AS stat_refill, st.ai_score AS stat_score
        FROM pedia_tiers t
        LEFT JOIN pedia_supplier_services s
          ON s.supplier=t.supplier AND s.service_id=t.supplier_service_id
+       LEFT JOIN pedia_service_stats st
+         ON st.supplier=t.supplier AND st.service_id=t.supplier_service_id
       ORDER BY t.product_id, t.tier`,
    );
   return NextResponse.json({ ok: true, products, tiers });
@@ -257,7 +263,7 @@ export async function PUT(request: NextRequest) {
       if (packages.some((qty) => qty % Number(merged.step) !== 0)) return NextResponse.json({ error: "Paket harus sesuai kelipatan jumlah" }, { status: 400 });
     }
     const allow = isTier
-      ? ["label_note", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "target_format", "refill_anchor", "min_qty_override", "max_qty_override", "quantity_step", "region", "quality", "drop_risk", "speed_note", "is_recommended", "sort_order", "supplier", "supplier_service_id", "backup_service_id", "price_group", "markup_pct", "min_profit_rp", "refill_days", "eta_start", "eta_finish", "is_active"]
+      ? ["label_note", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "target_format", "refill_anchor", "min_qty_override", "max_qty_override", "quantity_step", "region", "quality", "drop_risk", "drop_label", "speed_per_day", "speed_note", "is_recommended", "sort_order", "supplier", "supplier_service_id", "backup_service_id", "price_group", "markup_pct", "min_profit_rp", "refill_days", "eta_start", "eta_finish", "is_active"]
       : ["slug", "platform", "metric", "target_kind", "name", "tagline", "description_md", "checklist_json", "packages_json", "step", "sort_order", "is_active", "is_featured"];
     const keys = allow.filter((key) => values[key] !== undefined);
     if (!keys.length) return NextResponse.json({ error: "no_changes" }, { status: 400 });

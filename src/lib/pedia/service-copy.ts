@@ -1,3 +1,4 @@
+import { whiteLabel } from "@/lib/pedia/terms";
 /** Hanya copy publik yang boleh disalin ke quote dan respons pesanan. */
 export type PediaServiceCopy = {
   product_name: string;
@@ -23,5 +24,6 @@ export function readPediaServiceCopy(value: unknown): PediaServiceCopy | null {
   const limits = { product_name: 120, service_name: 200, description: 3000, terms: 3000, instructions: 3000 };
   if (Object.entries(limits).some(([key, max]) => typeof copy[key] !== "string" || (copy[key] as string).length > max)) return null;
   // Whitelist fields even when reading historical snapshots.
-  return Object.fromEntries(Object.keys(limits).map((key) => [key, copy[key]])) as PediaServiceCopy;
+  // White label: snapshot lama bisa memuat kata supplier; disaring saat dibaca.
+  return Object.fromEntries(Object.keys(limits).map((key) => [key, whiteLabel(copy[key] as string)])) as PediaServiceCopy;
 }

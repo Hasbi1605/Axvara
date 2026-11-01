@@ -3,6 +3,7 @@
 "use client";
 export const runtime = "edge";
 
+import { refillLabel } from "@/lib/pedia/terms";
 import { readPediaContact, rememberPediaContact } from "@/lib/pedia/buyer-session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -23,6 +24,7 @@ type Status = {
   quantity: number; target: string; status: string; done: number | null; percent: number | null;
   eta_start: string | null; eta_finish: string | null; refill_days: number;
   refill_eligible: boolean;
+  refill?: { status_label: string | null; mode: string; ends_at: string | null } | null;
   buyer_canceled?: boolean;
   qris: { payable_amount: number; unique_code?: number | null; image_url: string; expires_at: string; status: string } | null;
 };
@@ -221,7 +223,7 @@ export default function PediaOrderStatusPage() {
     <div className="space-y-2">
       <div className="flex justify-between gap-3 text-[13px] leading-5"><span className="min-w-0 break-words text-white/70">{productName} · {serviceName} × {data.quantity.toLocaleString("id-ID")}</span></div>
       <div className="flex justify-between gap-3 text-[13px] leading-5"><span className="shrink-0 text-white/70">Link tujuan</span><span className="min-w-0 break-all text-right font-medium text-white">{data.target}</span></div>
-      {data.refill_days > 0 && <div className="flex justify-between gap-3 text-[13px] leading-5"><span className="shrink-0 text-white/70">Refill</span><span className="font-medium text-white">{data.refill_days} hari</span></div>}
+      {data.refill_days > 0 && <div className="flex justify-between gap-3 text-[13px] leading-5"><span className="shrink-0 text-white/70">Refill</span><span className="font-medium text-white">{refillLabel(data.refill_days)}</span></div>}
     </div>
     {payableAmount !== null && <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">Total • QRIS</span><span className="shrink-0 font-bold text-white">{formatRupiah(payableAmount)}</span></div>}
   </>;
@@ -322,13 +324,13 @@ export default function PediaOrderStatusPage() {
             <div className="min-w-0 flex-1"><p className={`text-sm font-semibold ${step.done ? "text-white" : "text-white/45"}`}>{step.label}</p>
               {i === 0 && <p className="mt-1 text-xs leading-5 text-white/50">Simpan kode ini untuk melacak pesananmu.</p>}
               {i === 1 && pending && <p className="mt-1 text-xs leading-5 text-white/50">Terdeteksi otomatis setelah QRIS dibayar.</p>}
-              {i === 2 && processing && <div className="mt-3"><div role="progressbar" aria-label="Progres pesanan" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100} className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[#00E5FF] transition-[width] motion-reduce:transition-none" style={{ width: `${percent}%` }} /></div><p className="mt-2 font-mono text-xs text-white/55">{data.done === null && !complete ? "Jumlah terkirim belum dikonfirmasi supplier" : `${(complete ? data.quantity : data.done ?? 0).toLocaleString("id-ID")} / ${data.quantity.toLocaleString("id-ID")} masuk`}</p></div>}
+              {i === 2 && processing && <div className="mt-3"><div role="progressbar" aria-label="Progres pesanan" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100} className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[#00E5FF] transition-[width] motion-reduce:transition-none" style={{ width: `${percent}%` }} /></div><p className="mt-2 font-mono text-xs text-white/55">{data.done === null && !complete ? "Jumlah terkirim belum dikonfirmasi" : `${(complete ? data.quantity : data.done ?? 0).toLocaleString("id-ID")} / ${data.quantity.toLocaleString("id-ID")} masuk`}</p></div>}
               {i === 3 && complete && <p className="mt-1 text-xs leading-5 text-emerald-300">Pesanan selesai. Terima kasih sudah memesan!</p>}
             </div>
           </li>)}
         </ol>
           {data.eta_finish && <p className="mt-4 text-xs leading-5 text-white/55">Perkiraan selesai: {data.eta_finish}. Estimasi mengikuti antrean.</p>}
-          {data.refill_days > 0 && <p className="mt-2 text-xs text-white/55">Refill {data.refill_days} hari sesuai ketentuan layanan.</p>}
+          {data.refill_days > 0 && <p className="mt-2 text-xs text-white/55">{refillLabel(data.refill_days)} sesuai ketentuan layanan.</p>}
         </div>}
         <div className="text-left">
           {(data.status === "partial" || data.status === "canceled") && (
@@ -367,6 +369,7 @@ export default function PediaOrderStatusPage() {
             </div>
           )}
           {refillMsg && <p className="mt-2 text-center text-[13px] text-white/70">{refillMsg}</p>}
+          {paid && data.refill_days > 0 && <p className="mt-2 text-center text-[12px] leading-5 text-white/55">{data.refill?.status_label ? `Refill: ${data.refill.status_label}. ` : ""}<a href={`/pedia/refill?code=${encodeURIComponent(code ?? "")}`} className="font-semibold text-[#00E5FF] underline underline-offset-2">Lihat status & aturan refill</a></p>}
         {compactPayment ? (
           <div className="mt-3 text-left">
             {!confirmingCancel ? (

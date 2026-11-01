@@ -238,13 +238,18 @@ it("resync rejects malformed catalogs before any supplier rows are written", asy
   expect(await createDatabaseAccess().queryFirst(`SELECT service_id FROM pedia_supplier_services WHERE service_id=99`)).toBeNull();
 });
 
-it("provider health preserves a healthy supplier when the other fails, never labels USD as rupiah", async () => {
+// 2026-11-01 (owner): ProviderSMM diputus — ringkasan hanya IndoSMM, USD tidak dilabel rupiah.
+it("provider health lists only IndoSMM and never labels USD as rupiah", async () => {
   const { GET: overview } = await import("@/app/api/admin/pedia/overview/route");
-  vi.mocked(callPediaProxy).mockImplementation(async (provider) => ({ ok: true, status: 200, data: { balance: "12000", currency: provider === "indosmm" ? "USD" : "IDR" } }) as never);
+  vi.mocked(callPediaProxy).mockImplementation(async () => ({ ok: true, status: 200, data: { balance: "12000", currency: "USD" } }) as never);
   const data = await (await overview(req())).json();
-  expect(data.providers[0]).toMatchObject({ supplier: "providersmm", error: null, balance: { value: 12000, stale: false } });
-  expect(data.providers[1]).toMatchObject({ supplier: "indosmm", error: "unsupported_currency", balance: { value: null, stale: true }, pricing_verified: false });
-  expect(await createDatabaseAccess().queryAll(`SELECT supplier FROM pedia_supplier_balance_log`)).toEqual([{ supplier: "providersmm" }]);
+  expect(data.providers).toHaveLength(1);
+  expect(data.providers[0]).toMatchObject({ supplier: "indosmm", error: "unsupported_currency", balance: { value: null, stale: true }, pricing_verified: false });
+  expect(vi.mocked(callPediaProxy).mock.calls.some((c) => c[0] === "providersmm")).toBe(false);
+  vi.mocked(callPediaProxy).mockImplementation(async (_p, action) => ({ ok: true, status: 200, data: action === "services" ? [{ service: 1 }] : { balance: "12000", currency: "IDR" } }) as never);
+  const ok = await (await overview(req())).json();
+  expect(ok.providers[0]).toMatchObject({ supplier: "indosmm", error: null, balance: { value: 12000, stale: false }, pricing_verified: true });
+  expect(await createDatabaseAccess().queryAll(`SELECT supplier FROM pedia_supplier_balance_log`)).toEqual([{ supplier: "indosmm" }]);
 });
 
 it("order balance/reconciliation use stored provider, save supplier ID snapshot, and allow identical IDs across providers only", async () => {

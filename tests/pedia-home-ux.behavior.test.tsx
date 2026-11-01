@@ -92,8 +92,8 @@ describe("Pedia platform-first storefront", () => {
     expect(catalogCard(product)).toMatchObject({ minPrice: 3300, minQuantity: 100, minTier: "hemat", refillDays: 0 });
     render(<ProductCard p={catalogCard(product)} />);
     const card = screen.getByRole("link", { name: /Followers Instagram —/ });
-    expect(card.textContent).toContain("Tanpa refill");
-    expect(card.textContent).not.toContain("Refill 30 hari");
+    expect(card.textContent).toContain("No Refill");
+    expect(card.textContent).not.toContain("Refill 30 Days");
   });
   it("renders exactly one platform image for several services and no misleading platform price", () => {
     render(<PediaHomeClient products={[product, { ...product, slug: "likes-instagram", name: "Likes Instagram", metric: "likes" }]} />);

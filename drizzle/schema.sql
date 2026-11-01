@@ -1347,7 +1347,25 @@ CREATE TABLE IF NOT EXISTS pedia_tiers (
   drop_risk TEXT NOT NULL DEFAULT 'sedang' CHECK (drop_risk IN ('rendah','sedang','tinggi')),
   is_recommended INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
+  -- Migrasi 0085: label drop supplier + speed klaim supplier.
+  drop_label TEXT CHECK (drop_label IS NULL OR drop_label IN ('no_drop','less_drop','high_drop','unknown')),
+  speed_per_day TEXT,
   UNIQUE(product_id, supplier, supplier_service_id)
+);
+-- Migrasi 0085: kesehatan layanan supplier terukur (7 hari) + avg time.
+CREATE TABLE IF NOT EXISTS pedia_service_stats (
+  supplier TEXT NOT NULL,
+  service_id INTEGER NOT NULL,
+  avg_time TEXT,
+  orders_7d INTEGER NOT NULL DEFAULT 0,
+  success_rate REAL,
+  cancel_rate REAL,
+  refill_rate REAL,
+  ai_score INTEGER,
+  period_hours INTEGER,
+  analyzed_at TEXT,
+  updated_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (supplier, service_id)
 );
 CREATE INDEX IF NOT EXISTS idx_pedia_tiers_product_active
   ON pedia_tiers(product_id, is_active, is_recommended, sort_order);

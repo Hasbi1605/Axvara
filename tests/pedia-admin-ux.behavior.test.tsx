@@ -96,6 +96,23 @@ it("tier order is Hemat, Standar, Premium and tier edits use PUT fields", async 
   expect(writes[0].body).toMatchObject({ kind: "tier", id: 1, markup_pct: 50, backup_service_id: 99, refill_days: 30, eta_start: "5 menit", eta_finish: "1 jam" });
 });
 
+// 2026-11-01 (owner): admin Pedia lebih mudah — badge kesehatan, label drop/speed, teknis dilipat.
+it("shows supplier health, saves drop label/speed and folds technical fields", async () => {
+  catalog.tiers = [{ ...tier, stat_orders: 9, stat_success: 22, stat_cancel: 78, stat_refill: 50, stat_score: 25, stat_avg_time: "19 menit", live_api_refill: 0 } as typeof tier];
+  render(<PediaManager />); fireEvent.click(await screen.findByRole("button", { name: "Edit Followers Instagram" }));
+  expect(screen.getAllByText("Berisiko").length).toBeGreaterThan(0);
+  expect(document.body.textContent).toContain("success 22% · cancel 78% · drop rate (refill) 50% · avg time 19 menit");
+  expect(document.body.textContent).toContain("Ganti ID layanan atau nonaktifkan");
+  expect(document.body.textContent).toContain("manual — pembeli mengajukan, admin meneruskan ke CS IndoSMM");
+  const form = screen.getByRole("form", { name: "Edit tingkat standar" });
+  expect(within(form).getByLabelText("Kelompok harga").closest("details")?.querySelector("summary")?.textContent).toBe("Pengaturan lanjutan");
+  expect(within(form).getByLabelText("Markup (%)").closest("details")?.querySelector("summary")?.textContent).not.toBe("Pengaturan lanjutan");
+  fireEvent.change(within(form).getByLabelText("Label drop (supplier)"), { target: { value: "high_drop" } });
+  fireEvent.change(within(form).getByLabelText("Speed (mis. 10K/hari)"), { target: { value: "10K/hari" } });
+  fireEvent.submit(form); await screen.findByText(/Tingkat standar tersimpan/);
+  expect(writes[0].body).toMatchObject({ drop_label: "high_drop", speed_per_day: "10K/hari", region: "global", quality: "standar" });
+});
+
 it("checklist points can be added and removed without editing JSON or losing existing help", async () => {
   render(<PediaManager />); fireEvent.click(await screen.findByRole("button", { name: "Edit Followers Instagram" }));
   fireEvent.click(screen.getByRole("button", { name: "Tambah poin checklist" }));
@@ -209,7 +226,7 @@ it("publication, featured and process readiness are separate", async () => {
   const preview = screen.getByRole("region", { name: "Pratinjau produk" });
   expect(preview.textContent).toContain("Draf / Katalog penuh / Siap dijual");
   expect(screen.getByLabelText("Terbit")).toBeTruthy();
-  expect(preview.textContent).toContain("Refill 30 hari");
+  expect(preview.textContent).toContain("Refill 30 Days");
   expect(preview.textContent).not.toContain("IndoSMM");
 });
 
@@ -344,7 +361,6 @@ it("keeps legacy suppliers visible for investigation while refusing new assignme
  fireEvent.click(screen.getByRole('button',{name:'Layanan Supplier'}));
  const supplier=await screen.findByLabelText('Supplier');
  expect((supplier as HTMLSelectElement).value).toBe('indosmm');
- fireEvent.change(supplier,{target:{value:'providersmm'}});
- const legacy=await screen.findByRole('button',{name:'Pakai layanan providersmm 99'});
- expect((legacy as HTMLButtonElement).disabled).toBe(true);
+ // 2026-11-01: ProviderSMM diputus — tidak lagi bisa dipilih sebagai supplier.
+ expect([...(supplier as HTMLSelectElement).options].map((o)=>o.value)).not.toContain('providersmm');
 });

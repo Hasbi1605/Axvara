@@ -3187,6 +3187,24 @@ Hanya `PEDIA_DISPATCH_ENABLED` yang tidak dikonsumsi runtime dihapus, sehingga
 60 + 4 = 64; keempat env pemilihan/config KlikQRIS serta secret DANA/GoPay lama
 tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
 
+### 16.10b Pedia IndoSMM: kesehatan layanan, drop label, refill (1 November 2026)
+- Tabel `pedia_service_stats(supplier,service_id)` (0085): avg_time (snapshot
+  Daftar Layanan), orders_7d, success/cancel/refill rate, ai_score. Cron lite
+  `pedia_orders` memanggil `refreshPediaServiceStats` maks 1×/jam (penanda
+  `store_settings.pedia_service_stats_refreshed_at`, satu upsert `json_each`,
+  hanya layanan yang dirujuk tier) dari `ai.indosmm.web.id/api/analysis?period=168`
+  (publik, tanpa key; gagal parse = tidak menulis).
+- `pedia_tiers.drop_label` (no_drop/less_drop/high_drop/unknown) + `speed_per_day`.
+  Katalog publik menambah `drop_label`, `speed_per_day`, `avg_time`, `refill_mode`,
+  `success_pct`, `refill_pct` (statistik hanya bila ≥5 order/7 hari).
+- Refill: `src/lib/pedia/refill-policy.ts` dipakai GET status (`order.refill`),
+  POST refill dan halaman `/pedia/refill`. Mode `api` bila mirror `api_refill=1`,
+  `manual` bila bergaransi tanpa tombol API (`refill_status='manual_requested'`,
+  Telegram admin, admin `refill_resolve` completed/rejected), `none` untuk No Refill.
+- ProviderSMM: cron lite tidak memanggil `/psmm/balance`; `/api/supplier-sync`
+  source providersmm → 200 `{ignored:"providersmm_retired"}` tanpa tulis D1;
+  overview admin hanya IndoSMM.
+
 ### 16.10a FK tier pesanan Pedia — migrasi 0084 (1 November 2026)
 Rebuild 0062 me-rename `pedia_tiers` ke arsip; SQLite/D1 ikut menulis ulang FK
 `pedia_order_items.tier_id` ke `pedia_tiers_archive0062_prev2` (36 tier lama).
