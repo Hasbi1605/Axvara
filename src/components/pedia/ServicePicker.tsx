@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useMemo, useState, type ReactNode } from "react";
-import { Check, Clock, Globe2, ShieldCheck } from "lucide-react";
+import { Check, Clock, Globe2, MapPin, ShieldCheck } from "lucide-react";
 import type { PediaCatalogProduct, PediaCatalogTier } from "@/app/api/pedia/catalog/route";
 import { DROP_LABEL, refillLabel } from "@/lib/pedia/terms";
 
@@ -20,14 +20,18 @@ export function shortServiceName(productName: string, _metric: string, t: PediaC
 // 2026-11-01 (owner): istilah SMM dipertahankan (Refill 30 Days, No Refill, No Drop, …).
 const DROP_CHIP: Record<string, string> = { no_drop: "border-emerald-300/25 bg-emerald-300/10 text-emerald-200", less_drop: "border-amber-300/25 bg-amber-300/10 text-amber-200", high_drop: "border-red-300/30 bg-red-400/10 text-red-200" };
 export function ServiceChips({ t, eta = false, className = "" }: { t: PediaCatalogTier; eta?: boolean; className?: string }) {
-  const start = t.eta_start ? `Start ${t.eta_start}` : t.speed_note ? t.speed_note.replace(/^Mulai\b/i, "Start") : t.avg_time ? `Avg ${t.avg_time}` : "Start mengikuti antrean";
+  const start = t.eta_start ? `Start ${t.eta_start}` : t.speed_note ? t.speed_note.replace(/^Mulai\b/i, "Start") : t.avg_time ? `Avg ${t.avg_time}` : null;
+  // 2026-11-02 (owner): chip informasi tetap netral (warna hanya untuk refill/drop/
+  // sukses), teks dinaikkan agar terbaca; Indonesia memakai pin lokasi; tanpa
+  // data waktu chip Start tidak ditampilkan.
+  const RegionIcon = t.region === "indonesia" ? MapPin : Globe2;
   const chip = "inline-flex min-h-5 items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-1.5 text-[11px] leading-4";
   const drop = t.drop_label && t.drop_label !== "unknown" ? t.drop_label : null;
   return <span className={`flex flex-wrap gap-1 ${className}`}>
-    <span className={`${chip} text-white/75`}><Globe2 size={11} aria-hidden="true" />{REGION_LABEL[t.region ?? "global"]}</span>
-    <span className={`${chip} ${t.refill_days > 0 ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]" : "text-white/60"}`}><ShieldCheck size={11} aria-hidden="true" />{refillLabel(t.refill_days)}</span>
+    <span className={`${chip} text-white/85`}><RegionIcon size={11} aria-hidden="true" />{REGION_LABEL[t.region ?? "global"]}</span>
+    <span className={`${chip} ${t.refill_days > 0 ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]" : "text-white/75"}`}><ShieldCheck size={11} aria-hidden="true" />{refillLabel(t.refill_days)}</span>
     {drop && <span className={`${chip} ${DROP_CHIP[drop]}`}>{DROP_LABEL[drop]}</span>}
-    {eta && <span className={`${chip} text-white/75`}><Clock size={11} aria-hidden="true" />{start}</span>}
+    {eta && start && <span className={`${chip} text-white/85`}><Clock size={11} aria-hidden="true" />{start}</span>}
     {t.success_pct != null && <span className={`${chip} ${t.success_pct >= 95 ? "text-emerald-200" : t.success_pct >= 85 ? "text-amber-200" : "text-red-200"}`}>{Math.round(t.success_pct)}% sukses</span>}
   </span>;
 }

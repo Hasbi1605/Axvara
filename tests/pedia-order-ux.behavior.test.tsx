@@ -124,7 +124,7 @@ describe("Pedia order UX", () => {
     expect(document.body.textContent).toContain("Pilih layanan untuk melihat batas jumlah per pesanan.");
     // 2026-11-01 (owner): istilah SMM dipertahankan.
     expect(screen.getByText("Refill 30 Days").className).toContain("text-[#00E5FF]");
-    expect(screen.getByText("No Refill", { selector: "span" }).className).toContain("text-white/60");
+    expect(screen.getByText("No Refill", { selector: "span" }).className).toContain("text-white/75");
     expect(screen.queryByRole("button", { name: "Periksa harga" })).toBeNull();
     proceed();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -448,6 +448,19 @@ describe("Pedia configurator", () => {
     const info = screen.getByTestId("inline-info");
     expect(info.textContent).toBe("info 12");
     expect(info.parentElement?.previousElementSibling?.querySelector("input")?.getAttribute("value")).toBe("12");
+  });
+
+  it("keeps info chips neutral, uses a pin for Indonesia and hides Start without timing data (owner 2026-11-02)", () => {
+    const tiers = [{ ...product.tiers[0], id: 31, region: "indonesia" as const, eta_start: null, speed_note: null, avg_time: null },
+      { ...product.tiers[1], id: 32, region: "global" as const, eta_start: "0–2 jam" }];
+    const { container } = render(<ServicePicker product={{ ...product, tiers }} tierId={null} onSelect={vi.fn()} qty={null} expanded />);
+    expect(container.textContent).not.toContain("mengikuti antrean");
+    const indo = screen.getByText("Indonesia", { selector: "span" });
+    const glob = screen.getByText("Global", { selector: "span" });
+    expect(indo.querySelector("svg")!.getAttribute("class")).toContain("lucide-map-pin");
+    expect(glob.querySelector("svg")!.getAttribute("class")).toMatch(/lucide-(globe|earth)/);
+    expect(indo.className).toContain("text-white/85");
+    expect(screen.getByText("Start 0–2 jam", { selector: "span" }).className).toContain("text-white/85");
   });
 
   it("shows the real price for 10 comments instead of a per-1.000 price on comment services", () => {
