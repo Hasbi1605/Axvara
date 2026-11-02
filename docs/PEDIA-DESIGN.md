@@ -395,7 +395,28 @@ Tabel ini rancangan awal, bukan seluruh komponen aktif. §6.0 mengalahkan tabel:
 | `PediaBottomNav` | Pola `MobileBottomNav` toko pusat, 4 tab, indikator violet |
 | `LaunchCards` | Kartu promo di axvara.tech (§9) |
 
-Ikon platform: SVG lokal di `public/icons/platforms/*.svg` (sumber Simple Icons, lisensi CC0), BUKAN request runtime. Ikon UI lain memakai `IosIcon` existing.
+### Ikon platform - pemetaan 2 November 2026
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Seluruh 34 entri registri diperiksa. Aset lokal di `public/icons/platforms/` dipakai bersama oleh katalog, header dan ringkasan melalui `PlatformIcon`; tidak ada request logo pihak ketiga saat runtime. Ukuran/layout dan label aksesibel kartu tetap. Ikon UI lain memakai `IosIcon` existing.
+
+| Platform | Temuan | Tindakan |
+|---|---|---|
+| Coub | Kotak huruf CO, bukan logo | Path tangan dari SVG situs resmi, putih tanpa lingkaran latar |
+| Lazada | Kotak huruf LA, bukan logo | Kontur hati/kotak dari vektor logo Lazada, oranye tanpa gradasi |
+| Rutube | Kotak huruf RU, bukan logo | Minilogo monokrom putih resmi R + titik, tanpa kotak latar |
+| SnackVideo | Kotak huruf SN, bukan logo | Kontur glyph dari vektor SnackVideo, kuning dengan lubang play transparan; bukan Kwai |
+| Medium | Tampak seperti wordmark terpotong | Dipertahankan: crop wordmark memang ikon resmi untuk wadah 1:1 sejak 2024 |
+| Website Traffic | Globe generik | Dipertahankan: kategori layanan, bukan merek dengan logo resmi |
+| Audiomack, CoinMarketCap, Discord, Dribbble, Facebook, GitHub, Instagram, Kick, LinkedIn, Mixcloud, Pinterest, Reddit, ReverbNation, Roblox, Rumble, Shopee, SoundCloud, Spotify, Telegram, Threads, TIDAL, TikTok, Tumblr, Twitch, Vimeo, WhatsApp, X, YouTube | Glyph merek, bukan kotak huruf pengganti | Dipertahankan; tanpa redraw atau perubahan warna |
+
+Sumber aset pengganti (diambil 2 November 2026; path dipertahankan, kontur diisolasi dan warna tunggal mengikuti koreksi owner):
+- Coub: [brand assets](https://coub.com/brand-assets), path tangan putih dari [icon.svg](https://coub.com/icon.svg); lingkaran biru dilepas dan viewBox mengikuti glyph.
+- Lazada: [vektor logo 2019 di Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Lazada_(2019).svg), kontur `path69`; bukan wordmark atau app icon.
+- Rutube: [brandbook resmi](https://rutube.ru/brand/), [paket logo](https://static.rutube.ru/static/zip/rutube_logo.zip), anggota `Logo_RUTUBE/Minilogo/SVG/Minilogo_RUTUBE_white_mono.svg`.
+- SnackVideo: [vektor logo di IconLogoVector](https://iconlogovector.com/logo/snackvideo-icon-logo-vector-svg-ai-eps-cdr-pdf), berkas `67bc7cd7675ff-SnackVideo.svg`, kontur glyph `.cls-1`; bentuk dicocokkan dengan [situs resmi](https://www.snackvideo.com/) dan favicon resminya. Sumber vektor ini mirror pihak ketiga, bukan brand kit resmi.
+- Medium: [panduan logo resmi](https://medium.design/logos-and-brand-guidelines-f1a01a733592), diperbarui 30 Oktober 2024: ikon menempatkan M di tengah crop wordmark; jangan menggantinya dengan elipsis lama berdasarkan dugaan clipping.
+
+Logo lama mayoritas berasal dari Simple Icons (CC0). Aset tambahan mengikuti ketentuan sumber/merek masing-masing, bukan otomatis CC0. Semua aset tetap SVG lokal satu warna; tanpa PNG, dependency, tracing atau generasi logo. Test merender `PlatformIcon` untuk setiap entri registri, memeriksa berkas lokal/format, menolak placeholder `<text>`/script/referensi eksternal, dan memastikan empat pengganti memakai tepat satu fill sesuai registri tanpa rect latar/image/gradient.
 
 ---
 

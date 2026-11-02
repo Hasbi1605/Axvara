@@ -694,6 +694,8 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
 | Validasi | Zod | Schema checkout & produk |
 | Gateway WhatsApp | Baileys di Heroku | Webhook grup, quoted reply, media bukti sementara, dan pesan fulfillment |
 
+Logo Pedia (2 November 2026, implementasi lokal untuk publikasi CI): `PlatformIcon` tetap memakai SVG lokal. Coub/Lazada/Rutube/SnackVideo memakai glyph logo asli satu warna sesuai registri, tanpa background aplikasi/gradasi atau perubahan route/API/order. Pemetaan 34 platform, sumber resmi/mirror dan ketentuan aset di `docs/PEDIA-DESIGN.md` bagian Ikon platform; tidak ada fetch CDN saat runtime.
+
 ---
 
 ## 3. Struktur Folder

@@ -1,6 +1,5 @@
 // src/components/pedia/PlatformGrid.tsx — Grid platform + ProductCard (PD-01/03).
-// Ikon = logo asli tiap platform (Simple Icons, CC0 — 2026-10-08, permintaan
-// owner), fill currentColor + warna brand per platform.
+// Logo platform lokal; sumber dan pemetaan ada di docs/PEDIA-DESIGN.md.
 import { refillLabel } from "@/lib/pedia/terms";
 import Link from "next/link";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
@@ -9,8 +8,7 @@ import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
 export const PEDIA_PLATFORMS = PEDIA_PLATFORM_CONFIG;
 
 export function PlatformIcon({ id, size = 28, className }: { id: string; size?: number; className?: string }) {
-  // Ikon = file SVG per platform (fill warna brand ditulis langsung di file —
-  // <img> eksternal tidak mewarisi currentColor parent).
+  // Glyph SVG satu warna; tanpa background ikon aplikasi atau gradasi.
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={`/icons/platforms/${id}.svg`} alt="" width={size} height={size} className={className} style={{ width: size, height: size }} draggable={false} />;
 }

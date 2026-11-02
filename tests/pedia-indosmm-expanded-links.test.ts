@@ -1,18 +1,20 @@
 import fs from "node:fs";
+import {createElement} from "react";
+import {renderToStaticMarkup} from "react-dom/server";
 import {describe,expect,it} from "vitest";
+import {PlatformIcon} from "@/components/pedia/PlatformGrid";
 import {detectPediaLink,pediaTargetMatches} from "@/lib/pedia/link";
 import {PEDIA_ADDITIONAL_PLATFORMS,PEDIA_ADDITIONAL_EXAMPLES} from "@/lib/pedia/additional-platforms";
 import release from "@/lib/pedia/curation-20261020.json";
-import {pediaTargetExample} from "@/lib/pedia/platforms";
+import {pediaTargetExample,PEDIA_PLATFORM_CONFIG} from "@/lib/pedia/platforms";
 
 describe("IndoSMM expansion target contracts",()=>{
- it.each(PEDIA_ADDITIONAL_PLATFORMS)("recognizes every documented $id target and has a local icon",platform=>{
+ it.each(PEDIA_ADDITIONAL_PLATFORMS)("recognizes every documented $id target",platform=>{
   for(const [kind,url] of Object.entries(PEDIA_ADDITIONAL_EXAMPLES[platform.id])){
    const found=detectPediaLink(url,platform.id);
    expect(found,`${platform.id}:${kind}`).toMatchObject({platform:platform.id,targetKind:kind});
    expect(found&&detectPediaLink(found.normalized,platform.id)).toEqual(found);
   }
-  expect(fs.readFileSync(`public/icons/platforms/${platform.id}.svg`,"utf8")).toContain("<svg");
  });
  it.each([...release.products,...release.replacements])("validates the actual $slug order example without confusing kinds",p=>{
   const detected=detectPediaLink(pediaTargetExample(p.platform,p.target_kind),p.platform);
@@ -38,6 +40,19 @@ describe("IndoSMM expansion target contracts",()=>{
   expect(pediaTargetMatches("shop","post")).toBe(false);
   expect(pediaTargetMatches("track","album")).toBe(false);
  });
+});
+
+it.each(PEDIA_PLATFORM_CONFIG)("renders a local $id logo without letter placeholders",platform=>{
+ const markup=renderToStaticMarkup(createElement(PlatformIcon,{id:platform.id,size:48}));
+ expect(markup).toContain(`src="/icons/platforms/${platform.id}.svg"`);
+ expect(markup).toContain('alt=""');
+ const svg=fs.readFileSync(`public/icons/platforms/${platform.id}.svg`,"utf8");
+ expect(svg).toContain("<svg");
+ expect(svg).not.toMatch(/<text\b|<script\b|<foreignObject\b|(?:href|src)=["']https?:/i);
+ if(["coub","lazada","rutube","snackvideo"].includes(platform.id)){
+  expect([...new Set([...svg.matchAll(/\bfill="([^"]+)"/g)].map(m=>m[1]))]).toEqual([platform.color]);
+  expect(svg).not.toMatch(/<(?:rect|image|linearGradient|radialGradient)\b/);
+ }
 });
 
 it("preserves the Facebook people Page identity instead of dropping the numeric ID",()=>{
