@@ -20,6 +20,8 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
 import { isEnabled } from "@/lib/feature-flags";
 import { rewriteSupplierDocsLinks } from "@/lib/product-copy/format";
+import { isJaspayVariantId } from "./jaspay";
+import type { JaspayOrderResult } from "./client";
 export type WrOrderLinkRow = {
   id: number;
   order_code: string;
@@ -401,6 +403,246 @@ export async function decryptAccountDetails(ciphertext: string, iv: string): Pro
 }
 
 /**
+ * Format akun Jaspay (WR3): array `accounts` app-dependent
+ * ({email,password} dsb). Field yang didukung dipertahankan semua —
+ * JANGAN difilter ke subset premium. Objek tak dikenal dirender
+ * key: value (bukan JSON mentah bila memungkinkan, bukan hilang).
+ */
+export function formatJaspayAccountsForDisplay(accounts: unknown): string {
+  if (accounts == null) return "";
+  if (typeof accounts === "string") {
+    const t = accounts.trim();
+    if (!t) return "";
+    return normalizeAccountDetailsForDisplay(t);
+  }
+  const list = Array.isArray(accounts) ? accounts : [accounts];
+  const blocks: string[] = [];
+  for (const entry of list) {
+    if (entry == null) continue;
+    if (typeof entry === "string") {
+      const t = entry.trim();
+      if (t) blocks.push(t);
+      continue;
+    }
+    if (typeof entry === "object") {
+      const text = formatDetailObject(entry as Record<string, unknown>);
+      blocks.push(text || JSON.stringify(entry).slice(0, 500));
+      continue;
+    }
+    blocks.push(String(entry));
+  }
+  // Tanpa pemotongan: kredensial qty besar tidak boleh terpotong diam-diam.
+  return blocks.filter(Boolean).join("\n\n");
+}
+
+/** Akun Jaspay yang benar-benar berisi data (bukan null/kosong). */
+export function usableJaspayAccounts(accounts: unknown): unknown[] {
+  if (!Array.isArray(accounts)) return [];
+  return accounts.filter((entry) => {
+    if (entry == null) return false;
+    if (typeof entry === "string") return entry.trim().length > 0;
+    if (typeof entry === "object") {
+      return Object.values(entry as Record<string, unknown>).some(
+        (value) => value != null && String(value).trim().length > 0,
+      );
+    }
+    return false;
+  });
+}
+
+function jaspaySuccessCount(result: JaspayOrderResult): number {
+  const direct = Math.floor(Number(result.success_count ?? 0));
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const prog = result.progress as { success?: unknown; done?: unknown } | undefined;
+  const fromProg = Math.floor(Number(prog?.success ?? 0));
+  return Number.isFinite(fromProg) && fromProg > 0 ? fromProg : 0;
+}
+
+function jaspayStatusOf(result: JaspayOrderResult): "processing" | "completed" | "partial" | "failed" {
+  const raw = String(result.status || "").trim().toLowerCase();
+  if (raw === "completed" || raw === "partial" || raw === "failed") return raw;
+  return "processing";
+}
+
+async function alertJaspayAdminManual(
+  invoice: string,
+  orderCode: string,
+  reason: string,
+): Promise<void> {
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  if (!adminChatId || process.env.TELEGRAM_BOT_ENABLED !== "true") return;
+  try {
+    const { sendMessage } = await import("@/lib/telegram/api");
+    await sendMessage({
+      chat_id: adminChatId,
+      text:
+        `🧾 <b>Jaspay perlu tindak lanjut manual</b> <code>${orderCode}</code>\n`
+        + `Invoice: <code>${invoice}</code> — ${reason.slice(0, 200)}\n`
+        + `Kredensial parsial tersimpan terenkripsi; JANGAN beli ulang otomatis.`,
+      parse_mode: "HTML",
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * Terminal Jaspay (WR3) — SATU-SATUNYA penentu completed untuk link Jaspay.
+ *
+ * - completed: HANYA bila paid/qty/success_count/accounts koheren
+ *   (success_count >= qty link && accounts.length >= success_count &&
+ *   invoice milik link ini via CAS) => jalur completed biasa
+ *   (enkripsi + bind + settle + agregat + delivery durable).
+ * - partial: kredensial sukses (bila ada) DIENKRIPSI + disimpan durable,
+ *   status link TETAP processing (BUKAN completed), item TIDAK di-settle
+ *   delivered, TIDAK ada enqueue delivery biasa. Admin di-alert untuk
+ *   tindak lanjut manual. TIDAK PERNAH beli ulang / refund buyer otomatis.
+ * - failed/refunded: monotonik ke failed (seperti premium), tanpa settle.
+ * - accounts malformed/kosong pada completed: simpan mentah terenkripsi +
+ *   admin followup, JANGAN settle delivered.
+ */
+export async function handleJaspayTerminal(
+  invoice: string,
+  result: JaspayOrderResult & { raw?: unknown; refunded_event?: boolean },
+  database?: DatabaseAccess,
+): Promise<boolean> {
+  const db = database ?? createDatabaseAccess();
+  const { queryFirst, execRun } = db;
+  const link = await queryFirst(`SELECT * FROM wr_order_links WHERE wr_order_id=?`, invoice).catch(
+    () => null,
+  );
+  if (!link) return false;
+  // No wrong-family fallback: invoice JSP milik link Jaspay saja.
+  if (!isJaspayVariantId(String(link.wr_variant_id || ""))) return false;
+  const status = result.refunded_event ? "failed" : jaspayStatusOf(result);
+  const now = new Date().toISOString();
+  if (status === "processing") {
+    return advanceWrLinkMonotonic(invoice, "processing", null, database);
+  }
+  const qty = Math.max(1, Math.floor(Number(link.quantity || 1)));
+  const success = jaspaySuccessCount(result);
+  const usable = usableJaspayAccounts(result.accounts);
+  if (status === "failed") {
+    // Simpan bukti mentah (bila ada) sebelum terminal failed; tidak ada
+    // refund pembeli otomatis — admin menindaklanjuti.
+    if (result.raw != null || usable.length) {
+      await retainJaspayEvidence(link, invoice, result, usable.length, qty, "failed", db);
+    }
+    const reason = result.refunded_event
+      ? "jaspay_refunded"
+      : String((result as { note?: unknown }).note ?? "jaspay_failed").slice(0, 500);
+    return handleWrOrderFailed(invoice, reason, database, undefined, { allowJaspay: true });
+  }
+  const reportedQty = Math.floor(Number(result.quantity ?? 0));
+  const coherent =
+    status === "completed"
+    && success >= qty
+    && usable.length >= qty
+    && (!(reportedQty > 0) || reportedQty === qty);
+  if (!coherent) {
+    // partial ATAU completed-tak-koheren/malformed: simpan durable untuk
+    // admin, tahan di processing, TANPA settle/delivery biasa.
+    const applied = await retainJaspayEvidence(link, invoice, result, usable.length, qty, status, db);
+    await logWebhookEvent(db, invoice, `jaspay.${status}`, undefined, applied, `retained_for_admin:${usable.length}/${qty}`).catch(
+      () => undefined,
+    );
+    if (applied) {
+      await alertJaspayAdminManual(invoice, String(link.order_code || ""), `${status} ${usable.length}/${qty} — kredensial tersimpan, perlu tindak lanjut manual`);
+    }
+    return applied;
+  }
+  const plaintext = formatJaspayAccountsForDisplay(usable);
+  const { ciphertext, iv } = await encryptSecret(plaintext);
+  // Full completed koheren: CAS kepemilikan invoice + settle biasa.
+  const completed = await execRun(
+    `UPDATE wr_order_links SET wr_account_details=?, wr_account_iv=?, status='completed',
+       completed_at=?, last_event_at=?, last_error=NULL, updated_at=datetime('now')
+     WHERE wr_order_id=? AND status IN ('pending','claimed','retry','blocked_balance','submitted','ordering','processing','completed')
+       AND wr_variant_id LIKE 'jaspay:%'`,
+    ciphertext,
+    iv,
+    now,
+    now,
+    invoice,
+  );
+  if (!Number(completed.changes ?? 0)) {
+    const current = await queryFirst(`SELECT status FROM wr_order_links WHERE wr_order_id=?`, invoice);
+    await logWebhookEvent(db, invoice, "jaspay.completed", undefined, false, `terminal_regression_blocked:${current?.status ?? "missing"}`).catch(
+      () => undefined,
+    );
+    return false;
+  }
+  await logWebhookEvent(db, invoice, "jaspay.completed", undefined, true, `completed:${String(link.status)}:${success}/${qty}`).catch(
+    () => undefined,
+  );
+  await queueCredentialDelivery(Number(link.id), db);
+  let fulfillmentItemId = Number(link.fulfillment_item_id || 0);
+  try {
+    fulfillmentItemId = await bindWrLinkToFulfillmentItem(Number(link.id), db);
+  } catch { /* link TETAP completed; settle memakai fallback */ }
+  if (!fulfillmentItemId) fulfillmentItemId = Number(link.fulfillment_item_id || 0);
+  await settleWrFulfillmentItem(String(link.order_code), fulfillmentItemId, ciphertext, iv, db);
+  await refreshOrderAggregate(String(link.order_code), db);
+  await processCredentialDelivery(Number(link.id), db).catch(() => undefined);
+  return true;
+}
+
+/**
+ * Simpan bukti kredensial Jaspay non-final secara monotonik: payload LENGKAP
+ * (tanpa potong) dienkripsi. Replay dengan akun lebih sedikit/kosong TIDAK
+ * menimpa bukti yang lebih lengkap. Link tidak pernah turun dari terminal.
+ */
+async function retainJaspayEvidence(
+  link: Record<string, unknown>,
+  invoice: string,
+  result: JaspayOrderResult & { raw?: unknown },
+  usableCount: number,
+  qty: number,
+  status: string,
+  db: DatabaseAccess,
+): Promise<boolean> {
+  const previous = /^jaspay_\w+_manual:(\d+)\//.exec(String(link.last_error || ""));
+  const previousCount = previous ? Number(previous[1]) : -1;
+  const hasEvidence = String(link.wr_account_details || "") !== "";
+  const marker = `jaspay_${status}_manual:${usableCount}/${qty}`;
+  if (hasEvidence && previousCount >= usableCount) {
+    // Bukti lama sama/lebih lengkap: jangan timpa; tetap tahan non-final.
+    const kept = await db.execRun(
+      `UPDATE wr_order_links SET last_event_at=?, updated_at=datetime('now')
+       WHERE wr_order_id=? AND status IN ('submitted','ordering','processing') AND wr_variant_id LIKE 'jaspay:%'`,
+      new Date().toISOString(),
+      invoice,
+    ).catch(() => ({ changes: 0 as number | undefined }));
+    return Number(kept.changes ?? 0) > 0 || ["failed", "completed"].includes(String(link.status || ""));
+  }
+  const evidence = JSON.stringify({
+    invoice,
+    status,
+    quantity: qty,
+    success_count: jaspaySuccessCount(result),
+    accounts: result.accounts ?? null,
+    raw: result.raw ?? null,
+    retained_at: new Date().toISOString(),
+  });
+  const { ciphertext, iv } = await encryptSecret(evidence);
+  const nextStatus = status === "failed" ? "failed" : "processing";
+  const stored = await db.execRun(
+    `UPDATE wr_order_links SET wr_account_details=?, wr_account_iv=?,
+       status=CASE WHEN ?='failed' THEN status ELSE 'processing' END,
+       last_event_at=?, last_error=?, updated_at=datetime('now')
+     WHERE wr_order_id=? AND status IN ('pending','claimed','retry','blocked_balance','submitted','ordering','processing')
+       AND wr_variant_id LIKE 'jaspay:%'`,
+    ciphertext,
+    iv,
+    nextStatus,
+    new Date().toISOString(),
+    marker,
+    invoice,
+  ).catch(() => ({ changes: 0 as number | undefined }));
+  return Number(stored.changes ?? 0) > 0;
+}
+
+/**
  * Webhook order.completed (P0-5 + P0-6):
  * 1. Simpan akun terenkripsi (tidak plaintext).
  * 2. Maju monotonik ke completed (CAS — replay failed kemudian ditolak).
@@ -421,6 +663,9 @@ export async function handleWrOrderCompleted(
     () => null,
   );
   if (!link) return false;
+  // WR3: invoice JSP TIDAK PERNAH milik link premium. Tolak sebelum
+  // menyimpan akun agar formatter premium tak menelan payload Jaspay.
+  if (isJaspayVariantId(String(link.wr_variant_id || ""))) return false;
   // Webhook resmi WR membawa akun di `data.accounts` (api-docs 2026-10);
   // /transactions memakai `account_details`. Keduanya diterima.
   const envelope = accountPayload as { account_details?: unknown; accounts?: unknown } | null;
@@ -493,6 +738,7 @@ export async function handleWrOrderFailed(
   errorMessage: string,
   database?: DatabaseAccess,
   eventId?: string,
+  options: { allowJaspay?: boolean } = {},
 ): Promise<boolean> {
   const db = database ?? createDatabaseAccess();
   const { queryFirst, execRun } = db;
@@ -500,6 +746,10 @@ export async function handleWrOrderFailed(
     () => null,
   );
   if (!link) return false;
+  // WR3: invoice JSP milik handler Jaspay saja; premium tak boleh
+  // meregresi/menyelesaikan link Jaspay.
+  // Hanya handleJaspayTerminal (allowJaspay) yang boleh menggagalkannya.
+  if (isJaspayVariantId(String(link.wr_variant_id || "")) && !options.allowJaspay) return true;
   const applied = await advanceWrLinkMonotonic(
     wrOrderId,
     "failed",

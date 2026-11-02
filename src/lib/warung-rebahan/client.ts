@@ -59,6 +59,46 @@ export type WrWebhookEvent = {
   };
 };
 
+/** Jaspay made-by-order (api-docs WR, family /jaspay/*, base /api/v1). */
+export type JaspayAccount = Record<string, unknown>;
+
+export type JaspayOrderResult = {
+  /** Invoice JSP-... (identitas korelasi; ref_id TIDAK dijamin di /orders). */
+  invoice: string;
+  status: "processing" | "completed" | "partial" | "failed";
+  product: string;
+  product_name?: string;
+  /** Nama package (BUKAN id). */
+  package?: string;
+  quantity: number;
+  price?: number;
+  total?: number;
+  refunded?: number;
+  progress?: { done?: number; success?: number };
+  success_count: number;
+  accounts: JaspayAccount[];
+  created_at?: string;
+  finished_at?: string | null;
+  balance_after?: number;
+  /** True bila upstream mengembalikan duplikat ref (tanpa debit ganda). */
+  duplicate?: boolean;
+  /** Payload mentah upstream (bukti terenkripsi untuk admin; tidak ditampilkan). */
+  raw?: unknown;
+};
+
+export type JaspayWebhookEvent = {
+  event: "jaspay.completed" | "jaspay.partial" | "jaspay.failed" | "jaspay.refunded";
+  data: {
+    /** Invoice JSP-... (BUKAN order_id). */
+    invoice: string;
+    status?: string;
+    quantity?: number;
+    success_count?: number;
+    accounts?: JaspayAccount[];
+    [key: string]: unknown;
+  };
+};
+
 export type WrApiResponse<T> = {
   success: boolean;
   message: string;
@@ -346,6 +386,91 @@ export async function createOrder(params: {
 export async function fetchTransactions(): Promise<WrTransaction[]> {
   const res = await wrFetch<WrTransaction[]>("/transactions");
   return Array.isArray(res.data) ? res.data : [];
+}
+
+// ── Jaspay transport (WR3): family /jaspay/* di base /api/v1 yang sama.
+// wrFetch menggabung path nested apa adanya (`/wr/jaspay/...` via proxy,
+// `/api/v1/jaspay/...` langsung) — tanpa endpoint baru di luar allowlist.
+
+function assertJaspayInvoice(value: unknown): string {
+  const invoice = String(value ?? "").trim().slice(0, 120);
+  if (!invoice) throw new WrNetworkError("wr_network_response_unreadable", "/jaspay/order");
+  return invoice;
+}
+
+/** Katalog mentah Jaspay (validasi + normalisasi di jaspay.ts/sync). */
+export async function fetchJaspayProducts(): Promise<unknown[]> {
+  const res = await wrFetch<unknown[]>("/jaspay/products");
+  return Array.isArray(res.data) ? res.data : [];
+}
+
+export async function createJaspayOrder(params: {
+  product: string;
+  package?: string;
+  quantity: number;
+  ref_id: string;
+}): Promise<JaspayOrderResult> {
+  const qty = Math.max(1, Math.floor(Number(params.quantity || 1)));
+  const res = await wrFetch<JaspayOrderResult>("/jaspay/order", {
+    product: params.product,
+    ...(params.package ? { package: params.package } : {}),
+    quantity: qty,
+    ref_id: params.ref_id,
+  });
+  const data = res.data as unknown as Record<string, unknown>;
+  if (!data || typeof data !== "object") {
+    throw new WrNetworkError("wr_network_response_unreadable", "/jaspay/order");
+  }
+  const invoice = assertJaspayInvoice(data.invoice);
+  const accounts = Array.isArray(data.accounts) ? (data.accounts as JaspayAccount[]) : [];
+  return {
+    raw: data,
+    invoice,
+    status: data.status as JaspayOrderResult["status"],
+    product: String(data.product ?? params.product),
+    product_name: data.product_name == null ? undefined : String(data.product_name),
+    package: data.package == null ? undefined : String(data.package),
+    quantity: Number(data.quantity ?? qty) || qty,
+    price: data.price == null ? undefined : Number(data.price),
+    total: data.total == null ? undefined : Number(data.total),
+    refunded: data.refunded == null ? undefined : Number(data.refunded),
+    progress: (data.progress ?? undefined) as JaspayOrderResult["progress"],
+    success_count: Number(data.success_count ?? (data.progress as { success?: unknown } | undefined)?.success ?? 0) || 0,
+    accounts,
+    created_at: data.created_at == null ? undefined : String(data.created_at),
+    finished_at: data.finished_at == null ? undefined : String(data.finished_at),
+    balance_after: data.balance_after == null ? undefined : Number(data.balance_after),
+    duplicate: (data.duplicate as boolean | undefined) === true ? true : undefined,
+  };
+}
+
+/** Status satu invoice JSP yang SUDAH dikenal (bukan scan latest-50). */
+export async function fetchJaspayStatus(invoice: string): Promise<JaspayOrderResult> {
+  const res = await wrFetch<JaspayOrderResult>("/jaspay/status", { invoice });
+  const data = res.data as unknown as Record<string, unknown>;
+  if (!data || typeof data !== "object") {
+    throw new WrNetworkError("wr_network_response_unreadable", "/jaspay/status");
+  }
+  const known = assertJaspayInvoice(data.invoice);
+  const accounts = Array.isArray(data.accounts) ? (data.accounts as JaspayAccount[]) : [];
+  return {
+    raw: data,
+    invoice: known,
+    status: data.status as JaspayOrderResult["status"],
+    product: String(data.product ?? ""),
+    product_name: data.product_name == null ? undefined : String(data.product_name),
+    package: data.package == null ? undefined : String(data.package),
+    quantity: Number(data.quantity ?? 0) || 0,
+    price: data.price == null ? undefined : Number(data.price),
+    total: data.total == null ? undefined : Number(data.total),
+    refunded: data.refunded == null ? undefined : Number(data.refunded),
+    progress: (data.progress ?? undefined) as JaspayOrderResult["progress"],
+    success_count: Number(data.success_count ?? (data.progress as { success?: unknown } | undefined)?.success ?? 0) || 0,
+    accounts,
+    created_at: data.created_at == null ? undefined : String(data.created_at),
+    finished_at: data.finished_at == null ? undefined : String(data.finished_at),
+    balance_after: data.balance_after == null ? undefined : Number(data.balance_after),
+  };
 }
 
 function toHex(bytes: Uint8Array): string {

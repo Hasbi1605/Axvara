@@ -1,5 +1,44 @@
 # PRD — AXVARA
 
+## WR Jaspay terpisah dari Premium - 2 November 2026
+
+Kontrak integrasi lokal; deployment Pages belum diverifikasi. Jaspay adalah
+keluarga API WR terpisah pada base v1 resmi, bukan migrasi order Premium ke v3.
+Katalog/identitas baru tidak memindahkan varian atau order lama berdasarkan nama.
+Produk tersedia diproses otomatis setelah pembayaran dengan waktu mengikuti
+antrean; tidak mengiklankan proses admin/manual atau stok akun siap instan.
+Availability berarti unlimited, bukan batas jumlah per pembelian. Maksimum
+jumlah wajib valid dan diperiksa server-side termasuk baris varian ganda.
+
+Pembelian memakai referensi supplier stabil. Receipt hilang tidak mengizinkan
+repurchase Premium atau tebak invoice; exact replay Jaspay hanya sesuai kontrak
+duplicate-ref. Partial/malformed accounts disimpan terenkripsi dan diteruskan
+untuk tindak lanjut admin, tanpa menandai seluruh item selesai atau otomatis
+mengembalikan uang buyer. Tidak mengubah kontak/PIN/proof checkout pembeli.
+Transport proxy VPS sudah terverifikasi; belum ada transaksi supplier nyata atau
+bukti deployment Pages untuk tugas ini.
+
+## Detail varian Market dan navigasi layanan - 2 November 2026
+
+Implementasi lokal; deployment belum diverifikasi. Pilihan varian PDP menjadi
+satu sumber untuk harga, keranjang, checkout, S&K dan cara aktivasi. Sebelum
+memilih pada produk multi-varian, tampil ajakan memilih tanpa menampilkan S&K
+varian pertama. Salinan identik yang tersedia pada seluruh varian boleh tampil
+dengan label eksplisit semua varian; salinan varian terpilih yang kosong diberi
+status belum tersedia, bukan diganti salinan varian lain.
+
+Deskripsi tingkat produk tampil sebagai Deskripsi umum; bagian Pilihan varian
+bernama Perbandingan varian, bukan detail pilihan aktif. Ketentuan/aktivasi dari
+deskripsi produk tetap terpisah dan tidak diklaim sebagai ketentuan varian.
+S&K varian berada sebelum deskripsi umum pada mobile dan desktop; disclosure
+mobile yang terbuka tetap terbuka ketika varian diganti. Tidak menghapus syarat
+penting, menebak isi berdasarkan durasi, atau membuat pemilih S&K terpisah.
+
+Kartu promosi layanan menumpuk di bawah480px tanpa memotong judul/deskripsi;
+Produk Serupa mempertahankan ukuran mobile dan menaikkan tipografi desktop.
+Pemicu dropdown Market/Pedia bernama Layanan pada semua ukuran; nama aksesibel
+tetap Layanan AXVARA. Tidak mengubah pembayaran, stok atau proof pembeli.
+
 ## Info layanan Pedia terpadu - 2 November 2026
 
 Implementasi lokal; deployment belum diverifikasi. Panel tepat di bawah layanan

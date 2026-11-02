@@ -12,6 +12,7 @@
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import {
+  fetchJaspayProducts,
   fetchProducts,
   fetchProductsSlice,
   isWrSyncEnabled,
@@ -947,6 +948,10 @@ async function prefetchProductRows(
 /**
  * Varian WR yang hilang dari respons API: set stock=0 (bukan delete).
  * WR bisa hide/unhide sementara; sync berikutnya memulihkan otomatis.
+ *
+ * WR3: baris `jaspay:%` TIDAK PERNAH disentuh sweep premium (sync Jaspay
+ * punya seen-set sendiri). Filter eksplisit agar feed premium yang tak
+ * membawa Jaspay tidak me-nol-kan katalog Jaspay.
  */
 export async function zeroMissingVariants(
   seenVariantIds: Set<string>,
@@ -958,7 +963,8 @@ export async function zeroMissingVariants(
     // 0 tidak ditulis ulang tiap sweep (hemat tulis D1 + durasi potongan).
     `SELECT w.wr_variant_id, w.axvara_variant_id FROM wr_variants w
      LEFT JOIN product_variants pv ON pv.id = w.axvara_variant_id
-     WHERE w.is_active=1 AND (w.wr_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
+     WHERE w.is_active=1 AND w.wr_variant_id NOT LIKE 'jaspay:%'
+       AND (w.wr_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
   ).catch(() => [] as Row[]);
   let zeroed = 0;
   for (const row of rows) {
@@ -1411,9 +1417,12 @@ export async function syncProducts(
 /**
  * Nol-kan varian WR tertentu (mode diff: dihapus upstream). Hanya baris yang
  * masih berstok; agregat induk produk terdampak disegarkan.
+ *
+ * WR3: ID `jaspay:%` diabaikan di sini (milik sync Jaspay); ID premium di
+ * sync Jaspay diabaikan di sana. Tidak ada zero lintas-famili.
  */
 export async function zeroVariantsByIds(ids: string[], db: DatabaseAccess): Promise<number> {
-  const unique = [...new Set(ids.map(String).filter((id) => id.length > 0))].slice(0, 200);
+  const unique = [...new Set(ids.map(String).filter((id) => id.length > 0 && !id.startsWith("jaspay:")))].slice(0, 200);
   if (!unique.length) return 0;
   const rows = await db
     .queryAll(
@@ -1465,9 +1474,9 @@ async function logSync(
   await db.execRun(
     `INSERT INTO wr_sync_log
       (sync_type, status, products_total, products_synced, products_excluded,
-       products_new, variants_synced, stock_changes, price_changes,
-       error_message, duration_ms, trigger)
-     VALUES ('products',?,?,?,?,?,?,?,?,?,?,?)`,
+        products_new, variants_synced, stock_changes, price_changes,
+        error_message, duration_ms, trigger)
+      VALUES ('products',?,?,?,?,?,?,?,?,?,?,?)`,
     result.status,
     result.total,
     result.synced,
@@ -1480,4 +1489,338 @@ async function logSync(
     result.durationMs,
     trigger,
   );
+}
+
+// ── WR3: sync katalog Jaspay milik Pages (terpisah dari sweep premium) ──
+//
+// Pages fetch `/jaspay/products` (via wrFetch; proxy menggabung ke
+// `/wr/jaspay/products`), normalisasi via jaspay.ts, lalu mirror ke
+// tabel WR EXISTING dengan ID `jaspay:` + cap wr_max_quantity.
+// - Nama display ditulis SEKALI saat create (seperti premium), tak pernah
+//   rewrite legacy; tidak ada remap MBO lama by name.
+// - max_quantity invalid/missing => varian DITOLAK (fail-closed, bukan
+//   unlimited, bukan stok finite palsu).
+// - Stok mirror: -1 bila product && package available, else 0 (kuota lewat
+//   wr_max_quantity yang ditegakkan quote/orders/dispatch).
+// - seen-set Jaspay sendiri; zero-missing Jaspay TIDAK menyentuh premium.
+
+export type JaspaySyncResult = {
+  total: number;
+  synced: number;
+  rejected: number;
+  variantsSynced: number;
+  stockChanges: number;
+  priceChanges: number;
+  errors: string[];
+  durationMs: number;
+};
+
+async function jaspaySku(variantId: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(variantId));
+  const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `WR-J${hex.slice(0, 28).toUpperCase()}`;
+}
+
+export async function syncJaspayCatalog(
+  database?: DatabaseAccess,
+  fetchFn: () => Promise<unknown[]> = fetchJaspayProducts,
+): Promise<JaspaySyncResult> {
+  const started = Date.now();
+  const db = database ?? createDatabaseAccess();
+  const result: JaspaySyncResult = {
+    total: 0, synced: 0, rejected: 0, variantsSynced: 0,
+    stockChanges: 0, priceChanges: 0, errors: [], durationMs: 0,
+  };
+  if (!isWrSyncEnabled()) {
+    result.errors.push("warung_rebahan_disabled");
+    result.durationMs = Date.now() - started;
+    return result;
+  }
+  let raw: unknown[];
+  try {
+    raw = await fetchFn();
+  } catch (error) {
+    result.errors.push((error instanceof Error ? error.message : String(error)).slice(0, 300));
+    result.durationMs = Date.now() - started;
+    return result;
+  }
+  if (!Array.isArray(raw)) {
+    result.errors.push("catalog_malformed_not_array");
+    result.durationMs = Date.now() - started;
+    return result;
+  }
+  const { normalizeJaspayCatalog, jaspayVariantId, jaspayMirrorStock } = await import("./jaspay");
+  const products = normalizeJaspayCatalog(raw);
+  result.total = products.length;
+  const cachedRules = (await db
+    .queryAll(`SELECT pattern, reason FROM wr_exclusions`)
+    .catch(() => [] as Row[])) as { pattern: string; reason: string | null }[];
+  const seen = new Set<string>();
+  // Zero-missing hanya boleh memakai seen-set LENGKAP: feed sukses, semua
+  // produk diproses tanpa error/berhenti karena budget.
+  let complete = true;
+  for (const product of products) {
+    if (!db.canSpend(8)) {
+      complete = false;
+      break;
+    }
+    try {
+      const exclude = await isExcluded(product.name, db, cachedRules);
+      if (exclude.excluded) {
+        await upsertWrProduct(
+          { id: product.productId, name: product.name, category: "", description: product.description ?? "", variants: [] },
+          exclude,
+          db,
+        );
+        continue;
+      }
+      // Upsert produk Jaspay lewat jalur premium (registry + pasangan
+      // katalog + slug anti-bentrok yang sama).
+      await upsertWrProduct(
+        { id: product.productId, name: product.name, category: "", description: product.description ?? "", variants: [] },
+        { excluded: false, reason: null },
+        db,
+      );
+      const reg = await db.queryFirst(
+        `SELECT axvara_product_id FROM wr_products WHERE wr_product_id=?`,
+        product.productId,
+      ).catch(() => null);
+      const axvaraProductId = reg?.axvara_product_id != null ? Number(reg.axvara_product_id) : 0;
+      const now = new Date().toISOString();
+      for (const pkg of product.packages) {
+        const variantId = jaspayVariantId(product.productKey, pkg.packageId);
+        seen.add(variantId);
+        // Cap invalid/missing => tidak bisa dijual (stok 0), bukan unlimited.
+        const capValid = product.maxQuantity != null;
+        if (!capValid) result.rejected++;
+        const stock = capValid ? jaspayMirrorStock(product.available, pkg.available) : 0;
+        const existing = await db.queryFirst(
+          `SELECT id, wr_price, wr_stock, markup_percent, markup_fixed,
+                  axvara_variant_id, axvara_sell_price, wr_max_quantity
+           FROM wr_variants WHERE wr_variant_id=?`,
+          variantId,
+        ).catch(() => null);
+        const markupPercent = existing?.markup_percent != null ? Number(existing.markup_percent) : defaultMarkupPercent();
+        const markupFixed = existing?.markup_fixed != null ? Number(existing.markup_fixed) : defaultMarkupFixed();
+        const sellPrice = calculateSellPrice(pkg.price, markupPercent, markupFixed);
+        const duration = parseWrDuration(product.duration);
+        if (!existing) {
+          if (product.maxQuantity == null) {
+            // Cap invalid/missing: varian baru TIDAK dibuat (fail-closed;
+            // sudah dihitung rejected di atas).
+            continue;
+          }
+          // SKU deterministik + tahan tabrakan (SHA-256 dari ID varian
+          // ber-namespace), bukan potongan ID yang bisa sama untuk paket lain.
+          const sku = await jaspaySku(variantId);
+          let newVariantId = 0;
+          // Fail-closed pra-0091: kolom wr_max_quantity BELUM ada di DB
+          // (migrasi belum diterapkan) => JANGAN buat varian Jaspay sama
+          // sekali (cap NULL = tak boleh jual). Bukan fallback tanpa cap.
+          const hasCapColumn = await db.queryFirst(
+            `SELECT wr_max_quantity FROM wr_variants LIMIT 1`,
+          ).then(() => true).catch(() => false);
+          if (!hasCapColumn) {
+            result.rejected++;
+            continue;
+          }
+          try {
+            const created = await db.execRun(
+              `INSERT INTO product_variants
+                (product_id, sku, label, duration_value, duration_unit, duration_label,
+                 warranty_type, warranty_value, warranty_unit, warranty_label,
+                 price, stock, fulfillment_mode, is_active, sort_order,
+                 wr_variant_id, wr_auto_managed, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?)`,
+              axvaraProductId,
+              sku,
+              pkg.packageName,
+              duration.value,
+              duration.unit,
+              duration.label || null,
+              "none",
+              null,
+              null,
+              null,
+              sellPrice,
+              stock,
+              "manual",
+              stock === 0 ? 0 : 1,
+              product.defaultPackage != null && pkg.packageId === product.defaultPackage ? -1 : 0,
+              variantId,
+              1,
+              now,
+              now,
+            );
+            newVariantId = Number((created as { lastInsertRowid?: number }).lastInsertRowid ?? 0);
+          } catch {
+            // Hanya pakai ulang baris yang identitasnya SAMA (insert sebelumnya
+            // terputus). SKU milik varian lain = konflik identitas: tolak,
+            // jangan remap wr_variant_id baris lama.
+            const conflict = await db.queryFirst(
+              `SELECT id, wr_variant_id FROM product_variants WHERE sku=?`,
+              sku,
+            ).catch(() => null);
+            if (!conflict || String(conflict.wr_variant_id ?? "") !== variantId) {
+              result.rejected++;
+              result.errors.push(`jaspay_sku_identity_conflict:${sku}`);
+              continue;
+            }
+            newVariantId = Number(conflict.id);
+          }
+          try {
+            await db.execRun(
+              `INSERT OR IGNORE INTO wr_variants
+                (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_duration,
+                 wr_type, wr_warranty, wr_stock, wr_terms, wr_delivery_terms,
+                 axvara_variant_id, markup_percent, markup_fixed, axvara_sell_price,
+                 is_active, last_synced_at, wr_delivery_class, wr_delivery_source, wr_delivery_mode,
+                 wr_max_quantity)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?)`,
+              variantId,
+              product.productId,
+              pkg.packageName,
+              pkg.price,
+              product.duration ?? null,
+              null,
+              null,
+              stock,
+              null,
+              product.afterNote ?? null,
+              newVariantId || null,
+              markupPercent,
+              markupFixed,
+              sellPrice,
+              now,
+              "made_by_order",
+              "api",
+              "manual",
+              product.maxQuantity,
+            );
+            // Kolom ada (cek di atas) => INSERT gagal = konflik nyata.
+            // Tanpa catch-fallback: diam-diam menulis tanpa cap dilarang.
+          } catch {
+            result.rejected++;
+            continue;
+          }
+          if (newVariantId > 0) {
+            // Bind hanya bila baris belum milik varian lain.
+            await db.execRun(
+              `UPDATE product_variants SET wr_variant_id=?, wr_auto_managed=1, updated_at=datetime('now')
+               WHERE id=? AND (wr_variant_id IS NULL OR wr_variant_id=?)`,
+              variantId,
+              newVariantId,
+              variantId,
+            ).catch(() => ({ changes: 0 }));
+          }
+          result.variantsSynced++;
+          result.stockChanges++;
+          result.priceChanges++;
+        } else {
+          const stockChanged = Number(existing.wr_stock ?? -1) !== stock;
+          const priceChanged = Number(existing.wr_price ?? -1) !== pkg.price
+            || Number(existing.axvara_sell_price ?? -1) !== sellPrice;
+          await db.execRun(
+            `UPDATE wr_variants SET wr_variant_name=?, wr_price=?, wr_duration=?,
+               wr_stock=?, wr_delivery_terms=?, axvara_sell_price=?,
+               wr_delivery_class='made_by_order', wr_delivery_source='api', wr_delivery_mode='manual',
+               wr_max_quantity=?, last_synced_at=?, updated_at=?
+             WHERE wr_variant_id=?
+               AND (wr_variant_name IS NOT ? OR wr_price IS NOT ? OR wr_duration IS NOT ?
+                    OR wr_stock IS NOT ? OR wr_delivery_terms IS NOT ? OR axvara_sell_price IS NOT ?
+                    OR wr_delivery_class IS NOT 'made_by_order' OR wr_max_quantity IS NOT ?)`,
+            pkg.packageName,
+            pkg.price,
+            product.duration ?? null,
+            stock,
+            product.afterNote ?? null,
+            sellPrice,
+            capValid ? product.maxQuantity : existing.wr_max_quantity ?? null,
+            now,
+            now,
+            variantId,
+            pkg.packageName,
+            pkg.price,
+            product.duration ?? null,
+            stock,
+            product.afterNote ?? null,
+            sellPrice,
+            capValid ? product.maxQuantity : existing.wr_max_quantity ?? null,
+          ).catch(() => undefined);
+          const axId = existing.axvara_variant_id != null ? Number(existing.axvara_variant_id) : 0;
+          if (axId > 0) {
+            await db.execRun(
+              `UPDATE product_variants SET price=?, stock=?,
+                 duration_value=?, duration_unit=?, duration_label=?,
+                 updated_at=datetime('now')
+               WHERE id=?
+                 AND (price IS NOT ? OR stock IS NOT ? OR duration_value IS NOT ?
+                      OR duration_unit IS NOT ? OR duration_label IS NOT ?)`,
+              sellPrice,
+              stock,
+              duration.value,
+              duration.unit,
+              duration.label || null,
+              axId,
+              sellPrice,
+              stock,
+              duration.value,
+              duration.unit,
+              duration.label || null,
+            ).catch(() => undefined);
+          }
+          result.variantsSynced++;
+          if (stockChanged) result.stockChanges++;
+          if (priceChanged) result.priceChanges++;
+        }
+      }
+      if (axvaraProductId > 0 && db.canSpend(2)) {
+        await refreshParentAggregates(axvaraProductId, db).catch(() => undefined);
+      }
+      result.synced++;
+    } catch (error) {
+      complete = false;
+      result.errors.push(
+        `${product.name.slice(0, 80)}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
+      );
+    }
+  }
+  if (!complete) {
+    result.durationMs = Date.now() - started;
+    return result;
+  }
+  // Zero-missing KHUSUS Jaspay: varian `jaspay:%` yang masih bisa dijual
+  // (stok -1 tak hingga ATAU >0) tapi tak terlihat di feed lengkap ini => 0.
+  // Premium tak tersentuh (filter LIKE eksplisit).
+  try {
+    const rows = await db.queryAll(
+      `SELECT w.wr_variant_id, w.axvara_variant_id FROM wr_variants w
+       LEFT JOIN product_variants pv ON pv.id = w.axvara_variant_id
+       WHERE w.is_active=1 AND w.wr_variant_id LIKE 'jaspay:%'
+         AND (w.wr_stock != 0 OR COALESCE(pv.stock, 0) != 0)`,
+    ).catch(() => [] as Row[]);
+    for (const row of rows) {
+      const id = String(row.wr_variant_id || "");
+      if (!id || seen.has(id)) continue;
+      if (!db.canSpend(2)) break;
+      const now = new Date().toISOString();
+      await db.execRun(
+        `UPDATE wr_variants SET wr_stock=0, last_synced_at=?, updated_at=? WHERE wr_variant_id=?`,
+        now,
+        now,
+        id,
+      );
+      const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
+      if (vid > 0) {
+        await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE id=?`, vid).catch(
+          () => ({ changes: 0 }),
+        );
+      }
+      result.stockChanges++;
+    }
+  } catch (error) {
+    result.errors.push((error instanceof Error ? error.message : String(error)).slice(0, 300));
+  }
+  result.durationMs = Date.now() - started;
+  return result;
 }

@@ -50,7 +50,7 @@ function renderPdp(variants = differing) {
 
 // formatRupiah memakai spasi tak-putus (NBSP) setelah "Rp".
 const norm = (text: string | null | undefined) => String(text ?? "").replace(/\s/g, " ");
-const variantRow = () => screen.getByRole("button", { name: /^(Pilih varian|Varian:)/ });
+const variantRow = () => screen.getByRole("button", { name: /^(Pilih varian, |Varian:)/ });
 const stickyBuy = () => screen.getAllByRole("button").find((b) => b.textContent?.includes("Beli Sekarang") && !b.closest("[role=dialog]"))!;
 const termsToggle = () => within(screen.getByTestId("pdp-mobile-copy")).getByRole("button", { name: /^Syarat & Ketentuan/ });
 

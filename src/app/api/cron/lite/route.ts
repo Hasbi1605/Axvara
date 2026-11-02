@@ -241,6 +241,16 @@ async function runWrOrders(db: Db) {
       if (error instanceof QueryBudgetExceeded) throw error;
       return 0;
     });
+    // WR3 Jaspay (bounded, di job wr_orders yang sama — bukan cron baru):
+    // link Jaspay ambigu => exact-ref identik / poll invoice dikenal.
+    // Premium tak tersentuh; budget40/lease existing tetap.
+    try {
+      const healed = await order.reconcileJaspayAmbiguous(db, 4);
+      if (healed.exactRef > 0) out.jaspay_exact_ref = healed.exactRef;
+      if (healed.polled > 0) out.jaspay_polled = healed.polled;
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+    }
   }
   const { processDueCredentialDeliveries, requeueOrphanCredentialDeliveries } = await import("@/lib/warung-rebahan/deliver");
   // Kredensial completed yang tidak pernah diantrekan (completion terputus).

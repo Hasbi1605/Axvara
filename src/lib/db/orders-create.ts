@@ -35,6 +35,12 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     let orderItems: AtomicOrderItem[];
     try { orderItems = markUniqueUnitLines(input.items, uniqueIds); } catch { throw new StockReservationError(); }
     const guardIds = input.items.map((item) => `${input.quoteId}:stock:${item.variant_id ?? item.product_id}`);
+    // Qty agregat per varian (keranjang bisa membawa baris ganda varian sama)
+    // untuk batas maksimum Jaspay di guard atomik di bawah.
+    const qtyByVariant = new Map<number, number>();
+    for (const item of input.items) {
+      if (item.variant_id) qtyByVariant.set(item.variant_id, (qtyByVariant.get(item.variant_id) ?? 0) + item.qty);
+    }
     const statements: D1Statement[] = [];
     input.items.forEach((item, index) => {
       if (item.variant_id) {
@@ -48,8 +54,14 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
               SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
               WHERE pv.id=? AND pv.product_id=? AND p.is_active=1 AND pv.is_active=1
                 AND pv.price=? AND pv.fulfillment_mode=? AND (pv.stock=-1 OR pv.stock>=?)
-                AND ? >= COALESCE(pv.min_qty,1)) THEN 1 ELSE 0 END`,
-          ).bind(guardIds[index], item.variant_id, item.product_id, item.price, byId.get(item.variant_id) ?? "manual", item.qty, item.qty),
+                AND ? >= COALESCE(pv.min_qty,1)
+                -- WR3 Jaspay: cap wajib ada dan >= qty agregat varian ini;
+                -- cap hilang/invalid = tolak (fail-closed), dicek atomik di
+                -- batch yang sama dengan reservasi (tahan race perubahan cap).
+                AND (COALESCE(pv.wr_variant_id,'') NOT LIKE 'jaspay:%' OR EXISTS(
+                  SELECT 1 FROM wr_variants wv WHERE wv.wr_variant_id=pv.wr_variant_id
+                    AND wv.wr_max_quantity IS NOT NULL AND wv.wr_max_quantity >= ?))) THEN 1 ELSE 0 END`,
+          ).bind(guardIds[index], item.variant_id, item.product_id, item.price, byId.get(item.variant_id) ?? "manual", item.qty, item.qty, qtyByVariant.get(item.variant_id) ?? item.qty),
         );
       } else {
         statements.push(

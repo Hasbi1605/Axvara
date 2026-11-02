@@ -9,13 +9,13 @@ import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatWarranty } from "@/lib/catalog";
 import { effectiveVariantStock, formatVariantLabel } from "@/lib/catalog";
-import { buyerDeliveryBadge, buyerDeliveryEtaNonWr, buyerDeliveryKind } from "@/lib/catalog";
+import { buyerDeliveryBadge, buyerDeliveryEtaJaspay, buyerDeliveryEtaNonWr, buyerDeliveryKind } from "@/lib/catalog";
 import { deliveryEtaForBuyer } from "@/lib/warung-rebahan/delivery-class";
 import { useCart } from "@/stores/cart";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
-import { ActivationBody, DescriptionBody, MobileCollapsible, TermsBody, activationStepCount } from "@/components/storefront/ProductCopy";
-import { isLongDescription, mergeProductCopy, parseProductDescription, type VariantCopy } from "@/lib/product-copy/format";
+import { ActivationBody, DescriptionBody, MobileCollapsible, TermsBody, VariantIdentity, activationStepCount } from "@/components/storefront/ProductCopy";
+import { isLongDescription, mergeProductCopy, parseProductDescription, type ParsedDescription, type VariantCopy } from "@/lib/product-copy/format";
 import { Bone, InlineSpinner, ProductDetailSkeleton } from "@/components/storefront/Skeletons";
 import { usePendingNavigation } from "@/hooks/usePendingNavigation";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
@@ -28,6 +28,8 @@ const DESC_FADE = {
   WebkitMaskImage: "linear-gradient(to bottom, #000 55%, transparent)",
   maskImage: "linear-gradient(to bottom, #000 55%, transparent)",
 };
+
+const EMPTY_DESCRIPTION: ParsedDescription = { blocks: [], sections: [], terms: [], activation: [] };
 
 const ShieldIcon = ({ className }: { className: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -339,30 +341,131 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       : product.image;
   const hasMultipleImages = galleryImages.length > 1;
 
-  // S&K per varian dari WR (read-only, ikut varian terpilih; fallback ke
-  // varian aktif pertama bila pembeli belum memilih — meniru panel WR yang
-  // berganti isi tiap varian dipilih).
-  const termsVariant = selectedVariant ?? activeVariants[0] ?? null;
+  // Satu state pilihan (selectedVariant) mengendalikan harga, keranjang,
+  // checkout DAN salinan varian. Tidak ada fallback ke varian aktif pertama:
+  // sebelum pembeli memilih, produk multi-varian menampilkan ajakan memilih,
+  // bukan S&K milik varian yang tidak sedang dibeli.
+  const choosableVariants = variantsEnabled && activeVariants.length > 1;
+  // Varian tunggal tidak ambigu → salinannya boleh tampil tanpa memilih.
+  const copyVariant = selectedVariant ?? (activeVariants.length === 1 ? activeVariants[0] : null);
   // Sebelum pembeli memilih, ringkasan pengiriman dulu mengikuti varian
   // pertama saja: Canva (Invite 1 Bulan kirim otomatis, dua varian lain Made
   // By Order) tampil "Kirim otomatis" untuk seluruh produk. Varian campuran
   // kini disebut apa adanya sampai satu varian dipilih.
+  const deliveryVariant = selectedVariant ?? activeVariants[0] ?? null;
   const mixedDelivery = !selectedVariant
-    && new Set(activeVariants.map((v) => buyerDeliveryKind(v))).size > 1;
+    && new Set(activeVariants.map((v) => buyerDeliveryBadge(v))).size > 1;
   // Deskripsi + S&K + cara aktivasi dalam satu format untuk WR dan non-WR:
   // S&K varian (WR) digabung dengan bagian "Syarat & Ketentuan:" / "Cara
   // Aktivasi:" di deskripsi (produk non-WR); tiap baris tampil sekali.
   const parsedDescription = parseProductDescription(product.description);
-  const productCopy = mergeProductCopy(termsVariant?.copy ?? null, parsedDescription);
   const hasDescription = parsedDescription.blocks.length > 0 || parsedDescription.sections.length > 0;
   const descCollapsible = isLongDescription(parsedDescription);
+  // "Ganti varian" hanya bila isinya memang berbeda antar varian. Salinan yang
+  // sama persis (dan ada isinya) berlaku untuk semua varian → tampil tanpa memilih.
+  const variantCopiesDiffer = activeVariants.length > 1
+    && new Set(activeVariants.map((v: VariantItem) => JSON.stringify(v.copy ?? null))).size > 1;
+  const sharedVariantCopy = choosableVariants && !variantCopiesDiffer && activeVariants[0]?.copy != null;
+  // Produk multi-varian: salinan varian (dari pilihan) dan ketentuan tingkat
+  // produk (dari deskripsi) dipisah dan diberi label jelas. Produk varian
+  // tunggal / tanpa varian: perilaku lama (digabung, tiap baris sekali).
+  const separated = choosableVariants;
+  const variantPending = separated && !selectedVariant && !sharedVariantCopy;
+  const variantCopySource = selectedVariant ? selectedVariant.copy ?? null : sharedVariantCopy ? activeVariants[0].copy ?? null : null;
+  const variantCopy = separated && !variantPending ? mergeProductCopy(variantCopySource, EMPTY_DESCRIPTION) : null;
+  const variantCopyMissing = Boolean(variantCopy) && !variantCopy!.fromVariant;
+  const productCopy = separated ? mergeProductCopy(null, parsedDescription) : mergeProductCopy(copyVariant?.copy ?? null, parsedDescription);
   const hasTerms = productCopy.sections.length > 0;
   const activationSteps = activationStepCount(productCopy.activation);
   const hasActivation = activationSteps > 0 || productCopy.notes.length > 0;
-  const termsLabel = productCopy.fromVariant && termsVariant ? formatVariantLabel(termsVariant) : null;
-  // "Ganti varian" di judul S&K mobile hanya bila isinya memang berbeda antar varian.
-  const variantCopiesDiffer = activeVariants.length > 1
-    && new Set(activeVariants.map((v: VariantItem) => JSON.stringify(v.copy ?? null))).size > 1;
+  const termsLabel = !separated && productCopy.fromVariant && copyVariant ? formatVariantLabel(copyVariant) : null;
+  const identityLabel = selectedVariant ? formatVariantLabel(selectedVariant) : null;
+  const identitySharedLabel = !selectedVariant && sharedVariantCopy ? "Semua varian (S&K sama)" : null;
+  const variantTerms = variantCopy?.sections ?? [];
+  const variantActivationSteps = variantCopy ? activationStepCount(variantCopy.activation) : 0;
+  const variantHasActivation = variantActivationSteps > 0 || (variantCopy?.notes.length ?? 0) > 0;
+  const openVariantPicker = () => setVariantModal("select");
+  const identity = (
+    <VariantIdentity
+      label={identityLabel}
+      sharedLabel={identitySharedLabel}
+      onChoose={variantCopiesDiffer || variantPending ? openVariantPicker : undefined}
+    />
+  );
+  const descriptionTitle = separated ? "Deskripsi umum" : "Deskripsi Produk";
+  const hasAnyCopy = separated || hasTerms || hasActivation;
+
+  const mobileDescription = hasDescription ? (
+    <div className="mt-6 lg:hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <h3 className="text-sm font-bold text-white flex items-center justify-between">
+        <span>{descriptionTitle}</span>
+      </h3>
+      <div
+        id="pdp-description-mobile"
+        className={`mt-2.5 text-xs text-white/70 leading-relaxed ${descCollapsible && !descExpanded ? "max-h-32 overflow-hidden" : ""}`}
+        style={descCollapsible && !descExpanded ? DESC_FADE : undefined}
+      >
+        <DescriptionBody parsed={parsedDescription} size="xs" />
+      </div>
+      {descCollapsible && (
+        <button
+          type="button"
+          aria-expanded={descExpanded}
+          aria-controls="pdp-description-mobile"
+          onClick={() => setDescExpanded(!descExpanded)}
+          className="mt-2 text-xs font-semibold text-[#00E5FF] hover:underline flex items-center gap-1"
+        >
+          {descExpanded ? "Tutup Deskripsi ∧" : "Lihat Selengkapnya ∨"}
+        </button>
+      )}
+    </div>
+  ) : null;
+
+  // S&K + Cara Aktivasi — Khusus Mobile, terlipat (permintaan owner). Posisi
+  // elemen tetap (slot kondisional) agar panel yang sedang terbuka tidak
+  // menutup sendiri saat pembeli mengganti varian.
+  const mobileCopy = hasAnyCopy ? (
+    <div className="mt-4 lg:hidden space-y-3" data-testid="pdp-mobile-copy">
+      {separated && identity}
+      {separated && variantCopyMissing && (
+        <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs leading-relaxed text-white/65">
+          Syarat &amp; ketentuan dan cara aktivasi khusus varian ini belum tersedia. Hubungi admin sebelum membeli bila perlu kepastian.
+        </p>
+      )}
+      {separated && variantTerms.length > 0 && (
+        <MobileCollapsible title="Syarat & Ketentuan" meta={identityLabel} icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}>
+          <TermsBody sections={variantTerms} size="xs" />
+        </MobileCollapsible>
+      )}
+      {separated && variantHasActivation && variantCopy && (
+        <MobileCollapsible
+          title="Cara Aktivasi"
+          meta={variantActivationSteps > 0 ? `${variantActivationSteps} langkah` : null}
+          icon={<StepsIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
+        >
+          <ActivationBody groups={variantCopy.activation} notes={variantCopy.notes} size="xs" />
+        </MobileCollapsible>
+      )}
+      {hasTerms && (
+        <MobileCollapsible
+          title={separated ? "Ketentuan produk" : "Syarat & Ketentuan"}
+          meta={separated ? null : termsLabel}
+          icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
+        >
+          <TermsBody sections={productCopy.sections} size="xs" />
+        </MobileCollapsible>
+      )}
+      {hasActivation && (
+        <MobileCollapsible
+          title={separated ? "Cara aktivasi produk" : "Cara Aktivasi"}
+          meta={activationSteps > 0 ? `${activationSteps} langkah` : null}
+          icon={<StepsIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
+        >
+          <ActivationBody groups={productCopy.activation} notes={productCopy.notes} size="xs" />
+        </MobileCollapsible>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -438,12 +541,58 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             )}
           </div>
 
+          {/* Produk multi-varian: detail varian (S&K + aktivasi, mengikuti pilihan
+              yang sama dengan harga/keranjang) tampil SEBELUM deskripsi umum. */}
+          {separated && (
+            <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8" data-testid="pdp-variant-details">
+              <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
+                <ShieldIcon className="w-5 h-5 shrink-0 text-[#00E5FF]" />
+                Syarat &amp; Ketentuan
+              </h2>
+              <div className="mt-4">{identity}</div>
+              {variantCopyMissing && (
+                <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-relaxed text-white/65">
+                  Syarat &amp; ketentuan dan cara aktivasi khusus varian ini belum tersedia. Hubungi admin sebelum membeli bila perlu kepastian.
+                </p>
+              )}
+              {variantCopy && variantTerms.length > 0 && (
+                <div className="mt-5 text-sm text-white/75 leading-relaxed">
+                  <TermsBody sections={variantTerms} />
+                </div>
+              )}
+              {variantCopy && variantHasActivation && (
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
+                  <h3 className="mb-3 flex items-center gap-2 text-xs font-bold text-white/80 uppercase tracking-wide">
+                    <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
+                    Cara Aktivasi
+                  </h3>
+                  <ActivationBody groups={variantCopy.activation} notes={variantCopy.notes} />
+                </div>
+              )}
+              {hasTerms && (
+                <div className="mt-6 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                  <h3 className="mb-3 text-xs font-bold text-white/80 uppercase tracking-wide">Ketentuan produk</h3>
+                  <TermsBody sections={productCopy.sections} />
+                </div>
+              )}
+              {hasActivation && (
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
+                  <h3 className="mb-3 flex items-center gap-2 text-xs font-bold text-white/80 uppercase tracking-wide">
+                    <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
+                    Cara aktivasi produk
+                  </h3>
+                  <ActivationBody groups={productCopy.activation} notes={productCopy.notes} />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Deskripsi Produk — Kolom Kiri di Desktop (Lega & Rapi) */}
           {hasDescription && (
             <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
               <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
                 <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#00E5FF]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                Deskripsi Produk
+                {descriptionTitle}
               </h2>
               <div className="mt-4 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
                 <DescriptionBody parsed={parsedDescription} />
@@ -451,13 +600,14 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             </div>
           )}
 
-          {/* Syarat & Ketentuan + Cara Aktivasi (Kolom Kiri Desktop) */}
-          {(hasTerms || hasActivation) && (
+          {/* Syarat & Ketentuan + Cara Aktivasi (Kolom Kiri Desktop) — produk
+              varian tunggal / tanpa varian */}
+          {!separated && (hasTerms || hasActivation) && (
             <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
               <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
                 <ShieldIcon className="w-5 h-5 text-[#00E5FF]" />
                 {hasTerms ? <>Syarat &amp; Ketentuan</> : "Cara Aktivasi"}
-                {termsLabel && <span className="text-xs font-semibold text-[#00E5FF]/80 tracking-normal">{termsLabel}</span>}
+                {termsLabel && <span className="min-w-0 break-words text-xs font-semibold text-[#00E5FF]/80 tracking-normal">{termsLabel}</span>}
               </h2>
               {hasTerms && (
                 <div className="mt-4 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
@@ -559,7 +709,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                             {buyerDeliveryKind(v) === "instant" ? (
                               <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
                             ) : (
-                              <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Made By Order</span>
+                              <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(v)}</span>
                             )}
                           </span>
                           {v.warranty_type !== 'none' && formatWarranty(v) && (
@@ -612,13 +762,13 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                   <span className="block text-[11px] font-medium text-white/50">Varian</span>
                   {selectedVariant ? (
                     <>
-                      <span className="mt-0.5 block truncate text-sm font-semibold text-white">{formatVariantLabel(selectedVariant)}</span>
+                      <span className="mt-0.5 block break-words text-sm font-semibold text-white">{formatVariantLabel(selectedVariant)}</span>
                       <span className="mt-1 flex flex-wrap items-center gap-2">
                         <span className="text-xs font-semibold text-[#00E5FF]">{formatRupiah(selectedVariant.price)}</span>
                         {buyerDeliveryKind(selectedVariant) === "instant" ? (
                           <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
                         ) : (
-                          <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">Made By Order</span>
+                          <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(selectedVariant)}</span>
                         )}
                       </span>
                     </>
@@ -700,18 +850,19 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           <div className="mt-5">
             {mixedDelivery ? (
               <span className="inline-flex rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-[11px] font-bold text-white/75">Tergantung varian</span>
-            ) : buyerDeliveryKind(termsVariant ?? { fulfillment_mode: "manual" }) === "instant" ? (
+            ) : buyerDeliveryKind(deliveryVariant ?? { fulfillment_mode: "manual" }) === "instant" ? (
               <span className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">Kirim otomatis</span>
             ) : (
-              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-1 text-[11px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(termsVariant ?? { fulfillment_mode: "manual" })}</span>
+              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-1 text-[11px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(deliveryVariant ?? { fulfillment_mode: "manual" })}</span>
             )}
             <p className="mt-2 text-[12px] leading-5 text-white/50">
               {(() => {
-                if (mixedDelivery) return "Varian Kirim otomatis dikirim setelah pembayaran dikonfirmasi. Varian Made By Order disiapkan admin.";
-                const tv = termsVariant;
+                if (mixedDelivery) return "Cara pengiriman mengikuti varian yang dipilih.";
+                const tv = deliveryVariant;
                 if (!tv) return deliveryEtaForBuyer(null);
                 if (buyerDeliveryKind(tv) === "instant") return "Kirim otomatis setelah pembayaran dikonfirmasi";
                 const wrId = tv.wr_variant_id == null ? "" : String(tv.wr_variant_id).trim();
+                if (wrId.startsWith("jaspay:")) return buyerDeliveryEtaJaspay();
                 return wrId ? deliveryEtaForBuyer(tv.wr_delivery_class) : buyerDeliveryEtaNonWr();
               })()}
             </p>
@@ -727,61 +878,11 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             </li>
           </ul>
 
-          {/* Deskripsi Produk — Khusus Mobile ala Shopee (Expandable Accordion) */}
-          {hasDescription && (
-            <div className="mt-6 lg:hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <h3 className="text-sm font-bold text-white flex items-center justify-between">
-                <span>Deskripsi Produk</span>
-              </h3>
-              <div
-                id="pdp-description-mobile"
-                className={`mt-2.5 text-xs text-white/70 leading-relaxed ${descCollapsible && !descExpanded ? "max-h-32 overflow-hidden" : ""}`}
-                style={descCollapsible && !descExpanded ? DESC_FADE : undefined}
-              >
-                <DescriptionBody parsed={parsedDescription} size="xs" />
-              </div>
-              {descCollapsible && (
-                <button
-                  type="button"
-                  aria-expanded={descExpanded}
-                  aria-controls="pdp-description-mobile"
-                  onClick={() => setDescExpanded(!descExpanded)}
-                  className="mt-2 text-xs font-semibold text-[#00E5FF] hover:underline flex items-center gap-1"
-                >
-                  {descExpanded ? "Tutup Deskripsi ∧" : "Lihat Selengkapnya ∨"}
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* S&K + Cara Aktivasi — Khusus Mobile, terlipat (permintaan owner) */}
-          {(hasTerms || hasActivation) && (
-            <div className="mt-4 lg:hidden space-y-3" data-testid="pdp-mobile-copy">
-              {hasTerms && (
-                <MobileCollapsible
-                  title="Syarat & Ketentuan"
-                  meta={termsLabel}
-                  icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
-                  action={variantCopiesDiffer ? (
-                    <button type="button" onClick={() => setVariantModal("select")} className="text-xs font-semibold text-[#00E5FF] hover:underline">
-                      Ganti varian
-                    </button>
-                  ) : undefined}
-                >
-                  <TermsBody sections={productCopy.sections} size="xs" />
-                </MobileCollapsible>
-              )}
-              {hasActivation && (
-                <MobileCollapsible
-                  title="Cara Aktivasi"
-                  meta={activationSteps > 0 ? `${activationSteps} langkah` : null}
-                  icon={<StepsIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
-                >
-                  <ActivationBody groups={productCopy.activation} notes={productCopy.notes} size="xs" />
-                </MobileCollapsible>
-              )}
-            </div>
-          )}
+          {/* Mobile: produk multi-varian menampilkan detail varian (S&K) SEBELUM
+              deskripsi umum; produk lain tetap deskripsi lalu S&K. */}
+          {separated && mobileCopy}
+          {mobileDescription}
+          {!separated && mobileCopy}
 
           {/* Spacer — pushes buttons down when content is short */}
           <div className="flex-1 min-h-[16px]" />
@@ -924,12 +1025,12 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
         >
           <div className="flex gap-3 sm:gap-5 pb-3 pr-4 sm:pr-0" style={{ minWidth: "min-content" }}>
             {relatedLoading && related.length === 0 ? Array.from({ length: 4 }, (_, i) => (
-              <div key={`s${i}`} className="snap-start shrink-0 w-[156px] sm:w-[300px] ax-glass-card rounded-[14px] p-1" aria-hidden>
+              <div key={`s${i}`} className="snap-start shrink-0 w-[156px] sm:w-[260px] ax-glass-card rounded-[14px] p-1" aria-hidden>
                 <Bone className="aspect-[4/3] rounded-[10px]" />
                 <div className="px-1.5 py-2 space-y-1.5"><Bone className="h-2.5 w-14 rounded-full" /><Bone className="h-3 w-[85%] rounded-full" /><Bone className="h-3.5 w-16 rounded-full" /></div>
               </div>
             )) : related.map((p, i) => (
-              <div key={p.id} className="snap-start shrink-0 w-[156px] sm:w-[300px]">
+              <div key={p.id} className="snap-start shrink-0 w-[156px] sm:w-[260px]">
                 <ProductCard product={p} index={i} compact />
               </div>
             ))}

@@ -40,6 +40,19 @@ export function deliveryLabelForBuyer(wrClass: string | null | undefined): strin
 }
 
 /**
+ * Label Jaspay untuk pembeli (WR3): "Diproses otomatis" — dibuat otomatis
+ * (bukan disiapkan admin), tanpa brand supplier. Kelas tetap antrean.
+ */
+export function jaspayLabelForBuyer(): string {
+  return "Diproses otomatis";
+}
+
+/** ETA Jaspay untuk pembeli (WR3): dibuat otomatis, waktu ikut antrean. */
+export function jaspayEtaForBuyer(): string {
+  return "Dibuat otomatis setelah pembayaran dikonfirmasi; waktu proses mengikuti antrean.";
+}
+
+/**
  * Satu kalimat ekspektasi waktu untuk pembeli. WAJIB dipakai di SEMUA
  * permukaan sebelum bayar (PDP, modal varian, checkout, Telegram, WA) —
  * bukan hanya di halaman pesanan. Alasan: varian antrean butuh jam-jaman,

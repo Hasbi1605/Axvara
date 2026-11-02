@@ -84,6 +84,26 @@ describe("shared service navigation", () => {
     expect(screen.queryByText("Grup WhatsApp")).toBeNull();
     expect(screen.getByRole("link", { name: /AXVARA Pedia/ })).toBeTruthy();
   });
+
+  // 2026-11-02: dua kartu promo tidak boleh terjepit di layar kecil.
+  it("stacks the two promo cards below 480px with wrapping titles, 28px mobile icons and min 64px height", () => {
+    const { container } = render(<CommunityBar />);
+    const row = container.firstElementChild!.firstElementChild!;
+    expect(row.className).toContain("flex-col");
+    expect(row.className).toContain("min-[480px]:flex-row");
+    expect(row.className).not.toMatch(/(^|\s)flex-row(\s|$)/);
+    const cards = Array.from(row.querySelectorAll(":scope > a"));
+    expect(cards).toHaveLength(2);
+    for (const card of cards) {
+      expect(card.className).toContain("min-h-[64px]");
+      expect(card.className).toContain("min-w-0");
+      expect(card.querySelector(".truncate")).toBeNull();
+      expect(card.querySelector(".line-clamp-2")).toBeNull();
+      expect(card.querySelector("[class*='h-7'][class*='w-7'][class*='sm:h-9'][class*='sm:w-9']")).toBeTruthy();
+      expect(card.querySelector("[class*='text-[11px]']")).toBeTruthy();
+      expect(card.querySelector("[class*='text-[10px]']")).toBeNull();
+    }
+  });
 });
 
 describe("shared footer", () => {

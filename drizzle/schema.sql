@@ -793,6 +793,11 @@ CREATE TABLE IF NOT EXISTS wr_variants (
   wr_delivery_source    TEXT CHECK (wr_delivery_source IN ('api')),
   -- Mode kirim resmi API WR (migrasi 0060): auto/manual/mixed (mentah).
   wr_delivery_mode      TEXT,
+  -- Batas qty Jaspay per varian (migrasi 0091, WR3): NULL = bukan-Jaspay/
+  -- legacy tanpa cap (perilaku lama). Nilai Jaspay valid >= 1; sync
+  -- fail-closed (tolak varian) bila max_quantity upstream invalid/missing.
+  wr_max_quantity       INTEGER
+    CHECK (wr_max_quantity IS NULL OR wr_max_quantity >= 1),
   created_at            TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );

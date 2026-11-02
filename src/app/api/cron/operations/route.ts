@@ -1112,6 +1112,20 @@ export async function POST(request: NextRequest) {
                 useProxySlices: forcedPhase != null,
                 timeBudgetMs: Math.max(0, timeLeftMs() - TIME_WR_SWEEP_RESERVE),
               });
+              // WR3: sync katalog Jaspay milik Pages (terpisah dari sweep
+              // premium di atas; tanpa cron/flag baru). Bounded: berhenti
+              // bila budget/waktu tak muat; premium tak tersentuh.
+              if (syncOn && budget.fits(COST_PER_WR_WORK) && hasTime(TIME_WR_LIGHT)) {
+                try {
+                  const { syncJaspayCatalog } = await import("@/lib/warung-rebahan/sync");
+                  const jaspay = await syncJaspayCatalog(database);
+                  if (jaspay.synced > 0 || jaspay.rejected > 0) {
+                    results.wr_jaspay_synced = jaspay.synced;
+                    if (jaspay.rejected > 0) results.wr_jaspay_rejected = jaspay.rejected;
+                  }
+                  if (jaspay.errors.length && !deferredOut.includes("warung_rebahan")) deferredOut.push("warung_rebahan");
+                } catch { /* best-effort; sweep premium di atas tetap tercatat */ }
+              }
               results.wr_products_synced = syncResult.synced;
               if (typeof syncResult.synced === "number" && syncResult.synced > 0) {
                 // Sweep sukses me-reset episode basi watchdog: sweep berikut
@@ -1215,6 +1229,17 @@ export async function POST(request: NextRequest) {
             const { repairUnboundCompletedWrLinks } = await import("@/lib/warung-rebahan/order");
             results.wr_links_repaired = await repairUnboundCompletedWrLinks(database);
           } catch { /* best-effort */ }
+        }
+
+        // 3a''. WR3 Jaspay ambigu (bounded, fase WR yang sama — bukan cron
+        //      baru): exact-ref POST identik / poll invoice JSP dikenal.
+        if (autoOrder && budget.fits(6) && hasTime(TIME_WR_LIGHT)) {
+          try {
+            const { reconcileJaspayAmbiguous } = await import("@/lib/warung-rebahan/order");
+            const healed = await reconcileJaspayAmbiguous(database, 4);
+            if (healed.exactRef > 0) results.wr_jaspay_exact_ref = healed.exactRef;
+            if (healed.polled > 0) results.wr_jaspay_polled = healed.polled;
+          } catch { /* best-effort; run berikutnya retry */ }
         }
 
         // 3b. Peringatan umur antrean: link yang masih diproses melewati

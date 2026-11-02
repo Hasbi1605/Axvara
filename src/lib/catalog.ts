@@ -438,7 +438,21 @@ export function buyerDeliveryKind(v: Pick<VariantSummary, "fulfillment_mode"> & 
 
 /** Badge pembeli: "Kirim otomatis" (instan) atau "Made By Order" (antrean). */
 export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0]): string {
+  const wrId = (v as { wr_variant_id?: unknown }).wr_variant_id == null
+    ? ""
+    : String((v as { wr_variant_id?: unknown }).wr_variant_id).trim();
+  // WR3 Jaspay: dibuat otomatis (bukan disiapkan admin), tapi tetap antrean
+  // (bukan instan/stok). Tanpa brand supplier di copy pembeli.
+  if (wrId.startsWith("jaspay:")) return "Diproses otomatis";
   return buyerDeliveryKind(v) === "instant" ? "Kirim otomatis" : "Made By Order";
+}
+
+/**
+ * ETA Jaspay untuk pembeli (WR3): dibuat otomatis, waktu mengikuti antrean.
+ * Tetap kelas queued (bukan instan) — tanpa janji stok, tanpa brand supplier.
+ */
+export function buyerDeliveryEtaJaspay(): string {
+  return "Dibuat otomatis setelah pembayaran dikonfirmasi; waktu proses mengikuti antrean.";
 }
 
 /**

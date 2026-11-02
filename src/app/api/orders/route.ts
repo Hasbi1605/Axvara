@@ -159,22 +159,39 @@ export async function POST(req: NextRequest) {
   // Minimum pembelian per varian (migrasi 0034): hitung ulang dari DB —
   // JANGAN percaya angka client. GSuite (min 50) yang lolos quote tapi
   // diubah client jadi qty kecil DITOLAK 409 di sini sebelum order dibuat.
+  // WR3 Jaspay: maksimum qty (wr_max_quantity) ditegakkan ulang di sini
+  // dengan qty agregat lintas baris ganda — fail-closed bila cap
+  // invalid/missing (bukan unlimited). Quote retry yang tak berubah
+  // (sameItems di atas) tetap reuse via quote_id seperti legacy.
   try {
     const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
     if (variantIds.length > 0) {
       const rows = await queryAll(
-        `SELECT pv.id, pv.min_qty AS min_qty, pv.label AS label, p.name AS product_name
+        `SELECT pv.id, pv.min_qty AS min_qty, pv.label AS label, p.name AS product_name,
+                pv.wr_variant_id AS wr_variant_id, wv.wr_max_quantity AS wr_max_quantity
          FROM product_variants pv
          LEFT JOIN products p ON p.id = pv.product_id
+         LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
          WHERE pv.id IN (${variantIds.map(() => "?").join(",")})`,
         ...variantIds,
       );
       const minById = new Map<number, { min: number; name: string }>();
+      const capById = new Map<number, { cap: number | null; jaspay: boolean; name: string }>();
       for (const r of rows) {
         minById.set(Number(r.id), {
           min: Math.max(1, Number(r.min_qty ?? 1) || 1),
           name: `${String(r.product_name ?? "Produk")} — ${String(r.label ?? "")}`.trim(),
         });
+        const wrId = r.wr_variant_id == null ? "" : String(r.wr_variant_id).trim();
+        if (wrId.startsWith("jaspay:")) {
+          const capRaw = r.wr_max_quantity;
+          const cap = capRaw == null ? null : Math.floor(Number(capRaw));
+          capById.set(Number(r.id), {
+            cap: cap != null && Number.isFinite(cap) && cap >= 1 ? cap : null,
+            jaspay: true,
+            name: `${String(r.product_name ?? "Produk")} — ${String(r.label ?? "")}`.trim(),
+          });
+        }
       }
       // Qty agregat per varian (keranjang bisa kirim baris ganda varian sama).
       const qtyByVariant = new Map<number, number>();
@@ -187,6 +204,15 @@ export async function POST(req: NextRequest) {
         const need = rule?.min ?? 1;
         if (need > 1 && qty < need) {
           return NextResponse.json({ error: `${rule?.name ?? "Produk ini"} minimal pembelian ${need} (kamu pilih ${qty}). Tambah jumlahnya lalu checkout ulang.` }, { status: 409 });
+        }
+        const capRule = capById.get(vid);
+        if (capRule) {
+          if (capRule.cap == null) {
+            return NextResponse.json({ error: `${capRule.name} sedang tidak tersedia.` }, { status: 409 });
+          }
+          if (qty > capRule.cap) {
+            return NextResponse.json({ error: `${capRule.name} maksimal pembelian ${capRule.cap} (kamu pilih ${qty}). Kurangi jumlahnya lalu checkout ulang.` }, { status: 409 });
+          }
         }
       }
     }

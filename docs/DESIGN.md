@@ -1,5 +1,26 @@
 # DESIGN.md — AXVARA Design System
 
+## Varian Market, promosi responsif dan label layanan - 2 November 2026
+
+Implementasi lokal; deployment belum diverifikasi. Midnight/Cyan/Liquid Glass
+dan font existing tetap. PDP multi-varian menampilkan identitas pilihan lengkap
+tanpa truncate, dengan tombol sekunder Pilih/Ganti varian44px; identitas pilihan
+aktif dan tombol sejajar pada mobile agar tidak bersaing dengan CTA beli. Hanya identitas
+yang memakai live region polite, bukan keseluruhan S&K panjang. Harga/keranjang/
+checkout dan copy mengikuti satu state. S&K/aktivasi varian mendahului Deskripsi
+umum, sedangkan ketentuan dari deskripsi diberi label Ketentuan produk.
+
+CommunityBar menumpuk dua kartu penuh di bawah480px, dua kolom mulai480px.
+Ikon28px mobile/36px mulai sm, tinggi kartu minimal64px, judul dan deskripsi
+wrap utuh tanpa elipsis; teks tidak diperkecil untuk memaksakan dua kolom.
+Produk Serupa memakai lebar156px mobile/260px mulai sm; mulai sm kategori11px,
+judul15px/min40px, harga17px, metadata12px dan padding14px. Kartu katalog normal
+tidak berubah. Dropdown Market/Pedia menampilkan Layanan satu baris di seluruh
+breakpoint, tetap44px, fokus cyan dan nama aksesibel Layanan AXVARA.
+
+Copy pengiriman Jaspay memakai Diproses otomatis dan keterangan waktu mengikuti
+antrean, bukan proses admin/manual atau stok instan; visual badge existing tetap.
+
 ## Panel informasi Pedia terpadu - 2 November 2026
 
 Implementasi lokal; deployment belum diverifikasi. Pertahankan panel cyan/glass

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
-import { formatWarranty, formatVariantLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
+import { formatWarranty, formatVariantLabel, buyerDeliveryBadge, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
@@ -338,7 +338,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                       <span className="min-w-0">
                         <span className="block truncate text-xs font-bold">{formatVariantLabel(v)}</span>
                         <span className={`mt-0.5 block truncate text-[10px] font-semibold ${instant ? "text-emerald-300" : "text-[#FFD66B]"}`}>
-                          {instant ? "Kirim otomatis" : "Made By Order"}
+                          {buyerDeliveryBadge(v)}
                           {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v) ? <span className="font-medium text-white/45"> · {formatWarranty(v)}</span> : null}
                         </span>
                       </span>
@@ -376,7 +376,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                       {instant ? (
                         <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">Kirim otomatis</span>
                       ) : (
-                        <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">Made By Order</span>
+                        <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(v)}</span>
                       )}
                     </span>
                     <span className="mt-1 text-xs font-semibold text-[#00E5FF]">

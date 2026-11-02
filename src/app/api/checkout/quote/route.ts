@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   }
 
   let subtotal = 0;
-  const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery: boolean }[] = [];
+  const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery: boolean; automatic_processing?: true }[] = [];
   let uniqueUnits = 0;
   const issues: QuoteIssue[] = [];
   const changes: PriceChange[] = [];
@@ -111,6 +111,7 @@ export async function POST(req: NextRequest) {
   if (variantIds.size > 0) {
     const rows = await queryAll(
       `SELECT pv.*, wv.wr_type AS wr_type, wv.wr_delivery_class AS wr_delivery_class,
+              wv.wr_max_quantity AS wr_max_quantity,
               sp.sk_order_process AS sk_order_process, p.require_email AS require_email,
               -- Unit kredensial tersisa khusus unique (2026-10-02, insiden Head
               -- 18 Bulan): tanpa ini varian stock=2 + available=1 lolos quote
@@ -240,6 +241,26 @@ export async function POST(req: NextRequest) {
         issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, min_qty: minQty, type: "below_minimum", message: `${displayName} minimal pembelian ${minQty} (kamu pilih ${item.qty}).` });
         continue;
       }
+      // WR3 Jaspay: maksimum qty dari mirror durable (fail-closed bila
+      // invalid/missing — bukan unlimited). Agregat qty lintas baris ganda
+      // varian sama yang dinilai (paritas min_qty di orders route).
+      const vrow = variantById.get(item.variant_id);
+      const wrIdForCap = vrow?.wr_variant_id == null ? "" : String(vrow.wr_variant_id).trim();
+      if (wrIdForCap.startsWith("jaspay:")) {
+        const capRaw = vrow?.wr_max_quantity;
+        const cap = capRaw == null ? null : Math.floor(Number(capRaw));
+        if (cap == null || !Number.isFinite(cap) || cap < 1) {
+          issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "inactive", message: `${displayName} sedang tidak tersedia.` });
+          continue;
+        }
+        const totalForVariant = [...aggregate.values()]
+          .filter((a) => Number(a.variant_id || 0) === Number(item.variant_id))
+          .reduce((sum, a) => sum + Number(a.qty || 0), 0);
+        if (totalForVariant > cap) {
+          issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "invalid_quantity", message: `${displayName} maksimal pembelian ${cap} (kamu pilih ${totalForVariant}).` });
+          continue;
+        }
+      }
     }
 
     if (item.expected_price != null && item.expected_price !== effectivePrice) {
@@ -286,6 +307,13 @@ export async function POST(req: NextRequest) {
             fulfillmentMode: variantById.get(item.variant_id)?.fulfillment_mode,
           })
         : false,
+      // WR3 Jaspay: server-derived (dari wr_variant_id mirror, BUKAN input
+      // client). queued_delivery TETAP true; flag ini hanya memisahkan
+      // notice otomatis vs manual di UI (tanpa nama/id supplier).
+      ...(item.variant_id
+        && String(variantById.get(item.variant_id)?.wr_variant_id ?? "").trim().startsWith("jaspay:")
+        ? { automatic_processing: true as const }
+        : {}),
     });
   }
 

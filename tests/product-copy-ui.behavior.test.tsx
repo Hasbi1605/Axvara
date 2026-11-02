@@ -58,6 +58,13 @@ function stubCatalog(slug: string, description: string, variants: unknown[]) {
   }));
 }
 
+// Picker inline desktop (bukan baris mobile / dialog); menunggu PDP selesai memuat varian.
+async function pickVariant(label: string) {
+  await screen.findByRole("heading", { level: 1 });
+  await waitFor(() => expect(screen.getAllByRole("button").some((b) => b.textContent?.startsWith(label) && b.className.includes("rounded-xl border"))).toBe(true));
+  return screen.getAllByRole("button").find((b) => b.textContent?.startsWith(label) && b.className.includes("rounded-xl border"))!;
+}
+
 beforeEach(() => localStorage.clear());
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -72,6 +79,8 @@ describe("PDP produk WR: salinan Axvara per varian", () => {
   it("S&K dan cara aktivasi terlipat di mobile, terbuka saat diketuk", async () => {
     stubCatalog("netflix-premium", NETFLIX_DESC, variants);
     render(<ProductDetailClient slug="netflix-premium" />);
+    // Dua varian: salinan baru tampil setelah pembeli memilih (tanpa fallback ke varian pertama).
+    fireEvent.click(await pickVariant("Premium Anti Limit"));
     const termsButton = await screen.findByRole("button", { name: /Syarat & Ketentuan/ });
     const activationButton = screen.getByRole("button", { name: /Cara Aktivasi/ });
     expect(termsButton.getAttribute("aria-expanded")).toBe("false");
@@ -93,14 +102,18 @@ describe("PDP produk WR: salinan Axvara per varian", () => {
   it("teks mentah pemasok tidak pernah tampil; label S&K ikut varian terpilih", async () => {
     stubCatalog("netflix-premium", NETFLIX_DESC, variants);
     render(<ProductDetailClient slug="netflix-premium" />);
-    await screen.findByRole("button", { name: /Syarat & Ketentuan/ });
+    await pickVariant("Premium Anti Limit");
     const text = () => document.body.textContent ?? "";
+    const identity = () => screen.getByTestId("pdp-variant-details").querySelector("[data-testid=pdp-variant-identity]")!.textContent;
+    // Sebelum memilih tidak ada S&K varian mana pun.
+    expect(text()).not.toContain("Dilarang sign out");
+    expect(identity()).toContain("Belum ada varian dipilih");
+    fireEvent.click(await pickVariant("Premium Anti Limit"));
     expect(text()).not.toMatch(/bl4ckmarket|TIDAK ADA TOLERANSI|Klo mau aman/);
-    expect(screen.getByRole("heading", { level: 2, name: /Syarat & Ketentuan/ }).textContent).toContain("Premium Anti Limit");
+    expect(identity()).toContain("Premium Anti Limit");
 
-    const legalButton = screen.getAllByRole("button").find((b) => b.textContent?.startsWith("Premium Legal"))!;
-    fireEvent.click(legalButton);
-    await waitFor(() => expect(screen.getByRole("heading", { level: 2, name: /Syarat & Ketentuan/ }).textContent).toContain("Premium Legal"));
+    fireEvent.click(await pickVariant("Premium Legal"));
+    await waitFor(() => expect(identity()).toContain("Premium Legal"));
     expect(text()).toContain("Paket Premium Ultra HD 4K");
     expect(text()).toContain("Login di website");
     expect(text()).not.toContain("Dilarang sign out");
@@ -109,7 +122,7 @@ describe("PDP produk WR: salinan Axvara per varian", () => {
   it("deskripsi tampil sebagai paragraf pembuka + daftar keunggulan", async () => {
     stubCatalog("netflix-premium", NETFLIX_DESC, variants);
     render(<ProductDetailClient slug="netflix-premium" />);
-    await screen.findByRole("button", { name: /Syarat & Ketentuan/ });
+    await screen.findByRole("heading", { level: 1 });
     const [desktop] = screen.getAllByTestId("product-description-body");
     expect(within(desktop).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Ribuan film, serial, dokumenter, dan tayangan original eksklusif",

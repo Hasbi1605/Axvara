@@ -84,6 +84,8 @@ export type SupplierLinkCandidate = {
   id: number;
   supplierOrderId: string;
   orderCode: string;
+  /** WR3: link Jaspay — disegarkan via /jaspay/status, bukan /transactions. */
+  jaspay?: true;
 };
 
 /** Kandidat link supplier yang masih berjalan (belum terminal). */
@@ -96,14 +98,23 @@ export async function listRunningSupplierLinks(
   const out: SupplierLinkCandidate[] = [];
   const wr = await db
     .queryAll(
-      `SELECT id, wr_order_id FROM wr_order_links
+      `SELECT id, wr_order_id, wr_variant_id FROM wr_order_links
         WHERE order_code=? AND (status IN ('processing','submitted','ordering')
           OR (status='claimed' AND request_sent_at IS NOT NULL))`,
       code,
     )
     .catch(() => [] as Record<string, unknown>[]);
   for (const row of wr) {
-    out.push({ supplier: "wr", id: Number(row.id), supplierOrderId: String(row.wr_order_id || ""), orderCode: code });
+    // WR3: link Jaspay ber-invoice disegarkan via /jaspay/status per-invoice
+    // (pollKnownJaspayInvoice), BUKAN via /transactions premium. Link Jaspay
+    // tanpa invoice (ambigu) ditangani reconcileJaspayAmbiguous di cron.
+    const variantId = String((row as Record<string, unknown>).wr_variant_id || "");
+    const invoice = String(row.wr_order_id || "");
+    if (variantId.startsWith("jaspay:") && !invoice) continue;
+    out.push({
+      supplier: "wr", id: Number(row.id), supplierOrderId: invoice, orderCode: code,
+      ...(variantId.startsWith("jaspay:") ? { jaspay: true as const } : {}),
+    });
   }
   const sk = await db
     .queryAll(
@@ -138,7 +149,13 @@ export async function refreshSupplierOrderNow(
   const links = await listRunningSupplierLinks(code, db);
   if (!links.length) return false;
   let advanced = false;
-  const wrLinks = links.filter((link) => link.supplier === "wr");
+  const wrLinks = links.filter((link) => link.supplier === "wr" && !link.jaspay);
+  for (const link of links.filter((link) => link.supplier === "wr" && link.jaspay)) {
+    try {
+      const { pollKnownJaspayInvoice } = await import("@/lib/warung-rebahan/order");
+      if (await pollKnownJaspayInvoice(link.id, db)) advanced = true;
+    } catch { /* cooldown bounds retries */ }
+  }
   if (wrLinks.length) {
     try {
       const { reconcileFreshWrLinks } = await import("@/lib/warung-rebahan/order");

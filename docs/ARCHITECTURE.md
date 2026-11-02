@@ -1,5 +1,23 @@
 # ARCHITECTURE.md — AXVARA
 
+## PDP varian dan komponen layanan bersama - 2 November 2026
+
+Implementasi lokal; deployment belum diverifikasi. `product-detail-client.tsx`
+tidak lagi memakai varian aktif pertama untuk fallback S&K multi-varian.
+`selectedVariant` tetap sumber harga/cart/checkout dan kini menentukan detail
+varian. Salinan bersama hanya ditampilkan jika identik dan tersedia di semua
+varian; salinan kosong tidak mengambil varian lain. `mergeProductCopy` existing
+dipakai terpisah untuk copy varian dan ketentuan tingkat produk pada multi-varian,
+tanpa perubahan parser, API atau data produk. `VariantIdentity` mengumumkan nama
+pilihan; modal pemilih existing dipakai ulang. Disclosure mobile mempertahankan
+state ketika pilihan berganti. Bagian perbandingan hanya diganti label tampilnya.
+
+`CommunityBar`/`CrossServicePromo` memakai reflow CSS di480px; compact
+`ProductCard` dan rail terkait memakai ukuran desktop mulai sm. `ServicesMenu`
+tidak lagi membutuhkan prop compact; Market dan Pedia berbagi label Layanan serta
+nama aksesibel Layanan AXVARA, dengan perilaku keyboard existing. Tidak ada route,
+dependency, env atau perubahan flow pembayaran untuk perbaikan UI ini.
+
 ## Koreksi orbit responsif dan cancel pencarian — 31 Oktober 2026
 
 Implementasi lokal untuk publikasi CI. `PediaHomeClient` tidak lagi menyembunyikan
@@ -2839,6 +2857,57 @@ Penggantinya: VPS `t4g.nano` Singapore (`i-022790eb6bb0b1be3`, 0.5GB +
   di-terminate/release (backup parsial 540MB di
   `/Users/macbookair/aws-backup-openclaw-20261002/`, tanpa node_modules/
   cache/biner).
+
+### 16.8a WR Jaspay terpisah - 2 November 2026
+
+Status: transport proxy sudah dirilis ke VPS; implementasi/verifikasi terpadu
+Pages masih lokal. Dokumentasi resmi tetap base `/api/v1`; tidak memakai atau
+menebak `/api/v3`. Allowlist proxy menambah hanya
+`POST /wr/jaspay/{products,order,status,orders}` dengan token/key existing,
+marker write ambigu existing dan tanpa retry proxy. Rilis seluruh empat modul
+dist mempertahankan `.env`/state; baseline index pra-tugas identik dengan produksi
+dan tiga modul lain tidak berubah. Backup `dist.backup-jaspay-20261102`, service
+active, health200, Jaspay tanpa token401, hash seluruh modul cocok. Bukan bukti
+transaksi supplier atau deployment Pages.
+
+Kontrak integrasi Pages: gunakan mirror/link WR existing, bukan provider/tabel
+order baru. ID produk/varian memakai namespace `jaspay:` dengan komponen product/
+package ter-encode; order Premium lama tidak dipindahkan. Katalog Jaspay terpisah
+dari sweep/diff Premium; pengosongan stok Premium harus mengecualikan namespace
+ini. Availability dipetakan ke stok unlimited `-1` atau0, bukan `max_quantity`.
+Migrasi0091 menambah hanya `wr_variants.wr_max_quantity` nullable dengan CHECK
+positif; cap Jaspay missing/invalid gagal tertutup saat penjualan. Validasi jumlah
+wajib server-side, termasuk akumulasi baris keranjang varian sama. Harga memakai
+markup existing, original_price tidak menimpa compare_price admin, after_note
+menjadi ketentuan dan duration memakai parser existing.
+
+Order Jaspay membawa product/package/quantity dan `ref_id` deterministik dari
+idempotency key; password/email_invite tidak dikirim. Receipt hilang hanya boleh
+diulang melalui kontrak duplicate-ref dengan input/ref persis sama; known invoice
+JSP hanya melalui status Jaspay, tidak memakai nama/waktu/feed50terbaru untuk
+korelasi. Lease, budget, CAS kepemilikan dan sent fence Premium tetap berlaku.
+Webhook memverifikasi HMAC-SHA256 body mentah dari X-Digitals-Signature, dengan
+alias legacy hanya jika primary absen; Jaspay memakai data.invoice. Partial atau
+accounts/count/status tidak koheren disimpan terenkripsi untuk tindak lanjut
+admin tanpa menyelesaikan seluruh item, membeli ulang atau refund buyer otomatis.
+Copy publik white-label: Diproses otomatis; waktu proses mengikuti antrean, bukan
+stok instan atau proses admin. Tidak ada env/cron/secret baru.
+
+Pengaman lanjutan sesudah review read-only (2 November 2026): cap Jaspay juga
+dicek di guard atomik `createOrderWithStock` (EXISTS `wr_max_quantity >= qty`
+pada batch reservasi yang sama; cap NULL ditolak). Sync Jaspay memakai SKU
+`WR-J` + SHA-256 ID varian, tidak pernah me-remap baris SKU milik varian lain,
+memaksa stok0 bila cap baru invalid, dan menjalankan zero-missing (stok `!=0`,
+termasuk -1) hanya setelah feed lengkap tanpa error/berhenti budget. Completed
+hanya bila akun yang benar-benar berisi >= qty dan qty laporan sama; selain itu
+payload lengkap (tanpa potongan) disimpan terenkripsi secara monotonik: replay
+dengan akun lebih sedikit tidak menimpa bukti. `jaspay.failed`/`jaspay.refunded`
+menjadi failed nyata (link + item) tanpa refund buyer otomatis; completed tidak
+diregresi. Recovery duplicate-ref mengklaim lease sendiri (bukan `claimed`) dan
+bind ber-CAS pemilik+status. Poll invoice dikenal memakai antrean jatuh tempo
+`next_attempt_at` (backoff 2/10/60 menit menurut umur), tanpa batas 24 jam;
+reconcile `/transactions` Premium mengecualikan `jaspay:%`, dan refresh order
+memakai status Jaspay per invoice.
 
 ### 16.7 Health anti-false-alarm + kelas pengiriman WR (2026-09-16)
 - Query health `tgQueue`/`fulfillmentQueue`/`oldestDue` JOIN orders dan hanya

@@ -13,11 +13,12 @@ import { fetchWithTimeout, FetchTimeoutError } from "@/lib/fetch-timeout";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { startNavigation } from "@/stores/navigation";
 import { CheckoutSkeleton, InlineSpinner } from "@/components/storefront/Skeletons";
+import { buyerDeliveryEtaJaspay } from "@/lib/catalog";
 
 
 type Method = "qris" | "ewallet" | "bank";
 
-type QuotedItem = { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery?: boolean };
+type QuotedItem = { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
 type QuotePaymentMethod = { id: string; label: string; account_number: string; account_name: string; qris_url: string | null };
 type QuoteIssue = { product_id?: number; slug?: string; variant_id?: number; min_qty?: number; type: string; message: string };
 type PriceChange = { product_id: number; variant_id?: number; name: string; previous_price: number; current_price: number; message: string };
@@ -302,7 +303,8 @@ function CheckoutInner() {
   const rowKeyOf = (it: { id: unknown; slug?: unknown; variantId?: unknown }) => `${String(it.slug ?? "")}|${String(it.id)}|${String(it.variantId ?? "")}`;
   // Nama produk Made By Order (dari quote server, bukan
   // tebakan client) — dipakai untuk peringatan waktu sebelum bayar.
-  const queuedNames = quotedItems.filter((qi) => qi.queued_delivery === true).map((qi) => qi.name);
+  const queuedNames = quotedItems.filter((qi) => qi.queued_delivery === true && qi.automatic_processing !== true).map((qi) => qi.name);
+  const automaticNames = quotedItems.filter((qi) => qi.queued_delivery === true && qi.automatic_processing === true).map((qi) => qi.name);
   const displaySubtotal = quotedItems.length > 0 ? quotedSubtotal : subtotal;
 
   if (redirectCode) {
@@ -681,6 +683,15 @@ function CheckoutInner() {
               Copy 2026-09-19 (keputusan owner): framing positif "dibuat
               khusus", tanpa kata antre/ramai/sabar dan tanpa rentang
               6–12 jam — hanya janji plafon 12 jam. */}
+          {automaticNames.length > 0 && (
+            <div className="rounded-2xl border border-[#FFB800]/25 bg-[#FFB800]/[0.07] p-4">
+              <h2 className="text-sm font-semibold text-[#FFD66B]">Diproses otomatis</h2>
+              <p className="mt-1 text-xs leading-5 text-white/60">
+                <span className="font-semibold text-white">{automaticNames.length === 1 ? automaticNames[0] : `${automaticNames.length} produk`}</span>
+                {". "}{buyerDeliveryEtaJaspay()}
+              </p>
+            </div>
+          )}
           {queuedNames.length > 0 && (
             <div className="rounded-2xl border border-[#FFB800]/25 bg-[#FFB800]/[0.07] p-4">
               <h2 className="text-sm font-semibold text-[#FFD66B]">Made By Order</h2>

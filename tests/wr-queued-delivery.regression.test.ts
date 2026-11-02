@@ -92,10 +92,14 @@ describe("copy pembeli", () => {
     ]) {
       const src = read(file);
       expect(src, file).not.toContain("Dikirim admin");
-      expect(src, file).toContain("Made By Order");
+      // Badge berasal dari satu helper (Made By Order / Diproses otomatis).
+      expect(src.includes("Made By Order") || src.includes("buyerDeliveryBadge("), file).toBe(true);
       // Angka jam hanya di kalimat ETA/template, bukan di badge.
       expect(src, file).not.toContain("Made By Order · maks");
     }
+    const catalog = read("src/lib/catalog.ts");
+    expect(catalog).toContain('"Made By Order"');
+    expect(catalog).not.toContain("Made By Order · maks");
     // Modal menampilkan badge, TANPA kalimat ETA (dihapus 2026-09-19,
     // keputusan owner: ekspektasi detail hanya di blok checkout MBO).
     expect(read("src/components/storefront/QuickVariantModal.tsx")).not.toContain("deliveryEtaForBuyer(");

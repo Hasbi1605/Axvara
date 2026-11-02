@@ -1,5 +1,40 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## WR Jaspay - 2 November 2026
+
+Proxy VPS sudah dirilis dan terverifikasi health/hash; implementasi/verifikasi
+terpadu Pages masih lokal. Dokumentasi WR resmi tetap `/api/v1`, bukan `/api/v3`.
+Jaspay memakai `/wr/jaspay/{products,order,status,orders}` pada proxy existing,
+terpisah dari Akun Premium; tidak memindahkan order lama atau menebak invoice.
+Namespace `jaspay:` memakai mirror/link WR existing; availability adalah stok
+unlimited, sedangkan batas jumlah disimpan terpisah di migrasi0091 dan wajib
+ditegakkan server-side termasuk baris keranjang ganda. Detail di ARCHITECTURE
+§16.8a dan AGENTS; tidak ada env/cron/secret baru.
+
+Ref supplier stabil per idempotency key. Receipt hilang hanya boleh exact replay
+Jaspay sesuai kontrak duplicate-ref; Premium tetap tidak boleh blind retry.
+Webhook memakai signature body mentah dan data.invoice Jaspay. Partial/malformed
+credentials tetap encrypted untuk tindak lanjut admin, bukan penyelesaian semua
+item/repurchase/refund otomatis. Buyer melihat Diproses otomatis, bukan nama
+supplier atau janji stok instan. Tidak ada order supplier nyata untuk QA.
+
+Rilis proxy menyalin seluruh dist dengan backup `dist.backup-jaspay-20261102`;
+env/state utuh, empat hash cocok, service active/health200/Jaspay tanpa token401.
+Ini bukan bukti deployment Pages atau transaksi end-to-end.
+
+## Detail varian Market dan kartu responsif - 2 November 2026
+
+Implementasi lokal; deployment belum diverifikasi. S&K/cara aktivasi kini mengikuti
+pilihan yang sama dengan harga/keranjang/checkout, tanpa fallback varian pertama
+pada produk multi-varian. Belum memilih menampilkan ajakan memilih; copy kosong
+diberi keterangan, bukan mengambil varian lain. Deskripsi umum/perbandingan dan
+ketentuan produk dipisahkan dari detail varian, tanpa menghapus teks penting.
+
+Kartu promosi menumpuk penuh di bawah480px, judul tidak terpotong; Produk Serupa
+memakai teks desktop lebih besar dengan tampilan mobile tetap. Dropdown navbar
+Market/Pedia menampilkan Layanan pada desktop/mobile, mempertahankan keyboard,
+fokus dan nama aksesibel. Tidak mengubah API, pembayaran atau akses pembeli.
+
 ## Info layanan Pedia terpadu - 2 November 2026
 
 Implementasi lokal; deployment belum diverifikasi. Panel di bawah pilihan memuat

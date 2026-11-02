@@ -36,15 +36,15 @@ describe("Pedia route path (owner 2026-11-01: subdomain order flow)", () => {
   });
 });
 
-describe("compact services menu label", () => {
-  it("keeps the full accessible name while hiding AXVARA visually on small screens", () => {
-    render(<ServicesMenu active="pedia" compact />);
+describe("services menu label", () => {
+  // 2026-11-02 (owner): label terlihat "Layanan" di Market maupun Pedia, semua ukuran; nama aksesibel tetap lengkap.
+  it.each(["pedia", "market"] as const)("shows only Layanan visibly but keeps the full accessible name (%s)", (active) => {
+    render(<ServicesMenu active={active} />);
     const button = screen.getByRole("button", { name: "Layanan AXVARA" });
-    expect(button.querySelector(".max-sm\\:sr-only")?.textContent).toBe(" AXVARA");
-  });
-  it("leaves the Market two-line label unchanged", () => {
-    render(<ServicesMenu active="market" />);
-    expect(screen.getByRole("button", { name: "Layanan AXVARA" }).querySelector(".max-sm\\:sr-only")).toBeNull();
+    expect(button.textContent).toBe("Layanan");
+    expect(button.getAttribute("aria-label")).toBe("Layanan AXVARA");
+    expect(button.querySelector(".max-sm\\:sr-only")).toBeNull();
+    expect(button.querySelector(".whitespace-nowrap")?.textContent).toBe("Layanan");
   });
 });
 

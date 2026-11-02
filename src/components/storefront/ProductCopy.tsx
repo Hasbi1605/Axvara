@@ -102,6 +102,12 @@ const DOT: Record<CopySectionKind, string> = {
   garansi: "bg-emerald-400",
 };
 
+/** Bagian deskripsi umum yang membandingkan varian ("Pilihan varian:") bukan S&K varian terpilih. */
+const VARIANT_COMPARISON_TITLE = /^pilihan\s+(?:varian|paket)\b/i;
+export function descriptionSectionTitle(title: string): string {
+  return VARIANT_COMPARISON_TITLE.test(title.trim()) ? "Perbandingan varian" : title;
+}
+
 export function DescriptionBody({ parsed, size = "sm" }: { parsed: ParsedDescription; size?: Size }) {
   const gap = size === "sm" ? "space-y-4" : "space-y-3";
   return (
@@ -122,7 +128,7 @@ export function DescriptionBody({ parsed, size = "sm" }: { parsed: ParsedDescrip
       )}
       {parsed.sections.map((section, i) => (
         <div key={`s${i}`}>
-          <h3 className="text-[11px] font-bold uppercase tracking-wide text-white/55">{section.title}</h3>
+          <h3 className="text-[11px] font-bold uppercase tracking-wide text-white/55">{descriptionSectionTitle(section.title)}</h3>
           <ul className="mt-2 space-y-1.5">
             {section.items.map((item, j) => (
               <li key={j}><RichText text={item} /></li>
@@ -191,6 +197,49 @@ export function ActivationBody({ groups, notes, size = "sm" }: { groups: Activat
 
 export function activationStepCount(groups: ActivationGroup[]): number {
   return groups.reduce((n, group) => n + group.steps.length, 0);
+}
+
+/**
+ * Identitas varian yang sedang menentukan S&K / cara aktivasi di PDP. Satu
+ * sumber pilihan dengan harga/keranjang/checkout; wilayah aria-live hanya
+ * memuat nama varian (bukan seluruh teks S&K) agar pembaca layar tidak
+ * membacakan isi panjang tiap ganti varian.
+ */
+export function VariantIdentity({
+  label,
+  sharedLabel,
+  onChoose,
+}: {
+  /** Label lengkap varian terpilih; null = belum memilih. */
+  label: string | null;
+  /** Dipakai saat belum memilih tetapi seluruh varian memang berbagi salinan yang sama. */
+  sharedLabel?: string | null;
+  /** Membuka panel pilih varian. Tanpa ini (varian tunggal/salinan sama) tombol tidak tampil. */
+  onChoose?: () => void;
+}) {
+  return (
+    <div data-testid="pdp-variant-identity" className={`flex gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 ${label ? "items-center justify-between" : "flex-col sm:flex-row sm:items-center sm:justify-between"}`}>
+      <div className="min-w-0 flex-1" aria-live="polite" aria-atomic="true">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/55">{label || sharedLabel ? "Detail untuk varian" : "Belum ada varian dipilih"}</p>
+        {label ? (
+          <p className="mt-0.5 break-words text-sm font-semibold text-[#00E5FF]">{label}</p>
+        ) : sharedLabel ? (
+          <p className="mt-0.5 break-words text-sm font-semibold text-white">{sharedLabel}</p>
+        ) : (
+          <p className="mt-0.5 text-xs leading-relaxed text-[#FFD66B]">Pilih varian untuk melihat syarat &amp; ketentuan dan cara aktivasi yang sesuai.</p>
+        )}
+      </div>
+      {onChoose && (
+        <button
+          type="button"
+          onClick={onChoose}
+          className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-xl border border-[#00E5FF]/40 bg-[#00E5FF]/10 px-3 text-xs font-semibold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]"
+        >
+          {label ? "Ganti varian" : "Pilih varian"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 /** Panel mobile yang terlipat secara default (S&K / cara aktivasi). */

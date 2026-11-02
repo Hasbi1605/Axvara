@@ -40,6 +40,7 @@ import {
   WrApiError,
   type WrTransaction,
 } from "./client";
+import { decodeJaspayVariantId, isJaspayVariantId } from "./jaspay";
 import { WR_QUEUED_ALERT_HOURS, WR_QUEUED_MAX_HOURS } from "./delivery-class";
 
 export type OrderItemLike = {
@@ -397,6 +398,64 @@ export async function processWrPendingOrders(
 }
 
 /**
+ * Reconcile Jaspay ambigu (WR3, bounded): link Jaspay submitted/ordering
+ * tanpa invoice => coba exact-ref POST identik SEKALI (tanpa debit ganda);
+ * link Jaspay ber-invoice (processing/submitted/ordering/claimed+sent) =>
+ * poll /jaspay/status per-invoice. Premium TIDAK tersentuh. Maks `limit`
+ * link per run; read-only kecuali bind invoice eksak yang sah.
+ */
+export async function reconcileJaspayAmbiguous(
+  database?: DatabaseAccess,
+  limit = 4,
+): Promise<{ exactRef: number; polled: number }> {
+  const db = database ?? createDatabaseAccess();
+  const out = { exactRef: 0, polled: 0 };
+  if (!isWrEnabled() || !isWrAutoOrderEnabled()) return out;
+  // Antrean adil: urut jatuh tempo (next_attempt_at) lalu id, bukan "4 id
+  // tertua" yang membuat link lain kelaparan. Setiap link yang disentuh
+  // menggeser next_attempt_at-nya (backoff), sehingga putaran berikutnya
+  // memproses link lain.
+  // - Tanpa invoice (ambigu): hanya submitted/ordering, umur >=2 menit,
+  //   jendela 24 jam (di luar itu admin memilih invoice manual).
+  // - Invoice dikenal: dipoll terus (tanpa batas 24 jam) dengan backoff.
+  const rows = await db
+    .queryAll(
+      `SELECT id, wr_order_id FROM wr_order_links
+        WHERE wr_variant_id LIKE 'jaspay:%'
+          AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
+          AND ((status IN ('submitted','ordering')
+                AND COALESCE(wr_order_id,'')=''
+                AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-2 minutes')
+                AND datetime(COALESCE(request_sent_at, updated_at)) > datetime('now','-24 hours'))
+            OR (status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!=''))
+        ORDER BY COALESCE(next_attempt_at, '') ASC, id ASC LIMIT ?`,
+      Math.max(1, Math.min(limit, 8)),
+    )
+    .catch((error) => {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      return [] as Row[];
+    });
+  for (const row of rows) {
+    if (!db.canSpend(8)) break;
+    const id = Number(row.id);
+    if (String(row.wr_order_id || "").trim()) {
+      if (await pollKnownJaspayInvoice(id, db).catch(() => false)) out.polled++;
+    } else {
+      if (await recoverJaspayByExactRef(id, db).catch(() => false)) out.exactRef++;
+    }
+  }
+  return out;
+}
+
+/** Backoff poll Jaspay: 2 menit (<1 jam), 10 menit (<24 jam), 60 menit. */
+function jaspayNextPollSql(): string {
+  return `CASE
+    WHEN datetime(COALESCE(request_sent_at, created_at)) > datetime('now','-1 hours') THEN datetime('now','+2 minutes')
+    WHEN datetime(COALESCE(request_sent_at, created_at)) > datetime('now','-24 hours') THEN datetime('now','+10 minutes')
+    ELSE datetime('now','+60 minutes') END`;
+}
+
+/**
  * Klaim lease dengan fencing (P0-1):
  * - pending/retry yang belum diklaim → claimed + lease baru.
  * - claimed yang lease-nya kedaluwarsa DAN request BELUM dikirim
@@ -470,6 +529,11 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
     id,
   );
   if (!Number(sent.changes ?? 0)) return "retried";
+  // WR3 Jaspay: keluarga `jaspay:` TIDAK PERNAH lewat POST premium.
+  // Salah famili = order salah produk + invoice tak terkorelasi.
+  if (isJaspayVariantId(String(link.wr_variant_id || ""))) {
+    return processOneJaspayLink(id, link, db);
+  }
   let receivedOrder = false;
   try {
     // 2026-09-16 (uji live #1): upstream WR 422 "email_invite is required
@@ -538,6 +602,324 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
   } catch (error) {
     return handleOrderError(id, link, receivedOrder ? new Error("network_receipt_persist_failed") : error, attempt, db);
   }
+}
+
+// ── WR3 Jaspay dispatch (isolated policy, bukan retry global premium) ──
+//
+// request_sent_at SUDAH durable sebelum POST (ditulis processOneLink).
+// ref_id stabil SELALU sama untuk link ini (turunan idempotency_key durable).
+// Timeout/network/5xx => submitted ambigu + HANYA pulih via:
+//   (a) POST duplikat ref identik (input SAMA PERSIS) — upstream
+//       mengembalikan duplikat asli `duplicate:true` tanpa debit ganda; atau
+//   (b) bind invoice JSP eksak manual; atau
+//   (c) poll /jaspay/status atas invoice JSP yang SUDAH dikenal.
+// TIDAK PERNAH: rePOST ref baru, tebak invoice by product/time, scan
+// /jaspay/orders latest-50 untuk korelasi.
+async function processOneJaspayLink(
+  id: number,
+  link: Row,
+  db: DatabaseAccess,
+): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
+  const { execRun } = db;
+  const attempt = Number(link.attempt_count || 0);
+  const variantId = String(link.wr_variant_id || "");
+  const decoded = decodeJaspayVariantId(variantId);
+  if (!decoded) {
+    await execRun(
+      `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
+         lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now')
+       WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+      "jaspay_malformed_variant_id",
+      id,
+    );
+    return "failed";
+  }
+  // Fail-closed max_quantity: baca dari mirror durable (BUKAN dari display).
+  // Invalid/missing => JANGAN order; admin followup manual.
+  const qty = Math.max(1, Math.floor(Number(link.quantity || 1)));
+  try {
+    const cap = await db.queryFirst(
+      `SELECT wr_max_quantity FROM wr_variants WHERE wr_variant_id=?`,
+      variantId,
+    ).catch(() => null);
+    const maxRaw = cap?.wr_max_quantity;
+    const max = maxRaw == null ? null : Math.floor(Number(maxRaw));
+    if (max == null || !Number.isFinite(max) || max < 1) {
+      await execRun(
+        `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
+           lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now')
+         WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+        "jaspay_max_quantity_missing",
+        id,
+      );
+      return "failed";
+    }
+    if (qty > max) {
+      await execRun(
+        `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
+           lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now')
+         WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+        `jaspay_max_quantity_exceeded:${qty}>${max}`,
+        id,
+      );
+      return "failed";
+    }
+  } catch {
+    await execRun(
+      `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
+         lease_owner=NULL, lease_expires_at=NULL, next_attempt_at=?, updated_at=datetime('now')
+       WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+      "jaspay_cap_check_db_error",
+      nextAttemptIso(attempt + 1),
+      id,
+    );
+    return "retried";
+  }
+  const keyRow = await db.queryFirst(
+    `SELECT idempotency_key FROM wr_order_links WHERE id=?`,
+    id,
+  ).catch(() => null);
+  const idemKey = String(keyRow?.idempotency_key || wrIdempotencyKey(String(link.order_code || ""), variantId, qty));
+  const { createJaspayOrder } = await import("./client");
+  const { jaspayRefId } = await import("./jaspay");
+  const refId = await jaspayRefId(idemKey);
+  let receivedJsp = false;
+  try {
+    const order = await createJaspayOrder({
+      product: decoded.product,
+      package: decoded.package,
+      quantity: qty,
+      ref_id: refId,
+    });
+    receivedJsp = true;
+    const invoice = String(order.invoice || "").trim();
+    if (!invoice) throw new Error("jaspay_empty_invoice");
+    const assigned = await execRun(
+      `UPDATE wr_order_links SET status='processing', wr_order_id=?,
+         last_error=NULL, lease_owner=NULL, lease_expires_at=NULL,
+         updated_at=datetime('now') WHERE id=? AND status='claimed'
+         AND (wr_order_id IS NULL OR wr_order_id=?)
+         AND NOT EXISTS (SELECT 1 FROM wr_order_links used WHERE used.wr_order_id=? AND used.id!=?)`,
+      invoice,
+      id,
+      invoice,
+      invoice,
+      id,
+    );
+    if (!Number(assigned.changes ?? 0)) return "retried";
+    if (typeof order.balance_after === "number" && Number.isFinite(order.balance_after)) {
+      await db
+        .execRun(
+          `INSERT INTO wr_saldo_log (balance, source, note) VALUES (?,'order_deduct',?)`,
+          Math.floor(order.balance_after),
+          `jaspay order ${String(link.order_code)} → ${invoice}`,
+        )
+        .catch(() => undefined);
+    }
+    // Terminal sinkron dari upstream: selesaikan via handler Jaspay yang
+    // sama dengan webhook/poll (tanpa duplikasi logika).
+    if (order.status === "completed" || order.status === "partial" || order.status === "failed") {
+      const { handleJaspayTerminal } = await import("./deliver");
+      await handleJaspayTerminal(invoice, order, db).catch(() => undefined);
+    }
+    return "succeeded";
+  } catch (error) {
+    return handleJaspayOrderError(id, link, receivedJsp ? new Error("network_receipt_persist_failed") : error, attempt + 1, db);
+  }
+}
+
+/**
+ * Recovery ref-eksak Jaspay (WR3): POST duplikat dengan input IDENTIK
+ * (product/package/qty/ref SAMA) untuk memulihkan receipt yang hilang.
+ * Upstream terdokumentasi mengembalikan duplikat asli tanpa debit ganda.
+ * BUKAN retry global: hanya dipanggil untuk link Jaspay ambigu (submitted,
+ * tanpa invoice) dan TIDAK PERNAH dengan ref baru.
+ */
+export async function recoverJaspayByExactRef(
+  linkId: number,
+  database?: DatabaseAccess,
+): Promise<boolean> {
+  const db = database ?? createDatabaseAccess();
+  const link = await db.queryFirst(`SELECT * FROM wr_order_links WHERE id=?`, linkId).catch(() => null);
+  if (!link) return false;
+  const variantId = String(link.wr_variant_id || "");
+  if (!isJaspayVariantId(variantId)) return false;
+  if (String(link.wr_order_id || "").trim()) return false;
+  const decoded = decodeJaspayVariantId(variantId);
+  if (!decoded) return false;
+  // Klaim lease recovery: hanya satu worker per link, hanya status ambigu
+  // tanpa invoice. Claimed (dispatcher aktif) tidak pernah diambil alih.
+  const owner = `jsp-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+  const leaseUntil = new Date(Date.now() + WR_CLAIM_LEASE_SECONDS * 1000).toISOString();
+  const claimed = await db.execRun(
+    `UPDATE wr_order_links SET lease_owner=?, lease_expires_at=?, updated_at=datetime('now')
+     WHERE id=? AND status IN ('submitted','ordering') AND COALESCE(wr_order_id,'')=''
+       AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))`,
+    owner,
+    leaseUntil,
+    linkId,
+  ).catch(() => ({ changes: 0 as number | undefined }));
+  if (!Number(claimed.changes ?? 0)) return false;
+  const release = async (error: string | null) => {
+    await db.execRun(
+      `UPDATE wr_order_links SET lease_owner=NULL, lease_expires_at=NULL,
+         last_error=COALESCE(?, last_error),
+         next_attempt_at=datetime('now','+${WR_SUBMITTED_STALE_MINUTES} minutes'), updated_at=datetime('now')
+       WHERE id=? AND lease_owner=?`,
+      error,
+      linkId,
+      owner,
+    ).catch(() => undefined);
+  };
+  const qty = Math.max(1, Math.floor(Number(link.quantity || 1)));
+  const idemKey = String(link.idempotency_key || wrIdempotencyKey(String(link.order_code || ""), variantId, qty));
+  const { createJaspayOrder } = await import("./client");
+  const { jaspayRefId } = await import("./jaspay");
+  const refId = await jaspayRefId(idemKey);
+  let order;
+  try {
+    // Input IDENTIK dengan POST asli (product/package/qty/ref sama).
+    order = await createJaspayOrder({ product: decoded.product, package: decoded.package, quantity: qty, ref_id: refId });
+  } catch (error) {
+    await release(`jaspay_exact_ref_retry: ${(error instanceof Error ? error.message : String(error)).slice(0, 300)}`);
+    return false;
+  }
+  const invoice = String(order?.invoice || "").trim();
+  if (!invoice) {
+    await release("jaspay_exact_ref_empty_invoice");
+    return false;
+  }
+  // Bind dengan CAS pemilik lease + status ambigu; hasil telat tidak boleh
+  // menurunkan link yang sudah bergerak.
+  const bound = await db.execRun(
+    `UPDATE wr_order_links SET status='processing', wr_order_id=?, last_error=NULL,
+       lease_owner=NULL, lease_expires_at=NULL, next_attempt_at=NULL, updated_at=datetime('now')
+     WHERE id=? AND lease_owner=? AND status IN ('submitted','ordering') AND COALESCE(wr_order_id,'')=''
+       AND NOT EXISTS (SELECT 1 FROM wr_order_links used WHERE used.wr_order_id=? AND used.id!=?)`,
+    invoice,
+    linkId,
+    owner,
+    invoice,
+    linkId,
+  ).catch(() => ({ changes: 0 as number | undefined }));
+  if (!Number(bound.changes ?? 0)) {
+    await release(`jaspay_exact_ref_bind_conflict:${invoice.slice(0, 60)}`);
+    return false;
+  }
+  // Baca ulang terminal lewat handler monotonik yang sama.
+  if (order.status === "completed" || order.status === "partial" || order.status === "failed") {
+    const { handleJaspayTerminal } = await import("./deliver");
+    await handleJaspayTerminal(invoice, order, db).catch(() => undefined);
+  }
+  return true;
+}
+
+/** Poll SATU invoice JSP yang sudah dikenal (bukan scan latest-50). */
+export async function pollKnownJaspayInvoice(
+  linkId: number,
+  database?: DatabaseAccess,
+): Promise<boolean> {
+  const db = database ?? createDatabaseAccess();
+  const link = await db.queryFirst(`SELECT * FROM wr_order_links WHERE id=?`, linkId).catch(() => null);
+  if (!link) return false;
+  if (!isJaspayVariantId(String(link.wr_variant_id || ""))) return false;
+  const invoice = String(link.wr_order_id || "").trim();
+  if (!invoice) return false;
+  if (["completed", "failed"].includes(String(link.status || ""))) return false;
+  // Geser jatuh tempo SEBELUM jaringan: kegagalan/timeout tidak membuat
+  // link ini terus menyerobot giliran link lain.
+  await db.execRun(
+    `UPDATE wr_order_links SET next_attempt_at=${jaspayNextPollSql()} WHERE id=?`,
+    linkId,
+  ).catch(() => undefined);
+  const { fetchJaspayStatus } = await import("./client");
+  let status;
+  try {
+    status = await fetchJaspayStatus(invoice);
+  } catch {
+    return false;
+  }
+  if (String(status.invoice || "").trim() !== invoice) return false;
+  if (status.status === "processing") {
+    const { advanceWrLinkMonotonic } = await import("./deliver");
+    await advanceWrLinkMonotonic(invoice, "processing", null, db).catch(() => false);
+    return false;
+  }
+  const { handleJaspayTerminal } = await import("./deliver");
+  return handleJaspayTerminal(invoice, status, db).catch(() => false);
+}
+
+async function handleJaspayOrderError(
+  id: number,
+  link: Row,
+  error: unknown,
+  attempt: number,
+  db: DatabaseAccess,
+): Promise<"retried" | "failed" | "blocked"> {
+  const { execRun } = db;
+  const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+  const { WrInsufficientBalanceError, WrOutOfStockError, WrApiError } = await import("./client");
+  const isTimeout = /timeout|abort|network|fetch failed|504|wr_proxy_unreadable_response/i.test(message)
+    || (error instanceof WrApiError && error.status >= 500);
+  if (isTimeout) {
+    // Ambigu Jaspay: submitted + lease dilepas. Pulih HANYA via exact-ref
+    // POST identik / invoice eksak / poll invoice dikenal — jangan beli ulang.
+    await execRun(
+      `UPDATE wr_order_links SET status='submitted',
+         last_error=?, lease_owner=NULL, lease_expires_at=NULL,
+         next_attempt_at=datetime('now','+${WR_SUBMITTED_STALE_MINUTES} minutes'),
+         updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+      `ambiguous_timeout: ${message}`,
+      id,
+    );
+    return "retried";
+  }
+  if (error instanceof WrInsufficientBalanceError) {
+    return handleInsufficientBalance(id, link, message, db);
+  }
+  if (error instanceof WrOutOfStockError) {
+    // Jaspay: availability upstream mati => mirror stok 0 (jujur, bukan
+    // retry buta). request_sent_at dihapus (pre-kirim pasti).
+    await execRun(
+      `UPDATE product_variants SET stock=0, updated_at=datetime('now')
+       WHERE wr_variant_id=?`,
+      String(link.wr_variant_id),
+    ).catch(() => undefined);
+    await execRun(
+      `UPDATE wr_variants SET wr_stock=0, updated_at=? WHERE wr_variant_id=?`,
+      new Date().toISOString(),
+      String(link.wr_variant_id),
+    ).catch(() => undefined);
+  }
+  if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {
+    const failed = await execRun(
+      `UPDATE wr_order_links SET status='failed', last_error=?, request_sent_at=NULL,
+         lease_owner=NULL, lease_expires_at=NULL, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+      message,
+      id,
+    );
+    if (!Number(failed.changes ?? 0)) return "retried";
+    await notifyAdmin(`⚠️ <b>Order Jaspay gagal</b> <code>${String(link.order_code)}</code>\n${escapeHtml(message)}`);
+    await execRun(
+      `UPDATE orders SET fulfillment_status='failed', updated_at=datetime('now')
+       WHERE code=? AND status='lunas'`,
+      String(link.order_code),
+    ).catch(() => undefined);
+    try {
+      const { notifyBuyerDeliveryFailed } = await import("@/lib/notify-buyer");
+      await notifyBuyerDeliveryFailed(String(link.order_code), db);
+    } catch { /* kabar pembeli best-effort */ }
+    return "failed";
+  }
+  await execRun(
+    `UPDATE wr_order_links SET status='retry', last_error=?, request_sent_at=NULL,
+       lease_owner=NULL, lease_expires_at=NULL,
+       next_attempt_at=?, updated_at=datetime('now') WHERE id=? AND status='claimed' AND wr_order_id IS NULL`,
+    message,
+    nextAttemptIso(attempt),
+    id,
+  );
+  return "retried";
 }
 
 async function handleOrderError(
@@ -772,6 +1154,7 @@ export async function reconcileStuckWrOrders(
       `SELECT wr_order_id, order_code, id FROM wr_order_links
         WHERE (status IN ('processing','submitted','ordering')
           OR (status='claimed' AND request_sent_at IS NOT NULL))
+         AND COALESCE(wr_variant_id,'') NOT LIKE 'jaspay:%'
          AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-${minAge} minutes')
        ORDER BY RANDOM() LIMIT 12`,
     )
