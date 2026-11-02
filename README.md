@@ -1,5 +1,18 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Info layanan Pedia terpadu - 2 November 2026
+
+Implementasi lokal; deployment belum diverifikasi. Panel di bawah pilihan memuat
+deskripsi, arti HQ/Real, syarat khusus, garansi/drop, statistik dan glosarium.
+Detail bawah digabung dan ringkasan tidak mengulang deskripsi; syarat unik tetap
+terlihat desktop/mobile. Statistik refill bernama Pengajuan Refill (7 hari), bukan
+Drop rate, dan hilang pada No Refill. Migrasi0090 memperbaiki copy akun lama dan
+template Real dengan guard identitas/copy lama; edit admin dan snapshot order
+tetap. Deskripsi masih kurasi `pedia_tiers.description_md`, bukan impor dashboard
+otomatis. API resmi tidak mendokumentasikan field deskripsi; sumber dashboard
+historis dicatat di [spec](docs/pedia/indosmm-catalog-refill-2026-11-01.md).
+Tidak ada env, cron, schema, harga atau kontrak pembayaran baru.
+
 ## Logo platform Pedia - 2 November 2026
 
 Glyph sudah dipublikasi oleh CI commit `7774b0c`; URL lama masih dapat tersimpan

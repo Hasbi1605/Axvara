@@ -139,7 +139,7 @@ def service(slug, metric, r, idx, packages, instructions, mode_api):
     start = norm_time(r.get('d_start') or (ms.group(1) if ms else None))
     speed = norm_speed(r.get('d_speed') or ((mp.group(1) + ('/hari' if mp.re.pattern.startswith('(?i)day') else '')) if mp else None))
     desc = f"{METRIC.get(metric, metric)} {'dari akun Indonesia' if reg == 'indonesia' else 'global'}"
-    desc += {'real': ', akun real/aktif', 'hq': ', akun HQ', 'ekonomis': ', pilihan ekonomis', 'standar': ''}[q] + '.'
+    desc += {'real': ', label Real', 'hq': ', akun HQ', 'ekonomis': ', pilihan ekonomis', 'standar': ''}[q] + '.'
     refill_line = ('No Refill: jumlah yang drop tidak diisi ulang.' if d <= 0 else
                    f"{refill_text(d)}: ajukan refill di halaman Refill Pedia selama masa refill sejak pesanan dibuat, 1× per 24 jam. " +
                    ('Refill diproses otomatis.' if mode_api else 'Refill diproses admin, biasanya dalam 1×24 jam.'))

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PediaRefillClient } from "@/app/pedia/refill/refill-client";
 import { pediaRefillState } from "@/lib/pedia/refill-policy";
-import { refillLabel, dropRateLevel, PEDIA_TERMS } from "@/lib/pedia/terms";
+import { refillLabel, PEDIA_TERMS } from "@/lib/pedia/terms";
 
 vi.mock("@/components/ui/IosIcon", () => ({ IosIcon: () => null }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); sessionStorage.clear(); });
@@ -43,8 +43,8 @@ describe("pediaRefillState", () => {
     expect(refillLabel(0)).toBe("No Refill");
     expect(refillLabel(30)).toBe("Refill 30 Days");
     expect(refillLabel(3650)).toBe("Refill Lifetime");
-    expect([dropRateLevel(1), dropRateLevel(5), dropRateLevel(20), dropRateLevel(null)]).toEqual(["low", "medium", "high", null]);
-    expect(PEDIA_TERMS.map((t) => t.term)).toEqual(expect.arrayContaining(["Drop rate", "No Drop", "Less Drop", "High Drop", "No Refill"]));
+    expect(PEDIA_TERMS.map((t) => t.term)).toEqual(expect.arrayContaining(["HQ", "Real", "Pengajuan Refill", "Drop rate", "No Drop", "Less Drop", "High Drop", "No Refill"]));
+    expect(PEDIA_TERMS.find((t) => t.term === "Drop rate")?.meaning).toContain("pengajuan Refill bukan pengukuran langsung");
   });
 });
 

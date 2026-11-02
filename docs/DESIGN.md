@@ -1,5 +1,17 @@
 # DESIGN.md — AXVARA Design System
 
+## Panel informasi Pedia terpadu - 2 November 2026
+
+Implementasi lokal; deployment belum diverifikasi. Pertahankan panel cyan/glass
+inline di bawah pilihan, font dan token existing. Urutan: deskripsi karakter,
+penjelasan HQ/Real, Syarat khusus, Refill/drop, grid angka (dua kolom mobile/tiga
+mulai sm), Pengajuan Refill 7 hari, lalu disclosure Arti istilah. Deskripsi di
+ringkasan dan kartu Detail layanan terpilih dihapus; copy produk khusus berpindah
+ke panel. Sebelum memilih, Tentang layanan hanya untuk copy non-boilerplate.
+Tidak ada syarat khusus yang disembunyikan pada mobile. Radio mengacu panel
+melalui aria-describedby; summary native dan tautan bantuan memiliki hit area44px,
+summary memakai fokus cyan. Persentase refill netral, tanpa label risiko drop.
+
 ## Orbit Pedia mobile dan satu tombol hapus — koreksi 31 Oktober 2026
 
 Implementasi lokal untuk publikasi CI, menggantikan orbit desktop-only16Oktober.

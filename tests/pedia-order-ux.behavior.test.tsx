@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
 import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
 import { ServicePicker } from "@/components/pedia/ServicePicker";
+import { ServiceInfoCard } from "@/components/pedia/ServiceInfoCard";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { usePediaPrices } from "@/components/pedia/usePediaPrices";
@@ -610,14 +611,75 @@ describe("Pedia configurator", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ quantity: 2, comments: "Mantap\nKeren" });
   });
 
-  it("explains refill, drop label and measured drop rate for the selected service", () => {
+  it("explains refill requests without presenting them as a measured drop rate", () => {
     const info = { ...product, tiers: [{ ...product.tiers[1], refill_days: 30, refill_mode: "manual" as const, drop_label: "high_drop" as const, refill_pct: 12, success_pct: 97, speed_per_day: "10K/hari", avg_time: "19 menit", eta_start: "0–1 jam" }] };
     render(<OrderClient product={info} initialTarget="" ordersEnabled />);
     fireEvent.click(screen.getByRole("radio"));
     const card = screen.getByRole("region", { name: "Info layanan" });
-    for (const text of ["0–1 jam", "10K/hari", "19 menit per 1.000", "97% (7 hari)", "diproses admin", "High Drop", "Saat ini drop besar", "Drop rate: Tinggi", "12% pesanan layanan ini"]) expect(card.textContent).toContain(text);
+    for (const text of ["0–1 jam", "10K/hari", "19 menit per 1.000", "97% (7 hari)", "diproses admin", "High Drop", "Saat ini drop besar", "Pengajuan Refill · 7 hari: 12%", "bukan persentase jumlah yang hilang"]) expect(card.textContent).toContain(text);
+    expect(card.textContent).not.toContain("Drop rate:");
     expect(screen.getAllByText("High Drop").some((el) => el.className.includes("text-red-200"))).toBe(true);
     expect(card.textContent).not.toMatch(/supplier|indosmm/i);
+  });
+
+  it("merges unique copy and conditions into the selected panel without losing product requirements", () => {
+    const description = 'Followers global berlabel HQ.\n<script>alert("test")</script>';
+    const described = { ...product, description_md: "Akun harus memiliki foto profil.", tiers: [{ ...product.tiers[1], quality: "hq" as const, description, terms: "No Refill: jumlah yang drop tidak diisi ulang.\nRefill khusus hanya untuk penurunan di atas 10%.\nJangan mengganti username.\nJangan mengganti username." }] };
+    const { container } = render(<OrderClient product={described} initialTarget="" ordersEnabled />);
+    expect(screen.getByRole("heading", { name: "Tentang layanan" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio"));
+    const card = screen.getByRole("region", { name: "Info layanan" });
+    expect(screen.queryByRole("heading", { name: /Detail layanan terpilih|Tentang layanan/ })).toBeNull();
+    expect(screen.getAllByText((_, element) => element?.tagName === "P" && element.textContent === description)).toHaveLength(1);
+    expect(within(card).getByText("Akun harus memiliki foto profil.")).toBeTruthy();
+    expect(within(card).getByText(/High Quality, label kualitas/, { selector: "p" })).toBeTruthy();
+    expect(card.querySelector("script")).toBeNull();
+    expect(within(card).getByText("Refill khusus hanya untuk penurunan di atas 10%.")).toBeTruthy();
+    expect(within(card).getAllByText("Jangan mengganti username.")).toHaveLength(1);
+    expect(card.textContent).not.toContain("No Refill: jumlah yang drop tidak diisi ulang.");
+    const copy = within(card).getByText((_, element) => element?.tagName === "P" && element.textContent === description);
+    const conditions = within(card).getByRole("heading", { name: "Syarat khusus" });
+    const numbers = within(card).getAllByText("Start time", { selector: "dt" })[0];
+    expect(copy.compareDocumentPosition(conditions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(conditions.compareDocumentPosition(numbers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const radio = screen.getByRole("radio");
+    const linkedPanel = document.getElementById(radio.getAttribute("aria-describedby")!);
+    expect(linkedPanel?.contains(card)).toBe(true);
+    expect(container.querySelector("aside")?.textContent).not.toContain(description);
+    const disclosure = within(card).getByText("Arti istilah").closest("details")!;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(disclosure.querySelector("summary")!);
+    expect(within(disclosure).getByText("HQ")).toBeTruthy();
+  });
+
+  it("omits exact generic product copy but keeps a custom description", () => {
+    const copy = `${product.name}. Pilih layanan dan jumlah, gunakan link yang sesuai, lalu lanjutkan ke pembayaran QRIS.`;
+    const { rerender } = render(<OrderClient product={{ ...product, description_md: copy }} initialTarget="" ordersEnabled />);
+    expect(screen.queryByText(copy)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Tentang layanan" })).toBeNull();
+    rerender(<OrderClient product={{ ...product, description_md: `${copy}\nTarget harus memiliki minimal 10 followers.` }} initialTarget="" ordersEnabled />);
+    expect(screen.getByText(/Target harus memiliki minimal 10 followers/)).toBeTruthy();
+  });
+
+  it.each([null, undefined, NaN, -1, 101, 0, 1, 100])("never shows refill-request statistics for No Refill (%s)", (refill_pct) => {
+    render(<ServiceInfoCard t={{ ...product.tiers[0], quality: "real", refill_pct }} />);
+    const card = screen.getByRole("region", { name: "Info layanan" });
+    expect(card.textContent).not.toContain("Pengajuan Refill");
+    expect(card.textContent).not.toContain("Drop rate");
+    expect(card.textContent).toContain("Label karakter akun pada layanan");
+    expect(card.textContent).not.toMatch(/supplier|indosmm|providersmm/i);
+  });
+
+  it.each([null, undefined, NaN, -1, 101])("hides unavailable or invalid refill-request statistics (%s)", (refill_pct) => {
+    render(<ServiceInfoCard t={{ ...product.tiers[1], refill_pct }} />);
+    expect(screen.getByRole("region", { name: "Info layanan" }).textContent).not.toContain("Pengajuan Refill");
+  });
+
+  it("shows a known zero refill-request percentage without calling it a low drop rate", () => {
+    render(<ServiceInfoCard t={{ ...product.tiers[1], refill_pct: 0 }} />);
+    const card = screen.getByRole("region", { name: "Info layanan" });
+    expect(card.textContent).toContain("Pengajuan Refill · 7 hari: 0%");
+    expect(card.textContent).not.toContain("Rendah");
   });
 
   it("shows the same category bar on every multi-service catalog, disables empty ones, hides it for one service, and has no account-type dropdown (owner 2026-10-31)", () => {

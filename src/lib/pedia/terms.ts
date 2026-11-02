@@ -31,15 +31,12 @@ export function refillLabel(days: number): string {
   return `Refill ${days} Days`;
 }
 
-/** Drop rate terukur dari data supplier 7 hari (persentase order yang diajukan refill). */
-export function dropRateLevel(refillRate: number | null | undefined): "low" | "medium" | "high" | null {
-  if (refillRate == null || !Number.isFinite(refillRate)) return null;
-  return refillRate <= 2 ? "low" : refillRate <= 8 ? "medium" : "high";
-}
-
 export const PEDIA_TERMS: { term: string; meaning: string }[] = [
+  { term: "HQ", meaning: "High Quality, label kualitas layanan. Bukan jaminan akun lama, berpostingan, aktif, atau bebas Drop." },
+  { term: "Real", meaning: "Label karakter akun pada layanan. Bukan jaminan akun aktif, interaksi organik, atau bebas Drop." },
   { term: "Drop", meaning: "Jumlah followers, likes, atau views berkurang setelah pesanan selesai. Semua layanan bisa drop; yang berbeda seberapa besar." },
-  { term: "Drop rate", meaning: "Perkiraan seberapa sering layanan drop. Di AXVARA dihitung dari persentase pesanan layanan ini yang diajukan refill dalam 7 hari terakhir: ≤2% rendah, 3–8% sedang, >8% tinggi." },
+  { term: "Drop rate", meaning: "Persentase jumlah yang berkurang setelah pengiriman. Persentase pengajuan Refill bukan pengukuran langsung Drop rate." },
+  { term: "Pengajuan Refill", meaning: "Persentase pesanan layanan ini yang diajukan Refill dalam 7 hari terakhir, bukan persentase followers, likes, atau views yang hilang." },
   { term: "No Drop", meaning: DROP_MEANING.no_drop },
   { term: "Less Drop", meaning: DROP_MEANING.less_drop },
   { term: "High Drop", meaning: DROP_MEANING.high_drop },

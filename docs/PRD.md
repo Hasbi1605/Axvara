@@ -1,5 +1,22 @@
 # PRD — AXVARA
 
+## Info layanan Pedia terpadu - 2 November 2026
+
+Implementasi lokal; deployment belum diverifikasi. Panel tepat di bawah layanan
+terpilih menjadi sumber deskripsi: karakter layanan, syarat khusus, garansi/drop,
+angka layanan, lalu Arti istilah. HQ (High Quality) dan Real adalah label layanan,
+bukan jaminan akun aktif/asli, akun lama/berpostingan atau bebas drop. Karakter
+khusus hanya mengikuti bukti layanan tersebut. Deskripsi dan syarat unik tetap
+terbaca pada mobile; ringkasan tidak mengulang deskripsi. Kartu detail bawah
+digabung; Tentang layanan hanya sebelum memilih bila ada copy produk bermakna.
+
+Persentase permintaan refill diberi nama Pengajuan Refill (7 hari), bukan Drop
+rate atau tingkat risiko; disembunyikan pada No Refill dan bila data tidak valid.
+Gate sampel katalog minimal lima order tetap. Migrasi0090 mengoreksi copy akun
+lama dan template Real dengan guard copy lama, tanpa mengubah edit admin atau
+snapshot order. Deskripsi dashboard menjadi bahan kurasi, bukan impor otomatis
+HTML/API; tidak ada perubahan checkout, harga, supplier atau garansi.
+
 ## Orbit Pedia mobile dan pencarian — koreksi 31 Oktober 2026
 
 Implementasi lokal untuk publikasi CI. Orbit Pedia tampil di tengah sesudah teks

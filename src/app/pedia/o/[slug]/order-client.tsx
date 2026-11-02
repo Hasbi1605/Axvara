@@ -24,8 +24,6 @@ const fieldClass = "mt-2 min-h-11 w-full rounded-xl border border-white/30 bg-wh
 export const RETRY_MESSAGE = "Pesanan belum berhasil dibuat. Tekan Coba lagi; kamu tidak akan ditagih dua kali.";
 // Baris panduan supplier yang hanya mengulang alur checkout (pilih layanan, isi kontak, bayar, pantau).
 const GENERIC_GUIDE_LINE = /pilih layanan dan jumlah|masukkan jumlah, bandingkan|baca ketentuan dan konfirmasi|isi kontak, periksa total|periksa ketentuan, isi whatsapp|setelah pembayaran terkonfirmasi|pantau proses melalui/i;
-// Baris refill/drop sudah dijelaskan di Info layanan; tidak diulang di detail (2026-11-01).
-const REFILL_DROP_LINE = /^(?:No Refill|Refill\b|No Drop|Less Drop|High Drop|Belum ada label drop)/i;
 // Ketentuan yang paling sering memicu kendala tampil lebih dulu; sisanya dilipat.
 const KEY_TERM = /refill|garansi|jangan|privat|tunggu/i;
 
@@ -51,6 +49,8 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
   const [attempted, setAttempted] = useState(false);
   const [quote, setQuote] = useState<{ key: string; quote_token: string; total: number; payable: number; expires: number } | null>(null);
   const tier = product.tiers.find((t) => t.id === tierId);
+  const productCopy = product.description_md?.trim() ?? "";
+  const productDescription = productCopy === `${product.name}. Pilih layanan dan jumlah, gunakan link yang sesuai, lalu lanjutkan ke pembayaran QRIS.` ? "" : productCopy;
   const customComments = tier?.input_kind === "comments";
   const checklist = product.checklist ?? [];
   const platform = PEDIA_PLATFORM_LABEL[product.platform as PediaPlatform] ?? product.platform;
@@ -235,7 +235,6 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
       {tier ? <>
         <p className="text-sm font-semibold leading-5 text-white">{tier.public_name ?? tier.label_note ?? "Layanan terpilih"}</p>
         <div className="mt-2"><ServiceChips t={tier} eta /></div>
-        {tier.description && <p className="mt-3 whitespace-pre-line break-words text-[13px] leading-6 text-white/70">{tier.description}</p>}
         <dl className="mt-4 space-y-2.5 text-[13px] text-white/65">
           {qty != null && <div className="flex justify-between gap-4"><dt>Jumlah</dt><dd className="text-right tabular-nums text-white">{qty.toLocaleString("id-ID")}</dd></div>}
           {tier.eta_finish && <div className="flex justify-between gap-4"><dt>Estimasi selesai</dt><dd className="text-right text-white/70">{tier.eta_finish}</dd></div>}
@@ -319,7 +318,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
               {quantityNotice && <p role="status" className="mt-2 text-xs text-amber-200">{quantityNotice}</p>}{inlineError("quantity")}
               <div role="status" aria-live="polite">{qty != null && comparison?.failed && <p className="mt-2 text-[13px] leading-5 text-white/65">Harga terbaru belum dapat dimuat. Harga akan diperiksa kembali sebelum pembayaran. <button type="button" disabled={attempted} onClick={comparison.retry} className="min-h-11 font-medium text-[#00E5FF] underline underline-offset-4 disabled:opacity-40">Coba muat harga lagi</button></p>}</div>
             </fieldset></div>
-            <div className="mt-5 xl:mt-6"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} onClear={() => setTierId(null)} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded info={(t) => <ServiceInfoCard t={t} />} />{inlineError("tier")}</div>
+            <div className="mt-5 xl:mt-6"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} onClear={() => setTierId(null)} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded info={(t) => <ServiceInfoCard t={t} productDescription={productDescription} />} />{inlineError("tier")}</div>
           </section>
         </>}
         {stage === 2 && <section aria-labelledby="pedia-stage-heading">
@@ -349,10 +348,9 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
         {error && <p ref={errorRef} role="alert" className="mt-4 rounded-xl border border-red-300/25 p-3 text-sm leading-6 text-red-200">{error}</p>}
       </div>
       <aside ref={summaryRef} className={`${embedded ? "" : "max-xl:hidden "}min-w-0 overflow-hidden ax-glass-card ax-liquid relative rounded-[24px] bg-[#0e1224] xl:col-start-2 xl:row-span-2 xl:row-start-1 ${summaryFits ? "xl:sticky xl:top-24" : ""}`}>{summary()}</aside>
-      {stage === 1 && (tier || product.description_md?.trim()) && <section aria-labelledby="pedia-detail-heading" className={`ax-glass-card ax-liquid relative min-w-0 rounded-2xl p-3.5 text-[13px] leading-6 text-white/70 xl:col-start-1 ${product.description_md?.trim() ? "" : "max-xl:hidden"}`}>
-        <h3 id="pedia-detail-heading" className="text-sm font-bold text-white">{tier ? "Detail layanan terpilih" : "Tentang layanan"}</h3>
-        {product.description_md?.trim() && <p className="mt-2 whitespace-pre-line break-words">{product.description_md.trim()}</p>}
-        {tier?.terms && <ul className="mt-3 space-y-1.5 max-xl:hidden">{tier.terms.split(/\n+/).filter((l) => l.trim() && !REFILL_DROP_LINE.test(l.trim())).map((l, i) => <li key={i} className="flex gap-2 break-words"><span aria-hidden="true" className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[#00E5FF]" /><span>{l.trim()}</span></li>)}</ul>}
+      {stage === 1 && !tier && productDescription && <section aria-labelledby="pedia-detail-heading" className="ax-glass-card ax-liquid relative min-w-0 rounded-2xl p-3.5 text-[13px] leading-6 text-white/70 xl:col-start-1">
+        <h3 id="pedia-detail-heading" className="text-sm font-bold text-white">Tentang layanan</h3>
+        <p className="mt-2 whitespace-pre-line break-words">{productDescription}</p>
       </section>}
     </div>
     <div className={embedded ? "mt-5 xl:hidden" : "pedia-mobile-action ax-glass-strong fixed inset-x-0 bottom-0 z-40 rounded-t-2xl px-4 pt-3.5 xl:hidden"} style={embedded ? undefined : { paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>{canOpenSheet && <span aria-hidden="true" className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-white/25" />}{cta}</div>

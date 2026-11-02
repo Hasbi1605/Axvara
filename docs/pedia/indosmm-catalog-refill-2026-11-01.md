@@ -29,6 +29,11 @@ sebelum Pedia dibuka penuh.
 - `ai.indosmm.web.id/api/analysis?period=168` (publik): order, success/cancel/
   refill rate dan AI score 7 hari. Bukan API resmi; formatnya bisa berubah.
 - Statistik ini bukti operasional supplier, bukan uji kualitas AXVARA.
+- API resmi `https://indosmm.id/api` tidak mendokumentasikan field deskripsi.
+  Snapshot dashboard memakai `/services/get-service-description/{id}` yang
+  mengembalikan `description` berisi HTML. Ini sumber kurasi, bukan kontrak API
+  resmi atau impor otomatis ke pembeli. Katalog tetap memakai copy tier tersimpan
+  dan `whiteLabel()`; tidak merender HTML mentah dashboard.
 
 ## Data dan migrasi
 - 0085: `pedia_service_stats` (avg_time, orders_7d, success/cancel/refill rate,
@@ -49,10 +54,20 @@ sebelum Pedia dibuka penuh.
 ## Pembeli
 - Kartu layanan: chip wilayah, Refill N Days/No Refill, label drop berwarna
   (No Drop hijau, Less Drop kuning, High Drop merah), Start time.
-- Info layanan (sesudah daftar di langkah 1): Start time, Speed, Avg time per
-  1.000, Min/Max, Success rate 7 hari (bila ≥5 order), arti Refill dan label drop,
-  Drop rate terukur (≤2% rendah, 3–8% sedang, >8% tinggi dari persen pesanan
-  supplier yang diajukan refill), panel "Arti istilah".
+- Revisi2November (implementasi lokal, deployment belum diverifikasi): Info
+  layanan tepat di bawah pilihan memuat deskripsi karakter, arti HQ/Real, syarat
+  khusus, Refill/drop, lalu Start time/Speed/Avg time per1.000/Min-Max/Success rate
+  dan Arti istilah. HQ/Real tidak membuktikan akun aktif atau bebas drop; akun
+  lama/berpostingan hanya ditulis bila sesuai bukti per layanan. Detail bawah dan
+  deskripsi di ringkasan tidak diulang; copy produk khusus dipertahankan di panel.
+  Hanya boilerplate produk persis dibuang. Syarat custom tetap terlihat mobile.
+- Pengajuan Refill (7 hari) menggantikan label Drop rate terukur dan klasifikasi
+  rendah/sedang/tinggi yang lama: rasio pengajuan bukan persentase jumlah yang
+  hilang. Hanya layanan refill dan data valid0..100; gate katalog >=5 order tetap.
+  Glosarium umum tetap menjelaskan istilah Drop rate dengan definisi yang benar.
+- Migrasi0090 mengoreksi tier47/service7887 (akun lama, bukan akun berpostingan)
+  dan template Real dengan guard sumber/copy lama; copy admin berbeda, order dan
+  snapshot tidak diubah. Generator kurasi memakai label Real tanpa janji aktif.
 - Komentar acak tidak bisa ditentukan isinya; komentar custom di luar scope.
 
 ## Skema refill
