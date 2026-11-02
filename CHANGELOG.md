@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-02 — Rampingkan AGENTS.md (46KB→19,6KB): keputusan per area dipindah utuh tanpa perubahan isi ke docs/agent-rules/ (supplier-wr-sk, buyer-credentials, admin-security, payments, pedia, platform-ops, whatsapp-gateway) dengan tabel indeks wajib-baca per area; ~/AGENTS.md global dihapus atas instruksi owner — AGENTS.md, docs/agent-rules/*, README.md — (verifikasi: 152/152 baris non-kosong yang dipindah terdapat di file baru, git diff --check bersih; dokumentasi saja, Vitest/build N/A)
+
 - 2026-11-02 — Verifikasi akhir terpadu status, UI dan email Pedia; jenis order DANA dibaca dari JOIN kandidat pembayaran tanpa lookup fallback tambahan — Pedia buyer/admin/Telegram/email, docs/PRD.md, docs/DESIGN.md, docs/ARCHITECTURE.md, README.md — (verifikasi: npx vitest run --run lulus 307 file/3922 tes; tsc dan build:pages lulus; D1 Miniflare/workerd smoke lulus; Chrome desktop/mobile 320/390/1280, transisi status otomatis, gagal refresh, keyboard dan aset terverifikasi, recheck 30/30; diff-check bersih; fixture tanpa transaksi/email produksi; deployment belum diverifikasi)
 
 - 2026-11-02 — Batasi sighting paid Pedia ke ledger hilang ≤24 jam, pertahankan retry due lama, hilangkan dispatch DANA ganda dan teks manual pada email pembeli — pedia/dispatch.ts, pedia/notify.ts, webhook/dana, tests/pedia-status-backend.test.ts, PRD/ARCHITECTURE/README — (verifikasi: 27 tes fixture, tsc dan smoke Miniflare D1 lulus; belum deploy)

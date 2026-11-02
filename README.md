@@ -682,9 +682,10 @@ AXVARA adalah toko digital untuk akun, aplikasi, dan tools premium dengan katego
 
 ```
 axvara/
-├── AGENTS.md               # Aturan khusus project (scope axvara, tidak sentuh ~/AGENTS.md)
+├── AGENTS.md               # Aturan inti project + indeks aturan per area (docs/agent-rules/)
 ├── CHANGELOG.md            # Riwayat perubahan — WAJIB update tiap ubahan (terbaru di atas)
 ├── docs/
+│   ├── agent-rules/        # Aturan agent per area (indeks di AGENTS.md)
 │   ├── PRD.md              # Requirements, flow, payment spec, AC
 │   ├── DESIGN.md           # Apple Store + glassmorphism + motion
 │   ├── ARCHITECTURE.md     # Stack D1+R2, schema, API contract
@@ -1231,7 +1232,7 @@ Verifikasi mengikuti dampak perubahan di [AGENTS.md](AGENTS.md#verifikasi-wajib-
 - **Eksekusi review round 3:** `docs/REVIEW-ROUND3-EXECUTION-2026-09-08.md` — CATATAN HISTORIS (klaim "semua selesai"/"per-item"/"qty" dikoreksi round 4; konteks dipertahankan).
 - **Eksekusi review round 4 (historis):** `docs/REVIEW-ROUND4-EXECUTION-2026-09-08.md` — klaim budget, yield, audit dan recovery dikoreksi round 5.
 - **Eksekusi review round 5 (terkini):** [laporan RR5-01–08](docs/REVIEW-ROUND5-EXECUTION-2026-09-09.md) — handover D1 memakai pencarian literal + fakta audit pemenang; manifest/qty dan UI mengikuti status bisnis; budget request-scoped 40 termasuk helper/batch; materialisasi bertahap; yield tidak menambah kegagalan; finalisasi atomik + pemulihan split lama; flag WA konsisten. Tidak ada migrasi baru; membutuhkan skema sampai 0022. Bukti lokal: 527 test (44 file), termasuk 26 test RR5 baru; batas bukti dan before/after dijelaskan di laporan.
-- **Aturan project:** `axvara/AGENTS.md` — khusus project axvara (scope lokal, tidak ubah `~/AGENTS.md` global). Wajib baca sebelum ubah kode.
+- **Aturan project:** `axvara/AGENTS.md` — aturan inti khusus project axvara; keputusan per area (supplier, kredensial pembeli, admin/security, pembayaran, Pedia, platform, WhatsApp) di `docs/agent-rules/` dan wajib dibaca sesuai area tugas. `~/AGENTS.md` global sudah dihapus atas instruksi owner (2 November 2026). Wajib baca sebelum ubah kode.
 
 ## ☁️ CI/CD Cloudflare
 
