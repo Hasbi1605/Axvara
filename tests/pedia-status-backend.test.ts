@@ -30,7 +30,7 @@ vi.mock("@/lib/telegram/api", () => ({
   sendMessage: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
 }));
 
-type MailCall = { to: string; subject: string; text: string };
+type MailCall = { to: string; subject: string; text: string; html?: string };
 const pediaMails: MailCall[] = [];
 const forwardMails: MailCall[] = [];
 vi.mock("@/lib/pedia/email", () => ({
@@ -211,7 +211,8 @@ describe("provider paid routing + generic fulfillment no-op for Pedia", () => {
     expect((fx.sql.prepare(`SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code=?`).get(PEDIA_CODE) as { n: number }).n).toBe(0);
     const paidSends = pediaMails.filter((m) => m.subject.includes("Pembayaran diterima"));
     expect(paidSends).toHaveLength(1);
-    expect(paidSends[0].text).toContain("Status saat ini:");
+    expect(paidSends[0].text).toContain("Status: Pembayaran diterima");
+    expect(paidSends[0].html).toContain("STATUS: PEMBAYARAN DITERIMA");
     expect(forwardMails.filter((m) => m.text.includes("Detail produk dikirim"))).toHaveLength(0);
   });
 });
@@ -406,8 +407,13 @@ describe("lifecycle emails: one send per phase, recovery, white-label", () => {
     const add = async () => ({ ok: true as const, data: { order: "22024298" }, status: 200 }) as never;
     await processPediaPaidOrders(add, db);
     await processPediaPaidOrders(add, db);
-    // Processing: first submitted→in_progress transition emits once.
-    // The transition mail carries the just-reported counts.
+    // Processing fires on the durable submitted receipt (not in_progress):
+    // the first tick's dispatch already mailed it once with Diproses copy.
+    const procMails = () => pediaMails.filter((m) => m.subject.includes("sedang diproses"));
+    expect(procMails()).toHaveLength(1);
+    expect(procMails()[0].text).toContain("Pesanan Diproses");
+    expect(procMails()[0].text).not.toContain("sedang berjalan");
+    // Poll in_progress is a deduped no-op (same phase key, already sent).
     fx.sql.prepare(`UPDATE pedia_order_items SET lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
     const prog = async () => ({ ok: true as const, data: { status: "In progress", start_count: 8177, remains: 73 }, status: 200 }) as never;
     await processPediaPaidOrders(prog, db);
@@ -419,25 +425,25 @@ describe("lifecycle emails: one send per phase, recovery, white-label", () => {
     await processPediaPaidOrders(done, db);
     const subjects = pediaMails.map((m) => m.subject);
     expect(subjects.filter((s) => s.includes("Pembayaran diterima"))).toHaveLength(1);
-    expect(subjects.filter((s) => s.includes("sedang berjalan"))).toHaveLength(1);
+    expect(subjects.filter((s) => s.includes("sedang diproses"))).toHaveLength(1);
     expect(subjects.filter((s) => s.includes("selesai"))).toHaveLength(1);
     for (const mail of pediaMails) {
       expect(mail.text).toContain("/pesanan/" + PEDIA_CODE);
       expect(mail.text).not.toContain("contact");
       expect(mail.text).not.toContain("PIN");
       expect(mail.text).not.toMatch(/indosmm|providersmm|supplier/i);
-      expect(mail.text).toContain("First Last");
+      expect(mail.text).toContain("First");
       expect(mail.text).toContain("100");
     }
     // Paid body at paid phase: counts unavailable => honest label, no zero-claim.
     const paidBody = pediaMails.find((m) => m.subject.includes("Pembayaran diterima"))!.text;
     expect(paidBody).toMatch(/belum dikonfirmasi|mengikuti antrean/i);
     expect(paidBody).not.toMatch(/terkirim: 0 dari/);
-    // Processing body carries the reported snapshot counts (fixture 8177/73→27).
-    const procBody = pediaMails.find((m) => m.subject.includes("berjalan"))!.text;
-    expect(procBody).toContain("8.177");
-    expect(procBody).toContain("sisa 73");
-    expect(procBody).toContain("27 dari 100");
+    // Processing mail (receipt semantics): honest unknown counts at receipt,
+    // Diproses copy, never "sedang berjalan".
+    const procBody = pediaMails.find((m) => m.subject.includes("diproses")) ?? pediaMails.find((m) => m.subject.includes("Diproses"))!;
+    expect(procBody.text).toContain("Pesanan Diproses");
+    expect(procBody.text).not.toContain("sedang berjalan");
     // Failed-send recovery: flip completed to failed with due backoff,
     // cron sweep resends once (fenced sender owns retry).
     fx.sql.prepare(`UPDATE buyer_notice_log SET status='failed', access_retry_at=datetime('now','-1 minute') WHERE idempotency_key=?`).run(`email:pedia-completed:${PEDIA_CODE}`);
@@ -461,7 +467,8 @@ describe("lifecycle emails: one send per phase, recovery, white-label", () => {
     expect(await notifyBuyerPaymentReceived(PEDIA_CODE, db)).toBe(true);
     expect(forwardMails).toHaveLength(0);
     expect(pediaMails).toHaveLength(1);
-    expect(pediaMails[0].text).not.toMatch(/Detail produk dikirim|kredensial|akun/i);
+    expect(pediaMails[0].text).not.toMatch(/Detail produk dikirim|kredensial|PIN|garansi/i);
+    expect(pediaMails[0].html).toContain("Lihat Status Pesanan →");
   });
 
   it("kind lookup failure returns false, never Market mail", async () => {
@@ -556,9 +563,10 @@ describe("review corrections: fenced email regressions 1-8", () => {
     await processPediaPaidOrders(apiError, db);
     expect((await db.queryFirst(`SELECT status FROM pedia_order_items WHERE order_code=?`, PEDIA_CODE))?.status).toBe("needs_check");
     expect(pediaMails.filter((m) => m.subject.includes("Pembayaran diterima"))).toHaveLength(1);
-    // Simulate missed paid hook: item in_progress, no ledger rows at all.
+    // Simulate missed receipt hook: item submitted (durable receipt), no
+    // ledger rows at all → discovery synthesizes paid + processing.
     fx.sql.prepare(`DELETE FROM buyer_notice_log`).run();
-    fx.sql.prepare(`UPDATE pedia_order_items SET status='in_progress', start_count=8177, remains=73, supplier_order_id='22024298', lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='submitted', start_count=NULL, remains=NULL, supplier_order_id='22024298', lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
     const { retryPendingPediaEmails } = await import("@/lib/pedia/notify-retry");
     const before = pediaMails.length;
     await retryPendingPediaEmails(db);
@@ -568,34 +576,35 @@ describe("review corrections: fenced email regressions 1-8", () => {
     expect(pediaMails.length).toBe(before + 2);
   });
 
-  it("5. supplier Pending keeps submitted, no processing mail; In progress fires once", async () => {
+  it("5. supplier Pending keeps submitted; accepted receipt fires Diproses once", async () => {
     const db = createDatabaseAccess(fx.db);
     seedCatalog(db);
     seedPediaOrder();
     const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
     const add = async () => ({ ok: true as const, data: { order: "22024298" }, status: 200 }) as never;
     await processPediaPaidOrders(add, db);
-    // Reset phase rows to isolate supplier-Pending behavior.
-    fx.sql.prepare(`DELETE FROM buyer_notice_log`).run();
+    // The durable submitted receipt already fired processing once (Diproses).
+    expect(pediaMails.filter((m) => m.subject.includes("diproses") || m.subject.includes("Diproses"))).toHaveLength(1);
+    expect((await db.queryFirst(`SELECT status, supplier_order_id FROM pedia_order_items WHERE order_code=?`, PEDIA_CODE))).toMatchObject({ status: "submitted", supplier_order_id: "22024298" });
+    // Supplier Pending polls: stays submitted, no duplicate processing mail.
     const mailsAtPendingStart = pediaMails.length;
     fx.sql.prepare(`UPDATE pedia_order_items SET lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
     const pending = async () => ({ ok: true as const, data: { status: "Pending", start_count: "", remains: "" }, status: 200 }) as never;
     await processPediaPaidOrders(pending, db);
     expect((await db.queryFirst(`SELECT status FROM pedia_order_items WHERE order_code=?`, PEDIA_CODE))?.status).toBe("submitted");
-    expect(pediaMails.slice(mailsAtPendingStart).filter((m) => m.subject.includes("berjalan"))).toHaveLength(0);
+    expect(pediaMails.length).toBe(mailsAtPendingStart);
     // Previously-running item stays in_progress on transient Pending (no regress).
     fx.sql.prepare(`UPDATE pedia_order_items SET status='in_progress', lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
     await processPediaPaidOrders(pending, db);
     expect((await db.queryFirst(`SELECT status FROM pedia_order_items WHERE order_code=?`, PEDIA_CODE))?.status).toBe("in_progress");
-    // Fresh submitted→in_progress transition emits processing once with counts.
+    expect(pediaMails.length).toBe(mailsAtPendingStart);
+    // Ambiguous submit (no receipt: timeout) never fires processing.
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='queued', supplier_order_id=NULL, start_count=NULL, remains=NULL, submit_attempts=0, lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
     fx.sql.prepare(`DELETE FROM buyer_notice_log WHERE idempotency_key=?`).run(`email:pedia-processing:${PEDIA_CODE}`);
-    fx.sql.prepare(`UPDATE pedia_order_items SET status='submitted', lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
-    const progCountBefore = pediaMails.filter((m) => m.subject.includes("berjalan")).length;
-    const prog = async () => ({ ok: true as const, data: { status: "In progress", start_count: 8177, remains: 73 }, status: 200 }) as never;
-    await processPediaPaidOrders(prog, db);
-    const progMails = pediaMails.filter((m) => m.subject.includes("berjalan"));
-    expect(progMails.length).toBe(progCountBefore + 1);
-    expect(progMails.at(-1)!.text).toContain("8.177");
+    const timeout = async () => ({ ok: false as const, kind: "timeout" as const }) as never;
+    await processPediaPaidOrders(timeout, db);
+    expect((await db.queryFirst(`SELECT status FROM pedia_order_items WHERE order_code=?`, PEDIA_CODE))?.status).toBe("needs_check");
+    expect(pediaMails.filter((m) => m.subject.includes("diproses") || m.subject.includes("Diproses"))).toHaveLength(1);
   });
 
   it("6. deferred paid/processing suppressed at terminal; completed sends once", async () => {
@@ -619,7 +628,8 @@ describe("review corrections: fenced email regressions 1-8", () => {
     expect(paidBody).toHaveLength(paidCount + 1);
     expect(paidBody.at(-1)!.text).toContain("selesai");
     expect(paidBody.at(-1)!.text).not.toContain("sedang berjalan");
-    expect(pediaMails.filter((m) => m.subject.includes("Pesanan sedang berjalan"))).toHaveLength(0);
+    expect(pediaMails.filter((m) => m.subject === "Pesanan sedang berjalan")).toHaveLength(0);
+    expect(pediaMails.filter((m) => m.subject === "Pesanan sedang diproses")).toHaveLength(0);
     expect(await notifyPediaCompleted(db, PEDIA_CODE)).toBe(true);
     expect(pediaMails.length).toBe(before + 2);
     expect(await notifyPediaCompleted(db, PEDIA_CODE)).toBe(true);
@@ -634,7 +644,8 @@ describe("review corrections: fenced email regressions 1-8", () => {
     const { notifyPediaCompleted } = await import("@/lib/pedia/notify");
     expect(await notifyPediaCompleted(db, PEDIA_CODE)).toBe(true);
     const mail = pediaMails.find((m) => m.subject.includes("selesai"))!;
-    expect(mail.text).toContain("masa refill");
+    expect(mail.text).toContain("Refill 365 Days");
+    expect(mail.text).not.toContain("masa garansi");
     expect(mail.text).toContain("Jumlah awal: 8.177");
   });
 
@@ -657,7 +668,7 @@ describe("review corrections: fenced email regressions 1-8", () => {
     const db = createDatabaseAccess(fx.db);
     seedCatalog(db);
     seedPediaOrder();
-    fx.sql.prepare(`UPDATE pedia_order_items SET status='in_progress', remains=80 WHERE order_code=?`).run(PEDIA_CODE);
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='submitted', supplier_order_id='22024298', remains=80 WHERE order_code=?`).run(PEDIA_CODE);
     const { createBudgetedDatabase } = await import("@/lib/db-access");
     const { notifyPediaProcessing } = await import("@/lib/pedia/notify");
     const limited = createBudgetedDatabase(6, 2, fx.db);
@@ -666,7 +677,7 @@ describe("review corrections: fenced email regressions 1-8", () => {
     const queryFirst = vi.fn(db.queryFirst);
     expect(await notifyPediaProcessing({ ...db, queryFirst }, PEDIA_CODE, { startCount: 8177, remains: 73 })).toBe(true);
     expect(queryFirst).toHaveBeenCalledTimes(1);
-    expect(pediaMails[0].text).toContain("sisa 73");
+    expect(pediaMails[0].text).toContain("Sisa: 73");
     expect(pediaMails[0].text).toContain("27 dari 100");
   });
 
@@ -691,8 +702,9 @@ describe("review corrections: fenced email regressions 1-8", () => {
     seedPediaOrder();
     const { notifyPediaProcessing } = await import("@/lib/pedia/notify");
     const { claimPediaEmail, supersedePediaEmail } = await import("@/lib/pedia/notify-channel");
-    for (const status of ["queued", "submitting", "submitted"]) {
-      fx.sql.prepare(`UPDATE pedia_order_items SET status=? WHERE order_code=?`).run(status, PEDIA_CODE);
+    // queued/submitting/needs_check have no accepted receipt: no mail, no row.
+    for (const status of ["queued", "submitting", "needs_check"]) {
+      fx.sql.prepare(`UPDATE pedia_order_items SET status=?, supplier_order_id=NULL WHERE order_code=?`).run(status, PEDIA_CODE);
       expect(await notifyPediaProcessing(db, PEDIA_CODE)).toBe(false);
     }
     expect(fx.sql.prepare(`SELECT COUNT(*) n FROM buyer_notice_log`).get()).toMatchObject({ n: 0 });
@@ -712,8 +724,203 @@ describe("review corrections: fenced email regressions 1-8", () => {
     const { notifyPediaPaid } = await import("@/lib/pedia/notify");
     expect(await notifyPediaPaid(db, PEDIA_CODE)).toBe(true);
     expect(pediaMails[0].text).toContain("Jumlah awal: 8.177");
-    expect(pediaMails[0].text).toContain("sisa 0");
     expect(pediaMails[0].text).toContain("100 dari 100");
-    expect(pediaMails[0].text).not.toMatch(/belum dikonfirmasi|Perkiraan mulai|Perkiraan selesai/);
+    expect(pediaMails[0].text).not.toMatch(/Sisa:|belum dikonfirmasi|Perkiraan mulai|Perkiraan selesai/);
+  });
+});
+
+describe("email refresh T12: branded html, receipt, discovery, blank counts", () => {
+  it("does not reclaim a failed email for an unpaid order or burn attempts", async () => {
+    const db = createDatabaseAccess(fx.db);
+    seedCatalog(db);
+    seedPediaOrder("pending");
+    const key = `email:pedia-paid:${PEDIA_CODE}`;
+    fx.sql.prepare(`INSERT INTO buyer_notice_log (idempotency_key, order_code, channel, status, access_attempts, access_lease, access_retry_at)
+      VALUES (?, ?, 'email', 'failed', 2, NULL, datetime('now','-1 minute'))`).run(key, PEDIA_CODE);
+    const { claimPediaEmail } = await import("@/lib/pedia/notify-channel");
+    expect(await claimPediaEmail(db, "paid", PEDIA_CODE)).toBeNull();
+    expect(fx.sql.prepare(`SELECT status, access_attempts, access_lease FROM buyer_notice_log WHERE idempotency_key=?`).get(key))
+      .toMatchObject({ status: "failed", access_attempts: 2, access_lease: null });
+    fx.sql.prepare(`UPDATE orders SET status='lunas', payment_status='paid' WHERE code=?`).run(PEDIA_CODE);
+    const claim = await claimPediaEmail(db, "paid", PEDIA_CODE);
+    expect(claim).not.toBeNull();
+    expect(await claimPediaEmail(db, "paid", PEDIA_CODE)).toBeNull();
+    expect(fx.sql.prepare(`SELECT status, access_attempts, access_lease FROM buyer_notice_log WHERE idempotency_key=?`).get(key))
+      .toMatchObject({ status: "sending", access_attempts: 3, access_lease: claim!.lease });
+  });
+
+  it("submitted processing waits for a nonblank durable receipt in sender and discovery", async () => {
+    const db = createDatabaseAccess(fx.db);
+    seedCatalog(db);
+    seedPediaOrder();
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='submitted' WHERE order_code=?`).run(PEDIA_CODE);
+    fx.sql.prepare(`INSERT INTO buyer_notice_log (idempotency_key, order_code, channel, status) VALUES (?, ?, 'email', 'sent')`)
+      .run(`email:pedia-paid:${PEDIA_CODE}`, PEDIA_CODE);
+    const { notifyPediaProcessing } = await import("@/lib/pedia/notify");
+    const { retryPendingPediaEmails } = await import("@/lib/pedia/notify-retry");
+    for (const receipt of [null, "", "   "]) {
+      fx.sql.prepare(`UPDATE pedia_order_items SET supplier_order_id=? WHERE order_code=?`).run(receipt, PEDIA_CODE);
+      expect(await notifyPediaProcessing(db, PEDIA_CODE)).toBe(false);
+      expect(await retryPendingPediaEmails(db)).toBe(0);
+      expect(fx.sql.prepare(`SELECT COUNT(*) n FROM buyer_notice_log WHERE idempotency_key=?`).get(`email:pedia-processing:${PEDIA_CODE}`)).toMatchObject({ n: 0 });
+    }
+    expect(pediaMails).toHaveLength(0);
+    fx.sql.prepare(`UPDATE pedia_order_items SET supplier_order_id='22024298' WHERE order_code=?`).run(PEDIA_CODE);
+    expect(await retryPendingPediaEmails(db)).toBe(1);
+    expect(await notifyPediaProcessing(db, PEDIA_CODE)).toBe(true);
+    expect(pediaMails).toHaveLength(1);
+    expect(JSON.stringify(pediaMails)).not.toContain("22024298");
+  });
+
+  it("1. all three phases pass html through; Market no-option output identical", async () => {
+    const db = createDatabaseAccess(fx.db);
+    seedCatalog(db);
+    seedPediaOrder("lunas", "");
+    const { notifyPediaPaid, notifyPediaProcessing, notifyPediaCompleted } = await import("@/lib/pedia/notify");
+    // Submitted receipt state so processing is eligible.
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='submitted', supplier_order_id='22024298', lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
+    expect(await notifyPediaPaid(db, PEDIA_CODE)).toBe(true);
+    expect(await notifyPediaProcessing(db, PEDIA_CODE)).toBe(true);
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='completed', start_count=8177, remains=0 WHERE order_code=?`).run(PEDIA_CODE);
+    expect(await notifyPediaCompleted(db, PEDIA_CODE)).toBe(true);
+    expect(pediaMails).toHaveLength(3);
+    for (const mail of pediaMails) {
+      expect(mail.html).toContain("Lihat Status Pesanan →");
+      expect(mail.html).toContain("pedia.axvara.tech/pesanan/" + PEDIA_CODE);
+      expect(mail.html).toContain("STATUS:");
+      expect(mail.html).not.toMatch(/indosmm|providersmm|22024298|buyerAccessCode|access_code/i);
+      expect(mail.text).toContain("Halaman pesanan: https://pedia.axvara.tech/pesanan/" + PEDIA_CODE);
+      expect(mail.text).not.toMatch(/PIN|kredensial|akun|garansi|indosmm|providersmm/i);
+    }
+    expect(pediaMails[0].html).toContain("Pembayaran Diterima");
+    expect(pediaMails[1].html).toContain("Pesanan Diproses");
+    expect(pediaMails[2].html).toContain("Pesanan Selesai");
+    // Market no-option output is byte-identical with the new optional fields.
+    const { renderBrandedNotice } = await import("@/lib/warung-rebahan/email-forward");
+    const market = {
+      orderCode: MARKET_CODE, orderUrl: `https://axvara.tech/pesanan/${MARKET_CODE}`, supportWa: "089519388264",
+      title: "Pembayaran Diterima", subtitle: "Pesananmu sedang diproses.",
+      paragraphs: ["Terima kasih Budi telah berbelanja di Axvara.", "Pembayaran untuk pesanan sudah tercatat dan pesanan sedang diproses."],
+    };
+    const withUnset = renderBrandedNotice(market);
+    const withExplicit = renderBrandedNotice({ ...market, status: null, details: null });
+    expect(withExplicit.html).toBe(withUnset.html);
+    expect(withExplicit.text).toBe(withUnset.text);
+    expect(withUnset.html).toContain("Lihat Pesanan →");
+    expect(withUnset.html).not.toContain("STATUS:");
+  });
+
+  it("2. successful receipt fires one processing on repeated ticks", async () => {
+    const db = createDatabaseAccess(fx.db);
+    seedCatalog(db);
+    seedPediaOrder();
+    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
+    const add = async () => ({ ok: true as const, data: { order: "22024298" }, status: 200 }) as never;
+    await processPediaPaidOrders(add, db);
+    await processPediaPaidOrders(add, db);
+    await processPediaPaidOrders(add, db);
+    const proc = pediaMails.filter((m) => m.subject.includes("diproses") || m.subject.includes("Diproses"));
+    expect(proc).toHaveLength(1);
+    expect(proc[0].text).toContain("Pesanan Diproses");
+    expect(proc[0].text).not.toContain("sedang berjalan");
+    expect(proc[0].html).toContain("STATUS: DIPROSES");
+  });
+
+  it("3. Pending→Completed jump still yields paid+processing+completed", async () => {
+    const db = createDatabaseAccess(fx.db);
+    seedCatalog(db);
+    seedPediaOrder();
+    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
+    const add = async () => ({ ok: true as const, data: { order: "22024298" }, status: 200 }) as never;
+    await processPediaPaidOrders(add, db);
+    // Supplier jumps Pending→Completed between polls: completed fires, and
+    // the accepted receipt's processing mail is already sent (not skipped).
+    fx.sql.prepare(`UPDATE pedia_order_items SET lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
+    const pendingThenDone = async () => ({ ok: true as const, data: { status: "Completed", start_count: 8177, remains: 0 }, status: 200 }) as never;
+    await processPediaPaidOrders(pendingThenDone, db);
+    const subjects = pediaMails.map((m) => m.subject);
+    expect(subjects.filter((s) => s.includes("Pembayaran diterima"))).toHaveLength(1);
+    expect(subjects.filter((s) => s.includes("diproses") || s.includes("Diproses"))).toHaveLength(1);
+    expect(subjects.filter((s) => s.includes("selesai"))).toHaveLength(1);
+    // No "sedang berjalan" mail for the skipped running state.
+    expect(pediaMails.some((m) => m.text.includes("sedang berjalan"))).toBe(false);
+  });
+
+  it("4. submitted receipt with missing ledger is discovered bounded", async () => {
+    const db = createDatabaseAccess(fx.db);
+    seedCatalog(db);
+    seedPediaOrder();
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='submitted', supplier_order_id='22024298', lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
+    fx.sql.prepare(`DELETE FROM buyer_notice_log WHERE idempotency_key=?`).run(`email:pedia-processing:${PEDIA_CODE}`);
+    const { retryPendingPediaEmails } = await import("@/lib/pedia/notify-retry");
+    const before = pediaMails.length;
+    await retryPendingPediaEmails(db);
+    const proc = pediaMails.slice(before).filter((m) => m.subject.includes("diproses") || m.subject.includes("Diproses"));
+    expect(proc).toHaveLength(1);
+    expect(proc[0].text).toContain("Pesanan Diproses");
+    // Bounded: second sweep sends nothing more (paid+processing both sent).
+    await retryPendingPediaEmails(db);
+    expect(pediaMails.length).toBe(before + 2);
+  });
+
+  it("5. missing/no receipt with pending never falsely sends processing", async () => {
+    const db = createDatabaseAccess(fx.db);
+    seedCatalog(db);
+    seedPediaOrder();
+    const { notifyPediaProcessing } = await import("@/lib/pedia/notify");
+    // queued (no receipt) + needs_check (ambiguous): no mail, no row.
+    for (const status of ["queued", "needs_check"]) {
+      fx.sql.prepare(`UPDATE pedia_order_items SET status=?, supplier_order_id=NULL WHERE order_code=?`).run(status, PEDIA_CODE);
+      expect(await notifyPediaProcessing(db, PEDIA_CODE)).toBe(false);
+    }
+    expect(pediaMails).toHaveLength(0);
+    expect(fx.sql.prepare(`SELECT COUNT(*) n FROM buyer_notice_log`).get()).toMatchObject({ n: 0 });
+    // Historical completed orders are never retro-emailed processing.
+    fx.sql.prepare(`UPDATE orders SET paid_at=datetime('now','-48 hours'), updated_at=datetime('now','-48 hours') WHERE code=?`).run(PEDIA_CODE);
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='completed', supplier_order_id='1' WHERE order_code=?`).run(PEDIA_CODE);
+    const { retryPendingPediaEmails } = await import("@/lib/pedia/notify-retry");
+    await retryPendingPediaEmails(db);
+    expect(pediaMails.filter((m) => m.subject.includes("diproses") || m.subject.includes("Diproses"))).toHaveLength(0);
+  });
+
+  it("6. blank/whitespace start counts stay null; reported 0 stays valid", async () => {
+    const db = createDatabaseAccess(fx.db);
+    seedCatalog(db);
+    seedPediaOrder();
+    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
+    const add = async () => ({ ok: true as const, data: { order: "22024298" }, status: 200 }) as never;
+    await processPediaPaidOrders(add, db);
+    // Blank-string start_count on a later poll: no COALESCE-0 write.
+    fx.sql.prepare(`UPDATE pedia_order_items SET lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
+    const blank = async () => ({ ok: true as const, data: { status: "In progress", start_count: "   ", remains: "" }, status: 200 }) as never;
+    await processPediaPaidOrders(blank, db);
+    expect((await db.queryFirst(`SELECT start_count FROM pedia_order_items WHERE order_code=?`, PEDIA_CODE))?.start_count).toBeNull();
+    // Completed without start_count: mail has no "Jumlah awal: 0".
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='completed', remains=0, lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
+    const { notifyPediaCompleted } = await import("@/lib/pedia/notify");
+    expect(await notifyPediaCompleted(db, PEDIA_CODE)).toBe(true);
+    const mail = pediaMails.find((m) => m.subject.includes("selesai"))!;
+    expect(mail.text).not.toContain("Jumlah awal: 0");
+    expect(mail.html).not.toContain("Jumlah awal");
+    // Reported actual 0 remains a valid 0 (truthful, not suppressed).
+    fx.sql.prepare(`UPDATE pedia_order_items SET start_count=0 WHERE order_code=?`).run(PEDIA_CODE);
+    const { pediaBuyerContext } = await import("@/lib/pedia/notify");
+    expect((await pediaBuyerContext(db, PEDIA_CODE))?.startCount).toBe(0);
+  });
+
+  it("7. escaping + null counts + white-label hold in branded mail", async () => {
+    const db = createDatabaseAccess(fx.db);
+    seedCatalog(db);
+    seedPediaOrder("lunas", "<script>alert(1)</script>");
+    fx.sql.prepare(`UPDATE pedia_order_items SET status='submitted', supplier_order_id='22024298', start_count=NULL, remains=NULL, lease_until=NULL WHERE order_code=?`).run(PEDIA_CODE);
+    const { notifyPediaProcessing } = await import("@/lib/pedia/notify");
+    expect(await notifyPediaProcessing(db, PEDIA_CODE)).toBe(true);
+    const mail = pediaMails[0];
+    expect(mail.html).not.toMatch(/<script>/);
+    expect(mail.html).toContain("&lt;script&gt;");
+    expect(mail.text).toContain("Belum dilaporkan");
+    expect(mail.text).toContain("Belum dikonfirmasi");
+    expect(mail.text).not.toMatch(/indosmm|providersmm/i);
+    expect(mail.html).toContain("Lihat Status Pesanan →");
   });
 });

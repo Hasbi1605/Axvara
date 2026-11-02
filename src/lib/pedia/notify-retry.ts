@@ -24,13 +24,14 @@ const RETRY_LIMIT = 2;
 const DISCOVERY_WINDOW = "-24 hours";
 
 /** Item statuses implying each phase is due (evaluated at send time).
- *  Processing synthesizes ONLY for actually-running items (in_progress):
- *  a merely-submitted item has no supplier confirmation of start, so no
- *  "sedang berjalan" mail is ever synthesized for it — the real
- *  submitted→in_progress transition owns that mail. */
+ *  Processing synthesizes for SUBMITTED (durable accepted receipt with
+ *  supplier_order_id) or IN_PROGRESS. A submitted item's sender allow()
+ *  accepts submitted, so discovery mail says "Diproses", never
+ *  "sedang berjalan". queued/submitting/needs_check have no receipt and
+ *  never synthesize; unpaid never mails (verified inside sender). */
 function phaseImplied(phase: Phase): string {
   if (phase === "paid") return `('queued','submitting','submitted','in_progress','completed','partial','canceled','needs_check')`;
-  if (phase === "processing") return `('in_progress')`;
+  if (phase === "processing") return `('submitted','in_progress')`;
   return `('completed')`;
 }
 
@@ -73,7 +74,8 @@ export async function retryPendingPediaEmails(db: Db): Promise<number> {
       `SELECT o.code AS order_code FROM orders o
         JOIN pedia_order_items i ON i.order_code=o.code
        WHERE o.status='lunas' AND o.payment_status='paid'
-         AND i.status IN ${phaseImplied(phase)}
+          AND i.status IN ${phaseImplied(phase)}
+          ${phase === "processing" ? "AND (i.status='in_progress' OR length(trim(COALESCE(i.supplier_order_id,''))) > 0)" : ""}
          AND datetime(COALESCE(o.paid_at, o.updated_at)) >= datetime('now','${DISCOVERY_WINDOW}')
          AND NOT EXISTS (SELECT 1 FROM buyer_notice_log b
            WHERE b.idempotency_key='email:pedia-${phase}:' || o.code)

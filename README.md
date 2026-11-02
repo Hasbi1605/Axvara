@@ -99,7 +99,8 @@ email seperti Market, Telegram/admin API membaca item Pedia durable, lookup/
 status jujur (counts durable, ETA tier saat ini yang dapat kosong, nama snapshot), halaman pembeli menampilkan
 lifecycle aktual + 4 sel hitungan + polling 5/10/30 dtk, pintu Market
 dialihkan ke host Pedia, email paid/processing/completed fenced (paid
-independen, processing hanya in_progress aktual, stale terminal disupresi;
+independen, processing = resi submitted/"Diproses", stale terminal
+disupresi; tampilan seperti Market; completed memakai Refill N Days;
 bounded at-least-once melalui forward sender Resend tanpa idempotency key) +
 retry bounded di cron existing; discovery fase hilang hanya lunas ≤24 jam,
 sedangkan ledger due tetap retry lebih lama. Link

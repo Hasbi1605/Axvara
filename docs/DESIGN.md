@@ -33,6 +33,15 @@ tetap. Logika tampilan murni di `src/components/pedia/status-view.ts`.
   tanpa lookup Market) dan deep link `?code=AXP-…` dialihkan tanpa kontak. Respons
   lookup bertipe Pedia hanya menampilkan satu kartu penunjuk, tanpa STEPS, garansi
   atau kredensial. Verifikasi browser nyata desktop/mobile menunggu QA final.
+- Email lifecycle Pedia (paid/processing/completed) memakai shell Market
+  `renderBrandedNotice` yang sama (header Midnight + logo, badge invoice,
+  pill STATUS info/success, kotak detail cyan, CTA "Lihat Status Pesanan →",
+  blok WA hijau, footer; teks alternatif selalu ada). Field baru
+  `status`/`details`/`ctaLabel` bersifat opsional — tanpa opsi, output
+  Market byte-identik. Completed memakai istilah `Refill N Days`, bukan
+  "masa garansi". Fixture aktual dari renderer produksi ada di artefak tim
+  `email-qa/actual-*` (bukti kerja, bukan kontrak repo); QA rendering
+  Chromium 320/390/640 lulus 316 pemeriksaan; klien email native belum diuji.
 
 ## Varian Market, promosi responsif dan label layanan - 2 November 2026
 

@@ -237,14 +237,33 @@ async function dispatchOne(
     await toNeedsCheck(db, item.order_code, "supplier tidak mengembalikan ID order");
     return "needs_check";
   }
-  await db.execRun(
+  // Durable successful-submission receipt: status + supplier_order_id persist
+  // in ONE guarded write. Check actual write changes: only the winner owns
+  // the receipt (no late terminal mutation — WHERE requires status
+  // 'submitting', so a concurrent terminal/expired item is never promoted).
+  // The mail below must not block polling/submit on failure.
+  const receipt = await db.execRun(
     `UPDATE pedia_order_items
         SET status='submitted', supplier_order_id=?, supplier_charge=?,
             lease_until=datetime('now', '+${POLL_SECONDS} seconds'),
             last_error=NULL, updated_at=datetime('now')
-      WHERE order_code=?`,
+      WHERE order_code=? AND status='submitting'`,
     supplierOrderId, charge, item.order_code,
-  );
+  ).catch(() => null);
+  if (Number(receipt?.changes) !== 1) {
+    // Lost the receipt race (terminal/expired won): no mail, no repurchase.
+    return "skipped";
+  }
+  // Processing = "Diproses" (accepted, not necessarily running yet): emit on
+  // the durable receipt via the SAME fenced email:pedia-processing key.
+  // No receipt/ambiguous result never reaches here, so no false mail.
+  // Budget-gated so the mail never prevents polling/submit progress.
+  if (db.canSpend(5)) {
+    try {
+      const { notifyPediaProcessing } = await import("@/lib/pedia/notify");
+      await notifyPediaProcessing(db, item.order_code).catch(() => null);
+    } catch { /* fenced sender owns retry; poll continues */ }
+  }
   return "dispatched";
 }
 
@@ -281,11 +300,18 @@ async function pollOne(
   }
   const d = (res.data || {}) as Record<string, unknown>;
   const status = String(d.status ?? "").toLowerCase().replace(/\s+/g, "_").replace(/^cancelled$/, "canceled");
-  const startCountRaw = d.start_count != null ? Number(d.start_count) : null;
+  // Blank/whitespace start_count input must NEVER coerce to 0 (Number("")=0,
+  // Number(null)=0 — and note Number.isFinite(null) is false, not true).
+  // Only a present, non-blank, finite numeric raw value is persisted; the
+  // existing nonzero start_count is preserved when blank arrives later.
+  const startRaw = d.start_count;
+  const startPresent = startRaw != null && String(startRaw).trim() !== "";
+  const startCountRaw = startPresent ? Number(startRaw) : null;
   const rawRemains = d.remains != null && String(d.remains).trim() !== "" ? Number(d.remains) : NaN;
   const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= item.quantity ? rawRemains : null;
-  // Simpan hitungan awal untuk riwayat progres supplier.
-  if (Number.isFinite(startCountRaw)) {
+  // Simpan hitungan awal untuk riwayat progres supplier. Reported actual 0
+  // stays a valid 0; blank/missing never writes (existing nonzero preserved).
+  if (startCountRaw != null && Number.isFinite(startCountRaw)) {
     await db.execRun(
       `UPDATE pedia_order_items SET start_count=COALESCE(start_count, ?)
         WHERE order_code=?`,
@@ -321,9 +347,9 @@ async function pollOne(
          updated_at=datetime('now') WHERE order_code=? AND status='submitted'`,
       item.order_code,
     ).catch(() => null);
-    // First submitted→in_progress transition only: emit the processing email
-    // once, with the just-reported counts (point-in-time). Already-running
-    // items just refresh their lease below.
+    // The submitted-receipt mail already owns this phase key; this call is a
+    // deduped recovery (fence returns sent) that carries point-in-time
+    // counts for orders submitted before the receipt trigger shipped.
     if (Number(changed?.changes) === 1) {
       try {
         const { notifyPediaProcessing } = await import("@/lib/pedia/notify");

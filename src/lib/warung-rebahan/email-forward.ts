@@ -406,6 +406,12 @@ export type BrandedNoticeContext = {
   callout?: { text: string; tone: "info" | "warning" } | null;
   orderUrl: string;
   supportWa: string;
+  /** Pill status (pola "STATUS: DIPROSES" existing). Absent = output identik. */
+  status?: { label: string; tone: "info" | "success" } | null;
+  /** Kotak ringkasan label/nilai (pola PRODUK/VARIAN existing). Absent = output identik. */
+  details?: { label: string; value: string }[] | null;
+  /** Label CTA; default "Lihat Pesanan →". */
+  ctaLabel?: string;
 };
 
 /** Shell bermerek untuk kabar pembeli (tanda terima, serah terima, penolakan, dst). */
@@ -416,21 +422,35 @@ export function renderBrandedNotice(ctx: BrandedNoticeContext): { html: string; 
       ? `<div style="background:#fef9e7;border:1px solid rgba(255,184,0,.4);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#92690e">${esc(ctx.callout.text)}</div>`
       : `<div style="background:#f0fdff;border:1px solid rgba(0,229,255,.35);border-radius:12px;padding:12px 16px;margin-top:12px;font-size:13px;color:#0e7490">${esc(ctx.callout.text)}</div>`
     : "";
+  const statusHtml = ctx.status
+    ? ctx.status.tone === "success"
+      ? `<p style="text-align:center;margin:0 0 12px"><span style="display:inline-block;background:#ecfdf5;border:1px solid rgba(34,197,94,.45);color:#15803d;font-size:11px;font-weight:700;letter-spacing:1px;border-radius:999px;padding:6px 14px">STATUS: ${esc(ctx.status.label.toUpperCase())}</span></p>`
+      : `<p style="text-align:center;margin:0 0 12px"><span style="display:inline-block;background:rgba(0,229,255,.14);border:1px solid rgba(0,229,255,.4);color:#0e7490;font-size:11px;font-weight:700;letter-spacing:1px;border-radius:999px;padding:6px 14px">STATUS: ${esc(ctx.status.label.toUpperCase())}</span></p>`
+    : "";
+  const detailsHtml = ctx.details?.length
+    ? `<div style="background:#f8fafc;border-left:3px solid #00E5FF;border-radius:0 12px 12px 0;padding:12px 16px;font-size:13px;color:#475569">`
+      + ctx.details.map((d, i) => `<p style="margin:${i ? "8px" : "0"} 0 0"><span style="color:#94a3b8;font-size:11px;letter-spacing:1px">${esc(d.label.toUpperCase())}</span><br><b style="color:#0f1430;word-break:break-word">${esc(d.value)}</b></p>`).join("")
+      + `</div>`
+    : "";
   const html = shell(
     ctx.title,
     ctx.subtitle,
     invoiceBadge(ctx.orderCode)
+    + statusHtml
     + ctx.paragraphs.map((p) => `<p style="color:#334155;font-size:14px;line-height:1.7;margin:0 0 12px">${esc(p)}</p>`).join("")
+    + detailsHtml
     + (ctx.buyerAccessCode ? accessCodeHtml(ctx.buyerAccessCode) : "")
     + calloutHtml
-    + cta(ctx.orderUrl, "Lihat Pesanan →")
+    + cta(ctx.orderUrl, ctx.ctaLabel ?? "Lihat Pesanan →")
     + supportBlockHtml(siteUrl, ctx.supportWa),
     { logoUrl: emailLogoUrl(siteUrl), siteUrl },
   );
   const text = [
     `${ctx.title} — ${ctx.orderCode}`,
     "",
+    ...(ctx.status ? [`Status: ${ctx.status.label}`] : []),
     ...ctx.paragraphs,
+    ...(ctx.details?.length ? ["", ...ctx.details.map((d) => `${d.label}: ${d.value}`)] : []),
     ...(ctx.buyerAccessCode ? [`${ctx.buyerAccessCode.length === 6 ? "PIN" : "Kode"} Akses Pesanan: ${ctx.buyerAccessCode}`] : []),
     ctx.callout ? `\n${ctx.callout.text}` : "",
     "",

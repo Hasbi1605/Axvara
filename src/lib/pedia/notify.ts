@@ -9,7 +9,8 @@ import type { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
 import { SITE } from "@/lib/site";
 import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
-import { whiteLabel } from "@/lib/pedia/terms";
+import { refillLabel, whiteLabel } from "@/lib/pedia/terms";
+import { renderBrandedNotice } from "@/lib/warung-rebahan/email-forward";
 
 type Db = ReturnType<typeof createDatabaseAccess>;
 
@@ -22,6 +23,7 @@ export type PediaBuyerContext = {
   target: string;
   /** Pedia item status at context read time (sender re-verifies inside its boundary). */
   status: string;
+  hasReceipt: boolean;
   orderPaid: boolean;
   paidAt: string | null;
   startCount: number | null;
@@ -49,23 +51,6 @@ function etaLine(etaStart: string | null, etaFinish: string | null): string | nu
   return null;
 }
 
-function countsLine(ctx: PediaBuyerContext): string | null {
-  // Reported supplier counts only; unknown stays unknown, never 0.
-  // Start count is shown independently when reported; sisa follows when known.
-  const start = ctx.startCount != null
-    ? `Jumlah awal: ${ctx.startCount.toLocaleString("id-ID")}` : null;
-  if (ctx.remains != null && ctx.quantity > 0) {
-    const done = ctx.done ?? Math.max(0, ctx.quantity - ctx.remains);
-    const sisa = ctx.remains.toLocaleString("id-ID");
-    return `${start ? `${start} · ` : ""}sisa ${sisa} · terkirim: ${done.toLocaleString("id-ID")} dari ${ctx.quantity.toLocaleString("id-ID")}.`;
-  }
-  if (start) return `${start}.`;
-  if (ctx.done != null && ctx.quantity > 0) {
-    return `Terkirim: ${ctx.done.toLocaleString("id-ID")} dari ${ctx.quantity.toLocaleString("id-ID")}.`;
-  }
-  return null;
-}
-
 /** Single joined buyer context: ONE budgeted read (orders ⨝ pedia item ⨝
  *  product/tier). Snapshot names (never live tier edits except the
  *  pre-existing eta/label read); supplier identity, wholesale cost and raw
@@ -74,7 +59,7 @@ export async function pediaBuyerContext(db: Db, orderCode: string): Promise<Pedi
   if (!db.canSpend(1)) return null;
   const row = await db.queryFirst(
     `SELECT o.customer_name, o.customer_email, o.status AS order_status, o.payment_status, o.paid_at,
-            i.status AS item_status, i.quantity, i.start_count, i.remains, i.target_normalized,
+            i.status AS item_status, i.quantity, i.start_count, i.remains, i.target_normalized, i.supplier_order_id,
             i.snapshot_json, p.name AS product_name, t.tier AS tier_name, t.label_note,
             t.eta_start, t.eta_finish
        FROM orders o
@@ -107,6 +92,7 @@ export async function pediaBuyerContext(db: Db, orderCode: string): Promise<Pedi
     quantity: qty,
     target: String(row.target_normalized ?? "").slice(0, 120),
     status: itemStatus,
+    hasReceipt: String(row.supplier_order_id ?? "").trim().length > 0,
     orderPaid: String(row.order_status) === "lunas" && String(row.payment_status) === "paid",
     paidAt: row.paid_at != null ? String(row.paid_at) : null,
     startCount,
@@ -127,20 +113,31 @@ export function isPediaTerminalStatus(status: string): boolean {
   return ["completed", "partial", "canceled", "expired"].includes(status);
 }
 
-function paidBody(ctx: PediaBuyerContext): string {
-  const lines = [
-    `Halo ${ctx.displayName}, pembayaran untuk ${ctx.productName} (${ctx.serviceName}) sejumlah ${ctx.quantity.toLocaleString("id-ID")} sudah kami terima.`,
-    // Truthful at send time: payment is confirmed; lifecycle follows the
-    // CURRENT item state, never a stale queued promise when already terminal.
-    `Status saat ini: ${pediaLifecycleLine(ctx)}.`,
+/** Shared branded-email fields: Market shell, Pedia CTA, detail rows.
+ *  Unknown numbers are labelled, never 0. Caller supplies title/subtitle/
+ *  pill paragraph + callout policy; renderer escapes everything. */
+function pediaBrandedFields(ctx: PediaBuyerContext): {
+  orderCode: string; orderUrl: string; supportWa: string;
+  ctaLabel: string; details: { label: string; value: string }[];
+} {
+  const fmt = (n: number) => n.toLocaleString("id-ID");
+  const details = [
+    { label: "Layanan", value: `${ctx.productName} · ${ctx.serviceName}` },
+    { label: "Jumlah dipesan", value: fmt(ctx.quantity) },
+    { label: "Jumlah awal", value: ctx.startCount != null ? fmt(ctx.startCount) : "Belum dilaporkan" },
   ];
-  const counts = countsLine(ctx);
-  if (counts) lines.push(counts);
-  const eta = ctx.status === "completed" ? null : etaLine(ctx.etaStart, ctx.etaFinish);
-  if (eta) lines.push(eta);
-  else if (!counts) lines.push("Jumlah masuk belum dikonfirmasi.");
-  lines.push(`Pantau status terkini di sini: ${ctx.pediaUrl}`);
-  return whiteLabel(lines.join("\n"));
+  if (ctx.status !== "completed") {
+    details.push({ label: "Sisa", value: ctx.remains != null ? fmt(ctx.remains) : "Belum dilaporkan" });
+  }
+  details.push({ label: "Masuk", value: ctx.done != null ? `${fmt(ctx.done)} dari ${fmt(ctx.quantity)}` : "Belum dikonfirmasi" });
+  if (ctx.target) details.push({ label: "Link tujuan", value: ctx.target });
+  return {
+    orderCode: ctx.pediaUrl.split("/").pop() ?? "",
+    orderUrl: ctx.pediaUrl,
+    supportWa: SITE.adminWaLocal,
+    ctaLabel: "Lihat Status Pesanan →",
+    details,
+  };
 }
 
 function pediaLifecycleLine(ctx: PediaBuyerContext): string {
@@ -153,28 +150,64 @@ function pediaLifecycleLine(ctx: PediaBuyerContext): string {
   return "masuk antrean dan akan diproses otomatis";
 }
 
-function processingBody(ctx: PediaBuyerContext): string {
-  const lines = [
-    `Halo ${ctx.displayName}, pesanan ${ctx.productName} (${ctx.serviceName}) sejumlah ${ctx.quantity.toLocaleString("id-ID")} sedang berjalan.`,
-  ];
-  const counts = countsLine(ctx);
-  if (counts) lines.push(counts);
-  else lines.push("Jumlah masuk belum dikonfirmasi.");
-  const eta = etaLine(ctx.etaStart, ctx.etaFinish);
-  if (eta) lines.push(eta);
-  lines.push(`Pantau status terkini di sini: ${ctx.pediaUrl}`);
-  return whiteLabel(lines.join("\n"));
+export type PediaEmailPayload = { subject: string; text: string; html: string };
+
+function firstWord(name: string): string {
+  return name.trim().split(/\s+/)[0] || "Kak";
 }
 
-function completedBody(ctx: PediaBuyerContext): string {
-  const lines = [
-    `Halo ${ctx.displayName}, pesanan ${ctx.productName} (${ctx.serviceName}) sejumlah ${ctx.quantity.toLocaleString("id-ID")} selesai.`,
-  ];
-  const counts = countsLine(ctx);
-  if (counts) lines.push(counts);
-  if (ctx.refillDays > 0) lines.push("Layanan ini memiliki masa refill. Ajukan refill dari halaman pesanan bila jumlah turun dalam masa garansi.");
-  lines.push(`Lihat ringkasan di sini: ${ctx.pediaUrl}`);
-  return whiteLabel(lines.join("\n"));
+/** Paid → Market shell: title/subtitle/pill + greeting + lifecycle + eta. */
+function paidEmail(ctx: PediaBuyerContext, orderCode: string): PediaEmailPayload {
+  const eta = ctx.status === "completed" ? null : etaLine(ctx.etaStart, ctx.etaFinish);
+  const shared = pediaBrandedFields(ctx);
+  const rendered = renderBrandedNotice({
+    ...shared,
+    title: "Pembayaran Diterima",
+    subtitle: "Pesananmu masuk antrean dan diproses otomatis.",
+    status: { label: "Pembayaran diterima", tone: "success" },
+    paragraphs: [
+      `Halo ${firstWord(ctx.displayName)}, pembayaran untuk pesanan Pedia kamu sudah kami terima.`,
+      `${pediaLifecycleLine(ctx) === "masuk antrean dan akan diproses otomatis" ? "Pesanan masuk antrean dan akan diproses otomatis." : `Status saat ini: ${pediaLifecycleLine(ctx)}.`} Status terbaru selalu ada di halaman pesanan.`,
+    ],
+    callout: eta ? { text: eta, tone: "info" } : null,
+  });
+  return { subject: `Pembayaran diterima — ${orderCode}`, text: rendered.text, html: rendered.html };
+}
+
+/** Processing ("Diproses" = accepted, not necessarily running yet). */
+function processingEmail(ctx: PediaBuyerContext, orderCode: string): PediaEmailPayload {
+  const eta = etaLine(ctx.etaStart, ctx.etaFinish);
+  const shared = pediaBrandedFields(ctx);
+  // Info callout when there is no progress yet (or a finish estimate exists).
+  const showEta = eta && (ctx.done == null || ctx.etaFinish);
+  const rendered = renderBrandedNotice({
+    ...shared,
+    title: "Pesanan Diproses",
+    subtitle: "Pesananmu sudah diterima sistem dan sedang diproses.",
+    status: { label: "Diproses", tone: "info" },
+    paragraphs: [
+      `Halo ${firstWord(ctx.displayName)}, pesanan Pedia kamu sudah diterima sistem dan sedang diproses otomatis.`,
+      "Angka di bawah adalah laporan saat email ini dikirim. Pantau perkembangan terbaru di halaman pesanan.",
+    ],
+    callout: showEta ? { text: eta, tone: "info" } : null,
+  });
+  return { subject: `Pesanan sedang diproses — ${orderCode}`, text: rendered.text, html: rendered.html };
+}
+
+/** Completed → Market shell, Refill N Days terms (never "masa garansi"). */
+function completedEmail(ctx: PediaBuyerContext, orderCode: string): PediaEmailPayload {
+  const shared = pediaBrandedFields(ctx);
+  const rendered = renderBrandedNotice({
+    ...shared,
+    title: "Pesanan Selesai",
+    subtitle: "Terima kasih sudah memesan di AXVARA Pedia.",
+    status: { label: "Selesai", tone: "success" },
+    paragraphs: [`Halo ${firstWord(ctx.displayName)}, pesanan Pedia kamu sudah selesai.`],
+    callout: ctx.refillDays > 0
+      ? { text: `Layanan ini memiliki ${refillLabel(ctx.refillDays)}. Bila jumlah turun dalam masa refill, ajukan refill dari halaman pesanan.`, tone: "info" }
+      : null,
+  });
+  return { subject: `Pesanan selesai — ${orderCode}`, text: rendered.text, html: rendered.html };
 }
 
 /** Phase send boundary: single joined context, current paid state verified
@@ -190,7 +223,7 @@ async function sendPediaPhase(
   db: Db,
   phase: "paid" | "processing" | "completed",
   orderCode: string,
-  build: (ctx: PediaBuyerContext) => { subject: string; text: string },
+  build: (ctx: PediaBuyerContext) => PediaEmailPayload,
   allow: (ctx: PediaBuyerContext) => boolean,
   ctxOverride?: (ctx: PediaBuyerContext) => Partial<PediaBuyerContext>,
 ): Promise<boolean> {
@@ -217,7 +250,7 @@ async function sendPediaPhase(
     const existing = await db.queryFirst(`SELECT status FROM buyer_notice_log WHERE idempotency_key=?`, key).catch(() => null);
     return String(existing?.status ?? "") === "sent";
   }
-  let payload: { subject: string; text: string };
+  let payload: PediaEmailPayload;
   try {
     payload = build(ctx);
   } catch {
@@ -226,7 +259,7 @@ async function sendPediaPhase(
   }
   try {
     const { sendPediaEmail } = await import("@/lib/pedia/email");
-    const ok = await sendPediaEmail({ to: ctx.email, subject: payload.subject, text: payload.text });
+    const ok = await sendPediaEmail({ to: ctx.email, subject: payload.subject, text: payload.text, html: payload.html });
     const settled = await settlePediaEmail(db, key, claim.lease, ok, ok ? undefined : "send_failed");
     return ok && settled;
   } catch {
@@ -241,17 +274,18 @@ async function sendPediaPhase(
 export async function notifyPediaPaid(db: Db, orderCode: string, siteUrl?: string): Promise<boolean> {
   void siteUrl;
   return sendPediaPhase(db, "paid", orderCode,
-    (ctx) => ({ subject: `Pembayaran diterima — ${orderCode}`, text: paidBody(ctx) }),
+    (ctx) => paidEmail(ctx, orderCode),
     // Paid confirms payment even if the lifecycle already advanced; the body
     // states the CURRENT lifecycle truthfully (never "diproses" for terminal).
     () => true,
   );
 }
 
-/** Pembeli: processing — ONLY on actual supplier in_progress/processing.
- *  Stale at terminal (completed/partial/canceled/expired) is suppressed.
- *  `counts` carries the just-reported supplier values so the immediate mail
- *  is point-in-time (deferred retries rebuild from the durable row). */
+/** Pembeli: processing — "Diproses" = supplier ACCEPTED the order (durable
+ *  submitted receipt with supplier_order_id), not necessarily running yet.
+ *  Copy never says "sedang berjalan" at submitted; running counts ride the
+ *  same phase key when in_progress is observed (no second mail). Stale at
+ *  terminal (partial/canceled/completed/expired) is suppressed. */
 export async function notifyPediaProcessing(
   db: Db, orderCode: string,
   counts?: { startCount: number | null; remains: number | null },
@@ -267,8 +301,8 @@ export async function notifyPediaProcessing(
     };
   } : undefined;
   return sendPediaPhase(db, "processing", orderCode,
-    (ctx) => ({ subject: `Pesanan sedang berjalan — ${orderCode}`, text: processingBody(ctx) }),
-    (ctx) => ctx.status === "in_progress",
+    (ctx) => processingEmail(ctx, orderCode),
+    (ctx) => ctx.status === "in_progress" || (ctx.status === "submitted" && ctx.hasReceipt),
     override,
   );
 }
@@ -276,7 +310,7 @@ export async function notifyPediaProcessing(
 /** Pembeli: selesai — ONLY on confirmed completed. */
 export async function notifyPediaCompleted(db: Db, orderCode: string): Promise<boolean> {
   return sendPediaPhase(db, "completed", orderCode,
-    (ctx) => ({ subject: `Pesanan selesai — ${orderCode}`, text: completedBody(ctx) }),
+    (ctx) => completedEmail(ctx, orderCode),
     (ctx) => ctx.status === "completed",
   );
 }

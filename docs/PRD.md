@@ -29,21 +29,30 @@ needs_check/partial/canceled menautkan ke Admin → Pedia → Pesanan.
 
 Email lifecycle paid/processing/completed memakai pagar klaim fenced
 (`buyer_notice_log` existing: lease UUID, attempts maks 5, backoff
-1/5/15/60 mnt, due/stale guard, settle CAS; klaim gagal = tidak kirim).
-Paid independen dari sukses supplier; processing hanya pada
-in_progress/processing aktual (supplier Pending tidak dipromosikan dan tidak
-meregresi item berjalan); Paid menegaskan pembayaran + status lifecycle
-SAAT INI (tidak pernah "sedang berjalan" untuk terminal); selesai hanya
-untuk completed terkonfirmasi. Isi: nama layanan snapshot, jumlah awal
-(bila dilaporkan) + sisa/terkirim (bila diketahui), tanpa PIN/kredensial/
-nama supplier, estimasi hanya field tier saat ini yang dapat kosong, bukan
-snapshot. Forward sender memakai API Resend tanpa idempotency key untuk email
-ini: transport bounded at-least-once (bukan exactly-once). Partial/canceled
-memakai bahasa tindak lanjut tanpa kata manual/admin untuk pembeli. Recovery:
-sighting paid maksimal 5 dan discovery maksimal 2/fase hanya untuk fase hilang
-order lunas ≤24 jam; ledger due existing tetap retry setelah 24 jam. Stale
-terminal disupresi tanpa kirim. Tanpa migrasi,
-env, cron, atau klaim deployment baru.
+1/5/15/60 mnt, due/stale guard, settle CAS; klaim gagal = tidak kirim) dan
+tampil seperti email Market (shell `renderBrandedNotice`: header Midnight,
+badge invoice, pill STATUS, kotak detail Layanan/Jumlah dipesan/Jumlah awal/
+Sisa/Masuk/Link tujuan, CTA "Lihat Status Pesanan →", blok WA, footer;
+tidak diketahui = "Belum dilaporkan"/"Belum dikonfirmasi", bukan 0; tanpa
+PIN/kredensial/garansi Market/ID supplier/biaya). Paid independen dari
+sukses supplier; processing = "Diproses" saat supplier MENERIMA order
+(resi `submitted` + `supplier_order_id` durable — bukan "sedang berjalan"
+kecuali `in_progress` aktual; supplier Pending tidak dipromosikan dan tidak
+meregresi item berjalan; tanpa resi/ambigu tidak kirim dan tidak beli ulang;
+order lama yang sudah completed tidak diemail processing retroaktif);
+completed memakai istilah `Refill N Days` (bukan "masa garansi"). Isi:
+nama layanan snapshot, jumlah awal independen (bila dilaporkan) + sisa/
+terkirim (bila diketahui), tanpa PIN/kredensial/nama supplier, estimasi
+hanya field layanan yang dapat kosong, bukan snapshot. Forward sender
+memakai API Resend tanpa idempotency key untuk email ini: transport bounded
+at-least-once (bukan exactly-once). Partial/canceled memakai bahasa tindak
+lanjut tanpa kata manual/admin untuk pembeli. Recovery: sighting paid
+maksimal 5 dan discovery maksimal 2/fase hanya untuk fase hilang order
+lunas ≤24 jam (processing hanya untuk `submitted`/`in_progress` berresi);
+ledger due existing tetap retry setelah 24 jam. Stale terminal disupresi
+tanpa kirim. Input start_count kosong/whitespace tidak pernah menjadi 0
+(angka 0 yang benar-benar dilaporkan tetap valid; nilai nonzero existing
+dipertahankan). Tanpa migrasi, env, cron, atau klaim deployment baru.
 
 ### Sumber data status Pedia: resmi vs non-resmi
 

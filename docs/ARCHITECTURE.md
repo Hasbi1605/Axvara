@@ -904,11 +904,16 @@ existing (`buyer_notice_log`: lease UUID, attempts+1 sebelum transport,
 maks 5, backoff 1/5/15/60, due/stale guard, settle CAS; klaim gagal =
 tidak kirim; `sendPediaEmail` memakai forward sender ke API Resend tanpa
 idempotency key, sehingga transport bounded at-least-once, bukan exactly-once): paid
-independen dari supplier, processing hanya in_progress aktual (Pending
-mempertahankan status + refresh lease), stale terminal disupresi, selesai
-hanya completed; konteks gabungan tunggal (1 read) + gate budget realistis;
-recovery di tick Pedia existing (sighting paid hilang ≤24 jam maksimal 5;
-discovery ≤2/fase; ledger due existing tetap retry setelah 24 jam). DANA
+independen dari supplier, processing = resi `submitted` diterima/"Diproses"
+(Pending mempertahankan status + refresh lease; tanpa resi/ambigu tidak
+kirim; completed lama tidak diemail retroaktif), stale terminal disupresi,
+selesai hanya completed; tampilan seperti Market (`renderBrandedNotice` +
+field opsional `status`/`details`/`ctaLabel` — tanpa opsi output Market
+byte-identik; completed memakai `Refill N Days`); konteks gabungan tunggal
+(1 read) + gate budget realistis; recovery di tick Pedia existing (sighting
+paid hilang ≤24 jam maksimal 5; discovery ≤2/fase termasuk submitted
+berresi; ledger due existing tetap retry setelah 24 jam); start_count
+kosong/whitespace tidak menjadi 0. DANA
 memanggil scheduler Pedia satu kali; cron tetap fallback.
 UI: `src/components/pedia/status-view.ts` (helper murni: URL, header,
 progres, estimasi, polling 5/10/30 dtk), halaman Pedia aktual, redirect
