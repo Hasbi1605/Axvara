@@ -17,6 +17,7 @@ import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 import { isValidOrderContact, orderAccessHeaders, readOrderContact, rememberBuyerAccessSession, rememberOrderContact } from "@/lib/order-access-client";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
+import { isPediaCode, pediaOrderUrl, pediaTrackUrl, redirectBrowser } from "@/components/pedia/status-view";
 
 type QrisInvoice = {
   payable_amount: number;
@@ -135,6 +136,8 @@ export default function LacakPesananClient() {
   const lookupStage = useLoadingStage(loading, [SLOW_MS]);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<TrackedOrder | null>(null);
+  // Pertahanan: lookup yang mengembalikan pesanan Pedia tidak dirender sebagai Market.
+  const [pediaPointer, setPediaPointer] = useState<{ code: string; status: string | null } | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentEntry[]>([]);
@@ -230,6 +233,15 @@ export default function LacakPesananClient() {
       if (response.status === 429) nextPollAt.current = Date.now() + Math.max(60, Number(response.headers.get("Retry-After")) || 60) * 1000;
       if (adminView && response.status === 401) { setOrder(null); lastQuery.current = null; }
       if (!response.ok) throw new Error(body.error || `Gagal melacak (${response.status})`);
+      if (body.order?.order_kind === "pedia" || isPediaCode(String(body.order?.code ?? ""))) {
+        // Tanpa STEPS/garansi/kredensial/PIN Market; kontak tidak disimpan atau dibawa ke host lain.
+        setOrder(null);
+        lastQuery.current = null;
+        setError(null);
+        setPediaPointer({ code: String(body.order.code), status: typeof body.order.pedia_status === "string" ? body.order.pedia_status : null });
+        return;
+      }
+      setPediaPointer(null);
       nextPollAt.current = Date.now() + 5_000;
       const found = fromApi(body.order);
       setOrder(found);
@@ -278,6 +290,12 @@ export default function LacakPesananClient() {
     const paramWa = (searchParams.get("contact") || searchParams.get("email") || searchParams.get("wa") || "").trim();
     if (!paramCode && !paramWa) return;
     autoSubmitted.current = true;
+    if (isPediaCode(paramCode)) {
+      // Kode AXP milik Pedia: alihkan tanpa kontak (param contact/email/wa dibuang).
+      if (adminView) setCode(paramCode);
+      else redirectBrowser(pediaTrackUrl(paramCode));
+      return;
+    }
     if (paramCode) setCode(paramCode);
     if (paramWa) setWa(paramWa);
     if (CODE_RE.test(paramCode) && (adminView || isValidContact(paramWa))) {
@@ -310,7 +328,7 @@ export default function LacakPesananClient() {
     return () => clearInterval(timer);
   }, [isPending]);
 
-  const codeError = codeTouched && normalizeCode(code) && !CODE_RE.test(normalizeCode(code))
+  const codeError = codeTouched && normalizeCode(code) && !CODE_RE.test(normalizeCode(code)) && !isPediaCode(code)
     ? "Format kode belum tepat. Contoh: AXV-20260917-AB12CD34."
     : null;
   const waError = waTouched && wa.trim() && !isValidContact(wa)
@@ -319,12 +337,14 @@ export default function LacakPesananClient() {
   const pinError = pin.trim() && ![6, 26].includes(normalizeOrderAccessCode(pin.trim()).length)
     ? "Isi PIN 6 karakter dari email, atau kode akses lama. Kosongkan untuk status saja."
     : null;
-  const canSubmit = CODE_RE.test(normalizeCode(code)) && isValidContact(wa) && !pinError && !loading;
+  const pediaTyped = isPediaCode(code);
+  const canSubmit = pediaTyped || (CODE_RE.test(normalizeCode(code)) && isValidContact(wa) && !pinError && !loading);
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     setCodeTouched(true);
     setWaTouched(true);
+    if (pediaTyped) { redirectBrowser(pediaTrackUrl(code), "assign"); return; }
     if (!canSubmit) return;
     void lookup(code, wa, false, pin);
   };
@@ -401,6 +421,7 @@ export default function LacakPesananClient() {
           {loading && <p role="status" className="mt-2 text-sm text-white/60">Memuat pesanan…</p>}
           {(error || pollError) && <p role="alert" className="mt-2 text-sm text-red-300">{error || pollError}</p>}
           <Link href="/admin" prefetch={false} target="_blank" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[#00E5FF]">Buka / masuk panel admin</Link>
+          {isPediaCode(code) && <a href="/admin?section=pedia&tab=orders" className="ml-4 inline-flex min-h-11 items-center text-sm font-semibold text-[#00E5FF]">Buka di Admin → Pedia → Pesanan</a>}
           <button type="button" disabled={loading} onClick={() => void lookup(code, "")} className="ml-4 min-h-11 text-sm text-white/70">Muat ulang pesanan</button>
         </div>
       ) : <p className="mt-3 max-w-[58ch] text-sm leading-6 text-white/55">
@@ -435,6 +456,7 @@ export default function LacakPesananClient() {
               className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 font-mono text-sm font-bold tracking-[0.06em] text-white placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-white/55 focus:outline-none ${codeError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}
             />
             {codeError && <p className="mt-1.5 text-xs text-red-300">{codeError}</p>}
+            {pediaTyped && <p role="status" className="mt-1.5 text-xs leading-5 text-white/65">Kode AXP adalah pesanan Pedia. <a href={pediaTrackUrl(code)} className="font-semibold text-[#00E5FF] underline underline-offset-2">Lacak di Pedia →</a> Kontak diisi di halaman Pedia.</p>}
           </div>
           <div>
             <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">No. WA atau email checkout *</label>
@@ -517,6 +539,17 @@ export default function LacakPesananClient() {
 
       {/* Di bawah "Terakhir dilacak": ringkas collapsed agar tidak memakan ruang. */}
       {!adminView && !order && <DeviceOrders />}
+
+      {pediaPointer && !order && (
+        <div className="ax-glass-card mt-6 rounded-[28px] p-6 text-center sm:p-8" aria-live="polite" aria-label="Pesanan Pedia">
+          <h2 className="font-display text-2xl font-bold text-white">Pesanan Pedia</h2>
+          <p className="mt-2 break-all font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{pediaPointer.code}</p>
+          {pediaPointer.status && <p className="mt-2 text-sm text-white/65">Status: {pediaPointer.status}</p>}
+          {adminView
+            ? <a href="/admin?section=pedia&tab=orders" className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#00E5FF] px-5 font-bold text-[#080C1E]">Buka di Admin → Pedia → Pesanan</a>
+            : <a href={pediaOrderUrl(pediaPointer.code)} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#00E5FF] px-5 font-bold text-[#080C1E]">Buka status pesanan</a>}
+        </div>
+      )}
 
       {order && (
         <div ref={resultRef} className="ax-glass-card mt-6 scroll-mt-24 rounded-[28px] p-6 text-center sm:p-8" aria-live="polite">

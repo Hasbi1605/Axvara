@@ -35,6 +35,9 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
     orderCode,
   );
   if (!order) return false;
+  // Pedia (AXP) never uses the Market fulfillment outbox. Already-existing
+  // false jobs/items are ignored safely elsewhere; never create new ones here.
+  if (String(order.order_kind || "apps") === "pedia") return false;
 
   // Buyer payment acknowledgement must not depend on AUTO_FULFILLMENT_ENABLED.
   // It is durable/idempotent and retried by the operations cron when Telegram

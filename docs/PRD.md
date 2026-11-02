@@ -1,5 +1,66 @@
 # PRD — AXVARA
 
+## Status aktual Pedia vs serah terima Market - 2 November 2026
+
+Implementasi lokal (backend + UI); publikasi melalui CI, deployment belum
+diverifikasi. Pedia tidak lagi diperlakukan sebagai handover Market: guard
+fulfillment generik (DANA/webhook, ensure, reconcile, cron) no-op untuk
+`order_kind='pedia'` dan tidak membuat baris Market baru (baris lama yang
+salah dibiarkan inert, tanpa hapus/migrasi/beli ulang); DANA bercabang
+seperti GoPay/KlikQRIS. Nama pembeli mengikuti Market
+(`deriveNameFromEmail`, disimpan saat checkout + fallback baca untuk baris
+lama). Status Telegram/admin/API, lookup dan email pembeli memakai item
+Pedia durable (status aktual, qty, progres, ETA verbatim, nama layanan
+snapshot; link `SITE.pediaUrl/pesanan/<code>`; tanpa kata handover/kredensial
+dan tanpa identitas supplier).
+
+Halaman pembeli `/pesanan/[code]` di host Pedia menampilkan status aktual
+(Pembayaran Diterima, Diproses, Berjalan, Selesai, Selesai Sebagian,
+Dibatalkan, Sedang Dicek) dengan `StatusPill`, waktu bayar sebagai baris
+sekunder, ringkasan layanan snapshot, empat sel hitungan (Jumlah awal,
+Dipesan, Sisa, Masuk; tidak diketahui = "Belum dilaporkan", bukan 0),
+progres hanya bila terkonfirmasi, estimasi jujur (eta_finish atau eta_start
+pra-progres), baris kesegaran 5/10/30 detik (needs_check ikut polling 30
+detik), tanpa animasi baru. Pintu masuk Market (`/pesanan/AXP-…`,
+`/lacak-pesanan` form/deep-link) dialihkan atau menunjuk ke host Pedia tanpa
+kontak; respons lookup Pedia hanya kartu penunjuk. Admin Pesanan: chip Pedia
++ chip status lifecycle, quantity Pedia, tanpa handover/kredensial Market;
+needs_check/partial/canceled menautkan ke Admin → Pedia → Pesanan.
+
+Email lifecycle paid/processing/completed memakai pagar klaim fenced
+(`buyer_notice_log` existing: lease UUID, attempts maks 5, backoff
+1/5/15/60 mnt, due/stale guard, settle CAS; klaim gagal = tidak kirim).
+Paid independen dari sukses supplier; processing hanya pada
+in_progress/processing aktual (supplier Pending tidak dipromosikan dan tidak
+meregresi item berjalan); Paid menegaskan pembayaran + status lifecycle
+SAAT INI (tidak pernah "sedang berjalan" untuk terminal); selesai hanya
+untuk completed terkonfirmasi. Isi: nama layanan snapshot, jumlah awal
+(bila dilaporkan) + sisa/terkirim (bila diketahui), tanpa PIN/kredensial/
+nama supplier, estimasi hanya field tier saat ini yang dapat kosong, bukan
+snapshot. Forward sender memakai API Resend tanpa idempotency key untuk email
+ini: transport bounded at-least-once (bukan exactly-once). Partial/canceled
+memakai bahasa tindak lanjut tanpa kata manual/admin untuk pembeli. Recovery:
+sighting paid maksimal 5 dan discovery maksimal 2/fase hanya untuk fase hilang
+order lunas ≤24 jam; ledger due existing tetap retry setelah 24 jam. Stale
+terminal disupresi tanpa kirim. Tanpa migrasi,
+env, cron, atau klaim deployment baru.
+
+### Sumber data status Pedia: resmi vs non-resmi
+
+| Kebutuhan | Sumber resmi | Non-resmi (bukan sumber status) |
+|---|---|---|
+| Lifecycle + start_count/remains | API IndoSMM v2 `action: status` (resmi, pull-based) | — |
+| Nama layanan/paket, quantity, target | Snapshot order Pedia (saat checkout) | — |
+| ETA | Field tier saat ini, dapat kosong; bukan snapshot | — |
+| Katalog, harga, min/max, flag refill API | API `services` + `balance` resmi | — |
+| Deskripsi/speed/start-time marketing | — | AJAX deskripsi layanan (hanya kurasi offline, tidak dipakai status live) |
+| Statistik 7 hari (success/cancel rate) | — | Analisis publik (sinkron kesehatan katalog via cron, bukan ETA per order) |
+| Avg time dashboard | — | Tidak dipakai (butuh sesi terautentikasi; bukan ETA per order) |
+
+Rincian: `docs/pedia/indosmm-catalog-refill-2026-11-01.md`; pemetaan
+sumber-ke-kebutuhan: artefak tim `api-gap-map.md` (bukti kerja, bukan
+kontrak permanen repo — kontrak permanen adalah bagian ini + PEDIA-PRD).
+
 ## WR Jaspay terpisah dari Premium - 2 November 2026
 
 Kontrak integrasi lokal; deployment Pages belum diverifikasi. Jaspay adalah

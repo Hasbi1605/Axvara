@@ -21,11 +21,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { code } = await params;
+  // Pedia never uses Market handover: reject AXP safely before the AXV regex
+  // (409, no manual flow touched). AXV behavior unchanged below.
+  if (/^AXP-\d{8}-[A-Z0-9]{8}$/.test(String(code || "").trim().toUpperCase())) {
+    return NextResponse.json({ error: "pedia_not_handover", message: "Pesanan Pedia tidak memakai serah terima manual. Tindak lanjut via Admin → Pedia → Pesanan." }, { status: 409 });
+  }
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
   const order = await queryFirst(
-    "SELECT code, status, payment_status, fulfillment_status, sales_channel, customer_name, customer_email, items FROM orders WHERE code=?", code,
+    "SELECT code, status, payment_status, fulfillment_status, sales_channel, order_kind, customer_name, customer_email, items FROM orders WHERE code=?", code,
   );
   if (!order) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
+  // Defense in depth: a Pedia row behind an AXV-shaped code still rejects.
+  if (String(order.order_kind || "apps") === "pedia") {
+    return NextResponse.json({ error: "pedia_not_handover", message: "Pesanan Pedia tidak memakai serah terima manual. Tindak lanjut via Admin → Pedia → Pesanan." }, { status: 409 });
+  }
   const rows = await queryAll(
     `SELECT fi.item_index, fi.product_id, fi.variant_id, fi.qty, fi.fulfillment_mode, fi.status, fi.recipient_channel,
             fi.last_error, fi.updated_at, (fi.delivered_ciphertext IS NOT NULL) AS has_content, pv.handover_template
@@ -65,6 +74,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const admin = await requireAdmin(req);
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { code } = await params;
+  // Pedia never uses Market handover: reject AXP safely before the AXV regex.
+  if (/^AXP-\d{8}-[A-Z0-9]{8}$/.test(String(code || "").trim().toUpperCase())) {
+    return NextResponse.json({ error: "pedia_not_handover", message: "Pesanan Pedia tidak memakai serah terima manual. Tindak lanjut via Admin → Pedia → Pesanan." }, { status: 409 });
+  }
   if (!code || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
   let body: unknown;
   try {
@@ -76,9 +89,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
 
   const order = await queryFirst(
-    "SELECT code, status, payment_status FROM orders WHERE code=?", code,
+    "SELECT code, status, payment_status, order_kind FROM orders WHERE code=?", code,
   );
   if (!order) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
+  // Defense in depth: a Pedia row behind an AXV-shaped code still rejects.
+  if (String(order.order_kind || "apps") === "pedia") {
+    return NextResponse.json({ error: "pedia_not_handover", message: "Pesanan Pedia tidak memakai serah terima manual. Tindak lanjut via Admin → Pedia → Pesanan." }, { status: 409 });
+  }
   if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
     return NextResponse.json(
       { error: "handover_requires_paid", message: "Serah terima hanya untuk pesanan lunas." },

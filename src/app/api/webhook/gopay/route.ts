@@ -142,7 +142,10 @@ export async function POST(request: NextRequest) {
   }
 
   const orderCode = String(transaction.order_code);
-  const fulfillmentRouting = await queryFirst(
+  const isPediaOrder = String(transaction.order_kind || "apps") === "pedia";
+  // Pedia never gets a Market fulfillment outbox row (null = no job insert);
+  // its paid work runs only through schedulePaidFulfillment below.
+  const fulfillmentRouting = isPediaOrder ? null : await queryFirst(
     `SELECT o.variant_id, o.sales_channel,
             (SELECT fi.id FROM fulfillment_inventory fi
               WHERE fi.order_code=o.code AND fi.status='reserved') AS inventory_id

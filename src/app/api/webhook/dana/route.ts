@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     `SELECT pt.order_code, pt.status, pt.expires_at, COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,
             o.status AS order_status,
             ${DANA_AMOUNT_REUSED_SQL} AS amount_history,
-            o.sales_channel, o.channel_conversation_id
+            o.sales_channel, o.channel_conversation_id, o.order_kind
      FROM payment_transactions pt
      JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider='dana' AND pt.payable_amount=?
@@ -122,11 +122,17 @@ export async function POST(request: NextRequest) {
   }
 
   const orderCode = String(transaction.order_code);
+  // Pedia (AXP) must never enter the Market fulfillment pipeline. Branch like
+  // GoPay/KlikQRIS: pass null fulfillment to the paid transition (no Market
+  // outbox row), then only the pedia scheduler — never generic Market jobs
+  // or WR/SK links.
+  const isPediaOrder = String(transaction.order_kind || "apps") === "pedia";
   // Resolve fulfillment routing BEFORE the atomic paid batch so the outbox
   // row lands in the same commit (issue #3): no crash window between
   // "payment stored" and "job created". Idempotent INSERT OR IGNORE keeps
   // concurrent webhook deliveries to exactly one job row.
-  const fulfillmentRouting = await queryFirst(
+  // Pedia skips routing entirely (null = no fulfillment_jobs row).
+  const fulfillmentRouting = isPediaOrder ? null : await queryFirst(
     `SELECT o.variant_id, o.sales_channel,
             (SELECT fi.id FROM fulfillment_inventory fi
               WHERE fi.order_code=o.code AND fi.status='reserved') AS inventory_id
@@ -158,13 +164,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await ensureFulfillmentForPaidOrder(orderCode);
+    if (isPediaOrder) {
+      const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
+      await schedulePaidFulfillment(orderCode, "pedia");
+    } else {
+      await ensureFulfillmentForPaidOrder(orderCode);
+    }
   } catch { /* Payment is durable; fulfillment cron remains idempotent. */ }
 
   // Produk WR: buat link auto-order segera (best-effort; cron memprosesnya).
   // WR tidak memakai fulfillment_inventory lokal — pipeline wr_order_links
-  // yang menentukan delivery.
-  try {
+  // yang menentukan delivery. Pedia tidak memakai jalur WR/SK.
+  if (!isPediaOrder) try {
     const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
     const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
     if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
@@ -175,21 +186,13 @@ export async function POST(request: NextRequest) {
   // Produk Sekalipay (supplier kedua paralel, 0049): pola yang sama dengan
   // WR di atas — link SK dibuat segera, cron fase sekalipay memprosesnya.
   // Best-effort; tidak mengganggu jalur WR/non-WR bila SK mati.
-  try {
+  if (!isPediaOrder) try {
     const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
     const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
     if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
       await processSkPendingOrders().catch(() => undefined);
     }
   } catch { /* Link SK menyusul via cron. */ }
-
-  // Order Pedia (order_kind='pedia'): antrikan dispatch supplier + drain
-  // segera satu siklus (pola WR/SK di atas). Best-effort; cron fase pedia
-  // tetap menjadi penjamin (PD-30–33 + M4 dispatch+poll).
-  try {
-    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
-    await processPediaPaidOrders().catch(() => undefined);
-  } catch { /* Job Pedia menyusul via cron. */ }
 
   if (String(transaction.sales_channel) === "whatsapp" && transaction.channel_conversation_id) {
     try {

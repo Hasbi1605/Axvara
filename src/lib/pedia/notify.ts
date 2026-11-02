@@ -7,35 +7,278 @@
 import { escapeHtml } from "@/lib/telegram/messages/format";
 import type { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
+import { SITE } from "@/lib/site";
+import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
+import { whiteLabel } from "@/lib/pedia/terms";
 
 type Db = ReturnType<typeof createDatabaseAccess>;
 
-export async function pediaOrderSummary(db: Db, orderCode: string): Promise<string> {
+export type PediaBuyerContext = {
+  email: string;
+  displayName: string;
+  productName: string;
+  serviceName: string;
+  quantity: number;
+  target: string;
+  /** Pedia item status at context read time (sender re-verifies inside its boundary). */
+  status: string;
+  orderPaid: boolean;
+  paidAt: string | null;
+  startCount: number | null;
+  remains: number | null;
+  done: number | null;
+  percent: number | null;
+  etaStart: string | null;
+  etaFinish: string | null;
+  refillDays: number;
+  pediaUrl: string;
+};
+
+function sanitizePublicText(value: unknown, max = 200): string {
+  return whiteLabel(String(value ?? "")).trim().slice(0, max);
+}
+
+function etaLine(etaStart: string | null, etaFinish: string | null): string | null {
+  const start = (etaStart ?? "").trim();
+  const finish = (etaFinish ?? "").trim();
+  if (finish) return `Perkiraan selesai: ${finish}. Estimasi mengikuti antrean.`;
+  if (start) {
+    if (start === "Mengikuti antrean layanan") return start + ".";
+    return `Perkiraan mulai: ${start} setelah pembayaran. Estimasi layanan, bukan jaminan.`;
+  }
+  return null;
+}
+
+function countsLine(ctx: PediaBuyerContext): string | null {
+  // Reported supplier counts only; unknown stays unknown, never 0.
+  // Start count is shown independently when reported; sisa follows when known.
+  const start = ctx.startCount != null
+    ? `Jumlah awal: ${ctx.startCount.toLocaleString("id-ID")}` : null;
+  if (ctx.remains != null && ctx.quantity > 0) {
+    const done = ctx.done ?? Math.max(0, ctx.quantity - ctx.remains);
+    const sisa = ctx.remains.toLocaleString("id-ID");
+    return `${start ? `${start} · ` : ""}sisa ${sisa} · terkirim: ${done.toLocaleString("id-ID")} dari ${ctx.quantity.toLocaleString("id-ID")}.`;
+  }
+  if (start) return `${start}.`;
+  if (ctx.done != null && ctx.quantity > 0) {
+    return `Terkirim: ${ctx.done.toLocaleString("id-ID")} dari ${ctx.quantity.toLocaleString("id-ID")}.`;
+  }
+  return null;
+}
+
+/** Single joined buyer context: ONE budgeted read (orders ⨝ pedia item ⨝
+ *  product/tier). Snapshot names (never live tier edits except the
+ *  pre-existing eta/label read); supplier identity, wholesale cost and raw
+ *  IDs never exposed. Counts keep null (unknown ≠ 0). */
+export async function pediaBuyerContext(db: Db, orderCode: string): Promise<PediaBuyerContext | null> {
+  if (!db.canSpend(1)) return null;
   const row = await db.queryFirst(
-    `SELECT i.*, p.name AS product_name, p.slug AS product_slug
-       FROM pedia_order_items i JOIN pedia_products p ON p.id=i.product_id
-      WHERE i.order_code=?`,
+    `SELECT o.customer_name, o.customer_email, o.status AS order_status, o.payment_status, o.paid_at,
+            i.status AS item_status, i.quantity, i.start_count, i.remains, i.target_normalized,
+            i.snapshot_json, p.name AS product_name, t.tier AS tier_name, t.label_note,
+            t.eta_start, t.eta_finish
+       FROM orders o
+       JOIN pedia_order_items i ON i.order_code=o.code
+       JOIN pedia_products p ON p.id=i.product_id
+       JOIN pedia_tiers t ON t.id=i.tier_id
+      WHERE o.code=?`,
     orderCode,
   ).catch(() => null);
-  if (!row) return orderCode;
-  return `${String(row.product_name)} · ${Number(row.quantity)} · ${String(row.target_normalized).slice(0, 80)}`;
+  if (!row) return null;
+  const { pediaDisplayName } = await import("@/lib/pedia/notify-channel");
+  let snap: Record<string, unknown> = {};
+  try { snap = JSON.parse(String(row.snapshot_json ?? "{}")) ?? {}; } catch { /* legacy */ }
+  const copy = readPediaServiceCopy(snap.service_copy);
+  const productName = sanitizePublicText(copy?.product_name ?? row.product_name, 120) || "Pesanan Pedia";
+  const serviceName = sanitizePublicText(copy?.service_name ?? row.label_note ?? row.tier_name, 200) || productName;
+  const qty = Number(row.quantity) || 0;
+  const rawStart = row.start_count != null ? Number(row.start_count) : NaN;
+  const rawRemains = row.remains != null ? Number(row.remains) : NaN;
+  const startCount = Number.isSafeInteger(rawStart) && rawStart >= 0 ? rawStart : null;
+  const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= qty ? rawRemains : null;
+  const itemStatus = String(row.item_status);
+  const done = itemStatus === "completed" ? qty : remains != null ? qty - remains : null;
+  const percent = qty > 0 && done !== null ? (done / qty) * 100 : null;
+  return {
+    email: String(row.customer_email ?? "").trim(),
+    displayName: pediaDisplayName(row),
+    productName,
+    serviceName,
+    quantity: qty,
+    target: String(row.target_normalized ?? "").slice(0, 120),
+    status: itemStatus,
+    orderPaid: String(row.order_status) === "lunas" && String(row.payment_status) === "paid",
+    paidAt: row.paid_at != null ? String(row.paid_at) : null,
+    startCount,
+    remains,
+    done,
+    percent,
+    etaStart: row.eta_start != null ? String(row.eta_start) : null,
+    etaFinish: row.eta_finish != null ? String(row.eta_finish) : null,
+    // Snapshot refill_days (order-time terms); live tier is not re-read here.
+    refillDays: Number((snap as Record<string, unknown>)?.refill_days) || 0,
+    pediaUrl: `${SITE.pediaUrl.replace(/\/$/, "")}/pesanan/${encodeURIComponent(orderCode)}`,
+  };
 }
 
-/** Pembeli: "X sudah dibayar, lagi kami kirim. Cek status: link" (§9.5). */
-export async function notifyPediaPaid(db: Db, orderCode: string, siteUrl: string): Promise<void> {
-  const order = await db.queryFirst(`SELECT customer_wa FROM orders WHERE code=?`, orderCode).catch(() => null);
-  void order;
-  const summary = await pediaOrderSummary(db, orderCode);
-  const { sendPediaBuyerMessage } = await import("@/lib/pedia/notify-channel");
-  await sendPediaBuyerMessage(db, orderCode,
-    `${summary} sudah dibayar, lagi kami kirim. Cek status: ${siteUrl}/pedia/lacak?code=${orderCode}`);
+/** Terminal Pedia item states: completion/followup/expiry. A deferred
+ *  paid/processing send must never claim "sedang berjalan" here. */
+export function isPediaTerminalStatus(status: string): boolean {
+  return ["completed", "partial", "canceled", "expired"].includes(status);
 }
 
-/** Pembeli: selesai. */
-export async function notifyPediaCompleted(db: Db, orderCode: string): Promise<void> {
-  const { sendPediaBuyerMessage } = await import("@/lib/pedia/notify-channel");
-  const summary = await pediaOrderSummary(db, orderCode);
-  await sendPediaBuyerMessage(db, orderCode, `${summary} — selesai. Makasih sudah order di Pedia.`);
+function paidBody(ctx: PediaBuyerContext): string {
+  const lines = [
+    `Halo ${ctx.displayName}, pembayaran untuk ${ctx.productName} (${ctx.serviceName}) sejumlah ${ctx.quantity.toLocaleString("id-ID")} sudah kami terima.`,
+    // Truthful at send time: payment is confirmed; lifecycle follows the
+    // CURRENT item state, never a stale queued promise when already terminal.
+    `Status saat ini: ${pediaLifecycleLine(ctx)}.`,
+  ];
+  const counts = countsLine(ctx);
+  if (counts) lines.push(counts);
+  const eta = ctx.status === "completed" ? null : etaLine(ctx.etaStart, ctx.etaFinish);
+  if (eta) lines.push(eta);
+  else if (!counts) lines.push("Jumlah masuk belum dikonfirmasi.");
+  lines.push(`Pantau status terkini di sini: ${ctx.pediaUrl}`);
+  return whiteLabel(lines.join("\n"));
+}
+
+function pediaLifecycleLine(ctx: PediaBuyerContext): string {
+  if (ctx.status === "completed") return "selesai";
+  if (ctx.status === "partial") return "selesai sebagian — sedang kami tindak lanjuti";
+  if (ctx.status === "canceled") return "dibatalkan — sedang kami tindak lanjuti";
+  if (ctx.status === "needs_check") return "sedang kami cek";
+  if (ctx.status === "expired") return "kedaluwarsa";
+  if (ctx.status === "in_progress") return "sedang berjalan";
+  return "masuk antrean dan akan diproses otomatis";
+}
+
+function processingBody(ctx: PediaBuyerContext): string {
+  const lines = [
+    `Halo ${ctx.displayName}, pesanan ${ctx.productName} (${ctx.serviceName}) sejumlah ${ctx.quantity.toLocaleString("id-ID")} sedang berjalan.`,
+  ];
+  const counts = countsLine(ctx);
+  if (counts) lines.push(counts);
+  else lines.push("Jumlah masuk belum dikonfirmasi.");
+  const eta = etaLine(ctx.etaStart, ctx.etaFinish);
+  if (eta) lines.push(eta);
+  lines.push(`Pantau status terkini di sini: ${ctx.pediaUrl}`);
+  return whiteLabel(lines.join("\n"));
+}
+
+function completedBody(ctx: PediaBuyerContext): string {
+  const lines = [
+    `Halo ${ctx.displayName}, pesanan ${ctx.productName} (${ctx.serviceName}) sejumlah ${ctx.quantity.toLocaleString("id-ID")} selesai.`,
+  ];
+  const counts = countsLine(ctx);
+  if (counts) lines.push(counts);
+  if (ctx.refillDays > 0) lines.push("Layanan ini memiliki masa refill. Ajukan refill dari halaman pesanan bila jumlah turun dalam masa garansi.");
+  lines.push(`Lihat ringkasan di sini: ${ctx.pediaUrl}`);
+  return whiteLabel(lines.join("\n"));
+}
+
+/** Phase send boundary: single joined context, current paid state verified
+ *  INSIDE the sender (no mail for unpaid), terminal suppression for stale
+ *  phases, then fenced claim → transport → CAS settle. Returns true when
+ *  the phase is sent or already durably sent/superseded.
+ *
+ *  `ctxOverride` carries claim-time transition values (e.g. the just-reported
+ *  supplier counts from pollOne) so the immediate email is point-in-time;
+ *  deferred retries rebuild from the durable row and apply the same
+ *  terminal-suppression rules. */
+async function sendPediaPhase(
+  db: Db,
+  phase: "paid" | "processing" | "completed",
+  orderCode: string,
+  build: (ctx: PediaBuyerContext) => { subject: string; text: string },
+  allow: (ctx: PediaBuyerContext) => boolean,
+  ctxOverride?: (ctx: PediaBuyerContext) => Partial<PediaBuyerContext>,
+): Promise<boolean> {
+  const { claimPediaEmail, settlePediaEmail, supersedePediaEmail, pediaEmailKey } = await import("@/lib/pedia/notify-channel");
+  const key = pediaEmailKey(phase, orderCode);
+  // Deterministic affordable budget BEFORE claim/transport: 1 context read +
+  // claim + settle + transport slack. Never start a send the budget cannot finish.
+  if (!db.canSpend(5)) return false;
+  const live = await pediaBuyerContext(db, orderCode);
+  if (!live || !live.email || !live.orderPaid) return false;
+  // allow() always evaluates the LIVE durable state (terminal suppression
+  // must see completion even when the immediate body uses claim-time counts).
+  if (!allow(live)) {
+    // Only terminal stale processing is superseded; a future phase remains due.
+    if (phase !== "processing" || !isPediaTerminalStatus(live.status)) return false;
+    const claim = await claimPediaEmail(db, phase, orderCode);
+    if (claim) return supersedePediaEmail(db, key, claim.lease, `stale-at-${live.status}`);
+    const existing = await db.queryFirst(`SELECT status FROM buyer_notice_log WHERE idempotency_key=?`, key).catch(() => null);
+    return String(existing?.status ?? "") === "sent";
+  }
+  const ctx: PediaBuyerContext = { ...live, ...(ctxOverride?.(live) ?? {}) };
+  const claim = await claimPediaEmail(db, phase, orderCode);
+  if (!claim) {
+    const existing = await db.queryFirst(`SELECT status FROM buyer_notice_log WHERE idempotency_key=?`, key).catch(() => null);
+    return String(existing?.status ?? "") === "sent";
+  }
+  let payload: { subject: string; text: string };
+  try {
+    payload = build(ctx);
+  } catch {
+    await settlePediaEmail(db, key, claim.lease, false, "build_failed");
+    return false;
+  }
+  try {
+    const { sendPediaEmail } = await import("@/lib/pedia/email");
+    const ok = await sendPediaEmail({ to: ctx.email, subject: payload.subject, text: payload.text });
+    const settled = await settlePediaEmail(db, key, claim.lease, ok, ok ? undefined : "send_failed");
+    return ok && settled;
+  } catch {
+    await settlePediaEmail(db, key, claim.lease, false, "send_failed");
+    return false;
+  }
+}
+
+/** Pembeli: paid — independent of supplier success (fires on lunas sight,
+ *  even when submit later fails). Durable fenced claim+settle
+ *  (`email:pedia-paid:<code>`). */
+export async function notifyPediaPaid(db: Db, orderCode: string, siteUrl?: string): Promise<boolean> {
+  void siteUrl;
+  return sendPediaPhase(db, "paid", orderCode,
+    (ctx) => ({ subject: `Pembayaran diterima — ${orderCode}`, text: paidBody(ctx) }),
+    // Paid confirms payment even if the lifecycle already advanced; the body
+    // states the CURRENT lifecycle truthfully (never "diproses" for terminal).
+    () => true,
+  );
+}
+
+/** Pembeli: processing — ONLY on actual supplier in_progress/processing.
+ *  Stale at terminal (completed/partial/canceled/expired) is suppressed.
+ *  `counts` carries the just-reported supplier values so the immediate mail
+ *  is point-in-time (deferred retries rebuild from the durable row). */
+export async function notifyPediaProcessing(
+  db: Db, orderCode: string,
+  counts?: { startCount: number | null; remains: number | null },
+): Promise<boolean> {
+  const override = counts ? (ctx: PediaBuyerContext): Partial<PediaBuyerContext> => {
+    const startCount = counts.startCount != null && Number.isSafeInteger(counts.startCount) && counts.startCount >= 0 ? counts.startCount : null;
+    const qty = ctx.quantity;
+    const remains = counts.remains != null && Number.isSafeInteger(counts.remains) && counts.remains >= 0 && counts.remains <= qty ? counts.remains : null;
+    return {
+      startCount,
+      remains,
+      done: remains != null ? qty - remains : ctx.done,
+    };
+  } : undefined;
+  return sendPediaPhase(db, "processing", orderCode,
+    (ctx) => ({ subject: `Pesanan sedang berjalan — ${orderCode}`, text: processingBody(ctx) }),
+    (ctx) => ctx.status === "in_progress",
+    override,
+  );
+}
+
+/** Pembeli: selesai — ONLY on confirmed completed. */
+export async function notifyPediaCompleted(db: Db, orderCode: string): Promise<boolean> {
+  return sendPediaPhase(db, "completed", orderCode,
+    (ctx) => ({ subject: `Pesanan selesai — ${orderCode}`, text: completedBody(ctx) }),
+    (ctx) => ctx.status === "completed",
+  );
 }
 
 /** Admin: antrean needs_check (MANUAL — bukan auto-refund). */

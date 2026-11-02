@@ -142,10 +142,12 @@ export async function recordManualHandoverDetailed(
   const reviewer = String(adminEmail || "").trim().slice(0, 120);
   if (!reviewer) return { ok: false, reason: "not_found" };
   const order = await queryFirst(
-    `SELECT code, status, payment_status FROM orders WHERE code=?`,
+    `SELECT code, status, payment_status, order_kind FROM orders WHERE code=?`,
     orderCode,
   );
   if (!order) return { ok: false, reason: "not_found" };
+  // Pedia never uses Market handover: reject safely at the caller layer.
+  if (String(order.order_kind || "apps") === "pedia") return { ok: false, reason: "not_found" };
   if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
     return { ok: false, reason: "not_paid" };
   }

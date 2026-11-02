@@ -892,6 +892,29 @@ Status/resend menyajikan semua item dan error parsial secara eksplisit.
 Semantik transport bounded at-least-once, bukan exactly-once. Tidak ada schema,
 env, trigger cron, integrasi gateway atau UI web baru.
 
+**Status aktual Pedia 2 November 2026 (backend + UI lokal, publikasi CI):**
+`order_kind='pedia'` tidak pernah masuk outbox Market — guard no-op di
+`ensureFulfillmentForPaidOrder`/`ensureFulfillmentItems`/reconcile/process/
+handover (baris salah lama dibiarkan inert), DANA bercabang seperti
+GoPay/KlikQRIS (fulfillment null + hanya scheduler Pedia). Admin orders
+mengembalikan `order_kind` + ringkasan `pedia` + nama ternormalisasi server;
+handover AXP 409. Lookup/status Pedia jujur (counts supplier durable, nama
+snapshot, ETA tier saat ini dapat kosong, null tetap null). Email paid/processing/completed memakai pagar fenced
+existing (`buyer_notice_log`: lease UUID, attempts+1 sebelum transport,
+maks 5, backoff 1/5/15/60, due/stale guard, settle CAS; klaim gagal =
+tidak kirim; `sendPediaEmail` memakai forward sender ke API Resend tanpa
+idempotency key, sehingga transport bounded at-least-once, bukan exactly-once): paid
+independen dari supplier, processing hanya in_progress aktual (Pending
+mempertahankan status + refresh lease), stale terminal disupresi, selesai
+hanya completed; konteks gabungan tunggal (1 read) + gate budget realistis;
+recovery di tick Pedia existing (sighting paid hilang ≤24 jam maksimal 5;
+discovery ≤2/fase; ledger due existing tetap retry setelah 24 jam). DANA
+memanggil scheduler Pedia satu kali; cron tetap fallback.
+UI: `src/components/pedia/status-view.ts` (helper murni: URL, header,
+progres, estimasi, polling 5/10/30 dtk), halaman Pedia aktual, redirect
+Market AXP, lacak AXP, admin kind-aware (tanpa handover/kredensial Market).
+Tanpa migrasi/env/cron baru; deployment belum diverifikasi.
+
 **Digantikan koreksi owner terakhir29Oktober:** `showLoadingBar` memulihkan
 frame0/40/70/100%, timer400/500/400/300ms, delete dalam finally. Wrapper
 `withLoadingIndicator` menjalankan animasi best-effort sebelum callback existing;

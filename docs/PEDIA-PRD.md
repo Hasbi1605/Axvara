@@ -2,6 +2,8 @@
 
 > **1 November 2026 (implementasi lokal, publikasi CI):** ProviderSMM diputus; katalog IndoSMM diperluas dengan label drop/refill SMM, statistik supplier 7 hari dan halaman Refill (API + manual). Spesifikasi: [indosmm-catalog-refill-2026-11-01](pedia/indosmm-catalog-refill-2026-11-01.md), menggantikan bagian terkait pada snapshot lama.
 
+> **2 November 2026 (backend + UI lokal, publikasi CI):** status aktual vs handover Market — guard fulfillment generik no-op untuk Pedia, nama email seperti Market, Telegram/admin API membaca item Pedia durable, lookup/status jujur (termasuk `start_count`/`remains`/`service_name` snapshot, null tetap null), halaman pembeli menampilkan lifecycle aktual + 4 sel hitungan + ETA jujur + polling 5/10/30 dtk, pintu Market dialihkan ke host Pedia, email paid/processing/completed fenced (lease UUID, attempts maks 5, backoff 1/5/15/60, settle CAS; paid independen, processing hanya in_progress aktual, stale terminal disupresi; transport bounded at-least-once) + recovery bounded di cron existing, link `SITE.pediaUrl/pesanan/<code>`. Deployment belum diverifikasi; QA browser final menunggu.
+
 ## Konfigurator terkini — 27 Oktober 2026
 
 ✅ Implementasi; publikasi melalui CI. [UX pembelian27Oktober](pedia/purchase-ux-2026-10-27.md)

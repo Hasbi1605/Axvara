@@ -13,15 +13,20 @@ import { PlatformIcon } from "@/components/pedia/PlatformGrid";
 import { detectPediaLink } from "@/lib/pedia/link";
 import { parseExpiry } from "@/lib/expiry";
 import { SITE, supportTelegramLink } from "@/lib/site";
-import { formatRupiah } from "@/lib/utils";
+import { formatRupiah, formatWibDateTime } from "@/lib/utils";
+import { StatusPill } from "@/components/pedia/StatusWidgets";
+import { formatCheckedTime, formatCount, isProcessingStatus, knownCount, pediaEstimate, pediaHeader, pediaPollMs, pediaProgress, stepThreeLabel } from "@/components/pedia/status-view";
 import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 import type { PediaServiceCopy } from "@/lib/pedia/service-copy";
 import { isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 
 type Status = {
   service_copy?: PediaServiceCopy | null;
+  order_kind?: string; service_name?: string | null;
   product_slug?: string; code: string; product_name: string; tier_name: string; tier_note: string | null;
   quantity: number; target: string; status: string; done: number | null; percent: number | null;
+  /** Dilaporkan layanan; null = belum diketahui (bukan 0). */
+  start_count?: number | null; remains?: number | null; paid_at?: string | null;
   eta_start: string | null; eta_finish: string | null; refill_days: number;
   refill_eligible: boolean;
   refill?: { status_label: string | null; mode: string; ends_at: string | null } | null;
@@ -73,6 +78,8 @@ export default function PediaOrderStatusPage() {
   const [now, setNow] = useState(() => Date.now());
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Kapan status terakhir terkonfirmasi server; gagal refresh tidak menghapus data lama.
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const request = useRef({ code: "", id: 0, active: false });
   const load = useCallback(async (manual = false, contactOverride = "") => {
     if (request.current.active && request.current.code === code) return;
@@ -95,6 +102,7 @@ export default function PediaOrderStatusPage() {
       setNeedsContact(false);
       if (rememberOrderContact(code, proof)) buyerContact.current = proof;
       setData(d.order);
+      setCheckedAt(new Date());
       setError(null);
     } catch (e) {
       if (request.current.id === id) setError(e instanceof Error ? e.message : "Gagal memuat");
@@ -106,16 +114,16 @@ export default function PediaOrderStatusPage() {
     }
   }, [code]);
 
-  useEffect(() => { setData(null); setError(null); void load(); }, [load]);
+  useEffect(() => { setData(null); setError(null); setCheckedAt(null); void load(); }, [load]);
   useEffect(() => {
-    // Match Market payment feedback; processing updates stay cheap/local.
+    // awaiting 5s, berjalan 10s, needs_check 30s (admin bisa menyelesaikan); status akhir berhenti.
+    // Tab tersembunyi dijeda dan dilanjutkan saat terlihat. Hanya membaca DB lewat API, tanpa fetch supplier.
+    const interval = pediaPollMs(data?.status);
+    if (interval === null) return;
     const tick = () => {
       if (document.hidden) return;
-      const s = data?.status;
-      if (!s || ["completed", "partial", "canceled", "expired", "needs_check"].includes(s)) return;
       void load();
     };
-    const interval = data?.status === "awaiting_payment" ? 5_000 : 10_000;
     const t = setInterval(tick, interval);
     const onVisibility = () => { if (!document.hidden) tick(); };
     document.addEventListener("visibilitychange", onVisibility);
@@ -197,38 +205,49 @@ export default function PediaOrderStatusPage() {
   const paid = !pending && !expired;
   const complete = data.status === "completed";
   const terminal = ["completed", "partial", "canceled", "expired"].includes(data.status);
-  const processing = ["submitting", "submitted", "in_progress", "completed", "partial"].includes(data.status);
-  const percent = complete ? 100 : Math.max(0, Math.min(100, data.percent || 0));
+  const processing = isProcessingStatus(data.status);
+  const progress = pediaProgress({ status: data.status, quantity: data.quantity, done: data.done, percent: data.percent });
+  const startCount = knownCount(data.start_count);
+  const remains = knownCount(data.remains);
+  const header = pediaHeader(data.status);
+  const estimate = pediaEstimate({ status: data.status, eta_start: data.eta_start, eta_finish: data.eta_finish });
+  const paidAtLabel = data.paid_at ? formatWibDateTime(data.paid_at, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
   const seconds = Math.max(0, Math.ceil(((parseExpiry(data.qris?.expires_at ?? "") ?? 0) - now) / 1000));
   const countdown = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const platform = detectPediaLink(data.target)?.platform;
   const timeline = [
     { label: "Pesanan dibuat", done: true, active: pending },
     { label: "Pembayaran diterima", done: paid, active: paid && !processing && !terminal },
-    { label: "Sedang diproses", done: processing, active: processing && !terminal },
+    { label: stepThreeLabel(data.status), done: processing, active: processing && !terminal },
     { label: data.status === "partial" ? "Selesai sebagian" : data.status === "canceled" ? "Dibatalkan" : "Selesai", done: terminal && !expired, active: false },
   ];
   const productName = data.service_copy?.product_name ?? data.product_name;
-  const serviceName = data.service_copy?.service_name ?? data.tier_note ?? data.tier_name;
+  const serviceName = data.service_copy?.service_name ?? data.service_name ?? data.tier_note ?? data.tier_name;
   const payableAmount = data.qris ? Number(data.qris.payable_amount) : null;
   const compactPayment = pending && Boolean(data.qris);
   const isCancelled = data.status === "canceled" || data.buyer_canceled === true;
-  const isPendingQris = compactPayment && !qrExpired;
+  const pollSeconds = (pediaPollMs(data.status) ?? 10_000) / 1000;
   const statusVisual = isCancelled
     ? { icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
-    : paid
-      ? { icon: "/icons/ios11/checked-96.png", shell: "bg-emerald-500/15", filter: "brightness(0) saturate(100%) invert(65%) sepia(51%) saturate(717%) hue-rotate(90deg)" }
-      : { icon: "/icons/ios11/clock-96.png", shell: expired ? "bg-white/10" : "bg-[#FFB800]/15", filter: expired ? "brightness(0) invert(1) opacity(.55)" : "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" };
+    : data.status === "needs_check"
+      ? { icon: "/icons/ios11/clock-96.png", shell: "bg-violet-400/15", filter: "brightness(0) invert(1) opacity(.8)" }
+      : data.status === "partial"
+        ? { icon: "/icons/ios11/clock-96.png", shell: "bg-[#FFB800]/15", filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" }
+        : paid
+          ? { icon: "/icons/ios11/checked-96.png", shell: "bg-emerald-500/15", filter: "brightness(0) saturate(100%) invert(65%) sepia(51%) saturate(717%) hue-rotate(90deg)" }
+          : { icon: "/icons/ios11/clock-96.png", shell: expired ? "bg-white/10" : "bg-[#FFB800]/15", filter: expired ? "brightness(0) invert(1) opacity(.55)" : "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" };
+  const isPendingQris = compactPayment && !qrExpired;
   const summaryContent = <>
-    <div className="space-y-2">
-      <div className="flex justify-between gap-3 text-[13px] leading-5"><span className="min-w-0 break-words text-white/70">{productName} · {serviceName} × {data.quantity.toLocaleString("id-ID")}</span></div>
-      <div className="flex justify-between gap-3 text-[13px] leading-5"><span className="shrink-0 text-white/70">Link tujuan</span><span className="min-w-0 break-all text-right font-medium text-white">{data.target}</span></div>
-      {data.refill_days > 0 && <div className="flex justify-between gap-3 text-[13px] leading-5"><span className="shrink-0 text-white/70">Refill</span><span className="font-medium text-white">{refillLabel(data.refill_days)}</span></div>}
-    </div>
+    <dl className="space-y-2">
+      <div className="flex justify-between gap-3 text-[13px] leading-5"><dt className="shrink-0 text-white/70">Layanan</dt><dd className="min-w-0 break-words text-right font-medium text-white">{productName} · {serviceName}</dd></div>
+      <div className="flex justify-between gap-3 text-[13px] leading-5"><dt className="shrink-0 text-white/70">Jumlah dipesan</dt><dd className="font-medium text-white">{formatCount(data.quantity)}</dd></div>
+      <div className="flex justify-between gap-3 text-[13px] leading-5"><dt className="shrink-0 text-white/70">Link tujuan</dt><dd className="min-w-0 break-all text-right font-medium text-white">{data.target}</dd></div>
+      {data.refill_days > 0 && <div className="flex justify-between gap-3 text-[13px] leading-5"><dt className="shrink-0 text-white/70">Refill</dt><dd className="font-medium text-white">{refillLabel(data.refill_days)}</dd></div>}
+    </dl>
     {payableAmount !== null && <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">Total • QRIS</span><span className="shrink-0 font-bold text-white">{formatRupiah(payableAmount)}</span></div>}
   </>;
   const copyBlocks = ([["Deskripsi layanan", data.service_copy?.description], ["Syarat & ketentuan layanan", data.service_copy?.terms]] as const).filter(([, text]) => text);
-  const title = isCancelled ? "Pesanan Dibatalkan" : expired ? "Pesanan Kedaluwarsa" : isCancelled ? "Pesanan Dibatalkan" : complete ? "Pesanan Selesai 🎉" : data.status === "partial" ? "Pesanan Selesai Sebagian" : data.status === "needs_check" ? "Pesanan Sedang Dicek" : paid ? "Pembayaran Dikonfirmasi! 🎉" : "QRIS belum siap";
+  const title = isCancelled ? "Pesanan Dibatalkan" : expired ? "Pesanan Kedaluwarsa" : paid ? header.title : "QRIS belum siap";
   const codeButton = (cls: string) => <button type="button" onClick={() => void copy(data.code)} aria-label="Salin kode pesanan" className={cls}><span className="break-all">{data.code}</span>{copied ? <Check size={11} aria-hidden="true" className="ml-1 inline" /> : <Copy size={11} aria-hidden="true" className="ml-1 inline opacity-70" />}</button>;
   const linkClass = "flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-xl";
   return (
@@ -259,14 +278,14 @@ export default function PediaOrderStatusPage() {
           </div>
           <h1 className="mt-4 font-display text-2xl font-bold text-white">{title}</h1>
           <div className="mt-2">{codeButton("font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]")}</div>
-          {paid ? <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#22C55E]/20 bg-[#22C55E]/15 px-3 py-1.5 text-xs font-semibold text-[#22C55E]">Lunas — Terdeteksi Otomatis</span>
-            : isCancelled ? <span className="mt-3 inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Dibatalkan</span>
+          {isCancelled ? <div className="mt-3"><span className="inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Dibatalkan</span>{paid && !data.buyer_canceled && paidAtLabel && <p className="mt-1.5 text-[11px] text-white/50">Lunas · {paidAtLabel} WIB</p>}</div>
+            : paid ? <div role="status" aria-live="polite" className="mt-3"><StatusPill status={data.status} />{paidAtLabel && <p className="mt-1.5 text-[11px] text-white/50">Lunas · {paidAtLabel} WIB</p>}</div>
             : expired ? <span className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/50">Kedaluwarsa</span>
             : <span className="mt-3 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/15 px-3 py-1.5 text-xs font-semibold text-[#FFB800]">Pending — Menunggu Pembayaran</span>}
-          {(expired || data.buyer_canceled === true || complete || (paid && data.status !== "partial" && data.status !== "needs_check" && !isCancelled) || (pending && !data.qris)) && <p className="mt-4 text-sm leading-6 text-white/60">
+          {(expired || data.buyer_canceled === true || (paid && !isCancelled && (header.lead || complete)) || (pending && !data.qris)) && <p className="mt-4 text-sm leading-6 text-white/60">
             {data.buyer_canceled ? "Pesanan ini dibatalkan. Hubungi admin jika kamu sudah melakukan pembayaran." : expired ? "Batas pembayaran sudah habis. Jangan bayar QRIS lama. Silakan buat pesanan baru. Jika pesanan lama memakai kode kredit, hubungi admin untuk penyelesaian manual."
               : complete ? <>Pesanan <span className="font-medium text-white">{productName}</span> sudah selesai. Terima kasih sudah memesan!</>
-              : paid ? <>Pembayaran <span className="font-medium text-white">{productName}</span> sudah diterima. Pesanan sekarang diproses.</>
+              : paid ? header.lead
               : "Menunggu pembayaran. QRIS belum tersedia. Lanjutkan kembali dari halaman checkout dengan data yang sama, atau hubungi admin dengan kode pesanan ini."}
           </p>}
         </>}
@@ -324,13 +343,22 @@ export default function PediaOrderStatusPage() {
             <div className="min-w-0 flex-1"><p className={`text-sm font-semibold ${step.done ? "text-white" : "text-white/45"}`}>{step.label}</p>
               {i === 0 && <p className="mt-1 text-xs leading-5 text-white/50">Simpan kode ini untuk melacak pesananmu.</p>}
               {i === 1 && pending && <p className="mt-1 text-xs leading-5 text-white/50">Terdeteksi otomatis setelah QRIS dibayar.</p>}
-              {i === 2 && processing && <div className="mt-3"><div role="progressbar" aria-label="Progres pesanan" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100} className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[#00E5FF] transition-[width] motion-reduce:transition-none" style={{ width: `${percent}%` }} /></div><p className="mt-2 font-mono text-xs text-white/55">{data.done === null && !complete ? "Jumlah terkirim belum dikonfirmasi" : `${(complete ? data.quantity : data.done ?? 0).toLocaleString("id-ID")} / ${data.quantity.toLocaleString("id-ID")} masuk`}</p></div>}
+              {i === 2 && processing && (progress.done === null
+                ? <p className="mt-2 font-mono text-xs text-white/55">Jumlah masuk belum dikonfirmasi</p>
+                : <div className="mt-3"><div role="progressbar" aria-label="Progres pesanan" aria-valuenow={Math.round(progress.percent ?? 0)} aria-valuemin={0} aria-valuemax={100} className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[#00E5FF] transition-[width] motion-reduce:transition-none" style={{ width: `${progress.percent ?? 0}%` }} /></div><p className="mt-2 font-mono text-xs text-white/55">{formatCount(progress.done)} / {formatCount(data.quantity)} masuk</p></div>)}
               {i === 3 && complete && <p className="mt-1 text-xs leading-5 text-emerald-300">Pesanan selesai. Terima kasih sudah memesan!</p>}
             </div>
           </li>)}
         </ol>
-          {data.eta_finish && <p className="mt-4 text-xs leading-5 text-white/55">Perkiraan selesai: {data.eta_finish}. Estimasi mengikuti antrean.</p>}
+          <dl aria-label="Jumlah pesanan" className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {([["Jumlah awal", startCount], ["Dipesan", data.quantity], ["Sisa", remains], ["Masuk", progress.done]] as const).map(([label, value]) => <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+              <dt className="text-[10px] uppercase tracking-[0.08em] text-white/50">{label}</dt>
+              <dd className="mt-1 font-mono text-sm font-semibold text-white">{value === null ? <span className="text-xs font-normal text-white/50">Belum dilaporkan</span> : formatCount(value)}</dd>
+            </div>)}
+          </dl>
+          {estimate && <p className="mt-4 text-xs leading-5 text-white/55">{estimate}</p>}
           {data.refill_days > 0 && <p className="mt-2 text-xs text-white/55">{refillLabel(data.refill_days)} sesuai ketentuan layanan.</p>}
+          {!terminal && checkedAt && <p className="mt-3 text-[11px] text-white/35">Diperbarui {formatCheckedTime(checkedAt)} · otomatis tiap {pollSeconds} detik{error ? " · pembaruan terakhir gagal" : ""}</p>}
         </div>}
         <div className="text-left">
           {(data.status === "partial" || data.status === "canceled") && (

@@ -1,5 +1,39 @@
 # DESIGN.md — AXVARA Design System
 
+## Status pesanan Pedia yang jujur — 2 November 2026
+
+Implementasi lokal; deployment belum diverifikasi. Perbaikan, bukan redesain:
+token Midnight/Cyan/Gold, font, kartu glass, QRIS, timeline, refill dan batal
+tetap. Logika tampilan murni di `src/components/pedia/status-view.ts`.
+
+- Halaman pembeli `/pesanan/[code]` di host Pedia: judul + pill mengikuti status
+  Pedia aktual (Pembayaran Diterima, Pesanan Diproses, Pesanan Berjalan, Pesanan
+  Selesai, Selesai Sebagian, Dibatalkan, Sedang Dicek) lewat `StatusPill`, bukan pill hijau
+  “Lunas — Terdeteksi Otomatis”. Waktu bayar menjadi baris sekunder (tetap tampil bila layanan dibatalkan sesudah bayar; batal pembeli sebelum bayar tanpa baris Lunas)
+  `text-[11px] text-white/50` (“Lunas · tanggal WIB”). Pill dibungkus
+  `role="status" aria-live="polite"` agar perubahan status diumumkan sekali.
+- Ringkasan: Layanan (produk · nama layanan snapshot publik), Jumlah dipesan,
+  Link tujuan, Refill. Kartu progres memuat empat sel: Jumlah awal, Dipesan,
+  Sisa, Masuk (grid 2 kolom mobile, 4 kolom mulai sm). Angka tidak
+  diketahui tampil “Belum dilaporkan”, bukan 0. Bar progres dengan
+  `role="progressbar"` hanya ada bila jumlah masuk terkonfirmasi; selain itu
+  teks “Jumlah masuk belum dikonfirmasi”. 100% hanya untuk status selesai terkonfirmasi.
+- Estimasi hanya `eta_finish`, atau `eta_start` sebelum progres berjalan; tanpa
+  hitungan jam dari avg_time/kecepatan. Baris kesegaran `text-[11px] text-white/35`:
+  “Diperbarui HH.MM.DD WIB · otomatis tiap N detik” (5/10/30 detik), ditambah
+  “pembaruan terakhir gagal” saat refresh gagal tanpa menyembunyikan data
+  terakhir; hilang pada status akhir. Tidak ada animasi baru.
+- Admin Pesanan: baris Pedia memakai chip “Pedia” (gaya ChannelBadge) dan chip
+  status Pedia (hanya pesanan lunas; item belum terbaca = “Status belum diketahui”
+  netral; pesanan Pedia pending hanya berlabel “Menunggu pembayaran QRIS” tanpa tombol ACC/Tolak/Batalkan karena API admin menolak kode AXP). Tanpa `FulfillmentBadge`, tombol/dialog Kirim ke pembeli, atau widget
+  kredensial/PIN Market. Jumlah memakai quantity Pedia (bukan ×1); needs_check/
+  partial/canceled menautkan ke Admin → Pedia → Pesanan (tombol min-h 44px di mobile).
+- Pintu masuk Market: `/pesanan/AXP-…` dialihkan ke `pedia.axvara.tech/pesanan/<kode>`
+  sebelum fetch; `/lacak-pesanan` mengenali AXP (petunjuk + tautan “Lacak di Pedia →”,
+  tanpa lookup Market) dan deep link `?code=AXP-…` dialihkan tanpa kontak. Respons
+  lookup bertipe Pedia hanya menampilkan satu kartu penunjuk, tanpa STEPS, garansi
+  atau kredensial. Verifikasi browser nyata desktop/mobile menunggu QA final.
+
 ## Varian Market, promosi responsif dan label layanan - 2 November 2026
 
 Implementasi lokal; deployment belum diverifikasi. Midnight/Cyan/Liquid Glass

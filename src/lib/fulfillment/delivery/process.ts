@@ -72,6 +72,9 @@ export async function processJobItems(
   void product;
   const empty = (reason: "not_paid" | "no_work" | "not_owned" | "budget_yield"): JobUnitResult => ({ done: false, reason, attempted: 0, finished: false });
   if (order.status !== "lunas" || order.payment_status !== "paid") return empty("not_paid");
+  // Pedia never runs through the Market job engine: stale false jobs (if any)
+  // are left inert for history, never processed or re-materialized here.
+  if (String(order.order_kind || "apps") === "pedia") return empty("no_work");
   const orderCode = String(order.code);
   const channel = String(order.sales_channel || "telegram");
   if (channel === "whatsapp" && isEnabled("WHATSAPP_FULFILLMENT") && order.payment_method !== "qris" && isEnabled("WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT")) {

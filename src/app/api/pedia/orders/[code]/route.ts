@@ -6,6 +6,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { buyerOrderAccessMatches, requiresOrderAccessCode, newOrderAccessFailure } from "@/lib/order-access";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
+import { whiteLabel } from "@/lib/pedia/terms";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -78,7 +79,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try { snap = JSON.parse(String(item.snapshot_json ?? "{}")) ?? {}; } catch { /* legacy */ }
   const qty = Number(item.quantity) || 0;
   const rawRemains = item.remains != null ? Number(item.remains) : NaN;
+  const rawStart = item.start_count != null ? Number(item.start_count) : NaN;
   const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= qty ? rawRemains : null;
+  // Reported supplier start count; unknown stays null, never 0.
+  const startCount = Number.isSafeInteger(rawStart) && rawStart >= 0 ? rawStart : null;
   const done = item.status === "completed" ? qty : remains != null ? qty - remains : null;
   const percent = qty > 0 && done !== null ? (done / qty) * 100 : null;
 
@@ -92,14 +96,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ok: true,
     order: {
       code: clean,
-      product_name: String(item.product_name),
+      order_kind: "pedia",
+      product_name: whiteLabel(String(item.product_name)).slice(0, 120),
       product_slug: String(item.product_slug),
-      tier_name: String(item.tier_name),
-      tier_note: item.label_note != null ? String(item.label_note) : null,
+      // Snapshot-safe AXVARA public names (never live tier edits, never
+      // supplier identity/cost/raw IDs). service_copy already white-labeled.
+      service_name: whiteLabel(String(readPediaServiceCopy(snap.service_copy)?.service_name ?? item.label_note ?? item.tier_name)).slice(0, 200),
+      tier_name: whiteLabel(String(item.tier_name)).slice(0, 200),
+      tier_note: item.label_note != null ? whiteLabel(String(item.label_note)).slice(0, 200) : null,
       quantity: qty,
       target: String(item.target_normalized),
       status: order.status === "pending" ? "awaiting_payment" : ["expired", "batal", "kadaluarsa", "dibatalkan"].includes(String(order.status)) ? "expired" : String(item.status),
       done, percent,
+      // Reported supplier counts; null = unknown, never 0.
+      start_count: startCount,
+      remains,
       eta_start: item.eta_start != null ? String(item.eta_start) : null,
       eta_finish: item.eta_finish != null ? String(item.eta_finish) : null,
       service_copy: readPediaServiceCopy(snap.service_copy),

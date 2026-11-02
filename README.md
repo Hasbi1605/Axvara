@@ -91,6 +91,20 @@ Migrasi0084 me-rebuild tabel itu dengan FK ke `pedia_tiers` tanpa mengubah data;
 route order mencatat error D1 ke console. Tidak ada env/cron/kontrak API baru.
 Detail: ARCHITECTURE §16.10a.
 
+## Status aktual Pedia vs handover Market — 2 November 2026 (backend + UI)
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi.
+Guard fulfillment generik no-op untuk Pedia (tanpa baris Market baru), nama
+email seperti Market, Telegram/admin API membaca item Pedia durable, lookup/
+status jujur (counts durable, ETA tier saat ini yang dapat kosong, nama snapshot), halaman pembeli menampilkan
+lifecycle aktual + 4 sel hitungan + polling 5/10/30 dtk, pintu Market
+dialihkan ke host Pedia, email paid/processing/completed fenced (paid
+independen, processing hanya in_progress aktual, stale terminal disupresi;
+bounded at-least-once melalui forward sender Resend tanpa idempotency key) +
+retry bounded di cron existing; discovery fase hilang hanya lunas ≤24 jam,
+sedangkan ledger due tetap retry lebih lama. Link
+`pedia.axvara.tech/pesanan`. Detail: docs/PRD.md + docs/PEDIA-PRD.md.
+
 ## Bantuan dan ketentuan Pedia — 1 November 2026
 
 Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. `/bantuan`

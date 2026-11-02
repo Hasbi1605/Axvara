@@ -54,7 +54,7 @@ type TierInfo = {
  * `caller` diinjeksi test (default provider router). `sharedDb` opsional:
  * cron lite meneruskan budgeted access-nya agar statement ikut budget 40;
  * bila absen (webhook/admin/test), buat koneksi sendiri seperti dulu. */
-export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db): Promise<{ dispatched: number; polled: number; needsCheck: number }> {
+export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db): Promise<{ dispatched: number; polled: number; needsCheck: number; emails_retried?: number }> {
   let db: Db;
   if (sharedDb) {
     db = sharedDb;
@@ -65,7 +65,7 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
   const { expirePediaCheckouts } = await import("./expire");
   await expirePediaCheckouts(db);
   const call = caller ?? callPediaProvider;
-  const out = { dispatched: 0, polled: 0, needsCheck: 0 };
+  const out: { dispatched: number; polled: number; needsCheck: number; emails_retried?: number } = { dispatched: 0, polled: 0, needsCheck: 0 };
   // Klaim lease atomik untuk item queued (wegen race webhook + cron
   // bersamaan). Bila tidak ada yang terklaim, lanjut ke poll — JANGAN
   // return awal (poll submitted/in_progress tetap harus jalan).
@@ -75,6 +75,29 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
       WHERE status='submitting' AND (lease_until IS NULL OR datetime(lease_until)<=datetime('now'))`,
   );
   out.needsCheck += Number(recovered.changes) || 0;
+  // Recent missing paid notices are independent of supplier success; existing
+  // ledger rows are retried by the bounded sweep below.
+  if (db.canSpend(6)) {
+    try {
+      const lunasItems = await db.queryAll(
+        `SELECT i.order_code FROM pedia_order_items i
+          JOIN orders o ON o.code=i.order_code
+         WHERE o.status='lunas' AND o.payment_status='paid'
+           AND i.status IN ('queued','submitting','submitted','in_progress','completed','partial','canceled','needs_check')
+           AND datetime(COALESCE(o.paid_at, o.updated_at)) >= datetime('now','-24 hours')
+           AND NOT EXISTS (SELECT 1 FROM buyer_notice_log b
+             WHERE b.idempotency_key='email:pedia-paid:' || o.code)
+         ORDER BY i.updated_at ASC LIMIT 5`,
+      ).catch(() => []);
+      for (const sight of lunasItems) {
+        if (!db.canSpend(5)) break;
+        try {
+          const { notifyPediaPaid } = await import("@/lib/pedia/notify");
+          await notifyPediaPaid(db, String(sight.order_code)).catch(() => null);
+        } catch { /* fenced sender owns retry; next tick recovers */ }
+      }
+    } catch { /* paid sighting best-effort; dispatch continues */ }
+  }
   const items = await db.queryAll(
     `SELECT * FROM pedia_order_items
       WHERE status='queued' AND (lease_until IS NULL OR datetime(lease_until)<=datetime('now'))
@@ -101,6 +124,13 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
     try {
       if ((await pollOne(db, item, call)) === "polled") out.polled++;
     } catch { /* lanjut */ }
+  }
+  if (db.canSpend(1 + 2 * 5)) {
+    try {
+      const { retryPendingPediaEmails } = await import("./notify-retry");
+      const retried = await retryPendingPediaEmails(db);
+      out.emails_retried = retried;
+    } catch { /* email retry best-effort; lifecycle ledger stays durable */ }
   }
   if (db.canSpend(2)) {
     const refills = await db.queryAll(
@@ -251,15 +281,15 @@ async function pollOne(
   }
   const d = (res.data || {}) as Record<string, unknown>;
   const status = String(d.status ?? "").toLowerCase().replace(/\s+/g, "_").replace(/^cancelled$/, "canceled");
-  const startCount = d.start_count != null ? Number(d.start_count) : null;
+  const startCountRaw = d.start_count != null ? Number(d.start_count) : null;
   const rawRemains = d.remains != null && String(d.remains).trim() !== "" ? Number(d.remains) : NaN;
   const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= item.quantity ? rawRemains : null;
   // Simpan hitungan awal untuk riwayat progres supplier.
-  if (Number.isFinite(startCount)) {
+  if (Number.isFinite(startCountRaw)) {
     await db.execRun(
       `UPDATE pedia_order_items SET start_count=COALESCE(start_count, ?)
         WHERE order_code=?`,
-      Number(startCount), item.order_code,
+      Number(startCountRaw), item.order_code,
     ).catch(() => null);
   }
   if (remains !== null && Number.isFinite(remains)) {
@@ -278,17 +308,43 @@ async function pollOne(
     try {
       const { notifyPediaCompleted } = await import("@/lib/pedia/notify");
       await notifyPediaCompleted(db, item.order_code).catch(() => null);
-    } catch { /* notif best-effort */ }
+    } catch { /* notif best-effort; cron retry sweep recovers failed sends */ }
     return "polled";
   }
   if (status === "partial" || status === "canceled") {
     await handleShortfall(db, item, status);
     return "polled";
   }
-  if (status === "in_progress" || status === "processing" || status === "pending") {
-    await db.execRun(
+  if (status === "in_progress" || status === "processing") {
+    const changed = await db.execRun(
       `UPDATE pedia_order_items SET status='in_progress', lease_until=datetime('now', '+${pollSeconds(item)} seconds'),
+         updated_at=datetime('now') WHERE order_code=? AND status='submitted'`,
+      item.order_code,
+    ).catch(() => null);
+    // First submitted→in_progress transition only: emit the processing email
+    // once, with the just-reported counts (point-in-time). Already-running
+    // items just refresh their lease below.
+    if (Number(changed?.changes) === 1) {
+      try {
+        const { notifyPediaProcessing } = await import("@/lib/pedia/notify");
+        const validStart = startCountRaw != null && Number.isSafeInteger(Number(startCountRaw)) && Number(startCountRaw) >= 0 ? Number(startCountRaw) : null;
+        await notifyPediaProcessing(db, item.order_code, { startCount: validStart, remains }).catch(() => null);
+      } catch { /* notif best-effort; cron retry sweep recovers failed sends */ }
+    }
+    await db.execRun(
+      `UPDATE pedia_order_items SET lease_until=datetime('now', '+${pollSeconds(item)} seconds'),
          updated_at=datetime('now') WHERE order_code=?`,
+      item.order_code,
+    ).catch(() => null);
+    return "polled";
+  }
+  if (status === "pending") {
+    // Supplier pending = not started. Do NOT promote to in_progress (never
+    // tell the buyer "sedang berjalan" on an unconfirmed state) and do NOT
+    // regress a previously-running item: refresh the lease, keep status.
+    await db.execRun(
+      `UPDATE pedia_order_items SET lease_until=datetime('now', '+${pollSeconds(item)} seconds'),
+         updated_at=datetime('now') WHERE order_code=? AND status IN ('submitted','in_progress')`,
       item.order_code,
     ).catch(() => null);
     return "polled";

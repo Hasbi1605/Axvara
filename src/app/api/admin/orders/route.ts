@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { ORDER_FACETS_SQL, orderFacets } from "@/lib/admin-order-facets";
 import { readPrivateFinancialSnapshot } from "@/lib/admin-report-cache";
 import { csvCell } from "@/lib/csv";
+import { deriveNameFromEmail } from "@/lib/utils";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -100,9 +101,12 @@ export async function GET(req: NextRequest) {
   // antre, diproses) dan tanpa tombol Retry/Batal, yang hanya ada di tab
   // Warung Rebahan/Sekalipay. Dua SELECT berindeks order_code, ≤ limit baris.
   const supplierByOrder = await loadSupplierLinks(rows.map((row) => String(row.code || "")).filter(Boolean));
+  // Pedia summary per order (satu query berindeks order_code untuk kode AXP di
+  // halaman ini). Names server-normalized; legacy blank names derive at read.
+  const pediaByOrder = await loadPediaSummaries(rows.map((row) => String(row.code || "")).filter(Boolean));
 
   return NextResponse.json({
-    orders: rows.map((row) => ({ ...normalizeOrder(row), supplier_links: supplierByOrder.get(String(row.code || "")) ?? [] })),
+    orders: rows.map((row) => ({ ...normalizeOrder(row), supplier_links: supplierByOrder.get(String(row.code || "")) ?? [], ...(String(row.order_kind || "apps") === "pedia" ? { pedia: pediaByOrder.get(String(row.code || "")) ?? null } : {}) })),
     pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) },
     stats: {
       total: Number(statsRow?.total || 0),
@@ -119,6 +123,51 @@ type SupplierLink = {
   max_attempts: number; last_error: string | null; supplier_order_id: string | null;
   delivery_status: string | null;
 };
+
+export type AdminPediaSummary = {
+  status: string;
+  quantity: number;
+  done: number | null;
+  percent: number | null;
+  target: string | null;
+  supplier: string | null;
+  supplier_order_id: string | null;
+  last_error: string | null;
+};
+
+async function loadPediaSummaries(codes: string[]): Promise<Map<string, AdminPediaSummary | null>> {
+  const out = new Map<string, AdminPediaSummary | null>();
+  const pediaCodes = codes.filter((code) => /^AXP-\d{8}-[A-Z0-9]{8}$/.test(code));
+  if (!pediaCodes.length) return out;
+  const marks = pediaCodes.map(() => "?").join(",");
+  const rows = await queryAll(
+    `SELECT i.order_code, i.status, i.quantity, i.remains, i.target_normalized,
+            i.supplier, i.supplier_order_id, i.last_error
+       FROM pedia_order_items i WHERE i.order_code IN (${marks})`,
+    ...pediaCodes,
+  ).catch(() => [] as Record<string, unknown>[]);
+  const byCode = new Map(rows.map((row) => [String(row.order_code), row]));
+  for (const code of pediaCodes) {
+    // Missing Pedia item must not infer success: explicit null, no fake status.
+    const row = byCode.get(code);
+    if (!row) { out.set(code, null); continue; }
+    const qty = Number(row.quantity) || 0;
+    const rawRemains = row.remains != null ? Number(row.remains) : NaN;
+    const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= qty ? rawRemains : null;
+    const done = String(row.status) === "completed" ? qty : remains != null ? qty - remains : null;
+    out.set(code, {
+      status: String(row.status ?? "unknown"),
+      quantity: qty,
+      done,
+      percent: qty > 0 && done !== null ? (done / qty) * 100 : null,
+      target: row.target_normalized ? String(row.target_normalized).slice(0, 120) : null,
+      supplier: row.supplier ? String(row.supplier) : null,
+      supplier_order_id: row.supplier_order_id ? String(row.supplier_order_id) : null,
+      last_error: row.last_error ? String(row.last_error).slice(0, 200) : null,
+    });
+  }
+  return out;
+}
 
 async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierLink[]>> {
   const out = new Map<string, SupplierLink[]>();
@@ -150,8 +199,12 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
 function normalizeOrder(row: Record<string, unknown>) {
   let items: unknown[] = [];
   try { items = JSON.parse(String(row.items || "[]")); } catch { items = []; }
+  // Server-normalized display name: stored name first, email-derived fallback
+  // for legacy Pedia rows (or any blank), never "Tanpa nama" from the API.
+  const storedName = String(row.customer_name ?? "").trim();
+  const customerName = storedName || deriveNameFromEmail(String(row.customer_email ?? ""));
   return {
-    code: row.code, customer_name: row.customer_name, customer_wa: row.customer_wa,
+    code: row.code, customer_name: customerName || storedName, customer_wa: row.customer_wa,
     customer_email: row.customer_email, items, subtotal: row.subtotal,
     payment_amount: row.payment_amount, payment_method: row.payment_method,
     payment_account: row.payment_account,
@@ -160,6 +213,7 @@ function normalizeOrder(row: Record<string, unknown>) {
     proof_claimed_method: row.proof_claimed_method,
     proof_rejection_reason: row.proof_rejection_reason, status: row.status,
     payment_status: row.payment_status, sales_channel: row.sales_channel || "web",
+    order_kind: String(row.order_kind || "apps"),
     fulfillment_status: row.fulfillment_status, admin_note: row.admin_note,
     created_at: row.created_at, updated_at: row.updated_at,
   };

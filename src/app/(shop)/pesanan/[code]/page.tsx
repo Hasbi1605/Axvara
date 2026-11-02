@@ -15,6 +15,7 @@ import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 import { InlineSpinner, OrderStatusSkeleton } from "@/components/storefront/Skeletons";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { isPediaCode, pediaOrderUrl, redirectBrowser } from "@/components/pedia/status-view";
 import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
 import { ensureBuyerAccessSession, forgetBuyerAccessSession, isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 
@@ -161,6 +162,9 @@ function QrisImage({ src, alt }: { src: string; alt: string }) {
 
 export default function OrderSuccessPage() {
   const { code } = useParams<{ code: string }>();
+  // Kode AXP = pesanan Pedia: satu-satunya tampilan benar ada di host Pedia.
+  // Dialihkan SEBELUM fetch apa pun; tidak ada kontak/token/PIN di URL.
+  const isPedia = typeof code === "string" && isPediaCode(code);
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -187,7 +191,7 @@ export default function OrderSuccessPage() {
   const [needsAccess, setNeedsAccess] = useState(false);
 
   const fetchOrder = useCallback(async (wake = false, contactOverride = "") => {
-    if (!code || typeof code !== "string") return;
+    if (!code || typeof code !== "string" || isPediaCode(code)) return;
     // `wake=1` HANYA dari tombol manual: server membangunkan poller GoPay.
     // Status: invoice + kontak checkout, atau sesi status p1 dari lookup.
     const contact = contactOverride || buyerContact.current || readOrderContact(code);
@@ -300,6 +304,7 @@ export default function OrderSuccessPage() {
   }, [code, cancelling, cancelContact, fetchOrder]);
 
   useEffect(() => {
+    if (typeof code === "string" && isPediaCode(code)) { redirectBrowser(pediaOrderUrl(code)); return; }
     setLoading(true);
     setFetchError(null);
     try {
@@ -402,7 +407,7 @@ export default function OrderSuccessPage() {
     return () => clearInterval(timer);
   }, [order?.qris, order?.status]);
 
-  if (loading && !order) {
+  if (isPedia || (loading && !order)) {
     return <OrderStatusSkeleton />;
   }
   if (needsAccess && !order) return <form className="mx-auto max-w-md space-y-4 px-4 py-12" onSubmit={(event) => {

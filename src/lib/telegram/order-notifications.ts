@@ -413,6 +413,54 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
   return true;
 }
 
+/** Pedia paid admin summary — reads the durable pedia item, never Market
+ *  fulfillment_items. No manual handover words; statuses map to automatic
+ *  processing except needs_check/partial/canceled (followup) and expired. */
+export async function pediaAdminDeliverySummary(
+  orderCode: string, database: DatabaseAccess,
+): Promise<{ needsAdmin: boolean; lines: string[]; orderStatus: string }> {
+  const item = await database.queryFirst(
+    `SELECT i.status, i.quantity, i.supplier, i.supplier_order_id, i.remains, i.start_count,
+            i.last_error, p.name AS product_name
+       FROM pedia_order_items i JOIN pedia_products p ON p.id=i.product_id
+      WHERE i.order_code=?`,
+    orderCode,
+  ).catch(() => null);
+  if (!item) {
+    // Missing Pedia item must not infer success or manual handover.
+    return { needsAdmin: false, lines: ["⏳ Pesanan Pedia belum terdata — sedang dicek"], orderStatus: "SEDANG DICEK" };
+  }
+  const status = String(item.status ?? "");
+  const qty = Number(item.quantity) || 0;
+  const rawRemains = item.remains != null ? Number(item.remains) : NaN;
+  const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= qty ? rawRemains : null;
+  const done = status === "completed" ? qty : remains != null ? qty - remains : null;
+  const progress = done != null ? ` · ${done.toLocaleString("id-ID")}/${qty.toLocaleString("id-ID")} masuk` : "";
+  const supplierOrder = item.supplier_order_id ? ` · ID ${String(item.supplier_order_id).slice(0, 24)}` : "";
+  const product = String(item.product_name ?? "Pesanan Pedia").slice(0, 80);
+  const head = `📦 ${product} · ${qty.toLocaleString("id-ID")}${progress}${supplierOrder}`;
+  if (status === "completed") {
+    return { needsAdmin: false, lines: [head, "✅ Selesai"], orderStatus: "SELESAI" };
+  }
+  if (status === "in_progress") {
+    return { needsAdmin: false, lines: [head, "🤖 Diproses otomatis (berjalan)"], orderStatus: "DIPROSES OTOMATIS (BERJALAN)" };
+  }
+  if (status === "queued" || status === "submitting" || status === "submitted") {
+    return { needsAdmin: false, lines: [head, "🤖 Diproses otomatis"], orderStatus: "DIPROSES OTOMATIS" };
+  }
+  if (status === "partial" || status === "canceled") {
+    return { needsAdmin: false, lines: [head, "🟡 Selesai sebagian/dibatalkan — tindak lanjut manual (bukan handover)"], orderStatus: "PERLU TINDAK LANJUT" };
+  }
+  if (status === "needs_check") {
+    return { needsAdmin: true, lines: [head, `🟡 Perlu pemeriksaan admin: ${String(item.last_error ?? "perlu dicek").slice(0, 160)}`], orderStatus: "PERLU PEMERIKSAAN ADMIN" };
+  }
+  if (status === "expired") {
+    return { needsAdmin: false, lines: [head, "⌛ Kedaluwarsa"], orderStatus: "KEDALUWARSA" };
+  }
+  // Unknown/awaiting states on a lunas order: sedang dicek, never optimistic.
+  return { needsAdmin: false, lines: [head, "⏳ Pesanan Pedia sedang dicek"], orderStatus: "SEDANG DICEK" };
+}
+
 /** Ringkasan status kirim order web untuk notif admin (dibaca setelah upaya kirim pertama). */
 export function summarizeWebDelivery(items: Row[]): { needsAdmin: boolean; lines: string[]; orderStatus: string } {
   let auto = 0, manualDone = 0, manual = 0, progress = 0, attention = 0;
@@ -479,7 +527,7 @@ export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAc
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!adminChatId || !telegramNotificationsConfigured()) return false;
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.customer_wa, o.subtotal, o.payment_method, o.paid_at, o.variant_snapshot,
+    `SELECT o.code, o.items, o.customer_name, o.customer_email, o.customer_wa, o.subtotal, o.payment_method, o.paid_at, o.variant_snapshot, o.order_kind,
             (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code
               ORDER BY pt.id DESC LIMIT 1) AS payable_amount
      FROM orders o
@@ -490,12 +538,18 @@ export async function notifyWebPaidAdmin(orderCode: string, database: DatabaseAc
   const { claimNotice, settleNotice } = await import("@/lib/notify-buyer");
   const key = `admin-paid:${orderCode}`;
   if (!(await claimNotice(database, key, orderCode, "telegram"))) return true;
-  const delivery = await adminDeliverySummary(order, database);
+  // Pedia branch: durable pedia item drives qty/status; names server-normalized;
+  // legacy rows fall back to the derived email name. Never handover words.
+  const isPedia = String(order.order_kind || "apps") === "pedia";
+  const delivery = isPedia ? await pediaAdminDeliverySummary(orderCode, database) : await adminDeliverySummary(order, database);
+  const { deriveNameFromEmail } = await import("@/lib/utils");
+  const storedName = String(order.customer_name || "").trim();
+  const displayName = storedName || deriveNameFromEmail(String(order.customer_email || ""));
   const text = adminWebOrderPaidMessage({
     orderCode: String(order.code),
     productNames: productNames(order.items),
     amount: Number(order.payable_amount ?? order.subtotal ?? 0),
-    customerName: String(order.customer_name || ""),
+    customerName: displayName,
     customerEmail: String(order.customer_email || ""),
     customerWa: String(order.customer_wa || ""),
     paymentMethod: String(order.payment_method || "qris"),

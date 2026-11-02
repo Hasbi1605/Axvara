@@ -172,6 +172,16 @@ export async function notifyBuyerHandover(
   orderCode: string,
   database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
+  // Handover is a Market concept (credentials/delivery). Pedia rejects safely
+  // here; its followup flow lives in PediaManager, and AXV behavior is unchanged.
+  // A kind-lookup failure MUST return false, never fall through to Market.
+  try {
+    const kind = await database.queryFirst(`SELECT order_kind FROM orders WHERE code=?`, orderCode).catch(() => null);
+    if (!kind) return false;
+    if (String(kind.order_kind || "apps") === "pedia") return false;
+  } catch {
+    return false;
+  }
   try {
     const { readDeliveredSnapshots } = await import("@/lib/fulfillment/delivery/buyer-email");
     const contents = await readDeliveredSnapshots(orderCode, database, { manualOnly: true });
@@ -440,6 +450,19 @@ export async function notifyBuyerPaymentReceived(
   orderCode: string,
   database: DatabaseAccess = createDatabaseAccess(),
 ): Promise<boolean> {
+  // Pedia never promises Market credentials: route to the Pedia paid email.
+  // A kind-lookup failure MUST return false (silent), never fall through to
+  // the Market credential promise for a possibly-Pedia order.
+  try {
+    const kind = await database.queryFirst(`SELECT order_kind FROM orders WHERE code=?`, orderCode).catch(() => null);
+    if (!kind) return false;
+    if (String(kind.order_kind || "apps") === "pedia") {
+      const { notifyPediaPaid } = await import("@/lib/pedia/notify");
+      return await notifyPediaPaid(database, orderCode);
+    }
+  } catch {
+    return false;
+  }
   const order = await database.queryFirst(
     `SELECT code, customer_name, buyer_access_version,buyer_access_format FROM orders WHERE code=?`,
     orderCode,
