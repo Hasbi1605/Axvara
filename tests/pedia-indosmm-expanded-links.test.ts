@@ -42,14 +42,15 @@ describe("IndoSMM expansion target contracts",()=>{
  });
 });
 
-it.each(PEDIA_PLATFORM_CONFIG)("renders a local $id logo without letter placeholders",platform=>{
+it.each(PEDIA_PLATFORM_CONFIG)("renders a local $id logo with cache busting for replaced artwork",platform=>{
+ const replaced=["coub","lazada","rutube","snackvideo"].includes(platform.id);
  const markup=renderToStaticMarkup(createElement(PlatformIcon,{id:platform.id,size:48}));
- expect(markup).toContain(`src="/icons/platforms/${platform.id}.svg"`);
+ expect(markup).toContain(`src="/icons/platforms/${platform.id}.svg${replaced?"?v=20261102":""}"`);
  expect(markup).toContain('alt=""');
  const svg=fs.readFileSync(`public/icons/platforms/${platform.id}.svg`,"utf8");
  expect(svg).toContain("<svg");
  expect(svg).not.toMatch(/<text\b|<script\b|<foreignObject\b|(?:href|src)=["']https?:/i);
- if(["coub","lazada","rutube","snackvideo"].includes(platform.id)){
+ if(replaced){
   expect([...new Set([...svg.matchAll(/\bfill="([^"]+)"/g)].map(m=>m[1]))]).toEqual([platform.color]);
   expect(svg).not.toMatch(/<(?:rect|image|linearGradient|radialGradient)\b/);
  }

@@ -9,8 +9,9 @@ export const PEDIA_PLATFORMS = PEDIA_PLATFORM_CONFIG;
 
 export function PlatformIcon({ id, size = 28, className }: { id: string; size?: number; className?: string }) {
   // Glyph SVG satu warna; tanpa background ikon aplikasi atau gradasi.
+  // ponytail: dated cache key for four replaced SVGs; bump it when their artwork changes.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={`/icons/platforms/${id}.svg`} alt="" width={size} height={size} className={className} style={{ width: size, height: size }} draggable={false} />;
+  return <img src={`/icons/platforms/${id}.svg${["coub", "lazada", "rutube", "snackvideo"].includes(id) ? "?v=20261102" : ""}`} alt="" width={size} height={size} className={className} style={{ width: size, height: size }} draggable={false} />;
 }
 
 export function PlatformGrid() {

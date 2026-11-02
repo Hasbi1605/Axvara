@@ -200,7 +200,9 @@ Panel Detail akses produk memakai pegangan GripVertical, nomor posisi cyan dan p
 
 ## Penyederhanaan pilihan layanan Pedia — 22 Oktober 2026
 
-Revisi logo platform 2 November 2026 (implementasi lokal untuk publikasi CI): kotak huruf Coub/Lazada/Rutube/SnackVideo diganti glyph logo asli dalam SVG satu warna per platform seperti ikon lain, tanpa background aplikasi, badge atau gradasi. Coub/Rutube putih, Lazada oranye, SnackVideo kuning sesuai registri existing. Medium tetap memakai ikon crop wordmark resmi, bukan logo elipsis lama. Website Traffic tetap globe generik karena bukan merek. Ukuran, layout dan nama aksesibel kartu tidak berubah. Pemetaan 34 platform dan sumber aset ada di `PEDIA-DESIGN.md`, bagian Ikon platform.
+Revisi logo platform 2 November 2026 (glyph dipublikasi CI commit `7774b0c`): kotak huruf Coub/Lazada/Rutube/SnackVideo diganti glyph logo asli dalam SVG satu warna per platform seperti ikon lain, tanpa background aplikasi, badge atau gradasi. Coub/Rutube putih, Lazada oranye, SnackVideo kuning sesuai registri existing. Medium tetap memakai ikon crop wordmark resmi, bukan logo elipsis lama. Website Traffic tetap globe generik karena bukan merek. Ukuran, layout dan nama aksesibel kartu tidak berubah. Pemetaan 34 platform dan sumber aset ada di `PEDIA-DESIGN.md`, bagian Ikon platform.
+
+Koreksi cache sesudah publikasi glyph commit `7774b0c`: `PlatformIcon` memakai `?v=20261102` pada Coub/Lazada/Rutube/SnackVideo agar CDN/browser tidak menampilkan placeholder lama. Warna, bentuk, ukuran dan aksesibilitas tetap; URL logo lain tidak berubah. Perbaikan URL disiapkan untuk publikasi CI.
 
 Revisi chip layanan Pedia 2 November 2026 (implementasi lokal untuk publikasi CI): chip informasi tetap netral, karena warna hanya untuk Refill (cyan), drop, dan success rate. Teks region/Start naik ke white/85, No Refill ke white/75. Indonesia memakai ikon pin lokasi, Global bola dunia. Tanpa data waktu, chip Start disembunyikan (tidak lagi "Start mengikuti antrean").
 

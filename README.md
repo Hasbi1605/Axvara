@@ -2,12 +2,15 @@
 
 ## Logo platform Pedia - 2 November 2026
 
-Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Empat kotak
+Glyph sudah dipublikasi oleh CI commit `7774b0c`; URL lama masih dapat tersimpan
+di cache CDN/browser. Perbaikan cache-busting disiapkan untuk publikasi CI. Empat kotak
 huruf Coub/Lazada/Rutube/SnackVideo diganti glyph logo asli satu warna per platform,
 tanpa background aplikasi atau gradasi; sumber resmi/mirror dicatat dalam pemetaan.
 Medium tetap memakai crop wordmark resmi; Website Traffic tetap globe generik.
 `PlatformIcon` tetap memakai aset lokal SVG untuk semua platform, tanpa
-request CDN runtime. Pemetaan 34 platform dan sumber: [Ikon platform](docs/PEDIA-DESIGN.md#ikon-platform---pemetaan-2-november-2026).
+request CDN pihak ketiga saat runtime. Empat logo pengganti memakai `?v=20261102`
+di `PlatformIcon` agar melewati cache URL lama; naikkan versi jika SVG tersebut diubah.
+Header cache global dan URL 30 logo lain tetap. Pemetaan 34 platform dan sumber: [Ikon platform](docs/PEDIA-DESIGN.md#ikon-platform---pemetaan-2-november-2026).
 
 ## Pedia IndoSMM: katalog, drop/refill dan halaman Refill — 1 November 2026
 

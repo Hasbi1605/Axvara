@@ -397,7 +397,9 @@ Tabel ini rancangan awal, bukan seluruh komponen aktif. §6.0 mengalahkan tabel:
 
 ### Ikon platform - pemetaan 2 November 2026
 
-Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Seluruh 34 entri registri diperiksa. Aset lokal di `public/icons/platforms/` dipakai bersama oleh katalog, header dan ringkasan melalui `PlatformIcon`; tidak ada request logo pihak ketiga saat runtime. Ukuran/layout dan label aksesibel kartu tetap. Ikon UI lain memakai `IosIcon` existing.
+Glyph dipublikasi lewat CI commit `7774b0c`; cache URL lama ditemukan masih menampilkan placeholder. Perbaikan cache-busting disiapkan untuk publikasi CI. Seluruh 34 entri registri diperiksa. Aset lokal di `public/icons/platforms/` dipakai bersama oleh katalog, header dan ringkasan melalui `PlatformIcon`; tidak ada request logo pihak ketiga saat runtime. Ukuran/layout dan label aksesibel kartu tetap. Ikon UI lain memakai `IosIcon` existing.
+
+Empat SVG pengganti memakai suffix `?v=20261102` di `PlatformIcon`; naikkan versi saat artwork tersebut berubah. Header `/icons/*` existing tetap satu hari + stale-while-revalidate tujuh hari. URL logo lain tidak berubah. Pemeriksaan produksi 2 November: URL Lazada tanpa versi masih `HIT` berisi LA, sementara query baru mengembalikan glyph terbaru. Ini cache aset, bukan kegagalan deploy. Tidak melakukan purge global atau mengubah TTL.
 
 | Platform | Temuan | Tindakan |
 |---|---|---|

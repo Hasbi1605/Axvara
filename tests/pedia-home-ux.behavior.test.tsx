@@ -107,7 +107,8 @@ describe("Pedia platform-first storefront", () => {
     for (const platform of PEDIA_PLATFORM_CONFIG) {
       const card = screen.getByRole("link", { name: `Layanan ${platform.label}` });
       const artwork = card.querySelector("img")!;
-      expect(artwork.getAttribute("src")).toBe(`/icons/platforms/${platform.id}.svg`);
+      const version = ["coub", "lazada", "rutube", "snackvideo"].includes(platform.id) ? "?v=20261102" : "";
+      expect(artwork.getAttribute("src")).toBe(`/icons/platforms/${platform.id}.svg${version}`);
       expect(artwork.getAttribute("width")).toBe("48");
       expect(artwork.getAttribute("height")).toBe("48");
       expect(artwork.getAttribute("alt")).toBe("");

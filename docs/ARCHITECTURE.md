@@ -694,7 +694,9 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
 | Validasi | Zod | Schema checkout & produk |
 | Gateway WhatsApp | Baileys di Heroku | Webhook grup, quoted reply, media bukti sementara, dan pesan fulfillment |
 
-Logo Pedia (2 November 2026, implementasi lokal untuk publikasi CI): `PlatformIcon` tetap memakai SVG lokal. Coub/Lazada/Rutube/SnackVideo memakai glyph logo asli satu warna sesuai registri, tanpa background aplikasi/gradasi atau perubahan route/API/order. Pemetaan 34 platform, sumber resmi/mirror dan ketentuan aset di `docs/PEDIA-DESIGN.md` bagian Ikon platform; tidak ada fetch CDN saat runtime.
+Logo Pedia (2 November 2026, glyph dipublikasi CI commit `7774b0c`): `PlatformIcon` tetap memakai SVG lokal. Coub/Lazada/Rutube/SnackVideo memakai glyph logo asli satu warna sesuai registri, tanpa background aplikasi/gradasi atau perubahan route/API/order. Pemetaan 34 platform, sumber resmi/mirror dan ketentuan aset di `docs/PEDIA-DESIGN.md` bagian Ikon platform; tidak ada fetch logo pihak ketiga saat runtime.
+
+Koreksi cache 2 November: glyph commit `7774b0c` sudah dipublikasi CI, tetapi `/icons/*` memakai cache browser/CDN satu hari + SWR tujuh hari (`public/_headers`). `PlatformIcon` menambah `?v=20261102` hanya pada empat SVG pengganti; versi wajib dinaikkan bila artwork tersebut diubah. URL 30 platform lain dan header global tetap. Pemeriksaan produksi membuktikan URL Lazada lama berisi LA (`HIT`) dan query baru berisi glyph terbaru; perbaikan URL disiapkan untuk publikasi CI.
 
 ---
 
