@@ -69,6 +69,9 @@ ditulis jelas tanpa klaim harga. Baris syarat hasil generator yang persis
 mengulang rentang jumlah, refill, caption estimasi, "Jumlah dapat diisi sendiri dalam batas layanan." dan "Refill N hari sejak pesanan dibuat, sesuai syarat layanan." (hanya bila N = masa refill layanan) tidak ditampilkan lagi; label drop tidak tersedia dinyatakan sekali di baris Drop ("Label drop belum tersedia; jumlah masih dapat berkurang setelah pengiriman."), bukan di glosarium;
 syarat khusus lain tetap. Market: judul S&K/aktivasi memakai huruf biasa, langkah
 aktivasi tunggal berupa paragraf, hanya URL YouTube berlabel singkat, URL lain tampil utuh agar tujuan tetap terbedakan.
+Koreksi owner 2 November: hanya layout datar Market dibatalkan, kotak Cara Aktivasi
+di dalam kartu S&K desktop kembali seperti semula. Judul, penomoran, label tautan,
+fokus keyboard dan seluruh perubahan panel Pedia tetap dipertahankan.
 
 ## Orbit Pedia mobile dan pencarian — koreksi 31 Oktober 2026
 

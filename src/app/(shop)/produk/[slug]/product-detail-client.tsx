@@ -575,7 +575,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 </div>
               )}
               {variantCopy && variantHasActivation && (
-                <div className="mt-5 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
                   <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                     <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
                     Cara Aktivasi
@@ -584,13 +584,13 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 </div>
               )}
               {hasTerms && (
-                <div className="mt-5 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                <div className="mt-6 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
                   <h3 className="mb-3 text-[13px] font-semibold text-white">Ketentuan produk</h3>
                   <TermsBody sections={productCopy.sections} />
                 </div>
               )}
               {hasActivation && (
-                <div className="mt-5 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
                   <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                     <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
                     Cara aktivasi produk
@@ -616,7 +616,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 </div>
               )}
               {hasActivation && (
-                <div className={`${hasTerms ? "mt-5" : "mt-4"} border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed`}>
+                <div className={`${hasTerms ? "mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5" : "mt-4 border-t border-white/10 pt-5"} text-sm text-white/75 leading-relaxed`}>
                   {hasTerms && (
                     <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                       <StepsIcon className="w-4 h-4 text-[#00E5FF]" />

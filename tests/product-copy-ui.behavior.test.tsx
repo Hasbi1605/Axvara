@@ -126,6 +126,17 @@ describe("PDP produk WR: salinan Axvara per varian", () => {
     expect(button.className).toContain("focus-visible:outline-[#00E5FF]");
   });
 
+  it("kotak aktivasi desktop kembali bersarang dan mengikuti varian terpilih", async () => {
+    stubCatalog("netflix-premium", NETFLIX_DESC, variants);
+    render(<ProductDetailClient slug="netflix-premium" />);
+    for (const label of ["Premium Anti Limit", "Premium Legal"]) {
+      fireEvent.click(await pickVariant(label));
+      const card = within(screen.getByTestId("pdp-variant-details")).getByTestId("product-activation-body").parentElement!;
+      for (const token of ["rounded-2xl", "border", "bg-white/[0.03]", "p-5"]) expect(card.classList.contains(token)).toBe(true);
+      expect(card.querySelector("h3")?.classList.contains("text-[13px]")).toBe(true);
+    }
+  });
+
   it("deskripsi tampil sebagai paragraf pembuka + daftar keunggulan", async () => {
     stubCatalog("netflix-premium", NETFLIX_DESC, variants);
     render(<ProductDetailClient slug="netflix-premium" />);
@@ -151,6 +162,9 @@ describe("PDP produk non-WR: format yang sama dari deskripsi admin", () => {
     expect(within(panel).getByRole("region", { name: "Proses & pengiriman" }).textContent).toContain("Undangan Canva dikirim lewat email");
     expect(within(panel).getByRole("region", { name: "Aturan pakai" }).textContent).toContain("Pastikan email yang kamu isi saat checkout aktif");
     const activationButton = screen.getByRole("button", { name: /Cara Aktivasi · 1 langkah/ });
+    const [desktopActivation] = screen.getAllByTestId("product-activation-body");
+    expect(desktopActivation.parentElement?.classList.contains("rounded-2xl")).toBe(true);
+    expect(desktopActivation.parentElement?.classList.contains("p-5")).toBe(true);
     fireEvent.click(activationButton);
     expect(screen.getByRole("region", { name: /Cara Aktivasi/ }).textContent).toContain("Buka email undangan dari Canva, lalu terima undangannya");
   });

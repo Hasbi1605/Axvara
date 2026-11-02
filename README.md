@@ -54,8 +54,10 @@ Penyempurnaan 2 November 2026 (lokal): `ServiceInfoCard` menaruh angka layanan
 satu caption estimasi; definisi HQ/Real/No Refill/Drop di `src/lib/pedia/terms.ts`
 dipersingkat tanpa peringatan berulang (risiko drop hanya di baris Drop). Di PDP
 Market, `ProductCopy.tsx` memakai judul bagian 13px huruf biasa, langkah aktivasi
-tunggal tanpa nomor dan link YouTube berlabel singkat (`linkLabel`, URL lain tampil utuh); kartu desktop
-memisahkan bagian dengan garis, tanpa kotak bersarang.
+tunggal tanpa nomor dan link YouTube berlabel singkat (`linkLabel`, URL lain tampil utuh).
+Koreksi owner 2 November: kotak Cara Aktivasi desktop Market kembali bersarang
+seperti semula; judul 13px, langkah tunggal, label link dan fokus keyboard cyan tetap.
+Penyederhanaan panel deskripsi Pedia tidak dibatalkan.
 
 ## Logo platform Pedia - 2 November 2026
 

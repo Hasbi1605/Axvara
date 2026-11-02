@@ -500,13 +500,13 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
     `#FFB800`), Garansi (emerald).
   - Cara Aktivasi (2 Nov): satu langkah = paragraf biasa tanpa nomor; nomor hanya
     untuk dua langkah atau lebih. Hanya URL YouTube berlabel singkat; URL lain
-    tampil utuh (path membedakan tujuan). Kartu desktop FLAT (tanpa sub-kotak —
-    menggantikan sub-card glass lama): bagian dipisah `mt-5 border-t
-    border-white/10 pt-5`. Langkah bernomor = lingkaran `bg-[#00E5FF]/15`, boleh
+    tampil utuh (path membedakan tujuan). Koreksi owner 2 Nov: kotak Cara Aktivasi
+    desktop kembali bersarang (`mt-6 rounded-2xl border border-white/10
+    bg-white/[0.03] p-5`); judul 13px dan perubahan lain tetap. Langkah bernomor = lingkaran `bg-[#00E5FF]/15`, boleh
     berkelompok berjudul (mis. "Login di aplikasi" / "Login di website"),
     catatan di kotak kecil ber-ikon info.
-  - Desktop: kartu glass FLAT di kolom kiri (Deskripsi, lalu S&K + Cara
-    Aktivasi tanpa sub-kartu). Mobile: deskripsi dilipat dengan mask fade +
+  - Desktop: kartu glass di kolom kiri (Deskripsi, lalu S&K dengan sub-kartu Cara
+    Aktivasi seperti semula). Mobile: deskripsi dilipat dengan mask fade +
     "Lihat Selengkapnya" hanya bila melebihi ±6 baris; **S&K dan Cara Aktivasi
     masing-masing panel terlipat** (`aria-expanded`, chevron, meta "· label
     varian" / "· N langkah"). Label panel boleh membungkus — jangan

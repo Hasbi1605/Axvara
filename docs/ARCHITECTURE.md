@@ -3314,6 +3314,11 @@ Data-only: UPDATE `pedia_tiers.public_name`/`is_active` per id dengan guard `COA
 > URL lain, termasuk path `/clearcookies` dan slug `/go/...`, tampil utuh; href tidak berubah) dan merender langkah tunggal
 > sebagai paragraf. Tidak ada schema, route, env atau API baru.
 
+Koreksi owner 2 November (lokal, deployment belum diverifikasi): container Cara
+Aktivasi desktop di `product-detail-client.tsx` kembali ke sub-kartu glass semula,
+baik copy varian maupun copy produk; aktivasi tunggal tanpa S&K tetap memakai
+pemisah lama. `ProductCopy.tsx`, fokus keyboard varian dan panel Pedia tidak diubah.
+
 > Snapshot implementasi SEBELUM koreksi sore (urutan lama: "grid statistik
 > lalu glosarium"): `ServiceInfoCard` merender deskripsi tier dan copy produk
 > khusus sebagai teks escaped, syarat lengkap yang unik (hanya duplikat template persis dibuang), garansi/drop, grid statistik lalu
