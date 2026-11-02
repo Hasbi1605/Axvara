@@ -27,8 +27,10 @@ antrean, bukan proses admin/manual atau stok instan; visual badge existing tetap
 
 Implementasi lokal; deployment belum diverifikasi. Pertahankan panel cyan/glass
 inline di bawah pilihan, font dan token existing. Urutan: deskripsi karakter,
-penjelasan HQ/Real, Syarat khusus, Refill/drop, grid angka (dua kolom mobile/tiga
-mulai sm), Pengajuan Refill 7 hari, lalu disclosure Arti istilah. Deskripsi di
+penjelasan HQ/Real, Refill/drop, Syarat khusus, Pengajuan Refill 7 hari, lalu
+disclosure Arti istilah. Revisi 2 Nov: grid angka (dua kolom mobile/tiga mulai sm)
++ satu caption estimasi dipindah ke paling atas kartu, dipisah garis dari judul
+Info layanan; teks definisi ringkas tanpa peringatan berulang. Deskripsi di
 ringkasan dan kartu Detail layanan terpilih dihapus; copy produk khusus berpindah
 ke panel. Sebelum memilih, Tentang layanan hanya untuk copy non-boilerplate.
 Tidak ada syarat khusus yang disembunyikan pada mobile. Radio mengacu panel
@@ -492,15 +494,20 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
 - **Satu format untuk WR dan non-WR (2026-09-24, live — permintaan owner):**
   - Deskripsi = paragraf pembuka + daftar keunggulan (ikon check cyan), tanpa
     aturan pakai (aturan hanya di S&K → tidak ada kalimat berulang).
-  - S&K dikelompokkan dengan judul kecil uppercase `text-[11px]` + titik warna:
+  - S&K dikelompokkan dengan judul `text-[13px] font-semibold text-white` huruf
+    biasa (2 Nov, menggantikan uppercase 11px) + titik warna:
     Detail paket (cyan), Proses & pengiriman (cyan/60), Aturan pakai (gold
     `#FFB800`), Garansi (emerald).
-  - Cara Aktivasi = langkah bernomor dalam lingkaran `bg-[#00E5FF]/15`, boleh
+  - Cara Aktivasi (2 Nov): satu langkah = paragraf biasa tanpa nomor; nomor hanya
+    untuk dua langkah atau lebih. Hanya URL YouTube berlabel singkat; URL lain
+    tampil utuh (path membedakan tujuan). Kartu desktop FLAT (tanpa sub-kotak —
+    menggantikan sub-card glass lama): bagian dipisah `mt-5 border-t
+    border-white/10 pt-5`. Langkah bernomor = lingkaran `bg-[#00E5FF]/15`, boleh
     berkelompok berjudul (mis. "Login di aplikasi" / "Login di website"),
     catatan di kotak kecil ber-ikon info.
-  - Desktop: kartu glass di kolom kiri (Deskripsi, lalu S&K dengan sub-kartu
-    Cara Aktivasi). Mobile: deskripsi dilipat dengan mask fade + "Lihat
-    Selengkapnya" hanya bila melebihi ±6 baris; **S&K dan Cara Aktivasi
+  - Desktop: kartu glass FLAT di kolom kiri (Deskripsi, lalu S&K + Cara
+    Aktivasi tanpa sub-kartu). Mobile: deskripsi dilipat dengan mask fade +
+    "Lihat Selengkapnya" hanya bila melebihi ±6 baris; **S&K dan Cara Aktivasi
     masing-masing panel terlipat** (`aria-expanded`, chevron, meta "· label
     varian" / "· N langkah"). Label panel boleh membungkus — jangan
     `truncate`/nowrap (teks nowrap melebarkan grid PDP di layar 390px); URL

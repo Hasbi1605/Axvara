@@ -49,6 +49,14 @@ otomatis. API resmi tidak mendokumentasikan field deskripsi; sumber dashboard
 historis dicatat di [spec](docs/pedia/indosmm-catalog-refill-2026-11-01.md).
 Tidak ada env, cron, schema, harga atau kontrak pembayaran baru.
 
+Penyempurnaan 2 November 2026 (lokal): `ServiceInfoCard` menaruh angka layanan
+(Start time/Speed/Avg time/Min-Max/Success rate) di atas judul Info layanan dengan
+satu caption estimasi; definisi HQ/Real/No Refill/Drop di `src/lib/pedia/terms.ts`
+dipersingkat tanpa peringatan berulang (risiko drop hanya di baris Drop). Di PDP
+Market, `ProductCopy.tsx` memakai judul bagian 13px huruf biasa, langkah aktivasi
+tunggal tanpa nomor dan link YouTube berlabel singkat (`linkLabel`, URL lain tampil utuh); kartu desktop
+memisahkan bagian dengan garis, tanpa kotak bersarang.
+
 ## Logo platform Pedia - 2 November 2026
 
 Glyph sudah dipublikasi oleh CI commit `7774b0c`; URL lama masih dapat tersimpan
@@ -1089,7 +1097,7 @@ Facebook dan contoh promosi/konten pada pengantar. Patch data sekali jalan
 dengan guard timestamp dan isi lengkap owner agar tidak menimpa perubahan baru;
 S&K/panduan varian tetap. Bukan migrasi schema atau perubahan kontrak aplikasi.
 
-**Link supplier tampil pendek via shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056).** 44 link supplier (mailbox OTP, bot Telegram, tutorial YouTube, domain resmi app, panduan artikel — termasuk `go/disney-login` 2026-10-19) dibungkus jadi `go/otp`, `go/netflix-login`, dst. — tampil pendek di PDP/email/panel, redirect 307 + hitung klik, noindex. Kelola di tab admin **Link Supplier** (tambah/ubah/tujuan/aktif-nonaktif); supplier ganti URL → update 1 baris, tanpa edit kurasi. Detail: `docs/ARCHITECTURE.md` (tabel `supplier_links` + route `/go/:slug`) dan `docs/PRD.md` FR-S17c.
+**Link supplier tampil pendek via shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056).** 46 link supplier (mailbox OTP, bot Telegram, tutorial YouTube, domain resmi app, panduan artikel — termasuk `go/disney-login` 2026-10-19 dan `go/otp-hypathia` + `go/alight-shorts` 2026-11-02) dibungkus jadi `go/otp`, `go/netflix-login`, dst. — tampil pendek di PDP/email/panel, redirect 307 + hitung klik, noindex. Kelola di tab admin **Link Supplier** (tambah/ubah/tujuan/aktif-nonaktif); supplier ganti URL → update 1 baris, tanpa edit kurasi. Detail: `docs/ARCHITECTURE.md` (tabel `supplier_links` + route `/go/:slug`) dan `docs/PRD.md` FR-S17c.
 
 **Handoff operasional Heroku + Cloudflare.** Sejak 2026-09-14 proxy WR terpisah:
 akun #1 (`axvara-wa-gateway`) = WhatsApp SAJA; **sejak 2026-10-02 proxy pindah

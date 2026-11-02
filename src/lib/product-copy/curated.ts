@@ -1074,7 +1074,7 @@ export const CURATED_VARIANT_COPY: readonly CuratedVariantCopy[] = [
         langkah: [
           "Buka aplikasi atau website ChatGPT, login dengan email dari admin",
           "Saat diminta kode verifikasi, pilih kirim kode ke email",
-          "Buka netflix-codes.sekalipay.com, masukkan email ChatGPT dan PIN akses dari data produk",
+          "Buka axvara.tech/go/otp, masukkan email ChatGPT dan PIN akses dari data produk",
           "Masukkan kode yang dihasilkan ke ChatGPT",
         ],
       },

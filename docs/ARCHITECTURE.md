@@ -2575,6 +2575,14 @@ Insiden `AXV-20261019-98C8CC33`: probe 12 order lunas terbaru berjalan dua kali 
    karena 0056 sudah tercatat diterapkan sebelum baris itu ada (CI tidak
    menjalankan ulang file lama) — diperbaiki migrasi BARU 0071. Aturan:
    JANGAN titip seed ke migrasi yang sudah live, selalu file migrasi baru.
+   **2026-11-02 audit katalog publik live (99 produk/105 varian):** cross-sell
+   "halaman Jaspay" di 10 varian premium di-drop display-only di
+   `supplierVariantCopy()` (raw + fingerprint utuh); bare
+   `netflix-codes.sekalipay.com` → `go/otp`; shorts Alight Motion baru
+   `YKOMcipD3ig` → `go/alight-shorts`; OTP admin Muse
+   `inbox.hypathia.web.id` → `go/otp-hypathia` (seed migrasi BARU 0092 +
+   schema + dev-fallback = 46 slug). Matriks:
+   `issue/supplier-white-label-2026-11-02.md`.
  - **Anti-spam notif saldo SK 1:1 WR (2026-10-03, sesi ses_f029e):** throttle SK
    cuma 1 jam + state di `sk_saldo_log` (CHECK source rapuh) = spam 24x/hari
    (bukti screenshot: Rp41.900 × 5 dalam 4 jam). Kini `saldo.ts` pakai
@@ -3288,13 +3296,31 @@ Data-only: UPDATE `pedia_tiers.public_name`/`is_active` per id dengan guard `COA
 
 ### 16.10c Info layanan Pedia terpadu - migrasi 0090 (2 November 2026)
 
-Implementasi lokal; deployment belum diverifikasi. `ServiceInfoCard` merender
-deskripsi tier dan copy produk khusus sebagai teks escaped, syarat lengkap yang
-unik (hanya duplikat template persis dibuang), garansi/drop, grid statistik lalu
-glosarium kontekstual `PEDIA_TERMS` termasuk HQ/Real. `ServicePicker` menghubungkan
-radio terpilih ke wrapper panel melalui aria-describedby. `OrderClient` menghapus
-duplikasi deskripsi di ringkasan dan memindahkan detail bawah ke panel; Tentang
-layanan sebelum memilih mengabaikan hanya boilerplate produk persis.
+> Pembaruan UI 2 November 2026 (lokal, belum diverifikasi deploy; koreksi
+> filter refill 2026-11-02 sore): urutan `ServiceInfoCard` kini grid angka
+> layanan + caption estimasi, pemisah, Info layanan (deskripsi, kualitas,
+> Refill, Drop, Syarat khusus), statistik Pengajuan Refill lalu Arti istilah.
+> `DUPLICATE_TERMS` hanya membuang baris generik persis (caption estimasi,
+> rentang jumlah sama dengan Min / Max); kalimat refill generated Inggris
+> hanya dibuang bila label + N + mode persis sama dengan tier saat ini
+> (N/refill_mode/Lifetime tak cocok, refill_days<=0, dan syarat kustom tetap
+> tampil). Pencocokan persis juga untuk tiga kalimat generik kurasi dan
+> "Refill N hari …" hanya bila N = `refill_days`; Kelipatan N serta syarat
+> tanpa-refill/refund tetap tampil. Label drop tidak tersedia memakai kalimat
+> tunggal di baris Drop. Tombol varian PDP desktop kini memakai outline
+> `focus-visible` cyan. `DROP_MEANING` dan `PEDIA_TERMS` HQ/Real/No Refill
+> dipersingkat; `whiteLabel()` tidak berubah. PDP: `ProductCopy.tsx` mengekspor
+> `SECTION_HEADING` dan `linkLabel` (hanya URL YouTube → "Tonton video panduan";
+> URL lain, termasuk path `/clearcookies` dan slug `/go/...`, tampil utuh; href tidak berubah) dan merender langkah tunggal
+> sebagai paragraf. Tidak ada schema, route, env atau API baru.
+
+> Snapshot implementasi SEBELUM koreksi sore (urutan lama: "grid statistik
+> lalu glosarium"): `ServiceInfoCard` merender deskripsi tier dan copy produk
+> khusus sebagai teks escaped, syarat lengkap yang unik (hanya duplikat template persis dibuang), garansi/drop, grid statistik lalu
+> glosarium kontekstual `PEDIA_TERMS` termasuk HQ/Real. `ServicePicker` menghubungkan
+> radio terpilih ke wrapper panel melalui aria-describedby. `OrderClient` menghapus
+> duplikasi deskripsi di ringkasan dan memindahkan detail bawah ke panel; Tentang
+> layanan sebelum memilih mengabaikan hanya boilerplate produk persis.
 
 `refill_pct` tetap kontrak katalog existing (gate >=5 order), ditampilkan sebagai
 Pengajuan Refill 7 hari tanpa klasifikasi risiko/drop, hanya pada layanan refill

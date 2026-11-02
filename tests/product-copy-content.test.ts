@@ -141,7 +141,9 @@ describe.each(snapshot.pairs.map((p) => [p.variants.join(" | "), p] as const))("
     // keduanya WAJIB tetap terbawa apa adanya.
     const GO_BY_HOST: [RegExp, RegExp][] = [
       [/sekalipay\.com\/docs\//i, /go\/netflix-login/i],
-      [/netflix-codes\.sekalipay\.com\/mailbox/i, /go\/otp/i],
+      // Bare netflix-codes tanpa /mailbox (chatgpt-sk live 2026-11-02) ikut
+      // → go/otp, sama seperti versi /mailbox.
+      [/netflix-codes\.sekalipay\.com/i, /go\/otp/i],
       [/bototp\.site/i, /go\/otp-bot/i],
       [/sengare\.art\/check-inbox/i, /go\/otp-sengare/i],
       [/oliesmail\.com/i, /go\/mail-olies/i],

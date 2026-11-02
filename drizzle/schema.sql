@@ -1272,7 +1272,9 @@ INSERT OR IGNORE INTO supplier_links (slug, destination, title) VALUES
   ('rcti-login', 'https://rctiplus.com/login', 'Login RCTI+ (Vision+)'),
   ('ibis-tutor', 'https://ibispaint.com/lecture/index.jsp?lang=in&no=26', 'Tutorial Ibis Paint'),
   ('wetv-redeem', 'https://film.wetv.vip/wetv/cdkey.html', 'Redeem voucher WeTV'),
-  ('dramaku', 'https://dramaku.world/', 'Website Dramaku');
+  ('dramaku', 'https://dramaku.world/', 'Website Dramaku'),
+  ('otp-hypathia', 'https://inbox.hypathia.web.id/', 'Mailbox OTP Hypathia (Muse AI)'),
+  ('alight-shorts', 'https://youtube.com/shorts/YKOMcipD3ig', 'Shorts login Alight Motion supplier');
 
 -- Cermin katalog supplier (ditulis diff VPS).
 CREATE TABLE IF NOT EXISTS pedia_supplier_services (

@@ -60,7 +60,7 @@ describe("dev fallback in-memory — 43 slug prod tersedia tanpa D1", () => {
   it("queryAll supplier_links + queryFirst by slug + klik", async () => {
     const { queryAll, queryFirst, execRun } = await import("@/lib/db/client");
     const rows = await queryAll(`SELECT * FROM supplier_links ORDER BY slug ASC`);
-    expect(rows.length).toBe(44);
+    expect(rows.length).toBe(46);
     const otp = await queryFirst(`SELECT destination FROM supplier_links WHERE slug=? AND is_active=1`, "otp");
     expect(String(otp?.destination)).toBe("https://netflix-codes.sekalipay.com/mailbox");
     const before = Number((await queryFirst(`SELECT click_count FROM supplier_links WHERE slug=?`, "otp"))?.click_count ?? 0);

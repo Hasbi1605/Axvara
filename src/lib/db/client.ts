@@ -184,8 +184,8 @@ function getTokenMem(): Row[] {
   if (!g.__AXVARA_AGENT_TOKENS) g.__AXVARA_AGENT_TOKENS = [];
   return g.__AXVARA_AGENT_TOKENS;
 }
-// Shortlink internal axvara.tech/go/* (2026-10-03): seed dev = 43 slug prod
-// (migrasi 0056) agar /go/* bisa diverifikasi tanpa D1.
+// Shortlink internal axvara.tech/go/* (2026-10-03): seed dev = 46 slug prod
+// (migrasi 0056 + 0071 + 0092) agar /go/* bisa diverifikasi tanpa D1.
 function getSupplierLinkMem(): Row[] {
   const g = process as unknown as { __AXVARA_SUPPLIER_LINKS?: Row[] };
   if (!g.__AXVARA_SUPPLIER_LINKS) {
@@ -234,6 +234,8 @@ function getSupplierLinkMem(): Row[] {
       ["github-pack", "https://education.github.com/pack", "GitHub Student Pack"],
       ["tv-harga", "https://tradingview.com/pricing", "Harga TradingView Premium"],
       ["vidio-web", "https://m.vidio.com/", "Nonton Vidio di laptop"],
+      ["otp-hypathia", "https://inbox.hypathia.web.id/", "Mailbox OTP Hypathia (Muse AI)"],
+      ["alight-shorts", "https://youtube.com/shorts/YKOMcipD3ig", "Shorts login Alight Motion supplier"],
     ];
     const now = new Date().toISOString();
     g.__AXVARA_SUPPLIER_LINKS = seed.map(([slug, destination, title], i) => ({

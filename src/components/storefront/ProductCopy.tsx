@@ -20,6 +20,21 @@ import { linkifySegments } from "@/lib/product-copy/text";
 
 type Size = "sm" | "xs";
 
+/**
+ * Hanya URL YouTube yang diberi label singkat (tujuan tetap href penuh).
+ * URL lain tampil utuh: path membedakan tujuan (mis. /clearcookies vs
+ * /youraccount, slug /go/...), CSS sudah membungkus teks panjang.
+ */
+export function linkLabel(text: string, href: string): string {
+  try {
+    const url = new URL(href);
+    const host = url.hostname.replace(/^www\./, "");
+    return /^https?:$/.test(url.protocol) && /^(?:youtube\.com|m\.youtube\.com|youtu\.be)$/.test(host) ? "Tonton video panduan" : text;
+  } catch {
+    return text;
+  }
+}
+
 /** Render teks dengan link yang bisa diklik (satu gaya link di semua badan). */
 export function RichText({ text }: { text: string }) {
   const segments = linkifySegments(text);
@@ -50,7 +65,7 @@ export function RichText({ text }: { text: string }) {
             rel="noreferrer"
             className="text-[#00E5FF] underline decoration-[#00E5FF]/40 underline-offset-2 hover:text-white"
           >
-            {segment.text}
+            {linkLabel(segment.text, segment.href)}
           </a>
         );
       })}
@@ -95,6 +110,9 @@ export function CredentialText({ text }: { text: string }) {
   );
 }
 
+/** Judul bagian S&K / deskripsi / aktivasi: huruf biasa, bukan kapital kecil. */
+export const SECTION_HEADING = "text-[13px] font-semibold text-white";
+
 const DOT: Record<CopySectionKind, string> = {
   paket: "bg-[#00E5FF]",
   proses: "bg-[#00E5FF]/60",
@@ -128,7 +146,7 @@ export function DescriptionBody({ parsed, size = "sm" }: { parsed: ParsedDescrip
       )}
       {parsed.sections.map((section, i) => (
         <div key={`s${i}`}>
-          <h3 className="text-[11px] font-bold uppercase tracking-wide text-white/55">{descriptionSectionTitle(section.title)}</h3>
+          <h3 className={SECTION_HEADING}>{descriptionSectionTitle(section.title)}</h3>
           <ul className="mt-2 space-y-1.5">
             {section.items.map((item, j) => (
               <li key={j}><RichText text={item} /></li>
@@ -145,7 +163,7 @@ export function TermsBody({ sections, size = "sm" }: { sections: CopySection[]; 
     <div className={`${size === "sm" ? "space-y-5" : "space-y-4"} [overflow-wrap:anywhere]`} data-testid="product-terms-body">
       {sections.map((section) => (
         <section key={section.kind} aria-label={COPY_SECTION_TITLES[section.kind]}>
-          <h3 className="text-[11px] font-bold uppercase tracking-wide text-white/50">{COPY_SECTION_TITLES[section.kind]}</h3>
+          <h3 className={SECTION_HEADING}>{COPY_SECTION_TITLES[section.kind]}</h3>
           <ul className={`mt-2 ${size === "sm" ? "space-y-2" : "space-y-1.5"}`}>
             {section.items.map((item, i) => (
               <li key={i} className="flex items-start gap-2.5">
@@ -165,7 +183,11 @@ export function ActivationBody({ groups, notes, size = "sm" }: { groups: Activat
     <div className={`${size === "sm" ? "space-y-4" : "space-y-3"} [overflow-wrap:anywhere]`} data-testid="product-activation-body">
       {groups.map((group, g) => (
         <div key={g}>
-          {group.title && <h4 className="text-[11px] font-semibold uppercase tracking-wide text-white/55">{group.title}</h4>}
+          {group.title && <h4 className={SECTION_HEADING}>{group.title}</h4>}
+          {group.steps.length === 1 ? (
+            // Satu langkah tidak perlu nomor: paragraf biasa.
+            <p className={group.title ? "mt-2" : ""}><RichText text={group.steps[0]} /></p>
+          ) : (
           <ol className={`${group.title ? "mt-2" : ""} space-y-2`}>
             {group.steps.map((step, i) => (
               <li key={i} className="flex items-start gap-2.5">
@@ -179,6 +201,7 @@ export function ActivationBody({ groups, notes, size = "sm" }: { groups: Activat
               </li>
             ))}
           </ol>
+          )}
         </div>
       ))}
       {notes.length > 0 && (

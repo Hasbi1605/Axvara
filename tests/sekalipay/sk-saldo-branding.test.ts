@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { checkAndLogSkSaldo } from "@/lib/sekalipay/saldo";
 import { formatSkLicenses } from "@/lib/sekalipay/deliver";
-import { AXVARA_ALIGHT_GUIDE_PATH, AXVARA_DISNEY_GUIDE_PATH, AXVARA_NETFLIX_GUIDE_PATH, GO_ALIGHT_LOGIN, GO_BOT_ALIGHT, GO_BOT_SCRIBD, GO_BOT_VIU, GO_DISNEY_LOGIN, GO_MAIL_OLIES, GO_NETFLIX_LOGIN, GO_OTP, GO_OTP_2FA, GO_OTP_GENERATOR, GO_OTP_GENJOS, GO_OTP_RUNCUBES, GO_OTP_SEKALICHAT, GO_OTP_SPOTIFY, GO_OTP_WAROENG, GO_TUTOR_ARCADE, GO_TUTOR_CANVA, GO_TUTOR_REMINI, GO_TUTOR_SCRIBD, GO_TUTOR_VISION_TV, GO_TUTOR_VISION_TV2, rewriteSupplierDocsLinks, supplierVariantCopy } from "@/lib/product-copy/format";
+import { AXVARA_ALIGHT_GUIDE_PATH, AXVARA_DISNEY_GUIDE_PATH, AXVARA_NETFLIX_GUIDE_PATH, GO_ALIGHT_LOGIN, GO_BOT_ALIGHT, GO_BOT_SCRIBD, GO_BOT_VIU, GO_DISNEY_LOGIN, GO_MAIL_OLIES, GO_NETFLIX_LOGIN, GO_OTP, GO_OTP_2FA, GO_OTP_GENERATOR, GO_OTP_GENJOS, GO_OTP_HYPATHIA, GO_OTP_RUNCUBES, GO_OTP_SEKALICHAT, GO_OTP_SPOTIFY, GO_OTP_WAROENG, GO_SHORTS_ALIGHT_NEW, GO_TUTOR_ARCADE, GO_TUTOR_CANVA, GO_TUTOR_REMINI, GO_TUTOR_SCRIBD, GO_TUTOR_VISION_TV, GO_TUTOR_VISION_TV2, rewriteSupplierDocsLinks, supplierVariantCopy } from "@/lib/product-copy/format";
 import { CURATED_VARIANT_COPY } from "@/lib/product-copy/curated";
 import { createD1Fixture } from "../helpers/d1-fixture";
 
@@ -286,6 +286,26 @@ describe("rewrite link docs supplier → shortlink axvara.tech/go/*", () => {
       expect(rewritten, variant).toContain(GO_ALIGHT_LOGIN);
       expect(rewritten, variant).not.toContain("8emqddsjPsE");
     }
+  });
+
+  it("audit live 2026-11-02: bare netflix-codes + shorts Alight baru + OTP Hypathia + typo dramaku jadi shortlink; cross-sell Jaspay dibuang dari tampil", () => {
+    // chatgpt-sk live: bare "netflix-codes.sekalipay.com" (tanpa /mailbox).
+    expect(rewriteSupplierDocsLinks("Buka netflix-codes.sekalipay.com, masukkan email ChatGPT dan PIN akses")!).toContain(GO_OTP);
+    // alight-motion-sk live: shorts baru (BUKAN ID kurasi 8emqddsjPsE).
+    expect(rewriteSupplierDocsLinks("Tutorial Https://youtube.com/shorts/YKOMcipD3ig")!).toContain(GO_SHORTS_ALIGHT_NEW);
+    // Copy admin muse-ai live: mailbox OTP Hypathia dipendekkan (tujuan sama).
+    expect(rewriteSupplierDocsLinks("Akses OTP dari https://inbox.hypathia.web.id")!).toContain(GO_OTP_HYPATHIA);
+    // Typo statis supplier drama-all-in-one live: "https;//dramaku.world"
+    // → go/dramaku yang sudah terdaftar (tanpa query/kredensial di teks ini).
+    expect(rewriteSupplierDocsLinks("Cek Platform: https;//dramaku.world")!).toContain("axvara.tech/go/dramaku");
+    expect(rewriteSupplierDocsLinks("Cek Platform: https;//dramaku.world")!).not.toContain("https;//");
+    // Cross-sell Jaspay di varian premium (hma/express-vpn, meitu, scribd,
+    // picsart, remini, zoom, wink — 10 varian live): display-only drop,
+    // berlaku di S&K maupun teks aktivasi (penempatan kolom tak jadi celah).
+    const cross = supplierVariantCopy("Jika mau Proses Otomatis silahkan ke halaman Jaspay", "Jika mau Proses Otomatis silahkan ke halaman Jaspay\nMade by order (no rush)")!;
+    const all = [...cross.sections.flatMap((s) => s.items), ...cross.activation.flatMap((g) => g.steps)].join("\n");
+    expect(all).not.toMatch(/jaspay/i);
+    expect(all).toContain("Made by order");
   });
 
   it("video YouTube ID LAIN tidak ikut di-rewrite", () => {

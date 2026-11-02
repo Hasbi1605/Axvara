@@ -113,6 +113,24 @@ describe("GET /go/[slug] — redirect 307 + klik", () => {
       fx.close();
     }
   });
+
+  it("migrasi 0092: seed otp-hypathia + alight-shorts idempoten (audit live 2026-11-02)", async () => {
+    const fx = createD1Fixture();
+    try {
+      const migration = fs.readFileSync("drizzle/migrations/0092_supplier_links_whitelabel_20261102.sql", "utf8");
+      fx.sql.exec(migration);
+      const hyp = fx.sql.prepare(`SELECT destination FROM supplier_links WHERE slug='otp-hypathia'`).get() as { destination: string };
+      expect(hyp.destination).toBe("https://inbox.hypathia.web.id/");
+      const shorts = fx.sql.prepare(`SELECT destination FROM supplier_links WHERE slug='alight-shorts'`).get() as { destination: string };
+      expect(shorts.destination).toBe("https://youtube.com/shorts/YKOMcipD3ig");
+      fx.sql.exec(migration);
+      expect(
+        fx.sql.prepare(`SELECT COUNT(*) AS n FROM supplier_links WHERE slug IN ('otp-hypathia','alight-shorts')`).get(),
+      ).toMatchObject({ n: 2 });
+    } finally {
+      fx.close();
+    }
+  });
 });
 
 describe("API /api/admin/supplier-links — CRUD + validasi", () => {

@@ -575,8 +575,8 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 </div>
               )}
               {variantCopy && variantHasActivation && (
-                <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
-                  <h3 className="mb-3 flex items-center gap-2 text-xs font-bold text-white/80 uppercase tracking-wide">
+                <div className="mt-5 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                  <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                     <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
                     Cara Aktivasi
                   </h3>
@@ -584,14 +584,14 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 </div>
               )}
               {hasTerms && (
-                <div className="mt-6 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
-                  <h3 className="mb-3 text-xs font-bold text-white/80 uppercase tracking-wide">Ketentuan produk</h3>
+                <div className="mt-5 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                  <h3 className="mb-3 text-[13px] font-semibold text-white">Ketentuan produk</h3>
                   <TermsBody sections={productCopy.sections} />
                 </div>
               )}
               {hasActivation && (
-                <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
-                  <h3 className="mb-3 flex items-center gap-2 text-xs font-bold text-white/80 uppercase tracking-wide">
+                <div className="mt-5 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                  <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                     <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
                     Cara aktivasi produk
                   </h3>
@@ -616,9 +616,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 </div>
               )}
               {hasActivation && (
-                <div className={`${hasTerms ? "mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5" : "mt-4 border-t border-white/10 pt-5"} text-sm text-white/75 leading-relaxed`}>
+                <div className={`${hasTerms ? "mt-5" : "mt-4"} border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed`}>
                   {hasTerms && (
-                    <h3 className="mb-3 flex items-center gap-2 text-xs font-bold text-white/80 uppercase tracking-wide">
+                    <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                       <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
                       Cara Aktivasi
                     </h3>
@@ -696,7 +696,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                     <button
                       key={v.id}
                       onClick={() => setSelectedVariantId(v.id)}
-                      className={`text-left p-3 rounded-xl border transition ${
+                      className={`text-left p-3 rounded-xl border transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF] ${
                         selectedVariantId === v.id
                           ? "border-[#00E5FF]/50 bg-[#00E5FF]/10"
                           : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"

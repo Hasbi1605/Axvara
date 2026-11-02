@@ -616,7 +616,7 @@ describe("Pedia configurator", () => {
     render(<OrderClient product={info} initialTarget="" ordersEnabled />);
     fireEvent.click(screen.getByRole("radio"));
     const card = screen.getByRole("region", { name: "Info layanan" });
-    for (const text of ["0–1 jam", "10K/hari", "19 menit per 1.000", "97% (7 hari)", "diproses admin", "High Drop", "Saat ini drop besar", "Pengajuan Refill · 7 hari: 12%", "bukan persentase jumlah yang hilang"]) expect(card.textContent).toContain(text);
+    for (const text of ["0–1 jam", "10K/hari", "19 menit per 1.000", "97% (7 hari)", "diproses admin", "High Drop", "Perkiraan drop tinggi", "Pengajuan Refill · 7 hari: 12%", "bukan persentase jumlah yang hilang"]) expect(card.textContent).toContain(text);
     expect(card.textContent).not.toContain("Drop rate:");
     expect(screen.getAllByText("High Drop").some((el) => el.className.includes("text-red-200"))).toBe(true);
     expect(card.textContent).not.toMatch(/supplier|indosmm/i);
@@ -632,7 +632,7 @@ describe("Pedia configurator", () => {
     expect(screen.queryByRole("heading", { name: /Detail layanan terpilih|Tentang layanan/ })).toBeNull();
     expect(screen.getAllByText((_, element) => element?.tagName === "P" && element.textContent === description)).toHaveLength(1);
     expect(within(card).getByText("Akun harus memiliki foto profil.")).toBeTruthy();
-    expect(within(card).getByText(/High Quality, label kualitas/, { selector: "p" })).toBeTruthy();
+    expect(within(card).getByText(/High Quality, kategori kualitas layanan/, { selector: "p" })).toBeTruthy();
     expect(card.querySelector("script")).toBeNull();
     expect(within(card).getByText("Refill khusus hanya untuk penurunan di atas 10%.")).toBeTruthy();
     expect(within(card).getAllByText("Jangan mengganti username.")).toHaveLength(1);
@@ -640,8 +640,11 @@ describe("Pedia configurator", () => {
     const copy = within(card).getByText((_, element) => element?.tagName === "P" && element.textContent === description);
     const conditions = within(card).getByRole("heading", { name: "Syarat khusus" });
     const numbers = within(card).getAllByText("Start time", { selector: "dt" })[0];
+    const heading = within(card).getByRole("heading", { name: "Info layanan" });
+    // Angka layanan (Start time/Speed/Avg time) di atas judul Info layanan.
+    expect(numbers.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(heading.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(copy.compareDocumentPosition(conditions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(conditions.compareDocumentPosition(numbers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const radio = screen.getByRole("radio");
     const linkedPanel = document.getElementById(radio.getAttribute("aria-describedby")!);
     expect(linkedPanel?.contains(card)).toBe(true);
@@ -650,6 +653,81 @@ describe("Pedia configurator", () => {
     expect(disclosure.open).toBe(false);
     fireEvent.click(disclosure.querySelector("summary")!);
     expect(within(disclosure).getByText("HQ")).toBeTruthy();
+  });
+
+  it("keeps buyer copy confident: risk appears once in the Drop line, not in HQ/Real/No Refill, and generated duplicates are dropped", () => {
+    const generated = ["Jumlah per pesanan 10–1.000.", "Refill 30 Days: ajukan refill di halaman Refill Pedia selama masa refill sejak pesanan dibuat, 1× per 24 jam. Refill diproses admin, biasanya dalam 1×24 jam.", "Start time dan speed dapat berubah mengikuti antrean.", "Target harus publik.", "Jumlah per pesanan 10–5.000."].join("\n");
+    render(<ServiceInfoCard t={{ ...product.tiers[1], quality: "hq", refill_days: 30, refill_mode: "manual", drop_label: "no_drop", min_qty: 10, max_qty: 1000, terms: generated }} />);
+    const card = screen.getByRole("region", { name: "Info layanan" });
+    expect(within(card).queryAllByText(/^Start time dan speed dapat berubah/)).toHaveLength(0);
+    expect(card.textContent).toContain("Estimasi; start time dan speed dapat berubah mengikuti antrean.");
+    expect(within(card).queryByText("Jumlah per pesanan 10–1.000.")).toBeNull();
+    expect(within(card).getByText("Jumlah per pesanan 10–5.000.")).toBeTruthy();
+    expect(within(card).getByText("Target harus publik.")).toBeTruthy();
+    expect(card.textContent).not.toContain("ajukan refill di halaman Refill Pedia");
+    expect(card.textContent).toContain("diproses admin, biasanya dalam 1×24 jam");
+    expect(card.textContent).not.toMatch(/Bukan jaminan|tetap bisa terjadi|Anggap drop|Biasanya lebih murah|mengutamakan harga|lebih tinggi|lebih murah/);
+    // Penafian hanya di baris Drop, tidak diulang di paragraf HQ.
+    expect(within(card).getByText(/High Quality, kategori kualitas layanan/, { selector: "p" }).textContent).not.toMatch(/bukan|jaminan|janji/);
+    expect(within(card).getByText(/Perkiraan jumlah tetap stabil/, { selector: "p" }).textContent).toMatch(/bukan janji/);
+    expect(card.textContent).toContain("Perkiraan jumlah tetap stabil setelah pesanan selesai; bukan janji bebas drop.");
+    render(<ServiceInfoCard t={{ ...product.tiers[0], quality: "real", drop_label: "unknown", refill_days: 0 }} />);
+    const none = screen.getAllByRole("region", { name: "Info layanan" })[1];
+    expect(none.textContent).toContain("Tanpa refill: jumlah yang drop tidak diisi ulang.");
+    expect(none.textContent).toContain("Label drop belum tersedia; jumlah masih dapat berkurang setelah pengiriman.");
+    expect(none.textContent).not.toMatch(/No Drop/);
+  });
+
+  it("drops only exact generic live duplicates and keeps real restrictions", () => {
+    const lines = [
+      "Jumlah dapat diisi sendiri dalam batas layanan.",
+      "Estimasi mulai dan kecepatan dapat berubah mengikuti antrean.",
+      "Estimasi dapat berubah mengikuti antrean.",
+      "Refill 30 hari sejak pesanan dibuat, sesuai syarat layanan.",
+      "Refill 60 hari sejak pesanan dibuat, sesuai syarat layanan.",
+      "Refill 30 hari sejak pesanan selesai, sesuai syarat layanan.",
+      "Jumlah dapat diisi sendiri dalam batas layanan, kelipatan 100.",
+      "Kelipatan 100 per pesanan.",
+      "Tanpa refill dan tanpa refund bila target diganti.",
+      "Refill hanya bila penurunan di atas 10%.",
+    ];
+    render(<ServiceInfoCard t={{ ...product.tiers[1], refill_days: 30, terms: lines.join("\n") }} />);
+    const card = screen.getByRole("region", { name: "Info layanan" });
+    const items = within(card).getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(lines.slice(4));
+    render(<ServiceInfoCard t={{ ...product.tiers[0], refill_days: 0, terms: "Refill 30 hari sejak pesanan dibuat, sesuai syarat layanan." }} />);
+    expect(within(screen.getAllByRole("region", { name: "Info layanan" })[1]).getByText("Refill 30 hari sejak pesanan dibuat, sesuai syarat layanan.")).toBeTruthy();
+  });
+
+  it("keeps conflicting generated refill sentences: mismatched N, Lifetime mismatch, mode mismatch; only exact current-tier sentence is dropped", () => {
+    const exact30manual = "Refill 30 Days: ajukan refill di halaman Refill Pedia selama masa refill sejak pesanan dibuat, 1× per 24 jam. Refill diproses admin, biasanya dalam 1×24 jam.";
+    const exact30auto = "Refill 30 Days: ajukan refill di halaman Refill Pedia selama masa refill sejak pesanan dibuat, 1× per 24 jam. Refill diproses otomatis.";
+    const exactLife = "Refill Lifetime: ajukan refill di halaman Refill Pedia selama masa refill sejak pesanan dibuat, 1× per 24 jam. Refill diproses otomatis.";
+    const otherN = "Refill 60 Days: ajukan refill di halaman Refill Pedia selama masa refill sejak pesanan dibuat, 1× per 24 jam. Refill diproses admin, biasanya dalam 1×24 jam.";
+    // N + mode cocok → dibuang (sudah ada di paragraf Refill).
+    render(<ServiceInfoCard t={{ ...product.tiers[1], refill_days: 30, refill_mode: "manual", terms: [exact30manual, "Target harus publik."].join("\n") }} />);
+    let card = screen.getByRole("region", { name: "Info layanan" });
+    expect(within(card).queryByText(exact30manual)).toBeNull();
+    expect(within(card).getByText("Target harus publik.")).toBeTruthy();
+    cleanup();
+    // N tak cocok → TETAP TAMPIL (konflik durasi nyata).
+    render(<ServiceInfoCard t={{ ...product.tiers[1], refill_days: 30, refill_mode: "manual", terms: [otherN, "Target harus publik."].join("\n") }} />);
+    card = screen.getByRole("region", { name: "Info layanan" });
+    expect(within(card).getByText(otherN)).toBeTruthy();
+    cleanup();
+    // Mode tak cocok (auto vs manual) → TETAP TAMPIL.
+    render(<ServiceInfoCard t={{ ...product.tiers[1], refill_days: 30, refill_mode: "manual", terms: exact30auto }} />);
+    expect(within(screen.getByRole("region", { name: "Info layanan" })).getByText(exact30auto)).toBeTruthy();
+    cleanup();
+    // Lifetime tak cocok untuk tier 30 hari → TETAP TAMPIL.
+    render(<ServiceInfoCard t={{ ...product.tiers[1], refill_days: 30, refill_mode: "api", terms: exactLife }} />);
+    expect(within(screen.getByRole("region", { name: "Info layanan" })).getByText(exactLife)).toBeTruthy();
+    cleanup();
+    // No Refill: kalimat lama generik tetap dibuang, syarat kustom tetap tampil.
+    render(<ServiceInfoCard t={{ ...product.tiers[0], refill_days: 0, terms: "No Refill: jumlah yang drop tidak diisi ulang.\nRefill hanya bila penurunan di atas 10%." }} />);
+    card = screen.getByRole("region", { name: "Info layanan" });
+    expect(within(card).queryByText("No Refill: jumlah yang drop tidak diisi ulang.")).toBeNull();
+    expect(within(card).getByText("Refill hanya bila penurunan di atas 10%.")).toBeTruthy();
   });
 
   it("omits exact generic product copy but keeps a custom description", () => {

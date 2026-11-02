@@ -2,6 +2,8 @@
 // Keputusan owner: istilah tetap memakai bahasa SMM (Drop, Less Drop, High
 // Drop, Refill, No Refill, …) karena itu yang dikenal pembeli/reseller;
 // AXVARA hanya menambahkan penjelasan singkat. Label drop adalah estimasi, bukan jaminan.
+// Nada (owner 2026-11-02): ringkas dan percaya diri tanpa mengulang peringatan;
+// risiko drop disebut sekali di kondisi Drop, bukan di setiap definisi.
 // White label (owner 2026-11-01): teks pembeli tidak menyebut supplier.
 
 export type PediaDropLabel = "no_drop" | "less_drop" | "high_drop" | "unknown";
@@ -14,10 +16,10 @@ export const DROP_LABEL: Record<PediaDropLabel, string> = {
 };
 
 export const DROP_MEANING: Record<PediaDropLabel, string> = {
-  no_drop: "Saat ini belum terlihat drop, tetapi drop tetap bisa terjadi kapan saja.",
-  less_drop: "Bisa drop sedikit, dan masih mungkin drop lebih banyak di kemudian hari.",
-  high_drop: "Saat ini drop besar. Pilih hanya bila menerima risikonya; drop tidak bisa dikomplain kecuali layanan punya Refill.",
-  unknown: "Belum ada info drop untuk layanan ini. Anggap drop bisa terjadi.",
+  no_drop: "Perkiraan jumlah tetap stabil setelah pesanan selesai; bukan janji bebas drop.",
+  less_drop: "Perkiraan drop ringan.",
+  high_drop: "Perkiraan drop tinggi. Pengisian ulang hanya tersedia bila layanan punya Refill.",
+  unknown: "Label drop belum tersedia; jumlah masih dapat berkurang setelah pengiriman.",
 };
 
 export function isDropLabel(value: unknown): value is PediaDropLabel {
@@ -32,8 +34,8 @@ export function refillLabel(days: number): string {
 }
 
 export const PEDIA_TERMS: { term: string; meaning: string }[] = [
-  { term: "HQ", meaning: "High Quality, label kualitas layanan. Bukan jaminan akun lama, berpostingan, aktif, atau bebas Drop." },
-  { term: "Real", meaning: "Label karakter akun pada layanan. Bukan jaminan akun aktif, interaksi organik, atau bebas Drop." },
+  { term: "HQ", meaning: "High Quality, kategori kualitas layanan." },
+  { term: "Real", meaning: "Label karakter akun pada layanan." },
   { term: "Drop", meaning: "Jumlah followers, likes, atau views berkurang setelah pesanan selesai. Semua layanan bisa drop; yang berbeda seberapa besar." },
   { term: "Drop rate", meaning: "Persentase jumlah yang berkurang setelah pengiriman. Persentase pengajuan Refill bukan pengukuran langsung Drop rate." },
   { term: "Pengajuan Refill", meaning: "Persentase pesanan layanan ini yang diajukan Refill dalam 7 hari terakhir, bukan persentase followers, likes, atau views yang hilang." },
@@ -43,7 +45,7 @@ export const PEDIA_TERMS: { term: string; meaning: string }[] = [
   { term: "Refill", meaning: "Isi ulang gratis untuk jumlah yang drop, selama masa refill. Ajukan lewat halaman Refill atau halaman pesanan." },
   { term: "Refill 30 Days / 365 Days", meaning: "Masa refill 30 atau 365 hari sejak pesanan dibuat (atau selesai, sesuai ketentuan layanan). Setelah masa itu habis, refill tidak bisa diajukan." },
   { term: "Refill Lifetime", meaning: "Refill selama layanan masih tersedia. Bila layanan ditutup, refill ikut berakhir." },
-  { term: "No Refill", meaning: "Tanpa garansi. Jumlah yang drop tidak diisi ulang, bahkan bila drop segera setelah selesai. Biasanya lebih murah." },
+  { term: "No Refill", meaning: "Tanpa garansi refill: jumlah yang drop tidak diisi ulang." },
   { term: "Success rate", meaning: "Persentase pesanan layanan ini yang selesai penuh dalam 7 hari terakhir. Makin tinggi, makin jarang gagal atau dibatalkan." },
   { term: "Start time", meaning: "Perkiraan waktu sebelum pengiriman mulai, setelah pembayaran terkonfirmasi." },
   { term: "Avg time", meaning: "Rata-rata waktu pesanan selesai untuk 1.000 unit. Jumlah lebih besar biasanya lebih lama." },

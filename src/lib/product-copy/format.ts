@@ -157,6 +157,8 @@ export const GO_TUTOR_SCRIBD = "axvara.tech/go/tutor-scribd";
 export const GO_TUTOR_ARCADE = "axvara.tech/go/tutor-arcade";
 export const GO_TUTOR_VISION_TV = "axvara.tech/go/tutor-vision-tv";
 export const GO_TUTOR_VISION_TV2 = "axvara.tech/go/tutor-vision-tv2";
+export const GO_OTP_HYPATHIA = "axvara.tech/go/otp-hypathia";
+export const GO_SHORTS_ALIGHT_NEW = "axvara.tech/go/alight-shorts";
 
 const SUPPLIER_DOCS_RE = /https?:\/\/(?:www\.)?sekalipay\.com\/docs\/[^\s),]*/gi;
 const BARE_SUPPLIER_DOCS_RE = /(?<!\/)sekalipay\.com\/docs\/[^\s),]*/gi;
@@ -173,7 +175,7 @@ const BARE_ALIGHT_YOUTUBE_RE =
 // PROD LIVE 2026-10-03 (seluruh wr_terms/wr_delivery_terms/sk_seller_note/
 // sk_description ber-link, termasuk produk off/restok).
 const MAILBOX_HOSTS = [
-  "netflix-codes\\.sekalipay\\.com\\/mailbox",
+  "netflix-codes\\.sekalipay\\.com(?:\\/mailbox)?",
   "bototp\\.site",
   "sengare\\.art\\/check-inbox",
   "genjos\\.xoftware\\.my\\.id\\/mailbox",
@@ -197,6 +199,7 @@ const MAILBOX_HOSTS = [
   "ibispaint\\.com",
   "film\\.wetv\\.vip",
   "dramaku\\.world",
+  "inbox\\.hypathia\\.web\\.id",
 ];
 const MAILBOX_RE = new RegExp(`https?:\\/\\/(?:www\\.)?(?:${MAILBOX_HOSTS.join("|")})[^\\s),\"']*`, "gi");
 const BARE_MAILBOX_RE = new RegExp(
@@ -224,6 +227,9 @@ const TUTOR_IDS: [RegExp, string][] = [
   [/IbSEx5_pUr8/, GO_TUTOR_ARCADE],
   [/XzMXIty8kr4/, GO_TUTOR_VISION_TV],
   [/Ylrroy1fJAE/, GO_TUTOR_VISION_TV2],
+  // Shorts login Alight Motion baru dari katalog live (supplierVariantCopy
+  // pemasok alight-motion-sk 2026-11-02; bukan ID kurasi 8emqddsjPsE).
+  [/YKOMcipD3ig/, GO_SHORTS_ALIGHT_NEW],
 ];
 const TUTOR_RE =
   /https?:\/\/(?:www\.)?(?:youtu\.be\/[A-Za-z0-9_-]{6,}[^\s),\"']*|youtube\.com\/(?:watch\?[^\s),\"']*|embed\/[A-Za-z0-9_-]{6,}[^\s),\"']*|shorts\/[A-Za-z0-9_-]{6,}[^\s),\"']*))/gi;
@@ -242,7 +248,8 @@ function tutorGoSlug(match: string): string | null {
 
 function mailboxGoSlug(match: string): string {
   const lower = match.toLowerCase();
-  if (lower.includes("netflix-codes.sekalipay.com/mailbox")) return GO_OTP;
+  // netflix-codes bare tanpa /mailbox (chatgpt-sk live 2026-11-02) ikut → go/otp.
+  if (lower.includes("netflix-codes.sekalipay.com")) return GO_OTP;
   if (lower.includes("bototp.site")) return GO_OTP_BOT;
   if (lower.includes("sengare.art/check-inbox")) return GO_OTP_SENGARE;
   if (lower.includes("genjos.xoftware.my.id/mailbox")) return GO_OTP_GENJOS;
@@ -268,6 +275,8 @@ function mailboxGoSlug(match: string): string {
   if (lower.includes("ibispaint.com")) return "axvara.tech/go/ibis-tutor";
   if (lower.includes("film.wetv.vip")) return "axvara.tech/go/wetv-redeem";
   if (lower.includes("dramaku.world")) return "axvara.tech/go/dramaku";
+  // OTP Muse AI dari admin (bukan supplier; dipendekkan agar PDP rapi).
+  if (lower.includes("inbox.hypathia.web.id")) return GO_OTP_HYPATHIA;
   return match;
 }
 
@@ -300,6 +309,12 @@ export function rewriteSupplierDocsLinks(raw: string | null | undefined): string
   // Mailbox + domain resmi/tutorial supplier → shortlink (full + bare).
   out = out.replace(MAILBOX_RE, (match) => mailboxGoSlug(match));
   out = out.replace(BARE_MAILBOX_RE, (match) => mailboxGoSlug(match));
+  // Typo statis supplier (drama-all-in-one live 2026-11-02):
+  // "https;//dramaku.world" (titik-koma — bukan URL valid, jadi lolos dari
+  // MAILBOX_RE) → go/dramaku yang SUDAH terdaftar. Hanya bentuk statis persis
+  // ini; tidak ada query/kredensial di teks ini sehingga perilaku
+  // query/kredensial tak berubah.
+  out = out.replace(/https;\/\/dramaku\.world/gi, "axvara.tech/go/dramaku");
   // Bot Telegram supplier → shortlink.
   out = out.replace(BOT_RE, (match) => botGoSlug(match));
   // Tutorial YouTube supplier (ID audit live) → shortlink.
@@ -313,10 +328,23 @@ export function rewriteSupplierDocsLinks(raw: string | null | undefined): string
  * isi pemasok dipertahankan utuh, hanya dirapikan (tanpa emoji/huruf besar
  * berteriak/baris ganda) dan dikelompokkan. Baris aturan di teks aktivasi
  * dipindah ke S&K agar tidak tampil dua kali.
+ *
+ * Keputusan implementasi S1 (bukan klaim instruksi owner): baris cross-sell
+ * "proses otomatis → halaman Jaspay" milik teks supplier premium dibuang
+ * dari TAMPILAN (10 varian live: hma/express-vpn, meitu, scribd, picsart,
+ * remini, zoom, wink) demi kejelasan white-label — pembeli varian premium
+ * tidak diarahkan ke halaman keluarga lain. Berlaku untuk S&K MAUPUN teks
+ * aktivasi (penempatan kolom supplier tak boleh jadi celah bocor).
+ * Sidik jari supplier TIDAK berubah (raw tetap milik admin/audit), hanya
+ * baris tampil yang disaring.
  */
+const JASPAY_CROSS_SELL_RE = /proses\s*otomatis.*jaspay|halaman\s*jaspay/i;
+
 export function supplierVariantCopy(terms: string | null | undefined, deliveryTerms: string | null | undefined): VariantCopy | null {
-  const termLines = cleanSupplierLines(rewriteSupplierDocsLinks(terms));
-  const deliveryLines = cleanSupplierLines(rewriteSupplierDocsLinks(deliveryTerms));
+  const termLines = cleanSupplierLines(rewriteSupplierDocsLinks(terms))
+    .filter((line) => !JASPAY_CROSS_SELL_RE.test(line.text));
+  const deliveryLines = cleanSupplierLines(rewriteSupplierDocsLinks(deliveryTerms))
+    .filter((line) => !JASPAY_CROSS_SELL_RE.test(line.text));
   if (!termLines.length && !deliveryLines.length) return null;
   const seen = new Set(termLines.map((line) => lineKey(line.text)));
   const { groups, rules } = splitDelivery(deliveryLines, seen);

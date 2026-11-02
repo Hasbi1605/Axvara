@@ -119,6 +119,13 @@ describe("PDP produk WR: salinan Axvara per varian", () => {
     expect(text()).not.toContain("Dilarang sign out");
   });
 
+  it("tombol varian desktop punya cincin fokus cyan terlihat", async () => {
+    stubCatalog("netflix-premium", NETFLIX_DESC, variants);
+    render(<ProductDetailClient slug="netflix-premium" />);
+    const button = await pickVariant("Premium Anti Limit");
+    expect(button.className).toContain("focus-visible:outline-[#00E5FF]");
+  });
+
   it("deskripsi tampil sebagai paragraf pembuka + daftar keunggulan", async () => {
     stubCatalog("netflix-premium", NETFLIX_DESC, variants);
     render(<ProductDetailClient slug="netflix-premium" />);
@@ -161,5 +168,44 @@ describe("PDP produk non-WR: format yang sama dari deskripsi admin", () => {
     for (const body of screen.getAllByTestId("product-description-body")) {
       expect(body.textContent).not.toContain("Full garansi selama masa aktif akun");
     }
+  });
+});
+
+describe("Salinan PDP: judul biasa, langkah tunggal polos, link panjang berlabel", () => {
+  it("judul bagian memakai huruf biasa 13px semibold, bukan kapital kecil", async () => {
+    const { TermsBody } = await import("@/components/storefront/ProductCopy");
+    render(<TermsBody sections={[{ kind: "aturan", items: ["Dilarang ganti password"] }]} />);
+    const heading = screen.getByRole("heading", { name: "Aturan pakai" });
+    expect(heading.className).toContain("text-[13px]");
+    expect(heading.className).toContain("font-semibold");
+    expect(heading.className).not.toMatch(/uppercase|text-\[11px\]/);
+  });
+
+  it("satu langkah aktivasi tampil sebagai paragraf, beberapa langkah tetap bernomor", async () => {
+    const { ActivationBody } = await import("@/components/storefront/ProductCopy");
+    const { unmount } = render(<ActivationBody groups={[{ title: null, steps: ["Buka email undangan."] }]} notes={[]} />);
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.getByText("Buka email undangan.").tagName).toBe("P");
+    unmount();
+    render(<ActivationBody groups={[{ title: "Android", steps: ["Buka aplikasi.", "Masuk dengan akun."] }]} notes={[]} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText("2")).toBeTruthy();
+  });
+
+  it("hanya YouTube berlabel singkat; tujuan lain tetap dapat dibedakan lewat path", async () => {
+    const { linkLabel, RichText } = await import("@/components/storefront/ProductCopy");
+    const yt = "https://www.youtube.com/watch?v=fBOfOmj9Uj8";
+    expect(linkLabel(yt, yt)).toBe("Tonton video panduan");
+    expect(linkLabel("https://youtu.be/abc", "https://youtu.be/abc")).toBe("Tonton video panduan");
+    expect(linkLabel("https://name.com", "https://name.com/")).toBe("https://name.com");
+    expect(linkLabel("@bot_name", "https://t.me/bot_name")).toBe("@bot_name");
+    render(<RichText text="Hapus cookie: https://www.netflix.com/clearcookies lalu buka https://www.netflix.com/youraccount. Panduan axvara.tech/go/netflix-login-tv-panjang dan axvara.tech/go/netflix-login-hp-panjang." />);
+    const hrefs = screen.getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(hrefs).toEqual([
+      ["https://www.netflix.com/clearcookies", "https://www.netflix.com/clearcookies"],
+      ["https://www.netflix.com/youraccount", "https://www.netflix.com/youraccount"],
+      ["axvara.tech/go/netflix-login-tv-panjang", "/go/netflix-login-tv-panjang"],
+      ["axvara.tech/go/netflix-login-hp-panjang", "/go/netflix-login-hp-panjang"],
+    ]);
   });
 });

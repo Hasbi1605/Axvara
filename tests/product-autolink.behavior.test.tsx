@@ -122,7 +122,7 @@ describe("RichText + 3 badan PDP — link bisa diklik", () => {
     const guide = screen.getByRole("link", { name: "axvara.tech/go/netflix-login" });
     expect(guide.getAttribute("href")).toBe("/go/netflix-login");
     expect(guide.getAttribute("target")).toBeNull();
-    const tutorial = screen.getByRole("link", { name: "https://www.youtube.com/watch?v=fBOfOmj9Uj8" });
+    const tutorial = screen.getByRole("link", { name: "Tonton video panduan" });
     expect(tutorial.getAttribute("href")).toBe("https://www.youtube.com/watch?v=fBOfOmj9Uj8");
     expect(tutorial.getAttribute("target")).toBe("_blank");
     expect(tutorial.getAttribute("rel")).toBe("noreferrer");
