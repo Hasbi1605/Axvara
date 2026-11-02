@@ -7,12 +7,14 @@ dan font existing tetap. PDP multi-varian menampilkan identitas pilihan lengkap
 tanpa truncate, dengan tombol sekunder Pilih/Ganti varian44px; identitas pilihan
 aktif dan tombol sejajar pada mobile agar tidak bersaing dengan CTA beli. Hanya identitas
 yang memakai live region polite, bukan keseluruhan S&K panjang. Harga/keranjang/
-checkout dan copy mengikuti satu state. S&K/aktivasi varian mendahului Deskripsi
-umum, sedangkan ketentuan dari deskripsi diberi label Ketentuan produk.
+checkout dan copy mengikuti satu state. Koreksi owner2November: Deskripsi umum
+tampil dulu, lalu S&K/aktivasi varian (mobile dan desktop); ketentuan dari
+deskripsi tetap berlabel Ketentuan produk.
 
-CommunityBar menumpuk dua kartu penuh di bawah480px, dua kolom mulai480px.
-Ikon28px mobile/36px mulai sm, tinggi kartu minimal64px, judul dan deskripsi
-wrap utuh tanpa elipsis; teks tidak diperkecil untuk memaksakan dua kolom.
+Koreksi owner2November: kartu promo Market dan Pedia selalu kanan-kiri (dua
+kolom) di semua lebar, tidak ditumpuk. Ikon28px mobile/36px mulai sm, padding/
+gap mobile dirapatkan dan panah hanya tampil mulai sm agar judul muat; tinggi
+minimal64px, judul wrap utuh tanpa elipsis (di320px boleh dua baris).
 Produk Serupa memakai lebar156px mobile/260px mulai sm; mulai sm kategori11px,
 judul15px/min40px, harga17px, metadata12px dan padding14px. Kartu katalog normal
 tidak berubah. Dropdown Market/Pedia menampilkan Layanan satu baris di seluruh

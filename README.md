@@ -30,7 +30,8 @@ pada produk multi-varian. Belum memilih menampilkan ajakan memilih; copy kosong
 diberi keterangan, bukan mengambil varian lain. Deskripsi umum/perbandingan dan
 ketentuan produk dipisahkan dari detail varian, tanpa menghapus teks penting.
 
-Kartu promosi menumpuk penuh di bawah480px, judul tidak terpotong; Produk Serupa
+Kartu promosi Market/Pedia tetap kanan-kiri di mobile, judul tidak terpotong;
+Deskripsi umum tampil sebelum S&K varian; Produk Serupa
 memakai teks desktop lebih besar dengan tampilan mobile tetap. Dropdown navbar
 Market/Pedia menampilkan Layanan pada desktop/mobile, mempertahankan keyboard,
 fokus dan nama aksesibel. Tidak mengubah API, pembayaran atau akses pembeli.

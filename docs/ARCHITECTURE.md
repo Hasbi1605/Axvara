@@ -12,7 +12,8 @@ tanpa perubahan parser, API atau data produk. `VariantIdentity` mengumumkan nama
 pilihan; modal pemilih existing dipakai ulang. Disclosure mobile mempertahankan
 state ketika pilihan berganti. Bagian perbandingan hanya diganti label tampilnya.
 
-`CommunityBar`/`CrossServicePromo` memakai reflow CSS di480px; compact
+`CommunityBar`/`PediaServiceCards`/`CrossServicePromo` tetap dua kolom di semua
+lebar (koreksi owner, tanpa reflow 480px); compact
 `ProductCard` dan rail terkait memakai ukuran desktop mulai sm. `ServicesMenu`
 tidak lagi membutuhkan prop compact; Market dan Pedia berbagi label Layanan serta
 nama aksesibel Layanan AXVARA, dengan perilaku keyboard existing. Tidak ada route,

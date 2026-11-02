@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
 import { CrossServicePromo } from "@/components/shared/CrossServicePromo";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
+import { PediaServiceCards } from "@/components/pedia/PediaServiceCards";
 import { Footer } from "@/components/storefront/Footer";
 import { AXVARA_SERVICES, DEFAULT_STORE_SETTINGS, SITE, TG_BOT_HREF, WA_GROUP_HREF } from "@/lib/site";
 
@@ -85,23 +86,25 @@ describe("shared service navigation", () => {
     expect(screen.getByRole("link", { name: /AXVARA Pedia/ })).toBeTruthy();
   });
 
-  // 2026-11-02: dua kartu promo tidak boleh terjepit di layar kecil.
-  it("stacks the two promo cards below 480px with wrapping titles, 28px mobile icons and min 64px height", () => {
-    const { container } = render(<CommunityBar />);
-    const row = container.firstElementChild!.firstElementChild!;
-    expect(row.className).toContain("flex-col");
-    expect(row.className).toContain("min-[480px]:flex-row");
-    expect(row.className).not.toMatch(/(^|\s)flex-row(\s|$)/);
+  // 2026-11-02 (koreksi owner): dua kartu tetap kanan-kiri di mobile, sama
+  // seperti Pedia; judul dibungkus (tanpa terpotong), ikon 28px di mobile.
+  it.each([
+    ["Market", () => render(<CommunityBar />).container.firstElementChild!.firstElementChild!],
+    ["Pedia", () => render(<PediaServiceCards />).container.firstElementChild!],
+  ])("%s keeps both promo cards side by side with wrapping titles and 28px mobile icons", (_name, getRow) => {
+    const row = getRow();
+    expect(row.className).toMatch(/(^|\s)flex-row(\s|$)/);
+    expect(row.className).not.toContain("flex-col");
     const cards = Array.from(row.querySelectorAll(":scope > a"));
     expect(cards).toHaveLength(2);
     for (const card of cards) {
       expect(card.className).toContain("min-h-[64px]");
       expect(card.className).toContain("min-w-0");
+      expect(card.className).toContain("flex-1");
       expect(card.querySelector(".truncate")).toBeNull();
-      expect(card.querySelector(".line-clamp-2")).toBeNull();
+      expect(card.querySelector(".break-words")).toBeTruthy();
       expect(card.querySelector("[class*='h-7'][class*='w-7'][class*='sm:h-9'][class*='sm:w-9']")).toBeTruthy();
       expect(card.querySelector("[class*='text-[11px]']")).toBeTruthy();
-      expect(card.querySelector("[class*='text-[10px]']")).toBeNull();
     }
   });
 });

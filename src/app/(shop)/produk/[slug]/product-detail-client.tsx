@@ -541,8 +541,22 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             )}
           </div>
 
+          {/* Deskripsi Produk — Kolom Kiri di Desktop (Lega & Rapi) */}
+          {hasDescription && (
+            <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
+              <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#00E5FF]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                {descriptionTitle}
+              </h2>
+              <div className="mt-4 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
+                <DescriptionBody parsed={parsedDescription} />
+              </div>
+            </div>
+          )}
+
           {/* Produk multi-varian: detail varian (S&K + aktivasi, mengikuti pilihan
-              yang sama dengan harga/keranjang) tampil SEBELUM deskripsi umum. */}
+              yang sama dengan harga/keranjang) tampil SESUDAH deskripsi umum
+              (keputusan owner 2 Nov: kenali produk dulu, lalu ketentuan varian). */}
           {separated && (
             <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8" data-testid="pdp-variant-details">
               <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
@@ -584,19 +598,6 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                   <ActivationBody groups={productCopy.activation} notes={productCopy.notes} />
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Deskripsi Produk — Kolom Kiri di Desktop (Lega & Rapi) */}
-          {hasDescription && (
-            <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
-              <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#00E5FF]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                {descriptionTitle}
-              </h2>
-              <div className="mt-4 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
-                <DescriptionBody parsed={parsedDescription} />
-              </div>
             </div>
           )}
 
@@ -878,11 +879,10 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             </li>
           </ul>
 
-          {/* Mobile: produk multi-varian menampilkan detail varian (S&K) SEBELUM
-              deskripsi umum; produk lain tetap deskripsi lalu S&K. */}
-          {separated && mobileCopy}
+          {/* Mobile: deskripsi (umum) dulu, lalu S&K/aktivasi — sama untuk
+              produk multi-varian maupun lainnya (keputusan owner 2 Nov). */}
           {mobileDescription}
-          {!separated && mobileCopy}
+          {mobileCopy}
 
           {/* Spacer — pushes buttons down when content is short */}
           <div className="flex-1 min-h-[16px]" />

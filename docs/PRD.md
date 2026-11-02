@@ -30,11 +30,13 @@ status belum tersedia, bukan diganti salinan varian lain.
 Deskripsi tingkat produk tampil sebagai Deskripsi umum; bagian Pilihan varian
 bernama Perbandingan varian, bukan detail pilihan aktif. Ketentuan/aktivasi dari
 deskripsi produk tetap terpisah dan tidak diklaim sebagai ketentuan varian.
-S&K varian berada sebelum deskripsi umum pada mobile dan desktop; disclosure
+Deskripsi umum tampil sebelum S&K varian pada mobile dan desktop (koreksi owner
+2 November); disclosure
 mobile yang terbuka tetap terbuka ketika varian diganti. Tidak menghapus syarat
 penting, menebak isi berdasarkan durasi, atau membuat pemilih S&K terpisah.
 
-Kartu promosi layanan menumpuk di bawah480px tanpa memotong judul/deskripsi;
+Kartu promosi layanan Market/Pedia tetap kanan-kiri di mobile (koreksi owner
+2 November), judul tidak terpotong;
 Produk Serupa mempertahankan ukuran mobile dan menaikkan tipografi desktop.
 Pemicu dropdown Market/Pedia bernama Layanan pada semua ukuran; nama aksesibel
 tetap Layanan AXVARA. Tidak mengubah pembayaran, stok atau proof pembeli.

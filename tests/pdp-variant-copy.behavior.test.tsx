@@ -142,7 +142,10 @@ describe("PDP multi-varian: S&K mengikuti satu pilihan", () => {
 
   it("deskripsi umum diberi label; bagian Pilihan varian menjadi Perbandingan varian", () => {
     renderPdp();
-    expect(screen.getByRole("heading", { level: 2, name: "Deskripsi umum" })).toBeTruthy();
+    const general = screen.getByRole("heading", { level: 2, name: "Deskripsi umum" });
+    expect(general).toBeTruthy();
+    // Desktop: deskripsi umum dulu, lalu Syarat & Ketentuan varian.
+    expect(general.compareDocumentPosition(details()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getAllByText("Perbandingan varian").length).toBeGreaterThan(0);
     expect(screen.queryByText("Pilihan varian:")).toBeNull();
     expect(screen.queryByText("Pilihan varian")).toBeNull();
@@ -151,10 +154,10 @@ describe("PDP multi-varian: S&K mengikuti satu pilihan", () => {
     expect(body()).toContain("18 Bulan: akun private");
   });
 
-  it("mobile: detail varian tampil sebelum deskripsi umum; panel yang terbuka tetap terbuka saat varian diganti", () => {
+  it("mobile: deskripsi umum tampil sebelum detail varian; panel yang terbuka tetap terbuka saat varian diganti", () => {
     renderPdp();
     const description = screen.getAllByText("Deskripsi umum").find((n) => n.closest(".lg\\:hidden"))!;
-    expect(mobileCopy().compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(description.compareDocumentPosition(mobileCopy()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fireEvent.click(pickerButton("3 Bulan"));
     const toggle = () => within(mobileCopy()).getByRole("button", { name: /^Syarat & Ketentuan/ });
