@@ -478,15 +478,18 @@ describe("Pedia configurator", () => {
     expect(screen.getAllByRole("radio")).toHaveLength(3);
     // 2026-11-01: Refill (bergaransi) dulu, lalu termurah; bukan lagi rekomendasi dulu.
     expect(screen.getAllByRole("radio")[0].getAttribute("value")).toBe("2");
-    expect(screen.getByRole("status").textContent).toContain("7 dari 7 layanan");
+    // Jumlah hasil menempel di judul "Pilih layanan" (owner 2026-11-03).
+    expect(screen.getByRole("status").textContent).toBe("· 7 layanan");
+    expect(screen.getByRole("status").parentElement?.textContent).toContain("Pilih layanan");
     expect(screen.getByRole("button", { name: "Semua" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Lihat semua 7 layanan" }));
     expect(screen.getAllByRole("radio")).toHaveLength(7);
     fireEvent.click(screen.getByRole("button", { name: "Indonesia" }));
     expect(screen.getAllByRole("radio")).toHaveLength(3);
+    expect(screen.getByRole("status").textContent).toBe("· 3 dari 7 layanan");
     expect(document.getElementById("pedia-tier")?.textContent).not.toMatch(/Layanan 1|Layanan 3|Layanan 5|Layanan 7/);
     fireEvent.click(screen.getByRole("button", { name: "Reset filter" }));
-    expect(screen.getByRole("status").textContent).toContain("7 dari 7 layanan");
+    expect(screen.getByRole("status").textContent).toBe("· 7 layanan");
   });
 
   it("has one active category and switches between region and refill instead of intersecting them", () => {

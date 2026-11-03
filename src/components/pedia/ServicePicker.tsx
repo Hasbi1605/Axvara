@@ -94,7 +94,10 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
     <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[15px] leading-6">
         <span aria-hidden="true" className="font-semibold text-white">{compact ? "Layanan pilihanmu" : "Pilih layanan"}</span>
-        {!compact && qty != null && <span className="text-white/65">· harga untuk {qty.toLocaleString("id-ID")}</span>}
+        {!compact && <span role="status" data-testid="pedia-filter-count" className="text-[13px] text-white/55">· {filtersActive ? `${relevant.length} dari ${tiers.length}` : relevant.length} layanan</span>}
+        {!compact && qty != null && <span className="text-[13px] text-white/55">· harga untuk {qty.toLocaleString("id-ID")}</span>}
+        {!compact && filtersActive && <button type="button" onClick={resetFilters} className="-my-2.5 min-h-11 px-1 text-[13px] font-medium text-[#00E5FF]">Reset filter</button>}
+        {!compact && !expanded && picked && <button type="button" onClick={() => setCompare(false)} className="-my-2.5 min-h-11 px-1 text-[13px] font-medium text-[#00E5FF]">Kembali ke pilihan</button>}
       </div>
       {categories.length > 1 && <div role="group" aria-label="Kategori layanan" className="flex max-w-full gap-1.5 overflow-x-auto">
   {categories.map((option) => { const empty = count(option.id) === 0; return <button key={option.id} type="button" disabled={empty} aria-pressed={category === option.id} onClick={() => { setCategory(option.id); setShowAll(false); if (picked && !matches(picked, option.id)) { onClear?.(); setCompare(false); } }} className={`min-h-8 shrink-0 rounded-full border px-3 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 sm:min-h-9 ${category === option.id ? "pedia-pill-active text-[#00E5FF]" : "ax-glass-card border-white/10 text-white/70 hover:bg-white/10 hover:text-white"}`}>{option.label}</button>; })}
@@ -102,11 +105,6 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
       {compact && picked && <button type="button" onClick={() => setCompare(true)} aria-expanded={false} className="min-h-11 shrink-0 whitespace-nowrap text-sm font-medium text-[#00E5FF] disabled:opacity-40">Ganti layanan</button>}
     </div>
     {compact && <p className="mt-1 text-xs leading-5 text-white/50">Jumlah, target, dan filter tetap tersimpan saat ganti layanan.</p>}
-    {!compact && <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-white/65">
-      <span role="status" data-testid="pedia-filter-count">{relevant.length} dari {tiers.length} layanan</span>
-      {filtersActive && <button type="button" onClick={resetFilters} className="min-h-11 px-1 font-medium text-[#00E5FF]">Reset filter</button>}
-      {!expanded && picked && <button type="button" onClick={() => setCompare(false)} className="min-h-11 text-[#00E5FF]">Kembali ke pilihan</button>}
-    </div>}
     <div className="mt-3 space-y-2">
       {visible.map((t, index) => {
         const group = t.refill_days > 0 ? "Refill (bergaransi)" : "No Refill";
