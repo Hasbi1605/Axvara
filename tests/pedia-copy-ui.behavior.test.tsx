@@ -32,7 +32,8 @@ describe("Instant Start", () => {
     const { container, rerender } = render(<ServiceChips t={tier()} eta productName="x" />);
     expect(container.textContent).not.toMatch(/\d\s*[–-]\s*\d/);
     rerender(<ServiceChips t={tier({ eta_start: "0–1 jam" })} eta productName="x" />);
-    expect(container.textContent).toContain("Instant Start");
+    // owner 2026-11-03: eta_start menang; chip Instant Start disembunyikan agar tidak kontradiktif.
+    expect(container.textContent).not.toContain("Instant Start");
     expect(container.textContent).toContain("Start 0–1 jam");
     rerender(<ServiceChips t={tier({ public_name: "Followers Global HQ", eta_start: null })} eta productName="x" />);
     expect(container.textContent).not.toContain("Instant Start");
@@ -43,8 +44,11 @@ describe("Instant Start", () => {
     expect(row(tier({ eta_start: "0–3 jam" }))).toBe("0–3 jam");
     expect(row(tier({ public_name: "Followers Global HQ" }))).toBe("Mengikuti antrean");
     const { container } = render(<ServiceInfoCard t={tier({ speed_per_day: "100K/hari", avg_time: "19 menit" })} productName="x" />);
-    expect(container.textContent).toContain("Speed100K/hari");
+    // owner 2026-11-03: avg time terukur menang; baris Speed (klaim) dan istilahnya dihilangkan.
+    expect(container.textContent).not.toContain("Speed");
     expect(container.textContent).toContain("Avg time19 menit per 1.000");
+    const { container: noAvg } = render(<ServiceInfoCard t={tier({ speed_per_day: "100K/hari", avg_time: null })} productName="x" />);
+    expect(noAvg.textContent).toContain("Speed100K/hari");
   });
 });
 

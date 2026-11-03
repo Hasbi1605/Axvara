@@ -44,15 +44,18 @@ export function ServiceInfoCard({ t, productDescription, productName = "" }: { t
   const refill = t.refill_days > 0
     ? `${refillPromise(t.refill_days, t.refill_anchor)} Bisa diajukan 1× per 24 jam dari halaman pesanan, ${t.refill_mode === "manual" ? "diproses admin, biasanya dalam 1×24 jam." : "diproses otomatis."}`
     : "Tanpa refill: jumlah yang drop tidak diisi ulang.";
+  // 2026-11-03 (owner): rata-rata terukur menang atas klaim speed supplier yang bisa
+  // bertentangan (mis. "100K/hari" vs "8 jam per 1.000"); Speed hanya tampil tanpa avg_time.
+  const showSpeed = !!t.speed_per_day && !t.avg_time;
   const rows: [string, string][] = [
     ["Start time", t.eta_start || (instant ? "Instant Start" : t.speed_note?.replace(/^Mulai\s*/i, "") || "Mengikuti antrean")],
-    ...(t.speed_per_day ? [["Speed", t.speed_per_day] as [string, string]] : []),
+    ...(showSpeed ? [["Speed", t.speed_per_day as string] as [string, string]] : []),
     ...(t.avg_time ? [["Avg time", `${t.avg_time} per 1.000`] as [string, string]] : []),
     ["Min / Max", `${fmt(t.min_qty ?? 1)} – ${fmt(t.max_qty ?? 1)}`],
     ...(t.success_pct != null ? [["Success rate", `${Math.round(t.success_pct)}% (7 hari)`] as [string, string]] : []),
   ];
   // Hanya istilah yang muncul pada layanan ini; daftar lengkap ada di halaman Refill.
-  const want = new Set(["Drop", ...featureNames, t.refill_days <= 0 ? "No Refill" : t.refill_days >= 3650 ? "Refill Lifetime" : "Refill", ...(drop !== "unknown" ? [DROP_LABEL[drop]] : []), ...(refillPct != null ? ["Pengajuan Refill"] : []), "Start time", ...(t.speed_per_day ? ["Speed"] : []), "Min / Max", ...(t.success_pct != null ? ["Success rate"] : []), ...(t.avg_time ? ["Avg time"] : [])]);
+  const want = new Set(["Drop", ...featureNames, t.refill_days <= 0 ? "No Refill" : t.refill_days >= 3650 ? "Refill Lifetime" : "Refill", ...(drop !== "unknown" ? [DROP_LABEL[drop]] : []), ...(refillPct != null ? ["Pengajuan Refill"] : []), "Start time", ...(showSpeed ? ["Speed"] : []), "Min / Max", ...(t.success_pct != null ? ["Success rate"] : []), ...(t.avg_time ? ["Avg time"] : [])]);
   const terms = PEDIA_TERMS.filter(({ term }) => want.has(term));
   return <section aria-label="Info layanan" className="rounded-2xl border border-[#00E5FF]/15 bg-[#00E5FF]/[0.03] p-3.5 text-[13px] leading-5">
     <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">

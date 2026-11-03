@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
 import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
-import { ServicePicker } from "@/components/pedia/ServicePicker";
+import { ServiceChips, ServicePicker } from "@/components/pedia/ServicePicker";
 import { ServiceInfoCard } from "@/components/pedia/ServiceInfoCard";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
@@ -14,7 +14,7 @@ vi.mock("@/components/pedia/usePediaPrices", () => ({ usePediaPrices: vi.fn(() =
 
 const product: PediaCatalogProduct = {
   slug: "followers-instagram", name: "Followers Instagram", platform: "instagram", metric: "followers", target_kind: "profile",
-  tagline: "Followers untuk profil publik", packages: [100, 250, 500], step: 10, is_featured: 1, min_price: 2000,
+  tagline: "Followers untuk profil publik", packages: [100, 250, 500], step: 10, is_featured: 1, min_price: 2000, min_order_rp: 1000,
   image: "/r2/products/pedia-platform-instagram.webp",
   checklist: [{ id: "public", label: "Akun publik", help: "Jangan ubah username selama proses." }],
   tiers: [
@@ -436,7 +436,7 @@ describe("Pedia configurator", () => {
       { ...product.tiers[0], id: 14, public_name: "Followers Indonesia Real · No Refill", price_per_1k: 57000, eta_start: null, avg_time: "1 jam 42 menit" },
     ];
     render(<ServicePicker product={{ ...product, tiers }} tierId={12} onSelect={vi.fn()} qty={null} expanded info={(t) => <p data-testid="inline-info">info {t.id}</p>} />);
-    expect(screen.getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["13", "12", "11", "14"]);
+    expect(screen.getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["11", "13", "12", "14"]); // owner 2026-11-03: Sorotan (Termurah 11, Refill terlama 13) lebih dulu
     const text = document.getElementById("pedia-tier")!.textContent!;
     expect(text.indexOf("Refill (bergaransi)")).toBeLessThan(text.indexOf("No Refill", text.indexOf("Refill (bergaransi)") + 20));
     // 2026-11-02: nama lengkap [Metrik] [Wilayah] [Kualitas]; refill/drop hanya chip.
@@ -445,7 +445,7 @@ describe("Pedia configurator", () => {
     expect(text).not.toContain("Followers Indonesia Real · Refill 30 Days");
     expect(text).not.toContain("· Less Drop");
     expect(screen.getByText("97% sukses").className).toContain("text-emerald-200");
-    expect(text).toContain("Avg 1 jam 42 menit");
+    expect(text).not.toContain("Avg 1 jam 42 menit"); // owner 2026-11-03: Avg time bukan lagi chip kartu
     const info = screen.getByTestId("inline-info");
     expect(info.textContent).toBe("info 12");
     expect(info.parentElement?.previousElementSibling?.querySelector("input")?.getAttribute("value")).toBe("12");
@@ -477,7 +477,7 @@ describe("Pedia configurator", () => {
     render(<ServicePicker product={many} tierId={null} onSelect={vi.fn()} qty={null} />);
     expect(screen.getAllByRole("radio")).toHaveLength(3);
     // 2026-11-01: Refill (bergaransi) dulu, lalu termurah; bukan lagi rekomendasi dulu.
-    expect(screen.getAllByRole("radio")[0].getAttribute("value")).toBe("2");
+    expect(screen.getAllByRole("radio")[0].getAttribute("value")).toBe("1"); // owner 2026-11-03: Sorotan Termurah (id 1) lebih dulu, lalu Refill terlama (id 2)
     // Jumlah hasil menempel di judul "Pilih layanan" (owner 2026-11-03).
     expect(screen.getByRole("status").textContent).toBe("· 7 layanan");
     expect(screen.getByRole("status").parentElement?.textContent).toContain("Pilih layanan");
@@ -619,7 +619,9 @@ describe("Pedia configurator", () => {
     render(<OrderClient product={info} initialTarget="" ordersEnabled />);
     fireEvent.click(screen.getByRole("radio"));
     const card = screen.getByRole("region", { name: "Info layanan" });
-    for (const text of ["0–1 jam", "10K/hari", "19 menit per 1.000", "97% (7 hari)", "diproses admin", "High Drop", "Perkiraan drop tinggi", "Pengajuan Refill · 7 hari: 12%", "bukan persentase jumlah yang hilang"]) expect(card.textContent).toContain(text);
+    // owner 2026-11-03: Speed dihilangkan bila avg_time ada.
+    expect(card.textContent).not.toContain("10K/hari");
+    for (const text of ["0–1 jam", "19 menit per 1.000", "97% (7 hari)", "diproses admin", "High Drop", "Perkiraan drop tinggi", "Pengajuan Refill · 7 hari: 12%", "bukan persentase jumlah yang hilang"]) expect(card.textContent).toContain(text);
     expect(card.textContent).not.toContain("Drop rate:");
     expect(screen.getAllByText("High Drop").some((el) => el.className.includes("text-red-200"))).toBe(true);
     expect(card.textContent).not.toMatch(/supplier|indosmm/i);
@@ -961,5 +963,186 @@ describe("Pedia configurator", () => {
     expect(details.textContent).toContain("Estimasi dapat berubah.");
     const pay = screen.getAllByRole("button", { name: "Lanjut ke pembayaran" })[0];
     expect(pay.querySelector("span[aria-hidden='true']")?.className).toContain("max-xl:inline");
+  });
+});
+
+// Revisi UX order Pedia (owner 2026-11-03).
+describe("Pedia order UX revision 2026-11-03", () => {
+  type Tier = PediaCatalogProduct["tiers"][number];
+  const base: Tier = { id: 1, tier: "standar", label_note: null, public_name: "Followers Global Real", region: "global", refill_days: 0, eta_start: null, eta_finish: null, prices: { "100": 3000 }, price_per_1k: 30000, min_qty: 10, max_qty: 1000, quantity_step: 10, quick_quantities: [100] };
+  const mk = (over: Partial<Tier> & { id: number }): Tier => ({ ...base, ...over });
+  const withTiers = (tiers: Tier[]): PediaCatalogProduct => ({ ...product, packages: [10, 100, 500], tiers });
+  const presetLabels = () => within(document.getElementById("pedia-quantity")!).getAllByRole("button").map((b) => b.textContent);
+
+  describe("1. quantity presets avoid the minimum payment", () => {
+    it("before a tier is picked, keeps only quantities present in every accepting tier's quick_quantities, 5 smallest", () => {
+      const p = withTiers([
+        mk({ id: 1, quick_quantities: [10, 100, 250, 500, 1000, 2500], max_qty: 5000 }),
+        mk({ id: 2, quick_quantities: [100, 250, 500, 1000, 2500], max_qty: 5000 }), // 10 would be floored here
+        mk({ id: 3, quick_quantities: [250, 500, 1000, 2500, 5000], min_qty: 250, max_qty: 5000 }), // does not accept 100 -> 100 not required here
+      ]);
+      render(<OrderClient product={p} initialTarget="" ordersEnabled />);
+      expect(presetLabels()).not.toContain("10");
+      // 100 stays (tier 3 does not accept it, tiers 1-2 have it); 5 smallest remain.
+      expect(presetLabels()).toEqual(["100", "250", "500", "1k", "2.5k"]);
+    });
+    it("drops a quantity when a tier that accepts it has it floored", () => {
+      const p = withTiers([
+        mk({ id: 1, quick_quantities: [100, 500] }),
+        mk({ id: 2, quick_quantities: [500] }), // accepts 100 but floored there
+      ]);
+      render(<OrderClient product={p} initialTarget="" ordersEnabled />);
+      expect(presetLabels()).toEqual(["500"]);
+    });
+    it("after a tier is picked, uses that tier's own quick_quantities", () => {
+      const p = withTiers([mk({ id: 1, quick_quantities: [100, 500] }), mk({ id: 2, public_name: "Followers Indonesia Real", quick_quantities: [500] })]);
+      render(<OrderClient product={p} initialTarget="" ordersEnabled />);
+      fireEvent.click(screen.getByRole("radio", { name: /Global Real/ }));
+      expect(presetLabels()).toEqual(["100", "500"]);
+    });
+    it("explains the floor under the quantity input only when the total is the minimum and real price is below it", () => {
+      const p = withTiers([mk({ id: 1, prices: { "10": 1000, "100": 3000 }, price_per_1k: 26500, quick_quantities: [100] })]);
+      render(<OrderClient product={p} initialTarget="" ordersEnabled />);
+      fireEvent.click(screen.getByRole("radio"));
+      const note = "Total di bawah Rp1.000 dibulatkan ke minimum pembayaran Rp1.000.";
+      expect(screen.queryByText(note)).toBeNull();
+      fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "10" } });
+      expect(screen.getByText(note)).toBeTruthy();
+      fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
+      expect(screen.queryByText(note)).toBeNull();
+      fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "15" } }); // 15 is not a multiple of step 10
+      expect(screen.queryByText(note)).toBeNull();
+    });
+    it("does not show the note when the real price equals the minimum or exceeds it", () => {
+      const p = withTiers([mk({ id: 1, prices: { "100": 1000 }, price_per_1k: 10000 })]); // 100 x 10 = Rp1.000, not below
+      render(<OrderClient product={p} initialTarget="" ordersEnabled />);
+      fireEvent.click(screen.getByRole("radio"));
+      fireEvent.change(screen.getByLabelText("Jumlah yang dipesan"), { target: { value: "100" } });
+      expect(document.body.textContent).not.toContain("dibulatkan ke minimum pembayaran");
+    });
+  });
+
+  describe("2. Sorotan highlights", () => {
+    const four = (): Tier[] => [
+      mk({ id: 1, public_name: "Followers Global Real", refill_days: 0, price_per_1k: 10000, success_pct: 80 }),
+      mk({ id: 2, public_name: "Followers Indonesia Real", region: "indonesia", refill_days: 30, price_per_1k: 30000, success_pct: 92 }),
+      mk({ id: 3, public_name: "Followers Global HQ", refill_days: 365, price_per_1k: 40000, success_pct: 96 }),
+      mk({ id: 4, public_name: "Followers Campuran", region: "mixed", refill_days: 30, price_per_1k: 20000, success_pct: null }),
+    ];
+    const render4 = (tiers: Tier[], qty: number | null = null, extra: Partial<React.ComponentProps<typeof ServicePicker>> = {}) =>
+      render(<ServicePicker product={withTiers(tiers)} tierId={null} onSelect={vi.fn()} qty={qty} expanded {...extra} />);
+    const badgeClass = "border-[#FFB800]/30";
+    const badges = () => [...document.querySelectorAll("label span")].filter((n) => n.className.includes(badgeClass)).map((n) => n.textContent);
+
+    it("shows Sorotan first with Termurah, Refill terlama, Sukses tertinggi, each tier once, rest grouped after", () => {
+      render4(four());
+      const text = document.getElementById("pedia-tier")!.textContent!;
+      expect(text.indexOf("Sorotan")).toBeGreaterThanOrEqual(0);
+      expect(text.indexOf("Sorotan")).toBeLessThan(text.indexOf("Followers Global Real"));
+      expect(screen.getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["1", "3", "4", "2"]);
+      expect(badges()).toEqual(["Termurah", "Refill terlama", "Sukses tertinggi"]);
+      // Tier 3 carries two labels; no radio is duplicated.
+      expect(screen.getAllByRole("radio")).toHaveLength(4);
+      expect(document.querySelector("label span[class*='FFB800']")!.className).toContain("bg-[#FFB800]/10");
+      expect(screen.getByTestId("pedia-filter-count").textContent).toBe("· 4 layanan");
+      expect(text).toContain("Refill (bergaransi)");
+      expect(text).not.toMatch(/Paling dipilih|HYPE|Rekomendasi/i);
+    });
+    it("one tier can hold several labels and the remaining list excludes highlighted tiers", () => {
+      const tiers = four();
+      tiers[2] = { ...tiers[2], price_per_1k: 5000 }; // 3 is cheapest, longest refill and highest success
+      render4(tiers);
+      expect(badges()).toEqual(["Termurah", "Refill terlama", "Sukses tertinggi"]);
+      expect(screen.getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["3", "4", "2", "1"]);
+    });
+    it("needs >= 4 tiers; fewer shows no Sorotan", () => {
+      render4(four().slice(0, 3));
+      expect(document.getElementById("pedia-tier")!.textContent).not.toContain("Sorotan");
+      expect(badges()).toEqual([]);
+    });
+    it("does not count tiers disabled by an invalid quantity", () => {
+      const tiers = four(); tiers[0] = { ...tiers[0], min_qty: 500 };
+      render4(tiers, 100);
+      expect(document.getElementById("pedia-tier")!.textContent).not.toContain("Sorotan");
+    });
+    it("omits Refill terlama when all tiers share the same refill days, and Sukses tertinggi with <2 rates or max < 90", () => {
+      const same = four().map((t) => ({ ...t, refill_days: 30 }));
+      render4(same);
+      expect(badges()).not.toContain("Refill terlama");
+      cleanup();
+      render4(four().map((t, i) => ({ ...t, success_pct: i === 0 ? 99 : null })));
+      expect(badges()).not.toContain("Sukses tertinggi");
+      cleanup();
+      render4(four().map((t) => ({ ...t, success_pct: t.id === 1 ? 85 : t.id === 2 ? 89 : null })));
+      expect(badges()).not.toContain("Sukses tertinggi");
+    });
+    it("ties pick the cheaper tier", () => {
+      const tiers = [
+        mk({ id: 1, refill_days: 30, price_per_1k: 30000, success_pct: 95 }),
+        mk({ id: 2, refill_days: 30, price_per_1k: 20000, success_pct: 95 }),
+        mk({ id: 3, refill_days: 0, price_per_1k: 40000 }),
+        mk({ id: 4, refill_days: 7, price_per_1k: 50000 }),
+      ];
+      render4(tiers);
+      const labels = (id: number) => [...document.querySelectorAll("label")].find((l) => l.querySelector(`input[value="${id}"]`))!.textContent;
+      expect(labels(2)).toContain("Refill terlama");
+      expect(labels(2)).toContain("Sukses tertinggi");
+      expect(labels(1)).not.toContain("Refill terlama");
+    });
+    it("the collapsed list follows the new ordering and keeps the selected card's info panel", () => {
+      const onSelect = vi.fn();
+      render(<ServicePicker product={withTiers(four())} tierId={4} onSelect={onSelect} qty={null} expanded={false} info={(t) => <p data-testid="inline-info">info {t.id}</p>} />);
+      // compact (picked) view first
+      fireEvent.click(screen.getByRole("button", { name: "Ganti layanan" }));
+      expect(screen.getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["1", "3", "4"]);
+      cleanup();
+      render(<ServicePicker product={withTiers(four())} tierId={null} onSelect={onSelect} qty={null} />);
+      expect(screen.getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["1", "3", "4"]);
+      expect(screen.getByRole("button", { name: "Lihat semua 4 layanan" })).toBeTruthy();
+      cleanup();
+      render(<ServicePicker product={withTiers(four())} tierId={3} onSelect={onSelect} qty={null} expanded info={(t) => <p data-testid="inline-info">info {t.id}</p>} />);
+      expect(screen.getByTestId("inline-info").textContent).toBe("info 3");
+    });
+  });
+
+  describe("3. time information does not contradict itself", () => {
+    const named = (over: Partial<Tier>) => mk({ id: 1, ...over });
+    it("chip: eta_start wins and hides Instant Start; Instant Start alone otherwise; speed_note; never Avg", () => {
+      const { container, rerender } = render(<ServiceChips t={named({ public_name: "Followers Global Real · Instant Start", eta_start: "0-1 jam", avg_time: "8 jam" })} eta productName="x" />);
+      expect(container.textContent).toContain("Start 0-1 jam");
+      expect(container.textContent).not.toContain("Instant Start");
+      rerender(<ServiceChips t={named({ public_name: "Followers Global Real · Instant Start", avg_time: "8 jam" })} eta productName="x" />);
+      expect(container.textContent).toContain("Instant Start");
+      expect(container.textContent).not.toMatch(/Start \d|Avg/);
+      rerender(<ServiceChips t={named({ speed_note: "Mulai 5 menit", avg_time: "8 jam" })} eta productName="x" />);
+      expect(container.textContent).toContain("Start 5 menit");
+      expect(container.textContent).not.toContain("Avg");
+      rerender(<ServiceChips t={named({ avg_time: "8 jam" })} eta productName="x" />);
+      expect(container.textContent).not.toMatch(/Avg|Start/);
+    });
+    it("summary rail title omits chip parts such as Instant Start", () => {
+      const p = withTiers([mk({ id: 1, public_name: "Followers Global Real · Refill 30 Days · Instant Start", refill_days: 30 })]);
+      render(<OrderClient product={p} initialTarget="" ordersEnabled />);
+      fireEvent.click(screen.getByRole("radio"));
+      const title = [...document.querySelectorAll("aside p")].find((n) => n.className.includes("font-semibold leading-5"))!;
+      expect(title.textContent).toBe("Followers Global Real");
+    });
+    it("info card omits the Speed row and glossary term when avg_time exists, keeps it otherwise", () => {
+      const { container, rerender } = render(<ServiceInfoCard t={named({ speed_per_day: "100K/hari", avg_time: "8 jam 3 menit" })} productName="x" />);
+      expect([...container.querySelectorAll("dt")].map((n) => n.textContent)).not.toContain("Speed");
+      expect(container.textContent).not.toContain("100K/hari");
+      rerender(<ServiceInfoCard t={named({ speed_per_day: "100K/hari" })} productName="x" />);
+      expect([...container.querySelectorAll("dt")].map((n) => n.textContent)).toContain("Speed");
+    });
+  });
+
+  it("5. the empty summary rail keeps the sentence but drops the duplicate 3-step list", () => {
+    mount();
+    expect(screen.getByText("Isi jumlah dan pilih layanan untuk melihat rincian pesananmu.")).toBeTruthy();
+    const rail = document.querySelector("aside")!;
+    expect(rail.querySelector("ol")).toBeNull();
+    expect(rail.textContent).not.toContain("Tempel link tujuan");
+    expect(rail.textContent).not.toContain("Bayar QRIS dan pantau status");
+    expect(screen.getByRole("list", { name: "Langkah pesanan" })).toBeTruthy();
   });
 });

@@ -109,7 +109,7 @@ describe("payment maintenance before financial side effects", () => {
   it("replaces a selected Pedia checkout with manual ordering while keeping its catalog", () => {
     const product: PediaCatalogProduct = {
       slug: "test-views", platform: "youtube", metric: "views", target_kind: "url", name: "YouTube Views",
-      tagline: null, packages: [], step: 1, checklist: [], is_featured: 0, tiers: [], min_price: null, image: null,
+      tagline: null, packages: [], step: 1, checklist: [], is_featured: 0, tiers: [], min_price: null, min_order_rp: 1000, image: null,
     };
     const html = renderToStaticMarkup(<PlatformPageClient platform="youtube" name="YouTube" products={[product]} initialSlug={product.slug} ordersEnabled />);
     expect(html).toContain("Pembayaran sedang maintenance");

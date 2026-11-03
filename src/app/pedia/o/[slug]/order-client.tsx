@@ -233,7 +233,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
     </div>
     <div className="p-4">
       {tier ? <>
-        <p className="text-sm font-semibold leading-5 text-white">{tier.public_name ?? tier.label_note ?? "Layanan terpilih"}</p>
+        <p className="text-sm font-semibold leading-5 text-white">{shortServiceName(product.name, product.metric, tier)}</p>
         <div className="mt-2"><ServiceChips t={tier} eta productName={product.name} /></div>
         <dl className="mt-4 space-y-2.5 text-[13px] text-white/65">
           {qty != null && <div className="flex justify-between gap-4"><dt>Jumlah</dt><dd className="text-right tabular-nums text-white">{qty.toLocaleString("id-ID")}</dd></div>}
@@ -243,10 +243,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
         <div className="mt-4 border-t border-white/10 pt-3"><div className="flex items-baseline justify-between gap-3"><p className="text-[13px] text-white/65">{currentQuote ? "Total terkonfirmasi" : "Total pesanan"}</p><p className={`text-[17px] font-bold leading-6 tracking-[-0.02em] ${packageTotal > 0 || currentQuote ? "text-white" : "text-white/80"}`}>{!currentQuote && !qty ? <><span aria-hidden="true">—</span><span className="sr-only">Belum ada total</span></> : priceText}</p></div>
         {(currentQuote || !qty) && <p className="mt-1 text-[11px] leading-4 text-white/65">{currentQuote ? "Nominal QRIS ditampilkan di halaman pembayaran." : "Isi jumlah untuk melihat total pesananmu."}</p>}</div>
       </> : <div>
-        <ol className="space-y-2.5 text-[13px] leading-5 text-white/70">
-          {["Isi jumlah dan pilih layanan", "Tempel link tujuan", "Bayar QRIS dan pantau status"].map((t, i) => <li key={t} className="flex items-center gap-3"><span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#00E5FF]/40 text-xs font-semibold text-[#00E5FF]">{i + 1}</span>{t}</li>)}
-        </ol>
-        <p className="mt-4 text-[13px] leading-5 text-white/65">Isi jumlah dan pilih layanan untuk melihat rincian pesananmu.</p>
+        <p className="text-[13px] leading-5 text-white/65">Isi jumlah dan pilih layanan untuk melihat rincian pesananmu.</p>
       </div>}
       {withCta && <div className="mt-5 hidden xl:block">{cta}</div>}
     </div>
@@ -272,9 +269,14 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
   };
   // Contoh jumlah jujur se-produk: hanya angka yang valid di ≥1 layanan.
   // Tidak mengisi otomatis — hanya chip contoh sebelum layanan dipilih.
+  // 2026-11-03 (owner): hanya angka yang tidak terkena lantai minimum di tier mana pun yang
+  // menerimanya (ada di quick_quantities setiap tier yang valid untuk angka itu).
+  const accepts = (t: PediaCatalogProduct["tiers"][number], n: number) => n >= (t.min_qty ?? 1) && n <= (t.max_qty ?? n) && n % (t.quantity_step ?? product.step) === 0;
   const productExamples = useMemo(() => [...new Set(product.tiers.flatMap((t) => t.quick_quantities ?? []))]
-    .filter((n) => product.tiers.some((t) => n >= (t.min_qty ?? 1) && n <= (t.max_qty ?? n) && n % (t.quantity_step ?? product.step) === 0))
+    .filter((n) => product.tiers.some((t) => accepts(t, n)) && product.tiers.every((t) => !accepts(t, n) || (t.quick_quantities ?? []).includes(n)))
     .sort((a, b) => a - b).slice(0, 5), [product]);
+  // Total tier terpilih jatuh ke lantai minimum pembayaran (bukan karena harga sebenarnya).
+  const flooredTotal = !!tier && qty != null && quantityValid && packageTotal > 0 && packageTotal === product.min_order_rp && tier.price_per_1k != null && (qty * tier.price_per_1k) / 1000 < product.min_order_rp;
   const productMin = useMemo(() => product.tiers.length ? Math.min(...product.tiers.map((t) => t.min_qty ?? 1)) : 1, [product]);
   const canOpenSheet = !!tier && !embedded;
   const totalCls = `min-w-0 flex-1 xl:hidden ${canOpenSheet ? "max-w-[7rem] max-[379px]:max-w-[5.75rem]" : stage === 2 || stage === 3 ? "max-w-[6.25rem] max-[379px]:max-w-[4.75rem]" : "max-w-32"}`;
@@ -315,6 +317,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
                 <div className="-mx-1 flex gap-2 overflow-x-auto px-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">{(tier?.quick_quantities?.length ? tier.quick_quantities.filter((n) => n >= (tier.min_qty ?? 1) && n <= (tier.max_qty ?? n) && n % (tier.quantity_step ?? product.step) === 0) : productExamples).slice(0, 5).map((n) => <button key={n} type="button" onClick={() => { setQty(n); setQuantityNotice(""); }} aria-pressed={qty === n} className={`min-h-11 shrink-0 rounded-xl border px-3 text-[13px] transition ${qty === n ? "border-[#00E5FF]/45 bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/10 text-white/60 hover:border-white/25"}`}>{n >= 1000 ? `${n / 1000}k` : n.toLocaleString("id-ID")}</button>)}</div>
               </div>
               {!errors.quantity && <p className="mt-2 text-xs leading-5 text-white/65">{tier ? `Layanan terpilih menerima ${(tier.min_qty ?? 1).toLocaleString("id-ID")}${tier.max_qty != null ? `–${tier.max_qty.toLocaleString("id-ID")}` : " atau lebih"} per pesanan.${(tier.quantity_step ?? product.step) > 1 ? ` Kelipatan ${(tier.quantity_step ?? product.step).toLocaleString("id-ID")}.` : ""}` : "Pilih layanan untuk melihat batas jumlah per pesanan."}</p>}
+              {flooredTotal && <p className="mt-2 text-xs leading-5 text-white/65">Total di bawah {rupiah(product.min_order_rp)} dibulatkan ke minimum pembayaran {rupiah(product.min_order_rp)}.</p>}
               {quantityNotice && <p role="status" className="mt-2 text-xs text-amber-200">{quantityNotice}</p>}{inlineError("quantity")}
               <div role="status" aria-live="polite">{qty != null && comparison?.failed && <p className="mt-2 text-[13px] leading-5 text-white/65">Harga terbaru belum dapat dimuat. Harga akan diperiksa kembali sebelum pembayaran. <button type="button" disabled={attempted} onClick={comparison.retry} className="min-h-11 font-medium text-[#00E5FF] underline underline-offset-4 disabled:opacity-40">Coba muat harga lagi</button></p>}</div>
             </fieldset></div>

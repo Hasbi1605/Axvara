@@ -34,6 +34,25 @@ describe("public catalog safe tier packages", () => {
     await seed();
     expect((await (await GET()).json()).products[0].description_md).toBeNull();
   });
+  it("quick_quantities drop amounts floored to the minimum payment and add round candidates; exposes min_order_rp (owner 2026-11-03)", async () => {
+    const db = await seed();
+    await db.execRun("UPDATE pedia_supplier_services SET rate_idr_per_1k=5000, max_qty=10000 WHERE service_id=1");
+    await db.execRun("UPDATE pedia_tiers SET markup_pct=20, min_profit_rp=0");
+    const data = await (await GET()).json();
+    const hemat = data.products[0].tiers.find((t: { tier: string }) => t.tier === "hemat");
+    // 100 x Rp5.000/1.000 x 1,2 = Rp600 -> floored to Rp1.000, so 100 is excluded; 250 = Rp1.500 stays.
+    expect(hemat.quick_quantities).toEqual([250, 500, 1000, 2500, 5000, 10000]);
+    expect(data.products[0].min_order_rp).toBe(1000);
+  });
+  it("quick_quantities honors a configured PEDIA_MIN_ORDER_RP", async () => {
+    const db = await seed();
+    await db.execRun("UPDATE pedia_supplier_services SET rate_idr_per_1k=5000, max_qty=10000 WHERE service_id=1");
+    await db.execRun("UPDATE pedia_tiers SET markup_pct=20, min_profit_rp=0");
+    vi.stubEnv("PEDIA_MIN_ORDER_RP", "2000");
+    const data = await (await GET()).json();
+    expect(data.products[0].min_order_rp).toBe(2000);
+    expect(data.products[0].tiers.find((t: { tier: string }) => t.tier === "hemat").quick_quantities).toEqual([500, 1000, 2500, 5000, 10000]);
+  });
   it("filters each tier by its own bounds, positive prices and configured steps; sorts deterministically", async () => {
     await seed();
     const data = await (await GET()).json();

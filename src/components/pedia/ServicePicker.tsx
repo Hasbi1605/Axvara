@@ -21,9 +21,12 @@ export function shortServiceName(productName: string, _metric: string, t: PediaC
 const DROP_CHIP: Record<string, string> = { no_drop: "border-emerald-300/25 bg-emerald-300/10 text-emerald-200", less_drop: "border-amber-300/25 bg-amber-300/10 text-amber-200", high_drop: "border-red-300/30 bg-red-400/10 text-red-200" };
 export function ServiceChips({ t, eta = false, className = "", productName = "" }: { t: PediaCatalogTier; eta?: boolean; className?: string; productName?: string }) {
   // "Instant Start" datang dari nama layanan (fakta sumber); rentang tidak dikarang.
-  // Tanpa eta_start, chip ini menggantikan chip Start generik; dengan eta_start keduanya tampil.
-  const instant = hasInstantStart(serviceDisplayName(productName, t));
-  const start = t.eta_start ? `Start ${t.eta_start}` : instant ? null : t.speed_note ? t.speed_note.replace(/^Mulai\b/i, "Start") : t.avg_time ? `Avg ${t.avg_time}` : null;
+  // 2026-11-03 (owner): satu sumber waktu saja. eta_start menang dan menyembunyikan
+  // chip Instant Start; tanpa eta_start, Instant Start menggantikan chip Start.
+  // Avg time tidak lagi jadi chip kartu (tampil di info layanan).
+  const instantName = hasInstantStart(serviceDisplayName(productName, t));
+  const instant = instantName && !t.eta_start;
+  const start = t.eta_start ? `Start ${t.eta_start}` : instant ? null : t.speed_note ? t.speed_note.replace(/^Mulai\b/i, "Start") : null;
   // 2026-11-02 (owner): chip informasi tetap netral (warna hanya untuk refill/drop/
   // sukses), teks dinaikkan agar terbaca; Indonesia memakai pin lokasi; tanpa
   // data waktu chip Start tidak ditampilkan.
@@ -72,21 +75,48 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
   ] : [];
   const filtersActive = !!category;
   const validQuantity = useCallback((t: PediaCatalogTier) => qty != null && Number.isSafeInteger(qty) && qty >= (t.min_qty ?? 1) && qty <= (t.max_qty ?? Infinity) && qty % (t.quantity_step ?? product.step) === 0, [qty, product.step]);
+  // Harga efektif yang dipakai urutan daftar dan penentuan sorotan.
+  const effectivePrice = useCallback((t: PediaCatalogTier) => (qty != null && validQuantity(t) ? prices[t.id] ?? t.prices[String(qty)] : undefined) ?? t.price_per_1k ?? Math.min(...Object.values(t.prices), Infinity), [qty, validQuantity, prices]);
   const relevant = useMemo(() => {
     const list = tiers.filter((t) => matches(t, category));
     // 2026-11-01: dikelompokkan Refill (bergaransi) lalu No Refill, masing-masing termurah dulu.
-    const price = (t: PediaCatalogTier) => (qty != null && validQuantity(t) ? prices[t.id] ?? t.prices[String(qty)] : undefined) ?? t.price_per_1k ?? Math.min(...Object.values(t.prices), Infinity);
     return [...list].sort((a, b) => Number(b.refill_days > 0) - Number(a.refill_days > 0)
       || Number(validQuantity(b)) - Number(validQuantity(a))
-      || price(a) - price(b));
+      || effectivePrice(a) - effectivePrice(b));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tiers, category, validQuantity, qty, prices]);
+  }, [tiers, category, validQuantity, effectivePrice]);
+  // 2026-11-03 (owner): "Sorotan" di atas daftar, hanya dari data nyata dan hanya bila
+  // ada >= 4 layanan yang bisa dipesan pada jumlah ini. Satu layanan boleh membawa beberapa label.
+  const highlights = useMemo(() => {
+    const out = new Map<number, string[]>();
+    const pool = qty == null ? relevant : relevant.filter(validQuantity);
+    if (pool.length < 4) return out;
+    const better = (a: PediaCatalogTier, b: PediaCatalogTier, metric: (t: PediaCatalogTier) => number) => metric(a) > metric(b) || (metric(a) === metric(b) && effectivePrice(a) < effectivePrice(b));
+    const add = (t: PediaCatalogTier | undefined, label: string) => { if (t) out.set(t.id, [...(out.get(t.id) ?? []), label]); };
+    const cheapest = pool.reduce((best, t) => effectivePrice(t) < effectivePrice(best) ? t : best);
+    if (Number.isFinite(effectivePrice(cheapest))) add(cheapest, "Termurah");
+    const refillers = pool.filter((t) => t.refill_days > 0);
+    if (refillers.length && new Set(pool.map((t) => t.refill_days)).size > 1) add(refillers.reduce((best, t) => better(t, best, (x) => x.refill_days) ? t : best), "Refill terlama");
+    const rated = pool.filter((t) => t.success_pct != null);
+    if (rated.length >= 2) {
+      const top = rated.reduce((best, t) => better(t, best, (x) => x.success_pct as number) ? t : best);
+      if ((top.success_pct as number) >= 90) add(top, "Sukses tertinggi");
+    }
+    return out;
+  }, [relevant, qty, validQuantity, effectivePrice]);
+  const ordered = useMemo(() => {
+    if (!highlights.size) return relevant;
+    const order = ["Termurah", "Refill terlama", "Sukses tertinggi"];
+    const top = relevant.filter((t) => highlights.has(t.id)).sort((a, b) => Math.min(...highlights.get(a.id)!.map((l) => order.indexOf(l))) - Math.min(...highlights.get(b.id)!.map((l) => order.indexOf(l))));
+    return [...top, ...relevant.filter((t) => !highlights.has(t.id))];
+  }, [relevant, highlights]);
   const picked = tiers.find((t) => t.id === tierId);
   // Nama yang sama dibedakan oleh chip (Refill N Days/drop) di kartu yang sama.
   const nameOf = (t: PediaCatalogTier) => shortServiceName(product.name, product.metric, t);
   const compact = !expanded && !!picked && !compare;
-  const visible = compact && picked ? [picked] : expanded || showAll ? [...relevant] : relevant.slice(0, 3);
+  const visible = compact && picked ? [picked] : expanded || showAll ? [...ordered] : ordered.slice(0, 3);
   if (!compact && picked && relevant.includes(picked) && !visible.includes(picked)) visible.push(picked);
+  const groupOf = (t: PediaCatalogTier) => highlights.has(t.id) ? "Sorotan" : t.refill_days > 0 ? "Refill (bergaransi)" : "No Refill";
   const resetFilters = () => { setCategory(""); setShowAll(false); };
 
   return <fieldset id="pedia-tier" className="min-w-0" disabled={locked}>
@@ -107,9 +137,11 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
     {compact && <p className="mt-1 text-xs leading-5 text-white/50">Jumlah, target, dan filter tetap tersimpan saat ganti layanan.</p>}
     <div className="mt-3 space-y-2">
       {visible.map((t, index) => {
-        const group = t.refill_days > 0 ? "Refill (bergaransi)" : "No Refill";
-        const prevGroup = index > 0 ? (visible[index - 1].refill_days > 0 ? "Refill (bergaransi)" : "No Refill") : null;
-        const showGroup = !compact && visible.some((v) => v.refill_days > 0) && visible.some((v) => v.refill_days <= 0) && group !== prevGroup;
+        const group = groupOf(t);
+        const prevGroup = index > 0 ? groupOf(visible[index - 1]) : null;
+        const badges = compact ? [] : highlights.get(t.id) ?? [];
+        const rest = visible.filter((v) => !highlights.has(v.id));
+        const showGroup = !compact && (highlights.size > 0 || (rest.some((v) => v.refill_days > 0) && rest.some((v) => v.refill_days <= 0))) && group !== prevGroup;
         const entries = Object.entries(t.prices).filter(([, price]) => price > 0).map(([q, price]) => ({ qty: Number(q), price })).sort((a, b) => a.qty - b.qty);
         const cheapest = entries.sort((a, b) => a.price - b.price || a.qty - b.qty)[0];
         const valid = validQuantity(t);
@@ -126,7 +158,7 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
           <input type="radio" name="pedia-tier" value={t.id} checked={selected} disabled={disabled} onChange={() => { if (disabled || locked) return; onSelect(t.id); setCompare(false); setShowAll(false); }} className="sr-only" aria-describedby={[reason ? `pedia-tier-${t.id}-reason` : "", selected && info ? `pedia-tier-${t.id}-info` : ""].filter(Boolean).join(" ") || undefined} />
           <span aria-hidden="true" className={`row-start-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${selected ? "border-[#00E5FF] bg-[#00E5FF] text-[#080C1E]" : "border-white/40"}`}>{selected && <Check size={12} strokeWidth={3} />}</span>
           <span className="contents sm:flex sm:min-w-0 sm:flex-1 sm:flex-col sm:gap-1.5">
-            <span className="col-start-2 block break-words text-[13px] font-semibold leading-[1.3] tracking-[-0.01em] text-white sm:text-sm"><span className="align-middle">{name}</span>{selected && <span className="sr-only"> (Dipilih)</span>}</span>
+            <span className="col-start-2 block break-words text-[13px] font-semibold leading-[1.3] tracking-[-0.01em] text-white sm:text-sm"><span className="align-middle">{name}</span>{badges.map((label) => <span key={label} className="ml-1.5 inline-flex rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-1.5 align-middle text-[11px] font-semibold leading-4 text-[#FFB800]">{label}</span>)}{selected && <span className="sr-only"> (Dipilih)</span>}</span>
             <ServiceChips t={t} eta productName={product.name} className="col-span-2 col-start-2" />
             {reason && <span id={`pedia-tier-${t.id}-reason`} className="col-span-2 col-start-2 text-xs leading-5 text-amber-200">{qty?.toLocaleString("id-ID")} tidak tersedia di sini: {reason.toLowerCase()}.</span>}
           </span>
