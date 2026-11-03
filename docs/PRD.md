@@ -97,8 +97,12 @@ badge invoice, pill STATUS, kotak detail Layanan/Jumlah dipesan/Jumlah awal/
 Sisa/Masuk/Link tujuan, CTA "Lihat Status Pesanan →", blok WA, footer;
 tidak diketahui = "Belum dilaporkan"/"Belum dikonfirmasi", bukan 0; tanpa
 PIN/kredensial/garansi Market/ID supplier/biaya). Paid independen dari
-sukses supplier; processing = "Diproses" saat supplier MENERIMA order
-(resi `submitted` + `supplier_order_id` durable — bukan "sedang berjalan"
+sukses supplier; processing = "Diproses" setelah resi durable dan jumlah awal
+serta sisa valid tersimpan pada `submitted`/`in_progress` (jumlah pesanan
+integer aman positif, awal integer aman ≥0, sisa integer aman 0..jumlah;
+0 asli valid). Belum siap tidak mengklaim atau membakar percobaan; retry
+existing memeriksa lagi, dan email terkirim lama tidak dikirim ulang.
+(Bukan "sedang berjalan"
 kecuali `in_progress` aktual; supplier Pending tidak dipromosikan dan tidak
 meregresi item berjalan; tanpa resi/ambigu tidak kirim dan tidak beli ulang;
 order lama yang sudah completed tidak diemail processing retroaktif);
@@ -109,8 +113,9 @@ hanya field layanan yang dapat kosong, bukan snapshot. Forward sender
 memakai API Resend tanpa idempotency key untuk email ini: transport bounded
 at-least-once (bukan exactly-once). Partial/canceled memakai bahasa tindak
 lanjut tanpa kata manual/admin untuk pembeli. Recovery: sighting paid
-maksimal 5 dan discovery maksimal 2/fase hanya untuk fase hilang order
-lunas ≤24 jam (processing hanya untuk `submitted`/`in_progress` berresi);
+maksimal 5 dan discovery maksimal 2/fase; paid/completed hanya order lunas
+≤24 jam, processing memilih hanya `submitted`/`in_progress` berresi dan
+hitungan valid tanpa batas 24 jam agar yang belum siap tidak menghalangi antrean;
 ledger due existing tetap retry setelah 24 jam. Stale terminal disupresi
 tanpa kirim. Input start_count hanya number/string (boolean/object/array
 ditolak — Number(true) tidak boleh jadi hitungan); blank/missing/invalid

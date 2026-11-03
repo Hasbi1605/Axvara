@@ -916,15 +916,19 @@ existing (`buyer_notice_log`: lease UUID, attempts+1 sebelum transport,
 maks 5, backoff 1/5/15/60, due/stale guard, settle CAS; klaim gagal =
 tidak kirim; `sendPediaEmail` memakai forward sender ke API Resend tanpa
 idempotency key, sehingga transport bounded at-least-once, bukan exactly-once): paid
-independen dari supplier, processing = resi `submitted` diterima/"Diproses"
+independen dari supplier, processing menunggu resi durable dan jumlah awal/sisa
+valid pada `submitted`/`in_progress` (integer aman, awal ≥0, sisa 0..jumlah,
+jumlah positif; 0 valid); belum siap tidak mengklaim percobaan dan email
+terkirim lama tidak dikirim ulang. Perubahan lokal, deployment belum diverifikasi;
 (Pending mempertahankan status + refresh lease; tanpa resi/ambigu tidak
 kirim; completed lama tidak diemail retroaktif), stale terminal disupresi,
 selesai hanya completed; tampilan seperti Market (`renderBrandedNotice` +
 field opsional `status`/`details`/`ctaLabel` — tanpa opsi output Market
 byte-identik; completed memakai `Refill N Days`); konteks gabungan tunggal
 (1 read) + gate budget realistis; recovery di tick Pedia existing (sighting
-paid hilang ≤24 jam maksimal 5; discovery ≤2/fase termasuk submitted
-berresi; ledger due existing tetap retry setelah 24 jam); start_count
+paid hilang ≤24 jam maksimal 5; discovery ≤2/fase, paid/completed ≤24 jam,
+processing siap berresi tanpa batas 24 jam; ledger due existing tetap retry
+setelah 24 jam); start_count
 hanya number/string (boolean/object/array ditolak), safe-nonnegative-integer
 (blank/missing/invalid/negatif/pecahan tidak menulis); slot NULL/0 menerima
 positif tervalidasi berikutnya, positif terkonfirmasi dipertahankan, real 0

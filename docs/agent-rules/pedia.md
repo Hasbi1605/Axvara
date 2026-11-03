@@ -9,6 +9,9 @@
 - Expiry reservasi pra-pensiun dibalik sekali hanya ke arsip beku + follow-up owner. Penyelesaian dengan pembeli di luar AXVARA, bukan saldo baru.
 - Status Pedia wajib kontak checkout penuh; kredensial Market mengikuti aturan PIN/proof checkout 28 Oktober di atas beserta kompatibilitas legacy, bukan kontak saja untuk order PIN6. Pengecualian admin24Oktober: adminView hanya sesudah requireAdmin server-side, URL tanpa kontak/token buyer dan tidak menerbitkan capability buyer. Tidak menampilkan kode kredit lama ke browser.
 
+### Email processing Pedia 3 November 2026 (lokal)
+- Email processing menunggu paid, resi supplier durable, status submitted/in_progress dan jumlah awal/sisa tervalidasi dari DB; 0 valid. Jika belum lengkap jangan claim/bakar percobaan; discovery maksimal dua/fase memilih processing siap tanpa batas 24 jam, paid/completed tetap 24 jam. Email processing yang sudah terkirim tidak dikirim ulang. Ini tidak mengubah Telegram, paid/completed atau template; deployment belum diverifikasi.
+
 ### Histori Pedia (dipindah 2 November 2026)
 - Snapshot Pedia 12, 15 dan 19 Oktober 2026 dipindah utuh tanpa perubahan isi ke `docs/agents-history.md` agar konteks agent lebih ringan. Itu bukti bertanggal, bukan status produksi atau izin rollout.
 - Pengaman di sana (secret supplier hanya di VPS, idempotensi/reservasi durable proxy SMM, retry ambigu `needs_check`, quote JWE/snapshot order lama, larangan reset direktori idempotensi) tetap berlaku untuk jalur legacy yang kompatibel. Baca file itu sebelum menyentuh order/refill/recovery Pedia lama, proxy SMM atau kurasi.

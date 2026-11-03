@@ -139,11 +139,15 @@ status jujur (counts durable, ETA tier saat ini yang dapat kosong, nama snapshot
 lifecycle aktual + 4 sel hitungan + polling 5/10/30 dtk (unknown/fetch-awal-gagal
 self-retry 10 dtk, terminal berhenti), pintu Market
 dialihkan ke host Pedia, email paid/processing/completed fenced (paid
-independen, processing = resi submitted/"Diproses", stale terminal
+independen, processing menunggu resi durable dan jumlah awal/sisa valid
+pada submitted/in_progress (0 valid); belum siap tidak mengklaim percobaan,
+discovery processing siap tetap bounded dua item/fase tanpa batas 24 jam,
+sementara paid/completed tetap 24 jam; email terkirim lama tidak dikirim ulang;
+stale terminal
 disupresi; tampilan seperti Market; completed memakai Refill N Days;
 bounded at-least-once melalui forward sender Resend tanpa idempotency key) +
-retry bounded di cron existing; discovery fase hilang hanya lunas ≤24 jam,
-sedangkan ledger due tetap retry lebih lama. Kontrak cron: cron `pedia_orders`
+retry bounded di cron existing; ledger due tetap retry lebih lama.
+Kontrak cron: cron `pedia_orders`
 tidak memindai item terminal; start_count validasi number/string-only
 (boolean/object/array ditolak), safe-nonnegative-integer, slot NULL/0
 dikoreksi positif, positif dipertahankan, real-0 settled; koreksi historis

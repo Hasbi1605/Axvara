@@ -77,8 +77,9 @@ export async function pediaBuyerContext(db: Db, orderCode: string): Promise<Pedi
   const productName = sanitizePublicText(copy?.product_name ?? row.product_name, 120) || "Pesanan Pedia";
   const serviceName = sanitizePublicText(copy?.service_name ?? row.label_note ?? row.tier_name, 200) || productName;
   const qty = Number(row.quantity) || 0;
-  const rawStart = row.start_count != null ? Number(row.start_count) : NaN;
-  const rawRemains = row.remains != null ? Number(row.remains) : NaN;
+  const countNumber = (value: unknown) => (typeof value === "number" || typeof value === "string") && String(value).trim() !== "" ? Number(value) : NaN;
+  const rawStart = countNumber(row.start_count);
+  const rawRemains = countNumber(row.remains);
   const startCount = Number.isSafeInteger(rawStart) && rawStart >= 0 ? rawStart : null;
   const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= qty ? rawRemains : null;
   const itemStatus = String(row.item_status);
@@ -215,17 +216,13 @@ function completedEmail(ctx: PediaBuyerContext, orderCode: string): PediaEmailPa
  *  phases, then fenced claim → transport → CAS settle. Returns true when
  *  the phase is sent or already durably sent/superseded.
  *
- *  `ctxOverride` carries claim-time transition values (e.g. the just-reported
- *  supplier counts from pollOne) so the immediate email is point-in-time;
- *  deferred retries rebuild from the durable row and apply the same
- *  terminal-suppression rules. */
+ *  Deferred retries rebuild from the durable row and apply the same rules. */
 async function sendPediaPhase(
   db: Db,
   phase: "paid" | "processing" | "completed",
   orderCode: string,
   build: (ctx: PediaBuyerContext) => PediaEmailPayload,
   allow: (ctx: PediaBuyerContext) => boolean,
-  ctxOverride?: (ctx: PediaBuyerContext) => Partial<PediaBuyerContext>,
 ): Promise<boolean> {
   const { claimPediaEmail, settlePediaEmail, supersedePediaEmail, pediaEmailKey } = await import("@/lib/pedia/notify-channel");
   const key = pediaEmailKey(phase, orderCode);
@@ -234,8 +231,7 @@ async function sendPediaPhase(
   if (!db.canSpend(5)) return false;
   const live = await pediaBuyerContext(db, orderCode);
   if (!live || !live.email || !live.orderPaid) return false;
-  // allow() always evaluates the LIVE durable state (terminal suppression
-  // must see completion even when the immediate body uses claim-time counts).
+  // Eligibility and email body both use the live durable state.
   if (!allow(live)) {
     // Only terminal stale processing is superseded; a future phase remains due.
     if (phase !== "processing" || !isPediaTerminalStatus(live.status)) return false;
@@ -244,7 +240,7 @@ async function sendPediaPhase(
     const existing = await db.queryFirst(`SELECT status FROM buyer_notice_log WHERE idempotency_key=?`, key).catch(() => null);
     return String(existing?.status ?? "") === "sent";
   }
-  const ctx: PediaBuyerContext = { ...live, ...(ctxOverride?.(live) ?? {}) };
+  const ctx = live;
   const claim = await claimPediaEmail(db, phase, orderCode);
   if (!claim) {
     const existing = await db.queryFirst(`SELECT status FROM buyer_notice_log WHERE idempotency_key=?`, key).catch(() => null);
@@ -281,29 +277,16 @@ export async function notifyPediaPaid(db: Db, orderCode: string, siteUrl?: strin
   );
 }
 
-/** Pembeli: processing — "Diproses" = supplier ACCEPTED the order (durable
- *  submitted receipt with supplier_order_id), not necessarily running yet.
- *  Copy never says "sedang berjalan" at submitted; running counts ride the
- *  same phase key when in_progress is observed (no second mail). Stale at
- *  terminal (partial/canceled/completed/expired) is suppressed. */
+/** Processing waits for a durable receipt and complete, validated counts. */
 export async function notifyPediaProcessing(
   db: Db, orderCode: string,
   counts?: { startCount: number | null; remains: number | null },
 ): Promise<boolean> {
-  const override = counts ? (ctx: PediaBuyerContext): Partial<PediaBuyerContext> => {
-    const startCount = counts.startCount != null && Number.isSafeInteger(counts.startCount) && counts.startCount >= 0 ? counts.startCount : null;
-    const qty = ctx.quantity;
-    const remains = counts.remains != null && Number.isSafeInteger(counts.remains) && counts.remains >= 0 && counts.remains <= qty ? counts.remains : null;
-    return {
-      startCount,
-      remains,
-      done: remains != null ? qty - remains : ctx.done,
-    };
-  } : undefined;
+  void counts;
   return sendPediaPhase(db, "processing", orderCode,
     (ctx) => processingEmail(ctx, orderCode),
-    (ctx) => ctx.status === "in_progress" || (ctx.status === "submitted" && ctx.hasReceipt),
-    override,
+    (ctx) => ["submitted", "in_progress"].includes(ctx.status) && ctx.hasReceipt &&
+      Number.isSafeInteger(ctx.quantity) && ctx.quantity > 0 && ctx.startCount !== null && ctx.remains !== null,
   );
 }
 

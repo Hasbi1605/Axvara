@@ -5,8 +5,9 @@
 //     `sending` — re-drive the phase sender (fenced claim owns retry).
 //  2. Missing ledger rows for phases implied by the CURRENT item state —
 //     synthesize them (paid hook may have missed items already past queued,
-//     or claim-DB-error sent nothing). Discovery is bounded AND recent-only:
-//     lunas orders updated in the last 24h, LIMIT 2 per phase, terminal
+//     or claim-DB-error sent nothing). Paid/completed discovery is recent-only;
+//     active processing waits for valid counts without a 24h ceiling. LIMIT 2
+//     per phase, terminal
 //     suppression inside the sender (no bulk email of historic orders).
 // Partial/canceled/needs_check keep their manual followup flow; no
 // repurchase happens here. Transport is bounded at-least-once, not
@@ -22,6 +23,14 @@ const RETRY_LIMIT = 2;
 
 /** Recent eligibility window for missing-phase discovery (avoid historic spam). */
 const DISCOVERY_WINDOW = "-24 hours";
+
+// Match the sender's safe-integer bounds before LIMIT so unready rows cannot
+// monopolize recovery; the sender rechecks the live row before any claim.
+const PROCESSING_READY = `i.status IN ('submitted','in_progress')
+  AND length(trim(COALESCE(i.supplier_order_id,''))) > 0
+  AND typeof(i.quantity) IN ('integer','real') AND i.quantity > 0 AND i.quantity <= 9007199254740991 AND i.quantity = CAST(i.quantity AS INTEGER)
+  AND typeof(i.start_count) IN ('integer','real') AND i.start_count >= 0 AND i.start_count <= 9007199254740991 AND i.start_count = CAST(i.start_count AS INTEGER)
+  AND typeof(i.remains) IN ('integer','real') AND i.remains >= 0 AND i.remains <= i.quantity AND i.remains = CAST(i.remains AS INTEGER)`;
 
 /** Item statuses implying each phase is due (evaluated at send time).
  *  Processing synthesizes for SUBMITTED (durable accepted receipt with
@@ -48,7 +57,8 @@ export async function retryPendingPediaEmails(db: Db): Promise<number> {
         JOIN orders o ON o.code=b.order_code
         JOIN pedia_order_items i ON i.order_code=b.order_code
        WHERE b.idempotency_key LIKE ?
-         AND o.status='lunas' AND o.payment_status='paid'
+          AND o.status='lunas' AND o.payment_status='paid'
+          ${phase === "processing" ? `AND (i.status IN ('completed','partial','canceled','expired') OR (${PROCESSING_READY}))` : ""}
          AND b.access_attempts < 5
          AND (b.status='failed'
            OR (b.status='sending' AND julianday(b.updated_at) < julianday('now','-10 minutes')))
@@ -68,15 +78,14 @@ export async function retryPendingPediaEmails(db: Db): Promise<number> {
         if (ok) retried++;
       } catch { /* ledger stays failed/sending; next tick retries */ }
     }
-    // Path 2: missing rows for currently-due phases (recent lunas only).
+    // Path 2: missing rows; active processing can become ready after 24 hours.
     if (!db.canSpend(1 + RETRY_LIMIT * 5)) break;
     const missing = await db.queryAll(
       `SELECT o.code AS order_code FROM orders o
         JOIN pedia_order_items i ON i.order_code=o.code
        WHERE o.status='lunas' AND o.payment_status='paid'
           AND i.status IN ${phaseImplied(phase)}
-          ${phase === "processing" ? "AND (i.status='in_progress' OR length(trim(COALESCE(i.supplier_order_id,''))) > 0)" : ""}
-         AND datetime(COALESCE(o.paid_at, o.updated_at)) >= datetime('now','${DISCOVERY_WINDOW}')
+          ${phase === "processing" ? `AND (${PROCESSING_READY})` : `AND datetime(COALESCE(o.paid_at, o.updated_at)) >= datetime('now','${DISCOVERY_WINDOW}')`}
          AND NOT EXISTS (SELECT 1 FROM buyer_notice_log b
            WHERE b.idempotency_key='email:pedia-${phase}:' || o.code)
        ORDER BY COALESCE(o.paid_at, o.updated_at) DESC LIMIT ?`,
