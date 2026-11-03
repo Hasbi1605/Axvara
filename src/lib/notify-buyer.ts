@@ -103,12 +103,64 @@ async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: 
   return result.ok;
 }
 
-/** Kirim satu kabar ke pembeli lewat kanal asal order. */
+/** DM Telegram pribadi pembeli (kanal otoritatif order Telegram). */
+async function sendTelegramNotice(
+  orderCode: string, notice: Notice, order: Record<string, unknown>, database: DatabaseAccess, chatText: string,
+): Promise<boolean> {
+  const { queryFirst } = database;
+  // HANYA chat pribadi terverifikasi — tidak pernah ke id grup (issue #5).
+  const buyerId = String(order.telegram_user_id || "");
+  if (!buyerId) return false;
+  const row = await queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId).catch(() => null);
+  const chatId = String(row?.chat_id || "");
+  if (!chatId || Number(chatId) <= 0) return false;
+  const key = `telegram:${notice.refKey}`;
+  if (!(await claimNotice(database, key, orderCode, "telegram"))) return true;
+  if (notice.chatMessages) {
+    try {
+      const { sendTelegramCredentialParts } = await import("@/lib/telegram/credential-delivery");
+      const sent = await sendTelegramCredentialParts(chatId, notice.chatMessages);
+      await settleNotice(database, key, true, sent.messageId);
+      return true;
+    } catch {
+      await settleNotice(database, key, false, undefined, "telegram_credential_part_failed");
+      return false;
+    }
+  }
+  const { sendMessage } = await import("@/lib/telegram/api");
+  const sent = await sendMessage({ chat_id: chatId, text: chatText, parse_mode: "HTML" })
+    .catch(() => ({ ok: false, description: "telegram_send_failed" }));
+  await settleNotice(database, key, Boolean(sent?.ok), undefined, sent?.description);
+  return Boolean(sent?.ok);
+}
+
+/**
+ * Salinan email untuk pembeli Telegram yang pesanannya memuat produk wajib-email
+ * (keputusan owner 2026-11-04). Best-effort: tidak pernah melempar dan tidak
+ * memengaruhi hasil DM Telegram. Idempoten lewat kunci `email:<refKey>`.
+ * Mengembalikan true hanya bila email berhak dikirim DAN terkirim.
+ */
+async function sendTelegramEmailCopy(orderCode: string, notice: Notice, database: DatabaseAccess): Promise<boolean> {
+  try {
+    const { telegramEmailCopyTarget } = await import("@/lib/telegram/email-copy");
+    const email = await telegramEmailCopyTarget(orderCode, database);
+    if (!email) return false;
+    return await sendEmailNotice(database, orderCode, email, notice);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Kirim satu kabar ke pembeli lewat kanal asal order.
+ * `emailOnly` (hanya order Telegram): lewati DM Telegram dan kirim salinan email
+ * saja, untuk kabar yang DM-nya sudah dikirim jalur lain (mis. pesan lunas).
+ */
 async function sendToBuyer(
   orderCode: string,
   notice: Notice,
   database: DatabaseAccess,
-  options: { whatsappFallback?: boolean } = {},
+  options: { whatsappFallback?: boolean; emailOnly?: boolean } = {},
 ): Promise<boolean> {
   const { queryFirst } = database;
   const order = await queryFirst(
@@ -122,30 +174,11 @@ async function sendToBuyer(
   const chatText = notice.chatCta ? `${notice.body}\n\n${notice.chatCta}` : notice.body;
 
   if (channel === "telegram") {
-    // HANYA chat pribadi terverifikasi — tidak pernah ke id grup (issue #5).
-    const buyerId = String(order.telegram_user_id || "");
-    if (!buyerId) return false;
-    const row = await queryFirst(`SELECT chat_id FROM telegram_users WHERE user_id=?`, buyerId).catch(() => null);
-    const chatId = String(row?.chat_id || "");
-    if (!chatId || Number(chatId) <= 0) return false;
-    const key = `telegram:${notice.refKey}`;
-    if (!(await claimNotice(database, key, orderCode, "telegram"))) return true;
-    if (notice.chatMessages) {
-      try {
-        const { sendTelegramCredentialParts } = await import("@/lib/telegram/credential-delivery");
-        const sent = await sendTelegramCredentialParts(chatId, notice.chatMessages);
-        await settleNotice(database, key, true, sent.messageId);
-        return true;
-      } catch {
-        await settleNotice(database, key, false, undefined, "telegram_credential_part_failed");
-        return false;
-      }
-    }
-    const { sendMessage } = await import("@/lib/telegram/api");
-    const sent = await sendMessage({ chat_id: chatId, text: chatText, parse_mode: "HTML" })
-      .catch(() => ({ ok: false, description: "telegram_send_failed" }));
-    await settleNotice(database, key, Boolean(sent?.ok), undefined, sent?.description);
-    return Boolean(sent?.ok);
+    if (options.emailOnly) return await sendTelegramEmailCopy(orderCode, notice, database);
+    const delivered = await sendTelegramNotice(orderCode, notice, order, database, chatText);
+    // Salinan email dicoba apa pun hasil DM; nilai kembalian tetap hasil DM.
+    await sendTelegramEmailCopy(orderCode, notice, database);
+    return delivered;
   }
 
   if (channel === "web") {
@@ -449,6 +482,9 @@ export async function notifyBuyerSkProcessing(
 export async function notifyBuyerPaymentReceived(
   orderCode: string,
   database: DatabaseAccess = createDatabaseAccess(),
+  // Telegram: `emailOnly` = hanya salinan email; DM lunas sudah dikirim
+  // notifyTelegramBuyerPaid sehingga tidak boleh ada pesan Telegram ganda.
+  options: { emailOnly?: boolean } = {},
 ): Promise<boolean> {
   // Pedia never promises Market credentials: route to the Pedia paid email.
   // A kind-lookup failure MUST return false (silent), never fall through to
@@ -486,5 +522,5 @@ export async function notifyBuyerPaymentReceived(
       ],
     },
     refKey: `payment-received:${orderCode}`,
-  }, database, { whatsappFallback: false }).catch(() => false);
+  }, database, { whatsappFallback: false, emailOnly: options.emailOnly }).catch(() => false);
 }

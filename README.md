@@ -480,6 +480,15 @@ menyambut; pencarian legacy eksplisit `cari <produk>`. Tidak menyalakan commerce
 Kontrak, batas pengiriman dan QA: [spec siaran](issue/broadcasts-welcome-2026-10-24.md),
 [ARCHITECTURE §16.13](docs/ARCHITECTURE.md#1613-siaran-admin-dan-welcome-anggota--24-oktober-2026).
 
+## Salinan email pembeli Telegram — 4 November 2026
+
+Implementasi lokal, publikasi melalui CI (deployment belum diverifikasi). Pembeli
+Telegram yang pesanannya memuat produk wajib email (WR Invite/Link atau centang
+**Wajib email pembeli**) ikut menerima email AXVARA seperti pembeli web: Pesanan
+Siap berisi isi produk/kredensial, tanda terima, dan kabar serah terima/gagal
+kirim. DM Telegram tetap kanal utama; email salinan best-effort dan idempoten.
+Detail: [ARCHITECTURE](docs/ARCHITECTURE.md) (Paritas pengiriman Telegram).
+
 ## Notifikasi penjualan WA, admin Telegram, dan link grup — 24 Oktober 2026
 
 ✅ Diimplementasikan; publikasi melalui CI. Admin → **Pengaturan Toko → Link grup

@@ -50,6 +50,7 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
 
   const result = await materializeAndDeliver(order, orderCode, autoFulfillmentEnabled);
   if (String(order.sales_channel) === "web") await followUpWebOrder(orderCode);
+  if (String(order.sales_channel) === "telegram") await followUpTelegramEmail(orderCode);
   return result;
 }
 
@@ -79,6 +80,39 @@ async function followUpWebOrder(orderCode: string): Promise<void> {
     const { notifyWebPaidAdmin } = await import("@/lib/telegram/order-notifications");
     await notifyWebPaidAdmin(orderCode, database);
   } catch { /* ping admin best-effort; cron mengulang, antrean panel tetap menampilkan order */ }
+}
+
+/**
+ * Tanda terima via EMAIL untuk pembeli Telegram yang berhak salinan email
+ * (produk wajib-email, keputusan owner 2026-11-04). Logikanya sama dengan web:
+ * bila semua baris sudah terkirim otomatis DAN emailnya benar-benar terkirim,
+ * email "Pesanan Siap" sudah memuat tanda terima; selain itu kirim tanda terima.
+ * HANYA email — pesan lunas Telegram sudah dikirim notifyTelegramBuyerPaid dan
+ * ping admin web tidak berlaku. Best-effort; gagal tidak memengaruhi pengiriman.
+ */
+async function followUpTelegramEmail(orderCode: string): Promise<void> {
+  const database = createDatabaseAccess();
+  try {
+    const { telegramEmailCopyTarget } = await import("@/lib/telegram/email-copy");
+    if (!(await telegramEmailCopyTarget(orderCode, database))) return;
+    const { webOrderAutoDelivered } = await import("./buyer-email");
+    let emailedWithReceipt = await webOrderAutoDelivered(orderCode, database);
+    if (emailedWithReceipt) {
+      // Salinan email item bersifat best-effort: bila ada yang gagal terkirim,
+      // tanda terima tetap harus sampai.
+      const counts = await database.queryFirst(
+        `SELECT (SELECT COUNT(*) FROM fulfillment_items WHERE order_code=? AND delivered_message_id LIKE 'item:%') AS items,
+                (SELECT COUNT(*) FROM buyer_notice_log WHERE order_code=? AND status='sent'
+                   AND idempotency_key LIKE 'email:fulfillment-item:%') AS emails`,
+        orderCode, orderCode,
+      );
+      emailedWithReceipt = Number(counts?.emails ?? 0) >= Number(counts?.items ?? 0);
+    }
+    if (!emailedWithReceipt) {
+      const { notifyBuyerPaymentReceived } = await import("@/lib/notify-buyer");
+      await notifyBuyerPaymentReceived(orderCode, database, { emailOnly: true });
+    }
+  } catch { /* salinan email best-effort; DM Telegram tetap otoritatif */ }
 }
 
 async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillmentEnabled: boolean): Promise<boolean> {

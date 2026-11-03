@@ -1112,6 +1112,15 @@ export async function processCredentialDelivery(
       }
     } else if (channel === "telegram") {
       await deliverTelegramCredential(String(link.order_code), plaintext, db, String(link.wr_variant_id));
+      // Salinan email (2026-11-04) untuk pembeli Telegram dengan produk wajib-email.
+      // DM sudah sukses dan otoritatif; email best-effort + idempoten, dan
+      // kegagalannya TIDAK boleh membuat link ini di-retry atau berstatus gagal.
+      try {
+        const { telegramEmailCopyTarget } = await import("@/lib/telegram/email-copy");
+        if (await telegramEmailCopyTarget(String(link.order_code), db)) {
+          await deliverWebCredentialViaEmail(String(link.order_code), plaintext, db, { resend: accountUpdated });
+        }
+      } catch { /* email best-effort */ }
     } else {
       await deliverWhatsAppCredential(String(link.order_code), plaintext, db);
     }

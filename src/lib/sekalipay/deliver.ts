@@ -266,7 +266,16 @@ export async function deliverSkCredentialToBuyer(
   // over this item. Keep that delivery and its notification authoritative.
   if (String(order?.last_error || "").startsWith("manual_handover:")) return true;
   if (String(order?.sales_channel || "") === "telegram") {
-    return sendSkCredentialTelegram(orderCode, fulfillmentItemId, db);
+    const delivered = await sendSkCredentialTelegram(orderCode, fulfillmentItemId, db);
+    if (delivered) {
+      // Salinan email (2026-11-04) untuk pembeli Telegram dengan produk
+      // wajib-email. DM otoritatif; email best-effort + idempoten per item.
+      try {
+        const { telegramEmailCopyTarget } = await import("@/lib/telegram/email-copy");
+        if (await telegramEmailCopyTarget(orderCode, db)) await sendSkCredentialEmail(orderCode, fulfillmentItemId, db);
+      } catch { /* email best-effort */ }
+    }
+    return delivered;
   }
   return sendSkCredentialEmail(orderCode, fulfillmentItemId, db);
 }

@@ -2,6 +2,10 @@
 
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
+## Salinan email pembeli Telegram — 4 November 2026
+- Keputusan owner: order Telegram yang memuat produk wajib email (`needsEmailForVariant`) dan punya `customer_email` valid menerima email yang SAMA dengan web (Pesanan Siap berisi kredensial lengkap + tanda terima + kabar pembeli). Gerbang wajib-email jangan dihapus: email tersimpan Telegram ikut menempel ke order berikutnya, dan owner tidak ingin email untuk produk yang tidak memintanya.
+- DM Telegram tetap kanal otoritatif dan private-only; email hanya salinan best-effort idempoten (`buyer_notice_log`). Kegagalan email tidak boleh menggagalkan, me-retry, atau menggandakan DM. Tidak mengirim PIN/kredensial ke pesan Telegram di luar aturan yang ada.
+
 ## Kredensial pembeli: invoice + kontak + PIN — 28 Oktober 2026
 - Koreksi owner menggantikan aturan PIN checkout27Oktober: PIN6 huruf+angka hanya dikirim bersama kredensial lengkap dalam email produk siap. Jangan mengirim email khusus PIN saat order dibuat/paid, mengembalikan PIN dalam respons buyer, menampilkan kartu/reveal PIN buyer, menaruh PIN dalam URL/fragment/storage atau pesan Telegram. Kredensial tetap langsung tampil dalam email.
 - Kredensial web pin6 lewat lacak tanpa proof checkout asli wajib invoice + email/WA checkout penuh + PIN sebagai field terpisah. Admission D1 atomik sebelum compare, max10 gagal/in-flight per order+versi/15menit lintasIP, sukses decrement slot sendiri, error503 fail-closed. Kontak salah/PIN salah sama-sama generik404. Belum lunas/kredensial belum tersedia tidak menuntut PIN yang belum dikirim.

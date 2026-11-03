@@ -340,6 +340,17 @@ async function sendItem(
     return;
   }
   await sendToRecipient(channel, target, orderCode, plaintext, qty, database, variantId, label);
+  if (channel === "telegram") {
+    // Salinan email (2026-11-04) untuk pembeli Telegram dengan produk wajib-email.
+    // DM Telegram sudah sukses dan otoritatif; email best-effort, idempoten per
+    // item (buyer_notice_log), dan kegagalannya TIDAK boleh memicu retry item.
+    try {
+      const { telegramEmailCopyTarget } = await import("@/lib/telegram/email-copy");
+      if (await telegramEmailCopyTarget(orderCode, database)) {
+        await sendWebDeliveryEmail({ database, orderCode, itemId, plaintext });
+      }
+    } catch { /* email best-effort */ }
+  }
 }
 
 export async function sendToRecipient(
