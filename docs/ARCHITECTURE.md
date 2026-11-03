@@ -3981,3 +3981,15 @@ order serta receiver terverifikasi/idempoten dengan rekonsiliasi API. Dokumentas
 dan fixture kontrak harus selesai sebelum rollout CI. Jangan menerbitkan URL
 callback atau mengisi secret Pages seolah receiver sudah tersedia. Runbook dan
 sumber resmi: `docs/agent-rules/payments.md`.
+
+### 16.16 Sekalipay payment gateway — penyimpanan saja, 3 November 2026
+
+API key dan secret key owner hanya disimpan lokal di
+`.sekalipay-gateway-credentials` (format shell, chmod600, git-ignored
+`.sekalipay-gateway-credentials*`). Field lokal `SEKALIPAY_GATEWAY_API_KEY` dan
+`SEKALIPAY_GATEWAY_SECRET_KEY` sengaja terpisah dari env/kredensial Sekalipay
+supplier existing. Tidak ada key gateway dikirim ke proxy supplier atau Pages.
+Tidak ada request API, tes kredensial, perubahan dashboard, runtime, bot, env,
+route, schema atau metode pembayaran. NOWPayments crypto + Sekalipay gateway
+non-QRIS di web/bot Telegram masih rencana owner; instruksi saat ini hanya simpan,
+bukan memulai integrasi. Detail: `docs/agent-rules/payments.md`.

@@ -1,5 +1,13 @@
 # PRD — AXVARA
 
+## Rencana metode pembayaran tambahan - 3 November 2026
+
+Owner merencanakan NOWPayments untuk crypto dan Sekalipay payment gateway untuk
+pembayaran selain QRIS pada web AXVARA dan bot Telegram. Saat ini hanya menyimpan
+kredensial gateway secara privat; jangan memulai implementasi/integrasi atau tes
+API pada tugas ini. Sekalipay gateway terpisah dari integrasi supplier existing.
+Belum ada perubahan metode pembayaran publik. Detail: `docs/agent-rules/payments.md`.
+
 ## Persiapan NOWPayments - 3 November 2026
 
 Tahap ini hanya menyimpan kredensial privat lokal dan memeriksa API baca-saja

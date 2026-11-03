@@ -19,7 +19,7 @@ hanya file yang relevan dengan tugas, dan semuanya bila tugas lintas area.
 | Digiflazz, whitelist buyer, kredensial dan preflight saldo/katalog | `docs/agent-rules/digiflazz.md` |
 | Kredensial pembeli, PIN, proof c1/p1, lacak order, email kredensial, reveal admin | `docs/agent-rules/buyer-credentials.md` |
 | Login/admin, Cloudflare Access, audit, rate limit, body limit, dependency gate CI, anti-abuse checkout | `docs/agent-rules/admin-security.md` |
-| QRIS GoPay/KlikQRIS/DANA, persiapan NOWPayments, poller VPS GoPay, callback pembayaran, maintenance pembayaran | `docs/agent-rules/payments.md` |
+| QRIS GoPay/KlikQRIS/DANA, persiapan NOWPayments/Sekalipay gateway, poller VPS GoPay, callback pembayaran, maintenance pembayaran | `docs/agent-rules/payments.md` |
 | Pedia/SMM (IndoSMM, ProviderSMM lama), katalog/refill/kurasi, white label | `docs/agent-rules/pedia.md` + `docs/agents-history.md` untuk order lama |
 | Workers Paid, cron, budget statement fulfillment, unit unik, kuota/monitor D1 | `docs/agent-rules/platform-ops.md` |
 | Gateway WhatsApp, grup AXVARA'S, ganti nomor bot, siaran/welcome | `docs/agent-rules/whatsapp-gateway.md` + `gateway/AGENTS.md` |
@@ -151,6 +151,10 @@ Jika port macet/CSS 404, identifikasi proses dan penyebab dahulu; jangan otomati
 ## Kredensial NOWPayments (WAJIB)
 - File sumber tunggal lokal: `axvara/.nowpayments-credentials` (git-ignored `.nowpayments-credentials*`, chmod 600), berisi `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET` dan `NOWPAYMENTS_API_BASE_URL`. Jangan commit/echo nilainya atau menyalin ke browser/bundle publik.
 - Tahap 3 November 2026 hanya penyimpanan kredensial dan pemeriksaan API baca-saja; belum ada env Pages, endpoint IPN atau integrasi checkout crypto. Detail kesiapan dan langkah berikutnya di `docs/agent-rules/payments.md` dan ARCHITECTURE §16.15.
+
+## Kredensial Sekalipay payment gateway (WAJIB)
+- Sumber tunggal `.sekalipay-gateway-credentials` (git-ignored `.sekalipay-gateway-credentials*`, chmod600): `SEKALIPAY_GATEWAY_API_KEY` dan `SEKALIPAY_GATEWAY_SECRET_KEY`. Terpisah dari kredensial/env Sekalipay supplier existing; jangan saling mengganti atau mengirim key gateway ke proxy supplier.
+- Instruksi owner 3 November 2026: hanya simpan. Rencana kelak NOWPayments untuk crypto dan Sekalipay gateway untuk non-QRIS di web AXVARA serta bot Telegram; belum diimplementasikan/diaktifkan. Jangan memanggil API, mengubah dashboard/env produksi atau mengerjakan integrasi pada tahap penyimpanan ini.
 
 ## Kredensial Resend + bot email (WAJIB)
 - File sumber tunggal: `axvara/.resend-credentials` — berisi `RESEND_API_KEY` + `WR_EMAIL_WEBHOOK_SECRET` + `FORWARD_FROM_EMAIL` (pengirim `noreply@axvara.tech`, domain verified Tokyo).

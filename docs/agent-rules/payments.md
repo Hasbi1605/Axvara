@@ -2,6 +2,12 @@
 
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
+## Simpan kredensial Sekalipay gateway — 3 November 2026
+
+- Owner membatasi tugas hanya menyimpan API key dan secret key di `.sekalipay-gateway-credentials`, format shell `KEY=value`, chmod600, git-ignored `.sekalipay-gateway-credentials*`. Field `SEKALIPAY_GATEWAY_API_KEY` dan `SEKALIPAY_GATEWAY_SECRET_KEY`; jangan mencetak/commit nilai. Ini kredensial payment gateway, terpisah dari Sekalipay supplier existing.
+- Rencana owner untuk tahap berikutnya: NOWPayments sebagai pembayaran crypto dan Sekalipay gateway sebagai pembayaran selain QRIS, pada web AXVARA dan bot Telegram. Rencana ini belum merupakan implementasi atau izin memulai integrasi sekarang. Kredensial NOWPayments existing tetap disimpan terpisah.
+- Tidak ada tes/request API, transaksi, perubahan dashboard, whitelist/mode/metode pembayaran, env Pages, route, checkout, bot, proxy supplier atau deployment manual. Status key/kontrak API gateway belum diverifikasi. Screenshot dashboard bukan bukti integrasi AXVARA atau semua perubahan dashboard telah tersimpan.
+
 ## Persiapan NOWPayments — 3 November 2026
 
 - Permintaan owner tahap ini: simpan kredensial lokal dan siapkan handoff setup; bukan aktivasi checkout crypto. Sumber tunggal `.nowpayments-credentials`, format shell `KEY=value`, chmod600 dan git-ignored `.nowpayments-credentials*`. Field `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`, `NOWPAYMENTS_API_BASE_URL=https://api.nowpayments.io/v1`; nilai rahasia tidak boleh masuk tracked files, log, argv request atau browser. IPN secret terbaru dari owner menggantikan nilai awal; API key final disalin owner setelah hasil OCR ditolak. Jangan memakai kembali nilai lama dari chat/screenshot.

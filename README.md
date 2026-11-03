@@ -1,5 +1,14 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Kredensial Sekalipay gateway - 3 November 2026
+
+Hanya penyimpanan lokal: `.sekalipay-gateway-credentials` (chmod600/git-ignored),
+field `SEKALIPAY_GATEWAY_API_KEY` dan `SEKALIPAY_GATEWAY_SECRET_KEY`, terpisah
+dari Sekalipay supplier. Rencana owner: NOWPayments untuk crypto dan Sekalipay
+gateway untuk non-QRIS pada web AXVARA/bot Telegram. Belum dikerjakan; tidak ada
+request API atau perubahan env/dashboard/checkout/bot. Detail: runbook pembayaran
+dan ARCHITECTURE §16.16.
+
 ## Persiapan NOWPayments - 3 November 2026
 
 Kredensial hanya lokal di `.nowpayments-credentials` (chmod600, git-ignored):
