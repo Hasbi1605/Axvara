@@ -113,7 +113,7 @@ describe("Pedia order UX", () => {
     const minimum = screen.getByRole("radio", { name: /Global Ekonomis/ }).closest("label")!;
     expect(minimum.textContent).not.toContain("Rp20.000");
     expect(minimum.textContent).toContain("minimum 100");
-    expect(document.body.textContent).toContain("Isi jumlah untuk membandingkan totalnya.");
+    expect(document.body.textContent).not.toContain("Harga acuan ditampilkan per layanan");
     expect(document.body.textContent).not.toMatch(/HYPE|Paling dipilih|Rp0|Paket tidak tersedia/i);
     expect(document.body.textContent).not.toContain("Belum dipilih");
     expect(screen.getByText("Isi jumlah dan pilih layanan untuk melihat rincian pesananmu.")).toBeTruthy();

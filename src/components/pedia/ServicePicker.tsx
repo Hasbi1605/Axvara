@@ -101,9 +101,6 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
       </div>}
       {compact && picked && <button type="button" onClick={() => setCompare(true)} aria-expanded={false} className="min-h-11 shrink-0 whitespace-nowrap text-sm font-medium text-[#00E5FF] disabled:opacity-40">Ganti layanan</button>}
     </div>
-    {!compact && <>
-      {qty == null && <p className="mt-1 text-[13px] leading-5 text-white/65">Harga acuan ditampilkan per layanan. Isi jumlah untuk membandingkan totalnya.</p>}
-    </>}
     {compact && <p className="mt-1 text-xs leading-5 text-white/50">Jumlah, target, dan filter tetap tersimpan saat ganti layanan.</p>}
     {!compact && <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-white/65">
       <span role="status" data-testid="pedia-filter-count">{relevant.length} dari {tiers.length} layanan</span>
