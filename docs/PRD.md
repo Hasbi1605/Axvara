@@ -1,5 +1,14 @@
 # PRD — AXVARA
 
+## Persiapan NOWPayments - 3 November 2026
+
+Tahap ini hanya menyimpan kredensial privat lokal dan memeriksa API baca-saja
+(API key final diterima `GET /merchant/coins` HTTP200). Checkout Market/Pedia/bot
+belum menawarkan crypto; belum ada endpoint IPN, env Pages, invoice atau transaksi
+NOWPayments. Pemilihan aset/jaringan, wallet, alur settlement dan kontrak
+konfirmasi/rekonsiliasi harus ditentukan sebelum integrasi pembayaran berikutnya.
+Detail: `docs/agent-rules/payments.md`, ARCHITECTURE §16.15.
+
 ## Persiapan buyer Digiflazz - 2 November 2026
 
 PKS clear menurut owner; belum berarti produk topup AXVARA siap dijual.

@@ -3958,3 +3958,26 @@ HMAC-SHA1 body mentah + korelasi transaksi durable tersedia. Test fixture mencak
 signature, mode, privasi file/secret, allowlist, HTTP/error/ukuran respons dan
 program remote offline; bukan transaksi supplier development/live. Runbook dan
 gerbang integrasi berikutnya: `docs/agent-rules/digiflazz.md`.
+
+### 16.15 NOWPayments — persiapan lokal, 3 November 2026
+
+Sumber kredensial tunggal `.nowpayments-credentials`, format shell `KEY=value`,
+chmod600 dan di-ignore melalui `.nowpayments-credentials*`. Field lokal:
+`NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET` dan
+`NOWPAYMENTS_API_BASE_URL=https://api.nowpayments.io/v1`. API key dan IPN secret
+final berasal dari salinan owner; key hasil OCR awal ditolak dan sudah diganti.
+Tidak ada nilai secret dalam dokumentasi, Git, log atau bundle publik.
+
+Pemeriksaan sementara memakai Python stdlib melalui HTTPS langsung ke host API
+resmi, GET saja, tanpa mengikuti redirect atau mencetak header/body sensitif.
+`GET /status` dan `/currencies` HTTP200; `GET /merchant/coins` dengan API key final
+HTTP200 (`selectedCurrencies`:357entri). Ini membuktikan akses API saja, bukan
+keberhasilan pembayaran, IPN, settlement atau withdrawal. Tidak ada skrip runtime
+baru, env Pages, route, cron, migrasi, invoice/order atau perubahan dashboard.
+
+IPN URL belum tersedia dan dibiarkan kosong. Implementasi berikutnya memerlukan
+keputusan aset/jaringan, custody/payout dan wallet owner, adapter invoice terikat
+order serta receiver terverifikasi/idempoten dengan rekonsiliasi API. Dokumentasi
+dan fixture kontrak harus selesai sebelum rollout CI. Jangan menerbitkan URL
+callback atau mengisi secret Pages seolah receiver sudah tersedia. Runbook dan
+sumber resmi: `docs/agent-rules/payments.md`.

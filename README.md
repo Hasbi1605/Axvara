@@ -1,5 +1,15 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Persiapan NOWPayments - 3 November 2026
+
+Kredensial hanya lokal di `.nowpayments-credentials` (chmod600, git-ignored):
+`NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`, `NOWPAYMENTS_API_BASE_URL`.
+API key final diterima `GET /merchant/coins` HTTP200; belum ada invoice/transaksi,
+env Pages, endpoint IPN atau pembayaran crypto di checkout. Kolom IPN URL belum
+diisi sampai receiver tersedia dan dirilis. Wallet/jaringan serta pengaturan
+custody/withdrawal belum diverifikasi. Langkah berikutnya di
+[runbook pembayaran](docs/agent-rules/payments.md) dan ARCHITECTURE §16.15.
+
 ## Persiapan Digiflazz buyer - 2 November 2026
 
 Preflight lokal baca-saja: `node scripts/digiflazz-preflight.mjs --init` membuat
