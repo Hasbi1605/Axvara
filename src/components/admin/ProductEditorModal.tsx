@@ -271,10 +271,18 @@ export function ProductEditorModal({
               {/* Toggle email wajib (migrasi 0033): untuk produk non-WR yang
                   butuh kirim ke email. Varian WR Invite/Link otomatis butuh
                   tanpa toggle ini. */}
-              <label className="flex items-center gap-2" title="Pembeli wajib isi email sebelum bayar (untuk produk yang dikirim via email)">
-                <input type="checkbox" checked={form.requireEmail === true} onChange={(e) => onSetForm({ ...form, requireEmail: e.target.checked })} className="w-4 h-4 rounded accent-[#00E5FF]" />
-                <span className="text-sm text-white/80">Wajib email pembeli</span>
-              </label>
+              {/* 2026-11-04: dikunci sampai nilai tersimpan termuat. Sebelumnya
+                  centang tampil mati saat detail belum termuat, klik admin
+                  lalu tertimpa nilai DB (tetap wajib email setelah Simpan). */}
+              {(() => {
+                const requireEmailPending = editing && (loadingVariants || typeof form.requireEmail !== "boolean");
+                return (
+                  <label className="flex items-center gap-2" title="Pembeli wajib isi email sebelum bayar (untuk produk yang dikirim via email)">
+                    <input type="checkbox" disabled={requireEmailPending} aria-busy={requireEmailPending} checked={form.requireEmail === true} onChange={(e) => onSetForm({ ...form, requireEmail: e.target.checked })} className="w-4 h-4 rounded accent-[#00E5FF] disabled:opacity-40" />
+                    <span className="text-sm text-white/80">Wajib email pembeli{requireEmailPending ? " (memuat…)" : ""}</span>
+                  </label>
+                );
+              })()}
               <div className="text-xs text-white/40">
                 <label className="flex items-center gap-2">
                   <span className="text-white/60">Terjual</span>

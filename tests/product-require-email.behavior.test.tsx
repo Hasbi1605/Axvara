@@ -93,3 +93,43 @@ describe("Wajib email pembeli: centang tersimpan dan termuat ulang", () => {
     expect(post?.body?.requireEmail).toBe(true);
   });
 });
+
+// Regresi 2026-11-04: owner mematikan centang di modal tetapi Telegram tetap
+// wajib email. Modal tampil sebelum detail produk termuat (centang terlihat
+// mati), lalu hasil muat menimpa klik admin dan Simpan menulis 1 lagi.
+describe("Wajib email pembeli: centang dikunci sampai nilai tersimpan termuat", () => {
+  async function renderModal(props: { editing: boolean; loadingVariants: boolean; requireEmail?: boolean }) {
+    const { render, screen } = await import("@testing-library/react");
+    const { ProductEditorModal } = await import("@/components/admin/ProductEditorModal");
+    const { ToastProvider } = await import("@/components/ui/Toast");
+    const noop = vi.fn();
+    render(
+      <ToastProvider><ProductEditorModal
+        editing={props.editing} editingId={props.editing ? 1 : undefined} saving={false} uploading={false}
+        loadingVariants={props.loadingVariants} hasMultiVariants={false} formError={null}
+        form={{ name: "Google AI Pro", slug: "google-ai-pro", requireEmail: props.requireEmail }}
+        formImages={[]} formVariants={[]} cats={[]}
+        onRequestClose={noop} onSetForm={noop} onSetFormImages={noop} onSetHasMultiVariants={noop}
+        onSetFormVariants={noop} onUpload={noop} onSave={noop}
+      /></ToastProvider>,
+    );
+    return (screen.getByText(/Wajib email pembeli/).closest("label")!.querySelector("input")) as HTMLInputElement;
+  }
+
+  it("edit produk saat detail masih dimuat: centang disabled + label memuat", async () => {
+    const box = await renderModal({ editing: true, loadingVariants: true });
+    expect(box.disabled).toBe(true);
+    expect(box.closest("label")?.textContent).toContain("memuat");
+  });
+
+  it("detail termuat: centang aktif mencerminkan nilai tersimpan", async () => {
+    const box = await renderModal({ editing: true, loadingVariants: false, requireEmail: true });
+    expect(box.disabled).toBe(false);
+    expect(box.checked).toBe(true);
+  });
+
+  it("produk baru tidak dikunci walau nilai belum ada", async () => {
+    const box = await renderModal({ editing: false, loadingVariants: false });
+    expect(box.disabled).toBe(false);
+  });
+});
