@@ -621,7 +621,7 @@ describe("Pedia configurator", () => {
     const card = screen.getByRole("region", { name: "Info layanan" });
     // owner 2026-11-03: Speed dihilangkan bila avg_time ada.
     expect(card.textContent).not.toContain("10K/hari");
-    for (const text of ["0–1 jam", "19 menit per 1.000", "97% (7 hari)", "diproses admin", "High Drop", "Perkiraan drop tinggi", "Pengajuan Refill · 7 hari: 12%", "bukan persentase jumlah yang hilang"]) expect(card.textContent).toContain(text);
+    for (const text of ["0–1 jam", "19 menit per 1.000", "97% (7 hari)", "diproses admin", "High Drop", "Perkiraan drop tinggi", "Pengajuan Refill · 7 hari12%", "bukan persentase followers, likes, atau views yang hilang"]) expect(card.textContent).toContain(text); // owner 2026-11-03: stat cell + penjelasan di glosarium
     expect(card.textContent).not.toContain("Drop rate:");
     expect(screen.getAllByText("High Drop").some((el) => el.className.includes("text-red-200"))).toBe(true);
     expect(card.textContent).not.toMatch(/supplier|indosmm/i);
@@ -637,7 +637,10 @@ describe("Pedia configurator", () => {
     expect(screen.queryByRole("heading", { name: /Detail layanan terpilih|Tentang layanan/ })).toBeNull();
     expect(screen.getAllByText((_, element) => element?.tagName === "P" && element.textContent === description)).toHaveLength(1);
     expect(within(card).getByText("Akun harus memiliki foto profil.")).toBeTruthy();
-    expect(within(card).getByText(/High Quality, kategori kualitas layanan/, { selector: "p" })).toBeTruthy();
+    // owner 2026-11-03: makna fitur (HQ, dst.) tidak lagi inline; hanya di dalam "Arti istilah".
+    const hqMeaning = within(card).getByText(/High Quality, kategori kualitas layanan/, { selector: "dd" });
+    expect(hqMeaning.closest("details")).toBe(within(card).getByText("Arti istilah").closest("details"));
+    expect([...card.querySelectorAll("p")].some((p) => /High Quality/.test(p.textContent ?? ""))).toBe(false);
     expect(card.querySelector("script")).toBeNull();
     expect(within(card).getByText("Refill khusus hanya untuk penurunan di atas 10%.")).toBeTruthy();
     expect(within(card).getAllByText("Jangan mengganti username.")).toHaveLength(1);
@@ -673,8 +676,8 @@ describe("Pedia configurator", () => {
     expect(card.textContent).toContain("diproses admin, biasanya dalam 1×24 jam");
     expect(card.textContent).not.toMatch(/Bukan jaminan|tetap bisa terjadi|Anggap drop|Biasanya lebih murah|mengutamakan harga|lebih tinggi|lebih murah/);
     // Penafian hanya di baris Drop, tidak diulang di paragraf HQ.
-    expect(within(card).getByText(/High Quality, kategori kualitas layanan/, { selector: "p" }).textContent).not.toMatch(/bukan|jaminan|janji/);
-    expect(within(card).getByText(/Perkiraan jumlah tetap stabil/, { selector: "p" }).textContent).toMatch(/bukan janji/);
+    expect(within(card).getByText(/High Quality, kategori kualitas layanan/, { selector: "dd" }).textContent).not.toMatch(/bukan|jaminan|janji/);
+    expect(within(card).getAllByText(/Perkiraan jumlah tetap stabil/, { selector: "dd" })[0].textContent).toMatch(/bukan janji/);
     expect(card.textContent).toContain("Perkiraan jumlah tetap stabil setelah pesanan selesai; bukan janji bebas drop.");
     render(<ServiceInfoCard t={{ ...product.tiers[0], quality: "real", drop_label: "unknown", refill_days: 0 }} />);
     const none = screen.getAllByRole("region", { name: "Info layanan" })[1];
@@ -761,7 +764,7 @@ describe("Pedia configurator", () => {
   it("shows a known zero refill-request percentage without calling it a low drop rate", () => {
     render(<ServiceInfoCard t={{ ...product.tiers[1], refill_pct: 0 }} />);
     const card = screen.getByRole("region", { name: "Info layanan" });
-    expect(card.textContent).toContain("Pengajuan Refill · 7 hari: 0%");
+    expect(card.textContent).toContain("Pengajuan Refill · 7 hari0%");
     expect(card.textContent).not.toContain("Rendah");
   });
 
@@ -1134,6 +1137,36 @@ describe("Pedia order UX revision 2026-11-03", () => {
       rerender(<ServiceInfoCard t={named({ speed_per_day: "100K/hari" })} productName="x" />);
       expect([...container.querySelectorAll("dt")].map((n) => n.textContent)).toContain("Speed");
     });
+  });
+
+  it("6. info panel is a calm spec sheet: no cyan tint, refill/drop as dt/dd, feature meanings only in the glossary (owner 2026-11-03)", () => {
+    const tier = { ...product.tiers[1], id: 1, public_name: "Followers Global HQ · Akun berpostingan · Instant Start", quality: "hq" as const, refill_days: 30, refill_mode: "api" as const, drop_label: "less_drop" as const, refill_pct: 12, speed_per_day: null, avg_time: "8 jam", description: "Deskripsi layanan.", terms: "Jangan ganti username." };
+    render(<ServiceInfoCard t={tier} productName="x" />);
+    const card = screen.getByRole("region", { name: "Info layanan" });
+    expect(card.className).toContain("border-white/[0.08]");
+    expect(card.className).not.toMatch(/00E5FF/);
+    const refillDt = within(card).getAllByText("Refill 30 Days", { selector: "dt" })[0];
+    expect(refillDt.className).toContain("font-medium text-white/90");
+    expect(refillDt.className).not.toContain("00E5FF");
+    expect(refillDt.nextElementSibling!.tagName).toBe("DD");
+    expect(within(card).getAllByText("Less Drop", { selector: "dt" })[0].nextElementSibling!.tagName).toBe("DD");
+    // Pengajuan Refill menjadi sel statistik, bukan kalimat.
+    const stat = within(card).getByText("Pengajuan Refill · 7 hari", { selector: "dt" });
+    expect(stat.nextElementSibling!.textContent).toBe("12%");
+    expect(stat.closest("dl")!.className).toContain("sm:divide-x");
+    const details = within(card).getByText("Arti istilah").closest("details")!;
+    for (const term of ["HQ", "Akun berpostingan", "Instant Start"]) {
+      expect(within(card).getAllByText(term, { selector: "dt" }).every((n) => details.contains(n))).toBe(true);
+      expect([...card.querySelectorAll("p")].some((p) => p.textContent?.startsWith(`${term} —`))).toBe(false);
+    }
+    expect([...card.querySelectorAll("p")].some((p) => /Persentase pesanan layanan ini yang diajukan Refill/.test(p.textContent ?? ""))).toBe(false);
+    expect(details.textContent).toMatch(/Persentase pesanan layanan ini yang diajukan Refill/);
+    const li = within(card).getByText("Jangan ganti username.");
+    expect(li.className).toContain("before:bg-white/30");
+    expect(li.parentElement!.className).not.toContain("list-disc");
+    expect(within(card).getByRole("heading", { name: "Info layanan" }).className).toContain("uppercase tracking-[0.08em] text-white/45");
+    expect(within(card).getByRole("heading", { name: "Syarat khusus" }).className).toContain("uppercase");
+    expect(details.className).toContain("border-white/[0.06]");
   });
 
   it("5. the empty summary rail keeps the sentence but drops the duplicate 3-step list", () => {
