@@ -234,7 +234,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
     <div className="p-4">
       {tier ? <>
         <p className="text-sm font-semibold leading-5 text-white">{tier.public_name ?? tier.label_note ?? "Layanan terpilih"}</p>
-        <div className="mt-2"><ServiceChips t={tier} eta /></div>
+        <div className="mt-2"><ServiceChips t={tier} eta productName={product.name} /></div>
         <dl className="mt-4 space-y-2.5 text-[13px] text-white/65">
           {qty != null && <div className="flex justify-between gap-4"><dt>Jumlah</dt><dd className="text-right tabular-nums text-white">{qty.toLocaleString("id-ID")}</dd></div>}
           {tier.eta_finish && <div className="flex justify-between gap-4"><dt>Estimasi selesai</dt><dd className="text-right text-white/70">{tier.eta_finish}</dd></div>}
@@ -318,7 +318,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
               {quantityNotice && <p role="status" className="mt-2 text-xs text-amber-200">{quantityNotice}</p>}{inlineError("quantity")}
               <div role="status" aria-live="polite">{qty != null && comparison?.failed && <p className="mt-2 text-[13px] leading-5 text-white/65">Harga terbaru belum dapat dimuat. Harga akan diperiksa kembali sebelum pembayaran. <button type="button" disabled={attempted} onClick={comparison.retry} className="min-h-11 font-medium text-[#00E5FF] underline underline-offset-4 disabled:opacity-40">Coba muat harga lagi</button></p>}</div>
             </fieldset></div>
-            <div className="mt-5 xl:mt-6"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} onClear={() => setTierId(null)} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded info={(t) => <ServiceInfoCard t={t} productDescription={productDescription} />} />{inlineError("tier")}</div>
+            <div className="mt-5 xl:mt-6"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} onClear={() => setTierId(null)} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded info={(t) => <ServiceInfoCard t={t} productDescription={productDescription} productName={product.name} />} />{inlineError("tier")}</div>
           </section>
         </>}
         {stage === 2 && <section aria-labelledby="pedia-stage-heading">

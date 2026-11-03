@@ -35,7 +35,8 @@ try {
   assert.equal(db.prepare('SELECT description_md FROM pedia_tiers WHERE id=47').get().description_md, 'Keterangan admin akun lama');
   for (const file of ['scripts/curate-pedia-indosmm-20261101.py', 'scripts/curate-pedia-indosmm-20261101b.py']) {
     const generator = readFileSync(file, 'utf8');
-    assert.ok(generator.includes("'real': ', label Real'"));
+    assert.ok(generator.includes("'real': ', akun Real'"));
+    assert.ok(!generator.includes("label Real"));
     assert.ok(!generator.includes("'real': ', akun real/aktif'"));
   }
 } finally {

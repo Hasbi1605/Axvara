@@ -2,7 +2,7 @@
 
 // src/components/pedia/ServiceInfoCard.tsx — Info layanan terpilih untuk pembeli (2026-11-01).
 import type { PediaCatalogTier } from "@/app/api/pedia/catalog/route";
-import { DROP_LABEL, DROP_MEANING, PEDIA_TERMS, refillLabel } from "@/lib/pedia/terms";
+import { DROP_LABEL, DROP_MEANING, PEDIA_TERMS, hasInstantStart, refillLabel, refillPromise, serviceTermNames } from "@/lib/pedia/terms";
 
 const fmt = (n: number) => n.toLocaleString("id-ID");
 // Only omit exact generated duplicates; custom refill conditions must survive.
@@ -18,37 +18,41 @@ const DUPLICATE_TERMS = new Set([
   "Estimasi mulai dan kecepatan dapat berubah mengikuti antrean.",
   "Estimasi dapat berubah mengikuti antrean.",
 ]);
+const BOTH_ANCHORS = ["created", "completed"] as const;
 // Baris refill hasil generator untuk tier INI PERSIS (label + N + mode saat
 // ini); isinya sudah ada di paragraf Refill kartu ini. N tak cocok, mode tak
 // cocok, atau Lifetime tak cocok TETAP TAMPIL (bisa jadi konflik nyata).
 // refill_days<=0 tak punya kalimat generated (No Refill lama ditangani
 // DUPLICATE_TERMS bila generik, syarat kustom tetap tampil).
 
-export function ServiceInfoCard({ t, productDescription }: { t: PediaCatalogTier; productDescription?: string }) {
+export function ServiceInfoCard({ t, productDescription, productName = "" }: { t: PediaCatalogTier; productDescription?: string; productName?: string }) {
   const drop = t.drop_label ?? "unknown";
   const refillPct = t.refill_days > 0 && t.refill_pct != null && Number.isFinite(t.refill_pct) && t.refill_pct >= 0 && t.refill_pct <= 100 ? t.refill_pct : null;
-  const quality = PEDIA_TERMS.find(({ term }) => term === (t.quality === "hq" ? "HQ" : t.quality === "real" ? "Real" : ""));
+  const fullName = t.public_name ?? t.label_note ?? productName;
+  const featureNames = serviceTermNames(fullName, t.quality);
+  const featureTerms = featureNames.map((name) => PEDIA_TERMS.find(({ term }) => term === name)).filter((x): x is { term: string; meaning: string } => !!x);
+  const instant = hasInstantStart(fullName);
   const range = `Jumlah per pesanan ${fmt(t.min_qty ?? 1)}–${fmt(t.max_qty ?? 1)}.`;
   // Hanya bila N persis sama dengan masa refill layanan; N lain/kustom tetap tampil.
-  const sameRefill = t.refill_days > 0 ? `Refill ${t.refill_days} hari sejak pesanan dibuat, sesuai syarat layanan.` : null;
+  const sameRefill = t.refill_days > 0 ? BOTH_ANCHORS.flatMap((a) => [`Refill ${t.refill_days} hari sejak pesanan dibuat, sesuai syarat layanan.`, refillPromise(t.refill_days, a)]) : [];
   // Kalimat generated persis untuk tier ini (Inggris, bentuk generator).
   const generatedRefill = t.refill_days > 0
     ? `${refillLabel(t.refill_days)}: ajukan refill di halaman Refill Pedia selama masa refill sejak pesanan dibuat, 1× per 24 jam. ${t.refill_mode === "manual" ? "Refill diproses admin, biasanya dalam 1×24 jam." : "Refill diproses otomatis."}`
     : null;
-  const conditions = [...new Set((t.terms ?? "").split(/\n+/).map((line) => line.trim()).filter((line) => line && line !== range && line !== sameRefill && line !== generatedRefill && !DUPLICATE_TERMS.has(line)))];
+  const conditions = [...new Set((t.terms ?? "").split(/\n+/).map((line) => line.trim()).filter((line) => line && line !== range && !sameRefill.includes(line) && line !== generatedRefill && !DUPLICATE_TERMS.has(line)))];
   const descriptions = [...new Set([t.description, productDescription].map((text) => text?.trim()).filter(Boolean))];
   const refill = t.refill_days > 0
-    ? `Isi ulang gratis untuk jumlah yang drop selama masa refill sejak pesanan dibuat, 1× per 24 jam. Diajukan lewat AXVARA, ${t.refill_mode === "manual" ? "diproses admin, biasanya dalam 1×24 jam." : "diproses otomatis."}`
+    ? `${refillPromise(t.refill_days, t.refill_anchor)} Bisa diajukan 1× per 24 jam dari halaman pesanan, ${t.refill_mode === "manual" ? "diproses admin, biasanya dalam 1×24 jam." : "diproses otomatis."}`
     : "Tanpa refill: jumlah yang drop tidak diisi ulang.";
   const rows: [string, string][] = [
-    ["Start time", t.eta_start || t.speed_note?.replace(/^Mulai\s*/i, "") || "Mengikuti antrean"],
+    ["Start time", t.eta_start || (instant ? "Instant Start" : t.speed_note?.replace(/^Mulai\s*/i, "") || "Mengikuti antrean")],
     ...(t.speed_per_day ? [["Speed", t.speed_per_day] as [string, string]] : []),
     ...(t.avg_time ? [["Avg time", `${t.avg_time} per 1.000`] as [string, string]] : []),
     ["Min / Max", `${fmt(t.min_qty ?? 1)} – ${fmt(t.max_qty ?? 1)}`],
     ...(t.success_pct != null ? [["Success rate", `${Math.round(t.success_pct)}% (7 hari)`] as [string, string]] : []),
   ];
   // Hanya istilah yang muncul pada layanan ini; daftar lengkap ada di halaman Refill.
-  const want = new Set(["Drop", ...(quality ? [quality.term] : []), t.refill_days <= 0 ? "No Refill" : t.refill_days >= 3650 ? "Refill Lifetime" : "Refill", ...(drop !== "unknown" ? [DROP_LABEL[drop]] : []), ...(refillPct != null ? ["Pengajuan Refill"] : []), "Start time", ...(t.speed_per_day ? ["Speed"] : []), "Min / Max", ...(t.success_pct != null ? ["Success rate"] : []), ...(t.avg_time ? ["Avg time"] : [])]);
+  const want = new Set(["Drop", ...featureNames, t.refill_days <= 0 ? "No Refill" : t.refill_days >= 3650 ? "Refill Lifetime" : "Refill", ...(drop !== "unknown" ? [DROP_LABEL[drop]] : []), ...(refillPct != null ? ["Pengajuan Refill"] : []), "Start time", ...(t.speed_per_day ? ["Speed"] : []), "Min / Max", ...(t.success_pct != null ? ["Success rate"] : []), ...(t.avg_time ? ["Avg time"] : [])]);
   const terms = PEDIA_TERMS.filter(({ term }) => want.has(term));
   return <section aria-label="Info layanan" className="rounded-2xl border border-[#00E5FF]/15 bg-[#00E5FF]/[0.03] p-3.5 text-[13px] leading-5">
     <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
@@ -58,7 +62,7 @@ export function ServiceInfoCard({ t, productDescription }: { t: PediaCatalogTier
     <div className="mt-3 border-t border-white/10 pt-3">
       <h3 className="text-sm font-bold text-white">Info layanan</h3>
       {descriptions.map((text) => <p key={text} className="mt-2 whitespace-pre-line break-words text-white/85">{text}</p>)}
-      {quality && <p className="mt-2 text-white/70"><span className="font-semibold text-white">{quality.term}</span> — {quality.meaning}</p>}
+      {featureTerms.length > 0 && <div className="mt-2 space-y-1 text-white/70">{featureTerms.filter(({ term }) => term !== "Instant Start" || instant).map(({ term, meaning }) => <p key={term}><span className="font-semibold text-white">{term}</span> — {meaning}</p>)}</div>}
       <div className="mt-2 space-y-2 text-white/70">
         <p><span className={`font-semibold ${t.refill_days > 0 ? "text-[#00E5FF]" : "text-white"}`}>{refillLabel(t.refill_days)}</span> — {refill}</p>
         <p><span className="font-semibold text-white">{DROP_LABEL[drop]}</span> — {DROP_MEANING[drop]}</p>

@@ -55,6 +55,15 @@ memakai teks desktop lebih besar dengan tampilan mobile tetap. Dropdown navbar
 Market/Pedia menampilkan Layanan pada desktop/mobile, mempertahankan keyboard,
 fokus dan nama aksesibel. Tidak mengubah API, pembayaran atau akses pembeli.
 
+## Copy layanan dan refill Pedia - 3 November 2026
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Migrasi data-only
+`0093_pedia_service_copy_20261103.sql` (dibuat `scripts/generate-pedia-copy-20261103.mjs`
+dari `src/lib/pedia/copy-20261103.json`) memperbarui nama/deskripsi tier IndoSMM aktif
+dengan guard nama/deskripsi lama; order lama dan tier 285 tidak berubah. Katalog membaca
+`refill_anchor`; chip `Instant Start` berasal dari nama layanan; halaman pesanan punya
+satu blok Refill. Detail: `docs/ARCHITECTURE.md` §16.10d dan `docs/PRD.md`.
+
 ## Info layanan Pedia terpadu - 2 November 2026
 
 Implementasi lokal; deployment belum diverifikasi. Panel di bawah pilihan memuat
@@ -116,14 +125,28 @@ Implementasi lokal untuk publikasi CI; deployment belum diverifikasi.
 Guard fulfillment generik no-op untuk Pedia (tanpa baris Market baru), nama
 email seperti Market, Telegram/admin API membaca item Pedia durable, lookup/
 status jujur (counts durable, ETA tier saat ini yang dapat kosong, nama snapshot), halaman pembeli menampilkan
-lifecycle aktual + 4 sel hitungan + polling 5/10/30 dtk, pintu Market
+lifecycle aktual + 4 sel hitungan + polling 5/10/30 dtk (unknown/fetch-awal-gagal
+self-retry 10 dtk, terminal berhenti), pintu Market
 dialihkan ke host Pedia, email paid/processing/completed fenced (paid
 independen, processing = resi submitted/"Diproses", stale terminal
 disupresi; tampilan seperti Market; completed memakai Refill N Days;
 bounded at-least-once melalui forward sender Resend tanpa idempotency key) +
 retry bounded di cron existing; discovery fase hilang hanya lunas ≤24 jam,
-sedangkan ledger due tetap retry lebih lama. Link
-`pedia.axvara.tech/pesanan`. Detail: docs/PRD.md + docs/PEDIA-PRD.md.
+sedangkan ledger due tetap retry lebih lama. Kontrak cron: cron `pedia_orders`
+tidak memindai item terminal; start_count validasi number/string-only
+(boolean/object/array ditolak), safe-nonnegative-integer, slot NULL/0
+dikoreksi positif, positif dipertahankan, real-0 settled; koreksi historis
+HANYA script operator satu-kali `scripts/pedia-recount-start-count.mjs`
+(dry-run default, allowlist wajib maksimal 50 kode, maksimal tiga status-read
+per item per invocation, wajib status terminal supplier, count-only, tanpa
+dispatch/bayar/email/refill atau marker). Setelah maintenance dan env proxy
+existing tersedia, dari root jalankan dry-run dengan target D1 eksplisit:
+`node scripts/pedia-recount-start-count.mjs --database axvara-db --remote --code AXP-20261102-35D31DA7`.
+Periksa hasil, lalu ulangi dengan `--apply` hanya bila disetujui; tanpa `--remote`
+target lokal. Memerlukan Node, npx/Wrangler dan kredensial D1 operator. Tidak ada
+retry otomatis; halaman terminal yang sudah terbuka perlu dibuka ulang setelah
+koreksi. Koreksi historis produksi belum dijalankan.
+Link `pedia.axvara.tech/pesanan`. Detail: docs/PRD.md + docs/PEDIA-PRD.md.
 
 ## Bantuan dan ketentuan Pedia — 1 November 2026
 

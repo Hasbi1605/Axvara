@@ -66,7 +66,7 @@ export function PediaRefillClient() {
   return <div className="mx-auto max-w-[920px] px-4 py-10 sm:px-6 sm:py-14">
     <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#00E5FF]/75">Refill Pedia</p>
     <h1 className="mt-2 text-3xl font-bold tracking-[-0.03em] text-white sm:text-4xl">Ajukan refill</h1>
-    <p className="mt-3 max-w-[62ch] text-sm leading-6 text-white/55">Untuk layanan dengan Refill yang mengalami drop. Masukkan kode pesanan dan kontak checkout; AXVARA memeriksa masa refill lalu memprosesnya.</p>
+    <p className="mt-3 max-w-[62ch] text-sm leading-6 text-white/55">Masukkan kode pesanan dan kontak checkout. Masa refill dicek otomatis, lalu refill diproses otomatis atau oleh admin.</p>
 
     <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <form onSubmit={(e) => { e.preventDefault(); if (codeValid && contact.trim()) void load(code.trim(), contact.trim()); }} className="ax-glass-card rounded-[22px] p-5 sm:p-6" aria-label="Cek refill pesanan" aria-busy={loading} noValidate>

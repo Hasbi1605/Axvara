@@ -17,6 +17,36 @@ Tidak ada seller akun yang diubah. Integrasi live
 menunggu ledger/referensi stabil, batas modal, rekonsiliasi pending dan webhook
 terautentikasi serta pengujian development. Detail: `docs/agent-rules/digiflazz.md`.
 
+## Copy layanan dan refill Pedia - 3 November 2026
+
+Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Bukti sumber
+adalah cache baca-saja 1 November 2026 (IndoSMM sedang 503 saat pekerjaan ini, jadi
+tidak ada klaim "diperiksa ulang"). Tidak ada fitur, kolom, atau env baru.
+
+- Nama layanan membawa karakteristik yang memang tertulis di sumber, langsung dan
+  konkret: `Followers Indonesia Real Look`, `Followers Global HQ · Akun berpostingan`,
+  `Followers Global · Akun lama berpostingan`, `Komentar Indonesia · Campuran`,
+  `… Real People/Real Human`. Sumber campuran/bot tidak lagi diberi kata Real/HQ.
+  Tidak ada klaim active, buzzer, story, kualitas, atau "kelas/label Real".
+- `Instant Start` adalah segmen nama dari sumber (bukan kolom baru) dan tampil sebagai
+  chip. Snapshot order baru membekukannya lewat `service_copy.service_name`; order lama
+  tetap memakai nama lamanya. `eta_start` tidak diisi dan rentang tidak dikarang:
+  baris Start time = `eta_start`, atau `Instant Start` dari nama, atau fallback lama.
+  Start time, Speed, dan Avg time tetap terpisah.
+- Janji refill: `Refill N hari [sejak pesanan dibuat|selesai], selama layanan masih
+  tersedia.` Anchor dari `pedia_tiers.refill_anchor` (kini dibaca katalog); anchor tidak
+  dikenal tidak diberi klausa "sejak". Lifetime dan 0 tetap. Chip tetap `Refill N Days`.
+  Atribusi "dari/lewat AXVARA" dihapus. Pembersihan teks lama hanya kosmetik (label dan
+  atribusi); angka hari, anchor, dan kelayakan tidak berubah.
+- Halaman pesanan memuat satu blok Refill dengan satu tombol Ajukan Refill dan status
+  belum selesai/siap/cooldown/diproses/berakhir/butuh admin (masa berakhir dari
+  `refill.ends_at` API). `/pedia/refill` hanya panduan sekunder dengan backend yang sama.
+  Kontak checkout tanpa PIN Pedia, batas 1× per 24 jam, dan snapshot tidak berubah.
+- Kontrak yang SENGAJA tidak diubah: tier 285 / layanan 5834 tetap `Refill 90 Days`.
+  Cache menunjukkan konflik (nama sumber 30 hari, deskripsi sumber 90 hari); keputusan
+  kontrak menunggu owner. Tidak ada perpanjangan global 30→35 hari dan order terjual
+  tidak diubah.
+
 ## Status aktual Pedia vs serah terima Market - 2 November 2026
 
 Implementasi lokal (backend + UI); publikasi melalui CI, deployment belum
@@ -67,9 +97,22 @@ lanjut tanpa kata manual/admin untuk pembeli. Recovery: sighting paid
 maksimal 5 dan discovery maksimal 2/fase hanya untuk fase hilang order
 lunas ≤24 jam (processing hanya untuk `submitted`/`in_progress` berresi);
 ledger due existing tetap retry setelah 24 jam. Stale terminal disupresi
-tanpa kirim. Input start_count kosong/whitespace tidak pernah menjadi 0
-(angka 0 yang benar-benar dilaporkan tetap valid; nilai nonzero existing
-dipertahankan). Tanpa migrasi, env, cron, atau klaim deployment baru.
+tanpa kirim. Input start_count hanya number/string (boolean/object/array
+ditolak — Number(true) tidak boleh jadi hitungan); blank/missing/invalid
+tidak pernah menjadi 0 (angka 0 yang benar-benar dilaporkan tetap valid dan
+settled; nilai nonzero existing dipertahankan). Conditional correction:
+slot NULL/0 menerima nilai positif tervalidasi berikutnya (mis. Pending 0 →
+Completed 8278); positif terkonfirmasi tidak pernah digeser nilai konflik
+berikutnya; tanpa tebak dari target/quantity. Koreksi historis terminal
+HANYA via script operator satu-kali `scripts/pedia-recount-start-count.mjs`
+(dry-run default, apply eksplisit; cron tidak memindai terminal): allowlist
+wajib maksimal 50 kode termasuk row historis tanpa marker, wajib status terminal
+supplier; outage maksimal tiga percobaan per item per invocation dan exit gagal;
+tanpa marker atau retry otomatis. Status-read dan
+tulis count-only bersyarat; tanpa dispatch/pembayaran/email/refill/mutasi
+kontrak order; tanpa migrasi/env/cron/lease100-tahun baru. Tanpa migrasi, env, cron,
+atau klaim deployment baru. Halaman terminal yang sudah terbuka perlu dibuka
+ulang setelah koreksi; koreksi historis produksi belum dijalankan.
 
 ### Sumber data status Pedia: resmi vs non-resmi
 

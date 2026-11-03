@@ -148,7 +148,7 @@ def service(slug, metric, r, idx, packages, instructions, custom=False, live=Fal
                        'Target harus publik. Jangan mengganti link, membuat target privat, atau menghapus target selama proses.',
                        'Tunggu pesanan sebelumnya untuk target yang sama selesai sebelum memesan kembali.',
                        'Start time dan speed dapat berubah mengikuti antrean.'])
-    desc = ('Komentar custom' if custom else ('Penonton live' if live else metric.title())) + (' dari akun Indonesia' if reg == 'indonesia' else ' global') + {'real': ', label Real', 'hq': ', akun HQ', 'ekonomis': ', pilihan ekonomis', 'standar': ''}[q] + '.'
+    desc = ('Komentar custom' if custom else ('Penonton live' if live else metric.title())) + (' dari akun Indonesia' if reg == 'indonesia' else ' global') + {'real': ', akun Real', 'hq': ', akun HQ', 'ekonomis': ', pilihan ekonomis', 'standar': ''}[q] + '.'
     return dict(product_slug=slug, supplier='indosmm', service_id=r['id'], public_name=name[:200], description=desc, terms=terms, instructions=instructions,
                 region=reg, quality=q, refill_days=d, eta_start=start, speed_per_day=speed, drop_label=dl, drop_risk=droprisk(r),
                 input_kind='comments' if custom else None, min_qty_override=lo, max_qty_override=hi, quantity_step=1, sort_order=200 + idx,

@@ -33,9 +33,24 @@ export function refillLabel(days: number): string {
   return `Refill ${days} Days`;
 }
 
+/** Kalimat janji refill untuk layanan. Anchor dari tier/snapshot; anchor tidak dikenal → tanpa klausa "sejak". */
+export function refillPromise(days: number, anchor?: "created" | "completed" | null): string {
+  if (!days || days <= 0) return "No Refill: jumlah yang drop tidak diisi ulang.";
+  if (days >= 3650) return "Refill selama layanan masih tersedia.";
+  const since = anchor === "completed" ? " sejak pesanan selesai" : anchor === "created" ? " sejak pesanan dibuat" : "";
+  return `Refill ${days} hari${since}, selama layanan masih tersedia.`;
+}
+
 export const PEDIA_TERMS: { term: string; meaning: string }[] = [
   { term: "HQ", meaning: "High Quality, kategori kualitas layanan." },
-  { term: "Real", meaning: "Label karakter akun pada layanan." },
+  { term: "Real", meaning: "Akun Real (Real Accounts), bukan akun campuran." },
+  { term: "Real Look", meaning: "Akun dengan tampilan profil seperti akun asli." },
+  { term: "Real People", meaning: "Akun Real People, bukan akun campuran." },
+  { term: "Real Human", meaning: "Akun Real Human, bukan akun campuran." },
+  { term: "Campuran", meaning: "Gabungan beberapa jenis akun dalam satu pesanan." },
+  { term: "Akun berpostingan", meaning: "Akun pengirim sudah memiliki postingan." },
+  { term: "Akun lama", meaning: "Akun pengirim bukan akun baru." },
+  { term: "Instant Start", meaning: "Pesanan langsung masuk antrean kirim setelah pembayaran terkonfirmasi." },
   { term: "Drop", meaning: "Jumlah followers, likes, atau views berkurang setelah pesanan selesai. Semua layanan bisa drop; yang berbeda seberapa besar." },
   { term: "Drop rate", meaning: "Persentase jumlah yang berkurang setelah pengiriman. Persentase pengajuan Refill bukan pengukuran langsung Drop rate." },
   { term: "Pengajuan Refill", meaning: "Persentase pesanan layanan ini yang diajukan Refill dalam 7 hari terakhir, bukan persentase followers, likes, atau views yang hilang." },
@@ -43,7 +58,7 @@ export const PEDIA_TERMS: { term: string; meaning: string }[] = [
   { term: "Less Drop", meaning: DROP_MEANING.less_drop },
   { term: "High Drop", meaning: DROP_MEANING.high_drop },
   { term: "Refill", meaning: "Isi ulang gratis untuk jumlah yang drop, selama masa refill. Ajukan lewat halaman Refill atau halaman pesanan." },
-  { term: "Refill 30 Days / 365 Days", meaning: "Masa refill 30 atau 365 hari sejak pesanan dibuat (atau selesai, sesuai ketentuan layanan). Setelah masa itu habis, refill tidak bisa diajukan." },
+  { term: "Refill 30 Days / 365 Days", meaning: "Refill N hari sejak pesanan dibuat atau selesai (sesuai layanan), selama layanan masih tersedia. Setelah masa itu habis, refill tidak bisa diajukan." },
   { term: "Refill Lifetime", meaning: "Refill selama layanan masih tersedia. Bila layanan ditutup, refill ikut berakhir." },
   { term: "No Refill", meaning: "Tanpa garansi refill: jumlah yang drop tidak diisi ulang." },
   { term: "Success rate", meaning: "Persentase pesanan layanan ini yang selesai penuh dalam 7 hari terakhir. Makin tinggi, makin jarang gagal atau dibatalkan." },
@@ -53,10 +68,27 @@ export const PEDIA_TERMS: { term: string; meaning: string }[] = [
   { term: "Min / Max", meaning: "Jumlah terkecil dan terbesar dalam satu pesanan untuk layanan itu." },
 ];
 
+/** Nama istilah (PEDIA_TERMS) yang relevan untuk nama layanan: kata kualitas + keterangan bermakna. */
+export function serviceTermNames(fullName: string, quality?: string | null): string[] {
+  const [head, ...notes] = fullName.split(/\s*·\s*/);
+  const word = /\bReal Look\b/.test(head) ? "Real Look" : /\bReal People\b/.test(head) ? "Real People" : /\bReal Human\b/.test(head) ? "Real Human"
+    : /\bReal\b/.test(head) ? "Real" : /\bHQ\b/.test(head) ? "HQ" : quality === "real" ? "Real" : quality === "hq" ? "HQ" : null;
+  const out = word ? [word] : [];
+  for (const note of notes.map((n) => n.trim())) {
+    if (note === "Campuran" || note === "Instant Start") out.push(note);
+    else if (note === "Akun berpostingan") out.push(note);
+    else if (note === "Akun lama") out.push(note);
+    else if (note === "Akun lama berpostingan") out.push("Akun lama", "Akun berpostingan");
+  }
+  return out;
+}
+/** True bila nama layanan memuat keterangan "Instant Start" (fakta sumber, bukan janji waktu). */
+export const hasInstantStart = (fullName: string) => fullName.split(/\s*·\s*/).slice(1).some((n) => n.trim() === "Instant Start");
+
 export const PEDIA_REFILL_STEPS: [string, string][] = [
   ["Cek jumlah yang drop", "Bandingkan jumlah sekarang dengan jumlah setelah pesanan selesai. Refill hanya untuk layanan yang punya Refill dan masih dalam masa refill."],
   ["Ajukan refill", "Masukkan kode pesanan dan kontak checkout di halaman ini. Refill bisa diajukan 1× per 24 jam per pesanan."],
-  ["AXVARA mengisi ulang", "Refill otomatis biasanya mulai dalam 24 jam. Layanan dengan refill manual diproses admin, biasanya dalam 1×24 jam."],
+  ["Refill diproses", "Refill otomatis biasanya mulai dalam 24 jam. Layanan dengan refill manual diproses admin, biasanya dalam 1×24 jam."],
   ["Pantau hasilnya", "Status refill tampil di halaman ini dan di halaman pesanan."],
 ];
 
@@ -71,6 +103,11 @@ export const PEDIA_REFILL_RULES = [
 // supplier/nama penyedia. Dipakai pada katalog publik dan snapshot copy pesanan,
 // sehingga teks lama di DB/snapshot pun tidak bocor.
 const WHITE_LABEL: [RegExp, string][] = [
+  // Kosmetik (3 Nov): hanya atribusi/label; masa, anchor, dan syarat refill tidak berubah.
+  [/Tanpa refill dari AXVARA/g, "No Refill"],
+  [/(Refill \d+ (?:hari|Days)) dari AXVARA/g, "$1"],
+  [/,\s*label Real\./g, ", Real."],
+  [/Label karakter akun pada layanan\.?/g, ""],
   [/\s*\((?:label|klaim) (?:supplier|penyedia)\)/gi, ""],
   [/Estimasi (?:supplier|penyedia)/gi, "Estimasi"],
   [/Start time dan speed dari (?:supplier|penyedia)/gi, "Start time dan speed"],

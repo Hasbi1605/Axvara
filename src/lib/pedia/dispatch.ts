@@ -114,6 +114,10 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
     } catch { /* satu item gagal tidak menghentikan sisanya */ }
   }
   // Poll item submitted/in_progress yang lease-nya kedaluwarsa.
+  // Prioritas: active poll dulu (batas 20). Recount terminal TIDAK di cron
+  // per tick — koreksi historis hanya via script operator satu-kali
+  // (scripts/pedia-recount-start-count.mjs, dry-run default), bukan scan
+  // terminal abadi yang memindai ulang setiap tick.
   const due = await db.queryAll(
     `SELECT * FROM pedia_order_items
       WHERE status IN ('submitted','in_progress')
@@ -300,22 +304,26 @@ async function pollOne(
   }
   const d = (res.data || {}) as Record<string, unknown>;
   const status = String(d.status ?? "").toLowerCase().replace(/\s+/g, "_").replace(/^cancelled$/, "canceled");
-  // Blank/whitespace start_count input must NEVER coerce to 0 (Number("")=0,
-  // Number(null)=0 — and note Number.isFinite(null) is false, not true).
-  // Only a present, non-blank, finite numeric raw value is persisted; the
-  // existing nonzero start_count is preserved when blank arrives later.
-  const startRaw = d.start_count;
-  const startPresent = startRaw != null && String(startRaw).trim() !== "";
-  const startCountRaw = startPresent ? Number(startRaw) : null;
+  // Trust boundary: supplier JSON is untrusted. Accept ONLY number/string
+  // raw values (reject boolean/object/array — Number(true)===1 would lie);
+  // blank/whitespace never coerces to 0 (Number("")=0, Number(null)=0).
+  // Only a present, non-blank, safe-nonnegative-integer persists:
+  // blank/missing/invalid/negative/fractional never write. A reported actual
+  // 0 stays a valid 0;
+  // a stored NULL/0 is corrected by a later positive, while a confirmed
+  // positive is preserved against a conflicting later value (no guessing
+  // from target/quantity).
+  const startCount = parseStartCount(d.start_count);
   const rawRemains = d.remains != null && String(d.remains).trim() !== "" ? Number(d.remains) : NaN;
   const remains = Number.isSafeInteger(rawRemains) && rawRemains >= 0 && rawRemains <= item.quantity ? rawRemains : null;
-  // Simpan hitungan awal untuk riwayat progres supplier. Reported actual 0
-  // stays a valid 0; blank/missing never writes (existing nonzero preserved).
-  if (startCountRaw != null && Number.isFinite(startCountRaw)) {
+  // Simpan hitungan awal untuk riwayat progres supplier. Conditional write:
+  // NULL/0 slots accept the validated value; confirmed positives never move.
+  // Historical correction is operator-only, never a cron terminal scan.
+  if (startCount !== null) {
     await db.execRun(
-      `UPDATE pedia_order_items SET start_count=COALESCE(start_count, ?)
-        WHERE order_code=?`,
-      Number(startCountRaw), item.order_code,
+      `UPDATE pedia_order_items SET start_count=CASE WHEN start_count IS NULL OR start_count=0 THEN ? ELSE start_count END, updated_at=datetime('now')
+        WHERE order_code=? AND (start_count IS NULL OR start_count=0 OR start_count=?)`,
+      startCount, item.order_code, startCount,
     ).catch(() => null);
   }
   if (remains !== null && Number.isFinite(remains)) {
@@ -353,8 +361,7 @@ async function pollOne(
     if (Number(changed?.changes) === 1) {
       try {
         const { notifyPediaProcessing } = await import("@/lib/pedia/notify");
-        const validStart = startCountRaw != null && Number.isSafeInteger(Number(startCountRaw)) && Number(startCountRaw) >= 0 ? Number(startCountRaw) : null;
-        await notifyPediaProcessing(db, item.order_code, { startCount: validStart, remains }).catch(() => null);
+        await notifyPediaProcessing(db, item.order_code, { startCount: startCount, remains }).catch(() => null);
       } catch { /* notif best-effort; cron retry sweep recovers failed sends */ }
     }
     await db.execRun(
@@ -388,6 +395,18 @@ async function pollOne(
 async function handleShortfall(db: Db, item: Item, status: "partial" | "canceled"): Promise<void> {
   const { finishWithFollowup } = await import("./followup");
   await finishWithFollowup(db, item.order_code, status, `supplier_${status}`);
+}
+
+/** Trust-boundary parser for supplier start_count: number/string only.
+ *  Boolean/object/array are rejected outright (Number(true)===1 must never
+ *  become a count). Returns safe-nonnegative-integer or null. */
+function parseStartCount(raw: unknown): number | null {
+  if (typeof raw !== "number" && typeof raw !== "string") return null;
+  if (typeof raw === "number" && !Number.isFinite(raw)) return null;
+  const text = String(raw).trim();
+  if (text === "") return null;
+  const num = Number(text);
+  return Number.isSafeInteger(num) && num >= 0 ? num : null;
 }
 
 async function toNeedsCheck(db: Db, orderCode: string, reason: string): Promise<void> {

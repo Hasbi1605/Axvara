@@ -3,7 +3,8 @@
 "use client";
 export const runtime = "edge";
 
-import { refillLabel } from "@/lib/pedia/terms";
+import { refillLabel, refillPromise } from "@/lib/pedia/terms";
+import { REFILL_REASON_TEXT, type PediaRefillState } from "@/lib/pedia/refill-policy";
 import { readPediaContact, rememberPediaContact } from "@/lib/pedia/buyer-session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -29,7 +30,7 @@ type Status = {
   start_count?: number | null; remains?: number | null; paid_at?: string | null;
   eta_start: string | null; eta_finish: string | null; refill_days: number;
   refill_eligible: boolean;
-  refill?: { status_label: string | null; mode: string; ends_at: string | null } | null;
+  refill?: Partial<PediaRefillState> | null;
   buyer_canceled?: boolean;
   qris: { payable_amount: number; unique_code?: number | null; image_url: string; expires_at: string; status: string } | null;
 };
@@ -357,7 +358,6 @@ export default function PediaOrderStatusPage() {
             </div>)}
           </dl>
           {estimate && <p className="mt-4 text-xs leading-5 text-white/55">{estimate}</p>}
-          {data.refill_days > 0 && <p className="mt-2 text-xs text-white/55">{refillLabel(data.refill_days)} sesuai ketentuan layanan.</p>}
           {!terminal && checkedAt && <p className="mt-3 text-[11px] text-white/35">Diperbarui {formatCheckedTime(checkedAt)} · otomatis tiap {pollSeconds} detik{error ? " · pembaruan terakhir gagal" : ""}</p>}
         </div>}
         <div className="text-left">
@@ -374,30 +374,45 @@ export default function PediaOrderStatusPage() {
           )}
         </div>
         {paid && copyBlocks.length > 0 && <div className="mt-3 space-y-2 text-left">{copyBlocks.map(([label, text]) => <MobileCollapsible key={label} title={label}><p className="whitespace-pre-line break-words text-[13px] leading-6 text-white/70">{text}</p></MobileCollapsible>)}</div>}
-          {data.refill_eligible && !refillOpen && (
-            <button onClick={() => setRefillOpen(true)} className="mt-4 min-h-11 w-full rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 text-sm font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20">
-              Ajukan Refill
-            </button>
-          )}
-          {data.refill_eligible && refillOpen && (
-            <div className="mt-4 rounded-[14px] border border-white/12 bg-white/[0.04] p-4" role="dialog" aria-label="Verifikasi refill">
-              <label htmlFor="refill-contact" className="text-xs font-medium text-white/60">No. WA atau email checkout *</label>
-              <input
-                id="refill-contact"
-                value={refillContact}
-                onChange={(e) => setRefillContact(e.target.value)}
-                placeholder="0812… atau nama@email.com"
-                autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                className="mt-2 h-11 w-full rounded-xl border border-white/12 bg-white/[0.06] px-3.5 text-sm text-white placeholder:text-white/55 focus:border-[#00E5FF]/50 focus:outline-none"
-              />
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setRefillOpen(false)} disabled={refillBusy} className="h-10 rounded-xl border border-white/12 text-sm font-semibold text-white/70 disabled:opacity-50">Batal</button>
-                <button type="button" onClick={() => void refill()} disabled={refillBusy || refillContact.trim().length < 6} className="h-10 rounded-xl bg-[#00E5FF] text-sm font-bold text-[#070a1e] disabled:opacity-50">{refillBusy ? "Mengirim…" : "Kirim Refill"}</button>
-              </div>
-            </div>
-          )}
-          {refillMsg && <p className="mt-2 text-center text-[13px] text-white/70">{refillMsg}</p>}
-          {paid && data.refill_days > 0 && <p className="mt-2 text-center text-[12px] leading-5 text-white/55">{data.refill?.status_label ? `Refill: ${data.refill.status_label}. ` : ""}<a href={`/pedia/refill?code=${encodeURIComponent(code ?? "")}`} className="font-semibold text-[#00E5FF] underline underline-offset-2">Lihat status & aturan refill</a></p>}
+          {paid && data.refill_days > 0 && (() => {
+            // Satu blok refill: status + satu CTA; panduan /pedia/refill memakai backend yang sama.
+            const r = data.refill;
+            const reason = r?.reason ?? (data.refill_eligible ? null : data.status === "completed" ? "expired" : "not_completed");
+            const when = (iso?: string | null) => iso ? `${formatWibDateTime(iso, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} WIB` : null;
+            const note = reason === null ? `bisa diajukan${r?.ends_at ? ` sampai ${when(r.ends_at)}` : ""}.`
+              : reason === "not_completed" ? "bisa diajukan setelah pesanan selesai."
+              : reason === "cooldown" ? `bisa diajukan lagi${r?.next_at ? ` ${when(r.next_at)}` : " setelah 24 jam"}.`
+              : reason === "in_progress" ? `${r?.status_label ?? "Refill sedang diproses"}.`
+              : reason === "expired" ? `masa refill berakhir${r?.ends_at ? ` ${when(r.ends_at)}` : ""}.`
+              : REFILL_REASON_TEXT[reason];
+            return <section aria-label="Refill" className="ax-glass-card mt-4 rounded-2xl p-4 text-left">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Refill</p>
+              <p className="mt-2 text-sm font-semibold text-white">{refillLabel(data.refill_days)} <span className="font-normal text-white/70">· {note}</span></p>
+              <p className="mt-1 text-xs leading-5 text-white/55">{refillPromise(data.refill_days)}{r?.mode === "manual" ? " Diproses admin, biasanya dalam 1×24 jam." : r?.mode === "api" ? " Diproses otomatis." : ""}</p>
+              {r?.status_label && reason !== "in_progress" && <p className="mt-1 text-xs text-white/55">Refill terakhir: {r.status_label}.</p>}
+              {!refillOpen && reason !== "expired" && reason !== "in_progress" && <button type="button" onClick={() => setRefillOpen(true)} disabled={!data.refill_eligible} className="mt-3 min-h-11 w-full rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 text-sm font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:cursor-not-allowed disabled:opacity-45">Ajukan Refill</button>}
+              {reason === "no_supplier_order" && <a href={`${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo admin, mohon bantu refill pesanan Pedia ${data.code}.`)}`} className="mt-2 inline-flex min-h-11 items-center font-semibold text-[#00E5FF] underline underline-offset-4">Tanya admin</a>}
+              {data.refill_eligible && refillOpen && (
+                <div className="mt-3 rounded-[14px] border border-white/12 bg-white/[0.04] p-4" role="dialog" aria-label="Verifikasi refill">
+                  <label htmlFor="refill-contact" className="text-xs font-medium text-white/60">No. WA atau email checkout *</label>
+                  <input
+                    id="refill-contact"
+                    value={refillContact}
+                    onChange={(e) => setRefillContact(e.target.value)}
+                    placeholder="0812… atau nama@email.com"
+                    autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                    className="mt-2 h-11 w-full rounded-xl border border-white/12 bg-white/[0.06] px-3.5 text-sm text-white placeholder:text-white/55 focus:border-[#00E5FF]/50 focus:outline-none"
+                  />
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setRefillOpen(false)} disabled={refillBusy} className="h-10 rounded-xl border border-white/12 text-sm font-semibold text-white/70 disabled:opacity-50">Batal</button>
+                    <button type="button" onClick={() => void refill()} disabled={refillBusy || refillContact.trim().length < 6} className="h-10 rounded-xl bg-[#00E5FF] text-sm font-bold text-[#070a1e] disabled:opacity-50">{refillBusy ? "Mengirim…" : "Kirim Refill"}</button>
+                  </div>
+                </div>
+              )}
+              {refillMsg && <p role="status" className="mt-2 text-[13px] text-white/70">{refillMsg}</p>}
+              <p className="mt-2 text-[12px] leading-5 text-white/55"><a href={`/pedia/refill?code=${encodeURIComponent(code ?? "")}`} className="font-semibold text-[#00E5FF] underline underline-offset-2">Cara kerja &amp; aturan refill</a></p>
+            </section>;
+          })()}
         {compactPayment ? (
           <div className="mt-3 text-left">
             {!confirmingCancel ? (

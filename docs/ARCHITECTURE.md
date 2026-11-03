@@ -913,7 +913,19 @@ byte-identik; completed memakai `Refill N Days`); konteks gabungan tunggal
 (1 read) + gate budget realistis; recovery di tick Pedia existing (sighting
 paid hilang ≤24 jam maksimal 5; discovery ≤2/fase termasuk submitted
 berresi; ledger due existing tetap retry setelah 24 jam); start_count
-kosong/whitespace tidak menjadi 0. DANA
+hanya number/string (boolean/object/array ditolak), safe-nonnegative-integer
+(blank/missing/invalid/negatif/pecahan tidak menulis); slot NULL/0 menerima
+positif tervalidasi berikutnya, positif terkonfirmasi dipertahankan, real 0
+settled valid. Koreksi historis HANYA script operator satu-kali
+`scripts/pedia-recount-start-count.mjs` (dry-run default; target D1 dan
+allowlist maksimal 50 kode wajib; termasuk row historis tanpa marker; wajib
+status terminal supplier; outage maksimal tiga pembacaan/item/invocation,
+exit gagal, tanpa retry otomatis atau marker; status-read +
+tulis count-only; tanpa dispatch/bayar/email/refill/mutasi kontrak; tanpa
+cron/migrasi/lease-100-tahun baru). Cron tidak memindai terminal; active
+poll didahulukan; UI unknown self-retry 10 dtk, terminal perlu dibuka ulang
+setelah koreksi. Bukti lokal 2026-11-03: fixture; IndoSMM 503 — tanpa sentuh produksi;
+payload/prod row belum diverifikasi. DANA
 memanggil scheduler Pedia satu kali; cron tetap fallback.
 UI: `src/components/pedia/status-view.ts` (helper murni: URL, header,
 progres, estimasi, polling 5/10/30 dtk), halaman Pedia aktual, redirect
@@ -3318,6 +3330,16 @@ tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
 - ProviderSMM: cron lite tidak memanggil `/psmm/balance`; `/api/supplier-sync`
   source providersmm → 200 `{ignored:"providersmm_retired"}` tanpa tulis D1;
   overview admin hanya IndoSMM.
+
+### 16.10d Copy layanan Pedia — migrasi 0093 (3 November 2026)
+Implementasi lokal; publikasi lewat CI; deployment belum diverifikasi. Data-only, tanpa kolom/env/cron baru.
+- Sumber: `scripts/generate-pedia-copy-20261103.mjs --from-cache` (offline: cache nama layanan 1 Nov + `names-20261102.json`; fungsi `classifySource` membaca token Real Look/Real People/Real Human/Real/HQ, with posts, old accounts, mix/bot, Instant Start dan mengabaikan active/buzzer) → manifest `src/lib/pedia/copy-20261103.json`; tanpa argumen skrip membuat `drizzle/migrations/0093_pedia_service_copy_20261103.sql` dari manifest. Tabel keputusan per tier ada di skrip dan wajib didukung token sumber (skrip gagal bila tidak).
+- Hasil aktual (artefak): 280 tier aktif terpetakan, 132 berubah — 112 nama (101 mendapat `· Instant Start`, 22 diganti karakteristiknya), 56 deskripsi (23 tabel keputusan, 33 pembersihan "label Real"/"akun real/aktif"/"menurut keterangan layanan"), 23 `quality` disesuaikan dengan kata pada nama; 199 UPDATE.
+- Guard: `id AND supplier='indosmm' AND supplier_service_id` + `public_name`/`description_md` lama persis (deskripsi: daftar teks historis), sehingga edit admin tidak ditimpa dan hasil idempoten. Tidak menyentuh `pedia_order_items.snapshot_json`; order lama memakai `service_copy` beku. Tier 285/svc 5834 tidak disentuh (refill 90 vs 30 belum diputuskan owner).
+- Katalog `GET /api/pedia/catalog` kini membaca `refill_anchor` (kolom existing) untuk kalimat `refillPromise()`; `whiteLabel()` menambah aturan kosmetik atribusi/label. Generator kurasi lama diperbaiki agar deskripsi tak lagi memuat "label Real".
+- UI: chip `Instant Start` (`hasInstantStart`), istilah per kata nama (`serviceTermNames`), satu blok Refill di `/pedia/pesanan/[code]` (status penuh `PediaRefillState`, GET tetap DB-only/no-store/kontak-gated).
+- Tes: `tests/pedia-copy-20261103.test.ts` (token + negatif, manifest, migrasi sqlite: guard/idempoten/edit admin/snapshot/285), `tests/pedia-copy-ui.behavior.test.tsx` (chip/Start time/refill/blok refill/live in_progress→completed).
+- Verifikasi akhir lokal (3 Nov 2026; bukan deployed/live): vitest penuh 312 file/3975 tes, tsc, `build:pages` lulus; Chromium 89/89 + 16/16 kasus perbaikan; smoke D1 workerd (Miniflare lokal, skrip sementara di luar repo) menerapkan 0090→0093 nyata: koreksi tier 47/388, edit admin + snapshot tak berubah, idempoten, tier 285 tetap 90, CAS `start_count` 0→8278 dengan positif konflik dipertahankan dan konkuren tanpa geser. Batas: tanpa D1 remote/produksi; migrasi remote tetap lewat CI; sumber cache 1 Nov.
 
 ### 16.10b Nama layanan Pedia + perapian — migrasi 0089 (2 November 2026)
 Data-only: UPDATE `pedia_tiers.public_name`/`is_active` per id dengan guard `COALESCE(public_name,label_note)` = nama ekspor, idempoten, tanpa DELETE/remap supplier. Order lama memakai snapshot. Katalog publik menambah `price_ref {qty,price}` khusus produk `metric='comments'` (jumlah acuan 10 bila valid, selain itu minimum), dihitung `computePediaPrice` yang sama dengan quote. Generator/manifest: `scripts/curate-pedia-names-20261102.py`, `src/lib/pedia/names-20261102.json`.

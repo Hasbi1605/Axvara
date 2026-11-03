@@ -744,8 +744,8 @@ describe("Pedia configurator", () => {
     const card = screen.getByRole("region", { name: "Info layanan" });
     expect(card.textContent).not.toContain("Pengajuan Refill");
     expect(card.textContent).not.toContain("Drop rate");
-    expect(card.textContent).toContain("Label karakter akun pada layanan");
-    expect(card.textContent).not.toMatch(/supplier|indosmm|providersmm/i);
+    expect(card.textContent).toContain("Akun Real (Real Accounts), bukan akun campuran.");
+    expect(card.textContent).not.toMatch(/supplier|indosmm|providersmm|label Real|karakter akun|kelas Real|kelas HQ|lewat AXVARA|dari AXVARA/i);
   });
 
   it.each([null, undefined, NaN, -1, 101])("hides unavailable or invalid refill-request statistics (%s)", (refill_pct) => {

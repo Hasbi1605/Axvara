@@ -17,9 +17,12 @@ export const pediaTrackUrl = (code: string) => `${SITE.pediaUrl}/lacak?code=${en
 export const PEDIA_TERMINAL = ["completed", "partial", "canceled", "expired"] as const;
 const PROCESSING = ["submitting", "submitted", "in_progress", "completed", "partial"];
 
-/** Interval polling halaman status (ms); null = berhenti (status akhir). */
+/** Interval polling halaman status (ms); null = berhenti (status akhir).
+ *  UNKNOWN/undefined (fetch awal gagal, data null) memakai 10 detik agar
+ *  halaman bisa self-retry tanpa refresh manual; terminal tetap berhenti. */
 export function pediaPollMs(status: string | undefined): number | null {
-  if (!status || (PEDIA_TERMINAL as readonly string[]).includes(status)) return null;
+  if ((PEDIA_TERMINAL as readonly string[]).includes(String(status ?? ""))) return null;
+  if (!status) return 10_000;
   if (status === "awaiting_payment") return 5_000;
   if (status === "needs_check") return 30_000;
   return 10_000;

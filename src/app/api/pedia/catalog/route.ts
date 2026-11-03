@@ -27,6 +27,8 @@ export type PediaCatalogTier = {
   tier: string;
   label_note: string | null;
   refill_days: number;
+  /** Titik awal masa refill (kolom refill_anchor); opsional untuk fixture lama. */
+  refill_anchor?: "created" | "completed";
   eta_start: string | null;
   eta_finish: string | null;
   prices: Record<string, number>;
@@ -137,7 +139,7 @@ async function readCatalog() {
        FROM pedia_products WHERE is_active=1 ORDER BY sort_order, id`,
   ).catch(unavailable);
   const tiers = await db.queryAll(
-    `SELECT id, product_id, tier, label_note, refill_days, eta_start, eta_finish,
+    `SELECT id, product_id, tier, label_note, refill_days, refill_anchor, eta_start, eta_finish,
             package_prices_json, supplier, supplier_service_id,
             public_name, description_md, terms_md, instructions_md, recommendation_note, min_qty_override, max_qty_override, quantity_step, region, quality, speed_note, drop_risk, drop_label, speed_per_day, input_kind,
             is_recommended, sort_order, markup_pct, min_profit_rp
@@ -176,6 +178,7 @@ async function readCatalog() {
       id: Number(t.id), tier: String(t.tier),
       label_note: t.label_note != null ? whiteLabel(String(t.label_note)) : null,
       refill_days: Number(t.refill_days) || 0,
+      refill_anchor: t.refill_anchor === "completed" ? "completed" : "created",
       eta_start: t.eta_start != null ? String(t.eta_start) : null,
       eta_finish: t.eta_finish != null ? String(t.eta_finish) : null,
       min_qty: limits.min, max_qty: limits.max, quantity_step: limits.step,

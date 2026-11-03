@@ -13,6 +13,12 @@
 - Snapshot Pedia 12, 15 dan 19 Oktober 2026 dipindah utuh tanpa perubahan isi ke `docs/agents-history.md` agar konteks agent lebih ringan. Itu bukti bertanggal, bukan status produksi atau izin rollout.
 - Pengaman di sana (secret supplier hanya di VPS, idempotensi/reservasi durable proxy SMM, retry ambigu `needs_check`, quote JWE/snapshot order lama, larangan reset direktori idempotensi) tetap berlaku untuk jalur legacy yang kompatibel. Baca file itu sebelum menyentuh order/refill/recovery Pedia lama, proxy SMM atau kurasi.
 
+### Copy layanan Pedia 3 November 2026 (terkini)
+- Nama/deskripsi layanan hanya membawa karakteristik yang tertulis di sumber (Real Look, Real People, Real Human, Real, HQ, Akun berpostingan, Akun lama, Campuran, Instant Start). Jangan memakai "kelas/label Real", mengarang active/buzzer/story/kualitas, atau memberi kata Real/HQ pada sumber campuran/bot. Perubahan lewat manifest + `scripts/generate-pedia-copy-20261103.mjs`; migrasi 0093 sudah guard nama/deskripsi lama, jangan mengedit manual.
+- `Instant Start` hanya segmen nama dari sumber; jangan mengisinya ke `eta_start` (dibaca dari tier hidup oleh API order sehingga mengubah janji order lama) dan jangan mengarang rentang.
+- Kalimat refill: `Refill N hari [sejak pesanan dibuat|selesai], selama layanan masih tersedia.` memakai `refill_anchor` nyata; tanpa "dari/lewat AXVARA". Pembersihan teks historis hanya kosmetik, tanpa mengubah angka/anchor/kelayakan.
+- Tier 285 / svc 5834: konflik sumber (nama 30 hari vs deskripsi 90 hari) belum diputuskan; kontrak tetap 90 sampai owner memutuskan. Jangan memperpanjang 30→35 hari hanya karena nama sumber.
+
 ### Pedia IndoSMM 1 November 2026 (terkini)
 - ProviderSMM diputus: jangan menambah cek saldo/notif/penjualan ProviderSMM. Diff VPS ProviderSMM dibalas 200 `ignored`; order/snapshot lama tetap dibaca.
 - Istilah SMM keputusan owner tetap bahasa supplier (No Drop, Less Drop, High Drop, Refill N Days, Refill Lifetime, No Refill, Drop rate, Start time, Speed, Avg time, Success rate) dari `src/lib/pedia/terms.ts`; jangan menerjemahkan ke istilah Indonesia.
