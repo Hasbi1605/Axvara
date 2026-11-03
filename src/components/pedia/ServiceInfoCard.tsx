@@ -59,7 +59,7 @@ export function ServiceInfoCard({ t, productDescription, productName = "" }: { t
   return <section aria-label="Info layanan" className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3.5 py-3 text-[13px] leading-5 sm:px-5 sm:py-4">
     {/* Baris label–nilai ringkas: satu kolom di mobile, dua kolom di sm+ (owner 2026-11-03). */}
     <dl className="divide-y divide-white/[0.06] sm:grid sm:grid-cols-2 sm:gap-x-8 sm:divide-y-0">
-      {stats.map(([k, v]) => <div key={k} className="flex min-w-0 items-baseline justify-between gap-3 py-1 first:pt-0 sm:border-b sm:border-white/[0.06] sm:py-1.5 sm:first:pt-1.5"><dt className="shrink-0 text-[12px] text-white/50">{k}</dt><dd className="min-w-0 break-words text-right text-[13px] font-medium tabular-nums text-white sm:text-[14px]">{v}</dd></div>)}
+      {stats.map(([k, v]) => <div key={k} className="flex min-w-0 items-baseline justify-between gap-3 py-1 first:pt-0 sm:py-1.5 sm:first:pt-1.5"><dt className="shrink-0 text-[12px] text-white/50">{k}</dt><dd className="min-w-0 break-words text-right text-[13px] font-medium tabular-nums text-white sm:text-[14px]">{v}</dd></div>)}
     </dl>
     <p className="mt-1.5 text-[11px] leading-4 text-white/40 sm:mt-2">Estimasi; start time dan speed dapat berubah mengikuti antrean.</p>
     <div className="mt-3 border-t border-white/[0.06] pt-3 sm:mt-4 sm:pt-4">
