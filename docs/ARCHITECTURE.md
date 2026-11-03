@@ -1,5 +1,17 @@
 # ARCHITECTURE.md — AXVARA
 
+## Koreksi order Pedia - 3 November 2026
+
+Revert paket UX `1b0efde` sesuai keputusan owner, mempertahankan panel deskripsi
+`3820cbc` dan memadatkan layout-nya. Katalog kembali ke kontrak sebelumnya tanpa
+field `min_order_rp` atau perluasan kandidat `quick_quantities`; contoh jumlah
+berasal dari paket existing. `ServicePicker` kembali ke grup Refill/No Refill
+(tanpa Sorotan), dan `OrderClient` mengembalikan langkah ringkasan serta aturan
+waktu sebelumnya. `ServiceInfoCard` menyajikan label–nilai satu kolom mobile dan
+dua kolom mulai sm; Speed/Avg time tetap field terpisah. Tanpa route, schema,
+env, migrasi atau perubahan harga/pembayaran. Implementasi untuk publikasi CI;
+deployment belum diverifikasi.
+
 ## PDP varian dan komponen layanan bersama - 2 November 2026
 
 Implementasi lokal; deployment belum diverifikasi. `product-detail-client.tsx`
@@ -844,7 +856,7 @@ axvara/
 
 **Pedia working-tree 2026-10-12: implementasi lokal, BELUM deployed; tidak ada flag diubah.** Menggantikan spec overhaul 2026-10-11; riwayat QA/deploy lama bukan bukti diff ini live. Schema 0059 sudah memiliki identitas supplier gabungan/status submitting/featured, tidak ada migrasi baru untuk perubahan ini. Detail UI: `docs/PEDIA-DESIGN.md`; kontrak/gate: `docs/PEDIA-PRD.md` dan §16.10.
 
-- `GET /api/pedia/catalog` cache 60 detik, tanpa identitas/rate/nama/order supplier publik. Tier aktif wajib `providersmm|indosmm`, layanan `present=1`, tipe `Default`, rate positif dan min/max valid; harga finite positif, jumlah dalam batas/paket/step. Tier tanpa paket valid dan produk tanpa paket tersedia dihilangkan. Key bounds `(supplier,service_id)`; min/max boleh publik. Endpoint katalog memakai data D1 tersimpan, bukan live probe gate IndoSMM per request. Revisi 3 November 2026: setiap produk membawa `min_order_rp` (nilai `PEDIA_MIN_ORDER_RP`, default 1000) dan `quick_quantities` per tier = paket produk ∪ {100, 250, 500, 1000, 2500, 5000, 10000} yang valid (min/max/step produk + `quantity_step` tier), tier punya rate positif, dan `computePediaPrice` > `min_order_rp` (tidak terkena lantai pembayaran), urut naik. `prices` tersimpan/filter harga tidak berubah. Klien (`order-client`) memakai `min_order_rp` untuk catatan pembulatan minimum dan hanya menampilkan contoh jumlah sebelum layanan dipilih bila lolos di setiap tier yang menerimanya.
+- `GET /api/pedia/catalog` cache 60 detik, tanpa identitas/rate/nama/order supplier publik. Tier aktif wajib `providersmm|indosmm`, layanan `present=1`, tipe `Default`, rate positif dan min/max valid; harga finite positif, jumlah dalam batas/paket/step. Tier tanpa paket valid dan produk tanpa paket tersedia dihilangkan. Key bounds `(supplier,service_id)`; min/max boleh publik. Endpoint katalog memakai data D1 tersimpan, bukan live probe gate IndoSMM per request.
 - Server meneruskan seluruh katalog; client awal maks 8 featured atau fallback 6 Jelajahi layanan tanpa klaim laris. Cari/filter/Tampilkan semua menjangkau semua produk terbit. `catalogCard()` memasangkan harga/jumlah/tier/refill dari satu paket; tagline TIDAK dirender di kartu/detail sejak 2026-10-12 (hapus AI slop; field tetap di DB/admin). `description_md` adalah field katalog publik opsional (`string|null`), ditampilkan pada detail/order sebagai teks literal escaped dengan newline dipertahankan, bukan render Markdown/HTML; tidak ditambahi link-helper teknis. `ServicesMenu`/`CrossServicePromo` memakai `AXVARA_SERVICES` di site.ts; URL absolut, UTM promo, komunitas satu sumber. Kedua layout memakai satu `Footer` dengan newsletter dan bantuan kedua host; AppSwitcher dihapus, bukan disimpan. Revisi footer 2026-10-15 (implementasi; publikasi CI): navigasi Layanan AXVARA berasal dari `AXVARA_SERVICES`, tanpa kategori/tautan Semua produk/artikel dan tanpa fetch `/api/categories`. Ikon WhatsApp sesudah Facebook memakai SVG `currentColor` satu tone dengan sosial lainnya dan URL absolut `${SITE.webUrl}${waHubLink()}` (pesan default Halo AXVARA); teks chat/jam layanan dihapus. Pill Grup WA/Bot Order Telegram di bawah ikon memakai settings `whatsappGroupUrl` (fallback `WA_GROUP_HREF`)/`TG_BOT_HREF` dan aset brand lokal; bot tetap kanal Market. Navigasi layanan/bantuan dua kolom di mobile, empat kolom utama di desktop; form subscriber tetap same-origin.
 - `OrderClient` tier/jumlah awal null, radio native, paket-only; pergantian tier yang tak mendukung jumlah mereset quantity null. Satu CTA per viewport meminta quote (25 detik), lalu order (60 detik) jika total sama dan tanpa kredit. Total berubah atau input kredit menghentikan langkah sebelum order dan meminta Setujui & lanjut ke pembayaran. Perubahan input membatalkan quote/respons lama; quote server 30 menit, client refresh 29 menit sebelum percobaan pertama.
 - Ref in-flight mencegah klik ganda; percobaan order mengunci data. Ambigu/network/5xx serta 408/429 mempertahankan token/kontak untuk retry, 4xx lain membuka kunci/membuang quote. Ini pagar client, **bukan atomisitas penuh order/kredit/invoice**. Order tutup hanya pesan dekat CTA disabled, kontak/kredit/S&K tidak dirender, tanpa banner berulang di hero/judul.

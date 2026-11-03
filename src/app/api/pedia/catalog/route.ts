@@ -19,9 +19,6 @@ function commentRefQty(products: Record<string, unknown>[], t: Record<string, un
   return ok(10) ? 10 : ok(limits.min) ? limits.min : null;
 }
 
-// Jumlah bulat umum yang ikut jadi kandidat chip cepat selain paket produk.
-const QUICK_QUANTITY_EXTRAS = [100, 250, 500, 1000, 2500, 5000, 10000];
-
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
@@ -67,9 +64,7 @@ export type PediaCatalogTier = {
    *  per 1.000 komentar terlihat mahal, jadi kartu memakai harga nyata untuk
    *  10 komentar (atau minimum layanan). Rumus sama dengan quote. */
   price_ref?: { qty: number; price: number } | null;
-  /** Jumlah contoh untuk chip cepat UI (tetap tunduk min–max + step). Sejak
-   *  2026-11-03 hanya jumlah yang harganya di atas minimum pembayaran (tidak
-   *  dibulatkan ke lantai) dan tier punya rate positif. */
+  /** Jumlah contoh untuk chip cepat UI (tetap tunduk min–max + step). */
   quick_quantities?: number[];
 };
 
@@ -87,9 +82,6 @@ export type PediaCatalogProduct = {
   is_featured: number;
   tiers: PediaCatalogTier[];
   min_price: number | null;
-  /** Minimum pembayaran per order (PEDIA_MIN_ORDER_RP, default Rp1.000). UI memakainya
-   *  untuk menjelaskan total yang dibulatkan ke minimum (owner 2026-11-03). */
-  min_order_rp: number;
   /** Gambar kartu Axvara-style per platform (2026-10-15, permintaan owner):
    *  path R2 statis `/r2/products/pedia-platform-<platform>.webp`, bukan kolom
    *  DB — 8 platform berbagi 1 gambar yang sama (17 produk, 1 gambar per
@@ -166,8 +158,6 @@ async function readCatalog() {
   const { computePediaPrice } = await import("@/lib/pedia/pricing");
   const minOrderRp = Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000;
   const tiersByProduct = new Map<number, PediaCatalogTier[]>();
-  // Rate + markup per tier untuk menyaring chip jumlah yang terkena lantai minimum.
-  const tierPricing = new Map<number, { rate: number; markupPct: number; minProfitRp: number }>();
   for (const t of tiers) {
     if (!isPediaProvider(t.supplier)) continue;
     // INDO-POLICY-20: new catalog offers IndoSMM only; historical ProviderSMM
@@ -223,7 +213,6 @@ async function readCatalog() {
       quick_quantities: [],
     });
     tiersByProduct.set(Number(t.product_id), list);
-    tierPricing.set(Number(t.id), { rate: bound.rate, markupPct: Number(t.markup_pct) || 0, minProfitRp: Number(t.min_profit_rp) || 0 });
   }
   const out: PediaCatalogProduct[] = [];
   for (const p of products) {
@@ -238,14 +227,7 @@ async function readCatalog() {
       for (const k of Object.keys(t.prices)) {
         if (!allPackages.includes(Number(k)) || Number(k) % step !== 0) delete t.prices[k];
       }
-      // 2026-11-03 (owner): kandidat = paket produk + jumlah bulat umum; buang jumlah
-      // yang totalnya jatuh ke lantai minimum pembayaran (mis. 10 followers = Rp265 → Rp1.000).
-      const pricing = tierPricing.get(t.id);
-      t.quick_quantities = [...new Set([...allPackages, ...QUICK_QUANTITY_EXTRAS])]
-        .filter((qty) => qty >= (t.min_qty ?? 1) && qty <= (t.max_qty ?? qty) && qty % step === 0 && qty % (t.quantity_step ?? 1) === 0
-          && !!pricing && pricing.rate > 0
-          && computePediaPrice({ supplierRatePer1k: pricing.rate, quantity: qty, markupPct: pricing.markupPct, minProfitRp: pricing.minProfitRp, minOrderRp }) > minOrderRp)
-        .sort((a, b) => a - b);
+      t.quick_quantities = allPackages.filter((qty) => qty >= (t.min_qty ?? 1) && qty <= (t.max_qty ?? qty) && qty % step === 0 && qty % (t.quantity_step ?? 1) === 0);
     }
     // Layanan tanpa harga tersimpan valid TIDAK ditawarkan (keamanan harga);
     // rekomendasi kurasi lebih dulu, lalu peringkat lama, lalu id.
@@ -268,7 +250,6 @@ async function readCatalog() {
       is_featured: Number(p.is_featured) || 0,
       tiers: availableTiers,
       min_price: Number.isFinite(minPrice) ? minPrice : null,
-      min_order_rp: minOrderRp,
       image: platformCardImage(String(p.platform)),
     });
   }

@@ -64,6 +64,17 @@ dengan guard nama/deskripsi lama; order lama dan tier 285 tidak berubah. Katalog
 `refill_anchor`; chip `Instant Start` berasal dari nama layanan; halaman pesanan punya
 satu blok Refill. Detail: `docs/ARCHITECTURE.md` §16.10d dan `docs/PRD.md`.
 
+## Koreksi order Pedia - 3 November 2026
+
+Paket UX jumlah/Sorotan/waktu/ringkasan dibatalkan sesuai keputusan owner;
+kontrak katalog, pilihan jumlah dan daftar layanan kembali ke sebelumnya.
+Redesign panel deskripsi dipertahankan: panel netral, statistik label–nilai
+satu kolom mobile/dua kolom mulai sm, Refill/Drop bertumpuk di mobile, arti istilah
+fitur di disclosure. Padding dan jarak mobile dirapatkan. Penghapusan teks Harga
+acuan dan hitungan layanan di judul tetap berlaku. Implementasi untuk publikasi CI;
+deployment belum diverifikasi. Detail: `docs/PRD.md`, `docs/DESIGN.md` dan
+`docs/ARCHITECTURE.md`; tanpa perubahan harga server, env atau migrasi baru.
+
 ## Info layanan Pedia terpadu - 2 November 2026
 
 Implementasi lokal; deployment belum diverifikasi. Panel di bawah pilihan memuat

@@ -17,6 +17,20 @@ Tidak ada seller akun yang diubah. Integrasi live
 menunggu ledger/referensi stabil, batas modal, rekonsiliasi pending dan webhook
 terautentikasi serta pengujian development. Detail: `docs/agent-rules/digiflazz.md`.
 
+## Koreksi order Pedia - 3 November 2026
+
+Keputusan owner terbaru: batalkan paket UX jumlah/Sorotan/waktu/ringkasan
+(`1b0efde`), pertahankan redesign panel deskripsi (`3820cbc`) dan buat lebih
+compact di mobile. Pilihan jumlah kembali berbasis paket existing tanpa filter
+minimum tambahan atau catatan pembulatan baru; grup Sorotan dihapus, chip waktu
+kembali memakai aturan sebelumnya, Speed dan Avg time tetap terpisah, dan daftar
+langkah ringkasan kembali tampil. Redesign deskripsi tetap netral, statistik
+label–nilai satu kolom mobile/dua kolom mulai sm, Refill/Drop bertumpuk di mobile,
+serta arti istilah fitur di disclosure. Chip pill, warna drop, animasi dan banner
+existing tetap; penghapusan teks Harga acuan dan hitungan layanan pada judul
+(permintaan sebelumnya) dipertahankan. Implementasi untuk publikasi CI;
+deployment belum diverifikasi. Harga server dan minimum pembayaran tidak berubah.
+
 ## Copy layanan dan refill Pedia - 3 November 2026
 
 Implementasi lokal untuk publikasi CI; deployment belum diverifikasi. Bukti sumber
@@ -714,8 +728,6 @@ bulanan, Free memakai batas harian. Rincian biaya, batas kerja dan rollback:
 ## Penyederhanaan pilihan layanan Pedia — 22 Oktober 2026
 
 Revisi chip layanan Pedia 2 November 2026 (implementasi lokal untuk publikasi CI): chip informasi tetap netral, karena warna hanya untuk Refill (cyan), drop, dan success rate. Teks region/Start naik ke white/85, No Refill ke white/75. Indonesia memakai ikon pin lokasi, Global bola dunia. Tanpa data waktu, chip Start disembunyikan (tidak lagi "Start mengikuti antrean").
-
-Revisi UX order Pedia 3 November 2026 (implementasi lokal untuk publikasi CI; keputusan owner 3 November): (1) chip jumlah cepat tidak lagi menawarkan angka yang totalnya jatuh ke minimum pembayaran Rp1.000 — katalog menyaring per layanan paket produk + {100, 250, 500, 1000, 2500, 5000, 10000} yang valid (min/max/step) dan harganya di atas minimum; sebelum layanan dipilih hanya angka yang lolos di setiap layanan yang menerimanya (5 terkecil); bila total layanan terpilih sama dengan minimum padahal harga sebenarnya di bawahnya, muncul catatan "Total di bawah Rp1.000 dibulatkan ke minimum pembayaran Rp1.000." di bawah input jumlah. (2) Daftar layanan (>= 4 layanan yang bisa dipesan pada jumlah itu) diawali grup "Sorotan" dengan lencana emas kecil dari data nyata: Termurah, Refill terlama (hanya bila masa refill tidak seragam) dan Sukses tertinggi (>= 2 layanan ber-success rate dan nilai tertinggi >= 90%); seri dimenangkan yang lebih murah, satu layanan bisa membawa beberapa label, layanan sorotan tidak diulang di grup Refill/No Refill, urutan yang sama berlaku pada mode ringkas (3 teratas). (3) Info waktu tidak lagi kontradiktif: chip kartu memakai "Start …" dari eta_start (menyembunyikan chip Instant Start), atau Instant Start saja, atau speed_note; chip "Avg …" dihapus dari kartu; judul ringkasan memakai nama pendek tanpa "· Instant Start"; kartu info layanan menghilangkan baris dan istilah Speed bila avg_time ada (rata-rata terukur menang atas klaim speed). (4) Warna chip drop tidak diubah (No Drop hijau, Less Drop kuning, High Drop merah; usulan mengubahnya dibatalkan owner). (5) Daftar 3 langkah duplikat di ringkasan kosong dihapus; kalimat "Isi jumlah dan pilih layanan untuk melihat rincian pesananmu." dan stepper 4 langkah di atas tetap.
 
 Revisi judul daftar layanan Pedia 3 November 2026 (implementasi lokal untuk publikasi CI): hitungan hasil pindah ke baris judul secara redup — "Pilih layanan · 11 layanan", saat filter aktif "· 4 dari 11 layanan" diikuti Reset filter; "· harga untuk N" dan "Kembali ke pilihan" di baris yang sama. Filter Semua/Global/Indonesia/Refill/No Refill tetap di kanan judul (desktop) dan di bawah judul (mobile). Teks "Harga acuan ditampilkan per layanan…" dihapus. Menggantikan "Hitungan … dan Reset filter berada di atas daftar" (1 November) yang dulunya baris terpisah.
 
