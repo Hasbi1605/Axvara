@@ -5,8 +5,9 @@
 Implementasi lokal; deployment belum diverifikasi. Token, font, dan chip netral
 existing dipertahankan. Chip `Instant Start` (ikon petir lucide `Zap`, kelas chip
 netral yang sama) muncul di kartu layanan dan ringkasan bila nama layanan memuat
-segmen itu; tanpa `eta_start` ia menggantikan chip Start, dengan `eta_start` keduanya
-tampil. Nama layanan tampil tanpa segmen itu. Info layanan mengikuti kata kualitas dan
+segmen itu; chip waktu tidak ditampilkan meskipun `eta_start` atau fallback tersedia.
+Layanan tanpa Instant Start tetap menampilkan chip waktu yang tersedia. Nama layanan
+tampil tanpa segmen itu. Info layanan mengikuti kata kualitas dan
 keterangan pada nama (Real, Real Look, Real People, Real Human, HQ, Campuran, Akun
 berpostingan, Akun lama, Instant Start). Halaman pesanan memakai satu blok Refill
 bergaya kartu glass dengan satu tombol utama cyan; tombol nonaktif (opacity45) saat

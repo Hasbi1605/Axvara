@@ -21,9 +21,9 @@ export function shortServiceName(productName: string, _metric: string, t: PediaC
 const DROP_CHIP: Record<string, string> = { no_drop: "border-emerald-300/25 bg-emerald-300/10 text-emerald-200", less_drop: "border-amber-300/25 bg-amber-300/10 text-amber-200", high_drop: "border-red-300/30 bg-red-400/10 text-red-200" };
 export function ServiceChips({ t, eta = false, className = "", productName = "" }: { t: PediaCatalogTier; eta?: boolean; className?: string; productName?: string }) {
   // "Instant Start" datang dari nama layanan (fakta sumber); rentang tidak dikarang.
-  // Tanpa eta_start, chip ini menggantikan chip Start generik; dengan eta_start keduanya tampil.
+  // Chip Instant Start menggantikan chip waktu, tanpa mengubah data ETA.
   const instant = hasInstantStart(serviceDisplayName(productName, t));
-  const start = t.eta_start ? `Start ${t.eta_start}` : instant ? null : t.speed_note ? t.speed_note.replace(/^Mulai\b/i, "Start") : t.avg_time ? `Avg ${t.avg_time}` : null;
+  const start = instant ? null : t.eta_start ? `Start ${t.eta_start}` : t.speed_note ? t.speed_note.replace(/^Mulai\b/i, "Start") : t.avg_time ? `Avg ${t.avg_time}` : null;
   // 2026-11-02 (owner): chip informasi tetap netral (warna hanya untuk refill/drop/
   // sukses), teks dinaikkan agar terbaca; Indonesia memakai pin lokasi; tanpa
   // data waktu chip Start tidak ditampilkan.

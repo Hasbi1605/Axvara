@@ -43,7 +43,8 @@ tidak ada klaim "diperiksa ulang"). Tidak ada fitur, kolom, atau env baru.
   `… Real People/Real Human`. Sumber campuran/bot tidak lagi diberi kata Real/HQ.
   Tidak ada klaim active, buzzer, story, kualitas, atau "kelas/label Real".
 - `Instant Start` adalah segmen nama dari sumber (bukan kolom baru) dan tampil sebagai
-  chip. Snapshot order baru membekukannya lewat `service_copy.service_name`; order lama
+  chip, tanpa chip waktu tambahan meski ETA atau fallback tersedia; layanan tanpa
+  Instant Start tetap menampilkan chip waktu. Snapshot order baru membekukannya lewat `service_copy.service_name`; order lama
   tetap memakai nama lamanya. `eta_start` tidak diisi dan rentang tidak dikarang:
   baris Start time = `eta_start`, atau `Instant Start` dari nama, atau fallback lama.
   Start time, Speed, dan Avg time tetap terpisah.

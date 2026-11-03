@@ -28,14 +28,28 @@ describe("Instant Start", () => {
     expect(screen.getByText("Instant Start")).toBeTruthy();
     expect(screen.queryByText(/^Start /)).toBeNull();
   });
-  it("never invents a range: no eta_start → Instant Start only; with eta_start both facts appear", () => {
+  it("prioritizes Instant Start over all timing chips, preserving non-instant and eta=false behavior", () => {
     const { container, rerender } = render(<ServiceChips t={tier()} eta productName="x" />);
     expect(container.textContent).not.toMatch(/\d\s*[–-]\s*\d/);
     rerender(<ServiceChips t={tier({ eta_start: "0–1 jam" })} eta productName="x" />);
     expect(container.textContent).toContain("Instant Start");
-    expect(container.textContent).toContain("Start 0–1 jam");
-    rerender(<ServiceChips t={tier({ public_name: "Followers Global HQ", eta_start: null })} eta productName="x" />);
+    expect(container.textContent).not.toContain("Start 0–1 jam");
+    rerender(<ServiceChips t={tier({ speed_note: "Mulai 2 jam", avg_time: "3 jam" })} eta productName="x" />);
+    expect(container.textContent).not.toMatch(/Start 2 jam|Avg 3 jam/);
+    rerender(<ServiceChips t={tier({ avg_time: "3 jam" })} eta productName="x" />);
+    expect(container.textContent).not.toContain("Avg 3 jam");
+    rerender(<ServiceChips t={tier({ public_name: "Followers Global HQ", eta_start: "0–1 jam" })} eta productName="x" />);
     expect(container.textContent).not.toContain("Instant Start");
+    expect(container.textContent).toContain("Start 0–1 jam");
+    rerender(<ServiceChips t={tier({ public_name: "Followers Global HQ", speed_note: "Mulai 2 jam" })} eta productName="x" />);
+    expect(container.textContent).toContain("Start 2 jam");
+    rerender(<ServiceChips t={tier({ public_name: "Followers Global HQ", avg_time: "3 jam" })} eta productName="x" />);
+    expect(container.textContent).toContain("Avg 3 jam");
+    rerender(<ServiceChips t={tier({ public_name: "Followers Global HQ", eta_start: "0–1 jam" })} productName="x" />);
+    expect(container.textContent).not.toContain("Start 0–1 jam");
+    rerender(<ServiceChips t={tier({ eta_start: "0–1 jam" })} productName="x" />);
+    expect(container.textContent).toContain("Instant Start");
+    expect(container.textContent).not.toContain("Start 0–1 jam");
   });
   it("Start time row: eta_start, else Instant Start from the name, else the existing fallback; Speed/Avg stay separate", () => {
     const row = (t: PediaCatalogTier) => { const { container, unmount } = render(<ServiceInfoCard t={t} productName="x" />); const dd = [...container.querySelectorAll("dt")].find((n) => n.textContent === "Start time")!.nextElementSibling!.textContent; unmount(); return dd; };
