@@ -1418,6 +1418,13 @@ render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
     dari DB) tanpa order kedua; cron menyapu ≤2 invoice/run dalam budget.
     Semantik jujur: Telegram tidak memberi exactly-once untuk sendPhoto —
     retry dibatasi + dideduplikasi marker DB + guard double-tap order.
+    Sejak 2026-11-03 (insiden API Telegram lambat → 3 foto QRIS sama):
+    sendPhoto memakai timeout 25 detik; hasil AMBIGU (timeout/jaringan,
+    tanpa `error_code` Telegram) TIDAK dilempar/dikirim ulang — marker
+    ditandai sent dan satu teks cadangan berisi link QRIS yang sama
+    dikirim (`settleAmbiguousInvoiceSend`). Hanya penolakan pasti
+    Telegram (ada `error_code`) yang memakai retry di atas; berlaku juga
+    untuk Cek Pembayaran dan perpanjangan QRIS di `handlers/orders.ts`.
   - Handover manual dan agregasi (RR5-01/04/05/07/08):
     `fulfillmentLineMismatches` memeriksa item_index, product_id, variant_id,
     serta qty integer positif yang harus persis sama, termasuk qty berlebih.

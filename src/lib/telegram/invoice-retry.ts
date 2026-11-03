@@ -32,7 +32,7 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 
 import { isFutureIso } from "@/lib/expiry";
 import { execRun } from "@/lib/db";
-import { sendPhoto } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto } from "@/lib/telegram/api";
 import { invoiceMessage } from "@/lib/telegram/messages";
 import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 
@@ -77,6 +77,40 @@ function productLabel(itemsRaw: string): string {
   } catch {
     return "Pesanan";
   }
+}
+
+/**
+ * Hasil sendPhoto AMBIGU: timeout/jaringan tanpa error_code dari Telegram.
+ * Permintaan mungkin sudah diterima dan foto mendarat belakangan (insiden
+ * 2026-11-03: API Telegram lambat → kita menyerah di timeout → cron kirim
+ * ulang → pembeli menerima 3 foto QRIS yang sama). Hasil ambigu TIDAK
+ * boleh dikirim ulang; penolakan pasti Telegram (ada error_code) tetap
+ * memakai jalur retry lama.
+ */
+export function isAmbiguousSendResult(result: { ok: boolean; error_code?: number }): boolean {
+  return !result.ok && result.error_code == null;
+}
+
+/**
+ * Tutup pengiriman ambigu: tandai terkirim (cron berhenti mengirim ulang)
+ * lalu kirim satu teks cadangan berisi link QRIS yang sama agar pembeli
+ * tidak buntu bila foto benar-benar tidak sampai.
+ */
+export async function settleAmbiguousInvoiceSend(
+  chatId: number | string,
+  orderCode: string,
+  qrisUrl: string,
+  database: DatabaseAccess = createDatabaseAccess(),
+): Promise<void> {
+  await markInvoiceSent(orderCode, database);
+  const link = /^https:\/\//.test(qrisUrl) ? `\n\nBuka QRIS: ${qrisUrl}` : "";
+  await sendMessage({
+    chat_id: chatId,
+    text: `Koneksi Telegram sedang lambat. Foto QRIS pesanan <code>${orderCode}</code> mungkin muncul sebentar lagi; tagihannya tetap sama.${link}\n\nJangan buat pesanan baru. Tekan Cek Pembayaran setelah membayar.`,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    reply_markup: qrisInvoiceKeyboard(orderCode),
+  }).catch(() => {});
 }
 
 /** Tandai invoice belum terkirim (dipanggil SEBELUM sendPhoto pertama). */
@@ -134,7 +168,12 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
     }),
     parse_mode: "HTML",
     reply_markup: qrisInvoiceKeyboard(order.code),
-  }).catch(() => ({ ok: false as const, description: "send_threw" }));
+  }).catch(() => ({ ok: false as const, description: "send_threw", error_code: 0 }));
+  if (isAmbiguousSendResult(result)) {
+    // Jangan kirim ulang foto yang mungkin sudah mendarat (lihat helper).
+    await settleAmbiguousInvoiceSend(Number(order.telegram_chat_id), order.code, String(ledger.qris_url ?? ""), database);
+    return true;
+  }
   if (!result.ok) return false;
   await markInvoiceSent(orderCode, database);
   return true;

@@ -20,7 +20,7 @@ import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
 // 2026-09-25): hanya "Lunas — Telegram" yang masuk grup.
-import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
+import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { clearCart, type CartLine } from "@/lib/telegram/cart";
 import { cartLineLabel } from "./shared";
@@ -185,6 +185,12 @@ export async function createAndSendCartInvoice(
       parse_mode: "HTML",
       reply_markup: qrisInvoiceKeyboard(orderCode),
     });
+    if (isAmbiguousSendResult(cartPhoto)) {
+      // Timeout/jaringan: foto mungkin tetap mendarat — jangan lempar
+      // (redelivery/cron akan menggandakan QRIS). Tutup dengan teks cadangan.
+      await settleAmbiguousInvoiceSend(chatId, orderCode, invoiceResult.qrisUrl);
+      return;
+    }
     if (isCriticalSendResult(cartPhoto, "transactional")) {
       throw new Error(`telegram_invoice_send_failed:${cartPhoto.description || "unknown"}`);
     }

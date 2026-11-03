@@ -76,11 +76,11 @@ it("sold-out variant uses a red cross and one modal alert without starting a pur
 });
 
 describe("RR3-05 failed invoice photo is durably retried without a second order", () => {
-  it("cart checkout: first photo timeout, provider recovers, retry sends the same invoice", async () => {
+  it("cart checkout: first photo rejected, provider recovers, retry sends the same invoice", async () => {
     await insertTestProduct(fixture.sql, "shared", 1);
     fixture.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('777',1,1,1)").run();
     const { POST } = await import("@/app/api/telegram/webhook/route");
-    PHOTO.mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
+    PHOTO.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" } as never);
     const first = await POST(webhook({
       update_id: 77701,
       callback_query: { id: "cb777", from: { id: 777, first_name: "Dummy" }, message: { message_id: 77, chat: { id: 777, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
@@ -117,7 +117,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
   it("direct variant checkout: failed photo retried for the same order", async () => {
     await insertTestProduct(fixture.sql, "shared", 1);
     const { POST } = await import("@/app/api/telegram/webhook/route");
-    PHOTO.mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
+    PHOTO.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" } as never);
     const first = await POST(webhook({
       update_id: 77801,
       callback_query: { id: "pay-1", from: { id: 778, first_name: "Dummy" }, message: { message_id: 78, chat: { id: 778, type: "private" } }, data: `pay:1:1:1:${await approvalTag()}` },
@@ -135,7 +135,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
   it("cron sweeps a pending invoice via the operations entrypoint (durable recovery)", async () => {
     await insertTestProduct(fixture.sql, "shared", 1);
     const { POST } = await import("@/app/api/telegram/webhook/route");
-    PHOTO.mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
+    PHOTO.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" } as never);
     const first = await POST(webhook({
       update_id: 77901,
       callback_query: { id: "cb779", from: { id: 779, first_name: "Dummy" }, message: { message_id: 79, chat: { id: 779, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
@@ -147,7 +147,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
     // langsung agar sapuan cron terbukti pada entrypoint yang benar.
     if (codes.length === 0) {
       fixture.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES('779',1,1,1)").run();
-      PHOTO.mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
+      PHOTO.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" } as never);
       await POST(webhook({
         update_id: 77902,
         callback_query: { id: "cb779b", from: { id: 779, first_name: "Dummy" }, message: { message_id: 79, chat: { id: 779, type: "private" } }, data: `cconfirm:${await approvalTag()}` },
@@ -174,6 +174,35 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
     expect(swept).toBe(true);
     expect(PHOTO).toHaveBeenCalled();
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);
+    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions").get()?.n).toBe(1);
+  });
+
+  it("ambiguous photo timeout is never resent (incident 2026-11-03: three duplicate QRIS)", async () => {
+    await insertTestProduct(fixture.sql, "shared", 1);
+    const { POST } = await import("@/app/api/telegram/webhook/route");
+    PHOTO.mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
+    const first = await POST(webhook({
+      update_id: 78101,
+      callback_query: { id: "pay-amb", from: { id: 781, first_name: "Dummy" }, message: { message_id: 81, chat: { id: 781, type: "private" } }, data: `pay:1:1:1:${await approvalTag()}` },
+    }));
+    // Tidak dilempar: tidak ada redelivery Telegram yang menggandakan foto.
+    expect(first.status).toBe(200);
+    const orders = fixture.sql.prepare("SELECT code, telegram_invoice_sent_at FROM orders").all();
+    expect(orders).toHaveLength(1);
+    const code = String(orders[0].code);
+    expect(orders[0].telegram_invoice_sent_at).not.toBeNull();
+    expect(PHOTO).toHaveBeenCalledTimes(1);
+    // Satu teks cadangan berisi link QRIS yang sama, tanpa pesan error generik.
+    const texts = SEND.mock.calls.map((c) => String((c as unknown as [{ text: string }])[0]?.text ?? ""));
+    const fallback = texts.filter((t) => t.includes("Koneksi Telegram sedang lambat"));
+    expect(fallback).toHaveLength(1);
+    expect(fallback[0]).toContain(`/api/payments/qris/${code}/image`);
+    expect(texts.some((t) => t.includes("Tagihan belum bisa dikonfirmasi"))).toBe(false);
+    // Cron dan retry manual tidak mengirim foto kedua.
+    expect((await cron()).status).toBe(200);
+    const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
+    expect(await retryTelegramInvoiceDelivery(code)).toBe(true);
+    expect(PHOTO).toHaveBeenCalledTimes(1);
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions").get()?.n).toBe(1);
   });
 });

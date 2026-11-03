@@ -54,8 +54,13 @@ export async function sendMessage(params: SendMessageParams): Promise<TelegramAp
   return callApi<TelegramMessage>("sendMessage", params as unknown as Record<string, unknown>);
 }
 
+// Telegram harus mengambil URL foto lalu mengunggahnya; saat API lambat
+// (insiden 2026-11-03) 10 detik terlalu pendek dan foto tetap terkirim
+// SETELAH kita menyerah. Beri waktu lebih panjang khusus sendPhoto.
+const SEND_PHOTO_TIMEOUT_MS = 25_000;
+
 export async function sendPhoto(params: SendPhotoParams): Promise<TelegramApiResponse> {
-  return callApi("sendPhoto", params as unknown as Record<string, unknown>);
+  return callApi("sendPhoto", params as unknown as Record<string, unknown>, SEND_PHOTO_TIMEOUT_MS);
 }
 
 export async function editMessageText(params: EditMessageTextParams): Promise<TelegramApiResponse> {

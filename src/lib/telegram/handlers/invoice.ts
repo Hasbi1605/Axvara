@@ -27,7 +27,7 @@ import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // 2026-09-25): grup Axvara_Notif hanya menerima "Lunas — Telegram" saat order
 // lunas (notifyTelegramPaidAdmin via jalur paid). Order yang tidak jadi bayar
 // tidak membunyikan grup.
-import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
+import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { clampQty, clearPendingAction } from "./shared";
 import { handleShowQty } from "./catalog";
@@ -301,6 +301,12 @@ export async function createAndSendVariantInvoice(
       parse_mode: "HTML",
       reply_markup: qrisInvoiceKeyboard(orderCode),
     });
+    if (isAmbiguousSendResult(variantPhoto)) {
+      // Timeout/jaringan: foto mungkin tetap mendarat — jangan lempar
+      // (redelivery/cron akan menggandakan QRIS). Tutup dengan teks cadangan.
+      await settleAmbiguousInvoiceSend(chatId, orderCode, invoiceResult.qrisUrl);
+      return;
+    }
     if (isCriticalSendResult(variantPhoto, "transactional")) {
       throw new Error(`telegram_invoice_send_failed:${variantPhoto.description || "unknown"}`);
     }

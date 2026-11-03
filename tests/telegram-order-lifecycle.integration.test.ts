@@ -186,7 +186,7 @@ describe("Telegram owned status and refresh", () => {
       } });
     });
     vi.stubGlobal("fetch", get);
-    api.photo.mockResolvedValueOnce({ ok: false });
+    api.photo.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" });
     await handleOrderRefresh(buyer, 1, code);
     expect(ledger().status).toBe("pending");
     expect(order().telegram_invoice_sent_at).toBeNull();

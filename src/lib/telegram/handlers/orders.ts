@@ -8,7 +8,7 @@ import {
 } from "@/lib/telegram/messages";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
-import { markInvoicePending, markInvoiceSent } from "@/lib/telegram/invoice-retry";
+import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
 
 function orderItemsSummary(raw: unknown): string {
   try {
@@ -132,7 +132,9 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
         parse_mode: "HTML",
         reply_markup: qrisInvoiceKeyboard(orderCode),
       });
-      if (!photo.ok) throw new Error("telegram_invoice_send_failed");
+      // Timeout/jaringan = foto mungkin tetap mendarat; tandai terkirim
+      // agar Cek Pembayaran/cron tidak menggandakan QRIS.
+      if (!photo.ok && !isAmbiguousSendResult(photo)) throw new Error("telegram_invoice_send_failed");
       await markInvoiceSent(orderCode);
     } catch { invoiceFailed = true; }
   }
@@ -226,6 +228,10 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
     parse_mode: "HTML",
     reply_markup: qrisInvoiceKeyboard(orderCode),
   });
+  if (isAmbiguousSendResult(photo)) {
+    await settleAmbiguousInvoiceSend(chatId, orderCode, result.invoice.qrisUrl);
+    return;
+  }
   if (isCriticalSendResult(photo, "transactional")) {
     // Ledger sudah diperbarui; foto gagal = lempar agar Telegram redelivery
     // dan cron menyapu invoice pending lewat jalur retry yang sudah ada.
