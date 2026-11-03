@@ -61,6 +61,9 @@ async function getQuote() {
   await screen.findAllByText(/Total pembayaran/);
 }
 
+// Mode compact (mobile) membungkus label penuh dalam span `max-sm:sr-only`; warna ada di chip.
+const chipOf = (el: HTMLElement) => (el.classList.contains("max-sm:sr-only") ? el.parentElement! : el);
+
 describe("Pedia order UX", () => {
   it("announces price failure and retries without resetting quantity or service", () => {
     const retry = vi.fn();
@@ -124,7 +127,7 @@ describe("Pedia order UX", () => {
     expect(document.body.textContent).not.toContain("Isi jumlah dulu");
     expect(document.body.textContent).toContain("Pilih layanan untuk melihat batas jumlah per pesanan.");
     // 2026-11-01 (owner): istilah SMM dipertahankan.
-    expect(screen.getByText("Refill 30 Days").className).toContain("text-[#00E5FF]");
+    expect(chipOf(screen.getByText("Refill 30 Days")).className).toContain("text-[#00E5FF]");
     expect(screen.getByText("No Refill", { selector: "span" }).className).toContain("text-white/75");
     expect(screen.queryByRole("button", { name: "Periksa harga" })).toBeNull();
     proceed();
@@ -444,7 +447,7 @@ describe("Pedia configurator", () => {
     expect(screen.getAllByRole("radio", { name: /^Followers Global Real(?! ·)/ })).toHaveLength(2);
     expect(text).not.toContain("Followers Indonesia Real · Refill 30 Days");
     expect(text).not.toContain("· Less Drop");
-    expect(screen.getByText("97% sukses").className).toContain("text-emerald-200");
+    expect(chipOf(screen.getByText("97% sukses")).className).toContain("text-emerald-200");
     expect(text).toContain("Avg 1 jam 42 menit");
     const info = screen.getByTestId("inline-info");
     expect(info.textContent).toBe("info 12");
@@ -461,7 +464,7 @@ describe("Pedia configurator", () => {
     expect(indo.querySelector("svg")!.getAttribute("class")).toContain("lucide-map-pin");
     expect(glob.querySelector("svg")!.getAttribute("class")).toMatch(/lucide-(globe|earth)/);
     expect(indo.className).toContain("text-white/85");
-    expect(screen.getByText("Start 0–2 jam", { selector: "span" }).className).toContain("text-white/85");
+    expect(chipOf(screen.getByText("Start 0–2 jam", { selector: "span" })).className).toContain("text-white/85");
   });
 
   it("shows the real price for 10 comments instead of a per-1.000 price on comment services", () => {

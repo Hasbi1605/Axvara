@@ -20,6 +20,26 @@ const tier = (over: Partial<PediaCatalogTier> = {}): PediaCatalogTier => ({
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+describe("ServiceChips compact (mobile <sm)", () => {
+  it("shortens labels on mobile only, keeps full labels for desktop/screen readers, hides region already in the name", () => {
+    const { container } = render(<ServiceChips t={tier({ success_pct: 100, drop_label: "less_drop" } as Partial<PediaCatalogTier>)} eta compact productName="x" />);
+    const mobile = [...container.querySelectorAll("span[aria-hidden='true'].sm\\:hidden")].map((n) => n.textContent);
+    expect(mobile).toEqual(["Refill 365D", "Instant", "100%"]);
+    for (const full of ["Refill 365 Days", "Instant Start", "100% sukses"]) expect(screen.getByText(full).className).toBe("max-sm:sr-only");
+    expect(screen.getByText("Global").closest("span")!.className).toContain("max-sm:hidden");
+  });
+  it("keeps region chip when the name lacks it, shortens Avg/Start times, and leaves non-compact output unchanged", () => {
+    const { container, rerender } = render(<ServiceChips t={tier({ public_name: "Followers Real", avg_time: "1 jam 25 menit" })} eta compact productName="x" />);
+    expect(screen.getByText("Global").closest("span")!.className).not.toContain("max-sm:hidden");
+    expect(container.textContent).toContain("±1j 25m");
+    rerender(<ServiceChips t={tier({ public_name: "Followers Real", eta_start: "0–12 jam" })} eta compact productName="x" />);
+    expect(container.textContent).toContain("Start 0–12j");
+    rerender(<ServiceChips t={tier({ public_name: "Followers Real", eta_start: "0–12 jam" })} eta productName="x" />);
+    expect(container.querySelector(".sm\\:hidden")).toBeNull();
+    expect(container.textContent).not.toContain("0–12j");
+  });
+});
+
 describe("Instant Start", () => {
   it("lifts the name segment into a chip and strips it from the display name", () => {
     const t = tier();

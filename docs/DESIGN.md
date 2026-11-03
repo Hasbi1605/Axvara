@@ -1,5 +1,18 @@
 # DESIGN.md — AXVARA Design System
 
+## Chip layanan Pedia mobile - 3 November 2026
+
+Implementasi lokal; publikasi lewat CI, deployment belum diverifikasi. Keputusan
+owner: chip desktop (sm, 640px ke atas) tidak berubah. Di bawah 640px, daftar
+layanan (`ServicePicker`, prop `compact` pada `ServiceChips`) dibuat ringkas agar
+chip muat satu baris: chip wilayah disembunyikan bila nama layanan sudah memuat
+Global/Indonesia, label dipersingkat (`Refill 365 Days` jadi `Refill 365D`,
+`Instant Start` jadi `Instant`, `Avg 1 jam 25 menit` jadi `±1j 25m`, `Start 0–2 jam`
+jadi `Start 0–2j`, `100% sukses` jadi ikon centang + `100%`), dan baris chip mulai
+dari tepi kiri kartu (di bawah radio). Label penuh tetap tersedia untuk pembaca layar
+(`max-sm:sr-only`). Bila masih kepanjangan, chip tetap turun baris (tanpa dipotong).
+Ringkasan pesanan tetap memakai label penuh.
+
 ## Copy layanan Pedia - 3 November 2026
 
 Implementasi lokal; deployment belum diverifikasi. Token, font, dan chip netral

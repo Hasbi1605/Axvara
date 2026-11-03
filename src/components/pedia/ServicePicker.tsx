@@ -19,7 +19,16 @@ export function shortServiceName(productName: string, _metric: string, t: PediaC
 }
 // 2026-11-01 (owner): istilah SMM dipertahankan (Refill 30 Days, No Refill, No Drop, …).
 const DROP_CHIP: Record<string, string> = { no_drop: "border-emerald-300/25 bg-emerald-300/10 text-emerald-200", less_drop: "border-amber-300/25 bg-amber-300/10 text-amber-200", high_drop: "border-red-300/30 bg-red-400/10 text-red-200" };
-export function ServiceChips({ t, eta = false, className = "", productName = "" }: { t: PediaCatalogTier; eta?: boolean; className?: string; productName?: string }) {
+// 2026-11-03 (owner): di mobile (<sm) daftar layanan terasa bertumpuk. Mode
+// `compact` hanya mengubah tampilan <640px: chip region disembunyikan bila nama
+// sudah memuat wilayahnya, label dipersingkat (Refill 365D, Instant, ±1j 25m,
+// 100%) agar muat satu baris. Desktop tetap label penuh.
+const shortTime = (s: string) => s.replace(/^Avg\s+/i, "±").replace(/\s*jam\b/gi, "j").replace(/\s*menit\b/gi, "m").replace(/\s*hari\b/gi, "h");
+function Label({ full, short, compact }: { full: string; short: string; compact: boolean }) {
+  if (!compact || full === short) return <>{full}</>;
+  return <><span aria-hidden="true" className="sm:hidden">{short}</span><span className="max-sm:sr-only">{full}</span></>;
+}
+export function ServiceChips({ t, eta = false, className = "", productName = "", compact = false }: { t: PediaCatalogTier; eta?: boolean; className?: string; productName?: string; compact?: boolean }) {
   // "Instant Start" datang dari nama layanan (fakta sumber); rentang tidak dikarang.
   // Chip Instant Start menggantikan chip waktu, tanpa mengubah data ETA.
   const instant = hasInstantStart(serviceDisplayName(productName, t));
@@ -30,13 +39,16 @@ export function ServiceChips({ t, eta = false, className = "", productName = "" 
   const RegionIcon = t.region === "indonesia" ? MapPin : Globe2;
   const chip = "inline-flex min-h-5 items-center gap-1 rounded-full border border-white/10 bg-white/[0.05] px-1.5 text-[11px] leading-4";
   const drop = t.drop_label && t.drop_label !== "unknown" ? t.drop_label : null;
+  const region = REGION_LABEL[t.region ?? "global"];
+  const regionInName = compact && new RegExp(`\\b${region}\\b`, "i").test(serviceDisplayName(productName, t));
+  const refill = refillLabel(t.refill_days);
   return <span className={`flex flex-wrap gap-1 ${className}`}>
-    <span className={`${chip} text-white/85`}><RegionIcon size={11} aria-hidden="true" />{REGION_LABEL[t.region ?? "global"]}</span>
-    <span className={`${chip} ${t.refill_days > 0 ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]" : "text-white/75"}`}><ShieldCheck size={11} aria-hidden="true" />{refillLabel(t.refill_days)}</span>
+    <span className={`${chip} text-white/85 ${regionInName ? "max-sm:hidden" : ""}`}><RegionIcon size={11} aria-hidden="true" />{region}</span>
+    <span className={`${chip} ${t.refill_days > 0 ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]" : "text-white/75"}`}><ShieldCheck size={11} aria-hidden="true" /><Label compact={compact} full={refill} short={refill.replace(/^Refill (\d+) Days$/, "Refill $1D")} /></span>
     {drop && <span className={`${chip} ${DROP_CHIP[drop]}`}>{DROP_LABEL[drop]}</span>}
-    {instant && <span className={`${chip} text-white/85`}><Zap size={11} aria-hidden="true" />Instant Start</span>}
-    {eta && start && <span className={`${chip} text-white/85`}><Clock size={11} aria-hidden="true" />{start}</span>}
-    {t.success_pct != null && <span className={`${chip} ${t.success_pct >= 95 ? "text-emerald-200" : t.success_pct >= 85 ? "text-amber-200" : "text-red-200"}`}>{Math.round(t.success_pct)}% sukses</span>}
+    {instant && <span className={`${chip} text-white/85`}><Zap size={11} aria-hidden="true" /><Label compact={compact} full="Instant Start" short="Instant" /></span>}
+    {eta && start && <span className={`${chip} text-white/85`}><Clock size={11} aria-hidden="true" /><Label compact={compact} full={start} short={shortTime(start)} /></span>}
+    {t.success_pct != null && <span className={`${chip} ${t.success_pct >= 95 ? "text-emerald-200" : t.success_pct >= 85 ? "text-amber-200" : "text-red-200"}`}>{compact && <Check size={11} aria-hidden="true" className="sm:hidden" />}<Label compact={compact} full={`${Math.round(t.success_pct)}% sukses`} short={`${Math.round(t.success_pct)}%`} /></span>}
   </span>;
 }
 
@@ -127,7 +139,7 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
           <span aria-hidden="true" className={`row-start-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${selected ? "border-[#00E5FF] bg-[#00E5FF] text-[#080C1E]" : "border-white/40"}`}>{selected && <Check size={12} strokeWidth={3} />}</span>
           <span className="contents sm:flex sm:min-w-0 sm:flex-1 sm:flex-col sm:gap-1.5">
             <span className="col-start-2 block break-words text-[13px] font-semibold leading-[1.3] tracking-[-0.01em] text-white sm:text-sm"><span className="align-middle">{name}</span>{selected && <span className="sr-only"> (Dipilih)</span>}</span>
-            <ServiceChips t={t} eta productName={product.name} className="col-span-2 col-start-2" />
+            <ServiceChips t={t} eta compact productName={product.name} className="col-span-3 col-start-1" />
             {reason && <span id={`pedia-tier-${t.id}-reason`} className="col-span-2 col-start-2 text-xs leading-5 text-amber-200">{qty?.toLocaleString("id-ID")} tidak tersedia di sini: {reason.toLowerCase()}.</span>}
           </span>
           <span className="col-start-3 row-start-1 max-w-36 shrink-0 text-right">
