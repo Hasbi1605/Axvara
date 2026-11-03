@@ -1,5 +1,24 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Persiapan Digiflazz buyer - 2 November 2026
+
+Preflight lokal baca-saja: `node scripts/digiflazz-preflight.mjs --init` membuat
+JSON `.digiflazz-credentials` privat600/git-ignored tanpa overwrite. Isi username
+dan Development Key dari dashboard di editor lokal, lalu jalankan
+`node scripts/digiflazz-preflight.mjs --check`; `--check --production` hanya jika
+sengaja memakai Production Key. Key tidak dimasukkan chat/log/argv atau dikirim ke
+VPS. CLI mengambil saldo/katalog lewat SSH VPS ber-IP tetap, tanpa order/deposit/
+restart atau perubahan proxy. Egress langsung teramati `13.228.147.90` pada
+2November; cek Development berhasil (saldo0, 73 produk akun, 9 Games), sedangkan
+Production HTTP400 pada `cek-saldo`. Laporan kini mencakup semua SKU kategori Games tanpa
+batas50, bukan hanya ML/FF, termasuk seller/deskripsi. Kredensial terisi privat;
+snapshot minimum harga publik 4.380 produk/150brand tersimpan lokal git-ignored
+`.digiflazz-catalog-public-20261102.json`. Ini bukan pilihan seller akun;
+mengganti/menambah seller memerlukan sesi dashboard login, bukan API key saja.
+Webhook/checkout topup belum tersedia dan jangan diaktifkan; tidak ada env Pages
+baru. Pengaturan dashboard, reminder saldo, pemilihan seller dan batas tahap
+berikutnya: [runbook Digiflazz](docs/agent-rules/digiflazz.md), ARCHITECTURE §16.14.
+
 ## WR Jaspay - 2 November 2026
 
 Proxy VPS sudah dirilis dan terverifikasi health/hash; implementasi/verifikasi

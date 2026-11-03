@@ -3891,3 +3891,32 @@ library/WhatsApp dan bukti QA: issue/whatsapp-sales-notifications-2026-10-24.md.
 - Rollout hanya CI main: migrasi0077 lalu gateway dan Pages; tidak mengirim siaran
   uji produksi atau mengubah sesi/koneksi saat QA. Rollback wajib kompatibel runtime
   nomor/revisi serta ledger; pertahankan tabel/snapshot/token/outbox.
+
+### 16.14 Digiflazz buyer - preflight lokal, 2 November 2026
+
+`scripts/digiflazz-preflight.mjs` adalah alat Node stdlib, bukan runtime Pages.
+`--init` membuat JSON `.digiflazz-credentials` privat600/git-ignored (exclusive
+create; username/key kosong + webhook secret acak32byte). `--check` memakai
+Development Key; Production Key hanya dengan `--check --production`. Signature
+MD5 dibuat lokal, hanya username/signature terbatas dikirim lewat stdin SSH ke
+`ec2-user@13.228.147.90`, key existing `~/.ssh/axvara-sg-proxy.pem`; key supplier
+tidak dikirim/disimpan di VPS atau argv. Tidak ada env Pages baru.
+
+Node remote sementara hanya POST `/v1/cek-saldo` dan `/v1/price-list` pada host
+HTTPS Digiflazz tetap, tanpa redirect/retry/write transaksi. Timeout15detik dan
+respons1MiB per request, SSH40detik. Laporan saldo + seluruh SKU kategori Games
+(tanpa batas50, mencakup seller/deskripsi) tidak menulis D1, tidak menghitung
+availability/region atau mengimpor katalog. Error HTTP hanya mengekspos status
+dan endpoint allowlist, tanpa body upstream.
+Snapshot SSH2November: Node20.20.2, service active, health200/staticProxyfalse,
+egress langsung13.228.147.90. Cek API Development berikutnya lulus: saldo0,
+73 produk akun, 9 Games dari2brand; Production HTTP400 pada `cek-saldo`. Snapshot publik
+4.380 produk/150brand disimpan lokal git-ignored `.digiflazz-catalog*`, bukan impor
+runtime/konfigurasi seller. Pemilihan seller menunggu sesi dashboard terautentikasi.
+
+Tidak mengubah proxy WR/SK, service VPS, schema/order/checkout, cron, route webhook
+atau produk publik. Webhook jangan diaktifkan sebelum penerima dengan verifikasi
+HMAC-SHA1 body mentah + korelasi transaksi durable tersedia. Test fixture mencakup
+signature, mode, privasi file/secret, allowlist, HTTP/error/ukuran respons dan
+program remote offline; bukan transaksi supplier development/live. Runbook dan
+gerbang integrasi berikutnya: `docs/agent-rules/digiflazz.md`.

@@ -16,6 +16,7 @@ hanya file yang relevan dengan tugas, dan semuanya bila tugas lintas area.
 | Bila menyentuh… | Baca |
 |---|---|
 | WR (Akun Premium/Jaspay), SK, proxy VPS WR/SK, dispatch/receipt/rekonsiliasi supplier | `docs/agent-rules/supplier-wr-sk.md` |
+| Digiflazz, whitelist buyer, kredensial dan preflight saldo/katalog | `docs/agent-rules/digiflazz.md` |
 | Kredensial pembeli, PIN, proof c1/p1, lacak order, email kredensial, reveal admin | `docs/agent-rules/buyer-credentials.md` |
 | Login/admin, Cloudflare Access, audit, rate limit, body limit, dependency gate CI, anti-abuse checkout | `docs/agent-rules/admin-security.md` |
 | QRIS GoPay/KlikQRIS/DANA, poller VPS GoPay, callback pembayaran, maintenance pembayaran | `docs/agent-rules/payments.md` |

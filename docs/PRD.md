@@ -1,5 +1,22 @@
 # PRD — AXVARA
 
+## Persiapan buyer Digiflazz - 2 November 2026
+
+PKS clear menurut owner; belum berarti produk topup AXVARA siap dijual.
+Tahap ini hanya alat lokal cek saldo/katalog melalui VPS ber-IP tetap, berkas
+kredensial privat dan handoff pengaturan buyer. Owner mengisi whitelist/OTP/key,
+memilih produk/seller sesuai region dan reminder saldo. Tidak ada perubahan
+checkout/pembayaran, produk publik, dispatch, webhook, deposit atau transaksi
+supplier. Update owner: seluruh kategori Games, bukan hanya ML/FF; cek Development
+berhasil (saldo0, 73 produk akun, 9 Games), sedangkan Production HTTP400 pada
+`cek-saldo` (penyebab belum dipastikan).
+Snapshot publik 4.380 produk/150brand bukan konfigurasi seller akun; pilihan
+seller termurah/reputasi baik menunggu sesi dashboard login dan data pembanding
+aktual. API buyer tidak mendokumentasikan ranking favorit/perbandingan seller.
+Tidak ada seller akun yang diubah. Integrasi live
+menunggu ledger/referensi stabil, batas modal, rekonsiliasi pending dan webhook
+terautentikasi serta pengujian development. Detail: `docs/agent-rules/digiflazz.md`.
+
 ## Status aktual Pedia vs serah terima Market - 2 November 2026
 
 Implementasi lokal (backend + UI); publikasi melalui CI, deployment belum
