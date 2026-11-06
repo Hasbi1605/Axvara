@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
 import { assertOrderAccessConfigured, buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
-import { verifyCheckoutQuoteToken } from "@/lib/auth";
+import { requireAdmin, verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createDanaQrisInvoice, createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
@@ -15,7 +15,7 @@ import { readJsonBody } from "@/lib/http-body";
 import { cryptoRailEnabled, cryptoTickerOfMethodId, isCryptoTotalStillPayable, isFxSnapshotAcceptable } from "@/lib/payments/crypto-preflight";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { CRYPTO_MIN_TOTAL_USD_CENTS, CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
-import { isNowpaymentsConfigured } from "@/lib/payments/rails";
+import { isNowpaymentsConfigured, isPaymentAdminTestEnabled } from "@/lib/payments/rails";
 import type { NowpaymentsUsdExpected } from "@/lib/payments/nowpayments";
 
 export const runtime = "edge";
@@ -136,6 +136,8 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
 // rule, counting IP) tetap menjadi lapis pertama; ini lapis kedua per isolate.
 
 export async function POST(req: NextRequest) {
+  const adminTest = req.nextUrl.pathname === "/api/admin/payments/test/orders";
+  if (adminTest && !await requireAdmin(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (isPaymentMaintenanceEnabled()) return paymentMaintenanceResponse();
   if (!checkRateLimit(req, "checkout:orders")) return NextResponse.json({ error: "Terlalu banyak percobaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
 
@@ -175,6 +177,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout." }, { status: 409 });
   }
 
+  // A leaked test quote cannot be replayed without a current admin session,
+  // even for saved-order retries. Public quotes cannot be upgraded to tests.
+  if (Boolean(quote.admin_payment_test) !== adminTest) return NextResponse.json({ error: "Quote tidak cocok dengan mode checkout." }, { status: 403 });
+
   const slugs = [...new Set(items.flatMap((item) => item.slug ? [item.slug] : []))];
   const slugRows = slugs.length ? await queryAll(`SELECT id,slug FROM products WHERE slug IN (${slugs.map(() => "?").join(",")})`, ...slugs) : [];
   const slugIds = new Map(slugRows.map((row) => [String(row.slug), Number(row.id)]));
@@ -190,6 +196,7 @@ export async function POST(req: NextRequest) {
 
   const previous = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
   if (previous) return existingCheckoutResponse(previous);
+  if (adminTest && !isPaymentAdminTestEnabled()) return NextResponse.json({ error: "Tes pembayaran nonaktif." }, { status: 503 });
 
   // Guard email lapis kedua (migrasi 0033 + revamp 2026-09-23): zod di atas
   // SUDAH mewajibkan email valid untuk semua order web, jadi blok ini kini
@@ -393,7 +400,7 @@ export async function POST(req: NextRequest) {
       // minimum terbaru x 1,15. Retry quote yang sama (sameConfigQuote) memakai binding tersimpan tanpa gate ulang.
       const market = await getCryptoMarketSnapshot();
       const current = market.fx;
-      const liveOk = isNowpaymentsConfigured() && cryptoRailEnabled() && current !== null;
+      const liveOk = isNowpaymentsConfigured(adminTest) && cryptoRailEnabled() && current !== null;
       if (!liveOk) {
         return NextResponse.json({ error: "Pembayaran crypto sedang tidak tersedia. Muat ulang checkout." }, { status: 503 });
       }
@@ -422,9 +429,9 @@ export async function POST(req: NextRequest) {
   } else if (isGatewayMethod) {
     if (selected.kind !== "gateway" || !selected.gateway || selected.currency !== "IDR") return NextResponse.json({ error: "Metode pembayaran berubah." }, { status: 409 });
     const { isSekalipayGatewayConfigured } = await import("@/lib/payments/rails");
-    if (!isSekalipayGatewayConfigured()) return NextResponse.json({ error: "Metode pembayaran tidak tersedia." }, { status: 503 });
+    if (!isSekalipayGatewayConfigured(adminTest)) return NextResponse.json({ error: "Metode pembayaran tidak tersedia." }, { status: 503 });
     const { listSekalipayMethods } = await import("@/lib/payments/sekalipay-gateway");
-    const methods = await listSekalipayMethods(quote.subtotal).catch(() => []);
+    const methods = await listSekalipayMethods(quote.subtotal, adminTest).catch(() => []);
     if (!methods.some((m) => m.code === selected.gateway!.channel)) return NextResponse.json({ error: "Metode pembayaran tidak tersedia." }, { status: 503 });
     if (customer_email.length > 100 || (customer_name?.length ?? 0) > 100) return NextResponse.json({ error: "Data pembeli tidak valid." }, { status: 400 });
   } else if (payment_method !== "qris") {
@@ -517,6 +524,7 @@ export async function POST(req: NextRequest) {
     try {
       const { createNowpaymentsInvoice } = await import("@/lib/payments/nowpayments");
       const inv = await createNowpaymentsInvoice(code, Number(quote.subtotal), cryptoUsd!.payCurrency, {
+        adminTest,
         payNetwork: cryptoUsd!.network,
         priceCurrency: "usd",
         feePayer: "merchant",
@@ -551,7 +559,7 @@ export async function POST(req: NextRequest) {
   } else if (isGatewayMethod && selected.gateway) {
     try {
       const { createSekalipayGatewayInvoice } = await import("@/lib/payments/sekalipay-gateway");
-      await createSekalipayGatewayInvoice(code, quote.subtotal, selected.gateway.channel, { name: fallbackName, email: customer_email, phone: wa }, selected.gateway.estimated_fee);
+      await createSekalipayGatewayInvoice(code, quote.subtotal, selected.gateway.channel, { name: fallbackName, email: customer_email, phone: wa }, selected.gateway.estimated_fee, adminTest);
       gatewayView = await import("@/lib/payments/payment-view").then((m) => m.buildSekalipayGatewayPaymentView(code));
     } catch {
       const claimed = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='sekalipay_gateway'", code);

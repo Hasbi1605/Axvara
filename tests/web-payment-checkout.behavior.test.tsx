@@ -8,6 +8,7 @@ import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } f
 // Fixture checkout/pesanan async; beri ruang bila mesin sedang sibuk (tidak mengubah asersi).
 configure({ asyncUtilTimeout: 4000 });
 import CheckoutPage from "@/app/(shop)/checkout/page";
+import { PaymentTestProvider } from "@/components/storefront/PaymentTestScope";
 import { PaymentMethodPicker } from "@/components/storefront/PaymentMethodPicker";
 import { parsePayOptions } from "@/lib/payment-ui";
 import { useCart, type CartItem } from "@/stores/cart";
@@ -42,12 +43,12 @@ function stub(opts: { quotes: Array<{ methods: unknown[]; extra?: Record<string,
   const posts: Array<Record<string, unknown>> = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
-    if (u === "/api/checkout/quote") {
+    if (u === "/api/checkout/quote" || u === "/api/admin/payments/test/quote") {
       const q = opts.quotes[Math.min(quoteN++, opts.quotes.length - 1)];
       const body = q.body ?? quoteBody(q.methods, q.extra);
       return new Response(JSON.stringify(body), { status: q.status ?? 200, headers: { "Content-Type": "application/json" } });
     }
-    if (u === "/api/orders") {
+    if (u === "/api/orders" || u === "/api/admin/payments/test/orders") {
       posts.push(JSON.parse(String(init?.body)));
       if (opts.order === "timeout") throw new TypeError("network");
       const o = opts.order ?? { status: 201, body: { code: "AXV-20261104-AAAAAAAA", subtotal: 250_000, status: "pending", locale: "id", qris: null, buyer_access_session: "p1.x", checkout_credential_grant: "g.x" } };
@@ -79,6 +80,19 @@ const railText = () => norm(document.querySelector("aside")?.textContent);
 
 beforeEach(() => { window.scrollTo = vi.fn(); nav.push.mockClear(); localStorage.clear(); sessionStorage.clear(); useCart.setState({ items: [cartLine()] }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+it.each([false, true])("checkout uses protected admin endpoints only inside the test provider (%s)", async admin => {
+  stub({ quotes: [{ methods: [qrisM] }] });
+  render(admin ? <PaymentTestProvider><CheckoutPage /></PaymentTestProvider> : <CheckoutPage />);
+  await qrisVisible();
+  if (admin) expect(screen.getByText(/Transaksi nyata/)).toBeTruthy();
+  fillAndAgree(); fireEvent.click(payButton());
+  await waitFor(() => expect(nav.push).toHaveBeenCalled());
+  const paths = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+  expect(paths).toContain(admin ? "/api/admin/payments/test/quote" : "/api/checkout/quote");
+  expect(paths).toContain(admin ? "/api/admin/payments/test/orders" : "/api/orders");
+  expect(paths).not.toContain(admin ? "/api/orders" : "/api/admin/payments/test/orders");
+});
 
 describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
   const cards = () => radios().map((r) => r.closest("label")!);

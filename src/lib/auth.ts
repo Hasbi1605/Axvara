@@ -55,6 +55,7 @@ export type CheckoutQuotePaymentMethod = {
 
 export type CheckoutQuotePayload = {
   quote_id: string;
+  admin_payment_test?: true;
   items: CheckoutQuoteItem[];
   subtotal: number;
   payment_methods: CheckoutQuotePaymentMethod[];
@@ -391,6 +392,7 @@ export function isCanonicalMethodOption(value: unknown, idrSubtotal: number): bo
   return isValidCryptoMethod(method, idrSubtotal);
 }
 const quoteSchema = z.object({
+  admin_payment_test: z.literal(true).optional(),
   items: z.array(quoteItemSchema), subtotal: z.number().int().safe().nonnegative(),
   payment_methods: z.array(quoteMethodSchema), locale: z.enum(["id", "en"]).optional(),
 }).superRefine((quote, ctx) => {

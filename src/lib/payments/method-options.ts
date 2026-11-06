@@ -72,7 +72,7 @@ export async function buildMethodOptions(idrSubtotal: number): Promise<MethodOpt
 }
 
 /** Opsi untuk tampilan checkout web: seperti buildMethodOptions + kanal gateway out-of-bounds sebagai available:false (hanya display; tidak ditandatangani). */
-export async function buildMethodCatalog(idrSubtotal: number): Promise<MethodCatalogOption[]> {
+export async function buildMethodCatalog(idrSubtotal: number, adminTest = false): Promise<MethodCatalogOption[]> {
   const dbMethods: QuoteDbMethod[] = (
     await queryAll(
       "SELECT * FROM payment_methods WHERE is_active=1 ORDER BY CASE WHEN id='qris' THEN 0 ELSE 1 END, sort_order ASC",
@@ -97,7 +97,7 @@ export async function buildMethodCatalog(idrSubtotal: number): Promise<MethodCat
   let cryptoEntries: ReturnType<typeof buildCryptoCatalog> = [];
   try {
     const { isNowpaymentsConfigured } = await import("@/lib/payments/rails");
-    if (isNowpaymentsConfigured()) {
+    if (isNowpaymentsConfigured(adminTest)) {
       const market = await getCryptoMarketSnapshot();
       cryptoEntries = buildCryptoCatalog(idrSubtotal, market.fx, market.coins);
     }
@@ -106,10 +106,10 @@ export async function buildMethodCatalog(idrSubtotal: number): Promise<MethodCat
   }
   const { isSekalipayGatewayConfigured } = await import("@/lib/payments/rails");
   let gatewayMethods: Array<QuoteGatewayMethod | QuoteGatewayUnavailable> = [];
-  if (isSekalipayGatewayConfigured()) {
+  if (isSekalipayGatewayConfigured(adminTest)) {
     try {
       const { listSekalipayCatalog } = await import("@/lib/payments/sekalipay-gateway");
-      const entries = await listSekalipayCatalog(idrSubtotal);
+      const entries = await listSekalipayCatalog(idrSubtotal, adminTest);
       const common = (entry: (typeof entries)[number]) => ({
         id: `sekalipay_gateway:${entry.code}`,
         kind: "gateway" as const,

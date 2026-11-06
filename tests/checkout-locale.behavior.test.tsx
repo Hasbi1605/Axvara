@@ -10,7 +10,10 @@ vi.mock("@/lib/payment-maintenance", () => ({ isPaymentMaintenanceEnabled: () =>
 const item = { id: "1", slug: "owner", name: "Owner product name", description: "", categorySlug: "ai", image: "/x.png", price: 10000, qty: 1, variantId: 11 } as CartItem;
 const qris = { id: "qris", kind: "qris", label: "QRIS", available: true, account_number: "", account_name: "", qris_url: null };
 const clearCookies = () => document.cookie.split(";").forEach(c => { document.cookie = `${c.split("=")[0].trim()}=; Max-Age=0; Path=/`; });
-beforeEach(() => { clearCookies(); useCart.setState({ items: [item] }); });
+beforeEach(() => {
+  window.scrollTo = vi.fn(); Element.prototype.scrollIntoView = vi.fn();
+  clearCookies(); useCart.setState({ items: [item] });
+});
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); clearCookies(); });
 
 it.each([["en", "IDR"], ["id", "USD"]] as const)("renders checkout in %s independently of %s", async (locale, currency) => {

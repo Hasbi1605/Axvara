@@ -1,5 +1,14 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Tes pembayaran admin — 6 November 2026
+- Implementasi baru: `/admin/payments/test` memakai checkout/keranjang asli, login admin dan Cloudflare Access existing. Tambahkan produk ke keranjang, buka halaman ini, pilih metode/jaringan, lalu bayar sendiri. **Ini transaksi nyata; pesanan lunas tetap diproses dan dikirim.** Bukan sandbox atau URL rahasia.
+- Quote/create ada di `/api/admin/payments/test/{quote,orders}`, server-side auth pada setiap request dan marker quote signed yang tidak bisa dipakai di checkout publik. Flag tes `PAYMENT_ADMIN_TEST_ENABLED=true` disiapkan; `NOWPAYMENTS_ENABLED=false` dan `SEKALIPAY_GATEWAY_ENABLED=false` tetap menutup web publik dan bot. Mematikan flag tes hanya menghentikan order baru; invoice tersimpan tetap dapat direkonsiliasi. Perubahan env memerlukan rilis CI.
+- Delapan env produksi ditambah sebagai `secret_text` dari berkas kredensial ignored, termasuk outcome `usdtbsc`; env existing utuh, total75/128termasuk4system. Jangan menyalin key ke browser atau mengubah MFA. Daftar lengkap dan rollback: `docs/ARCHITECTURE.md` §16.21 dan `docs/agent-rules/payments.md`.
+- Proxy `/skg/*` sudah terpasang dengan backup penuh/env+state utuh; health `skg:true`, auth401 dan GET katalog bertanda tangan200/18kanal. Snapshot produksi berhasil di-bootstrap dari GET provider (FX+21koin, timestamp `2026-11-06T13:55:17.602Z`; tujuh minimum gagal tidak ditampilkan). Cron existing menyegarkan tanpa flag publik. Callback live menolak signature hilang, Access tetap melindungi halaman/API admin.
+- Verifikasi lokal:361file/4803tes, lint/tsc/build Pages148edge routes lulus, audit0high/critical dan6moderate existing. Chromium fixture ID1280/390/360 memeriksa auth, public isolation, OVO consent, jaringan crypto/keyboard/fokus, pending/refresh/resume/expiry, assets200 dan tanpa overflow/error terkait. **Halaman tes baru menunggu deployment CI; belum ada bukti invoice/pembayaran/settlement produksi.** Setelah push berhenti tanpa polling deployment.
+
+> Catatan lokal bertanggal di bawah adalah snapshot historis. Baseline UI/logo sudah terdeploy pada `e2aa02a375d4dd7dab0ed33a1499f6262e433f5f` (Pages `8d7a4469-3d89-414e-bf3e-89dc8c4bf0d5`), bukan aktivasi rail publik. Kontrak yang tidak diganti tetap berlaku.
+
 Koreksi lokal: expiry SQL UTC halaman pesanan kini ditafsirkan konsisten di WIB; expiry invalid/kosong gagal tertutup dan snapshot tanpa expiry order menunggu server. Browser/build ulang belum diverifikasi.
 
 Checkout Market memiliki chrome ID/EN lokal tanpa mengubah quote atau pesanan ketika preferensi berganti.

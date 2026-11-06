@@ -46,9 +46,9 @@ export function nowpaymentsBaseUrl(): string {
   return "https://api.nowpayments.io/v1";
 }
 
-async function providerFetch(path: string, init?: { method?: string; body?: unknown }): Promise<Row> {
+async function providerFetch(path: string, init?: { method?: string; body?: unknown; adminTest?: boolean }): Promise<Row> {
   const isWrite = (init?.method ?? "GET") !== "GET";
-  if (isWrite ? !isNowpaymentsConfigured() : !isNowpaymentsReadable()) {
+  if (isWrite ? !isNowpaymentsConfigured(init?.adminTest) : !isNowpaymentsReadable()) {
     throw new Error("nowpayments_not_configured");
   }
   const base = nowpaymentsBaseUrl();
@@ -110,8 +110,8 @@ export function parseNowpaymentsWire(raw: string): unknown {
  * is_fee_paid_by_user (kebijakan invoice baru 0/0, minimum rendah). Menolak (tanpa POST) bila
  * nominal USD < fiat_equivalent provider atau estimasi koin < min_amount.
  */
-export async function checkNowpaymentsMinimum(price: string, from: "usd" | "idr", currency: string): Promise<void> {
-  if (!isNowpaymentsConfigured()) throw new Error("nowpayments_not_configured");
+export async function checkNowpaymentsMinimum(price: string, from: "usd" | "idr", currency: string, adminTest = false): Promise<void> {
+  if (!isNowpaymentsConfigured(adminTest)) throw new Error("nowpayments_not_configured");
   const outcome = nowpaymentsOutcomeCurrency();
   if (!outcome) throw new Error("nowpayments_outcome_unconfigured");
   const estimate = await providerFetch(`/estimate?amount=${encodeURIComponent(price)}&currency_from=${from}&currency_to=${encodeURIComponent(currency)}`);
@@ -250,7 +250,7 @@ export async function createNowpaymentsInvoice(
   orderCode: string,
   idrAmount: number,
   payCurrency: string,
-  options?: { payNetwork?: string | null; priceCurrency?: string; expectedUsd?: NowpaymentsUsdExpected; feePayer?: "merchant"; fixedRate?: false },
+  options?: { payNetwork?: string | null; priceCurrency?: string; expectedUsd?: NowpaymentsUsdExpected; feePayer?: "merchant"; fixedRate?: false; adminTest?: boolean },
 ): Promise<NowpaymentsInvoice> {
   const usd = options?.expectedUsd ?? null;
   assertPaymentsAvailable();
@@ -303,7 +303,7 @@ export async function createNowpaymentsInvoice(
   }
   if (tx && tx.status !== "initializing") throw new Error("nowpayments_invoice_terminal");
   if (!tx && usd && (options?.feePayer !== "merchant" || options.fixedRate !== false)) throw new Error("nowpayments_policy_required");
-  if (!tx && !isNowpaymentsConfigured()) throw new Error("nowpayments_not_configured");
+  if (!tx && !isNowpaymentsConfigured(options?.adminTest)) throw new Error("nowpayments_not_configured");
 
   let claimed = false;
   if (!tx) {
@@ -356,10 +356,11 @@ export async function createNowpaymentsInvoice(
     // legacy IDR memakai pair idr->pay asset. Minimum dibandingkan dengan
     // estimasi yang sama satuannya — tanpa konversi/FX di sini.
     if (usd && !/^[0-9]+\.[0-9]{2}$/.test(priceText)) throw new Error("nowpayments_invoice_mismatch");
-    await checkNowpaymentsMinimum(priceText, priceCurrency, currency);
+    await checkNowpaymentsMinimum(priceText, priceCurrency, currency, options?.adminTest);
     const { SITE } = await import("@/lib/site");
     const created = await providerFetch("/payment", {
       method: "POST",
+      adminTest: options?.adminTest,
       body: {
         // price_amount string exact verbatim (IDR int legacy / USD 2dp baru).
         price_amount: priceText,

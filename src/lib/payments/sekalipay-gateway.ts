@@ -144,8 +144,8 @@ export function gatewayEligibility(amount: number, min: number, max: number): "o
  * `available:false` (tanpa biaya/total; `shortfall` = min - amount dihitung di server hanya untuk below_min). Biaya tak dikenal, batas cacat,
  * QRIS, atau tipe tak dikenal tetap disembunyikan (fail closed). `payment_type` hilang -> grup "other" (bukan tebakan dari merek).
  */
-export async function listSekalipayCatalog(amount: number): Promise<GatewayCatalogEntry[]> {
-  if (!isSekalipayGatewayConfigured()) throw new Error("sekalipay_gateway_not_configured");
+export async function listSekalipayCatalog(amount: number, adminTest = false): Promise<GatewayCatalogEntry[]> {
+  if (!isSekalipayGatewayConfigured(adminTest)) throw new Error("sekalipay_gateway_not_configured");
   if (!Number.isSafeInteger(amount) || amount < 100 || amount > 999_999_999) throw new Error("sekalipay_gateway_invalid_amount");
   const apiKey = process.env.SEKALIPAY_GATEWAY_API_KEY!.trim();
   const secret = process.env.SEKALIPAY_GATEWAY_SECRET_KEY!.trim();
@@ -180,8 +180,8 @@ export async function listSekalipayCatalog(amount: number): Promise<GatewayCatal
 }
 
 /** Hanya kanal yang BISA dipakai untuk `amount` (min <= total <= max). Dipakai create web/TG: kanal di luar batas tidak pernah lolos. */
-export async function listSekalipayMethods(amount: number): Promise<GatewayMethod[]> {
-  return (await listSekalipayCatalog(amount)).flatMap((entry): GatewayMethod[] => (entry.available
+export async function listSekalipayMethods(amount: number, adminTest = false): Promise<GatewayMethod[]> {
+  return (await listSekalipayCatalog(amount, adminTest)).flatMap((entry): GatewayMethod[] => (entry.available
     ? [{ code: entry.code, name: entry.name, type: entry.type, min: entry.min, max: entry.max, feeText: entry.feeText, estimatedFee: entry.estimatedFee, estimatedTotal: entry.estimatedTotal }]
     : []));
 }
@@ -189,10 +189,10 @@ export async function listSekalipayMethods(amount: number): Promise<GatewayMetho
 type GatewayCustomer = { name: string; email: string; phone: string };
 type Row = Record<string, unknown>;
 
-async function gatewayFetch(method: "GET" | "POST", suffix: string, params: Record<string, Scalar> = {}, db: DatabaseAccess = createDatabaseAccess()) {
+async function gatewayFetch(method: "GET" | "POST", suffix: string, params: Record<string, Scalar> = {}, db: DatabaseAccess = createDatabaseAccess(), adminTest = false) {
   const apiKey = process.env.SEKALIPAY_GATEWAY_API_KEY?.trim();
   const secret = process.env.SEKALIPAY_GATEWAY_SECRET_KEY?.trim();
-  if (!apiKey || !secret || (method === "POST" && !isSekalipayGatewayConfigured())) throw new Error("sekalipay_gateway_not_configured");
+  if (!apiKey || !secret || (method === "POST" && !isSekalipayGatewayConfigured(adminTest))) throw new Error("sekalipay_gateway_not_configured");
   if (method === "GET" && suffix.startsWith("payment/")) {
     const admission = await db.execRun(`INSERT INTO store_settings(key,value,updated_at) VALUES('sekalipay_gateway_status_budget',json_object('minute',strftime('%Y-%m-%dT%H:%M','now'),'count',1),datetime('now'))
       ON CONFLICT(key) DO UPDATE SET value=json_object('minute',strftime('%Y-%m-%dT%H:%M','now'),'count',CASE WHEN json_extract(value,'$.minute')=strftime('%Y-%m-%dT%H:%M','now') THEN json_extract(value,'$.count')+1 ELSE 1 END),updated_at=datetime('now')
@@ -229,8 +229,8 @@ async function savedGatewayView(orderCode: string) {
     checkoutUrl: hidden ? null : tx.gateway_checkout_url, expiresAt: new Date(Math.min(Date.parse(String(tx.expires_at)), Date.parse(String(tx.order_expires_at).replace(" ", "T").replace(/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)$/, "$1Z")))).toISOString(), isSandbox: Number(tx.gateway_is_sandbox) === 1 };
 }
 
-export function createSekalipayGatewayInvoice(orderCode?: string, amount?: number, channel?: string, customer?: GatewayCustomer, estimatedFee?: number): Promise<Awaited<ReturnType<typeof savedGatewayView>>> {
-  if (!isSekalipayGatewayConfigured() && !orderCode) throw new Error("sekalipay_gateway_not_configured");
+export function createSekalipayGatewayInvoice(orderCode?: string, amount?: number, channel?: string, customer?: GatewayCustomer, estimatedFee?: number, adminTest = false): Promise<Awaited<ReturnType<typeof savedGatewayView>>> {
+  if (!isSekalipayGatewayConfigured(adminTest) && !orderCode) throw new Error("sekalipay_gateway_not_configured");
   return (async () => {
     if (!orderCode || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(orderCode) || !Number.isSafeInteger(amount) || amount! < 100 || amount! > 999_999_999
       || !channel || !/^[A-Za-z0-9_-]{1,64}$/.test(channel) || /qris/i.test(channel)
@@ -241,8 +241,8 @@ export function createSekalipayGatewayInvoice(orderCode?: string, amount?: numbe
     let tx = await queryFirst("SELECT * FROM payment_transactions WHERE order_code=?", orderCode);
     let claimed = false;
     if (!tx) {
-      if (!isSekalipayGatewayConfigured()) throw new Error("sekalipay_gateway_not_configured");
-      const method = (await listSekalipayMethods(amount!)).find((entry) => entry.code === channel);
+      if (!isSekalipayGatewayConfigured(adminTest)) throw new Error("sekalipay_gateway_not_configured");
+      const method = (await listSekalipayMethods(amount!, adminTest)).find((entry) => entry.code === channel);
       if (!method) throw new Error("sekalipay_gateway_method_unavailable");
       const inserted = await execRun(`INSERT OR IGNORE INTO payment_transactions
         (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,status,gateway_channel,gateway_label,gateway_estimated_fee,expires_at)
@@ -259,7 +259,7 @@ export function createSekalipayGatewayInvoice(orderCode?: string, amount?: numbe
     let response = claimed ? await gatewayFetch("POST", "payment", {
       merchant_ref_id: orderCode, amount, payment_code: channel, customer_name: customer.name.trim(), customer_email: customer.email.trim(), customer_phone: customer.phone,
       callback_url: `${SITE.webUrl}/api/payments/sekalipay-gateway/callback`, return_url: `${SITE.webUrl}/lacak-pesanan`,
-    }) : await get();
+    }, undefined, adminTest) : await get();
     if (response.status === 409 && response.body.code === "DUPLICATE_REF_ID") response = await get();
     if (!(response.status >= 200 && response.status < 300 && response.body.status === true)
       && !(response.status === 409 && response.body.code === "PAYMENT_ALREADY_EXISTS")) throw new Error("sekalipay_gateway_initializing");
