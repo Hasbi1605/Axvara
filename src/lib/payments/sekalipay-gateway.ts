@@ -129,6 +129,11 @@ async function gatewayTransport(method: "GET" | "POST", suffix: string, params: 
 }
 
 export type GatewayGroup = "va" | "ewallet" | "other";
+/** Label pembeli hanya untuk ID kanal eksak (bukan nama): kanal realtime tampil tanpa kata "Realtime"; ID/routing tetap persis. */
+const GATEWAY_DISPLAY_NAMES = new Map<string, string>([["SHOPEEPAY_REALTIME", "ShopeePay"], ["DANA_REALTIME", "DANA"]]);
+export function gatewayDisplayName(code: string, name: string): string {
+  return GATEWAY_DISPLAY_NAMES.get(code.trim().toUpperCase()) ?? name;
+}
 export type GatewayMethod = { code: string; name: string; type: GatewayGroup; min: number; max: number; feeText: string; estimatedFee: number; estimatedTotal: number };
 /** Entri katalog merchant untuk total tertentu: tersedia (min <= total <= max, inklusif) atau tidak tersedia dengan alasan; tanpa biaya/total karangan. */
 export type GatewayCatalogEntry =
@@ -144,7 +149,8 @@ export function gatewayEligibility(amount: number, min: number, max: number): "o
 /**
  * Katalog merchant untuk `amount`: semua kanal dengan biaya DIKENAL (parser ketat) dan batas valid, termasuk yang di luar batas sebagai
  * `available:false` (tanpa biaya/total; `shortfall` = min - amount dihitung di server hanya untuk below_min). Biaya tak dikenal, batas cacat,
- * QRIS, atau tipe tak dikenal tetap disembunyikan (fail closed). `payment_type` hilang -> grup "other" (bukan tebakan dari merek).
+ * QRIS, atau tipe tak dikenal tetap disembunyikan (fail closed). Kanal SHOPEEPAY biasa dikecualikan; hanya SHOPEEPAY_REALTIME yang ditawarkan.
+ * `payment_type` hilang -> grup "other" (bukan tebakan dari merek).
  */
 export async function listSekalipayCatalog(amount: number, adminTest = false): Promise<GatewayCatalogEntry[]> {
   if (!isSekalipayGatewayConfigured(adminTest)) throw new Error("sekalipay_gateway_not_configured");
@@ -164,7 +170,7 @@ export async function listSekalipayCatalog(amount: number, adminTest = false): P
     const info = row.fee_info as Record<string, unknown> | null;
     const rawType = row.payment_type;
     const type: GatewayGroup | null = rawType === "va" || rawType === "ewallet" ? rawType : rawType == null || rawType === "" ? "other" : null;
-    if (typeof row.payment_code !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(row.payment_code) || /qris/i.test(row.payment_code)
+    if (typeof row.payment_code !== "string" || /^SHOPEEPAY$/i.test(row.payment_code) || !/^[A-Za-z0-9_-]{1,64}$/.test(row.payment_code) || /qris/i.test(row.payment_code)
       || typeof row.payment_name !== "string" || type === null
       || !Number.isSafeInteger(row.min_amount) || !Number.isSafeInteger(row.max_amount)
       || !info || typeof info.type !== "string" || typeof info.description !== "string") return [];
@@ -172,7 +178,7 @@ export async function listSekalipayCatalog(amount: number, adminTest = false): P
     const max = Number(row.max_amount);
     const fee = parseGatewayFee(info.type, info.description);
     if (!fee) return [];
-    const base = { code: row.payment_code, name: row.payment_name, type, min, max, feeText: info.description };
+    const base = { code: row.payment_code, name: gatewayDisplayName(row.payment_code, row.payment_name), type, min, max, feeText: info.description };
     const eligibility = gatewayEligibility(amount, min, max);
     if (eligibility === "below_min") return [{ ...base, available: false, reason: "below_min", shortfall: min - amount }];
     if (eligibility === "above_max") return [{ ...base, available: false, reason: "above_max", shortfall: null }];
@@ -217,6 +223,15 @@ function paymentUrl(value: unknown): string | null {
   return url.href;
 }
 
+/** `checkout_url` opsional (mis. app e-wallet): hanya URL kanonis sekalipay.com yang disimpan; selain itu diredaksi ke null. */
+function optionalCheckoutUrl(value: unknown): string | null {
+  try {
+    return paymentUrl(value);
+  } catch {
+    return null;
+  }
+}
+
 async function savedGatewayView(orderCode: string) {
   const tx = await queryFirst(`SELECT pt.*,o.status AS order_status,o.payment_status AS order_payment_status,o.expires_at AS order_expires_at
     FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code WHERE pt.order_code=? AND pt.provider='sekalipay_gateway'`, orderCode);
@@ -256,35 +271,44 @@ export function createSekalipayGatewayInvoice(orderCode?: string, amount?: numbe
     }
     if (!tx || tx.provider !== "sekalipay_gateway" || tx.provider_order_id !== orderCode || Number(tx.requested_amount) !== amount
       || tx.gateway_channel !== channel || Number(tx.gateway_estimated_fee) !== estimatedFee) throw new Error("sekalipay_gateway_order_conflict");
+    const storedSandbox = tx.gateway_is_sandbox == null ? null : Number(tx.gateway_is_sandbox) === 1;
     if (tx.provider_payment_id && tx.payable_amount) return savedGatewayView(orderCode);
     const get = () => gatewayFetch("GET", `payment/${orderCode}`);
+    let posted = claimed;
     let response = claimed ? await gatewayFetch("POST", "payment", {
       merchant_ref_id: orderCode, amount, payment_code: channel, customer_name: customer.name.trim(), customer_email: customer.email.trim(), customer_phone: customer.phone,
       callback_url: `${SITE.webUrl}/api/payments/sekalipay-gateway/callback`, return_url: `${SITE.webUrl}/lacak-pesanan`,
     }, undefined, adminTest) : await get();
-    if (response.status === 409 && response.body.code === "DUPLICATE_REF_ID") response = await get();
+    if (response.status === 409 && response.body.code === "DUPLICATE_REF_ID") { response = await get(); posted = false; }
     if (!(response.status >= 200 && response.status < 300 && response.body.status === true)
       && !(response.status === 409 && response.body.code === "PAYMENT_ALREADY_EXISTS")) throw new Error("sekalipay_gateway_initializing");
     const data = response.body.data;
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("sekalipay_gateway_invalid_invoice");
     const invoice = data as Row;
+    const remoteSandbox = invoice.is_sandbox;
+    if (posted ? typeof remoteSandbox !== "boolean" : remoteSandbox !== undefined && typeof remoteSandbox !== "boolean") throw new Error("sekalipay_gateway_invalid_invoice");
+    if (typeof remoteSandbox === "boolean" && storedSandbox !== null && remoteSandbox !== storedSandbox) throw new Error("sekalipay_gateway_invalid_invoice");
+    const sandbox = typeof remoteSandbox === "boolean" ? remoteSandbox : storedSandbox;
+    if (sandbox === null) throw new Error("sekalipay_gateway_invalid_invoice");
     if (invoice.merchant_ref_id === orderCode && typeof invoice.invoice === "string" && /^[A-Za-z0-9_-]{1,191}$/.test(invoice.invoice)) {
       // finalize probe: claim the invoice id atomically WITH the view row.
       // If THIS claim is the one blocked, the TX must still review-stick so
       // a late/duplicate POST cannot be rendered as a fresh invoice.
       await execRun(`UPDATE payment_transactions SET provider_payment_id=COALESCE(provider_payment_id,?),
+        gateway_is_sandbox=COALESCE(gateway_is_sandbox,?),
         last_error=CASE WHEN provider_payment_id IS NULL THEN COALESCE(last_error,'sekalipay_gateway_finalize_probe') ELSE last_error END,
-        updated_at=datetime('now') WHERE order_code=? AND provider='sekalipay_gateway' AND status='initializing'`, invoice.invoice, orderCode);
+        updated_at=datetime('now') WHERE order_code=? AND provider='sekalipay_gateway' AND status='initializing'`,
+        invoice.invoice, typeof remoteSandbox === "boolean" ? (remoteSandbox ? 1 : 0) : null, orderCode);
     }
     if (invoice.merchant_ref_id !== orderCode || typeof invoice.invoice !== "string" || !/^[A-Za-z0-9_-]{1,191}$/.test(invoice.invoice)
       || invoice.payment_code !== channel || invoice.amount !== amount || !Number.isSafeInteger(invoice.fee) || Number(invoice.fee) < 0
       || !Number.isSafeInteger(invoice.total) || Number(invoice.total) !== amount! + Number(invoice.fee)
-      || typeof invoice.is_sandbox !== "boolean" || typeof invoice.expired_at !== "string"
+      || typeof invoice.expired_at !== "string"
       || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(invoice.expired_at) || !parseFxTimestamp(invoice.expired_at)
       || invoice.status !== "pending") throw new Error("sekalipay_gateway_invalid_invoice");
     const link = paymentUrl(invoice.payment_link);
     if (!link) throw new Error("sekalipay_gateway_invalid_invoice");
-    const checkout = paymentUrl(invoice.checkout_url);
+    const checkout = optionalCheckoutUrl(invoice.checkout_url);
     if (invoice.virtual_account != null && (typeof invoice.virtual_account !== "string" || !/^[A-Za-z0-9 -]{1,100}$/.test(invoice.virtual_account))) throw new Error("sekalipay_gateway_invalid_invoice");
     const required = Number(invoice.fee) !== estimatedFee;
     const updated = await execRun(`UPDATE payment_transactions SET payable_amount=?,gateway_fee=?,gateway_fee_consent_required=?,gateway_fee_consented_at=CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,
@@ -293,7 +317,7 @@ export function createSekalipayGatewayInvoice(orderCode?: string, amount?: numbe
       WHERE order_code=? AND provider='sekalipay_gateway' AND status='initializing' AND provider_payment_id=?
         AND provider_order_id=? AND requested_amount=? AND gateway_channel=? AND gateway_estimated_fee=?
         AND EXISTS(SELECT 1 FROM orders o WHERE o.code=payment_transactions.order_code AND o.subtotal=? AND o.payment_method=?)`,
-      invoice.total, invoice.fee, required ? 1 : 0, required ? 1 : 0, link, invoice.virtual_account ?? null, checkout, invoice.is_sandbox ? 1 : 0, invoice.expired_at, invoice.expired_at, orderCode, invoice.invoice, orderCode, amount, channel, estimatedFee, amount, `sekalipay_gateway:${channel}`);
+      invoice.total, invoice.fee, required ? 1 : 0, required ? 1 : 0, link, invoice.virtual_account ?? null, checkout, sandbox ? 1 : 0, invoice.expired_at, invoice.expired_at, orderCode, invoice.invoice, orderCode, amount, channel, estimatedFee, amount, `sekalipay_gateway:${channel}`);
     if (Number(updated.changes) !== 1) throw new Error("sekalipay_gateway_claim_conflict");
     return savedGatewayView(orderCode);
   })();
@@ -321,6 +345,12 @@ export function reconcileSekalipayGatewayPayment(orderCode?: string, db: Databas
     await db.execRun("UPDATE payment_transactions SET last_checked_at=datetime('now'),updated_at=datetime('now') WHERE order_code=? AND provider='sekalipay_gateway'", orderCode);
     if (response.status !== 200 || response.body.status !== true || !response.body.data || typeof response.body.data !== "object" || Array.isArray(response.body.data)) throw new Error("sekalipay_gateway_status_unavailable");
     const data = response.body.data as Row;
+    // GET payment-status resmi tidak mengirim `is_sandbox` (sama seperti create tanpa field itu). Mode sandbox yang
+    // tepercaya adalah nilai create-time tersimpan; field GET hanya boleh memastikan kecocokan bila ada.
+    const storedSandbox = tx.gateway_is_sandbox == null ? null : Number(tx.gateway_is_sandbox) === 1;
+    const remoteSandbox = data.is_sandbox;
+    const sandboxOk = remoteSandbox === undefined || typeof remoteSandbox === "boolean";
+    const sandbox = typeof remoteSandbox === "boolean" ? remoteSandbox : storedSandbox;
     const review = async (reason: string) => {
       await db.execRun("UPDATE payment_transactions SET last_error=CASE WHEN last_error IS NULL OR last_error IN ('sekalipay_gateway_finalize_probe','sekalipay_gateway_finalize_manual_review') THEN ? ELSE last_error END,last_checked_at=datetime('now'),updated_at=datetime('now') WHERE order_code=? AND provider='sekalipay_gateway' AND status!='paid'", reason, orderCode);
       return "manual_review" as const;
@@ -332,20 +362,22 @@ export function reconcileSekalipayGatewayPayment(orderCode?: string, db: Databas
         || (tx.provider_payment_id != null && tx.provider_payment_id !== data.invoice)
         || data.payment_code !== tx.gateway_channel || data.amount !== tx.requested_amount
         || !Number.isSafeInteger(data.fee) || Number(data.fee) < 0 || !Number.isSafeInteger(data.total)
-        || Number(data.amount) + Number(data.fee) !== data.total || typeof data.is_sandbox !== "boolean") return review("sekalipay_gateway_status_mismatch_manual_review");
+        || Number(data.amount) + Number(data.fee) !== data.total
+        || !sandboxOk || (typeof remoteSandbox === "boolean" && storedSandbox !== null && remoteSandbox !== storedSandbox)
+        || sandbox === null) return review("sekalipay_gateway_status_mismatch_manual_review");
       if (data.status === "pending") throw new Error("sekalipay_gateway_initializing");
       await db.execRun(`UPDATE payment_transactions SET provider_payment_id=COALESCE(provider_payment_id,?),payable_amount=COALESCE(payable_amount,?),
         gateway_fee=COALESCE(gateway_fee,?),gateway_is_sandbox=COALESCE(gateway_is_sandbox,?),gateway_fee_consent_required=1,
         last_error=CASE WHEN last_error IS NULL OR last_error IN ('sekalipay_gateway_finalize_probe','sekalipay_gateway_finalize_manual_review') THEN 'sekalipay_gateway_initializing_paid_manual_review' ELSE last_error END,
         last_checked_at=datetime('now'),updated_at=datetime('now') WHERE order_code=? AND provider='sekalipay_gateway' AND status='initializing'
-        AND (provider_payment_id IS NULL OR provider_payment_id=?)`, data.invoice, data.total, data.fee, data.is_sandbox ? 1 : 0, orderCode, data.invoice);
+        AND (provider_payment_id IS NULL OR provider_payment_id=?)`, data.invoice, data.total, data.fee, sandbox ? 1 : 0, orderCode, data.invoice);
       return "manual_review";
     }
     if (data.merchant_ref_id !== orderCode || data.invoice !== tx.provider_payment_id || data.payment_code !== tx.gateway_channel
       || data.amount !== tx.requested_amount || data.fee !== tx.gateway_fee || data.total !== tx.payable_amount
       || !Number.isSafeInteger(data.amount) || !Number.isSafeInteger(data.fee) || !Number.isSafeInteger(data.total)
       || Number(data.fee) < 0 || Number(data.amount) + Number(data.fee) !== data.total
-      || typeof data.is_sandbox !== "boolean" || Number(data.is_sandbox) !== Number(tx.gateway_is_sandbox)
+      || !sandboxOk || (typeof remoteSandbox === "boolean" && remoteSandbox !== storedSandbox)
       || tx.provider_order_id !== orderCode || tx.order_subtotal !== tx.requested_amount
       || tx.order_method !== `sekalipay_gateway:${tx.gateway_channel}`) return review("sekalipay_gateway_status_mismatch_manual_review");
     if (data.status === "pending" || data.status === "canceled" || data.status === "failed") return "pending";

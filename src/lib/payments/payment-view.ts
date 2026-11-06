@@ -13,6 +13,7 @@
 import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import { queryFirst } from "@/lib/db";
 import { isSufficientDecimal, parseDecimalParts } from "./decimal";
+import { gatewayDisplayName } from "./sekalipay-gateway";
 import { getCryptoAsset } from "./crypto-assets";
 import { centsToUsdText } from "./crypto-pricing";
 
@@ -29,7 +30,7 @@ export async function buildSekalipayGatewayPaymentView(orderCode: string, databa
   const nonFatalProbe = /^sekalipay_gateway_finalize_(probe|manual_review)$/.test(String(row.last_error ?? ""));
   const state = row.payment_status === "paid" ? "paid" : !live ? "expired" : row.last_error && !nonFatalProbe ? "manual_review" : row.status === "initializing" ? "initializing" : row.status !== "pending" ? "manual_review" : consent ? "fee_consent_required" : "pending";
   const show = state === "pending";
-  return { provider: "sekalipay_gateway", kind: "gateway", label: String(row.gateway_label ?? ""), channel: String(row.gateway_channel ?? ""), state, currency: "IDR",
+  return { provider: "sekalipay_gateway", kind: "gateway", label: gatewayDisplayName(String(row.gateway_channel ?? ""), String(row.gateway_label ?? "")), channel: String(row.gateway_channel ?? ""), state, currency: "IDR",
     subtotal: Number(row.requested_amount), estimated_fee: row.gateway_estimated_fee == null ? null : Number(row.gateway_estimated_fee),
     fee: row.gateway_fee == null ? null : Number(row.gateway_fee), total: row.payable_amount == null ? null : Number(row.payable_amount),
     fee_consent_required: consent, expires_at: Number.isFinite(deadline) ? new Date(deadline).toISOString() : null,

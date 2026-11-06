@@ -498,9 +498,19 @@ export function PaymentMethodPicker({ options, selectedId, onSelect, locale = "i
   const cryptos = options.filter((option): option is CryptoOption => option.kind === "crypto");
   // Urutan: tersedia dulu (urutan server), lalu tidak tersedia (urutan server).
   const ordered = <T extends PayOption>(list: T[]): T[] => [...list.filter((option) => option.available), ...list.filter((option) => !option.available)];
+  // E-Wallet: ShopeePay -> DANA -> GoPay -> OVO (hanya yang benar-benar ada, termasuk yang nonaktif), sisanya urutan server.
+  const EWALLET_FIRST = ["shopeepay", "dana", "gopay", "ovo"];
+  const ewalletRank = (option: PayOption) => {
+    const index = EWALLET_FIRST.indexOf(option.label.trim().toLowerCase());
+    return index === -1 ? EWALLET_FIRST.length : index;
+  };
+  const orderedEwallet = <T extends PayOption>(list: T[]): T[] => {
+    const first = list.filter((option) => ewalletRank(option) < EWALLET_FIRST.length).sort((a, b) => ewalletRank(a) - ewalletRank(b));
+    return [...first, ...ordered(list.filter((option) => ewalletRank(option) === EWALLET_FIRST.length))];
+  };
   const groups: Group[] = ([
     { key: "va", title: copy.groupVa, options: ordered(gateways.filter((option) => option.group === "va")) },
-    { key: "ewallet", title: copy.groupEwallet, options: ordered(gateways.filter((option) => option.group === "ewallet")) },
+    { key: "ewallet", title: copy.groupEwallet, options: orderedEwallet(gateways.filter((option) => option.group === "ewallet")) },
     { key: "other", title: copy.groupOther, options: ordered(gateways.filter((option) => option.group === "other")) },
     { key: "crypto", title: copy.groupCrypto, options: cryptos }, // urutan kurasi server; CryptoPanel mengelompokkan per simbol
   ] as Group[]).filter((group) => group.options.length > 0);

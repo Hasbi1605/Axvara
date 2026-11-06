@@ -174,6 +174,28 @@ describe("baris terbuka", () => {
   });
 });
 
+describe("urutan E-Wallet", () => {
+  it("ShopeePay -> DANA -> GoPay -> OVO (hanya yang ada, termasuk nonaktif), sisanya stabil", () => {
+    const scrambled = [
+      gw("GOPAY", "GoPay", "ewallet", 1_300),
+      gwOff("SHOPEEPAY_REALTIME", "ShopeePay", "ewallet"),
+      gw("LINKAJA", "LinkAja", "ewallet", 900),
+      gw("OVO", "OVO", "ewallet", 1_600),
+      gw("DANA_REALTIME", "DANA", "ewallet", 2_030),
+    ];
+    render(<Harness raw={[qrisM, ...scrambled]} />);
+    fireEvent.click(headerBtn(/^E-Wallet/));
+    const visible = () => Array.from(panel("ewallet").querySelectorAll("input[type=radio]")).map((input) => (input as HTMLInputElement).value.replace("sekalipay_gateway:", ""));
+    expect(visible()).toEqual(["SHOPEEPAY_REALTIME", "DANA_REALTIME", "GOPAY", "OVO", "LINKAJA"]);
+    expect(radioOf("SHOPEEPAY_REALTIME").disabled).toBe(true);
+    const chips = headerBtn(/^E-Wallet/).querySelectorAll("[data-bank-chips] [data-bank-tile]");
+    expect(chips).toHaveLength(4);
+    expect(Array.from(chips).map((tile) => tile.querySelector("img")?.getAttribute("src"))).toEqual([
+      "/payments/shopeepay.svg", "/payments/dana.svg", "/payments/gopay.svg", "/payments/ovo.svg",
+    ]);
+  });
+});
+
 describe("grup gateway tanpa pencarian", () => {
   const many = Array.from({ length: 9 }, (_, i) => gw(`B${i}`, ["BNI VA", "Mandiri VA", "Permata VA", "BRI VA", "BCA VA", "CIMB VA", "Danamon VA", "BSI VA", "SeaBank VA"][i], "va", 4000));
   it.each(["id", "en"] as const)("%s: semua 9 kanal tampil, termasuk sesudah tutup/buka; tidak ada input pencarian atau tombol hapus", (locale) => {

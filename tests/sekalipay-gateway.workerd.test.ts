@@ -35,7 +35,7 @@ it("executes merchant callback, signed GET and atomic paid guard in workerd", as
       calls++;
       const ref = request.url.split("/").at(-1)!;
       expect(request.headers.get("x-signature")).toBe(await signGatewayRequest("fixture-secret", "GET", `api/v1/gateway/payment/${ref}`, {}, Number(request.headers.get("x-timestamp"))));
-      return Response.json({ status: true, data: { merchant_ref_id: ref, invoice: ref === code ? "SPYworker" : "SPYlate", payment_code: "TESTVA", amount: 10000, fee: 4700, total: 14700, is_sandbox: false, status: pending ? "pending" : "paid", paid_at: paidAt } });
+      return Response.json({ status: true, data: { merchant_ref_id: ref, invoice: ref === code ? "SPYworker" : "SPYlate", payment_code: "TESTVA", amount: 10000, fee: 4700, total: 14700, status: pending ? "pending" : "paid", paid_at: paidAt } });
     },
   });
   try {

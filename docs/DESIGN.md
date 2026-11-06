@@ -1,6 +1,12 @@
 # DESIGN.md — AXVARA Design System
 
-## Halaman tes pembayaran admin (6 November 2026, implementasi; menunggu CI)
+## E-Wallet gateway: label tanpa "Realtime" + urutan tetap (6 November 2026, lokal, belum deploy)
+- Label kanal realtime yang tampil ke pembeli: `SHOPEEPAY_REALTIME` → **ShopeePay**, `DANA_REALTIME` → **DANA**. Kata "Realtime" tidak muncul di label pembeli; ID kanal tetap persis untuk routing/fee/consent. Kanal `SHOPEEPAY` biasa tidak ditawarkan (tanpa fallback). Normalisasi label historis hanya untuk dua ID kanal ini (Map ID eksak); nama/label kanal lain — termasuk yang tampak seperti "ShopeePay Realtime" pada ID tak dikenal — tidak diubah. Logo existing (`shopeepay.svg`, `dana.svg`) dipakai tanpa aset baru.
+- Urutan baris E-Wallet: ShopeePay → DANA → GoPay → OVO untuk metode yang benar-benar ada (bukan placeholder), disusul metode lain dengan urutan server (tersedia dulu, lalu nonaktif). Metode pertama yang nonaktif/di luar batas tetap berada di posisinya dengan tampilan redup, Min./Maks., radio nonaktif, dan alasan sr-only seperti sebelumnya. Urutan ini juga dipakai chip logo header grup.
+- QRIS langsung di atas grup, urutan grup VA · E-Wallet · Lainnya · Crypto, urutan/nonaktif VA/Lainnya/Crypto, biaya/total server, animasi 220 ms, reduced motion, immediate/deselect/inert, dan token Midnight/Cyan/Gold tidak berubah.
+- Verifikasi: 2 file fokus/71 tes + integrasi PM final 361/4817; Chromium fixture flag OFF 1280 EN/390 ID: 7 wallet urut ShopeePay→DANA→GoPay→OVO→LinkAja→Virgo→AstraPay tanpa SHOPEEPAY biasa/teks Realtime, ID/fee persis, keyboard panah fokus2px; 360 ShopeePay nonaktif tetap posisi pertama (Min74000/shortfall10000), keyboard native ke DANA; tanpa overflow, CSS/JS200, tanpa error baru. Order mock saja; belum deploy.
+
+## Halaman tes pembayaran admin (6 November 2026, terdeploy; koreksi parser lokal menunggu publikasi)
 - `/admin/payments/test` memakai checkout/picker existing, bukan desain pembayaran kedua. Judul ID/EN membedakan tes admin, dengan peringatan terlihat bahwa transaksi nyata dan pesanan lunas tetap diproses/dikirim; tautan kembali admin dan petunjuk keranjang berada di atasnya. Halaman tidak diindeks; flag mati menampilkan notice nonaktif.
 - Token visual Midnight/Cyan/Gold, font, urutan metode, validasi dan consent tetap. QA Chromium fixture ID1280/390/360: tanpa overflow/error konsol terkait; radio jaringan eksplisit bisa dipilih dengan keyboard dan outline2px, OVO meminta consent total final sebelum tautan, crypto pending menampilkan jumlah/jaringan/alamat/QR dan bisa dilanjutkan setelah refresh. Ini provider mock, bukan bukti pembayaran produksi.
 

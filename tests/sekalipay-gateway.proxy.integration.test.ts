@@ -22,7 +22,7 @@ function setup(opts: { proxy?: boolean; handler?: Handler } = {}) {
   vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture-secret");
   if (opts.proxy !== false) { vi.stubEnv("SEKALIPAY_PROXY_URL", PROXY); vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "fixture-proxy-token"); }
   const invoice = { merchant_ref_id: code, invoice: "SPYproxy", amount: 10000, fee: 4700, total: 14700, payment_code: "TESTVA", payment_link: "https://sekalipay.com/payment/SPYproxy",
-    virtual_account: "1234567890", checkout_url: null, expired_at: new Date(Date.now() + 600000).toISOString(), status: "pending", is_sandbox: false };
+    virtual_account: "1234567890", checkout_url: null as string | null, expired_at: new Date(Date.now() + 600000).toISOString(), status: "pending", is_sandbox: false };
   const handler: Handler = opts.handler ?? ((call) => {
     if (call.url.endsWith("payment-methods")) return Response.json(catalog);
     return Response.json({ status: true, data: invoice }, { status: call.init.method === "POST" ? 201 : 200 });
@@ -232,6 +232,31 @@ describe("Sekalipay gateway create/status via proxy", () => {
       await seedOrder(f);
       f.invoice.payment_link = "https://evil.example/payment/x";
       await expect(create()).rejects.toThrow("sekalipay_gateway_invalid_invoice");
+    } finally { f.fixture.close(); }
+  });
+
+  it("accepts a legitimate app checkout_url but stores only the canonical payment_link", async () => {
+    const f = setup();
+    try {
+      await seedOrder(f);
+      f.invoice.checkout_url = "https://app.shopeepay.co.id/pay/abc?x=1";
+      expect(await create()).toMatchObject({ invoice: "SPYproxy", paymentLink: "https://sekalipay.com/payment/SPYproxy", checkoutUrl: null });
+      expect(f.fixture.sql.prepare("SELECT gateway_checkout_url,gateway_is_sandbox FROM payment_transactions WHERE order_code=?").get(code)).toMatchObject({ gateway_checkout_url: null, gateway_is_sandbox: 0 });
+      expect(f.posts()).toBe(1);
+    } finally { f.fixture.close(); }
+  });
+
+  it("reconciles pending/paid GET responses that omit is_sandbox using the stored create-time mode", async () => {
+    const f = setup();
+    try {
+      await seedOrder(f);
+      await create();
+      delete (f.invoice as Record<string, unknown>).is_sandbox;
+      expect(await reconcileSekalipayGatewayPayment(code)).toBe("pending");
+      Object.assign(f.invoice, { status: "paid", paid_at: new Date().toISOString() });
+      expect(await reconcileSekalipayGatewayPayment(code)).toBe("paid");
+      expect(f.posts()).toBe(1);
+      expect(f.fixture.sql.prepare("SELECT payment_status FROM orders WHERE code=?").get(code)?.payment_status).toBe("paid");
     } finally { f.fixture.close(); }
   });
 });

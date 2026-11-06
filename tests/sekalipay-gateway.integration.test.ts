@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { estimateGatewayFee, gatewayHmac, gatewayParams, listSekalipayMethods, parseGatewayFee, signGatewayRequest, verifyGatewayWebhook, createSekalipayGatewayInvoice, confirmGatewayFee } from "@/lib/payments/sekalipay-gateway";
+import { estimateGatewayFee, gatewayDisplayName, gatewayHmac, gatewayParams, listSekalipayCatalog, listSekalipayMethods, parseGatewayFee, signGatewayRequest, verifyGatewayWebhook, createSekalipayGatewayInvoice, confirmGatewayFee } from "@/lib/payments/sekalipay-gateway";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { NextRequest } from "next/server";
 
@@ -44,6 +44,55 @@ describe("Sekalipay merchant contract fixtures", () => {
     const headers = options.headers as Record<string, string>;
     expect(headers.Accept).toBe("application/json");
     expect(headers["X-Signature"]).toBe(await signGatewayRequest("fixture-secret", "GET", "api/v1/gateway/payment-methods", {}, Number(headers["X-Timestamp"])));
+  });
+});
+
+describe("curated catalog channels (FIXTURE)", () => {
+  const wallet = (payment_code: string, payment_name: string, description = "3.5%") => ({
+    payment_code, payment_name, payment_type: "ewallet", min_amount: 1_000, max_amount: 1_000_000, fee_info: { type: "percent", description },
+  });
+  const stubCatalog = (data: unknown[]) => {
+    vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
+    vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", `curated-${crypto.randomUUID()}`);
+    vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture-secret");
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: true, data })));
+  };
+
+  it("offers only SHOPEEPAY_REALTIME with exact IDs, provider fees and no 'Realtime' label", async () => {
+    stubCatalog([
+      wallet("SHOPEEPAY", "ShopeePay"), wallet("SHOPEEPAY_REALTIME", "ShopeePay Realtime"),
+      wallet("DANA_REALTIME", "DANA Realtime", "3.7%"), wallet("GOPAY", "GoPay", "2%"), wallet("OVO", "OVO", "1%"),
+    ]);
+    const catalog = await listSekalipayCatalog(58_000);
+    expect(catalog.map((entry) => entry.code)).toEqual(["SHOPEEPAY_REALTIME", "DANA_REALTIME", "GOPAY", "OVO"]);
+    expect(catalog.map((entry) => entry.name)).toEqual(["ShopeePay", "DANA", "GoPay", "OVO"]);
+    expect(catalog.every((entry) => !/realtime/i.test(entry.name))).toBe(true);
+    expect(catalog.find((entry) => entry.code === "SHOPEEPAY_REALTIME")).toMatchObject({ available: true, estimatedFee: 2_030, estimatedTotal: 60_030 });
+    expect(catalog.find((entry) => entry.code === "DANA_REALTIME")).toMatchObject({ available: true, estimatedFee: 2_146, estimatedTotal: 60_146 });
+    expect((await listSekalipayMethods(58_000)).map((entry) => entry.code)).toEqual(["SHOPEEPAY_REALTIME", "DANA_REALTIME", "GOPAY", "OVO"]);
+  });
+
+  it("never falls back to ordinary SHOPEEPAY when realtime is missing", async () => {
+    stubCatalog([wallet("SHOPEEPAY", "ShopeePay"), wallet("DANA_REALTIME", "DANA Realtime")]);
+    const catalog = await listSekalipayCatalog(58_000);
+    expect(catalog.map((entry) => entry.code)).toEqual(["DANA_REALTIME"]);
+    expect((await listSekalipayMethods(58_000)).map((entry) => entry.code)).toEqual(["DANA_REALTIME"]);
+    expect(catalog.some((entry) => /^SHOPEEPAY$/i.test(entry.code))).toBe(false);
+  });
+
+  it("maps only exact channel IDs and never rewrites unknown labels or reads object prototypes", async () => {
+    stubCatalog([
+      wallet("CUSTOM_EW", "constructor"), wallet("PROTO_EW", "__proto__"), wallet("LEGACY_LOOKING", "ShopeePay Realtime"),
+      wallet("SHOPEEPAY_REALTIME", "ShopeePay Realtime"), wallet("DANA_REALTIME", "DANA Realtime", "3.7%"),
+    ]);
+    const catalog = await listSekalipayCatalog(58_000);
+    expect(catalog.map((entry) => `${entry.code}:${entry.name}`)).toEqual([
+      "CUSTOM_EW:constructor", "PROTO_EW:__proto__", "LEGACY_LOOKING:ShopeePay Realtime", "SHOPEEPAY_REALTIME:ShopeePay", "DANA_REALTIME:DANA",
+    ]);
+    expect(gatewayDisplayName("unknown-ew", "ShopeePay Realtime")).toBe("ShopeePay Realtime");
+    expect(gatewayDisplayName("constructor", "__proto__")).toBe("__proto__");
+    expect(gatewayDisplayName("__PROTO__", "constructor")).toBe("constructor");
+    expect(gatewayDisplayName("dana_realtime", "DANA Realtime")).toBe("DANA");
   });
 });
 
@@ -589,5 +638,113 @@ describe("merchant invoice and fee consent", () => {
       expect((await callback({ ...f.invoice, invoice: "SPYforeign" })).status).toBe(409);
       expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
     } finally { f.fixture.close(); }
+  });
+
+  it.each([
+    ["app e-wallet", "https://app.shopeepay.co.id/pay/abc?x=1"],
+    ["unknown external", "https://evil.example/checkout"],
+  ])("accepts and redacts optional non-canonical checkout_url (%s)", async (_name, url) => {
+    const f = await make("checkout-url", 4700, { checkout_url: url });
+    try {
+      expect(await f.create()).toMatchObject({ invoice: "SPYfixture", paymentLink: "https://sekalipay.com/payment/SPYfixture", checkoutUrl: null });
+      expect(f.fixture.sql.prepare("SELECT gateway_checkout_url,gateway_is_sandbox FROM payment_transactions WHERE order_code=?").get(code)).toMatchObject({ gateway_checkout_url: null, gateway_is_sandbox: 0 });
+      expect(f.posts()).toBe(1);
+    } finally { f.fixture.close(); }
+  });
+
+  it("uses the stored create-time sandbox mode when a paid GET omits is_sandbox", async () => {
+    const f = await make("no-sandbox-paid");
+    try {
+      await f.create();
+      delete (f.statusInvoice as Record<string, unknown>).is_sandbox;
+      Object.assign(f.statusInvoice, { status: "paid", paid_at: new Date().toISOString() });
+      const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
+      expect(await reconcileSekalipayGatewayPayment(code)).toBe("paid");
+      expect(f.posts()).toBe(1);
+    } finally { f.fixture.close(); }
+  });
+
+  it("still refuses completed as paid for a stored non-sandbox invoice when GET omits is_sandbox", async () => {
+    const f = await make("no-sandbox-completed");
+    try {
+      await f.create();
+      delete (f.statusInvoice as Record<string, unknown>).is_sandbox;
+      Object.assign(f.statusInvoice, { status: "completed", paid_at: new Date().toISOString() });
+      const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
+      expect(await reconcileSekalipayGatewayPayment(code)).toBe("manual_review");
+      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
+    } finally { f.fixture.close(); }
+  });
+
+  it("recovers a failed finalization from a GET without is_sandbox using the probe-stored mode", async () => {
+    const f = await make("probe-recovery");
+    try {
+      f.fixture.control.fail = (sql) => sql.includes("UPDATE payment_transactions SET payable_amount=");
+      await expect(f.create()).rejects.toThrow();
+      expect(f.fixture.sql.prepare("SELECT provider_payment_id,gateway_is_sandbox,payable_amount FROM payment_transactions WHERE order_code=?").get(code)).toMatchObject({ provider_payment_id: "SPYfixture", gateway_is_sandbox: 0, payable_amount: null });
+      f.fixture.control.fail = null;
+      delete (f.statusInvoice as Record<string, unknown>).is_sandbox;
+      expect((await f.create()).invoice).toBe("SPYfixture");
+      expect(f.fixture.sql.prepare("SELECT payable_amount,gateway_is_sandbox FROM payment_transactions WHERE order_code=?").get(code)).toMatchObject({ payable_amount: 14700, gateway_is_sandbox: 0 });
+      expect(f.posts()).toBe(1);
+    } finally { f.fixture.close(); }
+  });
+
+  it("keeps a legacy initializing row without a stored create-time sandbox fail-closed", async () => {
+    const f = await make("legacy-no-sandbox");
+    try {
+      f.fixture.sql.prepare(`INSERT INTO payment_transactions
+        (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,status,gateway_channel,gateway_label,gateway_estimated_fee,provider_payment_id,gateway_is_sandbox,expires_at,last_error)
+        VALUES(?,'sekalipay_gateway','merchant',?,'fixture',10000,'initializing','TESTVA','VA',4700,'SPYfixture',NULL,?,'sekalipay_gateway_callback_mismatch_manual_review')`)
+        .run(code, code, new Date(Date.now() + 600_000).toISOString());
+      delete (f.statusInvoice as Record<string, unknown>).is_sandbox;
+      Object.assign(f.statusInvoice, { status: "paid", paid_at: new Date().toISOString() });
+      const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
+      expect(await reconcileSekalipayGatewayPayment(code)).toBe("manual_review");
+      expect(f.fixture.sql.prepare("SELECT payable_amount,gateway_is_sandbox,last_error FROM payment_transactions WHERE order_code=?").get(code)).toMatchObject({ payable_amount: null, gateway_is_sandbox: null, last_error: "sekalipay_gateway_callback_mismatch_manual_review" });
+      await expect(f.create()).rejects.toThrow("sekalipay_gateway_invalid_invoice");
+      expect(f.posts()).toBe(0);
+      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
+    } finally { f.fixture.close(); }
+  });
+
+  it("keeps historic ordinary/realtime saved invoices readable, consentable, retryable and reconcilable", async () => {
+    const fixture = createD1Fixture();
+    stubFulfillmentKey();
+    try {
+      await insertTestProduct(fixture.sql);
+      const ordinary = "AXV-20261104-LEGACY01";
+      const realtime = "AXV-20261104-LEGACY02";
+      const future = new Date(Date.now() + 900_000).toISOString();
+      const insertSaved = (orderCode: string, channel: string, label: string, fee: number, invoice: string) => {
+        insertTestOrder(fixture.sql, orderCode, { channel: "web" });
+        fixture.sql.prepare("UPDATE orders SET subtotal=58000,payment_method=?,expires_at=? WHERE code=?").run(`sekalipay_gateway:${channel}`, future, orderCode);
+        fixture.sql.prepare(`INSERT INTO payment_transactions
+          (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,provider_payment_id,status,expires_at,gateway_fee,gateway_estimated_fee,gateway_fee_consent_required,gateway_fee_consented_at,gateway_channel,gateway_label,gateway_is_sandbox,direct_url)
+          VALUES(?,'sekalipay_gateway','merchant',?,'fixture',58000,?,?,'pending',?,?,?,1,NULL,?,?,0,?)`)
+          .run(orderCode, orderCode, 58_000 + fee, invoice, future, fee, fee, channel, label, `https://sekalipay.com/payment/${invoice}`);
+      };
+      insertSaved(ordinary, "SHOPEEPAY", "ShopeePay", 2_030, "SPYLEGACY01");
+      insertSaved(realtime, "DANA_REALTIME", "DANA Realtime", 2_146, "SPYLEGACY02");
+
+      const { buildSekalipayGatewayPaymentView } = await import("@/lib/payments/payment-view");
+      const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
+      expect(await buildSekalipayGatewayPaymentView(ordinary)).toMatchObject({ channel: "SHOPEEPAY", label: "ShopeePay", state: "fee_consent_required", payment_link: null, total: 60_030 });
+      expect(await confirmGatewayFee(ordinary, 60_030)).toBe(true);
+      expect(await buildSekalipayGatewayPaymentView(ordinary)).toMatchObject({ state: "pending", label: "ShopeePay", payment_link: "https://sekalipay.com/payment/SPYLEGACY01" });
+
+      const noCatalog = vi.fn();
+      vi.stubGlobal("fetch", noCatalog);
+      expect((await createSekalipayGatewayInvoice(ordinary, 58_000, "SHOPEEPAY", customer, 2_030)).invoice).toBe("SPYLEGACY01");
+      expect(noCatalog).not.toHaveBeenCalled();
+
+      vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", "fixture-legacy-key");
+      vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture-secret");
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: true, data: { merchant_ref_id: ordinary, invoice: "SPYLEGACY01", amount: 58_000, fee: 2_030, total: 60_030, payment_code: "SHOPEEPAY", status: "pending", is_sandbox: false } })));
+      expect(await reconcileSekalipayGatewayPayment(ordinary)).toBe("pending");
+
+      expect(await buildSekalipayGatewayPaymentView(realtime)).toMatchObject({ channel: "DANA_REALTIME", label: "DANA" });
+      expect(fixture.sql.prepare("SELECT gateway_label FROM payment_transactions WHERE order_code=?").get(realtime)?.gateway_label).toBe("DANA Realtime");
+    } finally { fixture.close(); }
   });
 });
