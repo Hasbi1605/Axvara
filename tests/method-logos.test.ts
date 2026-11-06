@@ -47,7 +47,7 @@ describe("methodLogo", () => {
   });
 
   it("label tidak dikenal, mirip, menyesatkan, atau ID berisi nama bank tidak mendapat logo", () => {
-    for (const label of ["BCA Syariah VA", "Bank BCA Transfer", "Not BCA", "BCAA", "BC A", "XBCA", "Bank Transfer Lainnya", "Virgo", "ShopeePay", "AstraPay", "SPayLater", "Mandiri Taspen", "BRI Agro", "OVO Points", "Gopay Later", "", "   "]) {
+    for (const label of ["BCA Syariah VA", "Bank BCA Transfer", "Not BCA", "BCAA", "BC A", "XBCA", "Bank Transfer Lainnya", "Virgo Rewards", "ShopeePay Later", "AstraPay Points", "DANA Points", "BNC Syariah", "Permata VA Unknown", "SPayLater", "Mandiri Taspen", "BRI Agro", "OVO Points", "Gopay Later", "", "   "]) {
       expect(methodLogo(gateway(label)), label).toBeNull();
     }
     for (const id of ["sekalipay_gateway:BCA_VA", "sekalipay_gateway:OVO", "sekalipay_gateway:BRIVA"]) expect(methodLogo(gateway("Channel Rahasia", id)), id).toBeNull();
@@ -58,9 +58,22 @@ describe("methodLogo", () => {
     expect(methodLogo({ ...crypto("doge"), label: "BCA" })).toBeNull();
   });
 
+  it("melengkapi logo katalog merchant, termasuk label Alternative/Realtime dan BNC (NEO), tanpa bergantung pada ID kanal", () => {
+    for (const [label, file] of [
+      ["BNC Virtual Account (NEO)", "bnc.webp"], ["Permata VA Alternative", "permata.svg"],
+      ["ShopeePay", "shopeepay.svg"], ["ShopeePay Realtime", "shopeepay.svg"],
+      ["DANA", "dana.svg"], ["  dana   realtime  ", "dana.svg"],
+      ["Virgo", "virgo.webp"], ["AstraPay", "astrapay.webp"],
+    ]) {
+      const logo = methodLogo(gateway(label, "sekalipay_gateway:ARBITRARY"));
+      expect(logo, label).toEqual({ src: `/payments/${file}` });
+      expect(existsSync(join(root, logo!.src)), label).toBe(true);
+    }
+  });
+
   it("semua logo yang dirujuk ada lokal; SVG bersih (tanpa script, on*, href/url eksternal, gambar tertanam)", () => {
     const svgs = readdirSync(join(root, "payments")).filter((name) => name.endsWith(".svg"));
-    expect(svgs.sort()).toEqual(["bca.svg", "bni.svg", "bri.svg", "bsi.svg", "cimb-niaga.svg", "danamon.svg", "gopay.svg", "linkaja.svg", "mandiri.svg", "ovo.svg", "permata.svg", "seabank.svg"]);
+    expect(svgs.sort()).toEqual(["bca.svg", "bni.svg", "bri.svg", "bsi.svg", "cimb-niaga.svg", "dana.svg", "danamon.svg", "gopay.svg", "linkaja.svg", "mandiri.svg", "ovo.svg", "permata.svg", "seabank.svg", "shopeepay.svg"]);
     for (const name of svgs) {
       const svg = readFileSync(join(root, "payments", name), "utf8");
       expect(new DOMParser().parseFromString(svg, "image/svg+xml").querySelector("parsererror"), name).toBeNull();
@@ -72,5 +85,11 @@ describe("methodLogo", () => {
     const png = readFileSync(join(root, "payments/usdt.png"));
     expect(png.subarray(1, 4).toString()).toBe("PNG");
     expect(png.length).toBeLessThan(10_240);
+    for (const name of ["bnc", "virgo", "astrapay"]) {
+      const webp = readFileSync(join(root, `payments/${name}.webp`));
+      expect(webp.subarray(0, 4).toString()).toBe("RIFF");
+      expect(webp.subarray(8, 12).toString()).toBe("WEBP");
+      expect(webp.length).toBeLessThan(10_240);
+    }
   });
 });

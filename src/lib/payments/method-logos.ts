@@ -15,21 +15,26 @@ import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 export type MethodLogo = { src: string; darken?: boolean };
 
 const GATEWAY_BRANDS: ReadonlyArray<{ file: string; labels: readonly string[] }> = [
-  { file: "bca", labels: ["bca", "bca va", "bca virtual account"] },
-  { file: "bri", labels: ["bri", "bri va", "bri virtual account", "briva"] },
-  { file: "mandiri", labels: ["mandiri", "mandiri va", "mandiri virtual account"] },
-  { file: "bni", labels: ["bni", "bni va", "bni virtual account"] },
-  { file: "permata", labels: ["permata", "permata va", "permata virtual account"] },
-  { file: "cimb-niaga", labels: ["cimb", "cimb va", "cimb niaga", "cimb niaga va", "cimb virtual account", "cimb niaga virtual account"] },
-  { file: "danamon", labels: ["danamon", "danamon va", "danamon virtual account"] },
-  { file: "bsi", labels: ["bsi", "bsi va", "bsi virtual account"] },
-  { file: "seabank", labels: ["seabank", "seabank va", "seabank virtual account"] },
-  { file: "gopay", labels: ["gopay"] },
-  { file: "ovo", labels: ["ovo"] },
-  { file: "linkaja", labels: ["linkaja", "link aja"] },
+  { file: "bca.svg", labels: ["bca", "bca va", "bca virtual account"] },
+  { file: "bri.svg", labels: ["bri", "bri va", "bri virtual account", "briva"] },
+  { file: "mandiri.svg", labels: ["mandiri", "mandiri va", "mandiri virtual account"] },
+  { file: "bni.svg", labels: ["bni", "bni va", "bni virtual account"] },
+  { file: "permata.svg", labels: ["permata", "permata va", "permata virtual account", "permata va alternative"] },
+  { file: "cimb-niaga.svg", labels: ["cimb", "cimb va", "cimb niaga", "cimb niaga va", "cimb virtual account", "cimb niaga virtual account"] },
+  { file: "danamon.svg", labels: ["danamon", "danamon va", "danamon virtual account"] },
+  { file: "bsi.svg", labels: ["bsi", "bsi va", "bsi virtual account"] },
+  { file: "seabank.svg", labels: ["seabank", "seabank va", "seabank virtual account"] },
+  { file: "bnc.webp", labels: ["bnc", "bnc va", "bnc virtual account (neo)"] },
+  { file: "gopay.svg", labels: ["gopay"] },
+  { file: "ovo.svg", labels: ["ovo"] },
+  { file: "linkaja.svg", labels: ["linkaja", "link aja"] },
+  { file: "shopeepay.svg", labels: ["shopeepay", "shopeepay realtime"] },
+  { file: "dana.svg", labels: ["dana", "dana realtime"] },
+  { file: "virgo.webp", labels: ["virgo"] },
+  { file: "astrapay.webp", labels: ["astrapay"] },
 ];
 
-const BY_LABEL = new Map(GATEWAY_BRANDS.flatMap(({ file, labels }) => labels.map((label) => [label, `/payments/${file}.svg`] as const)));
+const BY_LABEL = new Map(GATEWAY_BRANDS.flatMap(({ file, labels }) => labels.map((label) => [label, `/payments/${file}`] as const)));
 
 const normalizeLabel = (label: string) => label.trim().toLowerCase().replace(/\s+/g, " ");
 

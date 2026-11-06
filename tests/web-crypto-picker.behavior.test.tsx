@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Pemilih crypto (desain): satu baris per SIMBOL; simbol multi-jaringan diperluas menjadi pilihan jaringan EKSPLISIT (tanpa jaringan bawaan).
-// Header tertutup (judul + total USD + chip logo bulat), akordeon exclusive, pencarian (>8 baris simbol), baris/jaringan di bawah minimum nonaktif.
+// Header tertutup (judul + total USD + chip logo bulat), akordeon exclusive, tanpa pencarian, baris/jaringan di bawah minimum nonaktif.
 // FIXTURE kontrak quote; semua angka dari "server", klien tidak berhitung.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
@@ -48,7 +48,6 @@ const symbolRows = () => Array.from(document.querySelectorAll("#pay-group-crypto
 const netGroup = (name: string) => screen.queryByRole("radiogroup", { name });
 const visibleRadios = () => screen.queryAllByRole("radio") as HTMLInputElement[];
 const visibleCoinRadios = () => visibleRadios().filter((r) => r.value.startsWith("nowpayments:"));
-const search = () => screen.queryByRole("textbox", { hidden: true }) as HTMLInputElement | null;
 const openGroup = () => fireEvent.click(headerBtn(/^Crypto/));
 
 describe("crypto picker: header tertutup", () => {
@@ -251,64 +250,28 @@ describe("crypto picker: simbol multi-jaringan -> pilihan jaringan eksplisit", (
   });
 });
 
-describe("crypto picker: pencarian", () => {
-  const open = () => { render(<Harness raw={[qrisM, ...allCoins()]} />); openGroup(); };
-  const type = (value: string) => fireEvent.change(search()!, { target: { value } });
-  const visibleTickers = () => visibleCoinRadios().map((r) => r.value.replace("nowpayments:", ""));
-
-  it("tampil bila > 8 BARIS SIMBOL (12 -> tampil; 28 opsi tapi hanya 4 simbol -> tidak); label aksesibel, lebar penuh, tinggi 44px", () => {
-    open();
-    const input = screen.getByLabelText("Cari koin atau jaringan", { selector: "input" }) as HTMLInputElement;
-    expect(input.className).toContain("w-full");
-    expect(input.className).toContain("h-11");
-    cleanup();
-    const few = ["usdtbsc", "usdttrc20", "usdterc20", "usdcbsc", "usdcsol", "usdc", "btc", "eth", "usdtmatic", "usdtarb"].map((t) => coin(t, new Set()));
-    render(<Harness raw={[qrisM, ...few]} />);
+describe("crypto picker: tanpa pencarian", () => {
+  it.each(["id", "en"] as const)("%s: semua 12 simbol/28 opsi tetap ada tanpa textbox; jaringan dipilih eksplisit dan perluasan direset saat tutup", (locale) => {
+    const spy = vi.fn();
+    render(<Harness raw={[qrisM, ...allCoins()]} locale={locale} onSelectSpy={spy} />);
     openGroup();
-    expect(search()).toBeNull();
-  });
-
-  it("filter simbol/nama: 'bitcoin' -> hanya BTC; 'tether' -> USDT tertutup (semua jaringannya cocok)", () => {
-    open();
-    type("bitcoin");
-    expect(symbolRows()).toHaveLength(1);
-    expect(visibleTickers()).toEqual(["btc"]);
-    type("tether");
-    expect(symbolRows()).toEqual(["USDT 9 jaringan"]);
-    expect(netGroup("Jaringan USDT")).toBeNull();
-  });
-
-  it("kecocokan JARINGAN: baris simbol langsung terbuka dengan chip yang cocok saja ('tron' -> TRX + USDT[Tron (TRC20)]; 'usdt bnb' -> USDT[BNB Smart Chain])", () => {
-    open();
-    type("TRON");
-    expect(symbolRows().map((r) => r.split(" ")[0])).toEqual(["TRX", "USDT"]);
-    expect(expandBtn("USDT").getAttribute("aria-expanded")).toBe("true");
-    const labels = within(netGroup("Jaringan USDT")!).getAllByRole("radio", { hidden: true }).map((r) => norm(r.closest("label")!.textContent));
-    expect(labels).toEqual(["Tron (TRC20)"]);
-    expect(netGroup("Jaringan USDC")).toBeNull();
-    type("usdt bnb");
-    expect(symbolRows()).toHaveLength(1);
-    expect(within(netGroup("Jaringan USDT")!).getAllByRole("radio", { hidden: true })).toHaveLength(1);
-    type("polygon"); // juga USDC: dua simbol terbuka oleh pencarian
-    expect(symbolRows().map((r) => r.split(" ")[0])).toEqual(["USDT", "USDC"]);
-    expect(netGroup("Jaringan USDC")).toBeTruthy();
-    fireEvent.click(expandBtn("USDT")); // pembeli masih bisa menutup baris yang dibuka pencarian
-    expect(netGroup("Jaringan USDT")).toBeNull();
-    expect(netGroup("Jaringan USDC")).toBeTruthy();
-  });
-
-  it("tidak ada hasil -> teks kosong; tombol hapus mengosongkan dan mengembalikan 12 baris; menutup grup mengosongkan pencarian", () => {
-    open();
-    type("zzzz");
-    expect(symbolRows()).toHaveLength(0);
-    expect(screen.getByText("Tidak ada koin yang cocok.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Hapus pencarian" }));
-    expect(search()!.value).toBe("");
+    expect(screen.queryByRole("textbox", { hidden: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Hapus pencarian|Clear search/, hidden: true })).toBeNull();
     expect(symbolRows()).toHaveLength(12);
-    expect(screen.queryByRole("button", { name: "Hapus pencarian" })).toBeNull();
-    type("tron");
+    expect(coinRadios()).toHaveLength(28);
+    expect(expandBtn("USDT").getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(expandBtn("USDT"));
+    expect(checked()).toHaveLength(0);
+    expect(document.querySelectorAll("#pay-net-USDT input")).toHaveLength(9);
+    fireEvent.click(radioOf("usdttrc20")!);
+    expect(spy).toHaveBeenLastCalledWith("nowpayments:usdttrc20");
     openGroup();
-    expect(search()!.value).toBe("");
+    expect(checked()).toHaveLength(0);
+    openGroup();
+    expect(expandBtn("USDT").getAttribute("aria-expanded")).toBe("false");
+    expect(symbolRows()).toHaveLength(12);
+    expect(coinRadios()).toHaveLength(28);
+    expect(screen.queryByRole("textbox", { hidden: true })).toBeNull();
   });
 });
 

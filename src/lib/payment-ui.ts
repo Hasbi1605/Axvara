@@ -257,18 +257,12 @@ export function payCopy(locale: PayLocale) {
     gatewayRowFee: (fee: number) => (fee > 0 ? (id ? `Biaya ${rpLocale(fee, locale)}` : `Fee ${rpLocale(fee, locale)}`) : id ? "Tanpa biaya" : "No fee"),
     gatewayRowMin: (min: number) => `Min. ${rpLocale(min, locale)}`,
     gatewayRowMax: (max: number) => (id ? `Maks. ${rpLocale(max, locale)}` : `Max ${rpLocale(max, locale)}`),
-    searchMethodLabel: id ? "Cari metode pembayaran" : "Search payment method",
-    searchMethodEmpty: id ? "Tidak ada metode yang cocok." : "No matching methods.",
     cryptoCaption: (amountText: string, bps: number | null) =>
       (bps === null ? usdFor(amountText, locale) : id ? `${usdFor(amountText, locale)} · termasuk biaya layanan ${bpsPercentText(bps, "id")}%` : `${usdFor(amountText, locale)} · incl. ${bpsPercentText(bps, "en")}% service fee`),
     cryptoNetworks: (n: number) => (id ? `${n} jaringan` : `${n} networks`),
     cryptoNetworkGroup: (symbol: string) => (id ? `Jaringan ${symbol}` : `${symbol} network`),
     cryptoSubPopular: id ? "Populer" : "Popular",
     cryptoSubStable: "Stablecoin",
-    cryptoSearchLabel: id ? "Cari koin atau jaringan" : "Search coin or network",
-    cryptoSearchPlaceholder: id ? "Cari koin atau jaringan" : "Search coin or network",
-    cryptoSearchClear: id ? "Hapus pencarian" : "Clear search",
-    cryptoSearchEmpty: id ? "Tidak ada koin yang cocok." : "No matching coins.",
     cryptoMinApprox: (idrText: string) => `≈ ${idrText}`,
     cryptoFeeIncluded: (bps: number) => (id ? `Termasuk biaya layanan ${bpsPercentText(bps, "id")}%` : `Incl. ${bpsPercentText(bps, "en")}% service fee`),
     // Ringkasan checkout crypto (revisi owner 6 Nov): cukup Subtotal + Biaya layanan, tanpa baris kurs/gas.

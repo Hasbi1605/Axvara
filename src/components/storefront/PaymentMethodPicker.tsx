@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Search, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { isAvailableGateway, payCopy, type CryptoOption, type GatewayOption, type PayLocale, type PayOption, type QrisOption } from "@/lib/payment-ui";
 import { gatewayShortName, methodLogo, methodMonogram } from "@/lib/payments/method-logos";
-import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { formatRupiah } from "@/lib/utils";
 
 /**
@@ -18,7 +17,7 @@ import { formatRupiah } from "@/lib/utils";
  * membuka grup lain menutup yang sebelumnya, dan mengklik grup yang sama menutupnya.
  * Menutup grup yang memuat pilihan menghapus pilihan eksplisit (selectedId null); header tertutup tidak menampilkan
  * ringkasan "Dipilih"/logo kedua. Grup Crypto memakai header khusus (judul + total USD + chip logo bulat) dan panel `CryptoPanel`
- * (pencarian bila >8 koin, subgrup Populer/Stablecoin, baris logo+simbol+jaringan; koin di bawah minimum nonaktif dengan "Min. US$x").
+ * (subgrup Populer/Stablecoin, baris logo+simbol+jaringan; koin di bawah minimum nonaktif dengan "Min. US$x"). Semua metode tanpa pencarian.
  * Satu grup radio native (`name="checkout-pay"`): radio di panel tersembunyi tidak bisa difokus.
  */
 type Props = {
@@ -40,7 +39,6 @@ type GroupKey = "va" | "ewallet" | "other" | "crypto";
 const FOCUS = "has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF]";
 const HEADER_FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]";
 const SURFACE = "ax-glass-card rounded-2xl border";
-const SEARCH_THRESHOLD = 8;
 const GATEWAY_CHIPS = 4;
 
 function RadioDot({ checked }: { checked: boolean }) {
@@ -205,43 +203,12 @@ function GatewayRow({ option, groupKey, selected, disabled, onSelect, copy }: { 
   );
 }
 
-/** Kolom pencarian ringkas (44px, label sr-only, tombol hapus 44×44), dipakai grup crypto dan gateway besar. */
-function SearchField({ id, value, onChange, label, placeholder, clearLabel, disabled }: { id: string; value: string; onChange: (value: string) => void; label: string; placeholder: string; clearLabel: string; disabled: boolean }) {
-  return (
-    <div className="relative">
-      <label htmlFor={id} className="sr-only">{label}</label>
-      <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
-      <input
-        id={id} type="text" inputMode="search" autoComplete="off" autoCapitalize="none" spellCheck={false} value={value} disabled={disabled}
-        onChange={(event) => onChange(event.target.value)} placeholder={placeholder}
-        className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-9 pr-11 text-[14px] text-white outline-none placeholder:text-white/40 focus-visible:border-[#00E5FF]/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF] disabled:opacity-60"
-      />
-      {value !== "" && (
-        <button type="button" aria-label={clearLabel} onClick={() => onChange("")} className={`absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-white/70 hover:text-white ${HEADER_FOCUS}`}>
-          <X aria-hidden className="h-4 w-4" />
-        </button>
-      )}
-    </div>
-  );
-}
-
-/** Isi grup gateway terbuka: daftar baris dalam satu permukaan kaca; pencarian hanya bila baris > 8. */
-function GatewayPanel({ options, groupKey, shared, open }: { options: GatewayOption[]; groupKey: GatewayGroupKey; shared: Shared; open: boolean }) {
+/** Isi grup gateway: semua kanal dalam satu daftar kaca, tanpa pencarian. */
+function GatewayPanel({ options, groupKey, shared }: { options: GatewayOption[]; groupKey: GatewayGroupKey; shared: Shared }) {
   const { copy, selectedId, onSelect, disabled } = shared;
-  const [query, setQuery] = useState("");
-  useEffect(() => { if (!open) setQuery(""); }, [open]);
-  const searchable = options.length > SEARCH_THRESHOLD;
-  const tokens = searchable ? normalizeQuery(query).split(" ").filter(Boolean) : [];
-  const visible = tokens.length === 0 ? options : options.filter((option) => { const hay = normalizeQuery(`${option.label} ${gatewayShortName(option.label, groupKey)}`); return tokens.every((token) => hay.includes(token)); });
   return (
-    <div className="space-y-3">
-      {searchable && <SearchField id={`pay-${groupKey}-search`} value={query} onChange={setQuery} label={copy.searchMethodLabel} placeholder={copy.searchMethodLabel} clearLabel={copy.cryptoSearchClear} disabled={disabled} />}
-      {visible.length > 0 && (
-        <div className={`grid gap-0.5 p-1.5 ${SURFACE} border-white/10`}>
-          {visible.map((option) => <GatewayRow key={option.id} option={option} groupKey={groupKey} selected={selectedId === option.id} disabled={disabled} onSelect={() => onSelect(option.id)} copy={copy} />)}
-        </div>
-      )}
-      {visible.length === 0 && <p role="status" className="px-1 text-[13px] text-white/60">{copy.searchMethodEmpty}</p>}
+    <div className={`grid gap-0.5 p-1.5 ${SURFACE} border-white/10`}>
+      {options.map((option) => <GatewayRow key={option.id} option={option} groupKey={groupKey} selected={selectedId === option.id} disabled={disabled} onSelect={() => onSelect(option.id)} copy={copy} />)}
     </div>
   );
 }
@@ -281,12 +248,6 @@ function previewCoins(options: CryptoOption[]): CryptoOption[] {
     if (!picked.includes(option)) picked.push(option);
   }
   return picked;
-}
-
-const normalizeQuery = (value: string) => value.toLowerCase().replace(/\s+/g, " ").trim();
-function coinHaystack(option: CryptoOption): string {
-  const asset = getCryptoAsset(option.payCurrency);
-  return normalizeQuery([option.label, option.sublabel, asset?.name, asset?.networkLabel, option.network, option.payCurrency].filter(Boolean).join(" "));
 }
 
 /** Satu baris per SIMBOL (urutan kemunculan = urutan kurasi server). Simbol dengan >1 jaringan diperluas menjadi pilihan jaringan. */
@@ -390,76 +351,56 @@ function NetworkChip({ option, selected, disabled, onSelect, copy }: { option: C
 
 function CryptoPanel({ options, shared, open }: { options: CryptoOption[]; shared: Shared; open: boolean }) {
   const { copy, selectedId, onSelect, disabled } = shared;
-  const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [closedAuto, setClosedAuto] = useState<ReadonlySet<string>>(new Set());
-  const searchId = "pay-crypto-search";
   const entries = symbolEntries(options);
   const selectedOption = options.find((option) => option.id === selectedId) ?? null;
   const selectedKey = selectedOption ? selectedOption.label.trim().toUpperCase() : null;
 
-  // Tutup grup = reset pencarian dan perluasan (daftar bersih saat dibuka lagi).
-  useEffect(() => { if (!open) { setQuery(""); setExpanded(null); setClosedAuto(new Set()); } }, [open]);
-  useEffect(() => { setClosedAuto(new Set()); }, [query]);
+  useEffect(() => { if (!open) setExpanded(null); }, [open]);
   // Pilihan dipulihkan pada simbol multi-jaringan: perluas simbol itu agar pilihan tidak tersembunyi.
   const selectedEntry = entries.find((entry) => entry.key === selectedKey) ?? null;
   const restoreKey = selectedEntry?.multi ? selectedEntry.key : null;
   useEffect(() => { if (restoreKey) setExpanded((current) => current ?? restoreKey); }, [restoreKey]);
 
-  const searchable = entries.length > SEARCH_THRESHOLD;
-  const tokens = searchable ? normalizeQuery(query).split(" ").filter(Boolean) : [];
-  const matches = (option: CryptoOption) => { const hay = coinHaystack(option); return tokens.every((token) => hay.includes(token)); };
-  const view = entries
-    .map((entry) => {
-      const visible = tokens.length === 0 ? entry.options : entry.options.filter(matches);
-      const narrowed = tokens.length > 0 && entry.multi && visible.length < entry.options.length;
-      return { entry, visible, narrowed };
-    })
-    .filter((item) => item.visible.length > 0);
-  const isOpen = (item: (typeof view)[number]) => item.entry.multi && item.entry.anyAvailable && (expanded === item.entry.key || (item.narrowed && !closedAuto.has(item.entry.key)));
+  const isOpen = (entry: SymbolEntry) => entry.multi && entry.anyAvailable && expanded === entry.key;
 
-  const toggle = (item: (typeof view)[number]) => {
-    const { entry } = item;
-    if (isOpen(item)) {
+  const toggle = (entry: SymbolEntry) => {
+    if (isOpen(entry)) {
       if (selectedKey === entry.key) onSelect(null); // menutup simbol menghapus jaringan yang dipilih di dalamnya
-      if (expanded === entry.key) setExpanded(null);
-      if (item.narrowed) setClosedAuto((current) => new Set(current).add(entry.key));
+      setExpanded(null);
     } else {
       if (selectedOption) onSelect(null); // tanpa jaringan bawaan: membuka simbol lain menghapus pilihan crypto sebelumnya
       setExpanded(entry.key);
-      setClosedAuto((current) => { const next = new Set(current); next.delete(entry.key); return next; });
     }
   };
   const pickSingle = (option: CryptoOption) => { setExpanded(null); onSelect(option.id); };
 
   // Urutan: subgrup Populer lalu Stablecoin (urutan kurasi server); di dalamnya simbol tersedia dulu, lalu yang semuanya di bawah minimum.
-  const sorted = (items: typeof view) => [...items.filter((item) => item.entry.anyAvailable), ...items.filter((item) => !item.entry.anyAvailable)];
+  const sorted = (items: SymbolEntry[]) => [...items.filter((entry) => entry.anyAvailable), ...items.filter((entry) => !entry.anyAvailable)];
   const sections = ([
-    { key: "popular", title: copy.cryptoSubPopular, items: sorted(view.filter((item) => item.entry.group === "popular")) },
-    { key: "stable", title: copy.cryptoSubStable, items: sorted(view.filter((item) => item.entry.group === "stable")) },
+    { key: "popular", title: copy.cryptoSubPopular, items: sorted(entries.filter((entry) => entry.group === "popular")) },
+    { key: "stable", title: copy.cryptoSubStable, items: sorted(entries.filter((entry) => entry.group === "stable")) },
   ]).filter((section) => section.items.length > 0);
 
   return (
     <div className="space-y-3">
-      {searchable && <SearchField id={searchId} value={query} onChange={setQuery} label={copy.cryptoSearchLabel} placeholder={copy.cryptoSearchPlaceholder} clearLabel={copy.cryptoSearchClear} disabled={disabled} />}
       {sections.map((section) => (
         <div key={section.key} role="group" aria-label={section.title}>
           <p aria-hidden className="px-1 pb-1.5 text-[12px] font-medium leading-4 text-white/50">{section.title}</p>
           <div className={`grid gap-0.5 p-1.5 ${SURFACE} border-white/10`}>
-            {section.items.map((item) => {
-              const { entry } = item;
+            {section.items.map((entry) => {
               if (!entry.multi) {
                 const option = entry.options[0];
                 return <SingleRow key={entry.key} option={option} selected={selectedId === option.id} disabled={disabled} onSelect={() => pickSingle(option)} copy={copy} />;
               }
               const panelId = `pay-net-${entry.key}`;
-              const openNow = isOpen(item);
+              const openNow = isOpen(entry);
               return (
                 <div key={entry.key}>
-                  <ExpandRow entry={entry} open={openNow} disabled={disabled} onToggle={() => toggle(item)} copy={copy} panelId={panelId} />
+                  <ExpandRow entry={entry} open={openNow} disabled={disabled} onToggle={() => toggle(entry)} copy={copy} panelId={panelId} />
                   <Collapse open={openNow} id={panelId}>
                     <div role="radiogroup" aria-label={copy.cryptoNetworkGroup(entry.symbol)} className="flex flex-wrap gap-2 px-3 pb-2 pt-1">
-                      {item.visible.map((option) => (
+                      {entry.options.map((option) => (
                         <NetworkChip key={option.id} option={option} selected={selectedId === option.id} disabled={disabled} onSelect={() => onSelect(option.id)} copy={copy} />
                       ))}
                     </div>
@@ -470,7 +411,6 @@ function CryptoPanel({ options, shared, open }: { options: CryptoOption[]; share
           </div>
         </div>
       ))}
-      {sections.length === 0 && <p role="status" className="px-1 text-[13px] text-white/60">{copy.cryptoSearchEmpty}</p>}
     </div>
   );
 }
@@ -541,7 +481,7 @@ function GroupSection({ group, open, onToggle, selected, shared }: { group: Grou
       </button>
       <Collapse open={open} id={panelId}>
         <div className="space-y-2 pt-2">
-          {cryptoGroup ? <CryptoPanel options={cryptoOptions} shared={shared} open={open} /> : <GatewayPanel options={gatewayOptions} groupKey={group.key as GatewayGroupKey} shared={shared} open={open} />}
+          {cryptoGroup ? <CryptoPanel options={cryptoOptions} shared={shared} open={open} /> : <GatewayPanel options={gatewayOptions} groupKey={group.key as GatewayGroupKey} shared={shared} />}
         </div>
       </Collapse>
     </section>

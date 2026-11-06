@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Grup gateway di picker (VA / E-Wallet / Lainnya) di ATAS Crypto, selaras bahasa visual grup crypto: header (judul 14px + keterangan biaya termurah +
-// ubin logo persegi putih bertumpuk), baris (ubin 40×26 | nama pendek | "Biaya Rp x"), nonaktif Min./Maks., pencarian >8 baris, monogram tanpa logo.
+// ubin logo persegi putih bertumpuk), baris (ubin 40×26 | nama pendek | "Biaya Rp x"), nonaktif Min./Maks., tanpa pencarian, monogram tanpa logo.
 // FIXTURE kontrak quote (bukan katalog merchant nyata); semua angka dari "server", klien tidak berhitung.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
@@ -37,7 +37,6 @@ const checked = () => radios().filter((r) => r.checked);
 const row = (code: string) => (document.querySelector(`input[value="sekalipay_gateway:${code}"]`) as HTMLInputElement).closest("label")!;
 const radioOf = (code: string) => document.querySelector(`input[value="sekalipay_gateway:${code}"]`) as HTMLInputElement;
 const panel = (key: string) => document.getElementById(`pay-group-${key}`)!;
-const search = () => screen.queryByRole("textbox") as HTMLInputElement | null;
 
 describe("urutan grup", () => {
   it("QRIS -> Virtual Account -> E-Wallet -> Lainnya -> Crypto (Lainnya hanya bila ada isinya)", () => {
@@ -148,15 +147,18 @@ describe("baris terbuka", () => {
     expect(Array.from(panel("va").querySelectorAll("input")).map((i) => i.value.replace("sekalipay_gateway:", ""))).toEqual(["OK", "LOW", "OVER"]);
   });
 
-  it("tanpa logo terverifikasi = monogram netral dari nama (bukan logo merek lain): 'DANA' -> DA, 'ShopeePay' -> SH, 'Channel Rahasia' -> CR; tanpa <img>", () => {
+  it("DANA dan ShopeePay memakai logo asli; label tidak dikenal tetap monogram netral tanpa menebak dari ID", () => {
     render(<Harness raw={[qrisM, ...EW, gw("BCA_VA", "Channel Rahasia", "other", 3000)]} />);
     fireEvent.click(headerBtn(/^E-Wallet/));
     fireEvent.click(headerBtn(/^Lainnya/));
     const mono = (code: string) => row(code).querySelector("[data-bank-tile][data-monogram]") as HTMLElement;
-    expect(mono("DANA").textContent).toBe("DA");
-    expect(mono("SHP").textContent).toBe("SH");
+    expect(row("DANA").querySelector('img[src="/payments/dana.svg"]')).toBeTruthy();
+    expect(row("SHP").querySelector('img[src="/payments/shopeepay.svg"]')).toBeTruthy();
+    expect(mono("DANA")).toBeNull();
+    expect(mono("SHP")).toBeNull();
     expect(mono("BCA_VA").textContent).toBe("CR"); // ID memuat BCA tetapi label tidak dikenal
-    for (const code of ["DANA", "SHP", "BCA_VA"]) { expect(mono(code).querySelector("img")).toBeNull(); expect(mono(code).className).toContain("bg-[#252E52]"); }
+    expect(mono("BCA_VA").querySelector("img")).toBeNull();
+    expect(mono("BCA_VA").className).toContain("bg-[#252E52]");
     expect(row("OVO").querySelector('[data-bank-tile] img[src="/payments/ovo.svg"]')).toBeTruthy(); // logo terverifikasi tetap dipakai
     expect(row("OVO").querySelector("[data-monogram]")).toBeNull();
   });
@@ -172,32 +174,23 @@ describe("baris terbuka", () => {
   });
 });
 
-describe("pencarian grup gateway (hanya bila > 8 baris)", () => {
+describe("grup gateway tanpa pencarian", () => {
   const many = Array.from({ length: 9 }, (_, i) => gw(`B${i}`, ["BNI VA", "Mandiri VA", "Permata VA", "BRI VA", "BCA VA", "CIMB VA", "Danamon VA", "BSI VA", "SeaBank VA"][i], "va", 4000));
-  it("8 baris: tanpa pencarian; 9 baris: ada, berlabel aksesibel, 44px; filter nama; kosong -> teks; hapus; ditutup = dikosongkan", () => {
-    render(<Harness raw={[qrisM, ...many.slice(0, 8)]} />);
+  it.each(["id", "en"] as const)("%s: semua 9 kanal tampil, termasuk sesudah tutup/buka; tidak ada input pencarian atau tombol hapus", (locale) => {
+    const spy = vi.fn();
+    render(<Harness raw={[qrisM, ...many]} locale={locale} onSelectSpy={spy} />);
     fireEvent.click(headerBtn(/^Virtual Account/));
-    expect(search()).toBeNull();
-    cleanup();
-    render(<Harness raw={[qrisM, ...many]} />);
-    fireEvent.click(headerBtn(/^Virtual Account/));
-    const input = screen.getByLabelText("Cari metode pembayaran", { selector: "input" }) as HTMLInputElement;
-    expect(input.className).toContain("h-11"); expect(input.className).toContain("w-full");
     const visible = () => Array.from(panel("va").querySelectorAll("input[type=radio]")).map((i) => (i as HTMLInputElement).value.replace("sekalipay_gateway:", ""));
+    expect(visible()).toEqual(many.map((_, i) => `B${i}`));
+    expect(screen.queryByRole("textbox", { hidden: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Hapus pencarian|Clear search/, hidden: true })).toBeNull();
+    fireEvent.click(radioOf("B8"));
+    expect(spy).toHaveBeenLastCalledWith("sekalipay_gateway:B8");
+    fireEvent.click(headerBtn(/^Virtual Account/));
+    expect(checked()).toHaveLength(0);
+    fireEvent.click(headerBtn(/^Virtual Account/));
     expect(visible()).toHaveLength(9);
-    fireEvent.change(input, { target: { value: "ba" } });
-    expect(visible()).toEqual(["B8"]); // "ba" hanya cocok dengan SeaBank
-    fireEvent.change(input, { target: { value: "zzzz" } });
-    expect(visible()).toHaveLength(0);
-    expect(screen.getByText("Tidak ada metode yang cocok.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Hapus pencarian" }));
-    expect(input.value).toBe("");
-    expect(visible()).toHaveLength(9);
-    fireEvent.change(input, { target: { value: "bri" } });
-    expect(visible()).toEqual(["B3"]);
-    fireEvent.click(headerBtn(/^Virtual Account/)); // tutup grup
-    expect(search()).toBeNull(); // panel tertutup inert/aria-hidden
-    expect((document.getElementById("pay-va-search") as HTMLInputElement).value).toBe("");
+    expect(screen.queryByRole("textbox", { hidden: true })).toBeNull();
   });
 });
 
