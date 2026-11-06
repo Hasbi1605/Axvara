@@ -1,5 +1,10 @@
 # PRD — AXVARA
 
+## Data produk pengujian produksi — 6 November 2026
+- Atas permintaan owner, satu produk **For Testing Only** aktif di D1 produksi: ID116, `/produk/for-testing-only`, kategori Developer & Tools, badge `Testing Only`. Ini produk katalog biasa yang terlihat publik, bukan produk dengan otorisasi admin-only atau sandbox; rail baru tetap hanya tersedia melalui halaman tes admin existing.
+- Tiga varian: ID268 `Test Rp8.000` (Rp8.000), ID269 `Test Rp10.000` (Rp10.000), ID270 `Test Rp40.000` (Rp40.000). Angka tersebut harga dasar sebelum biaya metode; minimum1, stok tak terbatas, tanpa harga coret/grosir. Sumber dan fulfillment manual, tidak terhubung WR/SK atau inventori kredensial; Telegram produk dinonaktifkan. Deskripsi menegaskan tidak ada akun/lisensi/layanan atau pengiriman otomatis dan pembayaran tetap uang nyata.
+- Perubahan data saja: dibuat sebagai draft nonaktif, ketiga varian diverifikasi sebelum aktivasi; tidak mengubah kode/schema/env/flag pembayaran atau produk lain. Verifikasi D1, katalog publik200 (1produk/3varian, min8000/max40000), Chromium1280/390 memilih seluruh varian dengan harga benar dan tanpa overflow; keyboard desktop dan gambar termuat. Tidak membuat order/invoice atau memverifikasi pembayaran/settlement. CSP memblokir beacon analytics Cloudflare existing; bukan perubahan produk ini.
+
 Koreksi tes nyata6November2026: halaman tes `770a051` sudah terdeploy, tetapi percobaan ShopeePay owner ditolak upstreamPOST401. Bug adapter mencampur mode autentikasi: akun IP whitelist memerlukan HMAC body JSON mentah, bukan Enhanced path/params/timestamp. POST via VPS kini menandatangani byte yang dikirim; GET200 hanya membuktikan key/IP, bukan signature POST. Tidak ada perubahan harga/fee/UI atau flag publik/bot, tidak ada POST ulang percobaan lama. Tes kontrak independen mereproduksi kegagalan lama; koreksi ini menunggu rilis CI, belum bukti invoice/settlement live. Detail ARCHITECTURE §16.20.
 
 ## Tes pembayaran admin — 6 November 2026
