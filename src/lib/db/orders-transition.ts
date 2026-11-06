@@ -10,6 +10,7 @@ import { PAID_ORDER_COST_SNAPSHOT_SQL } from "@/lib/orders/cost-snapshot";
 import { getD1, getOrderMem, getSharedMem, execRun } from "./client";
 import { OrderTransitionError } from "./errors";
 import type { D1, D1Statement } from "./types";
+import { parseFxTimestamp } from "@/lib/payments/fx";
 
 export async function transitionPendingOrder(
   code: string,
@@ -38,7 +39,8 @@ export async function transitionPendingOrder(
       const guardId = `${code}:transition:${status}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
       const statements: D1Statement[] = [
         d1.prepare(
-          "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending','expired','failed')) THEN 1 ELSE 0 END",
+          `INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending','expired','failed')
+            ${adminNote === "buyer_cancel" ? `AND NOT EXISTS (SELECT 1 FROM payment_transactions pt WHERE pt.order_code=orders.code AND ((pt.provider='nowpayments' AND (COALESCE(pt.provider_status_text,'') NOT IN ('','waiting','expired') OR COALESCE(pt.last_error,'')!='' OR trim(COALESCE(pt.actually_paid_text,''),'0. ')!='')) OR (pt.provider='sekalipay_gateway' AND (COALESCE(pt.last_error,'')!='' OR COALESCE(pt.provider_status_text,'') IN ('paid','completed') OR pt.paid_at IS NOT NULL))))` : ""}) THEN 1 ELSE 0 END`,
         ).bind(guardId, code),
       ];
       productQuantities.forEach((qty, productId) => {
@@ -244,7 +246,8 @@ export async function transitionPendingPaymentOrder(input: {
   return true;
 }
 
-/** Atomically make the dynamic QRIS ledger authoritative for its order. */
+/** Paid atomik satu batch: guard + tx paid + order lunas + event matched + outbox + snapshot modal. */
+export type PaidPaymentMethod = "qris" | "crypto" | "sekalipay_gateway";
 export async function transitionPendingPaymentToPaid(
   orderCode: string,
   providerPaidAt?: string | null,
@@ -254,8 +257,14 @@ export async function transitionPendingPaymentToPaid(
     salesChannel: string;
   } | null,
   event?: { id: number; reviewedBy?: string; reviewNote?: string },
+  options?: { paymentMethod?: PaidPaymentMethod; eventMode?: "payable" | "received_text" | "gateway" },
+  database?: D1 | null,
 ): Promise<boolean> {
-  const d1 = getD1();
+  if ((options?.paymentMethod === "sekalipay_gateway" || options?.eventMode === "gateway")
+    && (options?.paymentMethod !== "sekalipay_gateway" || options?.eventMode !== "gateway" || !event)) return false;
+  if (options?.eventMode === "gateway" && (!providerPaidAt || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(providerPaidAt)
+    || !parseFxTimestamp(providerPaidAt) || Date.parse(providerPaidAt) > Date.now())) return false;
+  const d1 = database === undefined ? getD1() : database;
   if (d1) {
     // Mirror image of the expiry guard: paid wins only while the order is
     // still pending+unpaid and the ledger is still pending. A concurrent
@@ -274,26 +283,59 @@ export async function transitionPendingPaymentToPaid(
          SELECT ?, CASE WHEN
            EXISTS(SELECT 1 FROM orders WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')
              AND (expires_at IS NULL OR julianday(expires_at)>julianday('now')))
-           AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status='pending')
+            AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status IN ('initializing','pending'))
+            AND ${options?.paymentMethod === "sekalipay_gateway" ? "EXISTS" : "NOT EXISTS"}(SELECT 1 FROM payment_transactions WHERE order_code=? AND provider='sekalipay_gateway')
          THEN 1 ELSE 0 END`,
-      ).bind(guardId, orderCode, orderCode),
+      ).bind(guardId, orderCode, orderCode, orderCode),
       d1.prepare(
         `UPDATE payment_transactions
          SET status='paid', paid_at=COALESCE(paid_at,?,datetime('now')),
              last_checked_at=datetime('now'), last_error=NULL, updated_at=datetime('now')
-         WHERE order_code=? AND status='pending'`,
+         WHERE order_code=? AND status IN ('initializing','pending')`,
       ).bind(providerPaidAt ?? null, orderCode),
       d1.prepare(
         `UPDATE orders
-          SET payment_status='paid', payment_method='qris', status='lunas',
+          SET payment_status='paid', payment_method=?, status='lunas',
               paid_at=COALESCE(paid_at,?,datetime('now')), updated_at=datetime('now')
           WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')`,
-      ).bind(providerPaidAt ?? null, orderCode),
+      ).bind(options?.paymentMethod ?? "qris", providerPaidAt ?? null, orderCode),
     ];
     if (event) {
-      // Claim the event in the same transaction as payment and outbox.
-      statements.unshift(d1.prepare(
-        `INSERT INTO operation_guards(operation_id,valid)
+      // eventMode 'received_text' (crypto): nominal sudah divalidasi desimal
+      // eksak di adapter sebelum klaim ini — di sini guard hanya mengikat event
+      // ke (provider, order, payment id, expiry) agar event asing tak bisa paid.
+      const eventGuard = options?.eventMode === "gateway"
+        ? `INSERT INTO operation_guards(operation_id,valid)
+           SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM dana_webhook_events e
+             JOIN payment_transactions pt ON pt.order_code=e.order_code
+             JOIN orders o ON o.code=pt.order_code
+             WHERE pt.order_code=? AND e.id=? AND e.order_code=? AND e.provider='sekalipay_gateway'
+               AND pt.provider='sekalipay_gateway' AND pt.provider_payment_id IS NOT NULL
+               AND (e.event_key='sekalipaygw:' || pt.provider_payment_id || ':paid'
+                 OR (pt.gateway_is_sandbox=1 AND e.event_key='sekalipaygw:' || pt.provider_payment_id || ':completed'))
+               AND e.status IN ('received','ignored','failed') AND e.amount=pt.payable_amount
+               AND pt.requested_amount+pt.gateway_fee=pt.payable_amount AND pt.gateway_fee>=0
+               AND o.subtotal=pt.requested_amount AND o.payment_method='sekalipay_gateway:' || pt.gateway_channel
+               AND pt.last_error IS NULL AND pt.gateway_fee_consented_at IS NOT NULL
+               AND julianday(pt.expires_at)>julianday('now') AND julianday(o.expires_at)>julianday('now')
+               AND julianday(?)<=julianday(pt.expires_at) AND julianday(?)<=julianday(o.expires_at)
+           ) THEN 1 ELSE 0 END`
+        : options?.eventMode === "received_text"
+        ? `INSERT INTO operation_guards(operation_id,valid)
+           SELECT ?,CASE WHEN EXISTS(
+             SELECT 1 FROM dana_webhook_events e
+             JOIN payment_transactions pt ON pt.order_code=e.order_code AND pt.order_code=?
+             WHERE e.id=? AND e.order_code=? AND e.provider=pt.provider AND pt.provider='nowpayments'
+               AND e.event_key='nowpayments:' || pt.provider_payment_id || ':finished'
+               AND e.status IN ('received','ignored','failed')
+                AND pt.provider_payment_id IS NOT NULL
+                AND pt.requested_amount=e.amount
+                AND (pt.last_error IS NULL OR (pt.last_error='nowpayments_finalize_failed_manual_review'
+                  AND pt.price_amount_text IS NOT NULL AND pt.price_currency IS NOT NULL AND pt.pay_amount_text IS NOT NULL
+                  AND pt.pay_currency IS NOT NULL AND pt.pay_address IS NOT NULL))
+                AND datetime(pt.expires_at)>datetime('now')
+           ) THEN 1 ELSE 0 END`
+        : `INSERT INTO operation_guards(operation_id,valid)
          SELECT ?,CASE WHEN EXISTS(
            SELECT 1 FROM dana_webhook_events e
            JOIN payment_transactions pt ON pt.order_code=?
@@ -302,8 +344,13 @@ export async function transitionPendingPaymentToPaid(
              AND julianday(e.created_at)>=julianday(COALESCE(pt.invoice_issued_at,pt.created_at))
              AND datetime(pt.expires_at)>datetime('now')
              AND (?=1 OR NOT ${DANA_AMOUNT_REUSED_SQL})
-         ) THEN 1 ELSE 0 END`,
-      ).bind(`${guardId}:event`, orderCode, event.id, event.reviewedBy && event.reviewNote ? 1 : 0));
+         ) THEN 1 ELSE 0 END`;
+      const binds = options?.eventMode === "gateway"
+        ? [`${guardId}:event`, orderCode, event.id, orderCode, providerPaidAt, providerPaidAt]
+        : options?.eventMode === "received_text"
+        ? [`${guardId}:event`, orderCode, event.id, orderCode]
+        : [`${guardId}:event`, orderCode, event.id, event.reviewedBy && event.reviewNote ? 1 : 0];
+      statements.unshift(d1.prepare(eventGuard).bind(...binds));
       statements.push(d1.prepare(
         `UPDATE dana_webhook_events
          SET status='matched',order_code=?,last_error=NULL,processed_at=datetime('now'),
@@ -335,7 +382,7 @@ export async function transitionPendingPaymentToPaid(
 
     try {
       await d1.batch(statements);
-      await incrementSoldCountForOrder(orderCode);
+      await incrementSoldCountForOrder(orderCode, d1);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -344,18 +391,19 @@ export async function transitionPendingPaymentToPaid(
     }
   }
 
+  if (options?.paymentMethod === "sekalipay_gateway") return false;
   const order = getOrderMem().find((row) => String(row.code) === orderCode);
   if (!order || String(order.status) !== "pending") return false;
   const txResult = await execRun(
     `UPDATE payment_transactions SET status='paid', paid_at=?, updated_at=datetime('now')
-     WHERE order_code=? AND status='pending'`,
+     WHERE order_code=? AND status IN ('initializing','pending')`,
     providerPaidAt ?? new Date().toISOString(),
     orderCode,
   );
   if (!txResult.changes) return false;
   order.status = "lunas";
   order.payment_status = "paid";
-  order.payment_method = "qris";
+  order.payment_method = options?.paymentMethod ?? "qris";
   if (!order.paid_at) order.paid_at = String(providerPaidAt ?? new Date().toISOString());
   order.updated_at = new Date().toISOString();
   return true;
@@ -365,8 +413,8 @@ export async function transitionPendingPaymentToPaid(
  * Increment sold_count on products for a paid order.
  * Best-effort: failures are logged but don't block the payment flow.
  */
-export async function incrementSoldCountForOrder(orderCode: string): Promise<void> {
-  const d1 = getD1();
+export async function incrementSoldCountForOrder(orderCode: string, database?: D1 | null): Promise<void> {
+  const d1 = database === undefined ? getD1() : database;
   if (d1) {
     try {
       const order = await d1.prepare("SELECT items FROM orders WHERE code=? AND COALESCE(order_kind,'apps')!='pedia'").bind(orderCode).first() as { items: string } | null;

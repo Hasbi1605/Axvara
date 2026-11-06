@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
 import { useCart } from "@/stores/cart";
+import { DisplayPreferencesProvider } from "@/hooks/useDisplayPrices";
 import type { Product } from "@/lib/products";
 
 const push = vi.fn();
@@ -52,6 +53,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  document.cookie = "axv_locale=; Max-Age=0; Path=/";
   vi.unstubAllGlobals();
 });
 
@@ -191,7 +193,7 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     expect(screen.queryByRole("radio", { name: /Arsip/ })).toBeNull();
   });
 
-  it("varian stok di bawah min tidak bisa dipilih (bukan dead-end checkout)", async () => {
+  it.each([["id", /stok di bawah minimum/, "Stok < min"], ["en", /stock below minimum/, "Stock < min"]] as const)("varian stok di bawah min tidak bisa dipilih (%s)", async (locale, aria, notice) => {
     // Temuan review: stok 3/min 50 — qty berapa pun pasti gagal di quote.
     vi.stubGlobal("fetch", mockCatalog({
       product: { variants: [
@@ -199,11 +201,14 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
         { id: 32, label: "Normal", price: 20_000, stock: 10, is_active: 1, warranty_type: "none", min_qty: 1 },
       ] },
     }));
-    render(<QuickVariantModal product={product} mode="cart" onClose={vi.fn()} />);
+    document.cookie = `axv_locale=${locale}; Path=/`;
+    render(<DisplayPreferencesProvider><QuickVariantModal product={product} mode="cart" onClose={vi.fn()} /></DisplayPreferencesProvider>);
     await waitFor(() => expect(screen.getByRole("radio", { name: /Normal/ })).toBeTruthy());
     const kecil = screen.getByRole("radio", { name: /Kecil/ }) as HTMLButtonElement;
     expect(kecil.disabled).toBe(true);
-    expect(kecil.getAttribute("aria-label")).toMatch(/stok di bawah minimum/);
+    await waitFor(() => expect(kecil.getAttribute("aria-label")).toMatch(aria));
+    expect(screen.getByText(notice)).toBeTruthy();
+    fireEvent.click(kecil);
     // Auto-select melewati yang tak bisa dibeli → Normal yang terpilih.
     expect(screen.getByRole("radio", { name: /Normal/ }).getAttribute("aria-checked")).toBe("true");
   });

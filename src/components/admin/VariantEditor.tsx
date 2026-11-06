@@ -1,9 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { FulfillmentInventoryPanel } from "@/components/admin/FulfillmentInventoryPanel";
+import {
+  BulkTierEditor,
+  bulkDraftFromApi,
+  bulkFieldId,
+  bulkToggleId,
+  cloneBulkDraft,
+  emptyBulkDraft,
+  validateBulkDraft,
+  type BulkApiConfig,
+  type BulkDraft,
+} from "@/components/admin/BulkTierEditor";
 
 type Variant = {
   id?: number;
@@ -25,9 +36,13 @@ type Variant = {
   fulfillment_mode: string;
   is_active: number;
   sort_order: number;
+  /** Draft harga grosir (BulkTierEditor). Tidak dikirim bila belum disentuh agar server mempertahankan konfigurasi tersimpan. */
+  bulk: BulkDraft;
   _dirty?: boolean;
   _new?: boolean;
 };
+
+type ApiVariant = Omit<Variant, "bulk"> & { bulk_pricing?: BulkApiConfig; bulk_pricing_corrupt?: boolean; bulk_pricing_invalid?: boolean };
 
 type Props = { productId: number; productName: string; onClose: () => void };
 
@@ -54,6 +69,19 @@ const FULFILLMENT_MODES = [
 const inputClass = "mt-1.5 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:bg-white/[0.08]";
 const labelClass = "text-[11px] font-semibold uppercase tracking-[0.08em] text-white/45";
 
+function describeSaveError(data: { error?: string; message?: string }) {
+  if (data.error === "variants_not_enabled") return "Pengelolaan varian belum diaktifkan pada environment ini.";
+  if (data.error === "stale_variant") return `${data.message || "Varian berubah oleh admin lain."} Isian Anda masih ada di layar; tutup editor tanpa menyimpan lalu buka lagi untuk memuat versi terbaru.`;
+  if (data.error === "bulk_pricing_invalid") return data.message || "Konfigurasi harga grosir ditolak server. Periksa tingkat dan harga dasar.";
+  return data.error || "Gagal menyimpan varian";
+}
+
+/** Dialog konfirmasi anak (di dalam wrapper editor ini) menangani Escape sendiri. */
+function nestedDialogOpen() {
+  const wrapper = document.getElementById("variant-editor-title")?.closest('[role="dialog"]')?.parentElement;
+  return (wrapper?.querySelectorAll('[role="dialog"]').length ?? 0) > 1;
+}
+
 function money(value: number) {
   return `Rp${value.toLocaleString("id-ID")}`;
 }
@@ -75,9 +103,15 @@ export default function VariantEditor({ productId, productName, onClose }: Props
     setError("");
     try {
       const response = await fetch(`/api/admin/variants?product_id=${productId}`);
-      const data = (await response.json().catch(() => ({}))) as { variants?: Variant[]; aliases?: string[]; error?: string };
+      const data = (await response.json().catch(() => ({}))) as { variants?: ApiVariant[]; aliases?: string[]; error?: string };
       if (!response.ok) throw new Error(data.error === "variants_not_enabled" ? "Pengelolaan varian belum diaktifkan pada environment ini." : data.error || "Gagal memuat varian");
-      setVariants((data.variants || []).map((variant) => ({ ...variant, min_qty: Number(variant.min_qty ?? 1) || 1, _dirty: false, _new: false })));
+      setVariants((data.variants || []).map(({ bulk_pricing, bulk_pricing_corrupt, bulk_pricing_invalid, ...variant }) => ({
+        ...variant,
+        min_qty: Number(variant.min_qty ?? 1) || 1,
+        bulk: bulkDraftFromApi(bulk_pricing, bulk_pricing_corrupt || bulk_pricing_invalid),
+        _dirty: false,
+        _new: false,
+      })));
       setAliasesText((data.aliases || []).join(", "));
       setAliasesDirty(false);
     } catch (cause) {
@@ -90,6 +124,25 @@ export default function VariantEditor({ productId, productName, onClose }: Props
   useEffect(() => { void load(); }, [load]);
 
   const hasDirty = variants.some((variant) => variant._dirty) || aliasesDirty;
+  const bulkValidations = variants.map((variant) => validateBulkDraft(variant.bulk, { base: Number(variant.price), minQty: Math.max(1, Number(variant.min_qty) || 1), stock: Number(variant.stock), mode: variant.fulfillment_mode }));
+  const pendingFocusId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingFocusId.current) return;
+    const target = document.getElementById(pendingFocusId.current);
+    pendingFocusId.current = null;
+    if (!target) return;
+    target.focus();
+    const reduceMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView?.({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+  });
+  const updateBulk = (index: number, next: BulkDraft) => {
+    setSuccess("");
+    setVariants((current) => current.map((variant, row) => {
+      if (row !== index) return variant;
+      const changed = next.enabled !== variant.bulk.enabled || next.rows !== variant.bulk.rows;
+      return { ...variant, bulk: next, _dirty: variant._dirty || changed };
+    }));
+  };
   const update = (index: number, field: keyof Variant, value: unknown) => {
     setSuccess("");
     setVariants((current) => current.map((variant, row) => row === index ? { ...variant, [field]: value, _dirty: true } : variant));
@@ -115,6 +168,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
       fulfillment_mode: "manual",
       is_active: 1,
       sort_order: sortOrder,
+      bulk: emptyBulkDraft(),
       _dirty: true,
       _new: true,
     }]);
@@ -129,6 +183,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
       sku: source.sku ? `${source.sku}-COPY` : "",
       label: source.label ? `${source.label} (Salinan)` : "",
       sort_order: sortOrder,
+      bulk: cloneBulkDraft(source.bulk),
       _dirty: true,
       _new: true,
     }]);
@@ -163,7 +218,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
     setError("");
     setSuccess("");
     try {
-      const payload = variants.map((variant) => ({
+      const payload = variants.map((variant, index) => ({
         id: variant.id,
         product_id: productId,
         sku: variant.sku.trim().toUpperCase(),
@@ -182,12 +237,26 @@ export default function VariantEditor({ productId, productName, onClose }: Props
         fulfillment_mode: variant.fulfillment_mode,
         is_active: Number(variant.is_active),
         sort_order: Number(variant.sort_order),
+        // Hanya dikirim bila admin mengubahnya; dihilangkan = server mempertahankan konfigurasi tersimpan.
+        ...(variant.bulk.touched && bulkValidations[index].payload ? { bulk_pricing: bulkValidations[index].payload } : {}),
       }));
       for (const variant of payload) {
         if (!variant.sku) throw new Error(`Varian "${variant.label || "tanpa nama"}": SKU wajib diisi.`);
         if (!variant.label) throw new Error(`SKU ${variant.sku}: nama varian wajib diisi.`);
         if (variant.price < 0) throw new Error(`Varian "${variant.label}": harga tidak boleh negatif.`);
         if (variant.min_qty < 1 || variant.min_qty > 100) throw new Error(`Varian "${variant.label}": minimal pembelian 1–100 (produk min-besar tetap harus ≤ 100 agar bisa dibeli).`);
+      }
+      const invalidBulk = bulkValidations.map((validation, index) => ({ validation, index })).filter((item) => item.validation.errorCount > 0);
+      if (invalidBulk.length) {
+        const total = invalidBulk.reduce((sum, item) => sum + item.validation.errorCount, 0);
+        const first = invalidBulk[0];
+        const prefix = bulkPrefix(first.index);
+        const target = first.validation.firstInvalid;
+        pendingFocusId.current = target && target !== "group" ? bulkFieldId(prefix, target.rowKey, target.field) : bulkToggleId(prefix);
+        const invalidIndexes = new Set(invalidBulk.map((item) => item.index));
+        setVariants((current) => current.map((variant, row) => invalidIndexes.has(row) && !variant.bulk.open ? { ...variant, bulk: { ...variant.bulk, open: true } } : variant));
+        setError(`Perbaiki ${total} isian harga grosir sebelum menyimpan.`);
+        return;
       }
       const response = await fetch("/api/admin/variants", {
         method: "POST",
@@ -198,8 +267,8 @@ export default function VariantEditor({ productId, productName, onClose }: Props
           variants: payload,
         }),
       });
-      const data = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) throw new Error(data.error === "variants_not_enabled" ? "Pengelolaan varian belum diaktifkan pada environment ini." : data.error || "Gagal menyimpan varian");
+      const data = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
+      if (!response.ok) throw new Error(describeSaveError(data));
       await load();
       setSuccess("Semua perubahan varian berhasil disimpan.");
     } catch (cause) {
@@ -209,6 +278,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
     }
   };
 
+  const bulkPrefix = (index: number) => `bulk-${variants[index]?.id ?? `new${index}`}`;
   const activeVariants = variants.filter((variant) => variant.is_active);
   const minPrice = activeVariants.length ? Math.min(...activeVariants.map((variant) => Number(variant.price))) : null;
   const maxPrice = activeVariants.length ? Math.max(...activeVariants.map((variant) => Number(variant.price))) : null;
@@ -217,7 +287,8 @@ export default function VariantEditor({ productId, productName, onClose }: Props
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) requestClose(); };
+    // Dialog konfirmasi bertumpuk (mis. hapus tingkat terakhir) menangani Escape sendiri.
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving && !nestedDialogOpen()) requestClose(); };
     document.addEventListener("keydown", onKeyDown);
     return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", onKeyDown); };
   }, [requestClose, saving]);
@@ -280,6 +351,15 @@ export default function VariantEditor({ productId, productName, onClose }: Props
                     <label className={labelClass}>Min. beli <span className="normal-case tracking-normal text-white/25">(1 = bebas)</span><input type="number" min={1} max={100} value={variant.min_qty ?? 1} onChange={(event) => update(index, "min_qty", Math.max(1, Math.min(100, Number(event.target.value) || 1)))} className={inputClass} /></label>
                     <label className={labelClass}>Fulfillment<select value={variant.fulfillment_mode} onChange={(event) => update(index, "fulfillment_mode", event.target.value)} className={inputClass}>{FULFILLMENT_MODES.map((item) => <option key={item.value} value={item.value} className="bg-[#10152d]">{item.label}</option>)}</select></label>
                   </div>
+                  <BulkTierEditor
+                    idPrefix={bulkPrefix(index)}
+                    draft={variant.bulk}
+                    validation={bulkValidations[index]}
+                    basePrice={Number(variant.price)}
+                    minQty={Math.max(1, Number(variant.min_qty) || 1)}
+                    disabled={saving || deleting}
+                    onChange={(next) => updateBulk(index, next)}
+                  />
                   {variant.id ? <FulfillmentInventoryPanel productId={productId} variantId={variant.id} mode={variant.fulfillment_mode} /> : <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">Simpan varian baru terlebih dahulu sebelum mengisi konten fulfillment.</p>}
                 </article>
               ))}

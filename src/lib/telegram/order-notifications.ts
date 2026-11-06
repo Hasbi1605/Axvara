@@ -11,6 +11,7 @@ import {
   adminWhatsAppOrderPaidMessage,
   orderPaidMessage,
   orderReminderMessage,
+  providerOrderReminderMessage,
   type TelegramPaidDelivery,
 } from "@/lib/telegram/messages";
 import { buyerDeliveryKind } from "@/lib/catalog";
@@ -171,7 +172,7 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
   if (!telegramNotificationsConfigured() || !database.canSpend(6)) return false;
 
   const order = await queryFirst(
-    `SELECT o.code, o.items, o.customer_wa, o.telegram_user_id, o.variant_snapshot,
+    `SELECT o.code, o.items, o.customer_wa, o.telegram_user_id, o.variant_snapshot, o.locale,
             tu.pending_action, b.status AS notice_status
      FROM orders o
      LEFT JOIN telegram_users tu ON tu.user_id=o.telegram_user_id
@@ -215,14 +216,15 @@ export async function notifyTelegramBuyerPaid(orderCode: string, database: Datab
     return false; // No durable ownership, no transport.
   }
   const profile = await telegramPaidDeliveryProfile(order, database);
+  const locale = String((order as Row).locale ?? "") === "en" ? "en" as const : "id" as const;
   const needsWhatsApp = profile.hasLocalManual
     && !String(order.customer_wa || "").trim()
     && !String(order.pending_action || "").trim();
   const sent = await sendMessage({
     chat_id: chatId,
-    text: orderPaidMessage(String(order.code), productNames(order.items), needsWhatsApp, profile.delivery),
+    text: orderPaidMessage(String(order.code), productNames(order.items), needsWhatsApp, profile.delivery, { locale }),
     parse_mode: "HTML",
-    reply_markup: orderPaidKeyboard(String(order.code)),
+    reply_markup: orderPaidKeyboard(String(order.code), { locale }),
   }).catch(() => ({ ok: false }));
   // A timeout may already have delivered. Retry only after backoff; Telegram
   // has no idempotency key, so this is bounded at-least-once, not exactly-once.
@@ -695,7 +697,8 @@ export async function sendPendingOrderReminders(limit = 8, database: DatabaseAcc
   // ISO `expires_at` is still in the future are reminded.
   const candidates = await queryAll(
     `SELECT o.code, o.items, o.telegram_chat_id, o.telegram_reminder_count,
-            o.telegram_reminder_sent_at, pt.payable_amount, pt.expires_at, o.subtotal
+            o.telegram_reminder_sent_at, pt.payable_amount, pt.expires_at, o.subtotal,
+            pt.provider, o.payment_method, o.locale
      FROM orders o
      JOIN payment_transactions pt ON pt.order_code=o.code AND pt.status='pending'
      WHERE o.sales_channel='telegram' AND o.status='pending'
@@ -725,7 +728,21 @@ export async function sendPendingOrderReminders(limit = 8, database: DatabaseAcc
     );
     if (!claimed.changes) continue; // dimenangkan worker lain / sudah berubah
     try {
-      const result = await sendMessage({
+      // R3: gateway/crypto orders (saved TX provider, else saved payment_method)
+      // get generic saved-locale copy + a refresh button — never QRIS wording.
+      const method = String(order.payment_method ?? "");
+      const newRail = ["nowpayments", "sekalipay_gateway"].includes(String(order.provider ?? ""))
+        || method.startsWith("nowpayments:") || method.startsWith("sekalipay_gateway:");
+      const result = await sendMessage(newRail ? {
+        chat_id: chatId,
+        text: providerOrderReminderMessage({
+          orderCode: code,
+          productName: productNames(order.items),
+          attempt,
+        }, { locale: String(order.locale ?? "") === "en" ? "en" : "id" }),
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: [[{ text: String(order.locale ?? "") === "en" ? "🔄 Open payment details" : "🔄 Buka detail pembayaran", callback_data: `refresh:${code}` }]] },
+      } : {
         chat_id: chatId,
         text: orderReminderMessage({
           orderCode: code,

@@ -20,13 +20,14 @@ import {
   type TelegramOrderRow,
   emailConfirmationMessage,
 } from "@/lib/telegram/messages";
+import { tgCtxFor, tgUsdAlternate, type TgCtx } from "@/lib/telegram/render-prefs";
 import { getProductDetail, formatVariantLabel, effectiveVariantStock } from "@/lib/catalog";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { getCartSummary } from "@/lib/telegram/cart";
 import { readCheckoutEmail, checkoutEmailFingerprint } from "@/lib/telegram/checkout-email";
 import { cartCheckoutSummaryMessage, escapeHtml } from "@/lib/telegram/messages";
 import { countInventory } from "@/lib/fulfillment/inventory";
-import { clampQty } from "./shared";
+import { clampQty, setPendingActionUnlessCreating } from "./shared";
 import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog";
 
 /**
@@ -50,19 +51,21 @@ export async function handlePendingEmailInput(
   if (action.startsWith("emailcart:")) {
     // Alur keranjang: tidak ada product/variant tunggal — setelah email
     // tersimpan, user menekan Lanjut lagi (cconfirm) seperti biasa.
+    const cartCtx = await tgCtxFor(from.id);
+    const enCart = cartCtx.locale === "en";
     if (/^\/batal$/i.test(text.trim())) {
       await execRun(
         `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
         String(from.id),
       ).catch(() => {});
-      await sendMessage({ chat_id: chatId, text: "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML" });
+      await sendMessage({ chat_id: chatId, text: enCart ? "Cancelled. Type /start to begin again." : "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML" });
       return true;
     }
     const cartEmail = text.trim();
     if (cartEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cartEmail)) {
       await sendMessage({
         chat_id: chatId,
-        text: "❌ Format email tidak valid. Contoh: <code>nama@email.com</code>\nKetik /batal untuk membatalkan.",
+        text: enCart ? "❌ Invalid email format. Example: <code>name@email.com</code>\nType /batal to cancel." : "❌ Format email tidak valid. Contoh: <code>nama@email.com</code>\nKetik /batal untuk membatalkan.",
         parse_mode: "HTML",
       });
       return true;
@@ -81,19 +84,21 @@ export async function handlePendingEmailInput(
   const variantId = Number(variantIdRaw);
   const qty = Math.max(1, Number(qtyRaw) || 1);
   if (!productId || !variantId) return false;
+  const mailCtx = await tgCtxFor(from.id);
+  const enMail = mailCtx.locale === "en";
   if (/^\/batal$/i.test(text.trim())) {
     await execRun(
       `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
       String(from.id),
    );
-    await sendMessage({ chat_id: chatId, text: "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: enMail ? "Cancelled. Type /start to begin again." : "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML" });
     return true;
   }
   const email = text.trim();
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     await sendMessage({
       chat_id: chatId,
-      text: "❌ Format email tidak valid. Contoh: <code>nama@email.com</code>\nKetik /batal untuk membatalkan.",
+      text: enMail ? "❌ Invalid email format. Example: <code>name@email.com</code>\nType /batal to cancel." : "❌ Format email tidak valid. Contoh: <code>nama@email.com</code>\nKetik /batal untuk membatalkan.",
       parse_mode: "HTML",
     });
     return true;
@@ -104,7 +109,7 @@ export async function handlePendingEmailInput(
     String(from.id),
     action,
   );
-  if (stored.changes) await showEmailConfirmation(chatId, productId, variantId, qty, email, action);
+  if (stored.changes) await showEmailConfirmation(chatId, productId, variantId, qty, email, action, 0, from);
   return true;
 }
 
@@ -114,46 +119,62 @@ export function maskEmail(email: string): string {
   return `${local.length <= 2 ? local[0] ?? "*" : `${local[0]}***${local.at(-1)}`}@${domain}`;
 }
 
-export async function showEmailConfirmation(chatId: number, productId: number, variantId: number, qty: number, email?: string, expectedAction: string | null = null, messageId = 0) {
+export async function showEmailConfirmation(chatId: number, productId: number, variantId: number, qty: number, email?: string, expectedAction: string | null = null, messageId = 0, from?: { id: number }) {
   const { getActiveVariant } = await import("@/lib/catalog");
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return;
+  const ctx = await tgCtxFor(from?.id ?? chatId);
   const product = await queryFirst(`SELECT name FROM products WHERE id=?`, productId);
   const saved = email ?? String((await queryFirst(`SELECT buyer_email FROM telegram_users WHERE user_id=?`, String(chatId)))?.buyer_email ?? "");
   const nonce = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-  const tag = await checkoutApprovalTag([{ productId, variantId, qty, price: variant.price }]);
-  const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND pending_action IS ?", `email_confirm:${productId}:${variantId}:${qty}:${nonce}:${await checkoutEmailFingerprint(saved)}`, String(chatId), saved, expectedAction);
+  // TG2b: harga efektif server untuk konfirmasi + tombol bayar.
+  let confirmationUnit = Number(variant.price);
+  let confirmationTier: number | null = null;
+  try {
+    const { resolveBulkPrice: resolveConfirmBulk } = await import("@/lib/bulk-pricing");
+    const resolvedConfirm = resolveConfirmBulk(Number(variant.price), qty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? []));
+    confirmationUnit = resolvedConfirm.price;
+    confirmationTier = resolvedConfirm.tier ?? null;
+  } catch {
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    return;
+  }
+  const tag = await checkoutApprovalTag([{ productId, variantId, qty, price: confirmationUnit }]);
+  const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND (pending_action IS ? OR (pending_action LIKE 'payq1:%' AND pending_action LIKE '%\"st\":\"quoted\"%'))", `email_confirm:${productId}:${variantId}:${qty}:${nonce}:${await checkoutEmailFingerprint(saved)}`, String(chatId), saved, expectedAction);
   if (!stored.changes) return;
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
-    text: emailConfirmationMessage({ productName: String(product?.name ?? "Produk"), variantLabel: formatVariantLabel(variant), qty, total: variant.price * qty, maskedEmail: maskEmail(saved) }),
+    text: emailConfirmationMessage({ productName: String(product?.name ?? "Produk"), variantLabel: formatVariantLabel(variant), qty, total: confirmationUnit * qty, basePrice: Number(variant.price), appliedTierMinQty: confirmationTier, maskedEmail: maskEmail(saved) }, { locale: ctx.locale, ...tgUsdAlternate(confirmationUnit * qty, ctx) }),
     parse_mode: "HTML",
-    reply_markup: emailConfirmationKeyboard(productId, variantId, qty, variant.price * qty, tag, nonce),
+    reply_markup: emailConfirmationKeyboard(productId, variantId, qty, confirmationUnit * qty, tag, nonce, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
   });
 }
 
 export async function showCartEmailConfirmation(chatId: number, from: { id: number }, email?: string, expectedAction: string | null = null, messageId = 0) {
+  const ctx = await tgCtxFor(from?.id ?? chatId);
   const summary = await getCartSummary(String(from.id));
   if (!summary.lines.length) return;
   if (summary.issues.length) {
-    await sendMessage({ chat_id: chatId, text: "Keranjang berubah. Buka keranjang dan periksa jumlah serta stok sebelum membayar." });
+    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Cart changed. Open the cart and check quantities and stock before paying." : "Keranjang berubah. Buka keranjang dan periksa jumlah serta stok sebelum membayar." });
     return;
   }
   const checked = await readCheckoutEmail(String(from.id), summary.lines, email);
   if (!checked.email) {
-    const stored = await execRun("UPDATE telegram_users SET pending_action='emailcart:', updated_at=datetime('now') WHERE user_id=? AND pending_action IS ?", String(from.id), expectedAction);
+    const stored = await execRun("UPDATE telegram_users SET pending_action='emailcart:', updated_at=datetime('now') WHERE user_id=? AND (pending_action IS ? OR (pending_action LIKE 'payq1:%' AND pending_action LIKE '%\"st\":\"quoted\"%'))", String(from.id), expectedAction);
     if (!stored.changes) return;
-    await sendMessage({ chat_id: chatId, text: "Kirim email aktif untuk menerima produk. Ketik /batal untuk kembali.", reply_markup: { force_reply: true, input_field_placeholder: "nama@email.com" } });
+    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Send an active email to receive the product. Type /batal to go back." : "Kirim email aktif untuk menerima produk. Ketik /batal untuk kembali.", reply_markup: { force_reply: true, input_field_placeholder: "nama@email.com" } });
     return;
   }
   const tag = await checkoutApprovalTag(summary.lines);
   const nonce = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-  const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND pending_action IS ?", `cart_confirm:${tag}:${nonce}:${await checkoutEmailFingerprint(checked.email)}`, String(from.id), checked.email, expectedAction);
+  const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND (pending_action IS ? OR (pending_action LIKE 'payq1:%' AND pending_action LIKE '%\"st\":\"quoted\"%'))", `cart_confirm:${tag}:${nonce}:${await checkoutEmailFingerprint(checked.email)}`, String(from.id), checked.email, expectedAction);
   if (!stored.changes) return;
-  await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: cartCheckoutSummaryMessage(summary.lines, summary.subtotal) + `\n\n<b>Email</b>\n${escapeHtml(maskEmail(checked.email))}\nPeriksa email sebelum membayar.`, parse_mode: "HTML", reply_markup: { inline_keyboard: [
-    [{ text: "💳 Bayar QRIS", callback_data: `cconfirm:${tag}:${nonce}` }],
-    [{ text: "Ubah Email", callback_data: "ceedit" }, { text: "Ubah Keranjang", callback_data: "cart" }],
-    ...summary.lines.map(line => [{ text: `📋 Ketentuan ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
+  const en = ctx.locale === "en";
+  await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: cartCheckoutSummaryMessage(summary.lines.map((line) => ({ productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty, basePrice: line.basePrice, appliedTierMinQty: line.appliedTierMinQty })), summary.subtotal, { locale: ctx.locale, ...tgUsdAlternate(summary.subtotal, ctx) }) + `\n\n<b>Email</b>\n${escapeHtml(maskEmail(checked.email))}\n${en ? "Double-check your email before paying." : "Periksa email sebelum membayar."}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [
+    [{ text: en ? "💳 Pay QRIS" : "💳 Bayar QRIS", callback_data: `cconfirm:${tag}:${nonce}` }],
+    [{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: "pmentry" }],
+    [{ text: en ? "Change Email" : "Ubah Email", callback_data: "ceedit" }, { text: en ? "Edit Cart" : "Ubah Keranjang", callback_data: "cart" }],
+    ...summary.lines.map(line => [{ text: `📋 ${en ? "Terms" : "Ketentuan"} ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
   ] } });
 }
 
@@ -163,8 +184,9 @@ export async function handleMyOrders(
   chatId: number,
   from?: { id: number; first_name: string; username?: string },
 ) {
+  const ctx: TgCtx = await tgCtxFor(from?.id ?? chatId);
   if (!from || !isD1Mode()) {
-    await sendMessage({ chat_id: chatId, text: myOrdersPrompt(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: myOrdersPrompt({ locale: ctx.locale }), parse_mode: "HTML" });
     return;
   }
   const rows = await queryAll(
@@ -201,11 +223,11 @@ export async function handleMyOrders(
     chat_id: chatId,
     text: myOrdersMessage(orders.map(({ code, productName, payableAmount, paymentStatus, fulfillmentStatus, createdAt }) => ({
       code, productName, payableAmount, paymentStatus, fulfillmentStatus, createdAt,
-    }))),
+    })), { locale: ctx.locale }),
     parse_mode: "HTML",
     reply_markup: orders.length > 0
-      ? myOrdersKeyboard(orders.map((order) => ({ code: order.code, productId: order.productId ?? null })))
-      : homeKeyboard(),
+      ? myOrdersKeyboard(orders.map((order) => ({ code: order.code, productId: order.productId ?? null })), { locale: ctx.locale })
+      : homeKeyboard(ctx.locale),
   });
 }
 
@@ -215,13 +237,9 @@ export async function handleSearchPrompt(
   chatId: number,
   from?: { id: number },
 ) {
-  if (from && isD1Mode()) {
-    await execRun(
-      `UPDATE telegram_users SET pending_action='search:', updated_at=datetime('now') WHERE user_id=?`,
-      String(from.id),
-    ).catch(() => {});
-  }
-  await sendMessage({ chat_id: chatId, text: searchPromptMessage(), parse_mode: "HTML" });
+  const ctx = await tgCtxFor(from?.id ?? chatId);
+  if (from && isD1Mode() && !(await setPendingActionUnlessCreating(String(from.id), chatId, "search:"))) return;
+  await sendMessage({ chat_id: chatId, text: searchPromptMessage({ locale: ctx.locale }), parse_mode: "HTML" });
 }
 
 export async function handlePendingSearchInput(
@@ -236,6 +254,8 @@ export async function handlePendingSearchInput(
   );
   const action = user?.pending_action ? String(user.pending_action) : "";
   if (action !== "search:") return false;
+  const ctx = await tgCtxFor(from.id);
+  const en = ctx.locale === "en";
 
   const keyword = text.trim().replace(/^\/batal$/i, "");
   if (/^\/batal$/i.test(text.trim())) {
@@ -243,13 +263,13 @@ export async function handlePendingSearchInput(
       `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
       String(from.id),
     ).catch(() => {});
-    await handleShowCatalog(chatId);
+    await handleShowCatalog(chatId, from);
     return true;
   }
   if (keyword.length < 2) {
     await sendMessage({
       chat_id: chatId,
-      text: "❌ Minimal 2 huruf. Contoh: <code>canva</code>",
+      text: en ? "❌ Minimum 2 characters. Example: <code>canva</code>" : "❌ Minimal 2 huruf. Contoh: <code>canva</code>",
       parse_mode: "HTML",
     });
     return true;
@@ -258,11 +278,12 @@ export async function handlePendingSearchInput(
     `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
     String(from.id),
   ).catch(() => {});
-  await handleSearchResults(chatId, keyword);
+  await handleSearchResults(chatId, keyword, from);
   return true;
 }
 
-export async function handleSearchResults(chatId: number, keyword: string) {
+export async function handleSearchResults(chatId: number, keyword: string, from?: { id: number }) {
+  const ctx = await tgCtxFor(from?.id ?? chatId);
   const { readTelegramCatalog, telegramSearchMatch } = await import("@/lib/telegram/catalog-snapshot");
   const matching = (await readTelegramCatalog()).filter(row =>
     [row.name,row.whatsapp_alias,row.aliases ?? "[]"].some(value => telegramSearchMatch(value, keyword)));
@@ -273,9 +294,11 @@ export async function handleSearchResults(chatId: number, keyword: string) {
   const soldOut = products.length ? 0 : matching.length;
   await sendMessage({
     chat_id: chatId,
-    text: searchResultsMessage(keyword, available.length, soldOut, products.length),
+    text: searchResultsMessage(keyword, available.length, soldOut, products.length, { locale: ctx.locale }),
     parse_mode: "HTML",
-    reply_markup: products.length > 0 ? searchResultsKeyboard(products) : homeKeyboard(),
+    reply_markup: products.length > 0
+      ? searchResultsKeyboard(products, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx })
+      : homeKeyboard(ctx.locale),
   });
 }
 
@@ -291,6 +314,8 @@ export async function handlePendingQtyInput(
   );
   const action = user?.pending_action ? String(user.pending_action) : "";
   if (!action.startsWith("qty_for:")) return false;
+  const ctx = await tgCtxFor(from.id);
+  const en = ctx.locale === "en";
   const [, productIdRaw, variantIdRaw] = action.split(":");
   const productId = Number(productIdRaw);
   const variantId = Number(variantIdRaw);
@@ -299,7 +324,7 @@ export async function handlePendingQtyInput(
   if (!Number.isInteger(typedQty) || typedQty < 1 || typedQty > TELEGRAM_MAX_QTY) {
     await sendMessage({
       chat_id: chatId,
-      text: `❌ Jumlah tidak valid. Ketik angka 1–${TELEGRAM_MAX_QTY}, misalnya <code>5</code>.`,
+      text: en ? `❌ Invalid quantity. Type a number 1–${TELEGRAM_MAX_QTY}, for example <code>5</code>.` : `❌ Jumlah tidak valid. Ketik angka 1–${TELEGRAM_MAX_QTY}, misalnya <code>5</code>.`,
       parse_mode: "HTML",
     });
     return true;
@@ -314,7 +339,7 @@ export async function handlePendingQtyInput(
     if (typedVariant && (typedQty < need || typedQty > max)) {
       await sendMessage({
         chat_id: chatId,
-        text: `❌ Jumlah di luar batas. Kirim angka ${need}–${max}, misalnya <code>${need}</code>.`,
+        text: en ? `❌ Out of range. Send a number ${need}–${max}, for example <code>${need}</code>.` : `❌ Jumlah di luar batas. Kirim angka ${need}–${max}, misalnya <code>${need}</code>.`,
         parse_mode: "HTML",
       });
       return true;
@@ -325,21 +350,22 @@ export async function handlePendingQtyInput(
     `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
     String(from.id),
   ).catch(() => {});
-  await handleShowQty(chatId, 0, productId, variantId, qty);
+  await handleShowQty(chatId, 0, productId, variantId, qty, from);
   return true;
 }
 
-export async function handleBuyConfirm(chatId: number, messageId: number, productId: number) {
+export async function handleBuyConfirm(chatId: number, messageId: number, productId: number, from?: { id: number }) {
   // Use catalog.ts for variant-level stock (synced with web/WA)
   const detail = await getProductDetail(productId);
   if (!detail || detail.variants.length === 0) return;
+  const ctx = from ? await tgCtxFor(from.id) : undefined;
 
   // Aggregate stock from active variants
   const activeVariants = detail.variants.filter(v => v.is_active);
   const allOutOfStock = activeVariants.every(v => v.stock === 0);
 
   if (allOutOfStock) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML" });
     return;
   }
 
@@ -348,7 +374,7 @@ export async function handleBuyConfirm(chatId: number, messageId: number, produc
   if (firstVariant && firstVariant.fulfillment_mode === "unique") {
     const counts = await countInventory(productId, firstVariant.id);
     if (counts.available < 1) {
-      await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+      await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML" });
       return;
     }
   }
@@ -369,7 +395,7 @@ export async function handleBuyConfirm(chatId: number, messageId: number, produc
   if (existingOrder) {
     await sendMessage({
       chat_id: chatId,
-      text: alreadyPendingMessage(String(existingOrder.code)),
+      text: alreadyPendingMessage(String(existingOrder.code), { locale: ctx?.locale }),
       parse_mode: "HTML",
       reply_markup: orderStatusKeyboard(String(existingOrder.code)),
     });
@@ -378,39 +404,41 @@ export async function handleBuyConfirm(chatId: number, messageId: number, produc
 
   // Single variant — straight to qty step (bulk-aware)
   if (activeVariants.length === 1 && firstVariant) {
-    await handleShowQty(chatId, messageId, productId, firstVariant.id);
+    await handleShowQty(chatId, messageId, productId, firstVariant.id, 1, from);
     return;
   }
 
   // Multiple variants — show variant selector
-  await handleShowVariants(chatId, messageId, productId);
+  await handleShowVariants(chatId, messageId, productId, from);
 }
 
 export async function handleConfirmPurchase(
   chatId: number,
   messageId: number,
   productId: number,
+  from?: { id: number },
 ) {
   // Legacy confirm buttons route into the qty flow (WA parity, bulk-aware).
+  const ctx = from ? await tgCtxFor(from.id) : undefined;
   await sendChatAction(chatId, "typing");
 
   const detail = await getProductDetail(productId);
   if (!detail || detail.variants.length === 0) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx?.locale }), parse_mode: "HTML" });
     return;
   }
 
   const activeVariants = detail.variants.filter(v => v.is_active && v.stock !== 0);
   if (activeVariants.length === 0) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML" });
     return;
   }
 
   if (activeVariants.length === 1) {
-    await handleShowQty(chatId, messageId, productId, activeVariants[0].id);
+    await handleShowQty(chatId, messageId, productId, activeVariants[0].id, 1, from);
     return;
   }
-  await handleShowVariants(chatId, messageId, productId);
+  await handleShowVariants(chatId, messageId, productId, from);
 }
 
 export async function handlePendingWaInput(
@@ -437,9 +465,10 @@ export async function handlePendingWaInput(
   if (!/^[+\d\s().-]{6,}$/.test(text.trim())) return false;
 
   // Validate WA number
+  const waCtx = await tgCtxFor(from.id);
   const wa = text.trim().replace(/\s|-/g, "");
   if (!/^(\+62|62|0)8\d{8,13}$/.test(wa)) {
-    await sendMessage({ chat_id: chatId, text: invalidWhatsAppMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: invalidWhatsAppMessage({ locale: waCtx.locale }), parse_mode: "HTML" });
     return true; // handled, but invalid — keep pending_action
   }
 
@@ -457,8 +486,13 @@ export async function handlePendingWaInput(
     orderCode,
     String(from.id),
   );
+  let orderLocale: "id" | "en" = waCtx.locale;
+  try {
+    const savedOrder = await queryFirst(`SELECT locale FROM orders WHERE code=?`, orderCode);
+    if (savedOrder && (String(savedOrder.locale ?? "") === "en" || String(savedOrder.locale ?? "") === "id")) orderLocale = String(savedOrder.locale) as "id" | "en";
+  } catch { /* current prefs fallback */ }
   if (!saved.changes) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: orderLocale }), parse_mode: "HTML" });
     return true;
   }
   await execRun(
@@ -469,9 +503,9 @@ export async function handlePendingWaInput(
   );
   await sendMessage({
     chat_id: chatId,
-    text: waSavedAfterPaymentMessage(orderCode),
+    text: waSavedAfterPaymentMessage(orderCode, { locale: orderLocale }),
     parse_mode: "HTML",
-    reply_markup: orderPaidKeyboard(orderCode),
+    reply_markup: orderPaidKeyboard(orderCode, { locale: orderLocale }),
   });
   return true;
 }
@@ -481,36 +515,34 @@ export async function handleWaInput(
   orderCode: string,
   from: { id: number },
 ) {
+  const waCtx = await tgCtxFor(from.id);
   const normalizedCode = orderCode.toUpperCase();
   const order = await queryFirst(
-    `SELECT customer_wa FROM orders
+    `SELECT customer_wa, locale FROM orders
      WHERE code=? AND telegram_user_id=? AND sales_channel='telegram'
        AND status='lunas' AND payment_status='paid'`,
     normalizedCode,
     String(from.id),
   );
   if (!order) {
-    await sendMessage({ chat_id: chatId, text: "❌ Pesanan lunas tidak ditemukan.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: waCtx.locale === "en" ? "❌ Paid order not found." : "❌ Pesanan lunas tidak ditemukan.", parse_mode: "HTML" });
     return;
   }
+  const orderLocale = String(order.locale ?? "") === "en" ? "en" as const : "id" as const;
   if (String(order.customer_wa || "").trim()) {
     await sendMessage({
       chat_id: chatId,
-      text: waSavedAfterPaymentMessage(normalizedCode),
+      text: waSavedAfterPaymentMessage(normalizedCode, { locale: orderLocale }),
       parse_mode: "HTML",
-      reply_markup: orderPaidKeyboard(normalizedCode),
+      reply_markup: orderPaidKeyboard(normalizedCode, { locale: orderLocale }),
     });
     return;
   }
-  await execRun(
-    `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
-    `wa_after_paid:${normalizedCode}`,
-    String(from.id),
-  );
+  if (!(await setPendingActionUnlessCreating(String(from.id), chatId, `wa_after_paid:${normalizedCode}`))) return;
   await sendMessage({
     chat_id: chatId,
-    text: whatsAppInputPromptMessage(normalizedCode),
+    text: whatsAppInputPromptMessage(normalizedCode, { locale: orderLocale }),
     parse_mode: "HTML",
-    reply_markup: orderPaidKeyboard(normalizedCode),
+    reply_markup: orderPaidKeyboard(normalizedCode, { locale: orderLocale }),
   });
 }

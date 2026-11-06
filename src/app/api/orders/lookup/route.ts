@@ -145,6 +145,11 @@ async function lookup(req: NextRequest) {
       } catch { /* penjamin cron tetap berlaku */ }
     }
   }
+  // Non-QRIS view (W3): same proof guard as status route above; buyer-safe only.
+  const payment = row.payment_provider === "nowpayments"
+    ? await import("@/lib/payments/payment-view").then((m) => m.buildNowpaymentsPaymentView(code)).catch(() => null)
+    : row.payment_provider === "sekalipay_gateway" ? await import("@/lib/payments/payment-view").then((m) => m.buildSekalipayGatewayPaymentView(code)).catch(() => null)
+    : null;
   return NextResponse.json({
     buyer_access_session: adminView ? undefined : await createBuyerAccessSession(row),
     order: {
@@ -162,6 +167,7 @@ async function lookup(req: NextRequest) {
       fulfillment_status: fulfillmentStatus,
       created_at: row.created_at,
       expires_at: row.payment_provider === "klikqris" && row.payment_expires_at ? row.payment_expires_at : row.expires_at,
+      locale: (row.locale as string) ?? "id",
       unique_units_progress: await readUniqueUnitProgress(row),
       credentials_ready: credentialsReady,
       buyer_pin_required: requiresOrderAccessCode(row),
@@ -177,6 +183,7 @@ async function lookup(req: NextRequest) {
             status: row.transaction_status,
           }
         : null,
+      ...(payment ? { payment } : {}),
     },
   }, { headers: { "Cache-Control": "private, no-store" } });
 }

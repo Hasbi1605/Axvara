@@ -3,9 +3,11 @@
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { formatRupiah } from "@/lib/utils";
+import { Price, PriceNote } from "@/components/storefront/Price";
+import { useDisplayPrices } from "@/hooks/useDisplayPrices";
+import { catalogCopy, catalogDeliveryBadge, catalogWarranty } from "@/lib/i18n/catalog-copy";
 import type { VariantSummary } from "@/lib/catalog";
-import { formatWarranty, formatVariantLabel, buyerDeliveryBadge, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
+import { formatVariantLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
 import { IosIcon } from "@/components/ui/IosIcon";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
@@ -14,8 +16,10 @@ import { usePendingNavigation } from "@/hooks/usePendingNavigation";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { Bone, InlineSpinner } from "@/components/storefront/Skeletons";
+import { BulkPriceTiers } from "@/components/storefront/BulkPriceTiers";
+import { bulkCopy, bulkUnitEstimate, usableBulkTiers, type BulkVariantFields } from "@/lib/bulk-display";
 
-export type VariantOption = VariantSummary;
+export type VariantOption = VariantSummary & BulkVariantFields;
 
 /** Di atas angka ini kartu varian menjadi baris ringkas satu kolom. */
 export const COMPACT_VARIANTS_AFTER = 6;
@@ -91,7 +95,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
     setError(null);
     fetchWithTimeout(`/api/catalog?slug=${encodeURIComponent(product.slug)}`, {}, 20_000)
       .then(async (res) => {
-        if (!res.ok) throw new Error("Gagal mengambil varian produk.");
+        if (!res.ok) throw new Error("fetch_failed");
         return res.json();
       })
       .then((data) => {
@@ -104,7 +108,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
         setSelectedId(initialFor(list));
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Gagal memuat varian.");
+        if (!cancelled) setError(err instanceof Error ? err.message : "load_failed");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -167,6 +171,22 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
     setModalQtyDraft(null);
   }, [selectedId, selectedMinQty]);
   const safeModalQty = Math.min(Math.max(modalQty, selectedMinQty), selectedMaxQty);
+  // Grosir: estimasi tampilan dari tier katalog; harga final dari quote server.
+  const selectedTiers = selected ? usableBulkTiers(selected, selected.price) : [];
+  const modalUnit = bulkUnitEstimate(currentPrice, selectedTiers, safeModalQty);
+  const modalTotal = modalUnit * safeModalQty;
+  const modalSavings = (currentPrice - modalUnit) * safeModalQty;
+  // Satu pemilik harga untuk modal: harga varian, tier, satuan efektif, total
+  // dan hemat — tiap nominal IDR diskon adalah masukan sendiri.
+  const prices = useDisplayPrices([
+    currentPrice,
+    ...(currentCompare ? [currentCompare] : []),
+    ...variants.flatMap((v) => [v.price, ...(v.compare_price ? [v.compare_price] : [])]),
+    ...selectedTiers.map((tier) => tier.unit_price),
+    modalUnit, modalTotal, currentPrice * safeModalQty,
+    ...(modalSavings > 0 ? [modalSavings] : []),
+  ], { debounce: true });
+  const t = catalogCopy(prices.locale);
   const commitModalQtyDraft = (raw: string | null) => {
     setModalQtyDraft(null);
     if (raw == null) return;
@@ -190,6 +210,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
         variantLabel: selected.label,
         minQty: selectedMinQty,
         fulfillmentMode: selected.fulfillment_mode,
+        bulkTiers: selectedTiers,
       }, safeModalQty);
       onClose();
     } else {
@@ -234,13 +255,11 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                 {product.name}
               </h3>
               <div className="mt-1 flex items-baseline gap-2">
-                <span className="font-display font-bold text-[#00E5FF] text-base">
-                  {formatRupiah(currentPrice)}
-                </span>
+                <Price idr={currentPrice} prices={prices} className="font-display font-bold text-[#00E5FF] text-base" />
                 {currentCompare && currentCompare > currentPrice && (
                   <>
                     <span className="text-xs text-white/30 line-through">
-                      {formatRupiah(currentCompare)}
+                      <Price idr={currentCompare} prices={prices} />
                     </span>
                     <span className="rounded-full bg-[#FFB800] text-[#080C1E] text-[10px] font-bold px-1.5 py-0.5 leading-none">
                       -{Math.round((1 - currentPrice / currentCompare) * 100)}%
@@ -254,8 +273,8 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
             ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label="Tutup pilihan varian"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/60 hover:text-white"
+            aria-label={t.closeVariantPicker}
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white/60 hover:text-white"
           >
             <IosIcon name="close" size={14} tint="white" />
           </button>
@@ -263,27 +282,28 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
 
         <div className="py-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-3">
-            Pilih Paket / Varian
+            {t.pickPackage}
           </p>
+          <PriceNote prices={prices} className="mb-2 text-[11px] text-white/45" />
 
           {loading ? (
-            <div role="status" aria-label="Memuat pilihan paket">
+            <div role="status" aria-label={t.packagesLoadingAria}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3" aria-hidden>
                 {Array.from({ length: 4 }, (_, i) => <Bone key={i} className="h-[76px] rounded-xl" />)}
               </div>
               <p className="mt-3 flex items-center justify-center gap-2 text-xs text-white/45">
                 <InlineSpinner className="w-3.5 h-3.5" />
-                {loadingStage >= 1 ? "Koneksi lambat — pilihan paket masih dimuat…" : "Memuat pilihan paket…"}
+                {loadingStage >= 1 ? t.packagesSlow : t.packagesLoading}
               </p>
             </div>
           ) : error ? (
             <div className="py-4 px-3 text-center text-xs text-red-300 bg-red-500/10 rounded-xl border border-red-500/20">
-              <p>{error}</p>
-              <button type="button" onClick={() => setAttempt((n) => n + 1)} className="mt-2 h-8 rounded-full bg-white px-4 text-xs font-bold text-[#080C1E]">Coba lagi</button>
+              <p>{error === "fetch_failed" ? t.variantsFetchFailed : error === "load_failed" ? t.variantsLoadFailed : error}</p>
+              <button type="button" onClick={() => setAttempt((n) => n + 1)} className="mt-2 h-8 rounded-full bg-white px-4 text-xs font-bold text-[#080C1E]">{t.retry}</button>
             </div>
           ) : variants.length === 0 ? (
             <div className="py-4 text-center text-xs text-white/40">
-              Tidak ada varian tersedia.
+              {t.noVariantsAvailable}
             </div>
           ) : (
             <>
@@ -292,17 +312,17 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={`Cari di ${variants.length} varian`}
-                aria-label="Cari varian"
+                placeholder={t.searchVariants(variants.length)}
+                aria-label={t.searchVariantsAria}
                 className="mb-3 h-10 w-full rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm text-white placeholder:text-white/35 focus:border-[#00E5FF]/50 focus:outline-none"
               />
             )}
             {visibleVariants.length === 0 ? (
-              <p className="py-4 text-center text-xs text-white/45">Tidak ada varian yang cocok dengan &ldquo;{query.trim()}&rdquo;.</p>
+              <p className="py-4 text-center text-xs text-white/45">{t.noVariantMatch(query.trim())}</p>
             ) : (
             <div
               role="radiogroup"
-              aria-label="Pilih paket atau varian"
+              aria-label={t.pickPackageAria}
               className={`grid grid-cols-1 overflow-y-auto pr-1 ${compact ? "gap-1.5" : "sm:grid-cols-2 gap-2 sm:gap-3"} ${
                 mode === "select" ? "max-h-[min(60vh,460px)]" : "max-h-[260px] sm:max-h-[340px]"
               }`}
@@ -312,7 +332,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                 const eff = effOf(v);
                 const outStock = eff === 0 || isBelowMinimum(v);
                 const belowMin = !!(eff !== 0 && isBelowMinimum(v));
-                const ariaLabel = `${v.label} — ${formatRupiah(v.price)}${outStock ? (belowMin ? " — stok di bawah minimum" : " — stok habis") : ""}${Number(v.min_qty ?? 1) > 1 ? ` — minimal ${Number(v.min_qty)}` : ""}`;
+                const ariaLabel = t.variantAria(v.label, prices.text(v.price), outStock ? (belowMin ? "below" : "out") : "ok", Number(v.min_qty ?? 1));
                 const instant = buyerDeliveryKind(v) === "instant";
                 if (compact) {
                   // Baris ringkas satu kolom (>6 varian, mis. GSuite): tinggi
@@ -338,14 +358,14 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                       <span className="min-w-0">
                         <span className="block truncate text-xs font-bold">{formatVariantLabel(v)}</span>
                         <span className={`mt-0.5 block truncate text-[10px] font-semibold ${instant ? "text-emerald-300" : "text-[#FFD66B]"}`}>
-                          {buyerDeliveryBadge(v)}
-                          {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v) ? <span className="font-medium text-white/45"> · {formatWarranty(v)}</span> : null}
+                          {catalogDeliveryBadge(v, prices.locale)}
+                          {v.warranty_type && v.warranty_type !== "none" && catalogWarranty(v, prices.locale) ? <span className="font-medium text-white/45"> · {catalogWarranty(v, prices.locale)}</span> : null}
                         </span>
                       </span>
                       <span className="shrink-0 text-right">
-                        <span className="block text-xs font-semibold text-[#00E5FF]">{formatRupiah(v.price)}</span>
+                        <Price idr={v.price} prices={prices} className="block text-xs font-semibold text-[#00E5FF]" />
                         <span className={`block text-[10px] ${outStock ? "font-semibold text-red-400" : "text-white/40"}`}>
-                          {outStock ? (belowMin ? "Stok < min" : "Habis") : `Sisa ${eff === -1 ? "∞" : eff}`}
+                          {outStock ? (belowMin ? t.stockBelowMin : t.outShort) : t.remaining(eff === -1 ? "∞" : eff)}
                         </span>
                       </span>
                     </button>
@@ -374,34 +394,34 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                     </span>
                     <span className="mt-1.5 inline-flex">
                       {instant ? (
-                        <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">Kirim otomatis</span>
+                        <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">{t.autoDelivery}</span>
                       ) : (
-                        <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(v)}</span>
+                        <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[9px] font-bold text-[#FFD66B]">{catalogDeliveryBadge(v, prices.locale)}</span>
                       )}
                     </span>
                     <span className="mt-1 text-xs font-semibold text-[#00E5FF]">
-                      {formatRupiah(v.price)}
+                      <Price idr={v.price} prices={prices} />
                       {v.compare_price && v.compare_price > v.price && (
                         <>
                           {" "}
-                          <span className="text-[10px] text-white/30 line-through font-normal">{formatRupiah(v.compare_price)}</span>
+                          <span className="text-[10px] text-white/30 line-through font-normal"><Price idr={v.compare_price} prices={prices} /></span>
                           {" "}
                           <span className="text-[9px] font-bold text-[#FFB800]">-{Math.round((1 - v.price / v.compare_price) * 100)}%</span>
                         </>
                       )}
                     </span>
                     <div className="mt-0.5 flex items-center justify-between w-full text-[10.5px]">
-                      {v.warranty_type && v.warranty_type !== "none" && formatWarranty(v) ? (
+                      {v.warranty_type && v.warranty_type !== "none" && catalogWarranty(v, prices.locale) ? (
                         <span className="text-white/50 font-medium truncate pr-1 inline-flex items-center gap-1">
                           <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                          {formatWarranty(v)}
+                          {catalogWarranty(v, prices.locale)}
                         </span>
                       ) : <span />}
                       {outStock ? (
-                        <span className="text-red-400 font-semibold shrink-0">{belowMin ? "Stok < min" : "Habis"}</span>
+                        <span className="text-red-400 font-semibold shrink-0">{belowMin ? t.stockBelowMin : t.outShort}</span>
                       ) : (
                         <span className="text-white/40 shrink-0">
-                          Sisa {eff === -1 ? "∞" : eff}
+                          {usableBulkTiers(v, v.price)[0] && <>{bulkCopy(prices.locale).variantHint(usableBulkTiers(v, v.price)[0].min_qty)} · </>}{t.remaining(eff === -1 ? "∞" : eff)}
                         </span>
                       )}
                     </div>
@@ -414,7 +434,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
             </div>
             )}
             {mode === "select" && (
-              <p className="mt-3 text-center text-[11px] text-white/40">Ketuk varian untuk memilih. Harga, S&amp;K, dan cara aktivasi di halaman ikut berganti.</p>
+              <p className="mt-3 text-center text-[11px] text-white/40">{t.selectHint}</p>
             )}
             </>
           )}
@@ -426,20 +446,16 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
         {mode !== "select" && selected && !isOutOfStock && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-white">Jumlah</p>
-              {selectedMinQty > 1 ? (
-                <p className="mt-0.5 text-[11px] font-semibold text-[#FFD66B]">Min. pembelian {selectedMinQty}</p>
-              ) : (
-                <p className="mt-0.5 text-[11px] text-white/40">Total {formatRupiah(currentPrice * modalQty)}</p>
-              )}
+              <p className="text-xs font-semibold text-white">{t.quantity}</p>
+              {selectedMinQty > 1 && <p className="mt-0.5 text-[11px] font-semibold text-[#FFD66B]">{t.minPurchase(selectedMinQty)}</p>}
             </div>
             <div className="inline-flex shrink-0 items-center rounded-xl border border-white/10 bg-white/[0.04]">
               <button
                 type="button"
                 onClick={() => { commitModalQtyDraft(null); setModalQty((q) => Math.max(selectedMinQty, Math.min(selectedMaxQty, q) - 1)); }}
                 disabled={safeModalQty <= selectedMinQty}
-                aria-label="Kurangi jumlah"
-                className="flex h-9 w-9 items-center justify-center rounded-l-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label={t.qtyDec}
+                className="flex h-11 w-11 items-center justify-center rounded-l-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M5 12h14" /></svg>
               </button>
@@ -451,24 +467,44 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                 onChange={(e) => setModalQtyDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 3))}
                 onBlur={(e) => commitModalQtyDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                aria-live="polite"
-                aria-label={`Jumlah pembelian, minimal ${selectedMinQty}`}
+                id="quick-modal-qty-input"
+                aria-live={selectedTiers.length > 0 ? undefined : "polite"}
+                aria-label={t.qtyAria(selectedMinQty)}
                 className="w-12 bg-transparent text-center text-sm font-bold tabular-nums text-white outline-none"
               />
               <button
                 type="button"
                 onClick={() => { commitModalQtyDraft(null); setModalQty((q) => Math.min(selectedMaxQty, Math.max(selectedMinQty, q) + 1)); }}
                 disabled={safeModalQty >= selectedMaxQty}
-                aria-label="Tambah jumlah"
-                className="flex h-9 w-9 items-center justify-center rounded-r-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label={t.qtyInc}
+                className="flex h-11 w-11 items-center justify-center rounded-r-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
               </button>
             </div>
           </div>
         )}
-        {mode !== "select" && selected && selectedMinQty > 1 && !isOutOfStock && (
-          <p className="mt-2 text-[11px] text-white/40">Total {formatRupiah(currentPrice * safeModalQty)} untuk {safeModalQty} · harga satuan {formatRupiah(currentPrice)}</p>
+        {mode !== "select" && selected && !isOutOfStock && selectedTiers.length > 0 && (
+          <div className="mt-2">
+            <BulkPriceTiers
+              mode="compact"
+              basePrice={currentPrice}
+              tiers={selectedTiers}
+              minQty={selectedMinQty}
+              qty={safeModalQty}
+              maxQty={selectedMaxQty}
+              stockMax={effOf(selected)}
+              capMax={selected.fulfillment_mode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : 100}
+              qtyInputId="quick-modal-qty-input"
+              locale={prices.locale}
+              format={prices.text}
+              onSetQty={(n) => { commitModalQtyDraft(null); setModalQty(Math.min(Math.max(n, selectedMinQty), selectedMaxQty)); }}
+            />
+            {modalSavings > 0 && <p className="text-[11px] text-white/40">{bulkCopy(prices.locale).saved(prices.text(modalSavings))}</p>}
+          </div>
+        )}
+        {mode !== "select" && selected && selectedMinQty > 1 && selectedTiers.length === 0 && !isOutOfStock && (
+          <p className="mt-2 text-[11px] text-white/40">{t.totalForQty(prices.text(currentPrice * safeModalQty), safeModalQty, prices.text(currentPrice))}</p>
         )}
 
         {/* Badge pengiriman sudah ada di tiap kartu varian (2026-09-19,
@@ -489,15 +525,15 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
           >
             {navigating ? (
               <>
-                <InlineSpinner tone="dark" /> Membuka checkout…
+                <InlineSpinner tone="dark" /> {t.openingCheckout}
               </>
             ) : mode === "checkout" ? (
               <>
-                <IosIcon name="lightning-bolt" size={14} tint="black" /> Beli Sekarang · {formatRupiah(currentPrice * safeModalQty)}
+                <IosIcon name="lightning-bolt" size={14} tint="black" /> {t.buyTotal(prices.text(modalTotal))}
               </>
             ) : (
               <>
-                <IosIcon name="shopping-bag" size={14} tint="black" /> Tambah ke Keranjang · {formatRupiah(currentPrice * safeModalQty)}
+                <IosIcon name="shopping-bag" size={14} tint="black" /> {t.addToCartTotal(prices.text(modalTotal))}
               </>
             )}
           </button>

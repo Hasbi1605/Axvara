@@ -116,11 +116,11 @@ describe("Checkout quote integrity", () => {
     expect(detail).toContain("variant_catalog_unavailable");
   });
 
-  it("panel upload bukti disembunyikan selama maintenance jalur manual", () => {
+  it("panel upload bukti tetap tidak ada; flag maintenance manual sudah pensiun (picker dari quote)", () => {
     const checkout = read("src/app/(shop)/checkout/page.tsx");
-    // Maintenance 2026-09-17: tidak ada input file bukti di checkout (QRIS
-    // saja). Revert: kembalikan blok upload + setProofUrl(null) reset.
-    expect(checkout).toContain("MANUAL_PAYMENTS_MAINTENANCE");
+    // Kontrak 2026-11-04: tidak ada input file bukti dan tidak ada flag
+    // MANUAL_PAYMENTS_MAINTENANCE; hanya metode dari quote yang bisa dipilih.
+    expect(checkout).not.toContain("MANUAL_PAYMENTS_MAINTENANCE");
     expect(checkout).not.toContain('type="file"');
     expect(checkout).not.toContain("Klik untuk upload bukti");
   });

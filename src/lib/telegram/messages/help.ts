@@ -4,10 +4,33 @@
 // garansi kanonis ada di warranty-policy. Mengelompokkannya memudahkan menjaga
 // paritas kebijakan garansi antar-kanal (Telegram/WA). Pemindahan murni.
 
+import type { Locale } from "@/lib/i18n/locale";
 import { formatWarrantyTermsTelegram, formatWarrantyClaimsTelegram } from "@/lib/warranty-policy";
 import { SITE } from "@/lib/site";
 
-export function helpMessage(): string {
+export function helpMessage(opts?: { locale?: Locale }): string {
+  if (opts?.locale === "en") {
+    return [
+      "<b>AXVARA Help</b>",
+      "",
+      "/start: Home",
+      "/katalog: View products",
+      "/cari: Search products",
+      "/cart: Cart",
+      "/orders: My orders",
+      "/pesanan &lt;code&gt;: Check order status",
+      "/garansi: Warranty terms and claims",
+      "/bantuan: Help and admin contact",
+      "",
+      "Choose a product, variant, and quantity. Enter your email if asked, then pay the QRIS total on the invoice. The bot notifies you after payment is confirmed and the product is ready.",
+      "",
+      "AXVARA is third-party, not official. Warranty length and coverage follow the chosen variant. Terms: /garansi.",
+      "",
+      `WhatsApp admin: ${SITE.webUrl}/wa`,
+      `Telegram: @${SITE.supportTelegram}`,
+      `Website: ${SITE.webUrl}`,
+    ].join("\n");
+  }
   return [
     "<b>Bantuan AXVARA</b>",
     "",

@@ -14,6 +14,7 @@ import {
   outOfStockMessage, alreadyPendingMessage, errorMessage,
   cartMessage, cartAddedMessage, cartCheckoutSummaryMessage,
 } from "@/lib/telegram/messages";
+import { tgCtxFor, tgUsdAlternate } from "@/lib/telegram/render-prefs";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { isActiveQrisConfigured } from "@/lib/payments/dana-qris";
 import { addToCart, setCartLineQty, removeFromCart, getCartSummary } from "@/lib/telegram/cart";
@@ -30,8 +31,9 @@ export async function handleShowCart(
   messageId: number,
   from?: { id: number; first_name: string; username?: string },
 ) {
+  const ctx = await tgCtxFor(from?.id ?? chatId);
   if (!from) {
-    const missing = await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    const missing = await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     if (isCriticalSendResult(missing, "transactional")) throw new Error(`telegram_send_failed:${missing.description || "unknown"}`);
     return;
   }
@@ -41,10 +43,11 @@ export async function handleShowCart(
       variantId: line.variantId, qty: line.qty, stock: line.stock, fulfillmentMode: line.fulfillmentMode,
       minQty: line.minQty, label: line.variantLabel || line.productName,
     })),
-  });
+  }, { locale: ctx.locale });
   const text = cartMessage(summary.lines.map((line) => ({
     productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty,
-  }))) + (summary.issues.length ? `\n\n${summary.issues.map(escapeHtml).join("\n")}` : "");
+    basePrice: line.basePrice, appliedTierMinQty: line.appliedTierMinQty,
+  })), { locale: ctx.locale, ...tgUsdAlternate(summary.subtotal, ctx) }) + (summary.issues.length ? `\n\n${summary.issues.map(escapeHtml).join("\n")}` : "");
   // Review R5: hasil kirim transaksional {ok:false} TIDAK boleh markDone —
   // lempar agar update menjadi failed + 500 sehingga Telegram redelivery.
   // safeEditOrSend sudah fallback edit→send; yang dicek adalah hasil akhir.
@@ -63,6 +66,7 @@ export async function handleCartAdd(
   from: { id: number; first_name: string; username?: string },
 ) {
   await sendChatAction(chatId, "typing");
+  const ctx = await tgCtxFor(from.id);
   const result = await addToCart(String(from.id), productId, variantId, qty);
   if (!result.ok) {
     // GSuite dkk: butuh min_qty agar pesan jelas ("min. 50"), bukan generik.
@@ -77,12 +81,12 @@ export async function handleCartAdd(
     }
     await sendMessage({
       chat_id: chatId,
-      text: result.reason === "out_of_stock" ? outOfStockMessage()
-        : result.reason === "cart_full" ? "Keranjang berisi maksimal 20 varian. Hapus varian sebelum menambahkan yang lain."
-        : result.reason === "unique_limit" ? "Maksimal 10 akun stok unik per pesanan, termasuk semua varian. Kurangi jumlah atau pesan terpisah."
-        : result.reason === "cart_changed" ? "Keranjang atau stok berubah. Periksa jumlah dan stok di keranjang, lalu coba lagi."
-        : result.reason === "invalid_quantity" ? "Jumlah harus berupa bilangan bulat 1 sampai 100 per varian. Ubah jumlah di keranjang."
-        : belowMinText ?? errorMessage(),
+      text: result.reason === "out_of_stock" ? outOfStockMessage({ locale: ctx.locale })
+        : result.reason === "cart_full" ? (ctx.locale === "en" ? "Cart holds at most 20 variants. Remove a variant before adding another." : "Keranjang berisi maksimal 20 varian. Hapus varian sebelum menambahkan yang lain.")
+        : result.reason === "unique_limit" ? (ctx.locale === "en" ? "At most 10 unique-stock accounts per order, across all variants. Reduce quantity or order separately." : "Maksimal 10 akun stok unik per pesanan, termasuk semua varian. Kurangi jumlah atau pesan terpisah.")
+        : result.reason === "cart_changed" ? (ctx.locale === "en" ? "Cart or stock changed. Check quantities and stock in the cart, then try again." : "Keranjang atau stok berubah. Periksa jumlah dan stok di keranjang, lalu coba lagi.")
+        : result.reason === "invalid_quantity" ? (ctx.locale === "en" ? "Quantity must be a whole number from 1 to 100 per variant. Adjust it in the cart." : "Jumlah harus berupa bilangan bulat 1 sampai 100 per varian. Ubah jumlah di keranjang.")
+        : belowMinText ?? errorMessage({ locale: ctx.locale }),
       parse_mode: "HTML",
     });
     return;
@@ -92,15 +96,15 @@ export async function handleCartAdd(
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: cartAddedMessage(
-      added?.productName ?? "Produk", added?.variantLabel ?? "", added?.qty ?? qty, summary.totalQty,
+      added?.productName ?? "Produk", added?.variantLabel ?? "", added?.qty ?? qty, summary.totalQty, { locale: ctx.locale },
     ) + (summary.issues.length ? `\n\n${summary.issues.map(escapeHtml).join("\n")}` : ""),
     parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Lihat keranjang", callback_data: "cart" }],
+        [{ text: ctx.locale === "en" ? "View cart" : "Lihat keranjang", callback_data: "cart" }],
         [
-          { text: "Lanjut belanja", callback_data: "catalog:0" },
-          { text: "Menu", callback_data: "home" },
+          { text: ctx.locale === "en" ? "Continue shopping" : "Lanjut belanja", callback_data: "catalog:0" },
+          { text: ctx.locale === "en" ? "Home" : "Menu", callback_data: "home" },
         ],
       ],
     },
@@ -115,12 +119,13 @@ export async function handleCartAdjust(
   delta: number,
 ) {
   const userId = String(from.id);
+  const ctx = await tgCtxFor(from.id);
   if (delta === 0) {
     await removeFromCart(userId, variantId);
   } else {
     const ok = await setCartLineQty(userId, variantId, delta, true);
     if (!ok) {
-      await sendMessage({ chat_id: chatId, text: "Jumlah tidak bisa diubah. Periksa minimum pembelian, batas jumlah, dan stok di keranjang.", parse_mode: "HTML" });
+      await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Quantity can't be changed. Check minimums, limits, and stock in the cart." : "Jumlah tidak bisa diubah. Periksa minimum pembelian, batas jumlah, dan stok di keranjang.", parse_mode: "HTML" });
       await handleShowCart(chatId, messageId, from);
       return;
     }
@@ -134,7 +139,16 @@ export async function handleCartCheckout(
   from: { id: number; first_name: string; username?: string },
 ) {
   await sendChatAction(chatId, "typing");
-  await clearPendingAction(from);
+  const ctx = await tgCtxFor(from.id);
+  // COMMON guard (creating-preserve): cart checkout never blanket-clears a
+  // durable creating anchor (quoted stays clearable as before).
+  {
+    const { readPayq1State } = await import("@/lib/telegram/payment-quote");
+    const storedCheckout = await readPayq1State(String(from.id)).catch(() => null);
+    if (!storedCheckout?.state || storedCheckout.state.st !== "creating") {
+      await clearPendingAction(from);
+    }
+  }
 
   // Guard double-tap: satu pending order Telegram per chat — checkout gabungan
   // tidak boleh menumpuk invoice aktif yang belum dibayar/dibatalkan.
@@ -151,7 +165,7 @@ export async function handleCartCheckout(
     } catch { /* sapuan cron berikutnya */ }
     await sendMessage({
       chat_id: chatId,
-      text: alreadyPendingMessage(String(existingOrder.code)),
+      text: alreadyPendingMessage(String(existingOrder.code), { locale: ctx.locale }),
       parse_mode: "HTML",
       reply_markup: orderStatusKeyboard(String(existingOrder.code)),
     });
@@ -159,7 +173,7 @@ export async function handleCartCheckout(
   }
 
   if (!isActiveQrisConfigured()) {
-    await sendMessage({ chat_id: chatId, text: "Pembayaran QRIS belum tersedia. Coba lagi atau hubungi admin.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "QRIS payment is not available yet. Try again or contact admin." : "Pembayaran QRIS belum tersedia. Coba lagi atau hubungi admin.", parse_mode: "HTML" });
     return;
   }
   const summary = await getCartSummary(String(from.id));
@@ -178,15 +192,17 @@ export async function handleCartCheckout(
     chat_id: chatId, message_id: messageId,
     text: cartCheckoutSummaryMessage(summary.lines.map((line) => ({
       productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty,
-    })), summary.subtotal),
+      basePrice: line.basePrice, appliedTierMinQty: line.appliedTierMinQty,
+    })), summary.subtotal, { locale: ctx.locale, ...tgUsdAlternate(summary.subtotal, ctx) }),
     parse_mode: "HTML",
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "💳 Lanjut ke pembayaran QRIS", callback_data: `cconfirm:${approvalTag}` }],
-        ...summary.lines.map(line => [{ text: `📋 Ketentuan ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: ctx.locale === "en" ? "💳 Continue to QRIS payment" : "💳 Lanjut ke pembayaran QRIS", callback_data: `cconfirm:${approvalTag}` }],
+          [{ text: ctx.locale === "en" ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: "pmentry" }],
+        ...summary.lines.map(line => [{ text: `📋 ${ctx.locale === "en" ? "Terms" : "Ketentuan"} ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
         [
-          { text: "Ubah keranjang", callback_data: "cart" },
-          { text: "Menu", callback_data: "home" },
+          { text: ctx.locale === "en" ? "Edit cart" : "Ubah keranjang", callback_data: "cart" },
+          { text: ctx.locale === "en" ? "Home" : "Menu", callback_data: "home" },
         ],
       ],
     },

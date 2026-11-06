@@ -1,5 +1,9 @@
 import * as jose from "jose";
+import { z } from "zod";
 import { checkCloudflareAccess } from "@/lib/cloudflare-access";
+import { idrToUsdCents, parseFxTimestamp, parseRateRational, type FxSource } from "@/lib/payments/fx";
+import { getCryptoAsset } from "@/lib/payments/crypto-assets";
+import { CRYPTO_MIN_TOTAL_USD_CENTS, CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
 
 export type CheckoutQuoteItem = {
   product_id: number;
@@ -7,11 +11,46 @@ export type CheckoutQuoteItem = {
   name: string;
   price: number;
   qty: number;
+  base_price?: number;
+  applied_tier_min_qty?: number;
+};
+
+export type CheckoutQuoteUsdSnapshot = {
+  cents: string; // USD cents BASE (sebelum biaya layanan 1,5%) bigint serialized, e.g. "1563"
+  rate_num: string;
+  rate_den: string;
+  rate_text: string;
+  source: FxSource;
+  effective_at: string;
+  idr_subtotal: number;
+  pay_currency: string; // ticker kurasi NOWPayments, e.g. "usdtbsc" / "btc"
+  network: string; // server mapping dari katalog kurasi, e.g. "bsc"
 };
 
 export type CheckoutQuotePaymentMethod = {
   id: string;
   account_number: string;
+  // W3 USD+locale contract (Sonnet packet): signed method rows carry kind +
+  // optional USD snapshot ONLY for crypto. Client never supplies these —
+  // server computes at quote time; verify strips unknown fields.
+  kind?: "qris" | "crypto" | "gateway";
+  sublabel?: string | null;
+  available?: boolean;
+  currency?: "IDR" | "USD";
+  amount_text?: string;
+  pay_currency?: string;
+  network?: string;
+  usd?: CheckoutQuoteUsdSnapshot;
+  // Crypto multi-koin: fee provider ditanggung merchant, kurs mengambang; pembeli
+  // menanggung lewat biaya layanan AXVARA (surcharge_bps). amount_text = TOTAL.
+  fee_payer?: "merchant";
+  fixed_rate?: false;
+  base_cents?: number;
+  surcharge_cents?: number;
+  total_cents?: number;
+  surcharge_bps?: number;
+  sender_gas_extra?: boolean;
+  gateway?: { channel: string; estimated_fee: number; estimated_total: number; idr_subtotal: number };
 };
 
 export type CheckoutQuotePayload = {
@@ -19,6 +58,7 @@ export type CheckoutQuotePayload = {
   items: CheckoutQuoteItem[];
   subtotal: number;
   payment_methods: CheckoutQuotePaymentMethod[];
+  locale?: "id" | "en";
 };
 
 function isDev(): boolean {
@@ -274,7 +314,202 @@ export async function verifyIdleToken(idle: string): Promise<AdminIdlePayload | 
   }
 }
 
+const quoteItemSchema = z.object({
+  product_id: z.number().int().safe().positive(), variant_id: z.number().int().safe().positive().optional(),
+  name: z.string(), price: z.number().int().safe().nonnegative(), qty: z.number().int().min(1).max(100),
+  base_price: z.number().int().safe().nonnegative().optional(), applied_tier_min_qty: z.number().int().safe().min(2).optional(),
+});
+const quoteUsdSchema = z.object({
+  cents: z.string().regex(/^[0-9]{1,20}$/), rate_num: z.string().regex(/^[0-9]{1,32}$/),
+  rate_den: z.string().regex(/^[0-9]{1,32}$/), rate_text: z.string().max(32), source: z.enum(["operator-fixed", "nowpayments-estimate"]),
+  effective_at: z.string(), idr_subtotal: z.number().int().safe().positive(),
+  pay_currency: z.string().regex(/^[a-z0-9]{1,32}$/), network: z.string().regex(/^[a-z0-9]{1,32}$/),
+});
+const centsField = z.number().int().safe().nonnegative();
+export const quoteMethodSchema = z.object({
+  id: z.string(), account_number: z.string(), kind: z.enum(["qris", "crypto", "gateway"]).optional(),
+  sublabel: z.string().nullable().optional(), available: z.boolean().optional(), currency: z.enum(["IDR", "USD"]).optional(),
+  amount_text: z.string().optional(), pay_currency: z.string().optional(), network: z.string().optional(), usd: quoteUsdSchema.optional(),
+  fee_payer: z.literal("merchant").optional(), fixed_rate: z.literal(false).optional(),
+  base_cents: centsField.optional(), surcharge_cents: centsField.optional(), total_cents: centsField.optional(),
+  surcharge_bps: z.number().int().safe().nonnegative().optional(), sender_gas_extra: z.boolean().optional(),
+  gateway: z.object({ channel: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), estimated_fee: z.number().int().safe().nonnegative(), estimated_total: z.number().int().safe().positive(), idr_subtotal: z.number().int().safe().positive() }).strict().optional(),
+});
+type QuoteMethod = z.infer<typeof quoteMethodSchema>;
+const CRYPTO_ONLY_FIELDS = ["usd", "amount_text", "pay_currency", "network", "fee_payer", "fixed_rate", "base_cents", "surcharge_cents", "total_cents", "surcharge_bps", "sender_gas_extra"] as const;
+
+/**
+ * Validator kripto tunggal (token web + payq1 Telegram): ticker WAJIB kurasi dan id = `nowpayments:<ticker>`,
+ * jaringan WAJIB sama dengan jaringan kurasi untuk ticker itu, kebijakan provider mengambang + fee merchant,
+ * dan angka WAJIB eksak: base = idrToUsdCents(subtotal, kurs bertanda), surcharge = ceil(base x bps / 10000),
+ * total = base + surcharge >= lantai, amount_text = total desimal 2dp. Tanpa float.
+ */
+function isValidCryptoMethod(method: QuoteMethod, idrSubtotal: number): boolean {
+  const usd = method.usd;
+  const rate = usd && parseRateRational(usd.rate_text);
+  const ticker = method.id.startsWith("nowpayments:") ? method.id.slice("nowpayments:".length) : "";
+  const asset = getCryptoAsset(ticker);
+  if (!usd || !rate || !asset || asset.ticker !== ticker || method.kind !== "crypto" || method.available === false) return false;
+  if (method.currency !== "USD" || method.pay_currency !== ticker || usd.pay_currency !== ticker
+    || method.network !== asset.network || usd.network !== asset.network) return false;
+  if (method.fee_payer !== "merchant" || method.fixed_rate !== false || method.surcharge_bps !== CRYPTO_SURCHARGE_BPS) return false;
+  if (usd.idr_subtotal !== idrSubtotal || parseFxTimestamp(usd.effective_at) === null
+    || rate.num !== BigInt(usd.rate_num) || rate.den !== BigInt(usd.rate_den)) return false;
+  const base = BigInt(usd.cents);
+  if (base <= BigInt(0)) return false;
+  const fx = { rateNum: usd.rate_num, rateDen: usd.rate_den, rateText: usd.rate_text, effectiveAt: usd.effective_at, source: usd.source };
+  if (idrToUsdCents(idrSubtotal, fx) !== base) return false;
+  const pricing = cryptoPricing(base);
+  return method.base_cents !== undefined && BigInt(method.base_cents) === pricing.baseCents
+    && method.surcharge_cents !== undefined && BigInt(method.surcharge_cents) === pricing.surchargeCents
+    && method.total_cents !== undefined && BigInt(method.total_cents) === pricing.totalCents
+    && pricing.totalCents >= BigInt(CRYPTO_MIN_TOTAL_USD_CENTS)
+    && method.amount_text === centsToUsdText(pricing.totalCents);
+}
+
+/** Canonical TG/server method validator (reused by web quote + TG payq1).
+ * No independent policy engine: exact gateway net+fee=total + crypto
+ * snapshot math/payer/fixed/asset/network per the signed contract. */
+export function isCanonicalMethodOption(value: unknown, idrSubtotal: number): boolean {
+  const parsed = quoteMethodSchema.safeParse(value);
+  if (!parsed.success) return false;
+  const method = parsed.data;
+  if (method.kind === "gateway" || method.gateway) {
+    const gateway = method.gateway;
+    if (!gateway || method.kind !== "gateway" || method.id !== `sekalipay_gateway:${gateway.channel}`
+      || /qris/i.test(gateway.channel) || method.account_number !== "" || method.currency !== "IDR"
+      || CRYPTO_ONLY_FIELDS.some((field) => method[field] !== undefined)
+      || gateway.idr_subtotal !== idrSubtotal || gateway.estimated_total !== gateway.idr_subtotal + gateway.estimated_fee) {
+      return false;
+    }
+    return true;
+  }
+  if (method.kind !== "crypto") {
+    // Non-kripto (QRIS dsb.) tidak boleh membawa field kripto/kebijakan provider.
+    return !CRYPTO_ONLY_FIELDS.some((field) => method[field] !== undefined);
+  }
+  return isValidCryptoMethod(method, idrSubtotal);
+}
+const quoteSchema = z.object({
+  items: z.array(quoteItemSchema), subtotal: z.number().int().safe().nonnegative(),
+  payment_methods: z.array(quoteMethodSchema), locale: z.enum(["id", "en"]).optional(),
+}).superRefine((quote, ctx) => {
+  const total = quote.items.reduce((sum, item) => sum + BigInt(item.price) * BigInt(item.qty), BigInt(0));
+  if (total !== BigInt(quote.subtotal)) ctx.addIssue({ code: "custom", message: "subtotal mismatch" });
+  const quantities = new Map<number, number>();
+  for (const item of quote.items) if (item.variant_id) quantities.set(item.variant_id, (quantities.get(item.variant_id) ?? 0) + item.qty);
+  const snapshots = new Map<number, string>();
+  for (const item of quote.items) {
+    if (item.variant_id) {
+      const snapshot = JSON.stringify([item.product_id, item.price, item.base_price ?? null, item.applied_tier_min_qty ?? null]);
+      if (snapshots.has(item.variant_id) && snapshots.get(item.variant_id) !== snapshot) ctx.addIssue({ code: "custom", message: "inconsistent variant snapshot" });
+      snapshots.set(item.variant_id, snapshot);
+    }
+    if (item.base_price !== undefined || item.applied_tier_min_qty !== undefined) {
+      if (!item.variant_id || item.base_price === undefined || item.applied_tier_min_qty === undefined || item.price <= 0 || item.price > item.base_price
+        || (quantities.get(item.variant_id) ?? 0) < item.applied_tier_min_qty) ctx.addIssue({ code: "custom", message: "invalid bulk snapshot" });
+    }
+  }
+  for (const method of quote.payment_methods) {
+    if (method.kind === "gateway" || method.gateway) {
+      const gateway = method.gateway;
+      if (!gateway || method.kind !== "gateway" || method.id !== `sekalipay_gateway:${gateway.channel}`
+        || /qris/i.test(gateway.channel) || method.account_number !== "" || method.currency !== "IDR"
+        || CRYPTO_ONLY_FIELDS.some((field) => method[field] !== undefined)
+        || gateway.idr_subtotal !== quote.subtotal || gateway.estimated_total !== gateway.idr_subtotal + gateway.estimated_fee) {
+        ctx.addIssue({ code: "custom", message: "invalid gateway snapshot" });
+      }
+      continue;
+    }
+    if (method.kind !== "crypto") {
+      if (CRYPTO_ONLY_FIELDS.some((field) => method[field] !== undefined)) ctx.addIssue({ code: "custom", message: "invalid crypto snapshot" });
+      continue;
+    }
+    if (!isValidCryptoMethod(method, quote.subtotal)) ctx.addIssue({ code: "custom", message: "invalid crypto snapshot" });
+  }
+});
+
+/**
+ * Payload token ringkas (kompak): semua metode kripto satu quote memakai snapshot USD/kurs dan angka
+ * yang sama dan hanya beda ticker (jaringan + sublabel diturunkan dari peta kurasi). Satu blok `crypto`
+ * menggantikan hingga 28 metode penuh agar JWT tetap jauh di bawah batas `quote_token` (8000).
+ * Verifikasi mengembangkan blok kembali ke metode penuh lalu menjalankan `quoteSchema` TANPA diubah.
+ */
+const compactCryptoSchema = z.object({
+  tickers: z.array(z.string().regex(/^[a-z0-9]{1,32}$/)).min(1).max(64)
+    .refine((list) => new Set(list).size === list.length, "duplicate ticker")
+    .refine((list) => list.every((ticker) => getCryptoAsset(ticker)?.ticker === ticker), "non-curated ticker"),
+  at: z.number().int().safe().nonnegative().max(1024),
+  usd: quoteUsdSchema.omit({ pay_currency: true, network: true }).strict(),
+  amount_text: z.string(), base_cents: centsField, surcharge_cents: centsField, total_cents: centsField,
+  surcharge_bps: z.number().int().safe().nonnegative(), sender_gas_extra: z.boolean().optional(),
+  account_number: z.string(), fee_payer: z.literal("merchant"), fixed_rate: z.literal(false), currency: z.literal("USD"),
+  available: z.literal(true).optional(), network_labels: z.literal(true).optional(),
+}).strict();
+type CompactCrypto = z.infer<typeof compactCryptoSchema>;
+
+function looksLikeCryptoMethod(method: unknown): boolean {
+  if (!method || typeof method !== "object") return false;
+  const { kind, id } = method as { kind?: unknown; id?: unknown };
+  return kind === "crypto" || (typeof id === "string" && id.startsWith("nowpayments:"));
+}
+
+function compactCryptoMethods(methods: QuoteMethod[]): { payment_methods: QuoteMethod[]; crypto?: CompactCrypto } {
+  const indexes = methods.flatMap((method, index) => (looksLikeCryptoMethod(method) ? [index] : []));
+  if (indexes.length === 0) return { payment_methods: methods };
+  const at = indexes[0];
+  if (indexes.some((index, position) => index !== at + position)) throw new Error("crypto quote methods must be contiguous");
+  const crypto = methods.slice(at, at + indexes.length);
+  const shared = (method: QuoteMethod) => {
+    const usd = method.usd;
+    if (!usd || method.kind !== "crypto" || !method.id.startsWith("nowpayments:")) throw new Error("invalid crypto quote method");
+    const ticker = method.id.slice("nowpayments:".length);
+    const asset = getCryptoAsset(ticker);
+    if (!asset || asset.ticker !== ticker) throw new Error("non-curated crypto ticker");
+    const usdShared = { cents: usd.cents, rate_num: usd.rate_num, rate_den: usd.rate_den, rate_text: usd.rate_text, source: usd.source, effective_at: usd.effective_at, idr_subtotal: usd.idr_subtotal };
+    return {
+      ticker, labelled: method.sublabel === asset.networkLabel,
+      block: {
+        usd: usdShared, amount_text: method.amount_text, base_cents: method.base_cents, surcharge_cents: method.surcharge_cents,
+        total_cents: method.total_cents, surcharge_bps: method.surcharge_bps, sender_gas_extra: method.sender_gas_extra,
+        account_number: method.account_number, fee_payer: method.fee_payer, fixed_rate: method.fixed_rate, currency: method.currency,
+        available: method.available,
+      },
+    };
+  };
+  const items = crypto.map(shared);
+  const first = JSON.stringify(items[0].block);
+  const labelled = items[0].labelled;
+  if (items.some((item) => JSON.stringify(item.block) !== first || item.labelled !== labelled)
+    || (!labelled && crypto.some((method) => method.sublabel !== undefined))) {
+    throw new Error("crypto quote methods differ beyond ticker");
+  }
+  const block = compactCryptoSchema.parse({
+    ...items[0].block, tickers: items.map((item) => item.ticker), at, ...(labelled ? { network_labels: true } : {}),
+  });
+  return { payment_methods: [...methods.slice(0, at), ...methods.slice(at + indexes.length)], crypto: block };
+}
+
+function expandCompactCrypto(rest: unknown[], block: CompactCrypto): unknown[] | null {
+  if (block.at > rest.length) return null;
+  const expanded = block.tickers.map((ticker) => {
+    const asset = getCryptoAsset(ticker)!;
+    return {
+      id: `nowpayments:${ticker}`, account_number: block.account_number, kind: "crypto" as const,
+      ...(block.network_labels ? { sublabel: asset.networkLabel } : {}),
+      ...(block.available ? { available: true } : {}), currency: block.currency, amount_text: block.amount_text,
+      pay_currency: ticker, network: asset.network, usd: { ...block.usd, pay_currency: ticker, network: asset.network },
+      fee_payer: block.fee_payer, fixed_rate: block.fixed_rate, base_cents: block.base_cents, surcharge_cents: block.surcharge_cents,
+      total_cents: block.total_cents, surcharge_bps: block.surcharge_bps,
+      ...(block.sender_gas_extra !== undefined ? { sender_gas_extra: block.sender_gas_extra } : {}),
+    };
+  });
+  return [...rest.slice(0, block.at), ...expanded, ...rest.slice(block.at)];
+}
+
 export async function createCheckoutQuoteToken(input: Omit<CheckoutQuotePayload, "quote_id">) {
+  const validated = quoteSchema.parse(input);
+  const compact = compactCryptoMethods(validated.payment_methods);
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   const quoteId = Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -282,9 +517,9 @@ export async function createCheckoutQuoteToken(input: Omit<CheckoutQuotePayload,
   const expiresAt = now + 60 * 60;
   const token = await new jose.SignJWT({
     purpose: "checkout_quote",
-    items: input.items,
-    subtotal: input.subtotal,
-    payment_methods: input.payment_methods,
+    ...validated,
+    payment_methods: compact.payment_methods,
+    ...(compact.crypto ? { crypto: compact.crypto } : {}),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt(now)
@@ -303,36 +538,19 @@ export async function verifyCheckoutQuoteToken(token: string): Promise<CheckoutQ
     const { payload } = await jose.jwtVerify(token, secretKey());
     if (payload.purpose !== "checkout_quote" || !payload.jti || !Array.isArray(payload.items) || !Array.isArray(payload.payment_methods)) return null;
 
-    const items = payload.items.filter((item): item is CheckoutQuoteItem => {
-      if (!item || typeof item !== "object") return false;
-      const value = item as Record<string, unknown>;
-      return Number.isInteger(value.product_id)
-        && Number(value.product_id) > 0
-        && (value.variant_id === undefined || (Number.isInteger(value.variant_id) && Number(value.variant_id) > 0))
-        && typeof value.name === "string"
-        && Number.isInteger(value.price)
-        && Number(value.price) >= 0
-        && Number.isInteger(value.qty)
-        && Number(value.qty) >= 1
-        // Batas atas web = 100/baris (paritas Telegram) agar varian
-        // min-besar (GSuite 50) bisa dibeli dari web. Minimum per varian
-        // ditegakkan dari DB di quote/orders, bukan dari token.
-        && Number(value.qty) <= 100;
-    });
-    const paymentMethods = payload.payment_methods.filter((method): method is CheckoutQuotePaymentMethod => {
-      if (!method || typeof method !== "object") return false;
-      const value = method as Record<string, unknown>;
-      return typeof value.id === "string" && typeof value.account_number === "string";
-    });
-    const subtotal = Number(payload.subtotal);
-    if (items.length !== payload.items.length || paymentMethods.length !== payload.payment_methods.length || !Number.isInteger(subtotal) || subtotal < 0) return null;
-
-    return {
-      quote_id: payload.jti,
-      items,
-      subtotal,
-      payment_methods: paymentMethods,
-    };
+    let candidate: unknown = payload;
+    if (payload.crypto !== undefined) {
+      // Bentuk ringkas: dilarang bercampur dengan metode kripto bentuk penuh.
+      if (payload.payment_methods.some(looksLikeCryptoMethod)) return null;
+      const block = compactCryptoSchema.safeParse(payload.crypto);
+      if (!block.success) return null;
+      const methods = expandCompactCrypto(payload.payment_methods, block.data);
+      if (!methods) return null;
+      candidate = { ...payload, payment_methods: methods };
+    }
+    const parsed = quoteSchema.safeParse(candidate);
+    if (!parsed.success) return null;
+    return { quote_id: payload.jti, ...parsed.data, locale: parsed.data.locale ?? "id" };
   } catch {
     return null;
   }

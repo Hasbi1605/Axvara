@@ -6,6 +6,7 @@ import {
   errorMessage, orderStatusMessage, invoiceMessage,
   orderCancelledMessage, qrisRenewRejectedMessage,
 } from "@/lib/telegram/messages";
+import type { Locale } from "@/lib/i18n/locale";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
 import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
@@ -23,13 +24,20 @@ function orderItemsSummary(raw: unknown): string {
 async function ownedOrder(chatId: number, orderCode: string, fromUserId: number) {
   if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== fromUserId) return null;
   return queryFirst(
-    `SELECT o.code, o.items, o.subtotal, o.payment_status, o.fulfillment_status, o.telegram_invoice_sent_at,
+    `SELECT o.code, o.items, o.subtotal, o.locale, o.payment_status, o.fulfillment_status, o.telegram_invoice_sent_at,
+            o.payment_method,
             pt.requested_amount, pt.payable_amount, pt.qris_url, pt.expires_at AS invoice_expires_at,
             pt.provider AS payment_provider, pt.status AS transaction_status
      FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
      WHERE o.code=? AND o.sales_channel='telegram' AND o.telegram_user_id=?`,
     String(orderCode || "").toUpperCase(), String(fromUserId),
   );
+}
+
+/** TG2c1: bahasa transaksi mengikuti locale order yang tersimpan (ID legacy
+ * bila kosong), bukan preferensi saat ini. */
+export function orderLocaleOf(row?: { locale?: unknown } | null): Locale {
+  return String(row?.locale ?? "") === "en" ? "en" : "id";
 }
 
 export async function handleOrderStatus(chatId: number, orderCode: string, fromUserId = chatId) {
@@ -41,6 +49,7 @@ export async function handleOrderStatus(chatId: number, orderCode: string, fromU
     await sendMessage({ chat_id: chatId, text: "Status pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML" });
     return;
   }
+
   if (!order) {
     await sendMessage({
       chat_id: chatId,
@@ -49,6 +58,24 @@ export async function handleOrderStatus(chatId: number, orderCode: string, fromU
     });
     return;
   }
+  // R2 provider-aware routing: new-rail created orders render via their own
+  // provider view (saved-locale); QRIS keeps legacy status. Status commands
+  // have no message context (plain send), refresh passes its messageId.
+  const rail = String(order.payment_method ?? "");
+  if (String(order.payment_provider ?? "") === "sekalipay_gateway" || rail.startsWith("sekalipay_gateway:")) {
+    const from = { id: fromUserId, first_name: "" };
+    const { showProviderInvoiceStatus } = await import("./payment-status");
+    await showProviderInvoiceStatus(chatId, 0, String(order.code), from, { locale: orderLocaleOf(order) });
+    return;
+  }
+  if (String(order.payment_provider ?? "") === "nowpayments" || rail.startsWith("nowpayments:")) {
+    const from = { id: fromUserId, first_name: "" };
+    const { showProviderInvoiceStatus } = await import("./payment-status");
+    await showProviderInvoiceStatus(chatId, 0, String(order.code), from, { locale: orderLocaleOf(order) });
+    return;
+  }
+
+  const locale = orderLocaleOf(order);
 
   await sendMessage({
     chat_id: chatId,
@@ -58,12 +85,12 @@ export async function handleOrderStatus(chatId: number, orderCode: string, fromU
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
       payableAmount: Number(order.payable_amount ?? order.subtotal),
-    }),
+    }, { locale }),
     parse_mode: "HTML",
     reply_markup: ["unpaid", "pending"].includes(String(order.payment_status))
-      ? orderStatusKeyboard(String(order.code))
+      ? orderStatusKeyboard(String(order.code), { locale })
       : String(order.payment_status) === "paid"
-        ? paidOrderStatusKeyboard(String(order.code))
+        ? paidOrderStatusKeyboard(String(order.code), { locale })
         : undefined,
   });
 }
@@ -82,6 +109,28 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
     await sendMessage({ chat_id: chatId, text: "Pesanan tidak ditemukan. Pastikan kode pesanan benar.", parse_mode: "HTML" });
     return;
   }
+  // R2 status/cancel for new rails uses the SAME native guards as QRIS:
+  // paid/canceled/expired orders keep their terminal render; cancel below
+  // reuses handleOrderCancel (no rail-specific cancel rewrite).
+  // Immediate provider branches (R2 safety): new-rail created orders
+  // refresh via their own reconcile+view — no generic QRIS fallback/photos
+  // for new rails (forged qrenew on crypto/gateway MUST NOT issue QRIS).
+  // Payment-method fallback covers paid-consented TX rows whose provider
+  // column predates the new-rail columns (order.method is durable).
+  const refreshRail = String((order as { payment_method?: unknown }).payment_method ?? "");
+  if (String(order.payment_provider ?? "") === "sekalipay_gateway" || refreshRail.startsWith("sekalipay_gateway:")) {
+    const from = { id: fromUserId, first_name: "" };
+    const { showProviderInvoiceStatus } = await import("./payment-status");
+    await showProviderInvoiceStatus(chatId, messageId, orderCode, from, { locale: orderLocaleOf(order) });
+    return;
+  }
+  if (String(order.payment_provider ?? "") === "nowpayments" || refreshRail.startsWith("nowpayments:")) {
+    const from = { id: fromUserId, first_name: "" };
+    const { showProviderInvoiceStatus } = await import("./payment-status");
+    await showProviderInvoiceStatus(chatId, messageId, orderCode, from, { locale: orderLocaleOf(order) });
+    return;
+  }
+
   let checkFailed = false;
   let paymentNotice = "";
   // 2026-10-10: "Periksa Pembayaran" membangunkan poller GoPay di VPS (idle
@@ -115,6 +164,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
   }
 
   let invoiceFailed = false;
+  const locale = orderLocaleOf(order);
   if (order.payment_status === "pending" && order.transaction_status === "pending"
     && order.qris_url && !order.telegram_invoice_sent_at
     && Date.parse(String(order.invoice_expires_at)) > Date.now()) {
@@ -128,9 +178,9 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
           payableAmount: Number(order.payable_amount ?? order.subtotal),
           expiresAt: String(order.invoice_expires_at),
           paymentMethod: "qris",
-        }),
+        }, { locale, chargeNote: true }),
         parse_mode: "HTML",
-        reply_markup: qrisInvoiceKeyboard(orderCode),
+        reply_markup: qrisInvoiceKeyboard(orderCode, { locale }),
       });
       // Timeout/jaringan = foto mungkin tetap mendarat; tandai terkirim
       // agar Cek Pembayaran/cron tidak menggandakan QRIS.
@@ -147,15 +197,15 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
       paymentStatus: String(order.payment_status || "unpaid"),
       fulfillmentStatus: String(order.fulfillment_status || "not_required"),
       payableAmount: Number(order.payable_amount ?? order.subtotal),
-    }) + (paymentNotice && order.payment_status !== "paid" ? `\n\n${paymentNotice}` : "")
+    }, { locale }) + (paymentNotice && order.payment_status !== "paid" ? `\n\n${paymentNotice}` : "")
       + (checkFailed && order.payment_status !== "paid"
-      ? "\n\nPemeriksaan pembayaran belum berhasil. Coba lagi atau hubungi admin."
-      : "") + (invoiceFailed ? "\n\nQR pembayaran gagal dikirim. Cek status lagi atau hubungi admin." : ""),
+      ? (locale === "en" ? "\n\nPayment check did not succeed. Try again or contact admin." : "\n\nPemeriksaan pembayaran belum berhasil. Coba lagi atau hubungi admin.")
+      : "") + (invoiceFailed ? (locale === "en" ? "\n\nQR payment failed to send. Check status again or contact admin." : "\n\nQR pembayaran gagal dikirim. Cek status lagi atau hubungi admin.") : ""),
     parse_mode: "HTML",
     reply_markup: ["unpaid", "pending"].includes(String(order.payment_status))
-      ? orderStatusKeyboard(orderCode)
+      ? orderStatusKeyboard(orderCode, { locale })
       : String(order.payment_status) === "paid"
-        ? paidOrderStatusKeyboard(orderCode)
+        ? paidOrderStatusKeyboard(orderCode, { locale })
         : undefined,
   });
 }
@@ -175,27 +225,40 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
   if (!orderCode) return;
 
   const order = await queryFirst(
-    `SELECT items, buyer_access_version,buyer_access_format FROM orders WHERE code=? AND sales_channel='telegram'`,
+    `SELECT items, buyer_access_version,buyer_access_format, locale, payment_method FROM orders WHERE code=? AND sales_channel='telegram'`,
     orderCode,
   ).catch(() => null);
   if (!order) {
     await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
     return;
   }
+  // DIRECT forged qrenew on a crypto/gateway order MUST NOT issue QRIS or a
+  // new TX: reject honestly (no renewal for non-QRIS rails).
+  const rail = String(order.payment_method ?? "");
+  if (rail.startsWith("sekalipay_gateway:") || rail.startsWith("nowpayments:")) {
+    await sendMessage({
+      chat_id: chatId, text: orderLocaleOf(order) === "en"
+        ? "This order does not use QRIS — check its status for the correct payment details."
+        : "Pesanan ini tidak memakai QRIS — cek statusnya untuk detail pembayaran yang benar.",
+      parse_mode: "HTML",
+    });
+    return;
+  }
+  const locale = orderLocaleOf(order);
 
   let result: Awaited<ReturnType<typeof reissueDanaQrisInvoice>>;
   try {
     result = await reissueDanaQrisInvoice(orderCode);
   } catch (error) {
     console.error("Telegram QRIS renew failed:", error instanceof Error ? error.message : "unknown");
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale }), parse_mode: "HTML" });
     return;
   }
 
   if (!result.ok) {
     await sendMessage({
       chat_id: chatId,
-      text: qrisRenewRejectedMessage(result.reason),
+      text: qrisRenewRejectedMessage(result.reason, { locale }),
       parse_mode: "HTML",
     });
     return;
@@ -224,9 +287,9 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
       payableAmount: result.invoice.payableAmount,
       expiresAt: result.invoice.expiresAt,
       paymentMethod: "qris",
-    }),
+    }, { locale, chargeNote: true }),
     parse_mode: "HTML",
-    reply_markup: qrisInvoiceKeyboard(orderCode),
+    reply_markup: qrisInvoiceKeyboard(orderCode, { locale }),
   });
   if (isAmbiguousSendResult(photo)) {
     await settleAmbiguousInvoiceSend(chatId, orderCode, result.invoice.qrisUrl);
@@ -247,7 +310,7 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
   let order;
   try {
     order = await queryFirst(
-      `SELECT code, telegram_user_id, items FROM orders WHERE code=? AND sales_channel='telegram'
+      `SELECT code, telegram_user_id, items, locale FROM orders WHERE code=? AND sales_channel='telegram'
        AND status='pending' AND payment_status IN ('unpaid','pending')`,
       orderCode,
     );
@@ -294,20 +357,21 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
       ]),
     });
   } catch (error) {
+    const locale = orderLocaleOf(order);
     await sendMessage({
       chat_id: chatId,
       text: error instanceof OrderTransitionError
-        ? "Pesanan tidak dapat dibatalkan karena statusnya sudah berubah. Cek status terbaru."
-        : "Pembatalan gagal dikonfirmasi. Cek status lalu coba lagi.",
+        ? (locale === "en" ? "This order can no longer be cancelled because its status changed. Check the latest status." : "Pesanan tidak dapat dibatalkan karena statusnya sudah berubah. Cek status terbaru.")
+        : (locale === "en" ? "Cancellation could not be confirmed. Check status then try again." : "Pembatalan gagal dikonfirmasi. Cek status lalu coba lagi."),
       parse_mode: "HTML",
-      reply_markup: orderStatusKeyboard(orderCode),
+      reply_markup: orderStatusKeyboard(orderCode, { locale }),
     });
     return;
   }
 
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
-    text: orderCancelledMessage(orderCode),
+    text: orderCancelledMessage(orderCode, { locale: orderLocaleOf(order) }),
     parse_mode: "HTML",
   });
 }

@@ -38,9 +38,11 @@ import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 
 type InvoiceOrderRow = {
   code: string;
+  telegram_user_id: string | null;
   items: string;
   telegram_chat_id: string | null;
   subtotal: number;
+  locale: "id" | "en";
   telegram_invoice_sent_at: string | null;
   telegram_invoice_attempts: number;
   buyer_access_version: unknown;
@@ -50,7 +52,7 @@ type InvoiceOrderRow = {
 async function readInvoiceOrder(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<InvoiceOrderRow | null> {
   const { queryFirst } = database;
   const row = await queryFirst(
-    `SELECT code, items, telegram_chat_id, subtotal, buyer_access_version, buyer_access_format,
+    `SELECT code, items, telegram_chat_id, telegram_user_id, subtotal, locale, buyer_access_version, buyer_access_format,
             telegram_invoice_sent_at, telegram_invoice_attempts
      FROM orders WHERE code=? AND sales_channel='telegram' AND status='pending'`,
     orderCode,
@@ -58,9 +60,11 @@ async function readInvoiceOrder(orderCode: string, database: DatabaseAccess = cr
   if (!row) return null;
   return {
     code: String(row.code),
+    telegram_user_id: row.telegram_user_id != null ? String(row.telegram_user_id) : null,
     items: String(row.items ?? "[]"),
     telegram_chat_id: row.telegram_chat_id != null ? String(row.telegram_chat_id) : null,
     subtotal: Number(row.subtotal ?? 0),
+    locale: String(row.locale ?? "") === "en" ? "en" : "id",
     telegram_invoice_sent_at: row.telegram_invoice_sent_at != null ? String(row.telegram_invoice_sent_at) : null,
     telegram_invoice_attempts: Number(row.telegram_invoice_attempts ?? 0),
     buyer_access_version: row.buyer_access_version,
@@ -101,15 +105,80 @@ export async function settleAmbiguousInvoiceSend(
   orderCode: string,
   qrisUrl: string,
   database: DatabaseAccess = createDatabaseAccess(),
+  locale: "id" | "en" = "id",
 ): Promise<void> {
   await markInvoiceSent(orderCode, database);
   const link = /^https:\/\//.test(qrisUrl) ? `\n\nBuka QRIS: ${qrisUrl}` : "";
   await sendMessage({
     chat_id: chatId,
-    text: `Koneksi Telegram sedang lambat. Foto QRIS pesanan <code>${orderCode}</code> mungkin muncul sebentar lagi; tagihannya tetap sama.${link}\n\nJangan buat pesanan baru. Tekan Cek Pembayaran setelah membayar.`,
+    text: locale === "en"
+      ? `Telegram connection is slow. The QRIS photo for order <code>${orderCode}</code> may appear shortly; the invoice is the same.${link}\n\nDo not create a new order. Press Check Payment after paying.`
+      : `Koneksi Telegram sedang lambat. Foto QRIS pesanan <code>${orderCode}</code> mungkin muncul sebentar lagi; tagihannya tetap sama.${link}\n\nJangan buat pesanan baru. Tekan Cek Pembayaran setelah membayar.`,
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    reply_markup: qrisInvoiceKeyboard(orderCode),
+    reply_markup: qrisInvoiceKeyboard(orderCode, { locale }),
+  }).catch(() => {});
+}
+
+/** Minimum age of the last claim before another sender may take over a pending
+ * gateway/crypto invoice send. Bounds an in-flight first send (Telegram timeout
+ * is 10 s) and a crashed claim: recovery is the existing retry, never a lock. */
+export const PROVIDER_INVOICE_CLAIM_BACKOFF_SECONDS = 60;
+
+/**
+ * ONE durable claim for every gateway/crypto invoice text send (initial
+ * dispatch AND retry): CAS on the observed `telegram_invoice_attempts`, only
+ * while the invoice is undelivered, below the 5-attempt ceiling and not freshly
+ * claimed (`updated_at` is stamped by the claim). The first dispatch may claim a
+ * brand-new invoice (attempts=0); retries always wait out the backoff. Returns
+ * "sent" when already delivered, "busy" when another sender holds it.
+ */
+export async function claimProviderInvoiceSend(
+  orderCode: string,
+  opts: { allowFresh: boolean },
+  database: DatabaseAccess = createDatabaseAccess(),
+): Promise<"claimed" | "sent" | "busy"> {
+  const row = await database.queryFirst(
+    `SELECT telegram_invoice_sent_at AS sent, telegram_invoice_attempts AS attempts FROM orders WHERE code=?`, orderCode,
+  ).catch(() => null);
+  if (!row) return "busy";
+  if (row.sent) return "sent";
+  const attempts = Number(row.attempts ?? 0);
+  if (attempts >= 5) return "busy";
+  const claimed = await database.execRun(
+    `UPDATE orders SET telegram_invoice_attempts=telegram_invoice_attempts+1, updated_at=datetime('now')
+     WHERE code=? AND telegram_invoice_sent_at IS NULL AND telegram_invoice_attempts=? AND telegram_invoice_attempts<5
+       AND ((?=1 AND telegram_invoice_attempts=0)
+         OR COALESCE(updated_at,created_at) IS NULL
+         OR julianday(COALESCE(updated_at,created_at))<=julianday('now',?))`,
+    orderCode, attempts, opts.allowFresh ? 1 : 0, `-${PROVIDER_INVOICE_CLAIM_BACKOFF_SECONDS} seconds`,
+  ).catch(() => ({ changes: 0 }));
+  return claimed.changes ? "claimed" : "busy";
+}
+
+/**
+ * Ambiguous send of a gateway/crypto invoice view. Same convention as the QRIS
+ * photo: close the delivery (marker set, no blind resend of a message that may
+ * already be on the buyer's screen) and send ONE safe same-order nudge. The
+ * nudge carries no amount/address/link/VA — details only come from the saved
+ * status view behind the refresh button.
+ */
+export async function settleAmbiguousProviderInvoice(
+  chatId: number | string,
+  orderCode: string,
+  database: DatabaseAccess = createDatabaseAccess(),
+  savedLocale?: "id" | "en",
+): Promise<void> {
+  await markInvoiceSent(orderCode, database);
+  // Copy follows the SAVED ORDER locale, never the buyer's current preference.
+  const locale = savedLocale ?? (String((await database.queryFirst(`SELECT locale FROM orders WHERE code=?`, orderCode).catch(() => null))?.locale ?? "") === "en" ? "en" : "id");
+  await sendMessage({
+    chat_id: chatId,
+    text: locale === "en"
+      ? `Telegram connection is slow. The payment details for order <code>${orderCode}</code> may appear shortly; it is the same order.\n\nDo not create a new order. Tap Refresh status to see the details.`
+      : `Koneksi Telegram sedang lambat. Detail pembayaran pesanan <code>${orderCode}</code> mungkin muncul sebentar lagi; pesanannya tetap sama.\n\nJangan buat pesanan baru. Tekan Refresh status untuk melihat detailnya.`,
+    parse_mode: "HTML",
+    reply_markup: { inline_keyboard: [[{ text: locale === "en" ? "🔄 Refresh status" : "🔄 Refresh status", callback_data: `refresh:${orderCode}` }]] },
   }).catch(() => {});
 }
 
@@ -144,14 +213,53 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
   if (!order || !order.telegram_chat_id) return false;
   if (order.telegram_invoice_sent_at) return true; // sudah terkirim
   if (order.telegram_invoice_attempts >= 5) return false; // budget retry habis
-  const ledger = await queryFirst(
-    `SELECT payable_amount, expires_at, qris_url FROM payment_transactions
-     WHERE order_code=? AND provider IN ('dana','gopay','klikqris') AND status='pending'`,
+  // R3: gateway/crypto invoices retry through the SAME marker/attempt ceiling,
+  // but resend the SAVED status view as text (never a QRIS photo, never a
+  // create/POST/re-quote/reservation).
+  const railTx = await queryFirst(
+    `SELECT provider, expires_at FROM payment_transactions
+      WHERE order_code=? AND provider IN ('nowpayments','sekalipay_gateway') AND status='pending'`,
     orderCode,
   );
+  if (railTx) {
+    if (!isFutureIso(railTx.expires_at) || !order.telegram_user_id) return false;
+    // Eligibility read + claim (2) + render (2) + delivery marker must fit
+    // before the external send, including direct callers with a bounded DB.
+    if (!database.canSpend(6)) return false;
+    // Pre-read eligibility (existing saved-view builders): a non-live view
+    // (expired/review/failed/paid) sends nothing and does NOT burn an attempt.
+    const { buildNowpaymentsPaymentView, buildSekalipayGatewayPaymentView } = await import("@/lib/payments/payment-view");
+    const view = railTx.provider === "nowpayments"
+      ? await buildNowpaymentsPaymentView(orderCode, database).catch(() => null)
+      : await buildSekalipayGatewayPaymentView(orderCode, database).catch(() => null);
+    if (!view || !["pending", "confirming", "fee_consent_required"].includes(String(view.state))) return false;
+    const claim = await claimProviderInvoiceSend(orderCode, { allowFresh: false }, database);
+    if (claim !== "claimed") return claim === "sent";
+    const { showProviderInvoiceStatus } = await import("@/lib/telegram/handlers/payment-status");
+    const delivery = await showProviderInvoiceStatus(
+      Number(order.telegram_chat_id), 0, orderCode, { id: Number(order.telegram_user_id), first_name: "" },
+      { locale: order.locale, savedOnly: true, database },
+    ).catch(() => ({ kind: "none", ok: false, ambiguous: false }) as const);
+    if (delivery.kind !== "live") return false; // view changed between pre-read and render: nothing sent/marked
+    if (delivery.ok) return true; // showProviderInvoiceStatus already set the marker
+    if (delivery.ambiguous) {
+      await settleAmbiguousProviderInvoice(Number(order.telegram_chat_id), order.code, database, order.locale);
+      return true;
+    }
+    return false; // definite rejection: stays pending, bounded by the attempt ceiling
+  }
+  const ledger = await queryFirst(
+    `SELECT provider, payable_amount, expires_at, qris_url FROM payment_transactions
+      WHERE order_code=? AND provider IN ('dana','gopay','klikqris') AND status='pending'`,
+    orderCode,
+  );
+  // R2 provider guard: new-rail invoices are handled by the text branch above;
+  // this QRIS photo resender MUST NOT touch them.
   if (!ledger || !isFutureIso(ledger.expires_at)) return false;
+  if (ledger.provider && !["dana", "gopay", "klikqris"].includes(String(ledger.provider))) return false;
   const payableAmount = Number(ledger.payable_amount ?? order.subtotal ?? 0);
   if (!Number.isSafeInteger(payableAmount) || payableAmount <= 0) return false;
+  if (!database.canSpend(2)) return false;
   await execRun(
     `UPDATE orders SET telegram_invoice_attempts=telegram_invoice_attempts+1, updated_at=datetime('now') WHERE code=?`,
     orderCode,
@@ -165,9 +273,9 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
       payableAmount,
       expiresAt: String(ledger.expires_at ?? ""),
       paymentMethod: "qris",
-    }),
+    }, { locale: order.locale, chargeNote: true }),
     parse_mode: "HTML",
-    reply_markup: qrisInvoiceKeyboard(order.code),
+    reply_markup: qrisInvoiceKeyboard(order.code, { locale: order.locale }),
   }).catch(() => ({ ok: false as const, description: "send_threw", error_code: 0 }));
   if (isAmbiguousSendResult(result)) {
     // Jangan kirim ulang foto yang mungkin sudah mendarat (lihat helper).
@@ -190,17 +298,19 @@ export async function retryInvoicePendingTelegramInvoices(limit = 4, database: D
   if (!database.canSpend(1)) return 0;
 
   const pending = await queryAll(
-    `SELECT o.code FROM orders o
-     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider IN ('dana','gopay','klikqris') AND pt.status='pending'
+    `SELECT o.code,pt.provider FROM orders o
+     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.provider IN ('dana','gopay','klikqris','nowpayments','sekalipay_gateway') AND pt.status='pending'
      WHERE o.sales_channel='telegram' AND o.status='pending'
        AND o.telegram_invoice_sent_at IS NULL AND o.telegram_invoice_attempts < 5
+       AND (pt.provider IN ('dana','gopay','klikqris') OR COALESCE(o.updated_at,o.created_at) IS NULL
+         OR julianday(COALESCE(o.updated_at,o.created_at))<=julianday('now','-60 seconds'))
        AND julianday(pt.expires_at)>julianday('now')
      ORDER BY o.created_at ASC LIMIT ?`,
     limit,
   ).catch(() => [] as Record<string, unknown>[]);
   let sent = 0;
   for (const row of pending) {
-    if (!database.canSpend(4)) break;
+    if (!database.canSpend(["nowpayments", "sekalipay_gateway"].includes(String(row.provider)) ? 8 : 5)) break;
     try {
       if (await retryTelegramInvoiceDelivery(String(row.code), database)) sent++;
     } catch { /* cron berikutnya retry */ }

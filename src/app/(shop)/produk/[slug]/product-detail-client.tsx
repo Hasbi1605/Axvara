@@ -5,24 +5,26 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import type { Product } from "@/lib/products";
 import { productIsBuyable } from "@/lib/product-order";
-import { formatRupiah } from "@/lib/utils";
 import type { VariantSummary } from "@/lib/catalog";
-import { formatWarranty } from "@/lib/catalog";
 import { effectiveVariantStock, formatVariantLabel } from "@/lib/catalog";
-import { buyerDeliveryBadge, buyerDeliveryEtaJaspay, buyerDeliveryEtaNonWr, buyerDeliveryKind } from "@/lib/catalog";
-import { deliveryEtaForBuyer } from "@/lib/warung-rebahan/delivery-class";
+import { buyerDeliveryBadge, buyerDeliveryKind } from "@/lib/catalog";
 import { useCart } from "@/stores/cart";
-import { ProductCard } from "@/components/storefront/ProductCard";
+import { ProductCard, productCardAmounts } from "@/components/storefront/ProductCard";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
 import { ActivationBody, DescriptionBody, MobileCollapsible, TermsBody, VariantIdentity, activationStepCount } from "@/components/storefront/ProductCopy";
 import { isLongDescription, mergeProductCopy, parseProductDescription, type ParsedDescription, type VariantCopy } from "@/lib/product-copy/format";
 import { Bone, InlineSpinner, ProductDetailSkeleton } from "@/components/storefront/Skeletons";
 import { usePendingNavigation } from "@/hooks/usePendingNavigation";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { BulkPriceTiers } from "@/components/storefront/BulkPriceTiers";
+import { bulkCopy, bulkUnitEstimate, usableBulkTiers, type BulkVariantFields } from "@/lib/bulk-display";
+import { useDisplayPrices } from "@/hooks/useDisplayPrices";
+import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty } from "@/lib/i18n/catalog-copy";
+import { Price, PriceNote } from "@/components/storefront/Price";
 
 // /api/catalog mengganti teks mentah WR (terms/delivery_terms) dengan `copy`
 // siap tampil — versi Axvara atau teks pemasok yang dirapikan.
-type VariantItem = VariantSummary & { copy?: VariantCopy | null };
+type VariantItem = VariantSummary & BulkVariantFields & { copy?: VariantCopy | null };
 
 const DESC_FADE = {
   WebkitMaskImage: "linear-gradient(to bottom, #000 55%, transparent)",
@@ -220,6 +222,24 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     setPdpQtyDraft(null);
   }, [selectedVariantId, slug]);
 
+  const priceVariant = catalogDetail?.variants.find((v) => v.is_active && v.id === selectedVariantId);
+  const priceBase = priceVariant?.price ?? product?.price ?? 0;
+  const priceMin = Math.max(1, Number(priceVariant?.min_qty ?? 1) || 1);
+  const priceStock = priceVariant ? effectiveVariantStock(priceVariant) : -1;
+  const priceCap = priceVariant?.fulfillment_mode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : 100;
+  const priceMax = Math.max(priceMin, priceStock === -1 ? priceCap : Math.min(priceCap, priceStock));
+  const priceQty = Math.min(Math.max(pdpQty, priceMin), priceMax);
+  const priceTiers = priceVariant ? usableBulkTiers(priceVariant, priceBase) : [];
+  const priceUnit = bulkUnitEstimate(priceBase, priceTiers, priceQty);
+  const prices = useDisplayPrices([
+    priceBase, product?.comparePrice ?? 0, priceUnit, priceUnit * priceQty,
+    (priceBase - priceUnit) * priceQty,
+    ...priceTiers.map((tier) => tier.unit_price),
+    ...(catalogDetail?.variants ?? []).flatMap((variant) => [variant.price, variant.compare_price ?? 0]),
+    ...related.flatMap(productCardAmounts),
+  ], { secondary: true, debounce: true });
+  const t = catalogCopy(prices.locale);
+
   // Commit ketikan manual: kosong/non-angka = kembali ke nilai aman;
   // angka di-clamp ke [min, max] (min TIDAK bisa ditembus ke bawah).
   const commitPdpQtyDraft = (raw: string | null) => {
@@ -239,10 +259,10 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   if (detailError) {
     return (
       <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
-        <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 inline-block">Gagal memuat: {detailError}</p>
+        <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 inline-block">{t.loadFailed(detailError)}</p>
         <div className="mt-4 flex justify-center gap-3">
-          <button onClick={()=> location.reload()} className="h-9 px-4 rounded-full bg-white text-[#070a1e] text-sm font-bold">Muat ulang</button>
-          <Link prefetch={false} href="/" className="h-9 px-4 rounded-full ax-glass-card text-sm inline-flex items-center">Kembali</Link>
+          <button onClick={()=> location.reload()} className="h-9 px-4 rounded-full bg-white text-[#070a1e] text-sm font-bold">{t.reload}</button>
+          <Link prefetch={false} href="/" className="h-9 px-4 rounded-full ax-glass-card text-sm inline-flex items-center">{t.back}</Link>
         </div>
       </div>
     );
@@ -251,9 +271,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   if (!product) {
     return (
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-16 text-center">
-        <p className="text-white/60">Produk tidak ditemukan</p>
+        <p className="text-white/60">{t.productNotFound}</p>
         <Link prefetch={false} href="/" className="text-[#00E5FF] text-sm mt-3 inline-block">
-          ← Kembali ke katalog
+          {t.backToCatalog}
         </Link>
       </div>
     );
@@ -304,6 +324,14 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   // aktif tanpa useEffect di bawah early-return (Rules of Hooks). Naik bila
   // min varian baru lebih besar, turun bila max menyusut.
   const safePdpQty = Math.min(Math.max(pdpQty, selectedMinQty), selectedMaxQty);
+  // Grosir (estimasi tampilan dari tier katalog; server tetap otoritatif).
+  // Judul harga tetap harga DASAR; total/CTA memakai satuan efektif × jumlah.
+  const selectedTiers = selectedVariant ? usableBulkTiers(selectedVariant, selectedVariant.price) : [];
+  const selectedStockMax = selectedVariant ? effectiveStockOf(selectedVariant) : -1;
+  const selectedCapMax = selectedVariant?.fulfillment_mode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : 100;
+  const effectiveUnit = bulkUnitEstimate(displayPrice, selectedTiers, safePdpQty);
+  const lineTotal = effectiveUnit * safePdpQty;
+  const lineSavings = (displayPrice - effectiveUnit) * safePdpQty;
   const variantOutOfStock = variantsEnabled && activeVariants.length > 0
     ? activeVariants.every((variant) => !isPurchasable(variant))
     : selectedVariant ? !isPurchasable(selectedVariant) : false;
@@ -332,6 +360,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       minQty: variantMinQtyOf(variant),
       fulfillmentMode: variant.fulfillment_mode,
       inventoryAvailable: variant.inventory_available ?? null,
+      bulkTiers: usableBulkTiers(variant, variant.price),
     };
   };
   // Determine the display image — from gallery state or product.image fallback
@@ -380,7 +409,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   const hasActivation = activationSteps > 0 || productCopy.notes.length > 0;
   const termsLabel = !separated && productCopy.fromVariant && copyVariant ? formatVariantLabel(copyVariant) : null;
   const identityLabel = selectedVariant ? formatVariantLabel(selectedVariant) : null;
-  const identitySharedLabel = !selectedVariant && sharedVariantCopy ? "Semua varian (S&K sama)" : null;
+  const identitySharedLabel = !selectedVariant && sharedVariantCopy ? t.allVariantsSame : null;
   const variantTerms = variantCopy?.sections ?? [];
   const variantActivationSteps = variantCopy ? activationStepCount(variantCopy.activation) : 0;
   const variantHasActivation = variantActivationSteps > 0 || (variantCopy?.notes.length ?? 0) > 0;
@@ -392,7 +421,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       onChoose={variantCopiesDiffer || variantPending ? openVariantPicker : undefined}
     />
   );
-  const descriptionTitle = separated ? "Deskripsi umum" : "Deskripsi Produk";
+  const descriptionTitle = separated ? t.descGeneral : t.descProduct;
   const hasAnyCopy = separated || hasTerms || hasActivation;
 
   const mobileDescription = hasDescription ? (
@@ -415,7 +444,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           onClick={() => setDescExpanded(!descExpanded)}
           className="mt-2 text-xs font-semibold text-[#00E5FF] hover:underline flex items-center gap-1"
         >
-          {descExpanded ? "Tutup Deskripsi ∧" : "Lihat Selengkapnya ∨"}
+          {descExpanded ? t.descClose : t.descMore}
         </button>
       )}
     </div>
@@ -429,18 +458,18 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       {separated && identity}
       {separated && variantCopyMissing && (
         <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs leading-relaxed text-white/65">
-          Syarat &amp; ketentuan dan cara aktivasi khusus varian ini belum tersedia. Hubungi admin sebelum membeli bila perlu kepastian.
+          {t.variantTermsMissing}
         </p>
       )}
       {separated && variantTerms.length > 0 && (
-        <MobileCollapsible title="Syarat & Ketentuan" meta={identityLabel} icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}>
+        <MobileCollapsible title={t.terms} meta={identityLabel} icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}>
           <TermsBody sections={variantTerms} size="xs" />
         </MobileCollapsible>
       )}
       {separated && variantHasActivation && variantCopy && (
         <MobileCollapsible
-          title="Cara Aktivasi"
-          meta={variantActivationSteps > 0 ? `${variantActivationSteps} langkah` : null}
+          title={t.activation}
+          meta={variantActivationSteps > 0 ? t.steps(variantActivationSteps) : null}
           icon={<StepsIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
         >
           <ActivationBody groups={variantCopy.activation} notes={variantCopy.notes} size="xs" />
@@ -448,7 +477,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       )}
       {hasTerms && (
         <MobileCollapsible
-          title={separated ? "Ketentuan produk" : "Syarat & Ketentuan"}
+          title={separated ? t.termsProduct : t.terms}
           meta={separated ? null : termsLabel}
           icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
         >
@@ -457,8 +486,8 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       )}
       {hasActivation && (
         <MobileCollapsible
-          title={separated ? "Cara aktivasi produk" : "Cara Aktivasi"}
-          meta={activationSteps > 0 ? `${activationSteps} langkah` : null}
+          title={separated ? t.activationProduct : t.activation}
+          meta={activationSteps > 0 ? t.steps(activationSteps) : null}
           icon={<StepsIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
         >
           <ActivationBody groups={productCopy.activation} notes={productCopy.notes} size="xs" />
@@ -474,7 +503,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
         className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/icons/ios11/back-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} /> Kembali
+        <img src="/icons/ios11/back-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} /> {t.back}
       </button>
 
       {/* Dynamic grid: card kiri greedy (1fr), card kanan responsive fit-content */}
@@ -497,14 +526,14 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                   <button
                     onClick={goPrev}
                     className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition active:scale-90"
-                    aria-label="Foto sebelumnya"
+                    aria-label={t.prevPhoto}
                   >
                     <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
                   </button>
                   <button
                     onClick={goNext}
                     className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/70 transition active:scale-90"
-                    aria-label="Foto berikutnya"
+                    aria-label={t.nextPhoto}
                   >
                     <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
                   </button>
@@ -531,7 +560,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={img}
-                      alt={`${product.name} foto ${i + 1}`}
+                      alt={t.photoAlt(product.name, i + 1)}
                       className={`w-full h-full ${i === 0 ? "object-cover" : "object-contain"}`}
                       loading="lazy"
                     />
@@ -561,12 +590,12 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8" data-testid="pdp-variant-details">
               <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
                 <ShieldIcon className="w-5 h-5 shrink-0 text-[#00E5FF]" />
-                Syarat &amp; Ketentuan
+                {t.terms}
               </h2>
               <div className="mt-4">{identity}</div>
               {variantCopyMissing && (
                 <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm leading-relaxed text-white/65">
-                  Syarat &amp; ketentuan dan cara aktivasi khusus varian ini belum tersedia. Hubungi admin sebelum membeli bila perlu kepastian.
+                  {t.variantTermsMissing}
                 </p>
               )}
               {variantCopy && variantTerms.length > 0 && (
@@ -578,14 +607,14 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
                   <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                     <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
-                    Cara Aktivasi
+                    {t.activation}
                   </h3>
                   <ActivationBody groups={variantCopy.activation} notes={variantCopy.notes} />
                 </div>
               )}
               {hasTerms && (
                 <div className="mt-6 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
-                  <h3 className="mb-3 text-[13px] font-semibold text-white">Ketentuan produk</h3>
+                  <h3 className="mb-3 text-[13px] font-semibold text-white">{t.termsProduct}</h3>
                   <TermsBody sections={productCopy.sections} />
                 </div>
               )}
@@ -593,7 +622,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
                   <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                     <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
-                    Cara aktivasi produk
+                    {t.activationProduct}
                   </h3>
                   <ActivationBody groups={productCopy.activation} notes={productCopy.notes} />
                 </div>
@@ -607,7 +636,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             <div className="hidden lg:block ax-glass-card rounded-[24px] p-6 sm:p-8">
               <h2 className="font-display font-bold text-[18px] text-white tracking-tight flex items-center gap-2.5">
                 <ShieldIcon className="w-5 h-5 text-[#00E5FF]" />
-                {hasTerms ? <>Syarat &amp; Ketentuan</> : "Cara Aktivasi"}
+                {hasTerms ? t.terms : t.activation}
                 {termsLabel && <span className="min-w-0 break-words text-xs font-semibold text-[#00E5FF]/80 tracking-normal">{termsLabel}</span>}
               </h2>
               {hasTerms && (
@@ -620,7 +649,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                   {hasTerms && (
                     <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                       <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
-                      Cara Aktivasi
+                      {t.activation}
                     </h3>
                   )}
                   <ActivationBody groups={productCopy.activation} notes={productCopy.notes} />
@@ -652,12 +681,12 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           {/* Price block */}
           <div className="mt-4 flex items-baseline gap-3 flex-wrap">
             <span className="font-display font-bold text-[26px] text-white">
-              {formatRupiah(displayPrice)}
+              <Price idr={displayPrice} prices={prices} />
             </span>
             {displayComparePrice && (
               <>
                 <span className="text-sm line-through text-white/30">
-                  {formatRupiah(displayComparePrice)}
+                  <Price idr={displayComparePrice} prices={prices} />
                 </span>
                 <span className="rounded-full bg-[#FFB800] text-[#080C1E] text-xs font-bold px-2 py-1">
                   -{Math.round((1 - displayPrice / displayComparePrice) * 100)}%
@@ -665,6 +694,8 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               </>
             )}
           </div>
+          {prices.equivalent(displayPrice) && <p className="mt-1 text-xs text-white/50">{prices.equivalent(displayPrice)}</p>}
+          <PriceNote prices={prices} className="mt-1 text-xs text-white/50" />
 
           {/* Social proof: sold count + stock */}
           {((product.soldCount != null && product.soldCount > 0) || (product.stock != null && product.stock > 0)) && (
@@ -672,14 +703,14 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               {product.soldCount != null && product.soldCount > 0 && (
                 <span className="inline-flex items-center gap-1">
                   <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-[#FFB800]" fill="currentColor"><path d="M8 1.314C12.438-3.248 23.534 4.735 8 15-7.534 4.736 3.562-3.248 8 1.314z"/></svg>
-                  {product.soldCount.toLocaleString("id-ID")} terjual
+                  {t.soldCount(product.soldCount.toLocaleString("id-ID"))}
                 </span>
               )}
               {product.soldCount && product.stock ? <span className="text-white/20">·</span> : null}
               {product.stock != null && product.stock > 0 && (
                 <span className="inline-flex items-center gap-1">
                   <span className={`w-1.5 h-1.5 rounded-full ${product.stock > 10 ? "bg-emerald-400" : "bg-[#FFB800]"}`} />
-                  Stok: {product.stock}
+                  {t.stockLabel(product.stock)}
                 </span>
               )}
             </div>
@@ -690,7 +721,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             <>
               {/* Desktop inline variant picker */}
               <div className="mt-4 space-y-2 hidden lg:block">
-                <h3 className="text-sm font-medium text-white/60">Pilih Varian</h3>
+                <h3 className="text-sm font-medium text-white/60">{t.chooseVariantHeading}</h3>
                 <div className="grid gap-2">
                   {activeVariants.map((v: VariantItem) => (
                     <button
@@ -708,36 +739,36 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                           <span className="block text-sm font-medium text-white">{formatVariantLabel(v)}</span>
                           <span className="mt-1.5 inline-flex">
                             {buyerDeliveryKind(v) === "instant" ? (
-                              <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
+                              <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">{t.autoDelivery}</span>
                             ) : (
-                              <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(v)}</span>
+                              <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{catalogDeliveryBadge(v, prices.locale)}</span>
                             )}
                           </span>
-                          {v.warranty_type !== 'none' && formatWarranty(v) && (
+                          {v.warranty_type !== 'none' && catalogWarranty(v, prices.locale) && (
                             <div className="text-xs text-[#00E5FF]/80 font-medium mt-1 flex items-center gap-1">
                               <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                              {formatWarranty(v)}
+                              {catalogWarranty(v, prices.locale)}
                             </div>
                           )}
                         </div>
                         <div className="text-right shrink-0">
                           <span className="text-sm font-bold text-[#00E5FF]">
-                            Rp{v.price.toLocaleString("id-ID")}
+                            <Price idr={v.price} prices={prices} />
                           </span>
                           {v.compare_price && v.compare_price > v.price && (
                             <div className="flex items-center gap-1.5 justify-end mt-0.5">
-                              <span className="text-[11px] text-white/30 line-through">Rp{v.compare_price.toLocaleString("id-ID")}</span>
+                              <span className="text-[11px] text-white/30 line-through"><Price idr={v.compare_price} prices={prices} /></span>
                               <span className="text-[10px] font-bold text-[#FFB800]">-{Math.round((1 - v.price / v.compare_price) * 100)}%</span>
                             </div>
                           )}
                           <div className="mt-0.5">
                             {effectiveStockOf(v) === 0 ? (
-                              <span className="text-[11px] font-semibold text-red-400">HABIS</span>
+                              <span className="text-[11px] font-semibold text-red-400">{t.outLabel}</span>
                             ) : isBelowMinimum(v) ? (
-                              <span className="text-[11px] font-semibold text-red-400">STOK &lt; MIN</span>
+                              <span className="text-[11px] font-semibold text-red-400">{t.belowMinLabel}</span>
                             ) : (
                               <span className="text-[11px] text-white/45">
-                                Sisa {(() => { const eff = effectiveStockOf(v); return eff === -1 ? "∞" : eff; })()}
+                                {usableBulkTiers(v, v.price)[0] && <>{bulkCopy(prices.locale).variantHint(usableBulkTiers(v, v.price)[0].min_qty)} · </>}{t.remaining((() => { const eff = effectiveStockOf(v); return eff === -1 ? "∞" : eff; })())}
                               </span>
                             )}
                           </div>
@@ -755,30 +786,30 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 type="button"
                 onClick={() => setVariantModal("select")}
                 aria-label={selectedVariant
-                  ? `Varian: ${formatVariantLabel(selectedVariant)}, ${formatRupiah(selectedVariant.price)}. Ganti varian`
-                  : `Pilih varian, ${activeVariants.length} pilihan`}
+                  ? t.variantRowAria(formatVariantLabel(selectedVariant), prices.text(selectedVariant.price))
+                  : t.chooseVariantAria(activeVariants.length)}
                 className="mt-4 lg:hidden w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition text-left"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[11px] font-medium text-white/50">Varian</span>
+                  <span className="block text-[11px] font-medium text-white/50">{t.variantWord}</span>
                   {selectedVariant ? (
                     <>
                       <span className="mt-0.5 block break-words text-sm font-semibold text-white">{formatVariantLabel(selectedVariant)}</span>
                       <span className="mt-1 flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-semibold text-[#00E5FF]">{formatRupiah(selectedVariant.price)}</span>
+                        <span className="text-xs font-semibold text-[#00E5FF]"><Price idr={selectedVariant.price} prices={prices} /></span>
                         {buyerDeliveryKind(selectedVariant) === "instant" ? (
-                          <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">Kirim otomatis</span>
+                          <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">{t.autoDelivery}</span>
                         ) : (
-                          <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(selectedVariant)}</span>
+                          <span className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{catalogDeliveryBadge(selectedVariant, prices.locale)}</span>
                         )}
                       </span>
                     </>
                   ) : (
-                    <span className="mt-0.5 block text-sm font-semibold text-[#00E5FF]">Pilih varian · {activeVariants.length} pilihan</span>
+                    <span className="mt-0.5 block text-sm font-semibold text-[#00E5FF]">{t.chooseVariantCount(activeVariants.length)}</span>
                   )}
                 </span>
                 <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-white/55">
-                  {selectedVariant && activeVariants.length > 1 ? "Ganti" : null}
+                  {selectedVariant && activeVariants.length > 1 ? t.change : null}
                   <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6"/></svg>
                 </span>
               </button>
@@ -795,9 +826,9 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           {variantsEnabled && selectedVariant && (
             <div className="mt-4">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-medium text-white/60">Jumlah</h3>
+                <h3 className="text-sm font-medium text-white/60">{t.quantity}</h3>
                 {selectedMinQty > 1 && (
-                  <span className="text-[11px] font-semibold text-[#FFD66B]">Min. pembelian {selectedMinQty}</span>
+                  <span className="text-[11px] font-semibold text-[#FFD66B]">{t.minPurchase(selectedMinQty)}</span>
                 )}
               </div>
               <div className="mt-2 flex items-center gap-3">
@@ -806,8 +837,8 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                     type="button"
                     onClick={() => { commitPdpQtyDraft(null); setPdpQty((q) => Math.max(selectedMinQty, Math.min(selectedMaxQty, q) - 1)); }}
                     disabled={safePdpQty <= selectedMinQty}
-                    aria-label="Kurangi jumlah"
-                    className="flex h-10 w-10 items-center justify-center rounded-l-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                    aria-label={t.qtyDec}
+                    className="flex h-11 w-11 items-center justify-center rounded-l-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M5 12h14" /></svg>
                   </button>
@@ -821,25 +852,50 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                     onChange={(e) => setPdpQtyDraft(e.target.value.replace(/[^\d]/g, "").slice(0, 3))}
                     onBlur={(e) => commitPdpQtyDraft(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    aria-live="polite"
-                    aria-label={`Jumlah pembelian, minimal ${selectedMinQty}`}
+                    id="pdp-qty-input"
+                    aria-label={t.qtyAria(selectedMinQty)}
                     className="w-14 bg-transparent text-center text-sm font-bold tabular-nums text-white outline-none [appearance:textfield]"
                   />
                   <button
                     type="button"
                     onClick={() => { commitPdpQtyDraft(null); setPdpQty((q) => Math.min(selectedMaxQty, Math.max(selectedMinQty, q) + 1)); }}
                     disabled={safePdpQty >= selectedMaxQty}
-                    aria-label="Tambah jumlah"
-                    className="flex h-10 w-10 items-center justify-center rounded-r-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                    aria-label={t.qtyInc}
+                    className="flex h-11 w-11 items-center justify-center rounded-r-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
                   </button>
                 </div>
-                <p className="text-xs text-white/40">
-                  {(() => { const eff = selectedVariant ? effectiveStockOf(selectedVariant) : -1; return eff === -1 ? "Stok tersedia" : `Sisa ${eff}`; })()}
-                  {selectedMinQty > 1 && <> · total {formatRupiah(displayPrice * safePdpQty)}</>}
-                </p>
+                <span className="text-xs tabular-nums text-white/40">{(() => { const eff = selectedVariant ? effectiveStockOf(selectedVariant) : -1; return eff === -1 ? t.stockAvailable : t.remaining(eff); })()}</span>
               </div>
+              {/* Ringkasan 2 bagian: Total di kiri, Hemat (hijau yang sama dengan checkout) di kanan; USD setara kecil di bawah nilai. */}
+              {(selectedMinQty > 1 || selectedTiers.length > 0) && (() => {
+                const bc = bulkCopy(prices.locale);
+                const totalEquivalent = prices.equivalent(lineTotal);
+                return (
+                  <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1" data-testid="pdp-qty-summary">
+                    <p className="text-sm text-white/60">
+                      {bc.totalLabel} <span className="font-semibold tabular-nums text-white">{prices.text(lineTotal)}</span>
+                      {totalEquivalent && <span className="block text-[11px] tabular-nums text-white/40">{totalEquivalent}</span>}
+                    </p>
+                    {lineSavings > 0 && <p className="whitespace-nowrap text-sm tabular-nums text-emerald-300/80">{bc.savedSummary(prices.text(lineSavings))}</p>}
+                  </div>
+                );
+              })()}
+              <BulkPriceTiers
+                mode="full"
+                basePrice={displayPrice}
+                tiers={selectedTiers}
+                minQty={selectedMinQty}
+                qty={safePdpQty}
+                maxQty={selectedMaxQty}
+                stockMax={selectedStockMax}
+                capMax={selectedCapMax}
+                qtyInputId="pdp-qty-input"
+                locale={prices.locale}
+                format={prices.text}
+                onSetQty={(n) => { commitPdpQtyDraft(null); setPdpQty(Math.min(Math.max(n, selectedMinQty), selectedMaxQty)); }}
+              />
             </div>
           )}
 
@@ -850,32 +906,27 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               ETA admin (tanpa angka supplier 6–12 jam). */}
           <div className="mt-5">
             {mixedDelivery ? (
-              <span className="inline-flex rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-[11px] font-bold text-white/75">Tergantung varian</span>
+              <span className="inline-flex rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-[11px] font-bold text-white/75">{t.mixedDelivery}</span>
             ) : buyerDeliveryKind(deliveryVariant ?? { fulfillment_mode: "manual" }) === "instant" ? (
-              <span className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">Kirim otomatis</span>
+              <span className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">{t.autoDelivery}</span>
             ) : (
-              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-1 text-[11px] font-bold text-[#FFD66B]">{buyerDeliveryBadge(deliveryVariant ?? { fulfillment_mode: "manual" })}</span>
+              <span className="inline-flex rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-1 text-[11px] font-bold text-[#FFD66B]">{catalogDeliveryBadge(deliveryVariant ?? { fulfillment_mode: "manual" }, prices.locale)}</span>
             )}
             <p className="mt-2 text-[12px] leading-5 text-white/50">
               {(() => {
-                if (mixedDelivery) return "Cara pengiriman mengikuti varian yang dipilih.";
-                const tv = deliveryVariant;
-                if (!tv) return deliveryEtaForBuyer(null);
-                if (buyerDeliveryKind(tv) === "instant") return "Kirim otomatis setelah pembayaran dikonfirmasi";
-                const wrId = tv.wr_variant_id == null ? "" : String(tv.wr_variant_id).trim();
-                if (wrId.startsWith("jaspay:")) return buyerDeliveryEtaJaspay();
-                return wrId ? deliveryEtaForBuyer(tv.wr_delivery_class) : buyerDeliveryEtaNonWr();
+                if (mixedDelivery) return t.mixedDeliveryNote;
+                return catalogDeliveryEta(deliveryVariant, prices.locale);
               })()}
             </p>
           </div>
           <ul className="mt-3 space-y-2.5 text-[13px] text-white/60">
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Support WA admin selama masa aktif
+              {t.supportLine}
             </li>
             <li className="flex items-start gap-2">
               <svg viewBox="0 0 16 16" className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400/80" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Garansi sesuai Syarat &amp; Ketentuan produk ini
+              {t.warrantyLine}
             </li>
           </ul>
 
@@ -892,25 +943,25 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           {outOfStock || variantOutOfStock ? (
             <div className="mt-6">
               <span className="w-full h-[52px] rounded-xl bg-white/[0.06] border border-white/10 text-white/40 font-bold flex items-center justify-center gap-2">
-                Stok Habis
+                {t.soldOut}
               </span>
             </div>
           ) : (
             <div className="mt-6 flex flex-col gap-3">
               {needsVariantSelection && (
-                <p className="text-xs text-[#FFB800]/80 text-center">Pilih varian terlebih dahulu</p>
+                <p className="text-xs text-[#FFB800]/80 text-center">{t.chooseVariantFirst}</p>
               )}
               {variantLoading && (
-                <p role="status" className="text-xs text-white/55 flex items-center justify-center gap-2"><InlineSpinner className="w-3.5 h-3.5" />Memuat pilihan varian…</p>
+                <p role="status" className="text-xs text-white/55 flex items-center justify-center gap-2"><InlineSpinner className="w-3.5 h-3.5" />{t.variantsLoading}</p>
               )}
               {variantError && (
                 <p className="text-xs text-red-300/80 text-center">
-                  {variantError}{" "}
-                  <button type="button" onClick={() => setVariantAttempt((n) => n + 1)} className="font-semibold text-[#00E5FF] underline underline-offset-2">Coba lagi</button>
+                  {t.variantsFailed}{" "}
+                  <button type="button" onClick={() => setVariantAttempt((n) => n + 1)} className="font-semibold text-[#00E5FF] underline underline-offset-2">{t.retry}</button>
                 </p>
               )}
               {!variantLoading && !variantError && variantsEnabled && activeVariants.length === 0 && (
-                <p className="text-xs text-white/55 text-center">Belum ada varian yang bisa dibeli saat ini.</p>
+                <p className="text-xs text-white/55 text-center">{t.noVariants}</p>
               )}
               <button
                 onClick={() => {
@@ -927,11 +978,11 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 }`}
               >
                 {checkoutPending ? (
-                  <><InlineSpinner tone="dark" /> Membuka checkout…</>
+                  <><InlineSpinner tone="dark" /> {t.openingCheckout}</>
                 ) : (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Langsung
+                    <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> {t.buyNow}
                   </>
                 )}
               </button>
@@ -947,7 +998,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/icons/ios11/shopping-bag-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> Tambah ke Keranjang
+                <img src="/icons/ios11/shopping-bag-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert" draggable={false} /> {t.addToCartFull}
               </button>
             </div>
           )}
@@ -970,7 +1021,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             className="flex-1 h-11 rounded-xl ax-glass-card font-semibold text-xs flex items-center justify-center gap-1.5 transition text-white hover:bg-white/10 active:scale-95 disabled:opacity-40 disabled:cursor-wait"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/ios11/shopping-bag-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0 invert" draggable={false} /> Keranjang
+            <img src="/icons/ios11/shopping-bag-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0 invert" draggable={false} /> {t.cart}
           </button>
           <button
             type="button"
@@ -982,13 +1033,13 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             className="flex-[1.5] h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] shadow-[0_2px_12px_rgba(0,229,255,0.25)] disabled:opacity-70 disabled:cursor-wait"
           >
             {variantLoading ? (
-              <><InlineSpinner className="w-3.5 h-3.5" tone="dark" /> Memuat varian…</>
+              <><InlineSpinner className="w-3.5 h-3.5" tone="dark" /> {t.variantsLoadingShort}</>
             ) : checkoutPending ? (
-              <><InlineSpinner className="w-3.5 h-3.5" tone="dark" /> Membuka checkout…</>
+              <><InlineSpinner className="w-3.5 h-3.5" tone="dark" /> {t.openingCheckout}</>
             ) : (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> Beli Sekarang · {formatRupiah(displayPrice)}
+                <img src="/icons/ios11/lightning-bolt-32.png" alt="" width={15} height={15} className="w-3.5 h-3.5 object-contain brightness-0" style={{ filter: "brightness(0)" }} draggable={false} /> {t.buyNowTotal(prices.text(safePdpQty > 1 ? lineTotal : displayPrice))}
               </>
             )}
           </button>
@@ -1013,10 +1064,10 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       <div className="mt-10 sm:mt-12 pb-16 lg:pb-0">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display font-bold text-[18px] sm:text-[20px] text-white tracking-[-0.02em]">
-            Produk Serupa
+            {t.similar}
           </h2>
           <Link prefetch={false} href="/#katalog" className="text-xs text-[#00E5FF] hover:text-white transition shrink-0">
-            Lihat semua →
+            {t.seeAll}
           </Link>
         </div>
         <div
@@ -1031,7 +1082,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               </div>
             )) : related.map((p, i) => (
               <div key={p.id} className="snap-start shrink-0 w-[156px] sm:w-[260px]">
-                <ProductCard product={p} index={i} compact />
+                <ProductCard product={p} index={i} compact prices={prices} />
               </div>
             ))}
           </div>

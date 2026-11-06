@@ -171,13 +171,13 @@ describe("F-Medium: Payment proof — upload strict", () => {
     expect(src).toContain("Upload bukti sedang dinonaktifkan");
   });
 
-  it("checkout page QRIS-only selama maintenance (upload bukti disembunyikan)", () => {
+  it("checkout page: jalur manual pensiun, metode hanya dari ID quote", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/checkout/page.tsx"), "utf-8");
-    // Maintenance 2026-09-17: E-Wallet/Bank disabled + badge Maintenance,
-    // panel upload tidak dirender, submit hanya QRIS.
-    expect(src).toContain("MANUAL_PAYMENTS_MAINTENANCE");
-    expect(src).toContain("Maintenance");
-    expect(src).toContain('method !== "qris"');
+    expect(src).not.toContain("MANUAL_PAYMENTS_MAINTENANCE");
+    expect(src).not.toContain("E-Wallet sedang maintenance");
+    expect(src).not.toContain('type="file"');
+    expect(src).toContain("PaymentMethodPicker");
+    expect(src).toContain("payment_method: payMethod");
   });
 });
 
@@ -261,11 +261,9 @@ describe("BUG-06: Checkout block bank placeholder belum aktif", () => {
   it("checkout QRIS-only selama maintenance (quote guard server)", () => {
     const checkout = fs.readFileSync(path.join(process.cwd(), "src/app/(shop)/checkout/page.tsx"), "utf-8");
     const orders = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
-    // Maintenance 2026-09-17: client hanya submit QRIS; server menolak
-    // non-QRIS 503 + menolak quote tanpa QRIS. Revert: kembalikan validasi
-    // quotedPaymentMethods + quote.payment_methods.find.
     expect(checkout).toContain("quote_token");
-    expect(checkout).toContain('method !== "qris"');
+    expect(checkout).toContain("payment_method: payMethod");
+    expect(checkout).not.toContain('const payMethod = "qris"');
     expect(orders).toContain("quoteHasQris");
     expect(orders).not.toContain("accountMap");
   });
@@ -290,10 +288,11 @@ describe("BUG-07: Login rate limit 5/menit (bukan 12)", () => {
 });
 
 describe("BUG-09: Zod enum payment_method tanpa duplikat", () => {
-  it("orders route memvalidasi pola metode dinamis tanpa enum placeholder", () => {
+  it("orders route membatasi metode dan mewajibkan metode dalam quote", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/app/api/orders/route.ts"), "utf-8");
-    expect(src).toMatch(/payment_method:\s*z\.string\(\).*\.regex/);
-    expect(src).toContain("bank:[a-z0-9]");
+    expect(src).toContain("payment_method: z.string().trim().max(64)");
+    expect(src).toContain('payment_method !== "qris" && !isCryptoMethod && !isGatewayMethod');
+    expect(src).toContain("quote.payment_methods.find((method) => method.id === payment_method)");
     expect(src).not.toContain("bank:bca");
   });
 });

@@ -3,6 +3,7 @@
 // Web, Telegram, and WhatsApp all use these same functions.
 
 import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
+import { validateBulkPricing, type BulkTier } from "@/lib/bulk-pricing";
 
 // ---- Types ----
 
@@ -53,6 +54,9 @@ export type VariantSummary = {
   /** Toggle email wajib per produk (migrasi 0033, untuk non-WR). */
   require_email: number;
   price: number;
+  bulk_pricing_enabled?: boolean;
+  bulk_pricing_tiers?: BulkTier[];
+  bulk_pricing_invalid?: boolean;
   compare_price: number | null;
   stock: number;
   /**
@@ -204,6 +208,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
             pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
+            pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
             pv.wr_variant_id AS wr_variant_id, pv.wr_auto_managed AS wr_auto_managed,
             pv.sk_variant_id AS sk_variant_id, pv.sk_auto_managed AS sk_auto_managed,
             pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
@@ -571,6 +576,11 @@ export function displayDescription(row: Record<string, unknown>): string | null 
 }
 
 function mapVariant(row: Record<string, unknown>): VariantSummary {
+  let bulk = null;
+  try {
+    const enabled = Number(row.bulk_pricing_enabled ?? 0);
+    if (enabled === 0 || enabled === 1) bulk = validateBulkPricing({ enabled: enabled === 1, tiers: JSON.parse(String(row.bulk_pricing_tiers ?? "[]")) }, Number(row.price));
+  } catch { /* Corrupt configuration is reported, never used. */ }
   return {
     id: Number(row.id),
     product_id: Number(row.product_id || 0),
@@ -598,6 +608,9 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     inventory_available: row.inventory_available != null ? Number(row.inventory_available) : null,
     require_email: Number(row.require_email ?? 0),
     price: Number(row.price),
+    bulk_pricing_enabled: bulk?.enabled ?? false,
+    bulk_pricing_tiers: bulk?.enabled ? bulk.tiers : [],
+    bulk_pricing_invalid: !bulk,
     compare_price: row.compare_price != null ? Number(row.compare_price) : null,
     stock: Number(row.stock ?? -1),
     min_qty: Math.max(1, Number(row.min_qty ?? 1) || 1),

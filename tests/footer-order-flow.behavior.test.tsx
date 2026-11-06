@@ -4,7 +4,7 @@ import { cleanup, render } from "@testing-library/react";
 import { Footer } from "@/components/storefront/Footer";
 
 let path = "/";
-vi.mock("next/navigation", () => ({ usePathname: () => path }));
+vi.mock("next/navigation", () => ({ usePathname: () => path, useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }) }));
 vi.mock("@/hooks/useStoreSettings", () => ({ useStoreSettings: () => ({}) }));
 afterEach(cleanup);
 

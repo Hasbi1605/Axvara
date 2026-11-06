@@ -136,14 +136,31 @@ describe("Checkout → pembayaran", () => {
 });
 
 describe("/pesanan/[code] saat memuat", () => {
-  it("baru dari checkout: QR dari respons create tampil sebelum GET pertama selesai", () => {
+  it("salinan checkout tanpa expiry order menunggu server, bukan menganggapnya kedaluwarsa", () => {
     localStorage.setItem("axvara-orders", JSON.stringify([{ code: CODE, name: "Budi", method: "qris", items: [{ name: "Canva Pro", price: 10_000, qty: 1 }], subtotal: 10_000, status: "pending", createdAt: new Date().toISOString(), qris }]));
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+    render(<OrderSuccessPage />);
+    expect(screen.getByText("Memuat pesanan…")).toBeTruthy();
+    expect(screen.queryByAltText(`QRIS dinamis pesanan ${CODE}`)).toBeNull();
+    expect(screen.queryByText("Pesanan Kedaluwarsa")).toBeNull();
+  });
+
+  it("salinan baru dengan expiry order valid menampilkan QR sebelum GET selesai", () => {
+    localStorage.setItem("axvara-orders", JSON.stringify([{ code: CODE, name: "Budi", method: "qris", items: [{ name: "Canva Pro", price: 10_000, qty: 1 }], subtotal: 10_000, status: "pending", createdAt: new Date().toISOString(), expiresAt: qris.expires_at, qris }]));
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
     render(<OrderSuccessPage />);
     expect(screen.getByRole("heading", { name: "Pembayaran QRIS" })).toBeTruthy();
     expect(screen.getByAltText(`QRIS dinamis pesanan ${CODE}`)).toBeTruthy();
     expect(screen.getByText("Memuat QRIS…")).toBeTruthy();
     expect(screen.queryByText(/Admin akan memverifikasi bukti/)).toBeNull();
+  });
+
+  it.each(["invalid", new Date(Date.now() - 60_000).toISOString()])("salinan baru dengan expiry order %s tidak menampilkan QR", (expiresAt) => {
+    localStorage.setItem("axvara-orders", JSON.stringify([{ code: CODE, method: "qris", status: "pending", createdAt: new Date().toISOString(), expiresAt, qris }]));
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+    render(<OrderSuccessPage />);
+    expect(screen.getByText("Memuat pesanan…")).toBeTruthy();
+    expect(screen.queryByAltText(`QRIS dinamis pesanan ${CODE}`)).toBeNull();
   });
 
   it("salinan lokal lama tanpa QR tidak ditampilkan: skeleton sampai server menjawab", () => {
@@ -157,7 +174,7 @@ describe("/pesanan/[code] saat memuat", () => {
   it("QR gagal dimuat: tombol Muat ulang QRIS memuat ulang gambar", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true, status: 200,
-      json: async () => ({ order: { code: CODE, customer_name: "Budi", customer_wa: "62812****7890", items: [], subtotal: 10_000, payment_method: "qris", status: "pending", qris: { ...qris, status: "pending" } } }),
+      json: async () => ({ order: { code: CODE, customer_name: "Budi", customer_wa: "62812****7890", items: [], subtotal: 10_000, payment_method: "qris", status: "pending", expires_at: qris.expires_at, qris: { ...qris, status: "pending" } } }),
     })));
     render(<OrderSuccessPage />);
     const img = await screen.findByAltText(`QRIS dinamis pesanan ${CODE}`);
@@ -171,7 +188,7 @@ describe("/pesanan/[code] saat memuat", () => {
   it("QRIS pending hidup: ikon jam berputar + indikator polling + tombol cek manual", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true, status: 200,
-      json: async () => ({ order: { code: CODE, customer_name: "Budi", customer_wa: "62812****7890", items: [], subtotal: 10_000, payment_method: "qris", status: "pending", qris: { ...qris, status: "pending" } } }),
+      json: async () => ({ order: { code: CODE, customer_name: "Budi", customer_wa: "62812****7890", items: [], subtotal: 10_000, payment_method: "qris", status: "pending", expires_at: qris.expires_at, qris: { ...qris, status: "pending" } } }),
     })));
     render(<OrderSuccessPage />);
     await screen.findByAltText(`QRIS dinamis pesanan ${CODE}`);

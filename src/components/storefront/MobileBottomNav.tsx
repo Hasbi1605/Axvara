@@ -14,6 +14,8 @@ import { useEffect, useState } from "react";
 import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
 import { CategorySheet } from "@/components/storefront/CategorySheet";
 import { HelpSheet } from "@/components/storefront/HelpSheet";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { catalogCopy } from "@/lib/i18n/catalog-copy";
 import { LOCAL_ORDERS_EVENT, LOCAL_ORDERS_KEY, freshPendingCodes } from "@/lib/local-orders";
 
 const HELP_ROUTES = ["/cara-order", "/garansi-replace", "/artikel"];
@@ -32,6 +34,7 @@ type NavItem = {
 
 export function MobileBottomNav() {
   const pathname = usePathname() ?? "/";
+  const t = catalogCopy(useDisplayLocale());
   const [helpOpen, setHelpOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [hasPending, setHasPending] = useState(false);
@@ -65,24 +68,24 @@ export function MobileBottomNav() {
 
   const pendingDot = mounted && hasPending;
   const navItems: NavItem[] = [
-    { label: "Beranda", href: "/", icon: "home", active: pathname === "/" },
+    { label: t.navHome, href: "/", icon: "home", active: pathname === "/" },
     {
-      label: "Kategori",
+      label: t.navCategories,
       icon: "category",
       active: categoryOpen,
       onClick: () => setCategoryOpen(true),
       dialog: true,
     },
     {
-      label: "Pesanan",
+      label: t.navOrders,
       href: "/lacak-pesanan",
       icon: "purchase-order",
       active: pathname.startsWith("/lacak-pesanan") || pathname.startsWith("/pesanan"),
       dot: pendingDot,
-      ariaLabel: pendingDot ? "Pesanan, ada pesanan belum dibayar" : "Pesanan",
+      ariaLabel: pendingDot ? t.navOrdersPending : t.navOrders,
     },
     {
-      label: "Bantuan",
+      label: t.navHelp,
       icon: "chat",
       active: helpOpen || HELP_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`)),
       onClick: () => setHelpOpen(true),
@@ -93,12 +96,12 @@ export function MobileBottomNav() {
   return (
     <>
       <nav
-        aria-label="Navigasi Bawah"
+        aria-label={t.bottomNavAria}
         className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080C1E]/92 backdrop-blur-xl border-t border-white/10 px-2 pt-2 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.6)]"
       >
         <div className="flex items-center justify-around">
           {navItems.map((item) => {
-            const dialogOpen = item.label === "Kategori" ? categoryOpen : item.label === "Bantuan" ? helpOpen : undefined;
+            const dialogOpen = item.icon === "category" ? categoryOpen : item.icon === "chat" ? helpOpen : undefined;
             const content = (
               <span
                 className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all duration-200 ${

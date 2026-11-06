@@ -4,8 +4,13 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { AXVARA_SERVICES, type AxvaraService } from "@/lib/site";
 
-/** Label terlihat "Layanan" di semua ukuran layar; nama aksesibel tetap "Layanan AXVARA" (aria-label). */
-export function ServicesMenu({ active }: { active: AxvaraService }) {
+/**
+ * Label terlihat "Layanan" di semua ukuran layar; nama aksesibel tetap "Layanan AXVARA" (aria-label).
+ * `locale="en"` (hanya navbar Market) memakai "Services" / "AXVARA services"; Pedia tidak mengirim locale.
+ */
+export function ServicesMenu({ active, locale = "id" }: { active: AxvaraService; locale?: "id" | "en" }) {
+  const label = locale === "en" ? "Services" : "Layanan";
+  const name = locale === "en" ? "AXVARA services" : "Layanan AXVARA";
   const [open, setOpen] = useState(false);
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -39,13 +44,13 @@ export function ServicesMenu({ active }: { active: AxvaraService }) {
         : event.key === "ArrowDown" ? (index + 1) % links.length : (index < 0 ? links.length - 1 : (index - 1 + links.length) % links.length);
       links[next]?.focus();
     }}>
-      <button ref={trigger} type="button" aria-label="Layanan AXVARA" aria-expanded={open} aria-controls={id}
+      <button ref={trigger} type="button" aria-label={name} aria-expanded={open} aria-controls={id}
         onClick={(event) => { event.currentTarget.focus(); setOpen((value) => !value); }}
         className="flex min-h-[44px] items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-2 text-xs text-white/80 transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] sm:gap-2 sm:px-3 sm:text-sm">
-        <span className="whitespace-nowrap text-left leading-4">Layanan</span>
+        <span className="whitespace-nowrap text-left leading-4">{label}</span>
         <ChevronDown aria-hidden="true" className={`h-3 w-3 transition-transform motion-reduce:transition-none ${open ? "rotate-180" : ""}`} />
       </button>
-      <nav ref={panel} id={id} hidden={!open} aria-label="Layanan AXVARA"
+      <nav ref={panel} id={id} hidden={!open} aria-label={name}
         className="fixed left-4 right-4 top-[64px] z-50 mt-2 rounded-2xl border border-white/15 bg-[#0F1430] p-2 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[320px]">
         {AXVARA_SERVICES.map((service) => (
           <a key={service.id} href={service.href} aria-current={active === service.id ? "true" : undefined}

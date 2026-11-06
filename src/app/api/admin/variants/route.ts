@@ -26,6 +26,16 @@ async function requireAdmin(request: NextRequest): Promise<boolean> {
   }
 }
 
+const BulkTierInputSchema = z.object({
+  min_qty: z.number().int(),
+  unit_price: z.number().int(),
+}).strict();
+
+const BulkPricingInputSchema = z.object({
+  enabled: z.boolean(),
+  tiers: z.array(BulkTierInputSchema).max(5),
+}).strict();
+
 const SingleVariantSchema = z.object({
   id: z.number().int().positive().optional(),
   product_id: z.number().int().positive(),
@@ -46,6 +56,9 @@ const SingleVariantSchema = z.object({
   min_qty: z.number().int().min(1).max(100).default(1),
   // Modal manual per unit (migrasi 0058, milik admin — sync tak menyentuh).
   manual_cost: z.number().int().min(0).max(999_999_999).default(0),
+  // Bulk pricing per varian (migrasi 0099, milik admin — sync tak menyentuh,
+  // bukan WR-owned). Omitted = preserved (client lama aman).
+  bulk_pricing: BulkPricingInputSchema.optional(),
   fulfillment_mode: z.enum(["manual", "shared", "unique"]).default("manual"),
   is_active: z.number().int().min(0).max(1).default(1),
   sort_order: z.number().int().nonnegative().default(0),
@@ -91,6 +104,7 @@ export async function GET(request: NextRequest) {
             duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
             price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, admin_terms, admin_activation,
+            bulk_pricing_enabled, bulk_pricing_tiers,
             CASE WHEN shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL THEN 1 ELSE 0 END
               AS shared_secret_configured,
             is_active, sort_order, created_at, updated_at
@@ -99,12 +113,35 @@ export async function GET(request: NextRequest) {
     Number(productId),
   );
 
+  // Raw stored bulk config (GET admin): enabled+tiers apa adanya; bentuk
+  // valid-JSON tapi tier-shape salah => corrupt flag, tampil jujur bukan 500.
+  const withBulk = (variants as Record<string, unknown>[]).map((row) => {
+    let enabled = Number(row.bulk_pricing_enabled ?? 0) === 1;
+    let tiers: unknown = [];
+    let corrupt = false;
+    try {
+      tiers = JSON.parse(String(row.bulk_pricing_tiers ?? "[]"));
+    } catch { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
+    if (Array.isArray(tiers)) {
+      const badShape = tiers.some((t) => !t || typeof t !== "object" || Array.isArray(t)
+        || Object.keys(t as object).length !== 2
+        || !Number.isSafeInteger((t as Record<string, unknown>).min_qty)
+        || !Number.isSafeInteger((t as Record<string, unknown>).unit_price));
+      if (badShape) { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
+    } else { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
+    return {
+      ...row,
+      bulk_pricing: { enabled, tiers },
+      ...(corrupt ? { bulk_pricing_corrupt: true } : {}),
+    };
+  });
+
   let aliases: string[] = [];
   try {
     aliases = typeof product.aliases === "string" ? JSON.parse(product.aliases) : (product.aliases as string[] || []);
   } catch { aliases = []; }
 
-  return NextResponse.json({ variants, aliases });
+  return NextResponse.json({ variants: withBulk, aliases });
 }
 
 export async function POST(request: NextRequest) {
@@ -186,6 +223,20 @@ export async function POST(request: NextRequest) {
     // Execute atomic batch save
     const d1 = getD1();
     const now = new Date().toISOString();
+    // Batch snapshot SEKALI: observed triple per id. Guard operasional di
+    // bawah memakai pola yang sama dengan PUT products/[id].
+    const batchIds = variants.filter((vv) => vv.id).map((vv) => Number(vv.id));
+    const batchRows = (batchIds.length ? await queryAll(
+      `SELECT id, price, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE product_id=? AND id IN (${batchIds.map(() => "?").join(",")})`,
+      product_id, ...batchIds,
+    ).catch(() => []) : []) as Record<string, unknown>[];
+    const batchObserved = new Map(batchRows.map((row) => ([Number(row.id), {
+      price: Number(row.price), enabled: Number(row.bulk_pricing_enabled ?? 0),
+      tiersJson: String(row.bulk_pricing_tiers ?? "[]"),
+    }] as const)));
+    const bulkPrepBatch = new Map<number, { enabled: number; tiersJson: string }>();
+    const rawOf = (vid: number): unknown =>
+      (variants.find((vv) => vv.id === vid) as unknown as Record<string, unknown> | undefined)?.bulk_pricing;
 
     if (d1) {
       const statements: D1Statement[] = [];
@@ -201,21 +252,60 @@ export async function POST(request: NextRequest) {
       }
 
       for (const v of variants) {
+        const rawBulk = (v as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined;
+        const obs = v.id ? batchObserved.get(Number(v.id)) : undefined;
+        // Effective = explicit ?? stored (stored parsed defensif).
+        const storedEnabled = obs?.enabled ?? 0;
+        let storedTiers: unknown[] = [];
+        try {
+          const t = JSON.parse(obs?.tiersJson ?? "[]");
+          if (Array.isArray(t)) storedTiers = t;
+        } catch { storedTiers = []; }
+        const effectiveRaw = rawBulk === undefined
+          ? { enabled: storedEnabled === 1, tiers: storedTiers }
+          : rawBulk;
+        const { validateBulkPricing } = await import("@/lib/bulk-pricing");
+        const checked = validateBulkPricing(effectiveRaw, Number(v.price));
+        if (!checked) return NextResponse.json({ error: "bulk_pricing_invalid", message: `Varian "${v.label}": konfigurasi bulk tidak valid.` }, { status: 400 });
+        if (checked.enabled) {
+          for (const t of checked.tiers) {
+            if (t.unit_price > Number(v.price)) {
+              return NextResponse.json({ error: "bulk_pricing_invalid", message: `Varian "${v.label}": tier di atas harga.` }, { status: 400 });
+            }
+          }
+        }
+        const bulkEnabled = checked.enabled ? 1 : 0;
+        const bulkTiersJson = JSON.stringify(checked.tiers);
+        if (v.id) bulkPrepBatch.set(Number(v.id), { enabled: bulkEnabled, tiersJson: bulkTiersJson });
         if (v.id) {
+          statements.push(
+            d1.prepare(
+                `INSERT INTO operation_guards (operation_id, valid) SELECT ?, CASE WHEN EXISTS(
+                 SELECT 1 FROM product_variants WHERE id=? AND product_id=? AND price=? AND bulk_pricing_enabled=? AND bulk_pricing_tiers=?
+               ) THEN 1 ELSE 0 END`,
+            ).bind(
+              `bulkbatch:${product_id}:${v.id}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+              Number(v.id), product_id, obs?.price ?? Number(v.price),
+              obs?.enabled ?? 0, obs?.tiersJson ?? "[]",
+            ),
+          );
           statements.push(
             d1.prepare(
               `UPDATE product_variants SET
                  sku=?, label=?, duration_value=?, duration_unit=?, duration_label=?,
                  warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
                  price=?, compare_price=?, stock=?, min_qty=?, manual_cost=?, fulfillment_mode=?, is_active=?,
-                 sort_order=?, updated_at=datetime('now')
+                 sort_order=?,
+                 bulk_pricing_enabled=?, bulk_pricing_tiers=?,
+                 updated_at=datetime('now')
                WHERE id=? AND product_id=?`,
             ).bind(
               v.sku, v.label,
               v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
               v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
               v.price, v.compare_price ?? null, v.stock, v.min_qty ?? 1, v.manual_cost ?? 0, v.fulfillment_mode, v.is_active,
-              v.sort_order, v.id, product_id,
+              v.sort_order, bulkEnabled, bulkTiersJson,
+              v.id, product_id,
             ),
           );
         } else {
@@ -225,14 +315,14 @@ export async function POST(request: NextRequest) {
                  product_id, sku, label, duration_value, duration_unit, duration_label,
                  warranty_type, warranty_value, warranty_unit, warranty_label,
                  price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order,
-                 created_at, updated_at
-               ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                 bulk_pricing_enabled, bulk_pricing_tiers, created_at, updated_at
+               ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             ).bind(
               product_id, v.sku, v.label,
               v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
               v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
               v.price, v.compare_price ?? null, v.stock, v.min_qty ?? 1, v.manual_cost ?? 0, v.fulfillment_mode, v.is_active,
-              v.sort_order, now, now,
+              v.sort_order, bulkEnabled ?? 0, bulkTiersJson ?? "[]", now, now,
             ),
           );
         }
@@ -266,7 +356,29 @@ export async function POST(request: NextRequest) {
         ).bind(product_id, product_id, product_id, product_id, product_id, product_id),
       );
 
-      await d1.batch(statements);
+      let batchOk = true;
+      try {
+        await d1.batch(statements);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/operation_guards|CHECK constraint/i.test(msg)) batchOk = false;
+        else throw e;
+      } finally {
+        await d1.prepare("DELETE FROM operation_guards WHERE operation_id LIKE ?").bind(`bulkbatch:${product_id}:%`).run().catch(() => {});
+      }
+      if (!batchOk) {
+        return NextResponse.json({ error: "stale_variant", message: "Varian berubah oleh admin lain. Muat ulang lalu simpan lagi." }, { status: 409 });
+      }
+      for (const [vid, prep] of bulkPrepBatch) {
+        if (rawOf(vid) === undefined) continue;
+        const obs = batchObserved.get(vid);
+        if (!obs) continue;
+        console.info("[admin-bulk-pricing]", JSON.stringify({
+          route: "POST /api/admin/variants", variant: vid,
+          before: { enabled: obs.enabled, tiers: obs.tiersJson, price: obs.price },
+          after: { enabled: prep.enabled, tiers: prep.tiersJson },
+        }));
+      }
       return NextResponse.json({ ok: true, saved: variants.length });
     }
 
@@ -301,17 +413,38 @@ export async function POST(request: NextRequest) {
   const existingSku = await queryFirst(`SELECT id FROM product_variants WHERE sku=?`, v.sku);
   if (existingSku) return NextResponse.json({ error: "sku_already_exists" }, { status: 409 });
 
+  // CREATE: bulk default off + '[]'. Opsional explicit bulk_config
+  // validated vs base (helper kanonis); invalid => 400 tanpa write.
+  // Unknown nested key ditolak passthrough agar tak ada field liar lolos.
+  let bulkEnabled = 0;
+  let bulkTiersJson = "[]";
+  if (v.bulk_pricing !== undefined) {
+    const { validateBulkPricing } = await import("@/lib/bulk-pricing");
+    const checked = validateBulkPricing(v.bulk_pricing, Number(v.price));
+    if (!checked) return NextResponse.json({ error: "bulk_pricing_invalid", message: "Konfigurasi bulk tidak valid untuk harga varian." }, { status: 400 });
+    if (checked.enabled) {
+      for (const t of checked.tiers) {
+        if (t.unit_price > Number(v.price)) {
+          return NextResponse.json({ error: "bulk_pricing_invalid", message: "Konfigurasi bulk tidak valid untuk harga varian." }, { status: 400 });
+        }
+      }
+    }
+    bulkEnabled = checked.enabled ? 1 : 0;
+    bulkTiersJson = JSON.stringify(checked.tiers);
+  }
+
   const now = new Date().toISOString();
   const result = await execRun(
     `INSERT INTO product_variants (product_id, sku, label, duration_value, duration_unit, duration_label,
        warranty_type, warranty_value, warranty_unit, warranty_label,
-       price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order,
+       bulk_pricing_enabled, bulk_pricing_tiers, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     v.product_id, v.sku, v.label,
     v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
     v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
     v.price, v.compare_price ?? null, v.stock, v.min_qty ?? 1, v.manual_cost ?? 0, v.fulfillment_mode,
-    v.is_active, v.sort_order, now, now,
+    v.is_active, v.sort_order, bulkEnabled, bulkTiersJson, now, now,
   );
 
   return NextResponse.json({ ok: true, id: result.lastInsertRowid }, { status: 201 });
@@ -386,6 +519,35 @@ export async function PUT(request: NextRequest) {
     if (skuConflict) return NextResponse.json({ error: "sku_already_exists" }, { status: 409 });
   }
 
+  // Bulk merge (PUT single): omitted => preserved (jangan reset client lama).
+  // Toggle off => tiers TETAP tersimpan. Base change => revalidate active
+  // config vs base HASIL dalam request yang sama; inconsistent => 400 atomic.
+  // Effective = explicit ?? stored (stored parsed defensif; unparseable =>
+  // anggap off/[] agar tak 500, GET menandai corrupt terpisah). Disabled
+  // retained boleh stale dan TIDAK memblokir edit base; re-enable WAJIB
+  // valid vs base hasil.
+  const rawBulk = (body as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined;
+  const resultBase = v.price !== undefined ? Number(v.price) : Number(existing.price);
+  const storedEnabled = Number((existing as Record<string, unknown>).bulk_pricing_enabled ?? 0) === 1 ? 1 : 0;
+  const storedTiersJson = String((existing as Record<string, unknown>).bulk_pricing_tiers ?? "[]");
+  let storedTiers: unknown[] = [];
+  try { const t = JSON.parse(storedTiersJson); if (Array.isArray(t)) storedTiers = t; } catch { storedTiers = []; }
+  const effectiveRaw = rawBulk === undefined
+    ? { enabled: storedEnabled === 1, tiers: storedTiers }
+    : rawBulk;
+  const { validateBulkPricing } = await import("@/lib/bulk-pricing");
+  const checkedAll = validateBulkPricing(effectiveRaw, resultBase);
+  if (!checkedAll) return NextResponse.json({ error: "bulk_pricing_invalid", message: "Konfigurasi bulk tidak valid untuk harga varian." }, { status: 400 });
+  if (checkedAll.enabled) {
+    for (const t of checkedAll.tiers) {
+      if (t.unit_price > resultBase) {
+        return NextResponse.json({ error: "bulk_pricing_invalid", message: "Konfigurasi bulk tidak valid untuk harga varian." }, { status: 400 });
+      }
+    }
+  }
+  const bulkEnabled: number | null = rawBulk === undefined ? null : (checkedAll.enabled ? 1 : 0);
+  const bulkTiersJson: string | null = rawBulk === undefined ? null : JSON.stringify(checkedAll.tiers);
+
   const updates: string[] = [];
   const params: unknown[] = [];
   const fields: [string, unknown][] = [
@@ -402,13 +564,53 @@ export async function PUT(request: NextRequest) {
       params.push(val ?? null);
     }
   }
+  // CAS: WHERE mencakup observed triple agar concurrent base/config change
+  // => 0 changes => 409, tanpa partial write. Single-row: gunakan
+  // operation_guards precondition (pola PUT products/[id]) agar konsisten.
+  if (bulkEnabled !== null) {
+    updates.push("bulk_pricing_enabled=?", "bulk_pricing_tiers=?");
+    params.push(bulkEnabled, bulkTiersJson);
+  }
 
-  if (updates.length === 0) return NextResponse.json({ error: "no_fields_to_update" }, { status: 400 });
+  if (updates.length === 0 && bulkEnabled === null) return NextResponse.json({ error: "no_fields_to_update" }, { status: 400 });
 
   updates.push("updated_at=datetime('now')");
-  params.push(Number(id));
+  const d1put = getD1();
+  if (d1put) {
+    const guardId = `bulksingle:${id}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    try {
+      await d1put.batch([
+        d1put.prepare(
+          `INSERT INTO operation_guards (operation_id, valid) SELECT ?, CASE WHEN EXISTS(
+             SELECT 1 FROM product_variants WHERE id=? AND price=? AND bulk_pricing_enabled=? AND bulk_pricing_tiers=?
+           ) THEN 1 ELSE 0 END`,
+        ).bind(guardId, Number(id), Number(existing.price),
+          Number(existing.bulk_pricing_enabled ?? 0), String(existing.bulk_pricing_tiers ?? "[]")),
+        d1put.prepare(`UPDATE product_variants SET ${updates.join(",")} WHERE id=?`).bind(...params, Number(id)),
+        d1put.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
+      ]);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/operation_guards|CHECK constraint/i.test(msg)) {
+        return NextResponse.json({ error: "stale_variant", message: "Varian berubah oleh admin lain. Muat ulang lalu simpan lagi." }, { status: 409 });
+      }
+      throw e;
+    }
+    await d1put.prepare("DELETE FROM operation_guards WHERE operation_id LIKE ?").bind(`bulksingle:${id}:%`).run().catch(() => {});
+  } else {
+    params.push(Number(id));
+    await execRun(`UPDATE product_variants SET ${updates.join(",")} WHERE id=?`, ...params);
+  }
 
-  await execRun(`UPDATE product_variants SET ${updates.join(",")} WHERE id=?`, ...params);
+  // Audit exact before/after bulk SAJA (tanpa secret): structured console
+  // SETELAH commit valid. Gagal validasi/unauthorized = no write + no audit.
+  if (bulkEnabled !== null) {
+    console.info("[admin-bulk-pricing]", JSON.stringify({
+      variant: Number(id),
+      before: { enabled: Number(existing.bulk_pricing_enabled ?? 0), tiers: String(existing.bulk_pricing_tiers ?? "[]"), price: Number(existing.price) },
+      after: { enabled: bulkEnabled, tiers: bulkTiersJson, price: resultBase },
+    }));
+  }
 
   return NextResponse.json({ ok: true });
 }

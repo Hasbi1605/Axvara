@@ -5,6 +5,7 @@
 
 import { execRun, queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { effectiveVariantStock, formatVariantLabel, getActiveVariant, type VariantSummary } from "@/lib/catalog";
+import { resolveBulkPrice } from "@/lib/bulk-pricing";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { TELEGRAM_MAX_QTY } from "./keyboards";
 
@@ -14,7 +15,12 @@ export type CartLine = {
   qty: number;
   productName: string;
   variantLabel: string;
+  /** Harga EFEKTIF per unit (server, sudah termasuk tier agregat varian). */
   price: number;
+  /** Harga dasar pv.price saat dibaca (untuk guard atomik + snapshot). */
+  basePrice: number;
+  /** min_qty tier yang benar-benar dikenakan (bila ada diskon). */
+  appliedTierMinQty?: number | null;
   stock: number;
   fulfillmentMode: string;
   /** Minimum pembelian per baris (migrasi 0034, default 1). */
@@ -174,10 +180,11 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
   const lines: CartLine[] = [];
   const issues: string[] = [];
   if (!isD1Mode()) return { lines, subtotal: 0, totalQty: 0, issues };
-  const rows = await queryAll(
+    const rows = await queryAll(
     `SELECT c.id, c.updated_at, c.product_id, c.variant_id, c.qty, p.name as product_name,
             p.is_active AS product_active, p.telegram_enabled,
             pv.product_id AS v_product_id, pv.label AS v_label, pv.price AS v_price,
+            pv.bulk_pricing_enabled AS v_bulk_enabled, pv.bulk_pricing_tiers AS v_bulk_tiers,
             pv.stock AS v_stock, pv.fulfillment_mode AS v_mode, pv.is_active AS v_active,
             pv.min_qty AS v_min_qty, pv.wr_variant_id, pv.duration_label, pv.duration_value, pv.duration_unit,
             (SELECT COUNT(*) FROM fulfillment_inventory fi
@@ -192,6 +199,13 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
   );
   if (rows.length > MAX_LINES) issues.push(`Keranjang berisi lebih dari ${MAX_LINES} varian. Hapus varian sebelum melanjutkan.`);
   const staleRows: typeof rows = [];
+  // TG2b: tier dihitung dari AGREGAT qty per varian (satu varian = satu
+  // harga, alias ikut), bukan per baris keranjang.
+  const aggregateQty = new Map<number, number>();
+  for (const row of rows) {
+    const variantId = Number(row.variant_id);
+    aggregateQty.set(variantId, (aggregateQty.get(variantId) ?? 0) + Number(row.qty || 0));
+  }
   for (const row of rows) {
     const variantId = Number(row.variant_id);
     const variantActive = Number(row.v_active ?? 0) === 1;
@@ -221,13 +235,29 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
     }
     if (qty < minQty) issues.push(`${label} minimal ${minQty}, jumlah saat ini ${qty}. Ubah jumlah di keranjang.`);
     if (variantStock !== -1 && qty > variantStock) issues.push(`${label}: stok tersedia ${variantStock}, jumlah saat ini ${qty}. Kurangi jumlah di keranjang.`);
+    // TG2b: harga efektif dari bulk config aktif; enabled=0 mengabaikan
+    // tiers basi; config rusak gagal tertutup (baris basi, checkout ditolak).
+    const basePrice = Number(row.v_price);
+    let effectivePrice = basePrice;
+    let appliedTier: number | null = null;
+    try {
+      const resolved = resolveBulkPrice(basePrice, aggregateQty.get(variantId) ?? qty, row.v_bulk_enabled, String(row.v_bulk_tiers ?? "[]"));
+      effectivePrice = resolved.price;
+      appliedTier = resolved.tier ?? null;
+    } catch {
+      staleRows.push(row);
+      issues.push(`${label} tidak tersedia. Periksa keranjang sebelum melanjutkan.`);
+      continue;
+    }
     lines.push({
       productId: Number(row.product_id),
       variantId,
       qty,
       productName,
       variantLabel,
-      price: Number(row.v_price),
+      price: effectivePrice,
+      basePrice,
+      appliedTierMinQty: appliedTier,
       stock: variantStock,
       fulfillmentMode,
       minQty,

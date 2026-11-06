@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
+import { catalogCopy } from "@/lib/i18n/catalog-copy";
 
 const read = (file: string) => fs.readFileSync(file, "utf8");
 
@@ -88,7 +89,7 @@ describe("variant min_qty — guard server", () => {
   });
 
   it("verifier quote menerima qty sampai 100", () => {
-    expect(read("src/lib/auth.ts")).toContain("Number(value.qty) <= 100");
+    expect(read("src/lib/auth.ts")).toContain("qty: z.number().int().min(1).max(100)");
   });
 });
 
@@ -117,13 +118,15 @@ describe("variant min_qty — bot & storefront", () => {
     // Badge TIDAK di tiap kartu varian (menumpuk) — info min hanya di stepper.
     expect(pdp).not.toContain("Min. {Number");
     expect(pdp).toContain("Jumlah");
-    expect(pdp).toContain("Min. pembelian");
+    expect(pdp).toContain("t.minPurchase(selectedMinQty)");
     expect(pdp).toContain("qty=${safePdpQty}");
     const modal = read("src/components/storefront/QuickVariantModal.tsx");
     // Panel solid axvara (#0B1025), bukan glass transparan.
     expect(modal).toContain('background: "#0B1025"');
     expect(modal).not.toContain("ax-glass-strong");
-    expect(modal).toContain("Min. pembelian");
+    expect(modal).toContain("t.minPurchase(selectedMinQty)");
+    expect(catalogCopy("id").minPurchase(50)).toBe("Min. pembelian 50");
+    expect(catalogCopy("en").minPurchase(50)).toBe("Minimum purchase 50");
     expect(modal).toContain("qty=${safeModalQty}");
     const checkout = read("src/app/(shop)/checkout/page.tsx");
     expect(checkout).toContain("Sesuaikan ke minimum");
@@ -137,10 +140,16 @@ describe("variant min_qty — bot & storefront", () => {
     // Definisi "tak bisa dibeli": stock !== -1 && stock < min.
     const pdp = read("src/app/(shop)/produk/[slug]/product-detail-client.tsx");
     expect(pdp).toContain("isBelowMinimum");
-    expect(pdp).toContain("STOK &lt; MIN");
+    expect(pdp).toContain("t.belowMinLabel");
+    expect(pdp).toContain("disabled={!isPurchasable(v)}");
     const modal = read("src/components/storefront/QuickVariantModal.tsx");
     expect(modal).toContain("isBelowMinimum");
-    expect(modal).toContain("Stok < min");
+    expect(modal).toContain("t.stockBelowMin");
+    expect(modal).toContain("disabled={outStock}");
+    expect(catalogCopy("id").belowMinLabel).toBe("STOK < MIN");
+    expect(catalogCopy("en").belowMinLabel).toBe("STOCK < MIN");
+    expect(catalogCopy("id").stockBelowMin).toBe("Stok < min");
+    expect(catalogCopy("en").stockBelowMin).toBe("Stock < min");
     const cart = read("src/stores/cart.ts");
     expect(cart).toContain("isBelowMinimumStock");
     const checkout = read("src/app/(shop)/checkout/page.tsx");

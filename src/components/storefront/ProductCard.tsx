@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { formatRupiah } from "@/lib/utils";
+import { Price } from "@/components/storefront/Price";
+import { IDR_PRICES, type DisplayPrices } from "@/hooks/useDisplayPrices";
+import { catalogCopy } from "@/lib/i18n/catalog-copy";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
 import { IosIcon } from "@/components/ui/IosIcon";
@@ -35,17 +37,26 @@ function responsiveImg(url: string) {
   return { src, srcSet, sizes };
 }
 
-export function ProductCard({ product, index = 0, compact = false }: { product: Product; index?: number; compact?: boolean }) {
+/** Harga tampil kartu: sama persis dengan yang dirender (varian termurah bila banyak). */
+export function productCardPrice(product: Product): number {
+  const multiple = Boolean((product.variantCount && product.variantCount > 1) || (product.minPrice != null && product.maxPrice != null && product.minPrice !== product.maxPrice));
+  return multiple && product.minPrice != null ? product.minPrice : product.price;
+}
+
+/** Nominal IDR yang dikirim ke /api/display-prices untuk satu kartu (harga + coret). */
+export function productCardAmounts(product: Product): number[] {
+  const price = productCardPrice(product);
+  return product.comparePrice != null && product.comparePrice > price ? [price, product.comparePrice] : [price];
+}
+
+export function ProductCard({ product, index = 0, compact = false, prices = IDR_PRICES }: { product: Product; index?: number; compact?: boolean; prices?: DisplayPrices }) {
+  const t = catalogCopy(prices.locale);
   const add = useCart((s) => s.add);
   const { navigate, pending: checkoutPending } = usePendingNavigation();
   const [modalMode, setModalMode] = useState<"cart" | "checkout" | null>(null);
 
   const hasVariants = Boolean(product.variantCount && product.variantCount > 0);
-  const hasMultipleVariants = Boolean(
-    (product.variantCount && product.variantCount > 1) ||
-    (product.minPrice != null && product.maxPrice != null && product.minPrice !== product.maxPrice)
-  );
-  const displayPrice = hasMultipleVariants && product.minPrice != null ? product.minPrice : product.price;
+  const displayPrice = productCardPrice(product);
   // Harga coret dari API sudah dipasangkan ke varian harga-terendah yang sama
   // (issue #10) dan hanya ada bila > harga tampil — jadi diskon kartu selalu
   // milik pasangan varian nyata, bukan silangan MIN/MAX.
@@ -86,7 +97,7 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
 
   if (compact) {
     return (
-      <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? `${product.name} — stok habis` : product.name} className="group block ax-glass-card rounded-[14px] overflow-hidden hover:-translate-y-0.5 transition-all duration-300 flex flex-col">
+      <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? t.soldOutAria(product.name) : product.name} className="group block ax-glass-card rounded-[14px] overflow-hidden hover:-translate-y-0.5 transition-all duration-300 flex flex-col">
         <div className="relative aspect-[4/3] overflow-hidden bg-white/[0.03] m-1 rounded-[10px]">
           {product.badge && (
             <span className="absolute top-1.5 left-1.5 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[9px] font-bold px-1.5 py-0.5 leading-none shadow">{product.badge}</span>
@@ -108,7 +119,7 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           />
           {outOfStock && (
             <span className="absolute inset-0 z-[5] flex items-center justify-center bg-black/45">
-              <span data-testid="soldout-overlay" className="rounded-full border border-white/25 bg-black/60 px-2.5 py-1 text-[9px] font-bold tracking-[0.08em] text-white">STOK HABIS</span>
+              <span data-testid="soldout-overlay" className="rounded-full border border-white/25 bg-black/60 px-2.5 py-1 text-[9px] font-bold tracking-[0.08em] text-white">{t.soldOutOverlay}</span>
             </span>
           )}
           <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-[10px] text-center p-2">{product.name}</div>
@@ -118,13 +129,13 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           <h3 className="mt-1 font-semibold text-[11.5px] sm:text-[15px] leading-[1.3] sm:leading-5 text-white line-clamp-2 min-h-[30px] sm:min-h-[40px] tracking-[-0.01em]">{product.name}</h3>
           <div className="mt-1.5 flex items-baseline gap-1 flex-wrap">
             <span className="font-bold text-[13px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
-              {formatRupiah(displayPrice)}
+              <Price idr={displayPrice} prices={prices} />
             </span>
-            {showCompare && <span className="text-[10px] sm:text-xs text-white/30 line-through leading-none">{formatRupiah(product.comparePrice!)}</span>}
+            {showCompare && <span className="text-[10px] sm:text-xs text-white/30 line-through leading-none"><Price idr={product.comparePrice!} prices={prices} /></span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-1">
-            <span className="text-[10px] sm:text-xs text-white/65 font-medium">{product.soldCount ? `${product.soldCount} terjual` : "Terjual"}</span>
-            <span className="text-[10px] sm:text-xs font-semibold text-[#00E5FF]/70 group-hover:text-[#00E5FF]">Lihat detail →</span>
+            <span className="text-[10px] sm:text-xs text-white/65 font-medium">{product.soldCount ? t.soldCount(product.soldCount) : t.soldBare}</span>
+            <span className="text-[10px] sm:text-xs font-semibold text-[#00E5FF]/70 group-hover:text-[#00E5FF]">{t.viewDetails}</span>
           </div>
         </div>
       </Link>
@@ -142,7 +153,7 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
       {discount > 0 && !outOfStock && (
         <span className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 leading-none">-{discount}%</span>
       )}
-      <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? `${product.name} — stok habis` : undefined} className="block flex-1">
+      <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? t.soldOutAria(product.name) : undefined} className="block flex-1">
         <div className="relative aspect-[4/3] overflow-hidden bg-white/[0.04] m-1 sm:m-1.5 rounded-[12px] sm:rounded-[16px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -163,7 +174,7 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           />
           {outOfStock && (
             <span className="absolute inset-0 z-[5] flex items-center justify-center bg-black/45">
-              <span data-testid="soldout-overlay" className="rounded-full border border-white/25 bg-black/60 px-3.5 py-1.5 text-[11px] sm:text-xs font-bold tracking-[0.08em] text-white">STOK HABIS</span>
+              <span data-testid="soldout-overlay" className="rounded-full border border-white/25 bg-black/60 px-3.5 py-1.5 text-[11px] sm:text-xs font-bold tracking-[0.08em] text-white">{t.soldOutOverlay}</span>
             </span>
           )}
           <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-xs text-center p-4">
@@ -175,13 +186,13 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           <h3 className="mt-1 font-semibold text-[12.5px] sm:text-[14.5px] leading-[1.25] sm:leading-5 text-white line-clamp-2 min-h-[32px] sm:min-h-[40px] tracking-[-0.01em]">{product.name}</h3>
           <div className="mt-2 sm:mt-3 flex items-baseline gap-1.5 sm:gap-2 flex-wrap">
             <span className="font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
-              {formatRupiah(displayPrice)}
+              <Price idr={displayPrice} prices={prices} />
             </span>
-            {showCompare && <span className="text-[10px] sm:text-xs text-white/65 line-through leading-none">{formatRupiah(product.comparePrice!)}</span>}
+            {showCompare && <span className="text-[10px] sm:text-xs text-white/65 line-through leading-none"><Price idr={product.comparePrice!} prices={prices} /></span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-2">
-            <span className="text-[11px] text-white/65 font-medium tracking-wide">{product.soldCount ? `${product.soldCount} terjual` : "Terjual"}</span>
-            <span className="text-[11px] font-semibold text-[#00E5FF]/80 group-hover:text-[#00E5FF] transition">Lihat detail →</span>
+            <span className="text-[11px] text-white/65 font-medium tracking-wide">{product.soldCount ? t.soldCount(product.soldCount) : t.soldBare}</span>
+            <span className="text-[11px] font-semibold text-[#00E5FF]/80 group-hover:text-[#00E5FF] transition">{t.viewDetails}</span>
           </div>
         </div>
       </Link>
@@ -190,25 +201,25 @@ export function ProductCard({ product, index = 0, compact = false }: { product: 
           <div className="px-2 sm:px-3 pb-2.5 sm:pb-3 pt-1 grid grid-cols-2 gap-1.5 sm:gap-2">
             {outOfStock ? (
               <span className="col-span-2 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.06] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white/40 flex items-center justify-center">
-                Stok Habis
+                {t.soldOut}
               </span>
             ) : (
               <>
                 <button
                   type="button"
                   onClick={handleAdd}
-                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none active:scale-95"
+                  className="h-11 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none active:scale-95"
                 >
-                  <IosIcon name="shopping-bag" size={12} tint="white" /> <span>Keranjang</span>
+                  <IosIcon name="shopping-bag" size={12} tint="white" /> <span>{t.addToCart}</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleCheckout}
                   disabled={checkoutPending}
                   aria-busy={checkoutPending}
-                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none active:scale-95 disabled:cursor-wait disabled:opacity-80"
+                  className="h-11 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none active:scale-95 disabled:cursor-wait disabled:opacity-80"
                 >
-                  {checkoutPending ? <InlineSpinner className="w-3 h-3" tone="dark" /> : <IosIcon name="lightning-bolt" size={12} tint="black" />} Checkout
+                  {checkoutPending ? <InlineSpinner className="w-3 h-3" tone="dark" /> : <IosIcon name="lightning-bolt" size={12} tint="black" />} {t.checkout}
                 </button>
               </>
             )}

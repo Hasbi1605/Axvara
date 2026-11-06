@@ -3,10 +3,18 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import type { Product } from "@/lib/products";
+import type { BulkTier } from "@/lib/bulk-pricing";
+import { activeTier, bulkUnitEstimate, nextReachableTier, safeBulkTiers } from "@/lib/bulk-display";
 
-export type CartItem = Product & { qty: number; variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string; inventoryAvailable?: number | null };
+/**
+ * `price` TETAP harga dasar varian (juga yang dikirim sebagai expected_price ke
+ * quote; server membandingkannya dengan harga dasar). `bulkTiers` hanyalah
+ * cache tier tervalidasi dari katalog untuk ESTIMASI tampilan; baris lama tanpa
+ * field ini (persist pra-grosir) berperilaku persis seperti sebelumnya.
+ */
+export type CartItem = Product & { qty: number; variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string; inventoryAvailable?: number | null; bulkTiers?: BulkTier[] };
 
-type CartInput = Product & { variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string; inventoryAvailable?: number | null };
+type CartInput = Product & { variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string; inventoryAvailable?: number | null; bulkTiers?: BulkTier[] };
 
 type CartStore = {
   items: CartItem[];
@@ -24,7 +32,10 @@ type CartStore = {
    * untuk logika subtotal/qty — jangan tukar pemakaiannya.
    */
   lineCount: () => number;
+  /** Estimasi tampilan (tier per varian bila ada); checkout memakai quote server. */
   subtotal: () => number;
+  /** Buang cache tier baris varian ini (mis. setelah pembeli menyetujui harga baru dari server). */
+  forgetBulkTiers: (variantIds: number[]) => void;
 };
 
 /**
@@ -58,6 +69,34 @@ const isBelowMinimumStock = (p: { stock?: number | null; minQty?: number; fulfil
   if (stock === -1) return false;
   return stock < minOf(p);
 };
+
+/** Qty teragregasi untuk varian yang sama (lintas baris alias produk); varian berbeda tidak pernah digabung. */
+export function aggregatedVariantQty(items: CartItem[], item: CartItem): number {
+  if (item.variantId === undefined) return item.qty;
+  return items.filter((other) => other.variantId === item.variantId).reduce((sum, other) => sum + other.qty, 0);
+}
+
+/** Harga satuan estimasi: baris alias dari varian yang sama memakai harga satuan yang sama. */
+export function estimatedUnitPrice(items: CartItem[], item: CartItem): number {
+  return bulkUnitEstimate(item.price, item.bulkTiers, aggregatedVariantQty(items, item));
+}
+
+/** Tier berikutnya yang bisa dicapai (batas stok/plafon dari metadata baris), atau null. */
+export function cartBulkHint(items: CartItem[], item: CartItem): { need: number; unitPrice: number; threshold: number } | null {
+  const tiers = safeBulkTiers(item.price, item.bulkTiers);
+  if (tiers.length === 0) return null;
+  const cap = String(item.fulfillmentMode ?? "").trim().toLowerCase() === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : WEB_MAX_QTY;
+  const eff = effectiveStockOf(item);
+  const max = eff === -1 ? cap : Math.min(cap, eff);
+  const qty = aggregatedVariantQty(items, item);
+  const next = nextReachableTier(tiers, qty, max);
+  return next ? { need: next.min_qty - qty, unitPrice: next.unit_price, threshold: next.min_qty } : null;
+}
+
+/** Tier yang sedang berlaku (untuk label "grosir N+"), atau null. */
+export function cartActiveTier(items: CartItem[], item: CartItem): BulkTier | null {
+  return activeTier(safeBulkTiers(item.price, item.bulkTiers), aggregatedVariantQty(items, item));
+}
 
 export const useCart = create<CartStore>()(
   persist(
@@ -94,7 +133,7 @@ export const useCart = create<CartStore>()(
             // Refresh metadata basi dari katalog terbaru (stok efektif,
             // inventory, min, mode): baris lama yang di-add ulang tidak
             // mempertahankan angka basi — qty lalu di-clamp ke [lo, hi].
-            const updated = { ...existing, stock: product.stock ?? existing.stock, inventoryAvailable: product.inventoryAvailable ?? existing.inventoryAvailable, fulfillmentMode: product.fulfillmentMode ?? existing.fulfillmentMode };
+            const updated = { ...existing, stock: product.stock ?? existing.stock, inventoryAvailable: product.inventoryAvailable ?? existing.inventoryAvailable, fulfillmentMode: product.fulfillmentMode ?? existing.fulfillmentMode, bulkTiers: product.bulkTiers ?? existing.bulkTiers };
             if (maxFor(updated) < lo) return { items: s.items.filter((i) => itemKey(i) !== matchKey) };
             const hi = maxFor(updated);
             const nextQty = clampQty(existing.qty + qty, lo, hi);
@@ -132,7 +171,8 @@ export const useCart = create<CartStore>()(
       clear: () => set({ items: [] }),
       count: () => get().items.reduce((a, b) => a + b.qty, 0),
       lineCount: () => get().items.length,
-      subtotal: () => get().items.reduce((a, b) => a + b.price * b.qty, 0),
+      subtotal: () => get().items.reduce((a, b) => a + estimatedUnitPrice(get().items, b) * b.qty, 0),
+      forgetBulkTiers: (variantIds) => set((s) => ({ items: s.items.map((i) => (i.variantId !== undefined && variantIds.includes(i.variantId) && i.bulkTiers !== undefined ? { ...i, bulkTiers: undefined } : i)) })),
     }),
     { name: "axvara-cart" }
   )

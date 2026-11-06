@@ -17,6 +17,7 @@ import {
   type ParsedDescription,
 } from "@/lib/product-copy/format";
 import { linkifySegments } from "@/lib/product-copy/text";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 
 type Size = "sm" | "xs";
 
@@ -240,16 +241,17 @@ export function VariantIdentity({
   /** Membuka panel pilih varian. Tanpa ini (varian tunggal/salinan sama) tombol tidak tampil. */
   onChoose?: () => void;
 }) {
+  const en = useDisplayLocale() === "en";
   return (
     <div data-testid="pdp-variant-identity" className={`flex gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 ${label ? "items-center justify-between" : "flex-col sm:flex-row sm:items-center sm:justify-between"}`}>
       <div className="min-w-0 flex-1" aria-live="polite" aria-atomic="true">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/55">{label || sharedLabel ? "Detail untuk varian" : "Belum ada varian dipilih"}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/55">{label || sharedLabel ? (en ? "Variant details" : "Detail untuk varian") : (en ? "No variant selected" : "Belum ada varian dipilih")}</p>
         {label ? (
           <p className="mt-0.5 break-words text-sm font-semibold text-[#00E5FF]">{label}</p>
         ) : sharedLabel ? (
           <p className="mt-0.5 break-words text-sm font-semibold text-white">{sharedLabel}</p>
         ) : (
-          <p className="mt-0.5 text-xs leading-relaxed text-[#FFD66B]">Pilih varian untuk melihat syarat &amp; ketentuan dan cara aktivasi yang sesuai.</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-[#FFD66B]">{en ? "Choose a variant to view its terms and activation instructions." : "Pilih varian untuk melihat syarat & ketentuan dan cara aktivasi yang sesuai."}</p>
         )}
       </div>
       {onChoose && (
@@ -258,7 +260,7 @@ export function VariantIdentity({
           onClick={onChoose}
           className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-xl border border-[#00E5FF]/40 bg-[#00E5FF]/10 px-3 text-xs font-semibold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]"
         >
-          {label ? "Ganti varian" : "Pilih varian"}
+          {label ? (en ? "Change variant" : "Ganti varian") : (en ? "Choose variant" : "Pilih varian")}
         </button>
       )}
     </div>

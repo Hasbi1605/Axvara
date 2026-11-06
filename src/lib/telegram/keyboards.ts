@@ -6,6 +6,35 @@ import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 
 import type { InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup } from "./types";
 import { supportTelegramLink, SITE } from "@/lib/site";
+import type { DisplayCurrency, Locale } from "@/lib/i18n/locale";
+import type { FxSnapshot } from "@/lib/payments/fx";
+import { tgDisplayPrice } from "./render-prefs";
+import { formatIdr } from "@/lib/i18n/format";
+import { getCryptoAsset } from "@/lib/payments/crypto-assets";
+
+export type OfferMethodView = {
+  id: string;
+  kind?: string;
+  label?: string;
+  gateway?: { estimated_fee: number; estimated_total: number } | null;
+  amount_text?: string;
+  pay_currency?: string;
+};
+
+export type TgPriceCtx = { locale?: Locale; displayCurrency?: DisplayCurrency | null; fx?: FxSnapshot | null };
+export type TgLocaleCtx = { locale?: Locale };
+
+/** ONE primary display price for buttons. Buttons never show two
+ * currencies. USD only with fresh FX; otherwise honest IDR. */
+function priceButtonText(price: number, ctx?: TgPriceCtx): string {
+  const amount = Math.max(0, Math.round(Number(price) || 0));
+  if (ctx?.displayCurrency === "USD" && ctx?.fx) {
+    return tgDisplayPrice(amount, { locale: ctx.locale ?? "id", displayCurrency: "USD", fx: ctx.fx });
+  }
+  if (ctx?.displayCurrency === "USD") return buttonPrice(amount);
+  if (amount >= 1000 && amount % 1000 === 0) return `Rp${amount / 1000}rb`;
+  return `Rp${amount.toLocaleString(ctx?.locale === "en" ? "en-US" : "id-ID")}`;
+}
 
 const PER_PAGE = 6;
 
@@ -75,8 +104,19 @@ export const cb = {
   cartClear: () => "cclear",
   cartCheckout: () => "ccheckout",
   waInput: (orderCode: string) => `wainput:${orderCode}`,
+  /** R1 frozen offer entry (nonce flows via frozen state, not callbacks). */
+  payMethodsEntry: () => "pmentry",
+  /** R1 frozen offer selection: index into FROZEN payq1 array (nonce-bound). */
+  payMethod: (nonce: string, index: number) => `pm:${nonce}:${index}`,
+  /** Sub-menu koin crypto (nonce-bound) dan kembali. */
+  payCryptoMenu: (nonce: string) => `pmc:${nonce}`,
+  payCryptoBack: (nonce: string) => `pmb:${nonce}`,
   /** Minta QRIS baru untuk order yang masih hidup tetapi QR-nya sudah mati. */
   qrisRenew: (orderCode: string) => `qrenew:${orderCode}`,
+  /** TG1 onboarding: explicit language choice from chooser. */
+  lang: (locale: "id" | "en") => `lang:${locale}`,
+  /** TG1 independent display-currency control. */
+  currency: (currency: "IDR" | "USD") => `cur:${currency}`,
 } as const;
 
 // ---- Callback data parser ----
@@ -92,7 +132,19 @@ export function parseCallback(data: string): { action: string; params: string[] 
  * input field so new visitors never wonder "what now?".
  * Labels route back to the webhook as plain text (see MENU_LABEL_*).
  */
-export function mainReplyMenu(): ReplyKeyboardMarkup {
+export function mainReplyMenu(locale: "id" | "en" = "id"): ReplyKeyboardMarkup {
+  if (locale === "en") {
+    return {
+      keyboard: [
+        [{ text: MENU_LABEL_EN.catalog }, { text: MENU_LABEL_EN.search }],
+        [{ text: MENU_LABEL_EN.cart }, { text: MENU_LABEL_EN.orders }],
+        [{ text: MENU_LABEL_EN.help }],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+      input_field_placeholder: "Choose a menu or type /bantuan…",
+    };
+  }
   return {
     keyboard: [
       [{ text: MENU_LABEL_CATALOG }, { text: MENU_LABEL_SEARCH }],
@@ -105,20 +157,65 @@ export function mainReplyMenu(): ReplyKeyboardMarkup {
   };
 }
 
-export function homeKeyboard(): InlineKeyboardMarkup {
+/**
+ * TG1 onboarding keyboards (LOCAL ONLY): explicit language choice + settings
+ * surface with independent locale/currency controls. Existing commerce
+ * keyboards unchanged (still ID until TG2).
+ */
+export function languageChooserKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "🛍 Katalog", callback_data: cb.catalog() },
-        { text: "🛒 Keranjang", callback_data: cb.cart() },
+        { text: "🇮🇩 Bahasa Indonesia", callback_data: cb.lang("id") },
+        { text: "🇬🇧 English", callback_data: cb.lang("en") },
+      ],
+    ],
+  };
+}
+
+export function settingsKeyboard(): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🇮🇩 Bahasa Indonesia", callback_data: cb.lang("id") },
+        { text: "🇬🇧 English", callback_data: cb.lang("en") },
       ],
       [
-        { text: "📦 Pesanan Saya", callback_data: "myorders" },
-        { text: "🔎 Cari Produk", callback_data: cb.search() },
+        { text: "Rp IDR", callback_data: cb.currency("IDR") },
+        { text: "$ USD", callback_data: cb.currency("USD") },
+      ],
+      [{ text: "🏠", callback_data: cb.home() }],
+    ],
+  };
+}
+
+/**
+ * TG2a: localized labels for the SAME callback targets (catalog/cart/orders/
+ * search/help). Existing ID MENU_LABEL_* retained for old keyboards/policy.
+ */
+export const MENU_LABEL_EN = {
+  catalog: "🛍 Catalog",
+  search: "🔎 Search",
+  orders: "📦 Orders",
+  help: "❓ Help",
+  cart: "🛒 Cart",
+} as const;
+
+export function homeKeyboard(locale: "id" | "en" = "id"): InlineKeyboardMarkup {
+  const en = locale === "en";
+  return {
+    inline_keyboard: [
+      [
+        { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+        { text: en ? "🛒 Cart" : "🛒 Keranjang", callback_data: cb.cart() },
       ],
       [
-        { text: "🛡 Garansi & Ketentuan", callback_data: "warranty" },
-        { text: "❓ Bantuan", callback_data: "help" },
+        { text: en ? "📦 My Orders" : "📦 Pesanan Saya", callback_data: "myorders" },
+        { text: en ? "🔎 Search Products" : "🔎 Cari Produk", callback_data: cb.search() },
+      ],
+      [
+        { text: en ? "🛡 Warranty & Terms" : "🛡 Garansi & Ketentuan", callback_data: "warranty" },
+        { text: en ? "❓ Help" : "❓ Bantuan", callback_data: "help" },
       ],
       [
         { text: "🌐 Web", url: "https://axvara.tech" },
@@ -131,16 +228,18 @@ export function catalogFlatKeyboard(
   products: { id: number; name: string; price: number }[],
   requestedPage = 0,
   perPage = 8,
+  ctx?: TgPriceCtx & TgLocaleCtx,
 ): InlineKeyboardMarkup {
   // Flat product list (WA parity) — product names only, categories optional filter.
   const page = clampPage(requestedPage, products.length, perPage);
   const start = page * perPage;
   const pageItems = products.slice(start, start + perPage);
+  const en = ctx?.locale === "en";
 
   const rows: InlineKeyboardButton[][] = pageItems.map((p) => {
-    const priceStr = buttonPrice(p.price);
+    const priceStr = priceButtonText(p.price, ctx);
     const label = truncateLabel(p.name, 28);
-    return [{ text: `${label} · Mulai ${priceStr}`, callback_data: cb.product(p.id) }];
+    return [{ text: `${label} · ${en ? "From" : "Mulai"} ${priceStr}`, callback_data: cb.product(p.id) }];
   });
 
   // Pagination (prev | 1/3 | next)
@@ -153,17 +252,19 @@ export function catalogFlatKeyboard(
 
   // Optional category filter + home (categories no longer mandatory)
   rows.push([
-    { text: "🔎 Cari Produk", callback_data: cb.search() },
-    { text: "🛒 Keranjang", callback_data: cb.cart() },
+    { text: en ? "🔎 Search Products" : "🔎 Cari Produk", callback_data: cb.search() },
+    { text: en ? "🛒 Cart" : "🛒 Keranjang", callback_data: cb.cart() },
   ]);
-  rows.push([{ text: "📦 Pesanan Saya", callback_data: cb.myOrders() }, { text: "📂 Kategori", callback_data: cb.categories() }]);
+  rows.push([{ text: en ? "📦 My Orders" : "📦 Pesanan Saya", callback_data: cb.myOrders() }, { text: en ? "📂 Categories" : "📂 Kategori", callback_data: cb.categories() }]);
   return { inline_keyboard: rows };
 }
 
 export function categoriesKeyboard(
   categories: { id: number; name: string }[],
   page = 0,
+  ctx?: TgLocaleCtx,
 ): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   const start = page * PER_PAGE;
   const pageItems = categories.slice(start, start + PER_PAGE);
 
@@ -201,12 +302,12 @@ export function categoriesKeyboard(
 
   // Pagination
   const nav: InlineKeyboardButton[] = [];
-  if (page > 0) nav.push({ text: "◀️ Sebelumnya", callback_data: cb.categories(page - 1) });
-  if (start + PER_PAGE < categories.length) nav.push({ text: "Berikutnya ▶️", callback_data: cb.categories(page + 1) });
+  if (page > 0) nav.push({ text: en ? "◀️ Previous" : "◀️ Sebelumnya", callback_data: cb.categories(page - 1) });
+  if (start + PER_PAGE < categories.length) nav.push({ text: en ? "Next ▶️" : "Berikutnya ▶️", callback_data: cb.categories(page + 1) });
   if (nav.length) rows.push(nav);
 
   // Home
-  rows.push([{ text: "🏠 Menu Utama", callback_data: cb.home() }]);
+  rows.push([{ text: en ? "🏠 Main Menu" : "🏠 Menu Utama", callback_data: cb.home() }]);
   return { inline_keyboard: rows };
 }
 
@@ -214,14 +315,16 @@ export function productsKeyboard(
   products: { id: number; name: string; price: number }[],
   categoryId: number,
   requestedPage = 0,
+  ctx?: TgPriceCtx & TgLocaleCtx,
 ): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   const page = clampPage(requestedPage, products.length, PER_PAGE);
   const start = page * PER_PAGE;
   const pageItems = products.slice(start, start + PER_PAGE);
 
   // Single-column for products (longer labels with price)
   const rows: InlineKeyboardButton[][] = pageItems.map((p) => {
-    const priceStr = buttonPrice(p.price);
+    const priceStr = priceButtonText(p.price, ctx);
     const label = truncateLabel(p.name, 25);
     return [{ text: `${label} • ${priceStr}`, callback_data: cb.product(p.id) }];
   });
@@ -237,54 +340,59 @@ export function productsKeyboard(
 
   // Back
   rows.push([
-    { text: "◀️ Kategori", callback_data: cb.categories() },
-    { text: "🏠 Menu", callback_data: cb.home() },
+    { text: en ? "◀️ Categories" : "◀️ Kategori", callback_data: cb.categories() },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
   ]);
   return { inline_keyboard: rows };
 }
 
 export function myOrdersKeyboard(
   orders: { code: string; productId: number | null }[],
+  ctx?: TgLocaleCtx,
 ): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   const rows: InlineKeyboardButton[][] = orders.slice(0, 10).map((order, i) => {
     const row: InlineKeyboardButton[] = [
       { text: `${i + 1}. 📋 ${truncateLabel(order.code, 22)}`, callback_data: cb.order(order.code) },
     ];
     if (order.productId) {
-      row.push({ text: "🔁 Beli Lagi", callback_data: cb.reorder(order.productId) });
+      row.push({ text: en ? "🔁 Buy Again" : "🔁 Beli Lagi", callback_data: cb.reorder(order.productId) });
     }
     return row;
   });
   rows.push([
-    { text: "🛍 Katalog", callback_data: cb.catalog() },
-    { text: "🏠 Menu", callback_data: cb.home() },
+    { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
   ]);
   return { inline_keyboard: rows };
 }
 
 export function searchResultsKeyboard(
   products: { id: number; name: string; price: number }[],
+  ctx?: TgPriceCtx & TgLocaleCtx,
 ): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   const rows: InlineKeyboardButton[][] = products.slice(0, 10).map((p) => {
-    const priceStr = buttonPrice(p.price);
+    const priceStr = priceButtonText(p.price, ctx);
     const label = truncateLabel(p.name, 28);
     return [{ text: `${label} • ${priceStr}`, callback_data: cb.product(p.id) }];
   });
   rows.push([
-    { text: "🔎 Cari Lagi", callback_data: cb.search() },
-    { text: "🛍 Katalog", callback_data: cb.catalog() },
+    { text: en ? "🔎 Search Again" : "🔎 Cari Lagi", callback_data: cb.search() },
+    { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
   ]);
-  rows.push([{ text: "🏠 Menu", callback_data: cb.home() }]);
+  rows.push([{ text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() }]);
   return { inline_keyboard: rows };
 }
 
-export function productDetailKeyboard(productId: number): InlineKeyboardMarkup {
+export function productDetailKeyboard(productId: number, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   return {
     inline_keyboard: [
-      [{ text: "Pilih Varian", callback_data: cb.buy(productId) }],
+      [{ text: en ? "Choose Variant" : "Pilih Varian", callback_data: cb.buy(productId) }],
       [
-        { text: "◀️ Katalog", callback_data: cb.catalog() },
-        { text: "🏠 Menu", callback_data: cb.home() },
+        { text: en ? "◀️ Catalog" : "◀️ Katalog", callback_data: cb.catalog() },
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
       ],
     ],
   };
@@ -293,12 +401,14 @@ export function productDetailKeyboard(productId: number): InlineKeyboardMarkup {
 export function variantsKeyboard(
   productId: number,
   variants: { id: number; label: string; price: number; stock: number; min_qty?: number; duration_label?: string | null; warranty_label?: string | null }[],
+  ctx?: TgPriceCtx & TgLocaleCtx,
 ): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   const canBuy = (v: typeof variants[number]) => v.stock === -1 || v.stock >= Math.max(1, v.min_qty ?? 1);
   const available = variants.filter(canBuy);
   const unavailable = variants.filter((v) => !canBuy(v));
   const rows: InlineKeyboardButton[][] = [...available, ...unavailable].map((v) => {
-    const priceStr = buttonPrice(v.price);
+    const priceStr = priceButtonText(v.price, ctx);
     const isOutOfStock = !canBuy(v);
     const text = isOutOfStock
       ? `❌ ${v.label}`
@@ -309,21 +419,22 @@ export function variantsKeyboard(
     }];
   });
 
-  rows.push([{ text: "📋 Detail & Ketentuan", callback_data: cb.terms(productId) }]);
-  rows.push([{ text: "🛍 Katalog", callback_data: cb.catalog() }, { text: "🛒 Keranjang", callback_data: cb.cart() }]);
+  rows.push([{ text: en ? "📋 Details & Terms" : "📋 Detail & Ketentuan", callback_data: cb.terms(productId) }]);
+  rows.push([{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() }, { text: en ? "🛒 Cart" : "🛒 Keranjang", callback_data: cb.cart() }]);
 
   return { inline_keyboard: rows };
 }
 
-export function confirmVariantPurchaseKeyboard(productId: number, variantId: number): InlineKeyboardMarkup {
+export function confirmVariantPurchaseKeyboard(productId: number, variantId: number, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   return {
     inline_keyboard: [
       [
-        { text: "🛒 Pilih Jumlah", callback_data: cb.qty(productId, variantId) },
+        { text: en ? "🛒 Choose Quantity" : "🛒 Pilih Jumlah", callback_data: cb.qty(productId, variantId) },
       ],
       [
-        { text: "📜 Syarat Garansi", callback_data: "warranty" },
-        { text: "❌ Ganti Varian", callback_data: cb.variants(productId) },
+        { text: en ? "📜 Warranty Terms" : "📜 Syarat Garansi", callback_data: "warranty" },
+        { text: en ? "❌ Change Variant" : "❌ Ganti Varian", callback_data: cb.variants(productId) },
       ],
     ],
   };
@@ -340,8 +451,9 @@ export function qtyKeyboard(params: {
   minQty?: number;
   requiresEmail?: boolean;
   approvalTag?: string;
-}): InlineKeyboardMarkup {
+}, ctx?: TgPriceCtx & TgLocaleCtx): InlineKeyboardMarkup {
   const { productId, variantId, stock, price } = params;
+  const en = ctx?.locale === "en";
   // Telegram bulk cap is 100/order (matches TELEGRAM_MAX_QTY in the webhook).
   const stockMax = stock === -1 ? 100 : Math.max(1, Math.min(stock, 100));
   const cap = Math.max(1, Math.min(params.maxQty ?? stockMax, stockMax));
@@ -353,41 +465,45 @@ export function qtyKeyboard(params: {
   const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), max);
   const minusQty = Math.max(minQty, qty - 1);
   const plusQty = Math.min(max, qty + 1);
-  const total = new Intl.NumberFormat("id-ID").format(price * qty);
+  const total = tgDisplayPrice(price * qty, { locale: ctx?.locale ?? "id", displayCurrency: ctx?.displayCurrency ?? null, fx: ctx?.fx ?? null });
   const minusCb = qty > minQty ? cb.setQty(productId, variantId, minusQty) : "noop";
-  const minusLabel = qty > minQty ? "➖ Kurangi" : "➖";
+  const minusLabel = qty > minQty ? (en ? "➖ Decrease" : "➖ Kurangi") : "➖";
   return {
     inline_keyboard: [
       [
         { text: minusLabel, callback_data: minusCb },
-        { text: `Jumlah: ${qty}`, callback_data: "noop" },
-        { text: qty < max ? "Tambah ➕" : "➕", callback_data: qty < max ? cb.setQty(productId, variantId, plusQty) : "noop" },
+        { text: en ? `Quantity: ${qty}` : `Jumlah: ${qty}`, callback_data: "noop" },
+        { text: qty < max ? (en ? "Add ➕" : "Tambah ➕") : "➕", callback_data: qty < max ? cb.setQty(productId, variantId, plusQty) : "noop" },
       ],
-      ...(max > 1 ? [[{ text: "✍️ Masukkan Jumlah", callback_data: cb.qtyInput(productId, variantId) }]] : []),
-      [{ text: params.requiresEmail ? `📧 Lanjut ke Email · Rp${total}` : `💳 Bayar QRIS · Rp${total}`, callback_data: cb.pay(productId, variantId, qty, params.approvalTag) }],
-      [{ text: "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }, { text: "🛒 Tambah ke Keranjang", callback_data: cb.cartAdd(productId, variantId, qty) }],
+      ...(max > 1 ? [[{ text: en ? "✍️ Enter Quantity" : "✍️ Masukkan Jumlah", callback_data: cb.qtyInput(productId, variantId) }]] : []),
+      [{ text: params.requiresEmail ? (en ? `📧 Continue to Email · ${total}` : `📧 Lanjut ke Email · ${total}`) : (en ? `💳 Pay QRIS · ${total}` : `💳 Bayar QRIS · ${total}`), callback_data: cb.pay(productId, variantId, qty, params.approvalTag) }],
+      ...(!params.requiresEmail ? [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry() }]] : []),
+      [{ text: en ? "📋 Terms" : "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }, { text: en ? "🛒 Add to Cart" : "🛒 Tambah ke Keranjang", callback_data: cb.cartAdd(productId, variantId, qty) }],
       [
-        { text: "Ganti Varian", callback_data: cb.variants(productId) },
-        { text: "Menu", callback_data: cb.home() },
+        { text: en ? "Change Variant" : "Ganti Varian", callback_data: cb.variants(productId) },
+        { text: en ? "Home" : "Menu", callback_data: cb.home() },
       ],
     ],
   };
 }
 
-export function emailConfirmationKeyboard(productId: number, variantId: number, qty: number, total: number, tag?: string, nonce?: string): InlineKeyboardMarkup {
+export function emailConfirmationKeyboard(productId: number, variantId: number, qty: number, total: number, tag?: string, nonce?: string, ctx?: TgPriceCtx & TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   return { inline_keyboard: [
-    [{ text: `💳 Bayar QRIS · ${buttonPrice(total)}`, callback_data: cb.emailPay(productId, variantId, qty, tag, nonce) }],
-    [{ text: "📧 Ubah Email", callback_data: cb.emailEdit(productId, variantId, qty) }, { text: "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }],
+    [{ text: `💳 ${en ? "Pay QRIS" : "Bayar QRIS"} · ${priceButtonText(total, ctx)}`, callback_data: cb.emailPay(productId, variantId, qty, tag, nonce) }],
+    [{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry() }],
+    [{ text: en ? "📧 Change Email" : "📧 Ubah Email", callback_data: cb.emailEdit(productId, variantId, qty) }, { text: en ? "📋 Terms" : "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }],
     [
-      { text: "◀️ Ubah Jumlah", callback_data: cb.qty(productId, variantId) },
-      { text: "🏠 Menu", callback_data: cb.home() },
+      { text: en ? "◀️ Change Quantity" : "◀️ Ubah Jumlah", callback_data: cb.qty(productId, variantId) },
+      { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
     ],
   ] };
 }
 
 export function cartKeyboard(params: {
   lines: { variantId: number; qty: number; stock: number; fulfillmentMode: string; minQty?: number; label?: string }[];
-}): InlineKeyboardMarkup {
+}, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   const rows: InlineKeyboardButton[][] = params.lines.slice(0, 20).map((line) => {
     const uniqueTotal = params.lines.reduce((n, item) => n + (item.fulfillmentMode === "unique" ? item.qty : 0), 0);
     const cap = line.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : TELEGRAM_MAX_QTY;
@@ -402,19 +518,20 @@ export function cartKeyboard(params: {
       : { text: "➕", callback_data: "noop" });
     return row;
   });
-  params.lines.slice(0, 20).forEach(line => rows.push([{ text: `Hapus ${truncateLabel(line.label ?? String(line.variantId), 24)}`, callback_data: cb.cartRemove(line.variantId) }]));
+  params.lines.slice(0, 20).forEach(line => rows.push([{ text: `${en ? "Remove" : "Hapus"} ${truncateLabel(line.label ?? String(line.variantId), 24)}`, callback_data: cb.cartRemove(line.variantId) }]));
   if (params.lines.length > 0) {
-    rows.push([{ text: "💳 Checkout 1 QRIS", callback_data: cb.cartCheckout() }]);
-    rows.push([{ text: "🧹 Kosongkan", callback_data: cb.cartClear() }]);
+    rows.push([{ text: en ? "💳 Checkout with 1 QRIS" : "💳 Checkout 1 QRIS", callback_data: cb.cartCheckout() }]);
+    rows.push([{ text: en ? "🧹 Clear" : "🧹 Kosongkan", callback_data: cb.cartClear() }]);
   }
   rows.push([
-    { text: "🛍 Lanjut Belanja", callback_data: cb.catalog() },
-    { text: "🏠 Menu", callback_data: cb.home() },
+    { text: en ? "🛍 Continue Shopping" : "🛍 Lanjut Belanja", callback_data: cb.catalog() },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
   ]);
   return { inline_keyboard: rows };
 }
 
-export function qrisInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {
+export function qrisInvoiceKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   return {
     inline_keyboard: [
       // 2026-10-10 (permintaan owner): pembeli bisa cek manual — callback
@@ -422,9 +539,9 @@ export function qrisInvoiceKeyboard(orderCode: string): InlineKeyboardMarkup {
       // handleOrderRefresh idempoten. Tanpa ini pembeli menunggu buta bila
       // hook telat; copy "tidak perlu cek manual" di invoiceMessage ikut
       // direvisi agar tidak berbohong.
-      [{ text: "🔄 Cek Pembayaran", callback_data: cb.refresh(orderCode) }],
-      [{ text: "📋 Detail Pesanan", callback_data: cb.order(orderCode) }, { text: "❓ Bantuan", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` }],
-      [{ text: "Batalkan Pesanan", callback_data: cb.cancel(orderCode) }],
+      [{ text: en ? "🔄 Check Payment" : "🔄 Cek Pembayaran", callback_data: cb.refresh(orderCode) }],
+      [{ text: en ? "📋 Order Details" : "📋 Detail Pesanan", callback_data: cb.order(orderCode) }, { text: en ? "❓ Help" : "❓ Bantuan", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` }],
+      [{ text: en ? "Cancel Order" : "Batalkan Pesanan", callback_data: cb.cancel(orderCode) }],
     ],
   };
 }
@@ -454,38 +571,40 @@ export function warrantyKeyboard(): InlineKeyboardMarkup {
   };
 }
 
-export function orderStatusKeyboard(orderCode: string): InlineKeyboardMarkup {
+export function orderStatusKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   return {
     inline_keyboard: [
       [
-        { text: "🔄 Cek Status", callback_data: cb.refresh(orderCode) },
-        { text: "❌ Batalkan", callback_data: cb.cancel(orderCode) },
+        { text: en ? "🔄 Check Status" : "🔄 Cek Status", callback_data: cb.refresh(orderCode) },
+        { text: en ? "❌ Cancel" : "❌ Batalkan", callback_data: cb.cancel(orderCode) },
       ],
       [
-        { text: "🛍 Katalog", callback_data: cb.catalog() },
-        { text: "🏠 Menu", callback_data: cb.home() },
+        { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
       ],
     ],
   };
 }
 
-export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
+export function orderPaidKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   const rows: InlineKeyboardButton[][] = [];
   // WA input is reply-only (typed number). No "Masukkan Nomor WhatsApp" button:
   // the old wainput:* callback only re-sent the same prompt (loop/confusion).
   // 2026-10-10: tombol WA lewat hub /wa (URL absolut — keyboard Telegram butuh
   // URL penuh, bukan path relatif). User pilih nomor aktif di sana.
   rows.push([
-    { text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo AXVARA, saya ingin menanyakan pesanan ${orderCode}`)}` },
+    { text: en ? "💬 WhatsApp Admin" : "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Halo AXVARA, saya ingin menanyakan pesanan ${orderCode}`)}` },
     { text: `✈️ @${SITE.supportTelegram}`, url: supportTelegramLink() },
   ]);
   // Fallback pengiriman (2026-10-04): pembeli bisa meminta bot mengirim ulang
   // detail produk ke chat ini kapan saja setelah siap.
-  rows.push([{ text: "📦 Ambil Detail Produk", callback_data: cb.credentials(orderCode) }]);
-  rows.push([{ text: "📋 Lihat Pesanan", callback_data: cb.order(orderCode) }]);
+  rows.push([{ text: en ? "📦 Fetch Product Details" : "📦 Ambil Detail Produk", callback_data: cb.credentials(orderCode) }]);
+  rows.push([{ text: en ? "📋 View Order" : "📋 Lihat Pesanan", callback_data: cb.order(orderCode) }]);
   rows.push([
-    { text: "🛍 Katalog", callback_data: cb.catalog() },
-    { text: "🏠 Menu", callback_data: cb.home() },
+    { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
   ]);
   return {
     inline_keyboard: rows,
@@ -493,24 +612,26 @@ export function orderPaidKeyboard(orderCode: string): InlineKeyboardMarkup {
 }
 
 /** Status pesanan yang sudah lunas: tombol ambil ulang detail produk. */
-export function paidOrderStatusKeyboard(orderCode: string): InlineKeyboardMarkup {
+export function paidOrderStatusKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   return {
     inline_keyboard: [
-      [{ text: "📦 Ambil Ulang Produk", callback_data: cb.credentials(orderCode) }],
-      [{ text: "🔄 Cek Pesanan", callback_data: cb.refresh(orderCode) }],
-      orderPaidKeyboard(orderCode).inline_keyboard[0],
+      [{ text: en ? "📦 Fetch Product Again" : "📦 Ambil Ulang Produk", callback_data: cb.credentials(orderCode) }],
+      [{ text: en ? "🔄 Check Order" : "🔄 Cek Pesanan", callback_data: cb.refresh(orderCode) }],
+      orderPaidKeyboard(orderCode, ctx).inline_keyboard[0],
       [
-        { text: "🛍 Katalog", callback_data: cb.catalog() },
-        { text: "🏠 Menu", callback_data: cb.home() },
+        { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
       ],
     ],
   };
 }
 
-export function cancelConfirmationKeyboard(orderCode: string): InlineKeyboardMarkup {
+export function cancelConfirmationKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
   return { inline_keyboard: [
-    [{ text: "Ya, Batalkan", callback_data: cb.cancelConfirm(orderCode) }],
-    [{ text: "Kembali ke Pesanan", callback_data: cb.order(orderCode) }],
+    [{ text: en ? "Yes, Cancel" : "Ya, Batalkan", callback_data: cb.cancelConfirm(orderCode) }],
+    [{ text: en ? "Back to Order" : "Kembali ke Pesanan", callback_data: cb.order(orderCode) }],
   ] };
 }
 
@@ -570,9 +691,81 @@ export function webPaidAdminKeyboard(params: { customerWa: string; orderCode: st
 }
 
 /** Hanya ditampilkan bersama pesan QR pertama yang sudah kedaluwarsa. */
-export function qrisExpiredKeyboard(orderCode: string): InlineKeyboardMarkup {
+export function qrisExpiredKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
   return { inline_keyboard: [
-    [{ text: "🔄 QRIS Baru", callback_data: cb.qrisRenew(orderCode) }],
-    ...qrisInvoiceKeyboard(orderCode).inline_keyboard,
+    [{ text: ctx?.locale === "en" ? "🔄 New QRIS" : "🔄 QRIS Baru", callback_data: cb.qrisRenew(orderCode) }],
+    ...qrisInvoiceKeyboard(orderCode, ctx).inline_keyboard,
   ] };
+}
+
+/** R1: localized "other payment methods" entry (after qty/email/cart approval).
+ * The entry callback carries no price/user/method — the frozen payq1 state
+ * already binds the approved current cart/single identity. */
+export function otherMethodsEntryKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  return { inline_keyboard: [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: "pmentry" }]] };
+}
+
+/** R1 frozen offer keyboard: QRIS first + Paling cepat/Fastest badge, gateway
+ * rows with estimated fee/total, ONE collapsed "Crypto (USD)" row (total
+ * incl. 1.5% service fee; opens the coin sub-keyboard). Selection callbacks
+ * pm:<nonce>:<index> (<=64B). No
+ * order creation from this screen. Labels escape owner/provider strings;
+ * currency display honors the independence rule (USD shown only as the
+ * frozen provider USD amount, never relabeled IDR). */
+export function paymentMethodOfferKeyboard(
+  state: { nonce: string; methods: OfferMethodView[] },
+  ctx?: TgLocaleCtx,
+): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  const rowFor = (method: OfferMethodView, index: number): InlineKeyboardButton[] => {
+    const data = `pm:${state.nonce}:${index}`;
+    if (method.kind === "qris") {
+      const badge = en ? "Fastest" : "Paling cepat";
+      return [{ text: `QRIS · ${badge}`, callback_data: data }];
+    }
+    if (method.kind === "gateway" && method.gateway) {
+      const label = `${method.label} · +${formatIdr(method.gateway.estimated_fee, ctx?.locale ?? "id")} · ${formatIdr(method.gateway.estimated_total, ctx?.locale ?? "id")}`;
+      return [{ text: label.slice(0, 90), callback_data: data }];
+    }
+    return [{ text: String(method.id).slice(0, 90), callback_data: data }];
+  };
+  // Crypto multi-koin: SATU entri "Crypto (USD)" (membuka sub-menu koin), bukan satu baris per koin.
+  let cryptoEntryAdded = false;
+  const rows: InlineKeyboardButton[][] = [];
+  state.methods.slice(0, 96).forEach((method, index) => {
+    if (method.kind !== "crypto") {
+      rows.push(rowFor(method, index));
+    } else if (!cryptoEntryAdded) {
+      cryptoEntryAdded = true;
+      rows.push([{ text: `Crypto (USD) · ${method.amount_text} USD`, callback_data: `pmc:${state.nonce}` }]);
+    }
+  });
+  return { inline_keyboard: rows };
+}
+
+/**
+ * Sub-menu koin crypto Telegram: Populer dulu, lalu Stablecoin, 2 tombol per baris, label `BTC` / `USDT · BSC`,
+ * plus Kembali. Hanya koin TERSEDIA (frozen payq1 tidak pernah memuat yang nonaktif). Tap = `pm:<nonce>:<index>`
+ * persis seperti memilih metode biasa (index ke array beku), jadi freeze/consent/claim tidak berubah.
+ */
+export function cryptoCoinKeyboard(
+  state: { nonce: string; methods: OfferMethodView[] },
+  ctx?: TgLocaleCtx,
+): InlineKeyboardMarkup {
+  const coins = state.methods.slice(0, 96).flatMap((method, index) => {
+    const asset = method.kind === "crypto" ? getCryptoAsset(method.pay_currency) : null;
+    return asset ? [{ asset, index }] : [];
+  });
+  const button = ({ asset, index }: (typeof coins)[number]): InlineKeyboardButton => ({
+    text: (asset.group === "stable" ? `${asset.symbol} · ${asset.network.toUpperCase()}` : asset.symbol).slice(0, 40),
+    callback_data: `pm:${state.nonce}:${index}`,
+  });
+  const rows: InlineKeyboardButton[][] = [];
+  for (const group of ["popular", "stable"] as const) {
+    const buttons = coins.filter((coin) => coin.asset.group === group).sort((a, b) => a.asset.order - b.asset.order).map(button);
+    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  }
+  rows.push([{ text: ctx?.locale === "en" ? "⬅ Back" : "⬅ Kembali", callback_data: `pmb:${state.nonce}` }]);
+  return { inline_keyboard: rows };
 }

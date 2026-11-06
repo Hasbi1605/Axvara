@@ -85,13 +85,13 @@ describe("plain Indonesian Telegram buyer copy", () => {
     expect(limited).toContain("Minimal pembelian: 2");
     expect(limited).toContain("Maksimal 4 per pesanan");
     expect(limited).not.toContain("Maksimal 50");
-    expect(limited).toContain("Subtotal: Rp10.000");
+    expect(limited).toMatch(/Subtotal: Rp\s?10\.000/);
   });
 
   it("does not describe every email-based product as an invitation or subtotal as final payment", () => {
     const html = emailConfirmationMessage({ ...item, total: 10000, maskedEmail: "n***@example.test" });
     expect(html).toContain("Periksa email sebelum membayar.");
-    expect(html).toContain("Subtotal: Rp10.000");
+    expect(html).toMatch(/Subtotal: Rp\s?10\.000/);
     expect(html).not.toMatch(/undangan|invite|Total bayar/i);
   });
 
@@ -157,7 +157,7 @@ describe("plain Indonesian Telegram buyer copy", () => {
     for (const html of [cartMessage(items), cartCheckoutSummaryMessage(items, 200000)]) {
       const text = parsed(html).body.textContent ?? "";
       for (const line of items) expect(text).toContain(`${line.productName} / ${line.variantLabel} x2`);
-      expect(text).toContain("Subtotal: Rp200.000");
+      expect(text).toMatch(/Subtotal: Rp\s?200\.000/);
     }
   });
 

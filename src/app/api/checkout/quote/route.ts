@@ -3,21 +3,26 @@ import { z } from "zod";
 import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { isVariantsReadEnabled } from "@/lib/catalog";
 import { createCheckoutQuoteToken } from "@/lib/auth";
-import { isActiveQrisConfigured } from "@/lib/payments/dana-qris";
+import { buildMethodCatalog } from "@/lib/payments/method-options";
+import { resolveBuyerPreferences } from "@/lib/i18n/locale";
+import { readTrustedCountry } from "@/lib/i18n/server-country";
+import { displayUsdCents } from "@/lib/i18n/format";
+import { loadCurrentFxSnapshot } from "@/lib/payments/market-snapshot";
 import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { readJsonBody } from "@/lib/http-body";
+import { bulkUnitPrice, validateBulkPricing } from "@/lib/bulk-pricing";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 const itemSchema = z.object({
-  product_id: z.coerce.number().int().min(1).optional(),
-  variant_id: z.coerce.number().int().min(1).optional(),
+  product_id: z.coerce.number().int().safe().min(1).optional(),
+  variant_id: z.coerce.number().int().safe().min(1).optional(),
   slug: z.string().trim().min(1).max(100).optional(),
   qty: z.coerce.number().int().min(1).max(100),
-  expected_price: z.coerce.number().int().min(0).optional(),
+  expected_price: z.coerce.number().int().safe().min(0).optional(),
 }).refine((item) => item.product_id || item.slug, "Produk tidak valid");
 
 const schema = z.object({ items: z.array(itemSchema).min(1).max(20) });
@@ -63,7 +68,7 @@ export async function POST(req: NextRequest) {
   }
 
   let subtotal = 0;
-  const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery: boolean; automatic_processing?: true }[] = [];
+  const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery: boolean; automatic_processing?: true }[] = [];
   let uniqueUnits = 0;
   const issues: QuoteIssue[] = [];
   const changes: PriceChange[] = [];
@@ -131,6 +136,19 @@ export async function POST(req: NextRequest) {
     );
     for (const row of rows) variantById.set(Number(row.id), row);
   }
+  // Resolve aliases before aggregation; a foreign product/variant pair never contributes to a tier.
+  const canonical = new Map<string, z.infer<typeof itemSchema>>();
+  for (const item of aggregate.values()) {
+    const product = item.slug ? productBySlug.get(item.slug) : productById.get(Number(item.product_id));
+    if (!product || (item.product_id && Number(product.id) !== item.product_id) || (item.variant_id && Number(variantById.get(item.variant_id)?.product_id) !== Number(product.id))) {
+      issues.push({ product_id: item.product_id, slug: item.slug, variant_id: item.variant_id, type: "missing", message: "Produk atau varian tidak cocok." });
+      continue;
+    }
+    const key = `${product.id}:${item.variant_id ?? 0}`;
+    const previous = canonical.get(key);
+    canonical.set(key, previous ? { ...previous, qty: previous.qty + item.qty } : { ...item, product_id: Number(product.id) });
+  }
+  aggregate.clear(); for (const [key, value] of canonical) aggregate.set(key, value);
   // Cache min_qty per varian (migrasi 0034): baris fixture lama tanpa kolom
   // tetap aman (fallback 1) karena akses memakai ?? di bawah.
   const minQtyOf = (variantId: number): number => {
@@ -263,15 +281,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (item.expected_price != null && item.expected_price !== effectivePrice) {
+    const basePrice = effectivePrice;
+    let tierMin: number | undefined;
+    if (item.variant_id) {
+      const variant = variantById.get(item.variant_id)!;
+      if (Number(variant.bulk_pricing_enabled ?? 0) === 1) {
+        try {
+          const config = validateBulkPricing({ enabled: true, tiers: JSON.parse(String(variant.bulk_pricing_tiers)) }, basePrice);
+          if (!config) throw new Error("invalid");
+          effectivePrice = bulkUnitPrice(basePrice, item.qty, config);
+          tierMin = config.tiers.filter((tier) => tier.min_qty <= item.qty).at(-1)?.min_qty;
+        } catch {
+          issues.push({ product_id: productId, variant_id: item.variant_id, type: "inactive", message: "Harga varian tidak tersedia." });
+          continue;
+        }
+      }
+    }
+    if (item.expected_price != null && item.expected_price !== basePrice) {
       changes.push({
         product_id: productId,
         variant_id: item.variant_id,
         name: displayName,
         previous_price: item.expected_price,
-        current_price: effectivePrice,
+        current_price: basePrice,
         message: `Harga ${displayName} berubah.`,
       });
+    }
+    if (!Number.isSafeInteger(effectivePrice) || effectivePrice < 0 || !Number.isSafeInteger(subtotal + effectivePrice * item.qty)) {
+      issues.push({ product_id: productId, variant_id: item.variant_id, type: "inactive", message: "Harga varian tidak tersedia." });
+      continue;
     }
     subtotal += effectivePrice * item.qty;
     // Penentu email wajib per item (lihat needsEmailForVariant): wr_type
@@ -292,6 +330,7 @@ export async function POST(req: NextRequest) {
       variant_id: item.variant_id,
       name: displayName,
       price: effectivePrice,
+      ...(tierMin ? { base_price: basePrice, applied_tier_min_qty: tierMin } : {}),
       qty: item.qty,
       stock: effectiveStock,
       image: String(row.image_url ?? ""),
@@ -317,15 +356,17 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const paymentMethods = (await queryAll("SELECT * FROM payment_methods WHERE is_active=1 ORDER BY sort_order ASC"))
-    .map((row) => ({
-      id: String(row.id),
-      label: String(row.label ?? ""),
-      account_number: String(row.account_number ?? ""),
-      account_name: String(row.account_name ?? ""),
-      qris_url: row.qris_url ? String(row.qris_url) : null,
-    }))
-    .filter((method) => method.id !== "qris" || isActiveQrisConfigured());
+  // Method assembly shared verbatim with TG R1 (same helper, same order,
+  // same failure isolation). No web-only tail here anymore.
+  // `catalog` = tampilan (termasuk kanal gateway di luar batas sebagai nonaktif); `paymentMethods` = HANYA yang bisa dipilih dan
+  // menjadi satu-satunya yang ditandatangani/diterima create. Nonaktif tidak punya biaya/total dan tidak masuk token.
+  const catalog = await buildMethodCatalog(subtotal);
+  const paymentMethods = catalog.filter((method): method is Exclude<typeof method, { available: false }> => method.available);
+  // Locale: cookie axv_locale (server read) + Accept-Language hint; client
+  // body ignored. Signed into token; verified at create, persisted to orders.
+  const preferences = resolveBuyerPreferences(req.headers.get("cookie"), req.headers.get("accept-language"), await readTrustedCountry());
+  const locale = preferences.locale;
+  const displayUsd = displayUsdCents(subtotal, await loadCurrentFxSnapshot());
 
   if (issues.length > 0) {
     return NextResponse.json({ ok: false, issues, items: quotedItems, subtotal, paymentMethods }, { status: 409 });
@@ -335,19 +376,46 @@ export async function POST(req: NextRequest) {
   }
 
   const signed = await createCheckoutQuoteToken({
-    items: quotedItems.map(({ product_id, variant_id, name, price, qty }) => ({ product_id, variant_id, name, price, qty })),
+    items: quotedItems.map(({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty }) => ({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty })),
     subtotal,
-    payment_methods: paymentMethods.map(({ id, account_number }) => ({ id, account_number })),
+    payment_methods: paymentMethods.map((method) => ({
+      id: method.id,
+      account_number: method.account_number,
+      kind: method.kind,
+      ...(method.kind === "gateway" ? { currency: method.currency, sublabel: method.sublabel, available: true, gateway: method.gateway } : {}),
+      ...(method.kind === "crypto" && "usd" in method
+        ? {
+            // HANYA koin tersedia yang ditandatangani; label/group/logo tampilan tidak ikut token.
+            sublabel: method.sublabel ?? undefined,
+            available: true,
+            currency: "USD" as const,
+            amount_text: method.amount_text,
+            pay_currency: method.pay_currency,
+            network: method.network,
+            fee_payer: method.fee_payer,
+            fixed_rate: method.fixed_rate,
+            base_cents: method.base_cents,
+            surcharge_cents: method.surcharge_cents,
+            total_cents: method.total_cents,
+            surcharge_bps: method.surcharge_bps,
+            sender_gas_extra: method.sender_gas_extra,
+            usd: method.usd,
+          }
+        : {}),
+    })),
+    locale,
   });
 
   return NextResponse.json({
     ok: true,
     items: quotedItems,
     subtotal,
-    paymentMethods,
+    paymentMethods: catalog,
     changes,
     quoteToken: signed.token,
     quoteExpiresAt: new Date(signed.expiresAt * 1000).toISOString(),
     emailRequired,
+    locale,
+    displayPreferences: { ...preferences, usdAvailable: displayUsd !== null, usdCents: displayUsd?.toString() ?? null },
   });
 }

@@ -3,7 +3,10 @@ import { useState, useMemo, useEffect } from "react";
 import { OrbitHero } from "@/components/storefront/OrbitHero";
 import { ScrollRope } from "@/components/storefront/ScrollRope";
 import { CategoryPills } from "@/components/storefront/CategoryPills";
-import { ProductCard } from "@/components/storefront/ProductCard";
+import { ProductCard, productCardAmounts } from "@/components/storefront/ProductCard";
+import { PriceNote } from "@/components/storefront/Price";
+import { useDisplayPrices } from "@/hooks/useDisplayPrices";
+import { catalogCopy } from "@/lib/i18n/catalog-copy";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
 import type { Product } from "@/lib/products";
 import { resolveCategorySlug } from "@/lib/products";
@@ -64,7 +67,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
         .then((data) => { if (Array.isArray(data.products)) setCatalogProducts(data.products); setCatalogError(null); })
         .catch((e) => {
           if (e instanceof DOMException && e.name === "AbortError") return;
-          setCatalogError(e instanceof Error ? e.message : "Gagal memuat katalog");
+          setCatalogError(e instanceof Error ? e.message : "load_failed");
         })
         .finally(() => setCatalogLoading(false));
     return () => controller.abort();
@@ -92,6 +95,9 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
   useEffect(() => { setShowAll(false); }, [q, activeCat]);
   const paged = showAll ? filtered : filtered.slice(0, PER_PAGE);
   const remaining = Math.max(0, filtered.length - paged.length);
+  // Satu pemilik harga untuk seluruh koleksi tampil (<= 64 per request).
+  const prices = useDisplayPrices(paged.flatMap(productCardAmounts), { debounce: true });
+  const t = catalogCopy(prices.locale);
 
   return (
     <>
@@ -109,25 +115,25 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 lg:gap-8 items-center">
             <div className="max-w-3xl w-full">
               <h1 className="font-display font-[700] tracking-[-0.02em] leading-[0.98] text-[42px] sm:text-[56px] lg:text-[62px] text-white">
-                Satu tempat untuk
+                {t.heroLine1}
                 <br />
-                semua tools premium.
+                {t.heroLine2}
               </h1>
               <p className="mt-4 text-[15px] leading-6 text-white/60 max-w-[46ch]">
-                Berbagai tools AI dan aplikasi premium dengan harga murah. Order cepat dan otomatis tanpa perlu login.
+                {t.heroBody}
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <a href="#katalog" className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]">Lihat Katalog</a>
+                <a href="#katalog" className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]">{t.seeCatalog}</a>
                 <StoreWhatsAppLink className="h-11 px-6 rounded-full border border-white/14 bg-white/[0.06] text-white font-medium text-sm inline-flex items-center justify-center gap-1.5 hover:bg-white/10 transition active:scale-[0.98]">
-                  <img src="/icons/ios11/chat-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} /> Hubungi Admin
+                  <img src="/icons/ios11/chat-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} /> {t.contactAdmin}
                 </StoreWhatsAppLink>
               </div>
               <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tracking-wide text-white/40">
-                <span>Order cepat tanpa login</span>
+                <span>{t.trustFast}</span>
                 <span className="opacity-30">•</span>
-                <span>Garansi replace</span>
+                <span>{t.trustWarranty}</span>
                 <span className="opacity-30">•</span>
-                <span>Support WA admin</span>
+                <span>{t.trustSupport}</span>
               </div>
             </div>
             {/* Single orbit — shown at center on mobile, right on desktop */}
@@ -143,40 +149,43 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
       {/* Katalog with pagination — authoritative D1 data */}
       <section id="katalog" className="scroll-mt-36 lg:scroll-mt-20 mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">Katalog Premium</h2>
-          <span className="text-xs text-white/40">{filtered.length} produk{filtered.length ? ` • tampil ${paged.length}` : ""}</span>
+          <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{t.catalogTitle}</h2>
+          <span className="text-xs text-white/40">{t.productCount(filtered.length, paged.length)}</span>
         </div>
         <div className="mt-4">
           <CategoryPills active={activeCat} onChange={(c) => { setActiveCat(c); setShowAll(false); }} />
         </div>
         {catalogError && (
           <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3">
-            <span>Gagal memuat katalog: {catalogError}</span>
-            <button onClick={() => location.reload()} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0">Muat ulang</button>
+            <span>{t.catalogLoadFailed(catalogError === "load_failed" ? t.catalogLoadError : catalogError)}</span>
+            <button onClick={() => location.reload()} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0">{t.reload}</button>
           </div>
         )}
         {catalogLoading ? (
-          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5" aria-label="Memuat katalog">
+          <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5" aria-label={t.catalogLoadingAria}>
             {Array.from({ length: 8 }, (_, index) => (
               <div key={index} className="aspect-[3/4] rounded-[16px] sm:rounded-[22px] bg-white/[0.05] animate-pulse" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="mt-10 ax-glass-card rounded-[20px] p-10 text-center">
-            <p className="text-white font-medium">Tidak ada produk yang cocok</p>
-            <p className="text-sm text-white/50 mt-1">Coba ubah kata kunci atau kategori.</p>
+            <p className="text-white font-medium">{t.emptyTitle}</p>
+            <p className="text-sm text-white/50 mt-1">{t.emptyBody}</p>
           </div>
         ) : (
+          <>
+          <PriceNote prices={prices} className="mt-3 text-[11px] text-white/45" />
           <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
             {paged.map((p, i) => (
               <div
                 key={p.id}
                 {...(i >= 8 ? { style: { contentVisibility: "auto" as const, containIntrinsicSize: "auto 420px" } } : {})}
               >
-                <ProductCard product={p} index={i} />
+                <ProductCard product={p} index={i} prices={prices} />
               </div>
             ))}
           </div>
+          </>
         )}
 
         {/* Tampilkan semua — satu ekspansi + ciutkan (bukan infinite
@@ -187,9 +196,9 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
               onClick={() => setShowAll(true)}
               className="h-11 px-6 rounded-full bg-white text-[#080C1E] font-semibold text-sm inline-flex items-center justify-center hover:bg-white/90 transition active:scale-[0.98]"
             >
-              Tampilkan semua ({remaining} produk lainnya)
+              {t.showAll(remaining)}
             </button>
-            <span className="text-xs text-white/35">{filtered.length} produk total</span>
+            <span className="text-xs text-white/35">{t.totalProducts(filtered.length)}</span>
           </div>
         )}
         {showAll && filtered.length > PER_PAGE && (
@@ -198,7 +207,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
               onClick={() => setShowAll(false)}
               className="h-9 px-5 rounded-full border border-white/15 bg-white/[0.06] text-white/70 font-medium text-xs inline-flex items-center justify-center hover:bg-white/10 transition active:scale-[0.98]"
             >
-              Ciutkan ke {PER_PAGE} produk
+              {t.collapse(PER_PAGE)}
             </button>
           </div>
         )}

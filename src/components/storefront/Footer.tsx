@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { AXVARA_SERVICES, SITE, TG_BOT_HREF, waHubLink } from "@/lib/site";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { catalogCopy } from "@/lib/i18n/catalog-copy";
 import { isPediaOrderFlow, pediaRoutePath } from "@/lib/pedia/route-path";
 
 // Ikon brand satu tone (fill=currentColor) dari Simple Icons versi terbaru
@@ -38,6 +40,7 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
   const pedia = (path: string) => `${SITE.pediaUrl}${path}`;
   const pathname = usePathname();
   const storeSettings = useStoreSettings();
+  const t = catalogCopy(useDisplayLocale());
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -61,11 +64,11 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
         body: JSON.stringify({ email }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error ?? "Email belum dapat disimpan");
-      setFeedback({ type: "success", message: body.existing ? "Email ini sudah terdaftar." : "Email berhasil didaftarkan." });
+      if (!response.ok) throw new Error(body.error ?? t.footerFailed);
+      setFeedback({ type: "success", message: body.existing ? t.footerExisting : t.footerSuccess });
       setEmail("");
     } catch (submitError) {
-      setFeedback({ type: "error", message: submitError instanceof Error ? submitError.message : "Email belum dapat disimpan" });
+      setFeedback({ type: "error", message: submitError instanceof Error ? submitError.message : t.footerFailed });
     } finally {
       setSubmitting(false);
     }
@@ -89,7 +92,7 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
               </span>}
               <p className="font-display font-[300] tracking-[0.20em] text-white">{storeSettings.name}</p>
             </div>
-            <p className="mt-3 max-w-[34ch] text-[13px] leading-[1.65] text-white/55">Satu ekosistem untuk aplikasi premium, tools, dan layanan media sosial. Pilih layanan sesuai kebutuhanmu.</p>
+            <p className="mt-3 max-w-[34ch] text-[13px] leading-[1.65] text-white/55">{t.footerTagline}</p>
             <div className="mt-4 flex items-center gap-2">
               {SOCIAL_LINKS.map((social) => (
                 <a
@@ -123,18 +126,18 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
               <a href={storeSettings.whatsappGroupUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[#25D366]/25 bg-[#25D366]/10 px-2.5 text-[11px] font-medium text-green-200 transition hover:bg-[#25D366]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#25D366]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/brand/whatsapp.svg" alt="" width={18} height={18} className="h-[18px] w-[18px] shrink-0" />
-                Grup WA
+                {t.footerWaGroup}
               </a>
               <a href={TG_BOT_HREF} target="_blank" rel="noreferrer" aria-label="Bot Order Telegram Market" title="Order aplikasi dan tools premium di AXVARA Market" className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[#2AABEE]/25 bg-[#2AABEE]/10 px-2.5 text-[11px] font-medium text-sky-200 transition hover:bg-[#2AABEE]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2AABEE]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/brand/telegram.svg" alt="" width={16} height={16} className="h-4 w-4 shrink-0" />
-                Bot Order Telegram
+                {t.footerTgBot}
               </a>
             </div>
           </div>
 
-          <nav aria-label="Layanan AXVARA">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Layanan AXVARA</p>
+          <nav aria-label={t.footerServices}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">{t.footerServices}</p>
             <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
               {AXVARA_SERVICES.map((service) => (
                 <li key={service.id}><Link prefetch={false} href={service.id === "pedia" ? `${service.href}?utm_source=axvara&utm_medium=footer` : service.href} className="text-white/60 transition hover:text-white">{service.name}</Link></li>
@@ -142,27 +145,27 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
             </ul>
           </nav>
 
-          <nav aria-label="Bantuan AXVARA">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">Bantuan</p>
+          <nav aria-label={t.footerHelpAria}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">{t.footerHelp}</p>
             <ul className="mt-3.5 text-[13px] [&_a]:flex [&_a]:min-h-9 md:[&_a]:min-h-7 [&_a]:items-center">
-              <li><Link prefetch={false} href={pediaLayout ? pedia("/bantuan#cara-order") : shop("/cara-order")} className="text-white/60 transition hover:text-white">Cara order</Link></li>
-              <li><Link prefetch={false} href={pedia("/lacak")} className="text-white/60 transition hover:text-white">Lacak pesanan Pedia</Link></li>
-              <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">Lacak pesanan market</Link></li>
-              <li><Link prefetch={false} href={pedia("/bantuan")} className="text-white/60 transition hover:text-white">Bantuan Pedia</Link></li>
-              <li><Link prefetch={false} href={pedia("/refill")} className="text-white/60 transition hover:text-white">Refill Pedia</Link></li>
-              <li><Link prefetch={false} href={pedia("/ketentuan")} className="text-white/60 transition hover:text-white">Ketentuan Pedia</Link></li>
-              <li><Link prefetch={false} href={shop("/garansi-replace")} className="text-white/60 transition hover:text-white">Ketentuan Market</Link></li>
+              <li><Link prefetch={false} href={pediaLayout ? pedia("/bantuan#cara-order") : shop("/cara-order")} className="text-white/60 transition hover:text-white">{t.footerHowToOrder}</Link></li>
+              <li><Link prefetch={false} href={pedia("/lacak")} className="text-white/60 transition hover:text-white">{t.footerTrackPedia}</Link></li>
+              <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">{t.footerTrackMarket}</Link></li>
+              <li><Link prefetch={false} href={pedia("/bantuan")} className="text-white/60 transition hover:text-white">{t.footerHelpPedia}</Link></li>
+              <li><Link prefetch={false} href={pedia("/refill")} className="text-white/60 transition hover:text-white">{t.footerRefillPedia}</Link></li>
+              <li><Link prefetch={false} href={pedia("/ketentuan")} className="text-white/60 transition hover:text-white">{t.footerTermsPedia}</Link></li>
+              <li><Link prefetch={false} href={shop("/garansi-replace")} className="text-white/60 transition hover:text-white">{t.footerTermsMarket}</Link></li>
             </ul>
           </nav>
 
           <div className="col-span-2 rounded-[20px] border border-white/10 bg-white/[0.04] p-4 sm:col-span-1 sm:p-5 lg:self-start">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Tetap update</p>
-            <p className="mt-2 text-[13px] leading-5 text-white/55">Info produk, promo, dan artikel terbaru lewat email.</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">{t.footerStayUpdated}</p>
+            <p className="mt-2 text-[13px] leading-5 text-white/55">{t.footerStayBody}</p>
             <form onSubmit={subscribe} className="mt-4 flex gap-2">
-              <input aria-label="Email untuk update AXVARA" type="email" name="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} autoComplete="email" placeholder="Email kamu" className="min-w-0 flex-1 h-11 rounded-full border border-white/10 bg-white/[0.06] px-3.5 text-base text-white placeholder:text-white/30 focus:border-[#00E5FF]/40 focus:outline-none" />
-              <button type="submit" disabled={submitting} className="h-11 shrink-0 rounded-full bg-white px-4 text-sm font-bold text-[#080C1E] transition hover:bg-white/90 disabled:opacity-60">{submitting ? "Menyimpan…" : "Langganan"}</button>
+              <input aria-label={t.footerEmailAria} type="email" name="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} autoComplete="email" placeholder={t.footerEmailPlaceholder} className="min-w-0 flex-1 h-11 rounded-full border border-white/10 bg-white/[0.06] px-3.5 text-base text-white placeholder:text-white/30 focus:border-[#00E5FF]/40 focus:outline-none" />
+              <button type="submit" disabled={submitting} className="h-11 shrink-0 rounded-full bg-white px-4 text-sm font-bold text-[#080C1E] transition hover:bg-white/90 disabled:opacity-60">{submitting ? t.footerSaving : t.footerSubscribe}</button>
             </form>
-            <div aria-live="polite" className={`mt-3 min-h-4 text-[11px] ${feedback?.type === "error" ? "text-red-300" : "text-white/40"}`}>{feedback?.message ?? "Email tersimpan di panel admin. Tanpa spam."}</div>
+            <div aria-live="polite" className={`mt-3 min-h-4 text-[11px] ${feedback?.type === "error" ? "text-red-300" : "text-white/40"}`}>{feedback?.message ?? t.footerNote}</div>
           </div>
         </div>
 

@@ -12,6 +12,7 @@ import {
   D1Statement,
 } from "@/lib/db";
 import { getActiveVariant, type VariantSummary, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
+import { resolveBulkPrice } from "@/lib/bulk-pricing";
 import { generateOrderCode } from "@/lib/security";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
@@ -67,6 +68,8 @@ export type AtomicChannelOrderInput = {
   items: unknown[];
   variantSnapshot: string;
   subtotal: number;
+  /** TG2b: locale immutable pesanan TG (owned saved user). Non-TG default id. */
+  locale?: "id" | "en";
   primaryVariantId: number;
   customerName: string;
   customerWa?: string;
@@ -106,6 +109,26 @@ export async function createChannelOrderAtomic(
   if (!input.lines.length) throw new Error("empty_order_lines");
   const uniqueLines = input.lines.filter(line => line.fulfillmentMode === "unique");
   if (uniqueLines.reduce((n,line)=>n+line.qty,0) > MAX_UNIQUE_UNITS_PER_ORDER) throw new StockReservationError();
+  if (input.salesChannel === "telegram") {
+    // TG2b correction1 (A): line/item cardinality + qty safety SEBELUM efek
+    // samping. items dipasangkan ke lines berdasarkan indeks (format
+    // snapshot TG per kanal); payload yang tidak konsisten (panjang beda,
+    // qty beda/nol/negatif/pecahan, agregat overflow) ditolak sebelum
+    // SELECT/batch/provider. Snapshot pemanggil (base/applied tier) tetap
+    // dibandingkan ke hasil validasi di bawah, bukan dipercaya.
+    if (!Array.isArray(input.items) || input.items.length !== input.lines.length) throw new StockReservationError();
+    for (const [lineIndex, line] of input.lines.entries()) {
+      const item = (input.items as { qty?: unknown }[])[lineIndex];
+      if (!Number.isSafeInteger(line.qty) || line.qty < 1) throw new StockReservationError();
+      if (!item || Number(item.qty) !== line.qty || !Number.isSafeInteger(item.qty) || Number(item.qty) < 1) throw new StockReservationError();
+    }
+    const aggregateCheck = new Map<number, number>();
+    for (const line of input.lines) {
+      const next = (aggregateCheck.get(line.variantId) ?? 0) + line.qty;
+      if (!Number.isSafeInteger(next)) throw new StockReservationError();
+      aggregateCheck.set(line.variantId, next);
+    }
+  }
   let orderItems: unknown[];
   try { orderItems = markUniqueUnitLines(input.items as {variant_id?:unknown;qty?:unknown}[], new Set(uniqueLines.map(line=>line.variantId))); }
   catch { throw new StockReservationError(); }
@@ -117,8 +140,14 @@ export async function createChannelOrderAtomic(
     // jadi tidak ada atomicity untuk diperjuangkan — tetapi order HARUS tetap
     // tercipta agar alur dev identik dengan produksi.
     const windowMinutesDev = input.orderWindowMinutes ?? QRIS_ORDER_WINDOW_MINUTES;
+    const localeDev: "id" | "en" = input.salesChannel === "telegram"
+      ? (input.locale === "en" ? "en" : "id")
+      : "id";
     // Paritas dev: alur unique tetap mereservasi unit di store in-memory,
     // seperti sebelum reservasi dipindah ke dalam batch D1.
+    // TG2b correction1: non-D1 tetap menolak payload tak-konsisten (cek di
+    // atas sudah berjalan SEBELUM cabang ini) — bukan ceiling diam-diam.
+    // Perilaku idempoten/retry existing dipertahankan (early return quote).
     for (const line of input.lines) {
       if (line.fulfillmentMode !== "unique") continue;
       const { reserveInventory } = await import("@/lib/fulfillment/inventory");
@@ -133,8 +162,8 @@ export async function createChannelOrderAtomic(
          payment_method, payment_account, proof_url, status, sales_channel,
          channel_conversation_id, channel_member_id, telegram_chat_id, telegram_user_id,
          payment_status, fulfillment_status, variant_id, variant_snapshot,
-         quote_id, expires_at, buyer_access_version, buyer_access_format
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'pin6')`,
+         quote_id, expires_at, locale, buyer_access_version, buyer_access_format
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'pin6')`,
       input.orderCode,
       input.customerName,
       input.customerWa || "",
@@ -156,6 +185,7 @@ export async function createChannelOrderAtomic(
       input.variantSnapshot,
       input.idempotencyKey ?? null,
       new Date(Date.now() + windowMinutesDev * 60_000).toISOString(),
+      localeDev,
     );
     return { code: input.orderCode, orderId: 1, subtotal: input.subtotal, isExisting: false };
   }
@@ -187,32 +217,105 @@ export async function createChannelOrderAtomic(
       .bind(guardId, input.telegramChatId));
   }
 
-  input.lines.forEach((line, index) => {
-    const item = input.items[index] as { price?: unknown; product_id?: unknown; variant_id?: unknown } | undefined;
+  // TG2b: untuk Telegram, pin base + konfigurasi bulk aktif SEBELUM batch
+  // agar kuantitas agregat per varian (alias ikut) dihitung dari snapshot
+  // yang sama dengan guard atomik. Non-TG mempertahankan perilaku lama.
+  const tgBulk = new Map<number, { price: number; enabled: number; tiers: string }>();
+  const tgQtyByVariant = new Map<number, number>();
+  if (input.salesChannel === "telegram") {
+    const variantIds = [...new Set(input.lines.map((line) => line.variantId))];
+    const rows = (variantIds.length
+      ? (await d1.prepare(`SELECT id, price, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE id IN (${variantIds.map(() => "?").join(",")})`).bind(...variantIds).all()).results
+      : []) as Record<string, unknown>[];
+    for (const row of rows) {
+      if (!Number.isSafeInteger(Number(row.price))) throw new StockReservationError();
+      tgBulk.set(Number(row.id), { price: Number(row.price), enabled: Number(row.bulk_pricing_enabled ?? 0), tiers: String(row.bulk_pricing_tiers ?? "[]") });
+    }
+    for (const line of input.lines) {
+      if (!Number.isSafeInteger(line.qty) || line.qty < 1) throw new StockReservationError();
+      tgQtyByVariant.set(line.variantId, (tgQtyByVariant.get(line.variantId) ?? 0) + line.qty);
+    }
+  }
+
+  for (const [lineIndex, line] of input.lines.entries()) {
+    const item = input.items[lineIndex] as {
+      price?: unknown; product_id?: unknown; variant_id?: unknown;
+      base_price?: unknown; applied_tier_min_qty?: unknown;
+    } | undefined;
+    // TG2b: harga efektif dipin dari base + konfigurasi tier aktual
+    // (agregat per varian) dan dibandingkan dengan harga/field tier yang
+    // diklaim pemanggil — klaim bulk yang dirusak tidak dipakai.
     if (!item || !Number.isSafeInteger(item.price) || Number(item.price) < 0
       || Number(item.product_id) !== line.productId || Number(item.variant_id) !== line.variantId) throw new StockReservationError();
-    const guardId = `${input.orderCode}:stock:${line.variantId}:${index}`;
+    if (input.salesChannel === "telegram") {
+      const live = tgBulk.get(line.variantId);
+      if (!live || !Number.isSafeInteger(Number(item.price))) throw new StockReservationError();
+      // Guard menunggu klaim item; validasi penuh dilakukan di bawah
+      // memakai `resolveBulkPrice` impor-statis (bukan kepercayaan klaim).
+      if (item.base_price !== undefined && !Number.isSafeInteger(item.base_price)) throw new StockReservationError();
+      if (item.applied_tier_min_qty !== undefined && !(item.applied_tier_min_qty === null || Number.isSafeInteger(item.applied_tier_min_qty))) throw new StockReservationError();
+      void live;
+    }
+    const guardId = `${input.orderCode}:stock:${line.variantId}:${lineIndex}`;
     guardIds.push(guardId);
     // Prasyarat per baris: varian aktif, stok cukup (atau unlimited),
     // qty memenuhi minimum pembelian (migrasi 0034, COALESCE agar baris
     // lama tanpa kolom tetap valid), dan untuk mode shared secret-nya
     // benar-benar terkonfigurasi.
-    statements.push(
-      d1.prepare(
-        `INSERT INTO operation_guards (operation_id, valid)
-         SELECT ?, CASE WHEN EXISTS(
-           SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
-           WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND p.is_active=1
-             AND (? != 'telegram' OR p.telegram_enabled=1)
-             AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=?)
-             AND ? >= COALESCE(pv.min_qty,1)
-             AND (
-               pv.fulfillment_mode!='shared'
-               OR (pv.shared_secret_ciphertext IS NOT NULL AND pv.shared_secret_iv IS NOT NULL)
-             )
-         ) THEN 1 ELSE 0 END`,
-      ).bind(guardId, line.variantId, line.productId, item.price, input.salesChannel, line.fulfillmentMode, line.qty, line.qty),
-    );
+    if (input.salesChannel === "telegram") {
+      // TG2b: pin base + bulk config + HARGA EFEKTIF klaim. pv.price harus
+      // sama dengan base yang diamati; konfigurasi bulk aktif harus sama
+      // persis (mencegah baca basi/konfigurasi dirusak); harga efektif yang
+      // diklaim harus sama dengan pemecahan server per agregat varian.
+      // Non-TG mempertahankan guard lama (price == pv.price).
+      const live = tgBulk.get(line.variantId);
+      let effective: number | null = null;
+      let tier: number | undefined;
+      if (!live) throw new StockReservationError();
+      try {
+        const resolved = resolveBulkPrice(live.price, tgQtyByVariant.get(line.variantId) ?? line.qty, live.enabled, live.tiers);
+        effective = resolved.price;
+        tier = resolved.tier;
+      } catch { throw new StockReservationError(); }
+      if (effective === null || Number(item.price) !== effective) throw new StockReservationError();
+      if (Number(live.price) !== (item.base_price === undefined ? live.price : Number(item.base_price))) throw new StockReservationError();
+      if (tier !== undefined) {
+        if (Number(item.applied_tier_min_qty) !== tier) throw new StockReservationError();
+      } else if (item.applied_tier_min_qty !== undefined && item.applied_tier_min_qty !== null) throw new StockReservationError();
+      statements.push(
+        d1.prepare(
+          `INSERT INTO operation_guards (operation_id, valid)
+           SELECT ?, CASE WHEN EXISTS(
+             SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
+             WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND pv.bulk_pricing_enabled=? AND pv.bulk_pricing_tiers=?
+               AND p.is_active=1 AND p.telegram_enabled=1
+               AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=?)
+               AND ? >= COALESCE(pv.min_qty,1)
+               AND (
+                 pv.fulfillment_mode!='shared'
+                 OR (pv.shared_secret_ciphertext IS NOT NULL AND pv.shared_secret_iv IS NOT NULL)
+               )
+           ) THEN 1 ELSE 0 END`,
+        ).bind(guardId, line.variantId, line.productId, live.price, live.enabled, live.tiers, line.fulfillmentMode, line.qty, line.qty),
+      );
+    } else {
+      statements.push(
+        d1.prepare(
+          `INSERT INTO operation_guards (operation_id, valid)
+           SELECT ?, CASE WHEN EXISTS(
+             SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
+             WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND p.is_active=1
+               AND (? != 'telegram' OR p.telegram_enabled=1)
+               AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=?)
+               AND ? >= COALESCE(pv.min_qty,1)
+               AND (
+                 pv.fulfillment_mode!='shared'
+                 OR (pv.shared_secret_ciphertext IS NOT NULL AND pv.shared_secret_iv IS NOT NULL)
+               )
+           ) THEN 1 ELSE 0 END`,
+        ).bind(guardId, line.variantId, line.productId, item.price, input.salesChannel, line.fulfillmentMode, line.qty, line.qty),
+      );
+    }
     // Klausa `(stock=-1 OR stock>=?)` di UPDATE bersifat defense-in-depth:
     // guard di atas sudah menjamin, tetapi tanpa klausa ini korektnes
     // bergantung pada guard dan update berada di batch yang sama. Bila suatu
@@ -225,7 +328,7 @@ export async function createChannelOrderAtomic(
          WHERE id=? AND is_active=1 AND (stock=-1 OR stock>=?)`,
       ).bind(line.qty, line.variantId, line.qty),
     );
-  });
+  }
 
   // Statement berurutan di dalam satu batch melihat efek statement
   // sebelumnya, sehingga `status='available'` otomatis tidak memilih ulang
@@ -262,6 +365,18 @@ export async function createChannelOrderAtomic(
     );
   }
 
+  // TG2b: subtotal konsisten internal — jumlahkan harga efektif klaim ×
+  // qty per baris sebelum INSERT (menolak total yang dimanipulasi).
+  if (input.salesChannel === "telegram") {
+    const internalSubtotal = (input.items as { price?: unknown; qty?: unknown }[]).reduce((sum, item) => {
+      if (!Number.isSafeInteger(item.price) || !Number.isSafeInteger(item.qty)) throw new StockReservationError();
+      const add = Number(item.price) * Number(item.qty);
+      if (!Number.isSafeInteger(sum + add)) throw new StockReservationError();
+      return sum + add;
+    }, 0);
+    if (internalSubtotal !== input.subtotal) throw new StockReservationError();
+  }
+
   const windowMinutes = input.orderWindowMinutes ?? QRIS_ORDER_WINDOW_MINUTES;
   // ISO UTC, bukan `datetime('now','+N minutes')`. SQLite menghasilkan format
   // spasi ("YYYY-MM-DD HH:MM:SS") yang oleh `Date.parse` di JS ditafsirkan
@@ -271,6 +386,9 @@ export async function createChannelOrderAtomic(
   // tidak terpengaruh.
   const expiresAtIso = new Date(Date.now() + windowMinutes * 60_000).toISOString();
   const orderInsertIndex = statements.length;
+  const orderLocale: "id" | "en" = input.salesChannel === "telegram"
+    ? (input.locale === "en" ? "en" : "id")
+    : "id";
   statements.push(
     d1.prepare(
       `INSERT INTO orders (
@@ -278,8 +396,8 @@ export async function createChannelOrderAtomic(
          payment_method, payment_account, proof_url, status, sales_channel,
          channel_conversation_id, channel_member_id, telegram_chat_id, telegram_user_id,
          payment_status, fulfillment_status, variant_id, variant_snapshot,
-         quote_id, expires_at, buyer_access_version, buyer_access_format
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'pin6')`,
+         quote_id, expires_at, locale, buyer_access_version, buyer_access_format
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'pin6')`,
     ).bind(
       input.orderCode,
       input.customerName,
@@ -302,6 +420,7 @@ export async function createChannelOrderAtomic(
       input.variantSnapshot,
       input.idempotencyKey ?? null,
       expiresAtIso,
+      orderLocale,
     ),
   );
 

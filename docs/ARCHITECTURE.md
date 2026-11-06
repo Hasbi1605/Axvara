@@ -1,5 +1,64 @@
 # ARCHITECTURE.md — AXVARA
 
+Crypto multi-koin (LOKAL, 5 November 2026, belum deploy): migrasi `0102_crypto_surcharge.sql` (+ `drizzle/schema.sql`) menambah rincian biaya layanan 1,5% di `payment_transactions`; invoice baru floating + fee merchant; token/Telegram/web generik per ticker kurasi; env `NOWPAYMENTS_PAY_CURRENCY` dihapus. Lihat §16.19.
+
+FX otomatis + snapshot koin crypto (LOKAL, 5 November 2026, belum deploy): migrasi `0101_crypto_market_snapshot.sql` (+ `drizzle/schema.sql`) menambah tabel satu-baris `crypto_market_snapshot` (`id=1`: `fx_rate_text`, `fx_source`, `fx_effective_at`, `coins_json`, `coins_refreshed_at`, `last_error`, `last_attempt_at`, `lease_until`, `updated_at`). Kurs USD/IDR tidak lagi manual dari env: cron lite `cleanup` (tick 5 menit existing, tanpa trigger baru) memanggil `refreshCryptoMarketSnapshot` (`src/lib/payments/market-snapshot-refresh.ts`) hanya bila kurs atau koin lebih tua dari 30 menit/kosong. Detail di §16.18.
+
+Koreksi lokal 5 November: halaman pesanan memakai `parseExpiry` untuk expiry order dan countdown QRIS; tanggal SQL D1 tanpa zona ditafsirkan UTC, tanggal hilang/invalid gagal tertutup di tampilan. Snapshot lokal tanpa expiry order valid dilewati dan GET server ditunggu; expiry QR tidak dianggap expiry order. Tidak mengubah penyimpanan atau TTL server; browser/build ulang menunggu.
+
+Checkout client memakai preferensi bahasa eksplisit, lalu locale quote, dengan default otomatis sebelum quote; `lib/i18n/checkout-copy.ts` hanya memetakan pesan lokal yang dikenal. Perubahan tampilan tidak menjadi dependency fetch quote dan tidak mengubah snapshot finansial. Diverifikasi browser nyata secara lokal (5 November 2026).
+
+Consent fee Telegram lokal menggunakan WebCrypto HMAC-SHA256 Edge, tag tetap 8 byte/16 hex terikat order, pemilik, invoice dan total tampil; perbandingan tag melalui verifikasi HMAC native. Perubahan ini belum menjadi bukti Pages build/deployment.
+
+Kontrak opsi quote gateway (5 November 2026, lokal): `listSekalipayCatalog(amount)` (src/lib/payments/sekalipay-gateway.ts) mengembalikan semua kanal merchant dengan biaya DIKENAL (parser ketat) dan batas valid sebagai `available:true` (biaya/total dari matematika server yang sama) atau `available:false` dengan `reason` `below_min|above_max` dan `shortfall = min - subtotal` (hanya below_min, dihitung server). Batas INKLUSIF: tersedia iff `min <= subtotal <= max`; biaya tak dikenal, batas cacat, QRIS atau `payment_type` tak dikenal tetap disembunyikan (fail closed); `payment_type` hilang → grup `other`. `listSekalipayMethods` tetap HANYA yang tersedia (dipakai create web dan TG). `buildMethodOptions(subtotal)` (default; dipakai TG dan token) hanya memuat opsi tersedia; `buildMethodCatalog(subtotal)` (hanya quote web) menambah kanal nonaktif. Respons quote menambah field tampilan top-level `group: va|ewallet|other` dan `limits {min,max}` pada opsi gateway serta `unavailable_reason`/`shortfall` pada yang nonaktif (tanpa `estimated_fee`/`estimated_total`); `signed payment_methods` memuat HANYA yang tersedia dan TIDAK memuat `group`/`limits`/alasan, sehingga create menolak ID nonaktif seperti metode tak dikenal, ditambah guard eksplisit dan validasi ulang batas LIVE di create (stale quote → 503 sebelum pesanan). Tidak ada perubahan schema, penyedia POST, reconcile, HMAC, claim/retry, atau consent. Katalog merchant asli belum terverifikasi (IP belum di-whitelist); semua tes memakai fixture kontrak. UI: `PaymentMethodPicker` (QRIS langsung + akordeon grup lain), `BulkPriceTiers` (baris tier), `PreferenceControls` (bendera + menu) — lihat docs/DESIGN.md; `public/flags/*` dari flag-icons (MIT).
+
+Revisi visual lokal (4 November 2026): `PreferenceControls` memakai satu komponen dengan prop `variant` (`nav` ≥sm di `Navbar`, `sheet` <sm sebagai baris pertama `Footer` non-Pedia); panel hanya dirender saat terbuka sehingga tidak ada radio/ID ganda, dan catatan FX memakai `useDisplayPrices([0])` yang sama (satu POST `/api/display-prices` hanya saat USD dipilih dan panel terbuka; bukan otoritas quote). `ServicesMenu` menerima `locale` opsional (Market saja). Halaman `/pesanan/[code]` memakai locale pesanan tersimpan untuk chrome ringkasan/footer. Tidak ada perubahan API, schema, FX, harga grosir, penyedia, atau kontrak finansial. Preview lokal interaktif adalah alat QA sementara di luar repo (tidak ada route/env/kontrak baru di aplikasi; tidak dilacak git).
+
+Integrasi UI lokal: `(shop)/layout.tsx` memasang `DisplayPreferencesProvider`; `useDisplayPrices`, `usePreferences`, `usePaymentConsent`, `bulk-display` dan `payment-ui` mendukung `Price`, `BulkPriceTiers`, `PaymentMethodPicker`, `GatewayPaymentPanel`, `PreferenceControls` serta `admin/BulkTierEditor`. Checkout mengirim ID `paymentMethods` dan quote bertanda tangan; `expected_price` tetap base. Pesanan/lookup memakai `order.payment` + locale tersimpan. Belum ada bukti deploy produksi; QA browser nyata lokal 1280/390 lulus (5 November 2026), editor admin tidak diverifikasi.
+
+`POST /api/display-prices`: edge, body JSON ≤2048 byte, 1–64 integer IDR aman, satu snapshot FX server (`loadCurrentFxSnapshot()`: snapshot D1 otomatis ≤24 jam → pasangan env darurat `USD_IDR_RATE`/`USD_FX_EFFECTIVE_AT` → null; lihat §16.18) menghasilkan sen USD untuk tampilan saja; missing/stale → null/IDR fallback. Respons private/no-store, tanpa provider (membaca D1 satu baris, memo isolate 60 dtk); rate limit `display:prices` 120/menit per isolate best-effort. Katalog publik tetap cache netral preferensi; tidak ada cookie default yang dipaksa, tidak ada FX klien, dan endpoint bukan otoritas quote/charge.
+
+R3 koreksi lokal: predicate notifier/queue-probe bersama mencakup terminal gateway/crypto dengan atau tanpa ledger; CAS notice memeriksa ulang paid/review. Retry teks dan pengiriman pertama berbagi klaim percobaan; saved-only retry meneruskan captured DatabaseAccess ke view dan marker, dengan admission delapan statement sebelum kerja per rail baru (QRIS lima).
+
+R2 koreksi lokal: callback/reconcile mengganti hanya placeholder probe/finalize teknis dengan review konflik; review lain sticky. CAS finalisasi pin invoice, order, net, channel dan fee estimasi; retry GET saja. Dispatch tidak langsung GET pasca POST ambigu; refresh/cron bertanggung jawab recovery.
+
+TG-R1 lokal: `src/lib/payments/method-options.ts` `buildMethodOptions(idrSubtotal)` = tail quote-route verbatim (QRIS-first + gateway strict-fee + `buildCryptoOffer` + minimum), dipakai web route + TG; TG `src/lib/telegram/payment-quote.ts` freeze `payq1:{v,nonce,exp,tag,linesHash,cart,methods,sel,contact,st}` (16KiB/64-method, 600s, namespace-guard CAS) + `handlers/payment-methods.ts` render/seleksi `pm:<nonce>:<index>` (frozen-only, legacy QRIS tak tersentuh).
+
+TG2c1 buyer transaction locale fixture lokal: `orderLocaleOf(row)` dari `orders.locale` tersimpan di-thread ke handlers invoice/cart-invoice/orders/discovery/retry/notifier/credential-delivery + messages invoice/status/credential + keyboards buyer; admin/grup/WA tidak berubah.
+
+TG2b bulk Telegram fixture lokal: `resolveBulkPrice` di cart/qty/invoice +
+guard atomik `createChannelOrderAtomic` pin base/konfigurasi tier
+(per-varian agregat) dan locale TG; invoice QRIS terima net diskon.
+
+TG2a read-commerce locale fixture lokal: `render-prefs.ts` (`tgCtxFor` prefs+FX
+sekali per handler; `tgDisplayPrice` satu harga display, `tgUsdAlternate`
+alternatif jujur) di-thread ke handlers catalog/discovery/cart/command/callback +
+keyboards/messages ID/EN; invoice/order-status tetap TG2b/c.
+
+TG1 lokal (+correction1): migrasi 0100 display_currency + store preferences (lang:/cur: owned chat, payload onboarding:* di pending_action, konsumsi sekali; route tidak pre-answer lang:/cur:).
+
+BULK1c lokal (+correction1): protected admin API (`PUT /api/products/:id` + `POST/PUT /api/admin/variants`) persists bulk per varian (GET raw+corrupt flag; default off create; omitted=merged-validated; strict zod; guards atomic dalam batch + 409; audit console.info). UI/TG belum dihubungkan.
+
+BULK1b lokal: quote menormalisasi alias produk dan menyimpan `base_price`/`applied_tier_min_qty` bersama harga efektif bertanda tangan; order baru memvalidasi konfigurasi dan guard D1 mengikat konfigurasi saat reservasi. Retry order tersimpan tidak dihitung ulang; integrasi admin/UI/TG belum dilakukan.
+
+BULK1a lokal menambah migrasi 0099: `product_variants.bulk_pricing_enabled` dan `bulk_pricing_tiers` ber-constraint; `src/lib/bulk-pricing.ts` memvalidasi tier dan katalog memproyeksikan konfigurasi valid. Checkout/admin belum memakai tier.
+
+LOC1 lokal: `src/lib/i18n` memproses cookie `axv_locale`/`axv_currency`, Accept-Language dan `getRequestContext().cf.country` native; quote mengembalikan `displayPreferences` tanpa menyimpan mata uang ke order atau mengubah rail. UI/Telegram belum terhubung.
+
+S3d2 lokal menambahkan migrasi 0098 `payment_transactions.fixed_rate` nullable dan policy crypto buyer-fee/fixed-rate; review sticky dan batas provider tidak bisa diperpanjang. Fixture lokal, belum untuk produksi.
+
+S3d1 lokal: preflight NOWPayments membutuhkan `NOWPAYMENTS_OUTCOME_CURRENCY` operator-verified dan meminta minimum fixed-rate/buyer-fee; response JSON numerik dibaca sebagai token teks eksak. Create/quote fee policy dan produksi belum diaktifkan; lihat §16 untuk handoff env.
+
+S3c lokal: admission status merchant memakai satu counter D1; claim/reconcile/paid memakai accessor cron berbudget. Fixture cron dan workerd memeriksa batas, expiry dan paid atomik; belum dipublikasikan.
+
+S3b lokal dalam pengerjaan: order gateway memakai quote bertanda tangan, view buyer dan endpoint consent; verifikasi race/retry belum lengkap dan belum untuk publikasi.
+
+S3a lokal: quote menandatangani snapshot merchant `{channel,estimated_fee,estimated_total,idr_subtotal}`; kegagalan daftar metode tidak memblokir rail lain. Order/UI gateway belum terhubung.
+
+Sekalipay merchant S2b lokal memakai migrasi 0097 untuk invoice/consent fee; create satu POST dan retry GET, callback HMAC dan reconcile GET memakai guard paid atomik. Ini fixture, bukan deployment atau integrasi checkout.
+
+W3 backend lokal: checkout quote/order crypto menyimpan snapshot USD dan locale, status provider durable dan rekonsiliasi pada job payments; migrasi 0094–0096. UI/Telegram dan publikasi belum dilakukan; §16.17 adalah snapshot W1 historis.
+
 ## Koreksi order Pedia - 3 November 2026
 
 Revert paket UX `1b0efde` sesuai keputusan owner, mempertahankan panel deskripsi
@@ -778,6 +837,7 @@ axvara/
 │   │   ├── categories/
 │   │   ├── orders/              # POST create, GET list, PATCH confirm
 │   │   ├── checkout/quote/       # Quote harga/stok/payment bertanda tangan
+│   │   ├── display-prices/       # Konversi tampilan server private/no-store (bukan quote)
 │   │   ├── payment-methods/      # GET publik + PUT admin
 │   │   ├── store-settings/       # GET publik + PUT admin
 │   │   ├── subscribers/          # POST publik + GET admin
@@ -1117,6 +1177,7 @@ CREATE TABLE store_settings (
 | PUT | /api/banners/settings | Konfigurasi popup bersama | admin |
 | POST | /api/banners/reorder | Urutan atomik + expected_ids | admin |
 | POST | /api/checkout/quote | Validasi produk/stok/harga, metode aktif, dan terbitkan signed quote 60 menit | - |
+| POST | /api/display-prices | Konversi display-only IDR ke sen USD dari snapshot server, private/no-store | - |
 | GET/POST/PUT | /api/payment-methods[?id=] | Baca metode aktif / tambah bank / kelola rekening dan QRIS | public/admin |
 | GET/PUT | /api/store-settings | Baca identitas storefront / perbarui nama, kontak, footer, logo | public/admin |
 | POST | /api/orders | Verifikasi signed quote, buat pesanan idempotent, reservasi stok atomik | - |
@@ -1480,6 +1541,19 @@ render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
     dipotong), LIKE max 50 byte (pola search dipotong 40 char).
 - CSP header via Next.js middleware
 - Jangan commit `.env`, `wrangler.toml` dengan secrets — pakai Pages Variables
+  - R3 (lokal, 4 Nov 2026) kirim invoice rail baru (gateway/crypto): view status
+    tersimpan dirender sebagai TEKS (bukan foto QRIS). `showProviderInvoiceStatus`
+    mengembalikan hasil kirim; view live (detail crypto / prompt konsen fee /
+    detail gateway) dengan ok:true menandai `telegram_invoice_sent_at`. Penolakan
+    pasti (ada `error_code`) tetap pending untuk `retryTelegramInvoiceDelivery`
+    (ceiling 5, selektor cron yang sama diperluas ke nowpayments/sekalipay_gateway;
+    klaim CAS pada `telegram_invoice_attempts`; render `savedOnly` tanpa
+    GET/POST/re-quote/reservasi). Hasil ambigu (tanpa error_code) diselesaikan
+    sekali: marker + nudge same-order tanpa nominal/alamat/link, tidak dikirim ulang.
+    Reminder rail baru: teks generik saved-locale + tombol refresh. Batas: notifikasi
+    PUSH kedaluwarsa/batal untuk rail baru belum ada (QRIS_EXPIRY_NOTICE_WHERE dibagi
+    dengan probe antrean cron operations; perlu perubahan terpisah); pembeli melihat
+    teks kedaluwarsa generik saat membuka/refresh. Dev/test lokal, belum publik.
 
 ---
 
@@ -3967,7 +4041,15 @@ signature, mode, privasi file/secret, allowlist, HTTP/error/ukuran respons dan
 program remote offline; bukan transaksi supplier development/live. Runbook dan
 gerbang integrasi berikutnya: `docs/agent-rules/digiflazz.md`.
 
-### 16.15 NOWPayments — persiapan lokal, 3 November 2026
+### Payout — persiapan kontrak lokal, 4 November 2026
+
+Invoice/reconcile yang diuji lokal bukan withdrawal dan bukan bukti payout live; tidak ada implementasi inisiasi atau scheduling payout dalam paket ini. Payout dapat ditunda terpisah dari rollout pembayaran, tetapi aktivasinya wajib menunggu konfigurasi owner dan konfirmasi provider.
+
+Menurut [withdrawal Sekalipay](https://merchant.sekalipay.com/id/dokumentasi/withdrawal) (snapshot publik 3 November), nominal net Rp10.000–Rp10.000.000 menuju bank/DANA yang diverifikasi di dashboard, bukan tujuan yang ditentukan API; biaya withdrawal di atas net, terpisah dari fee invoice pembeli. Tidak ada idempotency withdrawal yang didokumentasikan: timeout/5xx tidak boleh di-retry otomatis. Klaim durable satu inisiasi hanyalah desain masa depan, belum diimplementasikan; hasil ambigu diperiksa manual lewat riwayat dan saldo. `approved`/`queued` bukan selesai, dan `manual_payout_pending` dapat memerlukan tindakan provider. Status akun dan limit aktual belum diverifikasi.
+
+NOWPayments API key pembayaran bukan JWT atau sesi 2FA dashboard; jangan menyimpan JWT/TOTP atau melewati 2FA. Aset, jaringan, alamat, whitelist, minimum, custody dan outcome/routing harus dikonfirmasi owner/provider; penerimaan Bitget belum terbukti. Outcome/net bukan harga/fee pembeli. Tidak ada pilihan jaringan, alamat, threshold atau cadence yang ditebak; threshold/cadence hanya keputusan owner bila payout terjadwal kelak diinginkan.
+
+### 16.15 NOWPayments — snapshot persiapan lokal, 3 November 2026
 
 Sumber kredensial tunggal `.nowpayments-credentials`, format shell `KEY=value`,
 chmod600 dan di-ignore melalui `.nowpayments-credentials*`. Field lokal:
@@ -3990,7 +4072,23 @@ dan fixture kontrak harus selesai sebelum rollout CI. Jangan menerbitkan URL
 callback atau mengisi secret Pages seolah receiver sudah tersedia. Runbook dan
 sumber resmi: `docs/agent-rules/payments.md`.
 
-### 16.16 Sekalipay payment gateway — penyimpanan saja, 3 November 2026
+### 16.17 Snapshot historis W1 NOWPayments + shell gateway — 3 November 2026
+
+**S3d1 lokal supersedes preflight W1:** `NOWPAYMENTS_OUTCOME_CURRENCY` wajib berupa kode outcome yang diverifikasi operator sebelum aktivasi; belum ada perubahan env produksi. Flag create buyer-fee/fixed-rate dan persetujuan buyer masih paket berikutnya.
+
+Implementasi LOCAL/fixture, flag default OFF, tanpa rollout: `drizzle/migrations/0094_nowpayments_rails.sql`
++ mirror `drizzle/schema.sql` (kolom nullable `currency/pay_currency/pay_network/price_amount_text/pay_amount_text/
+actually_paid_text/outcome_* /fee_paid_by_user/provider_payment_id/pay_address/last_reconciled_at` + unique index
+`payment_transactions_provider_payment`); `src/lib/payments/{decimal,rails,nowpayments,sekalipay-gateway}.ts`;
+route `src/app/api/payments/nowpayments/ipn/route.ts`; generalisasi `transitionPendingPaymentToPaid`
+(`paymentMethod`, event mode `received_text` untuk crypto, satu batch paid+outbox dipertahankan).
+Semantik: klaim initializing → satu POST → GET recovery by payment id; preflight dinamis; fail-closed tanpa
+tebakan FX; IPN HMAC-SHA512 canonical + dedupe + waitUntil reconcile + cron-recoverable; finished + gross cukup
+→ paid sekali; partial/under/late/unknown → manual review. Gateway Sekalipay selalu `not_configured`.
+QRIS tidak berubah; TTL 15 menit; checkout/TG/cron/admin UI milik W3. Blokir manual (gateway docs, Bitget,
+payout 2FA/IP) di runbook pembayaran.
+
+### 16.16 Sekalipay payment gateway — snapshot penyimpanan saja, 3 November 2026
 
 API key dan secret key owner hanya disimpan lokal di
 `.sekalipay-gateway-credentials` (format shell, chmod600, git-ignored
@@ -4001,3 +4099,32 @@ Tidak ada request API, tes kredensial, perubahan dashboard, runtime, bot, env,
 route, schema atau metode pembayaran. NOWPayments crypto + Sekalipay gateway
 non-QRIS di web/bot Telegram masih rencana owner; instruksi saat ini hanya simpan,
 bukan memulai integrasi. Detail: `docs/agent-rules/payments.md`.
+
+### 16.18 FX USD/IDR otomatis + snapshot koin crypto — 5 November 2026 (LOKAL, belum deploy)
+
+- **Tabel** `crypto_market_snapshot` (migrasi `0101`, satu baris `id=1`). Tidak ada rahasia. Lease (`lease_until`) + `last_attempt_at` membuat refresh paralel antar-isolate hanya dikerjakan satu pemenang; penulisan akhir CAS pada lease milik sendiri.
+- **Katalog koin kurasi** `src/lib/payments/crypto-assets.ts`: 28 koin (6 populer + 22 stable) dengan `ticker`, `symbol`, `name`, `network`, `networkLabel`, `group`, `order`, `logo` (`/payments/coins/<ticker>.svg`, berkas SVG menyusul tugas UI). Dikecualikan: `btclightning`, `usddtrc20`, `tusdtrc20`, dan aset yang butuh memo/extra id. Koin di luar peta ini tidak pernah ditawarkan.
+- **Refresh** (`market-snapshot-refresh.ts`): hanya butuh `NOWPAYMENTS_API_KEY` (tidak bergantung `NOWPAYMENTS_ENABLED`; tanpa key = no-op). Kurs = dua GET `/estimate` ke `usdtbsc` (1.000.000 IDR dan 100 USD) → `IDR/USD = 10000 × est_usd / est_idr` dengan bigint, dibulatkan half-up 2 desimal, `fx_source="nowpayments-estimate"`. Ditolak bila di luar 5000–50000 atau berubah >10% dari kurs tersimpan ≤24 jam (nilai lama dipertahankan + `last_error`). Koin = `/merchant/coins` ∩ kurasi → `/min-amount?currency_from=<t>&currency_to=<outcome>&fiat_equivalent=usd` (bentuk floating/merchant-fee, tanpa `is_fixed_rate`/`is_fee_paid_by_user`), concurrency ≤6, timeout 8 dtk/request, total 30 dtk; `currency_to` = `NOWPAYMENTS_OUTCOME_CURRENCY` valid, fallback `usdtbsc`. Koin yang min-nya gagal dihilangkan; bila `/merchant/coins` gagal, semua min gagal, atau deadline total lewat, daftar sebelumnya dipertahankan. Biaya 3–4 statement D1 (baca, lease, tulis).
+- **Cron**: dipanggil di akhir `runCleanup` pada `POST /api/cron/lite?job=cleanup` (tick 5 menit existing). Dipilih karena job ini ringan, berjalan di request sendiri sehingga jaringan refresh tidak menyentuh payments/expiry/fulfillment, dan tidak menambah trigger. Semua error/timeout/budget habis ditelan di hook (hasil cleanup tetap dikembalikan; kunci tambahan `crypto_market` hanya muncul bila ada pekerjaan).
+- **Pembaca** `src/lib/payments/market-snapshot.ts`: `getCryptoMarketSnapshot(db)` dan `loadCurrentFxSnapshot()` dengan memo per-isolate 60 dtk. Urutan kurs: D1 segar (≤24 jam, `USD_FX_MAX_AGE_MS`) → pasangan env darurat `USD_IDR_RATE`/`USD_FX_EFFECTIVE_AT` (`source="operator-fixed"`, override manual) → null (fail closed: IDR saja, crypto tersembunyi). Koin lebih tua dari 2 jam dikembalikan KOSONG dengan `coinsStale:true`. `loadFxSnapshot()` di `fx.ts` kini hanya pembaca env darurat; `buildCryptoOffer`/`buildCryptoCatalog` (lihat §16.19) dan `displayUsdCents(idr, fx)` menerima kurs eksplisit; konsumen: `/api/display-prices`, `/api/checkout/quote`, `/api/orders`, `buildMethodOptions/Catalog` (web + Telegram freeze), `tgCtxFor`.
+- **Cek kurs saat create** (`isFxSnapshotAcceptable`, `crypto-preflight.ts`): token quote valid diterima bila snapshot saat ini ada, `effective_at` bertanda ≤24 jam, dan selisih relatif ≤2% terhadap kurs bertanda; selain itu `409 quote_stale` (tanpa snapshot saat ini tetap 503). Harga USD yang ditagih tetap angka bertanda. Validator token (`src/lib/auth.ts`) menerima `source` `operator-fixed` dan `nowpayments-estimate`. Jalur create Telegram tidak membandingkan kurs saat ini sama sekali (snapshot beku di payq1 + TTL 10 menit adalah otoritas); perilaku itu dipertahankan dan tidak diubah.
+- **Env**: tidak ada env baru. `USD_IDR_RATE`/`USD_FX_EFFECTIVE_AT` menjadi cadangan darurat. Migrasi 0101 harus diterapkan CI sebelum fitur dipakai; sebelum itu pembaca gagal-baca → env darurat.
+
+### 16.19 Crypto multi-koin, kurs mengambang, biaya layanan 1,5% — 5 November 2026 (LOKAL, belum deploy)
+
+Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/fixed-rate" dan `NOWPAYMENTS_PAY_CURRENCY` kini histori).
+
+- **Modul harga** `src/lib/payments/crypto-pricing.ts` (murni, BigInt): `CRYPTO_SURCHARGE_BPS=150`, `CRYPTO_MIN_TOTAL_USD_CENTS=200`, buffer minimum ×115/100. `cryptoSurchargeCents(base)=ceil(base*150/10000)`; `cryptoPricing(base)` → `{baseCents, surchargeCents, totalCents, surchargeBps}`; `cryptoRequiredTotalCents(minUsdText)=max(200, ceil(min×1,15) ke sen)`; `minIdrSubtotalForTotal` (subtotal IDR terkecil yang lolos, hanya tampilan "Min."); `centsToUsdText`, `bpsPercentText`.
+- **Penawaran** `crypto-preflight.ts`: `buildCryptoCatalog(idrSubtotal, fx, coins)` → satu entri per koin snapshot, urut katalog kurasi (populer `order` 1–6, lalu stablecoin 101+). Tersedia: `{id:"nowpayments:<ticker>", kind:"crypto", label:<simbol>, sublabel:<label jaringan>, group, logo, currency:"USD", amount_text:<TOTAL>, pay_currency, network, base_cents, surcharge_cents, total_cents, surcharge_bps:150, fee_payer:"merchant", fixed_rate:false, sender_gas_extra:true, usd:{cents:<base>, rate_*, source, effective_at, idr_subtotal, pay_currency, network}}`. Nonaktif: `{available:false, unavailable_reason:"below_min", min_total_cents, min_total_text, min_idr_subtotal}` tanpa `amount_text`/`usd`. `isCryptoTotalStillPayable(total, ticker, coins)` = cek ulang lantai + minimum×1,15 terhadap snapshot SAAT INI (create web + validasi Telegram). `cryptoRailEnabled()` = hanya `NOWPAYMENTS_OUTCOME_CURRENCY` valid (menggantikan `cryptoAssetEnabled`/`NOWPAYMENTS_PAY_CURRENCY`). `USD_CRYPTO_*` di `fx.ts` dihapus.
+- **Katalog quote** `method-options.ts`: `buildMethodCatalog` = QRIS → gateway → crypto (semua koin snapshot termasuk nonaktif; tanpa panggilan provider — hanya `getCryptoMarketSnapshot()`); butuh `isNowpaymentsConfigured()` + kurs; kosong/basi/tanpa kurs → tanpa crypto. `buildMethodOptions` (Telegram + token) hanya yang tersedia.
+- **Token quote** (`src/lib/auth.ts`): metode crypto membawa `id`, `kind`, `currency:"USD"`, `amount_text`(total), `pay_currency`, `network`, `fee_payer:"merchant"`, `fixed_rate:false`, `base_cents`, `surcharge_cents`, `total_cents`, `surcharge_bps`, `sender_gas_extra`, `usd`. Validator tunggal `isValidCryptoMethod` (dipakai token DAN payq1): ticker kurasi persis, `pay_currency`=ticker, jaringan = jaringan kurasi (metode & `usd`), base = `idrToUsdCents(subtotal, kurs bertanda)`, surcharge = rumus ceil, total = base+surcharge ≥ US$2,00, `amount_text` = total 2dp, bps = 150. Metode non-crypto tidak boleh membawa field crypto. HMAC/claim/kedaluwarsa tidak berubah.
+- **Token quote ringkas** (6 November 2026, lokal): JWT TIDAK lagi memuat satu metode penuh per koin (28 koin ≈ 23.000 karakter > batas `quote_token` 8000 di `/api/orders`). `createCheckoutQuoteToken` memvalidasi input penuh dengan `quoteSchema`, memastikan semua metode kripto kontigu dan identik selain ticker (jaringan/sublabel diturunkan dari peta kurasi; selain itu throw), lalu menandatangani satu blok `crypto {tickers[], at, usd, amount_text, base/surcharge/total_cents, surcharge_bps, ...}`; `verifyCheckoutQuoteToken` memvalidasi blok dengan skema strict (1..64 ticker unik kurasi), mengembangkannya ke metode penuh pada indeks `at`, lalu menjalankan `quoteSchema` yang sama (bentuk `CheckoutQuotePayload` tidak berubah; token bentuk penuh lama tetap lolos; kedua bentuk sekaligus ditolak). 28 koin + 3 QRIS: 23.197 → 1.543 karakter. Batas 8000 dan body limit tidak diubah; payq1 Telegram terpisah.
+- **Create web** (`src/app/api/orders/route.ts`): `nowpayments:<ticker>` (id non-kurasi → 409 `quote_stale`); semua cek token di atas, lalu (order BARU saja, bukan retry `quote_id` yang sama) koin harus ada di snapshot segar & `isCryptoTotalStillPayable` & kurs ≤2% (`isFxSnapshotAcceptable`) → selain itu 409 `quote_stale`; tanpa kurs/konfigurasi → 503.
+- **Adapter** `nowpayments.ts` `createNowpaymentsInvoice`: opsi `feePayer:"merchant"`, `fixedRate:false` wajib untuk mode USD; `expectedUsd` = `{cents(base), priceText(TOTAL), surchargeBps, surchargeCents, totalCents, rate_*, idrSubtotal, payCurrency, network}` diverifikasi ulang (kurasi, jaringan, rumus ceil, lantai → `nowpayments_below_floor`). Klaim `initializing` menulis `fee_paid_by_user=0`, `fixed_rate=0`, `crypto_base_usd_cents/crypto_surcharge_usd_cents/crypto_surcharge_bps` SEBELUM tepat satu POST `{price_amount:<total>, price_currency:"usd", pay_currency:<ticker>, is_fixed_rate:false, is_fee_paid_by_user:false}`. Preflight `checkNowpaymentsMinimum`: `/min-amount` bentuk mengambang (`...&fiat_equivalent=usd`, tanpa flag) — total < `fiat_equivalent` provider → tolak tanpa POST. Validasi respons: `pay_currency`=ticker, `price_amount/currency`, `pay_amount>0`; fixed/fee-by-user = true → `nowpayments_policy_unverified` (review manual); `valid_until` tidak wajib; `payin_extra_id` tidak kosong → tx `failed` + `nowpayments_extra_id_unsupported`, tanpa alamat tersimpan, error dilempar apa adanya (web: order dibatalkan + 503 generik; Telegram: order dibatalkan + notice `method_unavailable`). Baris tersimpan menolak koin/jaringan lain pada retry (`nowpayments_invoice_mismatch`).
+- **Rekonsiliasi**: baris 0/0 — provider melaporkan `is_fixed_rate`/`is_fee_paid_by_user` = true → `nowpayments_policy_manual_review` (sticky); deadline `valid_until` TIDAK diperiksa (hanya baris 1/1 lama), batas tetap `min(tx.expires_at, order.expires_at)` + late→manual review; gross `actually_paid` ≥ `pay_amount` tetap syarat paid; paid tidak pernah turun. Baris 1/1 lama tetap memakai cek lamanya (flag + deadline).
+- **Skema**: migrasi `0102_crypto_surcharge.sql` + mirror `drizzle/schema.sql` — `payment_transactions.crypto_base_usd_cents`, `crypto_surcharge_usd_cents`, `crypto_surcharge_bps` (INTEGER nullable; total = `price_amount_text`). CI harus menerapkan 0102 sebelum rilis (view crypto membaca kolom ini).
+- **View pembeli** (`payment-view.ts`): label/simbol/`network_label`/`logo` dari katalog kurasi (fallback aman untuk ticker tak dikenal), `amount_text`=total, `base_amount_text`, `surcharge_amount_text`, `surcharge_bps`, `fee_payer` (`merchant` baris 0/0, `buyer` baris 1/1 lama), `fixed_rate`; `fee_unknown` dihapus. Web (`GatewayPaymentPanel`, `lacak-pesanan`) menampilkan rincian subtotal + biaya layanan + total dan instruksi "kirim tepat `<jumlah> <SIMBOL>` lewat jaringan `<label>` saja"; `method-logos.ts` memetakan logo koin dari katalog (`/payments/coins/<ticker>.svg`).
+- **Picker web** (`PaymentMethodPicker.tsx`, `payment-ui.ts`): menerima banyak opsi crypto; koin nonaktif tampil dengan "Min. US$…" + alasan, radio `disabled` (tak dapat dipilih klik/keyboard); CTA/total mengikuti `amount_text` koin terpilih; ringkasan menampilkan baris biaya layanan. Tanpa perubahan visual besar (polish = tugas UI terpisah). Dipoles 6 November 2026 (hanya presentasi, tanpa perubahan kontrak quote/create): grup Crypto = header (total USD + chip logo bulat) + pencarian klien (>8 baris simbol) + subgrup Populer/Stablecoin + SATU baris per simbol (`SingleRow` radio langsung untuk simbol satu jaringan; `ExpandRow` + `NetworkChip` radiogroup untuk simbol multi-jaringan tanpa jaringan bawaan); panel pesanan crypto (`GatewayPaymentPanel.tsx`) menambah logo koin, baris "Jaringan" berlabel, QR alamat lokal (`qrcode` dimuat dinamis, hanya tahap pending) dan satu baris peringatan; spesifikasi visual di `docs/DESIGN.md`.
+- **Telegram**: `paymentMethodOfferKeyboard` menampilkan satu entri `Crypto (USD) · <total> USD` (`pmc:<nonce>`); `cryptoCoinKeyboard` (Populer → Stablecoin, 2/baris, label `BTC` / `USDT · BSC`, Kembali `pmb:<nonce>`); tap koin = `pm:<nonce>:<index>` (reuse freeze/consent/claim). Handler `handlePayCryptoMenu` (callback.ts `pmc`/`pmb`, ownerBound) hanya merender ulang dari array beku. `validateFrozenSelectionLive` menolak koin yang hilang dari snapshot / di bawah minimum baru (`method_unavailable`); dispatch memakai ticker/jaringan dari id beku → katalog kurasi. `PAYQ1_MAX_BYTES` 64 KB, `PAYQ1_MAX_METHODS` 96 (indeks `pm:` tetap 2 digit). Pesan status pending memuat jumlah+simbol+jaringan+peringatan+baris biaya layanan.
+- **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
+- **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.

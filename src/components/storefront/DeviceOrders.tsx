@@ -11,12 +11,14 @@ import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { readLocalOrders, removeLocalOrder, settleLocalOrder, type LocalOrder } from "@/lib/local-orders";
+import { asPayLocale, normalizePaymentView, resumeAmount, resumeInfo, type PayLocale, type PaymentView } from "@/lib/payment-ui";
 
 export const DEVICE_ORDERS_MAX = 5;
 const MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 const FINAL_LOCAL = new Set(["dibatalkan", "kadaluarsa"]);
 
-type Live = { status: string; fulfillment: string | null; total: number | null };
+// `payment`/`locale` hanya untuk rel gateway/crypto (tampilan aman server; tanpa alamat/tautan/kontak).
+type Live = { status: string; fulfillment: string | null; total: number | null; payment?: PaymentView | null; locale?: PayLocale; subtotal?: number };
 type Row = { local: LocalOrder & { code: string }; live: Live | "loading" | "error" };
 
 const TONE = {
@@ -27,9 +29,14 @@ const TONE = {
   muted: "border-white/10 bg-white/[0.05] text-white/55",
 } as const;
 
-export function deviceOrderStatus(live: Row["live"]): { label: string; tone: keyof typeof TONE; pay: boolean } {
+export function deviceOrderStatus(live: Row["live"]): { label: string; tone: keyof typeof TONE; pay: boolean; cta?: string } {
   if (live === "loading") return { label: "Memeriksa status…", tone: "muted", pay: false };
   if (live === "error") return { label: "Status belum termuat", tone: "muted", pay: false };
+  if (live.payment && live.status === "pending") {
+    // Rel non-QRIS: label/CTA sadar penyedia dan mengikuti tahap server (tanpa "QRIS", tanpa tautan langsung).
+    const info = resumeInfo(live.payment, live.locale ?? "id");
+    return { label: info.label, tone: info.tone, pay: info.actionable, cta: info.cta };
+  }
   switch (live.status) {
     case "pending": return { label: "Menunggu pembayaran", tone: "gold", pay: true };
     case "lunas":
@@ -88,6 +95,9 @@ export function DeviceOrders() {
             status,
             fulfillment: order.fulfillment_status ? String(order.fulfillment_status) : null,
             total: Number.isFinite(total) ? total : null,
+            payment: normalizePaymentView(order.payment),
+            locale: asPayLocale(order.locale),
+            subtotal: Number(order.subtotal),
           });
         } catch {
           update(local.code, "error");
@@ -106,9 +116,8 @@ export function DeviceOrders() {
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden" aria-label={`Pesanan di perangkat ini, ${rows.length} pesanan`}>
         <span className="flex min-w-0 items-center gap-2.5">
           <span className="text-sm font-semibold text-white">Pesanan di perangkat ini</span>
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/10 px-1.5 text-[11px] font-bold text-white/70">{rows.length}</span>
           {pendingCount > 0 && (
-            <span className="inline-flex items-center rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{pendingCount} belum dibayar</span>
+            <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{pendingCount} belum dibayar</span>
           )}
         </span>
         <span className="shrink-0 text-white/40 transition-transform group-open:rotate-180">
@@ -120,7 +129,10 @@ export function DeviceOrders() {
         {rows.map(({ local, live }) => {
           const view = deviceOrderStatus(live);
           const items = (local.items ?? []).map((item) => `${item.name ?? "Produk"} ×${Math.max(1, Number(item.qty ?? 1) || 1)}`).join(", ") || "Pesanan";
-          const total = live !== "loading" && live !== "error" && live.total != null ? live.total : Number(local.subtotal ?? 0);
+          const liveOk = live !== "loading" && live !== "error" ? live : null;
+          const total = liveOk && liveOk.total != null ? liveOk.total : Number(local.subtotal ?? 0);
+          // Jumlah dalam mata uang ASLI pesanan: crypto = USD server (teks persis), gateway = total akhir bila ada; QRIS tetap Rupiah.
+          const amountText = liveOk?.payment ? resumeAmount(liveOk.payment, Number(liveOk.subtotal ?? local.subtotal ?? 0), liveOk.locale ?? "id").text : formatRupiah(total);
           const created = formatWibDateTime(local.createdAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
           return (
             <li key={local.code} className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
@@ -128,7 +140,7 @@ export function DeviceOrders() {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-white">{items}</p>
                   <p className="mt-0.5 font-mono text-[11px] font-bold text-[#00E5FF]/85">{local.code}</p>
-                  <p className="mt-0.5 text-[11px] text-white/40">{created ? `${created} · ` : ""}{formatRupiah(total)}</p>
+                  <p className="mt-0.5 text-[11px] text-white/40">{created ? `${created} · ` : ""}{amountText}</p>
                 </div>
                 <button
                   type="button"
@@ -147,7 +159,7 @@ export function DeviceOrders() {
                     ? "inline-flex h-9 items-center rounded-full bg-[#00E5FF] px-4 text-xs font-bold text-[#080C1E] transition hover:bg-[#00D0E8]"
                     : "inline-flex h-9 items-center rounded-full border border-white/10 bg-white/[0.05] px-4 text-xs font-semibold text-white/80 transition hover:bg-white/10"}
                 >
-                  {view.pay ? "Bayar sekarang" : "Lihat pesanan"}
+                  {view.pay ? (view.cta ?? "Bayar sekarang") : (view.cta ?? "Lihat pesanan")}
                 </Link>
               </div>
           </li>

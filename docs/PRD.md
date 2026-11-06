@@ -1,14 +1,94 @@
 # PRD — AXVARA
 
+Keputusan owner 5 November 2026 (rail pembayaran publik): merchant Sekalipay gateway disuspend, sehingga metode non-QRIS Sekalipay (VA/E-Wallet/transfer lain) **tidak ditampilkan** di web maupun Telegram. Kodenya dipertahankan dan tetap tersembunyi karena `SEKALIPAY_GATEWAY_ENABLED` tidak aktif di produksi. Rail yang dituju untuk pembeli: **QRIS (utama, "Paling cepat") + Crypto NOWPayments (USD, untuk pembeli luar negeri)**. Bulk order, harga USD, dan bilingual id/en tetap direstui. Crypto tetap mati di produksi (`NOWPAYMENTS_ENABLED` tidak diset) sampai env produksi diisi dan tes bayar nyata lulus.
+
+Crypto multi-koin (lokal 5 November 2026, belum deploy): pembeli boleh membayar dengan koin apa pun yang aktif di akun NOWPayments dan ada di katalog kurasi (populer + stablecoin; 28 koin) — owner tetap menerima USDT BSC lewat auto-konversi (`NOWPAYMENTS_OUTCOME_CURRENCY`). Invoice baru memakai kurs mengambang dengan fee provider ditanggung merchant, sehingga minimum provider rendah (US$0,08–1,95); pembeli menanggung biaya lewat **biaya layanan crypto 1,5%** atas nilai USD (dibulatkan ke atas ke sen) — total USD = base + biaya layanan. Crypto hanya dapat dibayar bila total ≥ US$2,00 dan ≥ minimum provider koin × 1,15; koin di bawahnya tampil nonaktif dengan "Min. US$…" (web) atau tidak ditampilkan (Telegram). Telegram menampilkan satu entri "Crypto (USD)" lalu sub-keyboard koin. Instruksi bayar menyebut jumlah tepat + simbol + jaringan dan peringatan koin/jaringan lain dapat hilang. Alamat dengan memo/extra id tidak pernah ditampilkan (gagal tertutup). Detail: `docs/agent-rules/payments.md`, ARCHITECTURE §16.19. Status: implementasi LOKAL dengan tes fixture; belum dipublikasikan atau diverifikasi di akun live.
+
+Kurs USD otomatis (lokal 5 November 2026, belum deploy): harga tampilan USD dan harga crypto memakai kurs IDR/USD yang di-refresh server dari estimasi NOWPayments (disimpan di D1, dicek ≥30 menit sekali oleh cron), bukan env manual. Kurs tertua yang dipakai 24 jam; tanpa kurs segar (atau cadangan env darurat) tampilan kembali ke IDR dan crypto tidak ditawarkan. Saat membuat pesanan crypto, kurs bertanda di quote tetap diterima bila kurs terbaru berbeda ≤2% dan quote ≤24 jam; di luar itu pembeli diminta memuat ulang quote (409). Nominal USD yang ditagih tetap angka pada quote. Daftar koin crypto (28 kurasi) dan minimum USD tersedia di server dan kini dipakai quote/create (lihat paragraf crypto multi-koin di atas).
+
+Koreksi lokal 5 November: halaman pesanan menafsirkan expiry SQL tanpa zona sebagai UTC agar consent gateway yang masih hidup tidak tampil kedaluwarsa di WIB; expiry kosong/invalid menyembunyikan pembayaran. Snapshot checkout lokal tanpa expiry order valid menunggu GET server, bukan menebak expiry dari QR. TTL dan validasi pembayaran server tidak berubah; browser/build ulang belum diverifikasi.
+
+Checkout Market lokal menggunakan chrome ID/EN sesuai preferensi eksplisit atau locale quote; perubahan bahasa tidak membuat quote baru atau mengubah pilihan metode, kontak, persetujuan, keranjang, maupun pesanan. Nama dan pesan pemilik/provider yang tidak dikenal tetap asli. Diverifikasi lokal dengan browser nyata dan disetujui review UI pembeli (5 November 2026); belum deploy produksi.
+
+## Integrasi UI Market lokal — 4 November 2026
+Editor admin tingkat grosir dan tampilan grosir PDP/keranjang/checkout terhubung secara lokal: agregasi per varian, harga klien estimasi, quote server otoritatif dan `expected_price` harga dasar. Checkout memilih ID metode dari quote; consent gateway serta status gateway/crypto memakai view aman server. Preferensi bahasa dan mata uang independen; USD display memakai sen hasil server atau fallback IDR, tanpa mengubah charge. Belum terbit ke produksi. Status 5 November 2026: Vitest penuh 4547/4547, build Pages 145 edge routes, QA browser nyata lokal 1280/390 lulus dan review UI pembeli Opus disetujui; editor admin tidak dirender/diverifikasi.
+
+## Revisi owner marketplace (5 November 2026, lokal; persetujuan visual baru menunggu)
+- **Pembayaran:** QRIS tampil langsung di atas semua grup sebagai kartu radio terpilih bawaan (tanpa header akordeon, chip, chevron, atau panel tersembunyi; satu badge "Paling cepat"/"Fastest" inline di judul kartu QRIS); akordeon grup Virtual Account / E-Wallet / Transfer lainnya / Crypto dengan chip logo saat tertutup dan semua metode merchant (logo, biaya est., batas min) saat terbuka; menutup grup yang memuat pilihan menghapus pilihan eksplisit (tanpa ringkasan metode/fee; CTA menunggu pilihan baru, QRIS langsung dan default checkout baru tidak berubah). Metode/biaya/batas hanya dari quote server (tidak ada katalog statis). Kanal di luar batas min/max merchant tampil nonaktif (tidak bisa dipilih) dengan alasan dan kekurangan dari server; hanya yang tersedia yang ditandatangani dan diterima saat create (batas inklusif, divalidasi ulang). Bila total berubah dan pilihan menjadi nonaktif, pilihan pindah ke QRIS dengan pemberitahuan sebelum membuat pesanan. Paragraf peringatan panjang biaya/gas crypto dihapus (caption "+ biaya jaringan"); alamat/nominal tepat dan total akhir tetap muncul/disetujui di halaman pesanan.
+- **Grosir:** rincian harga berupa daftar baris tier (rentang inklusif dari min_qty asli; tier terakhir "N+" yang inklusif, bukan "> N"; harga satuan di kanan; tanpa chip persen); perhitungan total, agregasi, stok dan plafon tidak berubah.
+- **Bahasa dan mata uang:** satu tombol bendera bulat di header semua lebar membuka menu dua bagian independen (Bahasa: Indonesia/English UK; Mata uang: Rupiah/US Dollar); perilaku cookie, default otomatis dan independensi tidak berubah; footer tidak lagi memuat baris/sheet.
+- Status: lokal, tes fokus lulus; belum deploy; persetujuan Opus untuk revisi ini menunggu (bukan persetujuan 4 November).
+
+## Preferensi bahasa/mata uang — penempatan responsif (4 November 2026, lokal)
+(Riwayat: penempatan tombol teks/footer di bawah digantikan oleh tombol bendera 5 November 2026.)
+Perilaku produk tidak berubah: bahasa dan mata uang tetap independen (EN+IDR dan ID+USD valid), cookie hanya ditulis saat pilihan eksplisit, default otomatis dari server, dan perubahan tidak mereset quote, pesanan, rel terpilih, kontak, persetujuan, atau keranjang. Yang berubah hanya penempatan: tombol teks di header ≥sm; di bawah sm lewat baris pertama footer yang membuka bottom sheet. Chrome ringkasan/footer halaman pesanan mengikuti locale pesanan tersimpan, bukan preferensi global. Belum terbit ke produksi; dipenuhi dan diterima review UI pembeli Opus pada 5 November 2026 (lokal).
+
+## Persiapan payout (lokal, 4 November 2026)
+Implementasi invoice/reconcile lokal bukan implementasi withdrawal atau bukti dana terselesaikan. Payout sendiri belum diaktifkan: tujuan bank/DANA Sekalipay, atau aset/jaringan/alamat dan custody/routing crypto harus dipastikan owner; ambang/cadence hanya ditentukan bila diperlukan. Ketidaktersediaan payout tidak otomatis memblokir rollout pembayaran bila payout sengaja ditunda. Aturan tanpa retry withdrawal ambigu, biaya dan batas bukti ada di `docs/agent-rules/payments.md`.
+
+R3 koreksi lokal: pemberitahuan terminal Telegram untuk gateway/crypto memakai locale order dan tidak menampilkan QRIS atau detail bayar; retry invoice terikat klaim pengiriman pertama dan budget query terhitung. Ini bukti fixture, belum publikasi.
+
+R2 koreksi lokal: konflik callback/status gateway tetap review meski muncul saat probe finalisasi; detail dan consent tersembunyi. Pemulihan POST ambigu menunggu refresh/cron GET, bukan POST ulang. Isu minimum quote tetap membawa slug bila diberikan.
+
+TG-R1 lokal: ekstraksi method-options web→TG + frozen payq1 offer/seleksi per nonce (QRIS-first, namespace guard, tanpa create/consent/provider-write; R2 menangani create/consent/status). Detail: docs/agent-rules/payments.md, ARCHITECTURE §method-options, CHANGELOG.
+
+TG2c1 buyer transaction locale fixture lokal: copy invoice/status/paid/delivery/credential + tombol pembeli mengikuti locale order tersimpan (ID legacy bila kosong); charge QRIS tetap IDR aktual via payable ledger; admin/grup tetap ID; rail baru/fee gateway tetap TG2c2.
+
+TG2b bulk Telegram fixture lokal: harga efektif agregat per varian (all-units,
+tier tertinggi menang; varian berbeda tidak digabung), pin base/konfigurasi di
+guard atomik + tag persetujuan; order baru simpan locale pemilik, replay pakai
+harga/locale snapshot tersimpan; currency display-only tidak mengubah charge.
+
+TG2a read-commerce locale fixture lokal: copy baca ID/EN dari prefs tersimpan
+(home/reply/inline menus, katalog/kategori/cari/list/detail/varian/qty/email
+prompt/cart/help/warranty/error/loading); satu harga display-currency per tombol
+(IDR jujur bila FX USD basi, tanpa USDT/$0); invoice/order-status tetap TG2b/c.
+
+TG1 fixture lokal (+correction1): /start pertama chooser eksplisit; payload disimpan di pending_action onboarding:* lalu dikonsumsi sekali saat lang: (tidak auto-order, duplikat tidak replay); jawaban callback tepat sekali milik handler (route tidak pre-answer lang:/cur:).
+
+BULK1c fixture lokal (+correction1): protected admin API persists bulk pricing per varian
+(enabled+tiers mentah di GET, default off create, omitted=merged-validated, strict zod,
+guards atomic dalam batch + 409 stale, audit console.info). UI/Telegram belum dihubungkan; jangan aktifkan/publikasi.
+
+BULK1a fixture lokal menyimpan maksimal lima tier per varian, harga IDR satuan untuk seluruh unit pada ambang tertinggi; penerapan quote/order dan editor admin belum diimplementasikan.
+
+LOC1 fixture lokal: preferensi bahasa dan mata uang tampilan independen; kurs USD tidak tersedia tidak mengubah preferensi tersimpan. UI/Telegram belum dihubungkan.
+
+S3d2 kebijakan biaya crypto pembeli diuji fixture lokal; UI dan publikasi belum dilakukan.
+
+S3d1 lokal memerlukan outcome crypto eksplisit untuk preflight minimum fixed-rate/buyer-fee; ini bukan aktivasi kebijakan fee pembeli pada invoice.
+
+S3c lifecycle merchant diuji dengan fixture lokal untuk polling/expiry/cancel; belum dipublikasikan.
+
+S3b order dan consent gateway masih dalam pengerjaan fixture lokal; jangan aktifkan sebelum verifikasi lengkap.
+
+S3a lokal: quote dapat menawarkan metode merchant default-off dengan estimasi fee dan total bertanda tangan; integrasi order/UI dan publikasi belum dilakukan.
+
+Sekalipay merchant S2b lokal menyimpan fee final, mewajibkan consent selisih, serta memverifikasi callback dan status sebelum paid atomik; checkout dan scheduling belum terhubung atau dipublikasikan.
+
+## W3 backend lokal — 4 November 2026
+Snapshot checkout crypto USD dan locale order tersedia pada backend fixture; UI/Telegram dan publikasi belum dilakukan. QRIS tidak digantikan. W1 di bawah adalah snapshot historis.
+
+## Snapshot historis implementasi lokal NOWPayments W1 - 3 November 2026
+
+Provider crypto NOWPayments diimplementasikan LOKAL saja (fixture, flag default
+OFF): adapter invoice terikat order + rekonsiliasi GET + receiver IPN terverifikasi
+HMAC-SHA512 dengan dedupe durable; reconcile invoice tersimpan berjalan walau
+flag pembuatan baru OFF. QRIS tetap satu-satunya rail publik; rail baru tidak
+tampil di checkout web/Telegram sampai appearance ACC (W3). Sekalipay gateway
+tetap preparation shell tanpa adapter (kontrak gateway belum terverifikasi).
+Belum payout otomatis, belum settlement Bitget; blokir manual tercatat di runbook.
+Detail: `docs/agent-rules/payments.md`.
+
 ## Rencana metode pembayaran tambahan - 3 November 2026
 
 Owner merencanakan NOWPayments untuk crypto dan Sekalipay payment gateway untuk
-pembayaran selain QRIS pada web AXVARA dan bot Telegram. Saat ini hanya menyimpan
-kredensial gateway secara privat; jangan memulai implementasi/integrasi atau tes
-API pada tugas ini. Sekalipay gateway terpisah dari integrasi supplier existing.
-Belum ada perubahan metode pembayaran publik. Detail: `docs/agent-rules/payments.md`.
+pembayaran selain QRIS pada web AXVARA dan bot Telegram. Kredensial gateway
+disimpan privat; implementasi W1 bersifat lokal/fixture dan belum menjadi metode
+pembayaran publik. Sekalipay gateway terpisah dari integrasi supplier existing.
+Detail: `docs/agent-rules/payments.md`.
 
-## Persiapan NOWPayments - 3 November 2026
+## Snapshot historis persiapan NOWPayments - 3 November 2026
 
 Tahap ini hanya menyimpan kredensial privat lokal dan memeriksa API baca-saja
 (API key final diterima `GET /merchant/coins` HTTP200). Checkout Market/Pedia/bot

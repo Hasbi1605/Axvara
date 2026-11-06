@@ -85,7 +85,11 @@ describe("C-H1: harga divalidasi ulang antara quote dan pembuatan order", () => 
     // Token quote berlaku 1 jam (auth.ts), sementara sync WR menulis harga
     // tiap ~5 menit — snapshot subtotal bisa usang saat pembeli menekan bayar.
     expect(route).toContain("price_changed");
-    expect(route).toMatch(/SELECT id, price FROM product_variants WHERE id IN/);
+    // Bulk foundation: guard atomik kini mengikat base + konfigurasi tier
+    // aktif (bukan harga mentah saja). Regex menuntut SELECT id + price
+    // dengan klausa bulk agar klaim usang tidak lolos sebagai buku baru.
+    expect(route).toMatch(/SELECT id, price,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE id IN/);
+    expect(route).toContain("resolveBulkPrice");
     // Guard harga wajib SEBELUM order dibuat.
     expect(route.indexOf("price_changed")).toBeLessThan(route.indexOf("await createOrderWithStock("));
   });

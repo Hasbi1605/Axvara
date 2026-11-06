@@ -60,7 +60,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const row = (await queryFirst(
-    `SELECT code, status, payment_status, customer_wa, customer_email, items, buyer_access_version,buyer_access_format FROM orders WHERE code=?`,
+    `SELECT o.code, o.status, o.payment_status, o.customer_wa, o.customer_email, o.items, o.buyer_access_version, o.buyer_access_format,
+            pt.provider AS payment_provider, pt.status AS transaction_status, pt.last_error AS payment_last_error,
+            pt.provider_status_text AS provider_status_text, pt.actually_paid_text AS actually_paid_text,
+            pt.pay_amount_text AS pay_amount_text,pt.paid_at AS transaction_paid_at
+     FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=?`,
     orderCode,
   )) as Record<string, unknown> | undefined;
 
@@ -71,6 +75,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const failure = await newOrderAccessFailure(req, row, contactRaw);
   if (failure) return failure;
   if (!requiresOrderAccessCode(row) && !(await buyerOrderAccessMatches(contactRaw, row))) return notFound();
+
+  // W3 crypto fail-closed (server-side, bukan sekadar sembunyi tombol UI):
+  // guard BERSAMA baca kolom durable yang sama dengan buyer view
+  // (provider_status_text dari GET terverifikasi + actually_paid sufficient +
+  // last_error manual review). Ledger 'pending' TIDAK dipercaya: provider
+  // confirming = 409 walau ledger pending. Stock tidak ditahan selamanya
+  // (cron expiry + manual review path existing). Ownership: route ini.
+  if (String(row.payment_provider ?? "") === "nowpayments") {
+    const { cancelGuardForNowpaymentsRow } = await import("@/lib/payments/payment-view");
+    const guard = cancelGuardForNowpaymentsRow({
+      provider: row.payment_provider,
+      provider_status_text: row.provider_status_text,
+      actually_paid_text: row.actually_paid_text,
+      pay_amount_text: row.pay_amount_text,
+      last_error: row.payment_last_error,
+    });
+    if (guard.cancelBlocked) {
+      return NextResponse.json({ error: guard.reason }, { status: 409 });
+    }
+  }
+  if (row.payment_provider === "sekalipay_gateway" && (row.payment_last_error || row.transaction_paid_at || ["paid", "completed"].includes(String(row.provider_status_text ?? "")))) {
+    return NextResponse.json({ error: "Pembayaran sedang diperiksa; pembatalan tidak tersedia." }, { status: 409 });
+  }
 
   if (String(row.status) !== "pending") {
     return NextResponse.json(

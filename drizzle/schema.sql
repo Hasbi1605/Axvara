@@ -108,6 +108,9 @@ CREATE TABLE IF NOT EXISTS orders (
   -- PEDIA (migrasi 0059): penanda jenis order ('apps' | 'pedia').
   -- Tanpa rebuild tabel; CHECK sales_channel tidak disentuh.
   order_kind TEXT NOT NULL DEFAULT 'apps',
+  -- W3 bilingual + USD (migrasi 0095, LOCAL ONLY): locale buyer web/TG.
+  -- Default 'id'; verification pakai token, bukan client JSON.
+  locale TEXT NOT NULL DEFAULT 'id' CHECK (locale IN ('id','en')),
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -296,6 +299,12 @@ CREATE TABLE IF NOT EXISTS telegram_users (
   -- Migrasi 0033: email pembeli tersimpan (alur email_for:) untuk produk
   -- Invite/Link WR + require_email. Ditanya sekali, dipakai ulang.
   buyer_email TEXT DEFAULT NULL,
+  -- W3 (migrasi 0095): locale tersimpan buyer TG; nullable = belum memilih.
+  -- Paket TG berikutnya yang persist; kolom disiapkan sekarang.
+  locale TEXT CHECK (locale IN ('id','en')),
+  -- TG1 (migrasi 0100): currency tampilan independen; nullable = belum seed.
+  -- Di-seed sekali dari pilihan bahasa; perubahan berikutnya tidak menyentuh locale.
+  display_currency TEXT CHECK (display_currency IN ('IDR','USD')),
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -342,11 +351,57 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
   paid_at TEXT,
   last_checked_at TEXT,
   last_error TEXT,
+  -- Ledger crypto/provider-independent (migrasi 0094, LOCAL ONLY W1): semua
+  -- nullable/default agar writer QRIS lama + baris lama tetap valid. Nilai
+  -- crypto selalu teks desimal (*_text) — jangan float/Number untuk nominal.
+  -- Bisnis tetap integer IDR di requested_amount/subtotal.
+  currency TEXT NOT NULL DEFAULT 'IDR',
+  pay_currency TEXT,
+  pay_network TEXT,
+  price_amount_text TEXT,
+  price_currency TEXT,
+  pay_amount_text TEXT,
+  actually_paid_text TEXT,
+  outcome_amount_text TEXT,
+  outcome_currency TEXT,
+  fee_paid_by_user INTEGER,
+  fixed_rate INTEGER,
+  provider_payment_id TEXT,
+  pay_address TEXT,
+  last_reconciled_at TEXT,
+  -- W3 USD snapshot (migrasi 0095, LOCAL ONLY): audit trail rate operator +
+  -- waktu efektif; price_amount_text/price_currency bawa '15.63'/'usd'.
+  fx_rate_text TEXT,
+  fx_effective_at TEXT,
+  -- Durable provider status (migrasi 0096, LOCAL ONLY W3): raw
+  -- payment_status provider terakhir dari GET terverifikasi — dipakai
+  -- fail-closed cancel guard + buyer state mapping. NULL = belum diketahui
+  -- (jangan tandai paid/confirming darinya); never guessed from amounts.
+  -- last_admin_alert_at = throttle alert manual review (dedupe per order).
+  provider_status_text TEXT,
+  last_admin_alert_at TEXT,
+  -- Biaya layanan crypto AXVARA (migrasi 0102, LOCAL ONLY): rincian USD sen.
+  -- total = base + surcharge = price_amount_text; NULL untuk rail lain / baris lama.
+  crypto_base_usd_cents INTEGER,
+  crypto_surcharge_usd_cents INTEGER,
+  crypto_surcharge_bps INTEGER,
+  gateway_channel TEXT,
+  gateway_label TEXT,
+  gateway_estimated_fee INTEGER,
+  gateway_fee INTEGER,
+  gateway_fee_consent_required INTEGER,
+  gateway_fee_consented_at TEXT,
+  gateway_virtual_account TEXT,
+  gateway_checkout_url TEXT,
+  gateway_is_sandbox INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(provider, provider_order_id),
   UNIQUE(order_code)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS payment_transactions_provider_payment
+  ON payment_transactions(provider, provider_payment_id)
+  WHERE provider_payment_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_status ON payment_transactions(status);
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_expires ON payment_transactions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_payment_transactions_order ON payment_transactions(order_code);
@@ -567,6 +622,8 @@ CREATE TABLE IF NOT EXISTS product_variants (
   price INTEGER NOT NULL CHECK (price >= 0),
   compare_price INTEGER CHECK (compare_price IS NULL OR compare_price > price),
   stock INTEGER NOT NULL DEFAULT -1,
+  bulk_pricing_enabled INTEGER NOT NULL DEFAULT 0 CHECK (bulk_pricing_enabled IN (0,1)),
+  bulk_pricing_tiers TEXT NOT NULL DEFAULT '[]' CHECK (CASE WHEN json_valid(bulk_pricing_tiers) THEN json_type(bulk_pricing_tiers)='array' AND json_array_length(bulk_pricing_tiers)<=5 ELSE 0 END),
 
   -- Migrasi 0034: minimum pembelian per varian (mode generik, milik admin).
   -- Default 1 = tanpa perubahan perilaku. GSuite dikunci 50 via UPDATE di
@@ -1633,3 +1690,19 @@ CREATE TABLE IF NOT EXISTS checkout_claims (
   created_at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_checkout_claims_created ON checkout_claims(created_at_ms);
+
+-- Snapshot pasar crypto (USD/IDR FX otomatis + katalog koin NOWPayments).
+-- Satu baris (id=1) ditulis cron lite `cleanup`; lease_until = lease CAS
+-- agar isolate cron paralel tidak me-refresh ganda. Tidak ada rahasia di sini.
+CREATE TABLE IF NOT EXISTS crypto_market_snapshot (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  fx_rate_text TEXT,
+  fx_source TEXT,
+  fx_effective_at TEXT,
+  coins_json TEXT,
+  coins_refreshed_at TEXT,
+  last_error TEXT,
+  last_attempt_at TEXT,
+  lease_until TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

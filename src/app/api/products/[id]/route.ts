@@ -38,12 +38,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const variants = await queryAll(
     `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed, admin_terms, admin_activation
+            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed, admin_terms, admin_activation,
+            bulk_pricing_enabled, bulk_pricing_tiers
      FROM product_variants
      WHERE product_id=?
      ORDER BY sort_order ASC, price ASC, id ASC`,
     Number(id)
   );
+
+  // GET admin: raw stored bulk config (enabled+tiers apa adanya, termasuk
+  // disabled with retained tiers). JSON.parse aman (kolom NOT NULL DEFAULT
+  // '[]'); bentuk valid-JSON tapi tier-shape salah => flag corrupt, tampil
+  // jujur, bukan 500. Helper penuh dipakai di PUT/quote; di sini cukup cek
+  // 2-key numerik agar tidak duplikat seluruh validator.
+  const rawBulkVariants = (variants as Record<string, unknown>[]).map((row) => {
+    let enabled = Number(row.bulk_pricing_enabled ?? 0) === 1;
+    let tiers: unknown = [];
+    let corrupt = false;
+      try {
+        tiers = JSON.parse(String(row.bulk_pricing_tiers ?? "[]"));
+      } catch { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
+      if (Array.isArray(tiers)) {
+        // Bentuk array valid-JSON: cek tier-shape minimal (2-key numerik);
+        // validasi penuh milik helper di PUT/quote. Salah bentuk => corrupt.
+        const badShape = tiers.some((t) => !t || typeof t !== "object" || Array.isArray(t)
+          || Object.keys(t as object).length !== 2
+          || !Number.isSafeInteger((t as Record<string, unknown>).min_qty)
+          || !Number.isSafeInteger((t as Record<string, unknown>).unit_price));
+        if (badShape) { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
+      } else { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
+    return { ...row, bulk_pricing: { enabled, tiers }, ...(corrupt ? { bulk_pricing_corrupt: true } : {}) };
+  });
 
   return NextResponse.json({
     product: {
@@ -68,10 +93,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       isActive: (row.is_active as number) !== 0,
       sortOrder: row.sort_order,
       requireEmail: (row.require_email as number) === 1,
-      variants,
+      variants: rawBulkVariants,
     },
   }, { headers: { "Cache-Control": "private, no-store" } });
 }
+
+const bulkTierInputSchema = z.object({
+  min_qty: z.number().int(),
+  unit_price: z.number().int(),
+}).strict();
+
+const bulkPricingInputSchema = z.object({
+  enabled: z.boolean(),
+  tiers: z.array(bulkTierInputSchema).max(5),
+}).strict();
 
 const variantInputSchema = z.object({
   admin_terms: z.string().max(VARIANT_COPY_MAX_CHARS).optional(),
@@ -86,6 +121,10 @@ const variantInputSchema = z.object({
   min_qty: z.coerce.number().int().min(1).max(100).optional(),
   // Modal manual per unit (migrasi 0058, milik admin — sync tak menyentuh).
   manual_cost: z.coerce.number().int().min(0).max(999_999_999).optional(),
+  // Bulk pricing per varian (migrasi 0099, milik admin — sync tak menyentuh).
+  // Omitted = pertahankan nilai tersimpan (jangan reset oleh client lama).
+  // Unknown nested key ditolak passthrough agar tak ada field liar lolos.
+  bulk_pricing: bulkPricingInputSchema.optional(),
   duration_value: z.coerce.number().int().nonnegative().nullable().optional(),
   duration_unit: z.enum(["day", "month", "year", "lifetime", "custom"]).nullable().optional(),
   duration_label: z.string().trim().max(100).nullable().optional(),
@@ -265,6 +304,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // tetapi update varian di bawah TETAP harus jalan — jangan return dini.
   const needsProductUpdate = fields.length > 0;
   const needsVariantWrite = hasExplicitVariants && Array.isArray(data.variants) && data.variants.length > 0;
+  // Bulk prep map hidup untuk seluruh blok D1: update + insert + guards.
+  type BulkPrepRow = { enabled: 0 | 1; tiersJson: string; observedPrice: number; observedEnabled: number; observedTiers: string };
+  const bulkPrepAll = new Map<number, BulkPrepRow>();
   if (needsProductUpdate || needsVariantWrite) {
     if (needsProductUpdate) fields.push("updated_at=datetime('now')");
     try {
@@ -288,11 +330,70 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           }
 
           const existingSlug = (data.slug || (await queryFirst("SELECT slug FROM products WHERE id=?", id) as { slug: string })?.slug || "PROD").toUpperCase();
+          type BulkPrepRow = { enabled: 0 | 1; tiersJson: string; observedPrice: number; observedEnabled: number; observedTiers: string };
+          const bulkPrepAll = new Map<number, BulkPrepRow>();
+          const idsOnly = data.variants.filter((vv) => vv.id).map((vv) => Number(vv.id));
+          const bulkRows = (idsOnly.length ? await queryAll(
+            `SELECT id, price, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE product_id=? AND id IN (${idsOnly.map(() => "?").join(",")})`,
+            Number(id), ...idsOnly,
+          ).catch(() => []) : []) as Record<string, unknown>[];
+          const bulkCurrent = new Map(bulkRows.map((row) => [Number(row.id), row]));
+          const { validateBulkPricing } = await import("@/lib/bulk-pricing");
+          const bulkPrepInner = bulkPrepAll;
+          for (const [bulkIdx, v] of data.variants.entries()) {
+            const rawBulk = (v as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined;
+            const currentRow = v.id ? bulkCurrent.get(Number(v.id)) : undefined;
+            const resultBase = Number(v.price);
+            // Effective config: explicit ?? stored (stored parsed defensif;
+            // unparseable stored + omitted => anggap off/[] agar tak 500 di
+            // sini — GET menandai corrupt terpisah).
+            let storedEnabled = 0, storedTiersJson = "[]";
+            if (currentRow) {
+              storedEnabled = Number(currentRow.bulk_pricing_enabled ?? 0) === 1 ? 1 : 0;
+              storedTiersJson = String(currentRow.bulk_pricing_tiers ?? "[]");
+            }
+            const effectiveRaw = rawBulk === undefined
+              ? { enabled: storedEnabled === 1, tiers: (() => { try { const t = JSON.parse(storedTiersJson); return Array.isArray(t) ? t : []; } catch { return []; } })() }
+              : rawBulk;
+            const checked = validateBulkPricing(effectiveRaw, resultBase);
+            if (!checked) {
+              // Disabled-stored-tiers vs base BARU: helper longgar validated di
+              // atas => tegakkan ketat bila checked.enabled. Omitted + active
+              // usang vs base baru => 400 (jangan silently disable).
+              return NextResponse.json({ error: "bulk_pricing_invalid", message: `Varian "${v.label}": konfigurasi bulk tidak valid untuk harga ${resultBase}.` }, { status: 400 });
+            }
+            if (checked.enabled) {
+              for (const t of checked.tiers) {
+                if (t.unit_price > resultBase) {
+                  return NextResponse.json({ error: "bulk_pricing_invalid", message: `Varian "${v.label}": tier di atas harga ${resultBase}.` }, { status: 400 });
+                }
+              }
+            }
+            bulkPrepInner.set(v.id ?? -1 - bulkIdx, {
+              enabled: checked.enabled ? 1 : 0,
+              tiersJson: JSON.stringify(checked.tiers),
+              observedPrice: currentRow ? Number(currentRow.price) : resultBase,
+              observedEnabled: currentRow ? (Number(currentRow.bulk_pricing_enabled ?? 0) === 1 ? 1 : 0) : 0,
+              observedTiers: currentRow ? String(currentRow.bulk_pricing_tiers ?? "[]") : "[]",
+            });
+          }
+          const guardBase = `bulk:${id}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+          for (const [vid, prep] of bulkPrepInner) {
+            if (vid < 0) continue;
+            statements.push(
+              d1.prepare(
+                `INSERT INTO operation_guards (operation_id, valid) SELECT ?, CASE WHEN EXISTS(
+                   SELECT 1 FROM product_variants WHERE id=? AND price=? AND bulk_pricing_enabled=? AND bulk_pricing_tiers=?
+                 ) THEN 1 ELSE 0 END`,
+              ).bind(`${guardBase}:${vid}`, vid, prep.observedPrice, prep.observedEnabled, prep.observedTiers),
+            );
+          }
           data.variants.forEach((v, idx) => {
             const autoSku = (v.sku?.trim() || `${existingSlug}-${idx + 1}`).replace(/[^A-Z0-9-]/g, "");
             // min_qty milik ADMIN (bukan WR-owned): boleh ditulis dari sini.
             // Sync WR tidak pernah menyentuh kolom ini (lihat sync.ts).
             const minQty = Math.max(1, Math.min(100, Number(v.min_qty ?? 1) || 1));
+            const bulk = v.id ? bulkPrepInner.get(Number(v.id)) : bulkPrepInner.get(-1 - idx);
             if (v.id) {
               statements.push(
                 d1.prepare(
@@ -300,7 +401,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                      sku=?, label=?, duration_value=?, duration_unit=?, duration_label=?,
                      warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
                      price=?, compare_price=?, stock=?, min_qty=?, manual_cost=?, fulfillment_mode=?, is_active=?,
-                     sort_order=?, updated_at=datetime('now')
+                     sort_order=?,
+                     bulk_pricing_enabled=?, bulk_pricing_tiers=?,
+                     updated_at=datetime('now')
                    WHERE id=? AND product_id=?`
                 ).bind(
                   autoSku,
@@ -310,7 +413,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   v.duration_label?.trim() || null,
                   v.warranty_type || "none",
                   v.warranty_value ?? null,
-                  v.warranty_unit || null,
+                  v.warranty_unit ?? null,
                   v.warranty_label?.trim() || null,
                   Number(v.price),
                   v.comparePrice ? Number(v.comparePrice) : null,
@@ -320,8 +423,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   v.fulfillment_mode || "manual",
                   v.is_active ?? 1,
                   v.sort_order ?? idx,
+                  bulk?.enabled ?? 0,
+                  bulk?.tiersJson ?? "[]",
                   v.id,
-                  id
+                  id,
                 )
               );
             } else {
@@ -330,8 +435,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   `INSERT INTO product_variants (
                      product_id, sku, label, duration_value, duration_unit, duration_label,
                      warranty_type, warranty_value, warranty_unit, warranty_label,
-                     price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                     price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order,
+                     bulk_pricing_enabled, bulk_pricing_tiers
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
                 ).bind(
                   id,
                   autoSku,
@@ -350,7 +456,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   Math.max(0, Math.floor(Number(v.manual_cost ?? 0) || 0)),
                   v.fulfillment_mode || "manual",
                   v.is_active ?? 1,
-                  v.sort_order ?? idx
+                  v.sort_order ?? idx,
+                  bulk?.enabled ?? 0,
+                  bulk?.tiersJson ?? "[]",
                 )
               );
             }
@@ -398,7 +506,35 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             ),
           );
         }
-        await d1.batch(statements);
+        // Batch ATOMIC via operation_guards precondition di statements:
+        // guard gagal => CHECK => SELURUH batch rollback (D1), lalu map
+        // constraint ke 409 stale (bukan 500).
+        let batchOk = true;
+        try {
+          await d1.batch(statements);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (/operation_guards|CHECK constraint/i.test(msg)) batchOk = false;
+          else throw e;
+        } finally {
+          // Release guard rows best-effort (guard id unik per request).
+          await d1.prepare("DELETE FROM operation_guards WHERE operation_id LIKE ?").bind(`bulk:${id}:%`).run().catch(() => {});
+        }
+        if (!batchOk) {
+          return NextResponse.json({ error: "stale_variant", message: "Varian berubah oleh admin lain. Muat ulang lalu simpan lagi." }, { status: 409 });
+        }
+        if (hasExplicitVariants && Array.isArray(data.variants)) {
+          for (const sent of data.variants) {
+            if (!sent.id) continue;
+          const b = bulkPrepAll.get(Number(sent.id));
+            if (!b || (sent as Record<string, unknown>).bulk_pricing === undefined) continue;
+            console.info("[admin-bulk-pricing]", JSON.stringify({
+              route: "PUT /api/products/:id", variant: Number(sent.id),
+              before: { enabled: b.observedEnabled, tiers: b.observedTiers, price: b.observedPrice },
+              after: { enabled: b.enabled, tiers: b.tiersJson, price: Number(sent.price) },
+            }));
+          }
+        }
       } else {
         // Jalur dev non-D1: tulis produk bila ada, dan tulis varian bila ada.
         if (needsProductUpdate) {
@@ -440,6 +576,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (data.isActive !== undefined || hasExplicitVariants || changesLegacyCommerceFields) {
     // The write is already durable. On failure the versioned queue remains
     // pending for the existing cron; do not tell admin that saving failed.
+    // Public catalog memakai edge cache TTL (tanpa invalidasi manual):
+    // quote berikutnya baca DB fresh (cache hanya membungkus respons publik,
+    // bukan harga yang dikunci) — jadi newly quoted prices pakai data baru.
     await decideDirtyWinners(undefined, Number(id)).catch(() => {
       console.error("Supplier pair refresh deferred after product update");
     });

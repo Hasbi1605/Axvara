@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
-import { assertOrderAccessConfigured, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
+import { assertOrderAccessConfigured, buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
 import { verifyCheckoutQuoteToken } from "@/lib/auth";
 import { createDanaQrisInvoice, createActiveQrisInvoice, MAX_QRIS_REISSUES } from "@/lib/payments/dana-qris";
@@ -12,6 +12,11 @@ import { expandDeliveryLines } from "@/lib/fulfillment/units";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
 import { readJsonBody } from "@/lib/http-body";
+import { cryptoRailEnabled, cryptoTickerOfMethodId, isCryptoTotalStillPayable, isFxSnapshotAcceptable } from "@/lib/payments/crypto-preflight";
+import { getCryptoAsset } from "@/lib/payments/crypto-assets";
+import { CRYPTO_MIN_TOTAL_USD_CENTS, CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
+import { isNowpaymentsConfigured } from "@/lib/payments/rails";
+import type { NowpaymentsUsdExpected } from "@/lib/payments/nowpayments";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -29,29 +34,47 @@ const schema = z.object({
   // tanpa email = macet). Sebelumnya opsional kecuali varian butuh-email.
   customer_email: z.string().trim().email("Tulis email aktif yang benar sebelum bayar.").max(120),
   items: z.array(z.object({
-    product_id: z.coerce.number().int().min(1),
+    product_id: z.coerce.number().int().safe().min(1).optional(),
+    slug: z.string().trim().min(1).max(100).optional(),
     variant_id: z.coerce.number().int().min(1).optional(),
     // Batas atas web = 100/baris (paritas Telegram) agar varian min-besar
     // (mis. GSuite min 50) tetap bisa dibeli dari web. Minimum per varian
     // ditegakkan ulang dari DB di bawah (JANGAN percaya angka client).
     qty: z.coerce.number().int().min(1).max(100),
-  })).min(1).max(20),
-  payment_method: z.string().trim().regex(/^(qris|ewallet|bank:[a-z0-9][a-z0-9_-]{0,31})$/, "Metode pembayaran tidak valid"),
+  }).refine((item) => item.product_id || item.slug)).min(1).max(20),
+  // W3 Web crypto: opaque id nowpayments:<ticker kurasi> ONLY (server-mapped asset/
+  // network; client MUST NOT send currency/network/price). Legacy manual
+  // bank/ewallet tetap ditolak 503 di bawah, bukan dibangkitkan.
+  payment_method: z.string().trim().max(64),
   proof_url: z.string().trim().max(600).nullable().optional().default(null),
   quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(8000),
 });
 
 async function existingCheckoutResponse(existing: Record<string, unknown>) {
-  const buyer_access_session = await createBuyerAccessSession(existing);
-  const checkout_credential_grant = await createCheckoutCredentialGrant(existing);
-  // The signed quote already reserved stock, including its last available unit.
-  // Resume before revalidating stock/price; never reserve or POST again.
-  if (existing.status === "pending") {
-    const tx = await queryFirst("SELECT provider,requested_amount FROM payment_transactions WHERE order_code=?", existing.code);
+  // Saved retry SELALU baca ulang status + locale terbaru dari DB (snapshot
+  // stale tidak pernah dikembalikan): fresh row di sini untuk reuse decision
+  // + locale respons.
+  const fresh = await queryFirst(
+    "SELECT code,quote_id,subtotal,status,payment_status,payment_method,locale,buyer_access_version,buyer_access_format FROM orders WHERE code=?",
+    existing.code,
+  ).catch(() => null);
+  const live = (fresh ?? existing) as Record<string, unknown>;
+  const buyer_access_session = await createBuyerAccessSession(live);
+  const checkout_credential_grant = await createCheckoutCredentialGrant(live);
+  const locale = live.locale === "en" ? "en" : "id";
+  // Saved retry: resolves BEFORE new-order flags/FX checks — same order, same
+  // provider binding, access-safe recovery. Never reserve again; never POST
+  // blind; never switch provider (reconcile known id via GET only).
+  if (live.status === "pending") {
+    const tx = await queryFirst("SELECT provider,requested_amount FROM payment_transactions WHERE order_code=?", live.code);
+    if (!tx && String(live.payment_method ?? "").startsWith("sekalipay_gateway:")) {
+      // ponytail: a preclaim orphan expires unless its original request finishes; add durable dispatch if recovery is required.
+      return NextResponse.json({ error: "Tagihan sedang disiapkan. Coba checkout yang sama.", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+    }
     if (tx?.provider === "klikqris") {
       try {
-        const inv = await createActiveQrisInvoice(String(existing.code), Number(tx.requested_amount));
-        return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_session, checkout_credential_grant, reused: true, qris: {
+        const inv = await createActiveQrisInvoice(String(live.code), Number(tx.requested_amount));
+        return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: live.status, buyer_access_session, checkout_credential_grant, reused: true, locale, qris: {
           payable_amount: inv.payableAmount, unique_code: inv.uniqueCode,
           image_url: inv.qrisUrl, expires_at: inv.expiresAt,
         } }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
@@ -59,8 +82,52 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
         return NextResponse.json({ error: "Tagihan sedang disiapkan. Tunggu sebentar lalu coba lagi dengan checkout yang sama.", code: existing.code }, { status: 503 });
       }
     }
+    if (tx?.provider === "nowpayments") {
+      // Saved crypto: flag-off/new-config irrelevant — status/reconcile runs
+      // via saved binding (readable). Ambiguous/initializing-with-id recovers
+      // inside reconcile; failure => 503 retry-same-quote (no cancel, no POST).
+      try {
+        const { reconcileNowpaymentsPayment, claimNowpaymentsPollReconcile } = await import("@/lib/payments/nowpayments");
+        if (await claimNowpaymentsPollReconcile(String(live.code))) {
+          await reconcileNowpaymentsPayment(String(live.code)).catch(() => null);
+        }
+        const { buildNowpaymentsPaymentView } = await import("@/lib/payments/payment-view");
+        const payment = await buildNowpaymentsPaymentView(String(live.code)).catch(() => null);
+        if (payment) {
+          const current = await queryFirst("SELECT status FROM orders WHERE code=?", live.code);
+          return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: current?.status ?? live.status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
+        }
+      } catch { /* fall through to generic reuse below */ }
+      return NextResponse.json({ error: "Tagihan crypto sedang disiapkan. Cek status dengan checkout yang sama — jangan buat pesanan baru.", code: live.code }, { status: 503 });
+    }
+    if (tx?.provider === "sekalipay_gateway") {
+      const { buildSekalipayGatewayPaymentView } = await import("@/lib/payments/payment-view");
+      let payment = await buildSekalipayGatewayPaymentView(String(live.code));
+      if (payment?.state === "initializing") {
+        try {
+          const { claimSekalipayGatewayPoll } = await import("@/lib/payments/payment-view");
+          if (!await claimSekalipayGatewayPoll(String(live.code))) throw new Error("gateway_poll_deferred");
+          const saved = await queryFirst(`SELECT o.customer_name,o.customer_email,o.customer_wa,pt.gateway_channel,pt.gateway_estimated_fee FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=? AND pt.provider='sekalipay_gateway'`, live.code);
+          if (saved) {
+            const { createSekalipayGatewayInvoice } = await import("@/lib/payments/sekalipay-gateway");
+            await createSekalipayGatewayInvoice(String(live.code), Number(live.subtotal), String(saved.gateway_channel), { name: String(saved.customer_name), email: String(saved.customer_email), phone: String(saved.customer_wa) }, Number(saved.gateway_estimated_fee));
+            payment = await buildSekalipayGatewayPaymentView(String(live.code));
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message === "gateway_poll_deferred") return NextResponse.json({ error: "Tagihan sedang disiapkan. Coba checkout yang sama.", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+          try {
+            const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
+            await reconcileSekalipayGatewayPayment(String(live.code));
+            payment = await buildSekalipayGatewayPaymentView(String(live.code));
+          } catch { /* Saved claim stays bound; retry uses GET only. */ }
+        }
+      }
+      if (!payment || payment.state === "initializing") return NextResponse.json({ error: "Tagihan sedang disiapkan. Coba checkout yang sama.", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+      const current = await queryFirst("SELECT status FROM orders WHERE code=?", live.code);
+      return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: current?.status ?? live.status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
+    }
   }
-  return NextResponse.json({ code: existing.code, subtotal: existing.subtotal, status: existing.status, buyer_access_session, checkout_credential_grant, reused: true }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: live.status, buyer_access_session, checkout_credential_grant, reused: true, locale }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
 }
 
 // Rate-limit terpusat (issue #14): satu implementasi di src/lib/rateLimit.ts
@@ -84,9 +151,16 @@ export async function POST(req: NextRequest) {
 
   // Proofs are private R2 objects. External URLs would bypass the protected
   // admin viewer and could be used as a tracking pixel.
-  // Maintenance sementara (2026-09-17): jalur manual E-Wallet/Bank
-  // dinonaktifkan di semua platform — hanya QRIS yang diterima.
-  if (payment_method !== "qris") {
+  // Legacy manual E-Wallet/Bank tetap nonaktif (bukan dibangkitkan untuk
+  // gateway): hanya qris + nowpayments:<ticker kurasi> + gateway yang lolos ke validasi token.
+  const cryptoTicker = cryptoTickerOfMethodId(payment_method);
+  const isCryptoMethod = cryptoTicker !== null;
+  if (!isCryptoMethod && payment_method.startsWith("nowpayments:")) {
+    // Koin di luar katalog kurasi tidak pernah ditandatangani/dibuat.
+    return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout.", code: "quote_stale" }, { status: 409 });
+  }
+  const isGatewayMethod = /^sekalipay_gateway:[A-Za-z0-9_-]{1,64}$/.test(payment_method) && !/qris/i.test(payment_method);
+  if (payment_method !== "qris" && !isCryptoMethod && !isGatewayMethod) {
     return NextResponse.json({ error: "E-Wallet & Transfer Bank sedang maintenance. Silakan bayar via QRIS." }, { status: 503 });
   }
   if (proof_url) {
@@ -101,7 +175,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout." }, { status: 409 });
   }
 
-  const requested = aggregateQty(items);
+  const slugs = [...new Set(items.flatMap((item) => item.slug ? [item.slug] : []))];
+  const slugRows = slugs.length ? await queryAll(`SELECT id,slug FROM products WHERE slug IN (${slugs.map(() => "?").join(",")})`, ...slugs) : [];
+  const slugIds = new Map(slugRows.map((row) => [String(row.slug), Number(row.id)]));
+  const canonicalItems = items.map((item) => ({ ...item, product_id: item.slug ? slugIds.get(item.slug) : item.product_id }));
+  if (canonicalItems.some((item, index) => !item.product_id || (items[index].product_id && item.product_id !== items[index].product_id))) return NextResponse.json({ error: "Isi keranjang berubah." }, { status: 409 });
+  const requested = aggregateQty(canonicalItems as { product_id: number; variant_id?: number; qty: number }[]);
   const quoted = aggregateQty(quote.items);
   const sameItems = requested.size === quoted.size
     && [...requested.entries()].every(([key, qty]) => quoted.get(key) === qty);
@@ -109,7 +188,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
   }
 
-  const previous = await queryFirst("SELECT code,quote_id,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
+  const previous = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
   if (previous) return existingCheckoutResponse(previous);
 
   // Guard email lapis kedua (migrasi 0033 + revamp 2026-09-23): zod di atas
@@ -228,16 +307,21 @@ export async function POST(req: NextRequest) {
     const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
     if (variantIds.length > 0) {
       const rows = await queryAll(
-        `SELECT id, price FROM product_variants WHERE id IN (${variantIds.map(() => "?").join(",")})`,
+        `SELECT id, price,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE id IN (${variantIds.map(() => "?").join(",")})`,
         ...variantIds,
       );
-      const priceById = new Map<number, number>();
-      for (const r of rows) priceById.set(Number(r.id), Number(r.price ?? 0));
+      const priceById = new Map(rows.map((r) => [Number(r.id), r]));
+      const { resolveBulkPrice } = await import("@/lib/bulk-pricing");
       const stale = quote.items.find((qi) => {
         const vid = Number(qi.variant_id || 0);
         if (vid <= 0) return false;
         const live = priceById.get(vid);
-        return live != null && live !== Number(qi.price ?? 0);
+        if (!live) return true;
+        try {
+          const qty = quote.items.filter((item) => item.variant_id === vid).reduce((n, item) => n + item.qty, 0);
+          const current = resolveBulkPrice(Number(live.price), qty, live.bulk_pricing_enabled, live.bulk_pricing_tiers);
+          return current.price !== qi.price || (qi.base_price !== undefined && qi.base_price !== Number(live.price)) || current.tier !== qi.applied_tier_min_qty;
+        } catch { return true; }
       });
       if (stale) {
         return NextResponse.json(
@@ -258,20 +342,100 @@ export async function POST(req: NextRequest) {
   if (wa.startsWith("+62")) wa = wa.slice(1);
   else if (wa.startsWith("0")) wa = "62" + wa.slice(1);
 
-  // Maintenance sementara (2026-09-17): quote hanya boleh berisi QRIS.
-  // Token lama yang masih membawa ewallet/bank ditolak agar tidak bisa
-  // dipakai untuk membuat order manual selama maintenance.
+  // Metode terpilih HARUS ada di token bertanda (anti-tamper client).
+  const selected = quote.payment_methods.find((method) => method.id === payment_method);
+  if (!selected) {
+    return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout." }, { status: 409 });
+  }
+  // Metode nonaktif (mis. di luar batas min/max merchant) tidak pernah ditandatangani; jaga eksplisit bila payload aneh lolos verifikasi.
+  if ((selected as { available?: unknown }).available === false) {
+    return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout." }, { status: 409 });
+  }
   const quoteHasQris = quote.payment_methods.some((method) => method.id === "qris");
-  if (!quoteHasQris) {
+  // Web crypto gate: NEW creation requires live config (keys+enabled+asset+
+  // fresh FX). Saved retry (same quote_id) resolves BEFORE these checks below
+  // — same order, same binding, no re-gate, no provider switch.
+  let cryptoUsd: NowpaymentsUsdExpected | null = null;
+  if (isCryptoMethod && cryptoTicker) {
+    const asset = getCryptoAsset(cryptoTicker)!;
+    const stale = (error = "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout.") =>
+      NextResponse.json({ error, code: "quote_stale" }, { status: 409 });
+    if (selected.fee_payer !== "merchant" || selected.fixed_rate !== false) return stale("Perbarui checkout untuk menyetujui biaya pembayaran.");
+    const row = selected as unknown as Record<string, unknown>;
+    const snap = row.usd as Record<string, unknown> | undefined;
+    // Validated extraction, no blind casts: kind/currency/asset/network/
+    // snapshot shape + exact USD price re-derived server-side from BASE cents
+    // (+ biaya layanan crypto). Wrong body overrides (price/currency/FX) =>
+    // rejected (409) or ignored (server values win); tampered token => verify
+    // fails earlier.
+    if (row.kind !== "crypto" || row.currency !== "USD" || !snap || typeof snap !== "object" || Array.isArray(snap)) return stale();
+    if (String(row.pay_currency).toLowerCase() !== cryptoTicker || String(row.network).toLowerCase() !== asset.network
+      || String(snap.pay_currency) !== cryptoTicker || String(snap.network) !== asset.network) return stale();
+    if (typeof row.amount_text !== "string" || !/^[0-9]+\.[0-9]{2}$/.test(row.amount_text)) return stale();
+    const snapCents = typeof snap.cents === "string" && /^[0-9]{1,20}$/.test(snap.cents) ? snap.cents : null;
+    const snapRateNum = typeof snap.rate_num === "string" && /^[0-9]{1,32}$/.test(snap.rate_num) ? snap.rate_num : null;
+    const snapRateDen = typeof snap.rate_den === "string" && /^[0-9]{1,32}$/.test(snap.rate_den) ? snap.rate_den : null;
+    const snapRateText = typeof snap.rate_text === "string" && /^[0-9]+(\.[0-9]+)?$/.test(snap.rate_text.trim())
+      && snap.rate_text.length <= 32 ? snap.rate_text.trim() : null;
+    const snapEffective = typeof snap.effective_at === "string" && Number.isFinite(Date.parse(snap.effective_at)) ? snap.effective_at : null;
+    const snapSubtotal = typeof snap.idr_subtotal === "number" && Number.isSafeInteger(snap.idr_subtotal) && snap.idr_subtotal > 0 ? snap.idr_subtotal : null;
+    if (!snapCents || BigInt(snapCents) <= BigInt(0) || !snapRateNum || BigInt(snapRateNum) <= BigInt(0)
+      || !snapRateDen || BigInt(snapRateDen) <= BigInt(0) || !snapRateText || !snapEffective || snapSubtotal === null) return stale();
+    // Rincian harga diturunkan ulang di server dari base bertanda; field di token hanya dibandingkan.
+    const pricing = cryptoPricing(BigInt(snapCents));
+    if (row.surcharge_bps !== CRYPTO_SURCHARGE_BPS || row.base_cents !== Number(pricing.baseCents)
+      || row.surcharge_cents !== Number(pricing.surchargeCents) || row.total_cents !== Number(pricing.totalCents)
+      || pricing.totalCents < BigInt(CRYPTO_MIN_TOTAL_USD_CENTS)) return stale();
+    const { getCryptoMarketSnapshot } = await import("@/lib/payments/market-snapshot");
+    const sameConfigQuote = await queryFirst("SELECT code FROM orders WHERE quote_id=?", quote.quote_id);
+    if (!sameConfigQuote) {
+      // Pembuatan BARU: koin harus ada di snapshot segar sekarang dan total bertanda masih memenuhi lantai +
+      // minimum terbaru x 1,15. Retry quote yang sama (sameConfigQuote) memakai binding tersimpan tanpa gate ulang.
+      const market = await getCryptoMarketSnapshot();
+      const current = market.fx;
+      const liveOk = isNowpaymentsConfigured() && cryptoRailEnabled() && current !== null;
+      if (!liveOk) {
+        return NextResponse.json({ error: "Pembayaran crypto sedang tidak tersedia. Muat ulang checkout." }, { status: 503 });
+      }
+      if (Number(snap.idr_subtotal) !== Number(quote.subtotal) || !Number.isSafeInteger(Number(snap.idr_subtotal))) {
+        return NextResponse.json({ error: "Harga berubah sejak checkout. Muat ulang checkout." }, { status: 409 });
+      }
+      if (!isCryptoTotalStillPayable(Number(pricing.totalCents), cryptoTicker, market.coins)) {
+        return stale("Koin ini tidak tersedia atau minimumnya berubah. Muat ulang checkout.");
+      }
+      // Kurs otomatis berubah tiap refresh: toleransi 2% + snapshot bertanda <=24 jam
+      // (bukan kesamaan ketat). Harga USD tetap dari cents bertanda di bawah.
+      if (!isFxSnapshotAcceptable(current, { rate_num: snapRateNum, rate_den: snapRateDen, effective_at: snapEffective })) {
+        return stale("Kurs berubah sejak checkout. Muat ulang checkout.");
+      }
+    }
+    // Exact USD re-derived server-side: signed base cents -> total canonical
+    // price. Forged body price overrides ignored (mismatch => tamper => 409).
+    const exactPrice = centsToUsdText(pricing.totalCents);
+    if (exactPrice !== String(row.amount_text)) return stale();
+    cryptoUsd = {
+      cents: snapCents, priceText: exactPrice, rateText: snapRateText,
+      surchargeBps: pricing.surchargeBps, surchargeCents: pricing.surchargeCents.toString(), totalCents: pricing.totalCents.toString(),
+      rateNum: snapRateNum, rateDen: snapRateDen, effectiveAt: snapEffective,
+      idrSubtotal: Number(quote.subtotal), payCurrency: cryptoTicker, network: asset.network,
+    };
+  } else if (isGatewayMethod) {
+    if (selected.kind !== "gateway" || !selected.gateway || selected.currency !== "IDR") return NextResponse.json({ error: "Metode pembayaran berubah." }, { status: 409 });
+    const { isSekalipayGatewayConfigured } = await import("@/lib/payments/rails");
+    if (!isSekalipayGatewayConfigured()) return NextResponse.json({ error: "Metode pembayaran tidak tersedia." }, { status: 503 });
+    const { listSekalipayMethods } = await import("@/lib/payments/sekalipay-gateway");
+    const methods = await listSekalipayMethods(quote.subtotal).catch(() => []);
+    if (!methods.some((m) => m.code === selected.gateway!.channel)) return NextResponse.json({ error: "Metode pembayaran tidak tersedia." }, { status: 503 });
+    if (customer_email.length > 100 || (customer_name?.length ?? 0) > 100) return NextResponse.json({ error: "Data pembeli tidak valid." }, { status: 400 });
+  } else if (payment_method !== "qris") {
+    return NextResponse.json({ error: "E-Wallet & Transfer Bank sedang maintenance. Muat ulang checkout dan bayar via QRIS." }, { status: 503 });
+  } else if (!quoteHasQris) {
     return NextResponse.json({ error: "E-Wallet & Transfer Bank sedang maintenance. Muat ulang checkout dan bayar via QRIS." }, { status: 503 });
   }
   const code = generateCode();
   const pm = String(payment_method);
   const paymentId = pm.startsWith("bank:") ? pm.slice(5) : pm;
   const payment = quote.payment_methods.find((method) => method.id === paymentId);
-  if (!payment) {
-    return NextResponse.json({ error: "Metode pembayaran berubah atau sudah tidak aktif. Muat ulang checkout." }, { status: 409 });
-  }
 
   // Resolve saved orders first; durable quote admission also dedupes retries
   // that reach this point before the winning request has saved its order.
@@ -309,18 +473,19 @@ export async function POST(req: NextRequest) {
       items: quote.items,
       subtotal: quote.subtotal,
       paymentMethod: pm,
-      paymentAccount: payment.account_number,
+      paymentAccount: isCryptoMethod ? "NOWPayments" : isGatewayMethod ? "Sekalipay" : (payment?.account_number ?? "QRIS"),
       proofUrl: proof_url,
+      locale: quote.locale ?? "id",
     });
   } catch (e: unknown) {
     if (e instanceof StockReservationError) {
-      const winner = await queryFirst("SELECT code,quote_id,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id).catch(() => null);
+      const winner = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id).catch(() => null);
       if (winner) return existingCheckoutResponse(winner);
       return NextResponse.json({ error: e.message }, { status: 409 });
     }
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("UNIQUE")) {
-      const existing = await queryFirst("SELECT code,quote_id,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
+      const existing = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
       if (existing) {
         return existingCheckoutResponse(existing);
       }
@@ -331,6 +496,8 @@ export async function POST(req: NextRequest) {
   }
 
   let qrisInvoice: Awaited<ReturnType<typeof createDanaQrisInvoice>> | null = null;
+  let cryptoView: import("@/lib/payments/payment-view").NonQrisPaymentView | null = null;
+  let gatewayView: Awaited<ReturnType<typeof import("@/lib/payments/payment-view").buildSekalipayGatewayPaymentView>> = null;
   if (pm === "qris") {
     try {
       // Rail mengikuti QRIS_ACTIVE_PROVIDER (default dana = perilaku lama).
@@ -346,6 +513,56 @@ export async function POST(req: NextRequest) {
       } catch { /* A concurrent terminal transition is safe. */ }
       return NextResponse.json({ error: "QRIS dinamis sedang tidak tersedia. Coba lagi sebentar." }, { status: 503 });
     }
+  } else if (isCryptoMethod) {
+    try {
+      const { createNowpaymentsInvoice } = await import("@/lib/payments/nowpayments");
+      const inv = await createNowpaymentsInvoice(code, Number(quote.subtotal), cryptoUsd!.payCurrency, {
+        payNetwork: cryptoUsd!.network,
+        priceCurrency: "usd",
+        feePayer: "merchant",
+        fixedRate: false,
+        expectedUsd: { ...cryptoUsd! },
+      });
+      const { buildNowpaymentsPaymentView } = await import("@/lib/payments/payment-view");
+      cryptoView = await buildNowpaymentsPaymentView(code).catch(() => null);
+      void inv;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "unknown";
+      console.error("NOWPayments invoice setup failed:", message);
+      const claimed = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='nowpayments' AND status IN ('initializing','pending')", code);
+      if (claimed || message === "nowpayments_network_ambiguous" || message === "nowpayments_finalize_failed_manual_review") {
+        // Ambiguous/mid-finalize: claim+stok dipertahankan (Telegram
+        // invoice.ts:322 pattern), 503 "check status" — JANGAN cancel.
+        // No repeat POST: retry quote SAMA memulihkan via GET known id.
+        return NextResponse.json({ error: "Tagihan crypto sedang disiapkan. Cek status dengan checkout yang sama — jangan buat pesanan baru.", code }, { status: 503 });
+      }
+      if (message === "nowpayments_preflight_invalid" || message === "nowpayments_usd_snapshot_required"
+        || message.startsWith("nowpayments_")) {
+        try {
+          await transitionPendingOrder(code, "dibatalkan", `nowpayments_setup_failed:${message.slice(0, 60)}`, quote.items);
+        } catch { /* A concurrent terminal transition is safe. */ }
+        return NextResponse.json({ error: "Pembayaran crypto sedang tidak tersedia. Muat ulang checkout." }, { status: 503 });
+      }
+      try {
+        await transitionPendingOrder(code, "dibatalkan", "nowpayments_setup_failed", quote.items);
+      } catch { /* A concurrent terminal transition is safe. */ }
+      return NextResponse.json({ error: "Pembayaran crypto sedang tidak tersedia. Muat ulang checkout." }, { status: 503 });
+    }
+  } else if (isGatewayMethod && selected.gateway) {
+    try {
+      const { createSekalipayGatewayInvoice } = await import("@/lib/payments/sekalipay-gateway");
+      await createSekalipayGatewayInvoice(code, quote.subtotal, selected.gateway.channel, { name: fallbackName, email: customer_email, phone: wa }, selected.gateway.estimated_fee);
+      gatewayView = await import("@/lib/payments/payment-view").then((m) => m.buildSekalipayGatewayPaymentView(code));
+    } catch {
+      const claimed = await queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='sekalipay_gateway'", code);
+      if (!claimed) {
+        await transitionPendingOrder(code, "dibatalkan", "gateway_setup_failed", quote.items).catch(() => {});
+        return NextResponse.json({ error: "Metode pembayaran tidak tersedia.", code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+      }
+      return NextResponse.json({ error: "Tagihan sedang disiapkan. Coba checkout yang sama.", code,
+        buyer_access_session: await createBuyerAccessSession({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),
+        checkout_credential_grant: await createCheckoutCredentialGrant({ code, quote_id: quote.quote_id, buyer_access_version: 1, buyer_access_format: "pin6" }) }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+    }
   }
 
   // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-09-25): order web
@@ -357,12 +574,14 @@ export async function POST(req: NextRequest) {
     checkout_credential_grant: await createCheckoutCredentialGrant({ code, quote_id: quote.quote_id, buyer_access_version: 1, buyer_access_format: "pin6" }),
     subtotal: quote.subtotal,
     status: "pending",
+    locale: quote.locale,
     qris: qrisInvoice ? {
       payable_amount: qrisInvoice.payableAmount,
       unique_code: qrisInvoice.uniqueCode,
       image_url: qrisInvoice.qrisUrl,
       expires_at: qrisInvoice.expiresAt,
     } : null,
+    ...(cryptoView || gatewayView ? { payment: cryptoView ?? gatewayView } : {}),
   }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
 }
 
@@ -383,6 +602,7 @@ export async function GET(req: NextRequest) {
     if (!row) return orderAccessDenied();
     const accessFailure = await newOrderAccessFailure(req, row, undefined, { allowStatusSession: true });
     if (accessFailure) return accessFailure;
+    if (row.payment_provider === "sekalipay_gateway" && !requiresOrderAccessCode(row) && !await buyerOrderAccessMatches(requestOrderAccessCode(req), row)) return orderAccessDenied();
     // 2026-10-10: tombol "Cek Status Sekarang" mengirim `wake=1` (polling
     // otomatis TIDAK) → bangunkan poller GoPay di VPS agar mutasi langsung
     // dicek. Hanya untuk invoice GoPay yang masih pending; best-effort.
@@ -406,6 +626,36 @@ export async function GET(req: NextRequest) {
           pt.expires_at AS payment_expires_at FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=?`, code);
         if (refreshed) Object.assign(row, refreshed);
       } catch { qrisPreparationError = row.transaction_status === "initializing"; }
+    } else if (row.payment_provider === "nowpayments"
+      && ["initializing", "pending"].includes(String(row.transaction_status)) && row.status === "pending") {
+      // Saved crypto, flag-off safe: bounded reconcile via saved binding
+      // (wake=1 forces slot by resetting last_checked_at claim window).
+      try {
+        const { claimNowpaymentsPollReconcile, reconcileNowpaymentsPayment } = await import("@/lib/payments/nowpayments");
+        if (searchParams.get("wake") === "1") {
+          await queryFirst("SELECT 1").catch(() => null);
+          const { execRun } = await import("@/lib/db");
+          await execRun("UPDATE payment_transactions SET last_checked_at=NULL WHERE order_code=? AND provider='nowpayments'", code).catch(() => {});
+        }
+        if (await claimNowpaymentsPollReconcile(code)) {
+          await reconcileNowpaymentsPayment(code).catch(() => null);
+          const refreshed = await queryFirst(`SELECT o.status,o.payment_status,o.fulfillment_status,o.expires_at,
+            pt.status AS transaction_status,pt.pay_amount_text,pt.pay_currency,pt.pay_network,pt.pay_address,
+            pt.price_amount_text,pt.price_currency,pt.actually_paid_text,pt.expires_at AS payment_expires_at
+            FROM orders o JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=?`, code);
+          if (refreshed) Object.assign(row, refreshed);
+        }
+      } catch { /* Saved view tetap dilayani di bawah via buildNowpaymentsPaymentView. */ }
+    } else if (row.payment_provider === "sekalipay_gateway" && ["initializing", "pending"].includes(String(row.transaction_status)) && row.status === "pending") {
+      try {
+        const { claimSekalipayGatewayPoll } = await import("@/lib/payments/payment-view");
+        if (await claimSekalipayGatewayPoll(code)) {
+          const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
+          await reconcileSekalipayGatewayPayment(code);
+          const refreshed = await queryFirst("SELECT status,payment_status,fulfillment_status,expires_at FROM orders WHERE code=?", code);
+          if (refreshed) Object.assign(row, refreshed);
+        }
+      } catch { /* Cached buyer view remains available. */ }
     } else if (row.payment_provider === "klikqris" && row.transaction_status === "pending" && row.status === "pending") {
       // Deteksi lunas tidak boleh hanya menunggu callback gateway (teramati
       // tiba ±28 dtk sesudah pembayaran). Polling halaman yang sudah berjalan
@@ -536,7 +786,7 @@ export async function GET(req: NextRequest) {
         }
       } catch { /* penyegaran best-effort; status lama tetap sah */ }
     }
-    let uniqueUnitsProgress: {ready:number;total:number} | undefined;
+     let uniqueUnitsProgress: {ready:number;total:number} | undefined;
     if (String(row.status) === "lunas") {
       const units = expandDeliveryLines(row.items).filter(line=>line.unique_units === true);
       if (units.length > 1) {
@@ -544,6 +794,12 @@ export async function GET(req: NextRequest) {
         uniqueUnitsProgress={ready:Math.min(units.length,Number(progress?.n||0)),total:units.length};
       }
     }
+    // Non-QRIS view (W3): buyer-safe crypto panel AFTER the same guard above
+    // (proof/session). No secrets, no hosted-URL fabrication for direct payment.
+    const payment = row.payment_provider === "nowpayments"
+      ? await import("@/lib/payments/payment-view").then((m) => m.buildNowpaymentsPaymentView(code)).catch(() => null)
+      : row.payment_provider === "sekalipay_gateway" ? await import("@/lib/payments/payment-view").then((m) => m.buildSekalipayGatewayPaymentView(code)).catch(() => null)
+      : null;
     return NextResponse.json({
       order: {
         code: row.code,
@@ -556,6 +812,7 @@ export async function GET(req: NextRequest) {
         payment_method: row.payment_method,
         payment_account: row.payment_account,
         status: row.status,
+        locale: (row.locale as string) ?? "id",
         created_at: row.created_at,
         // An incomplete KlikQRIS invoice already has its local 15-minute cap.
         expires_at: row.payment_provider === "klikqris" && row.payment_expires_at ? row.payment_expires_at : row.expires_at,
@@ -578,6 +835,7 @@ export async function GET(req: NextRequest) {
           expires_at: row.payment_expires_at,
           status: row.transaction_status,
         } : null,
+        ...(payment ? { payment } : {}),
       },
     }, { headers: { "Cache-Control": "private, no-store" } });
   }

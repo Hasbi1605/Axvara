@@ -19,7 +19,8 @@
 // Cakupan sengaja inti (yang menyentuh pembeli); sisanya tetap di route besar
 // yang masih dipanggil Worker sebagai pelengkap (idempoten — klaim atomik/
 // lease/transisi bersyarat mencegah kerja ganda):
-//   payments    — maksimal4 invoice KlikQRIS aktif due, GET status saja
+//   payments    — maksimal4 invoice KlikQRIS aktif due + 4 NOWPayments
+//                 (incl. known-id initializing), GET status saja
 //   expiry      — initializing basi + invoice DANA/GoPay/KlikQRIS lewat deadline
 //   fulfillment — lepas lock basi + proses job kirim yang jatuh tempo
 //   wr_orders   — pulihkan klaim/saldo, SEMBUHKAN link yatim lunas-tanpa-link
@@ -73,8 +74,40 @@ export async function POST(request: NextRequest) {
   const result: Record<string, unknown> = { ok: true, job };
   try {
     if (job === "payments") {
+      // Bounded: KlikQRIS (limit 4, shared 40-budget) + NOWPayments (limit 4,
+      // shared budget/CAS, incl. known-id initializing for manual review)
+      // + late known-id (limit 4, 6h recheck, no revive/fulfill).
+      // NOWPayments passes read key only => run saved-invoice flag-off (key
+      // present => readable; key absent => passes quietly return zeros).
       const { reconcileDueKlikQrisPayments } = await import("@/lib/payments/klikqris-reconcile");
       Object.assign(result, await reconcileDueKlikQrisPayments(db));
+      try {
+        const { reconcileDueNowpaymentsPayments, reconcileLateKnownNowpaymentsPayments } = await import("@/lib/payments/payment-view");
+        const now = await reconcileDueNowpaymentsPayments(db);
+        (result as Record<string, unknown>).nowpayments_checked = now.payments_checked;
+        (result as Record<string, unknown>).nowpayments_confirmed = now.payments_confirmed;
+        (result as Record<string, unknown>).nowpayments_manual_review = now.manual_review;
+        (result as Record<string, unknown>).payments_checked =
+          Number(result.payments_checked ?? 0) + now.payments_checked;
+        (result as Record<string, unknown>).payments_confirmed =
+          Number(result.payments_confirmed ?? 0) + now.payments_confirmed;
+        (result as Record<string, unknown>).payments_failed =
+          Number(result.payments_failed ?? 0) + now.payments_failed;
+        if (db.canSpend(6)) {
+          const late = await reconcileLateKnownNowpaymentsPayments(db);
+          (result as Record<string, unknown>).nowpayments_late_checked = late.late_checked;
+          (result as Record<string, unknown>).nowpayments_late_manual_review = late.late_manual_review;
+        }
+      } catch (error) {
+        if (error instanceof QueryBudgetExceeded) throw error;
+        (result as Record<string, unknown>).nowpayments_error = "pass_failed";
+      }
+      if (db.canSpend(6)) {
+        try {
+          const { reconcileDueSekalipayGatewayPayments } = await import("@/lib/payments/payment-view");
+          Object.assign(result, await reconcileDueSekalipayGatewayPayments(db));
+        } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; result.gateway_error = "pass_failed"; }
+      }
       if (Number(result.payments_failed) > 0) return NextResponse.json({ ...result, ok: false }, { status: 503 });
     }
     else if (job === "expiry") Object.assign(result, await runExpiry(db));
@@ -107,7 +140,7 @@ export async function POST(request: NextRequest) {
 type Db = DatabaseAccess;
 
 async function runExpiry(db: Db) {
-  const { transitionPendingPaymentOrder } = await import("@/lib/db");
+  const { transitionPendingPaymentOrder, transitionPendingOrder } = await import("@/lib/db");
   const { isExpiredIso } = await import("@/lib/expiry");
   let staleInitializing = 0;
   let expired = 0;
@@ -130,10 +163,15 @@ async function runExpiry(db: Db) {
      )`,
     ORPHAN_LEDGER_PER_RUN,
   ).then(r => Number(r.changes || 0)).catch(() => 0);
+  // nowpayments initializing-with-known-id excluded: real provider charge
+  // interrupted mid-finalize stays reconcilable (W1 finalize_failed path);
+  // blind cancel at 5m would strand it. Unknown-id rows still fail fast.
   const stale = await db.queryAll(
     `SELECT pt.order_code, o.items FROM payment_transactions pt
        JOIN orders o ON o.code=pt.order_code
       WHERE pt.status='initializing' AND pt.created_at < datetime('now', '-5 minutes')
+        AND NOT (pt.provider='nowpayments' AND pt.provider_payment_id IS NOT NULL)
+        AND pt.provider!='sekalipay_gateway'
       LIMIT ?`,
     EXPIRY_PER_RUN,
   );
@@ -145,14 +183,15 @@ async function runExpiry(db: Db) {
     }, db.d1).catch(() => false);
     if (changed) staleInitializing++;
   }
-  // Hanya QRIS dinamis: cabang provider lain mengirim pesan
+  // QRIS dinamis + nowpayments: cabang provider lain mengirim pesan
   // Telegram dan tetap ditangani route besar. Filter o.status='pending'
   // memastikan hanya pesanan hidup yang melepas stok di sini; ledger yatim
-  // sudah ditangani sapuan di atas.
+  // sudah ditangani sapuan di atas. Ceiling 15m order tetap (ambiguous
+  // crypto => manual review via reconcile, tanpa POST ulang di sini).
   const candidates = await db.queryAll(
     `SELECT pt.order_code, COALESCE(o.expires_at, pt.expires_at) AS expires_at, o.items
        FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
-      WHERE pt.status='pending' AND pt.provider IN ('dana','gopay','klikqris')
+      WHERE pt.status='pending' AND pt.provider IN ('dana','gopay','klikqris','nowpayments')
         AND o.status='pending'
         AND julianday(COALESCE(o.expires_at, pt.expires_at)) <= julianday('now')
       ORDER BY julianday(COALESCE(o.expires_at, pt.expires_at)) ASC
@@ -167,6 +206,11 @@ async function runExpiry(db: Db) {
       paymentStatus: "expired", items: parseItems(tx.items),
     }, db.d1).catch(() => false);
     if (changed) expired++;
+  }
+  const gatewayExpired = await db.queryAll(`SELECT pt.order_code,o.items FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
+    WHERE pt.provider='sekalipay_gateway' AND pt.status IN ('initializing','pending') AND o.status='pending' AND julianday(o.expires_at)<=julianday('now') LIMIT ?`, EXPIRY_PER_RUN);
+  for (const tx of gatewayExpired) {
+    try { await transitionPendingOrder(String(tx.order_code), "kadaluarsa", "gateway_expired", parseItems(tx.items), db.d1); expired++; } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; }
   }
   return { stale_initializing: staleInitializing, expired_payments: expired, orphan_ledgers_swept: orphanSwept };
 }
@@ -459,5 +503,29 @@ async function runCleanup(db: Db) {
   // Critical order work has its own jobs; this drain is bounded and resumable.
   const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
   const pairs = await decideDirtyWinners(db);
-  return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed };
+  const market = await runCryptoMarketRefresh(db);
+  return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...market };
+}
+
+/**
+ * Refresh kurs USD/IDR + katalog koin NOWPayments (D1 `crypto_market_snapshot`).
+ * Dipasang di akhir job `cleanup` (tick 5 menit existing, tanpa trigger baru):
+ * kerja ini hanya jatuh tempo tiap 30 menit sehingga pada tick lain ia hanya
+ * 1 baca D1 murah; panggilan jaringannya (~25 GET, timeout 8 dtk, total 30 dtk)
+ * tidak boleh memengaruhi job payments/expiry/fulfillment yang berjalan di
+ * request cron lite TERPISAH dengan budget sendiri. Dijalankan paling akhir
+ * setelah maintenance + pair drain, dan setiap kegagalan/timeout ditelan di sini
+ * (hanya ditandai di hasil) agar cleanup tidak 500 karena sisi pasar.
+ */
+async function runCryptoMarketRefresh(db: Db): Promise<Record<string, unknown>> {
+  try {
+    if (!db.canSpend(4)) return {};
+    const { refreshCryptoMarketSnapshot } = await import("@/lib/payments/market-snapshot-refresh");
+    const result = await refreshCryptoMarketSnapshot(db);
+    return result.status === "not_due" || result.status === "skipped_no_key" ? {} : { crypto_market: result.status, ...(result.errors ? { crypto_market_errors: result.errors } : {}) };
+  } catch (error) {
+    // Termasuk QueryBudgetExceeded: budget habis di sini tidak boleh membuang
+    // hasil cleanup/pair drain yang sudah selesai; tick berikut mencoba lagi.
+    return { crypto_market: error instanceof QueryBudgetExceeded ? "budget_exhausted" : "error" };
+  }
 }

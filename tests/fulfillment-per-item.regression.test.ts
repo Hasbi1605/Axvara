@@ -101,7 +101,7 @@ describe("reservasi unique per baris", () => {
     // menyimpang dari Web dan WhatsApp.
     expect(route).not.toContain("INSERT INTO orders");
     const atomicCalls = route.match(/createChannelOrderAtomic\(\{/g) ?? [];
-    expect(atomicCalls.length).toBe(2); // jalur varian tunggal + jalur cart
+    expect(atomicCalls.length).toBe(3); // varian, cart, dan dispatch metode baru
     expect(route).toContain("StockReservationError");
   });
 

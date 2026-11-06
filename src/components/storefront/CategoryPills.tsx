@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { categories } from "@/lib/products";
 import { IosIcon, categoryIcon } from "@/components/ui/IosIcon";
 import { useEffect, useState } from "react";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 
 export function CategoryPills({
   active,
@@ -12,6 +13,7 @@ export function CategoryPills({
   onChange: (slug: string) => void;
 }) {
   const [items,setItems]=useState(categories);
+  const locale = useDisplayLocale();
   useEffect(()=>{
     fetch("/api/categories").then(r=>r.json()).then(j=>{
       if(Array.isArray(j.categories)){
@@ -32,14 +34,14 @@ export function CategoryPills({
             key={c.slug}
             onClick={() => onChange(c.slug)}
             className={cn(
-              "shrink-0 h-6 px-2 sm:h-9 sm:px-4 rounded-full text-[10px] sm:text-sm font-medium border transition flex items-center gap-1 sm:gap-1.5",
+              "shrink-0 h-11 px-2 sm:px-4 rounded-full text-[10px] sm:text-sm font-medium border transition flex items-center gap-1 sm:gap-1.5",
               isActive
                 ? "bg-white text-[#080C1E] border-white shadow"
                 : "ax-glass-card text-white/70 hover:text-white hover:bg-white/10 border-white/10"
             )}
           >
             <IosIcon name={categoryIcon(c.slug, c.icon)} size={10} className={cn("sm:!w-3.5 sm:!h-3.5", isActive ? "opacity-100" : "opacity-70")} tint={isActive ? "black" : "white"} alt="" />
-            {c.name}
+            {c.slug === "semua" && locale === "en" ? "All" : c.name}
           </button>
         );
       })}

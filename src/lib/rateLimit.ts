@@ -23,6 +23,9 @@ const buckets = new Map<string, { c: number; t: number }>();
 export const RATE_LIMITS = {
   "checkout:quote": 20,
   "checkout:orders": 10,
+  // Display-only IDR->USD conversion for catalog/PDP/cart (no DB/provider).
+  // Longgar (debounce qty + chunk listing); bukan otoritas harga.
+  "display:prices": 120,
   "orders:lookup": 20,
   // Reissue mengubah state dan tidak butuh login (pembeli hanya memegang kode
   // order), jadi batasnya ketat. Perlindungan utamanya tetap syarat "invoice

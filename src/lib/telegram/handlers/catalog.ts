@@ -6,25 +6,28 @@ import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // merender pesan — tidak menyentuh uang/order. Mengisolasinya dari jalur invoice
 // membuat perubahan tampilan aman ditinjau. Pemindahan murni dari route.ts.
 
-import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
+import { queryFirst, queryAll, isD1Mode } from "@/lib/db";
 import { sendMessage, sendPhoto, safeEditOrSend, withLoadingIndicator } from "@/lib/telegram/api";
-import {
-  catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
-  variantsKeyboard, cb,
-  qtyKeyboard, TELEGRAM_MAX_QTY,
-} from "@/lib/telegram/keyboards";
 import {
   catalogFlatMessage, categoriesMessage, categoryProductsMessage,
   productDetailMessage, outOfStockMessage, errorMessage,
   chooseQtyMessage, escapeHtml,
+  myOrdersPrompt, myOrdersMessage, searchPromptMessage, searchResultsMessage,
 } from "@/lib/telegram/messages";
+import type { Locale } from "@/lib/i18n/locale";
+import { tgCtxFor, tgUsdAlternate, type TgCtx } from "@/lib/telegram/render-prefs";
+import {
+  catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
+  variantsKeyboard, cb, homeKeyboard,
+  qtyKeyboard, TELEGRAM_MAX_QTY,
+} from "@/lib/telegram/keyboards";
 import { getProductDetail, getActiveVariant, formatVariantLabel, buyerWarrantyLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { resolveVariantCopy, adminCopyOf } from "@/lib/product-copy/resolve";
 import { mergeProductCopy, parseProductDescription, COPY_SECTION_TITLES } from "@/lib/product-copy/format";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 import { winnerForLoserProduct } from "@/lib/supplier-pairs";
-import { clampQty } from "./shared";
+import { clampQty, setPendingActionUnlessCreating } from "./shared";
 
 type CatalogProduct = { id: number; name: string; price: number };
 
@@ -42,40 +45,50 @@ export async function listTelegramProducts(categoryId?: number): Promise<Catalog
     .map(row => ({ id: row.id, name: row.name, price: row.price! }));
 }
 
+// TG2a: prefs+FX resolved ONCE per read surface, threaded as plain options
+// into message+keyboard builders. Displays only — no order/payment writes.
+async function tgCtx(userId: number): Promise<TgCtx> {
+  return tgCtxFor(userId);
+}
+
 // Flat catalog (WA parity): product names only, no mandatory categories.
-export async function handleShowCatalog(chatId: number) {
+export async function handleShowCatalog(chatId: number, from?: { id: number }) {
+  const ctx = await tgCtx(from?.id ?? chatId);
   const products = await listTelegramProducts();
   await sendMessage({
     chat_id: chatId,
-    text: catalogFlatMessage(products.length),
+    text: catalogFlatMessage(products.length, { locale: ctx.locale }),
     parse_mode: "HTML",
-    reply_markup: catalogFlatKeyboard(products, 0),
+    reply_markup: catalogFlatKeyboard(products, 0, 8, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
   });
 }
 
-export async function handleShowCatalogEdit(chatId: number, messageId: number, page: number) {
+export async function handleShowCatalogEdit(chatId: number, messageId: number, page: number, from?: { id: number }) {
+  const ctx = await tgCtx(from?.id ?? chatId);
   const products = await listTelegramProducts();
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
-    text: catalogFlatMessage(products.length),
+    text: catalogFlatMessage(products.length, { locale: ctx.locale }),
     parse_mode: "HTML",
-    reply_markup: catalogFlatKeyboard(products, page),
+    reply_markup: catalogFlatKeyboard(products, page, 8, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
   });
 }
 
-export async function handleShowCategoriesEdit(chatId: number, messageId: number, page: number) {
+export async function handleShowCategoriesEdit(chatId: number, messageId: number, page: number, from?: { id: number }) {
+  const ctx = await tgCtx(from?.id ?? chatId);
   const categories = await queryAll(
     `SELECT id, name FROM categories ORDER BY sort_order ASC`,
   );
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
-    text: categoriesMessage(),
+    text: categoriesMessage({ locale: ctx.locale }),
     parse_mode: "HTML",
-    reply_markup: categoriesKeyboard(categories as { id: number; name: string }[], page),
+    reply_markup: categoriesKeyboard(categories as { id: number; name: string }[], page, { locale: ctx.locale }),
   });
 }
 
-export async function handleShowProducts(chatId: number, messageId: number, categoryId: number, page: number) {
+export async function handleShowProducts(chatId: number, messageId: number, categoryId: number, page: number, from?: { id: number }) {
+  const ctx = await tgCtx(from?.id ?? chatId);
   const category = await queryFirst(`SELECT name FROM categories WHERE id=?`, categoryId);
   if (!category) return;
 
@@ -83,14 +96,16 @@ export async function handleShowProducts(chatId: number, messageId: number, cate
 
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
-    text: categoryProductsMessage(String(category.name), products.length),
+    text: categoryProductsMessage(String(category.name), products.length, { locale: ctx.locale }),
     parse_mode: "HTML",
-    reply_markup: productsKeyboard(products, categoryId, page),
+    reply_markup: productsKeyboard(products, categoryId, page, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
   });
 }
 
-export async function handleShowProduct(chatId: number, messageId: number, requestedProductId: number) {
-  return withLoadingIndicator(chatId, "📦 Memuat produk", async (beforeResult) => {
+export async function handleShowProduct(chatId: number, messageId: number, requestedProductId: number, from?: { id: number }) {
+  const ctx = await tgCtx(from?.id ?? chatId);
+  const loadingLabel: Record<Locale, string> = { id: "📦 Memuat produk", en: "📦 Loading product" };
+  return withLoadingIndicator(chatId, loadingLabel[ctx.locale], async (beforeResult) => {
 
   // Pecundang pasangan WR/SK (tombol lama, hasil cari lama) → tampilkan
   // pemenangnya, cermin redirect 308 PDP web: 1 barang = 1 kartu.
@@ -107,7 +122,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   // jawab, jangan diam (spinner berhenti tanpa penjelasan).
   if (!detail || !meta || Number(meta.telegram_enabled) !== 1) {
     await beforeResult();
-    await sendMessage({ chat_id: chatId, text: "Produk ini sedang tidak tersedia. Buka /katalog untuk produk yang ready 🙏", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "This product is currently unavailable. Browse /katalog for ready products 🙏" : "Produk ini sedang tidak tersedia. Buka /katalog untuk produk yang ready 🙏", parse_mode: "HTML" });
     return;
   }
 
@@ -149,8 +164,8 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
     badge,
     sold_count: soldCount,
     variants: variantLines,
-  });
-  const keyboard = variantsKeyboard(productId, activeVariants.map(v => ({ ...v, label: formatVariantLabel(v) })));
+  }, { locale: ctx.locale, ...tgUsdAlternate(minPrice, ctx) });
+  const keyboard = variantsKeyboard(productId, activeVariants.map(v => ({ ...v, label: formatVariantLabel(v) })), { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx });
 
   // Product photo = same image as web (free: sendPhoto with product image_url)
   const imageUrl = detail.image?.startsWith("/") ? `https://axvara.tech${detail.image}` : detail.image ?? "";
@@ -177,19 +192,20 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
 
 // --- Variant flow handlers (TELEGRAM_VARIANT_FLOW) ---
 
-export async function handleShowVariants(chatId: number, messageId: number, productId: number) {
-  await handleShowProduct(chatId, messageId, productId);
+export async function handleShowVariants(chatId: number, messageId: number, productId: number, from?: { id: number }) {
+  await handleShowProduct(chatId, messageId, productId, from);
 }
 
-export async function handleVariantConfirm(chatId: number, messageId: number, variantId: number) {
+export async function handleVariantConfirm(chatId: number, messageId: number, variantId: number, from?: { id: number }) {
+  const ctx = await tgCtx(from?.id ?? chatId);
   const variant = await getActiveVariant(variantId);
   if (!variant) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     return;
   }
 
   if (effectiveVariantStock(variant) !== -1 && effectiveVariantStock(variant) < variant.min_qty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     return;
   }
 
@@ -217,14 +233,14 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
     const { orderStatusKeyboard } = await import("@/lib/telegram/keyboards");
     await sendMessage({
       chat_id: chatId,
-      text: alreadyPendingMessage(String(existingOrder.code)),
+      text: alreadyPendingMessage(String(existingOrder.code), { locale: ctx.locale }),
       parse_mode: "HTML",
       reply_markup: orderStatusKeyboard(String(existingOrder.code)),
     });
     return;
   }
 
-  await handleShowQty(chatId, messageId, productId, variantId);
+  await handleShowQty(chatId, messageId, productId, variantId, 1, from);
 }
 
 export async function handleShowQty(
@@ -233,15 +249,17 @@ export async function handleShowQty(
   productId: number,
   variantId: number,
   requestedQty = 1,
+  from?: { id: number },
 ) {
+  const ctx = await tgCtx(from?.id ?? chatId);
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     return;
   }
   variant.stock = effectiveVariantStock(variant);
   if (variant.stock !== -1 && variant.stock < variant.min_qty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     return;
   }
   const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
@@ -258,18 +276,26 @@ export async function handleShowQty(
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
   const maxQty = uniqueMax;
   if (minQty > maxQty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     return;
   }
   const qty = Math.min(Math.max(clampQty(requestedQty), minQty), maxQty);
 
   // Remember qty context so a typed number (1-100) works without buttons.
-  if (isD1Mode()) {
-    await execRun(
-      `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`,
-      `qty_for:${productId}:${variantId}`,
-      String(chatId),
-    ).catch(() => {});
+  if (isD1Mode() && !(await setPendingActionUnlessCreating(String(chatId), chatId, `qty_for:${productId}:${variantId}`))) return;
+
+  // TG2b: harga efektif server (agregat qty varian yang sama = qty ini)
+  // untuk tampilan + approval; guard atomik memverifikasi ulang.
+  let effectiveQtyPrice = Number(variant.price);
+  let effectiveQtyTier: number | null = null;
+  try {
+    const { resolveBulkPrice: resolveQtyBulk } = await import("@/lib/bulk-pricing");
+    const resolvedQty = resolveQtyBulk(Number(variant.price), qty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? []));
+    effectiveQtyPrice = resolvedQty.price;
+    effectiveQtyTier = resolvedQty.tier ?? null;
+  } catch {
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML" });
+    return;
   }
 
   await safeEditOrSend({
@@ -278,45 +304,51 @@ export async function handleShowQty(
     text: chooseQtyMessage({
       productName,
       variantLabel: formatVariantLabel(variant),
-      price: variant.price,
+      price: effectiveQtyPrice,
+      basePrice: Number(variant.price),
+      appliedTierMinQty: effectiveQtyTier,
+      bulkTiers: variant.bulk_pricing_tiers,
+      bulkEnabled: variant.bulk_pricing_enabled ? true : variant.bulk_pricing_invalid ? false : undefined,
       stock: variant.stock,
       qty,
       maxQty,
       minQty,
       requiresEmail,
-    }) + `\n\nPengiriman: ${buyerDeliveryKind(variant) === "instant" ? "otomatis setelah pembayaran" : "diproses setelah pembayaran"}.` + (buyerWarrantyLabel(variant) ? `\nGaransi: ${escapeHtml(buyerWarrantyLabel(variant))}.` : "") + "\nBaca ketentuan produk sebelum membayar.",
+    }, { locale: ctx.locale, ...tgUsdAlternate(effectiveQtyPrice * qty, ctx) }) + `\n\n${ctx.locale === "en" ? "Delivery" : "Pengiriman"}: ${buyerDeliveryKind(variant) === "instant" ? (ctx.locale === "en" ? "automatic after payment" : "otomatis setelah pembayaran") : (ctx.locale === "en" ? "processed after payment" : "diproses setelah pembayaran")}.` + (buyerWarrantyLabel(variant) ? `\n${ctx.locale === "en" ? "Warranty" : "Garansi"}: ${escapeHtml(buyerWarrantyLabel(variant))}.` : "") + (ctx.locale === "en" ? "\nRead the product terms before paying." : "\nBaca ketentuan produk sebelum membayar."),
     parse_mode: "HTML",
-    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: variant.price, maxQty, minQty, requiresEmail, approvalTag: await checkoutApprovalTag([{ productId, variantId, qty, price: variant.price }]) }),
+    reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: effectiveQtyPrice, maxQty, minQty, requiresEmail, approvalTag: await checkoutApprovalTag([{ productId, variantId, qty, price: effectiveQtyPrice }]) }, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
   });
 }
 
 export async function handleQtyInputPrompt(chatId: number, productId: number, variantId: number, from: { id: number }) {
+  const ctx = await tgCtx(from?.id ?? chatId);
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) return;
   variant.stock = effectiveVariantStock(variant);
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
   const maxQty = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, variant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : variant.stock) : variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(variant.stock, TELEGRAM_MAX_QTY);
   if (minQty > maxQty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     return;
   }
-  if (isD1Mode()) {
-    await execRun(`UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=?`, `qty_for:${productId}:${variantId}`, String(from.id)).catch(() => {});
-  }
+  if (isD1Mode() && !(await setPendingActionUnlessCreating(String(from.id), chatId, `qty_for:${productId}:${variantId}`))) return;
   await sendMessage({
     chat_id: chatId,
-    text: `<b>Masukkan jumlah</b>\n\nKirim angka ${minQty}–${maxQty}. Ketik /batal untuk kembali.`,
+    text: ctx.locale === "en"
+      ? `<b>Enter quantity</b>\n\nSend a number ${minQty}–${maxQty}. Type /batal to go back.`
+      : `<b>Masukkan jumlah</b>\n\nKirim angka ${minQty}–${maxQty}. Ketik /batal untuk kembali.`,
     parse_mode: "HTML",
-    reply_markup: { force_reply: true, selective: true, input_field_placeholder: `Ketik ${minQty}–${maxQty}` },
+    reply_markup: { force_reply: true, selective: true, input_field_placeholder: ctx.locale === "en" ? `Type ${minQty}–${maxQty}` : `Ketik ${minQty}–${maxQty}` },
   });
 }
 
-export async function handleProductTerms(chatId: number, productId: number, variantId = 0, requestedPage = 0) {
+export async function handleProductTerms(chatId: number, productId: number, variantId = 0, requestedPage = 0, from?: { id: number }) {
+  const ctx = await tgCtx(from?.id ?? chatId);
   const detail = await getProductDetail(productId);
   const enabled = await queryFirst("SELECT telegram_enabled FROM products WHERE id=? AND is_active=1", productId);
   if (!detail || Number(enabled?.telegram_enabled) !== 1) return;
   if (!variantId) {
-    await sendMessage({ chat_id: chatId, text: "Pilih varian untuk membaca ketentuannya.", reply_markup: { inline_keyboard: detail.variants.filter(v => v.is_active).map(v => [{ text: formatVariantLabel(v).slice(0, 60), callback_data: cb.terms(productId, v.id) }]) } });
+    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Choose a variant to read its terms." : "Pilih varian untuk membaca ketentuannya.", reply_markup: { inline_keyboard: detail.variants.filter(v => v.is_active).map(v => [{ text: formatVariantLabel(v).slice(0, 60), callback_data: cb.terms(productId, v.id) }]) } });
     return;
   }
   const variants = detail.variants.filter(v => v.id === variantId && v.is_active);
@@ -327,7 +359,7 @@ export async function handleProductTerms(chatId: number, productId: number, vari
       ...copy.activation.flatMap(group => [group.title ?? "Cara aktivasi", ...group.steps.map((step, i) => `${i + 1}. ${step}`), ""]),
       ...copy.notes,
     ];
-    if (!lines.length) lines.push("Ketentuan khusus belum tersedia. Hubungi admin melalui /bantuan sebelum membeli.");
+    if (!lines.length) lines.push(ctx.locale === "en" ? "No specific terms yet. Contact admin via /bantuan before buying." : "Ketentuan khusus belum tersedia. Hubungi admin melalui /bantuan sebelum membeli.");
     const header = `<b>${escapeHtml(formatVariantLabel(variant).slice(0, 120))}</b>\n\n`;
     let body = "";
     const parts: string[] = [];
@@ -338,11 +370,11 @@ export async function handleProductTerms(chatId: number, productId: number, vari
     }
     if (body) parts.push(header + body);
     const page = Math.max(0, Math.min(parts.length - 1, Math.floor(requestedPage) || 0));
-    const navigation = [];
-    if (page > 0) navigation.push({ text: "Sebelumnya", callback_data: `${cb.terms(productId, variant.id)}:${page - 1}` });
-    if (page < parts.length - 1) navigation.push({ text: "Ketentuan Berikutnya", callback_data: `${cb.terms(productId, variant.id)}:${page + 1}` });
-    const sent = await sendMessage({ chat_id: chatId, text: parts[page], parse_mode: "HTML", disable_web_page_preview: true,
-      reply_markup: { inline_keyboard: [...(navigation.length ? [navigation] : []), [{ text: "Pilih Varian", callback_data: cb.variants(productId) }], [{ text: "Lanjut ke Jumlah", callback_data: cb.variant(variant.id) }]] } });
+  const navigation = [];
+  if (page > 0) navigation.push({ text: ctx.locale === "en" ? "Previous" : "Sebelumnya", callback_data: `${cb.terms(productId, variant.id)}:${page - 1}` });
+  if (page < parts.length - 1) navigation.push({ text: ctx.locale === "en" ? "Next terms" : "Ketentuan Berikutnya", callback_data: `${cb.terms(productId, variant.id)}:${page + 1}` });
+  const sent = await sendMessage({ chat_id: chatId, text: parts[page], parse_mode: "HTML", disable_web_page_preview: true,
+    reply_markup: { inline_keyboard: [...(navigation.length ? [navigation] : []), [{ text: ctx.locale === "en" ? "Choose Variant" : "Pilih Varian", callback_data: cb.variants(productId) }], [{ text: ctx.locale === "en" ? "Continue to Quantity" : "Lanjut ke Jumlah", callback_data: cb.variant(variant.id) }]] } });
     if (!sent.ok) throw new Error("telegram_terms_send_failed");
   }
 }

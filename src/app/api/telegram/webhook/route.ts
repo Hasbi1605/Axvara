@@ -221,6 +221,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // 7. Route: callback query
+  // Preference callbacks answer exactly once inside handleCallback.
     if (update.callback_query) {
       const cq = update.callback_query;
       const cqChatId = cq.message?.chat.id;
@@ -234,9 +235,11 @@ export async function POST(request: NextRequest) {
 
       if (cq.data === "soldout") {
         await answerCallbackQuery(cq.id, "Varian produk habis. Silakan pilih produk lain.", true);
+      } else if (typeof cq.data === "string" && (cq.data === "lang:id" || cq.data === "lang:en" || cq.data.startsWith("lang:") || cq.data.startsWith("cur:"))) {
+        await handleCallback(cq.data, cqChatId, messageId, cq.from, cq.id);
       } else {
         await answerCallbackQuery(cq.id);
-        await handleCallback(cq.data, cqChatId, messageId, cq.from);
+        await handleCallback(cq.data, cqChatId, messageId, cq.from, cq.id);
       }
       await markDone(updateId);
       return NextResponse.json({ ok: true });

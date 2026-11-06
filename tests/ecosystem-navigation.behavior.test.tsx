@@ -10,7 +10,7 @@ import { Footer } from "@/components/storefront/Footer";
 import { AXVARA_SERVICES, DEFAULT_STORE_SETTINGS, SITE, TG_BOT_HREF, WA_GROUP_HREF } from "@/lib/site";
 
 const route = vi.hoisted(() => ({ pathname: "/" }));
-vi.mock("next/navigation", () => ({ usePathname: () => route.pathname }));
+vi.mock("next/navigation", () => ({ usePathname: () => route.pathname, useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }) }));
 vi.mock("@/hooks/useStoreSettings", () => ({ useStoreSettings: () => DEFAULT_STORE_SETTINGS }));
 
 beforeEach(() => {
@@ -132,6 +132,15 @@ describe("shared footer", () => {
     };
     for (const [name, href] of Object.entries(expected)) expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(href);
     expect(content).not.toMatch(/Bergaransi|Aktivasi 5/);
+  });
+
+  it("footer tidak lagi memuat baris/sheet bahasa & mata uang (pemicu tunggal di header)", () => {
+    const market = render(<Footer />);
+    expect(screen.queryByRole("button", { name: /bahasa dan mata uang|language and currency/i })).toBeNull();
+    expect(screen.getByRole("contentinfo").textContent).not.toMatch(/Bahasa & mata uang|Ubah/);
+    market.unmount();
+    render(<Footer pediaLayout />);
+    expect(screen.queryByRole("button", { name: /bahasa dan mata uang/i })).toBeNull();
   });
 
   // 2026-11-01: "Cara order" di footer Pedia menuju cara order Pedia, bukan halaman Market.

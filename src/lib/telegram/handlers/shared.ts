@@ -20,12 +20,60 @@ export async function markDone(updateId: string) {
   }
 }
 
-/** Bersihkan state percakapan (pending_action) milik user, best-effort. */
+/** Bersihkan state percakapan (pending_action) milik user, best-effort.
+ * R2 anchor guard: durable `creating` payq1 TIDAK PERNAH dihapus di sini —
+ * berlaku untuk /start, /language, /currency, /batal, katalog, cart, help,
+ * checkout lama, dan navigasi router. Hanya quoted/contact/namespace lain
+ * yang boleh dibersihkan. Creating dibersihkan HANYA setelah TX tersimpan
+ * (status apa pun) atau order terminal via clearPayq1AfterDurableTx. */
 export async function clearPendingAction(from?: { id: number }) {
   if (from && isD1Mode()) {
     await execRun(
-      `UPDATE telegram_users SET pending_action=NULL WHERE user_id=? AND pending_action IS NOT NULL`,
+      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=? AND pending_action IS NOT NULL AND pending_action NOT LIKE 'payq1:%"st":"creating"%'`,
       String(from.id),
+    ).catch(() => {});
+  }
+}
+
+/** Set a new conversational state (qty/search/email/wa) WITHOUT ever replacing
+ * a durable `creating` payq1 anchor (R2-C). Returns true when the state was
+ * written (or there is no row to write — legacy no-op), false when a creating
+ * anchor blocked it; in that case the buyer gets the existing "creating"
+ * notice and the caller must stop (the anchor is resumed with the same
+ * confirmation button, never discarded). */
+export async function setPendingActionUnlessCreating(
+  userId: string,
+  chatId: number,
+  value: string,
+): Promise<boolean> {
+  if (!isD1Mode()) return true;
+  const { queryFirst } = await import("@/lib/db");
+  const written = await execRun(
+    `UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND (pending_action IS NULL OR pending_action NOT LIKE 'payq1:%"st":"creating"%')`,
+    value, userId,
+  ).catch(() => ({ changes: 1 }));
+  if ((written.changes ?? 0) > 0) return true;
+  const row = await queryFirst(`SELECT pending_action FROM telegram_users WHERE user_id=?`, userId).catch(() => null);
+  if (!/^payq1:.*"st":"creating"/.test(String(row?.pending_action ?? ""))) return true;
+  const { sendMessage } = await import("@/lib/telegram/api");
+  const { tgCtxFor } = await import("@/lib/telegram/render-prefs");
+  const { paymentMethodNoticeMessage } = await import("@/lib/telegram/messages/purchase");
+  const ctx = await tgCtxFor(Number(userId)).catch(() => ({ locale: "id" as const }));
+  await sendMessage({ chat_id: chatId, text: paymentMethodNoticeMessage("creating", { locale: ctx.locale }), parse_mode: "HTML" }).catch(() => {});
+  return false;
+}
+
+/** Explicit /batal: hapus quoted/contact payq1 via exact-CAS, JANGAN sentuh
+ * creating (durable anchor; dibersihkan hanya setelah TX/order terminal). */
+export async function clearPayq1DraftForCancel(from?: { id: number }) {
+  if (!from || !isD1Mode()) return;
+  const { readPayq1State } = await import("@/lib/telegram/payment-quote");
+  const stored = await readPayq1State(String(from.id)).catch(() => null);
+  if (stored?.state && (stored.state.st === "quoted" || stored.state.st === "contact")) {
+    await execRun(
+      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
+      String(from.id),
+      stored.raw,
     ).catch(() => {});
   }
 }

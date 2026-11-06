@@ -256,7 +256,9 @@ describe("Telegram keyboards", () => {
 
   it("email-required quantity uses an honest continue CTA", () => {
     const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: 10, qty: 3, price: 5000, requiresEmail: true });
-    expect(kb.inline_keyboard.flat()).toContainEqual({ text: "📧 Lanjut ke Email · Rp15.000", callback_data: "pay:1:2:3" });
+    // TG2a: single display-currency price (shared formatIdr, Rp + NBSP grouping).
+    const payBtn = kb.inline_keyboard.flat().find((b) => b.callback_data === "pay:1:2:3");
+    expect(payBtn?.text).toMatch(/📧 Lanjut ke Email · Rp\s?15\.000/);
   });
 
   it("email confirmation offers pay, edit email, and edit quantity", () => {
@@ -436,7 +438,8 @@ describe("Telegram buyer messages", () => {
       qty: 3,
     });
     expect(msg).toContain("Jumlah: 3");
-    expect(msg).toContain("Subtotal: Rp15.000");
+    // TG2a: shared formatIdr (id-ID grouping) — Rp with non-breaking space.
+    expect(msg).toMatch(/Subtotal: Rp\s?15\.000/);
     expect(msg).toContain("Maksimal 100 per pesanan");
     expect(msg).not.toContain("Masukkan Jumlah");
   });
@@ -445,7 +448,7 @@ describe("Telegram buyer messages", () => {
     const msg = emailConfirmationMessage({ productName: "Canva Pro", variantLabel: "Invite", qty: 3, total: 15000, maskedEmail: "n***a@gmail.com" });
     expect(msg).toContain("n***a@gmail.com");
     expect(msg).toContain("Jumlah: 3");
-    expect(msg).toContain("Subtotal: Rp15.000");
+    expect(msg).toMatch(/Subtotal: Rp\s?15\.000/);
   });
 
   it("qty supports bulk up to 100 for unlimited and finite stock", () => {
@@ -834,7 +837,7 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     const msg = cartMessage(lines);
     expect(msg).toContain("<b>🛒 Keranjang</b>");
     expect(msg).toContain("Canva Pro");
-    expect(msg).toContain("Subtotal: Rp99.000");
+    expect(msg).toMatch(/Subtotal: Rp\s?99\.000/);
     expect(msg).toContain("Satu pembayaran QRIS");
     expect(cartMessage([])).toContain("Keranjang kosong");
     const added = cartAddedMessage("Canva Pro", "Pro Head 1 Bulan", 2, 3);

@@ -17,6 +17,10 @@ import { InlineSpinner, OrderStatusSkeleton } from "@/components/storefront/Skel
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { isPediaCode, pediaOrderUrl, redirectBrowser } from "@/components/pedia/status-view";
 import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
+import { GatewayPaymentPanel } from "@/components/storefront/GatewayPaymentPanel";
+import { usePaymentConsent } from "@/hooks/usePaymentConsent";
+import { parseExpiry } from "@/lib/expiry";
+import { asPayLocale, cancelCopy, normalizePaymentView, orderPanelCopy, paymentCancelHidden, paymentHeading, type PayLocale, type PaymentView } from "@/lib/payment-ui";
 import { ensureBuyerAccessSession, forgetBuyerAccessSession, isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 
 type QrisInvoice = {
@@ -54,6 +58,10 @@ type Order = {
   /** true bila order PIN6 baru butuh PIN untuk unlock kredensial; false = legacy kontak saja. */
   buyerPinRequired: boolean;
   uniqueUnitsProgress?: {ready:number;total:number};
+  /** Tampilan aman non-QRIS dari server (gateway/crypto); null untuk QRIS/lama. */
+  payment: PaymentView | null;
+  /** Bahasa tersimpan di pesanan (id/en) untuk teks panel pembayaran. */
+  locale: PayLocale;
 };
 
 function fromApi(value: Record<string, unknown>): Order {
@@ -77,11 +85,14 @@ function fromApi(value: Record<string, unknown>): Order {
     buyerPinRequired: value.buyer_pin_required !== false,
     uniqueUnitsProgress: value.unique_units_progress as Order["uniqueUnitsProgress"],
     qris: value.qris as QrisInvoice | null | undefined,
+    payment: normalizePaymentView(value.payment),
+    locale: asPayLocale(value.locale),
   };
 }
 
 function countdown(expiresAt: string, now: number): string {
-  const seconds = Math.max(0, Math.floor((Date.parse(expiresAt) - now) / 1000));
+  // `expires_at` dari API bisa berupa SQL UTC tanpa offset ("2026-11-05 02:05:42", mis. pesanan gateway): wajib lewat parser kanonis (UTC), bukan Date.parse mentah (zona waktu browser).
+  const seconds = Math.max(0, Math.floor(((parseExpiry(expiresAt) ?? now) - now) / 1000));
   const minutes = Math.floor(seconds / 60);
   return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
@@ -94,7 +105,7 @@ const SLOW_POLL_MS = 20_000;
 
 /**
  * Salinan lokal checkout hanya dipakai sebagai tampilan sementara bila baru
- * dibuat (≤10 mnt) DAN membawa QRIS dari respons create — kasus redirect
+ * dibuat (≤10 mnt), membawa QRIS dan expiry order valid — kasus redirect
  * checkout → halaman ini. Salinan lama tidak pernah diperbarui (bisa sudah
  * lunas/kedaluwarsa), jadi menampilkannya dulu = menyuruh bayar pesanan mati;
  * dulu juga memunculkan "Pesanan Diterima! Admin akan memverifikasi bukti".
@@ -104,7 +115,8 @@ function fromFreshLocal(value: Record<string, unknown> | undefined, now: number)
   if (!value || value.status !== "pending") return null;
   const created = Date.parse(String(value.createdAt || ""));
   const qris = value.qris as Partial<QrisInvoice> | null | undefined;
-  if (!Number.isFinite(created) || now - created > LOCAL_FRESH_MS || !qris?.image_url || !qris.expires_at) return null;
+  const expiresAt = parseExpiry(value.expiresAt);
+  if (!Number.isFinite(created) || now - created > LOCAL_FRESH_MS || !qris?.image_url || !qris.expires_at || expiresAt === null || expiresAt <= now) return null;
   const subtotal = Number(value.subtotal) || 0;
   return {
     code: String(value.code),
@@ -115,6 +127,7 @@ function fromFreshLocal(value: Record<string, unknown> | undefined, now: number)
     items: Array.isArray(value.items) ? (value.items as Order["items"]) : [],
     subtotal,
     status: "pending",
+    expiresAt: String(value.expiresAt),
     qris: {
       payable_amount: Number(qris.payable_amount) || subtotal,
       unique_code: Number(qris.unique_code) || 0,
@@ -130,6 +143,8 @@ function fromFreshLocal(value: Record<string, unknown> | undefined, now: number)
     supplierOwned: false,
     supplierRunning: false,
     fulfillmentStatus: null,
+    payment: null,
+    locale: "id",
   };
 }
 
@@ -249,6 +264,19 @@ export default function OrderSuccessPage() {
     }
   }, [checkingNow, fetchOrder]);
 
+  const resolveConsentContact = useCallback((input: string) => {
+    let contact = (input || buyerContact.current || readOrderContact(String(code))).trim();
+    if (!contact) { try { contact = (sessionStorage.getItem(checkoutContactKey(String(code))) || "").trim(); } catch { /* storage opsional */ } }
+    return contact;
+  }, [code]);
+  const rememberConsentContact = useCallback((contact: string) => {
+    rememberOrderContact(String(code), contact);
+    buyerContact.current = contact;
+    setVerifiedContact(contact);
+  }, [code]);
+  const refreshAfterConsent = useCallback(async () => { await fetchOrder(); setNow(Date.now()); }, [fetchOrder]);
+  const consentHook = usePaymentConsent({ code: typeof code === "string" ? code : "", locale: order?.locale ?? "id", resolveContact: resolveConsentContact, refresh: refreshAfterConsent, onAccepted: rememberConsentContact });
+
   /** Minta QRIS baru untuk order yang masih hidup tetapi QR-nya sudah mati. */
   const requestNewQris = useCallback(async () => {
     if (!code || typeof code !== "string") return;
@@ -278,7 +306,7 @@ export default function OrderSuccessPage() {
   const cancelOrder = useCallback(async () => {
     if (!code || typeof code !== "string" || cancelling) return;
     if (!cancelContact.trim() || !isValidOrderContact(cancelContact)) {
-      setCancelError("Isi No. WA atau email checkout yang dipakai saat memesan.");
+      setCancelError(cancelCopy(order?.locale).needContact);
       return;
     }
     setCancelling(true);
@@ -291,17 +319,17 @@ export default function OrderSuccessPage() {
         cache: "no-store",
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Pembatalan gagal.");
+      if (!response.ok) throw new Error(body.error || cancelCopy(order?.locale).failed);
       setConfirmingCancel(false);
       setCancelContact("");
       await fetchOrder();
       setNow(Date.now());
     } catch (error) {
-      setCancelError(error instanceof Error ? error.message : "Pembatalan gagal.");
+      setCancelError(error instanceof Error ? cancelCopy(order?.locale).serverError(error.message) : cancelCopy(order?.locale).failed);
     } finally {
       setCancelling(false);
     }
-  }, [code, cancelling, cancelContact, fetchOrder]);
+  }, [code, cancelling, cancelContact, fetchOrder, order?.locale]);
 
   useEffect(() => {
     if (typeof code === "string" && isPediaCode(code)) { redirectBrowser(pediaOrderUrl(code)); return; }
@@ -433,10 +461,10 @@ export default function OrderSuccessPage() {
     return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-white/60">Pesanan tidak ditemukan</p><Link prefetch={false} href="/" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke beranda</Link></div>;
   }
 
-  const isExpired = order.status === "kadaluarsa" || (order.status === "pending" && Boolean(order.expiresAt) && Date.parse(order.expiresAt!) <= now);
+  const isExpired = order.status === "kadaluarsa" || (order.status === "pending" && (parseExpiry(order.expiresAt) ?? -Infinity) <= now);
   const isPaid = order.status === "lunas";
   // QR bisa mati sementara ORDER masih hidup — dua masa berlaku yang berbeda.
-  const qrisExpired = Boolean(order.qris) && Date.parse(String(order.qris?.expires_at)) <= now;
+  const qrisExpired = Boolean(order.qris) && (parseExpiry(order.qris?.expires_at) ?? -Infinity) <= now;
   // QRIS pending yang masih hidup = satu-satunya status yang ikon jamnya
   // berputar + tombol cek manual tampil (di bawah). Kedaluwarsa/dibatalkan
   // tetap statis agar tidak menjanjikan polling yang tidak ada.
@@ -449,7 +477,15 @@ export default function OrderSuccessPage() {
   // pola `/lacak-pesanan`, yang sudah benar sejak ronde 3.
   const isDeliveryFailed = isPaid && order.fulfillmentStatus === "failed";
   const isCancelled = order.status === "dibatalkan";
-  const payableAmount = Number(order.qris?.payable_amount || order.subtotal);
+  // Non-QRIS (gateway/crypto): tampilan aman dari server menentukan judul, lencana
+  // dan isi; tidak ada teks "admin memverifikasi bukti" dan tidak ada pengalihan metode.
+  const pay = order.payment;
+  const payExpired = Boolean(pay) && !isPaid && !isCancelled && (isExpired || pay?.state === "expired");
+  const payHeading = !pay || isPaid || isCancelled ? null : paymentHeading(pay, order.locale, isExpired);
+  const showPayPanel = Boolean(pay) && !isPaid && !isCancelled && !payExpired;
+  const hideCancel = paymentCancelHidden(pay, isExpired);
+  const contactKnown = Boolean(verifiedContact) || (() => { try { return isValidOrderContact(sessionStorage.getItem(checkoutContactKey(order.code)) || ""); } catch { return false; } })();
+  const payableAmount = Number(order.qris?.payable_amount || (pay?.kind === "gateway" && pay.total !== null ? pay.total : order.subtotal));
   const statusVisual = isDeliveryFailed
     ? { icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
     : isPaid
@@ -574,9 +610,16 @@ export default function OrderSuccessPage() {
     };
   }
 
+  // Chrome ringkasan/footer mengikuti locale PESANAN tersimpan (bukan preferensi global).
+  const en = order.locale === "en";
+  const cc = cancelCopy(order.locale);
+  const oc = en
+    ? { summary: "Summary", products: (n: number) => `${n} ${n === 1 ? "item" : "items"}`, orderTotal: "Order total", total: "Total", track: "Track Status", shop: "Continue Shopping", help: "Need help?", note: "Third-party AXVARA product — keep your order code for claims. Warranty is a replacement under the ", terms: "warranty terms" }
+    : { summary: "Ringkasan", products: (n: number) => `${n} produk`, orderTotal: "Total pesanan", total: "Total", track: "Lacak Status", shop: "Lanjut Belanja", help: "Butuh bantuan?", note: "Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai ", terms: "ketentuan garansi" };
+
   const summaryContent = <>
     <div className="space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-3 text-[13px] leading-5"><span className="min-w-0 break-words text-white/70">{item.name} × {item.qty}</span><span className="shrink-0 whitespace-nowrap font-medium text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
-    <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">Total • {order.method.toUpperCase()}</span><span className="shrink-0 font-bold text-white">{formatRupiah(payableAmount)}</span></div>
+    <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">{pay?.kind === "crypto" ? oc.orderTotal : oc.total} • {pay?.label || order.method.toUpperCase()}</span><span className="shrink-0 font-bold text-white">{formatRupiah(payableAmount)}</span></div>
   </>;
 
   return (
@@ -608,7 +651,7 @@ export default function OrderSuccessPage() {
             <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
           )}
         </div>
-        <h1 className="mt-4 font-display text-2xl font-bold text-white">{isDeliveryFailed ? "Pengiriman Produk Bermasalah" : isPaid ? "Pembayaran Dikonfirmasi! 🎉" : isCancelled ? "Pesanan Dibatalkan" : isExpired ? "Pesanan Kedaluwarsa" : isPreparingQris ? "QRIS belum siap" : order.qris ? "Selesaikan Pembayaran QRIS" : "Pesanan Diterima!"}</h1>
+        <h1 className="mt-4 font-display text-2xl font-bold text-white">{payHeading ? payHeading.h1 : isDeliveryFailed ? "Pengiriman Produk Bermasalah" : isPaid ? "Pembayaran Dikonfirmasi! 🎉" : isCancelled ? "Pesanan Dibatalkan" : isExpired ? "Pesanan Kedaluwarsa" : isPreparingQris ? "QRIS belum siap" : order.qris ? "Selesaikan Pembayaran QRIS" : "Pesanan Diterima!"}</h1>
         <p className="mt-2 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{order.code}</p>
         {isDeliveryFailed ? (
           <span className="mt-3 inline-flex rounded-full border border-red-500/25 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Lunas — Perlu Bantuan</span>
@@ -616,6 +659,8 @@ export default function OrderSuccessPage() {
           <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#22C55E]/20 bg-[#22C55E]/15 px-3 py-1.5 text-xs font-semibold text-[#22C55E]">Lunas — Terdeteksi Otomatis</span>
         ) : isCancelled ? (
           <span className="mt-3 inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Dibatalkan</span>
+        ) : payHeading ? (
+          <span className={`mt-3 inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold ${payHeading.tone === "pending" ? "border-[#FFB800]/20 bg-[#FFB800]/15 text-[#FFB800]" : payHeading.tone === "review" ? "border-[#FFB800]/30 bg-[#FFB800]/10 text-[#FFD66B]" : payHeading.tone === "info" ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/10 bg-white/10 text-white/60"}`}>{payHeading.badge}</span>
         ) : isExpired ? (
           <span className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/50">Kedaluwarsa</span>
         ) : (
@@ -629,6 +674,8 @@ export default function OrderSuccessPage() {
             ? <>Pembayaran <span className="font-medium text-white">{order.name}</span> sudah diterima. Pesanan sekarang diproses.</>
             : isCancelled
               ? <>Pesanan ini dibatalkan. Hubungi admin jika kamu sudah melakukan transfer.</>
+              : payHeading
+                ? <>{payHeading.lead}</>
               : isExpired
                 ? <>Batas pembayaran sudah habis. Jangan bayar QRIS lama. Silakan buat pesanan baru.</>
                 : isPreparingQris
@@ -640,6 +687,18 @@ export default function OrderSuccessPage() {
                   : <>Terima kasih, <span className="font-medium text-white">{order.name}</span>! Admin akan memverifikasi bukti pembayaran dan menghubungi kamu.</>}
         </p>
         </>}
+
+        {pay && showPayPanel && (
+          <GatewayPaymentPanel
+            payment={pay}
+            locale={order.locale}
+            now={now}
+            checking={checkingNow}
+            onCheck={checkStatusNow}
+            contactKnown={contactKnown}
+            consent={{ busy: consentHook.busy, error: consentHook.error, stale: consentHook.stale, onApprove: (total, contact) => void consentHook.approve(total, contact) }}
+          />
+        )}
 
         {isPreparingQris && (
           <div className="mt-5">
@@ -722,9 +781,9 @@ export default function OrderSuccessPage() {
         {fetchError && <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left text-xs text-amber-200">Status terbaru belum dapat diperiksa: {fetchError}</div>}
 
         {compactPayment ? (
-          <div className="mt-3 text-left"><MobileCollapsible title="Ringkasan" meta={`${order.items.length} produk`}>{summaryContent}</MobileCollapsible></div>
+          <div className="mt-3 text-left"><MobileCollapsible title={oc.summary} meta={oc.products(order.items.length)}>{summaryContent}</MobileCollapsible></div>
         ) : <div className="ax-glass-card mt-6 rounded-2xl p-4 text-left">
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Ringkasan</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{oc.summary}</p>
           <div className="mt-3">{summaryContent}</div>
         </div>}
 
@@ -769,35 +828,35 @@ export default function OrderSuccessPage() {
         {isPaid && !order.credentialsReady && <WarrantyClaimAccordion />}
 
         {!compactPayment && <div className="mt-6 grid grid-cols-2 gap-2.5">
-          <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lacak Status</Link>
-          <Link prefetch={false} href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
+          <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.track}</Link>
+          <Link prefetch={false} href="/" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.shop}</Link>
         </div>}
         {/* Batal mandiri: hanya saat masih pending. Lunas/kadaluarsa/dibatalkan
             tidak punya tombol ini. Konfirmasi + verifikasi kontak agar penebak
             kode tidak bisa mengunci/membatalkan pesanan orang lain. */}
-        {order.status === "pending" && !isExpired && (
+        {order.status === "pending" && !isExpired && !payExpired && !hideCancel && (
           <div className="mt-3">
             {!confirmingCancel ? (
               <div className={compactPayment ? "grid grid-cols-2 gap-2.5" : undefined}>
-              {compactPayment && <Link prefetch={false} href="/" className="flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-xl border border-white/10 bg-white/[0.03] px-2 text-[11px] font-medium text-white/60 transition hover:bg-white/[0.06] sm:text-xs">Lanjut Belanja</Link>}
+              {compactPayment && <Link prefetch={false} href="/" className="flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-xl border border-white/10 bg-white/[0.03] px-2 text-[11px] font-medium text-white/60 transition hover:bg-white/[0.06] sm:text-xs">{oc.shop}</Link>}
               <button
                 type="button"
                 onClick={() => { setConfirmingCancel(true); setCancelError(null); }}
                 className={compactPayment ? "flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-xl border border-red-400/15 bg-red-500/[0.04] px-2 text-[11px] font-medium text-red-200/80 transition hover:bg-red-500/[0.08] sm:text-xs" : "flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-400/20 bg-red-500/[0.06] px-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/[0.12]"}
               >
-                {compactPayment ? "Batalkan Pesanan" : "Batalkan Pesanan Ini"}
+                {compactPayment ? cc.buttonCompact : cc.button}
               </button>
               </div>
             ) : (
-              <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label="Konfirmasi pembatalan pesanan">
-                <p className="text-sm font-semibold text-red-200">Batalkan pesanan {order.code}?</p>
-                <p className="mt-1 text-xs leading-5 text-white/55">Stok langsung kembali dan bisa dipesan orang lain. Pastikan kamu belum membayar — bila dana sudah masuk, hubungi admin dengan kode pesanan.</p>
-                <label htmlFor="cancel-contact" className="mt-3 block text-xs font-medium text-white/60">No. WA atau email checkout *</label>
+              <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4 text-left" role="dialog" aria-label={cc.dialogLabel}>
+                <p className="text-sm font-semibold text-red-200">{cc.title(order.code)}</p>
+                <p className="mt-1 text-xs leading-5 text-white/55">{cc.body}</p>
+                <label htmlFor="cancel-contact" className="mt-3 block text-xs font-medium text-white/60">{cc.contactLabel}</label>
                 <input
                   id="cancel-contact"
                   value={cancelContact}
                   onChange={(event) => setCancelContact(event.target.value)}
-                  placeholder="0812… atau nama@email.com"
+                  placeholder={cc.contactPlaceholder}
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
@@ -811,7 +870,7 @@ export default function OrderSuccessPage() {
                     disabled={cancelling}
                     className="flex h-10 items-center justify-center rounded-xl border border-white/10 px-3 text-sm font-semibold text-white/60 transition hover:bg-white/5 disabled:opacity-50"
                   >
-                    Kembali
+                    {cc.back}
                   </button>
                   <button
                     type="button"
@@ -820,7 +879,7 @@ export default function OrderSuccessPage() {
                     className="flex h-10 items-center justify-center gap-2 rounded-xl bg-red-500 px-3 text-sm font-bold text-white transition hover:bg-red-400 disabled:opacity-50"
                   >
                     {cancelling && <InlineSpinner />}
-                    {cancelling ? "Membatalkan…" : "Ya, Batalkan"}
+                    {cancelling ? cc.cancelling : cc.confirm}
                   </button>
                 </div>
               </div>
@@ -828,14 +887,14 @@ export default function OrderSuccessPage() {
           </div>
         )}
         <div className={compactPayment ? "mt-4 border-t border-white/10 pt-3" : "mt-3"}>
-          <p className="text-center text-[11px] text-white/35">Butuh bantuan?</p>
+          <p className="text-center text-[11px] text-white/35">{oc.help}</p>
           <div className={compactPayment ? "mt-2 flex items-center justify-center gap-3" : "mt-2 grid grid-cols-2 gap-2.5"}>
             <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
             <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
           </div>
         </div>
 
-        <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : "mt-4 text-[11px] leading-5"} text-center text-white/35`}>Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>
+        <p className={`${compactPayment ? "mt-1 text-[10px] leading-4" : "mt-4 text-[11px] leading-5"} text-center text-white/35`}>{oc.note}<Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">{oc.terms}</Link>.</p>
       </div>
     </div>
   );

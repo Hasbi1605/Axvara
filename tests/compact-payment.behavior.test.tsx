@@ -86,6 +86,21 @@ describe("compact pending QRIS payment", () => {
     expect(screen.queryByRole("button", { name: "Cek Pembayaran" })).toBeNull();
   });
 
+  it("EN order: compact cancel button, confirmation dialog and client errors are English (ID flow above stays byte-identical)", async () => {
+    const { fetch } = api(fixture({ locale: "en" })); render(<OrderSuccessPage />);
+    const cancel = await screen.findByRole("button", { name: "Cancel order" });
+    expect(screen.queryByRole("button", { name: /Batalkan/ })).toBeNull();
+    fireEvent.click(cancel);
+    const dialog = screen.getByRole("dialog", { name: "Confirm order cancellation" });
+    expect(within(dialog).getByText(`Cancel order ${CODE}?`)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, cancel" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe("Enter the WhatsApp number or email used at checkout.");
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/cancel"))).toBe(false);
+    fireEvent.change(within(dialog).getByLabelText("Checkout WhatsApp number or email *"), { target: { value: "buyer@example.test" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes, cancel" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(`/api/orders/${CODE}/cancel`, expect.objectContaining({ method: "POST", body: JSON.stringify({ contact: "buyer@example.test" }) })));
+  });
+
   it.each([false, true])("keeps expired QR unpayable and only offers reissue when allowed (%s)", async (allowed) => {
     const order = fixture(); order.qris.expires_at = new Date(Date.now() - 1000).toISOString(); order.qris_reissue_allowed = allowed;
     const { fetch } = api(order); render(<OrderSuccessPage />);

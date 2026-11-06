@@ -455,7 +455,7 @@ describe("Variant stock expiry lifecycle", () => {
     const callback = read("src/app/api/webhook/dana/route.ts");
     // Paid wins only from a pending ledger while the order is still
     // pending+unpaid, so a concurrent expiry batch settles deterministically.
-    expect(db).toContain("AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status='pending')");
+    expect(db).toContain("AND EXISTS(SELECT 1 FROM payment_transactions WHERE order_code=? AND status IN ('initializing','pending'))");
     expect(db).toContain("payment_status IN ('unpaid','pending')");
     expect(callback).toContain("transitionPendingPaymentToPaid(orderCode");
     expect(callback).toContain("INSERT OR IGNORE INTO dana_webhook_events");

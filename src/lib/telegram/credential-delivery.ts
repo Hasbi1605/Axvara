@@ -93,7 +93,7 @@ export async function resendTelegramCredentials(
   let rows: Row[];
   try {
     order = await database.queryFirst(
-      `SELECT code, items, status, payment_status, fulfillment_status FROM orders WHERE code=? AND telegram_user_id=? AND sales_channel='telegram'`,
+      `SELECT code, items, status, payment_status, fulfillment_status, locale FROM orders WHERE code=? AND telegram_user_id=? AND sales_channel='telegram'`,
       code, String(chatId),
     );
     rows = order?.status === "lunas" && order.payment_status === "paid"
@@ -143,6 +143,7 @@ export async function resendTelegramCredentials(
         productName: orderLineLabel(order.items, Number(row.item_index ?? 0)),
         plaintext,
         copy: copies.get(Number(row.variant_id)),
+        locale: String(order.locale ?? "") === "en" ? "en" : "id",
       }));
       sent++;
     } catch {
@@ -150,16 +151,19 @@ export async function resendTelegramCredentials(
     }
   }
   const expected = Math.max(rows.length, expandDeliveryLines(order.items).length);
+  const locale = String(order.locale ?? "") === "en" ? "en" as const : "id" as const;
   const needsHelp = rows.some(row => ["failed", "manual_required"].includes(String(row.status)))
     || order.fulfillment_status === "delivered" && (!ready.length || ready.length < expected)
     || ["failed", "manual_required"].includes(String(order.fulfillment_status));
   const waiting = expected - ready.length;
   const text = failed || needsHelp
-    ? `${sent ? `${sent} detail produk berhasil dikirim. ` : ""}Detail produk gagal dibaca atau dikirim. Coba ambil detail lagi atau hubungi admin.`
+    ? locale === "en"
+      ? `${sent ? `${sent} product details sent. ` : ""}Product details failed to read or send. Fetch details again or contact admin.`
+      : `${sent ? `${sent} detail produk berhasil dikirim. ` : ""}Detail produk gagal dibaca atau dikirim. Coba ambil detail lagi atau hubungi admin.`
     : !sent
-      ? "Detail produk belum siap. Pesanan masih disiapkan. Cek status lagi nanti."
+      ? (locale === "en" ? "Product details are not ready yet. The order is still being prepared. Check status again later." : "Detail produk belum siap. Pesanan masih disiapkan. Cek status lagi nanti.")
       : waiting
-        ? `${sent} detail produk berhasil dikirim. Detail lainnya belum siap. Cek status lagi nanti.`
+        ? (locale === "en" ? `${sent} product details sent. The rest are not ready yet. Check status again later.` : `${sent} detail produk berhasil dikirim. Detail lainnya belum siap. Cek status lagi nanti.`)
         : "";
   if (text) await sendMessage({ chat_id: chatId, text, parse_mode: "HTML" });
   return sent;

@@ -6,7 +6,11 @@ import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
 import { orderCheckoutPath, rememberCheckoutCredentialGrant } from "@/lib/order-access-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useCart } from "@/stores/cart";
+import { estimatedUnitPrice, useCart } from "@/stores/cart";
+import { bulkCopy, quoteTotalSavings, quoteVariantQty, tierPriceChanges, usableBulkTiers, type BulkVariantFields, type TierExpectation } from "@/lib/bulk-display";
+import type { BulkTier } from "@/lib/bulk-pricing";
+import { PaymentMethodPicker } from "@/components/storefront/PaymentMethodPicker";
+import { asPayLocale, isAvailableGateway, parsePayOptions, payCopy, reconcileSelection, usdFor, usdPreferenceCopy, usdPreferenceView, type PayLocale, type SelectionResult, type UsdPreferenceView } from "@/lib/payment-ui";
 import { deriveNameFromEmail, formatRupiah } from "@/lib/utils";
 import type { Product } from "@/lib/products";
 import { fetchWithTimeout, FetchTimeoutError } from "@/lib/fetch-timeout";
@@ -14,23 +18,24 @@ import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { startNavigation } from "@/stores/navigation";
 import { CheckoutSkeleton, InlineSpinner } from "@/components/storefront/Skeletons";
 import { buyerDeliveryEtaJaspay } from "@/lib/catalog";
+import { usePreferences } from "@/hooks/usePreferences";
+import { useDisplayContext } from "@/hooks/useDisplayPrices";
+import { checkoutMessage } from "@/lib/i18n/checkout-copy";
 
 
-type Method = "qris" | "ewallet" | "bank";
-
-type QuotedItem = { product_id: number; variant_id?: number; name: string; price: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
-type QuotePaymentMethod = { id: string; label: string; account_number: string; account_name: string; qris_url: string | null };
+type QuotedItem = { product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
 type QuoteIssue = { product_id?: number; slug?: string; variant_id?: number; min_qty?: number; type: string; message: string };
-type PriceChange = { product_id: number; variant_id?: number; name: string; previous_price: number; current_price: number; message: string };
+type PriceChange = { product_id: number; variant_id?: number; name: string; previous_price: number; current_price: number; message: string; tier?: boolean };
 
 import { rowMatchesIssue } from "@/lib/checkout-line-identity";
 
 type DirectProduct = Product & {
   variantId?: number;
   variantLabel?: string;
+  bulkTiers?: BulkTier[];
 };
 
-type CatalogVariant = {
+type CatalogVariant = BulkVariantFields & {
   id: number;
   label: string;
   price: number;
@@ -45,6 +50,8 @@ function CheckoutInner() {
   const searchParams = useSearchParams();
   const cartItems = useCart((s) => s.items);
   const clear = useCart((s) => s.clear);
+  const { locale: explicitLocale } = usePreferences();
+  const { resolvedLocale } = useDisplayContext();
 
   // Direct checkout from product card via ?buy=slug — fetch authoritative from D1 (B01)
   const [directProduct, setDirectProduct] = React.useState<DirectProduct | null>(null);
@@ -121,6 +128,7 @@ function CheckoutInner() {
             variantId: variant.id,
             variantLabel: variant.label,
             minQty: Math.max(1, Number(variant.min_qty ?? 1) || 1),
+            bulkTiers: usableBulkTiers(variant, variant.price),
           } as DirectProduct & { minQty: number });
           return;
         }
@@ -133,17 +141,21 @@ function CheckoutInner() {
   const isDirect = Boolean(buySlug);
   const items = useMemo(
     () => isDirect
-      ? (buyProduct ? [{ ...buyProduct, qty: buyQty, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name, variantId: buyProduct.variantId, variantLabel: buyProduct.variantLabel, minQty: (buyProduct as { minQty?: number }).minQty }] : [])
+      ? (buyProduct ? [{ ...buyProduct, qty: buyQty, id: buyProduct.id, price: buyProduct.price, image: buyProduct.image, name: buyProduct.name, variantId: buyProduct.variantId, variantLabel: buyProduct.variantLabel, minQty: (buyProduct as { minQty?: number }).minQty, bulkTiers: buyProduct.bulkTiers }] : [])
       : cartItems,
     [isDirect, buyProduct, buyQty, cartItems],
   );
   const subtotal = items.reduce((a, b) => a + b.price * b.qty, 0);
-  // Maintenance sementara (2026-09-17): jalur manual E-Wallet/Bank
-  // dinonaktifkan, QRIS saja. Field tetap tampil tapi disabled + badge
-  // Maintenance di WEB; upload bukti disembunyikan. Backend (/api/orders)
-  // menolak non-QRIS dengan 503 agar tidak bisa di-bypass client.
-  const MANUAL_PAYMENTS_MAINTENANCE = true;
-  const [method, setMethod] = useState<Method | null>(null);
+  // Jalur manual E-Wallet/Bank + upload bukti sudah pensiun (tidak dirender).
+  // Metode = ID yang ditandatangani quote (qris | gateway | crypto) dan dikirim
+  // apa adanya sebagai `payment_method`; tidak ada ID tebakan klien.
+  const [method, setMethod] = useState<string | null>(null);
+  const [payLocale, setPayLocale] = useState<PayLocale>("id");
+  const [methodLocked, setMethodLocked] = useState(false);
+  const [usdPref, setUsdPref] = useState<UsdPreferenceView>(null);
+  const [selectionNotice, setSelectionNotice] = useState<SelectionResult["notice"]>(null);
+  const selectedLabelRef = React.useRef<string | null>(null);
+  const explicitDeselectRef = React.useRef(false);
   const [wa, setWa] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -156,12 +168,16 @@ function CheckoutInner() {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quotedItems, setQuotedItems] = useState<QuotedItem[]>([]);
   const [quotedSubtotal, setQuotedSubtotal] = useState(0);
-  const [quotedPaymentMethods, setQuotedPaymentMethods] = useState<QuotePaymentMethod[]>([]);
+  const [quotedPaymentMethods, setQuotedPaymentMethods] = useState<unknown[]>([]);
   const [quoteIssues, setQuoteIssues] = useState<QuoteIssue[]>([]);
   const [priceChanges, setPriceChanges] = useState<PriceChange[]>([]);
   const [showIssueDialog, setShowIssueDialog] = useState(false);
   const [quoteToken, setQuoteToken] = useState<string | null>(null);
   const [quoteAccepted, setQuoteAccepted] = useState(false);
+  const uiLocale = explicitLocale ?? (quoteToken ? payLocale : resolvedLocale ?? payLocale);
+  const en = uiLocale === "en";
+  const text = (id: string, english: string) => en ? english : id;
+  const message = (value: string) => checkoutMessage(value, uiLocale);
   // Email SELALU wajib (revamp 2026-09-23 ala Sekalipay): semua produk
   // Axvara digital — order tanpa email = macet. Flag server emailRequired
   // (migrasi 0033) tetap dibaca quote tapi tidak lagi mengubah validasi.
@@ -170,6 +186,7 @@ function CheckoutInner() {
   // kosong) dan hook setelah return = crash "Rendered more hooks".
   const [summaryOpen, setSummaryOpen] = useState(true);
   const quoteRequestId = React.useRef(0);
+  const tierExpectRef = React.useRef<TierExpectation[]>([]);
   // Kode pesanan yang sudah dibuat: layar "membuka pembayaran" tampil sampai
   // /pesanan/[code] dirender, bukan kembali ke form (atau "Keranjang kosong").
   const [redirectCode, setRedirectCode] = useState<string | null>(null);
@@ -209,10 +226,17 @@ function CheckoutInner() {
         return;
       }
       if (!r.ok) throw new Error(j.error || `Quote gagal (${r.status})`);
-      const changes = Array.isArray(j.changes) ? j.changes as PriceChange[] : [];
+      const serverChanges = Array.isArray(j.changes) ? j.changes as PriceChange[] : [];
+      // Perubahan harga TIER sungguhan (config berubah di server) ikut dilaporkan;
+      // melewati ambang tier karena qty berubah tidak (lihat tierPriceChanges).
+      const changes: PriceChange[] = [...serverChanges, ...tierPriceChanges(tierExpectRef.current, Array.isArray(j.items) ? j.items as QuotedItem[] : [], serverChanges)];
       setQuotedItems(j.items ?? []);
       setQuotedSubtotal(j.subtotal ?? 0);
-      setQuotedPaymentMethods(j.paymentMethods ?? []);
+      setQuotedPaymentMethods(Array.isArray(j.paymentMethods) ? j.paymentMethods : []);
+      const quoteLocale = asPayLocale(j.displayPreferences?.locale ?? j.locale);
+      setPayLocale(quoteLocale);
+      setUsdPref(usdPreferenceView(j.displayPreferences, quoteLocale));
+      setMethodLocked(false);
       setQuoteToken(j.quoteToken ?? null);
       setPriceChanges(changes);
       if (changes.length > 0) {
@@ -228,6 +252,9 @@ function CheckoutInner() {
     }
   }, []);
 
+  // expected_price = harga DASAR baris (item.price tidak pernah dimutasi jadi
+  // harga tier): quote server membandingkannya dengan harga dasar, sehingga
+  // melewati ambang tier tidak memicu dialog "Perubahan Harga" palsu.
   const quoteRequestItems = useMemo(
     () => items.map((item) => ({
       slug: item.slug,
@@ -237,6 +264,13 @@ function CheckoutInner() {
     })),
     [items],
   );
+  // Estimasi satuan dari tier yang tersimpan (hanya baris yang membawa cache
+  // tier; baris lama tanpa cache tidak menghasilkan peringatan tier).
+  const tierExpectations: TierExpectation[] = items.flatMap((item) => {
+    const row = item as typeof item & { bulkTiers?: BulkTier[] };
+    return row.variantId !== undefined && row.bulkTiers !== undefined ? [{ variantId: row.variantId, unit: estimatedUnitPrice(items as never, row as never) }] : [];
+  });
+  tierExpectRef.current = tierExpectations;
   const quoteKey = JSON.stringify(quoteRequestItems);
   // Keranjang diperbarui melalui store; beli langsung melalui qty URL.
   const setQty = useCart((s) => s.setQty);
@@ -244,6 +278,18 @@ function CheckoutInner() {
   // ada (kunci utama), plus product_id-atau-slug bila tersedia — TANPA pernah
   // mewajibkan slug yang hilang (issue product_id-only tanpa slug tetap pulih).
   const belowMinIssues = quoteIssues.filter((i) => i.type === "below_minimum");
+  const issueText = (issue: QuoteIssue) => {
+    if (!en) return issue.message;
+    const name = items.find((item) => rowMatchesIssue(item, issue))?.name;
+    const stock = issue.message.match(/stok tersisa (\d+) \(diminta (\d+)\)/);
+    const known: Record<string, string> = {
+      missing: "Item not found.", inactive: "Item unavailable.", out_of_stock: "Item sold out.",
+      insufficient_stock: stock ? `Stock remaining: ${stock[1]} (requested: ${stock[2]}).` : "Insufficient stock.",
+      invalid_quantity: "Invalid quantity.", variant_required: "Choose a variant.",
+      below_minimum: `Minimum purchase: ${issue.min_qty ?? "—"}.`,
+    };
+    return known[issue.type] ? `${name ? `${name}: ` : ""}${known[issue.type]}` : issue.message;
+  };
   const adjustToMinimum = () => {
     for (const issue of belowMinIssues) {
       const matches = items.filter((it) => rowMatchesIssue(it, issue));
@@ -280,32 +326,84 @@ function CheckoutInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteKey, directLoading, fetchQuote]);
 
-  // Auto-select QRIS (revamp 2026-09-23): selama maintenance hanya ada 1
-  // opsi aktif — hemat 1 klik + hilangkan error pilih-metode. Hanya jalan
-  // saat method null agar tidak menimpa pilihan user bila opsi hidup lagi.
-  // Hook ini HARUS di sini (sebelum early return di bawah) — aturan hooks.
+  // Auto-select QRIS (revamp 2026-09-23, kini dari ID quote): pilihan yang masih
+  // ada dipertahankan; bila hilang, QRIS dipilih EKSPLISIT sebelum pesanan
+  // dibuat (+ pemberitahuan), tanpa fallback rel tersembunyi. Hanya jalan
+  // setelah quote valid (token ada) agar pilihan tidak terhapus saat quote
+  // sedang dimuat/ditolak. Hook ini HARUS sebelum early return (aturan hooks).
+  const payOptions = useMemo(() => parsePayOptions(quotedPaymentMethods), [quotedPaymentMethods]);
+  const selectedOption = payOptions.find((option) => option.id === method) ?? null;
+  const copyForLocale = payCopy(uiLocale);
   useEffect(() => {
-    if (method === null && quotedPaymentMethods.some((pm) => pm.id === "qris")) {
-      setMethod("qris");
-    }
-  }, [quotedPaymentMethods, method]);
-
-  // Derived: payment method groups from quote
-  // IDs from DB: "qris", "ewallet", "seabank", "bca", etc. — bank = anything not qris/ewallet
-  const pmQris = quotedPaymentMethods.find((pm) => pm.id === "qris");
-  const pmEwallet = quotedPaymentMethods.find((pm) => pm.id === "ewallet");
-  const pmBanks = quotedPaymentMethods.filter((pm) => pm.id !== "qris" && pm.id !== "ewallet");
+    if (!quoteToken) return;
+    // Deselect eksplisit (menutup grup terpilih) TIDAK boleh di-reseed ke QRIS.
+    if (method === null && explicitDeselectRef.current) return;
+    const result = reconcileSelection(payOptions, method, selectedLabelRef.current);
+    if (result.selectedId !== method) setMethod(result.selectedId);
+    if (result.notice) setSelectionNotice(result.notice);
+  }, [payOptions, quoteToken, method]);
+  useEffect(() => { selectedLabelRef.current = selectedOption?.label ?? selectedLabelRef.current; }, [selectedOption]);
 
   // Display items: prefer quoted (authoritative), fallback to cart snapshot.
   // Key komposit produk+varian (temuan audit: dua varian produk sama memakai
   // product_id yang sama sehingga React me-reuse baris dan qty tertukar).
-  const displayItems = quotedItems.length > 0 ? quotedItems.map((qi) => ({ id: qi.product_id, slug: "", variantId: qi.variant_id, name: qi.name, price: qi.price, qty: qi.qty, image: qi.image })) : items;
+  type DisplayLine = { id: unknown; slug: string; variantId?: number; name: string; price: number; qty: number; image: string; basePrice?: number; tierMin?: number; variantQty?: number };
+  const displayItems: DisplayLine[] = quotedItems.length > 0
+    ? quotedItems.map((qi) => ({ id: qi.product_id, slug: "", variantId: qi.variant_id, name: qi.name, price: qi.price, qty: qi.qty, image: qi.image, basePrice: qi.base_price, tierMin: qi.applied_tier_min_qty, variantQty: quoteVariantQty(quotedItems, qi) }))
+    : items;
+  // Hemat grosir HANYA dari quote server (base_price hadir bila tier berlaku);
+  // total sudah terdiskon, jadi tidak ada baris pengurang tambahan.
+  const bulkCopyId = bulkCopy(uiLocale);
+  const bulkSavings = quotedItems.length > 0 ? quoteTotalSavings(quotedItems) : 0;
+  const bulkLineNotes = (it: DisplayLine) => (
+    <>
+      {it.tierMin && it.basePrice !== undefined && it.basePrice > it.price && (
+        <p className="text-[11px] text-white/45">{bulkCopyId.line(it.tierMin)}</p>
+      )}
+      {it.tierMin && it.variantQty !== undefined && it.variantQty > it.qty && (
+        <p className="text-[11px] text-white/45">{bulkCopyId.aggregated(it.variantQty)}</p>
+      )}
+    </>
+  );
+  const bulkIncluded = bulkSavings > 0 ? <p className="text-[11px] text-emerald-300/80">{bulkCopyId.included(formatRupiah(bulkSavings))}</p> : null;
   const rowKeyOf = (it: { id: unknown; slug?: unknown; variantId?: unknown }) => `${String(it.slug ?? "")}|${String(it.id)}|${String(it.variantId ?? "")}`;
   // Nama produk Made By Order (dari quote server, bukan
   // tebakan client) — dipakai untuk peringatan waktu sebelum bayar.
   const queuedNames = quotedItems.filter((qi) => qi.queued_delivery === true && qi.automatic_processing !== true).map((qi) => qi.name);
   const automaticNames = quotedItems.filter((qi) => qi.queued_delivery === true && qi.automatic_processing === true).map((qi) => qi.name);
   const displaySubtotal = quotedItems.length > 0 ? quotedSubtotal : subtotal;
+  // Total dan biaya metode terpilih: angka dari quote server saja, tanpa
+  // penjumlahan/gross-up lokal. Gateway hanya bila estimasinya dihitung dari
+  // subtotal quote yang sama (gagal-tertutup); crypto menampilkan USD server.
+  const gatewaySel = quotedItems.length > 0 && isAvailableGateway(selectedOption) && selectedOption.subtotalIdr === quotedSubtotal ? selectedOption : null;
+  const cryptoSel = quotedItems.length > 0 && selectedOption?.kind === "crypto" && selectedOption.available ? selectedOption : null;
+  const totalLabel = gatewaySel ? copyForLocale.estTotal : cryptoSel ? copyForLocale.usdTotal : "Total";
+  const totalText = gatewaySel ? formatRupiah(gatewaySel.totalIdr) : cryptoSel ? usdFor(cryptoSel.usdText, uiLocale) : formatRupiah(displaySubtotal);
+  // Preferensi USD: angka terkonversi HANYA dari server; bila tak tersedia, jujur tetap Rupiah.
+  const usdCopy = usdPreferenceCopy(uiLocale);
+  const usdPrefNote = quotedItems.length > 0 && usdPref && !cryptoSel ? (
+    <p className="text-[11px] leading-4 text-white/50" data-testid="usd-preference-note">{usdPref.kind === "equivalent" ? usdCopy.equivalent(usdPref.text) : usdCopy.unavailable}</p>
+  ) : null;
+  const methodExtras = gatewaySel ? (
+    <div className="flex justify-between gap-3 text-[13px] text-white/60">
+      <span>{copyForLocale.feeRow(gatewaySel.label)}</span><span className="shrink-0 tabular-nums">+{formatRupiah(gatewaySel.feeIdr)}</span>
+    </div>
+  ) : cryptoSel ? (
+    // Revisi owner 6 Nov: rincian crypto cukup dua baris (Subtotal USD + Biaya layanan) di atas Total;
+    // baris kurs dan catatan gas dihapus dari ringkasan (instruksi jaringan tetap di halaman pembayaran).
+    <div className="space-y-1 text-[13px] text-white/60" data-testid="crypto-breakdown">
+      {cryptoSel.baseText && (
+        <div className="flex justify-between gap-3" data-testid="crypto-subtotal">
+          <span>{copyForLocale.cryptoSubtotalRow}</span><span className="shrink-0 tabular-nums">{usdFor(cryptoSel.baseText, uiLocale)}</span>
+        </div>
+      )}
+      {cryptoSel.surchargeText && cryptoSel.surchargeBps !== null && (
+        <div className="flex justify-between gap-3" data-testid="crypto-service-fee">
+          <span>{copyForLocale.cryptoServiceFeeRow(cryptoSel.surchargeBps)}</span><span className="shrink-0 tabular-nums">{usdFor(cryptoSel.surchargeText, uiLocale)}</span>
+        </div>
+      )}
+    </div>
+  ) : null;
 
   if (redirectCode) {
     return (
@@ -313,26 +411,26 @@ function CheckoutInner() {
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#00E5FF]/10">
           <InlineSpinner className="h-8 w-8" />
         </div>
-        <h1 className="mt-5 font-display text-xl font-bold text-white">Pesanan dibuat</h1>
+        <h1 className="mt-5 font-display text-xl font-bold text-white">{text("Pesanan dibuat", "Order created")}</h1>
         <p className="mt-1 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{redirectCode}</p>
-        <p className="mt-3 text-sm leading-6 text-white/60">Membuka halaman pembayaran QRIS… Jangan tutup halaman atau buat pesanan ulang.</p>
+        <p className="mt-3 text-sm leading-6 text-white/60">{selectedOption?.kind === "qris" || !selectedOption ? text("Membuka halaman pembayaran QRIS… Jangan tutup halaman atau buat pesanan ulang.", "Opening the QRIS payment page… Do not close this page or create another order.") : copyForLocale.redirect}</p>
         {redirectStage >= 1 && (
           <p className="mt-4 text-xs leading-5 text-[#FFD66B]/90">
-            Koneksi lambat. Pesananmu aman —{" "}
-            <a href={`/pesanan/${encodeURIComponent(redirectCode)}`} className="font-semibold text-[#00E5FF] underline underline-offset-2">buka halaman pembayaran</a>
+            {text("Koneksi lambat. Pesananmu aman —", "Slow connection. Your order is safe —")}{" "}
+            <a href={`/pesanan/${encodeURIComponent(redirectCode)}`} className="font-semibold text-[#00E5FF] underline underline-offset-2">{text("buka halaman pembayaran", "open the payment page")}</a>
           </p>
         )}
       </div>
     );
   }
   if (buySlug && !directError && (directLoading || !directProduct)) {
-    return <CheckoutSkeleton label="Memuat produk…" />;
+    return <CheckoutSkeleton label={text("Memuat produk…", "Loading product…")} />;
   }
   if (buySlug && directError) {
     return (
       <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
-        <p className="text-red-300">{directError}</p>
-        <Link prefetch={false} href="/#katalog" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke katalog</Link>
+        <p className="text-red-300">{message(directError)}</p>
+        <Link prefetch={false} href="/#katalog" className="mt-3 inline-block text-sm text-[#00E5FF]">{text("Kembali ke katalog", "Back to catalog")}</Link>
       </div>
     );
   }
@@ -340,8 +438,8 @@ function CheckoutInner() {
   if (items.length === 0) {
     return (
       <div className="mx-auto max-w-[640px] px-4 py-16 text-center">
-        <p className="text-white/60">Keranjang kosong</p>
-        <Link prefetch={false} href="/#katalog" className="text-[#00E5FF] text-sm mt-3 inline-block">← Kembali belanja</Link>
+        <p className="text-white/60">{text("Keranjang kosong", "Your cart is empty")}</p>
+        <Link prefetch={false} href="/#katalog" className="text-[#00E5FF] text-sm mt-3 inline-block">{text("← Kembali belanja", "← Continue shopping")}</Link>
       </div>
     );
   }
@@ -372,10 +470,8 @@ function CheckoutInner() {
       setError("Pilih metode pembayaran terlebih dahulu");
       return;
     }
-    // Maintenance: jalur manual tidak bisa dipilih (button disabled), tapi
-    // jaga lapis client bila state lama tersisa.
-    if (MANUAL_PAYMENTS_MAINTENANCE && method !== "qris") {
-      setError("E-Wallet & Transfer Bank sedang maintenance. Silakan bayar via QRIS.");
+    if (!selectedOption || !selectedOption.available) {
+      setError("Pilih metode pembayaran terlebih dahulu");
       return;
     }
     if (quoteLoading) {
@@ -401,7 +497,9 @@ function CheckoutInner() {
     // Nama layak tampil (bukan prefix email mentah) — lihat deriveNameFromEmail.
     const fallbackName = deriveNameFromEmail(emailClean);
     setLoading(true);
-    const payMethod = "qris" as const;
+    // ID metode terpilih dari quote yang sama dengan quote_token; server
+    // mencocokkannya dengan snapshot yang ditandatangani.
+    const payMethod = selectedOption.id;
     // Nama dihapus dari form (revamp 2026-09-23 ala Sekalipay): fallback
     // dari prefix email agar kolom DB NOT NULL + notif admin tetap bernama.
     const payloadItems = quotedItems.map((item) => ({
@@ -461,6 +559,9 @@ function CheckoutInner() {
       // token yang sama membuat percobaan ulang idempoten (orders.quote_id
       // UNIQUE → pesanan yang sama dikembalikan), jadi aman menekan Bayar lagi.
       if (e instanceof FetchTimeoutError || e instanceof TypeError) {
+        // Kunci metode: percobaan ulang dengan metode lain bisa salah ikat ke
+        // pesanan yang mungkin sudah dibuat; terbuka lagi setelah quote baru.
+        setMethodLocked(true);
         setError("Koneksi terputus saat membuat pesanan. Tekan Bayar lagi — pesanan yang sama dilanjutkan, tidak dibuat dobel.");
       } else {
         setError(e instanceof Error ? e.message : "Gagal buat pesanan");
@@ -477,11 +578,11 @@ function CheckoutInner() {
   // tombol disabled tidak memanggil submit(), sehingga pesan "Centang
   // persetujuan…" di atas tidak pernah tampil dan sticky CTA mobile mati
   // tanpa penjelasan. Klik kini menjelaskan + membawa ke checkbox.
-  const ctaDisabled = loading || quoteLoading || method !== "qris" || !quoteToken || !quoteAccepted || quoteIssues.length > 0;
+  const ctaDisabled = loading || quoteLoading || !selectedOption || !selectedOption.available || !quoteToken || !quoteAccepted || quoteIssues.length > 0;
   // Label bertahap: proses create (stok + QRIS) bisa belasan detik di
   // jaringan lambat; spinner dengan teks yang sama terlihat macet.
-  const submitLabel = submitStage === 0 ? "Membuat pesanan…" : submitStage === 1 ? "Menyiapkan QRIS…" : "Koneksi lambat, tetap di halaman ini…";
-  const ctaLabel = loading ? submitLabel : `Bayar ${formatRupiah(displaySubtotal)} — Buat Pesanan`;
+  const submitLabel = submitStage === 0 ? text("Membuat pesanan…", "Creating order…") : submitStage === 1 ? (selectedOption && selectedOption.kind !== "qris" ? copyForLocale.stagePrepare : text("Menyiapkan QRIS…", "Preparing QRIS…")) : text("Koneksi lambat, tetap di halaman ini…", "Slow connection, please stay on this page…");
+  const ctaLabel = loading ? submitLabel : gatewaySel ? copyForLocale.ctaGateway(gatewaySel.totalIdr) : cryptoSel ? copyForLocale.ctaCrypto(cryptoSel.usdText) : copyForLocale.ctaQris(displaySubtotal);
 
   // --- Blok metode: SATU definisi, dirender di kolom kiri (revamp
   // 2026-09-23 ala Sekalipay: Metode ① → Data ②). Rail kanan desktop
@@ -489,75 +590,32 @@ function CheckoutInner() {
   // state/validasi tetap satu sumber.
   const paymentBlock = (
     <div>
-      <h2 className="text-sm font-semibold text-white">① Metode Pembayaran</h2>
+      <h2 className="text-sm font-semibold text-white">{text("① Metode Pembayaran", "① Payment Method")}</h2>
       {quoteLoading ? (
         <div className="mt-3 text-sm text-white/50" role="status">
           <div className="flex items-center gap-2">
             <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
-            Memuat harga & metode pembayaran…
+            {text("Memuat harga & metode pembayaran…", "Loading prices and payment methods…")}
           </div>
-          {quoteStage >= 1 && <p className="mt-2 text-xs text-[#FFD66B]/90">Koneksi lambat — harga masih divalidasi server, tunggu sebentar.</p>}
+          {quoteStage >= 1 && <p className="mt-2 text-xs text-[#FFD66B]/90">{text("Koneksi lambat — harga masih divalidasi server, tunggu sebentar.", "Slow connection — the server is still checking prices.")}</p>}
         </div>
       ) : quoteError ? (
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2">
-          <p className="text-sm text-red-300">{quoteError}</p>
-          <button type="button" onClick={() => void fetchQuote(quoteRequestItems)} className="shrink-0 text-xs font-semibold text-[#00E5FF]">Coba lagi</button>
+          <p className="text-sm text-red-300">{message(quoteError)}</p>
+          <button type="button" onClick={() => void fetchQuote(quoteRequestItems)} className="shrink-0 text-xs font-semibold text-[#00E5FF]">{text("Coba lagi", "Try again")}</button>
         </div>
       ) : (
         <>
-      <div className="mt-3 grid gap-3">
-        {pmQris && (
-        <button type="button" aria-pressed={method === "qris"} onClick={() => setMethod("qris")} className={`text-left rounded-2xl border p-4 flex items-center justify-between transition ${method === "qris" ? "bg-[#00E5FF]/10 border-[#00E5FF]/40" : "ax-glass-card border-white/10 hover:bg-white/10"}`}>
-          <div className="flex items-center gap-3">
-            <img src="/icons/ios11/qr-code-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(68%) saturate(4000%) hue-rotate(145deg) brightness(1.05)" }} draggable={false} />
-            <div>
-              <p className="text-sm font-semibold text-white flex items-center gap-2">QRIS <span className="text-[10px] bg-[#00E5FF] text-[#080C1E] font-bold px-2 py-0.5 rounded-full">Paling Cepat</span></p>
-              <p className="text-xs text-white/45 mt-0.5">Scan untuk semua e-wallet & bank</p>
-            </div>
-          </div>
-          <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${method === "qris" ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{method === "qris" && <span className="w-2 h-2 rounded-full bg-[#080C1E]" />}</span>
-        </button>
-        )}
-
-        {pmEwallet && (
-        <div
-          role="button"
-          aria-disabled="true"
-          aria-label="E-Wallet sedang maintenance"
-          title="E-Wallet sedang maintenance"
-          className="text-left rounded-2xl border p-4 flex items-center justify-between transition ax-glass-card border-white/10 opacity-50 cursor-not-allowed select-none"
-        >
-          <div className="flex items-center gap-3">
-            <img src="/icons/ios11/wallet-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-50" draggable={false} />
-            <div>
-              <p className="text-sm font-semibold text-white flex items-center gap-2">E-WALLET <span className="text-[10px] bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 font-bold px-2 py-0.5 rounded-full">Maintenance</span></p>
-              <p className="text-xs text-white/45 mt-0.5">{pmEwallet.label}</p>
-            </div>
-          </div>
-          <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-white/20" />
-        </div>
-        )}
-
-        {pmBanks.length > 0 && (
-        <div
-          role="button"
-          aria-disabled="true"
-          aria-label="Transfer Bank sedang maintenance"
-          title="Transfer Bank sedang maintenance"
-          className="text-left rounded-2xl border p-4 flex items-center justify-between transition ax-glass-card border-white/10 opacity-50 cursor-not-allowed select-none"
-        >
-          <div className="flex items-center gap-3">
-            <img src="/icons/ios11/bank-32.png" alt="" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert opacity-50" draggable={false} />
-            <div>
-              <p className="text-sm font-semibold text-white flex items-center gap-2">TRANSFER BANK <span className="text-[10px] bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/30 font-bold px-2 py-0.5 rounded-full">Maintenance</span></p>
-              <p className="text-xs text-white/45 mt-0.5">{pmBanks.map((b) => b.label).join(", ")}</p>
-            </div>
-          </div>
-          <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-white/20" />
-        </div>
-        )}
+      <div className="mt-3">
+        <PaymentMethodPicker
+          options={payOptions}
+          selectedId={method}
+          onSelect={(id) => { explicitDeselectRef.current = id === null; setSelectionNotice(null); setMethod(id); }}
+          locale={uiLocale}
+          disabled={loading || methodLocked}
+          notice={methodLocked ? copyForLocale.locked : selectionNotice ? (selectionNotice.kind === "fallback" ? (selectionNotice.unavailable ? copyForLocale.unavailableForTotalNotice(selectionNotice.fromLabel) : copyForLocale.fallbackNotice(selectionNotice.fromLabel)) : copyForLocale.clearedNotice) : null}
+        />
       </div>
-
         </>
       )}
     </div>
@@ -576,9 +634,9 @@ function CheckoutInner() {
         className="mt-1 h-4 w-4 shrink-0 accent-[#00E5FF]"
       />
       <span className="text-xs leading-5 text-white/60">
-        Saya paham AXVARA adalah <span className="font-semibold text-white">third-party independen, bukan official store</span>, dan saya setuju dengan{" "}
-        <Link prefetch={false} href="/garansi-replace" target="_blank" rel="noreferrer" className="font-semibold text-[#00E5FF] hover:underline">ketentuan layanan & garansi</Link>{" "}
-        serta ketentuan di deskripsi tiap produk.
+        {text("Saya paham AXVARA adalah", "I understand AXVARA is an")} <span className="font-semibold text-white">{text("third-party independen, bukan official store", "independent third party, not an official store")}</span>{text(", dan saya setuju dengan", ", and I agree to the")}{" "}
+        <Link prefetch={false} href="/garansi-replace" target="_blank" rel="noreferrer" className="font-semibold text-[#00E5FF] hover:underline">{text("ketentuan layanan & garansi", "service and warranty terms")}</Link>{" "}
+        {text("serta ketentuan di deskripsi tiap produk.", "and the terms in each product description.")}
       </span>
     </label>
   );
@@ -586,7 +644,7 @@ function CheckoutInner() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
       <h1 className="font-display font-bold text-2xl text-white tracking-[-0.02em]">Checkout</h1>
-      <p className="text-sm text-white/50">Pilih pembayaran, isi data, lalu selesaikan pesanan.</p>
+      <p className="text-sm text-white/50">{text("Pilih pembayaran, isi data, lalu selesaikan pesanan.", "Choose a payment method, enter your details, and complete your order.")}</p>
 
       {/* Ringkasan accordion — MOBILE ONLY (lg:hidden). Di desktop ringkasan
           hidup di rail kanan yang sticky; di mobile rail jatuh ke bawah dan
@@ -600,7 +658,7 @@ function CheckoutInner() {
           aria-controls="checkout-summary-mobile"
           className="w-full flex items-center justify-between px-4 py-3 text-left"
         >
-          <span className="text-sm font-semibold text-white">Ringkasan Pesanan</span>
+          <span className="text-sm font-semibold text-white">{text("Ringkasan Pesanan", "Order Summary")}</span>
           <span className="flex items-center gap-2">
             {/* Total header hanya saat accordion TERTUTUP (pola struk:
                 total tampil 1x per state). Saat terbuka, total pindah ke
@@ -608,7 +666,7 @@ function CheckoutInner() {
                 Pengecualian: saat quote loading body belum punya total,
                 header tetap menampilkannya. */}
             {(!summaryOpen || quoteLoading) && (
-              <span className="font-display font-bold text-white text-sm">{formatRupiah(displaySubtotal)}</span>
+              <span className="font-display font-bold text-white text-sm">{totalText}</span>
             )}
             <svg viewBox="0 0 24 24" className={`w-4 h-4 text-white/50 transition-transform ${summaryOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
           </span>
@@ -618,7 +676,7 @@ function CheckoutInner() {
             {quoteLoading ? (
               <div className="flex items-center gap-2 text-sm text-white/50">
                 <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
-                Memuat…
+                {text("Memuat…", "Loading…")}
               </div>
             ) : (
               <div className="space-y-3">
@@ -632,14 +690,18 @@ function CheckoutInner() {
                           qty > 1 (kedua angka beda). Untuk qty 1, angka kanan
                           sudah = harga — jangan ulang lagi. */}
                       <p className="text-[11px] text-white/50">{it.qty > 1 ? `Qty ${it.qty} × ${formatRupiah(it.price)}` : `Qty ${it.qty}`}</p>
+                      {bulkLineNotes(it)}
                     </div>
                     <span className="text-[13px] font-semibold text-white">{formatRupiah(it.price * it.qty)}</span>
                   </div>
                 ))}
+                {methodExtras}
                 <div className="pt-3 border-t border-white/10 flex justify-between">
-                  <span className="text-[13px] text-white/60">Total</span>
-                  <span className="font-display font-bold text-white">{formatRupiah(displaySubtotal)}</span>
+                  <span className="text-[13px] text-white/60">{totalLabel}</span>
+                  <span className="font-display font-bold text-white">{totalText}</span>
                 </div>
+                {usdPrefNote}
+                {bulkIncluded}
               </div>
             )}
           </div>
@@ -653,26 +715,22 @@ function CheckoutInner() {
         <div className="ax-glass-card rounded-[24px] p-5 sm:p-6 space-y-6">
           <div>
             {paymentBlock}
-            {/* Verifikasi otomatis: sub-hint di bawah metode, bukan step
-                bernomor yang memotong alur (revamp 2026-09-23). Panel upload
-                manual tetap disembunyikan total di WEB selama maintenance. */}
-            <p className="mt-2 text-[11px] leading-4 text-emerald-300/70">QRIS dan total bayar muncul di halaman pesanan. Status diperbarui otomatis setelah pembayaran diterima.</p>
           </div>
 
           <div>
-            <h2 className="text-sm font-semibold text-white">② Data Pembeli</h2>
+            <h2 className="text-sm font-semibold text-white">{text("② Data Pembeli", "② Buyer Details")}</h2>
             <div className="mt-3 grid gap-3">
               <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
-                <label htmlFor="checkout-wa" className="block text-xs font-medium text-white/60 mb-1">No WA aktif *</label>
+                <label htmlFor="checkout-wa" className="block text-xs font-medium text-white/60 mb-1">{text("No WA aktif *", "Active WhatsApp number *")}</label>
                 <input id="checkout-wa" type="tel" inputMode="tel" autoComplete="tel" value={wa} onChange={(e) => { setWa(e.target.value); setFieldErrors(f=> ({...f, wa: ""})); }} placeholder="08..." aria-invalid={!!fieldErrors.wa} aria-describedby={fieldErrors.wa ? "checkout-wa-hint checkout-wa-error" : "checkout-wa-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.wa ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
-                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">Nomor aktif untuk terima produk, info pesanan, dan bantuan via WhatsApp bila ada kendala.</p>
-                {fieldErrors.wa && <p id="checkout-wa-error" className="mt-1.5 text-xs text-red-300">{fieldErrors.wa}</p>}
+                <p id="checkout-wa-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">{text("Nomor aktif untuk terima produk, info pesanan, dan bantuan via WhatsApp bila ada kendala.", "An active number for product delivery, order updates, and WhatsApp support.")}</p>
+                {fieldErrors.wa && <p id="checkout-wa-error" className="mt-1.5 text-xs text-red-300">{message(fieldErrors.wa)}</p>}
               </div>
               <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
                 <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email *</label>
-                <input id="checkout-email" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder="email@contoh.com" aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "checkout-email-hint checkout-email-error" : "checkout-email-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
-                <p id="checkout-email-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">Detail pesanan & produk dikirim ke email ini. Gunakan email aktif yang bisa menerima pesan.</p>
-                {fieldErrors.email && <p id="checkout-email-error" className="mt-1.5 text-xs text-red-300">{fieldErrors.email}</p>}
+                <input id="checkout-email" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder={text("email@contoh.com", "email@example.com")} aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "checkout-email-hint checkout-email-error" : "checkout-email-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
+                <p id="checkout-email-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">{text("Detail pesanan & produk dikirim ke email ini. Gunakan email aktif yang bisa menerima pesan.", "Order and product details are sent here. Use an active email address.")}</p>
+                {fieldErrors.email && <p id="checkout-email-error" className="mt-1.5 text-xs text-red-300">{message(fieldErrors.email)}</p>}
               </div>
             </div>
           </div>
@@ -685,10 +743,10 @@ function CheckoutInner() {
               6–12 jam — hanya janji plafon 12 jam. */}
           {automaticNames.length > 0 && (
             <div className="rounded-2xl border border-[#FFB800]/25 bg-[#FFB800]/[0.07] p-4">
-              <h2 className="text-sm font-semibold text-[#FFD66B]">Diproses otomatis</h2>
+              <h2 className="text-sm font-semibold text-[#FFD66B]">{text("Diproses otomatis", "Processed automatically")}</h2>
               <p className="mt-1 text-xs leading-5 text-white/60">
-                <span className="font-semibold text-white">{automaticNames.length === 1 ? automaticNames[0] : `${automaticNames.length} produk`}</span>
-                {". "}{buyerDeliveryEtaJaspay()}
+                <span className="font-semibold text-white">{automaticNames.length === 1 ? automaticNames[0] : `${automaticNames.length} ${text("produk", "products")}`}</span>
+                {". "}{text(buyerDeliveryEtaJaspay(), "Created automatically after payment is confirmed; processing time depends on the queue.")}
               </p>
             </div>
           )}
@@ -697,11 +755,11 @@ function CheckoutInner() {
               <h2 className="text-sm font-semibold text-[#FFD66B]">Made By Order</h2>
               <p className="mt-1 text-xs leading-5 text-white/60">
                 {queuedNames.length === 1 ? (
-                  <><span className="font-semibold text-white">{queuedNames[0]}</span> dibuat setelah pembayaran terkonfirmasi.</>
+                  <><span className="font-semibold text-white">{queuedNames[0]}</span> {text("dibuat setelah pembayaran terkonfirmasi.", "is prepared after payment is confirmed.")}</>
                 ) : (
-                  <><span className="font-semibold text-white">{queuedNames.length} produk</span> di pesanan ini dibuat setelah pembayaran terkonfirmasi.</>
+                  <><span className="font-semibold text-white">{queuedNames.length} {text("produk", "products")}</span> {text("di pesanan ini dibuat setelah pembayaran terkonfirmasi.", "in this order are prepared after payment is confirmed.")}</>
                 )}
-                {" "}Umumnya terkirim cepat, maksimal 12 jam pada jam layanan.
+                {" "}{text("Umumnya terkirim cepat, maksimal 12 jam pada jam layanan.", "Usually delivered quickly, within 12 hours during service hours.")}
               </p>
             </div>
           )}
@@ -712,14 +770,14 @@ function CheckoutInner() {
             {renderAgreeBlock("checkout-agree-mobile")}
           </div>
 
-          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
+          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{message(error)}</p>}
 
           {/* Sticky bottom CTA — MOBILE ONLY. Di mobile rail kanan jatuh ke
               bawah; sticky ini menjaga tombol bayar selalu dalam jangkauan.
               Memakai handler + state disabled yang sama (tidak ada logika
               ganda). */}
           <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#080C1E]/90 backdrop-blur-xl border-t border-white/10 px-4 py-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
-            {Object.values(fieldErrors).some(Boolean) && <p role="alert" className="mb-2 text-center text-xs text-red-200">Lengkapi data pembeli untuk melanjutkan.</p>}
+            {Object.values(fieldErrors).some(Boolean) && <p role="alert" className="mb-2 text-center text-xs text-red-200">{message("Lengkapi data pembeli untuk melanjutkan.")}</p>}
             <button onClick={submit} disabled={ctaDisabled} className="w-full h-12 rounded-xl bg-[#00E5FF] text-[#080C1E] font-bold text-sm hover:bg-[#00D0E8] disabled:opacity-60 transition inline-flex items-center justify-center gap-2">
               {loading && <span className="w-4 h-4 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
               {ctaLabel}
@@ -736,13 +794,13 @@ function CheckoutInner() {
             (anomali screenshot owner: 2x ringkasan + 2x CTA). Mini-blok MBO
             dan trust sebaris Batch C awal DIHAPUS 2026-09-19 (redundan:
             estimasi sudah di kiri, trust sudah di hero). */}
-        <aside className="hidden lg:block ax-glass-card rounded-[24px] p-5 h-fit lg:sticky lg:top-[72px] space-y-5" aria-label="Ringkasan dan pembayaran">
+        <aside className="hidden lg:block ax-glass-card rounded-[24px] p-5 h-fit lg:sticky lg:top-[72px] space-y-5" aria-label={text("Ringkasan dan pembayaran", "Summary and payment")}>
           <div>
-            <h3 className="font-semibold text-white text-sm">Ringkasan Pesanan</h3>
+            <h3 className="font-semibold text-white text-sm">{text("Ringkasan Pesanan", "Order Summary")}</h3>
             {quoteLoading ? (
               <div className="mt-4 flex items-center gap-2 text-sm text-white/50">
                 <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
-                Memuat…
+                {text("Memuat…", "Loading…")}
               </div>
             ) : (
             <>
@@ -754,20 +812,24 @@ function CheckoutInner() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white leading-4 line-clamp-2">{it.name}</p>
                     <p className="text-xs text-white/50">Qty {it.qty} × {formatRupiah(it.price)}</p>
+                    {bulkLineNotes(it)}
                   </div>
                   <span className="text-sm font-semibold text-white">{formatRupiah(it.price * it.qty)}</span>
                 </div>
               ))}
             </div>
+            {methodExtras && <div className="mt-4">{methodExtras}</div>}
             <div className="mt-4 pt-4 border-t border-white/10 flex justify-between">
-              <span className="text-sm text-white/60">Total</span>
-              <span className="font-display font-bold text-white text-lg">{formatRupiah(displaySubtotal)}</span>
+              <span className="text-sm text-white/60">{totalLabel}</span>
+              <span className="font-display font-bold text-white text-lg">{totalText}</span>
             </div>
+            {usdPrefNote && <div className="mt-1">{usdPrefNote}</div>}
+            {bulkIncluded}
             </>
             )}
           </div>
 
-          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{error}</p>}
+          {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">{message(error)}</p>}
 
           {renderAgreeBlock("checkout-agree")}
 
@@ -776,7 +838,7 @@ function CheckoutInner() {
               {loading && <span className="w-5 h-5 rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E] animate-spin" />}
               {ctaLabel}
             </button>
-            <p className="text-xs text-white/30 mt-3 text-center">QRIS diverifikasi otomatis.</p>
+            {selectedOption && copyForLocale.railFootnote[selectedOption.kind] && <p className="text-xs text-white/30 mt-3 text-center">{copyForLocale.railFootnote[selectedOption.kind]}</p>}
           </div>
         </aside>
       </div>
@@ -787,11 +849,11 @@ function CheckoutInner() {
       {showIssueDialog && (quoteIssues.length > 0 || priceChanges.length > 0) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="quote-change-title">
           <div className="rounded-2xl border border-white/10 bg-[#0B1025] p-6 max-w-md w-full space-y-4 shadow-[0_24px_64px_rgba(0,0,0,0.6)]">
-            <h3 id="quote-change-title" className="text-white font-semibold text-base">{belowMinIssues.length > 0 ? "Sesuaikan Jumlah Pembelian" : "Perubahan Harga / Stok"}</h3>
-            <p className="text-sm text-white/60">{belowMinIssues.length > 0 ? "Produk ini punya minimal pembelian — naikkan jumlah ke batasnya untuk lanjut:" : "Beberapa item berubah sejak kamu menambahkannya:"}</p>
+            <h3 id="quote-change-title" className="text-white font-semibold text-base">{belowMinIssues.length > 0 ? text("Sesuaikan Jumlah Pembelian", "Adjust Purchase Quantity") : text("Perubahan Harga / Stok", "Price / Stock Changed")}</h3>
+            <p className="text-sm text-white/60">{belowMinIssues.length > 0 ? text("Produk ini punya minimal pembelian — naikkan jumlah ke batasnya untuk lanjut:", "This product has a minimum purchase quantity. Increase it to continue:") : text("Beberapa item berubah sejak kamu menambahkannya:", "Some items changed since you added them:")}</p>
             <ul className="space-y-2">
               {quoteIssues.map((issue) => (
-                <li key={`issue-${issue.type}-${issue.slug ?? issue.product_id ?? "?"}-${issue.variant_id ?? 0}`} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">{issue.message}</li>
+                <li key={`issue-${issue.type}-${issue.slug ?? issue.product_id ?? "?"}-${issue.variant_id ?? 0}`} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">{issueText(issue)}</li>
               ))}
               {priceChanges.map((change) => (
                 <li key={`price-${change.product_id}-${change.variant_id ?? 0}`} className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
@@ -801,11 +863,11 @@ function CheckoutInner() {
             </ul>
             <div className="flex gap-3">
               {belowMinIssues.length > 0 ? (
-                <button onClick={adjustToMinimum} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">Sesuaikan ke minimum</button>
+                <button onClick={adjustToMinimum} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">{text("Sesuaikan ke minimum", "Adjust to minimum")}</button>
               ) : quoteIssues.length === 0 && priceChanges.length > 0 ? (
-                <button onClick={() => { setShowIssueDialog(false); setQuoteAccepted(true); }} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">Setujui harga baru</button>
+                <button onClick={() => { setShowIssueDialog(false); setQuoteAccepted(true); useCart.getState().forgetBulkTiers(priceChanges.filter((c) => c.tier && c.variant_id !== undefined).map((c) => c.variant_id as number)); }} className="flex-1 h-10 rounded-xl bg-[#00E5FF] text-[#080C1E] font-semibold text-sm">{text("Setujui harga baru", "Accept new price")}</button>
               ) : null}
-              <button onClick={() => { setShowIssueDialog(false); if (isDirect || belowMinIssues.length === 0) router.push("/#katalog"); }} className="flex-1 h-10 rounded-xl border border-white/20 text-white/70 text-sm">{!isDirect && belowMinIssues.length > 0 ? "Ubah manual" : "Kembali belanja"}</button>
+              <button onClick={() => { setShowIssueDialog(false); if (isDirect || belowMinIssues.length === 0) router.push("/#katalog"); }} className="flex-1 h-10 rounded-xl border border-white/20 text-white/70 text-sm">{!isDirect && belowMinIssues.length > 0 ? text("Ubah manual", "Adjust manually") : text("Kembali belanja", "Continue shopping")}</button>
             </div>
           </div>
         </div>

@@ -40,6 +40,8 @@ export async function createAndSendCartInvoice(
   emailSnapshot?: string | null,
 ) {
   if (await notifyPaymentMaintenance(chatId)) return;
+  // TG2b: subtotal konsisten dari harga EFEKTIF per baris (cart.ts sudah
+  // memakai agregat per varian); items + snapshot menyimpan base + tier.
   const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
   const orderCode = generateOrderCode();
   const items = lines.map((line) => ({
@@ -47,6 +49,8 @@ export async function createAndSendCartInvoice(
     variant_id: line.variantId,
     name: `${line.productName} — ${line.variantLabel}`,
     price: line.price,
+    base_price: line.basePrice,
+    ...(line.appliedTierMinQty != null ? { applied_tier_min_qty: line.appliedTierMinQty } : {}),
     qty: line.qty,
   }));
   // variant_snapshot order gabungan menyimpan ringkasan; mode fulfillment
@@ -60,12 +64,17 @@ export async function createAndSendCartInvoice(
     fulfillment_mode: lines.every((line) => line.fulfillmentMode === "manual") ? "manual" : "mixed",
     lines: lines.map((line) => ({
       product_id: line.productId, variant_id: line.variantId,
-      label: line.variantLabel, price: line.price, qty: line.qty,
+      label: line.variantLabel, price: line.price,
+      base_price: line.basePrice,
+      ...(line.appliedTierMinQty != null ? { applied_tier_min_qty: line.appliedTierMinQty } : {}),
+      qty: line.qty,
       fulfillment_mode: line.fulfillmentMode,
     })),
   });
   let orderInserted = false;
   let invoiceCreated = false;
+  // TG2c1: locale order untuk caption/keyboard di try DAN catch.
+  let cartLocale: "id" | "en" = "id";
 
   try {
     // Validasi shared secret per baris (fail-closed seperti single-item).
@@ -90,11 +99,15 @@ export async function createAndSendCartInvoice(
     // manual per baris (loop `decremented` mengembalikan stok satu per satu):
     // benar untuk error yang dilempar, tetapi bila isolate dihentikan di
     // tengah loop, sebagian stok terpotong permanen tanpa order.
+    // TG2b: locale immutable dari prefs pemilik yang disimpan.
+    // TG2c1: dipakai ulang untuk caption/keyboard di catch.
     const { required, email: cartBuyerEmail } = await readCheckoutEmail(String(from.id), lines, emailSnapshot);
     if (required && !cartBuyerEmail) {
       await sendMessage({ chat_id: chatId, text: "Email aktif dibutuhkan sebelum membuat tagihan.", parse_mode: "HTML" });
       return;
     }
+    const { readTgPreferences: readCartLocale } = await import("@/lib/telegram/preferences");
+    cartLocale = (await readCartLocale(String(from.id)).catch(() => ({ locale: null }))).locale === "en" ? "en" as const : "id" as const;
     try {
       const created = await createChannelOrderAtomic({
         orderCode,
@@ -108,6 +121,7 @@ export async function createAndSendCartInvoice(
         items,
         variantSnapshot,
         subtotal,
+        locale: cartLocale,
         primaryVariantId: lines[0].variantId,
         customerName: from.first_name,
         customerEmail: cartBuyerEmail,
@@ -181,9 +195,9 @@ export async function createAndSendCartInvoice(
         payableAmount: invoiceResult.payableAmount,
         expiresAt: invoiceResult.expiresAt,
         paymentMethod: "qris",
-      }),
+      }, { locale: cartLocale, chargeNote: true }),
       parse_mode: "HTML",
-      reply_markup: qrisInvoiceKeyboard(orderCode),
+      reply_markup: qrisInvoiceKeyboard(orderCode, { locale: cartLocale }),
     });
     if (isAmbiguousSendResult(cartPhoto)) {
       // Timeout/jaringan: foto mungkin tetap mendarat — jangan lempar
@@ -235,10 +249,12 @@ export async function createAndSendCartInvoice(
     await sendMessage({
       chat_id: chatId,
       text: orderInserted && preserveReservation
-        ? `Tagihan belum bisa dikonfirmasi. Kode pesanan: ${orderCode}. Gunakan Cek status untuk memeriksa tagihan yang sama, jangan buat pesanan baru.`
-        : errorMessage(),
+        ? (cartLocale === "en"
+          ? `Invoice cannot be confirmed yet. Order code: ${orderCode}. Use Check Status for the same invoice; do not create a new order.`
+          : `Tagihan belum bisa dikonfirmasi. Kode pesanan: ${orderCode}. Gunakan Cek status untuk memeriksa tagihan yang sama, jangan buat pesanan baru.`)
+        : errorMessage({ locale: cartLocale }),
       parse_mode: "HTML",
-      ...(orderInserted && preserveReservation ? { reply_markup: qrisInvoiceKeyboard(orderCode) } : {}),
+      ...(orderInserted && preserveReservation ? { reply_markup: qrisInvoiceKeyboard(orderCode, { locale: cartLocale }) } : {}),
     }).catch(() => {});
     // RR3-05: lempar ulang kegagalan foto invoice agar lapis POST menjawab
     // 500 + failed (retry Telegram nyata + sapuan cron). BUKAN dari awal:

@@ -8,6 +8,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
+import { PreferenceControls } from "@/components/storefront/PreferenceControls";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { catalogCopy } from "@/lib/i18n/catalog-copy";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -22,6 +25,8 @@ export function Navbar() {
   const [mobileSearch, setMobileSearch] = useState(false);
   const [shake, setShake] = useState(false);
   const storeSettings = useStoreSettings();
+  const displayLocale = useDisplayLocale();
+  const t = catalogCopy(displayLocale);
   const prevCount = useRef(count);
   useEffect(() => {
     if (count > prevCount.current) {
@@ -69,18 +74,18 @@ export function Navbar() {
               <path d="M84.2 78.5 L113.5 104" />
             </svg>
           </span>}
-          <span className="max-[359px]:hidden max-w-[88px] sm:max-w-[180px] truncate font-display font-[300] text-[18px] sm:text-[22px] tracking-[0.1em] sm:tracking-[0.16em] text-white leading-none">{storeSettings.name}</span>
+          <span className="max-[379px]:hidden max-w-[88px] sm:max-w-[180px] truncate font-display font-[300] text-[18px] sm:text-[22px] tracking-[0.1em] sm:tracking-[0.16em] text-white leading-none">{storeSettings.name}</span>
           {/* VAULT badge removed */}
         </Link>
 
         <form role="search" onSubmit={submitSearch} className="hidden lg:flex min-w-0 flex-1 max-w-[520px] mx-2">
           <div className="relative w-full">
-            <button type="submit" aria-label="Jalankan pencarian" className="absolute left-0 top-0 flex h-full w-11 items-center justify-center text-white/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] rounded-full">
+            <button type="submit" aria-label={t.searchSubmit} className="absolute left-0 top-0 flex h-full w-11 items-center justify-center text-white/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] rounded-full">
               <IosIcon name="search" size={16} tint="white" />
             </button>
-            <input type="search" enterKeyHint="search" aria-label="Cari produk Market" value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari AI Gateway, ChatGPT Plus, Canva Pro..." className="w-full h-10 pl-10 pr-11 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 focus:bg-white/[0.08] transition" />
+            <input type="search" enterKeyHint="search" aria-label={t.searchAria} value={q} onChange={(e) => onSearch(e.target.value)} placeholder={t.searchPlaceholder} className="w-full h-10 pl-10 pr-11 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 focus:bg-white/[0.08] transition" />
             {q && (
-              <button type="button" onClick={() => setQ("")} className="absolute right-0 top-0 w-11 h-full rounded-full flex items-center justify-center hover:bg-white/10 transition" aria-label="Hapus pencarian">
+              <button type="button" onClick={() => setQ("")} className="absolute right-0 top-0 w-11 h-full rounded-full flex items-center justify-center hover:bg-white/10 transition" aria-label={t.searchClear}>
                 <X className="w-3.5 h-3.5 text-white/70" />
               </button>
             )}
@@ -88,22 +93,23 @@ export function Navbar() {
         </form>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          <ServicesMenu active="market" />
-          <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Cari produk" aria-expanded={mobileSearch}>
+          <ServicesMenu active="market" locale={displayLocale} />
+          <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label={t.searchToggle} aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
           <nav className="hidden xl:flex items-center gap-1 text-sm text-white/70">
-            <Link prefetch={false} href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Katalog</Link>
-            <Link prefetch={false} href="/lacak-pesanan" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Lacak Pesanan</Link>
-            <Link prefetch={false} href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">Artikel</Link>
+            <Link prefetch={false} href="/#katalog" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">{t.navCatalog}</Link>
+            <Link prefetch={false} href="/lacak-pesanan" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">{t.navTrack}</Link>
+            <Link prefetch={false} href="/artikel" className="px-3 py-2 rounded-full hover:text-white hover:bg-white/10 transition">{t.navArticles}</Link>
           </nav>
+          <PreferenceControls />
           <button
             onClick={() => setDrawer(true)}
               className={`relative w-11 h-11 sm:w-auto sm:h-11 sm:px-4 rounded-full bg-[#00E5FF] text-[#080C1E] flex items-center justify-center gap-2 font-semibold text-sm shadow-[0_0_16px_rgba(0,229,255,0.35)] hover:shadow-[0_0_24px_rgba(0,229,255,0.45)] transition ${shake ? "motion-safe:animate-[cartShake_0.55s_cubic-bezier(0.34,1.56,0.64,1)]" : ""}`}
-            aria-label="Keranjang"
+            aria-label={t.cart}
           >
             <IosIcon name="shopping-bag" size={14} tint="black" />
-            <span className="hidden sm:inline">Keranjang</span>
+            <span className="hidden sm:inline">{t.cart}</span>
             {count > 0 && (
               <span className={`absolute -top-1 -right-1 sm:static sm:ml-1 min-w-[20px] h-5 px-1 rounded-full bg-[#FFB800] text-[#080C1E] text-xs font-bold flex items-center justify-center ${shake ? "motion-safe:animate-[cartPop_0.45s_ease-out]" : ""}`}>{count}</span>
             )}
@@ -113,12 +119,12 @@ export function Navbar() {
       {mobileSearch && (
         <form role="search" onSubmit={submitSearch} className="lg:hidden px-4 pb-3">
           <div className="relative">
-            <button type="submit" aria-label="Jalankan pencarian" className="absolute left-0 top-0 flex h-full w-11 items-center justify-center text-white/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] rounded-full">
+            <button type="submit" aria-label={t.searchSubmit} className="absolute left-0 top-0 flex h-full w-11 items-center justify-center text-white/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] rounded-full">
               <IosIcon name="search" size={16} tint="white" />
             </button>
-            <input type="search" enterKeyHint="search" aria-label="Cari produk Market" autoFocus value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari produk..." className="w-full h-11 pl-10 pr-11 rounded-full bg-white/[0.06] border border-white/10 text-base text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40" />
+            <input type="search" enterKeyHint="search" aria-label={t.searchAria} autoFocus value={q} onChange={(e) => onSearch(e.target.value)} placeholder={t.searchPlaceholderShort} className="w-full h-11 pl-10 pr-11 rounded-full bg-white/[0.06] border border-white/10 text-base text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40" />
             {q && (
-              <button type="button" onClick={() => setQ("")} className="absolute right-0 top-0 w-11 h-full rounded-full flex items-center justify-center hover:bg-white/10 transition" aria-label="Hapus pencarian">
+              <button type="button" onClick={() => setQ("")} className="absolute right-0 top-0 w-11 h-full rounded-full flex items-center justify-center hover:bg-white/10 transition" aria-label={t.searchClear}>
                 <X className="w-3.5 h-3.5 text-white/70" />
               </button>
             )}

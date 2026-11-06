@@ -34,19 +34,24 @@ export {
 
 export {
   confirmVariantBuyMessage, chooseVariantMessage, confirmBuyMessage, chooseQtyMessage,
-  cartMessage, cartAddedMessage, cartCheckoutSummaryMessage, orderReminderMessage,
+  cartMessage, cartAddedMessage, cartCheckoutSummaryMessage, orderReminderMessage, providerOrderReminderMessage,
   invoiceMessage, emailConfirmationMessage, type TelegramCartLine,
 } from "./messages/purchase";
 
 export {
   orderPaidMessage, deliveryMessage, supplierCredentialMessage, type TelegramPaidDelivery, whatsAppInputPromptMessage, orderExpiredMessage,
   orderCancelledMessage, orderStatusMessage, qrisRenewRejectedMessage, outOfStockMessage,
-  alreadyPendingMessage, errorMessage, waSavedAfterPaymentMessage, invalidWhatsAppMessage,
+  alreadyPendingMessage, errorMessage, waSavedAfterPaymentMessage, invalidWhatsAppMessage, qrisExpiredMessage,
 } from "./messages/status";
 
 export {
   privateChatDeepLink, groupCheckoutRedirectMessage, groupDeliveryNoticeMessage,
 } from "./messages/group";
+
+export {
+  tgPrefText, languageChooserMessage, welcomeMessageLocalized,
+  settingsMessage, resumePayloadMessage, type TgPrefTextKey,
+} from "./messages/preferences";
 
 export {
   helpMessage, warrantyTermsMessage, warrantyClaimMessage, warrantyFullMessage,

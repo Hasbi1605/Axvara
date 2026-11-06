@@ -10,6 +10,7 @@ import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { CrossAppTransition } from "@/components/ui/CrossAppTransition";
 import { PopupBanner } from "@/components/storefront/PopupBanner";
 import { PendingOrderReminder } from "@/components/storefront/PendingOrderReminder";
+import { DisplayPreferencesProvider } from "@/hooks/useDisplayPrices";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 
@@ -46,6 +47,7 @@ export const metadata: Metadata = {
 export default function ShopLayout({ children }: { children: React.ReactNode }) {
   return (
     <ToastProvider>
+      <DisplayPreferencesProvider>
       <Spotlight />
       <Navbar />
       {isPaymentMaintenanceEnabled() && <PaymentMaintenanceNotice />}
@@ -59,6 +61,7 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
       <Footer />
       <MobileBottomNav />
       <PendingOrderReminder />
+      </DisplayPreferencesProvider>
     </ToastProvider>
   );
 }

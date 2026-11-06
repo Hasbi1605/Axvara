@@ -47,7 +47,14 @@ export async function handlePayWithQris(
 ) {
   if (await notifyPaymentMaintenance(chatId)) return;
   await sendChatAction(chatId, "typing");
-  if (!emailConfirmed) await clearPendingAction(from);
+  // Legacy QRIS rail NEVER borrows new-method payq1 state: pending winner
+  // preserves the existing rail. A quoted payq1 row stays untouched here —
+  // the QRIS path owns the email_confirm namespace only.
+  const prePayq1 = isD1Mode()
+    ? await queryFirst(`SELECT pending_action FROM telegram_users WHERE user_id=?`, String(from.id)).catch(() => null)
+    : null;
+  const hasNewMethodDraft = prePayq1?.pending_action != null && String(prePayq1.pending_action).startsWith("payq1:");
+  if (!emailConfirmed && !hasNewMethodDraft) await clearPendingAction(from);
 
   const existingOrder = await queryFirst(
     `SELECT code FROM orders WHERE telegram_chat_id=? AND status='pending' AND payment_status IN ('unpaid','pending') AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))
@@ -99,7 +106,21 @@ export async function handlePayWithQris(
     await handleShowQty(chatId, messageId, productId, variantId, minQty);
     return;
   }
-  const currentTag = await checkoutApprovalTag([{ productId, variantId, qty, price: Number(variant.price) }]);
+  // TG2b: harga efektif server dari bulk config aktif (bukan klaim tombol).
+  // Harga effective dipin di sini lalu dijaga approvalTag; guard atomik
+  // createChannelOrderAtomic memverifikasi ulang sebelum INSERT.
+  let effectivePrice = Number(variant.price);
+  let appliedTier: number | null = null;
+  try {
+    const { resolveBulkPrice } = await import("@/lib/bulk-pricing");
+    const resolved = resolveBulkPrice(Number(variant.price), qty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? []));
+    effectivePrice = resolved.price;
+    appliedTier = resolved.tier ?? null;
+  } catch {
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    return;
+  }
+  const currentTag = await checkoutApprovalTag([{ productId, variantId, qty, price: effectivePrice }]);
   if (!approvalTag || approvalTag !== currentTag) {
     await handleShowQty(chatId, messageId, productId, variantId, qty);
     return;
@@ -164,9 +185,35 @@ export async function createAndSendVariantInvoice(
   from: { id: number; first_name: string; username?: string },
   rawQty = 1,
   emailSnapshot?: string | null,
+  effectivePrice?: number,
+  appliedTierMinQty?: number | null,
 ) {
   const qty = clampQty(rawQty);
-  const price = Number(variant.price);
+  // TG2b: harga efektif server dari bulk config aktif (bukan klaim tombol).
+  // Pemanggil display (handleShowQty) boleh meneruskan harga yang sudah
+  // dihitung dari snapshot varian yang sama; handler invoice menghitung
+  // ulang ke harga efektif final SEBELUM tag/callback agar tombol basi
+  // dengan qty berbeda tidak dipakai.
+  let price: number;
+  let appliedSingleTier: number | null;
+  if (effectivePrice !== undefined) {
+    if (!Number.isSafeInteger(effectivePrice) || effectivePrice < 0) {
+      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+      return;
+    }
+    price = effectivePrice;
+    appliedSingleTier = appliedTierMinQty ?? null;
+  } else {
+    try {
+      const { resolveBulkPrice: resolveInvoiceBulk } = await import("@/lib/bulk-pricing");
+      const resolvedInvoice = resolveInvoiceBulk(Number(variant.price), qty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? []));
+      price = resolvedInvoice.price;
+      appliedSingleTier = resolvedInvoice.tier ?? null;
+    } catch {
+      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+      return;
+    }
+  }
   const subtotal = price * qty;
   const fulfillmentMode = String(variant.fulfillment_mode || "manual");
   const uniqueFulfillment = fulfillmentMode === "unique";
@@ -176,6 +223,8 @@ export async function createAndSendVariantInvoice(
     variant_id: variant.id,
     name: `${productName} — ${variant.label}`,
     price,
+    base_price: Number(variant.price),
+    ...(appliedSingleTier != null ? { applied_tier_min_qty: appliedSingleTier } : {}),
     qty,
   }];
   const variantSnapshot = JSON.stringify({
@@ -191,12 +240,16 @@ export async function createAndSendVariantInvoice(
     warranty_unit: variant.warranty_unit,
     warranty_label: buyerWarrantyLabel(variant),
     price,
+    base_price: Number(variant.price),
+    ...(appliedSingleTier != null ? { applied_tier_min_qty: appliedSingleTier } : {}),
     qty,
     fulfillment_mode: fulfillmentMode,
   });
   let inventoryId: number | null = null;
   let orderInserted = false;
   let invoiceCreated = false;
+  // TG2c1: locale order untuk caption/keyboard di try DAN catch.
+  let invoiceLocale: "id" | "en" = "id";
 
   try {
     if (fulfillmentMode === "shared" && isD1Mode()) {
@@ -219,6 +272,11 @@ export async function createAndSendVariantInvoice(
     // aman untuk error yang dilempar, tetapi bila isolate dihentikan di tengah
     // (batas CPU/eviction) stok terpotong tanpa order — dan tidak ada yang
     // memulihkannya. Jalur Web dan WhatsApp sudah atomik sejak awal.
+    // TG2b: locale immutable dari prefs pemilik yang disimpan.
+    // TG2c1: dipakai ulang untuk caption/keyboard invoice error di catch.
+    const { readTgPreferences } = await import("@/lib/telegram/preferences");
+    invoiceLocale = (await readTgPreferences(String(from.id)).catch(() => ({ locale: null }))).locale === "en" ? "en" as const : "id" as const;
+    const tgLocale = invoiceLocale;
     try {
       const { required, email: buyerEmail } = await readCheckoutEmail(String(from.id), [{ productId, variantId: variant.id }], emailSnapshot);
       if (required && !buyerEmail) {
@@ -237,6 +295,7 @@ export async function createAndSendVariantInvoice(
         items,
         variantSnapshot,
         subtotal,
+        locale: tgLocale,
         primaryVariantId: variant.id,
         customerName: from.first_name,
         customerEmail: buyerEmail,
@@ -286,6 +345,7 @@ export async function createAndSendVariantInvoice(
 
     // RR3-05: sama seperti jalur cart — foto invoice transaksional, periksa
     // {ok:false}, tandai pending/sent, lempar agar retry nyata + cron retry.
+    // TG2c1: caption + keyboard mengikuti locale order yang baru dibuat.
     await markInvoicePending(orderCode);
     const displayName = qty > 1 ? `${productName} — ${variant.label} ×${qty}` : `${productName} — ${variant.label}`;
     const variantPhoto = await sendPhoto({
@@ -297,9 +357,9 @@ export async function createAndSendVariantInvoice(
         payableAmount: invoiceResult.payableAmount,
         expiresAt: invoiceResult.expiresAt,
         paymentMethod: "qris",
-      }),
+      }, { locale: tgLocale, chargeNote: true }),
       parse_mode: "HTML",
-      reply_markup: qrisInvoiceKeyboard(orderCode),
+      reply_markup: qrisInvoiceKeyboard(orderCode, { locale: tgLocale }),
     });
     if (isAmbiguousSendResult(variantPhoto)) {
       // Timeout/jaringan: foto mungkin tetap mendarat — jangan lempar
@@ -352,10 +412,12 @@ export async function createAndSendVariantInvoice(
     await sendMessage({
       chat_id: chatId,
       text: orderInserted && preserveReservation
-        ? `Tagihan belum bisa dikonfirmasi. Kode pesanan: ${orderCode}. Gunakan Cek status untuk memeriksa tagihan yang sama, jangan buat pesanan baru.`
-        : errorMessage(),
+        ? (invoiceLocale === "en"
+          ? `Invoice cannot be confirmed yet. Order code: ${orderCode}. Use Check Status for the same invoice; do not create a new order.`
+          : `Tagihan belum bisa dikonfirmasi. Kode pesanan: ${orderCode}. Gunakan Cek status untuk memeriksa tagihan yang sama, jangan buat pesanan baru.`)
+        : errorMessage({ locale: invoiceLocale }),
       parse_mode: "HTML",
-      ...(orderInserted && preserveReservation ? { reply_markup: qrisInvoiceKeyboard(orderCode) } : {}),
+      ...(orderInserted && preserveReservation ? { reply_markup: qrisInvoiceKeyboard(orderCode, { locale: invoiceLocale }) } : {}),
     }).catch(() => {});
     // RR3-05: lempar ulang kegagalan foto invoice (lihat jalur cart).
     if (variantInvoiceFailed || invoiceCreated) throw error;

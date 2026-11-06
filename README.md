@@ -1,5 +1,66 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Koreksi lokal: expiry SQL UTC halaman pesanan kini ditafsirkan konsisten di WIB; expiry invalid/kosong gagal tertutup dan snapshot tanpa expiry order menunggu server. Browser/build ulang belum diverifikasi.
+
+Checkout Market memiliki chrome ID/EN lokal tanpa mengubah quote atau pesanan ketika preferensi berganti.
+
+Crypto multi-koin (lokal 5 November 2026, belum deploy): quote web menawarkan satu opsi per koin kurasi yang aktif di akun NOWPayments (snapshot D1, tanpa panggilan provider saat quote); invoice baru memakai kurs mengambang + fee provider ditanggung merchant, pembeli menanggung lewat biaya layanan crypto 1,5% (`CRYPTO_SURCHARGE_BPS` di `src/lib/payments/crypto-pricing.ts`); lantai total US$2,00 dan minimum provider × 1,15 per koin. Env `NOWPAYMENTS_PAY_CURRENCY` DIHAPUS (tidak dipakai kode); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib (mis. `usdtbsc`) dan menentukan koin yang diterima owner. Migrasi baru `0102_crypto_surcharge.sql` (3 kolom rincian biaya layanan di `payment_transactions`) harus diterapkan CI sebelum rilis. Telegram: satu entri "Crypto (USD)" → sub-keyboard koin. Status: tes fixture lokal; belum diverifikasi di akun NOWPayments live atau dideploy.
+
+FX USD/IDR otomatis (lokal 5 November 2026, belum deploy): kurs tidak lagi diisi manual lewat `USD_IDR_RATE`/`USD_FX_EFFECTIVE_AT`. Cron lite `cleanup` me-refresh snapshot D1 `crypto_market_snapshot` (migrasi 0101) dari estimasi NOWPayments tiap ≥30 menit (butuh hanya `NOWPAYMENTS_API_KEY`), beserta daftar koin crypto kurasi + minimum USD. Pasangan env `USD_IDR_RATE`/`USD_FX_EFFECTIVE_AT` kini hanya cadangan darurat (dipakai bila snapshot D1 kosong/basi >24 jam); tanpa keduanya USD/crypto tersembunyi (IDR saja). Detail: docs/ARCHITECTURE.md §16.18.
+
+Status 5 November 2026 (lokal, belum deploy): Vitest penuh 4547/4547 lulus, build Pages 145 edge routes sukses, review UI pembeli Opus disetujui (dua kondisi logo QRIS dan preferensi seluler terpenuhi), dan QA browser nyata 1280/390 pada preview lokal lulus: USD US$1,50 untuk Rp 24.000, ID/USD dan EN/IDR independen, preferensi tidak mengubah quote/keranjang/kontak/S&K, consent gateway dengan total tepat dan kasus 409, logo QRIS 1280/390/360, bottom sheet preferensi 390/360 tanpa geser horizontal, salin/DeviceOrders/grosir. Batas: editor admin tidak dirender dan tidak disetujui (`/admin` tidak dibuka); tidak ada deployment produksi atau bukti penyedia.
+
+Preview lokal interaktif (alat QA sementara di luar repo, bukan fitur produk/route/env aplikasi): proxy fixture kecil di depan `wrangler pages dev` dengan D1/R2 lokal terisolasi dan data DEMO di memori (quote asli; daftar metode, pesanan, persetujuan, status pembayaran, VA/alamat/tautan palsu). Halaman bantuan `http://127.0.0.1:3000/__demo/help`; tautan bayar demo memakai HTTPS lokal self-signed (browser meminta konfirmasi sertifikat sekali). Penyedia, supplier, email, Telegram dan transfer nonaktif; lunas/pengiriman/kredensial/admin tidak disimulasikan. Bukan deployment produksi.
+
+Revisi owner 5 November 2026 (lokal; persetujuan visual baru menunggu): picker checkout = QRIS langsung di atas semua grup (tanpa akordeon; satu badge "Paling cepat"/"Fastest" inline di kartu) + akordeon grup VA/E-Wallet/Transfer lainnya/Crypto dengan chip logo, semua metode merchant + biaya + batas min saat terbuka, metode di luar batas min/max nonaktif (server menghitung shortfall; hanya yang tersedia yang ditandatangani dan diterima create); grosir = daftar baris tier (R1); bahasa/mata uang = satu tombol bendera bulat + menu dua bagian di header semua lebar (footer tanpa baris). Katalog merchant asli belum terverifikasi (IP belum di-whitelist); tes memakai fixture. Detail: docs/DESIGN.md, docs/ARCHITECTURE.md.
+
+Penempatan UI lokal 4 November 2026 (riwayat; sebagian digantikan di atas): bahasa/mata uang = tombol teks di header ≥sm dan baris pertama footer (bottom sheet) di bawah sm; `BulkPriceTiers` aktif netral tanpa garis biru; halaman pesanan/pengingat/lacak/perangkat dirapikan tanpa perubahan kontrak. Picker checkout (R4–R6) memakai satu keluarga kartu metode dengan logo lokal (QRIS, USDT, bank/e-wallet yang dikenali dari label server; label lain glyph generik) dan `<details>` bila gateway >4; logo hanya dekorasi.
+
+UI Market terintegrasi lokal: `BulkTierEditor`, `BulkPriceTiers`, `PaymentMethodPicker`, `GatewayPaymentPanel` dan `PreferenceControls`, dengan `DisplayPreferencesProvider` di shop layout. `POST /api/display-prices` memberi sen USD display-only dari FX server untuk katalog/PDP/keranjang; fallback IDR bila tidak tersedia, quote dan charge tetap otoritas server. Belum deploy ke produksi.
+
+Persiapan payout hanya kontrak lokal: belum ada withdrawal otomatis atau bukti transfer live. Payout dapat ditunda terpisah dari rollout pembayaran; keputusan tujuan bank/DANA atau aset/jaringan/alamat/custody dan, bila perlu, ambang/cadence masih menunggu owner serta konfirmasi provider. Withdrawal Sekalipay ambigu tidak di-retry otomatis; rincian dan batas bukti di `docs/agent-rules/payments.md` dan `docs/ARCHITECTURE.md` §16.
+
+R3 koreksi lokal: push terminal gateway/crypto, pagar retry dan akuntansi budget query diuji fixture/workerd; belum bukti deployment.
+
+R2 koreksi lokal: konflik gateway tetap review selama finalisasi; POST ambigu dipulihkan lewat refresh/cron GET tanpa POST ulang (belum bukti produksi).
+
+TG-R1 lokal: method-options bersama + frozen payq1 offer/seleksi Telegram (QRIS-first, tanpa create/consent; R2 menangani create).
+TG2c1 buyer transaction locale fixture lokal: invoice/status/delivery pembeli ikut locale order tersimpan; charge QRIS tetap IDR; rail baru tetap TG2c2.
+TG2b bulk Telegram fixture lokal: tier agregat per varian dijaga atomik; QRIS terima net diskon; invoice/status bilingual tetap TG2c.
+TG2a read-commerce locale fixture lokal: copy baca ID/EN dari prefs tersimpan +
+satu harga display per tombol; invoice/order-status tetap TG2b/c.
+TG1 lokal (+correction1): chooser + payload tersimpan, jawaban callback tunggal.
+BULK1c lokal (+correction1): protected admin API persists bulk (default off, omitted=merged-validated, strict, guards atomic); UI/TG belum dihubungkan atau dipublikasikan.
+
+BULK1b lokal menghitung dan menandatangani harga tier per varian pada quote/order; admin, UI dan Telegram belum terhubung atau dipublikasikan.
+
+BULK1a lokal menyiapkan konfigurasi tier per varian dan proyeksi katalog melalui migrasi 0099; harga checkout/admin/UI belum dihubungkan.
+
+LOC1 lokal menyiapkan preferensi bahasa/mata uang display independen dan metadata quote; UI/bot belum diterjemahkan atau dipublikasikan.
+
+S3d2 kebijakan crypto buyer-fee/fixed-rate diuji lokal; belum diaktifkan atau dipublikasikan.
+
+S3d1 fixture lokal membutuhkan `NOWPAYMENTS_OUTCOME_CURRENCY` yang diverifikasi operator untuk preflight crypto; kebijakan fee create/quote belum terhubung atau dipublikasikan.
+
+S3c merchant lifecycle diuji dengan fixture lokal termasuk budget cron/workerd; belum diaktifkan atau dipublikasikan.
+
+S3b order/consent gateway masih dalam pengerjaan lokal; belum siap diaktifkan atau dipublikasikan.
+
+S3a lokal menambahkan opsi quote Sekalipay default-off dengan estimasi fee bertanda tangan; pembuatan order dan UI gateway belum terhubung.
+
+Sekalipay merchant S2b hanya fixture lokal: migrasi 0097 menyiapkan invoice/consent, callback dan reconcile; belum ada checkout atau scheduling yang aktif.
+
+W3 backend lokal: checkout crypto USD memakai snapshot kurs eksplisit dan locale order; UI/Telegram dan publikasi belum dilakukan. Migrasi berurutan 0094–0096. W1 di bawah merupakan snapshot historis.
+
+## Snapshot historis implementasi lokal W1 NOWPayments - 3 November 2026
+
+Lokal/fixture, flag default OFF: adapter invoice + rekonsiliasi GET + receiver IPN
+terverifikasi (`src/lib/payments/nowpayments.ts`, route
+`src/app/api/payments/nowpayments/ipn/route.ts`, migrasi `0094`); reconcile
+tersimpan tetap jalan walau flag pembuatan baru OFF. QRIS tetap satu-satunya rail
+publik; checkout/TG/cron/admin UI milik W3. Sekalipay gateway shell tanpa adapter
+(kontrak belum terverifikasi). Blokir manual: runbook pembayaran.
+
 ## Kredensial Sekalipay gateway - 3 November 2026
 
 Hanya penyimpanan lokal: `.sekalipay-gateway-credentials` (chmod600/git-ignored),

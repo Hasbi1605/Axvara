@@ -10,6 +10,7 @@ import { StockReservationError } from "./errors";
 import type { D1Statement, AtomicOrderItem } from "./types";
 import { markUniqueUnitLines } from "@/lib/fulfillment/units";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
+import { resolveBulkPrice } from "@/lib/bulk-pricing";
 
 type AtomicOrderInput = {
   code: string;
@@ -17,11 +18,12 @@ type AtomicOrderInput = {
   customerName: string;
   customerWa: string;
   customerEmail: string | null;
-  items: AtomicOrderItem[];
+  items: (AtomicOrderItem & { base_price?: number; applied_tier_min_qty?: number })[];
   subtotal: number;
   paymentMethod: string;
   paymentAccount: string;
   proofUrl: string | null;
+  locale?: "id" | "en";
 };
 
 export async function createOrderWithStock(input: AtomicOrderInput): Promise<void> {
@@ -29,7 +31,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
   const d1 = getD1();
   if (d1) {
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
-    const modes = (ids.length ? (await d1.prepare(`SELECT id,fulfillment_mode FROM product_variants WHERE id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
+    const modes = (ids.length ? (await d1.prepare(`SELECT id,fulfillment_mode,price,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
     const byId = new Map(modes.map(row => [Number(row.id), String(row.fulfillment_mode)]));
     const uniqueIds = new Set(modes.filter(row => row.fulfillment_mode === "unique").map(row => Number(row.id)));
     let orderItems: AtomicOrderItem[];
@@ -40,6 +42,16 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     const qtyByVariant = new Map<number, number>();
     for (const item of input.items) {
       if (item.variant_id) qtyByVariant.set(item.variant_id, (qtyByVariant.get(item.variant_id) ?? 0) + item.qty);
+    }
+    const bulkById = new Map(modes.map((row) => [Number(row.id), row]));
+    for (const item of input.items) {
+      if (!item.variant_id) continue;
+      const row = bulkById.get(item.variant_id);
+      if (!row) throw new StockReservationError();
+      try {
+        const effective = resolveBulkPrice(Number(row.price), qtyByVariant.get(item.variant_id)!, row.bulk_pricing_enabled, row.bulk_pricing_tiers);
+        if (effective.price !== item.price || effective.tier !== item.applied_tier_min_qty || (item.base_price !== undefined && item.base_price !== Number(row.price))) throw new Error("stale");
+      } catch { throw new StockReservationError(); }
     }
     const statements: D1Statement[] = [];
     input.items.forEach((item, index) => {
@@ -53,7 +65,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
             `INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(
               SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
               WHERE pv.id=? AND pv.product_id=? AND p.is_active=1 AND pv.is_active=1
-                AND pv.price=? AND pv.fulfillment_mode=? AND (pv.stock=-1 OR pv.stock>=?)
+                AND pv.price=? AND pv.bulk_pricing_enabled=? AND pv.bulk_pricing_tiers=? AND pv.fulfillment_mode=? AND (pv.stock=-1 OR pv.stock>=?)
                 AND ? >= COALESCE(pv.min_qty,1)
                 -- WR3 Jaspay: cap wajib ada dan >= qty agregat varian ini;
                 -- cap hilang/invalid = tolak (fail-closed), dicek atomik di
@@ -61,7 +73,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                 AND (COALESCE(pv.wr_variant_id,'') NOT LIKE 'jaspay:%' OR EXISTS(
                   SELECT 1 FROM wr_variants wv WHERE wv.wr_variant_id=pv.wr_variant_id
                     AND wv.wr_max_quantity IS NOT NULL AND wv.wr_max_quantity >= ?))) THEN 1 ELSE 0 END`,
-          ).bind(guardIds[index], item.variant_id, item.product_id, item.price, byId.get(item.variant_id) ?? "manual", item.qty, item.qty, qtyByVariant.get(item.variant_id) ?? item.qty),
+          ).bind(guardIds[index], item.variant_id, item.product_id, Number(bulkById.get(item.variant_id)?.price), Number(bulkById.get(item.variant_id)?.bulk_pricing_enabled), String(bulkById.get(item.variant_id)?.bulk_pricing_tiers), byId.get(item.variant_id) ?? "manual", item.qty, item.qty, qtyByVariant.get(item.variant_id) ?? item.qty),
         );
       } else {
         statements.push(
@@ -185,7 +197,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     }
     statements.push(
       d1.prepare(
-        "INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at,buyer_access_version,buyer_access_format) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+24 hours'),1,'pin6')",
+        `INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at,locale,buyer_access_version,buyer_access_format) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','${input.paymentMethod.startsWith("sekalipay_gateway:") ? "+15 minutes" : "+24 hours"}'),?,1,'pin6')`,
       ).bind(
         input.code,
         input.customerName,
@@ -199,6 +211,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         "pending",
         primaryVariantId,
         input.quoteId,
+        input.locale === "en" ? "en" : "id",
       ),
     );
     guardIds.forEach((guardId) => {
@@ -237,6 +250,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     customer_name: input.customerName,
     customer_wa: input.customerWa,
     customer_email: input.customerEmail,
+    locale: input.locale === "en" ? "en" : "id",
     buyer_access_version: 1, buyer_access_format: "pin6",
     items: JSON.stringify(input.items),
     subtotal: input.subtotal,
