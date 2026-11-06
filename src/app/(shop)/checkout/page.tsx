@@ -377,7 +377,7 @@ function CheckoutInner() {
   // subtotal quote yang sama (gagal-tertutup); crypto menampilkan USD server.
   const gatewaySel = quotedItems.length > 0 && isAvailableGateway(selectedOption) && selectedOption.subtotalIdr === quotedSubtotal ? selectedOption : null;
   const cryptoSel = quotedItems.length > 0 && selectedOption?.kind === "crypto" && selectedOption.available ? selectedOption : null;
-  const totalLabel = gatewaySel ? copyForLocale.estTotal : cryptoSel ? copyForLocale.usdTotal : "Total";
+  const totalLabel = gatewaySel ? copyForLocale.totalRow : cryptoSel ? copyForLocale.usdTotal : "Total";
   const totalText = gatewaySel ? formatRupiah(gatewaySel.totalIdr) : cryptoSel ? usdFor(cryptoSel.usdText, uiLocale) : formatRupiah(displaySubtotal);
   // Preferensi USD: angka terkonversi HANYA dari server; bila tak tersedia, jujur tetap Rupiah.
   const usdCopy = usdPreferenceCopy(uiLocale);
@@ -385,8 +385,14 @@ function CheckoutInner() {
     <p className="text-[11px] leading-4 text-white/50" data-testid="usd-preference-note">{usdPref.kind === "equivalent" ? usdCopy.equivalent(usdPref.text) : usdCopy.unavailable}</p>
   ) : null;
   const methodExtras = gatewaySel ? (
-    <div className="flex justify-between gap-3 text-[13px] text-white/60">
-      <span>{copyForLocale.feeRow(gatewaySel.label)}</span><span className="shrink-0 tabular-nums">+{formatRupiah(gatewaySel.feeIdr)}</span>
+    <div className="space-y-1" data-testid="gateway-summary">
+      <div className="flex justify-between gap-3 text-[13px] text-white/60" data-testid="gateway-subtotal">
+        <span>{copyForLocale.subtotalRow}</span><span className="shrink-0 tabular-nums">{formatRupiah(gatewaySel.subtotalIdr)}</span>
+      </div>
+      <div className="flex justify-between gap-3 text-[13px] text-white/60" data-testid="gateway-fee">
+        <span>{copyForLocale.feeRow(gatewaySel.label)}</span><span className="shrink-0 tabular-nums">{formatRupiah(gatewaySel.feeIdr)}</span>
+      </div>
+      <p className="text-[11px] text-white/50">{copyForLocale.gatewayFinalNote}</p>
     </div>
   ) : cryptoSel ? (
     // Revisi owner 6 Nov: rincian crypto cukup dua baris (Subtotal USD + Biaya layanan) di atas Total;

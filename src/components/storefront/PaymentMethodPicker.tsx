@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Search, X } from "lucide-react";
 import { isAvailableGateway, payCopy, type CryptoOption, type GatewayOption, type PayLocale, type PayOption, type QrisOption } from "@/lib/payment-ui";
-import { methodLogo } from "@/lib/payments/method-logos";
+import { gatewayShortName, methodLogo, methodMonogram } from "@/lib/payments/method-logos";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { formatRupiah } from "@/lib/utils";
 
@@ -15,7 +15,7 @@ import { formatRupiah } from "@/lib/utils";
  * tersembunyi; badge "Paling cepat" berada di judul kartu QRIS. Grup lain (Virtual Account · E-Wallet · Transfer lainnya · Crypto;
  * grup kosong tidak dirender) tetap akordeon: header = tombol native (`aria-expanded`/`aria-controls`) berisi baris chip logo;
  * membuka grup menampilkan semua metode yang ditawarkan dengan logo, biaya, dan batas. Hanya satu grup terbuka pada satu waktu:
- * membuka grup lain menutup yang sebelumnya, dan mengklik grup yang sama menutupnya; membuka/menutup tidak mengubah pilihan.
+ * membuka grup lain menutup yang sebelumnya, dan mengklik grup yang sama menutupnya.
  * Menutup grup yang memuat pilihan menghapus pilihan eksplisit (selectedId null); header tertutup tidak menampilkan
  * ringkasan "Dipilih"/logo kedua. Grup Crypto memakai header khusus (judul + total USD + chip logo bulat) dan panel `CryptoPanel`
  * (pencarian bila >8 koin, subgrup Populer/Stablecoin, baris logo+simbol+jaringan; koin di bawah minimum nonaktif dengan "Min. US$x").
@@ -40,8 +40,8 @@ type GroupKey = "va" | "ewallet" | "other" | "crypto";
 const FOCUS = "has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF]";
 const HEADER_FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]";
 const SURFACE = "ax-glass-card rounded-2xl border";
-const MAX_CHIPS = 6;
-const MAX_CHIPS_NARROW = 4;
+const SEARCH_THRESHOLD = 8;
+const GATEWAY_CHIPS = 4;
 
 function RadioDot({ checked }: { checked: boolean }) {
   return <span aria-hidden className={`h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center ${checked ? "border-[#00E5FF] bg-[#00E5FF]" : "border-white/20"}`}>{checked && <span className="h-2 w-2 rounded-full bg-[#080C1E]" />}</span>;
@@ -155,23 +155,94 @@ function gatewayReason(option: GatewayOption, copy: Copy): string {
   return copy.unavailable;
 }
 
-function GatewayCard({ option, selectedId, onSelect, disabled, copy }: Shared & { option: GatewayOption }) {
-  // `sublabel` server (teks ID tetap) sengaja tidak dirender; angka apa adanya dari quote.
-  const showMin = option.limits !== null && option.limits.min > 1;
+type GatewayGroupKey = "va" | "ewallet" | "other";
+
+/**
+ * Ubin logo persegi panjang putih (bank/e-wallet bukan bulat). Logo = berkas lokal terverifikasi; TANPA logo = monogram netral dari nama
+ * (bukan logo merek lain). `row` 40×26 untuk baris, `chip` 32×20 bertumpuk di header tertutup.
+ */
+function BankTile({ option, name, size = "row", ring = false }: { option: GatewayOption; name: string; size?: "row" | "chip"; ring?: boolean }) {
+  const logo = methodLogo(option);
+  const dims = size === "row" ? "h-[26px] w-10" : "h-5 w-8";
+  const base = `flex shrink-0 items-center justify-center overflow-hidden rounded-md ${dims}${ring ? " ring-2 ring-[#0B1228]" : ""}`;
+  if (logo) {
+    return (
+      <span aria-hidden data-bank-tile className={`${base} bg-white`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logo.src} alt="" aria-hidden width={size === "row" ? 30 : 24} height={size === "row" ? 16 : 12} className={`${size === "row" ? "h-4 max-w-[30px]" : "h-3 max-w-[24px]"} object-contain${logo.darken ? " brightness-0" : ""}`} draggable={false} />
+      </span>
+    );
+  }
+  return <span aria-hidden data-bank-tile data-monogram className={`${base} bg-[#252E52] text-[10px] font-semibold leading-none tracking-wide text-white/80`}>{methodMonogram(name)}</span>;
+}
+
+/** Baris kanal gateway (selaras baris crypto): ubin logo | nama pendek | "Biaya Rp x" + titik radio; di luar batas = redup + "Min./Maks." dan tak bisa dipilih. */
+function GatewayRow({ option, groupKey, selected, disabled, onSelect, copy }: { option: GatewayOption; groupKey: GatewayGroupKey; selected: boolean; disabled: boolean; onSelect: () => void; copy: Copy }) {
   const available = isAvailableGateway(option);
+  const reasonId = `pay-reason-${option.id.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  const name = gatewayShortName(option.label, groupKey);
+  const limitText = option.unavailableReason === "above_max" && option.limits?.max != null ? copy.gatewayRowMax(option.limits.max) : option.limits !== null ? copy.gatewayRowMin(option.limits.min) : null;
   return (
-    <PayOptionCard
-      option={option} selected={selectedId === option.id} disabled={disabled} onSelect={() => onSelect(option.id)}
-      reason={available ? undefined : gatewayReason(option, copy)}
-      name={option.label}
-      meta={<>
-        {available && option.feeIdr > 0 ? <><span>{copy.gatewayFeeLabel}</span><span className="whitespace-nowrap">{copy.gatewayFeeAmount(option.feeIdr)}</span></> : null}
-        {available && option.feeIdr > 0 && showMin ? <span aria-hidden>·</span> : null}
-        {showMin ? <span className="whitespace-nowrap">{copy.minAmount(option.limits!.min)}</span> : null}
-      </>}
-      amount={available ? copy.gatewayTotal(option.totalIdr) : undefined}
-      caption={available ? copy.gatewayTotalCaption : undefined}
-    />
+    <label
+      aria-disabled={!available || undefined}
+      className={`grid min-h-[48px] w-full grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl px-3 py-2 text-left transition ${FOCUS} ${selected ? "bg-white/[0.06] ring-1 ring-inset ring-[#00E5FF]/50" : ""} ${!available ? "cursor-not-allowed opacity-55" : `cursor-pointer ${selected ? "" : "hover:bg-white/[0.06]"}`} ${available && disabled ? "opacity-60" : ""}`}
+    >
+      <input type="radio" name="checkout-pay" value={option.id} checked={selected} disabled={disabled || !available} onChange={() => { if (available && !disabled) onSelect(); }} aria-describedby={!available ? reasonId : undefined} className="sr-only" />
+      <BankTile option={option} name={name} />
+      <span className="min-w-0 break-words text-[14px] font-semibold leading-5 text-white">{name}</span>
+      {available ? (
+        <span className="flex items-center gap-3">
+          <span className="whitespace-nowrap text-[12px] tabular-nums text-white/60">{copy.gatewayRowFee(option.feeIdr)}</span>
+          <RadioDot checked={selected} />
+        </span>
+      ) : (
+        <span className="text-right text-[12px] leading-4 text-white/70">
+          {limitText && <span className="block whitespace-nowrap font-semibold tabular-nums">{limitText}</span>}
+          <span id={reasonId} className="sr-only">{gatewayReason(option, copy)}</span>
+        </span>
+      )}
+    </label>
+  );
+}
+
+/** Kolom pencarian ringkas (44px, label sr-only, tombol hapus 44×44), dipakai grup crypto dan gateway besar. */
+function SearchField({ id, value, onChange, label, placeholder, clearLabel, disabled }: { id: string; value: string; onChange: (value: string) => void; label: string; placeholder: string; clearLabel: string; disabled: boolean }) {
+  return (
+    <div className="relative">
+      <label htmlFor={id} className="sr-only">{label}</label>
+      <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
+      <input
+        id={id} type="text" inputMode="search" autoComplete="off" autoCapitalize="none" spellCheck={false} value={value} disabled={disabled}
+        onChange={(event) => onChange(event.target.value)} placeholder={placeholder}
+        className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-9 pr-11 text-[14px] text-white outline-none placeholder:text-white/40 focus-visible:border-[#00E5FF]/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF] disabled:opacity-60"
+      />
+      {value !== "" && (
+        <button type="button" aria-label={clearLabel} onClick={() => onChange("")} className={`absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-white/70 hover:text-white ${HEADER_FOCUS}`}>
+          <X aria-hidden className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Isi grup gateway terbuka: daftar baris dalam satu permukaan kaca; pencarian hanya bila baris > 8. */
+function GatewayPanel({ options, groupKey, shared, open }: { options: GatewayOption[]; groupKey: GatewayGroupKey; shared: Shared; open: boolean }) {
+  const { copy, selectedId, onSelect, disabled } = shared;
+  const [query, setQuery] = useState("");
+  useEffect(() => { if (!open) setQuery(""); }, [open]);
+  const searchable = options.length > SEARCH_THRESHOLD;
+  const tokens = searchable ? normalizeQuery(query).split(" ").filter(Boolean) : [];
+  const visible = tokens.length === 0 ? options : options.filter((option) => { const hay = normalizeQuery(`${option.label} ${gatewayShortName(option.label, groupKey)}`); return tokens.every((token) => hay.includes(token)); });
+  return (
+    <div className="space-y-3">
+      {searchable && <SearchField id={`pay-${groupKey}-search`} value={query} onChange={setQuery} label={copy.searchMethodLabel} placeholder={copy.searchMethodLabel} clearLabel={copy.cryptoSearchClear} disabled={disabled} />}
+      {visible.length > 0 && (
+        <div className={`grid gap-0.5 p-1.5 ${SURFACE} border-white/10`}>
+          {visible.map((option) => <GatewayRow key={option.id} option={option} groupKey={groupKey} selected={selectedId === option.id} disabled={disabled} onSelect={() => onSelect(option.id)} copy={copy} />)}
+        </div>
+      )}
+      {visible.length === 0 && <p role="status" className="px-1 text-[13px] text-white/60">{copy.searchMethodEmpty}</p>}
+    </div>
   );
 }
 
@@ -212,7 +283,6 @@ function previewCoins(options: CryptoOption[]): CryptoOption[] {
   return picked;
 }
 
-const SEARCH_THRESHOLD = 8;
 const normalizeQuery = (value: string) => value.toLowerCase().replace(/\s+/g, " ").trim();
 function coinHaystack(option: CryptoOption): string {
   const asset = getCryptoAsset(option.payCurrency);
@@ -371,22 +441,7 @@ function CryptoPanel({ options, shared, open }: { options: CryptoOption[]; share
 
   return (
     <div className="space-y-3">
-      {searchable && (
-        <div className="relative">
-          <label htmlFor={searchId} className="sr-only">{copy.cryptoSearchLabel}</label>
-          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
-          <input
-            id={searchId} type="text" inputMode="search" autoComplete="off" autoCapitalize="none" spellCheck={false} value={query} disabled={disabled}
-            onChange={(event) => setQuery(event.target.value)} placeholder={copy.cryptoSearchPlaceholder}
-            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] pl-9 pr-11 text-[14px] text-white outline-none placeholder:text-white/40 focus-visible:border-[#00E5FF]/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF] disabled:opacity-60"
-          />
-          {query !== "" && (
-            <button type="button" aria-label={copy.cryptoSearchClear} onClick={() => setQuery("")} className={`absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-white/70 hover:text-white ${HEADER_FOCUS}`}>
-              <X aria-hidden className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      )}
+      {searchable && <SearchField id={searchId} value={query} onChange={setQuery} label={copy.cryptoSearchLabel} placeholder={copy.cryptoSearchPlaceholder} clearLabel={copy.cryptoSearchClear} disabled={disabled} />}
       {sections.map((section) => (
         <div key={section.key} role="group" aria-label={section.title}>
           <p aria-hidden className="px-1 pb-1.5 text-[12px] font-medium leading-4 text-white/50">{section.title}</p>
@@ -435,13 +490,17 @@ function GroupSection({ group, open, onToggle, selected, shared }: { group: Grou
   const total = group.options.length;
   const availableCount = group.options.filter((option) => option.available).length;
   const gatewayGroup = group.key === "va" || group.key === "ewallet" || group.key === "other";
-  const chips = group.options.slice(0, MAX_CHIPS);
   const cryptoGroup = group.key === "crypto";
   const cryptoOptions = cryptoGroup ? (group.options as CryptoOption[]) : [];
   const symbolCount = new Set(cryptoOptions.map((option) => option.label.trim().toUpperCase())).size;
   // Total USD identik untuk semua koin (angka server apa adanya); tanpa koin tersedia tidak ada keterangan jumlah.
   const firstCoin = cryptoOptions.find((option) => option.available);
-  const caption = firstCoin ? copy.cryptoCaption(firstCoin.usdText, firstCoin.surchargeBps) : null;
+  const gatewayOptions = gatewayGroup ? (group.options as GatewayOption[]) : [];
+  // Biaya termurah di grup = estimasi server apa adanya (tanpa hitung ulang); tanpa kanal tersedia = keterangan belum tersedia.
+  const cheapest = gatewayOptions.filter(isAvailableGateway).reduce<number | null>((min, option) => (min === null || option.feeIdr < min ? option.feeIdr : min), null);
+  const caption = cryptoGroup
+    ? (firstCoin ? copy.cryptoCaption(firstCoin.usdText, firstCoin.surchargeBps) : null)
+    : gatewayGroup ? (cheapest === null ? copy.gatewayCaptionNone : cheapest > 0 ? copy.gatewayCaptionFrom(cheapest) : copy.gatewayCaptionFree) : null;
   const summary = !open && selected ? selectedSummary(selected, copy) : null;
   const countText = gatewayGroup ? (availableCount === 0 ? copy.noneAvailable : copy.availableCount(availableCount)) : null;
   const name = [group.title, copy.methodsCount(total), countText, summary ? `${copy.selectedPrefix}: ${summary}` : null].filter(Boolean).join(", ");
@@ -453,11 +512,10 @@ function GroupSection({ group, open, onToggle, selected, shared }: { group: Grou
       >
         <span className="flex w-full items-start gap-2">
           <span className="min-w-0">
-            <span className={cryptoGroup ? "block text-[14px] font-semibold leading-5 text-white" : "block text-[13px] font-semibold uppercase tracking-[0.06em] text-white/80"}>{group.title}</span>
-            {caption && <span data-crypto-caption className="mt-0.5 block text-[12px] font-normal leading-4 text-white/60">{caption}</span>}
+            <span className="block text-[14px] font-semibold leading-5 text-white">{group.title}</span>
+            {caption && <span data-group-caption {...(cryptoGroup ? { "data-crypto-caption": "" } : {})} className={`mt-0.5 block text-[12px] font-normal leading-4 ${gatewayGroup && cheapest === null ? "text-[#FFD66B]" : "text-white/60"}`}>{caption}</span>}
           </span>
-          {countText && <span className={`ml-auto text-[12px] leading-4 ${availableCount === 0 ? "text-[#FFD66B]" : "text-white/60"}`}>{countText}</span>}
-          <ChevronDown aria-hidden className={`mt-0.5 h-4 w-4 shrink-0 text-white/70 ${CHEVRON_MOTION} ${countText ? "" : "ml-auto"} ${open ? "rotate-180" : ""}`} />
+          <ChevronDown aria-hidden className={`ml-auto mt-0.5 h-4 w-4 shrink-0 text-white/70 ${CHEVRON_MOTION} ${open ? "rotate-180" : ""}`} />
         </span>
         {cryptoGroup ? (
           <span data-coin-chips className="flex w-full items-center">
@@ -467,12 +525,11 @@ function GroupSection({ group, open, onToggle, selected, shared }: { group: Grou
             {symbolCount > previewCoins(cryptoOptions).length && <span aria-hidden className="ml-2 text-[12px] text-white/60">{copy.moreChips(symbolCount - previewCoins(cryptoOptions).length)}</span>}
           </span>
         ) : (
-          <span className="flex w-full flex-wrap items-center gap-1.5">
-            {chips.map((option, index) => (
-              <span key={option.id} className={index >= MAX_CHIPS_NARROW ? "max-[420px]:hidden" : undefined}><LogoChip option={option} /></span>
-            ))}
-            {total > MAX_CHIPS && <span aria-hidden className="text-[12px] text-white/60 max-[420px]:hidden">{copy.moreChips(total - MAX_CHIPS)}</span>}
-            {total > MAX_CHIPS_NARROW && <span aria-hidden className="hidden text-[12px] text-white/60 max-[420px]:inline">{copy.moreChips(total - MAX_CHIPS_NARROW)}</span>}
+          <span data-bank-chips className="flex w-full items-center">
+            <span className="flex items-center -space-x-2">
+              {gatewayOptions.slice(0, GATEWAY_CHIPS).map((option) => <BankTile key={option.id} option={option} name={gatewayShortName(option.label, group.key as GatewayGroupKey)} size="chip" ring />)}
+            </span>
+            {total > GATEWAY_CHIPS && <span aria-hidden className="ml-2 text-[12px] text-white/60">{copy.moreChips(total - GATEWAY_CHIPS)}</span>}
           </span>
         )}
         {summary && selected && (
@@ -484,11 +541,7 @@ function GroupSection({ group, open, onToggle, selected, shared }: { group: Grou
       </button>
       <Collapse open={open} id={panelId}>
         <div className="space-y-2 pt-2">
-          {cryptoGroup ? <CryptoPanel options={cryptoOptions} shared={shared} open={open} /> : group.options.map((option) => (
-            option.kind === "qris" ? <QrisCard key={option.id} option={option} {...shared} />
-              : option.kind === "gateway" ? <GatewayCard key={option.id} option={option} {...shared} />
-              : null
-          ))}
+          {cryptoGroup ? <CryptoPanel options={cryptoOptions} shared={shared} open={open} /> : <GatewayPanel options={gatewayOptions} groupKey={group.key as GatewayGroupKey} shared={shared} open={open} />}
         </div>
       </Collapse>
     </section>
@@ -554,7 +607,6 @@ export function PaymentMethodPicker({ options, selectedId, onSelect, locale = "i
             selected={selectedGroup === group.key ? selected : null}
           />
         ))}
-        {gateways.length > 0 && <p className="text-[12px] leading-4 text-white/60">{copy.gatewayNote}</p>}
       </fieldset>
       {notice && <p role="status" aria-live="polite" className="mt-3 rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-2 text-xs text-[#FFD66B]">{notice}</p>}
     </div>

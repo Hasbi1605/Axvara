@@ -67,6 +67,65 @@ export function estimateGatewayFee(amount: number, fee: Fee): number {
   return Number(result);
 }
 
+/**
+ * Transport gateway Sekalipay. Whitelist IP merchant hanya VPS 13.228.147.90 dan Cloudflare Pages tidak punya egress IP tetap, jadi bila
+ * SEKALIPAY_PROXY_URL (origin https murni) + SEKALIPAY_PROXY_TOKEN valid, panggilan lewat `${origin}/skg/v1/gateway/<path>` dengan header
+ * `x-proxy-token`; tanpa kedua env langsung ke sekalipay.com (harness lokal/tes). Konfigurasi parsial/invalid gagal tertutup. Tanda tangan HMAC SELALU atas path kanonis upstream
+ * `api/v1/gateway/<path>`; proxy hanya meneruskan X-API-Key/X-Timestamp/X-Signature + body mentah apa adanya.
+ */
+function gatewayProxy(): { origin: string; token: string } | null {
+  const rawUrl = process.env.SEKALIPAY_PROXY_URL?.trim();
+  const token = process.env.SEKALIPAY_PROXY_TOKEN?.trim();
+  if (!rawUrl && !token) return null;
+  if (!rawUrl || !token) throw new Error("sekalipay_gateway_proxy_config_error");
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "https:" || !url.hostname || url.username || url.password || url.port || url.pathname.replace(/\/+$/, "") || url.search || url.hash) throw new Error("sekalipay_gateway_proxy_config_error");
+    return { origin: url.origin, token };
+  } catch { throw new Error("sekalipay_gateway_proxy_config_error"); }
+}
+
+/** Respons proxy 401 `unauthorized` / 404 `unknown_skg_path` = salah konfigurasi (fail closed, bukan penolakan bisnis, tanpa retry otomatis). */
+async function assertNotProxyConfigError(response: Response): Promise<void> {
+  if (response.status !== 401 && response.status !== 404) return;
+  const body: unknown = await response.clone().json().catch(() => null);
+  const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+  if (!record) return;
+  if ((response.status === 401 && record.status === false && record.reason === "unauthorized") || (response.status === 404 && JSON.stringify(record).includes("unknown_skg_path"))) {
+    throw new Error("sekalipay_gateway_proxy_config_error");
+  }
+}
+
+async function gatewayTransport(method: "GET" | "POST", suffix: string, params: Record<string, Scalar>, apiKey: string, secret: string, jsonContentType: boolean): Promise<Response> {
+  const path = `api/v1/gateway/${suffix}`;
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = await signGatewayRequest(secret, method, path, params, timestamp);
+  const proxy = gatewayProxy();
+  const headers: Record<string, string> = { Accept: "application/json", ...(jsonContentType ? { "Content-Type": "application/json" } : {}),
+    "X-API-Key": apiKey, "X-Timestamp": String(timestamp), "X-Signature": signature, ...(proxy ? { "x-proxy-token": proxy.token } : {}) };
+  const url = proxy ? `${proxy.origin}/skg/v1/gateway/${suffix}` : `https://sekalipay.com/${path}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(10_000), headers,
+      ...(method === "POST" ? { body: JSON.stringify(params) } : {}),
+    });
+  } catch (error) {
+    // POST yang gagal di jaringan/timeout mungkin sudah diterima merchant: ambigu, klaim durable dipertahankan, tanpa POST ulang.
+    if (method === "POST") throw new Error("sekalipay_gateway_create_ambiguous");
+    throw error;
+  }
+  if (proxy) {
+    await assertNotProxyConfigError(response);
+    if (method === "POST" && (response.status === 504 || response.status === 502)) {
+      const body: unknown = await response.clone().json().catch(() => null);
+      const message = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).message : null;
+      if (response.status === 504 || (typeof message === "string" && message.startsWith("skg_proxy_unreadable_response"))) throw new Error("sekalipay_gateway_create_ambiguous");
+    }
+  }
+  return response;
+}
+
 export type GatewayGroup = "va" | "ewallet" | "other";
 export type GatewayMethod = { code: string; name: string; type: GatewayGroup; min: number; max: number; feeText: string; estimatedFee: number; estimatedTotal: number };
 /** Entri katalog merchant untuk total tertentu: tersedia (min <= total <= max, inklusif) atau tidak tersedia dengan alasan; tanpa biaya/total karangan. */
@@ -91,13 +150,7 @@ export async function listSekalipayCatalog(amount: number): Promise<GatewayCatal
   const apiKey = process.env.SEKALIPAY_GATEWAY_API_KEY!.trim();
   const secret = process.env.SEKALIPAY_GATEWAY_SECRET_KEY!.trim();
   if (!methodCache || methodCache.key !== `${apiKey}\0${secret}` || methodCache.until <= Date.now()) {
-    const path = "api/v1/gateway/payment-methods";
-    const timestamp = Math.floor(Date.now() / 1000);
-    const signature = await signGatewayRequest(secret, "GET", path, {}, timestamp);
-    const response = await fetch(`https://sekalipay.com/${path}`, {
-      headers: { Accept: "application/json", "X-API-Key": apiKey, "X-Timestamp": String(timestamp), "X-Signature": signature },
-      redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(10_000),
-    });
+    const response = await gatewayTransport("GET", "payment-methods", {}, apiKey, secret, false);
     if (!response.ok || response.headers.has("location")) throw new Error("sekalipay_gateway_methods_unavailable");
     const body: unknown = await response.json();
     if (!body || typeof body !== "object" || !("status" in body) || body.status !== true || !("data" in body) || !Array.isArray(body.data)) throw new Error("sekalipay_gateway_invalid_response");
@@ -146,14 +199,7 @@ async function gatewayFetch(method: "GET" | "POST", suffix: string, params: Reco
       WHERE json_valid(value) AND (json_extract(value,'$.minute')!=strftime('%Y-%m-%dT%H:%M','now') OR json_extract(value,'$.count')<20)`);
     if (!admission.changes) throw new Error("sekalipay_gateway_status_rate_limited");
   }
-  const path = `api/v1/gateway/${suffix}`;
-  const timestamp = Math.floor(Date.now() / 1000);
-  const signature = await signGatewayRequest(secret, method, path, params, timestamp);
-  const response = await fetch(`https://sekalipay.com/${path}`, {
-    method, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(10_000),
-    headers: { Accept: "application/json", "Content-Type": "application/json", "X-API-Key": apiKey, "X-Timestamp": String(timestamp), "X-Signature": signature },
-    ...(method === "POST" ? { body: JSON.stringify(params) } : {}),
-  });
+  const response = await gatewayTransport(method, suffix, params, apiKey, secret, true);
   if (response.headers.has("location")) throw new Error("sekalipay_gateway_redirect");
   const body: unknown = await response.json().catch(() => null);
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("sekalipay_gateway_invalid_response");

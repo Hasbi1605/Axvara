@@ -49,9 +49,9 @@ describe("gateway: persetujuan total akhir", () => {
     const calls = stub({ gets: [orderBody(gwView({ payment_link: "https://pay.example/leak", virtual_account: "8888LEAK", checkout_url: "https://pay.example/c" }))], consent: () => ({ status: 200, body: { ok: true } }) });
     render(<OrderPage />);
     await screen.findByRole("heading", { name: "Setujui Total Pembayaran" });
-    expect(text()).toContain("Total akhirRp 254.500");
-    expect(text()).toContain("Biaya pembayaranRp 4.500");
-    expect(text()).toContain("Subtotal pesananRp 250.000");
+    expect(text()).toContain("TotalRp 254.500");
+    expect(text()).toContain("Biaya BCA Virtual AccountRp 4.500");
+    expect(text()).toContain("SubtotalRp 250.000");
     expect(text()).not.toContain("Rp 259.000"); // total tidak digabung biaya lagi
     expect(anchors()).toHaveLength(0);
     expect(text()).not.toMatch(/8888LEAK|pay\.example|Nomor virtual account/);
@@ -111,7 +111,7 @@ describe("gateway: persetujuan total akhir", () => {
     await act(async () => { const b = screen.getByRole("button", { name: /Setujui Rp\s254\.500/ }); fireEvent.click(b); fireEvent.click(b); });
     await screen.findByRole("button", { name: /Setujui Rp\s255\.000/ });
     expect(text()).toContain("Total berubah atau persetujuan tidak tersedia");
-    expect(text()).toContain("Total akhirRp 255.000");
+    expect(text()).toContain("TotalRp 255.000");
     expect(consentPosts(calls)).toHaveLength(1);
     expect(anchors()).toHaveLength(0);
   });

@@ -43,3 +43,24 @@ export function methodLogo(option: PayOption): MethodLogo | null {
   const src = BY_LABEL.get(normalizeLabel(option.label));
   return src ? { src } : null;
 }
+
+/**
+ * Nama pendek baris gateway: di grup Virtual Account akhiran "Virtual Account"/"VA" dibuang ("BCA Virtual Account" -> "BCA").
+ * Hanya tampilan; ID/routing tidak berubah. Label yang hanya terdiri dari akhiran itu tidak dikosongkan.
+ */
+export function gatewayShortName(label: string, group: "va" | "ewallet" | "other"): string {
+  const trimmed = label.trim().replace(/\s+/g, " ");
+  if (group !== "va") return trimmed;
+  const stripped = trimmed.replace(/\s+(virtual account|va)$/i, "").trim();
+  return stripped || trimmed;
+}
+
+/** Monogram netral untuk kanal tanpa logo terverifikasi (bukan logo merek lain): 2 huruf pertama satu kata, atau huruf awal dua kata pertama. */
+export function methodMonogram(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "•";
+  const letters = (value: string) => Array.from(value).filter((ch) => /[\p{L}\p{N}]/u.test(ch));
+  const first = letters(words[0]);
+  if (words.length === 1 || letters(words[1]).length === 0) return first.slice(0, 2).join("").toUpperCase() || "•";
+  return `${first[0] ?? ""}${letters(words[1])[0] ?? ""}`.toUpperCase();
+}

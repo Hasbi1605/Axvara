@@ -220,7 +220,7 @@ describe("lacak-pesanan: lookup gateway/crypto", () => {
       () => ({ status: 200, body: { ok: true } }),
     );
     await screen.findByRole("heading", { name: "Setujui Total Pembayaran" });
-    expect(bodyText()).toContain("Total akhirRp 254.500");
+    expect(bodyText()).toContain("TotalRp 254.500");
     expect(bodyText()).not.toMatch(/LEAK|Nomor virtual account/);
     expect(document.querySelectorAll("section a[target=_blank]")).toHaveLength(0);
     expect(screen.queryByLabelText(/No\. WA atau email checkout yang/)).toBeNull(); // kontak lookup dipakai, tidak diminta lagi

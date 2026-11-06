@@ -106,7 +106,7 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     expect(norm(document.body.textContent).match(/Paling cepat/g)).toHaveLength(1);
     expect(norm(qrisCard().textContent)).toContain("Paling cepat");
     // Header grup tertutup memuat baris chip logo (bukan teks panjang).
-    expect(headers()[0].querySelectorAll("[data-logo-chip] img").length).toBe(1);
+    expect(headers()[0].querySelectorAll("[data-bank-tile] img").length).toBe(1);
     expect(headers()[0].querySelector('img[src="/payments/bca.svg"]')).toBeTruthy();
     expect(headers()[1].querySelector('img[src="/payments/ovo.svg"]')).toBeTruthy();
     expect(headers()[2].querySelector('img[src="/payments/coins/usdtbsc.svg"]')).toBeTruthy();
@@ -130,35 +130,39 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     expect(radio(/QRIS/).checked).toBe(true);
   });
 
-  it("VA vs E-Wallet dari `group`; group hilang/tak dikenal -> 'Transfer lainnya' (tidak diasumsikan VA)", async () => {
+  it("VA vs E-Wallet dari `group`; group hilang/tak dikenal -> 'Lainnya' (tidak diasumsikan VA)", async () => {
     stub({ quotes: [{ methods: [qrisM, gw("A", "Alpha", 1000, 251_000, 250_000, { group: undefined }), gw("B", "Beta", 1000, 251_000, 250_000, { group: "card" }), gw("C", "Gamma VA", 1000, 251_000)] }] });
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(2));
-    expect(headers().map((h) => h.getAttribute("aria-label")?.split(",")[0])).toEqual(["Virtual Account", "Transfer lainnya"]);
+    expect(headers().map((h) => h.getAttribute("aria-label")?.split(",")[0])).toEqual(["Virtual Account", "Lainnya"]);
     const panel = (re: RegExp) => document.getElementById(header(re).getAttribute("aria-controls")!)!;
-    expect(norm(panel(/^Virtual Account/).textContent)).toContain("Gamma VA");
+    expect(norm(panel(/^Virtual Account/).textContent)).toContain("GAGammaBiaya Rp 1.000"); // monogram netral "GA" + nama tanpa akhiran VA
     expect(norm(panel(/^Virtual Account/).textContent)).not.toMatch(/Alpha|Beta/);
-    expect(norm(panel(/^Transfer lainnya/).textContent)).toMatch(/Alpha.*Beta|Beta.*Alpha/);
+    expect(norm(panel(/^Lainnya/).textContent)).toMatch(/Alpha.*Beta|Beta.*Alpha/);
   });
 
-  it("grup terbuka: semua metode quote dengan logo, biaya est., batas min, est. total; kartu satu keluarga (anatomi QRIS), satu kolom, tanpa sublabel server", async () => {
+  it("grup terbuka: baris gateway selaras baris crypto (ubin logo 40×26 | nama pendek | 'Biaya Rp x' + radio), min-h 48px, tanpa sublabel server dan tanpa catatan panjang", async () => {
     stub({ quotes: [{ methods: methods() }] });
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(3));
     openAll();
-    for (const card of cards().filter((c) => !c.querySelector("input[value^='nowpayments:']"))) { // baris koin crypto punya anatomi sendiri (lihat web-crypto-picker.behavior.test.tsx)
-      for (const cls of ["grid-cols-[56px_minmax(0,1fr)_auto_20px]", "min-h-[64px]", "ax-glass-card", "rounded-2xl"]) expect(card.className, cls).toContain(cls);
-      expect(card.querySelector("img[alt='']")).toBeTruthy();
+    for (const input of ["sekalipay_gateway:DEMO_BCA_VA", "sekalipay_gateway:DEMO_OVO"]) {
+      const card = (document.querySelector(`input[value="${input}"]`) as HTMLInputElement).closest("label")!;
+      for (const cls of ["grid-cols-[40px_minmax(0,1fr)_auto]", "min-h-[48px]", "rounded-xl"]) expect(card.className, cls).toContain(cls);
+      expect(card.querySelector("[data-bank-tile]")!.className).toContain("w-10");
+      expect(card.querySelector("[data-bank-tile]")!.className).toContain("bg-white");
     }
-    expect(norm(radio(/BCA Virtual Account/).closest("label")!.textContent)).toBe("BCA Virtual AccountBiaya est.+Rp 4.000·Min. Rp 10.000Rp 254.000est. total");
-    expect(norm(radio(/OVO/).closest("label")!.textContent)).toBe("OVOBiaya est.+Rp 2.500·Min. Rp 10.000Rp 252.500est. total");
+    expect(norm(radio(/^BCA/).closest("label")!.textContent)).toBe("BCABiaya Rp 4.000"); // akhiran "Virtual Account" dibuang di grup VA
+    expect(norm(radio(/OVO/).closest("label")!.textContent)).toBe("OVOBiaya Rp 2.500");
     expect(norm(radio(/QRIS/).closest("label")!.textContent)).toBe("QRIS Paling cepatScan dari semua e-wallet & m-banking");
-    expect(norm(document.body.textContent)).not.toContain("Estimasi biaya pembayaran");
-    expect(document.querySelector("fieldset")!.innerHTML).not.toMatch(/sm:grid-cols-2|details/);
+    expect(norm(document.body.textContent)).not.toMatch(/Estimasi biaya pembayaran|Biaya & total estimasi|total akhir kamu setujui/);
     expect(document.getElementById("pay-hint")).toBeNull();
     expect(document.querySelector(".text-emerald-300\\/70")).toBeNull();
     expect(radio(/QRIS/).closest("label")!.className).toContain("border-[#00E5FF]/50");
-    expect(radio(/BCA Virtual Account/).closest("label")!.className).not.toContain("border-[#00E5FF]/50");
+    expect(radio(/^BCA/).closest("label")!.className).not.toContain("ring-[#00E5FF]/50");
+    fireEvent.click(radio(/^BCA/));
+    expect(radio(/^BCA/).closest("label")!.className).toContain("ring-[#00E5FF]/50"); // terpilih = ring + titik radio, tanpa garis kiri
+    expect(radio(/^BCA/).closest("label")!.className).not.toMatch(/border-l|bg-\[#00E5FF\]/);
   });
 
   it("menutup grup terpilih menghapus pilihan/fee/ringkasan, tidak memilih QRIS otomatis, dan CTA menunggu pilihan baru", async () => {
@@ -192,14 +196,14 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     await waitFor(() => expect(headers().length).toBe(3));
     await qrisVisible();
     fireEvent.click(header(/^Virtual Account/));
-    fireEvent.click(radio(/BCA Virtual Account/));
-    expect(radio(/BCA Virtual Account/).checked).toBe(true);
+    fireEvent.click(radio(/^BCA/));
+    expect(radio(/^BCA/).checked).toBe(true);
     expect(railText()).toContain("Biaya BCA Virtual Account");
     fireEvent.click(header(/^E-Wallet/)); // auto-menutup VA yang memuat pilihan
     expect(header(/^Virtual Account/).getAttribute("aria-expanded")).toBe("false");
     expect(header(/^E-Wallet/).getAttribute("aria-expanded")).toBe("true");
     expect(radios().filter((r) => r.checked)).toHaveLength(0);
-    expect(radio(/BCA Virtual Account/).checked).toBe(false);
+    expect(radio(/^BCA/).checked).toBe(false);
     expect(header(/^Virtual Account/).querySelector("[data-selected-summary]")).toBeNull();
     expect(railText()).not.toMatch(/Biaya BCA Virtual Account/);
     expect(payButton().disabled).toBe(true);
@@ -238,7 +242,7 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     expect(head.querySelector('img[src="/payments/coins/usdtbsc.svg"]')).toBeTruthy();
   });
 
-  it("logo: QRIS hitam di pelat putih, USDT, merek gateway dari LABEL server; label tak dikenal = pelat netral + glyph generik", async () => {
+  it("logo: QRIS hitam di pelat putih, USDT, merek gateway dari LABEL server; label tak dikenal = monogram netral", async () => {
     stub({ quotes: [{ methods: [qrisM, gw("ZZ_1", "BCA Virtual Account", 4000, 254_000), gw("ZZ_2", "OVO", 2500, 252_500, 250_000, { group: "ewallet" }), gw("BCA_VA", "Channel Rahasia", 4000, 254_000), cryptoM] }] });
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(3));
@@ -246,26 +250,32 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     const qrisLogo = radio(/QRIS/).closest("label")!.querySelector('img[src="/brand/qris.svg"]')!;
     expect(qrisLogo.className).toContain("brightness-0");
     expect(radio(/USDT/).closest("label")!.querySelector('img[src="/payments/coins/usdtbsc.svg"]')!.className).not.toContain("brightness-0");
-    expect(radio(/BCA Virtual Account/).closest("label")!.querySelector('img[src="/payments/bca.svg"]')).toBeTruthy();
-    expect(radio(/OVO/).closest("label")!.querySelector('img[src="/payments/ovo.svg"]')).toBeTruthy();
+    expect(radio(/^BCA/).closest("label")!.querySelector('[data-bank-tile] img[src="/payments/bca.svg"]')).toBeTruthy();
+    expect(radio(/OVO/).closest("label")!.querySelector('[data-bank-tile] img[src="/payments/ovo.svg"]')).toBeTruthy();
     const unknown = radio(/Channel Rahasia/).closest("label")!; // ID memuat BCA tetapi label tidak dikenal
     expect(unknown.querySelector('img[src^="/payments/"]')).toBeNull();
-    expect(unknown.querySelector("[data-logo-fallback]")).toBeTruthy();
+    const monogram = unknown.querySelector("[data-bank-tile][data-monogram]")!; // monogram netral, bukan logo merek lain
+    expect(monogram.textContent).toBe("CR");
+    expect(monogram.querySelector("img")).toBeNull();
     for (const img of Array.from(document.querySelectorAll("label img, button img"))) { expect(img.getAttribute("alt")).toBe(""); expect(img.getAttribute("src")).toMatch(/^\//); }
   });
 
-  it("chip header: maksimal 6 + '+N'; 4 + '+M' di layar sempit; chip tak tersedia redup; nama aksesibel header = judul + N metode + tersedia", async () => {
-    const many = ["BNI VA", "Mandiri VA", "Permata VA", "BRI VA", "BCA VA", "CIMB VA", "Danamon VA", "BSI VA"].map((n, i) => gw(`X${i}`, n, 1000, 251_000));
+  it("header gateway: judul 14px semibold, keterangan 'Biaya mulai Rp x' (termurah, estimasi server), maksimal 4 ubin logo persegi putih bertumpuk + '+N'; nama aksesibel = judul + N metode + tersedia", async () => {
+    const fees = [1000, 3500, 4500, 2000, 4000, 3000, 5000, 1500];
+    const many = ["BNI VA", "Mandiri VA", "Permata VA", "BRI VA", "BCA VA", "CIMB VA", "Danamon VA", "BSI VA"].map((n, i) => gw(`X${i}`, n, fees[i], 250_000 + fees[i]));
     stub({ quotes: [{ methods: [qrisM, ...many, gwOff("OFF", "SeaBank")] }] });
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(1));
     const h = header(/^Virtual Account/);
-    expect(h.querySelectorAll("[data-logo-chip]")).toHaveLength(6);
     expect(h.getAttribute("aria-label")).toBe("Virtual Account, 9 metode, 8 tersedia");
-    expect(norm(h.textContent)).toContain("+3");
-    expect(norm(h.textContent)).toContain("+5");
-    expect(h.querySelectorAll("[data-logo-chip]")[4].parentElement!.className).toContain("max-[420px]:hidden");
-    expect(h.querySelectorAll("[data-logo-chip]")[3].parentElement!.className).not.toContain("max-[420px]:hidden");
+    expect(norm(h.textContent)).toContain("Virtual AccountBiaya mulai Rp 1.000");
+    const title = Array.from(h.querySelectorAll("span")).find((el) => el.textContent === "Virtual Account")!;
+    expect(title.className).toContain("text-[14px]"); expect(title.className).toContain("font-semibold"); expect(title.className).not.toMatch(/uppercase|tracking-/);
+    const tiles = h.querySelectorAll("[data-bank-chips] [data-bank-tile]");
+    expect(tiles).toHaveLength(4);
+    for (const tile of tiles) { expect(tile.className).toContain("rounded-md"); expect(tile.className).toContain("w-8"); }
+    expect(h.querySelector("[data-bank-chips] .-space-x-2")).toBeTruthy(); // bertumpuk
+    expect(norm(h.querySelector("[data-bank-chips]")!.textContent)).toContain("+5");
   });
 
   it("restorasi pilihan di grup non-QRIS membuka grup itu sejak awal; QRIS tetap terlihat tanpa toggle (picker props saja)", () => {
@@ -273,7 +283,7 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     render(<PaymentMethodPicker options={options} selectedId="sekalipay_gateway:DEMO_BCA_VA" onSelect={() => {}} />);
     expect(headers().map((h) => h.getAttribute("aria-expanded"))).toEqual(["true", "false"]);
     expect(visibleRadios()).toHaveLength(2); // QRIS langsung + VA yang dipulihkan terbuka
-    expect(radio(/BCA Virtual Account/).checked).toBe(true);
+    expect(radio(/^BCA/).checked).toBe(true);
     expect(radio(/QRIS/).checked).toBe(false);
     noQrisAccordion();
   });
@@ -285,7 +295,7 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     expect(header(/^Virtual Account/).getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(header(/^Virtual Account/));
     expect(header(/^Virtual Account/).getAttribute("aria-expanded")).toBe("true");
-    expect(radio(/BCA Virtual Account/).checked).toBe(true);
+    expect(radio(/^BCA/).checked).toBe(true);
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -294,7 +304,8 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(2));
     const body = norm(document.body.textContent);
-    expect(body).toContain("Fees and totals are estimates; you approve the final total on the order page.");
+    expect(body).not.toContain("Fees and totals are estimates"); // catatan panjang dihapus
+    expect(norm(header(/^Virtual Account/).textContent)).toContain("Fees from Rp 4,000"); // locale EN: pemisah ribuan koma
     expect(norm(header(/^Crypto/).textContent)).toBe("CryptoUS$15.87 · incl. 1.5% service fee");
     expect(body).not.toMatch(/network gas is paid by the sender|\+ network fees/);
     expect(header(/^Virtual Account/).getAttribute("aria-label")).toBe("Virtual Account, 1 method, 1 available");
@@ -306,24 +317,26 @@ describe("checkout: batas min/max per metode (FIXTURE; nilai dari server, klien 
   const limits = (min: number) => ({ limits: { min, max: 10_000_000 } });
   const offMin = (shortfall: number) => gwOff("VA_OFF", "BRI VA", { limits: { min: 10_000, max: 10_000_000 }, shortfall }, 9_999);
 
-  it("min-1: kartu nonaktif native + aria-disabled, 'Min. Rp 10.000', alasan dari shortfall server, tidak bisa dicek; header menghitung hanya yang tersedia", async () => {
+  it("min-1: baris nonaktif native + aria-disabled, 'Min. Rp 10.000', alasan dari shortfall server (sr-only), tidak bisa dicek; header menghitung hanya yang tersedia", async () => {
     const { posts } = stub({ quotes: [{ methods: [qrisM, gw("VA_OK", "BCA Virtual Account", 4000, 254_000, 250_000, limits(10_000)), offMin(1)] }] });
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(1));
     expect(header(/^Virtual Account/).getAttribute("aria-label")).toBe("Virtual Account, 2 metode, 1 tersedia");
     fireEvent.click(header(/^Virtual Account/));
-    const off = radio(/BRI VA/);
+    const off = radio(/^BRI/);
     expect(off.disabled).toBe(true);
     expect(off.closest("label")!.getAttribute("aria-disabled")).toBe("true");
     expect(off.closest("label")!.className).toContain("cursor-not-allowed");
-    expect(norm(off.closest("label")!.textContent)).toBe("BRI VAMin. Rp 10.000"); // tanpa biaya/total karangan; kolom jumlah kosong
+    expect(off.closest("label")!.className).toContain("opacity-55");
+    expect(norm(off.closest("label")!.textContent)).toBe("BRIMin. Rp 10.000Tambah Rp 1 untuk metode ini"); // tanpa biaya karangan; alasan server hanya sr-only
+    expect(document.getElementById(off.getAttribute("aria-describedby")!)!.className).toContain("sr-only");
     expect(norm(document.getElementById(off.getAttribute("aria-describedby")!)?.textContent)).toBe("Tambah Rp 1 untuk metode ini"); // nilai server, bukan hitungan klien
     fireEvent.click(off);
     expect(off.checked).toBe(false);
     expect(radios().filter((r) => r.checked)).toHaveLength(1);
     // Panel: tersedia dulu lalu nonaktif.
     const names = Array.from(document.getElementById("pay-group-va")!.querySelectorAll("label")).map((l) => norm(l.textContent));
-    expect(names[0]).toContain("BCA Virtual Account"); expect(names[1]).toContain("BRI VA");
+    expect(names[0]).toContain("BCA"); expect(names[1]).toContain("BRI");
     // Tidak bisa dikirim: pilihan tetap QRIS.
     fillAndAgree();
     await act(async () => { fireEvent.click(payButton()); });
@@ -331,30 +344,30 @@ describe("checkout: batas min/max per metode (FIXTURE; nilai dari server, klien 
     expect(posts[0].payment_method).toBe("qris");
   });
 
-  it("min / min+1 / max tersedia (meta menampilkan Min.); max+1 nonaktif 'Melebihi maks.' tanpa baris shortfall", async () => {
+  it("min / min+1 / max tersedia (hanya 'Biaya'); max+1 nonaktif 'Maks. Rp …' dengan alasan server sr-only dan tanpa baris shortfall", async () => {
     stub({ quotes: [{ methods: [qrisM, gw("AT_MIN", "At Min", 4000, 254_000, 250_000, limits(250_000)), gw("MIN1", "Min Plus", 4000, 254_000, 250_000, limits(249_999)), gw("AT_MAX", "At Max", 4000, 254_000, 250_000, { limits: { min: 100, max: 250_000 } }),
       gwOff("OVER", "Over Max", { unavailable_reason: "above_max", shortfall: undefined, limits: { min: 100, max: 249_999 } })] }] });
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(1));
     fireEvent.click(header(/^Virtual Account/));
     for (const name of [/At Min/, /Min Plus/, /At Max/]) { expect(radio(name).disabled).toBe(false); }
-    expect(norm(radio(/At Min/).closest("label")!.textContent)).toContain("Min. Rp 250.000");
-    expect(norm(radio(/At Max/).closest("label")!.textContent)).toContain("Min. Rp 100"); // min > 1 tetap tampil (hanya min <= 1 yang disembunyikan)
+    expect(norm(radio(/At Min/).closest("label")!.textContent)).toBe("AMAt MinBiaya Rp 4.000"); // "AM" = monogram netral (aria-hidden) // batas min hanya tampil untuk baris nonaktif
+    expect(norm(radio(/At Max/).closest("label")!.textContent)).toBe("AMAt MaxBiaya Rp 4.000");
     const over = radio(/Over Max/);
     expect(over.disabled).toBe(true);
+    expect(norm(over.closest("label")!.textContent)).toContain("Maks. Rp 249.999");
     expect(norm(document.getElementById(over.getAttribute("aria-describedby")!)?.textContent)).toBe("Melebihi maks. Rp 249.999");
     expect(norm(document.body.textContent)).not.toMatch(/Tambah Rp .* untuk metode ini/);
   });
 
-  it("semua metode grup nonaktif: header 'Tidak tersedia untuk total ini', grup tetap bisa dibuka (logo + batas), tidak ada radio yang bisa dicek", async () => {
+  it("semua metode grup nonaktif: header 'Belum tersedia untuk nominal ini', grup tetap bisa dibuka (logo + batas), tidak ada radio yang bisa dicek", async () => {
     stub({ quotes: [{ methods: [qrisM, gwOff("O1", "BRI VA"), gwOff("O2", "Mandiri VA")] }] });
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(1));
     const h = header(/^Virtual Account/);
     expect(h.getAttribute("aria-label")).toBe("Virtual Account, 2 metode, Tidak tersedia untuk total ini");
-    expect(norm(h.textContent)).toContain("Tidak tersedia untuk total ini");
-    expect(h.querySelectorAll("[data-logo-chip]")).toHaveLength(2);
-    expect(h.querySelector("[data-logo-chip]")!.className).toContain("opacity-50");
+    expect(norm(h.textContent)).toContain("Belum tersedia untuk nominal ini"); // keterangan header tanpa kanal tersedia
+    expect(h.querySelectorAll("[data-bank-tile]")).toHaveLength(2);
     fireEvent.click(h);
     expect(h.getAttribute("aria-expanded")).toBe("true");
     const group = Array.from(document.getElementById("pay-group-va")!.querySelectorAll<HTMLInputElement>("input[type=radio]"));
@@ -370,11 +383,11 @@ describe("checkout: batas min/max per metode (FIXTURE; nilai dari server, klien 
     ] });
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(1));
-    fireEvent.click(radio(/BCA Virtual Account/));
-    expect(radio(/BCA Virtual Account/).checked).toBe(true);
+    fireEvent.click(radio(/^BCA/));
+    expect(radio(/^BCA/).checked).toBe(true);
     expect(norm(payButton().textContent)).toBe("Buat Pesanan — estimasi Rp 254.000");
     useCart.setState({ items: [{ ...cartLine(), qty: 2 }] });
-    await waitFor(() => expect(radio(/BCA Virtual Account/).disabled).toBe(true));
+    await waitFor(() => expect(radio(/^BCA/).disabled).toBe(true));
     expect(radio(/QRIS/).checked).toBe(true);
     expect(radios().filter((r) => r.checked)).toHaveLength(1);
     expect(norm(document.body.textContent)).toContain("BCA Virtual Account tidak tersedia untuk total ini — dipilih QRIS.");
@@ -411,11 +424,16 @@ describe("checkout: picker dari quote", () => {
     const { posts } = stub({ quotes: [{ methods: [qrisM, gw("BCA_VA", "BCA Virtual Account", 4000, 254_000), cryptoM] }] });
     render(<CheckoutPage />);
     await waitFor(() => expect(radios().length).toBe(3));
-    fireEvent.click(radio(/BCA Virtual Account/));
-    expect(radio(/BCA Virtual Account/).checked).toBe(true);
+    fireEvent.click(radio(/^BCA/));
+    expect(radio(/^BCA/).checked).toBe(true);
     const text = railText();
-    expect(text).toContain("Biaya BCA Virtual Account (estimasi)+Rp 4.000");
-    expect(text).toContain("Estimasi totalRp 254.000");
+    expect(text).toContain("SubtotalRp 250.000");
+    expect(text).toContain("Biaya BCA Virtual AccountRp 4.000"); // tanpa "+" dan tanpa "(estimasi)"
+    expect(text).toContain("TotalRp 254.000");
+    expect(text).toContain("Total akhir disetujui di halaman pesanan."); // satu baris muted
+    expect(text).not.toMatch(/Estimasi total|\+Rp 4\.000/);
+    expect(text.indexOf("Subtotal")).toBeLessThan(text.indexOf("Biaya BCA"));
+    expect(text.indexOf("Biaya BCA")).toBeLessThan(text.indexOf("TotalRp 254.000"));
     expect(text).not.toMatch(/Rp 258\.000/); // biaya tidak ditambahkan dua kali
     expect(norm(payButton().textContent)).toBe("Buat Pesanan — estimasi Rp 254.000");
     fillAndAgree();
@@ -524,10 +542,10 @@ describe("checkout: picker dari quote", () => {
     ] });
     render(<CheckoutPage />);
     await waitFor(() => expect(radios().length).toBe(2));
-    fireEvent.click(radio(/BCA Virtual Account/));
+    fireEvent.click(radio(/^BCA/));
     useCart.setState({ items: [{ ...cartLine(), qty: 2 }] });
     await waitFor(() => expect(railText()).toContain("Rp 4.500"));
-    expect(radio(/BCA Virtual Account/).checked).toBe(true);
+    expect(radio(/^BCA/).checked).toBe(true);
     useCart.setState({ items: [{ ...cartLine(), qty: 3 }] });
     await waitFor(() => expect(radios().length).toBe(1));
     expect(radio(/QRIS/).checked).toBe(true);
@@ -559,11 +577,11 @@ describe("checkout: picker dari quote", () => {
     stub({ quotes: [{ methods: [qrisM, gw("BCA_VA", "BCA Virtual Account", 4000, 254_000)] }], order: "timeout" });
     render(<CheckoutPage />);
     await waitFor(() => expect(radios().length).toBe(2));
-    fireEvent.click(radio(/BCA Virtual Account/));
+    fireEvent.click(radio(/^BCA/));
     fillAndAgree();
     await act(async () => { fireEvent.click(payButton()); });
     await waitFor(() => expect(radios().every((r) => r.disabled)).toBe(true));
-    expect(radio(/BCA Virtual Account/).checked).toBe(true);
+    expect(radio(/^BCA/).checked).toBe(true);
     expect(norm(document.body.textContent)).toContain("Metode dikunci karena pesanan mungkin sudah dibuat");
   });
 
@@ -574,8 +592,8 @@ describe("checkout: picker dari quote", () => {
     const body = norm(document.body.textContent);
     expect(body).toContain("Fastest");
     expect(body).not.toContain("Paling cepat");
-    expect(body).toContain("Est. fee+Rp 4.000");
-    expect(body).toContain("Rp 254.000est. total");
+    expect(body).toContain("Fees from Rp 4,000");
+    expect(body).not.toMatch(/Est\. fee|est\. total/);
   });
 
   it("tidak ada opsi sama sekali / error quote jujur: pesan, tanpa metode palsu", async () => {

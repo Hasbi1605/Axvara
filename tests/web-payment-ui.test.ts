@@ -152,3 +152,21 @@ describe("usdFor: USD fiat mengikuti locale (koin dan clipboard tidak pernah dil
     expect(id.cryptoMinReason("2.25", null)).toBe("Belanja minimal US$2,25 untuk koin ini");
   });
 });
+
+describe("salinan gateway: keterangan header, baris, ringkasan", () => {
+  it("id/en: 'Biaya mulai'/'Fees from', 'Biaya Rp x'/'Fee Rp x', 'Min.'/'Maks.'/'Max', ringkasan Subtotal/Biaya/Total tanpa '+'", () => {
+    const n = (v: string) => v.replace(/\s/g, " ");
+    const id = payCopy("id"), en = payCopy("en");
+    expect(id.groupOther).toBe("Lainnya"); expect(en.groupOther).toBe("Other");
+    expect(n(id.gatewayCaptionFrom(3500))).toBe("Biaya mulai Rp 3.500");
+    expect(n(en.gatewayCaptionFrom(3500))).toBe("Fees from Rp 3,500");
+    expect(id.gatewayCaptionNone).toBe("Belum tersedia untuk nominal ini");
+    expect(n(id.gatewayRowFee(4000))).toBe("Biaya Rp 4.000"); expect(id.gatewayRowFee(0)).toBe("Tanpa biaya"); expect(en.gatewayRowFee(0)).toBe("No fee");
+    expect(n(id.gatewayRowMin(10_000))).toBe("Min. Rp 10.000"); expect(n(id.gatewayRowMax(249_999))).toBe("Maks. Rp 249.999"); expect(n(en.gatewayRowMax(1000))).toBe("Max Rp 1,000");
+    expect(id.subtotalRow).toBe("Subtotal"); expect(id.totalRow).toBe("Total");
+    expect(id.feeRow("BCA VA")).toBe("Biaya BCA VA"); expect(en.feeRow("BCA VA")).toBe("BCA VA fee");
+    expect(id.gatewayFinalNote).toBe("Total akhir disetujui di halaman pesanan.");
+    expect(orderPanelCopy("id").feeFor("BCA VA")).toBe("Biaya BCA VA");
+    expect(orderPanelCopy("en").feeFor("")).toBe("Fee");
+  });
+});

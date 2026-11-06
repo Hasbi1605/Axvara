@@ -100,7 +100,7 @@ function GatewayPanel({ view, locale, now, checking, onCheck, contactKnown, cons
         {consent.stale && <p role="status" className="mt-3 rounded-lg border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-2 text-xs text-[#FFD66B]">{c.gateway.stale}</p>}
         <dl className="mt-3 space-y-1.5 text-sm">
           <div className="flex justify-between gap-3"><dt className="text-white/60">{c.subtotal}</dt><dd className="tabular-nums text-white">{formatRupiah(view.subtotal)}</dd></div>
-          <div className="flex justify-between gap-3"><dt className="text-white/60">{view.fee !== null ? c.fee : c.estFee}</dt><dd className="tabular-nums text-white">{view.fee !== null ? formatRupiah(view.fee) : view.estimatedFee !== null ? formatRupiah(view.estimatedFee) : "—"}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-white/60">{view.fee !== null ? c.feeFor(view.label) : c.estFee}</dt><dd className="tabular-nums text-white">{view.fee !== null ? formatRupiah(view.fee) : view.estimatedFee !== null ? formatRupiah(view.estimatedFee) : "—"}</dd></div>
           <div className="flex justify-between gap-3 border-t border-white/10 pt-2"><dt className="font-semibold text-white">{c.finalTotal}</dt><dd className="font-display text-xl font-bold tabular-nums text-white">{total !== null ? formatRupiah(total) : "—"}</dd></div>
         </dl>
         <Deadline expiresAt={view.expiresAt} now={now} c={c} />

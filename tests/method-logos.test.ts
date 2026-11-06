@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Logo dekoratif metode pembayaran: merek gateway dikenali dari LABEL server (kecocokan persis, ternormalisasi),
 // bukan dari ID/kode kanal atau substring; aset hanya lokal dan bersih.
 import { describe, expect, it } from "vitest";
@@ -62,6 +63,7 @@ describe("methodLogo", () => {
     expect(svgs.sort()).toEqual(["bca.svg", "bni.svg", "bri.svg", "bsi.svg", "cimb-niaga.svg", "danamon.svg", "gopay.svg", "linkaja.svg", "mandiri.svg", "ovo.svg", "permata.svg", "seabank.svg"]);
     for (const name of svgs) {
       const svg = readFileSync(join(root, "payments", name), "utf8");
+      expect(new DOMParser().parseFromString(svg, "image/svg+xml").querySelector("parsererror"), name).toBeNull();
       expect(svg, name).toContain("viewBox");
       expect(svg, name).not.toMatch(/<script|\son[a-z]+\s*=|href\s*=\s*["']https?:|<image|data:image|@import|<foreignObject|url\(\s*["']?https?:/i);
     }
