@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 import { createSekalipayGatewayInvoice, listSekalipayMethods, signGatewayRequest, reconcileSekalipayGatewayPayment } from "@/lib/payments/sekalipay-gateway";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 
@@ -98,6 +99,27 @@ describe("Sekalipay gateway transport selection", () => {
 });
 
 describe("Sekalipay gateway create/status via proxy", () => {
+  it("IP-whitelisted proxy POST passes an independent raw-body signature verifier", async () => {
+    const f = setup({ handler: call => {
+      if (call.url.endsWith("payment-methods")) return Response.json(catalog);
+      if (call.init.method === "POST") {
+        const expected = createHmac("sha256", "fixture-secret").update(String(call.init.body), "utf8").digest("hex");
+        if ((call.init.headers as Record<string, string>)["X-Signature"] !== expected) {
+          return Response.json({ status: false, error_code: "INVALID_SIGNATURE" }, { status: 401 });
+        }
+      }
+      return Response.json({ status: true, data: f.invoice });
+    } });
+    try {
+      await seedOrder(f);
+      const buyer = { ...customer, name: "Nama + & / \u20ac", email: "buyer+test@example.test" };
+      expect((await createSekalipayGatewayInvoice(code, 10000, "TESTVA", buyer, 4700)).invoice).toBe("SPYproxy");
+      expect((await createSekalipayGatewayInvoice(code, 10000, "TESTVA", buyer, 4700)).invoice).toBe("SPYproxy");
+      expect(f.posts()).toBe(1);
+      expect(txStatus(f)).toBe("pending");
+    } finally { f.fixture.close(); }
+  });
+
   it("sends the signed POST byte-identically to the proxy and the status GET via proxy", async () => {
     const f = setup();
     try {
@@ -112,7 +134,7 @@ describe("Sekalipay gateway create/status via proxy", () => {
       const body = JSON.parse(post.init.body as string);
       expect(post.init.body).toBe(JSON.stringify(body));
       expect(body).toMatchObject({ merchant_ref_id: code, amount: 10000, payment_code: "TESTVA", customer_email: customer.email });
-      expect(headers["X-Signature"]).toBe(await signGatewayRequest("fixture-secret", "POST", "api/v1/gateway/payment", body, Number(headers["X-Timestamp"])));
+      expect(headers["X-Signature"]).toBe(createHmac("sha256", "fixture-secret").update(post.init.body as string, "utf8").digest("hex"));
       expect(post.init.redirect).toBe("manual");
 
       f.fixture.sql.prepare("UPDATE payment_transactions SET status='initializing' WHERE order_code=?").run(code);
@@ -124,14 +146,20 @@ describe("Sekalipay gateway create/status via proxy", () => {
     } finally { f.fixture.close(); }
   });
 
-  it("keeps the same body bytes direct and via proxy", async () => {
+  it("keeps identical body bytes but uses raw HMAC via proxy and Enhanced HMAC direct", async () => {
     const bodies: string[] = [];
     for (const proxy of [true, false]) {
       const f = setup({ proxy });
       try {
         await seedOrder(f);
         await create();
-        bodies.push(f.calls.find((c) => c.init.method === "POST")!.init.body as string);
+        const post = f.calls.find((c) => c.init.method === "POST")!;
+        const body = post.init.body as string;
+        const headers = post.init.headers as Record<string, string>;
+        bodies.push(body);
+        expect(headers["X-Signature"]).toBe(proxy
+          ? createHmac("sha256", "fixture-secret").update(body, "utf8").digest("hex")
+          : await signGatewayRequest("fixture-secret", "POST", "api/v1/gateway/payment", JSON.parse(body), Number(headers["X-Timestamp"])));
       } finally { f.fixture.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); }
     }
     expect(bodies[0]).toBe(bodies[1]);

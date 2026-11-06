@@ -70,8 +70,8 @@ export function estimateGatewayFee(amount: number, fee: Fee): number {
 /**
  * Transport gateway Sekalipay. Whitelist IP merchant hanya VPS 13.228.147.90 dan Cloudflare Pages tidak punya egress IP tetap, jadi bila
  * SEKALIPAY_PROXY_URL (origin https murni) + SEKALIPAY_PROXY_TOKEN valid, panggilan lewat `${origin}/skg/v1/gateway/<path>` dengan header
- * `x-proxy-token`; tanpa kedua env langsung ke sekalipay.com (harness lokal/tes). Konfigurasi parsial/invalid gagal tertutup. Tanda tangan HMAC SELALU atas path kanonis upstream
- * `api/v1/gateway/<path>`; proxy hanya meneruskan X-API-Key/X-Timestamp/X-Signature + body mentah apa adanya.
+ * `x-proxy-token`; tanpa kedua env langsung ke sekalipay.com (harness lokal/tes). Konfigurasi parsial/invalid gagal tertutup. Mode whitelist VPS menandatangani body POST mentah;
+ * direct mempertahankan Enhanced HMAC atas path kanonis upstream. Proxy hanya meneruskan header + body mentah apa adanya.
  */
 function gatewayProxy(): { origin: string; token: string } | null {
   const rawUrl = process.env.SEKALIPAY_PROXY_URL?.trim();
@@ -99,8 +99,10 @@ async function assertNotProxyConfigError(response: Response): Promise<void> {
 async function gatewayTransport(method: "GET" | "POST", suffix: string, params: Record<string, Scalar>, apiKey: string, secret: string, jsonContentType: boolean): Promise<Response> {
   const path = `api/v1/gateway/${suffix}`;
   const timestamp = Math.floor(Date.now() / 1000);
-  const signature = await signGatewayRequest(secret, method, path, params, timestamp);
   const proxy = gatewayProxy();
+  const body = method === "POST" ? JSON.stringify(params) : undefined;
+  // ponytail: the VPS merchant uses IP whitelist; add an explicit mode only if proxied Enhanced HMAC is required.
+  const signature = proxy && body !== undefined ? await gatewayHmac(secret, body) : await signGatewayRequest(secret, method, path, params, timestamp);
   const headers: Record<string, string> = { Accept: "application/json", ...(jsonContentType ? { "Content-Type": "application/json" } : {}),
     "X-API-Key": apiKey, "X-Timestamp": String(timestamp), "X-Signature": signature, ...(proxy ? { "x-proxy-token": proxy.token } : {}) };
   const url = proxy ? `${proxy.origin}/skg/v1/gateway/${suffix}` : `https://sekalipay.com/${path}`;
@@ -108,7 +110,7 @@ async function gatewayTransport(method: "GET" | "POST", suffix: string, params: 
   try {
     response = await fetch(url, {
       method, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(10_000), headers,
-      ...(method === "POST" ? { body: JSON.stringify(params) } : {}),
+      ...(body !== undefined ? { body } : {}),
     });
   } catch (error) {
     // POST yang gagal di jaringan/timeout mungkin sudah diterima merchant: ambigu, klaim durable dipertahankan, tanpa POST ulang.
