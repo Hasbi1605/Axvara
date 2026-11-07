@@ -6,7 +6,7 @@
 // next view re-reads saved TX (never re-POST blindly).
 import { queryFirst, execRun } from "@/lib/db";
 import { createChannelOrderAtomic } from "@/lib/commerce";
-import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
+import { safeEditOrSend } from "@/lib/telegram/api";
 import { otherMethodsEntryKeyboard } from "@/lib/telegram/keyboards";
 import { paymentMethodNoticeMessage } from "@/lib/telegram/messages/purchase";
 import type { Payq1State } from "@/lib/telegram/payment-quote";
@@ -16,6 +16,7 @@ async function refreshResumeView(
   chatId: number, messageId: number, orderCode: string,
   from: { id: number; first_name: string; username?: string }, locale: Locale,
   currentRaw: string,
+  options: { clearAnchor?: boolean } = {},
 ): Promise<void> {
   const { showProviderInvoiceStatus } = await import("./payment-status");
   // R3 send fence: the first critical send takes the SAME durable claim as the
@@ -32,8 +33,12 @@ async function refreshResumeView(
       await settleAmbiguousProviderInvoice(chatId, orderCode);
     }
   }
-  const { clearPayq1AfterDurableTx } = await import("@/lib/telegram/payment-create");
-  await clearPayq1AfterDurableTx(String(from.id), currentRaw, orderCode).catch(() => false);
+  // Ambiguous: the anchor stays bound to THIS order (pmentry stays busy), so
+  // the buyer can never open a second live checkout while an invoice may exist.
+  if (options.clearAnchor !== false) {
+    const { clearPayq1AfterDurableTx } = await import("@/lib/telegram/payment-create");
+    await clearPayq1AfterDurableTx(String(from.id), currentRaw, orderCode).catch(() => false);
+  }
 }
 
 export async function dispatchPayq1Creating(
@@ -269,29 +274,46 @@ export async function dispatchPayq1Creating(
         chat_id: chatId, message_id: messageId,
         text: paymentMethodNoticeMessage("method_unavailable", { locale }),
         parse_mode: "HTML",
-      });
-      return;
-    }
-    // Post-timeout/stock-retained: order retained pending; NEXT GET-only.
-    // Do NOT auto-reconcile here: a late GET against a just-created fee-delta
-    // invoice would mark the TX a mismatch BEFORE the consent view ever
-    // renders. The consent/refresh path reconciles with a re-present instead.
-    const tx = await queryFirst(`SELECT order_code FROM payment_transactions WHERE order_code=?`, orderedCode).catch(() => null);
-    if (tx) {
-      await refreshResumeView(chatId, messageId, orderedCode, from, locale, creatingRaw);
-      // Ambiguous claim: saved invoice stays authoritative (no re-POST, no
-      // cancel). Follow-up entry lets the buyer start a FRESH quote → new
-      // order (same as the web 503 reset). refreshResumeView already cleared
-      // the creating anchor because a durable TX exists.
-      await sendMessage({
-        chat_id: chatId,
-        text: paymentMethodNoticeMessage("create_failed", { locale }),
-        parse_mode: "HTML",
+        // TX terminal + order batal = tidak ada charge tersisa; pembeli boleh
+        // langsung memilih metode lain (quote/nonce baru).
         reply_markup: otherMethodsEntryKeyboard({ locale }),
       });
       return;
     }
-    await failureNotice();
+    const message = error instanceof Error ? error.message : "unknown";
+    const { isDefinitiveNowpaymentsFailure, clearPayq1AfterDurableTx } = await import("@/lib/telegram/payment-create");
+    // Klasifikasi SAMA dengan web/Pedia: TX klaim initializing|pending atau pesan
+    // ambiguous => AMBIGU. Selain itu definitif (tidak ada charge yang bisa direkonsiliasi).
+    const definitive = kind === "crypto" && await isDefinitiveNowpaymentsFailure(orderedCode, message).catch(() => false);
+    if (!definitive) {
+      // AMBIGU: order + klaim DIPERTAHANKAN, tanpa POST ulang, dan anchor TETAP
+      // terikat ke order ini — jadi pmentry tidak bisa membuka checkout kedua.
+      // View/refresh tetap membaca invoice tersimpan (GET-only). Jangan kirim
+      // tombol "metode lain" di sini: switching belum diizinkan.
+      await refreshResumeView(chatId, messageId, orderedCode, from, locale, creatingRaw, { clearAnchor: false });
+      return;
+    }
+    // DEFINITIF: tidak ada charge tersisa. Batalkan order (restock Market SEKALI
+    // lewat guard atomik), tandai TX terminal bila ada, lepaskan anchor, lalu
+    // tawarkan metode lain dengan quote/nonce BARU (callback pm: lama jadi stale).
+    try {
+      const orderRow = await queryFirst(`SELECT items FROM orders WHERE code=?`, orderedCode);
+      const items = JSON.parse(String(orderRow?.items ?? "[]"));
+      const { transitionPendingOrder } = await import("@/lib/db");
+      await transitionPendingOrder(orderedCode, "dibatalkan", `nowpayments_setup_failed:${message.slice(0, 60)}`, Array.isArray(items) ? items : []);
+    } catch { /* sudah terminal / kalah balapan: aman, stok tidak dobel */ }
+    await execRun(
+      `UPDATE payment_transactions SET status='failed',last_error=COALESCE(last_error,?),updated_at=datetime('now')
+       WHERE order_code=? AND provider='nowpayments' AND status IN ('initializing','pending')`,
+      message, orderedCode,
+    ).catch(() => undefined);
+    await clearPayq1AfterDurableTx(ownerId, creatingRaw, orderedCode).catch(() => false);
+    await safeEditOrSend({
+      chat_id: chatId, message_id: messageId,
+      text: paymentMethodNoticeMessage("create_failed", { locale }),
+      parse_mode: "HTML",
+      reply_markup: otherMethodsEntryKeyboard({ locale }),
+    });
     return;
   }
 

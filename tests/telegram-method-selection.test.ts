@@ -147,7 +147,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     expect(await selectedSnapshotOf(state as never)).toMatchObject({ ok: false, reason: "method_unavailable" });
   });
 
-  it("two-tab old nonce cannot change the current offer; duplicate taps idempotent", async () => {
+  it("two-tab old nonce cannot change the current offer; baris QRIS memulai alur QRIS; tap koin duplikat idempoten", async () => {
     await seedCartUser();
     await click("pmentry");
     const firstRaw = String(userState().pending_action);
@@ -158,10 +158,22 @@ describe("TG R1 frozen method selection (local only)", () => {
     expect(second.nonce).not.toBe(first.nonce);
     await click(`pm:${first.nonce}:0`);
     expect(String(userState().pending_action)).toBe(secondRaw);
+    // Baris QRIS (owner 8 Nov 2026): langsung memulai alur QRIS legacy, draft
+    // payq1 dilepas — bukan seleksi yang berhenti di "refreshed" tanpa aksi.
     await click(`pm:${second.nonce}:0`);
+    expect(String(userState().pending_action ?? "")).toBe("");
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
+    // Idempotensi seleksi non-QRIS: offer baru + koin yang sama dua kali.
+    await enableCrypto();
+    await click("pmentry");
+    const offer = parsePayq1State(String(userState().pending_action))!;
+    await click(`pmc:${offer.nonce}`);
+    const coin = offer.methods.findIndex((m) => m.id === "nowpayments:usdtbsc");
+    expect(coin).toBeGreaterThanOrEqual(0);
+    await click(`pm:${offer.nonce}:${coin}`);
     const afterFirst = String(userState().pending_action);
-    expect(afterFirst).toContain('"sel":"qris"');
-    await click(`pm:${second.nonce}:0`);
+    expect(afterFirst).toContain('"sel":"nowpayments:usdtbsc"');
+    await click(`pm:${offer.nonce}:${coin}`);
     expect(String(userState().pending_action)).toBe(afterFirst);
   });
 

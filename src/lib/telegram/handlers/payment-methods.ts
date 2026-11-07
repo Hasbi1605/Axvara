@@ -77,12 +77,36 @@ export async function showPaymentMethodOffer(
 }
 
 /**
+ * QRIS dari offer beku: draft payq1 sudah dilepas CAS oleh pemanggil; jalankan
+ * alur QRIS legacy yang sudah ada. Single source = `handlePayWithQris`
+ * (invoice langsung); cart = `handleCartCheckout` (ringkasan persetujuan →
+ * `cconfirm:`). Guard pending-order/email/approval milik jalur legacy tetap
+ * berlaku; tidak ada order kedua dari sini.
+ */
+async function startLegacyQrisFromOffer(
+  chatId: number,
+  messageId: number,
+  from: { id: number; first_name: string; username?: string },
+  source: Payq1LineIdentity,
+): Promise<void> {
+  if (source.kind === "single") {
+    const { handlePayWithQris } = await import("./invoice");
+    await handlePayWithQris(chatId, messageId, source.productId, source.variantId, source.qty, from, true);
+  } else {
+    const { handleCartCheckout } = await import("./cart");
+    await handleCartCheckout(chatId, messageId, from);
+  }
+}
+
+/**
  * Handle pm:<nonce>:<index> selection against the FROZEN array only.
  * Ownership: private chat (chatId===from.id guarded by ownerBound + group
  * redirect in route) + exact raw CAS. Stale/expired/malformed/cross-user/
  * group => no mutation, honest requote/latest notice. Duplicate valid
- * selection is idempotent. R2 creation entry lives behind pgo: (below);
- * R1-style pm never creates orders.
+ * selection is idempotent. Rail non-QRIS hanya seleksi (create lewat pgo:).
+ * QRIS adalah pengecualian: menekan baris QRIS langsung memulai pembayaran
+ * QRIS legacy (owner 8 Nov 2026) — draft payq1 dilepas CAS, lalu
+ * `startLegacyQrisFromOffer`. Tap ganda: hanya CAS pertama yang menang.
  */
 export async function handlePayMethodSelect(
   chatId: number,
@@ -134,6 +158,19 @@ export async function handlePayMethodSelect(
     await answer();
     return;
   }
+  // QRIS: BUKAN seleksi payq1 (rail-nya milik alur legacy). Lepas draft lewat
+  // CAS exact-raw, lalu mulai pembayaran QRIS. Tap ganda / layar lama: hanya
+  // CAS pertama yang menang — tap kedua no-op, jadi tidak ada dua order.
+  if (chosen.id === "qris" || chosen.kind === "qris") {
+    const released = await execRun(
+      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
+      String(from.id), raw,
+    ).catch(() => ({ changes: 0 }));
+    await answer();
+    if ((released.changes ?? 0) < 1) return;
+    await startLegacyQrisFromOffer(chatId, messageId, from, state.source);
+    return;
+  }
   const next = { ...state, sel: chosen.id };
   const nextRaw = `payq1:${JSON.stringify(next)}`;
   // Exact-raw CAS: loser (two-tab/duplicate race) keeps current offer.
@@ -145,18 +182,6 @@ export async function handlePayMethodSelect(
   if ((claimed.changes ?? 0) < 1) {
     // Lost the race: keep the current offer as-is (idempotent duplicate
     // taps land here too). No mutation, no error.
-    return;
-  }
-  if (chosen.id === "qris" || chosen.kind === "qris") {
-    // Legacy QRIS fast path untouched: selection only marks the frozen
-    // offer; the existing pay/epay flow creates the order as before.
-    // pm: never dispatches a gateway create (even when a payq1 is present).
-    await safeEditOrSend({
-      chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage("refreshed", { locale: ctx.locale }),
-      parse_mode: "HTML",
-      reply_markup: paymentMethodOfferKeyboard({ nonce: next.nonce, methods: next.methods }, { locale: ctx.locale }),
-    });
     return;
   }
   // Intermediate selection for non-QRIS rails: stay local, show the R2
@@ -352,6 +377,16 @@ export async function handlePayMethodConfirm(
     });
     return;
   }
+  // QRIS dipilih lewat pgo: dari keyboard LAMA (fallback kompatibilitas): jalur
+  // utama sekarang `pm:` baris QRIS. Lepas draft CAS lalu mulai alur legacy.
+  if (current.sel === "qris") {
+    await execRun(
+      `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
+      String(from.id), currentRaw,
+    ).catch(() => ({ changes: 0 }));
+    await startLegacyQrisFromOffer(chatId, messageId, from, current.source);
+    return;
+  }
   // Quoted/contact: validate the frozen selection is still live-supported
   // and the current cart/single matches (price/tag drift => requote).
   // NOTE: `current` is the CURRENT DB row (same nonce across quoted->contact
@@ -370,7 +405,7 @@ export async function handlePayMethodConfirm(
     });
     return;
   }
-  if (live.methodId === "qris" || live.kind !== "gateway" && live.kind !== "crypto") {
+  if (live.kind !== "gateway" && live.kind !== "crypto") {
     // Legacy QRIS never flows through pgo: — pay/epay own it.
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,

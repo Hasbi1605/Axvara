@@ -171,6 +171,24 @@ export type ResumeDecision =
   | { action: "dispatch"; orderCode: string; idempotencyKey: string }
   | { action: "fail_closed"; reason: string };
 
+/**
+ * Definitive vs ambiguous untuk kegagalan create NOWPayments di jalur Telegram —
+ * SAMA dengan web/Pedia (`src/app/api/orders/route.ts:553-570`,
+ * `src/app/api/pedia/orders/route.ts:291-304`). AMBIGU (jangan pernah cancel /
+ * POST ulang / buka order baru): TX klaim `initializing|pending` masih ada,
+ * pesan `nowpayments_network_ambiguous`, atau `nowpayments_finalize_failed_manual_review`.
+ * Selain itu DEFINITIF: provider tidak memberi charge yang bisa direkonsiliasi.
+ * Baca TX gagal => fail-closed (dianggap ambigu).
+ */
+export async function isDefinitiveNowpaymentsFailure(orderCode: string, message: string): Promise<boolean> {
+  const claimed = await queryFirst(
+    `SELECT id FROM payment_transactions WHERE order_code=? AND provider='nowpayments' AND status IN ('initializing','pending')`,
+    orderCode,
+  ).catch(() => ({ id: "unknown" }));
+  if (claimed) return false;
+  return message !== "nowpayments_network_ambiguous" && message !== "nowpayments_finalize_failed_manual_review";
+}
+
 /** Decide resume vs fresh dispatch for a durable creating state. Reads the
  * SAME orderCode anchor: order exists + TX exists (any status) => the create
  * path resumes via adapters (GET-only when ambiguous); order terminal =>
