@@ -257,8 +257,10 @@ describe("Authoritative UI and admin state", () => {
 
   it("framing QRIS menempel di QR: label Scan QRIS + lockup resmi + kontrak gambar utuh", () => {
     const statusPage = read("src/app/(shop)/pesanan/[code]/page.tsx");
+    const copyFile = read("src/lib/i18n/order-copy.tsx");
     // Label instruksi persis di atas QR, di cabang QR aktif saja.
-    expect(statusPage).toContain("Scan QRIS");
+    expect(statusPage).toContain("ui.qris.scan");
+    expect(copyFile).toContain("Scan QRIS");
     // Lockup resmi di bawah QR: logo resmi + teks lengkap (tidak terpotong "...").
     expect(statusPage).toContain("/brand/qris.svg");
     expect(statusPage).toContain("National Payment Standard");
@@ -279,29 +281,32 @@ describe("Authoritative UI and admin state", () => {
 
   it("panel detail akun hanya tampil bila kredensial siap; estimasi dibedakan per kelas pengiriman", () => {
     const statusPage = read("src/app/(shop)/pesanan/[code]/page.tsx");
+    const copyFile = read("src/lib/i18n/order-copy.tsx");
+    const copySource = statusPage + copyFile;
     // Render kondisional — bukan lagi `isPaid` saja (form mati untuk produk manual).
     expect(statusPage).toContain("order.credentialsReady");
     expect(statusPage).toMatch(/isPaid && \(order\.credentialsReady \?/);
     // Fallback: info pengiriman ke kontak checkout, bukan form verifikasi WA.
-    expect(statusPage).toContain("Pengiriman Produk");
+    expect(copySource).toContain("Pengiriman Produk");
     // Kabar web lewat email (bot WA mati); WA hanya untuk order tanpa email.
     // Copy 2026-10-07 (permintaan owner): order ber-email = kalimat email +
     // halaman ini; order lama tanpa email = fallback "Detail produk dikirim".
     expect(statusPage).toContain("const destination = order.email");
-    expect(statusPage).toContain("Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.");
-    expect(statusPage).toContain("Detail produk dikirim ke {destination}");
+    expect(copySource).toContain("Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.");
+    expect(copyFile).toContain("Detail produk dikirim ke {destination}");
     // Kelas antrean TIDAK boleh dijanjikan 5–15 menit (C1: <1 jam + plafon 12 jam,
     // tanpa jam layanan spesifik — revisi copy 2026-10-02).
     expect(statusPage).toContain("order.queuedDelivery");
-    expect(statusPage).toContain("Pesanan Made By Order");
-    expect(statusPage).toContain("kurang dari 1 jam");
-    expect(statusPage).toContain("WR_QUEUED_MAX_HOURS} jam.");
-    expect(statusPage).not.toContain("WR_QUEUED_MAX_HOURS} jam pada jam layanan");
+    expect(copySource).toContain("Pesanan Made By Order");
+    expect(copySource).toContain("kurang dari 1 jam");
+    expect(statusPage).toContain("mboNote(WR_QUEUED_MAX_HOURS)");
+    expect(copySource).toContain("${hours} jam.");
+    expect(copySource).not.toContain("WR_QUEUED_MAX_HOURS} jam pada jam layanan");
     // C2 instan-gagal menjelaskan kenapa (alasan stok), C1 MBO tidak pakai alasan itu.
-    expect(statusPage).toContain("Stok otomatis habis, jadi admin menyiapkan manual");
+    expect(copySource).toContain("Stok otomatis habis, jadi admin menyiapkan manual");
     // Jalur otomatis berjudul sendiri dan tidak bocorkan admin/12 jam.
     // Fase menyiapkan (±30 dtk pertama) = skeleton tanpa teks pengiriman.
-    expect(statusPage).toContain("Menyiapkan detail produkmu…");
+    expect(copySource).toContain("Menyiapkan detail produkmu…");
     expect(statusPage).toContain("skeleton: true");
     // Polling terbatas agar panel muncul sendiri tanpa reload manual, dan
     // lebih pendek untuk antrean (polling tak mungkin menutup 12 jam).
@@ -315,13 +320,14 @@ describe("Authoritative UI and admin state", () => {
   });
 
   it("blok tombol bantuan 2-tier: navigasi di atas, WA/Telegram pill ringan di bawah (anti wrap/gepeng)", () => {
+    const copyFile = read("src/lib/i18n/order-copy.tsx");
     for (const file of ["src/app/(shop)/pesanan/[code]/page.tsx", "src/app/(shop)/lacak-pesanan/lacak-pesanan-client.tsx"]) {
       const src = read(file);
       // Tier 1 navigasi: grid 2 kolom + nowrap + text-sm (proporsional, tidak wrap).
       expect(src, file).toContain("grid grid-cols-2 gap-2.5");
       expect(src, file).toContain("whitespace-nowrap");
       // Tier 2 bantuan: konteks mikro + label pendek + ikon brand, bukan solid full-bleed.
-      expect(src, file).toContain("Butuh bantuan?");
+      expect(src + copyFile, file).toContain("Butuh bantuan?");
       expect(src, file).toContain("WA Admin");
       expect(src, file).toContain("/brand/whatsapp-circle.svg");
       expect(src, file).toContain("/brand/telegram.svg");

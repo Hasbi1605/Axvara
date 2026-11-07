@@ -16,8 +16,10 @@ import { parseExpiry } from "@/lib/expiry";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { GatewayPaymentPanel } from "@/components/storefront/GatewayPaymentPanel";
 import { usePaymentConsent } from "@/hooks/usePaymentConsent";
-import { asPayLocale, cancelCopy, normalizePaymentView, orderPanelCopy, paymentCancelHidden, paymentHeading, paymentMethodLabel, resumeAmount, resumeInfo, usdFor, type PayLocale, type PaymentView } from "@/lib/payment-ui";
+import { asPayLocale, cancelCopy, normalizePaymentView, orderPanelCopy, paymentCancelHidden, paymentHeading, paymentMethodLabel, resumeInfo, usdFor, type PayLocale, type PaymentView } from "@/lib/payment-ui";
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
+import { orderCopy } from "@/lib/i18n/order-copy";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { isValidOrderContact, orderAccessHeaders, readOrderContact, rememberBuyerAccessSession, rememberOrderContact } from "@/lib/order-access-client";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { isPediaCode, pediaOrderUrl, pediaTrackUrl, redirectBrowser } from "@/components/pedia/status-view";
@@ -127,13 +129,8 @@ function fromApi(value: Record<string, unknown>): TrackedOrder {
   };
 }
 
-const STEPS = [
-  { id: "created", title: "Pesanan dibuat", hint: "Kode diterbitkan, stok direservasi." },
-  { id: "paid", title: "Pembayaran", hint: "Status diperbarui oleh sistem pembayaran." },
-  { id: "done", title: "Pesanan diproses", hint: "Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini." },
-] as const;
-
 export default function LacakPesananClient() {
+  const displayLocale = useDisplayLocale();
   const searchParams = useSearchParams();
   const adminView = searchParams.get("admin") === "1";
   const [code, setCode] = useState("");
@@ -322,6 +319,12 @@ export default function LacakPesananClient() {
     }
   }, [searchParams, lookup, adminView]);
 
+  const ui = orderCopy(order?.locale ?? displayLocale);
+  const steps = [
+    { id: "created", title: ui.lacak.stepCreated, hint: ui.lacak.stepCreatedHint },
+    { id: "paid", title: ui.lacak.stepPaid, hint: ui.lacak.stepPaidHint },
+    { id: "done", title: ui.lacak.stepDone, hint: ui.lacak.stepDoneHint },
+  ] as const;
   const isPending = order?.status === "pending";
   // Persetujuan total gateway memakai kontak yang BARU dipakai lookup (bukan input baru, bukan PIN).
   const [checkingPay, setCheckingPay] = useState(false);
@@ -360,13 +363,13 @@ export default function LacakPesananClient() {
   }, [isPending]);
 
   const codeError = codeTouched && normalizeCode(code) && !CODE_RE.test(normalizeCode(code)) && !isPediaCode(code)
-    ? "Format kode belum tepat. Contoh: AXV-20260917-AB12CD34."
+    ? ui.lacak.codeError
     : null;
   const waError = waTouched && wa.trim() && !isValidContact(wa)
-    ? "Isi No. WA atau email checkout yang dipakai saat memesan."
+    ? ui.lacak.contactError
     : null;
   const pinError = pin.trim() && ![6, 26].includes(normalizeOrderAccessCode(pin.trim()).length)
-    ? "Isi PIN 6 karakter dari email, atau kode akses lama. Kosongkan untuk status saja."
+    ? ui.lacak.pinError
     : null;
   const pediaTyped = isPediaCode(code);
   const canSubmit = pediaTyped || (CODE_RE.test(normalizeCode(code)) && isValidContact(wa) && !pinError && !loading);
@@ -431,16 +434,16 @@ export default function LacakPesananClient() {
   const payableAmount = Number(order?.qris?.payable_amount || (pay?.kind === "gateway" && pay.total !== null ? pay.total : order?.subtotal) || 0);
   const payToneClass = payHeading?.tone === "info" ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#5cefff]" : payHeading?.tone === "neutral" ? "border-white/10 bg-white/10 text-white/60" : "border-[#FFB800]/25 bg-[#FFB800]/15 text-[#FFB800]";
   const statusMeta = isDeliveryFailed
-    ? { title: "Lunas — pengiriman bermasalah", badge: "Perlu bantuan", badgeClass: "border-red-500/25 bg-red-500/15 text-red-300", icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
+    ? { title: ui.lacak.deliveryFailedNow, badge: ui.lacak.needsHelp, badgeClass: "border-red-500/25 bg-red-500/15 text-red-300", icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
     : isPaid
-    ? { title: "Lunas — pembayaran diterima", badge: "Lunas", badgeClass: "border-[#22C55E]/25 bg-[#22C55E]/15 text-[#4ADE80]", icon: "/icons/ios11/checked-96.png", shell: "bg-emerald-500/15", filter: "brightness(0) saturate(100%) invert(65%) sepia(51%) saturate(717%) hue-rotate(90deg)" }
+    ? { title: ui.lacak.paidNow, badge: ui.lacak.paidNowBadge, badgeClass: "border-[#22C55E]/25 bg-[#22C55E]/15 text-[#4ADE80]", icon: "/icons/ios11/checked-96.png", shell: "bg-emerald-500/15", filter: "brightness(0) saturate(100%) invert(65%) sepia(51%) saturate(717%) hue-rotate(90deg)" }
     : isCancelled
-      ? { title: "Pesanan dibatalkan", badge: "Dibatalkan", badgeClass: "border-red-500/25 bg-red-500/15 text-red-300", icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
+      ? { title: ui.lacak.cancelledNow, badge: ui.status.cancelledBadge, badgeClass: "border-red-500/25 bg-red-500/15 text-red-300", icon: "/icons/ios11/close-96.png", shell: "bg-red-500/15", filter: "brightness(0) saturate(100%) invert(57%) sepia(55%) saturate(1800%) hue-rotate(322deg)" }
       : payHeading
         ? { title: payHeading.h1, badge: payHeading.badge, badgeClass: payToneClass, icon: "/icons/ios11/clock-96.png", shell: payHeading.tone === "neutral" ? "bg-white/10" : "bg-[#FFB800]/15", filter: payHeading.tone === "neutral" ? "brightness(0) invert(1) opacity(.55)" : "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" }
       : isExpired
-        ? { title: "Pesanan kedaluwarsa", badge: "Kedaluwarsa", badgeClass: "border-white/10 bg-white/10 text-white/50", icon: "/icons/ios11/clock-96.png", shell: "bg-white/10", filter: "brightness(0) invert(1) opacity(.55)" }
-        : { title: "Pending — menunggu pembayaran", badge: "Pending", badgeClass: "border-[#FFB800]/25 bg-[#FFB800]/15 text-[#FFB800]", icon: "/icons/ios11/clock-96.png", shell: "bg-[#FFB800]/15", filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" };
+        ? { title: ui.lacak.expiredNow, badge: ui.status.expiredBadge, badgeClass: "border-white/10 bg-white/10 text-white/50", icon: "/icons/ios11/clock-96.png", shell: "bg-white/10", filter: "brightness(0) invert(1) opacity(.55)" }
+        : { title: ui.lacak.pendingNow, badge: ui.lacak.pendingNowBadge, badgeClass: "border-[#FFB800]/25 bg-[#FFB800]/15 text-[#FFB800]", icon: "/icons/ios11/clock-96.png", shell: "bg-[#FFB800]/15", filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" };
 
   const stepState = (index: number): "done" | "current" | "upcoming" | "failed" => {
     if (isPaid) return "done";
@@ -452,8 +455,8 @@ export default function LacakPesananClient() {
 
   return (
     <div className="mx-auto max-w-[720px] px-4 py-10 sm:px-6">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#00E5FF]/75">Lacak Pesanan</p>
-      <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">Cek status pesananmu</h1>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#00E5FF]/75">{ui.lacak.eyebrow}</p>
+      <h1 className="mt-2 font-display text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">{ui.lacak.h1}</h1>
       {adminView ? (
         <div className="ax-glass-card mt-5 rounded-2xl p-4" aria-label="Akses admin">
           <p className="text-sm text-white/70">Melihat pesanan pembeli melalui sesi admin.</p>
@@ -464,9 +467,7 @@ export default function LacakPesananClient() {
           <button type="button" disabled={loading} onClick={() => void lookup(code, "")} className="ml-4 min-h-11 text-sm text-white/70">Muat ulang pesanan</button>
         </div>
       ) : <p className="mt-3 max-w-[58ch] text-sm leading-6 text-white/55">
-        Masukkan <span className="font-semibold text-white">kode pesanan</span> dan{" "}
-        <span className="font-semibold text-white">No. WA atau email checkout</span>. Status diperbarui otomatis
-        dari Pending ke Lunas, Dibatalkan, atau Kedaluwarsa. PIN hanya untuk membuka detail akun.
+        {ui.lacak.lead}
       </p>}
 
       {/* Form utama dulu; daftar perangkat diringkas di bawah agar hemat ruang. */}
@@ -476,13 +477,13 @@ export default function LacakPesananClient() {
             <IosIcon name="search" size={20} tint="#00E5FF" />
           </span>
           <div>
-            <p className="text-sm font-semibold text-white">Kode pesanan + kontak checkout</p>
-            <p className="text-xs text-white/45">Tanpa login, tanpa daftar akun.</p>
+            <p className="text-sm font-semibold text-white">{ui.lacak.formTitle}</p>
+            <p className="text-xs text-white/45">{ui.lacak.formSub}</p>
           </div>
         </div>
         <div className="mt-4 grid gap-3">
           <div>
-            <label htmlFor="track-code" className="mb-1 block text-xs font-medium text-white/60">Kode pesanan *</label>
+            <label htmlFor="track-code" className="mb-1 block text-xs font-medium text-white/60">{ui.lacak.codeLabel}</label>
             <input
               id="track-code"
               value={code}
@@ -498,13 +499,13 @@ export default function LacakPesananClient() {
             {pediaTyped && <p role="status" className="mt-1.5 text-xs leading-5 text-white/65">Kode AXP adalah pesanan Pedia. <a href={pediaTrackUrl(code)} className="font-semibold text-[#00E5FF] underline underline-offset-2">Lacak di Pedia →</a> Kontak diisi di halaman Pedia.</p>}
           </div>
           <div>
-            <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">No. WA atau email checkout *</label>
+            <label htmlFor="track-wa" className="mb-1 block text-xs font-medium text-white/60">{ui.lacak.contactLabel}</label>
             <input
               id="track-wa"
               value={wa}
               onChange={(event) => { setWa(event.target.value); setWaTouched(true); }}
               onBlur={() => setWaTouched(true)}
-              placeholder="0812… atau nama@email.com"
+              placeholder={ui.access.contactPlaceholder}
               inputMode="text"
               autoCapitalize="none"
               autoCorrect="off"
@@ -517,12 +518,12 @@ export default function LacakPesananClient() {
             {waError && <p id="track-wa-error" className="mt-1.5 text-xs text-red-300">{waError}</p>}
           </div>
           <div>
-            <label htmlFor="track-pin" className="mb-1 block text-xs font-medium text-white/60">PIN akses (didapat di email yang diisi saat checkout)</label>
+            <label htmlFor="track-pin" className="mb-1 block text-xs font-medium text-white/60">{ui.lacak.pinLabel}</label>
             <input
               id="track-pin"
               value={pin}
               onChange={(event) => setPin(event.target.value)}
-              placeholder="PIN dari email produk siap"
+              placeholder={ui.lacak.pinPlaceholder}
               type="password"
               inputMode="text"
               autoCapitalize="characters"
@@ -544,13 +545,13 @@ export default function LacakPesananClient() {
           className="mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-[#00E5FF] font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-60"
         >
           {loading && <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#080C1E]/20 border-t-[#080C1E]" />}
-          {loading ? (lookupStage >= 1 ? "Koneksi lambat, masih melacak…" : "Melacak…") : "Lacak Pesanan"}
+          {loading ? (lookupStage >= 1 ? ui.lacak.slow : ui.lacak.submitting) : ui.lacak.submit}
         </button>
       </form>}
 
       {!adminView && recent.length > 0 && !order && (
-        <section className="ax-glass-card mt-4 rounded-[20px] p-4 sm:p-5" aria-label="Terakhir dilacak">
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Terakhir dilacak di perangkat ini</p>
+        <section className="ax-glass-card mt-4 rounded-[20px] p-4 sm:p-5" aria-label={ui.lacak.recentTitle}>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{ui.lacak.recentTitle}</p>
           <ul className="mt-3 space-y-2">
             {recent.map((entry) => (
               <li key={entry.code} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
@@ -560,12 +561,12 @@ export default function LacakPesananClient() {
                   className="min-w-0 flex-1 text-left"
                 >
                   <span className="block truncate font-mono text-xs font-bold text-[#00E5FF]">{entry.code}</span>
-                  <span className="block text-[11px] text-white/40">{entry.wa ? `${entry.wa.includes("@") ? "Email" : "WA"} ${maskWaShort(entry.wa)}` : "Isi kontak checkout"}</span>
+                  <span className="block text-[11px] text-white/40">{entry.wa ? `${entry.wa.includes("@") ? "Email" : "WA"} ${maskWaShort(entry.wa)}` : ui.lacak.recentContact}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => removeRecent(entry.code)}
-                  aria-label={`Hapus riwayat ${entry.code}`}
+                  aria-label={ui.lacak.removeRecent(entry.code)}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/10 hover:text-white"
                 >
                   <IosIcon name="close" size={14} tint="white" />
@@ -610,13 +611,13 @@ export default function LacakPesananClient() {
           {isPending && !isExpired && order.expiresAt && (
             <p className="mt-3 inline-flex items-center gap-2 text-xs text-[#FFB800]">
               <span className="h-2 w-2 animate-pulse rounded-full bg-[#FFB800]" />
-              Batas pembayaran {countdown(order.expiresAt, now)} — status dicek otomatis tiap 10 detik
+              {ui.lacak.deadline(countdown(order.expiresAt, now))}
             </p>
           )}
           {updatedAt && (
             <p className="mt-2 text-[11px] text-white/35">
-              Diperbarui {updatedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} WIB
-              {pollError ? ` • pembaruan terakhir gagal: ${pollError}` : ""}
+              {ui.lacak.statusUpdated(updatedAt.toLocaleTimeString(order.locale === "en" ? "en-US" : "id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} WIB
+              {pollError ? ` • ${ui.lacak.lastUpdateFailed}: ${pollError}` : ""}
             </p>
           )}
 
@@ -634,7 +635,7 @@ export default function LacakPesananClient() {
           )}
 
           <ol className="mt-6 space-y-0 text-left" aria-label="Alur status pesanan">
-            {STEPS.map((step, index) => {
+            {steps.map((step, index) => {
               const state = stepState(index);
               const dot = state === "done"
                 ? "border-[#22C55E]/40 bg-[#22C55E]/15"
@@ -645,7 +646,7 @@ export default function LacakPesananClient() {
                     : "border-white/10 bg-white/[0.04]";
               return (
                 <li key={step.id} className="relative flex gap-3 pb-5 last:pb-0">
-                  {index < STEPS.length - 1 && <span aria-hidden className={`absolute left-[15px] top-9 h-[calc(100%-28px)] w-px ${state === "done" ? "bg-[#22C55E]/40" : "bg-white/10"}`} />}
+                  {index < steps.length - 1 && <span aria-hidden className={`absolute left-[15px] top-9 h-[calc(100%-28px)] w-px ${state === "done" ? "bg-[#22C55E]/40" : "bg-white/10"}`} />}
                   <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${dot}`}>
                     {state === "done"
                       ? <IosIcon name="checked" size={14} tint="#22c55e" />
@@ -658,10 +659,10 @@ export default function LacakPesananClient() {
                   <span className="min-w-0 pt-0.5">
                     <span className={`block text-sm font-semibold ${state === "upcoming" ? "text-white/40" : "text-white"}`}>{step.title}</span>
                     <span className="block text-xs leading-5 text-white/45">
-                      {step.id === "created" && order.createdAt ? `Dibuat ${formatDateTime(order.createdAt)}.` : step.id === "paid" && pay ? "Diverifikasi otomatis oleh sistem pembayaran." : step.hint}
-                      {step.id === "paid" && isPending && !isExpired ? " Selesaikan pembayaran sebelum batas habis." : ""}
-                      {step.id === "paid" && isPaid ? " Pembayaran terverifikasi." : ""}
-                      {step.id === "paid" && (isCancelled || isExpired) ? " Pembayaran tidak selesai." : ""}
+                      {step.id === "created" && order.createdAt ? `${ui.lacak.created} ${formatDateTime(order.createdAt)}.` : step.id === "paid" && pay ? ui.lacak.verifiedAuto : step.hint}
+                      {step.id === "paid" && isPending && !isExpired ? ` ${ui.lacak.finishBefore}` : ""}
+                      {step.id === "paid" && isPaid ? ` ${ui.lacak.paymentVerified}` : ""}
+                      {step.id === "paid" && (isCancelled || isExpired) ? ` ${ui.lacak.paymentNotCompleted}` : ""}
                     </span>
                   </span>
                 </li>
@@ -671,7 +672,7 @@ export default function LacakPesananClient() {
 
           {isPaid && (
             <p className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-left text-xs leading-6 text-emerald-200">
-              Pembayaran <span className="font-semibold text-white">{order.name}</span> sudah diterima. Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini. Simpan kode pesanan untuk klaim garansi.
+              {ui.lacak.paidBanner(order.name)}
             </p>
           )}
           {/* Detail akun WR di hasil lacak: kontak sudah diverifikasi penuh
@@ -679,35 +680,35 @@ export default function LacakPesananClient() {
               React state (tanpa storage). Verifikasi tetap di server. */}
           {isDeliveryFailed && (
             <div className="mt-4 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4">
-              <p className="text-sm font-semibold text-red-200">Pembayaran sudah kami terima, tetapi produk gagal dikirim otomatis.</p>
+              <p className="text-sm font-semibold text-red-200">{ui.delivery.failedTitle}</p>
               <p className="mt-1 text-xs leading-5 text-white/60">
-                Tim kami sudah mendapat notifikasi dan akan menyerahkan produkmu secara manual. Bila belum ada kabar, hubungi admin dengan menyebut kode pesanan di atas.
+                {ui.delivery.failedBody}
               </p>
             </div>
           )}
           {isPaid && order.credentialsReady && (
-            <WrCredentialsPanel deliveryProgress={order.deliveryProgress} key={order.code} code={order.code} prefillContact={wa} prefillPin={pin} buyerPinRequired={order.buyerPinRequired} adminView={adminView} />
+            <WrCredentialsPanel deliveryProgress={order.deliveryProgress} key={order.code} code={order.code} prefillContact={wa} prefillPin={pin} buyerPinRequired={order.buyerPinRequired} adminView={adminView} locale={order.locale} />
           )}
           {isPaid && !order.credentialsReady && order.supplierRunning && (
             <p className="mt-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60" role="status">
               <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-white/20 border-t-[#00E5FF]" aria-hidden />
-              Menyiapkan detail produkmu… Halaman ini memeriksa sendiri, detail akan tampil otomatis di sini.
+              {ui.lacak.supplierRunning}
             </p>
           )}
-          {isPaid && !order.credentialsReady && <WarrantyClaimAccordion />}
+          {isPaid && !order.credentialsReady && <WarrantyClaimAccordion locale={order.locale} />}
           {isCancelled && (
             <p className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-left text-xs leading-6 text-red-200">
-              Pesanan ini dibatalkan. Jika kamu sudah transfer, hubungi admin dengan menyertakan kode pesanan.
+              {ui.lacak.cancelledBanner}
             </p>
           )}
           {isExpired && !isPaid && (
             <p className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60">
-              Batas pembayaran sudah habis dan stok dikembalikan. Jangan bayar invoice lama — buat pesanan baru dari katalog.
+              {ui.lacak.expiredBanner}
             </p>
           )}
 
           <div className="ax-glass-card mt-5 rounded-2xl p-4 text-left">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">Ringkasan</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-white/50">{ui.delivery.summary}</p>
             <div className="mt-3 space-y-2">
               {order.items.map((item, index) => (
                 <div key={index} className="flex justify-between gap-4 text-sm">
@@ -717,11 +718,11 @@ export default function LacakPesananClient() {
               ))}
             </div>
             <div className="mt-3 space-y-1.5 border-t border-white/10 pt-3 text-xs text-white/50">
-              <div className="flex justify-between gap-4"><span>Pembeli</span><span className="text-right text-white/75">{order.name} • {order.wa}</span></div>
-              <div className="flex justify-between gap-4"><span>Dibuat</span><span className="text-white/75">{formatDateTime(order.createdAt)}</span></div>
+              <div className="flex justify-between gap-4"><span>{ui.lacak.buyer}</span><span className="text-right text-white/75">{order.name} • {order.wa}</span></div>
+              <div className="flex justify-between gap-4"><span>{ui.lacak.created}</span><span className="text-white/75">{formatDateTime(order.createdAt)}</span></div>
             </div>
             <div className="mt-3 flex justify-between border-t border-white/10 pt-3">
-              <span className="text-sm text-white/60">{pay?.kind === "crypto" ? "Total pesanan" : "Total"} • {paymentMethodLabel(pay, order.method)}</span>
+              <span className="text-sm text-white/60">{pay?.kind === "crypto" ? ui.delivery.orderTotal : ui.delivery.total} • {paymentMethodLabel(pay, order.method)}</span>
               <span className="font-bold text-white">{formatRupiah(payableAmount)}</span>
             </div>
             {pay?.kind === "crypto" && pay.usdText && (
@@ -731,11 +732,11 @@ export default function LacakPesananClient() {
 
           <div className="mt-6 grid grid-cols-2 gap-2.5">
             {!adminView && isPending && !isExpired ? (
-              <Link prefetch={false} href={`/pesanan/${order.code}`} className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{payInfo ? payInfo.cta : "Buka Halaman Pembayaran"}</Link>
+              <Link prefetch={false} href={`/pesanan/${order.code}`} className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{payInfo ? payInfo.cta : (order.locale === "en" ? "Open payment page" : "Buka Halaman Pembayaran")}</Link>
             ) : isExpired || isCancelled ? (
-              <Link prefetch={false} href="/#katalog" className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">Buat Pesanan Baru</Link>
+              <Link prefetch={false} href="/#katalog" className="col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl bg-[#00E5FF] px-3 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]">{order.locale === "en" ? "Place new order" : "Buat Pesanan Baru"}</Link>
             ) : (
-              <Link prefetch={false} href="/" className="ax-glass-card col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">Lanjut Belanja</Link>
+              <Link prefetch={false} href="/" className="ax-glass-card col-span-2 flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{ui.delivery.shop}</Link>
             )}
           </div>
           {/* Batal mandiri: lookup sudah memverifikasi kontak, jadi tidak minta
@@ -778,24 +779,19 @@ export default function LacakPesananClient() {
             </div>
           )}
           <div className="mt-3">
-            <p className="text-center text-[11px] text-white/35">Butuh bantuan?</p>
+            <p className="text-center text-[11px] text-white/35">{ui.delivery.help}</p>
             <div className="mt-2 grid grid-cols-2 gap-2.5">
               <StoreWhatsAppLink message={`saya ingin menanyakan pesanan ${order.code} sebesar ${formatRupiah(payableAmount)}`} className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#25D366]/40 hover:bg-white/[0.06]"><img src="/brand/whatsapp-circle.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>WA Admin</span></StoreWhatsAppLink>
               <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
             </div>
           </div>
-          {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setUpdatedAt(null); lastQuery.current = null; }} className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/45 underline decoration-white/20 underline-offset-4 hover:text-white">Lacak pesanan lain</button>}
-          <p className="mt-3 text-center text-[11px] leading-5 text-white/35">Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai <Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">ketentuan garansi</Link>.</p>
+          {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setUpdatedAt(null); lastQuery.current = null; }} className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/45 underline decoration-white/20 underline-offset-4 hover:text-white">{ui.lacak.another}</button>}
+          <p className="mt-3 text-center text-[11px] leading-5 text-white/35">{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
         </div>
       )}
 
-      <section className="mt-4 space-y-2" aria-label="Pertanyaan umum">
-        {[
-          ["Di mana saya menemukan kode pesanan?", "Setelah checkout kamu diarahkan ke halaman /pesanan/AXV-... Simpan kodenya. Order Telegram bisa dilihat lagi lewat /orders, order WA tercatat di grup."],
-          ["PIN akses saya hilang?", "PIN 6 karakter hanya ada di email produk siap (cek inbox/spam). Status pesanan tetap bisa dilihat dengan kode + kontak checkout tanpa PIN."],
-          ["Status Pending padahal sudah bayar QRIS?", "Tunggu 1–2 menit lalu halaman ini memeriksa ulang otomatis tiap 10 detik. Pastikan nominal tepat. Jika lebih dari 10 menit, hubungi admin dengan kode pesanan."],
-          ["Status Pending setelah membayar dengan metode lain?", "Status diperbarui otomatis oleh sistem pembayaran. Waktu konfirmasi dapat berbeda menurut metode; jika belum berubah, hubungi admin dengan kode pesanan."],
-        ].map(([question, answer]) => (
+      <section className="mt-4 space-y-2" aria-label={displayLocale === "en" ? "Frequently asked questions" : "Pertanyaan umum"}>
+        {ui.lacak.faq.map(([question, answer]) => (
           <details key={question} className="ax-glass-card group rounded-2xl px-4 py-3">
             <summary className="cursor-pointer list-none text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
               <span className="flex items-center justify-between gap-3">{question}<IosIcon name="chevron" size={14} tint="white" /></span>

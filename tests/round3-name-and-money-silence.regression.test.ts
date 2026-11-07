@@ -79,9 +79,10 @@ describe("F5 + F9: pembeli tahu saat pengiriman gagal", () => {
     expect(page).toMatch(
       /const isDeliveryFailed = isPaid && order\?\.fulfillmentStatus === "failed";/,
     );
-    expect(page).toMatch(/isDeliveryFailed[\s\S]{0,200}Lunas — pengiriman bermasalah/);
+    expect(page).toMatch(/isDeliveryFailed[\s\S]{0,200}ui\.lacak\.deliveryFailedNow/);
+    expect(read("src/lib/i18n/order-copy.tsx")).toContain("Lunas — pengiriman bermasalah");
     // Pembeli diberi langkah lanjutan, bukan hanya badge merah.
-    expect(page).toContain("gagal dikirim otomatis");
+    expect(read("src/lib/i18n/order-copy.tsx")).toContain("gagal dikirim otomatis");
   });
 });
 

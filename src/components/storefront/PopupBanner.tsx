@@ -3,6 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { bannerSettingsSchema, DEFAULT_BANNER_SETTINGS } from "@/lib/banner-config";
 import { usePathname } from "next/navigation";
 import { useModalA11y } from "@/hooks/useModalA11y";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { catalogCopy } from "@/lib/i18n/catalog-copy";
 
 type Banner = {
   id: number;
@@ -47,6 +49,7 @@ export const BANNER_SESSION_KEY = "axvara-banner-carousel-shows";
 export const BANNER_TRANSITION_MS = 420;
 
 export function PopupBanner() {
+  const t = catalogCopy(useDisplayLocale());
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith("/admin");
   const isHome = pathname === "/";
@@ -244,11 +247,11 @@ export function PopupBanner() {
     : [{ banner, index, decorative: false }];
   const waitingForImage = Boolean(outgoing && !incomingReady);
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true" aria-label="Info AXVARA">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true" aria-label={t.bannerInfoLabel}>
       <div aria-hidden="true" className="absolute inset-0 bg-[#070a1e]/75 backdrop-blur-sm" onClick={close} />
       <div ref={panelRef} tabIndex={-1} className="relative flex max-h-[92dvh] w-[448px] max-w-full flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.5)] motion-safe:animate-[fadeInUp_0.24s_var(--ease-apple)]">
-        <button ref={closeRef} onClick={close} className="absolute right-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/65 text-white hover:bg-black/85" aria-label="Tutup banner">✕</button>
-        <div className="flex min-h-0 flex-col" role="region" aria-roledescription="carousel" aria-label="Informasi dan promo"
+        <button ref={closeRef} onClick={close} className="absolute right-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/65 text-white hover:bg-black/85" aria-label={t.bannerClose}>✕</button>
+        <div className="flex min-h-0 flex-col" role="region" aria-roledescription="carousel" aria-label={t.bannerCarouselLabel}
           onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
           onFocusCapture={() => setPaused(true)}
           onKeyDown={event => {
@@ -275,7 +278,7 @@ export function PopupBanner() {
               {slides.map(({ banner: item, index: slideIndex, decorative }) => (
                 <div key={item.id} ref={decorative ? undefined : slideRef} role={decorative ? undefined : "group"}
                   aria-hidden={decorative || undefined} aria-roledescription={decorative ? undefined : "slide"}
-                  aria-label={decorative ? undefined : `${slideIndex + 1} dari ${banners.length}: ${item.title}`}
+                  aria-label={decorative ? undefined : t.bannerSlide(slideIndex + 1, banners.length, item.title)}
                   className={decorative ? "banner-slide-out" : `banner-slide${outgoing ? incomingReady ? " banner-slide-in" : " banner-slide-pending" : ""}`}>
                   <div className="relative" data-banner-media={decorative ? undefined : true}>
                     {item.image_url && !imageFailed.includes(item.id) ? (
@@ -283,10 +286,10 @@ export function PopupBanner() {
                       <img src={item.image_url} alt={decorative ? "" : item.title} draggable={false} className="block h-auto w-full"
                         onLoad={decorative ? undefined : beginTransition}
                         onError={decorative ? undefined : () => { setImageFailed(current => [...current,item.id]); beginTransition(); }} />
-                    ) : item.image_url ? <p className="flex h-40 items-center justify-center bg-slate-100 text-sm text-slate-600">Gambar tidak dapat dimuat.</p> : <div className="h-24 bg-gradient-to-br from-cyan-100 to-indigo-100" />}
+                    ) : item.image_url ? <p className="flex h-40 items-center justify-center bg-slate-100 text-sm text-slate-600">{t.bannerImageError}</p> : <div className="h-24 bg-gradient-to-br from-cyan-100 to-indigo-100" />}
                     {!decorative && banners.length > 1 && <>
-                      {slideIndex > 0 && <button onClick={() => move(-1)} aria-label="Banner sebelumnya" className="absolute left-2 top-3/4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white hover:bg-black/75">‹</button>}
-                      {slideIndex < banners.length - 1 && <button onClick={() => move(1)} aria-label="Banner berikutnya" className="absolute right-2 top-3/4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white hover:bg-black/75">›</button>}
+                      {slideIndex > 0 && <button onClick={() => move(-1)} aria-label={t.bannerPrev} className="absolute left-2 top-3/4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white hover:bg-black/75">‹</button>}
+                      {slideIndex < banners.length - 1 && <button onClick={() => move(1)} aria-label={t.bannerNext} className="absolute right-2 top-3/4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white hover:bg-black/75">›</button>}
                     </>}
                   </div>
                   <div className="px-4 pb-4 pt-3 text-center sm:px-5" data-banner-caption={decorative ? undefined : true}>
@@ -301,12 +304,12 @@ export function PopupBanner() {
               <label className="mx-auto flex min-h-11 w-fit cursor-pointer items-center justify-center gap-2 text-sm text-gray-500 hover:text-gray-700">
                 <input type="checkbox" checked={false} disabled={waitingForImage} onChange={hideCurrent} className="peer sr-only" />
                 <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded border border-gray-300 bg-gray-100 peer-focus-visible:ring-2 peer-focus-visible:ring-[#315DEA] peer-focus-visible:ring-offset-2" />
-                Jangan tampilkan lagi
+                {t.bannerHide}
               </label>
               {banner.cta_href && banner.cta_label ? <a href={banner.cta_href} aria-disabled={waitingForImage || undefined} tabIndex={waitingForImage ? -1 : undefined}
                 onClick={event => { if (waitingForImage) event.preventDefault(); else close(); }}
                 className="mt-1 flex min-h-11 w-full items-center justify-center rounded-md bg-[#315DEA] px-4 py-2 text-center text-base font-semibold text-white hover:bg-[#254FD0]">{banner.cta_label}</a>
-                : <button onClick={close} disabled={waitingForImage} className="mt-1 min-h-11 w-full rounded-md bg-[#315DEA] px-4 py-2 text-base font-semibold text-white hover:bg-[#254FD0]">Saya Paham</button>}
+                : <button onClick={close} disabled={waitingForImage} className="mt-1 min-h-11 w-full rounded-md bg-[#315DEA] px-4 py-2 text-base font-semibold text-white hover:bg-[#254FD0]">{t.bannerUnderstood}</button>}
             </div>
           </div>
 

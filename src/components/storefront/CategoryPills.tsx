@@ -4,6 +4,7 @@ import { categories } from "@/lib/products";
 import { IosIcon, categoryIcon } from "@/components/ui/IosIcon";
 import { useEffect, useState } from "react";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { marketCategoryName } from "@/lib/i18n/market-categories";
 
 export function CategoryPills({
   active,
@@ -41,7 +42,7 @@ export function CategoryPills({
             )}
           >
             <IosIcon name={categoryIcon(c.slug, c.icon)} size={10} className={cn("sm:!w-3.5 sm:!h-3.5", isActive ? "opacity-100" : "opacity-70")} tint={isActive ? "black" : "white"} alt="" />
-            {c.slug === "semua" && locale === "en" ? "All" : c.name}
+            {c.slug === "semua" ? (locale === "en" ? "All" : "Semua") : marketCategoryName(c.slug, locale, c.name)}
           </button>
         );
       })}

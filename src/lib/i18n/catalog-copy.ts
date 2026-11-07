@@ -29,8 +29,9 @@ export function catalogWarranty(v: VariantSummary, locale: Locale): string {
 /**
  * Salinan chrome toko (navbar, beranda, kartu, PDP, beli cepat, keranjang,
  * footer) ID/EN. Hanya string UI yang benar-benar dipakai komponen; bukan
- * kerangka i18n. Nama produk, deskripsi, S&K, cara aktivasi, kategori, badge
- * admin dan data pemasok TIDAK pernah lewat modul ini (teks pemilik/penjual).
+ * kerangka i18n. Nama kategori memakai `market-categories.ts` (EN by slug,
+ * fallback nama DB); nama produk/deskripsi/S&K/aktivasi dan badge admin tetap
+ * milik admin (phase 2 menambah terjemahan konten), bukan modul ini.
  */
 const ID = {
   // Navbar + bottom nav
@@ -50,6 +51,21 @@ const ID = {
   navOrders: "Pesanan",
   navOrdersPending: "Pesanan, ada pesanan belum dibayar",
   navHelp: "Bantuan",
+  categorySheetTitle: "Kategori",
+  categorySheetLead: "Pilih kategori untuk memfilter katalog.",
+  categorySheetClose: "Tutup kategori",
+  categoryAll: "Semua Produk",
+  communityTgTitle: "Bot Telegram",
+  communityTgBody: "Order aplikasi dan tools premium",
+  bannerInfoLabel: "Info AXVARA",
+  bannerClose: "Tutup banner",
+  bannerCarouselLabel: "Informasi dan promo",
+  bannerSlide: (index: number, total: number, title: string) => `${index} dari ${total}: ${title}`,
+  bannerImageError: "Gambar tidak dapat dimuat.",
+  bannerPrev: "Banner sebelumnya",
+  bannerNext: "Banner berikutnya",
+  bannerHide: "Jangan tampilkan lagi",
+  bannerUnderstood: "Saya Paham",
   // Beranda
   heroLine1: "Satu tempat untuk",
   heroLine2: "semua tools premium.",
@@ -214,6 +230,21 @@ const EN: CatalogCopy = {
   navOrders: "Orders",
   navOrdersPending: "Orders, you have an unpaid order",
   navHelp: "Help",
+  categorySheetTitle: "Categories",
+  categorySheetLead: "Choose a category to filter the catalog.",
+  categorySheetClose: "Close categories",
+  categoryAll: "All Products",
+  communityTgTitle: "Telegram Bot",
+  communityTgBody: "Order premium apps and tools",
+  bannerInfoLabel: "AXVARA info",
+  bannerClose: "Close banner",
+  bannerCarouselLabel: "Information and promos",
+  bannerSlide: (index, total, title) => `${index} of ${total}: ${title}`,
+  bannerImageError: "The image could not be loaded.",
+  bannerPrev: "Previous banner",
+  bannerNext: "Next banner",
+  bannerHide: "Do not show again",
+  bannerUnderstood: "Got it",
   heroLine1: "One place for",
   heroLine2: "all premium tools.",
   heroBody: "AI tools and premium apps at low prices. Fast, automatic ordering with no login required.",

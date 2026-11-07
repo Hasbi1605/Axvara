@@ -21,6 +21,8 @@ import { GatewayPaymentPanel } from "@/components/storefront/GatewayPaymentPanel
 import { usePaymentConsent } from "@/hooks/usePaymentConsent";
 import { parseExpiry } from "@/lib/expiry";
 import { asPayLocale, cancelCopy, normalizePaymentView, orderPanelCopy, paymentCancelHidden, paymentHeading, type PayLocale, type PaymentView } from "@/lib/payment-ui";
+import { orderCopy } from "@/lib/i18n/order-copy";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { ensureBuyerAccessSession, forgetBuyerAccessSession, isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 
 type QrisInvoice = {
@@ -177,6 +179,8 @@ function QrisImage({ src, alt }: { src: string; alt: string }) {
 
 export default function OrderSuccessPage() {
   const { code } = useParams<{ code: string }>();
+  const displayLocale = useDisplayLocale();
+  const formCopy = orderCopy(displayLocale);
   // Kode AXP = pesanan Pedia: satu-satunya tampilan benar ada di host Pedia.
   // Dialihkan SEBELUM fetch apa pun; tidak ada kontak/token/PIN di URL.
   const isPedia = typeof code === "string" && isPediaCode(code);
@@ -447,21 +451,22 @@ export default function OrderSuccessPage() {
     }
     setLoading(true); void fetchOrder(false, contactInput.trim()).catch((error) => setFetchError(error instanceof Error ? error.message : "Pesanan belum dapat dimuat. Coba lagi.")).finally(() => setLoading(false));
   }}>
-    <h1 className="text-xl font-bold text-white">Buka pesananmu</h1>
-    <p className="text-sm leading-6 text-white/65">Isi kode invoice dan No. WA atau email checkout. PIN 6 karakter dari email hanya dibutuhkan untuk membuka detail akun, bukan untuk melihat status.</p>
-    <label htmlFor="order-contact" className="block text-sm text-white/80">No. WA atau email checkout *</label>
-    <input id="order-contact" value={contactInput} onChange={event => setContactInput(event.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} required maxLength={254} placeholder="0812… atau nama@email.com" className="h-12 w-full rounded-xl border border-white/20 bg-white/5 px-4 text-white outline-none focus:border-[#00E5FF]" />
-    <button type="submit" className="min-h-12 w-full rounded-xl bg-[#00E5FF] px-5 font-semibold text-[#080C1E]">Buka pesanan</button>
+    <h1 className="text-xl font-bold text-white">{formCopy.access.title}</h1>
+    <p className="text-sm leading-6 text-white/65">{formCopy.access.lead}</p>
+    <label htmlFor="order-contact" className="block text-sm text-white/80">{formCopy.access.contactLabel}</label>
+    <input id="order-contact" value={contactInput} onChange={event => setContactInput(event.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} required maxLength={254} placeholder={formCopy.access.contactPlaceholder} className="h-12 w-full rounded-xl border border-white/20 bg-white/5 px-4 text-white outline-none focus:border-[#00E5FF]" />
+    <button type="submit" className="min-h-12 w-full rounded-xl bg-[#00E5FF] px-5 font-semibold text-[#080C1E]">{formCopy.access.submit}</button>
     {fetchError && <p role="alert" className="text-xs text-amber-200">{fetchError}</p>}
-    <Link href="/lacak-pesanan" className="block text-sm text-[#00E5FF]">Lacak pesanan lain</Link>
+    <Link href="/lacak-pesanan" className="block text-sm text-[#00E5FF]">{formCopy.access.other}</Link>
   </form>;
   if (fetchError && !order) {
-    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-sm text-red-300">{fetchError}</p><button onClick={() => location.reload()} className="mt-3 text-sm text-[#00E5FF]">Coba lagi</button></div>;
+    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-sm text-red-300">{fetchError}</p><button onClick={() => location.reload()} className="mt-3 text-sm text-[#00E5FF]">{formCopy.common.retry}</button></div>;
   }
   if (!order) {
-    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-white/60">Pesanan tidak ditemukan</p><Link prefetch={false} href="/" className="mt-3 inline-block text-sm text-[#00E5FF]">Kembali ke beranda</Link></div>;
+    return <div className="mx-auto max-w-[640px] px-4 py-16 text-center"><p className="text-white/60">{formCopy.access.notFound}</p><Link prefetch={false} href="/" className="mt-3 inline-block text-sm text-[#00E5FF]">{formCopy.access.home}</Link></div>;
   }
 
+  const ui = orderCopy(order.locale);
   const isExpired = order.status === "kadaluarsa" || (order.status === "pending" && (parseExpiry(order.expiresAt) ?? -Infinity) <= now);
   const isPaid = order.status === "lunas";
   // QR bisa mati sementara ORDER masih hidup — dua masa berlaku yang berbeda.
@@ -523,14 +528,14 @@ export default function OrderSuccessPage() {
   // sepersekian detik kemudian saat panel kredensial muncul. Teks hanya keluar
   // bila memang ada yang perlu dibaca (B lambat / C1 / C2 / WR / delivered).
   const destination = order.email
-    ? <>email <span className="font-medium text-white/80">{order.email}</span></>
-    : <>WhatsApp <span className="font-medium text-white/80">{order.wa}</span></>;
+    ? ui.delivery.destinationEmail(order.email)
+    : ui.delivery.destinationWa(order.wa);
   // Copy 2026-10-07 (permintaan owner): pesanan otomatis tidak lagi dijanjikan
   // via WhatsApp/Telegram — detail dikirim ke email saat order + tampil di
   // halaman ini. Order lama tanpa email tetap fallback ke nomor WA tersamar.
   const toBuyer = order.email
-    ? <>Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
-    : <>Detail produk dikirim ke {destination} yang kamu masukkan saat checkout, dan tampil di halaman ini.</>;
+    ? <>{ui.delivery.toBuyerEmail}</>
+    : <>{ui.delivery.toBuyerWa(destination)}</>;
   let delivery: { title: string; lead: ReactNode; note: ReactNode; skeleton?: boolean };
   if (supplierSending && !instantSlow) {
     // Supplier masih memproses (link berjalan): skeleton menyiapkan yang
@@ -539,35 +544,31 @@ export default function OrderSuccessPage() {
     // akan terbaca sesat (insiden 2026-10-13: "Stok otomatis habis" pada
     // order SK sehat + "Diproses" pada WR yang sudah COMPLETED).
     delivery = {
-      title: "Menyiapkan detail produk",
+      title: ui.delivery.preparingTitle,
       lead: null,
       note: null,
       skeleton: true,
     };
   } else if (supplierSending) {
     delivery = {
-      title: "Pengiriman Otomatis",
-      lead: order.email
-        ? <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
-        : <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail tetap akan muncul di halaman ini dan dikirim ke {destination} yang sama.</>,
-      note: <>Halaman ini memeriksa sendiri. Kalau beberapa menit belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+      title: ui.delivery.autoTitle,
+      lead: order.email ? <>{ui.delivery.autoSlowEmail}</> : <>{ui.delivery.autoSlowWa(destination)}</>,
+      note: <>{ui.delivery.autoNote}</>,
     };
   } else if (order.fulfillmentStatus === "delivered") {
     delivery = {
-      title: "Pengiriman Produk",
-      lead: order.email
-        ? <>Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
-        : <>Produk sudah dikirim ke {destination} yang kamu masukkan saat checkout.</>,
-      note: <>{order.email ? "Belum masuk? Cek juga folder spam atau promosi. " : ""}Kalau tetap belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+      title: ui.delivery.deliveredTitle,
+      lead: order.email ? <>{ui.delivery.deliveredEmail}</> : <>{ui.delivery.deliveredWa(destination)}</>,
+      note: <>{ui.delivery.deliveredNote(Boolean(order.email))}</>,
     };
   } else if (order.queuedDelivery && !supplierOwned && fulfillmentStatus !== "delivered") {
     // C1 — Made By Order NON-SUPPLIER yang sudah divonis antrean manual:
     // manual BY DESIGN, bukan stok habis. Order supplier tidak masuk sini:
     // kelasnya ditentukan status vendor, bukan tebakan kelas lokal.
     delivery = {
-      title: "Pesanan Made By Order",
-      lead: <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — disiapkan admin setelah pembayaran masuk. {toBuyer}</>,
-      note: <>Umumnya kurang dari 1 jam, maksimal {WR_QUEUED_MAX_HOURS} jam. Detailnya juga tampil di sini saat kamu buka lagi.</>,
+      title: ui.delivery.mboTitle,
+      lead: <>{ui.delivery.mboLead(toBuyer)}</>,
+      note: <>{ui.delivery.mboNote(WR_QUEUED_MAX_HOURS)}</>,
     };
   } else if (handedToAdmin && !supplierOwned) {
     // C2 — produk instan NON-SUPPLIER yang gagal dikirim otomatis (mis.
@@ -576,59 +577,54 @@ export default function OrderSuccessPage() {
     // Kalimat "Stok otomatis habis, jadi..." HANYA benar di sini; untuk
     // order supplier kalimat itu sesat dan dilarang tampil.
     delivery = {
-      title: "Pengiriman oleh Admin",
-      lead: <>Stok otomatis habis, jadi admin menyiapkan manual. {toBuyer}</>,
-      note: <>Umumnya kurang dari 1 jam, maksimal {WR_QUEUED_MAX_HOURS} jam.</>,
+      title: ui.delivery.adminTitle,
+      lead: <>{ui.delivery.adminLead(toBuyer)}</>,
+      note: <>{ui.delivery.adminNote(WR_QUEUED_MAX_HOURS)}</>,
     };
   } else if (instantSending && !instantSlow) {
     // Fase menyiapkan (±30 dtk pertama): skeleton saja, tanpa teks pengiriman.
     // Bentuknya menyerupai panel "Detail Akun Digital" supaya peralihan
     // skeleton → panel tidak melompat dan tombol di bawahnya tidak naik-turun.
     delivery = {
-      title: "Menyiapkan detail produk",
+      title: ui.delivery.preparingTitle,
       lead: null,
       note: null,
       skeleton: true,
     };
   } else if (instantSending) {
     delivery = {
-      title: "Pengiriman Otomatis",
-      lead: order.email
-        ? <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail pesanan akan otomatis dikirimkan di email saat order dan akan tampil di halaman ini.</>
-        : <>Masih mengirim otomatis — butuh waktu lebih lama dari biasanya. Detail tetap akan muncul di halaman ini dan dikirim ke {destination} yang sama.</>,
-      note: <>Halaman ini memeriksa sendiri. Kalau beberapa menit belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+      title: ui.delivery.autoTitle,
+      lead: order.email ? <>{ui.delivery.autoSlowEmail}</> : <>{ui.delivery.autoSlowWa(destination)}</>,
+      note: <>{ui.delivery.autoNote}</>,
     };
   } else if (supplierOwned) {
     // Supplier-owned tanpa link berjalan dan belum terkirim (mis. link
     // terminal gagal/dibatalkan vendor): jujur sedang disiapkan, tanpa
     // mengarang alasan stok maupun janji menit.
     delivery = {
-      title: "Pengiriman Produk",
-      lead: <>Pesananmu sedang disiapkan. {toBuyer}</>,
-      note: <>Halaman ini memeriksa sendiri. Kalau beberapa menit belum ada, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan.</>,
+      title: ui.delivery.deliveredTitle,
+      lead: <>{ui.delivery.supplierPreparingLead(toBuyer)}</>,
+      note: <>{ui.delivery.autoNote}</>,
     };
   } else if (order.queuedDelivery) {
     // Antrean non-supplier yang belum divonis manual_required (C1 varian
     // manual murni): tetap Made By Order seperti sebelumnya.
     delivery = {
-      title: "Pesanan Made By Order",
-      lead: <>Pesanan <span className="font-medium text-[#FFD66B]">Made By Order</span> — disiapkan admin setelah pembayaran masuk. {toBuyer}</>,
-      note: <>Umumnya kurang dari 1 jam, maksimal {WR_QUEUED_MAX_HOURS} jam. Detailnya juga tampil di sini saat kamu buka lagi.</>,
+      title: ui.delivery.mboTitle,
+      lead: <>{ui.delivery.mboLead(toBuyer)}</>,
+      note: <>{ui.delivery.mboNote(WR_QUEUED_MAX_HOURS)}</>,
     };
   } else {
     delivery = {
-      title: "Pengiriman Produk",
-      lead: <>Pesanan sedang diproses. {toBuyer}</>,
-      note: <>Estimasi 5–15 menit pada jam layanan. Halaman ini memeriksa sendiri, jadi detail akan tampil otomatis di sini kalau produknya terkirim instan.</>,
+      title: ui.delivery.processingTitle,
+      lead: <>{ui.delivery.processingLead(toBuyer)}</>,
+      note: <>{ui.delivery.processingNote}</>,
     };
   }
 
   // Chrome ringkasan/footer mengikuti locale PESANAN tersimpan (bukan preferensi global).
-  const en = order.locale === "en";
   const cc = cancelCopy(order.locale);
-  const oc = en
-    ? { summary: "Summary", products: (n: number) => `${n} ${n === 1 ? "item" : "items"}`, orderTotal: "Order total", total: "Total", track: "Track Status", shop: "Continue Shopping", help: "Need help?", note: "Third-party AXVARA product — keep your order code for claims. Warranty is a replacement under the ", terms: "warranty terms" }
-    : { summary: "Ringkasan", products: (n: number) => `${n} produk`, orderTotal: "Total pesanan", total: "Total", track: "Lacak Status", shop: "Lanjut Belanja", help: "Butuh bantuan?", note: "Produk third-party AXVARA — simpan kode pesanan untuk klaim. Garansi berupa penggantian sesuai ", terms: "ketentuan garansi" };
+  const oc = ui.delivery;
 
   const summaryContent = <>
     <div className="space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-3 text-[13px] leading-5"><span className="min-w-0 break-words text-white/70">{item.name} × {item.qty}</span><span className="shrink-0 whitespace-nowrap font-medium text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
@@ -649,7 +645,7 @@ export default function OrderSuccessPage() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
                 <h1 className="font-display text-base font-bold leading-6 text-white sm:text-lg">{compactTitle}</h1>
-                {qrisExpired && <span className="rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">QRIS hangus</span>}
+                {qrisExpired && <span className="rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">{ui.qris.expiredBadge}</span>}
               </div>
               <p className="mt-1 break-all font-mono text-[11px] font-semibold tracking-[0.04em] text-[#00E5FF]">{order.code}</p>
             </div>
@@ -664,40 +660,40 @@ export default function OrderSuccessPage() {
             <img src={statusVisual.icon} alt="" width={32} height={32} className="h-8 w-8 object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
           )}
         </div>
-        <h1 className="mt-4 font-display text-2xl font-bold text-white">{payHeading ? payHeading.h1 : isDeliveryFailed ? "Pengiriman Produk Bermasalah" : isPaid ? "Pembayaran Dikonfirmasi! 🎉" : isCancelled ? "Pesanan Dibatalkan" : isExpired ? "Pesanan Kedaluwarsa" : isPreparingQris ? "QRIS belum siap" : order.qris ? "Selesaikan Pembayaran QRIS" : "Pesanan Diterima!"}</h1>
+        <h1 className="mt-4 font-display text-2xl font-bold text-white">{payHeading ? payHeading.h1 : isDeliveryFailed ? ui.status.deliveryFailedTitle : isPaid ? ui.status.paidTitle : isCancelled ? ui.status.cancelledTitle : isExpired ? ui.status.expiredTitle : isPreparingQris ? ui.qris.notReady : order.qris ? ui.qris.heading : ui.status.receivedTitle}</h1>
         <p className="mt-2 font-mono text-sm font-bold tracking-[0.08em] text-[#00E5FF]">{order.code}</p>
         {isDeliveryFailed ? (
-          <span className="mt-3 inline-flex rounded-full border border-red-500/25 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Lunas — Perlu Bantuan</span>
+          <span className="mt-3 inline-flex rounded-full border border-red-500/25 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">{ui.status.deliveryFailedBadge}</span>
         ) : isPaid ? (
-          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#22C55E]/20 bg-[#22C55E]/15 px-3 py-1.5 text-xs font-semibold text-[#22C55E]">Lunas — Terdeteksi Otomatis</span>
+          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#22C55E]/20 bg-[#22C55E]/15 px-3 py-1.5 text-xs font-semibold text-[#22C55E]">{ui.status.paidBadge}</span>
         ) : isCancelled ? (
-          <span className="mt-3 inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">Dibatalkan</span>
+          <span className="mt-3 inline-flex rounded-full border border-red-500/20 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300">{ui.status.cancelledBadge}</span>
         ) : payHeading ? (
           <span className={`mt-3 inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold ${payHeading.tone === "pending" ? "border-[#FFB800]/20 bg-[#FFB800]/15 text-[#FFB800]" : payHeading.tone === "review" ? "border-[#FFB800]/30 bg-[#FFB800]/10 text-[#FFD66B]" : payHeading.tone === "info" ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/10 bg-white/10 text-white/60"}`}>{payHeading.badge}</span>
         ) : isExpired ? (
-          <span className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/50">Kedaluwarsa</span>
+          <span className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/50">{ui.status.expiredBadge}</span>
         ) : (
-          <span className="mt-3 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/15 px-3 py-1.5 text-xs font-semibold text-[#FFB800]">Pending — Menunggu Pembayaran</span>
+          <span className="mt-3 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/15 px-3 py-1.5 text-xs font-semibold text-[#FFB800]">{ui.status.pendingBadge}</span>
         )}
 
         <p className="mt-4 text-sm leading-6 text-white/60">
           {isDeliveryFailed
-            ? <>Pembayaran <span className="font-medium text-white">{order.name}</span> sudah kami terima, tetapi produknya gagal dikirim otomatis.</>
+            ? ui.status.deliveryFailedLead(order.name)
             : isPaid
-            ? <>Pembayaran <span className="font-medium text-white">{order.name}</span> sudah diterima. Pesanan sekarang diproses.</>
+            ? ui.status.paidLead(order.name)
             : isCancelled
-              ? <>Pesanan ini dibatalkan. Hubungi admin jika kamu sudah melakukan transfer.</>
+              ? <>{ui.status.cancelledLead}</>
               : payHeading
                 ? <>{payHeading.lead}</>
               : isExpired
-                ? <>Batas pembayaran sudah habis. Jangan bayar QRIS lama. Silakan buat pesanan baru.</>
+                ? <>{ui.status.expiredLead}</>
                 : isPreparingQris
-                  ? <>Pesanan tersimpan, tetapi tagihan QRIS belum tersedia. Coba siapkan kembali untuk pesanan ini. Jangan melakukan pembayaran sebelum QRIS dan total bayar muncul.</>
+                  ? <>{ui.qris.preparingLead}</>
                 : order.qris && qrisExpired
-                  ? <>QRIS sudah hangus. Jangan bayar QRIS lama.</>
+                  ? <>{ui.status.qrisExpiredLead}</>
                   : order.qris
-                  ? <>Scan QRIS di bawah dan bayar <span className="font-semibold text-white">tepat sesuai total</span>. Status akan diperbarui otomatis.</>
-                  : <>Terima kasih, <span className="font-medium text-white">{order.name}</span>! Admin akan memverifikasi bukti pembayaran dan menghubungi kamu.</>}
+                  ? ui.status.qrisLead()
+                  : ui.status.receivedLead(order.name)}
         </p>
         </>}
 
@@ -718,7 +714,7 @@ export default function OrderSuccessPage() {
             <button type="button" onClick={checkStatusNow} disabled={checkingNow}
               className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] disabled:opacity-50">
               {checkingNow && <InlineSpinner tone="dark" />}
-              {checkingNow ? "Memeriksa QRIS…" : "Coba siapkan QRIS"}
+              {checkingNow ? ui.qris.preparing : ui.qris.prepare}
             </button>
           </div>
         )}
@@ -730,9 +726,9 @@ export default function OrderSuccessPage() {
               // tanpa mengulang alur. Sebelumnya order ikut mati bersama QR
               // sehingga keranjang/varian harus dipilih lagi dari nol.
               <div className="py-2">
-                <p className="font-display text-base font-bold text-white">QRIS sudah kedaluwarsa</p>
+                <p className="font-display text-base font-bold text-white">{ui.qris.expiredTitle}</p>
                 <p className="mx-auto mt-2 max-w-[360px] text-xs leading-relaxed text-white/55">
-                  {order.qrisReissueAllowed ? "Pesanan masih aktif. Kamu dapat meminta QRIS baru 1 kali. Jangan bayar QRIS lama." : "QRIS sudah hangus. Tidak ada pembaruan QRIS lagi; buat pesanan ulang."}
+                  {order.qrisReissueAllowed ? ui.qris.expiredReissue : ui.qris.expiredNoReissue}
                 </p>
                 {order.qrisReissueAllowed && <button
                   type="button"
@@ -741,7 +737,7 @@ export default function OrderSuccessPage() {
                   className="mt-4 inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-xl bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50"
                 >
                   {reissuing && <InlineSpinner tone="dark" />}
-                  {reissuing ? "Menerbitkan QRIS baru…" : "Minta QRIS Baru"}
+                  {reissuing ? ui.qris.reissuing : ui.qris.reissue}
                 </button>}
                 {reissueError && (
                   <p role="alert" className="mt-3 text-xs text-amber-200">{reissueError}</p>
@@ -750,7 +746,7 @@ export default function OrderSuccessPage() {
             ) : (
               <div className="grid items-center gap-3 sm:grid-cols-[240px_minmax(0,1fr)] sm:gap-5">
                 <div className="min-w-0 sm:h-[290px]">
-                <p className="text-xs font-semibold text-white/80">Scan QRIS</p>
+                <p className="text-xs font-semibold text-white/80">{ui.qris.scan}</p>
                 {/* key: QR terbitan ulang memakai URL yang sama, jadi status muat direset lewat expires_at. */}
                 <QrisImage key={`${order.qris.image_url}|${order.qris.expires_at}`} src={order.qris.image_url} alt={`QRIS dinamis pesanan ${order.code}`} />
                 <div className="mt-2 flex items-center justify-center gap-1.5" aria-label="QRIS National Payment Standard">
@@ -759,18 +755,18 @@ export default function OrderSuccessPage() {
                 </div>
                 </div>
                 <div className="min-w-0">
-                <span className="mb-2 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">Menunggu bayar</span>
-                <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">Total bayar</p>
+                <span className="mb-2 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">{ui.qris.pending}</span>
+                <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">{ui.qris.totalPay}</p>
                 <p className="font-display text-2xl font-bold leading-8 text-white">{formatRupiah(payableAmount)}</p>
-                <p className="text-[11px] text-white/50">Termasuk kode unik <span className="font-mono text-[#00E5FF]">+{order.qris.unique_code}</span></p>
-                <div className="mt-1 flex items-center justify-center gap-1.5 text-[11px] text-[#FFB800]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#FFB800]" />Berlaku {countdown(order.qris.expires_at, now)}</div>
-                <p className="mt-1 text-[11px] text-white/50">Bayar tepat sesuai total.</p>
+                <p className="text-[11px] text-white/50">{ui.qris.uniqueIncluded(String(order.qris.unique_code))}</p>
+                <div className="mt-1 flex items-center justify-center gap-1.5 text-[11px] text-[#FFB800]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#FFB800]" />{ui.qris.validFor(countdown(order.qris.expires_at, now))}</div>
+                <p className="mt-1 text-[11px] text-white/50">{ui.qris.payExact}</p>
                 {/* Status polling otomatis + cek manual: QRIS pending dulu hanya
                     menampilkan laman diam + countdown — pembeli tidak tahu
                     halaman memeriksa sendiri tiap 5 dtk, dan tidak ada jalan
                     saat ingin memastikan sekarang. */}
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <a href={order.qris.image_url} download={`AXVARA-${order.code}-QRIS.png`} className="inline-flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-xl border border-white/15 px-2 text-xs font-semibold text-white/75 hover:bg-white/10">Simpan QRIS</a>
+                  <a href={order.qris.image_url} download={`AXVARA-${order.code}-QRIS.png`} className="inline-flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-xl border border-white/15 px-2 text-xs font-semibold text-white/75 hover:bg-white/10">{ui.qris.saveQris}</a>
                   <button
                     type="button"
                     onClick={checkStatusNow}
@@ -778,12 +774,12 @@ export default function OrderSuccessPage() {
                     className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-[#00E5FF]/30 bg-[#00E5FF]/10 px-2 text-xs font-bold text-[#00E5FF] transition hover:bg-[#00E5FF]/20 disabled:opacity-50"
                   >
                     {checkingNow && <InlineSpinner />}
-                    {checkingNow ? "Mengecek…" : "Cek Pembayaran"}
+                    {checkingNow ? ui.qris.checking : ui.qris.check}
                   </button>
                 </div>
                 <p className="mt-2 flex items-center justify-center gap-1.5 text-[10px] leading-4 text-white/50" aria-live="polite">
                   <InlineSpinner className="h-3 w-3 shrink-0" />
-                  <span>Mengecek pembayaran otomatis tiap 5 detik{lastCheckedAt && <span className="sr-only">{` • terakhir dicek ${new Date(lastCheckedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}</span>}</span>
+                  <span>{ui.qris.autoCheck}{lastCheckedAt && <span className="sr-only">{` • ${ui.qris.lastChecked(new Date(lastCheckedAt).toLocaleTimeString(order.locale === "en" ? "en-US" : "id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))}`}</span>}</span>
                 </p>
                 </div>
               </div>
@@ -802,15 +798,15 @@ export default function OrderSuccessPage() {
 
         {isDeliveryFailed && (
           <section className="mt-6 rounded-2xl border border-red-500/25 bg-red-500/[0.07] p-4 text-left" aria-label="Pengiriman bermasalah">
-            <p className="text-sm font-semibold text-red-200">Pembayaran sudah kami terima, tetapi produk gagal dikirim otomatis.</p>
+            <p className="text-sm font-semibold text-red-200">{ui.delivery.failedTitle}</p>
             <p className="mt-1 text-xs leading-5 text-white/60">
-              Tim kami sudah mendapat notifikasi dan akan menyerahkan produkmu secara manual. Bila belum ada kabar, hubungi admin lewat tombol di bawah dengan menyebut kode pesanan di atas.
+              {ui.delivery.failedBody}
             </p>
           </section>
         )}
 
         {isPaid && (order.credentialsReady ? (
-          <WrCredentialsPanel key={order.code} code={order.code} prefillContact={verifiedContact} buyerPinRequired={order.buyerPinRequired} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} />
+          <WrCredentialsPanel key={order.code} code={order.code} prefillContact={verifiedContact} buyerPinRequired={order.buyerPinRequired} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} locale={order.locale} />
         ) : !isDeliveryFailed && (
           // Detail akun belum/tidak pernah ada: jangan tampilkan form verifikasi
           // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
@@ -826,7 +822,7 @@ export default function OrderSuccessPage() {
                   <div className="ax-skeleton h-4 w-[85%] rounded-full" />
                   <div className="ax-skeleton h-10 w-full rounded-xl" />
                 </div>
-                <p className="mt-3 flex items-center gap-2 text-[11px] text-white/40"><InlineSpinner className="h-3 w-3" />Menyiapkan detail produkmu…</p>
+                <p className="mt-3 flex items-center gap-2 text-[11px] text-white/40"><InlineSpinner className="h-3 w-3" />{ui.delivery.preparingStatus}</p>
               </>
             ) : (
               <>
@@ -838,7 +834,7 @@ export default function OrderSuccessPage() {
           </section>
         ))}
 
-        {isPaid && !order.credentialsReady && <WarrantyClaimAccordion />}
+        {isPaid && !order.credentialsReady && <WarrantyClaimAccordion locale={order.locale} />}
 
         {!compactPayment && <div className="mt-6 grid grid-cols-2 gap-2.5">
           <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.track}</Link>

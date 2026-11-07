@@ -12,6 +12,8 @@ import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { readLocalOrders, removeLocalOrder, settleLocalOrder, type LocalOrder } from "@/lib/local-orders";
 import { asPayLocale, normalizePaymentView, resumeAmount, resumeInfo, type PayLocale, type PaymentView } from "@/lib/payment-ui";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { orderCopy } from "@/lib/i18n/order-copy";
 
 export const DEVICE_ORDERS_MAX = 5;
 const MAX_AGE_MS = 30 * 24 * 60 * 60_000;
@@ -29,24 +31,25 @@ const TONE = {
   muted: "border-white/10 bg-white/[0.05] text-white/55",
 } as const;
 
-export function deviceOrderStatus(live: Row["live"]): { label: string; tone: keyof typeof TONE; pay: boolean; cta?: string } {
-  if (live === "loading") return { label: "Memeriksa status…", tone: "muted", pay: false };
-  if (live === "error") return { label: "Status belum termuat", tone: "muted", pay: false };
+export function deviceOrderStatus(live: Row["live"], locale: PayLocale = "id"): { label: string; tone: keyof typeof TONE; pay: boolean; cta?: string } {
+  const t = orderCopy(locale).device;
+  if (live === "loading") return { label: t.checking, tone: "muted", pay: false };
+  if (live === "error") return { label: t.loadFailed, tone: "muted", pay: false };
   if (live.payment && live.status === "pending") {
     // Rel non-QRIS: label/CTA sadar penyedia dan mengikuti tahap server (tanpa "QRIS", tanpa tautan langsung).
     const info = resumeInfo(live.payment, live.locale ?? "id");
     return { label: info.label, tone: info.tone, pay: info.actionable, cta: info.cta };
   }
   switch (live.status) {
-    case "pending": return { label: "Menunggu pembayaran", tone: "gold", pay: true };
+    case "pending": return { label: t.awaiting, tone: "gold", pay: true };
     case "lunas":
-      if (live.fulfillment === "delivered") return { label: "Selesai", tone: "green", pay: false };
-      if (live.fulfillment === "failed") return { label: "Pengiriman bermasalah", tone: "red", pay: false };
-      if (!live.fulfillment || live.fulfillment === "not_required") return { label: "Lunas", tone: "green", pay: false };
-      return { label: "Lunas · sedang diproses", tone: "cyan", pay: false };
-    case "dibatalkan": return { label: "Dibatalkan", tone: "muted", pay: false };
-    case "kadaluarsa": return { label: "Kedaluwarsa", tone: "muted", pay: false };
-    default: return { label: live.status || "Status tidak dikenal", tone: "muted", pay: false };
+      if (live.fulfillment === "delivered") return { label: t.delivered, tone: "green", pay: false };
+      if (live.fulfillment === "failed") return { label: t.deliveryIssue, tone: "red", pay: false };
+      if (!live.fulfillment || live.fulfillment === "not_required") return { label: t.paid, tone: "green", pay: false };
+      return { label: t.processing, tone: "cyan", pay: false };
+    case "dibatalkan": return { label: t.cancelled, tone: "muted", pay: false };
+    case "kadaluarsa": return { label: t.expired, tone: "muted", pay: false };
+    default: return { label: live.status || t.unknown, tone: "muted", pay: false };
   }
 }
 
@@ -61,6 +64,8 @@ function recentLocalOrders(now: number): (LocalOrder & { code: string })[] {
 }
 
 export function DeviceOrders() {
+  const locale = useDisplayLocale();
+  const t = orderCopy(locale).device;
   const [rows, setRows] = useState<Row[]>([]);
 
   useEffect(() => {
@@ -113,23 +118,23 @@ export function DeviceOrders() {
 
   return (
     <details className="ax-glass-card group mt-4 rounded-[24px] p-4 sm:p-5">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden" aria-label={`Pesanan di perangkat ini, ${rows.length} pesanan`}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden" aria-label={t.aria(rows.length)}>
         <span className="flex min-w-0 items-center gap-2.5">
-          <span className="text-sm font-semibold text-white">Pesanan di perangkat ini</span>
+          <span className="text-sm font-semibold text-white">{t.title}</span>
           {pendingCount > 0 && (
-            <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{pendingCount} belum dibayar</span>
+            <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">{t.unpaid(pendingCount)}</span>
           )}
         </span>
         <span className="shrink-0 text-white/40 transition-transform group-open:rotate-180">
           <IosIcon name="chevron" size={14} tint="white" className="opacity-40" />
         </span>
       </summary>
-      <div role="region" aria-label="Pesanan di perangkat ini">
+      <div role="region" aria-label={t.region}>
       <ul className="mt-3 space-y-2.5">
         {rows.map(({ local, live }) => {
-          const view = deviceOrderStatus(live);
-          const items = (local.items ?? []).map((item) => `${item.name ?? "Produk"} ×${Math.max(1, Number(item.qty ?? 1) || 1)}`).join(", ") || "Pesanan";
           const liveOk = live !== "loading" && live !== "error" ? live : null;
+          const view = deviceOrderStatus(live, liveOk?.locale ?? locale);
+          const items = (local.items ?? []).map((item) => `${item.name ?? "Produk"} ×${Math.max(1, Number(item.qty ?? 1) || 1)}`).join(", ") || t.itemFallback;
           const total = liveOk && liveOk.total != null ? liveOk.total : Number(local.subtotal ?? 0);
           // Jumlah dalam mata uang ASLI pesanan: crypto = USD server (teks persis), gateway = total akhir bila ada; QRIS tetap Rupiah.
           const amountText = liveOk?.payment ? resumeAmount(liveOk.payment, Number(liveOk.subtotal ?? local.subtotal ?? 0), liveOk.locale ?? "id").text : formatRupiah(total);
@@ -145,7 +150,7 @@ export function DeviceOrders() {
                 <button
                   type="button"
                   onClick={() => { removeLocalOrder(local.code); setRows((current) => current.filter((row) => row.local.code !== local.code)); }}
-                  aria-label={`Sembunyikan ${local.code} dari perangkat ini`}
+                  aria-label={t.hide(local.code)}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/10 hover:text-white"
                 >
                   <IosIcon name="close" size={14} tint="white" />
@@ -159,7 +164,7 @@ export function DeviceOrders() {
                     ? "inline-flex h-9 items-center rounded-full bg-[#00E5FF] px-4 text-xs font-bold text-[#080C1E] transition hover:bg-[#00D0E8]"
                     : "inline-flex h-9 items-center rounded-full border border-white/10 bg-white/[0.05] px-4 text-xs font-semibold text-white/80 transition hover:bg-white/10"}
                 >
-                  {view.pay ? (view.cta ?? "Bayar sekarang") : (view.cta ?? "Lihat pesanan")}
+                  {view.pay ? (view.cta ?? t.payNow) : (view.cta ?? t.viewOrder)}
                 </Link>
               </div>
           </li>

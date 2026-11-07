@@ -20,6 +20,7 @@ import { BulkPriceTiers } from "@/components/storefront/BulkPriceTiers";
 import { bulkCopy, bulkUnitEstimate, usableBulkTiers, type BulkVariantFields } from "@/lib/bulk-display";
 import { useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty } from "@/lib/i18n/catalog-copy";
+import { marketCategoryName } from "@/lib/i18n/market-categories";
 import { Price, PriceNote } from "@/components/storefront/Price";
 
 // /api/catalog mengganti teks mentah WR (terms/delivery_terms) dengan `copy`
@@ -669,7 +670,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           )}
 
           <p className={`text-xs tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase ${product.badge ? "mt-3" : ""}`}>
-            {product.categorySlug.replace("-", " ")}
+            {marketCategoryName(product.categorySlug, prices.locale)}
           </p>
           <h1 className="mt-2 font-display font-bold text-[22px] sm:text-[26px] leading-tight text-white">
             {product.name}

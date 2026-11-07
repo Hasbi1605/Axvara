@@ -3,14 +3,18 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { AXVARA_SERVICES, type AxvaraService } from "@/lib/site";
+import { axvaraServiceCopy } from "@/lib/i18n/service-copy";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 
 /**
- * Label terlihat "Layanan" di semua ukuran layar; nama aksesibel tetap "Layanan AXVARA" (aria-label).
- * `locale="en"` (hanya navbar Market) memakai "Services" / "AXVARA services"; Pedia tidak mengirim locale.
+ * Label "Layanan"/"Services" mengikuti locale eksplisit (navbar Market) atau
+ * `axv_locale` (fallback, termasuk navbar Pedia yang tidak mengirim prop).
  */
-export function ServicesMenu({ active, locale = "id" }: { active: AxvaraService; locale?: "id" | "en" }) {
-  const label = locale === "en" ? "Services" : "Layanan";
-  const name = locale === "en" ? "AXVARA services" : "Layanan AXVARA";
+export function ServicesMenu({ active, locale }: { active: AxvaraService; locale?: "id" | "en" }) {
+  const displayLocale = useDisplayLocale();
+  const resolved = locale ?? displayLocale;
+  const label = resolved === "en" ? "Services" : "Layanan";
+  const name = resolved === "en" ? "AXVARA services" : "Layanan AXVARA";
   const [open, setOpen] = useState(false);
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -52,15 +56,18 @@ export function ServicesMenu({ active, locale = "id" }: { active: AxvaraService;
       </button>
       <nav ref={panel} id={id} hidden={!open} aria-label={name}
         className="fixed left-4 right-4 top-[64px] z-50 mt-2 rounded-2xl border border-white/15 bg-[#0F1430] p-2 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-[320px]">
-        {AXVARA_SERVICES.map((service) => (
+        {AXVARA_SERVICES.map((service) => {
+          const localized = axvaraServiceCopy(service, resolved);
+          return (
           <a key={service.id} href={service.href} aria-current={active === service.id ? "true" : undefined}
             onClick={() => setOpen(false)}
             className="flex min-h-[64px] items-center gap-3 rounded-xl px-3 py-3 text-white/80 transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={service.icon} width={28} height={28} alt="" className="h-7 w-7 shrink-0 brightness-0 invert" />
-            <span className="min-w-0"><span className="block text-sm font-semibold text-white">{service.name}</span><span className="block text-xs text-white/60">{service.description}</span></span>
+            <span className="min-w-0"><span className="block text-sm font-semibold text-white">{localized.name}</span><span className="block text-xs text-white/60">{localized.description}</span></span>
           </a>
-        ))}
+          );
+        })}
       </nav>
     </div>
   );

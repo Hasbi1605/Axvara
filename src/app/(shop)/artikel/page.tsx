@@ -2,6 +2,7 @@ import Link from "next/link";
 import { queryAll } from "@/lib/db";
 import { normalizeArticle } from "@/lib/articles";
 import { formatWibDateTime } from "@/lib/utils";
+import { requestLocale } from "@/lib/i18n/server-locale";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -36,19 +37,20 @@ async function getArticles(): Promise<Article[]> {
 }
 
 export default async function ArtikelListPage() {
-  const articles = await getArticles();
+  const [articles, locale] = await Promise.all([getArticles(), requestLocale()]);
+  const en = locale === "en";
   return (
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
       <div className="max-w-[720px]">
-        <p className="text-[11px] tracking-[0.14em] text-[#00E5FF]/70 font-semibold uppercase">Artikel</p>
-        <h1 className="mt-2 font-display font-bold text-[28px] sm:text-[36px] leading-none tracking-[-0.02em] text-white">Seputar AI dan teknologi</h1>
-        <p className="mt-3 text-sm leading-6 text-white/55 max-w-[52ch]">Berita, panduan, dan insight praktis seputar produk digital serta perkembangan teknologi.</p>
+        <p className="text-[11px] tracking-[0.14em] text-[#00E5FF]/70 font-semibold uppercase">{en ? "Articles" : "Artikel"}</p>
+        <h1 className="mt-2 font-display font-bold text-[28px] sm:text-[36px] leading-none tracking-[-0.02em] text-white">{en ? "AI and technology" : "Seputar AI dan teknologi"}</h1>
+        <p className="mt-3 text-sm leading-6 text-white/55 max-w-[52ch]">{en ? "News, guides, and practical insights on digital products and technology." : "Berita, panduan, dan insight praktis seputar produk digital serta perkembangan teknologi."}</p>
       </div>
 
       {articles.length === 0 ? (
         <div className="mt-10 ax-glass-card rounded-[24px] p-8 sm:p-10 text-center">
-          <p className="text-white font-medium">Belum ada artikel</p>
-          <p className="text-sm text-white/50 mt-1">Artikel pertama segera terbit. Daftarkan email di footer agar tidak ketinggalan.</p>
+          <p className="text-white font-medium">{en ? "No articles yet" : "Belum ada artikel"}</p>
+          <p className="text-sm text-white/50 mt-1">{en ? "The first article is coming soon. Subscribe with your email in the footer to stay updated." : "Artikel pertama segera terbit. Daftarkan email di footer agar tidak ketinggalan."}</p>
         </div>
       ) : (
         <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
@@ -62,7 +64,7 @@ export default async function ArtikelListPage() {
                 <p className="text-[11px] tracking-[0.08em] text-white/40 uppercase">{formatWibDateTime(a.published_at, { day: "numeric", month: "short", year: "numeric" }) ?? ""}</p>
                 <h2 className="mt-1 font-semibold text-white leading-snug line-clamp-2 group-hover:text-white">{a.title}</h2>
                 {a.excerpt && <p className="mt-1.5 text-sm leading-5 text-white/55 line-clamp-2">{a.excerpt}</p>}
-                <span className="mt-3 inline-flex text-xs font-semibold text-[#00E5FF] group-hover:text-white">Baca →</span>
+                <span className="mt-3 inline-flex text-xs font-semibold text-[#00E5FF] group-hover:text-white">{en ? "Read →" : "Baca →"}</span>
               </div>
             </Link>
           ))}

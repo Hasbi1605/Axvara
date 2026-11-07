@@ -10,14 +10,15 @@ import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { useModalA11y } from "@/hooks/useModalA11y";
 import { SITE, supportTelegramLink } from "@/lib/site";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { orderCopy } from "@/lib/i18n/order-copy";
 
-const HELP_PAGES: { href: string; label: string; hint: string; icon: IosIconName }[] = [
-  { href: "/cara-order", label: "Cara Order", hint: "Langkah beli sampai akun diterima", icon: "user-manual" },
-  { href: "/garansi-replace", label: "Garansi & Replace", hint: "Syarat klaim dan cara penggantian", icon: "shield" },
-  { href: "/artikel", label: "Artikel", hint: "Tips dan kabar seputar tools premium", icon: "news" },
-];
+const HELP_ICONS: IosIconName[] = ["user-manual", "shield", "news"];
 
 export function HelpSheet({ onClose }: { onClose: () => void }) {
+  const locale = useDisplayLocale();
+  const helpCopy = orderCopy(locale).help;
+  const pages = helpCopy.pages.map((page, index) => ({ ...page, icon: HELP_ICONS[index] ?? "news" }));
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   useModalA11y({ active: true, containerRef: panelRef, onClose, initialFocusRef: closeRef });
@@ -39,14 +40,14 @@ export function HelpSheet({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 id="help-sheet-title" className="text-base font-bold text-white">Bantuan</h2>
-            <p className="mt-0.5 text-xs text-white/45">Tim kami siap membantu di jam layanan.</p>
+            <h2 id="help-sheet-title" className="text-base font-bold text-white">{helpCopy.title}</h2>
+            <p className="mt-0.5 text-xs text-white/45">{helpCopy.lead}</p>
           </div>
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label="Tutup bantuan"
+            aria-label={helpCopy.close}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/60 hover:text-white"
           >
             <span aria-hidden><IosIcon name="close" size={14} tint="white" /></span>
@@ -74,7 +75,7 @@ export function HelpSheet({ onClose }: { onClose: () => void }) {
         </div>
 
         <ul className="mt-4 divide-y divide-white/[0.06] overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
-          {HELP_PAGES.map((page) => (
+          {pages.map((page) => (
             <li key={page.href}>
               <Link prefetch={false} href={page.href} onClick={onClose} className="flex min-h-[56px] items-center gap-3 px-4 py-3 transition hover:bg-white/[0.05]">
                 <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#00E5FF]/10">

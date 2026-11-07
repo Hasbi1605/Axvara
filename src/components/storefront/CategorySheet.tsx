@@ -14,6 +14,9 @@ import { createPortal } from "react-dom";
 import { IosIcon, categoryIcon } from "@/components/ui/IosIcon";
 import { useModalA11y } from "@/hooks/useModalA11y";
 import { categories as fallbackCategories } from "@/lib/products";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { catalogCopy } from "@/lib/i18n/catalog-copy";
+import { marketCategoryName } from "@/lib/i18n/market-categories";
 
 export const AXVARA_CATEGORY_EVENT = "axvara:category";
 
@@ -25,6 +28,8 @@ export function requestCategory(slug: string) {
 type CategoryItem = { slug: string; name: string; icon?: string | null };
 
 export function CategorySheet({ onClose }: { onClose: () => void }) {
+  const locale = useDisplayLocale();
+  const t = catalogCopy(locale);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [items, setItems] = useState<CategoryItem[]>([
@@ -78,14 +83,14 @@ export function CategorySheet({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 id="category-sheet-title" className="text-base font-bold text-white">Kategori</h2>
-            <p className="mt-0.5 text-xs text-white/45">Pilih kategori untuk memfilter katalog.</p>
+            <h2 id="category-sheet-title" className="text-base font-bold text-white">{t.categorySheetTitle}</h2>
+            <p className="mt-0.5 text-xs text-white/45">{t.categorySheetLead}</p>
           </div>
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label="Tutup kategori"
+            aria-label={t.categorySheetClose}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/60 hover:text-white"
           >
             <span aria-hidden><IosIcon name="close" size={14} tint="white" /></span>
@@ -104,7 +109,7 @@ export function CategorySheet({ onClose }: { onClose: () => void }) {
                   <IosIcon name={categoryIcon(item.slug, item.icon)} size={18} tint="#00E5FF" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-white">{item.name}</span>
+                  <span className="block text-sm font-semibold text-white">{item.slug === "semua" ? t.categoryAll : marketCategoryName(item.slug, locale, item.name)}</span>
                 </span>
                 <span aria-hidden className="shrink-0"><IosIcon name="chevron-right" size={14} tint="white" className="opacity-40" /></span>
               </button>

@@ -16,6 +16,8 @@ import { useCallback, useEffect, useState } from "react";
 import { parseExpiry } from "@/lib/expiry";
 import { freshPendingCodes, settleLocalOrder } from "@/lib/local-orders";
 import { asPayLocale, normalizePaymentView, resumeDeadline, resumeInfo, type PayLocale, type ResumeInfo } from "@/lib/payment-ui";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { orderCopy } from "@/lib/i18n/order-copy";
 
 const DISMISS_KEY = "axvara-pending-reminder-dismissed";
 /** 2 permintaan/menit — jauh di bawah limit `orders:lookup` 20/menit. */
@@ -56,6 +58,7 @@ function mmss(ms: number): string {
 }
 
 export function PendingOrderReminder() {
+  const reminderCopy = orderCopy(useDisplayLocale());
   const pathname = usePathname() ?? "/";
   const hiddenRoute = HIDDEN_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   const [pending, setPending] = useState<Pending | null>(null);
@@ -144,7 +147,7 @@ export function PendingOrderReminder() {
   return (
     <div
       role="region"
-      aria-label="Pesanan menunggu pembayaran"
+      aria-label={reminderCopy.reminder.region}
       className="fixed inset-x-3 bottom-[calc(84px+env(safe-area-inset-bottom))] z-40 lg:inset-x-auto lg:bottom-6 lg:right-6 lg:w-[380px]"
     >
       {/* Panel hampir solid: kaca 45% membuat ikon hero di belakang menembus teks. */}
@@ -155,16 +158,16 @@ export function PendingOrderReminder() {
             <img src="/icons/ios11/clock-96.png" alt="" width={20} height={20} className="h-5 w-5 object-contain" style={{ filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" }} draggable={false} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-semibold leading-4 text-white">{pending.rail ? railTitle(pending.rail.info, pending.rail.locale) : canPay ? "Pesanan belum dibayar" : "QRIS hangus"}</span>
+            <span className="block text-[13px] font-semibold leading-4 text-white">{pending.rail ? railTitle(pending.rail.info, pending.rail.locale) : canPay ? reminderCopy.reminder.notPaid : reminderCopy.reminder.qrisExpired}</span>
             {/* Timer di luar area `truncate`: di layar sempit label boleh terpotong, hitung mundur tidak. */}
             <span className="flex items-baseline gap-1 text-xs text-white/60">
-              <span className="truncate">{pending.rail ? (pending.rail.locale === "en" ? "Time left" : "Sisa waktu") : canPay ? "Bayar dalam" : "Sisa waktu"}</span>
+              <span className="truncate">{pending.rail ? (pending.rail.locale === "en" ? "Time left" : "Sisa waktu") : canPay ? reminderCopy.reminder.payWithin : reminderCopy.reminder.timeLeft}</span>
               <span className="shrink-0 font-mono font-bold text-[#FFB800]" aria-live="off">{mmss(remaining)}</span>
             </span>
           </span>
-          <span className="shrink-0 rounded-xl bg-[#00E5FF] px-3 py-2 text-xs font-bold text-[#080C1E]">{pending.rail ? pending.rail.info.cta : canPay ? "Bayar" : "Perpanjang"}</span>
+          <span className="shrink-0 rounded-xl bg-[#00E5FF] px-3 py-2 text-xs font-bold text-[#080C1E]">{pending.rail ? pending.rail.info.cta : canPay ? reminderCopy.reminder.pay : reminderCopy.reminder.renew}</span>
         </Link>
-        <button type="button" onClick={dismiss} aria-label="Tutup pengingat" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-white/45 transition hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">
+        <button type="button" onClick={dismiss} aria-label={reminderCopy.reminder.close} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-white/45 transition hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">
           ✕
         </button>
       </div>

@@ -102,12 +102,13 @@ describe("POST /api/orders/lookup — lacak dengan kode + WA", () => {
 describe("Halaman /lacak-pesanan — wiring UX", () => {
   it("form kode + WA memanggil lookup dan memakai pola desain AXVARA", () => {
     const client = read("src/app/(shop)/lacak-pesanan/lacak-pesanan-client.tsx");
+    const copy = read("src/lib/i18n/order-copy.tsx");
     expect(client).toContain('"/api/orders/lookup"');
     expect(client).toContain("ax-glass-card");
-    expect(client).toContain("Lacak Pesanan");
-    expect(client).toContain("Terakhir dilacak");
+    expect(client + copy).toContain("Lacak Pesanan");
+    expect(client + copy).toContain("Terakhir dilacak");
     expect(client).toContain("Alur status pesanan");
-    expect(client).toContain("Lacak pesanan lain");
+    expect(client + copy).toContain("Lacak pesanan lain");
     expect(client).not.toContain("Cara melacak");
     expect(client).not.toContain("Siapkan kode");
     expect(client).not.toContain("Kode dan kontak dicocokkan di server");

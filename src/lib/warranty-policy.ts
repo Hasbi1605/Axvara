@@ -23,6 +23,20 @@ export const marketWarrantyClaim = {
   closing: "Terima kasih atas kesabarannya!",
 } as const;
 
+/** Buyer-facing EN copy for the Market order panel (ID remains canonical). */
+export const marketWarrantyClaimEn = {
+  eligibility: "warranty claims are only available for products with warranty",
+  requirements: [
+    "Send the invoice or order proof.",
+    "Send a screenshot of the issue.",
+  ],
+  notes: [
+    "Warranty processing takes 1–3 days depending on the queue, replacement account stock, or issues from the provider.",
+    "If the issue persists after a maximum of 3 days, we will offer a refund.",
+  ],
+  closing: "Thank you for your patience!",
+} as const;
+
 export const warrantyClaimRules = [
   {
     title: "Garansi berupa penggantian / perbaikan.",

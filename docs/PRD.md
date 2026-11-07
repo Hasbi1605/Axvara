@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## Keputusan owner 7 November 2026: cakupan bahasa EN penuh Market — fase 1 (lokal, belum deploy)
+- Menggantikan aturan lama bahwa konten/kategori Market tidak pernah EN. Saat English dipilih (`axv_locale`) atau pesanan tersimpan ber-locale EN (`order.locale`), seluruh permukaan pembeli Market berbahasa Inggris: chrome navbar/footer/kartu/PDP/keranjang, nama kategori (map slug produksi; unknown → nama DB), halaman pesanan/lacak, panel QRIS/gateway/crypto, form akses/PIN, kredensial akun, reminder/device orders, bantuan, garansi, hero/community/banner.
+- Halaman statis `cara-order`, `garansi-replace`, `artikel`, serta menu lintas-layanan (`ServicesMenu`/`CrossServicePromo`, termasuk navbar/kartu Pedia yang memakai cookie) ikut EN.
+- Salinan ID tidak berubah. Nama/deskripsi produk, S&K/aktivasi (fase 2), email pembeli, admin, dan Pedia berada di luar fase ini; halaman pesanan Pedia tetap ditangani agen Pedia.
+- Tidak ada perubahan route/API/schema/env; hanya modul salinan dan komponen tampilan.
+
 ## Keputusan owner 7 November 2026: Pedia ikut bahasa + mata uang tampilan (fase A, lokal, belum deploy)
 - Switcher bahasa/mata uang Pedia memakai kontrol Market yang sama (`PreferenceControls`, cookie `axv_locale`/`axv_currency`), tersedia di header desktop dan toolbar mobile. Memilih bahasa/mata uang hanya mengubah tampilan; quote, pesanan, dan rel pembayaran tidak tersentuh.
 - Seluruh teks pembeli Pedia tersedia ID/EN: beranda, katalog/platform, halaman order (langkah, validasi, checklist, syarat), status pesanan, lacak, refill, bantuan, ketentuan, dan pesan galat API Pedia. Default tetap Indonesia; tanpa cookie = Indonesia.

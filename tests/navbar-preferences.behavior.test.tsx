@@ -38,12 +38,18 @@ describe("Navbar preferensi", () => {
     expect(screen.getAllByRole("button", { name: /^Bahasa dan mata uang/ })).toHaveLength(1); // tidak ada pemicu ganda (footer/sheet)
   });
 
-  it("Layanan mengikuti locale tampilan di Market; ServicesMenu tanpa locale (Pedia) tetap Indonesia", () => {
+  it("Layanan mengikuti locale tampilan di Market; ServicesMenu tanpa prop mengikuti axv_locale (navbar Pedia)", () => {
     display.locale = "en";
     render(<Navbar />);
     expect(screen.getByRole("button", { name: "AXVARA services" }).textContent).toContain("Services");
     cleanup();
+    display.locale = "id";
     render(<ServicesMenu active="pedia" />);
     expect(screen.getByRole("button", { name: "Layanan AXVARA" }).textContent).toContain("Layanan");
+    cleanup();
+    display.locale = "en";
+    render(<ServicesMenu active="pedia" />);
+    expect(screen.getByRole("button", { name: "AXVARA services" }).textContent).toContain("Services");
+    expect(screen.queryByRole("button", { name: "Layanan AXVARA" })).toBeNull();
   });
 });

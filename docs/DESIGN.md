@@ -1,5 +1,11 @@
 # DESIGN.md — AXVARA Design System
 
+## Cakupan bahasa Market — fase 1 UI (7 November 2026, lokal; verifikasi browser belum dilakukan)
+- Saat English dipilih, seluruh chrome pembeli Market berbahasa Inggris: navbar/footer/kartu/PDP/keranjang (`catalogCopy`), nama kategori (`market-categories` by slug; unknown slug → nama DB), halaman pesanan/lacak beserta panel pending/paid/expired/akses/PIN/kredensial/garansi (`order-copy` memakai `order.locale`, atau `axv_locale` untuk form sebelum pesanan diketahui), hero/community/banner, serta reminder/device orders/help.
+- Salinan ID dipertahankan byte-identik; EN memakai tone dan hierarki tipografi yang sama. Token Midnight/Cyan/Gold, layout, fokus-visible, dan target sentuh tidak berubah.
+- Halaman statis `cara-order`, `garansi-replace`, `artikel`, serta menu lintas-layanan (`ServicesMenu`, `CrossServicePromo`) mengikuti locale yang sama; metadata halaman tetap di `layout.tsx` server.
+- Di luar fase ini: konten produk/deskripsi/S&K/aktivasi (fase 2), email pembeli, admin, dan Pedia (dikerjakan terpisah).
+
 ## Pedia: bahasa + mata uang tampilan (7 November 2026, lokal; verifikasi browser belum dilakukan)
 - Header Pedia memakai `PreferenceControls` Market apa adanya (satu tombol bendera bulat h-11/w-11 + chevron, menu `role="dialog"` dua bagian Bahasa/Mata uang) di samping `ServicesMenu`; tidak ada kontrol kedua atau varian gaya baru. Mobile memakai tombol yang sama (bukan sheet terpisah) sehingga reachability dan fokus identik dengan desktop.
 - Teks chrome Pedia (nav, hero, kartu, pemilih layanan, ringkasan, status, refill, bantuan, ketentuan) mengikuti `axv_locale`. Nama layanan tetap tampil sebagai istilah SMM; bagian Indonesia diterjemahkan saat render ("Akun berpostingan" → "Accounts with posts", "Campuran" → "Mixed") tanpa mengubah angka/batas.

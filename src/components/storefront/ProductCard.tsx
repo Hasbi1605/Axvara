@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Price } from "@/components/storefront/Price";
 import { IDR_PRICES, type DisplayPrices } from "@/hooks/useDisplayPrices";
 import { catalogCopy } from "@/lib/i18n/catalog-copy";
+import { marketCategoryName } from "@/lib/i18n/market-categories";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
 import { IosIcon } from "@/components/ui/IosIcon";
@@ -125,7 +126,7 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
           <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-[10px] text-center p-2">{product.name}</div>
         </div>
         <div className="px-2.5 pt-2 pb-2.5 sm:px-3.5 sm:pt-3 sm:pb-3.5 flex-1 flex flex-col">
-          <p className="text-[9px] sm:text-[11px] tracking-[0.07em] text-[#00E5FF]/70 font-semibold uppercase truncate">{product.categorySlug.replace("-", " ")}</p>
+          <p className="text-[9px] sm:text-[11px] tracking-[0.07em] text-[#00E5FF]/70 font-semibold uppercase truncate">{marketCategoryName(product.categorySlug, prices.locale)}</p>
           <h3 className="mt-1 font-semibold text-[11.5px] sm:text-[15px] leading-[1.3] sm:leading-5 text-white line-clamp-2 min-h-[30px] sm:min-h-[40px] tracking-[-0.01em]">{product.name}</h3>
           <div className="mt-1.5 flex items-baseline gap-1 flex-wrap">
             <span className="font-bold text-[13px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
@@ -182,7 +183,7 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
           </div>
         </div>
         <div className="px-2.5 sm:px-4 pt-2.5 sm:pt-3 pb-1 sm:pb-2">
-          <p className="text-[10px] sm:text-[11px] tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase truncate">{product.categorySlug.replace("-", " ")}</p>
+          <p className="text-[10px] sm:text-[11px] tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase truncate">{marketCategoryName(product.categorySlug, prices.locale)}</p>
           <h3 className="mt-1 font-semibold text-[12.5px] sm:text-[14.5px] leading-[1.25] sm:leading-5 text-white line-clamp-2 min-h-[32px] sm:min-h-[40px] tracking-[-0.01em]">{product.name}</h3>
           <div className="mt-2 sm:mt-3 flex items-baseline gap-1.5 sm:gap-2 flex-wrap">
             <span className="font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
