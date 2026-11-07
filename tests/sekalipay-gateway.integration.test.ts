@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { estimateGatewayFee, gatewayDisplayName, gatewayHmac, gatewayParams, listSekalipayCatalog, listSekalipayMethods, parseGatewayFee, signGatewayRequest, verifyGatewayWebhook, createSekalipayGatewayInvoice, confirmGatewayFee } from "@/lib/payments/sekalipay-gateway";
+import { estimateGatewayFee, gatewayDisplayName, gatewayHmac, gatewayParams, listSekalipayCatalog, listSekalipayMethods, parseGatewayFee, signGatewayRequest, verifyGatewayWebhook, createSekalipayGatewayInvoice, confirmGatewayFee, confirmGatewayInvoiceAbsent, markGatewayInvoiceCreateRejected } from "@/lib/payments/sekalipay-gateway";
+import type { DatabaseAccess } from "@/lib/db-access";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { NextRequest } from "next/server";
 
@@ -58,40 +59,43 @@ describe("curated catalog channels (FIXTURE)", () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: true, data })));
   };
 
-  it("offers the ordinary SHOPEEPAY channel labelled ShopeePay with provider fees; never realtime channels", async () => {
+  it("offers the ordinary SHOPEEPAY channel labelled ShopeePay and DANA_REALTIME labelled DANA; never ShopeePay Realtime", async () => {
     stubCatalog([
       wallet("SHOPEEPAY", "ShopeePay"), wallet("SHOPEEPAY_REALTIME", "ShopeePay Realtime"),
       wallet("DANA_REALTIME", "DANA Realtime", "3.7%"), wallet("GOPAY", "GoPay", "2%"), wallet("OVO", "OVO", "1%"),
     ]);
     const catalog = await listSekalipayCatalog(58_000);
-    expect(catalog.map((entry) => entry.code)).toEqual(["SHOPEEPAY", "GOPAY", "OVO"]);
-    expect(catalog.map((entry) => entry.name)).toEqual(["ShopeePay", "GoPay", "OVO"]);
+    expect(catalog.map((entry) => entry.code)).toEqual(["SHOPEEPAY", "DANA_REALTIME", "GOPAY", "OVO"]);
+    expect(catalog.map((entry) => entry.name)).toEqual(["ShopeePay", "DANA", "GoPay", "OVO"]);
     expect(catalog.every((entry) => !/realtime/i.test(entry.name))).toBe(true);
-    expect(catalog.some((entry) => /REALTIME$/i.test(entry.code))).toBe(false);
+    expect(catalog.some((entry) => /^SHOPEEPAY_REALTIME$/i.test(entry.code))).toBe(false);
     expect(catalog.find((entry) => entry.code === "SHOPEEPAY")).toMatchObject({ available: true, estimatedFee: 2_030, estimatedTotal: 60_030 });
-    expect((await listSekalipayMethods(58_000)).map((entry) => entry.code)).toEqual(["SHOPEEPAY", "GOPAY", "OVO"]);
+    expect((await listSekalipayMethods(58_000)).map((entry) => entry.code)).toEqual(["SHOPEEPAY", "DANA_REALTIME", "GOPAY", "OVO"]);
   });
 
-  it("never offers realtime channels and never falls back either way", async () => {
+  it("never offers ShopeePay Realtime and never falls back either way", async () => {
     stubCatalog([wallet("SHOPEEPAY_REALTIME", "ShopeePay Realtime"), wallet("DANA_REALTIME", "DANA Realtime")]);
-    expect(await listSekalipayCatalog(58_000)).toEqual([]);
-    expect(await listSekalipayMethods(58_000)).toEqual([]);
+    // DANA_REALTIME tetap ditawarkan (keputusan owner 7 Nov 2026) meski create-nya bisa gagal;
+    // SHOPEEPAY_REALTIME tidak pernah masuk katalog.
+    expect((await listSekalipayCatalog(58_000)).map((entry) => entry.code)).toEqual(["DANA_REALTIME"]);
+    expect((await listSekalipayMethods(58_000)).map((entry) => entry.code)).toEqual(["DANA_REALTIME"]);
     // Ordinary SHOPEEPAY tetap ditawarkan tanpa bergantung pada realtime.
     stubCatalog([wallet("SHOPEEPAY", "ShopeePay")]);
     expect((await listSekalipayCatalog(58_000)).map((entry) => entry.code)).toEqual(["SHOPEEPAY"]);
   });
 
-  it("excludes only exact realtime IDs (case-insensitive) and never rewrites unknown labels or reads object prototypes", async () => {
+  it("excludes only the exact SHOPEEPAY_REALTIME ID (case-insensitive) and never rewrites unknown labels or reads object prototypes", async () => {
     stubCatalog([
       wallet("CUSTOM_EW", "constructor"), wallet("PROTO_EW", "__proto__"), wallet("LEGACY_LOOKING", "ShopeePay Realtime"),
       wallet("SHOPEEPAY_REALTIME", "ShopeePay Realtime"), wallet("DANA_REALTIME", "DANA Realtime", "3.7%"),
       wallet("SHOPEEPAY_REALTIME_X", "ShopeePay Realtime X"), wallet("dana_realtime", "DANA Realtime"), wallet("SHOPEEPAY", "ShopeePay"),
     ]);
     const catalog = await listSekalipayCatalog(58_000);
-    // Substring "SHOPEEPAY_REALTIME_X" BUKAN ID realtime eksak; lowercase "dana_realtime" tetap dikecualikan (regex i).
+    // Substring "SHOPEEPAY_REALTIME_X" BUKAN ID realtime eksak; lowercase juga dikecualikan (regex i).
+    // DANA_REALTIME (dan lowercase-nya) DITAMPILKAN dengan label "DANA" sejak keputusan owner 7 Nov 2026.
     expect(catalog.map((entry) => `${entry.code}:${entry.name}`)).toEqual([
       "CUSTOM_EW:constructor", "PROTO_EW:__proto__", "LEGACY_LOOKING:ShopeePay Realtime",
-      "SHOPEEPAY_REALTIME_X:ShopeePay Realtime X", "SHOPEEPAY:ShopeePay",
+      "DANA_REALTIME:DANA", "SHOPEEPAY_REALTIME_X:ShopeePay Realtime X", "dana_realtime:DANA", "SHOPEEPAY:ShopeePay",
     ]);
     expect(gatewayDisplayName("unknown-ew", "ShopeePay Realtime")).toBe("ShopeePay Realtime");
     expect(gatewayDisplayName("constructor", "__proto__")).toBe("__proto__");
@@ -750,5 +754,139 @@ describe("merchant invoice and fee consent", () => {
       expect(await buildSekalipayGatewayPaymentView(realtime)).toMatchObject({ channel: "DANA_REALTIME", label: "DANA" });
       expect(fixture.sql.prepare("SELECT gateway_label FROM payment_transactions WHERE order_code=?").get(realtime)?.gateway_label).toBe("DANA Realtime");
     } finally { fixture.close(); }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Klasifikasi kegagalan create + probe read-only "invoice tidak ada" (dipakai Pedia untuk membatalkan HANYA saat definitif).
+// ---------------------------------------------------------------------------------------------------------------------
+describe("create rejection classification + invoice absence probe", () => {
+  const CODE = "AXV-20261107-RJCT0001";
+  const customer = { name: "Fixture Buyer", email: "buyer@example.test", phone: "081234567890" };
+  const method = { payment_code: "TESTVA", payment_name: "VA", payment_type: "va", min_amount: 1000, max_amount: 100000, fee_info: { type: "flat", description: "Rp 4.700" } };
+  const invoice = { merchant_ref_id: CODE, invoice: "SPYrjct", amount: 10000, fee: 4700, total: 14700, payment_code: "TESTVA", payment_link: "https://sekalipay.com/payment/SPYrjct", expired_at: new Date(Date.now() + 600000).toISOString(), status: "pending", is_sandbox: false };
+
+  /** Order + klaim gateway dengan POST/GET yang bisa diatur. `posts`/`gets` merekam trafik. */
+  const setup = async (handlers: { post?: () => Response; get?: () => Response } = {}) => {
+    const fixture = createD1Fixture();
+    stubFulfillmentKey();
+    await insertTestProduct(fixture.sql);
+    insertTestOrder(fixture.sql, CODE, { channel: "web" });
+    fixture.sql.prepare("UPDATE orders SET expires_at=?,payment_method='sekalipay_gateway:TESTVA' WHERE code=?").run(new Date(Date.now() + 900000).toISOString(), CODE);
+    vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
+    vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", `rjct-${crypto.randomUUID()}`);
+    vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture-secret");
+    const posts = { count: 0 };
+    const gets: string[] = [];
+    const mock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+      if (target.endsWith("payment-methods")) return Response.json({ status: true, data: [method] });
+      if (init?.method === "POST") {
+        posts.count++;
+        return handlers.post ? handlers.post() : Response.json({ status: true, data: invoice }, { status: 201 });
+      }
+      gets.push(target);
+      return handlers.get ? handlers.get() : Response.json({ status: true, data: invoice });
+    });
+    vi.stubGlobal("fetch", mock);
+    const create = () => createSekalipayGatewayInvoice(CODE, 10000, "TESTVA", customer, 4700);
+    return { fixture, create, mock, posts, gets };
+  };
+  const txRow = (fixture: ReturnType<typeof createD1Fixture>) =>
+    fixture.sql.prepare("SELECT status,last_error,provider_payment_id FROM payment_transactions WHERE order_code=?").get(CODE) as Record<string, unknown>;
+
+  it("rejeksi terbaca (500 JSON) => create_rejected, klaim initializing DIPERTAHANKAN, hanya satu POST", async () => {
+    const f = await setup({ post: () => Response.json({ status: false, message: "internal error" }, { status: 500 }) });
+    try {
+      await expect(f.create()).rejects.toThrow("sekalipay_gateway_create_rejected");
+      expect(f.posts.count).toBe(1);
+      expect(txRow(f.fixture)).toMatchObject({ status: "initializing", provider_payment_id: null });
+      expect(f.fixture.sql.prepare("SELECT status FROM orders WHERE code=?").get(CODE)?.status).toBe("pending");
+    } finally { f.fixture.close(); }
+  });
+
+  it("502/504 dari transport => create_ambiguous (bukan rejeksi definitif), klaim dipertahankan", async () => {
+    for (const status of [502, 504]) {
+      const f = await setup({ post: () => Response.json({ message: "gateway hiccup" }, { status }) });
+      try {
+        await expect(f.create()).rejects.toThrow("sekalipay_gateway_create_ambiguous");
+        expect(txRow(f.fixture).status).toBe("initializing");
+      } finally { f.fixture.close(); }
+    }
+  });
+
+  it("timeout/jaringan => create_ambiguous tanpa GET probe yang tidak perlu", async () => {
+    const f = await setup({ post: () => { throw new Error("network"); } });
+    try {
+      await expect(f.create()).rejects.toThrow("sekalipay_gateway_create_ambiguous");
+      expect(f.gets).toHaveLength(0);
+      expect(txRow(f.fixture).status).toBe("initializing");
+    } finally { f.fixture.close(); }
+  });
+
+  it("409 DUPLICATE_REF_ID + GET gagal tetap ambigu (jangan pernah dianggap 'invoice tidak ada')", async () => {
+    const f = await setup({ post: () => Response.json({ code: "DUPLICATE_REF_ID" }, { status: 409 }), get: () => Response.json({ status: false, message: "not found" }, { status: 404 }) });
+    try {
+      await expect(f.create()).rejects.toThrow("sekalipay_gateway_create_ambiguous");
+      expect(txRow(f.fixture).status).toBe("initializing");
+    } finally { f.fixture.close(); }
+  });
+
+  it("409 PAYMENT_ALREADY_EXISTS tetap jalur adopsi (bukan rejeksi)", async () => {
+    const f = await setup({ post: () => Response.json({ code: "PAYMENT_ALREADY_EXISTS", data: invoice }, { status: 409 }) });
+    try {
+      expect((await f.create()).invoice).toBe("SPYrjct");
+      expect(f.posts.count).toBe(1);
+      expect(txRow(f.fixture).status).toBe("pending");
+    } finally { f.fixture.close(); }
+  });
+
+  it("confirmGatewayInvoiceAbsent: 404=absent, 200 pending=present, 5xx/429/redirect/invalid=unknown", async () => {
+    const cases: { response: () => Response; expected: "absent" | "present" | "unknown" }[] = [
+      { response: () => Response.json({ status: false, message: "not found" }, { status: 404 }), expected: "absent" },
+      { response: () => Response.json({ status: true, data: { ...invoice, status: "pending" } }), expected: "present" },
+      { response: () => Response.json({ status: false, message: "boom" }, { status: 500 }), expected: "unknown" },
+      { response: () => Response.json({ message: "too many" }, { status: 429 }), expected: "unknown" },
+      { response: () => new Response("not json", { status: 200 }), expected: "unknown" },
+      { response: () => new Response(null, { status: 302, headers: { location: "https://elsewhere.test/x" } }), expected: "unknown" },
+    ];
+    for (const item of cases) {
+      const f = await setup({ get: item.response });
+      try {
+        expect(await confirmGatewayInvoiceAbsent(CODE)).toBe(item.expected);
+      } finally { f.fixture.close(); }
+    }
+  });
+
+  it("confirmGatewayInvoiceAbsent: admission rate-limit/timeout => unknown (fail closed), tanpa keputusan batal", async () => {
+    const f = await setup({ get: () => { throw new Error("network"); } });
+    try {
+      expect(await confirmGatewayInvoiceAbsent(CODE)).toBe("unknown");
+      // Admission GET payment/* habis (changes=0) => unknown sebelum fetch apa pun.
+      const rateLimited = { execRun: vi.fn(async () => ({ changes: 0 })) } as unknown as DatabaseAccess;
+      const before = f.mock.mock.calls.length;
+      expect(await confirmGatewayInvoiceAbsent(CODE, rateLimited)).toBe("unknown");
+      expect(rateLimited.execRun).toHaveBeenCalledTimes(1);
+      expect(f.mock.mock.calls.length).toBe(before);
+      // Kode tidak valid juga fail closed.
+      expect(await confirmGatewayInvoiceAbsent("bukan-kode")).toBe("unknown");
+    } finally { f.fixture.close(); }
+  });
+
+  it("markGatewayInvoiceCreateRejected hanya menandai klaim murni pra-POST, sekali", async () => {
+    const rejected = await setup({ post: () => Response.json({ status: false }, { status: 500 }) });
+    try {
+      await expect(rejected.create()).rejects.toThrow("sekalipay_gateway_create_rejected");
+      expect(await markGatewayInvoiceCreateRejected(CODE)).toBe(true);
+      expect(txRow(rejected.fixture)).toMatchObject({ status: "failed", last_error: "sekalipay_gateway_create_rejected", provider_payment_id: null });
+      expect(await markGatewayInvoiceCreateRejected(CODE)).toBe(false); // terminal, tidak ditimpa
+    } finally { rejected.fixture.close(); }
+    const adopted = await setup();
+    try {
+      await adopted.create();
+      // Baris pending + punya invoice id tidak boleh ditandai terminal.
+      expect(await markGatewayInvoiceCreateRejected(CODE)).toBe(false);
+      expect(txRow(adopted.fixture).status).toBe("pending");
+    } finally { adopted.fixture.close(); }
   });
 });

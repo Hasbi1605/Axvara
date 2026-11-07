@@ -149,8 +149,9 @@ export function gatewayEligibility(amount: number, min: number, max: number): "o
 /**
  * Katalog merchant untuk `amount`: semua kanal dengan biaya DIKENAL (parser ketat) dan batas valid, termasuk yang di luar batas sebagai
  * `available:false` (tanpa biaya/total; `shortfall` = min - amount dihitung di server hanya untuk below_min). Biaya tak dikenal, batas cacat,
- * QRIS, atau tipe tak dikenal tetap disembunyikan (fail closed). Keputusan owner 7 Nov 2026: SHOPEEPAY_REALTIME dan DANA_REALTIME dikecualikan
- * (DANA_REALTIME selalu HTTP 500 di create Sekalipay); ShopeePay ditawarkan lewat kanal SHOPEEPAY biasa.
+ * QRIS, atau tipe tak dikenal tetap disembunyikan (fail closed). Keputusan owner 7 Nov 2026: hanya SHOPEEPAY_REALTIME yang dikecualikan
+ * (ShopeePay ditawarkan lewat kanal SHOPEEPAY biasa); DANA_REALTIME DITAMPILKAN lagi (label "DANA") meski create-nya masih HTTP 500 — pembeli
+ * boleh melihat gangguan lalu memilih metode lain (requote checkout), lihat `docs/agent-rules/payments.md`.
  * `payment_type` hilang -> grup "other" (bukan tebakan dari merek).
  */
 export async function listSekalipayCatalog(amount: number, adminTest = false): Promise<GatewayCatalogEntry[]> {
@@ -171,7 +172,7 @@ export async function listSekalipayCatalog(amount: number, adminTest = false): P
     const info = row.fee_info as Record<string, unknown> | null;
     const rawType = row.payment_type;
     const type: GatewayGroup | null = rawType === "va" || rawType === "ewallet" ? rawType : rawType == null || rawType === "" ? "other" : null;
-    if (typeof row.payment_code !== "string" || /^(SHOPEEPAY_REALTIME|DANA_REALTIME)$/i.test(row.payment_code) || !/^[A-Za-z0-9_-]{1,64}$/.test(row.payment_code) || /qris/i.test(row.payment_code)
+    if (typeof row.payment_code !== "string" || /^SHOPEEPAY_REALTIME$/i.test(row.payment_code) || !/^[A-Za-z0-9_-]{1,64}$/.test(row.payment_code) || /qris/i.test(row.payment_code)
       || typeof row.payment_name !== "string" || type === null
       || !Number.isSafeInteger(row.min_amount) || !Number.isSafeInteger(row.max_amount)
       || !info || typeof info.type !== "string" || typeof info.description !== "string") return [];
@@ -247,6 +248,43 @@ async function savedGatewayView(orderCode: string) {
     checkoutUrl: hidden ? null : tx.gateway_checkout_url, expiresAt: new Date(Math.min(Date.parse(String(tx.expires_at)), Date.parse(String(tx.order_expires_at).replace(" ", "T").replace(/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)$/, "$1Z")))).toISOString(), isSandbox: Number(tx.gateway_is_sandbox) === 1 };
 }
 
+/**
+ * Bukti read-only bahwa invoice gateway untuk `orderCode` TIDAK ada di provider.
+ * Hanya 404 JSON yang jelas = "absent". 2xx `status:true` dengan objek data = "present".
+ * Semua selain itu (admission/rate-limit 20/menit, timeout, jaringan, redirect, respons
+ * tak terbaca, proxy config error, 4xx/5xx lain) = "unknown" — pemanggil WAJIB fail-closed
+ * dan memperlakukan klaim sebagai ambigu. Tidak pernah POST/re-POST.
+ */
+export type GatewayInvoiceAbsence = "absent" | "present" | "unknown";
+
+export async function confirmGatewayInvoiceAbsent(orderCode: string, db: DatabaseAccess = createDatabaseAccess()): Promise<GatewayInvoiceAbsence> {
+  if (typeof orderCode !== "string" || !/^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) return "unknown";
+  let response: Awaited<ReturnType<typeof gatewayFetch>>;
+  try {
+    // gatewayFetch GET payment/* memakai admission budget existing (20/menit).
+    response = await gatewayFetch("GET", `payment/${orderCode}`, {}, db);
+  } catch {
+    return "unknown";
+  }
+  if (response.status === 404) return "absent";
+  if (response.status >= 200 && response.status < 300 && response.body.status === true
+    && response.body.data && typeof response.body.data === "object" && !Array.isArray(response.body.data)) return "present";
+  return "unknown";
+}
+
+/**
+ * Tandai klaim gateway terminal setelah rejeksi create TERBACA dan invoice terbukti tidak ada.
+ * Hanya baris `initializing` tanpa invoice id (klaim murni pra-POST) yang disentuh; baris
+ * pending/paid/finalize tidak pernah ditimpa. `last_error` menjadi alasan durable untuk review.
+ */
+export async function markGatewayInvoiceCreateRejected(orderCode: string, db: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
+  if (typeof orderCode !== "string" || !/^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) return false;
+  const result = await db.execRun(`UPDATE payment_transactions SET status='failed',last_error='sekalipay_gateway_create_rejected',updated_at=datetime('now')
+    WHERE order_code=? AND provider='sekalipay_gateway' AND status='initializing' AND provider_payment_id IS NULL
+      AND EXISTS(SELECT 1 FROM orders o WHERE o.code=payment_transactions.order_code AND o.status='pending' AND o.payment_status IN ('pending','unpaid'))`, orderCode);
+  return Number(result.changes) === 1;
+}
+
 export function createSekalipayGatewayInvoice(orderCode?: string, amount?: number, channel?: string, customer?: GatewayCustomer, estimatedFee?: number, adminTest = false): Promise<Awaited<ReturnType<typeof savedGatewayView>>> {
   if (!isSekalipayGatewayConfigured(adminTest) && !orderCode) throw new Error("sekalipay_gateway_not_configured");
   return (async () => {
@@ -280,9 +318,21 @@ export function createSekalipayGatewayInvoice(orderCode?: string, amount?: numbe
       merchant_ref_id: orderCode, amount, payment_code: channel, customer_name: customer.name.trim(), customer_email: customer.email.trim(), customer_phone: customer.phone,
       callback_url: `${SITE.webUrl}/api/payments/sekalipay-gateway/callback`, return_url: `${SITE.webUrl}/lacak-pesanan`,
     }, undefined, adminTest) : await get();
-    if (response.status === 409 && response.body.code === "DUPLICATE_REF_ID") { response = await get(); posted = false; }
-    if (!(response.status >= 200 && response.status < 300 && response.body.status === true)
-      && !(response.status === 409 && response.body.code === "PAYMENT_ALREADY_EXISTS")) throw new Error("sekalipay_gateway_initializing");
+    const duplicateRef = response.status === 409 && response.body.code === "DUPLICATE_REF_ID";
+    if (duplicateRef) { response = await get(); posted = false; }
+    const accepted = response.status >= 200 && response.status < 300 && response.body.status === true;
+    const alreadyExists = response.status === 409 && response.body.code === "PAYMENT_ALREADY_EXISTS";
+    if (!accepted && !alreadyExists) {
+      // Klasifikasi penting untuk pemulihan:
+      // - `DUPLICATE_REF_ID` (dan GET susulannya) / 502 / 504 = transport/proxy atau sinyal
+      //   "ref mungkin sudah dipakai" => AMBIGU, klaim dipertahankan, JANGAN pernah dianggap
+      //   "invoice tidak ada". Timeout/jaringan/502-unreadable sudah dipetakan transport.
+      // - Rejeksi lain yang TERBACA (4xx/5xx JSON dari provider) => belum ada invoice id
+      //   tersimpan; pemanggil boleh meminta `confirmGatewayInvoiceAbsent` (GET read-only)
+      //   sebelum membatalkan apa pun. Tidak pernah POST ulang.
+      if (duplicateRef || response.status === 502 || response.status === 504) throw new Error("sekalipay_gateway_create_ambiguous");
+      throw new Error("sekalipay_gateway_create_rejected");
+    }
     const data = response.body.data;
     if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("sekalipay_gateway_invalid_invoice");
     const invoice = data as Row;

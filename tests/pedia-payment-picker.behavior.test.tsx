@@ -6,6 +6,22 @@
 // memuat ulang daftar metode.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+// `location.assign` jsdom tidak bisa di-spy; rekam tujuan navigasi lewat helper
+// `orderCheckoutPath` (dipakai persis sebelum `location.assign`) tanpa mengubah
+// perilaku aslinya.
+const nav = vi.hoisted(() => ({ paths: [] as string[] }));
+vi.mock("@/lib/order-access-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/order-access-client")>();
+  return {
+    ...actual,
+    orderCheckoutPath: (path: string, code: string, sessionOrLegacy?: unknown, maybeSession?: unknown) => {
+      nav.paths.push(String(path));
+      return actual.orderCheckoutPath(path, code, sessionOrLegacy, maybeSession);
+    },
+  };
+});
+
 import { OrderClient } from "@/app/pedia/o/[slug]/order-client";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
@@ -34,6 +50,7 @@ const methods = [
 const reply = (data: unknown, status = 200) => ({ ok: status < 400, status, json: async () => data });
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  nav.paths.length = 0;
   fetchMock = vi.fn(async () => reply({ quote_token: "signed-price", total: 25000, payable: 25000, paymentMethods: methods }));
   vi.stubGlobal("fetch", fetchMock);
   localStorage.clear();
@@ -95,5 +112,51 @@ describe("Pedia payment method picker (fase B)", () => {
     // Daftar metode dimuat ulang dan pilihan kembali ke QRIS (bukan diam-diam ke rail berbiaya).
     await waitFor(() => expect(fetchMock.mock.calls.filter((call) => String(call[0]).includes("/api/pedia/quote")).length).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect((screen.getByRole("radio", { name: /QRIS/ }) as HTMLInputElement).checked).toBe(true));
+  });
+
+  it("503 payment_method_unavailable dengan kode order: TIDAK pindah halaman; metode gagal tidak dipilih ulang, quote BARU + metode lain → order baru", async () => {
+    let quoteN = 0;
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const target = String(url);
+      if (target.includes("/api/pedia/quote")) {
+        quoteN += 1;
+        return reply({ quote_token: `signed-price-${quoteN}`, total: 25000, payable: 25000, paymentMethods: methods });
+      }
+      throw new Error(`unexpected ${target}`);
+    });
+    mount(); complete();
+    fireEvent.click(screen.getByRole("button", { name: "Pilih metode lain" }));
+    fireEvent.click(await screen.findByRole("button", { name: /E-Wallet/ }));
+    fireEvent.click(await screen.findByRole("radio", { name: /ShopeePay/ }));
+    // Ronde 1: rail gagal SETELAH order Pedia tersimpan (`code` ada).
+    fetchMock.mockResolvedValueOnce(reply({
+      error: "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.",
+      error_code: "payment_method_unavailable",
+      code: "AXP-20261107-AAAAAAAA",
+    }, 503));
+    fireEvent.click(screen.getAllByRole("button", { name: /^(Lanjut ke pembayaran|Lanjut bayar)$/ })[0]);
+    expect((await screen.findByRole("alert")).textContent).toContain("Metode pembayaran ini sedang gangguan");
+    // Tidak pindah ke halaman pesanan (metode di sana terkunci).
+    expect(nav.paths).toHaveLength(0);
+    // Daftar metode dimuat ulang dengan quote baru; metode gagal TIDAK terpilih lagi.
+    await waitFor(() => expect(quoteN).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect((screen.getByRole("radio", { name: /QRIS/ }) as HTMLInputElement).checked).toBe(true));
+    // Metode yang gagal tidak terpilih ulang (grup bisa tertutup setelah daftar dimuat ulang).
+    const failedRadio = screen.queryAllByRole("radio", { hidden: true }).find((r) => /ShopeePay/.test(r.closest("label")?.textContent ?? "")) as HTMLInputElement | undefined;
+    expect(failedRadio?.checked ?? false).toBe(false);
+    // Ronde 2: metode lain (QRIS) dengan quote BARU → 201 → halaman order baru.
+    fetchMock.mockResolvedValueOnce(reply({ code: "AXP-20261107-BBBBBBBB", buyer_access_session: "sess" }, 201));
+    fireEvent.click(screen.getAllByRole("button", { name: /^(Lanjut ke pembayaran|Lanjut bayar)$/ })[0]);
+    await waitFor(() => expect(nav.paths).toHaveLength(1));
+    const ordersCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes("/api/pedia/orders"));
+    expect(ordersCalls).toHaveLength(2);
+    const first = JSON.parse(String((ordersCalls[0][1] as RequestInit).body));
+    const second = JSON.parse(String((ordersCalls[1][1] as RequestInit).body));
+    expect(first).toMatchObject({ payment_method: "sekalipay_gateway:SHOPEEPAY" });
+    expect(second).toMatchObject({ payment_method: "qris" });
+    // Token quote BARU (bukan token order yang gagal).
+    expect(second.quote_token).not.toBe(first.quote_token);
+    expect(String(second.quote_token)).toMatch(/^signed-price-\d+$/);
+    expect(String(nav.paths[0] ?? "")).toContain("AXP-20261107-BBBBBBBB");
   });
 });

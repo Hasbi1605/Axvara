@@ -278,3 +278,23 @@ describe("Pedia status GET mengembalikan view rail (tanpa qris)", () => {
     expect(body.order.payment).toMatchObject({ kind: "gateway", state: "fee_consent_required" });
   });
 });
+
+describe("Pedia cancel tidak menyentuh stok Market", () => {
+  it("nowpayments setup gagal definitif: order dibatalkan tanpa restock Market (product_id = pedia id yang sama angka)", async () => {
+    const f = await seedCatalog({ withCrypto: true });
+    f.sql.exec("INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Market Fixture','market-fixture',10000,50)");
+    nowpaymentsMock.create.mockRejectedValueOnce(new Error("nowpayments_preflight_invalid"));
+    const { data } = await quote();
+    const crypto = (data.paymentMethods as { id: string; available: boolean }[]).find((method) => method.available && method.id.startsWith("nowpayments:"));
+    expect(crypto).toBeTruthy();
+    const res = await createOrder({ quote_token: data.quote_token, payment_method: crypto!.id });
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error_code).toBe("payment_method_unavailable");
+    expect(body.code).toMatch(/^AXP-/);
+    expect(f.sql.prepare("SELECT status FROM orders WHERE code=?").get(body.code)).toMatchObject({ status: "dibatalkan" });
+    // Tanpa fix, products(id=1) Market bertambah (pedia_products id 1).
+    expect(f.sql.prepare("SELECT stock FROM products WHERE id=1").get()).toEqual({ stock: 50 });
+    expect(f.sql.prepare("SELECT status FROM pedia_order_items WHERE order_code=?").get(body.code)).toMatchObject({ status: "expired" });
+  });
+});

@@ -45,12 +45,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (String(order.status) !== "pending") {
     return NextResponse.json({ error: pick(locale, `Pesanan sudah ${String(order.status)}, tidak bisa dibatalkan.`, `The order is already ${String(order.status)} and cannot be canceled.`) }, { status: 409 });
   }
-  let items: { product_id: number; variant_id?: number; qty: number }[];
+  let items: unknown;
   try { items = JSON.parse(String(order.items || "[]")); } catch {
     return NextResponse.json({ error: pick(locale, "Snapshot item pesanan rusak; status tidak diubah.", "The order item snapshot is corrupted; status was not changed.") }, { status: 500 });
   }
+  if (!Array.isArray(items)) {
+    return NextResponse.json({ error: pick(locale, "Snapshot item pesanan rusak; status tidak diubah.", "The order item snapshot is corrupted; status was not changed.") }, { status: 500 });
+  }
   try {
-    await transitionPendingOrder(clean, "dibatalkan", "buyer_cancel", items);
+    // Pedia tidak pernah mereservasi stok Market: `orders.items[].product_id` adalah
+    // id pedia_products yang bisa bertabrakan angka dengan products.id, jadi restock
+    // daftar item SELALU dikosongkan (transisi/guard status tetap sama).
+    await transitionPendingOrder(clean, "dibatalkan", "buyer_cancel", []);
   } catch (error) {
     if (error instanceof OrderTransitionError) {
       return NextResponse.json({ error: pick(locale, "Pesanan tidak dapat dibatalkan — statusnya sudah berubah (mungkin baru saja dibayar).", "The order cannot be canceled — its status already changed (it may have just been paid).") }, { status: 409 });

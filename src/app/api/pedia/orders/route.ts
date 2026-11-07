@@ -239,7 +239,8 @@ export async function POST(req: NextRequest) {
     product_id: quote.product_id, variant_id: null, qty: 1, price: freshTotal, name: String(product.name),
     pedia: { tier_id: quote.tier_id, quantity: qty, target: quote.target_normalized, unit_price: quote.unit_price, credit_used: creditUsed },
   }]);
-  const orderItems = JSON.parse(items) as { product_id: number; variant_id?: number; qty: number }[];
+  // Pedia tidak pernah mereservasi stok Market: semua cancel di rute ini memakai
+  // daftar restock kosong (lihat transitionPendingOrder di bawah).
   const snapshot = JSON.stringify({ supplier_target: quote.supplier_target ?? quote.target_normalized, refill_anchor: quote.refill_anchor ?? "created", supplier: quote.supplier, supplier_service_id: quote.supplier_service_id,
     refill_days: quote.refill_days ?? (Number(tier.refill_days) || 0), min_profit_rp: quote.min_profit_rp ?? (Number(tier.min_profit_rp) || 0), service_copy: quote.service_copy, ...(quote.custom_comments ? { custom_comments: quote.custom_comments } : {}) });
   const owned = `EXISTS(SELECT 1 FROM orders WHERE code=? AND quote_id=?)`;
@@ -297,7 +298,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: pediaPaymentMethodProblem(locale), error_code: "payment_method_unavailable", code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
       }
       // Definitif: batalkan order + item, pembeli memilih metode lain dengan quote baru.
-      await transitionPendingOrder(code, "dibatalkan", `nowpayments_setup_failed:${message.slice(0, 60)}`, orderItems).catch(() => {});
+      await transitionPendingOrder(code, "dibatalkan", `nowpayments_setup_failed:${message.slice(0, 60)}`, []).catch(() => {});
       const { expirePediaCheckouts } = await import("@/lib/pedia/expire");
       await expirePediaCheckouts(db).catch(() => {});
       return NextResponse.json({ error: pediaPaymentMethodProblem(locale), error_code: "payment_method_unavailable", code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
@@ -307,11 +308,27 @@ export async function POST(req: NextRequest) {
       const { createSekalipayGatewayInvoice } = await import("@/lib/payments/sekalipay-gateway");
       await createSekalipayGatewayInvoice(code, payable, selection.gateway.channel, { name: derivedName, email: customer_email, phone: normalizeWa(customer_wa) }, selection.gateway.estimated_fee);
     } catch (error: unknown) {
-      console.error("[pedia-orders] gateway setup failed:", error instanceof Error ? error.message.slice(0, 120) : "unknown");
-      // Klaim tersimpan dipertahankan (tanpa POST ulang); preclaim orphan = 503 aman.
+      const message = error instanceof Error ? error.message : "unknown";
+      console.error("[pedia-orders] gateway setup failed:", message.slice(0, 120));
       const claimedTx = await db.queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='sekalipay_gateway'", code);
+      // Default lama: klaim tersimpan DIPERTAHANKAN (tanpa POST ulang) dan order
+      // pending; preclaim orphan = 503 aman. SATU-SATUNYA jalur batal baru di sini:
+      // create ditolak TERBACA (`create_rejected`) DAN GET read-only membuktikan
+      // invoice tidak ada. Ambigu (timeout/502/504/unreadable, GET rate-limited/
+      // error/bukan 404) selalu jatuh ke perilaku lama.
+      if (claimedTx && message === "sekalipay_gateway_create_rejected") {
+        const { confirmGatewayInvoiceAbsent, markGatewayInvoiceCreateRejected } = await import("@/lib/payments/sekalipay-gateway");
+        const absence = await confirmGatewayInvoiceAbsent(code, db).catch(() => "unknown" as const);
+        // Tandai TX terminal DULU agar callback/reconcile telat melihat baris mati,
+        // baru batalkan order + keluarkan item dari status aktif (duplicate-target).
+        if (absence === "absent" && await markGatewayInvoiceCreateRejected(code, db).catch(() => false)) {
+          await transitionPendingOrder(code, "dibatalkan", "gateway_setup_failed", []).catch(() => {});
+          const { expirePediaCheckouts } = await import("@/lib/pedia/expire");
+          await expirePediaCheckouts(db).catch(() => {});
+        }
+      }
       if (!claimedTx) {
-        await transitionPendingOrder(code, "dibatalkan", "gateway_setup_failed", orderItems).catch(() => {});
+        await transitionPendingOrder(code, "dibatalkan", "gateway_setup_failed", []).catch(() => {});
         const { expirePediaCheckouts } = await import("@/lib/pedia/expire");
         await expirePediaCheckouts(db).catch(() => {});
       }

@@ -38,8 +38,9 @@ function quoteBody(methods: unknown[], extra: Record<string, unknown> = {}) {
   return { ok: true, items, subtotal: 250_000, quoteToken: "quote-token-fixture-123456", paymentMethods: methods, locale: "id", ...extra };
 }
 type Orders = { status?: number; body: unknown } | "timeout";
-function stub(opts: { quotes: Array<{ methods: unknown[]; extra?: Record<string, unknown>; status?: number; body?: unknown }>; order?: Orders }) {
+function stub(opts: { quotes: Array<{ methods: unknown[]; extra?: Record<string, unknown>; status?: number; body?: unknown }>; order?: Orders; orders?: Orders[] }) {
   let quoteN = 0;
+  let orderN = 0;
   const quoteCalls = { count: 0 };
   const posts: Array<Record<string, unknown>> = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -52,8 +53,10 @@ function stub(opts: { quotes: Array<{ methods: unknown[]; extra?: Record<string,
     }
     if (u === "/api/orders" || u === "/api/admin/payments/test/orders") {
       posts.push(JSON.parse(String(init?.body)));
-      if (opts.order === "timeout") throw new TypeError("network");
-      const o = opts.order ?? { status: 201, body: { code: "AXV-20261104-AAAAAAAA", subtotal: 250_000, status: "pending", locale: "id", qris: null, buyer_access_session: "p1.x", checkout_credential_grant: "g.x" } };
+      // `orders[]` = respons berurutan per POST (percobaan pertama boleh gagal).
+      const picked = opts.orders ? opts.orders[Math.min(orderN++, opts.orders.length - 1)] : opts.order;
+      if (picked === "timeout") throw new TypeError("network");
+      const o = picked ?? { status: 201, body: { code: "AXV-20261104-AAAAAAAA", subtotal: 250_000, status: "pending", locale: "id", qris: null, buyer_access_session: "p1.x", checkout_credential_grant: "g.x" } };
       return new Response(JSON.stringify(o.body), { status: o.status ?? 201, headers: { "Content-Type": "application/json" } });
     }
     return new Response("{}", { status: 200 });
@@ -672,6 +675,40 @@ describe("checkout: 503 payment_method_unavailable (kontrak error_code)", () => 
     await waitFor(() => expect(posts).toHaveLength(2));
     expect(posts[1].quote_token).toBe("quote-token-new-111111111");
     expect(posts[1].payment_method).toBe("sekalipay_gateway:BCA_VA");
+  });
+
+  it("DANA_REALTIME gagal (503) lalu pembeli pindah ke QRIS: quote diambil ulang dan order BARU 201 memakai token baru", async () => {
+    const dana = gw("DANA_REALTIME", "DANA", 2_146, 252_146, 250_000, { group: "ewallet" });
+    const { posts, quoteCalls } = stub({
+      quotes: [
+        { methods: [qrisM, dana], extra: { quoteToken: "quote-token-old-000000000" } },
+        { methods: [qrisM, dana], extra: { quoteToken: "quote-token-new-111111111" } },
+      ],
+      orders: [
+        { status: 503, body: { error: "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.", error_code: "payment_method_unavailable", code: "AXV-20261107-AAAAAAAA" } },
+        { status: 201, body: { code: "AXV-20261107-BBBBBBBB", subtotal: 250_000, status: "pending", locale: "id", qris: { qris_url: "/api/qris/BBB", qris_payload: "000201" }, buyer_access_session: "p2.y", checkout_credential_grant: "g2.y" } },
+      ],
+    });
+    render(<CheckoutPage />);
+    await waitFor(() => expect(radios().length).toBe(2));
+    fillAndAgree();
+    // Metode yang dipilih = DANA (kanal realtime yang sedang HTTP 500 di provider).
+    fireEvent.click(header(/^E-Wallet/));
+    fireEvent.click(radio(/^DANA/));
+    await act(async () => { fireEvent.click(payButton()); });
+    // Gangguan terlihat dan quote lama dibuang; metode dikosongkan (bukan auto QRIS).
+    expect(await screen.findAllByText("Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.")).not.toHaveLength(0);
+    await waitFor(() => expect(quoteCalls.count).toBe(2));
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toMatchObject({ payment_method: "sekalipay_gateway:DANA_REALTIME", quote_token: "quote-token-old-000000000" });
+    expect(radios().filter((r) => r.checked)).toHaveLength(0);
+    // Pindah ke QRIS: submit berikut memakai token quote BARU dan membuat order baru (201).
+    fireEvent.click(radio(/QRIS/));
+    await act(async () => { fireEvent.click(payButton()); });
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[1]).toMatchObject({ payment_method: "qris", quote_token: "quote-token-new-111111111" });
+    await waitFor(() => expect(nav.push).toHaveBeenCalled());
+    expect(String(nav.push.mock.calls.at(-1)?.[0] ?? "")).toContain("AXV-20261107-BBBBBBBB");
   });
 
   it("503 tanpa error_code tidak mereset quote/metode (perilaku lama untuk error lain/QRIS)", async () => {

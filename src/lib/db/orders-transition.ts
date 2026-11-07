@@ -43,14 +43,20 @@ export async function transitionPendingOrder(
             ${adminNote === "buyer_cancel" ? `AND NOT EXISTS (SELECT 1 FROM payment_transactions pt WHERE pt.order_code=orders.code AND ((pt.provider='nowpayments' AND (COALESCE(pt.provider_status_text,'') NOT IN ('','waiting','expired') OR COALESCE(pt.last_error,'')!='' OR trim(COALESCE(pt.actually_paid_text,''),'0. ')!='')) OR (pt.provider='sekalipay_gateway' AND (COALESCE(pt.last_error,'')!='' OR COALESCE(pt.provider_status_text,'') IN ('paid','completed') OR pt.paid_at IS NOT NULL))))` : ""}) THEN 1 ELSE 0 END`,
         ).bind(guardId, code),
       ];
+      // Pedia orders NEVER reserve Market stock (their claim INSERT only writes
+      // orders + pedia_order_items), so their cancel/expiry must never restock
+      // `products`/`product_variants` by `orders.items[].product_id` (a
+      // pedia_products id that can collide numerically with Market ids).
+      // Guard in SQL so shared callers (admin/cron/webhooks) are safe too.
+      const restockMarket = `EXISTS(SELECT 1 FROM orders o WHERE o.code=? AND COALESCE(o.order_kind,'apps')!='pedia')`;
       productQuantities.forEach((qty, productId) => {
         statements.push(
-          d1.prepare("UPDATE products SET stock=stock+? WHERE id=? AND stock!=-1").bind(qty, productId),
+          d1.prepare(`UPDATE products SET stock=stock+? WHERE id=? AND stock!=-1 AND ${restockMarket}`).bind(qty, productId, code),
         );
       });
       variantQuantities.forEach((qty, variantId) => {
         statements.push(
-          d1.prepare("UPDATE product_variants SET stock=stock+?, updated_at=datetime('now') WHERE id=? AND stock!=-1").bind(qty, variantId),
+          d1.prepare(`UPDATE product_variants SET stock=stock+?, updated_at=datetime('now') WHERE id=? AND stock!=-1 AND ${restockMarket}`).bind(qty, variantId, code),
         );
       });
       statements.push(
@@ -133,7 +139,8 @@ export async function transitionPendingOrder(
 
   const order = getOrderMem().find((row) => String(row.code) === code);
   if (!order || order.status !== "pending") throw new OrderTransitionError();
-  if (status === "dibatalkan" || status === "kadaluarsa") {
+  const restockMarket = String((order as { order_kind?: unknown }).order_kind ?? "apps") !== "pedia";
+  if (restockMarket && (status === "dibatalkan" || status === "kadaluarsa")) {
     productQuantities.forEach((qty, productId) => {
       const product = getSharedMem().find((row) => Number(row.id) === productId);
       if (product && Number(product.stock) !== -1) product.stock = Number(product.stock) + qty;

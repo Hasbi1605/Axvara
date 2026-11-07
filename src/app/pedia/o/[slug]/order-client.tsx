@@ -277,20 +277,22 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
       }, 60_000);
       const data = await response.json();
       if (!response.ok) {
-        // Rail gateway/crypto bermasalah (kontrak Market): order tersimpan →
-        // buka halaman pesanan; tanpa order → pilih QRIS lagi + muat ulang metode.
+        // Rail gateway/crypto bermasalah (kontrak Market): JANGAN pindah ke
+        // halaman pesanan (metode di sana terkunci). Tampilkan pesan server,
+        // buang quote, muat ulang daftar metode, dan jangan memilih ulang
+        // metode yang gagal — pembeli memilih metode lain; submit berikut
+        // memakai quote BARU (bukan quote_id order yang gagal).
         if (response.status === 503 && data.error_code === "payment_method_unavailable") {
-          if (typeof data.code === "string" && /^AXP-\d{8}-[A-Z0-9]{8}$/.test(data.code)) {
-            rememberPediaContact(data.code, email.trim());
-            location.assign(orderCheckoutPath(`/pedia/pesanan/${data.code}`, data.code, data.buyer_access_session));
-            navigating = true;
-            return;
-          }
-          setMethod("qris");
+          setQuote(null);
+          // Buang quote yang di-prefetch untuk rail yang gagal: submit berikut
+          // WAJIB mengambil /api/pedia/quote baru (token baru), bukan memakai ulang.
+          prefetch.current = null;
           setMethods(null);
           setMethodsAttempt((value) => value + 1);
-          setQuote(null);
           setAttempted(false);
+          // QRIS = default aman (bukan metode berbiaya yang baru gagal);
+          // pilihan eksplisit pembeli berikutnya menggantikannya.
+          setMethod("qris");
           serverMessage = data.error ?? null;
           throw new Error(data.error ?? t.orderMethodsNone);
         }
