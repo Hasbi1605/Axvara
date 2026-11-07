@@ -21,6 +21,19 @@ import type { NowpaymentsUsdExpected } from "@/lib/payments/nowpayments";
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
+/**
+ * Copy pembeli saat invoice gateway (Sekalipay) atau crypto gagal dibuat,
+ * ambigu, atau masih `initializing` saat checkout. Menggantikan kalimat
+ * "Tagihan sedang disiapkan. Coba checkout yang sama." yang membingungkan
+ * (keputusan owner 7 Nov 2026). QRIS punya copy persiapan sendiri dan tidak
+ * memakai helper ini. Locale mengikuti pesanan/kutipan; default ID.
+ */
+function paymentMethodProblem(locale: string | null | undefined): string {
+  return locale === "en"
+    ? "This payment method is having problems. Please try another payment method."
+    : "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.";
+}
+
 const schema = z.object({
   // Revamp 2026-09-23 ala Sekalipay: nama dihapus dari form web. Opsional di
   // API (fallback prefix email di handler); kanal TG/WA tetap kirim nama.
@@ -69,7 +82,7 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
     const tx = await queryFirst("SELECT provider,requested_amount FROM payment_transactions WHERE order_code=?", live.code);
     if (!tx && String(live.payment_method ?? "").startsWith("sekalipay_gateway:")) {
       // ponytail: a preclaim orphan expires unless its original request finishes; add durable dispatch if recovery is required.
-      return NextResponse.json({ error: "Tagihan sedang disiapkan. Coba checkout yang sama.", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+      return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
     }
     if (tx?.provider === "klikqris") {
       try {
@@ -98,7 +111,7 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
           return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: current?.status ?? live.status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
         }
       } catch { /* fall through to generic reuse below */ }
-      return NextResponse.json({ error: "Tagihan crypto sedang disiapkan. Cek status dengan checkout yang sama — jangan buat pesanan baru.", code: live.code }, { status: 503 });
+      return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code }, { status: 503 });
     }
     if (tx?.provider === "sekalipay_gateway") {
       const { buildSekalipayGatewayPaymentView } = await import("@/lib/payments/payment-view");
@@ -114,7 +127,7 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
             payment = await buildSekalipayGatewayPaymentView(String(live.code));
           }
         } catch (error) {
-          if (error instanceof Error && error.message === "gateway_poll_deferred") return NextResponse.json({ error: "Tagihan sedang disiapkan. Coba checkout yang sama.", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+          if (error instanceof Error && error.message === "gateway_poll_deferred") return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
           try {
             const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
             await reconcileSekalipayGatewayPayment(String(live.code));
@@ -122,7 +135,7 @@ async function existingCheckoutResponse(existing: Record<string, unknown>) {
           } catch { /* Saved claim stays bound; retry uses GET only. */ }
         }
       }
-      if (!payment || payment.state === "initializing") return NextResponse.json({ error: "Tagihan sedang disiapkan. Coba checkout yang sama.", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+      if (!payment || payment.state === "initializing") return NextResponse.json({ error: paymentMethodProblem(locale), error_code: "payment_method_unavailable", code: live.code, buyer_access_session, checkout_credential_grant }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
       const current = await queryFirst("SELECT status FROM orders WHERE code=?", live.code);
       return NextResponse.json({ code: live.code, subtotal: live.subtotal, status: current?.status ?? live.status, buyer_access_session, checkout_credential_grant, reused: true, locale, payment }, { status: 200, headers: { "Cache-Control": "private, no-store" } });
     }
@@ -542,7 +555,7 @@ export async function POST(req: NextRequest) {
         // Ambiguous/mid-finalize: claim+stok dipertahankan (Telegram
         // invoice.ts:322 pattern), 503 "check status" — JANGAN cancel.
         // No repeat POST: retry quote SAMA memulihkan via GET known id.
-        return NextResponse.json({ error: "Tagihan crypto sedang disiapkan. Cek status dengan checkout yang sama — jangan buat pesanan baru.", code }, { status: 503 });
+        return NextResponse.json({ error: paymentMethodProblem(quote.locale), error_code: "payment_method_unavailable", code }, { status: 503 });
       }
       if (message === "nowpayments_preflight_invalid" || message === "nowpayments_usd_snapshot_required"
         || message.startsWith("nowpayments_")) {
@@ -567,7 +580,7 @@ export async function POST(req: NextRequest) {
         await transitionPendingOrder(code, "dibatalkan", "gateway_setup_failed", quote.items).catch(() => {});
         return NextResponse.json({ error: "Metode pembayaran tidak tersedia.", code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
       }
-      return NextResponse.json({ error: "Tagihan sedang disiapkan. Coba checkout yang sama.", code,
+      return NextResponse.json({ error: paymentMethodProblem(quote.locale), error_code: "payment_method_unavailable", code,
         buyer_access_session: await createBuyerAccessSession({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),
         checkout_credential_grant: await createCheckoutCredentialGrant({ code, quote_id: quote.quote_id, buyer_access_version: 1, buyer_access_format: "pin6" }) }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
     }

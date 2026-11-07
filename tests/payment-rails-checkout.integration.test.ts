@@ -371,10 +371,13 @@ describe("W3 USD + locale checkout rails", () => {
     const { POST } = await import("@/app/api/orders/route");
     const response = await POST(new NextRequest("http://localhost/api/orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ customer_wa: "081234567890", customer_email: "buyer@example.test", items: [{ product_id: 1, variant_id: 1, qty: 1 }], payment_method: "nowpayments:usdtbsc", quote_token: quoted.quoteToken }) }));
     expect(response.status).toBe(503);
+    const failed = await response.json();
+    // Copy gangguan baru mengikuti locale quote (EN di suite ini), bukan "checkout yang sama", + kontrak error_code.
+    expect(failed).toMatchObject({ error: "This payment method is having problems. Please try another payment method.", error_code: "payment_method_unavailable" });
     const saved = fixture.sql.prepare("SELECT provider_payment_id,last_error,fee_paid_by_user,fixed_rate FROM payment_transactions").get();
     expect(saved).toMatchObject({ provider_payment_id: "np-unverified", last_error: "nowpayments_invalid_invoice_manual_review", fee_paid_by_user: 0, fixed_rate: 0 });
     const { buildNowpaymentsPaymentView } = await import("@/lib/payments/payment-view");
-    const code = String((await response.json()).code);
+    const code = String(failed.code);
     expect(await buildNowpaymentsPaymentView(code)).toMatchObject({ state: "manual_review", pay_address: "" });
     expect(posts).toBe(1);
   });

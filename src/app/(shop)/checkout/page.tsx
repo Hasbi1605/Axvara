@@ -540,6 +540,20 @@ function CheckoutInner() {
         await fetchQuote(quoteRequestItems);
         throw new Error(j.message || "Harga produk berubah. Periksa harga terbaru lalu lanjutkan.");
       }
+      // Gateway/crypto gagal/ambigu: order + klaim lama dibiarkan expire (tidak
+      // dibatalkan), tetapi quote lama TIDAK boleh dipakai untuk metode lain
+      // (reuse orders.quote_id akan mengembalikan order lama). Kosongkan
+      // metode+pilihan, ambil quote baru lewat jalur fetchQuote yang sama, dan
+      // jangan submit ulang otomatis. Kontak/keranjang/persetujuan tetap.
+      if (!r.ok && j.error_code === "payment_method_unavailable") {
+        setError(typeof j.error === "string" && j.error ? j.error : "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.");
+        // Jangan biarkan efek auto-select mengembalikan QRIS: pembeli wajib memilih metode lain sendiri.
+        explicitDeselectRef.current = true;
+        setMethod(null);
+        setQuoteToken(null);
+        await fetchQuote(quoteRequestItems);
+        return;
+      }
       if (!r.ok) throw new Error(j.error || `Gagal buat pesanan (${r.status})`);
       const code = j.code as string;
       // Also keep a local copy for UX fallback (pesanan page can fetch from server if local missing)

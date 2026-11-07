@@ -418,8 +418,8 @@ export function paymentMethodNoticeMessage(
         : "Pembayaran sedang dibuat — jangan tekan lagi. Pesan ini diperbarui otomatis.";
     case "create_failed":
       return en
-        ? "Payment could not be created right now. Your cart is unchanged — try again, or use QRIS."
-        : "Pembayaran belum bisa dibuat saat ini. Keranjang tidak berubah — coba lagi, atau pakai QRIS.";
+        ? "This payment method is having problems. Please try another payment method."
+        : "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.";
     case "contact_needed":
       return en
         ? "This method needs contact info first. Reply with the requested detail, then choose the method again."

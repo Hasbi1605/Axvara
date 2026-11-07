@@ -149,7 +149,8 @@ export function gatewayEligibility(amount: number, min: number, max: number): "o
 /**
  * Katalog merchant untuk `amount`: semua kanal dengan biaya DIKENAL (parser ketat) dan batas valid, termasuk yang di luar batas sebagai
  * `available:false` (tanpa biaya/total; `shortfall` = min - amount dihitung di server hanya untuk below_min). Biaya tak dikenal, batas cacat,
- * QRIS, atau tipe tak dikenal tetap disembunyikan (fail closed). Kanal SHOPEEPAY biasa dikecualikan; hanya SHOPEEPAY_REALTIME yang ditawarkan.
+ * QRIS, atau tipe tak dikenal tetap disembunyikan (fail closed). Keputusan owner 7 Nov 2026: SHOPEEPAY_REALTIME dan DANA_REALTIME dikecualikan
+ * (DANA_REALTIME selalu HTTP 500 di create Sekalipay); ShopeePay ditawarkan lewat kanal SHOPEEPAY biasa.
  * `payment_type` hilang -> grup "other" (bukan tebakan dari merek).
  */
 export async function listSekalipayCatalog(amount: number, adminTest = false): Promise<GatewayCatalogEntry[]> {
@@ -170,7 +171,7 @@ export async function listSekalipayCatalog(amount: number, adminTest = false): P
     const info = row.fee_info as Record<string, unknown> | null;
     const rawType = row.payment_type;
     const type: GatewayGroup | null = rawType === "va" || rawType === "ewallet" ? rawType : rawType == null || rawType === "" ? "other" : null;
-    if (typeof row.payment_code !== "string" || /^SHOPEEPAY$/i.test(row.payment_code) || !/^[A-Za-z0-9_-]{1,64}$/.test(row.payment_code) || /qris/i.test(row.payment_code)
+    if (typeof row.payment_code !== "string" || /^(SHOPEEPAY_REALTIME|DANA_REALTIME)$/i.test(row.payment_code) || !/^[A-Za-z0-9_-]{1,64}$/.test(row.payment_code) || /qris/i.test(row.payment_code)
       || typeof row.payment_name !== "string" || type === null
       || !Number.isSafeInteger(row.min_amount) || !Number.isSafeInteger(row.max_amount)
       || !info || typeof info.type !== "string" || typeof info.description !== "string") return [];

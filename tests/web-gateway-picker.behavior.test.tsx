@@ -178,16 +178,16 @@ describe("urutan E-Wallet", () => {
   it("ShopeePay -> DANA -> GoPay -> OVO (hanya yang ada, termasuk nonaktif), sisanya stabil", () => {
     const scrambled = [
       gw("GOPAY", "GoPay", "ewallet", 1_300),
-      gwOff("SHOPEEPAY_REALTIME", "ShopeePay", "ewallet"),
+      gwOff("SHOPEEPAY", "ShopeePay", "ewallet"),
       gw("LINKAJA", "LinkAja", "ewallet", 900),
       gw("OVO", "OVO", "ewallet", 1_600),
-      gw("DANA_REALTIME", "DANA", "ewallet", 2_030),
+      gw("DANA", "DANA", "ewallet", 2_030),
     ];
     render(<Harness raw={[qrisM, ...scrambled]} />);
     fireEvent.click(headerBtn(/^E-Wallet/));
     const visible = () => Array.from(panel("ewallet").querySelectorAll("input[type=radio]")).map((input) => (input as HTMLInputElement).value.replace("sekalipay_gateway:", ""));
-    expect(visible()).toEqual(["SHOPEEPAY_REALTIME", "DANA_REALTIME", "GOPAY", "OVO", "LINKAJA"]);
-    expect(radioOf("SHOPEEPAY_REALTIME").disabled).toBe(true);
+    expect(visible()).toEqual(["SHOPEEPAY", "DANA", "GOPAY", "OVO", "LINKAJA"]);
+    expect(radioOf("SHOPEEPAY").disabled).toBe(true);
     const chips = headerBtn(/^E-Wallet/).querySelectorAll("[data-bank-chips] [data-bank-tile]");
     expect(chips).toHaveLength(4);
     expect(Array.from(chips).map((tile) => tile.querySelector("img")?.getAttribute("src"))).toEqual([

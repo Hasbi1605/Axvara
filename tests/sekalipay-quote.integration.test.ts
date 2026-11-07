@@ -153,6 +153,8 @@ it.each(["pending", "paid"])("saved initializing retry flag off recovers %s refe
   const request = () => new NextRequest("http://localhost/api/orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ customer_wa: "081234567890", customer_email: "buyer@example.test", items: [{ product_id: 1, variant_id: 1, qty: 1 }], payment_method: "sekalipay_gateway:RECVA", quote_token: signed.quoteToken }) });
   const failed = await POST(request()); expect(failed.status).toBe(503); const first = await failed.json();
   expect(first.code).toBe(savedRef); expect(first.buyer_access_session).toBeTruthy(); expect(failed.headers.get("cache-control")).toBe("private, no-store");
+  // Copy gangguan baru (bukan "Tagihan sedang disiapkan. Coba checkout yang sama.") + kontrak error_code.
+  expect(first).toMatchObject({ error: "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.", error_code: "payment_method_unavailable" });
   expect(fixture.sql.prepare("SELECT status FROM payment_transactions WHERE order_code=?").get(savedRef)?.status).toBe("initializing");
   vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "false");
   const retried = await POST(request()); expect(retried.status).toBe(200); const body = await retried.json();
@@ -174,6 +176,67 @@ it("rejects missing email and disabled new gateway before any reservation", asyn
   expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
   expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(100);
   expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it("gateway create failure shows the gangguan copy in the quote locale (ID default, EN cookie)", async () => {
+  vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
+  vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "fixture-buyer-secret");
+  vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
+  vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
+    if (String(url).endsWith("payment-methods")) return Response.json({ status: true, data: [{ payment_code: "ERRVA", payment_name: "Fixture", payment_type: "va", min_amount: 100, max_amount: 100000, fee_info: { type: "flat", description: "Rp 500" } }] });
+    if (String(url).endsWith("/payment")) return Response.json({ status: false, message: "fixture upstream failure" }, { status: 500 });
+    throw new Error("unexpected fixture request");
+  }));
+  const { POST: quotePost } = await import("@/app/api/checkout/quote/route");
+  const quoteWith = async (cookie?: string) => quotePost(new NextRequest("http://localhost/api/checkout/quote", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+    body: JSON.stringify({ items: [{ product_id: 1, variant_id: 1, qty: 1, expected_price: 10000 }] }),
+  })).then((response) => response.json());
+  const { POST } = await import("@/app/api/orders/route");
+  const create = (quoteToken: string) => POST(new NextRequest("http://localhost/api/orders", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ customer_wa: "081234567890", customer_email: "buyer@example.test", items: [{ product_id: 1, variant_id: 1, qty: 1 }], payment_method: "sekalipay_gateway:ERRVA", quote_token: quoteToken }),
+  }));
+  const id = await create((await quoteWith()).quoteToken);
+  expect(id.status).toBe(503);
+  const idBody = await id.json();
+  expect(idBody).toMatchObject({ error: "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.", error_code: "payment_method_unavailable" });
+  expect(idBody.buyer_access_session).toBeTruthy();
+  expect(idBody.checkout_credential_grant).toBeTruthy();
+  const en = await create((await quoteWith("axv_locale=en")).quoteToken);
+  expect(en.status).toBe(503);
+  expect(await en.json()).toMatchObject({ error: "This payment method is having problems. Please try another payment method.", error_code: "payment_method_unavailable" });
+});
+
+it("saved pending gateway retry that cannot recover returns the gangguan copy + error_code without a new order", async () => {
+  vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
+  vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "fixture-buyer-secret");
+  vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
+  vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
+    if (String(url).endsWith("payment-methods")) return Response.json({ status: true, data: [{ payment_code: "ERRVA", payment_name: "Fixture", payment_type: "va", min_amount: 100, max_amount: 100000, fee_info: { type: "flat", description: "Rp 500" } }] });
+    return Response.json({ status: false }, { status: 404 });
+  }));
+  const quoted = await (await quote()).json();
+  const verified = (await verifyCheckoutQuoteToken(quoted.quoteToken))!;
+  const code = "AXV-20261107-SAVED001";
+  const expires = new Date(Date.now() + 900_000).toISOString();
+  insertTestOrder(fixture.sql, code, { channel: "web" });
+  fixture.sql.prepare("UPDATE orders SET quote_id=?, payment_method='sekalipay_gateway:ERRVA', subtotal=10000, status='pending', payment_status='pending', locale='id', expires_at=?, buyer_access_version=1, buyer_access_format='pin6' WHERE code=?").run(verified.quote_id, expires, code);
+  fixture.sql.prepare(`INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,status,gateway_channel,gateway_label,gateway_estimated_fee,expires_at)
+    VALUES(?,'sekalipay_gateway','merchant',?,'sekalipay_gateway',10000,'initializing','ERRVA','Fixture',500,?)`).run(code, code, expires);
+  const { POST } = await import("@/app/api/orders/route");
+  const response = await POST(new NextRequest("http://localhost/api/orders", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ customer_wa: "081234567890", customer_email: "buyer@example.test", items: [{ product_id: 1, variant_id: 1, qty: 1 }], payment_method: "sekalipay_gateway:ERRVA", quote_token: quoted.quoteToken }),
+  }));
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    error: "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.",
+    error_code: "payment_method_unavailable",
+    code,
+  });
+  expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders").get()!.n).toBe(1); // reuse order lama, bukan order baru
 });
 
 it("consent requires matching contact, gateway rail and live unpaid order", async () => {

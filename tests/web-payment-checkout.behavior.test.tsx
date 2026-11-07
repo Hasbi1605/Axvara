@@ -40,10 +40,12 @@ function quoteBody(methods: unknown[], extra: Record<string, unknown> = {}) {
 type Orders = { status?: number; body: unknown } | "timeout";
 function stub(opts: { quotes: Array<{ methods: unknown[]; extra?: Record<string, unknown>; status?: number; body?: unknown }>; order?: Orders }) {
   let quoteN = 0;
+  const quoteCalls = { count: 0 };
   const posts: Array<Record<string, unknown>> = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
     if (u === "/api/checkout/quote" || u === "/api/admin/payments/test/quote") {
+      quoteCalls.count++;
       const q = opts.quotes[Math.min(quoteN++, opts.quotes.length - 1)];
       const body = q.body ?? quoteBody(q.methods, q.extra);
       return new Response(JSON.stringify(body), { status: q.status ?? 200, headers: { "Content-Type": "application/json" } });
@@ -56,7 +58,7 @@ function stub(opts: { quotes: Array<{ methods: unknown[]; extra?: Record<string,
     }
     return new Response("{}", { status: 200 });
   }));
-  return { posts };
+  return { posts, quoteCalls };
 }
 // Semua radio di DOM (termasuk panel grup tertutup); `visibleRadios` = hanya yang bisa difokus pembeli.
 const radios = () => screen.getAllByRole("radio", { hidden: true }) as HTMLInputElement[];
@@ -635,5 +637,58 @@ describe("checkout: picker dari quote", () => {
     expect(posts[0].payment_method).toBe("qris");
     const dialog = within(document.body);
     expect(dialog.queryByText("Perubahan Harga / Stok")).toBeNull();
+  });
+});
+
+describe("checkout: 503 payment_method_unavailable (kontrak error_code)", () => {
+  const methods = [qrisM, gw("BCA_VA", "BCA Virtual Account", 4000, 254_000)];
+
+  it("menampilkan copy server, mengosongkan metode, mengambil quote BARU lewat jalur existing, tanpa auto-resubmit; submit berikut memakai token baru", async () => {
+    const { posts, quoteCalls } = stub({
+      quotes: [
+        { methods, extra: { quoteToken: "quote-token-old-000000000" } },
+        { methods, extra: { quoteToken: "quote-token-new-111111111" } },
+      ],
+      order: { status: 503, body: { error: "Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.", error_code: "payment_method_unavailable", code: "AXV-20261107-AAAAAAAA" } },
+    });
+    render(<CheckoutPage />);
+    await waitFor(() => expect(radios().length).toBe(2));
+    fillAndAgree();
+    await act(async () => { fireEvent.click(payButton()); });
+    expect(await screen.findAllByText("Metode pembayaran ini sedang gangguan. Silakan coba metode pembayaran lain.")).not.toHaveLength(0);
+    await waitFor(() => expect(quoteCalls.count).toBe(2)); // quote diambil ulang lewat fetchQuote yang sama
+    expect(posts).toHaveLength(1); // tidak ada auto-resubmit order
+    expect(posts[0].quote_token).toBe("quote-token-old-000000000");
+    expect(posts[0].payment_method).toBe("qris");
+    // Metode dikosongkan: pembeli wajib memilih sendiri (efek auto-select tidak mengembalikan QRIS).
+    expect(radios().filter((r) => r.checked)).toHaveLength(0);
+    // Kontak + persetujuan tetap.
+    expect((document.getElementById("checkout-wa") as HTMLInputElement).value).toBe("081234567890");
+    expect(["checkout-agree-mobile", "checkout-agree"].some((id) => (document.getElementById(id) as HTMLInputElement | null)?.checked)).toBe(true);
+    // Pilih metode lain lalu submit: token quote BARU yang dikirim, bukan token lama.
+    fireEvent.click(header(/^Virtual Account/));
+    fireEvent.click(radio(/^BCA/));
+    await act(async () => { fireEvent.click(payButton()); });
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[1].quote_token).toBe("quote-token-new-111111111");
+    expect(posts[1].payment_method).toBe("sekalipay_gateway:BCA_VA");
+  });
+
+  it("503 tanpa error_code tidak mereset quote/metode (perilaku lama untuk error lain/QRIS)", async () => {
+    const { posts, quoteCalls } = stub({
+      quotes: [{ methods, extra: { quoteToken: "quote-token-fixture-123456" } }],
+      order: { status: 503, body: { error: "Gagal sementara. Coba lagi." } },
+    });
+    render(<CheckoutPage />);
+    await waitFor(() => expect(radios().length).toBe(2));
+    fillAndAgree();
+    await act(async () => { fireEvent.click(payButton()); });
+    expect(await screen.findAllByText("Gagal sementara. Coba lagi.")).not.toHaveLength(0);
+    expect(quoteCalls.count).toBe(1); // tidak ada fetch quote tambahan
+    expect(radio(/QRIS/).checked).toBe(true); // metode tidak dikosongkan
+    await act(async () => { fireEvent.click(payButton()); });
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[0].quote_token).toBe("quote-token-fixture-123456");
+    expect(posts[1].quote_token).toBe("quote-token-fixture-123456");
   });
 });

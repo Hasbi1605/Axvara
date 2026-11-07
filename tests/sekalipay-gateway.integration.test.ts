@@ -58,36 +58,40 @@ describe("curated catalog channels (FIXTURE)", () => {
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: true, data })));
   };
 
-  it("offers only SHOPEEPAY_REALTIME with exact IDs, provider fees and no 'Realtime' label", async () => {
+  it("offers the ordinary SHOPEEPAY channel labelled ShopeePay with provider fees; never realtime channels", async () => {
     stubCatalog([
       wallet("SHOPEEPAY", "ShopeePay"), wallet("SHOPEEPAY_REALTIME", "ShopeePay Realtime"),
       wallet("DANA_REALTIME", "DANA Realtime", "3.7%"), wallet("GOPAY", "GoPay", "2%"), wallet("OVO", "OVO", "1%"),
     ]);
     const catalog = await listSekalipayCatalog(58_000);
-    expect(catalog.map((entry) => entry.code)).toEqual(["SHOPEEPAY_REALTIME", "DANA_REALTIME", "GOPAY", "OVO"]);
-    expect(catalog.map((entry) => entry.name)).toEqual(["ShopeePay", "DANA", "GoPay", "OVO"]);
+    expect(catalog.map((entry) => entry.code)).toEqual(["SHOPEEPAY", "GOPAY", "OVO"]);
+    expect(catalog.map((entry) => entry.name)).toEqual(["ShopeePay", "GoPay", "OVO"]);
     expect(catalog.every((entry) => !/realtime/i.test(entry.name))).toBe(true);
-    expect(catalog.find((entry) => entry.code === "SHOPEEPAY_REALTIME")).toMatchObject({ available: true, estimatedFee: 2_030, estimatedTotal: 60_030 });
-    expect(catalog.find((entry) => entry.code === "DANA_REALTIME")).toMatchObject({ available: true, estimatedFee: 2_146, estimatedTotal: 60_146 });
-    expect((await listSekalipayMethods(58_000)).map((entry) => entry.code)).toEqual(["SHOPEEPAY_REALTIME", "DANA_REALTIME", "GOPAY", "OVO"]);
+    expect(catalog.some((entry) => /REALTIME$/i.test(entry.code))).toBe(false);
+    expect(catalog.find((entry) => entry.code === "SHOPEEPAY")).toMatchObject({ available: true, estimatedFee: 2_030, estimatedTotal: 60_030 });
+    expect((await listSekalipayMethods(58_000)).map((entry) => entry.code)).toEqual(["SHOPEEPAY", "GOPAY", "OVO"]);
   });
 
-  it("never falls back to ordinary SHOPEEPAY when realtime is missing", async () => {
-    stubCatalog([wallet("SHOPEEPAY", "ShopeePay"), wallet("DANA_REALTIME", "DANA Realtime")]);
-    const catalog = await listSekalipayCatalog(58_000);
-    expect(catalog.map((entry) => entry.code)).toEqual(["DANA_REALTIME"]);
-    expect((await listSekalipayMethods(58_000)).map((entry) => entry.code)).toEqual(["DANA_REALTIME"]);
-    expect(catalog.some((entry) => /^SHOPEEPAY$/i.test(entry.code))).toBe(false);
+  it("never offers realtime channels and never falls back either way", async () => {
+    stubCatalog([wallet("SHOPEEPAY_REALTIME", "ShopeePay Realtime"), wallet("DANA_REALTIME", "DANA Realtime")]);
+    expect(await listSekalipayCatalog(58_000)).toEqual([]);
+    expect(await listSekalipayMethods(58_000)).toEqual([]);
+    // Ordinary SHOPEEPAY tetap ditawarkan tanpa bergantung pada realtime.
+    stubCatalog([wallet("SHOPEEPAY", "ShopeePay")]);
+    expect((await listSekalipayCatalog(58_000)).map((entry) => entry.code)).toEqual(["SHOPEEPAY"]);
   });
 
-  it("maps only exact channel IDs and never rewrites unknown labels or reads object prototypes", async () => {
+  it("excludes only exact realtime IDs (case-insensitive) and never rewrites unknown labels or reads object prototypes", async () => {
     stubCatalog([
       wallet("CUSTOM_EW", "constructor"), wallet("PROTO_EW", "__proto__"), wallet("LEGACY_LOOKING", "ShopeePay Realtime"),
       wallet("SHOPEEPAY_REALTIME", "ShopeePay Realtime"), wallet("DANA_REALTIME", "DANA Realtime", "3.7%"),
+      wallet("SHOPEEPAY_REALTIME_X", "ShopeePay Realtime X"), wallet("dana_realtime", "DANA Realtime"), wallet("SHOPEEPAY", "ShopeePay"),
     ]);
     const catalog = await listSekalipayCatalog(58_000);
+    // Substring "SHOPEEPAY_REALTIME_X" BUKAN ID realtime eksak; lowercase "dana_realtime" tetap dikecualikan (regex i).
     expect(catalog.map((entry) => `${entry.code}:${entry.name}`)).toEqual([
-      "CUSTOM_EW:constructor", "PROTO_EW:__proto__", "LEGACY_LOOKING:ShopeePay Realtime", "SHOPEEPAY_REALTIME:ShopeePay", "DANA_REALTIME:DANA",
+      "CUSTOM_EW:constructor", "PROTO_EW:__proto__", "LEGACY_LOOKING:ShopeePay Realtime",
+      "SHOPEEPAY_REALTIME_X:ShopeePay Realtime X", "SHOPEEPAY:ShopeePay",
     ]);
     expect(gatewayDisplayName("unknown-ew", "ShopeePay Realtime")).toBe("ShopeePay Realtime");
     expect(gatewayDisplayName("constructor", "__proto__")).toBe("__proto__");
