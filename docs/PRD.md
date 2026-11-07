@@ -1,5 +1,12 @@
 # PRD — AXVARA
 
+## Keputusan owner 7 November 2026: Pedia ikut bahasa + mata uang tampilan (fase A, lokal, belum deploy)
+- Switcher bahasa/mata uang Pedia memakai kontrol Market yang sama (`PreferenceControls`, cookie `axv_locale`/`axv_currency`), tersedia di header desktop dan toolbar mobile. Memilih bahasa/mata uang hanya mengubah tampilan; quote, pesanan, dan rel pembayaran tidak tersentuh.
+- Seluruh teks pembeli Pedia tersedia ID/EN: beranda, katalog/platform, halaman order (langkah, validasi, checklist, syarat), status pesanan, lacak, refill, bantuan, ketentuan, dan pesan galat API Pedia. Default tetap Indonesia; tanpa cookie = Indonesia.
+- Nama/deskripsi/syarat layanan dari katalog tersimpan tetap sumbernya (Indonesia) dan diterjemahkan saat render; snapshot pesanan lama ikut EN tanpa migrasi. Istilah SMM (No Drop/Less Drop/High Drop/Refill N Days/Start time/Speed/Avg time/Success rate) tidak diterjemahkan ke istilah Indonesia. Angka, batas min/max, masa refill, dan kebijakan tidak berubah.
+- Harga Pedia tampil dalam USD saat pembeli memilih USD, memakai jalur FX tampilan Market (`POST /api/display-prices`, satu snapshot server). Tanpa FX valid, harga kembali ke Rupiah. Nominal yang ditagih tetap IDR/QRIS; USD bukan otoritas quote/charge.
+- Fase B (rail pembayaran non-QRIS untuk Pedia: Sekalipay gateway VA/e-wallet + crypto NOWPayments) BELUM dikerjakan dan menunggu persetujuan lead atas laporan fase A.
+
 ## Keputusan owner 7 November 2026: Telegram hanya QRIS + Crypto; metode ulang setelah gagal (lokal, belum deploy)
 - Penawaran BARU di bot Telegram hanya QRIS + Crypto. Sekalipay gateway (VA/e-wallet) tetap tersedia penuh di web, tetapi tidak pernah masuk katalog/payq1/keyboard Telegram meski `SEKALIPAY_GATEWAY_ENABLED=true`; create Telegram juga menolak ID gateway (fail closed, notis generik). Tidak ada flag/env baru.
 - Invoice/order Telegram lama pada `sekalipay_gateway` tetap dibaca, consent (`gconsent:`), refresh, dan direkonsiliasi dengan binding tersimpan; tanpa migrasi atau mutasi.

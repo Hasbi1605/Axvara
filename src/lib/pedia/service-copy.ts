@@ -1,4 +1,6 @@
 import { whiteLabel } from "@/lib/pedia/terms";
+import { pediaServiceName, pediaServiceText } from "@/lib/pedia/copy";
+import type { Locale } from "@/lib/i18n/locale";
 /** Hanya copy publik yang boleh disalin ke quote dan respons pesanan. */
 export type PediaServiceCopy = {
   product_name: string;
@@ -26,4 +28,21 @@ export function readPediaServiceCopy(value: unknown): PediaServiceCopy | null {
   // Whitelist fields even when reading historical snapshots.
   // White label: snapshot lama bisa memuat kata supplier; disaring saat dibaca.
   return Object.fromEntries(Object.keys(limits).map((key) => [key, whiteLabel(copy[key] as string)])) as PediaServiceCopy;
+}
+
+/**
+ * Terjemahan tampilan EN untuk snapshot copy Indonesia (2026-11-07).
+ * Snapshot tersimpan dan fakta (angka/batas) TIDAK diubah; teks tak dikenal
+ * tetap memakai versi Indonesia apa adanya.
+ */
+export function localizePediaServiceCopy(copy: PediaServiceCopy | null | undefined, locale: Locale): PediaServiceCopy | null {
+  if (!copy) return null;
+  if (locale !== "en") return copy;
+  return {
+    product_name: copy.product_name,
+    service_name: pediaServiceName(copy.service_name, locale),
+    description: pediaServiceText(copy.description, locale),
+    terms: pediaServiceText(copy.terms, locale),
+    instructions: pediaServiceText(copy.instructions, locale),
+  };
 }

@@ -37,6 +37,31 @@ export const PEDIA_METRIC_LABEL: Record<string, string> = {
 
 export function pediaPlatform(id: string) { return PEDIA_PLATFORM_CONFIG.find((p) => p.id === id); }
 
+/** Ringkasan platform versi pembeli EN (2026-11-07); fallback ke teks Indonesia. */
+const PLATFORM_SUMMARY_EN: Record<string, string> = {
+  instagram: "Followers, likes, and Reels views",
+  tiktok: "Followers, likes, views, and shares",
+  youtube: "Subscribers, likes, and video views",
+  facebook: "Followers, likes, and video views",
+  threads: "Followers and post interactions",
+  x: "Followers, likes, and views",
+  telegram: "Members, views, and reactions",
+  linkedin: "Followers and LinkedIn interactions",
+  pinterest: "Followers and pin interactions",
+  discord: "Members for community servers",
+  shopee: "Shopee shop followers",
+  spotify: "Spotify song plays",
+  soundcloud: "Song plays and likes",
+  twitch: "Twitch channel followers",
+  github: "Profile followers and repository forks",
+  website: "Global and Indonesian traffic",
+};
+
+export function pediaPlatformSummary(id: string, locale: "id" | "en"): string {
+  const summary = pediaPlatform(id)?.summary ?? "";
+  return locale === "en" ? PLATFORM_SUMMARY_EN[id] ?? summary : summary;
+}
+
 /** Cari dengan istilah pembeli, termasuk variasi Indonesia/Inggris. */
 export function pediaSearchText(raw: string) {
   return raw.toLowerCase().replace(/twitter/g, "x").replace(/pengikut/g, "followers")

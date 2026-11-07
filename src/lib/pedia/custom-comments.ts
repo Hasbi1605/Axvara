@@ -12,15 +12,17 @@ export function parseCustomComments(raw: string): string[] {
   return String(raw ?? "").replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/[\u0000-\u001f\u007f]/g, " ").trim()).filter(Boolean);
 }
 
-/** Validasi teks komentar terhadap jumlah pesanan. Pesan sama untuk client dan server. */
-export function checkCustomComments(raw: string, quantity: number | null): CustomCommentCheck {
+/** Validasi teks komentar terhadap jumlah pesanan. Pesan sama untuk client dan server (ID/EN). */
+export function checkCustomComments(raw: string, quantity: number | null, locale: "id" | "en" = "id"): CustomCommentCheck {
+  const en = locale === "en";
+  const num = (value: number) => value.toLocaleString(en ? "en-US" : "id-ID");
   const lines = parseCustomComments(raw);
-  if (!lines.length) return { ok: false, error: "Tulis komentar, satu komentar per baris.", lines };
-  if (String(raw).length > CUSTOM_COMMENT_MAX_TOTAL) return { ok: false, error: `Total komentar maksimal ${CUSTOM_COMMENT_MAX_TOTAL.toLocaleString("id-ID")} karakter.`, lines };
-  if (lines.length > CUSTOM_COMMENT_MAX_LINES) return { ok: false, error: `Maksimal ${CUSTOM_COMMENT_MAX_LINES} komentar per pesanan.`, lines };
+  if (!lines.length) return { ok: false, error: en ? "Write your comments, one per line." : "Tulis komentar, satu komentar per baris.", lines };
+  if (String(raw).length > CUSTOM_COMMENT_MAX_TOTAL) return { ok: false, error: en ? `Total comments are limited to ${num(CUSTOM_COMMENT_MAX_TOTAL)} characters.` : `Total komentar maksimal ${num(CUSTOM_COMMENT_MAX_TOTAL)} karakter.`, lines };
+  if (lines.length > CUSTOM_COMMENT_MAX_LINES) return { ok: false, error: en ? `At most ${num(CUSTOM_COMMENT_MAX_LINES)} comments per order.` : `Maksimal ${num(CUSTOM_COMMENT_MAX_LINES)} komentar per pesanan.`, lines };
   const long = lines.findIndex((l) => l.length > CUSTOM_COMMENT_MAX_CHARS);
-  if (long >= 0) return { ok: false, error: `Komentar baris ${long + 1} terlalu panjang (maksimal ${CUSTOM_COMMENT_MAX_CHARS} karakter).`, lines };
-  if (quantity != null && lines.length !== quantity) return { ok: false, error: `Jumlah komentar (${lines.length}) harus sama dengan jumlah pesanan (${quantity}).`, lines };
+  if (long >= 0) return { ok: false, error: en ? `Comment line ${long + 1} is too long (maximum ${num(CUSTOM_COMMENT_MAX_CHARS)} characters).` : `Komentar baris ${long + 1} terlalu panjang (maksimal ${num(CUSTOM_COMMENT_MAX_CHARS)} karakter).`, lines };
+  if (quantity != null && lines.length !== quantity) return { ok: false, error: en ? `The number of comments (${num(lines.length)}) must equal the order quantity (${num(quantity)}).` : `Jumlah komentar (${num(lines.length)}) harus sama dengan jumlah pesanan (${num(quantity)}).`, lines };
   return { ok: true, lines };
 }
 

@@ -3,6 +3,7 @@
 // Prinsip: angka tidak diketahui tetap null (bukan 0), ETA hanya dari field
 // eta_start/eta_finish apa adanya, tanpa hitungan jam dari avg_time/speed.
 import { SITE } from "@/lib/site";
+import type { Locale } from "@/lib/i18n/locale";
 
 export const PEDIA_CODE_RE = /^AXP-\d{8}-[A-Z0-9]{8}$/;
 
@@ -31,7 +32,19 @@ export function pediaPollMs(status: string | undefined): number | null {
 export type PediaHeader = { title: string; lead: string | null };
 
 /** Judul + kalimat pembuka menurut status Pedia aktual (bukan "Lunas" generik). */
-export function pediaHeader(status: string): PediaHeader {
+export function pediaHeader(status: string, locale: Locale = "id"): PediaHeader {
+  if (locale === "en") {
+    switch (status) {
+      case "completed": return { title: "Order Complete 🎉", lead: null };
+      case "partial": return { title: "Partially Completed", lead: null };
+      case "canceled": return { title: "Order Canceled", lead: null };
+      case "needs_check": return { title: "Order Under Review", lead: null };
+      case "in_progress": return { title: "Order In Progress", lead: "The order is in progress. Progress updates automatically." };
+      case "submitting":
+      case "submitted": return { title: "Order Processing", lead: "The order is being sent to the system and processed automatically." };
+      default: return { title: "Payment Received", lead: "The order is queued and will be processed automatically." };
+    }
+  }
   switch (status) {
     case "completed": return { title: "Pesanan Selesai 🎉", lead: null };
     case "partial": return { title: "Pesanan Selesai Sebagian", lead: null };
@@ -44,7 +57,7 @@ export function pediaHeader(status: string): PediaHeader {
   }
 }
 
-export const formatCount = (value: number) => value.toLocaleString("id-ID");
+export const formatCount = (value: number, locale: Locale = "id") => value.toLocaleString(locale === "en" ? "en-US" : "id-ID");
 
 export type PediaProgress = {
   /** Jumlah masuk yang terkonfirmasi, null = belum diketahui. */
@@ -72,19 +85,30 @@ export function knownCount(value: unknown): number | null {
  * ETA jujur. Hanya eta_finish / eta_start dari tier apa adanya; tanpa hitung
  * jam dari avg_time/speed. null = tidak ada baris estimasi.
  */
-export function pediaEstimate(input: { status: string; eta_start: string | null | undefined; eta_finish: string | null | undefined }): string | null {
+export function pediaEstimate(input: { status: string; eta_start: string | null | undefined; eta_finish: string | null | undefined }, locale: Locale = "id"): string | null {
   const finish = input.eta_finish?.trim();
-  if (finish) return `Perkiraan selesai: ${finish}. Estimasi mengikuti antrean.`;
+  if (finish) return locale === "en"
+    ? `Estimated finish: ${finish}. The estimate follows the queue.`
+    : `Perkiraan selesai: ${finish}. Estimasi mengikuti antrean.`;
   const start = input.eta_start?.trim();
   const beforeProgress = ["paid", "queued", "submitting", "submitted"].includes(input.status);
   if (start && beforeProgress) {
+    if (locale === "en") {
+      if (start === "Mengikuti antrean layanan") return `Estimated start: follows the service queue. Service estimate, not a guarantee.`;
+      return `Estimated start: ${start} after payment. Service estimate, not a guarantee.`;
+    }
     if (start === "Mengikuti antrean layanan") return `Perkiraan mulai: ${start}. Estimasi layanan, bukan jaminan.`;
     return `Perkiraan mulai: ${start} setelah pembayaran. Estimasi layanan, bukan jaminan.`;
   }
   return null;
 }
 
-export function stepThreeLabel(status: string): string {
+export function stepThreeLabel(status: string, locale: Locale = "id"): string {
+  if (locale === "en") {
+    if (status === "submitting" || status === "submitted") return "Processing";
+    if (status === "in_progress") return "In progress";
+    return "Processing";
+  }
   if (status === "submitting" || status === "submitted") return "Diproses";
   if (status === "in_progress") return "Berjalan";
   return "Sedang diproses";

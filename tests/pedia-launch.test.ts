@@ -74,7 +74,8 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     // Urutan 1:1 Market: ServicesMenu DULU, tombol search sesudahnya
     // (sebelumnya kebalik di Pedia mobile).
     const menuIdx = nav.indexOf('<ServicesMenu active="pedia"');
-    const searchIdx = nav.indexOf('aria-label="Cari layanan"');
+    // 2026-11-07: aria-label tombol cari mengikuti bahasa (t.searchToggle).
+    const searchIdx = nav.indexOf('aria-label={t.searchToggle}');
     expect(menuIdx).toBeGreaterThan(-1);
     expect(searchIdx).toBeGreaterThan(-1);
     expect(menuIdx).toBeLessThan(searchIdx);

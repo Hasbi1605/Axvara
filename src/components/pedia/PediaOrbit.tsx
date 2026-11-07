@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useCallback } from "react";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 
 type OrbitItem = {
   label: string;
@@ -72,6 +73,7 @@ const placements = (() => {
  * + gloss/tint/border/shadow sama agar rapih sama rata.
  */
 export function PediaOrbit() {
+  const locale = useDisplayLocale();
   const containerRef = useRef<HTMLDivElement>(null);
   const planetRefs = useRef<(HTMLDivElement | null)[]>([]);
   const trailRefs = useRef<(SVGPathElement | null)[]>([]);
@@ -323,7 +325,7 @@ export function PediaOrbit() {
       className="relative w-[360px] h-[360px] sm:w-[440px] sm:h-[440px] shrink-0 scale-[0.88] sm:scale-100 select-none md:cursor-grab md:active:cursor-grabbing"
       style={{ touchAction: "pan-y" }}
       role="img"
-      aria-label="Orbit layanan media sosial AXVARA Pedia"
+      aria-label={locale === "en" ? "AXVARA Pedia social media services orbit" : "Orbit layanan media sosial AXVARA Pedia"}
     >
       {/* 3D perspective container */}
       <div className="absolute inset-0 flex items-center justify-center" style={{ perspective: "900px", perspectiveOrigin: "50% 45%" }}>

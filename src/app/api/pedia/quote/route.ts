@@ -15,6 +15,7 @@ import { capturePediaServiceCopy } from "@/lib/pedia/service-copy";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { readJsonBody } from "@/lib/http-body";
 import { checkCustomComments, CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
+import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -30,11 +31,12 @@ const schema = z.object({
 }).refine((v) => v.product_slug || v.product_id, "Produk tidak valid");
 
 export async function POST(req: NextRequest) {
+  const locale = pediaApiLocale(req);
   if (!checkRateLimit(req, "pedia:quote")) {
-    return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
+    return NextResponse.json({ error: pick(locale, "Terlalu banyak permintaan, coba lagi 1 menit.", "Too many requests, try again in 1 minute.") }, { status: 429, headers: { "Retry-After": "60" } });
   }
   if (process.env.PEDIA_ENABLED !== "true" || process.env.PEDIA_ORDERS_ENABLED !== "true") {
-    return NextResponse.json({ error: "Pedia belum dibuka untuk order." }, { status: 503 });
+    return NextResponse.json({ error: pick(locale, "Pedia belum dibuka untuk order.", "Pedia is not open for orders yet.") }, { status: 503 });
   }
   const body = await readJsonBody(req);
   if (!body.ok) return body.response;
@@ -43,8 +45,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }
   const { tier_id, quantity, target, credit_code } = parsed.data;
-  if (credit_code) return NextResponse.json({ error: "credits_retired", message: "Kode kredit tidak lagi digunakan. Hubungi admin untuk penanganan kode lama." }, { status: 410 });
-  if (!process.env.ADMIN_JWT_SECRET && process.env.NODE_ENV === "production") return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
+  if (credit_code) return NextResponse.json({ error: "credits_retired", message: pick(locale, "Kode kredit tidak lagi digunakan. Hubungi admin untuk penanganan kode lama.", "Credit codes are no longer used. Contact admin for old codes.") }, { status: 410 });
+  if (!process.env.ADMIN_JWT_SECRET && process.env.NODE_ENV === "production") return NextResponse.json({ error: pick(locale, "Checkout sementara tidak tersedia.", "Checkout is temporarily unavailable.") }, { status: 503 });
   const db = createDatabaseAccess();
 
   const product = parsed.data.product_slug
@@ -54,35 +56,35 @@ export async function POST(req: NextRequest) {
     : await db.queryFirst(
       `SELECT * FROM pedia_products WHERE id=? AND is_active=1`, parsed.data.product_id,
     ).catch(() => null);
-  if (!product) return NextResponse.json({ error: "Produk tidak tersedia." }, { status: 404 });
+  if (!product) return NextResponse.json({ error: pick(locale, "Produk tidak tersedia.", "Product is not available.") }, { status: 404 });
   const product_id = Number(product.id);
   const tier = await db.queryFirst(
     `SELECT * FROM pedia_tiers WHERE id=? AND product_id=? AND is_active=1`,
     tier_id, product_id,
   ).catch(() => null);
-  if (!tier) return NextResponse.json({ error: "Tingkat kualitas tidak tersedia." }, { status: 404 });
-  if (!isPediaProvider(tier.supplier)) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
+  if (!tier) return NextResponse.json({ error: pick(locale, "Tingkat kualitas tidak tersedia.", "This quality level is not available.") }, { status: 404 });
+  if (!isPediaProvider(tier.supplier)) return NextResponse.json({ error: pick(locale, "Layanan sedang tidak tersedia.", "The service is temporarily unavailable.") }, { status: 409 });
   // INDO-POLICY-20: quotes are issued for the sale supplier only. Tier rows
   // still read both providers from DB (historical recovery), but a new quote
   // from the retired provider must requote on IndoSMM instead.
-  if (!isPediaSaleProvider(tier.supplier)) return NextResponse.json({ error: "provider_retired", message: "Layanan ini sudah tidak dijual. Pilih layanan lain yang tersedia." }, { status: 409 });
+  if (!isPediaSaleProvider(tier.supplier)) return NextResponse.json({ error: "provider_retired", message: pick(locale, "Layanan ini sudah tidak dijual. Pilih layanan lain yang tersedia.", "This service is no longer sold. Choose another available service.") }, { status: 409 });
   const live = await db.queryFirst(
     `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type=? AND rate_idr_per_1k>0`,
     tier.supplier, Number(tier.supplier_service_id), pediaServiceTypeFor(tier.input_kind),
   ).catch(() => null);
-  if (!live) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
+  if (!live) return NextResponse.json({ error: pick(locale, "Layanan sedang tidak tersedia.", "The service is temporarily unavailable.") }, { status: 409 });
 
   // Validasi target: parser server + kecocokan target_kind (PD-02/AC-03).
   const detected = detectPediaLink(target, String(product.platform));
   if (!detected) {
-    return NextResponse.json({ error: "unrecognized_link", message: "Kami belum mengenali link ini. Pilih platformnya di bawah." }, { status: 422 });
+    return NextResponse.json({ error: "unrecognized_link", message: pick(locale, "Kami belum mengenali link ini. Pilih platformnya di bawah.", "We do not recognize this link. Choose the platform below.") }, { status: 422 });
   }
   const needKind = String(product.target_kind);
   const kindOk = pediaTargetMatches(needKind, detected.targetKind, { platform: String(product.platform), metric: String(product.metric) });
   if (detected.platform !== String(product.platform) || !kindOk) {
     return NextResponse.json({
       error: "target_mismatch",
-      message: `Ini link ${detected.targetKind}. Produk ini untuk ${needKind}. Mau tambah layanan yang cocok?`,
+      message: pick(locale, `Ini link ${detected.targetKind}. Produk ini untuk ${needKind}. Mau tambah layanan yang cocok?`, `This is a ${detected.targetKind} link. This product is for ${needKind}. Add a matching service instead?`),
       detected: { platform: detected.platform, target_kind: detected.targetKind },
     }, { status: 422 });
   }
@@ -95,13 +97,13 @@ export async function POST(req: NextRequest) {
   if (!limits || quantity < minQty || quantity > maxQty) {
     return NextResponse.json({
       error: "quantity_out_of_range",
-      message: `Minimal ${minQty}, maksimal ${maxQty} untuk kualitas ini.`,
+      message: pick(locale, `Minimal ${minQty}, maksimal ${maxQty} untuk kualitas ini.`, `Minimum ${minQty}, maximum ${maxQty} for this quality.`),
     }, { status: 422 });
   }
   if (quantity % step !== 0) {
     return NextResponse.json({
       error: "quantity_step",
-      message: `Jumlah harus kelipatan ${step}.`,
+      message: pick(locale, `Jumlah harus kelipatan ${step}.`, `Quantity must be a multiple of ${step}.`),
     }, { status: 422 });
   }
 
@@ -117,11 +119,11 @@ export async function POST(req: NextRequest) {
   // Komentar custom: wajib untuk layanan input_kind=comments, satu per baris, jumlah = quantity.
   let customComments: string[] | undefined;
   if (tier.input_kind === "comments") {
-    const checked = checkCustomComments(parsed.data.comments ?? "", quantity);
+    const checked = checkCustomComments(parsed.data.comments ?? "", quantity, locale);
     if (!checked.ok) return NextResponse.json({ error: "invalid_comments", message: checked.error }, { status: 422 });
     customComments = checked.lines;
   }
-  if (!Number.isFinite(total) || total <= 0) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
+  if (!Number.isFinite(total) || total <= 0) return NextResponse.json({ error: pick(locale, "Layanan sedang tidak tersedia.", "The service is temporarily unavailable.") }, { status: 409 });
 
   const { token, quoteId } = await createPediaQuoteToken({
     product_id, tier_id, quantity,

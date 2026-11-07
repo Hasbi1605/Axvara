@@ -8,33 +8,38 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { pediaCopy } from "@/lib/pedia/copy";
 import { isPediaOrderFlow, pediaRoutePath } from "@/lib/pedia/route-path";
 
-const TABS: { href: string; label: string; icon: IosIconName; match: (p: string) => boolean }[] = [
-  { href: "/pedia", label: "Beranda", icon: "home", match: (p) => p === "/pedia" },
-  { href: "/pedia/layanan", label: "Layanan", icon: "category", match: (p) => p.startsWith("/pedia/p/") || p === "/pedia/layanan" },
-  { href: "/pedia/lacak", label: "Pesanan", icon: "purchase-order", match: (p) => p.startsWith("/pedia/pesanan") || p === "/pedia/lacak" },
-  { href: "/pedia/bantuan", label: "Bantuan", icon: "chat", match: (p) => p === "/pedia/bantuan" },
+type TabKey = "navHome" | "navServices" | "navOrders" | "navHelp";
+const TABS: { href: string; key: TabKey; icon: IosIconName; match: (p: string) => boolean }[] = [
+  { href: "/pedia", key: "navHome", icon: "home", match: (p) => p === "/pedia" },
+  { href: "/pedia/layanan", key: "navServices", icon: "category", match: (p) => p.startsWith("/pedia/p/") || p === "/pedia/layanan" },
+  { href: "/pedia/lacak", key: "navOrders", icon: "purchase-order", match: (p) => p.startsWith("/pedia/pesanan") || p === "/pedia/lacak" },
+  { href: "/pedia/bantuan", key: "navHelp", icon: "chat", match: (p) => p === "/pedia/bantuan" },
 ];
 
 export function PediaBottomNav() {
   // 2026-11-01: subdomain memberi `/p/x`; normalkan agar guard + tab aktif berlaku di produksi.
   const path = pediaRoutePath(usePathname());
+  const t = pediaCopy(useDisplayLocale());
   // 2026-10-08: halaman order punya sticky bar sendiri (total + Bayar) —
   // bottom nav disembunyikan agar tidak menumpuk (dua fixed = jelek mobile).
   if (isPediaOrderFlow(path)) return null;
   return (
     <nav
-      aria-label="Navigasi Pedia"
+      aria-label={t.navAria}
       className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#080C1E]/92 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(0,0,0,0.6)] backdrop-blur-xl md:hidden"
     >
       <div className="flex items-center justify-around">
-        {TABS.map((t) => {
-          const on = t.match(path);
+        {TABS.map((tab) => {
+          const on = tab.match(path);
+          const label = t[tab.key];
           return (
             <Link prefetch={false}
-              key={t.href}
-              href={t.href}
+              key={tab.href}
+              href={tab.href}
               aria-current={on ? "page" : undefined}
               className="flex flex-1 justify-center"
             >
@@ -45,14 +50,14 @@ export function PediaBottomNav() {
               >
                 <span aria-hidden className="relative flex h-6 w-6 items-center justify-center">
                   <IosIcon
-                    name={t.icon}
+                    name={tab.icon}
                     size={20}
                     tint={on ? "#00E5FF" : "white"}
                     className={on ? "" : "opacity-55"}
                   />
                 </span>
                 <span className={`mt-1 text-[10.5px] leading-none tracking-tight ${on ? "font-bold text-[#00E5FF]" : "font-medium"}`}>
-                  {t.label}
+                  {label}
                 </span>
                 {on && <span aria-hidden className="mt-1 h-1 w-1 rounded-full bg-[#00E5FF] shadow-[0_0_4px_#00E5FF]" />}
               </span>

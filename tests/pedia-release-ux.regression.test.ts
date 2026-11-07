@@ -71,7 +71,8 @@ describe("rilis Pedia 2026-10-14 — UX setara Market", () => {
     expect(page).not.toContain("window.prompt");
     expect(page).not.toContain("wa.me/6282135277434");
     expect(page).toContain("PediaOrderSkeleton");
-    expect(page).toContain("Verifikasi refill");
+    // 2026-11-07: label modal refill mengikuti bahasa (statusRefillVerify).
+    expect(page).toContain("statusRefillVerify");
     expect(page).not.toContain('>Memuat…<');
   });
 });

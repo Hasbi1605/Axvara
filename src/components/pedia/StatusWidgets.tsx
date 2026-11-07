@@ -1,6 +1,8 @@
 // src/components/pedia/ProgressRing.tsx — Cincin progres pesanan (PD-12).
 // SVG 160px, stroke gradien Pedia, transisi dashoffset 600ms, aria-valuenow.
-export function ProgressRing({ percent, done, total }: { percent: number; done: number; total: number }) {
+import type { Locale } from "@/lib/i18n/locale";
+
+export function ProgressRing({ percent, done, total, locale = "id" }: { percent: number; done: number; total: number; locale?: Locale }) {
   const size = 160;
   const stroke = 10;
   const r = (size - stroke) / 2;
@@ -12,7 +14,7 @@ export function ProgressRing({ percent, done, total }: { percent: number; done: 
       aria-valuenow={Math.round(clamped)}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={`Progres ${Math.round(clamped)} persen`}
+      aria-label={locale === "en" ? `Progress ${Math.round(clamped)} percent` : `Progres ${Math.round(clamped)} persen`}
       className="relative mx-auto h-40 w-40"
     >
       <svg width={size} height={size} className="-rotate-90">
@@ -36,7 +38,7 @@ export function ProgressRing({ percent, done, total }: { percent: number; done: 
           {Math.round(clamped)}%
         </span>
         <span className="text-xs text-white/55" style={{ fontVariantNumeric: "tabular-nums" }}>
-          {done.toLocaleString("id-ID")} / {total.toLocaleString("id-ID")}
+          {done.toLocaleString(locale === "en" ? "en-US" : "id-ID")} / {total.toLocaleString(locale === "en" ? "en-US" : "id-ID")}
         </span>
       </div>
     </div>
@@ -58,11 +60,25 @@ const LABELS: Record<string, string> = {
   expired: "Kedaluwarsa",
 };
 
-export function pediaStatusLabel(status: string): string {
-  return LABELS[status] ?? status;
+const LABELS_EN: Record<string, string> = {
+  awaiting_payment: "Waiting for payment",
+  paid: "Payment received",
+  queued: "Payment received",
+  submitting: "Processing",
+  submitted: "Processing",
+  in_progress: "In progress",
+  completed: "Completed",
+  partial: "Partially completed",
+  canceled: "Canceled",
+  needs_check: "We are checking",
+  expired: "Expired",
+};
+
+export function pediaStatusLabel(status: string, locale: Locale = "id"): string {
+  return (locale === "en" ? LABELS_EN : LABELS)[status] ?? status;
 }
 
-export function StatusPill({ status }: { status: string }) {
+export function StatusPill({ status, locale = "id" }: { status: string; locale?: Locale }) {
   const tone =
     status === "completed" ? "bg-emerald-400/15 text-emerald-300"
     : status === "awaiting_payment" ? "bg-[#FFB800]/15 text-[#FFCF55]"
@@ -71,7 +87,7 @@ export function StatusPill({ status }: { status: string }) {
     : "bg-[#00E5FF]/15 text-[#00E5FF]";
   return (
     <span className={`inline-flex h-7 items-center rounded-full px-3 text-[12.5px] font-bold ${tone}`}>
-      {pediaStatusLabel(status)}
+      {pediaStatusLabel(status, locale)}
     </span>
   );
 }

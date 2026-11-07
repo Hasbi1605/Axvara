@@ -1,5 +1,15 @@
 # Aturan agent — Pedia (SMM)
 
+## Keputusan owner 7 November 2026: Pedia memakai bahasa + mata uang Market (fase A)
+- Ini MENGGANTIKAN catatan lama "Pedia tetap ID" (termasuk komentar scope di `src/lib/i18n/locale.ts`): seluruh teks pembeli Pedia mengikuti `axv_locale` (ID default) dan harga tampil mengikuti `axv_currency` lewat jalur FX Market. Admin/WA tetap Indonesia.
+- Kontrol: `PreferenceControls` Market yang sama di `PediaNavbar` (desktop + mobile), provider `DisplayPreferencesProvider` dipasang di `src/app/pedia/layout.tsx`. Jangan membuat kontrol/endpoint preferensi kedua atau cookie baru.
+- Sumber teks: chrome UI di `src/lib/pedia/copy.ts` (+ `terms.ts`, `help-content.ts`, `platforms.ts`, `refill-policy.ts`, `custom-comments.ts`) dengan kunci ID/EN; string baru wajib punya kedua bahasa (fallback ID boleh untuk teks data tak dikenal). Nama/deskripsi/syarat layanan dari DB/manifest diterjemahkan SAAT RENDER (`pediaServiceName`/`pediaServiceText`/`localizePediaServiceCopy`): jangan menambah kolom EN, mengubah migrasi 0086/0093/0102, atau menulis ulang `pedia_tiers` untuk terjemahan.
+- Istilah SMM tetap bahasa supplier di kedua locale (No Drop, Less Drop, High Drop, Refill N Days, Refill Lifetime, No Refill, Drop rate, Start time, Speed, Avg time, Success rate); jangan menerjemahkan istilah ini ke bahasa Indonesia/alias baru. Angka, batas min/max, masa refill, anchor, dan fakta kebijakan tidak boleh berubah karena terjemahan; teks EN yang tidak dikenali jatuh ke Indonesia.
+- Harga: USD hanya tampilan (server `POST /api/display-prices`, tanpa FX/`usdCents` → Rupiah). Quote, nominal tagihan, dan charge tetap IDR/QRIS; jangan memakai hasil tampilan sebagai nominal order/invoice.
+- Galat pembeli dari `/api/pedia/*` memilih ID/EN dari cookie (`pediaApiLocale` + `pick`), tanpa cookie = Indonesia; jangan mengubah status code, `error`/`message` keys, atau field lain saat menerjemahkan.
+- Fase B (rail Sekalipay gateway VA/e-wallet + crypto NOWPayments di checkout Pedia) BELUM disetujui/dikerjakan; `src/app/api/pedia/orders/route.ts` masih `payment_method='qris'`. Jangan mengubahnya sebelum lead menyetujui laporan fase A.
+- Bukti fase A: suite Pedia 50 file/762 tes lulus (termasuk `tests/pedia-i18n.behavior.test.tsx` untuk EN beranda/order, switcher, USD + fallback IDR); `npx tsc --noEmit` bersih untuk file Pedia; ESLint 0 error (warning lama tetap). Chromium lokal :3010 memverifikasi route Pedia 200, switcher EN→ID, dan cookie USD tanpa error konsol; harga USD di halaman order belum bisa dilihat lokal karena katalog D1 kosong. Deployment dan perubahan env/flags belum diverifikasi.
+
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
 ## Kebijakan Pedia 24 Oktober 2026 (menggantikan kredit pada snapshot lama)

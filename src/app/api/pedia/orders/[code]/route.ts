@@ -7,18 +7,20 @@ import { buyerOrderAccessMatches, requiresOrderAccessCode, newOrderAccessFailure
 import { checkRateLimit } from "@/lib/rateLimit";
 import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
 import { whiteLabel } from "@/lib/pedia/terms";
+import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
-  if (!checkRateLimit(request, "pedia:status")) return NextResponse.json({ error: "Terlalu sering, coba lagi sebentar." }, { status: 429, headers: { "Retry-After": "60", "Cache-Control": "private, no-store" } });
+  const locale = pediaApiLocale(request);
+  if (!checkRateLimit(request, "pedia:status")) return NextResponse.json({ error: pick(locale, "Terlalu sering, coba lagi sebentar.", "Too many requests, try again shortly.") }, { status: 429, headers: { "Retry-After": "60", "Cache-Control": "private, no-store" } });
   const contact = request.headers.get("x-order-access-code") || request.headers.get("x-order-contact") || "";
   if (!contact && !request.headers.get("x-buyer-access-session")) return NextResponse.json({ error: "contact_required" }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
   const { code } = await params;
   const clean = String(code || "").trim().toUpperCase();
   if (!/^AXP-\d{8}-[A-Z0-9]{8}$/.test(clean)) {
-    return NextResponse.json({ error: "Kode tidak valid" }, { status: 400 });
+    return NextResponse.json({ error: pick(locale, "Kode tidak valid", "Invalid code") }, { status: 400 });
   }
   const db = createDatabaseAccess();
   const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, clean).catch(() => null);
@@ -26,7 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const failure = await newOrderAccessFailure(request, order, contact, { allowStatusSession: true });
     if (failure) return failure;
   }
-  if (!order || (!requiresOrderAccessCode(order) && !(await buyerOrderAccessMatches(contact, order)))) return NextResponse.json({ error: "Pesanan tidak ditemukan atau kode akses tidak cocok." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
+  if (!order || (!requiresOrderAccessCode(order) && !(await buyerOrderAccessMatches(contact, order)))) return NextResponse.json({ error: pick(locale, "Pesanan tidak ditemukan atau kode akses tidak cocok.", "Order not found or the access code does not match.") }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
   if (order.status === "pending") {
     const payment = await db.queryFirst("SELECT provider,status,requested_amount FROM payment_transactions WHERE order_code=?",clean);
     if (payment?.provider === "klikqris" && ["pending", "initializing"].includes(String(payment.status))) {
@@ -66,7 +68,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       WHERE i.order_code=?`,
     clean,
   ).catch(() => null);
-  if (!item) return NextResponse.json({ error: "Pesanan tidak ditemukan" }, { status: 404 });
+  if (!item) return NextResponse.json({ error: pick(locale, "Pesanan tidak ditemukan", "Order not found") }, { status: 404 });
 
   // QRIS aktif (komponen existing di UI memakai payment_transactions).
   const tx = await db.queryFirst(

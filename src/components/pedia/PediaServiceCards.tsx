@@ -1,11 +1,16 @@
+"use client";
+
 import { ArrowUpRight } from "lucide-react";
 import { CrossServicePromo } from "@/components/shared/CrossServicePromo";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { pediaCopy } from "@/lib/pedia/copy";
 import { TG_BOT_HREF } from "@/lib/site";
 
 /** Kartu ganda beranda Pedia — cermin CommunityBar Market (kembar compact
  *  min-h-[64px], satu gaya ax-glass-card, panah ArrowUpRight sama):
  *  kiri = promo AXVARA Market, kanan = Bot Telegram Market. */
 export function PediaServiceCards() {
+  const t = pediaCopy(useDisplayLocale());
   return (
     <div className="flex flex-row gap-2 sm:gap-3">
       <CrossServicePromo current="pedia" />
@@ -21,8 +26,8 @@ export function PediaServiceCards() {
           <img src="/brand/telegram.svg" alt="" width={36} height={36} className="w-full h-full object-cover" draggable={false} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block break-words text-[13px] font-semibold leading-5 text-white sm:text-sm">Bot Telegram</span>
-          <span className="block text-[11px] leading-[1.4] text-white/60 sm:text-xs sm:leading-5 line-clamp-2">Order aplikasi dan tools premium</span>
+          <span className="block break-words text-[13px] font-semibold leading-5 text-white sm:text-sm">{t.telegramTitle}</span>
+          <span className="block text-[11px] leading-[1.4] text-white/60 sm:text-xs sm:leading-5 line-clamp-2">{t.telegramBody}</span>
         </span>
         <ArrowUpRight aria-hidden="true" className="hidden h-4 w-4 shrink-0 text-white/60 sm:block" />
       </a>

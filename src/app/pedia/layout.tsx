@@ -8,6 +8,7 @@ import { Footer } from "@/components/storefront/Footer";
 import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { CrossAppTransition } from "@/components/ui/CrossAppTransition";
 import { Spotlight } from "@/components/ui/Spotlight";
+import { DisplayPreferencesProvider } from "@/hooks/useDisplayPrices";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://pedia.axvara.tech"),
@@ -22,6 +23,7 @@ export const metadata: Metadata = {
 
 export default function PediaLayout({ children }: { children: React.ReactNode }) {
   return (
+    <DisplayPreferencesProvider>
       <div className="pedia-root min-h-screen overflow-x-clip bg-[#080C1E] text-[#F1F5FF]">
       <Spotlight />
       <PediaNavbar />
@@ -35,6 +37,7 @@ export default function PediaLayout({ children }: { children: React.ReactNode })
       <main className="pb-10">{children}</main>
       <Footer pediaLayout />
       <PediaBottomNav />
-    </div>
+      </div>
+    </DisplayPreferencesProvider>
   );
 }

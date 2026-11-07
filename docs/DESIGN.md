@@ -1,5 +1,11 @@
 # DESIGN.md — AXVARA Design System
 
+## Pedia: bahasa + mata uang tampilan (7 November 2026, lokal; verifikasi browser belum dilakukan)
+- Header Pedia memakai `PreferenceControls` Market apa adanya (satu tombol bendera bulat h-11/w-11 + chevron, menu `role="dialog"` dua bagian Bahasa/Mata uang) di samping `ServicesMenu`; tidak ada kontrol kedua atau varian gaya baru. Mobile memakai tombol yang sama (bukan sheet terpisah) sehingga reachability dan fokus identik dengan desktop.
+- Teks chrome Pedia (nav, hero, kartu, pemilih layanan, ringkasan, status, refill, bantuan, ketentuan) mengikuti `axv_locale`. Nama layanan tetap tampil sebagai istilah SMM; bagian Indonesia diterjemahkan saat render ("Akun berpostingan" → "Accounts with posts", "Campuran" → "Mixed") tanpa mengubah angka/batas.
+- Harga: label mata uang mengikuti pilihan; IDR tetap `Rp38.000` pada kartu/pemilih dan `Rp 38.000` pada ringkasan/QRIS (format existing), USD dirender `US$…` dari server. Saat USD dipilih tetapi FX tidak tersedia, harga kembali Rupiah tanpa badge tambahan selain catatan yang sudah ada di menu preferensi.
+- Lebar/rapat: label EN lebih panjang (mis. "Request Refill", "Choose a service"); komponen memakai `break-words`/`min-w-0` existing, tanpa mengubah ukuran chip, grid, atau sticky CTA.
+
 ## Nominal crypto tampil dibulatkan ke atas (7 November 2026, lokal; verifikasi browser belum dilakukan)
 - Angka koin di panel pesanan (tampilan `crypto-amount` dan nilai tombol "Salin"), hasil lacak, dan instruksi Telegram dibulatkan ke atas ke desimal terkecil yang nilai satu unitnya ≤ ~US$0,01, dibatasi presisi nominal asli. Contoh: `2.24671004` + US$2.25 → `2.25`; ETH `0.00075012345` → `0.000751`; BTC `0.0000225123` → `0.0000226`; nominal pendek/invalid/zero dibiarkan apa adanya.
 - Tanpa badge, tooltip, atau teks penjelasan tambahan; label "Kirim tepat"/"Send exactly" dan peringatan jaringan tetap. Angka yang disimpan/dikirim ke provider tidak berubah, jadi desain tidak menampilkan simbol "≈" pada nominal koin.

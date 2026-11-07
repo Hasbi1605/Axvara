@@ -23,15 +23,17 @@ import { generateOrderCode } from "@/lib/security";
 import { isPediaProvider } from "@/lib/pedia/proxy";
 import { isPediaSaleProvider, PEDIA_SALE_RETIRED } from "@/lib/pedia/sales-policy";
 import { deriveNameFromEmail } from "@/lib/utils";
+import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
+import type { Locale } from "@/lib/i18n/locale";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-const schema = z.object({
+const schemaFor = (locale: Locale) => z.object({
   customer_wa: z.string().trim().transform((s) => s.replace(/\s|-/g, ""))
-    .refine((s) => /^(\+62|62|0)8\d{8,13}$/.test(s), "No WA harus 08... atau +62... (10-15 digit)"),
-  customer_email: z.string().trim().email("Tulis email aktif yang benar sebelum bayar.").max(160),
-  quote_token: z.string().trim().min(20, "Quote checkout wajib disertakan").max(20000),
+    .refine((s) => /^(\+62|62|0)8\d{8,13}$/.test(s), pick(locale, "No WA harus 08... atau +62... (10-15 digit)", "WhatsApp number must start with 08... or +62... (10-15 digits)")),
+  customer_email: z.string().trim().email(pick(locale, "Tulis email aktif yang benar sebelum bayar.", "Enter a valid active email before paying.")).max(160),
+  quote_token: z.string().trim().min(20, pick(locale, "Quote checkout wajib disertakan", "Checkout quote is required")).max(20000),
 });
 
 function normalizeWa(raw: string): string {
@@ -42,9 +44,9 @@ function normalizeWa(raw: string): string {
 }
 
 /** Durable checkout already exists: retry only its invoice, never debit again. */
-async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknown>, reused: boolean) {
+async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknown>, reused: boolean, locale: Locale) {
   const job = await db.queryFirst(`SELECT credit_used FROM pedia_order_items WHERE order_code=?`, order.code);
-  if (!job) return NextResponse.json({ error: "Pesanan perlu diperiksa admin.", code: order.code }, { status: 503 });
+  if (!job) return NextResponse.json({ error: pick(locale, "Pesanan perlu diperiksa admin.", "The order needs an admin check."), code: order.code }, { status: 503 });
   const creditUsed = Number(job.credit_used), payable = Number(order.subtotal) - creditUsed;
   let qris = null;
   if (payable > 0 && order.status === "pending") {
@@ -53,34 +55,35 @@ async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknow
       const inv = await createActiveQrisInvoice(String(order.code), payable);
       qris = { payable_amount: inv.payableAmount, unique_code: inv.uniqueCode, image_url: inv.qrisUrl, expires_at: inv.expiresAt };
     } catch {
-      return NextResponse.json({ error: "Pesanan tersimpan. QRIS belum tersedia; coba lanjutkan lagi dengan data yang sama.", code: order.code }, { status: 503 });
+      return NextResponse.json({ error: pick(locale, "Pesanan tersimpan. QRIS belum tersedia; coba lanjutkan lagi dengan data yang sama.", "The order is saved. QRIS is not available yet; try continuing again with the same details."), code: order.code }, { status: 503 });
     }
   }
   return NextResponse.json({ code: order.code, buyer_access_session: await createBuyerAccessSession(order), subtotal: order.subtotal, credit_used: creditUsed, payable, status: order.status, qris, reused }, { status: reused ? 200 : 201, headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function POST(req: NextRequest) {
+  const locale = pediaApiLocale(req);
   if (isPaymentMaintenanceEnabled()) return paymentMaintenanceResponse();
   if (!checkRateLimit(req, "pedia:orders")) {
-    return NextResponse.json({ error: "Terlalu banyak percobaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
+    return NextResponse.json({ error: pick(locale, "Terlalu banyak percobaan, coba lagi 1 menit.", "Too many attempts, try again in 1 minute.") }, { status: 429, headers: { "Retry-After": "60" } });
   }
   if (process.env.PEDIA_ENABLED !== "true" || process.env.PEDIA_ORDERS_ENABLED !== "true") {
-    return NextResponse.json({ error: "Pedia belum dibuka untuk order." }, { status: 503 });
+    return NextResponse.json({ error: pick(locale, "Pedia belum dibuka untuk order.", "Pedia is not open for orders yet.") }, { status: 503 });
   }
   const body = await readJsonBody(req);
   if (!body.ok) return body.response;
-  const parsed = schema.safeParse(body.data);
+  const parsed = schemaFor(locale).safeParse(body.data);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? pick(locale, "Validasi gagal", "Validation failed") }, { status: 400 });
   }
   const { customer_wa, customer_email, quote_token } = parsed.data;
   try { assertOrderAccessConfigured(); } catch {
-    return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
+    return NextResponse.json({ error: pick(locale, "Checkout sementara tidak tersedia.", "Checkout is temporarily unavailable.") }, { status: 503 });
   }
-  if (!process.env.ADMIN_JWT_SECRET && process.env.NODE_ENV === "production") return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
+  if (!process.env.ADMIN_JWT_SECRET && process.env.NODE_ENV === "production") return NextResponse.json({ error: pick(locale, "Checkout sementara tidak tersedia.", "Checkout is temporarily unavailable.") }, { status: 503 });
   const quote = await verifyPediaQuoteToken(quote_token);
   if (!quote) {
-    return NextResponse.json({ error: "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout." }, { status: 409 });
+    return NextResponse.json({ error: pick(locale, "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout.", "The checkout quote is invalid or expired. Reload checkout.") }, { status: 409 });
   }
   const db = createDatabaseAccess();
   // INDO-POLICY-20: the existing-checkout lookup runs FIRST. An already
@@ -89,12 +92,12 @@ export async function POST(req: NextRequest) {
   // retired-provider quotes are rejected below, before any DB tier checks,
   // debit/reservation, or invoice.
   const reused = await db.queryFirst(`SELECT code, subtotal, status, buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`, `pedia:${quote.jti}`);
-  if (reused) return checkoutResponse(db, reused, true);
+  if (reused) return checkoutResponse(db, reused, true, locale);
   // Persisted retries above retain their original payable, including legacy
   // credits. An unreserved old quote cannot debit or redeem a credit now.
-  if (quote.credit_used !== 0 || quote.credit_code_hash) return NextResponse.json({ error: "credits_retired", message: "Muat ulang harga. Kode kredit tidak lagi digunakan; kode lama ditangani admin." }, { status: 409 });
+  if (quote.credit_used !== 0 || quote.credit_code_hash) return NextResponse.json({ error: "credits_retired", message: pick(locale, "Muat ulang harga. Kode kredit tidak lagi digunakan; kode lama ditangani admin.", "Reload the price. Credit codes are no longer used; old codes are handled by admin.") }, { status: 409 });
   if (!isPediaSaleProvider(quote.supplier)) {
-    return NextResponse.json(PEDIA_SALE_RETIRED, { status: 409 });
+    return NextResponse.json({ ...PEDIA_SALE_RETIRED, message: pick(locale, String(PEDIA_SALE_RETIRED.message ?? ""), "This service is no longer sold. Choose another available service.") }, { status: 409 });
   }
   const minOrderRp = Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000;
 
@@ -102,22 +105,22 @@ export async function POST(req: NextRequest) {
   const product = await db.queryFirst(`SELECT * FROM pedia_products WHERE id=? AND is_active=1`, quote.product_id).catch(() => null);
   const tier = await db.queryFirst(`SELECT * FROM pedia_tiers WHERE id=? AND product_id=? AND is_active=1`, quote.tier_id, quote.product_id).catch(() => null);
   if (!product || !tier) {
-    return NextResponse.json({ error: "Produk atau tingkat sudah tidak tersedia. Muat ulang katalog." }, { status: 404 });
+    return NextResponse.json({ error: pick(locale, "Produk atau tingkat sudah tidak tersedia. Muat ulang katalog.", "The product or quality level is no longer available. Reload the catalog.") }, { status: 404 });
   }
   if (!isPediaProvider(tier.supplier) || tier.supplier !== quote.supplier || Number(tier.supplier_service_id) !== quote.supplier_service_id) {
-    return NextResponse.json({ error: "service_changed", message: "Layanan berubah. Muat ulang checkout." }, { status: 409 });
+    return NextResponse.json({ error: "service_changed", message: pick(locale, "Layanan berubah. Muat ulang checkout.", "The service changed. Reload checkout.") }, { status: 409 });
   }
   const live = await db.queryFirst(
     `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type=? AND rate_idr_per_1k>0`,
     tier.supplier, Number(tier.supplier_service_id), pediaServiceTypeFor(tier.input_kind),
   ).catch(() => null);
   if (!live) {
-    return NextResponse.json({ error: "Layanan sedang tidak tersedia. Coba lagi nanti." }, { status: 409 });
+    return NextResponse.json({ error: pick(locale, "Layanan sedang tidak tersedia. Coba lagi nanti.", "The service is temporarily unavailable. Try again later.") }, { status: 409 });
   }
   const qty = quote.quantity;
   const limits = pediaBounds(tier.input_kind === "comments" ? { ...live, max_qty: Math.min(Number(live.max_qty), CUSTOM_COMMENT_MAX_LINES) } : live, tier, Number(product.step));
   if (!limits || qty < limits.min || qty > limits.max || qty % limits.step !== 0) {
-    return NextResponse.json({ error: "Jumlah tidak lagi valid untuk layanan ini. Muat ulang checkout." }, { status: 409 });
+    return NextResponse.json({ error: pick(locale, "Jumlah tidak lagi valid untuk layanan ini. Muat ulang checkout.", "The quantity is no longer valid for this service. Reload checkout.") }, { status: 409 });
   }
   // Chip paket hanyalah contoh jumlah. Jumlah bebas yang ditandatangani quote
   // tetap sah sepanjang min–max/step layanan live dan margin diperiksa di sini.
@@ -128,7 +131,7 @@ export async function POST(req: NextRequest) {
     minProfitRp: Number(tier.min_profit_rp) || 0,
     minOrderRp,
   });
-  if (!Number.isFinite(freshTotal) || freshTotal <= 0) return NextResponse.json({ error: "Layanan sedang tidak tersedia." }, { status: 409 });
+  if (!Number.isFinite(freshTotal) || freshTotal <= 0) return NextResponse.json({ error: pick(locale, "Layanan sedang tidak tersedia.", "The service is temporarily unavailable.") }, { status: 409 });
   // Guard margin di jalur uang (PD-33): bila margin tersisa < min sejak quote,
   // TOLAK dengan 410 (bukan kirim rugi) — kunci tier untuk admin.
   const margin = pediaMargin({
@@ -141,12 +144,12 @@ export async function POST(req: NextRequest) {
         WHERE id=? AND is_active=1`,
       Number(tier.id),
     ).catch(() => null);
-    return NextResponse.json({ error: "pedia_guard_margin", message: "Kualitas ini baru saja dinonaktifkan otomatis (margin). Pilih kualitas lain." }, { status: 410 });
+    return NextResponse.json({ error: "pedia_guard_margin", message: pick(locale, "Kualitas ini baru saja dinonaktifkan otomatis (margin). Pilih kualitas lain.", "This quality was just disabled automatically (margin). Choose another quality.") }, { status: 410 });
   }
   if (freshTotal !== quote.total) {
     return NextResponse.json({
       error: "price_changed",
-      message: "Harga berubah sejak halaman checkout dibuka. Muat ulang agar kamu membayar harga terbaru.",
+      message: pick(locale, "Harga berubah sejak halaman checkout dibuka. Muat ulang agar kamu membayar harga terbaru.", "The price changed since checkout was opened. Reload so you pay the latest price."),
     }, { status: 409 });
   }
 
@@ -158,17 +161,17 @@ export async function POST(req: NextRequest) {
   );
   if (!guard.allowed) {
     if (guard.reason === "unavailable") return NextResponse.json(
-      { error: "checkout_unavailable", message: "Checkout sementara tidak tersedia. Coba lagi dengan data yang sama." },
+      { error: "checkout_unavailable", message: pick(locale, "Checkout sementara tidak tersedia. Coba lagi dengan data yang sama.", "Checkout is temporarily unavailable. Try again with the same details.") },
       { status: 503, headers: { "Retry-After": String(guard.retryAfterSeconds) } },
     );
     return NextResponse.json(
-      { error: "checkout_rate_limited", message: "Terlalu banyak pesanan baru dari koneksi/nomor ini. Tunggu hingga 15 menit, lalu coba lagi. Pesanan yang sudah dibuat tetap bisa dilacak." },
+      { error: "checkout_rate_limited", message: pick(locale, "Terlalu banyak pesanan baru dari koneksi/nomor ini. Tunggu hingga 15 menit, lalu coba lagi. Pesanan yang sudah dibuat tetap bisa dilacak.", "Too many new orders from this connection/number. Wait up to 15 minutes, then try again. Orders already created can still be tracked.") },
       { status: 429, headers: { "Retry-After": String(guard.retryAfterSeconds) } },
     );
   }
 
   // Claim the order and job in one transaction; duplicate targets create neither.
-  if (!db.d1) return NextResponse.json({ error: "Checkout sementara tidak tersedia." }, { status: 503 });
+  if (!db.d1) return NextResponse.json({ error: pick(locale, "Checkout sementara tidak tersedia.", "Checkout is temporarily unavailable.") }, { status: 503 });
   // The durable guard deliberately consumes before this atomic claim;
   // a different quote rejected for a duplicate target still uses its slot.
   const creditUsed = 0;
@@ -206,18 +209,18 @@ export async function POST(req: NextRequest) {
     // pesan D1 + id tier/produk; tanpa kontak, target atau token.
     console.error("[pedia-orders] claim batch failed", { tier_id: quote.tier_id, product_id: quote.product_id, error: error instanceof Error ? error.message.slice(0, 200) : "unknown" });
     const existing = await db.queryFirst(`SELECT code,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`,quoteIdRow).catch(() => null);
-    if (existing) return checkoutResponse(db,existing,true);
-    return NextResponse.json({ error: "Pesanan belum tersimpan. Coba lagi dengan data yang sama." }, { status: 503 });
+    if (existing) return checkoutResponse(db,existing,true,locale);
+    return NextResponse.json({ error: pick(locale, "Pesanan belum tersimpan. Coba lagi dengan data yang sama.", "The order was not saved. Try again with the same details.") }, { status: 503 });
   }
   if (!claimed) {
     // A parallel retry of this same quote may have committed between the
     // reuse lookup above and this claim (the durable guard adds awaits in
     // between). That winner is a reuse, never a duplicate-target rejection.
     const raceWinner = await db.queryFirst(`SELECT code,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`, quoteIdRow).catch(() => null);
-    if (raceWinner) return checkoutResponse(db, raceWinner, true);
+    if (raceWinner) return checkoutResponse(db, raceWinner, true, locale);
     const dup = await db.queryFirst(`SELECT order_code FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check') ORDER BY id DESC LIMIT 1`,quote.target_normalized,quote.product_id);
-    if (dup) return NextResponse.json({ error: "duplicate_active_order", message: "Link ini masih memiliki pesanan yang diproses. Tunggu selesai atau hubungi admin." }, { status: 409 });
-    return NextResponse.json({ error: "checkout_changed", message: "Pesanan berubah. Periksa ulang sebelum melanjutkan." }, { status: 409 });
+    if (dup) return NextResponse.json({ error: "duplicate_active_order", message: pick(locale, "Link ini masih memiliki pesanan yang diproses. Tunggu selesai atau hubungi admin.", "This link still has an order in progress. Wait for it to finish or contact admin.") }, { status: 409 });
+    return NextResponse.json({ error: "checkout_changed", message: pick(locale, "Pesanan berubah. Periksa ulang sebelum melanjutkan.", "The order changed. Review again before continuing.") }, { status: 409 });
   }
-  return checkoutResponse(db,{ code,subtotal:freshTotal,status:payable ? "pending" : "lunas", buyer_access_version: 1, buyer_access_format: "pin6" },false);
+  return checkoutResponse(db,{ code,subtotal:freshTotal,status:payable ? "pending" : "lunas", buyer_access_version: 1, buyer_access_format: "pin6" },false,locale);
 }

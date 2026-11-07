@@ -4,6 +4,8 @@ import { refillLabel } from "@/lib/pedia/terms";
 import Link from "next/link";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
+import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
+import { fill, pediaCopy, pediaMetricLabel, pediaNumber, pediaServiceName } from "@/lib/pedia/copy";
 
 export const PEDIA_PLATFORMS = PEDIA_PLATFORM_CONFIG;
 
@@ -107,16 +109,22 @@ const METRIC_WORD: Record<string, string> = {
 };
 
 export function ProductCard({ p, index = 0 }: { p: ProductCardData; index?: number }) {
+  const locale = useDisplayLocale();
+  const t = pediaCopy(locale);
+  // Harga tampil mengikuti preferensi tampilan Market (USD hanya tampilan).
+  // Provider tidak ada (mis. panel admin) → IDR apa adanya, tanpa request.
+  const prices = useDisplayPrices([p.priceRef?.price ?? 0, p.pricePer1k ?? 0, p.minPrice ?? 0].filter((value) => value > 0));
+  const money = (value: number) => (prices.currency === "USD" ? prices.text(value) : `Rp${value.toLocaleString(locale === "en" ? "en-US" : "id-ID")}`);
   const config = PEDIA_PLATFORM_CONFIG.find((platform) => platform.id === p.platform);
   const visual = PLATFORM_VISUAL[p.platform] ?? { color: config?.color ?? "#00E5FF", label: config?.label ?? p.platform };
-  const metricWord = METRIC_WORD[p.metric] ?? p.metric;
+  const metricWord = locale === "en" ? pediaMetricLabel(p.metric, locale) : (METRIC_WORD[p.metric] ?? p.metric);
   // 4 kartu pertama eager + fetchPriority high ala Market (LCP di atas lipatan).
   const eager = index < 4;
   return (
     <Link prefetch={false}
       href={`/pedia/o/${p.slug}`}
       className="group ax-glass-card flex h-full min-w-0 flex-col overflow-hidden rounded-[16px] transition-all duration-300 hover:-translate-y-1 hover:border-[#00E5FF]/30 hover:shadow-[0_12px_32px_rgba(0,229,255,0.08)] sm:rounded-[22px]"
-      aria-label={`${p.name} — lihat paket`}
+      aria-label={fill(t.cardAria, { name: p.name })}
     >
       {/* Panel visual ala kartu Market (gambar 16:10): tile Axvara-style per
           platform (2026-10-15, permintaan owner) + label platform & metrik —
@@ -151,20 +159,20 @@ export function ProductCard({ p, index = 0 }: { p: ProductCardData; index?: numb
         <span className="absolute right-3 top-3 text-white/40 transition group-hover:text-[#00E5FF]">↗</span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
-        <span className="block break-words text-sm font-semibold leading-snug text-white sm:text-base">{p.name}</span>
+        <span className="block break-words text-sm font-semibold leading-snug text-white sm:text-base">{locale === "en" ? pediaServiceName(p.name, locale) : p.name}</span>
         {/* 2026-10-12 (owner): tagline AI slop DIHAPUS dari kartu — judul langsung ke harga. */}
         <span className="mt-2 block font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
-          {p.priceRef ? `Mulai Rp${p.priceRef.price.toLocaleString("id-ID")} /${p.priceRef.qty.toLocaleString("id-ID")} komentar` : p.pricePer1k != null ? `Mulai Rp${p.pricePer1k.toLocaleString("id-ID")} /1.000` : p.minPrice != null ? `Mulai Rp${p.minPrice.toLocaleString("id-ID")}` : "Lihat harga"}
+          {p.priceRef ? `${t.priceFrom} ${money(p.priceRef.price)} /${pediaNumber(p.priceRef.qty, locale)} ${t.commentsSuffix}` : p.pricePer1k != null ? `${t.priceFrom} ${money(p.pricePer1k)} ${t.per1k}` : p.minPrice != null ? `${t.priceFrom} ${money(p.minPrice)}` : t.seePrice}
         </span>
         <span className="mt-1 block text-xs text-white/60">
-          {p.serviceCount ? `${p.serviceCount} pilihan terkurasi` : "Pilihan terkurasi"}
-          {p.minQuantity != null && <> · mulai {p.minQuantity.toLocaleString("id-ID")}</>}
+          {p.serviceCount ? fill(t.curated, { count: pediaNumber(p.serviceCount, locale) }) : t.curatedPlain}
+          {p.minQuantity != null && <> · {t.starting} {pediaNumber(p.minQuantity, locale)}</>}
         </span>
         <span className="mt-auto flex items-end justify-between gap-2 pt-3">
           {p.refillDays != null
             ? <span className={`inline-block rounded-md px-2 py-1 text-[11px] ${p.refillDays > 0 ? "bg-[#00E5FF]/10 text-[#00E5FF]" : "bg-[#FFB800]/10 text-[#FFB800]"}`}>{refillLabel(p.refillDays)}</span>
             : <span />}
-          <span className="text-xs font-semibold text-[#00E5FF]/80 transition group-hover:text-[#00E5FF]">Lihat layanan →</span>
+          <span className="text-xs font-semibold text-[#00E5FF]/80 transition group-hover:text-[#00E5FF]">{t.viewServices}</span>
         </span>
       </span>
     </Link>

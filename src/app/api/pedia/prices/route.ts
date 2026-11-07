@@ -6,20 +6,22 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
+import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  if (!checkRateLimit(request, "pedia:prices")) return NextResponse.json({ error: "Terlalu banyak permintaan. Coba lagi sebentar." }, { status: 429, headers: { "Retry-After": "60" } });
-  if (process.env.PEDIA_ENABLED !== "true") return NextResponse.json({ error: "Pedia belum tersedia." }, { status: 503 });
+  const locale = pediaApiLocale(request);
+  if (!checkRateLimit(request, "pedia:prices")) return NextResponse.json({ error: pick(locale, "Terlalu banyak permintaan. Coba lagi sebentar.", "Too many requests. Try again shortly.") }, { status: 429, headers: { "Retry-After": "60" } });
+  if (process.env.PEDIA_ENABLED !== "true") return NextResponse.json({ error: pick(locale, "Pedia belum tersedia.", "Pedia is not available yet.") }, { status: 503 });
   const slug = request.nextUrl.searchParams.get("product_slug") ?? "";
   const quantity = Number(request.nextUrl.searchParams.get("quantity"));
-  if (!/^[a-z0-9-]{1,80}$/.test(slug) || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100_000_000) return NextResponse.json({ error: "Produk atau jumlah tidak valid." }, { status: 400 });
+  if (!/^[a-z0-9-]{1,80}$/.test(slug) || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100_000_000) return NextResponse.json({ error: pick(locale, "Produk atau jumlah tidak valid.", "Product or quantity is invalid.") }, { status: 400 });
   const db = createDatabaseAccess();
   const product = await db.queryFirst("SELECT id, step FROM pedia_products WHERE slug=? AND is_active=1", slug);
-  if (!product) return NextResponse.json({ error: "Produk tidak tersedia." }, { status: 404 });
-  if (quantity % (Number(product.step) || 1) !== 0) return NextResponse.json({ error: `Jumlah harus kelipatan ${Number(product.step) || 1}.` }, { status: 422 });
+  if (!product) return NextResponse.json({ error: pick(locale, "Produk tidak tersedia.", "Product is not available.") }, { status: 404 });
+  if (quantity % (Number(product.step) || 1) !== 0) return NextResponse.json({ error: pick(locale, `Jumlah harus kelipatan ${Number(product.step) || 1}.`, `Quantity must be a multiple of ${Number(product.step) || 1}.`) }, { status: 422 });
   // INDO-POLICY-20: comparison prices offer the sale supplier only, even when
   // stale historical tiers from the retired provider remain active in DB.
   const rows = await db.queryAll(

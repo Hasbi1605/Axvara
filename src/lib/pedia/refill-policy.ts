@@ -39,8 +39,21 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Refill dibatalkan",
 };
 
-export function refillStatusLabel(status: unknown): string | null {
-  return status == null ? null : STATUS_LABEL[String(status)] ?? "Sedang diproses";
+const STATUS_LABEL_EN: Record<string, string> = {
+  requested: "Being requested",
+  submitted: "Refill in progress",
+  manual_requested: "Processed by admin",
+  needs_check: "Being checked by admin",
+  completed: "Refill completed",
+  rejected: "Refill rejected",
+  supplier_rejected: "Refill rejected",
+  canceled: "Refill canceled",
+  cancelled: "Refill canceled",
+};
+
+export function refillStatusLabel(status: unknown, locale: "id" | "en" = "id"): string | null {
+  if (status == null) return null;
+  return (locale === "en" ? STATUS_LABEL_EN : STATUS_LABEL)[String(status)] ?? (locale === "en" ? "Processing" : "Sedang diproses");
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -79,3 +92,16 @@ export const REFILL_REASON_TEXT: Record<NonNullable<PediaRefillState["reason"]>,
   cooldown: "Refill hanya bisa diajukan 1× per 24 jam.",
   no_supplier_order: "Pesanan belum siap direfill. Hubungi admin.",
 };
+
+const REFILL_REASON_TEXT_EN: Record<NonNullable<PediaRefillState["reason"]>, string> = {
+  no_refill: "This service is No Refill, so dropped quantity is not topped up.",
+  not_completed: "A refill can be requested once the order is complete.",
+  expired: "The refill period for this order has ended.",
+  in_progress: "The previous refill is still being processed.",
+  cooldown: "A refill can only be requested once per 24 hours.",
+  no_supplier_order: "The order is not ready for refill yet. Contact admin.",
+};
+
+export function refillReasonText(reason: NonNullable<PediaRefillState["reason"]>, locale: "id" | "en" = "id"): string {
+  return (locale === "en" ? REFILL_REASON_TEXT_EN : REFILL_REASON_TEXT)[reason];
+}

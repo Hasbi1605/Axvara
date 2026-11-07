@@ -7,8 +7,10 @@ import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider, callPediaProxy } from "@/lib/pedia/proxy";
-import { pediaRefillState, REFILL_REASON_TEXT } from "@/lib/pedia/refill-policy";
+import { pediaRefillState } from "@/lib/pedia/refill-policy";
 import { buyerOrderAccessMatches, requiresOrderAccessCode, newOrderAccessFailure } from "@/lib/order-access";
+import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
+import { refillReasonText } from "@/lib/pedia/refill-policy";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -19,25 +21,26 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {
+  const locale = pediaApiLocale(request);
   if (!checkRateLimit(request, "pedia:refill")) {
-    return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
+    return NextResponse.json({ error: pick(locale, "Terlalu sering, coba lagi 1 menit.", "Too many requests, try again in 1 minute.") }, { status: 429, headers: { "Retry-After": "60" } });
   }
   const { code } = await params;
   const clean = String(code || "").trim().toUpperCase();
   const body = await readJsonBody(request, 8_000);
   if (!body.ok) return body.response;
   const parsed = schema.safeParse(body.data);
-  if (!parsed.success) return NextResponse.json({ error: "Kontak wajib diisi." }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: pick(locale, "Kontak wajib diisi.", "Contact is required.") }, { status: 400 });
   const contact = parsed.data.access_code ?? parsed.data.contact ?? "";
-  if (!contact) return NextResponse.json({ error: "Kode akses wajib diisi." }, { status: 400 });
+  if (!contact) return NextResponse.json({ error: pick(locale, "Kode akses wajib diisi.", "Access code is required.") }, { status: 400 });
   const db = createDatabaseAccess();
   const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, clean).catch(() => null);
-  if (!order) return NextResponse.json({ error: "Pesanan tidak ditemukan." }, { status: 404 });
+  if (!order) return NextResponse.json({ error: pick(locale, "Pesanan tidak ditemukan.", "Order not found.") }, { status: 404 });
   const failure = await newOrderAccessFailure(request, order, contact);
   if (failure) return failure;
   // Verifikasi kontak (pola lookup — generik agar tak bisa di-oracle).
   if (!requiresOrderAccessCode(order) && !(await buyerOrderAccessMatches(contact, order))) {
-    return NextResponse.json({ error: "Pesanan tidak ditemukan atau kontak tidak cocok." }, { status: 404 });
+    return NextResponse.json({ error: pick(locale, "Pesanan tidak ditemukan atau kontak tidak cocok.", "Order not found or the contact does not match.") }, { status: 404 });
   }
   const item = await db.queryFirst(
     `SELECT i.*, t.refill_days, COALESCE(s.api_refill,0) AS api_refill FROM pedia_order_items i
@@ -46,13 +49,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       WHERE i.order_code=?`,
     clean,
   ).catch(() => null);
-  if (!item) return NextResponse.json({ error: "Pesanan tidak ditemukan." }, { status: 404 });
+  if (!item) return NextResponse.json({ error: pick(locale, "Pesanan tidak ditemukan.", "Order not found.") }, { status: 404 });
   let snapshot: Record<string, unknown> = {};
   try { snapshot = JSON.parse(String(item.snapshot_json)); } catch { /* legacy */ }
-  if (!isPediaProvider(item.supplier)) return NextResponse.json({ error: "Refill tidak tersedia." }, { status: 409 });
+  if (!isPediaProvider(item.supplier)) return NextResponse.json({ error: pick(locale, "Refill tidak tersedia.", "Refill is not available.") }, { status: 409 });
   // 2026-11-01: aturan sama dengan GET/halaman Refill (src/lib/pedia/refill-policy.ts).
   const state = pediaRefillState(item, snapshot, Number(item.api_refill) === 1);
-  if (!state.eligible) return NextResponse.json({ error: REFILL_REASON_TEXT[state.reason!], reason: state.reason }, { status: 409 });
+  if (!state.eligible) return NextResponse.json({ error: refillReasonText(state.reason!, locale), reason: state.reason }, { status: 409 });
   // Only conclusive terminal refills may be replaced. In particular a
   // timed-out/requested refill must retain its ID and original dedupe key.
   const claimed = await db.execRun(
@@ -65,14 +68,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     clean,
   ).catch(() => null);
   if (Number((claimed as { changes?: number })?.changes ?? 0) !== 1) {
-    return NextResponse.json({ error: "Refill sebelumnya belum selesai atau sudah diajukan dalam 24 jam terakhir." }, { status: 409 });
+    return NextResponse.json({ error: pick(locale, "Refill sebelumnya belum selesai atau sudah diajukan dalam 24 jam terakhir.", "A previous refill is unfinished or one was requested in the last 24 hours.") }, { status: 409 });
   }
   if (state.mode === "manual") {
     // Layanan bergaransi tanpa tombol refill API: admin meneruskan ke CS IndoSMM.
     await db.execRun(`UPDATE pedia_order_items SET refill_status='manual_requested' WHERE order_code=? AND refill_status='requested'`, clean).catch(() => null);
     const { notifyPediaNeedsCheck } = await import("@/lib/pedia/notify");
     await notifyPediaNeedsCheck(db, clean, `Refill manual diminta pembeli. Ajukan ke CS IndoSMM dengan Order ID ${String(item.supplier_order_id ?? "-")}, lalu tandai hasilnya di Admin → Pedia → Pesanan.`).catch(() => null);
-    return NextResponse.json({ ok: true, mode: "manual", message: "Refill diterima dan diproses admin. Biasanya dalam 1×24 jam." });
+    return NextResponse.json({ ok: true, mode: "manual", message: pick(locale, "Refill diterima dan diproses admin. Biasanya dalam 1×24 jam.", "Refill received and processed by admin. Usually within 24 hours.") });
   }
   // Panggil supplier via proxy (idempoten: refill per order 1×/24 jam sudah diklaim).
   try {
@@ -90,5 +93,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ).catch(() => null);
     }
   } catch { /* status tetap requested; cron/admin menyusul */ }
-  return NextResponse.json({ ok: true, mode: "api", message: "Refill diajukan. Biasanya mulai dalam 24 jam." });
+  return NextResponse.json({ ok: true, mode: "api", message: pick(locale, "Refill diajukan. Biasanya mulai dalam 24 jam.", "Refill requested. It usually starts within 24 hours.") });
 }

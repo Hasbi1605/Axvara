@@ -6,6 +6,9 @@ import { useState } from "react";
 import { usePediaSearch } from "@/stores/pedia-search";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
+import { PreferenceControls } from "@/components/storefront/PreferenceControls";
+import { useDisplayLocale } from "@/hooks/useDisplayPrices";
+import { pediaCopy } from "@/lib/pedia/copy";
 import { SITE } from "@/lib/site";
 import { pediaRoutePath } from "@/lib/pedia/route-path";
 
@@ -16,6 +19,8 @@ export function PediaNavbar() {
   const q = usePediaSearch((s) => s.q);
   const setQ = usePediaSearch((s) => s.setQ);
   const [mobileSearch, setMobileSearch] = useState(false);
+  // 2026-11-07: bahasa mengikuti cookie axv_locale yang sama dengan Market.
+  const t = pediaCopy(useDisplayLocale());
 
   const onSearch = (v: string) => {
     setQ(v);
@@ -28,7 +33,7 @@ export function PediaNavbar() {
   return (
     <header className="ax-glass-strong sticky top-0 z-50 border-b border-white/10">
       <div className="mx-auto flex h-[64px] max-w-[1280px] items-center gap-2 px-4 sm:gap-4 sm:px-6 lg:px-8">
-        <Link prefetch={false} href="/pedia" className="flex min-w-0 shrink items-center gap-2 sm:gap-3" aria-label="Axvara Pedia — beranda">
+        <Link prefetch={false} href="/pedia" className="flex min-w-0 shrink items-center gap-2 sm:gap-3" aria-label={t.homeAria}>
           {/* 2026-10-08 (owner): mark SVG trace dari logo Muse (mirip 91% IoU
              vs PNG, kanvas padat tanpa padding transparan → tampil penuh
              sebesar mark pusat). File: public/brand/pedia-mark.svg.
@@ -53,9 +58,9 @@ export function PediaNavbar() {
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60">
               <IosIcon name="search" size={16} tint="white" />
             </span>
-            <input aria-label="Cari layanan Pedia" type="search" value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari Followers Instagram, Likes TikTok..." className="w-full h-10 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 focus:bg-white/[0.08] transition" />
+            <input aria-label={t.searchAria} type="search" value={q} onChange={(e) => onSearch(e.target.value)} placeholder={t.searchPlaceholder} className="w-full h-10 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40 focus:bg-white/[0.08] transition" />
             {q && (
-              <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label="Clear">
+              <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label={t.clear}>
                 <X className="w-3.5 h-3.5 text-white/70" />
               </button>
             )}
@@ -64,13 +69,16 @@ export function PediaNavbar() {
         <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
           {/* Urutan 1:1 Market: ServicesMenu dulu, tombol search sesudahnya. */}
           <ServicesMenu active="pedia" />
-          <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label="Cari layanan" aria-expanded={mobileSearch}>
+          <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label={t.searchToggle} aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
-          <nav aria-label="Navigasi Pedia" className="hidden items-center gap-1 text-sm text-white/70 xl:flex">
-            <Link prefetch={false} href="/pedia/layanan" className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">Katalog</Link>
-            <Link prefetch={false} href="/pedia/lacak" aria-current={path === "/pedia/lacak" ? "page" : undefined} className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">Lacak Pesanan</Link>
-            <a href={SITE.webUrl + "/artikel"} className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">Artikel</a>
+          {/* 2026-11-07 (owner): switcher bahasa + mata uang yang sama dengan Market,
+              cookie axv_locale / axv_currency. Hanya tampilan; quote & pesanan tetap. */}
+          <PreferenceControls />
+          <nav aria-label={t.navAria} className="hidden items-center gap-1 text-sm text-white/70 xl:flex">
+            <Link prefetch={false} href="/pedia/layanan" className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">{t.navCatalog}</Link>
+            <Link prefetch={false} href="/pedia/lacak" aria-current={path === "/pedia/lacak" ? "page" : undefined} className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">{t.navTrack}</Link>
+            <a href={SITE.webUrl + "/artikel"} className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">{t.navArticles}</a>
           </nav>
         </div>
       </div>
@@ -80,9 +88,9 @@ export function PediaNavbar() {
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60">
               <IosIcon name="search" size={16} tint="white" />
             </span>
-            <input aria-label="Cari layanan Pedia" type="search" autoFocus value={q} onChange={(e) => onSearch(e.target.value)} placeholder="Cari layanan..." className="w-full h-11 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-base text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40" />
+            <input aria-label={t.searchAria} type="search" autoFocus value={q} onChange={(e) => onSearch(e.target.value)} placeholder={t.searchShort} className="w-full h-11 pl-10 pr-10 rounded-full bg-white/[0.06] border border-white/10 text-base text-white placeholder:text-white/40 focus:outline-none focus:border-[#00E5FF]/40" />
             {q && (
-              <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label="Clear">
+              <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/15 transition" aria-label={t.clear}>
                 <X className="w-3.5 h-3.5 text-white/70" />
               </button>
             )}

@@ -1,7 +1,9 @@
-// Bilingual core (W3, LOCAL ONLY): tiny shared Locale + cookie reader.
-// No i18n dependency. Scope: commerce paths ONLY (web/TG buyer flows);
-// admin/pedia/WA remain ID (see payments.md + locale map proposal).
-// Cookie name frozen for UI packet: axv_locale.
+// Bilingual core: tiny shared Locale + cookie reader. No i18n dependency.
+// Scope: commerce paths + Pedia storefront + AXVARA Market buyer surfaces
+// (owner 7 Nov 2026: EN covers Market chrome, categories and static content;
+// Pedia ikut axv_locale/axv_currency); admin/WA remain ID.
+// Sumber kebenaran: cookie `axv_locale` untuk chrome/beranda dan `order.locale`
+// untuk halaman pesanan/lacak. Cookie name frozen: axv_locale.
 export type Locale = "id" | "en";
 export const LOCALES = ["id", "en"] as const;
 export const LOCALE_COOKIE = "axv_locale" as const;
