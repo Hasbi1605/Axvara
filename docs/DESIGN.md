@@ -697,6 +697,7 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
 - Harga: besar cyan, harga coret kecil muted jika diskon (dari varian termurah
   yang masih tersedia — bukan varian habis)
 - Tombol: "Tambah" (glass → cyan solid saat hover), icon keranjang
+- Tombol aksi kartu "Keranjang"/"Checkout" (dan span "Stok Habis") memakai tinggi `h-8` di mobile / `sm:h-9` di desktop (32/36px) — dikembalikan ke ukuran semula per keputusan owner 7 November 2026 setelah sempat membesar ke `h-11` tanpa catatan di commit 2e96cd5. Jangan menaikkan tinggi tombol kartu tanpa instruksi owner.
 - Hover: border `rgba(0,229,255,0.35)`, glow radial, lift `translateY(-4px)`, shadow cyan soft
 - Grid: 1 col mobile, 2 tablet, 3-4 desktop, gap 20px
 - Katalog: 16 produk + tombol **"Tampilkan N produk lagi"** (bukan nomor halaman);

@@ -212,7 +212,7 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
                 <button
                   type="button"
                   onClick={handleAdd}
-                  className="h-11 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none active:scale-95"
+                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none active:scale-95"
                 >
                   <IosIcon name="shopping-bag" size={12} tint="white" /> <span>{t.addToCart}</span>
                 </button>
@@ -221,7 +221,7 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
                   onClick={handleCheckout}
                   disabled={checkoutPending}
                   aria-busy={checkoutPending}
-                  className="h-11 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none active:scale-95 disabled:cursor-wait disabled:opacity-80"
+                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none active:scale-95 disabled:cursor-wait disabled:opacity-80"
                 >
                   {checkoutPending ? <InlineSpinner className="w-3 h-3" tone="dark" /> : <IosIcon name="lightning-bolt" size={12} tint="black" />} {t.checkout}
                 </button>
