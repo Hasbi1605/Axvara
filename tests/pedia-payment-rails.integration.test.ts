@@ -9,6 +9,7 @@ import { applyPediaDiff } from "@/lib/pedia/sync";
 import { createPediaQuoteToken } from "@/lib/pedia/quote";
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { resetCryptoMarketMemo } from "@/lib/payments/market-snapshot";
+import * as qris from "@/lib/payments/dana-qris";
 
 const gatewayMock = vi.hoisted(() => ({
   catalog: [] as unknown[],
@@ -73,19 +74,19 @@ function stubGatewayEnv() {
   vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture-gw-secret");
 }
 
-async function quote(total = { quantity: 1000, target: "https://www.instagram.com/buyer/" }) {
+async function quote(total = { quantity: 1000, target: "https://www.instagram.com/buyer/" }, headers: Record<string, string> = {}) {
   const { POST } = await import("@/app/api/pedia/quote/route");
   const res = await POST(new Request("http://x/api/pedia/quote", {
-    method: "POST", headers: { "content-type": "application/json" },
+    method: "POST", headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify({ product_slug: "followers-instagram", tier_id: 1, ...total }),
   }) as never);
   return { res, data: await res.json() };
 }
 
-async function createOrder(body: Record<string, unknown>) {
+async function createOrder(body: Record<string, unknown>, headers: Record<string, string> = {}) {
   const { POST } = await import("@/app/api/pedia/orders/route");
   return POST(new Request("http://x/api/pedia/orders", {
-    method: "POST", headers: { "content-type": "application/json" },
+    method: "POST", headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify({ customer_wa: WA, customer_email: EMAIL, ...body }),
   }) as never);
 }
@@ -230,6 +231,23 @@ describe("Pedia order create memakai rail terpilih", () => {
     expect(row.status).toBe("dibatalkan");
     const item = f.sql.prepare("SELECT status FROM pedia_order_items ORDER BY id DESC LIMIT 1").get() as { status: string };
     expect(item.status).toBe("expired");
+  });
+});
+
+describe("Locale pembeli tersimpan di order", () => {
+  it("cookie axv_locale=en tersimpan di orders.locale; tanpa cookie default id", async () => {
+    const f = await seedCatalog();
+    vi.spyOn(qris, "createActiveQrisInvoice").mockImplementation(async (code: string, amount: number) => ({
+      orderCode: code, requestedAmount: amount, payableAmount: amount, uniqueCode: 0,
+      qrisPayload: "fixture", qrisUrl: "/qr.png", expires_at: iso(15 * 60_000), expiresAt: iso(15 * 60_000), isExisting: false,
+    }) as never);
+    const en = await quote(undefined, { cookie: "axv_locale=en" });
+    expect((await createOrder({ quote_token: en.data.quote_token, payment_method: "qris" }, { cookie: "axv_locale=en" })).status).toBe(201);
+    expect(f.sql.prepare("SELECT locale FROM orders ORDER BY id DESC LIMIT 1").get()).toEqual({ locale: "en" });
+
+    const id = await quote({ quantity: 250, target: "https://www.instagram.com/second/" });
+    expect((await createOrder({ quote_token: id.data.quote_token, payment_method: "qris" })).status).toBe(201);
+    expect(f.sql.prepare("SELECT locale FROM orders ORDER BY id DESC LIMIT 1").get()).toEqual({ locale: "id" });
   });
 });
 

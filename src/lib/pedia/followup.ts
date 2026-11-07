@@ -22,10 +22,11 @@ export async function finishWithFollowup(db: DatabaseAccess, code: string, statu
  */
 export async function notifyPendingPediaFollowups(db: DatabaseAccess) {
   if (!db.canSpend(3)) return;
-  const rows = await db.queryAll(`SELECT order_code,reason FROM pedia_followups
-    WHERE state='open' AND (buyer_notification_claimed_at IS NULL OR
+  const rows = await db.queryAll(`SELECT f.order_code,f.reason,o.locale FROM pedia_followups f
+    JOIN orders o ON o.code=f.order_code
+    WHERE f.state='open' AND (buyer_notification_claimed_at IS NULL OR
       (${process.env.TELEGRAM_ADMIN_CHAT_ID ? 1 : 0}=1 AND notification_attempts<3 AND (notification_claimed_at IS NULL OR datetime(notification_retry_at)<=datetime('now'))))
-    ORDER BY created_at LIMIT 2`);
+    ORDER BY f.created_at LIMIT 2`);
   for (const row of rows) {
     if (!db.canSpend(3)) break;
     if (process.env.TELEGRAM_ADMIN_CHAT_ID) {
@@ -46,7 +47,11 @@ export async function notifyPendingPediaFollowups(db: DatabaseAccess) {
       WHERE order_code=? AND state='open' AND buyer_notification_claimed_at IS NULL`, row.order_code);
     if (buyer.changes === 1) {
       const { sendPediaBuyerMessage } = await import("./notify-channel");
-      await sendPediaBuyerMessage(db, String(row.order_code), `Pesanan Pedia ${row.order_code} memerlukan penyelesaian manual. Hubungi admin dengan kode pesanan melalui https://axvara.tech/wa. Tidak perlu membuat pesanan ulang.`).catch(() => {});
+      // Pesan pembeli mengikuti locale order tersimpan; notis admin di atas tetap ID.
+      const text = String(row.locale) === "en"
+        ? `Pedia order ${row.order_code} needs manual resolution. Contact admin with the order code via https://axvara.tech/wa. You do not need to place a new order.`
+        : `Pesanan Pedia ${row.order_code} memerlukan penyelesaian manual. Hubungi admin dengan kode pesanan melalui https://axvara.tech/wa. Tidak perlu membuat pesanan ulang.`;
+      await sendPediaBuyerMessage(db, String(row.order_code), text).catch(() => {});
     }
   }
 }

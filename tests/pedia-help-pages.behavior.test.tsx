@@ -2,15 +2,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
-import PediaHelpPage, { metadata as helpMeta } from "@/app/pedia/bantuan/page";
-import PediaTermsPage, { metadata as termsMeta } from "@/app/pedia/ketentuan/page";
+import PediaHelpPage, { generateMetadata as helpMetadata } from "@/app/pedia/bantuan/page";
+import PediaTermsPage, { generateMetadata as termsMetadata } from "@/app/pedia/ketentuan/page";
+
+// Default Indonesia (tanpa cookie): metadata tetap memakai canonical yang sama.
+vi.mock("next/headers", () => ({ cookies: async () => ({ toString: () => "" }) }));
 
 vi.mock("@/components/ui/IosIcon", () => ({ IosIcon: () => null }));
 afterEach(cleanup);
 
 // 2026-11-01 (owner): Bantuan + Ketentuan Pedia disamakan dengan halaman Market yang setara.
 describe("Pedia help page", () => {
-  it("shows the four Pedia order steps and current FAQ answers", () => {
+  it("shows the four Pedia order steps and current FAQ answers", async () => {
     render(<PediaHelpPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Bantuan" })).toBeTruthy();
     const steps = document.getElementById("cara-order")!;
@@ -24,12 +27,12 @@ describe("Pedia help page", () => {
     expect(document.querySelectorAll("details summary").length).toBe(8);
     expect(text).toContain("Apa itu No Drop, Less Drop, dan High Drop?");
     for (const name of ["Lihat layanan", "Lacak pesanan", "Tanya admin"]) expect(screen.getByRole("link", { name })).toBeTruthy();
-    expect(helpMeta.alternates?.canonical).toBe("/bantuan");
+    expect((await helpMetadata()).alternates?.canonical).toBe("/bantuan");
   });
 });
 
 describe("Pedia terms page", () => {
-  it("keeps every original rule, grouped into cards, with actions", () => {
+  it("keeps every original rule, grouped into cards, with actions", async () => {
     render(<PediaTermsPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Ketentuan Pedia" })).toBeTruthy();
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
@@ -38,7 +41,7 @@ describe("Pedia terms page", () => {
     const text = document.body.textContent ?? "";
     for (const rule of ["tidak menjamin jangkauan, penjualan, atau FYP", "wajib publik", "Penurunan jumlah (drop) dapat terjadi", "Tidak ada saldo pembeli, kode kredit, atau refund otomatis", "bukan tanggung jawab AXVARA", "risiko akun sepenuhnya pada pembeli", "politik praktis"]) expect(text).toContain(rule);
     expect(screen.getByRole("link", { name: "Lihat cara order" }).getAttribute("href")).toBe("/pedia/bantuan#cara-order");
-    expect(termsMeta.alternates?.canonical).toBe("/ketentuan");
+    expect((await termsMetadata()).alternates?.canonical).toBe("/ketentuan");
   });
 });
 

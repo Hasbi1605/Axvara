@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## Keputusan owner 7 November 2026: metadata, halaman "segera hadir", dan email Pedia ID/EN (lokal, belum deploy)
+- Semua route Pedia menyajikan title/description/OpenGraph sesuai cookie bahasa (`axv_locale`), tanpa mengubah canonical/robots yang sudah ada. Pindah bahasa hanya mengubah tampilan; pesanan, quote, dan tautan tidak berubah.
+- Halaman "segera hadir" saat Pedia belum dibuka tampil dalam Indonesia atau Inggris.
+- Email transaksional pembeli (pembayaran diterima, diproses, selesai, dan pesan penyelesaian manual) mengikuti bahasa yang dipakai pembeli saat memesan, termasuk subjek, isi, label ringkasan, tombol, dan nama layanan versi Inggris. Angka, batas jumlah, dan ketentuan refill tidak berubah. Notifikasi internal admin tetap Indonesia.
+- Bahasa pembeli disimpan pada pesanan saat dibuat menggunakan kolom yang sudah ada; tidak ada kolom baru. Pengiriman ulang/percobaan ulang email tetap sama.
+
 ## Keputusan owner 7 November 2026: konten EN Market — fase 2 (lokal, belum deploy)
 - Deskripsi produk punya kolom admin `description_en` (migrasi 0103) dengan editor di tab "Deskripsi & S&K" untuk semua produk; EN dipakai bila terisi, fallback ID (override ?? WR). Seed 0104 menerjemahkan 71 produk produksi yang punya teks (Testing Only dilewati) secara idempoten dan tidak menimpa suntingan admin.
 - S&K + cara aktivasi kurasi punya versi Inggris untuk 95 entri dengan fingerprint lock yang sama; perubahan teks WR membuat versi Inggris (dan ID) fallback ke teks WR terbaru. Konten S&K per-varian yang disunting admin tetap ID.

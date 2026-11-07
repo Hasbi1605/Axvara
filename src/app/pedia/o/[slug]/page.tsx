@@ -1,10 +1,17 @@
 // src/app/pedia/o/[slug]/page.tsx — Halaman order (PD-04, DESIGN §6.3).
 // SSR produk + tingkat aktif; interaksi di OrderClient.
+import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { requestLocale } from "@/lib/i18n/server-locale";
+import { pediaPageMetadata } from "@/lib/pedia/metadata";
 import { notFound } from "next/navigation";
 import { PlatformPageClient } from "../../p/[platform]/platform-client";
 import { pediaPlatform } from "@/lib/pedia/platforms";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return pediaPageMetadata(await requestLocale(), "order");
+}
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";

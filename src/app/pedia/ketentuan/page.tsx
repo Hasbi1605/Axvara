@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { requestLocale } from "@/lib/i18n/server-locale";
+import { pediaPageMetadata } from "@/lib/pedia/metadata";
 import { PediaTermsContent } from "./terms-content-client";
 
 export const runtime = "edge";
@@ -8,11 +10,9 @@ export const runtime = "edge";
 // label kecil, pengantar, kartu glass per topik, catatan amber, deret tombol.
 // Isi ketujuh poin lama dipertahankan, hanya dikelompokkan per topik.
 // 2026-11-07: isi dipindah ke client agar bahasa mengikuti cookie axv_locale.
-export const metadata: Metadata = {
-  title: "Ketentuan layanan",
-  description: "Ketentuan layanan AXVARA Pedia: syarat target, refill, pesanan sebagian, dan konten yang dilarang.",
-  alternates: { canonical: "/ketentuan" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return pediaPageMetadata(await requestLocale(), "terms", "/ketentuan");
+}
 
 export default function PediaTermsPage() {
   return <PediaTermsContent />;

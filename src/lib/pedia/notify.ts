@@ -10,9 +10,11 @@ import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
 import { SITE } from "@/lib/site";
 import { readPediaServiceCopy } from "@/lib/pedia/service-copy";
 import { refillLabel, whiteLabel } from "@/lib/pedia/terms";
-import { renderBrandedNotice } from "@/lib/warung-rebahan/email-forward";
+import { pediaServiceName } from "@/lib/pedia/copy";
+import { renderBrandedNotice, type BrandedNoticeContext } from "@/lib/warung-rebahan/email-forward";
 
 type Db = ReturnType<typeof createDatabaseAccess>;
+export type PediaEmailLocale = "id" | "en";
 
 export type PediaBuyerContext = {
   email: string;
@@ -34,21 +36,62 @@ export type PediaBuyerContext = {
   etaFinish: string | null;
   refillDays: number;
   pediaUrl: string;
+  /** Locale pembeli tersimpan di orders.locale (default id). */
+  locale: PediaEmailLocale;
 };
 
 function sanitizePublicText(value: unknown, max = 200): string {
   return whiteLabel(String(value ?? "")).trim().slice(0, max);
 }
 
-function etaLine(etaStart: string | null, etaFinish: string | null): string | null {
+/** Unit waktu data (mis. "0–4 jam") dialihbahasakan HANYA untuk tampilan EN. */
+function timeText(value: string, locale: PediaEmailLocale): string {
+  if (locale !== "en") return value;
+  return value
+    .replace(/(\d+)\s*jam\b/gi, "$1 hours")
+    .replace(/(\d+)\s*menit\b/gi, "$1 minutes")
+    .replace(/(\d+)\s*hari\b/gi, "$1 days");
+}
+
+function etaLine(etaStart: string | null, etaFinish: string | null, locale: PediaEmailLocale = "id"): string | null {
   const start = (etaStart ?? "").trim();
   const finish = (etaFinish ?? "").trim();
+  if (locale === "en") {
+    if (finish) return `Estimated finish: ${timeText(finish, locale)}. The estimate follows the queue.`;
+    if (start === "Mengikuti antrean layanan") return "Estimated start: follows the service queue.";
+    if (start) return `Estimated start: ${timeText(start, locale)} after payment. Service estimate, not a guarantee.`;
+    return null;
+  }
   if (finish) return `Perkiraan selesai: ${finish}. Estimasi mengikuti antrean.`;
   if (start) {
     if (start === "Mengikuti antrean layanan") return start + ".";
     return `Perkiraan mulai: ${start} setelah pembayaran. Estimasi layanan, bukan jaminan.`;
   }
   return null;
+}
+
+/**
+ * Shell email `renderBrandedNotice` masih berbahasa Indonesia (dipakai Market).
+ * Untuk pembeli EN, footer/label shell diterjemahkan di lapisan Pedia TANPA
+ * mengubah modul bersama; teks tak dikenal dibiarkan apa adanya.
+ */
+const SHELL_EN: [string, string][] = [
+  // Kalimat utuh dulu, baru fragmen (urutan penting agar tidak terpotong dini).
+  ["Email otomatis dari Axvara, mohon jangan dibalas.", "Automated email from Axvara, please do not reply."],
+  ["Butuh bantuan? Tim kami siap membantu:", "Need help? Our team is ready to assist:"],
+  ["Halaman pesanan: ", "Order page: "],
+  ['lang="id"', 'lang="en"'],
+  ["NO. INVOICE", "INVOICE NO."],
+  ["Hubungi Kami via WhatsApp", "Contact us on WhatsApp"],
+  ["Terima kasih sudah berbelanja di", "Thanks for shopping at"],
+  ["Email otomatis", "Automated email"],
+  ["mohon jangan dibalas.", "please do not reply."],
+  ["Butuh bantuan? WA ", "Need help? WA "],
+];
+function localizeShell(rendered: { html: string; text: string }, locale: PediaEmailLocale): { html: string; text: string } {
+  if (locale !== "en") return rendered;
+  const apply = (value: string) => SHELL_EN.reduce((out, [from, to]) => out.split(from).join(to), value);
+  return { html: apply(rendered.html), text: apply(rendered.text) };
 }
 
 /** Single joined buyer context: ONE budgeted read (orders ⨝ pedia item ⨝
@@ -58,7 +101,7 @@ function etaLine(etaStart: string | null, etaFinish: string | null): string | nu
 export async function pediaBuyerContext(db: Db, orderCode: string): Promise<PediaBuyerContext | null> {
   if (!db.canSpend(1)) return null;
   const row = await db.queryFirst(
-    `SELECT o.customer_name, o.customer_email, o.status AS order_status, o.payment_status, o.paid_at,
+    `SELECT o.customer_name, o.customer_email, o.locale, o.status AS order_status, o.payment_status, o.paid_at,
             i.status AS item_status, i.quantity, i.start_count, i.remains, i.target_normalized, i.supplier_order_id,
             i.snapshot_json, p.name AS product_name, t.tier AS tier_name, t.label_note,
             t.eta_start, t.eta_finish
@@ -105,6 +148,7 @@ export async function pediaBuyerContext(db: Db, orderCode: string): Promise<Pedi
     // Snapshot refill_days (order-time terms); live tier is not re-read here.
     refillDays: Number((snap as Record<string, unknown>)?.refill_days) || 0,
     pediaUrl: `${SITE.pediaUrl.replace(/\/$/, "")}/pesanan/${encodeURIComponent(orderCode)}`,
+    locale: String(row.locale) === "en" ? "en" : "id",
   };
 }
 
@@ -121,27 +165,42 @@ function pediaBrandedFields(ctx: PediaBuyerContext): {
   orderCode: string; orderUrl: string; supportWa: string;
   ctaLabel: string; details: { label: string; value: string }[];
 } {
-  const fmt = (n: number) => n.toLocaleString("id-ID");
+  const en = ctx.locale === "en";
+  const fmt = (n: number) => n.toLocaleString(en ? "en-US" : "id-ID");
+  const productName = en ? pediaServiceName(ctx.productName, "en") : ctx.productName;
+  const serviceName = en ? pediaServiceName(ctx.serviceName, "en") : ctx.serviceName;
   const details = [
-    { label: "Layanan", value: `${ctx.productName} · ${ctx.serviceName}` },
-    { label: "Jumlah dipesan", value: fmt(ctx.quantity) },
-    { label: "Jumlah awal", value: ctx.startCount != null ? fmt(ctx.startCount) : "Belum dilaporkan" },
+    { label: en ? "Service" : "Layanan", value: `${productName} · ${serviceName}` },
+    { label: en ? "Quantity ordered" : "Jumlah dipesan", value: fmt(ctx.quantity) },
+    { label: en ? "Start count" : "Jumlah awal", value: ctx.startCount != null ? fmt(ctx.startCount) : (en ? "Not reported yet" : "Belum dilaporkan") },
   ];
   if (ctx.status !== "completed") {
-    details.push({ label: "Sisa", value: ctx.remains != null ? fmt(ctx.remains) : "Belum dilaporkan" });
+    details.push({ label: en ? "Remaining" : "Sisa", value: ctx.remains != null ? fmt(ctx.remains) : (en ? "Not reported yet" : "Belum dilaporkan") });
   }
-  details.push({ label: "Masuk", value: ctx.done != null ? `${fmt(ctx.done)} dari ${fmt(ctx.quantity)}` : "Belum dikonfirmasi" });
-  if (ctx.target) details.push({ label: "Link tujuan", value: ctx.target });
+  details.push({
+    label: en ? "Delivered" : "Masuk",
+    value: ctx.done != null ? (en ? `${fmt(ctx.done)} of ${fmt(ctx.quantity)}` : `${fmt(ctx.done)} dari ${fmt(ctx.quantity)}`) : (en ? "Not confirmed yet" : "Belum dikonfirmasi"),
+  });
+  if (ctx.target) details.push({ label: en ? "Target link" : "Link tujuan", value: ctx.target });
   return {
     orderCode: ctx.pediaUrl.split("/").pop() ?? "",
     orderUrl: ctx.pediaUrl,
     supportWa: SITE.adminWaLocal,
-    ctaLabel: "Lihat Status Pesanan →",
+    ctaLabel: en ? "View Order Status →" : "Lihat Status Pesanan →",
     details,
   };
 }
 
 function pediaLifecycleLine(ctx: PediaBuyerContext): string {
+  if (ctx.locale === "en") {
+    if (ctx.status === "completed") return "completed";
+    if (ctx.status === "partial") return "partially completed — we are following up";
+    if (ctx.status === "canceled") return "canceled — we are following up";
+    if (ctx.status === "needs_check") return "being checked by our team";
+    if (ctx.status === "expired") return "expired";
+    if (ctx.status === "in_progress") return "in progress";
+    return "queued and will be processed automatically";
+  }
   if (ctx.status === "completed") return "selesai";
   if (ctx.status === "partial") return "selesai sebagian — sedang kami tindak lanjuti";
   if (ctx.status === "canceled") return "dibatalkan — sedang kami tindak lanjuti";
@@ -157,58 +216,72 @@ function firstWord(name: string): string {
   return name.trim().split(/\s+/)[0] || "Kak";
 }
 
+/** Render shell bersama lalu terjemahkan footer/labelnya untuk pembeli EN. */
+function renderNotice(ctx: PediaBuyerContext, params: Omit<BrandedNoticeContext, "orderCode" | "orderUrl" | "supportWa">): { html: string; text: string } {
+  return localizeShell(renderBrandedNotice({ ...pediaBrandedFields(ctx), ...params }), ctx.locale);
+}
+
 /** Paid → Market shell: title/subtitle/pill + greeting + lifecycle + eta. */
 function paidEmail(ctx: PediaBuyerContext, orderCode: string): PediaEmailPayload {
-  const eta = ctx.status === "completed" ? null : etaLine(ctx.etaStart, ctx.etaFinish);
-  const shared = pediaBrandedFields(ctx);
-  const rendered = renderBrandedNotice({
-    ...shared,
-    title: "Pembayaran Diterima",
-    subtitle: "Pesananmu masuk antrean dan diproses otomatis.",
-    status: { label: "Pembayaran diterima", tone: "success" },
-    paragraphs: [
+  const en = ctx.locale === "en";
+  const eta = ctx.status === "completed" ? null : etaLine(ctx.etaStart, ctx.etaFinish, ctx.locale);
+  const queueLine = en ? "queued and will be processed automatically" : "masuk antrean dan akan diproses otomatis";
+  const rendered = renderNotice(ctx, {
+    title: en ? "Payment Received" : "Pembayaran Diterima",
+    subtitle: en ? "Your order is queued and will be processed automatically." : "Pesananmu masuk antrean dan diproses otomatis.",
+    status: { label: en ? "Payment received" : "Pembayaran diterima", tone: "success" },
+    paragraphs: en ? [
+      `Hi ${firstWord(ctx.displayName)}, we have received your payment for your Pedia order.`,
+      `${pediaLifecycleLine(ctx) === queueLine ? "Your order is queued and will be processed automatically." : `Current status: ${pediaLifecycleLine(ctx)}.`} The latest status is always on the order page.`,
+    ] : [
       `Halo ${firstWord(ctx.displayName)}, pembayaran untuk pesanan Pedia kamu sudah kami terima.`,
-      `${pediaLifecycleLine(ctx) === "masuk antrean dan akan diproses otomatis" ? "Pesanan masuk antrean dan akan diproses otomatis." : `Status saat ini: ${pediaLifecycleLine(ctx)}.`} Status terbaru selalu ada di halaman pesanan.`,
+      `${pediaLifecycleLine(ctx) === queueLine ? "Pesanan masuk antrean dan akan diproses otomatis." : `Status saat ini: ${pediaLifecycleLine(ctx)}.`} Status terbaru selalu ada di halaman pesanan.`,
     ],
     callout: eta ? { text: eta, tone: "info" } : null,
   });
-  return { subject: `Pembayaran diterima — ${orderCode}`, text: rendered.text, html: rendered.html };
+  return { subject: en ? `Payment received — ${orderCode}` : `Pembayaran diterima — ${orderCode}`, text: rendered.text, html: rendered.html };
 }
 
 /** Processing ("Diproses" = accepted, not necessarily running yet). */
 function processingEmail(ctx: PediaBuyerContext, orderCode: string): PediaEmailPayload {
-  const eta = etaLine(ctx.etaStart, ctx.etaFinish);
-  const shared = pediaBrandedFields(ctx);
+  const en = ctx.locale === "en";
+  const eta = etaLine(ctx.etaStart, ctx.etaFinish, ctx.locale);
   // Info callout when there is no progress yet (or a finish estimate exists).
   const showEta = eta && (ctx.done == null || ctx.etaFinish);
-  const rendered = renderBrandedNotice({
-    ...shared,
-    title: "Pesanan Diproses",
-    subtitle: "Pesananmu sudah diterima sistem dan sedang diproses.",
-    status: { label: "Diproses", tone: "info" },
-    paragraphs: [
+  const rendered = renderNotice(ctx, {
+    title: en ? "Order Processing" : "Pesanan Diproses",
+    subtitle: en ? "Your order has been accepted and is being processed." : "Pesananmu sudah diterima sistem dan sedang diproses.",
+    status: { label: en ? "Processing" : "Diproses", tone: "info" },
+    paragraphs: en ? [
+      `Hi ${firstWord(ctx.displayName)}, your Pedia order has been accepted and is being processed automatically.`,
+      "The numbers below are the report at the time this email was sent. Follow the latest progress on the order page.",
+    ] : [
       `Halo ${firstWord(ctx.displayName)}, pesanan Pedia kamu sudah diterima sistem dan sedang diproses otomatis.`,
       "Angka di bawah adalah laporan saat email ini dikirim. Pantau perkembangan terbaru di halaman pesanan.",
     ],
     callout: showEta ? { text: eta, tone: "info" } : null,
   });
-  return { subject: `Pesanan sedang diproses — ${orderCode}`, text: rendered.text, html: rendered.html };
+  return { subject: en ? `Order processing — ${orderCode}` : `Pesanan sedang diproses — ${orderCode}`, text: rendered.text, html: rendered.html };
 }
 
 /** Completed → Market shell, Refill N Days terms (never "masa garansi"). */
 function completedEmail(ctx: PediaBuyerContext, orderCode: string): PediaEmailPayload {
-  const shared = pediaBrandedFields(ctx);
-  const rendered = renderBrandedNotice({
-    ...shared,
-    title: "Pesanan Selesai",
-    subtitle: "Terima kasih sudah memesan di AXVARA Pedia.",
-    status: { label: "Selesai", tone: "success" },
-    paragraphs: [`Halo ${firstWord(ctx.displayName)}, pesanan Pedia kamu sudah selesai.`],
+  const en = ctx.locale === "en";
+  const rendered = renderNotice(ctx, {
+    title: en ? "Order Completed" : "Pesanan Selesai",
+    subtitle: en ? "Thank you for ordering at AXVARA Pedia." : "Terima kasih sudah memesan di AXVARA Pedia.",
+    status: { label: en ? "Completed" : "Selesai", tone: "success" },
+    paragraphs: [en ? `Hi ${firstWord(ctx.displayName)}, your Pedia order is complete.` : `Halo ${firstWord(ctx.displayName)}, pesanan Pedia kamu sudah selesai.`],
     callout: ctx.refillDays > 0
-      ? { text: `Layanan ini memiliki ${refillLabel(ctx.refillDays)}. Bila jumlah turun dalam masa refill, ajukan refill dari halaman pesanan.`, tone: "info" }
+      ? {
+        text: en
+          ? `This service includes ${refillLabel(ctx.refillDays)}. If the count drops during the refill period, request a refill from the order page.`
+          : `Layanan ini memiliki ${refillLabel(ctx.refillDays)}. Bila jumlah turun dalam masa refill, ajukan refill dari halaman pesanan.`,
+        tone: "info",
+      }
       : null,
   });
-  return { subject: `Pesanan selesai — ${orderCode}`, text: rendered.text, html: rendered.html };
+  return { subject: en ? `Order completed — ${orderCode}` : `Pesanan selesai — ${orderCode}`, text: rendered.text, html: rendered.html };
 }
 
 /** Phase send boundary: single joined context, current paid state verified

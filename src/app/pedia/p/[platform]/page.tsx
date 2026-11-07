@@ -1,10 +1,17 @@
 // src/app/pedia/p/[platform]/page.tsx — Halaman per platform (PD-03).
 // Header ikon 40px + segmented filter jenis + grid ProductCard.
+import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { requestLocale } from "@/lib/i18n/server-locale";
+import { pediaPageMetadata } from "@/lib/pedia/metadata";
 import { notFound } from "next/navigation";
 import { pediaPlatform } from "@/lib/pedia/platforms";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { PlatformPageClient } from "./platform-client";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return pediaPageMetadata(await requestLocale(), "platform");
+}
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";

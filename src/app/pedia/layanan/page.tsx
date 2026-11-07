@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
+import { requestLocale } from "@/lib/i18n/server-locale";
+import { pediaPageMetadata } from "@/lib/pedia/metadata";
 import { headers } from "next/headers";
 import { PlatformCatalog } from "@/components/pedia/PlatformCatalog";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = {
-  title: "Katalog layanan",
-  description: "Pilih platform media sosial dan bandingkan layanan followers, likes, dan views AXVARA Pedia.",
-  alternates: { canonical: "/layanan" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return pediaPageMetadata(await requestLocale(), "catalog", "/layanan");
+}
 
 export default async function PediaServicesPage() {
   const h = await headers();

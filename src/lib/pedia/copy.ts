@@ -433,6 +433,9 @@ const ID = {
   termsCtaTrack: "Lacak pesanan",
   termsCtaHow: "Lihat cara order",
   termsAskMessage: "saya ingin bertanya tentang pesanan Pedia. Kode pesanan saya: ",
+  comingSoonTitle: "Axvara Pedia segera hadir",
+  comingSoonBody: "Katalog layanan followers, likes, dan views belum tersedia.",
+  comingSoonBack: "Kembali ke axvara.tech",
 } as const;
 
 export type PediaCopy = { [K in keyof typeof ID]: string };
@@ -840,6 +843,9 @@ const EN: PediaCopy = {
   termsCtaTrack: "Track order",
   termsCtaHow: "See how to order",
   termsAskMessage: "I want to ask about a Pedia order. My order code: ",
+  comingSoonTitle: "Axvara Pedia is coming soon",
+  comingSoonBody: "The catalog of followers, likes, and views services is not available yet.",
+  comingSoonBack: "Back to axvara.tech",
 };
 
 /** Kamus chrome pembeli Pedia. Default tetap Indonesia (`id`). */

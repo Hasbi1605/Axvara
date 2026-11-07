@@ -9,17 +9,24 @@ import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { CrossAppTransition } from "@/components/ui/CrossAppTransition";
 import { Spotlight } from "@/components/ui/Spotlight";
 import { DisplayPreferencesProvider } from "@/hooks/useDisplayPrices";
+import { requestLocale } from "@/lib/i18n/server-locale";
+import { pediaSiteMetadata } from "@/lib/pedia/metadata";
 
-export const metadata: Metadata = {
-  metadataBase: new URL("https://pedia.axvara.tech"),
-  title: { default: "Axvara Pedia — Layanan sosial media termurah", template: "%s · Axvara Pedia" },
-  description: "Katalog followers, likes, dan views. Bandingkan jumlah, harga, estimasi proses, dan ketentuan setiap paket sebelum memesan.",
-  icons: { icon: "/brand/pedia-mark-favicon.png", apple: "/brand/pedia-apple-touch-180.png" },
-  openGraph: {
-    type: "website", siteName: "Axvara Pedia", locale: "id_ID",
-    images: [{ url: "/brand/pedia-icon-512.png", width: 512, height: 512, alt: "Axvara Pedia — Layanan sosial media" }],
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await requestLocale();
+  const site = pediaSiteMetadata(locale);
+  return {
+    metadataBase: new URL("https://pedia.axvara.tech"),
+    title: { default: site.titleDefault, template: site.titleTemplate },
+    description: site.description,
+    icons: { icon: "/brand/pedia-mark-favicon.png", apple: "/brand/pedia-apple-touch-180.png" },
+    openGraph: {
+      type: "website", siteName: "Axvara Pedia", locale: site.ogLocale,
+      title: site.titleDefault, description: site.description,
+      images: [{ url: "/brand/pedia-icon-512.png", width: 512, height: 512, alt: "Axvara Pedia — Layanan sosial media" }],
+    },
+  };
+}
 
 export default function PediaLayout({ children }: { children: React.ReactNode }) {
   return (

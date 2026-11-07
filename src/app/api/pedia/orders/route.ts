@@ -247,11 +247,11 @@ export async function POST(req: NextRequest) {
   let claimed = false;
   try {
     const result = await db.d1.batch([
-      statement(`INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,status,sales_channel,order_kind,payment_status,paid_at,expires_at,buyer_access_version,buyer_access_format)
-        SELECT ?,?,?,?,?,?,?,?,?,?,'web','pedia',?,CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,datetime('now','+15 minutes'),1,'pin6'
+      statement(`INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,status,sales_channel,order_kind,payment_status,paid_at,expires_at,buyer_access_version,buyer_access_format,locale)
+        SELECT ?,?,?,?,?,?,?,?,?,?,'web','pedia',?,CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,datetime('now','+15 minutes'),1,'pin6',?
         WHERE NOT EXISTS(SELECT 1 FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check'))`,
         code,quoteIdRow,derivedName,normalizeWa(customer_wa),customer_email,items,freshTotal,payment_method,selection.paymentAccount,payable ? "pending" : "lunas",payable ? "pending" : "paid",payable,
-        quote.target_normalized,quote.product_id),
+        quote.locale ?? locale, quote.target_normalized, quote.product_id),
       statement(`INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,supplier,supplier_service_id,supplier_rate_snapshot,status,submit_attempts)
         SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',0 WHERE ${owned}`,
         code,quote.product_id,quote.tier_id,snapshot,quote.target_raw,quote.target_normalized,qty,quote.unit_price,freshTotal,creditUsed,quote.supplier,quote.supplier_service_id,quote.supplier_rate_snapshot,code,quoteIdRow),
