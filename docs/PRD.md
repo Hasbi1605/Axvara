@@ -45,7 +45,7 @@
 - Batas: create definitif yang sudah membuat order tetapi belum punya TX tidak dapat melepas anchor (order memegang stok), sehingga tombol bisa dijawab "selesaikan langkah saat ini"; perbaikan state machine/klaim belum diubah.
 
 ## Keputusan owner 7 November 2026: nominal crypto tampil dibulatkan ke atas (lokal, belum deploy)
-- Angka koin yang DILIHAT/DISALIN pembeli dibulatkan ke atas ke desimal terkecil yang overpay-nya ≤ ~US$0,01, dibatasi presisi nominal asli (contoh: 2.24671004 + US$2.25 → 2.25; ETH 0.00075012345 → 0.000751; BTC 0.0000225123 → 0.0000226). Tanpa teks penjelasan tambahan; label "Kirim tepat" tetap.
+- Angka koin yang DILIHAT/DISALIN pembeli memakai presisi TERPENDEK (mulai 2 desimal, dibatasi presisi nominal asli) yang kelebihan AKTUAL hasil pembulatan ke atas ≤ US$0,01 menurut rasio USD/koin tersimpan pada invoice — bukan heuristik per langkah, kurs live, atau jaminan settlement provider. Contoh: 2.24671004 + US$2.25 → 2.25; 0.000468 + US$1.05 → 0.00047; 1.009 + US$10.09 → 1.01 (tepat 1 sen); 0.000503 + US$1.13 tetap 0.000503 (pembulatan ke 0.00051 > 1 sen). Tanpa teks penjelasan tambahan; label "Kirim tepat" tetap.
 - Berlaku di panel pesanan web (tampilan dan nilai Salin), hasil lacak, dan instruksi pembayaran Telegram. Nominal tersimpan, yang dikirim ke NOWPayments, serta cek paid/underpaid TIDAK berubah; overpay tetap diterima dengan review existing.
 
 ## Persetujuan gateway satu klik & hierarki panel pending — 7 November 2026 (lokal, belum deploy)

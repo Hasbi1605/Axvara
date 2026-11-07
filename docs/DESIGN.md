@@ -29,7 +29,7 @@
 - Lebar/rapat: label EN lebih panjang (mis. "Request Refill", "Choose a service"); komponen memakai `break-words`/`min-w-0` existing, tanpa mengubah ukuran chip, grid, atau sticky CTA.
 
 ## Nominal crypto tampil dibulatkan ke atas (7 November 2026, lokal; verifikasi browser belum dilakukan)
-- Angka koin di panel pesanan (tampilan `crypto-amount` dan nilai tombol "Salin"), hasil lacak, dan instruksi Telegram dibulatkan ke atas ke desimal terkecil yang nilai satu unitnya ≤ ~US$0,01, dibatasi presisi nominal asli. Contoh: `2.24671004` + US$2.25 → `2.25`; ETH `0.00075012345` → `0.000751`; BTC `0.0000225123` → `0.0000226`; nominal pendek/invalid/zero dibiarkan apa adanya.
+- Angka koin di panel pesanan (tampilan `crypto-amount` dan nilai tombol "Salin"), hasil lacak, dan instruksi Telegram memakai presisi terpendek (mulai 2 desimal, dibatasi presisi asli) yang kelebihan AKTUAL hasil pembulatan ke atas ≤ US$0,01 menurut rasio USD/koin tersimpan. Contoh: `2.24671004` + US$2.25 → `2.25`; `0.000468` + US$1.05 → `0.00047`; `1.009` + US$10.09 → `1.01`; `0.000503` + US$1.13 tetap `0.000503`; nominal pendek/invalid/zero dibiarkan apa adanya.
 - Tanpa badge, tooltip, atau teks penjelasan tambahan; label "Kirim tepat"/"Send exactly" dan peringatan jaringan tetap. Angka yang disimpan/dikirim ke provider tidak berubah, jadi desain tidak menampilkan simbol "≈" pada nominal koin.
 
 ## Kanal ShopeePay biasa & copy gangguan (7 November 2026, lokal; verifikasi browser belum dilakukan)

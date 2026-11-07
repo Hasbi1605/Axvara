@@ -311,8 +311,13 @@ describe("crypto", () => {
   it("pending (d): nominal TEKS persis, kolom QR + chip jaringan, alamat penuh + Salin alamat + Cek Pembayaran, satu baris rincian, peringatan amber", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    for (const [amount, shown] of [["98765432.123456789", "98765432.13"], ["0.000000123", "0.000000123"]] as const) {
-      stub({ gets: [orderBody(cryptoView({ pay_amount_text: amount, crypto_amount_text: `${amount} USDT` }), { payment_method: "nowpayments:usdtbsc" })] });
+    for (const [amount, shown, usd, breakdown] of [
+      ["98765432.123456789", "98765432.13", "15.87", "≈ US$15,87 · termasuk biaya layanan 1,5%"],
+      ["0.000000123", "0.000000123", "15.87", "≈ US$15,87 · termasuk biaya layanan 1,5%"],
+      ["0.000468", "0.00047", "1.05", "≈ US$1,05 · termasuk biaya layanan 1,5%"],
+    ] as const) {
+      const fixture = cryptoView({ pay_amount_text: amount, amount_text: usd, crypto_amount_text: `${amount} USDT` });
+      stub({ gets: [orderBody(fixture, { payment_method: "nowpayments:usdtbsc" })] });
       render(<OrderPage />);
       await screen.findByRole("heading", { name: "Pembayaran Crypto" });
       expect(screen.getByTestId("crypto-amount").textContent).toBe(`${shown} USDT`);
@@ -321,9 +326,11 @@ describe("crypto", () => {
       expect(await screen.findByTestId("crypto-qr")).toBeTruthy();
       expect(screen.getByTestId("crypto-network").textContent).toBe("USDT · BNB Smart Chain");
       // Satu baris rincian menggantikan blok Subtotal/Biaya/TOTAL(USD) terpisah.
-      expect(screen.getByTestId("crypto-breakdown").textContent).toBe("≈ US$15,87 · termasuk biaya layanan 1,5%");
+      expect(screen.getByTestId("crypto-breakdown").textContent).toBe(breakdown);
       expect(text()).not.toContain("Total (USD)");
       expect(text()).toContain("Kirim tepat"+shown+" USDT"); // label + nominal TAMPILAN (dibulatkan ke atas)
+      if (amount !== shown) expect(text()).not.toContain(`Kirim tepat${amount} USDT`); // payload mentah tidak dipakai mentah
+      expect(fixture.pay_amount_text).toBe(amount); // fixture mentah tidak dimutasi
       expect(screen.getByTestId("crypto-amount").querySelector("span.whitespace-nowrap")!.textContent).toBe("USDT"); // simbol tidak pernah terpotong di tengah kata
       expect(screen.getByTestId("crypto-logo").getAttribute("src")).toBe("/payments/coins/usdtbsc.svg");
       expect(text()).not.toContain("bsc");
