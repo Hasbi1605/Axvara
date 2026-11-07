@@ -34,6 +34,7 @@ export function ProductCopyTab({
   const id = useId();
   const descriptionId = `${id}-description`;
   const overrideId = `${id}-override`;
+  const descriptionEnId = `${id}-description-en`;
   const textareaBase = "w-full resize-y rounded-xl border px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none";
 
   return (
@@ -75,6 +76,22 @@ export function ProductCopyTab({
             {!form.adminDescriptionOverride?.trim() && <button type="button" className="min-h-11 text-xs font-semibold text-[#5cefff]" onClick={() => onSetForm({ ...form, adminDescriptionOverride: form.description ?? "" })}>Gunakan teks sumber sebagai awal</button>}
           </div>
         )}
+        <div className="space-y-1.5">
+          <label htmlFor={descriptionEnId} className="block text-xs font-semibold text-white/60">Deskripsi (English)</label>
+          <textarea
+            id={descriptionEnId}
+            value={form.descriptionEn ?? ""}
+            onChange={(e) => onSetForm({ ...form, descriptionEn: e.target.value })}
+            rows={6}
+            maxLength={2000}
+            aria-describedby={`${descriptionEnId}-hint`}
+            placeholder="English description shown when the buyer selects English…"
+            className={`${textareaBase} border-white/10 bg-white/[0.06] focus:border-[#00E5FF]/30`}
+          />
+          <p id={`${descriptionEnId}-hint`} className="text-[11px] leading-4 text-white/35">
+            Dipakai storefront EN (PDP, meta, Telegram EN). Kosongkan untuk kembali memakai teks Indonesia. Milik admin; sync WR/SK tidak menimpa. {FORMAT_HINT}
+          </p>
+        </div>
       </section>
 
       {!form.wrManaged && form.supplier !== "SK" ? <p className="rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.04] p-4 text-xs leading-5 text-white/60">S&K dan cara penggunaan bersama diatur pada tab Varian, di bagian pengiriman masing-masing varian. Panduan tersimpan bersama Simpan Produk.</p> : <section aria-labelledby={`${id}-terms-title`}>

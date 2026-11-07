@@ -12,6 +12,7 @@ export const MARKET_CATEGORY_NAMES: Record<string, { id: string; en: string }> =
   "produktivitas-office": { id: "Produktivitas & Office", en: "Productivity & Office" },
   "desain-video": { id: "Desain & Video", en: "Design & Video" },
   "developer-tools": { id: "Developer & Tools", en: "Developer & Tools" },
+  "bundle-hemat": { id: "Bundle Hemat", en: "Value Bundles" },
 };
 
 /** Label kategori: map EN by slug; fallback = nama DB (ID) atau slug yang dirapikan. */

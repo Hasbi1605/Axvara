@@ -225,7 +225,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
                 <>
                   {c.terms.sections.length > 0 && (
                     <MobileCollapsible title={text.terms}>
-                      <TermsBody sections={c.terms.sections} size="xs" />
+                      <TermsBody sections={c.terms.sections} size="xs" locale={locale} />
                     </MobileCollapsible>
                   )}
                   {(c.terms.activation.length > 0 || c.terms.notes.length > 0) && (

@@ -20,6 +20,8 @@ export type SeoProduct = {
   slug: string;
   name: string;
   description: string | null;
+  /** Terjemahan admin (migrasi 0103); kosong = pakai description. */
+  descriptionEn?: string | null;
   image: string | null;
   images: string | null;
   badge: string | null;
@@ -28,11 +30,14 @@ export type SeoProduct = {
   variants: SeoVariant[];
 };
 
-export function seoDescription(product: SeoProduct, maxLen = 160): string {
+export function seoDescription(product: SeoProduct, maxLen = 160, locale: "id" | "en" = "id"): string {
   // Paragraf pembuka saja: daftar keunggulan & bagian S&K bukan kalimat meta.
-  const raw = descriptionSummary(product.description).replace(/\s+/g, " ").trim();
+  const english = locale === "en" ? String(product.descriptionEn ?? "").trim() : "";
+  const raw = descriptionSummary(english || product.description).replace(/\s+/g, " ").trim();
   if (raw) return raw.length > maxLen ? `${raw.slice(0, maxLen - 1).trimEnd()}…` : raw;
-  return `${product.name} — tersedia di AXVARA dengan garansi sesuai syarat & ketentuan produk.`;
+  return locale === "en"
+    ? `${product.name} — available at AXVARA with warranty under the product terms.`
+    : `${product.name} — tersedia di AXVARA dengan garansi sesuai syarat & ketentuan produk.`;
 }
 
 /** Harga dari varian yang bisa dibeli bila ada (sama dengan kartu web), selain itu semua varian. */

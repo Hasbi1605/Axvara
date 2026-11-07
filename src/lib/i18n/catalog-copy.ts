@@ -387,3 +387,15 @@ const EN: CatalogCopy = {
 export function catalogCopy(locale: Locale): CatalogCopy {
   return locale === "en" ? EN : ID;
 }
+
+/** Deskripsi produk untuk pembeli: EN hanya bila `description_en` terisi. */
+export function localizedProductDescription(
+  product: { description?: string | null; descriptionEn?: string | null },
+  locale: Locale,
+): string {
+  if (locale === "en") {
+    const english = String(product.descriptionEn ?? "").trim();
+    if (english) return english;
+  }
+  return String(product.description ?? "");
+}

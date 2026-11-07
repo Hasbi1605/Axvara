@@ -275,6 +275,7 @@ async function readProducts(req: NextRequest) {
       whatsappAlias: String(r.whatsapp_alias || "").trim() || undefined,
       aliases: Array.isArray(aliases) ? aliases.map(String) : [],
       description: r.admin_description_override ?? r.description ?? "",
+      descriptionEn: String(r.description_en ?? "").trim() || (r.admin_description_override ?? r.description ?? ""),
       wrManaged: Number(r.wr_auto_managed ?? 0) === 1 || String(r.source ?? "") === "warung_rebahan",
       price,
       minPrice: variantCatalog ? price : undefined,

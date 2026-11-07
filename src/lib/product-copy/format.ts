@@ -4,6 +4,7 @@
 // fallback "teks pemasok dirapikan" untuk S&K/cara aktivasi yang belum
 // dikurasi. Data kurasi Axvara TIDAK diimpor di sini (lihat resolve.ts).
 import { cleanSupplierLines, type CleanLine } from "./text";
+import type { Locale } from "@/lib/i18n/locale";
 
 export type CopySectionKind = "paket" | "proses" | "aturan" | "garansi";
 export type CopySection = { kind: CopySectionKind; items: string[] };
@@ -23,6 +24,18 @@ export const COPY_SECTION_TITLES: Record<CopySectionKind, string> = {
   aturan: "Aturan pakai",
   garansi: "Garansi",
 };
+
+export const COPY_SECTION_TITLES_EN: Record<CopySectionKind, string> = {
+  paket: "Package details",
+  proses: "Process & delivery",
+  aturan: "Usage rules",
+  garansi: "Warranty",
+};
+
+/** Judul bagian untuk pembeli; ID tetap default (admin/telegram ID memakai yang ID). */
+export function copySectionTitles(locale: Locale): Record<CopySectionKind, string> {
+  return locale === "en" ? COPY_SECTION_TITLES_EN : COPY_SECTION_TITLES;
+}
 
 const GARANSI_RE = /garansi|backfree|back\s*free|\bbf\b|refund|ganti rugi|nogar/i;
 const RULE_START_RE = /^(?:dilarang|jangan|wajib|tidak boleh|hanya|maks(?:imal|imum)?\b|max\b|pastikan|harus)/i;
@@ -498,8 +511,8 @@ export type ParsedDescription = {
 
 const DESC_BULLET = /^\s*(?:[-–—•·*▪✓✔]|\p{Extended_Pictographic})/u;
 const DASH_BULLET = /^\s*[-–—•·*▪]/u;
-const TERMS_TITLE = /^(?:syarat|s\s*&\s*k|snk|ketentuan|penting|catatan penting)\b/i;
-const ACTIVATION_TITLE = /^cara\s+(?:aktivasi|pakai|penggunaan|login|redeem|klaim)\b/i;
+const TERMS_TITLE = /^(?:syarat|s\s*&\s*k|snk|ketentuan|penting|catatan penting|terms(?:\s*(?:&|and)\s*conditions)?|important(?:\s*notes?)?)\b/i;
+const ACTIVATION_TITLE = /^(?:cara\s+(?:aktivasi|pakai|penggunaan|login|redeem|klaim)|how\s+to\s+(?:activate|use|claim|redeem|log\s*in|login))\b/i;
 
 /**
  * Deskripsi → blok terstruktur. Konvensi (juga untuk admin produk non-WR):

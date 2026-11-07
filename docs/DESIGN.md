@@ -1,5 +1,10 @@
 # DESIGN.md — AXVARA Design System
 
+## Konten, badge, dan label EN Market — fase 2 (7 November 2026, lokal; verifikasi browser belum)
+- Deskripsi produk EN berasal dari `description_en` milik admin (editor produk) dan memakai format yang sama: paragraf pembuka, baris "- " untuk keunggulan, judul "Terms & Conditions:" / "How to Activate:". Bila kosong, teks ID yang tampil.
+- Badge admin diterjemahkan saat render: Terlaris→Best seller, Baru→New, Hemat→Save, "Hemat NN%"→"Save NN%", Paling Dicari→Most wanted, Promo→Promo; kata tak dikenal tetap. Label varian EN menerjemahkan durasi (1 Bulan→1 Month, 3 Bulan→3 Months) dan tier umum; brand/nama produk dan label tersimpan tidak diubah. S&K EN memakai judul bagian "Package details / Process & delivery / Usage rules / Warranty".
+- Kategori `bundle-hemat` tampil "Value Bundles" di EN. Token warna, layout, dan komponen tidak berubah.
+
 ## Pedia: pemilih metode + panel pembayaran (7 November 2026, lokal; verifikasi browser belum dilakukan)
 - Metode pembayaran berada di langkah Kontak sebagai bagian ringkas: baris judul "Metode pembayaran" + tautan "Pilih metode lain". Tanpa membuka tautan, QRIS tetap terpilih dan tidak ada request tambahan. Setelah dibuka, `PaymentMethodPicker` Market dirender apa adanya (kartu QRIS langsung, akordeon Virtual Account/E-Wallet/Transfer lainnya/Crypto, chip logo, biaya dan batas dari server) — tidak ada varian gaya Pedia.
 - Pilihan yang hilang/tidak tersedia direkonsiliasi dengan aturan Market: kembali ke QRIS dan menampilkan catatan singkat (ID/EN). Kegagalan rail menampilkan pesan server dan mengembalikan pilihan ke QRIS.

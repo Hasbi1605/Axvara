@@ -216,7 +216,7 @@ export function VariantCopyEditor({
               <details className="mt-3 text-xs text-white/80">
                 <summary className="cursor-pointer py-3 font-semibold">Pratinjau setelah disimpan</summary>
                 <p className="mb-3 text-white/70">Menggabungkan draft varian dengan deskripsi produk di form. Deskripsi tetap perlu Simpan Produk. Catatan transaksi supplier tidak diubah.</p>
-                {!preview.sections.length && !preview.activation.length && !preview.notes.length ? <p>Belum ada S&amp;K atau panduan.</p> : <div className="space-y-4"><TermsBody sections={preview.sections} size="xs" /><ActivationBody groups={preview.activation} notes={preview.notes} size="xs" /></div>}
+                {!preview.sections.length && !preview.activation.length && !preview.notes.length ? <p>Belum ada S&amp;K atau panduan.</p> : <div className="space-y-4"><TermsBody sections={preview.sections} size="xs" locale="id" /><ActivationBody groups={preview.activation} notes={preview.notes} size="xs" /></div>}
               </details>
               {saveError && <div role="alert" className="mt-3 text-xs text-red-200"><p>{saveError}</p>{onReload && <button type="button" disabled={saving || loading} className="min-h-11 underline" onClick={() => { preserveDraft.current = true; onReload(); }}>Muat sumber terbaru (pertahankan draft)</button>}</div>}
               <div className="mt-3 flex flex-wrap items-center justify-end gap-2">

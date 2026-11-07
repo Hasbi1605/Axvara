@@ -19,13 +19,14 @@ import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { BulkPriceTiers } from "@/components/storefront/BulkPriceTiers";
 import { bulkCopy, bulkUnitEstimate, usableBulkTiers, type BulkVariantFields } from "@/lib/bulk-display";
 import { useDisplayPrices } from "@/hooks/useDisplayPrices";
-import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty } from "@/lib/i18n/catalog-copy";
+import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty, localizedProductDescription } from "@/lib/i18n/catalog-copy";
 import { marketCategoryName } from "@/lib/i18n/market-categories";
+import { badgeLabel } from "@/lib/i18n/badge-copy";
 import { Price, PriceNote } from "@/components/storefront/Price";
 
 // /api/catalog mengganti teks mentah WR (terms/delivery_terms) dengan `copy`
 // siap tampil — versi Axvara atau teks pemasok yang dirapikan.
-type VariantItem = VariantSummary & BulkVariantFields & { copy?: VariantCopy | null };
+type VariantItem = VariantSummary & BulkVariantFields & { copy?: VariantCopy | null; copy_en?: VariantCopy | null };
 
 const DESC_FADE = {
   WebkitMaskImage: "linear-gradient(to bottom, #000 55%, transparent)",
@@ -388,28 +389,32 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   // Deskripsi + S&K + cara aktivasi dalam satu format untuk WR dan non-WR:
   // S&K varian (WR) digabung dengan bagian "Syarat & Ketentuan:" / "Cara
   // Aktivasi:" di deskripsi (produk non-WR); tiap baris tampil sekali.
-  const parsedDescription = parseProductDescription(product.description);
+  const parsedDescription = parseProductDescription(localizedProductDescription(product, prices.locale));
   const hasDescription = parsedDescription.blocks.length > 0 || parsedDescription.sections.length > 0;
   const descCollapsible = isLongDescription(parsedDescription);
   // "Ganti varian" hanya bila isinya memang berbeda antar varian. Salinan yang
   // sama persis (dan ada isinya) berlaku untuk semua varian → tampil tanpa memilih.
+  const copyOf = (variant: VariantItem | null | undefined): VariantCopy | null => {
+    if (!variant) return null;
+    return prices.locale === "en" ? variant.copy_en ?? variant.copy ?? null : variant.copy ?? null;
+  };
   const variantCopiesDiffer = activeVariants.length > 1
-    && new Set(activeVariants.map((v: VariantItem) => JSON.stringify(v.copy ?? null))).size > 1;
-  const sharedVariantCopy = choosableVariants && !variantCopiesDiffer && activeVariants[0]?.copy != null;
+    && new Set(activeVariants.map((v: VariantItem) => JSON.stringify(copyOf(v)))).size > 1;
+  const sharedVariantCopy = choosableVariants && !variantCopiesDiffer && copyOf(activeVariants[0]) != null;
   // Produk multi-varian: salinan varian (dari pilihan) dan ketentuan tingkat
   // produk (dari deskripsi) dipisah dan diberi label jelas. Produk varian
   // tunggal / tanpa varian: perilaku lama (digabung, tiap baris sekali).
   const separated = choosableVariants;
   const variantPending = separated && !selectedVariant && !sharedVariantCopy;
-  const variantCopySource = selectedVariant ? selectedVariant.copy ?? null : sharedVariantCopy ? activeVariants[0].copy ?? null : null;
+  const variantCopySource = selectedVariant ? copyOf(selectedVariant) : sharedVariantCopy ? copyOf(activeVariants[0]) : null;
   const variantCopy = separated && !variantPending ? mergeProductCopy(variantCopySource, EMPTY_DESCRIPTION) : null;
   const variantCopyMissing = Boolean(variantCopy) && !variantCopy!.fromVariant;
-  const productCopy = separated ? mergeProductCopy(null, parsedDescription) : mergeProductCopy(copyVariant?.copy ?? null, parsedDescription);
+  const productCopy = separated ? mergeProductCopy(null, parsedDescription) : mergeProductCopy(copyOf(copyVariant), parsedDescription);
   const hasTerms = productCopy.sections.length > 0;
   const activationSteps = activationStepCount(productCopy.activation);
   const hasActivation = activationSteps > 0 || productCopy.notes.length > 0;
-  const termsLabel = !separated && productCopy.fromVariant && copyVariant ? formatVariantLabel(copyVariant) : null;
-  const identityLabel = selectedVariant ? formatVariantLabel(selectedVariant) : null;
+  const termsLabel = !separated && productCopy.fromVariant && copyVariant ? formatVariantLabel(copyVariant, prices.locale) : null;
+  const identityLabel = selectedVariant ? formatVariantLabel(selectedVariant, prices.locale) : null;
   const identitySharedLabel = !selectedVariant && sharedVariantCopy ? t.allVariantsSame : null;
   const variantTerms = variantCopy?.sections ?? [];
   const variantActivationSteps = variantCopy ? activationStepCount(variantCopy.activation) : 0;
@@ -665,7 +670,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           {/* Badge produk (Terlaris / Baru / Bundle / dll) */}
           {product.badge && (
             <span className="self-start rounded-full bg-[#FFB800]/15 text-[#FFB800] text-[11px] font-bold px-3 py-1 tracking-wide uppercase border border-[#FFB800]/25">
-              {product.badge}
+              {badgeLabel(product.badge, prices.locale)}
             </span>
           )}
 
@@ -737,7 +742,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                     >
                       <div className="flex justify-between items-start">
                         <div className="min-w-0">
-                          <span className="block text-sm font-medium text-white">{formatVariantLabel(v)}</span>
+                          <span className="block text-sm font-medium text-white">{formatVariantLabel(v, prices.locale)}</span>
                           <span className="mt-1.5 inline-flex">
                             {buyerDeliveryKind(v) === "instant" ? (
                               <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">{t.autoDelivery}</span>
@@ -787,7 +792,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 type="button"
                 onClick={() => setVariantModal("select")}
                 aria-label={selectedVariant
-                  ? t.variantRowAria(formatVariantLabel(selectedVariant), prices.text(selectedVariant.price))
+                  ? t.variantRowAria(formatVariantLabel(selectedVariant, prices.locale), prices.text(selectedVariant.price))
                   : t.chooseVariantAria(activeVariants.length)}
                 className="mt-4 lg:hidden w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition text-left"
               >
@@ -795,7 +800,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                   <span className="block text-[11px] font-medium text-white/50">{t.variantWord}</span>
                   {selectedVariant ? (
                     <>
-                      <span className="mt-0.5 block break-words text-sm font-semibold text-white">{formatVariantLabel(selectedVariant)}</span>
+                      <span className="mt-0.5 block break-words text-sm font-semibold text-white">{formatVariantLabel(selectedVariant, prices.locale)}</span>
                       <span className="mt-1 flex flex-wrap items-center gap-2">
                         <span className="text-xs font-semibold text-[#00E5FF]"><Price idr={selectedVariant.price} prices={prices} /></span>
                         {buyerDeliveryKind(selectedVariant) === "instant" ? (

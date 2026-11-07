@@ -4,6 +4,8 @@
 
 import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { validateBulkPricing, type BulkTier } from "@/lib/bulk-pricing";
+import type { Locale } from "@/lib/i18n/locale";
+import { translateVariantLabel } from "@/lib/i18n/variant-copy";
 
 // ---- Types ----
 
@@ -93,6 +95,7 @@ export type ProductSummary = {
   image: string | null;
   badge: string | null;
   description: string | null;
+  descriptionEn: string | null;
   minPrice: number;
   maxPrice: number;
   variantCount: number;
@@ -107,6 +110,7 @@ export type ProductDetail = {
   whatsappAlias: string | null;
   aliases: string[];
   description: string | null;
+  descriptionEn: string | null;
   long_description?: string | null;
   image: string | null;
   images: string | null;
@@ -137,7 +141,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
   const rows = await queryAll(`
     SELECT
       p.id, p.slug, p.name, p.whatsapp_alias, p.aliases, p.image_url, p.badge, p.description,
-      p.admin_description_override, p.category_id,
+      p.admin_description_override, p.description_en, p.category_id,
       MIN(pv.price) as min_price,
       MAX(pv.price) as max_price,
       COUNT(pv.id) as variant_count,
@@ -159,6 +163,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
     image: r.image_url ? String(r.image_url) : null,
     badge: r.badge ? String(r.badge) : null,
     description: displayDescription(r),
+    descriptionEn: displayDescriptionEn(r),
     minPrice: Number(r.min_price),
     maxPrice: Number(r.max_price),
     variantCount: Number(r.variant_count),
@@ -170,7 +175,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
 async function listActiveProductsLegacy(): Promise<ProductSummary[]> {
   const rows = await queryAll(
     `SELECT id, slug, name, whatsapp_alias, image_url, badge, description,
-            admin_description_override, price, compare_price, stock, category_id
+            admin_description_override, description_en, price, compare_price, stock, category_id
      FROM products WHERE is_active=1 ORDER BY sort_order ASC, name ASC`
   );
   return rows.map(r => ({
@@ -182,6 +187,7 @@ async function listActiveProductsLegacy(): Promise<ProductSummary[]> {
     image: r.image_url ? String(r.image_url) : null,
     badge: r.badge ? String(r.badge) : null,
     description: displayDescription(r),
+    descriptionEn: displayDescriptionEn(r),
     minPrice: Number(r.price),
     maxPrice: Number(r.price),
     variantCount: 1,
@@ -242,6 +248,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
     whatsappAlias: nullableText(product.whatsapp_alias),
     aliases: parseAliases(product.aliases),
     description: displayDescription(product),
+    descriptionEn: displayDescriptionEn(product),
     image: product.image_url ? String(product.image_url) : null,
     images: product.images ? String(product.images) : null,
     badge: product.badge ? String(product.badge) : null,
@@ -297,6 +304,7 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     whatsappAlias: nullableText(product.whatsapp_alias),
     aliases: [],
     description: displayDescription(product),
+    descriptionEn: displayDescriptionEn(product),
     image: product.image_url ? String(product.image_url) : null,
     images: product.images ? String(product.images) : null,
     badge: product.badge ? String(product.badge) : null,
@@ -407,14 +415,16 @@ export function formatDuration(v: VariantSummary): string {
  *   semua bila ditempel). Insiden 2026-09-19: helper lama menggabung untuk
  *   semua produk → "Invite Lifetime - 6 Bulan", "Head 1 Bulan - 14 Hari".
  */
-export function formatVariantLabel(v: Pick<VariantSummary, "label"> & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit">> & { wr_variant_id?: unknown }): string {
+export function formatVariantLabel(
+  v: Pick<VariantSummary, "label"> & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit">> & { wr_variant_id?: unknown },
+  locale: Locale = "id",
+): string {
   const label = String(v.label || "").trim();
   const wrId = (v as { wr_variant_id?: unknown }).wr_variant_id;
-  if (wrId == null || String(wrId).trim() === "") return label;
+  if (wrId == null || String(wrId).trim() === "") return translateVariantLabel(label, locale);
   const dur = formatDuration(v as VariantSummary).trim();
-  if (!dur) return label;
-  if (label.toLowerCase().includes(dur.toLowerCase())) return label;
-  return `${label} - ${dur}`;
+  const composed = !dur || label.toLowerCase().includes(dur.toLowerCase()) ? label : `${label} - ${dur}`;
+  return translateVariantLabel(composed, locale);
 }
 
 /**
@@ -573,6 +583,14 @@ function nullableText(raw: unknown): string | null {
  */
 export function displayDescription(row: Record<string, unknown>): string | null {
   return nullableText(row.admin_description_override) ?? nullableText(row.description);
+}
+
+/**
+ * Deskripsi efektif versi Inggris (migrasi 0103): `description_en` milik admin
+ * bila terisi; kosong/NULL → teks ID yang sama dengan displayDescription().
+ */
+export function displayDescriptionEn(row: Record<string, unknown>): string | null {
+  return nullableText(row.description_en) ?? displayDescription(row);
 }
 
 function mapVariant(row: Record<string, unknown>): VariantSummary {

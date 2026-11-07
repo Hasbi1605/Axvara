@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## Keputusan owner 7 November 2026: konten EN Market — fase 2 (lokal, belum deploy)
+- Deskripsi produk punya kolom admin `description_en` (migrasi 0103) dengan editor di tab "Deskripsi & S&K" untuk semua produk; EN dipakai bila terisi, fallback ID (override ?? WR). Seed 0104 menerjemahkan 71 produk produksi yang punya teks (Testing Only dilewati) secara idempoten dan tidak menimpa suntingan admin.
+- S&K + cara aktivasi kurasi punya versi Inggris untuk 95 entri dengan fingerprint lock yang sama; perubahan teks WR membuat versi Inggris (dan ID) fallback ke teks WR terbaru. Konten S&K per-varian yang disunting admin tetap ID.
+- Badge admin dan label varian diterjemahkan saat render (nilai tersimpan tidak berubah, cart/SKU tetap memakai label asli); kategori `bundle-hemat` menjadi "Value Bundles".
+- Email pembeli tetap ID (di luar fase ini).
+
 ## Keputusan owner 7 November 2026: rail pembayaran Pedia (fase B, lokal, belum deploy)
 - Checkout Pedia web menawarkan QRIS (bawaan), Sekalipay gateway VA/e-wallet (kurasi sama dengan Market: `SHOPEEPAY` biasa; `SHOPEEPAY_REALTIME`/`DANA_REALTIME` tidak ditawarkan), dan crypto NOWPayments (USD; biaya layanan mengikuti konstanta crypto existing; minimum per koin ×1,15). Pilihan metode berasal dari quote bertanda tangan; metode tidak sah → pembeli diminta memuat ulang.
 - Alur pembeli: pilih layanan → tempel target → isi kontak → (opsional) buka "Pilih metode lain" untuk VA/e-wallet/crypto → lanjut ke pembayaran. QRIS tetap terpilih secara bawaan dan langkah qty/target/kontak tidak berubah.

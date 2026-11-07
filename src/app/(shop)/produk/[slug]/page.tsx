@@ -12,6 +12,7 @@ import {
   type SeoProduct,
 } from "@/lib/product-seo";
 import ProductDetailClient, { type InitialCatalog } from "./product-detail-client";
+import { requestLocale } from "@/lib/i18n/server-locale";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ type SeoRow = Record<string, unknown>;
 
 async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
   const product = (await queryFirst(
-    `SELECT p.slug, p.name, p.description, p.admin_description_override,
+    `SELECT p.slug, p.name, p.description, p.admin_description_override, p.description_en,
             p.image_url, p.images, p.badge,
             p.sold_count, p.updated_at
      FROM products p
@@ -46,6 +47,7 @@ async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
     // storefront dan bot. PDP adalah halaman yang dibaca pembeli DAN mesin
     // pencari, jadi meta/OG/JSON-LD tidak boleh memakai teks yang berbeda.
     description: displayDescription(product),
+    descriptionEn: product.description_en ? String(product.description_en) : null,
     image: product.image_url ? String(product.image_url) : null,
     images: product.images ? String(product.images) : null,
     badge: product.badge ? String(product.badge) : null,
@@ -91,11 +93,12 @@ async function loadInitialCatalog(slug: string): Promise<InitialCatalog | undefi
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
+  const locale = await requestLocale();
   const canonical = `${SITE_BASE}/produk/${slug}`;
   try {
     const product = await getSeoProduct(slug);
-    if (!product) return { title: "Produk tidak ditemukan | AXVARA" };
-    const description = seoDescription(product);
+    if (!product) return { title: locale === "en" ? "Product not found | AXVARA" : "Produk tidak ditemukan | AXVARA" };
+    const description = seoDescription(product, 160, locale);
     const images = seoImages(product);
     return {
       title: `${product.name} | AXVARA`,
@@ -158,8 +161,10 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     loadInitialCatalog(slug),
   ]);
   if (!product) return notFound();
+  const locale = await requestLocale();
   const canonical = `${SITE_BASE}/produk/${slug}`;
-  const jsonLd = seoProductJsonLd(product, canonical);
+  const seoProduct = locale === "en" && product.descriptionEn?.trim() ? { ...product, description: product.descriptionEn } : product;
+  const jsonLd = seoProductJsonLd(seoProduct, canonical);
   const safeJsonLd = JSON.stringify(jsonLd).replace(/</g, "\\u003c");
   return (
     <>

@@ -10,6 +10,8 @@ export type Product = {
   slug: string;
   name: string;
   description: string;
+  /** Terjemahan Inggris milik admin (migrasi 0103); kosong = fallback description. */
+  descriptionEn?: string;
   price: number;
   minPrice?: number;
   maxPrice?: number;

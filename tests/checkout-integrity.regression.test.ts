@@ -48,8 +48,8 @@ describe("Checkout quote integrity", () => {
     // + blok Made By Order menampilkan "Meitu VIP - 7 Hari".
     expect(quote).toContain("formatVariantLabel");
     // PDP + modal memakai helper yang sama (satu pola, bukan tambal per layar).
-    expect(read("src/app/(shop)/produk/[slug]/product-detail-client.tsx")).toContain("formatVariantLabel(v)");
-    expect(read("src/components/storefront/QuickVariantModal.tsx")).toContain("formatVariantLabel(v)");
+    expect(read("src/app/(shop)/produk/[slug]/product-detail-client.tsx")).toMatch(/formatVariantLabel\(v, prices\.locale\)/);
+    expect(read("src/components/storefront/QuickVariantModal.tsx")).toMatch(/formatVariantLabel\(v, displayLocale\)/);
   });
 
   it("layout revamp ala Sekalipay (2026-09-23): metode dulu, ringkasan 1x, CTA 1x per viewport", () => {

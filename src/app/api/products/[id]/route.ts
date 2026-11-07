@@ -81,6 +81,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Admin perlu melihat kedua teks agar tahu mana yang sedang tampil.
       wrDescription: row.description ?? "",
       adminDescriptionOverride: (row.admin_description_override as string | null) ?? null,
+      descriptionEn: (row.description_en as string | null) ?? null,
       wrManaged: isWrManaged(row),
       price: row.price,
       comparePrice: row.compare_price ?? undefined,
@@ -145,6 +146,7 @@ const updateSchema = z.object({
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).min(3).max(80).optional(),
   description: z.string().trim().max(2000).optional(),
   adminDescriptionOverride: z.string().trim().max(2000).nullable().optional(),
+  descriptionEn: z.string().trim().max(2000).nullable().optional(),
   whatsappAlias: z.string().trim().max(50).nullable().optional(),
   price: z.coerce.number().int().min(0).max(999_999_999).optional(),
   comparePrice: z.coerce.number().int().min(0).max(999_999_999).nullable().optional(),
@@ -276,7 +278,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (data.imageUrl && !urlOk(data.imageUrl)) return NextResponse.json({ error: "URL gambar utama tidak diizinkan" }, { status: 400 });
   const fields: string[] = [];
   const vals: unknown[] = [];
-  const map: Record<string,string> = { name:"name", slug:"slug", description:"description", adminDescriptionOverride:"admin_description_override", whatsappAlias:"whatsapp_alias", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order", requireEmail:"require_email" };
+  const map: Record<string,string> = { name:"name", slug:"slug", description:"description", adminDescriptionOverride:"admin_description_override", descriptionEn:"description_en", whatsappAlias:"whatsapp_alias", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order", requireEmail:"require_email" };
   if (data.categorySlug) {
     const cat = await queryFirst("SELECT id FROM categories WHERE slug=?", resolveCategorySlug(data.categorySlug)) as { id:number }|undefined;
     if (cat) { fields.push("category_id=?"); vals.push(cat.id); }
@@ -298,6 +300,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       else if (k==="comparePrice") { fields.push(`${col}=?`); vals.push(v ? Number(v) : null); }
       // String kosong = admin menghapus override → kembali ke deskripsi WR.
       else if (k==="adminDescriptionOverride") { fields.push(`${col}=?`); vals.push(String(v ?? "").trim() || null); }
+      // EN kosong = hapus terjemahan → fallback teks ID.
+      else if (k==="descriptionEn") { fields.push(`${col}=?`); vals.push(String(v ?? "").trim() || null); }
       else { fields.push(`${col}=?`); vals.push(v); }
     }
   }

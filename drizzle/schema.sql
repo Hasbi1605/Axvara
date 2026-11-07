@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS products (
   -- Migrasi 0030: deskripsi milik admin. NULL = pakai `description` (milik WR).
   -- Sync WR tidak pernah menulis kolom ini.
   admin_description_override TEXT,
+  -- Migrasi 0103: deskripsi Inggris milik admin. NULL/kosong = fallback ke
+  -- admin_description_override ?? description. Sync WR/SK tidak pernah menulis.
+  description_en TEXT,
   -- Migrasi 0033: toggle email wajib per produk (untuk non-WR masa depan).
   -- Varian WR tipe Invite/Link otomatis butuh email tanpa toggle ini.
   require_email INTEGER NOT NULL DEFAULT 0

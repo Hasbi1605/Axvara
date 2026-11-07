@@ -4,7 +4,7 @@ import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Price, PriceNote } from "@/components/storefront/Price";
-import { useDisplayPrices } from "@/hooks/useDisplayPrices";
+import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { catalogCopy, catalogDeliveryBadge, catalogWarranty } from "@/lib/i18n/catalog-copy";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatVariantLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
@@ -135,8 +135,9 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
   const compact = variants.length > COMPACT_VARIANTS_AFTER;
   const searchable = variants.length > SEARCH_VARIANTS_AFTER;
   const needle = query.trim().toLowerCase();
+  const displayLocale = useDisplayLocale();
   const visibleVariants = searchable && needle
-    ? variants.filter((v) => formatVariantLabel(v).toLowerCase().includes(needle))
+    ? variants.filter((v) => `${formatVariantLabel(v)} ${formatVariantLabel(v, displayLocale)}`.toLowerCase().includes(needle))
     : variants;
 
   const selected = variants.find((v) => v.id === selectedId) || null;
@@ -356,7 +357,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                       }`}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-xs font-bold">{formatVariantLabel(v)}</span>
+                        <span className="block truncate text-xs font-bold">{formatVariantLabel(v, displayLocale)}</span>
                         <span className={`mt-0.5 block truncate text-[10px] font-semibold ${instant ? "text-emerald-300" : "text-[#FFD66B]"}`}>
                           {catalogDeliveryBadge(v, prices.locale)}
                           {v.warranty_type && v.warranty_type !== "none" && catalogWarranty(v, prices.locale) ? <span className="font-medium text-white/45"> · {catalogWarranty(v, prices.locale)}</span> : null}
@@ -390,7 +391,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                     }`}
                   >
                     <span className="text-xs font-bold leading-tight truncate w-full">
-                      {formatVariantLabel(v)}
+                      {formatVariantLabel(v, displayLocale)}
                     </span>
                     <span className="mt-1.5 inline-flex">
                       {instant ? (

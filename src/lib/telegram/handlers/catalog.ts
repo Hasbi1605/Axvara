@@ -24,7 +24,8 @@ import {
 import { getProductDetail, getActiveVariant, formatVariantLabel, buyerWarrantyLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { resolveVariantCopy, adminCopyOf } from "@/lib/product-copy/resolve";
-import { mergeProductCopy, parseProductDescription, COPY_SECTION_TITLES } from "@/lib/product-copy/format";
+import { mergeProductCopy, parseProductDescription, copySectionTitles } from "@/lib/product-copy/format";
+import { localizedProductDescription } from "@/lib/i18n/catalog-copy";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 import { winnerForLoserProduct } from "@/lib/supplier-pairs";
 import { clampQty, setPendingActionUnlessCreating } from "./shared";
@@ -143,7 +144,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   const variantLines = activeVariants.map((v) => {
     const kind = buyerDeliveryKind(v);
     return {
-      label: formatVariantLabel(v),
+      label: formatVariantLabel(v, ctx.locale),
       price: v.price,
       warranty: buyerWarrantyLabel(v) || null,
       stock: v.stock,
@@ -157,7 +158,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
 
   const text = productDetailMessage({
     name: detail.name,
-    description: detail.description,
+    description: localizedProductDescription(detail, ctx.locale),
     price: minPrice,
     compare_price: comparePrice && comparePrice > maxPrice ? comparePrice : null,
     stock: totalStock,
@@ -165,7 +166,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
     sold_count: soldCount,
     variants: variantLines,
   }, { locale: ctx.locale, ...tgUsdAlternate(minPrice, ctx) });
-  const keyboard = variantsKeyboard(productId, activeVariants.map(v => ({ ...v, label: formatVariantLabel(v) })), { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx });
+  const keyboard = variantsKeyboard(productId, activeVariants.map(v => ({ ...v, label: formatVariantLabel(v, ctx.locale) })), { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx });
 
   // Product photo = same image as web (free: sendPhoto with product image_url)
   const imageUrl = detail.image?.startsWith("/") ? `https://axvara.tech${detail.image}` : detail.image ?? "";
@@ -303,7 +304,7 @@ export async function handleShowQty(
     message_id: messageId,
     text: chooseQtyMessage({
       productName,
-      variantLabel: formatVariantLabel(variant),
+      variantLabel: formatVariantLabel(variant, ctx.locale),
       price: effectiveQtyPrice,
       basePrice: Number(variant.price),
       appliedTierMinQty: effectiveQtyTier,
@@ -348,19 +349,19 @@ export async function handleProductTerms(chatId: number, productId: number, vari
   const enabled = await queryFirst("SELECT telegram_enabled FROM products WHERE id=? AND is_active=1", productId);
   if (!detail || Number(enabled?.telegram_enabled) !== 1) return;
   if (!variantId) {
-    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Choose a variant to read its terms." : "Pilih varian untuk membaca ketentuannya.", reply_markup: { inline_keyboard: detail.variants.filter(v => v.is_active).map(v => [{ text: formatVariantLabel(v).slice(0, 60), callback_data: cb.terms(productId, v.id) }]) } });
+    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Choose a variant to read its terms." : "Pilih varian untuk membaca ketentuannya.", reply_markup: { inline_keyboard: detail.variants.filter(v => v.is_active).map(v => [{ text: formatVariantLabel(v, ctx.locale).slice(0, 60), callback_data: cb.terms(productId, v.id) }]) } });
     return;
   }
   const variants = detail.variants.filter(v => v.id === variantId && v.is_active);
   for (const variant of variants) {
-    const copy = mergeProductCopy(resolveVariantCopy(variant.terms, variant.delivery_terms, adminCopyOf(variant)), parseProductDescription(detail.description));
+    const copy = mergeProductCopy(resolveVariantCopy(variant.terms, variant.delivery_terms, adminCopyOf(variant), ctx.locale), parseProductDescription(localizedProductDescription(detail, ctx.locale)));
     const lines = [
-      ...copy.sections.flatMap(section => [COPY_SECTION_TITLES[section.kind], ...section.items.map(item => `• ${item}`), ""]),
-      ...copy.activation.flatMap(group => [group.title ?? "Cara aktivasi", ...group.steps.map((step, i) => `${i + 1}. ${step}`), ""]),
+      ...copy.sections.flatMap(section => [copySectionTitles(ctx.locale)[section.kind], ...section.items.map(item => `• ${item}`), ""]),
+      ...copy.activation.flatMap(group => [group.title ?? (ctx.locale === "en" ? "How to activate" : "Cara aktivasi"), ...group.steps.map((step, i) => `${i + 1}. ${step}`), ""]),
       ...copy.notes,
     ];
     if (!lines.length) lines.push(ctx.locale === "en" ? "No specific terms yet. Contact admin via /bantuan before buying." : "Ketentuan khusus belum tersedia. Hubungi admin melalui /bantuan sebelum membeli.");
-    const header = `<b>${escapeHtml(formatVariantLabel(variant).slice(0, 120))}</b>\n\n`;
+    const header = `<b>${escapeHtml(formatVariantLabel(variant, ctx.locale).slice(0, 120))}</b>\n\n`;
     let body = "";
     const parts: string[] = [];
     for (const char of lines.join("\n")) {

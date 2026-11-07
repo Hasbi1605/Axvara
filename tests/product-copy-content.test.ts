@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 import snapshot from "./fixtures/product-copy-snapshot.json";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { CURATED_VARIANT_COPY, type CuratedVariantCopy } from "@/lib/product-copy/curated";
+import { CURATED_VARIANT_COPY_EN, type CuratedVariantCopyEn } from "@/lib/product-copy/curated-en";
+import { resolveVariantCopyDetailed } from "@/lib/product-copy/resolve";
 import { parseProductDescription } from "@/lib/product-copy/format";
 
 const MIGRATION = fs.readFileSync("drizzle/migrations/0040_axvara_product_copy.sql", "utf8");
@@ -276,5 +278,44 @@ describe("migrasi 0040 menghormati kepemilikan & idempoten", () => {
     expect(fixture.sql.prepare("SELECT description, admin_description_override FROM products").all()).toEqual(first);
     expect(first).toEqual([{ description: "Punya admin", admin_description_override: null }]);
     fixture.close();
+  });
+});
+
+describe("salinan Axvara versi Inggris", () => {
+  const enByKey = new Map(Object.entries(CURATED_VARIANT_COPY_EN));
+  function enStrings(entry: CuratedVariantCopyEn): string[] {
+    return [
+      ...(entry.paket ?? []),
+      ...(entry.proses ?? []),
+      ...(entry.aturan ?? []),
+      ...(entry.garansi ?? []),
+      ...(entry.langkah ?? []),
+      ...(entry.grupLangkah ?? []).flatMap((group) => [group.judul, ...group.langkah]),
+      ...(entry.catatan ?? []),
+    ];
+  }
+
+  it("setiap entri kurasi punya versi Inggris dengan kunci yang sama", () => {
+    expect(CURATED_VARIANT_COPY.filter((entry) => !enByKey.has(entry.key)).map((entry) => entry.label)).toEqual([]);
+    expect([...enByKey.keys()].filter((key) => !byKey.has(key))).toEqual([]);
+  });
+
+  it.each(CURATED_VARIANT_COPY.map((entry) => [entry.label, entry] as const))("%s: angka & batas terbawa di versi Inggris", (_label, entry) => {
+    const english = enByKey.get(entry.key)!;
+    const text = enStrings(english).join("\n");
+    const missing = supplierNumbers(entryStrings(entry).join("\n")).filter((num) => !containsNumber(text, num));
+    expect(missing).toEqual([]);
+    expect(text).not.toMatch(/\p{Extended_Pictographic}|!/u);
+  });
+
+  it("locale EN memilih kurasi Inggris, ID tetap Indonesia; fingerprint berubah jatuh ke teks WR", () => {
+    const pair = snapshot.pairs.find((p) => p.key === "150rofm6drp")!;
+    const en = resolveVariantCopyDetailed(pair.terms, pair.deliveryTerms, null, "en")!.copy!;
+    expect(en.sections[0].items.join(" ")).toMatch(/Basic plan, sharing account for 3 users/);
+    const id = resolveVariantCopyDetailed(pair.terms, pair.deliveryTerms, null, "id")!.copy!;
+    expect(id.sections[0].items.join(" ")).toMatch(/Paket Basic/);
+    const changed = resolveVariantCopyDetailed(`${pair.terms}\nTambahan baru`, pair.deliveryTerms, null, "en")!.copy!;
+    expect(changed.source).toBe("pemasok");
+    expect(changed.sections.flatMap((section) => section.items).join(" ")).toMatch(/Tambahan baru/);
   });
 });

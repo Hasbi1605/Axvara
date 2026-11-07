@@ -4,6 +4,7 @@ import { bulkCopy } from "@/lib/bulk-display";
 import { Price, PriceNote } from "@/components/storefront/Price";
 import { useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { catalogCopy } from "@/lib/i18n/catalog-copy";
+import { translateVariantLabel } from "@/lib/i18n/variant-copy";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useRef } from "react";
@@ -83,9 +84,9 @@ export function CartDrawer() {
                   <img src={it.image} alt={it.name} className="w-16 h-16 rounded-xl object-cover shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white leading-4 line-clamp-2">{it.name}</p>
-                    {it.variantLabel && (
+                    {translateVariantLabel(it.variantLabel, prices.locale) && (
                       <p className="text-[11px] text-[#00E5FF]/80 font-medium mt-0.5">
-                        {it.variantLabel}
+                        {translateVariantLabel(it.variantLabel, prices.locale)}
                       </p>
                     )}
                     <p className="text-xs text-[#00E5FF] font-semibold mt-1">
@@ -109,16 +110,16 @@ export function CartDrawer() {
                       <p className="mt-0.5 text-[11px] text-white/55">{copy.nextCart(hint.need, prices.text(hint.unitPrice))}</p>
                     )}
                     <div className="mt-2 flex items-center gap-2">
-                      <button onClick={() => setQty(it.id, it.qty - 1, it.variantId)} className="w-11 h-11 shrink-0 rounded-full ax-glass flex items-center justify-center text-white/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.decAria(it.name, it.variantLabel)}>
+                      <button onClick={() => setQty(it.id, it.qty - 1, it.variantId)} className="w-11 h-11 shrink-0 rounded-full ax-glass flex items-center justify-center text-white/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.decAria(it.name, translateVariantLabel(it.variantLabel, prices.locale))}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/icons/ios11/minus-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-70" draggable={false} />
                       </button>
                       <span className="text-sm font-semibold text-white w-6 text-center">{it.qty}</span>
-                      <button onClick={() => setQty(it.id, it.qty + 1, it.variantId)} className="w-11 h-11 shrink-0 rounded-full ax-glass flex items-center justify-center text-white/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.incAria(it.name, it.variantLabel)}>
+                      <button onClick={() => setQty(it.id, it.qty + 1, it.variantId)} className="w-11 h-11 shrink-0 rounded-full ax-glass flex items-center justify-center text-white/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.incAria(it.name, translateVariantLabel(it.variantLabel, prices.locale))}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/icons/ios11/plus-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-70" draggable={false} />
                       </button>
-                      <button onClick={() => remove(it.id, it.variantId)} className="ml-auto w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-white/65 hover:text-red-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.removeAria(it.name, it.variantLabel)}>
+                      <button onClick={() => remove(it.id, it.variantId)} className="ml-auto w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-white/65 hover:text-red-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.removeAria(it.name, translateVariantLabel(it.variantLabel, prices.locale))}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/icons/ios11/trash-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-60" draggable={false} />
                       </button>

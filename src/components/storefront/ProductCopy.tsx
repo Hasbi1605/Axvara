@@ -10,13 +10,14 @@
 import { useId, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Info } from "lucide-react";
 import {
-  COPY_SECTION_TITLES,
+  copySectionTitles,
   type ActivationGroup,
   type CopySection,
   type CopySectionKind,
   type ParsedDescription,
 } from "@/lib/product-copy/format";
 import { linkifySegments } from "@/lib/product-copy/text";
+import type { Locale } from "@/lib/i18n/locale";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 
 type Size = "sm" | "xs";
@@ -159,12 +160,14 @@ export function DescriptionBody({ parsed, size = "sm" }: { parsed: ParsedDescrip
   );
 }
 
-export function TermsBody({ sections, size = "sm" }: { sections: CopySection[]; size?: Size }) {
+export function TermsBody({ sections, size = "sm", locale }: { sections: CopySection[]; size?: Size; locale?: Locale }) {
+  const displayLocale = useDisplayLocale();
+  const titles = copySectionTitles(locale ?? displayLocale);
   return (
     <div className={`${size === "sm" ? "space-y-5" : "space-y-4"} [overflow-wrap:anywhere]`} data-testid="product-terms-body">
       {sections.map((section) => (
-        <section key={section.kind} aria-label={COPY_SECTION_TITLES[section.kind]}>
-          <h3 className={SECTION_HEADING}>{COPY_SECTION_TITLES[section.kind]}</h3>
+        <section key={section.kind} aria-label={titles[section.kind]}>
+          <h3 className={SECTION_HEADING}>{titles[section.kind]}</h3>
           <ul className={`mt-2 ${size === "sm" ? "space-y-2" : "space-y-1.5"}`}>
             {section.items.map((item, i) => (
               <li key={i} className="flex items-start gap-2.5">
