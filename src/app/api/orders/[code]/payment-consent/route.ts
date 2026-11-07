@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readJsonBody } from "@/lib/http-body";
 import { queryFirst } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { isValidOrderCode } from "@/lib/security";
+import { isValidBuyerOrderCode } from "@/lib/security";
 import { buyerOrderAccessMatches, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { confirmGatewayFee } from "@/lib/payments/sekalipay-gateway";
 import { buildSekalipayGatewayPaymentView } from "@/lib/payments/payment-view";
@@ -20,7 +20,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 async function consent(req: NextRequest, code: string) {
   if (!checkRateLimit(req, "orders:lookup")) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429 });
   code = String(code || "").toUpperCase();
-  if (!isValidOrderCode(code)) return NextResponse.json({ error: "Kode pesanan tidak valid" }, { status: 400 });
+  // AXV (Market) + AXP (Pedia) memakai rute persetujuan yang sama.
+  if (!isValidBuyerOrderCode(code)) return NextResponse.json({ error: "Kode pesanan tidak valid" }, { status: 400 });
   const body = await readJsonBody(req, 8000); if (!body.ok) return body.response;
   const parsed = schema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "Data tidak valid" }, { status: 400 });

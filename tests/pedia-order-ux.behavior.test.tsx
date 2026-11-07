@@ -264,7 +264,7 @@ describe("Pedia order UX", () => {
     proceed();
     await screen.findByRole("alert");
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(["/api/pedia/quote", "/api/pedia/orders"]);
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ customer_wa: "081234567890", customer_email: "buyer@example.com", quote_token: "same" });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ customer_wa: "081234567890", customer_email: "buyer@example.com", quote_token: "same", payment_method: "qris" });
     expect(screen.queryAllByRole("button", { name: /^Kembali ke langkah/ })).toHaveLength(0);
   });
 

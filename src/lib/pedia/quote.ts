@@ -7,6 +7,7 @@
 import { checkCustomComments } from "@/lib/pedia/custom-comments";
 import * as jose from "jose";
 import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
+import { isCanonicalMethodOption, type CheckoutQuotePaymentMethod } from "@/lib/auth";
 import { readPediaServiceCopy, type PediaServiceCopy } from "./service-copy";
 
 export type PediaQuotePayload = {
@@ -30,6 +31,13 @@ export type PediaQuotePayload = {
   service_copy?: PediaServiceCopy;
   /** 2026-11-01: komentar custom (satu per baris), jumlah = quantity. */
   custom_comments?: string[];
+  /**
+   * 2026-11-07 (fase B): metode pembayaran yang ditandatangani, bentuk sama
+   * dengan token checkout Market. Opsional supaya quote lama (QRIS-only) tetap
+   * sah selama masa hidupnya. Create WAJIB memilih salah satu dari daftar ini.
+   */
+  payment_methods?: CheckoutQuotePaymentMethod[];
+  locale?: "id" | "en";
   jti: string;
 };
 
@@ -90,6 +98,16 @@ export async function verifyPediaQuoteToken(token: string): Promise<PediaQuotePa
       if (!Array.isArray(p.custom_comments) || !p.custom_comments.every((c) => typeof c === "string")) return null;
       if (!checkCustomComments((p.custom_comments as string[]).join("\n"), num(p.quantity)).ok) return null;
     }
+    // Fase B: metode pembayaran ditandatangani memakai validator kanonis Market
+    // (gateway net+fee=total, crypto snapshot base/surcharge/total + aset/jaringan).
+    // Tanpa field ini quote lama tetap QRIS-only.
+    let paymentMethods: CheckoutQuotePaymentMethod[] | undefined;
+    if (p.payment_methods !== undefined) {
+      if (!Array.isArray(p.payment_methods) || p.payment_methods.length < 1 || p.payment_methods.length > 40) return null;
+      if (!p.payment_methods.every((method) => isCanonicalMethodOption(method, num(p.total)))) return null;
+      paymentMethods = p.payment_methods as CheckoutQuotePaymentMethod[];
+    }
+    if (p.locale !== undefined && !["id", "en"].includes(String(p.locale))) return null;
     return {
       purpose: "pedia_quote",
       product_id: num(p.product_id), tier_id: num(p.tier_id),
@@ -107,6 +125,8 @@ export async function verifyPediaQuoteToken(token: string): Promise<PediaQuotePa
       min_profit_rp: p.min_profit_rp as number | undefined,
       service_copy: serviceCopy,
       ...(p.custom_comments !== undefined ? { custom_comments: p.custom_comments as string[] } : {}),
+      ...(paymentMethods ? { payment_methods: paymentMethods } : {}),
+      ...(p.locale !== undefined ? { locale: p.locale as "id" | "en" } : {}),
       jti: String(payload.jti),
     };
   } catch {

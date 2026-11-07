@@ -14,6 +14,8 @@ import { usePediaPrices } from "@/components/pedia/usePediaPrices";
 import { ArrowLeft, ArrowRight, Check, ChevronUp, ShieldCheck, X } from "lucide-react";
 import { NeedPicker } from "@/components/pedia/NeedPicker";
 import { PlatformIcon } from "@/components/pedia/PlatformGrid";
+import { PaymentMethodPicker } from "@/components/storefront/PaymentMethodPicker";
+import { parsePayOptions, reconcileSelection, type PayOption } from "@/lib/payment-ui";
 import { pediaPlatform, pediaTargetExample } from "@/lib/pedia/platforms";
 import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { fill, pediaChecklistText, pediaCopy, pediaNumber, pediaServiceName, pediaServiceText, pediaTargetKindLabel } from "@/lib/pedia/copy";
@@ -53,6 +55,16 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
   const [busy, setBusy] = useState("");
   const [attempted, setAttempted] = useState(false);
   const [quote, setQuote] = useState<{ key: string; quote_token: string; total: number; payable: number; expires: number } | null>(null);
+  // Fase B (2026-11-07): metode pembayaran dari quote bertanda tangan.
+  const [methods, setMethods] = useState<{ key: string; options: PayOption[] } | null>(null);
+  const [methodsBusy, setMethodsBusy] = useState(false);
+  const [methodsError, setMethodsError] = useState<string | null>(null);
+  const [methodsAttempt, setMethodsAttempt] = useState(0);
+  const [method, setMethod] = useState<string | null>("qris");
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
+  // Picker dimuat saat pembeli membuka bagian metode (QRIS tetap bawaan).
+  const [methodsOpen, setMethodsOpen] = useState(false);
+  const previousMethodLabel = useRef<string | null>(null);
   const tier = product.tiers.find((t) => t.id === tierId);
   const productCopy = product.description_md?.trim() ?? "";
   const productDescription = productCopy === `${product.name}. Pilih layanan dan jumlah, gunakan link yang sesuai, lalu lanjutkan ke pembayaran QRIS.` ? "" : pediaServiceText(productCopy, locale);
@@ -132,6 +144,66 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
     return () => { quoteController.current?.abort(); };
   }, [key]);
 
+  // Quote ringan untuk daftar metode (tanpa kontak), disimpan sebagai promise
+  // agar `pay()` memakai SATU quote yang sama (token tahan 30 menit). Kegagalan
+  // tidak memblokir QRIS: create tetap default QRIS.
+  const offerKey = JSON.stringify([product.slug, tierId, qty, target.trim(), comments]);
+  const methodOptions = methods?.key === offerKey ? methods.options : [];
+  type Prefetched = { quote_token: string; total: number; payable: number; expires: number };
+  const prefetch = useRef<{ key: string; promise: Promise<{ options: PayOption[]; quote: Prefetched } | null> } | null>(null);
+  useEffect(() => {
+    if (!methodsOpen || stage !== 3 || !tier || qty == null || !quantityValid || !targetOk || attempted) return;
+    const controller = new AbortController();
+    setMethodsBusy(true);
+    setMethodsError(null);
+    const promise = (async () => {
+      try {
+        const response = await fetchWithTimeout("/api/pedia/quote", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ product_slug: product.slug, tier_id: tierId, quantity: qty, target: target.trim(), ...(customComments ? { comments } : {}) }),
+          signal: controller.signal,
+        }, 25_000);
+        const data = await response.json();
+        if (controller.signal.aborted) return null;
+        const options = parsePayOptions(data.paymentMethods);
+        if (!response.ok || options.length === 0 || typeof data.quote_token !== "string"
+          || !Number.isFinite(data.total) || data.total <= 0 || !Number.isFinite(data.payable)) {
+          throw new Error(data.message ?? data.error ?? t.orderMethodsNone);
+        }
+        const quote: Prefetched = {
+          quote_token: data.quote_token, total: data.total, payable: data.payable,
+          // Token berlaku 30 menit; beri margin 1 menit seperti alur lama.
+          expires: Date.now() + 29 * 60_000,
+        };
+        setMethods({ key: offerKey, options });
+        return { options, quote };
+      } catch (cause) {
+        if (!controller.signal.aborted) setMethodsError(cause instanceof Error ? cause.message : t.orderMethodsNone);
+        return null;
+      } finally {
+        if (!controller.signal.aborted) setMethodsBusy(false);
+      }
+    })();
+    prefetch.current = { key: offerKey, promise };
+    return () => { controller.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [methodsOpen, stage, offerKey, methodsAttempt, attempted, quantityValid, targetOk]);
+
+  // Pilihan mengikuti daftar bertanda tangan; QRIS dipilih eksplisit bila pilihan hilang.
+  useEffect(() => {
+    if (!methodOptions.length) return;
+    const previous = methodOptions.find((option) => option.id === method);
+    const result = reconcileSelection(methodOptions, method, previousMethodLabel.current);
+    previousMethodLabel.current = previous?.label ?? previousMethodLabel.current;
+    if (result.selectedId !== method) setMethod(result.selectedId);
+    setSelectionNotice(result.notice
+      ? (result.notice.kind === "fallback"
+        ? fill(t.orderMethodFallback, { label: result.notice.fromLabel })
+        : fill(t.orderMethodCleared, { label: result.notice.fromLabel }))
+      : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [methods]);
+
   const validate = (throughStage = 3) => {
     const next: Record<string, string> = {};
     if (!tier) next.tier = t.errTier;
@@ -174,6 +246,11 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
     let serverMessage: string | null = null;
     try {
       let readyQuote = currentQuote;
+      if (!readyQuote && prefetch.current?.key === offerKey) {
+        const prefetched = await prefetch.current.promise;
+        if (controller.signal.aborted || latestKey.current !== requestKey) return;
+        if (prefetched) readyQuote = { key: requestKey, ...prefetched.quote };
+      }
       if (!readyQuote || (!attempted && readyQuote.expires <= Date.now())) {
         setQuote(null);
         setBusy("Memeriksa harga...");
@@ -196,14 +273,35 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
       setBusy("Membuka pembayaran...");
       const response = await fetchWithTimeout("/api/pedia/orders", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ customer_wa: wa.trim(), customer_email: email.trim(), quote_token: readyQuote.quote_token }),
+        body: JSON.stringify({ customer_wa: wa.trim(), customer_email: email.trim(), quote_token: readyQuote.quote_token, payment_method: method ?? "qris" }),
       }, 60_000);
       const data = await response.json();
       if (!response.ok) {
+        // Rail gateway/crypto bermasalah (kontrak Market): order tersimpan →
+        // buka halaman pesanan; tanpa order → pilih QRIS lagi + muat ulang metode.
+        if (response.status === 503 && data.error_code === "payment_method_unavailable") {
+          if (typeof data.code === "string" && /^AXP-\d{8}-[A-Z0-9]{8}$/.test(data.code)) {
+            rememberPediaContact(data.code, email.trim());
+            location.assign(orderCheckoutPath(`/pedia/pesanan/${data.code}`, data.code, data.buyer_access_session));
+            navigating = true;
+            return;
+          }
+          setMethod("qris");
+          setMethods(null);
+          setMethodsAttempt((value) => value + 1);
+          setQuote(null);
+          setAttempted(false);
+          serverMessage = data.error ?? null;
+          throw new Error(data.error ?? t.orderMethodsNone);
+        }
         if (response.status >= 500 && typeof data.code === "string" && /^AXP-\d{8}-[A-Z0-9]{8}$/.test(data.code)) setRecoveryCode(data.code);
         if (response.status >= 400 && response.status < 500 && ![408, 429].includes(response.status)) {
           setAttempted(false);
           setQuote(null);
+          if (data.code === "quote_stale") {
+            setMethods(null);
+            setMethodsAttempt((value) => value + 1);
+          }
         }
         // 4xx: alasan pasti dari server (harga berubah, batas, dll.) tetap ditampilkan.
         if (response.status < 500) serverMessage = data.message ?? data.error ?? null;
@@ -358,6 +456,18 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
           <fieldset disabled={attempted} className="mt-4 grid gap-4 sm:grid-cols-2">
             <div><label htmlFor="pedia-wa" className="text-[13px] text-white/70">{t.orderWa}</label><input id="pedia-wa" type="tel" inputMode="tel" enterKeyHint="next" autoComplete="tel" value={wa} onChange={(e) => setWa(e.target.value)} placeholder={t.orderWaPlaceholder} className={fieldClass} aria-invalid={!!errors.wa} aria-describedby="pedia-wa-help" /><p id="pedia-wa-help" className="mt-2 text-xs leading-5 text-white/50">{t.orderWaHelp}</p>{inlineError("wa")}</div>
             <div><label htmlFor="pedia-email" className="text-[13px] text-white/70">{t.orderEmail}</label><input id="pedia-email" type="email" inputMode="email" enterKeyHint="done" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={160} placeholder={t.orderEmailPlaceholder} className={fieldClass} aria-invalid={!!errors.email} /><p className="mt-2 text-xs leading-5 text-white/50">{t.orderEmailHelp}</p>{inlineError("email")}</div>
+            <div className="sm:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-white">{t.orderPaymentMethod}</h3>
+                {!methodsOpen && <button type="button" disabled={attempted} onClick={() => setMethodsOpen(true)} className="min-h-11 text-[13px] font-semibold text-[#00E5FF] underline underline-offset-4 disabled:opacity-40">{t.orderMethodsOther}</button>}
+              </div>
+              {!methodsOpen
+                ? <p className="mt-1 text-xs leading-5 text-white/55">{t.orderMethodsQrisDefault}</p>
+                : methodsBusy && methodOptions.length === 0 ? <p role="status" className="mt-2 text-xs text-white/55">{t.orderMethodsLoading}</p>
+                : methodsError ? <div role="alert" className="mt-2 rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-xs leading-5 text-red-200">{methodsError} <button type="button" onClick={() => setMethodsAttempt((value) => value + 1)} className="min-h-11 font-semibold text-[#00E5FF] underline underline-offset-4">{t.orderMethodsRetry}</button></div>
+                : methodOptions.length > 0 ? <div className="mt-2"><PaymentMethodPicker options={methodOptions} selectedId={method} onSelect={(id) => { setSelectionNotice(null); setMethod(id); }} locale={locale} disabled={attempted} notice={selectionNotice} /></div>
+                : <p className="mt-2 text-xs text-white/55">{t.orderMethodsNone} <button type="button" onClick={() => setMethodsAttempt((value) => value + 1)} className="min-h-11 font-semibold text-[#00E5FF] underline underline-offset-4">{t.orderMethodsRetry}</button></p>}
+            </div>
             <div className="ax-glass-card rounded-2xl p-3.5 text-[13px] leading-6 text-white/70 sm:col-span-2">{termLines.length > 0 && <><h3 className="text-sm font-bold text-white">{t.orderTermsTitle}</h3><ul className="mt-2 space-y-1.5">{shownTerms.map((l, i) => <li key={i} className="flex gap-2 break-words"><span aria-hidden="true" className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[#00E5FF]" /><span>{pediaServiceText(l, locale)}</span></li>)}</ul>{moreTerms.length > 0 && <details className="mt-1.5"><summary className="flex min-h-9 cursor-pointer list-none items-center text-[13px] font-semibold text-[#00E5FF] [&::-webkit-details-marker]:hidden">{fill(t.orderTermsAll, { count: pediaNumber(termLines.length, locale) })}</summary><ul className="space-y-1.5">{moreTerms.map((l, i) => <li key={i} className="flex gap-2 break-words"><span aria-hidden="true" className="mt-2 h-1 w-1 shrink-0 rounded-full bg-white/40" /><span>{pediaServiceText(l, locale)}</span></li>)}</ul></details>}</>}<div className={termLines.length > 0 ? "mt-3 border-t border-white/10 pt-2" : ""}><label className="flex min-h-11 cursor-pointer items-start gap-3 text-[13px] leading-6 text-white/80 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-[#00E5FF]"><input id="pedia-agree" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="peer sr-only" /><span aria-hidden="true" className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-white/40 text-transparent transition peer-checked:border-[#00E5FF] peer-checked:bg-[#00E5FF] peer-checked:text-[#080C1E]"><Check size={12} strokeWidth={3} /></span><span>{agreeBefore}<a href="/pedia/ketentuan" target="_blank" rel="noopener noreferrer" className="text-[#00E5FF] underline underline-offset-4">{t.orderAgreeLink}</a>{agreeAfter}</span></label>{inlineError("agree")}</div></div>
           </fieldset>
         </section>}

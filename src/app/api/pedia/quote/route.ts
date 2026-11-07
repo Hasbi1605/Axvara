@@ -16,6 +16,8 @@ import { pediaBounds } from "@/lib/pedia/bounds";
 import { readJsonBody } from "@/lib/http-body";
 import { checkCustomComments, CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
+import { buildMethodCatalog } from "@/lib/payments/method-options";
+import { serializePediaQuoteMethods } from "@/lib/pedia/payment-methods";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -125,6 +127,26 @@ export async function POST(req: NextRequest) {
   }
   if (!Number.isFinite(total) || total <= 0) return NextResponse.json({ error: pick(locale, "Layanan sedang tidak tersedia.", "The service is temporarily unavailable.") }, { status: 409 });
 
+  // Fase B (2026-11-07): katalog metode bersama Market. Hanya opsi TERSEDIA yang
+  // ditandatangani; kanal/koin di luar batas tetap tampil nonaktif di `paymentMethods`.
+  let catalog: Awaited<ReturnType<typeof buildMethodCatalog>> = [];
+  try {
+    catalog = await buildMethodCatalog(total);
+  } catch {
+    catalog = [];
+  }
+  // Pedia QRIS memakai provider aktif (`createActiveQrisInvoice`), bukan tabel
+  // `payment_methods` Market; baris QRIS selalu ditawarkan seperti perilaku
+  // sebelum fase B. Kegagalan provider tetap fail-closed saat create.
+  if (!catalog.some((method) => method.id === "qris")) {
+    catalog = [{
+      id: "qris", kind: "qris" as const, label: "QRIS", sublabel: null,
+      account_number: "qris", account_name: "QRIS", qris_url: null,
+      currency: "IDR" as const, available: true as const,
+    }, ...catalog];
+  }
+  const availableMethods = catalog.filter((method): method is Exclude<typeof method, { available: false }> => method.available);
+
   const { token, quoteId } = await createPediaQuoteToken({
     product_id, tier_id, quantity,
     target_raw: target.slice(0, 600),
@@ -140,9 +162,12 @@ export async function POST(req: NextRequest) {
     refill_anchor: tier.refill_anchor === "completed" ? "completed" : "created",
     service_copy: capturePediaServiceCopy(product, tier),
     ...(customComments ? { custom_comments: customComments } : {}),
+    payment_methods: serializePediaQuoteMethods(availableMethods),
+    locale,
   });
   return NextResponse.json({
     ok: true, quote_token: token, quote_id: quoteId,
     total, payable: total, credit_used: 0,
-  });
+    locale, paymentMethods: catalog,
+  }, { headers: { "Cache-Control": "private, no-store" } });
 }

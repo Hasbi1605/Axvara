@@ -39,6 +39,16 @@ export function isValidOrderCode(code: string): boolean {
 }
 
 /**
+ * Kode pesanan pembeli untuk rail pembayaran bersama (2026-11-07): AXV (Market)
+ * dan AXP (Pedia). HANYA untuk guard format di jalur pembayaran bersama
+ * (consent, IPN/callback) supaya pesanan Pedia bisa memakai mesin yang sama.
+ * `isValidOrderCode` tetap AXV-only agar route Market tidak melebar.
+ */
+export function isValidBuyerOrderCode(code: string): boolean {
+  return /^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(code);
+}
+
+/**
  * Perbandingan rahasia yang tidak membocorkan posisi byte pertama yang
  * berbeda MAUPUN panjang input: `diff` diseed dengan XOR panjang dan loop
  * selalu berjalan sepanjang input terpanjang. Ini rumah kanonis — webhook

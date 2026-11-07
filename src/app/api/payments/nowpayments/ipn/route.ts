@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readTextBody } from "@/lib/http-body";
 import { execRun, queryFirst } from "@/lib/db";
-import { isValidOrderCode } from "@/lib/security";
+import { isValidBuyerOrderCode } from "@/lib/security";
 import {
   NOWPAYMENTS_IPN_PATH,
   claimNowpaymentsPollReconcile,
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
   const orderId = String(body.order_id ?? body.orderId ?? "");
   const paymentId = String(body.payment_id ?? body.paymentId ?? "");
-  if (!isValidOrderCode(orderId) || !/^[A-Za-z0-9:_-]{1,128}$/.test(paymentId)) {
+  if (!isValidBuyerOrderCode(orderId) || !/^[A-Za-z0-9:_-]{1,128}$/.test(paymentId)) {
     return NextResponse.json({ error: "invalid_callback" }, { status: 400 });
   }
   const tx = await queryFirst(

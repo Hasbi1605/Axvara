@@ -23,7 +23,9 @@ import { generateOrderCode } from "@/lib/security";
 import { isPediaProvider } from "@/lib/pedia/proxy";
 import { isPediaSaleProvider, PEDIA_SALE_RETIRED } from "@/lib/pedia/sales-policy";
 import { deriveNameFromEmail } from "@/lib/utils";
+import { transitionPendingOrder } from "@/lib/db";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
+import { pediaPaymentMethodProblem, resolvePediaMethodSelection } from "@/lib/pedia/payment-methods";
 import type { Locale } from "@/lib/i18n/locale";
 
 export const runtime = "edge";
@@ -34,6 +36,8 @@ const schemaFor = (locale: Locale) => z.object({
     .refine((s) => /^(\+62|62|0)8\d{8,13}$/.test(s), pick(locale, "No WA harus 08... atau +62... (10-15 digit)", "WhatsApp number must start with 08... or +62... (10-15 digits)")),
   customer_email: z.string().trim().email(pick(locale, "Tulis email aktif yang benar sebelum bayar.", "Enter a valid active email before paying.")).max(160),
   quote_token: z.string().trim().min(20, pick(locale, "Quote checkout wajib disertakan", "Checkout quote is required")).max(20000),
+  /** Fase B: id metode dari token bertanda tangan. Default QRIS (perilaku lama). */
+  payment_method: z.string().trim().max(64).optional().default("qris"),
 });
 
 function normalizeWa(raw: string): string {
@@ -48,17 +52,52 @@ async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknow
   const job = await db.queryFirst(`SELECT credit_used FROM pedia_order_items WHERE order_code=?`, order.code);
   if (!job) return NextResponse.json({ error: pick(locale, "Pesanan perlu diperiksa admin.", "The order needs an admin check."), code: order.code }, { status: 503 });
   const creditUsed = Number(job.credit_used), payable = Number(order.subtotal) - creditUsed;
-  let qris = null;
+  const method = String(order.payment_method ?? "qris");
+  let qris: Record<string, unknown> | null = null;
+  let payment: Record<string, unknown> | null = null;
   if (payable > 0 && order.status === "pending") {
-    try {
-      const { createActiveQrisInvoice } = await import("@/lib/payments/dana-qris");
-      const inv = await createActiveQrisInvoice(String(order.code), payable);
-      qris = { payable_amount: inv.payableAmount, unique_code: inv.uniqueCode, image_url: inv.qrisUrl, expires_at: inv.expiresAt };
-    } catch {
-      return NextResponse.json({ error: pick(locale, "Pesanan tersimpan. QRIS belum tersedia; coba lanjutkan lagi dengan data yang sama.", "The order is saved. QRIS is not available yet; try continuing again with the same details."), code: order.code }, { status: 503 });
+    if (method === "qris") {
+      try {
+        const { createActiveQrisInvoice } = await import("@/lib/payments/dana-qris");
+        const inv = await createActiveQrisInvoice(String(order.code), payable);
+        qris = { payable_amount: inv.payableAmount, unique_code: inv.uniqueCode, image_url: inv.qrisUrl, expires_at: inv.expiresAt };
+      } catch {
+        return NextResponse.json({ error: pick(locale, "Pesanan tersimpan. QRIS belum tersedia; coba lanjutkan lagi dengan data yang sama.", "The order is saved. QRIS is not available yet; try continuing again with the same details."), code: order.code }, { status: 503 });
+      }
+    } else if (method.startsWith("sekalipay_gateway:")) {
+      // Saved gateway: read-only view (reconcile berjalan di GET status / cron).
+      const tx = await db.queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='sekalipay_gateway'", order.code).catch(() => null);
+      if (!tx) return NextResponse.json({ error: pediaPaymentMethodProblem(locale), error_code: "payment_method_unavailable", code: order.code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+      const { buildSekalipayGatewayPaymentView } = await import("@/lib/payments/payment-view");
+      const view = await buildSekalipayGatewayPaymentView(String(order.code)).catch(() => null);
+      if (!view || view.state === "initializing") return NextResponse.json({ error: pediaPaymentMethodProblem(locale), error_code: "payment_method_unavailable", code: order.code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+      payment = view as unknown as Record<string, unknown>;
+    } else if (method.startsWith("nowpayments:")) {
+      const tx = await db.queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='nowpayments'", order.code).catch(() => null);
+      const { buildNowpaymentsPaymentView } = await import("@/lib/payments/payment-view");
+      const view = tx ? await buildNowpaymentsPaymentView(String(order.code)).catch(() => null) : null;
+      if (!view) return NextResponse.json({ error: pediaPaymentMethodProblem(locale), error_code: "payment_method_unavailable", code: order.code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+      payment = view as unknown as Record<string, unknown>;
+    } else {
+      return NextResponse.json({ error: pediaPaymentMethodProblem(locale), error_code: "payment_method_unavailable", code: order.code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
     }
   }
-  return NextResponse.json({ code: order.code, buyer_access_session: await createBuyerAccessSession(order), subtotal: order.subtotal, credit_used: creditUsed, payable, status: order.status, qris, reused }, { status: reused ? 200 : 201, headers: { "Cache-Control": "private, no-store" } });
+  return NextResponse.json({ code: order.code, buyer_access_session: await createBuyerAccessSession(order), subtotal: order.subtotal, credit_used: creditUsed, payable, status: order.status, qris, ...(payment ? { payment } : {}), reused }, { status: reused ? 200 : 201, headers: { "Cache-Control": "private, no-store" } });
+}
+
+/** Order expiry = min(15 menit AXVARA, deadline provider) — tidak pernah memanjangkan. */
+async function shortenToProviderDeadline(db: DatabaseAccess, code: string) {
+  const tx = await db.queryFirst("SELECT expires_at FROM payment_transactions WHERE order_code=? ORDER BY id DESC LIMIT 1", code).catch(() => null);
+  const raw = tx?.expires_at == null ? "" : String(tx.expires_at);
+  if (!raw) return;
+  const parsed = Date.parse(raw.includes("T") ? raw : raw.replace(" ", "T"));
+  if (!Number.isFinite(parsed)) return;
+  const iso = new Date(parsed).toISOString();
+  await db.execRun(
+    `UPDATE orders SET expires_at=datetime(?)
+      WHERE code=? AND status='pending' AND datetime(expires_at)>datetime(?)`,
+    iso, code, iso,
+  ).catch(() => null);
 }
 
 export async function POST(req: NextRequest) {
@@ -76,7 +115,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? pick(locale, "Validasi gagal", "Validation failed") }, { status: 400 });
   }
-  const { customer_wa, customer_email, quote_token } = parsed.data;
+  const { customer_wa, customer_email, quote_token, payment_method } = parsed.data;
   try { assertOrderAccessConfigured(); } catch {
     return NextResponse.json({ error: pick(locale, "Checkout sementara tidak tersedia.", "Checkout is temporarily unavailable.") }, { status: 503 });
   }
@@ -91,7 +130,7 @@ export async function POST(req: NextRequest) {
   // before — including historical ProviderSMM orders. Only unreserved
   // retired-provider quotes are rejected below, before any DB tier checks,
   // debit/reservation, or invoice.
-  const reused = await db.queryFirst(`SELECT code, subtotal, status, buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`, `pedia:${quote.jti}`);
+  const reused = await db.queryFirst(`SELECT code, subtotal, status, payment_method, buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`, `pedia:${quote.jti}`);
   if (reused) return checkoutResponse(db, reused, true, locale);
   // Persisted retries above retain their original payable, including legacy
   // credits. An unreserved old quote cannot debit or redeem a credit now.
@@ -153,6 +192,20 @@ export async function POST(req: NextRequest) {
     }, { status: 409 });
   }
 
+  // Fase B: metode WAJIB berasal dari daftar bertanda tangan di token. Rail
+  // crypto/gateway dicek ulang terhadap konfigurasi + snapshot segar (helper
+  // Market); tidak ada fallback diam-diam ke QRIS.
+  const selection = await resolvePediaMethodSelection({ methods: quote.payment_methods, methodId: payment_method, idrSubtotal: freshTotal, locale });
+  if (!selection.ok) {
+    return NextResponse.json(
+      { error: selection.message, ...(selection.code ? { code: selection.code } : {}), ...(selection.status === 503 ? { error_code: "payment_method_unavailable" } : {}) },
+      { status: selection.status, headers: { "Cache-Control": "private, no-store", ...(selection.status === 409 ? {} : {}) } },
+    );
+  }
+  if (selection.kind === "gateway" && (customer_email.length > 100 || deriveNameFromEmail(customer_email).length > 100)) {
+    return NextResponse.json({ error: pick(locale, "Data pembeli tidak valid.", "Buyer details are invalid.") }, { status: 400 });
+  }
+
   // Share admission with Market; a stable quote key dedupes parallel retries.
   const guard = await consumeCheckoutSlot(
     db,
@@ -186,6 +239,7 @@ export async function POST(req: NextRequest) {
     product_id: quote.product_id, variant_id: null, qty: 1, price: freshTotal, name: String(product.name),
     pedia: { tier_id: quote.tier_id, quantity: qty, target: quote.target_normalized, unit_price: quote.unit_price, credit_used: creditUsed },
   }]);
+  const orderItems = JSON.parse(items) as { product_id: number; variant_id?: number; qty: number }[];
   const snapshot = JSON.stringify({ supplier_target: quote.supplier_target ?? quote.target_normalized, refill_anchor: quote.refill_anchor ?? "created", supplier: quote.supplier, supplier_service_id: quote.supplier_service_id,
     refill_days: quote.refill_days ?? (Number(tier.refill_days) || 0), min_profit_rp: quote.min_profit_rp ?? (Number(tier.min_profit_rp) || 0), service_copy: quote.service_copy, ...(quote.custom_comments ? { custom_comments: quote.custom_comments } : {}) });
   const owned = `EXISTS(SELECT 1 FROM orders WHERE code=? AND quote_id=?)`;
@@ -194,9 +248,9 @@ export async function POST(req: NextRequest) {
   try {
     const result = await db.d1.batch([
       statement(`INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,status,sales_channel,order_kind,payment_status,paid_at,expires_at,buyer_access_version,buyer_access_format)
-        SELECT ?,?,?,?,?,?,?,'qris','qris',?,'web','pedia',?,CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,datetime('now','+15 minutes'),1,'pin6'
+        SELECT ?,?,?,?,?,?,?,?,?,?,'web','pedia',?,CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,datetime('now','+15 minutes'),1,'pin6'
         WHERE NOT EXISTS(SELECT 1 FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check'))`,
-        code,quoteIdRow,derivedName,normalizeWa(customer_wa),customer_email,items,freshTotal,payable ? "pending" : "lunas",payable ? "pending" : "paid",payable,
+        code,quoteIdRow,derivedName,normalizeWa(customer_wa),customer_email,items,freshTotal,payment_method,selection.paymentAccount,payable ? "pending" : "lunas",payable ? "pending" : "paid",payable,
         quote.target_normalized,quote.product_id),
       statement(`INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,supplier,supplier_service_id,supplier_rate_snapshot,status,submit_attempts)
         SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',0 WHERE ${owned}`,
@@ -208,7 +262,7 @@ export async function POST(req: NextRequest) {
     // menunjuk tabel arsip (lihat migrasi 0084) tidak terlihat di log. Hanya
     // pesan D1 + id tier/produk; tanpa kontak, target atau token.
     console.error("[pedia-orders] claim batch failed", { tier_id: quote.tier_id, product_id: quote.product_id, error: error instanceof Error ? error.message.slice(0, 200) : "unknown" });
-    const existing = await db.queryFirst(`SELECT code,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`,quoteIdRow).catch(() => null);
+    const existing = await db.queryFirst(`SELECT code,subtotal,status,payment_method,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`,quoteIdRow).catch(() => null);
     if (existing) return checkoutResponse(db,existing,true,locale);
     return NextResponse.json({ error: pick(locale, "Pesanan belum tersimpan. Coba lagi dengan data yang sama.", "The order was not saved. Try again with the same details.") }, { status: 503 });
   }
@@ -216,11 +270,54 @@ export async function POST(req: NextRequest) {
     // A parallel retry of this same quote may have committed between the
     // reuse lookup above and this claim (the durable guard adds awaits in
     // between). That winner is a reuse, never a duplicate-target rejection.
-    const raceWinner = await db.queryFirst(`SELECT code,subtotal,status,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`, quoteIdRow).catch(() => null);
+    const raceWinner = await db.queryFirst(`SELECT code,subtotal,status,payment_method,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?`, quoteIdRow).catch(() => null);
     if (raceWinner) return checkoutResponse(db, raceWinner, true, locale);
     const dup = await db.queryFirst(`SELECT order_code FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check') ORDER BY id DESC LIMIT 1`,quote.target_normalized,quote.product_id);
     if (dup) return NextResponse.json({ error: "duplicate_active_order", message: pick(locale, "Link ini masih memiliki pesanan yang diproses. Tunggu selesai atau hubungi admin.", "This link still has an order in progress. Wait for it to finish or contact admin.") }, { status: 409 });
     return NextResponse.json({ error: "checkout_changed", message: pick(locale, "Pesanan berubah. Periksa ulang sebelum melanjutkan.", "The order changed. Review again before continuing.") }, { status: 409 });
   }
-  return checkoutResponse(db,{ code,subtotal:freshTotal,status:payable ? "pending" : "lunas", buyer_access_version: 1, buyer_access_format: "pin6" },false,locale);
+  // Invoice per rail (2026-11-07 fase B). QRIS dibuat di checkoutResponse
+  // (perilaku lama); gateway/crypto dibuat DI SINI sebelum view dibangun.
+  if (selection.kind === "crypto" && selection.cryptoUsd) {
+    try {
+      const { createNowpaymentsInvoice } = await import("@/lib/payments/nowpayments");
+      await createNowpaymentsInvoice(code, payable, selection.cryptoUsd.payCurrency, {
+        payNetwork: selection.cryptoUsd.network,
+        priceCurrency: "usd",
+        feePayer: "merchant",
+        fixedRate: false,
+        expectedUsd: selection.cryptoUsd,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "unknown";
+      console.error("[pedia-orders] NOWPayments setup failed:", message.slice(0, 120));
+      const claimedTx = await db.queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='nowpayments' AND status IN ('initializing','pending')", code);
+      // Ambiguous/mid-finalize: klaim + stok dipertahankan, JANGAN POST ulang/cancel.
+      if (claimedTx || message === "nowpayments_network_ambiguous" || message === "nowpayments_finalize_failed_manual_review") {
+        return NextResponse.json({ error: pediaPaymentMethodProblem(locale), error_code: "payment_method_unavailable", code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+      }
+      // Definitif: batalkan order + item, pembeli memilih metode lain dengan quote baru.
+      await transitionPendingOrder(code, "dibatalkan", `nowpayments_setup_failed:${message.slice(0, 60)}`, orderItems).catch(() => {});
+      const { expirePediaCheckouts } = await import("@/lib/pedia/expire");
+      await expirePediaCheckouts(db).catch(() => {});
+      return NextResponse.json({ error: pediaPaymentMethodProblem(locale), error_code: "payment_method_unavailable", code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+    }
+  } else if (selection.kind === "gateway" && selection.gateway) {
+    try {
+      const { createSekalipayGatewayInvoice } = await import("@/lib/payments/sekalipay-gateway");
+      await createSekalipayGatewayInvoice(code, payable, selection.gateway.channel, { name: derivedName, email: customer_email, phone: normalizeWa(customer_wa) }, selection.gateway.estimated_fee);
+    } catch (error: unknown) {
+      console.error("[pedia-orders] gateway setup failed:", error instanceof Error ? error.message.slice(0, 120) : "unknown");
+      // Klaim tersimpan dipertahankan (tanpa POST ulang); preclaim orphan = 503 aman.
+      const claimedTx = await db.queryFirst("SELECT id FROM payment_transactions WHERE order_code=? AND provider='sekalipay_gateway'", code);
+      if (!claimedTx) {
+        await transitionPendingOrder(code, "dibatalkan", "gateway_setup_failed", orderItems).catch(() => {});
+        const { expirePediaCheckouts } = await import("@/lib/pedia/expire");
+        await expirePediaCheckouts(db).catch(() => {});
+      }
+      return NextResponse.json({ error: pediaPaymentMethodProblem(locale), error_code: "payment_method_unavailable", code }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
+    }
+  }
+  await shortenToProviderDeadline(db, code);
+  return checkoutResponse(db,{ code,subtotal:freshTotal,status:payable ? "pending" : "lunas", payment_method, buyer_access_version: 1, buyer_access_format: "pin6" },false,locale);
 }

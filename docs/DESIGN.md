@@ -1,5 +1,11 @@
 # DESIGN.md — AXVARA Design System
 
+## Pedia: pemilih metode + panel pembayaran (7 November 2026, lokal; verifikasi browser belum dilakukan)
+- Metode pembayaran berada di langkah Kontak sebagai bagian ringkas: baris judul "Metode pembayaran" + tautan "Pilih metode lain". Tanpa membuka tautan, QRIS tetap terpilih dan tidak ada request tambahan. Setelah dibuka, `PaymentMethodPicker` Market dirender apa adanya (kartu QRIS langsung, akordeon Virtual Account/E-Wallet/Transfer lainnya/Crypto, chip logo, biaya dan batas dari server) — tidak ada varian gaya Pedia.
+- Pilihan yang hilang/tidak tersedia direkonsiliasi dengan aturan Market: kembali ke QRIS dan menampilkan catatan singkat (ID/EN). Kegagalan rail menampilkan pesan server dan mengembalikan pilihan ke QRIS.
+- Halaman pesanan memakai header ringkas yang sama dengan QRIS untuk gateway/crypto pending, lalu `GatewayPaymentPanel` (gateway: satu kartu terpusat chip "Menunggu bayar"/total/hitung mundur/VA/tombol bayar/cek/status otomatis; crypto: dua kolom QR+detail dengan nominal yang dibulatkan tampilannya). Tombol "Batalkan Pesanan" dinonaktifkan saat crypto `confirming`/`manual_review` (dana mungkin sedang berjalan).
+- Semua copy picker/panel berasal dari komponen Market sehingga mengikuti `axv_locale`; nominal crypto tetap USD (bukan konversi IDR) dan label jaringan tidak ditebak.
+
 ## Cakupan bahasa Market — fase 1 UI (7 November 2026, lokal; verifikasi browser belum dilakukan)
 - Saat English dipilih, seluruh chrome pembeli Market berbahasa Inggris: navbar/footer/kartu/PDP/keranjang (`catalogCopy`), nama kategori (`market-categories` by slug; unknown slug → nama DB), halaman pesanan/lacak beserta panel pending/paid/expired/akses/PIN/kredensial/garansi (`order-copy` memakai `order.locale`, atau `axv_locale` untuk form sebelum pesanan diketahui), hero/community/banner, serta reminder/device orders/help.
 - Salinan ID dipertahankan byte-identik; EN memakai tone dan hierarki tipografi yang sama. Token Midnight/Cyan/Gold, layout, fokus-visible, dan target sentuh tidak berubah.

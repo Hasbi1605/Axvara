@@ -16,6 +16,9 @@ import { parseExpiry } from "@/lib/expiry";
 import { SITE, supportTelegramLink } from "@/lib/site";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { StatusPill } from "@/components/pedia/StatusWidgets";
+import { GatewayPaymentPanel } from "@/components/storefront/GatewayPaymentPanel";
+import { usePaymentConsent } from "@/hooks/usePaymentConsent";
+import { normalizePaymentView, type PaymentView } from "@/lib/payment-ui";
 import { formatCheckedTime, formatCount, isProcessingStatus, knownCount, pediaEstimate, pediaHeader, pediaPollMs, pediaProgress, stepThreeLabel } from "@/components/pedia/status-view";
 import { MobileCollapsible } from "@/components/storefront/ProductCopy";
 import type { PediaServiceCopy } from "@/lib/pedia/service-copy";
@@ -36,6 +39,9 @@ type Status = {
   refill?: Partial<PediaRefillState> | null;
   buyer_canceled?: boolean;
   qris: { payable_amount: number; unique_code?: number | null; image_url: string; expires_at: string; status: string } | null;
+  /** Fase B: rail non-QRIS (view kanonis Market). */
+  payment_method?: string;
+  payment?: unknown;
 };
 
 // API mengirim URL absolut domain Market; CSP Pedia (img-src 'self') memblokirnya.
@@ -140,12 +146,13 @@ export default function PediaOrderStatusPage() {
   }, [load, data?.status]);
 
   const qrDeadline = data?.qris?.expires_at;
+  const hasPayment = Boolean(data?.payment);
   useEffect(() => {
-    if (data?.status !== "awaiting_payment" || !qrDeadline) return;
+    if (data?.status !== "awaiting_payment" || (!qrDeadline && !hasPayment)) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [data?.status, qrDeadline]);
+  }, [data?.status, qrDeadline, hasPayment]);
 
   const [refillOpen, setRefillOpen] = useState(false);
   const [refillContact, setRefillContact] = useState("");
@@ -196,6 +203,15 @@ export default function PediaOrderStatusPage() {
     }
   };
 
+  // Persetujuan biaya gateway (rute Market yang sama, satu klik → redirect).
+  const consentHook = usePaymentConsent({
+    code: typeof code === "string" ? code : "",
+    locale,
+    resolveContact: (input: string) => input.trim() || buyerContact.current || refillContact,
+    refresh: () => load(true),
+    onAccepted: (contact: string) => { buyerContact.current = contact; rememberPediaContact(String(code ?? ""), contact); },
+  });
+
   if (needsContact && !data) return <form className="mx-auto max-w-md space-y-4 px-4 py-10" onSubmit={(e) => { e.preventDefault(); if (!isValidOrderContact(contact)) return; rememberPediaContact(code, contact.trim()); rememberOrderContact(code, contact.trim()); void load(false, contact.trim()); }}>
     <h1 className="font-display text-2xl font-semibold text-white">{t.statusViewOrder}</h1>
     <label className="block text-sm text-white/75" htmlFor="pedia-order-contact">{t.statusRefillContact}</label>
@@ -239,7 +255,13 @@ export default function PediaOrderStatusPage() {
   const copyDescriptions = localizedCopy?.description;
   const copyTerms = localizedCopy?.terms;
   const payableAmount = data.qris ? Number(data.qris.payable_amount) : null;
-  const compactPayment = pending && Boolean(data.qris);
+  const paymentView: PaymentView | null = normalizePaymentView(data.payment);
+  const compactPayment = pending && (Boolean(data.qris) || paymentView !== null);
+  const paymentTitle = paymentView
+    ? (paymentView.kind === "crypto" ? t.statusPaymentCrypto : fill(t.statusPaymentGateway, { label: paymentView.label }))
+    : t.statusPaymentTitle;
+  // Batal mandiri hanya saat pembayaran belum berjalan pasti (crypto confirming/manual review dikunci).
+  const cancelAllowed = !paymentView || ["initializing", "fee_consent_required", "pending"].includes(paymentView.state);
   const isCancelled = data.status === "canceled" || data.buyer_canceled === true;
   const pollSeconds = (pediaPollMs(data.status) ?? 10_000) / 1000;
   const statusVisual = isCancelled
@@ -278,7 +300,7 @@ export default function PediaOrderStatusPage() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-                <h1 className="font-display text-base font-bold leading-6 text-white sm:text-lg">{t.statusPaymentTitle}</h1>
+                <h1 className="font-display text-base font-bold leading-6 text-white sm:text-lg">{paymentTitle}</h1>
                 {qrExpired && <span className="rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">{t.statusQrisInactive}</span>}
               </div>
               <div className="mt-1">{codeButton("font-mono text-[11px] font-semibold tracking-[0.04em] text-[#00E5FF]")}</div>
@@ -297,7 +319,7 @@ export default function PediaOrderStatusPage() {
             : paid ? <div role="status" aria-live="polite" className="mt-3"><StatusPill status={data.status} locale={locale} />{paidAtLabel && <p className="mt-1.5 text-[11px] text-white/50">{fill(t.statusPaidAt, { time: paidAtLabel })}</p>}</div>
             : expired ? <span className="mt-3 inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/50">{t.statusExpiredPill}</span>
             : <span className="mt-3 inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/15 px-3 py-1.5 text-xs font-semibold text-[#FFB800]">{t.statusPendingPill}</span>}
-          {(expired || data.buyer_canceled === true || (paid && !isCancelled && (header.lead || complete)) || (pending && !data.qris)) && <p className="mt-4 text-sm leading-6 text-white/60">
+          {(expired || data.buyer_canceled === true || (paid && !isCancelled && (header.lead || complete)) || (pending && !data.qris && !paymentView)) && <p className="mt-4 text-sm leading-6 text-white/60">
             {data.buyer_canceled ? t.statusCanceledNote : expired ? t.statusExpiredNote
               : complete ? fill(t.statusCompleteNote, { service: productName })
               : paid ? header.lead
@@ -338,6 +360,20 @@ export default function PediaOrderStatusPage() {
               </div>
             )}
           </section>
+        )}
+
+        {paymentView && pending && (
+          <div className="mt-3 text-left">
+            <GatewayPaymentPanel
+              payment={paymentView}
+              locale={locale}
+              now={now}
+              checking={loading}
+              onCheck={() => void load(true)}
+              contactKnown={Boolean(buyerContact.current || refillContact)}
+              consent={{ busy: consentHook.busy, error: consentHook.error, stale: consentHook.stale, onApprove: (total, contact) => void consentHook.approve(total, contact) }}
+            />
+          </div>
         )}
 
         {error && <div role="alert" className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-left text-xs text-amber-200">{fill(t.statusError, { error })}</div>}
@@ -433,7 +469,9 @@ export default function PediaOrderStatusPage() {
             {!confirmingCancel ? (
               <div className="grid grid-cols-2 gap-2.5">
                 <a href="/pedia" className={`${linkClass} border border-white/10 bg-white/[0.03] px-2 text-[11px] font-medium text-white/60 transition hover:bg-white/[0.06] sm:text-xs`}>{t.statusContinueShopping}</a>
-                <button type="button" onClick={() => { setConfirmingCancel(true); setCancelError(null); setCancelContact((c) => c || buyerContact.current); }} className={`${linkClass} border border-red-400/15 bg-red-500/[0.04] px-2 text-[11px] font-medium text-red-200/80 transition hover:bg-red-500/[0.08] sm:text-xs`}>{t.statusCancelOrder}</button>
+                {cancelAllowed
+                  ? <button type="button" onClick={() => { setConfirmingCancel(true); setCancelError(null); setCancelContact((c) => c || buyerContact.current); }} className={`${linkClass} border border-red-400/15 bg-red-500/[0.04] px-2 text-[11px] font-medium text-red-200/80 transition hover:bg-red-500/[0.08] sm:text-xs`}>{t.statusCancelOrder}</button>
+                  : <span className={`${linkClass} border border-white/10 px-2 text-[11px] font-medium text-white/35 sm:text-xs`}>{t.statusCancelOrder}</span>}
               </div>
             ) : (
               <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-4" role="dialog" aria-label={t.statusCancelDialog}>

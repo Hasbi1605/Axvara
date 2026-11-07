@@ -3,6 +3,7 @@ import { readTextBody } from "@/lib/http-body";
 import { execRun, queryFirst } from "@/lib/db";
 import { reconcileSekalipayGatewayPayment, verifyGatewayWebhook, gatewayHmac } from "@/lib/payments/sekalipay-gateway";
 import { parseFxTimestamp } from "@/lib/payments/fx";
+import { isValidBuyerOrderCode } from "@/lib/security";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
   try { body = JSON.parse(bounded.data); } catch { return NextResponse.json({ error: "invalid_json" }, { status: 400 }); }
   if (!body || typeof body !== "object" || Array.isArray(body)
-    || typeof body.merchant_ref_id !== "string" || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(body.merchant_ref_id)
+    || typeof body.merchant_ref_id !== "string" || !isValidBuyerOrderCode(body.merchant_ref_id)
     || typeof body.invoice !== "string" || !/^[A-Za-z0-9_-]{1,191}$/.test(body.invoice)
     || (body.status !== "paid" && body.status !== "completed")
     || !Number.isSafeInteger(body.amount) || !Number.isSafeInteger(body.fee) || !Number.isSafeInteger(body.total)

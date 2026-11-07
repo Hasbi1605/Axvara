@@ -1,5 +1,12 @@
 # PRD — AXVARA
 
+## Keputusan owner 7 November 2026: rail pembayaran Pedia (fase B, lokal, belum deploy)
+- Checkout Pedia web menawarkan QRIS (bawaan), Sekalipay gateway VA/e-wallet (kurasi sama dengan Market: `SHOPEEPAY` biasa; `SHOPEEPAY_REALTIME`/`DANA_REALTIME` tidak ditawarkan), dan crypto NOWPayments (USD; biaya layanan mengikuti konstanta crypto existing; minimum per koin ×1,15). Pilihan metode berasal dari quote bertanda tangan; metode tidak sah → pembeli diminta memuat ulang.
+- Alur pembeli: pilih layanan → tempel target → isi kontak → (opsional) buka "Pilih metode lain" untuk VA/e-wallet/crypto → lanjut ke pembayaran. QRIS tetap terpilih secara bawaan dan langkah qty/target/kontak tidak berubah.
+- Halaman pesanan menampilkan panel pembayaran yang sama dengan Market (VA/tautan, alamat+nominal crypto dengan pembulatan tampilan, tombol cek pembayaran, persetujuan biaya gateway satu klik yang langsung mengarahkan ke provider). Status otomatis diperbarui lewat polling/rekonsiliasi yang sudah ada.
+- Batas waktu order = `min(15 menit, deadline provider)`. Pembayaran telat/underpaid crypto masuk pemeriksaan manual dan tidak memicu dispatch; pembayaran gateway yang telat juga mengikuti aturan Market. Kredit Pedia tetap tidak tersedia.
+- Setelah lunas, dispatch Pedia berjalan seperti QRIS (order `lunas`), diverifikasi untuk gateway dan crypto. Telegram/WhatsApp tidak berubah.
+
 ## Keputusan owner 7 November 2026: cakupan bahasa EN penuh Market — fase 1 (lokal, belum deploy)
 - Menggantikan aturan lama bahwa konten/kategori Market tidak pernah EN. Saat English dipilih (`axv_locale`) atau pesanan tersimpan ber-locale EN (`order.locale`), seluruh permukaan pembeli Market berbahasa Inggris: chrome navbar/footer/kartu/PDP/keranjang, nama kategori (map slug produksi; unknown → nama DB), halaman pesanan/lacak, panel QRIS/gateway/crypto, form akses/PIN, kredensial akun, reminder/device orders, bantuan, garansi, hero/community/banner.
 - Halaman statis `cara-order`, `garansi-replace`, `artikel`, serta menu lintas-layanan (`ServicesMenu`/`CrossServicePromo`, termasuk navbar/kartu Pedia yang memakai cookie) ikut EN.

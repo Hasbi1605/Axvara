@@ -250,7 +250,7 @@ async function savedGatewayView(orderCode: string) {
 export function createSekalipayGatewayInvoice(orderCode?: string, amount?: number, channel?: string, customer?: GatewayCustomer, estimatedFee?: number, adminTest = false): Promise<Awaited<ReturnType<typeof savedGatewayView>>> {
   if (!isSekalipayGatewayConfigured(adminTest) && !orderCode) throw new Error("sekalipay_gateway_not_configured");
   return (async () => {
-    if (!orderCode || !/^AXV-\d{8}-[A-Z0-9]{8}$/.test(orderCode) || !Number.isSafeInteger(amount) || amount! < 100 || amount! > 999_999_999
+    if (!orderCode || !/^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(orderCode) || !Number.isSafeInteger(amount) || amount! < 100 || amount! > 999_999_999
       || !channel || !/^[A-Za-z0-9_-]{1,64}$/.test(channel) || /qris/i.test(channel)
       || !Number.isSafeInteger(estimatedFee) || estimatedFee! < 0 || estimatedFee! > 999_999_999
       || !customer || typeof customer.name !== "string" || !customer.name.trim() || customer.name.length > 100
@@ -336,7 +336,7 @@ export async function confirmGatewayFee(orderCode: string, expectedFinalTotal: n
 export function reconcileSekalipayGatewayPayment(orderCode?: string, db: DatabaseAccess = createDatabaseAccess()): Promise<"paid" | "already_paid" | "pending" | "manual_review"> {
   if (!orderCode) throw new Error("sekalipay_gateway_not_configured");
   return (async () => {
-    if (!/^AXV-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) throw new Error("sekalipay_gateway_invalid_input");
+    if (!/^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) throw new Error("sekalipay_gateway_invalid_input");
     const tx = await db.queryFirst(`SELECT pt.*,o.status AS order_status,o.payment_status AS order_payment_status,o.expires_at AS order_expires_at,
       o.payment_method AS order_method,o.subtotal AS order_subtotal,o.variant_id,o.sales_channel,o.order_kind
       FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code WHERE pt.order_code=? AND pt.provider='sekalipay_gateway'`, orderCode);
