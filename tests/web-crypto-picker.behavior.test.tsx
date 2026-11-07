@@ -55,7 +55,7 @@ describe("crypto picker: header tertutup", () => {
     render(<Harness raw={[qrisM, ...allCoins()]} />);
     const head = headerBtn(/^Crypto/);
     expect(head.getAttribute("aria-expanded")).toBe("false");
-    expect(norm(head.textContent)).toBe("CryptoUS$12,48 · termasuk biaya layanan 1,5%+8"); // 12 simbol - 4 chip
+    expect(norm(head.textContent)).toBe("CryptoUS$12,48 · termasuk biaya layanan crypto+8"); // 12 simbol - 4 chip
     const title = Array.from(head.querySelectorAll("span")).find((el) => el.textContent === "Crypto")!;
     expect(title.className).toContain("text-[14px]");
     expect(title.className).toContain("font-semibold");
@@ -66,9 +66,9 @@ describe("crypto picker: header tertutup", () => {
     expect(head.querySelector("[data-coin-chips] .-space-x-1\\.5")).toBeTruthy();
   });
 
-  it("EN: 'incl. 1.5% service fee'; tanpa koin tersedia tidak ada keterangan jumlah", () => {
+  it("EN: 'incl. crypto service fee'; tanpa koin tersedia tidak ada keterangan jumlah", () => {
     const { unmount } = render(<Harness raw={[qrisM, ...allCoins()]} locale="en" />);
-    expect(norm(headerBtn(/^Crypto/).textContent)).toContain("US$12.48 · incl. 1.5% service fee");
+    expect(norm(headerBtn(/^Crypto/).textContent)).toContain("US$12.48 · incl. crypto service fee");
     unmount();
     render(<Harness raw={[qrisM, coin("btc", DEFAULT_BELOW), coin("ton", DEFAULT_BELOW)]} />);
     expect(headerBtn(/^Crypto/).querySelector("[data-crypto-caption]")).toBeNull();

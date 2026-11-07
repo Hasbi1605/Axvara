@@ -402,7 +402,7 @@ export async function POST(req: NextRequest) {
     if (!snapCents || BigInt(snapCents) <= BigInt(0) || !snapRateNum || BigInt(snapRateNum) <= BigInt(0)
       || !snapRateDen || BigInt(snapRateDen) <= BigInt(0) || !snapRateText || !snapEffective || snapSubtotal === null) return stale();
     // Rincian harga diturunkan ulang di server dari base bertanda; field di token hanya dibandingkan.
-    const pricing = cryptoPricing(BigInt(snapCents));
+    const pricing = cryptoPricing(BigInt(snapCents), cryptoTicker);
     if (row.surcharge_bps !== CRYPTO_SURCHARGE_BPS || row.base_cents !== Number(pricing.baseCents)
       || row.surcharge_cents !== Number(pricing.surchargeCents) || row.total_cents !== Number(pricing.totalCents)
       || pricing.totalCents <= BigInt(0)) return stale();

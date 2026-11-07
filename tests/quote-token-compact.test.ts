@@ -47,7 +47,7 @@ const signedPayload = async (methods: unknown[]) => {
   const { token } = await createCheckoutQuoteToken({ items: ITEMS, subtotal: SUBTOTAL, payment_methods: methods as never, locale: "id" });
   const payload = { ...decodeJwt(token) } as Record<string, unknown>;
   for (const key of ["iat", "exp", "jti"]) delete payload[key];
-  return payload as { payment_methods: unknown[]; crypto: Record<string, unknown> & { tickers: string[]; usd: Record<string, unknown> } };
+  return payload as { payment_methods: unknown[]; crypto: Record<string, unknown> & { items: { ticker: string; total_cents: number }[]; usd: Record<string, unknown> } };
 };
 
 describe("compact quote token (pure)", () => {
@@ -76,7 +76,8 @@ describe("compact quote token (pure)", () => {
   it("token memuat satu blok crypto, bukan metode kripto penuh", async () => {
     const payload = await signedPayload([qris(0), ...cryptoMethods()]);
     expect(payload.payment_methods).toHaveLength(1);
-    expect(payload.crypto.tickers).toHaveLength(28);
+    expect(payload.crypto.items).toHaveLength(28);
+    expect(payload.crypto.items.map((item) => item.ticker)).toEqual(CRYPTO_ASSETS.map((a) => a.ticker));
     expect(JSON.stringify(payload.payment_methods)).not.toContain("nowpayments:");
   });
 
@@ -136,20 +137,23 @@ describe("compact quote token (pure)", () => {
   it("tamper blok ditolak: ticker non-kurasi/duplikat/besar/kosong, total tidak cocok, kedua bentuk, jaringan palsu, field tambahan", async () => {
     const payload = await signedPayload([qris(0), ...cryptoMethods(3)]);
     const withBlock = (patch: Record<string, unknown>) => ({ ...payload, crypto: { ...payload.crypto, ...patch } });
-    const t = payload.crypto.tickers;
+    const t = payload.crypto.items;
     const full = cryptoMethods(3);
     expect(await verifyCheckoutQuoteToken(await sign(payload))).not.toBeNull();
     const bad: object[] = [
-      withBlock({ tickers: [...t, "doge"] }),
-      withBlock({ tickers: [...t, "USDTBSC"] }),
-      withBlock({ tickers: [t[0], t[0]] }),
-      withBlock({ tickers: [] }),
-      withBlock({ tickers: Array.from({ length: 65 }, (_, i) => `x${i}`) }),
-      withBlock({ tickers: [...t, "a".repeat(33)] }),
-      withBlock({ tickers: "btc" }),
-      withBlock({ total_cents: Number(payload.crypto.total_cents) + 1 }),
-      withBlock({ amount_text: "0.01" }),
-      withBlock({ surcharge_bps: 100 }),
+      withBlock({ items: [...t, { ticker: "doge", total_cents: 1587 }] }),
+      withBlock({ items: [...t, { ticker: "USDTBSC", total_cents: 1587 }] }),
+      withBlock({ items: [t[0], t[0]] }),
+      withBlock({ items: [] }),
+      withBlock({ items: Array.from({ length: 65 }, (_, i) => ({ ticker: `x${i}`, total_cents: 1587 })) }),
+      withBlock({ items: [...t, { ticker: "a".repeat(33), total_cents: 1587 }] }),
+      withBlock({ items: [...t, { ticker: "btc", total_cents: -1 }] }),
+      withBlock({ items: [...t, { ticker: "btc", total_cents: 1587, extra: true }] }),
+      withBlock({ items: "btc" }),
+      withBlock({ items: [{ ...t[0], total_cents: t[0].total_cents + 1 }] }), // total != per-coin formula
+      withBlock({ items: [{ ...t[0], total_cents: Number(payload.crypto.base_cents) - 1 }] }), // below base
+      withBlock({ base_cents: Number(payload.crypto.base_cents) + 1 }),
+      withBlock({ surcharge_bps: 200 }),
       withBlock({ usd: { ...payload.crypto.usd, cents: "1" } }),
       withBlock({ usd: { ...payload.crypto.usd, network: "trx" } }),
       withBlock({ usd: { ...payload.crypto.usd, pay_currency: "btc" } }),
@@ -164,7 +168,7 @@ describe("compact quote token (pure)", () => {
       { ...payload, payment_methods: [...payload.payment_methods, full[0]] },
       { ...payload, payment_methods: [...payload.payment_methods, { ...full[0], kind: "qris" }] },
     ];
-    for (const value of bad) expect(await verifyCheckoutQuoteToken(await sign(value))).toBeNull();
+    for (const value of bad) expect(await verifyCheckoutQuoteToken(await sign(value)), JSON.stringify(value).slice(0, 160)).toBeNull();
   });
 
   it("tamper tanda tangan pada token ringkas ditolak", async () => {

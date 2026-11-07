@@ -145,8 +145,8 @@ describe("usdFor: USD fiat mengikuti locale (koin dan clipboard tidak pernah dil
     expect(en.cryptoUsd("3.60")).toBe("US$3.60");
     expect(id.cryptoMin("2.25")).toBe("Min. US$2,25");
     expect(en.cryptoMin("2.25")).toBe("Min. US$2.25");
-    expect(id.cryptoCaption("3.60", 150)).toBe("US$3,60 · termasuk biaya layanan 1,5%");
-    expect(en.cryptoCaption("3.60", 150)).toBe("US$3.60 · incl. 1.5% service fee");
+    expect(id.cryptoCaption("3.60")).toBe("US$3,60 · termasuk biaya layanan crypto");
+    expect(en.cryptoCaption("3.60")).toBe("US$3.60 · incl. crypto service fee");
     expect(id.ctaCrypto("3.60")).toBe("Buat Pesanan — US$3,60");
     expect(en.ctaCrypto("3.60")).toBe("Place order — US$3.60");
     expect(id.cryptoMinReason("2.25", null)).toBe("Belanja minimal US$2,25 untuk koin ini");

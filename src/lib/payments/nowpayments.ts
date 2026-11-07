@@ -272,9 +272,9 @@ export async function createNowpaymentsInvoice(
       rateNum: usd.rateNum, rateDen: usd.rateDen, rateText: usd.rateText,
       effectiveAt: usd.effectiveAt, source: "operator-fixed",
     });
-    // base = dari kurs bertanda; surcharge = ceil(base x bps / 10000); total = base + surcharge = price_amount.
+    // base = dari kurs bertanda; biaya layanan per koin (1% + biaya tetap ticker); total = price_amount.
     if (usd.surchargeBps !== CRYPTO_SURCHARGE_BPS || recomputed <= BigInt(0)) throw new Error("nowpayments_invoice_mismatch");
-    const pricing = cryptoPricing(recomputed);
+    const pricing = cryptoPricing(recomputed, currency);
     if (recomputed.toString() !== usd.cents || pricing.surchargeCents.toString() !== usd.surchargeCents
       || pricing.totalCents.toString() !== usd.totalCents || centsToUsdText(pricing.totalCents) !== usd.priceText) {
       throw new Error("nowpayments_invoice_mismatch");

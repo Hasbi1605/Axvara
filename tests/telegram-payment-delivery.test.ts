@@ -176,7 +176,7 @@ describe("TG R3 provider invoice delivery fence + text retry", () => {
     expect(withAddress()).toHaveLength(1);
     const text = withAddress()[0].text;
     expect(text).toContain("Send exactly <b>1.25 USDT</b> on the <b>BNB Smart Chain</b> network only.");
-    expect(text).toContain("incl. 2% crypto service fee US$0.05");
+    expect(text).toContain("incl. crypto service fee US$0.11");
     expect(text).toContain("Sending another coin or network may lose your funds");
     expect(text).not.toMatch(/QRIS/i);
     expect(vi.mocked(sendPhoto)).not.toHaveBeenCalled();

@@ -8,7 +8,6 @@
 
 import { formatRupiah } from "@/lib/utils";
 import { parseExpiry } from "@/lib/expiry";
-import { bpsPercentText } from "@/lib/payments/crypto-pricing";
 
 export type PayLocale = "id" | "en";
 export const asPayLocale = (value: unknown): PayLocale => (value === "en" ? "en" : "id");
@@ -225,7 +224,6 @@ export function usdFor(amountText: string, locale: PayLocale): string {
   const cents = BigInt(match[1]) * BigInt(100) + BigInt((match[2] ?? "").padEnd(2, "0") || "0");
   return formatUsdCentsText(cents.toString(), locale) ?? usd(amountText);
 }
-export { bpsPercentText };
 
 const numberLang = (locale: PayLocale) => (locale === "en" ? "en-US" : "id-ID");
 /** "Rp 38.000" (id) / "Rp 38,000" (en): pemisah ribuan mengikuti locale; angka bulat dari server. */
@@ -257,17 +255,16 @@ export function payCopy(locale: PayLocale) {
     gatewayRowFee: (fee: number) => (fee > 0 ? (id ? `Biaya ${rpLocale(fee, locale)}` : `Fee ${rpLocale(fee, locale)}`) : id ? "Tanpa biaya" : "No fee"),
     gatewayRowMin: (min: number) => `Min. ${rpLocale(min, locale)}`,
     gatewayRowMax: (max: number) => (id ? `Maks. ${rpLocale(max, locale)}` : `Max ${rpLocale(max, locale)}`),
-    cryptoCaption: (amountText: string, bps: number | null) =>
-      (bps === null ? usdFor(amountText, locale) : id ? `${usdFor(amountText, locale)} · termasuk biaya layanan ${bpsPercentText(bps, "id")}%` : `${usdFor(amountText, locale)} · incl. ${bpsPercentText(bps, "en")}% service fee`),
+    cryptoCaption: (amountText: string) =>
+      (id ? `${usdFor(amountText, locale)} · termasuk biaya layanan crypto` : `${usdFor(amountText, locale)} · incl. crypto service fee`),
     cryptoNetworks: (n: number) => (id ? `${n} jaringan` : `${n} networks`),
     cryptoNetworkGroup: (symbol: string) => (id ? `Jaringan ${symbol}` : `${symbol} network`),
     cryptoSubPopular: id ? "Populer" : "Popular",
     cryptoSubStable: "Stablecoin",
     cryptoMinApprox: (idrText: string) => `≈ ${idrText}`,
-    cryptoFeeIncluded: (bps: number) => (id ? `Termasuk biaya layanan ${bpsPercentText(bps, "id")}%` : `Incl. ${bpsPercentText(bps, "en")}% service fee`),
     // Ringkasan checkout crypto (revisi owner 6 Nov): cukup Subtotal + Biaya layanan, tanpa baris kurs/gas.
     cryptoSubtotalRow: "Subtotal",
-    cryptoServiceFeeRow: (bps: number) => (id ? `Biaya layanan ${bpsPercentText(bps, "id")}%` : `Service fee ${bpsPercentText(bps, "en")}%`),
+    cryptoServiceFeeRow: id ? "Biaya layanan crypto" : "Crypto service fee",
     cryptoMin: (minUsdText: string) => `Min. ${usdFor(minUsdText, locale)}`,
     cryptoMinReason: (minUsdText: string, minIdr: number | null) =>
       (id ? `Belanja minimal ${usdFor(minUsdText, locale)}${minIdr !== null ? ` (± ${rp(minIdr)})` : ""} untuk koin ini` : `Spend at least ${usdFor(minUsdText, locale)}${minIdr !== null ? ` (≈ ${rp(minIdr)})` : ""} to use this coin`),
@@ -412,12 +409,12 @@ export function orderPanelCopy(locale: PayLocale) {
       copyAddress: id ? "Salin alamat" : "Copy address",
       copied: id ? "Tersalin" : "Copied",
       copyFailed: id ? "Gagal menyalin. Salin manual." : "Copy failed. Copy it manually.",
-      /** Satu baris rincian di bawah nominal: "≈ US$15,95 · termasuk biaya layanan 2%". */
+      /** Satu baris rincian di bawah nominal: "≈ US$15,95 · termasuk biaya layanan crypto". */
       approx: (usdText: string) => `≈ ${usdText}`,
-      approxWithFee: (usdText: string, bps: number) => (id
-        ? `≈ ${usdText} · termasuk biaya layanan ${bpsPercentText(bps, "id")}%`
-        : `≈ ${usdText} · incl. ${bpsPercentText(bps, "en")}% service fee`),
-      totalWithFee: (bps: number) => (id ? `Total (USD, termasuk biaya layanan crypto ${bpsPercentText(bps, "id")}%)` : `Total (USD, incl. ${bpsPercentText(bps, "en")}% crypto service fee)`),
+      approxWithFee: (usdText: string) => (id
+        ? `≈ ${usdText} · termasuk biaya layanan crypto`
+        : `≈ ${usdText} · incl. crypto service fee`),
+      totalWithFee: id ? "Total (USD, termasuk biaya layanan crypto)" : "Total (USD, incl. crypto service fee)",
       onlyAccepted: (symbol: string, networkLabel: string) => (id
         ? `Hanya ${symbol} di jaringan ${networkLabel} yang diterima. Koin atau jaringan lain dapat membuat dana hilang.`
         : `Only ${symbol} on the ${networkLabel} network is accepted. Other coins or networks may lose your funds.`),

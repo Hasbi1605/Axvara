@@ -227,9 +227,9 @@ export async function dispatchPayq1Creating(
       if (!ticker || !asset || String(selected?.payCurrency ?? ticker) !== ticker) throw new Error("crypto_snapshot_missing");
       const { createNowpaymentsInvoice } = await import("@/lib/payments/nowpayments");
       const { cryptoPricing, centsToUsdText } = await import("@/lib/payments/crypto-pricing");
-      // Rincian diturunkan ulang dari base beku (surcharge = ceil(base x bps / 10000)); adapter
+      // Rincian diturunkan ulang dari base beku (1% + biaya tetap koin); adapter
       // membandingkannya dengan kurs bertanda sehingga snapshot yang diubah-ubah ditolak.
-      const pricing = cryptoPricing(BigInt(usd.cents));
+      const pricing = cryptoPricing(BigInt(usd.cents), ticker);
       await createNowpaymentsInvoice(orderedCode, orderSubtotal, ticker, {
         payNetwork: asset.network,
         priceCurrency: "usd",

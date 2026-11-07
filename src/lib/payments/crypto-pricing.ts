@@ -1,20 +1,34 @@
-// Harga crypto multi-koin (LOCAL ONLY): biaya layanan AXVARA, lantai total, dan
-// buffer minimum provider. Modul MURNI (BigInt, tanpa float, tanpa IO) agar quote,
-// token, create web, Telegram dan tes memakai satu rumus.
+// Harga crypto multi-koin (LOCAL ONLY): biaya layanan AXVARA per koin, dan buffer
+// minimum provider. Modul MURNI (BigInt, tanpa float, tanpa IO) agar quote, token,
+// create web, Telegram dan tes memakai satu rumus.
 //
 // Keputusan owner 5 November 2026:
 //  - Invoice baru memakai kurs mengambang dan fee provider ditanggung merchant
 //    (is_fixed_rate:false, is_fee_paid_by_user:false) agar minimum provider rendah.
-//  - Pembeli menanggung biayanya lewat biaya layanan crypto AXVARA 2% dari nilai USD:
-//    surcharge = ceil(base * 200 / 10000), total = base + surcharge (sen USD).
+//  - Pembeli menanggung biayanya lewat biaya layanan crypto AXVARA.
 //  - Keputusan owner 7 November 2026: TIDAK ADA lantai US$2 milik AXVARA. Ketersediaan
 //    crypto hanya ditentukan minimum provider per koin x 1,15 (buffer) — lihat aturan
 //    area `docs/agent-rules/payments.md`.
+//
+// Keputusan owner 7 November 2026 (menggantikan biaya layanan rata 2%):
+//  - Biaya layanan = bagian proporsional 1% + biaya tetap per koin (USD sen) yang
+//    menutup fee proses NOWPayments + fee payout, sehingga merchant menerima minimal
+//    nilai barang. Angka tetap: usdtbsc 8, bnbbsc 8, eth 17, ticker lain 20 (cadangan
+//    sampai dikalibrasi dari potongan nyata dashboard NOWPayments).
+//  - total = ceil((base + fixed) * 10000 / (10000 - bps)); surcharge = total - base.
 import { parseDecimalParts } from "./decimal";
 import { idrToUsdCents, type FxSnapshot } from "./fx";
 
-/** SEMENTARA 2% (keputusan owner 7 Nov 2026; kalibrasi ulang dari potongan dashboard NOWPayments). */
-export const CRYPTO_SURCHARGE_BPS = 200;
+/** Bagian proporsional biaya layanan: 1% (keputusan owner 7 Nov 2026). */
+export const CRYPTO_SURCHARGE_BPS = 100;
+/** Biaya tetap per koin dalam sen USD (termasuk cadangan payout). Ticker lain: 20. */
+export const CRYPTO_FIXED_FEE_CENTS: Readonly<Record<string, number>> = Object.freeze({
+  usdtbsc: 8,
+  bnbbsc: 8,
+  eth: 17,
+});
+/** Biaya tetap cadangan untuk ticker yang belum dikalibrasi. */
+export const CRYPTO_DEFAULT_FIXED_FEE_CENTS = 20;
 /** Buffer minimum provider: 115/100 (naik 15%). */
 export const CRYPTO_MIN_BUFFER_NUM = 115; // penyebut 100 tertanam di cryptoRequiredTotalCents
 
@@ -24,17 +38,33 @@ function ceilDiv(numerator: bigint, denominator: bigint): bigint {
   return (numerator + denominator - BigInt(1)) / denominator;
 }
 
-/** Biaya layanan dalam sen USD: ceil(base * bps / 10000). */
-export function cryptoSurchargeCents(baseCents: bigint, bps: number = CRYPTO_SURCHARGE_BPS): bigint {
-  if (baseCents < BigInt(0)) throw new Error("crypto_invalid_base");
-  return ceilDiv(baseCents * BigInt(bps), BigInt(BPS_DEN));
+/** Biaya tetap (sen USD) untuk satu ticker; case-insensitive, tak dikenal/kosong -> 20. */
+export function cryptoFixedFeeCents(ticker: unknown): bigint {
+  const key = typeof ticker === "string" ? ticker.trim().toLowerCase() : "";
+  const cents = Object.prototype.hasOwnProperty.call(CRYPTO_FIXED_FEE_CENTS, key)
+    ? CRYPTO_FIXED_FEE_CENTS[key]
+    : CRYPTO_DEFAULT_FIXED_FEE_CENTS;
+  return BigInt(cents);
 }
 
-export type CryptoPricing = { baseCents: bigint; surchargeCents: bigint; totalCents: bigint; surchargeBps: number };
+export type CryptoPricing = {
+  baseCents: bigint;
+  fixedCents: bigint;
+  surchargeCents: bigint;
+  totalCents: bigint;
+  surchargeBps: number;
+};
 
-export function cryptoPricing(baseCents: bigint, bps: number = CRYPTO_SURCHARGE_BPS): CryptoPricing {
-  const surchargeCents = cryptoSurchargeCents(baseCents, bps);
-  return { baseCents, surchargeCents, totalCents: baseCents + surchargeCents, surchargeBps: bps };
+/**
+ * Rincian biaya satu koin: bagian proporsional + biaya tetap per koin.
+ * total = ceil((base + fixed) * 10000 / (10000 - bps)); surcharge = total - base.
+ */
+export function cryptoPricing(baseCents: bigint, ticker: string, bps: number = CRYPTO_SURCHARGE_BPS): CryptoPricing {
+  if (baseCents < BigInt(0)) throw new Error("crypto_invalid_base");
+  if (!Number.isSafeInteger(bps) || bps < 0 || bps >= BPS_DEN) throw new Error("crypto_invalid_bps");
+  const fixedCents = cryptoFixedFeeCents(ticker);
+  const totalCents = ceilDiv((baseCents + fixedCents) * BigInt(BPS_DEN), BigInt(BPS_DEN - bps));
+  return { baseCents, fixedCents, surchargeCents: totalCents - baseCents, totalCents, surchargeBps: bps };
 }
 
 /**
@@ -59,16 +89,19 @@ export function centsToUsdText(cents: bigint): string {
 }
 
 /**
- * Subtotal IDR terkecil yang total crypto-nya (base + biaya layanan) >= `requiredTotalCents`
+ * Subtotal IDR terkecil yang total crypto-nya (base + biaya layanan per koin) >= `requiredTotalCents`
  * pada kurs snapshot, atau null bila tidak terhitung aman. Hanya untuk tampilan "Min."
  * (server menghitung; klien tidak berhitung finansial).
  */
-export function minIdrSubtotalForTotal(requiredTotalCents: bigint, fx: FxSnapshot): number | null {
+export function minIdrSubtotalForTotal(requiredTotalCents: bigint, ticker: string, fx: FxSnapshot): number | null {
   try {
     if (requiredTotalCents <= BigInt(0)) return null;
-    let base = (requiredTotalCents * BigInt(BPS_DEN)) / BigInt(BPS_DEN + CRYPTO_SURCHARGE_BPS);
-    while (cryptoPricing(base).totalCents < requiredTotalCents) base += BigInt(1);
-    while (base > BigInt(0) && cryptoPricing(base - BigInt(1)).totalCents >= requiredTotalCents) base -= BigInt(1);
+    // Perkiraan awal (base yang dibutuhkan bila tanpa pembulatan), lalu digeser eksak
+    // oleh dua loop di bawah memakai rumus yang sama dengan quote.
+    let base = (requiredTotalCents * BigInt(BPS_DEN - CRYPTO_SURCHARGE_BPS)) / BigInt(BPS_DEN) - cryptoFixedFeeCents(ticker);
+    if (base < BigInt(0)) base = BigInt(0);
+    while (cryptoPricing(base, ticker).totalCents < requiredTotalCents) base += BigInt(1);
+    while (base > BigInt(0) && cryptoPricing(base - BigInt(1), ticker).totalCents >= requiredTotalCents) base -= BigInt(1);
     const num = BigInt(fx.rateNum);
     const den = BigInt(fx.rateDen);
     // idrToUsdCents = floor((2*idr*100*den + num) / (2*num)) >= base  <=>  idr >= (2*base - 1) * num / (200*den)
@@ -82,11 +115,4 @@ export function minIdrSubtotalForTotal(requiredTotalCents: bigint, fx: FxSnapsho
   } catch {
     return null;
   }
-}
-
-/** 200 -> "2" (id/en); 150 -> "1,5" (id) / "1.5" (en). Format saja (tampilan, termasuk invoice lama). */
-export function bpsPercentText(bps: number, locale: "id" | "en"): string {
-  const whole = Math.floor(bps / 100);
-  const frac = String(bps % 100).padStart(2, "0").replace(/0+$/, "");
-  return frac ? `${whole}${locale === "id" ? "," : "."}${frac}` : String(whole);
 }

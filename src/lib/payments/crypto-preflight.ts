@@ -1,8 +1,8 @@
 // Penawaran crypto multi-koin untuk quote + create (LOCAL ONLY).
 // Satu opsi per koin dari snapshot segar (market-snapshot.ts: aktif di dashboard
 // NOWPayments ∩ katalog kurasi crypto-assets.ts, dengan minimum provider USD).
-// Harga: base USD dari snapshot kurs (idrToUsdCents) + biaya layanan AXVARA 2%
-// (crypto-pricing.ts); `amount_text` = TOTAL. Kebijakan provider: kurs mengambang,
+// Harga: base USD dari snapshot kurs (idrToUsdCents) + biaya layanan AXVARA per koin
+// (1% proporsional + biaya tetap ticker, crypto-pricing.ts); `amount_text` = TOTAL. Kebijakan provider: kurs mengambang,
 // fee provider ditanggung merchant (pembeli menanggung lewat biaya layanan).
 // Koin di bawah minimum provider = `available:false, unavailable_reason:"below_min"`
 // (tampilan saja, tidak pernah ditandatangani). Tanpa kurs / koin kosong/basi =
@@ -120,13 +120,13 @@ export function buildCryptoCatalogEntry(
   } catch {
     return null;
   }
-  const pricing = cryptoPricing(base);
+  const pricing = cryptoPricing(base, coin.ticker);
   if (base <= BigInt(0) || pricing.totalCents < required) {
     // base 0 dianggap di bawah minimum (bukan error) agar pembeli melihat "Min." koin.
     return {
       ...identity, available: false, unavailable_reason: "below_min",
       min_total_cents: Number(required), min_total_text: centsToUsdText(required),
-      min_idr_subtotal: minIdrSubtotalForTotal(required, snap),
+      min_idr_subtotal: minIdrSubtotalForTotal(required, coin.ticker, snap),
     };
   }
   return {

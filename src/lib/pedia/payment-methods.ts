@@ -117,7 +117,7 @@ export async function resolvePediaMethodSelection(input: {
     const effectiveAt = typeof snap.effective_at === "string" && Number.isFinite(Date.parse(snap.effective_at)) ? snap.effective_at : null;
     if (!cents || BigInt(cents) <= BigInt(0) || !rateNum || BigInt(rateNum) <= BigInt(0)
       || !rateDen || BigInt(rateDen) <= BigInt(0) || !rateText || !effectiveAt) return stale(locale);
-    const pricing = cryptoPricing(BigInt(cents));
+    const pricing = cryptoPricing(BigInt(cents), ticker);
     if (row.surcharge_bps !== CRYPTO_SURCHARGE_BPS || row.base_cents !== Number(pricing.baseCents)
       || row.surcharge_cents !== Number(pricing.surchargeCents) || row.total_cents !== Number(pricing.totalCents)
       || pricing.totalCents <= BigInt(0)) return stale(locale);

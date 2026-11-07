@@ -360,7 +360,7 @@ function isValidCryptoMethod(method: QuoteMethod, idrSubtotal: number): boolean 
   if (base <= BigInt(0)) return false;
   const fx = { rateNum: usd.rate_num, rateDen: usd.rate_den, rateText: usd.rate_text, effectiveAt: usd.effective_at, source: usd.source };
   if (idrToUsdCents(idrSubtotal, fx) !== base) return false;
-  const pricing = cryptoPricing(base);
+  const pricing = cryptoPricing(base, ticker);
   return method.base_cents !== undefined && BigInt(method.base_cents) === pricing.baseCents
     && method.surcharge_cents !== undefined && BigInt(method.surcharge_cents) === pricing.surchargeCents
     && method.total_cents !== undefined && BigInt(method.total_cents) === pricing.totalCents
@@ -431,18 +431,24 @@ const quoteSchema = z.object({
 });
 
 /**
- * Payload token ringkas (kompak): semua metode kripto satu quote memakai snapshot USD/kurs dan angka
- * yang sama dan hanya beda ticker (jaringan + sublabel diturunkan dari peta kurasi). Satu blok `crypto`
+ * Payload token ringkas (kompak): semua metode kripto satu quote memakai snapshot USD/kurs,
+ * base USD, dan kebijakan yang sama; yang berbeda per koin hanyalah ticker dan TOTAL-nya
+ * (biaya layanan = 1% proporsional + biaya tetap per ticker). Satu blok `crypto`
  * menggantikan hingga 28 metode penuh agar JWT tetap jauh di bawah batas `quote_token` (8000).
  * Verifikasi mengembangkan blok kembali ke metode penuh lalu menjalankan `quoteSchema` TANPA diubah.
  */
+const compactCryptoItemSchema = z.object({
+  ticker: z.string().regex(/^[a-z0-9]{1,32}$/),
+  total_cents: centsField,
+}).strict();
+
 const compactCryptoSchema = z.object({
-  tickers: z.array(z.string().regex(/^[a-z0-9]{1,32}$/)).min(1).max(64)
-    .refine((list) => new Set(list).size === list.length, "duplicate ticker")
-    .refine((list) => list.every((ticker) => getCryptoAsset(ticker)?.ticker === ticker), "non-curated ticker"),
+  items: z.array(compactCryptoItemSchema).min(1).max(64)
+    .refine((list) => new Set(list.map((item) => item.ticker)).size === list.length, "duplicate ticker")
+    .refine((list) => list.every((item) => getCryptoAsset(item.ticker)?.ticker === item.ticker), "non-curated ticker"),
   at: z.number().int().safe().nonnegative().max(1024),
   usd: quoteUsdSchema.omit({ pay_currency: true, network: true }).strict(),
-  amount_text: z.string(), base_cents: centsField, surcharge_cents: centsField, total_cents: centsField,
+  base_cents: centsField,
   surcharge_bps: z.number().int().safe().nonnegative(), sender_gas_extra: z.boolean().optional(),
   account_number: z.string(), fee_payer: z.literal("merchant"), fixed_rate: z.literal(false), currency: z.literal("USD"),
   available: z.literal(true).optional(), network_labels: z.literal(true).optional(),
@@ -471,11 +477,11 @@ function compactCryptoMethods(methods: QuoteMethod[]): { payment_methods: QuoteM
     return {
       ticker, labelled: method.sublabel === asset.networkLabel,
       block: {
-        usd: usdShared, amount_text: method.amount_text, base_cents: method.base_cents, surcharge_cents: method.surcharge_cents,
-        total_cents: method.total_cents, surcharge_bps: method.surcharge_bps, sender_gas_extra: method.sender_gas_extra,
+        usd: usdShared, base_cents: method.base_cents, surcharge_bps: method.surcharge_bps, sender_gas_extra: method.sender_gas_extra,
         account_number: method.account_number, fee_payer: method.fee_payer, fixed_rate: method.fixed_rate, currency: method.currency,
         available: method.available,
       },
+      total: method.total_cents,
     };
   };
   const items = crypto.map(shared);
@@ -486,25 +492,30 @@ function compactCryptoMethods(methods: QuoteMethod[]): { payment_methods: QuoteM
     throw new Error("crypto quote methods differ beyond ticker");
   }
   const block = compactCryptoSchema.parse({
-    ...items[0].block, tickers: items.map((item) => item.ticker), at, ...(labelled ? { network_labels: true } : {}),
+    ...items[0].block, items: items.map((item) => ({ ticker: item.ticker, total_cents: item.total })),
+    at, ...(labelled ? { network_labels: true } : {}),
   });
   return { payment_methods: [...methods.slice(0, at), ...methods.slice(at + indexes.length)], crypto: block };
 }
 
 function expandCompactCrypto(rest: unknown[], block: CompactCrypto): unknown[] | null {
   if (block.at > rest.length) return null;
-  const expanded = block.tickers.map((ticker) => {
-    const asset = getCryptoAsset(ticker)!;
+  const expanded = block.items.map((item) => {
+    const asset = getCryptoAsset(item.ticker)!;
+    const total = BigInt(item.total_cents);
+    if (total <= BigInt(0)) return null;
+    const surcharge = total - BigInt(block.base_cents);
     return {
-      id: `nowpayments:${ticker}`, account_number: block.account_number, kind: "crypto" as const,
+      id: `nowpayments:${item.ticker}`, account_number: block.account_number, kind: "crypto" as const,
       ...(block.network_labels ? { sublabel: asset.networkLabel } : {}),
-      ...(block.available ? { available: true } : {}), currency: block.currency, amount_text: block.amount_text,
-      pay_currency: ticker, network: asset.network, usd: { ...block.usd, pay_currency: ticker, network: asset.network },
-      fee_payer: block.fee_payer, fixed_rate: block.fixed_rate, base_cents: block.base_cents, surcharge_cents: block.surcharge_cents,
-      total_cents: block.total_cents, surcharge_bps: block.surcharge_bps,
+      ...(block.available ? { available: true } : {}), currency: block.currency, amount_text: centsToUsdText(total),
+      pay_currency: item.ticker, network: asset.network, usd: { ...block.usd, pay_currency: item.ticker, network: asset.network },
+      fee_payer: block.fee_payer, fixed_rate: block.fixed_rate, base_cents: block.base_cents,
+      surcharge_cents: Number(surcharge), total_cents: Number(total), surcharge_bps: block.surcharge_bps,
       ...(block.sender_gas_extra !== undefined ? { sender_gas_extra: block.sender_gas_extra } : {}),
     };
   });
+  if (expanded.some((method) => method === null)) return null;
   return [...rest.slice(0, block.at), ...expanded, ...rest.slice(block.at)];
 }
 

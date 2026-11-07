@@ -219,8 +219,8 @@ function CryptoPanel({ view, locale, now, checking, onCheck }: Omit<Props, "paym
   // Tampilan/copy dibulatkan ke atas; nominal tersimpan & provider tidak berubah.
   const payAmount = displayCryptoAmount(view.payAmountText, view.usdText || null);
   const usdText = view.usdText ? usdFor(view.usdText, locale) : "";
-  const breakdown = view.baseText && view.surchargeText && view.surchargeBps !== null
-    ? c.crypto.approxWithFee(usdText, view.surchargeBps)
+  const breakdown = view.baseText && view.surchargeText
+    ? c.crypto.approxWithFee(usdText)
     : usdText ? c.crypto.approx(usdText) : "";
   if (missing) {
     return (

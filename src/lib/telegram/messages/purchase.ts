@@ -3,7 +3,6 @@ import { escapeHtml, escapeItemSummary, formatRupiah, truncate } from "./format"
 import type { Locale } from "@/lib/i18n/locale";
 import type { BulkTier } from "@/lib/bulk-pricing";
 import { formatIdr } from "@/lib/i18n/format";
-import { CRYPTO_SURCHARGE_BPS, bpsPercentText } from "@/lib/payments/crypto-pricing";
 
 export type TgMoneyOpts = { locale?: Locale; usdEquivalentText?: string | null; usdUnavailable?: boolean };
 
@@ -373,7 +372,7 @@ export function paymentMethodOfferMessage(
  * Gateway contact note when phone is missing (R2 collects it; R1 must NOT
  * collect/process phone). */
 export function paymentMethodOfferDetails(
-  methods: { kind?: string; label?: string; gateway?: { estimated_fee: number; estimated_total: number } | null; amount_text?: string; pay_currency?: string; network?: string; surcharge_bps?: number }[],
+  methods: { kind?: string; label?: string; gateway?: { estimated_fee: number; estimated_total: number } | null; amount_text?: string; pay_currency?: string; network?: string }[],
   opts?: TgMoneyOpts,
 ): string[] {
   const en = opts?.locale === "en";
@@ -384,10 +383,9 @@ export function paymentMethodOfferDetails(
       if (cryptoLineAdded) return [];
       cryptoLineAdded = true;
       const amount = escapeHtml(String(method.amount_text ?? "").slice(0, 32));
-      const percent = bpsPercentText(Number.isSafeInteger(method.surcharge_bps) ? Number(method.surcharge_bps) : CRYPTO_SURCHARGE_BPS, en ? "en" : "id");
       return [en
-        ? `• Crypto (USD): ${amount} USD, incl. ${percent}% crypto service fee. Pick a coin next; network gas is paid by the sender.`
-        : `• Crypto (USD): ${amount} USD, termasuk biaya layanan crypto ${percent}%. Pilih koin berikutnya; gas jaringan ditanggung pengirim.`];
+        ? `• Crypto (USD): ${amount} USD, incl. crypto service fee. Pick a coin next; network gas is paid by the sender.`
+        : `• Crypto (USD): ${amount} USD, termasuk biaya layanan crypto. Pilih koin berikutnya; gas jaringan ditanggung pengirim.`];
     }
     const label = escapeHtml(String(method.label ?? "").slice(0, 80) || "—");
     if (method.kind === "gateway" && method.gateway) {

@@ -93,7 +93,7 @@ const FIXTURE_ENV: Record<string, string> = {
   TELEGRAM_BOT_TOKEN: "000000:WORKERD-FIXTURE",
   TELEGRAM_BOT_ENABLED: "true",
   QRIS_ACTIVE_PROVIDER: "klikqris", KLIKQRIS_ENABLED: "true", KLIKQRIS_API_KEY: "fixture", KLIKQRIS_MERCHANT_ID: "123",
-  USD_IDR_RATE: "8000", // 19000 IDR -> base 238 + 5 service fee (2%) = US$2.43; no AXVARA floor
+  USD_IDR_RATE: "8000", // 19000 IDR -> base 238 + biaya per koin 11 = US$2.49; no AXVARA floor
   NOWPAYMENTS_ENABLED: "true", NOWPAYMENTS_API_KEY: "wk", NOWPAYMENTS_IPN_SECRET: "ws",
   NOWPAYMENTS_OUTCOME_CURRENCY: "usdtbsc",
   SEKALIPAY_GATEWAY_ENABLED: "true", SEKALIPAY_GATEWAY_API_KEY: "wk", SEKALIPAY_GATEWAY_SECRET_KEY: "ws",
@@ -278,7 +278,7 @@ it("CRYPTO: frozen payq1 -> one order + one NOWPayments POST; replay/FX rotate/f
     expect(frozen.idrSubtotal).toBe(19000); // 2 x tier 9500 = discounted IDR 19000 (not 2 x 10000)
     const idx = frozen.methods.findIndex((m) => m.id === "nowpayments:usdtbsc");
     expect(idx).toBeGreaterThanOrEqual(0);
-    expect(frozen.methods[idx].amount_text).toBe("2.43"); // total = base 238 + 2% service fee 5
+    expect(frozen.methods[idx].amount_text).toBe("2.49"); // total = base 238 + biaya layanan per koin 11
     expect(frozen.methods[idx].usd?.cents).toBe("238");
     await h.call({ op: "click", data: `pm:${frozen.nonce}:${idx}` });
     expect((await h.call({ op: "raw" })).raw).toContain('"sel":"nowpayments:usdtbsc"');
@@ -292,13 +292,13 @@ it("CRYPTO: frozen payq1 -> one order + one NOWPayments POST; replay/FX rotate/f
     expect(created, `views: ${h.allText(first.views)} posts=${h.state.nowPosts.length}`).toHaveLength(1);
     const code = String(created[0].code);
     expect(h.state.nowPosts).toHaveLength(1);
-    expect(h.state.nowPosts[0]).toMatchObject({ price_amount: "2.43", price_currency: "usd", pay_currency: "usdtbsc", order_id: code, is_fixed_rate: false, is_fee_paid_by_user: false });
+    expect(h.state.nowPosts[0]).toMatchObject({ price_amount: "2.49", price_currency: "usd", pay_currency: "usdtbsc", order_id: code, is_fixed_rate: false, is_fee_paid_by_user: false });
 
     // Persisted financial binding + finite stock cut exactly once.
     const order = (await h.rows("SELECT * FROM orders WHERE code=?", code))[0];
     expect(order).toMatchObject({ subtotal: 19000, payment_method: "nowpayments:usdtbsc", locale: "en", status: "pending", telegram_user_id: "777001" });
     const tx = (await h.rows("SELECT * FROM payment_transactions WHERE order_code=?", code))[0];
-    expect(tx).toMatchObject({ provider: "nowpayments", requested_amount: 19000, price_currency: "usd", price_amount_text: "2.43", fee_paid_by_user: 0, fixed_rate: 0, crypto_base_usd_cents: 238, crypto_surcharge_usd_cents: 5, crypto_surcharge_bps: 200, provider_payment_id: "NP-r2b-worker-1", pay_amount_text: "1.19" });
+    expect(tx).toMatchObject({ provider: "nowpayments", requested_amount: 19000, price_currency: "usd", price_amount_text: "2.49", fee_paid_by_user: 0, fixed_rate: 0, crypto_base_usd_cents: 238, crypto_surcharge_usd_cents: 11, crypto_surcharge_bps: 100, provider_payment_id: "NP-r2b-worker-1", pay_amount_text: "1.19" });
     expect(String(tx.pay_currency).toLowerCase()).toBe("usdtbsc");
     expect(String(tx.pay_address)).toBe("0xBEEFCAFE0123456789abcdef0123456789abc");
     expect(String(tx.pay_network)).toBe("bsc");
@@ -309,7 +309,7 @@ it("CRYPTO: frozen payq1 -> one order + one NOWPayments POST; replay/FX rotate/f
     // Captured buyer view: exact provider amount/address/currency/network, EN locale, no QRIS.
     const text = h.allText(first.views);
     expect(text).toContain("Send exactly <b>1.19 USDT</b> on the <b>BNB Smart Chain</b> network only.");
-    expect(text).toContain("Order total: US$2.43 (incl. 2% crypto service fee US$0.05)");
+    expect(text).toContain("Order total: US$2.49 (incl. crypto service fee US$0.11)");
     expect(text).toContain("0xBEEFCAFE0123456789abcdef0123456789abc");
     expect(text).not.toMatch(/QRIS/i);
 
@@ -369,7 +369,7 @@ it("CRYPTO: frozen payq1 -> one order + one NOWPayments POST; replay/FX rotate/f
     expect(notices).toHaveLength(1);
     expect(notices[0].text + JSON.stringify(notices[0].markup ?? {})).not.toMatch(/QRIS|qrenew|0xBEEF/i);
     expect((await h.rows("SELECT status FROM buyer_notice_log WHERE idempotency_key=?", `telegram:terminal:${code}`))[0].status).toBe("sent");
-    expect(after).toMatchObject({ price_amount_text: "2.43", pay_amount_text: "1.19", fee_paid_by_user: 0, fixed_rate: 0 });
+    expect(after).toMatchObject({ price_amount_text: "2.49", pay_amount_text: "1.19", fee_paid_by_user: 0, fixed_rate: 0 });
   } finally { await h.dispose(); }
 });
 

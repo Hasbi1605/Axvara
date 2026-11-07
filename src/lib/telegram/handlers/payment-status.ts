@@ -159,12 +159,11 @@ async function renderProviderInvoiceStatus(
     const networkLabel = escapeHtml(view.network_label || String(order.pay_network ?? "").toUpperCase());
     // Tampilan dibulatkan ke atas; pay_amount_text tersimpan/provider tidak berubah.
     const payAmount = escapeHtml(displayCryptoAmount(String(order.pay_amount_text ?? ""), String(view.amount_text ?? "") || null));
-    const { bpsPercentText } = await import("@/lib/payments/crypto-pricing");
     const totalUsd = escapeHtml(String(view.amount_text ?? ""));
     const feeLine = view.surcharge_amount_text && view.surcharge_bps !== null
       ? (savedLocale === "en"
-        ? `Order total: US$${totalUsd} (incl. ${bpsPercentText(view.surcharge_bps, "en")}% crypto service fee US$${escapeHtml(view.surcharge_amount_text)})`
-        : `Total pesanan: US$${totalUsd} (termasuk biaya layanan crypto ${bpsPercentText(view.surcharge_bps, "id")}% US$${escapeHtml(view.surcharge_amount_text)})`)
+        ? `Order total: US$${totalUsd} (incl. crypto service fee US$${escapeHtml(view.surcharge_amount_text)})`
+        : `Total pesanan: US$${totalUsd} (termasuk biaya layanan crypto US$${escapeHtml(view.surcharge_amount_text)})`)
       : (savedLocale === "en" ? `Order total: US$${totalUsd}` : `Total pesanan: US$${totalUsd}`);
     const amountLine = savedLocale === "en"
       ? `Send exactly <b>${payAmount} ${symbol}</b> on the <b>${networkLabel}</b> network only.\n${feeLine}`

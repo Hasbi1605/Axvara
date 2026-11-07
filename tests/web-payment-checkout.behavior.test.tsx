@@ -25,7 +25,7 @@ const qrisM = { id: "qris", kind: "qris", label: "QRIS", sublabel: null, account
 // FIXTURE kontrak quote (bukan katalog/limit merchant nyata): grup + limits adalah tampilan; ID/angka bertanda tangan tidak berubah.
 const gw = (code: string, name: string, fee: number, total: number, sub = 250_000, extra: Record<string, unknown> = {}) => ({ id: `sekalipay_gateway:${code}`, kind: "gateway", label: name, sublabel: "Estimasi biaya pembayaran", account_number: "", currency: "IDR", available: true, group: "va", limits: { min: 10_000, max: 10_000_000 }, gateway: { channel: code, estimated_fee: fee, estimated_total: total, idr_subtotal: sub }, ...extra });
 const gwOff = (code: string, name: string, extra: Record<string, unknown> = {}, sub = 250_000) => ({ id: `sekalipay_gateway:${code}`, kind: "gateway", label: name, sublabel: "Estimasi biaya pembayaran", account_number: "", currency: "IDR", available: false, group: "va", limits: { min: 252_500, max: 10_000_000 }, unavailable_reason: "below_min", shortfall: 2_500, gateway: { channel: code, idr_subtotal: sub }, ...extra });
-// FIXTURE kontrak quote crypto multi-koin: amount_text = TOTAL (base 15.63 + biaya layanan 1,5% 0.24); angka dari server.
+// FIXTURE kontrak quote crypto multi-koin: amount_text = TOTAL (base 15.63 + biaya layanan per koin 0.24); angka dari server.
 const coinM = (ticker: string, symbol: string, networkLabel: string, network: string, group: "popular" | "stable", extra: Record<string, unknown> = {}) => ({ id: `nowpayments:${ticker}`, kind: "crypto", label: symbol, sublabel: networkLabel, group, available: true, currency: "USD", amount_text: "15.87", pay_currency: ticker, network, fee_payer: "merchant", fixed_rate: false, sender_gas_extra: true, base_cents: 1563, surcharge_cents: 24, total_cents: 1587, surcharge_bps: 150, usd: { cents: "1563", rate_text: "16000.00" }, account_number: "", ...extra });
 const cryptoM = coinM("usdtbsc", "USDT", "BNB Smart Chain", "bsc", "stable");
 const coinOff = (ticker: string, symbol: string, networkLabel: string, network: string, group: "popular" | "stable", minText: string, minIdr: number | null) => ({ id: `nowpayments:${ticker}`, kind: "crypto", label: symbol, sublabel: networkLabel, group, available: false, unavailable_reason: "below_min", currency: "USD", pay_currency: ticker, network, min_total_cents: Math.round(Number(minText) * 100), min_total_text: minText, min_idr_subtotal: minIdr, account_number: "" });
@@ -243,7 +243,7 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     render(<CheckoutPage />);
     await waitFor(() => expect(headers().length).toBe(1));
     const head = header(/^Crypto/);
-    expect(norm(head.textContent)).toBe("CryptoUS$15,87 · termasuk biaya layanan 1,5%");
+    expect(norm(head.textContent)).toBe("CryptoUS$15,87 · termasuk biaya layanan crypto");
     expect(head.querySelectorAll("[data-coin-chips] [data-coin-logo]")).toHaveLength(1);
     fireEvent.click(head);
     fireEvent.click(radio(/USDT/));
@@ -322,7 +322,7 @@ describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {
     const body = norm(document.body.textContent);
     expect(body).not.toContain("Fees and totals are estimates"); // catatan panjang dihapus
     expect(norm(header(/^Virtual Account/).textContent)).toContain("Fees from Rp 4,000"); // locale EN: pemisah ribuan koma
-    expect(norm(header(/^Crypto/).textContent)).toBe("CryptoUS$15.87 · incl. 1.5% service fee");
+    expect(norm(header(/^Crypto/).textContent)).toBe("CryptoUS$15.87 · incl. crypto service fee");
     expect(body).not.toMatch(/network gas is paid by the sender|\+ network fees/);
     expect(header(/^Virtual Account/).getAttribute("aria-label")).toBe("Virtual Account, 1 method, 1 available");
     expect(body.match(/Fastest/g)).toHaveLength(1);
@@ -471,7 +471,7 @@ describe("checkout: picker dari quote", () => {
     const text = railText();
     // Revisi owner 6 Nov: ringkasan crypto hanya Subtotal + Biaya layanan + Total (tanpa baris kurs/gas).
     expect(text).toContain("SubtotalUS$15,63");
-    expect(text).toContain("Biaya layanan 1,5%US$0,24");
+    expect(text).toContain("Biaya layanan cryptoUS$0,24");
     expect(text).toContain("Total dalam USDUS$15,87");
     expect(text).not.toContain("Biaya jaringan dibayar dari wallet pengirim");
     expect(text).not.toContain("kurs Rp");

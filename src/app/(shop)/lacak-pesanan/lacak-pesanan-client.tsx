@@ -727,7 +727,7 @@ export default function LacakPesananClient() {
               <span className="font-bold text-white">{formatRupiah(payableAmount)}</span>
             </div>
             {pay?.kind === "crypto" && pay.usdText && (
-              <div className="mt-1.5 flex justify-between text-xs text-white/55"><span>{pay.surchargeBps !== null && pay.surchargeText ? orderPanelCopy(order.locale === "en" ? "en" : "id").crypto.totalWithFee(pay.surchargeBps) : (order.locale === "en" ? "Order value (USD)" : "Nilai pesanan (USD)")}</span><span className="tabular-nums text-white/80">{usdFor(pay.usdText, asPayLocale(order.locale))}</span></div>
+              <div className="mt-1.5 flex justify-between text-xs text-white/55"><span>{pay.surchargeBps !== null && pay.surchargeText ? orderPanelCopy(order.locale === "en" ? "en" : "id").crypto.totalWithFee : (order.locale === "en" ? "Order value (USD)" : "Nilai pesanan (USD)")}</span><span className="tabular-nums text-white/80">{usdFor(pay.usdText, asPayLocale(order.locale))}</span></div>
             )}
           </div>
 

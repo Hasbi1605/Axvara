@@ -312,9 +312,9 @@ describe("crypto", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     for (const [amount, shown, usd, breakdown] of [
-      ["98765432.123456789", "98765432.13", "15.87", "≈ US$15,87 · termasuk biaya layanan 1,5%"],
-      ["0.000000123", "0.000000123", "15.87", "≈ US$15,87 · termasuk biaya layanan 1,5%"],
-      ["0.000468", "0.00047", "1.05", "≈ US$1,05 · termasuk biaya layanan 1,5%"],
+      ["98765432.123456789", "98765432.13", "15.87", "≈ US$15,87 · termasuk biaya layanan crypto"],
+      ["0.000000123", "0.000000123", "15.87", "≈ US$15,87 · termasuk biaya layanan crypto"],
+      ["0.000468", "0.00047", "1.05", "≈ US$1,05 · termasuk biaya layanan crypto"],
     ] as const) {
       const fixture = cryptoView({ pay_amount_text: amount, amount_text: usd, crypto_amount_text: `${amount} USDT` });
       stub({ gets: [orderBody(fixture, { payment_method: "nowpayments:usdtbsc" })] });
@@ -450,7 +450,7 @@ describe("crypto", () => {
     await screen.findByRole("heading", { name: "Crypto Payment" });
     expect(text()).toContain("Send exactly");
     expect(screen.getByRole("button", { name: "Copy address" })).toBeTruthy();
-    expect(screen.getByTestId("crypto-breakdown").textContent).toBe("≈ US$15.87 · incl. 1.5% service fee");
+    expect(screen.getByTestId("crypto-breakdown").textContent).toBe("≈ US$15.87 · incl. crypto service fee");
     expect(text()).toContain("Only USDT on the BNB Smart Chain network is accepted. Other coins or networks may lose your funds.");
     expect(screen.getByTestId("crypto-network").textContent).toBe("USDT · BNB Smart Chain");
     expect(text()).toContain("Valid for");
@@ -458,7 +458,7 @@ describe("crypto", () => {
     stub({ gets: [orderBody(cryptoView(), { locale: "id" })] });
     render(<OrderPage />);
     await screen.findByRole("heading", { name: "Pembayaran Crypto" });
-    expect(screen.getByTestId("crypto-breakdown").textContent).toBe("≈ US$15,87 · termasuk biaya layanan 1,5%");
+    expect(screen.getByTestId("crypto-breakdown").textContent).toBe("≈ US$15,87 · termasuk biaya layanan crypto");
     expect(text()).toContain("Total pesanan • USDT");
   });
 

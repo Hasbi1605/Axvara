@@ -103,11 +103,11 @@ it.each(["gateway", "crypto"])("sends discounted IDR subtotal correctly to %s pr
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const target = String(url);
     if (target.endsWith("payment-methods")) return Response.json({ status: true, data: [{ payment_code: "BULKVA", payment_name: "Fixture", payment_type: "va", min_amount: 100, max_amount: 1000000, fee_info: { type: "flat", description: "Rp 500" } }] });
-    if (target.includes("/estimate?")) return Response.json({ estimated_amount: "57.38", currency_from: "usd", currency_to: "usdtbsc" });
+    if (target.includes("/estimate?")) return Response.json({ estimated_amount: "56.90", currency_from: "usd", currency_to: "usdtbsc" });
     if (target.includes("/min-amount?")) return Response.json({ min_amount: "1", currency_from: "usdtbsc", currency_to: "usdtbsc" });
     const body = JSON.parse(String(init?.body)); calls.push(body);
     if (rail === "gateway") return Response.json({ status: true, data: { merchant_ref_id: body.merchant_ref_id, invoice: "SPYbulk", amount: 900000, fee: 500, total: 900500, payment_code: "BULKVA", payment_link: "https://sekalipay.com/payment/SPYbulk", status: "pending", is_sandbox: false, expired_at: new Date(Date.now() + 600000).toISOString() } }, { status: 201 });
-    return Response.json({ payment_id: "npbulk", order_id: body.order_id, pay_address: "TXYZfixture", pay_amount: "57.50", pay_currency: "usdtbsc", price_amount: "57.38", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false }, { status: 201 });
+    return Response.json({ payment_id: "npbulk", order_id: body.order_id, pay_address: "TXYZfixture", pay_amount: "57.50", pay_currency: "usdtbsc", price_amount: "56.90", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false }, { status: 201 });
   }));
   const quoted = await (await quote([{ product_id: 1, variant_id: 1, qty: 10 }])).json();
   expect(quoted.subtotal).toBe(900000); expect(quoted.displayPreferences.usdCents).toBe("5625");
@@ -115,7 +115,7 @@ it.each(["gateway", "crypto"])("sends discounted IDR subtotal correctly to %s pr
   const result = await POST(new NextRequest("http://localhost/api/orders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ customer_wa: "081234567890", customer_email: "buyer@example.test", items: [{ product_id: 1, variant_id: 1, qty: 10 }], payment_method: rail === "gateway" ? "sekalipay_gateway:BULKVA" : "nowpayments:usdtbsc", quote_token: quoted.quoteToken }) }));
   expect(result.status).toBe(201);
   expect(calls).toHaveLength(1);
-  expect(calls[0]).toMatchObject(rail === "gateway" ? { amount: 900000, payment_code: "BULKVA" } : { price_amount: "57.38", price_currency: "usd", is_fee_paid_by_user: false, is_fixed_rate: false });
+  expect(calls[0]).toMatchObject(rail === "gateway" ? { amount: 900000, payment_code: "BULKVA" } : { price_amount: "56.90", price_currency: "usd", is_fee_paid_by_user: false, is_fixed_rate: false });
   const order = await result.json(); expect(order.subtotal).toBe(900000);
   if (rail === "gateway") expect(order.payment).toMatchObject({ fee: 500, total: 900500 });
 });

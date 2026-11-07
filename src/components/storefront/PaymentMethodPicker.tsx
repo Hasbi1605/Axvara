@@ -439,7 +439,7 @@ function GroupSection({ group, open, onToggle, selected, shared }: { group: Grou
   // Biaya termurah di grup = estimasi server apa adanya (tanpa hitung ulang); tanpa kanal tersedia = keterangan belum tersedia.
   const cheapest = gatewayOptions.filter(isAvailableGateway).reduce<number | null>((min, option) => (min === null || option.feeIdr < min ? option.feeIdr : min), null);
   const caption = cryptoGroup
-    ? (firstCoin ? copy.cryptoCaption(firstCoin.usdText, firstCoin.surchargeBps) : null)
+    ? (firstCoin ? copy.cryptoCaption(firstCoin.usdText) : null)
     : gatewayGroup ? (cheapest === null ? copy.gatewayCaptionNone : cheapest > 0 ? copy.gatewayCaptionFrom(cheapest) : copy.gatewayCaptionFree) : null;
   const summary = !open && selected ? selectedSummary(selected, copy) : null;
   const countText = gatewayGroup ? (availableCount === 0 ? copy.noneAvailable : copy.availableCount(availableCount)) : null;

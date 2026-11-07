@@ -77,9 +77,9 @@ function saveUsdTx(code: string, amount: number, paymentId: string, providerStat
 }
 
 const FRESH = new Date(Date.now() - 60_000).toISOString();
-// Snapshot beku koin USDT BSC pada 250000 IDR @16000: base 1563 + biaya layanan 2% (32) = total 1595 (15.95).
+// Snapshot beku koin USDT BSC pada 250000 IDR @16000: base 1563 + biaya layanan per koin (24) = total 1587 (15.87).
 const USDT_EXPECTED = {
-  cents: "1563", priceText: "15.95", surchargeBps: 200, surchargeCents: "32", totalCents: "1595",
+  cents: "1563", priceText: "15.87", surchargeBps: 100, surchargeCents: "24", totalCents: "1587",
   rateText: "16000", rateNum: "16000", rateDen: "1", effectiveAt: FRESH, idrSubtotal: 250000, payCurrency: "usdtbsc", network: "bsc",
 };
 
@@ -107,11 +107,11 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const target = String(url);
     if (target.includes("/estimate?")) {
-      // price_amount ke provider = TOTAL incl. biaya layanan 2% (15.63 + 0.32 = 15.95)
-      if (!target.includes("currency_from=usd") || !target.includes("amount=15.95")) {
+      // price_amount ke provider = TOTAL incl. biaya layanan per koin (15.63 + 0.24 = 15.87)
+      if (!target.includes("currency_from=usd") || !target.includes("amount=15.87")) {
         throw new Error(`USD pair mismatch ${target}`);
       }
-      return Response.json({ estimated_amount: "15.95", currency_from: "usd", currency_to: "usdtbsc" });
+      return Response.json({ estimated_amount: "15.87", currency_from: "usd", currency_to: "usdtbsc" });
     }
     if (target.includes("/min-amount?")) {
       // bentuk mengambang: tanpa is_fixed_rate / is_fee_paid_by_user
@@ -122,8 +122,8 @@ beforeEach(async () => {
       posts++;
       postedBody = JSON.parse(String(init?.body));
       return Response.json({
-        payment_id: `np-${String(postedBody!.order_id).slice(-8)}`, pay_address: "TXYZfixture", pay_amount: "15.95",
-        pay_currency: "usdtbsc", price_amount: "15.950", price_currency: "usd", order_id: postedBody!.order_id,
+        payment_id: `np-${String(postedBody!.order_id).slice(-8)}`, pay_address: "TXYZfixture", pay_amount: "15.87",
+        pay_currency: "usdtbsc", price_amount: "15.870", price_currency: "usd", order_id: postedBody!.order_id,
         is_fixed_rate: false, is_fee_paid_by_user: false,
         created_at: new Date().toISOString(),
         expiration_estimate_date: new Date(Date.now() + 900_000).toISOString(),
@@ -259,11 +259,11 @@ describe("W3 USD + locale checkout rails", () => {
     const first = await POST(request());
     expect(first.status).toBe(201);
     const order = await first.json();
-    // floating + merchant-paid provider fee; price_amount = base 15.63 + 2% service fee 0.32
-    expect(postedBody).toMatchObject({ price_amount: "15.95", price_currency: "usd", pay_currency: "usdtbsc", is_fixed_rate: false, is_fee_paid_by_user: false });
+    // floating + merchant-paid provider fee; price_amount = base 15.63 + biaya layanan per koin 0.24
+    expect(postedBody).toMatchObject({ price_amount: "15.87", price_currency: "usd", pay_currency: "usdtbsc", is_fixed_rate: false, is_fee_paid_by_user: false });
     expect(fixture.sql.prepare("SELECT fee_paid_by_user,fixed_rate,crypto_base_usd_cents,crypto_surcharge_usd_cents,crypto_surcharge_bps,price_amount_text FROM payment_transactions WHERE order_code=?").get(order.code))
-      .toMatchObject({ fee_paid_by_user: 0, fixed_rate: 0, crypto_base_usd_cents: 1563, crypto_surcharge_usd_cents: 32, crypto_surcharge_bps: 200, price_amount_text: "15.95" });
-    expect(order.payment).toMatchObject({ label: "USDT", sublabel: "BNB Smart Chain", amount_text: "15.95", base_amount_text: "15.63", surcharge_amount_text: "0.32", surcharge_bps: 200, fee_payer: "merchant", fixed_rate: false });
+      .toMatchObject({ fee_paid_by_user: 0, fixed_rate: 0, crypto_base_usd_cents: 1563, crypto_surcharge_usd_cents: 24, crypto_surcharge_bps: 100, price_amount_text: "15.87" });
+    expect(order.payment).toMatchObject({ label: "USDT", sublabel: "BNB Smart Chain", amount_text: "15.87", base_amount_text: "15.63", surcharge_amount_text: "0.24", surcharge_bps: 100, fee_payer: "merchant", fixed_rate: false });
     expect(order.payment).not.toHaveProperty("fee_unknown");
     expect(posts).toBe(1);
     expect(fixture.sql.prepare("SELECT locale,subtotal FROM orders WHERE code=?").get(order.code)).toMatchObject({ locale: "en", subtotal: 250000 });
@@ -308,11 +308,11 @@ describe("W3 USD + locale checkout rails", () => {
       seedFx("16000.00");
       const quote = await (await loadQuote("en", 250000)).json();
       const crypto = quote.paymentMethods.find((m: { id: string }) => m.id === "nowpayments:usdtbsc");
-      expect(crypto).toMatchObject({ amount_text: "15.95", base_cents: 1563, surcharge_cents: 32, total_cents: 1595, usd: { source: "nowpayments-estimate", rate_text: "16000.00" } });
+      expect(crypto).toMatchObject({ amount_text: "15.87", base_cents: 1563, surcharge_cents: 24, total_cents: 1587, usd: { source: "nowpayments-estimate", rate_text: "16000.00" } });
       expect(quote.displayPreferences).toMatchObject({ usdAvailable: true, usdCents: "1563" });
       const created = await createOrder(quote.quoteToken);
       expect(created.status).toBe(201);
-      expect(postedBody).toMatchObject({ price_amount: "15.95", price_currency: "usd" });
+      expect(postedBody).toMatchObject({ price_amount: "15.87", price_currency: "usd" });
     });
 
     it("accepts a signed snapshot after a refresh moved the rate within 2% (price stays the signed one)", async () => {
@@ -322,7 +322,7 @@ describe("W3 USD + locale checkout rails", () => {
       (await import("@/lib/payments/market-snapshot")).resetCryptoMarketMemo();
       const created = await createOrder(quote.quoteToken);
       expect(created.status).toBe(201);
-      expect(postedBody).toMatchObject({ price_amount: "15.95" });
+      expect(postedBody).toMatchObject({ price_amount: "15.87" });
     });
 
     it("409 quote_stale when the rate moved more than 2% since the signed quote", async () => {
@@ -363,7 +363,7 @@ describe("W3 USD + locale checkout rails", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).endsWith("/v1/payment")) {
         posts++; const body = JSON.parse(String(init?.body));
-        return Response.json({ payment_id: "np-unverified", order_id: body.order_id, pay_address: "TXYZfixture", pay_amount: "16.00", pay_currency: "usdtbsc", price_amount: "15.95", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false, valid_until: new Date(Date.now() + 600000).toISOString(), ...override }, { status: 201 });
+        return Response.json({ payment_id: "np-unverified", order_id: body.order_id, pay_address: "TXYZfixture", pay_amount: "16.00", pay_currency: "usdtbsc", price_amount: "15.87", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false, valid_until: new Date(Date.now() + 600000).toISOString(), ...override }, { status: 201 });
       }
       return prior(url, init);
     }));
@@ -388,7 +388,7 @@ describe("W3 USD + locale checkout rails", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).endsWith("/v1/payment")) {
         posts++; const body = JSON.parse(String(init?.body));
-        return Response.json({ payment_id: "np-bare", order_id: body.order_id, pay_address: "TXYZfixture", pay_amount: "15.95", pay_currency: "usdtbsc", price_amount: "15.95", price_currency: "usd" }, { status: 201 });
+        return Response.json({ payment_id: "np-bare", order_id: body.order_id, pay_address: "TXYZfixture", pay_amount: "15.87", pay_currency: "usdtbsc", price_amount: "15.87", price_currency: "usd" }, { status: 201 });
       }
       return prior(url, init);
     }));
@@ -414,10 +414,10 @@ describe("W3 USD + locale checkout rails", () => {
     const { createNowpaymentsInvoice, reconcileNowpaymentsPayment } = await import("@/lib/payments/nowpayments");
     const inv = await createNowpaymentsInvoice(A, 250000, "usdtbsc", { payNetwork: "bsc", feePayer: "merchant", fixedRate: false, expectedUsd: USDT_EXPECTED });
     expect(inv.expiresAt).toBe(estimateUntil);
-    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "waiting", "0"), price_amount: "15.95", pay_amount: "15.95", is_fixed_rate: false, is_fee_paid_by_user: false });
+    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "waiting", "0"), price_amount: "15.87", pay_amount: "15.87", is_fixed_rate: false, is_fee_paid_by_user: false });
     expect(await reconcileNowpaymentsPayment(A)).toBe("pending");
     expect(fixture.sql.prepare("SELECT expires_at FROM payment_transactions WHERE order_code=?").get(A)?.expires_at).toBe(estimateUntil);
-    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "finished", "15.95"), price_amount: "15.95", pay_amount: "15.95", is_fixed_rate: false, is_fee_paid_by_user: false, updated_at: new Date(Date.parse(estimateUntil) + 1000).toISOString() });
+    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "finished", "15.95"), price_amount: "15.87", pay_amount: "15.87", is_fixed_rate: false, is_fee_paid_by_user: false, updated_at: new Date(Date.parse(estimateUntil) + 1000).toISOString() });
     expect(await reconcileNowpaymentsPayment(A)).toBe("manual_review");
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
   });
@@ -426,7 +426,7 @@ describe("W3 USD + locale checkout rails", () => {
     await seedOrder(A); vi.stubEnv("NOWPAYMENTS_ENABLED", "true");
     const { createNowpaymentsInvoice, reconcileNowpaymentsPayment } = await import("@/lib/payments/nowpayments");
     const inv = await createNowpaymentsInvoice(A, 250000, "usdtbsc", { payNetwork: "bsc", feePayer: "merchant", fixedRate: false, expectedUsd: USDT_EXPECTED });
-    const finished = { ...statusRow(A, inv.providerPaymentId, "finished", "15.95"), price_amount: "15.95", pay_amount: "15.95" };
+    const finished = { ...statusRow(A, inv.providerPaymentId, "finished", "15.95"), price_amount: "15.87", pay_amount: "15.87" };
     remote.set(A, { ...finished, is_fixed_rate: true, is_fee_paid_by_user: false });
     expect(await reconcileNowpaymentsPayment(A)).toBe("manual_review");
     expect(fixture.sql.prepare("SELECT last_error FROM payment_transactions WHERE order_code=?").get(A)?.last_error).toBe("nowpayments_policy_manual_review");
@@ -435,7 +435,7 @@ describe("W3 USD + locale checkout rails", () => {
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
     await seedOrder(B);
     const second = await createNowpaymentsInvoice(B, 250000, "usdtbsc", { payNetwork: "bsc", feePayer: "merchant", fixedRate: false, expectedUsd: USDT_EXPECTED });
-    remote.set(B, { ...statusRow(B, second.providerPaymentId, "finished", "15.95"), price_amount: "15.95", pay_amount: "15.95", is_fixed_rate: false, is_fee_paid_by_user: false });
+    remote.set(B, { ...statusRow(B, second.providerPaymentId, "finished", "15.95"), price_amount: "15.87", pay_amount: "15.87", is_fixed_rate: false, is_fee_paid_by_user: false });
     expect(await reconcileNowpaymentsPayment(B)).toBe("paid");
     expect(fixture.sql.prepare("SELECT status FROM orders WHERE code=?").get(B)?.status).toBe("lunas");
   });
@@ -450,8 +450,8 @@ describe("W3 USD + locale checkout rails", () => {
     }));
     const { createNowpaymentsInvoice, reconcileNowpaymentsPayment } = await import("@/lib/payments/nowpayments");
     const inv = await createNowpaymentsInvoice(A, 250000, "usdtbsc", { payNetwork: "bsc", feePayer: "merchant", fixedRate: false, expectedUsd: USDT_EXPECTED });
-    expect(inv.payAmountText).toBe("16.00"); expect(postedBody).toMatchObject({ price_amount: "15.95", is_fee_paid_by_user: false, is_fixed_rate: false });
-    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "finished", "16.00"), price_amount: "15.95", pay_amount: "16.00", is_fixed_rate: false, is_fee_paid_by_user: false });
+    expect(inv.payAmountText).toBe("16.00"); expect(postedBody).toMatchObject({ price_amount: "15.87", is_fee_paid_by_user: false, is_fixed_rate: false });
+    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "finished", "16.00"), price_amount: "15.87", pay_amount: "16.00", is_fixed_rate: false, is_fee_paid_by_user: false });
     expect(await reconcileNowpaymentsPayment(A)).toBe("paid");
   });
 
@@ -478,7 +478,7 @@ describe("W3 USD + locale checkout rails", () => {
     expect(body.ok).toBe(true);
     expect(body.locale).toBe("en");
     const crypto = body.paymentMethods.find((m) => m.id === "nowpayments:usdtbsc");
-    expect(crypto).toMatchObject({ kind: "crypto", currency: "USD", amount_text: "15.95", base_cents: 1563, total_cents: 1595, fee_payer: "merchant", fixed_rate: false });
+    expect(crypto).toMatchObject({ kind: "crypto", currency: "USD", amount_text: "15.87", base_cents: 1563, total_cents: 1587, fee_payer: "merchant", fixed_rate: false });
     expect(crypto!.usd).toMatchObject({ cents: "1563" });
     // Fixture only seeds qris in dedicated QRIS tests; this file asserts the
     // narrow crypto contract — QRIS presence asserted in quote-sk coverage.
@@ -685,7 +685,7 @@ describe("W3 saved retry + cron late pass", () => {
     const { claimNowpaymentsPollReconcile, reconcileNowpaymentsPayment } = await import("@/lib/payments/nowpayments");
     expect(await claimNowpaymentsPollReconcile(A)).toBe(true);
     const before = fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock;
-    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "confirming", "0"), price_amount: "15.95", pay_amount: "15.95", is_fixed_rate: false, is_fee_paid_by_user: false });
+    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "confirming", "0"), price_amount: "15.87", pay_amount: "15.87", is_fixed_rate: false, is_fee_paid_by_user: false });
     expect(await reconcileNowpaymentsPayment(A)).toBe("pending");
     const afterSave = fixture.sql.prepare("SELECT provider_status_text,last_checked_at FROM payment_transactions WHERE order_code=?").get(A)!;
     expect(afterSave.provider_status_text).toBe("confirming");

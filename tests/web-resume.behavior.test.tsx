@@ -260,7 +260,7 @@ describe("lacak-pesanan: lookup gateway/crypto", () => {
     expect(screen.getByTestId("crypto-amount").textContent).toBe("98765432.13 USDT"); // tampilan dibulatkan ke atas
     expect(screen.getByTestId("crypto-address").textContent).toBe(ADDRESS);
     expect(bodyText()).toContain("Total pesanan • USDT");
-    expect(bodyText()).toContain("Total (USD, termasuk biaya layanan crypto 1,5%)US$15,87");
+    expect(bodyText()).toContain("Total (USD, termasuk biaya layanan crypto)US$15,87");
     expect(resultText()).not.toMatch(/QRIS|Perpanjang|verifikasi admin/);
   });
 

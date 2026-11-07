@@ -111,8 +111,8 @@ it("the NOWPayments create path sends requests in workerd with manual-redirect p
           return Response.json({ estimated_amount: "0.011", currency_from: "idr", currency_to: "usdtbsc" });
         }
         if (!request.url.includes("currency_from=usd")) throw new Error("workerd fixture must request usd pair in USD mode");
-        if (!request.url.includes("amount=15.95")) throw new Error("workerd fixture must request exact 15.95 USD (15.63 + 2% service fee)");
-        return Response.json({ estimated_amount: "15.95", currency_from: "usd", currency_to: "usdtbsc" });
+        if (!request.url.includes("amount=15.87")) throw new Error("workerd fixture must request exact 15.87 USD (15.63 + biaya layanan per koin)");
+        return Response.json({ estimated_amount: "15.87", currency_from: "usd", currency_to: "usdtbsc" });
       }
       if (request.url.includes("/min-amount?")) {
         if (!legacyMode && /is_fixed_rate|is_fee_paid_by_user/.test(request.url)) throw new Error("workerd fixture: min-amount must be the floating form");
@@ -128,10 +128,10 @@ it("the NOWPayments create path sends requests in workerd with manual-redirect p
           expect(body.price_currency).toBe("idr");
         } else {
           expect(body.price_currency).toBe("usd");
-          expect(body.price_amount).toBe("15.95");
+          expect(body.price_amount).toBe("15.87");
           expect(body.is_fixed_rate).toBe(false); expect(body.is_fee_paid_by_user).toBe(false);
           const db = await runtime.getD1Database("DB");
-          expect(await db.prepare("SELECT fee_paid_by_user,fixed_rate,crypto_base_usd_cents,crypto_surcharge_usd_cents,crypto_surcharge_bps FROM payment_transactions WHERE order_code=?").bind(body.order_id).first()).toMatchObject({ fee_paid_by_user: 0, fixed_rate: 0, crypto_base_usd_cents: 1563, crypto_surcharge_usd_cents: 32, crypto_surcharge_bps: 200 });
+          expect(await db.prepare("SELECT fee_paid_by_user,fixed_rate,crypto_base_usd_cents,crypto_surcharge_usd_cents,crypto_surcharge_bps FROM payment_transactions WHERE order_code=?").bind(body.order_id).first()).toMatchObject({ fee_paid_by_user: 0, fixed_rate: 0, crypto_base_usd_cents: 1563, crypto_surcharge_usd_cents: 24, crypto_surcharge_bps: 100 });
         }
         const payload = JSON.stringify(
           {
@@ -139,7 +139,7 @@ it("the NOWPayments create path sends requests in workerd with manual-redirect p
             pay_address: "TXYZworker",
             pay_amount: 0.011,
             pay_currency: "usdtbsc",
-            price_amount: legacyMode ? 89000 : 15.95,
+            price_amount: legacyMode ? 89000 : 15.87,
             price_currency: legacyMode ? "idr" : "usd",
             order_id: body.order_id,
             created_at: new Date().toISOString(),
@@ -182,7 +182,7 @@ it("the NOWPayments create path sends requests in workerd with manual-redirect p
     expect(redirected.status).toBe(503);
     expect(await redirected.json()).toMatchObject({ error: "nowpayments_redirect_rejected" });
     // USD offer path in the same bundled runtime: no provider fetch,
-    // exact 250000@16000 snapshot math (base 1563 cents + 32 cents service fee => "15.95").
+    // exact 250000@16000 snapshot math (base 1563 cents + biaya per koin 24 cents => "15.87").
     legacyMode = false;
     redirectPayment = false;
     const offer = await runtime.dispatchFetch("https://axvara.tech/offer");
@@ -191,15 +191,15 @@ it("the NOWPayments create path sends requests in workerd with manual-redirect p
       id: "nowpayments:usdtbsc",
       kind: "crypto",
       currency: "USD",
-      amount_text: "15.95",
+      amount_text: "15.87",
       pay_currency: "usdtbsc",
       network: "bsc",
-      base_cents: 1563, surcharge_cents: 32, total_cents: 1595, surcharge_bps: 200, fee_payer: "merchant", fixed_rate: false,
+      base_cents: 1563, surcharge_cents: 24, total_cents: 1587, surcharge_bps: 100, fee_payer: "merchant", fixed_rate: false,
       usd: { cents: "1563", rate_num: "16000", rate_den: "1", idr_subtotal: 250000 },
     });
     const usd = await runtime.dispatchFetch("https://axvara.tech/usd?code=AXV-20261103-WORKER03");
     expect(usd.status).toBe(200);
-    expect(await db.prepare("SELECT fee_paid_by_user,fixed_rate,expires_at,price_amount_text FROM payment_transactions WHERE order_code='AXV-20261103-WORKER03'").first()).toMatchObject({ fee_paid_by_user: 0, fixed_rate: 0, expires_at: fixedDeadline, price_amount_text: "15.95" });
+    expect(await db.prepare("SELECT fee_paid_by_user,fixed_rate,expires_at,price_amount_text FROM payment_transactions WHERE order_code='AXV-20261103-WORKER03'").first()).toMatchObject({ fee_paid_by_user: 0, fixed_rate: 0, expires_at: fixedDeadline, price_amount_text: "15.87" });
     expect(requests.filter((entry) => entry.url === "https://api.nowpayments.io/v1/payment")).toHaveLength(3);
   } finally {
     await runtime.dispose();

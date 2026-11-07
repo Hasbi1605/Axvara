@@ -406,9 +406,9 @@ function CheckoutInner() {
           <span>{copyForLocale.cryptoSubtotalRow}</span><span className="shrink-0 tabular-nums">{usdFor(cryptoSel.baseText, uiLocale)}</span>
         </div>
       )}
-      {cryptoSel.surchargeText && cryptoSel.surchargeBps !== null && (
+      {cryptoSel.surchargeText && (
         <div className="flex justify-between gap-3" data-testid="crypto-service-fee">
-          <span>{copyForLocale.cryptoServiceFeeRow(cryptoSel.surchargeBps)}</span><span className="shrink-0 tabular-nums">{usdFor(cryptoSel.surchargeText, uiLocale)}</span>
+          <span>{copyForLocale.cryptoServiceFeeRow}</span><span className="shrink-0 tabular-nums">{usdFor(cryptoSel.surchargeText, uiLocale)}</span>
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
-// tests/crypto-multicoin.test.ts — crypto multi-koin (LOCAL ONLY): harga + biaya layanan 2% (tanpa lantai US$2),
-// buffer minimum provider x1,15 per koin, katalog per koin, token bertanda tangan, create web non-USDT, guard memo/extra id,
+// tests/crypto-multicoin.test.ts — crypto multi-koin (LOCAL ONLY): harga + biaya layanan crypto
+// per koin (1% proporsional + biaya tetap ticker, tanpa lantai US$2), buffer minimum provider x1,15
+// per koin, katalog per koin, token bertanda tangan, create web non-USDT, guard memo/extra id,
 // rekonsiliasi baris 0/0 dan 1/1 lama. Tanpa jaringan nyata: fetch di-mock; D1 = fixture SQLite.
 import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,8 +13,8 @@ import { createCheckoutQuoteToken, isCanonicalMethodOption, verifyCheckoutQuoteT
 import type { FxSnapshot } from "@/lib/payments/fx";
 import { CRYPTO_ASSETS } from "@/lib/payments/crypto-assets";
 import {
-  CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing, cryptoRequiredTotalCents,
-  cryptoSurchargeCents, minIdrSubtotalForTotal,
+  CRYPTO_DEFAULT_FIXED_FEE_CENTS, CRYPTO_FIXED_FEE_CENTS, CRYPTO_SURCHARGE_BPS, centsToUsdText,
+  cryptoFixedFeeCents, cryptoPricing, cryptoRequiredTotalCents, minIdrSubtotalForTotal,
 } from "@/lib/payments/crypto-pricing";
 import { buildCryptoCatalog, buildCryptoOffer, isCryptoTotalStillPayable } from "@/lib/payments/crypto-preflight";
 import { buildMethodCatalog, buildMethodOptions } from "@/lib/payments/method-options";
@@ -28,21 +29,54 @@ vi.mock("@/lib/telegram/api", () => ({
 const FX: FxSnapshot = { rateText: "16000", rateNum: "16000", rateDen: "1", effectiveAt: new Date(Date.now() - 60_000).toISOString(), source: "operator-fixed" };
 
 describe("pricing rules (pure, BigInt)", () => {
-  it("constants: 2% service fee (temporary), no AXVARA US$2 floor", () => {
-    expect(CRYPTO_SURCHARGE_BPS).toBe(200);
+  it("constants: 1% proportional part + fixed per-coin fee table (default 20c), no AXVARA US$2 floor", () => {
+    expect(CRYPTO_SURCHARGE_BPS).toBe(100);
+    expect(CRYPTO_FIXED_FEE_CENTS).toEqual({ usdtbsc: 8, bnbbsc: 8, eth: 17 });
+    expect(CRYPTO_DEFAULT_FIXED_FEE_CENTS).toBe(20);
+    expect(cryptoFixedFeeCents("usdtbsc")).toBe(BigInt(8));
+    expect(cryptoFixedFeeCents("USDTBSC")).toBe(BigInt(8));
+    expect(cryptoFixedFeeCents(" eth ")).toBe(BigInt(17));
+    expect(cryptoFixedFeeCents("doge")).toBe(BigInt(20));
+    expect(cryptoFixedFeeCents("")).toBe(BigInt(20));
+    expect(cryptoFixedFeeCents(undefined)).toBe(BigInt(20));
+    expect(cryptoFixedFeeCents("__proto__")).toBe(BigInt(20));
+    expect(cryptoFixedFeeCents("constructor")).toBe(BigInt(20));
   });
 
+  // total = ceil((base + fixed) * 10000 / (10000 - bps)); surcharge = total - base.
   it.each([
-    [0, 0], [1, 1], [50, 1], [66, 2], [67, 2], [100, 2], [133, 3], [134, 3], [1563, 32], [10_000, 200], [10_001, 201], [6666, 134], [6667, 134],
-  ])("surcharge = ceil(base x 200 / 10000): base %i cents => %i cents", (base, surcharge) => {
-    expect(cryptoSurchargeCents(BigInt(base))).toBe(BigInt(surcharge));
-    const p = cryptoPricing(BigInt(base));
-    expect(p.totalCents).toBe(BigInt(base + surcharge));
-    expect(p.surchargeBps).toBe(200);
+    ["usdtbsc", 221, 8, 11, 232],
+    ["usdtbsc", 89, 8, 9, 98],
+    ["usdtbsc", 2762, 8, 36, 2798],
+    ["usdtbsc", 1563, 8, 24, 1587],
+    ["usdtbsc", 50, 8, 9, 59],
+    ["eth", 89, 17, 19, 108],
+    ["eth", 1563, 17, 33, 1596],
+    ["bnbbsc", 553, 8, 14, 567],
+    ["btc", 1563, 20, 36, 1599],
+    ["doge", 100, 20, 22, 122],
+    ["usdcsol", 0, 20, 21, 21],
+  ])("per-coin fee %s: base %i cents + fixed %i => surcharge %i, total %i", (ticker, base, fixed, surcharge, total) => {
+    const p = cryptoPricing(BigInt(base), ticker);
+    expect(p).toMatchObject({ baseCents: BigInt(base), fixedCents: BigInt(fixed), surchargeCents: BigInt(surcharge), totalCents: BigInt(total), surchargeBps: 100 });
+    expect(p.totalCents).toBe(p.baseCents + p.surchargeCents);
   });
 
-  it("negative base throws; cents text is exact 2dp", () => {
-    expect(() => cryptoSurchargeCents(BigInt(-1))).toThrow();
+  it("never rounds down: the total always covers base + fixed after a 1% deduction", () => {
+    for (const ticker of ["usdtbsc", "eth", "btc"]) {
+      for (const base of [1, 7, 89, 221, 553, 999, 2762, 100_000]) {
+        const p = cryptoPricing(BigInt(base), ticker);
+        // merchant keeps floor(total * 9900/10000) >= base + fixed
+        expect((p.totalCents * BigInt(9900)) / BigInt(10000)).toBeGreaterThanOrEqual(p.baseCents + p.fixedCents);
+      }
+    }
+  });
+
+  it("rejects an invalid base or bps", () => {
+    expect(() => cryptoPricing(BigInt(-1), "usdtbsc")).toThrow();
+    expect(() => cryptoPricing(BigInt(10), "usdtbsc", 10_000)).toThrow();
+    expect(() => cryptoPricing(BigInt(10), "usdtbsc", -1)).toThrow();
+    expect(() => cryptoPricing(BigInt(10), "usdtbsc", 1.5)).toThrow();
     expect(centsToUsdText(BigInt(5))).toBe("0.05");
     expect(centsToUsdText(BigInt(200))).toBe("2.00");
     expect(centsToUsdText(BigInt(123456))).toBe("1234.56");
@@ -58,20 +92,22 @@ describe("pricing rules (pure, BigInt)", () => {
     expect(cryptoRequiredTotalCents(value)).toBeNull();
   });
 
-  it("min IDR subtotal is the SMALLEST subtotal whose total reaches the requirement (exact boundary)", () => {
-    const idr = minIdrSubtotalForTotal(BigInt(200), FX)!;
-    expect(idr).toBe(31_280);
-    const totalAt = (subtotal: number) => {
-      // reuse the public offer builder at the boundary
-      const offer = buildCryptoOffer(subtotal, FX, { ticker: "usdtbsc", minUsdText: "0.08" });
-      return offer ? offer.total_cents : 0;
-    };
+  it("min IDR subtotal is the SMALLEST subtotal whose total reaches the requirement (exact boundary, per coin)", () => {
     process.env.NOWPAYMENTS_OUTCOME_CURRENCY = "usdtbsc";
     try {
+      // usdtbsc fixed 8c: base 190 => total 200; base 189 => total 199
+      const idr = minIdrSubtotalForTotal(BigInt(200), "usdtbsc", FX)!;
+      expect(idr).toBe(30_320);
+      const totalAt = (subtotal: number) => {
+        const offer = buildCryptoOffer(subtotal, FX, { ticker: "usdtbsc", minUsdText: "0.08" });
+        return offer ? offer.total_cents : 0;
+      };
       expect(totalAt(idr)).toBeGreaterThanOrEqual(200);
       expect(totalAt(idr - 1)).toBeLessThan(200);
+      // btc uses the 20c default: base 2257 => total 2300
+      expect(minIdrSubtotalForTotal(BigInt(2300), "btc", FX)).toBe(361_040);
+      expect(minIdrSubtotalForTotal(BigInt(0), "usdtbsc", FX)).toBeNull();
     } finally { delete process.env.NOWPAYMENTS_OUTCOME_CURRENCY; }
-    expect(minIdrSubtotalForTotal(BigInt(0), FX)).toBeNull();
   });
 });
 
@@ -89,8 +125,18 @@ describe("catalog builder (per coin)", () => {
     expect(entries[0]).toMatchObject({ label: "BTC", sublabel: "Bitcoin", group: "popular", logo: "/payments/coins/btc.svg", network: "btc", pay_currency: "btc", currency: "USD" });
     expect(entries[3]).toMatchObject({ label: "USDT", sublabel: "BNB Smart Chain", group: "stable", network: "bsc" });
     expect(entries[4]).toMatchObject({ label: "USDT", sublabel: "Tron (TRC20)", network: "trx" });
+    // Per-coin fixed fee: usdtbsc 8c, eth 17c, the rest the 20c default (base 1563 each).
+    const expected: Record<string, { surcharge: number; total: number; text: string }> = {
+      btc: { surcharge: 36, total: 1599, text: "15.99" },
+      eth: { surcharge: 33, total: 1596, text: "15.96" },
+      trx: { surcharge: 36, total: 1599, text: "15.99" },
+      usdtbsc: { surcharge: 24, total: 1587, text: "15.87" },
+      usdttrc20: { surcharge: 36, total: 1599, text: "15.99" },
+    };
     for (const entry of entries) {
-      expect(entry).toMatchObject({ available: true, amount_text: "15.95", base_cents: 1563, surcharge_cents: 32, total_cents: 1595, surcharge_bps: 200, fee_payer: "merchant", fixed_rate: false, sender_gas_extra: true });
+      const ticker = entry.id.slice("nowpayments:".length);
+      const want = expected[ticker];
+      expect(entry).toMatchObject({ available: true, base_cents: 1563, surcharge_cents: want.surcharge, total_cents: want.total, amount_text: want.text, surcharge_bps: 100, fee_payer: "merchant", fixed_rate: false, sender_gas_extra: true });
       expect(entry).not.toHaveProperty("fee_unknown");
     }
   });
@@ -102,28 +148,28 @@ describe("catalog builder (per coin)", () => {
 
   it("no AXVARA floor: totals below US$2 are available when they meet the per-coin provider minimum", () => {
     const at = (idr: number, minUsdText: string) => buildCryptoCatalog(idr, FX, [{ ticker: "usdtbsc", minUsdText }])[0];
-    expect(at(31_439, "0.08")).toMatchObject({ available: true, total_cents: 200, amount_text: "2.00" });
-    expect(at(31_120, "0.08")).toMatchObject({ available: true, total_cents: 199, amount_text: "1.99" });
-    // US$0.50 order: USDT BSC (min x1.15 = 10c) offered, BTC (min x1.15 = 58c) stays below_min
-    expect(at(8_000, "0.08")).toMatchObject({ available: true, base_cents: 50, surcharge_cents: 1, total_cents: 51, amount_text: "0.51" });
-    expect(at(8_000, "0.50")).toMatchObject({ available: false, unavailable_reason: "below_min", min_total_cents: 58, min_total_text: "0.58" });
+    expect(at(30_320, "0.08")).toMatchObject({ available: true, total_cents: 200, amount_text: "2.00" });
+    expect(at(30_160, "0.08")).toMatchObject({ available: true, total_cents: 199, amount_text: "1.99" });
+    // US$0.50 order: USDT BSC (base 50c + 9c fee = 59c) meets its min x1.15 = 10c; a 60c minimum stays below_min
+    expect(at(8_000, "0.08")).toMatchObject({ available: true, base_cents: 50, surcharge_cents: 9, total_cents: 59, amount_text: "0.59" });
+    expect(at(8_000, "0.60")).toMatchObject({ available: false, unavailable_reason: "below_min", min_total_cents: 69, min_total_text: "0.69", min_idr_subtotal: 9_520 });
   });
 
   it("15% buffer: a coin whose minimum x1.15 exceeds the total is below_min with the SERVER minimum; no amount fields", () => {
     const entry = buildCryptoCatalog(250_000, FX, [{ ticker: "btc", minUsdText: "20" }])[0];
-    // total 1595 < 2300 required
+    // total 1599 < 2300 required
     expect(entry).toEqual({
       id: "nowpayments:btc", kind: "crypto", label: "BTC", sublabel: "Bitcoin", group: "popular", logo: "/payments/coins/btc.svg", currency: "USD",
-      pay_currency: "btc", network: "btc", available: false, unavailable_reason: "below_min", min_total_cents: 2300, min_total_text: "23.00", min_idr_subtotal: 360_560,
+      pay_currency: "btc", network: "btc", available: false, unavailable_reason: "below_min", min_total_cents: 2300, min_total_text: "23.00", min_idr_subtotal: 361_040,
     });
     expect(entry).not.toHaveProperty("amount_text");
     expect(entry).not.toHaveProperty("usd");
   });
 
   it("exactly at the buffered minimum is available (inclusive)", () => {
-    // total is 1595 cents; min 13.86 x 1.15 = 15.939 => required 1594 (available); min 13.87 => ceil(1595.05) = 1596 (not)
-    expect(buildCryptoCatalog(250_000, FX, [{ ticker: "btc", minUsdText: "13.86" }])[0]).toMatchObject({ available: true, total_cents: 1595 });
-    expect(buildCryptoCatalog(250_000, FX, [{ ticker: "btc", minUsdText: "13.87" }])[0]).toMatchObject({ available: false, min_total_cents: 1596 });
+    // total is 1599 cents; min 13.90 x 1.15 = 15.985 => required 1599 (available); min 13.91 => ceil(1599.65) = 1600 (not)
+    expect(buildCryptoCatalog(250_000, FX, [{ ticker: "btc", minUsdText: "13.90" }])[0]).toMatchObject({ available: true, total_cents: 1599 });
+    expect(buildCryptoCatalog(250_000, FX, [{ ticker: "btc", minUsdText: "13.91" }])[0]).toMatchObject({ available: false, min_total_cents: 1600 });
   });
 
   it("no FX, empty coins or unconfigured outcome => no crypto at all (fail closed)", () => {
@@ -134,12 +180,12 @@ describe("catalog builder (per coin)", () => {
   });
 
   it("isCryptoTotalStillPayable re-checks the per-coin minimum x1.15 against the CURRENT snapshot coins (no floor)", () => {
-    expect(isCryptoTotalStillPayable(1595, "btc", coins)).toBe(true);
-    expect(isCryptoTotalStillPayable(1595, "btc", [{ ticker: "btc", minUsdText: "14" }])).toBe(false); // needs 1610
-    expect(isCryptoTotalStillPayable(1595, "doge", [{ ticker: "doge", minUsdText: "0.1" }])).toBe(false);
-    expect(isCryptoTotalStillPayable(1595, "btc", [])).toBe(false);
+    expect(isCryptoTotalStillPayable(1599, "btc", coins)).toBe(true);
+    expect(isCryptoTotalStillPayable(1599, "btc", [{ ticker: "btc", minUsdText: "14" }])).toBe(false); // needs 1610
+    expect(isCryptoTotalStillPayable(1599, "doge", [{ ticker: "doge", minUsdText: "0.1" }])).toBe(false);
+    expect(isCryptoTotalStillPayable(1599, "btc", [])).toBe(false);
     // sub-US$2 totals are payable as soon as the coin minimum is met
-    expect(isCryptoTotalStillPayable(51, "usdtbsc", coins)).toBe(true);
+    expect(isCryptoTotalStillPayable(59, "usdtbsc", coins)).toBe(true);
     expect(isCryptoTotalStillPayable(9, "usdtbsc", coins)).toBe(false); // needs 10
     expect(isCryptoTotalStillPayable(0, "usdtbsc", coins)).toBe(false);
     expect(isCryptoTotalStillPayable(Number.NaN, "usdtbsc", coins)).toBe(false);
@@ -168,7 +214,9 @@ describe("signed quote token with several tickers", () => {
     const verified = await verifyCheckoutQuoteToken(signed.token);
     expect(verified?.payment_methods.map((m) => m.id)).toEqual(tickers.map((t) => `nowpayments:${t}`));
     for (const method of verified!.payment_methods) {
-      expect(method).toMatchObject({ amount_text: "15.95", total_cents: 1595, base_cents: 1563, surcharge_cents: 32, surcharge_bps: 200, fee_payer: "merchant", fixed_rate: false });
+      const ticker = method.id.slice("nowpayments:".length);
+      const expectedEntry = buildCryptoOffer(250_000, FX, { ticker, minUsdText: "0.08" })!;
+      expect(method).toMatchObject({ amount_text: expectedEntry.amount_text, total_cents: expectedEntry.total_cents, base_cents: 1563, surcharge_cents: expectedEntry.surcharge_cents, surcharge_bps: 100, fee_payer: "merchant", fixed_rate: false });
       const asset = CRYPTO_ASSETS.find((a) => `nowpayments:${a.ticker}` === method.id)!;
       expect(method.network).toBe(asset.network);
       expect(method.usd).toMatchObject({ pay_currency: asset.ticker, network: asset.network });
@@ -183,12 +231,12 @@ describe("signed quote token with several tickers", () => {
       { ...good, payment_methods: [{ ...m, id: "nowpayments:doge", pay_currency: "doge", usd: { ...m.usd, pay_currency: "doge" } }] },
       { ...good, payment_methods: [{ ...m, id: "nowpayments:usddtrc20", pay_currency: "usddtrc20", network: "trx", usd: { ...m.usd, pay_currency: "usddtrc20", network: "trx" } }] }, // excluded from curation
       { ...good, payment_methods: [{ ...m, pay_currency: "btc" }] }, // pay_currency != id ticker
-      { ...good, payment_methods: [{ ...m, total_cents: 1596 }] },
-      { ...good, payment_methods: [{ ...m, surcharge_cents: 31, total_cents: 1594, amount_text: "15.94" }] }, // not the ceil formula
+      { ...good, payment_methods: [{ ...m, total_cents: 1588 }] },
+      { ...good, payment_methods: [{ ...m, surcharge_cents: 23, total_cents: 1586, amount_text: "15.86" }] }, // not the ceil formula
       { ...good, payment_methods: [{ ...m, base_cents: 1562 }] },
       { ...good, payment_methods: [{ ...m, amount_text: "15.63" }] }, // base shown as total
       { ...good, payment_methods: [{ ...m, surcharge_bps: 0, surcharge_cents: 0, total_cents: 1563, amount_text: "15.63" }] }, // surcharge stripped
-      { ...good, payment_methods: [{ ...m, surcharge_bps: 150, surcharge_cents: 24, total_cents: 1587, amount_text: "15.87" }] }, // legacy bps is not the current fee
+      { ...good, payment_methods: [{ ...m, surcharge_bps: 200, surcharge_cents: 24, total_cents: 1587, amount_text: "15.87" }] }, // legacy bps is not the current fee
       { ...good, payment_methods: [{ ...m, fee_payer: "buyer" }] },
       { ...good, payment_methods: [{ ...m, fixed_rate: true }] },
       { ...good, payment_methods: [{ ...m, kind: "gateway" }] },
@@ -201,12 +249,12 @@ describe("signed quote token with several tickers", () => {
       await expect(createCheckoutQuoteToken(value as never)).rejects.toThrow();
       expect(isCanonicalMethodOption((value as typeof good).payment_methods[0], 250_000)).toBe(false);
     }
-    // No US$2 floor: a small but self-consistent total IS a valid signed method (2% fee exact)
+    // No US$2 floor: a small but self-consistent total IS a valid signed method (per-coin fee exact)
     const tiny = buildCryptoOffer(10_000, FX, { ticker: "usdtbsc", minUsdText: "0.08" })!;
-    expect(tiny).toMatchObject({ base_cents: 63, surcharge_cents: 2, total_cents: 65, amount_text: "0.65" });
+    expect(tiny).toMatchObject({ base_cents: 63, surcharge_cents: 9, total_cents: 72, amount_text: "0.72" });
     expect(isCanonicalMethodOption({ ...tiny, account_number: "" }, 10_000)).toBe(true);
-    // ...but a forged small total (legacy 1,5% math) is still refused
-    const forged = { ...m, amount_text: "0.64", total_cents: 64, base_cents: 63, surcharge_cents: 1, usd: { ...m.usd, cents: "63", idr_subtotal: 10_000 } };
+    // ...but a forged small total (legacy percent math) is still refused
+    const forged = { ...m, amount_text: "0.71", total_cents: 71, base_cents: 63, surcharge_cents: 8, usd: { ...m.usd, cents: "63", idr_subtotal: 10_000 } };
     expect(isCanonicalMethodOption(forged, 10_000)).toBe(false);
     expect(isCanonicalMethodOption(m, 250_000)).toBe(true);
   });
@@ -297,11 +345,11 @@ describe("web quote catalog + token", () => {
       ["nowpayments:btc", true], ["nowpayments:ton", false], ["nowpayments:usdtbsc", true], ["nowpayments:usdttrc20", true],
     ]);
     const ton = crypto.find((m) => m.id === "nowpayments:ton") as unknown as Record<string, unknown>;
-    expect(ton).toMatchObject({ unavailable_reason: "below_min", min_total_cents: 2300, min_total_text: "23.00", min_idr_subtotal: 360_560, label: "TON", sublabel: "TON", group: "popular" });
+    expect(ton).toMatchObject({ unavailable_reason: "below_min", min_total_cents: 2300, min_total_text: "23.00", min_idr_subtotal: 361_040, label: "TON", sublabel: "TON", group: "popular" });
     expect(ton).not.toHaveProperty("amount_text");
     expect(ton).not.toHaveProperty("usd");
     const btc = crypto[0] as unknown as Record<string, unknown>;
-    expect(btc).toMatchObject({ label: "BTC", sublabel: "Bitcoin", group: "popular", logo: "/payments/coins/btc.svg", amount_text: "15.95", base_cents: 1563, surcharge_cents: 32, total_cents: 1595, surcharge_bps: 200, fee_payer: "merchant", fixed_rate: false, sender_gas_extra: true });
+    expect(btc).toMatchObject({ label: "BTC", sublabel: "Bitcoin", group: "popular", logo: "/payments/coins/btc.svg", amount_text: "15.99", base_cents: 1563, surcharge_cents: 36, total_cents: 1599, surcharge_bps: 100, fee_payer: "merchant", fixed_rate: false, sender_gas_extra: true });
     const verified = (await verifyCheckoutQuoteToken(body.quoteToken))!;
     expect(verified.payment_methods.map((m) => m.id).filter((id) => id === "qris" || id.startsWith("nowpayments:"))).toEqual(["qris", "nowpayments:btc", "nowpayments:usdtbsc", "nowpayments:usdttrc20"]);
     expect(JSON.stringify(verified.payment_methods)).not.toMatch(/below_min|nowpayments:ton|min_total/);
@@ -333,7 +381,7 @@ describe("web quote catalog + token", () => {
     const body = await res.json();
     const crypto = (body.paymentMethods as { kind: string; available: boolean; id: string; amount_text?: string; min_total_text?: string }[]).filter((m) => m.kind === "crypto");
     expect(crypto.length).toBeGreaterThan(0);
-    expect(crypto.find((m) => m.id === "nowpayments:usdtbsc")).toMatchObject({ available: true, amount_text: "1.28" });
+    expect(crypto.find((m) => m.id === "nowpayments:usdtbsc")).toMatchObject({ available: true, amount_text: "1.35" });
     expect(crypto.find((m) => m.id === "nowpayments:btc")).toMatchObject({ available: false, min_total_text: "2.25" });
     expect(crypto.find((m) => m.id === "nowpayments:ton")).toMatchObject({ available: false, min_total_text: "23.00" });
     const verified = (await verifyCheckoutQuoteToken(body.quoteToken))!;
@@ -347,17 +395,17 @@ describe("web create (non-USDT coin, snapshot gate, memo guard)", () => {
     const res = await createOrder(quote.quoteToken, "nowpayments:btc");
     expect(res.status).toBe(201);
     expect(postBodies).toHaveLength(1);
-    expect(postBodies[0]).toMatchObject({ pay_currency: "btc", price_amount: "15.95", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false });
+    expect(postBodies[0]).toMatchObject({ pay_currency: "btc", price_amount: "15.99", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false });
     const order = await res.json();
     expect(fixture.sql.prepare("SELECT payment_method FROM orders WHERE code=?").get(order.code)?.payment_method).toBe("nowpayments:btc");
     expect(fixture.sql.prepare("SELECT pay_currency,pay_network,fee_paid_by_user,fixed_rate,price_amount_text,crypto_base_usd_cents,crypto_surcharge_usd_cents,crypto_surcharge_bps FROM payment_transactions WHERE order_code=?").get(order.code))
-      .toEqual({ pay_currency: "btc", pay_network: "btc", fee_paid_by_user: 0, fixed_rate: 0, price_amount_text: "15.95", crypto_base_usd_cents: 1563, crypto_surcharge_usd_cents: 32, crypto_surcharge_bps: 200 });
-    expect(order.payment).toMatchObject({ label: "BTC", sublabel: "Bitcoin", symbol: "BTC", network_label: "Bitcoin", logo: "/payments/coins/btc.svg", amount_text: "15.95", base_amount_text: "15.63", surcharge_amount_text: "0.32", surcharge_bps: 200, pay_currency: "btc", fee_payer: "merchant", fixed_rate: false });
+      .toEqual({ pay_currency: "btc", pay_network: "btc", fee_paid_by_user: 0, fixed_rate: 0, price_amount_text: "15.99", crypto_base_usd_cents: 1563, crypto_surcharge_usd_cents: 36, crypto_surcharge_bps: 100 });
+    expect(order.payment).toMatchObject({ label: "BTC", sublabel: "Bitcoin", symbol: "BTC", network_label: "Bitcoin", logo: "/payments/coins/btc.svg", amount_text: "15.99", base_amount_text: "15.63", surcharge_amount_text: "0.36", surcharge_bps: 100, pay_currency: "btc", fee_payer: "merchant", fixed_rate: false });
     expect(order.payment.crypto_amount_text).toBe("0.00021 BTC");
   });
 
-  it("a sub-US$2 order (US$0.51) is created with the coin whose provider minimum allows it; BTC stays below_min", async () => {
-    fixture.sql.exec("UPDATE product_variants SET price=8000"); // 8000 IDR @16000 => base 50c + 2% (1c) = 51c
+  it("a sub-US$2 order (US$0.59) is created with the coin whose provider minimum allows it; BTC stays below_min", async () => {
+    fixture.sql.exec("UPDATE product_variants SET price=8000"); // 8000 IDR @16000 => base 50c + biaya per koin (9c) = 59c
     seedCryptoMarket(fixture.sql, { coins: [{ ticker: "usdtbsc", min_usd_text: "0.08" }, { ticker: "btc", min_usd_text: "1.95" }] });
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const target = String(url);
@@ -379,13 +427,13 @@ describe("web create (non-USDT coin, snapshot gate, memo guard)", () => {
     }));
     const quote = await (await loadQuote()).json();
     const usdt = (quote.paymentMethods as { id: string; available: boolean; amount_text?: string; total_cents?: number }[]).find((m) => m.id === "nowpayments:usdtbsc");
-    expect(usdt).toMatchObject({ available: true, amount_text: "0.51", total_cents: 51 });
+    expect(usdt).toMatchObject({ available: true, amount_text: "0.59", total_cents: 59 });
     expect((quote.paymentMethods as { id: string; available: boolean }[]).find((m) => m.id === "nowpayments:btc")).toMatchObject({ available: false });
     const res = await createOrder(quote.quoteToken, "nowpayments:usdtbsc");
     expect(res.status).toBe(201);
-    expect(postBodies[0]).toMatchObject({ pay_currency: "usdtbsc", price_amount: "0.51", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false });
+    expect(postBodies[0]).toMatchObject({ pay_currency: "usdtbsc", price_amount: "0.59", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false });
     expect(fixture.sql.prepare("SELECT crypto_base_usd_cents,crypto_surcharge_usd_cents,crypto_surcharge_bps,price_amount_text FROM payment_transactions").get())
-      .toEqual({ crypto_base_usd_cents: 50, crypto_surcharge_usd_cents: 1, crypto_surcharge_bps: 200, price_amount_text: "0.51" });
+      .toEqual({ crypto_base_usd_cents: 50, crypto_surcharge_usd_cents: 9, crypto_surcharge_bps: 100, price_amount_text: "0.59" });
   });
 
   it("two different coins in the same flow each bind their OWN ticker/network (no leakage from a previous order)", async () => {
@@ -410,7 +458,7 @@ describe("web create (non-USDT coin, snapshot gate, memo guard)", () => {
 
   it("provider minimum rose above the signed total => 409 quote_stale; stale snapshot (>2h) => 409; other coins unaffected", async () => {
     const quote = await (await loadQuote()).json();
-    seedCryptoMarket(fixture.sql, { coins: [{ ticker: "btc", min_usd_text: "14" }, { ticker: "usdtbsc", min_usd_text: "0.08" }] }); // btc needs 1610 > 1595
+    seedCryptoMarket(fixture.sql, { coins: [{ ticker: "btc", min_usd_text: "14" }, { ticker: "usdtbsc", min_usd_text: "0.08" }] }); // btc needs 1610 > 1599
     expect((await createOrder(quote.quoteToken, "nowpayments:btc")).status).toBe(409);
     seedCryptoMarket(fixture.sql, { coinsAgeMs: 3 * 3600_000 });
     expect((await createOrder(quote.quoteToken, "nowpayments:usdtbsc")).status).toBe(409);
@@ -541,15 +589,17 @@ describe("reconcile: 0/0 rows and legacy 1/1 rows", () => {
     expect(await buildNowpaymentsPaymentView(B)).toMatchObject({ label: "BTC", sublabel: "Bitcoin", network_label: "Bitcoin", fee_payer: "merchant", fixed_rate: false, base_amount_text: "15.63", surcharge_amount_text: "0.24", surcharge_bps: 150, amount_text: "15.87" });
   });
 
-  it("a saved 150-bps invoice keeps its stored fee (copy + amounts) and still reconciles; the 200-bps constant is never applied", async () => {
+  it("a saved legacy (150 bps) invoice keeps its stored fee amounts and still reconciles; current constants are never applied to it", async () => {
     await seedOrder(A); saveTx(A, { fee: 0, fixed: 0 });
     fixture.sql.prepare("UPDATE payment_transactions SET crypto_base_usd_cents=1563,crypto_surcharge_usd_cents=24,crypto_surcharge_bps=150 WHERE order_code=?").run(A);
     const { buildNowpaymentsPaymentView } = await import("@/lib/payments/payment-view");
     expect(await buildNowpaymentsPaymentView(A)).toMatchObject({ amount_text: "15.87", base_amount_text: "15.63", surcharge_amount_text: "0.24", surcharge_bps: 150 });
     const { payCopy } = await import("@/lib/payment-ui");
-    expect(payCopy("id").cryptoCaption("15.87", 150)).toBe("US$15,87 · termasuk biaya layanan 1,5%");
-    expect(payCopy("en").cryptoCaption("15.87", 150)).toBe("US$15.87 · incl. 1.5% service fee");
-    expect(payCopy("id").cryptoCaption("15.95", 200)).toBe("US$15,95 · termasuk biaya layanan 2%");
+    // Copy is generic now (no percent), so legacy and current rows read the same.
+    expect(payCopy("id").cryptoCaption("15.87")).toBe("US$15,87 · termasuk biaya layanan crypto");
+    expect(payCopy("en").cryptoCaption("15.87")).toBe("US$15.87 · incl. crypto service fee");
+    expect(payCopy("id").cryptoServiceFeeRow).toBe("Biaya layanan crypto");
+    expect(payCopy("en").cryptoServiceFeeRow).toBe("Crypto service fee");
     expect(await reconcileWith(A, remoteStatus(A, { is_fixed_rate: false, is_fee_paid_by_user: false }))).toBe("paid");
     expect(fixture.sql.prepare("SELECT crypto_surcharge_bps,price_amount_text FROM payment_transactions WHERE order_code=?").get(A))
       .toEqual({ crypto_surcharge_bps: 150, price_amount_text: "15.87" });
@@ -570,7 +620,7 @@ describe("migration 0102 matches schema.sql", () => {
 
 describe("create adapter guards (no network)", () => {
   const expected = {
-    cents: "1563", priceText: "15.95", surchargeBps: 200, surchargeCents: "32", totalCents: "1595", rateText: "16000", rateNum: "16000", rateDen: "1",
+    cents: "1563", priceText: "15.99", surchargeBps: 100, surchargeCents: "36", totalCents: "1599", rateText: "16000", rateNum: "16000", rateDen: "1",
     effectiveAt: new Date(Date.now() - 60_000).toISOString(), idrSubtotal: 250000, payCurrency: "btc", network: "btc",
   };
   async function seedOrder(code: string) {
@@ -587,8 +637,8 @@ describe("create adapter guards (no network)", () => {
   };
 
   it.each([
-    ["wrong surcharge", { surchargeCents: "25" }], ["wrong total", { totalCents: "1588" }], ["total text != total", { priceText: "15.63" }],
-    ["wrong bps", { surchargeBps: 100 }], ["wrong base", { cents: "1564" }], ["network != curated network", { network: "bsc" }],
+    ["wrong surcharge", { surchargeCents: "35" }], ["wrong total", { totalCents: "1598" }], ["total text != total", { priceText: "15.63" }],
+    ["wrong bps", { surchargeBps: 200 }], ["wrong base", { cents: "1564" }], ["network != curated network", { network: "bsc" }],
   ])("refuses to POST when the snapshot is inconsistent (%s)", async (_label, over) => {
     await seedOrder(A);
     await expect(create(over, "network" in over ? { payNetwork: "bsc" } : {})).rejects.toThrow("nowpayments_invoice_mismatch");
@@ -605,9 +655,9 @@ describe("create adapter guards (no network)", () => {
   it("a sub-US$2 total is no longer blocked by an AXVARA floor: it reaches the provider preflight", async () => {
     await seedOrder(A);
     fixture.sql.prepare("UPDATE orders SET subtotal=10000 WHERE code=?").run(A);
-    const tiny = { cents: "63", priceText: "0.65", surchargeBps: 200, surchargeCents: "2", totalCents: "65", idrSubtotal: 10_000 };
+    const tiny = { cents: "63", priceText: "0.84", surchargeBps: 100, surchargeCents: "21", totalCents: "84", idrSubtotal: 10_000 };
     const { createNowpaymentsInvoice } = await import("@/lib/payments/nowpayments");
-    // fixture /min-amount reports fiat_equivalent 1.95 > 0.65 => provider preflight rejects; NOT a floor error
+    // fixture /min-amount reports fiat_equivalent 1.95 > 0.84 => provider preflight rejects; NOT a floor error
     await expect(createNowpaymentsInvoice(A, 10_000, "btc", { payNetwork: "btc", priceCurrency: "usd", feePayer: "merchant", fixedRate: false, expectedUsd: { ...expected, ...tiny } } as never)).rejects.toThrow("nowpayments_preflight_invalid");
     expect(postBodies).toHaveLength(0);
   });
