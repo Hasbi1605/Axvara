@@ -14,7 +14,7 @@ import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
 import { readJsonBody } from "@/lib/http-body";
 import { cryptoRailEnabled, cryptoTickerOfMethodId, isCryptoTotalStillPayable, isFxSnapshotAcceptable } from "@/lib/payments/crypto-preflight";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
-import { CRYPTO_MIN_TOTAL_USD_CENTS, CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
+import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
 import { isNowpaymentsConfigured, isPaymentAdminTestEnabled } from "@/lib/payments/rails";
 import type { NowpaymentsUsdExpected } from "@/lib/payments/nowpayments";
 
@@ -405,11 +405,11 @@ export async function POST(req: NextRequest) {
     const pricing = cryptoPricing(BigInt(snapCents));
     if (row.surcharge_bps !== CRYPTO_SURCHARGE_BPS || row.base_cents !== Number(pricing.baseCents)
       || row.surcharge_cents !== Number(pricing.surchargeCents) || row.total_cents !== Number(pricing.totalCents)
-      || pricing.totalCents < BigInt(CRYPTO_MIN_TOTAL_USD_CENTS)) return stale();
+      || pricing.totalCents <= BigInt(0)) return stale();
     const { getCryptoMarketSnapshot } = await import("@/lib/payments/market-snapshot");
     const sameConfigQuote = await queryFirst("SELECT code FROM orders WHERE quote_id=?", quote.quote_id);
     if (!sameConfigQuote) {
-      // Pembuatan BARU: koin harus ada di snapshot segar sekarang dan total bertanda masih memenuhi lantai +
+      // Pembuatan BARU: koin harus ada di snapshot segar sekarang dan total bertanda masih memenuhi
       // minimum terbaru x 1,15. Retry quote yang sama (sameConfigQuote) memakai binding tersimpan tanpa gate ulang.
       const market = await getCryptoMarketSnapshot();
       const current = market.fx;

@@ -151,12 +151,12 @@ describe("TG R2-A crypto creation + saved recovery (local only)", () => {
     const fetchMock = nowpaymentsFetchImpl();
     const frozen = await offerWithCrypto({ nowFetch: fetchMock });
     // Cart discounted net 19000 (qty2 x tier 9500); test FX 8000 IDR/USD => base 238 cents,
-    // service fee ceil(238*1.5%)=4 => total 242 cents (US$2.42, above the US$2 floor).
+    // service fee ceil(238*2%)=5 => total 243 cents (US$2.43). No AXVARA US$2 floor.
     expect(frozen.idrSubtotal).toBe(19000);
     const crypto = frozen.methods.find((m) => m.id === "nowpayments:usdtbsc") as { usd?: { cents: string; idr_subtotal?: number }; amount_text?: string } | undefined;
     expect(crypto?.amount_text).toBeTruthy();
     expect(crypto?.usd?.cents).toBe("238");
-    expect(crypto?.amount_text).toBe("2.42");
+    expect(crypto?.amount_text).toBe("2.43");
     expect((crypto?.usd as { idr_subtotal?: number } | undefined)?.idr_subtotal).toBe(19000);
     // Rotate live FX AFTER freeze: creation must keep the frozen snapshot.
     vi.stubEnv("USD_IDR_RATE", "17000");
@@ -174,10 +174,10 @@ describe("TG R2-A crypto creation + saved recovery (local only)", () => {
     expect(Number(tx.requested_amount)).toBe(19000);
     expect(Number(tx.fee_paid_by_user)).toBe(0); // floating rate, provider fee paid by merchant
     expect(Number(tx.fixed_rate)).toBe(0);
-    expect(tx).toMatchObject({ crypto_base_usd_cents: 238, crypto_surcharge_usd_cents: 4, crypto_surcharge_bps: 150 });
+    expect(tx).toMatchObject({ crypto_base_usd_cents: 238, crypto_surcharge_usd_cents: 5, crypto_surcharge_bps: 200 });
     expect(String(tx.pay_currency).toLowerCase()).toBe("usdtbsc");
     expect(String(tx.price_currency)).toBe("usd");
-    expect(String(tx.price_amount_text)).toBe("2.42");
+    expect(String(tx.price_amount_text)).toBe("2.43");
     expect(String(tx.pay_amount_text)).toBeTruthy();
     expect(String(tx.pay_address)).toBe(PAY_ADDR);
     expect(String(tx.provider_payment_id)).toBe(PAY_ID);
@@ -199,12 +199,12 @@ describe("TG R2-A crypto creation + saved recovery (local only)", () => {
     const posts = postsOf(fetchMock);
     expect(posts).toHaveLength(1);
     expect(JSON.parse(String((posts[0][1] as RequestInit).body))).toMatchObject({
-      pay_currency: "btc", price_amount: "2.42", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false,
+      pay_currency: "btc", price_amount: "2.43", price_currency: "usd", is_fixed_rate: false, is_fee_paid_by_user: false,
     });
     const code = String((lastText().match(/AXV-\d{8}-[A-Z0-9]{8}/) ?? [])[0] ?? "");
     expect(fx.sql.prepare("SELECT payment_method FROM orders WHERE code=?").get(code)?.payment_method).toBe("nowpayments:btc");
     expect(fx.sql.prepare("SELECT pay_currency,pay_network,fee_paid_by_user,fixed_rate,price_amount_text FROM payment_transactions WHERE order_code=?").get(code))
-      .toMatchObject({ pay_currency: "btc", pay_network: "btc", fee_paid_by_user: 0, fixed_rate: 0, price_amount_text: "2.42" });
+      .toMatchObject({ pay_currency: "btc", pay_network: "btc", fee_paid_by_user: 0, fixed_rate: 0, price_amount_text: "2.43" });
     expect(lastText()).toContain("Send exactly <b>1.25 BTC</b> on the <b>Bitcoin</b> network only.");
     expect(lastText()).not.toMatch(/USDT|QRIS/);
   });
@@ -222,7 +222,7 @@ describe("TG R2-A crypto creation + saved recovery (local only)", () => {
   it("provider minimum rose above the frozen total between freeze and confirm: refused without an order", async () => {
     const fetchMock = nowpaymentsFetchImpl();
     const frozen = await offerWithCrypto({ nowFetch: fetchMock, ticker: "btc" });
-    seedCryptoMarket(fx.sql, { fx: false, coins: [{ ticker: "btc", min_usd_text: "2.20" }] }); // needs ceil(2.53)=253 > frozen total 242
+    seedCryptoMarket(fx.sql, { fx: false, coins: [{ ticker: "btc", min_usd_text: "2.20" }] }); // needs ceil(2.53)=253 > frozen total 243
     await click(`pgo:${frozen.nonce}`);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
     expect(postsOf(fetchMock)).toHaveLength(0);

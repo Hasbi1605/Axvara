@@ -68,14 +68,14 @@ describe("loadFxSnapshot (strict ISO+zone, no silent guesses)", () => {
   });
 });
 
-describe("buildCryptoOffer gate (outcome env + exact math + 1.5% surcharge)", () => {
+describe("buildCryptoOffer gate (outcome env + exact math + 2% surcharge)", () => {
   it("offer carries the signed USD snapshot with the TOTAL incl. surcharge; policy merchant/floating", () => {
     const offer = buildCryptoOffer(250000, loadFxSnapshot(), USDT_BSC);
-    // base 1563 cents; surcharge ceil(1563*150/10000)=ceil(23.445)=24; total 1587 => "15.87"
+    // base 1563 cents; surcharge ceil(1563*200/10000)=ceil(31.26)=32; total 1595 => "15.95"
     expect(offer).toMatchObject({
       id: "nowpayments:usdtbsc", kind: "crypto", currency: "USD", label: "USDT", sublabel: "BNB Smart Chain", group: "stable",
-      amount_text: "15.87", pay_currency: "usdtbsc", network: "bsc",
-      base_cents: 1563, surcharge_cents: 24, total_cents: 1587, surcharge_bps: 150,
+      amount_text: "15.95", pay_currency: "usdtbsc", network: "bsc",
+      base_cents: 1563, surcharge_cents: 32, total_cents: 1595, surcharge_bps: 200,
       fee_payer: "merchant", fixed_rate: false, sender_gas_extra: true,
     });
     expect(offer!.usd).toMatchObject({ cents: "1563", idr_subtotal: 250000, pay_currency: "usdtbsc", network: "bsc" });
@@ -126,7 +126,7 @@ describe("quote token USD metadata survives auth create+verify", () => {
     });
     const verified = await verifyCheckoutQuoteToken(signed.token);
     expect(verified?.locale).toBe("en");
-    expect(verified?.payment_methods[0]).toMatchObject({ id: "nowpayments:usdtbsc", kind: "crypto", currency: "USD", amount_text: "15.87", total_cents: 1587, surcharge_cents: 24 });
+    expect(verified?.payment_methods[0]).toMatchObject({ id: "nowpayments:usdtbsc", kind: "crypto", currency: "USD", amount_text: "15.95", total_cents: 1595, surcharge_cents: 32 });
     const usd = (verified!.payment_methods[0] as unknown as { usd: { cents: string; rate_num: string } }).usd;
     expect(usd).toMatchObject({ cents: "1563", rate_num: "16000" });
     const tampered = signed.token.slice(0, -1) + (signed.token.endsWith("a") ? "b" : "a");
@@ -162,8 +162,8 @@ describe("quote token USD metadata survives auth create+verify", () => {
       { ...base, payment_methods: [{ ...base.payment_methods[0], fee_payer: "buyer" }] },
       { ...base, payment_methods: [{ ...base.payment_methods[0], kind: "qris" }] },
       // amount/surcharge consistency: total != base + surcharge, wrong ceil, amount_text not the total
-      { ...base, payment_methods: [{ ...base.payment_methods[0], total_cents: 1586 }] },
-      { ...base, payment_methods: [{ ...base.payment_methods[0], surcharge_cents: 23, total_cents: 1586, amount_text: "15.86" }] },
+      { ...base, payment_methods: [{ ...base.payment_methods[0], total_cents: 1594 }] },
+      { ...base, payment_methods: [{ ...base.payment_methods[0], surcharge_cents: 31, total_cents: 1594, amount_text: "15.94" }] },
       { ...base, payment_methods: [{ ...base.payment_methods[0], amount_text: "15.63" }] },
       { ...base, payment_methods: [{ ...base.payment_methods[0], surcharge_bps: 100 }] },
       // network must equal the curated network for the ticker; ticker must be curated

@@ -1,10 +1,10 @@
 // Penawaran crypto multi-koin untuk quote + create (LOCAL ONLY).
 // Satu opsi per koin dari snapshot segar (market-snapshot.ts: aktif di dashboard
 // NOWPayments ∩ katalog kurasi crypto-assets.ts, dengan minimum provider USD).
-// Harga: base USD dari snapshot kurs (idrToUsdCents) + biaya layanan AXVARA 1,5%
+// Harga: base USD dari snapshot kurs (idrToUsdCents) + biaya layanan AXVARA 2%
 // (crypto-pricing.ts); `amount_text` = TOTAL. Kebijakan provider: kurs mengambang,
 // fee provider ditanggung merchant (pembeli menanggung lewat biaya layanan).
-// Koin di bawah lantai/minimum = `available:false, unavailable_reason:"below_min"`
+// Koin di bawah minimum provider = `available:false, unavailable_reason:"below_min"`
 // (tampilan saja, tidak pernah ditandatangani). Tanpa kurs / koin kosong/basi =
 // tidak ada opsi (fail closed). Kurs di-pass EKSPLISIT oleh pemanggil
 // (loadCurrentFxSnapshot()); modul ini tidak memuat env kurs atau IO apa pun.
@@ -20,7 +20,6 @@ import {
 } from "./fx";
 import { getCryptoAsset, CRYPTO_ASSETS, type CryptoAssetGroup } from "./crypto-assets";
 import {
-  CRYPTO_MIN_TOTAL_USD_CENTS,
   centsToUsdText,
   cryptoPricing,
   cryptoRequiredTotalCents,
@@ -183,7 +182,7 @@ export function buildCryptoCatalog(
 }
 
 /**
- * Cek create: koin ada di snapshot segar saat ini dan TOTAL bertanda masih memenuhi lantai +
+ * Cek create: koin ada di snapshot segar saat ini dan TOTAL bertanda masih memenuhi
  * minimum terbaru x 1,15. false => pemanggil menjawab 409 quote_stale / method_unavailable.
  */
 export function isCryptoTotalStillPayable(
@@ -191,7 +190,7 @@ export function isCryptoTotalStillPayable(
   ticker: string,
   coins: readonly { ticker: string; minUsdText: string }[],
 ): boolean {
-  if (!Number.isSafeInteger(totalCents) || totalCents < CRYPTO_MIN_TOTAL_USD_CENTS) return false;
+  if (!Number.isSafeInteger(totalCents) || totalCents <= 0) return false;
   const coin = coins.find((entry) => entry.ticker === ticker);
   if (!coin || !getCryptoAsset(ticker)) return false;
   const required = cryptoRequiredTotalCents(coin.minUsdText);

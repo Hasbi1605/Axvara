@@ -5,15 +5,16 @@
 // Keputusan owner 5 November 2026:
 //  - Invoice baru memakai kurs mengambang dan fee provider ditanggung merchant
 //    (is_fixed_rate:false, is_fee_paid_by_user:false) agar minimum provider rendah.
-//  - Pembeli menanggung biayanya lewat biaya layanan crypto AXVARA 1,5% dari nilai USD:
-//    surcharge = ceil(base * 150 / 10000), total = base + surcharge (sen USD).
-//  - Lantai: crypto hanya dapat dibayar bila total >= US$2,00; per koin juga
-//    total >= ceil(minimum provider (USD) x 1,15) karena minimum provider bergerak.
+//  - Pembeli menanggung biayanya lewat biaya layanan crypto AXVARA 2% dari nilai USD:
+//    surcharge = ceil(base * 200 / 10000), total = base + surcharge (sen USD).
+//  - Keputusan owner 7 November 2026: TIDAK ADA lantai US$2 milik AXVARA. Ketersediaan
+//    crypto hanya ditentukan minimum provider per koin x 1,15 (buffer) — lihat aturan
+//    area `docs/agent-rules/payments.md`.
 import { parseDecimalParts } from "./decimal";
 import { idrToUsdCents, type FxSnapshot } from "./fx";
 
-export const CRYPTO_SURCHARGE_BPS = 150;
-export const CRYPTO_MIN_TOTAL_USD_CENTS = 200;
+/** SEMENTARA 2% (keputusan owner 7 Nov 2026; kalibrasi ulang dari potongan dashboard NOWPayments). */
+export const CRYPTO_SURCHARGE_BPS = 200;
 /** Buffer minimum provider: 115/100 (naik 15%). */
 export const CRYPTO_MIN_BUFFER_NUM = 115; // penyebut 100 tertanam di cryptoRequiredTotalCents
 
@@ -38,8 +39,8 @@ export function cryptoPricing(baseCents: bigint, bps: number = CRYPTO_SURCHARGE_
 
 /**
  * Total minimum (sen USD) agar sebuah koin boleh ditawarkan/dibuat:
- * max(lantai US$2,00, ceil(minimum provider USD x 1,15) dibulatkan ke atas ke sen).
- * `minUsdText` = fiat_equivalent provider (teks desimal). null bila tidak valid.
+ * ceil(minimum provider USD x 1,15) dibulatkan ke atas ke sen. Tanpa lantai AXVARA.
+ * `minUsdText` = fiat_equivalent provider (teks desimal). null bila tidak valid (fail closed).
  */
 export function cryptoRequiredTotalCents(minUsdText: unknown): bigint | null {
   const parts = parseDecimalParts(minUsdText);
@@ -48,9 +49,7 @@ export function cryptoRequiredTotalCents(minUsdText: unknown): bigint | null {
   for (let i = 0; i < parts.scale; i++) pow *= BigInt(10);
   // value = scaled / 10^scale USD; sen = value * 100; buffered = sen * 115/100
   // = scaled * 115 / 10^scale (dibulatkan ke atas ke sen).
-  const buffered = ceilDiv(parts.scaled * BigInt(CRYPTO_MIN_BUFFER_NUM), pow);
-  const floor = BigInt(CRYPTO_MIN_TOTAL_USD_CENTS);
-  return buffered > floor ? buffered : floor;
+  return ceilDiv(parts.scaled * BigInt(CRYPTO_MIN_BUFFER_NUM), pow);
 }
 
 /** Sen USD -> teks 2 desimal eksak ("2.25"). */
@@ -85,7 +84,7 @@ export function minIdrSubtotalForTotal(requiredTotalCents: bigint, fx: FxSnapsho
   }
 }
 
-/** 150 -> "1,5" (id) / "1.5" (en); 100 -> "1". Format saja (tampilan). */
+/** 200 -> "2" (id/en); 150 -> "1,5" (id) / "1.5" (en). Format saja (tampilan, termasuk invoice lama). */
 export function bpsPercentText(bps: number, locale: "id" | "en"): string {
   const whole = Math.floor(bps / 100);
   const frac = String(bps % 100).padStart(2, "0").replace(/0+$/, "");

@@ -8,7 +8,7 @@ import { nowpaymentsOutcomeCurrency } from "./crypto-preflight";
 import { readBoundedText } from "@/lib/bounded-body";
 import { parseFxTimestamp } from "./fx";
 import { getCryptoAsset } from "./crypto-assets";
-import { CRYPTO_MIN_TOTAL_USD_CENTS, CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "./crypto-pricing";
+import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "./crypto-pricing";
 
 type Row = Record<string, unknown>;
 
@@ -272,14 +272,13 @@ export async function createNowpaymentsInvoice(
       rateNum: usd.rateNum, rateDen: usd.rateDen, rateText: usd.rateText,
       effectiveAt: usd.effectiveAt, source: "operator-fixed",
     });
-    // base = dari kurs bertanda; surcharge = ceil(base x 150 / 10000); total = base + surcharge = price_amount.
+    // base = dari kurs bertanda; surcharge = ceil(base x bps / 10000); total = base + surcharge = price_amount.
     if (usd.surchargeBps !== CRYPTO_SURCHARGE_BPS || recomputed <= BigInt(0)) throw new Error("nowpayments_invoice_mismatch");
     const pricing = cryptoPricing(recomputed);
     if (recomputed.toString() !== usd.cents || pricing.surchargeCents.toString() !== usd.surchargeCents
       || pricing.totalCents.toString() !== usd.totalCents || centsToUsdText(pricing.totalCents) !== usd.priceText) {
       throw new Error("nowpayments_invoice_mismatch");
     }
-    if (pricing.totalCents < BigInt(CRYPTO_MIN_TOTAL_USD_CENTS)) throw new Error("nowpayments_below_floor");
     if (options?.priceCurrency !== undefined && options.priceCurrency !== "usd") {
       throw new Error("nowpayments_price_currency_unsupported");
     }

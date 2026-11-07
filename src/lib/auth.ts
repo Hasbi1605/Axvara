@@ -3,7 +3,7 @@ import { z } from "zod";
 import { checkCloudflareAccess } from "@/lib/cloudflare-access";
 import { idrToUsdCents, parseFxTimestamp, parseRateRational, type FxSource } from "@/lib/payments/fx";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
-import { CRYPTO_MIN_TOTAL_USD_CENTS, CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
+import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
 
 export type CheckoutQuoteItem = {
   product_id: number;
@@ -16,7 +16,7 @@ export type CheckoutQuoteItem = {
 };
 
 export type CheckoutQuoteUsdSnapshot = {
-  cents: string; // USD cents BASE (sebelum biaya layanan 1,5%) bigint serialized, e.g. "1563"
+  cents: string; // USD cents BASE (sebelum biaya layanan crypto) bigint serialized, e.g. "1563"
   rate_num: string;
   rate_den: string;
   rate_text: string;
@@ -343,7 +343,7 @@ const CRYPTO_ONLY_FIELDS = ["usd", "amount_text", "pay_currency", "network", "fe
  * Validator kripto tunggal (token web + payq1 Telegram): ticker WAJIB kurasi dan id = `nowpayments:<ticker>`,
  * jaringan WAJIB sama dengan jaringan kurasi untuk ticker itu, kebijakan provider mengambang + fee merchant,
  * dan angka WAJIB eksak: base = idrToUsdCents(subtotal, kurs bertanda), surcharge = ceil(base x bps / 10000),
- * total = base + surcharge >= lantai, amount_text = total desimal 2dp. Tanpa float.
+ * total = base + surcharge > 0, amount_text = total desimal 2dp. Tanpa float.
  */
 function isValidCryptoMethod(method: QuoteMethod, idrSubtotal: number): boolean {
   const usd = method.usd;
@@ -364,7 +364,6 @@ function isValidCryptoMethod(method: QuoteMethod, idrSubtotal: number): boolean 
   return method.base_cents !== undefined && BigInt(method.base_cents) === pricing.baseCents
     && method.surcharge_cents !== undefined && BigInt(method.surcharge_cents) === pricing.surchargeCents
     && method.total_cents !== undefined && BigInt(method.total_cents) === pricing.totalCents
-    && pricing.totalCents >= BigInt(CRYPTO_MIN_TOTAL_USD_CENTS)
     && method.amount_text === centsToUsdText(pricing.totalCents);
 }
 

@@ -708,7 +708,7 @@ export function otherMethodsEntryKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMark
 
 /** R1 frozen offer keyboard: QRIS first + Paling cepat/Fastest badge, gateway
  * rows with estimated fee/total, ONE collapsed "Crypto (USD)" row (total
- * incl. 1.5% service fee; opens the coin sub-keyboard). Selection callbacks
+ * incl. 2% service fee; opens the coin sub-keyboard). Selection callbacks
  * pm:<nonce>:<index> (<=64B). No
  * order creation from this screen. Labels escape owner/provider strings;
  * currency display honors the independence rule (USD shown only as the

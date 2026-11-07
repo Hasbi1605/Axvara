@@ -165,7 +165,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     expect(String(userState().pending_action)).toBe(afterFirst);
   });
 
-  /** Crypto aktif: 20000 IDR @8000 => base 250 + 4 service fee = total 254 (US$2.54, di atas lantai US$2). */
+  /** Crypto aktif: 20000 IDR @8000 => base 250 + 5 service fee (2%) = total 255 (US$2.55). */
   async function enableCrypto(coins?: { ticker: string; min_usd_text: string }[]) {
     vi.stubEnv("NOWPAYMENTS_ENABLED", "true");
     vi.stubEnv("NOWPAYMENTS_API_KEY", "k");
@@ -176,7 +176,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     seedCryptoMarket(fx.sql, { fx: false, ...(coins ? { coins } : {}) });
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
       const target = String(url);
-      if (target.includes("/estimate?")) return Response.json({ estimated_amount: "2.54", currency_from: "usd", currency_to: "usdtbsc" });
+      if (target.includes("/estimate?")) return Response.json({ estimated_amount: "2.55", currency_from: "usd", currency_to: "usdtbsc" });
       if (target.includes("/min-amount?")) return Response.json({ min_amount: "0.0005", currency_from: "usdtbsc", currency_to: "usdtbsc" });
       throw new Error(`unexpected ${target}`);
     }));
@@ -189,7 +189,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     const frozen = parsePayq1State(String(userState().pending_action))!;
     const crypto = frozen.methods.find((m) => m.id === "nowpayments:usdtbsc") as { usd?: { cents: string }; total_cents?: number; amount_text?: string } | undefined;
     expect(crypto?.usd?.cents).toBe("250");
-    expect(crypto).toMatchObject({ total_cents: 254, amount_text: "2.54" });
+    expect(crypto).toMatchObject({ total_cents: 255, amount_text: "2.55" });
     vi.stubEnv("USD_IDR_RATE", "17000");
     const cryptoBefore = JSON.stringify(crypto);
     await click(`pm:${frozen.nonce}:${frozen.methods.findIndex((m) => m.id === "nowpayments:usdtbsc")}`);
@@ -218,11 +218,11 @@ describe("TG R1 frozen method selection (local only)", () => {
       const rows = rowsOf(message);
       const cryptoRows = rows.filter((row) => row.some((b) => b.text.startsWith("Crypto (USD)")));
       expect(cryptoRows).toHaveLength(1);
-      expect(cryptoRows[0][0].text).toBe("Crypto (USD) · 2.54 USD");
+      expect(cryptoRows[0][0].text).toBe("Crypto (USD) · 2.55 USD");
       expect(cryptoRows[0][0].callback_data).toMatch(/^pmc:[0-9a-f]{16}$/);
       expect(rows.flat().some((b) => /^BTC|USDT/.test(b.text))).toBe(false);
       expect((message.text.match(/Crypto \(USD\)/g) ?? []).length).toBe(1);
-      expect(message.text).toContain("incl. 1.5% crypto service fee");
+      expect(message.text).toContain("incl. 2% crypto service fee");
       expect(message.text).not.toMatch(/fee unknown|Provider fee/i);
       const frozen = parsePayq1State(String(userState().pending_action))!;
       expect(frozen.methods.filter((m) => m.kind === "crypto").map((m) => m.id)).toEqual([
@@ -278,21 +278,23 @@ describe("TG R1 frozen method selection (local only)", () => {
       expect(String(userState().pending_action)).toBe(raw);
     });
 
-    it("coins below the floor are not shown (Telegram never shows disabled options); a tiny cart has no crypto entry", async () => {
+    it("no AXVARA floor: a US$1.28 cart still shows coins whose provider minimum allows it; BTC is omitted", async () => {
       await enableCrypto();
-      vi.stubEnv("USD_IDR_RATE", "16000"); // 20000 IDR -> base 125 + 2 = total 127 < US$2 floor
+      vi.stubEnv("USD_IDR_RATE", "16000"); // 20000 IDR -> base 125 + 3 = total 128 (US$1.28)
       await seedCartUser();
       await click("pmentry");
       const state = parsePayq1State(String(userState().pending_action))!;
-      expect(state.methods.some((m) => m.kind === "crypto")).toBe(false);
-      expect(rowsOf(lastMessage()).flat().some((b) => b.text.startsWith("Crypto"))).toBe(false);
+      const ids = state.methods.filter((m) => m.kind === "crypto").map((m) => m.id);
+      expect(ids).toEqual(["nowpayments:eth", "nowpayments:trx", "nowpayments:usdtbsc", "nowpayments:usdttrc20"]);
+      expect(ids).not.toContain("nowpayments:btc"); // ceil(1.95 x 1.15) = 2.25 > 1.28
+      expect(rowsOf(lastMessage()).flat().some((b) => b.text.startsWith("Crypto"))).toBe(true);
     });
 
     it("per-coin minimum buffer: a coin whose provider minimum x1.15 exceeds the total is omitted, others stay", async () => {
       await enableCrypto([{ ticker: "btc", min_usd_text: "2.30" }, { ticker: "eth", min_usd_text: "2.20" }, { ticker: "usdtbsc", min_usd_text: "0.08" }]);
       await seedCartUser();
       await click("pmentry");
-      // total 254; btc needs ceil(2.30*1.15)=265 -> omitted; eth needs ceil(2.53)=253 -> kept
+      // total 255; btc needs ceil(2.30*1.15)=265 -> omitted; eth needs ceil(2.53)=253 -> kept
       const ids = parsePayq1State(String(userState().pending_action))!.methods.filter((m) => m.kind === "crypto").map((m) => m.id);
       expect(ids).toEqual(["nowpayments:eth", "nowpayments:usdtbsc"]);
     });

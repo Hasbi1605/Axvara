@@ -412,7 +412,7 @@ export function orderPanelCopy(locale: PayLocale) {
       copyAddress: id ? "Salin alamat" : "Copy address",
       copied: id ? "Tersalin" : "Copied",
       copyFailed: id ? "Gagal menyalin. Salin manual." : "Copy failed. Copy it manually.",
-      /** Satu baris rincian di bawah nominal: "≈ US$15,87 · termasuk biaya layanan 1,5%". */
+      /** Satu baris rincian di bawah nominal: "≈ US$15,95 · termasuk biaya layanan 2%". */
       approx: (usdText: string) => `≈ ${usdText}`,
       approxWithFee: (usdText: string, bps: number) => (id
         ? `≈ ${usdText} · termasuk biaya layanan ${bpsPercentText(bps, "id")}%`

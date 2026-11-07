@@ -176,7 +176,7 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
     expect(orders[0].locale).toBe("en"); // locale frozen in the quote at claim time
     expect(posts(f)).toHaveLength(1);
     const tx = fx.sql.prepare("SELECT * FROM payment_transactions WHERE order_code=?").get(orderCode)!;
-    expect(tx).toMatchObject({ provider: "nowpayments", price_amount_text: "2.42", fee_paid_by_user: 0, fixed_rate: 0 });
+    expect(tx).toMatchObject({ provider: "nowpayments", price_amount_text: "2.43", fee_paid_by_user: 0, fixed_rate: 0 });
     expect(stock()).toBe(98);
     expect(userRaw()).toBe(""); // anchor released only after durable TX
     expect(vi.mocked(sendPhoto)).not.toHaveBeenCalled();
@@ -375,7 +375,7 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
     expect(posts(f)).toHaveLength(1);
     expect(stock()).toBe(98);
     expect(fx.sql.prepare("SELECT subtotal FROM orders WHERE code=?").get(orderCode)?.subtotal).toBe(19000);
-    expect(fx.sql.prepare("SELECT price_amount_text FROM payment_transactions WHERE order_code=?").get(orderCode)?.price_amount_text).toBe("2.42");
+    expect(fx.sql.prepare("SELECT price_amount_text FROM payment_transactions WHERE order_code=?").get(orderCode)?.price_amount_text).toBe("2.43");
     expect(fx.sql.prepare("SELECT qty FROM telegram_carts WHERE user_id=?").get(userId)?.qty).toBe(5); // new cart untouched
     expect(userRaw()).toBe("");
   });
