@@ -430,10 +430,11 @@ export default function OrderSuccessPage() {
   }, [orderStatus, credentialsReady, uniqueUnitsPending, instantSending, handedToAdmin, pollOrder]);
 
   useEffect(() => {
-    if (!order?.qris || order.status !== "pending") return;
+    // Detak 1 dtk dibutuhkan semua hitung mundur tahap pending: QRIS DAN gateway/crypto.
+    if (order?.status !== "pending" || (!order.qris && order.payment?.state !== "pending")) return;
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
-  }, [order?.qris, order?.status]);
+  }, [order?.qris, order?.payment?.state, order?.status]);
 
   if (isPedia || (loading && !order)) {
     return <OrderStatusSkeleton />;
@@ -470,7 +471,6 @@ export default function OrderSuccessPage() {
   // tetap statis agar tidak menjanjikan polling yang tidak ada.
   const isPendingQris = Boolean(order.qris) && order.status === "pending" && !isExpired && !qrisExpired;
   const isPreparingQris = order.method === "qris" && !order.qris && order.status === "pending" && !isExpired;
-  const compactPayment = Boolean(order.qris) && order.status === "pending" && !isExpired;
   // Lunas TAPI gagal kirim (audit ronde 4, W-H1). Halaman ini dibuka paling
   // sering pasca-bayar (redirect checkout), tetapi dulu tetap merayakan
   // "Pembayaran Dikonfirmasi 🎉 … diproses 5–15 menit" selamanya. Salinan
@@ -483,6 +483,19 @@ export default function OrderSuccessPage() {
   const payExpired = Boolean(pay) && !isPaid && !isCancelled && (isExpired || pay?.state === "expired");
   const payHeading = !pay || isPaid || isCancelled ? null : paymentHeading(pay, order.locale, isExpired);
   const showPayPanel = Boolean(pay) && !isPaid && !isCancelled && !payExpired;
+  // Header ringkas dipakai QRIS pending DAN gateway/crypto pending: hierarki satu
+  // keluarga (ikon + judul + kode), tanpa ikon besar/h1 ganda/paragraf lead.
+  const compactPayment = (Boolean(order.qris) && order.status === "pending" && !isExpired)
+    || Boolean(pay && showPayPanel && pay.state === "pending");
+  const compactSpinning = isPendingQris || Boolean(pay && showPayPanel && pay.state === "pending");
+  const panelCopy = orderPanelCopy(order.locale);
+  const compactTitle = order.qris
+    ? panelCopy.title.qris
+    : pay?.kind === "crypto"
+      ? panelCopy.title.crypto
+      : pay?.kind === "gateway"
+        ? panelCopy.title.gateway(pay.label)
+        : panelCopy.title.qris;
   const hideCancel = paymentCancelHidden(pay, isExpired);
   const contactKnown = Boolean(verifiedContact) || (() => { try { return isValidOrderContact(sessionStorage.getItem(checkoutContactKey(order.code)) || ""); } catch { return false; } })();
   const payableAmount = Number(order.qris?.payable_amount || (pay?.kind === "gateway" && pay.total !== null ? pay.total : order.subtotal));
@@ -628,14 +641,14 @@ export default function OrderSuccessPage() {
         {compactPayment ? (
           <div className="grid grid-cols-[32px_minmax(0,1fr)_32px] items-center gap-2 text-center sm:grid-cols-[40px_auto_40px] sm:justify-center sm:gap-3">
             <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${statusVisual.shell}`}>
-              <span className={isPendingQris ? "animate-[spin_3s_linear_infinite]" : undefined} role={isPendingQris ? "status" : undefined} aria-label={isPendingQris ? "Menunggu pembayaran — memeriksa otomatis" : undefined}>
+              <span className={compactSpinning ? "animate-[spin_3s_linear_infinite]" : undefined} role={compactSpinning ? "status" : undefined} aria-label={compactSpinning ? "Menunggu pembayaran — memeriksa otomatis" : undefined}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={statusVisual.icon} alt="" width={22} height={22} className="h-[22px] w-[22px] object-contain" style={{ filter: statusVisual.filter }} draggable={false} />
               </span>
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-                <h1 className="font-display text-base font-bold leading-6 text-white sm:text-lg">Pembayaran QRIS</h1>
+                <h1 className="font-display text-base font-bold leading-6 text-white sm:text-lg">{compactTitle}</h1>
                 {qrisExpired && <span className="rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]">QRIS hangus</span>}
               </div>
               <p className="mt-1 break-all font-mono text-[11px] font-semibold tracking-[0.04em] text-[#00E5FF]">{order.code}</p>

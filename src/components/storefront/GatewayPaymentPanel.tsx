@@ -13,6 +13,10 @@ import { orderPanelCopy, usdFor, type CryptoView, type GatewayView, type PayLoca
  * terminal/pemeriksaan (expired, failed, manual_review, paid) tidak
  * merender detail apa pun. Persetujuan biaya memakai kontak checkout lewat
  * rute server yang ada; tidak ada PIN, tidak ada kontak di URL.
+ *
+ * Hierarki tahap pending mengikuti blok QRIS: chip "Menunggu bayar", label
+ * total + nominal besar, hitung mundur, aksi utama, cek pembayaran, lalu baris
+ * status otomatis. Crypto memakai dua kolom (QR + rincian) seperti QRIS.
  */
 type Props = {
   payment: PaymentView;
@@ -67,9 +71,9 @@ function clock(expiresAt: string) {
   return `${new Date(parsed).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" })} WIB`;
 }
 
-function CheckButton({ checking, onCheck, c }: { checking: boolean; onCheck: () => void; c: ReturnType<typeof orderPanelCopy> }) {
+function CheckButton({ checking, onCheck, c, compact }: { checking: boolean; onCheck: () => void; c: ReturnType<typeof orderPanelCopy>; compact?: boolean }) {
   return (
-    <button type="button" onClick={onCheck} disabled={checking} className={`${BTN} border border-[#00E5FF]/30 bg-[#00E5FF]/10 text-[#00E5FF] hover:bg-[#00E5FF]/20 ${FOCUS}`}>
+    <button type="button" onClick={onCheck} disabled={checking} className={`${BTN} border border-[#00E5FF]/30 bg-[#00E5FF]/10 text-[#00E5FF] hover:bg-[#00E5FF]/20 ${compact ? "min-w-0 whitespace-nowrap px-2 text-xs" : ""} ${FOCUS}`}>
       {checking && <InlineSpinner />}{checking ? c.checking : c.check}
     </button>
   );
@@ -81,6 +85,36 @@ function Deadline({ expiresAt, now, c }: { expiresAt: string | null; now: number
   if (!at) return null;
   return <p className="mt-1 flex items-center gap-1.5 text-[11px] text-[#FFB800]"><span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#FFB800]" />{c.payBefore(at)} · {timeLeft(expiresAt, now)}</p>;
 }
+
+/** Hitung mundur tahap pending: titik gold berdenyut + "Berlaku mm:ss · sebelum HH.MM WIB". */
+function PendingCountdown({ expiresAt, now, c, align = "center" }: { expiresAt: string | null; now: number; c: ReturnType<typeof orderPanelCopy>; align?: "center" | "start" }) {
+  if (!expiresAt) return null;
+  const left = timeLeft(expiresAt, now);
+  const at = clock(expiresAt);
+  return (
+    <p className={`mt-1 flex items-center gap-1.5 text-[11px] text-[#FFB800] ${align === "start" ? "justify-center sm:justify-start" : "justify-center"}`}>
+      <span aria-hidden className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#FFB800]" />
+      {at ? c.expiresIn(left, at) : left}
+    </p>
+  );
+}
+
+/** Baris status otomatis (spinner) yang sama untuk gateway dan crypto. */
+function AutoStatus({ c }: { c: ReturnType<typeof orderPanelCopy> }) {
+  return (
+    <p role="status" aria-live="polite" className="mt-2 flex items-start justify-center gap-1.5 text-[10px] leading-4 text-white/50">
+      <InlineSpinner className="mt-0.5 h-3 w-3 shrink-0" />
+      <span>{c.autoStatus}</span>
+    </p>
+  );
+}
+
+function LockedNote({ c }: { c: ReturnType<typeof orderPanelCopy> }) {
+  return <p className="mt-3 border-t border-white/10 pt-3 text-[10px] leading-4 text-white/40">{c.locked}</p>;
+}
+
+const CARD = "mt-3 w-full rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-3 sm:p-4";
+const CHIP = "inline-flex rounded-full border border-[#FFB800]/20 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FFB800]";
 
 function GatewayPanel({ view, locale, now, checking, onCheck, contactKnown, consent }: Omit<Props, "payment"> & { view: GatewayView }) {
   const c = orderPanelCopy(locale);
@@ -127,15 +161,15 @@ function GatewayPanel({ view, locale, now, checking, onCheck, contactKnown, cons
 
   if (view.state === "pending") {
     return (
-      <section aria-label={c.h1.pendingGateway} className="mt-4 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-4 text-left">
-        <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">{c.methodLabel}</p>
-        <p className="break-words text-sm font-semibold text-white">{view.label}</p>
+      <section aria-label={c.h1.pendingGateway} className={`${CARD} text-center`}>
+        <span className={CHIP}>{c.awaitingPay}</span>
+        <p className="mt-2 break-words text-sm font-semibold text-white">{view.label}</p>
         <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-white/45">{c.totalPay}</p>
-        <p className="font-display text-2xl font-bold tabular-nums text-white">{formatRupiah(view.total ?? view.subtotal)}</p>
+        <p className="font-display text-2xl font-bold leading-8 tabular-nums text-white">{formatRupiah(view.total ?? view.subtotal)}</p>
         {view.fee !== null && view.fee > 0 && <p className="text-[11px] text-white/50">{c.subtotal} {formatRupiah(view.subtotal)} · {c.fee} {formatRupiah(view.fee)}</p>}
-        <Deadline expiresAt={view.expiresAt} now={now} c={c} />
+        <PendingCountdown expiresAt={view.expiresAt} now={now} c={c} />
         {view.virtualAccount && (
-          <div className="mt-3">
+          <div className="mt-3 text-left">
             <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">{c.gateway.virtualAccount}</p>
             <div className="mt-1 flex items-center gap-2">
               <code className="min-w-0 flex-1 break-all rounded-lg bg-black/30 px-3 py-2 font-mono text-sm text-white">{view.virtualAccount}</code>
@@ -146,14 +180,16 @@ function GatewayPanel({ view, locale, now, checking, onCheck, contactKnown, cons
         )}
         {link ? (
           <a href={link} target="_blank" rel="noopener noreferrer" className={`${BTN} mt-3 h-12 w-full bg-[#00E5FF] text-[#080C1E] hover:bg-[#00D0E8] ${FOCUS}`}>
-            {c.gateway.openLink} <span aria-hidden>↗</span>
+            {c.gateway.openLink(view.label)} <span aria-hidden>↗</span>
           </a>
         ) : !view.virtualAccount ? (
           <p role="status" className="mt-3 text-xs text-amber-200">{c.gateway.noLink}</p>
         ) : null}
-        <div className="mt-3"><CheckButton checking={checking} onCheck={onCheck} c={c} /></div>
-        <p className="mt-2 text-[11px] leading-4 text-white/50">{c.autoStatus}</p>
-        <p className="mt-1 text-[11px] leading-4 text-white/45">{c.locked}</p>
+        <button type="button" onClick={onCheck} disabled={checking} className={`${BTN} mt-2 w-full border border-white/15 text-white/80 hover:bg-white/10 ${FOCUS}`}>
+          {checking && <InlineSpinner />}{checking ? c.checking : c.check}
+        </button>
+        <AutoStatus c={c} />
+        <LockedNote c={c} />
       </section>
     );
   }
@@ -179,51 +215,71 @@ function CryptoPanel({ view, locale, now, checking, onCheck }: Omit<Props, "paym
   const symbol = view.symbol || view.payCurrency.toUpperCase();
   const networkLabel = view.networkLabel || (view.network ? view.network.toUpperCase() : "—");
   const missing = !view.payAddress || !view.payAmountText;
-  return (
-    <section aria-label={c.h1.pendingCrypto} className="mt-4 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-4 text-left">
-      {view.baseText && view.surchargeText && view.surchargeBps !== null && (
-        <div className="mb-2 space-y-0.5 text-xs text-white/70" data-testid="crypto-breakdown">
-          <div className="flex justify-between gap-3"><span>{c.crypto.baseValue}</span><span className="tabular-nums">{usdFor(view.baseText, locale)}</span></div>
-          <div className="flex justify-between gap-3"><span>{c.crypto.serviceFee(view.surchargeBps)}</span><span className="tabular-nums">{usdFor(view.surchargeText, locale)}</span></div>
-        </div>
-      )}
-      <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">{view.baseText ? c.crypto.totalValue : c.crypto.orderValue}</p>
-      <p className="font-display text-lg font-bold tabular-nums text-white">{usdFor(view.usdText, locale)}</p>
-      {missing ? (
+  const usdText = view.usdText ? usdFor(view.usdText, locale) : "";
+  const breakdown = view.baseText && view.surchargeText && view.surchargeBps !== null
+    ? c.crypto.approxWithFee(usdText, view.surchargeBps)
+    : usdText ? c.crypto.approx(usdText) : "";
+  if (missing) {
+    return (
+      <section aria-label={c.h1.pendingCrypto} className={`${CARD} text-center`}>
+        <span className={CHIP}>{c.awaitingPay}</span>
         <p role="status" className="mt-3 text-xs text-amber-200">{c.lead.preparing}</p>
-      ) : (
-        <>
-          <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-white/45">{c.crypto.sendExactly}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-3">
+        <PendingCountdown expiresAt={view.expiresAt} now={now} c={c} />
+        <div className="mt-3"><CheckButton checking={checking} onCheck={onCheck} c={c} /></div>
+        <AutoStatus c={c} />
+        <LockedNote c={c} />
+      </section>
+    );
+  }
+  return (
+    <section aria-label={c.h1.pendingCrypto} className={`${CARD} text-left`}>
+      <div className="grid items-start gap-4 sm:grid-cols-[220px_minmax(0,1fr)] sm:gap-5">
+        <div className="flex flex-col items-center">
+          <p className="text-[10px] uppercase tracking-[0.12em] text-white/45">{c.crypto.scanAddress}</p>
+          <div className="mt-2 h-[180px] w-[180px] rounded-xl bg-white p-2 sm:h-[200px] sm:w-[200px]">
+            {qrSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qrSrc} alt={c.crypto.qrAlt} width={200} height={200} data-testid="crypto-qr" className="h-full w-full rounded-lg object-contain" draggable={false} />
+            ) : (
+              <div aria-hidden className="ax-skeleton h-full w-full rounded-lg" />
+            )}
+          </div>
+          <span data-testid="crypto-network" className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-[#FFB800]/30 bg-[#FFB800]/10 px-2 py-0.5 text-[11px] font-semibold text-[#FFB800]">
             {view.logo && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={view.logo} alt="" aria-hidden width={32} height={32} data-testid="crypto-logo" className="h-8 w-8 shrink-0 rounded-full object-contain" draggable={false} />
+              <img src={view.logo} alt="" aria-hidden width={16} height={16} className="h-4 w-4 shrink-0 rounded-full object-contain" draggable={false} />
             )}
-            <p className="min-w-0 flex-1 basis-40 font-mono text-xl font-bold tabular-nums text-white" data-testid="crypto-amount"><span className="break-all">{view.payAmountText}</span>{" "}<span className="whitespace-nowrap">{symbol}</span></p>
-            <button type="button" onClick={() => void copy("amount", view.payAmountText)} className={`${BTN} shrink-0 border border-white/15 text-white/80 hover:bg-white/10 ${FOCUS}`}>{c.crypto.copyAmount}</button>
-          </div>
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-black/25 px-3 py-2" data-testid="crypto-network">
-            <span className="text-[11px] uppercase tracking-[0.12em] text-white/50">{c.crypto.network}</span>
-            <span className="text-right text-sm font-semibold text-white">{networkLabel}</span>
-          </div>
-          <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-white/45">{c.crypto.address}</p>
-          <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-start">
-            {qrSrc && (
+            <span className="break-all">{symbol} · {networkLabel}</span>
+          </span>
+        </div>
+        <div className="min-w-0 text-center sm:text-left">
+          <span className={CHIP}>{c.awaitingPay}</span>
+          <p className="mt-2 text-[10px] uppercase tracking-[0.12em] text-white/45">{c.crypto.sendExactly}</p>
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+            {view.logo && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrSrc} alt={c.crypto.qrAlt} width={132} height={132} data-testid="crypto-qr" className="h-[132px] w-[132px] shrink-0 self-center rounded-lg bg-white p-1.5 sm:self-start" draggable={false} />
+              <img src={view.logo} alt="" aria-hidden width={28} height={28} data-testid="crypto-logo" className="h-7 w-7 shrink-0 rounded-full object-contain" draggable={false} />
             )}
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <code className="block min-w-0 break-all rounded-lg bg-black/30 px-3 py-2 font-mono text-[13px] leading-5 text-white" data-testid="crypto-address">{view.payAddress}</code>
-              <button type="button" onClick={() => void copy("address", view.payAddress)} className={`${BTN} w-full shrink-0 border border-white/15 text-white/80 hover:bg-white/10 ${FOCUS}`}>{c.crypto.copyAddress}</button>
-            </div>
+            <p className="min-w-0 font-mono text-2xl font-bold tabular-nums text-white" data-testid="crypto-amount"><span className="break-all">{view.payAmountText}</span>{" "}<span className="whitespace-nowrap">{symbol}</span></p>
+            <button type="button" onClick={() => void copy("amount", view.payAmountText)} className={`inline-flex h-9 shrink-0 items-center rounded-lg border border-white/15 px-2.5 text-[11px] font-semibold text-white/80 transition hover:bg-white/10 ${FOCUS}`}>{c.crypto.copy}</button>
           </div>
+          {breakdown && <p className="mt-1 text-[11px] leading-4 text-white/50" data-testid="crypto-breakdown">{breakdown}</p>}
+          <PendingCountdown expiresAt={view.expiresAt} now={now} c={c} align="start" />
+          <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-white/45">{c.crypto.address}</p>
+          <code className="mt-1 block min-w-0 break-all rounded-lg bg-black/30 px-3 py-2 font-mono text-[12px] leading-5 text-white" data-testid="crypto-address">{view.payAddress}</code>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => void copy("address", view.payAddress)} className={`${BTN} min-w-0 whitespace-nowrap border border-white/15 px-2 text-xs text-white/80 hover:bg-white/10 ${FOCUS}`}>{c.crypto.copyAddress}</button>
+            <CheckButton checking={checking} onCheck={onCheck} c={c} compact />
+          </div>
+          <AutoStatus c={c} />
           <p role="status" aria-live="polite" className="mt-1 min-h-4 text-[11px] text-white/60">{status ? (status.ok ? c.crypto.copied : c.crypto.copyFailed) : ""}</p>
-        </>
-      )}
-      <Deadline expiresAt={view.expiresAt} now={now} c={c} />
-      <p className="mt-3 text-[11px] leading-4 text-amber-200">{c.crypto.onlyAccepted(symbol, networkLabel)}</p>
-      <div className="mt-3"><CheckButton checking={checking} onCheck={onCheck} c={c} /></div>
-      <p className="mt-1 text-[11px] leading-4 text-white/45">{c.locked}</p>
+        </div>
+      </div>
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-[#FFB800]/25 bg-[#FFB800]/[0.08] px-3 py-2 text-left text-[11px] leading-4 text-[#FFD66B]">
+        <span aria-hidden className="shrink-0">⚠</span>
+        <span>{c.crypto.onlyAccepted(symbol, networkLabel)}</span>
+      </div>
+      <LockedNote c={c} />
     </section>
   );
 }

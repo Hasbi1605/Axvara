@@ -340,8 +340,16 @@ export function cancelCopy(locale: PayLocale | string | null | undefined) {
 export function orderPanelCopy(locale: PayLocale) {
   const id = locale === "id";
   return {
-    methodLabel: id ? "Metode" : "Method",
     totalPay: id ? "Total bayar" : "Amount to pay",
+    awaitingPay: id ? "Menunggu bayar" : "Awaiting payment",
+    /** "Berlaku 12:34 · sebelum 10.30 WIB" — hitung mundur tahap pending. */
+    expiresIn: (left: string, at: string) => (id ? `Berlaku ${left} · sebelum ${at}` : `Valid for ${left} · before ${at}`),
+    /** Judul ringkas header halaman pesanan saat panel pending dipadatkan. */
+    title: {
+      qris: id ? "Pembayaran QRIS" : "QRIS Payment",
+      crypto: id ? "Pembayaran Crypto" : "Crypto Payment",
+      gateway: (label: string) => (id ? `Pembayaran ${label}` : `${label} Payment`),
+    },
     subtotal: "Subtotal",
     fee: id ? "Biaya" : "Fee",
     feeFor: (label: string) => (label ? (id ? `Biaya ${label}` : `${label} fee`) : id ? "Biaya" : "Fee"),
@@ -371,7 +379,7 @@ export function orderPanelCopy(locale: PayLocale) {
     },
     lead: {
       preparing: id ? "Pesanan tersimpan, tetapi halaman pembayaran belum siap. Jangan membayar sebelum tombol atau alamat pembayaran muncul." : "Your order is saved, but the payment page is not ready. Do not pay until the payment button or address appears.",
-      consent: id ? "Biaya akhir sudah dihitung. Periksa total di bawah; tautan pembayaran baru muncul setelah kamu menyetujuinya." : "The final fee is calculated. Check the total below; the payment link only appears after you approve it.",
+      consent: id ? "Biaya akhir sudah dihitung. Periksa total di bawah; setelah kamu setujui, kamu langsung diarahkan ke halaman pembayaran." : "The final fee is calculated. Check the total below; once you approve, you go straight to the payment page.",
       pendingGateway: id ? "Lanjutkan pembayaran lewat tautan di bawah, lalu kembali ke halaman ini." : "Continue paying with the link below, then return to this page.",
       pendingCrypto: id ? "Kirim tepat sesuai nominal, aset, dan jaringan di bawah." : "Send exactly the amount, asset and network below.",
       confirming: id ? "Transaksi terdeteksi dan sedang menunggu konfirmasi blockchain. Jangan kirim ulang. Halaman ini memperbarui status sendiri." : "Your transaction was detected and is waiting for blockchain confirmation. Do not send it again. This page updates its own status.",
@@ -384,12 +392,12 @@ export function orderPanelCopy(locale: PayLocale) {
       consentTitle: id ? "Persetujuan total akhir" : "Final total approval",
       contactLabel: id ? "No. WA atau email checkout" : "Checkout WhatsApp number or email",
       contactHelp: id ? "Dibutuhkan untuk memastikan ini pesananmu. Bukan PIN." : "Needed to confirm this is your order. Not a PIN.",
-      approve: (total: string) => (id ? `Setujui ${total} & lanjut bayar` : `Approve ${total} & continue`),
+      approve: (total: string) => (id ? `Setujui ${total} & bayar` : `Approve ${total} & pay`),
       approving: id ? "Menyetujui…" : "Approving…",
       stale: id ? "Total berubah atau persetujuan tidak tersedia. Periksa total terbaru di bawah sebelum menyetujui lagi." : "The total changed or approval is unavailable. Check the latest total below before approving again.",
       totalUnavailable: id ? "Total akhir belum tersedia. Tekan Cek Pembayaran lalu coba lagi." : "The final total is not available yet. Press Check payment and try again.",
       needContact: id ? "Isi No. WA atau email checkout yang dipakai saat memesan." : "Enter the WhatsApp number or email used at checkout.",
-      openLink: id ? "Lanjut bayar" : "Continue to pay",
+      openLink: (label: string) => (id ? `Bayar via ${label}` : `Pay with ${label}`),
       virtualAccount: id ? "Nomor virtual account" : "Virtual account number",
       copy: id ? "Salin" : "Copy",
       copied: id ? "Tersalin" : "Copied",
@@ -398,16 +406,17 @@ export function orderPanelCopy(locale: PayLocale) {
     },
     crypto: {
       sendExactly: id ? "Kirim tepat" : "Send exactly",
-      network: id ? "Jaringan" : "Network",
+      scanAddress: id ? "Scan alamat" : "Scan address",
       address: id ? "Alamat tujuan" : "Destination address",
+      copy: id ? "Salin" : "Copy",
       copyAddress: id ? "Salin alamat" : "Copy address",
-      copyAmount: id ? "Salin nominal" : "Copy amount",
       copied: id ? "Tersalin" : "Copied",
       copyFailed: id ? "Gagal menyalin. Salin manual." : "Copy failed. Copy it manually.",
-      orderValue: id ? "Nilai pesanan (USD)" : "Order value (USD)",
-      baseValue: "Subtotal",
-      serviceFee: (bps: number) => (id ? `Biaya layanan ${bpsPercentText(bps, "id")}%` : `Service fee ${bpsPercentText(bps, "en")}%`),
-      totalValue: id ? "Total (USD)" : "Total (USD)",
+      /** Satu baris rincian di bawah nominal: "≈ US$15,87 · termasuk biaya layanan 1,5%". */
+      approx: (usdText: string) => `≈ ${usdText}`,
+      approxWithFee: (usdText: string, bps: number) => (id
+        ? `≈ ${usdText} · termasuk biaya layanan ${bpsPercentText(bps, "id")}%`
+        : `≈ ${usdText} · incl. ${bpsPercentText(bps, "en")}% service fee`),
       totalWithFee: (bps: number) => (id ? `Total (USD, termasuk biaya layanan crypto ${bpsPercentText(bps, "id")}%)` : `Total (USD, incl. ${bpsPercentText(bps, "en")}% crypto service fee)`),
       onlyAccepted: (symbol: string, networkLabel: string) => (id
         ? `Hanya ${symbol} di jaringan ${networkLabel} yang diterima. Koin atau jaringan lain dapat membuat dana hilang.`

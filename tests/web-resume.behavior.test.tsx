@@ -195,7 +195,8 @@ describe("lacak-pesanan: lookup gateway/crypto", () => {
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
     await lookup([{ body: { order: orderOf(cr()) } }]);
     await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
-    const copy = screen.getByRole("button", { name: /Salin$/ });
+    // Panel crypto juga punya tombol "Salin" (nominal); lacak memakai tombol kode 44px.
+    const copy = screen.getAllByRole("button", { name: /Salin$/ }).find((button) => button.className.includes("min-h-11"))!;
     const another = screen.getByRole("button", { name: "Lacak pesanan lain" });
     for (const button of [copy, another]) {
       expect(button.className).toContain("min-h-11");

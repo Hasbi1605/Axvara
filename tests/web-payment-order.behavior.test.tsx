@@ -3,11 +3,12 @@
 // aman server). Detail hanya pada tahap yang mengizinkan; persetujuan total
 // akhir memakai kontak checkout + total yang ditampilkan lewat rute yang ada.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 
 // Fixture pesanan async; beri ruang bila mesin sedang sibuk (tidak mengubah asersi).
 configure({ asyncUtilTimeout: 4000 });
 import OrderPage from "@/app/(shop)/pesanan/[code]/page";
+import { usePaymentConsent } from "@/hooks/usePaymentConsent";
 import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
 
 const CODE = "AXV-20261104-ABCD1234";
@@ -79,11 +80,12 @@ describe("gateway: persetujuan total akhir", () => {
     expect(post.url).toBe(`/api/orders/${CODE}/payment-consent`);
     expect(post.body).toEqual({ contact: "081234567890", expected_final_total: 254_500 });
     expect(post.url).not.toContain("0812");
-    await screen.findByRole("heading", { name: "Selesaikan Pembayaran" });
+    await screen.findByRole("heading", { name: "Pembayaran BCA Virtual Account" });
     const link = anchors()[0] as HTMLAnchorElement;
     expect(link.href).toBe("https://pay.example/x");
     expect(link.rel).toMatch(/noopener/);
     expect(link.rel).toMatch(/noreferrer/);
+    expect(link.textContent).toContain("Bayar via BCA Virtual Account");
     expect(text()).toContain("8888123456");
     expect(text()).toContain("Total bayarRp 254.500");
     fireEvent.click(screen.getByRole("button", { name: "Salin" }));
@@ -128,7 +130,7 @@ describe("gateway: persetujuan total akhir", () => {
   it("tautan non-https ditolak; pending tanpa tautan/VA memperingatkan jangan bayar", async () => {
     stub({ gets: [orderBody(gwView({ state: "pending", payment_link: "http://evil.example", checkout_url: "javascript:alert(1)", virtual_account: null }))] });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Selesaikan Pembayaran" });
+    await screen.findByRole("heading", { name: "Pembayaran BCA Virtual Account" });
     expect(anchors()).toHaveLength(0);
     expect(text()).toContain("Tautan pembayaran belum tersedia. Jangan bayar sebelum tautan muncul.");
   });
@@ -148,6 +150,60 @@ describe("gateway: persetujuan total akhir", () => {
     await screen.findByRole("heading", { name: "Setujui Total Pembayaran" });
     expect(text()).toContain("Total • BCA Virtual Account");
     expect(text()).not.toContain("SEKALIPAY_GATEWAY");
+  });
+});
+
+describe("usePaymentConsent: persetujuan satu klik (lanjut ke provider, tab sama)", () => {
+  const consentResponse = (body: unknown, status = 200) => vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })));
+  const mount = (navigate: (url: string) => void) => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const hook = renderHook(() => usePaymentConsent({ code: CODE, locale: "id", resolveContact: () => "081234567890", refresh, onAccepted: vi.fn(), navigate }));
+    return { ...hook, refresh };
+  };
+
+  it("(a) 200 dengan pembayaran pending + tautan https: navigate SEKALI ke provider, bukan langkah 'lanjut bayar' kedua", async () => {
+    consentResponse({ ok: true, payment: { state: "pending", payment_link: "https://sekalipay.com/pay/abc", checkout_url: null } });
+    const navigate = vi.fn();
+    const { result, refresh } = mount(navigate);
+    await act(async () => { await result.current.approve(254_500, "081234567890"); });
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith("https://sekalipay.com/pay/abc");
+    expect(refresh).not.toHaveBeenCalled(); // tidak berhenti di halaman untuk klik "lanjut bayar"
+    expect(result.current.busy).toBe(true); // tetap sibuk selama navigasi: tidak bisa diklik dua kali
+  });
+
+  it("(a2) checkout_url dipakai bila payment_link kosong; tautan non-https diabaikan", async () => {
+    consentResponse({ ok: true, payment: { state: "pending", payment_link: null, checkout_url: "https://app.shopeepay.co.id/pay/1" } });
+    const navigate = vi.fn();
+    const first = mount(navigate);
+    await act(async () => { await first.result.current.approve(254_500, "081234567890"); });
+    expect(navigate).toHaveBeenCalledWith("https://app.shopeepay.co.id/pay/1");
+    cleanup();
+    consentResponse({ ok: true, payment: { state: "pending", payment_link: "http://evil.example", checkout_url: null } });
+    const second = mount(navigate);
+    await act(async () => { await second.result.current.approve(254_500, "081234567890"); });
+    expect(navigate).toHaveBeenCalledTimes(1); // tetap hanya panggilan pertama
+    expect(second.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("(b) 200 pending tanpa tautan (VA saja): hanya membaca ulang; navigate tidak dipanggil", async () => {
+    consentResponse({ ok: true, payment: { state: "pending", payment_link: null, checkout_url: null, virtual_account: "8888123456" } });
+    const navigate = vi.fn();
+    const { result, refresh } = mount(navigate);
+    await act(async () => { await result.current.approve(254_500, "081234567890"); });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(result.current.busy).toBe(false);
+  });
+
+  it("(c) 409: stale + baca ulang, tanpa navigate dan tanpa persetujuan otomatis", async () => {
+    consentResponse({ error: "Persetujuan tidak tersedia" }, 409);
+    const navigate = vi.fn();
+    const { result, refresh } = mount(navigate);
+    await act(async () => { await result.current.approve(254_500, "081234567890"); });
+    expect(result.current.stale).toBe(true);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
   });
 });
 
@@ -228,7 +284,7 @@ describe("expires_at SQL UTC tanpa offset pada browser Asia/Jakarta (pesanan gat
     expect(text()).not.toMatch(/LEAK|8888LEAK|Setujui Rp/);
     cleanup();
     await render_(future(), cryptoView(), { payment_method: "nowpayments:usdtbsc" });
-    await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
+    await screen.findByRole("heading", { name: "Pembayaran Crypto" });
     expect(text()).not.toMatch(/Kedaluwarsa/);
   });
 });
@@ -238,58 +294,58 @@ describe("chrome ringkasan/footer mengikuti locale pesanan", () => {
     document.cookie = "axv_locale=id; Path=/";
     stub({ gets: [orderBody(cryptoView(), { locale: "en", payment_method: "nowpayments:usdtbsc" })] });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Complete Crypto Payment" });
+    await screen.findByRole("heading", { name: "Crypto Payment" });
     const en = text();
-    for (const label of ["Summary", "Order total", "Track Status", "Continue Shopping", "Need help?", "Third-party AXVARA product", "warranty terms"]) expect(en, label).toContain(label);
-    expect(en).not.toMatch(/Ringkasan|Total pesanan|Lacak Status|Lanjut Belanja|Butuh bantuan|ketentuan garansi/);
+    for (const label of ["Summary", "Order total", "Continue Shopping", "Need help?", "Third-party AXVARA product", "warranty terms"]) expect(en, label).toContain(label);
+    expect(en).not.toMatch(/Ringkasan|Total pesanan|Lanjut Belanja|Butuh bantuan|ketentuan garansi/);
     cleanup();
     stub({ gets: [orderBody(cryptoView(), { locale: "id", payment_method: "nowpayments:usdtbsc" })] });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
-    for (const label of ["Ringkasan", "Total pesanan", "Lacak Status", "Lanjut Belanja", "Butuh bantuan?", "ketentuan garansi"]) expect(text(), label).toContain(label);
+    await screen.findByRole("heading", { name: "Pembayaran Crypto" });
+    for (const label of ["Ringkasan", "Total pesanan", "Lanjut Belanja", "Butuh bantuan?", "ketentuan garansi"]) expect(text(), label).toContain(label);
     document.cookie = "axv_locale=; Max-Age=0; Path=/";
   });
 });
 
 describe("crypto", () => {
-  it("pending: nominal TEKS persis (besar/kecil), jaringan, alamat penuh + salin, USD terpisah, catatan estimasi vs final dan biaya tidak diketahui", async () => {
+  it("pending (d): nominal TEKS persis, kolom QR + chip jaringan, alamat penuh + Salin alamat + Cek Pembayaran, satu baris rincian, peringatan amber", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     for (const amount of ["98765432.123456789", "0.000000123"]) {
       stub({ gets: [orderBody(cryptoView({ pay_amount_text: amount, crypto_amount_text: `${amount} USDT` }), { payment_method: "nowpayments:usdtbsc" })] });
       render(<OrderPage />);
-      await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
+      await screen.findByRole("heading", { name: "Pembayaran Crypto" });
       expect(screen.getByTestId("crypto-amount").textContent).toBe(`${amount} USDT`);
       expect(screen.getByTestId("crypto-address").textContent).toBe("0x1234567890abcdef1234567890abcdef12345678");
-      // rincian: subtotal + biaya layanan crypto 1,5% + total; jaringan = label kurasi server
-      expect(text()).toContain("SubtotalUS$15,63");
-      expect(text()).toContain("Biaya layanan 1,5%US$0,24");
-      expect(text()).toContain("Total (USD)US$15,87");
-      expect(text()).toContain("JaringanBNB Smart Chain"); // alamat/nominal yang disalin tidak berubah
+      // Kolom QR + chip jaringan: simbol + label kurasi server.
+      expect(await screen.findByTestId("crypto-qr")).toBeTruthy();
+      expect(screen.getByTestId("crypto-network").textContent).toBe("USDT · BNB Smart Chain");
+      // Satu baris rincian menggantikan blok Subtotal/Biaya/TOTAL(USD) terpisah.
+      expect(screen.getByTestId("crypto-breakdown").textContent).toBe("≈ US$15,87 · termasuk biaya layanan 1,5%");
+      expect(text()).not.toContain("Total (USD)");
       expect(text()).toContain("Kirim tepat"+amount+" USDT"); // label + nominal TEKS persis
-      expect(screen.getByTestId("crypto-network").textContent).toBe("JaringanBNB Smart Chain"); // jaringan sebagai nilai berlabel
       expect(screen.getByTestId("crypto-amount").querySelector("span.whitespace-nowrap")!.textContent).toBe("USDT"); // simbol tidak pernah terpotong di tengah kata
       expect(screen.getByTestId("crypto-logo").getAttribute("src")).toBe("/payments/coins/usdtbsc.svg");
       expect(text()).not.toContain("bsc");
-      // < sm: blok alamat penuh lalu tombol salin (tidak berhimpitan 4 baris).
-      const addressRow = screen.getByTestId("crypto-address").parentElement!.parentElement!;
-      expect(addressRow.className).toContain("flex-col");
-      expect(addressRow.className).toContain("sm:flex-row");
-      expect(screen.getByRole("button", { name: "Salin alamat" }).className).toContain("w-full");
+      // Dua kolom mengikuti blok QRIS; bawah sm QR di tengah, alamat membungkus.
+      const card = screen.getByRole("region", { name: "Selesaikan Pembayaran Crypto" });
+      expect(card.innerHTML).toContain("sm:grid-cols-[220px_minmax(0,1fr)]");
+      expect(screen.getByTestId("crypto-address").className).toContain("break-all");
+      expect(screen.getByRole("button", { name: "Salin alamat" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Cek Pembayaran" })).toBeTruthy();
       // Satu baris peringatan amber: hanya koin itu di jaringan itu yang diterima; baris gas/kurang-bayar lama dihapus.
       expect(text()).toContain(`Hanya USDT di jaringan BNB Smart Chain yang diterima. Koin atau jaringan lain dapat membuat dana hilang.`);
       expect(text()).not.toMatch(/Gas jaringan ditanggung pengirim|diperiksa manual/);
       expect(text()).not.toMatch(/Biaya penyedia/);
-      expect(text()).not.toMatch(/angka final dari penyedia|bukan nol|Biaya jaringan \(gas\) dibayar dari wallet|Status diperbarui otomatis/);
+      expect(text()).not.toMatch(/angka final dari penyedia|bukan nol|Biaya jaringan \(gas\) dibayar dari wallet/);
       expect(text()).toContain("Metode pembayaran tidak bisa diganti untuk pesanan ini."); // satu baris tetap ada
-      expect(Array.from(document.querySelectorAll("section p")).filter((p) => p.className.includes("text-amber-200")).map((p) => p.textContent)).toEqual([`Hanya USDT di jaringan BNB Smart Chain yang diterima. Koin atau jaringan lain dapat membuat dana hilang.`]);
-      fireEvent.click(screen.getByRole("button", { name: "Salin nominal" }));
+      fireEvent.click(screen.getByRole("button", { name: "Salin" }));
       await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(amount));
       fireEvent.click(screen.getByRole("button", { name: "Salin alamat" }));
       await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("0x1234567890abcdef1234567890abcdef12345678"));
       expect((await screen.findAllByRole("status")).some((el) => el.textContent === "Tersalin")).toBe(true);
       expect(text()).not.toMatch(/Admin akan memverifikasi bukti|bukti pembayaran/i);
-      expect(screen.getByRole("button", { name: "Batalkan Pesanan Ini" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Batalkan Pesanan" })).toBeTruthy();
       cleanup();
     }
   });
@@ -297,11 +353,11 @@ describe("crypto", () => {
   it("QR alamat tujuan: SVG lokal berlabel, hanya untuk tahap pending (tidak ada di confirming/expired); alamat tetap tersalin tanpa QR", async () => {
     stub({ gets: [orderBody(cryptoView(), { payment_method: "nowpayments:usdtbsc" })] });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
+    await screen.findByRole("heading", { name: "Pembayaran Crypto" });
     const qr = await screen.findByTestId("crypto-qr");
     expect(qr.getAttribute("src")).toMatch(/^data:image\/svg\+xml;utf8,%3Csvg/);
     expect(qr.getAttribute("alt")).toBe("QR alamat tujuan");
-    expect(qr.className).toContain("bg-white"); // modul gelap di atas putih agar terbaca pemindai
+    expect(qr.parentElement!.className).toContain("bg-white"); // pelat putih tetap ada; gambar mengisi pelat
     cleanup();
     for (const state of ["confirming", "expired"]) {
       stub({ gets: [orderBody(cryptoView({ state }))] });
@@ -315,8 +371,8 @@ describe("crypto", () => {
   it("batal mandiri mengikuti locale pesanan: EN penuh (tombol, dialog, galat klien + galat server dikenal), ID tetap byte-identik", async () => {
     stub({ gets: [orderBody(cryptoView(), { locale: "en", payment_method: "nowpayments:usdtbsc" })], cancel: { status: 404, body: { error: "Pesanan tidak ditemukan atau kontak tidak cocok." } } });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Complete Crypto Payment" });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel this order" }));
+    await screen.findByRole("heading", { name: "Crypto Payment" });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel order" }));
     const dialog = screen.getByRole("dialog", { name: "Confirm order cancellation" });
     const d = within(dialog);
     expect(d.getByText(`Cancel order ${CODE}?`)).toBeTruthy();
@@ -334,8 +390,8 @@ describe("crypto", () => {
     cleanup();
     stub({ gets: [orderBody(cryptoView(), { locale: "id", payment_method: "nowpayments:usdtbsc" })], cancel: { status: 404, body: { error: "Pesanan tidak ditemukan atau kontak tidak cocok." } } });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
-    fireEvent.click(screen.getByRole("button", { name: "Batalkan Pesanan Ini" }));
+    await screen.findByRole("heading", { name: "Pembayaran Crypto" });
+    fireEvent.click(screen.getByRole("button", { name: "Batalkan Pesanan" }));
     const idDialog = screen.getByRole("dialog", { name: "Konfirmasi pembatalan pesanan" });
     const di = within(idDialog);
     expect(di.getByText(`Batalkan pesanan ${CODE}?`)).toBeTruthy();
@@ -374,7 +430,7 @@ describe("crypto", () => {
   it("flag/FX mati atau quote tak ada: halaman memakai tampilan tersimpan saja; tidak ada panggilan quote atau pergantian metode", async () => {
     const calls = stub({ gets: [orderBody(cryptoView())] });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
+    await screen.findByRole("heading", { name: "Pembayaran Crypto" });
     expect(calls.every((c) => c.url.startsWith("/api/orders"))).toBe(true);
     expect(calls.some((c) => c.url.includes("quote"))).toBe(false);
     expect(screen.queryByRole("button", { name: /QRIS/ })).toBeNull();
@@ -384,30 +440,57 @@ describe("crypto", () => {
   it("locale pesanan: EN vs ID, mata uang USD sama dan format angka mengikuti locale (US$15.87 / US$15,87)", async () => {
     stub({ gets: [orderBody(cryptoView(), { locale: "en" })] });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Complete Crypto Payment" });
+    await screen.findByRole("heading", { name: "Crypto Payment" });
     expect(text()).toContain("Send exactly");
     expect(screen.getByRole("button", { name: "Copy address" })).toBeTruthy();
-    expect(text()).toContain("Total (USD)US$15.87");
+    expect(screen.getByTestId("crypto-breakdown").textContent).toBe("≈ US$15.87 · incl. 1.5% service fee");
     expect(text()).toContain("Only USDT on the BNB Smart Chain network is accepted. Other coins or networks may lose your funds.");
-    expect(screen.getByTestId("crypto-network").textContent).toBe("NetworkBNB Smart Chain");
-    expect(text()).toContain("Pay before");
+    expect(screen.getByTestId("crypto-network").textContent).toBe("USDT · BNB Smart Chain");
+    expect(text()).toContain("Valid for");
     cleanup();
     stub({ gets: [orderBody(cryptoView(), { locale: "id" })] });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
-    expect(text()).toContain("Total (USD)US$15,87");
+    await screen.findByRole("heading", { name: "Pembayaran Crypto" });
+    expect(screen.getByTestId("crypto-breakdown").textContent).toBe("≈ US$15,87 · termasuk biaya layanan 1,5%");
     expect(text()).toContain("Total pesanan • USDT");
   });
 
   it("cek pembayaran memakai pengecekan status yang ada (wake=1), tanpa interval baru", async () => {
     const calls = stub({ gets: [orderBody(cryptoView())] });
     render(<OrderPage />);
-    await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
+    await screen.findByRole("heading", { name: "Pembayaran Crypto" });
     const gets = () => calls.filter((c) => c.url.startsWith("/api/orders?code="));
     const before = gets().length;
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cek Pembayaran" })); });
     expect(gets().length).toBe(before + 1);
     expect(gets().at(-1)!.url).toContain("wake=1");
+  });
+});
+
+describe("header ringkas non-QRIS pending", () => {
+  it("(e) crypto pending: judul 'Pembayaran Crypto' dan tepat satu h1 (ikon jam berputar)", async () => {
+    stub({ gets: [orderBody(cryptoView(), { payment_method: "nowpayments:usdtbsc" })] });
+    render(<OrderPage />);
+    const titles = await screen.findAllByRole("heading", { level: 1 });
+    expect(titles).toHaveLength(1);
+    expect(titles[0].textContent).toBe("Pembayaran Crypto");
+    expect(screen.getByRole("status", { name: "Menunggu pembayaran — memeriksa otomatis" })).toBeTruthy();
+    expect(text()).not.toContain("Kirim tepat sesuai nominal, aset, dan jaringan di bawah."); // paragraf lead tidak dirender di mode ringkas
+  });
+
+  it("(e2) gateway pending: judul 'Pembayaran <label>' dan tepat satu h1", async () => {
+    stub({ gets: [orderBody(gwView({ state: "pending", fee_consent_required: false, payment_link: "https://pay.example/x" }))] });
+    render(<OrderPage />);
+    const titles = await screen.findAllByRole("heading", { level: 1 });
+    expect(titles).toHaveLength(1);
+    expect(titles[0].textContent).toBe("Pembayaran BCA Virtual Account");
+  });
+
+  it("(e3) fee_consent_required tetap memakai header non-ringkas (judul halaman + lencana)", async () => {
+    stub({ gets: [orderBody(gwView())] });
+    render(<OrderPage />);
+    await screen.findByRole("heading", { name: "Setujui Total Pembayaran" });
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 });
 

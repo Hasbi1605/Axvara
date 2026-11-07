@@ -250,7 +250,7 @@ describe("pesanan lama: locale tersimpan tidak berubah oleh preferensi global", 
     const future = new Date(Date.now() + 10 * 60_000).toISOString();
     const crypto = { provider: "nowpayments", kind: "crypto", label: "USDT", sublabel: "BNB Smart Chain", symbol: "USDT", network_label: "BNB Smart Chain", state: "pending", currency: "USD", amount_text: "15.87", pay_amount_text: "15.634512", pay_currency: "usdtbsc", network: "bsc", pay_address: "0x1234567890abcdef1234567890abcdef12345678", expires_at: future, fee_payer: "merchant", fixed_rate: false, sender_gas_extra: true };
     const order = (locale: string) => ({ order: { code: "AXV-20261104-ABCD1234", customer_name: "H", customer_wa: "08", customer_email: null, items: [{ name: "GPT", price: 250_000, qty: 1 }], subtotal: 250_000, payment_method: "nowpayments:usdtbsc", status: "pending", locale, expires_at: future, qris: null, credentials_ready: false, buyer_pin_required: true, payment: crypto } });
-    for (const [cookieLocale, orderLocale, heading] of [["id", "en", "Complete Crypto Payment"], ["en", "id", "Selesaikan Pembayaran Crypto"]] as const) {
+    for (const [cookieLocale, orderLocale, heading] of [["id", "en", "Crypto Payment"], ["en", "id", "Pembayaran Crypto"]] as const) {
       document.cookie = preferenceCookie("axv_locale", cookieLocale, false);
       vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(order(orderLocale)), { status: 200, headers: { "Content-Type": "application/json" } })));
       render(<OrderPage />);

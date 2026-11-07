@@ -1,5 +1,10 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Keputusan owner 7 November 2026: rail non-QRIS publik (web + Telegram)
+- Menggantikan larangan "publik/bot tetap tertutup" pada keputusan 6 November di bawah: owner memerintahkan pembayaran selain QRIS tampil publik, bukan khusus tes admin. Owner memilih web + Telegram (flag yang sama membuka keduanya; tidak ada flag terpisah per kanal).
+- Pages produksi: `SEKALIPAY_GATEWAY_ENABLED=true`, `NOWPAYMENTS_ENABLED=true` sebagai `secret_text` lewat PATCH metadata (71 env sebelum/sesudah, kredensial existing tidak berubah). Berlaku setelah deployment CI berikutnya. `PAYMENT_ADMIN_TEST_ENABLED` dibiarkan. Kill-switch: set salah satu flag ke `false` lalu rilis; invoice tersimpan tetap direkonsiliasi.
+- Semua kontrak tetap: consent fee gateway wajib (kini satu klik lalu redirect tab yang sama ke `payment_link` kanonis), kurasi kanal, lantai crypto, idempotensi/claim, callback/rekonsiliasi, late→manual review. Belum ada bukti transaksi publik paid/settlement; jangan klaim live tanpa bukti deployment.
+
 ## Finalisasi/pemulihan invoice: checkout_url app + GET tanpa is_sandbox — 6 November 2026 (lokal)
 - Bukti produksi read-only order admin `AXV-20261106-5A2FF24C` (subtotal18000): TX `initializing` dengan `provider_payment_id`, payable/fee null, `last_error=sekalipay_gateway_status_mismatch_manual_review`; GET invoice tersimpan HTTP200/status:true (amount18000/fee543/total18543/pending) tetapi TANPA `is_sandbox`. Jangan mengulang POST atau mereset klaim.
 - Akar masalah: (1) `paymentUrl` mewajibkan host `sekalipay.com` untuk `checkout_url` opsional; link app `https://app.shopeepay.co.id/...` membuat create melempar `sekalipay_gateway_invalid_invoice` setelah probe menyimpan invoice id. (2) Dokumentasi resmi payment-status menyatakan respons sama seperti create TANPA `is_sandbox`; reconcile lama mewajibkan field itu, sehingga status mismatch sticky.

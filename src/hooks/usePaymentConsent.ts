@@ -10,6 +10,11 @@ import { orderPanelCopy, type PayLocale } from "@/lib/payment-ui";
  * Satu implementasi untuk halaman pesanan dan hasil lacak: kontak checkout
  * (bukan PIN), tidak pernah di URL; klik ganda = satu POST; 409 = baca ulang dan
  * tampilkan total baru tanpa persetujuan otomatis.
+ *
+ * Persetujuan tetap wajib, tetapi satu klik: bila respons membawa pembayaran
+ * `pending` dengan tautan https, tab yang SAMA langsung diarahkan ke provider
+ * (tanpa langkah "lanjut bayar" kedua dan tanpa popup blocker). Tanpa tautan
+ * (mis. VA saja) halaman hanya membaca ulang status.
  */
 export function usePaymentConsent(options: {
   code: string;
@@ -20,8 +25,10 @@ export function usePaymentConsent(options: {
   refresh: () => Promise<unknown>;
   /** Dipanggil dengan kontak valid setelah persetujuan sukses (mis. simpan di memori tab). */
   onAccepted?: (contact: string) => void;
+  /** Navigasi ke tautan provider; default tab yang sama. Dapat diganti di test. */
+  navigate?: (url: string) => void;
 }) {
-  const { code, locale, resolveContact, refresh, onAccepted } = options;
+  const { code, locale, resolveContact, refresh, onAccepted, navigate } = options;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
@@ -36,6 +43,7 @@ export function usePaymentConsent(options: {
     setBusy(true);
     setError(null);
     setStale(false);
+    let navigating = false;
     try {
       const response = await fetch(`/api/orders/${encodeURIComponent(code)}/payment-consent`, {
         method: "POST",
@@ -51,14 +59,28 @@ export function usePaymentConsent(options: {
       }
       if (!response.ok) throw new Error(body.error || "Persetujuan gagal.");
       onAccepted?.(contact);
+      const payment = body?.payment as Record<string, unknown> | undefined;
+      const rawLink = payment?.state === "pending"
+        ? (payment.paymentLink ?? payment.checkoutUrl ?? payment.payment_link ?? payment.checkout_url)
+        : null;
+      const link = typeof rawLink === "string" && rawLink.startsWith("https://") ? rawLink : null;
+      if (link) {
+        // busy/inFlight sengaja tetap aktif: tombol tidak boleh diklik dua kali saat halaman berpindah.
+        navigating = true;
+        if (navigate) navigate(link);
+        else if (typeof window !== "undefined") window.location.assign(link);
+        return;
+      }
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Persetujuan gagal.");
     } finally {
-      inFlight.current = false;
-      setBusy(false);
+      if (!navigating) {
+        inFlight.current = false;
+        setBusy(false);
+      }
     }
-  }, [code, locale, resolveContact, refresh, onAccepted]);
+  }, [code, locale, resolveContact, refresh, onAccepted, navigate]);
 
   return { busy, error, stale, approve };
 }
