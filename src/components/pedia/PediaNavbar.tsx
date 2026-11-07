@@ -72,14 +72,15 @@ export function PediaNavbar() {
           <button onClick={() => setMobileSearch((v) => !v)} className="lg:hidden shrink-0 w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70" aria-label={t.searchToggle} aria-expanded={mobileSearch}>
             {mobileSearch ? <X className="w-4 h-4" /> : <IosIcon name="search" size={16} tint="white" />}
           </button>
-          {/* 2026-11-07 (owner): switcher bahasa + mata uang yang sama dengan Market,
-              cookie axv_locale / axv_currency. Hanya tampilan; quote & pesanan tetap. */}
-          <PreferenceControls />
           <nav aria-label={t.navAria} className="hidden items-center gap-1 text-sm text-white/70 xl:flex">
             <Link prefetch={false} href="/pedia/layanan" className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">{t.navCatalog}</Link>
             <Link prefetch={false} href="/pedia/lacak" aria-current={path === "/pedia/lacak" ? "page" : undefined} className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">{t.navTrack}</Link>
             <a href={SITE.webUrl + "/artikel"} className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-white">{t.navArticles}</a>
           </nav>
+          {/* 2026-11-07 (owner): switcher bahasa + mata uang yang sama dengan Market,
+              cookie axv_locale / axv_currency. Hanya tampilan; quote & pesanan tetap.
+              Urutan 1:1 Market: setelah nav; Pedia tanpa keranjang. */}
+          <PreferenceControls />
         </div>
       </div>
       {mobileSearch && (

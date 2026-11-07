@@ -32,8 +32,10 @@ describe("Navbar preferensi", () => {
     expect(trigger.textContent).toBe(""); // hanya ikon; mata uang terlihat di setiap harga
     expect(trigger.querySelector("img")!.getAttribute("alt")).toBe("");
     const search = screen.getByRole("button", { name: "Cari produk" });
+    const nav = screen.getByRole("navigation");
     const cart = screen.getByRole("button", { name: "Keranjang" });
     expect(search.compareDocumentPosition(trigger.parentElement!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(nav.compareDocumentPosition(trigger.parentElement!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(trigger.parentElement!.compareDocumentPosition(cart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /^Bahasa dan mata uang/ })).toHaveLength(1); // tidak ada pemicu ganda (footer/sheet)
   });

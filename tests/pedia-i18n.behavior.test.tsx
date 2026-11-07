@@ -86,6 +86,22 @@ describe("Pedia terjemahan teks layanan (murni)", () => {
 });
 
 describe("Pedia bahasa + mata uang", () => {
+  it("urutan DOM header Pedia = Market: search/nav sebelum kontrol bahasa, satu instance, tautan tetap", async () => {
+    document.cookie = preferenceCookie("axv_locale", "en", false);
+    stubFetch({ available: false, effectiveAt: null });
+    render(<DisplayPreferencesProvider><PediaNavbar /></DisplayPreferencesProvider>);
+    const nav = screen.getByRole("navigation", { name: "Pedia navigation" });
+    const trigger = await screen.findByRole("button", { name: /Language and currency/ });
+    const search = screen.getByRole("button", { name: "Search services" });
+    expect(search.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(nav.compareDocumentPosition(trigger) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(trigger.closest("nav")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Language and currency/ })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Catalog" }).getAttribute("href")).toBe("/pedia/layanan");
+    expect(screen.getByRole("link", { name: "Track order" }).getAttribute("href")).toBe("/pedia/lacak");
+    expect(screen.getByRole("link", { name: "Articles" }).getAttribute("href")).toMatch(/\/artikel$/);
+  });
+
   it("beranda EN: judul, navigasi, dan switcher bahasa/mata uang yang sama dengan Market tampil", async () => {
     document.cookie = preferenceCookie("axv_locale", "en", false);
     document.cookie = preferenceCookie("axv_currency", "IDR", false);
