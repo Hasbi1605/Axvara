@@ -32,6 +32,8 @@ export type VariantSummary = {
    */
   admin_terms?: string | null;
   admin_activation?: string | null;
+  admin_terms_en?: string | null;
+  admin_activation_en?: string | null;
   admin_copy_fingerprint?: string | null;
   /**
    * Kelas pengiriman WR (migrasi 0032): 'restock' (auto) | 'made_by_order'
@@ -90,6 +92,7 @@ export type ProductSummary = {
   id: number;
   slug: string;
   name: string;
+  nameEn: string | null;
   whatsappAlias: string | null;
   aliases: string[];
   image: string | null;
@@ -107,6 +110,7 @@ export type ProductDetail = {
   id: number;
   slug: string;
   name: string;
+  nameEn: string | null;
   whatsappAlias: string | null;
   aliases: string[];
   description: string | null;
@@ -140,7 +144,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
 
   const rows = await queryAll(`
     SELECT
-      p.id, p.slug, p.name, p.whatsapp_alias, p.aliases, p.image_url, p.badge, p.description,
+      p.id, p.slug, p.name, p.name_en, p.whatsapp_alias, p.aliases, p.image_url, p.badge, p.description,
       p.admin_description_override, p.description_en, p.category_id,
       MIN(pv.price) as min_price,
       MAX(pv.price) as max_price,
@@ -158,6 +162,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
     id: Number(r.id),
     slug: String(r.slug),
     name: String(r.name),
+    nameEn: nullableText(r.name_en),
     whatsappAlias: nullableText(r.whatsapp_alias),
     aliases: parseAliases(r.aliases),
     image: r.image_url ? String(r.image_url) : null,
@@ -174,7 +179,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
 
 async function listActiveProductsLegacy(): Promise<ProductSummary[]> {
   const rows = await queryAll(
-    `SELECT id, slug, name, whatsapp_alias, image_url, badge, description,
+    `SELECT id, slug, name, name_en, whatsapp_alias, image_url, badge, description,
             admin_description_override, description_en, price, compare_price, stock, category_id
      FROM products WHERE is_active=1 ORDER BY sort_order ASC, name ASC`
   );
@@ -182,6 +187,7 @@ async function listActiveProductsLegacy(): Promise<ProductSummary[]> {
     id: Number(r.id),
     slug: String(r.slug),
     name: String(r.name),
+    nameEn: nullableText(r.name_en),
     whatsappAlias: nullableText(r.whatsapp_alias),
     aliases: [],
     image: r.image_url ? String(r.image_url) : null,
@@ -217,7 +223,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
             pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
             pv.wr_variant_id AS wr_variant_id, pv.wr_auto_managed AS wr_auto_managed,
             pv.sk_variant_id AS sk_variant_id, pv.sk_auto_managed AS sk_auto_managed,
-            pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
+            pv.admin_terms, pv.admin_activation, pv.admin_terms_en, pv.admin_activation_en, pv.admin_copy_fingerprint,
             wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
             wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
             sp.sk_order_process AS sk_order_process,
@@ -245,6 +251,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
     id: Number(product.id),
     slug: String(product.slug),
     name: String(product.name),
+    nameEn: nullableText(product.name_en),
     whatsappAlias: nullableText(product.whatsapp_alias),
     aliases: parseAliases(product.aliases),
     description: displayDescription(product),
@@ -301,6 +308,7 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     id: Number(product.id),
     slug: String(product.slug),
     name: String(product.name),
+    nameEn: nullableText(product.name_en),
     whatsappAlias: nullableText(product.whatsapp_alias),
     aliases: [],
     description: displayDescription(product),

@@ -10,6 +10,7 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret } from "../crypto";
 import type { Row } from "./types";
 import { expandDeliveryLines } from "../units";
+import { translateProductName } from "@/lib/i18n/product-name";
 
 const DELIVERY_EMAIL_TIMEOUT_MS = 8_000;
 
@@ -73,7 +74,7 @@ export async function sendWebDeliveryEmail(params: {
   if (String(ledger?.status ?? "") === "sent") return;
 
   const order = await database.queryFirst(
-    `SELECT o.customer_name, o.customer_email, o.items, o.subtotal, o.payment_method, o.buyer_access_version, o.buyer_access_format,
+    `SELECT o.customer_name, o.customer_email, o.items, o.subtotal, o.payment_method, o.locale, o.buyer_access_version, o.buyer_access_format,
             (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code
               ORDER BY pt.id DESC LIMIT 1) AS payable_amount,
             (SELECT fi.item_index FROM fulfillment_items fi WHERE fi.id=?) AS item_index
@@ -88,7 +89,8 @@ export async function sendWebDeliveryEmail(params: {
   if (!isForwardEmailConfigured()) throw new Error("forward_email_not_configured");
   const { buildOrderReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
   const { SITE } = await import("@/lib/site");
-  const label = orderLineLabel(order.items, Number(order.item_index ?? 0));
+  const en = String(order.locale ?? "id") === "en";
+  const label = translateProductName(orderLineLabel(order.items, Number(order.item_index ?? 0)), en ? "en" : "id");
   // Kode akses di-derive ephemeral dari versi tersimpan aktual (NEVER tebak
   // v1 untuk order lama/reused); legacy (versi 0) = "" dan template identik.
   const { deriveOrderAccessCode } = await import("@/lib/order-access");
@@ -96,6 +98,7 @@ export async function sendWebDeliveryEmail(params: {
     code: orderCode, buyer_access_version: order.buyer_access_version, buyer_access_format: order.buyer_access_format,
   });
   const template = buildOrderReadyTemplate({
+    locale: en ? "en" : "id",
     axvaraOrderCode: orderCode,
     buyerName: String(order.customer_name ?? ""),
     invoiceUrl: `${siteUrl(SITE.webUrl)}/pesanan/${encodeURIComponent(orderCode)}`,
@@ -105,7 +108,7 @@ export async function sendWebDeliveryEmail(params: {
     receipt: {
       total: Number(order.payable_amount ?? order.subtotal ?? 0),
       method: paymentMethodLabel(order.payment_method),
-      lines: orderLines(order.items).map(line => `${String(line.name || "Produk")}${Number(line.qty)>1 ? ` ×${line.qty}` : ""}`),
+      lines: orderLines(order.items).map(line => `${translateProductName(String(line.name || (en ? "Product" : "Produk")), en ? "en" : "id")}${Number(line.qty)>1 ? ` ×${line.qty}` : ""}`),
     },
   });
   const sent = await sendForwardEmail({

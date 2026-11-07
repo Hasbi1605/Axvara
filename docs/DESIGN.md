@@ -1,5 +1,10 @@
 # DESIGN.md — AXVARA Design System
 
+## Nama, S&K, dan email EN — fase 3 (7 November 2026, lokal; verifikasi browser belum)
+- Nama produk EN memakai `name_en` admin; tanpa itu, token durasi/tier diterjemahkan saat render ("1 Bulan"→"1 Month", "Akun"→"Account", "Miliar"→"Billion"). Brand/nama tersimpan dan identitas cart/order tidak berubah.
+- S&K/aktivasi admin EN memakai format editor yang sama (judul "Package details / Process & delivery / Usage rules / Warranty", baris "- ", langkah bernomor). EN hanya tampil saat salinan admin ID valid.
+- Email pembeli EN memakai shell/AXVARA chrome yang sama, CTA "View Order/Invoice →", footer "Need help?"/"Contact us on WhatsApp"; tipografi, warna, dan struktur tidak berubah.
+
 ## Konten, badge, dan label EN Market — fase 2 (7 November 2026, lokal; verifikasi browser belum)
 - Deskripsi produk EN berasal dari `description_en` milik admin (editor produk) dan memakai format yang sama: paragraf pembuka, baris "- " untuk keunggulan, judul "Terms & Conditions:" / "How to Activate:". Bila kosong, teks ID yang tampil.
 - Badge admin diterjemahkan saat render: Terlaris→Best seller, Baru→New, Hemat→Save, "Hemat NN%"→"Save NN%", Paling Dicari→Most wanted, Promo→Promo; kata tak dikenal tetap. Label varian EN menerjemahkan durasi (1 Bulan→1 Month, 3 Bulan→3 Months) dan tier umum; brand/nama produk dan label tersimpan tidak diubah. S&K EN memakai judul bagian "Package details / Process & delivery / Usage rules / Warranty".

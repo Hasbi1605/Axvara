@@ -6,6 +6,7 @@ import { IDR_PRICES, type DisplayPrices } from "@/hooks/useDisplayPrices";
 import { catalogCopy } from "@/lib/i18n/catalog-copy";
 import { marketCategoryName } from "@/lib/i18n/market-categories";
 import { badgeLabel } from "@/lib/i18n/badge-copy";
+import { productDisplayName } from "@/lib/i18n/product-name";
 import type { Product } from "@/lib/products";
 import { useCart } from "@/stores/cart";
 import { IosIcon } from "@/components/ui/IosIcon";
@@ -53,6 +54,7 @@ export function productCardAmounts(product: Product): number[] {
 
 export function ProductCard({ product, index = 0, compact = false, prices = IDR_PRICES }: { product: Product; index?: number; compact?: boolean; prices?: DisplayPrices }) {
   const t = catalogCopy(prices.locale);
+  const displayName = productDisplayName(product, prices.locale);
   const add = useCart((s) => s.add);
   const { navigate, pending: checkoutPending } = usePendingNavigation();
   const [modalMode, setModalMode] = useState<"cart" | "checkout" | null>(null);
@@ -99,7 +101,7 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
 
   if (compact) {
     return (
-      <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? t.soldOutAria(product.name) : product.name} className="group block ax-glass-card rounded-[14px] overflow-hidden hover:-translate-y-0.5 transition-all duration-300 flex flex-col">
+      <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? t.soldOutAria(displayName) : displayName} className="group block ax-glass-card rounded-[14px] overflow-hidden hover:-translate-y-0.5 transition-all duration-300 flex flex-col">
         <div className="relative aspect-[4/3] overflow-hidden bg-white/[0.03] m-1 rounded-[10px]">
           {product.badge && (
             <span className="absolute top-1.5 left-1.5 z-10 rounded-full bg-[#FFB800] text-[#080C1E] text-[9px] font-bold px-1.5 py-0.5 leading-none shadow">{badgeLabel(product.badge, prices.locale)}</span>
@@ -112,7 +114,7 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
             src={img.src}
             srcSet={img.srcSet}
             sizes={img.sizes}
-            alt={product.name}
+            alt={displayName}
             className={`w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500${outOfStock ? " grayscale opacity-60" : ""}`}
             loading={eager ? "eager" : "lazy"}
             fetchPriority={eager ? "high" : "auto"}
@@ -124,11 +126,11 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
               <span data-testid="soldout-overlay" className="rounded-full border border-white/25 bg-black/60 px-2.5 py-1 text-[9px] font-bold tracking-[0.08em] text-white">{t.soldOutOverlay}</span>
             </span>
           )}
-          <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-[10px] text-center p-2">{product.name}</div>
+          <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-[10px] text-center p-2">{displayName}</div>
         </div>
         <div className="px-2.5 pt-2 pb-2.5 sm:px-3.5 sm:pt-3 sm:pb-3.5 flex-1 flex flex-col">
           <p className="text-[9px] sm:text-[11px] tracking-[0.07em] text-[#00E5FF]/70 font-semibold uppercase truncate">{marketCategoryName(product.categorySlug, prices.locale)}</p>
-          <h3 className="mt-1 font-semibold text-[11.5px] sm:text-[15px] leading-[1.3] sm:leading-5 text-white line-clamp-2 min-h-[30px] sm:min-h-[40px] tracking-[-0.01em]">{product.name}</h3>
+          <h3 className="mt-1 font-semibold text-[11.5px] sm:text-[15px] leading-[1.3] sm:leading-5 text-white line-clamp-2 min-h-[30px] sm:min-h-[40px] tracking-[-0.01em]">{displayName}</h3>
           <div className="mt-1.5 flex items-baseline gap-1 flex-wrap">
             <span className="font-bold text-[13px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
               <Price idr={displayPrice} prices={prices} />
@@ -155,14 +157,14 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
       {discount > 0 && !outOfStock && (
         <span className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 rounded-full bg-[#00E5FF] text-[#080C1E] text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 leading-none">-{discount}%</span>
       )}
-      <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? t.soldOutAria(product.name) : undefined} className="block flex-1">
+      <Link prefetch={false} href={`/produk/${product.slug}`} aria-label={outOfStock ? t.soldOutAria(displayName) : undefined} className="block flex-1">
         <div className="relative aspect-[4/3] overflow-hidden bg-white/[0.04] m-1 sm:m-1.5 rounded-[12px] sm:rounded-[16px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={img.src}
             srcSet={img.srcSet}
             sizes={img.sizes}
-            alt={product.name}
+            alt={displayName}
             className={`w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500${outOfStock ? " grayscale opacity-60" : ""}`}
             loading={eager ? "eager" : "lazy"}
             fetchPriority={eager ? "high" : "auto"}
@@ -180,12 +182,12 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
             </span>
           )}
           <div className="hidden w-full h-full items-center justify-center bg-gradient-to-br from-[#0F1430] to-[#161D4A] text-white/30 text-xs text-center p-4">
-            {product.name}
+            {displayName}
           </div>
         </div>
         <div className="px-2.5 sm:px-4 pt-2.5 sm:pt-3 pb-1 sm:pb-2">
           <p className="text-[10px] sm:text-[11px] tracking-[0.08em] text-[#00E5FF]/80 font-semibold uppercase truncate">{marketCategoryName(product.categorySlug, prices.locale)}</p>
-          <h3 className="mt-1 font-semibold text-[12.5px] sm:text-[14.5px] leading-[1.25] sm:leading-5 text-white line-clamp-2 min-h-[32px] sm:min-h-[40px] tracking-[-0.01em]">{product.name}</h3>
+          <h3 className="mt-1 font-semibold text-[12.5px] sm:text-[14.5px] leading-[1.25] sm:leading-5 text-white line-clamp-2 min-h-[32px] sm:min-h-[40px] tracking-[-0.01em]">{displayName}</h3>
           <div className="mt-2 sm:mt-3 flex items-baseline gap-1.5 sm:gap-2 flex-wrap">
             <span className="font-bold text-[14px] sm:text-[17px] text-white tracking-[-0.02em] leading-none">
               <Price idr={displayPrice} prices={prices} />

@@ -97,7 +97,7 @@ export async function scheduleCredentialAccessEmail(orderCode: string): Promise<
 }
 
 type OrderRow = {
-  code?: unknown; customer_email?: unknown; sales_channel?: unknown;
+  code?: unknown; customer_email?: unknown; sales_channel?: unknown; locale?: unknown;
   buyer_access_version?: unknown; buyer_access_format?: unknown;
   customer_name?: unknown; status?: unknown; payment_status?: unknown;
 };
@@ -220,7 +220,7 @@ export async function processCredentialAccessEmails(
     let order: OrderRow | null;
     try {
       order = await db.queryFirst(
-        `SELECT code, customer_email, customer_name, status, payment_status, sales_channel, buyer_access_version, buyer_access_format
+        `SELECT code, customer_email, customer_name, status, payment_status, sales_channel, locale, buyer_access_version, buyer_access_format
            FROM orders WHERE code=?`,
         code,
       );
@@ -268,7 +268,7 @@ export async function processCredentialAccessEmails(
     const { readDeliveredSnapshots } = await import("@/lib/fulfillment/delivery/buyer-email");
     const wr = await getDecryptedAccountDetails(code, db, { admin: true });
     const snapshots = await readDeliveredSnapshots(code, db);
-    const items = [...wr.map(item => ({ label: "Detail akun", details: item.details })), ...snapshots.map(item => ({ label: item.label, details: item.details }))];
+    const items = [...wr.map(item => ({ label: String(order.locale ?? "id") === "en" ? "Account details" : "Detail akun", details: item.details })), ...snapshots.map(item => ({ label: item.label, details: item.details }))];
     if (!items.length) { await settleDeferred(db, key, lease); continue; }
     const { isForwardEmailConfigured, sendForwardEmail } = await import("@/lib/warung-rebahan/forward-sender");
     if (!isForwardEmailConfigured()) {
@@ -295,6 +295,7 @@ export async function processCredentialAccessEmails(
     const { buildOrderReadyTemplate } = await import("@/lib/warung-rebahan/email-forward");
     const { SITE } = await import("@/lib/site");
     const rendered = buildOrderReadyTemplate({
+      locale: String(order.locale ?? "id") === "en" ? "en" : "id",
       axvaraOrderCode: code,
       buyerName: String(order.customer_name || ""),
       invoiceUrl: orderUrl,

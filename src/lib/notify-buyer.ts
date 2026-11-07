@@ -24,6 +24,7 @@
 // memicu kabar yang sama berkali-kali (beberapa item/link WR yang gagal).
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { escapeHtml } from "@/lib/telegram/messages/format";
+import type { Locale } from "@/lib/i18n/locale";
 
 type Notice = {
   subject: string;
@@ -45,6 +46,65 @@ type Notice = {
 
 /** Batas kirim per kabar: dipanggil dari webhook/cron yang punya deadline. */
 const NOTICE_EMAIL_TIMEOUT_MS = 8_000;
+
+
+/** Salinan email EN untuk kabar pembeli; ID default byte-identik. */
+function localizeNotice(notice: Notice, locale: Locale): Notice {
+  if (locale !== "en") return notice;
+  const code = String(notice.refKey.split(":")[1] ?? "");
+  const key = String(notice.refKey.split(":")[0] ?? "");
+  const set = (subject: string, title: string, subtitle: string, paragraphs: string[], callout?: Notice["email"]["callout"]): Notice => ({
+    ...notice,
+    subject,
+    email: { ...notice.email, title, subtitle, paragraphs, ...(callout === undefined ? {} : { callout }) },
+  });
+  switch (key) {
+    case "handover":
+      return set(`Order ${code} has been delivered`, "Order Delivered", "The admin has sent your product.", [
+        `The admin has sent the product for order ${code}.`,
+        "Have not received it? Contact the admin using the button below with the order code.",
+      ]);
+    case "proof-rejected": {
+      const reason = String(notice.email.callout?.text ?? "").replace(/^Alasan:\s*/i, "").trim();
+      const out = set(`Payment proof for order ${code} was rejected`, "Payment Proof Rejected", "Your order is not paid yet.", [
+        `We could not accept the payment proof for order ${code}.`,
+        "Please pay again via QRIS on the order page, or contact the admin if you believe this is a mistake.",
+      ], reason ? { text: `Reason: ${reason}`, tone: "warning" } : null);
+      return out;
+    }
+    case "proof-pending-hook":
+      return set(`Payment proof for order ${code} received`, "Payment Proof Received", "Waiting for automatic verification.", [
+        `We have received the payment proof for order ${code}.`,
+        "QRIS payments are confirmed automatically by the system, so the status is still awaiting verification. We will let you know once the payment is recorded as paid.",
+      ]);
+    case "delivery-failed":
+      return set(`Delivery for order ${code} has an issue`, "Delivery Delayed", "Your payment is safe and received.", [
+        `We received the payment for order ${code}, but the product failed to deliver automatically.`,
+        "The admin has been notified and will send it manually. If you have not heard back, contact the admin with the button below.",
+      ]);
+    case "wr-blocked":
+    case "sk-blocked":
+      return set(`Order ${code} is temporarily delayed`, "Order Temporarily Delayed", "Your payment is safe and received.", [
+        `We received the payment for order ${code}, but the product stock is being restocked so delivery is delayed.`,
+        "Your order remains queued and will be processed automatically once stock is ready — no need to pay again. If you have not heard back, contact the admin with the button below.",
+      ]);
+    case "sk-processing":
+      return set(`Order ${code} is being processed — AXVARA`, "Order Processing", "There is a status update for your order.", [
+        `Your order ${code} is being processed. Product details will be available shortly in this email and on the order page.`,
+        "No need to wait — we will let you know by email as soon as it is ready. You can also reopen the order page anytime with the button below.",
+      ]);
+    case "payment-received": {
+      const name = String(notice.email.paragraphs[0] ?? "").replace(/^Terima kasih\s+/i, "").replace(/\s+telah berbelanja.*$/i, "").trim();
+      return set(`Payment for order ${code} received`, "Payment Received", "Your order is being processed.", [
+        `Thank you ${name} for shopping at Axvara.`,
+        `The payment for order ${code} has been recorded and the order is being processed.`,
+        "Product details are sent to this email and also shown on the order page.",
+      ]);
+    }
+    default:
+      return notice;
+  }
+}
 
 function siteUrl(): string {
   return (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
@@ -76,7 +136,7 @@ export async function settleNotice(database: DatabaseAccess, key: string, ok: bo
   ).catch(() => undefined);
 }
 
-async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: string, notice: Notice): Promise<boolean> {
+async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: string, notice: Notice, locale: Locale = "id"): Promise<boolean> {
   const key = `email:${notice.refKey}`;
   if (!(await claimNotice(database, key, orderCode, "email"))) return true;
   const orderUrl = `${siteUrl()}/pesanan/${encodeURIComponent(orderCode)}`;
@@ -85,9 +145,10 @@ async function sendEmailNotice(database: DatabaseAccess, orderCode: string, to: 
     const { sendForwardEmail } = await import("@/lib/warung-rebahan/forward-sender");
     const { renderBrandedNotice } = await import("@/lib/warung-rebahan/email-forward");
     const { SITE } = await import("@/lib/site");
-    const rendered = notice.emailOverride ?? {
-      subject: notice.subject,
-      ...renderBrandedNotice({ orderCode, orderUrl, supportWa: SITE.adminWaLocal, ...notice.email }),
+    const localized = localizeNotice(notice, locale);
+    const rendered = localized.emailOverride ?? {
+      subject: localized.subject,
+      ...renderBrandedNotice({ orderCode, orderUrl, supportWa: SITE.adminWaLocal, ...localized.email, locale }),
     };
     result = await sendForwardEmail({
       to,
@@ -140,12 +201,12 @@ async function sendTelegramNotice(
  * memengaruhi hasil DM Telegram. Idempoten lewat kunci `email:<refKey>`.
  * Mengembalikan true hanya bila email berhak dikirim DAN terkirim.
  */
-async function sendTelegramEmailCopy(orderCode: string, notice: Notice, database: DatabaseAccess): Promise<boolean> {
+async function sendTelegramEmailCopy(orderCode: string, notice: Notice, database: DatabaseAccess, locale: Locale = "id"): Promise<boolean> {
   try {
     const { telegramEmailCopyTarget } = await import("@/lib/telegram/email-copy");
     const email = await telegramEmailCopyTarget(orderCode, database);
     if (!email) return false;
-    return await sendEmailNotice(database, orderCode, email, notice);
+    return await sendEmailNotice(database, orderCode, email, notice, locale);
   } catch {
     return false;
   }
@@ -164,26 +225,27 @@ async function sendToBuyer(
 ): Promise<boolean> {
   const { queryFirst } = database;
   const order = await queryFirst(
-    `SELECT code, sales_channel, customer_wa, customer_email, telegram_user_id
+    `SELECT code, sales_channel, customer_wa, customer_email, telegram_user_id, locale
      FROM orders WHERE code=?`,
     orderCode,
   ).catch(() => null);
   if (!order) return false;
+  const locale: Locale = String(order.locale ?? "id") === "en" ? "en" : "id";
 
   const channel = String(order.sales_channel || "web");
   const chatText = notice.chatCta ? `${notice.body}\n\n${notice.chatCta}` : notice.body;
 
   if (channel === "telegram") {
-    if (options.emailOnly) return await sendTelegramEmailCopy(orderCode, notice, database);
+    if (options.emailOnly) return await sendTelegramEmailCopy(orderCode, notice, database, locale);
     const delivered = await sendTelegramNotice(orderCode, notice, order, database, chatText);
     // Salinan email dicoba apa pun hasil DM; nilai kembalian tetap hasil DM.
-    await sendTelegramEmailCopy(orderCode, notice, database);
+    await sendTelegramEmailCopy(orderCode, notice, database, locale);
     return delivered;
   }
 
   if (channel === "web") {
     const email = String(order.customer_email || "").trim();
-    if (email) return await sendEmailNotice(database, orderCode, email, notice);
+    if (email) return await sendEmailNotice(database, orderCode, email, notice, locale);
   }
 
   if (options.whatsappFallback === false) return false;
@@ -234,7 +296,7 @@ export async function notifyBuyerHandover(
         refKey: `handover:${orderCode}`,
       }, database);
     }
-    const order = await database.queryFirst(`SELECT code, customer_name, sales_channel, buyer_access_version,buyer_access_format FROM orders WHERE code=?`, orderCode).catch(() => null);
+    const order = await database.queryFirst(`SELECT code, customer_name, sales_channel, buyer_access_version,buyer_access_format, locale FROM orders WHERE code=?`, orderCode).catch(() => null);
     let chatMessages: string[] | undefined;
     if (String(order?.sales_channel) === "telegram") {
       const { resolveCredentialTermsByItem } = await import("@/lib/orders/credential-terms");
@@ -254,6 +316,7 @@ export async function notifyBuyerHandover(
       buyer_access_version: (order as { buyer_access_version?: unknown; buyer_access_format?: unknown } | null)?.buyer_access_version, buyer_access_format: order?.buyer_access_format,
     });
     const template = buildOrderReadyTemplate({
+      locale: String(order?.locale ?? "id") === "en" ? "en" : "id",
       axvaraOrderCode: orderCode,
       buyerName: String(order?.customer_name ?? ""),
       invoiceUrl: `${siteUrl()}/pesanan/${encodeURIComponent(orderCode)}`,
@@ -269,7 +332,7 @@ export async function notifyBuyerHandover(
       body: chatBody,
       chatMessages,
       chatCta: "Ada kendala? Balas pesan ini.",
-      email: { title: "Pesanan Siap", subtitle: "Produkmu sudah siap dipakai.", paragraphs: [] },
+      email: { title: String(order?.locale ?? "id") === "en" ? "Order Ready" : "Pesanan Siap", subtitle: String(order?.locale ?? "id") === "en" ? "Your product is ready to use." : "Produkmu sudah siap dipakai.", paragraphs: [] },
       emailOverride: template,
       refKey: `handover:${orderCode}`,
       // Isi kredensial TIDAK boleh masuk outbox WA (disimpan teks polos dan

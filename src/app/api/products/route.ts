@@ -134,7 +134,7 @@ async function readProducts(req: NextRequest) {
   if (slug) { sql += ` AND p.slug=?`; params.push(slug.slice(0, 80)); }
   // D1 LIKE/GLOB max 50 byte (issue #14): potong pola agar query search
   // tidak gagal untuk input panjang.
-  if (q) { sql += ` AND (lower(p.name) LIKE ? OR lower(COALESCE(p.admin_description_override, p.description)) LIKE ? OR lower(p.slug) LIKE ? OR lower(COALESCE(p.badge,'')) LIKE ?)`; const like=`%${q.slice(0, 40)}%`; params.push(like,like,like,like); }
+  if (q) { sql += ` AND (lower(p.name) LIKE ? OR lower(COALESCE(p.admin_description_override, p.description)) LIKE ? OR lower(COALESCE(p.name_en,'')) LIKE ? OR lower(p.slug) LIKE ? OR lower(COALESCE(p.badge,'')) LIKE ?)`; const like=`%${q.slice(0, 40)}%`; params.push(like,like,like,like,like); }
   if (variantCatalog) sql += ` GROUP BY p.id`;
   sql += ` ORDER BY p.sort_order ASC, p.id ASC`;
   const rows = await queryAll(sql, ...params);
@@ -272,6 +272,7 @@ async function readProducts(req: NextRequest) {
       id: String(r.id),
       slug: r.slug,
       name: r.name,
+      nameEn: String(r.name_en ?? "").trim() || null,
       whatsappAlias: String(r.whatsapp_alias || "").trim() || undefined,
       aliases: Array.isArray(aliases) ? aliases.map(String) : [],
       description: r.admin_description_override ?? r.description ?? "",

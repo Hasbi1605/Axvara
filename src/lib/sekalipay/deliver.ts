@@ -547,7 +547,7 @@ export async function sendSkCredentialEmail(
 
   const order = await db
     .queryFirst(
-      `SELECT o.customer_name, o.customer_email, o.items, o.subtotal, o.payment_method,
+      `SELECT o.customer_name, o.customer_email, o.items, o.subtotal, o.payment_method, o.locale,
               (SELECT pt.payable_amount FROM payment_transactions pt WHERE pt.order_code=o.code
                 ORDER BY pt.id DESC LIMIT 1) AS payable_amount,
               (SELECT fi.item_index FROM fulfillment_items fi WHERE fi.id=?) AS item_index
@@ -570,9 +570,12 @@ export async function sendSkCredentialEmail(
     const parsed = JSON.parse(String(order.items ?? "[]"));
     if (Array.isArray(parsed)) items = parsed as { line: string }[];
   } catch { /* label fallback di bawah */ }
-  const label = orderLineLabel(order.items, Number((order as Record<string, unknown>).item_index ?? 0));
+  const en = String(order.locale ?? "id") === "en";
+  const { translateProductName } = await import("@/lib/i18n/product-name");
+  const label = translateProductName(orderLineLabel(order.items, Number((order as Record<string, unknown>).item_index ?? 0)), en ? "en" : "id");
   void items;
   const template = buildOrderReadyTemplate({
+    locale: en ? "en" : "id",
     axvaraOrderCode: code,
     buyerName: String(order.customer_name ?? ""),
     invoiceUrl: `${siteUrl}/pesanan/${encodeURIComponent(code)}`,
@@ -585,7 +588,7 @@ export async function sendSkCredentialEmail(
         try {
           const parsed = JSON.parse(String(order.items ?? "[]"));
           if (!Array.isArray(parsed)) return [label];
-          return (parsed as unknown[]).map((_, index) => orderLineLabel(order.items, index));
+          return (parsed as unknown[]).map((_, index) => translateProductName(orderLineLabel(order.items, index), en ? "en" : "id"));
         } catch {
           return [label];
         }

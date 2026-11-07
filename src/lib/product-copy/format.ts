@@ -414,6 +414,8 @@ export type VariantCopyEntry = {
   hasOverride: boolean;
   adminTerms: string;
   adminActivation: string;
+  adminTermsEn?: string;
+  adminActivationEn?: string;
   /** Salinan otomatis (kurasi atau teks supplier dirapikan) dalam format editor. */
   autoTerms: string;
   autoActivation: string;

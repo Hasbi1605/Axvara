@@ -22,6 +22,7 @@ import { useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty, localizedProductDescription } from "@/lib/i18n/catalog-copy";
 import { marketCategoryName } from "@/lib/i18n/market-categories";
 import { badgeLabel } from "@/lib/i18n/badge-copy";
+import { productDisplayName } from "@/lib/i18n/product-name";
 import { Price, PriceNote } from "@/components/storefront/Price";
 
 // /api/catalog mengganti teks mentah WR (terms/delivery_terms) dengan `copy`
@@ -241,6 +242,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     ...related.flatMap(productCardAmounts),
   ], { secondary: true, debounce: true });
   const t = catalogCopy(prices.locale);
+  const displayName = productDisplayName(product ?? { name: "" }, prices.locale);
 
   // Commit ketikan manual: kosong/non-angka = kembali ke nilai aman;
   // angka di-clamp ke [min, max] (min TIDAK bisa ditembus ke bawah).
@@ -522,7 +524,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={displayImage}
-                alt={product.name}
+                alt={displayName}
                 className={activeImg > 0 ? "w-full h-auto object-contain rounded-2xl" : "w-full aspect-[4/3] object-cover rounded-2xl"}
               />
 
@@ -566,7 +568,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={img}
-                      alt={t.photoAlt(product.name, i + 1)}
+                      alt={t.photoAlt(displayName, i + 1)}
                       className={`w-full h-full ${i === 0 ? "object-cover" : "object-contain"}`}
                       loading="lazy"
                     />
@@ -678,7 +680,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
             {marketCategoryName(product.categorySlug, prices.locale)}
           </p>
           <h1 className="mt-2 font-display font-bold text-[22px] sm:text-[26px] leading-tight text-white">
-            {product.name}
+            {displayName}
           </h1>
 
           {/* Divider */}

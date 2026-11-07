@@ -78,7 +78,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
     const matched = catalogProducts.filter((p) => {
       const catOk = activeCat === "semua" || p.categorySlug === activeCat;
       if (!needle) return catOk;
-      const hay = `${p.name} ${p.description} ${p.categorySlug} ${p.badge ?? ""}`.toLowerCase();
+      const hay = `${p.name} ${p.nameEn ?? ""} ${p.description} ${p.descriptionEn ?? ""} ${p.categorySlug} ${p.badge ?? ""}`.toLowerCase();
       return catOk && hay.includes(needle);
     });
     // Urutan stabil: ready dulu, lalu sort_order admin, lalu id. Tanpa kunci

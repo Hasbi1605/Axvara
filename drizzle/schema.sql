@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS products (
   -- Migrasi 0103: deskripsi Inggris milik admin. NULL/kosong = fallback ke
   -- admin_description_override ?? description. Sync WR/SK tidak pernah menulis.
   description_en TEXT,
+  -- Migrasi 0105: nama Inggris milik admin. NULL/kosong = fallback name.
+  name_en TEXT,
   -- Migrasi 0033: toggle email wajib per produk (untuk non-WR masa depan).
   -- Varian WR tipe Invite/Link otomatis butuh email tanpa toggle ini.
   require_email INTEGER NOT NULL DEFAULT 0
@@ -659,6 +661,9 @@ CREATE TABLE IF NOT EXISTS product_variants (
   -- src/lib/product-copy/resolve.ts.
   admin_terms TEXT,
   admin_activation TEXT,
+  -- Migrasi 0105: versi Inggris, hanya tampil selama admin_copy_fingerprint valid.
+  admin_terms_en TEXT,
+  admin_activation_en TEXT,
   admin_copy_fingerprint TEXT,
 
   -- Migrasi 0043: template pesan serah terima (varian Made By Order non-WR).

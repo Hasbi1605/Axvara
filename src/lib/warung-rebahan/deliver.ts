@@ -1440,7 +1440,7 @@ export async function deliverWebCredentialViaEmail(
   const { queryFirst, execRun } = db;
   const order = await db
     .queryFirst(
-      `SELECT code, customer_name, customer_email, customer_wa, items, buyer_access_version,buyer_access_format FROM orders WHERE code=?`,
+      `SELECT code, customer_name, customer_email, customer_wa, items, locale, buyer_access_version,buyer_access_format FROM orders WHERE code=?`,
       orderCode,
     )
     .catch(() => null);
@@ -1471,6 +1471,7 @@ export async function deliverWebCredentialViaEmail(
     code: String(order.code ?? orderCode), buyer_access_version: order.buyer_access_version, buyer_access_format: order.buyer_access_format,
   });
   const template = buildCredentialReadyTemplate({
+    locale: String(order.locale ?? "id") === "en" ? "en" : "id",
     axvaraOrderCode: orderCode,
     buyerName: String(order.customer_name || ""),
     productNames: parseProductNames(order.items),

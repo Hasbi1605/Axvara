@@ -48,6 +48,8 @@ export type AdminCopyInput = {
   activation: string | null | undefined;
   /** Sidik jari teks WR saat admin menyimpan ("" untuk varian non-WR). */
   fingerprint: string | null | undefined;
+  termsEn?: string | null;
+  activationEn?: string | null;
 };
 
 export type VariantCopyStatus = "admin" | "axvara" | "pemasok" | "none";
@@ -76,9 +78,14 @@ export function resolveVariantCopyDetailed(
       ? curatedToCopy(curated, locale, CURATED_VARIANT_COPY_EN[curated.key])
       : supplierVariantCopy(terms, deliveryTerms);
   const adminCopy = admin ? parseAdminVariantCopy(admin.terms, admin.activation) : null;
+  const adminCopyEn = admin ? parseAdminVariantCopy(admin.termsEn, admin.activationEn) : null;
   const adminFresh = adminCopy !== null && (admin?.fingerprint ?? "") === supplierKey;
-  if (adminFresh) return { copy: adminCopy, status: "admin", adminStale: false, auto, supplierKey };
-  return { copy: auto, status: auto ? auto.source : "none", adminStale: adminCopy !== null, auto, supplierKey };
+  if (adminFresh) {
+    // EN hanya tampil bila admin mengisi EN; tanpa EN jatuh ke kurasi EN/WR.
+    if (locale === "en") return { copy: adminCopyEn ?? auto, status: adminCopyEn ? "admin" : auto ? auto.source : "none", adminStale: false, auto, supplierKey };
+    return { copy: adminCopy, status: "admin", adminStale: false, auto, supplierKey };
+  }
+  return { copy: auto, status: auto ? auto.source : "none", adminStale: adminCopy !== null || adminCopyEn !== null, auto, supplierKey };
 }
 
 export function resolveVariantCopy(
@@ -95,8 +102,8 @@ export function needsCopyReview(resolution: VariantCopyResolution): boolean {
   return resolution.status === "pemasok" || resolution.adminStale;
 }
 
-export function adminCopyOf(variant: Pick<VariantSummary, "admin_terms" | "admin_activation" | "admin_copy_fingerprint">): AdminCopyInput {
-  return { terms: variant.admin_terms, activation: variant.admin_activation, fingerprint: variant.admin_copy_fingerprint };
+export function adminCopyOf(variant: Pick<VariantSummary, "admin_terms" | "admin_activation" | "admin_copy_fingerprint" | "admin_terms_en" | "admin_activation_en">): AdminCopyInput {
+  return { terms: variant.admin_terms, activation: variant.admin_activation, fingerprint: variant.admin_copy_fingerprint, termsEn: variant.admin_terms_en, activationEn: variant.admin_activation_en };
 }
 
 export type StorefrontVariant = VariantSummary & { copy: VariantCopy | null; copy_en: VariantCopy | null };
@@ -118,6 +125,8 @@ export function withVariantCopy(detail: ProductDetail): StorefrontProductDetail 
         delivery_terms: null,
         admin_terms: undefined,
         admin_activation: undefined,
+        admin_terms_en: undefined,
+        admin_activation_en: undefined,
         admin_copy_fingerprint: undefined,
         copy: resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "id"),
         copy_en: resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "en"),

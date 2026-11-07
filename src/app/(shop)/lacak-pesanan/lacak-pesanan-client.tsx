@@ -19,6 +19,7 @@ import { usePaymentConsent } from "@/hooks/usePaymentConsent";
 import { asPayLocale, cancelCopy, normalizePaymentView, orderPanelCopy, paymentCancelHidden, paymentHeading, paymentMethodLabel, resumeInfo, usdFor, type PayLocale, type PaymentView } from "@/lib/payment-ui";
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 import { orderCopy } from "@/lib/i18n/order-copy";
+import { translateProductName } from "@/lib/i18n/product-name";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { isValidOrderContact, orderAccessHeaders, readOrderContact, rememberBuyerAccessSession, rememberOrderContact } from "@/lib/order-access-client";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
@@ -712,7 +713,7 @@ export default function LacakPesananClient() {
             <div className="mt-3 space-y-2">
               {order.items.map((item, index) => (
                 <div key={index} className="flex justify-between gap-4 text-sm">
-                  <span className="text-white/70">{item.name} × {item.qty}</span>
+                  <span className="text-white/70">{translateProductName(item.name, order.locale)} × {item.qty}</span>
                   <span className="font-medium text-white">{formatRupiah(item.price * item.qty)}</span>
                 </div>
               ))}

@@ -133,3 +133,58 @@ describe("display & translator EN", () => {
     expect(translateVariantLabel("1 Bulan", "id")).toBe("1 Bulan");
   });
 });
+
+describe("name_en + admin variant EN (0105/0106)", () => {
+  const m5 = fs.readFileSync("drizzle/migrations/0105_product_name_variant_copy_en.sql", "utf8");
+  const m6 = fs.readFileSync("drizzle/migrations/0106_product_name_variant_copy_en_seed.sql", "utf8");
+
+  it("0105 menambah kolom; 0106 mengisi 7 nama & 9 varian, idempoten, brand tanpa baris", () => {
+    fixture.sql.exec("ALTER TABLE products DROP COLUMN name_en");
+    fixture.sql.exec("ALTER TABLE product_variants DROP COLUMN admin_terms_en");
+    fixture.sql.exec("ALTER TABLE product_variants DROP COLUMN admin_activation_en");
+    fixture.sql.exec(`
+      INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active)
+        VALUES (10, 2, 'Akun Gsuite', 'akun-gsuite', 'x', 1000, -1, 1);
+      INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active)
+        VALUES (11, 2, 'Loklok', 'loklok', 'x', 1000, -1, 1);
+      INSERT INTO product_variants (id, product_id, sku, label, price, stock, is_active)
+        VALUES (96, 10, 'GEM-96', 'Head', 1000, -1, 1);
+    `);
+    fixture.sql.exec(m5);
+    fixture.sql.exec(m6);
+    const name = (slug: string) => (fixture.sql.prepare("SELECT name_en FROM products WHERE slug=?").get(slug) as { name_en: string | null }).name_en;
+    expect(name("akun-gsuite")).toBe("GSuite Account");
+    expect(name("loklok")).toBeNull();
+    const en = fixture.sql.prepare("SELECT admin_terms_en, admin_activation_en FROM product_variants WHERE id=96").get() as { admin_terms_en: string; admin_activation_en: string };
+    expect(en.admin_terms_en).toContain("Head can invite 5 Members");
+    expect(en.admin_activation_en).toContain("secure the account");
+    expect((m6.match(/^UPDATE products SET name_en=/gm) ?? []).length).toBe(7);
+    expect((m6.match(/^UPDATE product_variants SET admin_terms_en=/gm) ?? []).length).toBe(9);
+
+    fixture.sql.prepare("UPDATE products SET name_en='Suntingan admin' WHERE slug='akun-gsuite'").run();
+    fixture.sql.exec(m6);
+    expect(name("akun-gsuite")).toBe("Suntingan admin");
+  });
+
+  it("PUT/GET nameEn dan display EN dengan fallback token", async () => {
+    const { PUT, GET } = await import("@/app/api/products/[id]/route");
+    const ctx = { params: Promise.resolve({ id: "1" }) };
+    expect((await PUT(req("/api/products/1", "PUT", { nameEn: "  Muse AI 1 Billion Tokens  " }), ctx)).status).toBe(200);
+    const detail = await (await GET(req("/api/products/1", "GET"), ctx)).json() as { product: { nameEn: string | null } };
+    expect(detail.product.nameEn).toBe("Muse AI 1 Billion Tokens");
+
+    const { productDisplayName, translateProductName } = await import("@/lib/i18n/product-name");
+    expect(productDisplayName({ name: "Muse AI 1 Miliar Token" }, "en")).toBe("Muse AI 1 Billion Token");
+    expect(productDisplayName({ name: "Muse AI 1 Miliar Token", nameEn: "Muse AI 1 Billion Tokens" }, "en")).toBe("Muse AI 1 Billion Tokens");
+    expect(productDisplayName({ name: "Muse AI 1 Miliar Token", nameEn: "Muse AI 1 Billion Tokens" }, "id")).toBe("Muse AI 1 Miliar Token");
+    expect(translateProductName("VCC Trial Aplikasi", "en")).toBe("VCC Trial Applications");
+  });
+
+  it("pencarian produk mencocokkan nama ID dan name_en", () => {
+    const source = fs.readFileSync("src/app/api/products/route.ts", "utf8");
+    expect(source).toContain("lower(COALESCE(p.name_en,'')) LIKE ?");
+    expect(source).toContain("lower(p.name) LIKE ?");
+    const home = fs.readFileSync("src/app/(shop)/home-client.tsx", "utf8");
+    expect(home).toContain("${p.name} ${p.nameEn ?? \"\"}");
+  });
+});

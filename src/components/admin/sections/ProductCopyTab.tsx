@@ -35,12 +35,25 @@ export function ProductCopyTab({
   const descriptionId = `${id}-description`;
   const overrideId = `${id}-override`;
   const descriptionEnId = `${id}-description-en`;
+  const nameEnId = `${id}-name-en`;
   const textareaBase = "w-full resize-y rounded-xl border px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none";
 
   return (
     <div className="mt-5 space-y-6">
       <section aria-labelledby={`${id}-description-title`} className="space-y-4">
         <h4 id={`${id}-description-title`} className="text-sm font-semibold text-white">Deskripsi produk</h4>
+        <div className="space-y-1.5">
+          <label htmlFor={nameEnId} className="block text-xs font-semibold text-white/60">Nama (English)</label>
+          <input
+            id={nameEnId}
+            value={form.nameEn ?? ""}
+            onChange={(e) => onSetForm({ ...form, nameEn: e.target.value })}
+            maxLength={120}
+            placeholder="English product name shown when the buyer selects English…"
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/30 focus:outline-none"
+          />
+          <p className="text-[11px] leading-4 text-white/35">Kosongkan untuk memakai terjemahan token otomatis (durasi/tier) dari nama Indonesia.</p>
+        </div>
         <div className="space-y-1.5">
           <label htmlFor={descriptionId} className="block text-xs font-semibold text-white/60">
             Deskripsi{form.wrManaged ? " (dari WR)" : ""}

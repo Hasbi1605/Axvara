@@ -1,5 +1,10 @@
 # PRD — AXVARA
 
+## Keputusan owner 7 November 2026: nama produk, S&K admin, dan email pembeli EN — fase 3 (lokal, belum deploy)
+- `products.name_en` (migrasi 0105) adalah nama EN milik admin; bila kosong tampilan EN memakai terjemahan token durasi/tier dari nama tersimpan. Seed 0106 hanya mengisi nama yang butuh padanan non-token (7 baris). Nama tersimpan, snapshot order, dan identitas email tidak berubah.
+- `product_variants.admin_terms_en`/`admin_activation_en` (0105) diisi lewat endpoint variant-copy yang sama; EN hanya berlaku selama salinan admin ID masih valid terhadap fingerprint WR, lalu fallback ke kurasi EN atau teks WR. Seed 0106 menerjemahkan 9 varian admin yang ada.
+- Email pembeli Market (konfirmasi/lunas/pending, kredensial, handover, gagal kirim, QRIS kedaluwarsa, akses PIN) mengikuti `order.locale`: subject, isi, dan tombol EN; default ID. Admin-facing email tetap ID.
+
 ## Keputusan owner 7 November 2026: metadata, halaman "segera hadir", dan email Pedia ID/EN (lokal, belum deploy)
 - Semua route Pedia menyajikan title/description/OpenGraph sesuai cookie bahasa (`axv_locale`), tanpa mengubah canonical/robots yang sudah ada. Pindah bahasa hanya mengubah tampilan; pesanan, quote, dan tautan tidak berubah.
 - Halaman "segera hadir" saat Pedia belum dibuka tampil dalam Indonesia atau Inggris.

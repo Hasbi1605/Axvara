@@ -127,7 +127,7 @@ describe("VariantCopyEditor", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/admin/variant-copy");
     expect(init?.method).toBe("PUT");
-    expect(JSON.parse(String(init?.body))).toEqual({ variant_id: 13, terms: `${base.autoTerms}\n- Dilarang berbagi akun`, activation: base.autoActivation, supplier_key: base.supplierKey });
+    expect(JSON.parse(String(init?.body))).toMatchObject({ variant_id: 13, terms: `${base.autoTerms}\n- Dilarang berbagi akun`, activation: base.autoActivation, terms_en: "", activation_en: "", supplier_key: base.supplierKey });
     expect(onSaved.mock.calls[0][0]).toMatchObject({ status: "admin", hasOverride: true });
   });
 
@@ -150,7 +150,7 @@ describe("VariantCopyEditor", () => {
     renderEditor({ ...base, status: "admin", hasOverride: true, adminTerms: "Garansi:\n- Garansi 7 hari" });
     fireEvent.click(screen.getByRole("button", { name: "Kembali ke versi otomatis" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ variant_id: 13, terms: "", activation: "", supplier_key: base.supplierKey });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({ variant_id: 13, terms: "", activation: "", terms_en: "", activation_en: "", supplier_key: base.supplierKey });
   });
 
   it("teks WR yang belum dikurasi diberi ajakan menulis versi Axvara", () => {
@@ -255,7 +255,8 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
 
     fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
-    expect(screen.queryByRole("textbox", { name: /^Nama/ })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Nama" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Nama (English)" })).toBeTruthy();
     const copyPanel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
     expect((within(copyPanel).getByRole("textbox", { name: "Deskripsi (dari WR)" }) as HTMLTextAreaElement).readOnly).toBe(true);
     expect((within(copyPanel).getByRole("textbox", { name: "Deskripsi khusus (override)" }) as HTMLTextAreaElement).value).toBe("Versi Axvara");

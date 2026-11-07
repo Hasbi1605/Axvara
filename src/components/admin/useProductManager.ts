@@ -172,7 +172,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       const prodRes = await fetch(`/api/products/${p.id}`);
       if (prodRes.ok) {
         const prodData = (await prodRes.json().catch(() => ({}))) as {
-          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; wrManaged?: boolean; requireEmail?: boolean };
+          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; nameEn?: string | null; wrManaged?: boolean; requireEmail?: boolean };
         };
         if (Array.isArray(prodData.product?.variants) && prodData.product.variants.length > 0) {
           rawVars = prodData.product.variants;
@@ -185,6 +185,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
           nextForm.description = prodData.product.wrDescription ?? nextForm.description;
           nextForm.adminDescriptionOverride = prodData.product.adminDescriptionOverride ?? "";
           nextForm.descriptionEn = prodData.product.descriptionEn ?? "";
+          nextForm.nameEn = prodData.product.nameEn ?? "";
           nextForm.wrManaged = Boolean(prodData.product.wrManaged);
           // Daftar produk tidak membawa require_email; tanpa baris ini
           // centang selalu tampil mati dan Simpan menulis 0 ke database.
@@ -427,6 +428,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       adminDescriptionOverride: form.wrManaged ? (form.adminDescriptionOverride ?? "").trim() : undefined,
       // EN dimiliki admin untuk semua produk (WR maupun manual).
       descriptionEn: (form.descriptionEn ?? "").trim() || null,
+      // Nama Inggris milik admin untuk semua produk.
+      nameEn: (form.nameEn ?? "").trim() || null,
       // Field milik WR tidak pernah dikirim ulang untuk produk auto-managed:
       // server menolaknya dengan 409 dan nilainya toh ditimpa sync berikutnya.
       wrManaged: undefined,

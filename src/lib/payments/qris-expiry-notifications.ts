@@ -110,12 +110,14 @@ async function sendWebQrisExpiryEmail(
   to: string,
   orderCode: string,
   terminal: boolean,
+  locale: "id" | "en" = "id",
 ): Promise<{ ok: boolean }> {
   const siteUrl = (process.env.SITE_URL || "https://axvara.tech").replace(/\/$/, "");
   const orderUrl = `${siteUrl}/pesanan/${encodeURIComponent(orderCode)}`;
+  const en = locale === "en";
   const subject = terminal
-    ? `Pesanan ${orderCode} kedaluwarsa`
-    : `Kode QRIS pesanan ${orderCode} sudah hangus — perpanjang sekarang`;
+    ? (en ? `Order ${orderCode} expired` : `Pesanan ${orderCode} kedaluwarsa`)
+    : (en ? `QRIS code for order ${orderCode} expired — renew now` : `Kode QRIS pesanan ${orderCode} sudah hangus — perpanjang sekarang`);
   try {
     const { sendForwardEmail } = await import("@/lib/warung-rebahan/forward-sender");
     const { renderBrandedNotice } = await import("@/lib/warung-rebahan/email-forward");
@@ -124,22 +126,30 @@ async function sendWebQrisExpiryEmail(
     const rendered = renderBrandedNotice(terminal
       ? {
           orderCode, orderUrl, supportWa: SITE.adminWaLocal,
-          title: "Pesanan Kedaluwarsa",
-          subtitle: "Pembayaran tidak diterima sampai batas waktu.",
-          paragraphs: [
+          locale,
+          title: en ? "Order Expired" : "Pesanan Kedaluwarsa",
+          subtitle: en ? "Payment was not received before the deadline." : "Pembayaran tidak diterima sampai batas waktu.",
+          paragraphs: en ? [
+            `Order ${orderCode} expired because payment was not received before the deadline.`,
+            "Please place a new order if you still need the product.",
+          ] : [
             `Pesanan ${orderCode} kedaluwarsa karena pembayaran tidak diterima sampai batas waktu.`,
             "Silakan pesan ulang bila masih membutuhkan produknya.",
           ],
         }
       : {
           orderCode, orderUrl, supportWa: SITE.adminWaLocal,
-          title: "Kode QRIS Hangus",
-          subtitle: "Pesananmu masih bisa diselamatkan.",
-          paragraphs: [
+          locale,
+          title: en ? "QRIS Code Expired" : "Kode QRIS Hangus",
+          subtitle: en ? "Your order can still be saved." : "Pesananmu masih bisa diselamatkan.",
+          paragraphs: en ? [
+            `The QRIS code for order ${orderCode} has expired, but the order is still active.`,
+            "Open the order page and press Renew QRIS to get a new code.",
+          ] : [
             `Kode QRIS untuk pesanan ${orderCode} sudah hangus, tetapi pesanannya masih aktif.`,
             "Buka halaman pesanan lalu tekan Perpanjang QRIS untuk mendapatkan kode baru.",
           ],
-          callout: { text: "Perpanjangan QRIS tersedia satu kali.", tone: "info" },
+          callout: { text: en ? "QRIS renewal is available once." : "Perpanjangan QRIS tersedia satu kali.", tone: "info" },
         });
     const result = await sendForwardEmail({
       to,
@@ -198,7 +208,7 @@ export async function sendQrisExpiryNotifications(
         // Baris tanpa email sudah disaring WHERE; guard ini hanya pengaman.
         const to = String(row.customer_email || "").trim();
         if (!to) continue;
-        const result = await sendWebQrisExpiryEmail(to, code, terminal);
+        const result = await sendWebQrisExpiryEmail(to, code, terminal, String(row.locale ?? "") === "en" ? "en" : "id");
         if (!result.ok) continue;
         emailSent++;
       } else if (["nowpayments", "sekalipay_gateway"].includes(String(row.provider ?? ""))

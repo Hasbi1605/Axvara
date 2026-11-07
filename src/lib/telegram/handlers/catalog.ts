@@ -26,6 +26,7 @@ import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { resolveVariantCopy, adminCopyOf } from "@/lib/product-copy/resolve";
 import { mergeProductCopy, parseProductDescription, copySectionTitles } from "@/lib/product-copy/format";
 import { localizedProductDescription } from "@/lib/i18n/catalog-copy";
+import { productDisplayName } from "@/lib/i18n/product-name";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
 import { winnerForLoserProduct } from "@/lib/supplier-pairs";
 import { clampQty, setPendingActionUnlessCreating } from "./shared";
@@ -39,11 +40,11 @@ type CatalogProduct = { id: number; name: string; price: number };
  * dengan web setiap kali dibuka, jadi habis/ready di web langsung berlaku di
  * sini. Harga = varian tersedia termurah, sama dengan kartu web.
  */
-export async function listTelegramProducts(categoryId?: number): Promise<CatalogProduct[]> {
+export async function listTelegramProducts(categoryId?: number, locale: "id" | "en" = "id"): Promise<CatalogProduct[]> {
   const { readTelegramCatalog } = await import("@/lib/telegram/catalog-snapshot");
   return (await readTelegramCatalog())
     .filter(row => row.price !== null && (!categoryId || row.category_id === categoryId))
-    .map(row => ({ id: row.id, name: row.name, price: row.price! }));
+    .map(row => ({ id: row.id, name: productDisplayName({ name: row.name, nameEn: row.name_en }, locale), price: row.price! }));
 }
 
 // TG2a: prefs+FX resolved ONCE per read surface, threaded as plain options
@@ -55,7 +56,7 @@ async function tgCtx(userId: number): Promise<TgCtx> {
 // Flat catalog (WA parity): product names only, no mandatory categories.
 export async function handleShowCatalog(chatId: number, from?: { id: number }) {
   const ctx = await tgCtx(from?.id ?? chatId);
-  const products = await listTelegramProducts();
+  const products = await listTelegramProducts(undefined, ctx.locale);
   await sendMessage({
     chat_id: chatId,
     text: catalogFlatMessage(products.length, { locale: ctx.locale }),
@@ -66,7 +67,7 @@ export async function handleShowCatalog(chatId: number, from?: { id: number }) {
 
 export async function handleShowCatalogEdit(chatId: number, messageId: number, page: number, from?: { id: number }) {
   const ctx = await tgCtx(from?.id ?? chatId);
-  const products = await listTelegramProducts();
+  const products = await listTelegramProducts(undefined, ctx.locale);
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: catalogFlatMessage(products.length, { locale: ctx.locale }),
@@ -93,7 +94,7 @@ export async function handleShowProducts(chatId: number, messageId: number, cate
   const category = await queryFirst(`SELECT name FROM categories WHERE id=?`, categoryId);
   if (!category) return;
 
-  const products = await listTelegramProducts(categoryId);
+  const products = await listTelegramProducts(categoryId, ctx.locale);
 
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
@@ -157,7 +158,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   });
 
   const text = productDetailMessage({
-    name: detail.name,
+    name: productDisplayName(detail, ctx.locale),
     description: localizedProductDescription(detail, ctx.locale),
     price: minPrice,
     compare_price: comparePrice && comparePrice > maxPrice ? comparePrice : null,
@@ -263,8 +264,8 @@ export async function handleShowQty(
     await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     return;
   }
-  const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
-  const productName = product ? String(product.name) : "Produk";
+  const product = await queryFirst(`SELECT id, name, name_en FROM products WHERE id=?`, productId);
+  const productName = product ? productDisplayName({ name: String(product.name), nameEn: product.name_en == null ? null : String(product.name_en) }, ctx.locale) : "Produk";
   const productEmail = await queryFirst(`SELECT require_email FROM products WHERE id=?`, productId);
   const requiresEmail = needsEmailForVariant({
     wrType: variant.wr_type ?? null,

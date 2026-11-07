@@ -293,3 +293,59 @@ describe("migrasi 0041 + 0042", () => {
     expect((fixture.sql.prepare("SELECT description FROM products WHERE id=2").get() as { description: string }).description).toBe("Disunting admin");
   });
 });
+
+describe("S&K admin versi Inggris (migrasi 0105)", () => {
+  const put = (body: Record<string, unknown>) => {
+    return import("@/app/api/admin/variant-copy/route").then(({ PUT }) => PUT(new NextRequest("http://localhost/api/admin/variant-copy", {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    })));
+  };
+
+  it("menyimpan terms_en/activation_en; GET mengembalikannya; EN hanya tampil saat fingerprint valid", async () => {
+    const [entry] = await getCopy(1);
+    const res = await put({
+      variant_id: 1,
+      terms: "Detail paket:\n- Custom ID terms",
+      activation: "1. Login custom",
+      terms_en: "Package details:\n- English custom terms",
+      activation_en: "1. Log in with the account we send",
+      supplier_key: entry.supplierKey,
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { variant: VariantCopyEntry };
+    expect(body.variant.adminTermsEn).toContain("English custom terms");
+    expect(body.variant.adminActivationEn).toContain("Log in with the account");
+
+    const [saved] = await getCopy(1);
+    expect(saved.adminTermsEn).toContain("English custom terms");
+    expect(saved.adminActivationEn).toContain("Log in with the account");
+
+    const { resolveVariantCopyDetailed } = await import("@/lib/product-copy/resolve");
+    const en = resolveVariantCopyDetailed(legal.terms, legal.deliveryTerms, {
+      terms: saved.adminTerms, activation: saved.adminActivation, fingerprint: saved.supplierKey,
+      termsEn: saved.adminTermsEn, activationEn: saved.adminActivationEn,
+    }, "en").copy!;
+    expect(en.sections.flatMap((s) => s.items).join(" ")).toContain("English custom terms");
+    const id = resolveVariantCopyDetailed(legal.terms, legal.deliveryTerms, {
+      terms: saved.adminTerms, activation: saved.adminActivation, fingerprint: saved.supplierKey,
+      termsEn: saved.adminTermsEn, activationEn: saved.adminActivationEn,
+    }, "id").copy!;
+    expect(id.sections.flatMap((s) => s.items).join(" ")).not.toContain("English custom terms");
+
+    // Fingerprint berubah → admin EN tidak dipakai, fallback ke kurasi/teks WR (ID).
+    const stale = resolveVariantCopyDetailed(`${legal.terms}\nPerubahan supplier`, legal.deliveryTerms, {
+      terms: saved.adminTerms, activation: saved.adminActivation, fingerprint: saved.supplierKey,
+      termsEn: saved.adminTermsEn, activationEn: saved.adminActivationEn,
+    }, "en").copy!;
+    expect(stale.sections.flatMap((s) => s.items).join(" ")).not.toContain("English custom terms");
+  });
+
+  it("EN tanpa ID admin tidak tampil (EN hanya selama salinan admin ID berlaku)", async () => {
+    const [entry] = await getCopy(1);
+    const res = await put({ variant_id: 1, terms: "", activation: "", terms_en: "Only English", activation_en: "", supplier_key: entry.supplierKey });
+    expect(res.status).toBe(200);
+    const [saved] = await getCopy(1);
+    expect(saved.hasOverride).toBe(false);
+    expect(saved.adminTermsEn).toBe("");
+  });
+});

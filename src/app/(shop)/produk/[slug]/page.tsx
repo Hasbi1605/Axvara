@@ -13,6 +13,7 @@ import {
 } from "@/lib/product-seo";
 import ProductDetailClient, { type InitialCatalog } from "./product-detail-client";
 import { requestLocale } from "@/lib/i18n/server-locale";
+import { productDisplayName } from "@/lib/i18n/product-name";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ type SeoRow = Record<string, unknown>;
 
 async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
   const product = (await queryFirst(
-    `SELECT p.slug, p.name, p.description, p.admin_description_override, p.description_en,
+    `SELECT p.slug, p.name, p.name_en, p.description, p.admin_description_override, p.description_en,
             p.image_url, p.images, p.badge,
             p.sold_count, p.updated_at
      FROM products p
@@ -43,6 +44,7 @@ async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
   return {
     slug: String(product.slug),
     name: String(product.name),
+    nameEn: product.name_en ? String(product.name_en) : null,
     // Override admin (migrasi 0030) menang atas deskripsi WR, sama seperti
     // storefront dan bot. PDP adalah halaman yang dibaca pembeli DAN mesin
     // pencari, jadi meta/OG/JSON-LD tidak boleh memakai teks yang berbeda.
@@ -100,20 +102,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     if (!product) return { title: locale === "en" ? "Product not found | AXVARA" : "Produk tidak ditemukan | AXVARA" };
     const description = seoDescription(product, 160, locale);
     const images = seoImages(product);
+    const title = `${productDisplayName({ name: product.name, nameEn: product.nameEn }, locale)} | AXVARA`;
     return {
-      title: `${product.name} | AXVARA`,
+      title,
       description,
       alternates: { canonical },
       openGraph: {
         type: "website",
         url: canonical,
-        title: `${product.name} | AXVARA`,
+        title,
         description,
         images: images.length > 0 ? images.slice(0, 1).map((url) => ({ url })) : undefined,
       },
       twitter: {
         card: "summary_large_image",
-        title: `${product.name} | AXVARA`,
+        title,
         description,
         images: images.length > 0 ? images.slice(0, 1) : undefined,
       },
@@ -163,7 +166,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   if (!product) return notFound();
   const locale = await requestLocale();
   const canonical = `${SITE_BASE}/produk/${slug}`;
-  const seoProduct = locale === "en" && product.descriptionEn?.trim() ? { ...product, description: product.descriptionEn } : product;
+  const seoProduct = { ...product, name: productDisplayName({ name: product.name, nameEn: product.nameEn }, locale), ...(locale === "en" && product.descriptionEn?.trim() ? { description: product.descriptionEn } : {}) };
   const jsonLd = seoProductJsonLd(seoProduct, canonical);
   const safeJsonLd = JSON.stringify(jsonLd).replace(/</g, "\\u003c");
   return (

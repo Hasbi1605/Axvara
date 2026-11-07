@@ -84,18 +84,24 @@ export function VariantCopyEditor({
   const [open, setOpen] = useState(false);
   const [terms, setTerms] = useState("");
   const [activation, setActivation] = useState("");
+  const [termsEn, setTermsEn] = useState("");
+  const [activationEn, setActivationEn] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const preserveDraft = useRef(false);
 
   const initialTerms = entry ? (entry.hasOverride ? entry.adminTerms : entry.autoTerms) : "";
   const initialActivation = entry ? (entry.hasOverride ? entry.adminActivation : entry.autoActivation) : "";
+  const initialTermsEn = entry?.adminTermsEn ?? "";
+  const initialActivationEn = entry?.adminActivationEn ?? "";
   useEffect(() => {
     if (preserveDraft.current) return;
     setTerms(initialTerms);
     setActivation(initialActivation);
-  }, [initialTerms, initialActivation]);
-  const dirty = terms !== initialTerms || activation !== initialActivation;
+    setTermsEn(initialTermsEn);
+    setActivationEn(initialActivationEn);
+  }, [initialTerms, initialActivation, initialTermsEn, initialActivationEn]);
+  const dirty = terms !== initialTerms || activation !== initialActivation || termsEn !== initialTermsEn || activationEn !== initialActivationEn;
   useEffect(() => {
     preserveDraft.current = dirty;
     if (variantId) onStateChange?.(variantId, dirty, saving);
@@ -113,20 +119,22 @@ export function VariantCopyEditor({
 
   const badge = entry ? statusBadge(entry) : null;
 
-  const save = async (nextTerms: string, nextActivation: string, successMessage: string) => {
+  const save = async (nextTerms: string, nextActivation: string, successMessage: string, nextTermsEn = termsEn, nextActivationEn = activationEn) => {
     setSaving(true);
     setSaveError(null);
     try {
       const res = await fetch("/api/admin/variant-copy", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ variant_id: variantId, terms: nextTerms, activation: nextActivation, supplier_key: entry?.supplierKey }),
+        body: JSON.stringify({ variant_id: variantId, terms: nextTerms, activation: nextActivation, terms_en: nextTermsEn, activation_en: nextActivationEn, supplier_key: entry?.supplierKey }),
       });
       const data = await res.json().catch(() => ({})) as { variant?: VariantCopyEntry; error?: string };
       if (!res.ok || !data.variant) throw new Error(data.error || `Gagal menyimpan (${res.status})`);
       preserveDraft.current = false;
       setTerms(data.variant.hasOverride ? data.variant.adminTerms : data.variant.autoTerms);
       setActivation(data.variant.hasOverride ? data.variant.adminActivation : data.variant.autoActivation);
+      setTermsEn(data.variant.adminTermsEn ?? "");
+      setActivationEn(data.variant.adminActivationEn ?? "");
       onSaved(data.variant);
       toast.success(successMessage);
     } catch (cause) {
@@ -197,6 +205,30 @@ export function VariantCopyEditor({
                   className={textareaClass}
                 />
               </label>
+              <label className="mt-3 block">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Syarat &amp; Ketentuan (English)</span>
+                <textarea
+                  value={termsEn}
+                  disabled={saving}
+                  onChange={(e) => setTermsEn(e.target.value)}
+                  rows={6}
+                  maxLength={VARIANT_COPY_MAX_CHARS}
+                  placeholder={"Package details:\n- Ready-to-use account\nUsage rules:\n- Do not change the password\nWarranty:\n- 20-day warranty"}
+                  className={textareaClass}
+                />
+              </label>
+              <label className="mt-3 block">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Cara Aktivasi (English)</span>
+                <textarea
+                  value={activationEn}
+                  disabled={saving}
+                  onChange={(e) => setActivationEn(e.target.value)}
+                  rows={5}
+                  maxLength={VARIANT_COPY_MAX_CHARS}
+                  placeholder={"1. Open the app\n2. Log in with the account we send"}
+                  className={textareaClass}
+                />
+              </label>
               <p className="mt-2 text-[11px] leading-4 text-white/35">
                 S&amp;K: judul &quot;Detail paket:&quot;, &quot;Proses &amp; pengiriman:&quot;, &quot;Aturan pakai:&quot;, &quot;Garansi:&quot;, lalu baris &quot;- &quot; (baris tanpa judul dikelompokkan otomatis). Cara aktivasi: baris bernomor; judul bebas untuk kelompok langkah, &quot;Catatan:&quot; untuk catatan.
                 {!entry.supplier && " S&K yang berlaku untuk semua varian cukup ditulis sekali di kolom Deskripsi di atas (judul “Syarat & Ketentuan:”)."}
@@ -221,12 +253,12 @@ export function VariantCopyEditor({
               {saveError && <div role="alert" className="mt-3 text-xs text-red-200"><p>{saveError}</p>{onReload && <button type="button" disabled={saving || loading} className="min-h-11 underline" onClick={() => { preserveDraft.current = true; onReload(); }}>Muat sumber terbaru (pertahankan draft)</button>}</div>}
               <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                 {dirty && <span className="mr-auto text-[11px] text-[#FFCF55]">Belum disimpan</span>}
-                {dirty && <button type="button" disabled={saving} className="min-h-11 px-3 text-xs text-white/80" onClick={() => { preserveDraft.current = false; setTerms(initialTerms); setActivation(initialActivation); setSaveError(null); }}>Batalkan perubahan</button>}
+                {dirty && <button type="button" disabled={saving} className="min-h-11 px-3 text-xs text-white/80" onClick={() => { preserveDraft.current = false; setTerms(initialTerms); setActivation(initialActivation); setTermsEn(initialTermsEn); setActivationEn(initialActivationEn); setSaveError(null); }}>Batalkan perubahan</button>}
                 {entry.hasOverride && (
                   <button
                     type="button"
                     disabled={saving}
-                    onClick={() => void save("", "", "S&K varian kembali ke versi otomatis.")}
+                    onClick={() => void save("", "", "S&K varian kembali ke versi otomatis.", "", "")}
                     className="inline-flex min-h-11 items-center rounded-xl border border-white/15 px-3 text-xs font-semibold text-white/70 transition hover:bg-white/[0.06] disabled:opacity-40"
                   >
                     Kembali ke versi otomatis

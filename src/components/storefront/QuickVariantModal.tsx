@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Price, PriceNote } from "@/components/storefront/Price";
 import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
+import { productDisplayName } from "@/lib/i18n/product-name";
 import { catalogCopy, catalogDeliveryBadge, catalogWarranty } from "@/lib/i18n/catalog-copy";
 import type { VariantSummary } from "@/lib/catalog";
 import { formatVariantLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
@@ -136,6 +137,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
   const searchable = variants.length > SEARCH_VARIANTS_AFTER;
   const needle = query.trim().toLowerCase();
   const displayLocale = useDisplayLocale();
+  const displayName = productDisplayName(product, displayLocale);
   const visibleVariants = searchable && needle
     ? variants.filter((v) => `${formatVariantLabel(v)} ${formatVariantLabel(v, displayLocale)}`.toLowerCase().includes(needle))
     : variants;
@@ -248,12 +250,12 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={product.image || "/brand/axvara-ribbon-mark.png"}
-              alt={product.name}
+              alt={displayName}
               className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl object-cover bg-white/5 border border-white/10 shrink-0"
             />
             <div className="min-w-0">
               <h3 id="quick-variant-title" className="font-semibold text-white text-sm line-clamp-1 leading-snug">
-                {product.name}
+                {displayName}
               </h3>
               <div className="mt-1 flex items-baseline gap-2">
                 <Price idr={currentPrice} prices={prices} className="font-display font-bold text-[#00E5FF] text-base" />

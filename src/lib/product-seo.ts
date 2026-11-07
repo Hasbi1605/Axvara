@@ -19,6 +19,7 @@ export type SeoVariant = {
 export type SeoProduct = {
   slug: string;
   name: string;
+  nameEn?: string | null;
   description: string | null;
   /** Terjemahan admin (migrasi 0103); kosong = pakai description. */
   descriptionEn?: string | null;

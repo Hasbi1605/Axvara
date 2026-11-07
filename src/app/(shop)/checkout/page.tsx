@@ -20,6 +20,7 @@ import { CheckoutSkeleton, InlineSpinner } from "@/components/storefront/Skeleto
 import { buyerDeliveryEtaJaspay } from "@/lib/catalog";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useDisplayContext } from "@/hooks/useDisplayPrices";
+import { translateProductName } from "@/lib/i18n/product-name";
 import { checkoutMessage } from "@/lib/i18n/checkout-copy";
 import { PaymentTestScope } from "@/components/storefront/PaymentTestScope";
 
@@ -706,9 +707,9 @@ function CheckoutInner() {
                 {displayItems.map((it) => (
                   <div key={rowKeyOf(it)} className="flex gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={it.image} alt={it.name} className="w-12 h-12 rounded-xl object-cover" />
+                    <img src={it.image} alt={translateProductName(it.name, uiLocale)} className="w-12 h-12 rounded-xl object-cover" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-white leading-4 line-clamp-2">{it.name}</p>
+                      <p className="text-[13px] text-white leading-4 line-clamp-2">{translateProductName(it.name, uiLocale)}</p>
                       {/* Subline qty: "Qty N × unit" hanya informatif bila
                           qty > 1 (kedua angka beda). Untuk qty 1, angka kanan
                           sudah = harga — jangan ulang lagi. */}
@@ -831,9 +832,9 @@ function CheckoutInner() {
               {displayItems.map((it) => (
                 <div key={rowKeyOf(it)} className="flex gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={it.image} alt={it.name} className="w-14 h-14 rounded-xl object-cover" />
+                  <img src={it.image} alt={translateProductName(it.name, uiLocale)} className="w-14 h-14 rounded-xl object-cover" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white leading-4 line-clamp-2">{it.name}</p>
+                    <p className="text-sm text-white leading-4 line-clamp-2">{translateProductName(it.name, uiLocale)}</p>
                     <p className="text-xs text-white/50">Qty {it.qty} × {formatRupiah(it.price)}</p>
                     {bulkLineNotes(it)}
                   </div>

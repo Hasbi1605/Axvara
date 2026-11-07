@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store" };
 
 const VARIANT_COPY_SQL = `SELECT pv.id, pv.product_id, pv.label, pv.is_active, pv.wr_variant_id,
-       pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
+       pv.admin_terms, pv.admin_activation, pv.admin_terms_en, pv.admin_activation_en, pv.admin_copy_fingerprint,
         pv.sk_variant_id, sp.sk_description, sp.sk_seller_note,
         wv.wr_terms, wv.wr_delivery_terms
   FROM product_variants pv
@@ -67,6 +67,8 @@ function toEntry(row: Row): VariantCopyEntry {
     hasOverride: adminTerms !== null || adminActivation !== null,
     adminTerms: adminTerms ?? "",
     adminActivation: adminActivation ?? "",
+    adminTermsEn: text(row.admin_terms_en) ?? "",
+    adminActivationEn: text(row.admin_activation_en) ?? "",
     autoTerms: auto.terms,
     autoActivation: auto.activation,
     supplierTerms: supplierTerms ?? "",
@@ -89,6 +91,8 @@ const putSchema = z.object({
   variant_id: z.coerce.number().int().positive(),
   terms: z.string().max(VARIANT_COPY_MAX_CHARS, "S&K terlalu panjang"),
   activation: z.string().max(VARIANT_COPY_MAX_CHARS, "Cara aktivasi terlalu panjang"),
+  terms_en: z.string().max(VARIANT_COPY_MAX_CHARS, "English terms too long").optional().default(""),
+  activation_en: z.string().max(VARIANT_COPY_MAX_CHARS, "English activation too long").optional().default(""),
   supplier_key: z.string().max(32),
 });
 
@@ -110,6 +114,8 @@ export async function PUT(req: NextRequest) {
 
   const terms = normalize(parsed.data.terms);
   const activation = normalize(parsed.data.activation);
+  const termsEn = normalize(parsed.data.terms_en);
+  const activationEn = normalize(parsed.data.activation_en);
   const variantId = Number(row.id);
   const supplier = resolveVariantCopyDetailed(text(row.wr_terms) ?? text(row.sk_description), text(row.wr_delivery_terms) ?? text(row.sk_seller_note));
   if (parsed.data.supplier_key !== supplier.supplierKey) {
@@ -123,15 +129,16 @@ export async function PUT(req: NextRequest) {
   const clear = incoming === null || sameAsAuto;
   // Compare sumber dan suntingan dalam UPDATE yang sama, bukan hanya sebelum tulis.
   const result = await execRun(
-    `UPDATE product_variants SET admin_terms=?, admin_activation=?, admin_copy_fingerprint=?,
+    `UPDATE product_variants SET admin_terms=?, admin_activation=?, admin_terms_en=?, admin_activation_en=?, admin_copy_fingerprint=?,
             updated_at=datetime('now') WHERE id=?
-      AND admin_terms IS ? AND admin_activation IS ? AND admin_copy_fingerprint IS ?
+      AND admin_terms IS ? AND admin_activation IS ? AND admin_terms_en IS ? AND admin_activation_en IS ? AND admin_copy_fingerprint IS ?
       AND EXISTS (${VARIANT_COPY_SQL} WHERE pv.id=?
         AND pv.wr_variant_id IS ? AND pv.sk_variant_id IS ?
         AND wv.wr_terms IS ? AND wv.wr_delivery_terms IS ?
         AND sp.sk_description IS ? AND sp.sk_seller_note IS ?)`,
-    clear ? null : terms || null, clear ? null : activation || null, clear ? null : supplier.supplierKey,
-    variantId, row.admin_terms ?? null, row.admin_activation ?? null, row.admin_copy_fingerprint ?? null,
+    clear ? null : terms || null, clear ? null : activation || null,
+    clear ? null : termsEn || null, clear ? null : activationEn || null, clear ? null : supplier.supplierKey,
+    variantId, row.admin_terms ?? null, row.admin_activation ?? null, row.admin_terms_en ?? null, row.admin_activation_en ?? null, row.admin_copy_fingerprint ?? null,
     variantId, row.wr_variant_id ?? null, row.sk_variant_id ?? null,
     row.wr_terms ?? null, row.wr_delivery_terms ?? null, row.sk_description ?? null, row.sk_seller_note ?? null,
   );

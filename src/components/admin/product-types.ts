@@ -3,7 +3,7 @@
 // di sini — hanya kontrak bentuk data produk, kategori, dan varian form.
 
 /** `lowStockVariants` & `copyReview` & `supplier` & `liveStatus`/`liveReason` hanya dikirim untuk admin. */
-export type Prod = { id:string; slug:string; name:string; whatsappAlias?:string; description:string; adminDescriptionOverride?:string|null; descriptionEn?:string|null; wrManaged?:boolean; supplier?: "WR" | "SK" | "Manual"; liveStatus?: "live" | "hidden_loser" | "hidden_soldout" | "off"; liveReason?: string; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; lowStockVariants?:number; copyReview?:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number; requireEmail?:boolean };
+export type Prod = { id:string; slug:string; name:string; whatsappAlias?:string; description:string; adminDescriptionOverride?:string|null; descriptionEn?:string|null; nameEn?:string|null; wrManaged?:boolean; supplier?: "WR" | "SK" | "Manual"; liveStatus?: "live" | "hidden_loser" | "hidden_soldout" | "off"; liveReason?: string; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; lowStockVariants?:number; copyReview?:number; comparePrice?:number; categorySlug:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number; requireEmail?:boolean };
 
 export type Cat = { id:number; slug:string; name:string };
 

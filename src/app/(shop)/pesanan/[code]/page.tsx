@@ -22,6 +22,7 @@ import { usePaymentConsent } from "@/hooks/usePaymentConsent";
 import { parseExpiry } from "@/lib/expiry";
 import { asPayLocale, cancelCopy, normalizePaymentView, orderPanelCopy, paymentCancelHidden, paymentHeading, type PayLocale, type PaymentView } from "@/lib/payment-ui";
 import { orderCopy } from "@/lib/i18n/order-copy";
+import { translateProductName } from "@/lib/i18n/product-name";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { ensureBuyerAccessSession, forgetBuyerAccessSession, isValidOrderContact, orderAccessHeaders, readOrderContact, rememberOrderContact } from "@/lib/order-access-client";
 
@@ -627,7 +628,7 @@ export default function OrderSuccessPage() {
   const oc = ui.delivery;
 
   const summaryContent = <>
-    <div className="space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-3 text-[13px] leading-5"><span className="min-w-0 break-words text-white/70">{item.name} × {item.qty}</span><span className="shrink-0 whitespace-nowrap font-medium text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
+    <div className="space-y-2">{order.items.map((item, index) => <div key={index} className="flex justify-between gap-3 text-[13px] leading-5"><span className="min-w-0 break-words text-white/70">{translateProductName(item.name, order.locale)} × {item.qty}</span><span className="shrink-0 whitespace-nowrap font-medium text-white">{formatRupiah(item.price * item.qty)}</span></div>)}</div>
     <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">{pay?.kind === "crypto" ? oc.orderTotal : oc.total} • {pay?.label || order.method.toUpperCase()}</span><span className="shrink-0 font-bold text-white">{formatRupiah(payableAmount)}</span></div>
   </>;
 

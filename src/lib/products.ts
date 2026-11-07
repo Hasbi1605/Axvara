@@ -9,6 +9,8 @@ export type Product = {
   id: string;
   slug: string;
   name: string;
+  /** Nama Inggris milik admin (migrasi 0105); kosong = terjemahan token. */
+  nameEn?: string;
   description: string;
   /** Terjemahan Inggris milik admin (migrasi 0103); kosong = fallback description. */
   descriptionEn?: string;
