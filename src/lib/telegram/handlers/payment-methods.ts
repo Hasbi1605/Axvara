@@ -8,6 +8,7 @@ import { sendMessage, safeEditOrSend, answerCallbackQuery } from "@/lib/telegram
 import {
   paymentMethodOfferKeyboard,
   cryptoCoinKeyboard,
+  otherMethodsEntryKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
   paymentMethodOfferMessage,
@@ -324,10 +325,18 @@ export async function handlePayMethodConfirm(
       await dispatchPayq1Creating(chatId, messageId, from, ctx.locale, current, currentRaw, decision.orderCode, decision.idempotencyKey);
       return;
     }
+    // Definite failure (no durable TX resumed): release the anchor when there
+    // is provably no order/TX so the fresh-quote entry below can freeze a new
+    // payq1 nonce. Existing order/TX cases are left untouched (resume matrix).
+    if (current.orderCode && current.idempotencyKey) {
+      const { releasePayq1CreatingIfNoOrder } = await import("@/lib/telegram/payment-create");
+      await releasePayq1CreatingIfNoOrder(String(from.id), currentRaw, current.orderCode, current.idempotencyKey).catch(() => false);
+    }
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("create_failed", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -357,6 +366,7 @@ export async function handlePayMethodConfirm(
           ? paymentMethodNoticeMessage("method_unavailable", { locale: ctx.locale })
           : paymentMethodNoticeMessage("create_failed", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -485,10 +495,14 @@ export async function handlePayMethodConfirm(
         return;
       }
     }
+    // Fail closed with the existing generic notice (+ fresh-quote entry). A
+    // gateway id submitted against a tampered/legacy offer lands here as
+    // `method_unavailable` before any order/TX write.
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage("create_failed", { locale: ctx.locale }),
+      text: paymentMethodNoticeMessage(claim.reason === "method_unavailable" ? "method_unavailable" : "create_failed", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale }),
     });
     return;
   }

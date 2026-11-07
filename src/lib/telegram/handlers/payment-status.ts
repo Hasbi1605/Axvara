@@ -14,6 +14,7 @@ import { tgCtxFor } from "@/lib/telegram/render-prefs";
 import { escapeHtml, truncate } from "@/lib/telegram/messages/format";
 import { formatIdr } from "@/lib/i18n/format";
 import type { Locale } from "@/lib/i18n/locale";
+import { displayCryptoAmount } from "@/lib/payments/crypto-display";
 
 function copyableAddr(address: string): string {
   return `<code>${escapeHtml(truncate(address, 220))}</code>`;
@@ -156,7 +157,8 @@ async function renderProviderInvoiceStatus(
     // Label dari katalog kurasi (simbol + jaringan); instruksi: kirim tepat nominal koin di jaringan itu SAJA.
     const symbol = escapeHtml(view.symbol || String(order.pay_currency ?? "").toUpperCase());
     const networkLabel = escapeHtml(view.network_label || String(order.pay_network ?? "").toUpperCase());
-    const payAmount = escapeHtml(String(order.pay_amount_text ?? ""));
+    // Tampilan dibulatkan ke atas; pay_amount_text tersimpan/provider tidak berubah.
+    const payAmount = escapeHtml(displayCryptoAmount(String(order.pay_amount_text ?? ""), String(view.amount_text ?? "") || null));
     const { bpsPercentText } = await import("@/lib/payments/crypto-pricing");
     const totalUsd = escapeHtml(String(view.amount_text ?? ""));
     const feeLine = view.surcharge_amount_text && view.surcharge_bps !== null

@@ -257,7 +257,7 @@ describe("lacak-pesanan: lookup gateway/crypto", () => {
   it("crypto pending: nominal teks persis + alamat penuh + total pesanan IDR terpisah dari nilai USD; tanpa QRIS/Rp karangan", async () => {
     await lookup([{ body: { order: orderOf(cr({ pay_amount_text: "98765432.123456789" }), { payment_method: "nowpayments:usdtbsc" }) } }]);
     await screen.findByRole("heading", { name: "Selesaikan Pembayaran Crypto" });
-    expect(screen.getByTestId("crypto-amount").textContent).toBe("98765432.123456789 USDT");
+    expect(screen.getByTestId("crypto-amount").textContent).toBe("98765432.13 USDT"); // tampilan dibulatkan ke atas
     expect(screen.getByTestId("crypto-address").textContent).toBe(ADDRESS);
     expect(bodyText()).toContain("Total pesanan • USDT");
     expect(bodyText()).toContain("Total (USD, termasuk biaya layanan crypto 1,5%)US$15,87");

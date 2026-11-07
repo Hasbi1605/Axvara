@@ -25,9 +25,10 @@ export async function selectedSnapshotOf(state: Payq1State): Promise<Payq1Create
   if (state.st !== "quoted" && state.st !== "contact" && state.st !== "creating") return { ok: false, reason: "bad_state" };
   const method = state.methods.find((m) => m.id === sel);
   if (!method) return { ok: false, reason: "unknown_selection" };
-  if (method.kind === "gateway" && method.gateway) {
-    return { ok: true, methodId: method.id, kind: "gateway", channel: method.gateway.channel };
-  }
+  // Telegram create NEVER accepts the gateway rail (owner 7 Nov 2026: bot =
+  // QRIS + Crypto; Sekalipay gateway stays web-only). Frozen offers no longer
+  // contain it; this is the fail-closed guard for tampered/legacy state.
+  if (method.kind === "gateway" || method.id.startsWith("sekalipay_gateway:")) return { ok: false, reason: "method_unavailable" };
   if (method.kind === "crypto") {
     // Koin dikunci dari id beku `nowpayments:<ticker>`; pay_currency harus sama (bukan tebakan).
     const { cryptoTickerOfMethodId } = await import("@/lib/payments/crypto-preflight");

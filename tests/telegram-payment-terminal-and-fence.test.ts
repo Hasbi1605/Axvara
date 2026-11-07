@@ -295,27 +295,18 @@ describe("R3 correction 1: gateway/crypto expiry + cancel push", () => {
 
 describe("R3 correction 1b: gateway terminal push", () => {
   async function gatewayOrder(locale: "en" | "id") {
-    vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
-    vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", "wk"); vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "ws");
-    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      const target = String(url);
-      if (target.endsWith("payment-methods")) return Response.json({ status: true, data: [{ payment_code: "GATEVA", payment_name: "Gate VA", payment_type: "va", min_amount: 100, max_amount: 999999999, fee_info: { type: "flat", description: "Rp 500" } }] });
-      if (target.endsWith("/payment") && init?.method === "POST") {
-        const body = JSON.parse(String(init.body));
-        return Response.json({ status: true, data: { merchant_ref_id: body.merchant_ref_id, invoice: "SPY-r3b", amount: body.amount, fee: 700, total: body.amount + 700, payment_code: body.payment_code, payment_link: "https://sekalipay.com/payment/SPY-r3b", virtual_account: "888001", checkout_url: null, status: "pending", is_sandbox: false, expired_at: new Date(Date.now() + 900_000).toISOString() } }, { status: 201 });
-      }
-      throw new Error(`unexpected ${target}`);
-    }));
+    // Legacy saved gateway invoice seeded directly: Telegram no longer creates
+    // this rail (owner 7 Nov 2026), but terminal push/resume must still work.
+    const code = "AXV-20261107-TERMGW01";
+    const expires = new Date(Date.now() + 900_000).toISOString();
     await seedCartUser();
-    await click("pmentry");
-    const frozen = parsePayq1State(userRaw())!;
-    await click(`pm:${frozen.nonce}:${frozen.methods.findIndex((m) => m.id === "sekalipay_gateway:GATEVA")}`);
-    await click(`pgo:${frozen.nonce}`);
-    const { handlePayq1PhoneInput } = await import("@/lib/telegram/handlers/payment-contact");
-    await handlePayq1PhoneInput("081234567890", buyer.id, buyer);
-    await click(`pgo:${frozen.nonce}`);
-    const code = String(fx.sql.prepare("SELECT code FROM orders").get()?.code);
-    fx.sql.prepare("UPDATE orders SET locale=? WHERE code=?").run(locale, code);
+    fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_status,status,sales_channel,telegram_chat_id,telegram_user_id,variant_id,variant_snapshot,expires_at,locale)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(code, "Fixture", "6281234567890", "buyer@example.test", "[]", 19000, "sekalipay_gateway:GATEVA", "pending", "pending", "telegram", String(buyer.id), String(buyer.id), 1, "{}", expires, locale);
+    fx.sql.prepare(`INSERT INTO payment_transactions
+      (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,provider_payment_id,status,expires_at,gateway_fee,gateway_estimated_fee,gateway_fee_consent_required,gateway_channel,gateway_label,direct_url,gateway_virtual_account,gateway_is_sandbox)
+      VALUES(?,'sekalipay_gateway','merchant',?,'sekalipay_gateway',19000,19700,'SPY-r3b','pending',?,700,500,1,'GATEVA','Gate VA','https://sekalipay.com/payment/SPY-r3b','888001',0)`)
+      .run(code, code, expires);
     clearTg(); okTg();
     return code;
   }

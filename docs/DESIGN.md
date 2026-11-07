@@ -1,5 +1,9 @@
 # DESIGN.md — AXVARA Design System
 
+## Nominal crypto tampil dibulatkan ke atas (7 November 2026, lokal; verifikasi browser belum dilakukan)
+- Angka koin di panel pesanan (tampilan `crypto-amount` dan nilai tombol "Salin"), hasil lacak, dan instruksi Telegram dibulatkan ke atas ke desimal terkecil yang nilai satu unitnya ≤ ~US$0,01, dibatasi presisi nominal asli. Contoh: `2.24671004` + US$2.25 → `2.25`; ETH `0.00075012345` → `0.000751`; BTC `0.0000225123` → `0.0000226`; nominal pendek/invalid/zero dibiarkan apa adanya.
+- Tanpa badge, tooltip, atau teks penjelasan tambahan; label "Kirim tepat"/"Send exactly" dan peringatan jaringan tetap. Angka yang disimpan/dikirim ke provider tidak berubah, jadi desain tidak menampilkan simbol "≈" pada nominal koin.
+
 ## Kanal ShopeePay biasa & copy gangguan (7 November 2026, lokal; verifikasi browser belum dilakukan)
 - E-Wallet menampilkan kanal `SHOPEEPAY` biasa dengan label server "ShopeePay" (tanpa kata "Realtime"). `SHOPEEPAY_REALTIME` dan `DANA_REALTIME` tidak dirender (dikecualikan exact-ID dengan flag `i`); tidak ada fallback dua arah. Label historis realtime hanya dipakai saat membaca invoice lama.
 - Urutan E-Wallet tidak berubah: ShopeePay → DANA → GoPay → OVO (ditentukan LABEL tampilan, bukan kode kanal), lalu sisanya urut server. Kanal tersembunyi tidak ikut dalam urutan/chip logo.

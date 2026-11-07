@@ -311,28 +311,28 @@ describe("TG R3 provider invoice delivery fence + text retry", () => {
 
 describe("TG R3 gateway consent-gated delivery, reminders, notices", () => {
   async function gatewayOrderWithSendFailure() {
+    // Legacy saved gateway invoice seeded directly (Telegram no longer creates
+    // the rail since 7 Nov 2026). Delivery semantics are unchanged.
     vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
     vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", "wk"); vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "ws");
-    const gw = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      const target = String(url);
-      if (target.endsWith("payment-methods")) return Response.json({ status: true, data: [{ payment_code: "GATEVA", payment_name: "Gate VA", payment_type: "va", min_amount: 100, max_amount: 999999999, fee_info: { type: "flat", description: "Rp 500" } }] });
-      if (target.endsWith("/payment") && init?.method === "POST") {
-        const body = JSON.parse(String(init.body));
-        return Response.json({ status: true, data: { merchant_ref_id: body.merchant_ref_id, invoice: "SPY-r3", amount: body.amount, fee: 700, total: body.amount + 700, payment_code: body.payment_code, payment_link: "https://sekalipay.com/payment/SPY-r3", virtual_account: "888001", checkout_url: null, status: "pending", is_sandbox: false, expired_at: new Date(Date.now() + 900_000).toISOString() } }, { status: 201 });
-      }
-      throw new Error(`unexpected ${target}`);
+    const code = "AXV-20261107-DELIVGW1";
+    const expires = new Date(Date.now() + 900_000).toISOString();
+    const gw = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).includes(`/payment/${code}`)) return Response.json({ status: true, data: { merchant_ref_id: code, invoice: "SPY-r3", amount: 19000, fee: 700, total: 19700, payment_code: "GATEVA", payment_link: "https://sekalipay.com/payment/SPY-r3", virtual_account: "888001", checkout_url: null, status: "pending", is_sandbox: false, expired_at: expires } });
+      throw new Error(`unexpected ${url}`);
     });
     vi.stubGlobal("fetch", gw);
     await seedCartUser();
-    await click("pmentry");
-    const frozen = parsePayq1State(userRaw())!;
-    await click(`pm:${frozen.nonce}:${frozen.methods.findIndex((m) => m.id === "sekalipay_gateway:GATEVA")}`);
-    await click(`pgo:${frozen.nonce}`);
-    const { handlePayq1PhoneInput } = await import("@/lib/telegram/handlers/payment-contact");
-    await handlePayq1PhoneInput("081234567890", buyer.id, buyer);
+    fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_status,status,sales_channel,telegram_chat_id,telegram_user_id,variant_id,variant_snapshot,expires_at,locale)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(code, "Fixture", "6281234567890", "buyer@example.test", "[]", 19000, "sekalipay_gateway:GATEVA", "pending", "pending", "telegram", String(buyer.id), String(buyer.id), 1, "{}", expires, "en");
+    fx.sql.prepare(`INSERT INTO payment_transactions
+      (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,provider_payment_id,status,expires_at,gateway_fee,gateway_estimated_fee,gateway_fee_consent_required,gateway_channel,gateway_label,direct_url,gateway_virtual_account,gateway_is_sandbox)
+      VALUES(?,'sekalipay_gateway','merchant',?,'sekalipay_gateway',19000,19700,'SPY-r3','pending',?,700,500,1,'GATEVA','Gate VA','https://sekalipay.com/payment/SPY-r3','888001',0)`)
+      .run(code, code, expires);
     edit.mockResolvedValue(DEFINITE as never); send.mockResolvedValue(DEFINITE as never);
-    await click(`pgo:${frozen.nonce}`);
-    const code = String(fx.sql.prepare("SELECT code FROM orders").get()?.code);
+    const { showProviderInvoiceStatus } = await import("@/lib/telegram/handlers/payment-status");
+    await showProviderInvoiceStatus(buyer.id, 21, code, buyer, { locale: "en" });
     return { gw, code };
   }
 
@@ -350,7 +350,7 @@ describe("TG R3 gateway consent-gated delivery, reminders, notices", () => {
     expect(sent[0].markup?.inline_keyboard?.flat().some((b) => b.callback_data?.startsWith("gconsent:"))).toBe(true);
     expect(gw.mock.calls.length).toBe(before); // no POST/GET/re-quote
     expect(orderRow(code).sent).not.toBeNull();
-    expect(count("orders")).toBe(1); expect(stock()).toBe(98);
+    expect(count("orders")).toBe(1); expect(stock()).toBe(100); // legacy seed tidak mereservasi stok
   });
 
   it("reminders: crypto order gets generic saved-locale copy with a refresh button (no QRIS wording/amount/address); QRIS reminder unchanged", async () => {

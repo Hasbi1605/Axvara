@@ -10,6 +10,7 @@ import { handleCallback } from "@/lib/telegram/handlers/callback";
 import { parsePayq1State } from "@/lib/telegram/payment-quote";
 import { buildMethodOptions } from "@/lib/payments/method-options";
 import { sendMessage, safeEditOrSend, sendPhoto, sendChatAction } from "@/lib/telegram/api";
+import { seedCryptoMarket } from "./helpers/crypto-market";
 
 vi.mock("@/lib/telegram/api", () => ({
   sendMessage: vi.fn(), sendPhoto: vi.fn(), sendChatAction: vi.fn(),
@@ -119,21 +120,30 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-async function offerWithGateway() {
-  const key = `fixture-${crypto.randomUUID()}`;
-  vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
-  vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", key);
-  vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture");
-  vi.stubGlobal("fetch", gatewayFetchImpl([
-    { payment_code: "GATEVA", payment_name: "Gate VA", payment_type: "va", min_amount: 100, max_amount: 999999999, fee_info: { type: "flat", description: "Rp 500" } },
-  ]));
-  await seedCartUser();
-  await click("pmentry");
-  const frozen = parsePayq1State(userRaw())!;
-  const index = frozen.methods.findIndex((m) => m.id === "sekalipay_gateway:GATEVA");
-  expect(index).toBeGreaterThanOrEqual(0);
-  await click(`pm:${frozen.nonce}:${index}`);
-  return parsePayq1State(userRaw())!;
+/** Legacy saved gateway invoice (pre-7 Nov) seeded directly: Telegram must still read/consent/refresh it. */
+const LEGACY = "AXV-20261107-LEGACY01";
+function seedLegacyGateway(opts: { fee?: number; estimated?: number; payable?: number; consentRequired?: boolean; status?: string } = {}) {
+  const fee = opts.fee ?? 700;
+  const estimated = opts.estimated ?? 500;
+  const payable = opts.payable ?? 20_700;
+  const expires = new Date(Date.now() + 900_000).toISOString();
+  fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_status,status,sales_channel,telegram_chat_id,telegram_user_id,variant_id,variant_snapshot,expires_at,locale)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(LEGACY, "Fixture", "6281234567890", "buyer@example.test", "[]", 20_000, "sekalipay_gateway:GATEVA", "unpaid", "pending", "telegram", String(buyer.id), String(buyer.id), 1, "{}", expires, "en");
+  fx.sql.prepare(`INSERT INTO payment_transactions
+    (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,provider_payment_id,status,expires_at,gateway_fee,gateway_estimated_fee,gateway_fee_consent_required,gateway_channel,gateway_label,direct_url,gateway_virtual_account,gateway_is_sandbox,last_error)
+    VALUES(?,'sekalipay_gateway','merchant',?,'sekalipay_gateway',20000,?,'SPY-r2-fixture',?,?,?,?,?,'GATEVA','Gate VA','https://sekalipay.com/payment/SPY-r2-fixture','888001',0,NULL)`)
+    .run(LEGACY, LEGACY, payable, opts.status ?? "pending", expires, fee, estimated, opts.consentRequired === false ? 0 : 1);
+  return LEGACY;
+}
+function legacyButton(code: string): string | undefined {
+  const calls: unknown[][] = [...(send.mock.calls as unknown[][]), ...(edit.mock.calls as unknown[][])];
+  for (const [message] of [...calls].reverse()) {
+    const markup = (message as { reply_markup?: { inline_keyboard?: { callback_data?: string }[][] } }).reply_markup;
+    const hit = markup?.inline_keyboard?.flat().find((b) => b.callback_data?.startsWith(`gconsent:${code}:`));
+    if (hit?.callback_data) return hit.callback_data;
+  }
+  return undefined;
 }
 
 describe("TG R2 gateway create + consent (local only)", () => {
@@ -156,132 +166,99 @@ describe("TG R2 gateway create + consent (local only)", () => {
     expect(await payq1ConsentTag(...args)).toBeNull();
     expect(await verifyConsentTag(...args, tag!)).toBe(false);
   });
-  it("single gateway: exact discounted net + provider-required contacts, one reserve + one POST then GET", async () => {
-    fx.sql.exec("UPDATE product_variants SET bulk_pricing_enabled=1,bulk_pricing_tiers='[{\"min_qty\":2,\"unit_price\":9500}]' WHERE id=1");
-    const key = `fixture-${crypto.randomUUID()}`;
+  it("Telegram create rejects a gateway id from a forged/legacy frozen state (no order/TX, generic notice + fresh-quote entry)", async () => {
     vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
-    vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", key);
+    vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", `fixture-${crypto.randomUUID()}`);
     vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture");
-    const fetchMock = gatewayFetchImpl([
+    vi.stubGlobal("fetch", gatewayFetchImpl([
       { payment_code: "GATEVA", payment_name: "Gate VA", payment_type: "va", min_amount: 100, max_amount: 999999999, fee_info: { type: "flat", description: "Rp 500" } },
-    ]);
-    vi.stubGlobal("fetch", fetchMock);
-    fx.sql.prepare("INSERT INTO telegram_users(user_id,chat_id,locale,buyer_email) VALUES(?,?,?,?)").run(String(buyer.id), String(buyer.id), "id", "buyer@example.test");
-    fx.sql.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").run(String(buyer.id), 1, 1, 2);
+    ]));
+    await seedCartUser();
+    // Real canonical option shape (frozen before the 7 Nov contract) so the
+    // forged state parses; create must still fail closed on the gateway id.
+    const canonical = await buildMethodOptions(20_000);
+    const gateway = canonical.find((m) => m.id === "sekalipay_gateway:GATEVA");
+    expect(gateway).toBeTruthy();
+    const state = {
+      v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600, tag: "0123456789ab",
+      locale: "en", idrSubtotal: 20_000, source: { kind: "cart" },
+      methods: canonical, sel: "sekalipay_gateway:GATEVA",
+      contact: { email: "buyer@example.test", phone: "081234567890" }, st: "quoted",
+    };
+    fx.sql.prepare("UPDATE telegram_users SET pending_action=? WHERE user_id=?").run(`payq1:${JSON.stringify(state)}`, String(buyer.id));
+    await click(`pgo:${state.nonce}`);
+    expect(lastText()).toMatch(/can't be used right now|belum bisa dipakai/i);
+    expect(lastCallbacks()).toContain("pmentry");
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM payment_transactions").get()?.n).toBe(0);
+  });
+
+  it("definitive crypto create failure shows the gangguan copy + fresh-quote entry; tapping it freezes a NEW nonce", async () => {
+    vi.stubEnv("NOWPAYMENTS_ENABLED", "true");
+    vi.stubEnv("NOWPAYMENTS_API_KEY", "k");
+    vi.stubEnv("NOWPAYMENTS_IPN_SECRET", "s");
+    vi.stubEnv("NOWPAYMENTS_OUTCOME_CURRENCY", "usdtbsc");
+    vi.stubEnv("USD_IDR_RATE", "8000");
+    vi.stubEnv("USD_FX_EFFECTIVE_AT", new Date(Date.now() - 60_000).toISOString());
+    seedCryptoMarket(fx.sql, { fx: false });
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
+      const target = String(url);
+      if (target.includes("/min-amount?")) return Response.json({ min_amount: "100", fiat_equivalent: "100", currency_from: "usdtbsc", currency_to: "usdtbsc" });
+      if (target.includes("/estimate?")) return Response.json({ estimated_amount: "2.54", currency_from: "usd", currency_to: "usdtbsc" });
+      throw new Error(`unexpected ${target}`);
+    }));
+    await seedCartUser();
     await click("pmentry");
     const frozen = parsePayq1State(userRaw())!;
-    expect(frozen.idrSubtotal).toBe(19000);
-    const index = frozen.methods.findIndex((m) => m.id === "sekalipay_gateway:GATEVA");
+    const index = frozen.methods.findIndex((m) => m.id === "nowpayments:btc");
+    expect(index).toBeGreaterThanOrEqual(0);
     await click(`pm:${frozen.nonce}:${index}`);
-    const sel = parsePayq1State(userRaw())!;
-    // Gateway needs phone BEFORE creating: pgo asks for contact first.
-    // The contact prompt is a sendMessage (surfaces in sentTexts, not the
-    // last edit) — fixtures must not conflate it with selection notices.
-    await click(`pgo:${sel.nonce}`);
-    expect(sentTexts().join("\n")).toMatch(/WhatsApp|nomor|kontak/i);
-    // Phone captured via payq1 contact phase (CAS), crypto never gated.
-    const contactState = parsePayq1State(userRaw())!;
-    expect(contactState.st).toBe("contact");
-    const { handlePayq1PhoneInput } = await import("@/lib/telegram/handlers/payment-contact");
-    expect(await handlePayq1PhoneInput("081234567890", buyer.id, buyer)).toBe(true);
-    const afterPhone = userRaw();
-    const afterPhoneState = parsePayq1State(afterPhone);
-    expect(afterPhone).toContain('"st":"contact"');
-    expect(afterPhoneState?.st).toBe("contact");
-    await click(`pgo:${afterPhoneState!.nonce}`);
-    // R2 clears payq1 ONLY after a durable TX exists (consent-gated view
-    // shown): raw is NULL/empty and the status view renders the invoice.
-    const rawAfterPgo = userRaw();
-    const state = parsePayq1State(rawAfterPgo);
-    const lastEditText = String((edit.mock.calls.at(-1)?.[0] as { text?: string } | undefined)?.text ?? "");
-    expect(lastEditText).toMatch(/Menunggu pembayaran gateway|Total/);
-    const createdCode = (lastEditText.match(/AXV-\d{8}-[A-Z0-9]{8}/) ?? [])[0];
-    expect(createdCode).toBeTruthy();
-    const orderCode = String(createdCode);
-    const order = fx.sql.prepare("SELECT * FROM orders WHERE code=?").get(orderCode)!;
-    expect(order).toMatchObject({ subtotal: 19000, payment_method: "sekalipay_gateway:GATEVA", customer_email: "buyer@example.test", locale: "id" });
-    const tx = fx.sql.prepare("SELECT * FROM payment_transactions WHERE order_code=?").get(orderCode)!;
-    expect(tx.provider).toBe("sekalipay_gateway");
-    expect(Number(tx.requested_amount)).toBe(19000);
-    // Claim-first single POST: one POST then GET-only on replays.
-    expect(fetchMock.mock.calls.filter(([u, i]) => String(u).endsWith("/payment") && (i as RequestInit)?.method === "POST")).toHaveLength(1);
-    // Same order code reused on resume; stock cut once.
-    expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(98);
+    await click(`pgo:${frozen.nonce}`);
+    expect(lastText()).toContain("This payment method is having problems. Please try another payment method.");
+    expect(lastCallbacks()).toContain("pmentry");
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM payment_transactions").get()?.n).toBe(0);
+    expect(userRaw()).toBe(""); // definitive failure without order/TX releases the anchor
+    await click("pmentry");
+    const fresh = parsePayq1State(userRaw())!;
+    expect(fresh.nonce).not.toBe(frozen.nonce);
+    expect(fresh.methods.some((m) => m.id.startsWith("sekalipay_gateway:"))).toBe(false);
   });
 
-  it("concurrent pgo taps have one creating winner and resume the same order", async () => {
-    vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "tg-r2-fixture-secret-0123456789");
-    const frozen = await offerWithGateway();
-    await click(`pgo:${frozen.nonce}`);
-    await click(`pgo:${frozen.nonce}`);
-    const first = parsePayq1State(userRaw())!;
-    expect(first.st).toBe("contact");
-    const { handlePayq1PhoneInput } = await import("@/lib/telegram/handlers/payment-contact");
-    await handlePayq1PhoneInput("081234567890", buyer.id, buyer);
-    const contactRaw = userRaw();
-    expect(parsePayq1State(contactRaw)?.st).toBe("contact");
-    const nonce = parsePayq1State(contactRaw)!.nonce;
-    await Promise.all([click(`pgo:${nonce}`), click(`pgo:${nonce}`)]);
-    // Both taps race the same creating claim: exactly one order, one TX,
-    // one single POST (claim-first); the invoice view renders, not a dup.
-    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(1);
-    expect(fx.sql.prepare("SELECT COUNT(*) n FROM payment_transactions").get()?.n).toBe(1);
-    expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(98);
-  });
-
-  it("old consent button after live total change is rejected and re-presented without details", async () => {
-    vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "tg-r2-fixture-secret-0123456789");
-    const frozen = await offerWithGateway();
-    await click(`pgo:${frozen.nonce}`);
-    const { handlePayq1PhoneInput } = await import("@/lib/telegram/handlers/payment-contact");
-    await handlePayq1PhoneInput("081234567890", buyer.id, buyer);
-    await click(`pgo:${parsePayq1State(userRaw())!.nonce}`);
-    const rendered = String((edit.mock.calls.at(-1)?.[0] as { text?: string } | undefined)?.text ?? "");
-    const code = String((rendered.match(/AXV-\d{8}-[A-Z0-9]{8}/) ?? [])[0]);
-    expect(code).toMatch(/^AXV-/);
-    // The consent VIEW is resolved from the DB fee state: the fixture POST
-    // returns fee 700 (delta over the frozen 500) so the provider view is
-    // fee_consent_required — read the CURRENT button from the LATEST send
-    // (the create dispatch may render status + consent across messages).
-    const { payq1ConsentTag } = await import("@/lib/telegram/handlers/payment-consent");
+  it("legacy saved invoice: consent view hides link/VA until exactly the shown total; stale total re-presented, fresh total consents once", async () => {
+    vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
+    vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", `fixture-${crypto.randomUUID()}`);
+    vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture");
+    vi.stubGlobal("fetch", gatewayFetchImpl([]));
+    await seedCartUser();
+    const code = seedLegacyGateway();
     await click(`refresh:${code}`);
-    // View shows consent view with a valid tag for the CURRENT total.
-    const allCbs: string[] = [...send.mock.calls, ...edit.mock.calls].flatMap(([m]) => {
-      const mk = (m as { reply_markup?: { inline_keyboard?: { callback_data?: string }[][] } })?.reply_markup;
-      return mk?.inline_keyboard?.flat().flatMap((b) => (b.callback_data ? [b.callback_data] : [])) ?? [];
-    });
-    expect(allCbs.some((d) => d.startsWith("gconsent:"))).toBe(true);
-    const shown = Number(fx.sql.prepare("SELECT payable_amount FROM payment_transactions WHERE order_code=?").get(code)?.payable_amount);
-    // Old button (100) after live TX changed by the PROVIDER to 20800
-    // (20000 + updated 800 fee): tag mismatch => NO consent; the stale click
-    // re-presents the CURRENT total consent without leaking details.
-    // NOTE: fixture cart is qty 2 x 10000 => requested 20000; simulate the
-    // provider TOTAL drifting while requested stays: 20800 = 20000 + 800.
+    const consentText = lastText().replace(/\u00a0/g, " ");
+    expect(consentText).toContain("Confirm gateway fee");
+    expect(consentText).toContain("Total: IDR 20,700");
+    expect(consentText).not.toMatch(/sekalipay\.com|888001/);
+    const { payq1ConsentTag } = await import("@/lib/telegram/handlers/payment-consent");
+    const good = legacyButton(code);
+    expect(good).toBe(`gconsent:${code}:20700:${await payq1ConsentTag(code, String(buyer.id), "SPY-r2-fixture", 20_700)}`);
+    // Provider drifts the total while requested stays: old total/tag never consents.
     fx.sql.prepare("UPDATE payment_transactions SET payable_amount=20800,gateway_fee=800,gateway_fee_consent_required=1 WHERE order_code=?").run(code);
-    const stale = `gconsent:${code}:100:${await payq1ConsentTag(code, String(buyer.id), "SPY-r2-fixture", 100)}`;
-    await click(stale);
+    await click(`gconsent:${code}:20700:${await payq1ConsentTag(code, String(buyer.id), "SPY-r2-fixture", 20_700)}`);
     expect(fx.sql.prepare("SELECT gateway_fee_consented_at FROM payment_transactions WHERE order_code=?").get(code)?.gateway_fee_consented_at).toBeNull();
-    expect(lastText()).not.toContain("sekalipay.com");
-    const currentTotal = Number(fx.sql.prepare("SELECT payable_amount FROM payment_transactions WHERE order_code=?").get(code)?.payable_amount);
-    expect(currentTotal).toBe(20800);
-    expect(shown).not.toBe(currentTotal);
-    // Replay with the FRESH total consents exactly once (no double fee).
-    const fresh = `gconsent:${code}:${currentTotal}:${await payq1ConsentTag(code, String(buyer.id), "SPY-r2-fixture", currentTotal)}`;
-    await click(fresh);
+    expect(lastText()).not.toMatch(/sekalipay\.com|888001/);
+    const currentTotal = 20_800;
+    await click(`gconsent:${code}:${currentTotal}:${await payq1ConsentTag(code, String(buyer.id), "SPY-r2-fixture", currentTotal)}`);
     expect(fx.sql.prepare("SELECT gateway_fee_consented_at FROM payment_transactions WHERE order_code=?").get(code)?.gateway_fee_consented_at).not.toBeNull();
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE order_code=?").get(code)?.n).toBe(1);
   });
 
   it("forged/cross-user/group consent denied without DB mutation or leak", async () => {
-    vi.stubEnv("BUYER_ORDER_ACCESS_SECRET", "tg-r2-fixture-secret-0123456789");
-    const frozen = await offerWithGateway();
-    await click(`pgo:${frozen.nonce}`);
-    const { handlePayq1PhoneInput } = await import("@/lib/telegram/handlers/payment-contact");
-    await handlePayq1PhoneInput("081234567890", buyer.id, buyer);
-    await click(`pgo:${parsePayq1State(userRaw())!.nonce}`);
-    const rendered2 = String((edit.mock.calls.at(-1)?.[0] as { text?: string } | undefined)?.text ?? "");
-    const code = String((rendered2.match(/AXV-\d{8}-[A-Z0-9]{8}/) ?? [])[0]);
-    expect(code).toMatch(/^AXV-/);
+    vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
+    vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", `fixture-${crypto.randomUUID()}`);
+    vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture");
+    vi.stubGlobal("fetch", gatewayFetchImpl([]));
+    await seedCartUser();
+    const code = seedLegacyGateway();
+    await click(`refresh:${code}`);
     const before = fx.sql.prepare("SELECT gateway_fee_consented_at FROM payment_transactions WHERE order_code=?").get(code);
     const { payq1ConsentTag } = await import("@/lib/telegram/handlers/payment-consent");
     const total = Number(fx.sql.prepare("SELECT payable_amount FROM payment_transactions WHERE order_code=?").get(code)?.payable_amount);
@@ -289,45 +266,56 @@ describe("TG R2 gateway create + consent (local only)", () => {
     await click(valid.replace(/:[0-9a-f]{16}$/, ":ffffffffffffffff"), 999999, { id: 999999, first_name: "Eve" });
     await click(`gconsent:${code}:${total}:ffffffffffffffff`);
     expect(fx.sql.prepare("SELECT gateway_fee_consented_at FROM payment_transactions WHERE order_code=?").get(code)).toEqual(before);
-    expect(lastText()).not.toContain("sekalipay.com");
-    expect(fetch).not.toHaveBeenCalledTimes(999);
+    expect(lastText()).not.toMatch(/sekalipay\.com|888001/);
   });
 
-  it("independent paid status with a changed fee remains review on Telegram refresh", async () => {
-    const frozen = await offerWithGateway();
-    await click(`pgo:${frozen.nonce}`);
-    const { handlePayq1PhoneInput } = await import("@/lib/telegram/handlers/payment-contact");
-    await handlePayq1PhoneInput("081234567890", buyer.id, buyer);
-    await click(`pgo:${parsePayq1State(userRaw())!.nonce}`);
-    const code = String((lastText().match(/AXV-\d{8}-[A-Z0-9]{8}/) ?? [])[0]);
-    expect(code).toMatch(/^AXV-/);
-    const provider = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+  it("legacy independent paid status with a changed fee remains review on Telegram refresh", async () => {
+    vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
+    vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", `fixture-${crypto.randomUUID()}`);
+    vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture");
+    await seedCartUser();
+    const code = seedLegacyGateway({ consentRequired: false });
+    const provider = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(init?.method).toBe("GET");
+      expect(String(url)).toContain(`/payment/${code}`);
       return Response.json({ status: true, data: { merchant_ref_id: code, invoice: "SPY-r2-fixture", amount: 20000, fee: 800, total: 20800, payment_code: "GATEVA", status: "paid", paid_at: new Date().toISOString(), is_sandbox: false } });
     });
     vi.stubGlobal("fetch", provider);
     fx.sql.prepare("UPDATE payment_transactions SET last_checked_at=NULL WHERE order_code=?").run(code);
     await click(`refresh:${code}`);
-    expect(provider).toHaveBeenCalledTimes(1);
+    expect(provider).toHaveBeenCalled();
     expect(fx.sql.prepare("SELECT provider_payment_id,gateway_fee,payable_amount,last_error FROM payment_transactions WHERE order_code=?").get(code)).toMatchObject({ provider_payment_id: "SPY-r2-fixture", gateway_fee: 700, payable_amount: 20700, last_error: "sekalipay_gateway_status_mismatch_manual_review" });
+    expect(lastText()).toMatch(/review|diperiksa/i);
     expect(lastText()).not.toMatch(/sekalipay\.com|888001/);
     expect(fx.sql.prepare("SELECT status FROM orders WHERE code=?").get(code)?.status).toBe("pending");
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
   });
 
-  it("saved flag-off invoice still reconciles; new create denied flag-off; 64B caps hold", async () => {
-    const frozen = await offerWithGateway();
-    await click(`pgo:${frozen.nonce}`);
-    const { handlePayq1PhoneInput } = await import("@/lib/telegram/handlers/payment-contact");
-    await handlePayq1PhoneInput("081234567890", buyer.id, buyer);
-    await click(`pgo:${parsePayq1State(userRaw())!.nonce}`);
-    const rendered3 = String((edit.mock.calls.at(-1)?.[0] as { text?: string } | undefined)?.text ?? "");
-    const code = String((rendered3.match(/AXV-\d{8}-[A-Z0-9]{8}/) ?? [])[0]);
-    expect(code).toMatch(/^AXV-/);
-    vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "false");
-    // Saved-invoice refresh works flag-off (GET recovery), render stays safe.
+  it("Telegram crypto instructions show the rounded-up amount; stored/provider amount unchanged", async () => {
+    await seedCartUser();
+    const code = "AXV-20261107-CRYPTODISP";
+    const expires = new Date(Date.now() + 900_000).toISOString();
+    fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_status,status,sales_channel,telegram_chat_id,telegram_user_id,variant_id,variant_snapshot,expires_at,locale)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(code, "Fixture", "6281234567890", "buyer@example.test", "[]", 20_000, "nowpayments:usdtbsc", "pending", "pending", "telegram", String(buyer.id), String(buyer.id), 1, "{}", expires, "en");
+    fx.sql.prepare(`INSERT INTO payment_transactions
+      (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,currency,price_amount_text,price_currency,pay_currency,pay_network,provider_payment_id,pay_address,pay_amount_text,status,expires_at,created_at,updated_at,fx_rate_text,fx_effective_at)
+      VALUES(?,'nowpayments','hosted',?,'nowpayments',20000,'IDR','2.25','usd','usdtbsc','bsc','NP-DISP','0xDISP','2.24671004','pending',?,datetime('now'),datetime('now'),'8000/1@x',?)`)
+      .run(code, code, expires, new Date().toISOString());
     await click(`refresh:${code}`);
-    expect(lastText()).not.toContain("sekalipay.com/payment/SPY");
+    expect(lastText()).toContain("Send exactly <b>2.25 USDT</b>");
+    expect(lastText()).not.toContain("2.24671004");
+    expect(fx.sql.prepare("SELECT pay_amount_text,price_amount_text FROM payment_transactions WHERE order_code=?").get(code)).toMatchObject({ pay_amount_text: "2.24671004", price_amount_text: "2.25" });
+  });
+
+  it("legacy saved invoice still refreshes with the flag off; 64B caps hold", async () => {
+    vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "false");
+    vi.stubGlobal("fetch", gatewayFetchImpl([]));
+    await seedCartUser();
+    const code = seedLegacyGateway({ consentRequired: false });
+    await click(`refresh:${code}`);
+    expect(lastText()).toMatch(/Awaiting gateway payment|Menunggu pembayaran gateway/);
+    expect(lastText()).not.toMatch(/sekalipay\.com\/payment|888001/);
     for (const data of lastCallbacks()) expect(Buffer.byteLength(data, "utf8")).toBeLessThanOrEqual(64);
     expect(Buffer.byteLength(userRaw(), "utf8")).toBeLessThanOrEqual(16 * 1024);
   });

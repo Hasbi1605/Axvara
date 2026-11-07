@@ -1,5 +1,15 @@
 # PRD — AXVARA
 
+## Keputusan owner 7 November 2026: Telegram hanya QRIS + Crypto; metode ulang setelah gagal (lokal, belum deploy)
+- Penawaran BARU di bot Telegram hanya QRIS + Crypto. Sekalipay gateway (VA/e-wallet) tetap tersedia penuh di web, tetapi tidak pernah masuk katalog/payq1/keyboard Telegram meski `SEKALIPAY_GATEWAY_ENABLED=true`; create Telegram juga menolak ID gateway (fail closed, notis generik). Tidak ada flag/env baru.
+- Invoice/order Telegram lama pada `sekalipay_gateway` tetap dibaca, consent (`gconsent:`), refresh, dan direkonsiliasi dengan binding tersimpan; tanpa migrasi atau mutasi.
+- Setelah `create_failed` definitif (tanpa order/TX), notis menyertakan tombol "Metode pembayaran lain" (`pmentry`) yang membuka quote/nonce BARU (idempotency key baru) tanpa auto-create; anchor `creating` dilepas hanya bila terbukti tidak ada order/TX. Klaim ambigu/TX tetap `resume_status` tanpa POST ulang/cancel, lalu menerima tombol yang sama setelah anchor dilepas.
+- Batas: create definitif yang sudah membuat order tetapi belum punya TX tidak dapat melepas anchor (order memegang stok), sehingga tombol bisa dijawab "selesaikan langkah saat ini"; perbaikan state machine/klaim belum diubah.
+
+## Keputusan owner 7 November 2026: nominal crypto tampil dibulatkan ke atas (lokal, belum deploy)
+- Angka koin yang DILIHAT/DISALIN pembeli dibulatkan ke atas ke desimal terkecil yang overpay-nya ≤ ~US$0,01, dibatasi presisi nominal asli (contoh: 2.24671004 + US$2.25 → 2.25; ETH 0.00075012345 → 0.000751; BTC 0.0000225123 → 0.0000226). Tanpa teks penjelasan tambahan; label "Kirim tepat" tetap.
+- Berlaku di panel pesanan web (tampilan dan nilai Salin), hasil lacak, dan instruksi pembayaran Telegram. Nominal tersimpan, yang dikirim ke NOWPayments, serta cek paid/underpaid TIDAK berubah; overpay tetap diterima dengan review existing.
+
 ## Persetujuan gateway satu klik & hierarki panel pending — 7 November 2026 (lokal, belum deploy)
 - Persetujuan total final tetap wajib (form biaya + kontak checkout), tetapi satu klik: setelah `POST /api/orders/:code/payment-consent` mengembalikan 200 dengan `payment.state=pending` dan tautan https (`payment_link` kanonik atau `checkout_url`), klien menyimpan kontak lalu langsung mengalihkan tab yang sama ke tautan provider. Tanpa tautan (mis. VA saja) halaman hanya membaca ulang status; 409 tetap membaca ulang dan menampilkan total baru tanpa persetujuan otomatis. Kontak tidak pernah masuk URL, tombol tetap sibuk selama navigasi, dan tidak ada popup/new-tab kedua.
 - Copy tombol persetujuan: ID "Setujui <total> & bayar", EN "Approve <total> & pay"; tautan utama gateway "Bayar via <label>" / "Pay with <label>". Status pending gateway/crypto memakai header ringkas yang sama dengan QRIS (tepat satu h1, ikon jam berputar, container 760px) dan panel detail mengikuti hierarki QRIS; state consent/initializing/confirming/preparing tetap memakai header penuh. Resume surfaces (lacak/pengingat/perangkat) tidak berubah dan tetap menautkan ke halaman pesanan yang sama.

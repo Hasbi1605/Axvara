@@ -311,11 +311,11 @@ describe("crypto", () => {
   it("pending (d): nominal TEKS persis, kolom QR + chip jaringan, alamat penuh + Salin alamat + Cek Pembayaran, satu baris rincian, peringatan amber", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    for (const amount of ["98765432.123456789", "0.000000123"]) {
+    for (const [amount, shown] of [["98765432.123456789", "98765432.13"], ["0.000000123", "0.000000123"]] as const) {
       stub({ gets: [orderBody(cryptoView({ pay_amount_text: amount, crypto_amount_text: `${amount} USDT` }), { payment_method: "nowpayments:usdtbsc" })] });
       render(<OrderPage />);
       await screen.findByRole("heading", { name: "Pembayaran Crypto" });
-      expect(screen.getByTestId("crypto-amount").textContent).toBe(`${amount} USDT`);
+      expect(screen.getByTestId("crypto-amount").textContent).toBe(`${shown} USDT`);
       expect(screen.getByTestId("crypto-address").textContent).toBe("0x1234567890abcdef1234567890abcdef12345678");
       // Kolom QR + chip jaringan: simbol + label kurasi server.
       expect(await screen.findByTestId("crypto-qr")).toBeTruthy();
@@ -323,7 +323,7 @@ describe("crypto", () => {
       // Satu baris rincian menggantikan blok Subtotal/Biaya/TOTAL(USD) terpisah.
       expect(screen.getByTestId("crypto-breakdown").textContent).toBe("≈ US$15,87 · termasuk biaya layanan 1,5%");
       expect(text()).not.toContain("Total (USD)");
-      expect(text()).toContain("Kirim tepat"+amount+" USDT"); // label + nominal TEKS persis
+      expect(text()).toContain("Kirim tepat"+shown+" USDT"); // label + nominal TAMPILAN (dibulatkan ke atas)
       expect(screen.getByTestId("crypto-amount").querySelector("span.whitespace-nowrap")!.textContent).toBe("USDT"); // simbol tidak pernah terpotong di tengah kata
       expect(screen.getByTestId("crypto-logo").getAttribute("src")).toBe("/payments/coins/usdtbsc.svg");
       expect(text()).not.toContain("bsc");
@@ -340,7 +340,7 @@ describe("crypto", () => {
       expect(text()).not.toMatch(/angka final dari penyedia|bukan nol|Biaya jaringan \(gas\) dibayar dari wallet/);
       expect(text()).toContain("Metode pembayaran tidak bisa diganti untuk pesanan ini."); // satu baris tetap ada
       fireEvent.click(screen.getByRole("button", { name: "Salin" }));
-      await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(amount));
+      await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(shown)); // yang disalin = nominal tampil
       fireEvent.click(screen.getByRole("button", { name: "Salin alamat" }));
       await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("0x1234567890abcdef1234567890abcdef12345678"));
       expect((await screen.findAllByRole("status")).some((el) => el.textContent === "Tersalin")).toBe(true);

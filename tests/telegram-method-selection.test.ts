@@ -116,39 +116,35 @@ describe("TG R1 frozen method selection (local only)", () => {
     expect(lastText()).toContain("Pilih metode pembayaran");
   });
 
-  it("selects the frozen index even after live options reorder (A,B then B,A)", async () => {
+  it("Telegram offer never includes the gateway rail even with the flag on; the web builder still does", async () => {
     const key = `fixture-${crypto.randomUUID()}`;
     vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
     vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", key);
     vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "fixture");
-    const methods = [
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: true, data: [
       { payment_code: "AAA", payment_name: "AAA VA", payment_type: "va", min_amount: 100, max_amount: 999999999, fee_info: { type: "flat", description: "Rp 1.000" } },
-      { payment_code: "BBB", payment_name: "BBB VA", payment_type: "va", min_amount: 100, max_amount: 999999999, fee_info: { type: "flat", description: "Rp 2.000" } },
-    ];
-    let order: typeof methods = methods;
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ status: true, data: [...order] })));
+    ] })));
     await seedCartUser();
     await click("pmentry");
-    const first = lastCallbacks();
-    const frozenRaw = String(userState().pending_action);
-    const frozen = parsePayq1State(frozenRaw)!;
-    expect(frozen.methods.map((m) => m.id)).toContain("sekalipay_gateway:BBB");
-    // The gateway adapter caches per key for 5m; bust the cache by rotating
-    // the test key so the reordered live list is actually refetched. Frozen
-    // index must still win over the reordered live list.
-    const key2 = `fixture-${crypto.randomUUID()}`;
-    vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", key2);
-    order = [...methods].reverse();
-    const live = (await buildMethodOptions(20000)).filter((m) => m.id.startsWith("sekalipay_gateway:"));
-    expect(live.map((m) => m.id).join(",")).not.toBe(
-      frozen.methods.filter((m) => m.id.startsWith("sekalipay_gateway:")).map((m) => m.id).join(","),
-    );
-    const tapIndex = frozen.methods.findIndex((m) => m.id === "sekalipay_gateway:BBB");
-    expect(tapIndex).toBeGreaterThanOrEqual(0);
-    await click(`pm:${frozen.nonce}:${tapIndex}`);
-    expect(String(userState().pending_action)).toContain('"sel":"sekalipay_gateway:BBB"');
-    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
-    void first;
+    const frozen = parsePayq1State(String(userState().pending_action))!;
+    expect(frozen.methods[0]?.id).toBe("qris");
+    expect(frozen.methods.some((m) => m.id.startsWith("sekalipay_gateway:"))).toBe(false);
+    expect(JSON.stringify(lastMessage().reply_markup)).not.toContain("sekalipay_gateway");
+    expect(fetch).not.toHaveBeenCalled(); // Telegram tidak membaca katalog gateway sama sekali
+    // Kontrak web/token tidak berubah: builder default tetap memuat gateway.
+    const web = await buildMethodOptions(20000);
+    expect(web.some((m) => m.id === "sekalipay_gateway:AAA")).toBe(true);
+  });
+
+  it("gateway selected snapshot is rejected before any create (defense in depth)", async () => {
+    const { selectedSnapshotOf } = await import("@/lib/telegram/payment-create");
+    const state = {
+      v: 1, nonce: "0123456789abcdef", exp: Math.floor(Date.now() / 1000) + 600, tag: "0123456789ab",
+      locale: "en", idrSubtotal: 20000, source: { kind: "cart" },
+      methods: [{ id: "sekalipay_gateway:OKVA", kind: "gateway", gateway: { channel: "OKVA", estimated_fee: 1000, estimated_total: 21000, idr_subtotal: 20000 } }],
+      sel: "sekalipay_gateway:OKVA", contact: { email: "buyer@example.test", phone: "081234567890" }, st: "quoted",
+    };
+    expect(await selectedSnapshotOf(state as never)).toMatchObject({ ok: false, reason: "method_unavailable" });
   });
 
   it("two-tab old nonce cannot change the current offer; duplicate taps idempotent", async () => {
@@ -319,7 +315,7 @@ describe("TG R1 frozen method selection (local only)", () => {
     });
   });
 
-  it("gateway strict-fee + crypto min/off failures keep QRIS working", async () => {
+  it("flag on: Telegram stays QRIS-only (QRIS keeps working); web catalog still applies strict gateway fees", async () => {
     const key = `fixture-${crypto.randomUUID()}`;
     vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "true");
     vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", key);
@@ -335,11 +331,14 @@ describe("TG R1 frozen method selection (local only)", () => {
     await seedCartUser();
     await click("pmentry");
     const ids = parsePayq1State(String(userState().pending_action))!.methods.map((m) => m.id);
-    expect(ids).toContain("qris");
-    expect(ids).toContain("sekalipay_gateway:OKVA");
-    expect(ids).not.toContain("sekalipay_gateway:BADVA");
-    expect(ids).not.toContain("sekalipay_gateway:XQRIS");
-    expect(ids).not.toContain("nowpayments:usdtbsc");
+    expect(ids[0]).toBe("qris");
+    expect(ids.some((id) => id.startsWith("sekalipay_gateway:"))).toBe(false);
+    const web = (await buildMethodOptions(20000)).map((m) => m.id);
+    expect(web).toContain("qris");
+    expect(web).toContain("sekalipay_gateway:OKVA");
+    expect(web).not.toContain("sekalipay_gateway:BADVA");
+    expect(web).not.toContain("sekalipay_gateway:XQRIS");
+    expect(web).not.toContain("nowpayments:usdtbsc");
   });
 
   it("protects email/qty/search/wa/onboarding/unknown/creating namespaces", async () => {

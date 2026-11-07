@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { parseExpiry } from "@/lib/expiry";
 import { InlineSpinner } from "@/components/storefront/Skeletons";
+import { displayCryptoAmount } from "@/lib/payments/crypto-display";
 import { orderPanelCopy, usdFor, type CryptoView, type GatewayView, type PayLocale, type PaymentView } from "@/lib/payment-ui";
 
 /**
@@ -215,6 +216,8 @@ function CryptoPanel({ view, locale, now, checking, onCheck }: Omit<Props, "paym
   const symbol = view.symbol || view.payCurrency.toUpperCase();
   const networkLabel = view.networkLabel || (view.network ? view.network.toUpperCase() : "—");
   const missing = !view.payAddress || !view.payAmountText;
+  // Tampilan/copy dibulatkan ke atas; nominal tersimpan & provider tidak berubah.
+  const payAmount = displayCryptoAmount(view.payAmountText, view.usdText || null);
   const usdText = view.usdText ? usdFor(view.usdText, locale) : "";
   const breakdown = view.baseText && view.surchargeText && view.surchargeBps !== null
     ? c.crypto.approxWithFee(usdText, view.surchargeBps)
@@ -260,8 +263,8 @@ function CryptoPanel({ view, locale, now, checking, onCheck }: Omit<Props, "paym
               // eslint-disable-next-line @next/next/no-img-element
               <img src={view.logo} alt="" aria-hidden width={28} height={28} data-testid="crypto-logo" className="h-7 w-7 shrink-0 rounded-full object-contain" draggable={false} />
             )}
-            <p className="min-w-0 font-mono text-2xl font-bold tabular-nums text-white" data-testid="crypto-amount"><span className="break-all">{view.payAmountText}</span>{" "}<span className="whitespace-nowrap">{symbol}</span></p>
-            <button type="button" onClick={() => void copy("amount", view.payAmountText)} className={`inline-flex h-9 shrink-0 items-center rounded-lg border border-white/15 px-2.5 text-[11px] font-semibold text-white/80 transition hover:bg-white/10 ${FOCUS}`}>{c.crypto.copy}</button>
+            <p className="min-w-0 font-mono text-2xl font-bold tabular-nums text-white" data-testid="crypto-amount"><span className="break-all">{payAmount}</span>{" "}<span className="whitespace-nowrap">{symbol}</span></p>
+            <button type="button" onClick={() => void copy("amount", payAmount)} className={`inline-flex h-9 shrink-0 items-center rounded-lg border border-white/15 px-2.5 text-[11px] font-semibold text-white/80 transition hover:bg-white/10 ${FOCUS}`}>{c.crypto.copy}</button>
           </div>
           {breakdown && <p className="mt-1 text-[11px] leading-4 text-white/50" data-testid="crypto-breakdown">{breakdown}</p>}
           <PendingCountdown expiresAt={view.expiresAt} now={now} c={c} align="start" />

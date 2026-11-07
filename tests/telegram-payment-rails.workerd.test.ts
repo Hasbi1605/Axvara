@@ -376,36 +376,25 @@ it("CRYPTO: frozen payq1 -> one order + one NOWPayments POST; replay/FX rotate/f
 const consentTag = (code: string, user: string, invoice: string, total: number) =>
   createHmac("sha256", FIXTURE_ENV.BUYER_ORDER_ACCESS_SECRET).update(`gconsent|${code}|${user}|${invoice}|${total}`).digest("hex").slice(0, 16);
 
-it("GATEWAY: private create -> one POST -> changed-fee consent (no VA/link) -> exact keyed consent; replay/old total/forged/cross-owner safe", async () => {
+it("GATEWAY: legacy saved invoice consent (no VA/link before exact total) + replay/old total/forged/cross-owner safe", async () => {
   const h = await makeHarness();
   try {
-    const frozen = await enterOffer(h);
-    const idx = frozen.methods.findIndex((m) => m.id === "sekalipay_gateway:GATEVA");
-    expect(idx).toBeGreaterThanOrEqual(0);
-    await h.call({ op: "click", data: `pm:${frozen.nonce}:${idx}` });
+    // Telegram no longer offers/creates the gateway rail (owner 7 Nov 2026).
+    // Legacy invoices must still read/consent/refresh on the saved binding.
+    const offer = await enterOffer(h);
+    expect(offer.methods.some((m) => m.id.startsWith("sekalipay_gateway:"))).toBe(false);
+    const code = "AXV-20261107-LEGACY01";
+    const expires = new Date(Date.now() + 900_000).toISOString();
+    await h.db.prepare(`INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_status,status,sales_channel,telegram_chat_id,telegram_user_id,variant_id,variant_snapshot,expires_at,locale)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(code, "Fixture", "6281234567890", "buyer@example.test", "[]", 19000, "sekalipay_gateway:GATEVA", "unpaid", "pending", "telegram", "777001", "777001", 1, "{}", expires, "en").run();
+    await h.db.prepare(`INSERT INTO payment_transactions
+      (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,provider_payment_id,status,expires_at,gateway_fee,gateway_estimated_fee,gateway_fee_consent_required,gateway_channel,gateway_label,direct_url,gateway_virtual_account,gateway_is_sandbox,last_error)
+      VALUES(?,'sekalipay_gateway','merchant',?,'sekalipay_gateway',19000,19700,'SPY-r2b-worker','pending',?,?,?,?,'GATEVA','Gate VA','https://sekalipay.com/payment/SPY-r2b-worker','888001',0,NULL)`)
+      .bind(code, code, expires, GATEWAY_FEE_ACTUAL, GATEWAY_FEE_ESTIMATE, 1).run();
 
-    // Gateway needs a phone first: pgo asks for contact, creates nothing.
-    const ask = await h.call({ op: "click", data: `pgo:${frozen.nonce}` });
-    expect(h.allText(ask.views)).toMatch(/WhatsApp number/);
-    expect((await h.call({ op: "raw" })).raw).toContain('"st":"contact"');
-    expect(await h.rows("SELECT code FROM orders")).toHaveLength(0);
-    expect(h.state.gwPosts).toHaveLength(0);
-    const phone = await h.call({ op: "phone", text: "081234567890" });
-    expect(phone.handled).toBe(true);
-
-    // Actual private create: exactly one gateway POST, one order, stock cut once.
-    const created = await h.call({ op: "click", data: `pgo:${frozen.nonce}` });
-    expect(h.state.gwPosts, `views: ${h.allText(created.views)}`).toHaveLength(1);
-    expect(h.state.gwPosts[0]).toMatchObject({ amount: 19000, payment_code: "GATEVA" });
-    const orders = await h.rows("SELECT code,customer_wa,payment_method,subtotal,locale FROM orders");
-    expect(orders).toHaveLength(1);
-    const code = String(orders[0].code);
-    expect(orders[0]).toMatchObject({ customer_wa: "081234567890", payment_method: "sekalipay_gateway:GATEVA", subtotal: 19000, locale: "en" });
-    expect((await h.rows("SELECT stock FROM product_variants WHERE id=1"))[0].stock).toBe(98);
-    const tx0 = (await h.rows("SELECT * FROM payment_transactions WHERE order_code=?", code))[0];
-    expect(tx0).toMatchObject({ provider: "sekalipay_gateway", requested_amount: 19000, gateway_estimated_fee: GATEWAY_FEE_ESTIMATE, gateway_fee: GATEWAY_FEE_ACTUAL, payable_amount: 19000 + GATEWAY_FEE_ACTUAL, gateway_fee_consent_required: 1, provider_payment_id: "SPY-r2b-worker" });
-    expect(tx0.gateway_fee_consented_at).toBeNull();
-    expect((await h.call({ op: "raw" })).raw).toBe(""); // payq1 cleared once the durable TX exists
+    const created = await h.call({ op: "click", data: `refresh:${code}` });
+    expect(h.state.gwPosts).toHaveLength(0); // legacy read path never POSTs
 
     // Changed-fee consent view: fee/total shown, NO VA / payment link.
     const consentView = created.views.at(-1)!;
@@ -419,13 +408,12 @@ it("GATEWAY: private create -> one POST -> changed-fee consent (no VA/link) -> e
     expect(consentBtn?.callback_data).toBe(`gconsent:${code}:19700:${consentTag(code, "777001", "SPY-r2b-worker", 19700)}`);
     const goodData = consentBtn!.callback_data!;
 
-    // Negatives: nothing consented, nothing disclosed, no POST/order/stock change.
+    // Negatives: nothing consented, nothing disclosed, no POST/order change.
     const assertUntouched = async (views: View[]) => {
       expect(secretsShown(views)).toBe(false);
       expect((await h.rows("SELECT gateway_fee_consented_at FROM payment_transactions WHERE order_code=?", code))[0].gateway_fee_consented_at).toBeNull();
-      expect(h.state.gwPosts).toHaveLength(1);
+      expect(h.state.gwPosts).toHaveLength(0);
       expect(await h.rows("SELECT code FROM orders")).toHaveLength(1);
-      expect((await h.rows("SELECT stock FROM product_variants WHERE id=1"))[0].stock).toBe(98);
     };
     // old/stale shown total (legitimately keyed for THAT total) -> re-present only
     const stale = await h.call({ op: "click", data: `gconsent:${code}:19500:${consentTag(code, "777001", "SPY-r2b-worker", 19500)}` });
@@ -458,15 +446,14 @@ it("GATEWAY: private create -> one POST -> changed-fee consent (no VA/link) -> e
     expect(tx1.gateway_fee_consented_at).not.toBeNull();
     expect(tx1).toMatchObject({ gateway_fee: GATEWAY_FEE_ACTUAL, payable_amount: 19700, provider_payment_id: "SPY-r2b-worker" });
 
-    // Replay: same details, consent timestamp/fee/total untouched, no extra POST/order/stock.
+    // Replay: same details, consent timestamp/fee/total untouched, no extra POST/order.
     const replay = await h.call({ op: "click", data: goodData });
     expect(h.allText(replay.views)).toMatch(/Awaiting gateway payment/);
     const tx2 = (await h.rows("SELECT * FROM payment_transactions WHERE order_code=?", code))[0];
     expect(tx2).toMatchObject({ gateway_fee_consented_at: tx1.gateway_fee_consented_at, gateway_fee: GATEWAY_FEE_ACTUAL, payable_amount: 19700 });
-    expect(h.state.gwPosts).toHaveLength(1);
+    expect(h.state.gwPosts).toHaveLength(0); // legacy read/consent never creates
     expect(await h.rows("SELECT code FROM orders")).toHaveLength(1);
     expect(await h.rows("SELECT order_code FROM payment_transactions")).toHaveLength(1);
-    expect((await h.rows("SELECT stock FROM product_variants WHERE id=1"))[0].stock).toBe(98);
     expect(h.state.unexpected).toEqual([]);
   } finally { await h.dispose(); }
 });

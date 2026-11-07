@@ -204,7 +204,8 @@ export async function freezePayq1(input: FreezeInput): Promise<Payq1FreezeResult
   if (!Number.isSafeInteger(input.idrSubtotal) || input.idrSubtotal <= 0) return { ok: false, reason: "no_methods" };
   if (input.contactEmail !== null && (typeof input.contactEmail !== "string" || input.contactEmail.length > 100
     || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.contactEmail))) return { ok: false, reason: "no_methods" };
-  const methods = await buildMethodOptions(input.idrSubtotal);
+  // Owner 7 Nov 2026: bot hanya QRIS + Crypto; gateway Sekalipay tetap di web.
+  const methods = await buildMethodOptions(input.idrSubtotal, { includeGateway: false });
   if (!methods.length) return { ok: false, reason: "no_methods" };
   if (methods.length > PAYQ1_MAX_METHODS) return { ok: false, reason: "overflow" };
   const nowSec = Math.floor(Date.now() / 1000);

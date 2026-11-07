@@ -7,6 +7,7 @@
 import { queryFirst, execRun } from "@/lib/db";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
+import { otherMethodsEntryKeyboard } from "@/lib/telegram/keyboards";
 import { paymentMethodNoticeMessage } from "@/lib/telegram/messages/purchase";
 import type { Payq1State } from "@/lib/telegram/payment-quote";
 import type { Locale } from "@/lib/i18n/locale";
@@ -49,12 +50,37 @@ export async function dispatchPayq1Creating(
   const selected = creating.selected;
   const selectedId = String(selected?.id ?? creating.sel ?? "");
   const kind = String(selected?.kind ?? "");
-  if (creating.st !== "creating" || !selectedId || (kind !== "gateway" && kind !== "crypto")) {
+  // Telegram create NEVER accepts the gateway rail (owner 7 Nov 2026: bot =
+  // QRIS + Crypto; gateway stays web-only). Defense in depth for a tampered or
+  // pre-deploy frozen state. Saved gateway invoices with a durable TX are
+  // resumed before dispatch (`resume_status`) and never reach this guard.
+  if (kind === "gateway" || selectedId.startsWith("sekalipay_gateway:")) {
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage("create_failed", { locale }),
+      text: paymentMethodNoticeMessage("method_unavailable", { locale }),
       parse_mode: "HTML",
+      reply_markup: otherMethodsEntryKeyboard({ locale }),
     });
+    return;
+  }
+  /**
+   * Definite failure notice + "other methods" entry (pmentry → fresh quote/nonce).
+   * Releases the creating anchor only when provably no order/TX exists; otherwise
+   * release refuses and the stale anchor is left for the existing resume/cancel
+   * paths (ambiguous claims are never cancelled here).
+   */
+  const failureNotice = async (notice: "create_failed" | "method_unavailable" = "create_failed") => {
+    const { releasePayq1CreatingIfNoOrder } = await import("@/lib/telegram/payment-create");
+    await releasePayq1CreatingIfNoOrder(ownerId, creatingRaw, orderCode, idempotencyKey).catch(() => false);
+    await safeEditOrSend({
+      chat_id: chatId, message_id: messageId,
+      text: paymentMethodNoticeMessage(notice, { locale }),
+      parse_mode: "HTML",
+      reply_markup: otherMethodsEntryKeyboard({ locale }),
+    });
+  };
+  if (creating.st !== "creating" || !selectedId || (kind !== "gateway" && kind !== "crypto")) {
+    await failureNotice();
     return;
   }
 
@@ -81,11 +107,7 @@ export async function dispatchPayq1Creating(
     || savedOrder.status !== "pending"
     || Number(savedOrder.subtotal) !== creating.idrSubtotal
   )) {
-    await safeEditOrSend({
-      chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage("create_failed", { locale }),
-      parse_mode: "HTML",
-    });
+    await failureNotice();
     return;
   }
 
@@ -120,32 +142,20 @@ export async function dispatchPayq1Creating(
     try {
       await checkNowpaymentsMinimum(amountText, "usd", payCurrency);
     } catch {
-      await safeEditOrSend({
-        chat_id: chatId, message_id: messageId,
-        text: paymentMethodNoticeMessage("create_failed", { locale }),
-        parse_mode: "HTML",
-      });
+      await failureNotice();
       return;
     }
     // Unverifiable saved outcome crypto: provider account unverified => never
     // claimed as production. Flag off / missing FX => GET recovery path.
     const { isNowpaymentsConfigured } = await import("@/lib/payments/rails");
     if (!isNowpaymentsConfigured()) {
-      await safeEditOrSend({
-        chat_id: chatId, message_id: messageId,
-        text: paymentMethodNoticeMessage("create_failed", { locale }),
-        parse_mode: "HTML",
-      });
+      await failureNotice();
       return;
     }
   } else {
     const { isSekalipayGatewayConfigured } = await import("@/lib/payments/rails");
     if (!isSekalipayGatewayConfigured()) {
-      await safeEditOrSend({
-        chat_id: chatId, message_id: messageId,
-        text: paymentMethodNoticeMessage("create_failed", { locale }),
-        parse_mode: "HTML",
-      });
+      await failureNotice();
       return;
     }
   }
@@ -183,11 +193,7 @@ export async function dispatchPayq1Creating(
   } catch {
     // Stock/config/pending-guard failure: fail closed, intent retained for
     // the user to requote honestly (no silent cart mutation here).
-    await safeEditOrSend({
-      chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage("create_failed", { locale }),
-      parse_mode: "HTML",
-    });
+    await failureNotice();
     return;
   }
 
@@ -273,13 +279,19 @@ export async function dispatchPayq1Creating(
     const tx = await queryFirst(`SELECT order_code FROM payment_transactions WHERE order_code=?`, orderedCode).catch(() => null);
     if (tx) {
       await refreshResumeView(chatId, messageId, orderedCode, from, locale, creatingRaw);
+      // Ambiguous claim: saved invoice stays authoritative (no re-POST, no
+      // cancel). Follow-up entry lets the buyer start a FRESH quote → new
+      // order (same as the web 503 reset). refreshResumeView already cleared
+      // the creating anchor because a durable TX exists.
+      await sendMessage({
+        chat_id: chatId,
+        text: paymentMethodNoticeMessage("create_failed", { locale }),
+        parse_mode: "HTML",
+        reply_markup: otherMethodsEntryKeyboard({ locale }),
+      });
       return;
     }
-    await safeEditOrSend({
-      chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage("create_failed", { locale }),
-      parse_mode: "HTML",
-    });
+    await failureNotice();
     return;
   }
 
@@ -296,5 +308,4 @@ export async function dispatchPayq1Creating(
   } catch { /* cart cleanup best-effort; order/TX already durable */ }
   await refreshResumeView(chatId, messageId, orderedCode, from, locale, creatingRaw);
   void execRun;
-  void sendMessage;
 }
