@@ -3,6 +3,7 @@
 ## Keputusan owner 7 November 2026: nama produk, S&K admin, dan email pembeli EN — fase 3 (lokal, belum deploy)
 - `products.name_en` (migrasi 0105) adalah nama EN milik admin; bila kosong tampilan EN memakai terjemahan token durasi/tier dari nama tersimpan. Seed 0106 hanya mengisi nama yang butuh padanan non-token (7 baris). Nama tersimpan, snapshot order, dan identitas email tidak berubah.
 - `product_variants.admin_terms_en`/`admin_activation_en` (0105) diisi lewat endpoint variant-copy yang sama; EN hanya berlaku selama salinan admin ID masih valid terhadap fingerprint WR, lalu fallback ke kurasi EN atau teks WR. Seed 0106 menerjemahkan 9 varian admin yang ada.
+- Perbaikan propagasi 7 November 2026: `mapVariant` katalog meneruskan `admin_terms_en`/`admin_activation_en` ke resolver, jadi `copy_en` publik pada `/api/catalog` benar-benar berisi S&K/aktivasi EN admin yang tersimpan (sebelumnya kolom ter-SELECT tetapi terbuang). `copy` tetap ID, fallback NULL/otomatis dan proteksi fingerprint tidak berubah. Ini perbaikan jalur data, bukan jaminan seluruh konten supplier sudah diterjemahkan.
 - Email pembeli Market (konfirmasi/lunas/pending, kredensial, handover, gagal kirim, QRIS kedaluwarsa, akses PIN) mengikuti `order.locale`: subject, isi, dan tombol EN; default ID. Admin-facing email tetap ID.
 
 ## Keputusan owner 7 November 2026: metadata, halaman "segera hadir", dan email Pedia ID/EN (lokal, belum deploy)

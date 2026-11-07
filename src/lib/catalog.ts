@@ -623,6 +623,8 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     delivery_terms: nullableText(row.wr_delivery_terms) ?? nullableText(row.sk_seller_note),
     admin_terms: nullableText(row.admin_terms),
     admin_activation: nullableText(row.admin_activation),
+    admin_terms_en: nullableText(row.admin_terms_en),
+    admin_activation_en: nullableText(row.admin_activation_en),
     admin_copy_fingerprint: row.admin_copy_fingerprint == null ? null : String(row.admin_copy_fingerprint),
     wr_delivery_class: row.wr_delivery_class ? String(row.wr_delivery_class) : null,
     wr_variant_id: row.wr_variant_id != null ? String(row.wr_variant_id) : null,

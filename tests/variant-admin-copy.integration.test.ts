@@ -348,4 +348,29 @@ describe("S&K admin versi Inggris (migrasi 0105)", () => {
     expect(saved.hasOverride).toBe(false);
     expect(saved.adminTermsEn).toBe("");
   });
+
+  it("EN admin bertahan dari baris katalog sampai copy_en publik, ID tetap di copy", async () => {
+    fixture.sql.prepare(
+      "UPDATE product_variants SET admin_terms=?, admin_activation=?, admin_terms_en=?, admin_activation_en=?, admin_copy_fingerprint='' WHERE id=2",
+    ).run(
+      "Detail paket:\n- Salinan Indonesia",
+      "1. Login lewat akun Indonesia",
+      "Package details:\n- English terms",
+      "1. Log in with the English account",
+    );
+
+    const shown = await storefrontVariant("canva-premium");
+    expect(shown.copy.source).toBe("admin");
+    expect(shown.copy.sections.flatMap((section: { items: string[] }) => section.items)).toContain("Salinan Indonesia");
+    expect(shown.copy_en.source).toBe("admin");
+    expect(JSON.stringify(shown.copy_en)).toContain("English terms");
+    expect(JSON.stringify(shown.copy_en)).toContain("Log in with the English account");
+    expect(JSON.stringify(shown.copy_en)).not.toContain("Salinan Indonesia");
+    expect(shown).not.toHaveProperty("admin_terms_en");
+    expect(shown).not.toHaveProperty("admin_activation_en");
+
+    // Varian tanpa EN tetap memakai fallback otomatis (kurasi EN), bukan kolom mentah.
+    const wr = await storefrontVariant("netflix-premium");
+    expect(wr.copy_en.source).toBe("axvara");
+  });
 });
