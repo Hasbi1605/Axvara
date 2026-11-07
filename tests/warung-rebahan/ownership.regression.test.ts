@@ -124,6 +124,23 @@ describe("produk WR: field milik sync ditolak di API", () => {
     expect(res.status).toBe(200);
   });
 
+  it("regresi 7 Nov 2026: deskripsi WR berspasi di ujung + form ter-trim tetap bisa pindah kategori", async () => {
+    fixture.sql.prepare("UPDATE products SET description=? WHERE id=1").run("Deskripsi dari WR\n\n");
+    const target = fixture.sql.prepare("SELECT id, slug FROM categories WHERE id<>2 ORDER BY id LIMIT 1").get() as { id: number; slug: string };
+    const res = await putProduct(1, {
+      name: "CapCut Pro (WR)",
+      slug: "capcut-pro-wr",
+      description: "Deskripsi dari WR",
+      categorySlug: target.slug,
+      variants: [{ id: 1, sku: "WR-VAR1", label: "Pro 7 Hari", price: 7500, stock: 10, is_active: 1, sort_order: 0 }],
+    });
+    expect(res.status).toBe(200);
+    const row = fixture.sql.prepare("SELECT category_id, description FROM products WHERE id=1").get() as { category_id: number; description: string };
+    expect(row.category_id).toBe(target.id);
+    // Kolom milik sync tidak ditulis ulang oleh admin.
+    expect(row.description).toBe("Deskripsi dari WR\n\n");
+  });
+
   it("produk manual tidak ikut terkunci", async () => {
     const res = await putProduct(2, {
       name: "Produk Manual Baru",

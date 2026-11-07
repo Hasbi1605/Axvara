@@ -76,7 +76,8 @@ function changed(incoming: unknown, current: unknown): boolean {
   const b = current === null || current === undefined ? null : typeof current === "number" ? current : String(current);
   if (a === null && b === null) return false;
   if (typeof a === "number" || typeof b === "number") return Number(a) !== Number(b);
-  return a !== b;
+  // Validasi API men-trim string masuk; spasi di ujung teks WR bukan perubahan.
+  return (a ?? "").trim() !== (b ?? "").trim();
 }
 
 /**

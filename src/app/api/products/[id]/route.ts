@@ -285,8 +285,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // Bila varian dikirim, master price/stock/compare dihitung ulang oleh sync
   // query di bawah — jangan tulis nilai legacy pendamping dari client.
   const skipLegacyCommerceWrite = hasExplicitVariants && Array.isArray(data.variants) && data.variants.length > 0;
+  const wrManagedProduct = isWrManaged(existing);
   for (const [k,col] of Object.entries(map)) {
     if (skipLegacyCommerceWrite && (k === "price" || k === "comparePrice" || k === "stock")) continue;
+    // Lolos guard = nilainya sama dengan DB; jangan menulis ulang kolom milik sync WR.
+    if (wrManagedProduct && (WR_OWNED_PRODUCT_FIELDS as readonly string[]).includes(k)) continue;
     const v = (data as Record<string, unknown>)[k];
     if (v !== undefined) {
       if (k==="isActive" || k==="requireEmail") { fields.push(`${col}=?`); vals.push(v ? 1:0); }

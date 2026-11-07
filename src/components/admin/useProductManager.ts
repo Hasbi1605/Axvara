@@ -417,9 +417,12 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
 
     const payload = {
       ...form,
-      name: form.name!.trim(),
-      slug: form.slug!.trim().toLowerCase(),
-      description: (form.description ?? "").trim(),
+      // Produk WR: nama/slug/deskripsi milik sync — jangan dikirim ulang.
+      // Teks WR sering berspasi di ujung; versi ter-trim dibaca server sebagai
+      // "diubah" (409) sehingga ganti kategori/badge pun gagal disimpan.
+      name: form.wrManaged ? undefined : form.name!.trim(),
+      slug: form.wrManaged ? undefined : form.slug!.trim().toLowerCase(),
+      description: form.wrManaged ? undefined : (form.description ?? "").trim(),
       adminDescriptionOverride: form.wrManaged ? (form.adminDescriptionOverride ?? "").trim() : undefined,
       // Field milik WR tidak pernah dikirim ulang untuk produk auto-managed:
       // server menolaknya dengan 409 dan nilainya toh ditimpa sync berikutnya.
