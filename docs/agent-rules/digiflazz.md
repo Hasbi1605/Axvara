@@ -22,6 +22,9 @@ Nama seller disamarkan sampai deposit pertama; kenali seller lewat `seller_id`.
   Blood Strike 300 -> Di***, Undawn 250 RC -> Om***. OFF: 14 produk berisiko serta
   PUBG 48600 UC dan Stumble Guys 800 Gems (tidak ada seller matang).
 - Harga Max belum diisi; tentukan bersama integrasi `max_price`.
+- Keputusan owner 9 November 2026: seller cadangan otomatis untuk AXVARA Games memakai
+  baris produk kedua dengan kode buyer akhiran `b` (seller matang lain), dipakai hanya
+  setelah Gagal final seller utama; belum dipasang di akun. Detail `docs/GAMES.md` §9.
 - Panel membatasi request (HTTP 429 "Too Many Attempts", ~60/menit); otomasi
   dashboard wajib ≤1 request/detik dengan retry `retry-after`. Hapus produk massal
   butuh konfirmasi owner per daftar ID.

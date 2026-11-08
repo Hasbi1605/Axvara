@@ -6,12 +6,12 @@ Detail lengkap: `docs/GAMES.md` §4–§7. Ringkasan:
 - Acuan pola UX Oura Store (header game + langkah bernomor + rail ringkasan sticky),
   **tanpa** meniru aset, warna atau teks mereka; identitas tetap token AXVARA
   (midnight, cyan aksi/terpilih, gold nomor langkah & badge, glass, Space Grotesk harga).
-- Hero beranda: usulan **hybrid** — orbit AXVARA dengan ikon game sebagai planet +
-  carousel promo tipis di bawahnya bila ada banner aktif (keputusan terbuka A/B/C).
+- Hero beranda **[DISETUJUI 9 Nov 2026] hybrid** — orbit AXVARA dengan ikon game sebagai
+  planet yang bisa diklik + carousel promo tipis di bawahnya hanya bila ada banner aktif.
 - Perbaikan atas Oura: tanpa popup saat masuk; nominal dikelompokkan (Spesial,
   Terlaris, Semua dilipat) + chip rentang + cari angka; satu kartu per nominal;
   badge "instan" sekali di header; total per metode termasuk biaya; cek nickname
-  sebelum bayar (keputusan terbuka); bar bawah mobile satu baris ±64px; tanpa rating fiktif.
+  sebelum bayar (disetujui); bar bawah mobile satu baris ±64px; tanpa rating fiktif.
 - Kartu nominal = radio glass, terpilih border cyan + glow; grid 2 kolom mobile /
   3 desktop; ikon mata uang SVG AXVARA; ikon UI Lucide.
 

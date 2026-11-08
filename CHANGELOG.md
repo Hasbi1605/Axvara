@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-09 — Keputusan owner AXVARA Games dicatat: hero hybrid orbit+carousel, gelombang 1 FF/FF MAX/ML/PUBG, cek nickname sebelum bayar aktif, seller cadangan otomatis (kode akhiran b, hanya setelah Gagal final), kode promo menyusul, aset awal dari sumber resmi publisher (RENCANA, belum implementasi) — docs/GAMES.md, docs/PRD.md, docs/DESIGN.md, docs/agent-rules/digiflazz.md — (verifikasi: dokumentasi saja; git diff --check)
+
 - 2026-11-09 — Spesifikasi AXVARA Games ditulis (RENCANA, belum implementasi): dokumen baru docs/GAMES.md (posisi produk, MVP bertahap, route rencana /games/*, beranda + opsi hero orbit/carousel/hybrid, halaman game pola Oura dengan perbaikan UX, rasa AXVARA, aset, alur pesanan, keputusan terbuka) + ringkasan di PRD/DESIGN/ARCHITECTURE + indeks AGENTS — docs/GAMES.md, docs/PRD.md, docs/DESIGN.md, docs/ARCHITECTURE.md, AGENTS.md — (verifikasi: dokumentasi saja; audit Oura Store desktop/mobile di browser; git diff --check)
 
 - 2026-11-09 — Rumus harga AXVARA Games disetujui owner: Oura −2% dengan batas bawah modal + biaya kanal + margin minimum 3% (rencana, belum implementasi) — docs/PRD.md — (verifikasi: dokumentasi saja; git diff --check)

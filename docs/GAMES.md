@@ -1,6 +1,6 @@
 # AXVARA Games — Spesifikasi Produk & Desain
 
-> **Status (9 November 2026): RENCANA.** Belum ada route, komponen, schema,
+> **Status (9 November 2026): RENCANA; keputusan terbuka §9 sudah dijawab owner (lihat §9).** Belum ada route, komponen, schema,
 > migrasi, env, dispatch, webhook, deposit atau transaksi. Dokumen ini adalah
 > bahan diskusi desain dengan owner; bagian berlabel **[KEPUTUSAN TERBUKA]**
 > belum disetujui. Keputusan yang sudah disetujui owner ditandai **[DISETUJUI]**.
@@ -168,14 +168,28 @@ Digiflazz (`ref_id` unik, `max_price`) → Sukses (tampilkan SN/keterangan) / Pe
 kredit AXVARA, atau coba seller cadangan otomatis. Halaman status wajib jujur
 (pola status Pedia), tanpa "sukses" sebelum Digiflazz menyatakan sukses.
 
-## 9. Keputusan terbuka (untuk dirembuk)
+## 9. Keputusan owner 9 November 2026 [DISETUJUI]
 
-1. Hero: A orbit / B carousel / **C hybrid (usulan)**.
-2. Daftar game gelombang 1.
-3. Cek nickname sebelum bayar (biaya kecil per cek) — aktif atau tidak.
-4. Kebijakan gagal setelah bayar.
-5. Kode promo di MVP atau nanti.
-6. Banner/ikon game: siapa yang menyiapkan aset awal.
+1. **Hero: Opsi C hybrid** — orbit AXVARA dengan ikon game sebagai planet yang bisa
+   diklik + carousel promo tipis di bawahnya hanya bila ada banner aktif.
+2. **Gelombang 1:** Free Fire, Free Fire MAX, Mobile Legends, PUBG Mobile.
+3. **Cek nickname sebelum bayar: aktif** (produk "Cek Username" Digiflazz). Wajib
+   rate limit per IP/perangkat dan cache hasil per ID+game agar biaya cek tidak
+   disalahgunakan; kegagalan cek tidak memblokir bila supplier cek sedang gangguan
+   (tampilkan "Nickname belum bisa dicek, pastikan ID benar").
+4. **Gagal setelah bayar: otomatis coba seller cadangan.** Digiflazz tidak punya fitur
+   backup seller, jadi tiap nominal mendapat baris kedua di akun buyer dengan kode
+   ber-akhiran `b` (mis. `ff140b`) yang memakai seller matang lain. Aturan: hanya
+   setelah status **Gagal final** dari seller utama (bukan Pending/timeout), memakai
+   `ref_id` baru yang tercatat terhubung ke pesanan yang sama, tetap dengan
+   `max_price` = batas modal pesanan; bila cadangan juga gagal → status
+   "Perlu tindakan admin" + notifikasi admin (refund manual). Tidak pernah dua dispatch
+   aktif bersamaan untuk satu pesanan.
+5. **Kode promo: menyusul** (langkah 6 disembunyikan di MVP).
+6. **Aset awal disiapkan agent:** logo/ikon & key art resmi game diambil dari sumber
+   resmi publisher/toko aplikasi/press kit (identifikasi produk), dioptimasi WebP dan
+   disimpan di R2; **tidak** mengambil aset buatan toko top up lain (termasuk Oura).
+   Ikon mata uang dan panduan "cara cari ID" dibuat sendiri.
 
 ## 10. Kriteria selesai (untuk tahap implementasi nanti)
 
