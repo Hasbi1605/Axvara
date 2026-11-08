@@ -1,5 +1,13 @@
 # PRD — AXVARA
 
+## Keputusan owner 9 November 2026: AXVARA Games (rencana, belum diimplementasikan)
+
+- AXVARA Games menjadi bagian `axvara.tech`, pola seperti AXVARA Pedia (bukan subdomain/toko terpisah).
+- Supplier: Digiflazz buyer (seller utama Om*** + pengisi celah; kode buyer `<game>[id]<nominal>`; lihat `docs/agent-rules/digiflazz.md`).
+- Pembayaran memakai rail yang sudah ada di Market/Pedia: QRIS, Virtual Account, e-wallet (gateway Sekalipay) dan crypto (NOWPayments).
+- Harga jual dibandingkan dengan Oura Store (ourastore.com). Snapshot 9 November 2026: ruang di atas modal Digiflazz median FF/FF MAX ~24% (15–39%), ML ~5,4%, PUBG ~6%, Valorant ~5,5%, CODM ~8%, Genshin <1%; WDP/Twilight Pass Indonesia modal kita di atas harga Oura. Usulan rumus (menunggu konfirmasi owner): harga jual = harga Oura dikurangi selisih kecil, dengan batas bawah modal + biaya kanal pembayaran + margin minimum; SKU yang tidak memenuhi batas bawah tidak dijual murah/disembunyikan.
+- Belum ada route, schema, dispatch, webhook, deposit atau transaksi; tahap ini hanya keputusan produk.
+
 ## Keputusan owner 8 November 2026: editor harga grosir di modal produk, hanya produk manual (lokal, belum deploy)
 - Harga grosir (tier per varian) kini bisa diatur dari editor produk yang benar-benar dipakai admin: `ProductEditorModal` → `sections/ProductVariantRows` (multi varian) dan `sections/SingleVariantFields` (satu varian). Sebelumnya `BulkTierEditor` hanya terpasang di `VariantEditor` yang tidak diimpor halaman mana pun sejak September 2026, sehingga tidak ada jalan mengatur grosir dari UI.
 - **Batasan owner:** grosir HANYA untuk produk manual. Produk supplier WR (Akun Premium/Jaspay) dan Sekalipay-SK tidak menampilkan editor (hanya catatan "Harga grosir hanya untuk produk manual."); API menolak permintaan mengaktifkan grosir pada produk supplier dengan 400 `bulk_pricing_supplier_forbidden`, sedangkan menonaktifkan (`enabled=false`) tetap diterima agar data lama bisa dibersihkan. Data tier yang mungkin sudah tersimpan pada varian supplier diabaikan oleh katalog, quote, order, dan Telegram (harga dasar yang berlaku), tanpa menghapus data dari database.

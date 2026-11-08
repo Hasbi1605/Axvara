@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-09 — Keputusan produk AXVARA Games dicatat (rencana, belum implementasi): bagian axvara.tech seperti Pedia, rail QRIS/VA/e-wallet/crypto yang sudah ada, benchmark harga Oura Store (snapshot ruang margin FF ~24%, ML ~5%, PUBG ~6%, Genshin <1%) — docs/PRD.md — (verifikasi: dokumentasi saja; git diff --check; preflight Development Digiflazz via VPS sukses membaca 596 produk Games)
+
 - 2026-11-09 — Akun Digiflazz Games dirapikan: 38 baris dobel kosong dihapus (konfirmasi owner), 7 produk ber-seller nonaktif diganti seller matang termurah, 596/612 ON, 16 OFF (14 berisiko + PUBG 48600 UC, Stumble Guys 800 Gems tanpa seller matang) — docs/agent-rules/digiflazz.md — (verifikasi: baca ulang daftar produk panel: 612 baris unik, 0 kode dobel; dokumentasi saja, git diff --check)
 
 - 2026-11-09 — Keputusan owner seller Games Digiflazz dicatat (konfigurasi akun lewat dashboard owner, bukan kode): seller utama Om*** `D2wn4W` + pengisi celah sesuai berkas rekomendasi 612 produk/18 game, format kode buyer `<game>[id]<nominal>` (ml86, mlid97, ff140, pubg60), produk berisiko dibiarkan OFF, batas rate panel ~60 req/menit; mengganti aturan lama "bukan seller tunggal" — docs/agent-rules/digiflazz.md — (verifikasi: dokumentasi saja; diff + git diff --check; pemasangan panel 9 Nov: 589 produk terpasang + ff12 lama, 0 kode dobel, 23 OFF + 38 baris dobel kosong menunggu hapus; belum ada deposit/API/transaksi)
