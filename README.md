@@ -1689,3 +1689,6 @@ provider lain tetap independen. `true` berarti Telegram mengakui pesan. Jika
 Telegram menolak/timeout, reservasi dipertahankan agar tidak dikirim lagi tiap
 tick; pengingat berikutnya mengikuti throttle, sehingga alert bisa tertunda.
 Tidak mengubah dispatch, pembayaran, harga, supplier atau notifikasi pembeli.
+
+
+AXVARA Games (RENCANA, 9 November 2026): spesifikasi di `docs/GAMES.md`; supplier Digiflazz (`docs/agent-rules/digiflazz.md`). Kode yang sudah ada baru `src/lib/games/pricing.ts` (rumus harga jual Oura −2% dengan batas bawah modal + biaya kanal + 3%, fungsi murni) beserta `tests/games-pricing.test.ts`; belum ada route `/games`, schema, env atau dispatch.

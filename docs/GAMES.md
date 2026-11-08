@@ -49,6 +49,7 @@ Mengikuti pola `src/app/pedia/*`:
 | `/games/bantuan`, `/games/ketentuan` | Bantuan & S&K khusus top up |
 
 `ServicesMenu` dan `CrossServicePromo` bertambah entri Games; footer bersama tetap satu.
+Seperti Pedia (route internal `/pedia`, URL kanonis `pedia.axvara.tech`), Games memakai route internal `/games` dengan URL kanonis usulan `games.axvara.tech` — konfirmasi DNS/routing di fase G7.
 
 ## 4. Beranda `/games`
 
@@ -198,3 +199,29 @@ kredit AXVARA, atau coba seller cadangan otomatis. Halaman status wajib jujur
 - Tidak ada popup saat masuk; tidak ada angka rating fiktif; total per metode benar.
 - Test harga (rumus Oura −2% + batas bawah), dispatch idempoten, webhook HMAC, status jujur.
 - Dokumen PRD/DESIGN/ARCHITECTURE/README/CHANGELOG diperbarui sesuai aturan repo.
+
+## 11. Rencana kerja implementasi (brief serah terima untuk Paseo orkestrator)
+
+Sudah dikerjakan (9 November 2026):
+- Akun Digiflazz: 612 produk Games unik, 596 ON dengan kode buyer final; seller
+  cadangan berkode akhiran `b` untuk gelombang 1 (lihat `docs/agent-rules/digiflazz.md`).
+- `src/lib/games/pricing.ts` + `tests/games-pricing.test.ts`: rumus harga jual murni
+  (`computeGamesSellPrice`, `gamesPriceFloor`) — pakai ini, jangan menulis ulang.
+- Preflight baca-saja `scripts/digiflazz-preflight.mjs` lewat SSH VPS (Development OK).
+
+Urutan fase (masing-masing satu PR/commit logis, wajib baca AGENTS.md + aturan area):
+
+| Fase | Isi | Repo/area | Selesai bila |
+|---|---|---|---|
+| G1 | Proxy `/dgf/*` di VPS: allowlist eksak `POST /dgf/v1/{cek-saldo,price-list,transaction}`, header `x-proxy-token`, body diteruskan apa adanya ke `api.digiflazz.com`, timeout & error kode seperti `/skg/*` | `/Users/macbookair/axvara-wr-proxy` (cek worktree kotor milik tugas lain dulu) + `axvara-wr-proxy/AGENTS.md` | test proxy lulus; `cek-saldo` Development lewat proxy 200; tanpa `/transaction` nyata |
+| G2 | Klien Digiflazz server-side (sign MD5, price-list, transaction, cek status `ref_id` sama, parser respons) + env `secret_text` | `src/lib/games/digiflazz.ts` | test kontrak dengan fixture; tidak ada key di bundle klien |
+| G3 | Schema D1 + migrasi: game, SKU (kode utama/cadangan, modal, referensi Oura, harga jual), pesanan game, dispatch | `drizzle/schema.sql`, `migrations/` | migrasi lokal/remote via CI; ARCHITECTURE §4 diperbarui |
+| G4 | Sinkron katalog terjadwal (cache, batas rate price-list) + hitung harga via `pricing.ts`; input harga referensi admin | cron + admin | test sinkron & harga; tidak memanggil price-list per page view |
+| G5 | Order + dispatch: buat pesanan harga terkunci → rail pembayaran existing → setelah terverifikasi kirim `transaction` (`max_price`, `ref_id` unik) → pending cek ulang `ref_id` sama → Gagal final: coba kode `b` sekali → gagal lagi: "Perlu tindakan admin" | `src/lib/games/*`, `src/app/api/games/*` | test idempoten, tidak ada dua dispatch aktif, fixture `testing:true` sukses/gagal/pending |
+| G6 | Webhook `POST /api/games/digiflazz/webhook` (HMAC-SHA1 `X-Hub-Signature` body mentah, idempoten) + cek nickname (rate limit + cache) | API | test signature salah ditolak, duplikat aman |
+| G7 | UI `/games`, `/games/[slug]`, `/games/pesanan/[code]`, lacak/bantuan/ketentuan sesuai §4–§7 & §9; aset game resmi di R2 | `src/app/games/*`, komponen | verifikasi browser nyata desktop/mobile, keyboard, reduced motion; README/ARCHITECTURE/DESIGN diperbarui |
+| G8 | Go-live: rotasi key (pernah tertempel di chat), mode Production + OTP owner, deposit kecil, satu transaksi nyata disetujui owner | owner + agent | bukti transaksi sukses; tanpa QA di produksi selain yang disetujui |
+
+Batasan: jangan mengaktifkan webhook dashboard sebelum G6 terdeploy; jangan deposit
+atau transaksi produksi tanpa izin owner; jangan mengubah seller/kode di akun tanpa
+mencatat di `docs/agent-rules/digiflazz.md`.

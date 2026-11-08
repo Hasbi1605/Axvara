@@ -115,6 +115,7 @@ cron atau perubahan proxy yang dibuat pada tahap ini. Rencana teknis:
   `X-Hub-Signature` HMAC-SHA1 body mentah dan idempoten.
 - **Pembayaran:** memakai rail existing (QRIS provider tersimpan, gateway Sekalipay
   VA/e-wallet, NOWPayments crypto) tanpa rail baru.
+- **Sudah ada (9 Nov 2026):** `src/lib/games/pricing.ts` (fungsi murni `computeGamesSellPrice`/`gamesPriceFloor`, tanpa I/O) + `tests/games-pricing.test.ts`. Rencana fase G1–G8: `docs/GAMES.md` §11.
 - **Env (rencana, semua `secret_text`):** kredensial Digiflazz + secret webhook + URL/token
   proxy `/dgf`; dicatat di §16 saat benar-benar dipasang.
 
