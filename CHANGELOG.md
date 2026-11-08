@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-09 — Rumus harga AXVARA Games disetujui owner: Oura −2% dengan batas bawah modal + biaya kanal + margin minimum 3% (rencana, belum implementasi) — docs/PRD.md — (verifikasi: dokumentasi saja; git diff --check)
+
 - 2026-11-09 — Keputusan produk AXVARA Games dicatat (rencana, belum implementasi): bagian axvara.tech seperti Pedia, rail QRIS/VA/e-wallet/crypto yang sudah ada, benchmark harga Oura Store (snapshot ruang margin FF ~24%, ML ~5%, PUBG ~6%, Genshin <1%) — docs/PRD.md — (verifikasi: dokumentasi saja; git diff --check; preflight Development Digiflazz via VPS sukses membaca 596 produk Games)
 
 - 2026-11-09 — Akun Digiflazz Games dirapikan: 38 baris dobel kosong dihapus (konfirmasi owner), 7 produk ber-seller nonaktif diganti seller matang termurah, 596/612 ON, 16 OFF (14 berisiko + PUBG 48600 UC, Stumble Guys 800 Gems tanpa seller matang) — docs/agent-rules/digiflazz.md — (verifikasi: baca ulang daftar produk panel: 612 baris unik, 0 kode dobel; dokumentasi saja, git diff --check)

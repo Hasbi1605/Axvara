@@ -5,7 +5,7 @@
 - AXVARA Games menjadi bagian `axvara.tech`, pola seperti AXVARA Pedia (bukan subdomain/toko terpisah).
 - Supplier: Digiflazz buyer (seller utama Om*** + pengisi celah; kode buyer `<game>[id]<nominal>`; lihat `docs/agent-rules/digiflazz.md`).
 - Pembayaran memakai rail yang sudah ada di Market/Pedia: QRIS, Virtual Account, e-wallet (gateway Sekalipay) dan crypto (NOWPayments).
-- Harga jual dibandingkan dengan Oura Store (ourastore.com). Snapshot 9 November 2026: ruang di atas modal Digiflazz median FF/FF MAX ~24% (15–39%), ML ~5,4%, PUBG ~6%, Valorant ~5,5%, CODM ~8%, Genshin <1%; WDP/Twilight Pass Indonesia modal kita di atas harga Oura. Usulan rumus (menunggu konfirmasi owner): harga jual = harga Oura dikurangi selisih kecil, dengan batas bawah modal + biaya kanal pembayaran + margin minimum; SKU yang tidak memenuhi batas bawah tidak dijual murah/disembunyikan.
+- Harga jual dibandingkan dengan Oura Store (ourastore.com). Snapshot 9 November 2026: ruang di atas modal Digiflazz median FF/FF MAX ~24% (15–39%), ML ~5,4%, PUBG ~6%, Valorant ~5,5%, CODM ~8%, Genshin <1%; WDP/Twilight Pass Indonesia modal kita di atas harga Oura. Rumus disetujui owner 9 November 2026: harga jual = harga Oura −2%, dengan batas bawah modal Digiflazz + biaya kanal pembayaran + margin minimum 3%; bila harga Oura −2% di bawah batas bawah, jual di batas bawah (atau sembunyikan SKU bila tidak kompetitif). SKU tanpa pembanding Oura memakai modal + biaya kanal + margin minimum 3% sampai ada aturan lain.
 - Belum ada route, schema, dispatch, webhook, deposit atau transaksi; tahap ini hanya keputusan produk.
 
 ## Keputusan owner 8 November 2026: editor harga grosir di modal produk, hanya produk manual (lokal, belum deploy)
