@@ -15,13 +15,12 @@ Nama seller disamarkan sampai deposit pertama; kenali seller lewat `seller_id`.
   `buyer_sku_code`; jangan mengganti kode yang sudah terpasang tanpa migrasi.
 - Produk berisiko (rating <4,5 atau seller tanpa rating) dibiarkan OFF tanpa seller.
 - Kode buyer maksimal 25 karakter (validasi panel HTTP 422).
-- Hasil pemasangan 9 November 2026 (snapshot): 650 baris Games, 590 ON
-  (589 terpasang sesuai rekomendasi + `ff12` lama dengan seller VE*** yang tidak
-  diubah), 0 kode dobel. OFF: 14 produk berisiko, 9 produk yang seller pilihannya
-  sudah tidak aktif (PUBG 32400/48600 UC, FF Membership Mingguan/Bulanan, FF 12 DM
-  baris rekomendasi, Super Sus 310 Goldstar, Undawn 250 RC, Stumble Guys 800 Gems,
-  Blood Strike 300 Gold), serta 38 baris dobel kosong yang belum dihapus (menunggu
-  konfirmasi owner).
+- Hasil pemasangan 9 November 2026 (snapshot): 612 baris Games (38 baris dobel
+  kosong dihapus atas konfirmasi owner), 596 ON, 0 kode dobel. 7 produk yang seller
+  rekomendasinya nonaktif diganti seller matang termurah (rating >=4,5, ulasan >=20):
+  FF Membership Mingguan/Bulanan + Super Sus 310 -> Ki***, FF 12 DM + PUBG 32400 UC +
+  Blood Strike 300 -> Di***, Undawn 250 RC -> Om***. OFF: 14 produk berisiko serta
+  PUBG 48600 UC dan Stumble Guys 800 Gems (tidak ada seller matang).
 - Harga Max belum diisi; tentukan bersama integrasi `max_price`.
 - Panel membatasi request (HTTP 429 "Too Many Attempts", ~60/menit); otomasi
   dashboard wajib ≤1 request/detik dengan retry `retry-after`. Hapus produk massal
