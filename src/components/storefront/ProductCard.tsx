@@ -138,8 +138,8 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
             {showCompare && <span className="text-[10px] sm:text-xs text-white/30 line-through leading-none"><Price idr={product.comparePrice!} prices={prices} /></span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-1">
-            <span className="text-[10px] sm:text-xs text-white/65 font-medium">{product.soldCount ? t.soldCount(product.soldCount) : t.soldBare}</span>
-            <span className="text-[10px] sm:text-xs font-semibold text-[#00E5FF]/70 group-hover:text-[#00E5FF]">{t.viewDetails}</span>
+            <span className="min-w-0 truncate whitespace-nowrap text-[10px] sm:text-xs text-white/65 font-medium">{product.soldCount ? t.soldCount(product.soldCount) : t.soldBare}</span>
+            <span className="shrink-0 whitespace-nowrap max-[374px]:hidden text-[10px] sm:text-xs font-semibold text-[#00E5FF]/70 group-hover:text-[#00E5FF]">{t.viewDetails}</span>
           </div>
         </div>
       </Link>
@@ -195,8 +195,8 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
             {showCompare && <span className="text-[10px] sm:text-xs text-white/65 line-through leading-none"><Price idr={product.comparePrice!} prices={prices} /></span>}
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-2">
-            <span className="text-[11px] text-white/65 font-medium tracking-wide">{product.soldCount ? t.soldCount(product.soldCount) : t.soldBare}</span>
-            <span className="text-[11px] font-semibold text-[#00E5FF]/80 group-hover:text-[#00E5FF] transition">{t.viewDetails}</span>
+            <span className="min-w-0 truncate whitespace-nowrap text-[11px] text-white/65 font-medium tracking-wide">{product.soldCount ? t.soldCount(product.soldCount) : t.soldBare}</span>
+            <span className="shrink-0 whitespace-nowrap max-[374px]:hidden text-[11px] font-semibold text-[#00E5FF]/80 group-hover:text-[#00E5FF] transition">{t.viewDetails}</span>
           </div>
         </div>
       </Link>
@@ -212,18 +212,18 @@ export function ProductCard({ product, index = 0, compact = false, prices = IDR_
                 <button
                   type="button"
                   onClick={handleAdd}
-                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none active:scale-95"
+                  className="min-w-0 whitespace-nowrap max-[374px]:gap-0.5 max-[374px]:px-1 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-white/[0.08] border border-white/10 text-[11px] sm:text-[13px] font-semibold text-white flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-white/12 transition leading-none active:scale-95"
                 >
-                  <IosIcon name="shopping-bag" size={12} tint="white" /> <span>{t.addToCart}</span>
+                  <span className="max-[374px]:hidden inline-flex"><IosIcon name="shopping-bag" size={12} tint="white" /></span> <span>{t.addToCart}</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleCheckout}
                   disabled={checkoutPending}
                   aria-busy={checkoutPending}
-                  className="h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none active:scale-95 disabled:cursor-wait disabled:opacity-80"
+                  className="min-w-0 whitespace-nowrap max-[374px]:gap-0.5 max-[374px]:px-1 h-8 sm:h-9 rounded-[10px] sm:rounded-xl bg-[#00E5FF] text-[#080C1E] text-[11px] sm:text-[13px] font-bold flex items-center justify-center gap-1 sm:gap-1.5 hover:bg-[#00D0E8] shadow-[0_4px_16px_rgba(0,229,255,0.28)] transition leading-none active:scale-95 disabled:cursor-wait disabled:opacity-80"
                 >
-                  {checkoutPending ? <InlineSpinner className="w-3 h-3" tone="dark" /> : <IosIcon name="lightning-bolt" size={12} tint="black" />} {t.checkout}
+                  {checkoutPending ? <InlineSpinner className="w-3 h-3" tone="dark" /> : <span className="max-[374px]:hidden inline-flex"><IosIcon name="lightning-bolt" size={12} tint="black" /></span>} <span>{t.checkout}</span>
                 </button>
               </>
             )}

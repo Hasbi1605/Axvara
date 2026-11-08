@@ -447,7 +447,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
             Satu-satunya tempat info "Min. N" di modal — tidak di tiap kartu
             varian agar tidak menumpuk. */}
         {mode !== "select" && selected && !isOutOfStock && (
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-white">{t.quantity}</p>
               {selectedMinQty > 1 && <p className="mt-0.5 text-[11px] font-semibold text-[#FFD66B]">{t.minPurchase(selectedMinQty)}</p>}
@@ -458,7 +458,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                 onClick={() => { commitModalQtyDraft(null); setModalQty((q) => Math.max(selectedMinQty, Math.min(selectedMaxQty, q) - 1)); }}
                 disabled={safeModalQty <= selectedMinQty}
                 aria-label={t.qtyDec}
-                className="flex h-11 w-11 items-center justify-center rounded-l-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                className="relative flex h-9 w-9 items-center justify-center rounded-l-xl before:absolute before:-inset-y-1 before:inset-x-0 before:content-[''] text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M5 12h14" /></svg>
               </button>
@@ -480,7 +480,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                 onClick={() => { commitModalQtyDraft(null); setModalQty((q) => Math.min(selectedMaxQty, Math.max(selectedMinQty, q) + 1)); }}
                 disabled={safeModalQty >= selectedMaxQty}
                 aria-label={t.qtyInc}
-                className="flex h-11 w-11 items-center justify-center rounded-r-xl text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+                className="relative flex h-9 w-9 items-center justify-center rounded-r-xl before:absolute before:-inset-y-1 before:inset-x-0 before:content-[''] text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
               </button>

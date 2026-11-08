@@ -153,7 +153,15 @@ describe("QuickVariantModal — alur pemilihan varian", () => {
     await waitFor(() => expect((screen.getByRole("textbox", { name: /Jumlah pembelian/ }) as HTMLInputElement).value).toBe("50"));
     expect(screen.getByText(/Min\. pembelian 50/)).toBeTruthy();
     // Tombol kurang disabled di floor min.
-    expect((screen.getByRole("button", { name: "Kurangi jumlah" }) as HTMLButtonElement).disabled).toBe(true);
+    const dec = screen.getByRole("button", { name: "Kurangi jumlah" }) as HTMLButtonElement;
+    expect(dec.disabled).toBe(true);
+    // Stepper visual 36px dengan area tap vertikal 44px (pseudo-elemen).
+    for (const stepper of [dec, screen.getByRole("button", { name: "Tambah jumlah" })]) {
+      expect(stepper.className).toContain("h-9");
+      expect(stepper.className).toContain("w-9");
+      expect(stepper.className).toContain("before:-inset-y-1");
+      expect(stepper.className).not.toContain("h-11");
+    }
     // Harga aksi = total (50 × 10.000).
     expect(screen.getByRole("button", { name: /Tambah ke Keranjang/ }).textContent).toContain("500.000");
   });

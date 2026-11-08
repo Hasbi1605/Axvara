@@ -185,6 +185,25 @@ describe("CTA menuju checkout", () => {
     expect(useNavigation.getState()).toMatchObject({ active: true, href: "/checkout?buy=canva-pro" });
   });
 
+  it("label kartu muat di <375px: nowrap + ikon statis disembunyikan, spinner checkout tetap tampil", () => {
+    render(<ProductCard product={simpleProduct} />);
+    const add = screen.getByRole("button", { name: /Keranjang/ });
+    const checkout = screen.getByRole("button", { name: /Checkout/ });
+    for (const button of [add, checkout]) {
+      expect(button.className).toContain("whitespace-nowrap");
+      expect(button.className).toContain("max-[374px]:px-1");
+      expect(button.querySelector('[class*="max-[374px]:hidden"]')).toBeTruthy();
+    }
+    const sold = screen.getByText("Terjual");
+    expect(sold.className).toContain("truncate");
+    expect(sold.className).toContain("whitespace-nowrap");
+    const detail = screen.getByText("Lihat detail →");
+    expect(detail.className).toContain("max-[374px]:hidden");
+    fireEvent.click(checkout);
+    expect(checkout.querySelector('[data-testid="inline-spinner"]')).toBeTruthy();
+    expect(checkout.querySelector('[class*="max-[374px]:hidden"]')).toBeNull();
+  });
+
   it("modal varian mode checkout tetap terbuka dengan spinner, bukan langsung tertutup", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
