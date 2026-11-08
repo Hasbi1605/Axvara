@@ -1,3 +1,34 @@
+# Digiflazz buyer - pemilihan seller Games (9 November 2026)
+
+Keputusan owner 9 November 2026, menggantikan kalimat "bukan memilih seller
+tunggal untuk semua game" pada langkah 3 di bawah: seller utama **Om\*\*\***
+(`seller_id` `D2wn4W`, rating 4,74/40+, rekon H+0, CS 24 jam) plus pengisi celah
+(Ci\*\*\* `DAbq6W`, Di\*\*\* `WXJ9Lo`, DF\*\*\* `gdxwZg`, PT\*\*\* `DapG0o` untuk PUBG, dsb.)
+sesuai berkas owner `~/OrganizedFiles/Excel/2026-11/Rekomendasi_Seller_Game_Digiflazz.xlsx`
+(612 produk, 18 game). Tidak ada satu seller matang yang lengkap untuk semua game.
+Nama seller disamarkan sampai deposit pertama; kenali seller lewat `seller_id`.
+
+- Kode produk buyer: huruf kecil `<game>[id]<nominal/varian>`, contoh `ml86`,
+  `mlid97` (region Indonesia), `mlwdp`, `ff140`, `ffmax355`, `pubg60`, `gi60`,
+  `codm264`. Prefix: ml, ff, ffmax, pubg, codm, gi, mcgg, hok, aov, val, bs, df,
+  sus, sm, sg, eggy, undawn, wr. Integrasi kelak memanggil kode ini sebagai
+  `buyer_sku_code`; jangan mengganti kode yang sudah terpasang tanpa migrasi.
+- Produk berisiko (rating <4,5 atau seller tanpa rating) dibiarkan OFF tanpa seller.
+- Kode buyer maksimal 25 karakter (validasi panel HTTP 422).
+- Hasil pemasangan 9 November 2026 (snapshot): 650 baris Games, 590 ON
+  (589 terpasang sesuai rekomendasi + `ff12` lama dengan seller VE*** yang tidak
+  diubah), 0 kode dobel. OFF: 14 produk berisiko, 9 produk yang seller pilihannya
+  sudah tidak aktif (PUBG 32400/48600 UC, FF Membership Mingguan/Bulanan, FF 12 DM
+  baris rekomendasi, Super Sus 310 Goldstar, Undawn 250 RC, Stumble Guys 800 Gems,
+  Blood Strike 300 Gold), serta 38 baris dobel kosong yang belum dihapus (menunggu
+  konfirmasi owner).
+- Harga Max belum diisi; tentukan bersama integrasi `max_price`.
+- Panel membatasi request (HTTP 429 "Too Many Attempts", ~60/menit); otomasi
+  dashboard wajib ≤1 request/detik dengan retry `retry-after`. Hapus produk massal
+  butuh konfirmasi owner per daftar ID.
+- Status: dipasang lewat sesi dashboard owner, bukan API; belum ada deposit,
+  koneksi API produksi, webhook atau transaksi.
+
 # Digiflazz buyer - persiapan 2 November 2026
 
 ## Batas tahap ini
