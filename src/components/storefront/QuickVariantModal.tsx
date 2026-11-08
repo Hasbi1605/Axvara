@@ -277,7 +277,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
             type="button"
             onClick={onClose}
             aria-label={t.closeVariantPicker}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white/60 hover:text-white"
+            className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full before:absolute before:-inset-1.5 before:content-[''] bg-white/10 text-white/60 hover:text-white"
           >
             <IosIcon name="close" size={14} tint="white" />
           </button>

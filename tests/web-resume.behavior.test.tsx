@@ -46,8 +46,9 @@ describe("PendingOrderReminder: gateway/crypto", () => {
     const title = Array.from(region()!.querySelectorAll("span")).find((el) => el.textContent === "Setujui total pembayaran")!;
     expect(title.className).not.toContain("truncate"); // judul tidak dipotong
     const close = screen.getByRole("button", { name: "Tutup pengingat" });
-    expect(close.className).toContain("h-11");
-    expect(close.className).toContain("w-11");
+    expect(close.className).toContain("h-8");
+    expect(close.className).toContain("w-8");
+    expect(close.className).toContain("before:-inset-1.5");
     expect(text).toMatch(/0[89]:\d\d/);
     expect(text).not.toMatch(/QRIS|Perpanjang|LEAK/);
     const link = document.querySelector(`a[href="/pesanan/${CODE}"]`)!;

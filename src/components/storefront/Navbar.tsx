@@ -74,7 +74,7 @@ export function Navbar() {
               <path d="M84.2 78.5 L113.5 104" />
             </svg>
           </span>}
-          <span className="max-[379px]:hidden max-w-[88px] sm:max-w-[180px] truncate font-display font-[300] text-[18px] sm:text-[22px] tracking-[0.1em] sm:tracking-[0.16em] text-white leading-none">{storeSettings.name}</span>
+          <span className="max-[374px]:hidden max-w-[88px] sm:max-w-[180px] truncate font-display font-[300] text-[18px] sm:text-[22px] tracking-[0.1em] sm:tracking-[0.16em] text-white leading-none">{storeSettings.name}</span>
           {/* VAULT badge removed */}
         </Link>
 

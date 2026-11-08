@@ -167,7 +167,7 @@ export function PendingOrderReminder() {
           </span>
           <span className="shrink-0 rounded-xl bg-[#00E5FF] px-3 py-2 text-xs font-bold text-[#080C1E]">{pending.rail ? pending.rail.info.cta : canPay ? reminderCopy.reminder.pay : reminderCopy.reminder.renew}</span>
         </Link>
-        <button type="button" onClick={dismiss} aria-label={reminderCopy.reminder.close} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-white/45 transition hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">
+        <button type="button" onClick={dismiss} aria-label={reminderCopy.reminder.close} className="relative grid h-8 w-8 shrink-0 place-items-center rounded-full before:absolute before:-inset-1.5 before:content-[''] text-white/45 transition hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">
           ✕
         </button>
       </div>
