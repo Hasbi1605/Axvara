@@ -35,7 +35,7 @@ export function CategoryPills({
             key={c.slug}
             onClick={() => onChange(c.slug)}
             className={cn(
-              "shrink-0 h-11 px-2 sm:px-4 rounded-full text-[10px] sm:text-sm font-medium border transition flex items-center gap-1 sm:gap-1.5",
+              "shrink-0 h-6 sm:h-9 px-2 sm:px-4 rounded-full text-[10px] sm:text-sm font-medium border transition flex items-center gap-1 sm:gap-1.5",
               isActive
                 ? "bg-white text-[#080C1E] border-white shadow"
                 : "ax-glass-card text-white/70 hover:text-white hover:bg-white/10 border-white/10"

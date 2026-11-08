@@ -1,5 +1,8 @@
 # DESIGN.md — AXVARA Design System
 
+## Pill kategori Market kembali ke ukuran semula (8 November 2026, lokal; belum deploy)
+- `CategoryPills` memakai tinggi `h-6` (24px) di mobile dan `sm:h-9` (36px) mulai breakpoint sm, dengan teks `text-[10px]`/`sm:text-sm`, ikon 10px/14px, padding `px-2`/`sm:px-4` dan gap `1`/`sm:gap-1.5` seperti sebelum commit 2e96cd5. Dikembalikan per keputusan owner 8 November 2026 setelah sempat membesar ke `h-11` tanpa catatan; jangan menaikkan tinggi pill tanpa instruksi owner.
+
 ## Nama, S&K, dan email EN — fase 3 (7 November 2026, lokal; verifikasi browser belum)
 - Nama produk EN memakai `name_en` admin; tanpa itu, token durasi/tier diterjemahkan saat render ("1 Bulan"→"1 Month", "Akun"→"Account", "Miliar"→"Billion"). Brand/nama tersimpan dan identitas cart/order tidak berubah.
 - S&K/aktivasi admin EN memakai format editor yang sama (judul "Package details / Process & delivery / Usage rules / Warranty", baris "- ", langkah bernomor). EN hanya tampil saat salinan admin ID valid.
