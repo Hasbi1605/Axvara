@@ -88,8 +88,11 @@ describe("C-H1: harga divalidasi ulang antara quote dan pembuatan order", () => 
     // Bulk foundation: guard atomik kini mengikat base + konfigurasi tier
     // aktif (bukan harga mentah saja). Regex menuntut SELECT id + price
     // dengan klausa bulk agar klaim usang tidak lolos sebagai buku baru.
-    expect(route).toMatch(/SELECT id, price,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE id IN/);
-    expect(route).toContain("resolveBulkPrice");
+    // 2026-11-08: query ikut JOIN products (kolom p_*) karena grosir hanya
+    // berlaku untuk produk manual.
+    expect(route).toMatch(/SELECT pv\.id, pv\.price, pv\.bulk_pricing_enabled, pv\.bulk_pricing_tiers/);
+    expect(route).toContain("JOIN products p ON p.id = pv.product_id");
+    expect(route).toContain("resolveBulkPriceForProduct");
     // Guard harga wajib SEBELUM order dibuat.
     expect(route.indexOf("price_changed")).toBeLessThan(route.indexOf("await createOrderWithStock("));
   });

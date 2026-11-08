@@ -13,7 +13,7 @@ import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { readJsonBody } from "@/lib/http-body";
-import { bulkUnitPrice, validateBulkPricing } from "@/lib/bulk-pricing";
+import { bulkOwnerFromProductRow, bulkUnitPrice, isManualProductForBulk, validateBulkPricing } from "@/lib/bulk-pricing";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -291,7 +291,9 @@ export async function POST(req: NextRequest) {
     let tierMin: number | undefined;
     if (item.variant_id) {
       const variant = variantById.get(item.variant_id)!;
-      if (Number(variant.bulk_pricing_enabled ?? 0) === 1) {
+      // Harga grosir hanya untuk produk manual (keputusan owner 2026-11-08):
+      // data tersimpan pada produk supplier (WR/SK) tidak pernah dipakai.
+      if (Number(variant.bulk_pricing_enabled ?? 0) === 1 && isManualProductForBulk(bulkOwnerFromProductRow(row))) {
         try {
           const config = validateBulkPricing({ enabled: true, tiers: JSON.parse(String(variant.bulk_pricing_tiers)) }, basePrice);
           if (!config) throw new Error("invalid");

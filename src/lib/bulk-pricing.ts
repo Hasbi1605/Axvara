@@ -1,6 +1,73 @@
 export type BulkTier = { min_qty: number; unit_price: number };
 export type BulkPricing = { enabled: boolean; tiers: BulkTier[] };
 
+/**
+ * Kepemilikan produk untuk harga grosir (keputusan owner 2026-11-08):
+ * grosir HANYA berlaku untuk produk manual, tidak pernah untuk produk
+ * supplier WR/Sekalipay-SK. Supplier ditandai `source != 'manual'`,
+ * `wr_product_id`/`sk_product_id` terisi, atau flag auto-managed = 1
+ * (SK memakai source='manual' + sk_product_id NOT NULL).
+ */
+export type BulkProductOwner = {
+  source?: unknown;
+  wrProductId?: unknown;
+  wrAutoManaged?: unknown;
+  skProductId?: unknown;
+  skAutoManaged?: unknown;
+};
+
+function hasValue(value: unknown): boolean {
+  return value != null && String(value).trim() !== "";
+}
+
+/** Baris `products` apa adanya (snake_case) → identitas kepemilikan. */
+export function bulkOwnerFromProductRow(row: Record<string, unknown> | null | undefined): BulkProductOwner | null {
+  if (!row) return null;
+  return {
+    source: row.source,
+    wrProductId: row.wr_product_id,
+    wrAutoManaged: row.wr_auto_managed,
+    skProductId: row.sk_product_id,
+    skAutoManaged: row.sk_auto_managed,
+  };
+}
+
+/** Baris varian hasil JOIN products dengan alias `p_*` → identitas kepemilikan. */
+export function bulkOwnerFromJoinedRow(row: Record<string, unknown> | null | undefined): BulkProductOwner | null {
+  if (!row) return null;
+  return {
+    source: row.p_source,
+    wrProductId: row.p_wr_product_id,
+    wrAutoManaged: row.p_wr_auto_managed,
+    skProductId: row.p_sk_product_id,
+    skAutoManaged: row.p_sk_auto_managed,
+  };
+}
+
+/** true hanya untuk produk manual. Baris tanpa identitas dianggap bukan manual (fail-closed). */
+export function isManualProductForBulk(owner: BulkProductOwner | null | undefined): boolean {
+  if (!owner) return false;
+  if (String(owner.source ?? "manual") !== "manual") return false;
+  if (hasValue(owner.wrProductId) || Number(owner.wrAutoManaged ?? 0) === 1) return false;
+  if (hasValue(owner.skProductId) || Number(owner.skAutoManaged ?? 0) === 1) return false;
+  return true;
+}
+
+/**
+ * `resolveBulkPrice` yang mengabaikan konfigurasi tersimpan pada produk
+ * supplier, sehingga data lama di varian WR/SK tidak pernah menurunkan harga.
+ */
+export function resolveBulkPriceForProduct(
+  base: number,
+  quantity: number,
+  enabled: unknown,
+  serialized: unknown,
+  owner: BulkProductOwner | null | undefined,
+): { price: number; tier?: number } {
+  if (!isManualProductForBulk(owner)) return resolveBulkPrice(base, quantity, 0, serialized);
+  return resolveBulkPrice(base, quantity, enabled, serialized);
+}
+
 // ponytail: five tiers is the current editor ceiling; raise schema and validation together when expanded.
 // Disabled menyimpan tiers yang valid-vs-bentuk SAJA (tanpa cek vs base);
 // enabled / re-enable / base-change WAJIB lolos vs base HASIL (cek ketat di

@@ -9,6 +9,13 @@ import type { FormVariant, ProductForm } from "../product-types";
 import { WarrantyFields } from "./VariantWarrantyFields";
 import { SharedVariantCopyFields } from "./SharedVariantCopyFields";
 import { CredentialQueue } from "./CredentialQueue";
+import {
+  BulkTierEditor,
+  emptyBulkDraft,
+  isBulkEligibleForm,
+  validateBulkDraft,
+  variantBulkPrefix,
+} from "@/components/admin/BulkTierEditor";
 
 // Blok daftar varian dipisah dari ProductEditorModal karena inilah sub-form paling padat
 // (harga, harga coret, stok, dan matriks garansi per baris). Memisahkannya menjaga file
@@ -254,15 +261,34 @@ export function ProductVariantRows({
   formVariants,
   onSetFormVariants,
   productId,
+  editing = true,
 }: {
   form: ProductForm;
   formVariants: FormVariant[];
   onSetFormVariants: (updater: (prev: FormVariant[]) => FormVariant[]) => void;
   productId?: number | string;
+  /** false = produk baru; harga grosir baru bisa diatur setelah produk tersimpan. */
+  editing?: boolean;
 }) {
   const [openVariant, setOpenVariant] = useState<number | null>(0);
   const activePrices = formVariants.filter(v => (v.is_active ?? 1) !== 0).map(v => v.price);
   const minPrice = activePrices.length ? Math.min(...activePrices) : 0;
+  // Harga grosir hanya untuk produk manual (owner 2026-11-08). Validasi di
+  // sini mencerminkan kontrak server; server tetap otoritatif.
+  const manualProduct = isBulkEligibleForm(form);
+  const bulkValidations = formVariants.map((v) => validateBulkDraft(v.bulk ?? emptyBulkDraft(), {
+    base: Number(v.price),
+    minQty: Math.max(1, Number(v.min_qty ?? 1) || 1),
+    stock: Number(v.stock),
+    mode: v.fulfillment_mode || "manual",
+  }));
+  // Baris dengan isian grosir tidak valid dibuka agar pesan simpan bisa
+  // ditindaklanjuti tanpa mencari manual.
+  const invalidSignature = bulkValidations.map((validation, index) => validation.errorCount > 0 ? index : -1).filter((index) => index >= 0).join(",");
+  useEffect(() => {
+    if (!invalidSignature) return;
+    setOpenVariant(Number(invalidSignature.split(",")[0]));
+  }, [invalidSignature]);
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -429,6 +455,23 @@ export function ProductVariantRows({
                 />
               </div>
             </div>
+
+            {/* Harga grosir per varian — HANYA produk manual (owner 2026-11-08).
+                Produk supplier (WR/SK) tidak pernah menampilkan editor ini. */}
+            {!manualProduct ? (
+              <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2 text-[11px] leading-5 text-white/45">Harga grosir hanya untuk produk manual.</p>
+            ) : !editing ? (
+              <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2 text-[11px] leading-5 text-white/45">Simpan produk dulu, lalu atur harga grosir di Edit Produk.</p>
+            ) : (
+              <BulkTierEditor
+                idPrefix={variantBulkPrefix(v, idx)}
+                draft={v.bulk ?? emptyBulkDraft()}
+                validation={bulkValidations[idx]}
+                basePrice={Number(v.price)}
+                minQty={Math.max(1, Number(v.min_qty) || 1)}
+                onChange={(next) => onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, bulk: next } : item))}
+              />
+            )}
 
             {/* Baris 3: Pengaturan Garansi — komponen bersama dengan mode single
                 (paritas 2026-09-28). Sinkron durasi dipertahankan: nilai/satuan

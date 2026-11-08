@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun, getD1, D1Statement } from "@/lib/db";
 import { isEnabled } from "@/lib/feature-flags";
+import { bulkOwnerFromProductRow, isManualProductForBulk } from "@/lib/bulk-pricing";
 import {
   WR_OWNED_VARIANT_FIELDS,
   WR_OWNERSHIP_MESSAGE,
@@ -163,9 +164,21 @@ export async function POST(request: NextRequest) {
       sku: variant.sku.toUpperCase(),
     }));
 
-    // Check product exists
-    const product = await queryFirst(`SELECT id, is_active FROM products WHERE id=?`, product_id);
+    // Check product exists (sekaligus identitas supplier untuk guard grosir)
+    const product = await queryFirst(
+      `SELECT id, is_active, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
+         FROM products WHERE id=?`,
+      product_id,
+    );
     if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
+
+    // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
+    // Menonaktifkan (enabled=false) tetap boleh agar data lama bisa dibersihkan.
+    if (!isManualProductForBulk(bulkOwnerFromProductRow(product as unknown as Record<string, unknown>))) {
+      const enabling = variants.some((v) => (v as Record<string, unknown>).bulk_pricing !== undefined
+        && ((v as Record<string, unknown>).bulk_pricing as { enabled?: unknown }).enabled === true);
+      if (enabling) return NextResponse.json({ error: "bulk_pricing_supplier_forbidden", message: "Harga grosir hanya untuk produk manual." }, { status: 400 });
+    }
 
     // Active product must have at least 1 active variant
     if (Number(product.is_active) === 1) {
@@ -407,8 +420,20 @@ export async function POST(request: NextRequest) {
   const crossErr = validateCrossFields(v);
   if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
 
-  const product = await queryFirst(`SELECT id FROM products WHERE id=?`, v.product_id);
+  const product = await queryFirst(
+    `SELECT id, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
+       FROM products WHERE id=?`,
+    v.product_id,
+  );
   if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
+
+  // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
+  // Varían baru pada produk supplier tidak boleh langsung aktif.
+  if ((v as Record<string, unknown>).bulk_pricing !== undefined
+    && ((v as Record<string, unknown>).bulk_pricing as { enabled?: unknown }).enabled === true
+    && !isManualProductForBulk(bulkOwnerFromProductRow(product as unknown as Record<string, unknown>))) {
+    return NextResponse.json({ error: "bulk_pricing_supplier_forbidden", message: "Harga grosir hanya untuk produk manual." }, { status: 400 });
+  }
 
   const existingSku = await queryFirst(`SELECT id FROM product_variants WHERE sku=?`, v.sku);
   if (existingSku) return NextResponse.json({ error: "sku_already_exists" }, { status: 409 });
@@ -527,6 +552,18 @@ export async function PUT(request: NextRequest) {
   // retained boleh stale dan TIDAK memblokir edit base; re-enable WAJIB
   // valid vs base hasil.
   const rawBulk = (body as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined;
+  // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
+  // Menonaktifkan (enabled=false) tetap boleh agar data lama bisa dibersihkan.
+  if (rawBulk?.enabled === true) {
+    const ownerRow = await queryFirst(
+      `SELECT source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
+         FROM products WHERE id=?`,
+      Number(existing.product_id),
+    );
+    if (!isManualProductForBulk(bulkOwnerFromProductRow(ownerRow as unknown as Record<string, unknown> | null))) {
+      return NextResponse.json({ error: "bulk_pricing_supplier_forbidden", message: "Harga grosir hanya untuk produk manual." }, { status: 400 });
+    }
+  }
   const resultBase = v.price !== undefined ? Number(v.price) : Number(existing.price);
   const storedEnabled = Number((existing as Record<string, unknown>).bulk_pricing_enabled ?? 0) === 1 ? 1 : 0;
   const storedTiersJson = String((existing as Record<string, unknown>).bulk_pricing_tiers ?? "[]");

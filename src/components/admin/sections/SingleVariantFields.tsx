@@ -19,21 +19,40 @@ import { MoneyInput } from "@/components/ui/MoneyInput";
 import { SharedVariantCopyFields } from "./SharedVariantCopyFields";
 import { WarrantyFields } from "./VariantWarrantyFields";
 import { FULFILLMENT_OPTIONS, NonWrFulfillmentPanel } from "./ProductVariantRows";
+import {
+  BulkTierEditor,
+  SINGLE_BULK_PREFIX,
+  emptyBulkDraft,
+  isBulkEligibleForm,
+  validateBulkDraft,
+} from "@/components/admin/BulkTierEditor";
 
 export function SingleVariantFields({
   form,
   onSetForm,
   productId,
   variantId,
+  editing = true,
 }: {
   form: ProductForm;
   onSetForm: (form: ProductForm) => void;
   productId?: number | string;
   variantId?: number;
+  /** false = produk baru; harga grosir baru bisa diatur setelah produk tersimpan. */
+  editing?: boolean;
 }) {
   const latestForm = useRef(form);
   latestForm.current = form;
   const wrLocked = Boolean(form.wrManaged);
+  // Harga grosir hanya untuk produk manual (keputusan owner 2026-11-08).
+  const manualProduct = isBulkEligibleForm(form);
+  const bulkDraft = form.bulk ?? emptyBulkDraft();
+  const bulkValidation = validateBulkDraft(bulkDraft, {
+    base: Number(form.price ?? 0),
+    minQty: Math.max(1, Number(form.min_qty ?? 1) || 1),
+    stock: Number(form.stock ?? -1),
+    mode: form.fulfillment_mode || "manual",
+  });
   const openInput =
     "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none";
   return (
@@ -69,6 +88,22 @@ export function SingleVariantFields({
           <span className="mt-1 block text-[11px] leading-4 text-white/35">Modal per unit produk manual/stok sendiri (milik admin, ikut hitung untung).</span>
         </div>
       </div>
+
+      {/* Harga grosir — HANYA produk manual (owner 2026-11-08). */}
+      {!manualProduct ? (
+        <p className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2 text-[11px] leading-5 text-white/45">Harga grosir hanya untuk produk manual.</p>
+      ) : !editing ? (
+        <p className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2 text-[11px] leading-5 text-white/45">Simpan produk dulu, lalu atur harga grosir di Edit Produk.</p>
+      ) : (
+        <BulkTierEditor
+          idPrefix={SINGLE_BULK_PREFIX}
+          draft={bulkDraft}
+          validation={bulkValidation}
+          basePrice={Number(form.price ?? 0)}
+          minQty={Math.max(1, Number(form.min_qty ?? 1) || 1)}
+          onChange={(next) => onSetForm({ ...latestForm.current, bulk: next })}
+        />
+      )}
 
       <WarrantyFields
         value={{

@@ -12,7 +12,7 @@ import {
   D1Statement,
 } from "@/lib/db";
 import { getActiveVariant, type VariantSummary, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
-import { resolveBulkPrice } from "@/lib/bulk-pricing";
+import { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct, type BulkProductOwner } from "@/lib/bulk-pricing";
 import { generateOrderCode } from "@/lib/security";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
@@ -220,16 +220,25 @@ export async function createChannelOrderAtomic(
   // TG2b: untuk Telegram, pin base + konfigurasi bulk aktif SEBELUM batch
   // agar kuantitas agregat per varian (alias ikut) dihitung dari snapshot
   // yang sama dengan guard atomik. Non-TG mempertahankan perilaku lama.
-  const tgBulk = new Map<number, { price: number; enabled: number; tiers: string }>();
+  const tgBulk = new Map<number, { price: number; enabled: number; tiers: string; owner: BulkProductOwner }>();
   const tgQtyByVariant = new Map<number, number>();
   if (input.salesChannel === "telegram") {
     const variantIds = [...new Set(input.lines.map((line) => line.variantId))];
     const rows = (variantIds.length
-      ? (await d1.prepare(`SELECT id, price, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE id IN (${variantIds.map(() => "?").join(",")})`).bind(...variantIds).all()).results
+      ? (await d1.prepare(`SELECT pv.id, pv.price, pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
+          p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
+          p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed
+        FROM product_variants pv JOIN products p ON p.id = pv.product_id
+        WHERE pv.id IN (${variantIds.map(() => "?").join(",")})`).bind(...variantIds).all()).results
       : []) as Record<string, unknown>[];
     for (const row of rows) {
       if (!Number.isSafeInteger(Number(row.price))) throw new StockReservationError();
-      tgBulk.set(Number(row.id), { price: Number(row.price), enabled: Number(row.bulk_pricing_enabled ?? 0), tiers: String(row.bulk_pricing_tiers ?? "[]") });
+      tgBulk.set(Number(row.id), {
+        price: Number(row.price),
+        enabled: Number(row.bulk_pricing_enabled ?? 0),
+        tiers: String(row.bulk_pricing_tiers ?? "[]"),
+        owner: bulkOwnerFromJoinedRow(row) ?? {},
+      });
     }
     for (const line of input.lines) {
       if (!Number.isSafeInteger(line.qty) || line.qty < 1) throw new StockReservationError();
@@ -273,7 +282,7 @@ export async function createChannelOrderAtomic(
       let tier: number | undefined;
       if (!live) throw new StockReservationError();
       try {
-        const resolved = resolveBulkPrice(live.price, tgQtyByVariant.get(line.variantId) ?? line.qty, live.enabled, live.tiers);
+        const resolved = resolveBulkPriceForProduct(live.price, tgQtyByVariant.get(line.variantId) ?? line.qty, live.enabled, live.tiers, live.owner);
         effective = resolved.price;
         tier = resolved.tier;
       } catch { throw new StockReservationError(); }

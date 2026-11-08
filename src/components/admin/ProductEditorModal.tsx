@@ -4,6 +4,7 @@ import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/ui/IosIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import type { Cat, FormVariant, ProductForm } from "./product-types";
+import { emptyBulkDraft } from "./BulkTierEditor";
 import { ProductVariantRows } from "./sections/ProductVariantRows";
 import { SingleVariantFields } from "./sections/SingleVariantFields";
 import { ProductCopyTab } from "./sections/ProductCopyTab";
@@ -17,6 +18,7 @@ import { useVariantCopyEntries } from "./sections/VariantCopyEditor";
 export function ProductEditorModal({
   editing,
   editingId,
+  bulkFocus,
   saving,
   uploading,
   loadingVariants,
@@ -37,6 +39,8 @@ export function ProductEditorModal({
   editing: boolean;
   /** ID produk numerik saat mode edit (untuk panel fulfillment per varian). */
   editingId?: number | string;
+  /** Permintaan fokus ke isian harga grosir yang tidak valid (simpan ditolak). */
+  bulkFocus?: { id: string; n: number } | null;
   saving: boolean;
   uploading: boolean;
   loadingVariants: boolean;
@@ -61,6 +65,14 @@ export function ProductEditorModal({
   const [tab, setTab] = useState<"detail" | "varian" | "konten" | "media">("detail");
   // Badan modal di-scroll bersama semua tab; ganti tab mulai dari atas.
   const bodyRef = useRef<HTMLDivElement>(null);
+  // Simpan ditolak karena isian harga grosir: pindah ke tab Varian lalu
+  // fokuskan field pertama yang salah (tab lain `hidden`, tidak bisa fokus).
+  useEffect(() => {
+    if (!bulkFocus?.id) return;
+    setTab("varian");
+    const timer = window.setTimeout(() => document.getElementById(bulkFocus.id!)?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [bulkFocus]);
   const tabs: [typeof tab, string][] = [["detail", "Produk"], ["varian", "Varian"], ["konten", "Deskripsi & S&K"], ["media", "Foto"]];
   // Dimuat saat modal dibuka (bukan saat tab dibuka) agar penanda "perlu
   // ditinjau" di tab langsung akurat; sebelum termuat pakai angka dari daftar.
@@ -167,6 +179,8 @@ export function ProductEditorModal({
                             warranty_label: form.warranty_label ?? null,
                             fulfillment_mode: form.fulfillment_mode || "manual",
                             is_active: 1,
+                            // Draft harga grosir mode single ikut ke varian pertama.
+                            bulk: form.bulk ?? emptyBulkDraft(),
                           },
                         ]);
                       } else if (formVariants.length === 1 && formVariants[0].sku.startsWith("DEFAULT-")) {
@@ -202,6 +216,7 @@ export function ProductEditorModal({
                         warranty_unit: v0.warranty_unit || null,
                         warranty_label: v0.warranty_label ?? null,
                         fulfillment_mode: v0.fulfillment_mode || "manual",
+                        bulk: v0.bulk,
                       });
                     }
                   }}
@@ -214,7 +229,7 @@ export function ProductEditorModal({
               {loadingVariants ? (
                 <div className="py-6 text-center text-xs text-white/40">Memuat rincian varian...</div>
               ) : hasMultiVariants ? (
-                <ProductVariantRows form={form} formVariants={formVariants} onSetFormVariants={onSetFormVariants} productId={editingId} />
+                <ProductVariantRows form={form} formVariants={formVariants} onSetFormVariants={onSetFormVariants} productId={editingId} editing={editing} />
               ) : (
                 <>
                 <div className="mt-4 grid sm:grid-cols-3 gap-3">
@@ -257,6 +272,7 @@ export function ProductEditorModal({
                   form={form}
                   onSetForm={onSetForm}
                   productId={editingId}
+                  editing={editing}
                   variantId={typeof formVariants[0]?.id === "number" ? formVariants[0].id : undefined}
                 />
                 </>

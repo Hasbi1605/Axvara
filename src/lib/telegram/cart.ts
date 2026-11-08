@@ -5,7 +5,7 @@
 
 import { execRun, queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { effectiveVariantStock, formatVariantLabel, getActiveVariant, type VariantSummary } from "@/lib/catalog";
-import { resolveBulkPrice } from "@/lib/bulk-pricing";
+import { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct } from "@/lib/bulk-pricing";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { TELEGRAM_MAX_QTY } from "./keyboards";
 
@@ -185,6 +185,8 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
             p.is_active AS product_active, p.telegram_enabled,
             pv.product_id AS v_product_id, pv.label AS v_label, pv.price AS v_price,
             pv.bulk_pricing_enabled AS v_bulk_enabled, pv.bulk_pricing_tiers AS v_bulk_tiers,
+            p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
+            p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed,
             pv.stock AS v_stock, pv.fulfillment_mode AS v_mode, pv.is_active AS v_active,
             pv.min_qty AS v_min_qty, pv.wr_variant_id, pv.duration_label, pv.duration_value, pv.duration_unit,
             (SELECT COUNT(*) FROM fulfillment_inventory fi
@@ -241,7 +243,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
     let effectivePrice = basePrice;
     let appliedTier: number | null = null;
     try {
-      const resolved = resolveBulkPrice(basePrice, aggregateQty.get(variantId) ?? qty, row.v_bulk_enabled, String(row.v_bulk_tiers ?? "[]"));
+      const resolved = resolveBulkPriceForProduct(basePrice, aggregateQty.get(variantId) ?? qty, row.v_bulk_enabled, String(row.v_bulk_tiers ?? "[]"), bulkOwnerFromJoinedRow(row));
       effectivePrice = resolved.price;
       appliedTier = resolved.tier ?? null;
     } catch {

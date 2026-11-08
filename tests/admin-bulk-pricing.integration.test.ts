@@ -224,6 +224,53 @@ describe("BULK1c admin bulk pricing", () => {
     expect(((await got.json()) as { variants: { id: number; bulk_pricing_corrupt?: boolean }[] }).variants.find((v) => v.id === 1)!.bulk_pricing_corrupt).toBe(true);
   });
 
+  describe("hanya produk manual (keputusan owner 2026-11-08)", () => {
+    const tierOn = { enabled: true, tiers: [{ min_qty: 10, unit_price: 90000 }] };
+    const tierOff = { enabled: false, tiers: [{ min_qty: 10, unit_price: 90000 }] };
+    const variantsBody = (bulk: unknown) => ({
+      variants: [
+        { id: 1, sku: "BULK-1", label: "Varian 1", price: 100000, stock: -1, is_active: 1, sort_order: 0, bulk_pricing: bulk },
+        { id: 2, sku: "BULK-2", label: "Varian 2", price: 50000, stock: -1, is_active: 1, sort_order: 1 },
+      ],
+    });
+
+    it("PUT products/:id menolak enabled untuk WR, tetapi disable tetap boleh", async () => {
+      fixture.sql.prepare("UPDATE products SET source='warung_rebahan', wr_product_id='WR-9', wr_auto_managed=1 WHERE id=1").run();
+      const { PUT } = await import("@/app/api/products/[id]/route");
+      const enabled = await PUT(putProduct(1, variantsBody(tierOn)), { params: Promise.resolve({ id: "1" }) });
+      expect(enabled.status).toBe(400);
+      expect(await enabled.json()).toMatchObject({ error: "bulk_pricing_supplier_forbidden" });
+      expect(bulkOf(1).bulk_pricing_enabled).toBe(0);
+      // Data lama bisa dibersihkan: enabled=false diterima.
+      fixture.sql.prepare("UPDATE product_variants SET bulk_pricing_enabled=1, bulk_pricing_tiers=? WHERE id=1").run(JSON.stringify(tierOn.tiers));
+      const disabled = await PUT(putProduct(1, variantsBody(tierOff)), { params: Promise.resolve({ id: "1" }) });
+      expect(disabled.status).toBe(200);
+      expect(bulkOf(1).bulk_pricing_enabled).toBe(0);
+    });
+
+    it("PUT/POST admin variants menolak enabled untuk produk SK, disable boleh", async () => {
+      // SK memakai source='manual' + sk_product_id NOT NULL.
+      fixture.sql.prepare("UPDATE products SET source='manual', sk_product_id='SK-9', sk_auto_managed=1 WHERE id=1").run();
+      const { PUT, POST } = await import("@/app/api/admin/variants/route");
+      const put = await PUT(putVariant(1, { price: 100000, bulk_pricing: tierOn }));
+      expect(put.status).toBe(400);
+      expect(await put.json()).toMatchObject({ error: "bulk_pricing_supplier_forbidden" });
+      const post = await POST(postVariant({ product_id: 1, sku: "SK-NEW", label: "SK New", price: 70000, bulk_pricing: tierOn }));
+      expect(post.status).toBe(400);
+      const batch = await POST(postVariant(variantsBody(tierOn)));
+      expect(batch.status).toBe(400);
+      const off = await PUT(putVariant(1, { price: 100000, bulk_pricing: { enabled: false, tiers: [] } }));
+      expect(off.status).toBe(200);
+    });
+
+    it("produk manual tetap boleh mengaktifkan grosir (regression)", async () => {
+      const { PUT } = await import("@/app/api/products/[id]/route");
+      const ok = await PUT(putProduct(1, variantsBody(tierOn)), { params: Promise.resolve({ id: "1" }) });
+      expect(ok.status).toBe(200);
+      expect(bulkOf(1).bulk_pricing_enabled).toBe(1);
+    });
+  });
+
   it("POST variants create defaults off; explicit bulk validated & stored", async () => {
     const { POST } = await import("@/app/api/admin/variants/route");
     const plain = await POST(postVariant({ product_id: 1, sku: "BULK-NEW", label: "New", price: 70000 }));

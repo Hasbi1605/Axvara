@@ -46,6 +46,22 @@ export type BulkValidation = {
   sorted: { key: string; qty: number; price: number | null }[];
 };
 
+/**
+ * Harga grosir hanya untuk produk manual (keputusan owner 2026-11-08).
+ * Produk WR (`wrManaged`) dan produk supplier (`supplier` WR/SK) tidak
+ * pernah menampilkan maupun menyimpan konfigurasi ini.
+ */
+export function isBulkEligibleForm(form: { wrManaged?: boolean; supplier?: string | null }): boolean {
+  return !form.wrManaged && (form.supplier ?? "Manual") === "Manual";
+}
+
+/** Awalan id unik per varian; dipakai editor dan validasi fokus di form. */
+export function variantBulkPrefix(variant: { id?: number } | undefined, index: number) {
+  return `bulk-${variant?.id ?? `new${index}`}`;
+}
+
+export const SINGLE_BULK_PREFIX = "bulk-single";
+
 let rowCounter = 0;
 export function newBulkRowKey() {
   rowCounter += 1;

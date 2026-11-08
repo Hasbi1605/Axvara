@@ -3,6 +3,7 @@ import { z } from "zod";
 import { manualCopyUpdate } from "@/lib/product-copy/manual-write";
 import { VARIANT_COPY_MAX_CHARS } from "@/lib/product-copy/format";
 import { queryFirst, queryAll, execRun, getD1, isD1Mode } from "@/lib/db";
+import { bulkOwnerFromProductRow, isManualProductForBulk } from "@/lib/bulk-pricing";
 import { requireAdmin } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
@@ -177,10 +178,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const data = parsed.data;
   const existing = await queryFirst(
-    "SELECT id, name, slug, description, price, compare_price, stock, source, wr_auto_managed FROM products WHERE id=?",
+    `SELECT id, name, slug, description, price, compare_price, stock, source, wr_product_id, wr_auto_managed,
+            sk_product_id, sk_auto_managed
+       FROM products WHERE id=?`,
     id,
-  ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_auto_managed?: number } | undefined;
+  ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number } | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
+  // Menonaktifkan (enabled=false) tetap boleh agar data lama bisa dibersihkan.
+  if (Array.isArray(data.variants) && !isManualProductForBulk(bulkOwnerFromProductRow(existing as unknown as Record<string, unknown>))) {
+    const enabling = data.variants.some((v) => ((v as Record<string, unknown>).bulk_pricing as { enabled?: unknown } | undefined)?.enabled === true);
+    if (enabling) return NextResponse.json({ error: "bulk_pricing_supplier_forbidden", message: "Harga grosir hanya untuk produk manual." }, { status: 400 });
+  }
   // Produk WR: tolak perubahan field milik sync SEBELUM menulis apa pun.
   // Tanpa guard ini, edit admin tampak tersimpan lalu hilang diam-diam di
   // sweep berikutnya. Foto, badge, sort order, aktif/nonaktif, dan

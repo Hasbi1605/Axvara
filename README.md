@@ -70,6 +70,8 @@ TG2b bulk Telegram fixture lokal: tier agregat per varian dijaga atomik; QRIS te
 TG2a read-commerce locale fixture lokal: copy baca ID/EN dari prefs tersimpan +
 satu harga display per tombol; invoice/order-status tetap TG2b/c.
 TG1 lokal (+correction1): chooser + payload tersimpan, jawaban callback tunggal.
+BULK1d lokal (8 November 2026): editor harga grosir kini dirender di modal produk admin yang dipakai (`ProductEditorModal` → baris varian / field varian tunggal), HANYA untuk produk manual — produk WR/Sekalipay-SK tidak menampilkan editor dan API menolak `enabled=true` dengan 400 `bulk_pricing_supplier_forbidden` (menonaktifkan tetap boleh). Draft hanya dikirim saat diubah; data tier lama pada varian supplier diabaikan jalur harga (katalog/quote/order/Telegram). Belum dipublikasikan.
+
 BULK1c lokal (+correction1): protected admin API persists bulk (default off, omitted=merged-validated, strict, guards atomic); UI/TG belum dihubungkan atau dipublikasikan.
 
 BULK1b lokal menghitung dan menandatangani harga tier per varian pada quote/order; admin, UI dan Telegram belum terhubung atau dipublikasikan.

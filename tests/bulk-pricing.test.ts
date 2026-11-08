@@ -1,7 +1,14 @@
 import { expect, it, vi } from "vitest";
 import { Miniflare } from "miniflare";
 import { readFileSync } from "node:fs";
-import { bulkUnitPrice, validateBulkPricing } from "@/lib/bulk-pricing";
+import {
+  bulkOwnerFromJoinedRow,
+  bulkOwnerFromProductRow,
+  bulkUnitPrice,
+  isManualProductForBulk,
+  resolveBulkPriceForProduct,
+  validateBulkPricing,
+} from "@/lib/bulk-pricing";
 import { createD1Fixture, insertTestProduct } from "./helpers/d1-fixture";
 
 const tiers = [{ min_qty: 10, unit_price: 90000 }, { min_qty: 50, unit_price: 80000 }];
@@ -43,6 +50,53 @@ it("catalog projects sanitized active tiers and preserves disabled configuration
     expect(await getActiveVariant(1)).toMatchObject({ bulk_pricing_enabled: false, bulk_pricing_invalid: true, bulk_pricing_tiers: [] });
   } finally { fixture.close(); vi.unstubAllEnvs(); }
 });
+it("harga grosir hanya untuk produk manual: identitas supplier (WR/SK) diabaikan", async () => {
+  expect(isManualProductForBulk(bulkOwnerFromProductRow({ source: "manual" }))).toBe(true);
+  expect(isManualProductForBulk(bulkOwnerFromProductRow({ source: "manual", wr_product_id: null, sk_product_id: null, wr_auto_managed: 0, sk_auto_managed: 0 }))).toBe(true);
+  // source bukan manual (check lama D1) atau id/flag supplier => bukan manual.
+  for (const row of [
+    { source: "warung_rebahan" },
+    { source: "manual", wr_product_id: "WR-1" },
+    { source: "manual", wr_auto_managed: 1 },
+    // SK memakai source='manual' + sk_product_id NOT NULL.
+    { source: "manual", sk_product_id: "SK-1" },
+    { source: "manual", sk_auto_managed: 1 },
+    { source: "sekalipay" },
+  ]) expect(isManualProductForBulk(bulkOwnerFromProductRow(row))).toBe(false);
+  expect(isManualProductForBulk(null)).toBe(false);
+  expect(isManualProductForBulk(bulkOwnerFromJoinedRow({ p_source: "manual", p_sk_product_id: null }))).toBe(true);
+  expect(isManualProductForBulk(bulkOwnerFromJoinedRow({ p_source: "manual", p_wr_product_id: "x" }))).toBe(false);
+
+  // Resolver: produk supplier selalu harga dasar walau data tier tersimpan.
+  expect(resolveBulkPriceForProduct(100000, 50, 1, JSON.stringify(tiers), { source: "manual" }).price).toBe(80000);
+  expect(resolveBulkPriceForProduct(100000, 50, 1, JSON.stringify(tiers), { source: "warung_rebahan" })).toEqual({ price: 100000 });
+  expect(resolveBulkPriceForProduct(100000, 50, 1, JSON.stringify(tiers), bulkOwnerFromProductRow({ source: "manual", sk_product_id: "SK-1" })).price).toBe(100000);
+  expect(resolveBulkPriceForProduct(100000, 50, 0, JSON.stringify(tiers), { source: "manual" }).price).toBe(100000);
+});
+
+it("supplier variant dengan tier tersimpan tetap dihargai harga dasar", async () => {
+  const fixture = createD1Fixture();
+  try {
+    vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
+    await insertTestProduct(fixture.sql);
+    fixture.sql.prepare("UPDATE product_variants SET price=100000, bulk_pricing_enabled=1, bulk_pricing_tiers=? WHERE id=1")
+      .run(JSON.stringify(tiers));
+    const { getActiveVariant, getProductDetail } = await import("@/lib/catalog");
+    // Baseline manual: tier aktif.
+    expect(await getActiveVariant(1)).toMatchObject({ bulk_pricing_enabled: true, bulk_pricing_tiers: tiers });
+    // WR: data tersimpan diabaikan, bukan ditandai rusak.
+    fixture.sql.prepare("UPDATE products SET source='warung_rebahan', wr_product_id='WR-9', wr_auto_managed=1 WHERE id=1").run();
+    expect(await getActiveVariant(1)).toMatchObject({ bulk_pricing_enabled: false, bulk_pricing_tiers: [], bulk_pricing_invalid: false });
+    expect((await getProductDetail(1))?.variants[0]).toMatchObject({ bulk_pricing_enabled: false, bulk_pricing_tiers: [] });
+    // SK: source tetap manual + sk_product_id.
+    fixture.sql.prepare("UPDATE products SET source='manual', wr_product_id=NULL, wr_auto_managed=0, sk_product_id='SK-9', sk_auto_managed=1 WHERE id=1").run();
+    expect(await getActiveVariant(1)).toMatchObject({ bulk_pricing_enabled: false, bulk_pricing_tiers: [] });
+    // Data tersimpan tidak dihapus — hanya tidak dipakai.
+    expect(fixture.sql.prepare("SELECT bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE id=1").get())
+      .toMatchObject({ bulk_pricing_enabled: 1, bulk_pricing_tiers: JSON.stringify(tiers) });
+  } finally { fixture.close(); vi.unstubAllEnvs(); }
+});
+
 it("workerd D1 enforces native JSON and flag constraints with legacy defaults", async () => {
   const runtime = new Miniflare({ modules: true, compatibilityDate: "2026-08-06", script: "export default {fetch(){return new Response('ok')}}", d1Databases: ["DB"] });
   try {

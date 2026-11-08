@@ -3,7 +3,7 @@
 // Web, Telegram, and WhatsApp all use these same functions.
 
 import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
-import { validateBulkPricing, type BulkTier } from "@/lib/bulk-pricing";
+import { bulkOwnerFromJoinedRow, isManualProductForBulk, validateBulkPricing, type BulkTier } from "@/lib/bulk-pricing";
 import type { Locale } from "@/lib/i18n/locale";
 import { translateVariantLabel } from "@/lib/i18n/variant-copy";
 
@@ -221,6 +221,8 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
             pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
+            p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
+            p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed,
             pv.wr_variant_id AS wr_variant_id, pv.wr_auto_managed AS wr_auto_managed,
             pv.sk_variant_id AS sk_variant_id, pv.sk_auto_managed AS sk_auto_managed,
             pv.admin_terms, pv.admin_activation, pv.admin_terms_en, pv.admin_activation_en, pv.admin_copy_fingerprint,
@@ -331,6 +333,8 @@ export async function getActiveVariant(variantId: number): Promise<VariantSummar
   const row = await queryFirst(
     `SELECT pv.*, p.is_active as product_active,
             p.require_email AS require_email,
+            p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
+            p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed,
             wv.wr_terms AS wr_terms, wv.wr_delivery_terms AS wr_delivery_terms,
             wv.wr_delivery_class AS wr_delivery_class, wv.wr_type AS wr_type,
             sp.sk_order_process AS sk_order_process,
@@ -602,9 +606,13 @@ export function displayDescriptionEn(row: Record<string, unknown>): string | nul
 }
 
 function mapVariant(row: Record<string, unknown>): VariantSummary {
+  // Harga grosir hanya untuk produk manual (keputusan owner 2026-11-08):
+  // data tersimpan pada varian produk supplier (WR/SK) tidak pernah dipakai.
+  const bulkOwner = bulkOwnerFromJoinedRow(row);
+  const bulkAllowed = !bulkOwner || isManualProductForBulk(bulkOwner);
   let bulk = null;
   try {
-    const enabled = Number(row.bulk_pricing_enabled ?? 0);
+    const enabled = bulkAllowed ? Number(row.bulk_pricing_enabled ?? 0) : 0;
     if (enabled === 0 || enabled === 1) bulk = validateBulkPricing({ enabled: enabled === 1, tiers: JSON.parse(String(row.bulk_pricing_tiers ?? "[]")) }, Number(row.price));
   } catch { /* Corrupt configuration is reported, never used. */ }
   return {
@@ -638,7 +646,8 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     price: Number(row.price),
     bulk_pricing_enabled: bulk?.enabled ?? false,
     bulk_pricing_tiers: bulk?.enabled ? bulk.tiers : [],
-    bulk_pricing_invalid: !bulk,
+    // Produk supplier tidak dianggap "rusak" — grosir memang tidak berlaku.
+    bulk_pricing_invalid: bulkAllowed && !bulk,
     compare_price: row.compare_price != null ? Number(row.compare_price) : null,
     stock: Number(row.stock ?? -1),
     min_qty: Math.max(1, Number(row.min_qty ?? 1) || 1),

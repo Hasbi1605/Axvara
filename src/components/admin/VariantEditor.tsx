@@ -1,4 +1,8 @@
 "use client";
+// TIDAK DIPAKAI: tidak diimpor halaman mana pun sejak Sept 2026. Editor varian
+// yang live adalah ProductEditorModal → sections/ProductVariantRows
+// (+ sections/SingleVariantFields untuk produk satu varian). Disimpan hanya
+// sebagai referensi pola; jangan menambah fitur admin di sini.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";

@@ -327,11 +327,16 @@ export async function POST(req: NextRequest) {
     const variantIds = [...new Set(quote.items.map((i) => Number(i.variant_id || 0)).filter((v) => v > 0))];
     if (variantIds.length > 0) {
       const rows = await queryAll(
-        `SELECT id, price,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE id IN (${variantIds.map(() => "?").join(",")})`,
+        `SELECT pv.id, pv.price, pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
+                p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
+                p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed
+           FROM product_variants pv
+           JOIN products p ON p.id = pv.product_id
+          WHERE pv.id IN (${variantIds.map(() => "?").join(",")})`,
         ...variantIds,
       );
       const priceById = new Map(rows.map((r) => [Number(r.id), r]));
-      const { resolveBulkPrice } = await import("@/lib/bulk-pricing");
+      const { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct } = await import("@/lib/bulk-pricing");
       const stale = quote.items.find((qi) => {
         const vid = Number(qi.variant_id || 0);
         if (vid <= 0) return false;
@@ -339,7 +344,7 @@ export async function POST(req: NextRequest) {
         if (!live) return true;
         try {
           const qty = quote.items.filter((item) => item.variant_id === vid).reduce((n, item) => n + item.qty, 0);
-          const current = resolveBulkPrice(Number(live.price), qty, live.bulk_pricing_enabled, live.bulk_pricing_tiers);
+          const current = resolveBulkPriceForProduct(Number(live.price), qty, live.bulk_pricing_enabled, live.bulk_pricing_tiers, bulkOwnerFromJoinedRow(live));
           return current.price !== qi.price || (qi.base_price !== undefined && qi.base_price !== Number(live.price)) || current.tier !== qi.applied_tier_min_qty;
         } catch { return true; }
       });

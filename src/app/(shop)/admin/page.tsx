@@ -228,6 +228,7 @@ export default function AdminPage() {
         <ProductEditorModalLazy
           editing={Boolean(pm.editing)}
           editingId={pm.editing?.id}
+          bulkFocus={pm.bulkFocus}
           saving={pm.saving}
           uploading={pm.uploading}
           loadingVariants={pm.loadingVariants}

@@ -10,7 +10,7 @@ import { StockReservationError } from "./errors";
 import type { D1Statement, AtomicOrderItem } from "./types";
 import { markUniqueUnitLines } from "@/lib/fulfillment/units";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
-import { resolveBulkPrice } from "@/lib/bulk-pricing";
+import { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct } from "@/lib/bulk-pricing";
 
 type AtomicOrderInput = {
   code: string;
@@ -31,7 +31,10 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
   const d1 = getD1();
   if (d1) {
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
-    const modes = (ids.length ? (await d1.prepare(`SELECT id,fulfillment_mode,price,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
+    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
+        p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
+        p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed
+      FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
     const byId = new Map(modes.map(row => [Number(row.id), String(row.fulfillment_mode)]));
     const uniqueIds = new Set(modes.filter(row => row.fulfillment_mode === "unique").map(row => Number(row.id)));
     let orderItems: AtomicOrderItem[];
@@ -49,7 +52,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
       const row = bulkById.get(item.variant_id);
       if (!row) throw new StockReservationError();
       try {
-        const effective = resolveBulkPrice(Number(row.price), qtyByVariant.get(item.variant_id)!, row.bulk_pricing_enabled, row.bulk_pricing_tiers);
+        const effective = resolveBulkPriceForProduct(Number(row.price), qtyByVariant.get(item.variant_id)!, row.bulk_pricing_enabled, row.bulk_pricing_tiers, bulkOwnerFromJoinedRow(row));
         if (effective.price !== item.price || effective.tier !== item.applied_tier_min_qty || (item.base_price !== undefined && item.base_price !== Number(row.price))) throw new Error("stale");
       } catch { throw new StockReservationError(); }
     }

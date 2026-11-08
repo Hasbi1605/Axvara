@@ -1,6 +1,19 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toWebp16x9, toWebpOriginalRatio } from "@/components/admin/ImageDropzone";
+import {
+  SINGLE_BULK_PREFIX,
+  bulkDraftFromApi,
+  bulkFieldId,
+  bulkToggleId,
+  emptyBulkDraft,
+  isBulkEligibleForm,
+  validateBulkDraft,
+  variantBulkPrefix,
+  type BulkContext,
+  type BulkDraft,
+  type BulkValidation,
+} from "@/components/admin/BulkTierEditor";
 import type { Prod, Cat, FormVariant, ProductForm } from "@/components/admin/product-types";
 import { adjacentReorderProduct, sortProductsForDisplay } from "@/lib/product-order";
 
@@ -41,6 +54,30 @@ export type AdminToast = {
 
 export function productFormSignature(form: Partial<Prod>, images: string[], multi: boolean = false, vars: FormVariant[] = []) {
   return JSON.stringify({ form, images, multi, vars });
+}
+
+/** Konteks validasi harga grosir untuk satu varian form. */
+export function bulkContextFor(variant: FormVariant): BulkContext {
+  return {
+    base: Number(variant.price),
+    minQty: Math.max(1, Number(variant.min_qty ?? 1) || 1),
+    stock: Number(variant.stock),
+    mode: variant.fulfillment_mode || "manual",
+  };
+}
+
+/**
+ * `bulk_pricing` untuk payload simpan: HANYA produk manual, HANYA bila admin
+ * pernah mengubahnya, dan HANYA bila valid. Nilai lain dihilangkan agar server
+ * mempertahankan konfigurasi tersimpan (kontrak yang sama dengan VariantEditor).
+ */
+export function bulkPayloadForDraft(
+  draft: BulkDraft | undefined,
+  validation: BulkValidation,
+  manualProduct: boolean,
+): { enabled: boolean; tiers: { min_qty: number; unit_price: number }[] } | undefined {
+  if (!manualProduct || !draft?.touched) return undefined;
+  return validation.payload ?? undefined;
 }
 
 /**
@@ -94,6 +131,11 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const [saving, setSaving] = useState(false);
   const [productInitialSignature, setProductInitialSignature] = useState("");
   const [confirmProductClose, setConfirmProductClose] = useState(false);
+  /** Permintaan fokus ke isian harga grosir pertama yang tidak valid saat simpan ditolak. */
+  const [bulkFocus, setBulkFocus] = useState<{ id: string; n: number } | null>(null);
+  const requestBulkFocus = useCallback((id: string) => {
+    setBulkFocus((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
+  }, []);
 
   const [deleteTarget, setDeleteTarget] = useState<Prod|null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -207,7 +249,12 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
 
       const isMulti = rawVars.length > 1 || (rawVars.length === 1 && !rawVars[0].sku.startsWith("DEFAULT-"));
       setHasMultiVariants(isMulti);
-      const mapped = rawVars.map((v) => ({
+      // Harga grosir hanya untuk produk manual (owner 2026-11-08): produk
+      // supplier tidak memuat draft dari data tersimpan apa pun.
+      const bulkEligible = isBulkEligibleForm(nextForm);
+      const mapped = rawVars.map((v) => {
+        const raw = v as Record<string, unknown>;
+        return {
         id: v.id,
         sku: v.sku,
         label: v.label,
@@ -230,7 +277,11 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         // produk lama tanpa kolom ini tetap MBO, bukan instan).
         fulfillment_mode: String((v as Record<string, unknown>).fulfillment_mode ?? "manual"),
         wr_auto_managed: (v as Record<string, unknown>).wr_auto_managed as number | undefined,
-      }));
+        bulk: bulkEligible
+          ? bulkDraftFromApi(raw.bulk_pricing as { enabled?: unknown; tiers?: unknown } | null | undefined, Boolean(raw.bulk_pricing_corrupt || raw.bulk_pricing_invalid))
+          : emptyBulkDraft(),
+        };
+      });
       // Paritas single 2026-09-28: produk 1 varian DEFAULT dibuka sebagai mode
       // single — salin nilai variannya ke field form agar garansi/pengiriman/
       // min. beli tampil dan bisa diedit tanpa menyalakan toggle varian.
@@ -245,6 +296,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         nextForm.warranty_unit = v0.warranty_unit || null;
         nextForm.warranty_label = v0.warranty_label ?? null;
         nextForm.fulfillment_mode = v0.fulfillment_mode || "manual";
+        nextForm.bulk = v0.bulk;
         setForm({ ...nextForm });
       }
       setFormVariants(mapped);
@@ -294,6 +346,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       warranty_unit: null,
       warranty_label: null,
       fulfillment_mode: "manual",
+      // Produk baru: editor harga grosir menunggu produk tersimpan (POST
+      // /api/products tidak menerima bulk), jadi draft dimulai kosong.
+      bulk: emptyBulkDraft(),
     };
     setShowNew(true);
     setEditing(null);
@@ -370,6 +425,41 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const save = async () => {
     const v = validateForm();
     if (v) { setFormError(v); toast.error(v); return; }
+    // Harga grosir hanya untuk produk manual dan hanya setelah produk ada
+    // (POST /api/products tidak menerima bulk). Validasi diblokir sebelum
+    // menulis apa pun, sama seperti editor varian lama.
+    const manualProduct = isBulkEligibleForm(form);
+    const singleBulk = form.bulk ?? emptyBulkDraft();
+    const singleBulkValidation = validateBulkDraft(singleBulk, {
+      base: Number(form.price ?? 0),
+      minQty: Math.max(1, Number(form.min_qty ?? 1) || 1),
+      stock: Number(form.stock ?? -1),
+      mode: form.fulfillment_mode || "manual",
+    });
+    const bulkValidations = formVariants.map((variant) => validateBulkDraft(variant.bulk ?? emptyBulkDraft(), bulkContextFor(variant)));
+    if (manualProduct && editing) {
+      const invalidBulk = (hasMultiVariants ? bulkValidations.map((validation, index) => ({ validation, index })) : [{ validation: singleBulkValidation, index: -1 }])
+        .filter((item) => item.validation.errorCount > 0);
+      if (invalidBulk.length) {
+        const total = invalidBulk.reduce((sum, item) => sum + item.validation.errorCount, 0);
+        const first = invalidBulk[0];
+        const prefix = first.index >= 0 ? variantBulkPrefix(formVariants[first.index], first.index) : SINGLE_BULK_PREFIX;
+        const target = first.validation.firstInvalid;
+        requestBulkFocus(target && target !== "group" ? bulkFieldId(prefix, target.rowKey, target.field) : bulkToggleId(prefix));
+        if (first.index >= 0) {
+          const invalidIndexes = new Set(invalidBulk.map((item) => item.index));
+          setFormVariants((current) => current.map((variant, row) => invalidIndexes.has(row) && !variant.bulk?.open
+            ? { ...variant, bulk: { ...(variant.bulk ?? emptyBulkDraft()), open: true } }
+            : variant));
+        } else {
+          setForm({ ...form, bulk: { ...singleBulk, open: true } });
+        }
+        const message = `Perbaiki ${total} isian harga grosir sebelum menyimpan.`;
+        setFormError(message);
+        toast.error(message);
+        return;
+      }
+    }
     setSaving(true);
     setFormError(null);
 
@@ -415,6 +505,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       fulfillment_mode: (["manual", "shared", "unique"] as const).includes(form.fulfillment_mode as "manual" | "shared" | "unique") ? (form.fulfillment_mode as "manual" | "shared" | "unique") : "manual",
       is_active: form.isActive !== false ? 1 : 0,
       sort_order: 0,
+      // Hanya produk manual + hanya bila admin mengubahnya (lihat bulkPayloadForDraft).
+      bulk_pricing: bulkPayloadForDraft(singleBulk, singleBulkValidation, manualProduct),
     } : null;
 
     const payload = {
@@ -446,6 +538,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       admin_activation: undefined,
       // Hanya state presentasi modal, bukan kontrak API/kolom DB.
       displayPosition: undefined,
+      // Draft harga grosir mode single ikut ke `variants`, bukan top-level.
+      bulk: undefined,
       // FIX Canva 409: mode MULTI jangan kirim kolom legacy sama sekali.
       // Server menghitung ulang master price/stock/compare dari varian aktif,
       // sehingga nilai pendamping (min price, -1, null) tak lagi dibaca
@@ -492,6 +586,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
             fulfillment_mode: (["manual", "shared", "unique"] as const).includes(vr.fulfillment_mode as "manual" | "shared" | "unique") ? (vr.fulfillment_mode as "manual" | "shared" | "unique") : "manual",
             is_active: vr.is_active ?? 1,
             sort_order: idx,
+            // Hanya produk manual + hanya bila admin mengubahnya.
+            bulk_pricing: bulkPayloadForDraft(vr.bulk, bulkValidations[idx], manualProduct),
           }))
         : (singleDefaultVariant ? [singleDefaultVariant] : undefined),
     };
@@ -706,7 +802,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     activeProducts, liveProducts, hiddenProducts, offProducts, lowStock, soldProducts, filtered, paged, safePage, totalPages, perPage: perPageAdmin,
     // editor
     editing, showNew, uploading, form, formImages, hasMultiVariants, formVariants,
-    loadingVariants, formError, saving, confirmProductClose, productDirty,
+    loadingVariants, formError, saving, confirmProductClose, productDirty, bulkFocus,
     setForm, setFormImages, setHasMultiVariants, setFormVariants, setConfirmProductClose,
     openEdit, openNew, closeModal, handleUpload, save, requestCloseProductModal,
     // hapus & toggle & urutan & terjual

@@ -7,6 +7,9 @@ export type Prod = { id:string; slug:string; name:string; whatsappAlias?:string;
 
 export type Cat = { id:number; slug:string; name:string };
 
+/** Draft harga grosir (editor admin). Lihat `BulkTierEditor`. */
+type BulkDraft = import("./BulkTierEditor").BulkDraft;
+
 export type FormVariant = {
   admin_terms?: string;
   admin_activation?: string;
@@ -44,6 +47,8 @@ export type FormVariant = {
   /** Varian milik sync WR: harga/stok/label/durasi/garansi read-only di admin. */
   /** PENGECUALIAN: harga coret (comparePrice) milik admin — tetap bisa diedit. */
   wr_auto_managed?: number;
+  /** Draft harga grosir (hanya produk manual). Tidak dikirim bila belum disentuh. */
+  bulk?: BulkDraft;
 };
 
 export type ProductForm = Partial<Prod> & {
@@ -66,4 +71,6 @@ export type ProductForm = Partial<Prod> & {
   fulfillment_mode?: string;
   /** Modal manual per unit (migrasi 0058) — mode single, paritas multi. */
   manual_cost?: number;
+  /** Draft harga grosir mode single (hanya produk manual). */
+  bulk?: BulkDraft;
 };
