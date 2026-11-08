@@ -91,6 +91,33 @@ Sekalipay merchant S2b lokal memakai migrasi 0097 untuk invoice/consent fee; cre
 
 W3 backend lokal: checkout quote/order crypto menyimpan snapshot USD dan locale, status provider durable dan rekonsiliasi pada job payments; migrasi 0094–0096. UI/Telegram dan publikasi belum dilakukan; §16.17 adalah snapshot W1 historis.
 
+## AXVARA Games — rencana arsitektur (9 November 2026, BELUM implementasi)
+
+Spesifikasi produk/desain lengkap: `docs/GAMES.md`. Tidak ada route, migrasi, env,
+cron atau perubahan proxy yang dibuat pada tahap ini. Rencana teknis:
+
+- **Route (rencana):** `src/app/games/{page,[slug],pesanan/[code],lacak,bantuan,ketentuan}`
+  mengikuti pola `src/app/pedia/*`; API `src/app/api/games/*` untuk quote/order dan
+  `POST /api/games/digiflazz/webhook`.
+- **Egress Digiflazz:** whitelist IP Digiflazz = VPS `13.228.147.90`; Pages tidak punya
+  IP tetap, jadi panggilan runtime lewat route proxy baru di VPS (usulan `/dgf/*`,
+  header `x-proxy-token`, allowlist eksak `cek-saldo`, `price-list`, `transaction`),
+  mengikuti pola `/skg/*`. Key Digiflazz tetap server-side.
+- **Data (rencana D1):** katalog game & SKU (kode buyer, modal, status seller, harga
+  referensi pembanding, harga jual hasil rumus), pesanan game (ID akun, nickname,
+  harga terkunci, metode bayar) dan dispatch Digiflazz (`ref_id` unik, status,
+  SN/keterangan, `max_price`, percobaan cek).
+- **Harga:** sinkron `price-list` terjadwal dan di-cache (bukan per page view; batas rate
+  Digiflazz). Harga jual = referensi Oura −2% dengan batas bawah modal + biaya kanal +
+  3%. Sumber harga referensi (input admin vs impor berkala) masih keputusan terbuka.
+- **Dispatch:** hanya setelah pembayaran terverifikasi; pending/timeout dicek ulang
+  dengan `ref_id` yang sama, tidak membeli ulang; webhook memverifikasi
+  `X-Hub-Signature` HMAC-SHA1 body mentah dan idempoten.
+- **Pembayaran:** memakai rail existing (QRIS provider tersimpan, gateway Sekalipay
+  VA/e-wallet, NOWPayments crypto) tanpa rail baru.
+- **Env (rencana, semua `secret_text`):** kredensial Digiflazz + secret webhook + URL/token
+  proxy `/dgf`; dicatat di §16 saat benar-benar dipasang.
+
 ## Koreksi order Pedia - 3 November 2026
 
 Revert paket UX `1b0efde` sesuai keputusan owner, mempertahankan panel deskripsi

@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-09 — Spesifikasi AXVARA Games ditulis (RENCANA, belum implementasi): dokumen baru docs/GAMES.md (posisi produk, MVP bertahap, route rencana /games/*, beranda + opsi hero orbit/carousel/hybrid, halaman game pola Oura dengan perbaikan UX, rasa AXVARA, aset, alur pesanan, keputusan terbuka) + ringkasan di PRD/DESIGN/ARCHITECTURE + indeks AGENTS — docs/GAMES.md, docs/PRD.md, docs/DESIGN.md, docs/ARCHITECTURE.md, AGENTS.md — (verifikasi: dokumentasi saja; audit Oura Store desktop/mobile di browser; git diff --check)
+
 - 2026-11-09 — Rumus harga AXVARA Games disetujui owner: Oura −2% dengan batas bawah modal + biaya kanal + margin minimum 3% (rencana, belum implementasi) — docs/PRD.md — (verifikasi: dokumentasi saja; git diff --check)
 
 - 2026-11-09 — Keputusan produk AXVARA Games dicatat (rencana, belum implementasi): bagian axvara.tech seperti Pedia, rail QRIS/VA/e-wallet/crypto yang sudah ada, benchmark harga Oura Store (snapshot ruang margin FF ~24%, ML ~5%, PUBG ~6%, Genshin <1%) — docs/PRD.md — (verifikasi: dokumentasi saja; git diff --check; preflight Development Digiflazz via VPS sukses membaca 596 produk Games)

@@ -22,6 +22,7 @@ hanya file yang relevan dengan tugas, dan semuanya bila tugas lintas area.
 | QRIS GoPay/KlikQRIS/DANA, persiapan NOWPayments/Sekalipay gateway, poller VPS GoPay, callback pembayaran, maintenance pembayaran | `docs/agent-rules/payments.md` |
 | Pedia/SMM (IndoSMM, ProviderSMM lama), katalog/refill/kurasi, white label | `docs/agent-rules/pedia.md` + `docs/agents-history.md` untuk order lama |
 | Workers Paid, cron, budget statement fulfillment, unit unik, kuota/monitor D1 | `docs/agent-rules/platform-ops.md` |
+| AXVARA Games (route `/games`, katalog/harga/pesanan top up game) | `docs/GAMES.md` + `docs/agent-rules/digiflazz.md` |
 | Gateway WhatsApp, grup AXVARA'S, ganti nomor bot, siaran/welcome | `docs/agent-rules/whatsapp-gateway.md` + `gateway/AGENTS.md` |
 
 Keputusan baru per area ditulis di file `docs/agent-rules/` yang sesuai (terbaru
