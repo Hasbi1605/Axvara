@@ -225,3 +225,65 @@ Urutan fase (masing-masing satu PR/commit logis, wajib baca AGENTS.md + aturan a
 Batasan: jangan mengaktifkan webhook dashboard sebelum G6 terdeploy; jangan deposit
 atau transaksi produksi tanpa izin owner; jangan mengubah seller/kode di akun tanpa
 mencatat di `docs/agent-rules/digiflazz.md`.
+
+## 12. Kontrak teknis backend (9 November 2026, implementasi bertahap)
+
+Cakupan agent sekarang: proxy `/dgf`, klien Digiflazz, schema, sinkron katalog/harga,
+dispatch + seller cadangan, webhook, cron. **Di luar cakupan (Paseo):** API buat
+pesanan/quote untuk pembeli, cek nickname endpoint publik, UI, admin UI harga referensi.
+
+### 12.1 Egress & env
+- Panggilan runtime: `POST {WARUNG_REBAHAN_PROXY_URL}/dgf/v1/{cek-saldo|price-list|transaction}`
+  dengan `x-proxy-token: WARUNG_REBAHAN_PROXY_TOKEN` (VPS & token yang sama dengan Pedia).
+  Body ditandatangani di Pages: `sign = md5(username + key + X)` dengan X = `depo` /
+  `pricelist` / `ref_id`. Key tidak pernah dikirim ke VPS.
+- Env Pages (semua `secret_text`, belum dipasang): `DIGIFLAZZ_USERNAME`, `DIGIFLAZZ_API_KEY`,
+  `DIGIFLAZZ_WEBHOOK_SECRET`, `DIGIFLAZZ_TESTING` (`true` → kirim `testing:true`). Tanpa
+  `DIGIFLAZZ_USERNAME`/`DIGIFLAZZ_API_KEY` semua job Games no-op (tidak error).
+
+### 12.2 Data (D1)
+- `games_products`: satu baris per SKU utama. `buyer_sku_code` UNIQUE, `backup_sku_code`
+  (kode `…b`, nullable), `game_brand`, `product_type` (Umum/Indonesia/Membership),
+  `product_name`, `cost`, `backup_cost`, `seller_active`, `backup_seller_active`,
+  `unlimited_stock`, `stock`, `multi`, `start_cut_off`, `end_cut_off`, `description`,
+  `reference_price` (Oura, input admin, nullable), `sell_price` (hasil
+  `computeGamesSellPrice` dengan biaya kanal 0 — biaya kanal ditambahkan rail pembayaran
+  seperti Market/Pedia), `enabled` (tampil ke pembeli, default 0), `synced_at`.
+- `games_order_items`: satu baris per pesanan (`order_code` UNIQUE FK `orders.code`,
+  `orders.order_kind='games'`), `product_id`, `buyer_sku_code`, `customer_no`,
+  `customer_nickname`, `quantity` (MVP = 1), `unit_price`, `total`, `cost_snapshot`,
+  `max_price`, `status` ∈ awaiting_payment | queued | submitting | pending | success |
+  needs_check | expired, `attempt_no` (1 utama, 2 cadangan), `sn`, `supplier_message`,
+  `lease_until`, `submit_attempts`, `last_polled_at`, `completed_at`, `last_error`.
+- `games_dispatch_attempts`: `ref_id` UNIQUE (`<order_code>-<attempt_no>`), `order_code`,
+  `attempt_no` (UNIQUE bersama order_code), `buyer_sku_code`, `status` ∈ submitting |
+  pending | success | failed | ambiguous, `rc`, `message`, `sn`, `price`.
+
+### 12.3 Alur dispatch
+1. Pembayaran terverifikasi → `schedulePaidFulfillment(code,'games')` → `processGamesPaidOrders()`;
+   cron lite `games_orders` adalah jalur pemulihan.
+2. Klaim berpagar: `queued` + lease kedaluwarsa → `submitting` (lease 300 dtk) dengan
+   `changes===1`; baru kemudian insert attempt + panggil `transaction`.
+3. Respons `status`: **Sukses** → item `success` (simpan `sn`); **Pending** → item
+   `pending`; **Gagal** (final) → bila `attempt_no=1`, ada `backup_sku_code` aktif dan
+   `backup_cost ≤ max_price` → attempt 2 (ref baru) di run berikutnya, selain itu
+   `needs_check` + notifikasi admin Telegram.
+4. Transport ambigu (timeout/502/504/tak terbaca) → attempt `ambiguous`, item `pending`;
+   dicek ulang dengan **payload & `ref_id` yang sama** (Digiflazz mengembalikan status
+   transaksi existing). Tidak pernah membuat ref baru untuk ambiguitas.
+5. Polling pending dengan backoff (60/120/300 dtk); pending > 24 jam → `needs_check`.
+6. Tidak pernah dua attempt aktif untuk satu pesanan; `max_price` selalu dikirim.
+
+### 12.4 Webhook
+`POST /api/games/digiflazz/webhook`: baca body mentah (batas byte), verifikasi
+`X-Hub-Signature: sha1=<HMAC-SHA1(secret, raw)>` constant-time, dedupe di
+`dana_webhook_events` (`provider='digiflazz'`, key `ref_id:status`), lalu transisi yang sama
+dengan polling (idempoten, hanya dari `submitting|pending` milik attempt aktif).
+Respons 200 setelah tercatat; signature salah 401. Webhook dashboard baru diaktifkan
+setelah route ini terdeploy.
+
+### 12.5 Sinkron katalog
+Cron lite `games_catalog` (throttle ≥10 menit lewat `store_settings`): `price-list`
+`cmd:prepaid`, filter kategori Games, upsert per kode utama; kode berakhiran `b` mengisi
+kolom cadangan dari kode dasar. SKU yang hilang dari daftar → `seller_active=0`.
+`sell_price` dihitung ulang. `enabled` tidak pernah diubah oleh sinkron.

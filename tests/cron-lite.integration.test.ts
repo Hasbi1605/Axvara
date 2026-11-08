@@ -41,6 +41,23 @@ describe("/api/cron/lite", () => {
       expect((await call("cleanup")).body).toMatchObject({ok:true,pairs_decided:0});
     } finally {fx.close();}
   });
+  it("games_catalog: no-op 200 tanpa kredensial Digiflazz; kegagalan price-list → 503", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("DIGIFLAZZ_USERNAME", "");
+      vi.stubEnv("DIGIFLAZZ_API_KEY", "");
+      expect(await call("games_catalog")).toMatchObject({ status: 200, body: { ok: true, job: "games_catalog", skipped: "not_configured" } });
+      vi.stubEnv("DIGIFLAZZ_USERNAME", "u");
+      vi.stubEnv("DIGIFLAZZ_API_KEY", "k");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.test");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "t");
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 502 })));
+      const failed = await call("games_catalog");
+      expect(failed.status).toBe(503);
+      expect(failed.body).toMatchObject({ ok: false, error: "price_list_ambiguous" });
+    } finally { vi.unstubAllGlobals(); fx.close(); }
+  });
   it("auth + validasi job", async () => {
     vi.stubEnv("CRON_SECRET", "s");
     expect((await call("expiry", "salah")).status).toBe(401);

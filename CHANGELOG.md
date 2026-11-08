@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-09 — AXVARA Games tahap A: proxy VPS `/dgf/*` terpasang (backup dist, hash cocok, health dgf:true, cek-saldo Dev 200, tanpa token 401), klien Digiflazz edge, sinkron katalog/harga + cron lite `games_catalog`, migrasi 0107 tiga tabel Games; env Digiflazz Pages belum dipasang sehingga job no-op — src/lib/games/{digiflazz,catalog-sync}.ts, drizzle/migrations/0107_games_core.sql, drizzle/schema.sql, src/app/api/cron/lite/route.ts, mcp-worker/src/cron.ts, axvara-wr-proxy src/index.ts — (verifikasi: proxy npm test lulus termasuk dgf.test.mjs; vitest Games+cron 76/76; suite penuh 381 file/5.084 test lulus; tsc lulus)
+
 - 2026-11-09 — Rumus harga AXVARA Games sebagai fungsi murni + brief fase implementasi G1–G8 untuk Paseo — src/lib/games/pricing.ts, tests/games-pricing.test.ts, docs/GAMES.md §11, docs/ARCHITECTURE.md, README.md — (verifikasi: games-pricing 6/6; suite penuh 378 file/5.055 test lulus pada run ulang (2 test workerd/integrasi flaky pada run pertama, lulus terisolasi); tsc --noEmit lulus; belum ada route/schema/env)
 
 - 2026-11-09 — Keputusan owner AXVARA Games dicatat: hero hybrid orbit+carousel, gelombang 1 FF/FF MAX/ML/PUBG, cek nickname sebelum bayar aktif, seller cadangan otomatis (kode akhiran b, hanya setelah Gagal final), kode promo menyusul, aset awal dari sumber resmi publisher (RENCANA, belum implementasi) — docs/GAMES.md, docs/PRD.md, docs/DESIGN.md, docs/agent-rules/digiflazz.md — (verifikasi: dokumentasi saja; git diff --check)

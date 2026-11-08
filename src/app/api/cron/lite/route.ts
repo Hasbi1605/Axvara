@@ -1,4 +1,4 @@
-// POST /api/cron/lite?job=payments|expiry|fulfillment|wr_orders|sk_orders|pedia_orders|promo|notify_a|notify_b|notify|cleanup — langkah
+// POST /api/cron/lite?job=payments|expiry|fulfillment|wr_orders|sk_orders|pedia_orders|promo|notify_a|notify_b|notify|cleanup|games_catalog — langkah
 // cron INTI yang dipisah dari route raksasa `/api/cron/operations` (2026-10-05).
 //
 // Latar: Workers Free ~10 ms CPU per request. Malam 4→5 Okt 10–20% request
@@ -44,7 +44,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup"] as const;
+const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 10;
 const ORPHAN_LEDGER_PER_RUN = 10;
@@ -119,6 +119,13 @@ export async function POST(request: NextRequest) {
     else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline));
     else if (job === "notify") Object.assign(result, await runNotify(db, deadline));
     else if (job === "cleanup") Object.assign(result, await runCleanup(db));
+    else if (job === "games_catalog") {
+      // docs/GAMES.md §12.5: throttle ≥10 mnt + no-op tanpa kredensial ada di dalam sync.
+      const { syncGamesCatalog } = await import("@/lib/games/catalog-sync");
+      const synced = await syncGamesCatalog(db);
+      Object.assign(result, synced);
+      if ("ok" in synced && synced.ok === false) return NextResponse.json({ ...result, ok: false }, { status: 503 });
+    }
     else Object.assign(result, await runPromo(db));
   } catch (error) {
     // Budget habis = sisa kerja dilanjutkan tick berikut, bukan kegagalan.

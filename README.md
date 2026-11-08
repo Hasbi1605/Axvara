@@ -1691,4 +1691,4 @@ tick; pengingat berikutnya mengikuti throttle, sehingga alert bisa tertunda.
 Tidak mengubah dispatch, pembayaran, harga, supplier atau notifikasi pembeli.
 
 
-AXVARA Games (RENCANA, 9 November 2026): spesifikasi di `docs/GAMES.md`; supplier Digiflazz (`docs/agent-rules/digiflazz.md`). Kode yang sudah ada baru `src/lib/games/pricing.ts` (rumus harga jual Oura −2% dengan batas bawah modal + biaya kanal + 3%, fungsi murni) beserta `tests/games-pricing.test.ts`; belum ada route `/games`, schema, env atau dispatch.
+AXVARA Games (RENCANA, 9 November 2026): spesifikasi di `docs/GAMES.md`; supplier Digiflazz (`docs/agent-rules/digiflazz.md`). Kode yang sudah ada baru `src/lib/games/pricing.ts` (rumus harga jual Oura −2% dengan batas bawah modal + biaya kanal + 3%, fungsi murni) beserta `tests/games-pricing.test.ts`; tahap A (9 Nov 2026): klien `src/lib/games/digiflazz.ts` via proxy VPS `/dgf/*`, sinkron katalog `src/lib/games/catalog-sync.ts` (cron lite `games_catalog`), migrasi `0107_games_core.sql`. Belum ada route `/games`, dispatch, webhook atau env Pages Digiflazz (lihat ARCHITECTURE §16.25).

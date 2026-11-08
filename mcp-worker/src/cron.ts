@@ -73,6 +73,9 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "notify_b", alarm: "soft" },
   { phase: "lite", lite: "promo", alarm: "soft" },
   { phase: "lite", lite: "cleanup", alarm: "none", everyMinutes: 5 },
+  // AXVARA Games (docs/GAMES.md §12.5): sinkron katalog Digiflazz tiap 10 mnt;
+  // throttle & no-op tanpa kredensial dijaga di dalam job.
+  { phase: "lite", lite: "games_catalog", alarm: "soft", everyMinutes: 10 },
   // Pelengkap per jam (stranded ledger, manual-WA, reconcile tambahan, saldo,
   // watchdog, sync cadangan). Tidak dialarmkan: inti sudah di lite.
   { phase: "expiry", alarm: "none", heavy: true },

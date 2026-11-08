@@ -4189,6 +4189,14 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
+### 16.25 AXVARA Games tahap A + proxy Digiflazz `/dgf/*` — 9 November 2026
+
+- **Proxy (terpasang di VPS):** `POST /dgf/v1/{cek-saldo,price-list,transaction}`, token `WARUNG_REBAHAN_PROXY_TOKEN`, body bertanda tangan Pages diteruskan byte-per-byte; bukti: `/health dgf:true`, cek-saldo Development 200, tanpa token 401. Detail `axvara-wr-proxy/AGENTS.md`.
+- **Kode (lokal → CI):** `src/lib/games/digiflazz.ts` (md5 murni TS, sign, `callDigiflazz` → ok/ambiguous/config/http_error/api_error, `checkBalance`, `fetchPrepaidPriceList`, `sendTransaction`), `src/lib/games/catalog-sync.ts` (`syncGamesCatalog`: CAS `store_settings.games_catalog_sync_at` ≥9 mnt, upsert `json_each` per 50 baris, kode `…b` → kolom cadangan, katalog Games kosong = tidak mengubah apa pun, `enabled`/`reference_price` tidak disentuh).
+- **Migrasi 0107** `games_products`, `games_order_items`, `games_dispatch_attempts` (§12.2 `docs/GAMES.md`); `orders.order_kind` tanpa CHECK sehingga `'games'` diterima.
+- **Cron:** lite job `games_catalog` (`mcp-worker` langkah `everyMinutes:10`, alarm soft); tanpa `DIGIFLAZZ_USERNAME`/`DIGIFLAZZ_API_KEY` → 200 `skipped:not_configured`.
+- **Env rencana (`secret_text`, BELUM dipasang):** `DIGIFLAZZ_USERNAME`, `DIGIFLAZZ_API_KEY`, `DIGIFLAZZ_WEBHOOK_SECRET`, `DIGIFLAZZ_TESTING`. Proxy memakai `WARUNG_REBAHAN_PROXY_URL/TOKEN` existing.
+
 ### 16.20 Sekalipay payment gateway via proxy VPS `/skg/*` — 6 November 2026
 
 - Koreksi insiden tes owner: canonical deployment `770a0519587ac05f7b50bc183e790b81c4482a0e` success dibuat `2026-11-06T14:19:49.545708Z`; tes ShopeePay21:57WIB kemudian mendapat upstreamPOST401, diikuti GET404, TXinitializing/tanpa invoice. Kontrak resmi https://merchant.sekalipay.com/id/dokumentasi/authentication membedakan whitelist (POSTHMAC rawbody; GETkey saja) dari Enhanced (canonical method/path/params/timestamp). Adapter sebelumnya salah menerapkan Enhanced pada whitelist; GET katalog200 tidak menguji secret/signature.
