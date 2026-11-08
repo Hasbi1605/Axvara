@@ -55,7 +55,7 @@ export function CartDrawer() {
       <div ref={panelRef} tabIndex={-1} className="relative w-full max-w-[420px] h-full ax-glass-strong flex flex-col rounded-l-[24px] sm:rounded-l-[28px] overflow-hidden motion-safe:animate-[slideInRight_0.26s_var(--ease-apple)]">
         <div className="h-[64px] flex items-center justify-between px-5 border-b border-white/10 shrink-0">
           <h2 className="font-display font-bold text-white">{t.cartTitle(totalLines)}</h2>
-          <button ref={closeRef} onClick={() => setDrawer(false)} className="w-11 h-11 rounded-full ax-glass flex items-center justify-center text-white/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.closeCart}>
+          <button ref={closeRef} onClick={() => setDrawer(false)} className="relative w-8 h-8 shrink-0 before:absolute before:-inset-1.5 before:content-[''] rounded-full ax-glass flex items-center justify-center text-white/70 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.closeCart}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/ios11/close-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-70" draggable={false} />
           </button>
@@ -111,16 +111,16 @@ export function CartDrawer() {
                       <p className="mt-0.5 text-[11px] text-white/55">{copy.nextCart(hint.need, prices.text(hint.unitPrice))}</p>
                     )}
                     <div className="mt-2 flex items-center gap-2">
-                      <button onClick={() => setQty(it.id, it.qty - 1, it.variantId)} className="w-11 h-11 shrink-0 rounded-full ax-glass flex items-center justify-center text-white/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.decAria(productDisplayName(it, prices.locale), translateVariantLabel(it.variantLabel, prices.locale))}>
+                      <button onClick={() => setQty(it.id, it.qty - 1, it.variantId)} className="relative w-8 h-8 shrink-0 before:absolute before:-inset-1.5 before:content-[''] rounded-full ax-glass flex items-center justify-center text-white/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.decAria(productDisplayName(it, prices.locale), translateVariantLabel(it.variantLabel, prices.locale))}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/icons/ios11/minus-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-70" draggable={false} />
                       </button>
-                      <span className="text-sm font-semibold text-white w-6 text-center">{it.qty}</span>
-                      <button onClick={() => setQty(it.id, it.qty + 1, it.variantId)} className="w-11 h-11 shrink-0 rounded-full ax-glass flex items-center justify-center text-white/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.incAria(productDisplayName(it, prices.locale), translateVariantLabel(it.variantLabel, prices.locale))}>
+                      <span className="text-sm font-semibold text-white min-w-7 text-center">{it.qty}</span>
+                      <button onClick={() => setQty(it.id, it.qty + 1, it.variantId)} className="relative w-8 h-8 shrink-0 before:absolute before:-inset-1.5 before:content-[''] rounded-full ax-glass flex items-center justify-center text-white/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.incAria(productDisplayName(it, prices.locale), translateVariantLabel(it.variantLabel, prices.locale))}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/icons/ios11/plus-32.png" alt="" width={12} height={12} className="w-3 h-3 object-contain brightness-0 invert opacity-70" draggable={false} />
                       </button>
-                      <button onClick={() => remove(it.id, it.variantId)} className="ml-auto w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-white/65 hover:text-red-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.removeAria(productDisplayName(it, prices.locale), translateVariantLabel(it.variantLabel, prices.locale))}>
+                      <button onClick={() => remove(it.id, it.variantId)} className="ml-auto relative w-8 h-8 shrink-0 before:absolute before:-inset-1.5 before:content-[''] rounded-full flex items-center justify-center text-white/65 hover:text-red-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]" aria-label={t.removeAria(productDisplayName(it, prices.locale), translateVariantLabel(it.variantLabel, prices.locale))}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src="/icons/ios11/trash-32.png" alt="" width={16} height={16} className="w-4 h-4 object-contain brightness-0 invert opacity-60" draggable={false} />
                       </button>

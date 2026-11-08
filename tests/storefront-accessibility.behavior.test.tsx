@@ -68,10 +68,14 @@ it("keeps cart actions contextual, keyboard focus visible and touch targets at 4
   const subtract = screen.getByRole("button", { name: "Kurangi jumlah Canva Pro, Invite 1 Bulan" });
   const remove = screen.getByRole("button", { name: "Hapus Canva Pro, Invite 1 Bulan dari keranjang" });
   for (const button of [close, add, subtract, remove]) {
-    expect(button.classList.contains("w-11")).toBe(true);
-    expect(button.classList.contains("h-11")).toBe(true);
+    // 2026-11-08: visual 32px, area tap tetap 44px lewat pseudo-elemen.
+    expect(button.classList.contains("w-8")).toBe(true);
+    expect(button.classList.contains("h-8")).toBe(true);
+    expect(button.className).toContain("before:-inset-1.5");
     expect(button.className).toContain("focus-visible:outline");
   }
+  // Jumlah di antara stepper punya lebar minimum agar hit area tidak menutupinya.
+  expect(document.querySelector("span.min-w-7")?.className).toContain("text-center");
   fireEvent.click(add); expect(useCart.getState().items[0].qty).toBe(2);
   fireEvent.click(subtract); expect(useCart.getState().items[0].qty).toBe(1);
   fireEvent.click(remove); expect(useCart.getState().items).toEqual([]);

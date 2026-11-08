@@ -64,6 +64,9 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     // 2026-10-12 (owner): mobile juga "AXVARA PEDIA" penuh seperti Market
     // (bukan "PEDIA" saja) — kecil + truncate agar muat.
     expect(nav).toContain("md:hidden");
+    // 2026-11-08: nama disembunyikan <344px (320-330px membuat tombol bahasa
+    // meluber ~5px; 344px muat).
+    expect(nav).toContain("max-[343px]:hidden");
     expect(nav).toContain("AXVARA PEDIA");
     expect(nav).not.toMatch(/>\s*PEDIA\s*</);
     expect(nav).not.toContain("overflow-hidden");

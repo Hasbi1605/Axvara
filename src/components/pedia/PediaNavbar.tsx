@@ -48,7 +48,7 @@ export function PediaNavbar() {
           <span className="hidden whitespace-nowrap font-display text-[22px] font-[300] leading-none tracking-[0.16em] text-white md:inline">
             AXVARA PEDIA
           </span>
-          <span className="max-w-[130px] truncate whitespace-nowrap font-display text-[15px] font-[300] leading-none tracking-[0.12em] text-white md:hidden">
+          <span className="max-[343px]:hidden max-w-[130px] truncate whitespace-nowrap font-display text-[15px] font-[300] leading-none tracking-[0.12em] text-white md:hidden">
             AXVARA PEDIA
           </span>
         </Link>
