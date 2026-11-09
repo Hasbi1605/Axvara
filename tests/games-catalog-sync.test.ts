@@ -52,12 +52,30 @@ describe("syncGamesCatalog", () => {
     expect(row("ml5")).toMatchObject({ seller_active: 0 });
   });
 
-  it("updates existing rows, preserves enabled/reference_price, and recomputes sell_price using the reference", async () => {
-    fx.sql.exec(`INSERT INTO games_products(buyer_sku_code,product_name,cost,reference_price,enabled,sell_price) VALUES('ml86','old',1,20000,1,5)`);
+  it("mirrors games_reference_prices into reference_price + sell_price, preserving enabled and display groups", async () => {
+    fx.sql.exec(`INSERT INTO games_products(buyer_sku_code,product_name,cost,reference_price,enabled,display_group,display_order,sell_price)
+      VALUES('ml86','old',1,18000,1,'bestseller',7,5)`);
+    fx.sql.exec(`INSERT INTO games_reference_prices(buyer_sku_code,price,source,captured_at,updated_at)
+      VALUES('ml86',20000,'admin','2026-11-09T00:00:00.000Z','2026-11-09T00:00:00.000Z')`);
     vi.stubGlobal("fetch", priceList([item("ml86", { price: 15000, product_name: "ML 86 DM" })]));
     await syncGamesCatalog(db(), { now: T0 });
-    expect(row("ml86")).toMatchObject({ product_name: "ML 86 DM", cost: 15000, reference_price: 20000, enabled: 1, sell_price: 19600 });
+    expect(row("ml86")).toMatchObject({
+      product_name: "ML 86 DM", cost: 15000, reference_price: 20000, enabled: 1,
+      display_group: "bestseller", display_order: 7, sell_price: 19600,
+    });
     expect(fx.sql.prepare("SELECT COUNT(*) c FROM games_products").get()).toEqual({ c: 1 });
+  });
+
+  it("reads a reference for a SKU that has no product row yet and clears the mirror when it is removed", async () => {
+    fx.sql.exec(`INSERT INTO games_reference_prices(buyer_sku_code,price,source,captured_at,updated_at)
+      VALUES('ff140',25000,'admin','2026-11-09T00:00:00.000Z','2026-11-09T00:00:00.000Z')`);
+    vi.stubGlobal("fetch", priceList([item("ff140", { brand: "FREE FIRE", price: 10000 })]));
+    await syncGamesCatalog(db(), { now: T0 });
+    expect(row("ff140")).toMatchObject({ reference_price: 25000, sell_price: 24500 });
+    // Referensi dihapus admin: sinkron berikutnya kembali ke batas bawah modal.
+    fx.sql.exec("DELETE FROM games_reference_prices WHERE buyer_sku_code='ff140'");
+    await syncGamesCatalog(db(), { now: T0 + 10 * 60_000 });
+    expect(row("ff140")).toMatchObject({ reference_price: null, sell_price: Math.ceil(10000 * 1.03) });
   });
 
   it("maps b-suffixed codes onto the base row when the base exists; orphan b codes stay products", async () => {

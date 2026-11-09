@@ -1737,11 +1737,23 @@ CREATE TABLE IF NOT EXISTS games_products (
   reference_price INTEGER CHECK (reference_price IS NULL OR reference_price > 0),
   sell_price INTEGER NOT NULL DEFAULT 0 CHECK (sell_price >= 0),
   enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+  display_group TEXT CHECK (display_group IS NULL OR display_group IN ('special','bestseller')),
+  display_order INTEGER,
   synced_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_games_products_brand ON games_products(game_brand, enabled);
+
+-- Migrasi 0108: sumber kebenaran harga pembanding (Oura) per SKU. Cermin di
+-- games_products.reference_price/ sell_price diisi sinkron dan admin.
+CREATE TABLE IF NOT EXISTS games_reference_prices (
+  buyer_sku_code TEXT PRIMARY KEY,
+  price INTEGER NOT NULL CHECK (price > 0),
+  source TEXT NOT NULL,
+  captured_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_games_products_synced ON games_products(synced_at);
 
 CREATE TABLE IF NOT EXISTS games_order_items (

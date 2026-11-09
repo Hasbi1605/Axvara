@@ -12,10 +12,19 @@ const body = (sql: string, name: string) => {
   return m[1].replace(/\s+/g, " ").trim();
 };
 const indexes = (sql: string) => (sql.match(/CREATE INDEX IF NOT EXISTS idx_games_[^;]+;/g) ?? []).map((s) => s.replace(/\s+/g, " "));
+// 0108 (migrasi aditif berikutnya) menambah dua kolom ini ke games_products.
+// schema.sql adalah gabungan semua migrasi, jadi keduanya dikeluarkan saat
+// membandingkan bentuk dasar 0107 — bukan melonggarkan pemeriksaan kolom lain.
+const LATER_COLUMNS = [
+  ", display_group TEXT CHECK (display_group IS NULL OR display_group IN ('special','bestseller'))",
+  ", display_order INTEGER",
+];
+const withoutLaterColumns = (sql: string, name: string) =>
+  LATER_COLUMNS.reduce((text, column) => text.replace(column, ""), body(sql, name));
 
 describe("0107 games core migration", () => {
   it("table bodies and indexes are identical to drizzle/schema.sql", () => {
-    for (const t of TABLES) expect(body(migration, t)).toBe(body(schema, t));
+    for (const t of TABLES) expect(body(migration, t)).toBe(withoutLaterColumns(schema, t));
     expect(indexes(migration)).toEqual(indexes(schema));
     expect(indexes(migration).length).toBeGreaterThanOrEqual(5);
   });

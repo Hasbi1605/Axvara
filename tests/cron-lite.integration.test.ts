@@ -192,7 +192,9 @@ describe("/api/cron/lite", () => {
     } finally {
       fx.close();
     }
-  });
+    // Impor dinamis pertama rantai modul Pedia ~4,5 dtk saat dingin; batas
+    // default 5 dtk membuat test ini flaky di full suite paralel.
+  }, 20_000);
 
   // 2026-11-01 (owner): ProviderSMM diputus — tidak ada cek saldo/alert walau
   // penandanya sudah lama, sementara IndoSMM tetap dicek.

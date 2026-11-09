@@ -1221,6 +1221,14 @@ CREATE TABLE store_settings (
 -- qris    | QRIS Dinamis             | -            | DANA Business | qris_url NULL
 ```
 
+**AXVARA Games (migrasi 0107 + 0108, §16.25–§16.27):** tabel `games_products`
+(kolom `display_group`/`display_order` ditambahkan 0108), `games_reference_prices`
+(sumber kebenaran harga pembanding Oura per `buyer_sku_code`), `games_order_items`
+(1 baris per pesanan Games, FK `orders.code`), dan `games_dispatch_attempts`
+(`ref_id` unik per percobaan). Definisi kanonis ada di `drizzle/schema.sql`; 0108
+bersifat aditif — `CREATE TABLE IF NOT EXISTS` untuk tabel referensi, sedangkan
+`ALTER TABLE` kolom baru dicatat ledger migrasi D1 dan tidak dijalankan ulang manual.
+
 ---
 
 ## 5. API Contract (MVP)
@@ -4190,6 +4198,18 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Telegram**: `paymentMethodOfferKeyboard` menampilkan satu entri `Crypto (USD) · <total> USD` (`pmc:<nonce>`); `cryptoCoinKeyboard` (Populer → Stablecoin, 2/baris, label `BTC` / `USDT · BSC`, Kembali `pmb:<nonce>`); tap koin = `pm:<nonce>:<index>` (reuse freeze/consent/claim). Handler `handlePayCryptoMenu` (callback.ts `pmc`/`pmb`, ownerBound) hanya merender ulang dari array beku. `validateFrozenSelectionLive` menolak koin yang hilang dari snapshot / di bawah minimum baru (`method_unavailable`); dispatch memakai ticker/jaringan dari id beku → katalog kurasi. `PAYQ1_MAX_BYTES` 64 KB, `PAYQ1_MAX_METHODS` 96 (indeks `pm:` tetap 2 digit). Pesan status pending memuat jumlah+simbol+jaringan+peringatan+baris biaya layanan.
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
+
+### 16.27 AXVARA Games admin data P1–P3 — 9 November 2026 (lokal → CI)
+
+- **Schema (migrasi 0108 `games_admin`)**: tabel `games_reference_prices(buyer_sku_code PK, price>0, source, captured_at, updated_at)` = sumber kebenaran harga Oura; kolom `games_products.display_group` (CHECK NULL/`special`/`bestseller`) + `display_order`. Cermin `games_products.reference_price` dan `sell_price` diisi sinkron/admin, bukan sumber kebenaran.
+- **Sinkron diubah:** `syncGamesCatalog` membaca `games_reference_prices` (bukan kolom cermin), menulis `reference_price` + `sell_price` saat upsert; `enabled`, `display_group`, `display_order` tidak pernah disentuh. Referensi untuk kode yang belum tersinkron tetap tersimpan dan berlaku saat SKU muncul.
+- **Helper murni** `src/lib/games/admin.ts`: `GAMES_WAVE1_BRANDS` (FREE FIRE, Free Fire Max, MOBILE LEGENDS, PUBG MOBILE; case-insensitive), `effectiveGroup` (override admin → Membership/WDP/Twilight → `all`), `isHealthyForWave` (`seller_active=1 AND cost>0 AND sell_price>=floor AND sell_price<=reference`), `gamesMargin` (`cost, sell, floor, margin_rp, margin_pct, source, competitive`), `listGamesProducts`, `gamesAdminSyncStatus`, `enableGamesWave1`.
+- **API admin (edge, pola Pedia: `requireAdmin` + audit `admin_authorized`, body 8.000 byte)**:
+  - `GET /api/admin/games/products` → `{items(+margin+effectiveGroup), total, limit, offset, brands, sync:{last_sync_at dari store_settings.games_catalog_sync_at, counts:{total,enabled,seller_active,with_reference}}}`; `limit` ≤200.
+  - `PATCH /api/admin/games/products` → `enabled`/`reference_price`/`display_group`/`display_order`; upsert/delete `games_reference_prices` (`source='admin'`, `captured_at=now`), hitung ulang `sell_price` (`computeGamesSellPrice`), cermin kolom, satu `d1.batch`. 400 validasi ketat, 404 `not_found`, 409 `not_sellable` saat `enabled=true` tanpa seller aktif/modal.
+  - `POST /api/admin/games/products/enable-wave` `{dry_run?}` → `{eligible, enabled_now, skipped_unhealthy}`; hanya brand gelombang 1 yang sehat; tidak pernah menonaktifkan.
+- **UI:** tab admin "Games" (`src/components/admin/GamesManager.tsx`, lazy di `admin/page.tsx`, sidebar grup Katalog) — status sinkron, filter brand/cari, tabel modal/harga Oura/harga jual/margin/sumber/seller/grup, edit harga Oura inline, toggle aktif, aktivasi gelombang 1 dua tahap (dry_run → konfirmasi).
+- **Bukti:** `tests/games-admin.test.ts`, `tests/games-admin-migration.test.ts`, `tests/games-catalog-sync.test.ts` diperbarui. Belum deployment, belum ada data produksi, dan harga Oura gelombang 1 belum diisi.
 
 ### 16.26 AXVARA Games tahap B: dispatch, seller cadangan, webhook — 9 November 2026 (lokal → CI)
 

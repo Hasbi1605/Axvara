@@ -229,8 +229,9 @@ mencatat di `docs/agent-rules/digiflazz.md`.
 ## 12. Kontrak teknis backend (9 November 2026, implementasi bertahap)
 
 Cakupan agent sekarang: proxy `/dgf`, klien Digiflazz, schema, sinkron katalog/harga,
-dispatch + seller cadangan, webhook, cron. **Di luar cakupan (Paseo):** API buat
-pesanan/quote untuk pembeli, cek nickname endpoint publik, UI, admin UI harga referensi.
+dispatch + seller cadangan, webhook, cron, dan admin data (harga referensi, grup
+nominal, aktivasi gelombang 1 — §12.7). **Di luar cakupan (Paseo):** API buat
+pesanan/quote untuk pembeli, cek nickname endpoint publik, UI storefront.
 
 ### 12.1 Egress & env
 - Panggilan runtime: `POST {WARUNG_REBAHAN_PROXY_URL}/dgf/v1/{cek-saldo|price-list|transaction}`
@@ -286,16 +287,72 @@ setelah route ini terdeploy.
 Cron lite `games_catalog` (throttle ≥10 menit lewat `store_settings`): `price-list`
 `cmd:prepaid`, filter kategori Games, upsert per kode utama; kode berakhiran `b` mengisi
 kolom cadangan dari kode dasar. SKU yang hilang dari daftar → `seller_active=0`.
-`sell_price` dihitung ulang. `enabled` tidak pernah diubah oleh sinkron.
+`sell_price` dihitung ulang dari `games_reference_prices` (cermin `reference_price`
+ikut ditulis). `enabled`, `display_group`, dan `display_order` tidak pernah diubah
+oleh sinkron.
 
 ### 12.6 Status implementasi (9 November 2026)
 - Selesai: G1 proxy (terpasang VPS), G2 klien, G3 schema (migrasi 0107), G4 sinkron +
   cron `games_catalog`, G5 dispatch + cadangan + cron `games_orders`, G6 webhook.
-  Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.26.
+  Bagian A admin data: migrasi 0108, `src/lib/games/admin.ts`, tab admin Games
+  (`/api/admin/games/products`, `.../enable-wave`) — §12.7.
+  Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.27.
 - **Untuk Paseo/fase berikut:** API quote/order pembeli (buat `orders` kind `games` +
   `games_order_items` status `awaiting_payment`, harga dari `games_products.sell_price`,
   `max_price` = batas modal, attach rail existing), endpoint cek nickname (rate limit +
-  cache), admin harga referensi/enable SKU, UI §4–§7, lalu G8 go-live (pasang env
-  `secret_text`, rotasi key, aktifkan webhook dashboard, mode Production, deposit).
-- Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final.
+  cache), UI §4–§7, lalu G8 go-live (pasang env `secret_text`, rotasi key, aktifkan
+  webhook dashboard, mode Production, deposit).
+- Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final; seed
+  harga Oura gelombang 1 (owner) lewat admin/API — tabel referensi sudah siap menerima
+  kode sebelum sinkron pertama.
 - Prompt serah terima Paseo: `docs/games-paseo-brief.md`.
+
+### 12.7 Admin data Games (P1–P3, 9 November 2026, lokal → CI)
+
+Kontrak keputusan PM untuk bagian A. Semua admin di balik Cloudflare Access + JWT
+admin + idle (`requireAdmin`, audit `admin_authorized`); body PATCH dibatasi 8.000 byte
+lewat `readJsonBody`.
+
+- **P1 Harga referensi = tabel.** `games_reference_prices(buyer_sku_code PK, price
+  INTEGER NOT NULL CHECK(price>0), source TEXT NOT NULL, captured_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL)` (migrasi 0108) adalah sumber kebenaran harga Oura. Tabel
+  boleh berisi kode yang belum ada di `games_products` (seed sebelum sinkron pertama).
+  `syncGamesCatalog` membaca map referensi dari tabel ini (bukan dari
+  `games_products.reference_price`) lalu menulis cermin `reference_price` +
+  `sell_price` saat upsert. Menghapus baris referensi membuat sinkron berikutnya
+  mengembalikan harga ke batas bawah modal.
+- **P2 Grup nominal.** `games_products.display_group TEXT NULL CHECK (display_group IS
+  NULL OR display_group IN ('special','bestseller'))` + `display_order INTEGER NULL`.
+  `effectiveGroup(row)`: `display_group` bila terisi; NULL → `special` bila
+  `product_type='Membership'` atau nama cocok
+  `/weekly diamond pass|\bwdp\b|twilight|membership/i`; selain itu `all`. Sinkron tidak
+  pernah menyentuh kedua kolom ini.
+- **P3 Sehat untuk aktivasi massal.** `seller_active=1 AND cost>0 AND sell_price ≥
+  ceil(cost×1.03) AND (reference_price IS NULL OR sell_price ≤ reference_price)`
+  (`isHealthyForWave`). `POST .../enable-wave` hanya memproses brand
+  `GAMES_WAVE1_BRANDS` (FREE FIRE, Free Fire Max, MOBILE LEGENDS, PUBG MOBILE;
+  pencocokan case-insensitive) dan **tidak pernah** menonaktifkan SKU. Sinkron tetap
+  tidak pernah mengubah `enabled`.
+- **API admin** (edge, `src/app/api/admin/games/products/`):
+  - `GET /api/admin/games/products?brand&enabled&q&limit&offset` → `{items, total,
+    limit, offset, brands, sync:{last_sync_at, counts:{total, enabled, seller_active,
+    with_reference}}}`. Item membawa `margin` (`cost, sell, floor, margin_rp,
+    margin_pct, source:'reference'|'floor', competitive`) dan `effectiveGroup`.
+    `limit` maksimal 200; brand dicocokkan case-insensitive; `q` mencari kode/nama.
+  - `PATCH /api/admin/games/products` body `{buyer_sku_code, enabled?, reference_price?,
+    display_group?, display_order?}`. Validasi ketat (400 dengan pesan jelas, field
+    asing ditolak), 404 `not_found` bila SKU tidak ada. `reference_price` → upsert/delete
+    `games_reference_prices` (`source='admin'`, `captured_at=now`), hitung ulang
+    `sell_price` via `computeGamesSellPrice({cost, referencePrice})`, cermin
+    `reference_price`, semuanya dalam satu `db.d1.batch`. `enabled=true` ditolak 409
+    `not_sellable` bila `seller_active=0` atau `cost≤0`; menonaktifkan tetap boleh.
+  - `POST /api/admin/games/products/enable-wave` body `{dry_run?}` → `{eligible,
+    enabled_now, skipped_unhealthy, dry_run}`. `dry_run` hanya melaporkan, tanpa menulis.
+- **UI admin:** tab "Games" (`src/components/admin/GamesManager.tsx`) mengikuti pola tab
+  Pedia (subset "Katalog"): status sinkron + hitungan, filter brand + cari, tabel
+  (kode/nama/brand/modal/harga Oura/harga jual/margin/sumber harga/seller/grup/toggle
+  aktif), edit harga Oura inline, dan tombol "Aktifkan gelombang 1 (sehat)" dengan
+  pratinjau `dry_run` lalu konfirmasi. Copy Indonesia; loading/error/empty state.
+- **Batas bukti:** implementasi + tes fixture lokal (`tests/games-admin.test.ts`,
+  `tests/games-admin-migration.test.ts`); belum ada deployment, data produksi, atau
+  keputusan harga Oura gelombang 1 yang diisi ke tabel referensi.
