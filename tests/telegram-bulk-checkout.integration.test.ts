@@ -71,7 +71,9 @@ describe("TG2b telegram bulk checkout", () => {
     ["warung_rebahan", "wr-1", null, false, 60],
     ["manual", null, "sk-1", false, 60],
     ["manual", null, "sk-1", true, 15],
-  ])("sets Telegram expiry by ownership %s WR=%s SK=%s mixed=%s", async (source, wr, sk, mixed, minutes) => {
+  ].flatMap(([source, wr, sk, mixed, minutes]) => ["qris", "sekalipay_gateway:BNIVA", "nowpayments:usdtbsc"].map(method =>
+    [source, wr, sk, mixed, method, minutes === 15 ? 15 : method.startsWith("sekalipay_gateway:") ? 30 : 60] as const,
+  )))("sets Telegram expiry by ownership %s WR=%s SK=%s mixed=%s method=%s", async (source, wr, sk, mixed, method, minutes) => {
     fx.sql.prepare("UPDATE products SET source=?,wr_product_id=?,sk_product_id=? WHERE id=1").run(source, wr, sk);
     if (mixed) fx.sql.exec("INSERT INTO products(id,name,slug,price,stock,telegram_enabled) VALUES(2,'Manual','manual',10000,100,1); INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode) VALUES(2,2,'SKU-M','Manual',10000,100,'manual')");
     const ids = mixed ? [1, 2] : [1];
@@ -79,7 +81,7 @@ describe("TG2b telegram bulk checkout", () => {
       orderCode: "TG-EXPIRY", lines: ids.map(id => ({ productId: id, variantId: id, qty: 1, fulfillmentMode: "manual", stock: 100 })),
       items: ids.map(id => ({ product_id: id, variant_id: id, qty: 1, price: 10000 })),
       variantSnapshot: "{}", subtotal: ids.length * 10000, primaryVariantId: 1, customerName: "Bulk", salesChannel: "telegram",
-      telegramChatId: "777009", telegramUserId: "777009", paymentMethod: "qris", paymentAccount: "DANA", fulfillmentStatus: "not_required", orderWindowMinutes: 15,
+      telegramChatId: "777009", telegramUserId: "777009", paymentMethod: method, paymentAccount: "Fixture", fulfillmentStatus: "not_required", orderWindowMinutes: 15,
     });
     const row = fx.sql.prepare("SELECT expires_at FROM orders WHERE code='TG-EXPIRY'").get();
     expect((Date.parse(String(row?.expires_at)) - Date.now()) / 60_000).toBeCloseTo(minutes, 0);

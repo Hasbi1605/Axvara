@@ -215,6 +215,80 @@ const txOf = (code = A) => fixture.sql.prepare("SELECT * FROM payment_transactio
 const orderOf = (code = A) => fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(code)!;
 
 describe("NOWPayments rail (W1 local, flags default-off semantics)", () => {
+  it("keeps stored shorter deadlines on retry and reconcile without a second POST", async () => {
+    await seed();
+    await createNowpaymentsInvoice(A, 89000, "usdtbsc", { payNetwork: "bsc", priceCurrency: "idr" });
+    const deadline = new Date(Date.now() + 5 * 60_000).toISOString();
+    fixture.sql.prepare("UPDATE payment_transactions SET expires_at=? WHERE order_code=?").run(deadline, A);
+    fixture.sql.prepare("UPDATE orders SET expires_at=? WHERE code=?").run(deadline, A);
+    expect((await createNowpaymentsInvoice(A, 89000, "usdtbsc", { priceCurrency: "idr" })).expiresAt).toBe(deadline);
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(statusRow(A, A_PAYMENT_ID, { payment_status: "waiting", expiration_estimate_date: new Date(Date.now() + 60 * 60_000).toISOString() }))));
+    await reconcileNowpaymentsPayment(A);
+    expect(txOf().expires_at).toBe(deadline);
+    expect(orderOf().expires_at).toBe(deadline);
+    expect(posts).toBe(1);
+  });
+
+  it.each([[60, 5, "expiration_estimate_date"], [15, 5, "expiration_estimate_date"], [60, -5, "expiration_estimate_date"], [60, 5, "expirationEstimateDate"]] as const)("keeps the %i minute floating deadline with a %i minute %s", async (minutes, estimateMinutes, field) => {
+    await seed();
+    const deadline = new Date(Date.now() + minutes * 60_000).toISOString();
+    fixture.sql.prepare("UPDATE orders SET expires_at=? WHERE code=?").run(deadline, A);
+    (globalThis as Record<string, unknown>).__np_estimate_from = "usd";
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith("/v1/payment") && init?.method === "POST") {
+        posts++;
+        expect(JSON.parse(String(init.body))).toMatchObject({ is_fixed_rate: false, is_fee_paid_by_user: false });
+        return Response.json(invoice(A, A_PAYMENT_ID, {
+          price_currency: "usd", price_amount: "5.14", is_fixed_rate: false, is_fee_paid_by_user: false,
+          expiration_estimate_date: undefined, [field]: new Date(Date.now() + estimateMinutes * 60_000).toISOString(),
+        }));
+      }
+      if (String(url).includes("/v1/payment/")) return Response.json(statusRow(A, A_PAYMENT_ID, {
+        price_currency: "usd", price_amount: "5.14", payment_status: "waiting", is_fixed_rate: false, is_fee_paid_by_user: false,
+        expiration_estimate_date: new Date(Date.now() + 120 * 60_000).toISOString(),
+      }));
+      return originalFetch(url, init);
+    }));
+    const options = { payNetwork: "bsc", priceCurrency: "usd", feePayer: "merchant" as const, fixedRate: false as const,
+      expectedUsd: { cents: "500", priceText: "5.14", surchargeBps: 100, surchargeCents: "14", totalCents: "514",
+        rateText: "17800", rateNum: "17800", rateDen: "1", effectiveAt: new Date().toISOString(), idrSubtotal: 89000, payCurrency: "usdtbsc", network: "bsc" } };
+    const created = await createNowpaymentsInvoice(A, 89000, "usdtbsc", options);
+    expect(created.expiresAt).toBe(deadline);
+    expect(orderOf().expires_at).toBe(deadline);
+    const savedDeadline = new Date(Date.now() + 3 * 60_000).toISOString();
+    fixture.sql.prepare("UPDATE payment_transactions SET expires_at=? WHERE order_code=?").run(savedDeadline, A);
+    expect((await createNowpaymentsInvoice(A, 89000, "usdtbsc", options)).expiresAt).toBe(savedDeadline);
+    await reconcileNowpaymentsPayment(A);
+    expect(txOf().expires_at).toBe(savedDeadline);
+    expect(orderOf().expires_at).toBe(deadline);
+    expect(posts).toBe(1);
+  });
+
+  it.each(["expiration_estimate_date", "expirationEstimateDate"])("rejects malformed %s", async (field) => {
+    await seed();
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith("/v1/payment") && init?.method === "POST") {
+        return Response.json(invoice(A, A_PAYMENT_ID, { expiration_estimate_date: undefined, [field]: "not-a-date" }));
+      }
+      return originalFetch(url, init);
+    }));
+    await expect(createNowpaymentsInvoice(A, 89000, "usdtbsc", { priceCurrency: "idr" })).rejects.toThrow("nowpayments_finalize_failed_manual_review");
+    expect(txOf().last_error).toBe("nowpayments_invalid_invoice_manual_review");
+  });
+
+  it("keeps legacy fixed-rate deadline validation during reconciliation", async () => {
+    await seed();
+    await createNowpaymentsInvoice(A, 89000, "usdtbsc", { payNetwork: "bsc", priceCurrency: "idr" });
+    fixture.sql.prepare("UPDATE payment_transactions SET fixed_rate=1,fee_paid_by_user=1 WHERE order_code=?").run(A);
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(statusRow(A, A_PAYMENT_ID, {
+      is_fixed_rate: true, is_fee_paid_by_user: true, valid_until: new Date(Date.now() - 60_000).toISOString(),
+    }))));
+    expect(await reconcileNowpaymentsPayment(A)).toBe("manual_review");
+    expect(txOf().last_error).toBe("nowpayments_deadline_manual_review");
+  });
+
   it.each([[60, 120, 60], [15, 120, 15], [60, 5, 5]])("caps order %i min and provider %i min at %i min", async (orderMinutes, providerMinutes, expectedMinutes) => {
     await seed();
     const orderDeadline = new Date(Date.now() + orderMinutes * 60_000).toISOString();
@@ -222,7 +296,7 @@ describe("NOWPayments rail (W1 local, flags default-off semantics)", () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       if (String(url).endsWith("/v1/payment") && init?.method === "POST") {
-        return Response.json(invoice(A, A_PAYMENT_ID, { expiration_estimate_date: new Date(Date.now() + providerMinutes * 60_000).toISOString() }), { status: 201 });
+        return Response.json(invoice(A, A_PAYMENT_ID, { valid_until: new Date(Date.now() + providerMinutes * 60_000).toISOString() }), { status: 201 });
       }
       return originalFetch(url, init);
     }));
@@ -368,6 +442,7 @@ describe("NOWPayments rail (W1 local, flags default-off semantics)", () => {
     ["wrong create currency", { pay_currency: "btc" }],
     ["wrong create price amount", { price_amount: "90000" }],
     ["wrong create price currency", { price_currency: "usd" }],
+    ["malformed estimate", { expiration_estimate_date: "not-a-date" }],
   ])("creation validates provider identity (%s): zero invoice payable", async (_label, override) => {
     await seed();
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {

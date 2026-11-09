@@ -141,7 +141,7 @@ export async function createChannelOrderAtomic(
     const productIds = [...new Set(input.lines.map(line => line.productId))];
     owners = await Promise.all(productIds.map(id => queryFirst("SELECT id,source,wr_product_id,wr_auto_managed,sk_product_id,sk_auto_managed FROM products WHERE id=?", id)));
     if (owners.some(owner => !owner)) throw new StockReservationError();
-    orderMinutes = owners.some(owner => isManualProductForBulk(bulkOwnerFromProductRow(owner))) ? 15 : 60;
+    orderMinutes = owners.some(owner => isManualProductForBulk(bulkOwnerFromProductRow(owner))) ? 15 : input.paymentMethod.startsWith("sekalipay_gateway:") ? 30 : 60;
   }
   if (!d1 || !isD1Mode()) {
     // Fallback pengembangan tanpa D1: store in-memory tidak punya transaksi,

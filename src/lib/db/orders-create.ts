@@ -28,12 +28,13 @@ type AtomicOrderInput = {
 
 export async function createOrderWithStock(input: AtomicOrderInput): Promise<void> {
   assertOrderAccessConfigured();
+  const supplierMinutes = input.paymentMethod.startsWith("sekalipay_gateway:") ? 30 : 60;
   const d1 = getD1();
   if (d1) {
     const productIds = [...new Set(input.items.map(item => item.product_id))];
     const owners = (await d1.prepare(`SELECT id,source,wr_product_id,wr_auto_managed,sk_product_id,sk_auto_managed FROM products WHERE id IN (${productIds.map(() => "?").join(",")})`).bind(...productIds).all()).results as Record<string, unknown>[];
     if (owners.length !== productIds.length) throw new StockReservationError();
-    const minutes = owners.some(row => isManualProductForBulk(bulkOwnerFromProductRow(row))) ? 15 : 60;
+    const minutes = owners.some(row => isManualProductForBulk(bulkOwnerFromProductRow(row))) ? 15 : supplierMinutes;
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
     const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
         p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
@@ -275,7 +276,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     sales_channel: "web",
     variant_id: input.items.find((it) => it.variant_id)?.variant_id ?? null,
     quote_id: input.quoteId,
-    expires_at: new Date(Date.now() + (input.items.some(item => isManualProductForBulk(bulkOwnerFromProductRow(products.find(row => Number(row.id) === item.product_id) as unknown as Record<string, unknown> | undefined))) ? 15 : 60) * 60_000).toISOString(),
+    expires_at: new Date(Date.now() + (input.items.some(item => isManualProductForBulk(bulkOwnerFromProductRow(products.find(row => Number(row.id) === item.product_id) as unknown as Record<string, unknown> | undefined))) ? 15 : supplierMinutes) * 60_000).toISOString(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });

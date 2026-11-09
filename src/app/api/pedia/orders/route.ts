@@ -85,7 +85,7 @@ async function checkoutResponse(db: DatabaseAccess, order: Record<string, unknow
   return NextResponse.json({ code: order.code, buyer_access_session: await createBuyerAccessSession(order), subtotal: order.subtotal, credit_used: creditUsed, payable, status: order.status, qris, ...(payment ? { payment } : {}), reused }, { status: reused ? 200 : 201, headers: { "Cache-Control": "private, no-store" } });
 }
 
-/** Order expiry = min(60 menit AXVARA, deadline provider) — tidak pernah memanjangkan. */
+/** Order expiry = min(batas rail AXVARA, deadline provider) — tidak pernah memanjangkan. */
 async function shortenToProviderDeadline(db: DatabaseAccess, code: string) {
   const tx = await db.queryFirst("SELECT expires_at FROM payment_transactions WHERE order_code=? ORDER BY id DESC LIMIT 1", code).catch(() => null);
   const raw = tx?.expires_at == null ? "" : String(tx.expires_at);
@@ -249,7 +249,7 @@ export async function POST(req: NextRequest) {
   try {
     const result = await db.d1.batch([
       statement(`INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,status,sales_channel,order_kind,payment_status,paid_at,expires_at,buyer_access_version,buyer_access_format,locale)
-        SELECT ?,?,?,?,?,?,?,?,?,?,'web','pedia',?,CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,datetime('now','+60 minutes'),1,'pin6',?
+        SELECT ?,?,?,?,?,?,?,?,?,?,'web','pedia',?,CASE WHEN ?=0 THEN datetime('now') ELSE NULL END,datetime('now','${payment_method.startsWith("sekalipay_gateway:") ? "+30 minutes" : "+60 minutes"}'),1,'pin6',?
         WHERE NOT EXISTS(SELECT 1 FROM pedia_order_items WHERE target_normalized=? AND product_id=? AND status IN ('awaiting_payment','queued','submitting','submitted','in_progress','needs_check'))`,
         code,quoteIdRow,derivedName,normalizeWa(customer_wa),customer_email,items,freshTotal,payment_method,selection.paymentAccount,payable ? "pending" : "lunas",payable ? "pending" : "paid",payable,
         quote.locale ?? locale, quote.target_normalized, quote.product_id),

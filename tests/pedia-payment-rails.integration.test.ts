@@ -138,7 +138,7 @@ describe("Pedia quote menandatangani rail pembayaran", () => {
 });
 
 describe("Pedia order create memakai rail terpilih", () => {
-  it.each([[5, 5], [120, 60]])("gateway: provider %i menit, order %i menit, retry reusable", async (providerMinutes, expectedMinutes) => {
+  it.each([[5, 5], [120, 30]])("gateway: provider %i menit, order %i menit, retry reusable", async (providerMinutes, expectedMinutes) => {
     const f = await seedCatalog();
     stubGatewayEnv();
     gatewayMock.catalog = [{ code: "SHOPEEPAY", name: "ShopeePay", type: "ewallet", min: 100, max: 10_000_000, feeText: "1%", estimatedFee: 500, estimatedTotal: 0, available: true }];
@@ -162,7 +162,7 @@ describe("Pedia order create memakai rail terpilih", () => {
     expect(row.payment_account).toBe("Sekalipay");
     const orderDeadline = Date.parse(String(row.expires_at).replace(" ", "T") + "Z");
     const providerDeadline = Date.parse(f.sql.prepare("SELECT expires_at FROM payment_transactions ORDER BY id DESC LIMIT 1").get()!.expires_at as string);
-    if (providerMinutes < 60) expect(Math.abs(orderDeadline - providerDeadline)).toBeLessThan(1_000);
+    if (providerMinutes < 30) expect(Math.abs(orderDeadline - providerDeadline)).toBeLessThan(1_000);
     expect((orderDeadline - Date.now()) / 60_000).toBeCloseTo(expectedMinutes, 0);
 
     // Retry quote yang sama: order yang sama (bukan order baru), view tetap ada.

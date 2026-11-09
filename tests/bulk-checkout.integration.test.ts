@@ -22,19 +22,21 @@ it.each([
   ["manual", null, null, 15],
   ["warung_rebahan", "wr-1", null, 60],
   ["manual", null, "sk-1", 60],
-])("sets order expiry by product ownership: %s %s %s", async (source, wr, sk, minutes) => {
+].flatMap(([source, wr, sk, minutes]) => ["qris", "sekalipay_gateway:BNIVA", "sekalipay_gateway:OVO", "nowpayments:usdtbsc"].map(method =>
+  [source, wr, sk, method, minutes === 15 ? 15 : method.startsWith("sekalipay_gateway:") ? 30 : 60] as const,
+)))("sets order expiry by ownership and method: %s %s %s %s", async (source, wr, sk, method, minutes) => {
   fixture.sql.prepare("UPDATE products SET source=?,wr_product_id=?,sk_product_id=? WHERE id=1").run(source, wr, sk);
   fixture.sql.prepare("UPDATE product_variants SET bulk_pricing_enabled=0 WHERE id=1").run();
   const { createOrderWithStock } = await import("@/lib/db/orders-create");
-  await createOrderWithStock({ code: "AXV-20261109-TEST0001", quoteId: "ttl-test", customerName: "Buyer", customerWa: "081234567890", customerEmail: null, items: [{ product_id: 1, variant_id: 1, name: "Fixture", price: 100000, qty: 1 }], subtotal: 100000, paymentMethod: "qris", paymentAccount: "QRIS", proofUrl: null });
+  await createOrderWithStock({ code: "AXV-20261109-TEST0001", quoteId: "ttl-test", customerName: "Buyer", customerWa: "081234567890", customerEmail: null, items: [{ product_id: 1, variant_id: 1, name: "Fixture", price: 100000, qty: 1 }], subtotal: 100000, paymentMethod: method, paymentAccount: "Fixture", proofUrl: null });
   const row = fixture.sql.prepare("SELECT (julianday(expires_at)-julianday('now'))*1440 AS minutes FROM orders WHERE code=?").get("AXV-20261109-TEST0001");
   expect(Number(row?.minutes)).toBeCloseTo(minutes, 0);
 });
-it("uses the manual deadline for mixed supplier and manual carts", async () => {
+it.each(["qris", "sekalipay_gateway:BNIVA", "nowpayments:usdtbsc"])("uses the manual deadline for mixed carts with %s", async (method) => {
   fixture.sql.exec("UPDATE products SET source='warung_rebahan',wr_product_id='wr-1' WHERE id=1; INSERT INTO products(id,name,slug,price,stock) VALUES(2,'Manual','manual',10000,100)");
   fixture.sql.prepare("UPDATE product_variants SET bulk_pricing_enabled=0 WHERE id=1").run();
   const { createOrderWithStock } = await import("@/lib/db/orders-create");
-  await createOrderWithStock({ code: "AXV-20261109-TEST0002", quoteId: "mixed-ttl", customerName: "Buyer", customerWa: "081234567890", customerEmail: null, items: [{ product_id: 1, variant_id: 1, name: "Supplier", price: 100000, qty: 1 }, { product_id: 2, name: "Manual", price: 10000, qty: 1 }], subtotal: 110000, paymentMethod: "qris", paymentAccount: "QRIS", proofUrl: null });
+  await createOrderWithStock({ code: "AXV-20261109-TEST0002", quoteId: "mixed-ttl", customerName: "Buyer", customerWa: "081234567890", customerEmail: null, items: [{ product_id: 1, variant_id: 1, name: "Supplier", price: 100000, qty: 1 }, { product_id: 2, name: "Manual", price: 10000, qty: 1 }], subtotal: 110000, paymentMethod: method, paymentAccount: "Fixture", proofUrl: null });
   const row = fixture.sql.prepare("SELECT (julianday(expires_at)-julianday('now'))*1440 AS minutes FROM orders WHERE code=?").get("AXV-20261109-TEST0002");
   expect(Number(row?.minutes)).toBeCloseTo(15, 0);
 });

@@ -401,7 +401,7 @@ describe("W3 USD + locale checkout rails", () => {
     expect(Date.parse(String(saved.expires_at))).toBeGreaterThan(Date.now());
   });
 
-  it("0/0 invoice keeps the earliest provider-or-order deadline and reviews a payment that lands after it", async () => {
+  it("0/0 invoice ignores the rate estimate, caps at valid_until, and reviews payment after that deadline", async () => {
     await seedOrder(A); vi.stubEnv("NOWPAYMENTS_ENABLED", "true");
     const validUntil = new Date(Date.now() + 500000).toISOString();
     const estimateUntil = new Date(Date.now() + 300000).toISOString();
@@ -413,11 +413,11 @@ describe("W3 USD + locale checkout rails", () => {
     }));
     const { createNowpaymentsInvoice, reconcileNowpaymentsPayment } = await import("@/lib/payments/nowpayments");
     const inv = await createNowpaymentsInvoice(A, 250000, "usdtbsc", { payNetwork: "bsc", feePayer: "merchant", fixedRate: false, expectedUsd: USDT_EXPECTED });
-    expect(inv.expiresAt).toBe(estimateUntil);
+    expect(inv.expiresAt).toBe(validUntil);
     remote.set(A, { ...statusRow(A, inv.providerPaymentId, "waiting", "0"), price_amount: "15.87", pay_amount: "15.87", is_fixed_rate: false, is_fee_paid_by_user: false });
     expect(await reconcileNowpaymentsPayment(A)).toBe("pending");
-    expect(fixture.sql.prepare("SELECT expires_at FROM payment_transactions WHERE order_code=?").get(A)?.expires_at).toBe(estimateUntil);
-    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "finished", "15.95"), price_amount: "15.87", pay_amount: "15.87", is_fixed_rate: false, is_fee_paid_by_user: false, updated_at: new Date(Date.parse(estimateUntil) + 1000).toISOString() });
+    expect(fixture.sql.prepare("SELECT expires_at FROM payment_transactions WHERE order_code=?").get(A)?.expires_at).toBe(validUntil);
+    remote.set(A, { ...statusRow(A, inv.providerPaymentId, "finished", "15.95"), price_amount: "15.87", pay_amount: "15.87", is_fixed_rate: false, is_fee_paid_by_user: false, updated_at: new Date(Date.parse(validUntil) + 1000).toISOString() });
     expect(await reconcileNowpaymentsPayment(A)).toBe("manual_review");
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
   });

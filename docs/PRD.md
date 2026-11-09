@@ -1,9 +1,9 @@
 # PRD — AXVARA
 
 ## Keputusan owner 9 November 2026: batas pembayaran supplier/manual
-- Order Market baru web/Telegram: supplier WR/SK 60 menit; manual 15 menit; keranjang campuran mengikuti 15 menit. Yang menentukan supplier adalah metadata produk WR/SK, bukan mode pengiriman manual pada varian supplier. WhatsApp tetap mengikuti kontrak existing.
-- Jendela order bukan perpanjangan invoice: gateway tetap minimum deadline order/provider (invoice Sekalipay saat ini 30 menit); crypto minimum deadline order/provider; QRIS tetap 15 menit dengan maksimal satu renewal existing selama order belum expired. Order manual tidak dapat diperpanjang melewati 15 menit.
-- Pedia baru mulai 60 menit, lalu dipendekkan ke deadline transaksi/provider, termasuk QRIS 15 menit. Snapshot 15 menit di bagian lama diganti hanya untuk order baru. Order lama tidak dimigrasikan otomatis; pembayaran telat tetap pemeriksaan manual tanpa dispatch otomatis.
+- Revisi order Market baru web/Telegram: supplier WR/SK VA/e-wallet (`sekalipay_gateway:*`) 30 menit, crypto/QRIS 60 menit; manual dan keranjang campuran tetap 15 menit untuk semua metode. Yang menentukan supplier adalah metadata produk WR/SK, bukan mode pengiriman manual pada varian supplier. Telegram tetap hanya menawarkan QRIS + crypto; WhatsApp tetap mengikuti kontrak existing.
+- Jendela order bukan perpanjangan invoice: gateway tetap minimum deadline order/provider; crypto minimum deadline order/`valid_until` provider. Pada floating-rate NOWPayments, `expiration_estimate_date`/`expirationEstimateDate` adalah masa estimasi kurs, bukan expiry pembayaran: estimasi lewat tetap diterima bila timestamp valid. QRIS tetap 15 menit dengan maksimal satu renewal existing selama order belum expired. Order manual tidak dapat diperpanjang melewati 15 menit.
+- Pedia baru mulai 30 menit untuk gateway, 60 menit untuk crypto/QRIS, lalu dipendekkan ke deadline transaksi/provider, termasuk QRIS 15 menit. Snapshot 15 menit di bagian lama diganti hanya untuk order baru. Deadline order/invoice lama tidak dimigrasikan atau diperpanjang; retry/reconcile dan validasi legacy fixed-rate tetap. Pembayaran telat tetap pemeriksaan manual tanpa dispatch otomatis.
 - Status: implementasi lokal dan tes; belum ada bukti deployment perubahan TTL. Pemulihan order produksi `AXV-20261109-EFF4DEA2` atas konfirmasi dana dan izin owner sudah diterima WR dengan referensi `RBHN-20261109-9B8954` (processing, bukan selesai).
 
 ## Keputusan owner 9 November 2026: AXVARA Games (rencana, belum diimplementasikan)

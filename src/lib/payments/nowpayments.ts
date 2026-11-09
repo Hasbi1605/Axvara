@@ -407,7 +407,7 @@ export async function createNowpaymentsInvoice(
     if (usd && created.valid_until != null && !validUntil) throw new Error("nowpayments_deadline_unverified");
     if (created.expiration_estimate_date ?? created.expirationEstimateDate) {
       const estimateDeadline = created.expiration_estimate_date ?? created.expirationEstimateDate;
-      if (typeof estimateDeadline !== "string" || !parseFxTimestamp(estimateDeadline) || dbTime(estimateDeadline) <= Date.now()) {
+      if (typeof estimateDeadline !== "string" || !parseFxTimestamp(estimateDeadline)) {
         throw new Error("nowpayments_invalid_invoice");
       }
     }
@@ -420,10 +420,10 @@ export async function createNowpaymentsInvoice(
     // price dari caller-snapshot (didefinisikan sebelum try, dipakai validasi
     // respons di atas): USD exact 2dp dari snapshot, legacy String(IDR int).
     createdCharge = { paymentId, payAddress, payAmount };
+    // Estimate expiry controls rate refresh, not the lifetime of this floating-rate payment.
     const purchaseDeadline = new Date(Math.min(
       dbTime(tx!.expires_at),
       validUntil ? Date.parse(validUntil) : Infinity,
-      dbTime(created.expiration_estimate_date ?? created.expirationEstimateDate) || dbTime(tx!.expires_at),
     )).toISOString();
     if (!(Date.parse(purchaseDeadline) > Date.now())) throw new Error("nowpayments_invoice_terminal");
     const guard = `${orderCode}:nowpayments:finish:${crypto.randomUUID()}`;
