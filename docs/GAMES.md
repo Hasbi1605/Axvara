@@ -298,3 +298,4 @@ kolom cadangan dari kode dasar. SKU yang hilang dari daftar → `seller_active=0
   cache), admin harga referensi/enable SKU, UI §4–§7, lalu G8 go-live (pasang env
   `secret_text`, rotasi key, aktifkan webhook dashboard, mode Production, deposit).
 - Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final.
+- Prompt serah terima Paseo: `docs/games-paseo-brief.md`.
