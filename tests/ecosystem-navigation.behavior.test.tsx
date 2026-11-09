@@ -39,11 +39,11 @@ describe("shared service navigation", () => {
     await user.keyboard("{Home}");
     expect(document.activeElement).toBe(links[0]);
     await user.keyboard("{End}");
-    expect(document.activeElement).toBe(links[1]);
+    expect(document.activeElement).toBe(links[2]);
     await user.keyboard("{Escape}");
     expect(document.activeElement).toBe(button);
     expect(screen.queryByRole("navigation")).toBeNull();
-    expect(links).toHaveLength(2);
+    expect(links).toHaveLength(3);
   });
 
   it("allows native Tab movement and dismisses on focus leaving or outside pointer", async () => {
@@ -55,6 +55,8 @@ describe("shared service navigation", () => {
     expect(document.activeElement).toBe(screen.getByRole("link", { name: /AXVARA Market/ }));
     await user.tab();
     expect(document.activeElement).toBe(screen.getByRole("link", { name: /AXVARA Pedia/ }));
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: /AXVARA Games/ }));
     await user.tab();
     expect(screen.queryByRole("navigation")).toBeNull();
     await user.click(trigger);
@@ -75,15 +77,21 @@ describe("shared service navigation", () => {
     expect(url.searchParams.get("utm_source")).toBe(current === "market" ? "axvara" : "pedia");
   });
 
-  it("Market retains Telegram compact twin card without eyebrows", () => {
+  it("Market shows Pedia and Games compact cards without Telegram", () => {
     render(<CommunityBar />);
-    expect(screen.getByRole("link", { name: /Bot Telegram/ }).getAttribute("href")).toBe(TG_BOT_HREF);
+    expect(screen.getByRole("link", { name: /AXVARA Games/ }).getAttribute("href")).toBe(`${SITE.gamesUrl}/?utm_source=axvara&utm_medium=cross_promo`);
+    expect(screen.queryByRole("link", { name: /Telegram/ })).toBeNull();
     // 2026-10-12: eyebrow dihapus dari kedua kartu (compact) — tidak ada lagi
     // "LAYANAN AXVARA" / "Kanal order Market" di beranda Market.
     expect(screen.queryByText("Kanal order Market")).toBeNull();
     expect(screen.queryByText("Layanan AXVARA")).toBeNull();
     expect(screen.queryByText("Grup WhatsApp")).toBeNull();
     expect(screen.getByRole("link", { name: /AXVARA Pedia/ })).toBeTruthy();
+  });
+
+  it("uses Games as the source when promoting another service", () => {
+    render(<CrossServicePromo current="games" target="pedia" />);
+    expect(screen.getByRole("link").getAttribute("href")).toBe(`${SITE.pediaUrl}/?utm_source=games&utm_medium=cross_promo`);
   });
 
   // 2026-11-02 (koreksi owner): dua kartu tetap kanan-kiri di mobile, sama
@@ -120,6 +128,7 @@ describe("shared footer", () => {
     const expected = {
       "AXVARA Market": `${SITE.webUrl}/`,
       "AXVARA Pedia": `${SITE.pediaUrl}/?utm_source=axvara&utm_medium=footer`,
+      "AXVARA Games": `${SITE.gamesUrl}/`,
       "Lacak pesanan Pedia": `${SITE.pediaUrl}/lacak`,
       "Lacak pesanan market": `${SITE.webUrl}/lacak-pesanan`,
       "Bantuan Pedia": `${SITE.pediaUrl}/bantuan`,
@@ -159,7 +168,7 @@ describe("shared footer", () => {
     render(<Footer />);
     const services = screen.getByRole("navigation", { name: "Layanan AXVARA" });
     expect(within(services).getAllByRole("link").map((link) => link.textContent)).toEqual(AXVARA_SERVICES.map((service) => service.name));
-    expect(within(screen.getByRole("navigation", { name: "Bantuan AXVARA" })).getAllByRole("link")).toHaveLength(7);
+    expect(within(screen.getByRole("navigation", { name: "Bantuan AXVARA" })).getAllByRole("link")).toHaveLength(10);
     expect(screen.queryByText("Tools")).toBeNull();
     expect(screen.queryByRole("link", { name: "Semua produk" })).toBeNull();
     expect(screen.queryByRole("link", { name: "AI & teknologi" })).toBeNull();

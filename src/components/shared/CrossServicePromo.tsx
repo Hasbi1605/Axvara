@@ -6,13 +6,13 @@ import type { Locale } from "@/lib/i18n/locale";
 import { axvaraServiceCopy } from "@/lib/i18n/service-copy";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 
-export function CrossServicePromo({ current, locale }: { current: AxvaraService; locale?: Locale }) {
+export function CrossServicePromo({ current, target, locale }: { current: AxvaraService; target?: AxvaraService; locale?: Locale }) {
   const displayLocale = useDisplayLocale();
   const resolved = locale ?? displayLocale;
-  const service = AXVARA_SERVICES.find((item) => item.id !== current)!;
+  const service = AXVARA_SERVICES.find((item) => target ? item.id === target : item.id !== current)!;
   const localized = axvaraServiceCopy(service, resolved);
   return (
-    <a href={`${service.href}?utm_source=${current === "market" ? "axvara" : "pedia"}&utm_medium=cross_promo`}
+    <a href={`${service.href}?utm_source=${current === "market" ? "axvara" : current}&utm_medium=cross_promo`}
       className="group flex min-h-[64px] min-w-0 flex-1 items-center gap-2 rounded-2xl ax-glass-card border border-white/10 px-2.5 py-2.5 text-left transition hover:border-white/20 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF] sm:gap-3 sm:px-4">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={service.icon} alt="" width={36} height={36} className="h-7 w-7 shrink-0 brightness-0 invert sm:h-9 sm:w-9" />

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 const read = (f: string) => readFileSync(f, "utf8");
 
 describe("integrasi pusat M6 (PD-60–64)", () => {
-  it("PD-60: Market promotes Pedia alongside its Telegram order channel", () => {
+  it("PD-60: Market promotes Pedia alongside Games", () => {
     const home = read("src/app/(shop)/home-client.tsx");
     expect(home).toContain("CommunityBar");
     expect(home).not.toContain("LaunchCards");
@@ -13,7 +13,8 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(community).toContain('<CrossServicePromo current="market"');
     // 2026-10-12: eyebrow compact — tanpa "LAYANAN AXVARA"/"Kanal order Market".
     expect(community).not.toContain("Kanal order Market");
-    expect(community).toContain("ArrowUpRight");
+    expect(community).toContain('target="games"');
+    expect(read("src/components/shared/CrossServicePromo.tsx")).toContain("ArrowUpRight");
     expect(community).toContain("flex-row");
     expect(community).not.toContain("Grup WhatsApp");
     // Komponen tersimpan utuh, tidak diimpor siapa pun.
@@ -102,9 +103,10 @@ describe("integrasi pusat M6 (PD-60–64)", () => {
     expect(bottom).not.toContain("px-violet");
   });
 
-  it("Mark Pedia = SVG trace Muse (kanvas padat, bukan PNG berpadding)", () => {
+  it("Mark Pedia = SVG clean redraw geometris (kanvas 144×128, bukan PNG berpadding)", () => {
     const pediaNav = read("src/components/pedia/PediaNavbar.tsx");
-    // SVG kanvas padat (tanpa padding transparan 30px PNG) → tampil penuh.
+    // SVG clean redraw 2026-11-10 (PM final, delegasi owner): siluet sama dengan
+    // trace Muse, digambar ulang geometris (frame + 3 batang seragam).
     expect(pediaNav).toContain("/brand/pedia-mark.svg");
     expect(pediaNav).not.toContain("pedia-mark-white.png");
     const link = read("src/app/(shop)/link/link-bio-client.tsx");

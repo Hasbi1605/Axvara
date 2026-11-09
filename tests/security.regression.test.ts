@@ -324,9 +324,13 @@ describe("BUG-12: community destinations remain live and centralized", () => {
     expect(src).not.toContain('href="#"');
   });
 
-  it("CommunityBar Telegram pill memakai deep-link ?start=beli", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/CommunityBar.tsx"), "utf-8");
+  // 2026-11-10: kartu Telegram di CommunityBar diganti kartu AXVARA Games
+  // (docs/games-paseo-brief.md §3.C); deep-link bot pindah ke footer bersama.
+  it("Footer Telegram pill memakai deep-link ?start=beli (CommunityBar kini kartu Games)", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/Footer.tsx"), "utf-8");
     expect(src).toContain("href={TG_BOT_HREF}");
+    const bar = fs.readFileSync(path.join(process.cwd(), "src/components/storefront/CommunityBar.tsx"), "utf-8");
+    expect(bar).toContain('target="games"');
     const site = fs.readFileSync(path.join(process.cwd(), "src/lib/site.ts"), "utf-8");
     expect(site).toContain('`https://t.me/${SITE.adminTelegram}?start=beli`');
   });

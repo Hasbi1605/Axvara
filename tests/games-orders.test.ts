@@ -147,8 +147,8 @@ describe("games catalog", () => {
     const data = await res.json();
     expect(data.ordering_open).toBe(true);
     expect(data.games).toEqual([
-      { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond", icon: null, banner: null, min_price: 22000, sku_count: 1 },
-      { slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton", currency: "diamond", icon: null, banner: null, min_price: 11000, sku_count: 1 },
+      { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond", icon: "/brand/games/free-fire-icon.webp", banner: "/brand/games/free-fire-banner.webp", min_price: 22000, sku_count: 1 },
+      { slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton", currency: "diamond", icon: "/brand/games/mobile-legends-icon.webp", banner: "/brand/games/mobile-legends-banner.webp", min_price: 11000, sku_count: 1 },
     ]);
     expect(JSON.stringify(data)).not.toMatch(/cost|margin|seller|ml86b/);
   });

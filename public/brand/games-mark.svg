@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 128" fill="currentColor">
+  <!-- AXVARA Games — analog stick on the clean Pedia frame (owner idea, PM final 2026-11-10) -->
+  <path d="M4.5 123L72 9L86.5 33" fill="none" stroke="currentColor" stroke-width="9" stroke-linejoin="miter" stroke-linecap="butt"/>
+  <path d="M138 122L117 78.5" fill="none" stroke="currentColor" stroke-width="8.5" stroke-linecap="butt"/>
+  <rect x="0" y="118.5" width="34.5" height="9" rx="1.5"/>
+  <rect x="114" y="118.5" width="30" height="9" rx="1.5"/>
+  <!-- base dome -->
+  <path d="M39.5 127.5 A35 22 0 0 1 109.5 127.5 Z"/>
+  <!-- stem tilted toward the frame gap -->
+  <path d="M82.0 116.7 L67.0 111.3 L92.5 41.3 L107.5 46.7 Z"/>
+  <!-- knob breaking out through the frame gap, like Pedia's tallest bar -->
+  <circle cx="100" cy="44" r="16.5"/>
+</svg>

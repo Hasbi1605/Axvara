@@ -1,1 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 128" fill="currentColor"><g><path d="M107,127.5L92,127.5L90.5,126L90.5,35L97,34.5L98,33.5L107,33.5L108.5,35L108.5,126Z"/><path d="M32,127.5L0,127.5L0,125L6.5,114L13.5,100L18.5,93L33.5,65L38.5,58L41.5,51L51.5,35L54.5,28L64.5,12L70.5,0L73,0L82.5,18L84.5,20L83.5,23L83.5,33L81.5,32L74.5,19L73,17.5L72,18.5L71,17.5L13.5,117L14,118.5L32,118.5L34,119.5L34.5,126Z"/><path d="M82,127.5L67,127.5L65.5,126L65.5,62L67,60.5L82,60.5L83.5,62L83.5,126Z"/><path d="M58,127.5L42,127.5L40.5,126L40.5,90L42,88.5L57,87.5L58.5,89Z"/><path d="M143,127.5L116,127.5L114.5,126L114.5,120L116,118.5L128,118.5L129.5,117L114.5,90L115,76.5L117,77.5L119.5,81L132.5,106L142.5,122L143.5,124Z"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 128" fill="currentColor">
+  <!-- AXVARA Pedia — clean geometric redraw (silhouette matches traced pedia-mark.svg) -->
+  <!-- Frame: left leg + apex + nub (one mitered stroke, w9), right stub (stroke w8.5), two foot pads -->
+  <path d="M4.5 123L72 9L86.5 33" fill="none" stroke="currentColor" stroke-width="9" stroke-linejoin="miter" stroke-linecap="butt"/>
+  <path d="M138 122L117 78.5" fill="none" stroke="currentColor" stroke-width="8.5" stroke-linecap="butt"/>
+  <rect x="0" y="118.5" width="34.5" height="9" rx="1.5"/>
+  <rect x="114" y="118.5" width="30" height="9" rx="1.5"/>
+  <!-- Three rising bars: uniform width 18, gap 7, tops 89 / 61 / 34, shared baseline 127.5 -->
+  <rect x="40.5" y="89" width="18" height="38.5" rx="2"/>
+  <rect x="65.5" y="61" width="18" height="66.5" rx="2"/>
+  <rect x="90.5" y="34" width="18" height="93.5" rx="2"/>
+</svg>

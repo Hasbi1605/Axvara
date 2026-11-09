@@ -7,6 +7,7 @@ import { AXVARA_SERVICES, SITE, TG_BOT_HREF, waHubLink } from "@/lib/site";
 import { useStoreSettings } from "@/hooks/useStoreSettings";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { catalogCopy } from "@/lib/i18n/catalog-copy";
+import { gamesCopy } from "@/lib/games/copy";
 import { isPediaOrderFlow, pediaRoutePath } from "@/lib/pedia/route-path";
 
 // Ikon brand satu tone (fill=currentColor) dari Simple Icons versi terbaru
@@ -40,7 +41,9 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
   const pedia = (path: string) => `${SITE.pediaUrl}${path}`;
   const pathname = usePathname();
   const storeSettings = useStoreSettings();
-  const t = catalogCopy(useDisplayLocale());
+  const locale = useDisplayLocale();
+  const t = catalogCopy(locale);
+  const games = gamesCopy(locale);
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -151,6 +154,9 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
               <li><Link prefetch={false} href={pediaLayout ? pedia("/bantuan#cara-order") : shop("/cara-order")} className="text-white/60 transition hover:text-white">{t.footerHowToOrder}</Link></li>
               <li><Link prefetch={false} href={pedia("/lacak")} className="text-white/60 transition hover:text-white">{t.footerTrackPedia}</Link></li>
               <li><Link prefetch={false} href={shop("/lacak-pesanan")} className="text-white/60 transition hover:text-white">{t.footerTrackMarket}</Link></li>
+              <li><Link prefetch={false} href={`${SITE.gamesUrl}/lacak`} className="text-white/60 transition hover:text-white">{games.footerTrack}</Link></li>
+              <li><Link prefetch={false} href={`${SITE.gamesUrl}/bantuan`} className="text-white/60 transition hover:text-white">{games.footerHelp}</Link></li>
+              <li><Link prefetch={false} href={`${SITE.gamesUrl}/ketentuan`} className="text-white/60 transition hover:text-white">{games.footerTerms}</Link></li>
               <li><Link prefetch={false} href={pedia("/bantuan")} className="text-white/60 transition hover:text-white">{t.footerHelpPedia}</Link></li>
               <li><Link prefetch={false} href={pedia("/refill")} className="text-white/60 transition hover:text-white">{t.footerRefillPedia}</Link></li>
               <li><Link prefetch={false} href={pedia("/ketentuan")} className="text-white/60 transition hover:text-white">{t.footerTermsPedia}</Link></li>

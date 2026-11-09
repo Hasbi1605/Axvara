@@ -1,6 +1,26 @@
 # DESIGN.md — AXVARA Design System
 
-## AXVARA Games — arah desain (9 November 2026, RENCANA; menunggu persetujuan visual owner)
+## Brand mark Pedia clean + mark Games analog (10 November 2026; PM final atas delegasi owner)
+
+- Mark Pedia: redraw geometris `public/brand/pedia-mark.svg` (viewBox tetap
+  144×128), siluet sama dengan trace Muse — frame (kaki kiri + apex + nub satu
+  stroke miter w9, stub kanan w8.5, dua foot pad) + 3 batang seragam (lebar 18,
+  gap 7, puncak 89/61/34, baseline 127.5). Sumber byte-identik dari PM.
+- Mark Games: stik analog di atas frame Pedia yang sama (`public/brand/games-mark.svg`,
+  viewBox 144×128) — ide owner, keputusan PM atas delegasi owner. Navbar Games
+  memakai games-mark persis seperti PediaNavbar memakai pedia-mark (36×32,
+  `brightness-0 invert`), bukan prisma Market; motif Lucide gamepad-2 sementara
+  dihapus. PNG turunan Pedia (favicon 64, icon 192/512, apple-touch 180) tidak
+  diregenerasi — turunan lama memuat bg navy + mark putih terpusat dan tetap valid
+  untuk siluet baru; Games tidak punya favicon/OG khusus (mengikuti pola Pedia
+  yang hanya ada bila dibutuhkan — tidak dibuat).
+
+## AXVARA Games — arah desain (9 November 2026; implementasi beranda lokal, menunggu persetujuan visual)
+
+Chrome Games senada Pedia 1:1 (keputusan PM 9 November 2026): navbar + bottom nav
+mengikuti struktur/ukuran/`IosIcon`/shell Pedia; ikon konten Games Lucide 20px
+stroke 1.75; H2 seksi 24px Market; chip rentang 44px; bottom nav sembunyi di
+`/games/[slug]` (order bar ±64px + safe-area menggantikan).
 
 Detail lengkap: `docs/GAMES.md` §4–§7. Ringkasan:
 - S1 lokal: header GamesManager memakai satu baris status teks existing untuk

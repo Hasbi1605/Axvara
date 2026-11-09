@@ -10,7 +10,7 @@ import { useDisplayLocale } from "@/hooks/useDisplayPrices";
  * Label "Layanan"/"Services" mengikuti locale eksplisit (navbar Market) atau
  * `axv_locale` (fallback, termasuk navbar Pedia yang tidak mengirim prop).
  */
-export function ServicesMenu({ active, locale }: { active: AxvaraService; locale?: "id" | "en" }) {
+export function ServicesMenu({ active, locale }: { active?: AxvaraService; locale?: "id" | "en" }) {
   const displayLocale = useDisplayLocale();
   const resolved = locale ?? displayLocale;
   const label = resolved === "en" ? "Services" : "Layanan";

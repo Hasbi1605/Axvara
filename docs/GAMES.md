@@ -109,7 +109,8 @@ rail ringkasan sticky di kanan (desktop) / bar bawah (mobile)**.
 - "Pengiriman instan" cukup sekali di header, **tidak** diulang di setiap kartu nominal
   (Oura mengulang badge di tiap kartu sehingga kartu tinggi dan ramai).
 
-### 5.2 Langkah bernomor (kartu glass, nomor dalam kotak gold)
+### 5.2 Langkah bernomor (kartu glass, nomor dalam kotak gold; MVP tanpa Jumlah)
+Urutan implementasi MVP: **1 Data akun → 2 Pilih nominal → 3 Metode pembayaran → 4 Kontak** (langkah Jumlah/stepper disembunyikan karena quantity selalu 1 — lihat §12.8 P5).
 1. **Data akun** — field sesuai game (ML: User ID + Zone ID; FF: Player ID; PUBG: ID;
    Genshin: UID + server). Ikon ⓘ membuka panduan "cara menemukan ID" (gambar milik
    AXVARA). Validasi format inline. **Cek nickname** otomatis setelah ID lengkap
@@ -136,7 +137,7 @@ rail ringkasan sticky di kanan (desktop) / bar bawah (mobile)**.
     Admin menampilkan jumlah dan batas modal hari ini/7hari kalender UTC, bukan tagihan settlement.
    Opsi "ingat ID di perangkat ini" (localStorage, opt-in).
 2. **Pilih nominal** — lihat §5.3.
-3. **Jumlah** — default 1, stepper kecil (pola stepper Market).
+3. **Jumlah** — MVP: quantity 1, langkah Jumlah disembunyikan (P5).
 4. **Metode pembayaran** — akordeon pembayaran Market/Pedia; **harga total per metode
    sudah termasuk biaya** ditampilkan sebelum memilih.
 5. **Kontak** — WhatsApp + email (pola checkout Market: wajib, hint kegunaan).
@@ -182,7 +183,8 @@ AXVARA:
 
 ## 7. Aset & ikon
 
-- Ikon UI: Lucide (outline 20px, stroke 1.75) — konsisten dengan Market/Pedia.
+- Ikon chrome navbar/bottom nav: `IosIcon` mengikuti Market/Pedia; ikon konten:
+  Lucide (outline 20px, stroke 1.75), keputusan PM 9 November 2026.
 - Ikon/banner game: logo & key art resmi publisher hanya untuk identifikasi produk,
   disimpan di R2 dan dikelola admin; **jangan mengambil banner, ilustrasi, atau gambar
   buatan Oura**. Panduan "cara cari ID" dibuat sendiri dari screenshot game.

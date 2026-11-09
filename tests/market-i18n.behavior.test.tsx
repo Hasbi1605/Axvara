@@ -118,17 +118,17 @@ describe("shared services menu / cross promo EN", () => {
 });
 
 describe("home community cards EN", () => {
-  it("Telegram + Pedia cards are English under axv_locale=en while ID stays Indonesian", async () => {
+  it("Games + Pedia cards are English under axv_locale=en while ID stays Indonesian", async () => {
     document.cookie = "axv_locale=en; Path=/";
     const { unmount } = render(<DisplayPreferencesProvider><CommunityBar /></DisplayPreferencesProvider>);
     await waitFor(() => expect(text()).toContain("Grow followers, likes & views"));
-    expect(text()).toContain("Telegram Bot");
-    expect(text()).toContain("Order premium apps and tools");
+    expect(text()).toContain("AXVARA Games");
+    expect(text()).toContain("Instant game top-ups");
     expect(text()).not.toMatch(/Naikkan followers|Bot Telegram/);
     unmount();
     document.cookie = "axv_locale=; Max-Age=0; Path=/";
     render(<DisplayPreferencesProvider><CommunityBar /></DisplayPreferencesProvider>);
     await waitFor(() => expect(text()).toContain("Followers, likes, dan views"));
-    expect(text()).toContain("Bot Telegram");
+    expect(text()).toContain("Top up game instan");
   });
 });

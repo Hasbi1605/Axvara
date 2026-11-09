@@ -1,9 +1,10 @@
 import type { Locale } from "./locale";
 
-/** Salinan kartu/menu lintas-layanan (Market ↔ Pedia). ID = data `AXVARA_SERVICES`. */
+/** Salinan kartu/menu lintas-layanan. ID = data `AXVARA_SERVICES`. */
 const EN: Record<string, { name: string; description: string }> = {
   market: { name: "AXVARA Market", description: "Premium apps and AI tools" },
   pedia: { name: "AXVARA Pedia", description: "Grow followers, likes & views" },
+  games: { name: "AXVARA Games", description: "Instant game top-ups" },
 };
 
 export function axvaraServiceCopy(

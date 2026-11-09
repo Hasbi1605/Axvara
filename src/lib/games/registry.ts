@@ -65,8 +65,8 @@ export const GAMES_REGISTRY: readonly GamesDefinition[] = Object.freeze([
     }],
     buildCustomerNo: (fields) => fields.playerId,
     nicknameSku: "ffcekusername",
-    icon: null,
-    banner: null,
+    icon: "/brand/games/free-fire-icon.webp",
+    banner: "/brand/games/free-fire-banner.webp",
   },
   {
     slug: "free-fire-max",
@@ -83,8 +83,8 @@ export const GAMES_REGISTRY: readonly GamesDefinition[] = Object.freeze([
     }],
     buildCustomerNo: (fields) => fields.playerId,
     nicknameSku: "ffcekusername",
-    icon: null,
-    banner: null,
+    icon: "/brand/games/free-fire-max-icon.webp",
+    banner: "/brand/games/free-fire-max-banner.webp",
   },
   {
     slug: "mobile-legends",
@@ -116,8 +116,8 @@ export const GAMES_REGISTRY: readonly GamesDefinition[] = Object.freeze([
     ],
     buildCustomerNo: (fields) => `${fields.userId}${fields.zoneId}`,
     nicknameSku: "mlcekusername",
-    icon: null,
-    banner: null,
+    icon: "/brand/games/mobile-legends-icon.webp",
+    banner: "/brand/games/mobile-legends-banner.webp",
   },
   {
     slug: "pubg-mobile",
@@ -134,8 +134,8 @@ export const GAMES_REGISTRY: readonly GamesDefinition[] = Object.freeze([
     }],
     buildCustomerNo: (fields) => fields.playerId,
     nicknameSku: "pubgcekusername",
-    icon: null,
-    banner: null,
+    icon: "/brand/games/pubg-mobile-icon.webp",
+    banner: "/brand/games/pubg-mobile-banner.webp",
   },
 ]);
 
