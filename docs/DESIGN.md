@@ -1,5 +1,20 @@
 # DESIGN.md — AXVARA Design System
 
+## Games HERO-FIX (10 November 2026, lokal)
+
+- Hero Games memakai kelas hero Pedia persis: container1280, padding40/56px atas
+  dan16px bawah, grid `lg:[minmax(0,1fr)_auto]`, headline clamp32–40/56/48–62px
+  weight700/tracking-0.02em, Typewriter cyan, paragraf15px/24px dan CTA44px.
+  Tanpa eyebrow AXVARA GAMES atau radial gold; latar memakai glow cyan Pedia.
+- Games memakai `PediaOrbit` yang sama (props aditif items/brand/mark): empat game
+  registry selalu menjadi planet bertaut, walaupun belum ada SKU enabled. Ring,
+  sphere38/42px, ikon22/24px, kaca3D pusat90/102px, perlakuan mark putih, animasi,
+  mobile hemat/reduced-motion tidak dibuat ulang. Default Pedia tidak berubah.
+- Tepat di bawah hero: dua `CrossServicePromo` Market + Pedia dengan utm_source=games,
+  dimensi/wrapper CommunityBar Market, tetap dua kolom berdampingan di375px.
+- Game registry kosong tetap menampilkan header dan "Nominal segera tersedia"
+  (ID/EN), tanpa field pembayaran/cek nickname. Tidak mengarang nominal/aktivasi.
+
 ## Brand mark Pedia clean + mark Games analog (10 November 2026; PM final atas delegasi owner)
 
 - Mark Pedia: redraw geometris `public/brand/pedia-mark.svg` (viewBox tetap

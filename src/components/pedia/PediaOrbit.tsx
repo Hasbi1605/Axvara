@@ -1,13 +1,14 @@
 "use client";
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 
-type OrbitItem = {
+export type OrbitItem = {
   label: string;
   icon: string;
   color: string;
   ring: number; // 0..2
   dark?: boolean; // logo putih (Threads/X) → sphere gelap agar terlihat
+  href?: string;
 };
 
 // Planet = 8 platform sosmed Pedia (7 ikon unik + Instagram ganda agar
@@ -44,17 +45,17 @@ const ELLIPSE = 0.38; // flatten factor for 62deg tilt
 // Offset tiap ring di-stagger (bukan ringIdx*18 yang menumpuk 3 planet di
 // satu sisi) agar planet tersebar merata sejak frame pertama.
 const RING_PHASE = [200, 20, 140, 320];
-const placements = (() => {
+function placeItems(items: OrbitItem[]) {
   const out: { item: OrbitItem; r: number; baseAngle: number; speed: number }[] = [];
   RINGS.forEach((ring, ringIdx) => {
-    const ringItems = ITEMS.filter((it) => it.ring === ringIdx);
+    const ringItems = items.filter((it) => it.ring === ringIdx);
     ringItems.forEach((item, i) => {
-      const base = (360 / ring.count) * i + (RING_PHASE[ringIdx] ?? ringIdx * 18);
+      const base = (360 / ringItems.length) * i + (RING_PHASE[ringIdx] ?? ringIdx * 18);
       out.push({ item, r: ring.r, baseAngle: base, speed: ring.speed });
     });
   });
   return out;
-})();
+}
 
 /**
  * PediaOrbit — Kembar OrbitHero Market untuk beranda Pedia.
@@ -72,10 +73,11 @@ const placements = (() => {
  * Planet disamakan persis resep Market: sphere 38/42px + ikon asli 22/24px
  * + gloss/tint/border/shadow sama agar rapih sama rata.
  */
-export function PediaOrbit() {
+export function PediaOrbit({ items = ITEMS, brand = "Pedia", mark = "/brand/pedia-mark.svg" }: { items?: OrbitItem[]; brand?: string; mark?: string } = {}) {
+  const placements = useMemo(() => placeItems(items), [items]);
   const locale = useDisplayLocale();
   const containerRef = useRef<HTMLDivElement>(null);
-  const planetRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const planetRefs = useRef<(HTMLElement | null)[]>([]);
   const trailRefs = useRef<(SVGPathElement | null)[]>([]);
   const trailWhiteRefs = useRef<(SVGPathElement | null)[]>([]);
   const labelRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -101,7 +103,7 @@ export function PediaOrbit() {
   const liteCountRef = useRef(placements.length);
 
   // Set planet ref
-  const setPlanetRef = useCallback((el: HTMLDivElement | null, i: number) => {
+  const setPlanetRef = useCallback((el: HTMLElement | null, i: number) => {
     planetRefs.current[i] = el;
   }, []);
 
@@ -158,7 +160,7 @@ export function PediaOrbit() {
       }
     }
 
-  }, []);
+  }, [placements]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -285,11 +287,11 @@ export function PediaOrbit() {
       motion.removeEventListener("change", onMotionChange);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [updatePositions]);
+  }, [updatePositions, placements.length]);
 
   // Pointer handlers — imperative, no setState
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    if (!canDragRef.current) return;
+    if (!canDragRef.current || (e.target as HTMLElement).closest("a")) return;
     isDraggingRef.current = true;
     startXRef.current = e.clientX;
     startAngleRef.current = angleRef.current;
@@ -324,8 +326,8 @@ export function PediaOrbit() {
       onWheel={onWheel}
       className="relative w-[360px] h-[360px] sm:w-[440px] sm:h-[440px] shrink-0 scale-[0.88] sm:scale-100 select-none md:cursor-grab md:active:cursor-grabbing"
       style={{ touchAction: "pan-y" }}
-      role="img"
-      aria-label={locale === "en" ? "AXVARA Pedia social media services orbit" : "Orbit layanan media sosial AXVARA Pedia"}
+      role={items.some(item => item.href) ? "group" : "img"}
+      aria-label={brand === "Pedia" ? (locale === "en" ? "AXVARA Pedia social media services orbit" : "Orbit layanan media sosial AXVARA Pedia") : `Orbit AXVARA ${brand}`}
     >
       {/* 3D perspective container */}
       <div className="absolute inset-0 flex items-center justify-center" style={{ perspective: "900px", perspectiveOrigin: "50% 45%" }}>
@@ -354,7 +356,7 @@ export function PediaOrbit() {
       {/* Mark AXVARA Pedia — centered core (logo Pedia, bukan prism Market).
           Mark SVG trace putih via filter (pola PediaNavbar): brightness-0
           invert di atas sphere gelap kaca agar putihnya menyala. */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none" aria-label="AXVARA Pedia">
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none" aria-label={`AXVARA ${brand}`}>
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[142px] h-[142px] sm:w-[158px] sm:h-[158px] rounded-full blur-[22px] opacity-50" style={{ background: "radial-gradient(circle at center, rgba(0,229,255,0.26), rgba(0,229,255,0.09) 36%, transparent 70%)" }} />
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[96px] h-[96px] sm:w-[108px] sm:h-[108px] rounded-full blur-[10px] opacity-70" style={{ background: "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.16), transparent 62%)" }} />
         <div className="relative w-[90px] h-[90px] sm:w-[102px] sm:h-[102px] rounded-full flex flex-col items-center justify-center overflow-hidden border border-white/[0.14]" style={{ background: "radial-gradient(ellipse 92% 88% at 30% 22%, rgba(255,255,255,0.13), rgba(255,255,255,0.04) 32%, rgba(10,14,38,0.97) 68%), linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015))", boxShadow: "0 10px 36px rgba(0,0,0,0.46), 0 0 28px rgba(0,229,255,0.20), inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 10px rgba(0,0,0,0.38)", backdropFilter: "blur(18px) saturate(160%)", WebkitBackdropFilter: "blur(18px) saturate(160%)" }}>
@@ -362,14 +364,14 @@ export function PediaOrbit() {
           <div className="absolute left-[16%] top-[12%] w-[42%] h-[28%] rounded-full blur-[8px] bg-white/[0.10] pointer-events-none" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/brand/pedia-mark.svg"
+            src={mark}
             alt=""
             width={36}
             height={32}
             className="relative h-[32px] w-[36px] sm:h-[36px] sm:w-[40px] brightness-0 invert drop-shadow-[0_1px_8px_rgba(0,229,255,0.22)]"
             draggable={false}
           />
-          <span className="relative font-display font-[300] text-[9.5px] sm:text-[10px] tracking-[0.24em] text-white/95 mt-1 leading-none">PEDIA</span>
+          <span className="relative font-display font-[300] text-[9.5px] sm:text-[10px] tracking-[0.24em] text-white/95 mt-1 leading-none">{brand.toUpperCase()}</span>
         </div>
         <div className="absolute left-1/2 top-[90%] -translate-x-1/2 w-[92px] h-[22px] rounded-full blur-[10px] opacity-[0.18]" style={{ background: "radial-gradient(ellipse at center, rgba(0,229,255,0.55), transparent 72%)", transform: "scaleY(0.5)" }} />
       </div>
@@ -409,15 +411,18 @@ export function PediaOrbit() {
           memakai bg gelap + ikon putih via filter (pola brand resmi: Threads
           & X memang monokrom putih) — bukan sphere gelap terpisah. */}
       {placements.map(({ item }, pi) => {
+        const Planet = item.href ? "a" : "div";
         const sphereBg = item.dark
           ? `linear-gradient(180deg, rgba(35,40,66,0.96), rgba(18,22,46,0.96)), radial-gradient(ellipse 60% 55% at 50% 48%, ${item.color}14, transparent 68%)`
           : `linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78)), radial-gradient(ellipse 60% 55% at 50% 48%, ${item.color}14, transparent 68%)`;
 
         return (
-          <div
+          <Planet
             key={item.label + pi}
-            ref={(el) => setPlanetRef(el, pi)}
-            className="absolute left-1/2 top-1/2 items-center justify-center will-change-transform flex"
+            ref={(el: HTMLDivElement | HTMLAnchorElement | null) => setPlanetRef(el, pi)}
+            href={item.href}
+            aria-label={item.href ? item.label : undefined}
+            className="absolute left-1/2 top-1/2 items-center justify-center will-change-transform flex rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#00E5FF]"
             style={{ transform: "translate(-50%, -50%)" }}
             title={item.label}
           >
@@ -470,7 +475,7 @@ export function PediaOrbit() {
             >
               {item.label}
             </span>
-          </div>
+          </Planet>
         );
       })}
 

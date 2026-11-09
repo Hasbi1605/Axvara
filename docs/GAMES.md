@@ -69,6 +69,9 @@ Urutan section (atas → bawah):
 1. **Navbar Games** — logo AXVARA + label Games, search "Cari game…", bahasa/mata uang,
    ServicesMenu. Tanpa tombol masuk/daftar.
 2. **Hero** — lihat §4.1.
+   Tepat sesudahnya dua kartu ekosistem **AXVARA Market + AXVARA Pedia**, pola
+   `CommunityBar`/`CrossServicePromo` Market identik (utm_source=games), berdampingan
+   juga pada375px, sebelum katalog/populer. Tidak ada kartu komunitas tambahan.
 3. **Populer sekarang** — 6–8 kartu game besar (ikon + nama + publisher), urutan dari admin.
 4. **Tab kategori** — "Top Up Game" (MVP); tab lain disembunyikan sampai ada isinya
    (Oura menampilkan banyak tab sekaligus — kita tidak menampilkan tab kosong).
@@ -82,7 +85,19 @@ Urutan section (atas → bawah):
 **Tidak ada popup saat halaman dibuka** (Oura memunculkan popup "follow channel" yang
 menutup konten). Ajakan komunitas cukup di footer/pill komunitas yang sudah ada.
 
-### 4.1 Hero — [KEPUTUSAN TERBUKA]
+### 4.1 Hero — [DISETUJUI; koreksi owner 10 November 2026, lokal]
+
+Hero Games memakai kelas tipografi, CTA, grid dan padding hero Pedia persis,
+tanpa eyebrow kuning "AXVARA GAMES". Radial gold Games dihapus; glow cyan Pedia.
+Orbit memakai ulang `PediaOrbit`, termasuk pusat orb kaca3D dan games-mark putih
+dengan perlakuan identik pedia-mark, ring/planet/animasi serta aturan mobile/reduced-motion.
+**Empat planet berasal dari registry**, tidak dari SKU enabled. Masing-masing dapat
+diklik ke `/games/<slug>` meski katalog kosong. Halaman game registry tanpa SKU
+enabled harus200 + header game + **"Nominal segera tersedia"** (EN tersedia),
+robots noindex sampai ada SKU; tidak menampilkan form checkout/nickname. Slug di
+luar registry tetap404; sitemap tetap hanya game yang memiliki SKU sellable.
+
+Pilihan awal berikut adalah histori keputusan hybrid, bukan alternatif terbuka:
 
 | Opsi | Isi | Kelebihan | Kekurangan |
 |---|---|---|---|
@@ -90,8 +105,8 @@ menutup konten). Ajakan komunitas cukup di footer/pill komunitas yang sudah ada.
 | B. Carousel | Banner promo lebar seperti Oura | Familiar bagi pembeli game, cocok untuk event/promo | Butuh desain banner rutin; tanpa materi terasa kosong; kurang khas AXVARA |
 | **C. Hybrid (usulan)** | Hero orbit (Opsi A) + **carousel promo tipis** tepat di bawahnya, hanya tampil bila admin punya ≥1 banner aktif | Identitas AXVARA tetap; promo tetap punya panggung; tidak ada ruang kosong | Satu komponen lebih banyak |
 
-Rekomendasi: **Opsi C**. Orbit memakai komponen orbit yang ada (aturan hemat mobile:
-compositor-only, planet lebih sedikit ≤640px, reduced-motion statis). Headline usulan:
+Keputusan: **Opsi C**. Orbit memakai komponen orbit Pedia (aturan hemat mobile:
+compositor-only, keempat planet tetap tampil ≤640px, reduced-motion statis). Headline:
 "Satu tempat untuk / Top up game" + typewriter cyan *Termurah / Tercepat / Terpercaya*
 (pola Pedia). Carousel memakai kontrak banner carousel existing (ARCHITECTURE "Kontrak
 banner carousel"), rasio 3:1 desktop / 2:1 mobile, autoplay berhenti saat interaksi,

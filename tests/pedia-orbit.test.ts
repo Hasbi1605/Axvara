@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PediaOrbit } from "@/components/pedia/PediaOrbit";
 
 // Orbit Pedia (2026-10-12, permintaan owner): kembar OrbitHero Market —
 // mesin animasi 1:1 (refs + rAF, compositor-only), planet = 8 sosmed Pedia,
@@ -33,8 +36,9 @@ describe("PediaOrbit: kembar OrbitHero untuk sosmed", () => {
     // Mark trace Pedia via <img> + filter putih (pola PediaNavbar) + label PEDIA.
     expect(src).toContain("/brand/pedia-mark.svg");
     expect(src).toContain("brightness-0 invert");
-    expect(src).toContain(">PEDIA<");
-    expect(src).toContain('aria-label="AXVARA Pedia"');
+    const html = renderToStaticMarkup(createElement(PediaOrbit));
+    expect(html).toContain(">PEDIA<");
+    expect(html).toContain('aria-label="AXVARA Pedia"');
     // Prism Market (path segitiga inline) tidak dipakai lagi.
     expect(src).not.toContain("M60 4 L6.5 104 L113.5 104 Z");
     expect(src).not.toContain(">AXVARA<");
@@ -63,7 +67,7 @@ describe("PediaOrbit: kembar OrbitHero untuk sosmed", () => {
 
   it("hot path compositor-only seperti OrbitHero (tanpa filter/blur/display per frame)", () => {
     const src = read("src/components/pedia/PediaOrbit.tsx");
-    const body = src.slice(src.indexOf("const updatePositions"), src.indexOf("}, []);", src.indexOf("const updatePositions")));
+    const body = src.slice(src.indexOf("const updatePositions"), src.indexOf("}, [placements]);", src.indexOf("const updatePositions")));
     expect(body).not.toContain(".style.filter");
     expect(body).not.toContain("backdropFilter");
     expect(body).not.toContain(".style.display");

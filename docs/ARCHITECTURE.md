@@ -2834,6 +2834,22 @@ berikutnya, `secret_text` terbawa. **Semua env Pages ditulis sebagai
 bersifat write-only (GET selalu tampil kosong): verifikasi lewat perilaku
 (endpoint 200), bukan lewat GET.
 
+**Insiden 9–10 November 2026 (WAJIB dibaca sebelum menyentuh env Pages):** sebuah sesi
+menulis env baru dengan `structuredClone(GET project).deployment_configs` lalu PATCH
+utuh (production+preview). Karena GET tidak pernah mengembalikan nilai `secret_text`,
+PATCH itu MENGOSONGKAN nilai SEMUA secret project; deploy berikutnya (37a8c40,
+16:15Z) kehilangan konfigurasi pembayaran, Pedia, Digiflazz, cron. Pemulihan:
+rollback Pages ke deployment 272caee0 + rollback Worker `axvara-mcp` ke versi
+sebelum rotasi CRON, nonaktifkan workflow CI, tulis ulang nilai dari sumber lokal/VPS
+per kunci, lalu roll-forward. `FULFILLMENT_ENCRYPTION_KEY`, hash password admin dan
+`ADMIN_JWT_SECRET` tidak punya salinan → diganti baru atas keputusan owner (stok
+fulfillment lama dicabut; kredensial terkirim lama tidak bisa dibuka ulang).
+Aturan: PATCH env HANYA berisi kunci yang nilainya dikirim,
+`{"deployment_configs":{"production":{"env_vars":{"KEY":{"type":"secret_text","value":"…"}}}}}`;
+JANGAN pernah mengirim balik objek `deployment_configs`/`env_vars` hasil GET; verifikasi
+himpunan nama kunci sebelum/sesudah. Secret tanpa salinan lokal wajib di-backup owner
+(password manager) saat dibuat.
+
 Cara mengubah satu env tanpa merusak yang lain (2026-09-18): pakai
 `wrangler pages secret put <KEY> --project-name axvara` (satu kunci per
 operasi). **JANGAN** PATCH `deployment_configs.production.env_vars` lewat REST
@@ -4227,6 +4243,15 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - Revisi owner di hari yang sama: semua TUNVN dimulai **nonaktif** (seed 0112 direvisi sebelum sempat diterapkan CI; migrasi 0113 memaksa nonaktif sebagai pengaman — terbukti D1 produksi belum punya baris TUNVN dan katalog publik tidak memuatnya). Migrasi 0113 menambah `tunvn_products.admin_name/admin_description/publish_requested` + `product_variants.tunvn_admin_price_idr`. Panel kini mengendalikan per produk: markup, nama/deskripsi publik, saklar Diminta terbit + Produk aktif (keduanya wajib untuk tampil), dan per varian Buff: markup, harga manual, label, status aktif — lewat PATCH `/api/admin/tunvn/products/[id]` + `/api/admin/tunvn/buff/[sku]` (requireAdmin). `publishTunvnCatalog` menghormati semua kontrol admin dan tidak pernah memaksa aktif.
 
 ### 16.29 AXVARA Games S1: host, nickname berbiaya dan SKU utilitas — 9 November 2026 (lokal, belum deploy)
+
+- HERO-FIX10November2026 (lokal): GamesPage mengirim slug/name/icon dari registry
+  sebagai `GamesHome.orbitGames`, terpisah dari katalog enabled. PediaOrbit mendapat
+  props aditif items/brand/mark; default Pedia tetap sama, Games menambah href planet
+  tanpa pointer capture pada link. Mesin/orb/kelas planet tidak diduplikasi.
+  `getGamesDetail` mengembalikan detail dengan products=[] untuk registry kosong;
+  page200/header/state segera tersedia, metadata noindex, tanpa form/nickname request.
+  Slug asing tetap null/404 dan sitemap enabled-only tidak berubah. Hero serta dua
+  CrossServicePromo mengikuti Pedia/CommunityBar; gating PEDIA_ENABLED tetap utuh.
 
 - `SITE.gamesUrl=https://games.axvara.tech`; middleware `GAMES_HOST` opsional (default sama,
   `secret_text` bila dipasang) rewrite root/path halaman ke `/games/*` tanpa flag enable.

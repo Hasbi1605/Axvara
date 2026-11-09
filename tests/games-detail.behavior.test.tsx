@@ -15,6 +15,17 @@ beforeEach(() => { vi.stubGlobal("matchMedia", () => ({ matches: true, addEventL
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("Games detail", () => {
+  it("keeps a registered game's header without checkout or nickname requests when amounts are empty", async () => {
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+    localStorage.setItem("games-id:mobile-legends", JSON.stringify({ userId: "123456", zoneId: "1234" }));
+    render(<GameClient detail={{ ...detail, products: [] }} orderingOpen />);
+    expect(screen.getByRole("heading", { name: "Mobile Legends", level: 1 })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Nominal segera tersedia");
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Bayar|Pilih nominal/ })).toBeNull();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 650)); });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it("validates both Mobile Legends IDs, folds amounts and preserves unavailable SKUs", () => {
     render(<GameClient detail={detail} orderingOpen={false} />);
     const fields = screen.getAllByRole("textbox");

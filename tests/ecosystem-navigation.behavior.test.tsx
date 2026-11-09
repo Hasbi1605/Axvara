@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("shared service navigation", () => {
-  it.each(["market", "pedia"] as const)("opens using keyboard, navigates links and restores focus on Escape (%s)", async (active) => {
+  it.each(["market", "pedia", "games"] as const)("opens using keyboard, navigates links and restores focus on Escape (%s)", async (active) => {
     const user = userEvent.setup();
     render(<ServicesMenu active={active} />);
     const button = screen.getByRole("button", { name: "Layanan AXVARA" });
@@ -31,7 +31,7 @@ describe("shared service navigation", () => {
     expect(button.getAttribute("aria-expanded")).toBe("true");
     const links = within(screen.getByRole("navigation")).getAllByRole("link");
     expect(links.map((link) => link.getAttribute("href"))).toEqual(AXVARA_SERVICES.map((service) => service.href));
-    expect(links[active === "market" ? 0 : 1].getAttribute("aria-current")).toBe("true");
+    expect(links[AXVARA_SERVICES.findIndex(service => service.id === active)].getAttribute("aria-current")).toBe("true");
     await user.keyboard("{ArrowDown}");
     expect(document.activeElement).toBe(links[0]);
     await user.keyboard("{ArrowDown}");
@@ -44,6 +44,28 @@ describe("shared service navigation", () => {
     expect(document.activeElement).toBe(button);
     expect(screen.queryByRole("navigation")).toBeNull();
     expect(links).toHaveLength(3);
+  });
+
+  it.each(AXVARA_SERVICES)("keeps native menu and promo clicks host-correct from $href", async current => {
+    const user = userEvent.setup();
+    const base = document.createElement("base"); base.href = current.href; document.head.append(base);
+    try {
+      render(<><ServicesMenu active={current.id} />{AXVARA_SERVICES.filter(target => target.id !== current.id).map(target => <CrossServicePromo key={target.id} current={current.id} target={target.id} />)}</>);
+      for (const target of AXVARA_SERVICES) {
+        await user.click(screen.getByRole("button", { name: "Layanan AXVARA" }));
+        const menuLink = within(screen.getByRole("navigation")).getByRole("link", { name: new RegExp(target.name) });
+        expect((menuLink as HTMLAnchorElement).href).toBe(target.href);
+        const clicked = vi.fn((event: Event) => event.preventDefault()); menuLink.addEventListener("click", clicked);
+        await user.click(menuLink); expect(clicked).toHaveBeenCalledOnce();
+        expect(screen.queryByRole("navigation")).toBeNull();
+        if (target.id === current.id) continue;
+        const promo = screen.getByRole("link", { name: new RegExp(target.name) });
+        const url = new URL((promo as HTMLAnchorElement).href);
+        expect(`${url.origin}${url.pathname}`).toBe(target.href);
+        expect(url.searchParams.get("utm_source")).toBe(current.id === "market" ? "axvara" : current.id);
+        promo.addEventListener("click", clicked); await user.click(promo); expect(clicked).toHaveBeenCalledTimes(2);
+      }
+    } finally { base.remove(); }
   });
 
   it("allows native Tab movement and dismisses on focus leaving or outside pointer", async () => {

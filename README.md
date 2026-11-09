@@ -1746,6 +1746,12 @@ S1 (lokal, belum deploy): `SITE.gamesUrl=https://games.axvara.tech`, middleware 
 rewrite `/`/halaman ke `/games/*` tanpa enable flag dan308 `/games/*` dari host lain
 (localhost/127.* dikecualikan). `GAMES_HOST` opsional, default host tersebut; Pages
 `secret_text` jika dipasang. API/aset/R2/MCP tetap shared, admin produksi ke apex.
+HERO-FIX10November2026 (lokal): hero Games memakai kelas Pedia dan `PediaOrbit`
+yang sama (orb kaca3D/mark putih, empat planet registry tetap ada tanpa SKU enabled),
+tanpa eyebrow/glow gold. Dua kartu Market+Pedia memakai CrossServicePromo berdampingan,
+utm_source=games. Game registry tanpa SKU tetap200/header + "Nominal segera tersedia"
+dan noindex; slug lain404. Gating PEDIA_ENABLED tidak diubah; masalah env Pedia
+ditangani PM, bukan dengan mengubah tautan atau mengaktifkan layanan lewat kode.
 Metadata UI memakai `src/lib/games/metadata.ts`; `src/app/games/sitemap.ts` menyediakan
 root+slug registry enabled yang sellable, robots berupa handler `games/robots.txt/route.ts`.
 PM9November2026 sekitar21.40–22.05WIB menambahkan CNAME `games` ke `axvara.pages.dev`

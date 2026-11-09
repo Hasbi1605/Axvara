@@ -58,7 +58,7 @@ export async function getGamesDetail(slug: string) {
       { buyer_sku_code: "fixture-3", name: "257 Diamond", price: 60000, group: "all" as const, display_order: 4, available: false },
     ]);
   }
-  return products.length ? { game: publicGamesGame(game), products } : null;
+  return { game: publicGamesGame(game), products };
 }
 
 export type GamesDetail = NonNullable<Awaited<ReturnType<typeof getGamesDetail>>>;
