@@ -238,6 +238,28 @@ describe("enable-wave", () => {
     expect(product("ff140").enabled).toBe(1);
   });
 
+  it("enables more than 100 healthy SKUs within D1's 100 bound-parameter limit", async () => {
+    for (let i = 0; i < 150; i++) seed({ buyer_sku_code: `ml${1000 + i}`, game_brand: "MOBILE LEGENDS", sell_price: 11000 });
+    const { enableGamesWave1 } = await import("@/lib/games/admin");
+    const { createDatabaseAccess } = await import("@/lib/db-access");
+    const real = createDatabaseAccess();
+    // Production D1 rejects any statement binding more than 100 parameters.
+    const limited = new Proxy(real, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (args.length - 1 > 100) throw new Error("D1_ERROR: too many SQL variables");
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    const result = await enableGamesWave1(limited);
+    expect(result).toMatchObject({ eligible: 151, enabled_now: 151 });
+    expect(product("ml1149").enabled).toBe(1);
+    expect(product("ffmax1").enabled).toBe(0);
+  });
+
   it("rejects a non-boolean dry_run", async () => {
     const { POST } = await wave();
     expect((await POST(await json("http://x/api/admin/games/products/enable-wave", "POST", { dry_run: "yes" }))).status).toBe(400);

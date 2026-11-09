@@ -205,10 +205,12 @@ export async function enableGamesWave1(db: DatabaseAccess, options: { dryRun?: b
     return { eligible: eligible.length, enabled_now: 0, skipped_unhealthy };
   }
   const ids = eligible.map((row) => Number(row.id));
+  // One JSON parameter instead of one `?` per id: D1 rejects statements with
+  // more than 100 bound parameters, and wave 1 has ~500 healthy SKUs.
   const updated = await db.execRun(
     `UPDATE games_products SET enabled=1, updated_at=datetime('now')
-      WHERE enabled=0 AND id IN (${ids.map(() => "?").join(",")})`,
-    ...ids,
+      WHERE enabled=0 AND id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))`,
+    JSON.stringify(ids),
   );
   return { eligible: eligible.length, enabled_now: Number(updated.changes ?? 0), skipped_unhealthy };
 }
