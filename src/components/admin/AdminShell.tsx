@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
+import { SupplierDropdown, SUPPLIER_ITEMS } from "./SupplierDropdown";
 
-export type AdminSection = "summary" | "products" | "orders" | "categories" | "payments" | "warung" | "sekalipay" | "pairs" | "links" | "pedia" | "games" | "articles" | "banners" | "broadcasts" | "subscribers" | "bot" | "agent" | "settings";
+export type AdminSection = "summary" | "products" | "orders" | "categories" | "payments" | "warung" | "sekalipay" | "tunvn" | "pairs" | "links" | "pedia" | "games" | "articles" | "banners" | "broadcasts" | "subscribers" | "bot" | "agent" | "settings";
 
 const navigationGroups: { label: string; items: [AdminSection, string, IosIconName][] }[] = [
   { label: "Operasional", items: [
@@ -19,15 +20,15 @@ const navigationGroups: { label: string; items: [AdminSection, string, IosIconNa
   ] },
   { label: "Pembayaran", items: [
     ["payments", "Metode & Rekonsiliasi", "credit-card"],
-    ["warung", "Warung Rebahan", "shopping-bag"],
-    ["sekalipay", "Sekalipay", "wallet"],
-    ["pairs", "WR vs SK", "discount"],
   ] },
+  // Grup Supplier dirender khusus sebagai dropdown (SupplierDropdown) agar
+  // sidebar tidak memanjang: Warung Rebahan, Sekalipay, TUNVN, WR vs SK,
+  // Link Supplier. Lihat render di bawah.
+  { label: "Supplier", items: [] },
   { label: "Konten", items: [
     ["articles", "Artikel", "news"],
     ["banners", "Banner", "image"],
     ["broadcasts", "Siaran", "email"],
-    ["links", "Link Supplier", "link"],
   ] },
   { label: "Otomasi", items: [
     ["bot", "Kanal & Fulfillment", "bot"],
@@ -41,7 +42,10 @@ const navigationGroups: { label: string; items: [AdminSection, string, IosIconNa
   ] },
 ];
 
-const navigation = navigationGroups.flatMap((group) => group.items);
+const navigation: [AdminSection, string, IosIconName][] = [
+  ...navigationGroups.flatMap((group) => group.items),
+  ...SUPPLIER_ITEMS.map((item) => [item.id, item.label, item.icon] as [AdminSection, string, IosIconName]),
+];
 
 // Section yang sah tapi tidak punya entri sidebar (kini tab di Pengaturan).
 // Tanpa ini header mobile menampilkan judul kosong saat ?section=agent dibuka
@@ -113,6 +117,14 @@ export function AdminShell({
       <nav className="mt-4 space-y-3">
         {navigationGroups.map((group) => <div key={group.label}>
           <p className={`mb-1 px-3 text-[9px] font-bold uppercase tracking-[0.14em] text-white/25 ${collapsed ? "lg:hidden" : ""}`}>{group.label}</p>
+          {group.label === "Supplier" ? (
+            <SupplierDropdown
+              section={section}
+              collapsed={collapsed}
+              badges={badges}
+              onSection={(next) => { onSection(next); setMobileOpen(false); }}
+            />
+          ) : (
           <div className="space-y-1">{group.items.map(([id, label, icon]) => {
             const active = section === id;
             const badge = badges[id] ?? 0;
@@ -132,6 +144,7 @@ export function AdminShell({
               </button>
             );
           })}</div>
+          )}
         </div>)}
       </nav>
       <div className="mt-auto space-y-1 border-t border-white/10 pt-3">

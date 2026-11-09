@@ -4216,6 +4216,15 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - Mirror `tunvn_products` (migrasi `0110_tunvn_hidden_catalog.sql`, identik `drizzle/schema.sql`): ID upstream unik, harga VND/USDT + stok + diskon bertingkat apa adanya (tanpa konversi kurs/margin), `visible` selalu 0 dari sync. `syncTunvnCatalog` (`src/lib/tunvn/sync.ts`) meniru throttle CAS + upsert chunk `json_each` Games; SENGAJA belum dipanggil pemanggil mana pun.
 - Probe read-only 2026-11-09 (bukan deployment): docs terbaca, 19 produk, kurs 25.494 VND/USDT, saldo akun 0 VND / 0,0099 USDT. Aturan lengkap: `docs/agent-rules/tunvn.md`.
 
+### 16.31 TUNVN: katalog ChatGPT + Buff Muse + panel admin — 9 November 2026
+
+- Instruksi owner menggantikan batas 16.30 HANYA untuk scope ini: dua produk ChatGPT TUNVN diterbitkan dan Buff Token menjadi varian produk Muse manual; produk TUNVN lain tetap tersembunyi.
+- Markup disetujui: ChatGPT 35%, Buff 40% (`src/lib/tunvn/pricing.ts`: ceil Rp100 dari modal USDT × kurs × (1+markup)). Kurs acuan 9 Nov 2026 Rp18.086/USDT; publikasi ulang memakai FX snapshot AXVARA (`loadCurrentFxSnapshot`, fail-closed). Harga awal: Business Rp112.400, GPay Rp121.200, Buff 5B/10B/20B/30B Rp7.500/Rp14.900/Rp29.800/Rp44.700.
+- Gambar ChatGPT memakai aset produk ChatGPT AXVARA existing `/r2/products/f87f491ee2f9034845db18eb08c9236d.webp` (sama dengan WR id 12 dan SK id 85 nonaktif; konfirmasi owner + D1 read-only).
+- Migrasi 0112: `tunvn_products` +kolom link/harga; `product_variants` +kolom `tunvn_*`; seed produk `chatgpt-business-1-bulan-tunvn`/`chatgpt-gpay-1-bulan-tunvn` + varian `TUNVN-86`/`TUNVN-83` dan `TUNVN-BUFF-*` pada produk `muse-ai-1-miliar-token`. `publishTunvnCatalog` menerbitkan ulang idempoten dari mirror + FX segar.
+- Panel admin: section `tunvn`; sidebar admin kini grup Supplier dropdown (WR/SK/TUNVN/WR vs SK/Link) via `SupplierDropdown`. API `/api/admin/tunvn/{products,balance,buff,publish}` requireAdmin; probe buff `POST /api/buff/check` read-only-efek (tanpa debit).
+- Env Pages dipasang `secret_text` production+preview: `TUNVN_API_KEY`, `TUNVN_BASE_URL`, `TUNVN_ENABLED=true`, `TUNVN_SYNC_ENABLED=true` (75→79 env), berlaku deployment CI berikutnya. Dispatch order otomatis (`/api/buy`, `/api/buff/order`) BELUM dibangun; fulfillment manual, saldo wallet 0 VND / 0,0099 USDT saat aktivasi.
+
 ### 16.29 AXVARA Games S1: host, nickname berbiaya dan SKU utilitas — 9 November 2026 (lokal, belum deploy)
 
 - `SITE.gamesUrl=https://games.axvara.tech`; middleware `GAMES_HOST` opsional (default sama,

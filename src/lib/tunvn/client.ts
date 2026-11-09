@@ -18,6 +18,12 @@
 //                         dipanggil lewat jalur yang sama)
 //   POST /api/buy       → SENGAJA tidak diimplementasikan pada setup awal.
 //   POST /api/deposit   → SENGAJA tidak diimplementasikan pada setup awal.
+//   POST /api/buff/check → harga Buff Token Muse AI (read-only secara efek:
+//                         tidak mendebit saldo; dipakai panel admin).
+//
+// Kurs referensi (diperiksa 2026-11-09): USDT ≈ Rp18.086 (CoinGecko/Pintu/
+// INDODAX/CoinMarketCap). Perhitungan harga jual memakai FX snapshot AXVARA
+// yang sudah ada (USD_IDR_RATE / snapshot pasar), BUKAN angka statis di sini.
 //
 // Keamanan/keandalan:
 // - API key TIDAK PERNAH dicatat, tidak masuk error message/return, dan tidak
@@ -172,6 +178,41 @@ export async function fetchTunvnProducts(): Promise<TunvnProductsResult> {
   }
   const rate = num(r.json.usdt_vnd);
   return { kind: "ok", items, invalid, usdt_vnd: rate !== null && rate > 0 ? rate : null };
+}
+
+export type TunvnBuffCheckResult =
+  | { kind: "ok"; gross_cost_vnd: number; sell_price_vnd: number; sell_price_usdt: number; fundable: boolean }
+  | { kind: "api_error"; detail: string };
+
+/** Probe harga Buff (POST /api/buff/check): tidak mendebit saldo. Dipakai
+ *  panel admin untuk memverifikasi modal per 1B sebelum varian diterbitkan.
+ *  Sengaja TIDAK memakai callTunvnRead (itu GET-only) dan tanpa retry. */
+export async function checkTunvnBuff(quantityB: number): Promise<TunvnBuffCheckResult | Exclude<TunvnCallResult, { kind: "ok" }>> {
+  if (!Number.isInteger(quantityB) || quantityB < 1 || quantityB > 30) return { kind: "api_error", detail: "invalid_quantity" };
+  if (!isTunvnConfigured()) return { kind: "config", reason: "not_configured" };
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${getTunvnBaseUrl()}/api/buff/check`, {
+      method: "POST",
+      headers: { "x-api-key": getTunvnApiKey(), "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ orders_text: `AXVARA ${quantityB}` }),
+      redirect: "manual",
+    }, TUNVN_DEFAULT_TIMEOUT_MS);
+  } catch {
+    return { kind: "ambiguous", reason: "network_or_timeout" };
+  }
+  if (res.status === 401 || res.status === 403) return { kind: "config", reason: `auth_${res.status}` };
+  if (res.status >= 300 && res.status < 400) return { kind: "config", reason: "unexpected_redirect" };
+  if (res.status === 429 || res.status >= 500) return { kind: "ambiguous", reason: `http_${res.status}` };
+  if (res.status < 200 || res.status >= 300) return { kind: "http_error", status: res.status };
+  let json: unknown;
+  try { json = JSON.parse(await res.text()); } catch { return { kind: "ambiguous", reason: "unreadable_json" }; }
+  if (!isRecord(json) || json.success !== true) return { kind: "api_error", detail: "buff_check_failed" };
+  const gross = nonNegativeInt(json.gross_cost_vnd);
+  const sellVnd = nonNegativeInt(json.sell_price_vnd);
+  const sellUsdt = num(json.sell_price_usdt);
+  if (gross === null || sellVnd === null || sellUsdt === null || sellUsdt <= 0) return { kind: "api_error", detail: "buff_shape" };
+  return { kind: "ok", gross_cost_vnd: gross, sell_price_vnd: sellVnd, sell_price_usdt: sellUsdt, fundable: json.fundable === true };
 }
 
 export type TunvnBalanceResult =

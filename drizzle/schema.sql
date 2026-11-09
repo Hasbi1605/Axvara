@@ -637,6 +637,12 @@ CREATE TABLE IF NOT EXISTS product_variants (
   min_qty INTEGER NOT NULL DEFAULT 1
     CHECK (min_qty >= 1),
 
+  -- Migrasi 0112: metadata Buff Token TUNVN pada varian Muse manual.
+  tunvn_buff_quantity_b INTEGER CHECK (tunvn_buff_quantity_b IS NULL OR (tunvn_buff_quantity_b >= 1 AND tunvn_buff_quantity_b <= 30)),
+  tunvn_cost_usdt REAL CHECK (tunvn_cost_usdt IS NULL OR tunvn_cost_usdt > 0),
+  tunvn_markup_percent INTEGER CHECK (tunvn_markup_percent IS NULL OR tunvn_markup_percent >= 0),
+  tunvn_fx_idr_per_usdt REAL CHECK (tunvn_fx_idr_per_usdt IS NULL OR tunvn_fx_idr_per_usdt > 0),
+
   -- Migrasi 0058: modal manual per varian (rupiah, milik admin, default 0).
   -- Untuk produk manual/stok sendiri yang modalnya tidak tercatat di link
   -- supplier (akun invite berbayar, stok beli putus). Untuk varian WR/SK
@@ -1842,6 +1848,11 @@ CREATE TABLE IF NOT EXISTS tunvn_products (
   discount_price_vnd INTEGER CHECK (discount_price_vnd IS NULL OR discount_price_vnd > 0),
   discount_threshold_usdt INTEGER NOT NULL DEFAULT 0 CHECK (discount_threshold_usdt >= 0),
   discount_price_usdt REAL CHECK (discount_price_usdt IS NULL OR discount_price_usdt > 0),
+  -- Migrasi 0112: tautan produk Market terbit + harga jual hasil markup.
+  axvara_product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  markup_percent INTEGER NOT NULL DEFAULT 35 CHECK (markup_percent >= 0),
+  sell_price_idr INTEGER CHECK (sell_price_idr IS NULL OR sell_price_idr >= 0),
+  fx_idr_per_usdt REAL CHECK (fx_idr_per_usdt IS NULL OR fx_idr_per_usdt > 0),
   visible INTEGER NOT NULL DEFAULT 0 CHECK (visible IN (0,1)),
   synced_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
@@ -1849,3 +1860,7 @@ CREATE TABLE IF NOT EXISTS tunvn_products (
 );
 CREATE INDEX IF NOT EXISTS idx_tunvn_products_visible ON tunvn_products(visible, supplier_product_id);
 CREATE INDEX IF NOT EXISTS idx_tunvn_products_synced ON tunvn_products(synced_at);
+
+-- Kolom migrasi 0112 (di-inline agar schema.sql tetap bootstrap utuh):
+-- tunvn_products.axvara_product_id/markup_percent/sell_price_idr/fx_idr_per_usdt
+-- dan product_variants.tunvn_* tercantum pada definisi tabel masing-masing.

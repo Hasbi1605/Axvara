@@ -47,7 +47,16 @@ describe("0110 tunvn hidden catalog migration", () => {
   };
 
   it("table body and indexes are identical to drizzle/schema.sql", () => {
-    expect(body(migration)).toBe(body(schema));
+    // Kolom migrasi 0112 di-inline di schema.sql (pola Games 0108); keluarkan
+    // saat membandingkan bentuk dasar 0110 tanpa melonggarkan kolom lain.
+    const later = [
+      ", -- Migrasi 0112: tautan produk Market terbit + harga jual hasil markup. axvara_product_id INTEGER REFERENCES products(id) ON DELETE SET NULL",
+      ", markup_percent INTEGER NOT NULL DEFAULT 35 CHECK (markup_percent >= 0)",
+      ", sell_price_idr INTEGER CHECK (sell_price_idr IS NULL OR sell_price_idr >= 0)",
+      ", fx_idr_per_usdt REAL CHECK (fx_idr_per_usdt IS NULL OR fx_idr_per_usdt > 0)",
+    ];
+    const baseSchema = later.reduce((text, column) => text.replace(column, ""), body(schema));
+    expect(body(migration)).toBe(baseSchema);
     const indexes = (sql: string) => sql.match(/CREATE INDEX IF NOT EXISTS idx_tunvn_[^;]+;/g);
     expect(indexes(migration)).toEqual(indexes(schema));
     expect(indexes(migration)).toHaveLength(2);

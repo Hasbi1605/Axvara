@@ -105,6 +105,18 @@ tersimpan tetap jalan walau flag pembuatan baru OFF. QRIS tetap satu-satunya rai
 publik; checkout/TG/cron/admin UI milik W3. Sekalipay gateway shell tanpa adapter
 (kontrak belum terverifikasi). Blokir manual: runbook pembayaran.
 
+## Supplier TUNVN PREHUB — katalog ChatGPT + Buff Muse + panel admin (revisi 9 November 2026)
+
+Revisi instruksi owner di hari yang sama: dua produk ChatGPT TUNVN diterbitkan
+(markup 35%, gambar memakai aset ChatGPT AXVARA existing
+`/r2/products/f87f491ee2f9034845db18eb08c9236d.webp`), Buff Token Muse AI
+menjadi varian produk Muse manual (markup 40%), panel admin section `tunvn`
+dengan sidebar Supplier dropdown, dan env Pages `secret_text`
+(`TUNVN_API_KEY`/`TUNVN_BASE_URL`/`TUNVN_ENABLED=true`/`TUNVN_SYNC_ENABLED=true`)
+sudah dipasang (berlaku deployment CI berikutnya). Dispatch order otomatis
+belum dibangun; fulfillment manual. Detail: `docs/agent-rules/tunvn.md`,
+ARCHITECTURE §16.31, migrasi 0112.
+
 ## Supplier TUNVN PREHUB — setup awal tersembunyi (9 November 2026)
 
 Fondasi reseller Telegram TUNVN PREHUB: kredensial lokal `.tunvn-credentials`
