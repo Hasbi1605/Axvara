@@ -57,8 +57,10 @@ admin produksi tetap dialihkan ke apex. Semua return tetap memiliki security hea
 `GAMES_HOST` opsional mengubah host routing (default `games.axvara.tech`; Pages
 `secret_text` bila dipasang). Canonical/OG/sitemap tetap host publik final.
 Sitemap Games hanya root + slug registry dengan SKU enabled yang dapat dijual;
-robots menutup API privat/status/lacak. Implementasi S1 lokal; custom domain Pages
-belum ditambahkan dan bukan bukti DNS/deployment aktif.
+robots menutup API privat/status/lacak. PM9November2026 sekitar21.40–22.05WIB memasang
+CNAME `games` ke `axvara.pages.dev` (proxied) + custom domain Pages `games.axvara.tech`.
+Status awal initializing; domain aktif/DNS end-to-end belum diverifikasi, bukan klaim live.
+Access admin belum mencakup host ini: `/admin` produksi ke apex, `/api/admin` fail-closed.
 
 ## 4. Beranda `/games`
 
@@ -123,7 +125,12 @@ rail ringkasan sticky di kanan (desktop) / bar bawah (mobile)**.
     Admission atomik: IP10 + perangkat cookie httpOnly5 per15menit rolling, global500/hari UTC.
     D1 error/limit/saldo kurang/ambigu menjadi unavailable, bukan penghalang checkout.
     Pending dicek ulang sekali sesudah1,5detik dengan payload/ref `NCK-*` sama;
-    pending/ambigu tetap diklaim tanpa expiry (pemulihan manual, tidak membeli ulang).
+    pending/ambigu tetap diklaim tanpa expiry, tidak membeli ulang. S1b lokal: request
+    berikut setelah checked_at berumur60detik melakukan satu re-poll dengan CAS D1,
+    memakai ref/payload/max_price log asli. Tidak ada log biaya baru/slot global500
+    karena lookup ref existing tidak membeli ulang. Re-poll IP10/perangkat5 per15menit
+    memakai rateLimit existing best-effort per isolate (counter terpisah dari admission
+    berbayar D1); CAS60detik tetap durable dan hasil respons lama berpagar pemilik.
     Hanya rc54 resmi "Nomor Tujuan Salah" menjadi invalid "ID tidak ditemukan" / "ID not found";
     rc55 gangguan bukan invalid. SN dibersihkan HTML/kontrol, trim, maksimal64karakter.
     Admin menampilkan jumlah dan batas modal hari ini/7hari kalender UTC, bukan tagihan settlement.
@@ -243,7 +250,7 @@ Urutan fase (masing-masing satu PR/commit logis, wajib baca AGENTS.md + aturan a
 | G5 | Order + dispatch: buat pesanan harga terkunci → rail pembayaran existing → setelah terverifikasi kirim `transaction` (`max_price`, `ref_id` unik) → pending cek ulang `ref_id` sama → Gagal final: coba kode `b` sekali → gagal lagi: "Perlu tindakan admin" | `src/lib/games/*`, `src/app/api/games/*` | test idempoten, tidak ada dua dispatch aktif, fixture `testing:true` sukses/gagal/pending |
 | G6 | Webhook `POST /api/games/digiflazz/webhook` (HMAC-SHA1 `X-Hub-Signature` body mentah, idempoten) + cek nickname (rate limit + cache) | API | test signature salah ditolak, duplikat aman |
 | G7 | UI `/games`, `/games/[slug]`, `/games/pesanan/[code]`, lacak/bantuan/ketentuan sesuai §4–§7 & §9; aset game resmi di R2 | `src/app/games/*`, komponen | verifikasi browser nyata desktop/mobile, keyboard, reduced motion; README/ARCHITECTURE/DESIGN diperbarui |
-| G8 | Go-live: rotasi key (pernah tertempel di chat), mode Production + OTP owner, deposit kecil, satu transaksi nyata disetujui owner | owner + agent | bukti transaksi sukses; tanpa QA di produksi selain yang disetujui |
+| G8 | Go-live: keputusan key owner (7.1 ditutup tanpa rotasi9Nov malam), mode Production + OTP owner, deposit kecil, satu transaksi nyata disetujui owner | owner + agent | bukti transaksi sukses; tanpa QA di produksi selain yang disetujui |
 
 Batasan: jangan mengaktifkan webhook dashboard sebelum G6 terdeploy; jangan deposit
 atau transaksi produksi tanpa izin owner; jangan mengubah seller/kode di akun tanpa
@@ -262,8 +269,9 @@ UI storefront masih paket terpisah.
   dengan `x-proxy-token: WARUNG_REBAHAN_PROXY_TOKEN` (VPS & token yang sama dengan Pedia).
   Body ditandatangani di Pages: `sign = md5(username + key + X)` dengan X = `depo` /
   `pricelist` / `ref_id`. Key tidak pernah dikirim ke VPS.
-- Env Pages (semua `secret_text`, belum dipasang): `DIGIFLAZZ_USERNAME`, `DIGIFLAZZ_API_KEY`,
-  `DIGIFLAZZ_WEBHOOK_SECRET`, `DIGIFLAZZ_TESTING` (`true` → kirim `testing:true`). Tanpa
+- Env Pages (semua `secret_text`, dipasang PM9Nov2026 malam; berlaku pada deployment
+  CI berikutnya): `DIGIFLAZZ_USERNAME`, `DIGIFLAZZ_API_KEY` (Development Key),
+  `DIGIFLAZZ_WEBHOOK_SECRET`, `DIGIFLAZZ_TESTING=true` (`true` → kirim `testing:true`). Tanpa
   `DIGIFLAZZ_USERNAME`/`DIGIFLAZZ_API_KEY` semua job Games no-op (tidak error).
 
 ### 12.2 Data (D1)
@@ -335,11 +343,23 @@ oleh sinkron.
   enable-wave melewatinya. Nickname dari klien display-only, disanitasi ke `customer_nickname`.
   Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.29.
 - **Untuk Paseo/fase berikut:** integrasi metadata/QA UI rail gateway/crypto Games,
-  UI §4–§7, lalu G8 go-live (custom domain Pages, env `secret_text`, rotasi key, aktifkan
-  webhook dashboard, mode Production, deposit).
+  UI §4–§7, verifikasi aktivasi domain/env setelah CI, lalu gerbang G8 yang masih terbuka.
+  Domain/env sudah dipasang PM, bukan bukti runtime aktif atau izin webhook/Production.
 - Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final;
   seed referensi A2 tersedia lokal di migrasi0111 (§12.7), belum bukti data produksi.
 - Prompt serah terima Paseo: `docs/games-paseo-brief.md`.
+
+#### Gerbang owner (status PM9November2026 sekitar21.40–22.05WIB)
+- §7.1 brief: **ditutup owner tanpa rotasi key**, keputusan9November2026 malam.
+  Jangan menulis bahwa key telah dirotasi atau merotasi sebagai efek samping.
+- §7.2: **terbuka**, webhook dashboard Digiflazz tetap non-aktif.
+- §7.3: **terbuka**, belum deposit atau mode Production. Pages produksi menyimpan
+  Development Key + testing=true; sesudah deployment CI berikutnya cron katalog
+  mulai memakai Development Key, ordering tetap preview P9 dan nickname unavailable.
+- §7.4: **terbuka**, belum transaksi nyata yang membuktikan go-live.
+- PM memasang75env (79/128 termasuk4sistem), empat env Digiflazz `secret_text`.
+  CNAME/custom domain telah ditambahkan dengan status awal initializing; aktif
+  belum diverifikasi. Tidak ada klaim live/sinkron selesai/pembayaran nyata.
 
 ### 12.7 Admin data Games (P1–P3, 9 November 2026, lokal → CI)
 

@@ -67,6 +67,8 @@ export const RATE_LIMITS = {
   "games:status": 30,
   "games:lookup": 20,
   "games:wake": 6,
+  "games:nickname_poll": 10,
+  "games:nickname_poll_device": 5,
 } as const;
 
 export type RateLimitScope = keyof typeof RATE_LIMITS;

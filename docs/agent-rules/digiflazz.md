@@ -1,4 +1,19 @@
-# Digiflazz buyer - username utility S1 (9 November 2026, lokal)
+# Digiflazz buyer - status env/domain dan keputusan owner (9 November 2026 malam)
+
+- Operasi PM sekitar21.40–22.05WIB: Pages produksi menerima empat `secret_text`:
+  `DIGIFLAZZ_USERNAME`, `DIGIFLAZZ_API_KEY` (Development Key), `DIGIFLAZZ_WEBHOOK_SECRET`,
+  `DIGIFLAZZ_TESTING=true`;75env dikonfigurasi,79/128 termasuk4sistem. Berlaku deployment
+  CI berikutnya; jangan mengklaim runtime/sinkron aktif tanpa bukti. Cron katalog
+  mulai memakai Development Key sesudah env terbaca; ordering tetap preview P9,
+  nickname selalu unavailable selama testing=true.
+- Owner memilih **tidak merotasi key**, gerbang brief7.1 ditutup9November malam.
+  Bukan bukti rotasi; jangan merotasi otomatis. Dashboard webhook tetap non-aktif
+  (7.2 terbuka); belum deposit/Production (7.3) atau transaksi nyata (7.4).
+- CNAME `games` ke `axvara.pages.dev` proxied/custom domain Pages ditambahkan,
+  status awal initializing, aktif belum diverifikasi. Access belum mencakup Games:
+  `/admin` ke apex, `/api/admin` fail-closed. Tidak ada klaim live atau perubahan Access.
+
+# Digiflazz buyer - username utility S1/S1b (9 November 2026, lokal)
 
 - Cek Username adalah transaksi BERBIAYA, bukan nominal topup yang dapat dijual.
   `ffcekusername` (FF+FF MAX), `mlcekusername`, `pubgcekusername` dan nama
@@ -11,8 +26,13 @@
   ID salah rc54 satu jam; rc55 bukan ID salah. Testing/kredensial kosong tidak
   melakukan cek berbayar atau mengarang nickname. Pending satu recheck1,5detik
   payload/ref sama; ambigu tetap klaim durable tanpa expiry, tidak membeli ulang.
-- Log/admin cost adalah batas modal admission, bukan settlement. Tidak ada
-  transaksi/deposit/konfigurasi produksi S1; pemulihan ambiguity harus memakai
+  S1b lokal: request berikut setelah60detik CAS checked_at mere-poll ref/payload/modal
+  asli satu kali. Tanpa slot global/log biaya baru; scope IP10/device5 per15menit
+  best-effort per isolate existing terpisah dari admission berbayar D1. Jangan
+  mengklaim rate limit free re-poll global/durable; CAS satu per60detik tetap durable.
+- Log/admin cost adalah batas modal admission, bukan settlement. Paket kode S1
+  tidak melakukan transaksi/deposit atau memasang env (status konfigurasi terbaru
+  di atas); pemulihan ambiguity harus memakai
   referensi existing dan bukti supplier, jangan reset klaim supaya membeli lagi.
 
 # Digiflazz buyer - pemilihan seller Games (9 November 2026)

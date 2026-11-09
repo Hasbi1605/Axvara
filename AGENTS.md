@@ -29,6 +29,12 @@ hanya file yang relevan dengan tugas, dan semuanya bila tugas lintas area.
 Games S1 lokal (9 November 2026): host routing opsional `GAMES_HOST` default
 `games.axvara.tech`; bila kelak dipasang di Pages wajib `secret_text`. Domain/metadata
 dan nickname berbiaya mengikuti GAMES §3/§5.2 + ARCHITECTURE §16.29; bukan izin rollout.
+Update PM9Nov malam: CNAME/custom domain Games ditambahkan (awal initializing, aktif
+belum diverifikasi); empat env Digiflazz Pages `secret_text` memakai Development Key
++ testing=true, berlaku CI berikutnya (75env/79dari128termasuk sistem). P9 tetap preview;
+nickname unavailable. Owner menutup gerbang key7.1 tanpa rotasi; webhook/deposit/
+Production/transaksi nyata7.2–7.4 tetap terbuka. Access Games belum tercakup: admin
+ke apex/API admin fail-closed. Detail dan batas bukti di aturan Digiflazz + GAMES12.6.
 
 Keputusan baru per area ditulis di file `docs/agent-rules/` yang sesuai (terbaru
 di atas); tambah baris indeks di sini hanya bila membuat area baru.

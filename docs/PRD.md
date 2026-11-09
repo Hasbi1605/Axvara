@@ -16,9 +16,20 @@
   berbayar (`POST /api/games/nickname`, cache24jam sukses/1jam ID invalid, IP10/perangkat5
   per15menit/global500 perhari UTC, batas modal Rp80/cek), log/ringkasan admin dan migrasi0109.
   Testing/kredensial kosong/error/limit/pending ambigu => unavailable tanpa nama palsu;
-  pending satu recheck ref sama, ambigu tidak dibeli ulang. SKU Cek Username tidak dapat
+  pending satu recheck ref sama, ambigu tidak dibeli ulang. S1b lokal memulihkan
+  pending/ambiguous setelah60detik via CAS + re-poll payload/ref asli, tanpa biaya/log
+  baru atau slot global; limit IP/device re-poll best-effort existing per isolate.
+  SKU Cek Username tidak dapat
   dijual/diaktifkan ke pembeli; nickname klien hanya display. Kontrak lengkap GAMES §5.2,
-  ARCHITECTURE §16.29. Custom domain Pages, metadata UI, QA browser dan deployment belum dibuktikan.
+  ARCHITECTURE §16.29. PM9November2026 sekitar21.40–22.05WIB memasang CNAME games proxied
+  ke axvara.pages.dev/custom domain Pages (awal initializing, aktif belum diverifikasi)
+  serta empat env Digiflazz secret_text (Development Key/testing=true),75env/79dari128
+  termasuk sistem; berlaku deployment CI berikutnya. Cron katalog mulai memakai
+  Development Key setelah itu; ordering tetap preview P9/nickname unavailable.
+  Owner menutup gerbang7.1 tanpa rotasi9Nov malam, dashboard webhook tetap non-aktif
+  (7.2), belum deposit/Production (7.3)/transaksi nyata (7.4). Access Games belum tercakup:
+  admin dialihkan apex/API admin fail-closed. Metadata UI/QA browser/runtime belum dibuktikan;
+  tidak ada klaim live.
 - Supplier: Digiflazz buyer (seller utama Om*** + pengisi celah; kode buyer `<game>[id]<nominal>`; lihat `docs/agent-rules/digiflazz.md`).
 - Pembayaran memakai rail yang sudah ada di Market/Pedia: QRIS, Virtual Account, e-wallet (gateway Sekalipay) dan crypto (NOWPayments).
 - Harga jual dibandingkan dengan Oura Store (ourastore.com). Snapshot 9 November 2026: ruang di atas modal Digiflazz median FF/FF MAX ~24% (15–39%), ML ~5,4%, PUBG ~6%, Valorant ~5,5%, CODM ~8%, Genshin <1%; WDP/Twilight Pass Indonesia modal kita di atas harga Oura. Rumus disetujui owner 9 November 2026: harga jual = harga Oura −2%, dengan batas bawah modal Digiflazz + biaya kanal pembayaran + margin minimum 3%; bila harga Oura −2% di bawah batas bawah, jual di batas bawah (atau sembunyikan SKU bila tidak kompetitif). SKU tanpa pembanding Oura memakai modal + biaya kanal + margin minimum 3% sampai ada aturan lain.

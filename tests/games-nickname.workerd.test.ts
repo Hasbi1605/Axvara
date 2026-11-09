@@ -23,6 +23,7 @@ it("runs migration0109, durable paid-check admission and cache in real workerd D
     } }],
   });
   let calls = 0;
+  const refs: string[] = [];
   const runtime = new Miniflare({
     modules: true, compatibilityDate: "2026-08-06", compatibilityFlags: ["nodejs_compat"],
     script: compiled.outputFiles[0].text, d1Databases: ["DB"],
@@ -33,6 +34,7 @@ it("runs migration0109, durable paid-check admission and cache in real workerd D
       const p = await req.json() as Record<string, unknown>;
       expect(p.max_price).toBe(5); expect(p.ref_id).toMatch(/^NCK-/);
       calls++;
+      refs.push(String(p.ref_id));
       return Response.json({ data: { ...p, status: "Sukses", rc: "00", sn: "Fixture Player", price: 5 } });
     },
   });
@@ -54,5 +56,10 @@ it("runs migration0109, durable paid-check admission and cache in real workerd D
     expect(calls).toBe(5);
     expect(await (await runtime.dispatchFetch("https://fixture.test/summary")).json()).toEqual({ today: { count: 5, cost: 25 }, week: { count: 5, cost: 25 } });
     expect(await db.prepare("SELECT COUNT(*) AS n FROM games_nickname_cache WHERE result='pending'").first()).toEqual({ n: 0 });
+    await db.prepare("UPDATE games_nickname_cache SET result='ambiguous',nickname=NULL,checked_at=0 WHERE customer_no='123456789'").run();
+    const polled = await Promise.all([post("123456789"), post("123456789"), post("123456789")]);
+    for (const response of polled) expect(await response.json()).toMatchObject({ status: expect.stringMatching(/ok|unavailable/) });
+    expect(calls).toBe(6); expect(refs[5]).toBe(refs[0]);
+    expect(await (await runtime.dispatchFetch("https://fixture.test/summary")).json()).toEqual({ today: { count: 5, cost: 25 }, week: { count: 5, cost: 25 } });
   } finally { await runtime.dispose(); }
 }, 30_000);

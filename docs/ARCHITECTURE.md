@@ -4240,15 +4240,26 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
   tidak429 dan tidak fail-open. Cache hit tidak memakai slot. Biaya log = batas modal saat
   admission, bukan bukti settlement, termasuk pending/gagal demi konservatisme.
 - Pending satu recheck setelah1,5detik dengan payload/ref sama. Salah korelasi/ref/SKU,
-  timeout, SN sukses kosong atau masih pending => klaim ambigu tanpa expiry; tidak ref baru
-  sampai pemulihan manual. rc54 resmi "Nomor Tujuan Salah" saja => invalid; rc55 gangguan
+  timeout, SN sukses kosong atau masih pending => klaim ambigu tanpa expiry; tidak ref baru.
+  S1b lokal: request berikutnya setelah `checked_at` berumur minimal60detik memakai CAS
+  ref+checked_at+status pending/ambiguous untuk satu re-poll; payload/ref/max_price dari
+  log asli tidak berubah. Hanya satu panggilan per re-poll (tanpa retry1,5detik tambahan),
+  tanpa slot global500 atau log biaya baru karena lookup ref existing bukan pembelian baru.
+  IP10/perangkat5 per15menit memakai scope `games:nickname_poll{,_device}` existing
+  rateLimit (best-effort per isolate, terpisah dari admission berbayar D1; bukan limit global).
+  Pagar60detik tetap durable D1; respons lama tidak dapat menimpa pemilik CAS baru.
+  Limit/error/testing => unavailable tanpa panggilan. rc54 resmi "Nomor Tujuan Salah" saja => invalid; rc55 gangguan
   => unavailable. SN dibersihkan HTML/kontrol, trim/max64; nickname quote klien hanya display.
 - Utilitas (tiga kode di atas atau nama `/cek\s*username/i`) tidak masuk katalog/sitemap,
   quote/order baru409 `not_sellable`, PATCH enabled409, enable-wave dilewati. Riwayat/reuse
   order tersimpan tidak diubah. GET admin products mengembalikan `nickname_checks.today/week`
   count+cost (hari UTC/7hari kalender); GamesManager menampilkan satu baris batas modal.
-- Custom domain Pages belum ditambahkan, metadata page UI/QA browser/full-suite/build
-  adalah integrasi PM; tidak ada env produksi/secret/deposit/transaksi/rollout S1.
+- Operasi PM9November2026 sekitar21.40–22.05WIB: CNAME `games` ke `axvara.pages.dev`
+  (proxied) dan custom domain Pages `games.axvara.tech` ditambahkan. Status awal
+  `initializing`; aktif/DNS end-to-end belum diverifikasi, jangan klaim live.
+  Env Development dipasang sebagai metadata Pages produksi (§16.25), berlaku pada
+  deployment CI berikutnya, bukan bukti runtime terbarui. Access admin belum mencakup
+  host Games: `/admin` produksi tetap ke apex; `/api/admin` fail-closed, tanpa bypass.
 
 ### 16.28 AXVARA Games B1 + B2: API pembeli dan rail pembayaran — 9 November 2026 (lokal, belum deploy)
 
@@ -4336,7 +4347,17 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Kode (lokal → CI):** `src/lib/games/digiflazz.ts` (md5 murni TS, sign, `callDigiflazz` → ok/ambiguous/config/http_error/api_error, `checkBalance`, `fetchPrepaidPriceList`, `sendTransaction`), `src/lib/games/catalog-sync.ts` (`syncGamesCatalog`: CAS `store_settings.games_catalog_sync_at` ≥9 mnt, upsert `json_each` per 50 baris, kode `…b` → kolom cadangan, katalog Games kosong = tidak mengubah apa pun, `enabled`/`reference_price` tidak disentuh).
 - **Migrasi 0107** `games_products`, `games_order_items`, `games_dispatch_attempts` (§12.2 `docs/GAMES.md`); `orders.order_kind` tanpa CHECK sehingga `'games'` diterima.
 - **Cron:** lite job `games_catalog` (`mcp-worker` langkah `everyMinutes:10`, alarm soft); tanpa `DIGIFLAZZ_USERNAME`/`DIGIFLAZZ_API_KEY` → 200 `skipped:not_configured`.
-- **Env rencana (`secret_text`, BELUM dipasang):** `DIGIFLAZZ_USERNAME`, `DIGIFLAZZ_API_KEY`, `DIGIFLAZZ_WEBHOOK_SECRET`, `DIGIFLAZZ_TESTING`. Proxy memakai `WARUNG_REBAHAN_PROXY_URL/TOKEN` existing.
+- **Env dipasang PM9November2026 sekitar21.40–22.05WIB (`secret_text` di Pages produksi):**
+  `DIGIFLAZZ_USERNAME`, `DIGIFLAZZ_API_KEY` (Development Key), `DIGIFLAZZ_WEBHOOK_SECRET`,
+  `DIGIFLAZZ_TESTING=true`. Snapshot jumlah75env dikonfigurasi,79/128 termasuk4sistem.
+  Berlaku pada deployment CI berikutnya; runtime/sinkron belum terverifikasi. Proxy memakai
+  `WARUNG_REBAHAN_PROXY_URL/TOKEN` existing. Setelah env terambil runtime, cron
+  `games_catalog` mulai memakai Development Key; P9 tetap pratinjau karena testing=true,
+  nickname selalu unavailable tanpa panggilan berbayar. Tidak mengklaim katalog tersinkron.
+- **Gerbang owner (keputusan9November malam):** owner memilih tidak merotasi key;
+  gerbang7.1 ditutup oleh owner, bukan bukti rotasi. Webhook dashboard tetap non-aktif
+  (7.2 terbuka); belum deposit/Production (7.3) atau transaksi nyata (7.4).
+  Rujukan `docs/games-paseo-brief.md` §7 dan GAMES §12.6; tidak mengaktifkan sebagai QA.
 
 ### 16.20 Sekalipay payment gateway via proxy VPS `/skg/*` — 6 November 2026
 

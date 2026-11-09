@@ -121,10 +121,16 @@ bukti, atau tertahan di gerbang owner (§7) dengan laporan jelas.
   verifikasi browser tercatat (screenshot Flash + verdict visual PM); mode Development end-to-end terbukti.
 
 ## 7. Gerbang owner (berhenti dan minta owner melakukan/menyetujui)
-1. Rotasi Development & Production Key (pernah tertempel di chat) bila belum — owner yang
-   mengisi file kredensial lokal.
-2. Aktifkan webhook di dashboard Digiflazz (URL `https://<host>/api/games/digiflazz/webhook`,
+1. **DITUTUP OWNER tanpa rotasi** (keputusan9November2026 malam): owner memilih tidak
+   merotasi Development/Production Key. Bukan bukti key dirotasi; jangan merotasi otomatis.
+2. **TERBUKA, dashboard tetap non-aktif.** Aktifkan webhook di dashboard Digiflazz (URL `https://<host>/api/games/digiflazz/webhook`,
    secret = `DIGIFLAZZ_WEBHOOK_SECRET`) — butuh OTP owner; periksa ping lolos verifikasi.
-3. Deposit kecil + ganti `DIGIFLAZZ_API_KEY` ke Production Key + `DIGIFLAZZ_TESTING` dihapus
+3. **TERBUKA, belum deposit/Production.** Deposit kecil + ganti `DIGIFLAZZ_API_KEY` ke Production Key + `DIGIFLAZZ_TESTING` dihapus
    + mode Production di dashboard (OTP owner).
-4. Satu transaksi nyata kecil yang disetujui owner sebagai bukti go-live.
+4. **TERBUKA, belum transaksi nyata.** Satu transaksi nyata kecil yang disetujui owner sebagai bukti go-live.
+
+Snapshot PM9November2026 sekitar21.40–22.05WIB: empat env Digiflazz dipasang Pages
+produksi sebagai `secret_text`, key Development/testing=true; berlaku deployment CI
+berikutnya (ordering preview P9/nickname unavailable). CNAME `games` ke `axvara.pages.dev`
+proxied dan custom domain ditambahkan (awal initializing, aktif belum diverifikasi).
+Detail env/domain/jumlah ada di GAMES §12.6 dan ARCHITECTURE §16.25/§16.29; bukan izin go-live.

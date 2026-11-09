@@ -3,6 +3,7 @@ import { checkoutSubjects } from "@/lib/checkout-guard";
 import { isDigiflazzConfigured, sendTransaction } from "./digiflazz";
 import type { GamesDefinition } from "./registry";
 import { sanitizeGamesNickname } from "./sellable";
+import { rateLimit, RATE_LIMITS } from "@/lib/rateLimit";
 
 export type GamesNicknameResult = { status: "ok"; nickname: string } | { status: "invalid" } | { status: "unavailable" };
 const unavailable = { status: "unavailable" } as const;
@@ -16,9 +17,8 @@ function cachedResult(row: Record<string, unknown>): GamesNicknameResult {
   return row.result === "ok" && nickname ? { status: "ok", nickname } : unavailable;
 }
 
-/** One batch owns the account claim and enforces rolling IP/device + UTC day limits.
+/** Paid admission atomically claims the account and enforces IP/device + UTC day limits.
  * Pending/ambiguous claims never expire: a lost response cannot buy a second check. */
-// ponytail: ambiguous checks need manual same-ref recovery; add a reconciler when automated recovery is required.
 export async function checkGamesNickname(db: DatabaseAccess, game: GamesDefinition, customerNo: string, ip: string, device: string): Promise<GamesNicknameResult> {
   if (!db.d1 || process.env.DIGIFLAZZ_TESTING === "true" || !isDigiflazzConfigured()) return unavailable;
   const now = Date.now();
@@ -26,36 +26,50 @@ export async function checkGamesNickname(db: DatabaseAccess, game: GamesDefiniti
   const gameKey = game.nicknameSku;
   try {
     const cached = await db.queryFirst(
-      "SELECT result,nickname FROM games_nickname_cache WHERE game_key=? AND customer_no=? AND (expires_at IS NULL OR expires_at>?)",
+      "SELECT ref_id,result,nickname,checked_at FROM games_nickname_cache WHERE game_key=? AND customer_no=? AND (expires_at IS NULL OR expires_at>?)",
       gameKey, customerNo, now,
     );
-    if (cached) return cachedResult(cached);
-    const product = await db.queryFirst("SELECT cost FROM games_products WHERE buyer_sku_code=?", game.nicknameSku);
+    const repoll = cached && (cached.result === "pending" || cached.result === "ambiguous");
+    if (cached && (!repoll || Number(cached.checked_at) > now - 60_000)) return cachedResult(cached);
+    const product = repoll
+      ? await db.queryFirst("SELECT cost,buyer_sku_code FROM games_nickname_checks WHERE ref_id=?", cached.ref_id)
+      : await db.queryFirst("SELECT cost FROM games_products WHERE buyer_sku_code=?", game.nicknameSku);
+    if (repoll && (!product || product.buyer_sku_code !== game.nicknameSku)) return unavailable;
     const cost = product ? Number(product.cost) : FALLBACK_COST[game.nicknameSku];
     if (!Number.isSafeInteger(cost) || cost <= 0 || cost > 80) return unavailable;
     const [subject] = await checkoutSubjects({ ip: ip || "unknown", wa: "", email: "" });
     if (!subject) return unavailable;
-    const ref = `NCK-${crypto.randomUUID()}`;
+    const ref = repoll ? String(cached.ref_id) : `NCK-${crypto.randomUUID()}`;
     const stmt = (sql: string, ...params: unknown[]) => db.d1!.prepare(sql).bind(...params);
-    const result = await db.d1.batch([
-      stmt(`INSERT INTO games_nickname_cache(game_key,customer_no,ref_id,result,checked_at)
-        VALUES(?,?,?,'pending',?) ON CONFLICT(game_key,customer_no) DO UPDATE SET
-        ref_id=excluded.ref_id,result='pending',nickname=NULL,checked_at=excluded.checked_at,expires_at=NULL
-        WHERE games_nickname_cache.expires_at IS NOT NULL AND games_nickname_cache.expires_at<=?`,
-      gameKey, customerNo, ref, now, now),
-      stmt(`INSERT INTO games_nickname_checks(ref_id,slug,buyer_sku_code,cost,status,ip_hash,device_id,created_at)
-        SELECT ?,?,?,?,'submitting',?,?,? WHERE EXISTS(SELECT 1 FROM games_nickname_cache WHERE ref_id=?)
-        AND (SELECT COUNT(*) FROM games_nickname_checks WHERE ip_hash=? AND created_at>?)<10
-        AND (SELECT COUNT(*) FROM games_nickname_checks WHERE device_id=? AND created_at>?)<5
-        AND (SELECT COUNT(*) FROM games_nickname_checks WHERE created_at>=?)<500`,
-      ref, game.slug, game.nicknameSku, cost, subject.hash, device, now, ref,
-      subject.hash, now - WINDOW, device, now - WINDOW, Math.floor(now / DAY) * DAY),
-      stmt(`DELETE FROM games_nickname_cache WHERE ref_id=? AND NOT EXISTS(SELECT 1 FROM games_nickname_checks WHERE ref_id=?)`, ref, ref),
-    ]);
-    if (Number(result[1]?.meta?.changes) !== 1) return unavailable;
+    if (repoll) {
+      // ponytail: free same-ref poll counters are per isolate; add D1 counters if a global unpaid-request budget is needed.
+      if (!rateLimit(`games:nickname_poll:${subject.hash}`, RATE_LIMITS["games:nickname_poll"], WINDOW)
+        || !rateLimit(`games:nickname_poll_device:${device}`, RATE_LIMITS["games:nickname_poll_device"], WINDOW)) return unavailable;
+      const claimed = await db.execRun(`UPDATE games_nickname_cache SET result='pending',checked_at=?
+        WHERE ref_id=? AND checked_at=? AND checked_at<=? AND result IN ('pending','ambiguous')`,
+      now, ref, cached.checked_at, now - 60_000);
+      if (claimed.changes !== 1) return unavailable;
+    } else {
+      const result = await db.d1.batch([
+        stmt(`INSERT INTO games_nickname_cache(game_key,customer_no,ref_id,result,checked_at)
+          VALUES(?,?,?,'pending',?) ON CONFLICT(game_key,customer_no) DO UPDATE SET
+          ref_id=excluded.ref_id,result='pending',nickname=NULL,checked_at=excluded.checked_at,expires_at=NULL
+          WHERE games_nickname_cache.expires_at IS NOT NULL AND games_nickname_cache.expires_at<=?`,
+        gameKey, customerNo, ref, now, now),
+        stmt(`INSERT INTO games_nickname_checks(ref_id,slug,buyer_sku_code,cost,status,ip_hash,device_id,created_at)
+          SELECT ?,?,?,?,'submitting',?,?,? WHERE EXISTS(SELECT 1 FROM games_nickname_cache WHERE ref_id=?)
+          AND (SELECT COUNT(*) FROM games_nickname_checks WHERE ip_hash=? AND created_at>?)<10
+          AND (SELECT COUNT(*) FROM games_nickname_checks WHERE device_id=? AND created_at>?)<5
+          AND (SELECT COUNT(*) FROM games_nickname_checks WHERE created_at>=?)<500`,
+        ref, game.slug, game.nicknameSku, cost, subject.hash, device, now, ref,
+        subject.hash, now - WINDOW, device, now - WINDOW, Math.floor(now / DAY) * DAY),
+        stmt(`DELETE FROM games_nickname_cache WHERE ref_id=? AND NOT EXISTS(SELECT 1 FROM games_nickname_checks WHERE ref_id=?)`, ref, ref),
+      ]);
+      if (Number(result[1]?.meta?.changes) !== 1) return unavailable;
+    }
     const payload = { buyer_sku_code: game.nicknameSku, customer_no: customerNo, ref_id: ref, max_price: cost };
     let response = await sendTransaction(payload);
-    if (response.kind === "ok" && response.tx.ref_id === ref && response.tx.buyer_sku_code === game.nicknameSku && response.tx.status === "Pending") {
+    if (!repoll && response.kind === "ok" && response.tx.ref_id === ref && response.tx.buyer_sku_code === game.nicknameSku && response.tx.status === "Pending") {
       await new Promise(resolve => setTimeout(resolve, 1500));
       response = await sendTransaction(payload);
     }
@@ -76,11 +90,12 @@ export async function checkGamesNickname(db: DatabaseAccess, game: GamesDefiniti
         expiresAt = Date.now() + (status === "invalid" ? 3_600_000 : 60_000);
       }
     }
-    await db.d1.batch([
-      stmt("UPDATE games_nickname_checks SET status=?,rc=? WHERE ref_id=?", status, rc, ref),
-      stmt("UPDATE games_nickname_cache SET result=?,nickname=?,checked_at=?,expires_at=? WHERE ref_id=?", status, nickname, Date.now(), expiresAt, ref),
+    const settled = await db.d1.batch([
+      stmt(`UPDATE games_nickname_checks SET status=?,rc=? WHERE ref_id=? AND EXISTS(
+        SELECT 1 FROM games_nickname_cache WHERE ref_id=? AND checked_at=? AND result='pending')`, status, rc, ref, ref, now),
+      stmt("UPDATE games_nickname_cache SET result=?,nickname=?,checked_at=?,expires_at=? WHERE ref_id=? AND checked_at=? AND result='pending'", status, nickname, Date.now(), expiresAt, ref, now),
     ]);
-    return cachedResult({ result: status, nickname });
+    return Number(settled[1]?.meta?.changes) === 1 ? cachedResult({ result: status, nickname }) : unavailable;
   } catch { return unavailable; }
 }
 

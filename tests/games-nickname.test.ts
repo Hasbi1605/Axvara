@@ -5,6 +5,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { checkGamesNickname, gamesNicknameSummary } from "@/lib/games/nickname";
 import { gamesRegistryGame } from "@/lib/games/registry";
 import { POST } from "@/app/api/games/nickname/route";
+import { clearRateLimitBucketsForTest, rateLimit, RATE_LIMITS } from "@/lib/rateLimit";
 
 const supplier = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("@/lib/games/digiflazz", () => ({ isDigiflazzConfigured: () => Boolean(process.env.DIGIFLAZZ_USERNAME && process.env.DIGIFLAZZ_API_KEY), sendTransaction: supplier.send }));
@@ -23,8 +24,9 @@ beforeEach(() => {
   vi.stubEnv("DIGIFLAZZ_TESTING", "false"); vi.stubEnv("DIGIFLAZZ_USERNAME", "fixture"); vi.stubEnv("DIGIFLAZZ_API_KEY", "fixture");
   vi.stubEnv("ADMIN_JWT_SECRET", "nickname-test-secret");
   supplier.send.mockReset(); tx();
+  clearRateLimitBucketsForTest();
 });
-afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.useRealTimers(); });
+afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("paid nickname endpoint", () => {
   it("validates registry before supplier; body stream is bounded at 8000 bytes", async () => {
@@ -68,7 +70,7 @@ describe("paid nickname endpoint", () => {
     expect(supplier.send.mock.calls[0][0]).toEqual(supplier.send.mock.calls[1][0]);
     expect((await gamesNicknameSummary(createDatabaseAccess())).today.count).toBe(1);
   });
-  it.each(["pending", "timeout", "wrong-ref", "wrong-sku", "missing-sn"])("retains ambiguous %s claim indefinitely, without a second paid reference", async mode => {
+  it.each(["pending", "timeout", "wrong-ref", "wrong-sku", "missing-sn"])("retains ambiguous %s claim without a new paid reference or a re-poll before 60s", async mode => {
     if (mode === "timeout") supplier.send.mockResolvedValue({ kind: "ambiguous", reason: "timeout" });
     else supplier.send.mockImplementation(async p => ({ kind: "ok", tx: { ...p,
       ...(mode === "wrong-ref" ? { ref_id: "wrong" } : {}), ...(mode === "wrong-sku" ? { buyer_sku_code: "wrong" } : {}),
@@ -78,6 +80,85 @@ describe("paid nickname endpoint", () => {
     expect(await run()).toEqual({ status: "unavailable" });
     expect(supplier.send).toHaveBeenCalledTimes(calls);
     expect(fx.sql.prepare("SELECT expires_at FROM games_nickname_cache").get()?.expires_at).toBeNull();
+  });
+  it("re-polls the identical original payload after 60s with no new cost log, even if catalog cost changes", async () => {
+    supplier.send.mockResolvedValue({ kind: "ambiguous", reason: "timeout" });
+    await run();
+    const original = supplier.send.mock.calls[0][0];
+    const summary = await gamesNicknameSummary(createDatabaseAccess());
+    fx.sql.prepare("UPDATE games_nickname_cache SET checked_at=?").run(Date.now() - 60_000);
+    fx.sql.prepare("INSERT INTO games_products(buyer_sku_code,product_name,cost) VALUES('ffcekusername','Utility',80)").run();
+    tx();
+    expect(await run()).toEqual({ status: "ok", nickname: "Player" });
+    expect(supplier.send.mock.calls[1][0]).toEqual(original);
+    expect(await gamesNicknameSummary(createDatabaseAccess())).toEqual(summary);
+    expect(fx.sql.prepare("SELECT status FROM games_nickname_checks").get()?.status).toBe("ok");
+  });
+  it("claims one simultaneous stale pending re-poll with CAS, and does not repeat the initial 1.5s retry", async () => {
+    supplier.send.mockResolvedValue({ kind: "ambiguous", reason: "timeout" });
+    await run();
+    fx.sql.prepare("UPDATE games_nickname_cache SET result='pending',checked_at=?").run(Date.now() - 60_001);
+    tx("Pending", "03", null);
+    const results = await Promise.all([run(), run(), run()]);
+    expect(results).toEqual([{ status: "unavailable" }, { status: "unavailable" }, { status: "unavailable" }]);
+    expect(supplier.send).toHaveBeenCalledTimes(2); // initial paid call + exactly one free re-poll
+    expect(supplier.send.mock.calls[1][0]).toEqual(supplier.send.mock.calls[0][0]);
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM games_nickname_checks").get()?.n).toBe(1);
+    await run(); expect(supplier.send).toHaveBeenCalledTimes(2);
+  });
+  it.each(["54", "55"])("settles the original cost log/cache from a re-poll rc%s", async rc => {
+    supplier.send.mockResolvedValue({ kind: "ambiguous", reason: "timeout" });
+    await run();
+    fx.sql.prepare("UPDATE games_nickname_cache SET checked_at=?").run(Date.now() - 60_001);
+    tx("Gagal", rc, null);
+    expect(await run()).toEqual({ status: rc === "54" ? "invalid" : "unavailable" });
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM games_nickname_checks").get()?.n).toBe(1);
+    const row = fx.sql.prepare("SELECT result,expires_at FROM games_nickname_cache").get()!;
+    expect(row.result).toBe(rc === "54" ? "invalid" : "unavailable");
+    expect(Number(row.expires_at)).toBeGreaterThan(Date.now());
+  });
+  it.each(["ip", "device"])("applies best-effort %s re-poll admission before CAS or supplier", async scope => {
+    supplier.send.mockResolvedValue({ kind: "ambiguous", reason: "timeout" });
+    await run();
+    const checkedAt = Date.now() - 60_001;
+    fx.sql.prepare("UPDATE games_nickname_cache SET checked_at=?").run(checkedAt);
+    const { checkoutSubjects } = await import("@/lib/checkout-guard");
+    const [subject] = await checkoutSubjects({ ip: "192.0.2.1", wa: "", email: "" });
+    const s = scope === "ip" ? "games:nickname_poll" : "games:nickname_poll_device";
+    const key = `${s}:${scope === "ip" ? subject.hash : device}`;
+    for (let i = 0; i < RATE_LIMITS[s]; i++) rateLimit(key, RATE_LIMITS[s], 15 * 60_000);
+    expect(await run()).toEqual({ status: "unavailable" });
+    expect(supplier.send).toHaveBeenCalledTimes(1);
+    expect(fx.sql.prepare("SELECT checked_at FROM games_nickname_cache").get()?.checked_at).toBe(checkedAt);
+  });
+  it("does not apply the global paid cap or insert a paid log to a same-ref re-poll", async () => {
+    supplier.send.mockResolvedValue({ kind: "ambiguous", reason: "timeout" });
+    await run();
+    fx.sql.prepare("UPDATE games_nickname_cache SET checked_at=?").run(Date.now() - 60_001);
+    const insert = fx.sql.prepare("INSERT INTO games_nickname_checks(ref_id,slug,buyer_sku_code,cost,status,ip_hash,device_id,created_at) VALUES(?, 'free-fire','ffcekusername',5,'ok','other','other',?)");
+    for (let i = 0; i < 499; i++) insert.run(`old-${i}`, Date.now());
+    tx(); expect(await run()).toEqual({ status: "ok", nickname: "Player" });
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM games_nickname_checks").get()?.n).toBe(500);
+    expect((await gamesNicknameSummary(createDatabaseAccess())).today.cost).toBe(2500);
+  });
+  it("fails closed on a re-poll CAS D1 failure and never polls in testing mode", async () => {
+    supplier.send.mockResolvedValue({ kind: "ambiguous", reason: "timeout" });
+    await run();
+    fx.sql.prepare("UPDATE games_nickname_cache SET checked_at=?").run(Date.now() - 60_001);
+    fx.control.fail = q => q.startsWith("UPDATE games_nickname_cache");
+    expect(await run()).toEqual({ status: "unavailable" });
+    fx.control.fail = null; vi.stubEnv("DIGIFLAZZ_TESTING", "true");
+    expect(await run()).toEqual({ status: "unavailable" });
+    expect(supplier.send).toHaveBeenCalledTimes(1);
+  });
+  it("does not let a late response overwrite a newer CAS owner/result", async () => {
+    supplier.send.mockImplementation(async p => {
+      fx.sql.prepare("UPDATE games_nickname_cache SET checked_at=?,result='ok',nickname='Newer'").run(Date.now() + 60_000);
+      return { kind: "ok", tx: { ...p, status: "Sukses", rc: "00", sn: "Old" } };
+    });
+    expect(await run()).toEqual({ status: "unavailable" });
+    expect(fx.sql.prepare("SELECT result,nickname FROM games_nickname_cache").get()).toEqual({ result: "ok", nickname: "Newer" });
+    expect(fx.sql.prepare("SELECT status FROM games_nickname_checks").get()?.status).toBe("submitting");
   });
   it("treats only documented rc54 as invalid, localizes and caches it for one hour", async () => {
     tx("Gagal", "54", null);

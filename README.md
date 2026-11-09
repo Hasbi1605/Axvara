@@ -1736,7 +1736,18 @@ rewrite `/`/halaman ke `/games/*` tanpa enable flag dan308 `/games/*` dari host 
 `secret_text` jika dipasang. API/aset/R2/MCP tetap shared, admin produksi ke apex.
 Metadata UI memakai `src/lib/games/metadata.ts`; `src/app/games/sitemap.ts` menyediakan
 root+slug registry enabled yang sellable, robots berupa handler `games/robots.txt/route.ts`.
-Custom domain Pages belum ditambahkan oleh paket ini; apex sitemap/robots tidak berubah.
+PM9November2026 sekitar21.40–22.05WIB menambahkan CNAME `games` ke `axvara.pages.dev`
+(proxied) serta custom domain Pages `games.axvara.tech` (status awal initializing,
+aktif belum diverifikasi). Apex sitemap/robots tidak berubah. Access admin belum
+mencakup Games: `/admin` produksi ke apex, `/api/admin` fail-closed tanpa bypass.
+
+Env Pages produksi dipasang PM sebagai `secret_text`: `DIGIFLAZZ_USERNAME`,
+`DIGIFLAZZ_API_KEY` (Development Key), `DIGIFLAZZ_WEBHOOK_SECRET`, `DIGIFLAZZ_TESTING=true`.
+Snapshot75env dikonfigurasi/79dari128termasuk4sistem; berlaku pada deployment CI berikutnya,
+bukan bukti runtime aktif. Cron Games katalog akan memakai Development Key, sedangkan
+ordering tetap pratinjau P9 dan nickname unavailable selama testing=true. Owner9November
+malam menutup gerbang7.1 tanpa rotasi key; webhook dashboard tetap non-aktif (7.2),
+deposit/Production (7.3) dan transaksi nyata (7.4) belum dilakukan. Tidak ada klaim live.
 
 `POST /api/games/nickname` `{slug,fields}` (stream8.000byte) => ok+nickname / unavailable /
 invalid+message ID/EN. Registry memetakan FF/FF MAX ke `ffcekusername`, ML ke `mlcekusername`,
@@ -1747,6 +1758,11 @@ claim ambigu tanpa expiry, log admission/modal+status. IP10/perangkat5 perrollin
 global500/hari UTC; cookie UUID httpOnly, IP HMAC, ID game plain non-secret.
 Modal katalog dipakai max_price (fallback snapshot5/24/80), >Rp80 ditolak: batas500cek
 <=Rp40.000/hari. Pending satu recheck1,5detik payload/ref sama, tidak ref baru saat ambigu;
+S1b lokal memulihkan pending/ambiguous pada request berikutnya setelah60detik melalui
+CAS D1: satu re-poll ref/payload/max_price asli, tanpa log biaya atau slot global baru.
+IP10/perangkat5 per15menit tetap dibatasi scope rateLimit existing best-effort per isolate
+(counter terpisah dari admission berbayar D1); tidak ada plafon global re-poll tanpa biaya.
+Pagar satu re-poll/60detik per entri durable, respons stale tidak menimpa hasil pemilik baru.
 P9/error D1/limit/gangguan => unavailable, checkout tidak diblokir.
 GET admin products `nickname_checks.today/week` dan header GamesManager menampilkan
 jumlah/batas modal hari ini/7hari kalender UTC, bukan tagihan final. Detail ARCHITECTURE §16.29.
