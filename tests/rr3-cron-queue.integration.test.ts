@@ -223,7 +223,7 @@ describe("RR3-03 cron stays under the platform query limit with measured account
       const code = `RR303-E${i}`;
       fixture.sql.prepare(`INSERT INTO orders
         (code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,expires_at)
-        VALUES (?,?,?, ?,10000,'qris','pending','pending','web',datetime('now','-2 minutes'))`)
+        VALUES (?,?,?, ?,10000,'qris','pending','pending','web',datetime('now','+15 minutes'))`)
         .run(code, "X", "6280", JSON.stringify([{ product_id: 1, qty: 1 }]));
       await createDanaQrisInvoice(code, 10000);
       fixture.sql.prepare("UPDATE payment_transactions SET expires_at=datetime('now','-1 minute') WHERE order_code=?").run(code);

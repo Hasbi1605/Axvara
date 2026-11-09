@@ -62,8 +62,22 @@ function txRow() {
   return fixture.sql.prepare(`SELECT payable_amount, unique_code, qris_payload, expires_at, status FROM payment_transactions WHERE order_code=?`).get(CODE) as Record<string, unknown>;
 }
 
-describe("expiry order disamakan dengan expiry invoice QRIS (15 menit)", () => {
-  it("pembuatan invoice memberi order jendela 15 menit yang sama dengan QR", async () => {
+describe("expiry invoice QRIS terpisah dari order", () => {
+  it("membatasi invoice manual pada deadline order dan menolak renewal setelah deadline", async () => {
+    await insertTestProduct(fixture.sql, "manual", 1);
+    const deadline = new Date(Date.now() + 14 * 60_000).toISOString();
+    fixture.sql.prepare(`INSERT INTO orders (code,customer_name,customer_wa,items,subtotal,payment_method,payment_account,status,sales_channel,payment_status,fulfillment_status,variant_id,expires_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(CODE, "Budi", "0812", "[]", 10000, "pending", "", "pending", "web", "unpaid", "not_required", 1, deadline);
+    const { createDanaQrisInvoice, reissueDanaQrisInvoice } = await import("@/lib/payments/dana-qris");
+    const invoice = await createDanaQrisInvoice(CODE, 10000);
+    expect(Date.parse(invoice.expiresAt)).toBe(Date.parse(deadline));
+    expect(orderRow().expires_at).toBe(deadline);
+    const past = new Date(Date.now() - 1000).toISOString();
+    fixture.sql.prepare("UPDATE orders SET expires_at=? WHERE code=?").run(past, CODE);
+    fixture.sql.prepare("UPDATE payment_transactions SET expires_at=? WHERE order_code=?").run(past, CODE);
+    expect(await reissueDanaQrisInvoice(CODE)).toEqual({ ok: false, reason: "order_not_reissuable" });
+  });
+  it("pembuatan invoice tidak memendekkan order supplier", async () => {
     await insertTestProduct(fixture.sql, "manual", 1);
     fixture.sql.prepare(
       `INSERT INTO orders (code, customer_name, customer_wa, items, subtotal, payment_method, payment_account,
@@ -72,15 +86,13 @@ describe("expiry order disamakan dengan expiry invoice QRIS (15 menit)", () => {
     ).run(CODE, "Budi", "0812", "[]", 10_000, "pending", "", "pending", "web", "unpaid", "not_required", 1,
       new Date(Date.now() + 60 * 60_000).toISOString());
 
-    const { createDanaQrisInvoice, DANA_QRIS_EXPIRY_MINUTES, QRIS_ORDER_WINDOW_MINUTES } = await import("@/lib/payments/dana-qris");
+    const { createDanaQrisInvoice, DANA_QRIS_EXPIRY_MINUTES } = await import("@/lib/payments/dana-qris");
     const invoice = await createDanaQrisInvoice(CODE, 10_000);
 
     const invoiceMs = Date.parse(invoice.expiresAt) - Date.now();
     const orderMs = Date.parse(String(orderRow().expires_at)) - Date.now();
-    // Disamakan (keputusan owner 2026-10-11): stok tidak dikunci 60 menit.
     expect(Math.round(invoiceMs / 60_000)).toBe(DANA_QRIS_EXPIRY_MINUTES);
-    expect(Math.round(orderMs / 60_000)).toBe(QRIS_ORDER_WINDOW_MINUTES);
-    expect(QRIS_ORDER_WINDOW_MINUTES).toBe(DANA_QRIS_EXPIRY_MINUTES);
+    expect(Math.round(orderMs / 60_000)).toBe(60);
   });
 
   it("expires_at ditulis ISO UTC agar pembacaan JS tidak bergeser zona waktu", async () => {

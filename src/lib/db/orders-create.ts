@@ -10,7 +10,7 @@ import { StockReservationError } from "./errors";
 import type { D1Statement, AtomicOrderItem } from "./types";
 import { markUniqueUnitLines } from "@/lib/fulfillment/units";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
-import { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct } from "@/lib/bulk-pricing";
+import { bulkOwnerFromJoinedRow, bulkOwnerFromProductRow, isManualProductForBulk, resolveBulkPriceForProduct } from "@/lib/bulk-pricing";
 
 type AtomicOrderInput = {
   code: string;
@@ -30,6 +30,10 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
   assertOrderAccessConfigured();
   const d1 = getD1();
   if (d1) {
+    const productIds = [...new Set(input.items.map(item => item.product_id))];
+    const owners = (await d1.prepare(`SELECT id,source,wr_product_id,wr_auto_managed,sk_product_id,sk_auto_managed FROM products WHERE id IN (${productIds.map(() => "?").join(",")})`).bind(...productIds).all()).results as Record<string, unknown>[];
+    if (owners.length !== productIds.length) throw new StockReservationError();
+    const minutes = owners.some(row => isManualProductForBulk(bulkOwnerFromProductRow(row))) ? 15 : 60;
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
     const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
         p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
@@ -57,6 +61,13 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
       } catch { throw new StockReservationError(); }
     }
     const statements: D1Statement[] = [];
+    for (const owner of owners) {
+      const guardId = `${input.quoteId}:owner:${owner.id}`;
+      guardIds.push(guardId);
+      statements.push(d1.prepare(`INSERT INTO operation_guards(operation_id,valid) SELECT ?,CASE WHEN EXISTS(
+        SELECT 1 FROM products WHERE id=? AND source IS ? AND wr_product_id IS ? AND wr_auto_managed IS ? AND sk_product_id IS ? AND sk_auto_managed IS ?
+      ) THEN 1 ELSE 0 END`).bind(guardId, owner.id, owner.source, owner.wr_product_id, owner.wr_auto_managed, owner.sk_product_id, owner.sk_auto_managed));
+    }
     input.items.forEach((item, index) => {
       if (item.variant_id) {
         // Guard stok + guard minimum pembelian (migrasi 0034) dalam SATU
@@ -200,7 +211,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     }
     statements.push(
       d1.prepare(
-        `INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at,locale,buyer_access_version,buyer_access_format) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','${input.paymentMethod.startsWith("sekalipay_gateway:") ? "+15 minutes" : "+24 hours"}'),?,1,'pin6')`,
+        `INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at,locale,buyer_access_version,buyer_access_format) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+${minutes} minutes'),?,1,'pin6')`,
       ).bind(
         input.code,
         input.customerName,
@@ -264,7 +275,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     sales_channel: "web",
     variant_id: input.items.find((it) => it.variant_id)?.variant_id ?? null,
     quote_id: input.quoteId,
-    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + (input.items.some(item => isManualProductForBulk(bulkOwnerFromProductRow(products.find(row => Number(row.id) === item.product_id) as unknown as Record<string, unknown> | undefined))) ? 15 : 60) * 60_000).toISOString(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });

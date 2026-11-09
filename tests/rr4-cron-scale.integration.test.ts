@@ -240,10 +240,11 @@ describe("RR4-06 stale initializing recovers without depending on other pending 
     await seedVariants(1, "manual");
     fixture.sql.prepare(`INSERT INTO orders
       (code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,expires_at)
-      VALUES ('RR406-1','X','6280',?,10000,'qris','pending','pending','telegram',datetime('now','-20 minutes'))`)
+      VALUES ('RR406-1','X','6280',?,10000,'qris','pending','pending','telegram',datetime('now','+15 minutes'))`)
       .run(JSON.stringify([{ product_id: 1, variant_id: 1, name: "F", price: 10000, qty: 1 }]));
     const { createDanaQrisInvoice } = await import("@/lib/payments/dana-qris");
     await createDanaQrisInvoice("RR406-1", 10000);
+    fixture.sql.prepare("UPDATE orders SET expires_at=datetime('now','-20 minutes') WHERE code='RR406-1'").run();
     fixture.sql.prepare("UPDATE payment_transactions SET status='initializing', created_at=datetime('now','-20 minutes') WHERE order_code='RR406-1'").run();
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='pending'").get()?.n).toBe(0);
     const BOUND = 6;

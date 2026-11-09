@@ -138,7 +138,7 @@ export async function createKlikQrisInvoice(orderCode: string, requestedAmount: 
       d1.prepare(`UPDATE payment_transactions SET status='pending',payable_amount=?,unique_code=?,provider_signature=?,provider_qris_url=?,
         qris_url=?,expires_at=?,invoice_issued_at=COALESCE(invoice_issued_at,datetime('now')),last_error=NULL,updated_at=datetime('now')
         WHERE order_code=? AND provider='klikqris' AND status='initializing'`).bind(amount, amount-requestedAmount, signature, imageSource, imageUrl, expires, orderCode),
-      d1.prepare("UPDATE orders SET payment_method='qris',payment_account='KlikQRIS',expires_at=?,updated_at=datetime('now') WHERE code=? AND status='pending'").bind(expires, orderCode),
+      d1.prepare("UPDATE orders SET payment_method='qris',payment_account='KlikQRIS',updated_at=datetime('now') WHERE code=? AND status='pending'").bind(orderCode),
       d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guard),
     ]);
     const saved = await queryFirst("SELECT * FROM payment_transactions WHERE order_code=? AND provider='klikqris'", orderCode);

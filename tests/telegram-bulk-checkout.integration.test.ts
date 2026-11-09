@@ -66,6 +66,43 @@ beforeEach(async () => {
 afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("TG2b telegram bulk checkout", () => {
+  it.each([
+    ["manual", null, null, false, 15],
+    ["warung_rebahan", "wr-1", null, false, 60],
+    ["manual", null, "sk-1", false, 60],
+    ["manual", null, "sk-1", true, 15],
+  ])("sets Telegram expiry by ownership %s WR=%s SK=%s mixed=%s", async (source, wr, sk, mixed, minutes) => {
+    fx.sql.prepare("UPDATE products SET source=?,wr_product_id=?,sk_product_id=? WHERE id=1").run(source, wr, sk);
+    if (mixed) fx.sql.exec("INSERT INTO products(id,name,slug,price,stock,telegram_enabled) VALUES(2,'Manual','manual',10000,100,1); INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode) VALUES(2,2,'SKU-M','Manual',10000,100,'manual')");
+    const ids = mixed ? [1, 2] : [1];
+    await createChannelOrderAtomic({
+      orderCode: "TG-EXPIRY", lines: ids.map(id => ({ productId: id, variantId: id, qty: 1, fulfillmentMode: "manual", stock: 100 })),
+      items: ids.map(id => ({ product_id: id, variant_id: id, qty: 1, price: 10000 })),
+      variantSnapshot: "{}", subtotal: ids.length * 10000, primaryVariantId: 1, customerName: "Bulk", salesChannel: "telegram",
+      telegramChatId: "777009", telegramUserId: "777009", paymentMethod: "qris", paymentAccount: "DANA", fulfillmentStatus: "not_required", orderWindowMinutes: 15,
+    });
+    const row = fx.sql.prepare("SELECT expires_at FROM orders WHERE code='TG-EXPIRY'").get();
+    expect((Date.parse(String(row?.expires_at)) - Date.now()) / 60_000).toBeCloseTo(minutes, 0);
+  });
+  it("rejects a supplier becoming manual between the owner read and atomic reservation", async () => {
+    fx.sql.prepare("UPDATE products SET sk_product_id='sk-1' WHERE id=1").run();
+    let changed = false;
+    fx.control.fail = sql => {
+      if (!changed && sql.includes("SELECT 1 FROM products WHERE id=? AND source IS ?")) {
+        changed = true;
+        fx.sql.prepare("UPDATE products SET sk_product_id=NULL WHERE id=1").run();
+      }
+      return false;
+    };
+    await expect(createChannelOrderAtomic({
+      orderCode: "TG-OWNER-RACE", lines: [{ productId: 1, variantId: 1, qty: 1, fulfillmentMode: "manual", stock: -1 }],
+      items: [{ product_id: 1, variant_id: 1, qty: 1, price: 10000 }], variantSnapshot: "{}", subtotal: 10000,
+      primaryVariantId: 1, customerName: "Bulk", salesChannel: "telegram", telegramChatId: "777009", telegramUserId: "777009",
+      paymentMethod: "qris", paymentAccount: "DANA", fulfillmentStatus: "not_required",
+    })).rejects.toThrow();
+    expect(changed).toBe(true);
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()?.n).toBe(0);
+  });
   it("threshold-1 base, at-threshold all-units discount, highest tier wins", () => {
     expect(resolveBulkPrice(10000, 9, 1, tiersJson)).toEqual({ price: 10000, tier: undefined });
     expect(resolveBulkPrice(10000, 10, 1, tiersJson)).toMatchObject({ price: 9000, tier: 10 });

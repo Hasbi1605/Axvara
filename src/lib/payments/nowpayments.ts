@@ -13,7 +13,7 @@ import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "./crypto-pr
 type Row = Record<string, unknown>;
 
 export const NOWPAYMENTS_IPN_PATH = "/api/payments/nowpayments/ipn";
-export const NOWPAYMENTS_ORDER_TTL_MS = 15 * 60_000;
+export const NOWPAYMENTS_ORDER_TTL_MS = 60 * 60_000;
 const FETCH_TIMEOUT_MS = 10_000;
 const BODY_LIMIT_BYTES = 16_000;
 
@@ -464,8 +464,8 @@ export async function createNowpaymentsInvoice(
             usd ? `${usd.rateNum}/${usd.rateDen}@${usd.effectiveAt}` : null,
             usd ? usd.effectiveAt : null,
             purchaseDeadline, orderCode),
-        d1.prepare("UPDATE orders SET payment_account='NOWPayments',expires_at=?,updated_at=datetime('now') WHERE code=? AND status='pending' AND payment_status IN ('pending','unpaid')")
-          .bind(purchaseDeadline, orderCode),
+        d1.prepare("UPDATE orders SET payment_account='NOWPayments',expires_at=CASE WHEN expires_at IS NULL OR julianday(expires_at)>julianday(?) THEN ? ELSE expires_at END,updated_at=datetime('now') WHERE code=? AND status='pending' AND payment_status IN ('pending','unpaid')")
+          .bind(purchaseDeadline, purchaseDeadline, orderCode),
         d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guard),
       ]);
     } catch (error) {

@@ -138,13 +138,13 @@ describe("Pedia quote menandatangani rail pembayaran", () => {
 });
 
 describe("Pedia order create memakai rail terpilih", () => {
-  it("gateway: order tersimpan dengan metode terpilih, view pending, expiry = deadline provider, retry = reusable", async () => {
+  it.each([[5, 5], [120, 60]])("gateway: provider %i menit, order %i menit, retry reusable", async (providerMinutes, expectedMinutes) => {
     const f = await seedCatalog();
     stubGatewayEnv();
     gatewayMock.catalog = [{ code: "SHOPEEPAY", name: "ShopeePay", type: "ewallet", min: 100, max: 10_000_000, feeText: "1%", estimatedFee: 500, estimatedTotal: 0, available: true }];
     gatewayMock.methods = [{ code: "SHOPEEPAY", name: "ShopeePay", type: "ewallet", min: 100, max: 10_000_000, feeText: "1%", estimatedFee: 500, estimatedTotal: 0 }];
     gatewayMock.create.mockImplementation(async (code: string, amount: number, channel: string, _customer: unknown, fee: number) => {
-      const deadline = iso(5 * 60_000);
+      const deadline = iso(providerMinutes * 60_000);
       f.sql.prepare(`INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,status,
         gateway_channel,gateway_label,gateway_estimated_fee,gateway_fee,payable_amount,gateway_is_sandbox,gateway_fee_consent_required,expires_at,provider_payment_id)
         VALUES(?, 'sekalipay_gateway','merchant',?,'sekalipay_gateway',?,'pending',?,?,?,?,?,0,1,?,?)`)
@@ -160,11 +160,10 @@ describe("Pedia order create memakai rail terpilih", () => {
     const row = orderRow(f)!;
     expect(row.payment_method).toBe("sekalipay_gateway:SHOPEEPAY");
     expect(row.payment_account).toBe("Sekalipay");
-    // Order expiry dipendekkan ke deadline provider (5 menit < 15 menit).
     const orderDeadline = Date.parse(String(row.expires_at).replace(" ", "T") + "Z");
     const providerDeadline = Date.parse(f.sql.prepare("SELECT expires_at FROM payment_transactions ORDER BY id DESC LIMIT 1").get()!.expires_at as string);
-    expect(Math.abs(orderDeadline - providerDeadline)).toBeLessThan(1_000); // datetime() membuang milidetik
-    expect(orderDeadline).toBeLessThan(Date.now() + 14 * 60_000);
+    if (providerMinutes < 60) expect(Math.abs(orderDeadline - providerDeadline)).toBeLessThan(1_000);
+    expect((orderDeadline - Date.now()) / 60_000).toBeCloseTo(expectedMinutes, 0);
 
     // Retry quote yang sama: order yang sama (bukan order baru), view tetap ada.
     const retry = await createOrder({ quote_token: data.quote_token, payment_method: "sekalipay_gateway:SHOPEEPAY" });

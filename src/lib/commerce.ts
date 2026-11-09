@@ -12,7 +12,7 @@ import {
   D1Statement,
 } from "@/lib/db";
 import { getActiveVariant, type VariantSummary, formatDuration, buyerWarrantyLabel } from "@/lib/catalog";
-import { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct, type BulkProductOwner } from "@/lib/bulk-pricing";
+import { bulkOwnerFromJoinedRow, bulkOwnerFromProductRow, isManualProductForBulk, resolveBulkPriceForProduct, type BulkProductOwner } from "@/lib/bulk-pricing";
 import { generateOrderCode } from "@/lib/security";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
@@ -135,11 +135,19 @@ export async function createChannelOrderAtomic(
   if (input.lines.some(line => !Number.isSafeInteger(line.qty) || line.qty < 1)) throw new StockReservationError();
 
   const d1 = getD1();
+  let orderMinutes = input.orderWindowMinutes ?? QRIS_ORDER_WINDOW_MINUTES;
+  let owners: (Record<string, unknown> | undefined)[] = [];
+  if (input.salesChannel === "telegram") {
+    const productIds = [...new Set(input.lines.map(line => line.productId))];
+    owners = await Promise.all(productIds.map(id => queryFirst("SELECT id,source,wr_product_id,wr_auto_managed,sk_product_id,sk_auto_managed FROM products WHERE id=?", id)));
+    if (owners.some(owner => !owner)) throw new StockReservationError();
+    orderMinutes = owners.some(owner => isManualProductForBulk(bulkOwnerFromProductRow(owner))) ? 15 : 60;
+  }
   if (!d1 || !isD1Mode()) {
     // Fallback pengembangan tanpa D1: store in-memory tidak punya transaksi,
     // jadi tidak ada atomicity untuk diperjuangkan — tetapi order HARUS tetap
     // tercipta agar alur dev identik dengan produksi.
-    const windowMinutesDev = input.orderWindowMinutes ?? QRIS_ORDER_WINDOW_MINUTES;
+    const windowMinutesDev = orderMinutes;
     const localeDev: "id" | "en" = input.salesChannel === "telegram"
       ? (input.locale === "en" ? "en" : "id")
       : "id";
@@ -207,6 +215,14 @@ export async function createChannelOrderAtomic(
 
   const guardIds: string[] = [];
   const statements: D1Statement[] = [];
+  for (const owner of owners) {
+    if (!owner) throw new StockReservationError();
+    const guardId = `${input.orderCode}:owner:${owner.id}`;
+    guardIds.push(guardId);
+    statements.push(d1.prepare(`INSERT INTO operation_guards(operation_id,valid) SELECT ?,CASE WHEN EXISTS(
+      SELECT 1 FROM products WHERE id=? AND source IS ? AND wr_product_id IS ? AND wr_auto_managed IS ? AND sk_product_id IS ? AND sk_auto_managed IS ?
+    ) THEN 1 ELSE 0 END`).bind(guardId, owner.id, owner.source, owner.wr_product_id, owner.wr_auto_managed, owner.sk_product_id, owner.sk_auto_managed));
+  }
 
   if (input.salesChannel === "telegram" && input.telegramChatId) {
     const guardId = `${input.orderCode}:telegram-pending`;
@@ -386,7 +402,7 @@ export async function createChannelOrderAtomic(
     if (internalSubtotal !== input.subtotal) throw new StockReservationError();
   }
 
-  const windowMinutes = input.orderWindowMinutes ?? QRIS_ORDER_WINDOW_MINUTES;
+  const windowMinutes = orderMinutes;
   // ISO UTC, bukan `datetime('now','+N minutes')`. SQLite menghasilkan format
   // spasi ("YYYY-MM-DD HH:MM:SS") yang oleh `Date.parse` di JS ditafsirkan
   // sebagai waktu LOKAL — di WIB itu menggeser expiry 7 jam lebih awal untuk

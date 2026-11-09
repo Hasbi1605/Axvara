@@ -318,10 +318,9 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
   const staticPayload = qrisStaticPayload(provider);
   if (!staticPayload) throw new Error("dana_qris_not_configured");
   if (provider === GOPAY_QRIS_PROVIDER && !getGopayInvoiceMerchantId(staticPayload)) throw new Error("gopay_invalid_merchant_qris");
-  const expiresAt = new Date(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000).toISOString();
-  // Order ikut mati bersama QR (15 menit, keputusan owner 2026-10-11): tidak
-  // ada lagi jendela 60 menit tempat stok dikunci order yang tidak dibayar.
-  const orderExpiresAt = new Date(Date.now() + QRIS_ORDER_WINDOW_MINUTES * 60_000).toISOString();
+  const order = await queryFirst("SELECT expires_at FROM orders WHERE code=?", orderCode);
+  const orderDeadline = parseDbTimeUtc(order?.expires_at);
+  const expiresAt = new Date(Math.min(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000, Number.isFinite(orderDeadline) ? orderDeadline : Infinity)).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
   // Prefer unused amounts. Once the finite range is exhausted, reused
   // amounts remain payable but require an administrator's bank verification.
@@ -344,7 +343,7 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
         d1.prepare(
            `INSERT INTO operation_guards (operation_id,valid)
             SELECT ?,CASE WHEN EXISTS(
-              SELECT 1 FROM orders WHERE code=? AND status='pending'
+              SELECT 1 FROM orders WHERE code=? AND status='pending' AND (expires_at IS NULL OR julianday(expires_at)>julianday('now'))
             ) AND NOT EXISTS(
               SELECT 1 FROM payment_transactions WHERE order_code=?
             ) THEN 1 ELSE 0 END`,
@@ -363,9 +362,9 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
         d1.prepare(
           `UPDATE orders
            SET payment_method='qris', payment_account=?, payment_status='pending',
-               expires_at=CASE WHEN sales_channel='whatsapp' THEN ? ELSE ? END, updated_at=datetime('now')
+               expires_at=COALESCE(expires_at,?), updated_at=datetime('now')
            WHERE code=? AND status='pending'`,
-        ).bind(provider === GOPAY_QRIS_PROVIDER ? "GoPay Merchant" : "DANA Business", expiresAt, orderExpiresAt, orderCode),
+        ).bind(provider === GOPAY_QRIS_PROVIDER ? "GoPay Merchant" : "DANA Business", expiresAt, orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
       // 2026-10-10: QR GoPay baru → bangunkan poller VPS (idle 60 dtk) agar
@@ -530,10 +529,10 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
         ).bind(payableAmount, uniqueCode, qrisPayload, qrisUrl, expiresAt, orderCode, detectedProvider),
         d1.prepare(
           `UPDATE orders
-           SET qris_reissue_count=qris_reissue_count+1, expires_at=?,
+           SET qris_reissue_count=qris_reissue_count+1,
                telegram_invoice_sent_at=NULL, telegram_invoice_attempts=0, updated_at=datetime('now')
            WHERE code=? AND status='pending'`,
-        ).bind(expiresAt, orderCode),
+        ).bind(orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
       if (detectedProvider === GOPAY_QRIS_PROVIDER) await wakeGopayPollerSafe("reissue");

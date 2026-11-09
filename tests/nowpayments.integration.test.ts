@@ -215,6 +215,22 @@ const txOf = (code = A) => fixture.sql.prepare("SELECT * FROM payment_transactio
 const orderOf = (code = A) => fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(code)!;
 
 describe("NOWPayments rail (W1 local, flags default-off semantics)", () => {
+  it.each([[60, 120, 60], [15, 120, 15], [60, 5, 5]])("caps order %i min and provider %i min at %i min", async (orderMinutes, providerMinutes, expectedMinutes) => {
+    await seed();
+    const orderDeadline = new Date(Date.now() + orderMinutes * 60_000).toISOString();
+    fixture.sql.prepare("UPDATE orders SET expires_at=? WHERE code=?").run(orderDeadline, A);
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith("/v1/payment") && init?.method === "POST") {
+        return Response.json(invoice(A, A_PAYMENT_ID, { expiration_estimate_date: new Date(Date.now() + providerMinutes * 60_000).toISOString() }), { status: 201 });
+      }
+      return originalFetch(url, init);
+    }));
+    const created = await createNowpaymentsInvoice(A, 89000, "usdtbsc", { payNetwork: "bsc", priceCurrency: "idr" });
+    expect((Date.parse(created.expiresAt) - Date.now()) / 60_000).toBeCloseTo(expectedMinutes, 0);
+    expect(Date.parse(String(txOf().expires_at))).toBe(Date.parse(created.expiresAt));
+    expect(Date.parse(String(orderOf().expires_at))).toBeLessThanOrEqual(Date.parse(orderDeadline));
+  });
   it("preserves numeric JSON wire tokens and enforces explicit outcome with the floating-form minimum", async () => {
     const { parseNowpaymentsWire, checkNowpaymentsMinimum } = await import("@/lib/payments/nowpayments");
     expect(parseNowpaymentsWire('{"id":9007199254740993,"amount":0.000000000000000001,"nested":[true,null,{"text":"escaped \\\"12\\\" and \\\\34"}]}')).toEqual({ id: "9007199254740993", amount: "0.000000000000000001", nested: [true, null, { text: 'escaped "12" and \\34' }] });
