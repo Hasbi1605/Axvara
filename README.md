@@ -105,6 +105,17 @@ tersimpan tetap jalan walau flag pembuatan baru OFF. QRIS tetap satu-satunya rai
 publik; checkout/TG/cron/admin UI milik W3. Sekalipay gateway shell tanpa adapter
 (kontrak belum terverifikasi). Blokir manual: runbook pembayaran.
 
+## Supplier TUNVN PREHUB — setup awal tersembunyi (9 November 2026)
+
+Fondasi reseller Telegram TUNVN PREHUB: kredensial lokal `.tunvn-credentials`
+(chmod 600, git-ignored; `TUNVN_API_KEY` + `TUNVN_BASE_URL`), klien read-only
+`src/lib/tunvn/client.ts`, sync mirror tersembunyi `src/lib/tunvn/sync.ts`, dan
+tabel `tunvn_products` (migrasi 0110). Semua gate default mati
+(`TUNVN_ENABLED`/`TUNVN_SYNC_ENABLED`, env Pages belum dipasang), sync selalu
+`visible=0` dan belum dipanggil route/cron/UI mana pun — produk TUNVN tidak
+tampil dan tidak bisa dibeli. Detail: `docs/agent-rules/tunvn.md` dan
+ARCHITECTURE §16.30.
+
 ## Kredensial Sekalipay gateway - 3 November 2026
 
 Hanya penyimpanan lokal: `.sekalipay-gateway-credentials` (chmod600/git-ignored),

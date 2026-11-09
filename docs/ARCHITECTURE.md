@@ -4205,6 +4205,14 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
+### 16.30 Supplier TUNVN PREHUB — setup awal tersembunyi, 9 November 2026 (lokal, belum aktif)
+
+- Fondasi supplier ketiga dari reseller Telegram TUNVN PREHUB atas instruksi owner "setup dulu, jangan tampilkan produknya". Tidak ada route/UI/cron/checkout/Telegram yang membaca data TUNVN; tidak ada env Pages yang dipasang.
+- Klien `src/lib/tunvn/client.ts` (edge, `fetchWithTimeout`): hanya GET read-only `/api/products` + `/api/balance` ke `TUNVN_BASE_URL` (default `https://tunvnmmo.duckdns.org`, wajib HTTPS) dengan header `X-API-Key` dari `TUNVN_API_KEY`; tanpa retry, 401/403 → `config`, 429/5xx/timeout/JSON rusak → `ambiguous`. `POST /api/buy`/`/api/deposit`/Buff Token SENGAJA belum diimplementasikan.
+- Gate: `TUNVN_ENABLED==="true"` (master) + `TUNVN_SYNC_ENABLED==="true"` (sync) + key — semua default mati; tanpa konfigurasi lengkap semua fungsi no-op tanpa fetch. Kredensial lokal `.tunvn-credentials` (ignored, chmod 600); env Pages kelak wajib `secret_text`.
+- Mirror `tunvn_products` (migrasi `0110_tunvn_hidden_catalog.sql`, identik `drizzle/schema.sql`): ID upstream unik, harga VND/USDT + stok + diskon bertingkat apa adanya (tanpa konversi kurs/margin), `visible` selalu 0 dari sync. `syncTunvnCatalog` (`src/lib/tunvn/sync.ts`) meniru throttle CAS + upsert chunk `json_each` Games; SENGAJA belum dipanggil pemanggil mana pun.
+- Probe read-only 2026-11-09 (bukan deployment): docs terbaca, 19 produk, kurs 25.494 VND/USDT, saldo akun 0 VND / 0,0099 USDT. Aturan lengkap: `docs/agent-rules/tunvn.md`.
+
 ### 16.29 AXVARA Games S1: host, nickname berbiaya dan SKU utilitas — 9 November 2026 (lokal, belum deploy)
 
 - `SITE.gamesUrl=https://games.axvara.tech`; middleware `GAMES_HOST` opsional (default sama,
