@@ -54,6 +54,9 @@ describe("0110 tunvn hidden catalog migration", () => {
       ", markup_percent INTEGER NOT NULL DEFAULT 35 CHECK (markup_percent >= 0)",
       ", sell_price_idr INTEGER CHECK (sell_price_idr IS NULL OR sell_price_idr >= 0)",
       ", fx_idr_per_usdt REAL CHECK (fx_idr_per_usdt IS NULL OR fx_idr_per_usdt > 0)",
+      ", -- Migrasi 0113: kontrol admin (tidak ditimpa sync/publish). admin_name TEXT",
+      ", admin_description TEXT",
+      ", publish_requested INTEGER NOT NULL DEFAULT 0 CHECK (publish_requested IN (0,1))",
     ];
     const baseSchema = later.reduce((text, column) => text.replace(column, ""), body(schema));
     expect(body(migration)).toBe(baseSchema);

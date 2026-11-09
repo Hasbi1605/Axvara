@@ -67,17 +67,17 @@ describe("0112 tunvn catalog publish migration", () => {
 });
 
 describe("publishTunvnCatalog", () => {
-  it("publishes both ChatGPT products with the existing ChatGPT image and Buff variants on Muse", async () => {
+  it("creates both ChatGPT products hidden by default with the existing ChatGPT image and Buff variants on Muse", async () => {
     const result = await publishTunvnCatalog(db(), RATE);
-    expect(result).toMatchObject({ ok: true, chatgpt: 2, buff_variants: 4, idr_per_usdt: RATE });
+    expect(result).toMatchObject({ ok: true, chatgpt: 2, buff_variants: 4, idr_per_usdt: RATE, activated: 0 });
 
     const business = fx.sql.prepare("SELECT * FROM products WHERE slug='chatgpt-business-1-bulan-tunvn'").get() as Record<string, unknown>;
     const gpay = fx.sql.prepare("SELECT * FROM products WHERE slug='chatgpt-gpay-1-bulan-tunvn'").get() as Record<string, unknown>;
-    expect(business).toMatchObject({ price: 112_400, stock: 22, is_active: 1, image_url: TUNVN_CHATGPT_IMAGE_URL });
-    expect(gpay).toMatchObject({ price: 121_200, stock: 6, is_active: 1, image_url: TUNVN_CHATGPT_IMAGE_URL });
-    expect(fx.sql.prepare("SELECT price,stock FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({ price: 112_400, stock: 22 });
+    expect(business).toMatchObject({ price: 112_400, stock: 22, is_active: 0, image_url: TUNVN_CHATGPT_IMAGE_URL });
+    expect(gpay).toMatchObject({ price: 121_200, stock: 6, is_active: 0, image_url: TUNVN_CHATGPT_IMAGE_URL });
+    expect(fx.sql.prepare("SELECT price,stock,is_active FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({ price: 112_400, stock: 22, is_active: 0 });
     expect(fx.sql.prepare("SELECT visible,sell_price_idr FROM tunvn_products WHERE supplier_product_id=86").get())
-      .toEqual({ visible: 1, sell_price_idr: 112_400 });
+      .toEqual({ visible: 0, sell_price_idr: 112_400 });
 
     const buff = fx.sql.prepare("SELECT sku,price,tunvn_buff_quantity_b FROM product_variants WHERE sku LIKE 'TUNVN-BUFF-%' ORDER BY tunvn_buff_quantity_b").all();
     expect(buff).toEqual([
@@ -98,6 +98,29 @@ describe("publishTunvnCatalog", () => {
     expect(fx.sql.prepare("SELECT COUNT(*) c FROM product_variants WHERE sku LIKE 'TUNVN-BUFF-%'").get()).toEqual({ c: 4 });
     expect(fx.sql.prepare("SELECT price FROM products WHERE slug='chatgpt-business-1-bulan-tunvn'").get())
       .toEqual({ price: tunvnChatGptSellPriceIdr(4.6, 20_000) });
+  });
+
+  it("honours admin publish request, markup, and copy without re-hiding on sync", async () => {
+    await publishTunvnCatalog(db(), RATE);
+    fx.sql.exec(`UPDATE tunvn_products SET publish_requested=1, markup_percent=50,
+      admin_name='ChatGPT Bisnis Spesial', admin_description='Deskripsi admin.' WHERE supplier_product_id=86`);
+    fx.sql.exec("UPDATE products SET is_active=1 WHERE slug='chatgpt-business-1-bulan-tunvn'");
+    const result = await publishTunvnCatalog(db(), RATE);
+    expect(result).toMatchObject({ ok: true, activated: 1 });
+    const business = fx.sql.prepare("SELECT * FROM products WHERE slug='chatgpt-business-1-bulan-tunvn'").get() as Record<string, unknown>;
+    expect(business).toMatchObject({ name: "ChatGPT Bisnis Spesial", description: "Deskripsi admin.", is_active: 1, price: tunvnChatGptSellPriceIdr(4.6, RATE, 50) });
+    expect(fx.sql.prepare("SELECT is_active FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({ is_active: 1 });
+    expect(fx.sql.prepare("SELECT visible FROM tunvn_products WHERE supplier_product_id=86").get()).toEqual({ visible: 1 });
+    // Produk lain yang tidak diminta tetap tersembunyi.
+    expect(fx.sql.prepare("SELECT is_active FROM products WHERE slug='chatgpt-gpay-1-bulan-tunvn'").get()).toEqual({ is_active: 0 });
+  });
+
+  it("keeps a manual Buff price and custom markup across re-publish", async () => {
+    await publishTunvnCatalog(db(), RATE);
+    fx.sql.exec("UPDATE product_variants SET tunvn_markup_percent=60, tunvn_admin_price_idr=99900, price=99900, is_active=1 WHERE sku='TUNVN-BUFF-10B'");
+    await publishTunvnCatalog(db(), 20_000);
+    expect(fx.sql.prepare("SELECT price,tunvn_markup_percent,is_active FROM product_variants WHERE sku='TUNVN-BUFF-10B'").get())
+      .toEqual({ price: 99_900, tunvn_markup_percent: 60, is_active: 1 });
   });
 
   it("does nothing when the sync gate is off", async () => {

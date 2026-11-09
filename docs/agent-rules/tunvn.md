@@ -1,5 +1,34 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Revisi owner: semua TUNVN nonaktif + kontrol penuh panel — 9 November 2026
+
+- Owner bertanya apakah katalog sudah tampil publik dan meminta **di-disable
+  dulu**. Jawaban terbukti: migrasi 0112 belum pernah diterapkan ke D1
+  produksi (query read-only: produk ChatGPT TUNVN + varian `TUNVN-*` tidak
+  ada; katalog publik 94 item tanpa TUNVN), jadi belum tampil — tetapi seed
+  awal 0112 tadinya `is_active=1`, sehingga sebelum CI menerapkan 0112/0113
+  seed direvisi nonaktif dan migrasi **0113** memaksa semua baris TUNVN
+  nonaktif sebagai pengaman.
+- Kontrol admin kini setara kebutuhan WR/SK untuk scope TUNVN: per produk
+  mirror admin dapat mengatur **markup %**, **nama publik**, **deskripsi
+  publik** (kolom `tunvn_products.admin_*`, tidak ditimpa sync), serta dua
+  saklar **Diminta terbit** (`publish_requested`) + **Produk aktif** (harus
+  keduanya menyala agar tampil). Produk tanpa pemetaan terbit (selain ChatGPT
+  #86/#83) hanya bisa diatur markup/nama/deskripsinya dan tetap tersembunyi.
+- `publishTunvnCatalog` tidak pernah memaksa aktif: membuat produk/varian
+  nonaktif, menghormati markup/copy/harga manual admin, dan mematikan produk
+  yang permintaan terbitnya dicabut. Harga ChatGPT dihitung ulang dari modal
+  × FX segar × markup admin; PATCH panel memakai FX tersimpan terakhir.
+- Buff: per varian admin dapat mengatur markup, harga manual
+  (`tunvn_admin_price_idr`, kosong = rumus), label, dan status aktif lewat
+  `/api/admin/tunvn/buff/[sku]`; harga manual + status aktif bertahan dari
+  publikasi ulang. PATCH produk: `/api/admin/tunvn/products/[id]`
+  (id = supplier_product_id, requireAdmin, zod strict).
+- Fleksibilitas yang SENGAJA belum setara WR/SK: antrean order/rekonsiliasi,
+  aturan markup massal berbasis modal, audit modal supplier, dan dispatch
+  otomatis — belum ada karena TUNVN belum punya dispatch (`/api/buy`,
+  `/api/buff/order` belum dibangun) dan saldo wallet masih kosong.
+
 ## Aktivasi katalog + panel admin — 9 November 2026 (instruksi owner, mengganti batas setup awal)
 
 - Owner menyetujui markup **ChatGPT 35%** dan **Buff Token Muse AI 40%**,

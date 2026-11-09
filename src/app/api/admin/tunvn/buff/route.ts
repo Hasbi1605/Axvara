@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { checkTunvnBuff, isTunvnConfigured } from "@/lib/tunvn/client";
+import { TUNVN_MUSE_SLUG } from "@/lib/tunvn/catalog";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -14,9 +15,10 @@ export async function GET(request: NextRequest) {
   const db = createDatabaseAccess();
   try {
     const variants = await db.queryAll(
-      `SELECT id, sku, label, price, is_active, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt
+      `SELECT id, sku, label, price, is_active, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt, tunvn_admin_price_idr
          FROM product_variants WHERE sku LIKE 'TUNVN-BUFF-%' ORDER BY tunvn_buff_quantity_b ASC`,
     );
+    const muse = await db.queryFirst("SELECT id, is_active FROM products WHERE slug=?", TUNVN_MUSE_SLUG);
     let probe: unknown = null;
     let probe_error: string | null = null;
     if (isTunvnConfigured()) {
@@ -34,7 +36,10 @@ export async function GET(request: NextRequest) {
     } else {
       probe_error = "not_configured";
     }
-    return NextResponse.json({ ok: true, variants, probe, probe_error });
+    return NextResponse.json({
+      ok: true, variants, probe, probe_error,
+      muse_product: muse ? { id: Number(muse.id), is_active: Number(muse.is_active ?? 0) } : null,
+    });
   } catch {
     return NextResponse.json({ error: "load_failed" }, { status: 500 });
   }

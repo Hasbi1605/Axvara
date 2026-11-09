@@ -20,51 +20,52 @@ ALTER TABLE product_variants ADD COLUMN tunvn_cost_usdt REAL CHECK (tunvn_cost_u
 ALTER TABLE product_variants ADD COLUMN tunvn_markup_percent INTEGER CHECK (tunvn_markup_percent IS NULL OR tunvn_markup_percent >= 0);
 ALTER TABLE product_variants ADD COLUMN tunvn_fx_idr_per_usdt REAL CHECK (tunvn_fx_idr_per_usdt IS NULL OR tunvn_fx_idr_per_usdt > 0);
 
--- Katalog ChatGPT TUNVN (produk Market baru, aktif; harga varian tunggal):
+-- Katalog ChatGPT TUNVN (produk Market baru, NONAKTIF dulu — owner meminta
+-- dimatikan dari publik 9 Nov 2026; diaktifkan lewat panel admin TUNVN):
 -- 86 ACC CHAT GPT BUSINESS 1M(W1D): 4.60 USDT -> Rp112.400
 -- 83 CHAT GPT GPAY (W1D):           4.96 USDT -> Rp121.200
 INSERT INTO products (category_id, name, slug, description, price, compare_price, image_url, badge, sold_count, stock, is_active, sort_order, source, fulfillment_mode, telegram_enabled)
 SELECT c.id, 'ChatGPT Business 1 Bulan (TUNVN)', 'chatgpt-business-1-bulan-tunvn',
   'Akun ChatGPT Business 1 bulan dari supplier TUNVN. Garansi mengikuti masa garansi supplier (W1D); stok dan harga mengikuti katalog TUNVN.',
-  112400, NULL, '/r2/products/f87f491ee2f9034845db18eb08c9236d.webp', NULL, 0, 22, 1, 900, 'manual', 'manual', 1
+  112400, NULL, '/r2/products/f87f491ee2f9034845db18eb08c9236d.webp', NULL, 0, 22, 0, 900, 'manual', 'manual', 1
 FROM categories c WHERE c.slug = 'ai-chatbot'
 ON CONFLICT(slug) DO NOTHING;
 
 INSERT INTO products (category_id, name, slug, description, price, compare_price, image_url, badge, sold_count, stock, is_active, sort_order, source, fulfillment_mode, telegram_enabled)
 SELECT c.id, 'ChatGPT GPay 1 Bulan (TUNVN)', 'chatgpt-gpay-1-bulan-tunvn',
   'Akun ChatGPT via GPay 1 bulan dari supplier TUNVN. Garansi mengikuti masa garansi supplier (W1D); stok dan harga mengikuti katalog TUNVN.',
-  121200, NULL, '/r2/products/f87f491ee2f9034845db18eb08c9236d.webp', NULL, 0, 6, 1, 901, 'manual', 'manual', 1
+  121200, NULL, '/r2/products/f87f491ee2f9034845db18eb08c9236d.webp', NULL, 0, 6, 0, 901, 'manual', 'manual', 1
 FROM categories c WHERE c.slug = 'ai-chatbot'
 ON CONFLICT(slug) DO NOTHING;
 
 INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order)
-SELECT p.id, 'TUNVN-86', 'ChatGPT Business 1 Bulan', 112400, 22, 'manual', 1, 1
+SELECT p.id, 'TUNVN-86', 'ChatGPT Business 1 Bulan', 112400, 22, 'manual', 0, 1
 FROM products p WHERE p.slug = 'chatgpt-business-1-bulan-tunvn'
 ON CONFLICT(sku) DO NOTHING;
 
 INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order)
-SELECT p.id, 'TUNVN-83', 'ChatGPT GPay 1 Bulan', 121200, 6, 'manual', 1, 1
+SELECT p.id, 'TUNVN-83', 'ChatGPT GPay 1 Bulan', 121200, 6, 'manual', 0, 1
 FROM products p WHERE p.slug = 'chatgpt-gpay-1-bulan-tunvn'
 ON CONFLICT(sku) DO NOTHING;
 
 -- Varian Buff Token pada produk Muse manual owner (id produk dicari by slug):
 -- modal 0,0588 USDT/1B x Rp18.086 x 1,40 dibulatkan ke atas per Rp100.
 INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt)
-SELECT p.id, 'TUNVN-BUFF-5B', 'Buff Token Muse AI 5B', 7500, -1, 'manual', 1, 10, 5, 0.294, 40, 18086
+SELECT p.id, 'TUNVN-BUFF-5B', 'Buff Token Muse AI 5B', 7500, -1, 'manual', 0, 10, 5, 0.294, 40, 18086
 FROM products p WHERE p.slug = 'muse-ai-1-miliar-token'
 ON CONFLICT(sku) DO NOTHING;
 
 INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt)
-SELECT p.id, 'TUNVN-BUFF-10B', 'Buff Token Muse AI 10B', 14900, -1, 'manual', 1, 11, 10, 0.588, 40, 18086
+SELECT p.id, 'TUNVN-BUFF-10B', 'Buff Token Muse AI 10B', 14900, -1, 'manual', 0, 11, 10, 0.588, 40, 18086
 FROM products p WHERE p.slug = 'muse-ai-1-miliar-token'
 ON CONFLICT(sku) DO NOTHING;
 
 INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt)
-SELECT p.id, 'TUNVN-BUFF-20B', 'Buff Token Muse AI 20B', 29800, -1, 'manual', 1, 12, 20, 1.176, 40, 18086
+SELECT p.id, 'TUNVN-BUFF-20B', 'Buff Token Muse AI 20B', 29800, -1, 'manual', 0, 12, 20, 1.176, 40, 18086
 FROM products p WHERE p.slug = 'muse-ai-1-miliar-token'
 ON CONFLICT(sku) DO NOTHING;
 
 INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt)
-SELECT p.id, 'TUNVN-BUFF-30B', 'Buff Token Muse AI 30B', 44700, -1, 'manual', 1, 13, 30, 1.764, 40, 18086
+SELECT p.id, 'TUNVN-BUFF-30B', 'Buff Token Muse AI 30B', 44700, -1, 'manual', 0, 13, 30, 1.764, 40, 18086
 FROM products p WHERE p.slug = 'muse-ai-1-miliar-token'
 ON CONFLICT(sku) DO NOTHING;

@@ -642,6 +642,8 @@ CREATE TABLE IF NOT EXISTS product_variants (
   tunvn_cost_usdt REAL CHECK (tunvn_cost_usdt IS NULL OR tunvn_cost_usdt > 0),
   tunvn_markup_percent INTEGER CHECK (tunvn_markup_percent IS NULL OR tunvn_markup_percent >= 0),
   tunvn_fx_idr_per_usdt REAL CHECK (tunvn_fx_idr_per_usdt IS NULL OR tunvn_fx_idr_per_usdt > 0),
+  -- Migrasi 0113: override harga jual manual admin untuk varian Buff.
+  tunvn_admin_price_idr INTEGER CHECK (tunvn_admin_price_idr IS NULL OR tunvn_admin_price_idr >= 0),
 
   -- Migrasi 0058: modal manual per varian (rupiah, milik admin, default 0).
   -- Untuk produk manual/stok sendiri yang modalnya tidak tercatat di link
@@ -1853,6 +1855,10 @@ CREATE TABLE IF NOT EXISTS tunvn_products (
   markup_percent INTEGER NOT NULL DEFAULT 35 CHECK (markup_percent >= 0),
   sell_price_idr INTEGER CHECK (sell_price_idr IS NULL OR sell_price_idr >= 0),
   fx_idr_per_usdt REAL CHECK (fx_idr_per_usdt IS NULL OR fx_idr_per_usdt > 0),
+  -- Migrasi 0113: kontrol admin (tidak ditimpa sync/publish).
+  admin_name TEXT,
+  admin_description TEXT,
+  publish_requested INTEGER NOT NULL DEFAULT 0 CHECK (publish_requested IN (0,1)),
   visible INTEGER NOT NULL DEFAULT 0 CHECK (visible IN (0,1)),
   synced_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
