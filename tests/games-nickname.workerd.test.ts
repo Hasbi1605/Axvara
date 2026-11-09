@@ -41,8 +41,11 @@ it("runs migration0109, durable paid-check admission and cache in real workerd D
   try {
     const db = await runtime.getD1Database("DB");
     const schema = readFileSync("drizzle/schema.sql", "utf8");
-    await db.prepare(schema.match(/CREATE TABLE IF NOT EXISTS games_products \([\s\S]*?\n\);/)![0]).run();
-    for (const ddl of readFileSync("drizzle/migrations/0109_games_nickname.sql", "utf8").split(";").filter(s => s.trim())) await db.prepare(ddl).run();
+    // Single batch through Miniflare's synchronous D1 proxy (see games-checkout.workerd).
+    await db.batch([
+      db.prepare(schema.match(/CREATE TABLE IF NOT EXISTS games_products \([\s\S]*?\n\);/)![0]),
+      ...readFileSync("drizzle/migrations/0109_games_nickname.sql", "utf8").split(";").filter(s => s.trim()).map((ddl) => db.prepare(ddl)),
+    ]);
     const post = (id: string, device = "device") => runtime.dispatchFetch("https://fixture.test/check", {
       method: "POST", body: JSON.stringify({ id, ip: "192.0.2.1", device }),
     });

@@ -40,14 +40,21 @@ it("quotes, atomically claims/reuses QRIS, authorizes status and expires Games i
     const db = await runtime.getD1Database("DB");
     const schema = readFileSync("drizzle/schema.sql", "utf8");
     // Real table DDL, not a hand-copied schema; migration/trigger tests live elsewhere.
-    for (const table of ["categories", "products", "product_variants", "orders", "operation_guards", "checkout_attempts", "checkout_claims",
-      "games_products", "games_order_items", "payment_transactions", "payment_invoice_history", "fulfillment_inventory"]) {
+    const ddls = ["categories", "products", "product_variants", "orders", "operation_guards", "checkout_attempts", "checkout_claims",
+      "games_products", "games_order_items", "payment_transactions", "payment_invoice_history", "fulfillment_inventory"].map((table) => {
       const ddl = schema.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\([\\s\\S]*?\\n\\);`))?.[0];
       expect(ddl, table).toBeTruthy();
-      await db.prepare(ddl!).run();
-    }
-    await db.prepare("CREATE UNIQUE INDEX orders_quote_id ON orders(quote_id)").run();
-    await db.prepare("INSERT INTO games_products(buyer_sku_code,game_brand,product_name,cost,sell_price,seller_active,enabled) VALUES('ml86','MOBILE LEGENDS','86 Diamonds',10000,11000,1,1)").run();
+      return ddl!;
+    });
+    // One batch = one round trip through Miniflare's synchronous D1 proxy, like
+    // the other *.workerd tests. Fourteen sequential .run() calls intermittently
+    // tripped the proxy's `message?.id === id` assertion under CI load
+    // (run 42655704091 attempt 1, line 47, 2026-11-09).
+    await db.batch([
+      ...ddls.map((ddl) => db.prepare(ddl)),
+      db.prepare("CREATE UNIQUE INDEX orders_quote_id ON orders(quote_id)"),
+      db.prepare("INSERT INTO games_products(buyer_sku_code,game_brand,product_name,cost,sell_price,seller_active,enabled) VALUES('ml86','MOBILE LEGENDS','86 Diamonds',10000,11000,1,1)"),
+    ]);
     const post = (path: string, body: unknown) => runtime.dispatchFetch(`https://fixture.test/${path}`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     });
