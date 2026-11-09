@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-09 — Brief Paseo AXVARA Games diselaraskan dengan tim baru (PM Opus 5.5 + verdict visual, DeepSeek utama, Sol tugas berat, Terra UI, Flash riset/QA, Wonder opsional, Spark cadangan); konfigurasi skill/profil Paseo diubah di luar repo — docs/games-paseo-brief.md — (verifikasi: dokumentasi saja; git diff --check; test launcher skill 7/7, dry-run memilih team-pm-opus)
+
 - 2026-11-09 — Brief serah terima Paseo orkestrator untuk menuntaskan AXVARA Games (data/admin, API pesanan, UI, kartu Games menggantikan kartu Telegram di CommunityBar Market, env, verifikasi, gerbang owner) — docs/games-paseo-brief.md — (verifikasi: dokumentasi saja; path yang dirujuk diperiksa; git diff --check)
 
 - 2026-11-09 — AXVARA Games tahap B: dispatch Digiflazz durable (klaim berpagar, ref_id tetap untuk ambigu/pending, seller cadangan kode `b` setelah Gagal final, needs_check + Telegram admin), hook paid-fulfillment kind games, cron lite `games_orders`, webhook HMAC-SHA1 `/api/games/digiflazz/webhook`; akun Digiflazz: 396 baris cadangan `…b` ON untuk gelombang 1 — src/lib/games/{dispatch,notify}.ts, src/app/api/games/digiflazz/webhook/route.ts, src/lib/payments/paid-fulfillment.ts, src/app/api/cron/lite/route.ts, mcp-worker/src/cron.ts, docs/GAMES.md §12.6, docs/agent-rules/digiflazz.md — (verifikasi: Games+cron 119/119; suite penuh 385 file/5.141 test lulus; tsc lulus; env Pages Digiflazz belum dipasang → job no-op)

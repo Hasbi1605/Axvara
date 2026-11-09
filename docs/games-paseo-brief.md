@@ -7,9 +7,19 @@
 
 Kamu adalah **orkestrator** untuk menuntaskan **AXVARA Games** (top up game) di repo
 `/Users/macbookair/axvara`, dari kondisi backend-sudah-ada sampai siap go-live. Pakai tim
-Paseo sesuai peran yang sudah dikonfigurasi (PM, reviewer teknis, visual lead, implementer,
-QA). Tugas dianggap selesai hanya bila semua butir "Selesai bila" di bawah terpenuhi dengan
+Paseo sesuai skill `paseo-orchestrator` (konfigurasi 9 November 2026). Tugas dianggap selesai hanya bila semua butir "Selesai bila" di bawah terpenuhi dengan
 bukti, atau tertahan di gerbang owner (§7) dengan laporan jelas.
+
+## 0. Pembagian peran untuk tugas ini
+| Bagian | Pemilik |
+|---|---|
+| Rencana, kriteria terima, review diff, verdict visual, commit/push | **PM — Claude Opus 5.5** (tidak menulis kode) |
+| §3.A data/admin, §3.B API pesanan/status/expire, test, i18n, kartu Games di CommunityBar, dokumentasi | **DeepSeek V4.1 Flash** |
+| §3.B integrasi rail pembayaran + pemicu dispatch gateway, cek nickname berbayar, routing subdomain `games.axvara.tech` | **GPT-6.1 Sol** (tugas berat) |
+| §3.C halaman `/games`, halaman game, status, lacak/bantuan/ketentuan, orbit+carousel, kartu nominal | **GPT-6.1 Terra** (UI) |
+| Riset aset resmi game, audit/peta sebelum menulis, QA browser desktop/mobile + screenshot | **Gemini Flash** |
+| Review independen alur pembayaran/order sebelum go-live | **Muse Wonder** (opsional) |
+| Cadangan bila Sol/Terra gagal | **Muse Spark 1.3** |
 
 ## 1. Wajib dibaca dulu (urut)
 1. `AGENTS.md` (aturan repo: test, dokumentasi, changelog, commit/push ke `main`, jangan
@@ -94,7 +104,7 @@ bukti, atau tertahan di gerbang owner (§7) dengan laporan jelas.
   test, bukan uang nyata) → dispatch → status. Tidak ada transaksi produksi.
 - Browser nyata desktop + mobile (375px): beranda, halaman game, pilih nominal, validasi
   ID, cek nickname, metode, sticky bar, keyboard/fokus, reduced motion, overflow, state
-  loading/error/kosong; tombol Games di Market. Reviewer visual memberi verdict akhir.
+  loading/error/kosong; tombol Games di Market. Flash mengambil screenshot; PM (Opus) memberi verdict visual akhir.
 - Lighthouse/performa mobile orbit mengikuti aturan hemat (compositor-only).
 
 ## 5. Aturan kerja
@@ -108,7 +118,7 @@ bukti, atau tertahan di gerbang owner (§7) dengan laporan jelas.
 ## 6. Selesai bila
 - Semua route Games + admin + API live lewat CI dengan bukti deploy; tombol Games
   menggantikan kartu Telegram di bawah hero Market; dokumentasi lengkap; test hijau;
-  verifikasi browser tercatat; mode Development end-to-end terbukti.
+  verifikasi browser tercatat (screenshot Flash + verdict visual PM); mode Development end-to-end terbukti.
 
 ## 7. Gerbang owner (berhenti dan minta owner melakukan/menyetujui)
 1. Rotasi Development & Production Key (pernah tertempel di chat) bila belum — owner yang
