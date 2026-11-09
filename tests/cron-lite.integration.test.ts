@@ -41,6 +41,33 @@ describe("/api/cron/lite", () => {
       expect((await call("cleanup")).body).toMatchObject({ok:true,pairs_decided:0});
     } finally {fx.close();}
   });
+  it("games_orders: no-op 200 tanpa kredensial Digiflazz; kredensial rusak dengan antrean → 503", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("DIGIFLAZZ_USERNAME", "");
+      vi.stubEnv("DIGIFLAZZ_API_KEY", "");
+      expect(await call("games_orders")).toMatchObject({ status: 200, body: { ok: true, job: "games_orders", skipped: "not_configured" } });
+      vi.stubEnv("DIGIFLAZZ_USERNAME", "u");
+      vi.stubEnv("DIGIFLAZZ_API_KEY", "k");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.test");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "t");
+      const idle = await call("games_orders");
+      expect(idle).toMatchObject({ status: 200, body: { ok: true, job: "games_orders", idle: true } });
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='cron_lite_games_orders_ok_at'").get()).toBeTruthy();
+      await insertTestProduct(fx.sql);
+      insertTestOrder(fx.sql, "AXV-G-1", { status: "lunas", channel: "web" });
+      fx.sql.exec(`INSERT INTO games_products(id,buyer_sku_code,product_name,cost) VALUES(1,'ml86','ML 86',19000);
+        INSERT INTO games_order_items(order_code,product_id,buyer_sku_code,customer_no,unit_price,total,cost_snapshot,max_price,status)
+        VALUES('AXV-G-1',1,'ml86','12345(6789)',20000,20000,19000,19500,'awaiting_payment')`);
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 401 })));
+      const broken = await call("games_orders");
+      expect(broken.status).toBe(503);
+      expect(broken.body).toMatchObject({ ok: false, job: "games_orders", error: "config:proxy_401" });
+      // Config rusak tidak menghitung attempt gagal: item tetap queued, dapat dicoba lagi.
+      expect(fx.sql.prepare("SELECT status FROM games_order_items WHERE order_code='AXV-G-1'").get()).toEqual({ status: "queued" });
+    } finally { vi.unstubAllGlobals(); fx.close(); }
+  });
   it("games_catalog: no-op 200 tanpa kredensial Digiflazz; kegagalan price-list → 503", async () => {
     const fx = createD1Fixture();
     try {

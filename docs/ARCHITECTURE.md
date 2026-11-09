@@ -4191,6 +4191,13 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
+### 16.26 AXVARA Games tahap B: dispatch, seller cadangan, webhook — 9 November 2026 (lokal → CI)
+
+- `src/lib/games/dispatch.ts` `processGamesPaidOrders`: promosi `awaiting_payment`→`queued` untuk order `lunas/paid`, klaim berpagar (`changes===1`, lease 300 dtk), attempt `ref_id=<order>-<n>` (maks 1 aktif, dipakai ulang bila sudah ada), `sendTransaction` dengan `max_price`; satu fungsi transisi `applyGamesTransactionResult` untuk dispatch/poll/webhook. Sukses→`success`+SN; Pending→`pending`; Gagal attempt 1 + cadangan aktif & `backup_cost ≤ max_price`→attempt 2 kode `…b`; selain itu `needs_check` + Telegram admin (`src/lib/games/notify.ts`). Transport ambigu→`pending` dicek ulang dengan ref sama; `submitting` basi dengan attempt→`pending` (tanpa ref baru), tanpa attempt→`queued`. Poll backoff 60/120/300 dtk, pending >24 jam→`needs_check`. Idle gate 1 statement; budget 40 statement dijaga `canSpend` (maks 10 dispatch/10 poll per run).
+- Pemicu: `schedulePaidFulfillment(code,'games')` (`src/lib/payments/paid-fulfillment.ts`) + cron lite `games_orders` (alarm hard, setelah `pedia_orders`).
+- Webhook `POST /api/games/digiflazz/webhook` (edge): batas 16.000 byte, `X-Hub-Signature: sha1=HMAC-SHA1` constant-time (401), secret kosong 503, ping 200 setelah tanda tangan valid, dedupe `dana_webhook_events` provider `digiflazz` key `digiflazz:<ref>:<status>` (`matched/ignored` final → duplicate; error apply → `failed` + 503 agar dikirim ulang).
+- Catatan: semua status Gagal dianggap final tanpa memeriksa `rc` (tindak lanjut: allowlist rc transien). Webhook dashboard Digiflazz tetap Non Aktif sampai env + deploy terverifikasi; periksa apakah ping Digiflazz bertanda tangan.
+
 ### 16.25 AXVARA Games tahap A + proxy Digiflazz `/dgf/*` — 9 November 2026
 
 - **Proxy (terpasang di VPS):** `POST /dgf/v1/{cek-saldo,price-list,transaction}`, token `WARUNG_REBAHAN_PROXY_TOKEN`, body bertanda tangan Pages diteruskan byte-per-byte; bukti: `/health dgf:true`, cek-saldo Development 200, tanpa token 401. Detail `axvara-wr-proxy/AGENTS.md`.

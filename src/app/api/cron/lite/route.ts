@@ -1,4 +1,4 @@
-// POST /api/cron/lite?job=payments|expiry|fulfillment|wr_orders|sk_orders|pedia_orders|promo|notify_a|notify_b|notify|cleanup|games_catalog — langkah
+// POST /api/cron/lite?job=payments|expiry|fulfillment|wr_orders|sk_orders|pedia_orders|promo|notify_a|notify_b|notify|cleanup|games_catalog|games_orders — langkah
 // cron INTI yang dipisah dari route raksasa `/api/cron/operations` (2026-10-05).
 //
 // Latar: Workers Free ~10 ms CPU per request. Malam 4→5 Okt 10–20% request
@@ -30,6 +30,8 @@
 //   sk_orders   — pola yang sama untuk Sekalipay (termasuk probe yatim)
 //   pedia_orders — dispatch + poll order Pedia ke ProviderSMM (PD-30–33);
 //                 saldo dicek maks 1×/30 mnt (hemat statement)
+//   games_orders — AXVARA Games: promosi lunas → queued, dispatch Digiflazz,
+//                 pemulihan lease basi, polling dengan ref_id sama (GAMES §12.3)
 //   promo       — Daily Promo Digest 09.00/17.00 WIB (guard murah; ledger
 //                 `telegram_promo_digests` mencegah kirim ganda dengan notify)
 //   notify_a    — retry kabar order Telegram + invoice tertunda (separuh notify)
@@ -44,7 +46,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog"] as const;
+const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 10;
 const ORPHAN_LEDGER_PER_RUN = 10;
@@ -125,6 +127,14 @@ export async function POST(request: NextRequest) {
       const synced = await syncGamesCatalog(db);
       Object.assign(result, synced);
       if ("ok" in synced && synced.ok === false) return NextResponse.json({ ...result, ok: false }, { status: 503 });
+    }
+    else if (job === "games_orders") {
+      // docs/GAMES.md §12.3: promosi lunas, dispatch, pemulihan lease, polling Digiflazz.
+      // Akses ber-budget diteruskan agar statement ikut batas 40; tanpa kredensial → skipped.
+      const { processGamesPaidOrders } = await import("@/lib/games/dispatch");
+      const ran = await processGamesPaidOrders(undefined, db);
+      Object.assign(result, ran);
+      if (ran.error) return NextResponse.json({ ...result, ok: false }, { status: 503 });
     }
     else Object.assign(result, await runPromo(db));
   } catch (error) {

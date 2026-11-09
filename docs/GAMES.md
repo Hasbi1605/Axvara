@@ -287,3 +287,14 @@ Cron lite `games_catalog` (throttle ≥10 menit lewat `store_settings`): `price-
 `cmd:prepaid`, filter kategori Games, upsert per kode utama; kode berakhiran `b` mengisi
 kolom cadangan dari kode dasar. SKU yang hilang dari daftar → `seller_active=0`.
 `sell_price` dihitung ulang. `enabled` tidak pernah diubah oleh sinkron.
+
+### 12.6 Status implementasi (9 November 2026)
+- Selesai: G1 proxy (terpasang VPS), G2 klien, G3 schema (migrasi 0107), G4 sinkron +
+  cron `games_catalog`, G5 dispatch + cadangan + cron `games_orders`, G6 webhook.
+  Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.26.
+- **Untuk Paseo/fase berikut:** API quote/order pembeli (buat `orders` kind `games` +
+  `games_order_items` status `awaiting_payment`, harga dari `games_products.sell_price`,
+  `max_price` = batas modal, attach rail existing), endpoint cek nickname (rate limit +
+  cache), admin harga referensi/enable SKU, UI §4–§7, lalu G8 go-live (pasang env
+  `secret_text`, rotasi key, aktifkan webhook dashboard, mode Production, deposit).
+- Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final.

@@ -24,7 +24,13 @@ Nama seller disamarkan sampai deposit pertama; kenali seller lewat `seller_id`.
 - Harga Max belum diisi; tentukan bersama integrasi `max_price`.
 - Keputusan owner 9 November 2026: seller cadangan otomatis untuk AXVARA Games memakai
   baris produk kedua dengan kode buyer akhiran `b` (seller matang lain), dipakai hanya
-  setelah Gagal final seller utama; belum dipasang di akun. Detail `docs/GAMES.md` §9.
+  setelah Gagal final seller utama. Detail `docs/GAMES.md` §9.
+- Snapshot pemasangan cadangan 9 November 2026 (gelombang 1 ML/FF/FF MAX/PUBG): dari 561
+  SKU utama ON, 396 mendapat baris `…b` ON (seller matang termurah selain seller utama:
+  Br*** 153, Di*** 125, Ki*** 69, DF*** 14, Om*** 13, BC*** 13, Ga*** 9); 165 tanpa
+  seller matang kedua (mis. PUBG nominal kecil, Royale/Elite Pass, Cek Username) tanpa
+  cadangan. Total baris Games 1.008, ON 992, 0 kode dobel; 16 OFF = 14 berisiko + PUBG
+  48600 UC + Stumble Guys 800 Gems.
 - Panel membatasi request (HTTP 429 "Too Many Attempts", ~60/menit); otomasi
   dashboard wajib ≤1 request/detik dengan retry `retry-after`. Hapus produk massal
   butuh konfirmasi owner per daftar ID.

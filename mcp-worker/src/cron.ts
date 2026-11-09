@@ -67,6 +67,8 @@ export const CRON_STEPS: CronStep[] = [
   { phase: "lite", lite: "wr_orders", alarm: "hard" },
   { phase: "lite", lite: "sk_orders", alarm: "hard" },
   { phase: "lite", lite: "pedia_orders", alarm: "hard" },
+  // AXVARA Games (docs/GAMES.md §12.3): dispatch + polling Digiflazz; no-op tanpa kredensial.
+  { phase: "lite", lite: "games_orders", alarm: "hard" },
   // notify dipecah dua (2026-10-09): tiap request hanya memikul 2–3
   // sub-kerjaan + dynamic import, bukan 5 sekaligus.
   { phase: "lite", lite: "notify_a", alarm: "soft" },

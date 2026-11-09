@@ -27,6 +27,11 @@ async function fulfillPaidOrder(orderCode: string, orderKind: unknown): Promise<
     await processPediaPaidOrders();
     return;
   }
+  if (orderKind === "games") {
+    const { processGamesPaidOrders } = await import("@/lib/games/dispatch");
+    await processGamesPaidOrders();
+    return;
+  }
   const order = await queryFirst("SELECT * FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'", orderCode);
   if (!order) return;
   // Bind supplier ownership before generic fulfillment can mark a manual-mode
