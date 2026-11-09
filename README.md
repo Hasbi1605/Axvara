@@ -1715,6 +1715,21 @@ migrasi `0107_games_core.sql`, cron lite `games_catalog`/`games_orders`, dan web
 (`games_reference_prices`, override grup/urutan), tab **Games** di `/admin?section=games`,
 API `GET/PATCH /api/admin/games/products` + `POST .../enable-wave` (dry-run lalu konfirmasi).
 
+Seed referensi Oura A2 (lokal, belum deploy): `drizzle/migrations/0111_games_reference_seed.sql`
+menambah198 SKU utama (FF16/FF MAX8/ML156/PUBG18), tidak menimpa baris admin existing
+(`ON CONFLICT DO NOTHING`). Sinkron katalog berikutnya baru menghitung ulang harga
+jual/cermin referensi; seed tidak mengaktifkan SKU. Generator deterministik offline
+(Node>=22.18, native type stripping untuk guard utilitas bersama):
+```bash
+node scripts/generate-games-reference-seed.mjs /path/private/reference.json /path/private/skus.json
+```
+Input berupa JSON riset R1, tidak dimasukkan repo. Seleksi: exact, empat brand
+gelombang1, utama (kode `...b` cadangan bila dasar ada), non-Cek Username, harga
+Oura integer positif, rasio Oura/modal0.5–3.0 inklusif.383 kandidat =>198 diterima,
+185 dibuang (168cadangan/16bukan-exact/1rasio); stdout melaporkan perbrand/alasan
+dan seluruh daftar dibuang. Source/timestamp snapshot tetap, SQL terurut kode;
+lihat `docs/GAMES.md` §12.7 dan ARCHITECTURE §4/§16.27. Tidak mengakses provider/produksi.
+
 S1 (lokal, belum deploy): `SITE.gamesUrl=https://games.axvara.tech`, middleware host
 rewrite `/`/halaman ke `/games/*` tanpa enable flag dan308 `/games/*` dari host lain
 (localhost/127.* dikecualikan). `GAMES_HOST` opsional, default host tersebut; Pages

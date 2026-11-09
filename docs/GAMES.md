@@ -337,9 +337,8 @@ oleh sinkron.
 - **Untuk Paseo/fase berikut:** integrasi metadata/QA UI rail gateway/crypto Games,
   UI §4–§7, lalu G8 go-live (custom domain Pages, env `secret_text`, rotasi key, aktifkan
   webhook dashboard, mode Production, deposit).
-- Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final; seed
-  harga Oura gelombang 1 (owner) lewat admin/API — tabel referensi sudah siap menerima
-  kode sebelum sinkron pertama.
+- Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final;
+  seed referensi A2 tersedia lokal di migrasi0111 (§12.7), belum bukti data produksi.
 - Prompt serah terima Paseo: `docs/games-paseo-brief.md`.
 
 ### 12.7 Admin data Games (P1–P3, 9 November 2026, lokal → CI)
@@ -356,6 +355,21 @@ lewat `readJsonBody`.
   `games_products.reference_price`) lalu menulis cermin `reference_price` +
   `sell_price` saat upsert. Menghapus baris referensi membuat sinkron berikutnya
   mengembalikan harga ke batas bawah modal.
+- **Seed A2 Oura (lokal, 9 November 2026).** Migrasi `0111_games_reference_seed.sql`
+  menambah198 referensi: FREE FIRE16, Free Fire Max8, MOBILE LEGENDS156, PUBG MOBILE18.
+  Generator offline `node scripts/generate-games-reference-seed.mjs <reference.json> <skus.json>`
+  membaca JSON riset R1 di luar repo (bukan kode/SQL executable), memilih `match==='exact'`,
+  hanya kode utama (akhiran `b` adalah cadangan hanya bila kode dasarnya ada),
+  bukan utilitas Cek Username, empat brand gelombang1, harga Oura integer positif
+  dan rasio harga Oura/modal `[0.5,3.0]` inklusif.383 match =>198 diterima,185 dibuang:
+ 168 cadangan,16 bukan exact,1 rasio di luar batas (`ml3`). Setiap baris ditolak
+  dihitung sekali sesuai urutan filter; katalog yang tidak ada di matches bukan kandidat.
+  SQL terurut kode, `ON CONFLICT(buyer_sku_code) DO NOTHING` menjaga edit admin;
+  source `ourastore.com riset 2026-11-09`, captured_at/updated_at `2026-11-09T08:28:15Z`.
+  Seed tidak mengaktifkan SKU atau mengubah katalog/harga jual langsung: sinkron
+  katalog berikutnya membaca referensi lalu menghitung ulang cermin `reference_price`
+  dan `sell_price` via rumus existing. JSON mentah tidak dimasukkan repo; daftar
+  penolakan ada pada evidence A2 di workspace orkestrasi. Belum deployment seed.
 - **P2 Grup nominal.** `games_products.display_group TEXT NULL CHECK (display_group IS
   NULL OR display_group IN ('special','bestseller'))` + `display_order INTEGER NULL`.
   `effectiveGroup(row)`: `display_group` bila terisi; NULL → `special` bila

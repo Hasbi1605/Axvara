@@ -1234,6 +1234,9 @@ bersifat aditif — `CREATE TABLE IF NOT EXISTS` untuk tabel referensi, sedangka
 hasil/nickname/checked_at/expiry) dan `games_nickname_checks` (ref unik, slug/SKU,
 modal/status/rc, IP HMAC/perangkat acak/timestamp). Claim cache dan admission log
 satu batch atomik; pending/ambigu tidak kedaluwarsa agar tidak membeli dua kali.
+Migrasi0111 `games_reference_seed` hanya seed198 referensi Oura ke tabel0108 dengan
+`ON CONFLICT DO NOTHING` (edit admin dipertahankan); tidak menambah schema atau
+mengubah `games_products`/enabled. Harga jual baru dihitung sinkron berikutnya (§16.27).
 
 ---
 
@@ -4296,6 +4299,19 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
   UI Games dalam B1. Paket gateway/crypto, nickname dan UI menyusul.
 
 ### 16.27 AXVARA Games admin data P1–P3 — 9 November 2026 (lokal → CI)
+
+- **Seed A2 (lokal, belum deploy):** `drizzle/migrations/0111_games_reference_seed.sql`
+  berisi198 SKU utama (FF16/FF MAX8/ML156/PUBG18), source `ourastore.com riset 2026-11-09`,
+  captured_at/updated_at tetap `2026-11-09T08:28:15Z`. Generator stdlib offline
+  `scripts/generate-games-reference-seed.mjs <reference.json> <skus.json>` membaca JSON
+  saja, menolak kode tidak valid/duplikat, memilih exact, kode utama menurut aturan
+  `isBackup` catalog-sync, non-utilitas via guard bersama, empat brand gelombang1,
+  harga Oura integer>0 dan rasio Oura/modal `[0.5,3.0]`.383 kandidat:198 dipilih,
+  168 cadangan+16 bukan exact+1 rasio ditolak (alasan pertama per kandidat).
+  SQL deterministik urut kode, `ON CONFLICT(buyer_sku_code) DO NOTHING`, tanpa raw
+  JSON di repo. Tidak menimpa admin/mengaktifkan SKU/menghitung ulang katalog:
+  `syncGamesCatalog` berikutnya menghitung `sell_price` dan cermin referensi existing.
+  Nomor0110 milik migrasi lain; A2 tidak menyentuhnya dan tidak bergantung padanya.
 
 - **Schema (migrasi 0108 `games_admin`)**: tabel `games_reference_prices(buyer_sku_code PK, price>0, source, captured_at, updated_at)` = sumber kebenaran harga Oura; kolom `games_products.display_group` (CHECK NULL/`special`/`bestseller`) + `display_order`. Cermin `games_products.reference_price` dan `sell_price` diisi sinkron/admin, bukan sumber kebenaran.
 - **Sinkron diubah:** `syncGamesCatalog` membaca `games_reference_prices` (bukan kolom cermin), menulis `reference_price` + `sell_price` saat upsert; `enabled`, `display_group`, `display_order` tidak pernah disentuh. Referensi untuk kode yang belum tersinkron tetap tersimpan dan berlaku saat SKU muncul.
