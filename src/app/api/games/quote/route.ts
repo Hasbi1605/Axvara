@@ -10,30 +10,20 @@ import { gamesOrderingOpen, gamesPreviewResponse } from "@/lib/games/ordering";
 import { createGamesQuoteToken } from "@/lib/games/quote";
 import { gamesBrandMatches, gamesRegistryGame, validateGamesFields } from "@/lib/games/registry";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
+import { serializePediaQuoteMethods } from "@/lib/pedia/payment-methods";
+import { buildMethodCatalog } from "@/lib/payments/method-options";
 import type { Locale } from "@/lib/i18n/locale";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-const WA_PATTERN = /^(\+62|62|0)8\d{8,13}$/;
-
-const schemaFor = (locale: Locale) => z.object({
+const schema = z.object({
   slug: z.string().trim().min(1).max(40),
   buyer_sku_code: z.string().trim().min(1).max(32),
   fields: z.record(z.string(), z.union([z.string(), z.number()])),
-  whatsapp: z.string().trim().transform((s) => s.replace(/\s|-/g, ""))
-    .refine((s) => WA_PATTERN.test(s), pick(locale, "No WA harus 08... atau +62... (10-15 digit)", "WhatsApp number must start with 08... or +62... (10-15 digits)")),
-  email: z.string().trim().email(pick(locale, "Tulis email aktif yang benar.", "Enter a valid active email.")).max(160),
   nickname: z.string().trim().max(64).optional(),
   locale: z.enum(["id", "en"]).optional(),
 });
-
-function normalizeWa(raw: string): string {
-  let wa = raw.replace(/\s|-/g, "");
-  if (wa.startsWith("+62")) wa = wa.slice(1);
-  else if (wa.startsWith("0")) wa = "62" + wa.slice(1);
-  return wa;
-}
 
 export async function POST(req: NextRequest) {
   const locale = pediaApiLocale(req);
@@ -45,11 +35,11 @@ export async function POST(req: NextRequest) {
   }
   const body = await readJsonBody(req);
   if (!body.ok) return body.response;
-  const parsed = schemaFor(locale).safeParse(body.data);
+  const parsed = schema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? pick(locale, "Validasi gagal", "Validation failed") }, { status: 400 });
   }
-  const { slug, buyer_sku_code, fields, whatsapp, email, nickname } = parsed.data;
+  const { slug, buyer_sku_code, fields, nickname } = parsed.data;
   const quoteLocale: Locale = parsed.data.locale ?? locale;
   if (!process.env.ADMIN_JWT_SECRET && process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: pick(locale, "Checkout sementara tidak tersedia.", "Checkout is temporarily unavailable.") }, { status: 503 });
@@ -64,7 +54,7 @@ export async function POST(req: NextRequest) {
   }
   const db = createDatabaseAccess();
   const product = await db.queryFirst(
-    `SELECT id, buyer_sku_code, game_brand, cost, sell_price, seller_active, enabled FROM games_products WHERE buyer_sku_code=?`,
+    `SELECT id, buyer_sku_code, product_name, game_brand, cost, sell_price, seller_active, enabled FROM games_products WHERE buyer_sku_code=?`,
     buyer_sku_code,
   ).catch(() => null);
   if (!product || Number(product.enabled) !== 1 || !gamesBrandMatches(game, product.game_brand)
@@ -79,17 +69,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "sku_unavailable", message: pick(locale, "Nominal ini sedang tidak tersedia.", "This amount is unavailable.") }, { status: 409 });
   }
   const customerNickname = nickname && nickname.trim() ? nickname.trim() : null;
+  let catalog: Awaited<ReturnType<typeof buildMethodCatalog>> = [];
+  try { catalog = await buildMethodCatalog(unitPrice); } catch { /* Native QRIS remains available. */ }
+  if (!catalog.some((method) => method.id === "qris")) {
+    catalog.unshift({ id: "qris", kind: "qris", label: "QRIS", sublabel: null,
+      account_number: "qris", account_name: "QRIS", qris_url: null, currency: "IDR", available: true });
+  }
+  const paymentMethods = serializePediaQuoteMethods(catalog.filter((method): method is Exclude<typeof method, { available: false }> => method.available));
   const { token, quoteId } = await createGamesQuoteToken({
     product_id: Number(product.id),
     buyer_sku_code: String(product.buyer_sku_code),
     slug: game.slug,
     customer_no: validated.customerNo,
-    customer_wa: normalizeWa(whatsapp),
-    customer_email: email,
     customer_nickname: customerNickname,
     unit_price: unitPrice,
     total: unitPrice,
-    methods: ["qris"],
+    methods: paymentMethods.map((method) => method.id),
+    payment_methods: paymentMethods,
     locale: quoteLocale,
   });
   return NextResponse.json({
@@ -101,6 +97,7 @@ export async function POST(req: NextRequest) {
     currency: "IDR",
     locale: quoteLocale,
     game: { slug: game.slug, name: game.name, publisher: game.publisher },
-    payment_methods: [{ id: "qris", kind: "qris", label: "QRIS", currency: "IDR", available: true }],
+    sku: { buyer_sku_code: String(product.buyer_sku_code), name: String(product.product_name), price: unitPrice },
+    paymentMethods: catalog,
   }, { headers: { "Cache-Control": "private, no-store" } });
 }

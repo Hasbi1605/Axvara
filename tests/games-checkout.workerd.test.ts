@@ -51,15 +51,16 @@ it("quotes, atomically claims/reuses QRIS, authorizes status and expires Games i
     const post = (path: string, body: unknown) => runtime.dispatchFetch(`https://fixture.test/${path}`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     });
-    const q = await post("quote", { slug: "mobile-legends", buyer_sku_code: "ml86", fields: { userId: "12345678", zoneId: "2001" }, whatsapp: "081234567890", email: "buyer@example.com" });
+    const q = await post("quote", { slug: "mobile-legends", buyer_sku_code: "ml86", fields: { userId: "12345678", zoneId: "2001" } });
     expect(q.status).toBe(200);
     const { quote_token } = await q.json() as { quote_token: string };
-    const created = await post("order", { quote_token });
+    const orderBody = { quote_token, payment_method: "qris", whatsapp: "081234567890", email: "buyer@example.com" };
+    const created = await post("order", orderBody);
     expect(created.status).toBe(201);
     const first = await created.json() as { code: string; qris: { payable_amount: number } };
     expect(first.code).toMatch(/^AXG-\d{8}-[A-Z0-9]{8}$/);
     expect(first.qris.payable_amount).toBeGreaterThan(11000);
-    expect((await post("order", { quote_token })).status).toBe(200);
+    expect((await post("order", orderBody)).status).toBe(200);
     expect(await db.prepare("SELECT quantity,max_price,status FROM games_order_items").first())
       .toMatchObject({ quantity: 1, max_price: 10500, status: "awaiting_payment" });
     const status = await runtime.dispatchFetch(`https://fixture.test/status?code=${first.code}`, { headers: { "x-order-contact": "buyer@example.com" } });

@@ -1,8 +1,8 @@
 // src/lib/games/quote.ts — Quote Games bertanda tangan (pola quote Pedia).
-// Isi: SKU, customer_no, harga, kontak checkout, locale, dan metode yang
-// ditawarkan (B1 hanya QRIS). Kontak ikut ditandatangani karena POST order
-// hanya menerima `quote_token`. Berlaku 30 menit.
+// Isi: SKU, customer_no, harga, locale, dan metode yang ditawarkan.
+// Kontak dikumpulkan saat POST order seperti Pedia. Berlaku 30 menit.
 import * as jose from "jose";
+import { isCanonicalMethodOption, type CheckoutQuotePaymentMethod } from "@/lib/auth";
 
 export type GamesQuotePayload = {
   purpose: "games_quote";
@@ -10,12 +10,11 @@ export type GamesQuotePayload = {
   buyer_sku_code: string;
   slug: string;
   customer_no: string;
-  customer_wa: string;
-  customer_email: string;
   customer_nickname: string | null;
   unit_price: number;
   total: number;
-  methods: ["qris"];
+  methods: string[];
+  payment_methods?: CheckoutQuotePaymentMethod[];
   locale: "id" | "en";
   jti: string;
 };
@@ -29,9 +28,6 @@ function secretKey() {
 async function encryptionKey(): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", secretKey()));
 }
-
-const WA_PATTERN = /^(\+62|62|0)8\d{8,13}$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function createGamesQuoteToken(
   input: Omit<GamesQuotePayload, "purpose" | "jti">,
@@ -70,10 +66,14 @@ export async function verifyGamesQuoteToken(token: string): Promise<GamesQuotePa
     if (typeof p.buyer_sku_code !== "string" || !/^[A-Za-z0-9]{1,32}$/.test(p.buyer_sku_code)) return null;
     if (typeof p.slug !== "string" || !/^[a-z0-9-]{1,40}$/.test(p.slug)) return null;
     if (typeof p.customer_no !== "string" || !/^\d{1,32}$/.test(p.customer_no)) return null;
-    if (typeof p.customer_wa !== "string" || !WA_PATTERN.test(p.customer_wa)) return null;
-    if (typeof p.customer_email !== "string" || p.customer_email.length > 160 || !EMAIL_PATTERN.test(p.customer_email)) return null;
     if (p.customer_nickname !== null && (typeof p.customer_nickname !== "string" || p.customer_nickname.length > 64)) return null;
-    if (!Array.isArray(p.methods) || p.methods.length !== 1 || p.methods[0] !== "qris") return null;
+    if (!Array.isArray(p.methods) || !p.methods.length || p.methods.length > 64
+      || !p.methods.every((method) => typeof method === "string" && method.length <= 64)) return null;
+    // Authenticated legacy/malformed method lists require quote_stale at create,
+    // while saved orders can still resume their original invoice.
+    const paymentMethods = Array.isArray(p.payment_methods) && p.payment_methods.length > 0 && p.payment_methods.length <= 64
+      && p.payment_methods.every((method) => isCanonicalMethodOption(method, total))
+      ? p.payment_methods as CheckoutQuotePaymentMethod[] : undefined;
     if (p.locale !== undefined && !["id", "en"].includes(String(p.locale))) return null;
     return {
       purpose: "games_quote",
@@ -81,12 +81,11 @@ export async function verifyGamesQuoteToken(token: string): Promise<GamesQuotePa
       buyer_sku_code: p.buyer_sku_code,
       slug: p.slug,
       customer_no: p.customer_no,
-      customer_wa: p.customer_wa,
-      customer_email: p.customer_email,
       customer_nickname: p.customer_nickname,
       unit_price: unitPrice,
       total,
-      methods: ["qris"],
+      methods: p.methods as string[],
+      payment_methods: paymentMethods,
       locale: (p.locale as "id" | "en" | undefined) ?? "id",
       jti: String(payload.jti),
     };

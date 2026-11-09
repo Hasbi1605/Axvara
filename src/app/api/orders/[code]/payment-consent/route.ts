@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 async function consent(req: NextRequest, code: string) {
   if (!checkRateLimit(req, "orders:lookup")) return NextResponse.json({ error: "Terlalu sering, coba lagi 1 menit." }, { status: 429 });
   code = String(code || "").toUpperCase();
-  // AXV (Market) + AXP (Pedia) memakai rute persetujuan yang sama.
+   // Market, Pedia, dan Games memakai rute persetujuan yang sama.
   if (!isValidBuyerOrderCode(code)) return NextResponse.json({ error: "Kode pesanan tidak valid" }, { status: 400 });
   const body = await readJsonBody(req, 8000); if (!body.ok) return body.response;
   const parsed = schema.safeParse(body.data);

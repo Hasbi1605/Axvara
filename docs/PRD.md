@@ -8,6 +8,8 @@
 
 ## Keputusan owner 9 November 2026: AXVARA Games (implementasi bertahap, belum ada bukti deployment)
 
+- B2 API pembayaran selesai lokal: quote tidak meminta kontak dan mengembalikan `paymentMethods` seperti Pedia; kontak `whatsapp`/`email` + metode dipilih saat create order. QRIS15/gateway30/crypto60 menit dipendekkan ke deadline provider, tanpa perpanjangan retry. Katalog, kurasi gateway, biaya/minimum crypto, invoice, consent dan payment view memakai mesin bersama; metode wajib autentik. Definitif cancel+expire item tanpa restock Market, ambigu klaim dipertahankan tanpa POST ulang; callback/IPN paid menjadwalkan Games sekali, late/underpaid/mismatch manual review tanpa dispatch. Guard pembayaran AXG ditambahkan aditif, route Market tetap AXV-only. Ini menggantikan status non-QRIS belum termasuk pada snapshot B1 di bawah; UI/nickname/env/deployment tetap paket lain. Kontrak `docs/GAMES.md` §12.8; 67 file/1016 tes fokus lokal hijau, bukan bukti live.
+
 - AXVARA Games menjadi bagian `axvara.tech`, pola seperti AXVARA Pedia (bukan subdomain/toko terpisah).
 - Supplier: Digiflazz buyer (seller utama Om*** + pengisi celah; kode buyer `<game>[id]<nominal>`; lihat `docs/agent-rules/digiflazz.md`).
 - Pembayaran memakai rail yang sudah ada di Market/Pedia: QRIS, Virtual Account, e-wallet (gateway Sekalipay) dan crypto (NOWPayments).

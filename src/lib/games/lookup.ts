@@ -2,7 +2,7 @@
 // Pola lookup Pedia/Market: respons generik anti-oracle dan tanpa data
 // modal/seller/kode cadangan.
 import { NextResponse } from "next/server";
-import { createDatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import {
   buyerOrderAccessMatches, createBuyerAccessSession, newOrderAccessFailure,
   orderAccessDenied, requiresOrderAccessCode,
@@ -52,6 +52,15 @@ export function gamesQrisBlock(tx: GamesPaymentRow | null) {
   };
 }
 
+/** Call only after the route's buyer proof, or immediately after its own claim. */
+export async function gamesPaymentBlock(code: string, tx: GamesPaymentRow | null, db: DatabaseAccess) {
+  if (tx?.provider !== "sekalipay_gateway" && tx?.provider !== "nowpayments") return null;
+  const { buildSekalipayGatewayPaymentView, buildNowpaymentsPaymentView } = await import("@/lib/payments/payment-view");
+  if (tx?.provider === "sekalipay_gateway") return buildSekalipayGatewayPaymentView(code, db);
+  if (tx?.provider === "nowpayments") return buildNowpaymentsPaymentView(code, db);
+  return null;
+}
+
 export function maskedContact(order: GamesOrderRow) {
   const wa = String(order.customer_wa ?? "");
   const email = String(order.customer_email ?? "");
@@ -65,7 +74,7 @@ export function maskedContact(order: GamesOrderRow) {
 export async function lookupGamesOrder(code: string, contactRaw: string, request?: Request) {
   const loaded = await loadGamesOrder(code);
   if (!loaded) return orderAccessDenied();
-  const { order, item, tx } = loaded;
+  const { db, order, item, tx } = loaded;
   if (request) {
     const failure = await newOrderAccessFailure(request, order, contactRaw, { allowAdmin: false });
     if (failure) return failure;
@@ -107,6 +116,7 @@ export async function lookupGamesOrder(code: string, contactRaw: string, request
       expires_at: order.expires_at,
       locale: String(order.locale ?? "id"),
       qris: gamesQrisBlock(tx),
+      payment: await gamesPaymentBlock(code, tx, db),
     },
   }, { headers: { "Cache-Control": "private, no-store" } });
 }

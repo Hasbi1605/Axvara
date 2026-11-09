@@ -258,7 +258,7 @@ async function savedGatewayView(orderCode: string) {
 export type GatewayInvoiceAbsence = "absent" | "present" | "unknown";
 
 export async function confirmGatewayInvoiceAbsent(orderCode: string, db: DatabaseAccess = createDatabaseAccess()): Promise<GatewayInvoiceAbsence> {
-  if (typeof orderCode !== "string" || !/^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) return "unknown";
+  if (typeof orderCode !== "string" || !/^(?:AXV|AXP|AXG)-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) return "unknown";
   let response: Awaited<ReturnType<typeof gatewayFetch>>;
   try {
     // gatewayFetch GET payment/* memakai admission budget existing (20/menit).
@@ -278,7 +278,7 @@ export async function confirmGatewayInvoiceAbsent(orderCode: string, db: Databas
  * pending/paid/finalize tidak pernah ditimpa. `last_error` menjadi alasan durable untuk review.
  */
 export async function markGatewayInvoiceCreateRejected(orderCode: string, db: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
-  if (typeof orderCode !== "string" || !/^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) return false;
+  if (typeof orderCode !== "string" || !/^(?:AXV|AXP|AXG)-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) return false;
   const result = await db.execRun(`UPDATE payment_transactions SET status='failed',last_error='sekalipay_gateway_create_rejected',updated_at=datetime('now')
     WHERE order_code=? AND provider='sekalipay_gateway' AND status='initializing' AND provider_payment_id IS NULL
       AND EXISTS(SELECT 1 FROM orders o WHERE o.code=payment_transactions.order_code AND o.status='pending' AND o.payment_status IN ('pending','unpaid'))`, orderCode);
@@ -288,7 +288,7 @@ export async function markGatewayInvoiceCreateRejected(orderCode: string, db: Da
 export function createSekalipayGatewayInvoice(orderCode?: string, amount?: number, channel?: string, customer?: GatewayCustomer, estimatedFee?: number, adminTest = false): Promise<Awaited<ReturnType<typeof savedGatewayView>>> {
   if (!isSekalipayGatewayConfigured(adminTest) && !orderCode) throw new Error("sekalipay_gateway_not_configured");
   return (async () => {
-    if (!orderCode || !/^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(orderCode) || !Number.isSafeInteger(amount) || amount! < 100 || amount! > 999_999_999
+    if (!orderCode || !/^(?:AXV|AXP|AXG)-\d{8}-[A-Z0-9]{8}$/.test(orderCode) || !Number.isSafeInteger(amount) || amount! < 100 || amount! > 999_999_999
       || !channel || !/^[A-Za-z0-9_-]{1,64}$/.test(channel) || /qris/i.test(channel)
       || !Number.isSafeInteger(estimatedFee) || estimatedFee! < 0 || estimatedFee! > 999_999_999
       || !customer || typeof customer.name !== "string" || !customer.name.trim() || customer.name.length > 100
@@ -386,7 +386,7 @@ export async function confirmGatewayFee(orderCode: string, expectedFinalTotal: n
 export function reconcileSekalipayGatewayPayment(orderCode?: string, db: DatabaseAccess = createDatabaseAccess()): Promise<"paid" | "already_paid" | "pending" | "manual_review"> {
   if (!orderCode) throw new Error("sekalipay_gateway_not_configured");
   return (async () => {
-    if (!/^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) throw new Error("sekalipay_gateway_invalid_input");
+    if (!/^(?:AXV|AXP|AXG)-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) throw new Error("sekalipay_gateway_invalid_input");
     const tx = await db.queryFirst(`SELECT pt.*,o.status AS order_status,o.payment_status AS order_payment_status,o.expires_at AS order_expires_at,
       o.payment_method AS order_method,o.subtotal AS order_subtotal,o.variant_id,o.sales_channel,o.order_kind
       FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code WHERE pt.order_code=? AND pt.provider='sekalipay_gateway'`, orderCode);
@@ -446,13 +446,17 @@ export function reconcileSekalipayGatewayPayment(orderCode?: string, db: Databas
     const event = await db.queryFirst("SELECT id,status,provider,order_code,amount FROM dana_webhook_events WHERE event_key=?", eventKey);
     if (!event || event.provider !== "sekalipay_gateway" || event.order_code !== orderCode || event.amount !== tx.payable_amount) return review("sekalipay_gateway_event_mismatch_manual_review");
     if (event.status === "matched") return review("sekalipay_gateway_event_mismatch_manual_review");
-    const changed = await transitionPendingPaymentToPaid(orderCode, paidAt, tx.order_kind === "pedia" ? null : {
+    const changed = await transitionPendingPaymentToPaid(orderCode, paidAt, tx.order_kind === "pedia" || tx.order_kind === "games" ? null : {
       variantId: tx.variant_id == null ? null : Number(tx.variant_id), inventoryId: null, salesChannel: String(tx.sales_channel),
     }, { id: Number(event.id) }, { paymentMethod: "sekalipay_gateway", eventMode: "gateway" }, db.d1);
     if (!changed) {
       const current = await db.queryFirst("SELECT status,payment_status FROM orders WHERE code=?", orderCode);
       if (current?.payment_status === "paid") return "already_paid";
       return review("sekalipay_gateway_race_manual_review");
+    }
+    if (tx.order_kind === "games") {
+      const { schedulePaidFulfillment } = await import("./paid-fulfillment");
+      await schedulePaidFulfillment(orderCode, "games");
     }
     return "paid";
   })();

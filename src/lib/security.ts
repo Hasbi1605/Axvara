@@ -40,12 +40,12 @@ export function isValidOrderCode(code: string): boolean {
 
 /**
  * Kode pesanan pembeli untuk rail pembayaran bersama (2026-11-07): AXV (Market)
- * dan AXP (Pedia). HANYA untuk guard format di jalur pembayaran bersama
- * (consent, IPN/callback) supaya pesanan Pedia bisa memakai mesin yang sama.
+ * AXP (Pedia) dan AXG (Games). HANYA untuk guard format pembayaran bersama
+ * (consent, IPN/callback), bukan perluasan route Market.
  * `isValidOrderCode` tetap AXV-only agar route Market tidak melebar.
  */
 export function isValidBuyerOrderCode(code: string): boolean {
-  return /^(?:AXV|AXP)-\d{8}-[A-Z0-9]{8}$/.test(code);
+  return /^(?:AXV|AXP|AXG)-\d{8}-[A-Z0-9]{8}$/.test(code);
 }
 
 /**

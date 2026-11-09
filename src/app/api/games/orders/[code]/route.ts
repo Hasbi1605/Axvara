@@ -6,7 +6,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { buyerOrderAccessMatches, newOrderAccessFailure, requiresOrderAccessCode } from "@/lib/order-access";
 import { gamesGameForBrand } from "@/lib/games/registry";
 import { gamesBuyerStatus } from "@/lib/games/status";
-import { gamesQrisBlock, loadGamesOrder, maskedContact } from "@/lib/games/lookup";
+import { gamesPaymentBlock, gamesQrisBlock, loadGamesOrder, maskedContact } from "@/lib/games/lookup";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
 
 export const runtime = "edge";
@@ -72,6 +72,41 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     } catch { /* view tersimpan tetap dilayani */ }
   }
 
+  if (order.status === "pending" && tx && ["pending", "initializing"].includes(String(tx.status))
+    && ["sekalipay_gateway", "nowpayments"].includes(String(tx.provider))) {
+    try {
+      const wake = new URL(request.url).searchParams.get("wake") === "1";
+      if (!wake || checkRateLimit(request, "games:wake")) {
+        if (tx.provider === "sekalipay_gateway") {
+          const { claimSekalipayGatewayPoll } = await import("@/lib/payments/payment-view");
+          if (await claimSekalipayGatewayPoll(clean, false, db)) {
+            const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
+            await reconcileSekalipayGatewayPayment(clean, db).catch(() => null);
+          }
+          const view = await gamesPaymentBlock(clean, tx, db);
+          if (view?.state === "initializing") {
+            const saved = await db.queryFirst(`SELECT pt.provider_payment_id,pt.gateway_channel,pt.gateway_estimated_fee
+              FROM payment_transactions pt WHERE pt.order_code=? AND pt.provider='sekalipay_gateway'`, clean);
+            if (saved?.provider_payment_id) {
+              // Same known invoice recovery as Pedia: the adapter can only GET.
+              const { createSekalipayGatewayInvoice } = await import("@/lib/payments/sekalipay-gateway");
+              await createSekalipayGatewayInvoice(clean, Number(tx.requested_amount), String(saved.gateway_channel), {
+                name: String(order.customer_name), email: String(order.customer_email), phone: String(order.customer_wa),
+              }, Number(saved.gateway_estimated_fee));
+            }
+          }
+        } else {
+          const { claimNowpaymentsPollReconcile, reconcileNowpaymentsPayment } = await import("@/lib/payments/nowpayments");
+          if (await claimNowpaymentsPollReconcile(clean)) await reconcileNowpaymentsPayment(clean);
+        }
+        const refreshed = await db.queryFirst("SELECT status,payment_status,paid_at FROM orders WHERE code=?", clean);
+        if (refreshed) Object.assign(order, refreshed);
+        const refreshedItem = await db.queryFirst("SELECT status,sn,supplier_message FROM games_order_items WHERE order_code=?", clean);
+        if (refreshedItem) Object.assign(item, refreshedItem);
+      }
+    } catch { /* Saved view remains available; cron recovers interrupted work. */ }
+  }
+
   const game = gamesGameForBrand(item.game_brand);
   const status = gamesBuyerStatus(order.status, item.status);
   const success = status === "success";
@@ -103,6 +138,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       locale: String(order.locale ?? "id"),
       buyer_canceled: order.status === "dibatalkan",
       qris: gamesQrisBlock(tx),
+      payment: await gamesPaymentBlock(clean, tx, db),
     },
   }, { headers: { "Cache-Control": "private, no-store", "Vary": "x-order-contact, x-order-access-code" } });
 }

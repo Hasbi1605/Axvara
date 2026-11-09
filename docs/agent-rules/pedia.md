@@ -1,5 +1,8 @@
 # Aturan agent — Pedia (SMM)
 
+## Perluasan bersama 9 November 2026: Games B2
+- Atas keputusan owner di `payments.md`, guard pembayaran bersama kini menerima AXV|AXP|AXG (consent/IPN/callback dan helper gateway); `isValidOrderCode` tetap AXV-only. Ini memperluas snapshot AXV|AXP fase B di bawah, tanpa mengubah katalog, metode, TTL, klaim, restock atau fulfillment Pedia. Games memakai ulang serializer/validator Pedia dan adapter pembayaran existing, bukan cabang finansial baru.
+
 ## Keputusan owner 7 November 2026 (final i18n Pedia): metadata, coming-soon, email pembeli
 - Metadata setiap route Pedia memakai `generateMetadata` + `requestLocale()` (cookie `axv_locale`; gagal baca = ID). Canonical dan robots TIDAK boleh berubah: jangan menambah/menghapus `alternates.canonical`, dan jangan menambahkan `robots` baru. Route yang page-nya client (status pesanan) menaruh metadata di layout server.
 - Halaman "segera hadir" (`PEDIA_ENABLED!=true`) wajib ID/EN dari kamus `pediaCopy`; jangan menulis string baru langsung di page.

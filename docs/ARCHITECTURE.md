@@ -96,7 +96,7 @@ W3 backend lokal: checkout quote/order crypto menyimpan snapshot USD dan locale,
 ## AXVARA Games — arsitektur (9 November 2026)
 
 Spesifikasi produk/desain lengkap: `docs/GAMES.md`. Backend inti, admin dan API
-pembeli QRIS B1 sudah diimplementasikan lokal (§16.25–§16.28); belum ada bukti
+pembeli B1 QRIS + B2 gateway/crypto sudah diimplementasikan lokal (§16.25–§16.28); belum ada bukti
 deployment Games. Daftar berikut mempertahankan snapshot rancangan awal;
 status implementasi terkini mengikuti seksi §16 tersebut.
 
@@ -4201,7 +4201,17 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
-### 16.28 AXVARA Games B1: API pembeli QRIS — 9 November 2026 (lokal, belum deploy)
+### 16.28 AXVARA Games B1 + B2: API pembeli dan rail pembayaran — 9 November 2026 (lokal, belum deploy)
+
+#### B2 terkini: gateway/crypto dan pemisahan quote/kontak
+- `POST /api/games/quote` kini tanpa kontak: `{slug,buyer_sku_code,fields,nickname?,locale?}` → `paymentMethods` seperti Pedia (katalog+fee/total), `game`/`sku` ringkas, `quote_token` JWE 30 menit. Kontak tidak ada dalam token. `POST /api/games/orders` menerima `{quote_token,payment_method,whatsapp,email}`, memvalidasi/menormalisasi kontak seperti Pedia sebelum admission. Kontrak ini menggantikan bentuk B1 di snapshot bawah.
+- `buildMethodCatalog` + `serializePediaQuoteMethods`/`resolvePediaMethodSelection` dipakai ulang; hanya available masuk token, baris diverifikasi `isCanonicalMethodOption`. Hilang/tidak kanonis/tidak ada pilihan → 409 `quote_stale`, tanpa fallback. Kurasi DANA/ShopeePay, harga crypto per koin, snapshot/minimum tetap sumber bersama (§16.20/§16.22); tidak ada daftar kanal/rumus Games. Token maksimal30.000 karakter (fixture katalog28koin sekitar23k), stream JSON tetap32.000byte, lookup/consent8.000byte.
+- Order Games baru QRIS15/gateway30/crypto60 menit, minimum deadline provider, tidak pernah diperpanjang. Claim order+item tetap batch atomik berpagar SKU/target, tanpa stok Market. Saved retry non-QRIS hanya view tersimpan (metode awal tetap meski request berubah); gateway/crypto create memakai adapter existing. Gagal rail503 `error_code:payment_method_unavailable` + kode/status_url. Definitif mengikuti Pedia (gateway rejeksi terbaca+GET absence+mark rejected, atau preclaim; crypto klasifikasi existing); cancel `transitionPendingOrder(...,[])` dan expire item. Ambigu tidak dibatalkan/tidak di-POST ulang.
+- `games/lookup.ts` membangun payment view kanonis hanya setelah proof penuh (atau create milik request). Status polling memakai klaim durable existing; gateway known-id initializing dipulihkan GET-only. Consent memakai endpoint bersama. `isValidBuyerOrderCode` dan empat guard gateway menerima AXV|AXP|AXG; `isValidOrderCode` tetap AXV-only, route Market tetap menolak AXG/AXP.
+- Paid gateway reconcile menjadwalkan Games hanya setelah transisi paid berhasil; crypto IPN memakai scheduler existing. Keduanya mengirim fulfillment=null untuk Games (tanpa outbox Market), replay tidak menjadwalkan kedua kali. Late/underpaid/mismatch tidak dispatch; mismatch identitas/nominal crypto khusus Games diberi marker durable manual review, error Market/Pedia tidak diubah. Cron `games_orders` tetap recovery.
+- Bukti B2 lokal: 67 file/1016 tes fokus hijau termasuk Games/Pedia/payments/security dan dua workerd. Tanpa dev server/full suite/build/deploy, transaksi produksi, env/migrasi atau UI baru; full suite/build diteruskan ke PM.
+
+#### Snapshot B1 (kontrak quote/kontak dan QRIS-only diganti B2 di atas)
 
 - **API edge dinamis:** `GET /api/games/catalog`, `GET /api/games/catalog/[slug]`,
   `POST /api/games/quote`, `POST /api/games/orders`, `GET /api/games/orders/[code]`,

@@ -68,9 +68,9 @@ async function quoteToken(over: Record<string, unknown> = {}): Promise<string> {
   return (await res.json()).quote_token;
 }
 
-async function placeOrder(token: string) {
+async function placeOrder(token: string, contact: Record<string, unknown> = {}) {
   const { POST } = await import("@/app/api/games/orders/route");
-  return POST(json("http://x/api/games/orders", { quote_token: token }));
+  return POST(json("http://x/api/games/orders", { quote_token: token, payment_method: "qris", whatsapp: Q.whatsapp, email: Q.email, ...contact }));
 }
 
 function addOrder(code: string, over: Record<string, unknown> = {}) {
@@ -158,21 +158,26 @@ describe("games catalog", () => {
 });
 
 describe("games quote", () => {
-  it("signs a QRIS-only quote with the registry customer_no and sell price", async () => {
+  it("signs the shared payment catalog with the registry customer_no and sell price", async () => {
     seedSku();
     const res = await makeQuote();
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toMatchObject({
       total: 11000, payable: 11000, currency: "IDR",
-      payment_methods: [{ id: "qris", kind: "qris", label: "QRIS", currency: "IDR", available: true }],
+      sku: { buyer_sku_code: "ml86", name: "86 Diamond", price: 11000 },
+      paymentMethods: expect.arrayContaining([{ id: "qris", kind: "qris", label: "QRIS", currency: "IDR", available: true,
+        account_name: "QRIS", account_number: "qris", qris_url: null, sublabel: null }]),
     });
     const { verifyGamesQuoteToken } = await import("@/lib/games/quote");
     const payload = await verifyGamesQuoteToken(data.quote_token);
     expect(payload).toMatchObject({
       buyer_sku_code: "ml86", slug: "mobile-legends", customer_no: "123456789",
-      customer_wa: "6281234567890", customer_email: "buyer@example.com", total: 11000, methods: ["qris"],
+      total: 11000,
+      methods: data.paymentMethods.filter((method: { available: boolean }) => method.available).map((method: { id: string }) => method.id),
     });
+    expect(payload).not.toHaveProperty("customer_wa");
+    expect(payload).not.toHaveProperty("customer_email");
   });
 
   it("closes quote and order with 503 games_preview while testing or without credentials", async () => {
@@ -223,6 +228,17 @@ describe("games quote", () => {
 });
 
 describe("games orders", () => {
+  it("quotes without contacts, then validates and normalizes contact at order admission", async () => {
+    seedSku();
+    const token = await quoteToken({ whatsapp: undefined, email: undefined });
+    for (const contact of [{ whatsapp: "" }, { email: "invalid" }, { whatsapp: "1234" }, { email: `${"a".repeat(155)}@example.test` }]) {
+      expect((await placeOrder(token, contact)).status).toBe(400);
+    }
+    const response = await placeOrder(token, { whatsapp: " +62 812-3456-7890 ", email: " buyer@example.com " });
+    expect(response.status).toBe(201);
+    expect(orderRow((await response.json()).code)).toMatchObject({ customer_wa: "6281234567890", customer_email: "buyer@example.com" });
+  });
+
   it("creates one atomic QRIS order with P6 max_price and a 15-minute deadline", async () => {
     seedSku();
     const token = await quoteToken();
@@ -371,9 +387,9 @@ describe("games orders", () => {
     const { POST } = await import("@/app/api/games/orders/route");
     const count = scope === "ip" ? 5 : 3;
     for (let i = 0; i <= count; i++) {
-      const token = await quoteToken({ fields: { userId: String(100000 + i), zoneId: "1234" },
-        whatsapp: `08123456789${i}`, email: scope === "email" ? Q.email : `buyer${i}@example.com` });
-      const res = await POST(json("http://x/api/games/orders", { quote_token: token }, { "cf-connecting-ip": "203.0.113.1" }));
+      const token = await quoteToken({ fields: { userId: String(100000 + i), zoneId: "1234" } });
+      const res = await POST(json("http://x/api/games/orders", { quote_token: token, payment_method: "qris",
+        whatsapp: `08123456789${i}`, email: scope === "email" ? Q.email : `buyer${i}@example.com` }, { "cf-connecting-ip": "203.0.113.1" }));
       expect(res.status).toBe(i === count ? 429 : 201);
     }
     expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()).toEqual({ n: count });

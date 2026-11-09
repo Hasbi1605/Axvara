@@ -10,13 +10,14 @@ it("executes merchant callback, signed GET and atomic paid guard in workerd", as
     bundle: true, write: false, format: "esm", platform: "neutral", target: "es2022",
     define: { "process.env": JSON.stringify({ SEKALIPAY_GATEWAY_API_KEY: "fixture-key", SEKALIPAY_GATEWAY_SECRET_KEY: "fixture-secret", SEKALIPAY_GATEWAY_ENABLED: "false" }) },
     plugins: [{ name: "boundaries", setup(builder) {
-      builder.onResolve({ filter: /^next\/server$|^@\/lib\/db$|^@\/lib\/site$|^@\/lib\/payments\/dana-history$|^@\/lib\/orders\/cost-snapshot$|^\.\/client$|^\.\/nowpayments$/ }, (args) => {
+      builder.onResolve({ filter: /^next\/server$|^@\/lib\/db$|^@\/lib\/site$|^@\/lib\/payments\/dana-history$|^@\/lib\/orders\/cost-snapshot$|^\.\/client$|^\.\/nowpayments$|^\.\/paid-fulfillment$/ }, (args) => {
         if (args.path === "./nowpayments" && !args.importer.endsWith("payment-view.ts")) return null;
         if (args.path === "./client" && !args.importer.endsWith("orders-transition.ts")) return null;
         return { path: args.path, namespace: "fixture" };
       });
       builder.onLoad({ filter: /.*/, namespace: "fixture" }, (args) => {
         if (args.path === "next/server") return { contents: `export const NextResponse={json:(data,init)=>Response.json(data,init)};` };
+        if (args.path === "./paid-fulfillment") return { contents: `export const schedulePaidFulfillment=async(code,kind)=>{await globalThis.fixtureDb.prepare("INSERT INTO store_settings(key,value) VALUES('games_scheduled',?)").bind(code+':'+kind).run()};` };
         if (args.path === "./nowpayments") return { contents: `export const claimNowpaymentsPollReconcile=()=>false;export const reconcileNowpaymentsPayment=()=>null;` };
         if (args.path === "@/lib/site") return { contents: `export const SITE={webUrl:'https://axvara.tech'};` };
         if (args.path === "@/lib/payments/dana-history") return { contents: `export const DANA_AMOUNT_REUSED_SQL='0';` };
@@ -35,7 +36,7 @@ it("executes merchant callback, signed GET and atomic paid guard in workerd", as
       calls++;
       const ref = request.url.split("/").at(-1)!;
       expect(request.headers.get("x-signature")).toBe(await signGatewayRequest("fixture-secret", "GET", `api/v1/gateway/payment/${ref}`, {}, Number(request.headers.get("x-timestamp"))));
-      return Response.json({ status: true, data: { merchant_ref_id: ref, invoice: ref === code ? "SPYworker" : "SPYlate", payment_code: "TESTVA", amount: 10000, fee: 4700, total: 14700, status: pending ? "pending" : "paid", paid_at: paidAt } });
+      return Response.json({ status: true, data: { merchant_ref_id: ref, invoice: ref.startsWith("AXG-") ? "SPYgame" : ref === code ? "SPYworker" : "SPYlate", payment_code: "TESTVA", amount: 10000, fee: 4700, total: 14700, status: pending ? "pending" : "paid", paid_at: paidAt } });
     },
   });
   try {
@@ -92,5 +93,19 @@ it("executes merchant callback, signed GET and atomic paid guard in workerd", as
     const settled = await (await runtime.dispatchFetch(`https://axvara.test/late?code=${budgetPaid}`)).json() as { state: string; used: number };
     expect(settled.state).toBe("paid"); expect(settled.used).toBeGreaterThanOrEqual(13); expect(settled.used).toBeLessThanOrEqual(40);
     expect((await db.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code=?").bind(budgetPaid).first())?.n).toBe(1);
+    const game = "AXG-20261109-WORKER01";
+    await db.batch([
+      db.prepare("INSERT INTO orders(code,status,payment_status,expires_at,payment_method,subtotal,sales_channel,order_kind,items) VALUES(?,'pending','unpaid',?,'sekalipay_gateway:TESTVA',10000,'web','games','[]')").bind(game, deadline),
+      db.prepare("INSERT INTO payment_transactions VALUES(?,'sekalipay_gateway',?,'SPYgame',10000,14700,4700,4700,'TESTVA',0,?,'pending',?,NULL,NULL,NULL,NULL)").bind(game, game, paidAt, deadline),
+    ]);
+    const gameRaw = JSON.stringify({ merchant_ref_id: game, invoice: "SPYgame", amount: 10000, fee: 4700, total: 14700, status: "paid", paid_at: "2026-11-09 09:00:00" });
+    const gameSig = await gatewayHmac("fixture-secret", gameRaw);
+    for (let n = 0; n < 2; n++) {
+      expect((await runtime.dispatchFetch("https://axvara.test/callback", { method: "POST", body: gameRaw,
+        headers: { "content-type": "application/json", "x-signature": gameSig } })).status).toBe(200);
+    }
+    expect((await db.prepare("SELECT payment_status FROM orders WHERE code=?").bind(game).first())?.payment_status).toBe("paid");
+    expect((await db.prepare("SELECT value FROM store_settings WHERE key='games_scheduled'").first())?.value).toBe(`${game}:games`);
+    expect((await db.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code=?").bind(game).first())?.n).toBe(0);
   } finally { await runtime.dispose(); }
 });

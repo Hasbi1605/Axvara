@@ -1,7 +1,7 @@
 # AXVARA Games — Spesifikasi Produk & Desain
 
-> **Status (9 November 2026): backend inti, admin data, dan API pembeli B1 QRIS diimplementasikan lokal; belum ada bukti deployment Games.**
-> Env Digiflazz, UI storefront, nickname publik, rail non-QRIS, deposit dan transaksi nyata belum termasuk bukti B1.
+> **Status (9 November 2026): backend inti, admin data, dan API pembeli B1 QRIS + B2 gateway/crypto diimplementasikan lokal; belum ada bukti deployment Games.**
+> Env Digiflazz, UI storefront, nickname publik, deposit dan transaksi nyata belum termasuk bukti B1/B2; non-QRIS kini diuji fixture lokal B2.
 > §1–§11 mempertahankan rancangan awal; keputusan terbuka yang sudah dijawab
 > digantikan §9, dan kontrak implementasi terkini ada di §12.
 > Ringkasan ada di `docs/PRD.md`, `docs/DESIGN.md`, `docs/ARCHITECTURE.md`;
@@ -230,8 +230,8 @@ mencatat di `docs/agent-rules/digiflazz.md`.
 
 Cakupan yang sudah diimplementasikan lokal: proxy `/dgf`, klien Digiflazz, schema,
 sinkron katalog/harga, dispatch + seller cadangan, webhook, cron, admin data
-(§12.7), dan API pembeli B1 QRIS (§12.8). Nickname endpoint publik, rail
-gateway/crypto Games dan UI storefront adalah paket terpisah, bukan bagian B1.
+(§12.7), dan API pembeli B1 QRIS + B2 gateway/crypto (§12.8).
+UI storefront dan endpoint nickname publik tetap paket terpisah.
 
 ### 12.1 Egress & env
 - Panggilan runtime: `POST {WARUNG_REBAHAN_PROXY_URL}/dgf/v1/{cek-saldo|price-list|transaction}`
@@ -298,8 +298,9 @@ oleh sinkron.
   (`/api/admin/games/products`, `.../enable-wave`) — §12.7.
   B1 API katalog/quote/order/status/lacak QRIS, registry empat game, preview gate P9,
   expiry item di job existing, dan paid routing tiga provider QRIS juga selesai lokal (§12.8).
+  B2 menambah gateway/crypto, consent dan view/status/lookup kanonis tanpa UI atau env baru.
   Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.28.
-- **Untuk Paseo/fase berikut:** rail gateway/crypto Games, endpoint cek nickname (rate limit +
+- **Untuk Paseo/fase berikut:** UI rail gateway/crypto Games, endpoint cek nickname (rate limit +
   cache), UI §4–§7, lalu G8 go-live (pasang env `secret_text`, rotasi key, aktifkan
   webhook dashboard, mode Production, deposit).
 - Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final; seed
@@ -357,7 +358,7 @@ lewat `readJsonBody`.
   `tests/games-admin-migration.test.ts`); belum ada deployment, data produksi, atau
   keputusan harga Oura gelombang 1 yang diisi ke tabel referensi.
 
-### 12.8 API pembeli B1 — QRIS (9 November 2026, lokal; belum deploy)
+### 12.8 API pembeli B1 + B2 — QRIS, gateway, crypto (9 November 2026, lokal; belum deploy)
 
 - **Registry:** `src/lib/games/registry.ts` adalah sumber tunggal slug, brand, field
   ID/EN, regex dan `buildCustomerNo`: `free-fire`/`free-fire-max` memakai `playerId`,
@@ -380,8 +381,8 @@ lewat `readJsonBody`.
 |---|---|
 | `GET /api/games/catalog` | `{ordering_open,games:[{slug,name,publisher,currency,icon,banner,min_price,sku_count}]}`; hanya empat game registry dengan SKU enabled |
 | `GET /api/games/catalog/[slug]` | `{game:{slug,name,publisher,currency,icon,banner,fields},ordering_open,products:[{buyer_sku_code,name,price,group,display_order,available}]}`; SKU seller OFF tetap tampil `available:false`; tanpa modal/margin/seller/kode cadangan |
-| `POST /api/games/quote` | `{slug,buyer_sku_code,fields,whatsapp,email,nickname?,locale?}`; validasi registry + SKU live; balas `{ok,quote_token,quote_id,total,payable,currency:'IDR',locale,game,payment_methods}`. B1 hanya QRIS; token JWE A256GCM autentik/terenkripsi TTL 30 menit mengikat SKU/harga/customer_no/kontak/locale; nickname opsional adalah input pembeli, BUKAN hasil verifikasi |
-| `POST /api/games/orders` | `{quote_token}`; ulang quote tersimpan → order sama 200, baru → 201 `{code,status_url,status,total,qris,reused}`. `status_url=/games/pesanan/[code]`; gagal invoice 503 tetap membawa kode/status_url untuk melanjutkan order sama |
+| `POST /api/games/quote` | `{slug,buyer_sku_code,fields,nickname?,locale?}`; tanpa kontak; validasi registry + SKU live; balas `{ok,quote_token,quote_id,total,payable,currency:'IDR',locale,game,sku,paymentMethods}`. Katalog/metode beserta total+fee sama dengan Pedia (`buildMethodCatalog`), hanya yang available ditandatangani. JWE A256GCM TTL 30 menit mengikat SKU/harga/customer_no/locale/metode; nickname input pembeli, BUKAN hasil verifikasi |
+| `POST /api/games/orders` | `{quote_token,payment_method,whatsapp,email}` (default QRIS bila metode tidak dikirim dan QRIS ada dalam token); kontak divalidasi/trim/normalisasi WA 62 saat admission. Ulang quote tersimpan → order/metode sama 200, baru → 201 `{code,status_url,status,total,qris,payment?,reused}`; QRIS null untuk gateway/crypto. `status_url=/games/pesanan/[code]`; gagal rail 503 `error_code:payment_method_unavailable` membawa kode/status_url, saved retry non-QRIS tidak POST ulang |
 | `GET /api/games/orders/[code]` | Header `x-order-contact` (atau `x-order-access-code`) = WA/email checkout penuh; 200 `{ok,order}` dengan `games_status`, ID akun, nominal, SN sukses dan QRIS tersimpan; kontak respons dimask, cost/max_price/backup tidak dikirim. `?wake=1` memakai klaim durable untuk recovery KlikQRIS; tidak membuat order baru |
 | `POST /api/games/lookup` | `{code,contact}` (body maksimal 8.000 byte); kontak penuh seperti Pedia, salah/tidak ada order → respons generik 404. Balas `{order}` dengan ringkasan aman yang sama; tidak menerbitkan grant kredensial Market |
 
@@ -393,8 +394,23 @@ enabled/seller/modal dipagar ulang DI DALAM satu `d1.batch` atomik yang membuat
 tidak ada reservasi stok Market. Harga/ketersediaan berubah → 409 `quote_stale`;
 satu customer_no + SKU masih aktif → 409 `duplicate_active_order` (termasuk
 `needs_check`, sampai admin menyelesaikannya). Quote cacat/kedaluwarsa → 409
-`quote_expired`. Invoice memakai `createActiveQrisInvoice` existing seperti Pedia,
-mempertahankan provider/nominal tersimpan saat retry.
+`quote_expired`. Invoice memakai `createActiveQrisInvoice`, `createSekalipayGatewayInvoice`
+atau `createNowpaymentsInvoice` existing seperti Pedia, mempertahankan provider/nominal
+tersimpan saat retry. Metode hilang/tidak kanonis/tidak ada dalam token → 409 `quote_stale`.
+Order baru gateway 30 menit, crypto 60, QRIS 15, dipendekkan ke deadline provider;
+retry tidak memperpanjangnya. Token dibatasi 30.000 karakter untuk katalog penuh
+28 koin + gateway (batas stream JSON tetap 32.000 byte). Payload token tidak memuat kontak.
+
+B2 memakai `serializePediaQuoteMethods`/`resolvePediaMethodSelection`: tidak ada
+daftar kanal atau rumus biaya Games. Kurasi DANA/ShopeePay dan `cryptoPricing(base,ticker)`
+mengikuti payment rules terkini. Definitif gateway = rejeksi terbaca + GET absence
+`absent` + mark rejected berhasil, atau gagal sebelum klaim; crypto mengikuti Pedia.
+Definitif membatalkan order + item expired dengan restock kosong. Ambigu mempertahankan
+klaim/duplicate-target guard dan tidak POST ulang; memilih metode lain memerlukan quote baru.
+Status/lacak menyertakan `payment` dari `build*PaymentView`, dengan proof kontak penuh
+sebelum baca view/poll. Consent memakai `POST /api/orders/[code]/payment-consent`
+(`{contact,expected_final_total}`); fee/total harus sesuai dan URL baru muncul setelah consent.
+GET status memakai klaim poll durable, recovery gateway known-id hanya GET; cron tetap recovery.
 
 Status pembeli: `awaiting_payment` hanya saat order masih pending; item
 `queued|submitting|pending` atau paid belum dipromosi → `processing`;
@@ -406,11 +422,16 @@ paid); histori item expired tidak menyumbat sweep. Shared
 `transitionPendingOrder` mengecualikan Pedia DAN Games dari restock, walau ID item
 bertabrakan dengan `products`/`product_variants`. KlikQRIS callback/reconcile,
 DANA dan GoPay paid memanggil `schedulePaidFulfillment(code,'games')`, tanpa
-Market outbox/WR/SK; cron `games_orders` tetap pemulihan. Guard kode shared
-gateway/crypto tidak diperluas dalam B1.
+Market outbox/WR/SK; cron `games_orders` tetap pemulihan. B2 memperluas guard pembayaran
+AXV|AXP|AXG (bukan `isValidOrderCode`/route Market). Gateway paid reconcile/callback
+dan crypto IPN menjadwalkan Games sekali setelah transisi atomik menang; late/underpaid/
+mismatch manual review tanpa dispatch, tanpa job fulfillment Market.
 
 Batas bukti: tes fixture lokal (termasuk replay callback tiga QRIS dan ID stok
 bertabrakan) + `games-checkout.workerd.test.ts` (handler asli quote/order/reuse/
 status/expiry dengan D1 workerd, adapter HTTP Next diganti primitive native),
-bukan deployment atau pembayaran produksi. UI/nickname/non-QRIS
-dan akses produksi tidak diuji dalam paket B1.
+bukan deployment atau pembayaran produksi. B2 menambah `games-payment-rails.integration.test.ts`
+(33 tes: katalog, quote/contact, create/retry/min expiry, kegagalan definitif/ambigu,
+consent, status/recovery, callback/IPN replay, review tanpa dispatch, route Market tetap sempit)
+dan regresi workerd gateway AXG. Fokus akhir 67 file/1016 tes hijau; UI/nickname dan akses
+produksi tetap di luar B2, full suite/build milik PM.

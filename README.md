@@ -1704,24 +1704,33 @@ migrasi `0107_games_core.sql`, cron lite `games_catalog`/`games_orders`, dan web
 (`games_reference_prices`, override grup/urutan), tab **Games** di `/admin?section=games`,
 API `GET/PATCH /api/admin/games/products` + `POST .../enable-wave` (dry-run lalu konfirmasi).
 
-B1 API pembeli QRIS (lokal, belum deploy):
+B1+B2 API pembeli QRIS/gateway/crypto (lokal, belum deploy):
 - `GET /api/games/catalog` + `GET /api/games/catalog/[slug]`: empat game registry,
   nominal enabled, seller OFF tampil unavailable, tanpa modal/seller/backup.
-- `POST /api/games/quote` body `{slug,buyer_sku_code,fields,whatsapp,email,nickname?,locale?}`:
-  quote JWE autentik/terenkripsi 30 menit, harga `sell_price`, B1 hanya QRIS.
-- `POST /api/games/orders` body `{quote_token}`: order `AXG-YYYYMMDD-XXXXXXXX`,
-  quantity 1, `max_price=min(harga jual,ceil(modal*1.05))`, deadline 15 menit;
+- `POST /api/games/quote` body `{slug,buyer_sku_code,fields,nickname?,locale?}`:
+  quote JWE autentik/terenkripsi 30 menit tanpa kontak, harga `sell_price`,
+  respons `paymentMethods` dari katalog Pedia/Market dengan biaya/total dan `game`/`sku` ringkas.
+- `POST /api/games/orders` body `{quote_token,payment_method,whatsapp,email}`: order `AXG-YYYYMMDD-XXXXXXXX`,
+  kontak divalidasi/normalisasi saat order, quantity 1, `max_price=min(harga jual,ceil(modal*1.05))`,
+  deadline QRIS15/gateway30/crypto60 menit, minimum deadline provider tanpa perpanjangan;
   satu batch order + item, admission D1 bersama, tanpa stok Market; retry quote
   memakai order/invoice sama. Konflik harga/ketersediaan/target aktif → 409;
-  gagal invoice 503 membawa kode order yang tetap tersimpan.
+  gagal rail non-QRIS503 `error_code:payment_method_unavailable` membawa kode/status_url.
+  Definitif membatalkan order+expire item (restock kosong), ambigu mempertahankan klaim;
+  saved retry non-QRIS tidak POST ulang. Token maksimal30.000 karakter, body stream32.000byte tetap.
 - `GET /api/games/orders/[code]` header `x-order-contact` WA/email checkout penuh;
   `POST /api/games/lookup` body `{code,contact}`: status jujur
   awaiting_payment/processing/success+SN/needs_admin/expired, kontak respons dimask.
   Cron expiry existing menyapu order/item unpaid; shared cancel tidak restock Games.
-  Paid DANA/GoPay/KlikQRIS memicu scheduler Games, bukan Market/WR/SK.
+  Status/lacak menyertakan view kanonis gateway/crypto; polling/recovery GET-only memakai
+  klaim durable existing. Consent memakai `POST /api/orders/[code]/payment-consent` dengan
+  kontak penuh dan total tepat. Paid DANA/GoPay/KlikQRIS/gateway/crypto memicu scheduler Games,
+  bukan job Market/WR/SK; late/underpaid/mismatch tetap manual review tanpa dispatch.
+  Guard pembayaran bersama menerima AXG, guard/route Market tetap AXV-only.
 
 Registry/format ID di `src/lib/games/registry.ts`; kontrak API lengkap dan rentang
 validasi konservatif di `docs/GAMES.md` §12.8 / ARCHITECTURE §16.28. P9: testing true
 atau username/key kosong → `ordering_open=false`, POST quote/order 503 `games_preview`
 (ID/EN), katalog tetap terbaca. B1 tidak memasang env atau mengaktifkan Production;
-UI `/games`, nickname publik, gateway/crypto Games, dan bukti deployment belum termasuk.
+UI `/games`, nickname publik dan bukti deployment belum termasuk. Fokus B2 67 file/1016 tes
+hijau termasuk D1 workerd; full suite/build diteruskan ke PM, tanpa akses/transaksi produksi.

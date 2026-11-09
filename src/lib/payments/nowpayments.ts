@@ -596,14 +596,20 @@ export async function reconcileNowpaymentsPayment(orderCode: string): Promise<st
   const recoverable = tx.status === "pending"
     || (tx.status === "initializing" && Boolean(tx.provider_payment_id));
   if (!recoverable) return tx.status === "paid" ? "already_paid" : "manual_review";
+  const mismatch = async (reason: string): Promise<"manual_review"> => {
+    if (tx.order_kind !== "games") throw new Error(reason);
+    await execRun(`UPDATE payment_transactions SET last_error=COALESCE(last_error,?),updated_at=datetime('now')
+      WHERE order_code=? AND provider='nowpayments' AND status!='paid'`, `${reason}_manual_review`, orderCode);
+    return "manual_review";
+  };
   const paymentId = asText(status.payment_id ?? status.paymentId);
-  if (!paymentId || paymentId !== String(tx.provider_payment_id)) throw new Error("nowpayments_payment_mismatch");
-  if (asText(status.order_id ?? status.orderId) !== orderCode) throw new Error("nowpayments_payment_mismatch");
+  if (!paymentId || paymentId !== String(tx.provider_payment_id)) return mismatch("nowpayments_payment_mismatch");
+  if (asText(status.order_id ?? status.orderId) !== orderCode) return mismatch("nowpayments_payment_mismatch");
   const payCurrency = asText(status.pay_currency ?? status.payCurrency)?.toLowerCase();
-  if (!payCurrency || payCurrency !== String(tx.pay_currency).toLowerCase()) throw new Error("nowpayments_currency_mismatch");
+  if (!payCurrency || payCurrency !== String(tx.pay_currency).toLowerCase()) return mismatch("nowpayments_currency_mismatch");
   const network = asText(status.network);
   if (network && tx.pay_network && network.toLowerCase() !== String(tx.pay_network).toLowerCase()) {
-    throw new Error("nowpayments_network_mismatch");
+    return mismatch("nowpayments_network_mismatch");
   }
   if (Number(tx.fee_paid_by_user) === 1 && (providerBoolean(status.is_fixed_rate) !== true || providerBoolean(status.is_fee_paid_by_user) !== true)) {
     await execRun("UPDATE payment_transactions SET last_error=CASE WHEN last_error IS NULL OR last_error='nowpayments_finalize_failed_manual_review' THEN 'nowpayments_policy_manual_review' ELSE last_error END,updated_at=datetime('now') WHERE order_code=? AND provider='nowpayments' AND status!='paid'", orderCode);
@@ -634,10 +640,10 @@ export async function reconcileNowpaymentsPayment(orderCode: string): Promise<st
   }
   const statusPriceAmount = asText(status.price_amount ?? status.priceAmount);
   const statusPriceCurrency = asText(status.price_currency ?? status.priceCurrency)?.toLowerCase();
-  if (!equalDecimal(statusPriceAmount, savedPriceAmount) || statusPriceCurrency !== savedPriceCurrency) throw new Error("nowpayments_price_mismatch");
+  if (!equalDecimal(statusPriceAmount, savedPriceAmount) || statusPriceCurrency !== savedPriceCurrency) return mismatch("nowpayments_price_mismatch");
   const statusPayAmount = asText(status.pay_amount ?? status.payAmount);
   const expected = asText(tx.pay_amount_text);
-  if (!equalDecimal(statusPayAmount, expected)) throw new Error("nowpayments_pay_amount_mismatch");
+  if (!equalDecimal(statusPayAmount, expected)) return mismatch("nowpayments_pay_amount_mismatch");
   if (!expected || !parseDecimalParts(expected) || parseDecimalParts(expected)!.scaled <= BigInt(0)) {
     throw new Error("nowpayments_invoice_mismatch");
   }
@@ -728,7 +734,7 @@ export async function reconcileNowpaymentsPayment(orderCode: string): Promise<st
   const overpaid = compareDecimalText(parseDecimalParts(actuallyPaid)!, parseDecimalParts(expected)!) > 0;
   const changed = await transitionPendingPaymentToPaid(orderCode,
     String(status.updated_at ?? status.updatedAt ?? new Date().toISOString()),
-    tx.order_kind === "pedia" ? null : {
+    tx.order_kind === "pedia" || tx.order_kind === "games" ? null : {
       variantId: tx.variant_id == null ? null : Number(tx.variant_id),
       inventoryId: tx.inventory_id == null ? null : Number(tx.inventory_id),
       salesChannel: String(tx.sales_channel),
