@@ -229,7 +229,14 @@ async function runExpiry(db: Db) {
   for (const tx of gatewayExpired) {
     try { await transitionPendingOrder(String(tx.order_code), "kadaluarsa", "gateway_expired", parseItems(tx.items), db.d1); expired++; } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; }
   }
-  return { stale_initializing: staleInitializing, expired_payments: expired, orphan_ledgers_swept: orphanSwept };
+  // AXVARA Games (docs/GAMES.md §12): order belum bayar lewat deadline →
+  // order kadaluarsa + item expired, tanpa restock Market.
+  let gamesItemsExpired = 0;
+  try {
+    const { expireGamesCheckouts } = await import("@/lib/games/expire");
+    gamesItemsExpired = await expireGamesCheckouts(db);
+  } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; }
+  return { stale_initializing: staleInitializing, expired_payments: expired, orphan_ledgers_swept: orphanSwept, games_items_expired: gamesItemsExpired };
 }
 
 async function runFulfillment(db: Db) {

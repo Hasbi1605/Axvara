@@ -93,10 +93,12 @@ Sekalipay merchant S2b lokal memakai migrasi 0097 untuk invoice/consent fee; cre
 
 W3 backend lokal: checkout quote/order crypto menyimpan snapshot USD dan locale, status provider durable dan rekonsiliasi pada job payments; migrasi 0094–0096. UI/Telegram dan publikasi belum dilakukan; §16.17 adalah snapshot W1 historis.
 
-## AXVARA Games — rencana arsitektur (9 November 2026, BELUM implementasi)
+## AXVARA Games — arsitektur (9 November 2026)
 
-Spesifikasi produk/desain lengkap: `docs/GAMES.md`. Tidak ada route, migrasi, env,
-cron atau perubahan proxy yang dibuat pada tahap ini. Rencana teknis:
+Spesifikasi produk/desain lengkap: `docs/GAMES.md`. Backend inti, admin dan API
+pembeli QRIS B1 sudah diimplementasikan lokal (§16.25–§16.28); belum ada bukti
+deployment Games. Daftar berikut mempertahankan snapshot rancangan awal;
+status implementasi terkini mengikuti seksi §16 tersebut.
 
 - **Route (rencana):** `src/app/games/{page,[slug],pesanan/[code],lacak,bantuan,ketentuan}`
   mengikuti pola `src/app/pedia/*`; API `src/app/api/games/*` untuk quote/order dan
@@ -4198,6 +4200,44 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Telegram**: `paymentMethodOfferKeyboard` menampilkan satu entri `Crypto (USD) · <total> USD` (`pmc:<nonce>`); `cryptoCoinKeyboard` (Populer → Stablecoin, 2/baris, label `BTC` / `USDT · BSC`, Kembali `pmb:<nonce>`); tap koin = `pm:<nonce>:<index>` (reuse freeze/consent/claim). Handler `handlePayCryptoMenu` (callback.ts `pmc`/`pmb`, ownerBound) hanya merender ulang dari array beku. `validateFrozenSelectionLive` menolak koin yang hilang dari snapshot / di bawah minimum baru (`method_unavailable`); dispatch memakai ticker/jaringan dari id beku → katalog kurasi. `PAYQ1_MAX_BYTES` 64 KB, `PAYQ1_MAX_METHODS` 96 (indeks `pm:` tetap 2 digit). Pesan status pending memuat jumlah+simbol+jaringan+peringatan+baris biaya layanan.
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
+
+### 16.28 AXVARA Games B1: API pembeli QRIS — 9 November 2026 (lokal, belum deploy)
+
+- **API edge dinamis:** `GET /api/games/catalog`, `GET /api/games/catalog/[slug]`,
+  `POST /api/games/quote`, `POST /api/games/orders`, `GET /api/games/orders/[code]`,
+  `POST /api/games/lookup`; bentuk request/response lengkap di `docs/GAMES.md` §12.8.
+  Semua katalog/quote/status sukses `private,no-store`; lookup selalu no-store.
+- **Registry tunggal** `games/registry.ts`: FF/FF MAX playerId 6–14 digit, ML userId
+  1–12 + zoneId 1–6 (concat tanpa pemisah), PUBG playerId 6–15; rentang konservatif
+  agar tidak menganggap rentang observasi R1 sebagai batas universal.
+- **P9:** `games/ordering.ts` menutup quote/order 503 `games_preview` bila testing
+  `true` atau username/key kosong; katalog tetap terbaca dengan `ordering_open=false`.
+  Tidak ada env/migrasi baru atau perubahan guard kode shared gateway/crypto.
+- **Quote/order:** JWE A256GCM 30 menit (`games/quote.ts`, key diturunkan dari
+  `ADMIN_JWT_SECRET`) mengikat SKU/harga/ID akun/kontak/locale, B1 hanya QRIS.
+  Prefix AXG; quantity 1, `max_price=min(unit_price,ceil(cost_snapshot*1.05))`,
+  deadline 15 menit. `checkout-guard` existing berbagi batas 5/IP,3/WA,3/email
+  per 15 menit; klaim `games:<jti>`, error D1 503. Satu `d1.batch` insert orders
+  kind games + item awaiting_payment; SKU live dan duplicate target+SKU dipagar
+  dalam batch, tanpa reservasi Market. Reuse quote 200, baru 201, `quote_stale` /
+  `duplicate_active_order` 409; gagal invoice 503 menyertakan kode order tersimpan.
+  Invoice `createActiveQrisInvoice` mempertahankan rail/nominal saat retry.
+- **Status/lacak:** kontak WA/email penuh seperti Pedia; data supplier sensitif
+  tidak dipublikasi. `games/status.ts`: awaiting_payment/processing/success+SN/
+  needs_admin/expired, tidak sukses sebelum item sukses; paid belum dipromosi
+  tetap processing. `games/lookup.ts` menggabungkan order, item dan ledger QRIS.
+- **Expiry/paid:** `games/expire.ts` di job lite expiry existing (5 transisi/20 item,
+  hanya unpaid terminal yang disapu); shared transition tidak restock games/pedia.
+  Callback KlikQRIS dan endpoint gambar QRIS menerima AXG secara lokal; DANA,
+  GoPay, KlikQRIS paid menjadwalkan games, tanpa job Market/WR/SK. Semua jalur
+  Market/Pedia existing dipertahankan; cron games_orders tetap pemulihan.
+- **Limiter in-memory** `rateLimit.ts`: games:quote 30, games:orders 10,
+  games:status 30, games:lookup 20, games:wake 6 per IP/menit, melengkapi admission
+  D1 (bukan pengganti). Body JSON buyer 32.000, lookup 8.000 byte.
+- **Bukti/batas:** tests/games-{orders,registry,cancel-stock.regression,qris.integration}.test.ts
+  + `games-checkout.workerd.test.ts` (D1 workerd, handler quote/order/reuse/status/expiry
+  asli; adapter HTTP Next memakai primitive native) dan regresi Games/Pedia/QRIS/cron lokal; tidak ada transaksi, env, deployment atau
+  UI Games dalam B1. Paket gateway/crypto, nickname dan UI menyusul.
 
 ### 16.27 AXVARA Games admin data P1–P3 — 9 November 2026 (lokal → CI)
 

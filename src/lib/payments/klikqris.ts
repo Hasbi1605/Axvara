@@ -201,7 +201,7 @@ export async function reconcileKlikQrisPayment(orderCode: string): Promise<strin
     await manualReview(tx, Number(event.id), Number(inserted.changes || 0) > 0, "klikqris_late_payment_manual_review");
     return "manual_review";
   }
-  const changed = await transitionPendingPaymentToPaid(orderCode, paidAt, tx.order_kind === "pedia" ? null : {
+  const changed = await transitionPendingPaymentToPaid(orderCode, paidAt, ["pedia", "games"].includes(String(tx.order_kind)) ? null : {
     variantId: tx.variant_id == null ? null : Number(tx.variant_id), inventoryId: tx.inventory_id == null ? null : Number(tx.inventory_id),
     salesChannel: String(tx.sales_channel),
   }, { id: Number(event.id) });

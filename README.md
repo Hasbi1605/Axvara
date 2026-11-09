@@ -434,6 +434,9 @@ Kuota diklaim sekali per quote, termasuk retry paralel; order existing dipakai
 kembali. Batas tercapai→429+Retry-After; error limiter→503 sebelum membuat
 order/invoice atau mereservasi stok. Tidak ada fail-open produksi.
 
+API Games B1 lokal juga memakai limiter yang sama (namespace klaim quote
+`games:<jti>`, batas kontak/IP bersama); belum merupakan bukti deployment Games.
+
 Migrasi0079 menambah checkout_attempts dan checkout_claims; hash subjek memakai
 HMAC-SHA256 dengan ADMIN_JWT_SECRET existing. IPv6/email dinormalisasi. Cleanup
 existing menghapus maksimal200 klaim dan200 counter berumur>24jam per housekeeping;
@@ -1693,4 +1696,32 @@ tick; pengingat berikutnya mengikuti throttle, sehingga alert bisa tertunda.
 Tidak mengubah dispatch, pembayaran, harga, supplier atau notifikasi pembeli.
 
 
-AXVARA Games (RENCANA, 9 November 2026): spesifikasi di `docs/GAMES.md`; supplier Digiflazz (`docs/agent-rules/digiflazz.md`). Kode yang sudah ada baru `src/lib/games/pricing.ts` (rumus harga jual Oura −2% dengan batas bawah modal + biaya kanal + 3%, fungsi murni) beserta `tests/games-pricing.test.ts`; tahap A (9 Nov 2026): klien `src/lib/games/digiflazz.ts` via proxy VPS `/dgf/*`, sinkron katalog `src/lib/games/catalog-sync.ts` (cron lite `games_catalog`), migrasi `0107_games_core.sql`. Tahap B (9 Nov 2026): dispatch + seller cadangan `src/lib/games/dispatch.ts` (cron lite `games_orders`, hook `schedulePaidFulfillment` kind `games`) dan webhook `POST /api/games/digiflazz/webhook`. Bagian A admin (9 Nov 2026): migrasi `0108_games_admin.sql` (`games_reference_prices` = sumber kebenaran harga Oura + `display_group`/`display_order`), helper `src/lib/games/admin.ts`, tab admin **Games** di `/admin?section=games` dengan API `GET/PATCH /api/admin/games/products` dan `POST /api/admin/games/products/enable-wave` (dry-run lalu konfirmasi; hanya brand gelombang 1 yang sehat, tidak pernah menonaktifkan). Belum ada API buat pesanan/quote pembeli, UI `/games`, env Pages Digiflazz, atau deployment fitur Games (lihat ARCHITECTURE §16.25–§16.27).
+AXVARA Games (implementasi bertahap, 9 November 2026): spesifikasi di `docs/GAMES.md`;
+supplier Digiflazz (`docs/agent-rules/digiflazz.md`). Backend inti memakai
+`src/lib/games/{pricing,digiflazz,catalog-sync,dispatch}.ts`, proxy VPS `/dgf/*`,
+migrasi `0107_games_core.sql`, cron lite `games_catalog`/`games_orders`, dan webhook
+`POST /api/games/digiflazz/webhook`. Admin data memakai migrasi `0108_games_admin.sql`
+(`games_reference_prices`, override grup/urutan), tab **Games** di `/admin?section=games`,
+API `GET/PATCH /api/admin/games/products` + `POST .../enable-wave` (dry-run lalu konfirmasi).
+
+B1 API pembeli QRIS (lokal, belum deploy):
+- `GET /api/games/catalog` + `GET /api/games/catalog/[slug]`: empat game registry,
+  nominal enabled, seller OFF tampil unavailable, tanpa modal/seller/backup.
+- `POST /api/games/quote` body `{slug,buyer_sku_code,fields,whatsapp,email,nickname?,locale?}`:
+  quote JWE autentik/terenkripsi 30 menit, harga `sell_price`, B1 hanya QRIS.
+- `POST /api/games/orders` body `{quote_token}`: order `AXG-YYYYMMDD-XXXXXXXX`,
+  quantity 1, `max_price=min(harga jual,ceil(modal*1.05))`, deadline 15 menit;
+  satu batch order + item, admission D1 bersama, tanpa stok Market; retry quote
+  memakai order/invoice sama. Konflik harga/ketersediaan/target aktif → 409;
+  gagal invoice 503 membawa kode order yang tetap tersimpan.
+- `GET /api/games/orders/[code]` header `x-order-contact` WA/email checkout penuh;
+  `POST /api/games/lookup` body `{code,contact}`: status jujur
+  awaiting_payment/processing/success+SN/needs_admin/expired, kontak respons dimask.
+  Cron expiry existing menyapu order/item unpaid; shared cancel tidak restock Games.
+  Paid DANA/GoPay/KlikQRIS memicu scheduler Games, bukan Market/WR/SK.
+
+Registry/format ID di `src/lib/games/registry.ts`; kontrak API lengkap dan rentang
+validasi konservatif di `docs/GAMES.md` §12.8 / ARCHITECTURE §16.28. P9: testing true
+atau username/key kosong → `ordering_open=false`, POST quote/order 503 `games_preview`
+(ID/EN), katalog tetap terbaca. B1 tidak memasang env atau mengaktifkan Production;
+UI `/games`, nickname publik, gateway/crypto Games, dan bukti deployment belum termasuk.

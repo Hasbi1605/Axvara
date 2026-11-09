@@ -1,9 +1,9 @@
 # AXVARA Games — Spesifikasi Produk & Desain
 
-> **Status (9 November 2026): RENCANA; keputusan terbuka §9 sudah dijawab owner (lihat §9).** Belum ada route, komponen, schema,
-> migrasi, env, dispatch, webhook, deposit atau transaksi. Dokumen ini adalah
-> bahan diskusi desain dengan owner; bagian berlabel **[KEPUTUSAN TERBUKA]**
-> belum disetujui. Keputusan yang sudah disetujui owner ditandai **[DISETUJUI]**.
+> **Status (9 November 2026): backend inti, admin data, dan API pembeli B1 QRIS diimplementasikan lokal; belum ada bukti deployment Games.**
+> Env Digiflazz, UI storefront, nickname publik, rail non-QRIS, deposit dan transaksi nyata belum termasuk bukti B1.
+> §1–§11 mempertahankan rancangan awal; keputusan terbuka yang sudah dijawab
+> digantikan §9, dan kontrak implementasi terkini ada di §12.
 > Ringkasan ada di `docs/PRD.md`, `docs/DESIGN.md`, `docs/ARCHITECTURE.md`;
 > aturan supplier di `docs/agent-rules/digiflazz.md`.
 
@@ -228,10 +228,10 @@ mencatat di `docs/agent-rules/digiflazz.md`.
 
 ## 12. Kontrak teknis backend (9 November 2026, implementasi bertahap)
 
-Cakupan agent sekarang: proxy `/dgf`, klien Digiflazz, schema, sinkron katalog/harga,
-dispatch + seller cadangan, webhook, cron, dan admin data (harga referensi, grup
-nominal, aktivasi gelombang 1 — §12.7). **Di luar cakupan (Paseo):** API buat
-pesanan/quote untuk pembeli, cek nickname endpoint publik, UI storefront.
+Cakupan yang sudah diimplementasikan lokal: proxy `/dgf`, klien Digiflazz, schema,
+sinkron katalog/harga, dispatch + seller cadangan, webhook, cron, admin data
+(§12.7), dan API pembeli B1 QRIS (§12.8). Nickname endpoint publik, rail
+gateway/crypto Games dan UI storefront adalah paket terpisah, bukan bagian B1.
 
 ### 12.1 Egress & env
 - Panggilan runtime: `POST {WARUNG_REBAHAN_PROXY_URL}/dgf/v1/{cek-saldo|price-list|transaction}`
@@ -296,10 +296,10 @@ oleh sinkron.
   cron `games_catalog`, G5 dispatch + cadangan + cron `games_orders`, G6 webhook.
   Bagian A admin data: migrasi 0108, `src/lib/games/admin.ts`, tab admin Games
   (`/api/admin/games/products`, `.../enable-wave`) — §12.7.
-  Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.27.
-- **Untuk Paseo/fase berikut:** API quote/order pembeli (buat `orders` kind `games` +
-  `games_order_items` status `awaiting_payment`, harga dari `games_products.sell_price`,
-  `max_price` = batas modal, attach rail existing), endpoint cek nickname (rate limit +
+  B1 API katalog/quote/order/status/lacak QRIS, registry empat game, preview gate P9,
+  expiry item di job existing, dan paid routing tiga provider QRIS juga selesai lokal (§12.8).
+  Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.28.
+- **Untuk Paseo/fase berikut:** rail gateway/crypto Games, endpoint cek nickname (rate limit +
   cache), UI §4–§7, lalu G8 go-live (pasang env `secret_text`, rotasi key, aktifkan
   webhook dashboard, mode Production, deposit).
 - Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final; seed
@@ -356,3 +356,61 @@ lewat `readJsonBody`.
 - **Batas bukti:** implementasi + tes fixture lokal (`tests/games-admin.test.ts`,
   `tests/games-admin-migration.test.ts`); belum ada deployment, data produksi, atau
   keputusan harga Oura gelombang 1 yang diisi ke tabel referensi.
+
+### 12.8 API pembeli B1 — QRIS (9 November 2026, lokal; belum deploy)
+
+- **Registry:** `src/lib/games/registry.ts` adalah sumber tunggal slug, brand, field
+  ID/EN, regex dan `buildCustomerNo`: `free-fire`/`free-fire-max` memakai `playerId`,
+  `mobile-legends` memakai `userId` + `zoneId` yang digabung TANPA pemisah,
+  `pubg-mobile` memakai `playerId`. Validasi numerik memakai rentang konservatif
+  FF/FF MAX 6–14, ML user 1–12 + zone 1–6, PUBG 6–15 digit. Riset R1 9 Nov
+  mengamati FF 8–11, ML 6–10 + 4–5, PUBG 7–12, tetapi sumber belum membuktikan
+  rentang itu sebagai batas universal. Rentang lebih longgar dipilih agar ID sah
+  tidak ditolak; ini validasi format, bukan verifikasi kepemilikan/keberadaan akun.
+- **P5–P7:** quantity selalu 1 (juga CHECK schema); harga terkunci = `sell_price`,
+  `max_price=min(unit_price,ceil(cost_snapshot*1.05))`; order QRIS deadline 15 menit,
+  invoice tidak melebihi deadline order/provider. Prefix owner **`AXG-YYYYMMDD-XXXXXXXX`**.
+- **P9 preview gate:** `DIGIFLAZZ_TESTING==='true'` atau username/API key kosong
+  (setelah trim) membuat `ordering_open=false`. Katalog tetap terbaca;
+  POST quote/order mengembalikan 503 `{error_code:'games_preview',error}` dengan
+  ID "Pemesanan AXVARA Games segera dibuka." / EN "AXVARA Games ordering is opening soon."
+  Tidak memasang env atau membuka Production sebagai efek samping implementasi.
+
+| Endpoint | Kontrak |
+|---|---|
+| `GET /api/games/catalog` | `{ordering_open,games:[{slug,name,publisher,currency,icon,banner,min_price,sku_count}]}`; hanya empat game registry dengan SKU enabled |
+| `GET /api/games/catalog/[slug]` | `{game:{slug,name,publisher,currency,icon,banner,fields},ordering_open,products:[{buyer_sku_code,name,price,group,display_order,available}]}`; SKU seller OFF tetap tampil `available:false`; tanpa modal/margin/seller/kode cadangan |
+| `POST /api/games/quote` | `{slug,buyer_sku_code,fields,whatsapp,email,nickname?,locale?}`; validasi registry + SKU live; balas `{ok,quote_token,quote_id,total,payable,currency:'IDR',locale,game,payment_methods}`. B1 hanya QRIS; token JWE A256GCM autentik/terenkripsi TTL 30 menit mengikat SKU/harga/customer_no/kontak/locale; nickname opsional adalah input pembeli, BUKAN hasil verifikasi |
+| `POST /api/games/orders` | `{quote_token}`; ulang quote tersimpan → order sama 200, baru → 201 `{code,status_url,status,total,qris,reused}`. `status_url=/games/pesanan/[code]`; gagal invoice 503 tetap membawa kode/status_url untuk melanjutkan order sama |
+| `GET /api/games/orders/[code]` | Header `x-order-contact` (atau `x-order-access-code`) = WA/email checkout penuh; 200 `{ok,order}` dengan `games_status`, ID akun, nominal, SN sukses dan QRIS tersimpan; kontak respons dimask, cost/max_price/backup tidak dikirim. `?wake=1` memakai klaim durable untuk recovery KlikQRIS; tidak membuat order baru |
+| `POST /api/games/lookup` | `{code,contact}` (body maksimal 8.000 byte); kontak penuh seperti Pedia, salah/tidak ada order → respons generik 404. Balas `{order}` dengan ringkasan aman yang sama; tidak menerbitkan grant kredensial Market |
+
+Admission memakai `checkout-guard` bersama Market/Pedia (5/IP, 3/WA, 3/email per
+15 menit, HMAC subjek, error D1 → 503; batas → 429). Namespace klaim quote
+`games:<jti>`; reuse/parallel retry tidak mengonsumsi slot kedua. Harga/brand/
+enabled/seller/modal dipagar ulang DI DALAM satu `d1.batch` atomik yang membuat
+`orders(order_kind='games',items='[]')` + `games_order_items(awaiting_payment)`;
+tidak ada reservasi stok Market. Harga/ketersediaan berubah → 409 `quote_stale`;
+satu customer_no + SKU masih aktif → 409 `duplicate_active_order` (termasuk
+`needs_check`, sampai admin menyelesaikannya). Quote cacat/kedaluwarsa → 409
+`quote_expired`. Invoice memakai `createActiveQrisInvoice` existing seperti Pedia,
+mempertahankan provider/nominal tersimpan saat retry.
+
+Status pembeli: `awaiting_payment` hanya saat order masih pending; item
+`queued|submitting|pending` atau paid belum dipromosi → `processing`;
+`success` hanya setelah item sukses (SN/keterangan hanya pada sukses);
+`needs_check` → `needs_admin`; order batal/kadaluarsa atau item expired → `expired`.
+Job cron lite `expiry` existing meng-expire order belum bayar lalu item (sweep
+hanya untuk order terminal/unpaid, bounded 5 transisi + 20 item, tidak mengubah
+paid); histori item expired tidak menyumbat sweep. Shared
+`transitionPendingOrder` mengecualikan Pedia DAN Games dari restock, walau ID item
+bertabrakan dengan `products`/`product_variants`. KlikQRIS callback/reconcile,
+DANA dan GoPay paid memanggil `schedulePaidFulfillment(code,'games')`, tanpa
+Market outbox/WR/SK; cron `games_orders` tetap pemulihan. Guard kode shared
+gateway/crypto tidak diperluas dalam B1.
+
+Batas bukti: tes fixture lokal (termasuk replay callback tiga QRIS dan ID stok
+bertabrakan) + `games-checkout.workerd.test.ts` (handler asli quote/order/reuse/
+status/expiry dengan D1 workerd, adapter HTTP Next diganti primitive native),
+bukan deployment atau pembayaran produksi. UI/nickname/non-QRIS
+dan akses produksi tidak diuji dalam paket B1.

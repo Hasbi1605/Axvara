@@ -61,6 +61,12 @@ export const RATE_LIMITS = {
   "pedia:credit_check": 10,
   "pedia:refill": 10,
   "pedia:cancel": 10,
+  // AXVARA Games (docs/GAMES.md §12): scope publik pembeli.
+  "games:quote": 30,
+  "games:orders": 10,
+  "games:status": 30,
+  "games:lookup": 20,
+  "games:wake": 6,
 } as const;
 
 export type RateLimitScope = keyof typeof RATE_LIMITS;

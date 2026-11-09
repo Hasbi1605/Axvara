@@ -127,12 +127,16 @@ export async function POST(request: NextRequest) {
   // outbox row), then only the pedia scheduler — never generic Market jobs
   // or WR/SK links.
   const isPediaOrder = String(transaction.order_kind || "apps") === "pedia";
+  // AXVARA Games (order_kind 'games') juga tidak memakai pipeline fulfillment
+  // Market; dispatch-nya lewat processGamesPaidOrders.
+  const isGamesOrder = String(transaction.order_kind || "apps") === "games";
+  const skipMarketFulfillment = isPediaOrder || isGamesOrder;
   // Resolve fulfillment routing BEFORE the atomic paid batch so the outbox
   // row lands in the same commit (issue #3): no crash window between
   // "payment stored" and "job created". Idempotent INSERT OR IGNORE keeps
   // concurrent webhook deliveries to exactly one job row.
   // Pedia skips routing entirely (null = no fulfillment_jobs row).
-  const fulfillmentRouting = isPediaOrder ? null : await queryFirst(
+  const fulfillmentRouting = skipMarketFulfillment ? null : await queryFirst(
     `SELECT o.variant_id, o.sales_channel,
             (SELECT fi.id FROM fulfillment_inventory fi
               WHERE fi.order_code=o.code AND fi.status='reserved') AS inventory_id
@@ -167,6 +171,9 @@ export async function POST(request: NextRequest) {
     if (isPediaOrder) {
       const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
       await schedulePaidFulfillment(orderCode, "pedia");
+    } else if (isGamesOrder) {
+      const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
+      await schedulePaidFulfillment(orderCode, "games");
     } else {
       await ensureFulfillmentForPaidOrder(orderCode);
     }
@@ -175,7 +182,7 @@ export async function POST(request: NextRequest) {
   // Produk WR: buat link auto-order segera (best-effort; cron memprosesnya).
   // WR tidak memakai fulfillment_inventory lokal — pipeline wr_order_links
   // yang menentukan delivery. Pedia tidak memakai jalur WR/SK.
-  if (!isPediaOrder) try {
+  if (!skipMarketFulfillment) try {
     const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
     const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
     if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
@@ -186,7 +193,7 @@ export async function POST(request: NextRequest) {
   // Produk Sekalipay (supplier kedua paralel, 0049): pola yang sama dengan
   // WR di atas — link SK dibuat segera, cron fase sekalipay memprosesnya.
   // Best-effort; tidak mengganggu jalur WR/non-WR bila SK mati.
-  if (!isPediaOrder) try {
+  if (!skipMarketFulfillment) try {
     const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
     const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
     if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {

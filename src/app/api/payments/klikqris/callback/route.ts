@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   if (!body || typeof body!=="object" || Array.isArray(body)) return NextResponse.json({ error: "invalid_callback" }, { status: 400 });
   const code=String(body.order_id || "");
   if (code.startsWith("AXVARA-INTEGRATION-")) return NextResponse.json({ ok: true, status: "integration_probe_ignored" });
-  if (!isValidOrderCode(code) && !/^AXP-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "invalid_order" }, { status: 400 });
+  if (!isValidOrderCode(code) && !/^AX[PG]-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error: "invalid_order" }, { status: 400 });
   const tx=await queryFirst("SELECT provider_signature,requested_amount,payable_amount,merchant_id FROM payment_transactions WHERE provider='klikqris' AND provider_order_id=?", code);
   if (!tx) return NextResponse.json({ error: "transaction_not_found" }, { status: 404 });
   if (!tx.provider_signature) return NextResponse.json({ error: "invoice_initializing" }, { status: 503 });

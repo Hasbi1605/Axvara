@@ -13,7 +13,8 @@ export async function GET(
 ) {
   const { code } = await params;
   const orderCode = String(code || "").toUpperCase();
-  if (!isValidOrderCode(orderCode) && !/^AXP-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) return new NextResponse("Not found", { status: 404 });
+  // AXV (Market), AXP (Pedia) dan AXG (Games) memakai rail QRIS yang sama.
+  if (!isValidOrderCode(orderCode) && !/^AX[PG]-\d{8}-[A-Z0-9]{8}$/.test(orderCode)) return new NextResponse("Not found", { status: 404 });
 
   const transaction = await queryFirst(
     `SELECT qris_payload, provider, provider_qris_url, status, expires_at
