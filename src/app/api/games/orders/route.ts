@@ -4,6 +4,7 @@
 // lewat mesin pembayaran Pedia/Market. Tidak pernah menyentuh stok Market.
 import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 import { NextRequest, NextResponse } from "next/server";
+import { isGamesNicknameProduct, sanitizeGamesNickname } from "@/lib/games/sellable";
 import { z } from "zod";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
@@ -133,9 +134,12 @@ export async function POST(req: NextRequest) {
 
   // Harga & ketersediaan dicek ulang dari DB (jangan percaya token).
   const product = await db.queryFirst(
-    `SELECT id, buyer_sku_code, game_brand, cost, sell_price, seller_active, enabled FROM games_products WHERE buyer_sku_code=?`,
+    `SELECT id, buyer_sku_code, product_name, game_brand, cost, sell_price, seller_active, enabled FROM games_products WHERE buyer_sku_code=?`,
     quote.buyer_sku_code,
   ).catch(() => null);
+  if (product && isGamesNicknameProduct(product)) {
+    return NextResponse.json({ error: "not_sellable" }, { status: 409 });
+  }
   if (!product || Number(product.id) !== quote.product_id || Number(product.enabled) !== 1 || !gamesBrandMatches(game, product.game_brand)
     || Number(product.seller_active) !== 1 || !Number.isSafeInteger(Number(product.cost)) || Number(product.cost) <= 0) {
     return NextResponse.json({ error: "quote_stale", message: pick(locale, "Nominal ini sudah tidak tersedia. Muat ulang checkout.", "This amount is no longer available. Reload checkout.") }, { status: 409 });
@@ -189,7 +193,7 @@ export async function POST(req: NextRequest) {
       statement(
         `INSERT INTO games_order_items(order_code,product_id,buyer_sku_code,customer_no,customer_nickname,quantity,unit_price,total,cost_snapshot,max_price,status,attempt_no)
          SELECT ?,?,?,?,?,1,?,?,?,?,'awaiting_payment',1 WHERE ${owned}`,
-        code, Number(product.id), quote.buyer_sku_code, quote.customer_no, quote.customer_nickname,
+        code, Number(product.id), quote.buyer_sku_code, quote.customer_no, quote.customer_nickname ? sanitizeGamesNickname(quote.customer_nickname) || null : null,
         quote.unit_price, quote.total, Number(product.cost), maxPrice, code, quoteId,
       ),
     ]);

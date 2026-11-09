@@ -1,0 +1,95 @@
+import type { DatabaseAccess } from "@/lib/db-access";
+import { checkoutSubjects } from "@/lib/checkout-guard";
+import { isDigiflazzConfigured, sendTransaction } from "./digiflazz";
+import type { GamesDefinition } from "./registry";
+import { sanitizeGamesNickname } from "./sellable";
+
+export type GamesNicknameResult = { status: "ok"; nickname: string } | { status: "invalid" } | { status: "unavailable" };
+const unavailable = { status: "unavailable" } as const;
+const WINDOW = 15 * 60_000;
+const DAY = 86_400_000;
+const FALLBACK_COST: Record<string, number> = { ffcekusername: 5, mlcekusername: 24, pubgcekusername: 80 };
+
+function cachedResult(row: Record<string, unknown>): GamesNicknameResult {
+  if (row.result === "invalid") return { status: "invalid" };
+  const nickname = sanitizeGamesNickname(String(row.nickname ?? ""));
+  return row.result === "ok" && nickname ? { status: "ok", nickname } : unavailable;
+}
+
+/** One batch owns the account claim and enforces rolling IP/device + UTC day limits.
+ * Pending/ambiguous claims never expire: a lost response cannot buy a second check. */
+// ponytail: ambiguous checks need manual same-ref recovery; add a reconciler when automated recovery is required.
+export async function checkGamesNickname(db: DatabaseAccess, game: GamesDefinition, customerNo: string, ip: string, device: string): Promise<GamesNicknameResult> {
+  if (!db.d1 || process.env.DIGIFLAZZ_TESTING === "true" || !isDigiflazzConfigured()) return unavailable;
+  const now = Date.now();
+  // FF MAX shares the same Garena lookup SKU and account namespace as FF.
+  const gameKey = game.nicknameSku;
+  try {
+    const cached = await db.queryFirst(
+      "SELECT result,nickname FROM games_nickname_cache WHERE game_key=? AND customer_no=? AND (expires_at IS NULL OR expires_at>?)",
+      gameKey, customerNo, now,
+    );
+    if (cached) return cachedResult(cached);
+    const product = await db.queryFirst("SELECT cost FROM games_products WHERE buyer_sku_code=?", game.nicknameSku);
+    const cost = product ? Number(product.cost) : FALLBACK_COST[game.nicknameSku];
+    if (!Number.isSafeInteger(cost) || cost <= 0 || cost > 80) return unavailable;
+    const [subject] = await checkoutSubjects({ ip: ip || "unknown", wa: "", email: "" });
+    if (!subject) return unavailable;
+    const ref = `NCK-${crypto.randomUUID()}`;
+    const stmt = (sql: string, ...params: unknown[]) => db.d1!.prepare(sql).bind(...params);
+    const result = await db.d1.batch([
+      stmt(`INSERT INTO games_nickname_cache(game_key,customer_no,ref_id,result,checked_at)
+        VALUES(?,?,?,'pending',?) ON CONFLICT(game_key,customer_no) DO UPDATE SET
+        ref_id=excluded.ref_id,result='pending',nickname=NULL,checked_at=excluded.checked_at,expires_at=NULL
+        WHERE games_nickname_cache.expires_at IS NOT NULL AND games_nickname_cache.expires_at<=?`,
+      gameKey, customerNo, ref, now, now),
+      stmt(`INSERT INTO games_nickname_checks(ref_id,slug,buyer_sku_code,cost,status,ip_hash,device_id,created_at)
+        SELECT ?,?,?,?,'submitting',?,?,? WHERE EXISTS(SELECT 1 FROM games_nickname_cache WHERE ref_id=?)
+        AND (SELECT COUNT(*) FROM games_nickname_checks WHERE ip_hash=? AND created_at>?)<10
+        AND (SELECT COUNT(*) FROM games_nickname_checks WHERE device_id=? AND created_at>?)<5
+        AND (SELECT COUNT(*) FROM games_nickname_checks WHERE created_at>=?)<500`,
+      ref, game.slug, game.nicknameSku, cost, subject.hash, device, now, ref,
+      subject.hash, now - WINDOW, device, now - WINDOW, Math.floor(now / DAY) * DAY),
+      stmt(`DELETE FROM games_nickname_cache WHERE ref_id=? AND NOT EXISTS(SELECT 1 FROM games_nickname_checks WHERE ref_id=?)`, ref, ref),
+    ]);
+    if (Number(result[1]?.meta?.changes) !== 1) return unavailable;
+    const payload = { buyer_sku_code: game.nicknameSku, customer_no: customerNo, ref_id: ref, max_price: cost };
+    let response = await sendTransaction(payload);
+    if (response.kind === "ok" && response.tx.ref_id === ref && response.tx.buyer_sku_code === game.nicknameSku && response.tx.status === "Pending") {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      response = await sendTransaction(payload);
+    }
+    let status = "ambiguous";
+    let rc: string | null = null;
+    let nickname: string | null = null;
+    let expiresAt: number | null = null;
+    if (response.kind === "ok" && response.tx.ref_id === ref && response.tx.buyer_sku_code === game.nicknameSku) {
+      const tx = response.tx;
+      rc = tx.rc;
+      if (tx.status === "Sukses" && tx.rc === "00") {
+        nickname = sanitizeGamesNickname((tx.sn ?? "").replace(/^(?:(?:username\s*\/\s*)?nickname|username)\s*:\s*/i, "")) || null;
+        status = nickname ? "ok" : "ambiguous";
+        expiresAt = nickname ? Date.now() + DAY : null;
+      } else if (tx.status === "Gagal") {
+        // Official buyer response-code table: only 54 = Nomor Tujuan Salah.
+        status = tx.rc === "54" ? "invalid" : "unavailable";
+        expiresAt = Date.now() + (status === "invalid" ? 3_600_000 : 60_000);
+      }
+    }
+    await db.d1.batch([
+      stmt("UPDATE games_nickname_checks SET status=?,rc=? WHERE ref_id=?", status, rc, ref),
+      stmt("UPDATE games_nickname_cache SET result=?,nickname=?,checked_at=?,expires_at=? WHERE ref_id=?", status, nickname, Date.now(), expiresAt, ref),
+    ]);
+    return cachedResult({ result: status, nickname });
+  } catch { return unavailable; }
+}
+
+export async function gamesNicknameSummary(db: DatabaseAccess) {
+  const today = Math.floor(Date.now() / DAY) * DAY;
+  const row = await db.queryFirst(`SELECT COUNT(*) AS week_count, COALESCE(SUM(cost),0) AS week_cost,
+    COALESCE(SUM(CASE WHEN created_at>=? THEN 1 ELSE 0 END),0) AS today_count,
+    COALESCE(SUM(CASE WHEN created_at>=? THEN cost ELSE 0 END),0) AS today_cost
+    FROM games_nickname_checks WHERE created_at>=?`, today, today, today - 6 * DAY);
+  return { today: { count: Number(row?.today_count ?? 0), cost: Number(row?.today_cost ?? 0) },
+    week: { count: Number(row?.week_count ?? 0), cost: Number(row?.week_cost ?? 0) } };
+}

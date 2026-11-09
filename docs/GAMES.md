@@ -1,6 +1,6 @@
 # AXVARA Games — Spesifikasi Produk & Desain
 
-> **Status (9 November 2026): backend inti, admin data, dan API pembeli B1 QRIS + B2 gateway/crypto diimplementasikan lokal; belum ada bukti deployment Games.**
+> **Status (9 November 2026): backend inti, admin data, API pembeli B1 QRIS + B2 gateway/crypto dan S1 routing/nickname berbiaya diimplementasikan lokal; belum ada bukti deployment Games.**
 > Env Digiflazz, UI storefront, nickname publik, deposit dan transaksi nyata belum termasuk bukti B1/B2; non-QRIS kini diuji fixture lokal B2.
 > §1–§11 mempertahankan rancangan awal; keputusan terbuka yang sudah dijawab
 > digantikan §9, dan kontrak implementasi terkini ada di §12.
@@ -36,7 +36,7 @@
 
 Di luar MVP: joki, leaderboard, akun member/koin, voucher non-game, pulsa/tagihan.
 
-## 3. Informasi arsitektur (rencana route)
+## 3. Informasi arsitektur (route internal dan URL kanonis)
 
 Mengikuti pola `src/app/pedia/*`:
 
@@ -49,7 +49,16 @@ Mengikuti pola `src/app/pedia/*`:
 | `/games/bantuan`, `/games/ketentuan` | Bantuan & S&K khusus top up |
 
 `ServicesMenu` dan `CrossServicePromo` bertambah entri Games; footer bersama tetap satu.
-Seperti Pedia (route internal `/pedia`, URL kanonis `pedia.axvara.tech`), Games memakai route internal `/games` dengan URL kanonis usulan `games.axvara.tech` — konfirmasi DNS/routing di fase G7.
+Seperti Pedia, Games memakai route internal `/games` dengan URL kanonis final
+`https://games.axvara.tech` (`SITE.gamesUrl`). Middleware rewrite `/` ke `/games`
+dan path halaman ke `/games/*` tanpa flag enable; host lain `/games/*` dialihkan
+308 ke host Games, kecuali localhost/127.*. API/aset/R2/MCP tidak direwrite;
+admin produksi tetap dialihkan ke apex. Semua return tetap memiliki security headers.
+`GAMES_HOST` opsional mengubah host routing (default `games.axvara.tech`; Pages
+`secret_text` bila dipasang). Canonical/OG/sitemap tetap host publik final.
+Sitemap Games hanya root + slug registry dengan SKU enabled yang dapat dijual;
+robots menutup API privat/status/lacak. Implementasi S1 lokal; custom domain Pages
+belum ditambahkan dan bukan bukti DNS/deployment aktif.
 
 ## 4. Beranda `/games`
 
@@ -103,7 +112,21 @@ rail ringkasan sticky di kanan (desktop) / bar bawah (mobile)**.
    Genshin: UID + server). Ikon ⓘ membuka panduan "cara menemukan ID" (gambar milik
    AXVARA). Validasi format inline. **Cek nickname** otomatis setelah ID lengkap
    (produk "Cek Username" Digiflazz; tampil "Nickname: xxx ✓") sebelum pembeli membayar —
-   [KEPUTUSAN TERBUKA] karena tiap cek berbiaya kecil (≈Rp5–80) dan perlu rate limit.
+    disetujui owner (§9.3). `POST /api/games/nickname` menerima `{slug,fields}`,
+    stream maksimal8.000byte; hasil `{status:"ok",nickname}` / `{status:"unavailable"}` /
+    `{status:"invalid",message}` (ID/EN cookie `axv_locale`). Format invalid tidak memanggil supplier.
+    P9 testing/konfigurasi kosong selalu unavailable tanpa nickname palsu.
+    SKU FF/FF MAX=`ffcekusername` (snapshot Rp5), ML=`mlcekusername` (Rp24),
+    PUBG=`pubgcekusername` (Rp80); `max_price` = modal katalog bila ada, fallback
+    snapshot bila belum ada; modal >Rp80 ditolak agar batas global tetap <=Rp40.000/hari.
+    D1 cache sukses24jam/ID invalid1jam per namespace lookup+customer_no (FF MAX berbagi FF).
+    Admission atomik: IP10 + perangkat cookie httpOnly5 per15menit rolling, global500/hari UTC.
+    D1 error/limit/saldo kurang/ambigu menjadi unavailable, bukan penghalang checkout.
+    Pending dicek ulang sekali sesudah1,5detik dengan payload/ref `NCK-*` sama;
+    pending/ambigu tetap diklaim tanpa expiry (pemulihan manual, tidak membeli ulang).
+    Hanya rc54 resmi "Nomor Tujuan Salah" menjadi invalid "ID tidak ditemukan" / "ID not found";
+    rc55 gangguan bukan invalid. SN dibersihkan HTML/kontrol, trim, maksimal64karakter.
+    Admin menampilkan jumlah dan batas modal hari ini/7hari kalender UTC, bukan tagihan settlement.
    Opsi "ingat ID di perangkat ini" (localStorage, opt-in).
 2. **Pilih nominal** — lihat §5.3.
 3. **Jumlah** — default 1, stepper kecil (pola stepper Market).
@@ -231,7 +254,8 @@ mencatat di `docs/agent-rules/digiflazz.md`.
 Cakupan yang sudah diimplementasikan lokal: proxy `/dgf`, klien Digiflazz, schema,
 sinkron katalog/harga, dispatch + seller cadangan, webhook, cron, admin data
 (§12.7), dan API pembeli B1 QRIS + B2 gateway/crypto (§12.8).
-UI storefront dan endpoint nickname publik tetap paket terpisah.
+Routing host, SKU utilitas dan endpoint nickname publik S1 juga tersedia lokal;
+UI storefront masih paket terpisah.
 
 ### 12.1 Egress & env
 - Panggilan runtime: `POST {WARUNG_REBAHAN_PROXY_URL}/dgf/v1/{cek-saldo|price-list|transaction}`
@@ -258,7 +282,12 @@ UI storefront dan endpoint nickname publik tetap paket terpisah.
   `lease_until`, `submit_attempts`, `last_polled_at`, `completed_at`, `last_error`.
 - `games_dispatch_attempts`: `ref_id` UNIQUE (`<order_code>-<attempt_no>`), `order_code`,
   `attempt_no` (UNIQUE bersama order_code), `buyer_sku_code`, `status` ∈ submitting |
-  pending | success | failed | ambiguous, `rc`, `message`, `sn`, `price`.
+   pending | success | failed | ambiguous, `rc`, `message`, `sn`, `price`.
+- Migrasi0109: `games_nickname_cache` PK `(game_key,customer_no)`, `ref_id` UNIQUE,
+  hasil/nickname/checked_at/expiry; `games_nickname_checks` log admission+biaya (`ref_id`
+  PK, slug, SKU, cost, status, rc, created_at). IP berupa HMAC domain checkout existing,
+  perangkat UUID acak. Customer_no disimpan plain untuk kunci akun game non-secret;
+  tidak ada kontak/pembayaran/kredensial dalam cache. Tidak mengakses API supplier pada cache hit.
 
 ### 12.3 Alur dispatch
 1. Pembayaran terverifikasi → `schedulePaidFulfillment(code,'games')` → `processGamesPaidOrders()`;
@@ -299,9 +328,14 @@ oleh sinkron.
   B1 API katalog/quote/order/status/lacak QRIS, registry empat game, preview gate P9,
   expiry item di job existing, dan paid routing tiga provider QRIS juga selesai lokal (§12.8).
   B2 menambah gateway/crypto, consent dan view/status/lookup kanonis tanpa UI atau env baru.
-  Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.28.
-- **Untuk Paseo/fase berikut:** UI rail gateway/crypto Games, endpoint cek nickname (rate limit +
-  cache), UI §4–§7, lalu G8 go-live (pasang env `secret_text`, rotasi key, aktifkan
+  S1 menambah routing host tanpa enable flag, metadata helper/sitemap/robots, migrasi0109,
+  nickname berbiaya/cache/admission/log, ringkasan admin, dan larangan jual SKU utilitas.
+  Kode `ffcekusername`/`mlcekusername`/`pubgcekusername` atau nama `/cek\s*username/i`
+  selalu tersembunyi di katalog pembeli; quote/order baru dan enable admin409 `not_sellable`,
+  enable-wave melewatinya. Nickname dari klien display-only, disanitasi ke `customer_nickname`.
+  Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.29.
+- **Untuk Paseo/fase berikut:** integrasi metadata/QA UI rail gateway/crypto Games,
+  UI §4–§7, lalu G8 go-live (custom domain Pages, env `secret_text`, rotasi key, aktifkan
   webhook dashboard, mode Production, deposit).
 - Tindak lanjut teknis: allowlist `rc` Gagal yang transien sebelum dianggap final; seed
   harga Oura gelombang 1 (owner) lewat admin/API — tabel referensi sudah siap menerima

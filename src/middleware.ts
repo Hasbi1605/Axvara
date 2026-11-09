@@ -3,6 +3,7 @@ import { isD1InMaintenance, maintenanceDatabase } from "@/lib/d1-maintenance";
 import { maintenanceResponse } from "@/lib/maintenance-page";
 
 const PEDIA_HOST = (process.env.PEDIA_HOST || "pedia.axvara.tech").toLowerCase();
+const GAMES_HOST = (process.env.GAMES_HOST || "games.axvara.tech").toLowerCase();
 
 export async function middleware(req: NextRequest) {
   return securityHeaders(await routeRequest(req), req);
@@ -37,6 +38,23 @@ async function routeRequest(req: NextRequest) {
     }
     const contacts = path === "/wa" || path === "/pedia/wa";
     return maintenanceResponse(Date.now(), contacts, req.nextUrl.searchParams.get("pesan") ?? undefined, req.method === "HEAD");
+  }
+
+  const gamesPath = path === "/games" || path.startsWith("/games/");
+  if (host !== GAMES_HOST && gamesPath && host !== "localhost" && !host.startsWith("127.")) {
+    const url = req.nextUrl.clone();
+    url.protocol = "https:";
+    url.host = GAMES_HOST;
+    url.pathname = path.replace(/^\/games(?=\/|$)/, "").replace(/\/$/, "") || "/";
+    return NextResponse.redirect(url, 308);
+  }
+  const gamesShared = ["/api", "/_next", "/brand", "/icons", "/og", "/r2", "/mcp", "/admin"]
+    .some(prefix => path === prefix || path.startsWith(`${prefix}/`));
+  const gamesAsset = /\.[a-z0-9]+$/i.test(path) && path !== "/sitemap.xml" && path !== "/robots.txt";
+  if (host === GAMES_HOST && !isAsset && !gamesShared && !gamesAsset && !gamesPath) {
+    const url = req.nextUrl.clone();
+    url.pathname = path === "/" ? "/games" : `/games${path}`;
+    return NextResponse.rewrite(url);
   }
 
   // PEDIA (2026-10-07, PEDIA-PRD §9.2): pedia.axvara.tech → rewrite /pedia/*.

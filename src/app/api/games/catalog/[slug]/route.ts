@@ -7,6 +7,7 @@ import { effectiveGroup } from "@/lib/games/admin";
 import { gamesOrderingOpen } from "@/lib/games/ordering";
 import { gamesRegistryGame, publicGamesGame } from "@/lib/games/registry";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
+import { isGamesNicknameProduct } from "@/lib/games/sellable";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ORDER BY display_order IS NULL, display_order, sell_price, id`,
     ...brands,
   ).catch(() => [] as Record<string, unknown>[]);
-  const products = rows.map((row) => ({
+  const products = rows.filter(row => !isGamesNicknameProduct(row)).map((row) => ({
     buyer_sku_code: String(row.buyer_sku_code),
     name: String(row.product_name ?? ""),
     price: Number(row.sell_price) || 0,

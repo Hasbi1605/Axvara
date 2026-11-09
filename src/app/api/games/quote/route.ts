@@ -13,6 +13,7 @@ import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
 import { serializePediaQuoteMethods } from "@/lib/pedia/payment-methods";
 import { buildMethodCatalog } from "@/lib/payments/method-options";
 import type { Locale } from "@/lib/i18n/locale";
+import { isGamesNicknameProduct, sanitizeGamesNickname } from "@/lib/games/sellable";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -57,6 +58,9 @@ export async function POST(req: NextRequest) {
     `SELECT id, buyer_sku_code, product_name, game_brand, cost, sell_price, seller_active, enabled FROM games_products WHERE buyer_sku_code=?`,
     buyer_sku_code,
   ).catch(() => null);
+  if (product && isGamesNicknameProduct(product)) {
+    return NextResponse.json({ error: "not_sellable" }, { status: 409 });
+  }
   if (!product || Number(product.enabled) !== 1 || !gamesBrandMatches(game, product.game_brand)
     || Number(product.seller_active) !== 1 || Number(product.cost) <= 0 || Number(product.sell_price) <= 0) {
     return NextResponse.json({
@@ -68,7 +72,7 @@ export async function POST(req: NextRequest) {
   if (!Number.isSafeInteger(unitPrice) || unitPrice <= 0) {
     return NextResponse.json({ error: "sku_unavailable", message: pick(locale, "Nominal ini sedang tidak tersedia.", "This amount is unavailable.") }, { status: 409 });
   }
-  const customerNickname = nickname && nickname.trim() ? nickname.trim() : null;
+  const customerNickname = nickname ? sanitizeGamesNickname(nickname) || null : null;
   let catalog: Awaited<ReturnType<typeof buildMethodCatalog>> = [];
   try { catalog = await buildMethodCatalog(unitPrice); } catch { /* Native QRIS remains available. */ }
   if (!catalog.some((method) => method.id === "qris")) {

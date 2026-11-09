@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { gamesOrderingOpen } from "@/lib/games/ordering";
 import { GAMES_REGISTRY } from "@/lib/games/registry";
+import { isGamesNicknameProduct } from "@/lib/games/sellable";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -11,10 +12,16 @@ export const dynamic = "force-dynamic";
 export async function GET(_request: NextRequest) {
   const db = createDatabaseAccess();
   const rows = await db.queryAll(
-    `SELECT game_brand, MIN(sell_price) AS min_price, COUNT(*) AS sku_count
-       FROM games_products WHERE enabled=1 AND sell_price>0 GROUP BY game_brand`,
+    `SELECT game_brand, buyer_sku_code, product_name, sell_price
+       FROM games_products WHERE enabled=1 AND sell_price>0`,
   ).catch(() => [] as Record<string, unknown>[]);
-  const byBrand = new Map(rows.map((row) => [String(row.game_brand ?? "").trim().toLowerCase(), row]));
+  const byBrand = new Map<string, { sku_count: number; min_price: number }>();
+  for (const row of rows) {
+    if (isGamesNicknameProduct(row)) continue;
+    const brand = String(row.game_brand ?? "").trim().toLowerCase();
+    const current = byBrand.get(brand);
+    byBrand.set(brand, { sku_count: (current?.sku_count ?? 0) + 1, min_price: Math.min(current?.min_price ?? Infinity, Number(row.sell_price)) });
+  }
   const games = GAMES_REGISTRY.flatMap((game) => {
     let minPrice: number | null = null;
     let skuCount = 0;

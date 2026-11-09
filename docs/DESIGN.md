@@ -3,6 +3,9 @@
 ## AXVARA Games — arah desain (9 November 2026, RENCANA; menunggu persetujuan visual owner)
 
 Detail lengkap: `docs/GAMES.md` §4–§7. Ringkasan:
+- S1 lokal: header GamesManager memakai satu baris status teks existing untuk
+  jumlah cek nickname/batas modal hari UTC dan7hari kalender; bukan angka settlement.
+  Tidak ada kontrol/warna/layout baru; QA browser diteruskan ke PM integrasi.
 - Acuan pola UX Oura Store (header game + langkah bernomor + rail ringkasan sticky),
   **tanpa** meniru aset, warna atau teks mereka; identitas tetap token AXVARA
   (midnight, cyan aksi/terpilih, gold nomor langkah & badge, glass, Space Grotesk harga).

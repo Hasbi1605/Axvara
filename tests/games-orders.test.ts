@@ -117,6 +117,27 @@ beforeEach(() => {
 afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("games catalog", () => {
+  it.each([
+    ["ffcekusername", "Utility"], ["mlcekusername", "Utility"], ["pubgcekusername", "Utility"], ["other-check", "ML CeK\t Username"],
+  ])("never sells username utility %s even if legacy enabled", async (sku, name) => {
+    seedSku({ buyer_sku_code: sku, product_name: name });
+    const catalog = await import("@/app/api/games/catalog/route");
+    const detail = await import("@/app/api/games/catalog/[slug]/route");
+    expect((await (await catalog.GET({} as never)).json()).games).toEqual([]);
+    expect((await (await detail.GET(new Request("http://x") as never, { params: Promise.resolve({ slug: "mobile-legends" }) })).json()).products).toEqual([]);
+    const rejected = await makeQuote({ buyer_sku_code: sku });
+    expect(rejected.status).toBe(409); expect(await rejected.json()).toEqual({ error: "not_sellable" });
+  });
+  it("rejects a quote whose live SKU became a username utility and sanitizes display-only nickname", async () => {
+    seedSku();
+    const token = await quoteToken({ nickname: "<b>Player</b>\u0000" });
+    const { verifyGamesQuoteToken } = await import("@/lib/games/quote");
+    expect(await verifyGamesQuoteToken(token)).toMatchObject({ customer_nickname: "Player" });
+    fx.sql.prepare("UPDATE games_products SET product_name='CekUsername'").run();
+    const res = await placeOrder(token);
+    expect(res.status).toBe(409); expect(await res.json()).toEqual({ error: "not_sellable" });
+    expect(invoice).not.toHaveBeenCalled();
+  });
   it("lists only registry games that have an enabled SKU", async () => {
     seedSku();
     seedSku({ buyer_sku_code: "ff140", game_brand: "FREE FIRE", cost: 20000, sell_price: 22000 });

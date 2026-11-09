@@ -4,6 +4,7 @@ import fs from "node:fs";
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite");
 
 const migration = fs.readFileSync("drizzle/migrations/0107_games_core.sql", "utf8");
+const nicknameMigration = fs.readFileSync("drizzle/migrations/0109_games_nickname.sql", "utf8");
 const schema = fs.readFileSync("drizzle/schema.sql", "utf8");
 const TABLES = ["games_products", "games_order_items", "games_dispatch_attempts"];
 const body = (sql: string, name: string) => {
@@ -11,7 +12,8 @@ const body = (sql: string, name: string) => {
   if (!m) throw new Error(`${name} missing`);
   return m[1].replace(/\s+/g, " ").trim();
 };
-const indexes = (sql: string) => (sql.match(/CREATE INDEX IF NOT EXISTS idx_games_[^;]+;/g) ?? []).map((s) => s.replace(/\s+/g, " "));
+const indexes = (sql: string) => (sql.match(/CREATE INDEX IF NOT EXISTS idx_games_[^;]+;/g) ?? [])
+  .filter(s => TABLES.some(t => s.includes(`ON ${t}(`))).map((s) => s.replace(/\s+/g, " "));
 // 0108 (migrasi aditif berikutnya) menambah dua kolom ini ke games_products.
 // schema.sql adalah gabungan semua migrasi, jadi keduanya dikeluarkan saat
 // membandingkan bentuk dasar 0107 — bukan melonggarkan pemeriksaan kolom lain.
@@ -51,4 +53,17 @@ describe("0107 games core migration", () => {
     db.exec(attempt("G1-2", 2, "ambiguous"));
     db.close();
   });
+});
+
+it("0109 matches canonical nickname tables/indexes and applies idempotently", () => {
+  for (const table of ["games_nickname_cache", "games_nickname_checks"]) expect(body(nicknameMigration, table)).toBe(body(schema, table));
+  const nicknameIndexes = (sql: string) => sql.match(/CREATE INDEX IF NOT EXISTS idx_games_nickname_[^;]+;/g);
+  expect(nicknameIndexes(nicknameMigration)).toEqual(nicknameIndexes(schema));
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec(nicknameMigration); db.exec(nicknameMigration);
+    db.exec("INSERT INTO games_nickname_cache VALUES('ffcekusername','123','NCK-1','pending',NULL,1,NULL)");
+    expect(() => db.exec("INSERT INTO games_nickname_cache VALUES('ffcekusername','123','NCK-2','pending',NULL,1,NULL)")).toThrow(/UNIQUE/);
+    expect(() => db.exec("INSERT INTO games_nickname_cache VALUES('mlcekusername','456','NCK-1','pending',NULL,1,NULL)")).toThrow(/UNIQUE/);
+  } finally { db.close(); }
 });

@@ -22,7 +22,8 @@ type Sync = {
   last_sync_at: string | null;
   counts: { total: number; enabled: number; seller_active: number; with_reference: number };
 };
-type List = { items: Item[]; total: number; brands: string[]; sync: Sync; limit: number; offset: number };
+type List = { items: Item[]; total: number; brands: string[]; sync: Sync; limit: number; offset: number;
+  nickname_checks?: { today: { count: number; cost: number }; week: { count: number; cost: number } } };
 type Row = Record<string, unknown>;
 type Wave = { eligible: number; enabled_now: number; skipped_unhealthy: number };
 
@@ -35,7 +36,7 @@ const GROUP_LABEL: Record<Group, string> = { special: "Spesial", bestseller: "Te
 const MESSAGES: Record<string, string> = {
   unauthorized: "Sesi admin berakhir. Masuk kembali.", load_failed: "Data games gagal dimuat. Coba lagi.",
   save_failed: "Perubahan gagal disimpan.", not_found: "SKU tidak ditemukan. Muat ulang daftar.",
-  not_sellable: "SKU belum punya seller aktif atau modal, jadi belum bisa diaktifkan.",
+  not_sellable: "SKU utilitas atau tanpa seller aktif/modal tidak bisa dijual.",
   database_unavailable: "Database sementara tidak tersedia.",
 };
 
@@ -129,6 +130,7 @@ export function GamesManager() {
   const totalPages = Math.max(1, Math.ceil(list.total / PAGE_SIZE));
   return <div className="mt-5 min-w-0 space-y-4">
     <header><h2 className="font-display text-xl font-semibold text-white">Games</h2><p className="mt-1 text-xs text-white/40">Kelola SKU Digiflazz, harga Oura, grup nominal, dan aktivasi gelombang 1.</p></header>
+    {list.nickname_checks && <p className="text-xs text-white/65" role="status">Cek nickname (UTC): hari ini {list.nickname_checks.today.count} cek / {formatRupiah(list.nickname_checks.today.cost)}; 7 hari {list.nickname_checks.week.count} cek / {formatRupiah(list.nickname_checks.week.cost)} (batas modal, bukan tagihan final).</p>}
 
     <section className="ax-glass grid gap-3 rounded-[20px] p-4 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-5" aria-label="Status sinkron Games">
       <div><p className="text-[11px] uppercase tracking-[0.08em] text-white/35">Sinkron terakhir</p><p className="mt-1 font-semibold text-white">{formatWibDateTime(list.sync.last_sync_at) ?? "Belum pernah"}</p></div>

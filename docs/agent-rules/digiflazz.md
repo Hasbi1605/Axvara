@@ -1,3 +1,20 @@
+# Digiflazz buyer - username utility S1 (9 November 2026, lokal)
+
+- Cek Username adalah transaksi BERBIAYA, bukan nominal topup yang dapat dijual.
+  `ffcekusername` (FF+FF MAX), `mlcekusername`, `pubgcekusername` dan nama
+  `/cek\s*username/i` wajib tersembunyi dari katalog/sitemap/quote/order baru,
+  enable admin409 `not_sellable`, enable-wave melewatinya. Jangan hapus SKU dari
+  sinkron: modalnya dibutuhkan cek nickname.
+- Hanya endpoint nickname berpagar D1 (`docs/GAMES.md` §5.2, ARCHITECTURE §16.29)
+  memakai utility. Max_price modal katalog bila ada, fallback snapshot5/24/80,
+  ceiling80/cek; IP10/device5 per15menit, global500/hari UTC. Cache sukses24jam,
+  ID salah rc54 satu jam; rc55 bukan ID salah. Testing/kredensial kosong tidak
+  melakukan cek berbayar atau mengarang nickname. Pending satu recheck1,5detik
+  payload/ref sama; ambigu tetap klaim durable tanpa expiry, tidak membeli ulang.
+- Log/admin cost adalah batas modal admission, bukan settlement. Tidak ada
+  transaksi/deposit/konfigurasi produksi S1; pemulihan ambiguity harus memakai
+  referensi existing dan bukti supplier, jangan reset klaim supaya membeli lagi.
+
 # Digiflazz buyer - pemilihan seller Games (9 November 2026)
 
 Keputusan owner 9 November 2026, menggantikan kalimat "bukan memilih seller

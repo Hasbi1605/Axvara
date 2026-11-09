@@ -12,6 +12,7 @@
 import { computeGamesSellPrice, gamesPriceFloor } from "./pricing";
 import { GAMES_CATALOG_SETTING_KEY } from "./catalog-sync";
 import type { DatabaseAccess } from "@/lib/db-access";
+import { isGamesNicknameProduct } from "./sellable";
 
 export type GamesDisplayGroup = "special" | "bestseller" | "all";
 export const GAMES_DISPLAY_GROUPS = ["special", "bestseller"] as const;
@@ -88,10 +89,10 @@ export function gamesMargin(row: GamesMarginRow): GamesMargin {
 }
 
 /** P3: syarat aktivasi massal (tidak pernah memaksa `enabled`). */
-export function isHealthyForWave(row: GamesMarginRow & { seller_active?: unknown }): boolean {
+export function isHealthyForWave(row: GamesMarginRow & { seller_active?: unknown; buyer_sku_code?: unknown; product_name?: unknown }): boolean {
   const margin = gamesMargin(row);
   const reference = row.reference_price === null || row.reference_price === undefined ? null : amount(row.reference_price) || null;
-  return amount(row.seller_active) === 1
+  return !isGamesNicknameProduct(row) && amount(row.seller_active) === 1
     && margin.cost > 0
     && margin.sell >= margin.floor
     && (reference === null || margin.sell <= reference);
@@ -194,7 +195,7 @@ export interface GamesWaveResult {
 export async function enableGamesWave1(db: DatabaseAccess, options: { dryRun?: boolean } = {}): Promise<GamesWaveResult> {
   const placeholders = GAMES_WAVE1_BRANDS.map(() => "?").join(",");
   const rows = await db.queryAll(
-    `SELECT id, buyer_sku_code, cost, sell_price, reference_price, seller_active, enabled
+    `SELECT id, buyer_sku_code, product_name, cost, sell_price, reference_price, seller_active, enabled
        FROM games_products WHERE lower(trim(game_brand)) IN (${placeholders}) ORDER BY id`,
     ...GAMES_WAVE1_BRANDS.map(normalizeBrand),
   );

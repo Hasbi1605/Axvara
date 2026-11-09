@@ -96,7 +96,7 @@ W3 backend lokal: checkout quote/order crypto menyimpan snapshot USD dan locale,
 ## AXVARA Games — arsitektur (9 November 2026)
 
 Spesifikasi produk/desain lengkap: `docs/GAMES.md`. Backend inti, admin dan API
-pembeli B1 QRIS + B2 gateway/crypto sudah diimplementasikan lokal (§16.25–§16.28); belum ada bukti
+pembeli B1 QRIS + B2 gateway/crypto + S1 routing/nickname sudah diimplementasikan lokal (§16.25–§16.29); belum ada bukti
 deployment Games. Daftar berikut mempertahankan snapshot rancangan awal;
 status implementasi terkini mengikuti seksi §16 tersebut.
 
@@ -1223,13 +1223,17 @@ CREATE TABLE store_settings (
 -- qris    | QRIS Dinamis             | -            | DANA Business | qris_url NULL
 ```
 
-**AXVARA Games (migrasi 0107 + 0108, §16.25–§16.27):** tabel `games_products`
+**AXVARA Games (migrasi 0107 + 0108 + 0109, §16.25–§16.29):** tabel `games_products`
 (kolom `display_group`/`display_order` ditambahkan 0108), `games_reference_prices`
 (sumber kebenaran harga pembanding Oura per `buyer_sku_code`), `games_order_items`
 (1 baris per pesanan Games, FK `orders.code`), dan `games_dispatch_attempts`
 (`ref_id` unik per percobaan). Definisi kanonis ada di `drizzle/schema.sql`; 0108
 bersifat aditif — `CREATE TABLE IF NOT EXISTS` untuk tabel referensi, sedangkan
 `ALTER TABLE` kolom baru dicatat ledger migrasi D1 dan tidak dijalankan ulang manual.
+0109 menambah `games_nickname_cache` (PK namespace lookup + customer_no, ref unik,
+hasil/nickname/checked_at/expiry) dan `games_nickname_checks` (ref unik, slug/SKU,
+modal/status/rc, IP HMAC/perangkat acak/timestamp). Claim cache dan admission log
+satu batch atomik; pending/ambigu tidak kedaluwarsa agar tidak membeli dua kali.
 
 ---
 
@@ -4200,6 +4204,40 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Telegram**: `paymentMethodOfferKeyboard` menampilkan satu entri `Crypto (USD) · <total> USD` (`pmc:<nonce>`); `cryptoCoinKeyboard` (Populer → Stablecoin, 2/baris, label `BTC` / `USDT · BSC`, Kembali `pmb:<nonce>`); tap koin = `pm:<nonce>:<index>` (reuse freeze/consent/claim). Handler `handlePayCryptoMenu` (callback.ts `pmc`/`pmb`, ownerBound) hanya merender ulang dari array beku. `validateFrozenSelectionLive` menolak koin yang hilang dari snapshot / di bawah minimum baru (`method_unavailable`); dispatch memakai ticker/jaringan dari id beku → katalog kurasi. `PAYQ1_MAX_BYTES` 64 KB, `PAYQ1_MAX_METHODS` 96 (indeks `pm:` tetap 2 digit). Pesan status pending memuat jumlah+simbol+jaringan+peringatan+baris biaya layanan.
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
+
+### 16.29 AXVARA Games S1: host, nickname berbiaya dan SKU utilitas — 9 November 2026 (lokal, belum deploy)
+
+- `SITE.gamesUrl=https://games.axvara.tech`; middleware `GAMES_HOST` opsional (default sama,
+  `secret_text` bila dipasang) rewrite root/path halaman ke `/games/*` tanpa flag enable.
+  `/games/*` di host lain308, localhost/127.* tetap lokal. API/_next/aset/brand/R2/MCP
+  tidak direwrite; `/admin` produksi tetap apex. Wrapper security headers berlaku semua return.
+- Metadata halaman UI memakai `gamesMetadata(path,title,description)` untuk canonical/OG;
+  `src/app/games/sitemap.ts` merupakan nested metadata route Next15 `/games/sitemap.xml`,
+  hanya root+slug registry dengan SKU enabled non-utilitas. Robots adalah handler biasa
+  `src/app/games/robots.txt/route.ts` (bukan nested `robots.ts`, yang tidak didukung Next).
+  Host Games rewrite `/sitemap.xml`/`/robots.txt` ke dua route itu; apex SEO tidak berubah.
+- `POST /api/games/nickname` edge: stream8.000byte `{slug,fields}`; validasi registry dahulu,
+  P9 testing/kredensial/proxy kosong => unavailable tanpa supplier. Hasil ok+nickname / unavailable /
+  invalid+message ID/EN (`axv_locale`). FF/FF MAX share `ffcekusername`, ML `mlcekusername`,
+  PUBG `pubgcekusername`. `sendTransaction` ref `NCK-UUID`, max_price modal katalog (fallback
+  snapshot5/24/80); biaya>80 gagal tertutup sehingga500cek <=Rp40.000/hari.
+- Migrasi `drizzle/migrations/0109_games_nickname.sql` + schema §4: D1 claim/cache per
+  lookup SKU+customer_no plain (ID game bukan secret), sukses24jam, rc54 invalid1jam,
+  gagal final lainnya60detik. IP HMAC memakai secret existing; cookie UUID `axv_nck_device`
+  httpOnly/SameSite=Lax/Secure pada HTTPS. Log adalah counter durable: IP10/perangkat5 per
+  rolling15menit + global500/hari UTC dalam batch yang sama. Limit/error D1 => unavailable,
+  tidak429 dan tidak fail-open. Cache hit tidak memakai slot. Biaya log = batas modal saat
+  admission, bukan bukti settlement, termasuk pending/gagal demi konservatisme.
+- Pending satu recheck setelah1,5detik dengan payload/ref sama. Salah korelasi/ref/SKU,
+  timeout, SN sukses kosong atau masih pending => klaim ambigu tanpa expiry; tidak ref baru
+  sampai pemulihan manual. rc54 resmi "Nomor Tujuan Salah" saja => invalid; rc55 gangguan
+  => unavailable. SN dibersihkan HTML/kontrol, trim/max64; nickname quote klien hanya display.
+- Utilitas (tiga kode di atas atau nama `/cek\s*username/i`) tidak masuk katalog/sitemap,
+  quote/order baru409 `not_sellable`, PATCH enabled409, enable-wave dilewati. Riwayat/reuse
+  order tersimpan tidak diubah. GET admin products mengembalikan `nickname_checks.today/week`
+  count+cost (hari UTC/7hari kalender); GamesManager menampilkan satu baris batas modal.
+- Custom domain Pages belum ditambahkan, metadata page UI/QA browser/full-suite/build
+  adalah integrasi PM; tidak ada env produksi/secret/deposit/transaksi/rollout S1.
 
 ### 16.28 AXVARA Games B1 + B2: API pembeli dan rail pembayaran — 9 November 2026 (lokal, belum deploy)
 

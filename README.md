@@ -1704,6 +1704,27 @@ migrasi `0107_games_core.sql`, cron lite `games_catalog`/`games_orders`, dan web
 (`games_reference_prices`, override grup/urutan), tab **Games** di `/admin?section=games`,
 API `GET/PATCH /api/admin/games/products` + `POST .../enable-wave` (dry-run lalu konfirmasi).
 
+S1 (lokal, belum deploy): `SITE.gamesUrl=https://games.axvara.tech`, middleware host
+rewrite `/`/halaman ke `/games/*` tanpa enable flag dan308 `/games/*` dari host lain
+(localhost/127.* dikecualikan). `GAMES_HOST` opsional, default host tersebut; Pages
+`secret_text` jika dipasang. API/aset/R2/MCP tetap shared, admin produksi ke apex.
+Metadata UI memakai `src/lib/games/metadata.ts`; `src/app/games/sitemap.ts` menyediakan
+root+slug registry enabled yang sellable, robots berupa handler `games/robots.txt/route.ts`.
+Custom domain Pages belum ditambahkan oleh paket ini; apex sitemap/robots tidak berubah.
+
+`POST /api/games/nickname` `{slug,fields}` (stream8.000byte) => ok+nickname / unavailable /
+invalid+message ID/EN. Registry memetakan FF/FF MAX ke `ffcekusername`, ML ke `mlcekusername`,
+PUBG ke `pubgcekusername`; utilitas ini/nama Cek Username tidak pernah dijual, quote/order
+baru atau enable admin409 `not_sellable`, aktivasi gelombang melewati utilitas.
+Migrasi `drizzle/migrations/0109_games_nickname.sql`: cache24jam sukses/1jam ID salah rc54,
+claim ambigu tanpa expiry, log admission/modal+status. IP10/perangkat5 perrolling15menit,
+global500/hari UTC; cookie UUID httpOnly, IP HMAC, ID game plain non-secret.
+Modal katalog dipakai max_price (fallback snapshot5/24/80), >Rp80 ditolak: batas500cek
+<=Rp40.000/hari. Pending satu recheck1,5detik payload/ref sama, tidak ref baru saat ambigu;
+P9/error D1/limit/gangguan => unavailable, checkout tidak diblokir.
+GET admin products `nickname_checks.today/week` dan header GamesManager menampilkan
+jumlah/batas modal hari ini/7hari kalender UTC, bukan tagihan final. Detail ARCHITECTURE §16.29.
+
 B1+B2 API pembeli QRIS/gateway/crypto (lokal, belum deploy):
 - `GET /api/games/catalog` + `GET /api/games/catalog/[slug]`: empat game registry,
   nominal enabled, seller OFF tampil unavailable, tanpa modal/seller/backup.
@@ -1732,5 +1753,5 @@ Registry/format ID di `src/lib/games/registry.ts`; kontrak API lengkap dan renta
 validasi konservatif di `docs/GAMES.md` §12.8 / ARCHITECTURE §16.28. P9: testing true
 atau username/key kosong → `ordering_open=false`, POST quote/order 503 `games_preview`
 (ID/EN), katalog tetap terbaca. B1 tidak memasang env atau mengaktifkan Production;
-UI `/games`, nickname publik dan bukti deployment belum termasuk. Fokus B2 67 file/1016 tes
+UI `/games` dan bukti deployment belum termasuk B1/B2; nickname ditambahkan S1 di atas. Fokus B2 67 file/1016 tes
 hijau termasuk D1 workerd; full suite/build diteruskan ke PM, tanpa akses/transaksi produksi.

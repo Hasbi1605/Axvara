@@ -13,6 +13,8 @@ import {
   effectiveGroup, gamesAdminSyncStatus, gamesMargin, listGamesProducts,
 } from "@/lib/games/admin";
 import type { D1Statement } from "@/lib/db";
+import { isGamesNicknameProduct } from "@/lib/games/sellable";
+import { gamesNicknameSummary } from "@/lib/games/nickname";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -56,10 +58,11 @@ export async function GET(request: NextRequest) {
       limit, offset,
     });
     const sync = await gamesAdminSyncStatus(db);
+    const nickname_checks = await gamesNicknameSummary(db);
     return NextResponse.json({
       ok: true,
       items: page.items.map((row) => ({ ...row, effectiveGroup: effectiveGroup(row), margin: gamesMargin(row) })),
-      total: page.total, limit: page.limit, offset: page.offset, brands: page.brands, sync,
+      total: page.total, limit: page.limit, offset: page.offset, brands: page.brands, sync, nickname_checks,
     });
   } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }
 }
@@ -79,12 +82,12 @@ export async function PATCH(request: NextRequest) {
   const d1 = db.d1;
   try {
     const current = await db.queryFirst(
-      `SELECT cost, seller_active FROM games_products WHERE buyer_sku_code=?`, patch.buyer_sku_code,
+      `SELECT buyer_sku_code, product_name, cost, seller_active FROM games_products WHERE buyer_sku_code=?`, patch.buyer_sku_code,
     );
     if (!current) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    if (patch.enabled === true && (Number(current.seller_active) !== 1 || Number(current.cost) <= 0)) {
+    if (patch.enabled === true && (isGamesNicknameProduct(current) || Number(current.seller_active) !== 1 || Number(current.cost) <= 0)) {
       return NextResponse.json(
-        { error: "not_sellable", message: "SKU belum punya seller aktif atau modal; tidak bisa diaktifkan." },
+        { error: "not_sellable", message: "SKU utilitas atau tanpa seller aktif/modal tidak bisa dijual." },
         { status: 409 },
       );
     }

@@ -21,9 +21,9 @@ describe("games registry", () => {
     expect(gamesRegistryGame("valorant")).toBeNull();
   });
 
-  it("keeps nickname/icon/banner empty for the later packages", () => {
+  it("maps paid username SKUs while keeping assets empty for the UI package", () => {
+    expect(GAMES_REGISTRY.map(game => game.nicknameSku)).toEqual(["ffcekusername", "ffcekusername", "mlcekusername", "pubgcekusername"]);
     for (const game of GAMES_REGISTRY) {
-      expect(game.nicknameSku).toBeNull();
       expect(game.icon).toBeNull();
       expect(game.banner).toBeNull();
     }

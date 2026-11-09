@@ -33,8 +33,7 @@ export interface GamesDefinition {
   fields: GamesField[];
   /** Susun customer_no Digiflazz dari field yang sudah tervalidasi. */
   buildCustomerNo(fields: Record<string, string>): string;
-  /** Diisi paket terpisah; B1 belum punya endpoint cek nickname. */
-  nicknameSku: null;
+  nicknameSku: string;
   icon: string | null;
   banner: string | null;
 }
@@ -65,7 +64,7 @@ export const GAMES_REGISTRY: readonly GamesDefinition[] = Object.freeze([
       hint: PLAYER_ID_HINT,
     }],
     buildCustomerNo: (fields) => fields.playerId,
-    nicknameSku: null,
+    nicknameSku: "ffcekusername",
     icon: null,
     banner: null,
   },
@@ -83,7 +82,7 @@ export const GAMES_REGISTRY: readonly GamesDefinition[] = Object.freeze([
       hint: PLAYER_ID_HINT,
     }],
     buildCustomerNo: (fields) => fields.playerId,
-    nicknameSku: null,
+    nicknameSku: "ffcekusername",
     icon: null,
     banner: null,
   },
@@ -116,7 +115,7 @@ export const GAMES_REGISTRY: readonly GamesDefinition[] = Object.freeze([
       },
     ],
     buildCustomerNo: (fields) => `${fields.userId}${fields.zoneId}`,
-    nicknameSku: null,
+    nicknameSku: "mlcekusername",
     icon: null,
     banner: null,
   },
@@ -134,7 +133,7 @@ export const GAMES_REGISTRY: readonly GamesDefinition[] = Object.freeze([
       hint: PLAYER_ID_HINT,
     }],
     buildCustomerNo: (fields) => fields.playerId,
-    nicknameSku: null,
+    nicknameSku: "pubgcekusername",
     icon: null,
     banner: null,
   },

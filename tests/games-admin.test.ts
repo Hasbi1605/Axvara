@@ -80,6 +80,20 @@ describe("games admin helpers", () => {
 });
 
 describe("admin games products API", () => {
+  it("blocks username utilities in manual and bulk enable; includes today's nickname budget", async () => {
+    seed({ buyer_sku_code: "mlcekusername", product_name: "Utility" });
+    seed({ buyer_sku_code: "other-check", product_name: "Cek\tUsername" });
+    fx.sql.prepare("INSERT INTO games_nickname_checks(ref_id,slug,buyer_sku_code,cost,status,ip_hash,device_id,created_at) VALUES('NCK-fixture','mobile-legends','mlcekusername',24,'ok','hash','device',?)").run(Date.now());
+    const { GET, PATCH } = await import("@/app/api/admin/games/products/route");
+    for (const sku of ["mlcekusername", "other-check"]) {
+      const res = await PATCH(await json("http://x/api/admin/games/products", "PATCH", { buyer_sku_code: sku, enabled: true }));
+      expect(res.status).toBe(409); expect((await res.json()).error).toBe("not_sellable");
+    }
+    const { enableGamesWave1 } = await import("@/lib/games/admin");
+    const { createDatabaseAccess } = await import("@/lib/db-access");
+    expect(await enableGamesWave1(createDatabaseAccess())).toMatchObject({ eligible: 0, enabled_now: 0 });
+    expect((await (await GET(await authedRequest("http://x/api/admin/games/products"))).json()).nickname_checks).toEqual({ today: { count: 1, cost: 24 }, week: { count: 1, cost: 24 } });
+  });
   it("rejects unauthenticated GET, PATCH and enable-wave", async () => {
     const { GET, PATCH } = await import("@/app/api/admin/games/products/route");
     const wave = await import("@/app/api/admin/games/products/enable-wave/route");
