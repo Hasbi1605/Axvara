@@ -2850,11 +2850,42 @@ JANGAN pernah mengirim balik objek `deployment_configs`/`env_vars` hasil GET; ve
 himpunan nama kunci sebelum/sesudah. Secret tanpa salinan lokal wajib di-backup owner
 (password manager) saat dibuat.
 
-Cara mengubah satu env tanpa merusak yang lain (2026-09-18): pakai
+#### Cadangan & pemulihan env (10 November 2026)
+
+- `.pages-env-backup` lokal di-ignore oleh `.pages-env-backup*`, izin `600`;
+  simpan juga salinannya di password manager owner. Blok `[production]`,
+  `[preview]`, `[worker:axvara-mcp]` memakai `KEY=VALUE` literal, bukan sintaks
+  shell: jangan `source`, echo, log, stage atau commit berkas ini. Karakter `=`
+  dan `#` di dalam nilai dipertahankan; komentar hanya baris berawalan `#`.
+- Setiap secret baru maupun perubahan nilai env Pages WAJIB ditambahkan/diperbarui
+  di `.pages-env-backup` saat nilai tersedia; GET Cloudflare tidak bisa mengambil
+  kembali nilai `secret_text`. Kunci yang belum dipulihkan tetap komentar
+  `# KEY= (TIDAK DIPASANG - alasan)`, bukan assignment kosong atau nilai tebakan.
+- `node scripts/pages-env-restore.mjs [path-backup]` default **DRY-RUN**:
+  hanya nama/jumlah kunci, tanpa jaringan atau membaca kredensial Cloudflare.
+  Filter: `--env production|preview` dan `--only KEY1,KEY2`.
+- Setelah pemeriksaan owner, `node scripts/pages-env-restore.mjs --apply --env
+  production --only KEY1,KEY2` membaca Global API Key/email dari `.cf-credentials`.
+  Semua blok terpilih dipreflight: kunci wajib sudah ada di project. PATCH dibuat
+  baru per environment, HANYA assignment dari berkas bertipe `secret_text`;
+  objek/nilai hasil GET tidak pernah dikirim balik. Himpunan nama production dan
+  preview diperiksa sebelum/sesudah setiap PATCH, termasuk respons gagal;
+  perubahan himpunan atau API gagal menghentikan operasi tanpa retry otomatis.
+- Script tidak deploy atau mengubah Worker. `AXVARA_CRON_SECRET` dipulihkan
+  manual dengan `wrangler secret put AXVARA_CRON_SECRET --config
+  mcp-worker/wrangler.toml`, menggunakan nilai yang sama dengan Pages
+  `CRON_SECRET`; token bot/admin chat ID Worker juga dicadangkan untuk pemulihan
+  manual bila diperlukan. Jangan mencetak nilainya. Rilis berikutnya tetap CI;
+  verifikasi metadata bukan bukti nilai runtime sudah aktif.
+- Snapshot cadangan lokal 10 November: production72/79, preview18/24, Worker3/3
+  assignment nonkosong. Nama sama dengan metadata dikurangi komentar TIDAK
+  DIPASANG; ini bukti sumber pemulihan + nama, bukan pembacaan balik secret API.
+
+Cara mengubah satu env tanpa merusak yang lain (2026-09-18, runbook historis): pakai
 `wrangler pages secret put <KEY> --project-name axvara` (satu kunci per
-operasi). **JANGAN** PATCH `deployment_configs.production.env_vars` lewat REST
-API dengan objek sebagian — payload itu berisiko menggantikan seluruh peta env
-(38 secret) alih-alih menggabungkannya. Setelah `secret put`, nilai baru baru
+operasi). Larangan PATCH sebagian pada runbook lama digantikan aturan whitelist
+di atas; yang dilarang mutlak adalah mengirim ulang nilai hasil GET atau
+menghapus kunci lain. Setelah `secret put`/PATCH whitelist, nilai baru baru
 terbaca oleh **deployment berikutnya**: dorong satu commit agar CI membuat
 deployment baru, jangan `wrangler pages deployment create` (lihat 16.3).
 

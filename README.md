@@ -1349,6 +1349,32 @@ di `.heroku-credentials` (git-ignored, pola sama); AWS (VPS proxy) lewat
 `.aws-credentials` (git-ignored, pola sama; read-only + reboot VPS,
 lihat AGENTS.md); CI/CD memakai GitHub Actions Secrets.
 
+### Cadangan dan pemulihan env Pages
+
+`.pages-env-backup` lokal (git-ignored, `chmod 600`) menyimpan nilai pemulihan
+production/preview serta tiga secret Worker `axvara-mcp`. Simpan juga di password
+manager owner dan perbarui setiap menambah/mengubah env Pages; GET Cloudflare
+tidak mengembalikan nilai secret. Jangan echo/log/commit atau `source` berkas:
+format blok `KEY=VALUE` adalah literal, bukan shell. Kunci tanpa sumber pasti
+tetap komentar `TIDAK DIPASANG`, bukan nilai kosong/tebakan.
+
+```bash
+node scripts/pages-env-restore.mjs
+node scripts/pages-env-restore.mjs /path/to/backup --env production --only KEY1,KEY2
+# Hanya setelah pemeriksaan/izin operasi:
+node scripts/pages-env-restore.mjs --apply --env production --only KEY1,KEY2
+```
+
+Default dry-run tidak mengakses jaringan/kredensial dan hanya mencetak nama/jumlah
+kunci. `--apply` membaca Global API Key/email `.cf-credentials`, menolak kunci
+di luar project, PATCH whitelist per env dengan `secret_text`, dan memastikan
+himpunan nama kedua environment tetap sama. Tidak mengirim objek GET, retry,
+deploy, atau mengubah Worker. Pemulihan Worker manual: `wrangler secret put
+AXVARA_CRON_SECRET --config mcp-worker/wrangler.toml`; nilainya harus sama dengan
+Pages `CRON_SECRET`. Deployment berikutnya tetap via CI, lalu verifikasi runtime.
+Snapshot10November: cadangan72production/18preview/3Worker; nama sesuai metadata
+dikurangi kunci TIDAK DIPASANG. Rincian: `docs/ARCHITECTURE.md` §16.2.
+
 ### Drag kredensial yang halus (2026-10-23)
 
 Saat menarik pegangan, kartu penuh mengikuti tarikan dan baris sekitar bergeser untuk menunjukkan ruang tujuan. Garis cyan serta “Lepas di urutan …” menandai posisi sebelum dilepas. Tahan tarikan dekat tepi atas/bawah daftar untuk auto-scroll; cukup tarik satu kali untuk memindahkan stok terakhir ke paling atas. Drop menyimpan sekali, Escape membatalkan; panah serta drag keyboard tetap tersedia. Pengaturan reduced motion dihormati. [Referensi dan detail motion](docs/admin/credential-drag-motion.md).

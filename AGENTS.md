@@ -207,6 +207,7 @@ Repo ini tidak berdiri sendiri. Rujukan folder lokal terkait:
 | `/Users/macbookair/axvara-tg-bot` | Kredensial + rujukan Bot Telegram (kode bot tetap di repo ini: `src/lib/telegram/`) | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_WEBHOOK_SECRET` + `TELEGRAM_ADMIN_CHAT_ID` Pages dicatat di sana. Isi manual, lalu set sebagai `secret_text` |
 
 Aturan lintas-repo: (1) Env Pages bertipe `secret_text` SELALU (plain_text tidak terbawa deploy); PATCH env hanya berisi kunci yang nilainya dikirim — JANGAN kirim balik `deployment_configs`/`env_vars` hasil GET (insiden 9 Nov 2026 mengosongkan semua secret, ARCHITECTURE §16.2); (2) Jangan `wrangler pages deployment create` tanpa direktori (me-redeploy artefak lama = rollback prod); (3) Deploy hanya via CI (`git push origin main`); (4) Perintah Heroku akun #2 wajib prefix `HEROKU_API_KEY=<kunci-akun-2>`.
+Setiap mengubah/menambah env Pages, WAJIB perbarui `.pages-env-backup` lokal (git-ignored, chmod600; jangan cetak nilai) dan salinan password manager owner; pemulihan memakai dry-run `scripts/pages-env-restore.mjs` sebelum `--apply` (ARCHITECTURE §16.2).
 
 ## Done when
 - Tujuan tugas tercapai
