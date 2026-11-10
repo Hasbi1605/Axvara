@@ -179,6 +179,25 @@ describe("admin gates and data access",() => {
     expect((await POST(req("/api/admin/variants",{ product_id:1,sku:"TEST-PRESET",label:"Preset",price:1000,buyer_field_key:"muse_invite_code",max_qty:10 }))).status).toBe(201);
     expect(fx.sql.prepare("SELECT buyer_field_key,max_qty FROM product_variants WHERE sku='TEST-PRESET'").get()).toEqual({ buyer_field_key:"muse_invite_code",max_qty:10 });
   });
+  it("both admin editors omit retired Buff bundles while retaining inactive variants and historical IDs",async () => {
+    for (const quantity of [5,10,20,30]) fx.sql.prepare("INSERT INTO product_variants(product_id,sku,label,price,is_active) VALUES(1,?,?,7500,0)").run(`TUNVN-BUFF-${quantity}B`,`Buff ${quantity}B`);
+    fx.sql.exec("UPDATE product_variants SET is_active=0 WHERE id=2");
+    const old=fx.sql.prepare("SELECT id FROM product_variants WHERE sku='TUNVN-BUFF-5B'").get()!;
+    const items=JSON.stringify([{ variant_id:old.id,name:"Buff 5B",price:7500,qty:1 }]);
+    fx.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,variant_id) VALUES('AXV-20261109-11223344','Fixture','628000000000',?,7500,'qris',?)").run(items,old.id);
+    const { GET:product }=await import("@/app/api/products/[id]/route");
+    const { GET:variants }=await import("@/app/api/admin/variants/route");
+    const detail=await product(new NextRequest("http://localhost/api/products/1"),{ params:Promise.resolve({ id:"1" }) });
+    const listing=await variants(new NextRequest("http://localhost/api/admin/variants?product_id=1"));
+    expect(detail.status).toBe(200); expect(listing.status).toBe(200);
+    for (const rows of [(await detail.json()).product.variants,(await listing.json()).variants]) {
+      expect(rows.map((row:{sku:string})=>row.sku)).toEqual(["TUNVN-BUFF-1B","MUSE-ACCOUNT"]);
+      expect(rows.find((row:{sku:string})=>row.sku==="MUSE-ACCOUNT").is_active).toBe(0);
+    }
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM product_variants WHERE sku IN ('TUNVN-BUFF-5B','TUNVN-BUFF-10B','TUNVN-BUFF-20B','TUNVN-BUFF-30B') AND is_active=0").get()).toEqual({ n:4 });
+    expect(fx.sql.prepare("SELECT variant_id,items FROM orders").get()).toEqual({ variant_id:old.id,items });
+    expect(fx.sql.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
   it("merge migration reruns without deleting IDs/prices/history or custom copy",() => {
     fx.sql.exec("UPDATE products SET slug='chatgpt-business-1-bulan-tunvn',name='Custom admin copy' WHERE id=2; INSERT INTO products(id,name,slug,price) VALUES(3,'GPay old','chatgpt-gpay-1-bulan-tunvn',121200); UPDATE product_variants SET product_id=3 WHERE id=4;");
     fx.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,variant_id) VALUES('AXV-20261109-11223344','Fixture','628000000000','[{\"variant_id\":4,\"qty\":1}]',121200,'qris',4)").run();

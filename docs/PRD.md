@@ -2,6 +2,10 @@
 
 ## Keputusan owner 10 November 2026: ChatGPT Private + Buff Muse (T2A/T2B lokal)
 
+- Revisi owner berikutnya: hapus pilihan bundle Buff5/10/20/30B juga dari kedua
+  editor admin, sisakan Buff per1B dan akun Muse asli. Baris bundle nonaktif
+  disimpan hanya sebagai arsip relasi order lama; tidak mengaktifkan Buff1B.
+  Implementasi lokal, publikasi lewat CI; deployment belum diverifikasi.
 - ChatGPT menjadi satu produk `chatgpt-tunvn`, nama publik ChatGPT Private,
   varian Business/GPay 1 bulan. Identitas/harga/order lama dipertahankan;
   produk split lama dipensiunkan. Supplier tidak disebut di copy pembeli.

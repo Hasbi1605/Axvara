@@ -1,5 +1,10 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Revisi Buff10November2026: editor Produk dan Varian hanya menawarkan Buff per1B;
+bundle5/10/20/30B dihapus dari daftar edit. Baris nonaktif tetap menjadi arsip
+relasi pesanan lama, tidak dihapus fisik. Akun Muse asli dan status Buff1B tidak
+diubah. Tanpa migrasi/env baru; berlaku melalui CI berikutnya, bukan klaim live.
+
 TUNVN T2B (10 November 2026, **diimplementasikan lokal; belum deploy**): order
 Market baru paid dengan opt-in server versi1 + snapshot biaya USDT memakai
 `tunvn_order_links` (migrasi0116, UNIQUE order/item, lease/CAS dan fence sebelum

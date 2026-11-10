@@ -115,7 +115,8 @@ export async function GET(request: NextRequest) {
               AS shared_secret_configured,
             is_active, sort_order, created_at, updated_at
      FROM product_variants
-     WHERE product_id=? ORDER BY sort_order ASC, price ASC, id ASC`,
+     WHERE product_id=? AND sku NOT IN ('TUNVN-BUFF-5B','TUNVN-BUFF-10B','TUNVN-BUFF-20B','TUNVN-BUFF-30B')
+     ORDER BY sort_order ASC, price ASC, id ASC`,
     Number(productId),
   );
 

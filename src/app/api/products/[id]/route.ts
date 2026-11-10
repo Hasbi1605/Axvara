@@ -35,14 +35,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // admin tidak bisa mengaktifkan ulang varian yang dimatikan (dan menyimpan
   // dari daftar parsial berisiko menonaktifkan permanen yang tak terlihat
   // lewat `id NOT IN (...)`). Storefront tidak memakai route ini (ia memakai
-  // /api/catalog + /api/products yang tetap hanya aktif).
+   // /api/catalog + /api/products yang tetap hanya aktif). Bundle Buff pensiun
+   // tidak ditawarkan lagi; baris arsipnya tetap ada untuk relasi order lama.
   const variants = await queryAll(
     `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
             price, compare_price, stock, min_qty, max_qty, buyer_field_key, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed, admin_terms, admin_activation,
             bulk_pricing_enabled, bulk_pricing_tiers
      FROM product_variants
-     WHERE product_id=?
+     WHERE product_id=? AND sku NOT IN ('TUNVN-BUFF-5B','TUNVN-BUFF-10B','TUNVN-BUFF-20B','TUNVN-BUFF-30B')
      ORDER BY sort_order ASC, price ASC, id ASC`,
     Number(id)
   );

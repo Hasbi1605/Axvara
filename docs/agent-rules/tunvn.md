@@ -1,5 +1,14 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Revisi owner 10 November 2026: hapus bundle Buff lama dari editor
+
+- Hanya Buff per1B yang ditawarkan; bundle5/10/20/30B tidak muncul lagi pada
+  kedua endpoint daftar varian editor admin. Akun Muse asli tetap tersedia.
+- ID/baris bundle nonaktif tetap arsip demi FK dan snapshot pesanan historis;
+  jangan hapus fisik, aktifkan ulang, atau mengubah status Buff1B dalam cleanup.
+- Filter hanya empat SKU retired, bukan semua varian nonaktif. Tanpa migrasi
+  atau mutasi produksi; publikasi lewat CI, deployment belum diverifikasi.
+
 ## Revisi 10 November 2026: T2B dispatch (implementasi LOKAL, belum publikasi)
 
 - Migrasi0116 menambah `tunvn_order_links` UNIQUE(order_code,item_index), lease

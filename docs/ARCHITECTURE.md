@@ -4307,6 +4307,12 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 
 ### 16.32 TUNVN T2A: katalog gabungan + input varian — 10 November 2026 (histori lokal)
 
+- Revisi owner10November: GET authenticated `/api/products/[id]` dan
+  `/api/admin/variants?product_id=` mengecualikan tepat empat SKU retired
+  `TUNVN-BUFF-{5,10,20,30}B`, bukan semua varian nonaktif. Editor tidak lagi
+  menawarkan bundle lama. Arsip DB/FK/snapshot order tetap utuh; migrasi0115
+  dan guard aktivasi existing tetap berlaku. Buff1B/akun Muse dan varian nonaktif
+  lain masih dapat diedit. Tanpa schema/env/migrasi baru; belum bukti deploy.
 - Mengganti kontrak split/bundle pada snapshot16.30/16.31: migrasi0114 memindahkan
   kedua varian dan mirror link ke `chatgpt-tunvn` (ChatGPT Private), ID/SKU/harga/
   histori tetap; produk duplikat nonaktif saja. UPDATE merge aman diulang.
