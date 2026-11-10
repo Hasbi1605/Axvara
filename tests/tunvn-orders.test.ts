@@ -2,7 +2,7 @@ import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture,insertTestOrder,stubFulfillmentKey } from "./helpers/d1-fixture";
 import { createBudgetedDatabase,createDatabaseAccess } from "@/lib/db-access";
-import { createTunvnOrderLinks,processTunvnOrders } from "@/lib/tunvn/orders";
+import { createTunvnOrderLinks,processTunvnOrders,retryTunvnOrder } from "@/lib/tunvn/orders";
 import { decryptSecret,encryptSecret } from "@/lib/fulfillment/crypto";
 import { ensureFulfillmentItems } from "@/lib/fulfillment/delivery/inventory-binding";
 import { processItem } from "@/lib/fulfillment/delivery/send";
@@ -170,6 +170,78 @@ describe("durable purchasing",()=>{
     const rows=fixture.sql.prepare("SELECT item_index,tunvn_link_id,status FROM fulfillment_items ORDER BY item_index").all();
     expect(rows[0]).toMatchObject({item_index:0,tunvn_link_id:null,status:"queued"});expect(rows[1].tunvn_link_id).toBe(link().id);
     expect(link()).toMatchObject({item_index:1,status:"completed"});expect(buys()).toBe(1);
+  });
+});
+
+describe("safe admin retry",()=>{
+  const post=async(action="retry")=>{
+    const {POST}=await import("@/app/api/admin/tunvn/orders/route");
+    return POST(new NextRequest("https://axvara.test/api/admin/tunvn/orders",{method:"POST",body:JSON.stringify({id:link().id,action})}));
+  };
+  it("shows the balance failure in both admin lists and retries only once after top-up",async()=>{
+    seed();balance=0;await tick();
+    expect(link()).toMatchObject({status:"needs_admin",last_error:"insufficient_balance",attempt_count:0,request_sent_at:null});
+    const {GET}=await import("@/app/api/admin/tunvn/orders/route");
+    expect((await (await GET(new NextRequest("https://axvara.test/api/admin/tunvn/orders"))).json()).items[0].can_retry).toBe(1);
+    const list=await import("@/app/api/admin/orders/route");
+    const admin=await (await list.GET(new NextRequest("https://axvara.test/api/admin/orders"))).json();
+    expect(admin.orders[0].supplier_links[0]).toMatchObject({supplier:"tunvn",status:"needs_admin",last_error:"insufficient_balance",can_retry:true,item_index:0});
+    expect(JSON.stringify(admin)).not.toMatch(/receipt_ciphertext|receipt_iv|tunvn_eligibility/);
+    const stillEmpty=await post();expect(stillEmpty.status).toBe(200);
+    expect((await stillEmpty.json()).link.last_error).toBe("insufficient_balance");expect(buys()).toBe(0);
+    balance=100;const results=await Promise.all([post(),post()]);
+    expect(results.map(r=>r.status).sort()).toEqual([200,409]);expect(buys()).toBe(1);expect(link().status).toBe("completed");
+    expect((await post()).status).toBe(409);expect(buys()).toBe(1);
+  });
+  it("checks Buff wallet separately from an unfundable service, never calling an unreadable wallet insufficient",async()=>{
+    seed([buff()]);const original=transport.getMockImplementation()!;
+    transport.mockImplementation(async(url,init)=>String(url).endsWith("/buff/check") ? response({success:true,fundable:false,sell_price_usdt:2,orders_breakdown:[{invite_code:"Ab12Cd",quantity_b:1,valid:true}]}) : original(url,init));
+    balance=0;await tick();expect(link().last_error).toBe("insufficient_balance");
+    balance=100;await post();expect(link().last_error).toBe("buff_unavailable");expect(buys()).toBe(0);
+    transport.mockImplementation(async(url,init)=>String(url).endsWith("/balance") ? response({},502) : original(url,init));
+    await post();expect(link().last_error).toBe("balance_unavailable");expect(buys()).toBe(0);
+  });
+  it("recovers a legacy generic failure without clearing a send fence",async()=>{
+    seed();balance=0;await tick();fixture.sql.exec("UPDATE tunvn_order_links SET last_error='dispatch_unconfirmed'");
+    balance=100;expect((await post()).status).toBe(200);expect(buys()).toBe(1);
+  });
+  it.each([
+    "request_sent_at=datetime('now')","attempt_count=1","provider_batch_id='KNOWN'","provider_order_group='KNOWN'","provider_order_code='KNOWN'",
+    "receipt_ciphertext='sealed'","receipt_iv='iv'","receipt_http_status=409","receipt_json='{}'","completed_at=datetime('now')",
+    "lease_owner='other',lease_expires_at=datetime('now','+1 minute')","last_error='source_changed'",
+  ])("refuses retry with %s",async change=>{
+    seed();balance=0;await tick();fixture.sql.exec(`UPDATE tunvn_order_links SET ${change}`);
+    expect((await post()).status).toBe(409);expect(buys()).toBe(0);
+  });
+  it.each(["unpaid","admin_test","delivered","sending","other_supplier","off","source_changed","snapshot_changed"])("does not purchase after %s",async state=>{
+    seed();balance=0;await tick();balance=100;
+    if(state==="unpaid")fixture.sql.exec("UPDATE orders SET payment_status='pending'");
+    if(state==="admin_test")fixture.sql.exec("UPDATE orders SET supplier_purchase_disabled=1");
+    if(state==="delivered"||state==="sending")fixture.sql.prepare("UPDATE fulfillment_items SET status=?").run(state);
+    if(state==="other_supplier")fixture.sql.exec("INSERT INTO wr_order_links(id,order_code,wr_variant_id,wr_cost) SELECT 100,code,'fixture',1 FROM orders; UPDATE fulfillment_items SET wr_link_id=100");
+    if(state==="off")vi.stubEnv("TUNVN_SYNC_ENABLED","false");
+    if(state==="source_changed")fixture.sql.exec("UPDATE product_variants SET is_active=0");
+    if(state==="snapshot_changed")fixture.sql.exec("UPDATE tunvn_order_links SET quantity=2");
+    await post();expect(buys()).toBe(0);
+  });
+  it("leaves a changed-cost snapshot immutable and only buys when cost falls back inside it",async()=>{
+    seed();price=3;await tick();expect(link().last_error).toBe("cost_changed");
+    await post();expect(buys()).toBe(0);expect(link().cost_usdt).toBe(2);
+    price=2;await post();expect(buys()).toBe(1);expect(link().cost_usdt).toBe(2);
+  });
+  it("rechecks delivered state in retry CAS and rejects handover while dispatch owns the item",async()=>{
+    const order=seed();balance=0;await tick();
+    const db=createDatabaseAccess(fixture.db),write=db.execRun;
+    db.execRun=async(sql,...params)=>{if(sql.includes("SET status='pending',last_error=NULL"))fixture.sql.exec("UPDATE fulfillment_items SET status='delivered'");return write(sql,...params);};
+    expect(await retryTunvnOrder(db,Number(link().id))).toBe(false);expect(buys()).toBe(0);
+    fixture.sql.exec("UPDATE fulfillment_items SET status='manual_required'; UPDATE tunvn_order_links SET status='pending'");
+    const {recordManualHandoverDetailed}=await import("@/lib/fulfillment/delivery/handover");
+    expect((await recordManualHandoverDetailed(String(order.code),0,"fixture@example.test")).ok).toBe(false);
+    expect(fixture.sql.prepare("SELECT status FROM fulfillment_items").get()?.status).toBe("manual_required");
+  });
+  it("requires admin before retry",async()=>{
+    seed();balance=0;await tick();const {requireAdmin}=await import("@/lib/auth");
+    vi.mocked(requireAdmin).mockResolvedValueOnce(null);expect((await post()).status).toBe(401);expect(buys()).toBe(0);
   });
 });
 

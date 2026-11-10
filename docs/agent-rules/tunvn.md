@@ -1,5 +1,25 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Revisi owner 10 November 2026: retry pra-beli dan dua order manual
+
+- Jangan proses/retry `AXV-20261110-81C2FADA` atau `AXV-20261110-9C9B8FF4`:
+  owner menangani sendiri melalui Telegram TUNVN. D1 keduanya sudah diberi
+  `supplier_purchase_disabled=1`; hanya flag dan updated_at diubah, bukan status
+  pengiriman, receipt, fence, notifikasi atau pembelian. Readback attempt0/sendNULL.
+- Perbaikan lokal: kegagalan preflight memiliki alasan aman terpisah; saldo
+  terkonfirmasi kurang = `insufficient_balance`, gagal baca saldo bukan saldo0.
+  Error generik historis tidak membuktikan penyebab saldo kurang.
+- Admin Pesanan dan panel TUNVN menampilkan penyebab + Retry hanya jika SQL CAS
+  membuktikan needs_admin/attempt0/tanpa send, receipt, provider ID atau completion,
+  lease tidak aktif, paid eligible dan item belum dikirim/dimiliki supplier lain.
+  Legacy dispatch_unconfirmed boleh hanya dengan bukti pra-kirim yang sama.
+- Retry authenticated memakai endpoint existing, preflight dan batas biaya snapshot
+  tetap; tanpa reset fence/receipt/counter atau replay HTTP409/timeout pembelian.
+  Klaim handover manual menolak pending/claimed/processing agar tidak balapan retry.
+  Disable pembelian tetap mengalahkan retry/cron dan UI menyebut penanganan manual.
+- Tidak menjalankan dua order produksi sebagai QA. Tes SQLite/workerd dan browser
+  fixture bukan bukti transaksi supplier atau deployment; tanpa env/migrasi baru.
+
 ## Revisi owner 10 November 2026: S&K dan penggunaan Buff versi AXVARA
 
 - Copy ID/EN varian279 `TUNVN-BUFF-1B` diisi melalui kolom `admin_terms` /
@@ -82,8 +102,8 @@
 - `/api/admin/tunvn/orders` GET authenticated/no-store:100 link terbaru, biaya,
   status, ID tepat dan metadata receipt tanpa input/ciphertext. POST `reconcile`
   hanya GET batch Buff yang diketahui; POST `reveal` privat melalui requireAdmin
-  + audit otorisasi existing. Tidak ada tombol/API buy/retry atau auto-match
-  history supplier. Admin memeriksa kasus tanpa ID di luar alur otomatis.
+  + audit otorisasi existing. Pada snapshot T2B belum ada buy/retry atau auto-match
+  history; revisi retry pra-beli di atas mengganti hanya batas retry itu.
 - Belum commit/push/deploy/migrasi remote atau transaksi produksi. PM memiliki
   full suite/build dan T3 QA browser; bukti fokus ada di T2B-evidence.md.
 

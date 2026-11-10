@@ -1,5 +1,22 @@
 # PRD — AXVARA
 
+## Retry TUNVN 10 November 2026 (lokal; dua order dikecualikan di produksi)
+
+- Admin Pesanan dan TUNVN menampilkan kegagalan supplier, bukan hanya handover.
+  Saldo kurang terkonfirmasi memberi instruksi top-up + Retry; saldo tidak dapat
+  dibaca diberi alasan berbeda, tidak menyimpulkan saldo0 atau penyebab historis.
+- Retry hanya admin untuk kegagalan pra-pembelian yang terbukti: attempt0, tidak
+  ada send fence/receipt/ID/completion/lease aktif, paid eligible, item belum
+  delivered/sending/dimiliki supplier lain. CAS dan preflight ulang mempertahankan
+  biaya snapshot; setelah satu send tidak pernah membuka pembelian kedua, termasuk
+  respons409/timeout. Reconcile batch diketahui tetap tanpa pembelian ulang.
+- Dua order `AXV-20261110-81C2FADA` dan `AXV-20261110-9C9B8FF4` ditangani owner
+  melalui Telegram TUNVN, bukan diuji/diproses ulang. Flag disable supplier sudah
+  dipasang dan dibaca ulang pada keduanya; status pengiriman/notifikasi tidak diubah.
+  UI penanganan manual tetap menyediakan pencatatan handover, tanpa tombol Retry.
+- Implementasi retry diverifikasi dengan fixture; publikasi melalui CI, bukan
+  bukti deployment atau pembelian/notifikasi produksi. Tanpa env/migrasi baru.
+
 ## Copy Buff Muse 10 November 2026: S&K dan panduan AXVARA (produksi)
 
 - Varian Buff per1B memiliki S&K dan cara penggunaan ID/EN melalui override
@@ -72,8 +89,9 @@
   untuk admin, tidak membeli ulang. Buff200/202 tetap processing hingga status
   batch tepat done, lalu notis noncredential tanpa kode. Kasus ambigu/409 atau
   gagal preflight perlu admin; tanpa refund/deposit/rebuy otomatis. Admin melihat
-  biaya/ID/status, reveal privat dan reconcile GET batch diketahui, bukan retry
-  beli. Maksimal1 link per invocation/cron existing40statement, tanpa env baru.
+  biaya/ID/status, reveal privat dan reconcile GET batch diketahui; retry pra-beli
+  ditambahkan pada revisi di atas, tanpa replay sesudah send. Maksimal1 link per
+  invocation/cron existing40statement, tanpa env baru.
   Upstream tanpa idempotency/max_price; race charge setelah preflight masih ada,
   schema machine409 tidak dipublikasikan sehingga nol retry409 otomatis. Belum
   publikasi/deployment/QA browser; tidak ada transaksi produksi untuk QA.

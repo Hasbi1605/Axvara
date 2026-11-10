@@ -1,5 +1,21 @@
 # DESIGN.md — AXVARA Design System
 
+## Status dan retry TUNVN (10 November 2026, lokal)
+
+- Baris Pesanan/detail dan Ringkasan TUNVN memberi sebab yang terbaca, terutama
+  saldo supplier kurang + top-up/Retry; gagal baca saldo bukan saldo habis.
+  Pesanan supplier tidak ditampilkan sebagai handover generik. Order pembelian
+  otomatis dinonaktifkan berlabel penanganan manual, tanpa Retry/top-up instruction;
+  pencatatan handover tetap tersedia, tanpa menyatakan otomatis sudah selesai.
+- Pertahankan Midnight/Cyan/SF Pro/Liquid Glass, panel warning merah existing dan
+  teks wrapping. Retry/Cek status TUNVN memiliki tinggi48px; fokus cyan global dan
+  disabled saat request. Request ditolak/preflight masih gagal tidak bertost sukses.
+  Provider ID diketahui baru menampilkan cek status, tanpa blind rebuy/void.
+- Chromium admin aktual dengan API fixture tertutup ke produksi,1280/390px:
+  warning/detail/retry Enter+busy+error+processing/manual, status batch, empty/error
+  dan pulih diperiksa; fokus Tab/Shift+Tab cyan, tanpa overflow/pageerror/CSS-JS gagal.
+  Bukan bukti transaksi/notifikasi supplier, sesi admin produksi atau deployment.
+
 ## ChatGPT Private / input Muse (10 November 2026, T2A lokal)
 
 Checkpoint akhir PM10November: owner menghentikan QA Gemini. Pemeriksaan Chromium
@@ -30,8 +46,8 @@ Full suite5518tes dan build Pages lulus; belum merupakan bukti deployment produk
   aman; tidak menampilkan invite code atau receipt plaintext pada daftar.
 - Tombol Periksa status batch hanya untuk batch Buff diketahui (GET supplier,
   tidak membeli). Receipt privat dibuka lewat POST authenticated/audit ke state
-  sementara dengan tombol Tutup; tidak dipersist/cache. Tidak ada tombol retry
-  beli. Busy/error/empty menggunakan status dan alert existing.
+  sementara dengan tombol Tutup; tidak dipersist/cache. Retry pra-beli ditambahkan
+  pada revisi di atas, bukan replay setelah send. Busy/error/empty tetap existing.
 - Copy pembeli tetap ChatGPT Private/Muse tanpa supplier. Buff selesai bukan
   akun/kredensial; notis tidak mengulang input. Browser desktop/mobile/fokus/
   overflow dan review visual merupakan tugas T3/PM, belum diverifikasi di sini.

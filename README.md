@@ -1,5 +1,15 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+TUNVN retry10November2026 (implementasi lokal, publikasi CI): daftar Pesanan dan
+panel TUNVN membedakan saldo kurang dari saldo gagal dibaca dan menampilkan Retry
+hanya pada kegagalan pra-beli terbukti (attempt0, tanpa send/receipt/ID, paid eligible,
+item belum dikirim). CAS, preflight dan biaya snapshot tetap; HTTP409/timeout setelah
+send tidak pernah direplay. Order disable menampilkan penanganan manual tanpa Retry.
+Owner menangani `AXV-20261110-81C2FADA` dan `AXV-20261110-9C9B8FF4` sendiri via
+Telegram TUNVN: kedua flag supplier_purchase_disabled sudah1 di D1, bukan diproses
+ulang atau dipakai QA; status pengiriman/notifikasi tidak diubah. Tanpa env/migrasi
+baru; rincian ARCHITECTURE16.35 dan aturan TUNVN. Belum bukti deployment.
+
 TUNVN auto-sync10November2026 (lokal, publikasi CI): job `tunvn_catalog`
 memakai Worker cron existing setiap3menit, terpisah dari `tunvn_orders`.
 Stok/modal ChatGPT dari API, harga Buff dari probe tanpa charge `AXVARA 1`,

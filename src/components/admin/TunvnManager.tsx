@@ -6,6 +6,7 @@ import { IosIcon } from "@/components/ui/IosIcon";
 import { SupplierTabs, type SupplierTabId } from "@/components/admin/SupplierTabs";
 import { AdminStatusSwitch } from "./AdminStatusSwitch";
 import { TUNVN_BUFF_MARKUP_PERCENT, TUNVN_CHATGPT_MARKUP_PERCENT } from "@/lib/tunvn/pricing";
+import { TUNVN_ERROR_LABEL } from "./SupplierLinkActions";
 
 type Item = {
   supplier_product_id: number; name: string; price_vnd: number; price_usdt: number | null;
@@ -37,7 +38,7 @@ type BuffData = {
   muse_product: { id: number; is_active: number } | null;
 };
 type Row = Record<string, unknown>;
-type DispatchLink = { id:number; order_code:string; item_index:number; kind:string; quantity:number; cost_usdt:number; status:string; provider_order_group:string|null; provider_batch_id:string|null; provider_order_code:string|null; last_error:string|null; receipt_json:string|null; has_receipt:number };
+type DispatchLink = { id:number; order_code:string; item_index:number; kind:string; quantity:number; cost_usdt:number; status:string; provider_order_group:string|null; provider_batch_id:string|null; provider_order_code:string|null; last_error:string|null; receipt_json:string|null; has_receipt:number; can_retry?:number; purchase_disabled?:number };
 
 const INPUT = "mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none transition focus:border-[#00E5FF]/50 [color-scheme:dark]";
 const TEXTAREA = `${INPUT} min-h-24`;
@@ -97,13 +98,16 @@ export function TunvnManager() {
   }, []);
   useEffect(() => { void load(); const pending = generation; return () => { pending.current++; }; }, [load]);
 
-  async function dispatchAction(id:number,action:"reconcile"|"reveal") {
+  async function dispatchAction(id:number,action:"retry"|"reconcile"|"reveal") {
     if (busy) return;
     setBusy(`order${id}`); setError(""); setReceipt("");
     try {
-      const result=await request<{receipt?:string}>("/api/admin/tunvn/orders",{ method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,action}) });
+      const result=await request<{receipt?:string;link?:{status:string;last_error:string|null}}>("/api/admin/tunvn/orders",{ method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,action}) });
       if (action==="reveal") setReceipt(result.receipt ?? "");
-      else await load();
+      else {
+        await load();
+        if (result.link?.status==="needs_admin") setError(TUNVN_ERROR_LABEL[result.link.last_error ?? ""] ?? "TUNVN masih perlu diperiksa.");
+      }
     } catch { setError("Tindakan pesanan belum dapat diselesaikan."); }
     finally { setBusy(""); }
   }
@@ -195,8 +199,9 @@ export function TunvnManager() {
           <p>{link.kind} ×{link.quantity} · snapshot biaya {usdt(link.cost_usdt)}</p>
           <p className="break-all">{[link.provider_order_group,link.provider_batch_id,link.provider_order_code].filter(Boolean).join(" · ") || "Belum ada ID penyedia"}</p>
           {link.receipt_json && <p className="break-all">{link.receipt_json}</p>}
-          {link.last_error && <p className="text-amber-300">{link.last_error}</p>}
+          {link.purchase_disabled ? <p className="text-amber-300">Pembelian otomatis dinonaktifkan · penanganan manual</p> : link.last_error && <p className="text-amber-300">{TUNVN_ERROR_LABEL[link.last_error] ?? link.last_error}</p>}
           <div className="flex flex-wrap gap-2">
+            {Boolean(link.can_retry) && <button type="button" className={`${PRIMARY} min-h-12`} disabled={!!busy} onClick={()=>void dispatchAction(link.id,"retry")}>Retry</button>}
             {link.kind==="buff" && link.provider_batch_id && ["processing","needs_admin"].includes(link.status) && <button type="button" className={BUTTON} disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reconcile")}>Periksa status batch</button>}
             {Boolean(link.has_receipt) && <button type="button" className={BUTTON} disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reveal")}>Buka receipt privat</button>}
           </div>
@@ -216,7 +221,7 @@ export function TunvnManager() {
           <li>Tab <b className="text-white">Katalog &amp; Terbit</b>: atur markup, nama, dan deskripsi tiap produk; nyalakan <b className="text-white">Diminta terbit</b> lalu <b className="text-white">Produk aktif</b> untuk menampilkannya.</li>
           <li>Harga jual dihitung ulang otomatis dari modal USDT × kurs tersimpan × (1 + markup). Tombol Publikasi menyegarkan kurs + stok dari TUNVN.</li>
           <li>Tab <b className="text-white">Buff Muse</b>: markup per varian, harga manual opsional, dan saklar aktif per varian pada produk Muse AI.</li>
-          <li>Fulfillment masih manual dan saldo wallet perlu diisi sebelum order diterima; dispatch otomatis TUNVN belum dibangun.</li>
+          <li>Order eligible diproses otomatis setelah lunas. Jika saldo kurang, top up TUNVN lalu Retry; pembelian ambigu tidak boleh diulang.</li>
         </ul>
       </section>
     </>}

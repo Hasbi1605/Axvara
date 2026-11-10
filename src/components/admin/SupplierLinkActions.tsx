@@ -15,7 +15,7 @@ import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 
 export type SupplierLink = {
-  supplier: "wr" | "sk";
+  supplier: "wr" | "sk" | "tunvn";
   id: number;
   status: string;
   attempt_count: number;
@@ -23,9 +23,23 @@ export type SupplierLink = {
   last_error: string | null;
   supplier_order_id: string | null;
   delivery_status: string | null;
+  can_retry?: boolean;
+  can_reconcile?: boolean;
+  item_index?: number;
+  purchase_disabled?: boolean;
 };
 
-const SUPPLIER_NAME = { wr: "Warung Rebahan", sk: "Sekalipay" } as const;
+const SUPPLIER_NAME = { wr: "Warung Rebahan", sk: "Sekalipay", tunvn: "TUNVN" } as const;
+
+export const TUNVN_ERROR_LABEL: Record<string,string> = {
+  insufficient_balance: "Saldo supplier TUNVN tidak cukup. Top up saldo TUNVN, lalu tekan Retry.",
+  balance_unavailable: "Saldo TUNVN belum dapat diperiksa. Pembelian belum dikirim; coba Retry setelah koneksi pulih.",
+  catalog_unavailable: "Katalog TUNVN belum dapat diperiksa. Pembelian belum dikirim.",
+  stock_unavailable: "Stok supplier belum tersedia. Pembelian belum dikirim.",
+  buff_unavailable: "Layanan Buff atau kode tujuan belum dapat diverifikasi. Pembelian belum dikirim.",
+  cost_changed: "Modal supplier berubah melewati batas snapshot order. Retry tetap memeriksa batas biaya yang sama.",
+  dispatch_unconfirmed: "Proses TUNVN belum terkonfirmasi. Retry hanya tersedia bila belum ada penanda pembelian.",
+};
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Antre dikirim ke supplier",
@@ -37,15 +51,17 @@ const STATUS_LABEL: Record<string, string> = {
   processing: "Diproses supplier",
   completed: "Selesai di supplier",
   failed: "Gagal di supplier",
+  needs_admin: "Perlu pemeriksaan supplier",
 };
 
 /** Link aktif = supplier masih bertanggung jawab (bukan handover manual). */
 export function hasActiveSupplierLink(links: SupplierLink[] | undefined): boolean {
-  return (links ?? []).some((l) => !["completed", "failed"].includes(l.status));
+  return (links ?? []).some((l) => !l.purchase_disabled && !["completed", "failed"].includes(l.status));
 }
 
 /** Cermin aturan route retry WR/SK: kuota tersisa, atau failed pra-kirim (WR). */
 export function canRetrySupplierLink(link: SupplierLink): boolean {
+  if (link.supplier === "tunvn") return !link.purchase_disabled && link.can_retry === true;
   if (!["pending", "retry", "failed", "blocked_balance"].includes(link.status)) return false;
   if (link.status === "failed") {
     return link.supplier === "wr" && !link.supplier_order_id && !String(link.last_error ?? "").startsWith("cancelled_by_admin");
@@ -54,10 +70,12 @@ export function canRetrySupplierLink(link: SupplierLink): boolean {
 }
 
 function canVoid(link: SupplierLink): boolean {
+  if (link.supplier === "tunvn") return false;
   return ["pending", "retry", "blocked_balance"].includes(link.status);
 }
 
 function canCheck(link: SupplierLink): boolean {
+  if (link.supplier === "tunvn") return link.can_reconcile === true;
   // sync-now = tanya status order yang SUDAH terkirim ke supplier sekarang
   // (WR /transactions, SK /v1/trx). Kedua supplier punya route-nya sejak
   // paritas 2026-10-13 — tombol tampil untuk keduanya.
@@ -75,14 +93,16 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
     if (action === "void" && !window.confirm(`Batalkan order ke ${SUPPLIER_NAME[link.supplier]}? Order tidak akan dikirim ke supplier lagi — serahkan manual ke pembeli bila perlu.`)) return;
     setBusy(`${link.supplier}:${link.id}:${action}`);
     try {
-      const res = await fetch(`${base(link)}/${action}`, {
+      const tunvn = link.supplier === "tunvn";
+      const res = await fetch(tunvn ? "/api/admin/tunvn/orders" : `${base(link)}/${action}`, {
         method: "POST",
-        ...(invoice ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wr_order_id: invoice }) } : {}),
+        ...(tunvn ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id:link.id,action:action==="sync-now" ? "reconcile" : action }) } : invoice ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wr_order_id: invoice }) } : {}),
       });
-      const body = await res.json().catch(() => ({})) as { error?: string; link?: { status?: string; last_error?: string | null } };
-      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      const body = await res.json().catch(() => ({})) as { error?: string; message?: string; link?: { status?: string; last_error?: string | null } };
+      if (!res.ok) throw new Error(body.message || body.error || `HTTP ${res.status}`);
       const next = String(body.link?.status ?? "");
-      if (action === "void") toast.success("Order supplier dibatalkan.");
+      if (tunvn && next === "needs_admin") toast.error(TUNVN_ERROR_LABEL[String(body.link?.last_error)] ?? "TUNVN masih memerlukan pemeriksaan admin; tidak membeli ulang secara buta.");
+      else if (action === "void") toast.success("Order supplier dibatalkan.");
       else if (next === "blocked_balance") toast.error("Saldo supplier masih belum cukup — isi saldo lalu coba lagi.");
       else if (next === "processing" || next === "completed") toast.success(action === "retry" ? "Order diteruskan ke supplier." : "Status supplier diperbarui.");
       else toast.success(next ? `Status sekarang: ${STATUS_LABEL[next] ?? next}` : "Diperbarui.");
@@ -95,19 +115,20 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
   };
   return <div className={compact ? "mt-2 space-y-1.5" : "space-y-2"}>
     {links.map((link) => {
-      const tone = link.status === "failed" || link.status === "blocked_balance"
+      const tone = link.status === "failed" || link.status === "blocked_balance" || link.status === "needs_admin"
         ? "border-red-400/25 bg-red-500/[0.07] text-red-200"
         : link.status === "completed" ? "border-emerald-400/20 bg-emerald-500/[0.06] text-emerald-200"
         : "border-[#00E5FF]/20 bg-[#00E5FF]/[0.06] text-[#9ff4ff]";
       const key = `${link.supplier}:${link.id}`;
+      const actionHeight = link.supplier === "tunvn" ? "h-12" : "h-7";
       return <div key={key} className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[11px] ${tone}`}>
-        <span className="font-semibold">{link.supplier.toUpperCase()} · {STATUS_LABEL[link.status] ?? link.status}</span>
+        <span className="font-semibold">{link.supplier.toUpperCase()} · {link.purchase_disabled ? "Pembelian otomatis dinonaktifkan · penanganan manual" : link.supplier==="tunvn" && link.last_error==="insufficient_balance" ? "Saldo supplier tidak cukup" : STATUS_LABEL[link.status] ?? link.status}</span>
         {link.supplier_order_id && <span className="font-mono text-[10px] opacity-60">{link.supplier_order_id}</span>}
         {link.status === "completed" && link.delivery_status && link.delivery_status !== "delivered" && <span className="opacity-75">· kredensial: {link.delivery_status === "failed" ? "gagal kirim (dicoba ulang)" : "antre kirim"}</span>}
-        {link.last_error && !["completed"].includes(link.status) && <span className="w-full truncate font-mono text-[10px] opacity-60" title={link.last_error}>{link.last_error}</span>}
+        {link.last_error && !link.purchase_disabled && !["completed"].includes(link.status) && <span className="w-full break-words text-[11px] opacity-80">{link.supplier==="tunvn" ? TUNVN_ERROR_LABEL[link.last_error] ?? link.last_error : link.last_error}</span>}
         <span className="ml-auto flex gap-1.5">
-          {canRetrySupplierLink(link) && <button onClick={() => void run(link, "retry")} disabled={busy !== null} className="inline-flex h-7 items-center gap-1 rounded-full bg-[#00E5FF] px-2.5 text-[11px] font-bold text-[#07101f] disabled:opacity-40">{busy === `${key}:retry` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="black" />} Retry</button>}
-          {canCheck(link) && <button onClick={() => void run(link, "sync-now")} disabled={busy !== null} className="inline-flex h-7 items-center gap-1 rounded-full border border-white/15 px-2.5 text-[11px] font-semibold text-white/75 disabled:opacity-40">{busy === `${key}:sync-now` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="white" />} Cek status</button>}
+          {canRetrySupplierLink(link) && <button onClick={() => void run(link, "retry")} disabled={busy !== null} className={`inline-flex ${actionHeight} items-center gap-1 rounded-full bg-[#00E5FF] px-2.5 text-[11px] font-bold text-[#07101f] disabled:opacity-40`}>{busy === `${key}:retry` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="black" />} Retry</button>}
+          {canCheck(link) && <button onClick={() => void run(link, "sync-now")} disabled={busy !== null} className={`inline-flex ${actionHeight} items-center gap-1 rounded-full border border-white/15 px-2.5 text-[11px] font-semibold text-white/75 disabled:opacity-40`}>{busy === `${key}:sync-now` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="white" />} Cek status</button>}
           {canVoid(link) && <button onClick={() => void run(link, "void")} disabled={busy !== null} className="inline-flex h-7 items-center gap-1 rounded-full border border-red-400/30 bg-red-500/10 px-2.5 text-[11px] font-semibold text-red-200 disabled:opacity-40">{busy === `${key}:void` ? <Spinner size={11} /> : <IosIcon name="close" size={11} tint="#FCA5A5" />} Batal</button>}
         </span>
         {link.supplier === "wr" && !link.supplier_order_id && ["submitted", "ordering", "claimed"].includes(link.status) &&

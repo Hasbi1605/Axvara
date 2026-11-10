@@ -5,6 +5,19 @@ import { isTunvnConfigured,isTunvnSyncEnabled,fetchTunvnProducts,fetchTunvnBalan
 import { buyTunvnProduct,orderTunvnBuff,tunvnRequest,tunvnBuffText,parseTunvnResponse,tunvnProviderId } from "./purchase";
 
 type Row=Record<string,unknown>;
+// A retry never clears a send fence. Legacy preflight failures also have zero attempts.
+export const TUNVN_RETRYABLE_SQL = `status='needs_admin' AND attempt_count=0 AND request_sent_at IS NULL
+  AND provider_order_group IS NULL AND provider_batch_id IS NULL AND provider_order_code IS NULL
+  AND receipt_ciphertext IS NULL AND receipt_iv IS NULL AND receipt_http_status IS NULL AND receipt_json IS NULL AND completed_at IS NULL
+  AND last_error IN ('insufficient_balance','balance_unavailable','catalog_unavailable','stock_unavailable','buff_unavailable','cost_changed','dispatch_unconfirmed')
+  AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
+  AND EXISTS(SELECT 1 FROM orders o WHERE o.code=tunvn_order_links.order_code AND o.status='lunas' AND o.payment_status='paid'
+    AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram'))
+  AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.tunvn_link_id=tunvn_order_links.id
+    AND f.order_code=tunvn_order_links.order_code AND f.item_index=tunvn_order_links.item_index
+    AND f.status IN ('queued','retry','failed','manual_required') AND f.fulfillment_mode='manual'
+    AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.inventory_id IS NULL AND f.delivered_ciphertext IS NULL AND f.delivered_iv IS NULL)`;
+class PreflightError extends Error {}
 export function tunvnOrderLines(order:Row):Row[] {
   try { const items:unknown=JSON.parse(String(order.items ?? "[]")); return Array.isArray(items) ? items.map(item=>item && typeof item==="object" && !Array.isArray(item) ? item : {}) : []; } catch { return []; }
 }
@@ -56,23 +69,27 @@ async function settle(db:DatabaseAccess,link:Row,status:"completed"|"processing"
 async function preflight(link:Row):Promise<number> {
   await encryptSecret("tunvn-encryption-preflight"); // Fail BEFORE any charge.
   let price:number;
+  let fundable=true;
   if (link.kind==="account") {
     const catalog=await fetchTunvnProducts();
-    if (catalog.kind!=="ok") throw new Error("catalog_unavailable");
+    if (catalog.kind!=="ok") throw new PreflightError("catalog_unavailable");
     const product=catalog.items.find(item=>item.supplier_product_id===link.source_product_id);
-    if (!product?.price_usdt || product.stock<Number(link.quantity)) throw new Error("stock_unavailable");
+    if (!product?.price_usdt || product.stock<Number(link.quantity)) throw new PreflightError("stock_unavailable");
     price=product.price_usdt*Number(link.quantity);
   } else {
     const response=await tunvnRequest("buff/check",{ orders_text:tunvnBuffText(String(link.invite_code),Number(link.quantity)) });
     const value=parseTunvnResponse(response.text);
     const rows=value.orders_breakdown as Row[]|undefined;
-    if (response.status!==200 || value.success!==true || value.fundable!==true || !Array.isArray(rows) || rows.length!==1
-      || rows[0].invite_code!==link.invite_code || rows[0].quantity_b!==link.quantity || rows[0].valid!==true) throw new Error("buff_unavailable");
+    if (response.status!==200 || value.success!==true || typeof value.fundable!=="boolean" || !Array.isArray(rows) || rows.length!==1
+      || rows[0].invite_code!==link.invite_code || rows[0].quantity_b!==link.quantity || rows[0].valid!==true) throw new PreflightError("buff_unavailable");
     price=Number(value.sell_price_usdt);
+    fundable=value.fundable;
   }
-  if (!Number.isFinite(price) || price<=0 || Math.round(price*10000)>Math.round(Number(link.cost_usdt)*10000)) throw new Error("cost_changed");
+  if (!Number.isFinite(price) || price<=0 || Math.round(price*10000)>Math.round(Number(link.cost_usdt)*10000)) throw new PreflightError("cost_changed");
   const balance=await fetchTunvnBalance();
-  if (balance.kind!=="ok" || balance.balance_usdt<price) throw new Error("balance_unavailable");
+  if (balance.kind!=="ok") throw new PreflightError("balance_unavailable");
+  if (balance.balance_usdt<price) throw new PreflightError("insufficient_balance");
+  if (!fundable) throw new PreflightError("buff_unavailable");
   // Upstream has no max_price or idempotency parameter. A later price/balance
   // race cannot be prevented by this read-only preflight; never invent a cap.
   return price;
@@ -174,10 +191,18 @@ async function processLink(db:DatabaseAccess,id:number,reconcile=false):Promise<
     if (!saved.changes) return;
     const json=parseTunvnResponse(response.text);
     await finishReceipt(db,link,json,response.status);
-  } catch {
+  } catch (error) {
     // Never log provider bodies, credential values, invite codes or raw exceptions.
-    await settle(db,link,"needs_admin","dispatch_unconfirmed").catch(()=>{});
+    await settle(db,link,"needs_admin",error instanceof PreflightError ? error.message : "dispatch_unconfirmed").catch(()=>{});
   }
+}
+
+export async function retryTunvnOrder(db:DatabaseAccess,id:number):Promise<boolean> {
+  if (!db.d1 || !isTunvnConfigured() || !isTunvnSyncEnabled() || !db.canSpend(30)) return false;
+  const queued=await db.execRun(`UPDATE tunvn_order_links SET status='pending',last_error=NULL,next_attempt_at=datetime('now'),lease_owner=NULL,lease_expires_at=NULL,updated_at=datetime('now') WHERE id=? AND ${TUNVN_RETRYABLE_SQL}`,id);
+  if (!queued.changes) return false;
+  await processLink(db,id);
+  return true;
 }
 
 export async function processTunvnOrders(db:DatabaseAccess=createDatabaseAccess(),options:{ orderCode?:string;reconcileId?:number }={}):Promise<number> {

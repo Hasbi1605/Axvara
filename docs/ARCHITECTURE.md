@@ -4255,6 +4255,32 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
+### 16.35 TUNVN retry pra-beli — 10 November 2026 (lokal, publikasi CI)
+
+- `tunvn/orders.ts` membedakan whitelist error preflight dari error ambigu tanpa
+  menyimpan exception/body mentah. `insufficient_balance` hanya dari saldo valid
+  di bawah biaya; balance_unavailable berbeda. Biaya snapshot tidak diubah.
+- Predicate `TUNVN_RETRYABLE_SQL` dipakai GET capability dan UPDATE CAS: needs_admin,
+  attempt0, seluruh send/receipt/ID/completion NULL, lease expired/null, paid Market
+  web/Telegram tanpa disable, item manual belum delivered/sending dan tanpa pemilik
+  lain/credential. Legacy error generik tetap harus memenuhi seluruh pagar.
+- POST `/api/admin/tunvn/orders` menambah `{id,action:'retry'}`, requireAdmin +
+  body2KB + budget40 existing. CAS pending lalu dispatcher/preflight lama; penolakan
+  409 no_safe_retry, diterima mengembalikan status/error aktual (bisa masih gagal
+  preflight). Tidak reset attempt/fence/receipt atau retry transport setelah send.
+- GET admin Pesanan memuat link TUNVN beserta item_index/can_retry/can_reconcile/
+  purchase_disabled tanpa invite/ciphertext. GET panel TUNVN juga mengirim capability
+  dan disable. UI Retry/Cek status memakai endpoint existing; tidak ada void/buy.
+  Order TUNVN tanpa disable tidak memakai handover generik; order disable/mixed
+  tetap dapat mencatat handover. CAS handover menolak link pending/claimed/processing
+  sehingga handover yang menang mencegah retry, retry yang menang mencegah handover.
+- Operasi produksi atas instruksi owner: dua order Muse `AXV-20261110-81C2FADA` /
+  `AXV-20261110-9C9B8FF4` diberi supplier_purchase_disabled=1 untuk penanganan manual
+  owner via Telegram supplier; readback attempt0/sendNULL. Tidak mengubah status,
+  menghapus receipt/fence, membeli, atau mengirim notifikasi. Bukan fixture QA.
+- Tanpa schema/migrasi/env/cron/dependency baru. Bukti fixture SQLite/workerd +
+  Chromium admin desktop/mobile dan full suite/build di CHANGELOG; belum bukti deploy.
+
 ### 16.34 TUNVN auto-sync katalog — 10 November 2026 (lokal, publikasi CI)
 
 - Worker menambahkan `lite:tunvn_catalog` setiap3menit, soft alarm existing,
@@ -4324,7 +4350,8 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
   `mcp-worker/src/cron.ts` existing;40statement/job, tanpa cron/env/trigger baru.
   Completion mengantrekan lagi generic job yang sudah terminal akibat review.
 - Route `/api/admin/tunvn/orders`: requireAdmin + no-store; GET100 metadata aman,
-  POST `{id,action:'reveal'|'reconcile'}` berbatas2KB. Reveal dekripsi privat dan
+  POST `{id,action:'reveal'|'reconcile'}` pada snapshot T2B, ditambah retry pra-beli
+  oleh §16.35, berbatas2KB. Reveal dekripsi privat dan
   audit otorisasi POST existing; reconcile hanya poll batch Buff diketahui di
   budget40, tanpa POST pembelian. Panel Ringkasan menampilkan status/cost/ID;
   kasus tanpa ID diselesaikan admin di luar alur otomatis.

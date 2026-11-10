@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
-import { processTunvnOrders } from "@/lib/tunvn/orders";
+import { processTunvnOrders, retryTunvnOrder, TUNVN_RETRYABLE_SQL } from "@/lib/tunvn/orders";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -14,7 +14,9 @@ export async function GET(request: NextRequest) {
   try {
     const items = await createDatabaseAccess().queryAll(`SELECT id,order_code,item_index,kind,quantity,cost_usdt,currency,status,attempt_count,request_sent_at,
       provider_order_group,provider_batch_id,provider_order_code,receipt_json,last_error,completed_at,
-      CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt
+      CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt,
+      (SELECT supplier_purchase_disabled FROM orders WHERE code=tunvn_order_links.order_code) AS purchase_disabled,
+      CASE WHEN ${TUNVN_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry
       FROM tunvn_order_links ORDER BY id DESC LIMIT 100`);
     return json({ ok: true, items });
   } catch { return json({ error: "load_failed" }, 503); }
@@ -26,11 +28,16 @@ export async function POST(request: NextRequest) {
   const bounded = await readJsonBody(request, 2048);
   if (!bounded.ok) return bounded.response;
   const body = bounded.data as { id?: unknown; action?: unknown } | null;
-  if (!body || !Number.isSafeInteger(body.id) || Number(body.id) < 1 || !["reconcile", "reveal"].includes(String(body.action))) return json({ error: "invalid_request" }, 400);
+  if (!body || !Number.isSafeInteger(body.id) || Number(body.id) < 1 || !["retry", "reconcile", "reveal"].includes(String(body.action))) return json({ error: "invalid_request" }, 400);
   const budget = createBudgetedDatabase(40, 0);
   try {
     const link = await budget.access.queryFirst("SELECT * FROM tunvn_order_links WHERE id=?", body.id);
     if (!link) return json({ error: "not_found" }, 404);
+    if (body.action === "retry") {
+      if (!await retryTunvnOrder(budget.access,Number(link.id))) return json({ error: "no_safe_retry", message: "Retry hanya untuk kegagalan sebelum pembelian, tanpa receipt atau pengiriman aktif." },409);
+      const updated=await budget.access.queryFirst("SELECT status,last_error FROM tunvn_order_links WHERE id=?",link.id);
+      return json({ ok:true,link:updated });
+    }
     if (body.action === "reveal") {
       if (!link.receipt_ciphertext || !link.receipt_iv) return json({ error: "no_receipt" }, 404);
       return json({ ok: true, receipt: await decryptSecret(String(link.receipt_ciphertext), String(link.receipt_iv)) });

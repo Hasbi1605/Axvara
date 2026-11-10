@@ -194,7 +194,8 @@ export async function recordManualHandoverDetailed(
        SET status='delivered', delivered_message_id='manual', locked_until=NULL,
            last_error=?, delivered_ciphertext=COALESCE(?, delivered_ciphertext),
            delivered_iv=COALESCE(?, delivered_iv), updated_at=datetime('now')
-       WHERE order_code=? AND item_index=? AND status IN ('manual_required','retry','queued','failed')`,
+        WHERE order_code=? AND item_index=? AND status IN ('manual_required','retry','queued','failed')
+          AND NOT EXISTS(SELECT 1 FROM tunvn_order_links WHERE id=fulfillment_items.tunvn_link_id AND status IN ('pending','claimed','processing'))`,
       audit, sealed?.ciphertext ?? null, sealed?.iv ?? null, orderCode, itemIndex,
     );
     if (!flipped.changes) {

@@ -4,8 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { SupplierLinkActions, type SupplierLink } from "@/components/admin/SupplierLinkActions";
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/components/ui/Toast", () => ({ useToast: () => toast }));
-vi.mock("@/components/ui/IosIcon", () => ({ IosIcon: () => null }));
+vi.mock("@/components/ui/IosIcon", async original => ({ ...await original<object>(),IosIcon: () => null }));
 vi.mock("@/components/ui/Loading", () => ({ Spinner: () => null }));
+vi.mock("@/components/admin/OrderAccessAdmin",()=>({OrderAccessAdmin:()=>null}));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 const link: SupplierLink = { supplier: "wr", id: 36, status: "submitted", attempt_count: 1, max_attempts: 3, last_error: "ambiguous_timeout", supplier_order_id: null, delivery_status: "not_required" };
 it("submits an explicit invoice through an accessible controlled form", async () => {
@@ -38,4 +39,47 @@ it("keeps the selected invoice editable after rejection and reports no successfu
   expect(changed).not.toHaveBeenCalled();
   expect(input.value).toBe("ORD-WRONG");
   expect(input.disabled).toBe(false);
+});
+
+const tunvn:SupplierLink={supplier:"tunvn",id:1,item_index:0,status:"needs_admin",attempt_count:0,max_attempts:3,last_error:"insufficient_balance",supplier_order_id:null,delivery_status:null,can_retry:true};
+it("shows TUNVN balance warning and retries via the protected action, not WR/SK routes",async()=>{
+  const fetcher=vi.fn(async()=>Response.json({ok:true,link:{status:"needs_admin",last_error:"insufficient_balance"}}));vi.stubGlobal("fetch",fetcher);
+  const changed=vi.fn();render(<SupplierLinkActions links={[tunvn]} onChanged={changed}/>);
+  expect(screen.getByText(/Top up saldo TUNVN/)).toBeTruthy();expect(screen.queryByRole("button",{name:"Batal"})).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Retry"}));await waitFor(()=>expect(changed).toHaveBeenCalledOnce());
+  expect(fetcher).toHaveBeenCalledWith("/api/admin/tunvn/orders",{method:"POST",headers:{"Content-Type":"application/json"},body:'{"id":1,"action":"retry"}'});
+  expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Top up"));expect(toast.success).not.toHaveBeenCalled();
+});
+it("does not offer blind retry for ambiguous TUNVN but can check a known batch",async()=>{
+  const changed=vi.fn();const fetcher=vi.fn(async()=>Response.json({ok:true}));vi.stubGlobal("fetch",fetcher);
+  const {rerender}=render(<SupplierLinkActions links={[{...tunvn,can_retry:false,last_error:"dispatch_unconfirmed"}]} onChanged={changed}/>);
+  expect(screen.queryByRole("button",{name:"Retry"})).toBeNull();expect(screen.queryByRole("button",{name:"Cek status"})).toBeNull();
+  rerender(<SupplierLinkActions links={[{...tunvn,can_retry:false,can_reconcile:true,supplier_order_id:"BATCH",status:"processing"}]} onChanged={changed}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Cek status"}));await waitFor(()=>expect(changed).toHaveBeenCalledOnce());
+  expect(fetcher).toHaveBeenCalledWith("/api/admin/tunvn/orders",{method:"POST",headers:{"Content-Type":"application/json"},body:'{"id":1,"action":"reconcile"}'});
+});
+it("keeps retry available after a rejection without reporting success",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async()=>Response.json({error:"no_safe_retry"},{status:409})));
+  const changed=vi.fn();render(<SupplierLinkActions links={[tunvn]} onChanged={changed}/>);
+  fireEvent.click(screen.getByRole("button",{name:"Retry"}));await waitFor(()=>expect(toast.error).toHaveBeenCalledWith("no_safe_retry"));
+  expect(changed).not.toHaveBeenCalled();expect((screen.getByRole("button",{name:"Retry"}) as HTMLButtonElement).disabled).toBe(false);
+});
+it("never offers retry or top-up instructions for an order explicitly handled manually",()=>{
+  render(<SupplierLinkActions links={[{...tunvn,purchase_disabled:true}]} onChanged={()=>{}}/>);
+  expect(screen.getByText(/Pembelian otomatis dinonaktifkan/)).toBeTruthy();
+  expect(screen.queryByRole("button",{name:"Retry"})).toBeNull();
+  expect(screen.queryByText(/Top up/)).toBeNull();
+});
+it("replaces handover in both the TUNVN order row and its detail, retaining manual orders",async()=>{
+  const {OrdersManager}=await import("@/components/admin/OrdersManager");
+  const order={code:"AXV-20261110-FIXTURE1",status:"lunas",payment_status:"paid",fulfillment_status:"manual_required",sales_channel:"web",payment_method:"qris",customer_name:"Fixture",subtotal:1500,items:[{name:"Buff",price:1500,qty:1}],supplier_links:[tunvn]};
+  const fetcher=vi.fn(async(url:string)=>Response.json(url.includes("/api/admin/orders?")?{orders:[order]}:{buyerInputs:[]}));vi.stubGlobal("fetch",fetcher);
+  const {unmount}=render(<OrdersManager/>);await screen.findByRole("button",{name:"Retry"});
+  expect(screen.queryByText("Perlu handover")).toBeNull();expect(screen.queryByRole("button",{name:"Kirim ke pembeli"})).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Detail"}));await screen.findByRole("heading",{name:"Detail pesanan"});
+  expect(screen.queryByRole("button",{name:"Kirim ke pembeli"})).toBeNull();unmount();
+  order.supplier_links=[{...tunvn,purchase_disabled:true}];
+  const manual=render(<OrdersManager/>);expect(await screen.findByRole("button",{name:"Kirim ke pembeli"})).toBeTruthy();
+  expect(screen.queryByRole("button",{name:"Retry"})).toBeNull();manual.unmount();
+  order.supplier_links=[];render(<OrdersManager/>);expect(await screen.findByRole("button",{name:"Kirim ke pembeli"})).toBeTruthy();
 });

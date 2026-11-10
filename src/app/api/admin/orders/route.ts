@@ -6,6 +6,7 @@ import { readPrivateFinancialSnapshot } from "@/lib/admin-report-cache";
 import { csvCell } from "@/lib/csv";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
+import { TUNVN_RETRYABLE_SQL } from "@/lib/tunvn/orders";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -120,9 +121,10 @@ export async function GET(req: NextRequest) {
 }
 
 type SupplierLink = {
-  supplier: "wr" | "sk"; id: number; status: string; attempt_count: number;
+  supplier: "wr" | "sk" | "tunvn"; id: number; status: string; attempt_count: number;
   max_attempts: number; last_error: string | null; supplier_order_id: string | null;
   delivery_status: string | null;
+  can_retry?: boolean; can_reconcile?: boolean; item_index?: number; purchase_disabled?: boolean;
 };
 
 export type AdminPediaSummary = {
@@ -174,13 +176,19 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
   const out = new Map<string, SupplierLink[]>();
   if (!codes.length) return out;
   const marks = codes.map(() => "?").join(",");
-  const [wr, sk] = await Promise.all([
+  const [wr, sk, tunvn] = await Promise.all([
     queryAll(`SELECT id, order_code, status, attempt_count, max_attempts, last_error, wr_order_id AS supplier_order_id, delivery_status
       FROM wr_order_links WHERE order_code IN (${marks}) ORDER BY id`, ...codes).catch(() => [] as Record<string, unknown>[]),
     queryAll(`SELECT id, order_code, status, attempt_count, max_attempts, last_error, sk_invoice AS supplier_order_id, NULL AS delivery_status
       FROM sk_order_links WHERE order_code IN (${marks}) ORDER BY id`, ...codes).catch(() => [] as Record<string, unknown>[]),
+    queryAll(`SELECT id,order_code,item_index,status,attempt_count,3 AS max_attempts,last_error,
+      COALESCE(provider_batch_id,provider_order_group) AS supplier_order_id,NULL AS delivery_status,
+      CASE WHEN ${TUNVN_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry,
+      (SELECT supplier_purchase_disabled FROM orders WHERE code=tunvn_order_links.order_code) AS purchase_disabled,
+      CASE WHEN kind='buff' AND provider_batch_id IS NOT NULL AND status IN ('processing','needs_admin') THEN 1 ELSE 0 END AS can_reconcile
+      FROM tunvn_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes),
   ]);
-  for (const [supplier, rows] of [["wr", wr], ["sk", sk]] as const) {
+  for (const [supplier, rows] of [["wr", wr], ["sk", sk], ["tunvn",tunvn]] as const) {
     for (const row of rows) {
       const code = String(row.order_code || "");
       const list = out.get(code) ?? [];
@@ -190,6 +198,7 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
         last_error: row.last_error ? String(row.last_error).slice(0, 160) : null,
         supplier_order_id: row.supplier_order_id ? String(row.supplier_order_id) : null,
         delivery_status: row.delivery_status ? String(row.delivery_status) : null,
+        ...(supplier==="tunvn" ? {can_retry:Number(row.can_retry)===1,can_reconcile:Number(row.can_reconcile)===1,item_index:Number(row.item_index),purchase_disabled:Number(row.purchase_disabled)===1} : {}),
       });
       out.set(code, list);
     }

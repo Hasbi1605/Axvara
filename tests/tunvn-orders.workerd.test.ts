@@ -51,14 +51,14 @@ it("workerd catalog cron uses native D1 upserts/lease under40 statements and nev
 
 it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and polls Buff202 without rebuy",async()=>{
   const compiled=await build({stdin:{resolveDir:process.cwd(),loader:"ts",contents:`
-    import {processTunvnOrders} from './src/lib/tunvn/orders';
+    import {processTunvnOrders,retryTunvnOrder} from './src/lib/tunvn/orders';
     import {createBudgetedDatabase} from './src/lib/db-access';
     export default {async fetch(req,env){
       const body=await req.json(); globalThis.DB=env.DB; let purchases=0;
       globalThis.fetch=async(url,init)=>{
         const path=new URL(url).pathname;
         if(path==='/api/products')return Response.json({success:true,products:[{id:86,name:'Account',price_vnd:50000,price_usdt:2,stock:100}]});
-        if(path==='/api/balance')return Response.json({success:true,balance_vnd:0,balance_usdt:100});
+        if(path==='/api/balance')return Response.json({success:true,balance_vnd:0,balance_usdt:body.balance ?? 100});
         if(path==='/api/buff/check')return Response.json({success:true,fundable:true,sell_price_usdt:2,orders_breakdown:[{invite_code:'Ab12Cd',quantity_b:1,valid:true}]});
         if(path==='/api/buff/status')return Response.json({success:true,batch_id:'BUFF_WORKER',is_done:true,orders:[{invite_code:'Ab12Cd',quantity_b:1,currency:'usdt',order_code:'TELE_WORKER',status:'done'}]});
         purchases++;
@@ -69,7 +69,8 @@ it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and p
       const budgets=[];
       await Promise.all(Array.from({length:body.competing?3:1},async()=>{
         const b=createBudgetedDatabase(40,2,env.DB);budgets.push(b);
-        await processTunvnOrders(b.access,{orderCode:body.code});
+        if(body.retry){const link=await b.access.queryFirst('SELECT id FROM tunvn_order_links WHERE order_code=?',body.code);await retryTunvnOrder(b.access,link.id);}
+        else await processTunvnOrders(b.access,{orderCode:body.code});
       }));
       return Response.json({purchases,used:budgets.map(b=>b.used)});
     }}
@@ -96,8 +97,8 @@ it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and p
       await db.prepare("INSERT INTO fulfillment_items(id,order_code,item_index,product_id,variant_id) VALUES(?,?,0,?,?)").bind(id,code,id,id).run();
       return code;
     };
-    const call=async(code:string,competing=false)=>{
-      const response=await runtime.dispatchFetch("https://fixture.test/dispatch",{method:"POST",body:JSON.stringify({code,competing})});
+    const call=async(code:string,competing=false,extra:Record<string,unknown>={})=>{
+      const response=await runtime.dispatchFetch("https://fixture.test/dispatch",{method:"POST",body:JSON.stringify({code,competing,...extra})});
       const result=await response.json() as {purchases:number;used:number[]};
       expect(result.used.every(n=>n<=38)).toBe(true);return result;
     };
@@ -105,7 +106,13 @@ it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and p
     const link=await db.prepare("SELECT * FROM tunvn_order_links WHERE order_code=?").bind(code).first();
     expect(link).toMatchObject({status:"completed",attempt_count:1,request_sent_at:expect.any(String),receipt_http_status:200});
     expect(JSON.stringify(link)).not.toContain("worker-fixture-secret");expect((await call(code,true)).purchases).toBe(0);
-    const buff=await create("buff",2);expect((await call(buff)).purchases).toBe(1);
+    const buff=await create("buff",2);expect((await call(buff,false,{balance:0})).purchases).toBe(0);
+    expect(await db.prepare("SELECT status,last_error,request_sent_at,attempt_count FROM tunvn_order_links WHERE order_code=?").bind(buff).first()).toMatchObject({status:"needs_admin",last_error:"insufficient_balance",request_sent_at:null,attempt_count:0});
+    await db.prepare("UPDATE orders SET supplier_purchase_disabled=1 WHERE code=?").bind(buff).run();
+    expect((await call(buff,true,{retry:true})).purchases).toBe(0);
+    await db.prepare("UPDATE orders SET supplier_purchase_disabled=0 WHERE code=?").bind(buff).run();
+    expect((await call(buff,true,{retry:true})).purchases).toBe(1);
+    expect((await call(buff,true,{retry:true})).purchases).toBe(0);
     expect(await db.prepare("SELECT status FROM tunvn_order_links WHERE order_code=?").bind(buff).first()).toMatchObject({status:"processing"});
     await db.prepare("UPDATE tunvn_order_links SET next_attempt_at=datetime('now','-1 minute') WHERE order_code=?").bind(buff).run();
     expect((await call(buff,true)).purchases).toBe(0);
