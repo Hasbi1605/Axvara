@@ -1,5 +1,17 @@
 # PRD — AXVARA
 
+## Modal TUNVN dinamis tanpa penolakan kenaikan (10 November 2026, lokal)
+
+- Dispatch akun/Buff dan Retry tidak menolak modal aktual yang melebihi snapshot
+  checkout. Snapshot tetap histori; harga positif/finite, saldo aktual cukup,
+  stok/fundable dan seluruh pagar anti-pembelian ganda tetap wajib.
+- Harga katalog mengikuti modal x FX x markup tersimpan melalui sync3menit
+  existing, naik maupun turun, kecuali override harga manual admin. Total order
+  yang sudah dibuat/dibayar tetap; persentase untung aktualnya dapat berubah.
+- Order cost_changed historis dapat Retry admin memakai harga terkini bila
+  terbukti belum dikirim, tanpa pembelian ulang ambigu atau backfill otomatis.
+  Order disable/manual owner tetap tidak diproses. Publikasi CI, belum bukti deploy.
+
 ## Notifikasi proses dan label otomatis TUNVN (10 November 2026, lokal)
 
 - Web menerima email "Pesanan Diproses" sesudah receipt akun lengkap tervalidasi
@@ -28,8 +40,8 @@
   dibaca diberi alasan berbeda, tidak menyimpulkan saldo0 atau penyebab historis.
 - Retry hanya admin untuk kegagalan pra-pembelian yang terbukti: attempt0, tidak
   ada send fence/receipt/ID/completion/lease aktif, paid eligible, item belum
-  delivered/sending/dimiliki supplier lain. CAS dan preflight ulang mempertahankan
-  biaya snapshot; setelah satu send tidak pernah membuka pembelian kedua, termasuk
+  delivered/sending/dimiliki supplier lain. CAS dan preflight ulang memakai harga
+  aktual tanpa ceiling snapshot (revisi di atas); setelah satu send tidak pernah membuka pembelian kedua, termasuk
   respons409/timeout. Reconcile batch diketahui tetap tanpa pembelian ulang.
 - Dua order `AXV-20261110-81C2FADA` dan `AXV-20261110-9C9B8FF4` ditangani owner
   melalui Telegram TUNVN, bukan diuji/diproses ulang. Flag disable supplier sudah

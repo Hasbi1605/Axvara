@@ -16,6 +16,12 @@
 
 ## Status dan retry TUNVN (10 November 2026, lokal)
 
+- Revisi modal dinamis: cost_changed historis menjelaskan pemeriksaan versi lama
+  dan Retry memakai harga supplier terkini tanpa ceiling snapshot. Harga invalid
+  tetap gangguan katalog/Buff, bukan peringatan kenaikan modal. Layout/fokus tetap.
+  Chromium fixture1280/390: copy wrapping tanpa overflow, Retry via Enter dengan
+  fokus3px/target48px, rejeksi409 lalu sukses200/processing; CSS/JS200, tanpa
+  pageerror (console409 mock disengaja), bukan bukti transaksi/deployment produksi.
 - Baris Pesanan/detail dan Ringkasan TUNVN memberi sebab yang terbaca, terutama
   saldo supplier kurang + top-up/Retry; gagal baca saldo bukan saldo habis.
   Pesanan supplier tidak ditampilkan sebagai handover generik. Order pembelian

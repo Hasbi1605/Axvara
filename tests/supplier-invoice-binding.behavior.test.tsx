@@ -42,6 +42,11 @@ it("keeps the selected invoice editable after rejection and reports no successfu
 });
 
 const tunvn:SupplierLink={supplier:"tunvn",id:1,item_index:0,status:"needs_admin",attempt_count:0,max_attempts:3,last_error:"insufficient_balance",supplier_order_id:null,delivery_status:null,can_retry:true};
+it("explains that legacy cost failures can retry at the current supplier price",()=>{
+  render(<SupplierLinkActions links={[{...tunvn,last_error:"cost_changed"}]} onChanged={()=>{}}/>);
+  expect(screen.getByText(/harga supplier terkini tanpa batas modal snapshot/)).toBeTruthy();
+  expect(screen.getByRole("button",{name:"Retry"})).toBeTruthy();
+});
 it("shows TUNVN balance warning and retries via the protected action, not WR/SK routes",async()=>{
   const fetcher=vi.fn(async()=>Response.json({ok:true,link:{status:"needs_admin",last_error:"insufficient_balance"}}));vi.stubGlobal("fetch",fetcher);
   const changed=vi.fn();render(<SupplierLinkActions links={[tunvn]} onChanged={changed}/>);

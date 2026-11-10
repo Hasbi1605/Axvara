@@ -1,5 +1,14 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+TUNVN modal dinamis10November2026 (lokal, publikasi CI): dispatch akun/Buff dan
+Retry tidak lagi menolak kenaikan modal dari snapshot checkout. Harga katalog
+tetap naik/turun dari modal x FX x markup admin melalui sync3menit (override manual
+tetap); total order yang sudah dibuat/dibayar tidak berubah. Snapshot biaya tetap
+histori; preflight harga valid/saldo aktual/stok/fundable dan fence/CAS tetap.
+Order cost_changed lama dapat Retry admin existing tanpa menunggu harga turun;
+tidak auto-replay atau memproses order disable/manual owner. Tanpa env/migrasi,
+mutasi atau transaksi produksi; ARCHITECTURE16.37. Deployment belum diverifikasi.
+
 TUNVN notifikasi/label10November2026 (lokal, publikasi CI): email web
 "Pesanan Diproses" mengikuti locale order setelah receipt akun lengkap atau batch
 Buff diterima; ledger existing mencegah pengiriman normal berulang. Email gagal
@@ -13,7 +22,8 @@ asli tetap MBO. Tanpa env/migrasi baru; ARCHITECTURE16.36. Belum bukti deploymen
 TUNVN retry10November2026 (implementasi lokal, publikasi CI): daftar Pesanan dan
 panel TUNVN membedakan saldo kurang dari saldo gagal dibaca dan menampilkan Retry
 hanya pada kegagalan pra-beli terbukti (attempt0, tanpa send/receipt/ID, paid eligible,
-item belum dikirim). CAS, preflight dan biaya snapshot tetap; HTTP409/timeout setelah
+item belum dikirim). CAS/preflight tetap; biaya snapshot hanya histori sesuai
+revisi modal dinamis di atas. HTTP409/timeout setelah
 send tidak pernah direplay. Order disable menampilkan penanganan manual tanpa Retry.
 Owner menangani `AXV-20261110-81C2FADA` dan `AXV-20261110-9C9B8FF4` sendiri via
 Telegram TUNVN: kedua flag supplier_purchase_disabled sudah1 di D1, bukan diproses

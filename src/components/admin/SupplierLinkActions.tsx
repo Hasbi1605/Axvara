@@ -37,7 +37,7 @@ export const TUNVN_ERROR_LABEL: Record<string,string> = {
   catalog_unavailable: "Katalog TUNVN belum dapat diperiksa. Pembelian belum dikirim.",
   stock_unavailable: "Stok supplier belum tersedia. Pembelian belum dikirim.",
   buff_unavailable: "Layanan Buff atau kode tujuan belum dapat diverifikasi. Pembelian belum dikirim.",
-  cost_changed: "Modal supplier berubah melewati batas snapshot order. Retry tetap memeriksa batas biaya yang sama.",
+  cost_changed: "Order tertahan pemeriksaan modal versi lama. Retry memakai harga supplier terkini tanpa batas modal snapshot.",
   dispatch_unconfirmed: "Proses TUNVN belum terkonfirmasi. Retry hanya tersedia bila belum ada penanda pembelian.",
 };
 

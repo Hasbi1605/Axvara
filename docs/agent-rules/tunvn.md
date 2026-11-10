@@ -1,5 +1,19 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Revisi owner 10 November 2026: modal dinamis tanpa ceiling snapshot (lokal)
+
+- Hapus penolakan dispatch/retry hanya karena modal aktual naik dari snapshot;
+  berlaku akun dan Buff. Snapshot biaya tetap immutable untuk histori, bukan cap.
+- Harga katalog naik/turun dari modal x FX x markup admin melalui sync3menit
+  existing (override harga manual tetap). Total order yang sudah dibuat/dibayar
+  tidak dihitung ulang; margin order tersebut dapat berbeda dari target markup.
+- Preflight tetap memvalidasi harga positif/finite, saldo terhadap harga aktual,
+  stok/fundable, identitas, disable, lease dan fence anti-pembelian ganda. Harga
+  tidak valid menjadi catalog_unavailable/buff_unavailable, bukan cost_changed.
+- Order historis cost_changed dapat Retry admin existing memakai harga terkini,
+  hanya pra-send yang lolos CAS; tidak auto-replay, reset fence atau mutasi produksi.
+  Dua order manual owner tetap dikecualikan. Publikasi CI, belum bukti deployment.
+
 ## Notifikasi proses dan label otomatis — 10 November 2026 (lokal)
 
 - Email proses web hanya sesudah receipt akun lengkap/batch Buff diterima; ID/EN
@@ -30,8 +44,9 @@
   membuktikan needs_admin/attempt0/tanpa send, receipt, provider ID atau completion,
   lease tidak aktif, paid eligible dan item belum dikirim/dimiliki supplier lain.
   Legacy dispatch_unconfirmed boleh hanya dengan bukti pra-kirim yang sama.
-- Retry authenticated memakai endpoint existing, preflight dan batas biaya snapshot
-  tetap; tanpa reset fence/receipt/counter atau replay HTTP409/timeout pembelian.
+- Retry authenticated memakai endpoint existing dan preflight harga/saldo aktual;
+  snapshot biaya tetap histori tanpa ceiling (revisi owner di atas). Tanpa reset
+  fence/receipt/counter atau replay HTTP409/timeout pembelian.
   Klaim handover manual menolak pending/claimed/processing agar tidak balapan retry.
   Disable pembelian tetap mengalahkan retry/cron dan UI menyebut penanganan manual.
 - Tidak menjalankan dua order produksi sebagai QA. Tes SQLite/workerd dan browser

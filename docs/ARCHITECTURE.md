@@ -4255,6 +4255,24 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
+### 16.37 TUNVN modal dinamis tanpa ceiling snapshot — 10 November 2026 (lokal)
+
+- `tunvn/orders.ts` tidak membandingkan harga preflight dengan `link.cost_usdt`
+  untuk menolak pembelian akun/Buff. Biaya snapshot immutable tetap mengikat
+  identitas order/link, bukan batas modal. Receipt menyimpan charged_usdt aktual;
+  account completed tidak diberi error charged_above_preflight lagi.
+- Preflight tetap menolak harga nonfinite/nonpositif sebagai catalog_unavailable
+  atau buff_unavailable; saldo dibandingkan harga aktual, stok/fundable, enkripsi,
+  paid/disable/ownership dan fence/CAS unchanged. Tanpa replay pasca-send/409/timeout.
+- `cost_changed` dipertahankan hanya untuk kompatibilitas Retry historis melalui
+  TUNVN_RETRYABLE_SQL existing. UI menjelaskan Retry memakai harga terkini, bukan
+  cap lama. Tidak auto-requeue atau mutasi order yang tertahan di produksi.
+- Harga katalog tetap mengikuti modal/FX/markup pada sync3menit §16.34, dengan
+  override manual admin. Tidak repricing total order yang sudah dibuat/dibayar;
+  margin aktual order itu dapat berbeda dari target markup. Snapshot bukan cap.
+- Tidak ada schema/migrasi/env/cron/dependency baru. Fixture SQLite/workerd dan
+  browser lokal, bukan bukti pembelian/notifikasi produksi atau deployment CI.
+
 ### 16.36 TUNVN processing notice dan klasifikasi otomatis — 10 November 2026 (lokal)
 
 - `notifyBuyerTunvnProcessing` dipanggil setelah receipt akun lengkap atau batch Buff
@@ -4388,7 +4406,8 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
   kasus tanpa ID diselesaikan admin di luar alur otomatis.
 - Batas upstream: tidak ada idempotency atau parameter max_price; preflight
   bukan jaminan harga charge. Dana/stok/harga dapat berubah setelah read, biaya
-  aktual disimpan dalam metadata receipt; account charge lebih tinggi ditandai.
+  aktual disimpan dalam metadata receipt; penanda account charge di atas snapshot
+  dihapus oleh revisi §16.37 (snapshot kini histori saja).
   Tidak auto-refund/deposit. Snapshot saldo9November bukan bukti saldo sekarang.
 - Lokal/uncommitted, focused SQLite/workerd/tsc/lint saja; PM menjalankan full
   suite/build/T3 browser fixture. Bukan bukti migrasi remote, deployment, atau

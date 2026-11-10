@@ -92,6 +92,10 @@ describe("publishTunvnCatalog", () => {
     const fetcher=vi.mocked(fetch); fetcher.mockClear();
     expect(await publishTunvnCatalog(db(),20000,{force:false,now:Date.now()+180_001})).toEqual({skipped:"throttled"});
     expect(fetcher).not.toHaveBeenCalled();
+    supplier([upstreamProduct(86,{price_usdt:3,stock:3}),upstreamProduct(83,{stock:0})],0.05);
+    expect(await publishTunvnCatalog(db(),20000,{force:false,now:Date.now()+360_000})).toMatchObject({ok:true});
+    expect(fx.sql.prepare("SELECT price FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({price:81000});
+    expect(fx.sql.prepare("SELECT price,tunvn_cost_usdt,tunvn_markup_percent FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get()).toEqual({price:1400,tunvn_cost_usdt:0.05,tunvn_markup_percent:40});
   });
   it("sets removed accounts and unfundable Buff to zero and restores availability without reactivating variants",async () => {
     await publishTunvnCatalog(db(),RATE);

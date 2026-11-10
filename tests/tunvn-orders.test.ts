@@ -111,9 +111,16 @@ describe("durable purchasing",()=>{
     await tick();due();await tick();expect(buys()).toBe(1);expect(link().status).toBe("needs_admin");
     expect(link().request_sent_at).toBeTruthy();
   });
-  it.each(["stock","balance","price","encryption"])("fails preflight %s without purchase",async fault=>{
-    seed();if(fault==="stock")stock=0;if(fault==="balance")balance=0;if(fault==="price")price=3;if(fault==="encryption")vi.stubEnv("FULFILLMENT_ENCRYPTION_KEY","");
+  it.each(["stock","balance","encryption"])("fails preflight %s without purchase",async fault=>{
+    seed();if(fault==="stock")stock=0;if(fault==="balance")balance=0;if(fault==="encryption")vi.stubEnv("FULFILLMENT_ENCRYPTION_KEY","");
     await tick();expect(buys()).toBe(0);expect(link().status).toBe("needs_admin");expect(link().request_sent_at).toBeNull();
+  });
+  it.each([1,3])("accepts current account cost %s without changing the paid order or cost snapshot",async current=>{
+    seed();const order=fixture.sql.prepare("SELECT items,subtotal FROM orders").get();price=current;(purchase.order as Row).total_price=current;
+    await tick();due();await tick();
+    expect(buys()).toBe(1);expect(link()).toMatchObject({status:"completed",last_error:null,cost_usdt:2});
+    expect(JSON.parse(String(link().receipt_json)).charged_usdt).toBe(current);
+    expect(fixture.sql.prepare("SELECT items,subtotal FROM orders").get()).toEqual(order);
   });
   it.each(["legacy","unpaid","admin_test","games","source","stale","bundle","disabled"])("does not buy %s",async kind=>{
     const item=account();if(kind==="legacy")delete item.tunvn_eligibility;
@@ -224,10 +231,12 @@ describe("safe admin retry",()=>{
     if(state==="snapshot_changed")fixture.sql.exec("UPDATE tunvn_order_links SET quantity=2");
     await post();expect(buys()).toBe(0);
   });
-  it("leaves a changed-cost snapshot immutable and only buys when cost falls back inside it",async()=>{
-    seed();price=3;await tick();expect(link().last_error).toBe("cost_changed");
-    await post();expect(buys()).toBe(0);expect(link().cost_usdt).toBe(2);
-    price=2;await post();expect(buys()).toBe(1);expect(link().cost_usdt).toBe(2);
+  it("retries a legacy cost_changed failure at the current price without rewriting its snapshot",async()=>{
+    seed();balance=0;await tick();fixture.sql.exec("UPDATE tunvn_order_links SET last_error='cost_changed'");
+    price=3;balance=100;(purchase.order as Row).total_price=3;
+    expect((await post()).status).toBe(200);expect(buys()).toBe(1);
+    expect(link()).toMatchObject({status:"completed",last_error:null,cost_usdt:2});
+    expect((await post()).status).toBe(409);expect(buys()).toBe(1);
   });
   it("rechecks delivered state in retry CAS and rejects handover while dispatch owns the item",async()=>{
     const order=seed();balance=0;await tick();
@@ -247,6 +256,22 @@ describe("safe admin retry",()=>{
 
 describe("Buff accepted is not delivered",()=>{
   beforeEach(()=>{purchase={success:true,batch_id:"BUFF_FIXTURE",currency:"usdt",sell_price_usdt:2,orders:[{invite_code:"Ab12Cd",quantity_b:1,order_code:"TELE_FIXTURE"}]};});
+  it.each([1,3])("uses live Buff cost %s for four units, then completes without rebuy",async current=>{
+    seed([buff(4)]);price=current;purchase.sell_price_usdt=current*4;(purchase.orders as Row[])[0].quantity_b=4;
+    await tick();expect(link()).toMatchObject({status:"processing",cost_usdt:8,last_error:null});
+    expect(JSON.parse(String(link().receipt_json)).charged_usdt).toBe(current*4);
+    status.is_done=true;Object.assign((status.orders as Row[])[0],{quantity_b:4,status:"done"});due();await tick();
+    expect(link().status).toBe("completed");expect(buys()).toBe(1);
+  });
+  it("checks balance against current Buff cost, not the lower snapshot",async()=>{
+    seed([buff(4)]);price=3;balance=10;await tick();
+    expect(link()).toMatchObject({status:"needs_admin",last_error:"insufficient_balance",attempt_count:0,request_sent_at:null});expect(buys()).toBe(0);
+  });
+  it.each([0,-1,null,"invalid"])("rejects invalid Buff cost %s before sending",async invalid=>{
+    seed([buff()]);const original=transport.getMockImplementation()!;
+    transport.mockImplementation(async(url,init)=>String(url).endsWith("/buff/check") ? response({success:true,fundable:true,sell_price_usdt:invalid,orders_breakdown:[{invite_code:"Ab12Cd",quantity_b:1,valid:true}]}) : original(url,init));
+    await tick();expect(link()).toMatchObject({status:"needs_admin",last_error:"buff_unavailable",attempt_count:0,request_sent_at:null});expect(buys()).toBe(0);
+  });
   it.each([200,202])("polls exact batch only after accepted %i and completes only done",async code=>{
     seed([buff()]);purchaseStatus=code;if(code===202)purchase={batch_id:"BUFF_FIXTURE"};
     await tick();expect(link().status).toBe("processing");due();await tick();expect(link().status).toBe("processing");

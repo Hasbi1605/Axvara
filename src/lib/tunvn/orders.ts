@@ -86,7 +86,7 @@ async function preflight(link:Row):Promise<number> {
     price=Number(value.sell_price_usdt);
     fundable=value.fundable;
   }
-  if (!Number.isFinite(price) || price<=0 || Math.round(price*10000)>Math.round(Number(link.cost_usdt)*10000)) throw new PreflightError("cost_changed");
+  if (!Number.isFinite(price) || price<=0) throw new PreflightError(link.kind==="buff" ? "buff_unavailable" : "catalog_unavailable");
   const balance=await fetchTunvnBalance();
   if (balance.kind!=="ok") throw new PreflightError("balance_unavailable");
   if (balance.balance_usdt<price) throw new PreflightError("insufficient_balance");
@@ -110,7 +110,7 @@ async function finishReceipt(db:DatabaseAccess,link:Row,json:Row,status:number):
     await notifyBuyerTunvnProcessing(String(link.order_code),Number(link.id),db);
     const secret=await encryptSecret(items.slice(0,Number(link.quantity)).join("\n\n"));
     await db.execRun(`UPDATE fulfillment_items SET delivered_ciphertext=?,delivered_iv=?,status='queued',last_error=NULL,locked_until=NULL WHERE tunvn_link_id=? AND status NOT IN ('delivered','sending') AND EXISTS(SELECT 1 FROM tunvn_order_links WHERE id=? AND lease_owner=?)`,secret.ciphertext,secret.iv,link.id,link.id,link.lease_owner);
-    await settle(db,link,"completed",cost>Number(link.cost_usdt) ? "charged_above_preflight" : null);
+    await settle(db,link,"completed",null);
     return;
   }
   const batch=tunvnProviderId(json.batch_id);
