@@ -1,5 +1,7 @@
 "use client";
 
+import { useId } from "react";
+
 // Field garansi bersama untuk tab Varian — dipakai baris multi-varian
 // (ProductVariantRows) dan mode single (SingleVariantFields).
 // Diekstrak 2026-09-28 agar kedua mode selalu paritas: sebelumnya blok ini
@@ -31,14 +33,16 @@ export function WarrantyFields({
   disabled?: boolean;
   wrLocked?: boolean;
 }) {
+  const typeId = useId();
   const locked = disabled || wrLocked;
   const lockedInput = "h-9 w-full rounded-xl bg-white/[0.03] border border-white/5 px-3 text-xs text-white/50 cursor-not-allowed";
   const openInput = "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:outline-none";
   return (
     <div className="pt-3">
-      <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</span>
+      <label htmlFor={typeId} className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</label>
       <div className="flex flex-wrap items-center gap-2">
         <select
+          id={typeId}
           value={value.warranty_type || "full"}
           disabled={locked}
           onChange={(e) => {

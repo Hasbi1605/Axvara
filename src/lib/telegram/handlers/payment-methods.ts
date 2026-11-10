@@ -30,10 +30,8 @@ export type OfferRenderTarget =
   | { mode: "cart"; tag: string; cartName: string; subtotal: number; identity: Payq1LineIdentity; contactEmail: string | null };
 
 /** Canonical 12-hex line identity: SHA-256 over canonical product/variant/qty/effective-price lines. */
-export async function approvalLinesHash(lines: { productId: number; variantId: number; qty: number; price: number }[]): Promise<string> {
-  const canonical = lines.map((l) => [l.productId, l.variantId, l.qty, l.price]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(canonical)));
-  return Array.from(new Uint8Array(digest).slice(0, 6), (b) => b.toString(16).padStart(2, "0")).join("");
+export async function approvalLinesHash(lines: import("@/lib/telegram/checkout-approval").CheckoutApprovalLine[]): Promise<string> {
+  return (await import("@/lib/telegram/checkout-approval")).checkoutApprovalTag(lines);
 }
 
 /** Render (or re-render) the frozen offer after qty/email/cart approval. */
@@ -43,6 +41,10 @@ export async function showPaymentMethodOffer(
   from: { id: number; first_name: string; username?: string },
   target: OfferRenderTarget,
 ): Promise<void> {
+  if (target.mode === "single") {
+    const { requestBuyerInput } = await import("./buyer-input");
+    if (await requestBuyerInput(chatId,from,target.productId,target.variantId,target.qty)) return;
+  }
   const ctx = await tgCtxFor(from.id);
   const frozen = await freezePayq1({
     fromUserId: String(from.id),

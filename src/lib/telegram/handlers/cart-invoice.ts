@@ -51,6 +51,7 @@ export async function createAndSendCartInvoice(
     price: line.price,
     base_price: line.basePrice,
     ...(line.appliedTierMinQty != null ? { applied_tier_min_qty: line.appliedTierMinQty } : {}),
+    buyer_field_key:line.buyerFieldKey ?? null,max_qty:line.maxQty ?? null,buyer_fields:line.buyerFields,
     qty: line.qty,
   }));
   // variant_snapshot order gabungan menyimpan ringkasan; mode fulfillment

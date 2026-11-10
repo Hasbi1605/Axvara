@@ -322,7 +322,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   // Qty terpilih ala marketplace (Shopee/Tokopedia): stepper dibuka di min,
   // tidak turun di bawah min, plafon 100. Direset ke min tiap ganti varian.
   const selectedMaxQty = selectedVariant
-    ? (() => { const eff = effectiveStockOf(selectedVariant); const cap = selectedVariant.fulfillment_mode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : 100; return Math.max(selectedMinQty, eff === -1 ? cap : Math.min(cap, eff)); })()
+    ? (() => { const eff = effectiveStockOf(selectedVariant); const cap = Math.min(selectedVariant.max_qty ?? 100,selectedVariant.fulfillment_mode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : 100); return Math.max(selectedMinQty, eff === -1 ? cap : Math.min(cap, eff)); })()
     : 100;
   // Clamp render-time (bukan effect): qty selalu dalam [min, max] varian
   // aktif tanpa useEffect di bawah early-return (Rules of Hooks). Naik bila
@@ -362,6 +362,8 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       variantId: variant.id,
       variantLabel: variant.label,
       minQty: variantMinQtyOf(variant),
+      maxQty: variant.max_qty,
+      buyerFieldKey: variant.buyer_field_key,
       fulfillmentMode: variant.fulfillment_mode,
       inventoryAvailable: variant.inventory_available ?? null,
       bulkTiers: usableBulkTiers(variant, variant.price),

@@ -1,5 +1,6 @@
 import { readUniqueUnitProgress } from "@/lib/orders/unit-progress";
 import { NextRequest, NextResponse } from "next/server";
+import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { readJsonBody } from "@/lib/http-body";
 import { z } from "zod";
 import { queryFirst } from "@/lib/db";
@@ -89,7 +90,7 @@ async function lookup(req: NextRequest) {
   const emailMasked = emailFull.includes("@") ? emailFull.replace(/(^.).+(@.*)/, (_, a, b) => `${a}***${b}`) : emailFull ? "***" : null;
   let items: { name: string; price: number; qty: number }[] = [];
   try {
-    items = JSON.parse(String(row.items || "[]"));
+    items = withoutPrivateBuyerData(JSON.parse(String(row.items || "[]"))) as typeof items;
   } catch {
     items = [];
   }

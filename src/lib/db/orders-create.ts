@@ -7,6 +7,7 @@
 
 import { getD1, getSharedMem, getOrderMem } from "./client";
 import { StockReservationError } from "./errors";
+import { assertSameBuyerCode, buyerSnapshotMatches, tunvnEligibility, validateBuyerFields } from "@/lib/buyer-fields";
 import type { D1Statement, AtomicOrderItem } from "./types";
 import { markUniqueUnitLines } from "@/lib/fulfillment/units";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
@@ -24,6 +25,7 @@ type AtomicOrderInput = {
   paymentAccount: string;
   proofUrl: string | null;
   locale?: "id" | "en";
+  adminPaymentTest?: boolean;
 };
 
 export async function createOrderWithStock(input: AtomicOrderInput): Promise<void> {
@@ -36,7 +38,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     if (owners.length !== productIds.length) throw new StockReservationError();
     const minutes = owners.some(row => isManualProductForBulk(bulkOwnerFromProductRow(row))) ? 15 : supplierMinutes;
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
-    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
+    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.sku,pv.buyer_field_key,pv.max_qty,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,p.slug AS product_slug,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
         p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
         p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed
       FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
@@ -52,6 +54,19 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
       if (item.variant_id) qtyByVariant.set(item.variant_id, (qtyByVariant.get(item.variant_id) ?? 0) + item.qty);
     }
     const bulkById = new Map(modes.map((row) => [Number(row.id), row]));
+    try {
+      assertSameBuyerCode(input.items);
+      orderItems = orderItems.map(item => {
+        const row = item.variant_id ? bulkById.get(item.variant_id) : {};
+        if (!row) throw new Error("missing");
+        validateBuyerFields(row, item.buyer_fields, qtyByVariant.get(item.variant_id ?? 0) ?? item.qty);
+        if (!buyerSnapshotMatches(item, { buyer_field_key: (row.buyer_field_key ?? null) as "muse_invite_code" | null, max_qty: row.max_qty == null ? null : Number(row.max_qty), buyer_fields: item.buyer_fields })) throw new Error("stale");
+        const clean = { ...item } as typeof item & { tunvn_eligibility?: unknown };
+        delete clean.tunvn_eligibility;
+        const eligibility = input.adminPaymentTest ? undefined : tunvnEligibility(row, item.qty);
+        return { ...clean, ...(eligibility ? { tunvn_eligibility: eligibility } : {}) };
+      });
+    } catch { throw new StockReservationError(); }
     for (const item of input.items) {
       if (!item.variant_id) continue;
       const row = bulkById.get(item.variant_id);
@@ -82,13 +97,21 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
               WHERE pv.id=? AND pv.product_id=? AND p.is_active=1 AND pv.is_active=1
                 AND pv.price=? AND pv.bulk_pricing_enabled=? AND pv.bulk_pricing_tiers=? AND pv.fulfillment_mode=? AND (pv.stock=-1 OR pv.stock>=?)
                 AND ? >= COALESCE(pv.min_qty,1)
+                AND pv.buyer_field_key IS ? AND pv.max_qty IS ?
+                AND (pv.max_qty IS NULL OR ? <= pv.max_qty)
+                 AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ?
+                 AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
                 -- WR3 Jaspay: cap wajib ada dan >= qty agregat varian ini;
                 -- cap hilang/invalid = tolak (fail-closed), dicek atomik di
                 -- batch yang sama dengan reservasi (tahan race perubahan cap).
                 AND (COALESCE(pv.wr_variant_id,'') NOT LIKE 'jaspay:%' OR EXISTS(
                   SELECT 1 FROM wr_variants wv WHERE wv.wr_variant_id=pv.wr_variant_id
                     AND wv.wr_max_quantity IS NOT NULL AND wv.wr_max_quantity >= ?))) THEN 1 ELSE 0 END`,
-          ).bind(guardIds[index], item.variant_id, item.product_id, Number(bulkById.get(item.variant_id)?.price), Number(bulkById.get(item.variant_id)?.bulk_pricing_enabled), String(bulkById.get(item.variant_id)?.bulk_pricing_tiers), byId.get(item.variant_id) ?? "manual", item.qty, item.qty, qtyByVariant.get(item.variant_id) ?? item.qty),
+          ).bind(guardIds[index], item.variant_id, item.product_id, Number(bulkById.get(item.variant_id)?.price), Number(bulkById.get(item.variant_id)?.bulk_pricing_enabled), String(bulkById.get(item.variant_id)?.bulk_pricing_tiers), byId.get(item.variant_id) ?? "manual", item.qty, item.qty,
+            item.buyer_field_key ?? null,item.max_qty ?? null,qtyByVariant.get(item.variant_id) ?? item.qty,
+             bulkById.get(item.variant_id)?.sku ?? null,bulkById.get(item.variant_id)?.tunvn_buff_quantity_b ?? null,bulkById.get(item.variant_id)?.product_slug ?? null,
+             bulkById.get(item.variant_id)?.tunvn_cost_usdt ?? null,bulkById.get(item.variant_id)?.tunvn_source_cost_usdt ?? null,
+            qtyByVariant.get(item.variant_id) ?? item.qty),
         );
       } else {
         statements.push(
@@ -212,7 +235,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     }
     statements.push(
       d1.prepare(
-        `INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at,locale,buyer_access_version,buyer_access_format) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+${minutes} minutes'),?,1,'pin6')`,
+        `INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,proof_url,status,sales_channel,variant_id,quote_id,expires_at,locale,buyer_access_version,buyer_access_format,supplier_purchase_disabled) VALUES (?,?,?,?,?,?,?,?,?,?,'web',?,?,datetime('now','+${minutes} minutes'),?,1,'pin6',?)`,
       ).bind(
         input.code,
         input.customerName,
@@ -227,6 +250,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         primaryVariantId,
         input.quoteId,
         input.locale === "en" ? "en" : "id",
+        input.adminPaymentTest ? 1 : 0,
       ),
     );
     guardIds.forEach((guardId) => {

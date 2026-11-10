@@ -60,7 +60,7 @@ describe("0110 tunvn hidden catalog migration", () => {
     ];
     const baseSchema = later.reduce((text, column) => text.replace(column, ""), body(schema));
     expect(body(migration)).toBe(baseSchema);
-    const indexes = (sql: string) => sql.match(/CREATE INDEX IF NOT EXISTS idx_tunvn_[^;]+;/g);
+    const indexes = (sql: string) => sql.match(/CREATE INDEX IF NOT EXISTS idx_tunvn_[^;]+ ON tunvn_products[^;]+;/g);
     expect(indexes(migration)).toEqual(indexes(schema));
     expect(indexes(migration)).toHaveLength(2);
   });

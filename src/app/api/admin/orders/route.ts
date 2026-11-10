@@ -5,6 +5,7 @@ import { ORDER_FACETS_SQL, orderFacets } from "@/lib/admin-order-facets";
 import { readPrivateFinancialSnapshot } from "@/lib/admin-report-cache";
 import { csvCell } from "@/lib/csv";
 import { deriveNameFromEmail } from "@/lib/utils";
+import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -198,7 +199,7 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
 
 function normalizeOrder(row: Record<string, unknown>) {
   let items: unknown[] = [];
-  try { items = JSON.parse(String(row.items || "[]")); } catch { items = []; }
+  try { items = withoutPrivateBuyerData(JSON.parse(String(row.items || "[]"))); } catch { items = []; }
   // Server-normalized display name: stored name first, email-derived fallback
   // for legacy Pedia rows (or any blank), never "Tanpa nama" from the API.
   const storedName = String(row.customer_name ?? "").trim();

@@ -38,6 +38,7 @@ import {
 } from "./claim";
 import { processItem, sendToRecipient } from "./send";
 import { expandDeliveryLines } from "../units";
+import { eligibleTunvnLine } from "@/lib/tunvn/orders";
 
 /**
  * Proses SEBANYAK maxItems item berikutnya dari satu job (RR4-01).
@@ -101,14 +102,19 @@ export async function processJobItems(
   // WR menyelesaikannya via wr_order_links, bukan processItem. Tanpa filter
   // ini, item WR queued memicu scheduleRetryFenced selamanya.
   // Item SK (sk_link_id NOT NULL) dilewati dengan pola yang sama (0049).
-  const pending = itemRows.filter((row) => !["delivered", "manual_required"].includes(String(row.status)) && row.wr_link_id == null && row.sk_link_id == null);
+  let snapshot: Record<string,unknown>[]=[];
+  try { snapshot=JSON.parse(String(order.items ?? "[]")); } catch { /* invalid manifests fail closed above */ }
+  const readyTunvn = snapshot.some(item=>eligibleTunvnLine(item)) && database.canSpend(COST_PER_JOB_FRAME+1)
+    ? await queryAll("SELECT id FROM tunvn_order_links WHERE order_code=? AND status='completed'",orderCode) : [];
+  const pending = itemRows.filter((row) => !["delivered", "manual_required"].includes(String(row.status)) && row.wr_link_id == null && row.sk_link_id == null
+    && (!eligibleTunvnLine(snapshot[Number(row.item_index)] ?? {}) || readyTunvn.some(link=>link.id===row.tunvn_link_id)));
   const todo = pending.filter((r) => Number(r.item_index) >= start).concat(pending.filter((r) => Number(r.item_index) < start));
   for (const row of todo.slice(0, Math.max(0, maxItems))) {
     // Worst-case item recovery + finalization are reserved before any provider call.
     // Shared/manual need at most eight statements including a failed settle,
     // retry, cursor and error reread; unique may also repair an inventory binding.
     const copyCost = String(row.recipient_channel || channel) === "telegram" && row.fulfillment_mode !== "manual" ? 1 : 0;
-    const itemCost = (row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8) + copyCost;
+    const itemCost = (row.tunvn_link_id != null ? 16 : row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8) + copyCost;
     if (!database.canSpend(itemCost + COST_PER_JOB_FRAME) || (shouldContinue && !shouldContinue())) break;
     if (row.status === "failed") { failure ??= String(row.last_error || "item failed"); continue; }
     const ok = await processItem(order, row, process.env.TELEGRAM_ADMIN_CHAT_ID, database, { jobId, lease });

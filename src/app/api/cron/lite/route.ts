@@ -46,7 +46,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
+const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 10;
 const ORPHAN_LEDGER_PER_RUN = 10;
@@ -116,6 +116,10 @@ export async function POST(request: NextRequest) {
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db));
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
+    else if (job === "tunvn_orders") {
+      const { processTunvnOrders }=await import("@/lib/tunvn/orders");
+      result.tunvn_orders_processed=await processTunvnOrders(db);
+    }
     else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db));
     else if (job === "notify_a") Object.assign(result, await runNotifyA(db));
     else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline));

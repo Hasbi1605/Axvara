@@ -37,6 +37,8 @@ type Variant = {
   stock: number;
   /** Minimum pembelian per baris (migrasi 0034, milik admin, default 1). */
   min_qty: number;
+  max_qty?:number | null;
+  buyer_field_key?:"muse_invite_code" | null;
   fulfillment_mode: string;
   is_active: number;
   sort_order: number;
@@ -112,6 +114,8 @@ export default function VariantEditor({ productId, productName, onClose }: Props
       setVariants((data.variants || []).map(({ bulk_pricing, bulk_pricing_corrupt, bulk_pricing_invalid, ...variant }) => ({
         ...variant,
         min_qty: Number(variant.min_qty ?? 1) || 1,
+        max_qty:variant.max_qty == null ? null : Number(variant.max_qty),
+        buyer_field_key:variant.buyer_field_key === "muse_invite_code" ? "muse_invite_code" as const : null,
         bulk: bulkDraftFromApi(bulk_pricing, bulk_pricing_corrupt || bulk_pricing_invalid),
         _dirty: false,
         _new: false,
@@ -238,6 +242,8 @@ export default function VariantEditor({ productId, productName, onClose }: Props
         compare_price: variant.compare_price ? Number(variant.compare_price) : null,
         stock: Number(variant.stock),
         min_qty: Math.max(1, Math.floor(Number(variant.min_qty ?? 1) || 1)),
+        max_qty:variant.max_qty,
+        buyer_field_key:variant.buyer_field_key,
         fulfillment_mode: variant.fulfillment_mode,
         is_active: Number(variant.is_active),
         sort_order: Number(variant.sort_order),
@@ -353,6 +359,8 @@ export default function VariantEditor({ productId, productName, onClose }: Props
                     <label className={labelClass}>Stok <span className="normal-case tracking-normal text-white/25">(-1 = ∞)</span><input type="number" min={-1} value={variant.stock} onChange={(event) => update(index, "stock", Number(event.target.value))} className={inputClass} /></label>
                     {/* Minimum pembelian (migrasi 0034, generik): GSuite = 50. Milik admin — sync WR tak menyentuh. */}
                     <label className={labelClass}>Min. beli <span className="normal-case tracking-normal text-white/25">(1 = bebas)</span><input type="number" min={1} max={100} value={variant.min_qty ?? 1} onChange={(event) => update(index, "min_qty", Math.max(1, Math.min(100, Number(event.target.value) || 1)))} className={inputClass} /></label>
+                    <label className={labelClass}>Input pembeli<select value={variant.buyer_field_key ?? ""} onChange={e => update(index,"buyer_field_key",e.target.value === "muse_invite_code" ? "muse_invite_code" : null)} className={inputClass}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse</option></select></label>
+                    <label className={labelClass}>Maks. beli<input type="number" min={1} max={100} value={variant.max_qty ?? ""} onChange={e => update(index,"max_qty",e.target.value ? Number(e.target.value) : null)} className={inputClass}/></label>
                     <label className={labelClass}>Fulfillment<select value={variant.fulfillment_mode} onChange={(event) => update(index, "fulfillment_mode", event.target.value)} className={inputClass}>{FULFILLMENT_MODES.map((item) => <option key={item.value} value={item.value} className="bg-[#10152d]">{item.label}</option>)}</select></label>
                   </div>
                   <BulkTierEditor

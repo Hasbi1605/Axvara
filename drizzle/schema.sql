@@ -60,6 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_products_source ON products(source) WHERE source 
 CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE wr_product_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS orders (
+  supplier_purchase_disabled INTEGER NOT NULL DEFAULT 0 CHECK(supplier_purchase_disabled IN (0,1)),
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code TEXT UNIQUE NOT NULL,
   customer_name TEXT NOT NULL,
@@ -323,6 +324,7 @@ CREATE TABLE IF NOT EXISTS telegram_updates (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS telegram_carts (
+  buyer_fields TEXT NOT NULL DEFAULT '{}',
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
   product_id INTEGER NOT NULL,
@@ -589,6 +591,7 @@ CREATE TABLE IF NOT EXISTS fulfillment_items (
   -- Sekalipay (migrasi 0049): item milik pipeline SK (bukan manual palsu) —
   -- diselesaikan via sk_order_links, dilewati processItem generik (pola WR).
   sk_link_id INTEGER REFERENCES sk_order_links(id) ON DELETE SET NULL,
+  tunvn_link_id INTEGER REFERENCES tunvn_order_links(id),
   -- Migrasi 0043: salinan terenkripsi isi yang dikirim ke pembeli (dibaca
   -- halaman pesanan setelah verifikasi WA/token).
   delivered_ciphertext TEXT,
@@ -636,6 +639,8 @@ CREATE TABLE IF NOT EXISTS product_variants (
   -- "Min. N pembelian" bila N > 1.
   min_qty INTEGER NOT NULL DEFAULT 1
     CHECK (min_qty >= 1),
+  buyer_field_key TEXT CHECK(buyer_field_key IS NULL OR buyer_field_key='muse_invite_code'),
+  max_qty INTEGER CHECK(max_qty IS NULL OR (max_qty BETWEEN 1 AND 100)),
 
   -- Migrasi 0112: metadata Buff Token TUNVN pada varian Muse manual.
   tunvn_buff_quantity_b INTEGER CHECK (tunvn_buff_quantity_b IS NULL OR (tunvn_buff_quantity_b >= 1 AND tunvn_buff_quantity_b <= 30)),
@@ -1836,6 +1841,24 @@ CREATE INDEX IF NOT EXISTS idx_games_nickname_created ON games_nickname_checks(c
 CREATE INDEX IF NOT EXISTS idx_games_nickname_ip ON games_nickname_checks(ip_hash, created_at);
 CREATE INDEX IF NOT EXISTS idx_games_nickname_device ON games_nickname_checks(device_id, created_at);
 
+-- TUNVN dispatch: only immutable new-order opt-ins, never historical backfill.
+CREATE TABLE IF NOT EXISTS tunvn_order_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_code TEXT NOT NULL REFERENCES orders(code), item_index INTEGER NOT NULL,
+  variant_id INTEGER NOT NULL REFERENCES product_variants(id), product_id INTEGER NOT NULL REFERENCES products(id),
+  kind TEXT NOT NULL CHECK(kind IN ('account','buff')), source_product_id INTEGER,
+  quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 100), invite_code TEXT,
+  cost_usdt REAL NOT NULL CHECK(cost_usdt>0), currency TEXT NOT NULL DEFAULT 'usdt' CHECK(currency='usdt'),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','claimed','processing','completed','needs_admin')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')), lease_owner TEXT, lease_expires_at TEXT, request_sent_at TEXT,
+  provider_order_group TEXT, provider_batch_id TEXT, provider_order_code TEXT,
+  receipt_ciphertext TEXT, receipt_iv TEXT, receipt_http_status INTEGER, receipt_json TEXT, last_error TEXT, completed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(order_code,item_index)
+);
+CREATE INDEX IF NOT EXISTS idx_tunvn_orders_due ON tunvn_order_links(status,next_attempt_at,lease_expires_at);
+
 -- TUNVN hidden catalog (setup awal 2026-11-09): mirror katalog supplier
 -- TUNVN PREHUB untuk persiapan integrasi; tidak pernah tampil publik.
 CREATE TABLE IF NOT EXISTS tunvn_products (
@@ -1870,3 +1893,12 @@ CREATE INDEX IF NOT EXISTS idx_tunvn_products_synced ON tunvn_products(synced_at
 -- Kolom migrasi 0112 (di-inline agar schema.sql tetap bootstrap utuh):
 -- tunvn_products.axvara_product_id/markup_percent/sell_price_idr/fx_idr_per_usdt
 -- dan product_variants.tunvn_* tercantum pada definisi tabel masing-masing.
+
+CREATE TRIGGER IF NOT EXISTS tunvn_variant_publication AFTER UPDATE OF is_active ON product_variants
+WHEN NEW.sku IN ('TUNVN-86','TUNVN-83') BEGIN
+  UPDATE tunvn_products SET publish_requested=NEW.is_active WHERE supplier_product_id=CAST(substr(NEW.sku,7) AS INTEGER);
+END;
+CREATE TRIGGER IF NOT EXISTS tunvn_retired_bundle_update BEFORE UPDATE OF is_active ON product_variants
+WHEN NEW.sku IN ('TUNVN-BUFF-5B','TUNVN-BUFF-10B','TUNVN-BUFF-20B','TUNVN-BUFF-30B') AND NEW.is_active=1 BEGIN
+  SELECT RAISE(ABORT,'retired_bundle');
+END;

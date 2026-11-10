@@ -7,9 +7,13 @@ import { execRun, queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { effectiveVariantStock, formatVariantLabel, getActiveVariant, type VariantSummary } from "@/lib/catalog";
 import { bulkOwnerFromJoinedRow, resolveBulkPriceForProduct } from "@/lib/bulk-pricing";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
+import { assertSameBuyerCode, validateBuyerFields, type BuyerFields } from "@/lib/buyer-fields";
 import { TELEGRAM_MAX_QTY } from "./keyboards";
 
 export type CartLine = {
+  buyerFields?: BuyerFields;
+  buyerFieldKey?: "muse_invite_code" | null;
+  maxQty?: number | null;
   productId: number;
   variantId: number;
   qty: number;
@@ -53,6 +57,7 @@ export async function addToCart(
   // min_qty varian agar keranjang menolak qty di bawah minimum SEBELUM
   // invoice; default 1 = perilaku lama.
   minQtyRaw = 1,
+  buyerFields?: BuyerFields,
 ): Promise<{ ok: boolean; reason?: "invalid_variant" | "invalid_quantity" | "out_of_stock" | "cart_full" | "unique_limit" | "below_minimum" | "cart_changed" }> {
   if (!isD1Mode()) return { ok: false, reason: "invalid_variant" };
   if (!Number.isSafeInteger(rawQty) || rawQty < 1 || rawQty > TELEGRAM_MAX_QTY) return { ok: false, reason: "invalid_quantity" };
@@ -63,7 +68,7 @@ export async function addToCart(
 
   const minQty = Math.max(1, Math.floor(Number(minQtyRaw) || 1), Number(variant.min_qty) || 1);
   const existing = await queryFirst(
-    `SELECT qty FROM telegram_carts WHERE user_id=? AND variant_id=?`,
+    `SELECT qty,buyer_fields FROM telegram_carts WHERE user_id=? AND variant_id=?`,
     userId, variantId,
   );
   if (!existing) {
@@ -80,6 +85,12 @@ export async function addToCart(
     }
   }
   const nextQty = Number(existing?.qty || 0) + rawQty;
+  let normalizedFields: BuyerFields;
+  try {
+    normalizedFields = validateBuyerFields(variant,buyerFields,nextQty);
+    const others = await queryAll("SELECT buyer_fields FROM telegram_carts WHERE user_id=?",userId);
+    assertSameBuyerCode([...others.map(row => ({ buyer_fields:JSON.parse(String(row.buyer_fields ?? "{}")) as BuyerFields })),{ buyer_fields:buyerFields }]);
+  } catch { return { ok:false,reason:"invalid_quantity" }; }
   if (!Number.isSafeInteger(nextQty) || nextQty > TELEGRAM_MAX_QTY) return { ok: false, reason: "invalid_quantity" };
   if (stock !== -1 && nextQty > stock) return { ok: false, reason: "out_of_stock" };
   if (variant.fulfillment_mode === "unique") {
@@ -88,7 +99,7 @@ export async function addToCart(
   }
   const result = await execRun(
     `WITH candidate AS (
-       SELECT pv.id, pv.product_id, pv.stock, pv.fulfillment_mode, pv.min_qty,
+       SELECT pv.id, pv.product_id, pv.stock, pv.fulfillment_mode, pv.min_qty,pv.max_qty,pv.buyer_field_key,
                COALESCE(c.qty,0)+? AS next_qty, c.id AS cart_id,
                (SELECT COUNT(*) FROM fulfillment_inventory fi
                 WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available') AS inventory_available
@@ -96,9 +107,11 @@ export async function addToCart(
        LEFT JOIN telegram_carts c ON c.user_id=? AND c.variant_id=pv.id
        WHERE pv.id=? AND pv.product_id=? AND pv.is_active=1
      )
-     INSERT INTO telegram_carts (user_id, product_id, variant_id, qty, updated_at)
-      SELECT ?, product_id, id, next_qty, strftime('%Y-%m-%d %H:%M:%f','now') FROM candidate
-      WHERE next_qty=CAST(next_qty AS INTEGER) AND next_qty>=MAX(1,min_qty,?) AND next_qty<=? AND (stock=-1 OR next_qty<=stock)
+      INSERT INTO telegram_carts (user_id, product_id, variant_id, qty, buyer_fields, updated_at)
+       SELECT ?, product_id, id, next_qty, ?, strftime('%Y-%m-%d %H:%M:%f','now') FROM candidate
+       WHERE next_qty=CAST(next_qty AS INTEGER) AND next_qty>=MAX(1,min_qty,?) AND next_qty<=? AND (stock=-1 OR next_qty<=stock)
+         AND (max_qty IS NULL OR next_qty<=max_qty) AND buyer_field_key IS ?
+          AND (? IS NULL OR NOT EXISTS(SELECT 1 FROM telegram_carts WHERE user_id=? AND json_extract(buyer_fields,'$.muse_invite_code') IS NOT NULL AND json_extract(buyer_fields,'$.muse_invite_code') IS NOT ?))
         AND (fulfillment_mode!='unique' OR next_qty<=inventory_available)
        AND (cart_id IS NOT NULL OR (SELECT COUNT(*) FROM telegram_carts WHERE user_id=?)<?)
        AND (fulfillment_mode!='unique' OR next_qty+(
@@ -108,7 +121,7 @@ export async function addToCart(
        )<=?)
       ON CONFLICT(user_id, variant_id) DO UPDATE SET product_id=excluded.product_id, qty=excluded.qty, updated_at=${CART_UPDATED_AT}`,
      rawQty, userId, variantId, productId,
-     userId, minQty, TELEGRAM_MAX_QTY, userId, MAX_LINES, userId, MAX_UNIQUE_UNITS_PER_ORDER,
+       userId, JSON.stringify(normalizedFields), minQty, TELEGRAM_MAX_QTY,variant.buyer_field_key ?? null,normalizedFields.muse_invite_code ?? null,userId,normalizedFields.muse_invite_code ?? null, userId, MAX_LINES, userId, MAX_UNIQUE_UNITS_PER_ORDER,
   );
   return Number(result.changes || 0) > 0 ? { ok: true } : { ok: false, reason: "cart_changed" };
 }
@@ -130,7 +143,8 @@ export async function setCartLineQty(userId: string, variantId: number, rawQty: 
      WHERE id IN (
        SELECT c.id FROM candidate c JOIN product_variants pv ON pv.id=? AND pv.product_id=c.product_id AND pv.is_active=1
        JOIN products p ON p.id=c.product_id AND p.is_active=1 AND p.telegram_enabled=1
-       WHERE c.next_qty=CAST(c.next_qty AS INTEGER) AND c.next_qty>=MAX(1,pv.min_qty) AND c.next_qty<=? AND (pv.stock=-1 OR c.next_qty<=pv.stock)
+        WHERE c.next_qty=CAST(c.next_qty AS INTEGER) AND c.next_qty>=MAX(1,pv.min_qty) AND c.next_qty<=? AND (pv.stock=-1 OR c.next_qty<=pv.stock)
+          AND (pv.max_qty IS NULL OR c.next_qty<=pv.max_qty)
          AND (pv.fulfillment_mode!='unique' OR c.next_qty<=(
            SELECT COUNT(*) FROM fulfillment_inventory fi
            WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available'
@@ -181,7 +195,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
   const issues: string[] = [];
   if (!isD1Mode()) return { lines, subtotal: 0, totalQty: 0, issues };
     const rows = await queryAll(
-    `SELECT c.id, c.updated_at, c.product_id, c.variant_id, c.qty, p.name as product_name,
+    `SELECT c.id, c.updated_at, c.product_id, c.variant_id, c.qty,c.buyer_fields,pv.buyer_field_key,pv.max_qty, p.name as product_name,
             p.is_active AS product_active, p.telegram_enabled,
             pv.product_id AS v_product_id, pv.label AS v_label, pv.price AS v_price,
             pv.bulk_pricing_enabled AS v_bulk_enabled, pv.bulk_pricing_tiers AS v_bulk_tiers,
@@ -232,6 +246,9 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
     }
     const minQty = Math.max(1, Number(row.v_min_qty ?? 1) || 1);
     const qty = Number(row.qty);
+    let fields: BuyerFields = {};
+    try { fields = validateBuyerFields(row,JSON.parse(String(row.buyer_fields ?? "{}")),qty); }
+    catch { issues.push(`${label}: periksa jumlah dan Kode Invite Muse melalui chat pribadi.`); }
     if (!Number.isSafeInteger(qty) || qty < 1 || qty > TELEGRAM_MAX_QTY) {
       issues.push(`${label}: jumlah tidak valid. Pilih jumlah bulat 1 sampai ${TELEGRAM_MAX_QTY}.`);
     }
@@ -252,6 +269,9 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
       continue;
     }
     lines.push({
+      buyerFields:fields,
+      buyerFieldKey:row.buyer_field_key === "muse_invite_code" ? "muse_invite_code" : null,
+      maxQty:row.max_qty == null ? null : Number(row.max_qty),
       productId: Number(row.product_id),
       variantId,
       qty,
@@ -287,6 +307,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
     issues.push(`Maksimal ${MAX_UNIQUE_UNITS_PER_ORDER} akun stok unik per pesanan. Kurangi jumlah di keranjang.`);
   }
   const subtotal = lines.reduce((sum, line) => sum + line.price * line.qty, 0);
+  try { assertSameBuyerCode(lines.map(line => ({ buyer_fields:line.buyerFields }))); } catch { issues.push("Gunakan satu Kode Invite Muse per checkout."); }
   const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);
   return { lines, subtotal, totalQty, issues };
 }

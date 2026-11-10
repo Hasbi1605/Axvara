@@ -25,8 +25,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const sku = (await params).sku;
-  if (!/^TUNVN-BUFF-(5|10|20|30)B$/.test(sku)) return NextResponse.json({ error: "invalid_sku" }, { status: 400 });
-  const parsed = patchSchema.safeParse(await readJsonBody(request).catch(() => null));
+  if (sku !== "TUNVN-BUFF-1B") return NextResponse.json({ error: "invalid_sku" }, { status: 400 });
+  const raw = await readJsonBody(request);
+  if (!raw.ok) return raw.response;
+  const parsed = patchSchema.safeParse(raw.data);
   if (!parsed.success) return NextResponse.json({ error: "invalid_body", message: parsed.error.issues[0]?.message }, { status: 400 });
   const body = parsed.data;
   if (body.markup_percent !== undefined && !isValidTunvnMarkup(body.markup_percent)) {

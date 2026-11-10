@@ -1,5 +1,78 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Revisi 10 November 2026: T2B dispatch (implementasi LOKAL, belum publikasi)
+
+- Migrasi0116 menambah `tunvn_order_links` UNIQUE(order_code,item_index), lease
+  CAS90detik, fence `request_sent_at`, receipt terenkripsi dan link item;
+  `orders.supplier_purchase_disabled=1` untuk invoice tes admin. Hanya paid
+  Market web/Telegram dan opt-in versi1 baru dengan snapshot `cost_usdt` total
+  positif yang boleh membeli. Stamp lama tanpa biaya tidak di-backfill.
+- Factory web/Telegram mengikat biaya sumber/config atomik; preflight enkripsi,
+  identitas aktif, stok, harga, fundable dan saldo USDT sebelum POST. Biaya
+  tersimpan di link, bukan rebuild `order_item_costs`. API tidak mendukung
+  max_price/idempotency; race harga/saldo sesudah preflight tetap mungkin.
+- Fence disimpan sebelum fetch, tanpa retry transport. Timeout/body rusak/5xx/
+  receipt hilang menjadi needs_admin, bukan pembelian kedua/refund/deposit.
+  Docs resmi hanya memberi uraian409, bukan payload/kode mesin yang tepat:
+  **409 juga needs_admin, nol replay otomatis** sampai kontrak no-charge dapat
+  diverifikasi (tetap di bawah ceiling3; jangan menebak pesan Inggris/Vietnam).
+- Semua response pembelian yang terbaca disegel utuh sebelum parsing, termasuk
+  parsial/bonus/error; raw plaintext tidak disimpan atau dilog. Receipt lengkap
+  sejumlah dibeli masuk snapshot fulfillment terenkripsi/pipeline email PIN6,
+  c1 dan Telegram privat existing. Parsial needs_admin; ekstra tetap terenkripsi
+  hanya admin, bukan kebijakan bonus pembeli baru. Receipt durable dapat diproses
+  ulang tanpa POST. Key/DB hilang sesudah charge tetap fenced, perlu admin.
+- Buff200/202+batch hanya processing; GET status harus cocok batch/order/code/
+  qty/currency tersimpan sebelum done. pending dipoll sekali/invocation dengan
+  jeda1menit; failed/needs_check memerlukan admin tanpa rebuy. Penyelesaian
+  noncredential/notis putih-label tanpa nilai kode atau PIN/kredensial palsu.
+- Paid scheduler memproses maksimal1 link TUNVN; sisa job `tunvn_orders` pada
+  router lite/Worker menit existing, budget40 statement, tanpa timer/env baru.
+  Generic delivery tidak mengambil baris supplier pending sebagai manual.
+- `/api/admin/tunvn/orders` GET authenticated/no-store:100 link terbaru, biaya,
+  status, ID tepat dan metadata receipt tanpa input/ciphertext. POST `reconcile`
+  hanya GET batch Buff yang diketahui; POST `reveal` privat melalui requireAdmin
+  + audit otorisasi existing. Tidak ada tombol/API buy/retry atau auto-match
+  history supplier. Admin memeriksa kasus tanpa ID di luar alur otomatis.
+- Belum commit/push/deploy/migrasi remote atau transaksi produksi. PM memiliki
+  full suite/build dan T3 QA browser; bukti fokus ada di T2B-evidence.md.
+
+## Histori T2A 10 November 2026: katalog/input (lokal saat T2B masih pending)
+
+- Keputusan ini mengganti snapshot split/nonaktif 9 November hanya pada kontrak
+  terkait. Satu produk publik **ChatGPT Private**, slug `chatgpt-tunvn`, varian
+  Business/GPay 1 bulan. SKU/ID/harga/histori lama tetap; migrasi 0114 hanya
+  memindahkan relasi dan memensiunkan produk duplikat, tanpa menghapus order.
+  Nama supplier/SKU internal tidak dikirim ke pembeli (slug disetujui owner).
+- Awal tetap nonaktif. Admin Produk dapat mengaktifkan produk beserta varian
+  awal; panel TUNVN mengatur satu saklar produk bersama dan permintaan terbit
+  per varian. Varian yang dimatikan tidak mematikan saudara aktif; publish
+  menghormati status, copy dan harga override admin, bukan mengaktifkan massal.
+- Muse account asli tidak diubah. Buff baru hanya `TUNVN-BUFF-1B`, jumlah 1..30
+  berarti 1..30B untuk satu kode; markup 40%, pembulatan Rp100 **per unit**
+  (Rp1.500/unit pada FX18.086), tanpa diskon 30B. Empat SKU bundle lama hanya
+  nonaktif; ID, harga override dan snapshot historis tidak dihapus/dibeli ulang.
+- Migrasi 0115 menambah `buyer_field_key`/`max_qty` varian dan `buyer_fields`
+  keranjang Telegram. Preset generik default NULL/off, awal hanya Buff1B:
+  `muse_invite_code`, enam ASCII alnum, trim, case-preserving. Editor varian
+  dapat menghidupkan/mematikan preset; bukan form builder/regex arbitrer.
+- Web meminta satu kode checkout dan quote baru setelah perubahan kode.
+  Server mengikat config/nilai/qty agregat ke quote dan reservasi atomik.
+  Telegram meminta kode hanya di private chat; callback/notis tidak memuat
+  nilainya. WA menolak varian yang memerlukan input sebelum order/invoice.
+  Kode hanya tersimpan di cart Telegram/snapshot order privat; tidak masuk
+  daftar publik, URL, log atau email. Detail admin authenticated/no-store
+  membaca nilai; daftar order/admin dan buyer status meredaksinya.
+- NEW order saja memperoleh `tunvn_eligibility` versi1 server-side dengan kind,
+  source product/variant/unit dan quantity immutable. Stamp client dibuang;
+  order lama, bundle lama dan Muse account dasar tidak di-backfill/dispatch.
+- Otomatisasi setelah paid disetujui owner tetapi **T2B belum diimplementasikan**
+  pada paket ini; fulfillment masih manual. T2B wajib pagar durable sebelum
+  POST, fail-closed saat ambigu dan receipt akun terenkripsi. Bukan izin
+  tes transaksi/deposit produksi. Tidak mengubah env/secret/cron/payment rail.
+- Status bukti: lokal saja; focused tests/tsc/lint di evidence T2A. PM memiliki
+  full suite/build dan QA browser fixture sebelum publikasi; belum klaim live.
+
 ## Revisi owner: semua TUNVN nonaktif + kontrol penuh panel — 9 November 2026
 
 - Owner bertanya apakah katalog sudah tampil publik dan meminta **di-disable

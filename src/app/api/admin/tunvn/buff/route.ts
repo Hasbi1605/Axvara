@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   try {
     const variants = await db.queryAll(
       `SELECT id, sku, label, price, is_active, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt, tunvn_admin_price_idr
-         FROM product_variants WHERE sku LIKE 'TUNVN-BUFF-%' ORDER BY tunvn_buff_quantity_b ASC`,
+         FROM product_variants WHERE sku='TUNVN-BUFF-1B' ORDER BY tunvn_buff_quantity_b ASC`,
     );
     const muse = await db.queryFirst("SELECT id, is_active FROM products WHERE slug=?", TUNVN_MUSE_SLUG);
     let probe: unknown = null;

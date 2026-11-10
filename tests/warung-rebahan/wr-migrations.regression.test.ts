@@ -61,8 +61,25 @@ const STRIP_SNIPPETS = [
   -- "Min. N pembelian" bila N > 1.
   min_qty INTEGER NOT NULL DEFAULT 1
     CHECK (min_qty >= 1),
-
-  `,
+`,
+  // TUNVN additions live before the WR cut marker but never existed pre-0027.
+  `  buyer_field_key TEXT CHECK(buyer_field_key IS NULL OR buyer_field_key='muse_invite_code'),
+  max_qty INTEGER CHECK(max_qty IS NULL OR (max_qty BETWEEN 1 AND 100)),
+`,
+  `  -- Migrasi 0112: metadata Buff Token TUNVN pada varian Muse manual.
+  tunvn_buff_quantity_b INTEGER CHECK (tunvn_buff_quantity_b IS NULL OR (tunvn_buff_quantity_b >= 1 AND tunvn_buff_quantity_b <= 30)),
+  tunvn_cost_usdt REAL CHECK (tunvn_cost_usdt IS NULL OR tunvn_cost_usdt > 0),
+  tunvn_markup_percent INTEGER CHECK (tunvn_markup_percent IS NULL OR tunvn_markup_percent >= 0),
+  tunvn_fx_idr_per_usdt REAL CHECK (tunvn_fx_idr_per_usdt IS NULL OR tunvn_fx_idr_per_usdt > 0),
+  -- Migrasi 0113: override harga jual manual admin untuk varian Buff.
+  tunvn_admin_price_idr INTEGER CHECK (tunvn_admin_price_idr IS NULL OR tunvn_admin_price_idr >= 0),
+`,
+  `  supplier_purchase_disabled INTEGER NOT NULL DEFAULT 0 CHECK(supplier_purchase_disabled IN (0,1)),
+`,
+  `  buyer_fields TEXT NOT NULL DEFAULT '{}',
+`,
+  `  tunvn_link_id INTEGER REFERENCES tunvn_order_links(id),
+`,
   `  -- Migrasi 0033: email pembeli tersimpan (alur email_for:) untuk produk
   -- Invite/Link WR + require_email. Ditanya sekali, dipakai ulang.
   buyer_email TEXT DEFAULT NULL,
@@ -108,6 +125,7 @@ function createPreWrDatabase() {
     }
     legacySchema = legacySchema.replace(snippet, "");
   }
+  expect(legacySchema).not.toMatch(/\b(?:tunvn_\w+|buyer_field_key|buyer_fields|supplier_purchase_disabled)\b/);
   const sql = new DatabaseSync(":memory:");
   sql.exec(legacySchema);
   sql.exec("DELETE FROM product_variants; DELETE FROM products;");

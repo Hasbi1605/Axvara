@@ -37,6 +37,7 @@ type BuffData = {
   muse_product: { id: number; is_active: number } | null;
 };
 type Row = Record<string, unknown>;
+type DispatchLink = { id:number; order_code:string; item_index:number; kind:string; quantity:number; cost_usdt:number; status:string; provider_order_group:string|null; provider_batch_id:string|null; provider_order_code:string|null; last_error:string|null; receipt_json:string|null; has_receipt:number };
 
 const INPUT = "mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none transition focus:border-[#00E5FF]/50 [color-scheme:dark]";
 const TEXTAREA = `${INPUT} min-h-24`;
@@ -66,6 +67,8 @@ export function TunvnManager() {
   const [products, setProducts] = useState<ProductsData | null>(null);
   const [balance, setBalance] = useState<BalanceData | null>(null);
   const [buff, setBuff] = useState<BuffData | null>(null);
+  const [links, setLinks] = useState<DispatchLink[]>([]);
+  const [receipt, setReceipt] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -79,18 +82,31 @@ export function TunvnManager() {
     const current = ++generation.current;
     setLoading(true); setError("");
     try {
-      const [nextProducts, nextBalance, nextBuff] = await Promise.all([
+      const [nextProducts, nextBalance, nextBuff, nextOrders] = await Promise.all([
         request<ProductsData>("/api/admin/tunvn/products"),
         request<BalanceData>("/api/admin/tunvn/balance"),
         request<BuffData>("/api/admin/tunvn/buff"),
+        request<{items:DispatchLink[]}>("/api/admin/tunvn/orders"),
       ]);
       if (current !== generation.current) return;
       setProducts(nextProducts); setBalance(nextBalance); setBuff(nextBuff);
+      setLinks(nextOrders.items ?? []);
     } catch (e) {
       if (current === generation.current) setError(e instanceof Error ? e.message : "Data TUNVN gagal dimuat.");
     } finally { if (current === generation.current) setLoading(false); }
   }, []);
   useEffect(() => { void load(); const pending = generation; return () => { pending.current++; }; }, [load]);
+
+  async function dispatchAction(id:number,action:"reconcile"|"reveal") {
+    if (busy) return;
+    setBusy(`order${id}`); setError(""); setReceipt("");
+    try {
+      const result=await request<{receipt?:string}>("/api/admin/tunvn/orders",{ method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id,action}) });
+      if (action==="reveal") setReceipt(result.receipt ?? "");
+      else await load();
+    } catch { setError("Tindakan pesanan belum dapat diselesaikan."); }
+    finally { setBusy(""); }
+  }
 
   async function patchProduct(id: number, body: Row, message: string) {
     if (busy) return;
@@ -170,6 +186,23 @@ export function TunvnManager() {
     {loading && <p role="status" className="text-sm text-white/60">Memuat data TUNVN…</p>}
 
     {!loading && tab === "ringkas" && <>
+      <section className="ax-glass space-y-3 rounded-[20px] p-4" aria-label="Pengiriman otomatis">
+        <h3 className="text-sm font-semibold text-white">Pengiriman otomatis</h3>
+        <p className="text-xs text-white/50">100 baris terbaru. Rekonsiliasi hanya membaca batch Buff yang diketahui; tidak membeli ulang. Receipt tambahan hanya untuk admin.</p>
+        {!links.length && <p className="text-xs text-white/50">Belum ada pesanan otomatis.</p>}
+        {links.map(link=><div key={link.id} className="min-w-0 space-y-1 border-t border-white/10 pt-3 text-xs text-white/70">
+          <p className="break-all font-semibold text-white">{link.order_code} · item {link.item_index+1} · {link.status}</p>
+          <p>{link.kind} ×{link.quantity} · snapshot biaya {usdt(link.cost_usdt)}</p>
+          <p className="break-all">{[link.provider_order_group,link.provider_batch_id,link.provider_order_code].filter(Boolean).join(" · ") || "Belum ada ID penyedia"}</p>
+          {link.receipt_json && <p className="break-all">{link.receipt_json}</p>}
+          {link.last_error && <p className="text-amber-300">{link.last_error}</p>}
+          <div className="flex flex-wrap gap-2">
+            {link.kind==="buff" && link.provider_batch_id && ["processing","needs_admin"].includes(link.status) && <button type="button" className={BUTTON} disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reconcile")}>Periksa status batch</button>}
+            {Boolean(link.has_receipt) && <button type="button" className={BUTTON} disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reveal")}>Buka receipt privat</button>}
+          </div>
+        </div>)}
+        {receipt && <div><button type="button" className={BUTTON} onClick={()=>setReceipt("")}>Tutup receipt</button><pre className="mt-2 whitespace-pre-wrap break-all text-xs text-white/70">{receipt}</pre></div>}
+      </section>
       <section className="ax-glass grid gap-3 rounded-[20px] p-4 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-5" aria-label="Status TUNVN">
         <div><p className="text-[11px] uppercase tracking-[0.08em] text-white/35">Koneksi API</p><p className={`mt-1 font-semibold ${products?.configured ? "text-emerald-300" : "text-amber-300"}`}>{products?.configured ? "Terhubung" : "Belum terkonfigurasi"}</p></div>
         <div><p className="text-[11px] uppercase tracking-[0.08em] text-white/35">Saldo wallet</p><p className="mt-1 font-semibold text-white">{balance?.ok ? `${usdt(balance.balance_usdt)} · ${Number(balance.balance_vnd ?? 0).toLocaleString("id-ID")} VND` : "Tidak terbaca"}</p>{balance?.username && <p className="mt-0.5 text-[11px] text-white/35">{balance.username}</p>}</div>
@@ -239,14 +272,14 @@ export function TunvnManager() {
                   <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
                     <span className="text-xs text-white/70">Diminta terbit</span>
                     <AdminStatusSwitch checked={item.publish_requested === 1} label={`Permintaan terbit ${item.name}`} disabled={busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
-                      onChange={() => void patchProduct(item.supplier_product_id, { publish_requested: item.publish_requested !== 1, ...(item.publish_requested === 1 ? { axvara_is_active: false } : {}) }, `Permintaan terbit ${item.name} ${item.publish_requested === 1 ? "dimatikan" : "dinyalakan"}.`)} />
+                      onChange={() => void patchProduct(item.supplier_product_id, { publish_requested: item.publish_requested !== 1 }, `Permintaan terbit ${item.name} ${item.publish_requested === 1 ? "dimatikan" : "dinyalakan"}.`)} />
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                    <span className="text-xs text-white/70">Produk aktif di Market</span>
-                    <AdminStatusSwitch checked={item.axvara_is_active === 1} label={`Produk aktif ${item.name}`} disabled={busy === `p${item.supplier_product_id}` || item.publish_requested !== 1} busy={busy === `p${item.supplier_product_id}`}
+                  {item.supplier_product_id === 86 && <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                    <span className="text-xs text-white/70">ChatGPT Private aktif di Market</span>
+                    <AdminStatusSwitch checked={item.axvara_is_active === 1} label="ChatGPT Private aktif" disabled={busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
                       onChange={() => void patchProduct(item.supplier_product_id, { axvara_is_active: item.axvara_is_active !== 1 }, `${item.name} ${item.axvara_is_active === 1 ? "dinonaktifkan" : "diaktifkan"}.`)} />
-                  </div>
-                  <p className="text-[11px] leading-4 text-white/35">Dua saklar harus menyala agar produk tampil. Mematikan salah satu langsung menyembunyikannya. Produk terbit memakai gambar ChatGPT AXVARA yang sama dengan produk WR/SK lama.</p>
+                  </div>}
+                  <p className="text-[11px] leading-4 text-white/35">Satu produk ChatGPT Private, dua varian. Diminta terbit mengatur varian ini saja; saklar produk bersama ada di Business. Mematikan GPay tidak menyembunyikan Business. Aktifkan minimal satu varian sebelum produk.</p>
                 </> : <p className="text-xs leading-5 text-amber-200/80">Produk ini belum punya pemetaan terbit AXVARA, jadi hanya bisa diatur markup/nama/deskripsinya dan tetap tersembunyi. Pemetaan terbit baru ditambah lewat rilis katalog berikutnya.</p>}
               </div>
             </div>}

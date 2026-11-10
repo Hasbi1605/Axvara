@@ -24,7 +24,7 @@ vi.mock("@/lib/telegram/api", async (original) => ({
 }));
 
 import { sendMessage } from "@/lib/telegram/api";
-import { notifyBuyerDeliveryFailed } from "@/lib/notify-buyer";
+import { notifyBuyerDeliveryFailed,notifyBuyerBuffCompleted } from "@/lib/notify-buyer";
 import { handleWrOrderFailed, refreshOrderAggregate } from "@/lib/warung-rebahan/deliver";
 import { createWrOrderLink, processWrPendingOrders } from "@/lib/warung-rebahan/order";
 
@@ -54,6 +54,17 @@ const fulfillment = () =>
 const mailsWith = (needle: string) => sendForwardEmail.mock.calls.filter(([mail]) => mail.subject.includes(needle));
 
 describe("kanal web: kabar pembeli lewat email", () => {
+  it("Buff completion is white-label, idempotent and contains no input or credential",async()=>{
+    webOrder();fx.sql.exec(`UPDATE orders SET locale='en',items='[{"buyer_fields":{"muse_invite_code":"Ab12Cd"}}]'`);
+    const db=createDatabaseAccess(fx.db);
+    expect(await notifyBuyerBuffCompleted(CODE,0,db)).toBe(true);
+    expect(await notifyBuyerBuffCompleted(CODE,0,db)).toBe(true);
+    expect(sendForwardEmail).toHaveBeenCalledTimes(1);
+    const mail=sendForwardEmail.mock.calls[0][0];
+    expect(mail.subject).toContain("top-up complete");
+    expect(JSON.stringify(mail)).not.toMatch(/Ab12Cd|TUNVN|access_code|pin6/);
+    expect(outboxRows()).toBe(0);
+  });
   it("kabar gagal kirim sampai lewat email, bukan outbox WA yang mati — dan hanya sekali", async () => {
     webOrder();
     const db = createDatabaseAccess(fx.db);

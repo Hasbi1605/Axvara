@@ -19,6 +19,7 @@ import type { Row } from "./types";
 import { MAX_ATTEMPTS, RETRY_DELAYS } from "./types";
 import { findReservedForOrderVariant, inventoryMatchesItem } from "./inventory-binding";
 import { isValidBuyerEmail, sendWebDeliveryEmail, orderLineLabel } from "./buyer-email";
+import { eligibleTunvnLine } from "@/lib/tunvn/orders";
 
 /**
  * Klaim lease baris item (FASE 1). Immediate pass (no due-gate): retry rows
@@ -243,9 +244,33 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   // Item milik pipeline Sekalipay (0049, pola WR): diselesaikan via
   // sk_order_links; agregat order dihitung refreshOrderAggregate yang sama.
   if (itemRow.sk_link_id != null) return false;
+  let tunvnKind: unknown;
+  if (itemRow.tunvn_link_id != null) {
+    const link=await database.queryFirst("SELECT status,kind FROM tunvn_order_links WHERE id=? AND order_code=? AND item_index=?",itemRow.tunvn_link_id,orderCode,itemRow.item_index);
+    if (link?.status!=="completed") return false;
+    tunvnKind=link.kind;
+  } else {
+    try { if (eligibleTunvnLine(JSON.parse(String(order.items ?? "[]"))[Number(itemRow.item_index)] ?? {})) return false; } catch { /* normal manifest checks remain authoritative */ }
+  }
   const lease = await claimItemLease(itemRow, database, parent);
   if ("skip" in lease) return lease.skip;
   const { item, leaseFence } = lease;
+  if (item.tunvn_link_id != null) {
+    try {
+      if (item.delivered_ciphertext && item.delivered_iv) {
+        const plaintext=await decryptSecret(String(item.delivered_ciphertext),String(item.delivered_iv));
+        await sendItem(String(item.recipient_channel),String(item.recipient_target ?? ""),orderCode,itemId,plaintext,Number(item.qty),database,Number(item.variant_id));
+      } else if (tunvnKind==="buff") {
+        const { notifyBuyerBuffCompleted }=await import("@/lib/notify-buyer");
+        if (!await notifyBuyerBuffCompleted(orderCode,Number(item.item_index),database)) throw new Error("buff_notice_deferred");
+      } else throw new Error("supplier_receipt_missing");
+      const done=await execRun("UPDATE fulfillment_items SET status='delivered',delivered_message_id=?,locked_until=NULL,last_error=NULL WHERE id=? AND locked_until=? AND status='sending'",`item:${itemId}`,itemId,leaseFence);
+      return Boolean(done.changes);
+    } catch {
+      await scheduleItemRetry(itemId,"supplier_delivery_deferred",leaseFence,database);
+      return false;
+    }
+  }
   // Race: item dikaitkan WR setelah baris dibaca — verifikasi ulang di bawah
   // lease; bila milik WR, lepas lease tanpa konsumsi hasil.
   if (item.wr_link_id != null) {

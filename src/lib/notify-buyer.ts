@@ -255,14 +255,19 @@ async function sendToBuyer(
   return await enqueueWhatsAppMessage(waOutboxKey("text", notice.refKey), target, chatText).catch(() => false);
 }
 
-/**
- * Pesan setelah admin menyerahkan produk secara manual.
- *
- * Sejak 2026-09-25 isi "Detail untuk pembeli" yang diketik admin di dialog
- * Kirim ke pembeli ikut terkirim: email "Pesanan Siap" (web) atau DM
- * Telegram. Tanpa isi (produk dikirim admin di luar sistem) pesannya tetap
- * kabar "sudah diserahkan" seperti dulu.
- */
+/** Noncredential completion: never include the supplied invite code. */
+export async function notifyBuyerBuffCompleted(orderCode:string,itemIndex:number,database:DatabaseAccess=createDatabaseAccess()):Promise<boolean> {
+  const order=await database.queryFirst("SELECT locale FROM orders WHERE code=?",orderCode);
+  const en=order?.locale==="en";
+  return sendToBuyer(orderCode,{
+    subject:en ? `Muse token top-up complete - ${orderCode}` : `Isi ulang token Muse selesai - ${orderCode}`,
+    body:en ? "Your Muse token top-up is complete." : "Isi ulang token Muse selesai diproses.",
+    email:{ title:en ? "Top-up Complete" : "Isi Ulang Selesai",subtitle:en ? "Your Muse tokens have been credited." : "Token Muse sudah ditambahkan.",paragraphs:[en ? "No account credentials are needed for this top-up." : "Isi ulang ini tidak memerlukan kredensial akun."] },
+    refKey:`buff-completed:${orderCode}:${itemIndex}`,
+  },database,{ whatsappFallback:false });
+}
+
+/** Manual handover uses the same private ready-email/Telegram pipeline. */
 export async function notifyBuyerHandover(
   orderCode: string,
   database: DatabaseAccess = createDatabaseAccess(),

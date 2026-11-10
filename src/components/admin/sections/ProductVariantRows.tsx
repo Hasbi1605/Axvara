@@ -440,6 +440,12 @@ export function ProductVariantRows({
                   className={openInput}
                 />
               </div>
+              <label className="text-xs text-white/60">Input pembeli
+                <select value={v.buyer_field_key ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null } : item))} className={openInput}>
+                  <option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option>
+                </select>
+              </label>
+              <label className="text-xs text-white/60">Maks. beli (kosong = 100)<input type="number" min={1} max={100} value={v.max_qty ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,max_qty:e.target.value ? Number(e.target.value) : null } : item))} className={openInput} /></label>
               {/* Modal manual per unit (migrasi 0058, milik admin): untuk
                   produk manual/stok sendiri yang modalnya tak tercatat di
                   link supplier. 0 = murni tanpa modal. */}

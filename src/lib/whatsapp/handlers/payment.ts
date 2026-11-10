@@ -125,6 +125,10 @@ export async function handlePay(groupId: string, memberId: string, inboxId: stri
   // Minimum pembelian (migrasi 0034): WA order selalu qty 1/baris, jadi
   // varian min>1 (mis. GSuite 50) DITOLAK dengan pesan jelas — order qty-1
   // yang lolos justru melanggar aturan grosir dan macet di fulfillment.
+  if (variant.buyer_field_key) {
+    await sendTextMessage({ target: groupId, message: "Varian ini memerlukan input pribadi. Silakan pesan melalui web AXVARA atau Telegram pribadi.", inboxId });
+    return;
+  }
   const payMinQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
   if (variant.fulfillment_mode !== "unique" && payMinQty > 1) {
     await sendTextMessage({

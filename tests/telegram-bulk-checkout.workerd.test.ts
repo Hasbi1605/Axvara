@@ -12,9 +12,11 @@ it("runs createChannelOrderAtomic against real Miniflare D1", async () => {
     // source/wr_product_id/wr_auto_managed/sk_product_id/sk_auto_managed
     // untuk aturan "grosir hanya produk manual" (owner 2026-11-08).
     "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, price INTEGER NOT NULL, stock INTEGER NOT NULL DEFAULT -1, is_active INTEGER NOT NULL DEFAULT 1, telegram_enabled INTEGER NOT NULL DEFAULT 1, category_id INTEGER, sort_order INTEGER DEFAULT 0, source TEXT NOT NULL DEFAULT 'manual', wr_product_id TEXT, wr_auto_managed INTEGER NOT NULL DEFAULT 0, sk_product_id TEXT, sk_auto_managed INTEGER NOT NULL DEFAULT 0)",
-    "CREATE TABLE product_variants (id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL, sku TEXT NOT NULL, label TEXT NOT NULL, price INTEGER NOT NULL, stock INTEGER NOT NULL DEFAULT -1, updated_at TEXT, bulk_pricing_enabled INTEGER NOT NULL DEFAULT 0, bulk_pricing_tiers TEXT NOT NULL DEFAULT '[]', min_qty INTEGER NOT NULL DEFAULT 1, fulfillment_mode TEXT NOT NULL DEFAULT 'manual', is_active INTEGER NOT NULL DEFAULT 1, shared_secret_ciphertext TEXT, shared_secret_iv TEXT, wr_variant_id TEXT)",
+    "CREATE TABLE product_variants (id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL, sku TEXT NOT NULL, label TEXT NOT NULL, price INTEGER NOT NULL, stock INTEGER NOT NULL DEFAULT -1, updated_at TEXT, bulk_pricing_enabled INTEGER NOT NULL DEFAULT 0, bulk_pricing_tiers TEXT NOT NULL DEFAULT '[]', min_qty INTEGER NOT NULL DEFAULT 1, fulfillment_mode TEXT NOT NULL DEFAULT 'manual', is_active INTEGER NOT NULL DEFAULT 1, shared_secret_ciphertext TEXT, shared_secret_iv TEXT, wr_variant_id TEXT, buyer_field_key TEXT, max_qty INTEGER, tunvn_buff_quantity_b INTEGER)",
     "CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE NOT NULL, customer_name TEXT NOT NULL, customer_wa TEXT NOT NULL, customer_email TEXT, items TEXT, subtotal INTEGER, payment_method TEXT, payment_account TEXT, proof_url TEXT, status TEXT, sales_channel TEXT, channel_conversation_id TEXT, channel_member_id TEXT, telegram_chat_id TEXT, telegram_user_id TEXT, payment_status TEXT, fulfillment_status TEXT, variant_id INTEGER, variant_snapshot TEXT, quote_id TEXT, expires_at TEXT, locale TEXT NOT NULL DEFAULT 'id' CHECK(locale IN ('id','en')), buyer_access_version INTEGER, buyer_access_format TEXT)",
     "CREATE TABLE operation_guards (operation_id TEXT PRIMARY KEY, valid INTEGER CHECK(valid=1))",
+    "ALTER TABLE product_variants ADD COLUMN tunvn_cost_usdt REAL",
+    "CREATE TABLE tunvn_products(supplier_product_id INTEGER PRIMARY KEY,price_usdt REAL)",
     "CREATE TABLE fulfillment_inventory (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER, variant_id INTEGER, status TEXT, order_code TEXT, secret_ciphertext TEXT, secret_iv TEXT, secret_fingerprint TEXT, reserved_at TEXT, sort_order INTEGER)",
   ].join(";");
   const seed = `
@@ -31,7 +33,8 @@ INSERT INTO fulfillment_inventory(product_id,variant_id,status,secret_ciphertext
         const body=await req.json() as any; let entered=0, batchError='';
         const db=env.DB;
         (globalThis as any).DB={prepare:db.prepare.bind(db),batch:async(stmts)=>{
-          entered++; if(body.race) await db.prepare("UPDATE product_variants SET price=20000 WHERE id=1").run();
+          entered++; if(body.race==='input') await db.prepare("UPDATE product_variants SET max_qty=29 WHERE id=4").run();
+          else if(body.race) await db.prepare("UPDATE product_variants SET price=20000 WHERE id=1").run();
           try{return await db.batch(stmts)}catch(e){batchError=String(e);throw e}
         }};
         try {const result=await createChannelOrderAtomic(body.input);return Response.json({ok:true,result,entered,batchError})}
@@ -56,7 +59,7 @@ INSERT INTO fulfillment_inventory(product_id,variant_id,status,secret_ciphertext
     }
     if (failed.length) throw new Error("workerd setup failed: " + failed.join(" | "));
     await db.batch(seed.split(";").map((x) => x.trim()).filter(Boolean).map((x) => db.prepare(x)));
-    const call = async (code: string, lines: unknown[], items: unknown[], subtotal: number, extra: Record<string, unknown> = {}, race = false) => {
+    const call = async (code: string, lines: unknown[], items: unknown[], subtotal: number, extra: Record<string, unknown> = {}, race: boolean | "input" = false) => {
       const res = await runtime.dispatchFetch("https://axvara.test/atomic", { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ race, input: { orderCode: code, lines, items, variantSnapshot: "{}", subtotal, primaryVariantId: 1, customerName: "Bulk", salesChannel: "telegram", telegramChatId: code, telegramUserId: code, paymentMethod: "qris", paymentAccount: "DANA", fulfillmentStatus: "not_required", locale: "en", ...extra } }) });
       return res.json() as Promise<{ ok: boolean; result?: { subtotal: number }; error?: string; entered: number; batchError: string }>;
@@ -95,5 +98,18 @@ INSERT INTO fulfillment_inventory(product_id,variant_id,status,secret_ciphertext
     expect(await db.prepare("SELECT COUNT(*) n FROM orders").first()).toMatchObject({ n: 0 });
     expect(await db.prepare("SELECT COUNT(*) n FROM operation_guards").first()).toMatchObject({ n: 0 });
     expect(await db.prepare("SELECT COUNT(*) n FROM fulfillment_inventory WHERE status='available'").first()).toMatchObject({ n: 3 });
+    await db.prepare("UPDATE products SET slug='muse-ai-1-miliar-token' WHERE id=1").run();
+    await db.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,buyer_field_key,max_qty,tunvn_buff_quantity_b) VALUES(4,1,'TUNVN-BUFF-1B','Buff per1B',1500,'muse_invite_code',30,1)").run();
+    const buffLines=[{ productId:1,variantId:4,qty:30,fulfillmentMode:"manual",stock:-1 }];
+    const buffItems=[{ product_id:1,variant_id:4,price:1500,qty:30,buyer_field_key:"muse_invite_code",max_qty:30,buyer_fields:{ muse_invite_code:"Ab12cD" } }];
+    const buff=await call("TG-BUFF",buffLines,buffItems,45000);
+    expect(buff.ok,buff.error).toBe(true);
+    const saved=await db.prepare("SELECT items FROM orders WHERE code='TG-BUFF'").first<{ items:string }>();
+    expect(JSON.parse(saved!.items)[0]).toMatchObject({ buyer_fields:{ muse_invite_code:"Ab12cD" },tunvn_eligibility:{ version:1,kind:"buff",source_variant_id:4,source_unit_b:1,quantity:30 } });
+    await reset();
+    const changed=await call("TG-BUFF-RACE",buffLines,buffItems,45000,{},"input");
+    expect(changed.ok).toBe(false);
+    expect(changed.batchError).toMatch(/CHECK constraint failed/i);
+    expect(await db.prepare("SELECT COUNT(*) n FROM orders").first()).toMatchObject({ n:0 });
   } finally { await runtime.dispose(); }
 });

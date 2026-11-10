@@ -162,6 +162,9 @@ export async function claimPayq1Creating(
 }
 
 export type CartLineLike = {
+  buyerFields?: { muse_invite_code?: string };
+  buyerFieldKey?: "muse_invite_code" | null;
+  maxQty?: number | null;
   productId: number; variantId: number; qty: number; productName: string; variantLabel: string;
   price: number; basePrice: number; appliedTierMinQty?: number | null; stock: number; fulfillmentMode: string;
 };
@@ -261,6 +264,7 @@ export function orderLinesFromSource(
     name: `${l.productName} — ${l.variantLabel}`, price: l.price,
     base_price: l.basePrice,
     ...(l.appliedTierMinQty != null ? { applied_tier_min_qty: l.appliedTierMinQty } : {}),
+    buyer_field_key:l.buyerFieldKey ?? null,max_qty:l.maxQty ?? null,buyer_fields:l.buyerFields,
     qty: l.qty,
   }));
   const variantSnapshot = JSON.stringify({

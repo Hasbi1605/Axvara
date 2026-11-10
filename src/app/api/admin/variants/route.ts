@@ -55,6 +55,8 @@ const SingleVariantSchema = z.object({
   // Minimum pembelian per baris (migrasi 0034, generik — GSuite = 50).
   // Batas 100 = plafon channel (web/Telegram) agar aturan tetap bisa dibeli.
   min_qty: z.number().int().min(1).max(100).default(1),
+  max_qty: z.number().int().min(1).max(100).nullable().optional(),
+  buyer_field_key: z.literal("muse_invite_code").nullable().optional(),
   // Modal manual per unit (migrasi 0058, milik admin — sync tak menyentuh).
   manual_cost: z.number().int().min(0).max(999_999_999).default(0),
   // Bulk pricing per varian (migrasi 0099, milik admin — sync tak menyentuh,
@@ -72,6 +74,9 @@ const BatchVariantSchema = z.object({
 });
 
 function validateCrossFields(v: z.infer<typeof SingleVariantSchema>): string | null {
+  if (v.sku === "TUNVN-BUFF-1B" && v.max_qty !== undefined && v.max_qty !== 30) return "Buff Muse dibatasi 30 unit.";
+  if (v.max_qty != null && v.max_qty < v.min_qty) return "Maksimum di bawah minimum.";
+  if (/^TUNVN-BUFF-(5|10|20|30)B$/.test(v.sku) && v.is_active === 1) return "Paket lama sudah dipensiunkan.";
   if (v.compare_price != null && v.compare_price <= v.price) {
     return `Varian "${v.label}": harga coret harus lebih besar dari harga jual.`;
   }
@@ -104,7 +109,7 @@ export async function GET(request: NextRequest) {
     `SELECT id, product_id, sku, label,
             duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, admin_terms, admin_activation,
+            price, compare_price, stock, min_qty, max_qty, buyer_field_key, manual_cost, fulfillment_mode, admin_terms, admin_activation,
             bulk_pricing_enabled, bulk_pricing_tiers,
             CASE WHEN shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL THEN 1 ELSE 0 END
               AS shared_secret_configured,
@@ -190,7 +195,10 @@ export async function POST(request: NextRequest) {
 
     // Cross-validate each variant & check SKU duplicates inside batch
     const seenSkus = new Set<string>();
+    const tunvnIdentities = await queryAll("SELECT id,sku FROM product_variants WHERE product_id=? AND sku LIKE 'TUNVN-%'",product_id);
     for (const v of variants) {
+      const identity = tunvnIdentities.find(row => Number(row.id) === v.id);
+      if (identity && identity.sku !== v.sku) return NextResponse.json({ error:"Identitas varian tidak boleh diubah." },{ status:409 });
       const crossErr = validateCrossFields(v);
       if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
       const upperSku = v.sku.toUpperCase();
@@ -240,9 +248,14 @@ export async function POST(request: NextRequest) {
     // bawah memakai pola yang sama dengan PUT products/[id].
     const batchIds = variants.filter((vv) => vv.id).map((vv) => Number(vv.id));
     const batchRows = (batchIds.length ? await queryAll(
-      `SELECT id, price, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE product_id=? AND id IN (${batchIds.map(() => "?").join(",")})`,
+      `SELECT id, price, max_qty, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE product_id=? AND id IN (${batchIds.map(() => "?").join(",")})`,
       product_id, ...batchIds,
     ).catch(() => []) : []) as Record<string, unknown>[];
+    for (const variant of variants) {
+      const stored = batchRows.find(row => Number(row.id) === variant.id);
+      const maxQty = variant.max_qty === undefined ? stored?.max_qty : variant.max_qty;
+      if (maxQty != null && Number(maxQty) < variant.min_qty) return NextResponse.json({ error:"Maksimum di bawah minimum." },{ status:400 });
+    }
     const batchObserved = new Map(batchRows.map((row) => ([Number(row.id), {
       price: Number(row.price), enabled: Number(row.bulk_pricing_enabled ?? 0),
       tiersJson: String(row.bulk_pricing_tiers ?? "[]"),
@@ -341,6 +354,10 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      for (const v of variants) {
+        if (v.buyer_field_key !== undefined || v.max_qty !== undefined) statements.push(d1.prepare(`UPDATE product_variants SET buyer_field_key=CASE WHEN ? THEN ? ELSE buyer_field_key END,max_qty=CASE WHEN ? THEN ? ELSE max_qty END WHERE product_id=? AND sku=?`).bind(v.buyer_field_key !== undefined ? 1 : 0,v.buyer_field_key ?? null,v.max_qty !== undefined ? 1 : 0,v.max_qty ?? null,product_id,v.sku));
+        if (v.sku.startsWith("TUNVN-")) statements.push(d1.prepare("UPDATE product_variants SET tunvn_admin_price_idr=? WHERE product_id=? AND sku=?").bind(v.price,product_id,v.sku));
+      }
       // Keep legacy/admin summary columns aligned with the authoritative active
       // variants. Public channel reads still query product_variants directly.
       statements.push(
@@ -463,13 +480,13 @@ export async function POST(request: NextRequest) {
     `INSERT INTO product_variants (product_id, sku, label, duration_value, duration_unit, duration_label,
        warranty_type, warranty_value, warranty_unit, warranty_label,
        price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order,
-       bulk_pricing_enabled, bulk_pricing_tiers, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       bulk_pricing_enabled, bulk_pricing_tiers, created_at, updated_at,buyer_field_key,max_qty)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     v.product_id, v.sku, v.label,
     v.duration_value ?? null, v.duration_unit ?? null, v.duration_label ?? null,
     v.warranty_type, v.warranty_value ?? null, v.warranty_unit ?? null, v.warranty_label ?? null,
     v.price, v.compare_price ?? null, v.stock, v.min_qty ?? 1, v.manual_cost ?? 0, v.fulfillment_mode,
-    v.is_active, v.sort_order, bulkEnabled, bulkTiersJson, now, now,
+    v.is_active, v.sort_order, bulkEnabled, bulkTiersJson, now, now,v.buyer_field_key ?? null,v.max_qty ?? null,
   );
 
   return NextResponse.json({ ok: true, id: result.lastInsertRowid }, { status: 201 });
@@ -500,6 +517,7 @@ export async function PUT(request: NextRequest) {
   // Check existing variant
   const existing = await queryFirst(`SELECT * FROM product_variants WHERE id=?`, Number(id));
   if (!existing) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
+  if (String(existing.sku).startsWith("TUNVN-") && v.sku !== undefined && v.sku !== existing.sku) return NextResponse.json({ error:"Identitas varian tidak boleh diubah." },{ status:409 });
 
   // Merge with existing for cross field validation
   const merged = { ...existing, ...v } as z.infer<typeof SingleVariantSchema>;
@@ -587,12 +605,16 @@ export async function PUT(request: NextRequest) {
 
   const updates: string[] = [];
   const params: unknown[] = [];
+  if (String(existing.sku).startsWith("TUNVN-") && v.price !== undefined) {
+    updates.push("tunvn_admin_price_idr=?");
+    params.push(v.price);
+  }
   const fields: [string, unknown][] = [
     ["sku", v.sku], ["label", v.label],
     ["duration_value", v.duration_value], ["duration_unit", v.duration_unit], ["duration_label", v.duration_label],
     ["warranty_type", v.warranty_type], ["warranty_value", v.warranty_value], ["warranty_unit", v.warranty_unit], ["warranty_label", v.warranty_label],
     ["price", v.price], ["compare_price", v.compare_price], ["stock", v.stock],
-    ["min_qty", v.min_qty], ["manual_cost", v.manual_cost],
+    ["min_qty", v.min_qty], ["manual_cost", v.manual_cost], ["max_qty",v.max_qty], ["buyer_field_key",v.buyer_field_key],
     ["fulfillment_mode", v.fulfillment_mode], ["is_active", v.is_active], ["sort_order", v.sort_order],
   ];
   for (const [col, val] of fields) {

@@ -309,6 +309,10 @@ export async function handleCommand(
     return;
   }
 
+  if (from && !cmd.startsWith("/")) {
+    const { handleBuyerInput } = await import("./buyer-input");
+    if (await handleBuyerInput(text,chatId,from)) return;
+  }
   // Qty manual input: user typed a number while choosing qty (up to 100 for bulk)
   if (from && /^\d{1,3}$/.test(cmd)) {
     const handled = await handlePendingQtyInput(text, chatId, from);

@@ -34,11 +34,14 @@ async function fulfillPaidOrder(orderCode: string, orderKind: unknown): Promise<
   }
   const order = await queryFirst("SELECT * FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'", orderCode);
   if (!order) return;
+  const { createTunvnOrderLinks,processTunvnOrders } = await import("@/lib/tunvn/orders");
+  await createTunvnOrderLinks(orderCode);
   // Bind supplier ownership before generic fulfillment can mark a manual-mode
   // supplier variant as requiring admin handover or send misleading notices.
   const { ensureFulfillmentItems } = await import("@/lib/fulfillment/delivery/inventory-binding");
   await ensureFulfillmentItems(order);
   const work: (() => Promise<unknown>)[] = [];
+  work.push(() => processTunvnOrders(undefined,{ orderCode }));
   try {
     const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
     const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");

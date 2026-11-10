@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
+import { assertSameBuyerCode, buyerFieldsSchema, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
+import { queryAll, isD1Mode } from "@/lib/db";
 import { isVariantsReadEnabled } from "@/lib/catalog";
 import { createCheckoutQuoteToken, requireAdmin } from "@/lib/auth";
 import { isPaymentAdminTestEnabled } from "@/lib/payments/rails";
@@ -23,6 +24,7 @@ const itemSchema = z.object({
   variant_id: z.coerce.number().int().safe().min(1).optional(),
   slug: z.string().trim().min(1).max(100).optional(),
   qty: z.coerce.number().int().min(1).max(100),
+  buyer_fields: buyerFieldsSchema.optional(),
   expected_price: z.coerce.number().int().safe().min(0).optional(),
 }).refine((item) => item.product_id || item.slug, "Produk tidak valid");
 
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }
+  try { assertSameBuyerCode(parsed.data.items); } catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 409 }); }
 
   const aggregate = new Map<string, z.infer<typeof itemSchema>>();
   for (const item of parsed.data.items) {
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest) {
   }
 
   let subtotal = 0;
-  const quotedItems: { product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery: boolean; automatic_processing?: true }[] = [];
+  const quotedItems: (BuyerFieldSnapshot & { product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery: boolean; automatic_processing?: true })[] = [];
   let uniqueUnits = 0;
   const issues: QuoteIssue[] = [];
   const changes: PriceChange[] = [];
@@ -181,6 +184,10 @@ export async function POST(req: NextRequest) {
       continue;
     }
     const productId = Number(row.id);
+    const fieldConfig = item.variant_id ? variantById.get(item.variant_id) ?? {} : {};
+    let buyerFields;
+    try { buyerFields = validateBuyerFields(fieldConfig, item.buyer_fields, item.qty); }
+    catch (error) { issues.push({ product_id: productId, variant_id: item.variant_id, type: "invalid_quantity", message: (error as Error).message }); continue; }
     if (Number(row.is_active) === 0) {
       issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "inactive", message: `${row.name} sedang nonaktif.` });
       continue;
@@ -334,6 +341,9 @@ export async function POST(req: NextRequest) {
       /* helper murni — gagal impor = anggap tidak wajib, API orders tetap jaga */
     }
     quotedItems.push({
+      buyer_field_key: fieldConfig.buyer_field_key === "muse_invite_code" ? "muse_invite_code" : null,
+      max_qty: fieldConfig.max_qty == null ? null : Number(fieldConfig.max_qty),
+      ...(Object.keys(buyerFields).length ? { buyer_fields: buyerFields } : {}),
       product_id: productId,
       variant_id: item.variant_id,
       name: displayName,
@@ -385,7 +395,7 @@ export async function POST(req: NextRequest) {
 
   const signed = await createCheckoutQuoteToken({
     ...(adminTest ? { admin_payment_test: true as const } : {}),
-    items: quotedItems.map(({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty }) => ({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty })),
+    items: quotedItems.map(({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty, buyer_field_key, buyer_fields, max_qty }) => ({ product_id, variant_id, name, price, qty, base_price, applied_tier_min_qty, buyer_field_key, buyer_fields, max_qty })),
     subtotal,
     payment_methods: paymentMethods.map((method) => ({
       id: method.id,

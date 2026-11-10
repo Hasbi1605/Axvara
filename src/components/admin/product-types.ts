@@ -11,6 +11,8 @@ export type Cat = { id:number; slug:string; name:string };
 type BulkDraft = import("./BulkTierEditor").BulkDraft;
 
 export type FormVariant = {
+  buyer_field_key?: "muse_invite_code" | null;
+  max_qty?: number | null;
   admin_terms?: string;
   admin_activation?: string;
   id?: number;
@@ -52,6 +54,8 @@ export type FormVariant = {
 };
 
 export type ProductForm = Partial<Prod> & {
+  buyer_field_key?: "muse_invite_code" | null;
+  max_qty?: number | null;
   admin_terms?: string;
   admin_activation?: string;
   /** Posisi visual 1..N di admin; read-only, bukan kolom DB. */

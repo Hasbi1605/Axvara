@@ -17,6 +17,7 @@ import { generateOrderCode } from "@/lib/security";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
 import { markUniqueUnitLines, MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
+import { assertSameBuyerCode, buyerSnapshotMatches, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
 
 export type ChannelOrderInput = {
   salesChannel: "web" | "telegram" | "whatsapp";
@@ -215,6 +216,28 @@ export async function createChannelOrderAtomic(
 
   const guardIds: string[] = [];
   const statements: D1Statement[] = [];
+  const configIds = [...new Set(input.lines.map(line => line.variantId))];
+  const configs = (await d1.prepare(`SELECT pv.id,pv.sku,pv.max_qty,pv.buyer_field_key,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,p.slug AS product_slug FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${configIds.map(() => "?").join(",")})`).bind(...configIds).all()).results as Record<string, unknown>[];
+  const configById = new Map(configs.map(row => [Number(row.id),row]));
+  try {
+    assertSameBuyerCode(input.items as BuyerFieldSnapshot[]);
+    orderItems = orderItems.map((raw,index) => {
+      const line = input.lines[index];
+      const row = configById.get(line.variantId);
+      if (!row || (input.salesChannel === "whatsapp" && row.buyer_field_key != null)) throw new Error("unsupported_buyer_input");
+      const item = raw as BuyerFieldSnapshot & { tunvn_eligibility?: unknown };
+      const qty = input.lines.filter(other => other.variantId === line.variantId).reduce((n,other) => n + other.qty,0);
+      validateBuyerFields(row,item.buyer_fields,qty);
+      if (!buyerSnapshotMatches(item,{ buyer_field_key:(row.buyer_field_key ?? null) as "muse_invite_code" | null,max_qty:row.max_qty == null ? null : Number(row.max_qty),buyer_fields:item.buyer_fields })) throw new Error("stale");
+      const clean = { ...item };
+      delete clean.tunvn_eligibility;
+      const eligibility = tunvnEligibility(row,line.qty);
+      const guardId = `${input.orderCode}:input:${index}`;
+      guardIds.push(guardId);
+      statements.push(d1.prepare(`INSERT INTO operation_guards(operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.buyer_field_key IS ? AND pv.max_qty IS ? AND (pv.max_qty IS NULL OR pv.max_qty>=?) AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ? AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?) THEN 1 ELSE 0 END`).bind(guardId,line.variantId,row.buyer_field_key ?? null,row.max_qty ?? null,qty,row.sku ?? null,row.tunvn_buff_quantity_b ?? null,row.product_slug ?? null,row.tunvn_cost_usdt ?? null,row.tunvn_source_cost_usdt ?? null));
+      return { ...clean,...(eligibility ? { tunvn_eligibility:eligibility } : {}) };
+    });
+  } catch { throw new StockReservationError(); }
   for (const owner of owners) {
     if (!owner) throw new StockReservationError();
     const guardId = `${input.orderCode}:owner:${owner.id}`;
@@ -565,6 +588,7 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
   // 2. Re-validate variant against D1
   const variant = await getActiveVariant(input.variantId);
   if (!variant) throw new Error("variant_unavailable");
+  if (variant.buyer_field_key) throw new Error("unsupported_buyer_input");
   if (variant.stock === 0) throw new Error("out_of_stock");
   if (variant.price !== input.variant.price) throw new Error("price_changed");
   if (variant.product_id !== input.productId) throw new Error("variant_product_mismatch");
@@ -611,7 +635,8 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
            SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
            WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND p.is_active=1
              AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=1)
-             AND 1 >= COALESCE(pv.min_qty,1)
+              AND 1 >= COALESCE(pv.min_qty,1)
+              AND pv.buyer_field_key IS NULL AND (pv.max_qty IS NULL OR pv.max_qty>=1)
              AND (
                pv.fulfillment_mode!='shared'
                OR (pv.shared_secret_ciphertext IS NOT NULL AND pv.shared_secret_iv IS NOT NULL)

@@ -13,7 +13,7 @@
 // Produk WR-managed: seluruh field milik sync terkunci (harga/stok/garansi),
 // hanya harga coret yang tetap bisa diedit — sama seperti baris varian WR.
 
-import { useRef } from "react";
+import { useId, useRef } from "react";
 import type { ProductForm } from "../product-types";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { SharedVariantCopyFields } from "./SharedVariantCopyFields";
@@ -41,6 +41,7 @@ export function SingleVariantFields({
   /** false = produk baru; harga grosir baru bisa diatur setelah produk tersimpan. */
   editing?: boolean;
 }) {
+  const fulfillmentId = useId();
   const latestForm = useRef(form);
   latestForm.current = form;
   const wrLocked = Boolean(form.wrManaged);
@@ -57,6 +58,8 @@ export function SingleVariantFields({
     "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none";
   return (
     <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <label className="block text-xs text-white/60">Input pembeli<select value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></select></label>
+      <label className="block text-xs text-white/60">Maks. beli (kosong = 100)<input type="number" min={1} max={100} value={form.max_qty ?? ""} onChange={e => onSetForm({ ...form,max_qty:e.target.value ? Number(e.target.value) : null })} className={openInput}/></label>
       {/* Min. Beli (migrasi 0034, milik admin — bukan WR). */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
@@ -118,8 +121,9 @@ export function SingleVariantFields({
 
       {!wrLocked ? (
         <div className="pt-3">
-          <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Cara Pengiriman</span>
+          <label htmlFor={fulfillmentId} className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Cara Pengiriman</label>
           <select
+            id={fulfillmentId}
             value={form.fulfillment_mode || "manual"}
             onChange={(e) => onSetForm({ ...form, fulfillment_mode: e.target.value })}
             className="h-9 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"

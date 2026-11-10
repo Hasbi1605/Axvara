@@ -46,6 +46,8 @@ export async function handlePayWithQris(
   confirmedEmail?: string,
 ) {
   if (await notifyPaymentMaintenance(chatId)) return;
+  const { requestBuyerInput } = await import("./buyer-input");
+  if (await requestBuyerInput(chatId,from,productId,variantId,rawQty)) return;
   await sendChatAction(chatId, "typing");
   // Legacy QRIS rail NEVER borrows new-method payq1 state: pending winner
   // preserves the existing rail. A quoted payq1 row stays untouched here —

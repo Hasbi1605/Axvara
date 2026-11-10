@@ -35,6 +35,9 @@ export type D1 = {
 };
 
 export type AtomicOrderItem = {
+  buyer_field_key?: "muse_invite_code" | null;
+  buyer_fields?: { muse_invite_code?: string };
+  max_qty?: number | null;
   product_id: number;
   variant_id?: number;
   name: string;

@@ -85,10 +85,11 @@ export async function ensureFulfillmentItems(
     if (inventory) taken.add(Number(inventory.id));
     await execRun(
       `INSERT OR IGNORE INTO fulfillment_items
-       (order_code,item_index,product_id,variant_id,qty,fulfillment_mode,inventory_id,recipient_channel,recipient_target,status,attempt_count,next_attempt_at)
-       VALUES(?,?,?,?,?,?,?,?,?,'queued',0,datetime('now'))`,
+       (order_code,item_index,product_id,variant_id,qty,fulfillment_mode,inventory_id,recipient_channel,recipient_target,status,attempt_count,next_attempt_at,tunvn_link_id)
+        VALUES(?,?,?,?,?,?,?,?,?,'queued',0,datetime('now'),(SELECT id FROM tunvn_order_links WHERE order_code=? AND item_index=?))`,
       orderCode, index, item.product_id, item.variant_id ?? null, item.qty, mode,
       inventory ? Number(inventory.id) : null, recipient.channel, recipient.target || null,
+      orderCode,index,
     );
     created++;
   }

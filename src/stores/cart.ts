@@ -12,9 +12,9 @@ import { activeTier, bulkUnitEstimate, nextReachableTier, safeBulkTiers } from "
  * cache tier tervalidasi dari katalog untuk ESTIMASI tampilan; baris lama tanpa
  * field ini (persist pra-grosir) berperilaku persis seperti sebelumnya.
  */
-export type CartItem = Product & { qty: number; variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string; inventoryAvailable?: number | null; bulkTiers?: BulkTier[] };
+export type CartItem = CartInput & { qty: number };
 
-type CartInput = Product & { variantId?: number; variantLabel?: string; minQty?: number; fulfillmentMode?: string; inventoryAvailable?: number | null; bulkTiers?: BulkTier[] };
+type CartInput = Product & { variantId?: number; variantLabel?: string; minQty?: number; maxQty?: number | null; buyerFieldKey?: "muse_invite_code" | null; fulfillmentMode?: string; inventoryAvailable?: number | null; bulkTiers?: BulkTier[] };
 
 type CartStore = {
   items: CartItem[];
@@ -114,7 +114,7 @@ export const useCart = create<CartStore>()(
           // GSuite (min 50) tidak mulai dari 1 lalu ditolak saat checkout.
           const min = minOf(product);
           const maxFor = (p: CartInput) => {
-            const cap=p.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : WEB_MAX_QTY;
+            const cap=Math.min(p.maxQty ?? WEB_MAX_QTY, p.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : WEB_MAX_QTY);
             const others=s.items.filter(i=>!(i.id===product.id && i.variantId===product.variantId)).reduce((n,i)=>n+(i.fulfillmentMode === "unique" ? i.qty : 0),0);
             const remaining=p.fulfillmentMode === "unique" ? Math.max(0,cap-others) : cap;
             const eff = effectiveStockOf(p);
@@ -133,7 +133,7 @@ export const useCart = create<CartStore>()(
             // Refresh metadata basi dari katalog terbaru (stok efektif,
             // inventory, min, mode): baris lama yang di-add ulang tidak
             // mempertahankan angka basi — qty lalu di-clamp ke [lo, hi].
-            const updated = { ...existing, stock: product.stock ?? existing.stock, inventoryAvailable: product.inventoryAvailable ?? existing.inventoryAvailable, fulfillmentMode: product.fulfillmentMode ?? existing.fulfillmentMode, bulkTiers: product.bulkTiers ?? existing.bulkTiers };
+            const updated = { ...existing, maxQty: product.maxQty, buyerFieldKey: product.buyerFieldKey, stock: product.stock ?? existing.stock, inventoryAvailable: product.inventoryAvailable ?? existing.inventoryAvailable, fulfillmentMode: product.fulfillmentMode ?? existing.fulfillmentMode, bulkTiers: product.bulkTiers ?? existing.bulkTiers };
             if (maxFor(updated) < lo) return { items: s.items.filter((i) => itemKey(i) !== matchKey) };
             const hi = maxFor(updated);
             const nextQty = clampQty(existing.qty + qty, lo, hi);
@@ -159,7 +159,7 @@ export const useCart = create<CartStore>()(
           // Tombol kurang tidak boleh turun di bawah minimum (quote server
           // tetap menjadi sumber kebenaran; ini hanya cermin UX).
           if (qty < min) qty = min;
-          const cap=it?.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : WEB_MAX_QTY;
+          const cap=Math.min(it?.maxQty ?? WEB_MAX_QTY,it?.fulfillmentMode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : WEB_MAX_QTY);
           const others=s.items.filter(i=>itemKey(i)!==matchKey).reduce((n,i)=>n+(i.fulfillmentMode === "unique" ? i.qty : 0),0);
           const remaining=it?.fulfillmentMode === "unique" ? Math.max(0,cap-others) : cap;
           const eff=it ? effectiveStockOf(it) : -1;

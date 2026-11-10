@@ -276,7 +276,7 @@ export async function handleShowQty(
   // Minimum pembelian (migrasi 0034): stepper dibuka LANGSUNG di min agar
   // pembeli GSuite (min 50) tidak mulai dari 1 lalu ditolak saat bayar.
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
-  const maxQty = uniqueMax;
+  const maxQty = Math.min(variant.max_qty ?? TELEGRAM_MAX_QTY,uniqueMax);
   if (minQty > maxQty) {
     await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     return;
@@ -328,7 +328,7 @@ export async function handleQtyInputPrompt(chatId: number, productId: number, va
   if (!variant || variant.product_id !== productId) return;
   variant.stock = effectiveVariantStock(variant);
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
-  const maxQty = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, variant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : variant.stock) : variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(variant.stock, TELEGRAM_MAX_QTY);
+  const maxQty = Math.min(variant.max_qty ?? TELEGRAM_MAX_QTY,variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, variant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : variant.stock) : variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(variant.stock, TELEGRAM_MAX_QTY));
   if (minQty > maxQty) {
     await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
     return;

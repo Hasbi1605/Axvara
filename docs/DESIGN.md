@@ -1,5 +1,41 @@
 # DESIGN.md — AXVARA Design System
 
+## ChatGPT Private / input Muse (10 November 2026, T2A lokal)
+
+Checkpoint akhir PM10November: owner menghentikan QA Gemini. Pemeriksaan Chromium
+langsung pada checkout fixture1280/390 mencakup input/quote/error, fokus dan overflow;
+layout tetap sesuai Midnight/Cyan/Liquid Glass. QA panel admin menyeluruh belum selesai.
+Full suite5518tes dan build Pages lulus; belum merupakan bukti deployment produksi.
+
+- Pertahankan Midnight/Cyan, Liquid Glass, SF Pro dan kontrol existing.
+  ChatGPT menjadi satu kartu/PDP bernama ChatGPT Private; pilihan Business
+  dan GPay tetap dapat dibedakan, tanpa nama supplier pada label pembeli.
+- Quantity Buff1B dibatasi1..30 di PDP/modal/cart, tidak memakai empat bundle.
+  Form checkout menampilkan label Kode Invite Muse, petunjuk lokasi Invite
+  friends, enam huruf/angka dan case-preserving, serta satu kode per checkout.
+  Label terhubung via htmlFor; hint via aria-describedby; autocomplete off,
+  autocapitalize none. Quote menunggu kode valid lalu dimuat ulang saat berubah.
+- Editor varian memakai select preset opsional + angka maksimum; default
+  Tidak ada, bukan builder. Panel TUNVN menampilkan satu kontrol produk bersama
+  dan kontrol tiap varian, bukan saklar produk duplikat yang bertentangan.
+- Nilai kode hanya ditampilkan di detail order admin setelah GET authenticated
+  no-store, tidak pada daftar/tabel massal. Telegram mengumpulkan di private
+  chat tanpa mengulang kode dalam notis/callback. QA visual desktop/mobile,
+  keyboard/fokus/overflow browser nyata masih paket T3, bukan bukti dari jsdom.
+
+### T2B panel pengiriman (10 November 2026, lokal)
+
+- Ringkasan TUNVN menampilkan100 link terbaru dalam baris responsif/break-all,
+  status processing/completed/needs_admin, snapshot biaya, ID tepat dan metadata
+  aman; tidak menampilkan invite code atau receipt plaintext pada daftar.
+- Tombol Periksa status batch hanya untuk batch Buff diketahui (GET supplier,
+  tidak membeli). Receipt privat dibuka lewat POST authenticated/audit ke state
+  sementara dengan tombol Tutup; tidak dipersist/cache. Tidak ada tombol retry
+  beli. Busy/error/empty menggunakan status dan alert existing.
+- Copy pembeli tetap ChatGPT Private/Muse tanpa supplier. Buff selesai bukan
+  akun/kredensial; notis tidak mengulang input. Browser desktop/mobile/fokus/
+  overflow dan review visual merupakan tugas T3/PM, belum diverifikasi di sini.
+
 ## Games HERO-FIX (10 November 2026, lokal)
 
 - Hero Games memakai kelas hero Pedia persis: container1280, padding40/56px atas

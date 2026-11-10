@@ -53,4 +53,4 @@ export function tunvnBuffSellPriceIdr(quantityB: number, idrPerUsdt: number, opt
 }
 
 /** Varian Buff yang diterbitkan sebagai varian produk Muse manual. */
-export const TUNVN_BUFF_VARIANT_B = [5, 10, 20, 30] as const;
+export const TUNVN_BUFF_VARIANT_B = [1] as const;

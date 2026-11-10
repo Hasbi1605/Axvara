@@ -67,6 +67,8 @@ export async function handleCartAdd(
 ) {
   await sendChatAction(chatId, "typing");
   const ctx = await tgCtxFor(from.id);
+  const { requestBuyerInput } = await import("./buyer-input");
+  if (await requestBuyerInput(chatId,from,productId,variantId,qty)) return;
   const result = await addToCart(String(from.id), productId, variantId, qty);
   if (!result.ok) {
     // GSuite dkk: butuh min_qty agar pesan jelas ("min. 50"), bukan generik.

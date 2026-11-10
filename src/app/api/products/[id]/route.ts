@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const variants = await queryAll(
     `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
             warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, min_qty, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed, admin_terms, admin_activation,
+            price, compare_price, stock, min_qty, max_qty, buyer_field_key, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed, admin_terms, admin_activation,
             bulk_pricing_enabled, bulk_pricing_tiers
      FROM product_variants
      WHERE product_id=?
@@ -122,6 +122,8 @@ const variantInputSchema = z.object({
   stock: z.coerce.number().int().min(-1).max(999999).default(-1),
   // Minimum pembelian (migrasi 0034, generik — GSuite = 50, plafon 100).
   min_qty: z.coerce.number().int().min(1).max(100).optional(),
+  max_qty: z.number().int().min(1).max(100).nullable().optional(),
+  buyer_field_key: z.literal("muse_invite_code").nullable().optional(),
   // Modal manual per unit (migrasi 0058, milik admin — sync tak menyentuh).
   manual_cost: z.coerce.number().int().min(0).max(999_999_999).optional(),
   // Bulk pricing per varian (migrasi 0099, milik admin — sync tak menyentuh).
@@ -184,6 +186,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     id,
   ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number } | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty FROM product_variants WHERE product_id=?", id);
+  const tunvnVariants = storedVariants.filter(v => String(v.sku).startsWith("TUNVN-"));
+  for (const incoming of data.variants ?? []) {
+    const current = storedVariants.find(v => Number(v.id) === incoming.id);
+    if (String(current?.sku).startsWith("TUNVN-") && incoming.sku && incoming.sku !== current?.sku) return NextResponse.json({ error: "Identitas varian tidak boleh diubah." }, { status: 409 });
+    if ((current?.sku ?? incoming.sku)?.toString().match(/^TUNVN-BUFF-(5|10|20|30)B$/) && incoming.is_active !== 0) return NextResponse.json({ error: "Paket lama sudah dipensiunkan." }, { status: 409 });
+    const maxQty = incoming.max_qty === undefined ? current?.max_qty : incoming.max_qty;
+    if (maxQty != null && Number(maxQty) < (incoming.min_qty ?? Number(current?.min_qty ?? 1))) return NextResponse.json({ error: "Maksimum di bawah minimum." }, { status: 400 });
+    if ((current?.sku ?? incoming.sku) === "TUNVN-BUFF-1B" && maxQty !== 30) return NextResponse.json({ error: "Buff Muse dibatasi 30 unit." }, { status: 400 });
+  }
   // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
   // Menonaktifkan (enabled=false) tetap boleh agar data lama bisa dibersihkan.
   if (Array.isArray(data.variants) && !isManualProductForBulk(bulkOwnerFromProductRow(existing as unknown as Record<string, unknown>))) {
@@ -222,7 +234,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       "SELECT id FROM product_variants WHERE product_id=? AND is_active=1 LIMIT 1",
       id,
     );
-    if (!activeVariant) {
+    if (!activeVariant && !(existing.slug === "chatgpt-tunvn" && tunvnVariants.length)) {
       return NextResponse.json(
         { error: "Aktifkan minimal satu varian sebelum mengaktifkan produk." },
         { status: 409 },
@@ -232,7 +244,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const hasExplicitVariants = Array.isArray(data.variants);
   if (hasExplicitVariants && data.variants) {
     const activeVars = data.variants.filter(v => (v.is_active ?? 1) !== 0);
-    if (data.isActive !== false && activeVars.length === 0) {
+    if (data.isActive !== false && activeVars.length === 0 && existing.slug !== "chatgpt-tunvn") {
       return NextResponse.json({ error: "Minimal satu varian harus aktif." }, { status: 400 });
     }
   }
@@ -482,6 +494,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
               );
             }
             const copyWrite = manualCopyUpdate(id, autoSku, v);
+            if (v.buyer_field_key !== undefined || v.max_qty !== undefined) statements.push(d1.prepare(`UPDATE product_variants SET buyer_field_key=CASE WHEN ? THEN ? ELSE buyer_field_key END,max_qty=CASE WHEN ? THEN ? ELSE max_qty END WHERE product_id=? AND sku=?`).bind(v.buyer_field_key !== undefined ? 1 : 0,v.buyer_field_key ?? null,v.max_qty !== undefined ? 1 : 0,v.max_qty ?? null,id,autoSku));
+            if (autoSku.startsWith("TUNVN-")) statements.push(d1.prepare("UPDATE product_variants SET tunvn_admin_price_idr=? WHERE product_id=? AND sku=?").bind(v.price,id,autoSku));
             if (copyWrite) statements.push(d1.prepare(copyWrite.sql).bind(...copyWrite.params));
           });
 
@@ -528,6 +542,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         // Batch ATOMIC via operation_guards precondition di statements:
         // guard gagal => CHECK => SELURUH batch rollback (D1), lalu map
         // constraint ke 409 stale (bukan 500).
+        if (existing.slug === "chatgpt-tunvn") {
+          if (data.isActive === true && !hasExplicitVariants) {
+            statements.push(d1.prepare("UPDATE product_variants SET is_active=1 WHERE product_id=? AND sku IN ('TUNVN-86','TUNVN-83') AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1)").bind(id,id));
+          }
+          if (data.isActive === true || hasExplicitVariants) statements.push(d1.prepare(`UPDATE tunvn_products SET publish_requested=COALESCE((SELECT is_active FROM product_variants WHERE product_id=? AND sku='TUNVN-'||tunvn_products.supplier_product_id),0) WHERE supplier_product_id IN (86,83)`).bind(id));
+          statements.push(d1.prepare(`UPDATE tunvn_products SET visible=CASE WHEN publish_requested=1 AND EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1) THEN 1 ELSE 0 END WHERE supplier_product_id IN (86,83)`).bind(id));
+        }
         let batchOk = true;
         try {
           await d1.batch(statements);

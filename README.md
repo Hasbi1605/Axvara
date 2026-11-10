@@ -1,5 +1,37 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+TUNVN T2B (10 November 2026, **diimplementasikan lokal; belum deploy**): order
+Market baru paid dengan opt-in server versi1 + snapshot biaya USDT memakai
+`tunvn_order_links` (migrasi0116, UNIQUE order/item, lease/CAS dan fence sebelum
+POST). Tes admin, order lama/bundle/no-stamp tidak membeli. Preflight enkripsi/
+stok/harga/funding; response utuh terenkripsi, akun lengkap diteruskan pipeline
+email/PIN6/c1/Telegram privat existing, partial/bonus disimpan privat untuk admin.
+Buff200/202 hanya processing; done wajib status batch/identitas tepat, tanpa
+kredensial palsu. Maksimal1 link/invocation, job `tunvn_orders` di cron lite
+40statement existing; tidak ada env/timer baru. Panel admin memiliki status,
+metadata/cost/ID, POST reveal privat dan GET-only reconcile batch Buff diketahui;
+tidak ada blind buy/retry. Timeout/receipt hilang/5xx/409 needs_admin tanpa rebuy
+(payload mesin409 tidak dipublikasikan). API tidak punya idempotency/max_price,
+sehingga race harga setelah preflight tetap ada. PM menjalankan final full suite/
+build/browser T3; tidak ada klaim live atau transaksi produksi. Detail §16.33
+`docs/ARCHITECTURE.md` dan `docs/agent-rules/tunvn.md`.
+
+Histori TUNVN T2A (10 November 2026, **lokal saat T2B pending**): ChatGPT Private
+menjadi satu produk `chatgpt-tunvn` dengan Business/GPay, mempertahankan ID/harga/
+order lewat migrasi0114. Aktivasi lewat Produk (aktifkan produk/varian) atau
+TUNVN (Diminta terbit per varian + saklar produk bersama); publish tidak memaksa
+aktif/menimpa copy/harga manual. Migrasi0115 menambah preset varian opsional
+`buyer_field_key`/`max_qty` dan `telegram_carts.buyer_fields`; hanya Buff1B
+(`TUNVN-BUFF-1B`) awalnya meminta `muse_invite_code` (trim, enam ASCII alnum,
+case-preserving), jumlah1..30, harga unit ceilRp100 lalu dikali qty. Muse account
+asli tetap, bundle lama nonaktif tanpa menghapus histori. Web mengikat input ke
+quote/order atomik, Telegram meminta secara privat, WA menolak sebelum invoice.
+Kode tidak masuk URL/log/email/daftar publik; detail admin authenticated/no-store
+memiliki akses privat. Eligibility versi1 hanya untuk snapshot order baru sah;
+tidak backfill atau dispatch order lama. Dispatch otomatis belum ada pada T2A;
+PM memiliki final full suite/build/browser QA. Tidak mengubah env/secret/rail.
+Kontrak lengkap: `docs/ARCHITECTURE.md` §16.32 dan `docs/agent-rules/tunvn.md`.
+
 Expiry pembayaran (revisi 9 November 2026, lokal; deployment belum diverifikasi): order Market baru web/Telegram supplier WR/SK VA/e-wallet 30 menit, crypto/QRIS 60 menit, manual/keranjang campuran semua metode 15 menit. Deadline invoice provider tetap berlaku lebih awal: QRIS 15 menit (maksimal satu renewal existing selama order hidup), gateway minimum order/provider, crypto minimum order/`valid_until` provider. `expiration_estimate_date`/`expirationEstimateDate` NOWPayments floating-rate hanya masa estimasi kurs, bukan expiry pembayaran; format timestamp tetap divalidasi. Pedia baru gateway 30 menit, crypto/QRIS 60 menit dipendekkan ke deadline transaksi/provider (QRIS 15 menit). Telegram tetap hanya menawarkan QRIS + crypto. WhatsApp dan deadline order/invoice lama tidak diubah; retry/reconcile serta pemeriksaan legacy fixed-rate tetap. Pembayaran telat tetap pemeriksaan manual, bukan auto-revive/pembelian supplier kedua. Verifikasi revisi ada di CHANGELOG; rincian dan pemulihan order owner: `docs/agent-rules/payments.md`.
 
 Nama/S&K admin/email EN Market fase 3 (LOKAL 7 November 2026, belum deploy): `products.name_en` serta `product_variants.admin_terms_en`/`admin_activation_en` (migrasi 0105) adalah milik admin; migrasi 0106 mengisi 7 nama non-token dan 9 varian admin. Nama EN = `name_en` ?? terjemahan token, dipakai kartu/PDP/modal/cart/checkout/order/Telegram/SEO tanpa mengubah nama tersimpan; pencarian mencocokkan ID+EN. Endpoint produk menerima `nameEn`; endpoint variant-copy menerima EN dengan fingerprint sama. Email pembeli mengikuti `order.locale` (subject, isi, tombol), default ID; admin email tetap ID. Verifikasi: `market-content-en` 10/10, `buyer-email-en` 5/5, `variant-admin-copy` 17/17, `variant-copy-editor` 18/18, full 373 file/5004 tes, tsc/lint/diff-check bersih; browser belum dijalankan.

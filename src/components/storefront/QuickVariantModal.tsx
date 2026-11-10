@@ -162,7 +162,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
   // Minimum pembelian varian terpilih (migrasi 0034): stepper dibuka di min.
   const selectedMinQty = selected ? Math.max(1, Number(selected.min_qty ?? 1) || 1) : 1;
   const selectedMaxQty = selected
-    ? (() => { const eff = effOf(selected); const cap = selected.fulfillment_mode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : 100; return Math.max(selectedMinQty, eff === -1 ? cap : Math.min(cap, eff)); })()
+    ? (() => { const eff = effOf(selected); const cap = Math.min(selected.max_qty ?? 100,selected.fulfillment_mode === "unique" ? MAX_UNIQUE_UNITS_PER_ORDER : 100); return Math.max(selectedMinQty, eff === -1 ? cap : Math.min(cap, eff)); })()
     : 100;
   const [modalQty, setModalQty] = useState(selectedMinQty);
   // Draft ketikan manual (pola marketplace): string terpisah agar mengetik
@@ -212,6 +212,8 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
         variantId: selected.id,
         variantLabel: selected.label,
         minQty: selectedMinQty,
+        maxQty: selected.max_qty,
+        buyerFieldKey: selected.buyer_field_key,
         fulfillmentMode: selected.fulfillment_mode,
         bulkTiers: selectedTiers,
       }, safeModalQty);

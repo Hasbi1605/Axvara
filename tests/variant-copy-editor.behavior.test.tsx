@@ -338,10 +338,10 @@ describe("editor produk mode single: paritas garansi + pengiriman + template (20
     const { onSetForm } = renderSingleModal();
     fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Varian/ });
-    const selects = within(panel).getAllByRole("combobox");
-    expect(selects.length).toBeGreaterThanOrEqual(2); // garansi + pengiriman
-    fireEvent.change(selects[0], { target: { value: "limited" } });
+    fireEvent.change(within(panel).getByRole("combobox", { name: "Masa Garansi" }), { target: { value: "limited" } });
     expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ warranty_type: "limited" }));
+    fireEvent.change(within(panel).getByRole("combobox", { name: "Cara Pengiriman" }), { target: { value: "shared" } });
+    expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ fulfillment_mode: "shared" }));
   });
 
   it("produk baru tanpa variantId: panel fulfillment meminta simpan dulu", () => {

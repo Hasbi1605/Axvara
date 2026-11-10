@@ -7,6 +7,17 @@ import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
+export async function GET(req:NextRequest,{ params }:{ params:Promise<{ code:string }> }) {
+  const headers = { "Cache-Control":"private, no-store" };
+  if (!await requireAdmin(req)) return NextResponse.json({ error:"Unauthorized" },{ status:401,headers });
+  const { code } = await params;
+  if (!/^AXV-\d{8}-[A-Z0-9]{8}$/.test(code)) return NextResponse.json({ error:"invalid_code" },{ status:400,headers });
+  const row = await queryFirst("SELECT items FROM orders WHERE code=?",code);
+  if (!row) return NextResponse.json({ error:"not_found" },{ status:404,headers });
+  const items = JSON.parse(String(row.items || "[]")) as { variant_id?:number;buyer_fields?:{ muse_invite_code?:string } }[];
+  return NextResponse.json({ buyerInputs:items.flatMap((item,index) => item.buyer_fields?.muse_invite_code ? [{ item_index:index,variant_id:item.variant_id,key:"muse_invite_code",value:item.buyer_fields.muse_invite_code }] : []) },{ headers });
+}
+
 const patchSchema = z.object({
   status: z.enum(["pending", "lunas", "dibatalkan", "kadaluarsa"]),
   admin_note: z.string().trim().max(500).optional().nullable(),

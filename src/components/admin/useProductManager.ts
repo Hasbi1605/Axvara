@@ -262,6 +262,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         comparePrice: v.comparePrice ?? (v as Record<string, unknown>).compare_price as number | null ?? null,
         stock: v.stock ?? -1,
         min_qty: Number((v as Record<string, unknown>).min_qty ?? 1) || 1,
+        buyer_field_key: v.buyer_field_key === "muse_invite_code" ? "muse_invite_code" as const : null,
+        max_qty: v.max_qty == null ? null : Number(v.max_qty),
         manual_cost: Math.max(0, Math.floor(Number((v as Record<string, unknown>).manual_cost ?? 0) || 0)),
         admin_terms: v.admin_terms ?? undefined,
         admin_activation: v.admin_activation ?? undefined,
@@ -288,6 +290,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       if (!isMulti && mapped.length > 0) {
         const v0 = mapped[0];
         nextForm.min_qty = v0.min_qty ?? 1;
+        nextForm.buyer_field_key = v0.buyer_field_key;
+        nextForm.max_qty = v0.max_qty;
         nextForm.manual_cost = v0.manual_cost ?? 0;
         nextForm.admin_terms = v0.admin_terms;
         nextForm.admin_activation = v0.admin_activation;
@@ -490,6 +494,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       comparePrice: form.comparePrice ? Number(form.comparePrice) : null,
       stock: form.stock != null ? Number(form.stock) : -1,
       min_qty: Math.max(1, Math.min(100, Number(form.min_qty ?? 1) || 1)),
+      buyer_field_key: form.buyer_field_key,
+      max_qty: form.max_qty,
       manual_cost: Math.max(0, Math.floor(Number(form.manual_cost ?? 0) || 0)),
       admin_terms: !form.wrManaged && form.supplier !== "SK" ? form.admin_terms : undefined,
       admin_activation: !form.wrManaged && form.supplier !== "SK" ? form.admin_activation : undefined,
@@ -571,6 +577,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
             comparePrice: vr.comparePrice ? Number(vr.comparePrice) : null,
             stock: vr.stock != null ? Number(vr.stock) : -1,
             min_qty: Math.max(1, Math.min(100, Number(vr.min_qty ?? 1) || 1)),
+            buyer_field_key: vr.buyer_field_key,
+            max_qty: vr.max_qty,
             manual_cost: Math.max(0, Math.floor(Number(vr.manual_cost ?? 0) || 0)),
             admin_terms: !form.wrManaged && form.supplier !== "SK" ? vr.admin_terms : undefined,
             admin_activation: !form.wrManaged && form.supplier !== "SK" ? vr.admin_activation : undefined,

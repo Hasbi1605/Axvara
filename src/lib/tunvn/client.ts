@@ -1,9 +1,7 @@
 // src/lib/tunvn/client.ts — klien server-side TUNVN PREHUB (reseller Telegram).
 //
-// Setup awal 2026-11-09 (instruksi owner): fondasi SAJA. Tidak ada produk
-// TUNVN yang ditampilkan, tidak ada pembelian/deposit/order buyer. Klien ini
-// hanya diekspor untuk dipakai sync tersembunyi + test; tidak ada route,
-// katalog publik, checkout, cron order, atau UI yang memanggilnya.
+// Fondasi GET/probe 2026-11-09. Dispatch lokal 2026-11-10 ada di orders.ts
+// dan purchase.ts; deposit tetap tidak diimplementasikan.
 //
 // Kontrak upstream (https://tunvnmmo.duckdns.org/api/docs, dibaca 2026-11-09):
 //   header `X-API-Key: <TUNVN_API_KEY>`; base URL TUNVN_BASE_URL
@@ -16,7 +14,7 @@
 //                         usdt_vnd}
 //   GET  /api/rate      → {success,usdt_vnd,description} (publik, tetap
 //                         dipanggil lewat jalur yang sama)
-//   POST /api/buy       → SENGAJA tidak diimplementasikan pada setup awal.
+//   POST /api/buy       → purchase.ts, hanya melalui durable dispatcher.
 //   POST /api/deposit   → SENGAJA tidak diimplementasikan pada setup awal.
 //   POST /api/buff/check → harga Buff Token Muse AI (read-only secara efek:
 //                         tidak mendebit saldo; dipakai panel admin).
@@ -29,11 +27,10 @@
 // - API key TIDAK PERNAH dicatat, tidak masuk error message/return, dan tidak
 //   dikirim ke URL selain TUNVN_BASE_URL yang terkonfigurasi.
 // - 5 key salah/60 dtk memicu blokir sementara di upstream → semua panggilan
-//   di sini READ-ONLY dan tidak ada retry otomatis; 401/403 tidak diulang.
+//   di sini read-only secara efek dan tanpa retry; 401/403 tidak diulang.
 // - Hasil jaringan tak terbaca/timeout diklasifikasikan `ambiguous` agar
 //   pemanggil masa depan tidak pernah menganggapnya stok/saldo nol.
 
-import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export const TUNVN_DEFAULT_BASE_URL = "https://tunvnmmo.duckdns.org";
 export const TUNVN_PRODUCTS_TIMEOUT_MS = 20_000;
@@ -85,11 +82,12 @@ export async function callTunvnRead(endpoint: TunvnReadEndpoint): Promise<TunvnC
   const timeout = endpoint === "products" ? TUNVN_PRODUCTS_TIMEOUT_MS : TUNVN_DEFAULT_TIMEOUT_MS;
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${getTunvnBaseUrl()}/api/${endpoint}`, {
+    res = await fetch(`${getTunvnBaseUrl()}/api/${endpoint}`, {
       method: "GET",
       headers: { "x-api-key": getTunvnApiKey(), accept: "application/json" },
       redirect: "manual",
-    }, timeout);
+      signal: AbortSignal.timeout(timeout),
+    });
   } catch {
     return { kind: "ambiguous", reason: "network_or_timeout" };
   }
@@ -192,12 +190,13 @@ export async function checkTunvnBuff(quantityB: number): Promise<TunvnBuffCheckR
   if (!isTunvnConfigured()) return { kind: "config", reason: "not_configured" };
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${getTunvnBaseUrl()}/api/buff/check`, {
+    res = await fetch(`${getTunvnBaseUrl()}/api/buff/check`, {
       method: "POST",
       headers: { "x-api-key": getTunvnApiKey(), "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({ orders_text: `AXVARA ${quantityB}` }),
       redirect: "manual",
-    }, TUNVN_DEFAULT_TIMEOUT_MS);
+      signal: AbortSignal.timeout(TUNVN_DEFAULT_TIMEOUT_MS),
+    });
   } catch {
     return { kind: "ambiguous", reason: "network_or_timeout" };
   }

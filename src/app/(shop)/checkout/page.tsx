@@ -25,13 +25,15 @@ import { checkoutMessage } from "@/lib/i18n/checkout-copy";
 import { PaymentTestScope } from "@/components/storefront/PaymentTestScope";
 
 
-type QuotedItem = { product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
+type QuotedItem = { buyer_fields?: { muse_invite_code?: string }; product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
 type QuoteIssue = { product_id?: number; slug?: string; variant_id?: number; min_qty?: number; type: string; message: string };
 type PriceChange = { product_id: number; variant_id?: number; name: string; previous_price: number; current_price: number; message: string; tier?: boolean };
 
 import { rowMatchesIssue } from "@/lib/checkout-line-identity";
 
 type DirectProduct = Product & {
+  buyerFieldKey?: "muse_invite_code" | null;
+  maxQty?: number | null;
   variantId?: number;
   variantLabel?: string;
   bulkTiers?: BulkTier[];
@@ -43,6 +45,8 @@ type CatalogVariant = BulkVariantFields & {
   price: number;
   stock: number;
   min_qty?: number;
+  max_qty?: number | null;
+  buyer_field_key?: "muse_invite_code" | null;
   fulfillment_mode?: string;
   inventory_available?: number | null;
 };
@@ -131,6 +135,8 @@ function CheckoutInner() {
             variantId: variant.id,
             variantLabel: variant.label,
             minQty: Math.max(1, Number(variant.min_qty ?? 1) || 1),
+            maxQty: variant.max_qty,
+            buyerFieldKey: variant.buyer_field_key,
             bulkTiers: usableBulkTiers(variant, variant.price),
           } as DirectProduct & { minQty: number });
           return;
@@ -161,6 +167,8 @@ function CheckoutInner() {
   const explicitDeselectRef = React.useRef(false);
   const [wa, setWa] = useState("");
   const [email, setEmail] = useState("");
+  const [museCode, setMuseCode] = useState("");
+  const needsMuseCode = items.some(item => item.buyerFieldKey === "muse_invite_code");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -264,8 +272,9 @@ function CheckoutInner() {
       variant_id: item.variantId,
       qty: Number(item.qty) || 1,
       expected_price: Number(item.price),
+      ...(item.buyerFieldKey === "muse_invite_code" ? { buyer_fields: { muse_invite_code: museCode.trim() } } : {}),
     })),
-    [items],
+    [items, museCode],
   );
   // Estimasi satuan dari tier yang tersimpan (hanya baris yang membawa cache
   // tier; baris lama tanpa cache tidak menghasilkan peringatan tier).
@@ -316,12 +325,15 @@ function CheckoutInner() {
 
   // Fetch quote whenever product identity, quantity, or snapshot price changes.
   useEffect(() => {
-    if (items.length === 0 || directLoading) {
+    if (items.length === 0 || directLoading || quoteRequestItems.some(item => item.buyer_fields && !/^[A-Za-z0-9]{6}$/.test(item.buyer_fields.muse_invite_code))) {
       quoteRequestId.current += 1;
       setQuoteLoading(false);
       setQuoteToken(null);
       setQuotedItems([]);
       setQuotedPaymentMethods([]);
+      setQuoteError(null);
+      setQuoteIssues([]);
+      setShowIssueDialog(false);
       return;
     }
     void fetchQuote(quoteRequestItems);
@@ -515,6 +527,7 @@ function CheckoutInner() {
       product_id: item.product_id,
       variant_id: item.variant_id,
       qty: item.qty,
+      ...(item.buyer_fields ? { buyer_fields: item.buyer_fields } : {}),
     }));
     let redirected = false;
     try {
@@ -614,7 +627,9 @@ function CheckoutInner() {
   const paymentBlock = (
     <div>
       <h2 className="text-sm font-semibold text-white">{text("① Metode Pembayaran", "① Payment Method")}</h2>
-      {quoteLoading ? (
+      {needsMuseCode && !/^[A-Za-z0-9]{6}$/.test(museCode.trim()) ? (
+        <p className="mt-3 text-sm text-white/60" role="status">{text("Isi Kode Invite Muse (6 huruf/angka) untuk memuat harga dan metode pembayaran.", "Enter your Muse invite code (6 letters/numbers) to load prices and payment methods.")}</p>
+      ) : quoteLoading ? (
         <div className="mt-3 text-sm text-white/50" role="status">
           <div className="flex items-center gap-2">
             <span className="w-4 h-4 rounded-full border-2 border-white/20 border-t-[#00E5FF] animate-spin" />
@@ -751,6 +766,11 @@ function CheckoutInner() {
                 {fieldErrors.wa && <p id="checkout-wa-error" className="mt-1.5 text-xs text-red-300">{message(fieldErrors.wa)}</p>}
               </div>
               <div data-checkout-field className="scroll-mt-28 scroll-mb-32">
+                {needsMuseCode && <div className="mb-4">
+                  <label htmlFor="checkout-muse-code" className="mb-1 block text-xs font-medium text-white/60">{en ? "Muse invite code" : "Kode Invite Muse"} *</label>
+                  <input id="checkout-muse-code" value={museCode} onChange={e => { setQuoteToken(null); setMuseCode(e.target.value); }} required maxLength={32} pattern="\s*[A-Za-z0-9]{6}\s*" autoComplete="off" autoCapitalize="none" spellCheck={false} aria-describedby="checkout-muse-hint" className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm text-white focus:outline-none focus:border-[#00E5FF]/40" />
+                  <p id="checkout-muse-hint" className="mt-1.5 text-xs text-white/50">{en ? "6 letters/numbers from Invite friends in Muse. Case is preserved. One code per checkout; quantity 1–30 = 1–30B tokens." : "6 huruf/angka dari Invite friends di Muse. Huruf besar/kecil dipertahankan. Satu kode per checkout; jumlah 1–30 = 1–30B token."}</p>
+                </div>}
                 <label htmlFor="checkout-email" className="block text-xs font-medium text-white/60 mb-1">Email *</label>
                 <input id="checkout-email" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setFieldErrors(f=> ({...f, email: ""})); }} placeholder={text("email@contoh.com", "email@example.com")} aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? "checkout-email-hint checkout-email-error" : "checkout-email-hint"} className={`w-full h-11 px-4 rounded-xl bg-white/[0.06] border text-sm text-white placeholder:text-white/30 focus:outline-none ${fieldErrors.email ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`} />
                 <p id="checkout-email-hint" className="mt-1.5 text-[11px] leading-4 text-white/40">{text("Detail pesanan & produk dikirim ke email ini. Gunakan email aktif yang bisa menerima pesan.", "Order and product details are sent here. Use an active email address.")}</p>

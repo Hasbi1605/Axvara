@@ -2,6 +2,7 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 import { NextRequest, NextResponse } from "next/server";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
+import { assertSameBuyerCode, buyerFieldsSchema, withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { createOrderWithStock, queryAll, queryFirst, StockReservationError, transitionPendingOrder } from "@/lib/db";
 import { assertOrderAccessConfigured, buyerOrderAccessMatches, requestOrderAccessCode, createBuyerAccessSession, createCheckoutCredentialGrant, requiresOrderAccessCode, newOrderAccessFailure, orderAccessDenied } from "@/lib/order-access";
 import { generateOrderCode as generateCode, aggregateQty } from "@/lib/security";
@@ -54,6 +55,7 @@ const schema = z.object({
     // (mis. GSuite min 50) tetap bisa dibeli dari web. Minimum per varian
     // ditegakkan ulang dari DB di bawah (JANGAN percaya angka client).
     qty: z.coerce.number().int().min(1).max(100),
+    buyer_fields: buyerFieldsSchema.optional(),
   }).refine((item) => item.product_id || item.slug)).min(1).max(20),
   // W3 Web crypto: opaque id nowpayments:<ticker kurasi> ONLY (server-mapped asset/
   // network; client MUST NOT send currency/network/price). Legacy manual
@@ -206,6 +208,13 @@ export async function POST(req: NextRequest) {
   if (!sameItems) {
     return NextResponse.json({ error: "Isi keranjang berubah setelah harga dikunci. Muat ulang checkout." }, { status: 409 });
   }
+  try {
+    assertSameBuyerCode(items);
+    for (const item of canonicalItems) {
+      const signed = quote.items.find(q => q.product_id === item.product_id && q.variant_id === item.variant_id);
+      if ((signed?.buyer_fields?.muse_invite_code ?? "") !== (item.buyer_fields?.muse_invite_code ?? "")) throw new Error("changed");
+    }
+  } catch { return NextResponse.json({ error: "Input pembeli berubah. Muat ulang checkout." }, { status: 409 }); }
 
   const previous = await queryFirst("SELECT code,quote_id,subtotal,status,payment_status,locale,buyer_access_version,buyer_access_format FROM orders WHERE quote_id=?", quote.quote_id);
   if (previous) return existingCheckoutResponse(previous);
@@ -501,6 +510,7 @@ export async function POST(req: NextRequest) {
       paymentAccount: isCryptoMethod ? "NOWPayments" : isGatewayMethod ? "Sekalipay" : (payment?.account_number ?? "QRIS"),
       proofUrl: proof_url,
       locale: quote.locale ?? "id",
+      adminPaymentTest: adminTest,
     });
   } catch (e: unknown) {
     if (e instanceof StockReservationError) {
@@ -833,7 +843,7 @@ export async function GET(req: NextRequest) {
         customer_wa: waMasked,
         customer_wa_full: undefined,
         customer_email: emailMasked,
-        items: JSON.parse(String(row.items || "[]")),
+        items: withoutPrivateBuyerData(JSON.parse(String(row.items || "[]"))),
         subtotal: row.subtotal,
         payment_method: row.payment_method,
         payment_account: row.payment_account,

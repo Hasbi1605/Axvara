@@ -1,5 +1,35 @@
 # PRD — AXVARA
 
+## Keputusan owner 10 November 2026: ChatGPT Private + Buff Muse (T2A/T2B lokal)
+
+- ChatGPT menjadi satu produk `chatgpt-tunvn`, nama publik ChatGPT Private,
+  varian Business/GPay 1 bulan. Identitas/harga/order lama dipertahankan;
+  produk split lama dipensiunkan. Supplier tidak disebut di copy pembeli.
+- Admin Produk dan TUNVN mengelola aktivasi produk bersama dan varian secara
+  konsisten; publikasi ulang tidak menghidupkan varian/produk yang dimatikan
+  atau menimpa copy/harga override. Awal tetap nonaktif.
+- Buff Muse baru per1B, jumlah1..30, satu kode per checkout; account Muse asli
+  tetap. Bundle5/10/20/30B lama nonaktif tanpa menghapus histori. Harga unit
+  ceilRp100 dari modalUSDT x FX x 1,40, lalu dikali jumlah, tanpa diskon30B.
+- Preset varian opsional `muse_invite_code` awal hanya Buff1B: trim, enam ASCII
+  alnum, case-preserving. Web meminta kode di checkout; Telegram di private
+  chat; WA menolak sebelum order/invoice. Quote/order mengikat nilai/config/
+  qty agregat; kode tidak masuk URL/log/email/daftar publik. Admin detail
+  authenticated dapat membaca snapshot; daftar order tetap redacted.
+- Hanya order baru eligible menyimpan opt-in server/version/kind/source-unit
+  immutable + snapshot total biaya USDT. Order lama/bundle lama/account Muse
+  tidak di-backfill. **T2B diimplementasikan lokal**: paid Market web/Telegram
+  eligible saja, tanpa invoice tes admin; receipt akun terenkripsi, pengiriman
+  lengkap lewat email/PIN6/c1/Telegram privat existing. Partial/bonus privat
+  untuk admin, tidak membeli ulang. Buff200/202 tetap processing hingga status
+  batch tepat done, lalu notis noncredential tanpa kode. Kasus ambigu/409 atau
+  gagal preflight perlu admin; tanpa refund/deposit/rebuy otomatis. Admin melihat
+  biaya/ID/status, reveal privat dan reconcile GET batch diketahui, bukan retry
+  beli. Maksimal1 link per invocation/cron existing40statement, tanpa env baru.
+  Upstream tanpa idempotency/max_price; race charge setelah preflight masih ada,
+  schema machine409 tidak dipublikasikan sehingga nol retry409 otomatis. Belum
+  publikasi/deployment/QA browser; tidak ada transaksi produksi untuk QA.
+
 ## Keputusan owner 9 November 2026: batas pembayaran supplier/manual
 - Revisi order Market baru web/Telegram: supplier WR/SK VA/e-wallet (`sekalipay_gateway:*`) 30 menit, crypto/QRIS 60 menit; manual dan keranjang campuran tetap 15 menit untuk semua metode. Yang menentukan supplier adalah metadata produk WR/SK, bukan mode pengiriman manual pada varian supplier. Telegram tetap hanya menawarkan QRIS + crypto; WhatsApp tetap mengikuti kontrak existing.
 - Jendela order bukan perpanjangan invoice: gateway tetap minimum deadline order/provider; crypto minimum deadline order/`valid_until` provider. Pada floating-rate NOWPayments, `expiration_estimate_date`/`expirationEstimateDate` adalah masa estimasi kurs, bukan expiry pembayaran: estimasi lewat tetap diterima bila timestamp valid. QRIS tetap 15 menit dengan maksimal satu renewal existing selama order belum expired. Order manual tidak dapat diperpanjang melewati 15 menit.

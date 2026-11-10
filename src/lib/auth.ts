@@ -6,6 +6,9 @@ import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
 
 export type CheckoutQuoteItem = {
+  buyer_field_key?: "muse_invite_code" | null;
+  buyer_fields?: { muse_invite_code?: string };
+  max_qty?: number | null;
   product_id: number;
   variant_id?: number;
   name: string;
@@ -318,6 +321,9 @@ export async function verifyIdleToken(idle: string): Promise<AdminIdlePayload | 
 const quoteItemSchema = z.object({
   product_id: z.number().int().safe().positive(), variant_id: z.number().int().safe().positive().optional(),
   name: z.string(), price: z.number().int().safe().nonnegative(), qty: z.number().int().min(1).max(100),
+  buyer_field_key: z.literal("muse_invite_code").nullable().optional(),
+  buyer_fields: z.object({ muse_invite_code: z.string().regex(/^[A-Za-z0-9]{6}$/).optional() }).strict().optional(),
+  max_qty: z.number().int().min(1).max(100).nullable().optional(),
   base_price: z.number().int().safe().nonnegative().optional(), applied_tier_min_qty: z.number().int().safe().min(2).optional(),
 });
 const quoteUsdSchema = z.object({

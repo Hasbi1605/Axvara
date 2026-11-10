@@ -54,6 +54,24 @@ beforeEach(() => { localStorage.clear(); useCart.setState({ items: [] }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("checkout + grosir", () => {
+  it("Muse invite input fetches only valid trimmed codes and always requotes changes", async () => {
+    const bodies = stubQuote(() => ({ body: ok([quoted(2,1500)]) }));
+    useCart.setState({ items:[line({ qty:2,price:1500,buyerFieldKey:"muse_invite_code",maxQty:30,bulkTiers:[] })] });
+    render(<CheckoutPage />);
+    const input = screen.getByLabelText(/Kode Invite Muse/) as HTMLInputElement;
+    expect(bodies).toHaveLength(0);
+    fireEvent.change(input,{ target:{ value:"bad" } });
+    expect(bodies).toHaveLength(0);
+    fireEvent.change(input,{ target:{ value:" Ab12cD " } });
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0].items[0]).toMatchObject({ buyer_fields:{ muse_invite_code:"Ab12cD" },qty:2 });
+    fireEvent.change(input,{ target:{ value:"XY1234" } });
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1].items[0]).toMatchObject({ buyer_fields:{ muse_invite_code:"XY1234" } });
+    fireEvent.change(input,{ target:{ value:"" } });
+    expect(bodies).toHaveLength(2);
+    expect(localStorage.getItem("axvara-cart") ?? "").not.toContain("Ab12cD");
+  });
   it("melewati ambang tier: expected_price tetap harga DASAR, tanpa dialog harga; ringkasan memakai satuan/hemat server", async () => {
     const bodies = stubQuote((body) => {
       const qty = body.items[0].qty;

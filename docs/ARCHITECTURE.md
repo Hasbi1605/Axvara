@@ -4255,7 +4255,98 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
-### 16.30 Supplier TUNVN PREHUB — setup awal tersembunyi, 9 November 2026 (lokal, belum aktif)
+### 16.33 TUNVN T2B: dispatch fenced — 10 November 2026 (implementasi lokal)
+
+- Migrasi0116 menambah `orders.supplier_purchase_disabled` (tes admin=1), tabel
+  `tunvn_order_links` UNIQUE(order_code,item_index), kind/source/qty/private code,
+  total `cost_usdt`/currency USDT, status pending/claimed/processing/completed/
+  needs_admin, attempt/due/lease/fence, provider group/batch/order IDs, encrypted
+  receipt + IV/http_status dan metadata numerik aman. `fulfillment_items` memiliki
+  `tunvn_link_id`; schema bootstrap sama. Tidak rebuild `order_item_costs`.
+- `buyer-fields.ts` memperluas opt-in versi1 dengan `cost_usdt` total dari mirror
+  account/per-unit Buff. Factory web/Telegram membaca ulang dan mengikat biaya
+  serta config dalam guard batch atomik. Stamp lama tanpa biaya tidak dipromosikan.
+  Factory tes admin membuang stamp dan menyimpan disable durable.
+- `tunvn/purchase.ts`: POST /api/buy USDT, /api/buff/order satu CODE QTY, /check
+  tanpa charge dan GET /status exactbatch, native AbortSignal timeout15detik
+  mencakup response body, redirect manual/tanpa retry. GET catalog20detik/saldo
+  15detik di client juga mencakup body. Tidak ada deposit/history auto-match.
+- `tunvn/orders.ts`: paid Market web/Telegram + snapshot/version/identitas tepat,
+  sumber manual non-WR/SK, varian aktif/preset/qty, item belum dimiliki supplier
+  lain. Preflight key enkripsi/harga/stock/fundable/saldo, lalu CAS lease90detik
+  dan request_sent_at durable sebelum fetch. Max1 link/invocation, klaim aktif
+  tidak dicuri. Fence tidak direset meski error/lease kedaluwarsa. HTTP409 hanya
+  dijelaskan dalam prosa docs resmi, tanpa kode mesin pasti: needs_admin/nol
+  automatic replay, bukan pencocokan pesan yang dikarang (ceiling3 tidak dilampaui).
+- Seluruh response pembelian terbaca dienkripsi sebelum parsing, juga partial/
+  ekstra/error/body invalid. Receipt durable+HTTP status dapat diproses ulang
+  tanpa POST. Account lengkap menyalin hanya qty dibeli ke snapshot generic;
+  parsial needs_admin, bonus tersimpan terenkripsi untuk admin, bukan dikirim
+  diam-diam. DB/crypto gagal setelah send tidak membuka fence. Tidak log body.
+- Buff200/202 hanya processing jika batch diketahui; poll1/batch/invocation
+  dengan due1menit, batch/order/code/qty/USDT harus tepat. done+is_done baru
+  completed; pending tetap, failed/needs_check needs_admin. Generic delivery
+  menangani notis noncredential idempoten tanpa invite/PIN; akun memakai email
+  PIN6/c1 dan private Telegram existing tanpa mengubah guard akses buyer.
+- Paid scheduling mengikat supplier sebelum generic item manual; stamped pending
+  tidak diklaim generic. `tunvn_orders` ditambahkan ke allowlist route lite dan
+  `mcp-worker/src/cron.ts` existing;40statement/job, tanpa cron/env/trigger baru.
+  Completion mengantrekan lagi generic job yang sudah terminal akibat review.
+- Route `/api/admin/tunvn/orders`: requireAdmin + no-store; GET100 metadata aman,
+  POST `{id,action:'reveal'|'reconcile'}` berbatas2KB. Reveal dekripsi privat dan
+  audit otorisasi POST existing; reconcile hanya poll batch Buff diketahui di
+  budget40, tanpa POST pembelian. Panel Ringkasan menampilkan status/cost/ID;
+  kasus tanpa ID diselesaikan admin di luar alur otomatis.
+- Batas upstream: tidak ada idempotency atau parameter max_price; preflight
+  bukan jaminan harga charge. Dana/stok/harga dapat berubah setelah read, biaya
+  aktual disimpan dalam metadata receipt; account charge lebih tinggi ditandai.
+  Tidak auto-refund/deposit. Snapshot saldo9November bukan bukti saldo sekarang.
+- Lokal/uncommitted, focused SQLite/workerd/tsc/lint saja; PM menjalankan full
+  suite/build/T3 browser fixture. Bukan bukti migrasi remote, deployment, atau
+  pengiriman/pembayaran produksi. Tidak membaca kredensial atau mengganti env.
+
+### 16.32 TUNVN T2A: katalog gabungan + input varian — 10 November 2026 (histori lokal)
+
+- Mengganti kontrak split/bundle pada snapshot16.30/16.31: migrasi0114 memindahkan
+  kedua varian dan mirror link ke `chatgpt-tunvn` (ChatGPT Private), ID/SKU/harga/
+  histori tetap; produk duplikat nonaktif saja. UPDATE merge aman diulang.
+- Migrasi0115 (ALTER dijalankan sekali oleh ledger migrasi existing) menambah
+  `product_variants.buyer_field_key TEXT NULL CHECK(NULL|'muse_invite_code')`,
+  `max_qty INTEGER NULL CHECK(1..100)` dan `telegram_carts.buyer_fields TEXT '{}'`.
+  Buff1B baru manual/nonaktif, input on/max30; bundle lama nonaktif/histori tetap.
+  Trigger menyamakan permintaan terbit dengan status varian akun dan menolak
+  reaktivasi bundle lama. Schema bootstrap memuat kontrak yang sama.
+- `publishTunvnCatalog` konvergen ke satu produk, mempertahankan copy, status,
+  override harga dan preset admin. Harga Buff per-unit40%/ceil100 lalu qty1..30;
+  account Muse dasar tidak berubah. Kedua API editor varian dan Products
+  menyimpan preset/cap; SKU TUNVN existing tidak boleh diubah dari editor.
+- Helper `src/lib/buyer-fields.ts`: validasi trim/enam ASCII alnum/case, satu
+  kode per checkout, perbandingan snapshot config, redaksi dan eligibility.
+  Web quote menandatangani `buyer_field_key`, `max_qty`, `buyer_fields`; create
+  order memeriksa nilai/qty dan `createOrderWithStock` membaca ulang config serta
+  memberi SQL guard identitas/config dalam batch reservasi. Qty duplikat
+  diagregasi sebelum validasi batas. Stamp client tidak dipercaya.
+- Telegram `handlers/buyer-input.ts` memakai pending action
+  `buyerinput:<product>:<variant>:<qty>` tanpa nilai kode dalam callback/URL;
+  private-only, CAS saat konsumsi, tidak mengganti anchor payment creating.
+  Cart menyimpan kode secara privat; approval digest mengikat config/nilai/cap;
+  `createChannelOrderAtomic` memberi guard dan snapshot yang sama. WA menolak
+  varian input-required sebelum order/invoice, bukan mengabaikan field.
+- `orders.items[].tunvn_eligibility` server-only: `{version:1,kind:'account'|
+  'buff',source_product_id:number|null,source_variant_id:number,
+  source_unit_b:number|null,quantity:number}`; account source86/83 + slug
+  canonical, Buff SKU1B + unit1 + preset + cap30. `source_variant_id` adalah ID
+  varian AXVARA immutable, bukan ID upstream tambahan. Buyer values berada di
+  `items[].buyer_fields.muse_invite_code`. Tidak ada backfill order/bundle lama.
+- API buyer status/lookup dan admin list meredaksi nilai/stamp. GET baru pada
+  `/api/admin/orders/[code]` membutuhkan `requireAdmin`, `Cache-Control:no-store`
+  dan mengirim `buyerInputs` untuk detail saja. Tidak masuk template email/notis.
+- Pada snapshot T2A, T2B masih pending dan fulfillment manual (diganti §16.33).
+  Tidak ada env/secret/payment rail baru. PM
+  menjalankan final full suite/build dan T3 browser fixture; T2A bukan bukti
+  live, pembayaran/dispatch produksi, atau migrasi remote telah diterapkan.
+
+### 16.30 Supplier TUNVN PREHUB — setup awal tersembunyi, 9 November 2026 (histori)
 
 - Fondasi supplier ketiga dari reseller Telegram TUNVN PREHUB atas instruksi owner "setup dulu, jangan tampilkan produknya". Tidak ada route/UI/cron/checkout/Telegram yang membaca data TUNVN; tidak ada env Pages yang dipasang.
 - Klien `src/lib/tunvn/client.ts` (edge, `fetchWithTimeout`): hanya GET read-only `/api/products` + `/api/balance` ke `TUNVN_BASE_URL` (default `https://tunvnmmo.duckdns.org`, wajib HTTPS) dengan header `X-API-Key` dari `TUNVN_API_KEY`; tanpa retry, 401/403 → `config`, 429/5xx/timeout/JSON rusak → `ambiguous`. `POST /api/buy`/`/api/deposit`/Buff Token SENGAJA belum diimplementasikan.
@@ -4263,7 +4354,7 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - Mirror `tunvn_products` (migrasi `0110_tunvn_hidden_catalog.sql`, identik `drizzle/schema.sql`): ID upstream unik, harga VND/USDT + stok + diskon bertingkat apa adanya (tanpa konversi kurs/margin), `visible` selalu 0 dari sync. `syncTunvnCatalog` (`src/lib/tunvn/sync.ts`) meniru throttle CAS + upsert chunk `json_each` Games; SENGAJA belum dipanggil pemanggil mana pun.
 - Probe read-only 2026-11-09 (bukan deployment): docs terbaca, 19 produk, kurs 25.494 VND/USDT, saldo akun 0 VND / 0,0099 USDT. Aturan lengkap: `docs/agent-rules/tunvn.md`.
 
-### 16.31 TUNVN: katalog ChatGPT + Buff Muse + panel admin — 9 November 2026
+### 16.31 TUNVN: katalog ChatGPT + Buff Muse + panel admin — 9 November 2026 (histori)
 
 - Instruksi owner menggantikan batas 16.30 HANYA untuk scope ini: dua produk ChatGPT TUNVN diterbitkan dan Buff Token menjadi varian produk Muse manual; produk TUNVN lain tetap tersembunyi.
 - Markup disetujui: ChatGPT 35%, Buff 40% (`src/lib/tunvn/pricing.ts`: ceil Rp100 dari modal USDT × kurs × (1+markup)). Kurs acuan 9 Nov 2026 Rp18.086/USDT; publikasi ulang memakai FX snapshot AXVARA (`loadCurrentFxSnapshot`, fail-closed). Harga awal: Business Rp112.400, GPay Rp121.200, Buff 5B/10B/20B/30B Rp7.500/Rp14.900/Rp29.800/Rp44.700.
