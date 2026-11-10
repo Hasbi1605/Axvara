@@ -1,5 +1,22 @@
 # PRD — AXVARA
 
+## Copy Buff Muse 10 November 2026: S&K dan panduan AXVARA (produksi)
+
+- Varian Buff per1B memiliki S&K dan cara penggunaan ID/EN melalui override
+  admin existing, terpisah dari copy akun Muse asli. Bukan pembelian akun baru.
+- Ketentuan: 1 unit = 1B token, jumlah1..30, satu kode per checkout; kode6
+  huruf/angka disalin persis termasuk kapitalisasi. Periksa kode/jumlah sebelum
+  membayar; tidak perlu menyerahkan password/OTP Muse. Harga mengikuti checkout.
+- Panduan: masuk akun tujuan di Muse, buka Invite friends / Undang teman,
+  salin kode6 karakter, pilih Buff per1B beserta jumlah, tempel di Kode Invite
+  Muse (bukan email), periksa total dan bayar. Contoh jumlah20 = 20B.
+- Status dipantau melalui Lacak Pesanan AXVARA; setelah selesai periksa saldo
+  token di Muse. Kendala menu/kredit token menghubungi dukungan AXVARA dengan
+  nomor pesanan. Tidak menjanjikan selesai instan, garansi akun, masa berlaku
+  token, diskon30B, saldo/harga USDT supplier, atau dukungan format daftar bot.
+- GET katalog dan Chromium desktop/mobile membuktikan copy tampil ID/EN dan
+  accordion mobile berfungsi. Tidak membuat order/pembayaran untuk verifikasi.
+
 ## Aktivasi owner 10 November 2026: Buff Muse saja (produksi terverifikasi)
 
 - Buff Muse per1B di produk Muse existing sudah aktif; ChatGPT Private

@@ -1,5 +1,16 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Revisi owner 10 November 2026: S&K dan penggunaan Buff versi AXVARA
+
+- Copy ID/EN varian279 `TUNVN-BUFF-1B` diisi melalui kolom `admin_terms` /
+  `admin_activation` (+ EN), fingerprint non-WR/SK kosong. Jangan menimpa
+  copy/garansi akun Muse asli248; sync katalog tetap mempertahankan override.
+- Rujukan PRD bagian Copy Buff Muse: Invite friends, kode6 case-preserving,
+  jumlah1..30, satu kode/checkout, kolom Kode Invite Muse, Lacak Pesanan dan
+  dukungan AXVARA. Tidak menyalin promo30B, harga/saldo USDT, daftar kode atau
+  perintah bot supplier; tidak mengarang SLA/refund/garansi/masa berlaku token.
+- Harga, stok, saklar aktif dan ChatGPT tidak diubah dalam pengisian copy.
+
 ## Revisi owner 10 November 2026: aktifkan hanya Buff Muse (produksi)
 
 - Owner mengizinkan hanya `TUNVN-BUFF-1B` aktif; ChatGPT Business/GPay tetap
