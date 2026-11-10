@@ -1,5 +1,17 @@
 # PRD — AXVARA
 
+## Aktivasi owner 10 November 2026: Buff Muse saja (produksi terverifikasi)
+
+- Buff Muse per1B di produk Muse existing sudah aktif; ChatGPT Private
+  Business/GPay tetap nonaktif untuk nanti. Akun Muse asli dan bundle retired
+  tidak diubah. Snapshot harga Rp1.500/unit, jumlah1..30B untuk satu kode.
+- Verifikasi D1 + GET katalog publik: Buff279 aktif, input `muse_invite_code`,
+  max_qty30, bundle lama tidak muncul; ChatGPT Private404. Agregat parent Muse
+  dihitung ulang, tanpa mengganti harga/stok/modal varian atau markup admin.
+- Probe supplier tanpa charge HTTP502; snapshot terakhir dipertahankan, bukan
+  bukti ketersediaan upstream/saldo/fulfillment. Tidak membuat pesanan untuk QA;
+  aktivasi katalog ini bukan verifikasi deployment cron auto-sync sebelumnya.
+
 ## Revisi owner 10 November 2026: sinkronisasi TUNVN berkala seperti WR/SK
 
 - Job katalog terpisah setiap3menit pada cron existing. ChatGPT Business/GPay

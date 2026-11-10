@@ -1,5 +1,19 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Revisi owner 10 November 2026: aktifkan hanya Buff Muse (produksi)
+
+- Owner mengizinkan hanya `TUNVN-BUFF-1B` aktif; ChatGPT Business/GPay tetap
+  nonaktif sampai instruksi berikutnya. Bundle5/10/20/30B tetap nonaktif dan
+  akun Muse asli tidak diubah. Keputusan ini mengganti batas nonaktif Buff1B.
+- D1 varian279 pada produk112 diaktifkan, agregat parent Muse dihitung ulang;
+  harga/modal/markup/stok varian tidak diubah. Snapshot Rp1.500/unit, qty1..30,
+  preset `muse_invite_code`, stok-1 = layanan, bukan stok token fisik.
+- Terverifikasi GET katalog publik Muse200 memuat hanya varian248+279,
+  Buff aktif dengan preset/max_qty; ChatGPT Private404. Probe tanpa charge
+  `AXVARA 1` mendapat HTTP502, snapshot dipertahankan. Bukan bukti supplier sehat,
+  saldo cukup, fulfillment berhasil, atau cron auto-sync sudah terdeploy.
+- Tanpa invoice/pembelian/notifikasi eksternal, perubahan env atau deploy manual.
+
 ## Revisi owner 10 November 2026: cron katalog otomatis (lokal)
 
 - Job `tunvn_catalog` terpisah dari order, Worker existing setiap3menit/budget40;
