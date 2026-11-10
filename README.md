@@ -1,5 +1,15 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+TUNVN auto-sync10November2026 (lokal, publikasi CI): job `tunvn_catalog`
+memakai Worker cron existing setiap3menit, terpisah dari `tunvn_orders`.
+Stok/modal ChatGPT dari API, harga Buff dari probe tanpa charge `AXVARA 1`,
+FX segar dan markup tersimpan; harga manual/copy/saklar admin tetap. Buff fundable
+false menjadi stok0, true stok-1 (layanan, bukan stok akun). Error mempertahankan
+snapshot terakhir dan memberi503, tanpa fallback modal statis. Lease90detik
+mencegah sync tumpang tindih dan factory order TUNVN menolak snapshot parsial.
+Budget40 tetap; tidak menambah trigger/env/VPS atau membeli untuk QA. Berkala,
+bukan realtime instan; deployment belum diverifikasi. Detail ARCHITECTURE16.34.
+
 Revisi Buff10November2026: editor Produk dan Varian hanya menawarkan Buff per1B;
 bundle5/10/20/30B dihapus dari daftar edit. Baris nonaktif tetap menjadi arsip
 relasi pesanan lama, tidak dihapus fisik. Akun Muse asli dan status Buff1B tidak

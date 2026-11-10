@@ -1,13 +1,16 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, createBudgetedDatabase } from "@/lib/db-access";
 import {
   TUNVN_BUFF_COST_USDT_PER_B, TUNVN_BUFF_MARKUP_PERCENT, TUNVN_CHATGPT_MARKUP_PERCENT,
   tunvnBuffSellPriceIdr, tunvnChatGptSellPriceIdr,
 } from "@/lib/tunvn/pricing";
 import { publishTunvnCatalog, TUNVN_CHATGPT_IMAGE_URL } from "@/lib/tunvn/catalog";
 import { createD1Fixture } from "./helpers/d1-fixture";
+import { NextRequest } from "next/server";
+
+vi.mock("@/lib/auth",()=>({requireAdmin:vi.fn(async()=>({email:"fixture@example.test"}))}));
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite");
 const RATE = 18_086;
@@ -27,9 +30,10 @@ beforeEach(() => {
   vi.stubEnv("TUNVN_API_KEY", "test-key-not-real");
   vi.stubEnv("TUNVN_BASE_URL", "https://tunvn.test");
   fx.sql.exec("INSERT INTO products(name,slug,price,stock,source) VALUES('Muse AI 1 Miliar Token','muse-ai-1-miliar-token',16000,0,'manual')");
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-    success: true, products: [upstreamProduct(86), upstreamProduct(83)], usdt_vnd: 25_496,
-  }), { status: 200 })));
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(String(url).endsWith("/buff/check") ? {
+    success: true, gross_cost_vnd: 390, sell_price_vnd: 390, sell_price_usdt: 0.0588, fundable: true,
+    orders_breakdown: [{ invite_code: "AXVARA", quantity_b: 1, valid: true }],
+  } : { success: true, products: [upstreamProduct(86), upstreamProduct(83)], usdt_vnd: 25_496 })));
 });
 afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
@@ -67,6 +71,83 @@ describe("0112 tunvn catalog publish migration", () => {
 });
 
 describe("publishTunvnCatalog", () => {
+  const supplier = (products=[upstreamProduct(86),upstreamProduct(83)],cost=0.0588,fundable=true) => {
+    vi.stubGlobal("fetch", vi.fn(async (url:string) => Response.json(String(url).endsWith("/buff/check") ? {
+      success:true,gross_cost_vnd:390,sell_price_vnd:390,sell_price_usdt:cost,fundable,
+      orders_breakdown:[{invite_code:"AXVARA",quantity_b:1,valid:true}],
+    } : {success:true,products})));
+  };
+  it("refreshes upstream stock, live unit costs and prices within the cron40 budget without changing admin gates/copy",async () => {
+    await publishTunvnCatalog(db(),RATE);
+    fx.sql.exec("UPDATE products SET is_active=1,name='Admin copy' WHERE slug='chatgpt-tunvn'; UPDATE product_variants SET is_active=1 WHERE sku IN ('TUNVN-86','TUNVN-BUFF-1B')");
+    supplier([upstreamProduct(86,{price_usdt:6,stock:3}),upstreamProduct(83,{stock:0})],0.1);
+    const budget=createBudgetedDatabase(40,2,fx.db);
+    expect(await publishTunvnCatalog(budget.access,20000,{force:false,now:Date.now()+180_000})).toMatchObject({ok:true});
+    expect(budget.used).toBeLessThanOrEqual(38);
+    expect(fx.sql.prepare("SELECT price,stock,is_active FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({price:162000,stock:3,is_active:1});
+    expect(fx.sql.prepare("SELECT price,stock,tunvn_cost_usdt,is_active FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get()).toEqual({price:2800,stock:-1,tunvn_cost_usdt:0.1,is_active:1});
+    expect(fx.sql.prepare("SELECT stock,is_active FROM product_variants WHERE sku='TUNVN-83'").get()).toEqual({stock:0,is_active:0});
+    expect(fx.sql.prepare("SELECT name,is_active,price,stock FROM products WHERE slug='chatgpt-tunvn'").get()).toEqual({name:"Admin copy",is_active:1,price:162000,stock:3});
+    expect(fx.sql.prepare("SELECT stock FROM products WHERE slug='muse-ai-1-miliar-token'").get()).toEqual({stock:-1});
+    const fetcher=vi.mocked(fetch); fetcher.mockClear();
+    expect(await publishTunvnCatalog(db(),20000,{force:false,now:Date.now()+180_001})).toEqual({skipped:"throttled"});
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("sets removed accounts and unfundable Buff to zero and restores availability without reactivating variants",async () => {
+    await publishTunvnCatalog(db(),RATE);
+    supplier([upstreamProduct(83)],0.08,false);
+    await publishTunvnCatalog(db(),RATE);
+    expect(fx.sql.prepare("SELECT stock,is_active FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({stock:0,is_active:0});
+    expect(fx.sql.prepare("SELECT stock,is_active,tunvn_cost_usdt FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get()).toEqual({stock:0,is_active:0,tunvn_cost_usdt:0.08});
+    supplier(); await publishTunvnCatalog(db(),RATE);
+    expect(fx.sql.prepare("SELECT stock,is_active FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get()).toEqual({stock:-1,is_active:0});
+  });
+  it("retains manual price/markup on live updates and uses saved live cost when admin changes markup",async () => {
+    await publishTunvnCatalog(db(),RATE);
+    fx.sql.exec("UPDATE product_variants SET tunvn_admin_price_idr=9900,price=9900,tunvn_markup_percent=60 WHERE sku='TUNVN-BUFF-1B'");
+    supplier(undefined,0.1); await publishTunvnCatalog(db(),20000);
+    expect(fx.sql.prepare("SELECT price,tunvn_cost_usdt,tunvn_markup_percent FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get()).toEqual({price:9900,tunvn_cost_usdt:0.1,tunvn_markup_percent:60});
+    const {PATCH}=await import("@/app/api/admin/tunvn/buff/[sku]/route");
+    const response=await PATCH(new NextRequest("http://localhost/api/admin/tunvn/buff/TUNVN-BUFF-1B",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({admin_price_idr:null,markup_percent:50})}),{params:Promise.resolve({sku:"TUNVN-BUFF-1B"})});
+    expect(response.status).toBe(200);
+    expect(fx.sql.prepare("SELECT price FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get()).toEqual({price:3000});
+  });
+  it("does not fabricate stock or reset Buff price on unavailable/invalid probe",async () => {
+    await publishTunvnCatalog(db(),RATE);
+    const before=fx.sql.prepare("SELECT * FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get();
+    const real=fetch;
+    vi.stubGlobal("fetch",vi.fn(async (url:string) => String(url).endsWith("/buff/check") ? Response.json({success:true,gross_cost_vnd:1,sell_price_vnd:1,sell_price_usdt:99,fundable:true,orders_breakdown:[]}) : real(url)));
+    expect(await publishTunvnCatalog(db(),20000)).toEqual({ok:false,error:"buff_api_error"});
+    expect(fx.sql.prepare("SELECT * FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get()).toEqual(before);
+  });
+  it("refuses an oversized mirror before partial writes consume the reserved publication budget",async () => {
+    supplier(Array.from({length:1000},(_,i)=>upstreamProduct(i+100)));
+    const budget=createBudgetedDatabase(40,2,fx.db);
+    expect(await publishTunvnCatalog(budget.access,RATE)).toEqual({ok:false,error:"catalog_budget_exceeded"});
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM tunvn_products").get()).toEqual({n:0});
+    expect(budget.used).toBe(4);
+  });
+  it("a forced admin refresh cannot overtake a running catalog projection",async () => {
+    const real=fetch;
+    let release!:()=>void;
+    const gate=new Promise<void>(resolve=>{release=resolve;});
+    vi.stubGlobal("fetch",vi.fn(async(url:string)=>{await gate; return real(url);}));
+    const first=publishTunvnCatalog(db(),RATE);
+    await vi.waitFor(()=>expect(fetch).toHaveBeenCalledTimes(1));
+    expect(await publishTunvnCatalog(db(),RATE)).toEqual({skipped:"claimed_elsewhere"});
+    release(); expect(await first).toMatchObject({ok:true});
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_lease'").get()).toBeUndefined();
+  });
+  it("does not overwrite a manual price that changes between read and upsert",async () => {
+    await publishTunvnCatalog(db(),RATE);
+    const access=db(); const write=access.execRun;
+    access.execRun=async(sql,...params)=>{
+      if(sql.includes("INSERT INTO product_variants")) fx.sql.exec("UPDATE product_variants SET price=12345,tunvn_admin_price_idr=12345 WHERE sku IN ('TUNVN-86','TUNVN-BUFF-1B')");
+      return write(sql,...params);
+    };
+    expect(await publishTunvnCatalog(access,20000)).toMatchObject({ok:true});
+    expect(fx.sql.prepare("SELECT price FROM product_variants WHERE sku IN ('TUNVN-86','TUNVN-BUFF-1B')").all()).toEqual([{price:12345},{price:12345}]);
+  });
   it("retains sibling deactivation, base Muse and manual account overrides through publication",async () => {
     await publishTunvnCatalog(db(),RATE);
     fx.sql.exec("UPDATE products SET is_active=1 WHERE slug='chatgpt-tunvn'; UPDATE product_variants SET is_active=1 WHERE sku='TUNVN-86'; UPDATE product_variants SET is_active=0 WHERE sku='TUNVN-83'; UPDATE product_variants SET price=123400,tunvn_admin_price_idr=123400 WHERE sku='TUNVN-86'");

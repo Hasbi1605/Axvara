@@ -1,5 +1,21 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Revisi owner 10 November 2026: cron katalog otomatis (lokal)
+
+- Job `tunvn_catalog` terpisah dari order, Worker existing setiap3menit/budget40;
+  gate/env existing, FX segar wajib. Berlaku melalui CI, belum bukti live.
+- Mirror stok/modal ChatGPT dan proyeksi jual diperbarui; Buff memakai probe
+  tanpa charge `AXVARA 1` dengan validasi breakdown tepat, bukan harga statis atau
+  membagi probe20B. Fundable false stok0, true -1. API gagal bukan stoknol:
+  snapshot terakhir tetap, run503/health tidak dicatat sukses.
+- Copy/saklar/harga override/markup admin dan akun Muse asli tetap milik admin;
+  tidak aktifkan produk/bundle. CAS melindungi harga manual yang diedit saat sync.
+- Lease90detik via store_settings mencegah publikasi tumpang tindih; guard order
+  TUNVN web/Telegram menolak saat lease aktif untuk menghindari snapshot separuh.
+  Error katalog invalid/kosong dan budget tidak cukup tidak memulai sweep parsial.
+- Tanpa secret/env/migrasi/VPS/trigger baru atau pembelian untuk QA. Jangan klaim
+  realtime instan; nilai masih dapat berubah antar tick, preflight paid tetap.
+
 ## Revisi owner 10 November 2026: hapus bundle Buff lama dari editor
 
 - Hanya Buff per1B yang ditawarkan; bundle5/10/20/30B tidak muncul lagi pada

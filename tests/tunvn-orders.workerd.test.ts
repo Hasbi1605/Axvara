@@ -2,6 +2,52 @@ import { readFileSync } from "node:fs";
 import { expect,it } from "vitest";
 import { build } from "esbuild";
 import { Miniflare } from "miniflare";
+import { createD1Fixture } from "./helpers/d1-fixture";
+
+it("workerd catalog cron uses native D1 upserts/lease under40 statements and never activates products",async()=>{
+  const compiled=await build({stdin:{resolveDir:process.cwd(),loader:"ts",contents:`
+    import {publishTunvnCatalog} from './src/lib/tunvn/catalog';
+    import {createBudgetedDatabase} from './src/lib/db-access';
+    export default {async fetch(req,env){
+      let reads=0; const body=await req.json();
+      globalThis.fetch=async(url,init)=>{
+        reads++; const path=new URL(url).pathname;
+        if(path==='/api/products')return Response.json({success:true,products:[{id:86,name:'Business',price_vnd:50000,price_usdt:2,stock:7},{id:83,name:'GPay',price_vnd:50000,price_usdt:3,stock:4}]});
+        if(path==='/api/buff/check' && JSON.parse(init.body).orders_text==='AXVARA 1')return Response.json({success:true,fundable:body.fundable,gross_cost_vnd:390,sell_price_vnd:390,sell_price_usdt:0.1,orders_breakdown:[{invite_code:'AXVARA',quantity_b:1,valid:true}]});
+        throw new Error('unexpected supplier mutation');
+      };
+      const budgets=[];
+      const results=await Promise.all(Array.from({length:3},async()=>{
+        const b=createBudgetedDatabase(40,2,env.DB);budgets.push(b);
+        return publishTunvnCatalog(b.access,20000,{force:false,now:body.now});
+      }));
+      return Response.json({reads,results,used:budgets.map(b=>b.used)});
+    }}
+  `},bundle:true,write:false,format:"esm",platform:"neutral",target:"es2022",define:{"process.env":JSON.stringify({TUNVN_ENABLED:"true",TUNVN_SYNC_ENABLED:"true",TUNVN_API_KEY:"fixture-only",TUNVN_BASE_URL:"https://supplier.test"})}});
+  const runtime=new Miniflare({modules:true,compatibilityDate:"2026-08-06",compatibilityFlags:["nodejs_compat"],script:compiled.outputFiles[0].text,d1Databases:["DB"]});
+  const fixture=createD1Fixture();
+  try {
+    const db=await runtime.getD1Database("DB");
+    const schema=fixture.sql.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('categories','products','product_variants','store_settings','tunvn_products')").all() as {sql:string}[];
+    await db.batch(schema.map(row=>db.prepare(row.sql)));
+    await db.batch([
+      db.prepare("INSERT INTO categories(id,name,slug) VALUES(1,'AI','ai-chatbot')"),
+      db.prepare("INSERT INTO products(id,name,slug,price) VALUES(1,'Muse','muse-ai-1-miliar-token',16000)"),
+    ]);
+    const call=async(now:number,fundable=true)=>{
+      const response=await runtime.dispatchFetch("https://fixture.test/catalog",{method:"POST",body:JSON.stringify({now,fundable})});
+      const result=await response.json() as {reads:number;results:Record<string,unknown>[];used:number[]};
+      expect(result.used.every(n=>n<=38)).toBe(true); return result;
+    };
+    const result=await call(1_800_000_000_000);
+    expect(result.reads).toBe(2); expect(result.results.filter(row=>row.ok===true)).toHaveLength(1);
+    expect(await db.prepare("SELECT price,stock,is_active,tunvn_cost_usdt FROM product_variants WHERE sku='TUNVN-BUFF-1B'").first()).toMatchObject({price:2800,stock:-1,is_active:0,tunvn_cost_usdt:0.1});
+    expect(await db.prepare("SELECT price,stock,is_active FROM product_variants WHERE sku='TUNVN-86'").first()).toMatchObject({price:54000,stock:7,is_active:0});
+    expect((await call(1_800_000_001_000)).reads).toBe(0);
+    expect((await call(1_800_000_180_000,false)).reads).toBe(2);
+    expect(await db.prepare("SELECT stock,is_active FROM product_variants WHERE sku='TUNVN-BUFF-1B'").first()).toMatchObject({stock:0,is_active:0});
+  } finally {fixture.close();await runtime.dispose();}
+},30000);
 
 it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and polls Buff202 without rebuy",async()=>{
   const compiled=await build({stdin:{resolveDir:process.cwd(),loader:"ts",contents:`

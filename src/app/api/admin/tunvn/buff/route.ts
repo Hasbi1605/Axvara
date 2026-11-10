@@ -22,12 +22,12 @@ export async function GET(request: NextRequest) {
     let probe: unknown = null;
     let probe_error: string | null = null;
     if (isTunvnConfigured()) {
-      const checked = await checkTunvnBuff(20);
+      const checked = await checkTunvnBuff(1);
       if (checked.kind === "ok") {
         probe = {
-          quantity_b: 20,
+          quantity_b: 1,
           sell_price_usdt: checked.sell_price_usdt,
-          cost_per_b_usdt: checked.sell_price_usdt / 20,
+          cost_per_b_usdt: checked.sell_price_usdt,
           fundable: checked.fundable,
         };
       } else {

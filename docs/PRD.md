@@ -1,5 +1,20 @@
 # PRD — AXVARA
 
+## Revisi owner 10 November 2026: sinkronisasi TUNVN berkala seperti WR/SK
+
+- Job katalog terpisah setiap3menit pada cron existing. ChatGPT Business/GPay
+  mengikuti stok/modal API, harga jual memakai FX segar dan markup admin.
+  Buff per1B memakai harga probe unit1 langsung; fundable false stok0, pulih
+  stok-1, tanpa mengarang stok token fisik atau diskon jumlah.
+- Saklar aktif, nama/copy, harga manual dan Muse account asli tidak ditimpa.
+  Produk/bundle lain tidak diaktifkan. Produk supplier hilang pada katalog penuh
+  valid menjadi stok0; API kosong/rusak/timeout bukan bukti stok habis. Kegagalan
+  menyisakan snapshot terakhir dan health503, bukan sukses palsu atau harga statis.
+- Lease90detik mencegah dua publikasi bersamaan; order TUNVN baru web/Telegram
+  ditolak sementara saat publikasi berjalan agar modal/harga tidak tersnapshot
+  separuh. Tidak mengubah order lama/pembayaran/dispatch. Preflight paid tetap.
+- Lokal/tes fixture, bukan transaksi produksi; belum ada bukti deployment.
+
 ## Keputusan owner 10 November 2026: ChatGPT Private + Buff Muse (T2A/T2B lokal)
 
 - Revisi owner berikutnya: hapus pilihan bundle Buff5/10/20/30B juga dari kedua

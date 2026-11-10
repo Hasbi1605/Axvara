@@ -42,10 +42,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const markup = body.markup_percent !== undefined ? body.markup_percent : Number(variant.tunvn_markup_percent ?? 40);
     const adminPrice = body.admin_price_idr !== undefined ? body.admin_price_idr : (variant.tunvn_admin_price_idr ?? null);
     const fx = Number(variant.tunvn_fx_idr_per_usdt ?? 0);
-    const hasFx = Number.isFinite(fx) && fx > 0 && quantityB >= 1;
+    const cost = Number(variant.tunvn_cost_usdt ?? 0);
+    const hasFx = Number.isFinite(fx) && fx > 0 && quantityB >= 1 && Number.isFinite(cost) && cost > 0;
     const sell = adminPrice !== null && Number(adminPrice) > 0
       ? Number(adminPrice)
-      : hasFx ? tunvnBuffSellPriceIdr(quantityB, fx, { markupPercent: markup }) : null;
+      : hasFx ? tunvnBuffSellPriceIdr(quantityB, fx, { markupPercent: markup, costUsdtPerB: cost / quantityB }) : null;
     if (sell === null && body.admin_price_idr === null) {
       return NextResponse.json({ error: "fx_missing", message: "Kurs tersimpan belum ada; jalankan Publikasi sekali atau isi harga manual." }, { status: 409 });
     }

@@ -119,9 +119,9 @@ describe("TUNVN parsers", () => {
 
 describe("syncTunvnCatalog (hidden mirror)", () => {
   it("inserts rows always hidden and never touches Market tables", async () => {
-    vi.stubGlobal("fetch", productsResponse([product(85), product(69, { price_vnd: 39_000, stock: 62 }), { id: "bad" }]));
+    vi.stubGlobal("fetch", productsResponse([product(85), product(69, { price_vnd: 39_000, stock: 62 })]));
     const r = await syncTunvnCatalog(db(), { now: T0 });
-    expect(r).toMatchObject({ ok: true, fetched: 2, upserted: 2, invalid: 1, usdt_vnd: 25_494 });
+    expect(r).toMatchObject({ ok: true, fetched: 2, upserted: 2, invalid: 0, usdt_vnd: 25_494 });
     expect(row(85)).toMatchObject({ name: "Produk 85", price_vnd: 50_000, stock: 7, visible: 0 });
     expect(row(85)!.synced_at).toBe(new Date(T0).toISOString());
     expect(fx.sql.prepare("SELECT COUNT(*) c FROM products").get()).toEqual({ c: 0 });
@@ -158,6 +158,13 @@ describe("syncTunvnCatalog (hidden mirror)", () => {
     vi.stubGlobal("fetch", productsResponse([]));
     expect(await syncTunvnCatalog(db(), { now: T0 + 10 * 60_000 })).toEqual({ ok: false, error: "empty_tunvn_catalog" });
     expect(row(85)).toMatchObject({ stock: 7 });
+  });
+  it("rejects a partial malformed catalog without zeroing or updating existing stock", async () => {
+    vi.stubGlobal("fetch", productsResponse([product(85),product(69)]));
+    await syncTunvnCatalog(db(), { now: T0 });
+    vi.stubGlobal("fetch", productsResponse([product(85,{stock:99}),{id:"bad"}]));
+    expect(await syncTunvnCatalog(db(), { now:T0+180_000 })).toEqual({ok:false,error:"invalid_tunvn_catalog"});
+    expect(row(85)).toMatchObject({stock:7}); expect(row(69)).toMatchObject({stock:7});
   });
 
   it("classifies 401 as config and never retries, so no key-guessing loop", async () => {

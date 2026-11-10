@@ -100,7 +100,8 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                 AND pv.buyer_field_key IS ? AND pv.max_qty IS ?
                 AND (pv.max_qty IS NULL OR ? <= pv.max_qty)
                  AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ?
-                 AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
+                  AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
+                  ${String(bulkById.get(item.variant_id)?.sku ?? "").startsWith("TUNVN-") ? "AND NOT EXISTS (SELECT 1 FROM store_settings WHERE key='tunvn_catalog_lease' AND json_extract(value,'$.until') > unixepoch('now')*1000)" : ""}
                 -- WR3 Jaspay: cap wajib ada dan >= qty agregat varian ini;
                 -- cap hilang/invalid = tolak (fail-closed), dicek atomik di
                 -- batch yang sama dengan reservasi (tahan race perubahan cap).

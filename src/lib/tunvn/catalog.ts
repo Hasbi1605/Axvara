@@ -1,10 +1,10 @@
 // Publishing never activates existing products or overwrites admin copy/state.
 
 import type { DatabaseAccess } from "@/lib/db-access";
-import { isTunvnSyncEnabled } from "./client";
+import { checkTunvnBuff, isTunvnSyncEnabled } from "./client";
 import { syncTunvnCatalog } from "./sync";
 import {
-  TUNVN_BUFF_COST_USDT_PER_B, TUNVN_BUFF_VARIANT_B,
+  TUNVN_BUFF_VARIANT_B,
   tunvnBuffSellPriceIdr, tunvnChatGptSellPriceIdr,
 } from "./pricing";
 
@@ -21,7 +21,7 @@ export const tunvnDefaultDescription = (label: string) =>
   `${label}. Pilih paket Business atau GPay; garansi mengikuti paket. Stok dan harga dapat berubah.`;
 
 export type TunvnPublishResult =
-  | { skipped: "not_configured" }
+  | { skipped: "not_configured" | "throttled" | "claimed_elsewhere" }
   | { ok: false; error: string }
   | { ok: true; chatgpt: number; buff_variants: number; idr_per_usdt: number; activated: number };
 
@@ -34,13 +34,19 @@ type MirrorRow = Record<string, unknown> & {
 
 /** Terbitkan/perbarui katalog TUNVN dari mirror tersinkron + FX saat ini.
  *  Tidak pernah mengaktifkan produk yang tidak diminta admin. */
-export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number): Promise<TunvnPublishResult> {
+export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number, opts: { force?: boolean; now?: number } = { force: true }): Promise<TunvnPublishResult> {
   if (!isTunvnSyncEnabled()) return { skipped: "not_configured" };
   if (!Number.isFinite(idrPerUsdt) || idrPerUsdt <= 0) return { ok: false, error: "fx_unavailable" };
 
-  const synced = await syncTunvnCatalog(db, { force: true });
+  const now = opts.now ?? Date.now();
+  const lease = JSON.stringify({ until: now + 90_000, owner: crypto.randomUUID() });
+  const claimed = await db.execRun(`INSERT INTO store_settings(key,value) VALUES('tunvn_catalog_lease',?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(store_settings.value,'$.until')<=?`, lease, now);
+  if (claimed.changes !== 1) return { skipped: "claimed_elsewhere" };
+  try {
+  const synced = await syncTunvnCatalog(db, { ...opts, reserveStatements: 28 });
   if ("ok" in synced && synced.ok === false) return { ok: false, error: synced.error };
-  if (!("ok" in synced) || synced.ok !== true) return { ok: false, error: "sync_not_run" };
+  if ("skipped" in synced) return synced;
 
   const category = await db.queryFirst("SELECT id FROM categories WHERE slug='ai-chatbot'");
   const categoryId = category ? Number(category.id) : null;
@@ -52,7 +58,10 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
     const mirror = await db.queryFirst(
       "SELECT * FROM tunvn_products WHERE supplier_product_id=?", spec.supplier_product_id,
     ) as MirrorRow | null;
-    if (!mirror || mirror.price_usdt === null || Number(mirror.price_usdt) <= 0) continue;
+    if (!mirror || mirror.price_usdt === null || Number(mirror.price_usdt) <= 0) {
+      await db.execRun("UPDATE product_variants SET stock=0 WHERE sku=?", `TUNVN-${spec.supplier_product_id}`);
+      continue;
+    }
     const markup = Number(mirror.markup_percent ?? 35);
     const sku = `TUNVN-${spec.supplier_product_id}`;
     const existingVariant = await db.queryFirst("SELECT tunvn_admin_price_idr FROM product_variants WHERE sku=?", sku);
@@ -79,27 +88,32 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order)
        VALUES (?,?,?,?,?, 'manual', ?, 1)
         ON CONFLICT(sku) DO UPDATE SET product_id=excluded.product_id, price=excluded.price, stock=excluded.stock,
-         is_active=CASE WHEN ? = 1 THEN product_variants.is_active ELSE 0 END, updated_at=datetime('now')`,
-      productId, sku, spec.label, sell, Number(mirror.stock ?? 0), requested && productActive ? 1 : 0, requested ? 1 : 0,
+          is_active=CASE WHEN ? = 1 THEN product_variants.is_active ELSE 0 END, updated_at=datetime('now')
+          WHERE product_variants.tunvn_admin_price_idr IS ? AND EXISTS (
+            SELECT 1 FROM tunvn_products WHERE supplier_product_id=? AND markup_percent=? AND publish_requested=?)`,
+       productId, sku, spec.label, sell, Number(mirror.stock ?? 0), requested && productActive ? 1 : 0, requested ? 1 : 0,
+       existingVariant?.tunvn_admin_price_idr ?? null, spec.supplier_product_id, markup, requested ? 1 : 0,
     );
-    const variantState = await db.queryFirst("SELECT is_active FROM product_variants WHERE sku=?", sku);
+    const variantState = await db.queryFirst("SELECT is_active,price FROM product_variants WHERE sku=?", sku);
     const visible = requested && productActive && Number(variantState?.is_active) === 1;
     if (visible) activated++;
     await db.execRun(
       "UPDATE tunvn_products SET axvara_product_id=?, sell_price_idr=?, fx_idr_per_usdt=?, visible=?, updated_at=datetime('now') WHERE supplier_product_id=?",
-      productId, sell, idrPerUsdt, visible ? 1 : 0, spec.supplier_product_id,
+       productId, Number(variantState?.price ?? sell), idrPerUsdt, visible ? 1 : 0, spec.supplier_product_id,
     );
     chatgpt++;
   }
-  await db.execRun(`UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=products.id AND is_active=1),price),
-    stock=COALESCE((SELECT SUM(stock) FROM product_variants WHERE product_id=products.id AND is_active=1),0)
-    WHERE slug='chatgpt-tunvn'`);
   await db.execRun("UPDATE products SET is_active=0 WHERE slug IN ('chatgpt-business-1-bulan-tunvn','chatgpt-gpay-1-bulan-tunvn')");
 
   const muse = await db.queryFirst("SELECT id FROM products WHERE slug=?", TUNVN_MUSE_SLUG);
   let buff = 0;
+  let buffError: string | null = null;
   if (muse) {
     const museId = Number(muse.id);
+    // Price exactly one unit: a 20B probe cannot establish the unit price.
+    const checked = await checkTunvnBuff(1);
+    if (checked.kind !== "ok") buffError = `buff_${checked.kind}`;
+    else {
     for (const quantityB of TUNVN_BUFF_VARIANT_B) {
       const existing = await db.queryFirst(
         "SELECT tunvn_markup_percent, tunvn_admin_price_idr, is_active FROM product_variants WHERE sku=?",
@@ -111,21 +125,31 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
         ? Number(existing.tunvn_admin_price_idr) : null;
       const sell = adminPrice !== null && adminPrice > 0
         ? adminPrice
-        : tunvnBuffSellPriceIdr(quantityB, idrPerUsdt, { markupPercent: markup });
-      const costUsdt = TUNVN_BUFF_COST_USDT_PER_B * quantityB;
+        : tunvnBuffSellPriceIdr(quantityB, idrPerUsdt, { markupPercent: markup, costUsdtPerB: checked.sell_price_usdt });
+      const costUsdt = checked.sell_price_usdt * quantityB;
       const keepActive = existing ? Number(existing.is_active ?? 0) : 0;
       await db.execRun(
          `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty)
-          VALUES (?,?,?,?, -1, 'manual', ?, ?, ?, ?, ?, ?, 'muse_invite_code',30)
-         ON CONFLICT(sku) DO UPDATE SET price=excluded.price, tunvn_cost_usdt=excluded.tunvn_cost_usdt,
-           tunvn_markup_percent=excluded.tunvn_markup_percent, tunvn_fx_idr_per_usdt=excluded.tunvn_fx_idr_per_usdt,
-           updated_at=datetime('now')`,
-         museId, `TUNVN-BUFF-${quantityB}B`, `Buff Token Muse AI per ${quantityB}B`, sell, keepActive,
-        9 + TUNVN_BUFF_VARIANT_B.indexOf(quantityB) + 1, quantityB, costUsdt, markup, idrPerUsdt,
+          VALUES (?,?,?,?, ?, 'manual', ?, ?, ?, ?, ?, ?, 'muse_invite_code',30)
+          ON CONFLICT(sku) DO UPDATE SET price=excluded.price, stock=excluded.stock, tunvn_cost_usdt=excluded.tunvn_cost_usdt,
+            tunvn_markup_percent=excluded.tunvn_markup_percent, tunvn_fx_idr_per_usdt=excluded.tunvn_fx_idr_per_usdt,
+            updated_at=datetime('now') WHERE product_variants.tunvn_markup_percent IS ? AND product_variants.tunvn_admin_price_idr IS ?`,
+          museId, `TUNVN-BUFF-${quantityB}B`, `Buff Token Muse AI per ${quantityB}B`, sell, checked.fundable ? -1 : 0, keepActive,
+         9 + TUNVN_BUFF_VARIANT_B.indexOf(quantityB) + 1, quantityB, costUsdt, markup, idrPerUsdt,
+         existing?.tunvn_markup_percent ?? null, existing?.tunvn_admin_price_idr ?? null,
       );
       buff++;
     }
+    }
   }
   await db.execRun("UPDATE product_variants SET is_active=0 WHERE sku IN ('TUNVN-BUFF-5B','TUNVN-BUFF-10B','TUNVN-BUFF-20B','TUNVN-BUFF-30B')");
+  await db.execRun(`UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=products.id AND is_active=1),price),
+    stock=CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=products.id AND is_active=1 AND stock=-1) THEN -1
+      ELSE COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=products.id AND is_active=1),0) END
+    WHERE slug IN ('chatgpt-tunvn','muse-ai-1-miliar-token')`);
+  if (buffError) return { ok: false, error: buffError };
   return { ok: true, chatgpt, buff_variants: buff, idr_per_usdt: idrPerUsdt, activated };
+  } finally {
+    await db.execRun("DELETE FROM store_settings WHERE key='tunvn_catalog_lease' AND value=?", lease);
+  }
 }

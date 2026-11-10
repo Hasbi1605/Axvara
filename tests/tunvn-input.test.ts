@@ -74,6 +74,16 @@ describe("buyer preset + quote binding",() => {
 });
 
 describe("atomic snapshot and eligibility",() => {
+  it("web and Telegram cannot snapshot half-published TUNVN costs while the catalog lease is active",async()=>{
+    fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES('tunvn_catalog_lease',?)").run(JSON.stringify({until:Date.now()+90000,owner:"fixture"}));
+    await expect(atomic()).rejects.toThrow();
+    const tg={ orderCode:"AXV-20261110-TGLEASE",lines:[{productId:1,variantId:1,qty:1,fulfillmentMode:"manual",stock:-1}],items:[atomicItem()],variantSnapshot:"{}",subtotal:1500,primaryVariantId:1,customerName:"Fixture",salesChannel:"telegram" as const,telegramChatId:"123",telegramUserId:"123",paymentMethod:"qris",paymentAccount:"-",fulfillmentStatus:"manual_required" };
+    await expect(createChannelOrderAtomic(tg)).rejects.toThrow();
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()).toEqual({n:0});
+    fx.sql.exec("DELETE FROM store_settings WHERE key='tunvn_catalog_lease'");
+    await atomic(); await createChannelOrderAtomic(tg);
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()).toEqual({n:2});
+  });
   it("persists versioned server-derived identity and never trusts supplied stamp",async () => {
     await atomic([{ ...atomicItem(30),tunvn_eligibility:{ version:999 } } as ReturnType<typeof atomicItem>]);
     const items=JSON.parse(String(fx.sql.prepare("SELECT items FROM orders").get()!.items));

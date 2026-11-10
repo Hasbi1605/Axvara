@@ -207,6 +207,10 @@ export async function checkTunvnBuff(quantityB: number): Promise<TunvnBuffCheckR
   let json: unknown;
   try { json = JSON.parse(await res.text()); } catch { return { kind: "ambiguous", reason: "unreadable_json" }; }
   if (!isRecord(json) || json.success !== true) return { kind: "api_error", detail: "buff_check_failed" };
+  const rows = json.orders_breakdown;
+  if (!Array.isArray(rows) || rows.length !== 1 || !isRecord(rows[0])
+    || rows[0].invite_code !== "AXVARA" || rows[0].quantity_b !== quantityB || rows[0].valid !== true
+    || typeof json.fundable !== "boolean") return { kind: "api_error", detail: "buff_identity" };
   const gross = nonNegativeInt(json.gross_cost_vnd);
   const sellVnd = nonNegativeInt(json.sell_price_vnd);
   const sellUsdt = num(json.sell_price_usdt);

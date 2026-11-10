@@ -102,6 +102,11 @@ INSERT INTO fulfillment_inventory(product_id,variant_id,status,secret_ciphertext
     await db.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,buyer_field_key,max_qty,tunvn_buff_quantity_b) VALUES(4,1,'TUNVN-BUFF-1B','Buff per1B',1500,'muse_invite_code',30,1)").run();
     const buffLines=[{ productId:1,variantId:4,qty:30,fulfillmentMode:"manual",stock:-1 }];
     const buffItems=[{ product_id:1,variant_id:4,price:1500,qty:30,buyer_field_key:"muse_invite_code",max_qty:30,buyer_fields:{ muse_invite_code:"Ab12cD" } }];
+    await db.prepare("CREATE TABLE store_settings(key TEXT PRIMARY KEY,value TEXT)").run();
+    await db.prepare("INSERT INTO store_settings(key,value) VALUES('tunvn_catalog_lease',?)").bind(JSON.stringify({until:Date.now()+90000,owner:"fixture"})).run();
+    const syncing=await call("TG-BUFF-SYNCING",buffLines,buffItems,45000);
+    expect(syncing.ok).toBe(false); expect(syncing.batchError).toMatch(/CHECK constraint failed/i);
+    await db.prepare("DELETE FROM store_settings WHERE key='tunvn_catalog_lease'").run();
     const buff=await call("TG-BUFF",buffLines,buffItems,45000);
     expect(buff.ok,buff.error).toBe(true);
     const saved=await db.prepare("SELECT items FROM orders WHERE code='TG-BUFF'").first<{ items:string }>();

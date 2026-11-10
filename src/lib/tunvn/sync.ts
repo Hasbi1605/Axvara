@@ -1,11 +1,7 @@
 // src/lib/tunvn/sync.ts — sinkron katalog mirror TERSEMBUNYI TUNVN.
 //
-// Setup awal 2026-11-09: fungsi ini SENGAJA tidak dipanggil route/cron/UI
-// mana pun. Ia hanya berjalan bila admin kelak memanggilnya secara eksplisit
-// dengan TUNVN_ENABLED=true + TUNVN_SYNC_ENABLED=true (keduanya default
-// mati; env Pages belum dipasang). Semua baris ditulis `visible=0` SELALU —
-// sync tidak pernah menaikkan visible, mengaktifkan produk Market, atau
-// menyentuh tabel products/product_variants/orders.
+// Mirror dipanggil publikasi admin dan cron tunvn_catalog. Proyeksi Market
+// ada di catalog.ts; sinkron mirror tidak mengaktifkan produk/varian.
 //
 // Anggaran D1 mengikuti pola Games (chunk json_each, bukan 1 statement/baris)
 // dan klaim throttle CAS di store_settings mencegah dua isolate menumpuk.
@@ -14,7 +10,8 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import { fetchTunvnProducts, isTunvnSyncEnabled, type TunvnProduct } from "./client";
 
 export const TUNVN_CATALOG_SETTING_KEY = "tunvn_catalog_sync_at";
-export const TUNVN_CATALOG_MIN_INTERVAL_MS = 9 * 60_000;
+// Cron is every3 minutes; a2-minute floor tolerates normal scheduling jitter.
+export const TUNVN_CATALOG_MIN_INTERVAL_MS = 2 * 60_000;
 const CHUNK = 50;
 const DESCRIPTION_MAX = 2_000;
 const NAME_MAX = 300;
@@ -26,7 +23,7 @@ export type TunvnCatalogSyncResult =
 
 export async function syncTunvnCatalog(
   db: DatabaseAccess,
-  opts: { now?: number; force?: boolean } = {},
+  opts: { now?: number; force?: boolean; reserveStatements?: number } = {},
 ): Promise<TunvnCatalogSyncResult> {
   if (!isTunvnSyncEnabled()) return { skipped: "not_configured" };
   const now = opts.now ?? Date.now();
@@ -50,6 +47,11 @@ export async function syncTunvnCatalog(
   }
   // Daftar kosong = kemungkinan salah akun/gangguan, bukan "semua hilang".
   if (listed.items.length === 0) return { ok: false, error: "empty_tunvn_catalog" };
+  if (listed.invalid > 0) return { ok: false, error: "invalid_tunvn_catalog" };
+  // ponytail: full mirror must fit40 statements; add chunk continuation if it grows.
+  if (!db.canSpend(Math.ceil(listed.items.length / CHUNK) + 1 + (opts.reserveStatements ?? 0))) {
+    return { ok: false, error: "catalog_budget_exceeded" };
+  }
 
   const syncedAt = new Date(now).toISOString();
   const rows = listed.items.map((p: TunvnProduct) => ({

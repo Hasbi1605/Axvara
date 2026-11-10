@@ -21,6 +21,26 @@ async function call(job: string | null, secret = "s") {
 }
 
 describe("/api/cron/lite", () => {
+  it("tunvn_catalog is authenticated, gated, uses fresh FX and reports upstream failure without a success heartbeat",async () => {
+    const fx=createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET","s"); vi.stubEnv("TUNVN_ENABLED","false");
+      const fetcher=vi.fn(async()=>Response.json({success:false},{status:502})); vi.stubGlobal("fetch",fetcher);
+      expect((await call("tunvn_catalog","wrong")).status).toBe(401);
+      expect(await call("tunvn_catalog")).toMatchObject({status:200,body:{skipped:"not_configured"}});
+      expect(fetcher).not.toHaveBeenCalled();
+      fx.sql.exec("DELETE FROM store_settings WHERE key='cron_lite_tunvn_catalog_ok_at'; DELETE FROM crypto_market_snapshot");
+      vi.stubEnv("TUNVN_ENABLED","true"); vi.stubEnv("TUNVN_SYNC_ENABLED","true");
+      vi.stubEnv("TUNVN_API_KEY","fixture-only"); vi.stubEnv("TUNVN_BASE_URL","https://supplier.test");
+      vi.stubEnv("USD_IDR_RATE","");
+      expect(await call("tunvn_catalog")).toMatchObject({status:503,body:{error:"fx_unavailable"}});
+      expect(fetcher).not.toHaveBeenCalled();
+      fx.sql.prepare("INSERT INTO crypto_market_snapshot(id,fx_rate_text,fx_source,fx_effective_at) VALUES(1,'18086','nowpayments-estimate',?)").run(new Date().toISOString());
+      expect(await call("tunvn_catalog")).toMatchObject({status:503,body:{error:"products_ambiguous"}});
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='cron_lite_tunvn_catalog_ok_at'").get()).toBeUndefined();
+    } finally {fx.close(); vi.unstubAllGlobals();}
+  });
   it("cleanup drains WR-only pair changes and retries a failed decision even when housekeeping is throttled", async () => {
     const fx=createD1Fixture();
     try {

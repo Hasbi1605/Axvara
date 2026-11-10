@@ -4255,6 +4255,37 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
+### 16.34 TUNVN auto-sync katalog — 10 November 2026 (lokal, publikasi CI)
+
+- Worker menambahkan `lite:tunvn_catalog` setiap3menit, soft alarm existing,
+  setelah job order. Route `/api/cron/lite?job=tunvn_catalog` memakai Bearer cron
+  existing dan budget40, gate TUNVN existing; tanpa konfigurasi no-op. FX memakai
+  snapshot pasar segar melalui objek D1 ber-budget, bukan kurs konstanta/env baru.
+- `publishTunvnCatalog` dipakai bersama cron (`force:false`) dan admin (force).
+  Setting lease90detik `tunvn_catalog_lease` berisi owner acak+until, claim SQL
+  atomik dan release hanya pemilik. Mirror throttle2menit memberi toleransi jitter
+  scheduler3menit; admin force tidak boleh melangkahi lease. Bukan realtime push.
+- Mirror harga/stok API penuh divalidasi sebelum upsert; kosong/parsial invalid
+  ditolak tanpa sweep. Hilang pada respons penuh valid menjadi stok0. Cadangan
+  statement diperiksa sebelum mirror write, sehingga proyeksi+release+checkpoint
+  muat40; katalog membesar di luar ceiling menghasilkan error, bukan batch parsial.
+- Buff probe `/api/buff/check` mengirim `AXVARA 1` tanpa charge, memvalidasi tepat
+  satu breakdown kode/qty/valid dan boolean fundable. Harga unit aktual disimpan
+  sebagai `tunvn_cost_usdt`, lalu FX/markup/ceilRp100 atau override admin. Panel
+  dan PATCH markup juga memakai unit1/modal tersimpan, bukan snapshot0,0588.
+  Fundable false stok0, true -1. Probe gagal tidak mereset stok/harga/modal Buff;
+  akun yang sudah tersinkron tetap valid, keseluruhan run503 tanpa heartbeat sukses.
+- Harga manual/markup memakai CAS observed values saat upsert; status aktif/copy
+  tetap milik admin. Parent ChatGPT/Muse merangkum varian aktif dengan sentinel
+  unlimited benar, tanpa mengubah identitas/harga varian Muse account. Bundle
+  retired tetap nonaktif/tersembunyi dari editor.
+- Factory order web/Telegram mengikat tidak adanya lease katalog aktif ke guard
+  reservasi D1 atomik, hanya untuk SKU TUNVN. Ini mencegah old sell price/new modal
+  saat mirror dan proyeksi sedang diperbarui; retry setelah sync, bukan invoice
+  atau pembelian supplier saat QA. Tidak mengubah snapshot/order yang sudah ada.
+- Tanpa schema/migrasi/env/trigger/VPS baru. Route error503 memakai alarm existing;
+  tidak ada klaim deploy/live, transaksi produksi atau sinkronisasi instan.
+
 ### 16.33 TUNVN T2B: dispatch fenced — 10 November 2026 (implementasi lokal)
 
 - Migrasi0116 menambah `orders.supplier_purchase_disabled` (tes admin=1), tabel

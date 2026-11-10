@@ -326,7 +326,7 @@ describe("Worker runOperationsTick", () => {
     const report = await runOperationsTick(env, Date.UTC(2026, 9, 3, 14, 0), fn as never, async () => undefined);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
-      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:pedia_orders", "lite:games_orders", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup", "lite:games_catalog",
+      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:pedia_orders", "lite:games_orders", "lite:tunvn_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup", "lite:games_catalog",
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
     ]);
@@ -347,6 +347,14 @@ describe("Worker runOperationsTick", () => {
     expect(fn.mock.calls.every(([, init]) => init?.signal instanceof AbortSignal)).toBe(true);
     expect(isHeavyTick(at(0))).toBe(true);
     for (const minute of [1,2,3,4,5,59]) expect(isHeavyTick(at(minute))).toBe(false);
+  });
+  it("runs TUNVN catalog every three minutes independently of paid-order ticks",async () => {
+    for(const minute of [1,2,3,4,6]) {
+      const {fn,calls}=mockFetch(()=>({status:200}));
+      await tickNoSleep(env,at(minute),{fn});
+      expect(calls.some(url=>url.includes("job=tunvn_catalog"))).toBe(minute%3===0);
+      expect(calls.some(url=>url.includes("job=tunvn_orders"))).toBe(true);
+    }
   });
 
   it("mengulang potongan sync selama more:true lalu berhenti", async () => {
