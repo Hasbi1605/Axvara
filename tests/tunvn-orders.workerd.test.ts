@@ -74,7 +74,10 @@ it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and p
       }));
       return Response.json({purchases,used:budgets.map(b=>b.used)});
     }}
-  `},bundle:true,write:false,format:"esm",platform:"neutral",target:"es2022",define:{"process.env":JSON.stringify({TUNVN_ENABLED:"true",TUNVN_SYNC_ENABLED:"true",TUNVN_API_KEY:"fixture-only",TUNVN_BASE_URL:"https://supplier.test",FULFILLMENT_ENCRYPTION_KEY:Buffer.alloc(32,7).toString("base64")})}});
+  `},bundle:true,write:false,format:"esm",platform:"neutral",target:"es2022",plugins:[{name:"framework-marker",setup(b){
+    b.onResolve({filter:/^server-only$/},()=>({path:"server-only",namespace:"framework"}));
+    b.onLoad({filter:/.*/,namespace:"framework"},()=>({contents:""}));
+  }}],define:{"process.env":JSON.stringify({TUNVN_ENABLED:"true",TUNVN_SYNC_ENABLED:"true",TUNVN_API_KEY:"fixture-only",TUNVN_BASE_URL:"https://supplier.test",FULFILLMENT_ENCRYPTION_KEY:Buffer.alloc(32,7).toString("base64")})}});
   const runtime=new Miniflare({modules:true,compatibilityDate:"2026-08-06",compatibilityFlags:["nodejs_compat"],script:compiled.outputFiles[0].text,d1Databases:["DB"]});
   try {
     const db=await runtime.getD1Database("DB");

@@ -10,7 +10,7 @@ import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
 
 vi.mock("@/lib/auth",()=>({requireAdmin:vi.fn(async()=>({sid:"fixture"}))}));
 vi.mock("@/lib/telegram/api",()=>({sendMessage:vi.fn(async()=>({message_id:1}))}));
-vi.mock("@/lib/notify-buyer",()=>({notifyBuyerBuffCompleted:vi.fn(async()=>true)}));
+vi.mock("@/lib/notify-buyer",()=>({notifyBuyerBuffCompleted:vi.fn(async()=>true),notifyBuyerTunvnProcessing:vi.fn(async()=>true)}));
 vi.mock("@/lib/fulfillment/delivery/buyer-email",async original=>({
   ...await original<object>(),sendWebDeliveryEmail:vi.fn(async()=>({ok:true})),
 }));

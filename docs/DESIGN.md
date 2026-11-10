@@ -1,5 +1,19 @@
 # DESIGN.md — AXVARA Design System
 
+## Label otomatis TUNVN (10 November 2026, lokal)
+
+- Badge varian current memakai "Kirim otomatis" / "Automatic delivery", bukan MBO
+  atau janji selesai instan. ETA ID/EN menyebut konfirmasi pembayaran dan kabar selesai.
+  Checkout tidak menampilkan callout MBO; status paid memakai panel supplier otomatis.
+- Editor varian TUNVN menampilkan keterangan cyan proses otomatis dan mode internal
+  manual, bukan selector shared/unique/panel stok kredensial. Override S&K tetap ada.
+  Midnight/SF Pro/Liquid Glass, komponen dan fokus existing tidak diganti.
+- Chromium dengan API fixture lokal1280/390: input kode/quote checkout tanpa MBO,
+  Tab ke email, panel status tanpa MBO, editor accordion/tab dan keterangan otomatis
+  wrapping tanpa overflow; screenshot mobile diperiksa. Console tanpa error, route
+  dan aset CSS/JS200. Katalog/badge/ETA ID/EN diuji kontrak, bukan QA PDP penuh.
+  Tidak membuat order, mengirim email atau memeriksa deployment produksi.
+
 ## Status dan retry TUNVN (10 November 2026, lokal)
 
 - Baris Pesanan/detail dan Ringkasan TUNVN memberi sebab yang terbaca, terutama

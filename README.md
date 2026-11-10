@@ -1,5 +1,15 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+TUNVN notifikasi/label10November2026 (lokal, publikasi CI): email web
+"Pesanan Diproses" mengikuti locale order setelah receipt akun lengkap atau batch
+Buff diterima; ledger existing mencegah pengiriman normal berulang. Email gagal
+Buff dicoba pada poll berikut tanpa membeli lagi. Order disable/terminal tidak
+menerima notis proses; tidak ada backfill dua order manual owner. Katalog memakai
+marker server `automatic_delivery`, checkout tidak memberi peringatan MBO dan
+status/lacak mengenali snapshot eligible tanpa menjanjikan durasi instan. Editor
+TUNVN tidak menawarkan stok kredensial lokal; mode DB tetap manual. Muse account
+asli tetap MBO. Tanpa env/migrasi baru; ARCHITECTURE16.36. Belum bukti deployment.
+
 TUNVN retry10November2026 (implementasi lokal, publikasi CI): daftar Pesanan dan
 panel TUNVN membedakan saldo kurang dari saldo gagal dibaca dan menampilkan Retry
 hanya pada kegagalan pra-beli terbukti (attempt0, tanpa send/receipt/ID, paid eligible,

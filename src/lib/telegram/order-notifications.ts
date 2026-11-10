@@ -15,6 +15,7 @@ import {
   type TelegramPaidDelivery,
 } from "@/lib/telegram/messages";
 import { buyerDeliveryKind } from "@/lib/catalog";
+import { tunvnEligibility } from "@/lib/buyer-fields";
 import {
   orderPaidKeyboard,
   telegramOrderAdminKeyboard,
@@ -80,8 +81,10 @@ export async function telegramPaidDeliveryProfile(
   }
   const rows = await database.queryAll(
     `SELECT pv.id, pv.fulfillment_mode, pv.wr_variant_id, pv.sk_variant_id,
+             pv.sku,pv.tunvn_buff_quantity_b,pv.buyer_field_key,pv.max_qty,p.slug AS product_slug,
             wv.wr_delivery_class, sp.sk_order_process
-     FROM product_variants pv
+      FROM product_variants pv
+      JOIN products p ON p.id=pv.product_id
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
      LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
      WHERE pv.id IN (${ids.map(() => "?").join(",")})`,
@@ -97,6 +100,7 @@ export async function telegramPaidDeliveryProfile(
     const supplier = Boolean(String(row.wr_variant_id ?? "").trim() || String(row.sk_variant_id ?? "").trim());
     const kind = buyerDeliveryKind({
       fulfillment_mode: String(row.fulfillment_mode || "manual"),
+      automatic_delivery: Boolean(tunvnEligibility(row,1)),
       wr_variant_id: row.wr_variant_id ?? null,
       sk_variant_id: row.sk_variant_id ?? null,
       wr_delivery_class: row.wr_delivery_class != null ? String(row.wr_delivery_class) : null,

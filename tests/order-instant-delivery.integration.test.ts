@@ -60,6 +60,23 @@ beforeEach(() => {
 afterEach(() => { fixture.close(); clearRateLimitBucketsForTest(); });
 
 describe("GET /api/orders?code= — flag instant_delivery", () => {
+  it("TUNVN eligible is automatic without an instant-time promise; manual/legacy orders stay queued", async () => {
+    const code = "AXV-20261110-AUTOFLAG";
+    insertOrder(code, [{ ...line(3), tunvn_eligibility: { version: 1, kind: "buff", cost_usdt: 2 } }]);
+    expect(await flags(code)).toEqual({ instant: false, queued: false, creds: false });
+    const { POST } = await import("@/app/api/orders/lookup/route");
+    const lookup = async () => {
+      const response = await POST(new NextRequest("http://localhost/api/orders/lookup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code,contact:"rani@example.test"})}));
+      expect(response.status).toBe(200);
+      return (await response.json()).order.supplier_owned;
+    };
+    expect(await lookup()).toBe(true);
+    fixture.sql.prepare("UPDATE orders SET supplier_purchase_disabled=1 WHERE code=?").run(code);
+    expect(await flags(code)).toMatchObject({ instant: false, queued: true });
+    expect(await lookup()).toBe(false);
+    fixture.sql.prepare("UPDATE orders SET supplier_purchase_disabled=0,items=? WHERE code=?").run(JSON.stringify([line(3)]),code);
+    expect(await flags(code)).toMatchObject({ instant: false, queued: true });
+  });
   it("semua baris dari stok sendiri (shared/unique non-WR) → instan", async () => {
     insertOrder("AXV-20260925-INSTANT1", [line(1)]);
     insertOrder("AXV-20260925-INSTANT2", [line(1), line(2, 2)]);

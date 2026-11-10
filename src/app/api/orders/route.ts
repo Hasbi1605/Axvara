@@ -743,7 +743,11 @@ export async function GET(req: NextRequest) {
       // bukan 500.
       const flags = await queryFirst(
         `WITH lines AS (
-           SELECT CAST(json_extract(je.value,'$.variant_id') AS INTEGER) AS variant_id
+            SELECT CAST(json_extract(je.value,'$.variant_id') AS INTEGER) AS variant_id,
+                   (json_extract(je.value,'$.tunvn_eligibility.version')=1
+                    AND json_extract(je.value,'$.tunvn_eligibility.kind') IN ('account','buff')
+                    AND json_extract(je.value,'$.tunvn_eligibility.cost_usdt')>0
+                    AND ?=0) AS automatic
            FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
          )
           SELECT
@@ -752,14 +756,16 @@ export async function GET(req: NextRequest) {
            OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered'
                     AND delivered_ciphertext IS NOT NULL)) AS creds,
            (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=?)
-            OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)) AS supplier_owned,
+             OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)
+             OR EXISTS(SELECT 1 FROM lines WHERE automatic=1)) AS supplier_owned,
            (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
             OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running,
           EXISTS(SELECT 1 FROM lines l
                  JOIN product_variants pv ON pv.id = l.variant_id
                  LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
                  LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
-                 WHERE CASE WHEN pv.wr_variant_id IS NOT NULL
+                  WHERE CASE WHEN l.automatic=1 THEN 0
+                             WHEN pv.wr_variant_id IS NOT NULL
                             THEN COALESCE(wv.wr_delivery_class,'made_by_order') <> 'restock'
                             WHEN pv.sk_variant_id IS NOT NULL
                             THEN COALESCE(sp.sk_order_process,'manual') <> 'auto'
@@ -773,6 +779,7 @@ export async function GET(req: NextRequest) {
                              OR (pv.sk_variant_id IS NOT NULL AND COALESCE(sp.sk_order_process,'manual') <> 'auto')
                              OR (pv.wr_variant_id IS NULL AND pv.sk_variant_id IS NULL
                                  AND COALESCE(pv.fulfillment_mode,'manual') NOT IN ('shared','unique')))) AS instant`,
+        Number(row.supplier_purchase_disabled ?? 0),
         String(row.items ?? "[]"),
         String(row.items ?? "[]"),
         code,

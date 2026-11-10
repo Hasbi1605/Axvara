@@ -4255,6 +4255,37 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
+### 16.36 TUNVN processing notice dan klasifikasi otomatis — 10 November 2026 (lokal)
+
+- `notifyBuyerTunvnProcessing` dipanggil setelah receipt akun lengkap atau batch Buff
+  tersimpan; poll Buff mencoba lagi bila notis belum terkirim. Guard membaca paid web,
+  disable0, send fence/attempt dan accepted link nonterminal, item bukan delivered/
+  sending. Admission6 statement berbagi budget40 dispatcher; tidak menambah job/env.
+- `sendToBuyer`/`buyer_notice_log` existing dengan ref `tunvn-processing:<order>:<link>`
+  memberi best-effort dedupe, bukan jaminan exactly-once transport. Tidak ada fallback
+  WA atau notis proses Telegram; paid DM existing sudah menyebut otomatis. Email
+  ID/EN dari locale order, tanpa input/receipt/kredensial/provider ID. Kegagalan email
+  tidak membuka fence atau menggagalkan receipt/delivery; akun tidak memiliki retry
+  email proses setelah link completed. Tidak ada replay/backfill order manual owner.
+- `VariantSummary.automatic_delivery` optional berasal dari `tunvnEligibility` atas
+  row server (SKU+slug+konfigurasi current), bukan request buyer. Catalog detail/active
+  variant membawa metadata untuk derivasi; SKU TUNVN tetap kosong di publik. Kelas
+  internal `instant` berarti pengiriman otomatis, copy TUNVN khusus tidak menjanjikan
+  waktu instan. Quote meniadakan queued_delivery bagi current eligible; paid profile
+  Telegram memakai predicate sama. Muse account asli/legacy bundle tidak ikut.
+- Status GET `/api/orders` dan POST lookup mengenali snapshot eligibility versi1
+  dengan biaya positif dan pembelian tidak disable sebagai supplier-owned; queued
+  false pada baris tersebut, instant tetap false. Tidak menambah supplier refresh
+  atau POST dari polling buyer; cron TUNVN tetap penjamin. Bukti status hanya boolean,
+  private snapshot/input tetap diredaksi dan proof guard tidak berubah.
+- `ProductVariantRows` menyembunyikan kontrol mode/inventory lokal untuk SKU TUNVN
+  current pada slug yang sesuai, memberi penjelasan otomatis. Mode tersimpan tetap
+  manual; API/DB dispatch fence, harga, stok, aktivasi dan autentikasi tidak berubah.
+- Verifikasi: SQLite/workerd + regression notis/ledger/locale/budget, katalog/quote/
+  Telegram/status/lookup dan editor. Chromium fixture checkout/status/admin1280/390
+  tanpa MBO/overflow, Tab dan CSS/JS200; bukan QA PDP penuh, transaksi supplier/email
+  nyata atau bukti deployment. Publikasi hanya melalui CI main, tanpa migrasi baru.
+
 ### 16.35 TUNVN retry pra-beli — 10 November 2026 (lokal, publikasi CI)
 
 - `tunvn/orders.ts` membedakan whitelist error preflight dari error ambigu tanpa

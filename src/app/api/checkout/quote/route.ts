@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { assertSameBuyerCode, buyerFieldsSchema, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, buyerFieldsSchema, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
 import { queryAll, isD1Mode } from "@/lib/db";
 import { isVariantsReadEnabled } from "@/lib/catalog";
 import { createCheckoutQuoteToken, requireAdmin } from "@/lib/auth";
@@ -356,7 +356,7 @@ export async function POST(req: NextRequest) {
       // sebelum bayar kalau ada varian antrean (bukan kirim otomatis).
       // SK auto ikut instan walau fulfillment_mode lokalnya 'manual'.
       queued_delivery: item.variant_id
-        ? isQueuedFulfillment({
+        ? !tunvnEligibility({ ...fieldConfig,product_slug:row.slug },item.qty) && isQueuedFulfillment({
             wrVariantId: variantById.get(item.variant_id)?.wr_variant_id,
             wrClass: variantById.get(item.variant_id)?.wr_delivery_class,
             skVariantId: variantById.get(item.variant_id)?.sk_variant_id,

@@ -36,6 +36,24 @@ const atomicItem = (qty=1) => ({ product_id:1,variant_id:1,name:"Muse",price:150
 const atomic = (items=[atomicItem()],quoteId="input-test") => createOrderWithStock({ code:"AXV-20261110-AABBCCDD",quoteId,customerName:"Fixture",customerWa:"628000000000",customerEmail:"fixture@example.test",items,subtotal:items.reduce((n,item)=>n+item.price*item.qty,0),paymentMethod:"qris",paymentAccount:"-",proofUrl:null });
 
 describe("buyer preset + quote binding",() => {
+  it("classifies only current TUNVN variants as automatic across catalog, quote and Telegram",async()=>{
+    const {getProductDetail,buyerDeliveryKind,buyerDeliveryBadge}=await import("@/lib/catalog");
+    const {catalogDeliveryBadge,catalogDeliveryEta}=await import("@/lib/i18n/catalog-copy");
+    const product=await getProductDetail("muse-ai-1-miliar-token");
+    const current=product!.variants.find(v=>v.id===1)!,original=product!.variants.find(v=>v.id===2)!;
+    expect(current).toMatchObject({sku:"",fulfillment_mode:"manual",automatic_delivery:true});
+    expect(buyerDeliveryKind(current)).toBe("instant");expect(buyerDeliveryBadge(current)).toBe("Kirim otomatis");
+    expect(catalogDeliveryBadge(current,"en")).toBe("Automatic delivery");
+    expect(catalogDeliveryEta(current,"id")).not.toMatch(/admin|Made By Order/);
+    expect(buyerDeliveryKind(original)).toBe("queued");expect(original.automatic_delivery).toBeUndefined();
+    expect((await (await quote([buff()])).json()).items[0].queued_delivery).toBe(false);
+    expect((await (await quote([{product_id:1,variant_id:2,qty:1}])).json()).items[0].queued_delivery).toBe(true);
+    const {telegramPaidDeliveryProfile}=await import("@/lib/telegram/order-notifications");
+    const {createDatabaseAccess}=await import("@/lib/db-access");
+    expect(await telegramPaidDeliveryProfile({items:JSON.stringify([{variant_id:1}])},createDatabaseAccess(fx.db))).toEqual({delivery:"instant",hasLocalManual:false});
+    fx.sql.exec("UPDATE product_variants SET buyer_field_key=NULL WHERE id=1");
+    expect((await getProductDetail("muse-ai-1-miliar-token"))!.variants.find(v=>v.id===1)!.automatic_delivery).toBeUndefined();
+  });
   it("trims, preserves case, and defaults off for the original Muse account",() => {
     expect(validateBuyerFields(config,{ muse_invite_code:" Ab12cD " },30)).toEqual(fields);
     expect(validateBuyerFields({},undefined,1)).toEqual({});

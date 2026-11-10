@@ -1,5 +1,22 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Notifikasi proses dan label otomatis — 10 November 2026 (lokal)
+
+- Email proses web hanya sesudah receipt akun lengkap/batch Buff diterima; ID/EN
+  mengikuti order.locale, dedupe ledger order/link existing. Buff gagal kirim
+  dicoba saat poll berikutnya, tidak membeli ulang. Disable/terminal/unpaid atau
+  item delivered/sending disuppress; dua order manual owner tidak di-backfill.
+- Tidak mengirim invite code, provider ID, supplier, PIN/password pada notis ini.
+  Telegram tetap paid DM existing tanpa tambahan notis proses; aturan wajib-email
+  tetap. Tidak mengaktifkan WA, ChatGPT atau bundle retired untuk QA.
+- Katalog current eligible memakai marker server `automatic_delivery`; quote,
+  paid profile Telegram dan status/lacak tidak menyebut MBO untuk otomatisasi sah.
+  EN "Automatic delivery", ETA tanpa janji instan. Muse account asli tetap manual.
+  Status memakai snapshot versi1 berbiaya/non-disable, bukan backfill snapshot lama.
+- Editor TUNVN menjelaskan otomatis dan tidak menawarkan inventory stok lokal;
+  mode DB manual tetap. Tidak mengubah send fence/lease/receipt/harga/aktivasi/env.
+  Detail ARCHITECTURE16.36; fixture bukan bukti email/deployment produksi.
+
 ## Revisi owner 10 November 2026: retry pra-beli dan dua order manual
 
 - Jangan proses/retry `AXV-20261110-81C2FADA` atau `AXV-20261110-9C9B8FF4`:

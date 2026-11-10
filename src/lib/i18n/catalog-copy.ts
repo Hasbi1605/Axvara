@@ -4,11 +4,13 @@ import { deliveryEtaForBuyer, WR_QUEUED_MAX_HOURS } from "@/lib/warung-rebahan/d
 
 export function catalogDeliveryBadge(v: Parameters<typeof buyerDeliveryBadge>[0], locale: Locale): string {
   if (locale === "id") return buyerDeliveryBadge(v);
+  if (v.automatic_delivery) return "Automatic delivery";
   if (String(v.wr_variant_id ?? "").trim().startsWith("jaspay:")) return "Processed automatically";
   return buyerDeliveryKind(v) === "instant" ? "Instant delivery" : "Made By Order";
 }
 
 export function catalogDeliveryEta(v: Parameters<typeof buyerDeliveryBadge>[0] | null, locale: Locale): string {
+  if (v?.automatic_delivery) return locale === "en" ? "Processed automatically after payment is confirmed; we will notify you when it is complete." : "Diproses otomatis setelah pembayaran dikonfirmasi; kami kabari setelah selesai.";
   const wrId = String(v?.wr_variant_id ?? "").trim();
   if (locale === "id") return !v ? deliveryEtaForBuyer(null) : buyerDeliveryKind(v) === "instant" ? deliveryEtaForBuyer("restock") : wrId.startsWith("jaspay:") ? buyerDeliveryEtaJaspay() : wrId ? deliveryEtaForBuyer(v.wr_delivery_class) : buyerDeliveryEtaNonWr();
   if (v && buyerDeliveryKind(v) === "instant") return "Delivered automatically once payment is confirmed";

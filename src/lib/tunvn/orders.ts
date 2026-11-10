@@ -1,6 +1,7 @@
 import { createDatabaseAccess,type DatabaseAccess } from "@/lib/db-access";
 import { encryptSecret,decryptSecret } from "@/lib/fulfillment/crypto";
 import { ensureFulfillmentItems } from "@/lib/fulfillment/delivery/inventory-binding";
+import { notifyBuyerTunvnProcessing } from "@/lib/notify-buyer";
 import { isTunvnConfigured,isTunvnSyncEnabled,fetchTunvnProducts,fetchTunvnBalance } from "./client";
 import { buyTunvnProduct,orderTunvnBuff,tunvnRequest,tunvnBuffText,parseTunvnResponse,tunvnProviderId } from "./purchase";
 
@@ -106,6 +107,7 @@ async function finishReceipt(db:DatabaseAccess,link:Row,json:Row,status:number):
       && items.length===Number(order?.total_items) && items.length>=Number(link.quantity);
     await db.execRun("UPDATE tunvn_order_links SET provider_order_group=?,receipt_json=? WHERE id=? AND lease_owner=?",group,JSON.stringify({ received:items.length,requested:link.quantity,total_items:Number.isSafeInteger(order?.total_items) ? order!.total_items : null,charged_usdt:Number.isFinite(cost) ? cost : null }),link.id,link.lease_owner);
     if (!complete) { await settle(db,link,"needs_admin","incomplete_receipt"); return; }
+    await notifyBuyerTunvnProcessing(String(link.order_code),Number(link.id),db);
     const secret=await encryptSecret(items.slice(0,Number(link.quantity)).join("\n\n"));
     await db.execRun(`UPDATE fulfillment_items SET delivered_ciphertext=?,delivered_iv=?,status='queued',last_error=NULL,locked_until=NULL WHERE tunvn_link_id=? AND status NOT IN ('delivered','sending') AND EXISTS(SELECT 1 FROM tunvn_order_links WHERE id=? AND lease_owner=?)`,secret.ciphertext,secret.iv,link.id,link.id,link.lease_owner);
     await settle(db,link,"completed",cost>Number(link.cost_usdt) ? "charged_above_preflight" : null);
@@ -115,16 +117,18 @@ async function finishReceipt(db:DatabaseAccess,link:Row,json:Row,status:number):
   const orders=Array.isArray(json.orders) ? json.orders as Row[] : [];
   const row=orders[0];
   if (batch) await db.execRun("UPDATE tunvn_order_links SET provider_batch_id=? WHERE id=? AND lease_owner=?",batch,link.id,link.lease_owner);
-  if (status===202 && batch && orders.length===0) { await settle(db,link,"processing","awaiting_exact_status"); return; }
+  if (status===202 && batch && orders.length===0) { await settle(db,link,"processing","awaiting_exact_status"); await notifyBuyerTunvnProcessing(String(link.order_code),Number(link.id),db); return; }
   if (![200,202].includes(status) || !batch || orders.length!==1 || row?.invite_code!==link.invite_code || row?.quantity_b!==link.quantity || !tunvnProviderId(row?.order_code) || String(json.currency ?? row.currency).toLowerCase()!=="usdt") {
     await settle(db,link,"needs_admin","unconfirmed_buff_receipt"); return;
   }
   const cost=Number(json.sell_price_usdt);
   await db.execRun("UPDATE tunvn_order_links SET provider_order_code=?,receipt_json=? WHERE id=? AND lease_owner=?",row.order_code,JSON.stringify({ accepted:true,http_status:status,charged_usdt:Number.isFinite(cost) ? cost : null }),link.id,link.lease_owner);
   await settle(db,link,"processing",null);
+  await notifyBuyerTunvnProcessing(String(link.order_code),Number(link.id),db);
 }
 
 async function pollBuff(db:DatabaseAccess,link:Row):Promise<void> {
+  await notifyBuyerTunvnProcessing(String(link.order_code),Number(link.id),db);
   const response=await tunvnRequest("buff/status",undefined,String(link.provider_batch_id));
   const json=parseTunvnResponse(response.text);
   const rows=Array.isArray(json.orders) ? json.orders as Row[] : [];

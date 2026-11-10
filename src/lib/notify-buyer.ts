@@ -255,6 +255,29 @@ async function sendToBuyer(
   return await enqueueWhatsAppMessage(waOutboxKey("text", notice.refKey), target, chatText).catch(() => false);
 }
 
+/** Accepted supplier work only; never replay processing mail for terminal/manual orders. */
+export async function notifyBuyerTunvnProcessing(orderCode:string,linkId:number,database:DatabaseAccess=createDatabaseAccess()):Promise<boolean> {
+  if (!database.canSpend(6)) return false;
+  const meta=await database.queryFirst(`SELECT l.kind,o.locale FROM tunvn_order_links l
+    JOIN orders o ON o.code=l.order_code JOIN fulfillment_items f ON f.tunvn_link_id=l.id
+    WHERE l.id=? AND l.order_code=? AND o.sales_channel='web' AND o.status='lunas' AND o.payment_status='paid'
+      AND o.supplier_purchase_disabled=0 AND f.status NOT IN ('delivered','sending')
+      AND l.request_sent_at IS NOT NULL AND l.attempt_count>0
+      AND ((l.kind='buff' AND l.status='processing' AND l.provider_batch_id IS NOT NULL)
+        OR (l.kind='account' AND l.status='claimed' AND l.provider_order_group IS NOT NULL AND l.receipt_http_status=200))`,linkId,orderCode).catch(()=>null);
+  if (!meta) return false;
+  const en=meta.locale==="en",buff=meta.kind==="buff";
+  return sendToBuyer(orderCode,{
+    subject:en ? `Order ${orderCode} is being processed - AXVARA` : `Pesanan ${orderCode} sedang diproses - AXVARA`,
+    body:en ? "Your order is being processed automatically." : "Pesananmu sedang diproses otomatis.",
+    email:{title:en ? "Order Processing" : "Pesanan Diproses",subtitle:en ? "Your order is being processed automatically." : "Pesananmu sedang diproses otomatis.",paragraphs:[
+      buff ? (en ? "Your Muse token top-up has been accepted and is being processed. No account credentials are needed." : "Isi ulang token Muse sudah diterima dan sedang diproses. Isi ulang ini tidak memerlukan kredensial akun.")
+        : (en ? "Your product is being prepared automatically." : "Produkmu sedang disiapkan otomatis."),
+      en ? "We will email you when it is complete. You can check the latest status on your order page." : "Kami akan mengabari lewat email setelah selesai. Status terbaru dapat dilihat di halaman pesanan.",
+    ]},refKey:`tunvn-processing:${orderCode}:${linkId}`,
+  },database,{whatsappFallback:false}).catch(()=>false);
+}
+
 /** Noncredential completion: never include the supplied invite code. */
 export async function notifyBuyerBuffCompleted(orderCode:string,itemIndex:number,database:DatabaseAccess=createDatabaseAccess()):Promise<boolean> {
   const order=await database.queryFirst("SELECT locale FROM orders WHERE code=?",orderCode);

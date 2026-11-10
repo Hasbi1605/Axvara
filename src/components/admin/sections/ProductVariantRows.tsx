@@ -332,6 +332,8 @@ export function ProductVariantRows({
           // diedit agar katalog WR bisa pasang diskon/badge seperti produk
           // manual. Sync tidak pernah menulis compare_price.
           const wrLocked = Number(v.wr_auto_managed ?? 0) === 1 || Boolean(form.wrManaged);
+          const tunvnAutomatic = (form.slug === "chatgpt-tunvn" && ["TUNVN-86", "TUNVN-83"].includes(v.sku))
+            || (form.slug === "muse-ai-1-miliar-token" && v.sku === "TUNVN-BUFF-1B");
           const lockedInput = "h-9 w-full rounded-xl bg-white/[0.03] border border-white/5 px-3 text-xs text-white/50 cursor-not-allowed";
           const openInput = "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:outline-none";
           return (
@@ -503,6 +505,7 @@ export function ProductVariantRows({
             {!wrLocked ? (
               <div className="pt-3">
                 <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Cara Pengiriman</span>
+                {tunvnAutomatic ? <p className="text-xs leading-5 text-[#5cefff]">Diproses otomatis setelah pembayaran dikonfirmasi. Mode internal tetap manual; tidak perlu mengisi stok kredensial lokal.</p> : <>
                 <select
                   value={v.fulfillment_mode || "manual"}
                   onChange={(e) => {
@@ -518,6 +521,7 @@ export function ProductVariantRows({
                     : "Badge pembeli: Kirim otomatis (dikirim sistem dari stok di bawah)."}
                 </p>
                 <NonWrFulfillmentPanel productId={productId} variantId={typeof v.id === "number" ? v.id : undefined} mode={v.fulfillment_mode || "manual"} onStockChange={stock=>onSetFormVariants(curr=>curr.some(item=>item.id===v.id && item.stock!==stock)?curr.map(item=>item.id===v.id?{...item,stock}:item):curr)} />
+                </>}
                 {form.supplier !== "SK" && <SharedVariantCopyFields value={v} onChange={patch=>onSetFormVariants(curr=>curr.map((item,i)=>i===idx?{...item,...patch}:item))} />}
               </div>
             ) : (

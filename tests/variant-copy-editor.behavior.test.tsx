@@ -58,6 +58,16 @@ function stubSave(returned: Partial<VariantCopyEntry>) {
 }
 
 describe("VariantCopyEditor", () => {
+  it("shows automatic supplier processing instead of local manual fulfillment controls", () => {
+    vi.stubGlobal("fetch",vi.fn(async()=>({ok:true,json:async()=>({})})));
+    const update=vi.fn();
+    render(<ProductVariantRows form={{slug:"muse-ai-1-miliar-token",supplier:"Manual"}} formVariants={[{id:279,sku:"TUNVN-BUFF-1B",label:"Buff",price:1500,stock:-1,is_active:1,fulfillment_mode:"manual"}]} onSetFormVariants={update} productId={112}/>);
+    fireEvent.click(screen.getByRole("button",{name:/Buff/}));
+    expect(screen.getByText(/Diproses otomatis setelah pembayaran/)).toBeTruthy();
+    expect(screen.queryByText(/Badge pembeli: Made By Order/)).toBeNull();
+    expect(document.querySelector('select option[value="shared"]')).toBeNull();
+    expect(update).not.toHaveBeenCalled();
+  });
   it("SK terisi otomatis; konflik mempertahankan draft dan pratinjau mencakup deskripsi", async () => {
     const onReload = vi.fn();
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 409, json: async () => ({ error: "Teks supplier berubah" }) })));

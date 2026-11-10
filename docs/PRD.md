@@ -1,5 +1,26 @@
 # PRD — AXVARA
 
+## Notifikasi proses dan label otomatis TUNVN (10 November 2026, lokal)
+
+- Web menerima email "Pesanan Diproses" sesudah receipt akun lengkap tervalidasi
+  atau batch Buff diterima, sebelum jalur penyelesaian. Buff bukan kredensial akun;
+  email tidak memuat kode invite, provider ID, supplier, PIN atau password.
+- Locale mengikuti order ID/EN; best-effort memakai ledger existing per order/link.
+  Email Buff gagal boleh dicoba pada poll selanjutnya, bukan POST pembelian kedua.
+  Order unpaid, disable, item delivered/sending atau link terminal tidak dikirimi
+  notis proses. Tidak backfill dua order manual owner atau notifikasi historis.
+- Telegram tetap menerima pesan paid existing dengan kelas otomatis; tidak menambah
+  DM/email proses atau memperluas aturan salinan wajib-email. WA tidak diaktifkan.
+- Varian TUNVN current eligible berbadge "Kirim otomatis" / "Automatic delivery"
+  melalui marker server aman; SKU tetap tersembunyi. ETA menjelaskan proses otomatis
+  setelah konfirmasi pembayaran dan kabar setelah selesai, tanpa janji waktu instan.
+  Checkout tidak menampilkan MBO. Status/lacak paid mengenali snapshot versi1 berbiaya
+  dan tidak disable; legacy/no-stamp dan Muse account asli tetap manual/MBO.
+- Editor varian TUNVN memberi penjelasan proses otomatis tanpa pilihan stok lokal;
+  mode internal manual dipertahankan, bukan diganti shared/unique. Tidak mengaktifkan
+  ChatGPT atau bundle retired. Pengiriman akun/PIN dan Buff selesai tetap existing.
+- Verifikasi fixture saja, publikasi via CI; belum bukti deployment atau email nyata.
+
 ## Retry TUNVN 10 November 2026 (lokal; dua order dikecualikan di produksi)
 
 - Admin Pesanan dan TUNVN menampilkan kegagalan supplier, bukan hanya handover.
