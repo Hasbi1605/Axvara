@@ -4255,6 +4255,87 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Env**: `NOWPAYMENTS_PAY_CURRENCY` dihapus (jangan diset di Pages); `NOWPAYMENTS_OUTCOME_CURRENCY` tetap wajib. Tidak ada env/cron baru. Daftar koin yang boleh dibeli = toggle dashboard NOWPayments ∩ katalog kurasi.
 - **Bukti**: tes fixture lokal (Vitest + Miniflare/workerd; fetch di-mock, tanpa jaringan nyata): `tests/crypto-multicoin.test.ts`, `tests/payment-fx.test.ts`, `tests/payment-rails-checkout.integration.test.ts`, `tests/nowpayments.*`, `tests/telegram-*`, `tests/web-payment-*`. BUKAN bukti perilaku akun NOWPayments live atau deployment.
 
+### 16.39 Perbaikan query Ringkasan dan review gabungan — 11 November 2026
+
+- Pemeriksaan SELECT baca-saja pada D1 produksi mereproduksi kegagalan
+  `VIEWs and/or subqueries nested too deep: SQLITE_ERROR` pada SQL finansial lama,
+  termasuk rentang historis. Bukan kegagalan login; API/UI tetap fail-closed dan
+  tidak mengganti angka gagal dengan nol atau snapshot lama.
+- `dashboard-report.ts` mempertahankan satu query dan fakta/alokasi biaya existing.
+  Ringkasan/supplier/channel memakai satu pembacaan scoped dengan dimensi tiga
+  baris; daily/hourly satu pembacaan facts dengan dimensi dua baris. Tidak lagi
+  menggandakan rantai CTE untuk setiap cabang UNION; batas lima compound term tetap.
+- SQL baru berhasil di D1 produksi. Seluruh baris enam jenis laporan standar
+  (76 baris) dan rentang1–10November (22 baris, tanpa hourly hari kini) identik
+  dengan cabang query lama yang dieksekusi terpisah. Hanya agregat dibaca; tidak
+  ada order, pengiriman, env, migrasi atau data produksi diubah.
+- Runtime workerd lokal menerima SQL lama, jadi tidak cukup untuk mereproduksi
+  batas server tersebut. Regresi menambahkan schema aplikasi lengkap dan batas
+  dua referensi masing-masing facts/scoped, selain tes nilai/alokasi existing.
+- Diff sesi `ses_e3a0deff6ffeBormj3Yw9ZDMIV` ditinjau langsung tanpa subagent;
+  kontrak lease/fence, retry ambigu, saldo, receipt parsial dan handover §16.38
+  dipertahankan. Instruksi11November mengizinkan satu commit/push gabungan;
+  larangan publikasi10November di bawah adalah snapshot review sebelumnya.
+- Chromium halaman admin aktual1280/390 dengan auth/API fixture: filter periode,
+  error500/503, hilangkan data lama, Retry keyboard, WR409→sukses, Retry SK dan
+  Cek status TUNVN lulus; tombol48px/fokus3px/tanpa overflow, CSS/JS200.
+  Auth asli tanpa sesi tetap401. Ini bukan login Access atau transaksi produksi;
+  publikasi melalui CI, deployment belum diverifikasi.
+- Verifikasi gabungan akhir: full411file/5660tes, type-check/ESLint18file dan
+  build:pages173edge route lulus; audit high exit0/6moderate tooling existing.
+  Warning build/Vitest existing tidak diubah; `git diff --check` bersih.
+
+### 16.38 Recovery supplier dan crosscheck regresi — 10 November 2026 (snapshot lokal sebelum publikasi gabungan §16.39)
+
+- `warung-rebahan/order.ts` dan `sekalipay/order.ts`: claim fresh CAS attempt/due,
+  takeover pre-send tidak menambah attempt, crash pre-send mengembalikan satu attempt.
+  Send wajib lease owner belum expired, request_sent_at NULL, lunas/paid dan tanpa
+  handover. Seleksi memfilter eligibility sebelum LIMIT4; fence tetap memeriksa race.
+  Manual ownership dicocokkan lewat fi.*_link_id, link.fulfillment_item_id atau
+  mapping katalog (LEFT JOIN), bukan hanya mapping current. Balance revive LIMIT8
+  setelah filter TTL24jam/paid/fence/invoice/manual, lalu CAS mengulang guard.
+- WR Premium tidak berubah kontrak POST/invite/restock/MBO/receipt. Jaspay sent-claimed
+  expired bisa recovery dengan input/ref asli; Premium missing invoice tidak direplay.
+  Tidak mencocokkan feed berdasarkan produk/waktu. Auto-order off menutup replay.
+- SK preflight memakai GET /v1/item/{id} dan /v1/balance existing: identity, auto,
+  status on bila ada, harga positif finite, stok-1/unlimited atau cukup, saldo aktual.
+  Kegagalan pre-send menunda3menit dan refund attempt; saldo kurang blocked_balance.
+  Marker preflight_insufficient_balance dipertahankan saat revive untuk mencegah
+  alert admin setiap3menit; sukses POST membersihkannya. Buyer notice existing tetap.
+  Legacy blocked memakai snapshot sk_cost; blok preflight memeriksa harga live lagi.
+  TTL blok preflight memakai created_at link (immutable), bukan updated_at yang
+  disegarkan tiap retry; legacy tetap TTL updated_at. Link pra-send tua perlu admin.
+  Error sesudah POST mempertahankan send/ref dan GET reconcile; hanya error kelas
+  SkTemporarilyUnavailableError dengan pesan eksak PRODUCT_TEMPORARILY_UNAVAILABLE
+  melepas fence. Klasifikasi regex saldo/stok client bukan bukti aman untuk rePOST.
+- `sekalipay/deliver.ts`: receipt harus berisi lisensi cukup untuk quantity dan tidak
+  mencampur variant lain; licenses kosong boleh fallback product_license. Kosong tetap
+  processing/completed_without_license; parsial/salah variant tersimpan AES-GCM dengan
+  completed_partial_license, belum settle/kirim. Completion/failure tetap monotonik;
+  failure tidak menimpa item delivered/manual. Delivery/aggregate/ledger existing dipakai.
+- `fulfillment/delivery/handover.ts`: CAS recheck lunas/paid, menolak WR/SK
+  ordering/submitted/processing dan claimed dengan active lease atau send fence,
+  baik item sudah bound maupun belum. Supplier failed masih boleh handover.
+- `tunvn/orders.ts`: whitelist pra-send <24jam dari orders.created_at pulih saat due,
+  bukan generic dispatch_unconfirmed tanpa receipt. Receipt ciphertext+IV+HTTP status
+  diproses ulang lokal tanpa POST. needs_admin backoff3menit, processing1menit;
+  Buff timeout/JSON invalid/429/5xx/success false tetap processing dan polling GET.
+  Pagar paid/disable/manual/snapshot/budget40 dan dua order manual owner tetap.
+  Menggantikan larangan auto-requeue §16.35/16.37 hanya pada scope whitelist tersebut.
+- Kontrak GET SK dicrosscheck terhadap docs publik /api-docs/items/detail,
+  /transactions/detail dan /webhook/events; tanpa mengakses akun supplier produksi.
+  Tes baru supplier-dispatch.workerd menjalankan tiga dispatcher bersamaan per
+  supplier dengan D1 native/budget40: satu POST, run berikut nol POST, remapped manual
+  nol POST. Tes SQLite mencakup race, unpaid starvation, terminal/webhook, receipt,
+  saldo top-up, input/ref dan snapshot immutable. Bukan bukti transaksi live/deployment.
+- UI SupplierLinkActions: copy error preflight/receipt SK dan poll TUNVN, tombol aksi
+  type=button/48px. Browser komponen aktual + CSS build pada1280/390, Retry keyboard,
+  SK Retry/Cek status, toast/callback, tanpa submit form/overflow/pageerror; API fixture,
+  bukan seluruh halaman admin/auth. Tanpa schema/env/dependency/proxy/cron baru.
+  Error409 fixture menampilkan error tanpa callback, tombol disabled saat busy lalu
+  pulih, fokus3px; console409 disengaja. Full411 file/5659 tes, tsc/ESLint file berubah
+  dan build:pages lulus; audit high exit0 dengan6moderate existing. Belum dipublikasikan.
+
 ### 16.37 TUNVN modal dinamis tanpa ceiling snapshot — 10 November 2026 (lokal)
 
 - `tunvn/orders.ts` tidak membandingkan harga preflight dengan `link.cost_usdt`

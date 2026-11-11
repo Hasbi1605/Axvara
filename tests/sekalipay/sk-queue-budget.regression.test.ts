@@ -32,7 +32,11 @@ function supplier() {
     }
     return Response.json({ data: { status: "processing", invoice: "SK-NEW" } });
   });
-  vi.stubGlobal("fetch", fetch);
+  vi.stubGlobal("fetch", (url: RequestInfo | URL, init?: RequestInit) => {
+    if (String(url).includes("/v1/item/689")) return Promise.resolve(Response.json({ data: { id: 689, price: 10000, stock: 100, order_process: "auto", status: "on" } }));
+    if (String(url).endsWith("/v1/balance")) return Promise.resolve(Response.json({ data: { balance: 1000000 } }));
+    return fetch(url, init);
+  });
   return fetch;
 }
 async function tick() {

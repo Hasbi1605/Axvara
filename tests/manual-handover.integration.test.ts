@@ -134,4 +134,29 @@ describe("R3 manual handover completes the order", () => {
     expect(fixture.sql.prepare("SELECT fulfillment_status FROM orders WHERE code='AXV-20260908-HO000004'").get()?.fulfillment_status)
       .toBe("manual_required");
   });
+  it.each(["wr","sk"])("rejects handover racing an active or sent %s dispatch even before item binding",async supplier=>{
+    const {ensureFulfillmentForPaidOrder}=await import("@/lib/fulfillment/deliver");
+    const {recordManualHandoverDetailed}=await import("@/lib/fulfillment/delivery/handover");
+    const {createDatabaseAccess}=await import("@/lib/db-access");
+    const code="AXV-20261110-HOFENCE1";await paidWebOrder(code);await ensureFulfillmentForPaidOrder(code);
+    fixture.sql.prepare(`UPDATE product_variants SET ${supplier}_variant_id=? WHERE id=1`).run("123");
+    fixture.sql.prepare(`INSERT INTO ${supplier}_order_links(order_code,${supplier}_variant_id,${supplier}_cost,status,lease_owner,lease_expires_at) VALUES(?,'123',1,'claimed','worker',datetime('now','+1 minute'))`).run(code);
+    const db=createDatabaseAccess(fixture.db);
+    expect(await recordManualHandoverDetailed(code,0,ADMIN.email,null,db)).toMatchObject({ok:false,reason:"bad_state"});
+    fixture.sql.exec(`UPDATE ${supplier}_order_links SET fulfillment_item_id=(SELECT id FROM fulfillment_items WHERE item_index=0); UPDATE product_variants SET ${supplier}_variant_id=NULL WHERE id=1`);
+    fixture.sql.exec(`UPDATE ${supplier}_order_links SET request_sent_at=datetime('now'),lease_expires_at=datetime('now','-1 minute')`);
+    expect(await recordManualHandoverDetailed(code,0,ADMIN.email,null,db)).toMatchObject({ok:false,reason:"bad_state"});
+    fixture.sql.exec(`UPDATE ${supplier}_order_links SET status='failed'`);
+    expect(await recordManualHandoverDetailed(code,0,ADMIN.email,null,db)).toMatchObject({ok:true});
+  });
+  it("rechecks paid state atomically before committing a manual handover",async()=>{
+    const {ensureFulfillmentForPaidOrder}=await import("@/lib/fulfillment/deliver");
+    const {recordManualHandoverDetailed}=await import("@/lib/fulfillment/delivery/handover");
+    const {createDatabaseAccess}=await import("@/lib/db-access");
+    const code="AXV-20261110-HOPAID01";await paidWebOrder(code);await ensureFulfillmentForPaidOrder(code);
+    const db=createDatabaseAccess(fixture.db),write=db.execRun;
+    db.execRun=async(sql,...params)=>{if(sql.includes("delivered_message_id='manual'"))fixture.sql.exec("UPDATE orders SET payment_status='pending'");return write(sql,...params);};
+    expect(await recordManualHandoverDetailed(code,0,ADMIN.email,null,db)).toMatchObject({ok:false,reason:"bad_state"});
+    expect(fixture.sql.prepare("SELECT count(*) n FROM fulfillment_items WHERE status='delivered'").get()?.n).toBe(0);
+  });
 });

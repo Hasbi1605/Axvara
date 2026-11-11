@@ -47,6 +47,16 @@ it("explains that legacy cost failures can retry at the current supplier price",
   expect(screen.getByText(/harga supplier terkini tanpa batas modal snapshot/)).toBeTruthy();
   expect(screen.getByRole("button",{name:"Retry"})).toBeTruthy();
 });
+it.each(["wr","sk","tunvn"] as const)("keeps %s actions at the same accessible target height",supplier=>{
+  render(<SupplierLinkActions links={[{...tunvn,supplier,status:"blocked_balance"}]} onChanged={()=>{}}/>);
+  expect(screen.getByRole("button",{name:/Retry/}).className).toContain("h-12");
+});
+it("explains SK live preflight and TUNVN read-only status recovery without exposing raw error codes",()=>{
+  render(<SupplierLinkActions links={[{...tunvn,supplier:"sk",status:"blocked_balance",last_error:"preflight_insufficient_balance"},{...tunvn,id:2,status:"processing",last_error:"buff_status_unavailable",can_retry:false}]} onChanged={()=>{}}/>);
+  expect(screen.getByText(/cukup untuk harga aktual/)).toBeTruthy();
+  expect(screen.getByText(/memeriksa ulang otomatis tanpa membeli lagi/)).toBeTruthy();
+  expect(screen.queryByText("preflight_insufficient_balance")).toBeNull();
+});
 it("shows TUNVN balance warning and retries via the protected action, not WR/SK routes",async()=>{
   const fetcher=vi.fn(async()=>Response.json({ok:true,link:{status:"needs_admin",last_error:"insufficient_balance"}}));vi.stubGlobal("fetch",fetcher);
   const changed=vi.fn();render(<SupplierLinkActions links={[tunvn]} onChanged={changed}/>);

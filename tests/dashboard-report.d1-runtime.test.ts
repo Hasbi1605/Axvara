@@ -2,6 +2,23 @@ import { expect, it } from "vitest";
 import { Miniflare } from "miniflare";
 import { reportRuntimeSchema } from "./helpers/report-workerd-schema";
 import { financialReportSql } from "@/lib/dashboard-report";
+import { createD1Fixture } from "./helpers/d1-fixture";
+
+it("D1 executes overview and historical reports against the full application schema", async () => {
+  const runtime = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok"); } }', compatibilityDate: "2026-08-06", d1Databases: ["DB"] });
+  const fixture = createD1Fixture();
+  try {
+    const db = await runtime.getD1Database("DB");
+    const tables = fixture.sql.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as { sql: string }[];
+    await db.batch(tables.map(row => db.prepare(row.sql)));
+    const now = new Date("2026-11-11T00:00:00Z");
+    for (const sql of [financialReportSql(now), financialReportSql(now, { date_from: "2026-11-01", date_to: "2026-11-10" })]) {
+      // Remote D1 rejects the old repeated CTE expansion; local workerd accepts it.
+      for (const cte of ["facts", "scoped"]) expect(sql.match(new RegExp(`\\bFROM ${cte}\\b`, "g"))?.length).toBeLessThanOrEqual(2);
+      expect((await db.prepare(sql).all()).results).toEqual([]);
+    }
+  } finally { fixture.close(); await runtime.dispose(); }
+}, 15000);
 
 // node:sqlite accepts larger UNIONs than D1. Execute the actual report in
 // workerd too, so Cloudflare's SQL limits are part of regression coverage.

@@ -254,6 +254,36 @@ describe("safe admin retry",()=>{
   });
 });
 
+describe("automatic recovery without a second purchase",()=>{
+  it("recovers a fresh insufficient balance failure after top-up with a bounded delay",async()=>{
+    seed();balance=0;await tick();balance=100;
+    await tick();expect(buys()).toBe(0);
+    due();const budget=createBudgetedDatabase(40,2,fixture.db);await processTunvnOrders(budget.access);
+    expect(budget.used).toBeLessThanOrEqual(38);expect(buys()).toBe(1);expect(link().status).toBe("completed");
+    due();await tick();expect(buys()).toBe(1);
+  });
+  it.each(["disabled","old","ambiguous","handover"])("does not auto-buy a %s preflight failure",async kind=>{
+    seed();balance=0;await tick();balance=100;due();
+    if(kind==="disabled")fixture.sql.exec("UPDATE orders SET supplier_purchase_disabled=1");
+    if(kind==="old")fixture.sql.exec("UPDATE orders SET created_at=datetime('now','-25 hours')");
+    if(kind==="ambiguous")fixture.sql.exec("UPDATE tunvn_order_links SET last_error='dispatch_unconfirmed'");
+    if(kind==="handover")fixture.sql.exec("UPDATE fulfillment_items SET status='delivered',last_error='manual_handover:fixture'");
+    await tick();expect(buys()).toBe(0);
+  });
+  it("recovers a saved account receipt after a transient settlement DB fault without POSTing again",async()=>{
+    seed();fixture.control.fail=q=>q.includes("SET provider_order_group=");await tick();fixture.control.fail=null;
+    expect(link()).toMatchObject({status:"needs_admin",last_error:"dispatch_unconfirmed",receipt_http_status:200,attempt_count:1});
+    due();await tick();expect(link().status).toBe("completed");expect(buys()).toBe(1);
+  });
+  it("retries an unavailable read-only Buff preflight, without counting a purchase attempt",async()=>{
+    seed([buff()]);const original=transport.getMockImplementation()!;
+    transport.mockImplementation(async(url,init)=>{if(String(url).endsWith("/buff/check"))throw new Error("fixture timeout");return original(url,init);});
+    await tick();expect(link()).toMatchObject({status:"needs_admin",last_error:"buff_unavailable",attempt_count:0});
+    purchase={success:true,batch_id:"BUFF_FIXTURE",currency:"usdt",sell_price_usdt:2,orders:[{invite_code:"Ab12Cd",quantity_b:1,order_code:"TELE_FIXTURE"}]};
+    transport.mockImplementation(original);due();await tick();expect(link().status).toBe("processing");expect(buys()).toBe(1);
+  });
+});
+
 describe("Buff accepted is not delivered",()=>{
   beforeEach(()=>{purchase={success:true,batch_id:"BUFF_FIXTURE",currency:"usdt",sell_price_usdt:2,orders:[{invite_code:"Ab12Cd",quantity_b:1,order_code:"TELE_FIXTURE"}]};});
   it.each([1,3])("uses live Buff cost %s for four units, then completes without rebuy",async current=>{
@@ -283,6 +313,18 @@ describe("Buff accepted is not delivered",()=>{
   it.each(["failed","needs_check","needs_check_alerted"])("moves %s to admin without repurchase",async state=>{
     seed([buff()]);await tick();(status.orders as Row[])[0].status=state;due();await tick();due();await tick();
     expect(link().status).toBe("needs_admin");expect(buys()).toBe(1);
+  });
+  it.each(["timeout","invalid_json",429,503])("keeps polling after status %s without replaying a purchase",async fault=>{
+    seed([buff()]);await tick();const original=transport.getMockImplementation()!;
+    transport.mockImplementation(async(url,init)=>{
+      if(!String(url).includes("/buff/status"))return original(url,init);
+      if(fault==="timeout")throw new Error("fixture timeout");
+      if(fault==="invalid_json")return new Response("invalid");
+      return response({},Number(fault));
+    });
+    due();await tick();expect(link()).toMatchObject({status:"processing",last_error:"buff_status_unavailable",attempt_count:1});
+    transport.mockImplementation(original);status.is_done=true;(status.orders as Row[])[0].status="done";
+    due();await tick();expect(link().status).toBe("completed");expect(buys()).toBe(1);
   });
   it.each(["batch_id","invite_code","quantity_b","order_code"])("rejects mismatched %s",async field=>{
     seed([buff()]);await tick();if(field==="batch_id")status.batch_id="OTHER";else(status.orders as Row[])[0][field]=field==="quantity_b"?2:"OTHER";

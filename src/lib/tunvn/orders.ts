@@ -18,6 +18,11 @@ export const TUNVN_RETRYABLE_SQL = `status='needs_admin' AND attempt_count=0 AND
     AND f.order_code=tunvn_order_links.order_code AND f.item_index=tunvn_order_links.item_index
     AND f.status IN ('queued','retry','failed','manual_required') AND f.fulfillment_mode='manual'
     AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.inventory_id IS NULL AND f.delivered_ciphertext IS NULL AND f.delivered_iv IS NULL)`;
+// ponytail: recover pre-send failures for 24h; older orders need explicit admin Retry.
+const AUTO_RECOVERY_SQL = `((${TUNVN_RETRYABLE_SQL}) AND last_error!='dispatch_unconfirmed'
+  AND EXISTS(SELECT 1 FROM orders o WHERE o.code=tunvn_order_links.order_code AND datetime(o.created_at)>datetime('now','-24 hours')))
+  OR (status='needs_admin' AND last_error='dispatch_unconfirmed' AND request_sent_at IS NOT NULL
+    AND receipt_ciphertext IS NOT NULL AND receipt_iv IS NOT NULL AND receipt_http_status IS NOT NULL)`;
 class PreflightError extends Error {}
 export function tunvnOrderLines(order:Row):Row[] {
   try { const items:unknown=JSON.parse(String(order.items ?? "[]")); return Array.isArray(items) ? items.map(item=>item && typeof item==="object" && !Array.isArray(item) ? item : {}) : []; } catch { return []; }
@@ -61,8 +66,8 @@ export async function createTunvnOrderLinks(orderCode:string,db:DatabaseAccess=c
 
 async function settle(db:DatabaseAccess,link:Row,status:"completed"|"processing"|"needs_admin",error:string|null):Promise<void> {
   if (status==="completed") await db.execRun(`UPDATE fulfillment_jobs SET status='queued',attempt_count=0,next_attempt_at=datetime('now'),locked_until=NULL WHERE order_code=? AND status IN ('delivered','manual_required','failed') AND EXISTS(SELECT 1 FROM tunvn_order_links WHERE id=? AND lease_owner=? AND status!='completed')`,link.order_code,link.id,link.lease_owner);
-  const settled=await db.execRun(`UPDATE tunvn_order_links SET status=?,last_error=?,lease_owner=NULL,lease_expires_at=NULL,next_attempt_at=datetime('now','+1 minute'),updated_at=datetime('now'),completed_at=CASE WHEN ?='completed' THEN datetime('now') ELSE completed_at END
-    WHERE id=? AND lease_owner=? AND status!='completed'`,status,error,status,link.id,link.lease_owner);
+  const settled=await db.execRun(`UPDATE tunvn_order_links SET status=?,last_error=?,lease_owner=NULL,lease_expires_at=NULL,next_attempt_at=datetime('now',CASE WHEN ?='needs_admin' THEN '+3 minutes' ELSE '+1 minute' END),updated_at=datetime('now'),completed_at=CASE WHEN ?='completed' THEN datetime('now') ELSE completed_at END
+    WHERE id=? AND lease_owner=? AND status!='completed'`,status,error,status,status,link.id,link.lease_owner);
   if (!settled.changes) return;
   if (status==="needs_admin") await db.execRun(`UPDATE fulfillment_items SET status='manual_required',last_error='supplier_needs_admin',locked_until=NULL WHERE tunvn_link_id=? AND status NOT IN ('delivered','sending')`,link.id);
 }
@@ -78,11 +83,14 @@ async function preflight(link:Row):Promise<number> {
     if (!product?.price_usdt || product.stock<Number(link.quantity)) throw new PreflightError("stock_unavailable");
     price=product.price_usdt*Number(link.quantity);
   } else {
-    const response=await tunvnRequest("buff/check",{ orders_text:tunvnBuffText(String(link.invite_code),Number(link.quantity)) });
-    const value=parseTunvnResponse(response.text);
+    let response, value:Row;
+    try {
+      response=await tunvnRequest("buff/check",{ orders_text:tunvnBuffText(String(link.invite_code),Number(link.quantity)) });
+      value=parseTunvnResponse(response.text);
+    } catch { throw new PreflightError("buff_unavailable"); }
     const rows=value.orders_breakdown as Row[]|undefined;
     if (response.status!==200 || value.success!==true || typeof value.fundable!=="boolean" || !Array.isArray(rows) || rows.length!==1
-      || rows[0].invite_code!==link.invite_code || rows[0].quantity_b!==link.quantity || rows[0].valid!==true) throw new PreflightError("buff_unavailable");
+      || !rows[0] || rows[0].invite_code!==link.invite_code || rows[0].quantity_b!==link.quantity || rows[0].valid!==true) throw new PreflightError("buff_unavailable");
     price=Number(value.sell_price_usdt);
     fundable=value.fundable;
   }
@@ -129,8 +137,14 @@ async function finishReceipt(db:DatabaseAccess,link:Row,json:Row,status:number):
 
 async function pollBuff(db:DatabaseAccess,link:Row):Promise<void> {
   await notifyBuyerTunvnProcessing(String(link.order_code),Number(link.id),db);
-  const response=await tunvnRequest("buff/status",undefined,String(link.provider_batch_id));
-  const json=parseTunvnResponse(response.text);
+  let response, json:Row;
+  try {
+    response=await tunvnRequest("buff/status",undefined,String(link.provider_batch_id));
+    json=parseTunvnResponse(response.text);
+  } catch { await settle(db,link,"processing","buff_status_unavailable"); return; }
+  if (response.status===429 || response.status>=500 || (response.status===200 && json.success!==true)) {
+    await settle(db,link,"processing","buff_status_unavailable"); return;
+  }
   const rows=Array.isArray(json.orders) ? json.orders as Row[] : [];
   const row=rows[0];
   if (response.status!==200 || json.success!==true || json.batch_id!==link.provider_batch_id || rows.length!==1
@@ -148,7 +162,7 @@ async function pollBuff(db:DatabaseAccess,link:Row):Promise<void> {
 async function processLink(db:DatabaseAccess,id:number,reconcile=false):Promise<void> {
   const owner=crypto.randomUUID();
   const claimed=await db.execRun(`UPDATE tunvn_order_links SET lease_owner=?,lease_expires_at=datetime('now','+90 seconds'),status=CASE WHEN status='processing' OR ?=1 THEN 'processing' ELSE 'claimed' END
-    WHERE id=? AND ${reconcile ? "kind='buff' AND provider_batch_id IS NOT NULL AND status IN ('processing','needs_admin')" : "status IN ('pending','claimed','processing') AND datetime(next_attempt_at)<=datetime('now')"} AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))`,owner,reconcile ? 1 : 0,id);
+    WHERE id=? AND ${reconcile ? "kind='buff' AND provider_batch_id IS NOT NULL AND status IN ('processing','needs_admin')" : `(status IN ('pending','claimed','processing') OR (${AUTO_RECOVERY_SQL})) AND datetime(next_attempt_at)<=datetime('now')`} AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))`,owner,reconcile ? 1 : 0,id);
   if (!claimed.changes) return;
   const link=await db.queryFirst("SELECT * FROM tunvn_order_links WHERE id=? AND lease_owner=?",id,owner);
   if (!link) return;
@@ -215,7 +229,7 @@ export async function processTunvnOrders(db:DatabaseAccess=createDatabaseAccess(
     AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) j WHERE json_extract(j.value,'$.tunvn_eligibility.version')=1 AND json_extract(j.value,'$.tunvn_eligibility.cost_usdt')>0 AND NOT EXISTS(SELECT 1 FROM tunvn_order_links l WHERE l.order_code=o.code AND l.item_index=CAST(j.key AS INTEGER))) ORDER BY o.id LIMIT 1`);
   if (orphan) await createTunvnOrderLinks(String(orphan.code),db);
   if (!db.canSpend(30)) return 0;
-  const link=await db.queryFirst(`SELECT id FROM tunvn_order_links WHERE ${options.reconcileId ? "status IN ('processing','needs_admin') AND kind='buff' AND provider_batch_id IS NOT NULL" : "status IN ('pending','claimed','processing') AND datetime(next_attempt_at)<=datetime('now')"}
+  const link=await db.queryFirst(`SELECT id FROM tunvn_order_links WHERE ${options.reconcileId ? "status IN ('processing','needs_admin') AND kind='buff' AND provider_batch_id IS NOT NULL" : `(status IN ('pending','claimed','processing') OR (${AUTO_RECOVERY_SQL})) AND datetime(next_attempt_at)<=datetime('now')`}
     AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
     ${options.orderCode ? "AND order_code=?" : ""} ${options.reconcileId ? "AND id=?" : ""} ORDER BY next_attempt_at,id LIMIT 1`,...(options.orderCode ? [options.orderCode] : []),...(options.reconcileId ? [options.reconcileId] : []));
   if (!link) return 0;

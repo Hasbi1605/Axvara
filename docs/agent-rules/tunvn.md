@@ -1,5 +1,22 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Publikasi gabungan 11 November 2026
+
+- Owner mengizinkan satu commit/push recovery yang sudah direview langsung bersama
+  fix Ringkasan, tanpa subagent. Batas24jam, larangan rebuy ambigu dan dua order
+  manual tetap; bukan izin transaksi/deposit/notifikasi produksi. ARCHITECTURE16.39.
+
+## Recovery otomatis terbatas 10 November 2026 (snapshot lokal sebelum publikasi gabungan)
+
+- Menggantikan retry-admin-only di bawah hanya untuk whitelist pra-send yang lolos
+  TUNVN_RETRYABLE_SQL dan orders.created_at <24jam: cron boleh mencoba3menit kemudian.
+  dispatch_unconfirmed tanpa receipt tetap tidak auto-retry; order tua perlu admin.
+- dispatch_unconfirmed dengan receipt ciphertext/IV/HTTP status boleh diproses ulang
+  lokal tanpa POST pembelian. Buff timeout/invalid JSON/429/5xx/success false tetap
+  processing dan polling, bukan rebuy. Paid/disable/ownership/budget40 tetap wajib.
+- Dua order manual owner tetap dikecualikan. Tidak ada mutasi/notifikasi/transaksi
+  produksi, schema/env/proxy/cron baru. Bukti dan batas di ARCHITECTURE16.38.
+
 ## Revisi owner 10 November 2026: modal dinamis tanpa ceiling snapshot (lokal)
 
 - Hapus penolakan dispatch/retry hanya karena modal aktual naik dari snapshot;

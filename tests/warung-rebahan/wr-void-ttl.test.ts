@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { createD1Fixture } from "../helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { reconcileBlockedBalance, WR_BLOCKED_MAX_AGE_HOURS } from "@/lib/warung-rebahan/order";
-import { seedWrCatalog, seedWrOrder, setupWrFixture } from "./helpers";
+import { seedWrCatalog, seedWrFulfillmentItem, seedWrOrder, setupWrFixture } from "./helpers";
 
 // Scope B (2026-09-28, zombie-order fix): route void CAS + TTL auto-revive
 // + kabar buyer saat blocked_balance.
@@ -25,6 +25,7 @@ let fixture: ReturnType<typeof createD1Fixture>;
 beforeEach(async () => {
   fixture = createD1Fixture();
   vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+  vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
 });
 
 afterEach(() => {
@@ -42,7 +43,7 @@ function seedBlockedLink(code: string, opts: { updatedAgo?: string; orderStatus?
   return Number((sql.prepare("SELECT id FROM wr_order_links WHERE order_code=?").get(code) as { id: number }).id);
 }
 
-function stubBalance(balance: number) {
+function stubBalance(balance: unknown) {
   // Mode langsung (tanpa proxy) butuh API key, kalau tidak wrFetch melempar
   // sebelum fetch tersentuh (lihat client.ts getWrApiKey).
   vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
@@ -118,6 +119,61 @@ describe("B: POST void CAS", () => {
 });
 
 describe("B: TTL reconcileBlockedBalance", () => {
+  it("baris tua atau dibatalkan tidak menyumbat delapan slot kandidat", async () => {
+    for (let i = 0; i < 10; i++) seedBlockedLink(`AXV-OLD-${i}`, i % 2 ? { orderStatus: "dibatalkan" } : { updatedAgo: "datetime('now','-25 hours')" });
+    const eligible = seedBlockedLink("AXV-ELIGIBLE");
+    stubBalance(100000);
+    expect(await reconcileBlockedBalance(createDatabaseAccess(fixture.db))).toBe(1);
+    expect(fixture.sql.prepare("SELECT status FROM wr_order_links WHERE id=?").get(eligible)).toMatchObject({ status: "pending" });
+  });
+
+  it.each(["unpaid", "sent", "receipt", "terminal", "ttl"])("CAS menolak perubahan %s setelah kandidat dipilih", async (change) => {
+    const id = seedBlockedLink("AXV-RACE");
+    stubBalance(100000);
+    const db = createDatabaseAccess(fixture.db);
+    const exec = db.execRun;
+    db.execRun = (async (sql: string, ...args: unknown[]) => {
+      if (sql.includes("SET status='pending'")) {
+        if (change === "unpaid") fixture.sql.prepare("UPDATE orders SET payment_status='pending' WHERE code='AXV-RACE'").run();
+        if (change === "sent") fixture.sql.prepare("UPDATE wr_order_links SET request_sent_at=datetime('now') WHERE id=?").run(id);
+        if (change === "receipt") fixture.sql.prepare("UPDATE wr_order_links SET wr_order_id='WR-1' WHERE id=?").run(id);
+        if (change === "terminal") fixture.sql.prepare("UPDATE wr_order_links SET status='failed' WHERE id=?").run(id);
+        if (change === "ttl") fixture.sql.prepare("UPDATE wr_order_links SET updated_at=datetime('now','-25 hours') WHERE id=?").run(id);
+      }
+      return exec(sql, ...args);
+    }) as typeof db.execRun;
+    expect(await reconcileBlockedBalance(db)).toBe(0);
+    expect(fixture.sql.prepare("SELECT status FROM wr_order_links WHERE id=?").get(id)).toMatchObject({ status: change === "terminal" ? "failed" : "blocked_balance" });
+  });
+
+  it("CAS menolak serah terima manual setelah kandidat dipilih", async () => {
+    seedWrCatalog(fixture); seedWrOrder(fixture, "AXV-MANUAL-RACE"); seedWrFulfillmentItem(fixture, "AXV-MANUAL-RACE");
+    fixture.sql.prepare("INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status) VALUES('AXV-MANUAL-RACE','var-1',1,5000,'blocked_balance')").run();
+    stubBalance(100000);
+    const db = createDatabaseAccess(fixture.db);
+    const exec = db.execRun;
+    db.execRun = (async (sql: string, ...args: unknown[]) => {
+      if (sql.includes("SET status='pending'")) fixture.sql.prepare("UPDATE fulfillment_items SET status='delivered', delivered_message_id='manual' WHERE order_code='AXV-MANUAL-RACE'").run();
+      return exec(sql, ...args);
+    }) as typeof db.execRun;
+    expect(await reconcileBlockedBalance(db)).toBe(0);
+    expect(fixture.sql.prepare("SELECT status FROM wr_order_links WHERE order_code='AXV-MANUAL-RACE'").get()).toMatchObject({ status: "blocked_balance" });
+  });
+
+  it.each([null, undefined, "", "bad", -1])("saldo invalid %s tidak membangunkan link tanpa biaya", async (balance) => {
+    const id = seedBlockedLink("AXV-INVALID-BALANCE", { cost: 0 });
+    stubBalance(balance);
+    expect(await reconcileBlockedBalance(createDatabaseAccess(fixture.db))).toBe(0);
+    expect(fixture.sql.prepare("SELECT status FROM wr_order_links WHERE id=?").get(id)).toMatchObject({ status: "blocked_balance" });
+  });
+
+  it("auto-order disabled tidak memulihkan link", async () => {
+    const id = seedBlockedLink("AXV-DISABLED");
+    stubBalance(100000);
+    vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
+    expect(await reconcileBlockedBalance(createDatabaseAccess(fixture.db))).toBe(0);
+    expect(fixture.sql.prepare("SELECT status FROM wr_order_links WHERE id=?").get(id)).toMatchObject({ status: "blocked_balance" });
+  });
   it(`link muda (<${WR_BLOCKED_MAX_AGE_HOURS} jam) + lunas → revive`, async () => {
     expect(WR_BLOCKED_MAX_AGE_HOURS).toBe(24);
     const fx = await setupWrFixture();

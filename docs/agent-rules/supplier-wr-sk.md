@@ -4,6 +4,32 @@
 
 - `products.description_en` (0103), `products.name_en`, `product_variants.admin_terms_en`/`admin_activation_en` (0105) adalah kolom **admin-owned**: sync WR/SK tidak boleh menulisnya dan `WR_OWNED_PRODUCT_FIELDS` tidak memuatnya. Seed EN (0104 untuk deskripsi, 0106 untuk nama/S&K admin) hanya mengisi baris yang masih NULL; jangan pernah menimpa suntingan admin atau menganggapnya field supplier.
 
+## Publikasi gabungan 11 November 2026
+
+- Owner meminta review langsung sesi `ses_e3a0deff6ffeBormj3Yw9ZDMIV` tanpa
+  subagent dan satu commit/push bersama fix Ringkasan admin. Larangan push pada
+  snapshot10November berikut digantikan hanya untuk publikasi gabungan ini.
+  Kontrak/restriksi transaksi produksi tetap; detail ARCHITECTURE16.39.
+
+## Crosscheck recovery 10 November 2026 (snapshot lokal sebelum publikasi gabungan)
+
+- Send WR/SK wajib lease owner/expiry, paid dan tanpa handover; eligible dipilih
+  sebelum LIMIT. Kepemilikan mengikuti link/item durable dua arah atau mapping,
+  bukan hanya katalog current. Crash sebelum send refund satu attempt; setelah
+  send tidak pernah reset fence untuk recovery biasa. Saldo revival TTL24jam + CAS.
+- SK melakukan GET detail/saldo sebelum satu POST. Preflight failure tidak memakan
+  attempt, delay3menit; alert saldo admin/buyer dipertahankan tanpa spam tiap tick.
+  TTL24jam blok preflight dihitung dari created_at link agar retry tidak memperbarui
+  umurnya tanpa batas; blok legacy tetap updated_at. Order tua perlu retry admin.
+  Error POST saldo/stok/validasi generik tetap ambigu, bukan alasan rePOST. Hanya
+  PRODUCT_TEMPORARILY_UNAVAILABLE eksplisit boleh membuka retry biasa.
+- Receipt SK harus cukup lisensi untuk quantity, tanpa campuran variant lain;
+  empty licenses boleh fallback product_license. Parsial disimpan terenkripsi,
+  belum settle/delivery; terminal/manual existing tidak diturunkan atau ditimpa.
+  WR Premium missing-ID tetap admin exact invoice, Jaspay ref/input identik saja.
+- Crosscheck langsung diff subagent, kontrak publik SK dan fixture native D1/SQLite;
+  ARCHITECTURE16.38. Tidak membuat transaksi/notifikasi produksi; owner melarang push.
+
 ## WR Jaspay - 2 November 2026
 - Dokumentasi resmi tetap base `/api/v1`; jangan menebak `/api/v3`. Jaspay adalah keluarga terpisah dari Akun Premium. Proxy mendukung `POST /wr/jaspay/{products,order,status,orders}` dengan token/key existing; rilis VPS2November terverifikasi health/hash, bukan bukti deployment Pages/transaksi nyata.
 - Jangan memindahkan order Premium lama atau mencocokkan invoice dari nama/waktu/feed50terbaru. Identitas Jaspay memakai namespace `jaspay:` di mirror/link WR existing; stok available=-1 adalah unlimited, bukan `max_quantity`. Sweep/diff Premium tidak boleh menonaktifkan namespace Jaspay. Maksimum jumlah harus valid dan ditegakkan server-side termasuk baris keranjang ganda.

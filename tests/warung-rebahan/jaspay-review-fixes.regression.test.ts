@@ -179,6 +179,34 @@ describe("terminal Jaspay", () => {
 });
 
 describe("recovery exact-ref ber-lease + CAS", () => {
+  it("claimed terkirim dengan lease kedaluwarsa dipulihkan lewat ref yang sama", async () => {
+    const fx = await setupWrFixture();
+    try {
+      enableWr(); seed(fx); seedLink(fx, { status: "claimed" });
+      fx.sql.prepare("UPDATE wr_order_links SET lease_owner='dead', lease_expires_at=datetime('now','-1 minutes') WHERE id=1").run();
+      const calls = stubFetch(() => ({ success: true, message: "ok", data: { invoice: "JSP-CRASH", status: "processing" } }));
+      expect((await reconcileJaspayAmbiguous(createDatabaseAccess(fx.db))).exactRef).toBe(1);
+      expect(calls).toHaveLength(1);
+      expect(link(fx)).toMatchObject({ status: "processing", wr_order_id: "JSP-CRASH" });
+    } finally { fx.close(); }
+  });
+
+  it.each(["disabled", "unpaid", "manual", "manual_remapped"])("replay tidak berjalan bila %s", async (reason) => {
+    const fx = await setupWrFixture();
+    try {
+      enableWr(); seed(fx); seedLink(fx, { status: "submitted" });
+      if (reason === "disabled") vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "false");
+      if (reason === "unpaid") fx.sql.prepare("UPDATE orders SET payment_status='unpaid' WHERE code=?").run(CODE);
+      if (reason === "manual") fx.sql.prepare("UPDATE fulfillment_items SET status='delivered', delivered_message_id='manual' WHERE order_code=?").run(CODE);
+      if (reason === "manual_remapped") {
+        fx.sql.prepare("UPDATE fulfillment_items SET wr_link_id=1,status='delivered',delivered_message_id='manual' WHERE order_code=?").run(CODE);
+        fx.sql.exec("UPDATE product_variants SET wr_variant_id=NULL");
+      }
+      const calls = stubFetch(() => ({ success: true, data: { invoice: "JSP-NO", status: "processing" } }));
+      expect(await recoverJaspayByExactRef(1, createDatabaseAccess(fx.db))).toBe(false);
+      expect(calls).toHaveLength(0);
+    } finally { fx.close(); }
+  });
   it("lease aktif milik worker lain => tidak POST", async () => {
     const fx = await setupWrFixture();
     try {

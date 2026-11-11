@@ -6,6 +6,14 @@ import { bindSkInvoiceByRef, processSkPendingOrders, recoverStaleSkClaims, skRef
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 import { createD1Fixture, stubFulfillmentKey } from "../helpers/d1-fixture";
 
+function stubFetch(fetch: (url: RequestInfo | URL, init?: RequestInit) => unknown) {
+  vi.stubGlobal("fetch", (url: RequestInfo | URL, init?: RequestInit) => {
+    if (String(url).includes("/v1/item/1095")) return Promise.resolve(Response.json({ data: { id: 1095, price: 5000, stock: 10, order_process: "auto", status: "on" } }));
+    if (String(url).endsWith("/v1/balance")) return Promise.resolve(Response.json({ data: { balance: 100000 } }));
+    return fetch(url, init);
+  });
+}
+
 afterEach(() => {
   vi.unstubAllEnvs(); vi.unstubAllGlobals(); clearRateLimitBucketsForTest();
 });
@@ -32,6 +40,7 @@ function setup(status = "claimed", code = "AXV-20261022-STUCK") {
     request_sent_at,lease_expires_at,next_attempt_at,idempotency_key)
     VALUES(?,'1095',1,5000,?,1,datetime('now','-5 minutes'),datetime('now','-3 minutes'),datetime('now','-5 minutes'),?)`)
     .run(code, status, skRefId(code, "1095", 1));
+  if (status === "pending") fx.sql.exec("UPDATE sk_order_links SET request_sent_at=NULL");
   return { fx, code, db: createDatabaseAccess(fx.db) };
 }
 
@@ -59,6 +68,320 @@ function expectDelivered(fx: ReturnType<typeof createD1Fixture>) {
 }
 
 describe("SK sent claim recovery — incident 23 October", () => {
+  it.each(["selection", "send"])("preserves a bound manual handover even after catalog remapping: %s", async phase => {
+    const { fx, db } = setup("pending");
+    try {
+      const handover = () => fx.sql.exec(`UPDATE fulfillment_items SET ${phase === "selection" ? "sk_link_id=NULL" : "sk_link_id=(SELECT id FROM sk_order_links)"},last_error='manual_handover:admin',delivered_message_id='manual'; UPDATE sk_order_links SET fulfillment_item_id=(SELECT id FROM fulfillment_items); UPDATE product_variants SET sk_variant_id=NULL`);
+      if (phase === "selection") handover();
+      const exec = db.execRun;
+      db.execRun = async (sql, ...args) => {
+        if (phase === "send" && sql.includes("SET request_sent_at=datetime('now')")) handover();
+        return exec(sql, ...args);
+      };
+      const fetch = vi.fn(); stubFetch(fetch);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fetch).not.toHaveBeenCalled();
+    } finally { fx.close(); }
+  });
+  it("does not let unpaid history consume all dispatch slots", async () => {
+    const { fx, code, db } = setup("pending");
+    try {
+      fx.sql.exec("UPDATE sk_order_links SET id=100");
+      for (let i = 1; i <= 4; i++) {
+        fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status) VALUES(?,'Buyer','628','[]',1,'qris','lunas','pending')`).run(`UNPAID-${i}`);
+        fx.sql.prepare(`INSERT INTO sk_order_links(id,order_code,sk_variant_id,sk_cost,status,next_attempt_at) VALUES(?,?,'1095',5000,'pending',datetime('now','-1 day'))`).run(i, `UNPAID-${i}`);
+      }
+      const fetch = vi.fn(async () => Response.json({ data: { invoice: "SK-PAID", ref_id: skRefId(code, "1095", 1), status: "paid" } })); stubFetch(fetch);
+      expect(await processSkPendingOrders(db, { skipOrphanProbe: true })).toMatchObject({ processed: 1, succeeded: 1 });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fx.sql.prepare("SELECT status,attempt_count FROM sk_order_links WHERE id=1").get()).toEqual({ status: "pending", attempt_count: 0 });
+    } finally { fx.close(); }
+  });
+  it("keeps the admin low-balance notice without spamming each preflight retry", async () => {
+    const { fx, db } = setup("pending");
+    try {
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "true"); vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "123");
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", "fixture-token");
+      const notices: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).includes("api.telegram.org")) { notices.push(String(init?.body)); return Response.json({ ok: true, result: { message_id: 1 } }); }
+        return Response.json({ data: String(url).includes("/v1/item/") ? { id: 1095, price: 6000, stock: 10, order_process: "auto" } : { balance: 100 } });
+      }));
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      fx.sql.exec("UPDATE sk_order_links SET next_attempt_at=datetime('now','-1 minute')");
+      const { reconcileBlockedSkBalance } = await import("@/lib/sekalipay/order");
+      await reconcileBlockedSkBalance(db);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(notices.filter(text => text.includes("Saldo Sekalipay"))).toHaveLength(1);
+    } finally { fx.close(); }
+  });
+  it("preserves the complete SK auto flow with explicit GET preflight, stable ref, two licenses and no rebuy", async () => {
+    const { fx, code, db } = setup("pending");
+    try {
+      fx.sql.exec("UPDATE sk_order_links SET quantity=2,sk_cost=10000,idempotency_key=NULL; UPDATE fulfillment_items SET qty=2");
+      const calls: string[] = [];
+      const ref = skRefId(code, "1095", 2);
+      vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        const path = new URL(String(url)).pathname;
+        calls.push(`${init?.method ?? "GET"} ${path}`);
+        if (path.endsWith("/item/1095")) return Response.json({ data: { id: 1095, price: 6000, stock: -1, order_process: "auto" } });
+        if (path.endsWith("/balance")) return Response.json({ data: { balance: 12000 } });
+        if (init?.method === "POST") {
+          expect(JSON.parse(String(init.body))).toEqual({ ref_id: ref, carts: [{ item_id: 1095, quantity: 2 }] });
+          expect(fx.sql.prepare("SELECT request_sent_at FROM sk_order_links").get()?.request_sent_at).toEqual(expect.any(String));
+          return Response.json({ data: { invoice: "SK-RECOVERED", ref_id: ref, status: "paid" } });
+        }
+        expect(path).toBe("/api/v1/trx/SK-RECOVERED");
+        return Response.json({ data: { invoice: "SK-RECOVERED", ref_id: ref, status: "completed", items: [{ variant_id: 1095, licenses: [{ product_license: "UNIT-ONE" }, { product_license: "UNIT-TWO" }] }] } });
+      }));
+      expect(await processSkPendingOrders(db, { skipOrphanProbe: true })).toMatchObject({ succeeded: 1 });
+      const { reconcileSkInvoiceNow } = await import("@/lib/sekalipay/order");
+      expect(await reconcileSkInvoiceNow("SK-RECOVERED", db)).toBe(true);
+      expect(await reconcileSkInvoiceNow("SK-RECOVERED", db)).toBe(true);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(calls.slice(0, 3)).toEqual(["GET /api/v1/item/1095", "GET /api/v1/balance", "POST /api/v1/trx"]);
+      expect(calls.filter(call => call.startsWith("POST"))).toHaveLength(1);
+      expectDelivered(fx);
+      const item = fx.sql.prepare("SELECT delivered_ciphertext,delivered_iv FROM fulfillment_items").get();
+      const { decryptSecret } = await import("@/lib/fulfillment/crypto");
+      const plaintext = await decryptSecret(String(item?.delivered_ciphertext), String(item?.delivered_iv));
+      expect(plaintext).toContain("UNIT-ONE"); expect(plaintext).toContain("UNIT-TWO");
+      expect(fx.sql.prepare("SELECT sk_cost FROM sk_order_links").get()?.sk_cost).toBe(10000);
+      expect(fx.sql.prepare("SELECT subtotal FROM orders").get()?.subtotal).toBe(7259);
+    } finally { fx.close(); }
+  });
+  it.each([
+    ["low balance", { id: 1095, price: 6000, stock: 2, order_process: "auto", status: "on" }, { balance: 5999 }, "blocked_balance"],
+    ["unreadable balance", { id: 1095, price: 6000, stock: 2, order_process: "auto", status: "on" }, {}, "retry"],
+    ["no stock", { id: 1095, price: 6000, stock: 0, order_process: "auto", status: "on" }, { balance: 10000 }, "retry"],
+    ["disabled item", { id: 1095, price: 6000, stock: 2, order_process: "auto", status: "off" }, { balance: 10000 }, "retry"],
+    ["wrong identity", { id: 8, price: 6000, stock: 2, order_process: "auto", status: "on" }, { balance: 10000 }, "retry"],
+  ])("preflight %s never buys or consumes an attempt", async (_label, item, balance, expected) => {
+    const { fx, db } = setup("pending");
+    try {
+      const fetch = vi.fn(async (url: RequestInfo | URL) => Response.json({ data: String(url).includes("/v1/item/") ? item : balance }));
+      vi.stubGlobal("fetch", fetch);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fx.sql.prepare("SELECT status,attempt_count,request_sent_at FROM sk_order_links").get()).toEqual({ status: expected, attempt_count: 1, request_sent_at: null });
+      expect(fetch.mock.calls.every(([url]) => !String(url).endsWith("/v1/trx"))).toBe(true);
+    } finally { fx.close(); }
+  });
+  it("revives a preflight-blocked order after top-up and buys at live cost", async () => {
+    const { fx, code, db } = setup("pending");
+    try {
+      let balance = 3000;
+      const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).includes("/v1/item/")) return Response.json({ data: { id: 1095, price: 6000, stock: 10, order_process: "auto" } });
+        if (String(url).endsWith("/v1/balance")) return Response.json({ data: { balance } });
+        expect(init?.method).toBe("POST");
+        return Response.json({ data: { invoice: "SK-PAID", ref_id: skRefId(code, "1095", 1), status: "paid" } });
+      });
+      vi.stubGlobal("fetch", fetch);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fx.sql.prepare("SELECT status,attempt_count FROM sk_order_links").get()).toEqual({ status: "blocked_balance", attempt_count: 1 });
+      balance = 6000;
+      const { reconcileBlockedSkBalance } = await import("@/lib/sekalipay/order");
+      expect(await reconcileBlockedSkBalance(db)).toBe(0);
+      fx.sql.exec("UPDATE sk_order_links SET next_attempt_at=datetime('now','-1 minute')");
+      expect(await reconcileBlockedSkBalance(db)).toBe(1);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fx.sql.prepare("SELECT status,attempt_count,sk_cost FROM sk_order_links").get()).toEqual({ status: "processing", attempt_count: 2, sk_cost: 5000 });
+      expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    } finally { fx.close(); }
+  });
+  it("selects eligible balance blocks before LIMIT and ignores stale cost for due preflight blocks", async () => {
+    const { fx, db, code } = setup("pending");
+    try {
+      fx.sql.exec("UPDATE sk_order_links SET status='blocked_balance',last_error='preflight_insufficient_balance',sk_cost=20000,next_attempt_at=datetime('now','-1 minute')");
+      fx.sql.exec(`UPDATE sk_order_links SET id=100;
+        INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status)
+        VALUES('OLD','Buyer','628','[]',1,'qris','lunas','paid');`);
+      for (let i = 1; i <= 10; i++) fx.sql.prepare(`INSERT INTO sk_order_links(id,order_code,sk_variant_id,sk_cost,status,updated_at) VALUES(?,'OLD',?,1,'blocked_balance',datetime('now','-2 days'))`).run(i, String(i));
+      const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).endsWith('/v1/balance')) return Response.json({ data: { balance: 6000 } });
+        if (String(url).includes('/v1/item/')) return Response.json({ data: { id: 1095, price: 6000, stock: 1, order_process: 'auto' } });
+        expect(init?.method).toBe('POST');
+        return Response.json({ data: { invoice: 'SK-PAID', ref_id: skRefId(code, '1095', 1), status: 'paid' } });
+      });
+      vi.stubGlobal('fetch', fetch);
+      const { reconcileBlockedSkBalance } = await import('@/lib/sekalipay/order');
+      expect(await reconcileBlockedSkBalance(db)).toBe(1);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fx.sql.prepare("SELECT status,sk_cost FROM sk_order_links WHERE id=100").get()).toEqual({ status: 'processing', sk_cost: 20000 });
+      expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    } finally { fx.close(); }
+  });
+  it("does not extend preflight balance recovery beyond 24h by refreshing updated_at", async () => {
+    const { fx, db } = setup("pending");
+    try {
+      fx.sql.exec("UPDATE sk_order_links SET status='blocked_balance',last_error='preflight_insufficient_balance',created_at=datetime('now','-25 hours'),updated_at=datetime('now'),next_attempt_at=datetime('now','-1 minute')");
+      stubFetch(vi.fn());
+      const { reconcileBlockedSkBalance } = await import("@/lib/sekalipay/order");
+      expect(await reconcileBlockedSkBalance(db)).toBe(0);
+      expect(fx.sql.prepare("SELECT status FROM sk_order_links").get()?.status).toBe("blocked_balance");
+    } finally { fx.close(); }
+  });
+  it("preserves legacy cost gate and rejects invalid wallet, unpaid, sent, manual and disabled recovery", async () => {
+    const { fx, db } = setup("pending");
+    try {
+      fx.sql.exec("UPDATE sk_order_links SET status='blocked_balance',last_error='legacy',sk_cost=5000");
+      let balance: unknown = null;
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: { balance } })));
+      const { reconcileBlockedSkBalance } = await import("@/lib/sekalipay/order");
+      expect(await reconcileBlockedSkBalance(db)).toBe(0);
+      balance = 4999;
+      expect(await reconcileBlockedSkBalance(db)).toBe(0);
+      balance = 5000;
+      fx.sql.exec("UPDATE orders SET payment_status='pending'");
+      expect(await reconcileBlockedSkBalance(db)).toBe(0);
+      fx.sql.exec("UPDATE orders SET payment_status='paid'; UPDATE sk_order_links SET request_sent_at=datetime('now')");
+      expect(await reconcileBlockedSkBalance(db)).toBe(0);
+      fx.sql.exec("UPDATE sk_order_links SET request_sent_at=NULL; UPDATE fulfillment_items SET delivered_message_id='manual'");
+      expect(await reconcileBlockedSkBalance(db)).toBe(0);
+      fx.sql.exec("UPDATE fulfillment_items SET delivered_message_id=NULL");
+      vi.stubEnv("SEKALIPAY_AUTO_ORDER_ENABLED", "false");
+      expect(await reconcileBlockedSkBalance(db)).toBe(0);
+      vi.stubEnv("SEKALIPAY_AUTO_ORDER_ENABLED", "true");
+      expect(await reconcileBlockedSkBalance(db)).toBe(1);
+    } finally { fx.close(); }
+  });
+  it("rejects unrelated credentials and supports empty licenses with product_license", async () => {
+    const { fx, code, db } = setup();
+    try {
+      const data = { ...completed(code), items: [{ variant_id: 1095, licenses: [], product_license: "MATCH" }, { variant_id: 999, product_license: "OTHER" }] };
+      stubFetch(vi.fn(async () => Response.json({ data })));
+      expect(await recoverStaleSkClaims(db)).toBe(0);
+      const row = fx.sql.prepare("SELECT status,sk_account_details,sk_account_iv FROM sk_order_links").get();
+      expect(row?.status).toBe("processing");
+      const { decryptSecret } = await import("@/lib/fulfillment/crypto");
+      expect(await decryptSecret(String(row?.sk_account_details), String(row?.sk_account_iv))).toContain("OTHER");
+      const { reconcileSkInvoiceNow } = await import("@/lib/sekalipay/order");
+      stubFetch(vi.fn(async () => Response.json({ data: { ...data, items: [data.items[0]] } })));
+      expect(await reconcileSkInvoiceNow("SK-RECOVERED", db)).toBe(true);
+      expectDelivered(fx);
+    } finally { fx.close(); }
+  });
+  it("does not claim a stale queue snapshot after another worker changed its attempt", async () => {
+    const { fx, db } = setup("pending");
+    try {
+      const original = db.execRun;
+      db.execRun = async (sql, ...params) => {
+        if (sql.includes("SET status='claimed', attempt_count=?")) fx.sql.exec("UPDATE sk_order_links SET attempt_count=attempt_count+1");
+        return original(sql, ...params);
+      };
+      const fetch = vi.fn(); stubFetch(fetch);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(fx.sql.prepare("SELECT status,attempt_count FROM sk_order_links").get()).toEqual({ status: "pending", attempt_count: 2 });
+    } finally { fx.close(); }
+  });
+  it("refunds an expired unsent claim so its last attempt remains dispatchable", async () => {
+    const { fx, code, db } = setup();
+    try {
+      fx.sql.exec("UPDATE sk_order_links SET request_sent_at=NULL,attempt_count=max_attempts");
+      expect(await recoverStaleSkClaims(db)).toBe(1);
+      expect(fx.sql.prepare("SELECT status,attempt_count FROM sk_order_links").get()).toEqual({ status: "pending", attempt_count: 2 });
+      const fetch = vi.fn(async () => Response.json({ data: { invoice: "SK-PAID", ref_id: skRefId(code, "1095", 1), status: "paid" } }));
+      stubFetch(fetch);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fx.sql.prepare("SELECT status,attempt_count FROM sk_order_links").get()).toEqual({ status: "processing", attempt_count: 3 });
+    } finally { fx.close(); }
+  });
+  it.each(["unpaid", "manual", "fence_error", "lost_lease"])("never posts when the pre-send fence fails: %s", async reason => {
+    const { fx, db } = setup("pending");
+    try {
+      if (reason === "unpaid") fx.sql.exec("UPDATE orders SET payment_status='pending'");
+      if (reason === "manual") fx.sql.exec("UPDATE fulfillment_items SET delivered_message_id='manual'");
+      const original = db.execRun;
+      db.execRun = async (sql, ...params) => {
+        if (sql.includes("SET request_sent_at=datetime('now')")) {
+          if (reason === "fence_error") throw new Error("database unavailable");
+          if (reason === "lost_lease") fx.sql.exec("UPDATE sk_order_links SET lease_owner='other'");
+        }
+        return original(sql, ...params);
+      };
+      const fetch = vi.fn(); stubFetch(fetch);
+      if (reason === "fence_error") await expect(processSkPendingOrders(db, { skipOrphanProbe: true })).rejects.toThrow("database unavailable");
+      else await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(fx.sql.prepare("SELECT request_sent_at FROM sk_order_links").get()?.request_sent_at).toBeNull();
+    } finally { fx.close(); }
+  });
+
+  it("keeps a duplicate reference fenced when lookup fails", async () => {
+    const { fx, db } = setup("pending");
+    try {
+      const fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => init?.method === "POST"
+        ? Response.json({ message: "REF_ID_ALREADY_EXIST" }, { status: 422 })
+        : Response.json({ message: "TRX_NOT_FOUND" }, { status: 404 }));
+      stubFetch(fetch);
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fx.sql.prepare("SELECT status,request_sent_at FROM sk_order_links").get()).toMatchObject({ status: "claimed", request_sent_at: expect.any(String) });
+      await processSkPendingOrders(db, { skipOrphanProbe: true });
+      expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    } finally { fx.close(); }
+  });
+  it("keeps an empty completed receipt processing until credentials arrive", async () => {
+    const { fx, code, db } = setup();
+    try {
+      const fetch = vi.fn(async () => Response.json({ data: { ...completed(code), items: [null, { seller_note: "Instructions only" }] } }));
+      stubFetch(fetch);
+      expect(await recoverStaleSkClaims(db)).toBe(0);
+      expect(fx.sql.prepare("SELECT status,last_error FROM sk_order_links").get()).toEqual({ status: "processing", last_error: "completed_without_license" });
+      expect(fx.sql.prepare("SELECT status,delivered_ciphertext FROM fulfillment_items").get()).toEqual({ status: "queued", delivered_ciphertext: null });
+      fetch.mockImplementation(async () => Response.json({ data: completed(code) }));
+      const { reconcileSkInvoiceNow } = await import("@/lib/sekalipay/order");
+      expect(await reconcileSkInvoiceNow("SK-RECOVERED", db)).toBe(true);
+      expectDelivered(fx);
+    } finally { fx.close(); }
+  });
+  it.each([[400, "INVALID_ORDER"], [402, "BALANCE_IS_INSUFFICIENT"], [409, "OUT_OF_STOCK"], [422, "validation error"]])(
+    "keeps HTTP%s %s fenced and reconciles by GET only", async (status, message) => {
+      const { fx, db } = setup("pending");
+      try {
+        const fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => init?.method === "POST"
+          ? Response.json({ message }, { status }) : Response.json({ message: "not found" }, { status: 404 }));
+        stubFetch(fetch);
+        await processSkPendingOrders(db, { skipOrphanProbe: true });
+        expect(fx.sql.prepare("SELECT status,request_sent_at FROM sk_order_links").get()).toMatchObject({ status: "submitted", request_sent_at: expect.any(String) });
+        fx.sql.exec("UPDATE sk_order_links SET next_attempt_at=datetime('now','-1 minute')");
+        await recoverStaleSkClaims(db);
+        await processSkPendingOrders(db, { skipOrphanProbe: true });
+        expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+      } finally { fx.close(); }
+    },
+  );
+  it("encrypts partial licenses without delivery, then completes when all units arrive", async () => {
+    const { fx, code, db } = setup();
+    try {
+      fx.sql.exec("UPDATE sk_order_links SET quantity=2, idempotency_key=NULL");
+      const ref_id = skRefId(code, "1095", 2);
+      const data = { ...completed(code), ref_id, items: [{ variant_id: 1095, licenses: [{ product_license: "PARTIAL-SECRET" }] }] };
+      const fetch = vi.fn(async () => Response.json({ data })); stubFetch(fetch);
+      expect(await recoverStaleSkClaims(db)).toBe(0);
+      const row = fx.sql.prepare("SELECT status,last_error,sk_account_details,sk_account_iv FROM sk_order_links").get();
+      expect(row).toMatchObject({ status: "processing", last_error: "completed_partial_license" });
+      expect(String(row?.sk_account_details)).not.toContain("PARTIAL-SECRET");
+      const { decryptSecret } = await import("@/lib/fulfillment/crypto");
+      expect(await decryptSecret(String(row?.sk_account_details), String(row?.sk_account_iv))).toContain("PARTIAL-SECRET");
+      expect(fx.sql.prepare("SELECT status FROM fulfillment_items").get()?.status).toBe("queued");
+      fetch.mockImplementation(async () => Response.json({ data: { ...data, items: [{ variant_id: 1095, licenses: [{ product_license: "ONE" }, { product_license: "TWO" }] }] } }));
+      const { reconcileSkInvoiceNow } = await import("@/lib/sekalipay/order");
+      expect(await reconcileSkInvoiceNow("SK-RECOVERED", db)).toBe(true);
+      expectDelivered(fx);
+    } finally { fx.close(); }
+  });
+  it("does not downgrade a completed item on a later failure", async () => {
+    const { fx, code, db } = setup();
+    try {
+      stubFetch(vi.fn(async () => Response.json({ data: completed(code) })));
+      await recoverStaleSkClaims(db);
+      const { handleSkOrderFailed } = await import("@/lib/sekalipay/deliver");
+      await handleSkOrderFailed("SK-RECOVERED", "canceled", db);
+      expectDelivered(fx);
+    } finally { fx.close(); }
+  });
   it.each([
     [500,{message:"INTERNAL_SERVER_ERROR"}],
     [503,{message:"SERVICE_UNAVAILABLE"}],
@@ -68,7 +391,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
   ])("keeps a sent claim ambiguous on HTTP%s or a missing/mismatched purchase receipt",async(status,body)=>{
     const {fx,db}=setup("pending");
     try {
-      const fetch=vi.fn(async()=>Response.json(body,{status}));vi.stubGlobal("fetch",fetch);
+      const fetch=vi.fn(async()=>Response.json(body,{status}));stubFetch(fetch);
       await processSkPendingOrders(db,{skipOrphanProbe:true});
       expect(fx.sql.prepare("SELECT status,request_sent_at,sk_invoice FROM sk_order_links").get()).toMatchObject({status:"submitted",request_sent_at:expect.any(String),sk_invoice:null});
       await processSkPendingOrders(db,{skipOrphanProbe:true});expect(fetch).toHaveBeenCalledTimes(1);
@@ -77,7 +400,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
   it("only explicit PRODUCT_TEMPORARILY_UNAVAILABLE permits a normal retry",async()=>{
     const {fx,db}=setup("pending");
     try {
-      vi.stubGlobal("fetch",vi.fn(async()=>Response.json({message:"PRODUCT_TEMPORARILY_UNAVAILABLE"},{status:503})));
+      stubFetch(vi.fn(async()=>Response.json({message:"PRODUCT_TEMPORARILY_UNAVAILABLE"},{status:503})));
       await processSkPendingOrders(db,{skipOrphanProbe:true});
       expect(fx.sql.prepare("SELECT status,request_sent_at FROM sk_order_links").get()).toEqual({status:"retry",request_sent_at:null});
     } finally {fx.close();}
@@ -90,7 +413,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
       const fetch=vi.fn(async(_url:RequestInfo|URL,init?:RequestInit)=>{
         expect(init?.method).toBe("POST");
         return Response.json({data:{invoice:"SK-BOUND",ref_id:skRefId(code,"1095",1),status:"paid"}});
-      });vi.stubGlobal("fetch",fetch);
+      });stubFetch(fetch);
       const {schedulePaidFulfillment}=await import("@/lib/payments/paid-fulfillment");
       await schedulePaidFulfillment(code,"market");
       expect(fx.sql.prepare("SELECT status,sk_invoice FROM sk_order_links").get()).toMatchObject({status:"processing",sk_invoice:"SK-BOUND"});
@@ -105,7 +428,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
       const before=fx.sql.prepare("SELECT request_sent_at,idempotency_key FROM sk_order_links").get();
       const fetch=vi.fn(async(_url:RequestInfo|URL,init?:RequestInit)=>{
         expect(init?.method).not.toBe("POST");return Response.json({message:"TRX_NOT_FOUND"},{status:404});
-      });vi.stubGlobal("fetch",fetch);
+      });stubFetch(fetch);
       expect(await recoverStaleSkClaims(db)).toBe(0);
       expect(fx.sql.prepare("SELECT status,last_error,request_sent_at,idempotency_key FROM sk_order_links").get()).toEqual({status:"claimed",last_error:"ambiguous_lookup_http_404",...before});
       expect(fetch).toHaveBeenCalledTimes(1);expect(String(fetch.mock.calls[0][0])).toContain(encodeURIComponent(skRefId(code,"1095",1)));
@@ -119,7 +442,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
       const fetch=vi.fn(async(_url:RequestInfo|URL,init?:RequestInit)=>{
         expect(init?.method).toBe("POST");expect(JSON.parse(String(init?.body)).ref_id).toBe(skRefId(code,"1095",1));
         return Response.json({data:{invoice:"SK-PAID",ref_id:skRefId(code,"1095",1),status:"paid"}});
-      });vi.stubGlobal("fetch",fetch);
+      });stubFetch(fetch);
       expect(await processSkPendingOrders(db,{skipOrphanProbe:true,orderCode:code,limit:1})).toMatchObject({processed:1,succeeded:1});
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(fx.sql.prepare("SELECT status,attempt_count FROM sk_order_links WHERE order_code='OTHER'").get()).toEqual({status:"pending",attempt_count:0});
@@ -132,7 +455,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
         expect(init?.method).not.toBe("POST");
         return Response.json({ data: completed(code) });
       });
-      vi.stubGlobal("fetch", fetch);
+      stubFetch(fetch);
       const budget = createBudgetedDatabase(40, 2, fx.db);
       expect(await recoverStaleSkClaims(budget.access)).toBe(1);
       expectDelivered(fx);
@@ -147,7 +470,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
   it("the existing lite cron repairs a sent claim and delivers automatically", async () => {
     const { fx, code } = setup();
     try {
-      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: completed(code) })));
+      stubFetch(vi.fn(async () => Response.json({ data: completed(code) })));
       const { POST } = await import("@/app/api/cron/lite/route");
       const response = await POST(new NextRequest("http://localhost/api/cron/lite?job=sk_orders", {
         method: "POST", headers: { authorization: "Bearer fixture-cron" },
@@ -168,7 +491,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
         expect(init?.method).not.toBe("POST");
         return Response.json({ data: completed(code) });
       });
-      vi.stubGlobal("fetch", fetch);
+      stubFetch(fetch);
       const budget = createBudgetedDatabase(40, 2, fx.db);
       expect(await recoverStaleSkClaims(budget.access)).toBe(1);
       expectDelivered(fx);
@@ -186,7 +509,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
         expect(init?.method).not.toBe("POST");
         return Response.json({ data: completed(code) });
       });
-      vi.stubGlobal("fetch", fetch);
+      stubFetch(fetch);
       const request = new NextRequest(`http://localhost/api/orders?code=${code}`);
       let response: Response;
       if (route === "query") {
@@ -212,7 +535,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
     try {
       const { maybeRefreshSupplierOrder } = await import("@/lib/orders/supplier-refresh");
       const fetch = vi.fn(async () => Response.json({ data: { ...completed(code), status: "processing" } }));
-      vi.stubGlobal("fetch", fetch);
+      stubFetch(fetch);
       expect(await maybeRefreshSupplierOrder(code, db)).toEqual({ refreshed: false, skipped: false });
       expect(fx.sql.prepare("SELECT status,sk_invoice FROM sk_order_links").get())
         .toMatchObject({ status: "processing", sk_invoice: "SK-RECOVERED" });
@@ -230,7 +553,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
         expectDelivered(fx);
         return Response.json({ data: { invoice: "SK-RECOVERED", status: "processing" } });
       });
-      vi.stubGlobal("fetch", fetch);
+      stubFetch(fetch);
       await processSkPendingOrders(db, { skipOrphanProbe: true });
       expectDelivered(fx);
       expect(fetch).toHaveBeenCalledTimes(1);
@@ -243,7 +566,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
     const { fx, code, db } = setup("pending");
     try {
       fx.sql.exec("UPDATE sk_order_links SET request_sent_at=NULL,attempt_count=0");
-      vi.stubGlobal("fetch", vi.fn(async () => {
+      stubFetch(vi.fn(async () => {
         expect((await webhook(code)).status).toBe(200);
         throw new Error("network timeout");
       }));
@@ -256,7 +579,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
     const { fx, code, db } = setup("pending");
     try {
       fx.sql.exec("UPDATE sk_order_links SET request_sent_at=NULL,attempt_count=2");
-      vi.stubGlobal("fetch", vi.fn(async () => {
+      stubFetch(vi.fn(async () => {
         expect((await webhook(code)).status).toBe(200);
         return Response.json({ message: status === 402 ? "BALANCE_IS_INSUFFICIENT" : "INVALID_ORDER" }, { status });
       }));
@@ -282,7 +605,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
     const { fx, db } = setup();
     try {
       const fetch = vi.fn(async () => Response.json({ message: "not found" }, { status: 404 }));
-      vi.stubGlobal("fetch", fetch);
+      stubFetch(fetch);
       fx.sql.exec("UPDATE sk_order_links SET lease_expires_at=datetime('now','+1 minute')");
       expect(await recoverStaleSkClaims(db)).toBe(0);
       expect(fetch).not.toHaveBeenCalled();
@@ -299,7 +622,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
     const { fx, code, db } = setup();
     try {
       fx.sql.exec("UPDATE sk_order_links SET idempotency_key=NULL");
-      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: completed(code) })));
+      stubFetch(vi.fn(async () => Response.json({ data: completed(code) })));
       expect(await recoverStaleSkClaims(db)).toBe(1);
       expectDelivered(fx);
       fx.sql.exec("UPDATE sk_order_links SET status='claimed',sk_invoice=NULL,request_sent_at=NULL,lease_expires_at=datetime('now','-1 minute')");
@@ -317,7 +640,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
         UPDATE fulfillment_items SET status='delivered',last_error='manual_handover:admin',
           delivered_ciphertext='manual-contents',delivered_iv='manual-iv',delivered_message_id='manual'`);
       const fetch = vi.fn(async () => Response.json({ data: completed(code) }));
-      vi.stubGlobal("fetch", fetch);
+      stubFetch(fetch);
       expect(await recoverStaleSkClaims(db)).toBe(1);
       expect(fx.sql.prepare("SELECT status,delivered_ciphertext,delivered_message_id FROM fulfillment_items").get())
         .toMatchObject({ status: "delivered", delivered_ciphertext: "manual-contents", delivered_message_id: "manual" });
@@ -330,7 +653,7 @@ describe("SK sent claim recovery — incident 23 October", () => {
     const { fx, code, db } = setup();
     try {
       const fetch = vi.fn(async () => Response.json({ message: "not found" }, { status: 404 }));
-      vi.stubGlobal("fetch", fetch);
+      stubFetch(fetch);
       expect(await recoverStaleSkClaims(db)).toBe(0);
       expect(await recoverStaleSkClaims(db)).toBe(0);
       expect(fetch).toHaveBeenCalledTimes(1);

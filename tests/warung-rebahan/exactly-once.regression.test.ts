@@ -10,6 +10,7 @@ import {
 } from "@/lib/warung-rebahan/order";
 import {
   seedWrCatalog,
+  seedWrFulfillmentItem,
   seedWrOrder,
   setupWrFixture,
 } from "./helpers";
@@ -127,6 +128,111 @@ describe("regresi #2: D1 gagal setelah respons sukses tidak blind retry", () => 
 });
 
 describe("regresi #3: stale ordering/claimed direcover dengan fencing", () => {
+  it.each(["selection", "send"])("handover terikat tetap melarang POST setelah mapping katalog berubah: %s", async (phase) => {
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx); seedWrOrder(fx, "AXV-BOUND-MANUAL"); seedWrFulfillmentItem(fx, "AXV-BOUND-MANUAL"); stubEnv();
+      const db = createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-BOUND-MANUAL", [{ variant_id: 1, qty: 1 }], db);
+      const handover = () => fx.sql.exec(`UPDATE fulfillment_items SET ${phase === "selection" ? "wr_link_id=NULL" : "wr_link_id=(SELECT id FROM wr_order_links)"},last_error='manual_handover:admin',delivered_message_id='manual'; UPDATE wr_order_links SET fulfillment_item_id=(SELECT id FROM fulfillment_items); UPDATE product_variants SET wr_variant_id=NULL`);
+      if (phase === "selection") handover();
+      const exec = db.execRun;
+      db.execRun = async (sql, ...args) => {
+        if (phase === "send" && sql.includes("SET request_sent_at=datetime('now')")) handover();
+        return exec(sql, ...args);
+      };
+      const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+      await processWrPendingOrders(db, { skipOrphanProbe: true });
+      expect(fetch).not.toHaveBeenCalled();
+    } finally { fx.close(); }
+  });
+  it("order tidak eligible tidak menghabiskan slot sebelum order lunas", async () => {
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx); stubEnv();
+      const db = createDatabaseAccess(fx.db);
+      for (let i = 0; i < 5; i++) {
+        const code = `AXV-QUEUE-${i}`; seedWrOrder(fx, code);
+        await createWrOrderLink(code, [{ variant_id: 1, qty: 1 }], db);
+        if (i < 4) fx.sql.prepare("UPDATE orders SET payment_status='pending' WHERE code=?").run(code);
+      }
+      const fetch = vi.fn(async () => Response.json({ success: true, data: { order_id: "WR-ELIGIBLE", status: "processing" } })); vi.stubGlobal("fetch", fetch);
+      expect(await processWrPendingOrders(db, { skipOrphanProbe: true })).toMatchObject({ processed: 1, succeeded: 1 });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fx.sql.prepare("SELECT status,attempt_count FROM wr_order_links WHERE order_code='AXV-QUEUE-0'").get()).toMatchObject({ status: "pending", attempt_count: 0 });
+    } finally { fx.close(); }
+  });
+  it.each(["due", "max", "sent"])("fresh claim menolak snapshot yang berubah: %s", async (change) => {
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx); seedWrOrder(fx, "AXV-CLAIM-STALE"); stubEnv();
+      const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+      const db = createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-CLAIM-STALE", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+      const exec = db.execRun;
+      db.execRun = (async (sql: string, ...args: unknown[]) => {
+        if (sql.includes("SET status='claimed', attempt_count=")) {
+          if (change === "due") fx.sql.prepare("UPDATE wr_order_links SET next_attempt_at=datetime('now','+1 hour')").run();
+          if (change === "max") fx.sql.prepare("UPDATE wr_order_links SET attempt_count=max_attempts").run();
+          if (change === "sent") fx.sql.prepare("UPDATE wr_order_links SET request_sent_at=datetime('now')").run();
+        }
+        return exec(sql, ...args);
+      }) as typeof db.execRun;
+      await processWrPendingOrders(db, { skipOrphanProbe: true });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(fx.sql.prepare("SELECT status FROM wr_order_links").get()).toMatchObject({ status: "pending" });
+    } finally { fx.close(); }
+  });
+
+  it("pengambilalihan lease basi tidak menambah attempt tanpa pengiriman", async () => {
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx); seedWrOrder(fx, "AXV-CLAIM-TAKEOVER"); stubEnv();
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ success: true, data: { order_id: "WR-TAKEOVER", status: "processing", current_balance: 0 } })));
+      const db = createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-CLAIM-TAKEOVER", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+      const exec = db.execRun;
+      db.execRun = (async (sql: string, ...args: unknown[]) => {
+        if (sql.includes("SET status='claimed', attempt_count=")) fx.sql.prepare("UPDATE wr_order_links SET status='claimed', attempt_count=1, lease_owner='dead', lease_expires_at=datetime('now','-1 minute')").run();
+        return exec(sql, ...args);
+      }) as typeof db.execRun;
+      await processWrPendingOrders(db, { skipOrphanProbe: true });
+      expect(fx.sql.prepare("SELECT status, attempt_count FROM wr_order_links").get()).toMatchObject({ status: "processing", attempt_count: 1 });
+    } finally { fx.close(); }
+  });
+  it("crash sebelum kirim tidak menghabiskan percobaan terakhir", async () => {
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx); seedWrOrder(fx, "AXV-LEASE-ATTEMPT"); stubEnv();
+      const db = createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-LEASE-ATTEMPT", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+      fx.sql.prepare("UPDATE wr_order_links SET status='claimed', attempt_count=max_attempts, lease_owner='dead', lease_expires_at=datetime('now','-1 minutes')").run();
+      expect(await recoverStaleClaims(db)).toBe(1);
+      expect(fx.sql.prepare("SELECT status, attempt_count FROM wr_order_links").get()).toMatchObject({ status: "pending", attempt_count: WR_MAX_ATTEMPTS - 1 });
+    } finally { fx.close(); }
+  });
+  it("worker lama tidak mengirim setelah lease diambil alih", async () => {
+    const fx = await setupWrFixture();
+    try {
+      seedWrCatalog(fx);
+      seedWrOrder(fx, "AXV-LEASE-FENCE");
+      stubEnv();
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      const db = createDatabaseAccess(fx.db);
+      await createWrOrderLink("AXV-LEASE-FENCE", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+      const exec = db.execRun;
+      db.execRun = (async (sql: string, ...args: unknown[]) => {
+        if (sql.includes("SET request_sent_at=datetime('now')")) {
+          fx.sql.prepare("UPDATE wr_order_links SET lease_owner='new-owner' WHERE id=1").run();
+        }
+        return exec(sql, ...args);
+      }) as typeof db.execRun;
+      await processWrPendingOrders(db, { skipOrphanProbe: true });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(fx.sql.prepare("SELECT lease_owner, request_sent_at FROM wr_order_links").get()).toMatchObject({ lease_owner: "new-owner", request_sent_at: null });
+    } finally { fx.close(); }
+  });
   it("claimed basi tanpa request keluar kembali ke pending", async () => {
     const fx = await setupWrFixture();
     try {

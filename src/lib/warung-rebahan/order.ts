@@ -361,8 +361,12 @@ export async function processWrPendingOrders(
        LEFT JOIN wr_variants wv ON wv.wr_variant_id = l.wr_variant_id
        WHERE l.status IN ('pending','retry')
          AND l.attempt_count < l.max_attempts
-         AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
-         ${options.orderCode ? "AND l.order_code=?" : ""}
+          AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
+          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid')
+          AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
+            WHERE fi.order_code=l.order_code AND (fi.wr_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.wr_variant_id=l.wr_variant_id)
+              AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
+          ${options.orderCode ? "AND l.order_code=?" : ""}
          -- 2026-09-18: gate kelas DIBUKA (keputusan owner). Sebelumnya hanya
          -- 'restock' yang auto-order sehingga link made_by_order/NULL diam di
          -- 'pending' selamanya: tidak ada request keluar, pembeli menunggu
@@ -423,11 +427,12 @@ export async function reconcileJaspayAmbiguous(
       `SELECT id, wr_order_id FROM wr_order_links
         WHERE wr_variant_id LIKE 'jaspay:%'
           AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
-          AND ((status IN ('submitted','ordering')
+          AND (((status IN ('submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL
+                    AND lease_expires_at IS NOT NULL AND datetime(lease_expires_at) <= datetime('now')))
                 AND COALESCE(wr_order_id,'')=''
                 AND datetime(COALESCE(request_sent_at, updated_at)) <= datetime('now','-2 minutes')
                 AND datetime(COALESCE(request_sent_at, updated_at)) > datetime('now','-24 hours'))
-            OR (status IN ('processing','submitted','ordering') AND COALESCE(wr_order_id,'')!=''))
+            OR (status IN ('processing','submitted','ordering','claimed') AND COALESCE(wr_order_id,'')!=''))
         ORDER BY COALESCE(next_attempt_at, '') ASC, id ASC LIMIT ?`,
       Math.max(1, Math.min(limit, 8)),
     )
@@ -466,7 +471,7 @@ function jaspayNextPollSql(): string {
 async function claimLink(
   link: Row,
   db: DatabaseAccess,
-): Promise<{ outcome: "claimed" } | { outcome: "ambiguous" } | { outcome: "lost" }> {
+): Promise<{ outcome: "claimed"; owner: string } | { outcome: "ambiguous" } | { outcome: "lost" }> {
   const id = Number(link.id);
   const attempt = Number(link.attempt_count || 0) + 1;
   const leaseOwner = `cron-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
@@ -477,29 +482,32 @@ async function claimLink(
       `UPDATE wr_order_links SET status='claimed', attempt_count=?,
          lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'),
          updated_at=datetime('now')
-         WHERE id=? AND status IN ('pending','retry') AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''`,
+         WHERE id=? AND status IN ('pending','retry') AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
+           AND attempt_count=? AND attempt_count < max_attempts
+           AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
       attempt,
       leaseOwner,
       leaseUntil,
       id,
+      attempt - 1,
     )
     .catch(() => ({ changes: 0 as number | undefined }));
-  if (Number(fresh.changes ?? 0) > 0) return { outcome: "claimed" };
+  if (Number(fresh.changes ?? 0) > 0) return { outcome: "claimed", owner: leaseOwner };
   // Jalur 2: ambil alih lease basi — HANYA bila request belum keluar.
   const stale = await db
     .execRun(
-      `UPDATE wr_order_links SET status='claimed', attempt_count=?,
+      `UPDATE wr_order_links SET status='claimed',
          lease_owner=?, lease_expires_at=?, last_claim_at=datetime('now'),
          updated_at=datetime('now')
-       WHERE id=? AND status='claimed' AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
+       WHERE id=? AND status='claimed' AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')='' AND attempt_count=?
          AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))`,
-      attempt,
       leaseOwner,
       leaseUntil,
       id,
+      attempt,
     )
     .catch(() => ({ changes: 0 as number | undefined }));
-  if (Number(stale.changes ?? 0) > 0) return { outcome: "claimed" };
+  if (Number(stale.changes ?? 0) > 0) return { outcome: "claimed", owner: leaseOwner };
   // Selain itu: ambigu (sudah terkirim / diklaim worker sehat) atau kalah race.
   const current = await db
     .queryFirst(`SELECT status, request_sent_at FROM wr_order_links WHERE id=?`, id)
@@ -525,8 +533,14 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
   // Persist before POST; a timeout must retain this evidence, never repurchase.
   const sent = await execRun(
     `UPDATE wr_order_links SET request_sent_at=datetime('now'), updated_at=datetime('now')
-     WHERE id=? AND status='claimed'`,
+     WHERE id=? AND status='claimed' AND lease_owner=? AND request_sent_at IS NULL
+       AND datetime(lease_expires_at) > datetime('now')
+       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND o.status='lunas' AND o.payment_status='paid')
+       AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
+         WHERE fi.order_code=wr_order_links.order_code AND (fi.wr_link_id=wr_order_links.id OR fi.id=wr_order_links.fulfillment_item_id OR pv.wr_variant_id=wr_order_links.wr_variant_id)
+           AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
     id,
+    claim.owner,
   );
   if (!Number(sent.changes ?? 0)) return "retried";
   // WR3 Jaspay: keluarga `jaspay:` TIDAK PERNAH lewat POST premium.
@@ -740,6 +754,7 @@ export async function recoverJaspayByExactRef(
   database?: DatabaseAccess,
 ): Promise<boolean> {
   const db = database ?? createDatabaseAccess();
+  if (!isWrEnabled() || !isWrAutoOrderEnabled()) return false;
   const link = await db.queryFirst(`SELECT * FROM wr_order_links WHERE id=?`, linkId).catch(() => null);
   if (!link) return false;
   const variantId = String(link.wr_variant_id || "");
@@ -747,14 +762,18 @@ export async function recoverJaspayByExactRef(
   if (String(link.wr_order_id || "").trim()) return false;
   const decoded = decodeJaspayVariantId(variantId);
   if (!decoded) return false;
-  // Klaim lease recovery: hanya satu worker per link, hanya status ambigu
-  // tanpa invoice. Claimed (dispatcher aktif) tidak pernah diambil alih.
+  // Klaim lease recovery: claimed hanya bila request sudah tercatat dan lease basi.
   const owner = `jsp-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
   const leaseUntil = new Date(Date.now() + WR_CLAIM_LEASE_SECONDS * 1000).toISOString();
   const claimed = await db.execRun(
-    `UPDATE wr_order_links SET lease_owner=?, lease_expires_at=?, updated_at=datetime('now')
-     WHERE id=? AND status IN ('submitted','ordering') AND COALESCE(wr_order_id,'')=''
-       AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))`,
+    `UPDATE wr_order_links SET status='submitted', lease_owner=?, lease_expires_at=?, updated_at=datetime('now')
+     WHERE id=? AND status IN ('submitted','ordering','claimed') AND request_sent_at IS NOT NULL AND COALESCE(wr_order_id,'')=''
+       AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))
+       AND (status!='claimed' OR lease_expires_at IS NOT NULL)
+       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND o.status='lunas' AND o.payment_status='paid')
+       AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
+         WHERE fi.order_code=wr_order_links.order_code AND (fi.wr_link_id=wr_order_links.id OR fi.id=wr_order_links.fulfillment_item_id OR pv.wr_variant_id=wr_order_links.wr_variant_id)
+           AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
     owner,
     leaseUntil,
     linkId,
@@ -1052,41 +1071,48 @@ export async function reconcileBlockedBalance(
   database?: DatabaseAccess,
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
-  if (!isWrEnabled()) return 0;
+  if (!isWrEnabled() || !isWrAutoOrderEnabled()) return 0;
   const blocked = await db
     .queryAll(
-      `SELECT l.id, l.wr_cost, l.order_code, l.updated_at,
-              (SELECT o.status FROM orders o WHERE o.code = l.order_code) AS order_status
+      `SELECT l.id, l.wr_cost
        FROM wr_order_links l WHERE l.status='blocked_balance'
+         AND datetime(l.updated_at) >= datetime('now','-${WR_BLOCKED_MAX_AGE_HOURS} hours')
+         AND l.request_sent_at IS NULL AND COALESCE(l.wr_order_id,'')=''
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid')
+         AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
+           WHERE fi.order_code=l.order_code AND (fi.wr_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.wr_variant_id=l.wr_variant_id)
+             AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
        ORDER BY l.id ASC LIMIT 8`,
     )
     .catch(() => [] as Row[]);
   if (!blocked.length) return 0;
   const { fetchBalance } = await import("./client");
-  let balance = 0;
+  let balance: number;
   try {
-    balance = Math.floor(Number((await fetchBalance()).balance) || 0);
+    const raw = (await fetchBalance()).balance;
+    if ((typeof raw !== 'number' && typeof raw !== 'string') || String(raw).trim() === '') return 0;
+    balance = Number(raw);
+    if (!Number.isFinite(balance) || balance < 0) return 0;
+    balance = Math.floor(balance);
   } catch {
     return 0;
   }
-  const cutoffMs = Date.now() - WR_BLOCKED_MAX_AGE_HOURS * 60 * 60 * 1000;
   let revived = 0;
   for (const row of blocked) {
+    if (!isWrAutoOrderEnabled()) break;
     if (balance < Number(row.wr_cost || 0)) continue;
-    // Pagar 1: TTL — link tua tidak auto-revive.
-    const updatedRaw = String(row.updated_at || "");
-    const updatedMs = Date.parse(
-      /(Z|[+-]\d{2}:?\d{2})$/.test(updatedRaw) ? updatedRaw : `${updatedRaw.replace(" ", "T")}Z`,
-    );
-    if (Number.isFinite(updatedMs) && updatedMs < cutoffMs) continue;
-    // Pagar 2: order harus masih lunas.
-    if (String(row.order_status || "") !== "lunas") continue;
     const res = await db
       .execRun(
         `UPDATE wr_order_links SET status='pending', last_error=NULL,
            next_attempt_at=datetime('now'), updated_at=datetime('now')
-         WHERE id=? AND status='blocked_balance'`,
-        Number(row.id),
+         WHERE id=? AND status='blocked_balance' AND request_sent_at IS NULL AND COALESCE(wr_order_id,'')=''
+           AND datetime(updated_at) >= datetime('now','-${WR_BLOCKED_MAX_AGE_HOURS} hours') AND COALESCE(wr_cost,0) <= ?
+           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=wr_order_links.order_code AND o.status='lunas' AND o.payment_status='paid')
+           AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
+             WHERE fi.order_code=wr_order_links.order_code AND (fi.wr_link_id=wr_order_links.id OR fi.id=wr_order_links.fulfillment_item_id OR pv.wr_variant_id=wr_order_links.wr_variant_id)
+               AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
+         Number(row.id),
+         balance,
       )
       .catch(() => ({ changes: 0 as number | undefined }));
     if (Number(res.changes ?? 0) > 0) revived++;
@@ -1492,6 +1518,7 @@ export async function recoverStaleClaims(database?: DatabaseAccess): Promise<num
   const res = await db
     .execRun(
       `UPDATE wr_order_links SET status='pending', lease_owner=NULL,
+         attempt_count=MAX(0, attempt_count-1),
          lease_expires_at=NULL, last_error='stale_claim_recovered',
          updated_at=datetime('now')
        WHERE status='claimed' AND request_sent_at IS NULL

@@ -1,5 +1,40 @@
 # PRD — AXVARA
 
+## Pemulihan Ringkasan admin (11 November 2026, publikasi CI)
+
+- Ringkasan dan laporan historis harus tetap bisa dihitung pada batas SQL D1
+  produksi. Kegagalan `VIEWs and/or subqueries nested too deep` direproduksi dengan
+  SELECT; perbaikan mengurangi pengulangan ekspansi CTE, bukan mengubah login,
+  definisi omzet/modal/untung, filter WIB, kontrak respons, atau jumlah query.
+- Seluruh baris query baru identik dengan cabang lama terpisah pada pemeriksaan
+  produksi baca-saja. Error sungguhan tetap menampilkan muat ulang tanpa angka
+  palsu. Browser admin1280/390 memeriksa filter/error/retry dengan fixture.
+- Review supplier10November di bawah disetujui untuk publikasi gabungan dengan
+  perbaikan ini oleh owner11November. Tanpa transaksi/mutasi produksi; deployment
+  belum diverifikasi. Rincian ARCHITECTURE16.39.
+
+## Recovery supplier dan crosscheck WR/SK (10 November 2026, lokal; belum dipublikasikan)
+
+- WR Premium tetap tidak membeli ulang hasil ambigu; Jaspay hanya memakai ref/input
+  identik. Claim dan send memeriksa lease, paid, attempt/due dan kepemilikan manual.
+  Filter eligible sebelum LIMIT menjaga order sah tidak tertutup riwayat unpaid/manual.
+- SK memeriksa varian auto, stok, harga dan saldo aktual melalui GET sebelum POST.
+  Preflight gagal tidak memakai attempt pembelian; saldo kurang menunggu pemeriksaan
+  ulang3menit, dengan notifikasi pembeli existing dan alert admin tanpa spam tiap retry.
+  Sesudah POST, error generik/402/409/422 tidak membuka pembelian kedua; hanya
+  PRODUCT_TEMPORARILY_UNAVAILABLE eksplisit mengizinkan retry biasa.
+- SK completed tanpa lisensi cukup atau dengan varian berbeda tetap processing;
+  receipt parsial terenkripsi, belum dikirim. Receipt lengkap tetap melalui panel,
+  email/Telegram privat, ledger dan agregat mixed-cart existing; terminal monotonik.
+- Handover tidak dapat mendahului dispatch aktif. Guard memakai link/item durable
+  dua arah maupun mapping katalog, sehingga remapping tidak membatalkan kepemilikan.
+- Menggantikan aturan retry-admin-only TUNVN di bawah hanya untuk preflight whitelist
+  yang terbukti belum membeli dan order dibuat <24jam: auto recovery3menit. Receipt
+  tersimpan dapat diproses lokal tanpa POST; status Buff transient dipoll ulang tanpa
+  rebuy. Order tua/disable/manual/ambigu tanpa receipt tetap tidak dibeli otomatis.
+- Total paid/snapshot tidak berubah; tanpa env/schema/proxy/dependency baru.
+  Verifikasi fixture lokal, bukan bukti transaksi/deployment. Tidak commit/push sesuai owner.
+
 ## Modal TUNVN dinamis tanpa penolakan kenaikan (10 November 2026, lokal)
 
 - Dispatch akun/Buff dan Retry tidak menolak modal aktual yang melebihi snapshot

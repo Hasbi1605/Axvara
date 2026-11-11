@@ -1,5 +1,25 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Perbaikan Ringkasan11November2026 (publikasi CI): D1 produksi menolak SQL lama
+karena ekspansi subquery/CTE terlalu dalam. Agregasi dimensi kini membaca scoped
+dan facts masing-masing dua kali, tetap satu query dan perhitungan existing.
+SELECT produksi baca-saja lulus dan seluruh baris standar/historis identik dengan
+cabang lama terpisah. Review langsung sesi supplier di bawah digabung dalam satu
+commit sesuai instruksi terbaru; larangan commit/push10November adalah snapshot.
+Tanpa mutasi/transaksi produksi atau env/migrasi baru; ARCHITECTURE16.39.
+Deployment belum diverifikasi.
+
+Crosscheck recovery supplier10November2026 (lokal, belum commit/push): WR/SK memakai
+send fence ber-lease/paid/manual dan antrean eligible sebelum LIMIT. Guard mengikuti
+link/item durable dua arah saat mapping katalog berubah. SK menambah GET detail/saldo
+sebelum satu POST; saldo kurang auto-check3menit tanpa memakan attempt dan alert admin
+tetap ada tanpa spam per retry. Receipt kosong/parsial/salah varian tidak menyelesaikan
+order; timeout/error POST tetap fenced, bukan izin membeli ulang. WR Premium tidak
+direplay; Jaspay ref/input identik tetap terpisah. TUNVN preflight whitelist <24jam
+pulih otomatis, receipt tersimpan diproses lokal dan gangguan poll Buff dicoba lagi
+tanpa rebuy. Budget40/paid snapshot/kanal kredensial tetap; ARCHITECTURE16.38.
+Tidak ada transaksi, notifikasi atau perubahan produksi; deployment belum diverifikasi.
+
 TUNVN modal dinamis10November2026 (lokal, publikasi CI): dispatch akun/Buff dan
 Retry tidak lagi menolak kenaikan modal dari snapshot checkout. Harga katalog
 tetap naik/turun dari modal x FX x markup admin melalui sync3menit (override manual

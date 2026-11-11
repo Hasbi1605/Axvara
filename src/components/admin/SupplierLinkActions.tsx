@@ -39,6 +39,16 @@ export const TUNVN_ERROR_LABEL: Record<string,string> = {
   buff_unavailable: "Layanan Buff atau kode tujuan belum dapat diverifikasi. Pembelian belum dikirim.",
   cost_changed: "Order tertahan pemeriksaan modal versi lama. Retry memakai harga supplier terkini tanpa batas modal snapshot.",
   dispatch_unconfirmed: "Proses TUNVN belum terkonfirmasi. Retry hanya tersedia bila belum ada penanda pembelian.",
+  buff_status_unavailable: "Status Buff belum dapat dibaca. Sistem memeriksa ulang otomatis tanpa membeli lagi.",
+};
+const SK_ERROR_LABEL: Record<string,string> = {
+  preflight_item_unavailable: "Stok atau varian supplier belum tersedia. Sistem memeriksa ulang otomatis sebelum membeli.",
+  preflight_insufficient_balance: "Saldo Sekalipay tidak cukup untuk harga aktual. Top up saldo; sistem memeriksa ulang otomatis.",
+  preflight_balance_unavailable: "Saldo Sekalipay belum dapat diperiksa. Pembelian belum dikirim dan akan dicoba kembali.",
+  preflight_unavailable: "Pemeriksaan supplier belum berhasil. Pembelian belum dikirim dan akan dicoba kembali.",
+  preflight_disabled: "Pembelian otomatis Sekalipay dinonaktifkan. Tidak ada pembelian baru.",
+  completed_without_license: "Supplier menyatakan selesai, tetapi lisensi belum tersedia. Sistem memeriksa ulang tanpa membeli lagi.",
+  completed_partial_license: "Lisensi supplier belum lengkap atau identitasnya berbeda. Data tersimpan privat; belum dikirim ke pembeli.",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -120,16 +130,15 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
         : link.status === "completed" ? "border-emerald-400/20 bg-emerald-500/[0.06] text-emerald-200"
         : "border-[#00E5FF]/20 bg-[#00E5FF]/[0.06] text-[#9ff4ff]";
       const key = `${link.supplier}:${link.id}`;
-      const actionHeight = link.supplier === "tunvn" ? "h-12" : "h-7";
       return <div key={key} className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[11px] ${tone}`}>
         <span className="font-semibold">{link.supplier.toUpperCase()} · {link.purchase_disabled ? "Pembelian otomatis dinonaktifkan · penanganan manual" : link.supplier==="tunvn" && link.last_error==="insufficient_balance" ? "Saldo supplier tidak cukup" : STATUS_LABEL[link.status] ?? link.status}</span>
         {link.supplier_order_id && <span className="font-mono text-[10px] opacity-60">{link.supplier_order_id}</span>}
         {link.status === "completed" && link.delivery_status && link.delivery_status !== "delivered" && <span className="opacity-75">· kredensial: {link.delivery_status === "failed" ? "gagal kirim (dicoba ulang)" : "antre kirim"}</span>}
-        {link.last_error && !link.purchase_disabled && !["completed"].includes(link.status) && <span className="w-full break-words text-[11px] opacity-80">{link.supplier==="tunvn" ? TUNVN_ERROR_LABEL[link.last_error] ?? link.last_error : link.last_error}</span>}
+        {link.last_error && !link.purchase_disabled && !["completed"].includes(link.status) && <span className="w-full break-words text-[11px] opacity-80">{(link.supplier==="tunvn" ? TUNVN_ERROR_LABEL : link.supplier==="sk" ? SK_ERROR_LABEL : {})[link.last_error] ?? link.last_error}</span>}
         <span className="ml-auto flex gap-1.5">
-          {canRetrySupplierLink(link) && <button onClick={() => void run(link, "retry")} disabled={busy !== null} className={`inline-flex ${actionHeight} items-center gap-1 rounded-full bg-[#00E5FF] px-2.5 text-[11px] font-bold text-[#07101f] disabled:opacity-40`}>{busy === `${key}:retry` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="black" />} Retry</button>}
-          {canCheck(link) && <button onClick={() => void run(link, "sync-now")} disabled={busy !== null} className={`inline-flex ${actionHeight} items-center gap-1 rounded-full border border-white/15 px-2.5 text-[11px] font-semibold text-white/75 disabled:opacity-40`}>{busy === `${key}:sync-now` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="white" />} Cek status</button>}
-          {canVoid(link) && <button onClick={() => void run(link, "void")} disabled={busy !== null} className="inline-flex h-7 items-center gap-1 rounded-full border border-red-400/30 bg-red-500/10 px-2.5 text-[11px] font-semibold text-red-200 disabled:opacity-40">{busy === `${key}:void` ? <Spinner size={11} /> : <IosIcon name="close" size={11} tint="#FCA5A5" />} Batal</button>}
+          {canRetrySupplierLink(link) && <button type="button" onClick={() => void run(link, "retry")} disabled={busy !== null} className="inline-flex h-12 items-center gap-1 rounded-full bg-[#00E5FF] px-2.5 text-[11px] font-bold text-[#07101f] disabled:opacity-40">{busy === `${key}:retry` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="black" />} Retry</button>}
+          {canCheck(link) && <button type="button" onClick={() => void run(link, "sync-now")} disabled={busy !== null} className="inline-flex h-12 items-center gap-1 rounded-full border border-white/15 px-2.5 text-[11px] font-semibold text-white/75 disabled:opacity-40">{busy === `${key}:sync-now` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="white" />} Cek status</button>}
+          {canVoid(link) && <button type="button" onClick={() => void run(link, "void")} disabled={busy !== null} className="inline-flex h-12 items-center gap-1 rounded-full border border-red-400/30 bg-red-500/10 px-2.5 text-[11px] font-semibold text-red-200 disabled:opacity-40">{busy === `${key}:void` ? <Spinner size={11} /> : <IosIcon name="close" size={11} tint="#FCA5A5" />} Batal</button>}
         </span>
         {link.supplier === "wr" && !link.supplier_order_id && ["submitted", "ordering", "claimed"].includes(link.status) &&
           <form className="flex w-full flex-wrap items-end gap-2" onSubmit={(event) => {

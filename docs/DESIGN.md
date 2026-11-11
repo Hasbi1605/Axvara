@@ -1,5 +1,18 @@
 # DESIGN.md — AXVARA Design System
 
+## Aksi supplier WR/SK/TUNVN (10 November 2026, lokal; belum dipublikasikan)
+
+- SupplierLinkActions mempertahankan panel/warna/fokus existing; Retry/Cek status/
+  Batal kini48px untuk ketiga supplier dan type=button agar tidak submit form induk.
+  Copy SK membedakan saldo aktual kurang, preflight gagal dan receipt belum lengkap;
+  copy status Buff menegaskan polling tanpa membeli lagi. Logika endpoint tidak diganti.
+- Chromium komponen aktual + CSS build1280/390: Retry via Tab/Enter, Retry SK dan
+  Cek status SK mengarah ke endpoint masing-masing; toast/callback berjalan,
+  seluruh tombol48px, tanpa overflow/submit form/pageerror, CSS/JS200.
+  Error409 fixture tidak memanggil onChanged; busy menonaktifkan semua tombol lalu
+  pulih, fokus3px. Console409 mock disengaja, bukan error aplikasi baru.
+  Fixture terisolasi, bukan QA seluruh halaman admin atau sesi/transaksi produksi.
+
 ## Label otomatis TUNVN (10 November 2026, lokal)
 
 - Badge varian current memakai "Kirim otomatis" / "Automatic delivery", bukan MBO

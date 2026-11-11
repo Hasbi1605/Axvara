@@ -84,7 +84,7 @@ it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and p
     const statements=[
       "CREATE TABLE products(id INTEGER PRIMARY KEY,slug TEXT,source TEXT DEFAULT 'manual',is_active INTEGER DEFAULT 1,wr_product_id TEXT,sk_product_id TEXT,wr_auto_managed INTEGER DEFAULT 0,sk_auto_managed INTEGER DEFAULT 0)",
       "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,product_id INTEGER,sku TEXT,fulfillment_mode TEXT DEFAULT 'manual',is_active INTEGER DEFAULT 1,wr_variant_id TEXT,sk_variant_id TEXT,buyer_field_key TEXT,max_qty INTEGER,tunvn_buff_quantity_b INTEGER)",
-      "CREATE TABLE orders(id INTEGER PRIMARY KEY,code TEXT UNIQUE,items TEXT,status TEXT DEFAULT 'lunas',payment_status TEXT DEFAULT 'paid',sales_channel TEXT DEFAULT 'web',order_kind TEXT DEFAULT 'apps')",
+      "CREATE TABLE orders(id INTEGER PRIMARY KEY,code TEXT UNIQUE,items TEXT,status TEXT DEFAULT 'lunas',payment_status TEXT DEFAULT 'paid',sales_channel TEXT DEFAULT 'web',order_kind TEXT DEFAULT 'apps',created_at TEXT DEFAULT (datetime('now')))",
       "CREATE TABLE fulfillment_items(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,product_id INTEGER,variant_id INTEGER,qty INTEGER DEFAULT 1,fulfillment_mode TEXT DEFAULT 'manual',wr_link_id INTEGER,sk_link_id INTEGER,inventory_id INTEGER,status TEXT DEFAULT 'queued',delivered_ciphertext TEXT,delivered_iv TEXT,last_error TEXT,locked_until TEXT)",
       "CREATE TABLE fulfillment_jobs(order_code TEXT,status TEXT,attempt_count INTEGER,next_attempt_at TEXT,locked_until TEXT)",
       ...readFileSync("drizzle/migrations/0116_tunvn_order_links.sql","utf8").split(";").map(s=>s.trim()).filter(Boolean),
@@ -116,7 +116,8 @@ it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and p
     expect((await call(buff,true,{retry:true})).purchases).toBe(0);
     await db.prepare("UPDATE orders SET supplier_purchase_disabled=0 WHERE code=?").bind(buff).run();
     await db.prepare("UPDATE tunvn_order_links SET last_error='cost_changed' WHERE order_code=?").bind(buff).run();
-    expect((await call(buff,true,{retry:true,price:3})).purchases).toBe(1);
+    await db.prepare("UPDATE tunvn_order_links SET next_attempt_at=datetime('now','-1 minute') WHERE order_code=?").bind(buff).run();
+    expect((await call(buff,true,{price:3})).purchases).toBe(1);
     expect((await call(buff,true,{retry:true})).purchases).toBe(0);
     expect(await db.prepare("SELECT status FROM tunvn_order_links WHERE order_code=?").bind(buff).first()).toMatchObject({status:"processing"});
     await db.prepare("UPDATE tunvn_order_links SET next_attempt_at=datetime('now','-1 minute') WHERE order_code=?").bind(buff).run();

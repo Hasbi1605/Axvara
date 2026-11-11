@@ -158,6 +158,7 @@ export function formatSkLicenses(detail: SkTrxDetail | SkWebhookEvent["data"]): 
       ? (detail as SkWebhookEvent["data"]).items!
       : [];
   for (const item of items) {
+    if (!item || typeof item !== "object") continue;
     const variantName = String((item as Record<string, unknown>).variant_name || "");
     const productName = String((item as Record<string, unknown>).product_name || "");
     const sellerNote = (item as Record<string, unknown>).seller_note;
@@ -170,7 +171,8 @@ export function formatSkLicenses(detail: SkTrxDetail | SkWebhookEvent["data"]): 
         const code = String(l?.product_license || "").trim();
         if (code) lines.push(code);
       }
-    } else if (typeof productLicense === "string" && productLicense.trim()) {
+    }
+    if (!lines.length && typeof productLicense === "string" && productLicense.trim()) {
       lines.push(productLicense.trim());
     }
     const label = [productName, variantName].filter(Boolean).join(" — ");
@@ -202,19 +204,41 @@ export async function handleSkOrderCompleted(
   if (!link) return false;
   const orderCode = String(link.order_code || "");
   const plaintext = formatSkLicenses(detail);
+  const items = Array.isArray(detail.items) ? detail.items : [];
+  const mismatch = items.some((item) => item && typeof item === "object" && item.variant_id != null && String(item.variant_id) !== String(link.sk_variant_id));
+  const count = items.reduce((total, item) => {
+    if (!item || typeof item !== "object" || (item.variant_id != null && String(item.variant_id) !== String(link.sk_variant_id))) return total;
+    if (Array.isArray(item.licenses)) {
+      const count = item.licenses.filter((license) => typeof license?.product_license === "string" && license.product_license.trim()).length;
+      if (count) return total + count;
+    }
+    return total + (typeof item.product_license === "string" && item.product_license.trim() ? 1 : 0);
+  }, 0);
+  if (mismatch || count < Number(link.quantity || 1)) {
+    if (count > 0 || mismatch) {
+      const partial = await encryptSecret(JSON.stringify(items));
+      await execRun(`UPDATE sk_order_links SET sk_account_details=?, sk_account_iv=?, status='processing',
+        last_error='completed_partial_license', updated_at=datetime('now')
+        WHERE sk_invoice=? AND status NOT IN ('completed','failed')`, partial.ciphertext, partial.iv, skInvoice);
+    } else {
+      await execRun(`UPDATE sk_order_links SET status='processing', last_error='completed_without_license',
+        updated_at=datetime('now') WHERE sk_invoice=? AND status NOT IN ('completed','failed')`, skInvoice);
+    }
+    return false;
+  }
   const { encryptSecret: enc } = await import("@/lib/fulfillment/crypto");
   const { ciphertext, iv } = await enc(plaintext || "(lisensi kosong dari Sekalipay)");
   const now = new Date().toISOString();
   await execRun(
     `UPDATE sk_order_links SET sk_account_details=?, sk_account_iv=?,
        completed_at=?, last_error=NULL, updated_at=datetime('now')
-     WHERE sk_invoice=?`,
+     WHERE sk_invoice=? AND status!='failed'`,
     ciphertext,
     iv,
     now,
     skInvoice,
   );
-  await advanceSkLinkMonotonic(skInvoice, "completed", { completed_at: now, last_error: null }, db);
+  if (!(await advanceSkLinkMonotonic(skInvoice, "completed", { completed_at: now, last_error: null }, db))) return false;
   // Kaitkan link ke baris itemnya (pola WR) supaya agregat + panel akurat.
   // Best-effort: reconcile/suite lama bisa mengisi fulfillment_item_id lebih
   // dulu; bindSk.. idempoten bila sudah terisi.
@@ -366,7 +390,8 @@ export async function handleSkOrderFailed(
   if (itemId > 0) {
     await execRun(
       `UPDATE fulfillment_items SET status='failed', last_error=?,
-         locked_until=NULL, updated_at=datetime('now') WHERE id=?`,
+         locked_until=NULL, updated_at=datetime('now') WHERE id=? AND status!='delivered'
+         AND COALESCE(last_error,'') NOT LIKE 'manual_handover:%'`,
       String(errorMessage || "sk_order_failed").slice(0, 500),
       itemId,
     ).catch(() => undefined);
