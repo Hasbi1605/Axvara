@@ -797,10 +797,14 @@ Migrasi0076 hanya indeks scanner. Detail kontrak/recovery/reference ada di
 
 ✅ Implementasi; publikasi via CI. Semua banner aktif diurutkan dalam satu popup
 beranda: panah/swipe/keyboard, nomor slide, autoplay6detik dengan jeda saat interaksi dan reduced
-motion. Revisi screenshot owner: gambar penuh selebar kartu448px mengikuti rasio
-asli tanpa jarak samping/crop; panah overlay gambar dan counter langsung di bawahnya.
+motion. Revisi responsif11November2026 (lokal; deployment belum diverifikasi):
+kartu448px maksimal92dvh/area aman layar, gambar mengikuti sisa tinggi dengan rasio
+asli/object-contain tanpa crop/distorsi. Ruang putih samping diperbolehkan saat layar
+pendek, menggantikan aturan selalu penuh selebar kartu24Oktober.
+Panah overlay gambar dan counter langsung di bawahnya.
 Caption putih rata tengah tanpa separator; checkbox di atas tombol biru full-width
-atau Saya Paham bila CTA kosong. Konten panjang dapat digulir dalam max92dvh. Sesuai owner, tidak ada tombol
+atau Saya Paham bila CTA kosong; keduanya selalu terlihat di luar area scroll.
+Caption maksimal30dvh dapat digulir dengan sentuhan/keyboard bila perlu. Sesuai owner, tidak ada tombol
 Putar/Jeda pada gambar; hanya panah dan tutup.
 Judul mengikuti tinggi teks; deskripsi langsung di bawahnya dengan jarak8px.
 Transisi dissolve420ms/blur2px/geser12px menunggu gambar tujuan siap, mempertahankan
@@ -1682,7 +1686,7 @@ QRIS & Rekonsiliasi**.
 - Menu **Pengaturan Toko** mengelola nama, tagline, nomor WhatsApp dukungan, jam layanan, teks legal footer, dan URL logo. Nilai disimpan di `store_settings` lalu dipakai oleh identitas dan tautan dukungan storefront dengan fallback aman dari `src/lib/site.ts`.
 - Editor visual Tiptap menyimpan **Markdown** sebagai format kanonis agar ringan dan interoperabel dengan agent; artikel JSON Tiptap lama tetap dapat dibaca dan akan dikonversi saat diedit. Slug/excerpt dibuat otomatis server-side.
 - Cover artikel/produk menerima PNG/JPG/WebP, dikonversi browser menjadi WebP 1600×900. **Galeri produk 2026-10-21 (implementasi, publikasi CI):** foto kedua dan seterusnya mempertahankan rasio asli tanpa crop, sisi terpanjang maksimal 1920 px; berlaku juga saat beberapa foto diupload sekaligus. PDP menampilkan foto tambahan utuh dengan tinggi otomatis, preview admin/strip thumbnail memakai `object-contain`; cover pertama tetap seperti sebelumnya. Foto lama yang sudah terpotong harus diunggah ulang dari gambar asli. Batas delapan foto dan penyimpanan URL tetap.
-- Banner dikonversi ke WebP dengan rasio asli dan sisi terpanjang maksimal 1920 px; popup memakai gambar portrait/persegi/landscape selebar kartu dengan tinggi otomatis/rasio asli tanpa crop atau ruang sisi, dan hanya muncul di homepage agar tidak menghalangi checkout/admin/status pesanan. Checkbox kecil "Jangan tampilkan lagi" di bawah banner menyembunyikannya 24 jam (localStorage per banner id).
+- Banner dikonversi ke WebP dengan rasio asli dan sisi terpanjang maksimal 1920 px; popup memakai gambar portrait/persegi/landscape sesuai sisa tinggi layar dengan object-contain tanpa crop/distorsi (ruang sisi diperbolehkan), dan hanya muncul di homepage agar tidak menghalangi checkout/admin/status pesanan. Checkbox kecil "Jangan tampilkan lagi" dan CTA tetap terlihat di footer di luar caption scroll; checkbox menyembunyikannya 24 jam (localStorage per banner id).
 - Daftar pesanan menampilkan bukti sebagai preview card yang dapat dibuka penuh. Bukti kosong, URL tidak valid, dan file R2 yang hilang mempunyai status visual serta keterangan berbeda agar admin tidak salah mengira label tersebut sebagai tombol.
 - Buat token Bearer di **Integrasi Agent**. Token mentah hanya muncul sekali dan token tanpa `articles:publish` tidak dapat publish.
 - Content API: `/api/agent/context`, `/api/agent/articles`, `/api/agent/media`, `/api/agent/media/import`, dan activity audit. Agent tidak pernah menulis D1/R2 secara langsung.

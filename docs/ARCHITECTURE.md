@@ -630,10 +630,16 @@ create append, edit mempertahankan posisi. Retri internal maksimal5 untuk konfli
 snapshot penulis konten; drag basi tidak diputar ulang. Dev memory meniru commit
 sinkron dan pemeriksaan snapshot; produksi tanpa D1 gagal. Index unik0064 tetap.
 
-Layout mengikuti revisi screenshot owner: gambar lebar penuh/h-auto dengan rasio
-natural pada kartu448px, scroll max92dvh; counter tepat di bawah gambar, panah di
-atas gambar dengan batas awal/akhir, caption rata tengah tanpa separator, checkbox
-sebelum CTA biru full-width atau tombol tutup Saya Paham bila CTA kosong.
+Revisi responsif11November2026 (lokal; deployment belum diverifikasi): kartu448px
+dibatasi min(92dvh,100% area tersedia), dengan padding safe-area atas/bawah.
+Grid minmax(0,1fr)/auto memisahkan media+caption dari footer checkbox/CTA yang tidak
+ikut scroll. Grid slide memberi gambar sisa tinggi; object-contain mempertahankan
+rasio asli tanpa crop/distorsi, dengan ruang putih samping bila perlu (menggantikan
+aturan selalu full-width/h-auto24Oktober). Caption maksimal30dvh overflow-y-auto,
+tabIndex0 dan fokus terlihat untuk scroll keyboard; footer tidak menutupi konten.
+Counter tepat di bawah gambar, panah di atas gambar dengan batas awal/akhir,
+caption rata tengah tanpa separator, checkbox sebelum CTA biru full-width atau
+tombol tutup Saya Paham bila CTA kosong. Tidak mengubah API/storage/timing carousel.
 Judul mengikuti tinggi teks alami; deskripsi memiliki margin atas8px tanpa slot kosong.
 
 Popup memakai key sessionStorage.axvara-banner-carousel-shows dan key hide per-ID

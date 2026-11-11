@@ -247,17 +247,17 @@ export function PopupBanner() {
     : [{ banner, index, decorative: false }];
   const waitingForImage = Boolean(outgoing && !incomingReady);
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5" role="dialog" aria-modal="true" aria-label={t.bannerInfoLabel}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-5" role="dialog" aria-modal="true" aria-label={t.bannerInfoLabel}>
       <div aria-hidden="true" className="absolute inset-0 bg-[#070a1e]/75 backdrop-blur-sm" onClick={close} />
-      <div ref={panelRef} tabIndex={-1} className="relative flex max-h-[92dvh] w-[448px] max-w-full flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.5)] motion-safe:animate-[fadeInUp_0.24s_var(--ease-apple)]">
+      <div ref={panelRef} tabIndex={-1} className="relative flex max-h-[min(92dvh,100%)] w-[448px] max-w-full flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.5)] motion-safe:animate-[fadeInUp_0.24s_var(--ease-apple)]">
         <button ref={closeRef} onClick={close} className="absolute right-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/65 text-white hover:bg-black/85" aria-label={t.bannerClose}>✕</button>
-        <div className="flex min-h-0 flex-col" role="region" aria-roledescription="carousel" aria-label={t.bannerCarouselLabel}
+        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden" role="region" aria-roledescription="carousel" aria-label={t.bannerCarouselLabel}
           onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
           onFocusCapture={() => setPaused(true)}
           onKeyDown={event => {
             if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); if (banners.length > 1) move(event.key === "ArrowRight" ? 1 : -1); }
           }}>
-          <div className="min-h-0 max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ touchAction: "pan-y" }}
+          <div data-banner-content className="grid min-h-0 overflow-hidden" style={{ touchAction: "pan-y" }}
             onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}
             onPointerDown={event => {
               if (!event.isPrimary || event.button !== 0) return;
@@ -273,46 +273,45 @@ export function PopupBanner() {
               const dx = event.clientX - start.x, dy = event.clientY - start.y;
               if (Math.abs(dx) >= 45 && Math.abs(dx) > Math.abs(dy) * 1.3 && banners.length > 1) { suppressClick.current = true; move(dx < 0 ? 1 : -1); }
             }}>
-            <div ref={stageRef} className="banner-stage" data-banner-transition={outgoing ? "running" : undefined}
+            <div ref={stageRef} className="banner-stage grid min-h-0" data-banner-transition={outgoing ? "running" : undefined}
               style={{ height: stageHeight, "--banner-transition-duration": `${BANNER_TRANSITION_MS}ms`, "--banner-enter-from": direction > 0 ? "12px" : "-12px", "--banner-exit-to": direction > 0 ? "-12px" : "12px" } as CSSProperties}>
               {slides.map(({ banner: item, index: slideIndex, decorative }) => (
                 <div key={item.id} ref={decorative ? undefined : slideRef} role={decorative ? undefined : "group"}
                   aria-hidden={decorative || undefined} aria-roledescription={decorative ? undefined : "slide"}
                   aria-label={decorative ? undefined : t.bannerSlide(slideIndex + 1, banners.length, item.title)}
-                  className={decorative ? "banner-slide-out" : `banner-slide${outgoing ? incomingReady ? " banner-slide-in" : " banner-slide-pending" : ""}`}>
-                  <div className="relative" data-banner-media={decorative ? undefined : true}>
+                   className={`grid min-h-0 grid-rows-[minmax(0,1fr)_auto] ${decorative ? "banner-slide-out h-full" : `banner-slide${outgoing ? incomingReady ? " banner-slide-in" : " banner-slide-pending" : ""}`}`}>
+                  <div className="relative flex min-h-0 justify-center" data-banner-media={decorative ? undefined : true}>
                     {item.image_url && !imageFailed.includes(item.id) ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.image_url} alt={decorative ? "" : item.title} draggable={false} className="block h-auto w-full"
+                      <img src={item.image_url} alt={decorative ? "" : item.title} draggable={false} className="block h-full max-h-full min-h-0 w-full object-contain"
                         onLoad={decorative ? undefined : beginTransition}
                         onError={decorative ? undefined : () => { setImageFailed(current => [...current,item.id]); beginTransition(); }} />
-                    ) : item.image_url ? <p className="flex h-40 items-center justify-center bg-slate-100 text-sm text-slate-600">{t.bannerImageError}</p> : <div className="h-24 bg-gradient-to-br from-cyan-100 to-indigo-100" />}
+                    ) : item.image_url ? <p className="flex h-40 max-h-full w-full items-center justify-center bg-slate-100 text-sm text-slate-600">{t.bannerImageError}</p> : <div className="h-24 max-h-full w-full bg-gradient-to-br from-cyan-100 to-indigo-100" />}
                     {!decorative && banners.length > 1 && <>
                       {slideIndex > 0 && <button onClick={() => move(-1)} aria-label={t.bannerPrev} className="absolute left-2 top-3/4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white hover:bg-black/75">‹</button>}
                       {slideIndex < banners.length - 1 && <button onClick={() => move(1)} aria-label={t.bannerNext} className="absolute right-2 top-3/4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-3xl leading-none text-white hover:bg-black/75">›</button>}
                     </>}
                   </div>
-                  <div className="px-4 pb-4 pt-3 text-center sm:px-5" data-banner-caption={decorative ? undefined : true}>
+                  <div tabIndex={decorative ? undefined : 0} className="max-h-[30dvh] overflow-y-auto overscroll-contain px-4 pb-4 pt-3 text-center focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#315DEA] sm:px-5" data-banner-caption={decorative ? undefined : true}>
                     <div className="mb-3 text-sm tabular-nums text-gray-500" aria-live={decorative ? undefined : rotating ? "off" : "polite"} aria-atomic={decorative ? undefined : true}>{slideIndex + 1}/{banners.length}</div>
-                    <h3 className="font-display text-lg font-bold leading-7 text-[#151B2B]">{item.title}</h3>
+                    <h3 className="break-words font-display text-lg font-bold leading-7 text-[#151B2B]">{item.title}</h3>
                     {item.body && <p className="mt-2 whitespace-pre-line break-words text-sm leading-5 text-gray-500">{item.body}</p>}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="px-4 pb-4 text-center sm:px-5" data-banner-actions aria-busy={waitingForImage || undefined}>
-              <label className="mx-auto flex min-h-11 w-fit cursor-pointer items-center justify-center gap-2 text-sm text-gray-500 hover:text-gray-700">
-                <input type="checkbox" checked={false} disabled={waitingForImage} onChange={hideCurrent} className="peer sr-only" />
-                <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded border border-gray-300 bg-gray-100 peer-focus-visible:ring-2 peer-focus-visible:ring-[#315DEA] peer-focus-visible:ring-offset-2" />
-                {t.bannerHide}
-              </label>
-              {banner.cta_href && banner.cta_label ? <a href={banner.cta_href} aria-disabled={waitingForImage || undefined} tabIndex={waitingForImage ? -1 : undefined}
-                onClick={event => { if (waitingForImage) event.preventDefault(); else close(); }}
-                className="mt-1 flex min-h-11 w-full items-center justify-center rounded-md bg-[#315DEA] px-4 py-2 text-center text-base font-semibold text-white hover:bg-[#254FD0]">{banner.cta_label}</a>
-                : <button onClick={close} disabled={waitingForImage} className="mt-1 min-h-11 w-full rounded-md bg-[#315DEA] px-4 py-2 text-base font-semibold text-white hover:bg-[#254FD0]">{t.bannerUnderstood}</button>}
-            </div>
           </div>
-
+          <div className="shrink-0 px-4 pb-4 text-center sm:px-5" data-banner-actions aria-busy={waitingForImage || undefined}>
+            <label className="mx-auto flex min-h-11 w-fit cursor-pointer items-center justify-center gap-2 text-sm text-gray-500 hover:text-gray-700">
+              <input type="checkbox" checked={false} disabled={waitingForImage} onChange={hideCurrent} className="peer sr-only" />
+              <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded border border-gray-300 bg-gray-100 peer-focus-visible:ring-2 peer-focus-visible:ring-[#315DEA] peer-focus-visible:ring-offset-2" />
+              {t.bannerHide}
+            </label>
+            {banner.cta_href && banner.cta_label ? <a href={banner.cta_href} aria-disabled={waitingForImage || undefined} tabIndex={waitingForImage ? -1 : undefined}
+              onClick={event => { if (waitingForImage) event.preventDefault(); else close(); }}
+              className="mt-1 flex min-h-11 w-full items-center justify-center rounded-md bg-[#315DEA] px-4 py-2 text-center text-base font-semibold text-white hover:bg-[#254FD0]">{banner.cta_label}</a>
+              : <button onClick={close} disabled={waitingForImage} className="mt-1 min-h-11 w-full rounded-md bg-[#315DEA] px-4 py-2 text-base font-semibold text-white hover:bg-[#254FD0]">{t.bannerUnderstood}</button>}
+          </div>
         </div>
       </div>
     </div>

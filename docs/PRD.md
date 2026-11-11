@@ -1066,8 +1066,14 @@ berikutnya ketika modal ditutup. Batas sesi dihitung sekali per pembukaan, bukan
 slide. Jangan tampilkan lagi menyembunyikan info aktif24jam dan meneruskan ke tetangga;
 ketika semua disembunyikan modal ditutup. Key hide lama dipertahankan.
 
-Revisi layout screenshot owner24Oktober: gambar penuh dari tepi ke tepi, rasio asli
-tanpa crop atau padding samping; panah overlay pada gambar, counter1/2 di bawahnya.
+Revisi responsif11November2026 (implementasi lokal, deployment belum diverifikasi):
+popup maksimal92dvh dan tetap dalam area aman layar. Checkbox serta CTA/Saya Paham
+berada di luar konten yang dapat digulir, langsung terlihat tanpa scroll popup.
+Gambar memakai sisa tinggi dengan rasio asli/object-contain, tanpa crop atau distorsi;
+ruang putih samping diperbolehkan saat layar pendek, menggantikan aturan24Oktober
+yang selalu mewajibkan gambar selebar kartu. Caption maksimal30dvh dan dapat digulir
+dengan sentuhan/keyboard bila teks panjang, layar pendek atau teks diperbesar.
+Panah overlay pada gambar, counter1/2 di bawahnya.
 Judul/deskripsi rata tengah pada panel putih tanpa garis pemisah. Judul tidak
 menyisakan tinggi minimum; deskripsi mengikuti8px setelah teks judul. Checkbox
 Jangan tampilkan lagi di atas tombol biru lebar di tengah; fallback Saya Paham jika CTA

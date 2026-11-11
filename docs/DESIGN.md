@@ -1,5 +1,18 @@
 # DESIGN.md — AXVARA Design System
 
+## Popup banner adaptif (11 November 2026, implementasi lokal)
+
+- Pertahankan kartu putih448px, judul/deskripsi rata tengah, tombol biru #315DEA,
+  tombol tutup44px, carousel dan animasi existing; tanpa perubahan aset poster.
+- Tinggi maksimal min(92dvh,100% area tersedia), padding safe-area atas/bawah.
+  Footer checkbox+CTA/Saya Paham tidak ikut scroll dan terlihat sejak popup dibuka.
+- Media mengisi sisa tinggi setelah caption/footer; object-contain menjaga rasio
+  asli dan seluruh poster. Ruang putih samping diperbolehkan ketika diperlukan,
+  menggantikan aturan gambar selalu edge-to-edge24Oktober.
+- Caption dibatasi30dvh dengan scroll sentuhan/keyboard dan outline fokus2px,
+  tanpa mengecilkan teks/kontrol atau menyembunyikan deskripsi panjang.
+- Implementasi lokal; bukan bukti deployment atau tes pada perangkat fisik.
+
 ## Default kontrol bahasa/mata uang (11 November 2026, implementasi lokal)
 
 - Tanpa cookie valid, tombol langsung memakai bendera Indonesia; radio Bahasa

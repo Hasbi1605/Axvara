@@ -34,6 +34,24 @@ it('places navigation over the image, counter before text and checkbox before th
  const acknowledgement=screen.getByRole('button',{name:'Saya Paham'});expect(screen.getByRole('checkbox').compareDocumentPosition(acknowledgement)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();fireEvent.click(acknowledgement);expect(screen.queryByRole('dialog')).toBeNull();
 });
 
+it('keeps actions outside scrolling content and contains tall artwork within the viewport', async () => {
+ await open();
+ const content = document.querySelector('[data-banner-content]')!;
+ const actions = document.querySelector('[data-banner-actions]')!;
+ expect(content.contains(screen.getByRole('img'))).toBe(true);
+ expect(content.contains(document.querySelector('[data-banner-caption]'))).toBe(true);
+ expect(content.contains(actions)).toBe(false);
+ expect(content.nextElementSibling).toBe(actions);
+ expect(actions.classList.contains('shrink-0')).toBe(true);
+ expect(actions.contains(screen.getByRole('checkbox'))).toBe(true);
+ expect(actions.contains(screen.getByRole('link', {name:'Baca 1'}))).toBe(true);
+ expect(screen.getByRole('img').classList.contains('object-contain')).toBe(true);
+ expect(screen.getByRole('img').classList.contains('max-h-full')).toBe(true);
+ const caption = document.querySelector('[data-banner-caption]')!;
+ expect(caption.classList.contains('overflow-y-auto')).toBe(true);
+ expect(caption.getAttribute('tabindex')).toBe('0');
+});
+
 function deferredImages() {
  const pending = new Map<string, { resolve: () => void; reject: () => void }>();
  vi.stubGlobal('Image', class {
