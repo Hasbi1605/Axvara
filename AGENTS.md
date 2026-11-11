@@ -77,6 +77,9 @@ mengubah assertion hanya supaya kode yang salah terlihat lulus.
 
 - Selama iterasi, jalankan test terkait setelah satu perubahan logis, misalnya `npx vitest run tests/nama.test.ts`; ini contoh path, ganti dengan test yang benar-benar ada.
 - Sebelum commit/push perubahan kode, jalankan seluruh suite `npx vitest run --run` pada tree akhir. Tidak perlu mengulang seluruh suite setiap edit kecil; ulangi bila ada perubahan kode setelah verifikasi akhir.
+- Jika memakai subagent, subagent menjalankan test fokus pada area tugasnya; agent utama menjalankan full suite pada kode final yang sudah terintegrasi, bukan setiap subagent selesai.
+- Gunakan kembali hasil verifikasi sukses yang terbukti masih berlaku untuk kode, test, dependency, konfigurasi dan environment yang sama; jangan mengulang hanya untuk mengganti reporter atau memperoleh output baru. Perubahan dokumentasi saja setelah suite lulus tidak mewajibkan pengulangan suite; bila mengubah input verifikasi, ulangi pemeriksaan yang terdampak.
+- Aturan penggunaan kembali hasil berlaku untuk verifikasi lokal; full suite CI tetap menjadi gerbang rilis dan tidak dilewati berdasarkan hasil lokal.
 - Jika ada test yang gagal akibat perubahan yang kamu buat, **perbaiki test tersebut di commit yang sama** — jangan push dengan test gagal.
 - Jika mengubah output/format fungsi (misal menghapus field, mengubah teks, rename identifier), cari semua test yang assert output lama: `grep -rn "string_lama" tests/`.
 - Jika mengubah nilai di `src/lib/site.ts` atau konstanta global lain, cari semua test yang hardcode nilai lama.
