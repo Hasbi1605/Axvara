@@ -155,7 +155,7 @@ export async function claimWhatsAppOutboxRow(row: Record<string, unknown>, datab
   return { outcome: "claimed", workerId };
 }
 
-/** Pulihkan lease `sending` basi (worker mati di tengah kirim) ke `failed`.
+/** Pulihkan lease `sending` basi ke `failed`; pensiunkan sale_completed ke `dead`.
  *
  * Harus dipanggil dari jalur runtime (cron) sebelum mengambil baris due —
  * bukan dari SQL buatan tes. Syarat ketat:
@@ -164,18 +164,18 @@ export async function claimWhatsAppOutboxRow(row: Record<string, unknown>, datab
  * - outcome tercatat ambigu (`lease_recovered:delivery_outcome_unknown`)
  *   karena runtime tidak tahu apakah pesan sempat terkirim sebelum crash;
  *   tanpa janji exactly-once tanpa dukungan provider.
- * Mengembalikan jumlah baris yang dipulihkan.
+ * Mengembalikan jumlah baris dipulihkan atau dipensiunkan.
  */
 export async function recoverStaleWhatsAppLeases(database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
   const { execRun } = database;
   try {
     const result = await execRun(
       `UPDATE whatsapp_outbox
-       SET status='failed', worker_id=NULL, locked_until=NULL,
-           last_error='lease_recovered:delivery_outcome_unknown',
+        SET status=CASE WHEN message_type='sale_completed' THEN 'dead' ELSE 'failed' END, worker_id=NULL, locked_until=NULL,
+            last_error=CASE WHEN message_type='sale_completed' THEN 'sales_notifications_retired' ELSE 'lease_recovered:delivery_outcome_unknown' END,
            next_attempt_at=datetime('now'), updated_at=datetime('now')
-       WHERE status='sending'
-         AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))`,
+        WHERE (status='sending' AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now')))
+           OR (message_type='sale_completed' AND status IN ('pending','failed'))`,
     );
     return Number(result.changes ?? 0);
   } catch {
@@ -202,16 +202,34 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
   const fresh = (await queryFirst(`SELECT * FROM whatsapp_outbox WHERE id=?`, id)) ?? row;
   let botIdentity: { botNumber: string; botRevision: string } | undefined;
   if (fresh.message_type === "sale_completed") {
-    const { readSalesConfig } = await import("./sales-notifications");
-    const config = await readSalesConfig(database);
-    if (!config?.enabled || config.groupId !== fresh.destination) {
-      await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+5 minutes'),last_error='notifications_disabled' WHERE id=? AND worker_id=?", id, workerId);
-      return false;
-    }
-    botIdentity = { botNumber: config.botNumber, botRevision: config.botRevision };
+    await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='sales_notifications_retired',updated_at=datetime('now') WHERE id=? AND worker_id=?", id, workerId);
+    return true;
   }
   let message = String(fresh.payload || "");
-  const durableNotification = fresh.message_type === "sale_completed" || fresh.message_type === "group_welcome";
+  const durableNotification = fresh.message_type === "promo_digest" || fresh.message_type === "group_welcome";
+  if (fresh.message_type === "promo_digest") {
+    let payload: { message: string; botNumber: string; botRevision: string; expiresAt: string };
+    try {
+      payload = JSON.parse(message);
+      const { normalizeBotNumber, validBotRevision } = await import("./bot-number");
+      if (typeof payload.message !== "string" || !payload.message || payload.message.length > 12000 || normalizeBotNumber(payload.botNumber) !== payload.botNumber || !validBotRevision(payload.botRevision) || !Number.isFinite(Date.parse(payload.expiresAt))) throw new Error("invalid_promo");
+    } catch {
+      await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='invalid_promo_payload' WHERE id=? AND worker_id=?", id, workerId);
+      return true;
+    }
+    if (Date.parse(payload.expiresAt) <= Date.now()) {
+      await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='promo_expired',updated_at=datetime('now') WHERE id=? AND worker_id=?", id, workerId);
+      return true;
+    }
+    const { readSalesConfig } = await import("./sales-notifications");
+    const config = await readSalesConfig(database);
+    if (!config?.enabled || config.groupId !== fresh.destination || config.botNumber !== payload.botNumber || config.botRevision !== payload.botRevision) {
+      await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+5 minutes'),last_error='notifications_disabled_or_changed' WHERE id=? AND worker_id=?", id, workerId);
+      return false;
+    }
+    message = payload.message;
+    botIdentity = { botNumber: payload.botNumber, botRevision: payload.botRevision };
+  }
   if (fresh.message_type === "group_welcome") {
     try {
       const payload = JSON.parse(message);
@@ -228,7 +246,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     target: String(fresh.destination || ""),
     message,
     idempotencyKey: String(fresh.idempotency_key || ""),
-    salesNotification: fresh.message_type === "sale_completed",
+    promoNotification: fresh.message_type === "promo_digest",
     welcomeNotification: fresh.message_type === "group_welcome",
     ...botIdentity,
   });
@@ -256,7 +274,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
       return true;
     }
   }
-  if (durableNotification && ["whatsapp_not_connected", "notification_paced", "gateway_cooldown_active", "notification_gateway_unavailable", "bot_configuration_changed"].includes(String(result.error))) {
+  if (durableNotification && ["whatsapp_not_connected", "notification_paced", "gateway_cooldown_active", "notification_gateway_unavailable", "bot_configuration_changed", "promo_image_unavailable"].includes(String(result.error))) {
     await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+1 minute'),last_error=?,updated_at=datetime('now') WHERE id=? AND worker_id=?", result.error, id, workerId);
     return false;
   }

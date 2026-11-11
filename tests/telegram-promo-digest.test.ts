@@ -129,8 +129,9 @@ describe("Telegram promo digest", () => {
     expect(short).toContain("🎨 *DESAIN & VIDEO*");
     expect(short).toContain("*Order melalui Website:*");
     expect(short).toContain("*Order melalui Bot Telegram:*");
-    // Garis pemisah + intro dua baris persis seperti full.
-    expect(short).toContain("------------------------------------------------------------------");
+    // WA uses the owner's mobile-width separator; Telegram keeps its old width.
+    expect(short.split("\n").filter(line => /^-+$/.test(line))).toEqual(["-".repeat(52), "-".repeat(52)]);
+    expect(full).toContain("-".repeat(66));
     expect(short).toContain("Sedia semua kebutuhan aplikasi dan tools premium favorit anda.\nMurah, mudah, cepat, dan bergaransi.");
     // Header kategori tanpa escape HTML (teks polos untuk WA).
     expect(short).toContain("AI & CHATBOT");
@@ -150,7 +151,7 @@ describe("Telegram promo digest", () => {
       .replaceAll("&amp;", "&");
     const normalize = (text: string) => unescape(text).replaceAll(/<\/?b>/g, "*");
     const stripUrls = (text: string) => text.replaceAll("https://t.me/Axvara_bot?start=beli", "BOT").replaceAll("https://axvara.tech", "WEB");
-    expect(stripUrls(short)).toBe(stripUrls(normalize(full)));
+    expect(stripUrls(short)).toBe(stripUrls(normalize(full)).replaceAll("-".repeat(66), "-".repeat(52)));
   });
 
   it("sends and persists both bubbles once", async () => {

@@ -14,7 +14,7 @@ it('normalizes common phone formats and rejects invalid input',()=>{
 function mockApi(fail=false){
  let gateway={connected:true,botNumber:FIRST,botRevision:'initial',groupName:"AXVARA'S",pairingCode:undefined as string|undefined};
  let config={enabled:true,botNumber:FIRST,botRevision:'initial'};
- const fetcher=vi.fn(async(_url:unknown,init?:RequestInit)=>{
+ const fetcher=vi.fn(async(_url:unknown,init?:RequestInit):Promise<{ok:boolean;json:()=>Promise<unknown>} > => {
   const body=init?.body?JSON.parse(String(init.body)):null;
   if(body?.action==='number'){
    config={...config,enabled:false};gateway={connected:false,botNumber:NEXT,botRevision:REV,groupName:'',pairingCode:undefined};
@@ -30,6 +30,9 @@ function mockApi(fail=false){
 describe('manual bot-number controls',()=>{
  it('changes a connected bot, clears activation, pairs the new number and activates only its reviewed revision',async()=>{
   const api=mockApi();render(<WhatsAppNotifications/>);
+  expect(screen.getByRole('heading',{name:'Katalog ready ke grup WhatsApp'})).toBeTruthy();
+  expect(screen.getByText(/Katalog ready beserta gambar promosi pukul 09.00 dan 17.00 WIB/)).toBeTruthy();
+  expect(screen.getByText(/Notifikasi pembelian berhasil tidak dikirim ke grup/)).toBeTruthy();
   await waitFor(()=>expect(screen.getByText(/Bot tersambung/).textContent).toContain('Notifikasi aktif'));
   fireEvent.click(screen.getByText('Ganti nomor bot'));
   const input=screen.getByLabelText('Nomor WhatsApp bot baru');
@@ -70,7 +73,7 @@ describe('manual bot-number controls',()=>{
   const api=mockApi();api.disconnect();render(<WhatsAppNotifications/>);
   await waitFor(()=>expect((screen.getByText('Hubungkan nomor bot') as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByText('Hubungkan nomor bot'));await screen.findByText('1234-5678');
-  api.fetcher.mockResolvedValueOnce({ok:true,json:async()=>({config:{enabled:true,botNumber:FIRST},gateway:null,error:'Gateway belum tersedia.'})} as any);
+   api.fetcher.mockResolvedValueOnce({ok:true,json:async()=>({config:{enabled:true,botNumber:FIRST},gateway:null,error:'Gateway belum tersedia.'})});
   fireEvent.click(screen.getByText('Cek koneksi'));
   await screen.findByRole('alert');expect(screen.queryByText('1234-5678')).toBeNull();
   expect(screen.getByText(/Bot belum tersedia/)).toBeTruthy();

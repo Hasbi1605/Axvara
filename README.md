@@ -1,5 +1,14 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Katalog ready WA11November2026 (implementasi lokal, deployment belum diverifikasi):
+grup AXVARA'S tidak lagi menerima notifikasi pembelian berhasil, termasuk antrean
+lama. Cron notify_b existing menyiapkan satu foto+caption katalog per09.00/17.00
+WIB, dari kandidat/harga Telegram yang sama, garis52tanda hubung dan gambar owner
+`public/banners/ready-promo.webp`. Saklar/nomor/revisi/grup existing tetap; sesi
+WA harus tersambung dan diaktifkan owner. Retry hanya sampai12.00/20.00 WIB,
+tanpa mengirim katalog basi atau replay hasil ambigu. Tanpa env/migrasi baru;
+rincian ARCHITECTURE16.12 dan aturan gateway.
+
 Default web11November2026 (implementasi lokal, deployment belum diverifikasi):
 bahasa Indonesia dan mata uang IDR tanpa deteksi jaringan/IP, negara atau bahasa
 browser. Cookie pilihan manual ID/EN dan IDR/USD tetap independen; tanpa cookie

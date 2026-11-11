@@ -1001,7 +1001,7 @@ Instruksi ketik list/garansi dihapus dari sambutan. Percakapan biasa tidak lagi
 auto-search; perintah pencarian legacy harus `cari <produk>`, tetap mengikuti flag.
 Commerce WA tetap mengikuti flag existing dan tidak diaktifkan oleh fitur ini.
 
-## Notifikasi transaksi dan link komunitas terpusat — 24 Oktober 2026
+## Katalog ready WA dan link komunitas terpusat — revisi 11 November 2026
 
 ✅ Diimplementasikan; publikasi CI, pengiriman WA mengikuti pairing/aktivasi owner.
 Admin Pengaturan Toko menyediakan satu input link undangan WhatsApp untuk seluruh
@@ -1009,13 +1009,18 @@ tombol grup Footer Market/Pedia dan Link Bio. Simpan admin memperbarui konsumen
 melalui settings bersama, tab lain saat storage/fokus/visibility, tanpa polling.
 Hanya URL HTTPS chat.whatsapp.com yang valid; link publik tidak mengubah grup bot.
 
-Grup AXVARA'S dari nomor bot pilihan admin (awal6283181632507) menerima hanya transaksi lunas/paid yang seluruh
-unit apps delivered atau seluruh item Pedia completed. Pesan berjudul **PESANAN
-BERHASIL DIPROSES - WEB/TELEGRAM/WHATSAPP**, memuat produk/varian/qty/harga/total
-bayar/metode, referensi publik acak, nama inisial+***, status SELESAI dan waktu
-selesai WIB. Tidak mengumumkan invoice asli, nomor/email/ID akun pembeli, target,
-supplier, kredensial atau URL akses. Partial/canceled/proses/gagal tetap tidak
-diumumkan sebagai sukses. Jam pembayaran dan jam selesai dibedakan.
+Revisi11November2026 (implementasi lokal, deployment belum diverifikasi): grup
+AXVARA'S dari nomor pilihan admin tidak lagi menerima pembelian berhasil.
+Producer transaksi dihapus, pending/failed lama dimatikan tanpa kirim; sent dan
+hasil ambigu tidak direplay. Gateway menutup endpoint transaksi lama dengan410.
+Penggantinya satu pesan foto dengan caption penuh katalog pada09.00 dan17.00 WIB:
+gambar promosi asli owner, judul READY PAGI/SORE INI, pemisah persis52tanda `-`,
+intro, kategori dan seluruh produk ready/harga varian termurah dari sumber yang
+sama dengan Telegram, CTA website lalu bot. Daftar/harga contoh tidak di-hardcode.
+Admin tetap memakai saklar aktivasi existing; Telegram admin tidak dimatikan.
+Cron menit existing memulai slot pada tick pertama yang tersedia; retry mengikuti
+jendela Telegram09.00–<12.00/17.00–<20.00, bukan jaminan detik tepat. Katalog lewat
+jendela tidak dikirim saat bot pulih, tidak digandakan menjadi teks terpisah.
 
 Admin Telegram menerima status pembayaran/pesanan dan paid_at WIB; order-created
 Telegram/WhatsApp memakai created_at WIB; supplier otomatis
@@ -1030,8 +1035,9 @@ hanya nomor dan grup terverifikasi. Pencarian mengenali AXVARA’S (apostrof
 melengkung) dan AXVARA'S sebagai nama yang sama, dengan trim/NFKC/tanpa membedakan
 kapitalisasi; nama ganda ditolak dan ID grup tersimpan tidak berpindah otomatis.
 Bot yang sudah tersambung cukup Cek koneksi, tanpa pairing ulang.
-Cutoff paid_at mencegah backfill sebelum
-aktivasi. Antrean existing tetap durable saat nonaktif/offline, dilanjutkan dengan
+Saklar existing sekarang mengontrol katalog; enabledAt dipertahankan untuk
+kompatibilitas, bukan pemicu transaksi. Antrean katalog tetap durable saat
+nonaktif/offline hanya sampai batas slot, dilanjutkan dengan
 batas operasional satu percobaan baru/60detik. Hasil kirim ambigu membutuhkan
 pemeriksaan; jangan mengirim ulang buta. Baileys bukan layanan resmi dan tidak
 menjamin bebas pembatasan. Tidak membuka DM/promosi massal atau membeli supplier
@@ -1044,7 +1050,7 @@ notifikasi sebelum memutus sesi lama; pilihannya tersimpan di gateway dan bertah
 saat restart. Owner menghubungkan nomor baru, memastikan keanggotaan/izin pada grup
 tujuan yang sama, lalu mengaktifkan kembali. Tidak ada rotasi nomor otomatis.
 Riwayat sent/unknown, ID grup dan cooldown tidak dihapus; pending yang pasti belum
-terkirim dilanjutkan setelah aktivasi. Permintaan tab lama ditolak meski nomor
+terkirim hanya dilanjutkan bila identitas snapshot masih cocok dan belum kedaluwarsa. Permintaan tab lama ditolak meski nomor
 dikembalikan ke nomor semula. Timeout pergantian harus dicek statusnya dahulu;
 panel membaca nomor aktual dan menghapus kode pairing lama. Nomor produksi tidak
 diganti ketika QA.

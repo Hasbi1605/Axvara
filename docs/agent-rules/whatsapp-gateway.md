@@ -1,5 +1,14 @@
 # Aturan agent — WhatsApp gateway, grup, siaran
 
+Revisi11November2026 (implementasi lokal, deployment belum diverifikasi): hentikan
+notifikasi pembelian berhasil ke grup, termasuk pending/failed lama. Jangan
+mengaktifkan kembali scanner transaksi. Penggantinya katalog ready09.00/17.00 WIB,
+satu gambar owner+caption utuh, garis52tanda `-`, sumber katalog/harga sama dengan
+Telegram. Saklar/nomor/revisi/grup existing tetap, retry hanya sampai12.00/20.00
+WIB; jangan replay katalog basi/hasil ambigu. Endpoint `/send-promo` memakai
+ledger/pacing/izin existing, `/send-notification` lama410. Tidak ada pairing,
+reset sesi, pesan atau mutasi produksi saat QA. Detail ARCHITECTURE16.12.
+
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
 Notifikasi grup24Oktober: pencarian AXVARA'S menyetarakan NFKC/trim/kapitalisasi

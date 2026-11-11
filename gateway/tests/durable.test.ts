@@ -59,3 +59,22 @@ test('durable claim never resends sent, unknown, changed or paced keys', async (
     } finally { pool.connect=original; }
   }
 });
+
+test('image delivery retains its encrypted message for Baileys retries without changing the fingerprint', async () => {
+  const { pool, settleDelivery } = await import('../src/durable.js');
+  const { proto } = await import('@whiskeysockets/baileys');
+  const original = pool.query;
+  const calls: { sql: string; values: unknown[] }[] = [];
+  pool.query = (async (sql: string, values: unknown[]) => { calls.push({ sql, values }); return { rows: [] }; }) as unknown as typeof pool.query;
+  const message = proto.Message.fromObject({ imageMessage: { caption: 'ready', mediaKey: Buffer.from([1,2,3]), url: 'https://mmg.whatsapp.net/fixture' } });
+  try {
+    await settleDelivery('wa:promo:2026-11-11:morning', 'WA-IMAGE', BOT_NUMBER, JSON.stringify(message));
+    assert.match(calls[0].sql, /payload=COALESCE\(\$4,payload\)/);
+    assert.equal(calls[0].sql.includes('fingerprint='), false);
+    const restored = proto.Message.fromObject(JSON.parse(String(calls[0].values[3])));
+    assert.equal(restored.imageMessage?.caption, 'ready');
+    assert.deepEqual(Buffer.from(restored.imageMessage!.mediaKey!), Buffer.from([1,2,3]));
+    await settleDelivery('wa:promo:2026-11-11:morning', undefined, BOT_NUMBER);
+    assert.equal(calls[2].values[3], null);
+  } finally { pool.query = original; }
+});

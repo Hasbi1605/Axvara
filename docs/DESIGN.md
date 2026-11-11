@@ -1061,11 +1061,16 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
   aktual melalui fixture, bukan screenshot homepage atau pesan produksi.
 
 ### 5.3f Daily Promo Telegram (2026-09-27 live, revamp 2026-09-29, format final 2026-10-03)
-- Grup admin menerima dua slot bahan promosi: 09.00 WIB = 12 produk teratas katalog, 17.00 WIB = 12 berikutnya, tanpa tumpang tindih (hierarki `sort_order` admin = hierarki toko; histori 2 hari hanya fallback bila katalog ready < 24). Setiap slot berupa dua bubble: pesan utama (bold HTML Telegram) + versi WA siap copy-paste (ISI SAMA PERSIS, bold pakai `*` literal, teks polos tanpa parse_mode — 2026-10-03, permintaan owner: bubble ringkas lama "jelek", ganti versi WA agar tinggal copy dari Telegram lalu paste ke WA tanpa edit).
+- Grup admin menerima dua slot bahan promosi09.00/17.00 WIB, seluruh produk ready pada kedua slot (revisi1Oktober; aturan12+12 adalah histori). Setiap slot dua bubble: utama bold HTML Telegram + versi WA siap copy-paste, isi sama dan bold `*` literal tanpa parse_mode. Revisi11November2026 lokal: hanya versi WA memakai pemisah52tanda `-`; utama Telegram tetap66tanda.
 - Format (contoh manual owner): judul `🔥 PRODUK AXVARA READY PAGI/SORE INI` + garis `---` + intro dua baris ("Sedia semua kebutuhan aplikasi dan tools premium favorit anda. / Murah, mudah, cepat, dan bergaransi.") + garis `---` + kelompok per kategori (`{ikon} NAMA`, baris `✅ nama — RpX`, blank line antar kategori) + CTA **website dulu baru bot** (Order melalui Website, lalu Order melalui Bot Telegram). Harga tegas varian termurah purchasable — tanpa "Mulai", tanpa footer disclaimer, tanpa klaim termurah/diskon palsu/urgensi stok unlimited.
 - Ikon kategori (2026-10-03 fix: Desain & Video sempat 🤖 karena "desain" mengandung substring "ai" — kini cek kategori spesifik dulu, AI pakai batas kata): AI & Chatbot 🤖, Desain & Video 🎨, Streaming & Hiburan 🎬, Produktivitas & Office 🛠️, Developer & Tools 💻, Bundle Hemat 📦.
 - CTA final selalu sejajar: **Order melalui Bot Telegram** dan **Order melalui Website**. Jangan memakai label `Katalog lengkap` atau anchor `/#katalog`.
 - Link preview dimatikan agar bubble stabil.
+
+### 5.3g Katalog ready grup WA — 11 November 2026 (lokal)
+- Satu foto dengan caption lengkap, bukan foto dan pesan teks terpisah: lampiran asli owner "Beli Aplikasi Premium Jadi Lebih Hemat di AXVARA", disimpan WebP1536x1024 di `public/banners/ready-promo.webp` tanpa crop/redraw.
+- Judul `🔥 *PRODUK AXVARA READY PAGI/SORE INI*`, dua pemisah52karakter persis `----------------------------------------------------`, intro dua baris dan baris kategori/produk/CTA memakai formatter WA §5.3f. Nama/harga dinamis, bukan daftar contoh statis. Pesan panjang dibuka melalui tampilan caption native WA; tidak menjanjikan seluruh daftar terlihat tanpa "Baca selengkapnya".
+- Panel Pengaturan Toko berganti judul menjadi **Katalog ready ke grup WhatsApp**, menjelaskan jadwal09.00/17.00 WIB dan notifikasi pembelian berhasil tidak dikirim. Kontrol koneksi/aktivasi/ganti nomor dan token visual existing tetap. Browser fixture bukan bukti render/pengiriman dalam aplikasi WA yang sesinya terputus.
 
 ### 5.4 Keranjang Drawer
 - Overlay: `rgba(8,12,30,0.6)` + `backdrop-blur-sm`

@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { createDatabaseAccess } from "@/lib/db-access";
-import { enqueueCompletedSales, salesNotificationMessage, SALES_CONFIG_KEY } from "@/lib/whatsapp/sales-notifications";
-import { processWhatsAppOutboxRow } from "@/lib/whatsapp/outbox";
+import { SALES_CONFIG_KEY } from "@/lib/whatsapp/sales-notifications";
+import { processWhatsAppOutboxRow, recoverStaleWhatsAppLeases } from "@/lib/whatsapp/outbox";
 import { summarizeWebDelivery, notifyWebPaidAdmin } from "@/lib/telegram/order-notifications";
 vi.mock("@/lib/whatsapp/gateway", async original => ({ ...await original<object>(), sendTextMessage: vi.fn(), salesGatewayControl: vi.fn() }));
 vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn(async () => ({ ok: true })) }));
@@ -31,57 +30,23 @@ async function cookie() {
   const { token, sid } = await createAdminToken("admin@axvara.tech");
   return `axvara_admin_token=${encodeURIComponent(token)}; axvara_idle=${encodeURIComponent(await createIdleToken(sid))}`;
 }
-describe("completed purchase notifications", () => {
-  it("queues once after every unique unit is delivered; stores completion time and hides private data", async () => {
-    order([{name:"Gemini Pro",product_id:1,variant_id:1,qty:2,price:10000,fulfillment_mode:"unique",unique_units:true}]); item();
-    expect(await enqueueCompletedSales()).toBe(0);
-    item(1,"retry"); expect(await enqueueCompletedSales()).toBe(0);
-    fixture.sql.exec("UPDATE fulfillment_items SET status='delivered'");
-    const both = await Promise.all([enqueueCompletedSales(),enqueueCompletedSales()]); expect(both.reduce((a,b)=>a+b)).toBe(1);
-    const queued=fixture.sql.prepare("SELECT * FROM whatsapp_outbox").get()!;
-    expect(queued.destination).toBe(GROUP); expect(queued.message_type).toBe("sale_completed");
-    expect(queued.payload).toContain("PESANAN BERHASIL DIPROSES - WEB"); expect(queued.payload).toContain("07.37 WIB"); expect(queued.payload).toContain("R***");
-    for (const value of [CODE,"Rani Putri","buyer@test.example","628000000000"]) expect(queued.payload).not.toContain(value);
-    fixture.sql.exec("UPDATE fulfillment_items SET updated_at='2026-10-24 01:00:00'");
-    expect(await enqueueCompletedSales()).toBe(0); expect(fixture.sql.prepare("SELECT payload FROM whatsapp_outbox").get()?.payload).toBe(queued.payload);
-  });
-  it("does not publish unpaid, failed, disabled or historical orders",async()=>{
-    order(); item();
-    fixture.sql.exec("UPDATE orders SET payment_status='pending'"); expect(await enqueueCompletedSales()).toBe(0);
-    fixture.sql.exec("UPDATE orders SET payment_status='paid',paid_at='2026-10-23 23:59:59'"); expect(await enqueueCompletedSales()).toBe(0);
-    fixture.sql.exec("UPDATE orders SET paid_at='2026-10-24 00:01:00'; UPDATE fulfillment_items SET status='failed'"); expect(await enqueueCompletedSales()).toBe(0);
-    fixture.sql.exec("UPDATE fulfillment_items SET status='delivered'; DELETE FROM store_settings WHERE key='whatsapp_sales_notifications'"); expect(await enqueueCompletedSales()).toBe(0);
-  });
-  it("publishes Pedia only at completed, without exposing its target or supplier details",async()=>{
-    order([{name:"Followers Instagram",qty:100,price:10}]);
-    fixture.sql.exec(`UPDATE orders SET order_kind='pedia';
-      INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name) VALUES(1,'followers-ig','instagram','followers','profile','Followers');
-      INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp) VALUES(1,1,'standar','indosmm',1,'G3',0,1000);
-      INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,supplier,supplier_service_id,supplier_rate_snapshot,status,completed_at)
-      VALUES('${CODE}',1,1,'{}','https://instagram.com/private-target','https://instagram.com/private-target',100,10,1000,'indosmm',1,1000,'partial','2026-10-24 00:45:00');`);
-    expect(await enqueueCompletedSales()).toBe(0);
-    fixture.sql.exec("UPDATE pedia_order_items SET status='canceled'");expect(await enqueueCompletedSales()).toBe(0);
-    fixture.sql.exec("UPDATE pedia_order_items SET status='completed'");expect(await enqueueCompletedSales()).toBe(1);
-    const payload=String(fixture.sql.prepare("SELECT payload FROM whatsapp_outbox").get()?.payload);
-    expect(payload).toContain("07.45 WIB");expect(payload).not.toContain("private-target");expect(payload).not.toContain("indosmm");
-  });
-  it("labels each channel without leaking fields outside the catalog whitelist",()=>{
-    for (const [sales_channel, label] of [["web","WEB"],["telegram","TELEGRAM"],["whatsapp","WHATSAPP"]]) {
-      const text=salesNotificationMessage({sales_channel,items:JSON.stringify([{name:"Canva",qty:1,price:10000,target:"SECRET",email:"SECRET",credentials:"SECRET"}]),customer_email:"SECRET",telegram_user_id:"SECRET",code:CODE,subtotal:10000},"2026-10-24 00:37:00","TRX-PUBLIC");
-      expect(text).toContain(`DIPROSES - ${label}`); expect(text).not.toContain("SECRET"); expect(text).not.toContain(CODE);
-    }
-  });
-  it("passes a stable gateway key, defers offline sends without exhausting attempts, quarantines explicit unknown",async()=>{
-    order();item();await enqueueCompletedSales();
-    const {sendTextMessage}=await import("@/lib/whatsapp/gateway");
-    vi.mocked(sendTextMessage).mockResolvedValueOnce({ok:false,error:"whatsapp_not_connected"});
-    const row=fixture.sql.prepare("SELECT * FROM whatsapp_outbox").get()!;
-    await processWhatsAppOutboxRow(row);
-    expect(fixture.sql.prepare("SELECT attempt_count FROM whatsapp_outbox").get()?.attempt_count).toBe(0);
-    expect(sendTextMessage).toHaveBeenCalledWith(expect.objectContaining({idempotencyKey:`wa:sale-completed:${CODE}`,salesNotification:true,target:GROUP}));
-    vi.mocked(sendTextMessage).mockResolvedValueOnce({ok:false,error:"delivery_outcome_unknown",outcomeUnknown:true});
+function legacySale(status = "pending", key = CODE) {
+  fixture.sql.prepare("INSERT INTO whatsapp_outbox(idempotency_key,channel,destination,message_type,payload,status) VALUES(?,'whatsapp',?,'sale_completed','legacy sale',?)").run(`wa:sale-completed:${key}`, GROUP, status);
+}
+describe("retired completed purchase notifications", () => {
+  it("never sends an existing purchase notification even when the group is enabled", async () => {
+    legacySale();
     await processWhatsAppOutboxRow(fixture.sql.prepare("SELECT * FROM whatsapp_outbox").get()!);
-    expect(fixture.sql.prepare("SELECT status,last_error FROM whatsapp_outbox").get()).toMatchObject({status:"dead",last_error:"delivery_outcome_unknown:manual_check_required"});
+    expect(fixture.sql.prepare("SELECT status,last_error FROM whatsapp_outbox").get()).toEqual({status:"dead",last_error:"sales_notifications_retired"});
+    const {sendTextMessage}=await import("@/lib/whatsapp/gateway");
+    expect(sendTextMessage).not.toHaveBeenCalled();
+  });
+  it("retires pending/failed purchases without touching sent, unknown/dead or active leases", async () => {
+    for (const status of ["pending","failed","sent","dead","sending"]) legacySale(status,status);
+    fixture.sql.exec("UPDATE whatsapp_outbox SET locked_until=datetime('now','+5 minutes') WHERE status='sending'");
+    expect(await recoverStaleWhatsAppLeases()).toBe(2);
+    const rows=fixture.sql.prepare("SELECT status FROM whatsapp_outbox ORDER BY id").all();
+    expect(rows.map(r=>r.status)).toEqual(["dead","dead","sent","dead","sending"]);
   });
 });
 describe("admin classification and safe tracking access",()=>{
@@ -166,7 +131,7 @@ describe("manual bot-number replacement",()=>{
   });
   it("pauses before replacing the session, normalizes 08 and preserves existing deliveries",async()=>{
     const {salesGatewayControl}=await import("@/lib/whatsapp/gateway");
-    order();item();await enqueueCompletedSales();fixture.sql.exec("UPDATE whatsapp_outbox SET status='sent',provider_message_id='KEEP'");
+    legacySale("sent");fixture.sql.exec("UPDATE whatsapp_outbox SET provider_message_id='KEEP'");
     vi.mocked(salesGatewayControl).mockImplementation(async(action,identity)=>{
       if(action==='number'){
         const paused=JSON.parse(String(fixture.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(SALES_CONFIG_KEY)?.value));
@@ -178,7 +143,6 @@ describe("manual bot-number replacement",()=>{
     const result=await post("number",{newBotNumber:"08123456789"},await cookie());
     expect(result.status).toBe(200);expect((await result.json()).gateway.botNumber).toBe(NEXT);
     expect(fixture.sql.prepare("SELECT status,provider_message_id FROM whatsapp_outbox").get()).toEqual({status:'sent',provider_message_id:'KEEP'});
-    expect(await enqueueCompletedSales()).toBe(0);
   });
   it("keeps notifications disabled when gateway replacement fails",async()=>{
     const {salesGatewayControl}=await import("@/lib/whatsapp/gateway");
@@ -192,8 +156,7 @@ describe("manual bot-number replacement",()=>{
     const c=await cookie();expect((await post('enable',{},c)).status).toBe(409);
     const response=await post('enable',{botNumber:NEXT,botRevision:REV},c);expect(response.status).toBe(200);
     const {config}=await response.json();expect(config).toMatchObject({botNumber:NEXT,botRevision:REV,enabled:true});expect(config.enabledAt).not.toBe('2026-10-24T00:00:00Z');
-    order();item();fixture.sql.prepare("UPDATE orders SET paid_at=?").run(config.enabledAt);
-    expect(await enqueueCompletedSales()).toBe(1);
+    fixture.sql.prepare("INSERT INTO whatsapp_outbox(idempotency_key,channel,destination,message_type,payload,status) VALUES('wa:promo:2099-11-11:morning','whatsapp',?,'promo_digest',?,'pending')").run(GROUP,JSON.stringify({message:"ready",botNumber:NEXT,botRevision:REV,expiresAt:"2099-11-11T12:00:00+07:00"}));
     vi.mocked(sendTextMessage).mockResolvedValue({ok:false,error:'bot_configuration_changed'});
     await processWhatsAppOutboxRow(fixture.sql.prepare("SELECT * FROM whatsapp_outbox").get()!);
     expect(sendTextMessage).toHaveBeenCalledWith(expect.objectContaining({botNumber:NEXT,botRevision:REV}));

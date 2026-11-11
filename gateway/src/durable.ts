@@ -79,8 +79,8 @@ export async function deliveryClaim(key: string, target: string, text: string) {
     return { claimed: true } as const;
   } finally { await client.query("ROLLBACK").catch(() => {}); client.release(); }
 }
-export async function settleDelivery(key: string, messageId?: string, phone = BOT_NUMBER) {
-  await pool.query("UPDATE axvara_wa_delivery SET status=$2,message_id=$3,updated_at=now() WHERE key=$1 AND (status!='sent' OR $2='sent')", [key, messageId ? "sent" : "unknown", messageId ?? null]);
+export async function settleDelivery(key: string, messageId?: string, phone = BOT_NUMBER, message?: string) {
+  await pool.query("UPDATE axvara_wa_delivery SET status=$2,message_id=$3,payload=COALESCE($4,payload),updated_at=now() WHERE key=$1 AND (status!='sent' OR $2='sent')", [key, messageId ? "sent" : "unknown", messageId ?? null, messageId ? message ?? null : null]);
   if (messageId) await pool.query("UPDATE axvara_wa_control SET last_sent_at=now() WHERE phone=$1", [phone]);
 }
 export async function pauseOutbound(minutes = 15, phone = BOT_NUMBER) {

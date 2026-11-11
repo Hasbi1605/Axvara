@@ -13,7 +13,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import pino from "pino";
 import { usePostgresAuthState } from "./pg-auth.js";
 import { BOT_NUMBER, botIdentity, matchesBotIdentity, validBotNumber, persistBotNumber, reloadBotIdentity, pool, initializeDurable, deliveryClaim, settleDelivery, pauseOutbound, requiresManualReconnect, isRestriction, groupAllowsBotSend } from "./durable.js";
-import { isNotificationGroupName, selectNotificationGroup, notificationGroupStatus, validNotificationKey } from "./group-target.js";
+import { isNotificationGroupName, selectNotificationGroup, notificationGroupStatus, validNotificationKey, notificationContent, currentPromoKey, loadPromoImage } from "./group-target.js";
 // (registerWrProxy tidak lagi diimpor — proxy WR pindah ke axvara-wr-proxy)
 
 const logger = pino({ name: "axvara-wa-gateway" });
@@ -151,7 +151,8 @@ async function startSocket(): Promise<void> {
     getMessage: async key => {
       const cached = inboundMessages.get(cacheKey(key.remoteJid || "", key.id || ""));
       if (cached) return cached.message.message || undefined;
-      const row = (await pool.query("SELECT payload FROM axvara_wa_delivery WHERE message_id=$1 AND target=$2", [key.id, key.remoteJid])).rows[0];
+      const row = (await pool.query("SELECT key,payload FROM axvara_wa_delivery WHERE message_id=$1 AND target=$2", [key.id, key.remoteJid])).rows[0];
+      if (row?.key.startsWith("wa:promo:")) return proto.Message.fromObject(JSON.parse(row.payload));
       return row ? proto.Message.fromObject({ conversation: row.payload }) : undefined;
     },
     logger: logger as any,
@@ -478,29 +479,38 @@ app.post("/notification-pair", async (request, reply) => sessionMutex.runExclusi
   finally { pairingCodeRequested = false; }
 }));
 
-async function sendGroupNotification(request: FastifyRequest, reply: FastifyReply, kind: boolean | "welcome") { return sessionMutex.runExclusive(async () => {
+async function sendGroupNotification(request: FastifyRequest, reply: FastifyReply, kind: boolean | "welcome" | "promo") { return sessionMutex.runExclusive(async () => {
   if (!validGatewayToken(request.headers["x-gateway-token"])) return reply.status(401).send({ status: false, reason: "unauthorized" });
   const body = request.body as { target?: string; message?: string; idempotencyKey?: string; botNumber?: string; botRevision?: string };
-  if (!body || typeof body.message !== "string" || body.message.length > 12_000 || !validNotificationKey(body.idempotencyKey, kind)) {
+  if (!body || typeof body.message !== "string" || !body.message.trim() || body.message.length > 12_000 || !validNotificationKey(body.idempotencyKey, kind)) {
     return reply.status(400).send({ status: false, reason: "invalid_notification" });
   }
   if (!matchesBotIdentity(body)) return reply.status(409).send({ status: false, reason: "bot_configuration_changed" });
+  if (kind === "promo" && !currentPromoKey(body.idempotencyKey!)) return reply.status(410).send({ status: false, reason: "promo_expired" });
   if (!sock || !isConnected || blocked) return reply.status(503).send({ status: false, reason: "whatsapp_not_connected" });
   try {
     const group = await resolveNotificationGroup();
     if (!group || group.id !== body.target) return reply.status(409).send({ status: false, reason: "notification_group_mismatch" });
-    const claim = await deliveryClaim(body.idempotencyKey!, group.id, body.message);
+    const content = notificationContent(body.message, kind);
+    let image: Buffer | undefined;
+    if (kind === "promo") {
+      try { image = await loadPromoImage(); }
+      catch { return reply.status(503).send({ status: false, reason: "promo_image_unavailable" }); }
+      if (!currentPromoKey(body.idempotencyKey!)) return reply.status(410).send({ status: false, reason: "promo_expired" });
+    }
+    const claim = await deliveryClaim(body.idempotencyKey!, group.id, kind === "promo" ? JSON.stringify(content) : body.message);
     if ("sent" in claim) return { status: true, id: claim.id };
     if ("reason" in claim) return reply.status(claim.outcomeUnknown || claim.reason === "idempotency_conflict" ? 409 : 429).send({ status: false, ...claim });
     const current = sock;
     const phone = BOT_NUMBER;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const send = current.sendMessage(group.id, { text: body.message });
+    const send = current.sendMessage(group.id, image ? { image, caption: body.message } : content);
     // Keep observing completion even if the HTTP caller times out. Never send an ambiguous key again.
-    void send.then(result => settleDelivery(body.idempotencyKey!, result?.key?.id || undefined, phone)).catch(() => {});
+    const settle = (result: WAMessage | undefined) => settleDelivery(body.idempotencyKey!, result?.key?.id || undefined, phone, kind === "promo" && result?.message ? JSON.stringify(result.message) : undefined);
+    void send.then(settle).catch(() => {});
     try {
       const result = await Promise.race([send, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("send_timeout")), 25_000); })]);
-      await settleDelivery(body.idempotencyKey!, result?.key?.id || undefined, phone);
+      await settle(result);
       lastSendAtIso = new Date().toISOString();
       if (!result?.key?.id) return reply.status(409).send({ status: false, outcomeUnknown: true, reason: "delivery_outcome_unknown" });
       return { status: true, id: result.key.id };
@@ -513,7 +523,8 @@ async function sendGroupNotification(request: FastifyRequest, reply: FastifyRepl
     } finally { if (timer) clearTimeout(timer); }
   } catch { return reply.status(503).send({ status: false, reason: "notification_gateway_unavailable" }); }
 }); }
-app.post("/send-notification", (request, reply) => sendGroupNotification(request, reply, false));
+app.post("/send-notification", (request, reply) => reply.status(validGatewayToken(request.headers["x-gateway-token"]) ? 410 : 401).send({ status: false, reason: "sales_notifications_retired" }));
+app.post("/send-promo", (request, reply) => sendGroupNotification(request, reply, "promo"));
 app.post("/send-broadcast", (request, reply) => sendGroupNotification(request, reply, true));
 app.post("/send-welcome", (request, reply) => sendGroupNotification(request, reply, "welcome"));
 

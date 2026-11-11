@@ -44,7 +44,14 @@ laporan `../docs/security/dependency-audit-2026-10-27.md`. Deploy tetap hanya CI
 - Pairing hanya aksi admin dari Pengaturan Toko; kode jangan masuk log/git.
   401 tidak otomatis berarti ban. 401/403/440/500 berhenti untuk pemeriksaan;
   515 restart normal, error sementara memakai backoff.
-- `/send-notification` menerima key order stabil + grup terverifikasi, max satu
+- Revisi11November2026 lokal: `/send-notification` dipensiunkan410 setelah cek
+  token. `/send-promo` menerima `wa:promo:YYYY-MM-DD:morning|evening` hanya dalam
+  slot WIB09.00–<12.00/17.00–<20.00. Satu gambar URL tetap
+  `https://axvara.tech/banners/ready-promo.webp`+caption, unduh maksimal5MB/8detik,
+  WebP saja/tanpa redirect dan sebelum claim. Jangan menerima URL media sembarang.
+  Proto pesan gambar disimpan di payload ledger untuk getMessage; fingerprint
+  tetap mengikat target+konten. Tanpa schema/env baru atau pairing otomatis.
+- `/send-promo` memakai key slot stabil + grup terverifikasi, max satu
   percobaan baru/60detik. Key sent didedupe, sending/unknown tidak dikirim ulang.
   Timeout/hasil ambigu perlu pemeriksaan manual, jangan hapus row untuk retry.
   Batas operasional ini bukan jaminan anti-ban. Jangan membuka DM massal,

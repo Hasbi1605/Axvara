@@ -122,8 +122,28 @@ export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full
   const ctaWa = `🌐 *Order melalui Website:* ${webUrl}\n\n🤖 *Order melalui Bot Telegram:* ${botUrl}${pediaWa}`;
   return {
     full: `${titleFull}\n${separator}\n${introFull}\n${separator}\n${linesFull.join("\n\n")}\n\n${ctaFull}`,
-    short: `${titleWa}\n${separator}\n${introWa}\n${separator}\n${linesWa.join("\n\n")}\n\n${ctaWa}`,
+    short: `${titleWa}\n${"-".repeat(52)}\n${introWa}\n${"-".repeat(52)}\n${linesWa.join("\n\n")}\n\n${ctaWa}`,
   };
+}
+
+export async function loadPromoProducts(database: DatabaseAccess): Promise<PromoProduct[]> {
+  return (await database.queryAll(
+    `SELECT p.id, p.name, COALESCE(c.name, 'Produk Premium') AS category,
+            MIN(CASE WHEN pv.stock = -1 OR pv.stock >= MAX(1, COALESCE(pv.min_qty, 1)) THEN pv.price END) AS promo_price
+       FROM products p
+       JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
+       LEFT JOIN categories c ON c.id=p.category_id
+      WHERE p.is_active=1 AND COALESCE(p.telegram_enabled, 1)=1
+        AND NOT EXISTS (
+          SELECT 1 FROM supplier_pairs pair
+          WHERE p.id = CASE WHEN pair.winner IS NULL OR pair.winner='WR' THEN pair.sk_product_id ELSE pair.wr_product_id END
+        )
+      GROUP BY p.id
+     HAVING promo_price IS NOT NULL
+      ORDER BY p.sort_order ASC, p.id ASC`,
+  )).map((row) => ({
+    id: Number(row.id), name: String(row.name), category: String(row.category), price: Number(row.promo_price),
+  }));
 }
 
 export async function sendDueAdminPromoDigest(
@@ -155,23 +175,7 @@ export async function sendDueAdminPromoDigest(
   // supplier-pair + produk telegram_enabled=0 dikecualikan agar promo tidak
   // menjual barang yang disembunyikan di katalog. Opsi B (2026-10-02):
   // winner None → sisi SK = pecundang (wakil = WR).
-  const products = (await database.queryAll(
-    `SELECT p.id, p.name, COALESCE(c.name, 'Produk Premium') AS category,
-            MIN(CASE WHEN pv.stock = -1 OR pv.stock >= MAX(1, COALESCE(pv.min_qty, 1)) THEN pv.price END) AS promo_price
-       FROM products p
-       JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
-       LEFT JOIN categories c ON c.id=p.category_id
-      WHERE p.is_active=1 AND COALESCE(p.telegram_enabled, 1)=1
-        AND NOT EXISTS (
-          SELECT 1 FROM supplier_pairs pair
-          WHERE p.id = CASE WHEN pair.winner IS NULL OR pair.winner='WR' THEN pair.sk_product_id ELSE pair.wr_product_id END
-        )
-      GROUP BY p.id
-     HAVING promo_price IS NOT NULL
-      ORDER BY p.sort_order ASC, p.id ASC`,
-  )).map((row) => ({
-    id: Number(row.id), name: String(row.name), category: String(row.category), price: Number(row.promo_price),
-  }));
+  const products = await loadPromoProducts(database);
   if (products.length < 3) {
     return { due: true, fullSent: false, shortSent: false, complete: false, skipped: "insufficient_products" };
   }

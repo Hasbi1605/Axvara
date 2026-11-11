@@ -4010,7 +4010,9 @@ dibaca dari `axvara_wa_runtime`, bukan env WA_BOT_NUMBER/WHATSAPP_BOT_NUMBER lam
   code401 sendiri bukan bukti ban. Tidak ada pairing code/QR dalam log.
 - Admin-only GET/POST `/api/admin/whatsapp-notifications`: status, pair, enable,
   disable. Proxy gateway token-only `/notification-status`, `/notification-pair`,
-  `/send-notification`. Pair eksplisit owner; grup pertama nama unik AXVARA'S
+  `/send-promo` (foto+caption katalog; revisi11November2026 lokal).
+  `/send-notification` lama kini410 setelah pemeriksaan token, tidak mengirim
+  transaksi. Pair eksplisit owner; grup pertama nama unik AXVARA'S
   setelah NFKC/trim/kapitalisasi/penyetaraan apostrof ’/‘/ʼ → ', lalu pinID PG.
   `gateway/src/group-target.ts` menolak nama ganda setelah normalisasi, substring
   dan nama lain; metadata pin memakai pencocokan sama, tidak rebind ID otomatis.
@@ -4022,10 +4024,10 @@ dibaca dari `axvara_wa_runtime`, bukan env WA_BOT_NUMBER/WHATSAPP_BOT_NUMBER lam
 - Internal store_settings.whatsapp_sales_notifications menyimpan
   enabled/enabledAt/groupId/botNumber/botRevision; tidak dibocorkan settings publik.
   Legacy tanpa identitas dibaca sebagai nomor awal/revisi initial. Disabled boleh
-  groupId null sebelum grup terverifikasi. Cutoff paid_at
-  saat enable pertama/re-enable; klik aktif berulang tidak mereset. Antrean yang
-  sudah ada tetap dipertahankan saat nonaktif/offline, order lama belum queued
-  tidak backfill. Tidak menyalakan flag commerce/DM legacy.
+  groupId null sebelum grup terverifikasi. Nama key dan enabledAt tetap untuk
+  kompatibilitas; saklar sekarang mengontrol katalog, bukan transaksi. Klik aktif
+  berulang tidak mereset enabledAt. Katalog hanya dicoba dalam jendela slot dan
+  snapshot nomor/revisi; tidak menyalakan flag commerce/DM legacy.
 - **Ganti nomor bot24Oktober:** admin POST action:number menerima newBotNumber dan
   identitas nomor/revisi yang sedang ditinjau. Normalisasi08→62, +/spasi/()- dibuang,
   10–15digit internasional; invalid400, tab basi409. D1 config dinonaktifkan memakai
@@ -4043,22 +4045,40 @@ dibaca dari `axvara_wa_runtime`, bukan env WA_BOT_NUMBER/WHATSAPP_BOT_NUMBER lam
   dijaga identitas socket; hasil send terlambat tetap mencatat nomor asal.
   Gagal/commit ambigu menghentikan socket dan membaca ulang identitas PG; Cek
   koneksi lalu Hubungkan memulihkan sesi tersimpan tanpa menghapus riwayat.
-  Pair dan sale send mengikat botNumber/botRevision. Default request lama hanya
+  Pair dan pengiriman grup mengikat botNumber/botRevision. Default request lama hanya
   diterima selama nomor/revisi bootstrap belum berubah. A→B→A tidak menghidupkan
   permintaan lama. Aktivasi admin CAS menyimpan identitas gateway; outbox membawa
-  identitas aktivasi itu, mismatch ditunda tanpa menghabiskan attempt. Pending
-  pasti belum kirim boleh dilanjutkan pada aktivasi baru, sent/unknown tidak replay.
+  identitas aktivasi itu, mismatch ditunda tanpa menghabiskan attempt. Katalog
+  pending hanya dilanjutkan bila snapshot sesuai dan belum kedaluwarsa;
+  sent/unknown tidak replay.
   UI dinamis, form inline, membersihkan kode pairing saat identitas berubah;
   status aktif hanya bila config sesuai gateway. Rollback sesudah pergantian wajib
   ke rilis kompatibel runtime/revisi, bukan kode nomor tetap sebelum fitur ini.
-- `enqueueCompletedSales` pada `notify_b` cron lite existing maksimal4/tick,
-  memakai budget existing, migrasi0076 expression index julianday(paid_at).
-  Orders lunas/paid; semua manifest apps delivered (termasuk unit unik lengkap)
-  atau seluruh Pedia item completed. Bukan paid saja/partial/canceled. Payload
-  whitelist katalog/nominal/metode/waktu selesai WIB, judul menurut sales_channel,
-  nama inisial+***, ref acak; tanpa invoice asli/kontak/target/supplier/kredensial/
-  URL akses buyer. D1 INSERT OR IGNORE key wa:sale-completed:<code>, payload
-  immutable. Waktu apps max updated_at unit delivered, Pedia max completed_at.
+- Revisi11November2026 (lokal, deployment belum diverifikasi): producer
+  `enqueueCompletedSales`/formatter transaksi dihapus. Recovery outbox existing
+  menandai pending/failed `sale_completed` dead/sales_notifications_retired;
+  lease aktif/sent/dead tetap, sending basi menjadi dead. Processor juga menolak
+  kirim transaksi lama, termasuk bila recovery gagal. Tidak menghapus ledger.
+- `src/lib/whatsapp/promo-digest.ts` pada `notify_b` existing memakai maksimal4
+  statement enqueue: konfigurasi, cek key murah, kandidat katalog, INSERT OR IGNORE.
+  `loadPromoProducts` dibagi dengan Telegram: semua produk aktif/telegram_enabled,
+  varian aktif yang stoknya memenuhi min_qty atau unlimited, harga minimum yang
+  purchasable, pecundang pasangan supplier tidak ikut, urutan sort_order/id.
+  Minimal3produk seperti Telegram; flag/token Telegram tidak menjadi gate WA.
+  Key unik D1/PG `wa:promo:YYYY-MM-DD:morning|evening`, message_type promo_digest,
+  snapshot immutable caption+botNumber+botRevision+expiresAt. Slot WIB09.00/17.00,
+  retry dalam jendela Telegram sampai12.00/20.00; lewat jendela dead/promo_expired.
+  Nonaktif/grup/identitas berbeda menunda tanpa memakan attempt, bukan memindahkan
+  katalog lama ke sesi baru. Hasil ambigu tetap dead/manual, key tidak dibuat ulang.
+  Tidak ada env, trigger, migrasi atau budget baru.
+- `/send-promo` memakai mutex/validasi grup dan identitas serta ledger/pacing PG
+  existing. Key harus slot WIB saat ini. Media berasal hanya dari URL tetap
+  `https://axvara.tech/banners/ready-promo.webp` (lampiran owner1536x1024, WebP210332B),
+  fetch timeout8detik/tanpa redirect, image/webp/nonkosong/maks5MB. Kegagalan gambar
+  terjadi sebelum claim, sehingga retry aman tanpa mengirim teks tanpa foto.
+  Satu Baileys sendMessage(image,caption); fingerprint mengikat target+konten.
+  settleDelivery menyimpan proto pesan gambar pada payload PG untuk getMessage
+  (retry dekripsi), tanpa mengubah fingerprint atau mengirim ulang slot.
 - D1 CAS/lease + durable claim PG sebelum send; key/target/payload harus cocok.
   Sent replay mengembalikan messageid, unknown/sending tidak send ulang. Satu
   percobaan baru/60detik adalah batas beban, bukan angka aman resmi. Offline/
@@ -4125,7 +4145,8 @@ library/WhatsApp dan bukti QA: issue/whatsapp-sales-notifications-2026-10-24.md.
   Private incoming dapat clear blocked; `/stop`/`/siaran_on` tidak menghapus pending
   action atau menonaktifkan kabar pesanan. Group ID tidak dijadikan tujuan pribadi.
 - Gateway `/send-broadcast` key `wa:broadcast:<UUIDv4>`, `/send-welcome` key
-  `wa:welcome:<sha256>`, `/send-notification` key invoice tetap. Semua route token-only,
+  `wa:welcome:<sha256>`; revisi11November2026 `/send-promo` key tanggal/slot,
+  `/send-notification` invoice lama dipensiunkan410. Semua route token-only,
   session mutex, nomor/revisi aktif, grup pin/izin terverifikasi, deliveryClaim PG,
   shared pacing60detik/cooldown/unknown. Key lintas namespace ditolak. Siaran lama
   sesudah ganti bot dipertahankan untuk owner Hentikan+Tinjau baru; tidak pindah

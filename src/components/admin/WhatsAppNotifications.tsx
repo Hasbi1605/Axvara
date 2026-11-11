@@ -44,9 +44,9 @@ export function WhatsAppNotifications() {
     } finally { setBusy(false); }
   }
   useEffect(() => { void request(); }, []);
-  return <section className="ax-glass mt-5 rounded-[22px] p-5" aria-label="Notifikasi transaksi WhatsApp">
-    <h2 className="text-base font-semibold text-white">Notifikasi transaksi ke grup WhatsApp</h2>
-    <p className="mt-2 text-xs leading-6 text-white/60">Bot {phone || "belum tersedia"} · Grup AXVARA&apos;S. Hanya pesanan selesai, identitas pembeli disamarkan. Pengaktifan mulai dari transaksi baru.</p>
+  return <section className="ax-glass mt-5 rounded-[22px] p-5" aria-label="Katalog ready WhatsApp">
+    <h2 className="text-base font-semibold text-white">Katalog ready ke grup WhatsApp</h2>
+    <p className="mt-2 text-xs leading-6 text-white/60">Bot {phone || "belum tersedia"} · Grup AXVARA&apos;S. Katalog ready beserta gambar promosi pukul 09.00 dan 17.00 WIB. Notifikasi pembelian berhasil tidak dikirim ke grup.</p>
     <p className="mt-2 text-sm text-white/75">{state.gateway?.connected ? `Bot tersambung${state.gateway.groupName ? ` · ${state.gateway.groupName}` : " · grup belum ditemukan"}` : "Bot belum tersambung"} · {active ? "Notifikasi aktif" : "Notifikasi belum aktif"}</p>
     {state.gateway?.blocked && <p role="status" className="mt-2 text-xs text-amber-200">Pengiriman dijeda. Periksa WhatsApp nomor bot sebelum melanjutkan.</p>}
     {(state.error || state.gateway?.error) && <p role="alert" className="mt-2 text-xs text-amber-200">{state.error || state.gateway?.error}</p>}

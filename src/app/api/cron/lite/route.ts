@@ -494,9 +494,9 @@ async function runNotifyB(db: Db, deadline: number) {
       out[`${key}_error`] = error instanceof Error ? error.message.slice(0, 80) : "failed";
     }
   };
-  await guard("completed_sales", async () => {
-    const { enqueueCompletedSales } = await import("@/lib/whatsapp/sales-notifications");
-    return enqueueCompletedSales(4, db);
+  await guard("whatsapp_promo", async () => {
+    const { enqueueWhatsAppPromo } = await import("@/lib/whatsapp/promo-digest");
+    return enqueueWhatsAppPromo(db);
   });
   await guard("qris_expiry_notices", async () => {
     const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
