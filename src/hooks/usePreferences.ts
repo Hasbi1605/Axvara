@@ -8,9 +8,8 @@ import { CURRENCY_COOKIE, LOCALE_COOKIE, LOCALES, preferenceCookie, type Display
  * Preferensi tampilan EKSPLISIT pembeli (cookie `axv_locale` ID/EN dan
  * `axv_currency` IDR/USD) — dua pilihan yang saling bebas. Hook ini hanya
  * membaca cookie yang valid dan menulis cookie lewat `preferenceCookie` main
- * (Path=/, Max-Age=31536000, SameSite=Lax, Secure di HTTPS). Resolusi bawaan
- * (Accept-Language / negara tepercaya) HANYA di server; klien tidak pernah
- * menyimpulkan bahasa/mata uang dari zona waktu, geolokasi, atau navigator.
+ * (Path=/, Max-Age=31536000, SameSite=Lax, Secure di HTTPS). Default Indonesia/IDR;
+ * tidak menyimpulkan bahasa/mata uang dari jaringan, wilayah, atau navigator.
  * `null` = belum dipilih secara eksplisit.
  */
 export const CHANGE_EVENT = "axvara-preferences-changed";

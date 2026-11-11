@@ -1,5 +1,12 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Default web11November2026 (implementasi lokal, deployment belum diverifikasi):
+bahasa Indonesia dan mata uang IDR tanpa deteksi jaringan/IP, negara atau bahasa
+browser. Cookie pilihan manual ID/EN dan IDR/USD tetap independen; tanpa cookie
+tidak ada request deteksi atau penyimpanan default. Quote Market dan pesan API
+Pedia mengikuti aturan yang sama; pesanan/invoice tersimpan, FX dan bot tidak berubah.
+Rincian implementasi pada catatan preferensi web di awal ARCHITECTURE.
+
 Perbaikan Ringkasan11November2026 (publikasi CI): D1 produksi menolak SQL lama
 karena ekspansi subquery/CTE terlalu dalam. Agregasi dimensi kini membaca scoped
 dan facts masing-masing dua kali, tetap satu query dan perhitungan existing.

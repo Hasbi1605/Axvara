@@ -2,14 +2,12 @@
 // Never a quote, price authority or payment input: quote/orders/invoices stay
 // immutable and the checkout quote remains the only source of payable amounts.
 // No DB, no provider, no secrets, no cookies set. Preference resolution uses
-// only the canonical cookie / Accept-Language / native Cloudflare country
-// (never a country header, query or body). One FX snapshot per request.
+// only explicit cookies, otherwise Indonesia/IDR. One FX snapshot per request.
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { readJsonBody } from "@/lib/http-body";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { resolveBuyerPreferences } from "@/lib/i18n/locale";
-import { readTrustedCountry } from "@/lib/i18n/server-country";
 import { displayUsdCents } from "@/lib/i18n/format";
 import { loadCurrentFxSnapshot } from "@/lib/payments/market-snapshot";
 
@@ -23,7 +21,7 @@ const amountSchema = z.number().refine((value) => Number.isSafeInteger(value) &&
 const schema = z.object({ amounts: z.array(amountSchema).min(1).max(MAX_AMOUNTS) }).strict();
 
 function privacyHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return { "Cache-Control": "private, no-store", Vary: "Cookie, Accept-Language", ...extra };
+  return { "Cache-Control": "private, no-store", Vary: "Cookie", ...extra };
 }
 function fail(error: string, status: number, extra?: Record<string, string>) {
   return NextResponse.json({ error }, { status, headers: privacyHeaders(extra) });
@@ -41,7 +39,7 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body.data);
   if (!parsed.success) return fail("invalid_amounts", 400);
 
-  const preferences = resolveBuyerPreferences(req.headers.get("cookie"), req.headers.get("accept-language"), await readTrustedCountry());
+  const preferences = resolveBuyerPreferences(req.headers.get("cookie"));
   const fx = await loadCurrentFxSnapshot();
   return NextResponse.json({
     locale: preferences.locale,

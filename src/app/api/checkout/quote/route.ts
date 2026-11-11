@@ -7,7 +7,6 @@ import { createCheckoutQuoteToken, requireAdmin } from "@/lib/auth";
 import { isPaymentAdminTestEnabled } from "@/lib/payments/rails";
 import { buildMethodCatalog } from "@/lib/payments/method-options";
 import { resolveBuyerPreferences } from "@/lib/i18n/locale";
-import { readTrustedCountry } from "@/lib/i18n/server-country";
 import { displayUsdCents } from "@/lib/i18n/format";
 import { loadCurrentFxSnapshot } from "@/lib/payments/market-snapshot";
 import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
@@ -380,9 +379,9 @@ export async function POST(req: NextRequest) {
   // menjadi satu-satunya yang ditandatangani/diterima create. Nonaktif tidak punya biaya/total dan tidak masuk token.
   const catalog = await buildMethodCatalog(subtotal, adminTest);
   const paymentMethods = catalog.filter((method): method is Exclude<typeof method, { available: false }> => method.available);
-  // Locale: cookie axv_locale (server read) + Accept-Language hint; client
+  // Locale: cookie axv_locale (server read), otherwise Indonesia; client
   // body ignored. Signed into token; verified at create, persisted to orders.
-  const preferences = resolveBuyerPreferences(req.headers.get("cookie"), req.headers.get("accept-language"), await readTrustedCountry());
+  const preferences = resolveBuyerPreferences(req.headers.get("cookie"));
   const locale = preferences.locale;
   const displayUsd = displayUsdCents(subtotal, await loadCurrentFxSnapshot());
 

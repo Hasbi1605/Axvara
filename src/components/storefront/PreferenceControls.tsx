@@ -12,8 +12,7 @@ import type { DisplayCurrency, Locale } from "@/lib/i18n/locale";
  * yang SALING BEBAS (pola Amazon): Bahasa (Indonesia / English UK) dan Mata uang (Rupiah / US Dollar), masing-masing grup radio native.
  * Memilih salah satu hanya menulis cookie preferensi itu (lihat usePreferences) lalu me-refresh komponen server; tidak mengubah quote,
  * pesanan, rel pembayaran, atau bukti akses; memilih bahasa TIDAK mengubah mata uang. Mata uang tetap terlihat di setiap harga ("Rp"/"US$").
- * Tanpa konversi di klien: USD hanya tampil bila server menyuplai angka terkonversi. Belum ada nilai eksplisit/otomatis (null) =
- * ikon globe netral dan tanpa centang; bendera tidak pernah ditebak.
+ * Tanpa konversi di klien: USD hanya tampil bila server menyuplai angka terkonversi. Tanpa pilihan eksplisit = Indonesia/IDR.
  */
 const OPTIONS = {
   locale: [

@@ -140,11 +140,11 @@ beforeEach(async () => {
 
 afterEach(() => { fixture.close(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
-const loadQuote = async (localeHeader: string, expectedPrice: number) => {
+const loadQuote = async (locale: "id" | "en", expectedPrice: number) => {
   const { POST } = await import("@/app/api/checkout/quote/route");
   return POST(new NextRequest("http://localhost/api/checkout/quote", {
     method: "POST",
-    headers: { "content-type": "application/json", cookie: "axv_locale=en-US", "accept-language": localeHeader },
+    headers: { "content-type": "application/json", cookie: `axv_locale=${locale}` },
     body: JSON.stringify({ items: [{ product_id: 1, variant_id: 1, qty: 1, expected_price: expectedPrice }] }),
   }));
 };
@@ -469,7 +469,7 @@ describe("W3 USD + locale checkout rails", () => {
   });
   it("quote emits narrow USD method + en locale; stale FX hides crypto, QRIS unchanged", async () => {
     vi.stubEnv("NOWPAYMENTS_ENABLED", "true");
-    const ok = await loadQuote("en-US,en;q=0.9", 250000);
+    const ok = await loadQuote("en", 250000);
     expect(ok.status).toBe(200);
     const body = await ok.json() as {
       ok: boolean; locale: string; subtotal: number;
@@ -483,7 +483,7 @@ describe("W3 USD + locale checkout rails", () => {
     // Fixture only seeds qris in dedicated QRIS tests; this file asserts the
     // narrow crypto contract — QRIS presence asserted in quote-sk coverage.
     vi.stubEnv("USD_FX_EFFECTIVE_AT", new Date(Date.now() - 30 * 60 * 60_000).toISOString());
-    const stale = await loadQuote("en-US,en;q=0.9", 250000);
+    const stale = await loadQuote("en", 250000);
     const staleBody = await stale.json() as {
       ok?: boolean; error?: string; paymentMethods?: { id: string }[]; payment_methods?: { id: string }[];
     };

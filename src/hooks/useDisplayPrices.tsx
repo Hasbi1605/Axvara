@@ -10,9 +10,7 @@ import { formatRupiah } from "@/lib/utils";
  * Tampilan katalog: bahasa + mata uang dan harga USD hasil konversi SERVER.
  *
  * - Cookie eksplisit valid (axv_locale / axv_currency) selalu menang segera.
- *   Tanpa cookie, nilai bawaan dari resolver kanonis server (Accept-Language /
- *   negara CF tepercaya) dipakai HANYA di memori: tidak menulis cookie dan
- *   tidak membuat layout toko dinamis. Klien tidak menebak negara/zona waktu.
+ *   Tanpa cookie, selalu Indonesia/IDR tanpa request deteksi atau menulis cookie.
  * - Harga USD = `usdCents` dari POST /api/display-prices; tiap angka IDR yang
  *   perlu tampil (satuan, total baris, subtotal, hemat) dikirim sebagai
  *   masukan sendiri. Tidak pernah mengalikan USD satuan dengan qty dan tidak
@@ -28,22 +26,20 @@ const DEBOUNCE_MS = 200;
 type DisplayContextValue = {
   locale: Locale;
   currency: DisplayCurrency;
-  /** Locale/currency bawaan server (null bila belum/tak perlu diselesaikan). */
+  /** Default tetap, tanpa deteksi browser atau wilayah. */
   resolvedLocale: Locale | null;
   resolvedCurrency: DisplayCurrency | null;
-  /** Mata uang sudah pasti (cookie eksplisit atau resolusi bawaan server selesai): aman memuat harga. */
+  /** Cookie klien sudah dibaca: aman memuat harga. */
   settled: boolean;
   /** Naik tiap preferensi eksplisit berubah: harga harus diambil ulang. */
   version: number;
 };
 
-const DEFAULT_CONTEXT: DisplayContextValue = { locale: "id", currency: "IDR", resolvedLocale: null, resolvedCurrency: null, settled: true, version: 0 };
+const DEFAULT_CONTEXT: DisplayContextValue = { locale: "id", currency: "IDR", resolvedLocale: "id", resolvedCurrency: "IDR", settled: true, version: 0 };
 const DisplayContext = createContext<DisplayContextValue>(DEFAULT_CONTEXT);
 
 export function useDisplayContext(): DisplayContextValue { return useContext(DisplayContext); }
 export function useDisplayLocale(): Locale { return useContext(DisplayContext).locale; }
-
-type Resolved = { locale: Locale; currency: DisplayCurrency };
 
 function isLocale(value: unknown): value is Locale { return value === "id" || value === "en"; }
 function isCurrency(value: unknown): value is DisplayCurrency { return value === "IDR" || value === "USD"; }
@@ -90,42 +86,27 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
   const [explicit, setExplicit] = useState<{ locale: Locale | null; currency: DisplayCurrency | null }>({ locale: null, currency: null });
   const [mounted, setMounted] = useState(false);
   const [version, setVersion] = useState(0);
-  const [resolved, setResolved] = useState<Resolved | null>(null);
-  const [probeDone, setProbeDone] = useState(false);
 
   useEffect(() => {
-    const sync = () => { setExplicit(readExplicitPreferences()); setProbeDone(false); setVersion((value) => value + 1); };
+    const sync = () => { setExplicit(readExplicitPreferences()); setVersion((value) => value + 1); };
     setExplicit(readExplicitPreferences());
     setMounted(true);
     window.addEventListener(CHANGE_EVENT, sync);
     return () => window.removeEventListener(CHANGE_EVENT, sync);
   }, []);
 
-  const needsProbe = mounted && (explicit.locale === null || explicit.currency === null) && !probeDone;
-  useEffect(() => {
-    if (!needsProbe) return;
-    const controller = new AbortController();
-    postWithTimeout([0], controller.signal)
-      .then((result) => { if (!controller.signal.aborted) { setResolved({ locale: result.locale, currency: result.currency }); setProbeDone(true); } })
-      .catch(() => { if (!controller.signal.aborted) setProbeDone(true); });
-    return () => controller.abort();
-  }, [needsProbe, version]);
-
-  const locale = explicit.locale ?? resolved?.locale ?? "id";
-  const currency = explicit.currency ?? resolved?.currency ?? "IDR";
-  // `settled` menjaga mata uang: USD eksplisit langsung memuat harga, tanpa
-  // menunggu probe bahasa; tanpa cookie mata uang menunggu resolver server.
-  const settled = mounted && (explicit.currency !== null || probeDone);
+  const locale = explicit.locale ?? "id";
+  const currency = explicit.currency ?? "IDR";
 
   useEffect(() => {
     if (mounted && document.documentElement.lang !== locale) document.documentElement.lang = locale;
   }, [mounted, locale]);
 
   const value = useMemo<DisplayContextValue>(() => ({
-    locale, currency, settled, version,
-    resolvedLocale: resolved?.locale ?? null,
-    resolvedCurrency: resolved?.currency ?? null,
-  }), [locale, currency, settled, version, resolved]);
+    locale, currency, settled: mounted, version,
+    resolvedLocale: "id",
+    resolvedCurrency: "IDR",
+  }), [locale, currency, mounted, version]);
   return <DisplayContext.Provider value={value}>{children}</DisplayContext.Provider>;
 }
 

@@ -1,5 +1,16 @@
 # DESIGN.md — AXVARA Design System
 
+## Default kontrol bahasa/mata uang (11 November 2026, implementasi lokal)
+
+- Tanpa cookie valid, tombol langsung memakai bendera Indonesia; radio Bahasa
+  Indonesia dan Rupiah (IDR) tercentang, tanpa menunggu deteksi jaringan/wilayah.
+- Pilihan manual dan menu, fokus, ukuran44px serta gaya Liquid Glass tetap sama.
+  Menggantikan globe/tanpa centang dan default otomatis pada snapshot lama di bawah;
+  tidak mengubah bahasa pesanan tersimpan. Deployment belum diverifikasi.
+- Chromium lokal1280/390, bahasa browser en-US dan zona AS: default/radio ID+IDR,
+  switch manual independen dan reload, Escape mengembalikan fokus, screenshot menu
+  desktop/mobile serta tidak ada overflow/pageerror terverifikasi. Aset CSS/JS200.
+
 ## Aksi supplier WR/SK/TUNVN (10 November 2026, lokal; belum dipublikasikan)
 
 - SupplierLinkActions mempertahankan panel/warna/fokus existing; Retry/Cek status/

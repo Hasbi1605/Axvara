@@ -31,20 +31,19 @@ it("batches catalog amounts and renders the server's cents without writing prefe
   writes.mockRestore();
 });
 
-it("ignores a stale automatic-preference probe after preferences change", async () => {
-  const pending: Array<(value: Response) => void> = [];
-  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => pending.push(resolve))));
+it("defaults locally while offline and applies manual choices without a detection request", async () => {
+  const fetcher = vi.fn(() => Promise.reject(new Error("offline")));
+  vi.stubGlobal("fetch", fetcher);
   function View() { const { locale, currency } = useDisplayContext(); return <div>{locale}/{currency}</div>; }
   render(<DisplayPreferencesProvider><View /></DisplayPreferencesProvider>);
-  await waitFor(() => expect(pending).toHaveLength(1));
-  document.cookie = "axv_locale=id; Path=/";
+  expect(screen.getByText("id/IDR")).toBeTruthy();
+  document.cookie = "axv_locale=en; Path=/";
   act(() => window.dispatchEvent(new Event(CHANGE_EVENT)));
-  await waitFor(() => expect(pending).toHaveLength(2));
-  const result = (locale: string, currency: string) => new Response(JSON.stringify({ locale, currency, fx: { available: false }, items: [{ idr: 0, usdCents: null }] }));
-  await act(async () => pending[1](result("id", "USD")));
-  await waitFor(() => expect(screen.getByText("id/USD")).toBeTruthy());
-  await act(async () => pending[0](result("en", "IDR")));
-  expect(screen.getByText("id/USD")).toBeTruthy();
+  expect(screen.getByText("en/IDR")).toBeTruthy();
+  document.cookie = "axv_currency=USD; Path=/";
+  act(() => window.dispatchEvent(new Event(CHANGE_EVENT)));
+  expect(screen.getByText("en/USD")).toBeTruthy();
+  expect(fetcher).not.toHaveBeenCalled();
 });
 
 it.each(["snapshot", "preference"])("chunks unique amounts and falls back if %s disagrees", async (difference) => {
@@ -126,16 +125,18 @@ it("translates generated delivery and warranty labels without translating custom
 });
 
 it.each([
-  ["id", "USD", "id/USD"], ["en", "IDR", "en/IDR"], [null, null, "en/USD"],
-])("resolves independent explicit and automatic preferences without cookie writes", async (locale, currency, expected) => {
+  ["id", "USD", "id/USD"], ["en", "IDR", "en/IDR"], [null, null, "id/IDR"], ["en", null, "en/IDR"], [null, "USD", "id/USD"],
+])("resolves independent manual preferences and fixed defaults without requests or cookie writes", async (locale, currency, expected) => {
   if (locale) document.cookie = `axv_locale=${locale}; Path=/`;
   if (currency) document.cookie = `axv_currency=${currency}; Path=/`;
   const writes = vi.spyOn(document, "cookie", "set");
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ locale: "en", currency: "USD", fx: { available: false }, items: [{ idr: 0, usdCents: null }] }))));
+  const fetcher = vi.fn();
+  vi.stubGlobal("fetch", fetcher);
   function View() { const { locale, currency, settled } = useDisplayContext(); return <div>{settled ? `${locale}/${currency}` : "pending"}</div>; }
   render(<DisplayPreferencesProvider><View /></DisplayPreferencesProvider>);
   await waitFor(() => expect(screen.getByText(expected)).toBeTruthy());
   expect(writes).not.toHaveBeenCalled();
+  expect(fetcher).not.toHaveBeenCalled();
   writes.mockRestore();
 });
 

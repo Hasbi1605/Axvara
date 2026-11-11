@@ -18,7 +18,7 @@ import { createD1Fixture } from "./helpers/d1-fixture";
 import { POST } from "@/app/api/display-prices/route";
 
 const FRESH = new Date(Date.now() - 60_000).toISOString();
-const PRIVACY = { "cache-control": "private, no-store", vary: "Cookie, Accept-Language" };
+const PRIVACY = { "cache-control": "private, no-store", vary: "Cookie" };
 
 function call(body: unknown, headers: Record<string, string> = {}, raw = false) {
   return POST(new NextRequest("https://axvara.tech/api/display-prices", {
@@ -142,7 +142,7 @@ describe("FX unavailable => 200, resolved prefs, null cents", () => {
   ])("%s", async (_label, arrange) => {
     arrange();
     country = "US";
-    const res = await call({ amounts: [10000, 0] });
+    const res = await call({ amounts: [10000, 0] }, { cookie: "axv_locale=en; axv_currency=USD" });
     expect(res.status).toBe(200);
     expectPrivate(res);
     expect(await res.json()).toEqual({
@@ -154,27 +154,28 @@ describe("FX unavailable => 200, resolved prefs, null cents", () => {
   });
 });
 
-describe("preference resolution (cookie > Accept-Language > native CF country)", () => {
+describe("preference resolution (manual cookie > fixed Indonesia/IDR defaults)", () => {
   async function prefs(headers: Record<string, string>) {
     const json = await (await call({ amounts: [1] }, headers)).json();
     return [json.locale, json.currency];
   }
   it("no signal => id/IDR", async () => { expect(await prefs({})).toEqual(["id", "IDR"]); });
-  it("country ID => id/IDR; non-ID => en/USD (native context only)", async () => {
+  it("ignores country including native Cloudflare context", async () => {
     country = "ID"; expect(await prefs({})).toEqual(["id", "IDR"]);
-    country = "SG"; expect(await prefs({})).toEqual(["en", "USD"]);
+    country = "SG"; expect(await prefs({})).toEqual(["id", "IDR"]);
     country = "ZZ"; expect(await prefs({})).toEqual(["id", "IDR"]);
   });
-  it("Accept-Language decides locale (weighted) but never currency", async () => {
-    expect(await prefs({ "accept-language": "en-US,en;q=0.9" })).toEqual(["en", "IDR"]);
+  it("ignores Accept-Language regardless of weighting or country", async () => {
+    expect(await prefs({ "accept-language": "en-US,en;q=0.9" })).toEqual(["id", "IDR"]);
     expect(await prefs({ "accept-language": "en;q=0.5, id;q=0.9" })).toEqual(["id", "IDR"]);
     country = "ID";
-    expect(await prefs({ "accept-language": "en-US" })).toEqual(["en", "IDR"]);
+    expect(await prefs({ "accept-language": "en-US" })).toEqual(["id", "IDR"]);
   });
   it("explicit cookies override and are independent of each other", async () => {
     country = "US";
-    expect(await prefs({ cookie: "axv_locale=id", "accept-language": "en" })).toEqual(["id", "USD"]);
-    expect(await prefs({ cookie: "axv_currency=IDR" })).toEqual(["en", "IDR"]);
+    expect(await prefs({ cookie: "axv_locale=id", "accept-language": "en" })).toEqual(["id", "IDR"]);
+    expect(await prefs({ cookie: "axv_currency=IDR" })).toEqual(["id", "IDR"]);
+    expect(await prefs({ cookie: "axv_currency=USD", "accept-language": "en" })).toEqual(["id", "USD"]);
     country = "ID";
     expect(await prefs({ cookie: "axv_locale=en; axv_currency=USD" })).toEqual(["en", "USD"]);
     expect(await prefs({ cookie: "axv_locale=fr; axv_currency=EUR" })).toEqual(["id", "IDR"]);

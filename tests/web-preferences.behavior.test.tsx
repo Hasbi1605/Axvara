@@ -35,20 +35,21 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe("PreferenceControls (bendera bulat + menu ringkas dua bagian)", () => {
   const trigger = () => screen.getByRole("button", { name: /Bahasa dan mata uang|Language and currency/ });
 
-  it("belum dipilih: globe netral (bukan bendera tebakan), nama aksesibel jujur, tanpa radio tercentang; menu dua bagian independen; Escape menutup dan fokus kembali", () => {
+  it("tanpa pilihan: bendera Indonesia dan radio Indonesia/IDR; menu independen; Escape menutup dan fokus kembali", () => {
     render(<PreferenceControls />);
     const button = trigger();
-    expect(button.getAttribute("aria-label")).toBe("Bahasa dan mata uang: Bahasa belum dipilih, Mata uang belum dipilih");
+    expect(button.getAttribute("aria-label")).toBe("Bahasa dan mata uang: Indonesia, Rupiah (IDR)");
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(button.className).toContain("h-11");
     expect(button.className).toContain("w-11");
-    expect(button.querySelector("[data-globe]")).toBeTruthy();
-    expect(button.querySelector("[data-flag]")).toBeNull();
+    expect(button.querySelector("[data-globe]")).toBeNull();
+    expect(button.querySelector("[data-flag]")?.getAttribute("src")).toBe("/flags/id.svg");
     fireEvent.click(button);
     expect(button.getAttribute("aria-expanded")).toBe("true");
     const dialog = screen.getByRole("dialog", { name: "Bahasa dan mata uang" });
     expect(button.getAttribute("aria-controls")).toBe(dialog.id);
-    expect((screen.getAllByRole("radio") as HTMLInputElement[]).every((r) => !r.checked)).toBe(true); // auto: tanpa centang
+    expect(radio("axv-pref-locale", /Indonesia/).checked).toBe(true);
+    expect(radio("axv-pref-currency", /Rupiah/).checked).toBe(true);
     expect(screen.getAllByRole("radio")).toHaveLength(4);
     const labels = Array.from(dialog.querySelectorAll("label"));
     expect(labels.every((l) => l.className.includes("min-h-11"))).toBe(true);
@@ -111,7 +112,7 @@ describe("PreferenceControls (bendera bulat + menu ringkas dua bagian)", () => {
     render(<PreferenceControls />);
     fireEvent.click(trigger());
     expect(radio("axv-pref-currency", /US Dollar/).checked).toBe(true);
-    expect(radio("axv-pref-locale", /Indonesia/).checked).toBe(false);
+    expect(radio("axv-pref-locale", /Indonesia/).checked).toBe(true);
     fireEvent.click(radio("axv-pref-locale", /English/));
     expect(readExplicitPreferences()).toEqual({ locale: "en", currency: "USD" });
     fireEvent.click(radio("axv-pref-currency", /Rupiah/));
@@ -134,8 +135,9 @@ describe("PreferenceControls (bendera bulat + menu ringkas dua bagian)", () => {
     clearCookies();
     render(<PreferenceControls />);
     fireEvent.click(trigger());
-    expect((screen.getAllByRole("radio") as HTMLInputElement[]).every((r) => !r.checked)).toBe(true); // navigator tidak dipakai
-    expect(trigger().querySelector("[data-flag]")).toBeNull(); // bendera tidak ditebak
+    expect(radio("axv-pref-locale", /Indonesia/).checked).toBe(true);
+    expect(radio("axv-pref-currency", /Rupiah/).checked).toBe(true);
+    expect(trigger().querySelector("[data-flag]")?.getAttribute("src")).toBe("/flags/id.svg");
   });
 
   it("preferensi tidak membuat klaim katalog lama atau mengubah pesanan; tanpa cookie tulis saat dibuka; radio native; tanpa fetch klien", () => {

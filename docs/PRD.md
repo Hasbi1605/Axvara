@@ -1,5 +1,14 @@
 # PRD — AXVARA
 
+## Default bahasa/mata uang web (11 November 2026, implementasi lokal)
+
+- Tanpa cookie preferensi valid, web selalu Bahasa Indonesia dan Rupiah (IDR),
+  tanpa deteksi IP/jaringan, wilayah Cloudflare, bahasa browser atau zona waktu.
+- Pilihan manual ID/EN dan IDR/USD tetap independen dan disimpan di cookie existing;
+  default tidak menulis cookie. Berlaku juga untuk locale quote Market dan pesan API Pedia.
+- Tidak mengubah pesanan/quote/invoice tersimpan, charge, kurs atau preferensi bot.
+  Menggantikan default otomatis pada snapshot lama di bawah; deployment belum diverifikasi.
+
 ## Pemulihan Ringkasan admin (11 November 2026, publikasi CI)
 
 - Ringkasan dan laporan historis harus tetap bisa dihitung pada batas SQL D1
