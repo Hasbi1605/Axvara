@@ -1,14 +1,18 @@
-// src/lib/games/ordering.ts — gerbang pemesanan AXVARA Games (keputusan P9).
-// Selama Digiflazz belum siap untuk transaksi nyata (mode testing ATAU
-// kredensial kosong), katalog tetap terbaca tetapi quote/order baru ditutup
-// dengan 503 `games_preview`. Satu helper agar semua route memakai aturan sama.
+// src/lib/games/ordering.ts — gerbang pemesanan AXVARA Games.
+// Pembelian nyata hanya dibuka bila owner opt-in eksplisit `GAMES_SK_ENABLED=true`,
+// SK aktif + transport/kredensial tersedia, dan TIDAK memakai sandbox. Kredensial
+// Digiflazz tidak lagi menjadi gerbang order baru (legacy tetap bisa dipulihkan
+// oleh worker). Katalog tetap terbaca saat gerbang tertutup.
 import type { Locale } from "@/lib/i18n/locale";
 
 export function gamesOrderingOpen(env: Record<string, string | undefined> = process.env): boolean {
-  if (String(env.DIGIFLAZZ_TESTING ?? "").trim() === "true") return false;
-  const username = String(env.DIGIFLAZZ_USERNAME ?? "").trim();
-  const key = String(env.DIGIFLAZZ_API_KEY ?? "").trim();
-  return Boolean(username && key);
+  if (String(env.GAMES_SK_ENABLED ?? "").trim() !== "true") return false;
+  if (String(env.SEKALIPAY_ENABLED ?? "").trim() !== "true") return false;
+  if (String(env.SEKALIPAY_SANDBOX ?? "").trim() === "true") return false;
+  if (String(env.SEKALIPAY_PROXY_URL ?? "").trim() !== "") {
+    return Boolean(String(env.SEKALIPAY_PROXY_TOKEN ?? "").trim());
+  }
+  return Boolean(String(env.SEKALIPAY_API_KEY ?? "").trim());
 }
 
 export function gamesPreviewMessage(locale: Locale): string {

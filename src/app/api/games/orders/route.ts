@@ -16,7 +16,12 @@ import { deriveNameFromEmail } from "@/lib/utils";
 import { gamesMaxPrice } from "@/lib/games/checkout";
 import { gamesOrderingOpen, gamesPreviewResponse } from "@/lib/games/ordering";
 import { verifyGamesQuoteToken } from "@/lib/games/quote";
-import { gamesBrandMatches, gamesRegistryGame } from "@/lib/games/registry";
+import {
+  gamesSkContractDigest,
+  parseGamesSkContract,
+  validateGamesSkTarget,
+} from "@/lib/games/registry";
+import { skGamesRef } from "@/lib/games/sk-dispatch";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
 import { pediaPaymentMethodProblem, resolvePediaMethodSelection } from "@/lib/pedia/payment-methods";
 import { gamesPaymentBlock } from "@/lib/games/lookup";
@@ -114,8 +119,8 @@ export async function POST(req: NextRequest) {
       message: pick(locale, "Quote checkout tidak valid atau sudah kedaluwarsa. Muat ulang checkout.", "The checkout quote is invalid or expired. Reload checkout."),
     }, { status: 409 });
   }
-  const game = gamesRegistryGame(quote.slug);
-  if (!game) {
+  // Order baru hanya untuk quote SK; quote Digiflazz (termasuk token lama) stale.
+  if (quote.supplier !== "sekalipay" || !quote.sk_variant_id || !quote.target_snapshot || !quote.contract_digest) {
     return NextResponse.json({ error: "quote_stale", message: pick(locale, "Muat ulang checkout.", "Reload checkout.") }, { status: 409 });
   }
   const db = createDatabaseAccess();
@@ -132,16 +137,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: pick(locale, "Data pembeli tidak valid.", "Buyer details are invalid.") }, { status: 400 });
   }
 
-  // Harga & ketersediaan dicek ulang dari DB (jangan percaya token).
+  // Harga, supplier, kontrak, dan target dicek ulang dari DB (jangan percaya token).
   const product = await db.queryFirst(
-    `SELECT id, buyer_sku_code, product_name, game_brand, cost, sell_price, seller_active, enabled FROM games_products WHERE buyer_sku_code=?`,
+    `SELECT id, buyer_sku_code, product_name, game_brand, game_slug, cost, sell_price, supplier, supplier_active,
+            stock, min_order, required_fields_json, enabled, sk_variant_id
+       FROM games_products WHERE buyer_sku_code=?`,
     quote.buyer_sku_code,
   ).catch(() => null);
   if (product && isGamesNicknameProduct(product)) {
     return NextResponse.json({ error: "not_sellable" }, { status: 409 });
   }
-  if (!product || Number(product.id) !== quote.product_id || Number(product.enabled) !== 1 || !gamesBrandMatches(game, product.game_brand)
-    || Number(product.seller_active) !== 1 || !Number.isSafeInteger(Number(product.cost)) || Number(product.cost) <= 0) {
+  const contract = product ? parseGamesSkContract(product.required_fields_json) : null;
+  const target = contract ? validateGamesSkTarget(contract, quote.target_snapshot) : null;
+  const digest = product ? await gamesSkContractDigest(product.required_fields_json) : "";
+  if (!product || String(product.supplier ?? "") !== "sekalipay" || Number(product.enabled) !== 1
+    || Number(product.supplier_active) !== 1 || !(Number(product.stock) === -1 || Number(product.stock) > 0) || Number(product.min_order) !== 1
+    || Number(product.id) !== quote.product_id || Number(product.sk_variant_id) !== quote.sk_variant_id
+    || String(product.game_slug ?? "") !== quote.slug || !contract?.supported || !target?.ok
+    || digest !== quote.contract_digest || target.display !== quote.customer_no
+    || Number(product.cost) !== quote.cost_snapshot) {
     return NextResponse.json({ error: "quote_stale", message: pick(locale, "Nominal ini sudah tidak tersedia. Muat ulang checkout.", "This amount is no longer available. Reload checkout.") }, { status: 409 });
   }
   const price = Number(product.sell_price);
@@ -173,6 +187,9 @@ export async function POST(req: NextRequest) {
   }
   const code = generateOrderCode().replace(/^AXV-/, "AXG-");
   const maxPrice = gamesMaxPrice(price, Number(product.cost));
+  const supplierRef = skGamesRef(code);
+  const targetJson = JSON.stringify(target.target);
+  const fieldsJson = JSON.stringify(target.fields);
   const derivedName = deriveNameFromEmail(customerEmail);
   const statement = (sql: string, ...params: unknown[]) => db.d1!.prepare(sql).bind(...params);
   const owned = `EXISTS(SELECT 1 FROM orders WHERE code=? AND quote_id=?)`;
@@ -182,19 +199,21 @@ export async function POST(req: NextRequest) {
       statement(
         `INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,status,payment_status,sales_channel,order_kind,expires_at,buyer_access_version,buyer_access_format,locale)
          SELECT ?,?,?,?,?,'[]',?,?,?,'pending','pending','web','games',datetime('now',?),0,'code26',?
-          WHERE EXISTS(SELECT 1 FROM games_products WHERE id=? AND buyer_sku_code=?
-            AND enabled=1 AND seller_active=1 AND sell_price=? AND cost=? AND lower(trim(game_brand))=?)
+          WHERE EXISTS(SELECT 1 FROM games_products WHERE id=? AND buyer_sku_code=? AND supplier='sekalipay'
+            AND enabled=1 AND supplier_active=1 AND (stock=-1 OR stock>0) AND min_order=1 AND game_slug=? AND sk_variant_id=?
+            AND required_fields_json=? AND sell_price=? AND cost=?)
             AND NOT EXISTS(SELECT 1 FROM games_order_items WHERE customer_no=? AND buyer_sku_code=? AND status IN ${ACTIVE_ITEM_STATUSES})`,
          code, quoteId, derivedName, customerWa, customerEmail, price,
           paymentMethod, selection.paymentAccount, selection.kind === "gateway" ? "+30 minutes" : selection.kind === "crypto" ? "+60 minutes" : "+15 minutes",
-         quote.locale, quote.product_id, quote.buyer_sku_code, price, Number(product.cost),
-         String(product.game_brand).trim().toLowerCase(), quote.customer_no, quote.buyer_sku_code,
+         quote.locale, quote.product_id, quote.buyer_sku_code, quote.slug, quote.sk_variant_id,
+         String(product.required_fields_json ?? ""), price, Number(product.cost),
+         quote.customer_no, quote.buyer_sku_code,
       ),
       statement(
-        `INSERT INTO games_order_items(order_code,product_id,buyer_sku_code,customer_no,customer_nickname,quantity,unit_price,total,cost_snapshot,max_price,status,attempt_no)
-         SELECT ?,?,?,?,?,1,?,?,?,?,'awaiting_payment',1 WHERE ${owned}`,
+        `INSERT INTO games_order_items(order_code,product_id,buyer_sku_code,customer_no,customer_nickname,quantity,unit_price,total,cost_snapshot,max_price,status,attempt_no,supplier,sk_variant_id,target_snapshot,fields_snapshot,supplier_ref)
+         SELECT ?,?,?,?,?,1,?,?,?,?,'awaiting_payment',1,'sekalipay',?,?,?,? WHERE ${owned}`,
         code, Number(product.id), quote.buyer_sku_code, quote.customer_no, quote.customer_nickname ? sanitizeGamesNickname(quote.customer_nickname) || null : null,
-        quote.unit_price, quote.total, Number(product.cost), maxPrice, code, quoteId,
+        quote.unit_price, quote.total, Number(product.cost), maxPrice, quote.sk_variant_id, targetJson, fieldsJson, supplierRef, code, quoteId,
       ),
     ]);
     claimed = Number(result[0]?.meta?.changes) === 1;

@@ -1,12 +1,11 @@
-// POST /api/admin/games/products/enable-wave — aktifkan SKU gelombang 1 yang
-// sehat (docs/GAMES.md §12.7 P3). Hanya brand gelombang 1 + isHealthyForWave;
-// tidak pernah menonaktifkan SKU. `dry_run` melaporkan jumlah tanpa menulis.
+// POST /api/admin/games/products/enable-wave — RETIRED. Aktivasi massal
+// gelombang 1/4 brand tidak dipakai lagi untuk katalog SK. Endpoint tetap
+// ada agar pemanggil lama mendapat respons eksplisit (auth tetap wajib),
+// tanpa pernah menulis atau mengaktifkan SKU diam-diam.
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
-import { enableGamesWave1 } from "@/lib/games/admin";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -22,10 +21,8 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "invalid_body" }, { status: 400 });
   }
-  const dryRun = parsed.data.dry_run === true;
-  const db = createDatabaseAccess();
-  try {
-    const result = await enableGamesWave1(db, { dryRun });
-    return NextResponse.json({ ok: true, dry_run: dryRun, ...result });
-  } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
+  return NextResponse.json({
+    error: "bulk_activation_retired",
+    message: "Aktivasi massal gelombang 1 sudah dipensiunkan; katalog Games dikelola per SKU.",
+  }, { status: 410 });
 }

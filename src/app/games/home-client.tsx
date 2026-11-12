@@ -12,10 +12,18 @@ import { SITE, waHubLink } from "@/lib/site";
 
 const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#00E5FF]";
 
+/** Placeholder inisial; tidak pernah mengirim <img src=""> untuk ikon null. */
+function initials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]?.toUpperCase() ?? "").join("") || "G";
+}
+
 function GameCard({ game, large = false }: { game: GamesCatalogGame; large?: boolean }) {
   return <Link href={`/games/${game.slug}`} className={`group min-w-0 rounded-2xl ${focus}`}>
     <div className={`overflow-hidden rounded-2xl border border-white/10 bg-[#0F1430] ${large ? "aspect-[4/3]" : "aspect-square"}`}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}<img src={game.icon ?? ""} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105 motion-reduce:transition-none" />
+      {game.icon
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={game.icon} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105 motion-reduce:transition-none" />
+        : <div aria-hidden className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(0,229,255,.18),transparent_60%)] font-display text-2xl font-bold tracking-[0.08em] text-white/80">{initials(game.name)}</div>}
     </div><span className="mt-3 block truncate font-display text-sm font-bold text-white sm:text-base">{game.name}</span><span className="mt-1 block truncate text-xs text-white/50">{game.publisher}</span>
   </Link>;
 }
@@ -24,7 +32,9 @@ export function GamesHome({ games, orbitGames, orderingOpen }: { games: GamesCat
   const locale = useDisplayLocale();
   const t = gamesCopy(locale);
   const [expanded, setExpanded] = useState(false);
-  const orbitItems = useMemo(() => orbitGames.map((game, ring) => ({ label: game.name, icon: game.icon ?? "", color: "#00E5FF", ring, href: `/games/${game.slug}` })), [orbitGames]);
+  const orbitItems = useMemo(() => orbitGames.map((game, ring) => ({
+    label: game.name, icon: game.icon || "/brand/games-mark.svg", color: "#00E5FF", ring, href: `/games/${game.slug}`,
+  })), [orbitGames]);
   const steps = [Gamepad2, IdCard, CreditCard, Sparkles];
   return <>
     {!orderingOpen && <div className="border-b border-[#FFB800]/20 bg-[#FFB800]/[.07] px-4 py-3 text-center text-sm text-[#ffe2a1]" role="status">{t.notice}</div>}

@@ -32,7 +32,8 @@ it("quotes, atomically claims/reuses QRIS, authorizes status and expires Games i
     modules: true, compatibilityDate: "2026-08-06", compatibilityFlags: ["nodejs_compat"],
     script: compiled.outputFiles[0].text, d1Databases: ["DB"],
     bindings: { NODE_ENV: "test", ADMIN_JWT_SECRET: "workerd-games-fixture", DIGIFLAZZ_USERNAME: "fixture", DIGIFLAZZ_API_KEY: "fixture",
-      DIGIFLAZZ_TESTING: "false", QRIS_ACTIVE_PROVIDER: "dana", DANA_QRIS_ENABLED: "true", DANA_STATIC_QRIS: qr + calculateCrc16(qr),
+      DIGIFLAZZ_TESTING: "false", GAMES_SK_ENABLED: "true", SEKALIPAY_ENABLED: "true", SEKALIPAY_API_KEY: "fixture-sk",
+      SEKALIPAY_SANDBOX: "", QRIS_ACTIVE_PROVIDER: "dana", DANA_QRIS_ENABLED: "true", DANA_STATIC_QRIS: qr + calculateCrc16(qr),
       DANA_WEBHOOK_SECRET: "fixture", NEXT_PUBLIC_PAYMENTS_MAINTENANCE: "false" },
     outboundService: () => { throw new Error("External requests forbidden"); },
   });
@@ -53,12 +54,15 @@ it("quotes, atomically claims/reuses QRIS, authorizes status and expires Games i
     await db.batch([
       ...ddls.map((ddl) => db.prepare(ddl)),
       db.prepare("CREATE UNIQUE INDEX orders_quote_id ON orders(quote_id)"),
-      db.prepare("INSERT INTO games_products(buyer_sku_code,game_brand,product_name,cost,sell_price,seller_active,enabled) VALUES('ml86','MOBILE LEGENDS','86 Diamonds',10000,11000,1,1)"),
+      db.prepare(`INSERT INTO games_products(buyer_sku_code,game_brand,product_name,cost,sell_price,seller_active,enabled,
+        supplier,supplier_active,sk_variant_id,sk_product_id,sk_product_name,game_slug,stock,min_order,required_fields_json)
+        VALUES('sk:101','Mobile Legends','86 Diamonds',10000,11000,0,1,'sekalipay',1,101,33,'Mobile Legends','mobile-legends',100,1,
+        '{"version":1,"fields":[{"key":"note","label":"User ID","required":true,"input":"text","min":1,"max":50},{"key":"zone_id","label":"Zone ID","required":true,"input":"text","min":1,"max":20}],"requires_zone_id":true,"validation_available":false,"open_denom":false,"supported":true,"reason":null}')`),
     ]);
     const post = (path: string, body: unknown) => runtime.dispatchFetch(`https://fixture.test/${path}`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     });
-    const q = await post("quote", { slug: "mobile-legends", buyer_sku_code: "ml86", fields: { userId: "12345678", zoneId: "2001" } });
+    const q = await post("quote", { slug: "mobile-legends", buyer_sku_code: "sk:101", fields: { note: "12345678", zone_id: "2001" } });
     expect(q.status).toBe(200);
     const { quote_token } = await q.json() as { quote_token: string };
     const orderBody = { quote_token, payment_method: "qris", whatsapp: "081234567890", email: "buyer@example.com" };

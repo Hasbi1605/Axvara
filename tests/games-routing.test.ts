@@ -37,14 +37,36 @@ it("keeps production admin on apex and protects mutating API origins", async () 
   const denied = await call("games.axvara.tech", "/api/games/nickname", { method: "POST", headers: { origin: "https://evil.test" } });
   expect(denied.status).toBe(403); expect(denied.headers.get("x-frame-options")).toBe("DENY");
 });
-it("serves a nested sitemap recognized by installed Next 15; only enabled sellable registry games are indexed", async () => {
+it("serves a nested sitemap recognized by installed Next 15; only enabled sellable SK games are indexed", async () => {
   expect(isMetadataRouteFile("/games/sitemap.ts", ["ts", "tsx"], true)).toBe(true);
   expect(normalizeMetadataPageToRoute(normalizeMetadataRoute("/games/sitemap"), false)).toBe("/games/sitemap.xml/route");
   expect(isMetadataRouteFile("/games/robots.ts", ["ts", "tsx"], true)).toBe(false);
-  fx.sql.prepare("INSERT INTO games_products(buyer_sku_code,product_name,game_brand,sell_price,enabled) VALUES('ff140','140 Diamonds','FREE FIRE',10000,1),('mlcekusername','Cek Username','MOBILE LEGENDS',50,1),('pubg60','60 UC','PUBG MOBILE',10000,0),('unknown','Other','Other',1,1)").run();
+  fx.sql.prepare(`INSERT INTO games_products(buyer_sku_code,product_name,game_brand,sell_price,enabled,supplier,sk_product_id,sk_variant_id,sk_product_name,game_slug)
+    VALUES('sk:1','140 Diamonds','Free Fire',10000,1,'sekalipay',34,1,'Free Fire','free-fire'),
+          ('mlcekusername','Cek Username','MOBILE LEGENDS',50,1,'sekalipay',33,2,'Mobile Legends','mobile-legends'),
+          ('pubg60','60 UC','PUBG MOBILE',10000,0,'sekalipay',46,3,'PUBG Mobile','pubg-mobile'),
+          ('ff140','140 Diamonds','FREE FIRE',10000,1,'digiflazz',NULL,NULL,NULL,NULL)`)
+    .run();
   expect((await sitemap()).map(row => row.url)).toEqual(["https://games.axvara.tech/", "https://games.axvara.tech/free-fire"]);
   expect(gamesMetadata("/free-fire", "FF", "Top up")).toMatchObject({ alternates: { canonical: "https://games.axvara.tech/free-fire" }, openGraph: { url: "https://games.axvara.tech/free-fire" } });
 });
+it("allows only the Sekalipay product image path in the public CSP; admin CSP stays strict", async () => {
+  const publicRes = await call("games.axvara.tech", "/games");
+  const csp = publicRes.headers.get("content-security-policy")!;
+  const imgSrc = csp.split(";").map((part) => part.trim()).find((part) => part.startsWith("img-src"))!
+    .split(/\s+/).slice(1);
+  // Daftar sumber persis: gambar produk SK path-scoped, tanpa host arbitrer.
+  expect(imgSrc).toEqual(["'self'", "https://images.unsplash.com", "https://picsum.photos", "https://sekalipay.com/images/products/", "data:", "blob:"]);
+  expect(csp).not.toContain("*");
+  expect(csp).toContain("default-src 'self'");
+  expect(csp).toContain("connect-src 'self'");
+
+  const adminRes = await call("axvara.tech", "/admin?section=games");
+  const adminCsp = adminRes.headers.get("content-security-policy")!;
+  expect(adminCsp).not.toContain("sekalipay.com");
+  expect(adminCsp).toBe("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com data:; font-src 'self' data:; connect-src 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+});
+
 it("serves Games robots text without changing apex robots output", async () => {
   const response = robots(); expect(response.headers.get("content-type")).toContain("text/plain");
   expect(await response.text()).toContain("Sitemap: https://games.axvara.tech/sitemap.xml");

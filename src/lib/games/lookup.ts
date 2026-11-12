@@ -29,7 +29,7 @@ export async function loadGamesOrder(code: string): Promise<{
   ).catch(() => null);
   if (!order) return null;
   const item = await db.queryFirst(
-    `SELECT i.*, p.product_name, p.game_brand
+    `SELECT i.*, p.product_name, p.game_brand, p.game_slug, p.sk_product_name
        FROM games_order_items i LEFT JOIN games_products p ON p.id=i.product_id
       WHERE i.order_code=?`, code,
   ).catch(() => null);
@@ -81,6 +81,8 @@ export async function lookupGamesOrder(code: string, contactRaw: string, request
   }
   if (!requiresOrderAccessCode(order) && !(await buyerOrderAccessMatches(contactRaw, order))) return orderAccessDenied();
   const game = gamesGameForBrand(item.game_brand);
+  const gameSlug = String(item.game_slug ?? game?.slug ?? "").trim();
+  const gameName = game?.name ?? String(item.sk_product_name ?? item.game_brand ?? "Game").trim();
   const status = gamesBuyerStatus(order.status, item.status);
   const success = status === "success";
   const storedName = String(order.customer_name ?? "").trim();
@@ -92,7 +94,7 @@ export async function lookupGamesOrder(code: string, contactRaw: string, request
       customer_name: storedName || deriveNameFromEmail(String(order.customer_email ?? "")),
       ...maskedContact(order),
       items: [{
-        name: `${game?.name ?? String(item.game_brand ?? "Game")} · ${String(item.product_name ?? "")}`.trim().slice(0, 200),
+        name: `${gameName || "Game"} · ${String(item.product_name ?? "")}`.trim().slice(0, 200),
         price: Number(item.total),
         qty: Number(item.quantity) || 1,
       }],
@@ -104,7 +106,7 @@ export async function lookupGamesOrder(code: string, contactRaw: string, request
       status: order.status,
       games_status: status,
       games_status_raw: item.status,
-      game: game ? { slug: game.slug, name: game.name, publisher: game.publisher } : null,
+      game: gameSlug ? { slug: gameSlug, name: gameName, publisher: game?.publisher ?? "" } : null,
       customer_no: String(item.customer_no ?? ""),
       customer_nickname: item.customer_nickname != null ? String(item.customer_nickname) : null,
       quantity: Number(item.quantity) || 1,

@@ -3,9 +3,20 @@
 // Kontak dikumpulkan saat POST order seperti Pedia. Berlaku 30 menit.
 import * as jose from "jose";
 import { isCanonicalMethodOption, type CheckoutQuotePaymentMethod } from "@/lib/auth";
+import {
+  isGamesSkCustomerNo,
+  parseGamesSkTargetSnapshot,
+  type GamesSkTarget,
+} from "./registry";
 
 export type GamesQuotePayload = {
   purpose: "games_quote";
+  /** Supplier yang mengikat quote. Token lama tanpa supplier = legacy Digiflazz. */
+  supplier: "sekalipay" | "digiflazz";
+  sk_variant_id?: number;
+  target_snapshot?: GamesSkTarget;
+  contract_digest?: string;
+  cost_snapshot?: number;
   product_id: number;
   buyer_sku_code: string;
   slug: string;
@@ -63,9 +74,30 @@ export async function verifyGamesQuoteToken(token: string): Promise<GamesQuotePa
     if (!Number.isSafeInteger(productId) || productId <= 0) return null;
     if (!Number.isSafeInteger(unitPrice) || unitPrice <= 0) return null;
     if (!Number.isSafeInteger(total) || total <= 0 || total !== unitPrice) return null;
-    if (typeof p.buyer_sku_code !== "string" || !/^[A-Za-z0-9]{1,32}$/.test(p.buyer_sku_code)) return null;
-    if (typeof p.slug !== "string" || !/^[a-z0-9-]{1,40}$/.test(p.slug)) return null;
-    if (typeof p.customer_no !== "string" || !/^\d{1,32}$/.test(p.customer_no)) return null;
+    if (typeof p.buyer_sku_code !== "string" || !/^(?:[A-Za-z0-9]{1,32}|sk:\d{1,18})$/.test(p.buyer_sku_code)) return null;
+    if (typeof p.slug !== "string" || !/^[a-z0-9-]{1,64}$/.test(p.slug)) return null;
+    const supplier = p.supplier === undefined ? "digiflazz" : p.supplier;
+    if (supplier !== "sekalipay" && supplier !== "digiflazz") return null;
+    if (typeof p.customer_no !== "string") return null;
+    if (supplier === "sekalipay") {
+      if (!isGamesSkCustomerNo(p.customer_no)) return null;
+    } else if (!/^\d{1,32}$/.test(p.customer_no)) {
+      return null;
+    }
+    let skVariantId: number | undefined;
+    let targetSnapshot: GamesSkTarget | undefined;
+    let contractDigest: string | undefined;
+    let costSnapshot: number | undefined;
+    if (supplier === "sekalipay") {
+      skVariantId = Number(p.sk_variant_id);
+      if (!Number.isSafeInteger(skVariantId) || skVariantId <= 0) return null;
+      targetSnapshot = parseGamesSkTargetSnapshot(p.target_snapshot) ?? undefined;
+      if (!targetSnapshot) return null;
+      contractDigest = typeof p.contract_digest === "string" ? p.contract_digest : "";
+      if (!/^[a-f0-9]{64}$/.test(contractDigest)) return null;
+      costSnapshot = Number(p.cost_snapshot);
+      if (!Number.isSafeInteger(costSnapshot) || costSnapshot <= 0) return null;
+    }
     if (p.customer_nickname !== null && (typeof p.customer_nickname !== "string" || p.customer_nickname.length > 64)) return null;
     if (!Array.isArray(p.methods) || !p.methods.length || p.methods.length > 64
       || !p.methods.every((method) => typeof method === "string" && method.length <= 64)) return null;
@@ -77,6 +109,11 @@ export async function verifyGamesQuoteToken(token: string): Promise<GamesQuotePa
     if (p.locale !== undefined && !["id", "en"].includes(String(p.locale))) return null;
     return {
       purpose: "games_quote",
+      supplier,
+      sk_variant_id: skVariantId,
+      target_snapshot: targetSnapshot,
+      contract_digest: contractDigest,
+      cost_snapshot: costSnapshot,
       product_id: productId,
       buyer_sku_code: p.buyer_sku_code,
       slug: p.slug,

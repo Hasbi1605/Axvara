@@ -498,13 +498,38 @@ export async function fetchSkCatalogSlice(params: {
  */
 export const SK_SYNC_CATEGORY = "Aplikasi Premium";
 
+export type SkCart = {
+  item_id: number;
+  quantity: number;
+  note?: string;
+  /** Zone/server untuk game ber-zone: SIBLING `note`, bukan digabung. */
+  zone_id?: string;
+};
+
 export async function createSkTransaction(params: {
   refId: string;
-  carts: { item_id: number; quantity: number; note?: string }[];
+  carts: SkCart[];
 }): Promise<SkCreateTrxResult> {
+  // Validasi minimal agar payload Games tidak pernah mengirim id/qty pecahan.
+  if (typeof params.refId !== "string" || params.refId.trim() === "" || params.refId.length > 191) {
+    throw new TypeError("sk_ref_id_invalid");
+  }
+  if (!Array.isArray(params.carts) || params.carts.length === 0) throw new TypeError("sk_carts_invalid");
+  const carts = params.carts.map((cart) => {
+    if (!cart || !Number.isSafeInteger(cart.item_id) || cart.item_id <= 0) throw new TypeError("sk_item_id_invalid");
+    if (!Number.isSafeInteger(cart.quantity) || cart.quantity < 1) throw new TypeError("sk_quantity_invalid");
+    if (cart.note !== undefined && typeof cart.note !== "string") throw new TypeError("sk_note_invalid");
+    if (cart.zone_id !== undefined && typeof cart.zone_id !== "string") throw new TypeError("sk_zone_invalid");
+    return {
+      item_id: cart.item_id,
+      quantity: cart.quantity,
+      ...(cart.note !== undefined ? { note: cart.note } : {}),
+      ...(cart.zone_id !== undefined ? { zone_id: cart.zone_id } : {}),
+    };
+  });
   const res = await skFetch<{ message: string; data: SkCreateTrxResult }>("v1/trx", {
     method: "POST",
-    body: { ref_id: params.refId, carts: params.carts },
+    body: { ref_id: params.refId, carts },
   });
   if (!res.data || typeof res.data.invoice !== "string" || !res.data.invoice.trim()
     || (res.data.ref_id && res.data.ref_id !== params.refId)) {
@@ -544,6 +569,9 @@ export type SkItemDetail = {
   required_fields: SkRequiredField[] | null;
   validation: SkValidation | null;
   description?: string | null;
+  /** Live availability (null/tidak ada = tidak diklaim supplier). */
+  status?: string | null;
+  min_order?: number | null;
   [key: string]: unknown;
 };
 

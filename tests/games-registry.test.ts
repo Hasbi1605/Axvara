@@ -68,18 +68,25 @@ describe("games registry", () => {
   });
 });
 
-describe("gamesOrderingOpen (P9)", () => {
-  const base = { DIGIFLAZZ_USERNAME: "user", DIGIFLAZZ_API_KEY: "key", DIGIFLAZZ_TESTING: "" };
-  it("closes while DIGIFLAZZ_TESTING=true even with credentials", () => {
-    expect(gamesOrderingOpen({ ...base, DIGIFLAZZ_TESTING: "true" })).toBe(false);
+describe("gamesOrderingOpen (SK gate)", () => {
+  const base = {
+    GAMES_SK_ENABLED: "true", SEKALIPAY_ENABLED: "true", SEKALIPAY_SANDBOX: "",
+    SEKALIPAY_API_KEY: "key", SEKALIPAY_PROXY_URL: "", SEKALIPAY_PROXY_TOKEN: "",
+  };
+  it("requires the explicit GAMES_SK_ENABLED opt-in", () => {
+    expect(gamesOrderingOpen({ ...base, GAMES_SK_ENABLED: "" })).toBe(false);
+    expect(gamesOrderingOpen({ ...base, GAMES_SK_ENABLED: "false" })).toBe(false);
   });
-  it("closes when either credential is missing or blank", () => {
-    expect(gamesOrderingOpen({ DIGIFLAZZ_USERNAME: "", DIGIFLAZZ_API_KEY: "key" })).toBe(false);
-    expect(gamesOrderingOpen({ DIGIFLAZZ_USERNAME: "user", DIGIFLAZZ_API_KEY: "  " })).toBe(false);
-    expect(gamesOrderingOpen({})).toBe(false);
+  it("closes without SK enabled/transport or while sandbox", () => {
+    expect(gamesOrderingOpen({ ...base, SEKALIPAY_ENABLED: "" })).toBe(false);
+    expect(gamesOrderingOpen({ ...base, SEKALIPAY_API_KEY: "" })).toBe(false);
+    expect(gamesOrderingOpen({ ...base, SEKALIPAY_SANDBOX: "true" })).toBe(false);
+    expect(gamesOrderingOpen({ ...base, SEKALIPAY_PROXY_URL: "https://proxy", SEKALIPAY_PROXY_TOKEN: "" })).toBe(false);
   });
-  it("opens only with both credentials and testing disabled", () => {
+  it("opens with SK credentials or a proxied token and ignores Digiflazz keys", () => {
     expect(gamesOrderingOpen(base)).toBe(true);
+    expect(gamesOrderingOpen({ ...base, SEKALIPAY_API_KEY: "", SEKALIPAY_PROXY_URL: "https://proxy", SEKALIPAY_PROXY_TOKEN: "t" })).toBe(true);
+    expect(gamesOrderingOpen({ ...base, DIGIFLAZZ_TESTING: "true", DIGIFLAZZ_API_KEY: "" })).toBe(true);
   });
 });
 

@@ -4,6 +4,8 @@ import { isDigiflazzConfigured, sendTransaction } from "./digiflazz";
 import type { GamesDefinition } from "./registry";
 import { sanitizeGamesNickname } from "./sellable";
 import { rateLimit, RATE_LIMITS } from "@/lib/rateLimit";
+import { validateSkAccount } from "@/lib/sekalipay/client";
+import type { GamesSkContract, GamesSkTarget } from "./registry";
 
 export type GamesNicknameResult = { status: "ok"; nickname: string } | { status: "invalid" } | { status: "unavailable" };
 const unavailable = { status: "unavailable" } as const;
@@ -107,4 +109,62 @@ export async function gamesNicknameSummary(db: DatabaseAccess) {
     FROM games_nickname_checks WHERE created_at>=?`, today, today, today - 6 * DAY);
   return { today: { count: Number(row?.today_count ?? 0), cost: Number(row?.today_cost ?? 0) },
     week: { count: Number(row?.week_count ?? 0), cost: Number(row?.week_cost ?? 0) } };
+}
+
+/**
+ * Nickname baru (Sekalipay, GRATIS): hanya untuk varian SK yang
+ * `validation.available`, target sudah tervalidasi kontrak. Cache 24 jam per
+ * (variant, target); claim 60 dtk mencegah request paralel membanjiri supplier.
+ * Kegagalan supplier selalu `unavailable` — tidak pernah memblokir checkout.
+ */
+export async function checkSkGamesNickname(
+  db: DatabaseAccess,
+  input: { variantId: number; contract: GamesSkContract; target: GamesSkTarget; display: string; device: string },
+): Promise<GamesNicknameResult> {
+  if (!db.d1 || !input.contract.supported || !input.contract.validation_available) return unavailable;
+  if (!rateLimit(`games:sknick_device:${input.device}`, RATE_LIMITS["games:nickname_poll_device"], WINDOW)) return unavailable;
+  const now = Date.now();
+  const gameKey = `sk:${input.variantId}`;
+  const stmt = (sql: string, ...params: unknown[]) => db.d1!.prepare(sql).bind(...params);
+  try {
+    const cached = await db.queryFirst(
+      "SELECT ref_id,result,nickname,checked_at,expires_at FROM games_nickname_cache WHERE game_key=? AND customer_no=?",
+      gameKey, input.display,
+    );
+    if (cached && (cached.result === "ok" || cached.result === "invalid" || cached.result === "unavailable")
+      && Number(cached.expires_at ?? 0) > now) return cachedResult(cached);
+    const ref = `SKN-${crypto.randomUUID()}`;
+    const claimed = await db.d1.batch([
+      stmt(`INSERT INTO games_nickname_cache(game_key,customer_no,ref_id,result,checked_at,expires_at)
+        VALUES(?,?,?,'pending',?,NULL)
+        ON CONFLICT(game_key,customer_no) DO UPDATE SET ref_id=excluded.ref_id,result='pending',nickname=NULL,
+          checked_at=excluded.checked_at,expires_at=NULL
+        WHERE (games_nickname_cache.result IN ('ok','invalid','unavailable')
+               AND (games_nickname_cache.expires_at IS NULL OR games_nickname_cache.expires_at<=?))
+           OR (games_nickname_cache.result IN ('pending','ambiguous') AND games_nickname_cache.checked_at<=?)`,
+      gameKey, input.display, ref, now, now, now - 60_000),
+    ]);
+    if (Number(claimed[0]?.meta?.changes) !== 1) return unavailable;
+    let status: "ok" | "unavailable" = "unavailable";
+    let nickname: string | null = null;
+    try {
+      const result = await validateSkAccount({
+        itemId: input.variantId,
+        customerId: input.target.note,
+        ...(input.target.zone_id ? { zoneId: input.target.zone_id } : {}),
+      });
+      nickname = sanitizeGamesNickname(String(result.account_name || result.display_name || "")) || null;
+      status = nickname ? "ok" : "unavailable";
+    } catch {
+      status = "unavailable";
+    }
+    const expiresAt = status === "ok" ? Date.now() + DAY : Date.now() + 60_000;
+    const settled = await db.d1.batch([
+      stmt(`UPDATE games_nickname_cache SET result=?,nickname=?,checked_at=?,expires_at=?
+        WHERE ref_id=? AND result='pending'`, status, nickname, Date.now(), expiresAt, ref),
+    ]);
+    return Number(settled[0]?.meta?.changes) === 1 ? cachedResult({ result: status, nickname }) : unavailable;
+  } catch {
+    return unavailable;
+  }
 }

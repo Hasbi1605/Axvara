@@ -520,3 +520,96 @@ bukan deployment atau pembayaran produksi. B2 menambah `games-payment-rails.inte
 consent, status/recovery, callback/IPN replay, review tanpa dispatch, route Market tetap sempit)
 dan regresi workerd gateway AXG. Fokus akhir 67 file/1016 tes hijau; UI/nickname dan akses
 produksi tetap di luar B2, full suite/build milik PM.
+
+## 13. Katalog & transaksi Sekalipay Games — P3 (12 November 2026, lokal, belum deploy)
+
+> Status bagian ini: implementasi + tes fixture lokal pada worktree
+> `feat/games-sekalipay-only`. Tidak ada deployment, panggilan supplier nyata,
+> transaksi berbayar, atau perubahan env/secret. Gate pembelian produksi tetap
+> **tidak diset**. Bagian §1–§12 adalah histori keputusan Digiflazz; untuk
+> penjualan baru, bagian ini menggantikan sumber katalog/supplier.
+
+- **Supplier baru penjualan Games = Sekalipay H2H.** Seluruh kategori `Game`
+  diimpor (snapshot bukti 12 November 2026: 47 produk / 1.619 varian; angka itu
+  hasil pengamatan bertanggal, bukan janji jumlah permanen). Digiflazz
+  diparkir: tidak ada price-list/order baru, tidak ada fallback otomatis, dan
+  baris/order lama tetap dapat dibaca/direkonsiliasi lewat jalur legacy.
+- **Gerbang order baru:** `GAMES_SK_ENABLED=true` **dan** `SEKALIPAY_ENABLED`
+  **dan** transport/kredensial SK tersedia **dan** bukan `SEKALIPAY_SANDBOX`.
+  Kredensial Digiflazz tidak lagi membuka order baru. Sync katalog tetap berjalan
+  dengan konfigurasi SK existing tanpa bergantung gate pembelian. Tidak ada env
+  yang diubah oleh implementasi ini.
+- **Katalog DB, bukan whitelist empat game.** Home, detail, pencarian navbar,
+  sitemap, dan metadata membaca katalog D1 hasil sync. Slug stabil per produk
+  supplier (`game_slug`); empat slug lama (`free-fire`, `free-fire-max`,
+  `mobile-legends`, `pubg-mobile`) dipertahankan lewat override registry lokal.
+  Semua varian/region/tipe tetap baris terpisah dengan identitas
+  `sk:<variant_id>`; UI tidak menggabungkan nominal/region yang sama. Katalog
+  publik dan sitemap **hanya** baris `supplier='sekalipay'`; baris Digiflazz
+  legacy tidak pernah ditampilkan sebagai game/SKU yang bisa dibeli baru
+  (hanya tetap tersedia untuk histori order/status/dispatch lama). Empat slug
+  lama hanya override metadata bila SK dengan slug itu ada, bukan fallback
+  katalog DGF.
+- **Kontrak field per varian.** Hanya key `note`/`zone_id` yang didukung, selalu
+  teks (ID bisa memuat huruf/`#`/Unicode/nama server), `note` maks 50 dan
+  `zone_id` maks 20. Label/instruksi mengikuti varian terpilih; `note` dan
+  `zone_id` dikirim terpisah (tidak pernah digabung). Varian off, stok 0,
+  admin-disabled tetap tampil dengan alasan jujur tetapi tidak dapat dibeli;
+  open-denom, min_order>1, atau kontrak tak didukung tidak pernah di-quote.
+  Stok `-1` mengikuti makna platform SK: tak terbatas dan dapat dibeli; `0`,
+  negatif lain, atau nilai rusak menjadi tidak tersedia.
+- **Quote/order** mengikat supplier, varian, target snapshot, digest kontrak,
+  modal, dan harga; recheck atomik memeriksa supplier/enabled/active/stok/
+  min_order/slug/kontrak/harga. SKU Digiflazz dan token quote lama ditolak untuk
+  order baru. Rail pembayaran, biaya kanal, consent, TTL, dan idempotensi order
+  existing dipertahankan.
+- **Dispatch SK:** ref stabil kompak `AXG…` (≤50). Payload + sent-fence ditulis
+  sebelum POST; setelah fence tidak pernah ada POST kedua — timeout/5xx/ref
+  sudah ada/404 melakukan GET ref yang sama. Preflight live menegakkan status
+  on, stok cukup, min_order 1, kontrak sama dengan snapshot, harga live ≤ batas
+  quote, dan saldo; pelanggaran transien ditunda, pelanggaran kontrak/harga
+  menjadi `needs_check`. Sukses hanya dari GET authoritative: transaksi
+  `completed`, tepat satu item cart qty1 dan satu hasil H2H bervarian cocok,
+  dispatch `completed`, SN nyata, unit konsisten.
+- **Batasan yang disengaja:** SK tidak menyediakan parameter `max_price`.
+  Pemeriksaan biaya tertagih (`amount` valid atau `price+fees`, disimpan di
+  `games_dispatch_attempts.price`) adalah **deteksi pasca-debit + review
+  manual**, bukan pencegahan atau jaminan harga. Detail SK hanya mengekspos
+  `note`; bila respons tidak memuat `note|zone`, korelasi zone memakai payload
+  snapshot yang benar-benar dikirim (batas bukti yang terdokumentasi, bukan
+  field rekaan). Tidak ada refund/rebuy otomatis; kegagalan/partial/mismatch →
+  `needs_check`. Ikon/banner yang kosong dirender sebagai placeholder inisial
+  atau aset merek; tidak pernah mengirim `src=""`. CSP publik mengizinkan
+  tepat path `https://sekalipay.com/images/products/` (bukan host/wildcard
+  lain); CSP admin tidak diubah.
+- **Webhook** hanya memproses ref Games yang dikenal setelah signature valid;
+  invoice tersimpan otoritas, GET by ref authoritative, hint invoice dari
+  payload tidak pernah ditulis sebelum korelasi dan hint salah ditolak tanpa
+  memindahkan order. Dedupe memakai `dana_webhook_events` provider
+  `sekalipay_games`.
+- **Nickname** publik baru hanya untuk varian SK dengan `validation.available`,
+  memakai `validateSkAccount` gratis (tanpa utilitas Digiflazz berbayar), cache
+  24 jam per varian+target, rate-limit perangkat, dan hasil `unavailable` tidak
+  memblokir checkout. Hasil cek bukan jaminan kepemilikan ID.
+- **Admin** hanya mengelola katalog SK (supplier/varian/stok/kontrak/deskripsi,
+  harga Oura, grup, urutan, aktif). `PATCH` menolak baris Digiflazz legacy
+  (`legacy_parked`); `POST .../enable-wave` dipensiunkan dan membalas 410
+  eksplisit tanpa aktivasi massal. Baris legacy tetap disimpan untuk histori
+  order.
+- **Verifikasi final terintegrasi (12 November 2026, setelah fix stok -1 dispatch):**
+  full suite serial parent `npx vitest run --run --maxWorkers=1` **438 file/5.923 tes
+  lulus** (228,77 dtk), lalu `npm run build:pages` penuh **PASS 173 edge route**
+  (Next compile/lint/typecheck + konversi; 19,02 dtk hanya durasi konversi, bukan
+  total build). Pemulihan jujur: default-worker suite sempat timeout fixture workerd
+  `telegram-bulk-checkout` (5 dtk), run 2-worker sempat gagal 2 fixture workerd
+  `telegram-payment-rails`; keduanya lulus saat ditargetkan dan serial penuh lulus
+  tanpa perubahan kode/assertion/timeout. Checkpoint 419/5.760 (pra-integrasi) dan
+  438/5.920 (pra-fix stok) adalah histori. Wonder QA browser nyata lulus: publik
+  Playwright 1280/390 (katalog>12, search, varian region/tipe, field per
+  varian, disabled/unsupported, tanpa overflow/gambar rusak) dan admin statis
+  pada artefak Next lokal 8792 dengan fixture jaringan browser (search/filter/
+  empty, harga Oura valid-invalid, grup, toggle, unsupported, tanpa tombol
+  wave, loading/503/Muat ulang). Batas: admin tidak diuji dengan auth/backend
+  persist nyata; `display_order` masih API-only tanpa editor (header admin
+  menyebut "urutan" — keterbatasan UI kecil yang jujur); tidak ada deployment,
+  env/flag aktivasi, atau transaksi supplier nyata.

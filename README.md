@@ -1951,6 +1951,27 @@ migrasi `0107_games_core.sql`, cron lite `games_catalog`/`games_orders`, dan web
 (`games_reference_prices`, override grup/urutan), tab **Games** di `/admin?section=games`,
 API `GET/PATCH /api/admin/games/products` + `POST .../enable-wave` (dry-run lalu konfirmasi).
 
+Cutover Sekalipay (12 November 2026, lokal, belum deploy): penjualan baru Games
+memakai katalog kategori `Game` Sekalipay, bukan empat game Digiflazz. Sumber data
+`drizzle/migrations/0118_games_sekalipay.sql` + `src/lib/games/sk-catalog-sync.ts`;
+home/detail/pencarian/sitemap membaca D1, field mengikuti kontrak varian terpilih,
+dan dispatch SK memakai `src/lib/games/sk-dispatch.ts` (ref stabil, sent-fence,
+tanpa POST kedua/fallback). Cron `games_catalog` tidak lagi memanggil price-list
+Digiflazz. Admin hanya mengelola varian SK; baris Digiflazz legacy dipertahankan
+untuk histori dan `enable-wave` dipensiunkan (410). Gate order baru
+`GAMES_SK_ENABLED` belum diset, jadi tidak ada pembelian produksi dari perubahan ini.
+Verifikasi final terintegrasi 12 November 2026 (setelah fix regresi stok -1 dispatch):
+full suite serial parent `npx vitest run --run --maxWorkers=1` **438 file/5.923 tes lulus**
+(228,77 dtk), lalu `npm run build:pages` penuh **PASS 173 edge route** (Next compile/lint/
+typecheck + konversi; 19,02 dtk hanya durasi konversi, bukan total build). Catatan
+pemulihan jujur: default-worker suite sempat timeout fixture workerd
+`telegram-bulk-checkout` 5 dtk dan run 2-worker sempat gagal 2 fixture workerd
+`telegram-payment-rails`; keduanya lulus saat ditargetkan dan serial penuh lulus tanpa
+perubahan kode/assertion/timeout. Checkpoint lama 419/5.760 (pra-integrasi) dan
+438/5.920 (pra-fix stok) tetap histori, bukan hasil final. QA browser publik 1280/390
+lulus; admin statis 8792 dengan fixture jaringan lulus (bukan auth/backend persist/
+produksi). Belum deploy/push; `display_order` masih API-only tanpa editor UI.
+
 Seed referensi Oura A2 (lokal, belum deploy): `drizzle/migrations/0111_games_reference_seed.sql`
 menambah198 SKU utama (FF16/FF MAX8/ML156/PUBG18), tidak menimpa baris admin existing
 (`ON CONFLICT DO NOTHING`). Sinkron katalog berikutnya baru menghitung ulang harga

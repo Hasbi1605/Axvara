@@ -1761,6 +1761,18 @@ CREATE TABLE IF NOT EXISTS games_products (
   enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
   display_group TEXT CHECK (display_group IS NULL OR display_group IN ('special','bestseller')),
   display_order INTEGER,
+  supplier TEXT NOT NULL DEFAULT 'digiflazz' CHECK (supplier IN ('digiflazz','sekalipay')),
+  supplier_active INTEGER NOT NULL DEFAULT 0 CHECK (supplier_active IN (0,1)),
+  sk_variant_id INTEGER,
+  sk_sku TEXT,
+  sk_product_id INTEGER,
+  sk_product_name TEXT,
+  game_slug TEXT,
+  product_type_name TEXT,
+  image_url TEXT,
+  required_fields_json TEXT,
+  validation_json TEXT,
+  min_order INTEGER NOT NULL DEFAULT 1 CHECK (min_order >= 1),
   synced_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
@@ -1777,6 +1789,8 @@ CREATE TABLE IF NOT EXISTS games_reference_prices (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_games_products_synced ON games_products(synced_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_games_products_sk_variant ON games_products(sk_variant_id) WHERE supplier='sekalipay';
+CREATE INDEX IF NOT EXISTS idx_games_products_sk_product ON games_products(supplier, sk_product_id);
 
 CREATE TABLE IF NOT EXISTS games_order_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1800,6 +1814,12 @@ CREATE TABLE IF NOT EXISTS games_order_items (
   last_polled_at TEXT,
   completed_at TEXT,
   last_error TEXT,
+  supplier TEXT NOT NULL DEFAULT 'digiflazz' CHECK (supplier IN ('digiflazz','sekalipay')),
+  sk_variant_id INTEGER,
+  target_snapshot TEXT,
+  fields_snapshot TEXT,
+  sk_invoice TEXT,
+  supplier_ref TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -1818,6 +1838,12 @@ CREATE TABLE IF NOT EXISTS games_dispatch_attempts (
   message TEXT,
   sn TEXT,
   price INTEGER,
+  supplier TEXT NOT NULL DEFAULT 'digiflazz' CHECK (supplier IN ('digiflazz','sekalipay')),
+  sk_invoice TEXT,
+  request_sent_at TEXT,
+  payload_snapshot TEXT,
+  dispatch_status TEXT,
+  units_json TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE (order_code, attempt_no)

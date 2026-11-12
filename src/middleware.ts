@@ -100,11 +100,14 @@ function securityHeaders(res: Response, req: NextRequest) {
   // F-11 fix: removed blob: from admin img-src
   // 2026-10-03: frame-src youtube-nocookie untuk embed tutorial di /artikel
   // (player dirender server-only via <iframe>, bukan HTML mentah Markdown).
+  // 2026-11-12: katalog Games SK memakai gambar produk supplier yang lolos
+  // allowlist server. Izinkan HANYA path produk tersebut di CSP publik;
+  // host/path lain tetap diblokir dan CSP admin tidak diubah.
   const YOUTUBE_FRAME = "frame-src https://www.youtube-nocookie.com;";
   const isAdmin = req.nextUrl.pathname.startsWith("/admin") || req.nextUrl.pathname.startsWith("/api/admin");
   const csp = isAdmin
     ? `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com data:; font-src 'self' data:; connect-src 'self'; ${YOUTUBE_FRAME} frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
-    : `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com https://picsum.photos data: blob:; font-src 'self' data:; connect-src 'self'; ${YOUTUBE_FRAME} frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
+    : `default-src 'self'; script-src 'self' 'unsafe-inline'${devScriptEval}; style-src 'self' 'unsafe-inline'; img-src 'self' https://images.unsplash.com https://picsum.photos https://sekalipay.com/images/products/ data: blob:; font-src 'self' data:; connect-src 'self'; ${YOUTUBE_FRAME} frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
 
   if (!res.headers.has("Content-Security-Policy")) res.headers.set("Content-Security-Policy", csp);
   res.headers.set("X-Frame-Options", "DENY");

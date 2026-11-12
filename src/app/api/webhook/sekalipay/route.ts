@@ -7,8 +7,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { readTextBody } from "@/lib/http-body";
+import { createDatabaseAccess } from "@/lib/db-access";
 import {
   isSkEnabled,
+  skStatusForSignature,
   skWebhookSecretConfigured,
   verifySkWebhookSignature,
   type SkWebhookEvent,
@@ -19,6 +21,7 @@ import {
   handleSkOrderPaid,
   bindSkInvoiceByRef,
 } from "@/lib/sekalipay/order";
+import { applySkTransactionDetail, fetchSkGamesStatus } from "@/lib/games/sk-dispatch";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
@@ -65,6 +68,10 @@ export async function POST(request: NextRequest) {
         request.headers.get("x-sekalipay-event-id") ||
         "",
     ).slice(0, 120) || undefined;
+  // AXVARA Games (SK H2H): ref yang dikenal milik Games diproses lebih dulu,
+  // tanpa menyentuh binding premium. Unknown ref tetap jalur premium di bawah.
+  const gamesResponse = await handleSkGamesWebhook(payload, rawBody);
+  if (gamesResponse) return gamesResponse;
   try {
     // Only after signature verification: bind the stable purchase reference
     // even when the dispatch Worker has not persisted its POST response yet.
@@ -103,6 +110,81 @@ export async function POST(request: NextRequest) {
     }
   }
   return NextResponse.json({ status: "ok" });
+}
+
+/**
+ * Cabang webhook AXVARA Games. Hanya untuk ref yang sudah tercatat sebagai
+ * attempt SK Games; GET detail menjadi sumber kebenaran (parser sama dengan
+ * polling). Event durable via `dana_webhook_events` provider `sekalipay_games`.
+ * Return null = bukan ref Games → jalur premium lama.
+ */
+async function handleSkGamesWebhook(payload: SkWebhookEvent, rawBody: string): Promise<NextResponse | null> {
+  const ref = String(payload?.data?.ref_id || "").trim();
+  if (!/^[A-Za-z0-9]{1,50}$/.test(ref)) return null;
+  const db = createDatabaseAccess();
+  const attempt = await db.queryFirst(
+    `SELECT a.ref_id, a.order_code, a.sk_invoice, i.supplier
+       FROM games_dispatch_attempts a JOIN games_order_items i ON i.order_code=a.order_code
+      WHERE a.ref_id=?`,
+    ref,
+  ).catch(() => null);
+  if (!attempt || String(attempt.supplier ?? "") !== "sekalipay") return null;
+
+  const statusForSig = skStatusForSignature(String(payload.event || ""), payload.data?.status);
+  const eventKey = `skgame:${ref}:${String(payload.event || "")}:${statusForSig}`.slice(0, 120);
+  try {
+    await db.execRun(
+      `INSERT OR IGNORE INTO dana_webhook_events(event_key,payload_hash,amount,raw_text,provider,status)
+       VALUES(?,?,?,?,'sekalipay_games','received')`,
+      eventKey, await sha256Hex(rawBody), Math.max(0, Math.trunc(Number(payload.data?.price ?? 0) || 0)), rawBody,
+    );
+    const event = await db.queryFirst("SELECT status FROM dana_webhook_events WHERE event_key=?", eventKey);
+    if (!event) return NextResponse.json({ error: "event_conflict" }, { status: 409 });
+    if (event.status === "matched" || event.status === "ignored") return NextResponse.json({ ok: true, duplicate: true });
+
+    const invoiceHint = String(payload.data?.invoice || "").trim() || null;
+    // GET authoritative memakai REF milik kita, bukan invoice dari payload.
+    const detail = await fetchSkGamesStatus(ref);
+    const fetchedInvoice = String(detail?.invoice || "").trim() || null;
+    // Hint salah tidak boleh mem-poison invoice tersimpan atau memindahkan order.
+    if (invoiceHint && fetchedInvoice && invoiceHint !== fetchedInvoice) {
+      await db.execRun(
+        "UPDATE dana_webhook_events SET status='failed',last_error='invoice_hint_mismatch' WHERE event_key=? AND status='received'",
+        eventKey,
+      );
+      return NextResponse.json({ error: "retryable" }, { status: 503 });
+    }
+    // Invoice tersimpan tetap otoritas: apply membandingkannya dengan GET dan
+    // fail-closed (needs_check) bila berbeda; hint tidak pernah di-persist.
+    const outcome = await applySkTransactionDetail(db, detail, { refId: ref, invoiceHint: null });
+    if (outcome === "unknown_ref" || outcome === "ignored") {
+      await db.execRun(
+        "UPDATE dana_webhook_events SET status='ignored',last_error=?,processed_at=datetime('now') WHERE event_key=? AND status!='matched'",
+        outcome, eventKey,
+      );
+      return NextResponse.json({ ok: true, ignored: true });
+    }
+    await db.execRun(
+      `UPDATE dana_webhook_events SET status='matched',last_error=NULL,processed_at=datetime('now'),order_code=?
+        WHERE event_key=? AND status!='matched'`,
+      String(attempt.order_code), eventKey,
+    );
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    try {
+      await db.execRun(
+        "UPDATE dana_webhook_events SET status='failed',last_error='sk_games_apply_retry' WHERE event_key=? AND status NOT IN ('matched','ignored')",
+        eventKey,
+      );
+    } catch { /* best-effort */ }
+    console.error("SK Games webhook processing failed:", error instanceof Error ? error.message : "unknown");
+    return NextResponse.json({ error: "retryable" }, { status: 503 });
+  }
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /**

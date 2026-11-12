@@ -24,3 +24,13 @@
 - Market/Pedia memakai admission D1 bersama:5/IP,3/WA,3/email per jendela15menit; claim quote stabil dan increment counter satu batch. Retry paralel quote sama hanya satu slot; order existing tetap reuse. Jangan mengubah error D1 menjadi fail-open:503 sebelum order/reservasi/invoice,429 hanya saat limit. Dev tanpa D1 boleh bypass.
 - Subjek disimpan HMAC-SHA256 memakai ADMIN_JWT_SECRET existing, bukan hash tanpa kunci. Normalisasi IPv6/email; jangan mempercayai x-forwarded-for. Cleanup existing bounded200 klaim+200 counter berumur>24jam, tanpa cron baru.
 - Pembersihan order palsu produksi hanya atas instruksi owner, backup privat dahulu, cocokkan kode/pola kontak, lindungi paid/riwayat supplier/fulfillment dan lepaskan stok lewat expiry/transition existing. Pertahankan payment_invoice_history untuk deteksi pembayaran terlambat. Jangan menganggap pola kontak sebagai bukti satu source IP atau menjanjikan semua bot multi-IP terhenti.
+
+
+## CSP gambar katalog Games — 12 November 2026 (lokal)
+
+- CSP publik (`securityHeaders` middleware) menambahkan satu source path-scoped
+  `https://sekalipay.com/images/products/` untuk gambar produk SK yang sudah
+  lolos allowlist server. Jangan menambah host-wide/wildcard, jangan mengubah
+  `default-src`, `connect-src`, `script-src`, CSP admin, autentikasi, atau
+  header keamanan lain. Artefak lokal sudah dibangun ulang (split build 173 edge
+  route); deployment produksi belum dilakukan.

@@ -9,9 +9,8 @@ import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { computeGamesSellPrice } from "@/lib/games/pricing";
-import {
-  effectiveGroup, gamesAdminSyncStatus, gamesMargin, listGamesProducts,
-} from "@/lib/games/admin";
+import { effectiveGroup, gamesAdminSyncStatus, gamesMargin, listGamesProducts } from "@/lib/games/admin";
+import { gamesSkAvailability, gamesSkContractSupported } from "@/lib/games/catalog";
 import type { D1Statement } from "@/lib/db";
 import { isGamesNicknameProduct } from "@/lib/games/sellable";
 import { gamesNicknameSummary } from "@/lib/games/nickname";
@@ -61,7 +60,7 @@ export async function GET(request: NextRequest) {
     const nickname_checks = await gamesNicknameSummary(db);
     return NextResponse.json({
       ok: true,
-      items: page.items.map((row) => ({ ...row, effectiveGroup: effectiveGroup(row), margin: gamesMargin(row) })),
+      items: page.items.map((row) => ({ ...row, effectiveGroup: effectiveGroup(row), margin: gamesMargin(row), contract_supported: gamesSkContractSupported(row), availability: gamesSkAvailability(row) })),
       total: page.total, limit: page.limit, offset: page.offset, brands: page.brands, sync, nickname_checks,
     });
   } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }
@@ -82,10 +81,18 @@ export async function PATCH(request: NextRequest) {
   const d1 = db.d1;
   try {
     const current = await db.queryFirst(
-      `SELECT buyer_sku_code, product_name, cost, seller_active FROM games_products WHERE buyer_sku_code=?`, patch.buyer_sku_code,
+      `SELECT buyer_sku_code, product_name, cost, seller_active, supplier, supplier_active, required_fields_json
+         FROM games_products WHERE buyer_sku_code=?`, patch.buyer_sku_code,
     );
     if (!current) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    if (patch.enabled === true && (isGamesNicknameProduct(current) || Number(current.seller_active) !== 1 || Number(current.cost) <= 0)) {
+    if (String(current.supplier ?? "digiflazz") !== "sekalipay") {
+      return NextResponse.json({
+        error: "legacy_parked",
+        message: "SKU Digiflazz bersifat legacy dan tidak dapat diubah dari panel katalog SK.",
+      }, { status: 409 });
+    }
+    if (patch.enabled === true && (isGamesNicknameProduct(current) || Number(current.supplier_active) !== 1
+      || Number(current.cost) <= 0 || !gamesSkContractSupported(current as unknown as Record<string, unknown>))) {
       return NextResponse.json(
         { error: "not_sellable", message: "SKU utilitas atau tanpa seller aktif/modal tidak bisa dijual." },
         { status: 409 },

@@ -141,15 +141,16 @@ export async function POST(request: NextRequest) {
     else if (job === "notify") Object.assign(result, await runNotify(db, deadline));
     else if (job === "cleanup") Object.assign(result, await runCleanup(db));
     else if (job === "games_catalog") {
-      // docs/GAMES.md §12.5: throttle ≥10 mnt + no-op tanpa kredensial ada di dalam sync.
-      const { syncGamesCatalog } = await import("@/lib/games/catalog-sync");
-      const synced = await syncGamesCatalog(db);
+      // docs/GAMES.md §12.5: katalog baru = Sekalipay Game; Digiflazz tidak lagi
+      // dipanggil untuk price-list. Throttle/no-op ada di dalam sync.
+      const { syncGamesSkCatalog } = await import("@/lib/games/sk-catalog-sync");
+      const synced = await syncGamesSkCatalog(db);
       Object.assign(result, synced);
       if ("ok" in synced && synced.ok === false) return NextResponse.json({ ...result, ok: false }, { status: 503 });
     }
     else if (job === "games_orders") {
-      // docs/GAMES.md §12.3: promosi lunas, dispatch, pemulihan lease, polling Digiflazz.
-      // Akses ber-budget diteruskan agar statement ikut batas 40; tanpa kredensial → skipped.
+      // docs/GAMES.md §12.3: promosi lunas, dispatch supplier per item (SK baru,
+      // Digiflazz legacy), pemulihan lease, polling. Budget 40 tetap dipakai.
       const { processGamesPaidOrders } = await import("@/lib/games/dispatch");
       const ran = await processGamesPaidOrders(undefined, db);
       Object.assign(result, ran);

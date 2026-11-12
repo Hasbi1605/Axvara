@@ -32,6 +32,11 @@ const json = (url: string, body: unknown, headers: Record<string, string> = {}) 
   }) as never;
 
 const enableOrdering = () => {
+  vi.stubEnv("GAMES_SK_ENABLED", "true");
+  vi.stubEnv("SEKALIPAY_ENABLED", "true");
+  vi.stubEnv("SEKALIPAY_API_KEY", "sk-test-key");
+  vi.stubEnv("SEKALIPAY_SANDBOX", "");
+  vi.stubEnv("SEKALIPAY_PROXY_URL", "");
   vi.stubEnv("DIGIFLAZZ_USERNAME", "demouser");
   vi.stubEnv("DIGIFLAZZ_API_KEY", "dev-key");
   vi.stubEnv("DIGIFLAZZ_TESTING", "");
@@ -40,10 +45,33 @@ const enableOrdering = () => {
   vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "tok");
 };
 
+const SK_CONTRACT = JSON.stringify({
+  version: 1,
+  fields: [
+    { key: "note", label: "User ID", required: true, input: "text", min: 1, max: 50 },
+    { key: "zone_id", label: "Zone ID", required: true, input: "text", min: 1, max: 20 },
+  ],
+  requires_zone_id: true,
+  validation_available: false,
+  open_denom: false,
+  supported: true,
+  reason: null,
+});
+
+const slugOf = (brand: unknown) => String(brand ?? "Mobile Legends").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+let nextVariant = 900;
 function seedSku(over: Record<string, unknown> = {}): number {
+  const code = String(over.buyer_sku_code ?? "sk:101");
+  const brand = over.game_brand ?? "Mobile Legends";
+  const digits = Number(code.replace(/\D/g, ""));
   const row: Record<string, unknown> = {
-    buyer_sku_code: "ml86", game_brand: "MOBILE LEGENDS", product_name: "86 Diamond", product_type: "Umum",
-    cost: 10000, sell_price: 11000, seller_active: 1, enabled: 1, ...over,
+    buyer_sku_code: "sk:101", supplier: "sekalipay", supplier_active: 1,
+    sk_variant_id: Number.isSafeInteger(digits) && digits > 0 ? digits : nextVariant++,
+    sk_product_id: slugOf(brand) === "free-fire" ? 34 : slugOf(brand) === "pubg-mobile" ? 46 : 33,
+    sk_product_name: brand, game_slug: slugOf(brand), game_brand: brand,
+    product_name: "86 Diamond", product_type: "Umum",
+    cost: 10000, sell_price: 11000, stock: 100, min_order: 1, enabled: 1,
+    required_fields_json: SK_CONTRACT, ...over,
   };
   const keys = Object.keys(row);
   const result = fx.sql.prepare(`INSERT INTO games_products(${keys.join(",")}) VALUES(${keys.map(() => "?").join(",")})`)
@@ -52,8 +80,8 @@ function seedSku(over: Record<string, unknown> = {}): number {
 }
 
 const Q = {
-  slug: "mobile-legends", buyer_sku_code: "ml86",
-  fields: { userId: "12345", zoneId: "6789" },
+  slug: "mobile-legends", buyer_sku_code: "sk:101",
+  fields: { note: "12345", zone_id: "6789" },
   whatsapp: "081234567890", email: "buyer@example.com",
 };
 
@@ -88,9 +116,12 @@ function addOrder(code: string, over: Record<string, unknown> = {}) {
 
 function addItem(code: string, productId: number, over: Record<string, unknown> = {}) {
   const row: Record<string, unknown> = {
-    order_code: code, product_id: productId, buyer_sku_code: "ml86", customer_no: "123456789",
+    order_code: code, product_id: productId, buyer_sku_code: "sk:101", customer_no: "12345|6789",
     quantity: 1, unit_price: 11000, total: 11000, cost_snapshot: 10000, max_price: 10500,
-    status: "awaiting_payment", attempt_no: 1, ...over,
+    status: "awaiting_payment", attempt_no: 1, supplier: "sekalipay", sk_variant_id: 101,
+    target_snapshot: JSON.stringify({ note: "12345", zone_id: "6789" }),
+    fields_snapshot: JSON.stringify({ note: "12345", zone_id: "6789" }),
+    ...over,
   };
   const keys = Object.keys(row);
   fx.sql.prepare(`INSERT INTO games_order_items(${keys.join(",")}) VALUES(${keys.map(() => "?").join(",")})`)
@@ -154,16 +185,17 @@ describe("games catalog", () => {
   });
 
   it("keeps seller-inactive SKUs visible but unavailable, without leaking cost", async () => {
-    seedSku({ buyer_sku_code: "ml86", display_group: "bestseller", display_order: 2 });
-    seedSku({ buyer_sku_code: "ml172", product_name: "172 Diamond", sell_price: 21000, seller_active: 0 });
+    seedSku({ buyer_sku_code: "sk:101", display_group: "bestseller", display_order: 2 });
+    seedSku({ buyer_sku_code: "sk:172", product_name: "172 Diamond", sell_price: 21000, supplier_active: 0 });
     const { GET } = await import("@/app/api/games/catalog/[slug]/route");
     const res = await GET(new Request("http://x/") as never, { params: Promise.resolve({ slug: "mobile-legends" }) });
     const data = await res.json();
     expect(data.ordering_open).toBe(true);
     expect(data.game.slug).toBe("mobile-legends");
-    expect(data.products).toEqual([
-      { buyer_sku_code: "ml86", name: "86 Diamond", price: 11000, group: "bestseller", display_order: 2, available: true },
-      { buyer_sku_code: "ml172", name: "172 Diamond", price: 21000, group: "all", display_order: null, available: false },
+    expect(data.products.map(({ buyer_sku_code, name, price, group, display_order, available }: Record<string, unknown>) =>
+      ({ buyer_sku_code, name, price, group, display_order, available }))).toEqual([
+      { buyer_sku_code: "sk:101", name: "86 Diamond", price: 11000, group: "bestseller", display_order: 2, available: true },
+      { buyer_sku_code: "sk:172", name: "172 Diamond", price: 21000, group: "all", display_order: null, available: false },
     ]);
     expect(JSON.stringify(data)).not.toMatch(/"cost"|"margin"|"seller_active"|"backup_sku_code"/);
     // Game tidak dikenal tetap 404.
@@ -172,43 +204,43 @@ describe("games catalog", () => {
 
   it("stays readable while ordering is closed (P9)", async () => {
     seedSku();
-    vi.stubEnv("DIGIFLAZZ_TESTING", "true");
+    vi.stubEnv("GAMES_SK_ENABLED", "");
     const { GET } = await import("@/app/api/games/catalog/route");
     expect((await (await GET({} as never)).json()).ordering_open).toBe(false);
   });
 });
 
 describe("games quote", () => {
-  it("signs the shared payment catalog with the registry customer_no and sell price", async () => {
+  it("signs the shared payment catalog with the SK target and sell price", async () => {
     seedSku();
     const res = await makeQuote();
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toMatchObject({
       total: 11000, payable: 11000, currency: "IDR",
-      sku: { buyer_sku_code: "ml86", name: "86 Diamond", price: 11000 },
+      sku: { buyer_sku_code: "sk:101", name: "86 Diamond", price: 11000 },
       paymentMethods: expect.arrayContaining([{ id: "qris", kind: "qris", label: "QRIS", currency: "IDR", available: true,
         account_name: "QRIS", account_number: "qris", qris_url: null, sublabel: null }]),
     });
     const { verifyGamesQuoteToken } = await import("@/lib/games/quote");
     const payload = await verifyGamesQuoteToken(data.quote_token);
     expect(payload).toMatchObject({
-      buyer_sku_code: "ml86", slug: "mobile-legends", customer_no: "123456789",
+      supplier: "sekalipay", buyer_sku_code: "sk:101", slug: "mobile-legends",
+      customer_no: "12345|6789", sk_variant_id: 101, cost_snapshot: 10000,
+      target_snapshot: { note: "12345", zone_id: "6789" },
       total: 11000,
       methods: data.paymentMethods.filter((method: { available: boolean }) => method.available).map((method: { id: string }) => method.id),
     });
+    expect(payload!.contract_digest).toMatch(/^[a-f0-9]{64}$/);
     expect(payload).not.toHaveProperty("customer_wa");
     expect(payload).not.toHaveProperty("customer_email");
   });
 
-  it("closes quote and order with 503 games_preview while testing or without credentials", async () => {
+  it("closes quote and order with 503 games_preview while the SK gate is off", async () => {
     seedSku();
-    for (const env of [{ DIGIFLAZZ_TESTING: "true" }, { DIGIFLAZZ_API_KEY: "" }]) {
-      vi.stubEnv("DIGIFLAZZ_TESTING", "");
-      vi.stubEnv("DIGIFLAZZ_API_KEY", "dev-key");
-      vi.stubEnv("DIGIFLAZZ_USERNAME", "demouser");
-      if (env.DIGIFLAZZ_TESTING) vi.stubEnv("DIGIFLAZZ_TESTING", env.DIGIFLAZZ_TESTING);
-      if (env.DIGIFLAZZ_API_KEY !== undefined) vi.stubEnv("DIGIFLAZZ_API_KEY", env.DIGIFLAZZ_API_KEY);
+    for (const env of [{ GAMES_SK_ENABLED: "" }, { SEKALIPAY_ENABLED: "" }, { SEKALIPAY_API_KEY: "" }, { SEKALIPAY_SANDBOX: "true" }]) {
+      enableOrdering();
+      for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
       const res = await makeQuote();
       expect(res.status).toBe(503);
       expect(await res.json()).toEqual({ error_code: "games_preview", error: "Pemesanan AXVARA Games segera dibuka." });
@@ -218,18 +250,21 @@ describe("games quote", () => {
     }
   });
 
-  it("rejects invalid fields, a foreign brand, and an inactive seller", async () => {
+  it("rejects invalid fields, a foreign slug, and an inactive supplier", async () => {
     seedSku();
-    expect((await makeQuote({ fields: { userId: "12", zoneId: "" } })).status).toBe(422);
-    expect((await makeQuote({ slug: "free-fire", fields: { playerId: "123456" } })).status).toBe(409);
-    seedSku({ buyer_sku_code: "mlinactive", sell_price: 12000, seller_active: 0 });
-    const inactive = await makeQuote({ buyer_sku_code: "mlinactive" });
+    expect((await makeQuote({ fields: { note: "", zone_id: "1" } })).status).toBe(422);
+    expect((await makeQuote({ slug: "free-fire", fields: { note: "12345", zone_id: "1" } })).status).toBe(409);
+    seedSku({ buyer_sku_code: "sk:120", sell_price: 12000, supplier_active: 0 });
+    const inactive = await makeQuote({ buyer_sku_code: "sk:120" });
     expect(inactive.status).toBe(409);
     expect((await inactive.json()).error).toBe("sku_unavailable");
+    // Quote/order Digiflazz lama tidak pernah di-remap menjadi order baru.
+    seedSku({ buyer_sku_code: "ml86", supplier: "digiflazz", supplier_active: 0 });
+    expect((await makeQuote({ buyer_sku_code: "ml86" })).status).toBe(409);
   });
 
-  it("returns the English preview message when the username is blank", async () => {
-    vi.stubEnv("DIGIFLAZZ_USERNAME", " ");
+  it("returns the English preview message when the SK gate is blank", async () => {
+    vi.stubEnv("GAMES_SK_ENABLED", " ");
     const { POST } = await import("@/app/api/games/quote/route");
     const response = await POST(json("http://x/api/games/quote", Q, { cookie: "axv_locale=en" }));
     expect(response.status).toBe(503);
@@ -242,9 +277,9 @@ describe("games quote", () => {
     const res = await POST(new Request("http://x/api/games/quote", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: "axv_locale=en" },
-      body: JSON.stringify({ ...Q, fields: { userId: "", zoneId: "1" } }),
+      body: JSON.stringify({ ...Q, fields: { note: "", zone_id: "1" } }),
     }) as never);
-    expect((await res.json()).message).toBe("User ID is required.");
+    expect((await res.json()).message).toBe("The account details are invalid. Check the ID/server.");
   });
 });
 
@@ -282,10 +317,21 @@ describe("games orders", () => {
     expect(minutes).toBeLessThan(16);
 
     expect(itemRow(data.code)).toMatchObject({
-      buyer_sku_code: "ml86", customer_no: "123456789", quantity: 1,
+      buyer_sku_code: "sk:101", customer_no: "12345|6789", quantity: 1,
       unit_price: 11000, total: 11000, cost_snapshot: 10000, max_price: 10500,
       status: "awaiting_payment", attempt_no: 1, customer_nickname: null,
+      supplier: "sekalipay", sk_variant_id: 101,
     });
+    expect(JSON.parse(String(itemRow(data.code)!.target_snapshot))).toEqual({ note: "12345", zone_id: "6789" });
+    expect(itemRow(data.code)!.supplier_ref).toMatch(/^AXG\d{8}[A-Z0-9]{8}$/);
+  });
+
+  it("quotes and details an SK variant with stock -1 (unlimited)", async () => {
+    seedSku({ stock: -1 });
+    expect((await makeQuote()).status).toBe(200);
+    const { GET } = await import("@/app/api/games/catalog/[slug]/route");
+    const data = await (await GET(new Request("http://x/") as never, { params: Promise.resolve({ slug: "mobile-legends" }) })).json();
+    expect(data.products[0]).toMatchObject({ buyer_sku_code: "sk:101", available: true });
   });
 
   it("reuses the persisted order for a retried quote (no second row/invoice)", async () => {
@@ -303,19 +349,19 @@ describe("games orders", () => {
   it("returns 409 quote_stale when the price changed after quoting", async () => {
     seedSku();
     const token = await quoteToken();
-    fx.sql.exec("UPDATE games_products SET sell_price=12000 WHERE buyer_sku_code='ml86'");
+    fx.sql.exec("UPDATE games_products SET sell_price=12000 WHERE buyer_sku_code='sk:101'");
     const res = await placeOrder(token);
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("quote_stale");
     expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()).toEqual({ n: 0 });
   });
 
-  it.each(["sell_price=12000", "cost=12000", "enabled=0", "seller_active=0", "game_brand='FREE FIRE'"])("fences live SKU %s in the atomic claim", async mutation => {
+  it.each(["sell_price=12000", "cost=12000", "enabled=0", "supplier_active=0", "game_slug='free-fire'", "required_fields_json='{}'"])("fences live SKU %s in the atomic claim", async mutation => {
     seedSku();
     const token = await quoteToken();
     fx.control.afterBatch = async queries => {
       if (queries.some(query => query.includes("INSERT INTO checkout_claims"))) {
-        fx.sql.exec(`UPDATE games_products SET ${mutation} WHERE buyer_sku_code='ml86'`);
+        fx.sql.exec(`UPDATE games_products SET ${mutation} WHERE buyer_sku_code='sk:101'`);
       }
     };
     const res = await placeOrder(token);
@@ -408,7 +454,7 @@ describe("games orders", () => {
     const { POST } = await import("@/app/api/games/orders/route");
     const count = scope === "ip" ? 5 : 3;
     for (let i = 0; i <= count; i++) {
-      const token = await quoteToken({ fields: { userId: String(100000 + i), zoneId: "1234" } });
+      const token = await quoteToken({ fields: { note: String(100000 + i), zone_id: "1234" } });
       const res = await POST(json("http://x/api/games/orders", { quote_token: token, payment_method: "qris",
         whatsapp: `08123456789${i}`, email: scope === "email" ? Q.email : `buyer${i}@example.com` }, { "cf-connecting-ip": "203.0.113.1" }));
       expect(res.status).toBe(i === count ? 429 : 201);
@@ -485,7 +531,7 @@ describe("games lookup", () => {
     expect(right.status).toBe(200);
     const data = await right.json();
     expect(data.order).toMatchObject({ code: CODE, order_kind: "games", games_status: "success", sn: "SN-9" });
-    expect(data.order.customer_no).toBe("123456789");
+    expect(data.order.customer_no).toBe("12345|6789");
     expect(JSON.stringify(data)).not.toMatch(/cost_snapshot|max_price|backup_sku|ml86b/);
   });
 
@@ -566,11 +612,15 @@ describe("games expiry and paid dispatch", () => {
     expect(orderRow(PENDING)).toMatchObject({ status: "dibatalkan", payment_status: "failed" });
   });
 
-  it("promotes a paid order and dispatches it to Digiflazz", async () => {
-    seedSku();
+  it("promotes a paid order and dispatches it to Digiflazz (legacy origin preserved)", async () => {
+    fx.sql.exec(`INSERT INTO games_products(id,buyer_sku_code,backup_sku_code,product_name,cost,backup_cost,seller_active,backup_seller_active,sell_price,enabled)
+      VALUES(1,'ml86','ml86b','ML 86',19000,20000,1,1,21000,1)`);
     const CODE = "AXG-20261109-PAID0001";
     addOrder(CODE, { status: "lunas", payment_status: "paid" });
-    addItem(CODE, 1);
+    addItem(CODE, 1, {
+      buyer_sku_code: "ml86", customer_no: "123456789", supplier: "digiflazz",
+      sk_variant_id: null, target_snapshot: null, fields_snapshot: null, supplier_ref: null,
+    });
     const fetchMock = vi.fn(async () => txReply(`${CODE}-1`, "Sukses"));
     vi.stubGlobal("fetch", fetchMock);
     const { processGamesPaidOrders } = await import("@/lib/games/dispatch");
@@ -579,6 +629,6 @@ describe("games expiry and paid dispatch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body));
     expect(body).toMatchObject({ buyer_sku_code: "ml86", customer_no: "123456789", ref_id: `${CODE}-1`, max_price: 10500 });
-    expect(itemRow(CODE)).toMatchObject({ status: "success", sn: "SN-123" });
+    expect(itemRow(CODE)).toMatchObject({ status: "success", sn: "SN-123", supplier: "digiflazz" });
   });
 });

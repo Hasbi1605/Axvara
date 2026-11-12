@@ -63,3 +63,20 @@ Tes transport memakai MockAgent tanpa jaringan; tidak menambah retry pembelian.
 - HTTP5xx generik dan receipt tanpa order_id/invoice atau ref SK yang berbeda adalah ambigu: request_sent_at/ref_id dipertahankan, hanya rekonsiliasi. Hanya penolakan eksplisit SK PRODUCT_TEMPORARILY_UNAVAILABLE yang boleh retry biasa. Jangan mengubah404/timeout menjadi izin membeli ulang otomatis.
 - Proxy WR/SK mengembalikan marker `wr_proxy_unreadable_response: network_error` / `sk_proxy_unreadable_response: network_error` untuk respons tulis2xx tak terbaca; kata network mempertahankan kompatibilitas Pages lama saat rollout. Sinkronkan kontrak di AGENTS proxy, README dan ARCHITECTURE.
 - Pengujian supplier memakai fixture. Pemulihan order produksi hanya atas instruksi owner, verifikasi referensi/riwayat/debit dahulu, referensi tetap sama; jangan mencampur pemulihan dengan pengujian berbayar tambahan.
+
+# Sekalipay Games H2H — transport dan batas bukti (12 November 2026, lokal)
+
+- Games memakai transport SK existing (`SEKALIPAY_*`/proxy `/sk/*`), bukan pipeline
+  lisensi premium `sk_order_links`. Cart H2H Games: satu item qty1, `note` dan
+  `zone_id` sebagai field SIBLING (tidak digabung), nilai dari snapshot target
+  immutable. Ref stabil kompak `AXG…` (≤50).
+- Sent-fence `request_sent_at` + payload durable ditulis sebelum POST; setelah
+  fence tidak boleh ada POST kedua. Timeout/5xx/ref sudah ada/404 memakai GET ref
+  yang sama. Sukses hanya `completed` + H2H `completed` + SN nyata; partial/
+  `failed:`/mismatch → `needs_check`. Tidak ada seller cadangan/refund otomatis.
+- SK tidak punya `max_price` upstream: biaya aktual (amount, atau price+fees)
+  diperiksa pasca-GET dan disimpan di `attempts.price` sebagai deteksi untuk
+  review manual. Detail SK kadang hanya mengekspos `note`; bukti zone yang
+  dikirim adalah payload snapshot, jangan mengarang field.
+- Sync Games memakai kategori `Game` per_page=all dengan gate kelengkapan
+  `meta.total_items`; Digiflazz price-list tidak dipanggil untuk Games.

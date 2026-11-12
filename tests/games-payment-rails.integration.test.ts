@@ -28,8 +28,8 @@ const posts = () => fetchMock.mock.calls.filter(([, init]) => init?.method === "
 
 async function quote() {
   const { POST } = await import("@/app/api/games/quote/route");
-  const response = await POST(request("/api/games/quote", { slug: "mobile-legends", buyer_sku_code: "ml86",
-    fields: { userId: "12345", zoneId: "6789" } }));
+  const response = await POST(request("/api/games/quote", { slug: "mobile-legends", buyer_sku_code: "sk:101",
+    fields: { note: "12345", zone_id: "6789" } }));
   expect(response.status).toBe(200);
   return response.json();
 }
@@ -82,14 +82,18 @@ beforeEach(() => {
   scheduled.mockReset();
   clearRateLimitBucketsForTest();
   resetCryptoMarketMemo();
-  for (const [name, value] of Object.entries({ ADMIN_JWT_SECRET: "fixture-games-b2-secret", DIGIFLAZZ_USERNAME: "fixture",
+  for (const [name, value] of Object.entries({ ADMIN_JWT_SECRET: "fixture-games-b2-secret",
+    GAMES_SK_ENABLED: "true", SEKALIPAY_ENABLED: "true", SEKALIPAY_API_KEY: "fixture-sk", SEKALIPAY_SANDBOX: "",
+    DIGIFLAZZ_USERNAME: "fixture",
     DIGIFLAZZ_API_KEY: "fixture", DIGIFLAZZ_TESTING: "", WARUNG_REBAHAN_PROXY_URL: "https://proxy.test", WARUNG_REBAHAN_PROXY_TOKEN: "fixture",
     SEKALIPAY_GATEWAY_ENABLED: "true", SEKALIPAY_GATEWAY_API_KEY: crypto.randomUUID(), SEKALIPAY_GATEWAY_SECRET_KEY: "fixture-secret",
     SEKALIPAY_PROXY_URL: "", SEKALIPAY_PROXY_TOKEN: "", NOWPAYMENTS_ENABLED: "true", NOWPAYMENTS_API_KEY: "fixture-key",
     NOWPAYMENTS_IPN_SECRET: "fixture-ipn", NOWPAYMENTS_OUTCOME_CURRENCY: "usdtbsc", NOWPAYMENTS_API_BASE_URL: "https://api.nowpayments.io/v1" })) vi.stubEnv(name, value);
   f.sql.exec(`DELETE FROM payment_methods;
-    INSERT INTO games_products(id,buyer_sku_code,game_brand,product_name,cost,sell_price,seller_active,enabled)
-      VALUES(1,'ml86','MOBILE LEGENDS','86 Diamond',40000,46000,1,1);
+    INSERT INTO games_products(id,buyer_sku_code,game_brand,product_name,cost,sell_price,seller_active,enabled,
+      supplier,supplier_active,sk_variant_id,sk_product_id,sk_product_name,game_slug,stock,min_order,required_fields_json)
+      VALUES(1,'sk:101','Mobile Legends','86 Diamond',40000,46000,0,1,'sekalipay',1,101,33,'Mobile Legends','mobile-legends',100,1,
+      '{"version":1,"fields":[{"key":"note","label":"User ID","required":true,"input":"text","min":1,"max":50},{"key":"zone_id","label":"Zone ID","required":true,"input":"text","min":1,"max":20}],"requires_zone_id":true,"validation_available":false,"open_denom":false,"supported":true,"reason":null}');
     INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Market fixture','fixture',10000,7);`);
   f.sql.prepare(`INSERT INTO crypto_market_snapshot(id,fx_rate_text,fx_source,fx_effective_at,coins_json,coins_refreshed_at)
     VALUES(1,'18000.00','nowpayments-estimate',?,?,?)`).run(iso(-1), JSON.stringify([{ ticker: "usdtbsc", min_usd_text: "1.00" }]), iso(-1));

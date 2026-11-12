@@ -42,16 +42,26 @@ describe("paid nickname endpoint", () => {
     expect(await checkGamesNickname(db, game, "123456789", "192.0.2.1", device)).toEqual({ status: "unavailable" });
     expect(supplier.send).not.toHaveBeenCalled();
   });
-  it("returns sanitized SN, sets an httpOnly random device cookie, caches for 24h and shares FF MAX", async () => {
-    const res = await POST(req({ slug: "free-fire", fields: { playerId: "123456789" } }));
+  it("checks an SK variant for free, sets an httpOnly random device cookie and caches 24h", async () => {
+    vi.stubEnv("SEKALIPAY_ENABLED", "true");
+    vi.stubEnv("SEKALIPAY_API_KEY", "sk-test");
+    vi.stubEnv("SEKALIPAY_PROXY_URL", "");
+    fx.sql.exec(`INSERT INTO games_products(buyer_sku_code,product_name,game_slug,supplier,supplier_active,enabled,sk_variant_id,required_fields_json)
+      VALUES('sk:101','86 Diamond','mobile-legends','sekalipay',1,1,101,
+      '{"version":1,"fields":[{"key":"note","label":"User ID","required":true,"input":"text","min":1,"max":50},{"key":"zone_id","label":"Zone ID","required":true,"input":"text","min":1,"max":20}],"requires_zone_id":true,"validation_available":true,"open_denom":false,"supported":true,"reason":null}')`);
+    const skFetchMock = vi.fn(async () => new Response(JSON.stringify({ message: "ok", data: { display_name: "Player", account_name: "Player", region: null, cached: false } }), { status: 200 }));
+    vi.stubGlobal("fetch", skFetchMock);
+    const res = await POST(req({ slug: "mobile-legends", buyer_sku_code: "sk:101", fields: { note: "12345", zone_id: "6789" } }));
     expect(await res.json()).toEqual({ status: "ok", nickname: "Player" });
     expect(res.headers.get("set-cookie")).toMatch(/axv_nck_device=.*HttpOnly/i);
     expect(res.headers.get("set-cookie")).toMatch(/Secure/i);
+    expect(skFetchMock).toHaveBeenCalledTimes(1);
+    const row = fx.sql.prepare("SELECT * FROM games_nickname_cache WHERE game_key='sk:101'").get()!;
+    expect(Number(row.expires_at) - Number(row.checked_at)).toBeGreaterThanOrEqual(86_399_000);
+    expect(supplier.send).not.toHaveBeenCalled();
+    // Cache module legacy berbayar tetap terisolasi dan tidak dipakai route baru.
     expect(await checkGamesNickname(createDatabaseAccess(), gamesRegistryGame("free-fire-max")!, "123456789", "other", device)).toEqual({ status: "ok", nickname: "Player" });
     expect(supplier.send).toHaveBeenCalledTimes(1);
-    const row = fx.sql.prepare("SELECT * FROM games_nickname_cache").get()!;
-    expect(Number(row.expires_at) - Number(row.checked_at)).toBeGreaterThanOrEqual(86_399_000);
-    expect(await gamesNicknameSummary(createDatabaseAccess())).toEqual({ today: { count: 1, cost: 5 }, week: { count: 1, cost: 5 } });
   });
   it("uses stored cost as max_price, never a markup; rejects costs above the global budget ceiling", async () => {
     fx.sql.prepare("INSERT INTO games_products(buyer_sku_code,product_name,cost) VALUES('ffcekusername','Cek Username',7)").run();
@@ -160,10 +170,9 @@ describe("paid nickname endpoint", () => {
     expect(fx.sql.prepare("SELECT result,nickname FROM games_nickname_cache").get()).toEqual({ result: "ok", nickname: "Newer" });
     expect(fx.sql.prepare("SELECT status FROM games_nickname_checks").get()?.status).toBe("submitting");
   });
-  it("treats only documented rc54 as invalid, localizes and caches it for one hour", async () => {
+  it("legacy module still treats only documented rc54 as invalid and caches it for one hour", async () => {
     tx("Gagal", "54", null);
-    expect(await (await POST(req({ slug: "free-fire", fields: { playerId: "123456789" } }, "axv_locale=en"))).json()).toEqual({ status: "invalid", message: "ID not found" });
-    expect(await (await POST(req({ slug: "free-fire", fields: { playerId: "123456789" } }))).json()).toEqual({ status: "invalid", message: "ID tidak ditemukan" });
+    expect(await run("123456789")).toEqual({ status: "invalid" });
     expect(supplier.send).toHaveBeenCalledTimes(1);
     const row = fx.sql.prepare("SELECT * FROM games_nickname_cache").get()!;
     expect(Number(row.expires_at) - Number(row.checked_at)).toBeGreaterThan(3_599_000);

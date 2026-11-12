@@ -16,28 +16,35 @@ beforeEach(() => { vi.stubGlobal("matchMedia", () => ({ matches: true, addEventL
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); document.cookie = "axv_locale=; max-age=0; path=/"; });
 
 describe("Games homepage", () => {
-  it("uses only enabled, priced SKU aggregates and ignores unknown brands", async () => {
-    vi.stubEnv("GAMES_DEV_FIXTURE", "");
-    db.queryAll.mockResolvedValue([{ game_brand: "FREE FIRE", buyer_sku_code: "ff140", product_name: "140 Diamond", sell_price: 1000 }, { game_brand: "MOBILE LEGENDS", buyer_sku_code: "mlcekusername", product_name: "Cek Username", sell_price: 100 }, { game_brand: "other", buyer_sku_code: "other", product_name: "other", sell_price: 1000 }]);
-    expect((await getGamesCatalog()).map((g) => g.slug)).toEqual(["free-fire"]);
+  it("lists only enabled, priced SK games and ignores utilities/DGF rows", async () => {
+    db.queryAll.mockResolvedValue([
+      { supplier: "sekalipay", sk_product_id: 34, sk_product_name: "Free Fire", game_slug: "free-fire", sell_price: 1000, image_url: null },
+      { supplier: "sekalipay", sk_product_id: 33, sk_product_name: "Mobile Legends", game_slug: "mobile-legends", sell_price: 100 },
+      { supplier: "digiflazz", game_brand: "FREE FIRE", buyer_sku_code: "ff140", product_name: "140 Diamond", sell_price: 900 },
+      { supplier: "sekalipay", sk_product_id: 35, sk_product_name: "Utility", game_slug: "utility", buyer_sku_code: "mlcekusername", product_name: "Cek Username", sell_price: 10 },
+    ]);
+    expect((await getGamesCatalog()).map((g) => g.slug)).toEqual(["free-fire", "mobile-legends"]);
+    expect(db.queryAll.mock.calls[0][0]).toContain("supplier='sekalipay'");
     expect(db.queryAll.mock.calls[0][0]).toContain("enabled=1 AND sell_price>0");
   });
-  it("never uses visual fixtures without opt-in or in production", async () => {
+  it("never invents a visual catalog when D1 is empty (no DGF fixture)", async () => {
     db.queryAll.mockResolvedValue([]);
-    vi.stubEnv("GAMES_DEV_FIXTURE", "");
-    expect(await getGamesCatalog()).toEqual([]);
     vi.stubEnv("GAMES_DEV_FIXTURE", "1");
-    expect(await getGamesCatalog()).toHaveLength(4);
+    expect(await getGamesCatalog()).toEqual([]);
     vi.stubEnv("NODE_ENV", "production");
     expect(await getGamesCatalog()).toEqual([]);
     vi.unstubAllEnvs();
   });
-  it("never exposes a paid nickname SKU on game detail", async () => {
-    vi.stubEnv("GAMES_DEV_FIXTURE", "");
-    db.queryAll.mockResolvedValue([{ buyer_sku_code: "mlcekusername", product_name: "Cek Username", sell_price: 100, seller_active: 1 }, { buyer_sku_code: "ml86", product_name: "86 Diamond", sell_price: 10000, seller_active: 1 }]);
-    expect((await getGamesDetail("mobile-legends"))?.products.map((p) => p.buyer_sku_code)).toEqual(["ml86"]);
-    db.queryAll.mockResolvedValue([{ buyer_sku_code: "mlcekusername", product_name: "Cek Username", sell_price: 100, seller_active: 1 }]);
-    expect((await getGamesDetail("mobile-legends"))?.products).toEqual([]);
+  it("never exposes utility rows and never renders legacy DGF products as purchasable", async () => {
+    db.queryAll.mockResolvedValue([
+      { buyer_sku_code: "sk:101", supplier: "sekalipay", sk_product_id: 33, sk_variant_id: 101, product_name: "86 Diamond", sell_price: 10000, enabled: 1, supplier_active: 1, stock: 100, min_order: 1, cost: 9000, required_fields_json: JSON.stringify({ version: 1, fields: [{ key: "note", label: "User ID", required: true, input: "text", min: 1, max: 50 }], requires_zone_id: false, validation_available: false, open_denom: false, supported: true, reason: null }) },
+      { buyer_sku_code: "mlcekusername", supplier: "sekalipay", sk_product_id: 33, sk_variant_id: 102, product_name: "Cek Username", sell_price: 100, enabled: 1, supplier_active: 1, stock: 100, min_order: 1, cost: 10, required_fields_json: "{}" },
+    ]);
+    expect((await getGamesDetail("mobile-legends"))?.products.map((p) => p.buyer_sku_code)).toEqual(["sk:101"]);
+    // DGF-only slug: header registry boleh 200, tetapi tanpa produk DGF.
+    db.queryAll.mockResolvedValue([{ buyer_sku_code: "ml86", supplier: "digiflazz", product_name: "86 Diamond", sell_price: 10000, enabled: 1, seller_active: 1 }]);
+    const legacy = await getGamesDetail("mobile-legends");
+    expect(legacy?.products).toEqual([]);
     expect(await getGamesDetail("unknown-game")).toBeNull();
     vi.unstubAllEnvs();
   });
@@ -59,14 +66,36 @@ describe("Games homepage", () => {
     expect(screen.getByRole("link", { name: /AXVARA Market/ }).getAttribute("href")).toBe("https://axvara.tech/?utm_source=games&utm_medium=cross_promo");
     expect(screen.getByRole("link", { name: /AXVARA Pedia/ }).getAttribute("href")).toBe("https://pedia.axvara.tech/?utm_source=games&utm_medium=cross_promo");
   });
-  it("supplies all registry planets from the server even when enabled catalog rows are empty", async () => {
-    vi.stubEnv("GAMES_DEV_FIXTURE", ""); db.queryAll.mockResolvedValue([]);
+  it("supplies orbit planets from the DB catalog, not a registry whitelist", async () => {
+    vi.stubEnv("GAMES_DEV_FIXTURE", "");
+    db.queryAll.mockResolvedValue(Array.from({ length: 6 }, (_, i) => ({
+      supplier: "sekalipay", sk_product_id: 100 + i, sk_product_name: `Game ${i}`, game_slug: `game-${i}`,
+      image_url: null, sell_price: 1000 + i,
+    })));
     const { default: page } = await import("@/app/games/page");
     const element = await page();
-    expect(element.props.games).toEqual([]);
-    expect(element.props.orbitGames.map((game: { slug: string }) => game.slug)).toEqual(GAMES_REGISTRY.map(game => game.slug));
+    expect(element.props.games.map((game: { slug: string }) => game.slug)).toEqual(["game-0", "game-1", "game-2", "game-3", "game-4", "game-5"]);
+    expect(element.props.orbitGames.map((game: { slug: string }) => game.slug)).toEqual(["game-0", "game-1", "game-2", "game-3"]);
+    db.queryAll.mockResolvedValue([]);
+    expect((await page()).props.orbitGames).toEqual([]);
     vi.unstubAllEnvs();
   });
+
+  it("renders every DB game through 'show more' without a wave/whitelist limit", () => {
+    const games = Array.from({ length: 14 }, (_, i) => ({ ...game, slug: `game-${i}`, name: `Game ${i}` }));
+    render(<GamesHome games={games} orbitGames={games.slice(0, 4)} orderingOpen />);
+    expect(screen.getAllByRole("link", { name: /Game \d/ }).length).toBeGreaterThanOrEqual(12);
+    fireEvent.click(screen.getByRole("button", { name: "Tampilkan lainnya" }));
+    expect(screen.getByRole("link", { name: /Game 13/ })).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/gelombang|wave/i);
+  });
+  it("renders initials placeholders instead of empty img sources", () => {
+    const noImage = { ...game, slug: "no-image", name: "No Image", icon: null, banner: null };
+    render(<GamesHome games={[noImage]} orbitGames={[noImage]} orderingOpen />);
+    expect(document.querySelectorAll('img[src=""]').length).toBe(0);
+    expect(screen.getAllByText("NI").length).toBeGreaterThan(0);
+  });
+
   it("hides popular when it would duplicate the whole catalog", () => {
     const { rerender } = render(<GamesHome games={[game]} orbitGames={GAMES_REGISTRY} orderingOpen />);
     expect(screen.queryByRole("heading", { name: "Populer sekarang" })).toBeNull();
