@@ -50,7 +50,7 @@ export {
 
 export {
   tgPrefText, languageChooserMessage, welcomeMessageLocalized,
-  settingsMessage, resumePayloadMessage, type TgPrefTextKey,
+  settingsMessage, currencyChooserMessage, resumePayloadMessage, type TgPrefTextKey,
 } from "./messages/preferences";
 
 export {

@@ -14,11 +14,11 @@ import { queryFirst, execRun } from "@/lib/db";
 import { sendMessage, safeEditOrSend, answerCallbackQuery } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard, orderStatusKeyboard, parseCallback, cancelConfirmationKeyboard,
-  languageChooserKeyboard, settingsKeyboard,
+  languageChooserKeyboard, currencyKeyboard, settingsKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
   helpMessage, warrantyFullMessage, alreadyPendingMessage,
-  languageChooserMessage, tgPrefText, settingsMessage, resumePayloadMessage,
+  languageChooserMessage, tgPrefText, settingsMessage, currencyChooserMessage, resumePayloadMessage,
 } from "@/lib/telegram/messages";
 import {
   readTgPreferences, saveTgLocaleChoice, saveTgLocaleOnly, saveTgCurrencyChoice,
@@ -83,6 +83,29 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       await sendMessage({ chat_id: chatId, text: groupCheckoutRedirectMessage(SITE.adminTelegram), parse_mode: "HTML" });
       return;
     }
+  }
+  // Dedicated currency picker from the main menu: render only. The route
+  // pre-answers non lang:/cur: callbacks, so this handler must not answer.
+  // Opening the picker never clears pending state, locale or order snapshots.
+  if (action === "curmenu") {
+    if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== from.id) return;
+    const menuPrefs = await readTgPreferences(String(from.id));
+    if (!menuPrefs.locale) {
+      await safeEditOrSend({
+        chat_id: chatId, message_id: messageId,
+        text: languageChooserMessage(),
+        parse_mode: "HTML",
+        reply_markup: languageChooserKeyboard(),
+      });
+      return;
+    }
+    await safeEditOrSend({
+      chat_id: chatId, message_id: messageId,
+      text: currencyChooserMessage(menuPrefs.locale, menuPrefs.currency),
+      parse_mode: "HTML",
+      reply_markup: currencyKeyboard(menuPrefs.locale, menuPrefs.currency),
+    });
+    return;
   }
   // Preference callbacks answer exactly once here; route skips pre-answer.
   // TG2a: home is answered in the SAVED locale after a language change.
@@ -153,6 +176,15 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       return;
     }
     await answer();
+    // Confirm the chosen currency AND re-render the picker with the saved
+    // value selected so the result is visible. Locale is untouched.
+    const afterCurrency = await readTgPreferences(String(from.id)).catch(() => prefs);
+    await safeEditOrSend({
+      chat_id: chatId, message_id: messageId,
+      text: currencyChooserMessage(prefs.locale, afterCurrency.currency),
+      parse_mode: "HTML",
+      reply_markup: currencyKeyboard(prefs.locale, afterCurrency.currency),
+    });
     await sendMessage({ chat_id: chatId, text: tgPrefText(prefs.locale, "currency_saved"), parse_mode: "HTML" });
     return;
   }

@@ -1295,7 +1295,9 @@ maupun WhatsApp memakai satu tujuan `TELEGRAM_ADMIN_CHAT_ID`. Untuk grup privat,
 lalu ambil ID numerik negatifnya dari klien Telegram atau metadata update webhook yang tersedia
 bagi admin dan simpan sebagai secret tersebut (link undangan `t.me/+...` tidak dapat dipakai sebagai Bot API
 `chat_id`). Perintah `/chatid` dihapus 12 November 2026 agar bot tidak membalas ID grup; menu
-perintah native kini memakai `/bahasa` dan menu utama punya tombol 🌐 Bahasa/Language.
+perintah native kini memakai `/bahasa` dan `/currency`, dan menu utama punya tombol
+🌐 Bahasa/Language serta 💱 Mata Uang/Currency. Bahasa dan mata uang tampilan saling independen;
+mata uang hanya mengubah tampilan harga, bukan total pesanan atau nominal tagihan.
 
 ### Warung Rebahan H2H (reseller otomatis, default mati)
 

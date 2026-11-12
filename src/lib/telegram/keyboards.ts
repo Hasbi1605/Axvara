@@ -115,6 +115,8 @@ export const cb = {
   qrisRenew: (orderCode: string) => `qrenew:${orderCode}`,
   /** Buka pemilih bahasa dari menu utama (locale dipilih lewat cb.lang). */
   langMenu: () => "langmenu",
+  /** Buka pemilih mata uang tampilan (dipilih lewat cb.currency). */
+  currencyMenu: () => "curmenu",
   /** TG1 onboarding: explicit language choice from chooser. */
   lang: (locale: "id" | "en") => `lang:${locale}`,
   /** TG1 independent display-currency control. */
@@ -175,6 +177,21 @@ export function languageChooserKeyboard(): InlineKeyboardMarkup {
   };
 }
 
+/** Display-currency picker: shows the saved choice without inventing a
+ * default. `null` means unset; render-prefs keeps showing IDR in that case. */
+export function currencyKeyboard(locale: "id" | "en" = "id", currency: DisplayCurrency | null = null): InlineKeyboardMarkup {
+  const selected = (value: DisplayCurrency) => (currency === value ? "✅ " : "");
+  return {
+    inline_keyboard: [
+      [
+        { text: `${selected("IDR")}Rp IDR`, callback_data: cb.currency("IDR") },
+        { text: `${selected("USD")}$ USD`, callback_data: cb.currency("USD") },
+      ],
+      [{ text: locale === "en" ? "🏠 Main Menu" : "🏠 Menu Utama", callback_data: cb.home() }],
+    ],
+  };
+}
+
 export function settingsKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
@@ -221,8 +238,9 @@ export function homeKeyboard(locale: "id" | "en" = "id"): InlineKeyboardMarkup {
       ],
       [
         { text: en ? "🌐 Language" : "🌐 Bahasa", callback_data: cb.langMenu() },
-        { text: "🌐 Web", url: "https://axvara.tech" },
+        { text: en ? "💱 Currency" : "💱 Mata Uang", callback_data: cb.currencyMenu() },
       ],
+      [{ text: "🌐 Web", url: "https://axvara.tech" }],
     ],
   };
 }

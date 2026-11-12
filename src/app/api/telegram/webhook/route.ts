@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
       }
       if (update.message?.text) {
         const groupText = update.message.text.trim().toLowerCase().split(/\s+/)[0].split("@")[0];
-        const purchaseIntents = ["/start", "/katalog", "/cari", "/search", "/cart", "/keranjang", "/orders", "/riwayat", "/pesanan", "/bantuan", "/help", "/garansi", "/bahasa"];
+        const purchaseIntents = ["/start", "/katalog", "/cari", "/search", "/cart", "/keranjang", "/orders", "/riwayat", "/pesanan", "/bantuan", "/help", "/garansi", "/bahasa", "/currency"];
         if (purchaseIntents.includes(groupText) || !groupText.startsWith("/")) {
           const { SITE } = await import("@/lib/site");
           const { groupCheckoutRedirectMessage } = await import("@/lib/telegram/messages");

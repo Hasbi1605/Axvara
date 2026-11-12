@@ -9,14 +9,14 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 
 import { sendMessage, sendPhoto, withLoadingIndicator } from "@/lib/telegram/api";
 import {
-  homeKeyboard, warrantyKeyboard, languageChooserKeyboard, settingsKeyboard,
+  homeKeyboard, warrantyKeyboard, languageChooserKeyboard, currencyKeyboard, settingsKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
   MENU_LABEL_CART, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import { welcomeMessage, helpMessage, warrantyFullMessage } from "@/lib/telegram/messages";
 import {
   languageChooserMessage, welcomeMessageLocalized, settingsMessage,
-  resumePayloadMessage,
+  currencyChooserMessage, resumePayloadMessage,
 } from "@/lib/telegram/messages/preferences";
 import { readTgPreferences, isValidTgLocale } from "@/lib/telegram/preferences";
 import type { Locale } from "@/lib/i18n/locale";
@@ -233,11 +233,12 @@ export async function handleCommand(
       await sendMessage({ chat_id: chatId, text: tgPrefText(prefs.locale, "currency_saved"), parse_mode: "HTML" });
       return;
     }
+    // No/invalid argument: open the dedicated picker with the saved value.
     await sendMessage({
       chat_id: chatId,
-      text: settingsMessage(prefs.locale, prefs.currency),
+      text: currencyChooserMessage(prefs.locale, prefs.currency),
       parse_mode: "HTML",
-      reply_markup: settingsKeyboard(),
+      reply_markup: currencyKeyboard(prefs.locale, prefs.currency),
     });
     return;
   }

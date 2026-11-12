@@ -199,6 +199,15 @@ describe("TG1 onboarding chooser + independent preferences", () => {
     expect(sentTexts().join("\n")).toContain("t.me/Axvara_bot?start=");
     expect(sentTexts().join("\n")).not.toMatch(/Pilih bahasa/);
     vi.clearAllMocks();
+    const currency = await webhookUpdate({
+      update_id: 700023,
+      message: { message_id: 13, from: { id: userA.id, first_name: "A" }, chat: { id: groupChatId, type: "group" }, text: "/currency", date: 1 },
+    });
+    expect(currency.status).toBe(200);
+    expect(currency.body.status).toBe("group_redirected");
+    expect(sentTexts().join("\n")).toContain("t.me/Axvara_bot?start=");
+    expect(sentTexts().join("\n")).not.toMatch(/Mata Uang|Display Currency/);
+    vi.clearAllMocks();
     const chatid = await webhookUpdate({
       update_id: 700022,
       message: { message_id: 12, from: { id: userA.id, first_name: "A" }, chat: { id: groupChatId, type: "group" }, text: "/chatid", date: 1 },

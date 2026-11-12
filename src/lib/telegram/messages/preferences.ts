@@ -75,8 +75,32 @@ export function welcomeMessageLocalized(
   return lines.join("\n");
 }
 
+/** Dedicated display-currency picker copy. `null` is reported as unset with
+ * the honest IDR fallback used by render-prefs — never a locale-based default. */
+export function currencyChooserMessage(locale: Locale, currency: DisplayCurrency | null): string {
+  const current = currency == null
+    ? (locale === "en" ? "Not set — prices show in IDR." : "Belum dipilih — harga tampil dalam IDR.")
+    : currency;
+  if (locale === "en") {
+    return [
+      "<b>Display Currency</b>",
+      "",
+      `Current: ${current}`,
+      "",
+      "Display only — order totals and payment amounts keep their original currency.",
+    ].join("\n");
+  }
+  return [
+    "<b>Mata Uang Tampilan</b>",
+    "",
+    `Saat ini: ${current}`,
+    "",
+    "Hanya tampilan — total pesanan dan nominal pembayaran tetap memakai mata uang aslinya.",
+  ].join("\n");
+}
+
 export function settingsMessage(locale: Locale, currency: DisplayCurrency | null): string {
-  const cur = currency ?? (locale === "en" ? "USD" : "IDR");
+  const cur = currency ?? "IDR";
   if (locale === "en") {
     return [
       "<b>Settings</b>",
