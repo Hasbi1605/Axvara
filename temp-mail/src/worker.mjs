@@ -176,12 +176,12 @@ async function handleApi(request, env, url) {
     if (!address) return fail(400, "invalid_address");
     if (match[2] === undefined) {
       const { results } = await db.prepare(
-        "SELECT id, sender, subject, received_at, expires_at, substr(body_text,1,240) AS preview FROM messages WHERE recipient=? AND expires_at>? ORDER BY received_at DESC, id DESC LIMIT ?"
+        "SELECT id, sender, subject, received_at, expires_at, substr(body_text,1,240) AS preview FROM temp_mail_messages WHERE recipient=? AND expires_at>? ORDER BY received_at DESC, id DESC LIMIT ?"
       ).bind(address, Date.now(), LIST_LIMIT).all();
       return json({ address, messages: results || [] });
     }
     const row = await db.prepare(
-      "SELECT id, recipient, sender, subject, body_text, received_at, expires_at FROM messages WHERE recipient=? AND id=? AND expires_at>?"
+      "SELECT id, recipient, sender, subject, body_text, received_at, expires_at FROM temp_mail_messages WHERE recipient=? AND id=? AND expires_at>?"
     ).bind(address, Number(match[2]), Date.now()).first();
     if (!row) return fail(404, "not_found");
     return json({ message: row });
@@ -190,7 +190,7 @@ async function handleApi(request, env, url) {
 
 async function cleanup(db, now = Date.now()) {
   await db.prepare(
-    "DELETE FROM messages WHERE id IN (SELECT id FROM messages WHERE expires_at<=? ORDER BY expires_at ASC LIMIT ?)"
+    "DELETE FROM temp_mail_messages WHERE id IN (SELECT id FROM temp_mail_messages WHERE expires_at<=? ORDER BY expires_at ASC LIMIT ?)"
   ).bind(now, CLEANUP_BATCH).run();
 }
 
@@ -198,9 +198,9 @@ async function cleanup(db, now = Date.now()) {
 // acknowledged while the mailbox sits above the cap. Oldest = received_at,id ASC.
 function ingestBatch(db, { address, sender, subject, bodyText, now, dedupe }) {
   return db.batch([
-    db.prepare("INSERT OR IGNORE INTO messages (recipient, sender, subject, body_text, received_at, expires_at, dedupe_hash) VALUES (?,?,?,?,?,?,?)")
+    db.prepare("INSERT OR IGNORE INTO temp_mail_messages (recipient, sender, subject, body_text, received_at, expires_at, dedupe_hash) VALUES (?,?,?,?,?,?,?)")
       .bind(address, sender, subject, bodyText, now, now + RETENTION_MS, dedupe),
-    db.prepare("DELETE FROM messages WHERE recipient=? AND id NOT IN (SELECT id FROM messages WHERE recipient=? ORDER BY received_at DESC, id DESC LIMIT ?)")
+    db.prepare("DELETE FROM temp_mail_messages WHERE recipient=? AND id NOT IN (SELECT id FROM temp_mail_messages WHERE recipient=? ORDER BY received_at DESC, id DESC LIMIT ?)")
       .bind(address, address, MAX_MESSAGES_PER_MAILBOX),
   ]);
 }

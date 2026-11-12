@@ -1,5 +1,11 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Perbaikan CI temp mail12November2026 (lokal, menunggu publikasi CI): migrasi gagal
+karena tabel prototipe `messages` existing berbeda kolom. Worker/migrasi sekarang
+memakai `temp_mail_messages` + indeks khusus, tanpa mengubah/menyalin/menghapus data
+lama. Histori migrasi produksi kosong dikonfirmasi baca-saja sebelum koreksi0001;
+bukan perubahan Pedia/Games, schema toko, kredensial atau routing email privat.
+
 Temp mail publik12November2026 (implementasi lokal, deployment belum diverifikasi):
 web `mail.axvara.tech`, penerima `nama@isturaiky.page`, tanpa login; alamat custom/
 acak dapat dibuka ulang, pesan terlihat24jam. Worker Static Assets + Email Worker

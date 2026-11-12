@@ -123,7 +123,9 @@ describe("temp-mail pure logic + API guards", () => {
     const sql = readFileSync("temp-mail/migrations/0001_inbox.sql", "utf8");
     expect(sql).toContain("UNIQUE (recipient, dedupe_hash)");
     expect(sql).not.toContain("dedupe_hash TEXT NOT NULL UNIQUE");
-    expect(sql).toContain("idx_messages_recipient_received");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS temp_mail_messages");
+    expect(sql).toContain("idx_temp_mail_recipient_received");
+    expect(sql).not.toMatch(/(?:DROP|ALTER)\s+TABLE|(?:DELETE\s+FROM|INSERT\s+INTO)\s+messages\b/i);
     expect(cfg).toContain('"run_worker_first": true');
     const wrk = readFileSync("temp-mail/src/worker.mjs", "utf8");
     expect(wrk).not.toContain('"robots":'); // X-Robots-Tag is the real header

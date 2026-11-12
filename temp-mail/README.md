@@ -9,7 +9,9 @@ assets, isolated D1 — it never uses the root `axvara-db`.
 ## How it works
 - `fetch`: serves the public UI from `public/` and a JSON API under `/api/`.
   No persistent mailbox row exists: an address is just a normalized string;
-  messages are looked up by `recipient` with an indexed expiry filter.
+  messages are looked up in `temp_mail_messages` by `recipient` with an indexed
+  expiry filter. Legacy prototype table `messages` is left untouched, never
+  exposed/copied into public inboxes, and excluded from cleanup.
 - `email`: validates the exact envelope recipient against `MAIL_DOMAIN`,
   rejects raw mail over 1 MiB, parses real MIME with `postal-mime`
   (base64 / quoted-printable / multipart / Unicode subjects), stores text only.
@@ -65,6 +67,15 @@ Focused tests from repo root: `npx vitest run tests/temp-mail-worker.test.ts tes
 
 Source: [Cloudflare subdomain configuration](https://developers.cloudflare.com/email-routing/setup/subdomains/).
 Implementation/local QA is not proof of deployment or live SMTP receipt.
+
+The initial CI run failed because prototype `messages` already existed with
+`inbox`/`text` columns instead of `recipient`/`body_text`. Read-only production
+migration metadata confirmed no migration had been applied, so `0001_inbox.sql`
+now creates a distinct table and distinct indexes without renaming/deleting old
+data. For an existing local dev database that applied the earlier `0001`, execute
+the corrected idempotent SQL once (local only):
+`npx wrangler d1 execute axvara-temp-mail --local --config wrangler.jsonc --file migrations/0001_inbox.sql`.
+Never clear a database or edit migration history to recover this failure.
 
 ## Recovery
 If intake must stop, disable only the `isturaiky.page` catch-all in Cloudflare

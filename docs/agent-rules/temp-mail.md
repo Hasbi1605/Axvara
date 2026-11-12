@@ -20,6 +20,11 @@
 
 ## Isolasi dan publikasi
 
+- Koreksi CI12November2026: database temp mail sudah memiliki schema prototipe
+  `messages(id TEXT,inbox,text,...)`; jangan rename/drop/ubah/copy isinya ke inbox
+  publik. Worker baru hanya memakai `temp_mail_messages` dan indeks `idx_temp_mail_*`.
+  Migrasi0001 diperbaiki sebelum pertama kali sukses diterapkan di produksi:
+  metadata `d1_migrations` kosong terverifikasi read-only, bukan asumsi dari CI gagal.
 - Source/config/migrasi ada di `temp-mail/`; database `axvara-temp-mail`
   (`a507b69c-7493-4e76-9d63-68a38d9202de`), bukan `axvara-db` atau migrasi toko.
 - `MAIL_DOMAIN` dan `RESERVED_MAILBOXES` adalah konstanta publik Worker, bukan

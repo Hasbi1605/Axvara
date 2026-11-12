@@ -129,9 +129,15 @@ beforeAll(async () => {
   });
   mf = new Miniflare({
     modules: true, compatibilityDate: "2025-09-01", script: compiled.outputFiles[0].text,
-    d1Databases: ["DB"], bindings: { MAIL_DOMAIN: ENV.MAIL_DOMAIN },
+    d1Databases: ["DB", "EMPTY_DB"], bindings: { MAIL_DOMAIN: ENV.MAIL_DOMAIN },
   });
   db = (await mf.getD1Database("DB")) as unknown as D1Stub;
+  // Existing production prototype schema, reproduced without reading its mail.
+  await db.prepare("CREATE TABLE messages (id TEXT PRIMARY KEY, inbox TEXT NOT NULL, sender TEXT NOT NULL, subject TEXT NOT NULL, text TEXT NOT NULL, received_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)").run();
+  await db.prepare("CREATE INDEX messages_inbox_time ON messages(inbox, received_at DESC)").run();
+  await db.prepare("CREATE INDEX messages_expiry ON messages(expires_at)").run();
+  await db.prepare("INSERT INTO messages VALUES (?,?,?,?,?,?,?)")
+    .bind("legacy-private", "alice@isturaiky.page", "fixture@example.test", "Legacy private", "Preserve this fixture", Date.now() - 86_400_000, Date.now() - 1).run();
   for (const stmt of readFileSync("temp-mail/migrations/0001_inbox.sql", "utf8").split(";").map((s) => s.trim()).filter(Boolean)) {
     await db.prepare(stmt).run();
   }
@@ -143,6 +149,36 @@ beforeAll(async () => {
 afterAll(async () => { await mf?.dispose(); });
 
 describe("temp-mail workerd (real D1)", () => {
+  it("creates a working inbox on an empty D1 database too", async () => {
+    const fresh = (await mf.getD1Database("EMPTY_DB")) as unknown as D1Stub;
+    for (const stmt of readFileSync("temp-mail/migrations/0001_inbox.sql", "utf8").split(";").map(s => s.trim()).filter(Boolean)) {
+      await fresh.prepare(stmt).run();
+    }
+    const env = { ...ENV, DB: fresh };
+    const msg = new TestEmailMessage("fixture@example.test", "new-box@isturaiky.page",
+      enc(mime({ to: "new-box@isturaiky.page", subject: "Fresh inbox", body: "fresh-message" })));
+    await worker.email(msg, env, {});
+    const res = await worker.fetch(new Request("https://mail.axvara.tech/api/inbox/new-box%40isturaiky.page/messages"), env, {});
+    expect(res.status).toBe(200);
+    expect((await res.json() as ListBody).messages).toEqual([expect.objectContaining({ subject: "Fresh inbox" })]);
+    expect(await fresh.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'").first()).toBeNull();
+  });
+
+  it("migrates beside the legacy messages schema without changing or exposing its rows", async () => {
+    for (const stmt of readFileSync("temp-mail/migrations/0001_inbox.sql", "utf8").split(";").map(s => s.trim()).filter(Boolean)) {
+      await db.prepare(stmt).run();
+    }
+    const tasks: Promise<unknown>[] = [];
+    await worker.scheduled({}, ENV, { waitUntil(task: Promise<unknown>) { tasks.push(task); } });
+    await Promise.all(tasks);
+    expect(await db.prepare("SELECT id, inbox, text FROM messages").first()).toEqual({
+      id: "legacy-private", inbox: "alice@isturaiky.page", text: "Preserve this fixture",
+    });
+    const indexes = await db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='messages' ORDER BY name").all<{ name: string }>();
+    expect(indexes.results.map(row => row.name)).toEqual(["messages_expiry", "messages_inbox_time", "sqlite_autoindex_messages_1"]);
+    expect((await listBody("/api/inbox/alice%40isturaiky.page/messages")).messages).toEqual([]);
+  });
+
   it("normalizes local part and full address, rejects bad domain/format", async () => {
     expect((await fetchJson("/api/address/open", { method: "POST", body: JSON.stringify({ address: " My-Tests_1 " }) })).body)
       .toEqual({ address: "my-tests_1@isturaiky.page" });
@@ -177,9 +213,14 @@ describe("temp-mail workerd (real D1)", () => {
     // No enumeration API.
     expect((await fetchJson("/api/inboxes")).status).toBe(404);
     // Expiry: age the row past 24h -> list/detail hide it, scheduled cleanup deletes it.
-    await db.prepare("UPDATE messages SET expires_at=? WHERE id=?").bind(Date.now() - 1, id).run();
+    await db.prepare("UPDATE temp_mail_messages SET expires_at=? WHERE id=?").bind(Date.now() - 1, id).run();
     expect((await listBody("/api/inbox/alice%40isturaiky.page/messages")).messages).toHaveLength(0);
     expect((await fetchJson(`/api/inbox/alice%40isturaiky.page/messages/${id}`)).status).toBe(404);
+    const tasks: Promise<unknown>[] = [];
+    await worker.scheduled({}, ENV, { waitUntil(task: Promise<unknown>) { tasks.push(task); } });
+    await Promise.all(tasks);
+    expect(await db.prepare("SELECT id FROM temp_mail_messages WHERE id=?").bind(id).first()).toBeNull();
+    expect(await db.prepare("SELECT id FROM messages").first()).toEqual({ id: "legacy-private" });
   });
 
   it("decodes base64 multipart; HTML-only converted by NATIVE workerd HTMLRewriter", async () => {
@@ -242,13 +283,13 @@ describe("temp-mail workerd (real D1)", () => {
   it("enforces 100 cap atomically under concurrent inserts", async () => {
     const now = Date.now();
     const stmts = Array.from({ length: 99 }, (_, i) => db.prepare(
-      "INSERT INTO messages (recipient,sender,subject,body_text,received_at,expires_at,dedupe_hash) VALUES (?,?,?,?,?,?,?)"
+      "INSERT INTO temp_mail_messages (recipient,sender,subject,body_text,received_at,expires_at,dedupe_hash) VALUES (?,?,?,?,?,?,?)"
     ).bind("frank@isturaiky.page", "s@x.co", `seed${i}`, "b", now + i, now + 86_400_000, `seed-hash-${i}`));
     await db.batch(stmts);
     const jobs = Array.from({ length: 6 }, (_, i) =>
       dispatchEmail("frank@isturaiky.page", enc(mime({ to: "frank@isturaiky.page", subject: `burst${i}`, body: `b${i}` }))));
     await Promise.all(jobs);
-    const countRows = await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE recipient=?").bind("frank@isturaiky.page").all<{ n: number }>();
+    const countRows = await db.prepare("SELECT COUNT(*) AS n FROM temp_mail_messages WHERE recipient=?").bind("frank@isturaiky.page").all<{ n: number }>();
     expect(countRows.results[0].n).toBe(100);
     const list = await listBody("/api/inbox/frank%40isturaiky.page/messages");
     expect(list.messages.length).toBeLessThanOrEqual(50);
@@ -263,7 +304,7 @@ describe("temp-mail workerd (real D1)", () => {
       expect(out.outcome).toBe("rejected");
     }
     const reservedRows = await db.prepare(
-      "SELECT COUNT(*) AS n FROM messages WHERE recipient IN ('aws-root@isturaiky.page','kiro@isturaiky.page','admin@isturaiky.page','postmaster@isturaiky.page')"
+      "SELECT COUNT(*) AS n FROM temp_mail_messages WHERE recipient IN ('aws-root@isturaiky.page','kiro@isturaiky.page','admin@isturaiky.page','postmaster@isturaiky.page')"
     ).all<{ n: number }>();
     expect(reservedRows.results[0].n).toBe(0);
     // '+' subaddress aliases are disallowed everywhere.
@@ -293,7 +334,7 @@ describe("temp-mail workerd (real D1)", () => {
     const msg = new TestEmailMessage("s@x.co", "henry@isturaiky.page", raw);
     await expect(worker.email(msg, { MAIL_DOMAIN: "isturaiky.page" }, { waitUntil() {} })).rejects.toThrow();
     expect(msg.rejected).toBe("");
-    const countRows = await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE recipient=?").bind("henry@isturaiky.page").all<{ n: number }>();
+    const countRows = await db.prepare("SELECT COUNT(*) AS n FROM temp_mail_messages WHERE recipient=?").bind("henry@isturaiky.page").all<{ n: number }>();
     expect(countRows.results[0].n).toBe(0);
   });
 

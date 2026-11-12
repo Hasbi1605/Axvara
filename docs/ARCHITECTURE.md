@@ -2,6 +2,14 @@
 
 ## Temp mail publik terisolasi (12 November 2026, implementasi lokal)
 
+- Koreksi CI12November2026: D1 terpisah bukan berarti database kosong. Prototipe
+  sudah memiliki `messages(id TEXT,inbox,sender,subject,text,received_at,expires_at)`.
+  Rilis0001 gagal membuat indeks `recipient`; tabel prototipe tidak diubah. Worker
+  dan SQL kini memakai `temp_mail_messages` + `idx_temp_mail_*`, tidak membaca/
+  menyalin/menghapus pesan prototipe. Metadata produksi read-only membuktikan
+  `d1_migrations` kosong dan Worker penerima belum ada sebelum koreksi0001.
+  Test workerd mencakup DB kosong, schema existing+row sentinel privat, migrasi idempoten,
+  ingestion/list/detail/expiry/cap/dedupe dan cleanup yang tidak menyentuh legacy.
 - Source `temp-mail/src/worker.mjs` dan `temp-mail/public/` berjalan sebagai satu
   Worker `axvara-temp-mail`: Static Assets web `mail.axvara.tech`, handler HTTP
   `/api/*`, handler `email()` dan cleanup hourly. Tidak menambah route Next/Pages,
