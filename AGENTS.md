@@ -25,6 +25,7 @@ hanya file yang relevan dengan tugas, dan semuanya bila tugas lintas area.
 | AXVARA Games (route `/games`, katalog/harga/pesanan top up game) | `docs/GAMES.md` + `docs/agent-rules/digiflazz.md` |
 | Gateway WhatsApp, grup AXVARA'S, ganti nomor bot, siaran/welcome | `docs/agent-rules/whatsapp-gateway.md` + `gateway/AGENTS.md` |
 | TUNVN PREHUB (reseller Telegram, katalog mirror tersembunyi) | `docs/agent-rules/tunvn.md` |
+| Temp mail publik, Email Worker, domain penerima dan D1 inbox terpisah | `docs/agent-rules/temp-mail.md` + `temp-mail/README.md` |
 
 Games S1 lokal (9 November 2026): host routing opsional `GAMES_HOST` default
 `games.axvara.tech`; bila kelak dipasang di Pages wajib `secret_text`. Domain/metadata

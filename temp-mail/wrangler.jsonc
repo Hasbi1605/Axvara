@@ -1,0 +1,31 @@
+{
+  // AXVARA Temp Mail — isolated Worker. NEVER point DB at axvara-db.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "axvara-temp-mail",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  "assets": { "directory": "./public", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": true },
+  "vars": {
+    "MAIL_DOMAIN": "isturaiky.page",
+    // Never public temp inboxes: existing private forwarding rules + standard role names.
+    "RESERVED_MAILBOXES": "aws-root,aws-billing,aws-security,kiro,admin,postmaster,abuse,security,billing,support,root"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "axvara-temp-mail",
+      // Isolated temp-mail D1 (observed existing). NEVER reuse the root axvara-db id.
+      "database_id": "a507b69c-7493-4e76-9d63-68a38d9202de",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Public website hostname; DNS conflict check + provisioning owned by parent.
+  "routes": [{ "pattern": "mail.axvara.tech", "custom_domain": true }],
+  // Native Workers Rate Limiting binding (isolated namespace for this Worker only).
+  "ratelimits": [
+    { "name": "API_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } }
+  ],
+  "triggers": { "crons": ["0 * * * *"] },
+  "observability": { "enabled": true }
+}

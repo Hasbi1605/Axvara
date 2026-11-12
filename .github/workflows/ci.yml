@@ -33,6 +33,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Install temp mail MIME parser
+        run: npm ci --prefix temp-mail --no-audit --no-fund
+
       - name: Guard credentials
         shell: bash
         run: |
@@ -72,6 +75,17 @@ jobs:
         # Stop the release on runtime high/critical findings or unreadable registry results.
         run: node scripts/security-dependencies.cjs
 
+      - name: Audit temp mail runtime dependencies
+        run: npm audit --prefix temp-mail --omit=dev --audit-level=high
+
+      - name: Preflight temp mail receiving domain
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: node scripts/ci-temp-mail-routing.cjs
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Build Cloudflare Pages artifact
         run: npm run build:pages
         env:
@@ -103,6 +117,17 @@ jobs:
       - name: Deploy MCP Worker
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: npx --yes wrangler@4.128.0 deploy --config mcp-worker/wrangler.toml
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Apply isolated temp mail migrations and deploy receiver
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          temp-mail/node_modules/.bin/wrangler d1 migrations apply axvara-temp-mail --remote --config temp-mail/wrangler.jsonc
+          temp-mail/node_modules/.bin/wrangler deploy --config temp-mail/wrangler.jsonc
+          node scripts/ci-temp-mail-routing.cjs --apply
         env:
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}

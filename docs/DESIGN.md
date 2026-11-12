@@ -1,5 +1,23 @@
 # DESIGN.md — AXVARA Design System
 
+## Temp mail publik (12 November 2026, implementasi lokal)
+
+- Web standalone mempertahankan Midnight `#080C1E`, cyan `#00E5FF`, gold
+  `#FFB800`, SF Pro/fallback Apple dan panel glass. Tidak mengubah layout toko.
+- Panel alamat custom/acak/copy, daftar inbox dan detail teks berdampingan pada
+  desktop lalu bertumpuk pada mobile, tanpa email HTML/remote image aktif.
+- Target kontrol minimal44px, label input eksplisit, fokus keyboard terlihat,
+  status refresh `aria-live`, error/empty/loading terbaca, alamat/isi panjang wrap.
+- Penjelasan inbox publik dan retensi24jam terlihat tanpa login; alamat dapat
+  dibuka ulang. Aturan format dan pengecualian privat dijelaskan saat input ditolak.
+- Chromium1280/390/320px pada Worker+D1 lokal: random/custom/reopen+reload/copy,
+  keyboard Enter/Tab, detail OTP/HTML-only menjadi teks, error503/recovery, empty,
+  reserved400 dan teks panjang lulus; fokus cyan2px, kontrol44px, tanpa overflow
+  atau pageerror. HTML/script/tracker fixture tidak dieksekusi/dimuat; CSS/JS200.
+  Screenshot `.playwright-mcp/temp-mail-{desktop,mobile}-final.png`; console400/503
+  fixture disengaja, warning dev Request.cf timeout memakai placeholder lokal.
+  Bukan QA SMTP/deployment produksi atau perangkat mobile fisik.
+
 ## Popup banner adaptif (11 November 2026, implementasi lokal)
 
 - Pertahankan kartu putih448px, judul/deskripsi rata tengah, tombol biru #315DEA,

@@ -1,5 +1,22 @@
 # PRD — AXVARA
 
+## Temp mail publik (12 November 2026, implementasi lokal)
+
+- Owner memilih langsung publik tanpa login, alamat penerima `nama@isturaiky.page`
+  sementara, dan web `mail.axvara.tech`. Email operasional AXVARA tetap di Zoho.
+- Pilih nama sendiri atau acak, salin alamat, buka ulang alamat yang sama tanpa
+  token kepemilikan, dan inbox refresh otomatis10detik saat halaman terlihat.
+  Semua pengunjung yang tahu alamat dapat membaca pesan; hal ini jelas pada UI.
+- Pesan terlihat24jam sejak diterima dan dibersihkan bertahap; alamat tidak
+  kedaluwarsa. Maksimal100 pesan tersimpan/inbox, daftar50 terbaru. Nama privat
+  existing/reserved tidak dapat dibuat/dibuka atau menerima pesan ke inbox publik.
+- Versi awal receive-only: detail teks email/OTP/tautan, tanpa pengiriman, reply,
+  penghapusan oleh pengunjung, atau unduh lampiran. HTML tidak dijalankan dan
+  tracking image tidak dimuat. Batas raw1MiB dan rate limit API berlaku.
+- Layanan Cloudflare terpisah dari checkout/admin/supplier/DB toko. Implementasi
+  dan QA lokal bukan bukti deployment atau penerimaan SMTP produksi; publikasi
+  mengikuti CI main. Rincian di `docs/agent-rules/temp-mail.md`.
+
 ## Default bahasa/mata uang web (11 November 2026, implementasi lokal)
 
 - Tanpa cookie preferensi valid, web selalu Bahasa Indonesia dan Rupiah (IDR),

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AXVARA Temp Mail — Email Sementara</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark" aria-hidden="true">A</span><span>AXVARA <strong>Temp Mail</strong></span></div>
+  <span class="badge">Tanpa daftar</span>
+</header>
+<main class="layout">
+  <section class="panel address-panel" aria-labelledby="addr-title">
+    <h1 id="addr-title">Kotak masuk sementara Anda</h1>
+    <p class="warn" role="note"><strong>Semua inbox bersifat publik.</strong> Siapa pun yang mengetahui alamat ini dapat membaca pesannya.</p>
+    <label for="address">Alamat email</label>
+    <div class="row">
+      <input id="address" type="text" readonly autocomplete="off" spellcheck="false" aria-describedby="addr-help">
+      <button id="copy" type="button">Salin</button>
+      <button id="random" type="button" class="gold">Alamat acak</button>
+    </div>
+    <p id="addr-help" class="help">Pesan disimpan <strong>24 jam</strong>, lalu terhapus. Alamatnya sendiri tetap dapat dipakai lagi — buka kembali kapan saja untuk menerima email baru.</p>
+    <form id="open-form">
+      <label for="custom">Buka atau buat alamat Anda sendiri</label>
+      <div class="row">
+        <input id="custom" type="text" autocomplete="off" spellcheck="false" placeholder="mis. tes-saya" aria-describedby="custom-help">
+        <button type="submit">Buka inbox</button>
+      </div>
+      <p id="custom-help" class="help">3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung. Boleh juga menempel alamat lengkap pada domain ini.</p>
+      <p id="form-error" class="error" role="alert" hidden></p>
+    </form>
+  </section>
+  <section class="panel inbox-panel" aria-labelledby="inbox-title">
+    <div class="inbox-head">
+      <h2 id="inbox-title">Kotak masuk</h2>
+      <span id="status" class="status" role="status" aria-live="polite"></span>
+      <button id="refresh" type="button">Muat ulang</button>
+    </div>
+    <div class="columns">
+      <ul id="list" class="list" aria-label="Daftar pesan"></ul>
+      <article id="detail" class="detail" aria-label="Detail pesan">
+        <p class="empty">Pilih pesan untuk membacanya di sini.</p>
+      </article>
+    </div>
+  </section>
+</main>
+<footer>AXVARA Temp Mail · Inbox publik · Pesan terhapus otomatis setelah 24 jam · Lampiran tidak tersedia</footer>
+<script src="/app.js" defer></script>
+</body>
+</html>

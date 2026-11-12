@@ -1,5 +1,15 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Temp mail publik12November2026 (implementasi lokal, deployment belum diverifikasi):
+web `mail.axvara.tech`, penerima `nama@isturaiky.page`, tanpa login; alamat custom/
+acak dapat dibuka ulang, pesan terlihat24jam. Worker Static Assets + Email Worker
+dan D1 `axvara-temp-mail` terpisah, tanpa VPS/ubah email Zoho atau DB toko. Empat
+forwarding privat domain existing tetap dipertahankan dan dikecualikan dari inbox.
+Source/setup/batas ada di `temp-mail/README.md`, aturan di
+`docs/agent-rules/temp-mail.md`. CI main menginstal parser MIME, menguji/audit,
+memeriksa routing, memigrasi DB terpisah, deploy lalu mengaktifkan catch-all;
+tidak ada env/secret Pages baru. Inbox publik tidak memiliki kirim/hapus/lampiran.
+
 Katalog ready WA11November2026 (implementasi lokal, deployment belum diverifikasi):
 grup AXVARA'S tidak lagi menerima notifikasi pembelian berhasil, termasuk antrean
 lama. Cron notify_b existing menyiapkan satu foto+caption katalog per09.00/17.00

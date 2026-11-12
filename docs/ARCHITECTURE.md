@@ -1,5 +1,34 @@
 # ARCHITECTURE.md — AXVARA
 
+## Temp mail publik terisolasi (12 November 2026, implementasi lokal)
+
+- Source `temp-mail/src/worker.mjs` dan `temp-mail/public/` berjalan sebagai satu
+  Worker `axvara-temp-mail`: Static Assets web `mail.axvara.tech`, handler HTTP
+  `/api/*`, handler `email()` dan cleanup hourly. Tidak menambah route Next/Pages,
+  mengubah MCP cron, atau memasang server SMTP/VPS.
+- Penerima `isturaiky.page` memakai catch-all apex Email Routing menuju Worker.
+  Cloudflare subdomain hanya literal rule, bukan catch-all; `mail.axvara.tech`
+  adalah hostname WEB, bukan domain alamat email. MX Zoho apex AXVARA tetap utuh.
+- D1 terpisah `axvara-temp-mail` UUID `a507b69c-7493-4e76-9d63-68a38d9202de`,
+  binding `DB`, migrasi `temp-mail/migrations/`; tidak memakai `axvara-db` atau
+  `drizzle/`. Binding lain: `ASSETS`, limiter API native namespace1001;
+  vars publik `MAIL_DOMAIN`/`RESERVED_MAILBOXES`, tanpa secret/env Pages baru.
+- Empat literal forwarding privat existing dipertahankan. API/ingestion menolak
+  nama reserved dan domain asing. API hanya config/random/open/list/detail,
+  tidak ada enumerasi inbox global, delete, kirim/reply, raw MIME atau lampiran.
+  JSON no-store/noindex, UI text-only/CSP; MIME diurai `postal-mime` lokal paket
+  `temp-mail` (bukan parser rumahan). Pesan expired tidak dikembalikan saat GET.
+- Pipeline `ci.yml`: install root + parser MIME sebelum test root, audit runtime
+  terpisah, preflight routing sebelum build/deploy, lalu migrasi D1 temp mail,
+  deploy Worker/custom domain dan `ci-temp-mail-routing.cjs --apply` setelah deploy
+  existing Pages/MCP. Catch-all hanya diaktifkan setelah deployed domain/reserved/
+  DB tepat; script tidak mengubah literal rules/MX dan membaca ulang hasilnya.
+  DNS belum ready, route privat hilang/tidak dikecualikan, API gagal/parsial, atau
+  catch-all milik layanan lain menghentikan aktivasi, bukan menimpa layanan lain.
+- QA memakai fixture lokal tanpa email/transaksi produksi. Publikasi CI bukan
+  bukti deployment/penerimaan SMTP; setup dan rollback catch-all ada di
+  `temp-mail/README.md`, aturan operasi di `docs/agent-rules/temp-mail.md`.
+
 Preferensi web (11 November 2026, implementasi lokal; deployment belum diverifikasi):
 `resolveBuyerPreferences(cookie)` hanya membaca cookie valid `axv_locale`/`axv_currency`,
 fallback `id`/`IDR`. Quote Market, display-prices dan `pediaApiLocale` tidak lagi

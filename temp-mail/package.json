@@ -1,0 +1,19 @@
+{
+  "name": "axvara-temp-mail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "dry-run": "wrangler deploy --dry-run --config wrangler.jsonc",
+    "d1:create": "wrangler d1 create axvara-temp-mail",
+    "d1:migrate:local": "wrangler d1 migrations apply axvara-temp-mail --local --config wrangler.jsonc",
+    "d1:migrate:remote": "wrangler d1 migrations apply axvara-temp-mail --remote --config wrangler.jsonc"
+  },
+  "dependencies": {
+    "postal-mime": "4.2.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.160.1"
+  }
+}
