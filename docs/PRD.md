@@ -368,6 +368,8 @@ prompt/cart/help/warranty/error/loading); satu harga display-currency per tombol
 
 TG1 fixture lokal (+correction1): /start pertama chooser eksplisit; payload disimpan di pending_action onboarding:* lalu dikonsumsi sekali saat lang: (tidak auto-order, duplikat tidak replay); jawaban callback tepat sekali milik handler (route tidak pre-answer lang:/cur:).
 
+Menu bahasa Telegram lokal (12 November 2026): `/chatid` dihapus dari registry dan handler sehingga bot tidak lagi membalas ID grup; menu perintah native memakai `/bahasa`, dan menu utama id/en punya tombol 🌐 Bahasa/Language yang membuka pemilih `lang:id`/`lang:en` existing lewat callback `langmenu`. `/bahasa` selalu membuka pemilih untuk pengguna lama; locale disimpan lewat callback `lang:` existing dan menu berikutnya mengikuti locale terpilih. Membuka pemilih tidak mereset `pending_action` atau sesi order/pembayaran. Nilai locale invalid tetap ditolak. Implementasi lokal; registry native baru berubah setelah `POST /api/admin/telegram/setup` dijalankan, belum ada bukti deployment.
+
 BULK1c fixture lokal (+correction1): protected admin API persists bulk pricing per varian
 (enabled+tiers mentah di GET, default off create, omitted=merged-validated, strict zod,
 guards atomic dalam batch + 409 stale, audit console.info). UI/Telegram belum dihubungkan; jangan aktifkan/publikasi.

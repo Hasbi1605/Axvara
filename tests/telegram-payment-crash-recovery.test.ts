@@ -275,8 +275,8 @@ describe("TG R2-C crash/replay + pending-state guards (local only)", () => {
   });
 
   // ---- pending-state guard matrix -------------------------------------------------
-  const textEntries = ["/start", "/start promo_abc", "/language en", "/language id", "/settings", "/currency USD", "/katalog", "/cari", "/search", "/batal", "/help", "/pesanan", "/keranjang", "hello there", "5", "buyer2@example.test"];
-  const callbackEntries = ["lang:en", "lang:id", "cur:USD", "home", "catalog:0", "cats:0", "cat:1:0", "prd:1", "buy:1", "vars:1", "var:1", "qty:1:1", "q:1:1:2", "qinput:1:1", "eedit:1:1:2", "ceedit", "help", "myorders"];
+  const textEntries = ["/start", "/start promo_abc", "/language en", "/language id", "/bahasa", "/settings", "/currency USD", "/katalog", "/cari", "/search", "/batal", "/help", "/pesanan", "/keranjang", "hello there", "5", "buyer2@example.test"];
+  const callbackEntries = ["lang:en", "lang:id", "langmenu", "cur:USD", "home", "catalog:0", "cats:0", "cat:1:0", "prd:1", "buy:1", "vars:1", "var:1", "qty:1:1", "q:1:1:2", "qinput:1:1", "eedit:1:1:2", "ceedit", "help", "myorders"];
 
   it.each(textEntries)("creating anchor survives text entry %s", async (text) => {
     const f = nowpaymentsFetchImpl();

@@ -5,7 +5,7 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // ke handler yang sesuai. Ini "tabel routing" — dipisah dari handler leaf agar
 // mudah melihat perintah apa yang tersedia tanpa menggulir implementasi. Router
 // mempertahankan URUTAN pengecekan asli (pending WA → /start → label menu →
-// qty → search → /chatid → /garansi → /pesanan → fallback). Pemindahan murni.
+// qty → search → /garansi → /pesanan → fallback). Pemindahan murni.
 
 import { sendMessage, sendPhoto, withLoadingIndicator } from "@/lib/telegram/api";
 import {
@@ -166,7 +166,7 @@ export async function handleCommand(
   // changes currency ONLY (locale untouched); /settings shows both.
   // COMMON guard: the language/settings surface preserves creating (quoted
   // choices still re-render after save — creating anchor never cleared).
-  if ((cmd === "/language" || cmd === "/settings") && from && chatType === "private" && chatId === from.id) {
+  if ((cmd === "/language" || cmd === "/bahasa" || cmd === "/settings") && from && chatType === "private" && chatId === from.id) {
     const prefs = await readTgPreferences(String(from.id));
     if (!prefs.locale) {
       await sendMessage({
@@ -187,6 +187,15 @@ export async function handleCommand(
           await sendMessage({ chat_id: chatId, text: tgPrefText(want, "language_saved"), parse_mode: "HTML", reply_markup: homeKeyboard(want) });
           return;
         }
+      await sendMessage({
+        chat_id: chatId,
+        text: languageChooserMessage(),
+        parse_mode: "HTML",
+        reply_markup: languageChooserKeyboard(),
+      });
+      return;
+    }
+    if (cmd === "/bahasa") {
       await sendMessage({
         chat_id: chatId,
         text: languageChooserMessage(),
@@ -337,24 +346,6 @@ export async function handleCommand(
   if (from && !cmd.startsWith("/")) {
     const handled = await handlePendingSearchInput(text, chatId, from);
     if (handled) return;
-  }
-
-  if (cmd === "/chatid") {
-    const isGroup = chatType === "group" || chatType === "supergroup";
-    await sendMessage({
-      chat_id: chatId,
-      text: isGroup
-        ? [
-            "🔔 <b>ID Grup Notifikasi</b>",
-            "",
-            `<code>${chatId}</code>`,
-            "",
-            "ID ini dipakai AXVARA untuk mengirim notifikasi order web dan Telegram ke grup ini.",
-          ].join("\n")
-        : "Tambahkan @Axvara_bot ke grup tujuan, lalu kirim <code>/chatid</code> di dalam grup tersebut.",
-      parse_mode: "HTML",
-    });
-    return;
   }
 
   if (cmd === "/garansi") {

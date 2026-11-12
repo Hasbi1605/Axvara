@@ -188,6 +188,28 @@ describe("TG1 onboarding chooser + independent preferences", () => {
     expect(fx.sql.prepare("SELECT locale,display_currency FROM telegram_users WHERE user_id=?").get(String(userB.id))).toEqual(before);
   });
 
+  it("group: /bahasa redirects to private chat, /chatid no longer discloses the group id", async () => {
+    const groupChatId = -100999;
+    const bahasa = await webhookUpdate({
+      update_id: 700021,
+      message: { message_id: 11, from: { id: userA.id, first_name: "A" }, chat: { id: groupChatId, type: "group" }, text: "/bahasa", date: 1 },
+    });
+    expect(bahasa.status).toBe(200);
+    expect(bahasa.body.status).toBe("group_redirected");
+    expect(sentTexts().join("\n")).toContain("t.me/Axvara_bot?start=");
+    expect(sentTexts().join("\n")).not.toMatch(/Pilih bahasa/);
+    vi.clearAllMocks();
+    const chatid = await webhookUpdate({
+      update_id: 700022,
+      message: { message_id: 12, from: { id: userA.id, first_name: "A" }, chat: { id: groupChatId, type: "group" }, text: "/chatid", date: 1 },
+    });
+    expect(chatid.status).toBe(200);
+    expect(chatid.body.status).not.toBe("group_redirected");
+    const output = sentTexts().join("\n");
+    expect(output).not.toContain(String(groupChatId));
+    expect(output).not.toMatch(/ID Grup Notifikasi/);
+  });
+
   it("currency callback with no locale asks language first, no currency write", async () => {
     await handleCallback("cur:USD", userB.id, 7, userB, "cb-1");
     expect(prefs(userB.id)?.display_currency).toBeNull();

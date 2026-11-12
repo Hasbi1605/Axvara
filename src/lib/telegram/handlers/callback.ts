@@ -167,6 +167,19 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
   }
 
   switch (action) {
+    case "langmenu": {
+      // Tombol bahasa di menu utama: buka pemilih yang sama tanpa menyentuh
+      // pending action/order. Locale baru disimpan lewat callback lang:.
+      await safeEditOrSend({
+        chat_id: chatId,
+        message_id: messageId,
+        text: languageChooserMessage(),
+        parse_mode: "HTML",
+        reply_markup: languageChooserKeyboard(),
+      });
+      break;
+    }
+
     case "home": {
       if (await notifyPaymentMaintenance(chatId)) return;
       // Guard COMMON clear (same creating-preserve rule as navigation).

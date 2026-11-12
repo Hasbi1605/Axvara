@@ -1292,8 +1292,10 @@ dicoba ke beberapa target chat pribadi berurutan, dan pesan lunas punya tombol
 Setelah pembayaran diterima, tombol support bot membuka akun manusia `@axvara_support`;
 username bot tetap `@Axvara_bot`. Seluruh notifikasi admin dari order web, Telegram,
 maupun WhatsApp memakai satu tujuan `TELEGRAM_ADMIN_CHAT_ID`. Untuk grup privat, tambahkan bot ke grup,
-kirim `/chatid`, lalu simpan ID numerik negatif yang dibalas bot sebagai secret tersebut
-(link undangan `t.me/+...` tidak dapat dipakai sebagai Bot API `chat_id`).
+lalu ambil ID numerik negatifnya dari klien Telegram atau metadata update webhook yang tersedia
+bagi admin dan simpan sebagai secret tersebut (link undangan `t.me/+...` tidak dapat dipakai sebagai Bot API
+`chat_id`). Perintah `/chatid` dihapus 12 November 2026 agar bot tidak membalas ID grup; menu
+perintah native kini memakai `/bahasa` dan menu utama punya tombol 🌐 Bahasa/Language.
 
 ### Warung Rebahan H2H (reseller otomatis, default mati)
 

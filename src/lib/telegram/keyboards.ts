@@ -113,6 +113,8 @@ export const cb = {
   payCryptoBack: (nonce: string) => `pmb:${nonce}`,
   /** Minta QRIS baru untuk order yang masih hidup tetapi QR-nya sudah mati. */
   qrisRenew: (orderCode: string) => `qrenew:${orderCode}`,
+  /** Buka pemilih bahasa dari menu utama (locale dipilih lewat cb.lang). */
+  langMenu: () => "langmenu",
   /** TG1 onboarding: explicit language choice from chooser. */
   lang: (locale: "id" | "en") => `lang:${locale}`,
   /** TG1 independent display-currency control. */
@@ -218,6 +220,7 @@ export function homeKeyboard(locale: "id" | "en" = "id"): InlineKeyboardMarkup {
         { text: en ? "❓ Help" : "❓ Bantuan", callback_data: "help" },
       ],
       [
+        { text: en ? "🌐 Language" : "🌐 Bahasa", callback_data: cb.langMenu() },
         { text: "🌐 Web", url: "https://axvara.tech" },
       ],
     ],

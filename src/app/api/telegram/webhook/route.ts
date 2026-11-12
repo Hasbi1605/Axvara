@@ -200,20 +200,17 @@ export async function POST(request: NextRequest) {
       }
       if (update.message?.text) {
         const groupText = update.message.text.trim().toLowerCase().split(/\s+/)[0].split("@")[0];
-        const purchaseIntents = ["/start", "/katalog", "/cari", "/search", "/cart", "/keranjang", "/orders", "/riwayat", "/pesanan", "/bantuan", "/help", "/garansi"];
+        const purchaseIntents = ["/start", "/katalog", "/cari", "/search", "/cart", "/keranjang", "/orders", "/riwayat", "/pesanan", "/bantuan", "/help", "/garansi", "/bahasa"];
         if (purchaseIntents.includes(groupText) || !groupText.startsWith("/")) {
-          // /chatid tetap dilayani di grup (admin setup); sisanya redirect.
-          if (groupText !== "/chatid") {
-            const { SITE } = await import("@/lib/site");
-            const { groupCheckoutRedirectMessage } = await import("@/lib/telegram/messages");
-            await sendMessage({
-              chat_id: chatId,
-              text: groupCheckoutRedirectMessage(SITE.adminTelegram),
-              parse_mode: "HTML",
-            });
-            await markDone(updateId);
-            return NextResponse.json({ ok: true, status: "group_redirected" });
-          }
+          const { SITE } = await import("@/lib/site");
+          const { groupCheckoutRedirectMessage } = await import("@/lib/telegram/messages");
+          await sendMessage({
+            chat_id: chatId,
+            text: groupCheckoutRedirectMessage(SITE.adminTelegram),
+            parse_mode: "HTML",
+          });
+          await markDone(updateId);
+          return NextResponse.json({ ok: true, status: "group_redirected" });
         }
       }
     } catch { /* redirect best-effort; lanjutkan routing normal */ }
