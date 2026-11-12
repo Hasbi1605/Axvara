@@ -1390,6 +1390,9 @@ CREATE TABLE IF NOT EXISTS pedia_products (
   is_active INTEGER NOT NULL DEFAULT 0,
   is_featured INTEGER NOT NULL DEFAULT 0,
   sold_count INTEGER NOT NULL DEFAULT 0,
+  -- Migrasi 0117: 'auto' = dibangkitkan materializer (boleh di-upsert sync);
+  -- 'curated' = kurasi manusia, tidak pernah ditimpa.
+  managed TEXT NOT NULL DEFAULT 'curated' CHECK (managed IN ('curated','auto')),
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -1437,6 +1440,12 @@ CREATE TABLE IF NOT EXISTS pedia_tiers (
   speed_per_day TEXT,
   -- Migrasi 0087: 'comments' = pembeli menulis komentar custom.
   input_kind TEXT CHECK (input_kind IS NULL OR input_kind IN ('comments')),
+  -- Migrasi 0117: 'auto' = dibangkitkan materializer ProviderSMM (boleh
+  -- di-upsert sync); 'curated' = kurasi manusia, tidak pernah ditimpa sync.
+  managed TEXT NOT NULL DEFAULT 'curated' CHECK (managed IN ('curated','auto')),
+  -- Migrasi 0117: versi snapshot deskripsi resmi saat rekonsiliasi terakhir;
+  -- NULL/berbeda dari snapshot aktif = syarat belum terselaraskan (tidak dijual).
+  managed_snapshot_at TEXT,
   UNIQUE(product_id, supplier, supplier_service_id)
 );
 -- Migrasi 0085: kesehatan layanan supplier terukur (7 hari) + avg time.

@@ -17,6 +17,54 @@
   dan QA lokal bukan bukti deployment atau penerimaan SMTP produksi; publikasi
   mengikuti CI main. Rincian di `docs/agent-rules/temp-mail.md`.
 
+## Katalog otomatis Pedia (ProviderSMM) — 12 November 2026 (implementasi lokal)
+
+Implementasi lokal; publikasi lewat CI. Bootstrap produksi dan deployment belum
+dijalankan — bukan status live.
+
+- **Supplier jual tunggal.** `PEDIA_SALE_PROVIDER='providersmm'` (IndoSMM
+  riwayat) menjadi satu-satunya gate untuk katalog, pembanding harga, quote,
+  order, draft/aktivasi admin, shortlist kurasi, dan overview. Penjualan baru
+  IndoSMM ditolak `409 provider_retired`; retry order tersimpan dilayani lebih
+  dulu lewat lookup `quote_id`; dispatch/poll/refill memakai supplier item.
+  Tier/produk/snapshot lama tidak di-remap; diff VPS ProviderSMM ditulis ke
+  cermin D1 (checkpoint `pedia_diff_*`).
+- **Skema.** Migrasi `0117` menambah `managed` (`curated` default / `auto`) pada
+  `pedia_products` dan `pedia_tiers`, plus `pedia_tiers.managed_snapshot_at`
+  (versi snapshot resmi saat rekonsiliasi). Deskripsi disimpan sebagai satu
+  snapshot JSON di `store_settings`, bukan tabel.
+- **Materialisasi.** Satu produk+tier `managed='auto'` per layanan (slug
+  `psmm-<service_id>`, G2 default, paket kanonis dari batas API, `input_kind`
+  `comments` hanya untuk Custom Comments), ≤25/pemanggilan. Kepemilikan dan baris
+  kurasi tidak pernah diubah; alasan mesin boleh pulih, `manual`/`margin`/`NULL`
+  tidak pernah dihidupkan mesin. Baris dijeda direkonsiliasi metadata + cap versi
+  tanpa diaktifkan.
+- **Deskripsi resmi.** Snapshot atomik `https://providersmm.id/services` (batas 3
+  MiB, timeout 15 dtk) divalidasi per baris; teks >3000 karakter = `oversize`
+  (tidak dijual, tidak dipotong); dibaca sekali per request tanpa N+1.
+- **Refill jujur.** Hanya durasi eksplisit + anchor eksplisit yang koheren;
+  `No Refill`/`Tidak Bergaransi` menang lebih dulu; klaim tanpa durasi =
+  `warranty_unconfirmed`, bukan janji; konversi "bulan" tidak dipaksakan.
+- **Antrean durable + commit atomik.** Satu baris `pedia_pending:<id>` dengan
+  token generasi; ack CAS `DELETE … WHERE key=? AND value=?`; drain 20/request
+  memutuskan aktif/nonaktif dari `present` cermin terkini. Snapshot + enqueue
+  SEMUA present + penanda kesegaran ditulis dalam satu `D1.batch` (kegagalan =
+  rollback penuh, last-good tetap). Refresh otomatis dari heartbeat
+  `supplier-sync` (throttle >6 jam) dan resync admin pertama.
+- **Gate penjualan.** Katalog/quote/order baru hanya menerima baris `auto` supplier
+  jual dengan layanan live valid, deskripsi `ok`, dan cap versi = snapshot aktif
+  (fail-closed). Quote menandatangani `terms_version`; order BARU menolak token
+  tanpa versi/beda versi setelah retry order tersimpan dilayani. Nama/deskripsi
+  publik white-label; payload tanpa ID/biaya supplier.
+- **Admin.** Ringkasan `managed_*` + alasan berlabel, resync resumable
+  (`cursor`/`done`, anti-loop, lanjut cursor terakhir, `refresh` request pertama),
+  filter kelayakan di SQL sebelum `COUNT`/`LIMIT` (default semua tipe), filter
+  supplier kedua provider. Baris/produk `auto` hanya menerima pricing/jeda/
+  tampilan aman; aktivasi menolak baris diblokir mesin/belum layak (409
+  `managed_ineligible`).
+- Fixture dev: `scripts/pedia-managed-fixture.mjs`. Default + Custom Comments
+  dijual; Comment Likes/Invites belum didukung.
+
 ## Default bahasa/mata uang web (11 November 2026, implementasi lokal)
 
 - Tanpa cookie preferensi valid, web selalu Bahasa Indonesia dan Rupiah (IDR),

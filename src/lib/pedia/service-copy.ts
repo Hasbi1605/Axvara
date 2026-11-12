@@ -10,11 +10,17 @@ export type PediaServiceCopy = {
   instructions: string;
 };
 
-export function capturePediaServiceCopy(product: Record<string, unknown>, tier: Record<string, unknown>): PediaServiceCopy {
+export function capturePediaServiceCopy(product: Record<string, unknown>, tier: Record<string, unknown>, officialDescription?: string | null): PediaServiceCopy {
+  // PSMM-P5: deskripsi resmi (tersanitasi, last-good) lebih diutamakan untuk
+  // review pembeli dan konsistensi historis; deskripsi kurasi hanya fallback
+  // untuk baris lama. Wajib whiteLabel karena snapshot bisa dibaca ulang.
+  const description = officialDescription != null && officialDescription.trim()
+    ? officialDescription
+    : String(tier.description_md ?? "");
   return {
-    product_name: String(product.name ?? "").slice(0, 120),
-    service_name: String(tier.public_name || tier.label_note || product.name || "").slice(0, 200),
-    description: String(tier.description_md ?? "").slice(0, 3000),
+    product_name: whiteLabel(String(product.name ?? "")).slice(0, 120),
+    service_name: whiteLabel(String(tier.public_name || tier.label_note || product.name || "")).slice(0, 200),
+    description: whiteLabel(description).slice(0, 3000),
     terms: String(tier.terms_md ?? "").slice(0, 3000),
     instructions: String(tier.instructions_md ?? "").slice(0, 3000),
   };

@@ -1,5 +1,80 @@
 # Aturan agent — Pedia (SMM)
 
+## Keputusan owner 12 November 2026 — katalog otomatis Pedia (ProviderSMM)
+
+Satu fitur (implementasi lokal; publikasi lewat CI). Bootstrap produksi, deployment, dan
+QA admin produksi belum dijalankan — jangan klaim live/terverifikasi.
+
+**Supplier jual.** `src/lib/pedia/sales-policy.ts`: `PEDIA_SALE_PROVIDER='providersmm'`,
+`PEDIA_LEGACY_PROVIDER='indosmm'`. Konstanta ini satu-satunya gate katalog/pembanding/quote/
+order/draft-aktivasi admin/shortlist/overview; jangan menyebar cabang supplier baru. Penjualan
+baru IndoSMM → 409 `provider_retired`; URUTAN ORDER WAJIB: lookup order tersimpan via `quote_id`
+LEBIH DULU, baru gate. Dispatch/poll/refill/refund supplier-generic via
+`pedia_order_items.supplier`; jangan remap tier/produk/snapshot lama. Diff VPS ProviderSMM
+ditulis ke cermin D1 (`applyPediaDiff`, checkpoint `pedia_diff_*`; IndoSMM `pedia_indosmm_diff_*`),
+validasi IDR/batas 100/ack non-2xx parsial dipertahankan; jangan hapus katalog dari delta tanpa ID.
+
+**Skema 0117.** `managed` (`curated` default / `auto`) di `pedia_products` DAN `pedia_tiers`,
+plus `pedia_tiers.managed_snapshot_at`. Deskripsi BUKAN tabel: satu snapshot JSON tervalidasi di
+`store_settings.pedia_psmm_desc_snapshot`.
+
+**Materialisasi (`auto-catalog.ts`).** Satu produk+tier `auto` per layanan, slug
+`psmm-<service_id>`, G2 default, paket kanonis dari batas API, `input_kind='comments'` hanya
+Custom Comments; maks 25/pemanggilan. Kepemilikan diperiksa SEBELUM mutasi; baris kurasi tidak
+pernah diubah. Hanya alasan mesin (`service_missing`, `description_*`, `warranty_unconfirmed`,
+`terms_conflict`, `type_unsupported`, `platform_*`, `metric_*`, `target_unmapped`,
+`premium_tool_excluded`, `bounds_invalid`, `packages_empty`, `invalid_service`) boleh pulih;
+`manual`/`margin`/`NULL` tidak pernah dihidupkan mesin. Baris dijeda tetap direkonsiliasi metadata
++ cap versinya sambil mempertahankan `is_active=0`, alasan manusia persis, dan basis
+markup/min-profit admin (CAS `is_active`+reason); rencana tidak layak hanya mencap versi.
+Mapping qualifier-aware dan hanya target yang dideteksi `detectPediaLink` (Facebook Story,
+Spotify album, SnackVideo konten-video ditahan); nama dibersihkan dari badge/emoji supplier.
+
+**Refill.** Durasi hanya dijanjikan bila eksplisit DAN anchor eksplisit koheren; `No Refill`/
+`Tidak Bergaransi` menang lebih dulu; klaim tanpa durasi / `api_refill` saja =
+`warranty_unconfirmed`; "bulan" tidak dikonversi paksa. Jangan parse nama/deskripsi ke
+`refill_days`/min/max tanpa durasi + anchor.
+
+**Deskripsi resmi.** `https://providersmm.id/services`, `HTMLRewriter` native workerd, redirect
+manual, timeout 15 dtk, batas 3 MiB; status per baris `ok|empty|oversize`; >3000 karakter =
+`oversize` (tidak dijual, TIDAK dipotong); cakupan ±5% per baris; contoh URL target dipertahankan,
+kontak/tautan promosi dibuang; `whiteLabel()` di ingest/render. Snapshot dibaca SEKALI per request,
+tanpa fetch per pembeli.
+
+**Commit atomik.** Snapshot + enqueue SEMUA layanan present (`pedia_pending:<id>`) + penanda
+`pedia_psmm_desc_last_at` dalam SATU `D1.batch`; kegagalan statement mana pun me-rollback
+ketiganya (last-good lama tetap otoritatif). Tanpa D1 native = `kept_last_good`. Refresh otomatis
+dari heartbeat `supplier-sync` terautentikasi (throttle >6 jam) dan resync admin pertama.
+
+**Antrean durable.** Token generasi acak per ID; enqueue = upsert token (`INSERT…SELECT`, bukan
+loop per ID), ack CAS `DELETE … WHERE key=? AND value=?` sehingga enqueue ID yang sama tidak
+hilang. Drain `MANAGED_DRAIN_PER_CALL=20` per request, memutuskan aktif/nonaktif dari `present`
+cermin terkini (`present=0`/hilang = `service_missing`), sisa tetap pending. Kegagalan baca/tulis
+selalu dilaporkan (`errors`), bukan ack palsu.
+
+**Gate penjualan.** Katalog/quote/order baru hanya menerima baris `auto` supplier jual dengan
+layanan live valid, deskripsi `ok`, dan cap `managed_snapshot_at` = versi snapshot aktif;
+`managedTermsFresh` FAIL CLOSED (cap kosong/beda = tidak dijual). Quote menandatangani
+`terms_version`; quote/order baru menolak token tanpa versi/beda versi (409 `service_unavailable`)
+SETELAH retry order tersimpan dilayani. Snapshot copy memakai deskripsi resmi; payload publik tanpa
+ID/biaya/nama supplier.
+
+**Admin.** Overview: `managed_products/managed_tiers/managed_active/managed_blocked` +
+`catalog.{blocked,blocked_total,queue_pending,description_fresh_at}`. Services GET:
+`tier_managed/tier_active/tier_disabled_reason/description_status` + filter `?managed=` di SQL
+sebelum `COUNT`/`LIMIT`; default semua tipe (kompatibilitas OFF), filter supplier kedua provider
+untuk diagnosa riwayat. Resync resumable (`cursor`/`done`, 25/request, validasi penuh, sumber gagal
+tidak menyapu). Products PUT: baris/produk `auto` hanya menerima pricing, jeda, tampilan aman
+(field sumber dibuang sebelum gate); aktivasi menolak alasan mesin/`margin` ATAU
+`managedActivationEligible` gagal (cap versi, cermin valid, `planManagedService` eligible) → 409
+`managed_ineligible` tanpa mutasi; jeda/pricing/unpause sah tetap boleh.
+
+**UI & fixture.** `PediaManager`: ringkasan berlabel manusiawi, "Tarik ulang" resumable (`busy`
+terpisah dari progres dipertahankan, lanjut cursor terakhir, `refresh` request pertama, cursor
+tidak maju = error, sukses `done` mengaktifkan kembali + reload). Fixture dev aman:
+`scripts/pedia-managed-fixture.mjs` (mencap versi baris auto); helper
+`tests/helpers/pedia-managed-fixture.ts`. Comment Likes/Invites belum didukung.
+
 ## Perluasan bersama 9 November 2026: Games B2
 - Atas keputusan owner di `payments.md`, guard pembayaran bersama kini menerima AXV|AXP|AXG (consent/IPN/callback dan helper gateway); `isValidOrderCode` tetap AXV-only. Ini memperluas snapshot AXV|AXP fase B di bawah, tanpa mengubah katalog, metode, TTL, klaim, restock atau fulfillment Pedia. Games memakai ulang serializer/validator Pedia dan adapter pembayaran existing, bukan cabang finansial baru.
 

@@ -3607,9 +3607,94 @@ tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
   → `custom_comments` di token/snapshot → dispatch `add` + `comments` (newline).
   Tipe layanan wajib cocok (`pediaServiceTypeFor`): comments↔"Custom Comments",
   lainnya↔"Default" di katalog, harga, quote, order, sync, admin.
-- ProviderSMM: cron lite tidak memanggil `/psmm/balance`; `/api/supplier-sync`
-  source providersmm → 200 `{ignored:"providersmm_retired"}` tanpa tulis D1;
-  overview admin hanya IndoSMM.
+- Kebijakan supplier jual (12 November 2026, implementasi lokal): `src/lib/pedia/sales-policy.ts`
+  menetapkan `PEDIA_SALE_PROVIDER='providersmm'` dan `PEDIA_LEGACY_PROVIDER='indosmm'`
+  sebagai satu-satunya sumber gate katalog/pembanding/quote/order/draft admin/shortlist/overview.
+  Penjualan baru IndoSMM ditolak 409 `provider_retired`, tetapi retry order tersimpan
+  dicari berdasarkan `quote_id` sebelum gate. Tier/produk/snapshot lama tidak di-remap;
+  dispatch/poll/refill tetap memakai kolom supplier pada item.
+- Diff VPS ProviderSMM kembali ditulis ke cermin D1 melalui `applyPediaDiff`
+  (`/api/supplier-sync`), bukan lagi 200 `ignored`. Jalur IndoSMM tetap ada untuk
+  perawatan order/mirror lama. Penanda checkpoint per supplier
+  (`pedia_diff_*` ProviderSMM, `pedia_indosmm_diff_*` IndoSMM); validasi IDR/batas
+  100 dan ack non-2xx pada tulis parsial dipertahankan, dan tidak ada penghapusan
+  katalog otomatis dari delta yang tidak memuat ID. Overview admin mengikuti
+  supplier jual aktif.
+
+### 16.10c-bis Katalog otomatis Pedia + deskripsi resmi + gate syarat (12 November 2026)
+Implementasi lokal; publikasi lewat CI. Bootstrap produksi, deployment, dan QA admin produksi belum dijalankan.
+
+**Kebijakan supplier.** `src/lib/pedia/sales-policy.ts` menetapkan `PEDIA_SALE_PROVIDER='providersmm'`
+dan `PEDIA_LEGACY_PROVIDER='indosmm'` sebagai satu-satunya gate katalog/pembanding/quote/order/draft
+admin/shortlist/overview. Penjualan baru IndoSMM ditolak 409 `provider_retired`, tetapi retry order
+tersimpan dicari lewat `quote_id` sebelum gate. Diff VPS ProviderSMM ditulis ke cermin D1
+(`applyPediaDiff`, `/api/supplier-sync`, checkpoint `pedia_diff_*`; IndoSMM `pedia_indosmm_diff_*`).
+Tier/produk/snapshot lama tidak di-remap; dispatch/poll/refill memakai supplier item.
+
+**Skema (0117).** `pedia_products.managed` dan `pedia_tiers.managed` (`curated` default / `auto`) plus
+`pedia_tiers.managed_snapshot_at` (versi `fetched_at` snapshot resmi saat rekonsiliasi). Deskripsi TIDAK
+disimpan di tabel; satu snapshot JSON tervalidasi ada di `store_settings.pedia_psmm_desc_snapshot`.
+
+**Materialisasi (`src/lib/pedia/auto-catalog.ts`).** `planManagedService` memetakan platform/metrik/target
+dari registri existing (`platforms.ts`, `link.ts`, `bounds.ts`, `pricing.ts`) secara deterministik dan
+qualifier-aware; slug `psmm-<service_id>`, satu produk/tier per layanan, G2 default, paket kanonis dari
+batas API, `input_kind='comments'` hanya untuk Custom Comments. Fail-closed: `type_unsupported`,
+`platform_*`, `metric_*`, `target_unmapped`, `premium_tool_excluded`, `bounds_invalid`,
+`description_missing`/`description_oversize`, `packages_empty`, `terms_conflict`, `warranty_unconfirmed`.
+Hanya alasan mesin yang boleh pulih; `manual`/`margin`/`NULL` tidak pernah dihidupkan mesin, tetapi baris
+dijeda tetap direkonsiliasi metadata + cap versinya (inactive + alasan manusia + basis harga admin
+dipertahankan, CAS `is_active`+reason). `materializeManagedCatalog` idempoten, maks 25/pemanggilan.
+
+**Refill.** Durasi hanya dijanjikan bila sumber menyebut durasi eksplisit DAN anchor eksplisit yang
+koheren ("sejak pesanan dibuat"/"setelah pesanan selesai"); `No Refill`/`Tidak Bergaransi` menang lebih
+dulu; klaim tanpa durasi atau `api_refill` boolean saja = `warranty_unconfirmed`; durasi "bulan" tidak
+dikonversi paksa.
+
+**Deskripsi resmi (`src/lib/pedia/supplier-descriptions.ts`).** Fetch tetap `https://providersmm.id/services`,
+`redirect:'manual'`, timeout 15 dtk, batas 3 MiB; parse native `HTMLRewriter` global workerd
+(`td[data-filter-table-service-id]`, `div.desc-content`, `br`→newline), normalisasi dan sanitasi
+kontak/URL promosi sambil mempertahankan contoh URL target. Setiap baris dicatat `ok|empty|oversize`;
+teks >3000 karakter = `oversize` dan barisnya TIDAK dijual (tidak pernah dipotong); cakupan divalidasi per
+baris (`count_mismatch` ±5% menolak snapshot). Snapshot dibaca sekali per request; tanpa fetch per pembeli.
+
+**Metadata (`src/lib/pedia/metadata-refresh.ts`).** Throttle >6 jam via
+`store_settings.pedia_psmm_desc_last_at`, satu fetch per refresh. Snapshot + enqueue SEMUA layanan present
+(`pedia_pending:<id>`) + penanda kesegaran ditulis dalam SATU `D1.batch` (`commitSnapshotAtomically`);
+kegagalan statement mana pun me-rollback ketiganya sehingga last-good lama tetap otoritatif. Tanpa D1
+native = `kept_last_good`. Refresh dipicu heartbeat `supplier-sync` terautentikasi (delta kosong) dan
+resync admin pertama; jalur delta hanya membaca snapshot tersimpan.
+
+**Antrean durable.** Satu baris `store_settings.pedia_pending:<id>` berisi token generasi acak; enqueue =
+upsert token (`INSERT…SELECT`, bukan loop per ID) dan ack `DELETE … WHERE key=? AND value=?` (CAS), jadi
+enqueue ID yang sama antara pembacaan cermin dan ack tidak hilang. Drain 20/request memutuskan
+aktif/nonaktif dari `present` cermin terkini (`present=0`/hilang selalu `service_missing`); sisa tetap
+pending untuk tick berikut tanpa memutar ulang awalan.
+
+**Gate penjualan.** `GET /api/pedia/catalog` hanya menyajikan produk+tier `managed='auto'` supplier jual
+dengan layanan live valid, deskripsi `ok`, dan cap `managed_snapshot_at` = versi snapshot aktif
+(`managedTermsFresh`, fail-closed: cap kosong/tidak cocok = tidak dijual). Quote menandatangani
+`terms_version` = versi snapshot; quote/order baru menolak (409 `service_unavailable`) token tanpa versi
+atau versi yang tidak lagi cocok, SETELAH lookup retry order tersimpan (retry lama tetap 200). Snapshot
+copy memakai deskripsi resmi; nama/deskripsi publik white-label; payload tanpa ID/biaya supplier.
+
+**Admin.** `/api/admin/pedia/overview` menambah `managed_products/managed_tiers/managed_active/
+managed_blocked` + `catalog.{blocked,blocked_total,queue_pending,description_fresh_at}`;
+`GET /api/admin/pedia/services` menambah `tier_managed/tier_active/tier_disabled_reason/description_status`
+dan filter `?managed=` yang diterapkan di SQL sebelum `COUNT`/`LIMIT` (default semua tipe). `POST` resync
+resumable (`cursor`/`done`, maks 25 layanan/request, validasi katalog+duplikat sebelum tulis, sumber gagal
+tidak menyapu). `PUT /api/admin/pedia/products`: baris/produk `auto` hanya menerima pricing, jeda, dan
+tampilan aman (field sumber dibuang sebelum gate); aktivasi menolak baris diblokir mesin atau belum layak
+via `managedActivationEligible` (cap versi = snapshot aktif, cermin valid, `planManagedService` eligible)
+→ 409 `managed_ineligible` tanpa mutasi.
+
+**UI admin (`src/components/admin/PediaManager.tsx`).** Ringkasan diagnostik berlabel manusiawi; "Tarik
+ulang" resumable (`busy` terpisah dari progres yang dipertahankan, lanjut dari cursor terakhir supplier
+yang sama, `refresh` hanya request pertama, cursor tidak maju = error, sukses `done` mengaktifkan kembali
+tombol + memuat ulang). Filter kelayakan server-side; filter kompatibilitas default OFF; filter supplier
+kedua provider untuk diagnosa riwayat.
+
+**Fixture & tes.** `scripts/pedia-managed-fixture.mjs` (aman, tanpa supplier/secret, mencap versi baris
+auto) + `tests/helpers/pedia-managed-fixture.ts`; `tests/fixtures/pedia-psmm-services.html` tersanitasi.
 
 ### 16.10d Copy layanan Pedia — migrasi 0093 (3 November 2026)
 Implementasi lokal; publikasi lewat CI; deployment belum diverifikasi. Data-only, tanpa kolom/env/cron baru.

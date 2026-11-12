@@ -13,13 +13,13 @@ describe("Pedia comparison prices", () => {
     process.env.PEDIA_ENABLED = "true";
     fixture = createD1Fixture();
     await fixture.db.prepare("INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active) VALUES(1,'followers-github','github','followers','profile','Followers GitHub','[100]',1,1)").run();
-    await fixture.db.prepare("INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty) VALUES('indosmm',123,'private upstream name','GitHub','Default',1000,5,1000)").run();
-    await fixture.db.prepare("INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,package_prices_json,is_active) VALUES(1,1,'standar','indosmm',123,'G3',20,2000,'{\"100\":2100}',1)").run();
+    await fixture.db.prepare("INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty) VALUES('providersmm',123,'private upstream name','GitHub','Default',1000,5,1000)").run();
+    await fixture.db.prepare("INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,package_prices_json,is_active) VALUES(1,1,'standar','providersmm',123,'G3',20,2000,'{\"100\":2100}',1)").run();
     const r = await GET(new NextRequest("http://localhost/api/pedia/prices?product_slug=followers-github&quantity=75"));
     expect(r.status).toBe(200);
     const data = await r.json();
     expect(data).toMatchObject({ quantity: 75, prices: [{ tier_id: 1, total: 2100 }] });
-    expect(JSON.stringify(data)).not.toMatch(/indosmm|private upstream|supplier|markup|rate_idr/);
+    expect(JSON.stringify(data)).not.toMatch(/indosmm|providersmm|private upstream|supplier|markup|rate_idr/);
     expect((await (await GET(new NextRequest("http://localhost/api/pedia/prices?product_slug=followers-github&quantity=2"))).json()).prices).toEqual([]);
   });
   it.each(["quantity=0", "quantity=1.5", "quantity=Infinity", "quantity=100000001"]) ("rejects invalid comparison input %s", async (q) => {

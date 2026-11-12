@@ -54,7 +54,37 @@ const INPUT = "mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-white/[
 const BUTTON = "inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:opacity-50";
 const PRIMARY = "inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#00E5FF] px-4 text-sm font-bold text-[#07101f] transition hover:bg-[#00E5FF]/90 disabled:opacity-50";
 const EDIT = "inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3.5 text-xs font-bold text-[#080C1E] shadow-sm transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40";
-const PROVIDER_NAMES = { providersmm: "ProviderSMM (diputus)", indosmm: "IndoSMM" };
+const PROVIDER_NAMES = { providersmm: "ProviderSMM", indosmm: "IndoSMM (riwayat)" };
+/** PSMM-P5: label manusiawi untuk alasan blokir katalog otomatis (tidak dump mentah). */
+const MANAGED_REASON_LABELS: Record<string, string> = {
+  description_missing: "Deskripsi resmi belum tersedia",
+  description_oversize: "Deskripsi terlalu panjang — tidak dipotong, layanan ditahan",
+  terms_conflict: "Syarat refill saling bertentangan (nama vs deskripsi)",
+  warranty_unconfirmed: "Masa garansi belum terkonfirmasi di sumber",
+  type_unsupported: "Tipe layanan belum didukung (mis. Invites/Comment Likes)",
+  platform_unmapped: "Platform tidak dikenali dari kategori",
+  platform_ambiguous: "Platform ambigu di sumber",
+  metric_unmapped: "Jenis metrik tidak dikenali",
+  metric_ambiguous: "Jenis metrik ambigu di sumber",
+  target_unmapped: "Target tidak dapat dipetakan aman",
+  premium_tool_excluded: "Tools premium (Canva/Gemini/CapCut) bukan layanan SMM",
+  bounds_invalid: "Batas min/maks supplier tidak valid",
+  packages_empty: "Tidak ada jumlah paket yang sah",
+  invalid_service: "Data layanan supplier tidak lengkap",
+  service_missing: "Layanan hilang dari supplier",
+  margin: "Margin tidak mencukupi — dinonaktifkan otomatis",
+  manual: "Dinonaktifkan manual oleh admin",
+  supplier_health_20261101: "Kesehatan supplier rendah (7 hari)",
+  legacy_supplier_indosmm_only: "Supplier lama dipensiunkan",
+};
+function managedReasonLabel(reason: unknown): string {
+  const key = String(reason ?? "");
+  return MANAGED_REASON_LABELS[key] ?? "Alasan tidak dikenal";
+}
+/** PSMM-P5: baris katalog otomatis (sumber dikelola sync, bukan kurasi admin). */
+function isManagedTier(t: unknown): boolean {
+  return (t as Row | null)?.managed === "auto";
+}
 type ServiceSelection = { supplier: PediaProvider; service_id: number };
 type ProviderHealth = { supplier: PediaProvider; balance: { value: number | null; stale: boolean }; error: string | null; pricing_verified: boolean; last_sync_at: string | null };
 
@@ -90,10 +120,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       reprice_failed: "Perubahan tersimpan, tetapi harga belum berhasil diperbarui. Muat ulang dan tarik ulang layanan.",
       save_partial: "Sebagian pengaturan tersimpan. Muat ulang sebelum menyimpan kembali.",
       unsupported_currency: "Mata uang akun belum terverifikasi IDR. Harga rupiah tidak boleh digunakan.",
-      pricing_unverified: "Satuan tarif per 1.000 IndoSMM belum terverifikasi di VPS.",
+      pricing_unverified: "Satuan tarif per 1.000 supplier belum terverifikasi di VPS.",
       provider_unavailable: "Provider tidak dapat dihubungi. Mapping belum disimpan.",
       service_unavailable: "Layanan tidak tersedia atau tidak kompatibel dengan link dan jumlah.",
-      provider_retired: "Penjualan baru hanya memakai IndoSMM. ProviderSMM tersedia untuk riwayat pesanan.",
+      provider_retired: "Penjualan baru hanya memakai ProviderSMM. IndoSMM tersedia untuk riwayat pesanan.",
       premium_tool_excluded: "Tools premium tidak dimasukkan ke Pedia SMM.",
       supplier_service_pair_required: "Pilih supplier dan ID layanan bersama.",
       reconcile_required: "Hasil pengiriman ambigu. Rekonsiliasi ID order di provider asal; jangan kirim ulang atau membatalkan sebelum rekonsiliasi.",
@@ -175,8 +205,39 @@ function DataTable({ title, columns, children, minWidth = "min-w-[760px]" }: { t
     </div>
   </div>;
 }
-function SupplierField({ value, onChange, label = "Supplier" }: { value: string; onChange: (value: string) => void; label?: string }) {
-  return <Field label={label}><select className={INPUT} value={value} onChange={(e) => onChange(e.target.value)}><option value="">Semua supplier</option>{[PEDIA_SALE_PROVIDER].map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>;
+function SupplierField({ value, onChange, label = "Supplier", providers = PEDIA_PROVIDERS }: { value: string; onChange: (value: string) => void; label?: string; providers?: readonly PediaProvider[] }) {
+  return <Field label={label}><select className={INPUT} value={value} onChange={(e) => onChange(e.target.value)}><option value="">Semua supplier</option>{providers.map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>;
+}
+
+/** PSMM-P5: ringkasan diagnostik katalog otomatis (hanya angka dari server). */
+type CatalogSummary = {
+  counts?: Record<string, number>;
+  catalog?: { blocked?: { reason: string; count: number }[]; blocked_total?: number; queue_pending?: number; description_fresh_at?: string | null };
+};
+function PediaCatalogSummary() {
+  const panel = usePanel<CatalogSummary>("/api/admin/pedia/overview", {});
+  const counts = panel.data.counts ?? {};
+  const catalog = panel.data.catalog ?? {};
+  const num = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+  const total = num(counts.services);
+  const blocked = (catalog.blocked ?? []).slice(0, 4);
+  return <section aria-label="Ringkasan katalog otomatis" className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+    <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <h3 className="text-sm font-semibold text-white">Katalog otomatis {PROVIDER_NAMES[PEDIA_SALE_PROVIDER]}</h3>
+      <button className="min-h-9 rounded-full border border-white/10 px-3 text-xs font-semibold text-white/70 hover:bg-white/10 disabled:opacity-50" disabled={panel.loading} onClick={() => void panel.load()}>Muat ulang ringkasan</button>
+    </div>
+    {panel.error && <p role="alert" className="mt-2 text-xs text-red-300">{panel.error}</p>}
+    {!panel.loading && !panel.error && <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3 lg:grid-cols-5">
+      <div><dt className="text-white/50">Layanan cermin</dt><dd className="font-semibold tabular-nums text-white">{total == null ? "Belum tersedia" : total}</dd></div>
+      <div><dt className="text-white/50">Tier otomatis</dt><dd className="font-semibold tabular-nums text-white">{num(counts.managed_tiers) ?? "Belum tersedia"}</dd></div>
+      <div><dt className="text-white/50">Aktif dijual</dt><dd className="font-semibold tabular-nums text-emerald-300">{num(counts.managed_active) ?? "Belum tersedia"}</dd></div>
+      <div><dt className="text-white/50">Ditahan</dt><dd className="font-semibold tabular-nums text-amber-300">{num(counts.managed_blocked) ?? "Belum tersedia"}</dd></div>
+      <div><dt className="text-white/50">Antrean sinkron</dt><dd className="font-semibold tabular-nums text-white">{num(catalog.queue_pending) ?? "Belum tersedia"}</dd></div>
+    </dl>}
+    {!panel.loading && !panel.error && <p className="mt-2 text-xs text-white/50">Deskripsi resmi diperbarui: {formatWibDateTime(catalog.description_fresh_at ?? "") ?? "Belum pernah"}</p>}
+    {blocked.length > 0 && <ul className="mt-2 space-y-0.5 text-xs text-white/60">{blocked.map((b) => <li key={b.reason} className="flex justify-between gap-3"><span className="break-words">{managedReasonLabel(b.reason)}</span><span className="shrink-0 tabular-nums">{b.count}</span></li>)}</ul>}
+    {!panel.loading && !panel.error && num(counts.managed_tiers) === 0 && <p className="mt-2 text-xs text-white/55">Belum ada tier otomatis. Buka tab Layanan Supplier lalu pilih “Tarik ulang” untuk impor katalog (tindakan admin eksplisit).</p>}
+  </section>;
 }
 
 export function PediaManager({ initialTab }: { initialTab?: string }) {
@@ -189,6 +250,8 @@ export function PediaManager({ initialTab }: { initialTab?: string }) {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [selectedService, setSelectedService] = useState<ServiceSelection | null>(null);
+  // Dinaikkan setelah resync sukses agar ringkasan diagnostik dimuat ulang.
+  const [summaryRefresh, setSummaryRefresh] = useState(0);
   useEffect(() => { setTab(tabOf(initialTab)); }, [initialTab]);
   useEffect(() => {
     const sync = () => setTab(tabOf(new URLSearchParams(window.location.search).get("tab")));
@@ -207,7 +270,8 @@ export function PediaManager({ initialTab }: { initialTab?: string }) {
     (!supplier || tiersFor(p.id).some((t) => t.supplier === supplier)) && (!platform || platform === p.platform) && (!status || (status === "Nonaktif" ? !p.is_active : status === availability(p, tiersFor(p.id)))) &&
     `${p.name} ${p.slug} ${p.platform} ${p.metric} ${tiersFor(p.id).map((t) => `${t.supplier}:${t.supplier_service_id}`).join(" ")}`.toLowerCase().includes(query.trim().toLowerCase()));
   return <div className="mt-5 min-w-0 space-y-4">
-    <header><h2 className="font-display text-xl font-semibold text-white">Pedia</h2><p className="mt-1 text-xs text-white/40">Kelola produk kurasi, layanan supplier, pesanan, dan tindak lanjut manual.</p></header>
+    <header><h2 className="font-display text-xl font-semibold text-white">Pedia</h2><p className="mt-1 text-xs text-white/40">Katalog otomatis ProviderSMM adalah sumber utama. Produk kurasi, pesanan, dan tindak lanjut manual tetap tersedia.</p></header>
+    <PediaCatalogSummary key={summaryRefresh} />
     <nav aria-label="Bagian Pedia" className="flex w-fit max-w-full flex-wrap gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1">
       {TABS.map(([id, label]) => <button key={id} aria-current={tab === id ? "page" : undefined} onClick={() => navigate(id)} className={`min-h-9 whitespace-nowrap rounded-lg px-4 text-xs font-semibold transition ${tab === id ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>{label}</button>)}
     </nav>
@@ -255,7 +319,7 @@ export function PediaManager({ initialTab }: { initialTab?: string }) {
       </>)}
     </Panel>}
     {tab === "curation" && <PediaCurationPanel products={catalog.data.products} onCreated={async(id)=>{await catalog.load();setEditing(id);navigate("products");}} />}
-    {tab === "services" && <PediaServicesPanel catalog={catalog.data} selected={selectedService} onSelect={setSelectedService} onAssigned={async (id) => { await catalog.load(); setEditing(id); navigate("products"); }} />}
+    {tab === "services" && <PediaServicesPanel catalog={catalog.data} onReload={() => catalog.load()} onSynced={() => setSummaryRefresh((n) => n + 1)} selected={selectedService} onSelect={setSelectedService} onAssigned={async (id) => { await catalog.load(); setEditing(id); navigate("products"); }} />}
     {tab === "orders" && <PediaOrdersPanel />}
     {tab === "credits" && <PediaCreditsPanel />}
     {tab === "settings" && <PediaSettingsPanel />}
@@ -338,52 +402,64 @@ function ProductEditor({ product: p, tiers, busy, onSave, onCreateTier, onError,
     </fieldset><p className="text-xs text-white/65">Tingkat dibuat nonaktif. ID layanan diverifikasi pada supplier terpilih; periksa modal, harga, ETA, dan ketentuan sebelum aktivasi.</p><button className={PRIMARY} disabled={busy}>Buat tingkat nonaktif</button></form></details>}
     {tiers.map((t) => <details key={t.id} className="border-b border-white/10 pb-3">
       <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-white"><span className="capitalize">{t.tier}</span> <span className="font-normal text-white/65">{t.public_name ? `${t.public_name} ` : ""}/ {PROVIDER_NAMES[t.supplier]} #{t.supplier_service_id} / {t.is_active ? usablePackages(p, t).length ? "Siap" : "Belum siap" : "Nonaktif"}</span> <HealthBadge row={t} /></summary>
-      {t.auto_disabled_reason && <p role="status" className="mb-3 text-sm text-amber-300">Nonaktif otomatis: {t.auto_disabled_reason === "legacy_supplier_indosmm_only" ? "ProviderSMM diputus" : t.auto_disabled_reason === "margin" ? "margin tidak mencukupi" : t.auto_disabled_reason === "supplier_health_20261101" ? "success rate supplier rendah (7 hari)" : "layanan supplier hilang"}. Aktivasi penjualan hanya untuk IndoSMM; periksa harga dan layanan terlebih dahulu.</p>}
+      {t.auto_disabled_reason && <p role="status" className="mb-3 text-sm text-amber-300">Status tahan jual: {managedReasonLabel(t.auto_disabled_reason)}. Aktivasi penjualan hanya untuk {PROVIDER_NAMES[PEDIA_SALE_PROVIDER]} yang layak; periksa harga dan layanan terlebih dahulu.</p>}
+      {(t as Row).managed === "auto" && <p className="mb-3 text-xs text-white/50">Katalog otomatis — harga &amp; produk disinkronkan dari supplier. Anda tetap dapat mengubah markup/minimum untung atau menjeda penjualan.</p>}
       <p className="mb-3 break-words text-xs text-white/65">{t.live_name ?? "Layanan belum tersinkron"} / Batas {t.live_min ?? "-"} sampai {t.live_max ?? "-"}</p>
       <ServiceHealthLine row={t} />
-      <p className="mb-3 text-xs text-white/65">Jalur refill: {Number(t.refill_days) <= 0 ? "No Refill" : t.live_api_refill === 1 ? "otomatis via API IndoSMM" : "manual — pembeli mengajukan, admin meneruskan ke CS IndoSMM"}. Mapping baru hanya untuk order baru; order lama memakai snapshot supplier asal.</p>
+      <p className="mb-3 text-xs text-white/65">Jalur refill: {Number(t.refill_days) <= 0 ? "No Refill" : t.live_api_refill === 1 ? `otomatis via API ${PROVIDER_NAMES[t.supplier]}` : `manual — pembeli mengajukan, admin meneruskan ke CS ${PROVIDER_NAMES[t.supplier]}`}. Mapping baru hanya untuk order baru; order lama memakai snapshot supplier asal.</p>
       <form key={JSON.stringify(t)} aria-label={`Edit tingkat ${t.tier}`} onSubmit={(e) => {
         e.preventDefault(); const f = new FormData(e.currentTarget);
+        const isManaged = (t as Row).managed === "auto";
         const body: Row = { kind: "tier", id: t.id, is_active: f.has("is_active") ? 1 : 0 };
-        body.supplier = String(f.get("supplier"));
-        for (const k of ["label_note", "price_group", "eta_start", "eta_finish", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "speed_per_day", "drop_label", "region", "quality", "input_kind"]) body[k] = String(f.get(k) ?? "");
-        for (const k of ["supplier_service_id", "markup_pct", "min_profit_rp", "refill_days"]) body[k] = Number(f.get(k));
-        for (const k of ["min_qty_override", "max_qty_override"]) body[k] = f.get(k) ? Number(f.get(k)) : null;
-        body.target_format = String(f.get("target_format"));
-        body.refill_anchor = String(f.get("refill_anchor"));
+        // PSMM-P5: baris otomatis — sumber/katalog dikelola sync; admin hanya
+        // boleh menjeda & mengatur pricing (markup/min-profit). Jangan kirim
+        // ulang mapping/salinan yang bisa merusak sumber otomatis.
+        if (!isManaged) {
+          body.supplier = String(f.get("supplier"));
+          for (const k of ["label_note", "price_group", "eta_start", "eta_finish", "public_name", "description_md", "terms_md", "instructions_md", "recommendation_note", "speed_per_day", "drop_label", "region", "quality", "input_kind"]) body[k] = String(f.get(k) ?? "");
+          for (const k of ["supplier_service_id", "refill_days"]) body[k] = Number(f.get(k));
+          for (const k of ["min_qty_override", "max_qty_override"]) body[k] = f.get(k) ? Number(f.get(k)) : null;
+          body.target_format = String(f.get("target_format"));
+          body.refill_anchor = String(f.get("refill_anchor"));
+          body.backup_service_id = f.get("backup_service_id") ? Number(f.get("backup_service_id")) : null;
+        } else {
+          body.price_group = String(f.get("price_group"));
+        }
+        body.markup_pct = Number(f.get("markup_pct"));
+        body.min_profit_rp = Number(f.get("min_profit_rp"));
         body.quantity_step = Number(f.get("quantity_step")) || 1;
-        body.backup_service_id = f.get("backup_service_id") ? Number(f.get("backup_service_id")) : null;
         void onSave(body, `Tingkat ${t.tier} tersimpan. Periksa status dan harga hasil pembaruan.`);
       }} className="space-y-4">
         <fieldset disabled={busy} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-white sm:col-span-2 lg:col-span-3"><input name="is_active" type="checkbox" defaultChecked={isPediaSaleProvider(t.supplier) && !!t.is_active} />Tampilkan di toko (layanan aktif)</label>
-          <Field label="Nama layanan publik"><input name="public_name" maxLength={200} defaultValue={t.public_name ?? ""} className={INPUT} /></Field>
-          <Field label="Deskripsi layanan"><textarea name="description_md" maxLength={3000} defaultValue={t.description_md ?? ""} className={INPUT} rows={4} /></Field>
-          <Field label="Syarat & ketentuan layanan"><textarea name="terms_md" maxLength={3000} defaultValue={t.terms_md ?? ""} className={INPUT} rows={4} /></Field>
-          <Field label="ID layanan utama"><input name="supplier_service_id" type="number" min={1} required defaultValue={t.supplier_service_id} className={INPUT} /></Field>
+          <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-white sm:col-span-2 lg:col-span-3"><input name="is_active" type="checkbox" defaultChecked={isPediaSaleProvider(t.supplier) && !!t.is_active} />{isManagedTier(t) ? "Jual layanan ini (jeda/hidupkan penjualan)" : "Tampilkan di toko (layanan aktif)"}</label>
+          {isManagedTier(t) && <p className="text-xs text-white/50 sm:col-span-2 lg:col-span-3">Katalog, nama, deskripsi, batas, dan refill berasal dari sinkronisasi otomatis. Menjeda di sini menjaga data sumber tetap utuh; sync berikutnya tidak menyalakannya kembali.</p>}
+          <Field label="Nama layanan publik"><input name="public_name" maxLength={200} defaultValue={t.public_name ?? ""} disabled={isManagedTier(t)} className={INPUT} /></Field>
+          <Field label="Deskripsi layanan"><textarea name="description_md" maxLength={3000} defaultValue={t.description_md ?? ""} disabled={isManagedTier(t)} className={INPUT} rows={4} /></Field>
+          <Field label="Syarat & ketentuan layanan"><textarea name="terms_md" maxLength={3000} defaultValue={t.terms_md ?? ""} disabled={isManagedTier(t)} className={INPUT} rows={4} /></Field>
+          <Field label="ID layanan utama"><input name="supplier_service_id" type="number" min={1} required defaultValue={t.supplier_service_id} disabled={isManagedTier(t)} className={INPUT} /></Field>
           <Field label="Markup (%)"><input name="markup_pct" type="number" step="any" min={0} max={1000} required defaultValue={t.markup_pct} className={INPUT} /></Field>
-          <Field label="Masa refill kurasi (hari)"><input name="refill_days" type="number" min={0} max={365} required defaultValue={t.refill_days} className={INPUT} /></Field>
-          <Field label="Minimum dari ketentuan layanan"><input name="min_qty_override" type="number" min={1} max={100000000} defaultValue={t.min_qty_override ?? ""} className={INPUT} /></Field>
-          <Field label="Maksimum dari ketentuan layanan"><input name="max_qty_override" type="number" min={1} max={100000000} defaultValue={t.max_qty_override ?? ""} className={INPUT} /></Field>
-          <Field label="Estimasi mulai"><input name="eta_start" maxLength={40} defaultValue={t.eta_start ?? ""} className={INPUT} /></Field>
-          <Field label="Label drop (supplier)"><select name="drop_label" defaultValue={t.drop_label ?? "unknown"} className={INPUT}><option value="unknown">Belum diketahui</option><option value="no_drop">No Drop</option><option value="less_drop">Less Drop</option><option value="high_drop">High Drop</option></select></Field>
-          <Field label="Speed (mis. 10K/hari)"><input name="speed_per_day" maxLength={40} defaultValue={t.speed_per_day ?? ""} className={INPUT} /></Field>
-          <Field label="Input pembeli"><select name="input_kind" defaultValue={t.input_kind ?? ""} className={INPUT}><option value="">Link saja</option><option value="comments">Link + komentar custom (1 per baris)</option></select></Field>
-          <Field label="Wilayah"><select name="region" defaultValue={t.region ?? "global"} className={INPUT}><option value="global">Global</option><option value="indonesia">Indonesia</option><option value="mixed">Campuran</option></select></Field>
-          <Field label="Kualitas"><select name="quality" defaultValue={t.quality ?? "standar"} className={INPUT}><option value="standar">Standar</option><option value="ekonomis">Ekonomis</option><option value="hq">HQ</option><option value="real">Real</option></select></Field>
+          <Field label="Masa refill kurasi (hari)"><input name="refill_days" type="number" min={0} max={365} required defaultValue={t.refill_days} disabled={isManagedTier(t)} className={INPUT} /></Field>
+          <Field label="Minimum dari ketentuan layanan"><input name="min_qty_override" type="number" min={1} max={100000000} defaultValue={t.min_qty_override ?? ""} disabled={isManagedTier(t)} className={INPUT} /></Field>
+          <Field label="Maksimum dari ketentuan layanan"><input name="max_qty_override" type="number" min={1} max={100000000} defaultValue={t.max_qty_override ?? ""} disabled={isManagedTier(t)} className={INPUT} /></Field>
+          <Field label="Estimasi mulai"><input name="eta_start" maxLength={40} defaultValue={t.eta_start ?? ""} disabled={isManagedTier(t)} className={INPUT} /></Field>
+          <Field label="Label drop (supplier)"><select name="drop_label" defaultValue={t.drop_label ?? "unknown"} disabled={isManagedTier(t)} className={INPUT}><option value="unknown">Belum diketahui</option><option value="no_drop">No Drop</option><option value="less_drop">Less Drop</option><option value="high_drop">High Drop</option></select></Field>
+          <Field label="Speed (mis. 10K/hari)"><input name="speed_per_day" maxLength={40} defaultValue={t.speed_per_day ?? ""} disabled={isManagedTier(t)} className={INPUT} /></Field>
+          <Field label="Input pembeli"><select name="input_kind" defaultValue={t.input_kind ?? ""} disabled={isManagedTier(t)} className={INPUT}><option value="">Link saja</option><option value="comments">Link + komentar custom (1 per baris)</option></select></Field>
+          <Field label="Wilayah"><select name="region" defaultValue={t.region ?? "global"} disabled={isManagedTier(t)} className={INPUT}><option value="global">Global</option><option value="indonesia">Indonesia</option><option value="mixed">Campuran</option></select></Field>
+          <Field label="Kualitas"><select name="quality" defaultValue={t.quality ?? "standar"} disabled={isManagedTier(t)} className={INPUT}><option value="standar">Standar</option><option value="ekonomis">Ekonomis</option><option value="hq">HQ</option><option value="real">Real</option></select></Field>
           <details className="rounded-xl border border-white/10 p-3 sm:col-span-2 lg:col-span-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-white">Pengaturan lanjutan</summary><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Cara membeli"><textarea name="instructions_md" maxLength={3000} defaultValue={t.instructions_md ?? ""} className={INPUT} rows={4} /></Field>
-          <Field label="Alasan rekomendasi"><input name="recommendation_note" maxLength={200} defaultValue={t.recommendation_note ?? ""} className={INPUT} /></Field>
-          <Field label="Catatan kualitas"><input name="label_note" maxLength={120} defaultValue={t.label_note ?? ""} className={INPUT} /></Field>
+          <Field label="Cara membeli"><textarea name="instructions_md" maxLength={3000} defaultValue={t.instructions_md ?? ""} disabled={isManagedTier(t)} className={INPUT} rows={4} /></Field>
+          <Field label="Alasan rekomendasi"><input name="recommendation_note" maxLength={200} defaultValue={t.recommendation_note ?? ""} disabled={isManagedTier(t)} className={INPUT} /></Field>
+          <Field label="Catatan kualitas"><input name="label_note" maxLength={120} defaultValue={t.label_note ?? ""} disabled={isManagedTier(t)} className={INPUT} /></Field>
           <Field label="Supplier utama"><select name="supplier" defaultValue={t.supplier} className={INPUT} onChange={(e) => {
             const form = e.currentTarget.form;
             if (form) { (form.elements.namedItem("supplier_service_id") as HTMLInputElement).value = ""; (form.elements.namedItem("backup_service_id") as HTMLInputElement).value = ""; }
           }}>{(isPediaSaleProvider(t.supplier) ? [PEDIA_SALE_PROVIDER] : PEDIA_PROVIDERS).map((provider) => <option key={provider} value={provider}>{PROVIDER_NAMES[provider]}</option>)}</select></Field>
-          <Field label="ID layanan cadangan"><input name="backup_service_id" type="number" min={1} defaultValue={t.backup_service_id ?? ""} className={INPUT} /></Field>
+          <Field label="ID layanan cadangan"><input name="backup_service_id" type="number" min={1} defaultValue={t.backup_service_id ?? ""} disabled={isManagedTier(t)} className={INPUT} /></Field>
           <Field label="Kelompok harga"><select name="price_group" defaultValue={t.price_group} className={INPUT}>{["G1", "G2", "G3"].map((g) => <option key={g}>{g}</option>)}</select></Field>
           <Field label="Minimum untung (Rp)"><input name="min_profit_rp" type="number" min={0} max={10000000} required defaultValue={t.min_profit_rp} className={INPUT} /></Field>
-          <Field label="Format target untuk supplier"><select name="target_format" defaultValue={t.target_format ?? "url"} className={INPUT}><option value="url">Link lengkap</option><option value="username">Username dari link profil</option></select></Field>
-          <Field label="Awal masa refill"><select name="refill_anchor" defaultValue={t.refill_anchor ?? "created"} className={INPUT}><option value="created">Pesanan dibuat</option><option value="completed">Pesanan selesai</option></select></Field>
+          <Field label="Format target untuk supplier"><select name="target_format" defaultValue={t.target_format ?? "url"} disabled={isManagedTier(t)} className={INPUT}><option value="url">Link lengkap</option><option value="username">Username dari link profil</option></select></Field>
+          <Field label="Awal masa refill"><select name="refill_anchor" defaultValue={t.refill_anchor ?? "created"} disabled={isManagedTier(t)} className={INPUT}><option value="created">Pesanan dibuat</option><option value="completed">Pesanan selesai</option></select></Field>
           <Field label="Kelipatan layanan"><input name="quantity_step" type="number" min={1} max={100000} defaultValue={t.quantity_step ?? 1} className={INPUT} /></Field>
           <Field label="Estimasi selesai"><input name="eta_finish" maxLength={40} defaultValue={t.eta_finish ?? ""} className={INPUT} /></Field>
 
@@ -421,43 +497,130 @@ function ServiceHealthLine({ row }: { row: Row }) {
   </div>;
 }
 
-function PediaServicesPanel({ catalog, selected, onSelect, onAssigned }: { catalog: Catalog; selected: ServiceSelection | null; onSelect: (id: ServiceSelection | null) => void; onAssigned: (id: number) => Promise<void> }) {
+function PediaServicesPanel({ catalog, onReload, onSynced, selected, onSelect, onAssigned }: { catalog: Catalog; onReload: () => Promise<boolean>; onSynced: () => void; selected: ServiceSelection | null; onSelect: (id: ServiceSelection | null) => void; onAssigned: (id: number) => Promise<void> }) {
   const [q, setQ] = useState(""), [search, setSearch] = useState(""), [platform, setPlatform] = useState(""), [page, setPage] = useState(1);
   const [indonesia, setIndonesia] = useState(false), [garansi, setGaransi] = useState(false), [type, setType] = useState("");
   const [productId, setProductId] = useState("");
-  const [supplier, setSupplier] = useState<string>(PEDIA_SALE_PROVIDER), [compatible, setCompatible] = useState(true), [mapping, setMapping] = useState("");
+  // PSMM-ACCEPTANCE-CLOSE 4: default TANPA filter kompatibilitas agar admin
+  // melihat semua tipe (Custom Comments, tipe terblokir), bukan hanya Default.
+  const [supplier, setSupplier] = useState<string>(PEDIA_SALE_PROVIDER), [compatible, setCompatible] = useState(false), [mapping, setMapping] = useState("");
+  const [managedState, setManagedState] = useState("");
   useEffect(() => { const timer = setTimeout(() => { setSearch(q); setPage(1); }, 300); return () => clearTimeout(timer); }, [q]);
-  const params = new URLSearchParams({ q: search, platform, supplier, compatible: compatible ? "1" : "0", mapping, page: String(page), indonesia: indonesia ? "1" : "0", garansi: garansi ? "1" : "0", type });
+  // PSMM-FINAL-PATCH E: filter kelayakan dikirim ke server (SQL sebelum COUNT/LIMIT).
+  const params = new URLSearchParams({ q: search, platform, supplier, compatible: compatible ? "1" : "0", mapping, page: String(page), indonesia: indonesia ? "1" : "0", garansi: garansi ? "1" : "0", type, managed: managedState });
   const panel = usePanel<{ rows: Row[]; total: number; diff: Record<string, string> }>(`/api/admin/pedia/services?${params}`, { rows: [], total: 0, diff: {} });
   const [confirmSync, setConfirmSync] = useState(false);
-  return <Panel title="Layanan supplier" description="Cari layanan, bandingkan biaya dan batas jumlah, lalu hubungkan ke tingkat produk yang sudah ada.">
+  // PSMM-FINAL-PATCH D: `busy` mengendalikan kontrol selama satu run; `progress`
+  // RETAINED untuk menampilkan hasil & menawarkan lanjutan. Keduanya terpisah
+  // supaya tombol tidak mati permanen setelah run pertama.
+  type SyncProgress = { supplier: string; cursor: number; total: number; processed: number; failed: string; done: boolean };
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const runRef = useRef(false);
+  const resync = useCallback(async () => {
+    if (runRef.current) return;
+    runRef.current = true;
+    setBusy(true);
+    // Lanjutkan dari cursor terakhir untuk supplier yang SAMA; supplier baru = 0.
+    const resume = progress && progress.supplier === supplier && !progress.done ? progress.cursor : 0;
+    let cursor = Number.isSafeInteger(resume) && resume >= 0 ? resume : 0;
+    let total = progress?.supplier === supplier ? progress.total : 0;
+    let processed = progress?.supplier === supplier ? progress.processed : 0;
+    const base: SyncProgress = { supplier, cursor, total, processed, failed: "", done: false };
+    setProgress(base);
+    let finished = false;
+    try {
+      for (let guard = 0; guard < 200; guard++) {
+        let data: Row | null = null;
+        try {
+          // `refresh` hanya di request PERTAMA run, bukan setiap jendela resume.
+          const res = await fetch("/api/admin/pedia/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resync", supplier, cursor, refresh: cursor === 0 }) });
+          data = await res.json().catch(() => null);
+          if (!res.ok || !data || data.ok === false) {
+            setProgress({ ...base, cursor, total, processed, failed: "Sinkronisasi hanya berhasil sebagian. Lanjutkan sinkronisasi untuk melanjutkan dari posisi terakhir." });
+            return;
+          }
+        } catch {
+          setProgress({ ...base, cursor, total, processed, failed: "Jaringan gagal. Lanjutkan sinkronisasi untuk melanjutkan dari posisi terakhir." });
+          return;
+        }
+        total = Number(data.total ?? total);
+        processed += Number((data.managed as Row | undefined)?.processed ?? 0);
+        const next = Number(data.cursor ?? cursor);
+        const bounded = Number.isSafeInteger(next) && next >= 0 && next <= Math.max(total, 0);
+        // Cursor malformed / tidak maju = ERROR, bukan "selesai".
+        if (!bounded || next < cursor) {
+          setProgress({ ...base, cursor, total, processed, failed: "Respons sinkronisasi tidak valid. Muat ulang lalu coba lagi dari posisi terakhir." });
+          return;
+        }
+        if (data.done === true) {
+          finished = true;
+          cursor = next;
+          break;
+        }
+        if (next === cursor) {
+          // Tidak maju walau belum `done`: hentikan sebagai error (anti-loop).
+          setProgress({ ...base, cursor, total, processed, failed: "Sinkronisasi berhenti tanpa kemajuan. Lanjutkan sinkronisasi untuk mencoba lagi." });
+          return;
+        }
+        cursor = next;
+        setProgress({ ...base, cursor, total, processed, failed: "", done: false });
+      }
+      if (!finished) {
+        setProgress({ ...base, cursor, total, processed, failed: "Sinkronisasi belum selesai (batas jendela tercapai). Lanjutkan sinkronisasi untuk meneruskan." });
+        return;
+      }
+      // Sukses penuh: tombol aktif kembali, hasil dibersihkan, data + ringkasan dimuat ulang.
+      setProgress({ ...base, cursor, total, processed, failed: "", done: true });
+    } finally {
+      runRef.current = false;
+      setBusy(false);
+    }
+    if (finished) {
+      await panel.load();
+      await onReload();
+      onSynced();
+    }
+  }, [supplier, progress, panel, onReload, onSynced]);
+  const rows = panel.data.rows;
+  return <Panel title="Layanan supplier" description="Katalog otomatis ProviderSMM adalah sumber utama. Cari, periksa kelayakan, lalu hubungkan manual hanya bila perlu.">
     <Feedback panel={panel} />
+    {progress && <div role="status" aria-live="polite" className="my-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/70">
+      <p>Tarik ulang: {progress.total > 0 ? `${Math.min(progress.cursor, progress.total)} / ${progress.total}` : "menyiapkan…"} · {progress.processed} layanan diproses{progress.done ? " · selesai" : ""}</p>
+      {progress.failed && <p className="mt-1 text-amber-300">{progress.failed}</p>}
+      {progress.failed && <button type="button" className={`${BUTTON} mt-2`} disabled={busy} onClick={() => void resync()}>Lanjutkan sinkronisasi</button>}
+    </div>}
     <div className="my-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_160px_160px_160px_160px]">
       <Field label="Cari layanan"><input className={INPUT} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nama atau ID layanan" /></Field>
-      <SupplierField value={supplier} onChange={(value) => { setSupplier(value); setPage(1); onSelect(null); }} />
+      <SupplierField value={supplier} providers={PEDIA_PROVIDERS} onChange={(value) => { if (busy) return; setSupplier(value); setProgress(null); setPage(1); onSelect(null); }} />
       <Field label="Status mapping"><select className={INPUT} value={mapping} onChange={(e) => { setMapping(e.target.value); setPage(1); }}><option value="">Semua mapping</option><option value="mapped">Sudah dipakai</option><option value="unmapped">Belum dipakai</option></select></Field>
+      <Field label="Kelayakan otomatis"><select className={INPUT} value={managedState} onChange={(e) => { setManagedState(e.target.value); setPage(1); }}><option value="">Semua kelayakan</option><option value="active">Aktif dijual</option><option value="blocked">Ditahan</option><option value="unmanaged">Belum otomatis</option></select></Field>
       <Field label="Platform layanan"><select className={INPUT} value={platform} onChange={(e) => { setPlatform(e.target.value); setPage(1); }}><option value="">Semua platform</option>{PLATFORMS.map((p) => <option key={p}>{p}</option>)}</select></Field>
       <Field label="Tipe layanan"><select className={INPUT} value={type} onChange={(e) => { setType(e.target.value); setPage(1); }}><option value="">Semua tipe</option>{["Default", "Custom Comments", "Package", "Subscriptions"].map((t) => <option key={t}>{t}</option>)}</select></Field>
     </div>
-    <div className="mb-3 flex flex-wrap items-center gap-4 text-sm text-white/65"><label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={compatible} onChange={(e) => { setCompatible(e.target.checked); setPage(1); }} />Kompatibel link + jumlah</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={indonesia} onChange={(e) => { setIndonesia(e.target.checked); setPage(1); }} />Indonesia</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={garansi} onChange={(e) => { setGaransi(e.target.checked); setPage(1); }} />Garansi disebut di nama</label><button className={BUTTON} disabled={panel.busy || !supplier} onClick={() => setConfirmSync(true)}>Tarik ulang {supplier ? PROVIDER_NAMES[supplier as PediaProvider] : "pilih supplier"}</button></div>
-    <p className="mb-4 text-xs text-white/65">{panel.data.total} layanan / Cek terakhir: {formatWibDateTime(panel.data.diff[supplier === "indosmm" ? "pedia_indosmm_diff_last_at" : "pedia_diff_last_at"]) ?? "Belum tersedia"}</p>
+    <div className="mb-3 flex flex-wrap items-center gap-4 text-sm text-white/65"><label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={compatible} onChange={(e) => { setCompatible(e.target.checked); setPage(1); }} />Kompatibel link + jumlah</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={indonesia} onChange={(e) => { setIndonesia(e.target.checked); setPage(1); }} />Indonesia</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={garansi} onChange={(e) => { setGaransi(e.target.checked); setPage(1); }} />Garansi disebut di nama</label><button className={BUTTON} disabled={panel.busy || busy || !supplier} onClick={() => setConfirmSync(true)}>Tarik ulang {supplier ? PROVIDER_NAMES[supplier as PediaProvider] : "pilih supplier"}</button></div>
+    <p className="mb-1 text-xs text-white/65">{panel.data.total} layanan / Cek terakhir: {formatWibDateTime(panel.data.diff[supplier === "indosmm" ? "pedia_indosmm_diff_last_at" : "pedia_diff_last_at"]) ?? "Belum tersedia"}</p>
+    <p className="mb-4 text-xs text-white/50">Deskripsi resmi: {formatWibDateTime(panel.data.diff["pedia_psmm_desc_last_at"]) ?? "Belum pernah disegarkan"}</p>
     {selected != null && <form aria-label="Hubungkan layanan" className="mb-4 space-y-3 border-y border-[#00E5FF]/20 py-4" onSubmit={async (e) => {
       e.preventDefault(); const f = new FormData(e.currentTarget);
       const result = await panel.write("/api/admin/pedia/products", { kind: "tier", id: Number(f.get("tier_id")), supplier: selected.supplier, supplier_service_id: selected.service_id, backup_service_id: null }, "Layanan utama diperbarui.");
       if (result && !result.saved) { onSelect(null); await onAssigned(Number(productId)); }
     }}><p className="text-sm font-semibold text-white">Pakai layanan {PROVIDER_NAMES[selected.supplier]} #{selected.service_id}</p><p className="text-xs text-white/65">Supplier dan layanan diganti bersama; cadangan dihapus, harga dihitung ulang. Order lama tetap memakai snapshot asal. Buat produk/tingkat melalui tab Produk bila belum ada.</p><div className="grid gap-3 sm:grid-cols-2"><Field label="Produk tujuan"><select required className={INPUT} value={productId} onChange={(e) => setProductId(e.target.value)}><option value="">Pilih produk</option>{catalog.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field><Field label="Tingkat tujuan"><select key={productId} name="tier_id" required className={INPUT} defaultValue=""><option value="">Pilih tingkat</option>{catalog.tiers.filter((t) => t.product_id === Number(productId)).sort((a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier)).map((t) => <option key={t.id} value={t.id}>{t.tier}</option>)}</select></Field></div><div className="flex gap-2"><button className={PRIMARY} disabled={panel.busy}>Hubungkan layanan</button><button type="button" className={BUTTON} disabled={panel.busy} onClick={() => onSelect(null)}>Batal</button></div></form>}
-    <DataTable title="Layanan supplier" columns={["Supplier / ID / layanan", "Biaya per 1.000", "Min / maks", "Dipakai di", "Aksi"]}>
-      {panel.data.rows.map(r => <tr key={`${r.supplier}:${r.service_id}`}>
+    <DataTable title="Layanan supplier" columns={["Supplier / ID / layanan", "Biaya per 1.000", "Min / maks", "Katalog otomatis", "Dipakai di", "Aksi"]}>
+      {rows.map(r => <tr key={`${r.supplier}:${r.service_id}`}>
         <td className="min-w-[260px] max-w-md"><p className="font-semibold text-white">{String(r.name)}</p><p className="mt-1 text-xs text-white/40">{PROVIDER_NAMES[r.supplier as PediaProvider]} #{String(r.service_id)} · {Number(r.present) === 1 ? "Tersedia" : "Hilang dari supplier"}</p><p className="mt-1 text-xs text-white/55"><HealthBadge row={r} /> {Number(r.stat_orders) ? `${Number(r.stat_orders)} order/7 hari · success ${Math.round(Number(r.stat_success))}% · refill ${Math.round(Number(r.stat_refill ?? 0))}%` : "Belum ada data 7 hari"}{r.stat_avg_time ? ` · avg time ${String(r.stat_avg_time)}` : ""}</p><p className="mt-1 text-xs">{String(r.type)} · API refill {r.api_refill === 1 ? "Ya" : "Tidak"}</p></td>
         <td className="whitespace-nowrap font-semibold text-white">{formatRupiah(Number(r.rate_idr_per_1k))}</td>
         <td className="whitespace-nowrap text-xs tabular-nums">{String(r.min_qty)} / {String(r.max_qty)}</td>
+        <td className="min-w-[160px] text-xs">{r.tier_managed === "auto"
+          ? <><p className="font-semibold text-white">{Number(r.tier_active) === 1 ? "Aktif dijual" : "Ditahan"}</p>{Number(r.tier_active) !== 1 && <p className="mt-0.5 text-amber-300">{managedReasonLabel(r.tier_disabled_reason)}</p>}<p className="mt-0.5 text-white/45">Deskripsi: {String(r.description_status) === "ok" ? "tersedia" : String(r.description_status) === "empty" ? "kosong di sumber" : String(r.description_status) === "oversize" ? "terlalu panjang" : "belum ada"}</p></>
+          : <span className="text-white/45">Belum otomatis</span>}</td>
         <td className="min-w-[160px] text-xs">{String(r.used_in || "Belum dipakai")}</td>
         <td><button className={EDIT} disabled={panel.busy || panel.loading || !isPediaSaleProvider(r.supplier) || isPediaPremiumToolCandidate(r.name,r.category) || Number(r.present) !== 1 || r.type !== "Default" || Number(r.rate_idr_per_1k) <= 0} onClick={() => onSelect({ supplier: r.supplier as PediaProvider, service_id: Number(r.service_id) })} aria-label={`Pakai layanan ${r.supplier} ${r.service_id}`}>Pakai</button></td>
       </tr>)}
     </DataTable>
-    {!panel.loading && !panel.error && !panel.data.rows.length && <p className="py-4 text-sm text-white/65">Tidak ada layanan yang cocok.</p>}
+    {!panel.loading && !panel.error && !rows.length && <p className="py-4 text-sm text-white/65">Tidak ada layanan yang cocok{managedState || type || search || platform || mapping || indonesia || garansi || compatible ? " dengan filter ini" : ""}.</p>}
     <div className="mt-4 flex items-center gap-3"><button className={BUTTON} disabled={page <= 1 || panel.loading} onClick={() => setPage(page - 1)}>Sebelumnya</button><span className="text-xs text-white/65">Halaman {page} / {Math.max(1, Math.ceil(panel.data.total / 50))}</span><button className={BUTTON} disabled={page * 50 >= panel.data.total || panel.loading} onClick={() => setPage(page + 1)}>Berikutnya</button></div>
-    <ConfirmDialog open={confirmSync} title="Tarik ulang layanan?" description={`Hanya ${PROVIDER_NAMES[supplier as PediaProvider]}. Harga dan status tingkat dapat berubah; layanan hilang ditangani diff VPS, bukan daftar manual ini.`} confirmLabel="Tarik ulang" variant="default" loading={panel.busy} onClose={() => { if (!panel.busy) setConfirmSync(false); }} onConfirm={async () => { const result = await panel.write("/api/admin/pedia/services", { action: "resync", supplier }, "Layanan selesai disinkronkan.", "POST"); if (result) setConfirmSync(false); }} />
+    <ConfirmDialog open={confirmSync} title="Tarik ulang layanan?" description={`Hanya ${PROVIDER_NAMES[supplier as PediaProvider]}. Katalog dan harga dapat berubah; layanan hilang ditangani diff VPS, bukan daftar manual ini.`} confirmLabel="Tarik ulang" variant="default" loading={busy} onClose={() => { if (!busy) setConfirmSync(false); }} onConfirm={async () => { if (busy) return; setConfirmSync(false); await resync(); }} />
   </Panel>;
 }
 
@@ -467,7 +630,7 @@ function PediaOrdersPanel() {
   const panel = usePanel<{ rows: Row[] }>(`/api/admin/pedia/orders?status=${status}&supplier=${supplier}`, { rows: [] });
   const [action, setAction] = useState<{ code: string; action: string; sid?: string } | null>(null);
   return <Panel title="Pesanan Pedia" description="Periksa pesanan bermasalah sebelum mengirim ulang. Pengiriman ulang dapat membuat tagihan supplier baru.">
-    <Feedback panel={panel} /><div className="my-4 grid gap-3 sm:grid-cols-2"><Field label="Status pesanan"><select value={status} onChange={(e) => { setStatus(e.target.value); setAction(null); }} className={INPUT}><option value="">Semua status</option>{Object.entries(STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><SupplierField value={supplier} onChange={(value) => { setSupplier(value); setAction(null); }} /></div>
+    <Feedback panel={panel} /><div className="my-4 grid gap-3 sm:grid-cols-2"><Field label="Status pesanan"><select value={status} onChange={(e) => { setStatus(e.target.value); setAction(null); }} className={INPUT}><option value="">Semua status</option>{Object.entries(STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><SupplierField value={supplier} providers={PEDIA_PROVIDERS} onChange={(value) => { setSupplier(value); setAction(null); }} /></div>
     {!panel.loading && !panel.error && !panel.data.rows.length && <p className="text-sm text-white/65">Belum ada pesanan Pedia untuk status ini.</p>}
     <DataTable title="Pesanan Pedia" columns={["Pesanan", "Produk / jumlah", "Tujuan", "Total", "Status"]}>
       {panel.data.rows.map(r => <Fragment key={String(r.order_code)}>
@@ -492,7 +655,7 @@ function PediaOrdersPanel() {
             <p className="font-semibold text-white">Refill: {refillStatusLabel(r.refill_status)}</p>
             <p className="mt-1 text-white/50">Diajukan {formatWibDateTime(String(r.refill_last_at ?? "")) ?? "-"}{r.refill_supplier_id ? ` · ID refill ${String(r.refill_supplier_id)}` : ""}</p>
             {["manual_requested", "needs_check", "requested"].includes(String(r.refill_status)) && <>
-              <p className="mt-2 text-white/60">{r.refill_status === "manual_requested" ? `Layanan ini tanpa tombol refill API. Ajukan ke CS IndoSMM (tiket/WA) dengan Order ID ${String(r.supplier_order_id ?? "-")}, lalu tandai hasilnya.` : "Hasil refill belum pasti. Cek di Riwayat Order IndoSMM, lalu tandai hasilnya."}</p>
+              <p className="mt-2 text-white/60">{r.refill_status === "manual_requested" ? `Layanan ini tanpa tombol refill API. Ajukan ke CS ${PROVIDER_NAMES[r.supplier as PediaProvider] ?? "supplier"} (tiket/WA) dengan Order ID ${String(r.supplier_order_id ?? "-")}, lalu tandai hasilnya.` : `Hasil refill belum pasti. Cek di Riwayat Order ${PROVIDER_NAMES[r.supplier as PediaProvider] ?? "supplier"}, lalu tandai hasilnya.`}</p>
               <div className="mt-2 flex flex-wrap gap-2"><button disabled={panel.busy} className={BUTTON} onClick={() => void panel.write(`/api/admin/pedia/orders/${encodeURIComponent(String(r.order_code))}`, { action: "refill_resolve", refill_outcome: "completed", confirm: true }, "Refill ditandai selesai.", "POST")}>Refill selesai</button><button disabled={panel.busy} className={`${BUTTON} text-red-300`} onClick={() => void panel.write(`/api/admin/pedia/orders/${encodeURIComponent(String(r.order_code))}`, { action: "refill_resolve", refill_outcome: "rejected", confirm: true }, "Refill ditandai ditolak.", "POST")}>Ditolak supplier</button></div>
             </>}
           </div>}
@@ -541,7 +704,7 @@ function PediaSettingsPanel() {
     ["pedia_min_order_rp", "Minimum order (Rp)", 500, 100000], ["pedia_balance_alert_rp", "Ambang saldo (Rp)", 10000, 100000000],
   ];
   return <Panel title="Pengaturan Pedia" description="Nilai tersimpan tidak menggantikan konfigurasi operasional server."><Feedback panel={panel} />
-    <div className="my-4"><Feedback panel={health} /><div className="grid gap-3 sm:grid-cols-2">{health.data.providers.map((provider) => <section key={provider.supplier} className="min-w-0 rounded-xl border border-white/10 p-3 text-sm text-white/80"><h4 className="font-semibold text-white">{PROVIDER_NAMES[provider.supplier]}</h4><p>Saldo: {provider.balance.value == null ? "Belum tersedia" : formatRupiah(provider.balance.value)} {provider.balance.stale ? "(cache, bukan saldo live)" : "(live IDR)"}</p><p className="text-xs">Harga: {provider.pricing_verified ? "Gate pricing lolos" : "Belum terverifikasi"} / Sync {formatWibDateTime(provider.last_sync_at ?? "") ?? "Belum tersedia"}</p>{provider.error && <p role="status" className="mt-2 break-words text-amber-300">Kendala: {provider.error}</p>}</section>)}</div><button className={`${BUTTON} mt-3`} disabled={health.loading} onClick={() => void health.load()}>Periksa saldo dan health</button><p className="mt-2 text-xs text-white/65">IndoSMM memerlukan balance IDR dan gate tarif per 1.000 di VPS. Health/saldo tidak membuka flag order atau dispatch.</p></div>
+    <div className="my-4"><Feedback panel={health} /><div className="grid gap-3 sm:grid-cols-2">{health.data.providers.map((provider) => <section key={provider.supplier} className="min-w-0 rounded-xl border border-white/10 p-3 text-sm text-white/80"><h4 className="font-semibold text-white">{PROVIDER_NAMES[provider.supplier]}</h4><p>Saldo: {provider.balance.value == null ? "Belum tersedia" : formatRupiah(provider.balance.value)} {provider.balance.stale ? "(cache, bukan saldo live)" : "(live IDR)"}</p><p className="text-xs">Harga: {provider.pricing_verified ? "Gate pricing lolos" : "Belum terverifikasi"} / Sync {formatWibDateTime(provider.last_sync_at ?? "") ?? "Belum tersedia"}</p>{provider.error && <p role="status" className="mt-2 break-words text-amber-300">Kendala: {provider.error}</p>}</section>)}</div><button className={`${BUTTON} mt-3`} disabled={health.loading} onClick={() => void health.load()}>Periksa saldo dan health</button><p className="mt-2 text-xs text-white/65">Supplier penjualan aktif memerlukan saldo IDR dan katalog layanan terbaca di VPS. Health/saldo tidak membuka flag order atau dispatch.</p></div>
     <p className="mt-3 text-sm leading-relaxed text-amber-200">Minimum order dan ambang notifikasi saldo aktif mengikuti konfigurasi server. Mengubah nilai di bawah tidak mengubah kedua batas operasional tersebut. Markup dan minimum untung setiap tingkat dikelola melalui editor produk.</p>
     {!panel.loading && Object.keys(panel.data.settings).length > 0 && <form className="my-4 space-y-4" aria-label="Pengaturan Pedia" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); setDraft(Object.fromEntries(fields.map(([key]) => [key, Number(f.get(key))]))); }}><fieldset disabled={panel.busy} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{fields.map(([key, label, min, max]) => <Field key={key} label={label}><input name={key} type="number" required min={min} max={max} step={key.includes("markup") ? "any" : 1} defaultValue={panel.data.settings[key]} className={INPUT} /></Field>)}</fieldset><p className="text-xs text-white/65">Default tidak mengubah semua tingkat secara otomatis. Harga paket mengikuti pengaturan tingkat dan sinkronisasi layanan.</p><button className={PRIMARY} disabled={panel.busy}>Simpan pengaturan</button></form>}
     <details className="border-t border-white/10 pt-3"><summary className="min-h-11 cursor-pointer py-3 text-sm text-white">Riwayat saldo supplier (7 hari)</summary>{panel.data.balance_history.length ? <DataTable title="Riwayat saldo supplier" columns={["Supplier", "Saldo", "Waktu"]} minWidth="min-w-[480px]">{panel.data.balance_history.map((r, i) => <tr key={`${r.supplier}:${i}`}><td>{PROVIDER_NAMES[r.supplier as PediaProvider]}</td><td className="font-semibold text-white">{formatRupiah(Number(r.balance))}</td><td>{formatWibDateTime(String(r.created_at)) ?? "-"}</td></tr>)}</DataTable> : !panel.loading && !panel.error && <p className="text-sm text-white/65">Belum ada riwayat saldo.</p>}</details>

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { seedOfficialDescriptions } from "./helpers/pedia-managed-fixture";
 import { applyPediaDiff, applyProvidersmmDiff } from "@/lib/pedia/sync";
 import { callPediaProxy, callPsmmProxy, type PediaProvider } from "@/lib/pedia/proxy";
 import { processPediaPaidOrders } from "@/lib/pedia/dispatch";
@@ -16,16 +17,21 @@ async function seed() {
   const db = createDatabaseAccess(fx.db);
   vi.stubEnv("PEDIA_ENABLED", "true");
   vi.stubEnv("PEDIA_ORDERS_ENABLED", "true");
-  await db.execRun(`INSERT INTO pedia_products (slug,platform,metric,target_kind,name,packages_json,step,is_active) VALUES ('ig','instagram','followers','profile','IG','[100,250]',10,1)`);
+  await db.execRun(`INSERT INTO pedia_products (slug,platform,metric,target_kind,name,packages_json,step,is_active,managed) VALUES ('ig','instagram','followers','profile','IG','[100,250]',10,1,'auto')`);
   for (const [provider, tier] of [["providersmm", "hemat"], ["indosmm", "standar"]]) {
     // Beda service_id per provider: sejak 0062 satu layanan supplier hanya
     // boleh terhubung sekali per produk (dulu service 86 dipakai berdua
-    // hanya untuk menguji batas — kini dilayani baris terpisah).
+    // hanya untuk menguji batas — kini dilayani baris terpisah). Sejak
+    // 2026-11-12 ProviderSMM adalah supplier penjualan, IndoSMM riwayat.
+    // PSMM-P5: baris supplier jual ditandai `managed='auto'` agar lolos gate
+    // katalog/quote/order publik; IndoSMM tetap kurasi (riwayat).
     const serviceId = provider === "indosmm" ? 87 : 86;
-    await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active) VALUES (1,?,?,${serviceId},'G3',20,1000,30,1)`, tier, provider);
+    const managed = provider === "providersmm" ? "auto" : "curated";
+    await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active,managed) VALUES (1,?,?,${serviceId},'G3',20,1000,30,1,'${managed}')`, tier, provider);
   }
   await applyProvidersmmDiff(db, [service()], []);
   await applyPediaDiff(db, "indosmm", [{ ...service(5000, 250), service_id: 87 }], [], "IDR");
+  await seedOfficialDescriptions(db, [86]);
   return { db, fx };
 }
 
@@ -75,10 +81,12 @@ describe("provider boundary and normalized diff", () => {
     // produk yang sama (UNIQUE per produk+supplier+layanan): kemandirian kini
     // dibuktikan pada katalog cermin — baris (providersmm,86) vs (indosmm,87)
     // dengan rate/batas berbeda, penghapusan satu tidak menyentuh yang lain.
+    // Sejak 2026-11-12 hanya tier ProviderSMM (min 100, rate 1.000) yang
+    // ditawarkan publik; tier IndoSMM tetap tersimpan untuk riwayat.
     const { GET } = await import("@/app/api/pedia/catalog/route");
     const catalog = await (await GET()).json();
-    expect(catalog.products[0].tiers.map((t: { min_qty: number }) => t.min_qty)).toEqual([250]);
-    expect(catalog.products[0].tiers[0].prices).toEqual({ "250": 2300 });
+    expect(catalog.products[0].tiers).toHaveLength(1);
+    expect(catalog.products[0].tiers[0]).toMatchObject({ min_qty: 100, prices: { "250": 1300 } });
     expect(JSON.stringify(catalog)).not.toMatch(/supplier|providersmm|indosmm|rate|Private/);
     await applyPediaDiff(db, "indosmm", [], [87], "IDR");
     const rows = await db.queryAll(`SELECT supplier,present FROM pedia_supplier_services ORDER BY supplier`);
@@ -108,17 +116,49 @@ describe("provider boundary and normalized diff", () => {
     expect((await send({ source: "indosmm", services: [service()], currency: "IDR" })).status).toBe(200);
     expect(fx.sql.prepare(`SELECT value FROM store_settings WHERE key='pedia_indosmm_diff_last_at'`).get()).toBeTruthy();
   });
-  // 2026-11-01 (owner): ProviderSMM diputus — diff lama di-ack tanpa menulis D1.
-  it("supplier-sync acknowledges ProviderSMM diffs without storing them", async () => {
+  // 2026-11-12 (owner): ProviderSMM kembali menjadi supplier penjualan baru,
+  // jadi diff-nya ditulis ke cermin D1 (bukan lagi di-ack lalu dibuang).
+  it("supplier-sync stores ProviderSMM diffs and advances its checkpoint", async () => {
     const { fx } = await seed();
     vi.stubEnv("SUPPLIER_SYNC_TOKEN", "test-sync");
     const { POST } = await import("@/app/api/supplier-sync/route");
     const before = fx.sql.prepare(`SELECT COUNT(*) n FROM pedia_supplier_services WHERE supplier='providersmm'`).get();
     const res = await POST(new Request("http://x/", { method: "POST", headers: { "x-supplier-sync-token": "test-sync" }, body: JSON.stringify({ source: "providersmm", services: [{ ...service(), service_id: 777 }], removed_service_ids: [] }) }) as never);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, ignored: "providersmm_retired" });
-    expect(fx.sql.prepare(`SELECT COUNT(*) n FROM pedia_supplier_services WHERE supplier='providersmm'`).get()).toEqual(before);
-    expect(fx.sql.prepare(`SELECT value FROM store_settings WHERE key='pedia_diff_last_at'`).get()).toBeUndefined();
+    expect(await res.json()).toMatchObject({ ok: true, upserted: 1, missing: 0 });
+    expect(fx.sql.prepare(`SELECT COUNT(*) n FROM pedia_supplier_services WHERE supplier='providersmm'`).get()?.n).toBe(Number(before?.n) + 1);
+    expect(fx.sql.prepare(`SELECT value FROM store_settings WHERE key='pedia_diff_last_at'`).get()).toBeTruthy();
+    expect(fx.sql.prepare(`SELECT value FROM store_settings WHERE key='pedia_diff_last_change_at'`).get()).toBeTruthy();
+  });
+  it("supplier-sync never acknowledges ProviderSMM malformed input or partial writes", async () => {
+    const { fx } = await seed();
+    vi.stubEnv("SUPPLIER_SYNC_TOKEN", "test-sync");
+    const { POST } = await import("@/app/api/supplier-sync/route");
+    const send = (body: unknown, token = "test-sync") => POST(new Request("http://x/", { method: "POST", headers: { "x-supplier-sync-token": token }, body: JSON.stringify(body) }) as never);
+    // Auth pertama: token salah/kosong tidak pernah menyentuh D1.
+    expect((await send({ source: "providersmm", services: [service()] }, "wrong")).status).toBe(401);
+    // Input tidak sah dan batch di atas batas tetap 4xx, bukan 2xx.
+    expect((await send({ source: "providersmm" })).status).toBe(400);
+    expect((await send({ source: "providersmm", services: [{ ...service(), service_id: 0 }] })).status).toBe(400);
+    expect((await send({ source: "providersmm", services: Array.from({ length: 101 }, (_, i) => ({ ...service(), service_id: 900 + i })) })).status).toBe(413);
+    expect((await send({ source: "providersmm", services: [service()], currency: "USD" })).status).toBe(400);
+    // Kegagalan tulis sebagian tidak di-ack: VPS harus mengirim ulang idempoten.
+    fx.control.fail = (q) => q.includes("INSERT INTO pedia_supplier_services");
+    expect((await send({ source: "providersmm", services: [{ ...service(), service_id: 777 }] })).status).toBe(500);
+    fx.control.fail = null;
+    expect(fx.sql.prepare(`SELECT COUNT(*) n FROM pedia_supplier_services WHERE supplier='providersmm' AND service_id=777`).get()?.n).toBe(0);
+  });
+  it("an absent ProviderSMM delta never deletes the mirror; only explicit removed IDs do", async () => {
+    const { db, fx } = await seed();
+    vi.stubEnv("SUPPLIER_SYNC_TOKEN", "test-sync");
+    const { POST } = await import("@/app/api/supplier-sync/route");
+    const send = (body: unknown) => POST(new Request("http://x/", { method: "POST", headers: { "x-supplier-sync-token": "test-sync" }, body: JSON.stringify(body) }) as never);
+    const total = fx.sql.prepare(`SELECT COUNT(*) n FROM pedia_supplier_services WHERE supplier='providersmm' AND present=1`).get()?.n;
+    expect((await send({ source: "providersmm", services: [{ ...service(), service_id: 778 }], removed_service_ids: [] })).status).toBe(200);
+    expect(fx.sql.prepare(`SELECT COUNT(*) n FROM pedia_supplier_services WHERE supplier='providersmm' AND present=1`).get()?.n).toBe(Number(total) + 1);
+    expect((await send({ source: "providersmm", services: [], removed_service_ids: [86] })).status).toBe(200);
+    expect(fx.sql.prepare(`SELECT present FROM pedia_supplier_services WHERE supplier='providersmm' AND service_id=86`).get()).toEqual({ present: 0 });
+    expect((await db.queryFirst(`SELECT COUNT(*) n FROM pedia_supplier_services WHERE supplier='providersmm' AND present=1`))?.n).toBe(1);
   });
 });
 
@@ -126,9 +166,9 @@ describe("quote and order provider snapshots", () => {
   it.each(["refill_days", "min_profit_rp"])("preserves quoted %s after an equal-price term change", async (term) => {
     const { db } = await seed();
     const { POST } = await import("@/app/api/pedia/quote/route");
-    const q = await (await POST(request({ product_id: 1, tier_id: 2, quantity: 250, target: "https://instagram.com/buyer" }))).json();
+    const q = await (await POST(request({ product_id: 1, tier_id: 1, quantity: 250, target: "https://instagram.com/buyer" }))).json();
     expect(await verifyPediaQuoteToken(q.quote_token)).toMatchObject({ refill_days: 30, min_profit_rp: 1000 });
-    await db.execRun(`UPDATE pedia_tiers SET ${term}=? WHERE id=2`, term === "refill_days" ? 0 : 1050);
+    await db.execRun(`UPDATE pedia_tiers SET ${term}=? WHERE id=1`, term === "refill_days" ? 0 : 1050);
     vi.stubEnv("DANA_QRIS_ENABLED", "false");
     const { POST: orders } = await import("@/app/api/pedia/orders/route");
     const result = await orders(request({ quote_token: q.quote_token, customer_wa: "081234567890", customer_email: "test@example.com" }));
@@ -137,15 +177,18 @@ describe("quote and order provider snapshots", () => {
     expect(item?.total).toBe(q.total);
     expect(JSON.parse(String(item?.snapshot_json))).toMatchObject({ refill_days: 30, min_profit_rp: 1000 });
   });
-  it("legacy encrypted quotes without terms retain current-tier fallback", async () => {
+  it("legacy encrypted quotes without terms version still verify but cannot create a NEW order", async () => {
     const { db } = await seed();
-    const { token } = await createPediaQuoteToken({ product_id: 1, tier_id: 2, quantity: 250, target_raw: "https://instagram.com/buyer", target_normalized: "https://www.instagram.com/buyer/", unit_price: 9.2, total: 2300, credit_code_hash: null, credit_used: 0, supplier: "indosmm", supplier_service_id: 87, supplier_rate_snapshot: 5000 });
-    await db.execRun(`UPDATE pedia_tiers SET refill_days=15,min_profit_rp=1050 WHERE id=2`);
+    const { token } = await createPediaQuoteToken({ product_id: 1, tier_id: 1, quantity: 250, target_raw: "https://instagram.com/buyer", target_normalized: "https://www.instagram.com/buyer/", unit_price: 5.2, total: 1300, credit_code_hash: null, credit_used: 0, supplier: "providersmm", supplier_service_id: 86, supplier_rate_snapshot: 1000 });
+    // Token lama tetap terverifikasi (kompatibilitas baca), tetapi order BARU
+    // wajib membawa versi syarat yang cocok dengan snapshot aktif.
+    expect(await verifyPediaQuoteToken(token)).not.toBeNull();
+    await db.execRun(`UPDATE pedia_tiers SET refill_days=15,min_profit_rp=1050 WHERE id=1`);
     vi.stubEnv("DANA_QRIS_ENABLED", "false");
     const { POST } = await import("@/app/api/pedia/orders/route");
-    await POST(request({ quote_token: token, customer_wa: "081234567890", customer_email: "test@example.com" }));
-    const item = await db.queryFirst(`SELECT snapshot_json FROM pedia_order_items`);
-    expect(JSON.parse(String(item?.snapshot_json))).toMatchObject({ refill_days: 15, min_profit_rp: 1050 });
+    const res = await POST(request({ quote_token: token, customer_wa: "081234567890", customer_email: "test@example.com" }));
+    expect(res.status).toBe(409);
+    expect(await db.queryFirst(`SELECT COUNT(*) n FROM pedia_order_items`)).toMatchObject({ n: 0 });
   });
   it("accepts unexpired legacy ProviderSMM signed quotes", async () => {
     vi.stubEnv("ADMIN_JWT_SECRET", "legacy-test");
@@ -156,29 +199,58 @@ describe("quote and order provider snapshots", () => {
   it("quotes the mapped provider and rejects an equal-price mapping change before payment", async () => {
     const { db } = await seed();
     const { POST } = await import("@/app/api/pedia/quote/route");
-    const res = await POST(request({ product_id: 1, tier_id: 2, quantity: 250, target: "https://instagram.com/buyer" }));
+    const res = await POST(request({ product_id: 1, tier_id: 1, quantity: 250, target: "https://instagram.com/buyer" }));
     expect(res.status).toBe(200);
     const q = await res.json();
     expect(q.quote_token.split(".")).toHaveLength(5);
     expect(JSON.stringify(q)).not.toMatch(/supplier|rate_snapshot|indosmm|providersmm/);
-    expect(await verifyPediaQuoteToken(q.quote_token)).toMatchObject({ supplier: "indosmm", supplier_service_id: 87, supplier_rate_snapshot: 5000 });
-    await db.execRun(`UPDATE pedia_tiers SET supplier='providersmm' WHERE id=2`);
+    expect(await verifyPediaQuoteToken(q.quote_token)).toMatchObject({ supplier: "providersmm", supplier_service_id: 86, supplier_rate_snapshot: 1000 });
+    await db.execRun(`UPDATE pedia_tiers SET supplier='indosmm', supplier_service_id=86 WHERE id=1`);
     const { POST: orders } = await import("@/app/api/pedia/orders/route");
     const order = await orders(request({ quote_token: q.quote_token, customer_wa: "081234567890", customer_email: "test@example.com" }));
     expect(order.status).toBe(409);
     expect((await order.json()).error).toBe("service_changed");
     expect(await db.queryAll(`SELECT * FROM orders`)).toEqual([]);
   });
-  it("persists IndoSMM on a new order without making an upstream order", async () => {
+  it("persists ProviderSMM on a new order without making an upstream order", async () => {
     const { db } = await seed();
     const { POST } = await import("@/app/api/pedia/quote/route");
-    const q = await (await POST(request({ product_id: 1, tier_id: 2, quantity: 250, target: "https://instagram.com/buyer" }))).json();
+    const q = await (await POST(request({ product_id: 1, tier_id: 1, quantity: 250, target: "https://instagram.com/buyer" }))).json();
     vi.stubEnv("DANA_QRIS_ENABLED", "false");
     const { POST: orders } = await import("@/app/api/pedia/orders/route");
     await orders(request({ quote_token: q.quote_token, customer_wa: "081234567890", customer_email: "test@example.com" }));
     const item = await db.queryFirst(`SELECT * FROM pedia_order_items`);
-    expect(item).toMatchObject({ supplier: "indosmm", supplier_service_id: 87, supplier_rate_snapshot: 5000 });
-    expect(JSON.parse(String(item?.snapshot_json))).toMatchObject({ refill_days: 30, supplier: "indosmm" });
+    expect(item).toMatchObject({ supplier: "providersmm", supplier_service_id: 86, supplier_rate_snapshot: 1000 });
+    expect(JSON.parse(String(item?.snapshot_json))).toMatchObject({ refill_days: 30, supplier: "providersmm" });
+  });
+  it("finds a persisted retired-supplier order BEFORE the sale-provider rejection", async () => {
+    const { db } = await seed();
+    // Quote IndoSMM (kini supplier riwayat) yang sudah menjadi order tersimpan.
+    const { token, quoteId } = await createPediaQuoteToken({
+      product_id: 1, tier_id: 2, quantity: 250, target_raw: "https://instagram.com/buyer",
+      target_normalized: "https://www.instagram.com/buyer/", unit_price: 9.2, total: 2300,
+      credit_code_hash: null, credit_used: 0, supplier: "indosmm", supplier_service_id: 87, supplier_rate_snapshot: 5000,
+    });
+    await db.execRun(`INSERT INTO orders (code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,order_kind)
+      VALUES ('AXP-PERSISTED',?,'','6281234567890','test@example.com','[]',2300,'qris','pending','pedia')`, `pedia:${quoteId}`);
+    await db.execRun(`INSERT INTO pedia_order_items (order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,supplier,supplier_service_id,supplier_rate_snapshot,status)
+      VALUES ('AXP-PERSISTED',1,2,'{}','https://instagram.com/buyer','https://www.instagram.com/buyer/',250,9.2,2300,0,'indosmm',87,5000,'awaiting_payment')`);
+    // Reuse path menerbitkan invoice QRIS untuk order pending; provider QRIS
+    // dipalsukan hanya agar jalur reuse mencapai 200 (bukan 409 supplier).
+    vi.spyOn(await import("@/lib/payments/dana-qris"), "createActiveQrisInvoice").mockImplementation(async (code, amount) => ({ orderCode: code, requestedAmount: amount, payableAmount: amount, uniqueCode: 1, qrisPayload: "test", qrisUrl: "/qr.png", expiresAt: "2099-01-01", isExisting: false }));
+    const { POST: orders } = await import("@/app/api/pedia/orders/route");
+    const res = await orders(request({ quote_token: token, customer_wa: "081234567890", customer_email: "test@example.com" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ code: "AXP-PERSISTED", reused: true });
+    // Sebaliknya, quote IndoSMM TANPA order tersimpan ditolak sebagai retired.
+    const fresh = await createPediaQuoteToken({
+      product_id: 1, tier_id: 2, quantity: 250, target_raw: "https://instagram.com/other",
+      target_normalized: "https://www.instagram.com/other/", unit_price: 9.2, total: 2300,
+      credit_code_hash: null, credit_used: 0, supplier: "indosmm", supplier_service_id: 87, supplier_rate_snapshot: 5000,
+    });
+    const rejected = await orders(request({ quote_token: fresh.token, customer_wa: "081234567891", customer_email: "other@example.com" }));
+    expect(rejected.status).toBe(409);
+    expect((await rejected.json()).error).toBe("provider_retired");
   });
 });
 
@@ -326,22 +398,22 @@ describe("durable provider-specific dispatch", () => {
   });
 });
 
-describe("IndoSMM-only public sales with stale active legacy tiers",()=>{
+describe("ProviderSMM-only public sales with stale active legacy tiers",()=>{
  it("omits legacy comparison prices and refuses forced legacy quotes",async()=>{
   await seed();const {NextRequest}=await import('next/server');const {GET:prices}=await import('@/app/api/pedia/prices/route');
   const response=await prices(new NextRequest('http://x/api/pedia/prices?product_slug=ig&quantity=250'));
-  expect(response.status).toBe(200);expect((await response.json()).prices).toEqual([{tier_id:2,total:2300}]);
-  const {POST:quote}=await import('@/app/api/pedia/quote/route');const r=await quote(request({product_id:1,tier_id:1,quantity:250,target:'https://instagram.com/buyer'}));
+  expect(response.status).toBe(200);expect((await response.json()).prices).toEqual([{tier_id:1,total:1300}]);
+  const {POST:quote}=await import('@/app/api/pedia/quote/route');const r=await quote(request({product_id:1,tier_id:2,quantity:250,target:'https://instagram.com/buyer'}));
   expect(r.status).toBe(409);expect(await r.json()).toMatchObject({error:'provider_retired'});
  });
  it("hides a legacy-only product before its database tier is retired",async()=>{
-  const {db}=await seed();await db.execRun("UPDATE pedia_tiers SET is_active=0 WHERE supplier='indosmm'");
+  const {db}=await seed();await db.execRun("UPDATE pedia_tiers SET is_active=0 WHERE supplier='providersmm'");
   const {GET}=await import('@/app/api/pedia/catalog/route');expect((await (await GET()).json()).products).toEqual([]);
  });
 });
 it("rejects a video target for a feed-only Facebook share quote",async()=>{
  const {db}=await seed();await db.execRun("UPDATE pedia_products SET platform='facebook',metric='shares',target_kind='post' WHERE id=1");
  const {POST}=await import('@/app/api/pedia/quote/route');
- expect((await POST(request({product_id:1,tier_id:2,quantity:250,target:'https://facebook.com/reel/123456'}))).status).toBe(422);
- expect((await POST(request({product_id:1,tier_id:2,quantity:250,target:'https://facebook.com/page/posts/123456/'}))).status).toBe(200);
+ expect((await POST(request({product_id:1,tier_id:1,quantity:250,target:'https://facebook.com/reel/123456'}))).status).toBe(422);
+ expect((await POST(request({product_id:1,tier_id:1,quantity:250,target:'https://facebook.com/page/posts/123456/'}))).status).toBe(200);
 });

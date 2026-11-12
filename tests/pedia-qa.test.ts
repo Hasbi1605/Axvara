@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { seedOfficialDescriptions } from "./helpers/pedia-managed-fixture";
 import { applyPediaDiff } from "@/lib/pedia/sync";
 
 afterEach(() => {
@@ -19,21 +20,22 @@ async function seedActive() {
   const { db: d1 } = createD1Fixture();
   const db = createDatabaseAccess(d1);
   await db.execRun(
-    `INSERT INTO pedia_products (slug, platform, metric, target_kind, name, packages_json, step, is_active)
-     VALUES ('followers-instagram','instagram','followers','profile','Followers Instagram','[100,250]',10,1)`,
+    `INSERT INTO pedia_products (slug, platform, metric, target_kind, name, packages_json, step, is_active, managed)
+     VALUES ('followers-instagram','instagram','followers','profile','Followers Instagram','[100,250]',10,1,'auto')`,
   );
   const p = await db.queryFirst(`SELECT id FROM pedia_products WHERE slug='followers-instagram'`);
   await db.execRun(
     `INSERT INTO pedia_tiers (product_id, tier, supplier, supplier_service_id, price_group,
-       markup_pct, min_profit_rp, refill_days, package_prices_json, is_active)
-     VALUES (?, 'standar', 'indosmm', 86, 'G3', 20, 1000, 30, '{}', 1)`,
+       markup_pct, min_profit_rp, refill_days, package_prices_json, is_active, managed)
+     VALUES (?, 'standar', 'providersmm', 86, 'G3', 20, 1000, 30, '{}', 1, 'auto')`,
     Number(p?.id),
   );
-  await applyPediaDiff(db, "indosmm", [{
+  await applyPediaDiff(db, "providersmm", [{
     service_id: 86, name: "IG", type: "Default", category: "IG",
     rate: 38750, min_qty: 100, max_qty: 1000,
     api_refill: 0, api_cancel: 0, api_dripfeed: 1,
   }], [], "IDR");
+  await seedOfficialDescriptions(db, [86]);
   const tier = await db.queryFirst(`SELECT id FROM pedia_tiers`);
   return { pid: Number(p?.id), tierId: Number(tier?.id), db };
 }
@@ -88,7 +90,7 @@ describe("M7 QA triple-check", () => {
     const before = await (await GET()).json();
     expect(before.products.length).toBe(1);
     // Rate naik besar → guard margin menonaktifkan.
-    await applyPediaDiff(db, "indosmm", [{
+    await applyPediaDiff(db, "providersmm", [{
       service_id: 86, name: "IG", type: "Default", category: "IG",
       rate: 200000, min_qty: 100, max_qty: 1000,
       api_refill: 0, api_cancel: 0, api_dripfeed: 1,

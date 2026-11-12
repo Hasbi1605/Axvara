@@ -13,6 +13,7 @@ import { PEDIA_SEED_PRODUCTS } from "@/lib/pedia/seed";
 import { isPediaProvider, PEDIA_PROVIDERS } from "@/lib/pedia/proxy";
 import { isPediaSaleProvider, PEDIA_SALE_PROVIDER, PEDIA_SALE_RETIRED, isPediaPremiumToolCandidate } from "@/lib/pedia/sales-policy";
 import { pediaBounds } from "@/lib/pedia/bounds";
+import { MACHINE_INELIGIBLE_REASONS } from "@/lib/pedia/auto-catalog";
 import { providerPricingGate } from "../_shared";
 import type { DatabaseAccess } from "@/lib/db-access";
 
@@ -103,6 +104,44 @@ async function reprice(db: DatabaseAccess, id: number, isTier: boolean) {
       })]));
     await db.execRun(`UPDATE pedia_tiers SET package_prices_json=?, rate_snapshot=?, updated_at=datetime('now') WHERE id=?`, JSON.stringify(prices), Number(tier.live_rate), tier.id);
   }
+}
+
+/**
+ * PSMM-LASTGOOD-PAUSE B: aktivasi baris auto hanya sah bila (1) cap versinya
+ * sama dengan snapshot resmi aktif, (2) cermin layanan masih present/tipe
+ * cocok/rate positif, dan (3) rencana materialisasi terkini benar-benar
+ * eligible. Menggunakan helper yang sama dengan materializer agar tidak ada
+ * jalur aktivasi "lebih longgar" dari mesin.
+ */
+async function managedActivationEligible(db: DatabaseAccess, tier: Record<string, unknown>): Promise<boolean> {
+  const { loadSupplierSnapshot } = await import("@/lib/pedia/metadata-refresh");
+  const { planManagedService } = await import("@/lib/pedia/auto-catalog");
+  const { managedTermsFresh } = await import("@/lib/pedia/catalog-queries");
+  const snapshot = await loadSupplierSnapshot(db).catch(() => null);
+  if (!snapshot || !managedTermsFresh({ managed_snapshot_at: tier.managed_snapshot_at }, snapshot.fetchedAt)) return false;
+  const live = await db.queryFirst(
+    `SELECT service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,api_refill,present
+       FROM pedia_supplier_services WHERE supplier=? AND service_id=?`,
+    tier.supplier, Number(tier.supplier_service_id),
+  ).catch(() => null);
+  if (!live || Number(live.present) !== 1) return false;
+  if (String(live.type ?? "") !== pediaServiceTypeFor(tier.input_kind)) return false;
+  if (!Number.isFinite(Number(live.rate_idr_per_1k)) || Number(live.rate_idr_per_1k) <= 0) return false;
+  const serviceId = Number(live.service_id);
+  const desc = snapshot.descriptions.get(serviceId) ?? null;
+  const status = snapshot.statuses.get(serviceId) ?? (desc ? "ok" : "missing");
+  const plan = planManagedService(
+    {
+      service_id: serviceId, name: String(live.name ?? ""), category: String(live.category ?? ""),
+      type: String(live.type ?? ""), rate: Number(live.rate_idr_per_1k),
+      min_qty: Number(live.min_qty), max_qty: Number(live.max_qty), api_refill: Number(live.api_refill) === 1 ? 1 : 0,
+    },
+    desc,
+    Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000,
+    status,
+    { markupPct: Number(tier.markup_pct ?? 60), minProfitRp: Number(tier.min_profit_rp ?? 2000) },
+  );
+  return plan.eligible;
 }
 
 async function validateMapping(db: DatabaseAccess, tier: Record<string, unknown>): Promise<string | null> {
@@ -240,6 +279,42 @@ export async function PUT(request: NextRequest) {
   try {
     const current = await db.queryFirst(`SELECT * FROM ${table} WHERE id=?`, id.data);
     if (!current) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    // PSMM-FINAL-PATCH E: sumber baris `managed='auto'` dikelola sync. Body admin
+    // yang dipalsukan TIDAK boleh memetakan ulang supplier/layanan/input/refill
+    // atau menimpa salinan sumber. Field sumber untuk baris auto DIBUANG sebelum
+    // gate mapping/allowlist, sehingga hanya pricing, jeda `is_active`, dan
+    // pengaturan tampilan aman yang bisa tersentuh.
+    if (isTier && String(current.managed ?? "curated") === "auto") {
+      const editable = new Set(["is_active", "markup_pct", "min_profit_rp", "price_group", "sort_order", "quantity_step", "label_note", "speed_note", "drop_label", "drop_risk", "quality", "region", "eta_start", "eta_finish"]);
+      for (const key of Object.keys(values)) if (!editable.has(key)) delete values[key];
+      // PSMM-ACCEPTANCE-CLOSE 5: kelayakan baris auto ditentukan mesin. Admin
+      // TIDAK boleh memaksa aktif saat alasan blokir mesin masih ada hanya karena
+      // menyentuh pricing; itu akan menghapus alasan dan menjual syarat buruk.
+      // Jeda/pricing normal tetap boleh; unpause yang sah (tanpa alasan mesin)
+      // juga tetap boleh.
+      if (values.is_active === 1) {
+        const reason = current.auto_disabled_reason == null ? "" : String(current.auto_disabled_reason);
+        if (MACHINE_INELIGIBLE_REASONS.has(reason)) {
+          return NextResponse.json({ error: "managed_ineligible", message: "Layanan otomatis ini belum layak jual menurut pemeriksaan otomatis. Tunggu sinkronisasi berikutnya; kelayakan tidak dapat dipaksa manual." }, { status: 409 });
+        }
+        // PSMM-LASTGOOD-PAUSE B: selain tidak berasal dari blokir mesin, baris
+        // hanya boleh diaktifkan bila syaratnya SUDAH direkonsiliasi ke snapshot
+        // resmi aktif DAN cermin layanan masih layak. Ini mencegah baris yang
+        // dijeda manual lalu syaratnya berubah (mis. garansi jadi kontradiktif)
+        // dipaksa aktif dengan syarat basi.
+        const eligible = await managedActivationEligible(db, current);
+        if (!eligible) {
+          return NextResponse.json({ error: "managed_ineligible", message: "Syarat resmi layanan ini belum selaras atau layanan tidak lagi layak. Tunggu sinkronisasi berikutnya." }, { status: 409 });
+        }
+      }
+    }
+    // PSMM-ACCEPTANCE-CLOSE 5: produk auto dikelola mesin. Hanya kontrol tampilan
+    // aman yang boleh diubah; sumber mapping (slug/platform/metric/target_kind/
+    // packages/step) dan nama produk tidak boleh diubah lewat `kind:product`.
+    if (!isTier && String(current.managed ?? "curated") === "auto") {
+      const editable = new Set(["is_active", "is_featured", "sort_order", "tagline", "description_md", "checklist_json"]);
+      for (const key of Object.keys(values)) if (!editable.has(key)) delete values[key];
+    }
     if (isTier) {
       if ((values.supplier !== undefined) !== (values.supplier_service_id !== undefined)) return NextResponse.json({ error: "supplier_service_pair_required" }, { status: 400 });
       const merged = { ...current, ...values };
@@ -273,6 +348,12 @@ export async function PUT(request: NextRequest) {
     // Old supplier prices must not survive a saved mapping whose reprice fails.
     if (isTier && (values.supplier !== undefined || values.supplier_service_id !== undefined || values.markup_pct !== undefined || values.min_profit_rp !== undefined)) fields.push("package_prices_json='{}'");
     if (isTier && values.is_active === 1) fields.push("auto_disabled_reason=NULL");
+    // PSMM-CORE-FIX B1: jeda admin harus tercatat sebagai alasan NON-mesin
+    // (`manual`) agar materializer tidak menghidupkannya kembali. Baris
+    // `managed='auto'` hanya dijeda lewat jalur ini; nilai lain tidak diubah.
+    if (isTier && values.is_active === 0 && Number(current.is_active) === 1 && !("auto_disabled_reason" in values)) {
+      fields.push("auto_disabled_reason='manual'");
+    }
     fields.push("updated_at=datetime('now')");
     const result = await db.execRun(`UPDATE ${table} SET ${fields.join(", ")} WHERE id=?`, ...keys.map((key) => values[key]), id.data);
     if (!result.changes) return NextResponse.json({ error: "save_failed" }, { status: 500 });

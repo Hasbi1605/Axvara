@@ -12,15 +12,19 @@ function seed() {
   clearRateLimitBucketsForTest();
   vi.stubEnv("PEDIA_ENABLED", "true"); vi.stubEnv("PEDIA_ORDERS_ENABLED", "true"); vi.stubEnv("ADMIN_JWT_SECRET", "atomic-checkout-test-secret");
   const f=createD1Fixture();fixtures.push(f);
-  f.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active) VALUES(1,'followers-instagram','instagram','followers','profile','Followers','[100]',1,1);
-    INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active) VALUES(1,1,'standar','indosmm',1,'G3',0,1000,1);
-    INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('indosmm',1,'Private','Private','Default',10000,1,1000,1);
+  f.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active,managed) VALUES(1,'followers-instagram','instagram','followers','profile','Followers','[100]',1,1,'auto');
+    INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active,managed) VALUES(1,1,'standar','providersmm',1,'G3',0,1000,1,'auto');
+    INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('providersmm',1,'Private','Private','Default',10000,1,1000,1);
     INSERT INTO pedia_credits(id,code_hash,code_hint,email,amount,remaining,source_kind,expires_at) VALUES(1,'credit-hash','XXXX','a@b.com',10000,10000,'admin','2099-01-01');`);
   vi.spyOn(qris,"createActiveQrisInvoice").mockImplementation(async(code,amount)=>({orderCode:code,requestedAmount:amount,payableAmount:amount+1,uniqueCode:1,qrisPayload:"test",qrisUrl:"/qr.png",expiresAt:"2099-01-01",isExisting:false}));
+  const desc = JSON.stringify({ fetched_at: "2026-11-12T10:00:00.000Z", source_url: "https://providersmm.id/services", entries: { "1": { status: "ok", text: "Syarat resmi berlaku." } } });
+  f.sql.prepare("INSERT INTO store_settings(key,value,updated_at) VALUES('pedia_psmm_desc_snapshot',?,datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(desc);
+  f.sql.prepare("INSERT INTO store_settings(key,value,updated_at) VALUES('pedia_psmm_desc_last_at','2026-11-12T10:00:00.000Z',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
+  f.sql.prepare("UPDATE pedia_tiers SET managed_snapshot_at=? WHERE managed='auto' AND supplier='providersmm'").run('2026-11-12T10:00:00.000Z');
   return f;
 }
 async function token(creditUsed=0,target="https://www.instagram.com/buyer/") {
-  return (await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:target,target_normalized:target,unit_price:2500/150,total:2500,credit_code_hash:creditUsed ? "credit-hash" : null,credit_used:creditUsed,supplier:"indosmm",supplier_service_id:1,supplier_rate_snapshot:10000,refill_days:0,min_profit_rp:1000})).token;
+  return (await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:target,target_normalized:target,unit_price:2500/150,total:2500,credit_code_hash:creditUsed ? "credit-hash" : null,credit_used:creditUsed,supplier:"providersmm",supplier_service_id:1,supplier_rate_snapshot:10000,refill_days:0,min_profit_rp:1000,terms_version:"2026-11-12T10:00:00.000Z"})).token;
 }
 const order=(t:string)=>POST(new Request("http://x/api/pedia/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({quote_token:t,customer_wa:"081234567890",customer_email:"a@b.com"})}) as never);
 const left=(f:ReturnType<typeof seed>)=>Number(f.sql.prepare("SELECT remaining FROM pedia_credits WHERE id=1").get()?.remaining);
@@ -61,7 +65,7 @@ describe("Pedia checkout money transaction",()=>{
   expect((await order(await token())).status).toBe(201);
  });
 
- it.each(["indosmm"] as const)("%s: quote → QR → paid → dispatch → completed → refill preserves the public and private snapshots",async(provider)=>{
+ it.each(["providersmm"] as const)("%s: quote → QR → paid → dispatch → completed → refill preserves the public and private snapshots",async(provider)=>{
   const f=seed();f.sql.exec("INSERT INTO products(id,slug,name,price,sold_count,is_active) VALUES(1,'market-product','Market product',1000,0,1)");f.sql.prepare("UPDATE pedia_supplier_services SET supplier=?,api_refill=1").run(provider);f.sql.prepare("UPDATE pedia_tiers SET supplier=?,target_format='username',refill_days=30,refill_anchor='completed',public_name='Nama tersimpan',terms_md='Refill 30 hari sejak pesanan selesai' ").run(provider);
   const {POST:quote}=await import("@/app/api/pedia/quote/route");const response=await quote(new Request("http://x",{method:"POST",body:JSON.stringify({product_id:1,tier_id:1,quantity:150,target:"https://instagram.com/buyer"})}) as never);expect(response.status).toBe(200);
   const r=await order((await response.json()).quote_token);expect(r.status).toBe(201);const {code,buyer_access_code}=await r.json();
@@ -103,7 +107,7 @@ describe("Pedia checkout money transaction",()=>{
 
  // 2026-11-01: layanan bergaransi tanpa tombol refill API → diteruskan admin, tanpa panggilan supplier.
  it("manual refill: guaranteed service without API refill is queued for admin, once per 24 hours",async()=>{
-  const f=seed();f.sql.prepare("UPDATE pedia_supplier_services SET supplier='indosmm',api_refill=0").run();f.sql.prepare("UPDATE pedia_tiers SET supplier='indosmm',refill_days=30").run();
+  const f=seed();f.sql.prepare("UPDATE pedia_supplier_services SET supplier='providersmm',api_refill=0").run();f.sql.prepare("UPDATE pedia_tiers SET supplier='providersmm',refill_days=30").run();
   const {POST:quote}=await import("@/app/api/pedia/quote/route");const response=await quote(new Request("http://x",{method:"POST",body:JSON.stringify({product_id:1,tier_id:1,quantity:150,target:"https://instagram.com/buyer"})}) as never);
   const r=await order((await response.json()).quote_token);const {code}=await r.json();
   f.sql.prepare("UPDATE pedia_order_items SET status='completed',supplier_order_id='S-9',completed_at=datetime('now')").run();
@@ -136,15 +140,17 @@ describe("Pedia checkout money transaction",()=>{
 });
 
 it("rejects an unreserved historical quote before tier reads, debit, ledger, or QRIS", async()=>{
- const f=seed();const t=(await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"x",target_normalized:"x",unit_price:2500/150,total:2500,credit_code_hash:"credit-hash",credit_used:500,supplier:"providersmm",supplier_service_id:1,supplier_rate_snapshot:10000})).token;
+ const f=seed();const t=(await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"x",target_normalized:"x",unit_price:2500/150,total:2500,credit_code_hash:"credit-hash",credit_used:500,supplier:"indosmm",supplier_service_id:1,supplier_rate_snapshot:10000})).token;
  f.control.fail=q=>q.includes("FROM pedia_tiers")||q.includes("FROM pedia_products");
  const response=await order(t);expect(response.status).toBe(409);expect(await response.json()).toMatchObject({error:"credits_retired"});
  expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);expect(qris.createActiveQrisInvoice).not.toHaveBeenCalled();
 });
 it("reuses a persisted historical checkout after tier retirement without another debit",async()=>{
- const f=seed();const {token:t,quoteId:jti}=await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"x",target_normalized:"x",unit_price:2500/150,total:2500,credit_code_hash:"credit-hash",credit_used:500,supplier:"providersmm",supplier_service_id:1,supplier_rate_snapshot:10000});
+ // 2026-11-12: IndoSMM kini supplier riwayat; retry order tersimpan ditemukan
+ // SEBELUM penolakan supplier jual, jadi checkout lama tetap dilayani.
+ const f=seed();const {token:t,quoteId:jti}=await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"x",target_normalized:"x",unit_price:2500/150,total:2500,credit_code_hash:"credit-hash",credit_used:500,supplier:"indosmm",supplier_service_id:1,supplier_rate_snapshot:10000});
  f.sql.prepare("INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,order_kind) VALUES('OLD',?,'','6281234567890','a@b.com','[]',2500,'qris','pending','pedia')").run(`pedia:${jti}`);
- f.sql.exec("INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,supplier,supplier_service_id,supplier_rate_snapshot,status) VALUES('OLD',1,1,'{}','x','x',150,1,2500,500,'providersmm',1,10000,'awaiting_payment');UPDATE pedia_tiers SET is_active=0");
+ f.sql.exec("INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,supplier,supplier_service_id,supplier_rate_snapshot,status) VALUES('OLD',1,1,'{}','x','x',150,1,2500,500,'indosmm',1,10000,'awaiting_payment');UPDATE pedia_tiers SET is_active=0");
  const response=await order(t);expect(response.status).toBe(200);expect(await response.json()).toMatchObject({code:'OLD',reused:true});expect(left(f)).toBe(10000);expect(f.sql.prepare("SELECT COUNT(*) n FROM pedia_credit_ledger").get()?.n).toBe(0);
 });
 

@@ -1,6 +1,8 @@
 # PEDIA-PRD.md — AXVARA PEDIA (Toko SMM Kurasi)
 
-> **1 November 2026 (implementasi lokal, publikasi CI):** ProviderSMM diputus; katalog IndoSMM diperluas dengan label drop/refill SMM, statistik supplier 7 hari dan halaman Refill (API + manual). Spesifikasi: [indosmm-catalog-refill-2026-11-01](pedia/indosmm-catalog-refill-2026-11-01.md), menggantikan bagian terkait pada snapshot lama.
+> **12 November 2026 (katalog otomatis ProviderSMM, implementasi lokal; publikasi CI):** `PEDIA_SALE_PROVIDER='providersmm'` (IndoSMM riwayat) menjadi satu-satunya gate katalog/quote/order/admin; penjualan baru IndoSMM ditolak `409 provider_retired` sementara retry order tersimpan dilayani lewat `quote_id` sebelum gate. Migrasi `0117` menambah `managed` (`curated`/`auto`) di `pedia_products` dan `pedia_tiers` plus `managed_snapshot_at`; deskripsi resmi disimpan sebagai SATU snapshot JSON tervalidasi di `store_settings` (bukan tabel). Materializer membuat satu produk+tier `auto` per layanan (slug `psmm-<service_id>`, 25/pemanggilan) dengan kepemilikan sebelum mutasi, fail-closed untuk jenis tak terpetakan/premium/deskripsi hilang-oversize/refill kontradiktif, dan baris dijeda direkonsiliasi tanpa dihidupkan. Refill hanya dengan durasi + anchor eksplisit. Antrean durable per ID memakai token generasi + ack CAS; snapshot + enqueue semua present + penanda kesegaran ditulis atomik (`D1.batch`), refresh 6 jam dari heartbeat `supplier-sync` dan resync admin. Katalog/quote/order baru menolak ciri syarat basi (`managedTermsFresh` fail-closed) dan quote menandatangani `terms_version` yang wajib cocok saat order (retry tersimpan tetap 200). Panel admin: ringkasan diagnostik, resync resumable, filter kelayakan server-side (default semua tipe, filter supplier kedua provider), jeda/pricing aman, aktivasi menolak baris diblokir mesin/belum layak. Default + Custom Comments didukung; Comment Likes/Invites belum. **Bootstrap produksi, deployment, dan QA admin produksi belum dijalankan.**
+
+> **1 November 2026 (implementasi lokal, publikasi CI):** ProviderSMM diputus; katalog IndoSMM diperluas dengan label drop/refill SMM, statistik supplier 7 hari dan halaman Refill (API + manual). Spesifikasi: [indosmm-catalog-refill-2026-11-01](pedia/indosmm-catalog-refill-2026-11-01.md), menggantikan bagian terkait pada snapshot lama. Keputusan 12 November 2026 di atas menggantikan klaim "ProviderSMM diputus" hanya untuk penjualan baru.
 
 > **2 November 2026 (backend + UI lokal, publikasi CI; aturan processing diperbarui 3 November secara lokal):** status aktual vs handover Market — guard fulfillment generik no-op untuk Pedia, nama email seperti Market, Telegram/admin API membaca item Pedia durable, lookup/status jujur (termasuk `start_count`/`remains`/`service_name` snapshot, null tetap null), halaman pembeli menampilkan lifecycle aktual + 4 sel hitungan + ETA jujur + polling 5/10/30 dtk, pintu Market dialihkan ke host Pedia, email paid/processing/completed fenced (lease UUID, attempts maks 5, backoff 1/5/15/60, settle CAS; paid independen, processing menunggu resi dan jumlah awal/sisa valid durable pada submitted/in_progress, 0 valid; stale terminal disupresi; transport bounded at-least-once) + recovery bounded di cron existing, tampilan seperti email Market (`renderBrandedNotice` + pill STATUS + detail + CTA "Lihat Status Pesanan →"; completed memakai `Refill N Days`), link `SITE.pediaUrl/pesanan/<code>`. Email processing terkirim lama tidak dikirim ulang. Discovery maksimal dua/fase: paid/completed 24 jam, processing aktif siap tanpa batas 24 jam. Deployment perubahan baru belum diverifikasi; QA template email Chromium 320/390/640 lulus, klien email native belum diuji.
 
@@ -417,7 +419,12 @@ CREATE TABLE IF NOT EXISTS pedia_tiers (
   package_prices_json TEXT NOT NULL DEFAULT '{}', -- {"100":5000,...} hasil rumus §7.2
   rate_snapshot REAL,                        -- rate saat harga terakhir dihitung
   is_active INTEGER NOT NULL DEFAULT 0,
-  auto_disabled_reason TEXT,                 -- 'margin'|'service_missing'|NULL
+  auto_disabled_reason TEXT,                 -- 'margin'|'service_missing'|'manual'|...|NULL
+  managed TEXT NOT NULL DEFAULT 'curated' CHECK (managed IN ('curated','auto')),
+                                              -- 0117: 'auto' = dibangkitkan materializer
+  managed_snapshot_at TEXT,                  -- 0117: versi snapshot resmi saat rekonsiliasi;
+                                              -- WAJIB non-kosong & sama dengan snapshot aktif
+                                              -- untuk dijual (gate syarat fail-closed)
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(product_id, tier)
 );

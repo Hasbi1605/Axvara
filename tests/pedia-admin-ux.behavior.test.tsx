@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { PediaManager } from "@/components/admin/PediaManager";
 
 const product = { id: 1, name: "Followers Instagram", slug: "followers-instagram", platform: "instagram", metric: "followers", target_kind: "profile", tagline: "Ramai", description_md: "Deskripsi", checklist_json: '[{"id":"public","label":"Publik","help":"Bantuan"}]', packages_json: "[100,250]", step: 10, sort_order: 0, is_active: 1, is_featured: 0 };
-const tier = { id: 1, product_id: 1, supplier: "indosmm", tier: "standar", label_note: "Indonesia", supplier_service_id: 86, backup_service_id: null, price_group: "G3", markup_pct: 20, min_profit_rp: 1000, refill_days: 30, eta_start: "5 menit", eta_finish: "1 jam", package_prices_json: '{"100":5000,"250":12000}', is_active: 1, auto_disabled_reason: null, live_rate: 30000, live_min: 100, live_max: 1000, live_present: 1, live_type: "Default" };
+const tier = { id: 1, product_id: 1, supplier: "providersmm", tier: "standar", label_note: "Indonesia", supplier_service_id: 86, backup_service_id: null, price_group: "G3", markup_pct: 20, min_profit_rp: 1000, refill_days: 30, eta_start: "5 menit", eta_finish: "1 jam", package_prices_json: '{"100":5000,"250":12000}', is_active: 1, auto_disabled_reason: null, live_rate: 30000, live_min: 100, live_max: 1000, live_present: 1, live_type: "Default" };
 let catalog: { products: typeof product[]; tiers: typeof tier[] };
 let writes: { url: string; body: Record<string, unknown> }[];
 let failWrite = false;
@@ -31,7 +31,7 @@ beforeEach(() => {
     }
     if (failRead && url.includes(failRead)) return Response.json({ error: "load_failed" }, { status: 500 });
     if (url.includes("products")) return Response.json({ ok: true, ...catalog });
-    if (url.includes("services")) return Response.json({ ok: true, total: 51, diff: {}, rows: [{ supplier: new URL(url, "http://localhost").searchParams.get("supplier") || "indosmm", service_id: 99, name: "Instagram Indonesia", rate_idr_per_1k: 50000, min_qty: 100, max_qty: 1000, present: 1, type: "Default" }] });
+    if (url.includes("services")) return Response.json({ ok: true, total: 51, diff: {}, rows: [{ supplier: new URL(url, "http://localhost").searchParams.get("supplier") || "providersmm", service_id: 99, name: "Instagram Indonesia", rate_idr_per_1k: 50000, min_qty: 100, max_qty: 1000, present: 1, type: "Default" }] });
     if (url.includes("overview")) return Response.json({ ok: true, providers: [] });
     if (url.includes("orders")) return Response.json({ ok: true, rows: orderRows });
     if (url.includes("credits")) return Response.json({ ok: true, rows: [] });
@@ -87,7 +87,7 @@ it("focused editor saves all existing product fields and rejects invalid package
 it("tier order is Hemat, Standar, Premium and tier edits use PUT fields", async () => {
   catalog.tiers = [{ ...tier, id: 3, tier: "premium" }, tier, { ...tier, id: 2, tier: "hemat" }];
   render(<PediaManager />); fireEvent.click(await screen.findByRole("button", { name: "Edit Followers Instagram" }));
-   const summaries = Array.from(document.querySelectorAll("summary")).map((el) => el.textContent).filter((text) => /IndoSMM/.test(text ?? ""));
+   const summaries = Array.from(document.querySelectorAll("summary")).map((el) => el.textContent).filter((text) => /ProviderSMM/.test(text ?? ""));
   expect(summaries[0]).toMatch(/hemat/); expect(summaries[1]).toMatch(/standar/); expect(summaries[2]).toMatch(/premium/);
   const form = screen.getByRole("form", { name: "Edit tingkat standar" });
   fireEvent.change(within(form).getByLabelText("Markup (%)"), { target: { value: "50" } });
@@ -103,7 +103,7 @@ it("shows supplier health, saves drop label/speed and folds technical fields", a
   expect(screen.getAllByText("Berisiko").length).toBeGreaterThan(0);
   expect(document.body.textContent).toContain("success 22% · cancel 78% · drop rate (refill) 50% · avg time 19 menit");
   expect(document.body.textContent).toContain("Ganti ID layanan atau nonaktifkan");
-  expect(document.body.textContent).toContain("manual — pembeli mengajukan, admin meneruskan ke CS IndoSMM");
+  expect(document.body.textContent).toContain("manual — pembeli mengajukan, admin meneruskan ke CS ProviderSMM");
   const form = screen.getByRole("form", { name: "Edit tingkat standar" });
   expect(within(form).getByLabelText("Kelompok harga").closest("details")?.querySelector("summary")?.textContent).toBe("Pengaturan lanjutan");
   expect(within(form).getByLabelText("Markup (%)").closest("details")?.querySelector("summary")?.textContent).not.toBe("Pengaturan lanjutan");
@@ -148,12 +148,12 @@ it("tab navigation preserves other query parameters and responds to back and new
 
 it("supplier explorer pages, filters and assigns a selected service to an existing tier", async () => {
   render(<PediaManager initialTab="services" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Pakai layanan indosmm 99" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Pakai layanan providersmm 99" }));
   fireEvent.change(screen.getByLabelText("Produk tujuan"), { target: { value: "1" } });
   fireEvent.change(screen.getByLabelText("Tingkat tujuan"), { target: { value: "1" } });
   fireEvent.submit(screen.getByRole("form", { name: "Hubungkan layanan" }));
   await screen.findByRole("form", { name: "Edit produk" });
-  expect(writes[0].body).toEqual({ kind: "tier", id: 1, supplier: "indosmm", supplier_service_id: 99, backup_service_id: null });
+  expect(writes[0].body).toEqual({ kind: "tier", id: 1, supplier: "providersmm", supplier_service_id: 99, backup_service_id: null });
   fireEvent.click(screen.getByRole("button", { name: "Layanan Supplier" }));
   fireEvent.click(await screen.findByRole("button", { name: "Berikutnya" }));
   await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("page=2"), expect.anything()));
@@ -183,7 +183,7 @@ it("historical credits are read-only and cannot be issued from admin", async () 
 });
 
 it("resubmission requires both supplier checks and uses no native prompt or confirm", async () => {
-  orderRows = [{ order_code: "AXP-TEST", supplier: "indosmm", can_resubmit: true, status: "needs_check", product_name: "Followers", quantity: 100, total: 5000, target_normalized: "https://instagram.com/test" }];
+  orderRows = [{ order_code: "AXP-TEST", supplier: "providersmm", can_resubmit: true, status: "needs_check", product_name: "Followers", quantity: 100, total: 5000, target_normalized: "https://instagram.com/test" }];
   const confirm = vi.spyOn(window, "confirm"), prompt = vi.spyOn(window, "prompt");
   render(<PediaManager initialTab="orders" />);
   fireEvent.click(await screen.findByRole("button", { name: "Kirim ulang" }));
@@ -199,24 +199,24 @@ it("resubmission requires both supplier checks and uses no native prompt or conf
 it("supplier editor clears stale IDs on provider change and saves the pair atomically", async () => {
   render(<PediaManager />); fireEvent.click(await screen.findByRole("button", { name: "Edit Followers Instagram" }));
   const form = screen.getByRole("form", { name: "Edit tingkat standar" });
-  fireEvent.change(within(form).getByLabelText("Supplier utama"), { target: { value: "indosmm" } });
+  fireEvent.change(within(form).getByLabelText("Supplier utama"), { target: { value: "providersmm" } });
   expect((within(form).getByLabelText("ID layanan utama") as HTMLInputElement).value).toBe("");
   expect((within(form).getByLabelText("ID layanan cadangan") as HTMLInputElement).value).toBe("");
   fireEvent.change(within(form).getByLabelText("ID layanan utama"), { target: { value: "86" } });
   fireEvent.submit(form); await screen.findByText(/Tingkat standar tersimpan/);
-  expect(writes[0].body).toMatchObject({ supplier: "indosmm", supplier_service_id: 86, backup_service_id: null });
+  expect(writes[0].body).toMatchObject({ supplier: "providersmm", supplier_service_id: 86, backup_service_id: null });
 });
 
-it("supplier explorer assigns IndoSMM with its own identity and filters", async () => {
+it("supplier explorer assigns ProviderSMM with its own identity and filters", async () => {
   render(<PediaManager initialTab="services" />);
-  await screen.findByRole("button", { name: "Pakai layanan indosmm 99" });
-  fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "indosmm" } });
-  fireEvent.click(await screen.findByRole("button", { name: "Pakai layanan indosmm 99" }));
+  await screen.findByRole("button", { name: "Pakai layanan providersmm 99" });
+  fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "providersmm" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Pakai layanan providersmm 99" }));
   fireEvent.change(screen.getByLabelText("Produk tujuan"), { target: { value: "1" } });
   fireEvent.change(screen.getByLabelText("Tingkat tujuan"), { target: { value: "1" } });
   fireEvent.submit(screen.getByRole("form", { name: "Hubungkan layanan" }));
   await screen.findByRole("form", { name: "Edit produk" });
-  expect(writes[0].body).toMatchObject({ supplier: "indosmm", supplier_service_id: 99, backup_service_id: null });
+  expect(writes[0].body).toMatchObject({ supplier: "providersmm", supplier_service_id: 99, backup_service_id: null });
 });
 
 it("publication, featured and process readiness are separate", async () => {
@@ -227,7 +227,7 @@ it("publication, featured and process readiness are separate", async () => {
   expect(preview.textContent).toContain("Draf / Katalog penuh / Siap dijual");
   expect(screen.getByLabelText("Terbit")).toBeTruthy();
   expect(preview.textContent).toContain("Refill 30 Days");
-  expect(preview.textContent).not.toContain("IndoSMM");
+  expect(preview.textContent).not.toContain("ProviderSMM");
 });
 
 it("previews saved drafts with actual storefront components without navigation or requests", async () => {
@@ -305,10 +305,10 @@ it("product and tier creation use existing POST endpoints and start unpublished/
   expect(writes[0].body).toMatchObject({ name: "Likes Instagram", is_active: 0, is_featured: 0 });
   expect(writes[0].body.id).toBeUndefined();
   const tierForm = screen.getByRole("form", { name: "Buat tingkat" });
-  fireEvent.change(within(tierForm).getByLabelText("Supplier tingkat baru"), { target: { value: "indosmm" } });
+  fireEvent.change(within(tierForm).getByLabelText("Supplier tingkat baru"), { target: { value: "providersmm" } });
   fireEvent.change(within(tierForm).getByLabelText("ID layanan tingkat baru"), { target: { value: "86" } });
   fireEvent.submit(tierForm); await screen.findByText(/Tingkat dibuat/);
-  expect(writes[1].body).toMatchObject({ kind: "tier", product_id: 3, supplier: "indosmm", supplier_service_id: 86, is_active: 0 });
+  expect(writes[1].body).toMatchObject({ kind: "tier", product_id: 3, supplier: "providersmm", supplier_service_id: 86, is_active: 0 });
 });
 
 it("saved-but-not-repriced response reloads persisted data without claiming success", async () => {
@@ -323,12 +323,12 @@ it("saved-but-not-repriced response reloads persisted data without claiming succ
 });
 
 it("ambiguous orders expose original snapshot and disable blind retry/credit", async () => {
-  orderRows = [{ order_code: "AXP-AMB", supplier: "indosmm", supplier_service_id: 86, supplier_order_id: null, submit_attempts: 1, can_resubmit: false, status: "needs_check", product_name: "Followers", quantity: 100, total: 5000, last_error: "submit timeout; reconcile before retry" }];
+  orderRows = [{ order_code: "AXP-AMB", supplier: "providersmm", supplier_service_id: 86, supplier_order_id: null, submit_attempts: 1, can_resubmit: false, status: "needs_check", product_name: "Followers", quantity: 100, total: 5000, last_error: "submit timeout; reconcile before retry" }];
   render(<PediaManager initialTab="orders" />);
   const retry = await screen.findByRole("button", { name: "Kirim ulang" });
   expect((retry as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole("button", { name: "Batalkan & tindak lanjuti" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText(/Snapshot asal: IndoSMM/)).toBeTruthy();
+  expect(screen.getByText(/Snapshot asal: ProviderSMM/)).toBeTruthy();
   expect(screen.getByText(/retry\/pembatalan diblokir/)).toBeTruthy();
   fireEvent.click(retry); expect(writes).toHaveLength(0);
 });
@@ -355,12 +355,13 @@ it.each([
 });
 
 it("keeps legacy suppliers visible for investigation while refusing new assignment",async()=>{
- catalog.tiers=[{...tier,supplier:'providersmm'}];render(<PediaManager/>);
+ catalog.tiers=[{...tier,supplier:'indosmm'}];render(<PediaManager/>);
  await screen.findByRole('button',{name:'Edit Followers Instagram'});
  expect(within(screen.getByRole('table',{name:'Produk Pedia'})).queryByText('Siap dijual')).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Layanan Supplier'}));
  const supplier=await screen.findByLabelText('Supplier');
- expect((supplier as HTMLSelectElement).value).toBe('indosmm');
- // 2026-11-01: ProviderSMM diputus — tidak lagi bisa dipilih sebagai supplier.
- expect([...(supplier as HTMLSelectElement).options].map((o)=>o.value)).not.toContain('providersmm');
+ expect((supplier as HTMLSelectElement).value).toBe('providersmm');
+ // PSMM-ACCEPTANCE-CLOSE 4: filter supplier BOLEH memuat IndoSMM agar riwayat
+ // bisa didiagnosa; yang dilarang adalah mapping penjualan BARU ke IndoSMM.
+ expect([...(supplier as HTMLSelectElement).options].map((o)=>o.value)).toContain('indosmm');
 });

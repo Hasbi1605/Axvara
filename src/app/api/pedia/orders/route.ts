@@ -17,6 +17,7 @@ import { checkoutSubjects, consumeCheckoutSlot } from "@/lib/checkout-guard";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { verifyPediaQuoteToken } from "@/lib/pedia/quote";
 import { pediaBounds } from "@/lib/pedia/bounds";
+import { managedTermsFresh } from "@/lib/pedia/catalog-queries";
 import { readJsonBody } from "@/lib/http-body";
 import { computePediaPrice, pediaMargin } from "@/lib/pedia/pricing";
 import { generateOrderCode } from "@/lib/security";
@@ -149,6 +150,34 @@ export async function POST(req: NextRequest) {
   if (!isPediaProvider(tier.supplier) || tier.supplier !== quote.supplier || Number(tier.supplier_service_id) !== quote.supplier_service_id) {
     return NextResponse.json({ error: "service_changed", message: pick(locale, "Layanan berubah. Muat ulang checkout.", "The service changed. Reload checkout.") }, { status: 409 });
   }
+  // PSMM-P5: order BARU hanya dari baris OTOMATIS yang deskripsi resminya
+  // tersedia. Persisted retry sudah dikembalikan sebelum titik ini, sehingga
+  // order lama (kurasi/legacy) tetap terbaca dan tidak terpengaruh.
+  if (String(tier.managed ?? "curated") !== "auto") {
+    return NextResponse.json({ ...PEDIA_SALE_RETIRED, message: pick(locale, String(PEDIA_SALE_RETIRED.message ?? ""), "This service is no longer sold. Choose another available service.") }, { status: 409 });
+  }
+  const { loadSupplierSnapshot } = await import("@/lib/pedia/metadata-refresh");
+  const termsSnapshot = await loadSupplierSnapshot(db).catch(() => ({
+    descriptions: new Map<number, string>(), statuses: new Map<number, "ok" | "empty" | "oversize">(), fetchedAt: null as string | null,
+  }));
+  const descriptionStatus = termsSnapshot.statuses;
+  if (descriptionStatus.get(Number(tier.supplier_service_id)) !== "ok") {
+    return NextResponse.json({ error: "service_unavailable", message: pick(locale, "Detail layanan belum tersedia. Pilih layanan lain.", "Service details are not available yet. Choose another service.") }, { status: 409 });
+  }
+  const officialDescription = termsSnapshot.descriptions.get(Number(tier.supplier_service_id)) ?? null;
+  // C: syarat material yang belum direkonsiliasi ke snapshot aktif tidak boleh
+  // dijual. Persisted retry sudah dikembalikan di atas, jadi order lama aman.
+  // PSMM-ACCEPTANCE-CLOSE 1: quote yang ditandatangani WAJIB membawa versi syarat
+  // resmi dan versi itu harus SAMA dengan snapshot aktif sekarang — quote V1 yang
+  // disimpan melewati rekonsiliasi V2 (syarat berubah) tidak boleh jadi order baru.
+  const quoteTerms = typeof quote.terms_version === "string" ? quote.terms_version : "";
+  const activeTerms = termsSnapshot.fetchedAt == null ? "" : String(termsSnapshot.fetchedAt);
+  if (!quoteTerms || !activeTerms || quoteTerms !== activeTerms) {
+    return NextResponse.json({ error: "service_unavailable", message: pick(locale, "Syarat layanan berubah sejak checkout dibuka. Muat ulang harga.", "Service terms changed since checkout opened. Reload the price.") }, { status: 409 });
+  }
+  if (!managedTermsFresh(tier, termsSnapshot.fetchedAt)) {
+    return NextResponse.json({ error: "service_unavailable", message: pick(locale, "Syarat layanan sedang diperbarui. Muat ulang checkout.", "Service terms are being updated. Reload checkout.") }, { status: 409 });
+  }
   const live = await db.queryFirst(
     `SELECT * FROM pedia_supplier_services WHERE supplier=? AND service_id=? AND present=1 AND type=? AND rate_idr_per_1k>0`,
     tier.supplier, Number(tier.supplier_service_id), pediaServiceTypeFor(tier.input_kind),
@@ -241,8 +270,14 @@ export async function POST(req: NextRequest) {
   }]);
   // Pedia tidak pernah mereservasi stok Market: semua cancel di rute ini memakai
   // daftar restock kosong (lihat transitionPendingOrder di bawah).
+  // PSMM-P5: snapshot copy memakai deskripsi RESMI (bukan nama/deskripsi dari
+  // browser) agar review pembeli & riwayat konsisten; tidak mengabaikan syarat.
+  const { capturePediaServiceCopy } = await import("@/lib/pedia/service-copy");
+  const freshCopy = quote.service_copy && officialDescription
+    ? { ...quote.service_copy, description: capturePediaServiceCopy(product, tier, officialDescription).description }
+    : quote.service_copy;
   const snapshot = JSON.stringify({ supplier_target: quote.supplier_target ?? quote.target_normalized, refill_anchor: quote.refill_anchor ?? "created", supplier: quote.supplier, supplier_service_id: quote.supplier_service_id,
-    refill_days: quote.refill_days ?? (Number(tier.refill_days) || 0), min_profit_rp: quote.min_profit_rp ?? (Number(tier.min_profit_rp) || 0), service_copy: quote.service_copy, ...(quote.custom_comments ? { custom_comments: quote.custom_comments } : {}) });
+    refill_days: quote.refill_days ?? (Number(tier.refill_days) || 0), min_profit_rp: quote.min_profit_rp ?? (Number(tier.min_profit_rp) || 0), service_copy: freshCopy, ...(quote.custom_comments ? { custom_comments: quote.custom_comments } : {}) });
   const owned = `EXISTS(SELECT 1 FROM orders WHERE code=? AND quote_id=?)`;
   const statement = (sql: string, ...params: unknown[]) => db.d1!.prepare(sql).bind(...params);
   let claimed = false;

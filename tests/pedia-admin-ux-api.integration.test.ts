@@ -31,12 +31,14 @@ beforeEach(async () => {
   const db = createDatabaseAccess();
   const p = await db.queryFirst("SELECT id FROM pedia_products WHERE slug='followers-instagram'");
   productId = Number(p?.id);
-  await db.execRun(`INSERT INTO pedia_tiers(product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active,package_prices_json) VALUES(?,'standar','indosmm',86,'G3',20,1000,0,'{}')`,productId);
-  await db.execRun(`INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('indosmm',86,'Instagram','Followers','Default',30000,100,1000,1)`);
+  await db.execRun(`INSERT INTO pedia_tiers(product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active,package_prices_json) VALUES(?,'standar','providersmm',86,'G3',20,1000,0,'{}')`,productId);
+  await db.execRun(`INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('providersmm',86,'Instagram','Followers','Default',30000,100,1000,1)`);
   const t = await db.queryFirst("SELECT id FROM pedia_tiers WHERE product_id=? AND tier='standar'", productId);
   tierId = Number(t?.id);
+  // 2026-11-12 (owner): IndoSMM hanya untuk riwayat/order lama; cerminnya tetap
+  // tersedia agar pencarian supplier dan order historis dapat diuji.
   await db.execRun(`INSERT INTO pedia_supplier_services (supplier, service_id, name, category, type, rate_idr_per_1k, min_qty, max_qty, present)
-    VALUES ('providersmm',86,'Instagram','Followers','Default',30000,100,1000,1)`);
+    VALUES ('indosmm',86,'Instagram','Followers','Default',30000,100,1000,1)`);
 });
 afterEach(() => { fixture.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
@@ -129,10 +131,11 @@ it("order action database failures return a visible error", async () => {
   expect(result.status).toBe(500); expect(await result.json()).toMatchObject({ error: "save_failed" });
 });
 
-async function indoService(type = "Default") {
+async function saleService(type = "Default") {
   await createDatabaseAccess().execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present)
-    VALUES ('indosmm',86,'Indo Instagram','Followers',?,9000,250,1000,1) ON CONFLICT(supplier,service_id) DO UPDATE SET type=excluded.type,rate_idr_per_1k=9000,min_qty=250`, type);
-  await createDatabaseAccess().execRun(`UPDATE pedia_tiers SET supplier='providersmm' WHERE id=?`,tierId);
+    VALUES ('providersmm',86,'IG Instagram','Followers',?,9000,250,1000,1) ON CONFLICT(supplier,service_id) DO UPDATE SET type=excluded.type,rate_idr_per_1k=9000,min_qty=250`, type);
+  // Tier dimulai dari mapping historis IndoSMM agar remap ke supplier jual diuji.
+  await createDatabaseAccess().execRun(`UPDATE pedia_tiers SET supplier='indosmm' WHERE id=?`,tierId);
 }
 async function order(code: string, supplier = "providersmm", attempts = 0, sid: string | null = null) {
   await createDatabaseAccess().execRun(`INSERT INTO orders (code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,payment_status,order_kind) VALUES (?,'Fixture','628123456789','buyer@example.com','[]',5000,'qris','lunas','paid','pedia')`, code);
@@ -142,47 +145,49 @@ async function order(code: string, supplier = "providersmm", attempts = 0, sid: 
 }
 
 it("mapping provider and service is one validated update and never rewrites old orders", async () => {
-  await indoService(); await order("AXP-OLD");
-  expect((await PUT(req({ kind: "tier", id: tierId, supplier: "indosmm" }))).status).toBe(400);
+  await saleService(); await order("AXP-OLD", "indosmm");
+  expect((await PUT(req({ kind: "tier", id: tierId, supplier: "providersmm" }))).status).toBe(400);
   expect((await PUT(req({ kind: "tier", id: tierId, supplier_service_id: 86 }))).status).toBe(400);
   expect((await PUT(req({ kind: "tier", id: tierId, supplier: "unknown", supplier_service_id: 86 }))).status).toBe(400);
-  expect((await PUT(req({ kind: "tier", id: tierId, supplier: "indosmm", supplier_service_id: 86 }))).status).toBe(200);
+  expect((await PUT(req({ kind: "tier", id: tierId, supplier: "providersmm", supplier_service_id: 86 }))).status).toBe(200);
   const db = createDatabaseAccess();
   const t = await db.queryFirst(`SELECT supplier,supplier_service_id,rate_snapshot,package_prices_json FROM pedia_tiers WHERE id=?`, tierId);
-  expect(t).toMatchObject({ supplier: "indosmm", supplier_service_id: 86, rate_snapshot: 9000 });
+  expect(t).toMatchObject({ supplier: "providersmm", supplier_service_id: 86, rate_snapshot: 9000 });
   expect(Object.keys(JSON.parse(String(t?.package_prices_json)))).toEqual(["250", "500", "1000"]);
-  expect(await db.queryFirst(`SELECT supplier,supplier_service_id,snapshot_json FROM pedia_order_items WHERE order_code='AXP-OLD'`)).toEqual({ supplier: "providersmm", supplier_service_id: 86, snapshot_json: '{"refill_days":30}' });
-  expect(await db.queryFirst(`SELECT rate_idr_per_1k FROM pedia_supplier_services WHERE supplier='providersmm' AND service_id=86`)).toMatchObject({ rate_idr_per_1k: 30000 });
+  expect(await db.queryFirst(`SELECT supplier,supplier_service_id,snapshot_json FROM pedia_order_items WHERE order_code='AXP-OLD'`)).toEqual({ supplier: "indosmm", supplier_service_id: 86, snapshot_json: '{"refill_days":30}' });
+  expect(await db.queryFirst(`SELECT rate_idr_per_1k FROM pedia_supplier_services WHERE supplier='indosmm' AND service_id=86`)).toMatchObject({ rate_idr_per_1k: 30000 });
 });
 
-it.each([undefined, "USD"])("IndoSMM mapping refuses unverified currency %s before persistence", async (currency) => {
-  await indoService();
-  vi.mocked(callPediaProxy).mockResolvedValue({ ok: true, status: 200, data: { balance: "100", currency } });
+it("legacy IndoSMM mapping is rejected for new sales without calling the supplier", async () => {
+  // Tier bawaan memetakan supplier jual (ProviderSMM); remap ke IndoSMM adalah
+  // perubahan mapping ke supplier riwayat → ditolak sebelum menulis.
   const result = await PUT(req({ kind: "tier", id: tierId, supplier: "indosmm", supplier_service_id: 86 }));
-  expect(await result.json()).toMatchObject({ error: "unsupported_currency" });
+  expect(result.status).toBe(409);
+  expect(await result.json()).toMatchObject({ error: "provider_retired" });
   expect(await createDatabaseAccess().queryFirst(`SELECT supplier FROM pedia_tiers WHERE id=?`, tierId)).toMatchObject({ supplier: "providersmm" });
-  expect(callPediaProxy).toHaveBeenCalledTimes(1);
+  // Gate tarif IndoSMM tidak dipanggil karena supplier itu bukan supplier jual.
+  expect(callPediaProxy).not.toHaveBeenCalled();
 });
 
-it("IndoSMM mapping and activation require the VPS rate gate, not a local flag", async () => {
-  await indoService();
-  vi.mocked(callPediaProxy).mockImplementation(async (_p, action) => action === "balance" ? { ok: true, status: 200, data: { balance: "100", currency: "IDR" } } : { ok: false, kind: "api_error" } as never);
-  expect(await (await PUT(req({ kind: "tier", id: tierId, supplier: "indosmm", supplier_service_id: 86 }))).json()).toMatchObject({ error: "pricing_unverified" });
-  await createDatabaseAccess().execRun(`UPDATE pedia_tiers SET supplier='indosmm',is_active=0 WHERE id=?`, tierId);
-  expect((await PUT(req({ kind: "tier", id: tierId, is_active: 1 }))).status).toBe(400);
+it("ProviderSMM sale mapping needs no currency gate and survives a proxy outage", async () => {
+  await saleService();
+  vi.mocked(callPediaProxy).mockResolvedValue({ ok: false, kind: "api_error" } as never);
+  expect((await PUT(req({ kind: "tier", id: tierId, supplier: "providersmm", supplier_service_id: 86 }))).status).toBe(200);
+  expect(await createDatabaseAccess().queryFirst(`SELECT supplier FROM pedia_tiers WHERE id=?`, tierId)).toMatchObject({ supplier: "providersmm" });
+  expect(callPediaProxy).not.toHaveBeenCalled();
 });
 
 it("creation validates packages, parent, provider and compatible service then prices the new tier", async () => {
   expect((await POST(req({ slug: "new", name: "New", platform: "instagram", metric: "likes", target_kind: "post", packages_json: "[105]", step: 10 }))).status).toBe(400);
   const created = await (await POST(req({ slug: "new", name: "New", platform: "instagram", metric: "likes", target_kind: "post", packages_json: "[100,250]", step: 10 }))).json();
-  await indoService();
-  const body = { kind: "tier", product_id: created.id, tier: "hemat", supplier: "indosmm", supplier_service_id: 86, price_group: "G3", markup_pct: 20, min_profit_rp: 1000 };
+  await saleService();
+  const body = { kind: "tier", product_id: created.id, tier: "hemat", supplier: "providersmm", supplier_service_id: 86, price_group: "G3", markup_pct: 20, min_profit_rp: 1000 };
   expect((await POST(req({ ...body, product_id: 99999 }))).status).toBe(404);
   expect((await POST(req({ ...body, supplier_service_id: 99999 }))).status).toBe(400);
   const made = await (await POST(req(body))).json();
   expect(made.ok).toBe(true);
   const row = await createDatabaseAccess().queryFirst(`SELECT supplier,is_active,package_prices_json FROM pedia_tiers WHERE id=?`, made.id);
-  expect(row).toMatchObject({ supplier: "indosmm", is_active: 0 });
+  expect(row).toMatchObject({ supplier: "providersmm", is_active: 0 });
   expect(Object.keys(JSON.parse(String(row?.package_prices_json)))).toEqual(["250"]);
 });
 
@@ -192,8 +197,8 @@ it("creation reprice failure identifies the already saved tier so retries cannot
   await createDatabaseAccess().execRun(`DELETE FROM pedia_tiers WHERE product_id=? AND tier='hemat'`, productId);
   fixture.control.fail = (sql) => sql.includes("SET package_prices_json=?");
   await createDatabaseAccess().execRun(`INSERT INTO pedia_supplier_services (supplier, service_id, name, category, type, rate_idr_per_1k, min_qty, max_qty, present)
-    VALUES ('indosmm',777001,'Baru','Followers','Default',30000,100,1000,1)`);
-  const body = { kind: "tier", product_id: productId, tier: "hemat", supplier: "indosmm", supplier_service_id: 777001, price_group: "G3", markup_pct: 20, min_profit_rp: 1000 };
+    VALUES ('providersmm',777001,'Baru','Followers','Default',30000,100,1000,1)`);
+  const body = { kind: "tier", product_id: productId, tier: "hemat", supplier: "providersmm", supplier_service_id: 777001, price_group: "G3", markup_pct: 20, min_profit_rp: 1000 };
   const result = await POST(req(body));
   expect(result.status).toBe(500);
   expect(await result.json()).toMatchObject({ error: "reprice_failed", saved: true, id: expect.any(Number) });
@@ -204,16 +209,16 @@ it("creation reprice failure identifies the already saved tier so retries cannot
 });
 
 it("incompatible supplier types cannot be mapped", async () => {
-  await indoService("Custom Comments");
-  expect(await (await PUT(req({ kind: "tier", id: tierId, supplier: "indosmm", supplier_service_id: 86 }))).json()).toMatchObject({ error: "service_unavailable" });
+  await saleService("Custom Comments");
+  expect(await (await PUT(req({ kind: "tier", id: tierId, supplier: "providersmm", supplier_service_id: 86 }))).json()).toMatchObject({ error: "service_unavailable" });
 });
 
 it("supplier search keeps same IDs distinct and filters mapping/provider/compatibility", async () => {
-  await indoService();
+  await saleService();
   const { GET: services } = await import("@/app/api/admin/pedia/services/route");
   const all = await (await services(new NextRequest("http://localhost/?q=86", { headers: { cookie } }))).json();
   expect(all.rows.map((r: Record<string, unknown>) => `${r.supplier}:${r.service_id}`)).toEqual(["indosmm:86", "providersmm:86"]);
-  const filtered = await (await services(new NextRequest("http://localhost/?supplier=indosmm&mapping=unmapped&compatible=1", { headers: { cookie } }))).json();
+  const filtered = await (await services(new NextRequest("http://localhost/?supplier=providersmm&mapping=unmapped&compatible=1", { headers: { cookie } }))).json();
   expect(filtered.total).toBe(1); expect(filtered.rows[0].used_in).toBeNull();
   expect((await services(new NextRequest("http://localhost/?supplier=other", { headers: { cookie } }))).status).toBe(400);
   expect((await services(new NextRequest("http://localhost/?page=NaN", { headers: { cookie } }))).status).toBe(400);
@@ -238,18 +243,19 @@ it("resync rejects malformed catalogs before any supplier rows are written", asy
   expect(await createDatabaseAccess().queryFirst(`SELECT service_id FROM pedia_supplier_services WHERE service_id=99`)).toBeNull();
 });
 
-// 2026-11-01 (owner): ProviderSMM diputus — ringkasan hanya IndoSMM, USD tidak dilabel rupiah.
-it("provider health lists only IndoSMM and never labels USD as rupiah", async () => {
+// 2026-11-12 (owner): ringkasan mengikuti supplier jual aktif (ProviderSMM);
+// USD tidak pernah dilabel rupiah.
+it("provider health lists only the active sale supplier and never labels USD as rupiah", async () => {
   const { GET: overview } = await import("@/app/api/admin/pedia/overview/route");
   vi.mocked(callPediaProxy).mockImplementation(async () => ({ ok: true, status: 200, data: { balance: "12000", currency: "USD" } }) as never);
   const data = await (await overview(req())).json();
   expect(data.providers).toHaveLength(1);
-  expect(data.providers[0]).toMatchObject({ supplier: "indosmm", error: "unsupported_currency", balance: { value: null, stale: true }, pricing_verified: false });
-  expect(vi.mocked(callPediaProxy).mock.calls.some((c) => c[0] === "providersmm")).toBe(false);
+  expect(data.providers[0]).toMatchObject({ supplier: "providersmm", error: "unsupported_currency", balance: { value: null, stale: true }, pricing_verified: false });
+  expect(vi.mocked(callPediaProxy).mock.calls.some((c) => c[0] === "indosmm")).toBe(false);
   vi.mocked(callPediaProxy).mockImplementation(async (_p, action) => ({ ok: true, status: 200, data: action === "services" ? [{ service: 1 }] : { balance: "12000", currency: "IDR" } }) as never);
   const ok = await (await overview(req())).json();
-  expect(ok.providers[0]).toMatchObject({ supplier: "indosmm", error: null, balance: { value: 12000, stale: false }, pricing_verified: true });
-  expect(await createDatabaseAccess().queryAll(`SELECT supplier FROM pedia_supplier_balance_log`)).toEqual([{ supplier: "indosmm" }]);
+  expect(ok.providers[0]).toMatchObject({ supplier: "providersmm", error: null, balance: { value: 12000, stale: false }, pricing_verified: true });
+  expect(await createDatabaseAccess().queryAll(`SELECT supplier FROM pedia_supplier_balance_log`)).toEqual([{ supplier: "providersmm" }]);
 });
 
 it("order balance/reconciliation use stored provider, save supplier ID snapshot, and allow identical IDs across providers only", async () => {
@@ -334,41 +340,42 @@ it("partial settings saves return saved keys instead of full success", async () 
   expect(result.status).toBe(500); expect(await result.json()).toMatchObject({ error: "save_partial", saved_fields: ["pedia_markup_g1"] });
 });
 
-it("authenticated shortlist includes only IndoSMM at one quantity without writes or supplier calls",async()=>{
- await indoService();
+it("authenticated shortlist includes only the sale supplier at one quantity without writes or supplier calls",async()=>{
+ await saleService();
  await createDatabaseAccess().execRun("UPDATE pedia_supplier_services SET name='Instagram Followers Global'");
  const {GET:services}=await import("@/app/api/admin/pedia/services/route");
  const response=await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=500`,{headers:{cookie}}));
  expect(response.status).toBe(200);
  const data=await response.json();
  expect(data.rows.length).toBeGreaterThan(0);
- expect(data.rows.every((r:Record<string,unknown>)=>r.supplier==="indosmm" && Number(r.estimated_cost)>0)).toBe(true);
+ expect(data.rows.every((r:Record<string,unknown>)=>r.supplier==="providersmm" && Number(r.estimated_cost)>0)).toBe(true);
  expect(callPediaProxy).not.toHaveBeenCalled();
  expect((await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=NaN`,{headers:{cookie}}))).status).toBe(400);
  expect((await services(new NextRequest(`http://localhost/?view=shortlist&product_id=${productId}&quantity=500`))).status).toBe(401);
 });
 
 it("new draft tiers persist reviewed public copy and bounds while staying inactive",async()=>{
- await createDatabaseAccess().execRun("INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('indosmm',99,'Instagram Followers','Followers','Default',1000,10,1000,1)");
- const response=await POST(req({kind:"tier",product_id:productId,tier:"standar",supplier:"indosmm",supplier_service_id:99,price_group:"G3",markup_pct:20,min_profit_rp:1000,refill_days:0,is_active:0,public_name:"Reviewed draft",description_md:"Reviewed description",terms_md:"Without refill",instructions_md:"Use profile URL",min_qty_override:100,max_qty_override:500,quantity_step:10,target_format:"url",refill_anchor:"created",is_recommended:0}));
+ await createDatabaseAccess().execRun("INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('providersmm',99,'Instagram Followers','Followers','Default',1000,10,1000,1)");
+ const response=await POST(req({kind:"tier",product_id:productId,tier:"standar",supplier:"providersmm",supplier_service_id:99,price_group:"G3",markup_pct:20,min_profit_rp:1000,refill_days:0,is_active:0,public_name:"Reviewed draft",description_md:"Reviewed description",terms_md:"Without refill",instructions_md:"Use profile URL",min_qty_override:100,max_qty_override:500,quantity_step:10,target_format:"url",refill_anchor:"created",is_recommended:0}));
  expect(response.status).toBe(200);
  const {id}=await response.json();
  expect(await createDatabaseAccess().queryFirst("SELECT public_name,description_md,terms_md,instructions_md,min_qty_override,max_qty_override,quantity_step,is_active FROM pedia_tiers WHERE id=?",id)).toEqual({public_name:"Reviewed draft",description_md:"Reviewed description",terms_md:"Without refill",instructions_md:"Use profile URL",min_qty_override:100,max_qty_override:500,quantity_step:10,is_active:0});
 });
 
-it("rejects forced ProviderSMM creation, reactivation and remapping before writes, while allowing legacy copy/deactivation",async()=>{
+it("rejects forced IndoSMM creation, reactivation and remapping before writes, while allowing legacy copy/deactivation",async()=>{
  const db=createDatabaseAccess();
- const body={kind:"tier",product_id:productId,tier:"hemat",supplier:"providersmm",supplier_service_id:86,price_group:"G3",markup_pct:20,min_profit_rp:1000,is_active:0};
+ const body={kind:"tier",product_id:productId,tier:"hemat",supplier:"indosmm",supplier_service_id:86,price_group:"G3",markup_pct:20,min_profit_rp:1000,is_active:0};
  expect((await POST(req(body))).status).toBe(409);
- expect((await PUT(req({kind:"tier",id:tierId,supplier:"providersmm",supplier_service_id:86}))).status).toBe(409);
  await db.execRun("UPDATE pedia_tiers SET supplier='providersmm',is_active=0 WHERE id=?",tierId);
+ expect((await PUT(req({kind:"tier",id:tierId,supplier:"indosmm",supplier_service_id:86}))).status).toBe(409);
+ await db.execRun("UPDATE pedia_tiers SET supplier='indosmm',is_active=0 WHERE id=?",tierId);
  expect((await PUT(req({kind:"tier",id:tierId,is_active:1}))).status).toBe(409);
  expect((await PUT(req({kind:"tier",id:tierId,public_name:"Riwayat",is_active:0}))).status).toBe(200);
- expect(await db.queryFirst("SELECT supplier,public_name,is_active FROM pedia_tiers WHERE id=?",tierId)).toEqual({supplier:"providersmm",public_name:"Riwayat",is_active:0});
+ expect(await db.queryFirst("SELECT supplier,public_name,is_active FROM pedia_tiers WHERE id=?",tierId)).toEqual({supplier:"indosmm",public_name:"Riwayat",is_active:0});
 });
 it.each(['Canva Pro','Google Gemini','CapCut'])('rejects premium category %s on tier creation and activation',async(category)=>{
- const db=createDatabaseAccess();await db.execRun("UPDATE pedia_supplier_services SET category=? WHERE supplier='indosmm'",category);
- expect((await POST(req({kind:"tier",product_id:productId,tier:"hemat",supplier:"indosmm",supplier_service_id:86,price_group:"G3",markup_pct:20,min_profit_rp:1000}))).status).toBe(400);
+ const db=createDatabaseAccess();await db.execRun("UPDATE pedia_supplier_services SET category=? WHERE supplier='providersmm'",category);
+ expect((await POST(req({kind:"tier",product_id:productId,tier:"hemat",supplier:"providersmm",supplier_service_id:86,price_group:"G3",markup_pct:20,min_profit_rp:1000}))).status).toBe(400);
  expect((await PUT(req({kind:"tier",id:tierId,is_active:1}))).status).toBe(400);
 });
 

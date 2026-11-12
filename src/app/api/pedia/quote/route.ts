@@ -10,9 +10,10 @@ import { detectPediaLink, pediaTargetMatches } from "@/lib/pedia/link";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { createPediaQuoteToken } from "@/lib/pedia/quote";
 import { isPediaProvider } from "@/lib/pedia/proxy";
-import { isPediaSaleProvider, PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
+import { isPediaSaleProvider } from "@/lib/pedia/sales-policy";
 import { capturePediaServiceCopy } from "@/lib/pedia/service-copy";
 import { pediaBounds } from "@/lib/pedia/bounds";
+import { managedTermsFresh } from "@/lib/pedia/catalog-queries";
 import { readJsonBody } from "@/lib/http-body";
 import { checkCustomComments, CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
@@ -75,6 +76,28 @@ export async function POST(req: NextRequest) {
     tier.supplier, Number(tier.supplier_service_id), pediaServiceTypeFor(tier.input_kind),
   ).catch(() => null);
   if (!live) return NextResponse.json({ error: pick(locale, "Layanan sedang tidak tersedia.", "The service is temporarily unavailable.") }, { status: 409 });
+  // PSMM-P5: hanya baris OTOMATIS yang layak dijual boleh di-quote. Tier kurasi
+  // (termasuk ProviderSMM lama) dan baris nonaktif tidak dapat dipakai walau
+  // id-nya dipalsukan/di-tebak dari katalog lama.
+  if (String(tier.managed ?? "curated") !== "auto") {
+    return NextResponse.json({ error: "provider_retired", message: pick(locale, "Layanan ini sudah tidak dijual. Pilih layanan lain yang tersedia.", "This service is no longer sold. Choose another available service.") }, { status: 409 });
+  }
+  // Deskripsi resmi wajib tersedia (status `ok`); dibaca sekali dari snapshot.
+  const { loadSupplierSnapshot } = await import("@/lib/pedia/metadata-refresh");
+  const snapshot = await loadSupplierSnapshot(db).catch(() => ({
+    descriptions: new Map<number, string>(), statuses: new Map<number, "ok" | "empty" | "oversize">(), fetchedAt: null as string | null,
+  }));
+  const officialDescription = snapshot.descriptions.get(Number(tier.supplier_service_id)) ?? null;
+  if (snapshot.statuses.get(Number(tier.supplier_service_id)) !== "ok" || !officialDescription) {
+    return NextResponse.json({ error: "service_unavailable", message: pick(locale, "Detail layanan belum tersedia. Pilih layanan lain.", "Service details are not available yet. Choose another service.") }, { status: 409 });
+  }
+  // PSMM-FINAL-PATCH C: bila snapshot syarat resmi sudah berubah tetapi baris ini
+  // belum direkonsiliasi (antrean belum mengurasnya), quote BARU ditolak agar
+  // syarat lama (mis. janji garansi) tidak dipakai menjual. Order tersimpan
+  // tidak terpengaruh karena retry-nya dilayani sebelum gate ini.
+  if (!managedTermsFresh(tier, snapshot.fetchedAt)) {
+    return NextResponse.json({ error: "service_unavailable", message: pick(locale, "Syarat layanan sedang diperbarui. Coba lagi beberapa saat.", "Service terms are being updated. Please try again shortly.") }, { status: 409 });
+  }
 
   // Validasi target: parser server + kecocokan target_kind (PD-02/AC-03).
   const detected = detectPediaLink(target, String(product.platform));
@@ -156,11 +179,14 @@ export async function POST(req: NextRequest) {
     supplier: tier.supplier,
     supplier_service_id: Number(tier.supplier_service_id),
     supplier_rate_snapshot: Number(live.rate_idr_per_1k),
+    managed: "auto",
+    // PSMM-ACCEPTANCE-CLOSE 1: ikat versi syarat resmi ke quote bertanda tangan.
+    ...(snapshot.fetchedAt ? { terms_version: snapshot.fetchedAt } : {}),
     refill_days: Number(tier.refill_days) || 0,
     min_profit_rp: Number(tier.min_profit_rp) || 0,
     supplier_target: tier.target_format === "username" ? new URL(detected.normalized).pathname.split("/").filter(Boolean)[0]?.replace(/^@/, "") : detected.normalized,
     refill_anchor: tier.refill_anchor === "completed" ? "completed" : "created",
-    service_copy: capturePediaServiceCopy(product, tier),
+    service_copy: capturePediaServiceCopy(product, tier, officialDescription),
     ...(customComments ? { custom_comments: customComments } : {}),
     payment_methods: serializePediaQuoteMethods(availableMethods),
     locale,
