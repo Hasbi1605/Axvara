@@ -1,5 +1,5 @@
 "use client";
-import { Button, Card, Input, Label } from "@/components/admin/ui";
+import { Button, Card, Input, Label, PageHeader } from "@/components/admin/ui";
 
 import { useCallback, useEffect, useState } from "react";
 import { CATEGORY_ICON_OPTIONS, IosIcon, categoryIcon, resolveCategoryIconName } from "@/components/admin/AdminIcon";
@@ -103,12 +103,11 @@ export function CategoryManager() {
   };
 
   return (
-    <section className="mt-4">
+    <section className="mt-4 space-y-6">
+      <PageHeader title="Kategori" description="Nama, ikon, dan urutan dipakai bersama oleh katalog dan footer." />
+      <div className="space-y-4">
+      <div className="flex justify-end" role="group" aria-label="Aksi kategori"><Button type="button" onClick={openNew}><IosIcon name="plus" size={16} tint="currentColor" /> Kategori Baru</Button></div>
       <Card className="admin-surface rounded-xl overflow-hidden">
-        <div className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
-          <div className="min-w-0"><h2 className="text-sm font-semibold text-admin-fg">Kategori</h2><p className="text-xs text-admin-muted">Nama, ikon, dan urutan dipakai bersama oleh katalog dan footer.</p></div>
-          <Button variant="default" type="button" onClick={openNew} className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-admin-primary px-5 text-sm font-semibold text-admin-inverse transition hover:bg-admin-primary"><IosIcon name="plus" size={14} tint="currentColor" /> Kategori Baru</Button>
-        </div>
 
         {error && !showForm && <p className="mx-4 mt-4 rounded-xl border border-admin-danger/20 bg-admin-danger/10 px-3 py-2 text-sm text-admin-danger sm:mx-5">{error}</p>}
         {loading ? (
@@ -131,6 +130,7 @@ export function CategoryManager() {
           </div>
         )}
       </Card>
+      </div>
 
       {showForm && (
         <Dialog title={editing ? "Edit Kategori" : "Kategori Baru"} onClose={() => !saving && setShowForm(false)} busy={saving} className="w-[560px]">

@@ -7,7 +7,7 @@ import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ChevronLeft, ChevronRight, ExternalLink, ImageIcon, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
-import { Badge, Button, Card, Input, Label, NativeSelect, Skeleton, Textarea } from "./ui";
+import { Badge, Button, Card, Input, Label, NativeSelect, PageHeader, Skeleton, Textarea } from "./ui";
 import { formatWibDateTime } from "@/lib/utils";
 import { Dialog } from "@/components/ui/Dialog";
 import { navigateWithDraftGuard, useAdminDraft } from "./AdminWorkspace";
@@ -200,6 +200,7 @@ export function ArticlesManager() {
 
   return (
     <section className="mt-4 space-y-6">
+      <PageHeader title="Artikel" description="Slug & ringkasan dibuat otomatis." />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           ["Total artikel", counts.total, "text-admin-fg"],
@@ -215,14 +216,7 @@ export function ArticlesManager() {
       </div>
 
       <div>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-xl font-semibold text-admin-fg">Artikel</h2>
-            <p className="mt-0.5 text-sm text-admin-muted">Slug &amp; ringkasan dibuat otomatis.</p>
-          </div>
-          <Button onClick={openNew}><Plus aria-hidden="true" /> Artikel Baru</Button>
-        </div>
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Aksi artikel">
           <div className="relative w-full sm:w-80">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-admin-muted" aria-hidden="true" />
             <Input
@@ -244,6 +238,7 @@ export function ArticlesManager() {
               <option key={value} value={value}>{label}</option>
             ))}
           </NativeSelect>
+          <Button onClick={openNew} className="ml-auto"><Plus aria-hidden="true" /> Artikel Baru</Button>
         </div>
 
         <Card className="mt-4 overflow-hidden">

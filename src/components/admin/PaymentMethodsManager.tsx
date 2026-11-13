@@ -86,7 +86,7 @@ export function PaymentMethodsManager({ onChanged }: { onChanged?: () => void })
   const qrisDirty = Boolean(qris && JSON.stringify(qris) !== JSON.stringify(savedQris));
 
   if (loading) {
-    return <div role="status" className="space-y-4"><Skeleton className="h-9 w-64" /><Skeleton className="h-64 w-full" /><span className="sr-only">Memuat metode pembayaran…</span></div>;
+    return <div className="mt-4 space-y-6"><PageHeader title="Pembayaran" description="Kelola metode pembayaran dan periksa event rekonsiliasi." /><div role="status" className="space-y-4"><Skeleton className="h-9 w-64" /><Skeleton className="h-64 w-full" /><span className="sr-only">Memuat metode pembayaran…</span></div></div>;
   }
 
   return (

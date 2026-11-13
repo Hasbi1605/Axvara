@@ -1,5 +1,17 @@
 # PRD — AXVARA
 
+## Header admin konsisten (14 November 2026, implementasi lokal)
+
+- Semua section memakai header bersama dengan posisi awal dan tinggi minimum
+  seragam per breakpoint. Baris "Masuk sebagai"/email/durasi sesi serta metadata
+  rentang/zona/waktu pembuatan laporan di Ringkasan tidak ditampilkan lagi;
+  kebijakan sesi, filter periode dan metadata laporan API/ekspor tetap.
+- Kategori: header di luar kartu; Artikel: header → mini card → toolbar →
+  daftar. Tombol Kategori Baru/Artikel Baru rata kanan pada toolbar tepat di
+  atas daftar, seperti Template baru di Siaran. Banner: header → mini card.
+  Pengaturan Toko: satu header → tab → konten. Publikasi lewat CI;
+  deployment belum diverifikasi.
+
 ## Admin round 2: alur beli WA pensiun, rekonsiliasi terminal, anatomi seragam (13 November 2026, implementasi lokal)
 
 Keputusan owner 13 November 2026 (spec round 2). Seluruh paket sudah terintegrasi

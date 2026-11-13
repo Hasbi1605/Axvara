@@ -1,5 +1,25 @@
 # DESIGN.md — AXVARA Design System
 
+## Header admin bersama (14 November 2026, implementasi lokal)
+
+- Semua section memakai `PageHeader`: judul `text-xl`/line-height 28px,
+  deskripsi `text-sm`/20px, aksi header di kanan pada desktop dan di bawah pada
+  mobile. Tinggi minimum 72px mulai 768px dan 144px di bawahnya; teks panjang
+  boleh menambah tinggi, tanpa dipotong. Jarak ke kartu, toolbar atau tab 24px.
+  `AdminShell` menetralkan margin atas panel pertama agar titik awal seragam.
+- Baris "Masuk sebagai"/email/durasi sesi dan metadata rentang/zona/waktu
+  pembuatan laporan di atas Ringkasan dihapus dari UI. Indikator sesi sidebar
+  dan filter periode Ringkasan tetap tersedia.
+- Kategori memakai header di luar kartu daftar; Artikel dimulai dengan header
+  lalu mini card. Tombol Kategori Baru/Artikel Baru berada rata kanan pada
+  toolbar tepat di atas daftar (jarak 16px), mengikuti Template baru Siaran.
+  Banner mendapat header sebelum mini card. `SystemTabs` memiliki satu header
+  Pengaturan Toko sebelum tab Identitas/Integrasi Agent/Subscriber Email, tanpa
+  header identitas kedua. Header Pembayaran tetap saat loading; error Produk
+  berada setelah header bersama dengan retry.
+- Menggantikan susunan header snapshot 13 November di bawah. Publikasi lewat
+  CI; deployment belum diverifikasi.
+
 ## Modal template Siaran di tengah (14 November 2026, implementasi lokal)
 
 - Editor Template baru/Edit template memakai Dialog terpusat yang sama dengan

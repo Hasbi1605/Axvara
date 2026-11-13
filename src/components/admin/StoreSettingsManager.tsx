@@ -75,11 +75,6 @@ export function StoreSettingsManager() {
 
   return (
     <section className="mt-4 space-y-6">
-      <header>
-        <h1 className="text-xl font-semibold text-admin-fg">Pengaturan Toko</h1>
-        <p className="mt-1 text-sm text-admin-muted">Identitas dan kontak ini dipakai konsisten di storefront. Perubahan tidak mengubah data pesanan lama.</p>
-      </header>
-
       {error && <div role="alert" className="rounded-md border border-admin-danger/25 bg-admin-danger/10 px-4 py-3 text-sm text-admin-danger">{error}</div>}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import AdminPage from "@/app/(shop)/admin/page";
 import { ToastProvider } from "@/components/ui/Toast";
 import { EMPTY_ADMIN_OVERVIEW } from "@/components/admin/AdminOverview";
@@ -29,9 +29,10 @@ it("rapid filters cannot overwrite newer data, and loading/errors never relabel 
   expect(pending).toHaveLength(1);
   await act(async () => { pending[0].resolve(response(report("Original week"))); });
   expect(screen.getByText("Original week")).toBeTruthy();
-  const header = screen.getByTestId("admin-session-header");
-  expect(within(header).getByText("fixture@example.test")).toBeTruthy();
-  expect(within(header).getByText(/Asia\/Jakarta · Dibuat/)).toBeTruthy();
+  expect(screen.queryByTestId("admin-session-header")).toBeNull();
+  expect(screen.queryByText(/Masuk sebagai|maks\. 8 jam|idle 2 jam/)).toBeNull();
+  expect(screen.queryByText("fixture@example.test")).toBeNull();
+  expect(screen.queryByText(/Asia\/Jakarta · Dibuat/)).toBeNull();
   await userEvent.click(screen.getByRole("tab", { name: "Minggu ini" }));
   await act(async () => {});
   expect(pending).toHaveLength(1);
@@ -39,7 +40,7 @@ it("rapid filters cannot overwrite newer data, and loading/errors never relabel 
   await userEvent.click(screen.getByRole("tab", { name: "Hari ini" }));
   await act(async () => {});
   expect(screen.queryByText("Original week")).toBeNull();
-  expect(within(header).queryByText(/Dibuat/)).toBeNull();
+  expect(screen.queryByText(/Dibuat/)).toBeNull();
   expect(pending[1].url).toContain("period=today");
   await userEvent.click(screen.getByRole("tab", { name: "Bulan ini" }));
   await act(async () => {});
@@ -56,7 +57,7 @@ it("rapid filters cannot overwrite newer data, and loading/errors never relabel 
   await act(async () => { pending[3].resolve(response({ error: "database unavailable" }, false)); });
   expect(screen.getByRole("alert").textContent).toContain("belum berhasil dimuat");
   expect(screen.queryByText("Newest month")).toBeNull();
-  expect(within(header).queryByText(/Dibuat/)).toBeNull();
+  expect(screen.queryByText(/Dibuat/)).toBeNull();
   expect(screen.queryByText("Untung Produk")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Muat ulang ringkasan" }));
   await act(async () => {});

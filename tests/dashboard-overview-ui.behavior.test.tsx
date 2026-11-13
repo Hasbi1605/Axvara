@@ -170,7 +170,7 @@ it("selected historical report scopes all financial content and exposes exports 
   const view = render(<AdminOverview data={{ ...data, selected_report: report }} selection={selection} onSelectionChange={vi.fn()} loading={false} renderReportActions={actions} />);
   expect(screen.queryByText("Netflix")).toBeNull();
   expect(screen.getByText("Belum ada transaksi pada periode ini")).toBeTruthy();
-  expect(screen.queryByText(/Dibuat/)).toBeNull(); // Metadata belongs to the session header.
+  expect(screen.queryByText(/Dibuat/)).toBeNull(); // Report metadata stays in exports, outside the page header.
   expect(actions).toHaveBeenLastCalledWith({ report, disabled: false });
   const toolbar = screen.getByRole("group", { name: "Filter dan unduhan laporan" });
   expect(within(toolbar).getByLabelText("Bulan historis")).toBeTruthy();

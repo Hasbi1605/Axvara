@@ -1,5 +1,14 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Header admin14November2026 (implementasi lokal, publikasi CI): seluruh section
+memakai `PageHeader` bersama dengan titik awal seragam dan tinggi minimum
+72px desktop/144px mobile. Baris identitas/durasi sesi dan metadata waktu laporan
+Ringkasan dihapus dari tampilan. Kategori/Artikel memakai tombol tambah pada
+toolbar tepat di atas daftar; Artikel/Banner menaruh header sebelum mini card.
+Pengaturan Toko menaruh satu header sebelum tiga tab. Header tetap pada loading
+Pembayaran dan mendahului error/retry Produk; auth, API, ekspor dan data tetap.
+Deployment belum diverifikasi.
+
 Admin round 2 — anatomi seragam + pensiun alur beli WA13November2026 (implementasi
 lokal terintegrasi di `main`, termasuk UI1–UI4 dan koreksi review): setiap section
 memakai satu PageHeader + StatCard netral + satu toolbar + tabel/kartu, warna hanya

@@ -169,7 +169,7 @@ export function AdminShell({
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}><SheetContent side="left" aria-describedby={undefined} onCloseAutoFocus={event => { event.preventDefault(); mobileTrigger.current?.focus(); }} className="w-[280px]"><SheetTitle className="sr-only">Menu admin</SheetTitle>{sidebar(true)}</SheetContent></Sheet>
       <section id="admin-content" aria-label="Konten admin" tabIndex={-1} className="min-w-0 flex-1 pt-14 lg:pt-0">
         <header className="sticky top-0 z-30 hidden h-16 items-center gap-3 border-b border-admin-border/60 bg-admin-card px-6 lg:flex"><span className="text-sm text-admin-muted">Ruang kerja</span><span className="text-admin-border">/</span><span className="text-sm font-medium">{navigation.find(([id]) => id === section)?.[1] ?? sectionFallbackTitles[section]?.[0]}</span><div className="ml-auto"><AdminThemeMenu /></div></header>
-        <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 lg:py-6">{children}</div>
+        <div data-admin-page className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 lg:py-6 [&>*:first-child]:mt-0">{children}</div>
       </section>
     </div></TooltipProvider>
   );

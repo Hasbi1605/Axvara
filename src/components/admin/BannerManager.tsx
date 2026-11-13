@@ -10,7 +10,7 @@ import { AdminStatusSwitch } from "./AdminStatusSwitch";
 import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { Button, Card, Checkbox, Input, Label } from "./ui";
+import { Button, Card, Checkbox, Input, Label, PageHeader } from "./ui";
 
 type Banner = {
   id?: number;
@@ -197,6 +197,7 @@ export function BannerManager() {
 
   return (
     <section className="mt-4 space-y-6">
+      <PageHeader title="Banner" description="Kelola banner promosi, urutan tampil, dan pengaturan popup toko." />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           ["Total banner", counts.total, "text-admin-fg"],

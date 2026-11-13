@@ -56,6 +56,8 @@ function SupplierBadge({ supplier, slug }: { supplier?: Prod["supplier"]; slug: 
 }
 
 export function ProductsSection({
+  error,
+  onRetry,
   prods,
   paged,
   filtered,
@@ -90,6 +92,8 @@ export function ProductsSection({
   onJump,
   onSoldCount,
 }: {
+  error?: string | null;
+  onRetry?: () => void;
   prods: Prod[];
   paged: Prod[];
   filtered: Prod[];
@@ -176,6 +180,7 @@ export function ProductsSection({
   return (
     <Tabs value={liveTab} onValueChange={value => { onLiveTabChange(value as typeof liveTab); onPageChange(() => 1); }} className="space-y-6">
       <PageHeader title="Produk" description="Katalog, harga, stok varian, dan status tampil di toko." actions={<Button type="button" onClick={onNew}><Plus aria-hidden="true" /> Produk baru</Button>} />
+      {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-admin-danger/20 bg-admin-danger/10 px-4 py-3 text-sm text-admin-danger"><span>{error}</span><Button variant="outline" size="sm" type="button" onClick={onRetry} className="shrink-0">Coba lagi</Button></div>}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <StatCard label="Total produk" value={loadingList ? <Skeleton className="h-8 w-16" /> : prods.length} />
           <StatCard label="Live di toko" value={loadingList ? <Skeleton className="h-8 w-16" /> : liveProducts} />

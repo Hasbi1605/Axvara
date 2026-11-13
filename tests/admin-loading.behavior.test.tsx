@@ -11,6 +11,25 @@ vi.mock("next/navigation", () => ({
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(null, "", "/admin"); });
 
+it("keeps the product header above a catalog error and retries from that panel", async () => {
+  window.history.replaceState(null, "", "/admin?section=products");
+  let productCalls = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: unknown) => {
+    const url = String(input);
+    if (url === "/api/auth/me") return Response.json({ authed: true });
+    if (url === "/api/products") { productCalls++; return Response.json({ error: "Katalog fixture gagal" }, { status: 503 }); }
+    return Response.json({ categories: [] });
+  }));
+  render(<ToastProvider><AdminPage /></ToastProvider>);
+  const error = await screen.findByRole("alert");
+  const heading = screen.getByRole("heading", { name: "Produk", level: 2 });
+  expect(heading.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.queryByText(/Masuk sebagai|maks\. 8 jam|idle 2 jam/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Coba lagi" }));
+  await act(async () => {});
+  expect(productCalls).toBe(2);
+});
+
 it("loads products only on section entry, refreshes on return and ignores ordinary renders", async () => {
   const counts: Record<string, number> = {};
   vi.stubGlobal("fetch", vi.fn(async (input: unknown) => {

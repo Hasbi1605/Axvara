@@ -1,5 +1,22 @@
 # ARCHITECTURE.md — AXVARA
 
+## Header admin bersama (14 November 2026, implementasi lokal)
+
+`src/components/admin/ui/page-header.tsx` menjadi primitive header seluruh
+section, dengan tinggi minimum responsif 72px desktop (>=768px)/144px mobile.
+`AdminShell` memiliki boundary `data-admin-page` dan menetralkan margin atas
+anak pertama. Baris identitas/durasi sesi serta metadata laporan Ringkasan
+dihapus dari `src/app/(shop)/admin/page.tsx`; kontrak auth/idle dan metadata
+laporan API/ekspor tetap. Error/retry katalog dirender di `ProductsSection`
+setelah header melalui props `error`/`onRetry`, dan loading metode pembayaran
+tetap merender header.
+
+Kategori, Artikel dan Banner memakai primitive yang sama sebelum daftar/kartu.
+Tombol tambah Kategori/Artikel dimiliki toolbar di atas daftar, bukan header.
+`SystemTabs` memiliki header Pengaturan Toko sebelum navigasi tiga tab; header
+duplikat di `StoreSettingsManager` dihapus. Tidak ada route, env, migrasi atau
+kontrak API baru. Publikasi melalui CI; deployment belum diverifikasi.
+
 ## Admin round 2: anatomi seragam, alur pembeli WA pensiun, rekonsiliasi "sudah dicek" (13 November 2026, implementasi lokal)
 
 Status: **implementasi terintegrasi dan terverifikasi lokal; deployment belum
