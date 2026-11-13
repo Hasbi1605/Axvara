@@ -1,5 +1,13 @@
 # DESIGN.md — AXVARA Design System
 
+## Modal template Siaran di tengah (14 November 2026, implementasi lokal)
+
+- Editor Template baru/Edit template memakai Dialog terpusat yang sama dengan
+  modal admin lain, menggantikan Sheet sisi kanan pada snapshot 13 November.
+  Lebar maksimal 576px, jarak tepi viewport 16px dan scroll vertikal adaptif;
+  pratinjau, konfirmasi buang perubahan dan pengaman saat menyimpan tetap.
+  Publikasi lewat CI; deployment belum diverifikasi.
+
 ## Admin round 2: anatomi seragam, warna bermakna, label manusia (13 November 2026, implementasi lokal)
 
 Menggantikan bagian "Panel admin memakai shadcn/ui sungguhan" di bawah hanya pada
@@ -34,7 +42,8 @@ aturan tata letak/istilah; token, tema dan primitive tetap.
   tanpa UI Oura, deskripsi supplier tanpa emoji). TUNVN (`Saldo TUNVN` + 3 StatCard,
   pengiriman otomatis tabel ringkas + dialog receipt). WR/SK (StatCard sama,
   "Sinkron sekarang"). WR vs SK (perbandingan manusia, Simpan hanya saat dirty).
-  Siaran (tab Template/Riwayat, editor Sheet + pratinjau, dialog kirim 3 langkah).
+  Siaran (tab Template/Riwayat, editor Dialog tengah + pratinjau sejak 14 November,
+  dialog kirim 3 langkah).
   Rekonsiliasi (StatCard, "Tandai sudah dicek" ber-catatan, error manusia).
 - **Koreksi round 1 (Games/TUNVN/Pedia/WR-SK)**: tabel Games dirancang muat di
   kontainer 1280 (terukur 966/966, tidak ada kolom Aktif terpotong) dengan teks

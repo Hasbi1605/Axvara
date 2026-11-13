@@ -45,3 +45,23 @@ it('restores an unconfirmed request after reload and blocks launching a differen
  const payload={action:'send',id:'22222222-2222-4222-8222-222222222222',templateId:t.id,revision:1,channels:['email']};sessionStorage.setItem('axvara-broadcast-pending',JSON.stringify(payload));const calls=setup();
  fireEvent.click(await screen.findByRole('button',{name:'Coba lagi pengiriman'}));await waitFor(()=>expect(calls).toContainEqual(payload));
 });
+it('keeps template edits until discarding is confirmed and closes a clean new template with Escape',async()=>{
+ const calls=setup();const user=userEvent.setup();
+ await user.click(await screen.findByRole('button',{name:'Edit Promo'}));
+ const editor=screen.getByRole('dialog',{name:'Edit template'});
+ expect(within(editor).getByLabelText('Isi siaran')).toHaveProperty('value','Isi tersimpan');
+ await user.type(within(editor).getByLabelText('Isi siaran'),' diubah');
+ await user.keyboard('{Escape}');
+ let confirmation=await screen.findByRole('alertdialog',{name:'Buang perubahan template?'});
+ await user.click(within(confirmation).getByRole('button',{name:'Batal'}));
+ expect(within(editor).getByLabelText('Isi siaran')).toHaveProperty('value','Isi tersimpan diubah');
+ await user.click(within(editor).getByRole('button',{name:'Tutup dialog'}));
+ confirmation=await screen.findByRole('alertdialog',{name:'Buang perubahan template?'});
+ await user.click(within(confirmation).getByRole('button',{name:'Buang perubahan'}));
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+ await user.click(screen.getByRole('button',{name:'Template baru'}));
+ expect(screen.getByRole('dialog',{name:'Template baru'})).toBeTruthy();
+ await user.keyboard('{Escape}');
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+ expect(calls).toHaveLength(0);
+});

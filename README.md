@@ -820,6 +820,9 @@ CI main; jangan menjalankan migrasi/deploy manual untuk perbaikan ini.
 
 ✅ Admin **Konten → Siaran** (`/admin?section=broadcasts`): buat/simpan template teks
 + judul/subjek + CTA HTTPS opsional, salin, edit, arsip/pulihkan, pakai ulang.
+Editor Template baru/Edit template memakai dialog tengah seperti modal admin lain
+(koreksi 14 November 2026, implementasi lokal; publikasi lewat CI), dengan scroll
+adaptif dan konfirmasi perubahan belum tersimpan.
 Pilih Grup WhatsApp / Subscriber email / Pengguna Telegram, Tinjau, lalu Kirim.
 Menyimpan saja tidak mengirim. Riwayat30 siaran terakhir berisi jumlah per status,
 refresh manual dan Hentikan antrean belum diproses. Hasil belum terkonfirmasi

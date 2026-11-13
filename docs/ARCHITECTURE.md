@@ -82,7 +82,8 @@ Sudah dirinci di "Status Rollout Produksi WhatsApp" (pensiun pembeli WA + kontra
   (bukan per baris), teks perbandingan manusia ("SK lebih murah · Rp 5.400 vs
   Rp 7.000", "Keduanya habis"), tanpa "Pecundang"/"sweep cron".
 - **Siaran/Kanal/Rekonsiliasi/Ringkasan (UI4, terintegrasi lokal)**: Siaran
-  menjadi dua tab Template/Riwayat, editor di Sheet dengan pratinjau, pengiriman
+  menjadi dua tab Template/Riwayat, editor di Dialog tengah dengan pratinjau
+  (koreksi 14 November 2026, implementasi lokal, menggantikan Sheet kanan), pengiriman
   satu Dialog berlangkah Tujuan → Tinjau → Kirim, seluruh pengaman lama
   dipertahankan (pending send retry id sama, sessionStorage, review wajib, arsip
   nonaktif, ConfirmDialog hentikan). Rekonsiliasi memakai `attention` dari API +
