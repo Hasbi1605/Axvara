@@ -9,6 +9,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react
 import { render } from "./setup/admin-render";
 import AdminPage from "@/app/(shop)/admin/page";
 import { ToastProvider } from "@/components/ui/Toast";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin",
@@ -60,7 +61,8 @@ async function openDialog() {
   await act(async () => {});
   fireEvent.click(screen.getAllByRole("button").find((node) => (node.textContent ?? "").includes("Pesanan"))!);
   await act(async () => {});
-  fireEvent.click(screen.getAllByRole("button").find((node) => (node.textContent ?? "").trim() === "Kirim ke pembeli")!);
+  await userEvent.click(screen.getByRole("button", { name: /Tindakan lain/ }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Kirim ke pembeli" }));
   const dialog = await screen.findByRole("dialog", { name: "Kirim ke pembeli" });
   return { posts, dialog };
 }

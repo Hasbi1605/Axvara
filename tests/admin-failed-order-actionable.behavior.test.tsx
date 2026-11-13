@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { render } from "./setup/admin-render";
 import AdminPage from "@/app/(shop)/admin/page";
 import { ToastProvider } from "@/components/ui/Toast";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin",
@@ -60,10 +61,11 @@ async function openOrdersTab() {
 it("order lunas yang gagal kirim tetap bisa diserahkan manual dari daftar", async () => {
   await openOrdersTab();
   // Badge status pengiriman terlihat (dulu fulfillment_status di-parse lalu dibuang).
-  expect(screen.getAllByText("Kirim GAGAL").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Gagal kirim").length).toBeGreaterThan(0);
   // Aksi pemulihan tersedia — inilah jalan keluar yang dulu hilang.
   // Tombolnya bernama "Kirim ke pembeli" sejak 2026-09-25 (isi ikut terkirim).
-  expect(screen.getAllByText(/Kirim ke pembeli/).length).toBeGreaterThan(0);
+  await userEvent.click(screen.getByRole("button", { name: /Tindakan lain/ }));
+  expect(screen.getByRole("menuitem", { name: /Kirim ke pembeli/ })).toBeTruthy();
 });
 
 it("modal Detail juga menyediakan serah terima manual, bukan hanya baris daftar", async () => {

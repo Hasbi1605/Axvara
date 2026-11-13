@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { render } from "./setup/admin-render";
+import userEvent from "@testing-library/user-event";
 import { SupplierLinkActions, type SupplierLink } from "@/components/admin/SupplierLinkActions";
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/components/ui/Toast", () => ({ useToast: () => toast }));
@@ -91,11 +92,11 @@ it("replaces handover in both the TUNVN order row and its detail, retaining manu
   const order={code:"AXV-20261110-FIXTURE1",status:"lunas",payment_status:"paid",fulfillment_status:"manual_required",sales_channel:"web",payment_method:"qris",customer_name:"Fixture",subtotal:1500,items:[{name:"Buff",price:1500,qty:1}],supplier_links:[tunvn]};
   const fetcher=vi.fn(async(url:string)=>Response.json(url.includes("/api/admin/orders?")?{orders:[order]}:{buyerInputs:[]}));vi.stubGlobal("fetch",fetcher);
   const {unmount}=render(<OrdersManager/>);await screen.findByRole("button",{name:"Retry"});
-  expect(screen.queryByText("Perlu handover")).toBeNull();expect(screen.queryByRole("button",{name:"Kirim ke pembeli"})).toBeNull();
+  expect(screen.queryByText("Perlu tindakan")).toBeNull();expect(screen.queryByRole("button",{name:"Kirim ke pembeli"})).toBeNull();
   fireEvent.click(screen.getByRole("button",{name:"Detail"}));await screen.findByRole("heading",{name:"Detail pesanan"});
   expect(screen.queryByRole("button",{name:"Kirim ke pembeli"})).toBeNull();unmount();
   order.supplier_links=[{...tunvn,purchase_disabled:true}];
-  const manual=render(<OrdersManager/>);expect(await screen.findByRole("button",{name:"Kirim ke pembeli"})).toBeTruthy();
+  const manual=render(<OrdersManager/>);await userEvent.click(await screen.findByRole("button",{name:/Tindakan lain/}));expect(screen.getByRole("menuitem",{name:"Kirim ke pembeli"})).toBeTruthy();await userEvent.keyboard("{Escape}");
   expect(screen.queryByRole("button",{name:"Retry"})).toBeNull();manual.unmount();
-  order.supplier_links=[];render(<OrdersManager/>);expect(await screen.findByRole("button",{name:"Kirim ke pembeli"})).toBeTruthy();
+  order.supplier_links=[];render(<OrdersManager/>);await userEvent.click(await screen.findByRole("button",{name:/Tindakan lain/}));expect(screen.getByRole("menuitem",{name:"Kirim ke pembeli"})).toBeTruthy();
 });

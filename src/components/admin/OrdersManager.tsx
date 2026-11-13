@@ -1,12 +1,12 @@
 "use client";
-import { Badge, Button, Card, Input, Label, NativeSelect, Textarea, Table, TableHeader, TableHead, TableBody, TableRow, TableCell, Separator, Skeleton, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Tabs, TabsList, TabsTrigger } from "@/components/admin/ui";
+import { Badge, Button, Card, Input, Label, Textarea, Table, TableHeader, TableHead, TableBody, TableRow, TableCell, Separator, Skeleton, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, Popover, PopoverTrigger, PopoverContent, PageHeader, StatCard } from "@/components/admin/ui";
 
-import { MoreHorizontal } from "lucide-react";
+import { ChevronDown, Download, MoreHorizontal, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deriveNameFromEmail, formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { pediaStatusLabel } from "@/components/pedia/StatusWidgets";
 import { formatCount, knownCount } from "@/components/pedia/status-view";
-import { ChannelBadge, IosIcon, MethodBadge, StatusBadge } from "@/components/admin/AdminIcon";
+import { ChannelBadge, IosIcon } from "@/components/admin/AdminIcon";
 import { Spinner } from "@/components/ui/Loading";
 import { Dialog } from "@/components/ui/Dialog";
 import { OrderAccessAdmin } from "@/components/admin/OrderAccessAdmin";
@@ -42,15 +42,28 @@ type ApiData = {
 };
 type ActionState = { kind: "paid" | "paid_qris" | "approve" | "reject" | "cancel" | "handover"; order: Order } | null;
 
-const PER_PAGE = 8;
+const PER_PAGE = 25;
+const statusLabels: Record<string, string> = { pending: "Pending", lunas: "Lunas", dibatalkan: "Dibatalkan", kadaluarsa: "Kedaluwarsa" };
+function methodLabel(method: string) {
+  if (/^nowpayments:/i.test(method)) return `Crypto · ${method.split(":")[1].toUpperCase().replace("USDTBSC", "USDT BSC")}`;
+  if (/^sekalipay_gateway:/i.test(method)) return `Gateway · ${method.split(":")[1].toUpperCase()}`;
+  return ({ qris: "QRIS", manual: "Transfer manual", seabank: "SeaBank", ewallet: "E-wallet" } as Record<string, string>)[method.toLowerCase()] || method.toUpperCase();
+}
+function StatusBadge({ status }: { status: string }) {
+  return <Badge variant={status === "lunas" ? "success" : status === "pending" ? "warning" : status === "dibatalkan" ? "destructive" : "secondary"}>{statusLabels[status] || status}</Badge>;
+}
+function MethodBadge({ method }: { method: string }) { return <Badge variant="outline">{methodLabel(method)}</Badge>; }
+
+function OrderFilter({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string; count?: number }[]; onChange: (value: string) => void }) {
+  return <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="gap-2">{label}{value !== "all" && <span className="sr-only">: {options.find(option => option.value === value)?.label || value}</span>}<ChevronDown size={14} /></Button></DropdownMenuTrigger>
+    <DropdownMenuContent align="start"><DropdownMenuRadioGroup value={value} onValueChange={onChange}>{options.map(option => <DropdownMenuRadioItem key={option.value} value={option.value} className="gap-4">{option.label}{option.count !== undefined && <span className="ml-auto tabular-nums text-admin-muted">{option.count}</span>}</DropdownMenuRadioItem>)}</DropdownMenuRadioGroup></DropdownMenuContent>
+  </DropdownMenu>;
+}
 const BUYER_NOT_NOTIFIED = "Serah terima tercatat, tetapi kabar ke pembeli GAGAL terkirim. Hubungi pembeli secara manual.";
-const inputClass = "h-9 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg outline-none placeholder:text-admin-muted focus:border-admin-accent/40";
 
 export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   const toast = useToast();
-  // URL adalah sumber kebenaran untuk filter awal (deep link kartu Ringkasan,
-  // back/forward). Baca sekali saat mount agar navigasi browser tidak
-  // menimpa pilihan filter yang sudah diubah pengguna di layar.
+  // Deep links initialize filters; popstate restores browser navigation below.
   const [initialParams] = useState(() => typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search));
   const initial = initialParams;
   const [orders, setOrders] = useState<Order[]>([]);
@@ -99,17 +112,33 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   // (filter diganti cepat, tab ditutup, unmount) tidak boleh menimpa state,
   // loading, atau error milik request terbaru.
   const loadRequest = useRef(0);
+  const loaded = useRef({ filters: "", page: 0 });
 
-  const load = useCallback(async (signal?: AbortSignal) => {
+  const load = useCallback(async (signal?: AbortSignal, append = false) => {
     const request = ++loadRequest.current;
+    const params = new URLSearchParams(requestParams);
+    params.delete("page");
+    const filters = params.toString();
+    const appendNext = append && loaded.current.filters === filters && loaded.current.page === page - 1;
+    if (!appendNext) setOrders([]);
     setLoading(true); setError("");
     try {
-      const response = await fetch(`/api/admin/orders?${requestParams}`, { cache: "no-store", signal });
-      const data = await response.json().catch(() => ({})) as ApiData;
+      let data: ApiData = {};
+      const rows: Order[] = [];
+      let lastPage = page;
+      for (let next = appendNext ? page : 1; next <= lastPage; next++) {
+        params.set("page", String(next));
+        const response = await fetch(`/api/admin/orders?${params}`, { cache: "no-store", signal });
+        data = await response.json().catch(() => ({})) as ApiData;
+        if (signal?.aborted || request !== loadRequest.current) return;
+        if (!response.ok) throw new Error("Gagal memuat pesanan. Coba lagi.");
+        rows.push(...(data.orders || []).map(normalizeOrder));
+        lastPage = Math.min(page, Number(data.pagination?.pages || 1));
+      }
       if (signal?.aborted || request !== loadRequest.current) return;
-      if (!response.ok) throw new Error(data.error || "Gagal memuat pesanan");
-      setOrders((data.orders || []).map(normalizeOrder));
-      setPage(Number(data.pagination?.page || 1));
+      setOrders(current => appendNext ? [...current, ...rows.filter(row => !current.some(item => item.code === row.code))] : rows);
+      loaded.current = { filters, page: lastPage };
+      setPage(lastPage);
       setPages(Number(data.pagination?.pages || 1));
       setTotal(Number(data.pagination?.total || 0));
       setStats(data.stats || { total: 0, pending: 0, paid: 0, revenue: 0 });
@@ -121,14 +150,14 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
       setError(cause instanceof Error ? cause.message : "Gagal memuat pesanan");
     }
     finally { if (request === loadRequest.current) setLoading(false); }
-  }, [requestParams]);
+  }, [requestParams, page]);
 
   // Setiap requestParams baru membatalkan fetch sebelumnya: tanpa abort,
   // respons filter lama yang tiba belakangan menimpa daftar filter baru
   // (temuan audit: fetch urutan terbalik).
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal);
+    void load(controller.signal, true);
     return () => controller.abort();
   }, [load]);
   useEffect(() => {
@@ -137,6 +166,21 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
     requestParams.forEach((value, key) => { if (key !== "limit") url.searchParams.set(key, value); });
     history.replaceState(history.state, "", `${url.pathname}?${url.searchParams}`);
   }, [requestParams]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setQuery(draftQuery.trim()); setPage(current => draftQuery.trim() === query ? current : 1); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [draftQuery, query]);
+  useEffect(() => {
+    const restore = () => {
+      const params = new URLSearchParams(window.location.search);
+      setChannel(params.get("channel") || "all"); setKind(params.get("kind") || "all"); setStatus(params.get("status") || "all"); setMethod(params.get("method") || "all"); setProof(params.get("proof") || "");
+      setDraftQuery(params.get("q") || ""); setQuery(params.get("q") || ""); setDateFrom(params.get("date_from") || ""); setDateTo(params.get("date_to") || "");
+      const value = Number(params.get("page")); setPage(Number.isInteger(value) && value >= 1 ? value : 1);
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
 
   const changeFilter = (setter: (value: string) => void, value: string) => { setter(value); setPage(1); };
   const clearFilters = () => { setChannel("all"); setKind("all"); setStatus("all"); setMethod("all"); setProof(""); setDraftQuery(""); setQuery(""); setDateFrom(""); setDateTo(""); setPage(1); };
@@ -147,10 +191,10 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   // filter aktif terlihat dan bisa dilepas satu per satu.
   const activeFilters: { label: string; clear: () => void }[] = [];
   if (proof === "submitted") activeFilters.push({ label: "Bukti manual menunggu", clear: () => changeFilter(setProof, "") });
-  if (channel !== "all") activeFilters.push({ label: `Kanal: ${channel}`, clear: () => changeFilter(setChannel, "all") });
+  if (channel !== "all") activeFilters.push({ label: `Kanal: ${{ web: "Web", telegram: "Telegram", whatsapp: "WhatsApp" }[channel] || channel}`, clear: () => changeFilter(setChannel, "all") });
   if (kind !== "all") activeFilters.push({ label: `Jenis: ${kind === "pedia" ? "Pedia" : kind === "games" ? "Games" : "Aplikasi"}`, clear: () => changeFilter(setKind, "all") });
-  if (status !== "all") activeFilters.push({ label: `Status: ${status}`, clear: () => changeFilter(setStatus, "all") });
-  if (method !== "all") activeFilters.push({ label: `Pembayaran: ${method}`, clear: () => changeFilter(setMethod, "all") });
+  if (status !== "all") activeFilters.push({ label: `Status: ${statusLabels[status] || status}`, clear: () => changeFilter(setStatus, "all") });
+  if (method !== "all") activeFilters.push({ label: `Pembayaran: ${methodLabel(method)}`, clear: () => changeFilter(setMethod, "all") });
   if (query) activeFilters.push({ label: `Cari: ${query}`, clear: () => { setDraftQuery(""); setQuery(""); setPage(1); } });
   if (dateFrom) activeFilters.push({ label: `Dari: ${dateFrom}`, clear: () => { setDateFrom(""); setPage(1); } });
   if (dateTo) activeFilters.push({ label: `Sampai: ${dateTo}`, clear: () => { setDateTo(""); setPage(1); } });
@@ -241,109 +285,64 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
     finally { setSaving(false); }
   };
 
-  // Tab kanal adalah PEMILIH, jadi angkanya tetap global (berapa pesanan ada
-  // di tiap kanal) — bukan hasil filter. `stats` kini mengikuti filter, maka
-  // "Semua" dihitung dari counts kanal, bukan stats.total.
   const channelTotal = (counts.web || 0) + (counts.telegram || 0) + (counts.whatsapp || 0);
-  const channelTabs = [["all", "Semua", channelTotal, null], ["web", "Web", counts.web || 0, "globe"], ["telegram", "Telegram", counts.telegram || 0, "telegram-app"], ["whatsapp", "WhatsApp", counts.whatsapp || 0, "whatsapp"]] as const;
 
   return <div className="mt-4 space-y-6">
+    <PageHeader title="Pesanan" description="Cari, periksa pembayaran, dan proses pesanan dari semua kanal." actions={<Button asChild variant="outline" size="sm"><a href={exportHref}><Download size={14} /> Ekspor CSV</a></Button>} />
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {[["Total pesanan", stats.total, "text-admin-fg"], ["Pending", stats.pending, "text-admin-warning"], ["Lunas", stats.paid, "text-admin-success"], ["Omzet", formatRupiah(stats.revenue), "text-admin-fg"]].map(([label, value, tone]) => <Card key={String(label)} className="admin-surface rounded-xl p-4">
-<p className="text-sm text-admin-muted">{label}</p>
-<p className={`mt-1 font-sans text-xl font-semibold tabular-nums sm:text-2xl ${tone}`}>{loading || error ? "—" : value}</p>{hasActiveFilters && <p className="mt-1 text-xs text-admin-accent">hasil filter</p>}</Card>)}
+      {[["Total pesanan", stats.total], ["Pending", stats.pending], ["Lunas", stats.paid], ["Omzet", formatRupiah(stats.revenue)]].map(([label, value]) => <StatCard key={label} label={label} value={loading || error ? <Skeleton className="h-8 w-24" /> : value} hint={hasActiveFilters ? "Hasil filter" : undefined} />)}
     </div>
 
-    <Card className="admin-surface overflow-hidden rounded-xl">
-      <header className="border-b border-admin-border p-4 sm:p-5">
-        <div className="flex flex-wrap items-center gap-3">
-<div className="min-w-0">
-<h2 className="text-xl font-semibold text-admin-fg">Pesanan</h2>
-<p className="mt-0.5 text-sm text-admin-muted">Cari, filter, periksa pembayaran, dan proses fulfillment.</p>
-</div>
-<a href={exportHref} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-admin-border px-3.5 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">
-<IosIcon name="download" size={13} tint="currentColor" /> Export CSV</a>
-</div>
-        <Tabs value={channel} onValueChange={value => changeFilter(setChannel, value)} className="mt-4">
-<TabsList aria-label="Filter kanal pesanan" className="h-auto justify-start">{channelTabs.map(([value, label, count, icon]) => <TabsTrigger key={value} value={value} className="gap-2">{icon ? <IosIcon name={icon} size={13} tint="currentColor" /> : null}{label}<Badge variant="outline" className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${channel === value ? "bg-admin-subtle/15" : "bg-admin-subtle"}`}>{count}</Badge>
-</TabsTrigger>)}</TabsList></Tabs>
-        <div className="mt-3 grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <form onSubmit={(event) => { event.preventDefault(); setQuery(draftQuery.trim()); setPage(1); }}>
-<Label className="mb-1 block text-sm font-medium text-admin-muted" htmlFor="order-search">Pencarian</Label>
-<div className="relative">
-<IosIcon name="search" size={15} tint="currentColor" className="absolute left-3 top-3 opacity-45" />
-<Input id="order-search" value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} className={`${inputClass} pl-9`} placeholder="Kode, nama, WA, produk…" />
-</div>
-</form>
-          <Label className="block">
-<span className="mb-1 block text-sm font-medium text-admin-muted">Status</span>
-<NativeSelect value={status} onChange={(event) => changeFilter(setStatus, event.target.value)} className={inputClass}>
-<option value="all">Semua status</option>
-<option value="pending">Pending</option>
-<option value="lunas">Lunas</option>
-<option value="dibatalkan">Dibatalkan</option>
-<option value="kadaluarsa">Kedaluwarsa</option>
-</NativeSelect>
-</Label>
-          <Label className="block">
-<span className="mb-1 block text-sm font-medium text-admin-muted">Jenis</span>
-<NativeSelect value={kind} onChange={(event) => changeFilter(setKind, event.target.value)} className={inputClass} aria-label="Filter jenis pesanan">
-<option value="all">Semua jenis</option>
-<option value="apps">Aplikasi</option>
-<option value="pedia">Pedia</option>
-<option value="games">Games</option>
-</NativeSelect>
-</Label>
-          <Label className="block">
-<span className="mb-1 block text-sm font-medium text-admin-muted">Pembayaran</span>
-<NativeSelect value={method} onChange={(event) => changeFilter(setMethod, event.target.value)} className={inputClass}>
-<option value="all">Semua pembayaran</option>
-<option value="qris">QRIS</option>
-<option value="manual">Transfer manual</option>{methods.filter((item) => !["qris"].includes(item)).map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}</NativeSelect>
-</Label>
-          <Label className="block">
-<span className="mb-1 block text-sm font-medium text-admin-muted">Dari tanggal</span>
-<Input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} className={inputClass} />
-</Label>
-          <Label className="block">
-<span className="mb-1 block text-sm font-medium text-admin-muted">Sampai tanggal</span>
-<Input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className={inputClass} />
-</Label>
-          <Button variant="outline" type="button" onClick={clearFilters} className="h-9 whitespace-nowrap rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted hover:bg-admin-subtle">Reset</Button>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2" aria-label="Filter pesanan">
+        <div className="relative min-w-0 flex-1 basis-52">
+          <Label className="sr-only" htmlFor="order-search">Pencarian</Label><Search size={15} className="absolute left-3 top-2.5 text-admin-muted" />
+          <Input id="order-search" value={draftQuery} onChange={event => setDraftQuery(event.target.value)} className="h-9 pl-9" placeholder="Kode, nama, WA, produk…" />
         </div>
-        {activeFilters.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-admin-muted">Filter aktif</span>
-          {activeFilters.map((filter) => <Button variant="outline" size="sm" key={filter.label} type="button" onClick={filter.clear} className="inline-flex h-8 items-center gap-2 rounded-md border border-admin-accent/30 bg-admin-primary/10 px-3 text-xs font-semibold text-admin-accent transition hover:bg-admin-primary/20" aria-label={`Hapus filter ${filter.label}`}>{filter.label}<IosIcon name="close" size={10} tint="currentColor" />
-</Button>)}
-        </div>}
-      </header>
+        <OrderFilter label="Kanal" value={channel} onChange={value => changeFilter(setChannel, value)} options={[{ value: "all", label: "Semua kanal", count: loading ? undefined : channelTotal }, ...[["web", "Web"], ["telegram", "Telegram"], ["whatsapp", "WhatsApp"]].map(([value, label]) => ({ value, label, count: loading ? undefined : counts[value] || 0 }))]} />
+        <OrderFilter label="Status" value={status} onChange={value => changeFilter(setStatus, value)} options={[{ value: "all", label: "Semua status" }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} />
+        <OrderFilter label="Jenis" value={kind} onChange={value => changeFilter(setKind, value)} options={[{ value: "all", label: "Semua jenis" }, { value: "apps", label: "Aplikasi" }, { value: "pedia", label: "Pedia" }, { value: "games", label: "Games" }]} />
+        <OrderFilter label="Pembayaran" value={method} onChange={value => changeFilter(setMethod, value)} options={[...new Set(["all", "qris", "manual", ...methods, ...(method !== "all" ? [method] : [])])].map(value => ({ value, label: value === "all" ? "Semua pembayaran" : methodLabel(value) }))} />
+        <Popover><PopoverTrigger asChild><Button variant="outline" size="sm" className="gap-2">Tanggal<ChevronDown size={14} /></Button></PopoverTrigger><PopoverContent align="end" className="w-72 space-y-4">
+          <div className="space-y-2"><Label htmlFor="orders-date-from">Dari tanggal</Label><Input id="orders-date-from" type="date" value={dateFrom} onChange={event => changeFilter(setDateFrom, event.target.value)} /></div>
+          <div className="space-y-2"><Label htmlFor="orders-date-to">Sampai tanggal</Label><Input id="orders-date-to" type="date" value={dateTo} onChange={event => changeFilter(setDateTo, event.target.value)} /></div>
+        </PopoverContent></Popover>
+      </div>
+      {hasActiveFilters && <div className="flex flex-wrap items-center gap-2" aria-label="Filter aktif">
+        {activeFilters.map(filter => <Button variant="outline" size="sm" key={filter.label} onClick={filter.clear} className="h-auto min-h-8 max-w-full gap-2 whitespace-normal text-left" aria-label={`Hapus filter ${filter.label}`}>{filter.label}<X size={12} className="shrink-0" /></Button>)}
+        <Button variant="ghost" size="sm" onClick={clearFilters}>Reset</Button>
+      </div>}
+    </div>
 
-      {error ? <div className="m-4 flex items-center justify-between gap-3 rounded-xl border border-admin-danger/20 bg-admin-danger/10 p-3 text-sm text-admin-danger">
+    <Card className="overflow-hidden">
+      {error && <div role="alert" className="m-4 flex items-center justify-between gap-3 rounded-md border border-admin-danger/20 bg-admin-danger/10 p-3 text-sm text-admin-danger">
 <span>{error}</span>
-<Button variant="default" type="button" onClick={() => void load()} className="rounded-lg bg-admin-primary px-3 py-1.5 text-xs font-semibold text-admin-inverse">Coba lagi</Button>
-</div> : loading ? <div className="flex min-h-56 items-center justify-center gap-3 text-sm text-admin-muted">
+<Button variant="outline" size="sm" type="button" onClick={() => void load(undefined, true)}>Coba lagi</Button>
+</div>}
+      {loading && orders.length === 0 ? <div className="flex min-h-56 items-center justify-center gap-3 text-sm text-admin-muted">
 <div className="w-full space-y-4 p-6">
 <Skeleton className="h-16 w-full" />
 <Skeleton className="h-16 w-full" />
 <span className="sr-only">Memuat pesanan…</span>
 </div>
-</div> : orders.length === 0 ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada pesanan yang cocok dengan filter.</p> : <Table className="block md:table">
+</div> : orders.length === 0 ? !error && <p className="p-10 text-center text-sm text-admin-muted">Tidak ada pesanan yang cocok dengan filter.</p> : <Table className="block md:table md:table-fixed" aria-label="Daftar pesanan">
 <TableHeader className="hidden md:table-header-group">
 <TableRow>
-<TableHead className="w-36">Bukti</TableHead>
-<TableHead>Pesanan</TableHead>
-<TableHead className="text-right">Tindakan</TableHead>
+<TableHead className="w-[23%]">Pesanan</TableHead>
+<TableHead className="w-[18%]">Produk</TableHead>
+<TableHead className="w-[12%] text-right">Total</TableHead>
+<TableHead className="w-[13%]">Status</TableHead>
+<TableHead className="w-[13%]">Kanal/Metode</TableHead>
+<TableHead className="w-[10%]">Waktu</TableHead>
+<TableHead className="w-[11%] text-right">Aksi</TableHead>
 </TableRow>
 </TableHeader>
 <TableBody className="block space-y-3 p-3 md:table-row-group md:space-y-0 md:p-0">{orders.map((order) => <OrderRow key={order.code} order={order} onChanged={() => { void load(); onChanged?.(); }} onDetail={() => setSelected(order)} onAction={(kind) => { setAction({ kind, order }); setActionNote(""); }} />)}</TableBody>
 </Table>}
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-admin-border px-4 py-3 text-xs text-admin-muted sm:px-5">
-<span>Hal {page} dari {pages} · {total} pesanan</span>
-<div className="flex gap-2">
-<Button variant="outline" size="sm" type="button" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))} className="h-8 rounded-md border border-admin-border px-3 transition hover:bg-admin-subtle disabled:opacity-30">Sebelumnya</Button>
-<Button variant="outline" size="sm" type="button" disabled={page >= pages || loading} onClick={() => setPage((current) => Math.min(pages, current + 1))} className="h-8 rounded-md border border-admin-border px-3 transition hover:bg-admin-subtle disabled:opacity-30">Berikutnya</Button>
-</div>
+<span role="status">{loading && orders.length === 0 ? "Memuat pesanan…" : error && orders.length === 0 ? "Pesanan belum termuat" : `Menampilkan ${orders.length} dari ${total}`}</span>
+{orders.length > 0 && page < pages && <Button variant="outline" size="sm" disabled={loading || !!error} onClick={() => setPage(current => current + 1)}>{loading ? "Memuat…" : "Muat 25 lagi"}</Button>}
 </footer>
     </Card>
 
@@ -372,35 +371,30 @@ function OrderRow({ order, onDetail, onAction, onChanged }: { order: Order; onDe
   const needsHandover = isMarket && order.status === "lunas"
     && hasHandoverItems(order) && ["manual_required", "retry", "failed"].includes(String(order.fulfillmentStatus ?? ""));
   return <TableRow className="block rounded-md border border-admin-border bg-admin-card md:table-row md:rounded-none md:border-x-0 md:border-t-0">
-<TableCell className="block align-top md:table-cell md:w-32">
-    {providerPayment ? <Badge variant="secondary" title="Pembayaran diverifikasi provider otomatis; tanpa bukti transfer manual.">Otomatis provider<span className="sr-only">. Tanpa bukti transfer manual.</span></Badge> : qris && !order.fileName ? <Badge variant="success" title="Tidak perlu bukti. Menunggu QRIS Hook.">QRIS otomatis<span className="sr-only">. Tidak perlu bukti, menunggu QRIS Hook.</span></Badge> : <ProofThumbnail proof={order.fileName} />}</TableCell>
     <TableCell className="block min-w-0 align-top md:table-cell">
-<div className="min-w-0">
-<div className="flex flex-wrap items-center gap-2">
-<Button variant="link" type="button" onClick={onDetail} className="h-auto justify-start p-0 font-mono text-xs font-semibold text-admin-accent hover:underline">{order.code}</Button>
-<StatusBadge status={order.status} />
-<ChannelBadge channel={order.salesChannel} />
-<MethodBadge method={order.method} />{isPedia ? <>
-<PediaChip />
+<Button variant="link" type="button" onClick={onDetail} className="h-auto max-w-full justify-start whitespace-normal break-all p-0 text-left font-mono text-xs font-semibold text-admin-fg">{order.code}</Button>
+<p className="mt-2 truncate text-sm font-medium text-admin-fg" title={displayName(order)}>{displayName(order)}</p>
+<p className="mt-0.5 truncate text-xs text-admin-muted" title={order.wa || order.email}>{order.wa || order.email || "Kontak tidak tersedia"}</p>
+    </TableCell>
+    <TableCell className="block align-top md:table-cell"><span className="mr-2 text-xs text-admin-muted md:hidden">Produk</span><span className="break-words text-sm">{isPedia ? pediaItemLine(order) : order.items.map(item => `${item.name} x${item.qty}`).join(", ")}</span>{isPedia && <div className="mt-2"><PediaChip /></div>}</TableCell>
+    <TableCell className="block align-top md:table-cell md:text-right"><span className="mr-2 text-xs text-admin-muted md:hidden">Total</span><span className="tabular-nums text-admin-fg">{formatRupiah(order.paymentAmount)}</span></TableCell>
+    <TableCell className="block align-top md:table-cell"><div className="flex flex-wrap gap-2 [&>span]:whitespace-normal"><StatusBadge status={order.status} />{isPedia ? <>
 <PediaStatusChip order={order} />
-</> : <FulfillmentBadge status={order.fulfillmentStatus} supplierActive={hasActiveSupplierLink(order.supplierLinks)} />}</div>
-<p className="mt-2 truncate text-sm font-semibold text-admin-fg">{displayName(order)}</p>
-<p className="mt-0.5 truncate text-xs text-admin-muted">{order.wa || order.email || "Kontak tidak tersedia"}</p>
-<p className="mt-1 line-clamp-2 text-xs leading-5 text-admin-muted">{isPedia ? pediaItemLine(order) : order.items.map((item) => `${item.name} x${item.qty}`).join(", ")} · {formatRupiah(order.paymentAmount)}</p>{qris && order.fileName && <p className="mt-1 text-xs text-admin-success">Bukti hanya referensi; status pembayaran tetap dari QRIS Hook.</p>}{order.proofStatus === "rejected" && <p className="mt-1 text-xs leading-4 text-admin-danger">Bukti ditolak{order.proofRejectionReason ? `: ${order.proofRejectionReason}` : ""}</p>}{order.status === "lunas" && order.supplierLinks?.length ? <SupplierLinkActions links={order.supplierLinks} onChanged={onChanged} compact /> : null}</div>
-</TableCell>
-    <TableCell className="block align-top md:table-cell md:w-64">
-<div className="flex flex-wrap gap-2 md:max-w-64 md:justify-end">
-<Button variant="outline" type="button" onClick={onDetail} className="inline-flex h-9 items-center rounded-md border border-admin-border bg-admin-subtle px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">Detail</Button>{isPedia && order.status === "pending" && <PediaAwaitingPayment />}{(!isMarket || providerPayment) && order.status === "pending" && !isPedia && <span className="text-xs text-admin-muted">Menunggu verifikasi provider</span>}{order.kind === "games" && <span className="text-xs font-semibold text-admin-accent">Games · pemrosesan otomatis</span>}{isMarket && !providerPayment && order.status === "pending" && <>{qris ? <>
-<Button variant="outline" type="button" onClick={() => onAction("paid_qris")} title="Dana benar masuk (cek mutasi manual) — lunaskan + kirim kredensial seperti hook normal" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary/90">
-<IosIcon name="checked" size={12} tint="currentColor" /> ACC pembayaran</Button>
-
-</> : order.salesChannel === "whatsapp" ? order.proofId && order.proofStatus === "submitted" ? <>
-<Button variant="outline" type="button" onClick={() => onAction("approve")} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary/90">
-<IosIcon name="checked" size={12} tint="currentColor" /> Mutasi cocok</Button>
-
-</> : <span className="inline-flex h-9 items-center rounded-md border border-admin-border px-3 text-xs text-admin-muted">Menunggu bukti</span> : <Button variant="outline" type="button" onClick={() => onAction("paid")} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary/90">
-<IosIcon name="checked" size={12} tint="currentColor" /> Konfirmasi lunas</Button>}</>}{isMarket && !providerPayment && order.status === "pending" && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label={`Tindakan lain ${order.code}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{!qris && order.salesChannel === "whatsapp" && order.proofId && order.proofStatus === "submitted" && <DropdownMenuItem className="text-admin-danger" onSelect={() => onAction("reject")}>Tolak bukti</DropdownMenuItem>}<DropdownMenuItem className="text-admin-danger" onSelect={() => onAction("cancel")}>Batalkan pesanan</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}{needsHandover && <Button variant="default" type="button" onClick={() => onAction("handover")} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:brightness-110">
-<IosIcon name="checked" size={12} tint="currentColor" /> Kirim ke pembeli</Button>}{isPedia && <PediaFollowUpLink order={order} />}</div>
+</> : <FulfillmentBadge status={order.fulfillmentStatus} supplierActive={hasActiveSupplierLink(order.supplierLinks)} />}</div>{isPedia && order.status === "pending" && <PediaAwaitingPayment />}{order.proofStatus === "rejected" && <p className="mt-1 text-xs text-admin-danger">Bukti ditolak{order.proofRejectionReason ? `: ${order.proofRejectionReason}` : ""}</p>}{(!isMarket || providerPayment) && order.status === "pending" && !isPedia && <p className="mt-1 text-xs text-admin-muted">Menunggu verifikasi provider</p>}{order.kind === "games" && <p className="mt-1 text-xs text-admin-muted">Games · pemrosesan otomatis</p>}</TableCell>
+    <TableCell className="block align-top md:table-cell"><div className="flex flex-wrap gap-2 [&>span]:whitespace-normal [&>span]:break-words"><ChannelBadge channel={order.salesChannel} /><MethodBadge method={order.method} /></div></TableCell>
+    <TableCell className="block align-top text-xs text-admin-muted md:table-cell"><time dateTime={order.createdAt}>{formatDate(order.createdAt)}</time></TableCell>
+    <TableCell className="block align-top md:table-cell"><div className="flex flex-wrap gap-2 md:justify-end">
+      <Button variant="outline" size="sm" onClick={onDetail}>Detail</Button>
+      {(needsHandover || (isMarket && !providerPayment && order.status === "pending")) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Tindakan lain ${order.code}`}><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+        {needsHandover && <DropdownMenuItem onSelect={() => onAction("handover")}>Kirim ke pembeli</DropdownMenuItem>}
+        {isMarket && !providerPayment && order.status === "pending" && <>
+          {qris ? <DropdownMenuItem onSelect={() => onAction("paid_qris")}>ACC pembayaran</DropdownMenuItem> : order.salesChannel !== "whatsapp" ? <DropdownMenuItem onSelect={() => onAction("paid")}>Konfirmasi lunas</DropdownMenuItem> : order.proofId && order.proofStatus === "submitted" ? <><DropdownMenuItem onSelect={() => onAction("approve")}>Mutasi cocok</DropdownMenuItem><DropdownMenuItem className="text-admin-danger" onSelect={() => onAction("reject")}>Tolak bukti</DropdownMenuItem></> : <DropdownMenuItem disabled>Menunggu bukti</DropdownMenuItem>}
+          <DropdownMenuItem className="text-admin-danger" onSelect={() => onAction("cancel")}>Batalkan pesanan</DropdownMenuItem>
+        </>}
+      </DropdownMenuContent></DropdownMenu>}
+      {isPedia && <PediaFollowUpLink order={order} />}
+      {order.status === "lunas" && order.supplierLinks?.length ? <SupplierLinkActions links={order.supplierLinks} onChanged={onChanged} compact /> : null}
+    </div>
   </TableCell>
 </TableRow>;
 }
@@ -418,7 +412,7 @@ function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; on
   return <AdminDialog title="Detail pesanan" onClose={onClose}>
 <div className="space-y-4">
 <div className="flex flex-wrap items-center gap-2">
-<p className="font-mono text-sm font-semibold text-admin-accent">{order.code}</p>
+<p className="break-all font-mono text-sm font-semibold text-admin-fg">{order.code}</p>
 <StatusBadge status={order.status} />
 </div>
 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -431,14 +425,14 @@ function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; on
 <Info label="Pelanggan" value={isPedia ? displayName(order) : order.name || "—"} />
 <Info label="WhatsApp" value={order.wa || "—"} />
 <Info label="Email" value={order.email || "—"} />
-<Info label="Pembayaran" value={`${order.method.toUpperCase()} · ${formatRupiah(order.paymentAmount)}`} />
+<Info label="Pembayaran" value={`${methodLabel(order.method)} · ${formatRupiah(order.paymentAmount)}`} />
 </div>
 <Separator />
 <div className="rounded-md border border-admin-border bg-admin-subtle p-4">
 <p className="text-sm font-medium text-admin-muted">Item</p>{isPedia ? <PediaItemBox order={order} /> : order.items.map((item, index) => <div key={`${item.name}-${index}`} className="mt-3 flex justify-between gap-4 text-sm">
 <span className="text-admin-muted">{item.name} x{item.qty}</span>
 <span className="font-semibold text-admin-fg">{formatRupiah(item.price * item.qty)}</span>
-</div>)}</div>{isPedia && <PediaFollowUpLink order={order} />}{qris ? <div className="rounded-xl border border-admin-success/15 bg-admin-success/[0.06] p-3 text-xs leading-5 text-admin-success">QRIS diproses otomatis. Bukti gambar, jika ada, hanya dipakai sebagai referensi.</div> : order.fileName ? <ProofThumbnail proof={order.fileName} /> : null}{order.adminNote && <Info label="Catatan admin" value={order.adminNote} />}{order.proofStatus === "rejected" && <Info label="Bukti ditolak" value={order.proofRejectionReason || "Tanpa alasan tercatat"} />}{needsHandover && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">
+</div>)}</div>{isPedia && <PediaFollowUpLink order={order} />}{qris && <div className="rounded-md border border-admin-info/20 bg-admin-info/10 p-3 text-xs leading-5 text-admin-info">QRIS diproses otomatis. Bukti gambar, jika ada, hanya dipakai sebagai referensi.</div>}{order.fileName && <ProofThumbnail proof={order.fileName} />}{order.adminNote && <Info label="Catatan admin" value={order.adminNote} />}{order.proofStatus === "rejected" && <Info label="Bukti ditolak" value={order.proofRejectionReason || "Tanpa alasan tercatat"} />}{needsHandover && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">
 <Button variant="default" type="button" onClick={() => onAction("handover")} className="inline-flex h-9 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-semibold text-admin-inverse transition hover:brightness-110">
 <IosIcon name="checked" size={14} tint="currentColor" /> Kirim ke pembeli</Button>
 </div>}{isPedia && order.status === "pending" && <div className="border-t border-admin-border pt-4">
@@ -460,14 +454,14 @@ function ActionDialog({ action, note, setNote, saving, onClose, onConfirm }: { a
   const danger = ["reject", "cancel"].includes(action.kind);
   const noteRequired = action.kind === "reject" || action.kind === "paid_qris";
   return <AdminDialog title={copy[0]} onClose={onClose} busy={saving}>{action.kind === "paid_qris" && <div className="rounded-xl border border-admin-warning/25 bg-admin-warning/10 p-3 text-xs leading-5 text-admin-warning">Pastikan dana benar masuk di mutasi merchant sesuai invoice dengan nominal persis {formatRupiah(action.order.paymentAmount)}. ACC melunaskan pesanan dan menjadwalkan pengiriman serta notifikasi - tidak bisa dibatalkan.</div>}<div className="flex flex-wrap items-center gap-2">
-<span className="font-mono text-xs font-semibold text-admin-accent">{action.order.code}</span>
+<span className="break-all font-mono text-xs font-semibold text-admin-fg">{action.order.code}</span>
 <StatusBadge status={action.order.status} />
 <ChannelBadge channel={action.order.salesChannel} />
 <MethodBadge method={action.order.method} />
 </div>
 <p className="mt-3 text-sm text-admin-muted">{action.order.name}</p>
 <Label className="mt-4 block">
-<span className="text-xs font-semibold text-admin-muted">{copy[1]}</span>
+<span className="text-sm font-medium">{copy[1]}</span>
 <Textarea autoFocus value={note} onChange={(event) => setNote(event.target.value)} rows={4} className="mt-2 w-full resize-none rounded-xl border border-admin-border bg-admin-subtle p-3 text-sm text-admin-fg outline-none focus:border-admin-accent/40" />
 </Label>
 <div className="mt-5 flex justify-end gap-2">
@@ -534,7 +528,7 @@ function HandoverDialog({ order, note, setNote, messages, setMessages, saving, o
       : "Pesanan ini tidak punya email pembeli. Isi tetap tersimpan di halaman pesanan; kabari pembeli lewat WA.";
   return <AdminDialog title="Kirim ke pembeli" onClose={onClose} busy={saving}>
 <div className="flex flex-wrap items-center gap-2">
-<span className="font-mono text-xs font-semibold text-admin-accent">{order.code}</span>
+<span className="break-all font-mono text-xs font-semibold text-admin-fg">{order.code}</span>
 <StatusBadge status={order.status} />
 <ChannelBadge channel={order.salesChannel} />
 </div>
@@ -544,11 +538,11 @@ function HandoverDialog({ order, note, setNote, messages, setMessages, saving, o
       : <>
         <p className="mt-3 text-xs leading-5 text-admin-muted">{destination}</p>
         {pending.map((item) => <Label key={item.item_index} className="mt-4 block">
-<span className="text-xs font-semibold text-admin-muted">Detail untuk pembeli · {item.label || `Item ${item.item_index + 1}`}</span>
+<span className="text-sm font-medium">Detail untuk pembeli · {item.label || `Item ${item.item_index + 1}`}</span>
 <Textarea value={messages[item.item_index] ?? ""} onChange={(event) => setMessages({ ...messages, [item.item_index]: event.target.value })} rows={4} maxLength={4000} placeholder="Akun, link undangan, atau instruksi. Kosongkan bila produk sudah kamu kirim lewat WA." className="mt-2 w-full resize-y rounded-xl border border-admin-border bg-admin-subtle p-3 font-mono text-sm text-admin-fg placeholder:font-sans placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
 </Label>)}
         <Label className="mt-4 block">
-<span className="text-xs font-semibold text-admin-muted">Catatan internal (opsional, tidak dikirim ke pembeli)</span>
+<span className="text-sm font-medium">Catatan internal (opsional, tidak dikirim ke pembeli)</span>
 <Input value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} className="mt-2 h-9 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/50 focus:outline-none" />
 </Label>
       </>}
@@ -640,11 +634,12 @@ function FulfillmentBadge({ status, supplierActive = false }: { status?: string;
   // "Perlu handover" di situ menyesatkan (2026-10-10). Status supplier tampil
   // di SupplierLinkActions; handover manual tetap tersedia sebagai cadangan.
   if (supplierActive && status === "manual_required") return <Badge variant="outline" className="rounded-md border border-admin-accent/25 bg-admin-primary/10 px-2.5 py-1 text-xs font-semibold text-admin-accent">Via supplier</Badge>;
-  const label = status === "manual_required" ? "Perlu handover"
-    : status === "failed" ? "Kirim GAGAL"
+  const label = status === "manual_required" ? "Perlu tindakan"
+    : status === "failed" ? "Gagal kirim"
     : status === "queued" ? "Antre kirim"
     : status === "sending" ? "Mengirim…"
-    : status;
+    : status === "retry" ? "Menunggu percobaan ulang"
+    : "Perlu diperiksa";
   const tone = status === "failed"
     ? "border-admin-danger/30 bg-admin-danger/10 text-admin-danger"
     : status === "manual_required"

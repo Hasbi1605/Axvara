@@ -13,15 +13,15 @@ describe("admin operational workspace", () => {
     expect(api).toContain('params.get("date_from")');
     expect(api).toContain('params.get("export") === "csv"');
     expect(api).toContain("LIMIT ? OFFSET ?");
-    expect(manager).toContain("Export CSV");
+    expect(manager).toContain("Ekspor CSV");
     expect(manager).toContain("WhatsApp");
   });
 
   it("uses QRIS Hook as the only approval authority for QRIS orders", () => {
     const manager = read("src/components/admin/OrdersManager.tsx");
     const events = read("src/app/api/admin/payments/events/route.ts");
-    expect(manager).toContain("Menunggu QRIS Hook");
-    expect(manager).toContain("Bukti hanya referensi");
+    expect(manager).toContain("Status lunas tetap menunggu QRIS Hook");
+    expect(manager).toContain("hanya dipakai sebagai referensi");
     expect(events).toContain("retry_match");
     expect(events).toContain("transitionPendingPaymentToPaid");
   });
