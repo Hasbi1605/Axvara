@@ -10,6 +10,6 @@ export const badgeVariants = cva("inline-flex items-center rounded-md border px-
     success: "border-admin-success/25 bg-admin-success/10 text-admin-success",
     warning: "border-admin-warning/25 bg-admin-warning/10 text-admin-warning",
     info: "border-admin-info/25 bg-admin-info/10 text-admin-info",
-  } }, defaultVariants: { variant: "default" },
+  } }, defaultVariants: { variant: "secondary" },
 });
 export function Badge({ className, variant, ...props }: HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeVariants>) { return <span className={cn(badgeVariants({ variant }), className)} {...props} />; }

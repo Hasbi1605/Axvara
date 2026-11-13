@@ -30,18 +30,20 @@ function CredentialRow({ row, index, total, disabled, onMove, onRemove, reducedM
   return (
     <li ref={setNodeRef} data-inventory-id={row.id} data-dragging={isDragging || undefined}
       style={{ transform: CSS.Transform.toString(transform), transition, willChange: activeIndex >= 0 ? "transform" : undefined }}
-      className={`relative flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${isDragging ? "border-dashed border-admin-accent/70 bg-admin-primary/[0.08]" : "border-transparent bg-admin-subtle"}`}>
+      className={`relative grid min-w-0 grid-cols-[auto_1.25rem_minmax(0,1fr)] items-center gap-2 rounded-lg border px-2.5 py-1.5 sm:grid-cols-[auto_1.25rem_minmax(0,1fr)_auto] ${isDragging ? "border-dashed border-admin-accent/70 bg-admin-primary/[0.08]" : "border-transparent bg-admin-subtle"}`}>
       {isDragging && <span data-drop-indicator="true" aria-hidden="true" className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-md bg-admin-primary shadow-sm" />}
       <Button variant="outline" size="icon" type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} disabled={disabled}
         aria-label={`Geser kredensial ${index + 1}`} title="Tarik untuk mengatur urutan; Spasi untuk memakai keyboard"
         className={`shrink-0 touch-none select-none rounded p-1.5 text-admin-muted hover:bg-admin-subtle hover:text-admin-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-admin-accent disabled:opacity-30 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}>
         <GripVertical size={15} />
       </Button>
-      <span className="w-5 shrink-0 text-center text-xs text-admin-accent">{destination + 1}</span>
+      <span className="w-5 shrink-0 text-center text-xs text-admin-muted">{destination + 1}</span>
       <span className={`min-w-0 flex-1 truncate font-mono text-xs ${isDragging ? "text-admin-accent/60" : "text-admin-fg"}`}>{isDragging ? `Lepas di urutan ${destination + 1}` : row.secret}</span>
-      <Button variant="outline" size="icon" type="button" aria-label={`Naikkan kredensial ${index + 1}`} title="Naikkan" onClick={() => onMove(row.id, index - 1)} disabled={disabled || activeIndex >= 0 || index === 0} className="shrink-0 rounded p-1 text-admin-muted hover:bg-admin-subtle hover:text-admin-accent disabled:opacity-20"><ArrowUp size={14} /></Button>
-      <Button variant="outline" size="icon" type="button" aria-label={`Turunkan kredensial ${index + 1}`} title="Turunkan" onClick={() => onMove(row.id, index + 1)} disabled={disabled || activeIndex >= 0 || index === total - 1} className="shrink-0 rounded p-1 text-admin-muted hover:bg-admin-subtle hover:text-admin-accent disabled:opacity-20"><ArrowDown size={14} /></Button>
+      <div className="col-span-3 flex items-center justify-end gap-1 sm:col-span-1">
+      <Button variant="outline" size="icon" type="button" aria-label={`Naikkan kredensial ${index + 1}`} title="Naikkan" onClick={() => onMove(row.id, index - 1)} disabled={disabled || activeIndex >= 0 || index === 0} className="size-8 shrink-0 rounded p-1 text-admin-muted hover:bg-admin-subtle hover:text-admin-accent disabled:opacity-20"><ArrowUp size={14} /></Button>
+      <Button variant="outline" size="icon" type="button" aria-label={`Turunkan kredensial ${index + 1}`} title="Turunkan" onClick={() => onMove(row.id, index + 1)} disabled={disabled || activeIndex >= 0 || index === total - 1} className="size-8 shrink-0 rounded p-1 text-admin-muted hover:bg-admin-subtle hover:text-admin-accent disabled:opacity-20"><ArrowDown size={14} /></Button>
       <Button variant="ghost" type="button" onClick={() => onRemove(row.id)} disabled={disabled || activeIndex >= 0} className="shrink-0 text-xs font-semibold text-admin-danger hover:text-admin-danger hover:underline disabled:opacity-40">Hapus</Button>
+      </div>
     </li>
   );
 }
@@ -80,7 +82,7 @@ export function CredentialQueue({ inventory, disabled, onMove, onRemove }: Props
       <p aria-live="polite" className="mb-1.5 min-h-4 text-xs text-admin-accent">{active && targetIndex !== null ? `Lepas di urutan ${targetIndex + 1} · Dekati tepi daftar untuk menggulir` : ""}</p>
       <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
         <ul ref={container} aria-label="Urutan pengiriman kredensial"
-          className={`max-h-48 space-y-2 overflow-y-auto overscroll-contain rounded-xl border border-admin-border bg-admin-card/65 p-2.5 ${active ? "select-none" : ""}`}>
+          className={`min-w-0 max-w-full max-h-48 space-y-2 overflow-y-auto overscroll-contain rounded-xl border border-admin-border bg-admin-card/65 p-2.5 ${active ? "select-none" : ""}`}>
           {inventory.map((row, index) => <CredentialRow key={row.id} row={row} index={index} total={inventory.length} disabled={disabled} reducedMotion={reducedMotion} onMove={onMove} onRemove={onRemove} />)}
         </ul>
       </SortableContext>

@@ -94,10 +94,10 @@ export function ProductEditorModal({
   return (
     <>
     <Dialog title={editing ? "Edit Produk" : "Produk Baru"} onClose={requestClose} busy={saving || variantCopy.saving} className="w-[880px] !overflow-hidden !p-0">
-          <Tabs value={tab} onValueChange={value => { setTab(value as typeof tab); if (bodyRef.current) bodyRef.current.scrollTop = 0; }} className="flex max-h-[calc(100dvh-2rem)] flex-col">
+          <Tabs value={tab} onValueChange={value => { setTab(value as typeof tab); if (bodyRef.current) bodyRef.current.scrollTop = 0; }} className="flex min-w-0 max-h-[calc(100dvh-2rem)] flex-col">
             <div className="shrink-0 px-6 pt-6">
             <div className="flex items-center justify-between gap-3">
-              <div><p className="text-sm font-medium text-admin-accent">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-sans text-lg font-semibold text-admin-fg">{editing? "Edit Produk":"Produk Baru"}</h3></div>
+              <h3 id="product-editor-title" className="font-sans text-lg font-semibold text-admin-fg">{editing? "Edit Produk":"Produk Baru"}</h3>
               <Button variant="outline" size="icon" type="button" onClick={requestClose} disabled={saving || variantCopy.saving} className="flex h-9 w-11 shrink-0 items-center justify-center rounded-md bg-admin-subtle text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50" aria-label="Tutup editor produk"><IosIcon name="close" size={14} tint="currentColor" /></Button>
             </div>
 
@@ -110,12 +110,12 @@ export function ProductEditorModal({
               </p>
             )}
 
-            <TabsList className="mt-4 w-full justify-start" aria-label="Bagian editor produk">
+            <TabsList className="mt-4 justify-start" aria-label="Bagian editor produk">
               {tabs.map(([id, label]) => (
                 <TabsTrigger key={id} value={id} className="text-xs sm:text-sm">
                   {label}{id === "varian" && hasMultiVariants && formVariants.length > 0 ? ` (${formVariants.length})` : ""}
                   {id === "konten" && copyReviewCount > 0 && (
-                    <Badge variant="outline" className="rounded-md bg-admin-warning px-1.5 py-px text-xs font-semibold text-admin-inverse">
+                    <Badge variant="warning" className="px-1.5 py-px text-xs">
                       {copyReviewCount}<span className="sr-only"> varian S&amp;K perlu ditinjau</span>
                     </Badge>
                   )}
@@ -124,17 +124,16 @@ export function ProductEditorModal({
             </TabsList>
             </div>
 
-            <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
+            <div ref={bodyRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-6 pb-2">
             <TabsContent value="detail" forceMount hidden={tab !== "detail"} className="mt-0">
             <div className="mt-5 grid sm:grid-cols-2 gap-4">
-              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Nama *</span><Input value={form.name??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className={`w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></Label>
-              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Slug *</span><Input value={form.slug??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className={`w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted font-mono focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></Label>
-              <Label className="sm:col-span-2 space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Nama di WhatsApp (Alias)</span><Input value={form.whatsappAlias??""} onChange={e=>onSetForm({...form,whatsappAlias:e.target.value})} maxLength={50} placeholder="CHATGPT" className="w-full h-9 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/30" /><span className="block text-xs leading-4 text-admin-muted">Dipakai pada daftar dan header detail produk WhatsApp. Jika kosong, bot memakai nama produk web.</span></Label>
-              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Kategori</span><NativeSelect value={form.categorySlug??cats[0]?.slug??""} onChange={e=>onSetForm({...form,categorySlug:e.target.value})} className="w-full h-9 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg focus:outline-none focus:border-admin-accent/30">
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-sm font-medium text-admin-fg">Nama *</span><Input value={form.name??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className={`w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></Label>
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-sm font-medium text-admin-fg">Slug *</span><Input value={form.slug??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className={`w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted font-mono focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></Label>
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-sm font-medium text-admin-fg">Kategori</span><NativeSelect value={form.categorySlug??cats[0]?.slug??""} onChange={e=>onSetForm({...form,categorySlug:e.target.value})} className="w-full h-9 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg focus:outline-none focus:border-admin-accent/30">
                 {cats.map((category) => <option key={category.id} value={category.slug} className="bg-admin-card">{category.name}</option>)}
               </NativeSelect></Label>
-              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Badge</span><Input value={form.badge??""} onChange={e=>onSetForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-9 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/30" /></Label>
-              <div className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Posisi tampil</span><div aria-label="Posisi tampil produk" className="flex h-9 w-full items-center rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm font-semibold text-admin-muted">{form.displayPosition ?? "—"}</div><span className="block text-xs leading-4 text-admin-muted">Sama dengan kolom Urutan di daftar. Ubah satu posisi secara aman memakai tombol naik/turun setelah menutup editor.</span></div>
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-sm font-medium text-admin-fg">Badge</span><Input value={form.badge??""} onChange={e=>onSetForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-9 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/30" /></Label>
+              <div className="space-y-2"><span className="block text-sm font-medium text-admin-fg">Posisi tampil</span><p aria-label="Posisi tampil produk" className="text-sm text-admin-muted">{form.displayPosition ?? "—"}</p><span className="block text-xs leading-4 text-admin-muted">Sama dengan kolom Urutan di daftar. Ubah satu posisi secara aman memakai tombol naik/turun setelah menutup editor.</span></div>
             </div>
 
             </TabsContent>
@@ -230,8 +229,8 @@ export function ProductEditorModal({
               ) : (
                 <>
                 <div className="mt-4 grid sm:grid-cols-3 gap-3">
-                  <div>
-                    <span className="text-xs font-semibold text-admin-muted">Harga Jual *{form.wrManaged ? " (WR)" : ""}</span>
+                  <Label className="block min-w-0">
+                    <span className="text-sm font-medium text-admin-fg">Harga jual *{form.wrManaged ? " (WR)" : ""}</span>
                     <MoneyInput
                       value={form.price}
                       readOnly={form.wrManaged}
@@ -239,9 +238,9 @@ export function ProductEditorModal({
                       placeholder="89000"
                       className={`mt-1 h-9 w-full px-3 rounded-xl border text-sm focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border text-admin-fg focus:border-admin-accent/30"}`}
                     />
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold text-admin-muted">Harga Coret <span className="normal-case text-admin-success">bisa diedit</span></span>
+                  </Label>
+                  <Label className="block min-w-0">
+                    <span className="text-sm font-medium text-admin-fg">Harga coret <span className="normal-case text-admin-muted">bisa diedit</span></span>
                     <MoneyInput
                       value={form.comparePrice}
                       allowEmpty
@@ -249,9 +248,9 @@ export function ProductEditorModal({
                       placeholder="300000"
                       className="mt-1 h-9 w-full px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg focus:outline-none focus:border-admin-accent/30"
                     />
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold text-admin-muted">Stok (-1 = ∞){form.wrManaged ? " (WR)" : ""}</span>
+                  </Label>
+                  <Label className="block min-w-0">
+                    <span className="text-sm font-medium text-admin-fg">Stok (-1 = ∞){form.wrManaged ? " (WR)" : ""}</span>
                     <Input
                       type="number"
                       value={form.stock ?? -1}
@@ -259,7 +258,7 @@ export function ProductEditorModal({
                       onChange={(e) => onSetForm({ ...form, stock: Number(e.target.value) })}
                       className={`mt-1 h-9 w-full px-3 rounded-xl border text-sm focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border text-admin-fg focus:border-admin-accent/30"}`}
                     />
-                  </div>
+                  </Label>
                 </div>
                 {/* Paritas single 2026-09-28: min. beli + garansi + cara
                     pengiriman + template pesan — blok yang sama dengan mode
@@ -327,7 +326,7 @@ export function ProductEditorModal({
 
             <TabsContent value="media" forceMount hidden={tab !== "media"} className="mt-0">
             <div className="mt-5">
-              <p className="text-xs font-semibold text-admin-muted mb-2">Foto Produk — maks 8 (PNG/JPG → WebP otomatis)</p>
+              <p className="text-sm font-medium text-admin-fg mb-2">Foto Produk — maks 8 (PNG/JPG → WebP otomatis)</p>
               <div className="grid grid-cols-4 gap-2">
                 {formImages.map((url,i)=>(
                   <div key={url} className="relative group aspect-square rounded-xl overflow-hidden bg-admin-subtle border border-admin-border">
@@ -335,7 +334,7 @@ export function ProductEditorModal({
                     <img src={url} alt="" className={`w-full h-full ${i === 0 ? "object-cover" : "object-contain"}`} />
                     {i===0 && <span className="absolute top-1 left-1 text-xs font-semibold px-1.5 py-0.5 rounded-md bg-admin-primary text-admin-inverse">Utama</span>}
                     <Button variant="outline" type="button" aria-label={`Hapus foto ${i + 1}`} size="icon" onClick={()=>onSetFormImages(prev=>prev.filter((_,idx)=>idx!==i))} className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-md bg-admin-subtle/60 text-admin-fg transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"><IosIcon name="close" size={10} tint="currentColor" /></Button>
-                    {i>0 && <Button variant="default" type="button" onClick={()=>onSetFormImages(prev=>{ const a=[...prev]; const t=a[i]; a[i]=a[0]; a[0]=t; return a; })} className="absolute bottom-1 left-1 right-1 text-xs font-semibold bg-admin-primary text-admin-inverse rounded-md py-1 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">Jadikan utama</Button>}
+                    {i>0 && <Button variant="outline" size="sm" type="button" onClick={()=>onSetFormImages(prev=>{ const a=[...prev]; const t=a[i]; a[i]=a[0]; a[0]=t; return a; })} className="absolute bottom-1 left-1 right-1 text-xs rounded-md py-1 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">Jadikan utama</Button>}
                   </div>
                 ))}
                 {formImages.length<8 && (

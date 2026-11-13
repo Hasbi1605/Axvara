@@ -71,6 +71,25 @@ describe("Wajib email pembeli: centang tersimpan dan termuat ulang", () => {
     expect(calls.find((c) => c.method === "PUT")?.body?.requireEmail).toBe(false);
   });
 
+  it("alias WhatsApp yang dipensiunkan tidak dikirim atau dikosongkan saat menyimpan", async () => {
+    const calls = stubApi({ ok: true, requireEmail: true });
+    const { result } = renderManager();
+    await act(async () => { await result.current.openEdit({ ...listRow, whatsappAlias: "ALIAS LAMA" }); });
+    await act(async () => { await result.current.save(); });
+    expect(calls.find(c => c.method === "PUT")?.body).not.toHaveProperty("whatsappAlias");
+  });
+
+  it("daftar menampilkan nama kategori dari kategori yang dimuat", async () => {
+    stubApi({ ok: true });
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => url.startsWith("/api/categories")
+      ? Promise.resolve({ ok: true, json: async () => ({ categories: [{ id: "1", slug: "akun-premium", name: "Akun Premium" }] }) })
+      : originalFetch(url, init)));
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    expect(result.current.paged[0].categoryName).toBe("Akun Premium");
+  });
+
   it("detail produk gagal dibaca: Simpan tidak mengirim requireEmail sama sekali", async () => {
     const calls = stubApi({ ok: false });
     const { result } = renderManager();

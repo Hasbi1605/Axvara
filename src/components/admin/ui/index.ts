@@ -19,3 +19,5 @@ export * from "./sheet";
 export * from "./skeleton";
 export * from "./separator";
 export * from "./sonner";
+export * from "./page-header";
+export * from "./stat-card";

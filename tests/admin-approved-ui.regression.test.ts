@@ -47,7 +47,7 @@ describe("butir 1/1b — modal produk bertab dengan Simpan sticky", () => {
     // ter-scroll, tombol Simpan kembali 2597px di bawah area kerja.
     expect(modal).toContain("max-h-[calc(100dvh-2rem)] flex-col");
     expect(modal).toContain('<Dialog title={editing ? "Edit Produk" : "Produk Baru"}');
-    expect(modal).toContain("min-h-0 flex-1 overflow-y-auto");
+    expect(modal).toContain("min-h-0 min-w-0 flex-1 overflow-y-auto");
     const footer = modal.slice(modal.indexOf("Simpan Produk") - 900, modal.indexOf("Simpan Produk"));
     expect(footer).toContain("shrink-0");
   });

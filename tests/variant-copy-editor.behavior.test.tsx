@@ -341,9 +341,9 @@ describe("editor produk mode single: paritas garansi + pengiriman + template (20
     renderSingleModal();
     await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Varian/ });
-    expect(within(panel).getByText("Min. Beli")).toBeTruthy();
-    expect(within(panel).getByText("Masa Garansi")).toBeTruthy();
-    expect(within(panel).getByText("Cara Pengiriman")).toBeTruthy();
+    expect(within(panel).getByText("Min. beli")).toBeTruthy();
+    expect(within(panel).getByText("Masa garansi")).toBeTruthy();
+    expect(within(panel).getByText("Cara pengiriman")).toBeTruthy();
     expect(within(panel).getByText("Template pesan untuk pembeli")).toBeTruthy();
     expect(within(panel).getByRole("textbox", { name: "Template pesan untuk pembeli" })).toBeTruthy();
   });
@@ -352,9 +352,9 @@ describe("editor produk mode single: paritas garansi + pengiriman + template (20
     const { onSetForm } = renderSingleModal();
     await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Varian/ });
-    fireEvent.change(within(panel).getByRole("combobox", { name: "Masa Garansi" }), { target: { value: "limited" } });
+    fireEvent.change(within(panel).getByRole("combobox", { name: "Masa garansi" }), { target: { value: "limited" } });
     expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ warranty_type: "limited" }));
-    fireEvent.change(within(panel).getByRole("combobox", { name: "Cara Pengiriman" }), { target: { value: "shared" } });
+    fireEvent.change(within(panel).getByRole("combobox", { name: "Cara pengiriman" }), { target: { value: "shared" } });
     expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ fulfillment_mode: "shared" }));
   });
 

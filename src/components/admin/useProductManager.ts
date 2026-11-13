@@ -518,6 +518,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
 
     const payload = {
       ...form,
+      whatsappAlias: undefined,
       // Produk WR: nama/slug/deskripsi milik sync — jangan dikirim ulang.
       // Teks WR sering berspasi di ujung; versi ter-trim dibaca server sebagai
       // "diubah" (409) sehingga ganti kategori/badge pun gagal disimpan.
@@ -761,7 +762,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         if (liveTab === "off" && liveOf(p) !== "off") return false;
         return true;
       })
-      .slice()
+      .map(p => ({ ...p, categoryName: cats.find(cat => cat.slug === p.categorySlug)?.name }))
       .sort((a, b) => {
         const byActive = Number(!a.isActive) - Number(!b.isActive);
         if (byActive !== 0) return byActive;
@@ -771,7 +772,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         if (byOrder !== 0) return byOrder;
         return Number(a.id) - Number(b.id);
       }),
-    [prods, q, onlyLowStock, supplierFilter, liveTab],
+    [prods, cats, q, onlyLowStock, supplierFilter, liveTab],
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPageAdmin));
   const safePage = Math.min(page, totalPages);

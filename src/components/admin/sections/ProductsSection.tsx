@@ -1,6 +1,6 @@
 "use client";
 import { ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import { Badge, Button, Card, Input, NativeSelect, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Switch, Skeleton, Tabs, TabsList, TabsTrigger } from "@/components/admin/ui";
+import { Badge, Button, Card, Input, NativeSelect, PageHeader, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Switch, Skeleton, Tabs, TabsList, TabsTrigger } from "@/components/admin/ui";
 import { useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import type { Prod } from "../product-types";
@@ -36,21 +36,21 @@ function LiveStatusBadge({ status, reason }: { status?: Prod["liveStatus"]; reas
     return <Badge title={reason || "Tampil di storefront"} className="rounded-md border border-admin-success/30 bg-admin-success/10 px-2 py-0.5 text-xs font-semibold text-admin-success">Live</Badge>;
   }
   if (s === "hidden_loser") {
-    return <Badge title={reason || "Kalah pasangan — disembunyikan otomatis"} className="rounded-md border border-admin-border bg-admin-subtle px-2 py-0.5 text-xs font-semibold text-admin-muted">Hidden: kalah</Badge>;
+    return <Badge variant="secondary" title={reason || "Pasangan supplier lain dipilih — disembunyikan otomatis"}>Disembunyikan</Badge>;
   }
   if (s === "hidden_soldout") {
-    return <Badge title={reason || "Stok habis — restok otomatis tampil"} className="rounded-md border border-admin-warning/30 bg-admin-warning/10 px-2 py-0.5 text-xs font-semibold text-admin-warning">Hidden: habis</Badge>;
+    return <Badge variant="warning" title={reason || "Stok habis — restok otomatis tampil"}>Stok habis</Badge>;
   }
-  return <Badge title={reason || "Nonaktif manual"} className="rounded-md border border-admin-danger/30 bg-admin-danger/10 px-2 py-0.5 text-xs font-semibold text-admin-danger">Off</Badge>;
+  return <Badge variant="secondary" title={reason || "Nonaktif manual"}>Nonaktif</Badge>;
 }
 /** Badge asal supplier — HANYA admin (keputusan owner 2026-09-30). Pembeli
  *  tidak pernah melihat ini; pembeda di storefront hanya nama bersih. */
 function SupplierBadge({ supplier, slug }: { supplier?: Prod["supplier"]; slug: string }) {
   if (supplier === "WR") {
-    return <Badge title={`Supplier: Warung Rebahan · slug /${slug}`} className="rounded-md border border-admin-warning/30 bg-admin-warning/10 px-2 py-0.5 text-xs font-semibold text-admin-warning">WR</Badge>;
+    return <Badge variant="secondary" title={`Supplier: Warung Rebahan · slug /${slug}`}>WR</Badge>;
   }
   if (supplier === "SK") {
-    return <Badge title={`Supplier: Sekalipay · slug /${slug}`} className="rounded-md border border-admin-accent/30 bg-admin-primary/10 px-2 py-0.5 text-xs font-semibold text-admin-accent">SK</Badge>;
+    return <Badge variant="secondary" title={`Supplier: Sekalipay · slug /${slug}`}>SK</Badge>;
   }
   return <Badge title="Produk manual Axvara" className="rounded-md border border-admin-border bg-admin-subtle px-2 py-0.5 text-xs font-semibold text-admin-muted">Manual</Badge>;
 }
@@ -174,26 +174,18 @@ export function ProductsSection({
     onSoldCount(p, n);
   };
   return (
-    <Tabs value={liveTab} onValueChange={value => { onLiveTabChange(value as typeof liveTab); onPageChange(() => 1); }}>
-      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <Card className="admin-surface rounded-xl p-4"><p className="text-sm font-medium text-admin-muted">Total produk</p><p className="mt-1 text-2xl font-semibold tabular-nums text-admin-fg">{prods.length}</p></Card>
-          {/* "Produk aktif" lama menipu (termasuk pecundang + habis yang tidak
-              tampil di toko). Kini: Live = yang benar tampil di storefront. */}
-          <Card className="admin-surface rounded-xl p-4"><p className="text-sm font-medium text-admin-muted">Live di toko</p><p className="mt-1 text-2xl font-semibold tabular-nums text-admin-success">{liveProducts}</p></Card>
-          <Card className="admin-surface rounded-xl p-4"><p className="text-sm font-medium text-admin-muted">Disembunyikan otomatis</p><p className="mt-1 text-2xl font-semibold tabular-nums text-admin-warning">{hiddenProducts}</p></Card>
-          <Card className="admin-surface rounded-xl p-4"><p className="text-sm font-medium text-admin-muted">Nonaktif</p><p className="mt-1 text-2xl font-semibold tabular-nums text-admin-danger">{offProducts}</p></Card>
-          <Card className="admin-surface rounded-xl p-4"><p className="text-sm font-medium text-admin-muted">Unit terjual</p><p className="mt-1 text-2xl font-semibold tabular-nums text-admin-fg">{soldProducts}</p></Card>
+    <Tabs value={liveTab} onValueChange={value => { onLiveTabChange(value as typeof liveTab); onPageChange(() => 1); }} className="space-y-6">
+      <PageHeader title="Produk" description="Katalog, harga, stok varian, dan status tampil di toko." actions={<Button type="button" onClick={onNew}><Plus aria-hidden="true" /> Produk baru</Button>} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <StatCard label="Total produk" value={loadingList ? <Skeleton className="h-8 w-16" /> : prods.length} />
+          <StatCard label="Live di toko" value={loadingList ? <Skeleton className="h-8 w-16" /> : liveProducts} />
+          <StatCard label="Disembunyikan otomatis" value={loadingList ? <Skeleton className="h-8 w-16" /> : hiddenProducts} />
+          <StatCard label="Nonaktif" value={loadingList ? <Skeleton className="h-8 w-16" /> : offProducts} />
+          <StatCard label="Unit terjual" value={loadingList ? <Skeleton className="h-8 w-16" /> : soldProducts} />
       </div>
 
-      <div className="mt-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-xl font-semibold text-admin-fg">Produk</h2>
-              <p className="mt-0.5 text-sm text-admin-muted">Katalog, harga, stok varian, dan status tampil di toko.</p>
-            </div>
-            <Button type="button" onClick={onNew}><Plus aria-hidden="true" /> Produk Baru</Button>
-          </div>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative w-full sm:w-72">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-admin-muted" aria-hidden="true" />
               <Input value={q} onChange={e=>{ onQueryChange(e.target.value); onPageChange(()=>1); }} aria-label="Cari produk" placeholder="Cari produk, slug, badge..." className="pl-9" />
@@ -246,31 +238,31 @@ export function ProductsSection({
                 <div className="flex items-start gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.image || "/brand/axvara-mark.svg"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-admin-subtle object-cover" />
-                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-admin-fg">{p.name}</p><div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div><p className="mt-0.5 truncate text-xs text-admin-muted">{p.categorySlug} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p>{p.liveStatus !== "live" && p.liveReason ? <p className="mt-0.5 truncate text-xs text-admin-muted">{p.liveReason}</p> : null}<CopyReviewBadge count={p.copyReview} /></div><Switch checked={p.isActive} onCheckedChange={() => onToggleActive(p)} disabled={toggling === p.id} aria-label={`Toggle aktif ${p.name}`} title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"} /></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-admin-fg">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Stok {p.stock === -1 ? "∞" : p.stock}</Badge><span className="text-admin-muted">{p.soldCount} terjual</span></div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-admin-fg">{p.name}</p><div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div><p className="mt-0.5 truncate text-xs text-admin-muted">{p.categoryName || "Tanpa kategori"} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p>{p.liveStatus !== "live" && p.liveReason ? <p className="mt-0.5 truncate text-xs text-admin-muted">{p.liveReason}</p> : null}<CopyReviewBadge count={p.copyReview} /></div><Switch checked={p.isActive} onCheckedChange={() => onToggleActive(p)} disabled={toggling === p.id} aria-label={`Toggle aktif ${p.name}`} title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"} /></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-admin-fg">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Stok {p.stock === -1 ? "∞" : p.stock}</Badge><span className="text-admin-muted">{p.soldCount} terjual</span></div></div>
                 </div>
-                <div className="mt-4 grid grid-cols-[auto_1fr_auto] gap-2">
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
                     <Button variant="outline" type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon"><ArrowUp size={16} aria-hidden="true" /></Button>
                     <Button variant="outline" type="button" onClick={()=>onMove(p, 1)} disabled={busy || !canMoveDown} aria-label={`Turunkan ${p.name}`} title={canMoveDown ? "Turun satu posisi" : "Sudah di dasar kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon"><ArrowDown size={16} aria-hidden="true" /></Button>
                   </div>
-                  <Button type="button" onClick={()=>onEdit(p)}><Pencil aria-hidden="true" /> Edit Produk & Varian</Button><Button variant="outline" size="icon" type="button" onClick={()=>onDelete(p)} className="text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><Trash2 aria-hidden="true" /></Button>
+                  <Button variant="outline" size="sm" type="button" onClick={()=>onEdit(p)}><Pencil aria-hidden="true" /> Edit Produk & Varian</Button><Button variant="outline" size="icon" type="button" onClick={()=>onDelete(p)} className="size-8 text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><Trash2 aria-hidden="true" /></Button>
                 </div>
               </Card>);})}
             </div>
             <div className="hidden overflow-x-auto md:block" role="region" aria-label="Daftar produk" tabIndex={0}>
               <Table>
                 <TableHeader>
-                  <TableRow><TableHead className="pl-4 pr-2">Produk</TableHead><TableHead className="hidden px-2 xl:table-cell">Kategori</TableHead><TableHead className="px-2 text-right">Harga</TableHead><TableHead className="px-2 text-center">Stok</TableHead><TableHead className="px-2 text-center">Terjual</TableHead><TableHead className="px-2 text-center">Urutan</TableHead><TableHead className="px-2 text-center">Aktif</TableHead><TableHead className="pl-2 pr-4 text-right">Aksi</TableHead></TableRow>
+                  <TableRow><TableHead className="">Produk</TableHead><TableHead className="hidden px-2 xl:table-cell">Kategori</TableHead><TableHead className="px-2 text-right">Harga</TableHead><TableHead className="px-2 text-center">Stok</TableHead><TableHead className="px-2 text-center">Terjual</TableHead><TableHead className="px-2 text-center">Urutan</TableHead><TableHead className="px-2 text-center">Aktif</TableHead><TableHead className=" text-right">Aksi</TableHead></TableRow>
                 </TableHeader>
                 <TableBody>
                   {paged.map(p=>{ const inHiddenTab = liveTab === "hidden"; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (
                     <TableRow key={p.id}>
-                      <TableCell className="py-3 pl-4 pr-2">
+                      <TableCell className="py-3 ">
                         <div className="flex min-w-[180px] items-center gap-3">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={p.image || "/brand/axvara-mark.svg"} alt="" className="size-10 shrink-0 rounded-md bg-admin-subtle object-cover" />
                           <div className="min-w-0">
-                            <p className="max-w-[11rem] truncate font-medium xl:max-w-[16rem] leading-tight text-admin-fg" title={p.name}>{p.name}</p>
+                            <p className="max-w-[11rem] truncate font-medium 2xl:max-w-[16rem] leading-tight text-admin-fg" title={p.name}>{p.name}</p>
                             <div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div>
                             <p className="text-xs text-admin-muted line-clamp-1">/{p.slug} {p.badge? `· ${p.badge}`:""}</p>
                             {p.liveStatus !== "live" && p.liveReason ? <p className="text-xs text-admin-muted line-clamp-1">{p.liveReason}</p> : null}
@@ -278,7 +270,7 @@ export function ProductsSection({
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden px-2 py-3 text-xs text-admin-muted xl:table-cell">{p.categorySlug}</TableCell>
+                      <TableCell className="hidden px-2 py-3 text-xs text-admin-muted xl:table-cell">{p.categoryName || "Tanpa kategori"}</TableCell>
                       <TableCell className="px-2 py-3 text-right"><span className="font-semibold text-admin-fg">{formatRupiah(p.price)}</span>{p.comparePrice? <span className="block text-xs text-admin-muted line-through">{formatRupiah(p.comparePrice)}</span>:null}</TableCell>
                       <TableCell className="px-2 py-3 text-center"><span className={`inline-flex min-w-[40px] justify-center px-2 py-1 rounded-md text-xs font-semibold ${p.stock<=5 && p.stock!==-1 ? "bg-admin-warning/15 text-admin-warning":"bg-admin-subtle text-admin-muted"}`}>{p.stock===-1?"∞":p.stock}</span></TableCell>
                       <TableCell className="px-2 py-3 text-center text-xs text-admin-muted">
@@ -289,8 +281,8 @@ export function ProductsSection({
                           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setSoldDraft((prev) => { const next = { ...prev }; delete next[p.id]; return next; }); }}
                           inputMode="numeric"
                           aria-label={`Ubah angka Terjual ${p.name}`}
-                          title="Ketik angka Terjual lalu Enter — pembelian asli tetap menambah di atas angka ini"
-                          className="mx-auto h-8 min-h-0 w-16 border-transparent bg-transparent px-1 text-center tabular-nums text-admin-fg shadow-none hover:border-admin-input focus-visible:border-admin-input md:text-sm"
+                          title="Ketik lalu Enter — angka Terjual — pembelian asli tetap menambah di atas angka ini"
+                          className="mx-auto h-8 min-h-0 w-16 border-admin-input bg-admin-card px-1 text-center tabular-nums text-admin-fg shadow-none hover:border-admin-input focus-visible:border-admin-input md:text-sm"
                         />
                       </TableCell>
                       <TableCell className="px-2 py-3 text-center">
@@ -303,8 +295,8 @@ export function ProductsSection({
                             inputMode="numeric"
                             disabled={liveTab === "hidden"}
                             aria-label={`Pindah ${p.name} ke posisi 1 sampai ${filtered.length}`}
-                            title={liveTab === "hidden" ? "Urutan di tab Hidden tidak berpengaruh ke storefront — atur di tab Live" : `Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${filtered.length} — ketik angka lalu Enter untuk lompat (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
-                            className="mr-1 h-8 min-h-0 w-11 border-transparent bg-transparent px-1 text-center tabular-nums text-admin-fg shadow-none hover:border-admin-input focus-visible:border-admin-input md:text-sm"
+                            title={liveTab === "hidden" ? "Urutan di tab Hidden tidak berpengaruh ke storefront — atur di tab Live" : `Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${filtered.length} — Ketik lalu Enter untuk lompat (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
+                            className="mr-1 h-8 min-h-0 w-16 border-admin-input bg-admin-card px-1 text-center tabular-nums text-admin-fg shadow-none hover:border-admin-input focus-visible:border-admin-input md:text-sm"
                           />
                           <Button variant="outline" type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon" className="size-8"><ArrowUp size={16} aria-hidden="true" /></Button>
                           <Button variant="outline" type="button" onClick={()=>onMove(p, 1)} disabled={busy || !canMoveDown} aria-label={`Turunkan ${p.name}`} title={canMoveDown ? "Turun satu posisi" : "Sudah di dasar kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon" className="size-8"><ArrowDown size={16} aria-hidden="true" /></Button>
@@ -313,10 +305,10 @@ export function ProductsSection({
                       <TableCell className="px-2 py-3 text-center">
                         <Switch checked={p.isActive} onCheckedChange={() => onToggleActive(p)} disabled={toggling === p.id} aria-label={`Toggle aktif ${p.name}`} title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"} />
                       </TableCell>
-                      <TableCell className="py-3 pl-2 pr-4 text-right">
+                      <TableCell className="py-3  text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <Button variant="outline" size="sm" type="button" onClick={()=>onEdit(p)} title="Edit produk & varian"><Pencil aria-hidden="true" /><span className="hidden xl:inline">Edit</span><span className="sr-only"> Produk & Varian</span></Button>
-                          <Button variant="outline" size="icon" type="button" onClick={()=>onDelete(p)} className="text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><Trash2 aria-hidden="true" /></Button>
+                          <Button variant="outline" size="icon" type="button" onClick={()=>onDelete(p)} className="size-8 text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><Trash2 aria-hidden="true" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -329,7 +321,7 @@ export function ProductsSection({
             {!loadingList && filtered.length > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
                 <p className="text-sm text-admin-muted">Hal {safePage} dari {totalPages} · {filtered.length} produk</p>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <NativeSelect
                     value={perPageAdmin}
                     onChange={(e) => { onPerPageChange(Number(e.target.value) as 20 | 50 | 100); onPageChange(() => 1); }}

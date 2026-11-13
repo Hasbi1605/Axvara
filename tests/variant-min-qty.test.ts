@@ -163,7 +163,7 @@ describe("variant min_qty — bot & storefront", () => {
 
   it("admin: input Min. Beli di VariantEditor + ProductVariantRows + API", () => {
     expect(read("src/components/admin/VariantEditor.tsx")).toContain("Min. beli");
-    expect(read("src/components/admin/sections/ProductVariantRows.tsx")).toContain("Min. Beli");
+    expect(read("src/components/admin/sections/ProductVariantRows.tsx")).toContain("Min. beli");
     expect(read("src/app/api/admin/variants/route.ts")).toContain("min_qty");
     expect(read("src/app/api/products/[id]/route.ts")).toContain("min_qty");
     expect(read("src/app/api/products/route.ts")).toContain("min_qty");
@@ -187,7 +187,7 @@ describe("variant min_qty — bot & storefront", () => {
   it("admin: opsi Cara Pengiriman + panel konten non-WR di ProductVariantRows (2026-09-19)", () => {
     const rows = read("src/components/admin/sections/ProductVariantRows.tsx");
     // Opsi milik admin sinkron 1:1 dengan fulfillment_mode engine.
-    expect(rows).toContain("Cara Pengiriman");
+    expect(rows).toContain("Cara pengiriman");
     expect(rows).toContain("Made By Order — admin kerjakan manual");
     expect(rows).toContain("Kirim otomatis — pesan/instruksi bersama");
     expect(rows).toContain("Kirim otomatis — stok kredensial unik");

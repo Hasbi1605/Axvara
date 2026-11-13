@@ -3,7 +3,7 @@ import { Input, Label, NativeSelect } from "@/components/admin/ui";
 
 // Field mode single (toggle "Variasi Produk" OFF) — paritas 2026-09-28.
 // Sebelumnya cabang single di ProductEditorModal hanya menampilkan
-// Harga Jual / Harga Coret / Stok, sehingga produk non-varian terkunci di
+// Harga jual / Harga coret / Stok, sehingga produk non-varian terkunci di
 // garansi=none + fulfillment=manual tanpa jalan keluar dari UI.
 //
 // Komponen ini memakai blok yang SAMA dengan mode varian (WarrantyFields,
@@ -59,13 +59,13 @@ export function SingleVariantFields({
     "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none";
   return (
     <div className="mt-4 space-y-3 rounded-xl border border-admin-border bg-admin-subtle p-4">
-      <Label className="block text-xs text-admin-muted">Input pembeli<NativeSelect value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></NativeSelect></Label>
-      <Label className="block text-xs text-admin-muted">Maks. beli (kosong = 100)<Input type="number" min={1} max={100} value={form.max_qty ?? ""} onChange={e => onSetForm({ ...form,max_qty:e.target.value ? Number(e.target.value) : null })} className={openInput}/></Label>
-      {/* Min. Beli (migrasi 0034, milik admin — bukan WR). */}
+      <Label className="block space-y-2 text-sm font-medium">Input pembeli<NativeSelect value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></NativeSelect></Label>
+      <Label className="block space-y-2 text-sm font-medium">Maks. beli (kosong = 100)<Input type="number" min={1} max={100} value={form.max_qty ?? ""} onChange={e => onSetForm({ ...form,max_qty:e.target.value ? Number(e.target.value) : null })} className={openInput}/></Label>
+      {/* Min. beli (migrasi 0034, milik admin — bukan WR). */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div>
-          <span className="block text-sm font-medium text-admin-muted mb-1">
-            Min. Beli <span className="normal-case tracking-normal text-admin-muted">(1 = bebas)</span>
+        <Label className="block min-w-0">
+          <span className="block text-sm font-medium text-admin-fg mb-1">
+            Min. beli <span className="normal-case tracking-normal text-admin-muted">(1 = bebas)</span>
           </span>
           <Input
             type="number"
@@ -78,9 +78,9 @@ export function SingleVariantFields({
             }}
             className={openInput}
           />
-        </div>
-        <div>
-          <span className="block text-sm font-medium text-admin-muted mb-1">
+        </Label>
+        <Label className="block min-w-0">
+          <span className="block text-sm font-medium text-admin-fg mb-1">
             Modal (Rp) <span className="normal-case tracking-normal text-admin-muted">(0 = tanpa modal)</span>
           </span>
           <MoneyInput
@@ -90,7 +90,7 @@ export function SingleVariantFields({
             className={openInput}
           />
           <span className="mt-1 block text-xs leading-4 text-admin-muted">Modal per unit produk manual/stok sendiri (milik admin, ikut hitung untung).</span>
-        </div>
+        </Label>
       </div>
 
       {/* Harga grosir — HANYA produk manual (owner 2026-11-08). */}
@@ -122,7 +122,7 @@ export function SingleVariantFields({
 
       {!wrLocked ? (
         <div className="pt-3">
-          <Label htmlFor={fulfillmentId} className="block text-sm font-medium text-admin-muted mb-1.5">Cara Pengiriman</Label>
+          <Label htmlFor={fulfillmentId} className="block text-sm font-medium text-admin-fg mb-1.5">Cara pengiriman</Label>
           <NativeSelect
             id={fulfillmentId}
             value={form.fulfillment_mode || "manual"}
