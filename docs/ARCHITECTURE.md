@@ -1,5 +1,32 @@
 # ARCHITECTURE.md — AXVARA
 
+## Admin shadcn/ui: primitive, portal bertema dan guard (13 November 2026, implementasi lokal)
+
+Menggantikan bagian "Workspace admin" di bawah hanya untuk dialog/toast.
+- Dependency baru (versi pin): `@radix-ui/react-{alert-dialog,checkbox,dialog,
+  dropdown-menu,label,popover,select,separator,slot,switch,tabs,tooltip}`,
+  `class-variance-authority`, `sonner`, dev `tailwindcss-animate` (plugin di
+  `tailwind.config.ts` memfilter registrasi duration/delay/ease agar kelas
+  arbitrary storefront `duration-[160ms]` tetap utuh). Audit 0 high/critical.
+- `src/components/admin/ui/*` + barrel `index.ts`: primitive tulisan tangan
+  (shadcn new-york, MIT) memakai token `admin.*` (+ `ring`, `input`). Tidak ada
+  `components.json`/CLI shadcn; storefront tidak memakai folder ini.
+- Portal Radix memakai `AdminPortalContext` (elemen `.admin-theme`) sehingga
+  menu/tooltip/dialog bertema, termasuk yang dibuka dari dalam dialog.
+- `src/components/ui/Dialog.tsx` dan `ConfirmDialog.tsx` kini Radix Dialog/
+  AlertDialog dengan API lama (`open/onClose/title/busy`; busy menahan Escape/
+  klik luar; fokus kembali ke pemicu). `useToast()` admin dirender sonner di
+  root tema (z-100); storefront ToastProvider tidak berubah. Drawer mobile =
+  Sheet; menu tema = DropdownMenu di header (cookie `axvara-admin-theme` sama).
+- Guard `tests/admin-shadcn-ui.regression.test.ts` memindai semua
+  `src/components/admin/**/*.tsx` + `src/app/(shop)/admin/page.tsx` (kecuali
+  `ui/`): gagal bila ada `<button|select|textarea|input>` mentah (kecuali input
+  file/hidden/range), warna palet Tailwind, hex di className/style atau glyph
+  ikon; pengecualian per baris `admin-ui-allow: <alasan>`. `PENDING_MIGRATION`
+  kini kosong. Test admin yang merender modal memakai `tests/setup/admin-render`.
+- Tidak ada perubahan API/DB/env/auth; logika bisnis dan guard pembayaran/supplier
+  dipertahankan.
+
 ## Workspace admin: tema, dialog native dan guard draft (13 November 2026, implementasi lokal)
 
 - Route baru `src/app/(shop)/admin/layout.tsx` (edge) membaca cookie

@@ -1,5 +1,35 @@
 # DESIGN.md — AXVARA Design System
 
+## Panel admin memakai shadcn/ui sungguhan (13 November 2026, implementasi lokal)
+
+Menggantikan bagian "bergaya shadcn-admin" di bawah hanya pada komponen/dialog;
+token warna, tema dan cakupan 19 section tetap.
+- Semua layar admin (shell, login, 19 section, tab supplier/Pedia, dialog, toast)
+  memakai primitive shadcn/ui gaya new-york di `src/components/admin/ui/`
+  (Button cva default/secondary/outline/ghost/destructive/link; Input, Textarea,
+  Label, NativeSelect, Select, Checkbox 16px, Switch 36×20, Badge
+  default/secondary/outline/destructive/success/warning/info, Card, Table, Tabs,
+  DropdownMenu, Tooltip, Popover, Dialog, AlertDialog, Sheet, Skeleton,
+  Separator, Toaster sonner). Ikon hanya lucide-react; glyph teks (panah, centang,
+  silang, bullet) tidak dipakai lagi.
+- Pola halaman: judul `text-xl font-semibold` + deskripsi muted + aksi utama di
+  kanan; toolbar (cari `w-72` + filter) di bawahnya; Table desktop/kartu mobile;
+  pagination "Hal x dari y" + tombol outline (page-size di baris pagination).
+  Label kalimat biasa `text-sm font-medium` (tidak ada label huruf kapital kecil);
+  kartu statistik label `text-sm` muted + angka `text-2xl` tabular.
+- Status = Badge berwarna token (lunas/aktif success, pending/perlu cek warning,
+  gagal destructive, otomatis/legacy secondary). Kolom bukti Pesanan ringkas:
+  badge "QRIS otomatis"/"Otomatis provider" + penjelasan di title/sr-only.
+  Saldo supplier yang belum diketahui tampil netral "—", bukan hijau "aman".
+- Loading = Skeleton/spinner; error = alert border danger + "Coba lagi"; data
+  gagal tidak ditampilkan sebagai nol (termasuk Kanal & Fulfillment).
+- `admin.css` hanya memberi default berspesifisitas nol (`:where(.admin-theme)`)
+  untuk border/td/th/input agar utilitas shadcn selalu menang.
+- Chromium lokal fixture 1024/1280/390, terang/gelap: Pesanan, Produk (tabel muat
+  di 1280; 1024 scroll di region tabel), Pembayaran, Pengaturan, Artikel, Banner,
+  Siaran, Kanal, WR/SK, Pedia, Games, Link Supplier tanpa overflow halaman/
+  pageerror/mutasi. Bukan bukti sesi admin produksi atau deployment.
+
 ## Panel admin bergaya shadcn-admin, light/dark (13 November 2026, implementasi lokal)
 
 - Seluruh 19 section admin (`summary`…`subscribers`, termasuk tab supplier/Pedia,

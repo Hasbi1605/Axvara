@@ -4,10 +4,7 @@ import { describe, expect, it } from "vitest";
 import ts from "typescript";
 
 // Subsequent section packets remove entries only after migrating their controls.
-export const PENDING_MIGRATION = [
-  "AgentIntegration.tsx", "ArticleEditor.tsx", "ArticlesManager.tsx", "BannerManager.tsx",
-  "BotAutomationManager.tsx", "BroadcastManager.tsx", "NewsletterSubscribers.tsx",
-  "StoreSettingsManager.tsx", "WhatsAppNotifications.tsx",
+export const PENDING_MIGRATION: string[] = [
 ].map(file => `src/components/admin/${file}`);
 
 const palette = /(?:text|bg|border|ring|fill|stroke|from|to|via)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-\d+)?\b/;

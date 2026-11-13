@@ -122,7 +122,7 @@ export function DataTable({ title, columns, children }: { title: string; columns
   return <div className="rounded-md border border-admin-border">
     <Table>
       <caption className="sr-only">{title}</caption>
-      <TableHeader><TableRow>{columns.map(column => <TableHead key={column} className="text-xs uppercase tracking-[0.08em]">{column}</TableHead>)}</TableRow></TableHeader>
+      <TableHeader><TableRow>{columns.map(column => <TableHead key={column} className="text-sm">{column}</TableHead>)}</TableRow></TableHeader>
       <TableBody className="[&_td]:align-top [&_td]:break-words">{children}</TableBody>
     </Table>
   </div>;

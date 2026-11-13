@@ -690,23 +690,23 @@ export function SekalipayManager() {
         </header>
         <div className="grid gap-3 sm:grid-cols-3">
           <Card className={saldo.current?.isLow ? "border-admin-danger/30" : undefined}>
-            <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-wide">Saldo saat ini</CardDescription></CardHeader>
+            <CardHeader className="p-4 pb-2"><CardDescription className="text-sm">Saldo saat ini</CardDescription></CardHeader>
             <CardContent className="p-4 pt-0">
-              {saldoLoading ? <Skeleton className="h-8 w-32" /> : <p className={`text-2xl font-semibold tabular-nums ${saldo.current?.isLow ? "text-admin-danger" : "text-admin-success"}`}>{balance != null ? formatRupiah(balance) : "—"}</p>}
+              {saldoLoading ? <Skeleton className="h-8 w-32" /> : <p className={`text-2xl font-semibold tabular-nums ${balance == null ? "text-admin-muted" : saldo.current?.isLow ? "text-admin-danger" : "text-admin-success"}`}>{balance != null ? formatRupiah(balance) : "—"}</p>}
               <p className="mt-1 text-xs text-admin-muted">
-                {saldo.current?.isLow ? `Di bawah batas ${formatRupiah(saldo.current.threshold)} — segera top up.` : "Di atas batas aman operasional."}
+                {balance == null ? "Saldo belum diketahui — muat ulang untuk memeriksa." : saldo.current?.isLow ? `Di bawah batas ${formatRupiah(saldo.current.threshold)} — segera top up.` : "Di atas batas aman operasional."}
               </p>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-wide">Estimasi kapasitas</CardDescription></CardHeader>
+            <CardHeader className="p-4 pb-2"><CardDescription className="text-sm">Estimasi kapasitas</CardDescription></CardHeader>
             <CardContent className="p-4 pt-0">
               <p className="text-2xl font-semibold tabular-nums text-admin-fg">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
               <p className="mt-1 text-xs text-admin-muted">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-wide">Sync terakhir</CardDescription></CardHeader>
+            <CardHeader className="p-4 pb-2"><CardDescription className="text-sm">Sync terakhir</CardDescription></CardHeader>
             <CardContent className="p-4 pt-0">
               <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="non-auto" />
               <Button className="mt-3" size="sm" onClick={() => void forceSync()} disabled={syncing}>{syncing ? <Spinner size={13} /> : <RefreshCw />}{syncing ? "Sync…" : "Force Sync Now"}</Button>

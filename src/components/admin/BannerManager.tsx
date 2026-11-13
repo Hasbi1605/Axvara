@@ -4,13 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, ArrowUp, ArrowDown } from "lucide-react";
+import { GripVertical, ArrowUp, ArrowDown, ImageIcon, Pencil, Save, Trash2, X } from "lucide-react";
 import { DEFAULT_BANNER_SETTINGS, type BannerSettings } from "@/lib/banner-config";
 import { AdminStatusSwitch } from "./AdminStatusSwitch";
 import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { IosIcon } from "@/components/admin/AdminIcon";
+import { Button, Card, Checkbox, Input, Label } from "./ui";
 
 type Banner = {
   id?: number;
@@ -196,110 +196,86 @@ export function BannerManager() {
   }
 
   return (
-    <section className="mt-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-2">
+    <section className="mt-4 space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           ["Total banner", counts.total, "text-admin-fg"],
           ["Aktif", counts.active, "text-admin-success"],
           ["Nonaktif", counts.inactive, "text-admin-muted"],
           ["Dengan CTA", counts.withCta, "text-admin-accent"],
         ].map(([label, value, color]) => (
-          <div key={String(label)} className="admin-surface rounded-xl p-4">
-            <p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p>
-            <p className={`mt-1 text-2xl font-display font-bold tabular-nums ${color}`}>{value}</p>
-          </div>
+          <Card key={String(label)} className="p-4">
+            <p className="text-sm font-medium text-admin-muted">{label}</p>
+            <p className={`mt-1 text-2xl font-semibold tabular-nums ${color}`}>{value}</p>
+          </Card>
         ))}
       </div>
 
-      {error && <div role="alert" className="mt-4 rounded-xl border border-red-400/25 bg-red-400/10 p-3 text-sm text-admin-danger">{error} {!loaded && <button onClick={() => void load(true)} className="ml-3 underline">Coba lagi</button>}</div>}
-      <div className="admin-surface mt-5 rounded-xl p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-admin-fg">Pengaturan popup</h2>
-        <p className="mt-1 text-xs leading-5 text-admin-muted">Semua banner aktif menjadi satu rangkaian. Pengunjung bisa menggeser atau memakai panah; gambar tetap utuh. Banner nonaktif tidak ikut tampil.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          {([["delay_ms", "Jeda sebelum buka (detik)", 0, 10], ["interval_ms", "Ganti slide setiap (detik)", 4, 20], ["max_show_per_session", "Maksimal buka per sesi", 1, 10]] as const).map(([key,label,min,max]) => <label key={key} className="grid gap-1 text-xs text-admin-muted">{label}<input type="number" min={min} max={max} step={key === "max_show_per_session" ? 1 : 0.5} disabled={busy || !loaded} value={settings[key] / (key === "max_show_per_session" ? 1 : 1000)} onChange={e => { setSettings(current => ({...current,[key]:Number(e.target.value) * (key === "max_show_per_session" ? 1 : 1000)})); setSettingsDirty(true); }} className="h-10 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg" /></label>)}
+      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-admin-danger/25 bg-admin-danger/10 p-3 text-sm text-admin-danger"><span>{error}</span>{!loaded && <Button variant="outline" size="sm" onClick={() => void load(true)}>Coba lagi</Button>}</div>}
+      <Card className="p-4 sm:p-6">
+        <h2 className="text-base font-semibold text-admin-fg">Pengaturan popup</h2>
+        <p className="mt-1 text-sm text-admin-muted">Semua banner aktif menjadi satu rangkaian. Pengunjung bisa menggeser atau memakai panah; gambar tetap utuh. Banner nonaktif tidak ikut tampil.</p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          {([["delay_ms", "Jeda sebelum buka (detik)", 0, 10], ["interval_ms", "Ganti slide setiap (detik)", 4, 20], ["max_show_per_session", "Maksimal buka per sesi", 1, 10]] as const).map(([key,label,min,max]) => <Label key={key} className="grid gap-2">{label}<Input type="number" min={min} max={max} step={key === "max_show_per_session" ? 1 : 0.5} disabled={busy || !loaded} value={settings[key] / (key === "max_show_per_session" ? 1 : 1000)} onChange={e => { setSettings(current => ({...current,[key]:Number(e.target.value) * (key === "max_show_per_session" ? 1 : 1000)})); setSettingsDirty(true); }} className="font-normal" /></Label>)}
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <label className="flex min-h-11 items-center gap-2 text-sm text-admin-muted"><input type="checkbox" checked={settings.autoplay} disabled={busy || !loaded} onChange={e => { setSettings(current => ({...current,autoplay:e.target.checked})); setSettingsDirty(true); }} className="h-4 w-4 accent-admin-accent" /> Geser otomatis</label>
-          <button disabled={busy || !loaded || !settingsDirty} onClick={() => void saveSettings()} className="h-10 rounded-md bg-admin-primary px-4 text-xs font-bold text-admin-inverse disabled:opacity-40">{settingsBusy ? "Menyimpan…" : "Simpan pengaturan"}</button>
+          <Label className="flex min-h-10 items-center gap-2 font-normal"><Checkbox checked={settings.autoplay} disabled={busy || !loaded} onCheckedChange={checked => { setSettings(current => ({...current,autoplay:checked === true})); setSettingsDirty(true); }} /> Geser otomatis</Label>
+          <Button disabled={busy || !loaded || !settingsDirty} onClick={() => void saveSettings()}>{settingsBusy ? "Menyimpan…" : "Simpan pengaturan"}</Button>
         </div>
-        <p className="mt-1 text-xs leading-5 text-admin-muted">Putaran dijeda saat disentuh, dibaca dengan keyboard, atau tab tersembunyi. Preferensi kurangi gerakan menonaktifkan animasi dan putaran otomatis. Frekuensi dihitung per popup, bukan per slide.</p>
-      </div>
-      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,420px)_1fr]">
-        {/* Form — seragam card header + padding seperti laman Produk */}
-        <div className="admin-surface min-w-0 rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2.5 p-4 sm:p-5 border-b border-admin-border">
-            <h2 className="font-semibold text-admin-fg text-sm">{editing ? "Edit banner" : "Banner baru"}</h2>
+        <p className="mt-2 text-xs leading-5 text-admin-muted">Putaran dijeda saat disentuh, dibaca dengan keyboard, atau tab tersembunyi. Preferensi kurangi gerakan menonaktifkan animasi dan putaran otomatis. Frekuensi dihitung per popup, bukan per slide.</p>
+      </Card>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+        <Card className="min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2.5 border-b border-admin-border p-4 sm:px-6">
+            <h2 className="text-base font-semibold text-admin-fg">{editing ? "Edit banner" : "Banner baru"}</h2>
             {editing && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setEditing(null);
                   setForm(blankBanner);
                 }}
-                className="ml-auto inline-flex h-7 items-center gap-1 rounded-md bg-admin-subtle px-3 text-xs font-semibold text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"
+                className="ml-auto"
               >
-                <IosIcon name="close" size={12} tint="white" /> Batal edit
-              </button>
+                <X aria-hidden="true" /> Batal edit
+              </Button>
             )}
           </div>
-          <fieldset disabled={busy || !loaded} className="min-w-0 p-4 sm:p-5 grid gap-3">
-            <input
-              value={form.title}
-              onChange={(event) => setForm({ ...form, title: event.target.value })}
-              placeholder="Judul banner"
-              className="h-10 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/40"
-            />
-            <input
-              value={form.body ?? ""}
-              onChange={(event) => setForm({ ...form, body: event.target.value })}
-              placeholder="Deskripsi singkat"
-              className="h-10 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/40"
-            />
-            <ImageDropzone
-              area="banners"
-              value={form.image_url}
-              onUploaded={(image_url) => setForm({ ...form, image_url })}
-              onRemove={() => setForm({ ...form, image_url: "" })}
-            />
-            <p className="-mt-1 text-xs leading-4 text-admin-muted">Ukuran popup mengikuti rasio gambar. Poster vertikal, gambar persegi, dan banner horizontal akan tampil utuh tanpa dipotong.</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <input
-                value={form.cta_label ?? ""}
-                onChange={(event) => setForm({ ...form, cta_label: event.target.value })}
-                placeholder="Label CTA"
-                className="h-10 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/40"
+          <fieldset disabled={busy || !loaded} className="grid min-w-0 gap-4 p-4 sm:p-6">
+            <div className="grid gap-2"><Label htmlFor="banner-title">Judul</Label><Input id="banner-title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Judul banner" /></div>
+            <div className="grid gap-2"><Label htmlFor="banner-body">Deskripsi</Label><Input id="banner-body" value={form.body ?? ""} onChange={(event) => setForm({ ...form, body: event.target.value })} placeholder="Deskripsi singkat" /></div>
+            <div className="grid gap-2">
+              <ImageDropzone
+                area="banners"
+                value={form.image_url}
+                onUploaded={(image_url) => setForm({ ...form, image_url })}
+                onRemove={() => setForm({ ...form, image_url: "" })}
               />
-              <input
-                value={form.cta_href ?? ""}
-                onChange={(event) => setForm({ ...form, cta_href: event.target.value })}
-                placeholder="/promo atau https://…"
-                className="h-10 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/40"
-              />
+              <p className="text-xs leading-4 text-admin-muted">Ukuran popup mengikuti rasio gambar. Poster vertikal, gambar persegi, dan banner horizontal akan tampil utuh tanpa dipotong.</p>
             </div>
-            <label className="flex items-center gap-2 text-sm text-admin-muted">
-              <input
-                type="checkbox"
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2"><Label htmlFor="banner-cta-label">Label CTA</Label><Input id="banner-cta-label" value={form.cta_label ?? ""} onChange={(event) => setForm({ ...form, cta_label: event.target.value })} placeholder="Label CTA" /></div>
+              <div className="grid gap-2"><Label htmlFor="banner-cta-href">Tautan CTA</Label><Input id="banner-cta-href" value={form.cta_href ?? ""} onChange={(event) => setForm({ ...form, cta_href: event.target.value })} placeholder="/promo atau https://…" /></div>
+            </div>
+            <Label className="flex items-center gap-2 font-normal">
+              <Checkbox
                 disabled={busy || !loaded}
                 checked={Boolean(form.is_active)}
-                onChange={(event) => setForm({ ...form, is_active: event.target.checked })}
-                className="h-4 w-4 rounded accent-admin-accent"
+                onCheckedChange={(checked) => setForm({ ...form, is_active: checked === true })}
               />
               Aktif di storefront
-            </label>
-            <button
-              onClick={() => void save()}
-              disabled={busy || !loaded}
-              className="mt-1 inline-flex h-10 w-fit items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse hover:bg-admin-primary transition disabled:opacity-50"
-            >
-              {saving ? "Menyimpan…" : <><IosIcon name="checked" size={14} tint="black" /> {editing ? "Simpan perubahan" : "Buat banner"}</>}
-            </button>
+            </Label>
+            <Button onClick={() => void save()} disabled={busy || !loaded} className="w-fit">
+              {saving ? "Menyimpan…" : <><Save aria-hidden="true" /> {editing ? "Simpan perubahan" : "Buat banner"}</>}
+            </Button>
           </fieldset>
-        </div>
+        </Card>
 
-        {/* Daftar — admin-surface rounded-xl overflow-hidden + rows seperti Produk/Artikel */}
-        <div className="admin-surface min-w-0 rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2.5 p-4 sm:p-5 border-b border-admin-border">
-            <h2 className="font-semibold text-admin-fg text-sm">Daftar banner</h2>
-            <span className="ml-auto text-xs text-admin-muted">{reordering ? "Menyimpan urutan…" : `${banners.length} banner`}</span>
+        <Card className="min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2.5 border-b border-admin-border p-4 sm:px-6">
+            <h2 className="text-base font-semibold text-admin-fg">Daftar banner</h2>
+            <span className="ml-auto text-sm text-admin-muted">{reordering ? "Menyimpan urutan…" : `${banners.length} banner`}</span>
           </div>
 
           {!banners.length ? (
@@ -313,55 +289,58 @@ export function BannerManager() {
                 <SortableBannerRow key={banner.id} id={banner.id!} title={banner.title} disabled={busy || !loaded}>
                   {banner.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={banner.image_url} alt="" className="h-14 w-20 shrink-0 rounded-xl bg-black/20 object-contain" />
+                    <img src={banner.image_url} alt="" className="h-14 w-20 shrink-0 rounded-md bg-admin-subtle object-contain" />
                   ) : (
-                    <div className="flex aspect-video w-20 shrink-0 items-center justify-center rounded-xl bg-admin-subtle border border-admin-border">
-                      <IosIcon name="image" size={16} tint="white" />
+                    <div className="flex aspect-video w-20 shrink-0 items-center justify-center rounded-md border border-admin-border bg-admin-subtle text-admin-muted">
+                      <ImageIcon className="size-4" aria-hidden="true" />
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="line-clamp-1 text-sm font-semibold text-admin-fg leading-tight">{banner.title}</p>
-                    <p className="text-xs text-admin-muted line-clamp-1">
+                    <p className="line-clamp-1 text-sm font-medium leading-tight text-admin-fg">{banner.title}</p>
+                    <p className="line-clamp-1 text-xs text-admin-muted">
                       {banner.is_active ? "Aktif" : "Nonaktif"} · urutan {position + 1}
                       {banner.cta_label ? ` · CTA: ${banner.cta_label}` : ""}
                     </p>
                     {toggleError && toggleError.id === banner.id && <p id={`banner-status-error-${banner.id}`} role="alert" className="mt-1 text-xs text-admin-danger">{toggleError.message}</p>}
                   </div>
                   <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
-                    <button disabled={busy || position === 0} onClick={() => void reorder(arrayMove(banners,position,position-1))} aria-label={`Naikkan ${banner.title}`} className="flex h-9 w-9 items-center justify-center rounded-lg bg-admin-subtle text-admin-muted disabled:opacity-25"><ArrowUp size={15} /></button>
-                    <button disabled={busy || position === banners.length-1} onClick={() => void reorder(arrayMove(banners,position,position+1))} aria-label={`Turunkan ${banner.title}`} className="flex h-9 w-9 items-center justify-center rounded-lg bg-admin-subtle text-admin-muted disabled:opacity-25"><ArrowDown size={15} /></button>
+                    <Button variant="outline" size="icon" disabled={busy || position === 0} onClick={() => void reorder(arrayMove(banners,position,position-1))} aria-label={`Naikkan ${banner.title}`}><ArrowUp aria-hidden="true" /></Button>
+                    <Button variant="outline" size="icon" disabled={busy || position === banners.length-1} onClick={() => void reorder(arrayMove(banners,position,position+1))} aria-label={`Turunkan ${banner.title}`}><ArrowDown aria-hidden="true" /></Button>
                     <AdminStatusSwitch checked={Boolean(banner.is_active)} label={`Aktifkan banner ${banner.title}`}
                       busy={toggling === banner.id} disabled={busy || !loaded}
                       describedBy={toggleError?.id === banner.id ? `banner-status-error-${banner.id}` : undefined}
                       onChange={() => void toggle(banner)} />
-                    <button
+                    <Button
+                      variant="outline"
+                      size="sm"
                       disabled={busy || !loaded}
                       onClick={() => {
                         setForm({ ...banner, is_active: Boolean(banner.is_active) });
                         setEditing(banner.id ?? null);
                       }}
-                      className="inline-flex h-8 items-center gap-1 rounded-md bg-admin-primary px-3 text-xs font-bold text-admin-inverse hover:bg-admin-subtle transition"
                     >
-                      <IosIcon name="edit" size={12} tint="black" /> Edit
-                    </button>
-                    <button
+                      <Pencil aria-hidden="true" /> Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
                       disabled={busy || !loaded}
                       onClick={() => setDeleteTarget(banner)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-red-500 text-admin-fg hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition"
+                      className="text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger"
                       aria-label={`Hapus ${banner.title}`}
                       title="Hapus banner"
                     >
-                      <IosIcon name="trash" size={16} tint="white" />
-                    </button>
+                      <Trash2 aria-hidden="true" />
+                    </Button>
                   </div>
                 </SortableBannerRow>
               ))}
             </div>
             </SortableContext>
-            <DragOverlay>{dragId !== null && <div className="rounded-xl border border-admin-accent/50 bg-admin-card p-4 text-sm font-semibold text-admin-fg shadow-2xl">{banners.find(b => b.id === dragId)?.title}</div>}</DragOverlay>
+            <DragOverlay>{dragId !== null && <div className="rounded-md border border-admin-border bg-admin-card p-4 text-sm font-medium text-admin-fg shadow-lg">{banners.find(b => b.id === dragId)?.title}</div>}</DragOverlay>
             </DndContext>
           )}
-        </div>
+        </Card>
       </div>
 
       <ConfirmDialog
@@ -381,8 +360,8 @@ export function BannerManager() {
 
 function SortableBannerRow({id,title,disabled,children}: {id:number;title:string;disabled:boolean;children:ReactNode}) {
   const {attributes,listeners,setNodeRef,transform,transition,isDragging} = useSortable({id,disabled});
-  return <div ref={setNodeRef} style={{transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.3:1}} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-admin-subtle">
-    <button {...attributes} {...listeners} disabled={disabled} aria-label={`Geser urutan ${title}`} className="flex h-11 w-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-admin-muted hover:bg-admin-subtle focus-visible:ring-2 focus-visible:ring-admin-accent active:cursor-grabbing"><GripVertical size={17} /></button>
+  return <div ref={setNodeRef} style={{transform:CSS.Transform.toString(transform),transition,opacity:isDragging?0.3:1}} className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-admin-subtle/50">
+    <Button variant="ghost" size="icon" {...attributes} {...listeners} disabled={disabled} aria-label={`Geser urutan ${title}`} className="h-10 w-7 cursor-grab touch-none text-admin-muted active:cursor-grabbing"><GripVertical aria-hidden="true" /></Button>
     {children}
   </div>;
 }

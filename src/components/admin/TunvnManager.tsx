@@ -199,7 +199,7 @@ export function TunvnManager() {
     {!loading && tab === "ringkas" && <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Status TUNVN">
         {stats.map((stat) => <Card key={stat.label}>
-          <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-[0.08em]">{stat.label}</CardDescription></CardHeader>
+          <CardHeader className="p-4 pb-2"><CardDescription className="text-sm">{stat.label}</CardDescription></CardHeader>
           <CardContent className="p-4 pt-0">
             <p className={`text-2xl font-semibold tabular-nums ${stat.tone ?? "text-admin-fg"}`}>{stat.value}</p>
             {stat.hint && <p className="mt-1 text-xs text-admin-muted">{stat.hint}</p>}

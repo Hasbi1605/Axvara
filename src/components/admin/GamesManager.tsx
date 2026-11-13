@@ -131,7 +131,7 @@ export function GamesManager() {
 
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Status sinkron Games">
       {stats.map((stat) => <Card key={stat.label}>
-        <CardHeader className="p-4 pb-2"><CardTitle className="text-xs font-medium uppercase tracking-[0.08em] text-admin-muted">{stat.label}</CardTitle></CardHeader>
+        <CardHeader className="p-4 pb-2"><CardTitle className="text-sm font-medium text-admin-muted">{stat.label}</CardTitle></CardHeader>
         <CardContent className="p-4 pt-0">
           <p className={`text-2xl font-semibold tabular-nums ${stat.tone ?? "text-admin-fg"}`}>{stat.value}</p>
           {stat.hint && <p className="mt-1 text-xs text-admin-muted">{stat.hint}</p>}

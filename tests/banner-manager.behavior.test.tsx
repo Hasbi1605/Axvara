@@ -32,7 +32,7 @@ it("uses a partial switch request, locks pending writes and synchronizes the uns
   expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ is_active: true });
   resolveToggle({ ok: true, json: async () => ({ banner: { ...banner, is_active: 1 } }) });
   await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
-  expect((screen.getByRole("checkbox", { name: "Aktif di storefront" }) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByRole("checkbox", { name: "Aktif di storefront" }).getAttribute("aria-checked")).toBe("true");
   fireEvent.click(screen.getByRole("button", { name: /Simpan perubahan$/ }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
   expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toMatchObject({ body: "Unsaved content", is_active: true });
@@ -63,7 +63,7 @@ it('moves a row with the full expected list and keeps content edits from sending
 it('reloads authoritative order on conflict and exposes the error',async()=>{
  const list=[{...banner,id:1,title:'First',sort_order:0},{...banner,id:2,title:'Second',sort_order:1}];
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>url==='/api/banners/reorder'?Response.json({error:'Daftar berubah'},{status:409}):Response.json({banners:list})));
- render(<BannerManager/>);fireEvent.click(await screen.findByRole('button',{name:'Naikkan Second'}));expect(await screen.findByRole('alert')).toHaveProperty('textContent','Daftar berubah ');expect(screen.getAllByRole('button',{name:/Geser urutan/}).map(b=>b.getAttribute('aria-label'))).toEqual(['Geser urutan First','Geser urutan Second']);
+ render(<BannerManager/>);fireEvent.click(await screen.findByRole('button',{name:'Naikkan Second'}));expect(await screen.findByRole('alert')).toHaveProperty('textContent','Daftar berubah');expect(screen.getAllByRole('button',{name:/Geser urutan/}).map(b=>b.getAttribute('aria-label'))).toEqual(['Geser urutan First','Geser urutan Second']);
 });
 it('shared settings cannot be saved before loading and are independent from content fields',async()=>{
  const config={delay_ms:1500,interval_ms:6000,autoplay:true,max_show_per_session:1};const fetcher=vi.fn(async(url:string,options?:RequestInit)=>url==='/api/banners/settings'?Response.json({settings:JSON.parse(String(options?.body))}):Response.json({banners:[banner],settings:config}));vi.stubGlobal('fetch',fetcher);

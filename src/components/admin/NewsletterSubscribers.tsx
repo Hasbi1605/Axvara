@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IosIcon } from "@/components/admin/AdminIcon";
+import { Search } from "lucide-react";
 import { Spinner } from "@/components/ui/Loading";
 import { formatWibDateTime } from "@/lib/utils";
+import { Badge, Button, Card, Input } from "./ui";
 
 type Subscriber = { id: number; email: string; status: string; source: string; created_at: string };
 
@@ -32,16 +33,21 @@ export function NewsletterSubscribers() {
   const filtered = useMemo(() => subscribers.filter((subscriber) => subscriber.email.toLowerCase().includes(query.trim().toLowerCase())), [query, subscribers]);
 
   return (
-    <section className="mt-4 admin-surface rounded-xl overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
-        <div className="min-w-0"><h2 className="text-sm font-semibold text-admin-fg">Pelanggan Email</h2><p className="text-xs text-admin-muted">Alamat yang dikirim melalui form “Tetap update” di footer.</p></div>
-        <span className="ml-auto rounded-md bg-admin-subtle px-3 py-1 text-xs text-admin-muted">{subscribers.length} email</span>
+    <Card className="mt-4 overflow-hidden">
+      <div className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-6">
+        <div className="min-w-0"><h2 className="text-base font-semibold text-admin-fg">Pelanggan Email</h2><p className="text-sm text-admin-muted">Alamat yang dikirim melalui form “Tetap update” di footer.</p></div>
+        <Badge variant="secondary" className="ml-auto">{subscribers.length} email</Badge>
       </div>
-      <div className="border-b border-admin-border p-4 sm:px-5"><div className="relative max-w-[420px]"><span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60"><IosIcon name="search" size={14} tint="white" /></span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari email…" className="h-10 w-full rounded-md border border-admin-border bg-admin-subtle pl-10 pr-4 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/40 focus:outline-none" /></div></div>
-      {error ? <div className="p-8 text-center"><p className="text-sm text-admin-danger">{error}</p><button type="button" onClick={() => void load()} className="mt-3 text-sm font-semibold text-admin-accent">Coba lagi</button></div>
+      <div className="border-b border-admin-border p-4 sm:px-6">
+        <div className="relative w-full sm:w-72">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-admin-muted" aria-hidden="true" />
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari email…" aria-label="Cari email" className="pl-9" />
+        </div>
+      </div>
+      {error ? <div role="alert" className="m-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-admin-danger/25 bg-admin-danger/10 p-4 text-sm text-admin-danger"><p>{error}</p><Button variant="outline" size="sm" type="button" onClick={() => void load()}>Coba lagi</Button></div>
       : loading ? <div className="flex items-center justify-center gap-2 p-10 text-sm text-admin-muted"><Spinner size={18} /> Memuat email…</div>
       : filtered.length === 0 ? <p className="p-8 text-center text-sm text-admin-muted">{query ? "Email tidak ditemukan." : "Belum ada email yang masuk."}</p>
-      : <div className="divide-y divide-admin-border">{filtered.map((subscriber) => <div key={subscriber.id} className="flex flex-wrap items-center gap-3 px-4 py-3 transition hover:bg-admin-subtle sm:px-5"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-admin-fg">{subscriber.email}</p><p className="mt-0.5 text-xs text-admin-muted">Dari footer · {formatWibDateTime(subscriber.created_at) ?? "—"}</p></div><span className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${subscriber.status === "active" ? "border-emerald-500/20 bg-emerald-500/10 text-admin-success" : "border-admin-border bg-admin-subtle text-admin-muted"}`}>{subscriber.status === "active" ? "Aktif" : "Berhenti"}</span></div>)}</div>}
-    </section>
+      : <div className="divide-y divide-admin-border">{filtered.map((subscriber) => <div key={subscriber.id} className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-admin-subtle/50 sm:px-6"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-admin-fg">{subscriber.email}</p><p className="mt-0.5 text-xs text-admin-muted">Dari footer · {formatWibDateTime(subscriber.created_at) ?? "—"}</p></div><Badge variant={subscriber.status === "active" ? "success" : "secondary"}>{subscriber.status === "active" ? "Aktif" : "Berhenti"}</Badge></div>)}</div>}
+    </Card>
   );
 }

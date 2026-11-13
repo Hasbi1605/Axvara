@@ -1,5 +1,12 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Admin shadcn/ui13November2026 (implementasi lokal, menunggu publikasi CI): seluruh
+panel admin memakai primitive shadcn/ui di `src/components/admin/ui/` (Radix + cva +
+sonner + lucide), dialog/konfirmasi Radix dengan API lama, menu tema di header, dan
+guard `tests/admin-shadcn-ui.regression.test.ts` yang melarang kontrol HTML mentah/
+warna palet/hex/glyph di admin. Dependency baru tercatat di ARCHITECTURE bagian
+teratas; tanpa env/migrasi/perubahan API. Storefront tidak berubah.
+
 Panel admin terpadu13November2026 (implementasi lokal, menunggu publikasi CI): semua
 section admin memakai design system bergaya shadcn-admin dengan tema Terang/Gelap/
 Ikuti sistem (cookie `axvara-admin-theme`, layout `src/app/(shop)/admin/layout.tsx`,
