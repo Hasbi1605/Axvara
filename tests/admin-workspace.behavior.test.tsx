@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { AdminWorkspace, navigateWithDraftGuard, useAdminDraft } from "@/components/admin/AdminWorkspace";
+import { AdminWorkspace, AdminThemeMenu, navigateWithDraftGuard, useAdminDraft } from "@/components/admin/AdminWorkspace";
 import { Dialog } from "@/components/ui/Dialog";
 
 let pathname = "/admin";
@@ -38,26 +39,30 @@ it("blocks navigation during a write without offering destructive discard", () =
   expect(window.dispatchEvent(new Event("beforeunload", { cancelable: true }))).toBe(false);
 });
 
-it("scopes the theme to admin and persists only the validated select value", () => {
+it("scopes theme menus and their portals to admin, persisting a validated choice", async () => {
   history.replaceState(null, "", "/admin");
-  const { container } = render(<AdminWorkspace initialTheme="dark"><p>Admin</p></AdminWorkspace>);
-  fireEvent.change(screen.getByLabelText("Tema admin"), { target: { value: "light" } });
+  const { container } = render(<AdminWorkspace initialTheme="dark"><AdminThemeMenu /></AdminWorkspace>);
+  await userEvent.click(screen.getByRole("button", { name: "Tema admin" }));
+  expect(screen.getByRole("menu").closest(".admin-theme")).toBe(container.firstElementChild);
+  await userEvent.click(screen.getByRole("menuitemradio", { name: "Terang" }));
   expect(container.firstElementChild?.getAttribute("data-admin-theme")).toBe("light");
   expect(document.cookie).toContain("axvara-admin-theme=light");
   expect(document.documentElement.hasAttribute("data-admin-theme")).toBe(false);
 });
 
-it("native modal honours busy cancel and restores scroll/focus on unmount", () => {
+it("Radix modal honours busy Escape and restores scroll/focus on unmount", async () => {
   const button = document.createElement("button"); document.body.append(button); button.focus();
   const close = vi.fn();
-  const { unmount, rerender } = render(<Dialog title="Editor" onClose={close} busy><button>Tutup</button></Dialog>);
-  expect(document.body.style.overflow).toBe("hidden");
-  fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+  const view = (busy: boolean) => <AdminWorkspace><Dialog title="Editor" onClose={close} busy={busy}><button>Tutup</button></Dialog></AdminWorkspace>;
+  const { unmount, rerender } = render(view(true));
+  expect(document.body.hasAttribute("data-scroll-locked")).toBe(true);
+  expect(screen.getByRole("dialog").getAttribute("aria-modal")).toBe("true");
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   expect(close).not.toHaveBeenCalled();
-  rerender(<Dialog title="Editor" onClose={close}><button>Tutup</button></Dialog>);
-  fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+  rerender(view(false));
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   expect(close).toHaveBeenCalledOnce();
-  unmount(); expect(document.body.style.overflow).not.toBe("hidden"); expect(document.activeElement).toBe(button); button.remove();
+  unmount(); expect(document.body.hasAttribute("data-scroll-locked")).toBe(false); await waitFor(() => expect(document.activeElement).toBe(button)); button.remove();
 });
 
 it("leaves the storefront checkout on /admin/payments/test outside the admin theme", () => {

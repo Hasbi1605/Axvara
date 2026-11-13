@@ -2,6 +2,7 @@
 
 import { Search, ShoppingBag, Zap, Shield, QrCode, Wallet, Percent, Crown, Star, Package, LayoutDashboard, ClipboardList, Tags, Newspaper, Image, Bot, Menu, ExternalLink, LogOut, Pencil, Trash2, X, Plus, Minus, ChevronLeft, ChevronRight, ChevronDown, ArrowRight, Send, ArrowLeft, Landmark, Clock, Copy, CreditCard, House, Upload, Link, Settings, MessageSquare, Check, Globe, Mail, RefreshCw, Download, Info, BookOpen, Circle, type LucideIcon } from "lucide-react";
 import type { IosIconName } from "@/components/ui/IosIcon";
+import { Badge as UiBadge } from "./ui/badge";
 export { CATEGORY_ICON_OPTIONS, categoryIcon, resolveCategoryIconName, BRAND_TINTS } from "@/components/ui/IosIcon";
 export type { IosIconName } from "@/components/ui/IosIcon";
 
@@ -12,7 +13,7 @@ export function IosIcon({ name, size = 18, className, alt }: { name: IosIconName
   return <Icon size={size} strokeWidth={1.7} className={className} aria-hidden={!alt} aria-label={alt || undefined} role={alt ? "img" : undefined} />;
 }
 
-function Badge({ children, tone = "text-admin-muted" }: { children: React.ReactNode; tone?: string }) { return <span className={`inline-flex shrink-0 items-center rounded-md border border-current/20 bg-current/[0.025] px-2 py-1 text-xs font-medium ${tone}`}>{children}</span>; }
+function Badge({ children, tone = "text-admin-muted" }: { children: React.ReactNode; tone?: string }) { return <UiBadge variant="outline" className={tone}>{children}</UiBadge>; }
 export function ChannelBadge({ channel }: { channel: string }) { return <Badge>{({ web: "Web", telegram: "Telegram", whatsapp: "WhatsApp" } as Record<string, string>)[channel] ?? channel}</Badge>; }
 export function StatusBadge({ status }: { status: string }) { return <Badge tone={status === "lunas" ? "text-admin-success" : status === "pending" ? "text-admin-warning" : status === "dibatalkan" ? "text-admin-danger" : undefined}>{status}</Badge>; }
 export function MethodBadge({ method }: { method: string }) { return <Badge>{method.replace(/^nowpayments:/, "Crypto · ").replace(/^sekalipay_gateway:/, "Gateway · ")}</Badge>; }

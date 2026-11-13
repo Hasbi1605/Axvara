@@ -3,7 +3,8 @@
 // tests/variant-copy-editor.behavior.test.tsx — Editor S&K + cara aktivasi
 // per varian di panel admin (migrasi 0041) dan penandanya di daftar produk.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { render } from "./setup/admin-render";
 import { ToastProvider } from "@/components/ui/Toast";
 import { VariantCopyEditor } from "@/components/admin/sections/VariantCopyEditor";
 import { ProductsSection } from "@/components/admin/sections/ProductsSection";
@@ -238,11 +239,11 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     expect(screen.getByRole("button", { name: /Simpan Produk$/ })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("tab", { name: "Foto" }));
     fireEvent.click(screen.getByRole("button", { name: "Tutup editor produk" }));
-    expect(screen.getByRole("dialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
-    fireEvent(screen.getByRole("dialog", { name: "Edit Produk" }), new Event("cancel", { cancelable: true }));
-    expect(screen.getByRole("dialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
+    expect(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Edit Produk" }), { key: "Escape" });
+    expect(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
     fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", "Draft belum disimpan");
     fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));

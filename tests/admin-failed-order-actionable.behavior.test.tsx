@@ -6,7 +6,8 @@
 // Sebelum perbaikan, order seperti ini adalah jalan buntu total: pembeli sudah
 // bayar, pengiriman gagal permanen, dan admin tidak punya satu pun tombol.
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { render } from "./setup/admin-render";
 import AdminPage from "@/app/(shop)/admin/page";
 import { ToastProvider } from "@/components/ui/Toast";
 

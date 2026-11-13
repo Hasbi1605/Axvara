@@ -12,6 +12,7 @@
 // 4. API markup mengembalikan variant_status + total; API orders total + page.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { WarungRebahanManager } from "@/components/admin/WarungRebahanManager";
 import { SekalipayManager } from "@/components/admin/SekalipayManager";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -59,18 +60,18 @@ describe("tab dalam-halaman WR", () => {
     expect(hit("/warung/orders"), "antrean tidak fetch sebelum dibuka").toBe(0);
     expect(hit("/warung/markup"), "markup tidak fetch sebelum dibuka").toBe(0);
 
-    fireEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(hit("/warung/orders"), "buka Antrean = 1 fetch").toBe(1);
 
-    fireEvent.click(screen.getByRole("tab", { name: /^Markup/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Markup/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(hit("/warung/markup"), "buka Markup = 1 fetch").toBe(1);
 
     // Cache: bolak-balik tidak refetch.
-    fireEvent.click(screen.getByRole("tab", { name: /Ringkas/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Ringkas/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-    fireEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(hit("/warung/orders"), "cache antrean").toBe(1);
   });
@@ -79,7 +80,7 @@ describe("tab dalam-halaman WR", () => {
     stubSupplierApi();
     render(<ToastProvider><WarungRebahanManager /></ToastProvider>);
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-    fireEvent.click(screen.getByRole("tab", { name: /^Markup/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Markup/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
     // Default Live: hanya V Live.
@@ -118,12 +119,12 @@ describe("tab dalam-halaman SK", () => {
     expect(hit("/sekalipay/transactions"), "transaksi lazy (tab Audit)").toBe(0);
     expect(hit("/sekalipay/locks"), "lock lazy (tab Alat)").toBe(0);
 
-    fireEvent.click(screen.getByRole("tab", { name: /Audit SK/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Audit SK/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(hit("/sekalipay/mutations"), "buka Audit = fetch mutasi").toBe(1);
     expect(hit("/sekalipay/transactions"), "buka Audit = fetch transaksi").toBe(1);
 
-    fireEvent.click(screen.getByRole("tab", { name: /^Alat/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Alat/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(hit("/sekalipay/locks"), "buka Alat = fetch lock").toBe(1);
   });
@@ -134,7 +135,7 @@ describe("tab dalam-halaman SK", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     // Ringkas: tidak ada form sandbox.
     expect(screen.queryByPlaceholderText("product_id")).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(screen.getByPlaceholderText("product_id")).toBeTruthy();
   });

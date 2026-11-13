@@ -6,7 +6,8 @@
 // field bulk_pricing yang DIHILANGKAN dipertahankan server, disabled
 // mempertahankan tier, threshold boleh sama dengan Min. beli.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { render } from "./setup/admin-render";
 import VariantEditor from "@/components/admin/VariantEditor";
 import { bulkDraftFromApi, validateBulkDraft, type BulkContext, type BulkDraft } from "@/components/admin/BulkTierEditor";
 import { validateBulkPricing } from "@/lib/bulk-pricing";
@@ -287,14 +288,14 @@ describe("BulkTierEditor di VariantEditor", () => {
     await ready();
     open();
     fireEvent.click(screen.getByRole("button", { name: "Hapus tingkat 50 pcs" }));
-    expect(screen.queryByRole("dialog", { name: "Hapus tingkat terakhir?" })).toBeNull();
+    expect(screen.queryByRole("alertdialog", { name: "Hapus tingkat terakhir?" })).toBeNull();
     expect(document.activeElement?.getAttribute("aria-label")).toBe("Hapus tingkat 10 pcs");
     fireEvent.click(screen.getByRole("button", { name: "Hapus tingkat 10 pcs" }));
-    const dialog = screen.getByRole("dialog", { name: "Hapus tingkat terakhir?" });
+    const dialog = screen.getByRole("alertdialog", { name: "Hapus tingkat terakhir?" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Batal" }));
     expect(screen.getAllByLabelText(/^Min\. jumlah tingkat/)).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Hapus tingkat 10 pcs" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Hapus tingkat terakhir?" })).getByRole("button", { name: "Hapus tingkat" }));
+    fireEvent.click(within(screen.getByRole("alertdialog", { name: "Hapus tingkat terakhir?" })).getByRole("button", { name: "Hapus tingkat" }));
     expect(screen.queryAllByLabelText(/^Min\. jumlah tingkat/)).toHaveLength(0);
     expect(document.activeElement).toBe(document.getElementById("bulk-11-add"));
     // enabled + 0 tier => ditolak klien

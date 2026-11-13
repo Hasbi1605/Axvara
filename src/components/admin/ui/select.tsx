@@ -1,0 +1,27 @@
+"use client";
+import * as React from "react";
+import * as Primitive from "@radix-ui/react-select";
+import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useAdminPortal } from "./portal";
+export const Select = Primitive.Root;
+export const SelectGroup = Primitive.Group;
+export const SelectValue = Primitive.Value;
+export const SelectTrigger = React.forwardRef<React.ElementRef<typeof Primitive.Trigger>, React.ComponentPropsWithoutRef<typeof Primitive.Trigger>>(({ className, children, ...props }, ref) => <Primitive.Trigger ref={ref} className={cn("flex h-9 w-full items-center justify-between gap-2 rounded-md border border-admin-input bg-admin-card px-3 py-2 text-sm text-admin-fg focus:outline-none focus:ring-2 focus:ring-admin-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate", className)} {...props}>{children}<Primitive.Icon asChild><ChevronDown className="size-4 opacity-50" /></Primitive.Icon></Primitive.Trigger>);
+SelectTrigger.displayName = "SelectTrigger";
+export const SelectScrollUpButton = React.forwardRef<React.ElementRef<typeof Primitive.ScrollUpButton>, React.ComponentPropsWithoutRef<typeof Primitive.ScrollUpButton>>(({ className, ...props }, ref) => <Primitive.ScrollUpButton ref={ref} className={cn("flex items-center justify-center py-1", className)} {...props}><ChevronUp className="size-4" /></Primitive.ScrollUpButton>);
+SelectScrollUpButton.displayName = "SelectScrollUpButton";
+export const SelectScrollDownButton = React.forwardRef<React.ElementRef<typeof Primitive.ScrollDownButton>, React.ComponentPropsWithoutRef<typeof Primitive.ScrollDownButton>>(({ className, ...props }, ref) => <Primitive.ScrollDownButton ref={ref} className={cn("flex items-center justify-center py-1", className)} {...props}><ChevronDown className="size-4" /></Primitive.ScrollDownButton>);
+SelectScrollDownButton.displayName = "SelectScrollDownButton";
+export const SelectContent = React.forwardRef<React.ElementRef<typeof Primitive.Content>, React.ComponentPropsWithoutRef<typeof Primitive.Content>>(({ className, children, position = "popper", ...props }, ref) => {
+  const container = useAdminPortal();
+  if (!container) return null;
+  return <Primitive.Portal container={container}><Primitive.Content ref={ref} position={position} className={cn("relative z-[60] max-h-[var(--radix-select-content-available-height)] min-w-[8rem] overflow-hidden rounded-md border border-admin-border bg-admin-card text-admin-fg shadow-md animate-in fade-in-0 zoom-in-95", className)} {...props}><SelectScrollUpButton /><Primitive.Viewport className="min-w-[var(--radix-select-trigger-width)] p-1">{children}</Primitive.Viewport><SelectScrollDownButton /></Primitive.Content></Primitive.Portal>;
+});
+SelectContent.displayName = "SelectContent";
+export const SelectLabel = React.forwardRef<React.ElementRef<typeof Primitive.Label>, React.ComponentPropsWithoutRef<typeof Primitive.Label>>(({ className, ...props }, ref) => <Primitive.Label ref={ref} className={cn("px-2 py-1.5 text-sm font-semibold", className)} {...props} />);
+SelectLabel.displayName = "SelectLabel";
+export const SelectItem = React.forwardRef<React.ElementRef<typeof Primitive.Item>, React.ComponentPropsWithoutRef<typeof Primitive.Item>>(({ className, children, ...props }, ref) => <Primitive.Item ref={ref} className={cn("relative flex min-h-9 w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-admin-subtle focus:text-admin-fg data-[disabled]:pointer-events-none data-[disabled]:opacity-50", className)} {...props}><span className="absolute left-2 flex size-4 items-center justify-center"><Primitive.ItemIndicator><Check className="size-4" /></Primitive.ItemIndicator></span><Primitive.ItemText>{children}</Primitive.ItemText></Primitive.Item>);
+SelectItem.displayName = "SelectItem";
+export const SelectSeparator = React.forwardRef<React.ElementRef<typeof Primitive.Separator>, React.ComponentPropsWithoutRef<typeof Primitive.Separator>>(({ className, ...props }, ref) => <Primitive.Separator ref={ref} className={cn("-mx-1 my-1 h-px bg-admin-border", className)} {...props} />);
+SelectSeparator.displayName = "SelectSeparator";

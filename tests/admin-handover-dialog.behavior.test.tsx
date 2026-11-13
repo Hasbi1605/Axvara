@@ -5,7 +5,8 @@
 // manual" hanya meminta catatan audit; isi produk tidak pernah sampai ke
 // pembeli lewat sistem.
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { render } from "./setup/admin-render";
 import AdminPage from "@/app/(shop)/admin/page";
 import { ToastProvider } from "@/components/ui/Toast";
 

@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ToastProvider } from "@/components/ui/Toast";
+import { Sun, Moon, Monitor } from "lucide-react";
+import { AdminPortalContext } from "./ui/portal";
+import { Button } from "./ui/button";
+import { TooltipProvider } from "./ui/tooltip";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator } from "./ui/dropdown-menu";
 import "./admin.css";
 
 type Theme = "light" | "dark" | "system";
+const ThemeContext = createContext<{ theme: Theme; changeTheme: (theme: Theme) => void }>({ theme: "system", changeTheme: () => {} });
+export function AdminThemeMenu() {
+  const { theme, changeTheme } = useContext(ThemeContext);
+  return <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label="Tema admin">{theme === "dark" ? <Moon /> : theme === "light" ? <Sun /> : <Monitor />}</Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Tema admin</DropdownMenuLabel><DropdownMenuSeparator /><DropdownMenuRadioGroup value={theme} onValueChange={value => { if (value === "light" || value === "dark" || value === "system") changeTheme(value); }}><DropdownMenuRadioItem value="light"><Sun />Terang</DropdownMenuRadioItem><DropdownMenuRadioItem value="dark"><Moon />Gelap</DropdownMenuRadioItem><DropdownMenuRadioItem value="system"><Monitor />Ikuti sistem</DropdownMenuRadioItem></DropdownMenuRadioGroup></DropdownMenuContent></DropdownMenu>;
+}
 const drafts = new Set<symbol>();
 const writes = new Set<symbol>();
 const NAVIGATE = "axvara:admin-navigate";
@@ -32,6 +42,7 @@ export function useAdminDraft(dirty: boolean, busy = false) {
 
 export function AdminWorkspace({ children, initialTheme = "system" }: { children: ReactNode; initialTheme?: Theme }) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [portal, setPortal] = useState<HTMLDivElement | null>(null);
   const [pending, setPending] = useState<(() => void) | null>(null);
   const pathname = usePathname();
   useEffect(() => {
@@ -68,13 +79,14 @@ export function AdminWorkspace({ children, initialTheme = "system" }: { children
   }, []);
   // Tema/toast admin hanya untuk panel `/admin`; `/admin/payments/test` merender checkout storefront asli.
   if (pathname !== "/admin") return <>{children}</>;
-  return <div className="admin-theme" data-admin-theme={theme} onClickCapture={event => {
+  return <ThemeContext.Provider value={{ theme, changeTheme: value => { setTheme(value); document.cookie = `axvara-admin-theme=${value}; Path=/admin; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; } }}><div ref={setPortal} className="admin-theme" data-admin-theme={theme} onClickCapture={event => {
     const link = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
     if (!drafts.size || !link || link.target === "_blank" || link.hasAttribute("download") || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.href === window.location.href || link.getAttribute("href")?.startsWith("#")) return;
     event.preventDefault(); event.stopPropagation(); navigateWithDraftGuard(() => { drafts.clear(); window.location.assign(link.href); });
   }}>
-    <div className="admin-appearance"><label className="sr-only" htmlFor="admin-theme">Tema admin</label><select id="admin-theme" aria-label="Tema admin" value={theme} onChange={event => { const value = event.target.value as Theme; setTheme(value); document.cookie = `axvara-admin-theme=${value}; Path=/admin; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; }}><option value="system">Ikuti sistem</option><option value="light">Terang</option><option value="dark">Gelap</option></select></div>
+    <AdminPortalContext.Provider value={portal}><TooltipProvider delayDuration={250}>
     <ToastProvider admin>{children}</ToastProvider>
     <ConfirmDialog open={!!pending} title="Buang perubahan?" description="Ada perubahan yang belum disimpan. Tetap di sini untuk melanjutkan, atau buang perubahan dan pindah halaman." confirmLabel="Buang perubahan" cancelLabel="Lanjut mengedit" onClose={() => setPending(null)} onConfirm={() => { const proceed = pending; setPending(null); proceed?.(); }} />
-  </div>;
+    </TooltipProvider></AdminPortalContext.Provider>
+  </div></ThemeContext.Provider>;
 }

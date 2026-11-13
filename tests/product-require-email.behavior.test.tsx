@@ -99,7 +99,8 @@ describe("Wajib email pembeli: centang tersimpan dan termuat ulang", () => {
 // mati), lalu hasil muat menimpa klik admin dan Simpan menulis 1 lagi.
 describe("Wajib email pembeli: centang dikunci sampai nilai tersimpan termuat", () => {
   async function renderModal(props: { editing: boolean; loadingVariants: boolean; requireEmail?: boolean }) {
-    const { render, screen } = await import("@testing-library/react");
+    const { screen } = await import("@testing-library/react");
+    const { render } = await import("./setup/admin-render");
     const { ProductEditorModal } = await import("@/components/admin/ProductEditorModal");
     const { ToastProvider } = await import("@/components/ui/Toast");
     const noop = vi.fn();

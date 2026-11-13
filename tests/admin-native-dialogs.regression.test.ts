@@ -31,14 +31,14 @@ describe("dialog admin", () => {
     expect(read(file)).toContain("<ConfirmDialog");
   });
 
-  it("modal kategori memakai native modal untuk fokus/inert, Escape dan scroll-lock", () => {
+  it("modal kategori delegates focus/inert and scroll-lock to Radix with busy guards", () => {
     const source = read("src/components/admin/CategoryManager.tsx");
     expect(source).toContain('<Dialog title={editing ? "Edit Kategori" : "Kategori Baru"}');
     const primitive = read("src/components/ui/Dialog.tsx");
-    expect(primitive).toContain("<dialog");
-    expect(primitive).toContain("dialog.showModal()");
-    expect(primitive).toContain('aria-modal="true"');
-    expect(primitive).toContain("onCancel=");
-    expect(primitive).toContain('document.body.style.overflow = "hidden"');
+    expect(primitive).toContain("<DialogContent");
+    expect(primitive).toContain("onEscapeKeyDown=");
+    expect(primitive).toContain("onInteractOutside=");
+    expect(primitive).toContain("previousFocus.current.focus()");
+    expect(read("src/components/admin/ui/dialog.tsx")).toContain('from "@radix-ui/react-dialog"');
   });
 });

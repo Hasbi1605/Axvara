@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { render } from "./setup/admin-render";
 import { PediaManager } from "@/components/admin/PediaManager";
 
 const product = { id: 1, name: "Followers Instagram", slug: "followers-instagram", platform: "instagram", metric: "followers", target_kind: "profile", tagline: "Ramai", description_md: "Deskripsi", checklist_json: '[{"id":"public","label":"Publik","help":"Bantuan"}]', packages_json: "[100,250]", step: 10, sort_order: 0, is_active: 1, is_featured: 0 };
@@ -104,12 +105,12 @@ it.each(["products", "services", "orders", "settings"])("%s exposes failed reads
 
 it("settings bounds are read-only and save only six unchanged price-group fields", async () => {
   render(<PediaManager initialTab="settings" />); await screen.findByLabelText("Markup G1 (%)"); expect(screen.queryByRole("spinbutton", { name: /Minimum order|Ambang saldo/ })).toBeNull(); expect(screen.getAllByText("dari konfigurasi server")).toHaveLength(2);
-  fireEvent.submit(screen.getByRole("form", { name: "Pengaturan Pedia" })); fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Simpan" })); await screen.findByText("Pengaturan tersimpan.");
+  fireEvent.submit(screen.getByRole("form", { name: "Pengaturan Pedia" })); fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Simpan" })); await screen.findByText("Pengaturan tersimpan.");
   const { pedia_min_order_rp: _min, pedia_balance_alert_rp: _alert, ...prices } = settings; void _min; void _alert; expect(writes[0].body).toEqual(prices);
 });
 
 it("settings failure retains the confirmation", async () => {
-  failWrite = true; render(<PediaManager initialTab="settings" />); await screen.findByLabelText("Markup G1 (%)"); fireEvent.submit(screen.getByRole("form", { name: "Pengaturan Pedia" })); fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Simpan" })); await screen.findByRole("alert"); expect(screen.getByRole("dialog")).toBeTruthy(); expect(screen.queryByText("Pengaturan tersimpan.")).toBeNull();
+  failWrite = true; render(<PediaManager initialTab="settings" />); await screen.findByLabelText("Markup G1 (%)"); fireEvent.submit(screen.getByRole("form", { name: "Pengaturan Pedia" })); fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Simpan" })); await screen.findByRole("alert"); expect(screen.getByRole("alertdialog")).toBeTruthy(); expect(screen.queryByText("Pengaturan tersimpan.")).toBeNull();
 });
 
 it("empty settings do not expose a price form with invented defaults", async () => {

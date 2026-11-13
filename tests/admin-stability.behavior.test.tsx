@@ -16,6 +16,7 @@
 //     login walau sesinya masih sah.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import AdminPage from "@/app/(shop)/admin/page";
 import { WarungRebahanManager } from "@/components/admin/WarungRebahanManager";
 import { useAdminAuth } from "@/components/admin/useAdminAuth";
@@ -51,13 +52,13 @@ describe("identitas toast stabil: loader gagal tidak memicu fetch berulang", () 
     // difetch sebelum tab-nya dibuka. Buka tab Antrean = tepat 1 fetch.
     expect(counts["/api/admin/warung/orders"] ?? 0, "antrean lazy: tidak fetch sebelum tab dibuka").toBe(0);
     expect(counts["/api/admin/warung/markup"] ?? 0, "markup lazy: tidak fetch sebelum tab dibuka").toBe(0);
-    fireEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(counts["/api/admin/warung/orders"], "buka tab Antrean = 1 fetch").toBe(1);
     // Ganti tab bolak-balik = cache, bukan refetch.
-    fireEvent.click(screen.getByRole("tab", { name: /Ringkas/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Ringkas/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-    fireEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Antrean/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     expect(counts["/api/admin/warung/orders"], "tab cache: tidak refetch").toBe(1);
   });

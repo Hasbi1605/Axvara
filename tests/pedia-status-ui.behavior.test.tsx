@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // Pedia status UI: buyer page lifecycle/counts/ETA/freshness, admin Orders rows
 // and Market entry-point redirects. Fixture endpoints only; no production calls.
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { render } from "./setup/admin-render";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const route = vi.hoisted(() => ({ code: "AXP-20261102-2C24A247" }));

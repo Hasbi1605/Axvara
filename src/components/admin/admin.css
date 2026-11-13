@@ -4,6 +4,7 @@
   --admin-muted: 71 85 105; --admin-subtle: 241 245 249; --admin-border: 203 213 225;
   --admin-primary: 15 23 42; --admin-inverse: 255 255 255; --admin-accent: 14 116 144;
   --admin-success: 4 120 87; --admin-warning: 146 64 14; --admin-danger: 185 28 28; --admin-info: 29 78 216;
+  --admin-ring: 14 116 144; --admin-input: 203 213 225;
   color-scheme: light; color: rgb(var(--admin-fg)); background: rgb(var(--admin-bg));
   min-height: 100dvh; font-size: 14px; line-height: 1.5; isolation: isolate;
 }
@@ -12,6 +13,7 @@
   --admin-muted: 160 174 194; --admin-subtle: 28 37 57; --admin-border: 55 65 85;
   --admin-primary: 241 245 249; --admin-inverse: 8 12 30; --admin-accent: 0 229 255;
   --admin-success: 110 231 183; --admin-warning: 252 211 77; --admin-danger: 252 165 165; --admin-info: 147 197 253;
+  --admin-ring: 0 229 255; --admin-input: 55 65 85;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -20,12 +22,13 @@
     --admin-muted: 160 174 194; --admin-subtle: 28 37 57; --admin-border: 55 65 85;
     --admin-primary: 241 245 249; --admin-inverse: 8 12 30; --admin-accent: 0 229 255;
     --admin-success: 110 231 183; --admin-warning: 252 211 77; --admin-danger: 252 165 165; --admin-info: 147 197 253;
+    --admin-ring: 0 229 255; --admin-input: 55 65 85;
     color-scheme: dark;
   }
 }
 .admin-theme *, .admin-theme ::before, .admin-theme ::after { border-color: rgb(var(--admin-border)); }
 .admin-theme :is(button, input, select, textarea) { font-family: inherit; }
-.admin-theme :is(button, a, input, select, textarea, summary):focus-visible { outline: 2px solid rgb(var(--admin-accent)); outline-offset: 3px; box-shadow: none; }
+.admin-theme :focus-visible { outline: 2px solid rgb(var(--admin-ring)); outline-offset: 3px; box-shadow: none; }
 .admin-theme :is(button, select, summary) { cursor: pointer; }
 .admin-theme :is(button, input, select, textarea):disabled { cursor: not-allowed; }
 .admin-theme :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not(.admin-preview *) { color-scheme: inherit; background-color: rgb(var(--admin-card)); border-radius: .5rem; }
@@ -41,15 +44,9 @@
 .admin-theme :is(.admin-surface, .ax-glass, .ax-glass-card) { backdrop-filter: none; }
 .admin-theme [role="tablist"] { max-width: 100%; }
 .admin-theme [role="tab"] { white-space: nowrap; }
+.admin-theme :is([role="dialog"], [role="alertdialog"]):not([data-admin-sheet]) { --tw-enter-translate-x: var(--tw-translate-x); --tw-enter-translate-y: var(--tw-translate-y); --tw-exit-translate-x: var(--tw-translate-x); --tw-exit-translate-y: var(--tw-translate-y); }
 .admin-theme .admin-preview { --admin-fg: 241 245 249; color-scheme: dark; background: #080c1e; color: #f1f5ff; border-radius: .75rem; padding: 1rem; }
-.admin-appearance { position: fixed; z-index: 45; right: 1.25rem; top: .875rem; }
-.admin-appearance select { min-height: 32px; border: 1px solid rgb(var(--admin-border)); padding: .25rem .5rem; font-size: 12px; }
-.admin-dialog { position: fixed; margin: auto; max-width: calc(100vw - 2rem); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1.5rem; border: 1px solid rgb(var(--admin-border, 55 65 85)); border-radius: .75rem; background: rgb(var(--admin-card, 15 20 40)); color: rgb(var(--admin-fg, 241 245 249)); box-shadow: 0 24px 64px rgb(0 0 0 / .2); }
-.admin-dialog::backdrop { background: rgb(2 6 23 / .55); }
-.admin-theme .admin-toast { inset: auto auto 1rem 50%; margin: 0; border: 0; background: transparent; overflow: visible; }
-.admin-theme .admin-toast:popover-open { display: flex; }
-.admin-dialog.admin-drawer { margin: 0; height: 100dvh; max-height: 100dvh; max-width: 85vw; padding: 0; border: 0; border-radius: 0; }
 .admin-theme ::-webkit-scrollbar-track { background: rgb(var(--admin-bg)); }
 .admin-theme ::-webkit-scrollbar-thumb { background: rgb(var(--admin-border)); }
-@media (max-width: 639px) { .admin-theme :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { font-size: 16px; } .admin-appearance { right: .75rem; top: .75rem; } }
+@media (max-width: 639px) { .admin-theme :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { font-size: 16px; } }
 @media (prefers-reduced-motion: reduce) { .admin-theme *, .admin-theme ::before, .admin-theme ::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
