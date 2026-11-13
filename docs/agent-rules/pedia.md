@@ -19,6 +19,11 @@ menghidupkan kembali katalog otomatis/ProviderSMM dari catatan itu.
   snapshot VPS maju tanpa retry berulang; hapus cabang ini setelah VPS berhenti
   mengirim. Diff IndoSMM tidak berubah (validasi IDR/batas 100, checkpoint
   `pedia_indosmm_diff_*`, ack non-2xx pada tulis parsial).
+- **VPS 13 November 2026.** `PROVIDERSMM_API_KEY` di `/opt/axvara/wr-proxy/.env`
+  dikomentari (backup `.env.bak-psmm-20261113050941`), service restart, `/health`
+  kini `psmm:false`; log hanya loop diff IndoSMM 10 mnt + WR/SK 3 mnt. Kode psmm di
+  repo proxy BELUM dibersihkan (follow-up), jadi cabang 200-`ignored` di
+  `/api/supplier-sync` tetap dipertahankan sebagai fallback tanpa tulis D1.
 - **Skema 0117 tetap.** Kolom `managed`/`managed_snapshot_at` dipertahankan karena
   prod sudah menerapkan 0117, tetapi **inert sejak 13 November 2026** (tidak
   dibaca/ditulis jalur jual). Migrasi data ada di paket B2 di bawah.

@@ -3648,6 +3648,12 @@ Implementasi lokal; publikasi lewat CI. Bagian 12 November (16.10b/16.10c-bis) a
 - `/api/supplier-sync` membalas HTTP 200 `{ok:true, ignored:true}` untuk `source:"providersmm"` TANPA
   tulis D1 (sementara sampai VPS berhenti mengirim; hapus cabang sesudahnya). Diff IndoSMM tidak
   berubah: validasi IDR/batas 100, checkpoint `pedia_indosmm_diff_*`, ack non-2xx pada tulis parsial.
+- **VPS 13 November 2026 (owner-approved).** `PROVIDERSMM_API_KEY` di `.env` proxy
+  (`/opt/axvara/wr-proxy`) dikomentari (backup `.env.bak-psmm-20261113050941`), service restart;
+  `/health` = `psmm:false`, `indosmm/sekalipay/skg/dgf:true`; log pasca-restart hanya loop diff
+  IndoSMM 10 mnt + WR/SK 3 mnt, tanpa error; hanya polling baca yang sedang berjalan. Kode psmm di
+  repo proxy belum dibersihkan (follow-up), sehingga cabang 200-`ignored` receiver tetap dipertahankan
+  sebagai fallback tanpa tulis D1.
 - Skema 0117 (kolom `managed`/`managed_snapshot_at`) dipertahankan karena prod sudah menerapkannya,
   tetapi inert sejak 13 November; tidak ada migrasi baru. Pembersihan data/reaktivasi tier = paket terpisah.
 - Item order dengan `supplier` yang tidak dikenal build ini dirender generik dan tidak pernah dispatch
