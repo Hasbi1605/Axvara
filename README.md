@@ -1369,6 +1369,11 @@ Discovery dan transaksi produksi diaktifkan penuh pada 5 September 2026 untuk gr
 `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`,
 `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, `WHATSAPP_FULFILLMENT`, dan `PRODUCT_VARIANTS_READ` aktif.
 Pembayaran menerima QRIS dinamis DANA + SeaBank + e-wallet dengan intake bukti manual ke R2 privat.
+
+> **Koreksi 13 November 2026 (keputusan owner):** alur pembeli WhatsApp di atas adalah
+> snapshot historis. Pencarian, pemesanan/pembayaran, dan intake bukti manual WA
+> dipensiunkan di kode (bukan env); pesan lama dijawab arahan ke website/Telegram.
+> Yang berjalan: katalog digest/broadcast/welcome grup, event grup, outbox, `.d` admin.
 Token, nomor Device, webhook secret, dan GID disimpan sebagai Pages Secrets, tidak di repository.
 Unduhan lampiran webhook tidak membawa token gateway ke URL media, dibatasi 5 MB,
 dan diverifikasi sebagai gambar sebelum disimpan privat. Copy pembayaran memakai snapshot
@@ -1976,7 +1981,7 @@ supplier Digiflazz (`docs/agent-rules/digiflazz.md`). Backend inti memakai
 migrasi `0107_games_core.sql`, cron lite `games_catalog`/`games_orders`, dan webhook
 `POST /api/games/digiflazz/webhook`. Admin data memakai migrasi `0108_games_admin.sql`
 (`games_reference_prices`, override grup/urutan), tab **Games** di `/admin?section=games`,
-API `GET/PATCH /api/admin/games/products` + `POST .../enable-wave` (dry-run lalu konfirmasi).
+API `GET/PATCH /api/admin/games/products` (+ filter `sellable`, urutan `sort=sellable`); `POST .../enable-wave` DIHAPUS 13 November 2026.
 
 Cutover Sekalipay (12 November 2026, lokal, belum deploy): penjualan baru Games
 memakai katalog kategori `Game` Sekalipay, bukan empat game Digiflazz. Sumber data
@@ -1985,7 +1990,7 @@ home/detail/pencarian/sitemap membaca D1, field mengikuti kontrak varian terpili
 dan dispatch SK memakai `src/lib/games/sk-dispatch.ts` (ref stabil, sent-fence,
 tanpa POST kedua/fallback). Cron `games_catalog` tidak lagi memanggil price-list
 Digiflazz. Admin hanya mengelola varian SK; baris Digiflazz legacy dipertahankan
-untuk histori dan `enable-wave` dipensiunkan (410). Gate order baru
+untuk histori dan `enable-wave` sudah dihapus (13 November 2026). Gate order baru
 `GAMES_SK_ENABLED` belum diset, jadi tidak ada pembelian produksi dari perubahan ini.
 Verifikasi final terintegrasi 12 November 2026 (setelah fix regresi stok -1 dispatch):
 full suite serial parent `npx vitest run --run --maxWorkers=1` **438 file/5.923 tes lulus**

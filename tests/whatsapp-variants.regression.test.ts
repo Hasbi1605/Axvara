@@ -20,7 +20,7 @@ import {
   type VariantSummary,
 } from "@/lib/catalog";
 import * as waMsg from "@/lib/whatsapp/messages";
-import { isEnabled, preflightWhatsAppPayment } from "@/lib/feature-flags";
+import { isEnabled } from "@/lib/feature-flags";
 import {
   parseWhatsAppPayload,
   timingSafeEqual,
@@ -400,14 +400,15 @@ describe("Feature Flags", () => {
     process.env = { ...originalEnv };
   });
 
-  it("flags default to false when env vars not set", () => {
+  it("flags default to false when env vars not set", async () => {
     delete process.env.PRODUCT_VARIANTS_READ;
     delete process.env.WHATSAPP_ENABLED;
-    delete process.env.WHATSAPP_GROUP_PAYMENT;
 
     expect(isEnabled("PRODUCT_VARIANTS_READ")).toBe(false);
     expect(isEnabled("WHATSAPP_ENABLED")).toBe(false);
-    expect(isEnabled("WHATSAPP_GROUP_PAYMENT")).toBe(false);
+    // Alur pembeli WhatsApp dipensiunkan 13 Nov 2026: flag pembayaran/bukti
+    // tidak ada lagi, jadi tidak bisa dihidupkan lewat env.
+    expect("WHATSAPP_GROUP_PAYMENT" in (await import("@/lib/feature-flags")).flags).toBe(false);
   });
 
   it("flags evaluate to true when explicitly set to 'true'", () => {
@@ -418,45 +419,17 @@ describe("Feature Flags", () => {
     expect(isEnabled("WHATSAPP_ENABLED")).toBe(true);
   });
 
-  it("preflight payment detects missing payment methods", async () => {
-    const previousEnabled = process.env.DANA_QRIS_ENABLED;
-    const previousPayload = process.env.DANA_STATIC_QRIS;
-    const previousSecret = process.env.DANA_WEBHOOK_SECRET;
-    process.env.DANA_QRIS_ENABLED = "true";
-    process.env.DANA_STATIC_QRIS = "configured-for-test";
-    process.env.DANA_WEBHOOK_SECRET = "configured-for-test";
-    const mockEmpty = async () => [];
-    const emptyResult = await preflightWhatsAppPayment(mockEmpty);
-    expect(emptyResult.ok).toBe(false);
-    expect(emptyResult.missing).toHaveLength(3);
-
-    const mockComplete = async () => [
-      { id: "qris", is_active: 1 },
-      { id: "seabank", account_number: "123", account_name: "Test", is_active: 1 },
-      { id: "ewallet", account_number: "081", account_name: "Test", is_active: 1 },
-    ];
-    const completeResult = await preflightWhatsAppPayment(mockComplete);
-    expect(completeResult.ok).toBe(true);
-    expect(completeResult.missing).toHaveLength(0);
-    if (previousEnabled === undefined) delete process.env.DANA_QRIS_ENABLED;
-    else process.env.DANA_QRIS_ENABLED = previousEnabled;
-    if (previousPayload === undefined) delete process.env.DANA_STATIC_QRIS;
-    else process.env.DANA_STATIC_QRIS = previousPayload;
-    if (previousSecret === undefined) delete process.env.DANA_WEBHOOK_SECRET;
-    else process.env.DANA_WEBHOOK_SECRET = previousSecret;
-  });
-
-  it("runs payment-method preflight before a WhatsApp order is created", () => {
-    // Refactor PURE MOVE: handlePay (preflight + create order) pindah ke handler pembayaran;
-    // urutan preflight-sebelum-create tetap dipertahankan identik.
-    const route = fs.readFileSync(
-      path.join(process.cwd(), "src/lib/whatsapp/handlers/payment.ts"),
-      "utf8",
-    );
-    const preflightAt = route.indexOf("preflightWhatsAppPayment(queryAll, method)");
-    const createAt = route.indexOf("createPendingChannelOrder({");
-    expect(preflightAt).toBeGreaterThan(0);
-    expect(createAt).toBeGreaterThan(preflightAt);
+  it("WhatsApp buyer flows are retired in code, not behind env flags", () => {
+    // Keputusan owner 13 November 2026: pencarian, pemesanan/pembayaran, dan
+    // intake bukti manual WA hard off. Handler-nya dihapus dan webhook hanya
+    // menjawab satu arahan ke website/Telegram.
+    expect(fs.existsSync(path.join(process.cwd(), "src/lib/whatsapp/handlers/payment.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(process.cwd(), "src/lib/whatsapp/handlers/catalog.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(process.cwd(), "src/lib/whatsapp/handlers/proof.ts"))).toBe(false);
+    const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"), "utf8");
+    expect(route).toContain("buyerFlowsRetiredMessage");
+    expect(route).not.toContain("createPendingChannelOrder");
+    expect(route).not.toContain("preflightWhatsAppPayment");
   });
 });
 
@@ -788,20 +761,21 @@ describe("Outbound Baileys Reply with inboxId (P0.1)", () => {
     expect(route).toContain("readTextBody(request, MAX_BODY_SIZE)");
   });
 
-  it("handles .d before product search and only completes paid orders", () => {
+  it("handles .d before the retired buyer reply and only completes paid orders", () => {
     const route = fs.readFileSync(
       path.join(process.cwd(), "src/app/api/whatsapp/webhook/route.ts"),
       "utf8",
     );
     const adminCommandAt = route.indexOf('if (cmd === ".d" || cmd.startsWith(".d "))');
-    const productSearchAt = route.indexOf("// Product search");
+    const retiredReplyAt = route.indexOf("if (isRetiredBuyerIntent(");
     expect(adminCommandAt).toBeGreaterThan(0);
-    expect(adminCommandAt).toBeLessThan(productSearchAt);
-    expect(route.slice(adminCommandAt, productSearchAt)).toContain("admin_command_ignored");
+    expect(retiredReplyAt).toBeGreaterThan(adminCommandAt);
+    expect(route.slice(adminCommandAt, retiredReplyAt)).toContain("admin_command_ignored");
     expect(route).toContain("handleAdminDone");
     expect(route).toContain("isAdminMember(memberId)");
-    // Refactor PURE MOVE: guard status penyelesaian order pindah ke handler admin,
-    // sedangkan routing perintah `.d` (gate admin) tetap di route.ts.
+    // Alur beli (pencarian produk) sudah tidak ada di route; hanya arahan.
+    expect(route).not.toContain("handleProductSearch");
+    // Guard status penyelesaian order tetap di handler admin.
     const admin = fs.readFileSync(
       path.join(process.cwd(), "src/lib/whatsapp/handlers/admin.ts"),
       "utf8",

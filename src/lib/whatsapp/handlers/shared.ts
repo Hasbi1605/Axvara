@@ -1,16 +1,12 @@
-// Helper bersama seluruh handler WhatsApp.
+// Helper bersama handler WhatsApp tingkat grup.
 //
-// MENGAPA dipisah: route.ts semula menampung wrapper pengiriman pesan, util acak,
-// dan parser metode pembayaran bersama orkestrasi POST. Memindahkan helper murni
-// (tanpa efek samping bisnis) ke satu modul kecil membuat setiap handler mengimpor
-// kontrak yang sama, tanpa duplikasi dan tanpa perubahan teks/urutan pesan.
-// Ini PURE MOVE — logika identik dengan route.ts sebelumnya.
+// Alur pembeli (katalog/pembayaran/bukti) dipensiunkan 13 November 2026;
+// yang tersisa hanya perintah admin `.d` dan balasan info/arahan. Helper di
+// sini sengaja mungil: wrapper kirim teks (throw saat gagal agar POST menandai
+// inbox event `failed` untuk tepat satu retry gateway) dan parser caption bukti
+// yang dipakai untuk mendeteksi pesan alur belanja lama.
 
-import {
-  sendTextMessage as sendTextViaGateway,
-  sendImageMessage as sendImageViaGateway,
-} from "@/lib/whatsapp/gateway";
-import { getActivePaymentMethods } from "@/lib/commerce";
+import { sendTextMessage as sendTextViaGateway } from "@/lib/whatsapp/gateway";
 import * as msg from "@/lib/whatsapp/messages";
 
 export type PaymentMethodChoice = msg.WhatsAppPaymentMethod;
@@ -24,18 +20,6 @@ export async function sendTextMessage(params: Parameters<typeof sendTextViaGatew
   return result;
 }
 
-export async function sendImageMessage(params: Parameters<typeof sendImageViaGateway>[0]) {
-  const result = await sendImageViaGateway(params);
-  if (!result.ok) throw new Error(`whatsapp_image_send_failed:${result.error || "unknown"}`);
-  return result;
-}
-
-export function randHex(n: number): string {
-  const a = new Uint8Array(n);
-  crypto.getRandomValues(a);
-  return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export function parsePaymentMethod(input: string): PaymentMethodChoice | null {
   const normalized = input.trim().toUpperCase().replace(/[\s-]+/g, "");
   if (normalized === "QRIS") return "QRIS";
@@ -46,19 +30,4 @@ export function parsePaymentMethod(input: string): PaymentMethodChoice | null {
 
 export function isPaymentProofCaption(input: string): boolean {
   return Boolean(parsePaymentMethod(input)) || /^BUKTI\s+AXV-\S+\s+(QRIS|SEABANK|EWALLET)$/i.test(input.trim());
-}
-
-export function paymentMethodId(method: PaymentMethodChoice): string {
-  if (method === "SEABANK") return "seabank";
-  if (method === "EWALLET") return "ewallet";
-  return "qris";
-}
-
-export function paymentAccountSnapshot(
-  method: PaymentMethodChoice,
-  methods: Awaited<ReturnType<typeof getActivePaymentMethods>>,
-): string {
-  if (method === "SEABANK") return methods.seabank?.account || "";
-  if (method === "EWALLET") return methods.ewallet?.account || "";
-  return methods.qris?.name || "QRIS AXVARA";
 }

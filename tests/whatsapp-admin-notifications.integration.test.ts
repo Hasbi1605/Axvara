@@ -149,16 +149,17 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
   });
 
   it("wires the WhatsApp lunas path to the admin group (Order Baru dimatikan 2026-10-10)", async () => {
-    // Refactor PURE MOVE: notif order-baru WA dipindah ke handler pembayaran WhatsApp.
-    // 2026-10-10: "Order Baru" (Telegram + WA) dimatikan — grup hanya terima Lunas.
-    const wa = await import("node:fs").then((fs) => fs.readFileSync("src/lib/whatsapp/handlers/payment.ts", "utf8"));
-    expect(wa).toContain("notifyWhatsAppOrderCreated");
-    const dana = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/webhook/dana/route.ts", "utf8"));
+    // Alur pemesanan WhatsApp dipensiunkan 13 November 2026: notifikasi
+    // "Order Baru" WA tidak punya jalur lagi. Notifikasi LUNAS untuk order
+    // historis tetap dikirim dari webhook pembayaran dan ACC bukti admin.
+    const fs = await import("node:fs");
+    expect(fs.existsSync("src/lib/whatsapp/handlers/payment.ts")).toBe(false);
+    const dana = fs.readFileSync("src/app/api/webhook/dana/route.ts", "utf8");
     expect(dana).toContain("notifyWhatsAppPaidAdmin");
-    const proofs = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/admin/proofs/[id]/route.ts", "utf8"));
+    const proofs = fs.readFileSync("src/app/api/admin/proofs/[id]/route.ts", "utf8");
     expect(proofs).toContain("notifyWhatsAppPaidAdmin");
-    const cron = await import("node:fs").then((fs) => fs.readFileSync("src/app/api/cron/operations/route.ts", "utf8")
-      + fs.readFileSync("src/lib/cron-queues.ts", "utf8"));
+    const cron = fs.readFileSync("src/app/api/cron/operations/route.ts", "utf8")
+      + fs.readFileSync("src/lib/cron-queues.ts", "utf8");
     expect(cron).toContain("sales_channel IN ('telegram','whatsapp')");
   });
 

@@ -3,7 +3,7 @@ import { isActiveQrisConfigured, activeQrisProvider } from "@/lib/payments/dana-
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getWebhookInfo } from "@/lib/telegram/api";
-import { queryAll } from "@/lib/db";
+import { queryAll, queryFirst } from "@/lib/db";
 
 export const runtime = "edge";
 
@@ -24,9 +24,12 @@ export async function GET(request: NextRequest) {
     encryption_key_set: !!process.env.FULFILLMENT_ENCRYPTION_KEY,
     whatsapp_configured: !!process.env.WHATSAPP_GATEWAY_URL,
     whatsapp_enabled: process.env.WHATSAPP_ENABLED === "true",
-    whatsapp_discovery: process.env.WHATSAPP_GROUP_DISCOVERY === "true",
-    whatsapp_payment: process.env.WHATSAPP_GROUP_PAYMENT === "true",
-    whatsapp_proof_intake: process.env.WHATSAPP_PROOF_INTAKE === "true",
+    // Alur pembeli WhatsApp dipensiunkan 13 November 2026 (hard off di kode,
+    // bukan lewat env). Nilai selalu false agar admin menampilkannya mati.
+    whatsapp_discovery: false,
+    whatsapp_payment: false,
+    whatsapp_proof_intake: false,
+    whatsapp_buyer_flows: "retired",
     warung_rebahan_enabled: process.env.WARUNG_REBAHAN_ENABLED === "true",
     // Proxy mode (Opsi A): API key WR dipegang proxy Heroku — Pages cukup
     // proxy URL + proxy token + webhook secret. API key boleh kosong.
@@ -95,13 +98,54 @@ export async function GET(request: NextRequest) {
       health.whatsapp_outbox_age = oldestOutbox;
     } catch { /* tabel lama tetap kompatibel */ }
 
+    // "Perlu tindakan" fulfillment (keputusan owner 13 November 2026): daftar
+    // order yang macet atau butuh admin, plus jumlah pesan WhatsApp gagal 7
+    // hari. Read-only — tidak menyentuh job/order/outbox.
+    try {
+      const { parsePaymentDisplaySnapshot } = await import("@/lib/commerce");
+      const rows = await queryAll(
+        `SELECT o.code, o.fulfillment_status, o.updated_at, o.variant_snapshot, o.items
+         FROM orders o
+         WHERE o.status='lunas' AND o.payment_status='paid'
+           AND (
+             o.fulfillment_status IN ('manual_required','failed')
+             OR (o.fulfillment_status IN ('queued','retry') AND datetime(o.updated_at) <= datetime('now','-15 minutes'))
+           )
+         ORDER BY datetime(o.updated_at) ASC
+         LIMIT 20`,
+      );
+      health.fulfillment_action = {
+        orders: rows.map((row) => {
+          const snapshot = parsePaymentDisplaySnapshot(row.variant_snapshot);
+          let product = snapshot ? `${snapshot.productName || "Produk"} — ${snapshot.variantLabel}` : "";
+          if (!product) {
+            try {
+              const items = JSON.parse(String(row.items || "[]")) as { name?: unknown }[];
+              const name = String(items?.[0]?.name || "").trim();
+              if (name) product = name;
+            } catch { /* items lama/rusak: biarkan kosong */ }
+          }
+          return {
+            code: String(row.code),
+            product: product || "Produk tidak terbaca",
+            status: String(row.fulfillment_status),
+            updated_at: row.updated_at ? String(row.updated_at) : null,
+          };
+        }),
+        total: rows.length,
+        whatsapp_outbox_failed_7d: Number((await queryFirst(
+          `SELECT COUNT(*) AS count FROM whatsapp_outbox
+           WHERE status IN ('failed','dead') AND datetime(updated_at) >= datetime('now','-7 days')`,
+        ))?.count || 0),
+      };
+    } catch { /* tabel lama tetap kompatibel */ }
+
     // Antrean WR (no-op aman bila tabel belum ada — migrasi 0027 belum jalan).
     try {
       const wrQueue = await queryAll(
         `SELECT status, COUNT(*) as count FROM wr_order_links GROUP BY status`,
       );
       health.warung_rebahan_queue = wrQueue;
-      const { queryFirst } = await import("@/lib/db");
       const wrSync = await queryFirst(
         `SELECT status, products_synced, variants_synced, created_at
          FROM wr_sync_log WHERE sync_type='products' ORDER BY id DESC LIMIT 1`,

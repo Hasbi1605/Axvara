@@ -17,7 +17,7 @@ import {
   type ReportSelection,
 } from "@/lib/revenue";
 import { emptySelectedReport, readOverviewFinancialReport, readSelectedFinancialReport, selectedReportFromFinancial } from "@/lib/dashboard-report";
-import { OVERVIEW_ATTENTION_SQL, OVERVIEW_JOB_QUEUE_SQL } from "@/lib/admin-overview-queries";
+import { OVERVIEW_ATTENTION_SQL, OVERVIEW_JOB_QUEUE_SQL, PAYMENT_ATTENTION_SQL } from "@/lib/admin-overview-queries";
 import { FINANCIAL_SNAPSHOT_TTL_MS } from "@/lib/admin-report-cache";
 import { readAdminOverviewSnapshot } from "@/lib/admin-overview-cache";
 import { parseExpiry } from "@/lib/expiry";
@@ -223,8 +223,10 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
     safeFirst(`SELECT COUNT(*) AS count FROM payment_proofs pp
       JOIN orders o ON o.code=pp.order_code
       WHERE pp.status='submitted' AND UPPER(COALESCE(pp.claimed_method,''))!='QRIS' AND o.status='pending'`),
-    safeFirst(`SELECT COUNT(*) AS count FROM dana_webhook_events
-      WHERE status IN ('received','ignored','failed') AND datetime(created_at)>=datetime('now','-7 days')`),
+    // Definisi "Perlu dicek" SAMA dengan Rekonsiliasi (helper bersama di
+    // admin-overview-queries) — badge sidebar tidak boleh beda angka dari
+    // halaman yang dibuka.
+    safeFirst(PAYMENT_ATTENTION_SQL),
     safeFirst(`SELECT COUNT(*) AS count FROM fulfillment_jobs WHERE status IN ('manual_required','retry','failed')`),
     // Unit hitung (review R11): fulfillment_attention = JUMLAH ORDER yang
     // butuh tindakan (bukan jumlah job + jumlah item yang dihitung ganda).

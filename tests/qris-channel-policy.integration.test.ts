@@ -154,16 +154,18 @@ it("the page lookup API exposes the deadline and permission before and after the
   expect(await lookup()).toMatchObject({ expires_at: row().expires_at, qris_reissue_allowed: false });
 });
 
-it("WA repeat payment command cannot resend an expired QR and clears selection for a fresh order", async () => {
+it("WA buyer flow retired: expired QR is never reissued or resent from WhatsApp", async () => {
+  // Alur pembeli WhatsApp dipensiunkan 13 November 2026 (hard off di kode).
   await checkout("whatsapp"); expire(true);
-  const { upsertSession, getSession } = await import("@/lib/whatsapp/session");
-  await upsertSession("baileys", "fixture@g.us", "628111", {
-    selected_product_id: 1, selected_variant_id: 1, current_order_code: code });
-  const { handlePay } = await import("@/lib/whatsapp/handlers/payment");
-  const { sendTextMessage, sendImageMessage } = await import("@/lib/whatsapp/handlers/shared");
-  await handlePay("fixture@g.us", "628111", "fixture-message", "QRIS");
-  expect(vi.mocked(sendTextMessage).mock.lastCall?.[0].message).toContain("QRIS Hangus");
-  expect(sendImageMessage).not.toHaveBeenCalled();
-  expect((await getSession("baileys", "fixture@g.us", "628111"))?.selected_variant_id).toBeNull();
+  const fs = await import("node:fs");
+  expect(fs.existsSync("src/lib/whatsapp/handlers/payment.ts")).toBe(false);
+  expect(fs.existsSync("src/lib/whatsapp/session.ts")).toBe(false);
+  const webhook = fs.readFileSync("src/app/api/whatsapp/webhook/route.ts", "utf8");
+  expect(webhook).toContain("isRetiredBuyerIntent");
+  expect(webhook).toContain("buyerFlowsRetiredMessage");
+  // Tidak ada jalur penerbitan QRIS/order baru dari webhook grup.
+  expect(webhook).not.toMatch(/create(Dana|Active)QrisInvoice/);
+  expect(webhook).not.toContain("createPendingChannelOrder");
+  // Order lama tetap memegang satu invoice tersimpan (tidak ada reissue).
   expect(fixture.sql.prepare("SELECT count(*) AS n FROM payment_invoice_history WHERE order_code=?").get(code)!.n).toBe(1);
 });

@@ -1,12 +1,16 @@
 // POST /api/whatsapp/webhook — Baileys WhatsApp group bot webhook handler
 //
+// Alur pembeli lewat WhatsApp (pencarian/discovery produk, pemesanan &
+// pembayaran, intake bukti manual) DIPENSUNKAN 13 November 2026 atas keputusan
+// owner: hard off di kode, bukan lewat env flag, sehingga tidak bisa dihidupkan
+// kembali tanpa perubahan kode. Pesan yang dulu memicu alur itu dijawab SATU
+// balasan sopan yang mengarahkan pembeli ke website/Telegram. Yang tetap hidup:
+// perintah admin `.d`, info garansi, katalog digest/broadcast/welcome lewat
+// outbox grup, dan pencatatan event grup. Data order historis tidak diubah.
+//
 // MENGAPA route.ts tetap ramping: file ini hanya menampung ORKESTRASI POST —
-// rangkaian kontrol keamanan yang WAJIB berurutan (auth timing-safe → feature flag
-// → parse → allowlist grup → dedup/rate-limit inbox) lalu routing perintah bot.
-// Seluruh logika handler (katalog, admin `.d`, pembayaran, intake bukti) dipindah
-// ke `src/lib/whatsapp/handlers/*` agar jalur uang & autentikasi mudah diaudit
-// terpisah. Ini PURE MOVE: tidak ada perubahan SQL, urutan statement, teks pesan,
-// perintah bot, atau kode status HTTP.
+// rangkaian kontrol keamanan yang WAJIB berurutan (auth timing-safe → feature
+// flag → parse → allowlist grup → dedup/rate-limit inbox) lalu routing perintah.
 
 import { NextRequest, NextResponse } from "next/server";
 import { readTextBody } from "@/lib/http-body";
@@ -26,14 +30,23 @@ import {
   isPaymentProofCaption,
   sendTextMessage,
 } from "@/lib/whatsapp/handlers/shared";
-import { handleList, handleProductSearch, handleNumberSelection } from "@/lib/whatsapp/handlers/catalog";
 import { handleAdminDone } from "@/lib/whatsapp/handlers/admin";
-import { handlePay } from "@/lib/whatsapp/handlers/payment";
-import { handleProofUpload } from "@/lib/whatsapp/handlers/proof";
 
 export const runtime = "edge";
 
 const WHATSAPP_MEMBER_EVENTS_PER_MINUTE = 12;
+
+/** Pesan yang dulu memicu alur belanja WhatsApp yang kini dipensiunkan. */
+// Hanya perintah eksplisit yang dibalas; angka biasa atau balasan bergambar di
+// obrolan grup tidak dibalas agar bot tidak spam percakapan anggota.
+function isRetiredBuyerIntent(message: string, hasAttachment: boolean): boolean {
+  if (hasAttachment && isPaymentProofCaption(message)) return true;
+  const cmd = message.toLowerCase().trim();
+  if (cmd === "list" || /^list\s+\d+$/.test(cmd)) return true;
+  if (cmd === "pay" || cmd === "payment") return true;
+  if (parsePaymentMethod(cmd)) return true;
+  return cmd.startsWith("cari ") && cmd.length > 5;
+}
 
 export async function POST(request: NextRequest) {
   // 1. Content-Type check
@@ -67,7 +80,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
   }
 
-  // 4. Feature flag check
+  // 4. Feature flag check (gateway/grup tetap hidup; alur pembeli sudah pensiun di kode)
   if (!isEnabled("WHATSAPP_ENABLED")) {
     return NextResponse.json({ ok: true, status: "disabled" });
   }
@@ -156,15 +169,9 @@ export async function POST(request: NextRequest) {
   const { conversationId, memberId, inboxId, message, attachment } = incoming;
 
   try {
-    // 8. A screenshot only needs the selected payment method as caption.
-    if (attachment && (isPaymentProofCaption(message) || Boolean(incoming.replyToInboxId)) && isEnabled("WHATSAPP_PROOF_INTAKE")) {
-      await handleProofUpload(conversationId, memberId, inboxId, message, attachment.url, incoming.replyToInboxId);
-      return NextResponse.json({ ok: true });
-    }
-
     const cmd = message.toLowerCase().trim();
 
-    // Never let an admin command fall through to product search.
+    // Never let an admin command fall through to the retired buyer reply.
     if (cmd === ".d" || cmd.startsWith(".d ")) {
       if (!isAdminMember(memberId)) {
         return NextResponse.json({ ok: true, status: "admin_command_ignored" });
@@ -173,52 +180,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Command: list [page]
-    if (cmd === "list" || cmd.startsWith("list ")) {
-      if (!isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
-        return NextResponse.json({ ok: true, status: "discovery_disabled" });
-      }
-      const pageMatch = cmd.match(/^list\s+(\d+)$/);
-      const page = pageMatch ? Number(pageMatch[1]) : 1;
-      await handleList(conversationId, page, inboxId);
-      return NextResponse.json({ ok: true });
-    }
-
-    // Command: garansi or /garansi
+    // Command: garansi — informasi ketentuan, bukan alur belanja.
     if (cmd === "garansi" || cmd === "/garansi") {
       await sendTextMessage({ target: conversationId, message: msg.warrantyMessage(), inboxId });
       return NextResponse.json({ ok: true });
     }
 
-    // `pay` remains a friendly shortcut that only shows the choices.
-    if (cmd === "pay" || cmd === "payment") {
-      if (isEnabled("WHATSAPP_GROUP_PAYMENT")) {
-        await sendTextMessage({ target: conversationId, message: msg.paymentChoiceMessage(), inboxId });
-      }
-      return NextResponse.json({ ok: true });
-    }
-
-    const paymentMethod = parsePaymentMethod(cmd);
-    if (paymentMethod) {
-      if (isEnabled("WHATSAPP_GROUP_PAYMENT")) {
-        await handlePay(conversationId, memberId, inboxId, paymentMethod);
-      }
-      return NextResponse.json({ ok: true });
-    }
-
-    // Variant number selection (digits only)
-    if (/^\d+$/.test(cmd)) {
-      if (!isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
-        return NextResponse.json({ ok: true, status: "discovery_disabled" });
-      }
-      await handleNumberSelection(conversationId, memberId, Number(cmd), inboxId);
-      return NextResponse.json({ ok: true });
-    }
-
-    // Product search (only if discovery enabled)
-    if (cmd.startsWith("cari ") && cmd.length > 5 && isEnabled("WHATSAPP_GROUP_DISCOVERY")) {
-      await handleProductSearch(conversationId, memberId, message.slice(5).trim(), inboxId);
-      return NextResponse.json({ ok: true });
+    // Semua pesan yang dulu memicu pencarian/pemesanan/bukti manual dijawab
+    // satu kali dengan arahan ke website/Telegram.
+    if (isRetiredBuyerIntent(message, Boolean(attachment))) {
+      await sendTextMessage({ target: conversationId, message: msg.buyerFlowsRetiredMessage(), inboxId });
+      return NextResponse.json({ ok: true, status: "buyer_flows_retired" });
     }
 
     return NextResponse.json({ ok: true });

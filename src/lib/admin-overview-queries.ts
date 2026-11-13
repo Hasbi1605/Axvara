@@ -7,6 +7,15 @@ export const OVERVIEW_ATTENTION_SQL = `SELECT COUNT(DISTINCT o.code) AS count FR
 ) attention CROSS JOIN orders o ON o.code=attention.order_code
 WHERE o.status='lunas' AND o.payment_status='paid'`;
 
+// SATU definisi "Perlu dicek" untuk Rekonsiliasi dan badge overview
+// (keputusan owner 13 November 2026): event QRIS yang masih menunggu tindakan
+// admin. Event yang sudah ditandai "sudah dicek" (reviewed_by terisi lewat
+// aksi mark_reviewed) keluar dari hitungan sehingga badge berhenti. Tanpa
+// jendela waktu — definisi ini HARUS sama di kedua endpoint.
+export const PAYMENT_ATTENTION_WHERE = `status IN ('received','ignored','failed') AND reviewed_by IS NULL`;
+export const PAYMENT_ATTENTION_SQL = `SELECT COUNT(*) AS count FROM dana_webhook_events WHERE ${PAYMENT_ATTENTION_WHERE}`;
+
+
 // summarizeQueue consumes only active/actionable states; completed history is
 // not a health signal. Last successful sends are measured separately.
 export const OVERVIEW_JOB_QUEUE_SQL = `SELECT fj.status AS status,COUNT(*) AS count

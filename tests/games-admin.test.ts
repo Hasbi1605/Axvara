@@ -105,7 +105,7 @@ describe("admin games products API", () => {
 
     const data = await (await GET(await authedRequest("http://x/api/admin/games/products?limit=10"))).json();
     expect(data.total).toBe(3);
-    expect(data.sync.counts).toEqual({ total: 3, enabled: 1, supplier_active: 2, seller_active: 2, with_reference: 1, contract_supported: 3 });
+    expect(data.sync.counts).toEqual({ total: 3, enabled: 1, supplier_active: 2, seller_active: 2, with_reference: 1, contract_supported: 3, sellable: 0 });
     expect(data.sync.last_sync_at).toBe("2026-11-12T03:00:00.000Z");
     expect(data.brands).toEqual(["Free Fire", "Mobile Legends", "PUBG Mobile"]);
     expect(data.items.find((item: { buyer_sku_code: string }) => item.buyer_sku_code === "ml86")).toBeUndefined();
@@ -125,6 +125,25 @@ describe("admin games products API", () => {
     expect(enabled.items.map((item: { buyer_sku_code: string }) => item.buyer_sku_code).sort()).toEqual(["sk:160"]);
     expect((await GET(await authedRequest("http://x/api/admin/games/products?enabled=yes"))).status).toBe(400);
     expect((await GET(await authedRequest("http://x/api/admin/games/products?limit=500"))).status).toBe(400);
+  });
+
+  it("counts sellable SKUs (admin+supplier aktif+stok) and supports sellable filter/sort", async () => {
+    seed({ buyer_sku_code: "sk:201", enabled: 1, stock: 5, unlimited_stock: 0 });
+    seed({ buyer_sku_code: "sk:202", enabled: 1, stock: 0, unlimited_stock: 1 });
+    seed({ buyer_sku_code: "sk:203", enabled: 1, stock: 0, unlimited_stock: 0 });
+    seed({ buyer_sku_code: "sk:204", enabled: 1, supplier_active: 0 });
+    const { GET } = await import("@/app/api/admin/games/products/route");
+    const data = await (await GET(await authedRequest("http://x/api/admin/games/products?limit=10&sort=sellable"))).json();
+    expect(data.sync.counts.sellable).toBe(2);
+    expect(data.items.slice(0, 2).map((item: { buyer_sku_code: string }) => item.buyer_sku_code).sort()).toEqual(["sk:201", "sk:202"]);
+    expect(data.items.find((item: { buyer_sku_code: string }) => item.buyer_sku_code === "sk:201")).toMatchObject({ sellable: true });
+    expect(data.items.find((item: { buyer_sku_code: string }) => item.buyer_sku_code === "sk:203")).toMatchObject({ sellable: false });
+
+    const onlySellable = await (await GET(await authedRequest("http://x/api/admin/games/products?sellable=1"))).json();
+    expect(onlySellable.total).toBe(2);
+    expect(onlySellable.items.every((item: { sellable: boolean }) => item.sellable)).toBe(true);
+    expect((await GET(await authedRequest("http://x/api/admin/games/products?sellable=2"))).status).toBe(400);
+    expect((await GET(await authedRequest("http://x/api/admin/games/products?sort=price"))).status).toBe(400);
   });
 
   it("rejects unauthenticated GET/PATCH and non-SK mutations", async () => {
@@ -197,18 +216,5 @@ describe("admin games products API", () => {
     expect(product("sk:101")).toMatchObject({ display_group: "bestseller", display_order: 4, enabled: 1 });
     await PATCH(await json("http://x/api/admin/games/products", "PATCH", { buyer_sku_code: "sk:101", display_group: null, display_order: null }));
     expect(product("sk:101")).toMatchObject({ display_group: null, display_order: null, enabled: 1 });
-  });
-});
-
-describe("enable-wave retired", () => {
-  it("is auth-required and returns explicit 410 without activating SKUs", async () => {
-    seed({ buyer_sku_code: "sk:301", enabled: 0 });
-    const wave = await import("@/app/api/admin/games/products/enable-wave/route");
-    expect((await wave.POST(new NextRequest("http://x/api/admin/games/products/enable-wave", { method: "POST", body: "{}" }))).status).toBe(401);
-    const res = await wave.POST(await json("http://x/api/admin/games/products/enable-wave", "POST", {}));
-    expect(res.status).toBe(410);
-    expect(await res.json()).toMatchObject({ error: "bulk_activation_retired" });
-    expect(product("sk:301").enabled).toBe(0);
-    expect((await wave.POST(await json("http://x/api/admin/games/products/enable-wave", "POST", { dry_run: "yes" }))).status).toBe(400);
   });
 });

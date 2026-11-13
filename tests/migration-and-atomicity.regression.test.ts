@@ -462,13 +462,14 @@ describe("Variant stock expiry lifecycle", () => {
     expect(callback).toContain('status: "duplicate"');
   });
 
-  it("does not reuse an order after the member changes selected variant", () => {
-    // Refactor PURE MOVE: guard reset varian pindah ke handler katalog,
-    // sedangkan JOIN idempotensi order pindah ke handler pembayaran.
-    const catalog = read("src/lib/whatsapp/handlers/catalog.ts");
-    const payment = read("src/lib/whatsapp/handlers/payment.ts");
-    expect(catalog).toContain("session.selected_variant_id !== variantId");
-    expect(payment).toContain("AND o.variant_id=?");
+  it("retires the WhatsApp buyer order path instead of reusing an order", () => {
+    // Alur pemesanan WhatsApp dipensiunkan 13 Nov 2026; guard "jangan pakai
+    // ulang order saat varian berubah" tidak lagi punya jalur WA. Order web/
+    // Telegram tetap memakai quote_id unik + variant_id tersimpan.
+    const web = read("src/app/api/orders/route.ts");
+    expect(web).toContain("quote_id");
+    expect(fs.existsSync("src/lib/whatsapp/handlers/payment.ts")).toBe(false);
+    expect(fs.existsSync("src/lib/whatsapp/handlers/catalog.ts")).toBe(false);
   });
 
   it("reuses an existing DANA ledger before allocating another unique amount", () => {
@@ -519,11 +520,11 @@ describe("Variant stock expiry lifecycle", () => {
 
   it("uses the persisted order snapshot for WhatsApp payment copy", () => {
     const commerce = read("src/lib/commerce.ts");
-    // Refactor PURE MOVE: copy pembayaran WhatsApp (sendPaymentInfo) pindah ke handler pembayaran.
-    const payment = read("src/lib/whatsapp/handlers/payment.ts");
+    const dana = read("src/app/api/webhook/dana/route.ts");
     expect(commerce).toContain("product_name: input.productName");
-    expect(payment).toContain("parsePaymentDisplaySnapshot");
-    expect(payment).toContain("SELECT items, variant_snapshot FROM orders WHERE code=?");
+    // Copy pembayaran WA kini hanya dipakai notifikasi "terdeteksi" untuk
+    // order historis (webhook DANA/GoPay), bukan alur pemesanan grup.
+    expect(dana).toContain("paymentDetectedMessage");
   });
 
   it("fails closed when a shared variant has no encrypted delivery secret", () => {

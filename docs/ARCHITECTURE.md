@@ -2088,6 +2088,31 @@ Sistem varian produk terpusat dan bot WhatsApp telah diimplementasikan sesuai `d
 
 ### Status Rollout Produksi WhatsApp
 
+> **Pensiun 13 November 2026 (keputusan owner):** alur PEMBELI WhatsApp (pencarian/
+> discovery, pemesanan+pembayaran, intake bukti manual) dihapus dari kode. Handler
+> `src/lib/whatsapp/handlers/{catalog,payment,proof}.ts` dan `whatsapp/session.ts`
+> serta flag `WHATSAPP_GROUP_DISCOVERY/PAYMENT/PROOF_INTAKE` tidak ada lagi; webhook
+> grup menjawab SATU arahan ke website/Telegram untuk pesan lama dan tetap melayani
+> `.d` admin + `garansi`. Katalog digest/broadcast/welcome, event grup, dan outbox
+> tidak berubah; data order WhatsApp historis tetap. Blok di bawah adalah snapshot
+> 5 September 2026 (historis), bukan status flag saat ini.
+
+**Kontrak admin round 2 (13 November 2026, lokal + tes):**
+- `POST /api/admin/payments/events` `{action:"mark_reviewed", event_id, note}`
+  (note 5–500) → event attention jadi `ignored` terminal + `reviewed_by/review_note/
+  processed_at`; idempoten `already_reviewed`; `matched` → 409 `event_not_actionable`;
+  event reviewed tidak bisa di-retry (409 `event_reviewed`). Tidak menyentuh order/ledger.
+- `GET /api/admin/payments/events` menambah `attention` (angka) dan memakai definisi
+  bersama `PAYMENT_ATTENTION_WHERE` (`src/lib/admin-overview-queries.ts`) yang juga
+  dipakai `payment_attention` di `GET /api/admin/overview`; tanpa jendela waktu.
+- `GET /api/admin/bot/health` menambah `fulfillment_action:{orders:[{code,product,status,
+  updated_at}] (≤20), total, whatsapp_outbox_failed_7d}` (read-only: order `lunas+paid`
+  fulfillment `manual_required/failed` atau `queued/retry` macet >15 menit) serta
+  `whatsapp_discovery/payment/proof_intake=false` + `whatsapp_buyer_flows:"retired"`.
+- `GET /api/admin/games/products` menambah `sync.counts.sellable`, field item `sellable`,
+  filter `?sellable=1|0`, urutan `?sort=sellable` (sellable dulu); endpoint
+  `games/products/enable-wave`, `pedia/credits`, `warung/credentials` DIHAPUS.
+
 Mulai 5 September 2026, Baileys gateway produksi berjalan di Heroku dan seluruh fitur transaksi WhatsApp aktif untuk GID pada `WHATSAPP_GROUP_ALLOWLIST`. Flag aktif meliputi `PRODUCT_VARIANTS_READ`, `WHATSAPP_ENABLED`, `WHATSAPP_GROUP_DISCOVERY`, `WHATSAPP_GROUP_PAYMENT`, `WHATSAPP_PROOF_INTAKE`, `WHATSAPP_REQUIRE_PROOF_BEFORE_FULFILLMENT`, dan `WHATSAPP_FULFILLMENT`. **Sejak 19 Sep 2026 `WHATSAPP_CREDENTIAL_DM_ENABLED=false` (default mati)** — auto-DM kredensial ke buyer dimatikan pasca-restriction nomor BOT; grup tetap penuh, kredensial via email + panel + manual HP. Outbound `/send` dan `/send-image` wajib memakai shared gateway token; pesan inbound di-cache terbatas selama 20 menit agar balasan dapat memakai quoted message Baileys. Target kirim dinormalisasi di adapter via `normalizeWhatsAppTarget` (2026-09-18 sore, live): nomor HP mentah (`628…`/`08…`, seperti tersimpan di outbox) menjadi JID DM `<62…>@s.whatsapp.net` — Baileys baru melempar `jidDecode(...)` undefined untuk target tanpa domain (bukti prod: 2 baris `wr-web-ready` gagal 4x sejak 13:20 UTC 18 Sep). Pola DM ketat (`^62\\d{9,13}$`/`^0\\d{9,13}$`); JID grup (`@g.us`) dan ID non-pola dikembalikan apa adanya agar gateway yang menolak, bukan salah alamat.
 - **Hardening umur nomor gateway (19 Sep 2026, deploy DITUNDA sampai restriction lepas — deploy = restart = reconnect saat dibatasi = memperpanjang).** `axvara-wa-gateway/src/index.ts`: (1) 401/loggedOut = TIDAK reconnect otomatis (hammer = signature bot; diam + terpantau, pairing manual oleh owner); (2) 515 reconnect cepat 1 dtk; sisanya exponential backoff + jitter (maks ~60 dtk); (3) teardown socket lama (`end()` + hapus listener) sebelum bikin baru — anti zombie socket / konflik sesi; (4) `cachedGroupMetadata` TTL 5 mnt (hemat fetch partisipan tiap kirim, sesuai FAQ resmi); (5) jeda baca acak 1–2,5 dtk sebelum teruskan inbound; (6) antrean outbound serial + jeda 4–8 dtk + cooldown 15 mnt setelah 3 sinyal bahaya (`gateway_cooldown_active`, `/send` 429 saat cooldown); (7) `/health` memaparkan `lastDisconnectCode/lastDisconnectAt/reconnectCount`. Jangan ganti string browser, jangan hapus `baileys_auth_keys`, satu socket per dyno.
 
@@ -2152,8 +2177,9 @@ WR masuk tabel `products`/`product_variants` yang sudah ada (badge "Stok Habis" 
   `POST /api/admin/warung/orders/[id]/retry` (CAS — race kalah → 409),
   `POST /api/admin/warung/orders/[id]/void` (2026-09-28: batalkan link WR tertahan → terminal `failed` + `last_error='cancelled_by_admin'`, CAS sama seperti retry; tanpa status baru agar CHECK tidak perlu ALTER),
   `POST /api/admin/warung/orders/[id]/sync-now` (2026-10-03, kasus F111FD64: tarik status SATU link processing langsung dari /transactions — webhook completed WR sering tidak sampai sehingga buyer menunggu 1 jam sia-sia; read-only upstream + idempoten, 409 bila status bukan processing/submitted/ordering),
-  `GET/POST/DELETE /api/admin/warung/exclusions`, `GET/PUT /api/admin/warung/markup`,
-  `GET/POST /api/admin/warung/credentials` (retrieval + resend admin).
+  `GET/POST/DELETE /api/admin/warung/exclusions`, `GET/PUT /api/admin/warung/markup`.
+  `GET/POST /api/admin/warung/credentials` DIHAPUS 13 November 2026; reveal kredensial buyer
+  tetap lewat panel pesanan (`/api/orders/[code]/credentials`, sesi pembeli) dan eskalasi admin.
 - **Storefront:** `WrCredentialsPanel.tsx` di halaman pesanan (lunas): verifikasi
   No. WA atau email checkout (email sejak 2026-09-25; order tanpa email tidak pernah cocok) →
   tampilkan detail akun + capability token (sessionStorage). Setelah checkout di tab yang sama
@@ -2563,7 +2589,7 @@ agent CMS, curl, dan tab admin lama tidak terikat aturan UI.
 | Panel WR | markup (`wr_variants.markup_percent/markup_fixed`) |
 
 Guard dipasang di **kedua jalur tulis varian**: `PUT /api/products/:id` dan
-`/api/admin/variants` (PUT tunggal + POST batch, dipakai `VariantEditor`).
+`/api/admin/variants` (PUT tunggal + POST batch, dipakai editor produk aktif `ProductEditorModal`).
 Menutup hanya salah satunya tidak cukup — panel varian lama akan tetap
 menjadi pintu belakang untuk perubahan yang pasti hilang di sweep berikutnya.
 
@@ -4889,7 +4915,7 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
   Limit/error/testing => unavailable tanpa panggilan. rc54 resmi "Nomor Tujuan Salah" saja => invalid; rc55 gangguan
   => unavailable. SN dibersihkan HTML/kontrol, trim/max64; nickname quote klien hanya display.
 - Utilitas (tiga kode di atas atau nama `/cek\s*username/i`) tidak masuk katalog/sitemap,
-  quote/order baru409 `not_sellable`, PATCH enabled409, enable-wave dilewati. Riwayat/reuse
+  quote/order baru409 `not_sellable`, PATCH enabled409 (endpoint enable-wave DIHAPUS 13 Nov 2026). Riwayat/reuse
   order tersimpan tidak diubah. GET admin products mengembalikan `nickname_checks.today/week`
   count+cost (hari UTC/7hari kalender); GamesManager menampilkan satu baris batas modal.
 - Operasi PM9November2026 sekitar21.40–22.05WIB: CNAME `games` ke `axvara.pages.dev`
@@ -4968,7 +4994,7 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **API admin (edge, pola Pedia: `requireAdmin` + audit `admin_authorized`, body 8.000 byte)**:
   - `GET /api/admin/games/products` → `{items(+margin+effectiveGroup), total, limit, offset, brands, sync:{last_sync_at dari store_settings.games_catalog_sync_at, counts:{total,enabled,seller_active,with_reference}}}`; `limit` ≤200.
   - `PATCH /api/admin/games/products` → `enabled`/`reference_price`/`display_group`/`display_order`; upsert/delete `games_reference_prices` (`source='admin'`, `captured_at=now`), hitung ulang `sell_price` (`computeGamesSellPrice`), cermin kolom, satu `d1.batch`. 400 validasi ketat, 404 `not_found`, 409 `not_sellable` saat `enabled=true` tanpa seller aktif/modal.
-  - `POST /api/admin/games/products/enable-wave` `{dry_run?}` → `{eligible, enabled_now, skipped_unhealthy}`; hanya brand gelombang 1 yang sehat; tidak pernah menonaktifkan.
+  - `POST /api/admin/games/products/enable-wave` DIHAPUS 13 November 2026 (dulu `{dry_run?}` → `{eligible, enabled_now, skipped_unhealthy}`). Jangan membuat aktivasi massal baru.
 - **UI:** tab admin "Games" (`src/components/admin/GamesManager.tsx`, lazy di `admin/page.tsx`, sidebar grup Katalog) — status sinkron, filter brand/cari, tabel modal/harga Oura/harga jual/margin/sumber/seller/grup, edit harga Oura inline, toggle aktif, aktivasi gelombang 1 dua tahap (dry_run → konfirmasi).
 - **Bukti:** `tests/games-admin.test.ts`, `tests/games-admin-migration.test.ts`, `tests/games-catalog-sync.test.ts` diperbarui. Belum deployment, belum ada data produksi, dan harga Oura gelombang 1 belum diisi.
 
@@ -5050,5 +5076,5 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
 - **Order baru:** gate `gamesOrderingOpen` = `GAMES_SK_ENABLED==='true'` + SK enabled/transport + bukan sandbox. Quote menandatangani `supplier`, `sk_variant_id`, `target_snapshot`, `contract_digest`, `cost_snapshot`, `customer_no` display; order membuat satu batch atomik yang memeriksa ulang supplier/enabled/active/stok/min_order/`game_slug`/`required_fields_json`/harga/modal. SKU Digiflazz dan token lama ditolak. Tidak ada env yang dipasang.
 - **Dispatch:** `src/lib/games/sk-dispatch.ts` + `dispatch.ts` per item supplier. Ref kompak `AXG`; preflight live (status/stock/min_order/kontrak/harga/saldo) sebelum fence; fence mengikat attempt+item+lease+order paid; tidak ada POST kedua (GET ref sama). Parser sukses hanya completed+SN sah+unit konsisten+biaya terverifikasi; biaya aktual disimpan di `attempts.price` sebagai deteksi pasca-debit (SK tidak punya `max_price`). Attempt/order legacy Digiflazz tetap memakai jalur lama. Tidak ada seller cadangan SK.
 - **Webhook:** `POST /api/webhook/sekalipay` memeriksa signature existing, lalu ref Games dikenal diproses lebih dulu (GET by ref, invoice tersimpan otoritas, hint salah ditolak 503 tanpa mutasi) dan dedupe `dana_webhook_events` provider `sekalipay_games`; ref premium/unknown tetap jalur lama. Nickname publik memakai `validateSkAccount` gratis dengan cache/rate-limit; modul nickname Digiflazz lama tidak dipakai route baru.
-- **Admin:** `GET /api/admin/games/products` hanya supplier `sekalipay` (counts supplier/contract/availability), `PATCH` menolak legacy `legacy_parked`, `POST .../enable-wave` 410 `bulk_activation_retired`. Tab Games menampilkan varian/stok/kontrak/deskripsi; kontrol harga Oura/grup/urutan/enabled tetap. Baris Digiflazz tidak dihapus.
+- **Admin:** `GET /api/admin/games/products` hanya supplier `sekalipay` (counts supplier/contract/availability + `sellable` = enabled & supplier aktif & stok>0/unlimited; filter `?sellable=1`, urutan `?sort=sellable`), `PATCH` menolak legacy `legacy_parked`, `POST .../enable-wave` DIHAPUS 13 November 2026. Tab Games menampilkan varian/stok/kontrak/deskripsi; kontrol harga Oura/grup/urutan/enabled tetap. Baris Digiflazz tidak dihapus.
 - **Batas bukti final terintegrasi (12 November 2026, setelah fix stok -1 dispatch):** full suite serial parent `npx vitest run --run --maxWorkers=1` **438 file/5.923 tes lulus** (228,77 dtk), lalu `npm run build:pages` penuh **PASS 173 edge route** (Next compile/lint/typecheck + konversi; 19,02 dtk hanya durasi konversi, bukan total build). Pemulihan jujur: default-worker suite timeout fixture workerd `telegram-bulk-checkout` 5 dtk, run 2-worker gagal 2 fixture workerd `telegram-payment-rails`; keduanya lulus saat ditargetkan dan serial penuh lulus tanpa perubahan kode/assertion/timeout. Checkpoint 419/5.760 pra-integrasi dan 438/5.920 pra-fix stok tetap histori. QA browser publik 1280/390 lulus; admin diuji pada artefak Next lokal 8792 dengan fixture jaringan browser (bukan auth/backend persist/produksi). Tidak ada deployment/push, env/secret, aktivasi gate, atau transaksi supplier nyata. Angka 47 produk/1.619 varian adalah snapshot bertanggal. Gate produksi `GAMES_SK_ENABLED` masih kosong.
