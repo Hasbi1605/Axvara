@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { FulfillmentInventoryPanel } from "@/components/admin/FulfillmentInventoryPanel";
 import {
   BulkTierEditor,
@@ -72,8 +72,8 @@ const FULFILLMENT_MODES = [
   { value: "unique", label: "Stok unik" },
 ];
 
-const inputClass = "mt-1.5 h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:bg-white/[0.08]";
-const labelClass = "text-[11px] font-semibold uppercase tracking-[0.08em] text-white/45";
+const inputClass = "mt-1.5 h-11 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg outline-none transition placeholder:text-admin-muted focus:border-admin-accent/50 focus:bg-admin-subtle";
+const labelClass = "text-xs font-semibold uppercase tracking-[0.08em] text-admin-muted";
 
 function describeSaveError(data: { error?: string; message?: string }) {
   if (data.error === "variants_not_enabled") return "Pengelolaan varian belum diaktifkan pada environment ini.";
@@ -305,40 +305,40 @@ export default function VariantEditor({ productId, productName, onClose }: Props
 
   return (
     <div className="fixed inset-0 z-[80] isolate flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-6">
-      <section role="dialog" aria-modal="true" aria-labelledby="variant-editor-title" className="relative z-10 flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl border border-white/10 shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl" style={{ background: "#0B1025" }}>
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-5 py-4 sm:px-6">
+      <section role="dialog" aria-modal="true" aria-labelledby="variant-editor-title" className="relative z-10 flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl border border-admin-border shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-xl" style={{ background: "#0B1025" }}>
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-admin-border px-5 py-4 sm:px-6">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#00E5FF]">Katalog Produk</p>
-            <h2 id="variant-editor-title" className="mt-0.5 text-lg font-semibold text-white">Kelola Varian</h2>
-            <p className="mt-0.5 truncate text-xs text-white/50">{productName} · {variants.length} varian terdaftar</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-admin-accent">Katalog Produk</p>
+            <h2 id="variant-editor-title" className="mt-0.5 text-lg font-semibold text-admin-fg">Kelola Varian</h2>
+            <p className="mt-0.5 truncate text-xs text-admin-muted">{productName} · {variants.length} varian terdaftar</p>
           </div>
-          <button type="button" onClick={requestClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/15" aria-label="Tutup editor varian"><IosIcon name="close" size={14} tint="white" /></button>
+          <button type="button" onClick={requestClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-admin-subtle transition hover:bg-admin-subtle" aria-label="Tutup editor varian"><IosIcon name="close" size={14} tint="white" /></button>
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-7">
-          <div className="rounded-2xl border border-[#00E5FF]/15 bg-[#00E5FF]/[0.045] p-4">
+          <div className="rounded-xl border border-admin-accent/15 bg-admin-primary/[0.045] p-4">
             <label className={labelClass} htmlFor="variant-keywords">Kata kunci pencarian WhatsApp</label>
             <input id="variant-keywords" value={aliasesText} onChange={(event) => { setAliasesText(event.target.value); setAliasesDirty(true); setSuccess(""); }} className={inputClass} placeholder="Contoh: chat gpt, gpt plus, openai" />
-            <p className="mt-2 text-xs leading-5 text-white/45">Pisahkan dengan koma. Ini dipakai bot untuk mengenali pencarian; nama yang tampil di WhatsApp diatur lewat field Alias pada Edit Produk.</p>
+            <p className="mt-2 text-xs leading-5 text-admin-muted">Pisahkan dengan koma. Ini dipakai bot untuk mengenali pencarian; nama yang tampil di WhatsApp diatur lewat field Alias pada Edit Produk.</p>
           </div>
 
-          {error && <div role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
-          {success && <div role="status" className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{success}</div>}
+          {error && <div role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-admin-danger">{error}</div>}
+          {success && <div role="status" className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-admin-success">{success}</div>}
 
           {loading ? (
-            <div className="flex min-h-56 items-center justify-center gap-3 text-sm text-white/45"><span className="h-5 w-5 animate-spin rounded-full border-2 border-white/15 border-t-[#00E5FF]" /> Memuat varian…</div>
+            <div className="flex min-h-56 items-center justify-center gap-3 text-sm text-admin-muted"><span className="h-5 w-5 animate-spin rounded-md border-2 border-admin-border border-t-[#00E5FF]" /> Memuat varian…</div>
           ) : variants.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-dashed border-white/15 px-5 py-12 text-center"><p className="text-sm font-semibold text-white">Produk ini belum memiliki varian.</p><p className="mt-1 text-xs text-white/40">Tambahkan pilihan paket agar pembeli bisa memilih durasi dan harga.</p><button type="button" onClick={addVariant} className="mt-4 inline-flex h-10 items-center gap-2 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]"><IosIcon name="plus" size={14} tint="black" /> Tambah varian pertama</button></div>
+            <div className="mt-5 rounded-xl border border-dashed border-admin-border px-5 py-12 text-center"><p className="text-sm font-semibold text-admin-fg">Produk ini belum memiliki varian.</p><p className="mt-1 text-xs text-admin-muted">Tambahkan pilihan paket agar pembeli bisa memilih durasi dan harga.</p><button type="button" onClick={addVariant} className="mt-4 inline-flex h-10 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary"><IosIcon name="plus" size={14} tint="black" /> Tambah varian pertama</button></div>
           ) : (
             <div className="mt-5 space-y-4">
               {variants.map((variant, index) => (
-                <article key={variant.id ?? `new-${index}`} className={`rounded-2xl border p-4 transition sm:p-5 ${variant._dirty ? "border-[#00E5FF]/30 bg-[#00E5FF]/[0.035]" : "border-white/10 bg-white/[0.025]"}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] pb-4">
-                    <div className="flex min-w-0 items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] text-xs font-bold text-white/60">{index + 1}</span><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-white">{variant.label || "Varian baru"}</h3><p className="mt-0.5 font-mono text-xs text-white/35">{variant.sku || "SKU belum diisi"}</p></div>{variant._dirty && <span className="shrink-0 rounded-full border border-[#00E5FF]/25 bg-[#00E5FF]/10 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">Baru</span>}</div>
+                <article key={variant.id ?? `new-${index}`} className={`rounded-xl border p-4 transition sm:p-5 ${variant._dirty ? "border-admin-accent/30 bg-admin-primary/[0.035]" : "border-admin-border bg-admin-subtle"}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-admin-border pb-4">
+                    <div className="flex min-w-0 items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-admin-subtle text-xs font-bold text-admin-muted">{index + 1}</span><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-admin-fg">{variant.label || "Varian baru"}</h3><p className="mt-0.5 font-mono text-xs text-admin-muted">{variant.sku || "SKU belum diisi"}</p></div>{variant._dirty && <span className="shrink-0 rounded-md border border-admin-accent/25 bg-admin-primary/10 px-2 py-0.5 text-xs font-bold text-admin-accent">Baru</span>}</div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <button type="button" onClick={() => update(index, "is_active", variant.is_active ? 0 : 1)} className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-semibold transition ${variant.is_active ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300" : "border-white/10 bg-white/5 text-white/45"}`}>{variant.is_active ? "Aktif" : "Nonaktif"}</button>
-                      <button type="button" onClick={() => duplicateVariant(index)} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 text-xs font-semibold text-white/65 transition hover:bg-white/10 hover:text-white"><IosIcon name="copy" size={12} tint="white" /> Duplikasi</button>
-                      <button type="button" onClick={() => setDeleteIndex(index)} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-red-400/25 bg-red-500/10 px-3 text-xs font-semibold text-red-200 transition hover:bg-red-500/20"><IosIcon name="trash" size={12} tint="#F87171" /> {variant._new ? "Hapus" : "Nonaktifkan"}</button>
+                      <button type="button" onClick={() => update(index, "is_active", variant.is_active ? 0 : 1)} className={`inline-flex h-8 items-center rounded-md border px-3 text-xs font-semibold transition ${variant.is_active ? "border-emerald-400/25 bg-emerald-400/10 text-admin-success" : "border-admin-border bg-admin-subtle text-admin-muted"}`}>{variant.is_active ? "Aktif" : "Nonaktif"}</button>
+                      <button type="button" onClick={() => duplicateVariant(index)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-admin-border bg-admin-subtle px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg"><IosIcon name="copy" size={12} tint="white" /> Duplikasi</button>
+                      <button type="button" onClick={() => setDeleteIndex(index)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-400/25 bg-red-500/10 px-3 text-xs font-semibold text-admin-danger transition hover:bg-red-500/20"><IosIcon name="trash" size={12} tint="#F87171" /> {variant._new ? "Hapus" : "Nonaktifkan"}</button>
                     </div>
                   </div>
 
@@ -347,21 +347,21 @@ export default function VariantEditor({ productId, productName, onClose }: Props
                     <label className={`${labelClass} lg:col-span-2`}>Nama varian<input value={variant.label} onChange={(event) => update(index, "label", event.target.value)} className={inputClass} placeholder="Premium 1 Bulan" /></label>
                     <label className={labelClass}>Urutan<input type="number" min={0} value={variant.sort_order} onChange={(event) => update(index, "sort_order", Number(event.target.value))} className={inputClass} /></label>
 
-                    <label className={labelClass}>Unit durasi<select value={variant.duration_unit ?? ""} onChange={(event) => update(index, "duration_unit", event.target.value || null)} className={inputClass}>{DURATION_UNITS.map((item) => <option key={item.value} value={item.value} className="bg-[#10152d]">{item.label}</option>)}</select></label>
+                    <label className={labelClass}>Unit durasi<select value={variant.duration_unit ?? ""} onChange={(event) => update(index, "duration_unit", event.target.value || null)} className={inputClass}>{DURATION_UNITS.map((item) => <option key={item.value} value={item.value} className="bg-admin-card">{item.label}</option>)}</select></label>
                     {variant.duration_unit === "custom" ? <label className={`${labelClass} lg:col-span-3`}>Teks durasi<input value={variant.duration_label ?? ""} onChange={(event) => update(index, "duration_label", event.target.value)} className={inputClass} placeholder="Contoh: Sampai 31 Desember" /></label> : variant.duration_unit && variant.duration_unit !== "lifetime" ? <label className={labelClass}>Jumlah durasi<input type="number" min={0} value={variant.duration_value ?? ""} onChange={(event) => update(index, "duration_value", event.target.value ? Number(event.target.value) : null)} className={inputClass} placeholder="1" /></label> : null}
 
-                    <label className={labelClass}>Tipe garansi<select value={variant.warranty_type} onChange={(event) => update(index, "warranty_type", event.target.value)} className={inputClass}>{WARRANTY_TYPES.map((item) => <option key={item.value} value={item.value} className="bg-[#10152d]">{item.label}</option>)}</select></label>
-                    {variant.warranty_type === "limited" && <><label className={labelClass}>Durasi garansi<input type="number" min={0} value={variant.warranty_value ?? ""} onChange={(event) => update(index, "warranty_value", event.target.value ? Number(event.target.value) : null)} className={inputClass} placeholder="7" /></label><label className={labelClass}>Unit garansi<select value={variant.warranty_unit ?? ""} onChange={(event) => update(index, "warranty_unit", event.target.value || null)} className={inputClass}>{DURATION_UNITS.filter((item) => !["custom", "lifetime"].includes(item.value)).map((item) => <option key={item.value} value={item.value} className="bg-[#10152d]">{item.label}</option>)}</select></label></>}
+                    <label className={labelClass}>Tipe garansi<select value={variant.warranty_type} onChange={(event) => update(index, "warranty_type", event.target.value)} className={inputClass}>{WARRANTY_TYPES.map((item) => <option key={item.value} value={item.value} className="bg-admin-card">{item.label}</option>)}</select></label>
+                    {variant.warranty_type === "limited" && <><label className={labelClass}>Durasi garansi<input type="number" min={0} value={variant.warranty_value ?? ""} onChange={(event) => update(index, "warranty_value", event.target.value ? Number(event.target.value) : null)} className={inputClass} placeholder="7" /></label><label className={labelClass}>Unit garansi<select value={variant.warranty_unit ?? ""} onChange={(event) => update(index, "warranty_unit", event.target.value || null)} className={inputClass}>{DURATION_UNITS.filter((item) => !["custom", "lifetime"].includes(item.value)).map((item) => <option key={item.value} value={item.value} className="bg-admin-card">{item.label}</option>)}</select></label></>}
                     {variant.warranty_type === "custom" && <label className={`${labelClass} lg:col-span-3`}>Teks garansi<input value={variant.warranty_label ?? ""} onChange={(event) => update(index, "warranty_label", event.target.value)} className={inputClass} placeholder="Contoh: Garansi login 30 hari" /></label>}
 
                     <label className={labelClass}>Harga jual<input type="number" min={0} value={variant.price} onChange={(event) => update(index, "price", Number(event.target.value))} className={inputClass} /></label>
                     <label className={labelClass}>Harga coret<input type="number" min={0} value={variant.compare_price ?? ""} onChange={(event) => update(index, "compare_price", event.target.value ? Number(event.target.value) : null)} className={inputClass} placeholder="Opsional" /></label>
-                    <label className={labelClass}>Stok <span className="normal-case tracking-normal text-white/25">(-1 = ∞)</span><input type="number" min={-1} value={variant.stock} onChange={(event) => update(index, "stock", Number(event.target.value))} className={inputClass} /></label>
+                    <label className={labelClass}>Stok <span className="normal-case tracking-normal text-admin-muted">(-1 = ∞)</span><input type="number" min={-1} value={variant.stock} onChange={(event) => update(index, "stock", Number(event.target.value))} className={inputClass} /></label>
                     {/* Minimum pembelian (migrasi 0034, generik): GSuite = 50. Milik admin — sync WR tak menyentuh. */}
-                    <label className={labelClass}>Min. beli <span className="normal-case tracking-normal text-white/25">(1 = bebas)</span><input type="number" min={1} max={100} value={variant.min_qty ?? 1} onChange={(event) => update(index, "min_qty", Math.max(1, Math.min(100, Number(event.target.value) || 1)))} className={inputClass} /></label>
+                    <label className={labelClass}>Min. beli <span className="normal-case tracking-normal text-admin-muted">(1 = bebas)</span><input type="number" min={1} max={100} value={variant.min_qty ?? 1} onChange={(event) => update(index, "min_qty", Math.max(1, Math.min(100, Number(event.target.value) || 1)))} className={inputClass} /></label>
                     <label className={labelClass}>Input pembeli<select value={variant.buyer_field_key ?? ""} onChange={e => update(index,"buyer_field_key",e.target.value === "muse_invite_code" ? "muse_invite_code" : null)} className={inputClass}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse</option></select></label>
                     <label className={labelClass}>Maks. beli<input type="number" min={1} max={100} value={variant.max_qty ?? ""} onChange={e => update(index,"max_qty",e.target.value ? Number(e.target.value) : null)} className={inputClass}/></label>
-                    <label className={labelClass}>Fulfillment<select value={variant.fulfillment_mode} onChange={(event) => update(index, "fulfillment_mode", event.target.value)} className={inputClass}>{FULFILLMENT_MODES.map((item) => <option key={item.value} value={item.value} className="bg-[#10152d]">{item.label}</option>)}</select></label>
+                    <label className={labelClass}>Fulfillment<select value={variant.fulfillment_mode} onChange={(event) => update(index, "fulfillment_mode", event.target.value)} className={inputClass}>{FULFILLMENT_MODES.map((item) => <option key={item.value} value={item.value} className="bg-admin-card">{item.label}</option>)}</select></label>
                   </div>
                   <BulkTierEditor
                     idPrefix={bulkPrefix(index)}
@@ -372,17 +372,17 @@ export default function VariantEditor({ productId, productName, onClose }: Props
                     disabled={saving || deleting}
                     onChange={(next) => updateBulk(index, next)}
                   />
-                  {variant.id ? <FulfillmentInventoryPanel productId={productId} variantId={variant.id} mode={variant.fulfillment_mode} /> : <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">Simpan varian baru terlebih dahulu sebelum mengisi konten fulfillment.</p>}
+                  {variant.id ? <FulfillmentInventoryPanel productId={productId} variantId={variant.id} mode={variant.fulfillment_mode} /> : <p className="mt-4 rounded-xl border border-admin-border bg-admin-subtle px-3 py-3 text-xs text-admin-muted">Simpan varian baru terlebih dahulu sebelum mengisi konten fulfillment.</p>}
                 </article>
               ))}
             </div>
           )}
         </div>
 
-        <footer className="shrink-0 border-t border-white/10 bg-[#080C1E]/80 px-4 py-4 backdrop-blur-xl sm:px-7">
+        <footer className="shrink-0 border-t border-admin-border bg-admin-card/80 px-4 py-4 backdrop-blur-xl sm:px-7">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div><p className="text-xs tabular-nums text-white/50">{activeVariants.length} aktif · {minPrice === null ? "Harga belum tersedia" : minPrice === maxPrice ? money(minPrice) : `${money(minPrice)} – ${money(maxPrice ?? minPrice)}`}</p><p className={`mt-1 text-[11px] ${hasDirty ? "text-[#FFB800]" : "text-emerald-300/70"}`}>{hasDirty ? "Perubahan belum disimpan" : "Semua perubahan tersimpan"}</p></div>
-            <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={requestClose} className="h-11 whitespace-nowrap rounded-full border border-white/10 bg-white/[0.06] px-5 text-sm font-semibold text-white/70 transition hover:bg-white/10 hover:text-white">Tutup</button><button type="button" onClick={addVariant} disabled={loading || saving} className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-full border border-[#00E5FF]/25 bg-[#00E5FF]/10 px-5 text-sm font-bold text-[#5cefff] transition hover:bg-[#00E5FF]/20 disabled:opacity-40"><IosIcon name="plus" size={14} tint="#00E5FF" /> Tambah Varian</button><button type="button" onClick={() => void saveAll()} disabled={loading || saving || variants.length === 0 || !hasDirty} className="inline-flex h-11 min-w-36 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[#00E5FF] px-6 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:cursor-not-allowed disabled:opacity-40">{saving ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#080C1E]/25 border-t-[#080C1E]" /> Menyimpan…</> : <><IosIcon name="checked" size={14} tint="black" /> Simpan Semua</>}</button></div>
+            <div><p className="text-xs tabular-nums text-admin-muted">{activeVariants.length} aktif · {minPrice === null ? "Harga belum tersedia" : minPrice === maxPrice ? money(minPrice) : `${money(minPrice)} – ${money(maxPrice ?? minPrice)}`}</p><p className={`mt-1 text-xs ${hasDirty ? "text-admin-warning" : "text-admin-success"}`}>{hasDirty ? "Perubahan belum disimpan" : "Semua perubahan tersimpan"}</p></div>
+            <div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={requestClose} className="h-11 whitespace-nowrap rounded-md border border-admin-border bg-admin-subtle px-5 text-sm font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">Tutup</button><button type="button" onClick={addVariant} disabled={loading || saving} className="inline-flex h-11 items-center gap-2 whitespace-nowrap rounded-md border border-admin-accent/25 bg-admin-primary/10 px-5 text-sm font-bold text-admin-accent transition hover:bg-admin-primary/20 disabled:opacity-40"><IosIcon name="plus" size={14} tint="#00E5FF" /> Tambah Varian</button><button type="button" onClick={() => void saveAll()} disabled={loading || saving || variants.length === 0 || !hasDirty} className="inline-flex h-11 min-w-36 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-admin-primary px-6 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary disabled:cursor-not-allowed disabled:opacity-40">{saving ? <><span className="h-4 w-4 animate-spin rounded-md border-2 border-[#080C1E]/25 border-t-[#080C1E]" /> Menyimpan…</> : <><IosIcon name="checked" size={14} tint="black" /> Simpan Semua</>}</button></div>
           </div>
         </footer>
       </section>

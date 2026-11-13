@@ -1,5 +1,10 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Instruksi owner 13 November 2026: perbaikan audit admin pembayaran
+- `PATCH /api/admin/orders/[code]` menolak 409 seluruh perubahan status legacy untuk `nowpayments:*`/`sekalipay_gateway:*` (termasuk batal) karena status crypto/gateway hanya dari IPN/callback/rekonsiliasi provider; `status:"lunas"` generik untuk `qris` ditolak 409 — gunakan jalur ACC QRIS (`paid_qris`) yang memperbarui ledger. Jangan membuka kembali jalan pintas ini atau melonggarkan regex AXV untuk AXG.
+- Filter admin: `method` menerima ID berkolon modern; `manual` mengecualikan QRIS/crypto/gateway; `kind=games` terpisah. UI rekening bank legacy baca-saja; jangan menghidupkan kembali transfer manual di checkout.
+- Status: implementasi lokal + tes; belum ada bukti deployment.
+
 ## Keputusan owner 9 November 2026: AXG untuk AXVARA Games
 - B2 mengizinkan prefix `AXG` secara aditif pada guard pembayaran bersama (`isValidBuyerOrderCode`, create/reconcile/absence/rejected gateway, consent dan IPN/callback). `isValidOrderCode` TETAP AXV-only; route Market tetap menolak AXG/AXP. Pedia/Market/Telegram/WA tidak berubah.
 - Games memakai katalog `buildMethodCatalog`, serializer/validator Pedia dan adapter invoice existing, bukan daftar kanal/rumus baru. Kurasi terkini: `SHOPEEPAY` biasa + `DANA_REALTIME` berlabel DANA; `SHOPEEPAY_REALTIME` tidak ditawarkan. Crypto memakai `cryptoPricing(base,ticker)`, snapshot kurs dan minimum existing.

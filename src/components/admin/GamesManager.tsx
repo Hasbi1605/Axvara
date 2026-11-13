@@ -30,8 +30,8 @@ type Row = Record<string, unknown>;
 
 const EMPTY_SYNC: Sync = { last_sync_at: null, counts: { total: 0, enabled: 0, supplier_active: 0, seller_active: 0, with_reference: 0, contract_supported: 0 } };
 const PAGE_SIZE = 50;
-const INPUT = "mt-1 min-h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none transition focus:border-[#00E5FF]/50 [color-scheme:dark]";
-const BUTTON = "inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:opacity-50";
+const INPUT = "mt-1 min-h-10 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-sm text-admin-fg outline-none transition focus:border-admin-accent/50 [color-scheme:inherit]";
+const BUTTON = "inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-admin-border bg-admin-subtle px-3.5 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50";
 const GROUP_LABEL: Record<Group, string> = { special: "Spesial", bestseller: "Terlaris", all: "Semua" };
 const REASON_LABEL: Record<string, string> = {
   admin_disabled: "Dinonaktifkan admin", supplier_off: "Supplier off", stock_empty: "Stok habis",
@@ -116,52 +116,52 @@ export function GamesManager() {
   const counts = list.sync.counts;
   const totalPages = Math.max(1, Math.ceil(list.total / PAGE_SIZE));
   return <div className="mt-5 min-w-0 space-y-4">
-    <header><h2 className="font-display text-xl font-semibold text-white">Games</h2><p className="mt-1 text-xs text-white/40">Katalog Sekalipay: supplier, varian, stok, kontrak, harga Oura, grup, urutan, dan aktif/nonaktif.</p></header>
-    {list.nickname_checks && <p className="text-xs text-white/65" role="status">Riwayat cek nickname berbayar Digiflazz (legacy, UTC): hari ini {list.nickname_checks.today.count} cek / {formatRupiah(list.nickname_checks.today.cost)}; 7 hari {list.nickname_checks.week.count} cek / {formatRupiah(list.nickname_checks.week.cost)}. Cek nickname SK baru gratis dan tidak dicatat di sini.</p>}
+    <header><h2 className="font-display text-xl font-semibold text-admin-fg">Games</h2><p className="mt-1 text-xs text-admin-muted">Katalog Sekalipay: supplier, varian, stok, kontrak, harga Oura, grup, urutan, dan aktif/nonaktif.</p></header>
+    {list.nickname_checks && <p className="text-xs text-admin-muted" role="status">Riwayat cek nickname berbayar Digiflazz (legacy, UTC): hari ini {list.nickname_checks.today.count} cek / {formatRupiah(list.nickname_checks.today.cost)}; 7 hari {list.nickname_checks.week.count} cek / {formatRupiah(list.nickname_checks.week.cost)}. Cek nickname SK baru gratis dan tidak dicatat di sini.</p>}
 
-    <section className="ax-glass grid gap-3 rounded-[20px] p-4 text-sm text-white/70 sm:grid-cols-2 xl:grid-cols-5" aria-label="Status sinkron Games">
-      <div><p className="text-[11px] uppercase tracking-[0.08em] text-white/35">Sinkron terakhir</p><p className="mt-1 font-semibold text-white">{formatWibDateTime(list.sync.last_sync_at) ?? "Belum pernah"}</p></div>
-      <div><p className="text-[11px] uppercase tracking-[0.08em] text-white/35">Total varian SK</p><p className="mt-1 font-semibold text-white">{counts.total}</p></div>
-      <div><p className="text-[11px] uppercase tracking-[0.08em] text-white/35">Aktif dijual</p><p className="mt-1 font-semibold text-emerald-300">{counts.enabled}</p></div>
-      <div><p className="text-[11px] uppercase tracking-[0.08em] text-white/35">Supplier aktif</p><p className="mt-1 font-semibold text-white">{counts.supplier_active}</p></div>
-      <div><p className="text-[11px] uppercase tracking-[0.08em] text-white/35">Kontrak didukung</p><p className="mt-1 font-semibold text-white">{counts.contract_supported} · Oura {counts.with_reference}</p></div>
+    <section className="admin-surface grid gap-3 rounded-xl p-4 text-sm text-admin-muted sm:grid-cols-2 xl:grid-cols-5" aria-label="Status sinkron Games">
+      <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Sinkron terakhir</p><p className="mt-1 font-semibold text-admin-fg">{formatWibDateTime(list.sync.last_sync_at) ?? "Belum pernah"}</p></div>
+      <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Total varian SK</p><p className="mt-1 font-semibold text-admin-fg">{counts.total}</p></div>
+      <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Aktif dijual</p><p className="mt-1 font-semibold text-admin-success">{counts.enabled}</p></div>
+      <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Supplier aktif</p><p className="mt-1 font-semibold text-admin-fg">{counts.supplier_active}</p></div>
+      <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Kontrak didukung</p><p className="mt-1 font-semibold text-admin-fg">{counts.contract_supported} · Oura {counts.with_reference}</p></div>
     </section>
 
     <div aria-live="polite" className="space-y-2 text-sm">
-      {busy && <p role="status" className="text-[#00E5FF]">Menyimpan perubahan…</p>}
-      {error && <p role="alert" className="text-red-300">{error} <button type="button" className="underline" onClick={() => void load()}>Muat ulang</button></p>}
-      {success && <p role="status" className="text-emerald-300">{success}</p>}
+      {busy && <p role="status" className="text-admin-accent">Menyimpan perubahan…</p>}
+      {error && <p role="alert" className="text-admin-danger">{error} <button type="button" className="underline" onClick={() => void load()}>Muat ulang</button></p>}
+      {success && <p role="status" className="text-admin-success">{success}</p>}
     </div>
 
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(200px,1fr)_220px_160px]">
-      <label className="block min-w-0 text-xs font-medium text-white/65">Cari kode, varian, atau game<input className={INPUT} value={q} onChange={(e) => setQ(e.target.value)} placeholder="sk:101, Diamond, Mobile Legends…" /></label>
-      <label className="block min-w-0 text-xs font-medium text-white/65">Game<select className={INPUT} value={brand} onChange={(e) => { setBrand(e.target.value); setPage(1); }}><option value="">Semua game</option>{list.brands.map((b) => <option key={b} value={b}>{b}</option>)}</select></label>
-      <label className="block min-w-0 text-xs font-medium text-white/65">Status jual<select className={INPUT} value={enabled} onChange={(e) => { setEnabled(e.target.value); setPage(1); }}><option value="">Semua</option><option value="1">Aktif</option><option value="0">Belum aktif</option></select></label>
+      <label className="block min-w-0 text-xs font-medium text-admin-muted">Cari kode, varian, atau game<input className={INPUT} value={q} onChange={(e) => setQ(e.target.value)} placeholder="sk:101, Diamond, Mobile Legends…" /></label>
+      <label className="block min-w-0 text-xs font-medium text-admin-muted">Game<select className={INPUT} value={brand} onChange={(e) => { setBrand(e.target.value); setPage(1); }}><option value="">Semua game</option>{list.brands.map((b) => <option key={b} value={b}>{b}</option>)}</select></label>
+      <label className="block min-w-0 text-xs font-medium text-admin-muted">Status jual<select className={INPUT} value={enabled} onChange={(e) => { setEnabled(e.target.value); setPage(1); }}><option value="">Semua</option><option value="1">Aktif</option><option value="0">Belum aktif</option></select></label>
     </div>
     {(q || brand || enabled) && <button className={BUTTON} onClick={() => { setQ(""); setBrand(""); setEnabled(""); setPage(1); }}>Hapus filter</button>}
 
-    <p className="text-xs text-white/60">{list.total} varian SK cocok · halaman {page} dari {totalPages}</p>
-    {loading && <p role="status" className="text-sm text-white/60">Memuat katalog SK…</p>}
-    {!loading && !error && list.items.length === 0 && <p className="text-sm text-white/65">Belum ada varian SK yang cocok. Sinkron katalog berjalan lewat cron; harga Oura bisa diisi setelah varian muncul.</p>}
+    <p className="text-xs text-admin-muted">{list.total} varian SK cocok · halaman {page} dari {totalPages}</p>
+    {loading && <p role="status" className="text-sm text-admin-muted">Memuat katalog SK…</p>}
+    {!loading && !error && list.items.length === 0 && <p className="text-sm text-admin-muted">Belum ada varian SK yang cocok. Sinkron katalog berjalan lewat cron; harga Oura bisa diisi setelah varian muncul.</p>}
 
-    {list.items.length > 0 && <div className="ax-glass min-w-0 overflow-hidden rounded-[20px]">
+    {list.items.length > 0 && <div className="admin-surface min-w-0 overflow-hidden rounded-xl">
       <div className="overflow-x-auto" role="region" aria-label="Varian Games" tabIndex={0}>
-        <table className="w-full min-w-[1500px] text-left text-sm text-white/60">
+        <table className="w-full min-w-[1500px] text-left text-sm text-admin-muted">
           <caption className="sr-only">Varian Games SK dengan supplier, stok, kontrak, modal, harga Oura, harga jual, margin, grup, dan status</caption>
-          <thead className="border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-white/40"><tr>
+          <thead className="border-b border-admin-border text-xs uppercase tracking-[0.08em] text-admin-muted"><tr>
             {["Kode / varian", "Game", "Supplier", "Stok", "Kontrak", "Modal", "Harga Oura", "Harga jual", "Margin", "Sumber harga", "Grup", "Aktif"].map((column) => <th key={column} scope="col" className="whitespace-nowrap px-4 py-3 font-semibold">{column}</th>)}
           </tr></thead>
-          <tbody className="divide-y divide-white/5 [&_td]:px-4 [&_td]:py-3 [&_td]:align-top">
+          <tbody className="divide-y divide-admin-border [&_td]:px-4 [&_td]:py-3 [&_td]:align-top">
             {list.items.map((item) => {
               const margin = item.margin;
               const canEnable = item.supplier_active === 1 && margin.cost > 0 && item.contract_supported;
               const unhealthy = !item.contract_supported || item.supplier_active !== 1 || margin.cost <= 0 || margin.sell < margin.floor;
               return <tr key={item.buyer_sku_code}>
-                <td className="min-w-[240px]"><p className="font-semibold text-white">{item.buyer_sku_code}</p><p className="mt-1 text-xs text-white/45">{item.product_name || "Tanpa nama"}</p><p className="mt-1 text-[11px] text-white/30">{item.product_type_name || item.product_type || item.sk_sku || "Tipe belum tersedia"}</p>{item.description && <p className="mt-1 line-clamp-2 max-w-[260px] text-[11px] leading-4 text-white/35">{item.description}</p>}</td>
-                <td className="min-w-[150px] text-xs"><p className="text-white/70">{item.sk_product_name || item.game_brand || "-"}</p><p className="mt-1 text-[11px] text-white/35">{item.game_slug || "-"} · varian {item.sk_variant_id ?? "-"}</p></td>
-                <td className="whitespace-nowrap text-xs"><p className={item.supplier_active === 1 ? "text-emerald-300" : "text-red-300"}>{item.supplier_active === 1 ? "Aktif" : "Off"}</p><p className="mt-1 text-white/40">{item.supplier === "sekalipay" ? "Sekalipay" : "Digiflazz legacy"}</p></td>
-                <td className="whitespace-nowrap text-xs tabular-nums"><p className={item.stock === -1 || item.stock > 0 ? "" : "text-red-300"}>{item.stock < 0 ? "Tak terbatas" : item.stock}</p><p className="mt-1 text-white/35">min {item.min_order}</p></td>
-                <td className="min-w-[150px] text-xs"><p className={item.contract_supported ? "text-emerald-300" : "text-red-300"}>{item.contract_supported ? "Didukung" : "Tidak"}</p><p className={`mt-1 ${item.availability.reason && item.availability.reason !== "admin_disabled" ? "text-amber-300" : "text-white/40"}`}>{item.availability.available ? "Siap dibeli" : REASON_LABEL[item.availability.reason ?? ""] ?? item.availability.reason ?? "Tidak tersedia"}</p></td>
+                <td className="min-w-[240px]"><p className="font-semibold text-admin-fg">{item.buyer_sku_code}</p><p className="mt-1 text-xs text-admin-muted">{item.product_name || "Tanpa nama"}</p><p className="mt-1 text-xs text-admin-muted">{item.product_type_name || item.product_type || item.sk_sku || "Tipe belum tersedia"}</p>{item.description && <p className="mt-1 line-clamp-2 max-w-[260px] text-xs leading-4 text-admin-muted">{item.description}</p>}</td>
+                <td className="min-w-[150px] text-xs"><p className="text-admin-muted">{item.sk_product_name || item.game_brand || "-"}</p><p className="mt-1 text-xs text-admin-muted">{item.game_slug || "-"} · varian {item.sk_variant_id ?? "-"}</p></td>
+                <td className="whitespace-nowrap text-xs"><p className={item.supplier_active === 1 ? "text-admin-success" : "text-admin-danger"}>{item.supplier_active === 1 ? "Aktif" : "Off"}</p><p className="mt-1 text-admin-muted">{item.supplier === "sekalipay" ? "Sekalipay" : "Digiflazz legacy"}</p></td>
+                <td className="whitespace-nowrap text-xs tabular-nums"><p className={item.stock === -1 || item.stock > 0 ? "" : "text-admin-danger"}>{item.stock < 0 ? "Tak terbatas" : item.stock}</p><p className="mt-1 text-admin-muted">min {item.min_order}</p></td>
+                <td className="min-w-[150px] text-xs"><p className={item.contract_supported ? "text-admin-success" : "text-admin-danger"}>{item.contract_supported ? "Didukung" : "Tidak"}</p><p className={`mt-1 ${item.availability.reason && item.availability.reason !== "admin_disabled" ? "text-admin-warning" : "text-admin-muted"}`}>{item.availability.available ? "Siap dibeli" : REASON_LABEL[item.availability.reason ?? ""] ?? item.availability.reason ?? "Tidak tersedia"}</p></td>
                 <td className="whitespace-nowrap text-xs tabular-nums">{margin.cost > 0 ? formatRupiah(margin.cost) : "Belum ada"}</td>
                 <td className="min-w-[150px]">
                   <input
@@ -176,9 +176,9 @@ export function GamesManager() {
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); saveReference(item); } }}
                   />
                 </td>
-                <td className="whitespace-nowrap font-semibold text-white">{margin.sell > 0 ? formatRupiah(margin.sell) : "Belum dihitung"}</td>
-                <td className="whitespace-nowrap text-xs"><p className={margin.margin_rp <= 0 ? "text-red-300" : "text-emerald-300"}>{formatRupiah(margin.margin_rp)}</p><p className="mt-1">{margin.margin_pct}%</p></td>
-                <td className="whitespace-nowrap text-xs"><p>{margin.source === "reference" ? "Oura −2%" : "Batas bawah"}</p><p className={`mt-1 ${margin.competitive === false ? "text-amber-300" : "text-white/40"}`}>{margin.competitive === null ? "Tanpa pembanding" : margin.competitive ? "Kompetitif" : "Di atas Oura"}</p></td>
+                <td className="whitespace-nowrap font-semibold text-admin-fg">{margin.sell > 0 ? formatRupiah(margin.sell) : "Belum dihitung"}</td>
+                <td className="whitespace-nowrap text-xs"><p className={margin.margin_rp <= 0 ? "text-admin-danger" : "text-admin-success"}>{formatRupiah(margin.margin_rp)}</p><p className="mt-1">{margin.margin_pct}%</p></td>
+                <td className="whitespace-nowrap text-xs"><p>{margin.source === "reference" ? "Oura −2%" : "Batas bawah"}</p><p className={`mt-1 ${margin.competitive === false ? "text-admin-warning" : "text-admin-muted"}`}>{margin.competitive === null ? "Tanpa pembanding" : margin.competitive ? "Kompetitif" : "Di atas Oura"}</p></td>
                 <td className="min-w-[150px]">
                   <select
                     className={INPUT} value={item.display_group ?? ""}
@@ -191,7 +191,7 @@ export function GamesManager() {
                     <option value="bestseller">Terlaris</option>
                   </select>
                 </td>
-                <td className="whitespace-nowrap"><AdminStatusSwitch checked={item.enabled === 1} label={`${item.enabled === 1 ? "Nonaktifkan" : "Aktifkan"} ${item.buyer_sku_code}`} disabled={busy === item.buyer_sku_code || (item.enabled !== 1 && !canEnable)} busy={busy === item.buyer_sku_code} onChange={() => void patch({ buyer_sku_code: item.buyer_sku_code, enabled: item.enabled !== 1 }, `${item.buyer_sku_code} ${item.enabled === 1 ? "dinonaktifkan" : "diaktifkan"}.`)} />{unhealthy && item.enabled === 1 && <p className="mt-1 text-[11px] text-amber-300">Perlu diperiksa</p>}</td>
+                <td className="whitespace-nowrap"><AdminStatusSwitch checked={item.enabled === 1} label={`${item.enabled === 1 ? "Nonaktifkan" : "Aktifkan"} ${item.buyer_sku_code}`} disabled={busy === item.buyer_sku_code || (item.enabled !== 1 && !canEnable)} busy={busy === item.buyer_sku_code} onChange={() => void patch({ buyer_sku_code: item.buyer_sku_code, enabled: item.enabled !== 1 }, `${item.buyer_sku_code} ${item.enabled === 1 ? "dinonaktifkan" : "diaktifkan"}.`)} />{unhealthy && item.enabled === 1 && <p className="mt-1 text-xs text-admin-warning">Perlu diperiksa</p>}</td>
               </tr>;
             })}
           </tbody>
@@ -201,7 +201,7 @@ export function GamesManager() {
 
     <div className="flex items-center gap-3">
       <button className={BUTTON} disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>Sebelumnya</button>
-      <span className="text-xs text-white/60">Halaman {page} / {totalPages}</span>
+      <span className="text-xs text-admin-muted">Halaman {page} / {totalPages}</span>
       <button className={BUTTON} disabled={page >= totalPages || loading} onClick={() => setPage(page + 1)}>Berikutnya</button>
     </div>
   </div>;

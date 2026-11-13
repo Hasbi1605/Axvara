@@ -12,13 +12,14 @@ import { AdminAuthChecking, AdminLoginGate } from "@/components/admin/AdminLogin
 import { useProductManager } from "@/components/admin/useProductManager";
 import { useAdminAuth } from "@/components/admin/useAdminAuth";
 import { SystemTabs, SYSTEM_TABS } from "@/components/admin/SystemTabs";
+import { navigateWithDraftGuard, pushAdminHistory } from "@/components/admin/AdminWorkspace";
 
 // Section berat di-lazy agar bundle awal admin ringan (temuan audit: 15
 // section diimpor statis sekaligus). Ringkasan + Pesanan tetap statis karena
 // jalur utama; sisanya dimuat saat section dibuka dengan fallback spinner.
 function sectionFallback(label: string) {
   return (
-    <div className="mt-4 flex min-h-48 items-center justify-center gap-3 text-sm text-white/45" role="status">
+    <div className="mt-4 flex min-h-48 items-center justify-center gap-3 text-sm text-admin-muted" role="status">
       <Spinner size={20} /> Memuat {label}…
     </div>
   );
@@ -92,6 +93,7 @@ export default function AdminPage() {
   const { load, setOnlyLowStock, setPage: setProductPage } = pm;
 
   const navigateAdmin = useCallback((section: AdminSection, params: Record<string,string> = {}) => {
+    navigateWithDraftGuard(() => {
     setTab(section);
     // Filter yang dibawa antar-section harus ikut berpindah, bukan hanya
     // tersimpan di URL: pushState tidak memicu popstate.
@@ -100,7 +102,8 @@ export default function AdminPage() {
     url.search = "";
     url.searchParams.set("section", section);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-    window.history.pushState(null, "", `${url.pathname}?${url.searchParams}`);
+    pushAdminHistory(`${url.pathname}?${url.searchParams}`);
+    });
   }, [setOnlyLowStock, setProductPage]);
 
   // Satu listener popstate untuk SELURUH state yang berasal dari URL: section
@@ -145,16 +148,16 @@ export default function AdminPage() {
 
   return (
     <AdminShell section={tab} onSection={(section)=>navigateAdmin(section)} badges={{ orders: overview.pending_orders, payments: overview.payment_attention, bot: overview.fulfillment_attention }}>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[11px] text-white/35" data-testid="admin-session-header">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-admin-muted" data-testid="admin-session-header">
         <div className="flex flex-wrap items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Masuk sebagai <span className="text-white/60">{auth.authEmail || "admin"}</span> <span className="opacity-40">·</span> maks. 8 jam <span className="opacity-40">·</span> idle 2 jam
+        <span className="w-1.5 h-1.5 rounded-md bg-emerald-400 animate-pulse" /> Masuk sebagai <span className="text-admin-muted">{auth.authEmail || "admin"}</span> <span className="opacity-40">·</span> maks. 8 jam <span className="opacity-40">·</span> idle 2 jam
         </div>
         {tab === "summary" && !overviewLoading && !overviewError && overview.selected_report && <p>
           {overview.selected_report.from} – {overview.selected_report.to} · {overview.selected_report.timezone} · Dibuat {formatWibDateTime(overview.selected_report.generated_at)} WIB
         </p>}
       </div>
 
-      {tab === "products" && pm.listError && <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3"><span>{pm.listError}</span><button onClick={pm.load} className="h-8 px-3 rounded-full bg-white text-[#070a1e] text-xs font-bold shrink-0 transition hover:bg-white/90">Coba lagi</button></div>}
+      {tab === "products" && pm.listError && <div className="mt-4 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-admin-danger flex items-center justify-between gap-3"><span>{pm.listError}</span><button onClick={pm.load} className="h-8 px-3 rounded-md bg-admin-primary text-admin-inverse text-xs font-bold shrink-0 transition hover:bg-admin-subtle">Coba lagi</button></div>}
 
       {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}

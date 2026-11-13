@@ -40,6 +40,23 @@ async function acc(body: unknown) {
 }
 
 describe("ACC manual QRIS (hook gagal, dana benar masuk)", () => {
+  it.each(["nowpayments:usdtbsc", "sekalipay_gateway:BCA", "qris"])("menolak pelunasan legacy untuk %s tanpa mengubah ledger/job", async (method) => {
+    await checkout();
+    fixture.sql.prepare("UPDATE orders SET payment_method=? WHERE code=?").run(method, A);
+    const response = await acc({ status: "lunas" });
+    expect(response.status).toBe(409);
+    expect(order().status).toBe("pending");
+    expect(tx().status).toBe("pending");
+    expect(fixture.sql.prepare("SELECT * FROM fulfillment_jobs WHERE order_code=?").get(A)).toBeUndefined();
+  });
+
+  it.each(["nowpayments:usdtbsc", "sekalipay_gateway:BCA"])("tidak membatalkan klaim provider %s lewat aksi legacy", async (method) => {
+    await checkout();
+    fixture.sql.prepare("UPDATE orders SET payment_method=? WHERE code=?").run(method, A);
+    expect((await acc({ status: "dibatalkan" })).status).toBe(409);
+    expect(order().status).toBe("pending");
+    expect(tx().status).toBe("pending");
+  });
   it("melunaskan via jalur paid yang sama dengan hook: ledger + fulfillment + email kredensial", async () => {
     await checkout();
     expect(order().status).toBe("pending");

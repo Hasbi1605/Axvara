@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { formatWibDateTime } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { useToast } from "@/components/ui/Toast";
 import { BulkMarkupToolbar } from "@/components/admin/BulkMarkupToolbar";
 import { SupplierTabs, VariantStatusBadge, type SupplierTabId } from "@/components/admin/SupplierTabs";
@@ -145,14 +145,14 @@ function StatusBadge({ status }: { status: string }) {
   const label = SK_STATUS_LABEL[status] ?? status;
   const color =
     status === "completed"
-      ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+      ? "border-emerald-400/30 bg-emerald-500/10 text-admin-success"
       : status === "failed" || status === "canceled"
-        ? "border-red-400/30 bg-red-500/10 text-red-300"
+        ? "border-red-400/30 bg-red-500/10 text-admin-danger"
         : status === "blocked_balance"
-          ? "border-amber-400/30 bg-amber-500/10 text-amber-300"
-          : "border-white/10 bg-white/[0.04] text-white/60";
+          ? "border-amber-400/30 bg-amber-500/10 text-admin-warning"
+          : "border-admin-border bg-admin-subtle text-admin-muted";
   return (
-    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${color}`}>
+    <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${color}`}>
       {label}
     </span>
   );
@@ -162,15 +162,15 @@ function StatusBadge({ status }: { status: string }) {
 function ProcessBadge({ process }: { process: string }) {
   const p = String(process || "").toLowerCase();
   if (p === "auto") {
-    return <span title="AUTO • lisensi langsung" className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">AUTO</span>;
+    return <span title="AUTO • lisensi langsung" className="rounded-md border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-admin-success">AUTO</span>;
   }
   if (p === "manual") {
-    return <span title="MANUAL • diproses admin SK" className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">MANUAL</span>;
+    return <span title="MANUAL • diproses admin SK" className="rounded-md border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-xs font-bold text-admin-warning">MANUAL</span>;
   }
   if (p === "h2h" || p === "smm" || p === "vip") {
-    return <span title={`${p.toUpperCase()} • belum didukung fase 1`} className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">{p.toUpperCase()}</span>;
+    return <span title={`${p.toUpperCase()} • belum didukung fase 1`} className="rounded-md border border-admin-border bg-admin-subtle px-2 py-0.5 text-xs font-bold text-admin-muted">{p.toUpperCase()}</span>;
   }
-  return <span className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">{process || "?"}</span>;
+  return <span className="rounded-md border border-admin-border bg-admin-subtle px-2 py-0.5 text-xs font-bold text-admin-muted">{process || "?"}</span>;
 }
 
 const RETRYABLE_SK_STATUS = ["pending", "retry", "failed", "blocked_balance"];
@@ -690,33 +690,33 @@ export function SekalipayManager() {
         onChange={(tab) => openTab(tab as typeof skTab)}
       />
       {skTab === "ringkas" && (
-      <section className="ax-glass overflow-hidden rounded-[20px]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4 sm:p-5">
+      <section className="admin-surface overflow-hidden rounded-xl">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-white">Saldo Sekalipay</h2>
-            <p className="mt-0.5 text-xs text-white/40">Diambil real-time dari API SK setiap dibuka. Supplier kedua paralel WR.</p>
+            <h2 className="text-sm font-semibold text-admin-fg">Saldo Sekalipay</h2>
+            <p className="mt-0.5 text-xs text-admin-muted">Diambil real-time dari API SK setiap dibuka. Supplier kedua paralel WR.</p>
           </div>
-          <button onClick={() => void loadSaldo()} disabled={saldoLoading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white disabled:opacity-40">
+          <button onClick={() => void loadSaldo()} disabled={saldoLoading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg disabled:opacity-40">
             <IosIcon name="refresh" size={13} tint="white" /> Muat ulang
           </button>
         </header>
         <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
-          <div className={`rounded-2xl border p-4 ${saldo.current?.isLow ? "border-red-400/20 bg-red-500/[0.06]" : "border-emerald-400/15 bg-emerald-400/[0.06]"}`}>
-            <p className="text-[11px] uppercase tracking-wide text-white/40">Saldo saat ini</p>
-            <p className={`mt-1 text-lg font-bold tabular-nums ${saldo.current?.isLow ? "text-red-300" : "text-emerald-300"}`}>
+          <div className={`rounded-xl border p-4 ${saldo.current?.isLow ? "border-red-400/20 bg-red-500/[0.06]" : "border-emerald-400/15 bg-emerald-400/[0.06]"}`}>
+            <p className="text-xs uppercase tracking-wide text-admin-muted">Saldo saat ini</p>
+            <p className={`mt-1 text-lg font-bold tabular-nums ${saldo.current?.isLow ? "text-admin-danger" : "text-admin-success"}`}>
               {saldoLoading ? "…" : balance != null ? formatRupiah(balance) : "—"}
             </p>
-            {saldo.current?.isLow && <p className="mt-1 text-[11px] text-red-300">Di bawah batas {formatRupiah(saldo.current.threshold)} — segera top up.</p>}
+            {saldo.current?.isLow && <p className="mt-1 text-xs text-admin-danger">Di bawah batas {formatRupiah(saldo.current.threshold)} — segera top up.</p>}
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-            <p className="text-[11px] uppercase tracking-wide text-white/40">Estimasi kapasitas</p>
-            <p className="mt-1 text-lg font-bold text-white tabular-nums">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
-            <p className="mt-1 text-[11px] text-white/40">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
+          <div className="rounded-xl border border-admin-border bg-admin-subtle p-4">
+            <p className="text-xs uppercase tracking-wide text-admin-muted">Estimasi kapasitas</p>
+            <p className="mt-1 text-lg font-bold text-admin-fg tabular-nums">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
+            <p className="mt-1 text-xs text-admin-muted">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-            <p className="text-[11px] uppercase tracking-wide text-white/40">Sync terakhir</p>
+          <div className="rounded-xl border border-admin-border bg-admin-subtle p-4">
+            <p className="text-xs uppercase tracking-wide text-admin-muted">Sync terakhir</p>
             <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="non-auto" />
-            <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+            <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
               {syncing ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{syncing ? "Sync…" : "Force Sync Now"}
             </button>
           </div>
@@ -725,69 +725,69 @@ export function SekalipayManager() {
       )}
       {skTab === "antrean" && (
       <>
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Uji sandbox order</h3><p className="mt-0.5 text-[11px] text-white/40">Tanpa potong saldo. Isi product_id + variant_id SK (lihat respons sync / daftar item).</p></div>
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Uji sandbox order</h3><p className="mt-0.5 text-xs text-admin-muted">Tanpa potong saldo. Isi product_id + variant_id SK (lihat respons sync / daftar item).</p></div>
         </header>
         <div className="flex flex-wrap items-center gap-2 p-4">
-          <input value={sandboxProduct} onChange={(e) => setSandboxProduct(e.target.value)} placeholder="product_id" inputMode="numeric" className="h-9 w-32 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-          <input value={sandboxVariant} onChange={(e) => setSandboxVariant(e.target.value)} placeholder="variant_id" inputMode="numeric" className="h-9 w-32 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-          <button onClick={() => void runSandbox()} disabled={sandboxing} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+          <input value={sandboxProduct} onChange={(e) => setSandboxProduct(e.target.value)} placeholder="product_id" inputMode="numeric" className="h-9 w-32 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+          <input value={sandboxVariant} onChange={(e) => setSandboxVariant(e.target.value)} placeholder="variant_id" inputMode="numeric" className="h-9 w-32 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+          <button onClick={() => void runSandbox()} disabled={sandboxing} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
             {sandboxing ? <Spinner size={13} /> : null}{sandboxing ? "Mengirim…" : "Kirim sandbox"}
           </button>
-          {sandboxResult && <p className="w-full font-mono text-[11px] text-white/60">{sandboxResult}</p>}
+          {sandboxResult && <p className="w-full font-mono text-xs text-admin-muted">{sandboxResult}</p>}
         </div>
       </section>
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Antrean order SK</h3><p className="mt-0.5 text-[11px] text-white/40">Order lunas yang diteruskan ke Sekalipay. Cari by invoice SK atau kode Axvara.</p></div>
-          <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice SK / kode Axvara…" className="h-9 w-full max-w-[240px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none sm:ml-auto" />
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Antrean order SK</h3><p className="mt-0.5 text-xs text-admin-muted">Order lunas yang diteruskan ke Sekalipay. Cari by invoice SK atau kode Axvara.</p></div>
+          <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice SK / kode Axvara…" className="h-9 w-full max-w-[240px] rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none sm:ml-auto" />
           <div className="flex flex-wrap gap-2">
             {[["all", "Semua"], ["pending", "Pending"], ["submitted", "Terkirim"], ["processing", "Diproses"], ["retry", "Retry"], ["blocked_balance", "Saldo habis"], ["failed", "Gagal"], ["completed", "Selesai"]].map(([value, label]) => (
-              <button key={value} onClick={() => { setOrderStatus(value); setOrderPage(1); void loadOrders(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>
+              <button key={value} onClick={() => { setOrderStatus(value); setOrderPage(1); void loadOrders(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}>{label}</button>
             ))}
           </div>
         </header>
-        {!orders.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada order SK pada filter ini.</p> : (
-          <div className="divide-y divide-white/[0.06]">
+        {!orders.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada order SK pada filter ini.</p> : (
+          <div className="divide-y divide-admin-border">
             {orders.map((order) => (
               <article key={order.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status={order.status} />
-                    <span className="font-mono text-xs font-semibold text-[#5cefff]">{order.order_code}</span>
-                    <span className="text-xs text-white/45">{formatRupiah(order.sk_cost)} modal</span>
-                    {order.sk_invoice && <span className="font-mono text-[11px] text-white/35">{order.sk_invoice}</span>}
+                    <span className="font-mono text-xs font-semibold text-admin-accent">{order.order_code}</span>
+                    <span className="text-xs text-admin-muted">{formatRupiah(order.sk_cost)} modal</span>
+                    {order.sk_invoice && <span className="font-mono text-xs text-admin-muted">{order.sk_invoice}</span>}
                     {!["completed", "failed"].includes(order.status) && (() => {
                       const age = ageLabel(order);
                       if (!age) return null;
                       const late = age.hours >= 13;
                       return (
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${late ? "border-red-400/30 bg-red-500/10 text-red-300" : "border-white/10 bg-white/[0.04] text-white/45"}`}>
+                        <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${late ? "border-red-400/30 bg-red-500/10 text-admin-danger" : "border-admin-border bg-admin-subtle text-admin-muted"}`}>
                           {age.text}{late ? " · lewat batas" : ""}
                         </span>
                       );
                     })()}
                   </div>
                   {(order.customer_name || order.customer_wa || order.customer_email) && (
-                    <p className="mt-1 text-[11px] text-white/55">
+                    <p className="mt-1 text-xs text-admin-muted">
                       {[order.customer_name, order.customer_wa, order.customer_email].filter(Boolean).join(" · ")}
                       {order.sales_channel ? ` · ${order.sales_channel}` : ""}
                     </p>
                   )}
-                  {order.last_error && <p className="mt-1 font-mono text-[10px] text-red-300/70">{order.last_error}</p>}
+                  {order.last_error && <p className="mt-1 font-mono text-xs text-admin-danger">{order.last_error}</p>}
                 </div>
                 {canRetrySkLink(order) ? (
                   <div className="flex shrink-0 items-center gap-2">
-                    <button onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+                    <button onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
                       {retrying === order.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />} Retry
                     </button>
-                    <button onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20 disabled:opacity-40">
+                    <button onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3.5 text-xs font-bold text-admin-danger transition hover:bg-red-500/20 disabled:opacity-40">
                       {voiding === order.id ? <Spinner size={13} /> : null} Batal
                     </button>
                   </div>
                 ) : RETRYABLE_SK_STATUS.includes(order.status) ? (
-                  <span title="Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan." className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-[11px] font-semibold text-red-200">
+                  <span title="Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan." className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-xs font-semibold text-admin-danger">
                     Percobaan habis
                   </span>
                 ) : null}
@@ -796,11 +796,11 @@ export function SekalipayManager() {
           </div>
         )}
         {orderTotal > ORDER_PER_PAGE && (
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
-            <p className="text-xs text-white/40">Hal {orderPage} dari {Math.max(1, Math.ceil(orderTotal / ORDER_PER_PAGE))} • {orderTotal} order</p>
+          <div className="flex items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
+            <p className="text-xs text-admin-muted">Hal {orderPage} dari {Math.max(1, Math.ceil(orderTotal / ORDER_PER_PAGE))} • {orderTotal} order</p>
             <div className="flex items-center gap-1.5">
-              <button disabled={orderPage <= 1} onClick={() => void loadOrders(orderPage - 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
-              <button disabled={orderPage >= Math.ceil(orderTotal / ORDER_PER_PAGE)} onClick={() => void loadOrders(orderPage + 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+              <button disabled={orderPage <= 1} onClick={() => void loadOrders(orderPage - 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
+              <button disabled={orderPage >= Math.ceil(orderTotal / ORDER_PER_PAGE)} onClick={() => void loadOrders(orderPage + 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
             </div>
           </div>
         )}
@@ -808,21 +808,21 @@ export function SekalipayManager() {
       </>
       )}
       {skTab === "aturan" && (
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Exclusion rules</h3><p className="mt-0.5 text-[11px] text-white/40">Produk yang cocok pola tidak dibuatkan katalog (registry tetap dicatat).</p></header>
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="border-b border-admin-border p-4"><h3 className="text-sm font-semibold text-admin-fg">Exclusion rules</h3><p className="mt-0.5 text-xs text-admin-muted">Produk yang cocok pola tidak dibuatkan katalog (registry tetap dicatat).</p></header>
         <div className="space-y-2 p-4">
           {exclusions.map((rule) => (
-            <div key={rule.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/15 px-3 py-2">
-              <span className="min-w-0 flex-1 font-mono text-xs text-white/75">{rule.pattern}</span>
-              {rule.reason && <span className="hidden max-w-[40%] truncate text-[11px] text-white/40 sm:inline">{rule.reason}</span>}
-              <button onClick={() => void deleteExclusion(rule.id)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-300 transition hover:bg-red-500/20" aria-label={`Hapus exclusion ${rule.pattern}`}>
+            <div key={rule.id} className="flex items-center gap-3 rounded-xl border border-admin-border bg-black/15 px-3 py-2">
+              <span className="min-w-0 flex-1 font-mono text-xs text-admin-muted">{rule.pattern}</span>
+              {rule.reason && <span className="hidden max-w-[40%] truncate text-xs text-admin-muted sm:inline">{rule.reason}</span>}
+              <button onClick={() => void deleteExclusion(rule.id)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-admin-danger transition hover:bg-red-500/20" aria-label={`Hapus exclusion ${rule.pattern}`}>
                 <IosIcon name="close" size={13} tint="#F87171" />
               </button>
             </div>
           ))}
           <div className="flex gap-2">
-            <input value={newPattern} onChange={(e) => setNewPattern(e.target.value)} placeholder="cth: pulsa" className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-            <button onClick={() => void addExclusion()} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8]">
+            <input value={newPattern} onChange={(e) => setNewPattern(e.target.value)} placeholder="cth: pulsa" className="h-10 min-w-0 flex-1 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+            <button onClick={() => void addExclusion()} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary">
               <IosIcon name="plus" size={13} tint="black" /> Tambah
             </button>
           </div>
@@ -830,19 +830,19 @@ export function SekalipayManager() {
       </section>
       )}
       {skTab === "markup" && (
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Markup per varian</h3><p className="mt-0.5 text-[11px] text-white/40">Ubah markup → harga jual Axvara dihitung ulang otomatis.</p></div>
-          <input value={markupQuery} onChange={(e) => { setMarkupQuery(e.target.value); setMarkupPage(1); }} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Markup per varian</h3><p className="mt-0.5 text-xs text-admin-muted">Ubah markup → harga jual Axvara dihitung ulang otomatis.</p></div>
+          <input value={markupQuery} onChange={(e) => { setMarkupQuery(e.target.value); setMarkupPage(1); }} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
         </header>
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 p-3" role="tablist" aria-label="Status tampil varian">
+        <div className="flex flex-wrap items-center gap-2 border-b border-admin-border p-3" role="tablist" aria-label="Status tampil varian">
           {([["live", `Live (${markupCountsLocal.live})`], ["hidden", `Disembunyikan otomatis (${markupCountsLocal.hidden})`], ["off", `Nonaktif manual (${markupCountsLocal.off})`], ["all", `Semua (${markups.length})`]] as const).map(([value, label]) => (
             <button
               key={value}
               role="tab"
               aria-selected={markupTab === value}
               onClick={() => { setMarkupTab(value); setMarkupPage(1); }}
-              className={`h-8 whitespace-nowrap rounded-full px-3.5 text-[11px] font-bold transition ${markupTab === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}
+              className={`h-8 whitespace-nowrap rounded-md px-3.5 text-xs font-bold transition ${markupTab === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
             >
               {label}
             </button>
@@ -851,14 +851,14 @@ export function SekalipayManager() {
             value={markupPerPage}
             onChange={(e) => { setMarkupPerPage(Number(e.target.value) as 20 | 50 | 100); setMarkupPage(1); }}
             aria-label="Jumlah per halaman"
-            className="ml-auto h-8 shrink-0 rounded-full bg-white/[0.06] border border-white/10 px-2.5 text-[11px] font-semibold text-white/70 focus:outline-none focus:border-[#00E5FF]/40"
+            className="ml-auto h-8 shrink-0 rounded-md bg-admin-subtle border border-admin-border px-2.5 text-xs font-semibold text-admin-muted focus:outline-none focus:border-admin-accent/40"
           >
             <option value={20}>20 / hal</option>
             <option value={50}>50 / hal</option>
             <option value={100}>100 / hal</option>
           </select>
         </div>
-        <div className="border-b border-white/10 p-3">
+        <div className="border-b border-admin-border p-3">
           <BulkMarkupToolbar
             visibleIds={markupPaged.map((r) => (r as MarkupRow).sk_variant_id)}
             totalCount={markupFiltered.length}
@@ -874,8 +874,8 @@ export function SekalipayManager() {
             onApply={applyBulkMarkup}
           />
         </div>
-        {!markups.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada varian SK tersinkron.</p> : markupFiltered.length === 0 ? <p className="p-10 text-center text-sm text-white/40">Tidak ada varian pada tab ini — coba ubah kata kunci.</p> : (
-          <div className="divide-y divide-white/[0.06]">
+        {!markups.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada varian SK tersinkron.</p> : markupFiltered.length === 0 ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada varian pada tab ini — coba ubah kata kunci.</p> : (
+          <div className="divide-y divide-admin-border">
             {markupPaged.map((row) => {
               const edit = editingMarkup[row.sk_variant_id] ?? { percent: String(row.markup_percent), fixed: String(row.markup_fixed) };
               const vStatus = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_status ?? "live";
@@ -894,18 +894,18 @@ export function SekalipayManager() {
                           return next;
                         })}
                         aria-label={`Pilih ${row.sk_variant_name} untuk bulk markup`}
-                        className="h-4 w-4 shrink-0 accent-[#00E5FF]"
+                        className="h-4 w-4 shrink-0 accent-admin-accent"
                       />
-                      <p className="truncate text-sm font-semibold text-white">{row.sk_product_name ? `${row.sk_product_name} — ` : ""}{row.sk_variant_name}</p>
+                      <p className="truncate text-sm font-semibold text-admin-fg">{row.sk_product_name ? `${row.sk_product_name} — ` : ""}{row.sk_variant_name}</p>
                       <ProcessBadge process={row.sk_order_process} />
                       <VariantStatusBadge status={vStatus} reason={vReason} />
                     </div>
-                    <p className="mt-1 text-xs text-white/45">Modal {formatRupiah(row.sk_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.sk_stock}{row.sk_min_order && Number(row.sk_min_order) > 1 ? ` · Min. ${row.sk_min_order}` : ""}{row.sk_status ? ` · ${row.sk_status}` : ""}{row.axvara_variant_id ? "" : " · TANPA katalog"}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
+                    <p className="mt-1 text-xs text-admin-muted">Modal {formatRupiah(row.sk_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.sk_stock}{row.sk_min_order && Number(row.sk_min_order) > 1 ? ` · Min. ${row.sk_min_order}` : ""}{row.sk_status ? ` · ${row.sk_status}` : ""}{row.axvara_variant_id ? "" : " · TANPA katalog"}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex items-center gap-1.5 text-xs text-white/55">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
-                    <label className="flex items-center gap-1.5 text-xs text-white/55">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
-                    <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-white/90">Simpan</button>
+                    <label className="flex items-center gap-1.5 text-xs text-admin-muted">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none" /></label>
+                    <label className="flex items-center gap-1.5 text-xs text-admin-muted">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none" /></label>
+                    <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle">Simpan</button>
                   </div>
                 </article>
               );
@@ -913,12 +913,12 @@ export function SekalipayManager() {
           </div>
         )}
         {markupFiltered.length > markupPerPage && (
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
-            <p className="text-xs text-white/40">Hal {markupSafePage} dari {markupTotalPages} • {markupFiltered.length} varian</p>
+          <div className="flex items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
+            <p className="text-xs text-admin-muted">Hal {markupSafePage} dari {markupTotalPages} • {markupFiltered.length} varian</p>
             <div className="flex items-center gap-1.5">
-              <button disabled={markupSafePage <= 1} onClick={() => setMarkupPage((p) => Math.max(1, p - 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
-              <span className="text-xs text-white/40 px-1">{markupSafePage} / {markupTotalPages}</span>
-              <button disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage((p) => Math.min(markupTotalPages, p + 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+              <button disabled={markupSafePage <= 1} onClick={() => setMarkupPage((p) => Math.max(1, p - 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
+              <span className="text-xs text-admin-muted px-1">{markupSafePage} / {markupTotalPages}</span>
+              <button disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage((p) => Math.min(markupTotalPages, p + 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
             </div>
           </div>
         )}
@@ -926,49 +926,49 @@ export function SekalipayManager() {
       )}
       {skTab === "audit" && (
       <>
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Mutasi saldo <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Audit credit/debit + saldo sebelum/sesudah per invoice. WR tidak punya ini.</p></div>
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Mutasi saldo <span className="ml-1 rounded-md bg-admin-primary/15 px-2 py-0.5 text-xs font-bold text-admin-accent">KHAS SK</span></h3><p className="mt-0.5 text-xs text-admin-muted">Audit credit/debit + saldo sebelum/sesudah per invoice. WR tidak punya ini.</p></div>
           <div className="ml-auto flex flex-wrap gap-2">
             {[["all", "Semua"], ["credit", "Masuk"], ["debit", "Keluar"]].map(([value, label]) => (
-              <button key={value} onClick={() => setMutationDir(value)} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${mutationDir === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>
+              <button key={value} onClick={() => setMutationDir(value)} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${mutationDir === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}>{label}</button>
             ))}
-            <button onClick={() => void loadMutations()} disabled={mutationsLoading} className="inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white disabled:opacity-40">
+            <button onClick={() => void loadMutations()} disabled={mutationsLoading} className="inline-flex h-8 items-center gap-2 rounded-lg border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg disabled:opacity-40">
               {mutationsLoading ? <Spinner size={12} /> : <IosIcon name="refresh" size={12} tint="white" />} Muat
             </button>
           </div>
         </header>
-        {!mutations.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada mutasi — tekan Muat.</p> : (
-          <div className="divide-y divide-white/[0.06]">
+        {!mutations.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada mutasi — tekan Muat.</p> : (
+          <div className="divide-y divide-admin-border">
             {mutations.map((m, i) => (
               <div key={`${m.invoice}-${i}`} className="flex flex-wrap items-center gap-2 p-4">
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${m.direction === "credit" ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : "border-red-400/25 bg-red-500/10 text-red-300"}`}>
+                <span className={`rounded-md border px-2 py-0.5 text-xs font-bold ${m.direction === "credit" ? "border-emerald-400/25 bg-emerald-500/10 text-admin-success" : "border-red-400/25 bg-red-500/10 text-admin-danger"}`}>
                   {m.direction === "credit" ? "+" : "−"}{formatRupiah(m.amount)}
                 </span>
-                <span className="font-mono text-[11px] text-white/45">{m.invoice}</span>
-                <span className="text-[11px] text-white/40">{m.type}</span>
-                <span className="ml-auto text-[11px] text-white/35 tabular-nums">{formatRupiah(m.balance_before)} → {formatRupiah(m.balance_after)}</span>
+                <span className="font-mono text-xs text-admin-muted">{m.invoice}</span>
+                <span className="text-xs text-admin-muted">{m.type}</span>
+                <span className="ml-auto text-xs text-admin-muted tabular-nums">{formatRupiah(m.balance_before)} → {formatRupiah(m.balance_after)}</span>
               </div>
             ))}
           </div>
         )}
       </section>
 
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Transaksi SK <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Daftar transaksi di sisi Sekalipay (audit/refund). WR tidak punya ini.</p></div>
-          <button onClick={() => void loadTransactions()} disabled={trxLoading} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white disabled:opacity-40">
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Transaksi SK <span className="ml-1 rounded-md bg-admin-primary/15 px-2 py-0.5 text-xs font-bold text-admin-accent">KHAS SK</span></h3><p className="mt-0.5 text-xs text-admin-muted">Daftar transaksi di sisi Sekalipay (audit/refund). WR tidak punya ini.</p></div>
+          <button onClick={() => void loadTransactions()} disabled={trxLoading} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg disabled:opacity-40">
             {trxLoading ? <Spinner size={12} /> : <IosIcon name="refresh" size={12} tint="white" />} Muat
           </button>
         </header>
-        {!transactions.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada data — tekan Muat.</p> : (
-          <div className="divide-y divide-white/[0.06]">
+        {!transactions.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada data — tekan Muat.</p> : (
+          <div className="divide-y divide-admin-border">
             {transactions.map((t) => (
               <div key={t.invoice} className="flex flex-wrap items-center gap-2 p-4">
                 <StatusBadge status={t.status} />
-                <span className="font-mono text-[11px] text-white/45">{t.invoice}</span>
-                <span className="font-mono text-[11px] text-white/35">{t.ref_id}</span>
-                <span className="ml-auto text-xs text-white/55 tabular-nums">{formatRupiah(t.amount)}</span>
+                <span className="font-mono text-xs text-admin-muted">{t.invoice}</span>
+                <span className="font-mono text-xs text-admin-muted">{t.ref_id}</span>
+                <span className="ml-auto text-xs text-admin-muted tabular-nums">{formatRupiah(t.amount)}</span>
               </div>
             ))}
           </div>
@@ -978,41 +978,41 @@ export function SekalipayManager() {
       )}
       {skTab === "alat" && (
       <>
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Cek akun <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Validasi nickname/nama sebelum order (game, e-wallet). WR tidak punya ini.</p></header>
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="border-b border-admin-border p-4"><h3 className="text-sm font-semibold text-admin-fg">Cek akun <span className="ml-1 rounded-md bg-admin-primary/15 px-2 py-0.5 text-xs font-bold text-admin-accent">KHAS SK</span></h3><p className="mt-0.5 text-xs text-admin-muted">Validasi nickname/nama sebelum order (game, e-wallet). WR tidak punya ini.</p></header>
         <div className="flex flex-wrap items-center gap-2 p-4">
-          <input value={validateItem} onChange={(e) => setValidateItem(e.target.value)} placeholder="item_id" inputMode="numeric" className="h-9 w-28 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-          <input value={validateCustomer} onChange={(e) => setValidateCustomer(e.target.value)} placeholder="User ID / nomor" className="h-9 min-w-[160px] flex-1 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-          <input value={validateZone} onChange={(e) => setValidateZone(e.target.value)} placeholder="zone/server (opsional)" className="h-9 w-40 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-          <button onClick={() => void runValidate()} disabled={validating} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+          <input value={validateItem} onChange={(e) => setValidateItem(e.target.value)} placeholder="item_id" inputMode="numeric" className="h-9 w-28 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+          <input value={validateCustomer} onChange={(e) => setValidateCustomer(e.target.value)} placeholder="User ID / nomor" className="h-9 min-w-[160px] flex-1 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+          <input value={validateZone} onChange={(e) => setValidateZone(e.target.value)} placeholder="zone/server (opsional)" className="h-9 w-40 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+          <button onClick={() => void runValidate()} disabled={validating} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
             {validating ? <Spinner size={13} /> : null}{validating ? "Mengecek…" : "Cek akun"}
           </button>
-          {validateResult && <p className="w-full font-mono text-[11px] text-white/60">{validateResult}</p>}
+          {validateResult && <p className="w-full font-mono text-xs text-admin-muted">{validateResult}</p>}
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Stock lock <span className="ml-1 rounded-full bg-[#00E5FF]/15 px-2 py-0.5 text-[10px] font-bold text-[#5cefff]">KHAS SK</span></h3><p className="mt-0.5 text-[11px] text-white/40">Reservasi stok 10 mnt anti-overselling. WR tidak punya ini.</p></div>
-          <button onClick={() => void loadLocks()} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white">
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Stock lock <span className="ml-1 rounded-md bg-admin-primary/15 px-2 py-0.5 text-xs font-bold text-admin-accent">KHAS SK</span></h3><p className="mt-0.5 text-xs text-admin-muted">Reservasi stok 10 mnt anti-overselling. WR tidak punya ini.</p></div>
+          <button onClick={() => void loadLocks()} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">
             <IosIcon name="refresh" size={12} tint="white" /> Muat lock aktif
           </button>
         </header>
         <div className="flex flex-wrap items-center gap-2 p-4">
-          <input value={lockItem} onChange={(e) => setLockItem(e.target.value)} placeholder="item_id" inputMode="numeric" className="h-9 w-28 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-          <input value={lockQty} onChange={(e) => setLockQty(e.target.value)} placeholder="qty" inputMode="numeric" className="h-9 w-20 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-          <button onClick={() => void createLock()} disabled={locking} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+          <input value={lockItem} onChange={(e) => setLockItem(e.target.value)} placeholder="item_id" inputMode="numeric" className="h-9 w-28 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+          <input value={lockQty} onChange={(e) => setLockQty(e.target.value)} placeholder="qty" inputMode="numeric" className="h-9 w-20 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+          <button onClick={() => void createLock()} disabled={locking} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
             {locking ? <Spinner size={13} /> : null}{locking ? "Mengunci…" : "Kunci 10 mnt"}
           </button>
         </div>
         {locks.length > 0 && (
-          <div className="divide-y divide-white/[0.06] border-t border-white/10">
+          <div className="divide-y divide-admin-border border-t border-admin-border">
             {locks.map((l) => (
               <div key={l.lock_token} className="flex flex-wrap items-center gap-2 p-4">
-                <span className="font-mono text-[11px] text-[#5cefff]">{l.lock_token}</span>
-                <span className="text-[11px] text-white/45">item {l.item_id} × {l.quantity}</span>
-                <span className="text-[11px] text-white/35">s/d {formatDate(l.expires_at)}</span>
-                <button onClick={() => void releaseLock(l.lock_token)} className="ml-auto inline-flex h-8 items-center rounded-lg border border-red-400/30 bg-red-500/10 px-3 text-[11px] font-bold text-red-200 transition hover:bg-red-500/20">Lepas</button>
+                <span className="font-mono text-xs text-admin-accent">{l.lock_token}</span>
+                <span className="text-xs text-admin-muted">item {l.item_id} × {l.quantity}</span>
+                <span className="text-xs text-admin-muted">s/d {formatDate(l.expires_at)}</span>
+                <button onClick={() => void releaseLock(l.lock_token)} className="ml-auto inline-flex h-8 items-center rounded-lg border border-red-400/30 bg-red-500/10 px-3 text-xs font-bold text-admin-danger transition hover:bg-red-500/20">Lepas</button>
               </div>
             ))}
           </div>
@@ -1020,14 +1020,14 @@ export function SekalipayManager() {
       </section>
 
 
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Detail varian</h3><p className="mt-0.5 text-[11px] text-white/40">Capability registry (min.order, status, deskripsi, required fields) + live API.</p></header>
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="border-b border-admin-border p-4"><h3 className="text-sm font-semibold text-admin-fg">Detail varian</h3><p className="mt-0.5 text-xs text-admin-muted">Capability registry (min.order, status, deskripsi, required fields) + live API.</p></header>
         <div className="flex flex-wrap items-center gap-2 p-4">
-          <input value={detailId} onChange={(e) => setDetailId(e.target.value)} placeholder="variant_id SK" inputMode="numeric" className="h-9 w-36 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-          <button onClick={() => void loadDetail()} disabled={detailLoading} className="inline-flex h-9 items-center gap-2 rounded-xl bg-white px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-white/90 disabled:opacity-40">
+          <input value={detailId} onChange={(e) => setDetailId(e.target.value)} placeholder="variant_id SK" inputMode="numeric" className="h-9 w-36 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+          <button onClick={() => void loadDetail()} disabled={detailLoading} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle disabled:opacity-40">
             {detailLoading ? <Spinner size={13} /> : null}{detailLoading ? "Memuat…" : "Lihat detail"}
           </button>
-          {detailResult && <p className="w-full whitespace-pre-wrap font-mono text-[11px] text-white/60">{detailResult}</p>}
+          {detailResult && <p className="w-full whitespace-pre-wrap font-mono text-xs text-admin-muted">{detailResult}</p>}
         </div>
       </section>
       </>

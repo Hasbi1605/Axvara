@@ -1,5 +1,40 @@
 # ARCHITECTURE.md — AXVARA
 
+## Workspace admin: tema, dialog native dan guard draft (13 November 2026, implementasi lokal)
+
+- Route baru `src/app/(shop)/admin/layout.tsx` (edge) membaca cookie
+  `axvara-admin-theme` (`light|dark`, selain itu `system`) lalu membungkus
+  `AdminWorkspace` (`src/components/admin/AdminWorkspace.tsx`). Cookie ditulis
+  klien: `Path=/admin; Max-Age=31536000; SameSite=Lax` (+`Secure` di HTTPS); bukan
+  data sensitif dan tidak dibaca API. Wrapper tema/toast hanya aktif bila
+  `usePathname()==="/admin"`; `/admin/payments/test` dirender apa adanya.
+- `AdminWorkspace` mengekspor `useAdminDraft(dirty, busy)`, `navigateWithDraftGuard`
+  dan `pushAdminHistory(url)` (pushState yang mempertahankan `history.state` Next +
+  `adminIndex`). Guard memakai event cancelable `axvara:admin-navigate`, popstate
+  capture + Navigation API `navigate`/`traverseTo` (bila ada) dan `beforeunload`.
+  Navigasi section `page.tsx`, tab Pembayaran (`payment_tab`) dan tab Pedia memakai
+  `pushAdminHistory`; Metode Pembayaran kini menyimpan tab di URL.
+- `src/components/ui/Dialog.tsx`: native `<dialog>` `showModal()` (fallback `open`),
+  scroll-lock berhitung untuk nested modal, restore fokus, Escape/backdrop, `busy`.
+  `ConfirmDialog` memakai komponen ini; `window.confirm` di editor teks varian
+  diganti ConfirmDialog. Toast admin dirender sebagai popover top-layer agar tetap
+  di atas modal native.
+- Tailwind `admin.*` + `src/components/admin/admin.css` (lihat DESIGN). Tidak ada
+  dependency, env, migrasi, flag atau perubahan auth/Access/sesi.
+- Kontrak API admin pesanan (perbaikan audit F1/F4/F5):
+  - `PATCH /api/admin/orders/[code]` menolak 409 perubahan status legacy untuk
+    `payment_method` `nowpayments:*`/`sekalipay_gateway:*` (termasuk batal; status
+    mengikuti rekonsiliasi provider) dan menolak `status:"lunas"` generik untuk
+    `qris` ("Gunakan ACC QRIS dengan catatan verifikasi mutasi."). Jalur `paid_qris`
+    + ledger existing, no-op/pending, regex AXV-only dan guard WhatsApp tidak berubah.
+  - `GET /api/admin/orders`: `kind=games` (`order_kind='games'`); `method` menerima
+    ID berkolon `nowpayments:<x>`/`sekalipay_gateway:<x>`; `method=manual` kini
+    mengecualikan QRIS, NOWPayments dan gateway. Where/bindings tetap dipakai
+    bersama list/stats/pagination/CSV.
+  - UI Pesanan: jenis `games` (prefix AXG) berlabel sendiri tanpa ACC/Tolak/buyer
+    input/handover (endpoint detail Market tetap AXV-only); provider modern tidak
+    menampilkan aksi manual.
+
 ## Temp mail publik terisolasi (12 November 2026, implementasi lokal)
 
 - Koreksi CI12November2026: D1 terpisah bukan berarti database kosong. Prototipe

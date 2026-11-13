@@ -10,6 +10,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        admin: Object.fromEntries(Object.entries({ bg: "248 250 252", card: "255 255 255", fg: "15 23 42", muted: "100 116 139", subtle: "241 245 249", border: "226 232 240", primary: "15 23 42", inverse: "255 255 255", accent: "14 116 144", success: "4 120 87", warning: "146 64 14", danger: "185 28 28", info: "29 78 216" }).map(([key, fallback]) => [key, `rgb(var(--admin-${key}, ${fallback}) / <alpha-value>)`])),
         ax: {
           bg: "#080C1E",
           bg2: "#0F1430",

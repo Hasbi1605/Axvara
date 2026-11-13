@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
+import { IosIcon, type IosIconName } from "@/components/admin/AdminIcon";
 import type { AdminSection } from "./AdminShell";
 
 export type SupplierSectionId = "warung" | "sekalipay" | "tunvn" | "pairs" | "links";
@@ -58,24 +58,24 @@ export function SupplierDropdown({
         aria-haspopup="true"
         title={collapsed ? "Supplier" : undefined}
         onClick={() => setOpen((value) => !value)}
-        className={`flex min-h-10 w-full items-center gap-3 rounded-xl px-3 py-1.5 text-left text-sm transition ${activeItem ? "bg-[#00E5FF] font-bold text-[#070a1e]" : "text-white/65 hover:bg-white/[0.08] hover:text-white"}`}
+        className={`flex min-h-10 w-full items-center gap-3 rounded-xl px-3 py-1.5 text-left text-sm transition ${activeItem ? "bg-admin-primary font-bold text-admin-inverse" : "text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-admin-subtle">
           <IosIcon name="box" size={16} tint={activeItem ? "black" : "white"} className={activeItem ? "" : "opacity-80"} />
         </span>
         <span className={`min-w-0 flex-1 ${collapsed ? "lg:hidden" : ""}`}>
-          Supplier{activeItem ? <span className="block truncate text-[11px] font-semibold opacity-70">{activeItem.label}</span> : null}
+          Supplier{activeItem ? <span className="block truncate text-xs font-semibold opacity-70">{activeItem.label}</span> : null}
         </span>
         {totalBadge > 0 && (
-          <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold ${activeItem ? "bg-[#07101f]/15 text-[#07101f]" : "bg-[#FFB800]/15 text-[#FFCF55]"} ${collapsed ? "lg:hidden" : ""}`}>
+          <span className={`min-w-5 rounded-md px-1.5 py-0.5 text-center text-xs font-bold ${activeItem ? "bg-admin-primary/10 text-admin-fg" : "bg-[#FFB800]/15 text-admin-warning"} ${collapsed ? "lg:hidden" : ""}`}>
             {totalBadge > 99 ? "99+" : totalBadge}
           </span>
         )}
-        <span aria-hidden className={`text-[10px] leading-none ${collapsed ? "lg:hidden" : "opacity-60"}`}>{open ? "▾" : "▸"}</span>
+        <span aria-hidden className={`text-xs leading-none ${collapsed ? "lg:hidden" : "opacity-60"}`}>{open ? "▾" : "▸"}</span>
       </button>
 
       {open && (
-        <div className={`mt-1 space-y-1 ${collapsed ? "" : "ml-4 border-l border-white/10 pl-2"}`} role="group" aria-label="Panel supplier">
+        <div className={`mt-1 space-y-1 ${collapsed ? "" : "ml-4 border-l border-admin-border pl-2"}`} role="group" aria-label="Panel supplier">
           {SUPPLIER_ITEMS.map((item) => {
             const active = section === item.id;
             const badge = badges[item.id] ?? 0;
@@ -86,13 +86,13 @@ export function SupplierDropdown({
                 onClick={() => onSection(item.id)}
                 title={collapsed ? item.label : undefined}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-9 w-full items-center gap-3 rounded-xl px-3 py-1.5 text-left text-[13px] transition ${active ? "bg-[#00E5FF] font-bold text-[#070a1e]" : "text-white/60 hover:bg-white/[0.08] hover:text-white"}`}
+                className={`flex min-h-9 w-full items-center gap-3 rounded-xl px-3 py-1.5 text-left text-[13px] transition ${active ? "bg-admin-primary font-bold text-admin-inverse" : "text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-admin-subtle">
                   <IosIcon name={item.icon} size={14} tint={active ? "black" : "white"} className={active ? "" : "opacity-80"} />
                 </span>
                 <span className={`min-w-0 flex-1 ${collapsed ? "lg:hidden" : ""}`}>{item.label}</span>
-                {badge > 0 && <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold ${active ? "bg-[#07101f]/15 text-[#07101f]" : "bg-[#FFB800]/15 text-[#FFCF55]"} ${collapsed ? "lg:hidden" : ""}`}>{badge > 99 ? "99+" : badge}</span>}
+                {badge > 0 && <span className={`min-w-5 rounded-md px-1.5 py-0.5 text-center text-xs font-bold ${active ? "bg-admin-primary/10 text-admin-fg" : "bg-[#FFB800]/15 text-admin-warning"} ${collapsed ? "lg:hidden" : ""}`}>{badge > 99 ? "99+" : badge}</span>}
               </button>
             );
           })}

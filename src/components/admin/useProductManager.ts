@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAdminDraft } from "./AdminWorkspace";
+import { useCallback, useMemo, useState } from "react";
 import { toWebp16x9, toWebpOriginalRatio } from "@/components/admin/ImageDropzone";
 import {
   SINGLE_BULK_PREFIX,
@@ -778,6 +779,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const productModalOpen = Boolean(editing || showNew);
   const productDirty = productModalOpen && productFormSignature(form, formImages, hasMultiVariants, formVariants) !== productInitialSignature;
 
+  useAdminDraft(productDirty || saving || uploading, saving || uploading);
+
   // Satu titik untuk permintaan tutup modal: jika ada perubahan belum tersimpan minta
   // konfirmasi, jika tidak langsung tutup. Sebelumnya logika ini digandakan di 4 tempat.
   const requestCloseProductModal = useCallback(() => {
@@ -785,21 +788,6 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     if (productDirty) setConfirmProductClose(true);
     else closeModal();
   }, [saving, productDirty]);
-
-  // Scroll lock + Escape untuk modal produk (perilaku identik dengan sebelumnya).
-  useEffect(() => {
-    if (!productModalOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving) {
-        if (productDirty) setConfirmProductClose(true);
-        else closeModal();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", onKeyDown); };
-  }, [productModalOpen, productDirty, saving]);
 
   return {
     // data & daftar

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { useToast } from "@/components/ui/Toast";
 
 type QrisProvider = "dana" | "gopay" | "klikqris";
@@ -18,6 +18,7 @@ export function PaymentReconciliation() {
   const [page, setPage] = useState(1);
   const [data, setData] = useState<EventsData>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [retrying, setRetrying] = useState<number | null>(null);
 
   // Generation/abort guard (paritas OrdersManager): ganti filter/page cepat
@@ -28,6 +29,7 @@ export function PaymentReconciliation() {
   const load = useCallback(async (signal?: AbortSignal) => {
     const request = ++loadRequest.current;
     setLoading(true);
+    setError("");
     try {
       const response = await fetch(`/api/admin/payments/events?status=${encodeURIComponent(status)}&page=${page}&limit=12`, { cache: "no-store", signal });
       const body = await response.json().catch(() => ({})) as EventsData;
@@ -37,10 +39,10 @@ export function PaymentReconciliation() {
     } catch (cause) {
       if (signal?.aborted || request !== loadRequest.current) return;
       if (cause instanceof DOMException && cause.name === "AbortError") return;
-      toast.error(cause instanceof Error ? cause.message : "Gagal memuat event QRIS");
+      setError(cause instanceof Error ? cause.message : "Gagal memuat event QRIS");
     }
     finally { if (request === loadRequest.current) setLoading(false); }
-  }, [page, status, toast]);
+  }, [page, status]);
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
@@ -70,38 +72,39 @@ export function PaymentReconciliation() {
   };
 
   return <div className="space-y-4">
-    <div className="grid gap-3 sm:grid-cols-3"><HealthCard title={`Konfigurasi QRIS ${providerLabel}`} value={healthOk ? "Terkonfigurasi" : "Belum lengkap"} ok={healthOk} /><HealthCard title={`Event terakhir ${providerLabel}`} value={lastEventAt ? formatDate(lastEventAt) : "Belum ada"} ok={Boolean(lastEventAt)} /><HealthCard title="Perlu dicek" value={String(attention)} ok={attention === 0} /></div>
-    {data.health && <section className="rounded-[20px] border border-[#00E5FF]/20 bg-[#00E5FF]/[0.05] p-4 sm:p-5">
+    {error && <div role="alert" className="rounded-xl border border-admin-danger/30 p-4 text-sm text-admin-danger">{error}. Status belum diketahui. <button onClick={() => void load()} className="underline">Coba lagi</button></div>}
+    <div className="grid gap-3 sm:grid-cols-3"><HealthCard title={`Konfigurasi QRIS ${providerLabel}`} value={loading || error ? "Belum diketahui" : healthOk ? "Terkonfigurasi" : "Belum lengkap"} ok={!loading && !error && healthOk} /><HealthCard title={`Event terakhir ${providerLabel}`} value={loading || error ? "Belum diketahui" : lastEventAt ? formatDate(lastEventAt) : "Belum ada"} ok={!loading && !error && Boolean(lastEventAt)} /><HealthCard title="Perlu dicek" value={loading || error ? "—" : String(attention)} ok={!loading && !error && attention === 0} /></div>
+    {data.health && <section className="rounded-xl border border-admin-accent/20 bg-admin-primary/[0.05] p-4 sm:p-5">
       <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">{provider === "klikqris" ? <><h3 className="text-sm font-semibold text-white">Gateway KlikQRIS</h3><p className="mt-1 text-xs leading-5 text-white/50">Callback memakai signature tersimpan dan konfirmasi status server. Batas bayar AXVARA tetap 15 menit; pembayaran terlambat diperiksa manual, tanpa pengiriman otomatis. URL callback diberikan per invoice.</p></> : provider === "gopay" ? <><h3 className="text-sm font-semibold text-white">Poller GoBiz server (GoPay)</h3><p className="mt-1 text-xs leading-5 text-white/50">Provider efektif untuk invoice baru: GoPay. Mutasi GoBiz dikirim oleh poller server ke webhook GoPay, bukan aplikasi Android QRIS Hook. Periksa proses poller dan sesi GoBiz di server bila pembayaran belum terdeteksi.</p></> : <><h3 className="text-sm font-semibold text-white">Setup aplikasi QRIS Hook</h3><p className="mt-1 text-xs leading-5 text-white/50">Provider efektif untuk invoice baru: DANA. Aktifkan Notification Access, pilih merchant DANA, matikan Debug Mode, lalu isi URL dan <strong className="text-white/70">nilai rahasia sebenarnya</strong> yang tersimpan sebagai Pages Secret <span className="font-mono text-white/70">DANA_WEBHOOK_SECRET</span>.</p></>}</div>
-        <button type="button" onClick={() => void copyWebhookUrl()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8]"><IosIcon name="copy" size={13} tint="black" /> Salin URL</button>
+        <div className="min-w-0 flex-1">{provider === "klikqris" ? <><h3 className="text-sm font-semibold text-admin-fg">Gateway KlikQRIS</h3><p className="mt-1 text-xs leading-5 text-admin-muted">Callback memakai signature tersimpan dan konfirmasi status server. Batas bayar AXVARA tetap 15 menit; pembayaran terlambat diperiksa manual, tanpa pengiriman otomatis. URL callback diberikan per invoice.</p></> : provider === "gopay" ? <><h3 className="text-sm font-semibold text-admin-fg">Poller GoBiz server (GoPay)</h3><p className="mt-1 text-xs leading-5 text-admin-muted">Provider efektif untuk invoice baru: GoPay. Mutasi GoBiz dikirim oleh poller server ke webhook GoPay, bukan aplikasi Android QRIS Hook. Periksa proses poller dan sesi GoBiz di server bila pembayaran belum terdeteksi.</p></> : <><h3 className="text-sm font-semibold text-admin-fg">Setup aplikasi QRIS Hook</h3><p className="mt-1 text-xs leading-5 text-admin-muted">Provider efektif untuk invoice baru: DANA. Aktifkan Notification Access, pilih merchant DANA, matikan Debug Mode, lalu isi URL dan <strong className="text-admin-muted">nilai rahasia sebenarnya</strong> yang tersimpan sebagai Pages Secret <span className="font-mono text-admin-muted">DANA_WEBHOOK_SECRET</span>.</p></>}</div>
+        <button type="button" onClick={() => void copyWebhookUrl()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary"><IosIcon name="copy" size={13} tint="black" /> Salin URL</button>
       </div>
       <dl className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="min-w-0 rounded-xl border border-white/10 bg-black/15 p-3"><dt className="text-[10px] uppercase tracking-wide text-white/35">Webhook URL</dt><dd className="mt-1 break-all font-mono text-xs text-[#5cefff]">{data.health.webhook_url}</dd></div>
-        <div className="rounded-xl border border-white/10 bg-black/15 p-3"><dt className="text-[10px] uppercase tracking-wide text-white/35">Header secret</dt><dd className="mt-1 font-mono text-xs text-white/70">{data.health.secret_header}</dd></div>
+        <div className="min-w-0 rounded-xl border border-admin-border bg-black/15 p-3"><dt className="text-xs uppercase tracking-wide text-admin-muted">Webhook URL</dt><dd className="mt-1 break-all font-mono text-xs text-admin-accent">{data.health.webhook_url}</dd></div>
+        <div className="rounded-xl border border-admin-border bg-black/15 p-3"><dt className="text-xs uppercase tracking-wide text-admin-muted">Header secret</dt><dd className="mt-1 font-mono text-xs text-admin-muted">{data.health.secret_header}</dd></div>
       </dl>
-      {provider === "dana" && <><p className="mt-3 rounded-xl border border-[#FFB800]/20 bg-[#FFB800]/[0.06] px-3 py-2 text-[11px] leading-5 text-[#FFD66B]">Jangan ketik teks <span className="font-mono">DANA_WEBHOOK_SECRET</span> pada kolom Optional secret; itu hanya nama variabel, bukan nilainya.</p>
-      <p className="mt-3 text-[11px] leading-5 text-white/40">Setelah disimpan, tekan <strong className="text-white/60">Retry pending</strong> di aplikasi. Status berhasil harus <strong className="text-emerald-300/80">Sent / HTTP 2xx</strong>; transaksi muncul di tabel rekonsiliasi ini.</p></>}
-      <p className="mt-3 text-[11px] leading-5 text-white/40">Status konfigurasi hanya menunjukkan flag dan secret terisi, bukan kesehatan poller, sesi GoBiz, atau penerimaan notifikasi. Invoice lama tetap mengikuti provider saat diterbitkan; verifikasi mutasi pada merchant invoice tersebut.</p>
+      {provider === "dana" && <><p className="mt-3 rounded-xl border border-[#FFB800]/20 bg-[#FFB800]/[0.06] px-3 py-2 text-xs leading-5 text-admin-warning">Jangan ketik teks <span className="font-mono">DANA_WEBHOOK_SECRET</span> pada kolom Optional secret; itu hanya nama variabel, bukan nilainya.</p>
+      <p className="mt-3 text-xs leading-5 text-admin-muted">Setelah disimpan, tekan <strong className="text-admin-muted">Retry pending</strong> di aplikasi. Status berhasil harus <strong className="text-admin-success">Sent / HTTP 2xx</strong>; transaksi muncul di tabel rekonsiliasi ini.</p></>}
+      <p className="mt-3 text-xs leading-5 text-admin-muted">Status konfigurasi hanya menunjukkan flag dan secret terisi, bukan kesehatan poller, sesi GoBiz, atau penerimaan notifikasi. Invoice lama tetap mengikuti provider saat diterbitkan; verifikasi mutasi pada merchant invoice tersebut.</p>
     </section>}
-    <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-      <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4"><div className="min-w-0"><h3 className="text-sm font-semibold text-white">Rekonsiliasi QRIS</h3><p className="mt-0.5 text-[11px] text-white/40">Jejak aman tanpa payload mentah atau secret server.</p></div><button onClick={() => void load()} disabled={loading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white"><IosIcon name="refresh" size={13} tint="white" /> Muat ulang</button><div className="flex w-full flex-wrap gap-2">{[["attention", "Perlu dicek"], ["all", "Semua"], ["matched", "Cocok"], ["failed", "Gagal"]].map(([value, label]) => <button key={value} onClick={() => { setStatus(value); setPage(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${status === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>)}</div></header>
-      {loading ? <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-white/45"><Spinner size={20} /> Memuat event…</div> : !data.events?.length ? <p className="p-10 text-center text-sm text-white/40">Tidak ada event pada filter ini.</p> : <div className="divide-y divide-white/[0.06]">{data.events.map((event) => <article key={event.id} className="grid gap-3 p-4 transition hover:bg-white/[0.02] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><EventBadge status={event.status} /><span className="text-xs font-semibold text-[#5cefff]">{event.provider === "klikqris" ? "KlikQRIS" : event.provider === "gopay" ? "GoPay" : "DANA"}</span><span className="font-semibold text-white">{formatRupiah(event.amount)}</span><span className="text-xs text-white/40">{event.sender_name || "Pengirim tidak terbaca"}</span></div><p className="mt-2 text-xs text-white/45">{formatDate(event.created_at)}{event.order_code ? ` · ${event.order_code}` : ""}</p>{event.last_error && <p className="mt-1 font-mono text-[10px] text-red-300/70">{event.last_error}</p>}</div>{["received", "ignored", "failed"].includes(event.status) && event.provider !== "klikqris" && <button onClick={() => void retry(event.id)} disabled={retrying === event.id} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{retrying === event.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{retrying === event.id ? "Mencocokkan…" : "Coba cocokkan"}</button>}{["received", "ignored", "failed"].includes(event.status) && event.provider !== "klikqris" && <ManualPaymentReview provider={event.provider || "dana"} disabled={retrying === event.id} onConfirm={values => void retry(event.id, values)} />}{event.provider === "klikqris" && event.status === "failed" && <p className="text-xs text-white/60">Pembayaran terkonfirmasi KlikQRIS. Periksa status pesanan dan stok sebelum penyelesaian manual.</p>}</article>)}</div>}
-      <footer className="flex items-center justify-between border-t border-white/10 p-3 text-xs text-white/40"><span>Hal {data.pagination?.page || 1} dari {data.pagination?.pages || 1}</span><div className="flex gap-2"><button disabled={(data.pagination?.page || 1) <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="h-8 rounded-full border border-white/10 px-3 transition hover:bg-white/5 disabled:opacity-30">Sebelumnya</button><button disabled={(data.pagination?.page || 1) >= (data.pagination?.pages || 1)} onClick={() => setPage((value) => value + 1)} className="h-8 rounded-full border border-white/10 px-3 transition hover:bg-white/5 disabled:opacity-30">Berikutnya</button></div></footer>
+    <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+      <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4"><div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Rekonsiliasi QRIS</h3><p className="mt-0.5 text-xs text-admin-muted">Jejak aman tanpa payload mentah atau secret server.</p></div><button onClick={() => void load()} disabled={loading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg"><IosIcon name="refresh" size={13} tint="white" /> Muat ulang</button><div className="flex w-full flex-wrap gap-2">{[["attention", "Perlu dicek"], ["all", "Semua"], ["matched", "Cocok"], ["failed", "Gagal"]].map(([value, label]) => <button key={value} onClick={() => { setStatus(value); setPage(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${status === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}>{label}</button>)}</div></header>
+      {loading ? <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-admin-muted"><Spinner size={20} /> Memuat event…</div> : error ? <p className="p-6 text-sm text-admin-muted">Data belum tersedia. Muat ulang untuk mencoba lagi.</p> : !data.events?.length ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada event pada filter ini.</p> : <div className="divide-y divide-admin-border">{data.events.map((event) => <article key={event.id} className="grid gap-3 p-4 transition hover:bg-admin-subtle sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><EventBadge status={event.status} /><span className="text-xs font-semibold text-admin-accent">{event.provider === "klikqris" ? "KlikQRIS" : event.provider === "gopay" ? "GoPay" : "DANA"}</span><span className="font-semibold text-admin-fg">{formatRupiah(event.amount)}</span><span className="text-xs text-admin-muted">{event.sender_name || "Pengirim tidak terbaca"}</span></div><p className="mt-2 text-xs text-admin-muted">{formatDate(event.created_at)}{event.order_code ? ` · ${event.order_code}` : ""}</p>{event.last_error && <p className="mt-1 font-mono text-xs text-admin-danger">{event.last_error}</p>}</div>{["received", "ignored", "failed"].includes(event.status) && event.provider !== "klikqris" && <button onClick={() => void retry(event.id)} disabled={retrying === event.id} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">{retrying === event.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{retrying === event.id ? "Mencocokkan…" : "Coba cocokkan"}</button>}{["received", "ignored", "failed"].includes(event.status) && event.provider !== "klikqris" && <ManualPaymentReview provider={event.provider || "dana"} disabled={retrying === event.id} onConfirm={values => void retry(event.id, values)} />}{event.provider === "klikqris" && event.status === "failed" && <p className="text-xs text-admin-muted">Pembayaran terkonfirmasi KlikQRIS. Periksa status pesanan dan stok sebelum penyelesaian manual.</p>}</article>)}</div>}
+      <footer className="flex items-center justify-between border-t border-admin-border p-3 text-xs text-admin-muted"><span>Hal {data.pagination?.page || 1} dari {data.pagination?.pages || 1}</span><div className="flex gap-2"><button disabled={(data.pagination?.page || 1) <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="h-8 rounded-md border border-admin-border px-3 transition hover:bg-admin-subtle disabled:opacity-30">Sebelumnya</button><button disabled={(data.pagination?.page || 1) >= (data.pagination?.pages || 1)} onClick={() => setPage((value) => value + 1)} className="h-8 rounded-md border border-admin-border px-3 transition hover:bg-admin-subtle disabled:opacity-30">Berikutnya</button></div></footer>
     </section>
   </div>;
 }
 
-function HealthCard({ title, value, ok }: { title: string; value: string; ok: boolean }) { return <div className={`rounded-2xl border p-4 ${ok ? "border-emerald-400/15 bg-emerald-400/[0.06]" : "border-red-400/15 bg-red-500/[0.06]"}`}><p className="text-[11px] uppercase tracking-wide text-white/40">{title}</p><p className={`mt-1 text-sm font-semibold tabular-nums ${ok ? "text-emerald-300" : "text-red-300"}`}>{value}</p></div>; }
+function HealthCard({ title, value, ok }: { title: string; value: string; ok: boolean }) { return <div className={`rounded-xl border p-4 ${ok ? "border-emerald-400/15 bg-emerald-400/[0.06]" : "border-red-400/15 bg-red-500/[0.06]"}`}><p className="text-xs uppercase tracking-wide text-admin-muted">{title}</p><p className={`mt-1 text-sm font-semibold tabular-nums ${ok ? "text-admin-success" : "text-admin-danger"}`}>{value}</p></div>; }
 function EventBadge({ status }: { status: EventRow["status"] }) {
   const label = status === "matched" ? "Cocok" : status === "ignored" ? "Tidak cocok" : status === "received" ? "Diterima" : "Gagal";
   const tone =
     status === "matched"
-      ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300"
+      ? "border-emerald-400/25 bg-emerald-500/10 text-admin-success"
       : status === "failed"
-        ? "border-red-400/25 bg-red-500/10 text-red-300"
-        : "border-[#FFB800]/25 bg-[#FFB800]/10 text-[#FFCF55]";
-  return <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${tone}`}>{label}</span>;
+        ? "border-red-400/25 bg-red-500/10 text-admin-danger"
+        : "border-[#FFB800]/25 bg-[#FFB800]/10 text-admin-warning";
+  return <span className={`inline-flex shrink-0 items-center rounded-md border px-2.5 py-1 text-xs font-bold uppercase ${tone}`}>{label}</span>;
 }
 // Sama seperti OrdersManager: timestamp D1 berformat spasi adalah UTC.
 function formatDate(value: string) { return formatWibDateTime(value) ?? value; }
@@ -128,7 +131,7 @@ function ManualPaymentReview({ provider, disabled, onConfirm }: {
   disabled: boolean;
   onConfirm: (verification: { order_code: string; review_note: string; verified: boolean }) => void;
 }) {
-  return <details className="sm:col-span-2 rounded-xl border border-white/10 p-3 text-xs text-white/70">
+  return <details className="sm:col-span-2 rounded-xl border border-admin-border p-3 text-xs text-admin-muted">
     <summary className="cursor-pointer font-semibold">Verifikasi manual</summary>
     <form className="mt-3 grid gap-3" onSubmit={event => {
       event.preventDefault();
@@ -137,10 +140,10 @@ function ManualPaymentReview({ provider, disabled, onConfirm }: {
       onConfirm({ order_code: String(values.get("order_code") || "").trim(), review_note: String(values.get("review_note") || "").trim(), verified: values.get("verified") === "on" });
     }}>
       <p>Cocokkan mutasi merchant {provider === "klikqris" ? "KlikQRIS" : provider === "gopay" ? "GoPay" : "DANA"} dengan invoice pesanan. Tindakan ini melunasi pesanan yang dipilih.</p>
-      <label className="grid gap-1">Kode pesanan<input required name="order_code" maxLength={100} className="rounded-lg border border-white/15 bg-black/20 p-2 text-white" /></label>
-      <label className="grid gap-1">Catatan pemeriksaan<textarea required name="review_note" minLength={10} maxLength={500} className="rounded-lg border border-white/15 bg-black/20 p-2 text-white" placeholder="Referensi mutasi dan alasan pembayaran milik pesanan ini" /></label>
+      <label className="grid gap-1">Kode pesanan<input required name="order_code" maxLength={100} className="rounded-lg border border-admin-border bg-black/20 p-2 text-admin-fg" /></label>
+      <label className="grid gap-1">Catatan pemeriksaan<textarea required name="review_note" minLength={10} maxLength={500} className="rounded-lg border border-admin-border bg-black/20 p-2 text-admin-fg" placeholder="Referensi mutasi dan alasan pembayaran milik pesanan ini" /></label>
       <label className="flex items-start gap-2"><input required type="checkbox" name="verified" />Saya sudah memeriksa mutasi dan memastikan pembayaran ini belum digunakan untuk pesanan lain.</label>
-      <button disabled={disabled} className="justify-self-start rounded-xl bg-[#00E5FF] px-4 py-2 font-bold text-[#07101f] disabled:opacity-40">Konfirmasi pembayaran</button>
+      <button disabled={disabled} className="justify-self-start rounded-xl bg-admin-primary px-4 py-2 font-bold text-admin-inverse disabled:opacity-40">Konfirmasi pembayaran</button>
     </form>
   </details>;
 }

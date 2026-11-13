@@ -90,3 +90,24 @@ it("empty filtered results retain global facets and zero pagination metrics", as
   expect(data.pagination).toMatchObject({ total: 0, pages: 1 });
   expect(data.counts.statuses).toEqual({ pending: 2, lunas: 1 });
 });
+
+it.each(["nowpayments:usdtbsc", "sekalipay_gateway:BCA"])("filters modern ID %s consistently across list/stats/CSV", async (method) => {
+  fixture.sql.prepare("UPDATE orders SET payment_method=? WHERE code='AXV-P1'").run(method);
+  const data = await fetchOrders(`method=${encodeURIComponent(method)}`);
+  expect(data.orders).toHaveLength(1);
+  expect(data.stats.total).toBe(1);
+  expect(data.pagination.total).toBe(1);
+  const session = await createAdminToken("admin@axvara.tech");
+  const idle = await createIdleToken(session.sid);
+  const response = await listOrders(new NextRequest(`https://axvara.tech/api/admin/orders?export=csv&method=${encodeURIComponent(method)}`, { headers: { cookie: `axvara_admin_token=${session.token}; axvara_idle=${idle}` } }));
+  const csv = await response.text();
+  expect(csv).toContain("AXV-P1");
+  expect(csv).not.toContain("AXV-P2");
+});
+
+it("manual excludes modern rails and Games has an independent kind filter", async () => {
+  fixture.sql.exec("UPDATE orders SET payment_method='nowpayments:usdtbsc' WHERE code='AXV-P1'; UPDATE orders SET payment_method='sekalipay_gateway:BCA' WHERE code='AXV-P2'; UPDATE orders SET payment_method='seabank',order_kind='games' WHERE code='AXV-L1'");
+  expect((await fetchOrders("method=manual")).stats.total).toBe(1);
+  expect((await fetchOrders("kind=games")).orders).toHaveLength(1);
+  expect((await fetchOrders("kind=apps")).stats.total).toBe(2);
+});

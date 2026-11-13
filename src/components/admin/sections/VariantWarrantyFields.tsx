@@ -35,11 +35,11 @@ export function WarrantyFields({
 }) {
   const typeId = useId();
   const locked = disabled || wrLocked;
-  const lockedInput = "h-9 w-full rounded-xl bg-white/[0.03] border border-white/5 px-3 text-xs text-white/50 cursor-not-allowed";
-  const openInput = "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white placeholder:text-white/25 focus:border-[#00E5FF]/50 focus:outline-none";
+  const lockedInput = "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-muted cursor-not-allowed";
+  const openInput = "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none";
   return (
     <div className="pt-3">
-      <label htmlFor={typeId} className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</label>
+      <label htmlFor={typeId} className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</label>
       <div className="flex flex-wrap items-center gap-2">
         <select
           id={typeId}
@@ -53,12 +53,12 @@ export function WarrantyFields({
               warranty_unit: value.warranty_unit || "month",
             });
           }}
-          className="h-9 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"
+          className="h-9 rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none"
         >
-          <option value="full" className="bg-[#0F1430]">Full Garansi</option>
-          <option value="limited" className="bg-[#0F1430]">Garansi Terbatas</option>
-          <option value="none" className="bg-[#0F1430]">Tanpa Garansi</option>
-          <option value="custom" className="bg-[#0F1430]">Teks Kustom</option>
+          <option value="full" className="bg-admin-card">Full Garansi</option>
+          <option value="limited" className="bg-admin-card">Garansi Terbatas</option>
+          <option value="none" className="bg-admin-card">Tanpa Garansi</option>
+          <option value="custom" className="bg-admin-card">Teks Kustom</option>
         </select>
 
         {(value.warranty_type === "full" || value.warranty_type === "limited") && (
@@ -72,18 +72,18 @@ export function WarrantyFields({
                 const val = Math.max(1, Number(e.target.value) || 1);
                 onChange({ warranty_value: val });
               }}
-              className={`h-9 w-16 rounded-xl border px-2 text-xs text-center focus:outline-none ${locked ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 text-white focus:border-[#00E5FF]/50"}`}
+              className={`h-9 w-16 rounded-xl border px-2 text-xs text-center focus:outline-none ${locked ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border text-admin-fg focus:border-admin-accent/50"}`}
             />
             <select
               value={value.warranty_unit || "month"}
               disabled={locked}
               onChange={(e) => onChange({ warranty_unit: e.target.value })}
-              className="h-9 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"
+              className="h-9 rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none"
             >
-              <option value="day" className="bg-[#0F1430]">Hari</option>
-              <option value="month" className="bg-[#0F1430]">Bulan</option>
-              <option value="year" className="bg-[#0F1430]">Tahun</option>
-              <option value="lifetime" className="bg-[#0F1430]">Selamanya</option>
+              <option value="day" className="bg-admin-card">Hari</option>
+              <option value="month" className="bg-admin-card">Bulan</option>
+              <option value="year" className="bg-admin-card">Tahun</option>
+              <option value="lifetime" className="bg-admin-card">Selamanya</option>
             </select>
           </div>
         )}
@@ -94,11 +94,11 @@ export function WarrantyFields({
             readOnly={locked}
             onChange={(e) => onChange({ warranty_label: e.target.value })}
             placeholder="Contoh: Garansi 24 Jam Ganti Akun"
-            className={`h-9 flex-1 min-w-[200px] rounded-xl border px-3 text-xs focus:outline-none ${locked ? "bg-white/[0.03] border-white/5 text-white/50 cursor-not-allowed" : "bg-white/[0.06] border-white/10 text-white placeholder:text-white/20 focus:border-[#00E5FF]/50"}`}
+            className={`h-9 flex-1 min-w-[200px] rounded-xl border px-3 text-xs focus:outline-none ${locked ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50"}`}
           />
         )}
 
-        <span className="text-[11px] text-[#00E5FF]/80 font-medium ml-auto pl-2 py-1">
+        <span className="text-xs text-admin-accent/80 font-medium ml-auto pl-2 py-1">
           Hasil: {warrantyPreviewLabel(value)}
         </span>
       </div>

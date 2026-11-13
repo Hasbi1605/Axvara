@@ -6,8 +6,10 @@ import { ArticleEditor } from "@/components/admin/ArticleEditor";
 import { ImageDropzone } from "@/components/admin/ImageDropzone";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { formatWibDateTime } from "@/lib/utils";
+import { Dialog } from "@/components/ui/Dialog";
+import { navigateWithDraftGuard, useAdminDraft } from "./AdminWorkspace";
 
 type ArticleStatus = "draft" | "review" | "scheduled" | "published" | "rejected";
 type Article = {
@@ -73,6 +75,10 @@ export function ArticlesManager() {
   const [deleteTarget, setDeleteTarget] = useState<Article | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [initialForm, setInitialForm] = useState("");
+  const dirty = form !== null && JSON.stringify(form) !== initialForm;
+  useAdminDraft(dirty || saving, saving);
+  const closeEditor = () => { if (!saving) navigateWithDraftGuard(() => setForm(null)); };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,20 +123,22 @@ export function ArticlesManager() {
   const onEdit = (article: Article) => {
     setEditing(article);
     setError(null);
-    setForm({
+    const next = {
       title: article.title,
       cover_url: article.cover_url ?? "",
       content: article.content,
       status: article.status,
       sources: (article.source_urls ?? []).join("\n"),
       scheduled_at: localDateTime(article.scheduled_at),
-    });
+    };
+    setForm(next); setInitialForm(JSON.stringify(next));
   };
 
   const openNew = () => {
     setEditing(null);
     setError(null);
     setForm(emptyForm);
+    setInitialForm(JSON.stringify(emptyForm));
   };
 
   async function save() {
@@ -191,30 +199,30 @@ export function ArticlesManager() {
     <section className="mt-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-2">
         {[
-          ["Total artikel", counts.total, "text-white"],
-          ["Draft", counts.draft, "text-white/80"],
-          ["Review / jadwal", counts.review, "text-[#FFB800]"],
-          ["Published", counts.published, "text-[#22C55E]"],
+          ["Total artikel", counts.total, "text-admin-fg"],
+          ["Draft", counts.draft, "text-admin-muted"],
+          ["Review / jadwal", counts.review, "text-admin-warning"],
+          ["Published", counts.published, "text-admin-success"],
         ].map(([label, value, color]) => (
-          <div key={String(label)} className="ax-glass rounded-2xl p-4">
-            <p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p>
+          <div key={String(label)} className="admin-surface rounded-xl p-4">
+            <p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p>
             <p className={`mt-1 text-2xl font-display font-bold tabular-nums ${color}`}>{value}</p>
           </div>
         ))}
       </div>
 
       {/* Card utama — beri jarak mt-5 agar tidak menempel/tumpang-tindih dengan 4 mini card di atas (bug overlap) */}
-      <div className="mt-5 ax-glass rounded-[20px] overflow-hidden">
+      <div className="mt-5 admin-surface rounded-xl overflow-hidden">
         {/* Toolbar — seragam dengan Produk: search + button primary + filter */}
-        <div className="flex flex-col gap-3 p-4 sm:p-5 border-b border-white/10">
+        <div className="flex flex-col gap-3 p-4 sm:p-5 border-b border-admin-border">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="font-semibold text-white text-sm">Artikel</h2>
-              <p className="text-xs text-white/40">Slug & ringkasan dibuat otomatis.</p>
+              <h2 className="font-semibold text-admin-fg text-sm">Artikel</h2>
+              <p className="text-xs text-admin-muted">Slug & ringkasan dibuat otomatis.</p>
             </div>
             <button
               onClick={openNew}
-              className="inline-flex h-10 shrink-0 items-center gap-1.5 px-5 rounded-full bg-[#00E5FF] text-[#080C1E] text-sm font-bold hover:bg-[#00D0E8] transition"
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 px-5 rounded-md bg-admin-primary text-admin-inverse text-sm font-bold hover:bg-admin-primary transition"
             >
               <IosIcon name="plus" size={14} tint="black" /> Artikel Baru
             </button>
@@ -229,53 +237,53 @@ export function ArticlesManager() {
                 value={query}
                 onChange={(event) => { setQuery(event.target.value); setPage(1); }}
                 placeholder="Cari judul, isi ringkas, atau penulis…"
-                className="w-full h-10 pl-10 pr-4 rounded-full bg-white/[0.06] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#00E5FF]/40"
+                className="w-full h-10 pl-10 pr-4 rounded-md bg-admin-subtle border border-admin-border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/40"
               />
             </div>
             <select
               value={filter}
               onChange={(event) => { setFilter(event.target.value as typeof filter); setPage(1); }}
-              className="h-10 shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-4 text-sm text-white focus:outline-none focus:border-[#00E5FF]/40"
+              className="h-10 shrink-0 rounded-md border border-admin-border bg-admin-subtle px-4 text-sm text-admin-fg focus:outline-none focus:border-admin-accent/40"
             >
-              <option value="all" className="bg-[#0F1430]">Semua status</option>
+              <option value="all" className="bg-admin-card">Semua status</option>
               {Object.entries(statusLabels).map(([value, label]) => (
-                <option key={value} value={value} className="bg-[#0F1430]">{label}</option>
+                <option key={value} value={value} className="bg-admin-card">{label}</option>
               ))}
             </select>
           </div>
         </div>
 
         {loading ? (
-          <div className="p-10 flex flex-col items-center gap-3 text-white/60">
-            <span className="h-6 w-6 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+          <div className="p-10 flex flex-col items-center gap-3 text-admin-muted">
+            <span className="h-6 w-6 rounded-md border-2 border-admin-border border-t-white animate-spin" />
             <span className="text-sm">Memuat artikel…</span>
           </div>
         ) : filtered.length === 0 ? (
-          <p className="p-8 text-center text-sm text-white/40">Tidak ada artikel yang cocok.</p>
+          <p className="p-8 text-center text-sm text-admin-muted">Tidak ada artikel yang cocok.</p>
         ) : (
           <>
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-admin-border">
               {paged.map((article) => (
               <div
                 key={article.id}
-                className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center hover:bg-white/[0.03] transition"
+                className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center hover:bg-admin-subtle transition"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   {article.cover_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={article.cover_url} alt="" className="h-12 w-20 shrink-0 rounded-xl object-cover bg-white/5" />
+                    <img src={article.cover_url} alt="" className="h-12 w-20 shrink-0 rounded-xl object-cover bg-admin-subtle" />
                   ) : (
-                    <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-xl bg-white/5 border border-white/5">
+                    <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-xl bg-admin-subtle border border-admin-border">
                       <IosIcon name="image" size={18} tint="white" />
                     </div>
                   )}
                   <div className="min-w-0">
-                    <p className="line-clamp-1 text-sm font-semibold text-white leading-tight">{article.title}</p>
-                    <p className="mt-0.5 text-xs text-white/40 line-clamp-1">
+                    <p className="line-clamp-1 text-sm font-semibold text-admin-fg leading-tight">{article.title}</p>
+                    <p className="mt-0.5 text-xs text-admin-muted line-clamp-1">
                       {article.author_type === "agent" ? `Agent: ${article.author_name ?? "unknown"} · ` : ""}
                       {formatWibDateTime(article.updated_at, { dateStyle: "short" }) ?? "Belum disimpan"}
                     </p>
-                    <span className={`mt-1.5 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${article.status === "published" ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300" : article.status === "draft" ? "border-white/10 bg-white/[0.05] text-white/55" : article.status === "rejected" ? "border-red-400/25 bg-red-500/10 text-red-300" : "border-[#FFB800]/25 bg-[#FFB800]/10 text-[#FFCF55]"}`}>
+                    <span className={`mt-1.5 inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-bold ${article.status === "published" ? "border-emerald-400/25 bg-emerald-500/10 text-admin-success" : article.status === "draft" ? "border-admin-border bg-admin-subtle text-admin-muted" : article.status === "rejected" ? "border-red-400/25 bg-red-500/10 text-admin-danger" : "border-[#FFB800]/25 bg-[#FFB800]/10 text-admin-warning"}`}>
                       {statusLabels[article.status] ?? article.status}
                     </span>
                   </div>
@@ -285,20 +293,20 @@ export function ArticlesManager() {
                     <Link
                       href={`/artikel/${article.slug}`}
                       target="_blank"
-                      className="inline-flex h-8 items-center gap-1 px-3 rounded-full border border-white/10 bg-white/[0.05] text-xs font-semibold text-white/70 transition hover:bg-white/10 hover:text-white"
+                      className="inline-flex h-8 items-center gap-1 px-3 rounded-md border border-admin-border bg-admin-subtle text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg"
                     >
                       <IosIcon name="globe" size={12} tint="white" /> Lihat
                     </Link>
                   )}
                   <button
                     onClick={() => onEdit(article)}
-                    className="inline-flex h-8 items-center gap-1 px-3 rounded-full bg-white text-[#080C1E] text-xs font-bold hover:bg-white/90 transition"
+                    className="inline-flex h-8 items-center gap-1 px-3 rounded-md bg-admin-primary text-admin-inverse text-xs font-bold hover:bg-admin-subtle transition"
                   >
                     <IosIcon name="edit" size={12} tint="black" /> Edit
                   </button>
                   <button
                     onClick={() => setDeleteTarget(article)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-red-500 text-admin-fg hover:bg-red-600 shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition"
                     aria-label={`Hapus ${article.title}`}
                     title="Hapus artikel"
                   >
@@ -309,23 +317,23 @@ export function ArticlesManager() {
               ))}
             </div>
             {filtered.length > PER_PAGE_ARTIKEL && (
-              <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-white/10">
-                <p className="text-xs text-white/40">
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-admin-border">
+                <p className="text-xs text-admin-muted">
                   Hal {safePage} dari {totalPages} · {filtered.length} artikel
                 </p>
                 <div className="flex items-center gap-1.5">
                   <button
                     disabled={safePage <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none"
+                    className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"
                   >
                     <IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya
                   </button>
-                  <span className="text-xs text-white/40 px-1">{safePage} / {totalPages}</span>
+                  <span className="text-xs text-admin-muted px-1">{safePage} / {totalPages}</span>
                   <button
                     disabled={safePage >= totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none"
+                    className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"
                   >
                     Berikutnya <IosIcon name="chevron-right" size={12} tint="white" />
                   </button>
@@ -337,56 +345,58 @@ export function ArticlesManager() {
       </div>
 
       {form && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-start sm:p-6 sm:pt-10" onClick={() => !saving && setForm(null)}>
-          <div className="w-full max-w-[820px] rounded-t-3xl border border-white/10 bg-[#0d1126] p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between gap-3">
+        <Dialog title={editing ? "Edit Artikel" : "Artikel Baru"} onClose={closeEditor} busy={saving} className="article-dialog w-[900px] !overflow-hidden !p-0">
+          <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-admin-border p-5">
               <div>
-                <h3 className="font-display text-lg font-bold text-white">{editing ? "Edit Artikel" : "Artikel Baru"}</h3>
-                <p className="text-xs text-white/40">Editor visual menyimpan Markdown agar kompatibel dengan MCP/agent.</p>
+                <h3 className="font-display text-lg font-bold text-admin-fg">{editing ? "Edit Artikel" : "Artikel Baru"}</h3>
+                <p className="text-xs text-admin-muted">Editor visual menyimpan Markdown agar kompatibel dengan MCP/agent.</p>
               </div>
-              <button onClick={() => setForm(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/15" aria-label="Tutup form artikel"><IosIcon name="close" size={14} tint="white" /></button>
+              <button onClick={closeEditor} disabled={saving} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-admin-subtle text-admin-muted transition hover:bg-admin-subtle" aria-label="Tutup form artikel"><IosIcon name="close" size={14} tint="white" /></button>
             </div>
-            {error && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
-            <div className="mt-4 grid gap-4">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            {error && <p role="alert" className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-admin-danger">{error}</p>}
+            <div className="grid gap-4">
               <label className="space-y-1.5">
-                <span className="text-xs font-semibold text-white/60">Judul *</span>
-                <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-white" />
+                <span className="text-xs font-semibold text-admin-muted">Judul *</span>
+                <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="h-11 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-admin-fg" />
               </label>
               <div>
-                <p className="mb-1.5 text-xs font-semibold text-white/60">Cover</p>
+                <p className="mb-1.5 text-xs font-semibold text-admin-muted">Cover</p>
                 <ImageDropzone area="articles/covers" value={form.cover_url} onUploaded={(cover_url) => setForm({ ...form, cover_url })} onRemove={() => setForm({ ...form, cover_url: "" })} />
               </div>
               <label className="space-y-1.5">
-                <span className="text-xs font-semibold text-white/60">Isi artikel *</span>
+                <span className="text-xs font-semibold text-admin-muted">Isi artikel *</span>
                 <ArticleEditor value={form.content} onChange={(content) => setForm((current) => current ? { ...current, content } : current)} />
               </label>
               <label className="space-y-1.5">
-                <span className="text-xs font-semibold text-white/60">Sumber riset (satu URL per baris)</span>
-                <textarea value={form.sources} onChange={(event) => setForm({ ...form, sources: event.target.value })} rows={3} placeholder="https://sumber-resmi.example/artikel" className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white" />
+                <span className="text-xs font-semibold text-admin-muted">Sumber riset (satu URL per baris)</span>
+                <textarea value={form.sources} onChange={(event) => setForm({ ...form, sources: event.target.value })} rows={3} placeholder="https://sumber-resmi.example/artikel" className="w-full rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-sm text-admin-fg" />
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1.5">
-                  <span className="text-xs font-semibold text-white/60">Status</span>
-                  <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as ArticleStatus })} className="h-11 w-full rounded-xl border border-white/10 bg-[#10152a] px-3 text-white">
+                  <span className="text-xs font-semibold text-admin-muted">Status</span>
+                  <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as ArticleStatus })} className="h-11 w-full rounded-xl border border-admin-border bg-admin-card px-3 text-admin-fg">
                     {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </label>
                 {form.status === "scheduled" && (
                   <label className="space-y-1.5">
-                    <span className="text-xs font-semibold text-white/60">Waktu publish</span>
-                    <input type="datetime-local" value={form.scheduled_at} onChange={(event) => setForm({ ...form, scheduled_at: event.target.value })} className="h-11 w-full rounded-xl border border-white/10 bg-[#10152a] px-3 text-white" />
+                    <span className="text-xs font-semibold text-admin-muted">Waktu publish</span>
+                    <input type="datetime-local" value={form.scheduled_at} onChange={(event) => setForm({ ...form, scheduled_at: event.target.value })} className="h-11 w-full rounded-xl border border-admin-border bg-admin-card px-3 text-admin-fg" />
                   </label>
                 )}
               </div>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setForm(null)} disabled={saving} className="h-10 rounded-full border border-white/10 bg-white/[0.06] px-4 text-sm text-white/70 transition hover:bg-white/10 disabled:opacity-50">Batal</button>
-              <button onClick={() => void save()} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#070a1e] transition hover:bg-[#00D0E8] disabled:opacity-50">
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-admin-border p-5">
+              <button onClick={closeEditor} disabled={saving} className="h-10 rounded-md border border-admin-border bg-admin-subtle px-4 text-sm text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">Batal</button>
+              <button onClick={() => void save()} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-50">
                 {saving ? "Menyimpan…" : <><IosIcon name="checked" size={14} tint="black" /> Simpan</>}
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       <ConfirmDialog

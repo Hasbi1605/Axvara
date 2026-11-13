@@ -28,10 +28,10 @@ export function ProfitChart({ series, loading, label = "30 hari" }: { series: Re
   const yo = (v: number) => H-B-v/maxOrders*(H-T-B);
   const path = (field: "revenue" | "profit" | "orders") => series.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${(field==='orders'?yo(p[field]):y(p[field])).toFixed(1)}`).join(' ');
   const selected = active == null ? null : series[active];
-  return <section className="ax-glass min-w-0 rounded-[20px] p-4 sm:p-5" aria-label={`Grafik omzet dan untung ${label}`}>
+  return <section className="admin-surface min-w-0 rounded-xl p-4 sm:p-5" aria-label={`Grafik omzet dan untung ${label}`}>
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-sm font-semibold text-white">Omzet vs Untung — {label}</h2><p className="mt-1 text-xs text-white/40">WIB · {loading ? 'Memuat…' : 'Ketuk atau arahkan kursor untuk detail'}{show.orders ? ' · Sumbu kanan: jumlah order' : ''}</p></div>
-      <div className="flex gap-1.5">{([['revenue','Omzet','#00E5FF'],['profit','Untung','#34D399'],['orders','Order','#FFB800']] as const).map(([key,text,color])=><button key={key} type="button" aria-pressed={show[key]} onClick={()=>setShow(s=>({...s,[key]:!s[key]}))} className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold ${show[key]?'border-white/15 bg-white/[0.07] text-white':'border-white/10 text-white/35'}`}><span className="h-1.5 w-1.5 rounded-full" style={{background:color}} />{text}</button>)}</div>
+      <div><h2 className="text-sm font-semibold text-admin-fg">Omzet vs Untung — {label}</h2><p className="mt-1 text-xs text-admin-muted">WIB · {loading ? 'Memuat…' : 'Ketuk atau arahkan kursor untuk detail'}{show.orders ? ' · Sumbu kanan: jumlah order' : ''}</p></div>
+      <div className="flex gap-1.5">{([['revenue','Omzet','#00E5FF'],['profit','Untung','#34D399'],['orders','Order','#FFB800']] as const).map(([key,text,color])=><button key={key} type="button" aria-pressed={show[key]} onClick={()=>setShow(s=>({...s,[key]:!s[key]}))} className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold ${show[key]?'border-admin-border bg-admin-subtle text-admin-fg':'border-admin-border text-admin-muted'}`}><span className="h-1.5 w-1.5 rounded-md" style={{background:color}} />{text}</button>)}</div>
     </div>
     <div ref={ref} className="relative mt-4 min-w-0">
       <svg viewBox={`0 0 ${width} ${H}`} style={{width:'100%',height:H}} role="img" aria-label={`Grafik garis omzet, untung, dan order ${label}`} onMouseLeave={()=>setActive(null)}>
@@ -49,7 +49,7 @@ export function ProfitChart({ series, loading, label = "30 hari" }: { series: Re
         </g>)}
         {!series.length&&<text x={width/2} y={H/2} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="12">Belum ada transaksi pada periode ini</text>}
       </svg>
-      {selected&&<div role="status" className="pointer-events-none absolute right-0 top-0 max-w-full rounded-xl border border-white/15 bg-[#0B1025]/95 px-3 py-2 shadow-xl"><p className="text-[11px] text-white/55">{selected.date} WIB</p><p className={`mt-1 font-bold ${selected.profit<0?'text-red-300':'text-emerald-300'}`}>{formatRupiah(selected.profit)}</p><p className="mt-1 text-[11px] text-white/50">{selected.orders} order · omzet {formatRupiah(selected.revenue)} · modal {formatRupiah(selected.cost)}</p></div>}
+      {selected&&<div role="status" className="pointer-events-none absolute right-0 top-0 max-w-full rounded-xl border border-admin-border bg-admin-card/95 px-3 py-2 shadow-xl"><p className="text-xs text-admin-muted">{selected.date} WIB</p><p className={`mt-1 font-bold ${selected.profit<0?'text-admin-danger':'text-admin-success'}`}>{formatRupiah(selected.profit)}</p><p className="mt-1 text-xs text-admin-muted">{selected.orders} order · omzet {formatRupiah(selected.revenue)} · modal {formatRupiah(selected.cost)}</p></div>}
     </div>
   </section>;
 }
@@ -62,20 +62,20 @@ export function RevenueDonut({ rows, loading }: { rows: NamedBucket[]; loading: 
     const start=angle, share=r.revenue/Math.max(1,total); angle+=share*Math.PI*2;
     return {...r, full:share>=1, path:`M${position(start)} A70,70 0 ${share>0.5?1:0} 1 ${position(angle)}`};
   });
-  return <section className="ax-glass flex flex-col rounded-[20px] p-4 sm:p-5" aria-label="Kontribusi omzet">
-    <h2 className="text-sm font-semibold text-white">Kontribusi omzet</h2><p className="mt-1 text-xs text-white/40">Menurut asal produk · periode terpilih</p>
-    <div className="my-5 flex justify-center"><div role="img" aria-label={total?rows.map(r=>`${r.label} ${(r.revenue/total*100).toFixed(1)}%`).join(', '):'Belum ada omzet'} className="relative flex h-40 w-40 items-center justify-center rounded-full">
+  return <section className="admin-surface flex flex-col rounded-xl p-4 sm:p-5" aria-label="Kontribusi omzet">
+    <h2 className="text-sm font-semibold text-admin-fg">Kontribusi omzet</h2><p className="mt-1 text-xs text-admin-muted">Menurut asal produk · periode terpilih</p>
+    <div className="my-5 flex justify-center"><div role="img" aria-label={total?rows.map(r=>`${r.label} ${(r.revenue/total*100).toFixed(1)}%`).join(', '):'Belum ada omzet'} className="relative flex h-40 w-40 items-center justify-center rounded-md">
       <svg viewBox="0 0 160 160" aria-hidden="true" className="absolute inset-0 h-full w-full"><circle cx="80" cy="80" r="70" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="20"/>{arcs.map(r=>r.full?<circle key={r.label} cx="80" cy="80" r="70" fill="none" stroke={r.color} strokeWidth="20"/>:<path key={r.label} d={r.path} fill="none" stroke={r.color} strokeWidth="20"/>)}</svg>
-      <div className="relative flex h-[124px] w-[124px] flex-col items-center justify-center rounded-full bg-[#0B1025]"><span className="text-[10px] text-white/45">Total omzet</span><span className="mt-1 text-sm font-bold tabular-nums text-white">{loading?'—':formatRupiah(total)}</span></div></div></div>
-    <div className="mt-auto space-y-2">{rows.map(r=><div key={r.label} className="flex items-center justify-between gap-2 text-xs"><span className="flex items-center gap-2 text-white/65"><span className="h-2 w-2 rounded-full" style={{background:r.color}}/>{r.label}</span><span className="tabular-nums text-white/80">{loading?'—':`${total?(r.revenue/total*100).toFixed(1):'0.0'}%`}</span></div>)}</div>
+      <div className="relative flex h-[124px] w-[124px] flex-col items-center justify-center rounded-md bg-admin-card"><span className="text-xs text-admin-muted">Total omzet</span><span className="mt-1 text-sm font-bold tabular-nums text-admin-fg">{loading?'—':formatRupiah(total)}</span></div></div></div>
+    <div className="mt-auto space-y-2">{rows.map(r=><div key={r.label} className="flex items-center justify-between gap-2 text-xs"><span className="flex items-center gap-2 text-admin-muted"><span className="h-2 w-2 rounded-md" style={{background:r.color}}/>{r.label}</span><span className="tabular-nums text-admin-muted">{loading?'—':`${total?(r.revenue/total*100).toFixed(1):'0.0'}%`}</span></div>)}</div>
   </section>;
 }
 
 export function ProfitBars({ title, rows, loading }: { title: string; rows: NamedBucket[]; loading: boolean }) {
   const max = Math.max(1,...rows.map(r=>Math.abs(r.profit))), losses=rows.some(r=>r.profit<0);
-  return <section className="ax-glass rounded-[20px] p-4 sm:p-5"><h2 className="text-sm font-semibold text-white">{title}</h2><p className="mt-1 text-xs text-white/40">Periode terpilih · untung produk</p><div className="mt-4 space-y-4">{rows.map(r=><div key={r.label}>
-    <div className="flex justify-between gap-3 text-xs"><span className="font-semibold text-white/75">{r.label}</span><span className={`font-bold tabular-nums ${r.profit<0?'text-red-300':'text-emerald-300'}`}>{loading?'—':formatRupiah(r.profit)}</span></div>
-    <div className="relative mt-2 h-2 overflow-hidden rounded-full bg-white/[0.06]">{losses&&<span className="absolute inset-y-0 left-1/2 w-px bg-white/30"/>}<span className="absolute inset-y-0 rounded-full" style={{width:`${Math.abs(r.profit)/max*(losses?50:100)}%`,left:losses?(r.profit<0?`${50-Math.abs(r.profit)/max*50}%`:'50%'):'0%',background:r.profit<0?'#F87171':r.color}}/></div>
-    <p className="mt-1 text-[10px] leading-4 text-white/40">{r.orders} pesanan · omzet {formatRupiah(r.revenue)} · modal {formatRupiah(r.cost)} · margin {r.revenue?`${(r.profit/r.revenue*100).toFixed(1)}%`:'—'}</p>
+  return <section className="admin-surface rounded-xl p-4 sm:p-5"><h2 className="text-sm font-semibold text-admin-fg">{title}</h2><p className="mt-1 text-xs text-admin-muted">Periode terpilih · untung produk</p><div className="mt-4 space-y-4">{rows.map(r=><div key={r.label}>
+    <div className="flex justify-between gap-3 text-xs"><span className="font-semibold text-admin-muted">{r.label}</span><span className={`font-bold tabular-nums ${r.profit<0?'text-admin-danger':'text-admin-success'}`}>{loading?'—':formatRupiah(r.profit)}</span></div>
+    <div className="relative mt-2 h-2 overflow-hidden rounded-md bg-admin-subtle">{losses&&<span className="absolute inset-y-0 left-1/2 w-px bg-admin-subtle"/>}<span className="absolute inset-y-0 rounded-md" style={{width:`${Math.abs(r.profit)/max*(losses?50:100)}%`,left:losses?(r.profit<0?`${50-Math.abs(r.profit)/max*50}%`:'50%'):'0%',background:r.profit<0?'#F87171':r.color}}/></div>
+    <p className="mt-1 text-xs leading-4 text-admin-muted">{r.orders} pesanan · omzet {formatRupiah(r.revenue)} · modal {formatRupiah(r.cost)} · margin {r.revenue?`${(r.profit/r.revenue*100).toFixed(1)}%`:'—'}</p>
   </div>)}</div></section>;
 }

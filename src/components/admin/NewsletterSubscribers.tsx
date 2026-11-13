@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { Spinner } from "@/components/ui/Loading";
 import { formatWibDateTime } from "@/lib/utils";
 
@@ -32,16 +32,16 @@ export function NewsletterSubscribers() {
   const filtered = useMemo(() => subscribers.filter((subscriber) => subscriber.email.toLowerCase().includes(query.trim().toLowerCase())), [query, subscribers]);
 
   return (
-    <section className="mt-4 ax-glass rounded-[20px] overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4 sm:p-5">
-        <div className="min-w-0"><h2 className="text-sm font-semibold text-white">Pelanggan Email</h2><p className="text-xs text-white/40">Alamat yang dikirim melalui form “Tetap update” di footer.</p></div>
-        <span className="ml-auto rounded-full bg-white/10 px-3 py-1 text-xs text-white/60">{subscribers.length} email</span>
+    <section className="mt-4 admin-surface rounded-xl overflow-hidden">
+      <div className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
+        <div className="min-w-0"><h2 className="text-sm font-semibold text-admin-fg">Pelanggan Email</h2><p className="text-xs text-admin-muted">Alamat yang dikirim melalui form “Tetap update” di footer.</p></div>
+        <span className="ml-auto rounded-md bg-admin-subtle px-3 py-1 text-xs text-admin-muted">{subscribers.length} email</span>
       </div>
-      <div className="border-b border-white/10 p-4 sm:px-5"><div className="relative max-w-[420px]"><span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60"><IosIcon name="search" size={14} tint="white" /></span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari email…" className="h-10 w-full rounded-full border border-white/10 bg-white/[0.06] pl-10 pr-4 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/40 focus:outline-none" /></div></div>
-      {error ? <div className="p-8 text-center"><p className="text-sm text-red-300">{error}</p><button type="button" onClick={() => void load()} className="mt-3 text-sm font-semibold text-[#00E5FF]">Coba lagi</button></div>
-      : loading ? <div className="flex items-center justify-center gap-2 p-10 text-sm text-white/50"><Spinner size={18} /> Memuat email…</div>
-      : filtered.length === 0 ? <p className="p-8 text-center text-sm text-white/40">{query ? "Email tidak ditemukan." : "Belum ada email yang masuk."}</p>
-      : <div className="divide-y divide-white/5">{filtered.map((subscriber) => <div key={subscriber.id} className="flex flex-wrap items-center gap-3 px-4 py-3 transition hover:bg-white/[0.03] sm:px-5"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-white">{subscriber.email}</p><p className="mt-0.5 text-xs text-white/35">Dari footer · {formatWibDateTime(subscriber.created_at) ?? "—"}</p></div><span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${subscriber.status === "active" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-white/5 text-white/40"}`}>{subscriber.status === "active" ? "Aktif" : "Berhenti"}</span></div>)}</div>}
+      <div className="border-b border-admin-border p-4 sm:px-5"><div className="relative max-w-[420px]"><span className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-60"><IosIcon name="search" size={14} tint="white" /></span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari email…" className="h-10 w-full rounded-md border border-admin-border bg-admin-subtle pl-10 pr-4 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/40 focus:outline-none" /></div></div>
+      {error ? <div className="p-8 text-center"><p className="text-sm text-admin-danger">{error}</p><button type="button" onClick={() => void load()} className="mt-3 text-sm font-semibold text-admin-accent">Coba lagi</button></div>
+      : loading ? <div className="flex items-center justify-center gap-2 p-10 text-sm text-admin-muted"><Spinner size={18} /> Memuat email…</div>
+      : filtered.length === 0 ? <p className="p-8 text-center text-sm text-admin-muted">{query ? "Email tidak ditemukan." : "Belum ada email yang masuk."}</p>
+      : <div className="divide-y divide-admin-border">{filtered.map((subscriber) => <div key={subscriber.id} className="flex flex-wrap items-center gap-3 px-4 py-3 transition hover:bg-admin-subtle sm:px-5"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-admin-fg">{subscriber.email}</p><p className="mt-0.5 text-xs text-admin-muted">Dari footer · {formatWibDateTime(subscriber.created_at) ?? "—"}</p></div><span className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${subscriber.status === "active" ? "border-emerald-500/20 bg-emerald-500/10 text-admin-success" : "border-admin-border bg-admin-subtle text-admin-muted"}`}>{subscriber.status === "active" ? "Aktif" : "Berhenti"}</span></div>)}</div>}
     </section>
   );
 }

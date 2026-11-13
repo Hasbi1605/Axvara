@@ -52,3 +52,22 @@ it("keeps payment method copy rail-neutral without an extra health request", asy
   expect(screen.queryByText(/melalui QRIS Hook/)).toBeNull();
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+it("keeps a persistent retryable error instead of claiming zero events on 503", async () => {
+  const request = vi.fn().mockResolvedValueOnce({ ok: false, json: async () => ({ error: "Service unavailable" }) }).mockResolvedValue({ ok: true, json: async () => ({ events: [], counts: {} }) });
+  vi.stubGlobal("fetch", request);
+  render(<PaymentReconciliation />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("Status belum diketahui"));
+  expect(screen.queryByText("Tidak ada event pada filter ini.")).toBeNull();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Coba lagi" })); });
+  expect(await screen.findByText("Tidak ada event pada filter ini.")).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("legacy bank records are read-only and cannot be added from the checkout settings", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ payment_methods: [{ id: "bca", label: "BCA", account_name: "Legacy", account_number: "123", is_active: true }] }) })));
+  render(<PaymentMethodsManager />);
+  expect(await screen.findByText("Legacy · baca-saja")).toBeTruthy();
+  expect(screen.getByDisplayValue("123").closest("fieldset")?.disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: /Tambah bank/ })).toBeNull();
+});

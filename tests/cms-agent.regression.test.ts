@@ -136,7 +136,7 @@ describe("Article contracts", () => {
     const source = read("src/components/admin/ProofThumbnail.tsx");
     expect(source).toContain("Belum ada bukti");
     expect(source).toContain("File bukti tidak tersedia");
-    expect(source).toContain('role="dialog"');
+    expect(source).toContain('<Dialog title="Bukti pembayaran"');
   });
 });
 

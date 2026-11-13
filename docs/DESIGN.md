@@ -1,5 +1,43 @@
 # DESIGN.md — AXVARA Design System
 
+## Panel admin bergaya shadcn-admin, light/dark (13 November 2026, implementasi lokal)
+
+- Seluruh 19 section admin (`summary`…`subscribers`, termasuk tab supplier/Pedia,
+  login/auth-check, drawer, dialog, toast, loading/error/empty) memakai satu bahasa
+  visual terinspirasi shadcn-admin (MIT, adopsi selektif; stack Next/React18/
+  Tailwind3/auth tidak diganti): permukaan solid `admin-surface`, border tipis,
+  shadow ringan, radius `rounded-xl`/`rounded-md`, tanpa glass/glow/pill di area
+  kerja. Storefront tidak berubah; DESIGN Midnight/Cyan/Gold tetap untuk toko.
+- Token semantic `admin.{bg,card,fg,muted,subtle,border,primary,inverse,accent,
+  success,warning,danger,info}` (Tailwind, `rgb(var(--admin-*))`) didefinisikan
+  di `src/components/admin/admin.css` dan hanya berlaku di `.admin-theme`.
+  Terang: bg `#F8FAFC`, card putih, teks `#0F172A`, aksen cyan gelap `#0E7490`
+  (5,36:1 pada putih; `#00E5FF` hanya 1,54:1 sehingga tidak dipakai untuk teks
+  terang). Gelap: bg Midnight `#080C1E`, card navy `#0F1428`, aksen `#00E5FF`
+  (12,62:1).
+- Pilihan tema Terang · Gelap · Ikuti sistem (default sistem) lewat select native
+  "Tema admin" di pojok kanan atas; tersimpan di cookie admin dan dirender SSR.
+  Hanya `/admin`; `/admin/payments/test` tetap memakai checkout storefront asli.
+  Pratinjau produk `.admin-preview` selalu gelap seperti toko.
+- Ikon admin memakai adapter `AdminIcon` (lucide-react existing); ikon storefront
+  `IosIcon` tidak diganti. Teks minimum `text-xs` (12px), tabel angka tabular,
+  fokus `focus-visible` outline aksen 2px, input mobile 16px, reduced motion.
+- Sidebar solid 248px/72px collapsed dengan nama aksesibel saat collapsed, skip
+  link, breadcrumb/header; drawer mobile memakai native `<dialog>` (fokus
+  terkurung + kembali ke pemicu). Modal Pesanan/Artikel/Produk/Kategori/Link
+  Supplier/bukti bayar memakai `Dialog` native: header/footer tetap, body scroll,
+  Escape/backdrop, busy guard. Modal Artikel mobile 390px kini terjangkau penuh.
+- Draft belum tersimpan (Pengaturan Toko, Artikel, Produk/teks varian, Metode
+  Pembayaran, Siaran) dilindungi dialog "Buang perubahan?" saat pindah section,
+  link, back/forward atau tutup editor; saat simpan berlangsung navigasi ditahan.
+- Error rekonsiliasi QRIS tampil sebagai alert persisten + "Coba lagi", bukan nol/
+  empty; metrik loading/error Pesanan memakai em dash. Tabel Produk memisahkan
+  badge dari nama terpotong dan label aksi tidak membungkus.
+- Chromium lokal (fixture API diintersep, mutasi diblokir) 1280×800 dan 390×844:
+  19 section tanpa overflow/pageerror, satu `<main>`, tiga mode tema, fokus drawer,
+  draft/back-forward, dialog Artikel mobile, error+retry rekonsiliasi. Bukan bukti
+  sesi admin produksi atau deployment.
+
 ## Admin Pedia IndoSMM (13 November 2026, implementasi lokal)
 
 - Header singkat "Supplier: IndoSMM" dan satu strip tiga status: saldo + Periksa

@@ -44,7 +44,8 @@ describe("butir 1/1b — modal produk bertab dengan Simpan sticky", () => {
   it("footer Simpan di luar area scroll (shrink-0, bukan ikut mt-6 di dalam konten)", () => {
     // Panel = flex column; hanya badan yang overflow-y-auto. Kalau footer ikut
     // ter-scroll, tombol Simpan kembali 2597px di bawah area kerja.
-    expect(modal).toContain("flex max-h-[92dvh]");
+    expect(modal).toContain("max-h-[calc(100dvh-2rem)] flex-col");
+    expect(modal).toContain('<Dialog title={editing ? "Edit Produk" : "Produk Baru"}');
     expect(modal).toContain("min-h-0 flex-1 overflow-y-auto");
     const footer = modal.slice(modal.indexOf("Simpan Produk") - 900, modal.indexOf("Simpan Produk"));
     expect(footer).toContain("shrink-0");

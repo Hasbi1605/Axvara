@@ -231,7 +231,6 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
   const wrForm: ProductForm = { name: "Netflix Premium", slug: "netflix-premium", description: "Teks WR", adminDescriptionOverride: "Versi Axvara", wrManaged: true };
 
   it("dirty teks memblokir Simpan Produk, close dan Escape meminta izin; batal draft membuka simpan", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     renderModal(wrForm);
     fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     fireEvent.click(await screen.findByRole("button", { name: /Premium Anti Limit · 28 Hari/ }));
@@ -239,8 +238,11 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     expect(screen.getByRole("button", { name: /Simpan Produk$/ })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("tab", { name: "Foto" }));
     fireEvent.click(screen.getByRole("button", { name: "Tutup editor produk" }));
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("dialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
+    fireEvent(screen.getByRole("dialog", { name: "Edit Produk" }), new Event("cancel", { cancelable: true }));
+    expect(screen.getByRole("dialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
     fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", "Draft belum disimpan");
     fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));

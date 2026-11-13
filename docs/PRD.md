@@ -1,5 +1,20 @@
 # PRD — AXVARA
 
+## Panel admin terpadu light/dark + perbaikan audit (13 November 2026, implementasi lokal)
+
+- Seluruh panel admin memakai satu design system bergaya shadcn-admin dengan
+  pilihan tema Terang/Gelap/Ikuti sistem khusus admin; storefront dan halaman tes
+  pembayaran admin tidak berubah. Navigasi/section/bookmark lama tetap.
+- Admin tidak lagi dapat mengubah status manual order NOWPayments/Sekalipay
+  gateway (status mengikuti IPN/callback/rekonsiliasi) dan pelunasan QRIS wajib
+  lewat ACC QRIS berverifikasi mutasi, bukan tombol lunas generik. Order Games
+  (AXG) tampil sebagai jenis sendiri, diproses otomatis, tanpa aksi Market.
+- Filter metode crypto/gateway bekerja; "Transfer manual" tidak lagi mencakup
+  QRIS/crypto/gateway. UI rekening bank legacy baca-saja (tanpa "Tambah bank");
+  data historis tetap. Toast ACC QRIS hanya menyatakan pengiriman diproses.
+- Perubahan belum tersimpan dilindungi konfirmasi; error data tidak tampil sebagai
+  nol. Status: implementasi lokal + tes; belum ada bukti deployment.
+
 ## Temp mail publik (12 November 2026, implementasi lokal)
 
 - Owner memilih langsung publik tanpa login, alamat penerima `nama@isturaiky.page`

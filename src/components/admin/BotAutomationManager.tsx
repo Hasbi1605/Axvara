@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 
@@ -53,35 +53,35 @@ export default function BotAutomationManager() {
     finally { setWebhookLoading(false); }
   };
 
-  if (loading) return <div className="mt-4 flex min-h-52 items-center justify-center gap-3 rounded-[20px] bg-white/[0.04] text-sm text-white/45"><Spinner size={20} /> Memuat kanal dan otomasi…</div>;
+  if (loading) return <div className="mt-4 flex min-h-52 items-center justify-center gap-3 rounded-xl bg-admin-subtle text-sm text-admin-muted"><Spinner size={20} /> Memuat kanal dan otomasi…</div>;
 
   return <div className="mt-4 space-y-4">
-    <section className="ax-glass overflow-hidden rounded-[20px]">
-      <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4 sm:p-5"><div className="min-w-0"><h2 className="text-sm font-semibold text-white">Kanal penjualan</h2><p className="mt-0.5 text-xs text-white/40">Kesehatan Telegram dan gateway WhatsApp Baileys.</p></div><button onClick={() => void fetchHealth()} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-semibold text-white/55 transition hover:bg-white/5 hover:text-white"><IosIcon name="refresh" size={13} tint="white" /> Muat ulang</button></header>
+    <section className="admin-surface overflow-hidden rounded-xl">
+      <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5"><div className="min-w-0"><h2 className="text-sm font-semibold text-admin-fg">Kanal penjualan</h2><p className="mt-0.5 text-xs text-admin-muted">Kesehatan Telegram dan gateway WhatsApp Baileys.</p></div><button onClick={() => void fetchHealth()} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg"><IosIcon name="refresh" size={13} tint="white" /> Muat ulang</button></header>
       <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-2">
         <ChannelCard title="Telegram" ready={Boolean(health?.bot_configured && health.bot_enabled)} rows={[["Token", health?.bot_configured], ["Bot aktif", health?.bot_enabled], ["Webhook", Boolean(health?.webhook?.url && !health.webhook.error)]]}>
-          <p className="mt-3 break-all font-mono text-[11px] text-white/35">{health?.webhook?.url || "Webhook belum tersedia"}</p>
-          {health?.webhook?.last_error && <p className="mt-1 text-xs text-red-300">{health.webhook.last_error}</p>}
-          <button onClick={() => void setTelegramWebhook()} disabled={webhookLoading || !health?.bot_configured} className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">{webhookLoading ? <Spinner size={13} /> : <IosIcon name="send" size={13} tint="black" />} Pasang/perbarui webhook</button>
+          <p className="mt-3 break-all font-mono text-xs text-admin-muted">{health?.webhook?.url || "Webhook belum tersedia"}</p>
+          {health?.webhook?.last_error && <p className="mt-1 text-xs text-admin-danger">{health.webhook.last_error}</p>}
+          <button onClick={() => void setTelegramWebhook()} disabled={webhookLoading || !health?.bot_configured} className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">{webhookLoading ? <Spinner size={13} /> : <IosIcon name="send" size={13} tint="black" />} Pasang/perbarui webhook</button>
         </ChannelCard>
         <ChannelCard title="WhatsApp Baileys" ready={Boolean(health?.whatsapp_configured && health.whatsapp_enabled)} rows={[["Gateway", health?.whatsapp_configured], ["Bot aktif", health?.whatsapp_enabled], ["Pencarian", health?.whatsapp_discovery], ["Pembayaran", health?.whatsapp_payment], ["Bukti manual", health?.whatsapp_proof_intake]]}>
-          <p className="mt-3 text-[11px] leading-5 text-white/35">Status ini memeriksa konfigurasi server. Koneksi sesi Baileys tetap perlu dilaporkan oleh health endpoint gateway Heroku.</p>
+          <p className="mt-3 text-xs leading-5 text-admin-muted">Status ini memeriksa konfigurasi server. Koneksi sesi Baileys tetap perlu dilaporkan oleh health endpoint gateway Heroku.</p>
         </ChannelCard>
       </div>
     </section>
 
-    <section className="ax-glass overflow-hidden rounded-[20px]">
-      <header className="border-b border-white/10 p-4 sm:p-5"><h2 className="text-sm font-semibold text-white">Antrean otomasi</h2><p className="mt-0.5 text-[11px] text-white/40">Pantau pengiriman fulfillment dan pesan keluar WhatsApp.</p></header>
+    <section className="admin-surface overflow-hidden rounded-xl">
+      <header className="border-b border-admin-border p-4 sm:p-5"><h2 className="text-sm font-semibold text-admin-fg">Antrean otomasi</h2><p className="mt-0.5 text-xs text-admin-muted">Pantau pengiriman fulfillment dan pesan keluar WhatsApp.</p></header>
       <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5"><QueueCard title="Fulfillment jobs" rows={health?.fulfillment_jobs || []} labelKey="status" /><QueueCard title="WhatsApp outbox" rows={health?.whatsapp_outbox || []} labelKey="status" /></div>
-      <div className="mx-4 mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-[#00E5FF]/15 bg-[#00E5FF]/[0.045] p-4 sm:mx-5 sm:mb-5"><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-white">Konfigurasi produk dipusatkan di Varian</p><p className="mt-1 text-xs leading-5 text-white/40">Mode manual/shared/unique, pesan bersama, dan stok unik sekarang dikelola bersama SKU agar tidak ada pengaturan ganda.</p></div><Link href="/admin?section=products" className="inline-flex h-9 shrink-0 items-center rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8]">Buka Produk</Link></div>
+      <div className="mx-4 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-admin-accent/15 bg-admin-primary/[0.045] p-4 sm:mx-5 sm:mb-5"><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-admin-fg">Konfigurasi produk dipusatkan di Varian</p><p className="mt-1 text-xs leading-5 text-admin-muted">Mode manual/shared/unique, pesan bersama, dan stok unik sekarang dikelola bersama SKU agar tidak ada pengaturan ganda.</p></div><Link href="/admin?section=products" className="inline-flex h-9 shrink-0 items-center rounded-xl bg-admin-primary px-4 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary">Buka Produk</Link></div>
     </section>
   </div>;
 }
 
 function ChannelCard({ title, ready, rows, children }: { title: string; ready: boolean; rows: [string, boolean | undefined][]; children: React.ReactNode }) {
-  return <article className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"><div className="flex items-center justify-between gap-3"><h3 className="min-w-0 text-sm font-semibold text-white">{title}</h3><span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${ready ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300"}`}>{ready ? "Siap" : "Perlu konfigurasi"}</span></div><div className="mt-4 grid grid-cols-2 gap-2">{rows.map(([label, ok]) => <div key={label} className={`rounded-lg px-2.5 py-2 text-xs font-medium ${ok ? "bg-emerald-500/[0.07] text-emerald-300" : "bg-red-500/[0.07] text-red-300"}`}><span className={`mr-2 inline-block h-1.5 w-1.5 rounded-full ${ok ? "bg-emerald-400" : "bg-red-400"}`} />{label}</div>)}</div>{children}</article>;
+  return <article className="rounded-xl border border-admin-border bg-admin-subtle p-4"><div className="flex items-center justify-between gap-3"><h3 className="min-w-0 text-sm font-semibold text-admin-fg">{title}</h3><span className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-bold ${ready ? "bg-emerald-500/10 text-admin-success" : "bg-red-500/10 text-admin-danger"}`}>{ready ? "Siap" : "Perlu konfigurasi"}</span></div><div className="mt-4 grid grid-cols-2 gap-2">{rows.map(([label, ok]) => <div key={label} className={`rounded-lg px-2.5 py-2 text-xs font-medium ${ok ? "bg-emerald-500/[0.07] text-admin-success" : "bg-red-500/[0.07] text-admin-danger"}`}><span className={`mr-2 inline-block h-1.5 w-1.5 rounded-md ${ok ? "bg-emerald-400" : "bg-red-400"}`} />{label}</div>)}</div>{children}</article>;
 }
 
 function QueueCard({ title, rows, labelKey }: { title: string; rows: Record<string, unknown>[]; labelKey: string }) {
-  return <article className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"><h3 className="text-sm font-semibold text-white">{title}</h3><div className="mt-3 flex flex-wrap gap-2">{rows.length ? rows.map((row) => <span key={String(row[labelKey])} className={`rounded-full px-2.5 py-1 text-xs ${["failed", "dead", "manual_required"].includes(String(row[labelKey])) ? "bg-red-500/10 text-red-300" : "bg-white/[0.06] text-white/55"}`}>{String(row[labelKey])}: {Number(row.count || 0)}</span>) : <span className="text-xs text-white/35">Belum ada antrean.</span>}</div></article>;
+  return <article className="rounded-xl border border-admin-border bg-admin-subtle p-4"><h3 className="text-sm font-semibold text-admin-fg">{title}</h3><div className="mt-3 flex flex-wrap gap-2">{rows.length ? rows.map((row) => <span key={String(row[labelKey])} className={`rounded-md px-2.5 py-1 text-xs ${["failed", "dead", "manual_required"].includes(String(row[labelKey])) ? "bg-red-500/10 text-admin-danger" : "bg-admin-subtle text-admin-muted"}`}>{String(row[labelKey])}: {Number(row.count || 0)}</span>) : <span className="text-xs text-admin-muted">Belum ada antrean.</span>}</div></article>;
 }

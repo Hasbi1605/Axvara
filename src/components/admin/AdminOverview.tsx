@@ -149,34 +149,34 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
   const channelRows = Object.entries({ Web: channels.web, Telegram: channels.telegram, WhatsApp: channels.whatsapp })
     .map(([label,r])=>({ ...r, label, cost: r.revenue-r.profit, color: "#00E5FF" }));
   const metrics = [
-    ["Pesanan lunas", String(bucket.orders), "text-white"],
-    ["Omzet", formatRupiah(bucket.revenue), "text-white"],
-    ["Modal", formatRupiah(bucket.cost), "text-[#FFB800]"],
-    ["Untung Produk", formatRupiah(bucket.profit), "text-emerald-300"],
-    ["Margin", marginOf(bucket.revenue, bucket.profit), "text-[#5cefff]"],
-    ["Rata2 / order", bucket.orders ? formatRupiah(Math.round(bucket.revenue / bucket.orders)) : "—", "text-white"],
+    ["Pesanan lunas", String(bucket.orders), "text-admin-fg"],
+    ["Omzet", formatRupiah(bucket.revenue), "text-admin-fg"],
+    ["Modal", formatRupiah(bucket.cost), "text-admin-warning"],
+    ["Untung Produk", formatRupiah(bucket.profit), "text-admin-success"],
+    ["Margin", marginOf(bucket.revenue, bucket.profit), "text-admin-accent"],
+    ["Rata2 / order", bucket.orders ? formatRupiah(Math.round(bucket.revenue / bucket.orders)) : "—", "text-admin-fg"],
   ] as const;
 
   return <div className="mt-4 space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1" role="tablist" aria-label="Periode laporan">
+      <div className="inline-flex rounded-xl border border-admin-border bg-admin-subtle p-1" role="tablist" aria-label="Periode laporan">
         {(Object.keys(PERIOD_LABEL) as Period[]).map((key) => (
           <button key={key} type="button" role="tab" aria-selected={active === key} onClick={() => choose(key)}
-            className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${active === key ? "bg-[#00E5FF] text-[#07101f]" : "text-white/55 hover:text-white"}`}>
+            className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${active === key ? "bg-admin-primary text-admin-inverse" : "text-admin-muted hover:text-admin-fg"}`}>
             {PERIOD_LABEL[key]}
           </button>
         ))}
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label="Filter dan unduhan laporan">
-      {onSelectionChange && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-white/60">
+      {onSelectionChange && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-admin-muted">
         <label className="sr-only" htmlFor="report-month">Bulan historis</label>
-        <input id="report-month" type="month" max={todayWibDateString().slice(0, 7)} value={month} onChange={e => changeMonth(e.target.value)} className="h-9 min-w-0 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-white [color-scheme:dark]" />
+        <input id="report-month" type="month" max={todayWibDateString().slice(0, 7)} value={month} onChange={e => changeMonth(e.target.value)} className="h-9 min-w-0 rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
         <div className="flex min-w-0 items-center gap-2">
           <label className="sr-only" htmlFor="report-from">Tanggal awal</label>
-          <input id="report-from" type="date" max={todayWibDateString()} value={from} onChange={e => changeDates(e.target.value, to)} className="h-9 min-w-0 w-[136px] rounded-lg border border-white/10 bg-white/[0.04] px-2 text-white [color-scheme:dark]" />
+          <input id="report-from" type="date" max={todayWibDateString()} value={from} onChange={e => changeDates(e.target.value, to)} className="h-9 min-w-0 w-[136px] rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
           <span aria-hidden="true">–</span>
           <label className="sr-only" htmlFor="report-to">Tanggal akhir</label>
-          <input id="report-to" type="date" max={todayWibDateString()} value={to} onChange={e => changeDates(from, e.target.value)} className="h-9 min-w-0 w-[136px] rounded-lg border border-white/10 bg-white/[0.04] px-2 text-white [color-scheme:dark]" />
+          <input id="report-to" type="date" max={todayWibDateString()} value={to} onChange={e => changeDates(from, e.target.value)} className="h-9 min-w-0 w-[136px] rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
         </div>
       </div>}
       {!loading && !error && data.selected_report && selection && (
@@ -184,17 +184,17 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
       )}
       </div>
     </div>
-    {rangeError && <p role="alert" className="text-sm text-red-200">{rangeError}</p>}
-    {error ? <div role="alert" className="rounded-2xl border border-red-400/20 bg-red-500/[0.06] p-5"><p className="text-sm text-red-200">{error}</p><button type="button" onClick={onRetry} disabled={loading} className="mt-3 rounded-xl bg-[#00E5FF] px-4 py-2 text-xs font-bold text-[#080C1E]">Muat ulang ringkasan</button></div>
-      : loading ? <p role="status" className="py-8 text-sm text-white/50">Memuat laporan {label}…</p>
+    {rangeError && <p role="alert" className="text-sm text-admin-danger">{rangeError}</p>}
+    {error ? <div role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.06] p-5"><p className="text-sm text-admin-danger">{error}</p><button type="button" onClick={onRetry} disabled={loading} className="mt-3 rounded-xl bg-admin-primary px-4 py-2 text-xs font-bold text-admin-inverse">Muat ulang ringkasan</button></div>
+      : loading ? <p role="status" className="py-8 text-sm text-admin-muted">Memuat laporan {label}…</p>
       : <>
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      {metrics.map(([label, value, tone]) => <div key={label} className="ax-glass rounded-2xl p-4">
-        <p className="text-[11px] uppercase tracking-wide text-white/50">{label}</p>
+      {metrics.map(([label, value, tone]) => <div key={label} className="admin-surface rounded-xl p-4">
+        <p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p>
         <p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading ? "—" : value}</p>
       </div>)}
     </div>
-    {report && <p className="text-xs leading-5 text-white/45">Pembayaran merchant {formatRupiah(report.merchant_paid ?? report.revenue)} · Kredit digunakan {formatRupiah(report.credit_used ?? 0)}. Untung produk belum dikurangi MDR dan biaya operasional.</p>}
+    {report && <p className="text-xs leading-5 text-admin-muted">Pembayaran merchant {formatRupiah(report.merchant_paid ?? report.revenue)} · Kredit digunakan {formatRupiah(report.credit_used ?? 0)}. Untung produk belum dikurangi MDR dan biaya operasional.</p>}
 
     <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
       <ProfitChart series={report?.series ?? data.daily_series} loading={loading} label={label} />
@@ -204,17 +204,17 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
       <ProfitBars title="Untung per supplier" rows={supplierRows} loading={loading} />
       <ProfitBars title="Untung per channel" rows={channelRows} loading={loading} />
     </div>
-    <section className="ax-glass rounded-[20px] p-4 sm:p-5">
-      <h2 className="text-sm font-semibold text-white">Top 5 penyumbang untung</h2>
-      <p className="mt-1 text-xs text-white/40">{label} · modal dihitung per item sesuai asal produk</p>
+    <section className="admin-surface rounded-xl p-4 sm:p-5">
+      <h2 className="text-sm font-semibold text-admin-fg">Top 5 penyumbang untung</h2>
+      <p className="mt-1 text-xs text-admin-muted">{label} · modal dihitung per item sesuai asal produk</p>
       <div className="mt-4 space-y-2.5">
-        {!top.length && <p className="text-xs text-white/40">{loading ? "Memuat…" : "Belum ada transaksi pada periode ini"}</p>}
-        {top.map((row,i)=><div key={`${row.name}:${i}`} className="rounded-xl bg-white/[0.04] p-3">
+        {!top.length && <p className="text-xs text-admin-muted">{loading ? "Memuat…" : "Belum ada transaksi pada periode ini"}</p>}
+        {top.map((row,i)=><div key={`${row.name}:${i}`} className="rounded-xl bg-admin-subtle p-3">
           <div className="flex items-start justify-between gap-3">
-            <p className="min-w-0 text-sm font-semibold leading-5 text-white"><span className="mr-2 text-white/35">{i+1}.</span>{row.name}</p>
-            <p className={`shrink-0 text-sm font-bold tabular-nums ${row.profit<0?'text-red-300':'text-emerald-300'}`}>{loading?'—':formatRupiah(row.profit)}</p>
+            <p className="min-w-0 text-sm font-semibold leading-5 text-admin-fg"><span className="mr-2 text-admin-muted">{i+1}.</span>{row.name}</p>
+            <p className={`shrink-0 text-sm font-bold tabular-nums ${row.profit<0?'text-admin-danger':'text-admin-success'}`}>{loading?'—':formatRupiah(row.profit)}</p>
           </div>
-          <p className="mt-1 text-[11px] leading-5 tabular-nums text-white/40">{row.qty}x terjual · omzet {formatRupiah(row.revenue)} · modal {formatRupiah(row.cost)} · margin {marginOf(row.revenue,row.profit)}</p>
+          <p className="mt-1 text-xs leading-5 tabular-nums text-admin-muted">{row.qty}x terjual · omzet {formatRupiah(row.revenue)} · modal {formatRupiah(row.cost)} · margin {marginOf(row.revenue,row.profit)}</p>
         </div>)}
       </div>
     </section>

@@ -6,9 +6,10 @@
 // di sini, semua PDP/email/panel ikut tanpa edit kurasi + redeploy.
 
 import { useCallback, useEffect, useState } from "react";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
+import { Dialog } from "@/components/ui/Dialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 type SupplierLink = {
@@ -55,14 +56,7 @@ export function SupplierLinksManager() {
 
   useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
-    if (!showForm) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) setShowForm(false); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKeyDown); };
-  }, [showForm, saving]);
+
 
   const openNew = () => {
     setEditing(null);
@@ -147,44 +141,44 @@ export function SupplierLinksManager() {
 
   return (
     <section className="mt-4">
-      <div className="ax-glass rounded-[20px] overflow-hidden">
-        <div className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4 sm:p-5">
+      <div className="admin-surface rounded-xl overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-white">Link Supplier</h2>
-            <p className="text-xs text-white/40">Shortlink axvara.tech/go/… — supplier ganti URL? Ubah 1 baris di sini.</p>
+            <h2 className="text-sm font-semibold text-admin-fg">Link Supplier</h2>
+            <p className="text-xs text-admin-muted">Shortlink axvara.tech/go/… — supplier ganti URL? Ubah 1 baris di sini.</p>
           </div>
-          <button type="button" onClick={openNew} className="ml-auto inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8]"><IosIcon name="plus" size={14} tint="black" /> Link Baru</button>
+          <button type="button" onClick={openNew} className="ml-auto inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary"><IosIcon name="plus" size={14} tint="black" /> Link Baru</button>
         </div>
 
-        {error && !showForm && <p className="mx-4 mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200 sm:mx-5">{error}</p>}
+        {error && !showForm && <p className="mx-4 mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-admin-danger sm:mx-5">{error}</p>}
         {loading ? (
-          <div className="flex items-center justify-center gap-2 p-10 text-sm text-white/50"><Spinner size={18} /> Memuat link…</div>
+          <div className="flex items-center justify-center gap-2 p-10 text-sm text-admin-muted"><Spinner size={18} /> Memuat link…</div>
         ) : list.length === 0 ? (
-          <p className="p-8 text-center text-sm text-white/40">Belum ada link. Tambahkan slug pertama.</p>
+          <p className="p-8 text-center text-sm text-admin-muted">Belum ada link. Tambahkan slug pertama.</p>
         ) : (
-          <div className="divide-y divide-white/5">
+          <div className="divide-y divide-admin-border">
             {list.map((link) => (
-              <div key={link.id} className="flex items-center gap-3 px-4 py-3 transition hover:bg-white/[0.03] sm:px-5">
+              <div key={link.id} className="flex items-center gap-3 px-4 py-3 transition hover:bg-admin-subtle sm:px-5">
                 <button
                   type="button"
                   onClick={() => void toggle(link)}
                   disabled={toggling === link.id}
                   aria-pressed={link.is_active}
                   title={link.is_active ? "Nonaktifkan (redirect jadi 404)" : "Aktifkan"}
-                  className={`h-6 w-11 shrink-0 rounded-full p-0.5 transition ${link.is_active ? "bg-emerald-500/80" : "bg-white/15"} disabled:opacity-50`}
+                  className={`h-6 w-11 shrink-0 rounded-md p-0.5 transition ${link.is_active ? "bg-emerald-500/80" : "bg-admin-subtle"} disabled:opacity-50`}
                 >
-                  <span className={`block h-5 w-5 rounded-full bg-white transition-transform ${link.is_active ? "translate-x-5" : ""}`} />
+                  <span className={`block h-5 w-5 rounded-md bg-admin-primary transition-transform ${link.is_active ? "translate-x-5" : ""}`} />
                 </button>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-white">
-                    <span className="text-[#00E5FF]">go/{link.slug}</span>
-                    {!link.is_active && <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/50">NONAKTIF</span>}
+                  <p className="truncate text-sm font-semibold text-admin-fg">
+                    <span className="text-admin-accent">go/{link.slug}</span>
+                    {!link.is_active && <span className="ml-2 rounded-md bg-admin-subtle px-2 py-0.5 text-xs font-bold text-admin-muted">NONAKTIF</span>}
                   </p>
-                  <p className="truncate text-xs text-white/40">→ {link.destination}{link.title ? ` · ${link.title}` : ""}</p>
-                  <p className="text-[11px] text-white/30">{link.click_count} klik{link.last_clicked_at ? ` · terakhir ${link.last_clicked_at}` : ""}</p>
+                  <p className="truncate text-xs text-admin-muted">→ {link.destination}{link.title ? ` · ${link.title}` : ""}</p>
+                  <p className="text-xs text-admin-muted">{link.click_count} klik{link.last_clicked_at ? ` · terakhir ${link.last_clicked_at}` : ""}</p>
                 </div>
-                <button type="button" onClick={() => openEdit(link)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-white px-3 text-xs font-bold text-[#080C1E] transition hover:bg-white/90"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
-                <button type="button" onClick={() => setDeleteTarget(link)} aria-label={`Hapus go/${link.slug}`} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition hover:bg-red-600"><IosIcon name="trash" size={16} tint="white" /></button>
+                <button type="button" onClick={() => openEdit(link)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md bg-admin-primary px-3 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
+                <button type="button" onClick={() => setDeleteTarget(link)} aria-label={`Hapus go/${link.slug}`} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-500 text-admin-fg shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition hover:bg-red-600"><IosIcon name="trash" size={16} tint="white" /></button>
               </div>
             ))}
           </div>
@@ -192,19 +186,17 @@ export function SupplierLinksManager() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => !saving && setShowForm(false)}>
-          <div role="dialog" aria-modal="true" aria-labelledby="supplier-link-form-title" className="ax-glass-strong max-h-[92dvh] w-full max-w-[560px] overflow-y-auto rounded-t-3xl border border-white/10 p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] sm:rounded-3xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between gap-3"><div><h3 id="supplier-link-form-title" className="text-lg font-bold text-white">{editing ? "Edit Link" : "Link Baru"}</h3><p className="mt-0.5 text-xs text-white/45">axvara.tech/go/slug → tujuan. Slug permanen setelah dibuat.</p></div>
-              <button type="button" onClick={() => setShowForm(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/15" aria-label="Tutup form link"><IosIcon name="close" size={14} tint="white" /></button>
+        <Dialog title={"Tautan supplier"} onClose={() => !saving && setShowForm(false)} busy={saving} className="w-[560px]">
+            <div className="flex items-center justify-between gap-3"><div><h3 id="supplier-link-form-title" className="text-lg font-bold text-admin-fg">{editing ? "Edit Link" : "Link Baru"}</h3><p className="mt-0.5 text-xs text-admin-muted">axvara.tech/go/slug → tujuan. Slug permanen setelah dibuat.</p></div>
+              <button type="button" onClick={() => setShowForm(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-admin-subtle transition hover:bg-admin-subtle" aria-label="Tutup form link"><IosIcon name="close" size={14} tint="white" /></button>
             </div>
-            {!editing && <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-white/60">Slug (go/…)</span><input value={form.slug} onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))} maxLength={64} autoFocus placeholder="mis. otp-sengare" className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white focus:border-[#00E5FF]/40 focus:outline-none" /></label>}
-            {editing && <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2"><p className="text-[11px] text-white/40">Slug permanen</p><code className="text-sm text-[#00E5FF]">go/{editing.slug}</code></div>}
-            {error && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
-            <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-white/60">Tujuan</span><input value={form.destination} onChange={(event) => setForm((current) => ({ ...current, destination: event.target.value }))} maxLength={2048} placeholder="/artikel/… atau https://…" className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white focus:border-[#00E5FF]/40 focus:outline-none" /></label>
-            <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-white/60">Judul (untuk admin)</span><input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} maxLength={160} placeholder="mis. Mailbox OTP Sengare" className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white focus:border-[#00E5FF]/40 focus:outline-none" /></label>
-            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setShowForm(false)} disabled={saving} className="h-10 rounded-full border border-white/10 bg-white/[0.06] px-4 text-sm text-white/70 transition hover:bg-white/10 disabled:opacity-50">Batal</button><button type="button" onClick={() => void save()} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-full bg-[#00E5FF] px-5 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50">{saving ? <Spinner size={14} className="border-[#080C1E]/20 border-t-[#080C1E]" /> : <IosIcon name="checked" size={14} tint="black" />}{saving ? "Menyimpan…" : "Simpan Link"}</button></div>
-          </div>
-        </div>
+            {!editing && <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Slug (go/…)</span><input value={form.slug} onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))} maxLength={64} autoFocus placeholder="mis. otp-sengare" className="h-11 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></label>}
+            {editing && <div className="mt-4 rounded-xl border border-admin-border bg-admin-subtle px-3 py-2"><p className="text-xs text-admin-muted">Slug permanen</p><code className="text-sm text-admin-accent">go/{editing.slug}</code></div>}
+            {error && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-admin-danger">{error}</p>}
+            <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Tujuan</span><input value={form.destination} onChange={(event) => setForm((current) => ({ ...current, destination: event.target.value }))} maxLength={2048} placeholder="/artikel/… atau https://…" className="h-11 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></label>
+            <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Judul (untuk admin)</span><input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} maxLength={160} placeholder="mis. Mailbox OTP Sengare" className="h-11 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></label>
+            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setShowForm(false)} disabled={saving} className="h-10 rounded-md border border-admin-border bg-admin-subtle px-4 text-sm text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">Batal</button><button type="button" onClick={() => void save()} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-50">{saving ? <Spinner size={14} className="border-[#080C1E]/20 border-t-[#080C1E]" /> : <IosIcon name="checked" size={14} tint="black" />}{saving ? "Menyimpan…" : "Simpan Link"}</button></div>
+        </Dialog>
       )}
 
       <ConfirmDialog

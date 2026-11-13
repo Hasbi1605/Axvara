@@ -38,8 +38,9 @@ export async function GET(req: NextRequest) {
   if (VALID_CHANNEL.has(channel)) { conditions.push("COALESCE(o.sales_channel,'web')=?"); bindings.push(channel); }
   if (kind === "pedia") conditions.push("COALESCE(o.order_kind,'apps')='pedia'");
   else if (kind === "apps") conditions.push("COALESCE(o.order_kind,'apps')='apps'");
-  if (method === "manual") conditions.push("LOWER(o.payment_method)!='qris'");
-  else if (/^[a-z0-9_-]{1,32}$/.test(method)) { conditions.push("LOWER(o.payment_method)=?"); bindings.push(method); }
+  else if (kind === "games") conditions.push("o.order_kind='games'");
+  if (method === "manual") conditions.push("LOWER(o.payment_method)!='qris' AND LOWER(o.payment_method) NOT LIKE 'nowpayments:%' AND LOWER(o.payment_method) NOT LIKE 'sekalipay_gateway:%'");
+  else if (/^(?:[a-z0-9_-]{1,32}|(?:nowpayments|sekalipay_gateway):[a-z0-9_-]{1,64})$/.test(method)) { conditions.push("LOWER(o.payment_method)=?"); bindings.push(method); }
   if (proof === "submitted") conditions.push("EXISTS(SELECT 1 FROM payment_proofs pf WHERE pf.order_code=o.code AND pf.status='submitted')");
   if (query) {
     conditions.push("LOWER(o.code || ' ' || COALESCE(o.customer_name,'') || ' ' || COALESCE(o.customer_wa,'') || ' ' || COALESCE(o.items,'')) LIKE ?");

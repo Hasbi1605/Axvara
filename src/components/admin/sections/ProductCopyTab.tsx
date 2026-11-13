@@ -36,26 +36,26 @@ export function ProductCopyTab({
   const overrideId = `${id}-override`;
   const descriptionEnId = `${id}-description-en`;
   const nameEnId = `${id}-name-en`;
-  const textareaBase = "w-full resize-y rounded-xl border px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none";
+  const textareaBase = "w-full resize-y rounded-xl border px-3 py-2.5 text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none";
 
   return (
     <div className="mt-5 space-y-6">
       <section aria-labelledby={`${id}-description-title`} className="space-y-4">
-        <h4 id={`${id}-description-title`} className="text-sm font-semibold text-white">Deskripsi produk</h4>
+        <h4 id={`${id}-description-title`} className="text-sm font-semibold text-admin-fg">Deskripsi produk</h4>
         <div className="space-y-1.5">
-          <label htmlFor={nameEnId} className="block text-xs font-semibold text-white/60">Nama (English)</label>
+          <label htmlFor={nameEnId} className="block text-xs font-semibold text-admin-muted">Nama (English)</label>
           <input
             id={nameEnId}
             value={form.nameEn ?? ""}
             onChange={(e) => onSetForm({ ...form, nameEn: e.target.value })}
             maxLength={120}
             placeholder="English product name shown when the buyer selects English…"
-            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/30 focus:outline-none"
+            className="h-11 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/30 focus:outline-none"
           />
-          <p className="text-[11px] leading-4 text-white/35">Kosongkan untuk memakai terjemahan token otomatis (durasi/tier) dari nama Indonesia.</p>
+          <p className="text-xs leading-4 text-admin-muted">Kosongkan untuk memakai terjemahan token otomatis (durasi/tier) dari nama Indonesia.</p>
         </div>
         <div className="space-y-1.5">
-          <label htmlFor={descriptionId} className="block text-xs font-semibold text-white/60">
+          <label htmlFor={descriptionId} className="block text-xs font-semibold text-admin-muted">
             Deskripsi{form.wrManaged ? " (dari WR)" : ""}
           </label>
           <textarea
@@ -66,13 +66,13 @@ export function ProductCopyTab({
             rows={form.wrManaged ? 3 : 8}
             aria-describedby={form.wrManaged ? undefined : `${descriptionId}-hint`}
             placeholder="Akses GPT-4o penuh..."
-            className={`${textareaBase} ${form.wrManaged ? "cursor-not-allowed border-white/5 bg-white/[0.03] text-white/50" : "border-white/10 bg-white/[0.06] focus:border-[#00E5FF]/30"}`}
+            className={`${textareaBase} ${form.wrManaged ? "cursor-not-allowed border-admin-border bg-admin-subtle text-admin-muted" : "border-admin-border bg-admin-subtle focus:border-admin-accent/30"}`}
           />
-          {!form.wrManaged && <p id={`${descriptionId}-hint`} className="text-[11px] leading-4 text-white/35">{FORMAT_HINT}</p>}
+          {!form.wrManaged && <p id={`${descriptionId}-hint`} className="text-xs leading-4 text-admin-muted">{FORMAT_HINT}</p>}
         </div>
         {form.wrManaged && (
           <div className="space-y-1.5">
-            <label htmlFor={overrideId} className="block text-xs font-semibold text-white/60">Deskripsi khusus (override)</label>
+            <label htmlFor={overrideId} className="block text-xs font-semibold text-admin-muted">Deskripsi khusus (override)</label>
             <textarea
               id={overrideId}
               value={form.adminDescriptionOverride ?? ""}
@@ -81,16 +81,16 @@ export function ProductCopyTab({
               maxLength={2000}
               aria-describedby={`${overrideId}-hint`}
               placeholder="Tulis deskripsi versimu sendiri di sini…"
-              className={`${textareaBase} border-white/10 bg-white/[0.06] focus:border-[#00E5FF]/30`}
+              className={`${textareaBase} border-admin-border bg-admin-subtle focus:border-admin-accent/30`}
             />
-            <p id={`${overrideId}-hint`} className="text-[11px] leading-4 text-white/35">
+            <p id={`${overrideId}-hint`} className="text-xs leading-4 text-admin-muted">
               Jika diisi, teks ini yang tampil di storefront dan tidak akan ditimpa sync. Kosongkan untuk kembali memakai deskripsi WR. {FORMAT_HINT}
             </p>
-            {!form.adminDescriptionOverride?.trim() && <button type="button" className="min-h-11 text-xs font-semibold text-[#5cefff]" onClick={() => onSetForm({ ...form, adminDescriptionOverride: form.description ?? "" })}>Gunakan teks sumber sebagai awal</button>}
+            {!form.adminDescriptionOverride?.trim() && <button type="button" className="min-h-11 text-xs font-semibold text-admin-accent" onClick={() => onSetForm({ ...form, adminDescriptionOverride: form.description ?? "" })}>Gunakan teks sumber sebagai awal</button>}
           </div>
         )}
         <div className="space-y-1.5">
-          <label htmlFor={descriptionEnId} className="block text-xs font-semibold text-white/60">Deskripsi (English)</label>
+          <label htmlFor={descriptionEnId} className="block text-xs font-semibold text-admin-muted">Deskripsi (English)</label>
           <textarea
             id={descriptionEnId}
             value={form.descriptionEn ?? ""}
@@ -99,23 +99,23 @@ export function ProductCopyTab({
             maxLength={2000}
             aria-describedby={`${descriptionEnId}-hint`}
             placeholder="English description shown when the buyer selects English…"
-            className={`${textareaBase} border-white/10 bg-white/[0.06] focus:border-[#00E5FF]/30`}
+            className={`${textareaBase} border-admin-border bg-admin-subtle focus:border-admin-accent/30`}
           />
-          <p id={`${descriptionEnId}-hint`} className="text-[11px] leading-4 text-white/35">
+          <p id={`${descriptionEnId}-hint`} className="text-xs leading-4 text-admin-muted">
             Dipakai storefront EN (PDP, meta, Telegram EN). Kosongkan untuk kembali memakai teks Indonesia. Milik admin; sync WR/SK tidak menimpa. {FORMAT_HINT}
           </p>
         </div>
       </section>
 
-      {!form.wrManaged && form.supplier !== "SK" ? <p className="rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.04] p-4 text-xs leading-5 text-white/60">S&K dan cara penggunaan bersama diatur pada tab Varian, di bagian pengiriman masing-masing varian. Panduan tersimpan bersama Simpan Produk.</p> : <section aria-labelledby={`${id}-terms-title`}>
-        <h4 id={`${id}-terms-title`} className="text-sm font-semibold text-white">Syarat &amp; Ketentuan · Cara Aktivasi</h4>
-        <p className="mt-1 text-[11px] leading-4 text-white/40">
+      {!form.wrManaged && form.supplier !== "SK" ? <p className="rounded-xl border border-admin-accent/20 bg-admin-primary/[0.04] p-4 text-xs leading-5 text-admin-muted">S&K dan cara penggunaan bersama diatur pada tab Varian, di bagian pengiriman masing-masing varian. Panduan tersimpan bersama Simpan Produk.</p> : <section aria-labelledby={`${id}-terms-title`}>
+        <h4 id={`${id}-terms-title`} className="text-sm font-semibold text-admin-fg">Syarat &amp; Ketentuan · Cara Aktivasi</h4>
+        <p className="mt-1 text-xs leading-4 text-admin-muted">
           Sunting langsung teks per varian. Suntingan yang dijeda ditandai terpisah dari versi pembeli. Simpan teks di dalam panel sebelum Simpan Produk.
         </p>
         {loadingVariants ? (
-          <p className="mt-3 text-xs text-white/40">Memuat varian…</p>
+          <p className="mt-3 text-xs text-admin-muted">Memuat varian…</p>
         ) : formVariants.length === 0 ? (
-          <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-white/40">Belum ada varian. Tambahkan dulu di tab Varian, lalu simpan produk.</p>
+          <p className="mt-3 rounded-xl border border-admin-border bg-admin-subtle px-3 py-3 text-xs text-admin-muted">Belum ada varian. Tambahkan dulu di tab Varian, lalu simpan produk.</p>
         ) : (
           <ul className="mt-3 space-y-2.5">
             {formVariants.map((variant, idx) => {

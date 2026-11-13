@@ -55,16 +55,16 @@ export function SingleVariantFields({
     mode: form.fulfillment_mode || "manual",
   });
   const openInput =
-    "h-9 w-full rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none";
+    "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none";
   return (
-    <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-      <label className="block text-xs text-white/60">Input pembeli<select value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></select></label>
-      <label className="block text-xs text-white/60">Maks. beli (kosong = 100)<input type="number" min={1} max={100} value={form.max_qty ?? ""} onChange={e => onSetForm({ ...form,max_qty:e.target.value ? Number(e.target.value) : null })} className={openInput}/></label>
+    <div className="mt-4 space-y-3 rounded-xl border border-admin-border bg-admin-subtle p-4">
+      <label className="block text-xs text-admin-muted">Input pembeli<select value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></select></label>
+      <label className="block text-xs text-admin-muted">Maks. beli (kosong = 100)<input type="number" min={1} max={100} value={form.max_qty ?? ""} onChange={e => onSetForm({ ...form,max_qty:e.target.value ? Number(e.target.value) : null })} className={openInput}/></label>
       {/* Min. Beli (migrasi 0034, milik admin — bukan WR). */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">
-            Min. Beli <span className="normal-case tracking-normal text-white/25">(1 = bebas)</span>
+          <span className="block text-xs uppercase font-semibold text-admin-muted mb-1">
+            Min. Beli <span className="normal-case tracking-normal text-admin-muted">(1 = bebas)</span>
           </span>
           <input
             type="number"
@@ -79,8 +79,8 @@ export function SingleVariantFields({
           />
         </div>
         <div>
-          <span className="block text-[10px] uppercase font-semibold text-white/40 mb-1">
-            Modal (Rp) <span className="normal-case tracking-normal text-white/25">(0 = tanpa modal)</span>
+          <span className="block text-xs uppercase font-semibold text-admin-muted mb-1">
+            Modal (Rp) <span className="normal-case tracking-normal text-admin-muted">(0 = tanpa modal)</span>
           </span>
           <MoneyInput
             value={form.manual_cost ?? 0}
@@ -88,15 +88,15 @@ export function SingleVariantFields({
             placeholder="0"
             className={openInput}
           />
-          <span className="mt-1 block text-[11px] leading-4 text-white/35">Modal per unit produk manual/stok sendiri (milik admin, ikut hitung untung).</span>
+          <span className="mt-1 block text-xs leading-4 text-admin-muted">Modal per unit produk manual/stok sendiri (milik admin, ikut hitung untung).</span>
         </div>
       </div>
 
       {/* Harga grosir — HANYA produk manual (owner 2026-11-08). */}
       {!manualProduct ? (
-        <p className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2 text-[11px] leading-5 text-white/45">Harga grosir hanya untuk produk manual.</p>
+        <p className="rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-xs leading-5 text-admin-muted">Harga grosir hanya untuk produk manual.</p>
       ) : !editing ? (
-        <p className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2 text-[11px] leading-5 text-white/45">Simpan produk dulu, lalu atur harga grosir di Edit Produk.</p>
+        <p className="rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-xs leading-5 text-admin-muted">Simpan produk dulu, lalu atur harga grosir di Edit Produk.</p>
       ) : (
         <BulkTierEditor
           idPrefix={SINGLE_BULK_PREFIX}
@@ -121,20 +121,20 @@ export function SingleVariantFields({
 
       {!wrLocked ? (
         <div className="pt-3">
-          <label htmlFor={fulfillmentId} className="block text-[10px] uppercase font-semibold text-white/40 mb-1.5">Cara Pengiriman</label>
+          <label htmlFor={fulfillmentId} className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Cara Pengiriman</label>
           <select
             id={fulfillmentId}
             value={form.fulfillment_mode || "manual"}
             onChange={(e) => onSetForm({ ...form, fulfillment_mode: e.target.value })}
-            className="h-9 rounded-xl bg-white/[0.06] border border-white/10 px-3 text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"
+            className="h-9 rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none"
           >
             {FULFILLMENT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value} className="bg-[#0F1430]">
+              <option key={opt.value} value={opt.value} className="bg-admin-card">
                 {opt.label}
               </option>
             ))}
           </select>
-          <p className="mt-1.5 text-[11px] leading-4 text-white/35">
+          <p className="mt-1.5 text-xs leading-4 text-admin-muted">
             {(form.fulfillment_mode || "manual") === "manual"
               ? "Badge pembeli: Made By Order (disiapkan admin)."
               : "Badge pembeli: Kirim otomatis (dikirim sistem dari stok di bawah)."}

@@ -20,14 +20,14 @@ export function OrderAccessAdmin({ code }: { code: string }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Gagal membaca kode akses."); }
     finally { setLoading(false); }
   }
-  return <section className="rounded-xl border border-white/10 p-3">
-    <p className="mb-3 text-xs leading-5 text-white/60">Untuk membantu pembeli yang kehilangan kode, periksa kepemilikan pesanan sebelum membagikannya.</p>
-    {access ? <OrderAccessNotice accessCode={access} /> : <button type="button" disabled={loading} onClick={() => void reveal()} className="min-h-11 rounded-xl border border-white/15 px-4 text-xs font-semibold text-[#00E5FF] disabled:opacity-50">{loading ? "Memuat…" : "Lihat kode akses pembeli"}</button>}
+  return <section className="rounded-xl border border-admin-border p-3">
+    <p className="mb-3 text-xs leading-5 text-admin-muted">Untuk membantu pembeli yang kehilangan kode, periksa kepemilikan pesanan sebelum membagikannya.</p>
+    {access ? <OrderAccessNotice accessCode={access} /> : <button type="button" disabled={loading} onClick={() => void reveal()} className="min-h-11 rounded-xl border border-admin-border px-4 text-xs font-semibold text-admin-accent disabled:opacity-50">{loading ? "Memuat…" : "Lihat kode akses pembeli"}</button>}
     {access && <div className="mt-2">
-      {confirmRotate && <p className="mb-2 text-xs leading-5 text-amber-200">Kode dan token akses lama akan dicabut. Berikan kode baru hanya ke pembeli yang sudah diverifikasi.</p>}
-      <button type="button" disabled={loading} onClick={() => confirmRotate ? void reveal(true) : setConfirmRotate(true)} className="min-h-11 rounded-xl border border-amber-200/25 px-4 text-xs text-amber-200 focus-visible:outline focus-visible:outline-2 disabled:opacity-50">{loading ? "Memuat…" : confirmRotate ? "Konfirmasi ganti kode" : "Ganti kode akses"}</button>
-      {confirmRotate && <button type="button" disabled={loading} onClick={() => setConfirmRotate(false)} className="ml-2 min-h-11 px-3 text-xs text-white/75">Batal</button>}
+      {confirmRotate && <p className="mb-2 text-xs leading-5 text-admin-warning">Kode dan token akses lama akan dicabut. Berikan kode baru hanya ke pembeli yang sudah diverifikasi.</p>}
+      <button type="button" disabled={loading} onClick={() => confirmRotate ? void reveal(true) : setConfirmRotate(true)} className="min-h-11 rounded-xl border border-amber-200/25 px-4 text-xs text-admin-warning focus-visible:outline focus-visible:outline-2 disabled:opacity-50">{loading ? "Memuat…" : confirmRotate ? "Konfirmasi ganti kode" : "Ganti kode akses"}</button>
+      {confirmRotate && <button type="button" disabled={loading} onClick={() => setConfirmRotate(false)} className="ml-2 min-h-11 px-3 text-xs text-admin-muted">Batal</button>}
     </div>}
-    {error && <p role="alert" className="mt-2 text-xs text-amber-200">{error}</p>}
+    {error && <p role="alert" className="mt-2 text-xs text-admin-warning">{error}</p>}
   </section>;
 }

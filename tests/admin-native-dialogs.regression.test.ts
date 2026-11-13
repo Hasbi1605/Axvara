@@ -31,11 +31,14 @@ describe("dialog admin", () => {
     expect(read(file)).toContain("<ConfirmDialog");
   });
 
-  it("modal kategori adalah dialog yang sah: role, aria-modal, Escape, scroll-lock", () => {
+  it("modal kategori memakai native modal untuk fokus/inert, Escape dan scroll-lock", () => {
     const source = read("src/components/admin/CategoryManager.tsx");
-    expect(source).toContain('role="dialog"');
-    expect(source).toContain('aria-modal="true"');
-    expect(source).toContain('event.key === "Escape"');
-    expect(source).toContain('document.body.style.overflow = "hidden"');
+    expect(source).toContain('<Dialog title={editing ? "Edit Kategori" : "Kategori Baru"}');
+    const primitive = read("src/components/ui/Dialog.tsx");
+    expect(primitive).toContain("<dialog");
+    expect(primitive).toContain("dialog.showModal()");
+    expect(primitive).toContain('aria-modal="true"');
+    expect(primitive).toContain("onCancel=");
+    expect(primitive).toContain('document.body.style.overflow = "hidden"');
   });
 });

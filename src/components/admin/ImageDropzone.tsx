@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { useToast } from "@/components/ui/Toast";
 
 type Props = {
@@ -114,7 +114,7 @@ export function ImageDropzone({ area, value, onUploaded, onRemove }: Props) {
         void upload(event.dataTransfer.files[0]);
       }}
       className={`rounded-xl border-2 border-dashed p-3 text-center transition ${
-        dragActive ? "border-[#00E5FF]/60 bg-[#00E5FF]/5" : "border-white/15"
+        dragActive ? "border-admin-accent/60 bg-admin-primary/5" : "border-admin-border"
       }`}
       aria-busy={busy}
     >
@@ -138,23 +138,23 @@ export function ImageDropzone({ area, value, onUploaded, onRemove }: Props) {
             }
           />
           <div className="mt-2 flex justify-center gap-2">
-            <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#00E5FF]/25 bg-[#00E5FF]/10 px-3 text-xs font-bold text-[#5cefff] transition hover:bg-[#00E5FF]/20" onClick={() => input.current?.click()}>
+            <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-admin-accent/25 bg-admin-primary/10 px-3 text-xs font-bold text-admin-accent transition hover:bg-admin-primary/20" onClick={() => input.current?.click()}>
               <IosIcon name="edit" size={12} tint="#00E5FF" /> Ganti
             </button>
-            <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-full border border-red-400/25 bg-red-500/10 px-3 text-xs font-bold text-red-200 transition hover:bg-red-500/20" onClick={onRemove}>
+            <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-400/25 bg-red-500/10 px-3 text-xs font-bold text-admin-danger transition hover:bg-red-500/20" onClick={onRemove}>
               <IosIcon name="trash" size={12} tint="#F87171" /> Hapus
             </button>
           </div>
         </div>
       ) : (
-        <button type="button" disabled={busy} onClick={() => input.current?.click()} className="min-h-36 w-full rounded-lg text-sm text-white/55 transition hover:bg-white/[0.02] disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={() => input.current?.click()} className="min-h-36 w-full rounded-lg text-sm text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">
           {busy ? (
             "Mengonversi & upload…"
           ) : (
             <span className="inline-flex flex-col items-center gap-1">
               <IosIcon name="upload" size={22} tint="white" />
               <span>Tarik gambar atau klik · PNG/JPG/WebP</span>
-              <span className="text-[11px] text-white/35">
+              <span className="text-xs text-admin-muted">
                 {preserveRatio ? "Rasio asli dipertahankan · maks. 1920 px" : "Otomatis WebP 1600×900"}
               </span>
             </span>

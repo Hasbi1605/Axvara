@@ -63,14 +63,14 @@ export function BulkMarkupToolbar({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/15 px-3 py-2">
-      <label className="flex items-center gap-1.5 text-xs text-white/60" title="Pilih baris satu per satu">
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-admin-border bg-black/15 px-3 py-2">
+      <label className="flex items-center gap-1.5 text-xs text-admin-muted" title="Pilih baris satu per satu">
         <input
           type="checkbox"
           checked={allChecked}
           ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked; }}
           onChange={(e) => { setUseAllVisible(false); onToggleAllVisible(e.target.checked); }}
-          className="h-4 w-4 accent-[#00E5FF]"
+          className="h-4 w-4 accent-admin-accent"
         />
         Pilih tampil ({selected.size})
       </label>
@@ -79,7 +79,7 @@ export function BulkMarkupToolbar({
         onClick={() => setUseAllVisible((v) => !v)}
         title="Pakai semua yang tampil (abaikan checklist)"
         aria-pressed={useAllVisible}
-        className={`h-8 rounded-lg px-2.5 text-[11px] font-bold transition ${useAllVisible ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/60 hover:bg-white/10 hover:text-white"}`}
+        className={`h-8 rounded-lg px-2.5 text-xs font-bold transition ${useAllVisible ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
       >
         Set semua tampil
       </button>
@@ -90,31 +90,31 @@ export function BulkMarkupToolbar({
             type="button"
             onClick={() => setPercent(String(p))}
             aria-pressed={pct === p}
-            className={`h-8 rounded-lg px-2.5 text-[11px] font-bold transition ${pct === p ? "bg-[#FFB800] text-[#080C1E]" : "bg-white/[0.06] text-white/60 hover:bg-white/10 hover:text-white"}`}
+            className={`h-8 rounded-lg px-2.5 text-xs font-bold transition ${pct === p ? "bg-[#FFB800] text-[#080C1E]" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
           >
             {p}%
           </button>
         ))}
       </div>
-      <label className="flex items-center gap-1.5 text-xs text-white/60">
+      <label className="flex items-center gap-1.5 text-xs text-admin-muted">
         %
         <input
           value={percent}
           onChange={(e) => setPercent(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
           inputMode="numeric"
           aria-label="Markup persen bulk"
-          className="h-8 w-16 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none"
+          className="h-8 w-16 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none"
         />
       </label>
-      <label className="flex items-center gap-1.5 text-xs text-white/60" title="Bila dicentang, Rp per varian ikut direset ke 0. Bila mati, Rp dipertahankan.">
-        <input type="checkbox" checked={resetFixed} onChange={(e) => setResetFixed(e.target.checked)} className="h-4 w-4 accent-[#00E5FF]" />
+      <label className="flex items-center gap-1.5 text-xs text-admin-muted" title="Bila dicentang, Rp per varian ikut direset ke 0. Bila mati, Rp dipertahankan.">
+        <input type="checkbox" checked={resetFixed} onChange={(e) => setResetFixed(e.target.checked)} className="h-4 w-4 accent-admin-accent" />
         reset Rp ke 0
       </label>
       <button
         type="button"
         onClick={() => void apply()}
         disabled={applying || !effectiveIds.length || !pctValid}
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#00E5FF] px-3 text-[11px] font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40"
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-admin-primary px-3 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40"
       >
         {applying ? <Spinner size={12} /> : null}
         Terapkan ke {effectiveIds.length} varian

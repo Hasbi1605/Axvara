@@ -1,6 +1,6 @@
 // src/components/admin/WarungRebahanManager.tsx — Tab admin Warung Rebahan H2H:
 // saldo + estimasi, status sync, antrean order WR, exclusion rules, markup per varian.
-// Mengikuti pola PaymentReconciliation (fetch per section, toast error, gaya ax-glass).
+// Mengikuti pola PaymentReconciliation (fetch per section, toast error, gaya admin-surface).
 
 "use client";
 import { SupplierSyncStatus, type SupplierDiffStatus, type SupplierSyncLogRow } from "@/components/admin/SupplierSyncStatus";
@@ -8,7 +8,7 @@ import { SupplierSyncStatus, type SupplierDiffStatus, type SupplierSyncLogRow } 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { useToast } from "@/components/ui/Toast";
 import { BulkMarkupToolbar } from "@/components/admin/BulkMarkupToolbar";
 import { SupplierTabs, VariantStatusBadge, type SupplierTabId } from "@/components/admin/SupplierTabs";
@@ -450,33 +450,33 @@ export function WarungRebahanManager() {
         onChange={(tab) => openTab(tab as typeof wrTab)}
       />
       {wrTab === "ringkas" && (
-      <section className="ax-glass overflow-hidden rounded-[20px]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4 sm:p-5">
+      <section className="admin-surface overflow-hidden rounded-xl">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-white">Saldo Warung Rebahan</h2>
-            <p className="mt-0.5 text-xs text-white/40">Diambil real-time dari API WR setiap dibuka.</p>
+            <h2 className="text-sm font-semibold text-admin-fg">Saldo Warung Rebahan</h2>
+            <p className="mt-0.5 text-xs text-admin-muted">Diambil real-time dari API WR setiap dibuka.</p>
           </div>
-          <button onClick={() => void loadSaldo()} disabled={saldoLoading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-semibold text-white/60 transition hover:bg-white/5 hover:text-white disabled:opacity-40">
+          <button onClick={() => void loadSaldo()} disabled={saldoLoading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg disabled:opacity-40">
             <IosIcon name="refresh" size={13} tint="white" /> Muat ulang
           </button>
         </header>
         <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
-          <div className={`rounded-2xl border p-4 ${saldo.current?.isLow ? "border-red-400/20 bg-red-500/[0.06]" : "border-emerald-400/15 bg-emerald-400/[0.06]"}`}>
-            <p className="text-[11px] uppercase tracking-wide text-white/40">Saldo saat ini</p>
-            <p className={`mt-1 text-lg font-bold tabular-nums ${saldo.current?.isLow ? "text-red-300" : "text-emerald-300"}`}>
+          <div className={`rounded-xl border p-4 ${saldo.current?.isLow ? "border-red-400/20 bg-red-500/[0.06]" : "border-emerald-400/15 bg-emerald-400/[0.06]"}`}>
+            <p className="text-xs uppercase tracking-wide text-admin-muted">Saldo saat ini</p>
+            <p className={`mt-1 text-lg font-bold tabular-nums ${saldo.current?.isLow ? "text-admin-danger" : "text-admin-success"}`}>
               {saldoLoading ? "…" : balance != null ? formatRupiah(balance) : "—"}
             </p>
-            {saldo.current?.isLow && <p className="mt-1 text-[11px] text-red-300">Di bawah batas {formatRupiah(saldo.current.threshold)} — segera top up.</p>}
+            {saldo.current?.isLow && <p className="mt-1 text-xs text-admin-danger">Di bawah batas {formatRupiah(saldo.current.threshold)} — segera top up.</p>}
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-            <p className="text-[11px] uppercase tracking-wide text-white/40">Estimasi kapasitas</p>
-            <p className="mt-1 text-lg font-bold text-white tabular-nums">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
-            <p className="mt-1 text-[11px] text-white/40">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
+          <div className="rounded-xl border border-admin-border bg-admin-subtle p-4">
+            <p className="text-xs uppercase tracking-wide text-admin-muted">Estimasi kapasitas</p>
+            <p className="mt-1 text-lg font-bold text-admin-fg tabular-nums">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
+            <p className="mt-1 text-xs text-admin-muted">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-            <p className="text-[11px] uppercase tracking-wide text-white/40">Sync terakhir</p>
+          <div className="rounded-xl border border-admin-border bg-admin-subtle p-4">
+            <p className="text-xs uppercase tracking-wide text-admin-muted">Sync terakhir</p>
             <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="excluded" />
-            <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+            <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
               {syncing ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{syncing ? "Sync…" : "Force Sync Now"}
             </button>
           </div>
@@ -484,59 +484,59 @@ export function WarungRebahanManager() {
       </section>
       )}
       {wrTab === "antrean" && (
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Antrean order WR</h3><p className="mt-0.5 text-[11px] text-white/40">Order lunas yang diteruskan ke Warung Rebahan. Cari by invoice WR (#RBHN-…) atau kode Axvara untuk forward manual email WR ke buyer.</p></div>
-          <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice WR / kode Axvara…" className="h-9 w-full max-w-[240px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none sm:ml-auto" />
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Antrean order WR</h3><p className="mt-0.5 text-xs text-admin-muted">Order lunas yang diteruskan ke Warung Rebahan. Cari by invoice WR (#RBHN-…) atau kode Axvara untuk forward manual email WR ke buyer.</p></div>
+          <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice WR / kode Axvara…" className="h-9 w-full max-w-[240px] rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none sm:ml-auto" />
           <div className="flex flex-wrap gap-2">
             {[["all", "Semua"], ["pending", "Pending"], ["submitted", "Terkirim"], ["processing", "Diproses"], ["retry", "Retry"], ["blocked_balance", "Saldo habis"], ["failed", "Gagal"], ["completed", "Selesai"]].map(([value, label]) => (
-              <button key={value} onClick={() => { setOrderStatus(value); setOrderPage(1); void loadOrders(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}>{label}</button>
+              <button key={value} onClick={() => { setOrderStatus(value); setOrderPage(1); void loadOrders(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}>{label}</button>
             ))}
           </div>
         </header>
-        {!orders.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada order WR pada filter ini.</p> : (
-          <div className="divide-y divide-white/[0.06]">
+        {!orders.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada order WR pada filter ini.</p> : (
+          <div className="divide-y divide-admin-border">
             {orders.map((order) => (
               <article key={order.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status={order.status} />
-                    <span className="font-mono text-xs font-semibold text-[#5cefff]">{order.order_code}</span>
-                    <span className="text-xs text-white/45">{formatRupiah(order.wr_cost)} modal</span>
-                    {order.wr_order_id && <span className="font-mono text-[11px] text-white/35">{order.wr_order_id}</span>}
+                    <span className="font-mono text-xs font-semibold text-admin-accent">{order.order_code}</span>
+                    <span className="text-xs text-admin-muted">{formatRupiah(order.wr_cost)} modal</span>
+                    {order.wr_order_id && <span className="font-mono text-xs text-admin-muted">{order.wr_order_id}</span>}
                     {!["completed", "failed"].includes(order.status) && (() => {
                       const age = ageLabel(order);
                       if (!age) return null;
                       // >13 jam = melewati ambang internal (plafon pembeli 12 jam).
                       const late = age.hours >= 13;
                       return (
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${late ? "border-red-400/30 bg-red-500/10 text-red-300" : "border-white/10 bg-white/[0.04] text-white/45"}`}>
+                        <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${late ? "border-red-400/30 bg-red-500/10 text-admin-danger" : "border-admin-border bg-admin-subtle text-admin-muted"}`}>
                           {age.text}{late ? " · lewat batas" : ""}
                         </span>
                       );
                     })()}
                   </div>
                   {(order.customer_name || order.customer_wa || order.customer_email) && (
-                    <p className="mt-1 text-[11px] text-white/55">
+                    <p className="mt-1 text-xs text-admin-muted">
                       {[order.customer_name, order.customer_wa, order.customer_email].filter(Boolean).join(" · ")}
                       {order.sales_channel ? ` · ${order.sales_channel}` : ""}
                     </p>
                   )}
-                  {order.last_error && <p className="mt-1 font-mono text-[10px] text-red-300/70">{order.last_error}</p>}
+                  {order.last_error && <p className="mt-1 font-mono text-xs text-admin-danger">{order.last_error}</p>}
                 </div>
                 {canRetryWrLink(order) ? (
                   <div className="flex shrink-0 items-center gap-2">
-                    <button onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#00E5FF] px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8] disabled:opacity-40">
+                    <button onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
                       {retrying === order.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />} Retry
                     </button>
-                    <button onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3.5 text-xs font-bold text-red-200 transition hover:bg-red-500/20 disabled:opacity-40">
+                    <button onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3.5 text-xs font-bold text-admin-danger transition hover:bg-red-500/20 disabled:opacity-40">
                       {voiding === order.id ? <Spinner size={13} /> : <IosIcon name="close" size={13} tint="#FCA5A5" />} Batal
                     </button>
                   </div>
                 ) : RETRYABLE_WR_STATUS.includes(order.status) ? (
                   // Non-preSend `failed` (sudah terkirim ke WR / dibatalkan
                   // admin) memang tidak bisa retry — beli ulang = dobel bayar.
-                  <span title={order.status === "failed" ? "Order ini sudah pernah terkirim ke WR atau dibatalkan admin — retry = beli ulang (dobel bayar). Serahkan manual dari tab Pesanan." : "Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan, atau naikkan batas percobaan."} className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-[11px] font-semibold text-red-200">
+                  <span title={order.status === "failed" ? "Order ini sudah pernah terkirim ke WR atau dibatalkan admin — retry = beli ulang (dobel bayar). Serahkan manual dari tab Pesanan." : "Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan, atau naikkan batas percobaan."} className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-xs font-semibold text-admin-danger">
                     {order.status === "failed" ? "Tak bisa retry" : "Percobaan habis"}
                   </span>
                 ) : null}
@@ -546,32 +546,32 @@ export function WarungRebahanManager() {
         )}
         {/* Pagination antrean (2026-10-01): halaman 2+ dulu hilang. */}
         {orderTotal > ORDER_PER_PAGE && (
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
-            <p className="text-xs text-white/40">Hal {orderPage} dari {Math.max(1, Math.ceil(orderTotal / ORDER_PER_PAGE))} • {orderTotal} order</p>
+          <div className="flex items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
+            <p className="text-xs text-admin-muted">Hal {orderPage} dari {Math.max(1, Math.ceil(orderTotal / ORDER_PER_PAGE))} • {orderTotal} order</p>
             <div className="flex items-center gap-1.5">
-              <button disabled={orderPage <= 1} onClick={() => void loadOrders(orderPage - 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
-              <button disabled={orderPage >= Math.ceil(orderTotal / ORDER_PER_PAGE)} onClick={() => void loadOrders(orderPage + 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+              <button disabled={orderPage <= 1} onClick={() => void loadOrders(orderPage - 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
+              <button disabled={orderPage >= Math.ceil(orderTotal / ORDER_PER_PAGE)} onClick={() => void loadOrders(orderPage + 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
             </div>
           </div>
         )}
       </section>
       )}
       {wrTab === "aturan" && (
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="border-b border-white/10 p-4"><h3 className="text-sm font-semibold text-white">Exclusion rules</h3><p className="mt-0.5 text-[11px] text-white/40">Produk yang cocok pola tidak masuk katalog (mis. Canva & Gemini).</p></header>
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="border-b border-admin-border p-4"><h3 className="text-sm font-semibold text-admin-fg">Exclusion rules</h3><p className="mt-0.5 text-xs text-admin-muted">Produk yang cocok pola tidak masuk katalog (mis. Canva & Gemini).</p></header>
         <div className="space-y-2 p-4">
           {exclusions.map((rule) => (
-            <div key={rule.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/15 px-3 py-2">
-              <span className="min-w-0 flex-1 font-mono text-xs text-white/75">{rule.pattern}</span>
-              {rule.reason && <span className="hidden max-w-[40%] truncate text-[11px] text-white/40 sm:inline">{rule.reason}</span>}
-              <button onClick={() => void deleteExclusion(rule.id)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-300 transition hover:bg-red-500/20" aria-label={`Hapus exclusion ${rule.pattern}`}>
+            <div key={rule.id} className="flex items-center gap-3 rounded-xl border border-admin-border bg-black/15 px-3 py-2">
+              <span className="min-w-0 flex-1 font-mono text-xs text-admin-muted">{rule.pattern}</span>
+              {rule.reason && <span className="hidden max-w-[40%] truncate text-xs text-admin-muted sm:inline">{rule.reason}</span>}
+              <button onClick={() => void deleteExclusion(rule.id)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-admin-danger transition hover:bg-red-500/20" aria-label={`Hapus exclusion ${rule.pattern}`}>
                 <IosIcon name="close" size={13} tint="#F87171" />
               </button>
             </div>
           ))}
           <div className="flex gap-2">
-            <input value={newPattern} onChange={(e) => setNewPattern(e.target.value)} placeholder="cth: canva" className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
-            <button onClick={() => void addExclusion()} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#00E5FF] px-4 text-xs font-bold text-[#07101f] transition hover:bg-[#00D0E8]">
+            <input value={newPattern} onChange={(e) => setNewPattern(e.target.value)} placeholder="cth: canva" className="h-10 min-w-0 flex-1 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+            <button onClick={() => void addExclusion()} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary">
               <IosIcon name="plus" size={13} tint="black" /> Tambah
             </button>
           </div>
@@ -579,20 +579,20 @@ export function WarungRebahanManager() {
       </section>
       )}
       {wrTab === "markup" && (
-      <section className="overflow-hidden rounded-[20px] border border-white/10 bg-white/[0.035]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-white/10 p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-white">Markup per varian</h3><p className="mt-0.5 text-[11px] text-white/40">Ubah markup → harga jual Axvara dihitung ulang otomatis.</p></div>
-          <input value={markupQuery} onChange={(e) => { setMarkupQuery(e.target.value); setMarkupPage(1); }} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-white/10 bg-white/[0.05] px-3 text-xs text-white placeholder:text-white/30 focus:border-[#00E5FF]/50 focus:outline-none" />
+      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
+        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
+          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Markup per varian</h3><p className="mt-0.5 text-xs text-admin-muted">Ubah markup → harga jual Axvara dihitung ulang otomatis.</p></div>
+          <input value={markupQuery} onChange={(e) => { setMarkupQuery(e.target.value); setMarkupPage(1); }} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
         </header>
         {/* Sub-tab status (cermin tab Live halaman Produk): default Live. */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 p-3" role="tablist" aria-label="Status tampil varian">
+        <div className="flex flex-wrap items-center gap-2 border-b border-admin-border p-3" role="tablist" aria-label="Status tampil varian">
           {([["live", `Live (${markupCountsLocal.live})`], ["hidden", `Disembunyikan otomatis (${markupCountsLocal.hidden})`], ["off", `Nonaktif manual (${markupCountsLocal.off})`], ["all", `Semua (${markups.length})`]] as const).map(([value, label]) => (
             <button
               key={value}
               role="tab"
               aria-selected={markupTab === value}
               onClick={() => { setMarkupTab(value); setMarkupPage(1); }}
-              className={`h-8 whitespace-nowrap rounded-full px-3.5 text-[11px] font-bold transition ${markupTab === value ? "bg-[#00E5FF] text-[#07101f]" : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white"}`}
+              className={`h-8 whitespace-nowrap rounded-md px-3.5 text-xs font-bold transition ${markupTab === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
             >
               {label}
             </button>
@@ -601,14 +601,14 @@ export function WarungRebahanManager() {
             value={markupPerPage}
             onChange={(e) => { setMarkupPerPage(Number(e.target.value) as 20 | 50 | 100); setMarkupPage(1); }}
             aria-label="Jumlah per halaman"
-            className="ml-auto h-8 shrink-0 rounded-full bg-white/[0.06] border border-white/10 px-2.5 text-[11px] font-semibold text-white/70 focus:outline-none focus:border-[#00E5FF]/40"
+            className="ml-auto h-8 shrink-0 rounded-md bg-admin-subtle border border-admin-border px-2.5 text-xs font-semibold text-admin-muted focus:outline-none focus:border-admin-accent/40"
           >
             <option value={20}>20 / hal</option>
             <option value={50}>50 / hal</option>
             <option value={100}>100 / hal</option>
           </select>
         </div>
-        <div className="border-b border-white/10 p-3">
+        <div className="border-b border-admin-border p-3">
           <BulkMarkupToolbar
             visibleIds={markupPaged.map((r) => (r as MarkupRow).wr_variant_id)}
             totalCount={markupFiltered.length}
@@ -624,8 +624,8 @@ export function WarungRebahanManager() {
             onApply={applyBulkMarkup}
           />
         </div>
-        {!markups.length ? <p className="p-10 text-center text-sm text-white/40">Belum ada varian WR tersinkron.</p> : markupFiltered.length === 0 ? <p className="p-10 text-center text-sm text-white/40">Tidak ada varian pada tab ini — coba ubah kata kunci.</p> : (
-          <div className="divide-y divide-white/[0.06]">
+        {!markups.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada varian WR tersinkron.</p> : markupFiltered.length === 0 ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada varian pada tab ini — coba ubah kata kunci.</p> : (
+          <div className="divide-y divide-admin-border">
             {markupPaged.map((row) => {
               const edit = editingMarkup[row.wr_variant_id] ?? { percent: String(row.markup_percent), fixed: String(row.markup_fixed) };
               const vStatus = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_status ?? "live";
@@ -644,18 +644,18 @@ export function WarungRebahanManager() {
                           return next;
                         })}
                         aria-label={`Pilih ${row.wr_variant_name} untuk bulk markup`}
-                        className="h-4 w-4 shrink-0 accent-[#00E5FF]"
+                        className="h-4 w-4 shrink-0 accent-admin-accent"
                       />
-                      <p className="truncate text-sm font-semibold text-white">{row.wr_product_name ? `${row.wr_product_name} — ` : ""}{row.wr_variant_name}</p>
+                      <p className="truncate text-sm font-semibold text-admin-fg">{row.wr_product_name ? `${row.wr_product_name} — ` : ""}{row.wr_variant_name}</p>
                       <DeliveryBadge wrClass={row.wr_delivery_class} />
                       <VariantStatusBadge status={vStatus} reason={vReason} />
                     </div>
-                    <p className="mt-1 text-xs text-white/45">Modal {formatRupiah(row.wr_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.wr_stock}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
+                    <p className="mt-1 text-xs text-admin-muted">Modal {formatRupiah(row.wr_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.wr_stock}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex items-center gap-1.5 text-xs text-white/55">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
-                    <label className="flex items-center gap-1.5 text-xs text-white/55">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-white/10 bg-black/20 px-2 text-right text-xs text-white focus:border-[#00E5FF]/50 focus:outline-none" /></label>
-                    <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-white px-3.5 text-xs font-bold text-[#07101f] transition hover:bg-white/90">Simpan</button>
+                    <label className="flex items-center gap-1.5 text-xs text-admin-muted">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none" /></label>
+                    <label className="flex items-center gap-1.5 text-xs text-admin-muted">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none" /></label>
+                    <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle">Simpan</button>
                   </div>
                 </article>
               );
@@ -664,12 +664,12 @@ export function WarungRebahanManager() {
         )}
         {/* Pagination markup lokal (cermin halaman Produk). */}
         {markupFiltered.length > markupPerPage && (
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
-            <p className="text-xs text-white/40">Hal {markupSafePage} dari {markupTotalPages} • {markupFiltered.length} varian</p>
+          <div className="flex items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
+            <p className="text-xs text-admin-muted">Hal {markupSafePage} dari {markupTotalPages} • {markupFiltered.length} varian</p>
             <div className="flex items-center gap-1.5">
-              <button disabled={markupSafePage <= 1} onClick={() => setMarkupPage((p) => Math.max(1, p - 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
-              <span className="text-xs text-white/40 px-1">{markupSafePage} / {markupTotalPages}</span>
-              <button disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage((p) => Math.min(markupTotalPages, p + 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-full ax-glass text-xs font-semibold text-white/70 disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+              <button disabled={markupSafePage <= 1} onClick={() => setMarkupPage((p) => Math.max(1, p - 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
+              <span className="text-xs text-admin-muted px-1">{markupSafePage} / {markupTotalPages}</span>
+              <button disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage((p) => Math.min(markupTotalPages, p + 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
             </div>
           </div>
         )}
@@ -680,21 +680,21 @@ export function WarungRebahanManager() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const tone = status === "completed" ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300"
-    : status === "failed" ? "border-red-400/25 bg-red-500/10 text-red-300"
-    : status === "processing" || status === "ordering" ? "border-[#00E5FF]/25 bg-[#00E5FF]/10 text-[#5cefff]"
-    : "border-[#FFB800]/25 bg-[#FFB800]/10 text-[#FFD66B]";
-  return <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${tone}`}>{WR_STATUS_LABEL[status] ?? status}</span>;
+  const tone = status === "completed" ? "border-emerald-400/25 bg-emerald-500/10 text-admin-success"
+    : status === "failed" ? "border-red-400/25 bg-red-500/10 text-admin-danger"
+    : status === "processing" || status === "ordering" ? "border-admin-accent/25 bg-admin-primary/10 text-admin-accent"
+    : "border-[#FFB800]/25 bg-[#FFB800]/10 text-admin-warning";
+  return <span className={`rounded-md border px-2.5 py-1 text-xs font-bold ${tone}`}>{WR_STATUS_LABEL[status] ?? status}</span>;
 }
 
 /** Badge kelas pengiriman WR (admin saja): hanya AUTO/MANUAL, dari API WR. */
 function DeliveryBadge({ wrClass }: { wrClass: string | null }) {
   if (wrClass === "restock") {
-    return <span title="AUTO • kirim otomatis" className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300">AUTO</span>;
+    return <span title="AUTO • kirim otomatis" className="rounded-md border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-admin-success">AUTO</span>;
   }
   if (wrClass === "made_by_order") {
-    return <span title="MANUAL • diproses sesuai antrean" className="rounded-full border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-[10px] font-bold text-[#FFD66B]">MANUAL</span>;
+    return <span title="MANUAL • diproses sesuai antrean" className="rounded-md border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-xs font-bold text-admin-warning">MANUAL</span>;
   }
-  return <span className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 text-[10px] font-bold text-white/45">?</span>;
+  return <span className="rounded-md border border-admin-border bg-admin-subtle px-2 py-0.5 text-xs font-bold text-admin-muted">?</span>;
 }
 

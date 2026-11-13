@@ -82,15 +82,15 @@ export function ArticleEditor({
     <button
       type="button"
       onMouseDown={action(run)}
-      className={`h-8 rounded px-2 text-xs ${active ? "bg-[#00E5FF] text-[#070a1e]" : "bg-white/10 text-white/80"}`}
+      className={`h-8 rounded px-2 text-xs ${active ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted"}`}
     >
       {label}
     </button>
   );
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10">
-      <div className="flex flex-wrap gap-1 border-b border-white/10 p-2">
+    <div className="overflow-hidden rounded-xl border border-admin-border">
+      <div className="flex flex-wrap gap-1 border-b border-admin-border p-2">
         {button("H2", () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 }))}
         {button("H3", () => editor.chain().focus().toggleHeading({ level: 3 }).run(), editor.isActive("heading", { level: 3 }))}
         {button("B", () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"))}
@@ -106,7 +106,7 @@ export function ArticleEditor({
           type="button"
           disabled={uploading}
           onClick={() => fileInput.current?.click()}
-          className="h-8 rounded bg-white/10 px-2 text-xs text-white/80 disabled:opacity-50"
+          className="h-8 rounded bg-admin-subtle px-2 text-xs text-admin-muted disabled:opacity-50"
         >
           {uploading ? "Upload…" : "Gambar"}
         </button>
@@ -122,7 +122,7 @@ export function ArticleEditor({
       </div>
       <EditorContent
         editor={editor}
-        className="min-h-[280px] p-3 text-sm text-white prose prose-invert max-w-none focus-within:outline-none [&_.ProseMirror]:min-h-[255px] [&_.ProseMirror]:outline-none [&_.ProseMirror_img]:my-4 [&_.ProseMirror_img]:rounded-xl"
+        className="min-h-[280px] p-3 text-sm text-admin-fg prose prose-invert max-w-none focus-within:outline-none [&_.ProseMirror]:min-h-[255px] [&_.ProseMirror]:outline-none [&_.ProseMirror_img]:my-4 [&_.ProseMirror_img]:rounded-xl"
       />
     </div>
   );

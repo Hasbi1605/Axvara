@@ -17,7 +17,7 @@ export function ReportExportActions({ report, disabled }: { report: SelectedRepo
     finally { setBusy(null); }
   };
   return <div className="flex flex-wrap items-center gap-2">
-    {([['pdf', 'PDF'], ['xlsx', 'Excel (.xlsx)']] as const).map(([format, label]) => <button key={format} type="button" disabled={disabled || busy !== null} onClick={() => void download(format)} className="min-h-10 rounded-xl border border-white/15 bg-white/[0.05] px-3 text-xs font-semibold text-white transition hover:bg-white/10 disabled:opacity-40">{busy === format ? "Menyiapkan…" : `Unduh ${label}`}</button>)}
-    {error && <p role="alert" className="w-full text-xs text-red-200">{error}</p>}
+    {([['pdf', 'PDF'], ['xlsx', 'Excel (.xlsx)']] as const).map(([format, label]) => <button key={format} type="button" disabled={disabled || busy !== null} onClick={() => void download(format)} className="min-h-10 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs font-semibold text-admin-fg transition hover:bg-admin-subtle disabled:opacity-40">{busy === format ? "Menyiapkan…" : `Unduh ${label}`}</button>)}
+    {error && <p role="alert" className="w-full text-xs text-admin-danger">{error}</p>}
   </div>;
 }

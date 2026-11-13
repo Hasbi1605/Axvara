@@ -44,25 +44,25 @@ export function WhatsAppNotifications() {
     } finally { setBusy(false); }
   }
   useEffect(() => { void request(); }, []);
-  return <section className="ax-glass mt-5 rounded-[22px] p-5" aria-label="Katalog ready WhatsApp">
-    <h2 className="text-base font-semibold text-white">Katalog ready ke grup WhatsApp</h2>
-    <p className="mt-2 text-xs leading-6 text-white/60">Bot {phone || "belum tersedia"} · Grup AXVARA&apos;S. Katalog ready beserta gambar promosi pukul 09.00 dan 17.00 WIB. Notifikasi pembelian berhasil tidak dikirim ke grup.</p>
-    <p className="mt-2 text-sm text-white/75">{state.gateway?.connected ? `Bot tersambung${state.gateway.groupName ? ` · ${state.gateway.groupName}` : " · grup belum ditemukan"}` : "Bot belum tersambung"} · {active ? "Notifikasi aktif" : "Notifikasi belum aktif"}</p>
-    {state.gateway?.blocked && <p role="status" className="mt-2 text-xs text-amber-200">Pengiriman dijeda. Periksa WhatsApp nomor bot sebelum melanjutkan.</p>}
-    {(state.error || state.gateway?.error) && <p role="alert" className="mt-2 text-xs text-amber-200">{state.error || state.gateway?.error}</p>}
+  return <section className="admin-surface mt-5 rounded-[22px] p-5" aria-label="Katalog ready WhatsApp">
+    <h2 className="text-base font-semibold text-admin-fg">Katalog ready ke grup WhatsApp</h2>
+    <p className="mt-2 text-xs leading-6 text-admin-muted">Bot {phone || "belum tersedia"} · Grup AXVARA&apos;S. Katalog ready beserta gambar promosi pukul 09.00 dan 17.00 WIB. Notifikasi pembelian berhasil tidak dikirim ke grup.</p>
+    <p className="mt-2 text-sm text-admin-muted">{state.gateway?.connected ? `Bot tersambung${state.gateway.groupName ? ` · ${state.gateway.groupName}` : " · grup belum ditemukan"}` : "Bot belum tersambung"} · {active ? "Notifikasi aktif" : "Notifikasi belum aktif"}</p>
+    {state.gateway?.blocked && <p role="status" className="mt-2 text-xs text-admin-warning">Pengiriman dijeda. Periksa WhatsApp nomor bot sebelum melanjutkan.</p>}
+    {(state.error || state.gateway?.error) && <p role="alert" className="mt-2 text-xs text-admin-warning">{state.error || state.gateway?.error}</p>}
     {code && state.gateway && !state.gateway.connected && <div className="mt-3 rounded-xl border border-cyan-400/20 p-3">
-      <p className="text-xl font-bold tracking-widest text-cyan-200">{code}</p>
-      <p className="mt-2 text-xs leading-6 text-white/65">Di WhatsApp {phone}: Perangkat tertaut → Tautkan perangkat → Tautkan dengan nomor telepon. Masukkan kode ini, lalu cek koneksi. Kode berlaku singkat; jangan dibagikan.</p>
+      <p className="text-xl font-bold tracking-widest text-admin-info">{code}</p>
+      <p className="mt-2 text-xs leading-6 text-admin-muted">Di WhatsApp {phone}: Perangkat tertaut → Tautkan perangkat → Tautkan dengan nomor telepon. Masukkan kode ini, lalu cek koneksi. Kode berlaku singkat; jangan dibagikan.</p>
     </div>}
     <div className="mt-4 flex flex-wrap gap-2">
-      {([['pair','Hubungkan nomor bot'],['status','Cek koneksi'],[active ? 'disable' : 'enable',active ? 'Nonaktifkan notifikasi' : 'Aktifkan notifikasi']] as const).map(([action,label]) => <button type="button" key={action} disabled={busy || (action !== "status" && !state.gateway) || (action === "pair" && Boolean(state.gateway?.connected))} onClick={() => void request(action === "status" ? undefined : action)} className="min-h-11 rounded-xl border border-white/15 px-4 text-xs font-semibold text-white/80 disabled:opacity-40">{busy ? "Memproses…" : label}</button>)}
-      <button type="button" disabled={busy || !state.gateway?.botRevision} onClick={() => { setEditing(!editing); setNewNumber(""); }} className="min-h-11 rounded-xl border border-white/15 px-4 text-xs font-semibold text-white/80 disabled:opacity-40">{editing ? "Batal ganti nomor" : "Ganti nomor bot"}</button>
+      {([['pair','Hubungkan nomor bot'],['status','Cek koneksi'],[active ? 'disable' : 'enable',active ? 'Nonaktifkan notifikasi' : 'Aktifkan notifikasi']] as const).map(([action,label]) => <button type="button" key={action} disabled={busy || (action !== "status" && !state.gateway) || (action === "pair" && Boolean(state.gateway?.connected))} onClick={() => void request(action === "status" ? undefined : action)} className="min-h-11 rounded-xl border border-admin-border px-4 text-xs font-semibold text-admin-muted disabled:opacity-40">{busy ? "Memproses…" : label}</button>)}
+      <button type="button" disabled={busy || !state.gateway?.botRevision} onClick={() => { setEditing(!editing); setNewNumber(""); }} className="min-h-11 rounded-xl border border-admin-border px-4 text-xs font-semibold text-admin-muted disabled:opacity-40">{editing ? "Batal ganti nomor" : "Ganti nomor bot"}</button>
     </div>
-    {editing && <form className="mt-4 max-w-xl space-y-3 rounded-xl border border-white/10 p-4" onSubmit={event => { event.preventDefault(); if (!busy && normalizeBotNumber(newNumber) && normalizeBotNumber(newNumber) !== phone) void request("number"); }}>
-      <label className="block text-sm text-white/80" htmlFor="notification-bot-number">Nomor WhatsApp bot baru</label>
-      <input id="notification-bot-number" type="tel" inputMode="tel" autoComplete="off" required maxLength={24} value={newNumber} onChange={event => setNewNumber(event.target.value)} placeholder="628123456789 atau 08123456789" disabled={busy} aria-describedby="notification-bot-number-help" className="min-h-11 w-full rounded-xl border border-white/10 bg-[#101428] px-3 text-sm text-white outline-none focus:border-cyan-400/60"/>
-      <p id="notification-bot-number-help" className="text-xs leading-6 text-white/60">Menyimpan nomor baru memutus koneksi bot lama dan menjeda notifikasi. Setelah itu, hubungkan nomor baru, masukkan ke grup AXVARA&apos;S, cek koneksi, lalu aktifkan notifikasi kembali. Nomor WhatsApp admin toko tetap terpisah.</p>
-      <button type="submit" disabled={busy || !normalizeBotNumber(newNumber) || normalizeBotNumber(newNumber) === phone} className="min-h-11 rounded-xl bg-cyan-400 px-4 text-xs font-semibold text-[#080c1e] disabled:opacity-40">{busy ? "Menyimpan…" : "Simpan nomor bot"}</button>
+    {editing && <form className="mt-4 max-w-xl space-y-3 rounded-xl border border-admin-border p-4" onSubmit={event => { event.preventDefault(); if (!busy && normalizeBotNumber(newNumber) && normalizeBotNumber(newNumber) !== phone) void request("number"); }}>
+      <label className="block text-sm text-admin-muted" htmlFor="notification-bot-number">Nomor WhatsApp bot baru</label>
+      <input id="notification-bot-number" type="tel" inputMode="tel" autoComplete="off" required maxLength={24} value={newNumber} onChange={event => setNewNumber(event.target.value)} placeholder="628123456789 atau 08123456789" disabled={busy} aria-describedby="notification-bot-number-help" className="min-h-11 w-full rounded-xl border border-admin-border bg-admin-card px-3 text-sm text-admin-fg outline-none focus:border-cyan-400/60"/>
+      <p id="notification-bot-number-help" className="text-xs leading-6 text-admin-muted">Menyimpan nomor baru memutus koneksi bot lama dan menjeda notifikasi. Setelah itu, hubungkan nomor baru, masukkan ke grup AXVARA&apos;S, cek koneksi, lalu aktifkan notifikasi kembali. Nomor WhatsApp admin toko tetap terpisah.</p>
+      <button type="submit" disabled={busy || !normalizeBotNumber(newNumber) || normalizeBotNumber(newNumber) === phone} className="min-h-11 rounded-xl bg-cyan-400 px-4 text-xs font-semibold text-admin-inverse disabled:opacity-40">{busy ? "Menyimpan…" : "Simpan nomor bot"}</button>
     </form>}
   </section>;
 }

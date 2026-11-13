@@ -191,6 +191,23 @@ const adminRow = (extra: Record<string, unknown>) => ({
 const stubAdmin = (orders: Record<string, unknown>[]) => vi.stubGlobal("fetch", vi.fn(async () => json({ orders, pagination: { page: 1, pages: 1, total: orders.length }, stats: { total: orders.length, pending: 0, paid: orders.length, revenue: 1000 }, counts: { channels: { web: orders.length } }, methods: ["qris"] })));
 
 describe("Admin OrdersManager Pedia rows", () => {
+  it.each([
+    { code: "AXV-20261113-CRYP0001", order_kind: "apps", payment_method: "nowpayments:usdtbsc" },
+    { code: "AXV-20261113-GATE0001", order_kind: "apps", payment_method: "sekalipay_gateway:BCA" },
+    { code: "AXG-20261113-GAME0001", order_kind: "games", payment_method: "qris" },
+  ])("hides legacy manual actions in row/detail for $code", async (extra) => {
+    stubAdmin([adminRow({ ...extra, status: "pending", payment_status: "unpaid", pedia: null })]);
+    render(<OrdersManager />);
+    const row = (await screen.findAllByText(extra.code))[0].closest("article")!;
+    for (const name of [/ACC pembayaran/, /Konfirmasi lunas/, /Tolak/, /Batalkan/]) expect(within(row).queryByRole("button", { name })).toBeNull();
+    fireEvent.click(within(row).getByRole("button", { name: "Detail" }));
+    const dialog = await screen.findByRole("dialog", { name: "Detail pesanan" });
+    for (const name of [/ACC pembayaran/, /Konfirmasi lunas/, /Tolak/, /Batalkan/, /Kirim ke pembeli/]) expect(within(dialog).queryByRole("button", { name })).toBeNull();
+    if (extra.order_kind === "games") {
+      expect(within(dialog).queryByTestId("market-access-widget")).toBeNull();
+      expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith(`/api/admin/orders/${extra.code}`))).toBe(false);
+    }
+  });
   it("shows Pedia chip + actual lifecycle + purchased quantity, never handover for a Pedia order with a false manual_required flag", async () => {
     stubAdmin([adminRow({})]);
     render(<OrdersManager />);

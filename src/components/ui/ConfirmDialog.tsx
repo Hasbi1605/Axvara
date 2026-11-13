@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { Dialog } from "./Dialog";
 
 type Props = {
   open: boolean;
@@ -24,41 +24,27 @@ export function ConfirmDialog({
   onConfirm,
   onClose,
 }: Props) {
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKey); };
-  }, [open, onClose]);
-
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label={title} className="relative z-10 w-full max-w-[420px] rounded-2xl border border-white/10 bg-[#0B1025] p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)]">
-        <h3 className="font-semibold text-white">{title}</h3>
-        <p className="mt-3 text-sm leading-6 text-white/60">{description}</p>
+    <Dialog title={title} onClose={onClose} busy={!!loading} className="w-[420px]">
+        <h3 className="font-semibold text-admin-fg">{title}</h3>
+        <p className="mt-3 text-sm leading-6 text-admin-muted">{description}</p>
         <div className="mt-5 flex justify-end gap-2">
-          <button autoFocus onClick={onClose} disabled={!!loading} className="h-10 px-4 rounded-full border border-white/10 bg-white/[0.06] text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50">
+          <button autoFocus onClick={onClose} disabled={!!loading} className="h-10 px-4 rounded-md border border-admin-border text-sm font-semibold text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">
             {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
             disabled={!!loading}
             className={`h-10 px-5 rounded-full text-sm font-bold inline-flex items-center gap-2 transition disabled:opacity-60 ${
-              variant === "danger" ? "bg-red-500 text-white hover:bg-red-400" : "bg-white text-[#070a1e] hover:bg-white/90"
+              variant === "danger" ? "bg-red-700 text-white hover:bg-red-800" : "bg-admin-primary text-admin-inverse hover:opacity-90"
             }`}
           >
             {loading && <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />}
             {confirmLabel}
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

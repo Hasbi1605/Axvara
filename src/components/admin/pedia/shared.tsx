@@ -27,10 +27,10 @@ export type Tier = {
 };
 export type Catalog = { products: Product[]; tiers: Tier[] };
 export type ProviderHealth = { supplier: string; balance: { value: number | null; stale: boolean; history?: { created_at: string }[] }; error: string | null; pricing_verified: boolean; last_sync_at: string | null };
-export const INPUT = "mt-1 min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none transition focus:border-[#00E5FF]/50 [color-scheme:dark]";
-export const BUTTON = "inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50";
-export const PRIMARY = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#00E5FF] px-4 text-sm font-bold text-[#07101f] transition hover:bg-[#00E5FF]/90 disabled:opacity-50";
-export const EDIT = "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-white px-3.5 text-xs font-bold text-[#080C1E] transition hover:bg-white/90 disabled:opacity-40";
+export const INPUT = "mt-1 min-h-11 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-sm text-admin-fg outline-none transition focus:border-admin-accent/50 [color-scheme:inherit]";
+export const BUTTON = "inline-flex min-h-11 items-center justify-center rounded-md border border-admin-border bg-admin-subtle px-3.5 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle disabled:cursor-not-allowed disabled:opacity-50";
+export const PRIMARY = "inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-admin-primary px-4 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary/90 disabled:opacity-50";
+export const EDIT = "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle disabled:opacity-40";
 export const TIER_ORDER = ["hemat", "standar", "premium"];
 export const STATUS: Record<string, string> = { awaiting_payment: "Menunggu pembayaran", queued: "Antrean", submitting: "Sedang dikirim", submitted: "Diproses", in_progress: "Berjalan", completed: "Selesai", partial: "Selesai sebagian", canceled: "Dibatalkan", needs_check: "Perlu diperiksa", expired: "Kedaluwarsa" };
 export function parse<T>(raw: unknown, fallback: T): T { try { return JSON.parse(String(raw)) ?? fallback; } catch { return fallback; } }
@@ -46,11 +46,11 @@ export function usablePackages(p: Product, t: Tier): number[] {
     Number.isFinite(Number(prices[qty])) && Number(prices[qty]) > 0 && pediaMargin({ supplierRatePer1k: Number(t.live_rate), quantity: qty, sellPrice: Number(prices[qty]) }) >= t.min_profit_rp);
 }
 export function productStatus(p: Product, tiers: Tier[]) {
-  if (!p.is_active) return { label: "Nonaktif", reason: "", style: "text-white/55" };
-  if (tiers.some(t => t.is_active && usablePackages(p, t).length)) return { label: "Siap dijual", reason: "", style: "text-emerald-300" };
+  if (!p.is_active) return { label: "Nonaktif", reason: "", style: "text-admin-muted" };
+  if (tiers.some(t => t.is_active && usablePackages(p, t).length)) return { label: "Siap dijual", reason: "", style: "text-admin-success" };
   const active = tiers.filter(t => t.is_active);
   const reason = !active.length ? "Belum ada varian aktif" : active.every(t => !Object.values(parse<Record<string, number>>(t.package_prices_json, {})).some(v => Number(v) > 0)) ? "Belum ada harga" : "Periksa batas jumlah, layanan, dan margin";
-  return { label: "Aktif, belum bisa dijual", reason, style: "text-amber-300" };
+  return { label: "Aktif, belum bisa dijual", reason, style: "text-admin-warning" };
 }
 export function needsAction(r: Row) { return r.status === "needs_check" || r.followup_state === "open" || ["manual_requested", "needs_check", "requested"].includes(String(r.refill_status)); }
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -88,15 +88,15 @@ export function usePanel<T>(url: string, initial: T) {
 }
 export type PanelState<T> = ReturnType<typeof usePanel<T>>;
 export function Feedback({ panel }: { panel: Pick<PanelState<unknown>, "loading" | "busy" | "error" | "success" | "load"> }) {
-  return <div aria-live="polite" className="space-y-2 text-sm">{panel.loading && <p role="status" className="text-white/65">Memuat data...</p>}{panel.busy && <p role="status" className="text-[#00E5FF]">Menyimpan perubahan...</p>}{panel.error && <p role="alert" className="text-red-300">{panel.error} <button disabled={panel.busy || panel.loading} onClick={() => void panel.load()} className="min-h-11 underline">Muat ulang</button></p>}{panel.success && <p role="status" className="text-emerald-300">{panel.success}</p>}</div>;
+  return <div aria-live="polite" className="space-y-2 text-sm">{panel.loading && <p role="status" className="text-admin-muted">Memuat data...</p>}{panel.busy && <p role="status" className="text-admin-accent">Menyimpan perubahan...</p>}{panel.error && <p role="alert" className="text-admin-danger">{panel.error} <button disabled={panel.busy || panel.loading} onClick={() => void panel.load()} className="min-h-11 underline">Muat ulang</button></p>}{panel.success && <p role="status" className="text-admin-success">{panel.success}</p>}</div>;
 }
-export function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block min-w-0 text-xs font-medium text-white/65">{label}{children}</label>; }
-export function Panel({ title, description, children }: { title: string; description: string; children: ReactNode }) { return <section className="mt-4 min-w-0"><header className="mb-4"><h3 className="text-sm font-semibold text-white">{title}</h3><p className="mt-1 text-xs leading-5 text-white/50">{description}</p></header>{children}</section>; }
+export function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block min-w-0 text-xs font-medium text-admin-muted">{label}{children}</label>; }
+export function Panel({ title, description, children }: { title: string; description: string; children: ReactNode }) { return <section className="mt-4 min-w-0"><header className="mb-4"><h3 className="text-sm font-semibold text-admin-fg">{title}</h3><p className="mt-1 text-xs leading-5 text-admin-muted">{description}</p></header>{children}</section>; }
 export function DataTable({ title, columns, children }: { title: string; columns: string[]; children: ReactNode }) {
-  return <div className="ax-glass min-w-0 overflow-hidden rounded-[20px]"><table className="w-full table-fixed text-left text-sm text-white/65"><caption className="sr-only">{title}</caption><thead className="border-b border-white/10 text-[11px] uppercase tracking-[0.08em] text-white/45"><tr>{columns.map(column => <th key={column} scope="col" className="px-4 py-3 font-semibold">{column}</th>)}</tr></thead><tbody className="divide-y divide-white/5 [&_td]:break-words [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_tr:hover]:bg-white/[0.03]">{children}</tbody></table></div>;
+  return <div className="admin-surface min-w-0 overflow-hidden rounded-xl"><table className="w-full table-fixed text-left text-sm text-admin-muted"><caption className="sr-only">{title}</caption><thead className="border-b border-admin-border text-xs uppercase tracking-[0.08em] text-admin-muted"><tr>{columns.map(column => <th key={column} scope="col" className="px-4 py-3 font-semibold">{column}</th>)}</tr></thead><tbody className="divide-y divide-admin-border [&_td]:break-words [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_tr:hover]:bg-admin-subtle">{children}</tbody></table></div>;
 }
-export function Pagination({ page, total, size, loading, onPage }: { page: number; total: number; size: number; loading: boolean; onPage: (page: number) => void }) { return <div className="mt-4 flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-white/60">Halaman {page} / {Math.max(1, Math.ceil(total / size))} · {total} hasil</span><div className="flex gap-2"><button className={BUTTON} disabled={page <= 1 || loading} onClick={() => onPage(page - 1)}>Sebelumnya</button><button className={BUTTON} disabled={page * size >= total || loading} onClick={() => onPage(page + 1)}>Berikutnya</button></div></div>; }
+export function Pagination({ page, total, size, loading, onPage }: { page: number; total: number; size: number; loading: boolean; onPage: (page: number) => void }) { return <div className="mt-4 flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-admin-muted">Halaman {page} / {Math.max(1, Math.ceil(total / size))} · {total} hasil</span><div className="flex gap-2"><button className={BUTTON} disabled={page <= 1 || loading} onClick={() => onPage(page - 1)}>Sebelumnya</button><button className={BUTTON} disabled={page * size >= total || loading} onClick={() => onPage(page + 1)}>Berikutnya</button></div></div>; }
 export function HealthLine({ row }: { row: Row }) {
   const health = pediaServiceHealth({ orders_7d: row.stat_orders, success_rate: row.stat_success, cancel_rate: row.stat_cancel, ai_score: row.stat_score });
-  return <p className={`text-xs ${health === "berisiko" ? "text-red-300" : "text-white/55"}`}>{health === "belum_ada_data" ? "Belum ada data 7 hari" : `${health === "sehat" ? "Sehat" : health === "cukup" ? "Cukup" : "Berisiko"} · ${Number(row.stat_orders)} pesanan/7 hari · success ${Math.round(Number(row.stat_success))}% · cancel ${Math.round(Number(row.stat_cancel))}%`}</p>;
+  return <p className={`text-xs ${health === "berisiko" ? "text-admin-danger" : "text-admin-muted"}`}>{health === "belum_ada_data" ? "Belum ada data 7 hari" : `${health === "sehat" ? "Sehat" : health === "cukup" ? "Cukup" : "Berisiko"} · ${Number(row.stat_orders)} pesanan/7 hari · success ${Math.round(Number(row.stat_success))}% · cancel ${Math.round(Number(row.stat_cancel))}%`}</p>;
 }

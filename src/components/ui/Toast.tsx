@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useMemo, ReactNode } from "react";
+import { createContext, useContext, useState, useMemo, useEffect, useRef, ReactNode } from "react";
 
 type Toast = { id: number; msg: string; kind: "error" | "success" | "info" };
 type Ctx = {
@@ -18,8 +18,13 @@ type Ctx = {
 const ToastCtx = createContext<Ctx | null>(null);
 let nid = 1;
 
-export function ToastProvider({ children }: { children: ReactNode }) {
+export function ToastProvider({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const outlet = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!admin || !outlet.current?.showPopover) return;
+    if (toasts.length) outlet.current.showPopover(); else outlet.current.hidePopover();
+  }, [admin, toasts]);
   const actions = useMemo<Ctx>(() => {
     const push = (msg: string, kind: Toast["kind"] = "info") => {
       const id = nid++;
@@ -31,17 +36,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={actions}>
       {children}
-      <div className="fixed bottom-4 left-1/2 z-[80] -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none px-4 w-full max-w-[420px]">
+      <div ref={outlet} popover={admin ? "manual" : undefined} className={`fixed bottom-4 left-1/2 z-[80] -translate-x-1/2 flex-col items-center gap-2 pointer-events-none px-4 w-full max-w-[420px] ${admin ? "admin-toast" : "flex"}`}>
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto w-full rounded-2xl border px-4 py-3 text-sm font-medium shadow-xl backdrop-blur-xl animate-[fadeInUp_0.28s_var(--ease-apple)] ${
+            role={admin ? t.kind === "error" ? "alert" : "status" : undefined}
+            className={`pointer-events-auto w-full border px-4 py-3 text-sm font-medium ${admin ? `rounded-lg bg-admin-card text-admin-fg shadow-lg ${t.kind === "error" ? "border-admin-danger" : t.kind === "success" ? "border-admin-success" : "border-admin-border"}` : `rounded-2xl shadow-xl backdrop-blur-xl animate-[fadeInUp_0.28s_var(--ease-apple)] ${
               t.kind === "error"
                 ? "bg-red-500/95 border-red-400 text-white"
                 : t.kind === "success"
                 ? "bg-emerald-500/95 border-emerald-400 text-white"
                 : "ax-glass-strong text-white border-white/15"
-            }`}
+            }`}`}
           >
             {t.msg}
           </div>

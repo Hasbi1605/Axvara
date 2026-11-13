@@ -142,6 +142,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   if (nxt === cur || nxt === "pending") {
     return NextResponse.json({ ok: true, code, status: cur, unchanged: true });
   }
+  const method = String(row.payment_method || "").toLowerCase();
+  if (/^(nowpayments|sekalipay_gateway):/.test(method)) {
+    return NextResponse.json({ error: "Pembayaran ini mengikuti rekonsiliasi provider; status tidak dapat diubah melalui aksi manual legacy." }, { status: 409 });
+  }
+  if (nxt === "lunas" && method === "qris") {
+    return NextResponse.json({ error: "Gunakan ACC QRIS dengan catatan verifikasi mutasi." }, { status: 409 });
+  }
   if (nxt === "lunas" && String(row.sales_channel) === "whatsapp") {
     return NextResponse.json(
       { error: "review_bukti_whatsapp_required", message: "Tinjau bukti WhatsApp langsung dari tab Pesanan." },

@@ -1,5 +1,15 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Panel admin terpadu13November2026 (implementasi lokal, menunggu publikasi CI): semua
+section admin memakai design system bergaya shadcn-admin dengan tema Terang/Gelap/
+Ikuti sistem (cookie `axvara-admin-theme`, layout `src/app/(shop)/admin/layout.tsx`,
+token `admin.*` + `src/components/admin/admin.css`), dialog native `ui/Dialog.tsx`,
+guard draft lintas section/back-forward, serta perbaikan audit: PATCH pesanan
+menolak aksi manual legacy untuk crypto/gateway dan lunas QRIS generik (409),
+filter `kind=games`/metode berkolon, Games berlabel sendiri, rekening bank legacy
+baca-saja. Storefront dan `/admin/payments/test` tidak ikut bertema. Tanpa env/
+migrasi/dependency baru. Detail DESIGN/ARCHITECTURE bagian teratas.
+
 Perbaikan CI temp mail12November2026 (lokal, menunggu publikasi CI): migrasi gagal
 karena tabel prototipe `messages` existing berbeda kolom. Worker/migrasi sekarang
 memakai `temp_mail_messages` + indeks khusus, tanpa mengubah/menyalin/menghapus data

@@ -63,32 +63,32 @@ export function SupplierSyncStatus({
     <>
       {diffKnown ? (
         <>
-          <p className={`mt-1 text-sm font-semibold ${diff?.healthy ? "text-white" : "text-amber-300"}`}>
+          <p className={`mt-1 text-sm font-semibold ${diff?.healthy ? "text-admin-fg" : "text-admin-warning"}`}>
             {diff?.healthy ? "Diff VPS aktif" : "Diff VPS berhenti"} · cek {fmt(diff?.last_at)}
           </p>
-          <p className="mt-1 text-[11px] text-white/40">
+          <p className="mt-1 text-xs text-admin-muted">
             {diff?.last_change_at
               ? `Perubahan terakhir ${fmt(diff.last_change_at)} · ${describeDiffChange(diff.last_change)}`
               : "Belum ada perubahan sejak diff aktif."}
           </p>
           {!diff?.healthy && (
-            <p className="mt-1 text-[11px] text-amber-300/80">Sync penuh otomatis kembali tiap 15 menit.</p>
+            <p className="mt-1 text-xs text-admin-warning">Sync penuh otomatis kembali tiap 15 menit.</p>
           )}
-          {errorRecent && <p className="mt-1 text-[11px] text-red-300">Error diff: {diff?.last_error?.error}</p>}
+          {errorRecent && <p className="mt-1 text-xs text-admin-danger">Error diff: {diff?.last_error?.error}</p>}
         </>
       ) : lastSweep || lastManual ? (
         <>
-          <p className="mt-1 text-sm font-semibold text-white">{(lastSweep ?? lastManual)!.status} · {fmt((lastSweep ?? lastManual)!.created_at)}</p>
-          <p className="mt-1 text-[11px] text-white/40">Diff VPS belum aktif — sync penuh tiap 15 menit.</p>
+          <p className="mt-1 text-sm font-semibold text-admin-fg">{(lastSweep ?? lastManual)!.status} · {fmt((lastSweep ?? lastManual)!.created_at)}</p>
+          <p className="mt-1 text-xs text-admin-muted">Diff VPS belum aktif — sync penuh tiap 15 menit.</p>
         </>
       ) : (
         <>
-          <p className="mt-1 text-sm font-semibold text-white">Belum pernah</p>
-          <p className="mt-1 text-[11px] text-white/40">Tekan Force Sync untuk sync pertama.</p>
+          <p className="mt-1 text-sm font-semibold text-admin-fg">Belum pernah</p>
+          <p className="mt-1 text-xs text-admin-muted">Tekan Force Sync untuk sync pertama.</p>
         </>
       )}
       {(lastManual || lastSweep) && (
-        <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-[11px] text-white/40">
+        <div className="mt-2 space-y-1 border-t border-admin-border pt-2 text-xs text-admin-muted">
           <p>
             🟢 Sync penuh: {lastSweep
               ? `${lastSweep.status} · ${fmt(lastSweep.created_at)} · ${lastSweep.products_total ?? lastSweep.products_synced ?? 0} produk`

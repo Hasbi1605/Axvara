@@ -10,7 +10,7 @@
 // Komponen ini memakai endpoint admin yang SAMA (CAS berpagar, tanpa jalur baru).
 
 import { useId, useState } from "react";
-import { IosIcon } from "@/components/ui/IosIcon";
+import { IosIcon } from "@/components/admin/AdminIcon";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 
@@ -126,19 +126,19 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
   return <div className={compact ? "mt-2 space-y-1.5" : "space-y-2"}>
     {links.map((link) => {
       const tone = link.status === "failed" || link.status === "blocked_balance" || link.status === "needs_admin"
-        ? "border-red-400/25 bg-red-500/[0.07] text-red-200"
-        : link.status === "completed" ? "border-emerald-400/20 bg-emerald-500/[0.06] text-emerald-200"
-        : "border-[#00E5FF]/20 bg-[#00E5FF]/[0.06] text-[#9ff4ff]";
+        ? "border-red-400/25 bg-red-500/[0.07] text-admin-danger"
+        : link.status === "completed" ? "border-emerald-400/20 bg-emerald-500/[0.06] text-admin-success"
+        : "border-admin-accent/20 bg-admin-primary/[0.06] text-admin-accent";
       const key = `${link.supplier}:${link.id}`;
-      return <div key={key} className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[11px] ${tone}`}>
+      return <div key={key} className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs ${tone}`}>
         <span className="font-semibold">{link.supplier.toUpperCase()} · {link.purchase_disabled ? "Pembelian otomatis dinonaktifkan · penanganan manual" : link.supplier==="tunvn" && link.last_error==="insufficient_balance" ? "Saldo supplier tidak cukup" : STATUS_LABEL[link.status] ?? link.status}</span>
-        {link.supplier_order_id && <span className="font-mono text-[10px] opacity-60">{link.supplier_order_id}</span>}
+        {link.supplier_order_id && <span className="font-mono text-xs opacity-60">{link.supplier_order_id}</span>}
         {link.status === "completed" && link.delivery_status && link.delivery_status !== "delivered" && <span className="opacity-75">· kredensial: {link.delivery_status === "failed" ? "gagal kirim (dicoba ulang)" : "antre kirim"}</span>}
-        {link.last_error && !link.purchase_disabled && !["completed"].includes(link.status) && <span className="w-full break-words text-[11px] opacity-80">{(link.supplier==="tunvn" ? TUNVN_ERROR_LABEL : link.supplier==="sk" ? SK_ERROR_LABEL : {})[link.last_error] ?? link.last_error}</span>}
+        {link.last_error && !link.purchase_disabled && !["completed"].includes(link.status) && <span className="w-full break-words text-xs opacity-80">{(link.supplier==="tunvn" ? TUNVN_ERROR_LABEL : link.supplier==="sk" ? SK_ERROR_LABEL : {})[link.last_error] ?? link.last_error}</span>}
         <span className="ml-auto flex gap-1.5">
-          {canRetrySupplierLink(link) && <button type="button" onClick={() => void run(link, "retry")} disabled={busy !== null} className="inline-flex h-12 items-center gap-1 rounded-full bg-[#00E5FF] px-2.5 text-[11px] font-bold text-[#07101f] disabled:opacity-40">{busy === `${key}:retry` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="black" />} Retry</button>}
-          {canCheck(link) && <button type="button" onClick={() => void run(link, "sync-now")} disabled={busy !== null} className="inline-flex h-12 items-center gap-1 rounded-full border border-white/15 px-2.5 text-[11px] font-semibold text-white/75 disabled:opacity-40">{busy === `${key}:sync-now` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="white" />} Cek status</button>}
-          {canVoid(link) && <button type="button" onClick={() => void run(link, "void")} disabled={busy !== null} className="inline-flex h-12 items-center gap-1 rounded-full border border-red-400/30 bg-red-500/10 px-2.5 text-[11px] font-semibold text-red-200 disabled:opacity-40">{busy === `${key}:void` ? <Spinner size={11} /> : <IosIcon name="close" size={11} tint="#FCA5A5" />} Batal</button>}
+          {canRetrySupplierLink(link) && <button type="button" onClick={() => void run(link, "retry")} disabled={busy !== null} className="inline-flex h-12 items-center gap-1 rounded-md bg-admin-primary px-2.5 text-xs font-bold text-admin-inverse disabled:opacity-40">{busy === `${key}:retry` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="black" />} Retry</button>}
+          {canCheck(link) && <button type="button" onClick={() => void run(link, "sync-now")} disabled={busy !== null} className="inline-flex h-12 items-center gap-1 rounded-md border border-admin-border px-2.5 text-xs font-semibold text-admin-muted disabled:opacity-40">{busy === `${key}:sync-now` ? <Spinner size={11} /> : <IosIcon name="refresh" size={11} tint="white" />} Cek status</button>}
+          {canVoid(link) && <button type="button" onClick={() => void run(link, "void")} disabled={busy !== null} className="inline-flex h-12 items-center gap-1 rounded-md border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-semibold text-admin-danger disabled:opacity-40">{busy === `${key}:void` ? <Spinner size={11} /> : <IosIcon name="close" size={11} tint="#FCA5A5" />} Batal</button>}
         </span>
         {link.supplier === "wr" && !link.supplier_order_id && ["submitted", "ordering", "claimed"].includes(link.status) &&
           <form className="flex w-full flex-wrap items-end gap-2" onSubmit={(event) => {
@@ -146,14 +146,14 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
             void run(link, "sync-now", invoices[key]?.trim());
           }}>
             <div className="min-w-0 flex-1">
-              <label htmlFor={`${formId}-${key}`} className="mb-1 block text-white/80">Invoice WR yang telah diverifikasi</label>
+              <label htmlFor={`${formId}-${key}`} className="mb-1 block text-admin-muted">Invoice WR yang telah diverifikasi</label>
               <input id={`${formId}-${key}`} value={invoices[key] ?? ""} onChange={(event) => setInvoices({ ...invoices, [key]: event.target.value })}
                 required maxLength={120} pattern="[A-Za-z0-9][A-Za-z0-9_-]*" autoComplete="off" disabled={busy !== null}
-                className="h-11 w-full rounded-lg border border-white/20 bg-black/20 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#00E5FF]" />
+                className="h-11 w-full rounded-lg border border-admin-border bg-black/20 px-3 text-sm text-admin-fg focus:outline-none focus:ring-2 focus:ring-admin-accent" />
             </div>
             <button type="submit" disabled={busy !== null || !invoices[key]?.trim()}
-              className="min-h-11 rounded-lg border border-white/25 px-3 text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-[#00E5FF] disabled:opacity-40">Hubungkan invoice WR</button>
-            <p className="w-full text-white/70">Pilih invoice milik pesanan ini di riwayat WR. Nama produk dan waktu saja tidak membuktikan kecocokan.</p>
+              className="min-h-11 rounded-lg border border-admin-border px-3 text-xs font-semibold text-admin-fg focus:outline-none focus:ring-2 focus:ring-admin-accent disabled:opacity-40">Hubungkan invoice WR</button>
+            <p className="w-full text-admin-muted">Pilih invoice milik pesanan ini di riwayat WR. Nama produk dan waktu saja tidak membuktikan kecocokan.</p>
           </form>}
       </div>;
     })}
