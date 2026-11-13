@@ -97,11 +97,11 @@ export function PaymentReconciliation() {
       </div>
       <dl className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0 rounded-xl border border-admin-border bg-admin-subtle/15 p-3">
-<dt className="text-xs uppercase tracking-wide text-admin-muted">Webhook URL</dt>
+<dt className="text-sm text-admin-muted">Webhook URL</dt>
 <dd className="mt-1 break-all font-mono text-xs text-admin-accent">{data.health.webhook_url}</dd>
 </div>
         <div className="rounded-xl border border-admin-border bg-admin-subtle/15 p-3">
-<dt className="text-xs uppercase tracking-wide text-admin-muted">Header secret</dt>
+<dt className="text-sm text-admin-muted">Header secret</dt>
 <dd className="mt-1 font-mono text-xs text-admin-muted">{data.health.secret_header}</dd>
 </div>
       </dl>
@@ -160,7 +160,7 @@ export function PaymentReconciliation() {
 }
 
 function HealthCard({ title, value, ok }: { title: string; value: string; ok: boolean }) { return <Card className={`rounded-xl border p-4 ${ok ? "border-admin-success/15 bg-admin-success/[0.06]" : "border-admin-danger/15 bg-admin-danger/[0.06]"}`}>
-<p className="text-xs uppercase tracking-wide text-admin-muted">{title}</p>
+<p className="text-sm text-admin-muted">{title}</p>
 <p className={`mt-1 text-sm font-semibold tabular-nums ${ok ? "text-admin-success" : "text-admin-danger"}`}>{value}</p>
 </Card>; }
 function EventBadge({ status }: { status: EventRow["status"] }) {
@@ -171,7 +171,7 @@ function EventBadge({ status }: { status: EventRow["status"] }) {
       : status === "failed"
         ? "border-admin-danger/25 bg-admin-danger/10 text-admin-danger"
         : "border-admin-warning/25 bg-admin-warning/10 text-admin-warning";
-  return <Badge variant="outline" className={`inline-flex shrink-0 items-center rounded-md border px-2.5 py-1 text-xs font-semibold uppercase ${tone}`}>{label}</Badge>;
+  return <Badge variant="outline" className={`inline-flex shrink-0 items-center rounded-md border px-2.5 py-1 text-xs font-semibold ${tone}`}>{label}</Badge>;
 }
 // Sama seperti OrdersManager: timestamp D1 berformat spasi adalah UTC.
 function formatDate(value: string) { return formatWibDateTime(value) ?? value; }

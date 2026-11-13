@@ -64,7 +64,7 @@ export function SingleVariantFields({
       {/* Min. Beli (migrasi 0034, milik admin — bukan WR). */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <span className="block text-xs uppercase font-semibold text-admin-muted mb-1">
+          <span className="block text-sm font-medium text-admin-muted mb-1">
             Min. Beli <span className="normal-case tracking-normal text-admin-muted">(1 = bebas)</span>
           </span>
           <Input
@@ -80,7 +80,7 @@ export function SingleVariantFields({
           />
         </div>
         <div>
-          <span className="block text-xs uppercase font-semibold text-admin-muted mb-1">
+          <span className="block text-sm font-medium text-admin-muted mb-1">
             Modal (Rp) <span className="normal-case tracking-normal text-admin-muted">(0 = tanpa modal)</span>
           </span>
           <MoneyInput
@@ -122,7 +122,7 @@ export function SingleVariantFields({
 
       {!wrLocked ? (
         <div className="pt-3">
-          <Label htmlFor={fulfillmentId} className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Cara Pengiriman</Label>
+          <Label htmlFor={fulfillmentId} className="block text-sm font-medium text-admin-muted mb-1.5">Cara Pengiriman</Label>
           <NativeSelect
             id={fulfillmentId}
             value={form.fulfillment_mode || "manual"}

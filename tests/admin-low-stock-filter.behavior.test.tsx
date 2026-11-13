@@ -56,6 +56,6 @@ it("metrik Hidden otomatis di Produk jujur: pecundang + habis yang tak tampil (2
   // Kartu "Produk aktif" lama menipu (termasuk yang hidden). Kini kartu
   // "Hidden otomatis" = yang toggle ON tapi tidak tampil di toko.
   // Fixture: 2 produk live → Hidden otomatis = 0.
-  const label = screen.getByText("Hidden otomatis");
+  const label = screen.getByText("Disembunyikan otomatis", { selector: "p" });
   expect(label.parentElement?.textContent).toContain("0");
 });

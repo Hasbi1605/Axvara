@@ -229,7 +229,7 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
         <div className="mt-3">
           {sharedCurrent ? (
             <div className="rounded-xl border border-admin-success/20 bg-admin-success/[0.06] p-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-admin-success">Isi saat ini</p>
+              <p className="text-sm font-medium text-admin-success">Isi saat ini</p>
               <p className="mt-1 whitespace-pre-wrap break-words text-sm text-admin-fg">{sharedCurrent}</p>
             </div>
           ) : (
@@ -347,7 +347,7 @@ export function ProductVariantRows({
             {/* Baris 1: Nama Varian & Aksi */}
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-admin-border">
               <div className="flex-1 min-w-0">
-                <span className="block text-xs uppercase font-semibold text-admin-muted mb-1">Nama Varian / Paket *{wrLocked ? " (WR)" : ""}</span>
+                <span className="block text-sm font-medium text-admin-muted mb-1">Nama Varian / Paket *{wrLocked ? " (WR)" : ""}</span>
                 <Input
                   value={v.label}
                   readOnly={wrLocked}
@@ -389,7 +389,7 @@ export function ProductVariantRows({
             {/* Baris 2: Harga, Harga Coret, Stok, Min. Beli, Modal */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 py-4 border-b border-admin-border">
               <div>
-                <span className="block text-xs uppercase font-semibold text-admin-muted mb-1 sm:min-h-[28px]">Harga Jual (Rp) *{wrLocked ? " (WR)" : ""}</span>
+                <span className="block text-sm font-medium text-admin-muted mb-1 sm:min-h-[28px]">Harga Jual (Rp) *{wrLocked ? " (WR)" : ""}</span>
                 <MoneyInput
                   value={v.price}
                   readOnly={wrLocked}
@@ -400,7 +400,7 @@ export function ProductVariantRows({
                 />
               </div>
               <div>
-                <span className="block text-xs uppercase font-semibold text-admin-muted mb-1 sm:min-h-[28px]">Harga Coret (Rp) <span className="normal-case tracking-normal text-admin-success">bisa diedit</span></span>
+                <span className="block text-sm font-medium text-admin-muted mb-1 sm:min-h-[28px]">Harga Coret (Rp) <span className="normal-case tracking-normal text-admin-success">bisa diedit</span></span>
                 <MoneyInput
                   value={v.comparePrice}
                   allowEmpty
@@ -413,7 +413,7 @@ export function ProductVariantRows({
                 />
               </div>
               <div>
-                <span className="block text-xs uppercase font-semibold text-admin-muted mb-1 sm:min-h-[28px]">Stok{wrLocked ? " (WR)" : ""}</span>
+                <span className="block text-sm font-medium text-admin-muted mb-1 sm:min-h-[28px]">Stok{wrLocked ? " (WR)" : ""}</span>
                 <Input
                   type="number"
                   min={-1}
@@ -430,7 +430,7 @@ export function ProductVariantRows({
               {/* Minimum pembelian (migrasi 0034, milik admin — bukan WR):
                   GSuite = 50; produk lain tinggal set angka bila butuh. */}
               <div>
-                <span className="block text-xs uppercase font-semibold text-admin-muted mb-1 sm:min-h-[28px]">Min. Beli <span className="normal-case tracking-normal text-admin-muted">(minimal 1)</span></span>
+                <span className="block text-sm font-medium text-admin-muted mb-1 sm:min-h-[28px]">Min. Beli <span className="normal-case tracking-normal text-admin-muted">(minimal 1)</span></span>
                 <Input
                   type="number"
                   min={1}
@@ -453,7 +453,7 @@ export function ProductVariantRows({
                   produk manual/stok sendiri yang modalnya tak tercatat di
                   link supplier. 0 = murni tanpa modal. */}
               <div>
-                <span className="block text-xs uppercase font-semibold text-admin-muted mb-1 sm:min-h-[28px]">Modal (Rp) <span className="normal-case tracking-normal text-admin-muted">(0 = tanpa modal)</span></span>
+                <span className="block text-sm font-medium text-admin-muted mb-1 sm:min-h-[28px]">Modal (Rp) <span className="normal-case tracking-normal text-admin-muted">(0 = tanpa modal)</span></span>
                 <MoneyInput
                   value={v.manual_cost ?? 0}
                   onChange={(val) => {
@@ -505,7 +505,7 @@ export function ProductVariantRows({
                 read-only status stok tetap tampil. */}
             {!wrLocked ? (
               <div className="pt-3">
-                <span className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Cara Pengiriman</span>
+                <span className="block text-sm font-medium text-admin-muted mb-1.5">Cara Pengiriman</span>
                 {tunvnAutomatic ? <p className="text-xs leading-5 text-admin-accent">Diproses otomatis setelah pembayaran dikonfirmasi. Mode internal tetap manual; tidak perlu mengisi stok kredensial lokal.</p> : <>
                 <NativeSelect
                   value={v.fulfillment_mode || "manual"}

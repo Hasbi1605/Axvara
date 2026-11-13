@@ -69,7 +69,7 @@ it("keeps a persistent retryable error instead of claiming zero events on 503", 
 it("legacy bank records are read-only and cannot be added from the checkout settings", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ payment_methods: [{ id: "bca", label: "BCA", account_name: "Legacy", account_number: "123", is_active: true }] }) })));
   render(<PaymentMethodsManager />);
-  expect(await screen.findByText("Legacy · baca-saja")).toBeTruthy();
+  expect(await screen.findByText("Legacy")).toBeTruthy();
   expect(screen.getByDisplayValue("123").closest("fieldset")?.disabled).toBe(true);
   expect(screen.queryByRole("button", { name: /Tambah bank/ })).toBeNull();
 });

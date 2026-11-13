@@ -183,7 +183,7 @@ export function VariantCopyEditor({
               {!entry.autoTerms && !entry.autoActivation && !entry.hasOverride && <p className="mb-3 text-xs text-admin-muted">Supplier belum menyediakan panduan varian. Bagian dari deskripsi produk, jika ada, tetap tampil di pratinjau.</p>}
               {entry.adminStale && <details className="mb-3 text-xs text-admin-muted"><summary className="cursor-pointer py-2">Yang dilihat pembeli sekarang (versi otomatis)</summary><pre className="whitespace-pre-wrap break-words font-sans">{entry.effectiveTerms}{"\n\n"}{entry.effectiveActivation}</pre></details>}
               <Label className="block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Syarat &amp; Ketentuan</span>
+                <span className="text-sm font-medium text-admin-muted">Syarat &amp; Ketentuan</span>
                 <Textarea
                   value={terms}
                   disabled={saving}
@@ -195,7 +195,7 @@ export function VariantCopyEditor({
                 />
               </Label>
               <Label className="mt-3 block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Cara Aktivasi</span>
+                <span className="text-sm font-medium text-admin-muted">Cara Aktivasi</span>
                 <Textarea
                   value={activation}
                   disabled={saving}
@@ -207,7 +207,7 @@ export function VariantCopyEditor({
                 />
               </Label>
               <Label className="mt-3 block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Syarat &amp; Ketentuan (English)</span>
+                <span className="text-sm font-medium text-admin-muted">Syarat &amp; Ketentuan (English)</span>
                 <Textarea
                   value={termsEn}
                   disabled={saving}
@@ -219,7 +219,7 @@ export function VariantCopyEditor({
                 />
               </Label>
               <Label className="mt-3 block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Cara Aktivasi (English)</span>
+                <span className="text-sm font-medium text-admin-muted">Cara Aktivasi (English)</span>
                 <Textarea
                   value={activationEn}
                   disabled={saving}

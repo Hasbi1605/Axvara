@@ -74,7 +74,7 @@ const FULFILLMENT_MODES = [
 ];
 
 const inputClass = "mt-1.5 h-9 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg outline-none transition placeholder:text-admin-muted focus:border-admin-accent/50 focus:bg-admin-subtle";
-const labelClass = "text-xs font-semibold uppercase tracking-[0.08em] text-admin-muted";
+const labelClass = "text-sm font-medium text-admin-fg";
 
 function describeSaveError(data: { error?: string; message?: string }) {
   if (data.error === "variants_not_enabled") return "Pengelolaan varian belum diaktifkan pada environment ini.";
@@ -309,7 +309,7 @@ export default function VariantEditor({ productId, productName, onClose }: Props
       <section role="dialog" aria-modal="true" aria-labelledby="variant-editor-title" className="relative z-10 flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl border border-admin-border bg-admin-card shadow-sm sm:rounded-xl">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-admin-border px-5 py-4 sm:px-6">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-admin-accent">Katalog Produk</p>
+            <p className="text-sm font-medium text-admin-accent">Katalog Produk</p>
             <h2 id="variant-editor-title" className="mt-0.5 text-lg font-semibold text-admin-fg">Kelola Varian</h2>
             <p className="mt-0.5 truncate text-xs text-admin-muted">{productName} · {variants.length} varian terdaftar</p>
           </div>

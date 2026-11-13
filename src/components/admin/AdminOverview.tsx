@@ -190,7 +190,7 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
       : <>
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
       {metrics.map(([label, value, tone]) => <Card key={label} className="admin-surface rounded-xl p-4">
-        <p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p>
+        <p className="text-sm text-admin-muted">{label}</p>
         <p className={`mt-1 font-sans text-2xl font-semibold tabular-nums ${tone}`}>{loading ? "—" : value}</p>
       </Card>)}
     </div>

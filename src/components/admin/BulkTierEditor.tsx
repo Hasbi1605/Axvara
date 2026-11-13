@@ -212,7 +212,7 @@ type Props = {
 };
 
 const fieldClass = "h-9 w-full min-w-0 rounded-xl border bg-admin-subtle px-3 text-sm tabular-nums text-admin-fg outline-none transition placeholder:text-admin-muted focus:bg-admin-subtle disabled:opacity-50";
-const microLabel = "text-xs font-semibold uppercase tracking-[0.08em] text-admin-muted";
+const microLabel = "text-sm font-medium text-admin-fg";
 
 export function bulkFieldId(idPrefix: string, rowKey: string, field: "qty" | "price") {
   return `${idPrefix}-${rowKey}-${field}`;

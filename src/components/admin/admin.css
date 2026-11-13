@@ -26,7 +26,7 @@
     color-scheme: dark;
   }
 }
-.admin-theme *, .admin-theme ::before, .admin-theme ::after { border-color: rgb(var(--admin-border)); }
+:where(.admin-theme) *, :where(.admin-theme) ::before, :where(.admin-theme) ::after { border-color: rgb(var(--admin-border)); }
 /* The storefront pointer spotlight must not paint over admin surfaces. */
 body:has(.admin-theme) > .pointer-events-none.fixed.will-change-transform[aria-hidden] { display: none; }
 .admin-login [aria-label="Tema admin"] { background: transparent; color: rgb(var(--admin-fg)); }
@@ -34,15 +34,16 @@ body:has(.admin-theme) > .pointer-events-none.fixed.will-change-transform[aria-h
 .admin-theme :focus-visible { outline: 2px solid rgb(var(--admin-ring)); outline-offset: 3px; box-shadow: none; }
 .admin-theme :is(button, select, summary) { cursor: pointer; }
 .admin-theme :is(button, input, select, textarea):disabled { cursor: not-allowed; }
-.admin-theme :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not(.admin-preview *) { color-scheme: inherit; background-color: rgb(var(--admin-card)); border-radius: .5rem; }
+/* Zero-specificity defaults: shadcn primitives and Tailwind utilities must always win. */
+:where(.admin-theme) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):where(:not(.admin-preview *)) { color-scheme: inherit; }
 .admin-theme input:is([type="checkbox"], [type="radio"]) { accent-color: rgb(var(--admin-accent)); }
 .admin-theme :is(h1,h2,h3,h4,h5) { letter-spacing: -.025em; }
 .admin-theme .font-display { font-family: var(--font-ax-sans), sans-serif; line-height: 1.25; }
 .admin-theme :is(table, .tabular-nums) { font-variant-numeric: tabular-nums; }
 .admin-theme table { table-layout: auto; }
-.admin-theme th { font-size: 12px; text-transform: none; letter-spacing: 0; color: rgb(var(--admin-muted)); background: rgb(var(--admin-subtle) / .6); white-space: nowrap; }
-.admin-theme :is(td, th) { padding: .875rem 1rem; }
-.admin-theme td { font-size: 13px; }
+:where(.admin-theme) :where(th) { font-size: 12px; color: rgb(var(--admin-muted)); background: rgb(var(--admin-subtle) / .6); white-space: nowrap; }
+:where(.admin-theme) :where(td, th) { padding: .75rem 1rem; }
+:where(.admin-theme) :where(td) { font-size: 13px; }
 .admin-theme .admin-surface { background: rgb(var(--admin-card)); border: 1px solid rgb(var(--admin-border) / .65); box-shadow: 0 1px 2px rgb(15 23 42 / .03); }
 .admin-theme :is(.admin-surface, .ax-glass, .ax-glass-card) { backdrop-filter: none; }
 .admin-theme [role="tablist"] { max-width: 100%; }

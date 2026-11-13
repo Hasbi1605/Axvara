@@ -97,7 +97,7 @@ export function ProductEditorModal({
           <Tabs value={tab} onValueChange={value => { setTab(value as typeof tab); if (bodyRef.current) bodyRef.current.scrollTop = 0; }} className="flex max-h-[calc(100dvh-2rem)] flex-col">
             <div className="shrink-0 px-6 pt-6">
             <div className="flex items-center justify-between gap-3">
-              <div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-admin-accent">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-sans text-lg font-semibold text-admin-fg">{editing? "Edit Produk":"Produk Baru"}</h3></div>
+              <div><p className="text-sm font-medium text-admin-accent">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-sans text-lg font-semibold text-admin-fg">{editing? "Edit Produk":"Produk Baru"}</h3></div>
               <Button variant="outline" size="icon" type="button" onClick={requestClose} disabled={saving || variantCopy.saving} className="flex h-9 w-11 shrink-0 items-center justify-center rounded-md bg-admin-subtle text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50" aria-label="Tutup editor produk"><IosIcon name="close" size={14} tint="currentColor" /></Button>
             </div>
 
@@ -105,7 +105,7 @@ export function ProductEditorModal({
 
             {form.wrManaged && (
               <p className="mt-4 flex items-start gap-2 rounded-xl border border-admin-warning/25 bg-admin-warning/10 px-3 py-2 text-xs leading-5 text-admin-warning">
-                <Badge variant="outline" className="mt-[1px] shrink-0 rounded-md bg-admin-warning/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-admin-warning">WR</Badge>
+                <Badge variant="outline" className="mt-[1px] shrink-0 rounded-md bg-admin-warning/20 px-2 py-0.5 text-sm font-medium text-admin-warning">WR</Badge>
                 <span>Dikelola otomatis Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR dan akan ditimpa tiap sync. Yang bisa kamu atur di sini: foto, badge, <strong>harga coret (diskon)</strong>, kategori, urutan, aktif/nonaktif, serta deskripsi khusus dan S&amp;K + cara aktivasi per varian di tab Deskripsi &amp; S&amp;K. Markup diatur di tab Warung Rebahan.</span>
               </p>
             )}

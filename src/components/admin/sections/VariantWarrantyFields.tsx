@@ -40,7 +40,7 @@ export function WarrantyFields({
   const openInput = "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none";
   return (
     <div className="pt-3">
-      <Label htmlFor={typeId} className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</Label>
+      <Label htmlFor={typeId} className="block text-sm font-medium text-admin-muted mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</Label>
       <div className="flex flex-wrap items-center gap-2">
         <NativeSelect
           id={typeId}

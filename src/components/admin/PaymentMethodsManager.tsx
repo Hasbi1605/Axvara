@@ -103,8 +103,11 @@ export function PaymentMethodsManager() {
           {methods.map((method) => (
             <fieldset disabled={method.id !== "qris" || saving !== null} key={method.id} className="rounded-xl border border-admin-border bg-admin-subtle p-4 transition hover:border-admin-border">
               <div className="flex items-center justify-between gap-3">
-                {method.id !== "qris" && <Badge variant="outline">Legacy · baca-saja</Badge>}
-                <Badge variant="outline" className="rounded-md bg-admin-subtle px-2.5 py-1 font-mono text-xs uppercase tracking-wide text-admin-muted">{method.id}</Badge>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="font-mono text-admin-muted">{method.id}</Badge>
+                  {method.id !== "qris" && <Badge variant="secondary" className="whitespace-nowrap" title="Rekening transfer lama: baca-saja, tidak ditawarkan di checkout">Legacy</Badge>}
+                  {method.id !== "qris" && <span className="whitespace-nowrap text-xs text-admin-muted">baca-saja</span>}
+                </div>
                 <Label className="inline-flex shrink-0 items-center gap-2 text-xs text-admin-muted">
                   <Checkbox  checked={method.is_active} onCheckedChange={(checked) => update(method.id, { is_active: (checked === true) })} className="accent-admin-accent" />
                   Aktif (QRIS saja)

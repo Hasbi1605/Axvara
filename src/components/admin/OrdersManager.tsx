@@ -250,7 +250,7 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   return <div className="mt-4 space-y-6">
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {[["Total pesanan", stats.total, "text-admin-fg"], ["Pending", stats.pending, "text-admin-warning"], ["Lunas", stats.paid, "text-admin-success"], ["Omzet", formatRupiah(stats.revenue), "text-admin-fg"]].map(([label, value, tone]) => <Card key={String(label)} className="admin-surface rounded-xl p-4">
-<p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p>
+<p className="text-sm text-admin-muted">{label}</p>
 <p className={`mt-1 font-sans text-xl font-semibold tabular-nums sm:text-2xl ${tone}`}>{loading || error ? "—" : value}</p>{hasActiveFilters && <p className="mt-1 text-xs text-admin-accent">hasil filter</p>}</Card>)}
     </div>
 
@@ -269,14 +269,14 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
 </TabsTrigger>)}</TabsList></Tabs>
         <div className="mt-3 grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <form onSubmit={(event) => { event.preventDefault(); setQuery(draftQuery.trim()); setPage(1); }}>
-<Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted" htmlFor="order-search">Pencarian</Label>
+<Label className="mb-1 block text-sm font-medium text-admin-muted" htmlFor="order-search">Pencarian</Label>
 <div className="relative">
 <IosIcon name="search" size={15} tint="currentColor" className="absolute left-3 top-3 opacity-45" />
 <Input id="order-search" value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} className={`${inputClass} pl-9`} placeholder="Kode, nama, WA, produk…" />
 </div>
 </form>
           <Label className="block">
-<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Status</span>
+<span className="mb-1 block text-sm font-medium text-admin-muted">Status</span>
 <NativeSelect value={status} onChange={(event) => changeFilter(setStatus, event.target.value)} className={inputClass}>
 <option value="all">Semua status</option>
 <option value="pending">Pending</option>
@@ -286,7 +286,7 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
 </NativeSelect>
 </Label>
           <Label className="block">
-<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Jenis</span>
+<span className="mb-1 block text-sm font-medium text-admin-muted">Jenis</span>
 <NativeSelect value={kind} onChange={(event) => changeFilter(setKind, event.target.value)} className={inputClass} aria-label="Filter jenis pesanan">
 <option value="all">Semua jenis</option>
 <option value="apps">Aplikasi</option>
@@ -295,24 +295,24 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
 </NativeSelect>
 </Label>
           <Label className="block">
-<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Pembayaran</span>
+<span className="mb-1 block text-sm font-medium text-admin-muted">Pembayaran</span>
 <NativeSelect value={method} onChange={(event) => changeFilter(setMethod, event.target.value)} className={inputClass}>
 <option value="all">Semua pembayaran</option>
 <option value="qris">QRIS</option>
 <option value="manual">Transfer manual</option>{methods.filter((item) => !["qris"].includes(item)).map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}</NativeSelect>
 </Label>
           <Label className="block">
-<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Dari tanggal</span>
+<span className="mb-1 block text-sm font-medium text-admin-muted">Dari tanggal</span>
 <Input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} className={inputClass} />
 </Label>
           <Label className="block">
-<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Sampai tanggal</span>
+<span className="mb-1 block text-sm font-medium text-admin-muted">Sampai tanggal</span>
 <Input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className={inputClass} />
 </Label>
           <Button variant="outline" type="button" onClick={clearFilters} className="h-9 whitespace-nowrap rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted hover:bg-admin-subtle">Reset</Button>
         </div>
         {activeFilters.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Filter aktif</span>
+          <span className="text-sm font-medium text-admin-muted">Filter aktif</span>
           {activeFilters.map((filter) => <Button variant="outline" size="sm" key={filter.label} type="button" onClick={filter.clear} className="inline-flex h-8 items-center gap-2 rounded-md border border-admin-accent/30 bg-admin-primary/10 px-3 text-xs font-semibold text-admin-accent transition hover:bg-admin-primary/20" aria-label={`Hapus filter ${filter.label}`}>{filter.label}<IosIcon name="close" size={10} tint="currentColor" />
 </Button>)}
         </div>}
@@ -372,13 +372,8 @@ function OrderRow({ order, onDetail, onAction, onChanged }: { order: Order; onDe
   const needsHandover = isMarket && order.status === "lunas"
     && hasHandoverItems(order) && ["manual_required", "retry", "failed"].includes(String(order.fulfillmentStatus ?? ""));
   return <TableRow className="block rounded-md border border-admin-border bg-admin-card md:table-row md:rounded-none md:border-x-0 md:border-t-0">
-<TableCell className="block align-top md:table-cell md:w-36">
-    {providerPayment ? <div className="rounded-xl border border-admin-border bg-admin-subtle p-3 text-xs text-admin-muted">Pembayaran provider otomatis. Tanpa bukti transfer manual.</div> : qris && !order.fileName ? <div className="flex h-[90px] items-center justify-center rounded-xl border border-admin-success/15 bg-admin-success/[0.06] px-3 text-center">
-<div>
-<p className="text-xs font-semibold text-admin-success">QRIS otomatis</p>
-<p className="mt-1 text-xs leading-4 text-admin-muted">Tidak perlu bukti. Menunggu QRIS Hook.</p>
-</div>
-</div> : <ProofThumbnail proof={order.fileName} />}</TableCell>
+<TableCell className="block align-top md:table-cell md:w-32">
+    {providerPayment ? <Badge variant="secondary" title="Pembayaran diverifikasi provider otomatis; tanpa bukti transfer manual.">Otomatis provider<span className="sr-only">. Tanpa bukti transfer manual.</span></Badge> : qris && !order.fileName ? <Badge variant="success" title="Tidak perlu bukti. Menunggu QRIS Hook.">QRIS otomatis<span className="sr-only">. Tidak perlu bukti, menunggu QRIS Hook.</span></Badge> : <ProofThumbnail proof={order.fileName} />}</TableCell>
     <TableCell className="block min-w-0 align-top md:table-cell">
 <div className="min-w-0">
 <div className="flex flex-wrap items-center gap-2">
@@ -440,7 +435,7 @@ function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; on
 </div>
 <Separator />
 <div className="rounded-md border border-admin-border bg-admin-subtle p-4">
-<p className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Item</p>{isPedia ? <PediaItemBox order={order} /> : order.items.map((item, index) => <div key={`${item.name}-${index}`} className="mt-3 flex justify-between gap-4 text-sm">
+<p className="text-sm font-medium text-admin-muted">Item</p>{isPedia ? <PediaItemBox order={order} /> : order.items.map((item, index) => <div key={`${item.name}-${index}`} className="mt-3 flex justify-between gap-4 text-sm">
 <span className="text-admin-muted">{item.name} x{item.qty}</span>
 <span className="font-semibold text-admin-fg">{formatRupiah(item.price * item.qty)}</span>
 </div>)}</div>{isPedia && <PediaFollowUpLink order={order} />}{qris ? <div className="rounded-xl border border-admin-success/15 bg-admin-success/[0.06] p-3 text-xs leading-5 text-admin-success">QRIS diproses otomatis. Bukti gambar, jika ada, hanya dipakai sebagai referensi.</div> : order.fileName ? <ProofThumbnail proof={order.fileName} /> : null}{order.adminNote && <Info label="Catatan admin" value={order.adminNote} />}{order.proofStatus === "rejected" && <Info label="Bukti ditolak" value={order.proofRejectionReason || "Tanpa alasan tercatat"} />}{needsHandover && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">
@@ -565,7 +560,7 @@ function HandoverDialog({ order, note, setNote, messages, setMessages, saving, o
 }
 
 function Info({ label, value }: { label: string; value: string }) { return <div className="rounded-xl border border-admin-border bg-admin-subtle p-3">
-<p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p>
+<p className="text-sm text-admin-muted">{label}</p>
 <p className="mt-1 break-words text-sm text-admin-muted">{value}</p>
 </div>; }
 
