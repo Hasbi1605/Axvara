@@ -204,7 +204,7 @@ mengimplementasikan atau menjalankan transaksi development sekalipun.
   membuka quote/order baru; kredensial Digiflazz juga bukan gerbang order.
   Baris produk, order, attempt, webhook, dan polling Digiflazz LAMA tetap
   dipertahankan untuk histori/rekonsiliasi; jangan hapus atau remap.
-- Admin katalog SK menolak PATCH baris Digiflazz (`legacy_parked`) dan endpoint
-  `POST /api/admin/games/products/enable-wave` mengembalikan 410 eksplisit.
-  Jangan membuat bulk activation baru. Gate `GAMES_SK_ENABLED` belum diset;
-  tidak ada env/secret/deployment dalam perubahan ini.
+- Admin katalog SK menolak PATCH baris Digiflazz (`legacy_parked`). Endpoint
+  `POST /api/admin/games/products/enable-wave` DIHAPUS 13 November 2026 (dulu
+  membalas 410). Jangan membuat bulk activation baru. Gate `GAMES_SK_ENABLED`
+  belum diset; tidak ada env/secret/deployment dalam perubahan ini.

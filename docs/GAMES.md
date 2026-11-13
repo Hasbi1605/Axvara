@@ -349,7 +349,7 @@ oleh sinkron.
 - Selesai: G1 proxy (terpasang VPS), G2 klien, G3 schema (migrasi 0107), G4 sinkron +
   cron `games_catalog`, G5 dispatch + cadangan + cron `games_orders`, G6 webhook.
   Bagian A admin data: migrasi 0108, `src/lib/games/admin.ts`, tab admin Games
-  (`/api/admin/games/products`, `.../enable-wave`) — §12.7.
+  (`/api/admin/games/products`; `.../enable-wave` DIHAPUS 13 Nov 2026) — §12.7.
   B1 API katalog/quote/order/status/lacak QRIS, registry empat game, preview gate P9,
   expiry item di job existing, dan paid routing tiga provider QRIS juga selesai lokal (§12.8).
   B2 menambah gateway/crypto, consent dan view/status/lookup kanonis tanpa UI atau env baru.
@@ -357,7 +357,7 @@ oleh sinkron.
   nickname berbiaya/cache/admission/log, ringkasan admin, dan larangan jual SKU utilitas.
   Kode `ffcekusername`/`mlcekusername`/`pubgcekusername` atau nama `/cek\s*username/i`
   selalu tersembunyi di katalog pembeli; quote/order baru dan enable admin409 `not_sellable`,
-  enable-wave melewatinya. Nickname dari klien display-only, disanitasi ke `customer_nickname`.
+  tidak ada lagi aktivasi massal. Nickname dari klien display-only, disanitasi ke `customer_nickname`.
   Detail perilaku & penyimpangan kecil: ARCHITECTURE §16.25–§16.29.
 - **Untuk Paseo/fase berikut:** integrasi metadata/QA UI rail gateway/crypto Games,
   UI §4–§7, verifikasi aktivasi domain/env setelah CI, lalu gerbang G8 yang masih terbuka.
@@ -415,7 +415,8 @@ lewat `readJsonBody`.
   pernah menyentuh kedua kolom ini.
 - **P3 Sehat untuk aktivasi massal.** `seller_active=1 AND cost>0 AND sell_price ≥
   ceil(cost×1.03) AND (reference_price IS NULL OR sell_price ≤ reference_price)`
-  (`isHealthyForWave`). `POST .../enable-wave` hanya memproses brand
+  (`isHealthyForWave`, dipertahankan untuk tes; endpoint aktivasi massal DIHAPUS 13 Nov 2026).
+  Dulu `POST .../enable-wave` hanya memproses brand
   `GAMES_WAVE1_BRANDS` (FREE FIRE, Free Fire Max, MOBILE LEGENDS, PUBG MOBILE;
   pencocokan case-insensitive) dan **tidak pernah** menonaktifkan SKU. Sinkron tetap
   tidak pernah mengubah `enabled`.
@@ -432,8 +433,9 @@ lewat `readJsonBody`.
     `sell_price` via `computeGamesSellPrice({cost, referencePrice})`, cermin
     `reference_price`, semuanya dalam satu `db.d1.batch`. `enabled=true` ditolak 409
     `not_sellable` bila `seller_active=0` atau `cost≤0`; menonaktifkan tetap boleh.
-  - `POST /api/admin/games/products/enable-wave` body `{dry_run?}` → `{eligible,
-    enabled_now, skipped_unhealthy, dry_run}`. `dry_run` hanya melaporkan, tanpa menulis.
+  - `POST /api/admin/games/products/enable-wave` DIHAPUS 13 November 2026 (dulu
+    `{dry_run?}` → `{eligible, enabled_now, skipped_unhealthy}`); jangan membuat
+    aktivasi massal baru.
 - **UI admin:** tab "Games" (`src/components/admin/GamesManager.tsx`) mengikuti pola tab
   Pedia (subset "Katalog"): status sinkron + hitungan, filter brand + cari, tabel
   (kode/nama/brand/modal/harga Oura/harga jual/margin/sumber harga/seller/grup/toggle
@@ -593,8 +595,8 @@ produksi tetap di luar B2, full suite/build milik PM.
   memblokir checkout. Hasil cek bukan jaminan kepemilikan ID.
 - **Admin** hanya mengelola katalog SK (supplier/varian/stok/kontrak/deskripsi,
   harga Oura, grup, urutan, aktif). `PATCH` menolak baris Digiflazz legacy
-  (`legacy_parked`); `POST .../enable-wave` dipensiunkan dan membalas 410
-  eksplisit tanpa aktivasi massal. Baris legacy tetap disimpan untuk histori
+  (`legacy_parked`); endpoint `.../enable-wave` DIHAPUS 13 November 2026 (tidak ada
+  aktivasi massal). Baris legacy tetap disimpan untuk histori
   order.
 - **Verifikasi final terintegrasi (12 November 2026, setelah fix stok -1 dispatch):**
   full suite serial parent `npx vitest run --run --maxWorkers=1` **438 file/5.923 tes

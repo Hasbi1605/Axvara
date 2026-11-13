@@ -88,14 +88,13 @@ describe("WhatsApp payment proof review", () => {
   it("resolves fulfillment mode and shared secret from the selected variant", () => {
     const delivery = readDelivery();
     const fulfillmentApi = read("src/app/api/admin/fulfillment/route.ts");
-    const editor = read("src/components/admin/VariantEditor.tsx");
-    const inventory = read("src/components/admin/FulfillmentInventoryPanel.tsx");
+    const rows = read("src/components/admin/sections/ProductVariantRows.tsx");
     expect(delivery).toContain("product_variants");
     expect(delivery).toContain("shared_secret_ciphertext");
     expect(delivery).toContain("ensureFulfillmentForPaidOrder");
     expect(fulfillmentApi).toContain("variant_id");
-    expect(editor).toContain("FulfillmentInventoryPanel");
-    expect(editor).toContain("variant.id");
-    expect(inventory).toContain("variant_id");
+    expect(rows).toContain("NonWrFulfillmentPanel");
+    expect(rows).toContain("variantId={typeof v.id");
+    expect(rows).toContain("/api/admin/fulfillment");
   });
 });

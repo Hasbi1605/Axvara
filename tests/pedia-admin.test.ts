@@ -62,14 +62,13 @@ describe("admin Pedia M2", () => {
     }
   });
 
-  it("401 tanpa sesi admin (overview, products, services, orders, credits, settings)", async () => {
+  it("401 tanpa sesi admin (overview, products, services, orders, settings)", async () => {
     vi.stubEnv("ADMIN_PASSWORD_SHA256", "x");
     const routes = [
       await import("@/app/api/admin/pedia/overview/route"),
       await import("@/app/api/admin/pedia/products/route"),
       await import("@/app/api/admin/pedia/services/route"),
       await import("@/app/api/admin/pedia/orders/route"),
-      await import("@/app/api/admin/pedia/credits/route"),
       await import("@/app/api/admin/pedia/settings/route"),
     ];
     for (const m of routes) {

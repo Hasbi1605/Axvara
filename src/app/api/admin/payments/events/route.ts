@@ -7,6 +7,7 @@ import { activeQrisProvider, isCausallyPlausiblePayment } from "@/lib/payments/d
 import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 import { sendTextMessage } from "@/lib/whatsapp/gateway";
 import { paymentDetectedMessage } from "@/lib/whatsapp/messages";
+import { PAYMENT_ATTENTION_SQL, PAYMENT_ATTENTION_WHERE } from "@/lib/admin-overview-queries";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -19,20 +20,24 @@ export async function GET(request: NextRequest) {
   const limit = clamp(Number(params.get("limit") || 12), 1, 50);
   const status = params.get("status") || "all";
   const health = paymentHealth();
-  if (!isD1Mode()) return NextResponse.json({ events: [], counts: {}, pagination: { page: 1, pages: 1, total: 0 }, last_event_at: null, health });
+  if (!isD1Mode()) return NextResponse.json({ events: [], counts: {}, attention: 0, pagination: { page: 1, pages: 1, total: 0 }, last_event_at: null, health });
 
   const conditions: string[] = [];
-  if (status === "attention") conditions.push("status IN ('received','ignored','failed')");
+  if (status === "attention") conditions.push(PAYMENT_ATTENTION_WHERE);
   else if (["received", "matched", "ignored", "failed"].includes(status)) conditions.push("status=?");
   const bindings: unknown[] = status !== "attention" && ["received", "matched", "ignored", "failed"].includes(status) ? [status] : [];
   const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
   const offset = (page - 1) * limit;
-  const [events, totalRow, countRows, lastRows] = await Promise.all([
+  const [events, totalRow, countRows, lastRows, attentionRow] = await Promise.all([
     queryAll(`SELECT id,amount,sender_name,status,order_code,last_error,created_at,processed_at,COALESCE(provider,'dana') AS provider
       FROM dana_webhook_events${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, ...bindings, limit, offset),
     queryFirst(`SELECT COUNT(*) AS count FROM dana_webhook_events${where}`, ...bindings),
-    queryAll("SELECT status AS value,COUNT(*) AS count FROM dana_webhook_events GROUP BY status"),
+    // Event yang sudah ditandai "sudah dicek" tidak lagi dihitung sebagai
+    // status yang butuh tindakan, sehingga jumlah "Perlu dicek" di UI sama
+    // dengan definisi bersama (PAYMENT_ATTENTION_WHERE).
+    queryAll("SELECT status AS value,COUNT(*) AS count FROM dana_webhook_events WHERE reviewed_by IS NULL OR status='matched' GROUP BY status"),
     queryAll("SELECT COALESCE(provider,'dana') AS provider,MAX(created_at) AS created_at FROM dana_webhook_events GROUP BY COALESCE(provider,'dana')"),
+    queryFirst(PAYMENT_ATTENTION_SQL),
   ]);
   for (const row of lastRows) {
     if (row.provider === "dana" || row.provider === "gopay" || row.provider === "klikqris") health.providers[row.provider].last_event_at = String(row.created_at);
@@ -42,6 +47,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     events,
     counts: Object.fromEntries(countRows.map((row) => [String(row.value), Number(row.count || 0)])),
+    attention: Number(attentionRow?.count || 0),
     pagination: { page, pages: Math.max(1, Math.ceil(total / limit)), total },
     last_event_at: lastRows.map(row => String(row.created_at)).sort().at(-1) || null,
     health,
@@ -52,10 +58,12 @@ export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!isD1Mode()) return NextResponse.json({ error: "d1_required" }, { status: 503 });
-  const body = await request.json().catch(() => null) as { event_id?: number; action?: string; order_code?: string; review_note?: string; verified?: boolean } | null;
+  const body = await request.json().catch(() => null) as { event_id?: number; action?: string; order_code?: string; review_note?: string; note?: string; verified?: boolean } | null;
   const eventId = Number(body?.event_id || 0);
+  if (body?.action === "mark_reviewed") return markReviewed(admin.email, eventId, body?.note ?? body?.review_note);
   const manual = body?.action === "confirm_match";
   if (!eventId || !["retry_match", "confirm_match"].includes(String(body?.action))) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+
   if (manual && (body?.verified !== true || typeof body.order_code !== "string" || !body.order_code.trim()
     || typeof body.review_note !== "string" || body.review_note.trim().length < 10 || body.review_note.length > 500)) {
     return NextResponse.json({ error: "manual_verification_required" }, { status: 400 });
@@ -63,6 +71,10 @@ export async function POST(request: NextRequest) {
   const event = await queryFirst("SELECT id,amount,status,order_code,created_at,provider FROM dana_webhook_events WHERE id=?", eventId);
   if (!event) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
   if (String(event.status) === "matched") return NextResponse.json({ ok: true, status: "already_matched", order_code: event.order_code });
+  // Event yang sudah ditandai "sudah dicek" bersifat terminal: tidak boleh
+  // dicocokkan ulang secara diam-diam karena admin sudah menyatakan selesai.
+  const reviewed = await queryFirst("SELECT reviewed_by FROM dana_webhook_events WHERE id=?", eventId);
+  if (reviewed?.reviewed_by) return NextResponse.json({ error: "event_reviewed", message: "Event ini sudah ditandai sudah dicek." }, { status: 409 });
   if (event.provider === "klikqris") return NextResponse.json({ error: "klikqris_requires_manual_review", message: "Periksa pembayaran KlikQRIS dan stok secara manual. Pelunasan otomatis setelah 15 menit tidak diizinkan." }, { status: 409 });
   // Retry mengikuti provider event (dana vs gopay) agar nominal silang
   // provider tidak saling klaim. Event lama tanpa provider = dana.
@@ -201,4 +213,41 @@ function paymentHealth() {
 
 function clamp(value: number, min: number, max: number) {
   return Number.isInteger(value) ? Math.max(min, Math.min(max, value)) : min;
+}
+
+/**
+ * POST { action:"mark_reviewed", event_id, note } — tandai event rekonsiliasi
+ * "sudah dicek" (keputusan owner 13 November 2026). Catatan wajib (min 5
+ * karakter) karena tindakan ini menghentikan badge; jejak admin disimpan di
+ * reviewed_by/review_note. HANYA menyentuh dana_webhook_events: order, ledger,
+ * dan status pembayaran tidak pernah diubah. Status akhir = `ignored`
+ * (terminal) dan idempoten — panggilan kedua mengembalikan already_reviewed.
+ */
+async function markReviewed(adminEmail: string, eventId: number, rawNote: unknown) {
+  if (!eventId) return NextResponse.json({ error: "invalid_request", message: "event_id wajib diisi." }, { status: 400 });
+  const note = typeof rawNote === "string" ? rawNote.trim() : "";
+  if (note.length < 5 || note.length > 500) {
+    return NextResponse.json({ error: "note_required", message: "Catatan wajib diisi (5–500 karakter)." }, { status: 400 });
+  }
+  const event = await queryFirst("SELECT id, status, reviewed_by FROM dana_webhook_events WHERE id=?", eventId);
+  if (!event) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
+  if (event.reviewed_by) return NextResponse.json({ ok: true, status: "already_reviewed", event_id: eventId });
+  const status = String(event.status);
+  // Status yang menunggu tindakan = definisi bersama PAYMENT_ATTENTION_WHERE
+  // (received/ignored/failed). `ignored` ikut boleh ditandai karena event lama
+  // yang gagal dicocokkan otomatis berstatus itu — tanpa itu badge tidak akan
+  // pernah berhenti.
+  if (status !== "received" && status !== "failed" && status !== "ignored") {
+    return NextResponse.json({
+      error: "event_not_actionable",
+      message: status === "matched" ? "Event ini sudah cocok dengan pesanan." : "Event ini tidak sedang menunggu tindakan.",
+    }, { status: 409 });
+  }
+  const updated = await execRun(
+    `UPDATE dana_webhook_events SET status='ignored', reviewed_by=?, review_note=?, processed_at=datetime('now')
+      WHERE id=? AND reviewed_by IS NULL AND status IN ('received','ignored','failed')`,
+    adminEmail, note, eventId,
+  );
+  if (!updated.changes) return NextResponse.json({ ok: true, status: "already_reviewed", event_id: eventId });
+  return NextResponse.json({ ok: true, status: "reviewed", event_id: eventId, reviewed_by: adminEmail });
 }

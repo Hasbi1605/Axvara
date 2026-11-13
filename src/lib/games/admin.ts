@@ -109,9 +109,16 @@ export interface GamesListFilters {
   brand?: string | null;
   enabled?: boolean | null;
   q?: string | null;
+  /** Hanya SKU yang benar-benar bisa dijual (admin aktif + supplier aktif + ada stok/unlimited). */
+  sellable?: boolean | null;
+  /** "sellable" = SKU bisa dijual tampil lebih dulu, sisanya urutan lama. */
+  sort?: "default" | "sellable" | null;
   limit?: number;
   offset?: number;
 }
+
+/** Ekspresi SQL: SKU bisa dijual pembeli saat ini. */
+export const GAMES_SELLABLE_SQL = `(enabled=1 AND supplier_active=1 AND (unlimited_stock=1 OR stock>0))`;
 
 export interface GamesListPage {
   items: Record<string, unknown>[];
@@ -145,11 +152,18 @@ export async function listGamesProducts(db: DatabaseAccess, filters: GamesListFi
     const pattern = `%${likeEscape(query.toLowerCase())}%`;
     params.push(pattern, pattern);
   }
+  if (filters.sellable === true) where.push(GAMES_SELLABLE_SQL);
   const clause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+  // Default: urutan katalog lama. `sort=sellable` menaruh SKU yang benar-benar
+  // bisa dijual di atas, sisanya tetap urutan lama (stabil, tanpa ORDER BY baru
+  // di tabel).
+  const orderBy = filters.sort === "sellable"
+    ? `CASE WHEN ${GAMES_SELLABLE_SQL} THEN 0 ELSE 1 END, game_brand, display_order IS NULL, display_order, product_name, id`
+    : `game_brand, display_order IS NULL, display_order, product_name, id`;
   const totalRow = await db.queryFirst(`SELECT COUNT(*) AS n FROM games_products${clause}`, ...params);
   const items = await db.queryAll(
     `SELECT * FROM games_products${clause}
-      ORDER BY game_brand, display_order IS NULL, display_order, product_name, id
+      ORDER BY ${orderBy}
       LIMIT ? OFFSET ?`,
     ...params, limit, offset,
   );
@@ -169,7 +183,7 @@ export async function listGamesProducts(db: DatabaseAccess, filters: GamesListFi
 
 export interface GamesSyncStatus {
   last_sync_at: string | null;
-  counts: { total: number; enabled: number; supplier_active: number; seller_active: number; with_reference: number; contract_supported: number };
+  counts: { total: number; enabled: number; supplier_active: number; seller_active: number; with_reference: number; contract_supported: number; sellable: number };
 }
 
 /** Status header admin: waktu sinkron katalog terakhir + hitungan katalog. */
@@ -177,7 +191,7 @@ export async function gamesAdminSyncStatus(db: DatabaseAccess): Promise<GamesSyn
   const setting = await db.queryFirst("SELECT value FROM store_settings WHERE key=?", GAMES_SK_CATALOG_SYNC_KEY);
   const raw = setting ? String(setting.value ?? "").trim() : "";
   const timestamp = raw === "" ? NaN : Number(raw);
-  const rows = await db.queryAll("SELECT supplier_active, enabled, reference_price, required_fields_json FROM games_products WHERE supplier='sekalipay'");
+  const rows = await db.queryAll("SELECT supplier_active, enabled, reference_price, required_fields_json, unlimited_stock, stock FROM games_products WHERE supplier='sekalipay'");
   const counts = {
     total: rows.length,
     enabled: rows.filter((row) => Number(row.enabled) === 1).length,
@@ -185,6 +199,10 @@ export async function gamesAdminSyncStatus(db: DatabaseAccess): Promise<GamesSyn
     seller_active: rows.filter((row) => Number(row.supplier_active) === 1).length,
     with_reference: rows.filter((row) => row.reference_price !== null && row.reference_price !== undefined).length,
     contract_supported: rows.filter((row) => skContractSupported(row)).length,
+    // "Aktif dijual" yang JUJUR: admin mengaktifkan, supplier aktif, dan ada
+    // stok (atau stok tak terbatas). Angka ini yang dipakai UI, bukan `enabled`.
+    sellable: rows.filter((row) => Number(row.enabled) === 1 && Number(row.supplier_active) === 1
+      && (Number(row.unlimited_stock) === 1 || Number(row.stock) > 0)).length,
   };
   return {
     last_sync_at: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : (raw || null),

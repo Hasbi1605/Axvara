@@ -1,5 +1,19 @@
 # Aturan agent — WhatsApp gateway, grup, siaran
 
+Revisi13November2026 (keputusan owner; implementasi lokal): alur PEMBELI lewat
+WhatsApp dipensiunkan — pencarian/discovery produk, pemesanan+pembayaran, dan
+intake bukti manual dihapus dari kode (bukan env flag). `handlers/catalog.ts`,
+`handlers/payment.ts`, `handlers/proof.ts`, `whatsapp/session.ts`, flag
+`WHATSAPP_GROUP_DISCOVERY/PAYMENT/PROOF_INTAKE` dan `preflightWhatsAppPayment`
+tidak ada lagi; jangan menghidupkannya kembali tanpa keputusan owner baru.
+Webhook grup menjawab SATU arahan ke website/Telegram untuk pesan yang dulu
+memicu alur itu (list/cari/angka/pay/metode manual/media bukti), tidak menyapa
+percakapan biasa. Yang TETAP hidup: perintah admin `.d`, info `garansi`,
+katalog digest/broadcast/welcome lewat outbox, event grup, dan notifikasi LUNAS
+untuk order historis. `/api/admin/bot/health` melaporkan
+`whatsapp_discovery/payment/proof_intake=false` + `whatsapp_buyer_flows:"retired"`.
+Data order WhatsApp historis tidak diubah/dibersihkan.
+
 Revisi11November2026 (implementasi lokal, deployment belum diverifikasi): hentikan
 notifikasi pembelian berhasil ke grup, termasuk pending/failed lama. Jangan
 mengaktifkan kembali scanner transaksi. Penggantinya katalog ready09.00/17.00 WIB,

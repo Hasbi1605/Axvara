@@ -1,5 +1,10 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Instruksi owner 13 November 2026: audit rekonsiliasi + "sudah dicek"
+- Aksi baru `POST /api/admin/payments/events` body `{action:"mark_reviewed", event_id, note}`: `note` wajib 5–500 karakter (trim), hanya untuk event attention (`received/ignored/failed` yang belum direview), set status terminal `ignored` + `reviewed_by`/`review_note`/`processed_at`, idempoten (`already_reviewed`), dan **tidak pernah** menyentuh order/ledger/status pembayaran. Event yang sudah direview tidak bisa `retry_match`/`confirm_match` (409 `event_reviewed`). Event `matched` → 409 `event_not_actionable`.
+- SATU definisi "Perlu dicek" (`PAYMENT_ATTENTION_WHERE` di `src/lib/admin-overview-queries.ts`): `status IN ('received','ignored','failed') AND reviewed_by IS NULL`, TANPA jendela waktu. Dipakai bersama oleh `/api/admin/overview` (`payment_attention`) dan `/api/admin/payments/events` (`attention` + filter `status=attention` + `counts` attention-status). Jangan membuat definisi/jendela kedua; badge sidebar harus sama dengan halaman Rekonsiliasi.
+- `GET /api/admin/payments/events` kini juga mengembalikan `attention` (angka) — UI memakai itu, bukan menjumlahkan `counts` sendiri. Status implementasi: lokal + tes, belum deploy.
+
 ## Instruksi owner 13 November 2026: perbaikan audit admin pembayaran
 - `PATCH /api/admin/orders/[code]` menolak 409 seluruh perubahan status legacy untuk `nowpayments:*`/`sekalipay_gateway:*` (termasuk batal) karena status crypto/gateway hanya dari IPN/callback/rekonsiliasi provider; `status:"lunas"` generik untuk `qris` ditolak 409 — gunakan jalur ACC QRIS (`paid_qris`) yang memperbarui ledger. Jangan membuka kembali jalan pintas ini atau melonggarkan regex AXV untuk AXG.
 - Filter admin: `method` menerima ID berkolon modern; `manual` mengecualikan QRIS/crypto/gateway; `kind=games` terpisah. UI rekening bank legacy baca-saja; jangan menghidupkan kembali transfer manual di checkout.

@@ -104,13 +104,13 @@ describe("variant min_qty — bot & storefront", () => {
     expect(read("src/lib/telegram/handlers/cart.ts")).toContain("Minimal pembelian");
   });
 
-  it("WhatsApp: varian min>1 ditolak jelas sejak pilih + saat bayar (qty WA selalu 1)", () => {
-    const catalog = read("src/lib/whatsapp/handlers/catalog.ts");
-    const payment = read("src/lib/whatsapp/handlers/payment.ts");
-    const messages = read("src/lib/whatsapp/messages.ts");
-    expect(catalog).toContain("variant.min_qty");
-    expect(payment).toContain("minimal pembelian");
-    expect(messages).toContain("Minimal pembelian");
+  it("WhatsApp: alur beli (termasuk validasi min>1) dipensiunkan, bukan dipindah diam-diam", () => {
+    // Alur pembeli WhatsApp hard off 13 November 2026; tidak ada lagi jalur
+    // pemesanan grup yang perlu memeriksa min_qty.
+    const webhook = read("src/app/api/whatsapp/webhook/route.ts");
+    expect(webhook).toContain("buyerFlowsRetiredMessage");
+    expect(webhook).not.toContain("min_qty");
+    expect(read("src/lib/whatsapp/messages.ts")).toContain("Minimal pembelian");
   });
 
   it("web: stepper PDP/modal + Beli Langsung bawa qty, dialog konsisten solid", () => {
@@ -161,8 +161,7 @@ describe("variant min_qty — bot & storefront", () => {
     expect(modal).toContain("eff !== -1");
   });
 
-  it("admin: input Min. Beli di VariantEditor + ProductVariantRows + API", () => {
-    expect(read("src/components/admin/VariantEditor.tsx")).toContain("Min. beli");
+  it("admin: input Min. Beli di ProductVariantRows + API", () => {
     expect(read("src/components/admin/sections/ProductVariantRows.tsx")).toContain("Min. beli");
     expect(read("src/app/api/admin/variants/route.ts")).toContain("min_qty");
     expect(read("src/app/api/products/[id]/route.ts")).toContain("min_qty");

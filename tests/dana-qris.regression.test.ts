@@ -97,10 +97,9 @@ describe("QRIS provider routing", () => {
       "src/app/api/orders/route.ts",
       // Refactor 2026-09-10: penerbitan DANA QRIS Telegram dipindah dari
       // route.ts ke handler invoice (varian tunggal) dan cart-invoice (checkout gabungan).
+      // Jalur WhatsApp dihapus 13 November 2026 (alur pembeli dipensiunkan).
       "src/lib/telegram/handlers/invoice.ts",
       "src/lib/telegram/handlers/cart-invoice.ts",
-      // Refactor: jalur DANA QRIS WhatsApp dipindah dari route.ts ke handler pembayaran.
-      "src/lib/whatsapp/handlers/payment.ts",
     ]) {
       // Multi-rail 2026-10-02: penerbitan mengikuti QRIS_ACTIVE_PROVIDER
       // (default dana = perilaku lama); wrapper DANA tetap ada untuk fallback.

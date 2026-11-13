@@ -85,11 +85,20 @@ describe("payment maintenance before financial side effects", () => {
     await handleCallback("home", 123, 1, { id: 123, first_name: "Test" });
     expectTelegramNotice();
   });
-  it("blocks WhatsApp bot payment before accessing the session", async () => {
-    const { handlePay } = await import("@/lib/whatsapp/handlers/payment");
-    await handlePay("group", "member", "inbox", "QRIS");
-    expect(mocks.wa).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining(PAYMENT_MANUAL_ORDER_URL) }));
-    expectNoDatabaseAccess();
+  it("WhatsApp buyer payment is retired, not routed through maintenance checkout", async () => {
+    // Alur pembeli WhatsApp dipensiunkan 13 November 2026 (hard off di kode):
+    // handler pembayaran WA tidak ada lagi dan webhook menjawab arahan tetap.
+    const fs = await import("node:fs");
+    expect(fs.existsSync("src/lib/whatsapp/handlers/payment.ts")).toBe(false);
+    const route = fs.readFileSync("src/app/api/whatsapp/webhook/route.ts", "utf8");
+    expect(route).toContain("buyerFlowsRetiredMessage");
+    expect(route).not.toContain("handlePay");
+    expect(mocks.wa).not.toHaveBeenCalled();
+    const { buyerFlowsRetiredMessage } = await import("@/lib/whatsapp/messages");
+    const copy = buyerFlowsRetiredMessage();
+    expect(copy).toContain("axvara.tech");
+    expect(copy).toContain("Telegram");
+    expect(copy).not.toContain(PAYMENT_MANUAL_ORDER_URL);
   });
   it("leaves normal handlers available when the build switch is off", async () => {
     vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");

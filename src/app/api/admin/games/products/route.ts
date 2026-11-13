@@ -49,18 +49,28 @@ export async function GET(request: NextRequest) {
   const offset = intParam(params.get("offset"), 0, 0, 1_000_000);
   if (limit === null) return NextResponse.json({ error: "invalid_limit", message: "limit 1–200." }, { status: 400 });
   if (offset === null) return NextResponse.json({ error: "invalid_offset", message: "offset tidak valid." }, { status: 400 });
+  const sellableRaw = params.get("sellable")?.trim() || null;
+  if (sellableRaw !== null && sellableRaw !== "0" && sellableRaw !== "1") {
+    return NextResponse.json({ error: "invalid_sellable", message: "sellable harus 0 atau 1." }, { status: 400 });
+  }
+  const sortRaw = params.get("sort")?.trim() || "default";
+  if (sortRaw !== "default" && sortRaw !== "sellable") {
+    return NextResponse.json({ error: "invalid_sort", message: "sort harus default atau sellable." }, { status: 400 });
+  }
   const db = createDatabaseAccess();
   try {
     const page = await listGamesProducts(db, {
       brand: params.get("brand"), q: params.get("q"),
       enabled: enabledRaw === null ? null : enabledRaw === "1",
+      sellable: sellableRaw === null ? null : sellableRaw === "1",
+      sort: sortRaw as "default" | "sellable",
       limit, offset,
     });
     const sync = await gamesAdminSyncStatus(db);
     const nickname_checks = await gamesNicknameSummary(db);
     return NextResponse.json({
       ok: true,
-      items: page.items.map((row) => ({ ...row, effectiveGroup: effectiveGroup(row), margin: gamesMargin(row), contract_supported: gamesSkContractSupported(row), availability: gamesSkAvailability(row) })),
+      items: page.items.map((row) => ({ ...row, effectiveGroup: effectiveGroup(row), margin: gamesMargin(row), contract_supported: gamesSkContractSupported(row), availability: gamesSkAvailability(row), sellable: row.enabled === 1 && row.supplier_active === 1 && (row.unlimited_stock === 1 || Number(row.stock) > 0) })),
       total: page.total, limit: page.limit, offset: page.offset, brands: page.brands, sync, nickname_checks,
     });
   } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }

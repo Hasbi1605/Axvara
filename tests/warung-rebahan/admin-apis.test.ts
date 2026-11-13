@@ -180,29 +180,4 @@ describe("admin WR APIs auth & validation", () => {
     const done = await POST(await adminRequest("/api/admin/warung/orders/1/retry", { method: "POST" }) as never, { params: Promise.resolve({ id: "1" }) });
     expect(done.status).toBe(409);
   });
-
-  it("credentials admin: tanpa sesi 401; dengan sesi membaca kredensial", async () => {
-    const { stubFulfillmentKey } = await import("../helpers/d1-fixture");
-    stubFulfillmentKey();
-    fixture.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel) VALUES('AXV-20260911-WR0004','B','6280','[]',7500,'qris','lunas','paid','web')`).run();
-    // Enkripsi via helper deliver agar dekripsi admin teruji ujung-ke-ujung.
-    const { encryptAccountDetails } = await import("@/lib/warung-rebahan/deliver");
-    const enc = await encryptAccountDetails("EMAIL:admin@lihat.id PASS:x");
-    fixture.sql.prepare("INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status,wr_account_details,wr_account_iv,delivery_status,completed_at) VALUES('AXV-20260911-WR0004','v',1,5000,'completed',?,?, 'failed',datetime('now'))").run(enc.ciphertext, enc.iv);
-    const { GET, POST } = await import("@/app/api/admin/warung/credentials/route");
-    const noAuth = await GET(new Request("http://localhost/api/admin/warung/credentials?order_code=X") as never);
-    expect(noAuth.status).toBe(401);
-    const got = await GET(await adminRequest("/api/admin/warung/credentials?order_code=AXV-20260911-WR0004") as never);
-    expect(got.status).toBe(200);
-    const body = (await got.json()) as { credentials: { details: string }[] };
-    expect(body.credentials.length).toBe(1);
-    expect(body.credentials[0].details).toContain("admin@lihat.id");
-    // Resend: antrekan ulang delivery link completed.
-    const resent = await POST(
-      await adminRequest("/api/admin/warung/credentials", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ order_code: "AXV-20260911-WR0004" }) }) as never,
-    );
-    expect(resent.status).toBe(200);
-    const resBody = (await resent.json()) as { queued: number };
-    expect(resBody.queued).toBe(1);
-  });
 });

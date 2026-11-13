@@ -382,5 +382,25 @@ export function welcomeNewMemberMessage(name?: string): string {
 }
 
 export function qrisExpiredMessage(orderCode: string): string {
-  return `⏰ *QRIS Hangus — Pesanan Kedaluwarsa*\n${orderCode}\n\nBatas pembayaran 15 menit sudah habis. Jangan bayar QRIS lama. Tidak ada perpanjangan QRIS. Ketik *list* dan buat pesanan ulang untuk mendapatkan QRIS baru.`;
+  return `⏰ *QRIS Hangus — Pesanan Kedaluwarsa*\n${orderCode}\n\nBatas pembayaran 15 menit sudah habis. Jangan bayar QRIS lama. Tidak ada perpanjangan QRIS; buat pesanan ulang di website atau Telegram untuk mendapatkan QRIS baru.`;
+}
+
+/**
+ * Alur belanja WhatsApp dipensiunkan 13 November 2026 (keputusan owner).
+ * Pesan yang dulu memicu pencarian/pemesanan/bukti manual dijawab dengan satu
+ * arahan ini agar pembeli tidak menunggu balasan yang tidak akan datang.
+ */
+export function buyerFlowsRetiredMessage(): string {
+  return [
+    "━━━━━━━━━━━━━━━━━━━━",
+    "*PEMESANAN WHATSAPP DIALIHKAN*",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "Pencarian produk, pemesanan, dan bukti pembayaran di grup WhatsApp sudah tidak dilayani.",
+    "",
+    "Silakan pesan lewat:",
+    `🌐 Website: ${SITE.webUrl}`,
+    `✈️ Telegram: ${adminTelegramLink()}`,
+    "",
+    "Pesanan lama tetap diproses dan bisa dilacak lewat tautan pesanan Anda.",
+  ].join("\n");
 }
