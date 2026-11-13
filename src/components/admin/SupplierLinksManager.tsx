@@ -6,7 +6,8 @@
 // di sini, semua PDP/email/panel ikut tanpa edit kurasi + redeploy.
 
 import { useCallback, useEffect, useState } from "react";
-import { IosIcon } from "@/components/admin/AdminIcon";
+import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { Badge, Button, Card, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, Skeleton, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 import { Dialog } from "@/components/ui/Dialog";
@@ -55,8 +56,6 @@ export function SupplierLinksManager() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
-
-
 
   const openNew = () => {
     setEditing(null);
@@ -140,62 +139,115 @@ export function SupplierLinksManager() {
   };
 
   return (
-    <section className="mt-4">
-      <div className="admin-surface rounded-xl overflow-hidden">
-        <div className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-admin-fg">Link Supplier</h2>
-            <p className="text-xs text-admin-muted">Shortlink axvara.tech/go/… — supplier ganti URL? Ubah 1 baris di sini.</p>
-          </div>
-          <button type="button" onClick={openNew} className="ml-auto inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary"><IosIcon name="plus" size={14} tint="black" /> Link Baru</button>
+    <div className="mt-4 space-y-4">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-admin-fg">Link Supplier</h2>
+          <p className="mt-1 text-sm text-admin-muted">Shortlink axvara.tech/go/… — supplier ganti URL? Ubah 1 baris di sini.</p>
         </div>
+        <Button onClick={openNew}><Plus /> Link Baru</Button>
+      </header>
 
-        {error && !showForm && <p className="mx-4 mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-admin-danger sm:mx-5">{error}</p>}
+      {error && !showForm && <div className="rounded-md border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-sm text-admin-danger" role="alert">
+        <p>{error}</p>
+        <Button variant="outline" size="sm" className="mt-2" onClick={() => void load()}>Coba lagi</Button>
+      </div>}
+
+      <Card className="overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 p-10 text-sm text-admin-muted"><Spinner size={18} /> Memuat link…</div>
+          <div className="space-y-2 p-4">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-14 w-full" />)}</div>
         ) : list.length === 0 ? (
           <p className="p-8 text-center text-sm text-admin-muted">Belum ada link. Tambahkan slug pertama.</p>
         ) : (
-          <div className="divide-y divide-admin-border">
-            {list.map((link) => (
-              <div key={link.id} className="flex items-center gap-3 px-4 py-3 transition hover:bg-admin-subtle sm:px-5">
-                <button
-                  type="button"
-                  onClick={() => void toggle(link)}
-                  disabled={toggling === link.id}
-                  aria-pressed={link.is_active}
-                  title={link.is_active ? "Nonaktifkan (redirect jadi 404)" : "Aktifkan"}
-                  className={`h-6 w-11 shrink-0 rounded-md p-0.5 transition ${link.is_active ? "bg-emerald-500/80" : "bg-admin-subtle"} disabled:opacity-50`}
-                >
-                  <span className={`block h-5 w-5 rounded-md bg-admin-primary transition-transform ${link.is_active ? "translate-x-5" : ""}`} />
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-admin-fg">
-                    <span className="text-admin-accent">go/{link.slug}</span>
-                    {!link.is_active && <span className="ml-2 rounded-md bg-admin-subtle px-2 py-0.5 text-xs font-bold text-admin-muted">NONAKTIF</span>}
-                  </p>
-                  <p className="truncate text-xs text-admin-muted">→ {link.destination}{link.title ? ` · ${link.title}` : ""}</p>
-                  <p className="text-xs text-admin-muted">{link.click_count} klik{link.last_clicked_at ? ` · terakhir ${link.last_clicked_at}` : ""}</p>
+          <>
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Slug</TableHead>
+                    <TableHead>Tujuan</TableHead>
+                    <TableHead>Klik</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {list.map((link) => <TableRow key={link.id}>
+                    <TableCell className="font-mono text-admin-accent">go/{link.slug}</TableCell>
+                    <TableCell className="max-w-[320px]">
+                      <p className="truncate text-admin-fg" title={link.destination}>{link.destination}</p>
+                      {link.title && <p className="truncate text-xs text-admin-muted">{link.title}</p>}
+                    </TableCell>
+                    <TableCell className="tabular-nums text-admin-muted">{link.click_count}{link.last_clicked_at && <p className="text-xs">{link.last_clicked_at}</p>}</TableCell>
+                    <TableCell>{link.is_active ? <Badge variant="success">Aktif</Badge> : <Badge variant="secondary">Nonaktif</Badge>}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-2">
+                        <Switch checked={link.is_active} aria-label={`${link.is_active ? "Nonaktifkan" : "Aktifkan"} go/${link.slug}`} disabled={toggling === link.id} onCheckedChange={() => void toggle(link)} />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Aksi go/${link.slug}`}><MoreHorizontal /></Button></DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => openEdit(link)}>Edit link</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => void toggle(link)}>{link.is_active ? "Nonaktifkan (redirect 404)" : "Aktifkan"}</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-admin-danger" onSelect={() => setDeleteTarget(link)}><Trash2 /> Hapus</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>)}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="space-y-3 p-4 md:hidden">
+              {list.map((link) => <article key={link.id} className="rounded-md border border-admin-border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-sm text-admin-accent">go/{link.slug}</p>
+                    <p className="truncate text-xs text-admin-muted" title={link.destination}>{link.destination}</p>
+                  </div>
+                  {link.is_active ? <Badge variant="success">Aktif</Badge> : <Badge variant="secondary">Nonaktif</Badge>}
                 </div>
-                <button type="button" onClick={() => openEdit(link)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md bg-admin-primary px-3 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
-                <button type="button" onClick={() => setDeleteTarget(link)} aria-label={`Hapus go/${link.slug}`} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-500 text-admin-fg shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition hover:bg-red-600"><IosIcon name="trash" size={16} tint="white" /></button>
-              </div>
-            ))}
-          </div>
+                <p className="mt-1 text-xs text-admin-muted">{link.click_count} klik{link.last_clicked_at ? ` · terakhir ${link.last_clicked_at}` : ""}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Switch checked={link.is_active} aria-label={`${link.is_active ? "Nonaktifkan" : "Aktifkan"} go/${link.slug}`} disabled={toggling === link.id} onCheckedChange={() => void toggle(link)} />
+                  <Button variant="outline" size="sm" onClick={() => openEdit(link)}>Edit</Button>
+                  <Button variant="ghost" size="icon" aria-label={`Hapus go/${link.slug}`} className="text-admin-danger" onClick={() => setDeleteTarget(link)}><Trash2 /></Button>
+                </div>
+              </article>)}
+            </div>
+          </>
         )}
-      </div>
+      </Card>
 
       {showForm && (
-        <Dialog title={"Tautan supplier"} onClose={() => !saving && setShowForm(false)} busy={saving} className="w-[560px]">
-            <div className="flex items-center justify-between gap-3"><div><h3 id="supplier-link-form-title" className="text-lg font-bold text-admin-fg">{editing ? "Edit Link" : "Link Baru"}</h3><p className="mt-0.5 text-xs text-admin-muted">axvara.tech/go/slug → tujuan. Slug permanen setelah dibuat.</p></div>
-              <button type="button" onClick={() => setShowForm(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-admin-subtle transition hover:bg-admin-subtle" aria-label="Tutup form link"><IosIcon name="close" size={14} tint="white" /></button>
+        <Dialog title="Tautan supplier" onClose={() => !saving && setShowForm(false)} busy={saving} className="w-[560px]">
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-admin-fg">{editing ? "Edit Link" : "Link Baru"}</h3>
+              <p className="mt-1 text-sm text-admin-muted">axvara.tech/go/slug → tujuan. Slug permanen setelah dibuat.</p>
             </div>
-            {!editing && <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Slug (go/…)</span><input value={form.slug} onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))} maxLength={64} autoFocus placeholder="mis. otp-sengare" className="h-11 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></label>}
-            {editing && <div className="mt-4 rounded-xl border border-admin-border bg-admin-subtle px-3 py-2"><p className="text-xs text-admin-muted">Slug permanen</p><code className="text-sm text-admin-accent">go/{editing.slug}</code></div>}
-            {error && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-admin-danger">{error}</p>}
-            <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Tujuan</span><input value={form.destination} onChange={(event) => setForm((current) => ({ ...current, destination: event.target.value }))} maxLength={2048} placeholder="/artikel/… atau https://…" className="h-11 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></label>
-            <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Judul (untuk admin)</span><input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} maxLength={160} placeholder="mis. Mailbox OTP Sengare" className="h-11 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></label>
-            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setShowForm(false)} disabled={saving} className="h-10 rounded-md border border-admin-border bg-admin-subtle px-4 text-sm text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">Batal</button><button type="button" onClick={() => void save()} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-50">{saving ? <Spinner size={14} className="border-[#080C1E]/20 border-t-[#080C1E]" /> : <IosIcon name="checked" size={14} tint="black" />}{saving ? "Menyimpan…" : "Simpan Link"}</button></div>
+            {!editing && <div className="space-y-2">
+              <Label htmlFor="supplier-link-slug">Slug (go/…)</Label>
+              <Input id="supplier-link-slug" value={form.slug} onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))} maxLength={64} autoFocus placeholder="mis. otp-sengare" />
+            </div>}
+            {editing && <div className="rounded-md border border-admin-border bg-admin-subtle px-3 py-2">
+              <Label className="text-xs text-admin-muted">Slug permanen</Label>
+              <code className="block text-sm text-admin-accent">go/{editing.slug}</code>
+            </div>}
+            {error && <div className="rounded-md border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-sm text-admin-danger" role="alert">{error}</div>}
+            <div className="space-y-2">
+              <Label htmlFor="supplier-link-destination">Tujuan</Label>
+              <Input id="supplier-link-destination" value={form.destination} onChange={(event) => setForm((current) => ({ ...current, destination: event.target.value }))} maxLength={2048} placeholder="/artikel/… atau https://…" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="supplier-link-title">Judul (untuk admin)</Label>
+              <Input id="supplier-link-title" value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} maxLength={160} placeholder="mis. Mailbox OTP Sengare" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowForm(false)} disabled={saving}>Batal</Button>
+              <Button onClick={() => void save()} disabled={saving}>{saving ? <Spinner size={14} /> : null}{saving ? "Menyimpan…" : "Simpan Link"}</Button>
+            </div>
+          </div>
         </Dialog>
       )}
 
@@ -210,6 +262,6 @@ export function SupplierLinksManager() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => deleteTarget && void remove(deleteTarget)}
       />
-    </section>
+    </div>
   );
 }

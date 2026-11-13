@@ -1,14 +1,14 @@
 // src/components/admin/WarungRebahanManager.tsx — Tab admin Warung Rebahan H2H:
 // saldo + estimasi, status sync, antrean order WR, exclusion rules, markup per varian.
-// Mengikuti pola PaymentReconciliation (fetch per section, toast error, gaya admin-surface).
 
 "use client";
 import { SupplierSyncStatus, type SupplierDiffStatus, type SupplierSyncLogRow } from "@/components/admin/SupplierSyncStatus";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, Input, NativeSelect, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Loading";
-import { IosIcon } from "@/components/admin/AdminIcon";
 import { useToast } from "@/components/ui/Toast";
 import { BulkMarkupToolbar } from "@/components/admin/BulkMarkupToolbar";
 import { SupplierTabs, VariantStatusBadge, type SupplierTabId } from "@/components/admin/SupplierTabs";
@@ -122,6 +122,8 @@ export function canRetryWrLink(order: { status: string; attempt_count?: number; 
   }
   return Number(order.attempt_count ?? 0) < Number(order.max_attempts ?? 3);
 }
+
+const ORDER_FILTERS: [string, string][] = [["all", "Semua"], ["pending", "Pending"], ["submitted", "Terkirim"], ["processing", "Diproses"], ["retry", "Retry"], ["blocked_balance", "Saldo habis"], ["failed", "Gagal"], ["completed", "Selesai"]];
 
 export function WarungRebahanManager() {
   const toast = useToast();
@@ -436,9 +438,10 @@ export function WarungRebahanManager() {
   const markupTotalPages = Math.max(1, Math.ceil(markupFiltered.length / markupPerPage));
   const markupSafePage = Math.min(markupPage, markupTotalPages);
   const markupPaged = markupFiltered.slice((markupSafePage - 1) * markupPerPage, markupSafePage * markupPerPage);
+  const orderPages = Math.max(1, Math.ceil(orderTotal / ORDER_PER_PAGE));
 
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-4 space-y-6">
       <SupplierTabs
         tabs={[
           { id: "ringkas", label: "Ringkas" },
@@ -450,165 +453,181 @@ export function WarungRebahanManager() {
         onChange={(tab) => openTab(tab as typeof wrTab)}
       />
       {wrTab === "ringkas" && (
-      <section className="admin-surface overflow-hidden rounded-xl">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
+      <section className="space-y-4">
+        <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-admin-fg">Saldo Warung Rebahan</h2>
-            <p className="mt-0.5 text-xs text-admin-muted">Diambil real-time dari API WR setiap dibuka.</p>
+            <h2 className="text-lg font-semibold text-admin-fg">Saldo Warung Rebahan</h2>
+            <p className="mt-1 text-sm text-admin-muted">Diambil real-time dari API WR setiap dibuka.</p>
           </div>
-          <button onClick={() => void loadSaldo()} disabled={saldoLoading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg disabled:opacity-40">
-            <IosIcon name="refresh" size={13} tint="white" /> Muat ulang
-          </button>
+          <Button variant="outline" onClick={() => void loadSaldo()} disabled={saldoLoading}>{saldoLoading ? <Spinner size={13} /> : <RefreshCw />} Muat ulang</Button>
         </header>
-        <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
-          <div className={`rounded-xl border p-4 ${saldo.current?.isLow ? "border-red-400/20 bg-red-500/[0.06]" : "border-emerald-400/15 bg-emerald-400/[0.06]"}`}>
-            <p className="text-xs uppercase tracking-wide text-admin-muted">Saldo saat ini</p>
-            <p className={`mt-1 text-lg font-bold tabular-nums ${saldo.current?.isLow ? "text-admin-danger" : "text-admin-success"}`}>
-              {saldoLoading ? "…" : balance != null ? formatRupiah(balance) : "—"}
-            </p>
-            {saldo.current?.isLow && <p className="mt-1 text-xs text-admin-danger">Di bawah batas {formatRupiah(saldo.current.threshold)} — segera top up.</p>}
-          </div>
-          <div className="rounded-xl border border-admin-border bg-admin-subtle p-4">
-            <p className="text-xs uppercase tracking-wide text-admin-muted">Estimasi kapasitas</p>
-            <p className="mt-1 text-lg font-bold text-admin-fg tabular-nums">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
-            <p className="mt-1 text-xs text-admin-muted">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
-          </div>
-          <div className="rounded-xl border border-admin-border bg-admin-subtle p-4">
-            <p className="text-xs uppercase tracking-wide text-admin-muted">Sync terakhir</p>
-            <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="excluded" />
-            <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
-              {syncing ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{syncing ? "Sync…" : "Force Sync Now"}
-            </button>
-          </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card className={saldo.current?.isLow ? "border-admin-danger/30" : undefined}>
+            <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-wide">Saldo saat ini</CardDescription></CardHeader>
+            <CardContent className="p-4 pt-0">
+              {saldoLoading ? <Skeleton className="h-8 w-32" /> : <p className={`text-2xl font-semibold tabular-nums ${saldo.current?.isLow ? "text-admin-danger" : "text-admin-success"}`}>{balance != null ? formatRupiah(balance) : "—"}</p>}
+              <p className="mt-1 text-xs text-admin-muted">
+                {saldo.current?.isLow ? `Di bawah batas ${formatRupiah(saldo.current.threshold)} — segera top up.` : "Di atas batas aman operasional."}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-wide">Estimasi kapasitas</CardDescription></CardHeader>
+            <CardContent className="p-4 pt-0">
+              <p className="text-2xl font-semibold tabular-nums text-admin-fg">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
+              <p className="mt-1 text-xs text-admin-muted">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-wide">Sync terakhir</CardDescription></CardHeader>
+            <CardContent className="p-4 pt-0">
+              <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="excluded" />
+              <Button className="mt-3" size="sm" onClick={() => void forceSync()} disabled={syncing}>{syncing ? <Spinner size={13} /> : <RefreshCw />}{syncing ? "Sync…" : "Force Sync Now"}</Button>
+            </CardContent>
+          </Card>
         </div>
       </section>
       )}
       {wrTab === "antrean" && (
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Antrean order WR</h3><p className="mt-0.5 text-xs text-admin-muted">Order lunas yang diteruskan ke Warung Rebahan. Cari by invoice WR (#RBHN-…) atau kode Axvara untuk forward manual email WR ke buyer.</p></div>
-          <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice WR / kode Axvara…" className="h-9 w-full max-w-[240px] rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none sm:ml-auto" />
-          <div className="flex flex-wrap gap-2">
-            {[["all", "Semua"], ["pending", "Pending"], ["submitted", "Terkirim"], ["processing", "Diproses"], ["retry", "Retry"], ["blocked_balance", "Saldo habis"], ["failed", "Gagal"], ["completed", "Selesai"]].map(([value, label]) => (
-              <button key={value} onClick={() => { setOrderStatus(value); setOrderPage(1); void loadOrders(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}>{label}</button>
-            ))}
+      <Card className="overflow-hidden">
+        <CardHeader className="gap-3 p-4">
+          <div className="min-w-0">
+            <CardTitle className="text-base">Antrean order WR</CardTitle>
+            <CardDescription className="mt-1 text-xs">Order lunas yang diteruskan ke Warung Rebahan. Cari by invoice WR (#RBHN-…) atau kode Axvara untuk forward manual email WR ke buyer.</CardDescription>
           </div>
-        </header>
-        {!orders.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada order WR pada filter ini.</p> : (
-          <div className="divide-y divide-admin-border">
-            {orders.map((order) => (
-              <article key={order.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={order.status} />
-                    <span className="font-mono text-xs font-semibold text-admin-accent">{order.order_code}</span>
-                    <span className="text-xs text-admin-muted">{formatRupiah(order.wr_cost)} modal</span>
-                    {order.wr_order_id && <span className="font-mono text-xs text-admin-muted">{order.wr_order_id}</span>}
-                    {!["completed", "failed"].includes(order.status) && (() => {
-                      const age = ageLabel(order);
-                      if (!age) return null;
-                      // >13 jam = melewati ambang internal (plafon pembeli 12 jam).
-                      const late = age.hours >= 13;
-                      return (
-                        <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${late ? "border-red-400/30 bg-red-500/10 text-admin-danger" : "border-admin-border bg-admin-subtle text-admin-muted"}`}>
-                          {age.text}{late ? " · lewat batas" : ""}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  {(order.customer_name || order.customer_wa || order.customer_email) && (
-                    <p className="mt-1 text-xs text-admin-muted">
-                      {[order.customer_name, order.customer_wa, order.customer_email].filter(Boolean).join(" · ")}
-                      {order.sales_channel ? ` · ${order.sales_channel}` : ""}
-                    </p>
-                  )}
-                  {order.last_error && <p className="mt-1 font-mono text-xs text-admin-danger">{order.last_error}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice WR / kode Axvara…" aria-label="Cari invoice WR atau kode Axvara" className="w-full max-w-[260px]" />
+            <NativeSelect value={orderStatus} onChange={(e) => { setOrderStatus(e.target.value); setOrderPage(1); void loadOrders(1); }} aria-label="Filter status order WR" className="w-[180px]">
+              {ORDER_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </NativeSelect>
+          </div>
+        </CardHeader>
+        {!orders.length ? <p className="border-t border-admin-border p-10 text-center text-sm text-admin-muted">Belum ada order WR pada filter ini.</p> : <>
+          <div className="hidden border-t border-admin-border md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Order</TableHead>
+                  <TableHead>Modal</TableHead>
+                  <TableHead>Pembeli</TableHead>
+                  <TableHead>Umur antrean</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orders.map((order) => {
+                  const age = ["completed", "failed"].includes(order.status) ? null : ageLabel(order);
+                  const late = age ? age.hours >= 13 : false;
+                  const retryable = canRetryWrLink(order);
+                  return <TableRow key={order.id}>
+                    <TableCell><StatusBadge status={order.status} /></TableCell>
+                    <TableCell>
+                      <p className="font-mono text-xs font-semibold text-admin-accent">{order.order_code}</p>
+                      {order.wr_order_id && <p className="mt-1 font-mono text-xs text-admin-muted">{order.wr_order_id}</p>}
+                      {order.last_error && <p className="mt-1 font-mono text-xs text-admin-danger">{order.last_error}</p>}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs tabular-nums">{formatRupiah(order.wr_cost)}</TableCell>
+                    <TableCell className="text-xs text-admin-muted">{[order.customer_name, order.customer_wa, order.customer_email].filter(Boolean).join(" · ") || "—"}{order.sales_channel ? ` · ${order.sales_channel}` : ""}</TableCell>
+                    <TableCell>{age ? <Badge variant={late ? "destructive" : "secondary"}>{age.text}{late ? " · lewat batas" : ""}</Badge> : <span className="text-xs text-admin-muted">—</span>}</TableCell>
+                    <TableCell>
+                      <div className="flex justify-end">
+                        {retryable ? <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id}>{retrying === order.id ? <Spinner size={13} /> : <RefreshCw />} Retry</Button>
+                          <Button size="sm" variant="outline" className="border-admin-danger/30 text-admin-danger" onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id}>{voiding === order.id ? <Spinner size={13} /> : <X />} Batal</Button>
+                        </div> : RETRYABLE_WR_STATUS.includes(order.status) ? <BlockedRetry order={order} /> : null}
+                      </div>
+                    </TableCell>
+                  </TableRow>;
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-3 border-t border-admin-border p-4 md:hidden">
+            {orders.map((order) => {
+              const age = ["completed", "failed"].includes(order.status) ? null : ageLabel(order);
+              const late = age ? age.hours >= 13 : false;
+              const retryable = canRetryWrLink(order);
+              return <article key={order.id} className="space-y-2 rounded-md border border-admin-border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={order.status} />
+                  {age && <Badge variant={late ? "destructive" : "secondary"}>{age.text}{late ? " · lewat batas" : ""}</Badge>}
                 </div>
-                {canRetryWrLink(order) ? (
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
-                      {retrying === order.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />} Retry
-                    </button>
-                    <button onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3.5 text-xs font-bold text-admin-danger transition hover:bg-red-500/20 disabled:opacity-40">
-                      {voiding === order.id ? <Spinner size={13} /> : <IosIcon name="close" size={13} tint="#FCA5A5" />} Batal
-                    </button>
-                  </div>
-                ) : RETRYABLE_WR_STATUS.includes(order.status) ? (
-                  // Non-preSend `failed` (sudah terkirim ke WR / dibatalkan
-                  // admin) memang tidak bisa retry — beli ulang = dobel bayar.
-                  <span title={order.status === "failed" ? "Order ini sudah pernah terkirim ke WR atau dibatalkan admin — retry = beli ulang (dobel bayar). Serahkan manual dari tab Pesanan." : "Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan, atau naikkan batas percobaan."} className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-xs font-semibold text-admin-danger">
-                    {order.status === "failed" ? "Tak bisa retry" : "Percobaan habis"}
-                  </span>
-                ) : null}
-              </article>
-            ))}
+                <p className="font-mono text-xs font-semibold text-admin-accent">{order.order_code}</p>
+                <p className="text-xs text-admin-muted">{formatRupiah(order.wr_cost)} modal{order.wr_order_id ? ` · ${order.wr_order_id}` : ""}</p>
+                {(order.customer_name || order.customer_wa || order.customer_email) && <p className="text-xs text-admin-muted">{[order.customer_name, order.customer_wa, order.customer_email].filter(Boolean).join(" · ")}{order.sales_channel ? ` · ${order.sales_channel}` : ""}</p>}
+                {order.last_error && <p className="font-mono text-xs text-admin-danger">{order.last_error}</p>}
+                {retryable ? <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id}>{retrying === order.id ? <Spinner size={13} /> : <RefreshCw />} Retry</Button>
+                  <Button size="sm" variant="outline" className="border-admin-danger/30 text-admin-danger" onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id}>{voiding === order.id ? <Spinner size={13} /> : <X />} Batal</Button>
+                </div> : RETRYABLE_WR_STATUS.includes(order.status) ? <BlockedRetry order={order} /> : null}
+              </article>;
+            })}
           </div>
-        )}
+        </>}
         {/* Pagination antrean (2026-10-01): halaman 2+ dulu hilang. */}
         {orderTotal > ORDER_PER_PAGE && (
-          <div className="flex items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
-            <p className="text-xs text-admin-muted">Hal {orderPage} dari {Math.max(1, Math.ceil(orderTotal / ORDER_PER_PAGE))} • {orderTotal} order</p>
-            <div className="flex items-center gap-1.5">
-              <button disabled={orderPage <= 1} onClick={() => void loadOrders(orderPage - 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
-              <button disabled={orderPage >= Math.ceil(orderTotal / ORDER_PER_PAGE)} onClick={() => void loadOrders(orderPage + 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
+            <p className="text-xs text-admin-muted">Hal {orderPage} dari {orderPages} · {orderTotal} order</p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={orderPage <= 1} onClick={() => void loadOrders(orderPage - 1)}><ChevronLeft /> Sebelumnya</Button>
+              <Button variant="outline" size="sm" disabled={orderPage >= orderPages} onClick={() => void loadOrders(orderPage + 1)}>Berikutnya <ChevronRight /></Button>
             </div>
           </div>
         )}
-      </section>
+      </Card>
       )}
       {wrTab === "aturan" && (
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="border-b border-admin-border p-4"><h3 className="text-sm font-semibold text-admin-fg">Exclusion rules</h3><p className="mt-0.5 text-xs text-admin-muted">Produk yang cocok pola tidak masuk katalog (mis. Canva & Gemini).</p></header>
-        <div className="space-y-2 p-4">
-          {exclusions.map((rule) => (
-            <div key={rule.id} className="flex items-center gap-3 rounded-xl border border-admin-border bg-black/15 px-3 py-2">
-              <span className="min-w-0 flex-1 font-mono text-xs text-admin-muted">{rule.pattern}</span>
-              {rule.reason && <span className="hidden max-w-[40%] truncate text-xs text-admin-muted sm:inline">{rule.reason}</span>}
-              <button onClick={() => void deleteExclusion(rule.id)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-admin-danger transition hover:bg-red-500/20" aria-label={`Hapus exclusion ${rule.pattern}`}>
-                <IosIcon name="close" size={13} tint="#F87171" />
-              </button>
-            </div>
-          ))}
-          <div className="flex gap-2">
-            <input value={newPattern} onChange={(e) => setNewPattern(e.target.value)} placeholder="cth: canva" className="h-10 min-w-0 flex-1 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-            <button onClick={() => void addExclusion()} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary">
-              <IosIcon name="plus" size={13} tint="black" /> Tambah
-            </button>
+      <Card className="overflow-hidden">
+        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Exclusion rules</CardTitle><CardDescription className="mt-1 text-xs">Produk yang cocok pola tidak masuk katalog (mis. Canva &amp; Gemini).</CardDescription></CardHeader>
+        <CardContent className="space-y-3 p-4 pt-0">
+          {exclusions.length === 0 ? <p className="text-sm text-admin-muted">Belum ada aturan exclusion.</p> : <div className="rounded-md border border-admin-border">
+            <Table>
+              <TableHeader><TableRow><TableHead>Pola</TableHead><TableHead>Alasan</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {exclusions.map((rule) => <TableRow key={rule.id}>
+                  <TableCell className="font-mono text-xs text-admin-fg">{rule.pattern}</TableCell>
+                  <TableCell className="text-xs text-admin-muted">{rule.reason ?? "—"}</TableCell>
+                  <TableCell>
+                    <div className="flex justify-end">
+                      <Tooltip><TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" className="text-admin-danger" onClick={() => void deleteExclusion(rule.id)} aria-label={`Hapus exclusion ${rule.pattern}`}><Trash2 /></Button>
+                      </TooltipTrigger><TooltipContent>Hapus exclusion</TooltipContent></Tooltip>
+                    </div>
+                  </TableCell>
+                </TableRow>)}
+              </TableBody>
+            </Table>
+          </div>}
+          <div className="flex flex-wrap gap-2">
+            <Input value={newPattern} onChange={(e) => setNewPattern(e.target.value)} placeholder="cth: canva" aria-label="Pola exclusion baru" className="min-w-0 flex-1" />
+            <Button onClick={() => void addExclusion()}><Plus /> Tambah</Button>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
       )}
       {wrTab === "markup" && (
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Markup per varian</h3><p className="mt-0.5 text-xs text-admin-muted">Ubah markup → harga jual Axvara dihitung ulang otomatis.</p></div>
-          <input value={markupQuery} onChange={(e) => { setMarkupQuery(e.target.value); setMarkupPage(1); }} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-        </header>
+      <Card className="overflow-hidden">
+        <CardHeader className="gap-3 p-4">
+          <div className="min-w-0"><CardTitle className="text-base">Markup per varian</CardTitle><CardDescription className="mt-1 text-xs">Ubah markup → harga jual Axvara dihitung ulang otomatis.</CardDescription></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={markupQuery} onChange={(e) => { setMarkupQuery(e.target.value); setMarkupPage(1); }} placeholder="Cari varian…" aria-label="Cari varian" className="w-full max-w-[240px]" />
+            <NativeSelect value={markupPerPage} onChange={(e) => { setMarkupPerPage(Number(e.target.value) as 20 | 50 | 100); setMarkupPage(1); }} aria-label="Jumlah per halaman" className="w-[110px]">
+              <option value={20}>20 / hal</option>
+              <option value={50}>50 / hal</option>
+              <option value={100}>100 / hal</option>
+            </NativeSelect>
+          </div>
+        </CardHeader>
         {/* Sub-tab status (cermin tab Live halaman Produk): default Live. */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-admin-border p-3" role="tablist" aria-label="Status tampil varian">
-          {([["live", `Live (${markupCountsLocal.live})`], ["hidden", `Disembunyikan otomatis (${markupCountsLocal.hidden})`], ["off", `Nonaktif manual (${markupCountsLocal.off})`], ["all", `Semua (${markups.length})`]] as const).map(([value, label]) => (
-            <button
-              key={value}
-              role="tab"
-              aria-selected={markupTab === value}
-              onClick={() => { setMarkupTab(value); setMarkupPage(1); }}
-              className={`h-8 whitespace-nowrap rounded-md px-3.5 text-xs font-bold transition ${markupTab === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
-            >
-              {label}
-            </button>
-          ))}
-          <select
-            value={markupPerPage}
-            onChange={(e) => { setMarkupPerPage(Number(e.target.value) as 20 | 50 | 100); setMarkupPage(1); }}
-            aria-label="Jumlah per halaman"
-            className="ml-auto h-8 shrink-0 rounded-md bg-admin-subtle border border-admin-border px-2.5 text-xs font-semibold text-admin-muted focus:outline-none focus:border-admin-accent/40"
-          >
-            <option value={20}>20 / hal</option>
-            <option value={50}>50 / hal</option>
-            <option value={100}>100 / hal</option>
-          </select>
+        <div className="border-t border-admin-border px-4 py-3">
+          <Tabs value={markupTab} onValueChange={value => { setMarkupTab(value as typeof markupTab); setMarkupPage(1); }}>
+            <TabsList aria-label="Status tampil varian">
+              {([["live", `Live (${markupCountsLocal.live})`], ["hidden", `Disembunyikan otomatis (${markupCountsLocal.hidden})`], ["off", `Nonaktif manual (${markupCountsLocal.off})`], ["all", `Semua (${markups.length})`]] as const).map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
+            </TabsList>
+          </Tabs>
         </div>
-        <div className="border-b border-admin-border p-3">
+        <div className="border-y border-admin-border px-4 py-3">
           <BulkMarkupToolbar
             visibleIds={markupPaged.map((r) => (r as MarkupRow).wr_variant_id)}
             totalCount={markupFiltered.length}
@@ -624,77 +643,121 @@ export function WarungRebahanManager() {
             onApply={applyBulkMarkup}
           />
         </div>
-        {!markups.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada varian WR tersinkron.</p> : markupFiltered.length === 0 ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada varian pada tab ini — coba ubah kata kunci.</p> : (
-          <div className="divide-y divide-admin-border">
+        {!markups.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada varian WR tersinkron.</p> : markupFiltered.length === 0 ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada varian pada tab ini — coba ubah kata kunci.</p> : <>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10"><span className="sr-only">Pilih</span></TableHead>
+                  <TableHead>Varian</TableHead>
+                  <TableHead>Modal</TableHead>
+                  <TableHead>Jual</TableHead>
+                  <TableHead>Stok</TableHead>
+                  <TableHead>Markup</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {markupPaged.map((row) => {
+                  const edit = editingMarkup[row.wr_variant_id] ?? { percent: String(row.markup_percent), fixed: String(row.markup_fixed) };
+                  const vStatus = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_status ?? "live";
+                  const vReason = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_reason ?? "";
+                  return <TableRow key={row.wr_variant_id}>
+                    <TableCell>
+                      <Checkbox checked={bulkSelected.has(row.wr_variant_id)} aria-label={`Pilih ${row.wr_variant_name} untuk bulk markup`} onCheckedChange={() => setBulkSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(row.wr_variant_id)) next.delete(row.wr_variant_id);
+                        else next.add(row.wr_variant_id);
+                        return next;
+                      })} />
+                    </TableCell>
+                    <TableCell className="min-w-[220px]">
+                      <p className="truncate text-sm font-semibold text-admin-fg">{row.wr_product_name ? `${row.wr_product_name} — ` : ""}{row.wr_variant_name}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2"><DeliveryBadge wrClass={row.wr_delivery_class} /><VariantStatusBadge status={vStatus} reason={vReason} /></div>
+                      {vStatus !== "live" && vReason && <p className="mt-1 text-xs text-admin-muted">{vReason}</p>}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs tabular-nums">{formatRupiah(row.wr_price)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs font-semibold tabular-nums text-admin-fg">{formatRupiah(row.axvara_sell_price)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs tabular-nums">{row.wr_stock}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" aria-label={`Markup persen ${row.wr_variant_name}`} className="w-16 text-right tabular-nums" />
+                        <Input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" aria-label={`Markup nominal ${row.wr_variant_name}`} className="w-24 text-right tabular-nums" />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end"><Button size="sm" onClick={() => void saveMarkup(row)}>Simpan</Button></div>
+                    </TableCell>
+                  </TableRow>;
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-3 p-4 md:hidden">
             {markupPaged.map((row) => {
               const edit = editingMarkup[row.wr_variant_id] ?? { percent: String(row.markup_percent), fixed: String(row.markup_fixed) };
               const vStatus = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_status ?? "live";
               const vReason = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_reason ?? "";
-              return (
-                <article key={row.wr_variant_id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={bulkSelected.has(row.wr_variant_id)}
-                        onChange={() => setBulkSelected((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(row.wr_variant_id)) next.delete(row.wr_variant_id);
-                          else next.add(row.wr_variant_id);
-                          return next;
-                        })}
-                        aria-label={`Pilih ${row.wr_variant_name} untuk bulk markup`}
-                        className="h-4 w-4 shrink-0 accent-admin-accent"
-                      />
-                      <p className="truncate text-sm font-semibold text-admin-fg">{row.wr_product_name ? `${row.wr_product_name} — ` : ""}{row.wr_variant_name}</p>
-                      <DeliveryBadge wrClass={row.wr_delivery_class} />
-                      <VariantStatusBadge status={vStatus} reason={vReason} />
-                    </div>
-                    <p className="mt-1 text-xs text-admin-muted">Modal {formatRupiah(row.wr_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.wr_stock}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex items-center gap-1.5 text-xs text-admin-muted">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none" /></label>
-                    <label className="flex items-center gap-1.5 text-xs text-admin-muted">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none" /></label>
-                    <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle">Simpan</button>
-                  </div>
-                </article>
-              );
+              return <article key={row.wr_variant_id} className="space-y-2 rounded-md border border-admin-border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Checkbox checked={bulkSelected.has(row.wr_variant_id)} aria-label={`Pilih ${row.wr_variant_name} untuk bulk markup`} onCheckedChange={() => setBulkSelected((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(row.wr_variant_id)) next.delete(row.wr_variant_id);
+                    else next.add(row.wr_variant_id);
+                    return next;
+                  })} />
+                  <p className="truncate text-sm font-semibold text-admin-fg">{row.wr_product_name ? `${row.wr_product_name} — ` : ""}{row.wr_variant_name}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2"><DeliveryBadge wrClass={row.wr_delivery_class} /><VariantStatusBadge status={vStatus} reason={vReason} /></div>
+                <p className="text-xs text-admin-muted">Modal {formatRupiah(row.wr_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.wr_stock}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" aria-label={`Markup persen ${row.wr_variant_name}`} className="w-16 text-right tabular-nums" />
+                  <Input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.wr_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" aria-label={`Markup nominal ${row.wr_variant_name}`} className="w-24 text-right tabular-nums" />
+                  <Button size="sm" onClick={() => void saveMarkup(row)}>Simpan</Button>
+                </div>
+              </article>;
             })}
           </div>
-        )}
+        </>}
         {/* Pagination markup lokal (cermin halaman Produk). */}
         {markupFiltered.length > markupPerPage && (
-          <div className="flex items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
-            <p className="text-xs text-admin-muted">Hal {markupSafePage} dari {markupTotalPages} • {markupFiltered.length} varian</p>
-            <div className="flex items-center gap-1.5">
-              <button disabled={markupSafePage <= 1} onClick={() => setMarkupPage((p) => Math.max(1, p - 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
-              <span className="text-xs text-admin-muted px-1">{markupSafePage} / {markupTotalPages}</span>
-              <button disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage((p) => Math.min(markupTotalPages, p + 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
+            <p className="text-xs text-admin-muted">Hal {markupSafePage} dari {markupTotalPages} · {markupFiltered.length} varian</p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={markupSafePage <= 1} onClick={() => setMarkupPage((p) => Math.max(1, p - 1))}><ChevronLeft /> Sebelumnya</Button>
+              <span className="text-xs tabular-nums text-admin-muted">{markupSafePage} / {markupTotalPages}</span>
+              <Button variant="outline" size="sm" disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage((p) => Math.min(markupTotalPages, p + 1))}>Berikutnya <ChevronRight /></Button>
             </div>
           </div>
         )}
-      </section>
+      </Card>
       )}
     </div>
   );
 }
 
+/** Alasan retry tidak tersedia — jangan sembunyikan tombol tanpa penjelasan. */
+function BlockedRetry({ order }: { order: WrOrderRow }) {
+  const reason = order.status === "failed"
+    ? "Order ini sudah pernah terkirim ke WR atau dibatalkan admin — retry = beli ulang (dobel bayar). Serahkan manual dari tab Pesanan."
+    : "Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan, atau naikkan batas percobaan.";
+  return <div className="space-y-1 text-right">
+    <Badge variant="destructive">{order.status === "failed" ? "Tak bisa retry" : "Percobaan habis"}</Badge>
+    <p className="max-w-[260px] text-xs leading-4 text-admin-muted">{reason}</p>
+  </div>;
+}
+
 function StatusBadge({ status }: { status: string }) {
-  const tone = status === "completed" ? "border-emerald-400/25 bg-emerald-500/10 text-admin-success"
-    : status === "failed" ? "border-red-400/25 bg-red-500/10 text-admin-danger"
-    : status === "processing" || status === "ordering" ? "border-admin-accent/25 bg-admin-primary/10 text-admin-accent"
-    : "border-[#FFB800]/25 bg-[#FFB800]/10 text-admin-warning";
-  return <span className={`rounded-md border px-2.5 py-1 text-xs font-bold ${tone}`}>{WR_STATUS_LABEL[status] ?? status}</span>;
+  const variant = status === "completed" ? "success"
+    : status === "failed" ? "destructive"
+    : status === "processing" || status === "ordering" ? "info"
+    : "warning";
+  return <Badge variant={variant}>{WR_STATUS_LABEL[status] ?? status}</Badge>;
 }
 
 /** Badge kelas pengiriman WR (admin saja): hanya AUTO/MANUAL, dari API WR. */
 function DeliveryBadge({ wrClass }: { wrClass: string | null }) {
-  if (wrClass === "restock") {
-    return <span title="AUTO • kirim otomatis" className="rounded-md border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-admin-success">AUTO</span>;
-  }
-  if (wrClass === "made_by_order") {
-    return <span title="MANUAL • diproses sesuai antrean" className="rounded-md border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-xs font-bold text-admin-warning">MANUAL</span>;
-  }
-  return <span className="rounded-md border border-admin-border bg-admin-subtle px-2 py-0.5 text-xs font-bold text-admin-muted">?</span>;
+  if (wrClass === "restock") return <Badge variant="success" title="AUTO · kirim otomatis">AUTO</Badge>;
+  if (wrClass === "made_by_order") return <Badge variant="warning" title="MANUAL · diproses sesuai antrean">MANUAL</Badge>;
+  return <Badge variant="secondary" title="Kelas pengiriman belum diketahui">?</Badge>;
 }
-

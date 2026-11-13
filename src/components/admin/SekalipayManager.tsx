@@ -9,10 +9,11 @@
 import { SupplierSyncStatus, type SupplierDiffStatus, type SupplierSyncLogRow } from "@/components/admin/SupplierSyncStatus";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import { formatWibDateTime } from "@/lib/utils";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, Input, NativeSelect, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Loading";
-import { IosIcon } from "@/components/admin/AdminIcon";
 import { useToast } from "@/components/ui/Toast";
 import { BulkMarkupToolbar } from "@/components/admin/BulkMarkupToolbar";
 import { SupplierTabs, VariantStatusBadge, type SupplierTabId } from "@/components/admin/SupplierTabs";
@@ -143,34 +144,20 @@ const SK_STATUS_LABEL: Record<string, string> = {
 
 function StatusBadge({ status }: { status: string }) {
   const label = SK_STATUS_LABEL[status] ?? status;
-  const color =
-    status === "completed"
-      ? "border-emerald-400/30 bg-emerald-500/10 text-admin-success"
-      : status === "failed" || status === "canceled"
-        ? "border-red-400/30 bg-red-500/10 text-admin-danger"
-        : status === "blocked_balance"
-          ? "border-amber-400/30 bg-amber-500/10 text-admin-warning"
-          : "border-admin-border bg-admin-subtle text-admin-muted";
-  return (
-    <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${color}`}>
-      {label}
-    </span>
-  );
+  const variant = status === "completed" ? "success"
+    : status === "failed" || status === "canceled" ? "destructive"
+    : status === "blocked_balance" ? "warning"
+    : "secondary";
+  return <Badge variant={variant}>{label}</Badge>;
 }
 
 /** Badge order_process SK (admin saja): AUTO/MANUAL/H2H/SMM/VIP. */
 function ProcessBadge({ process }: { process: string }) {
   const p = String(process || "").toLowerCase();
-  if (p === "auto") {
-    return <span title="AUTO • lisensi langsung" className="rounded-md border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-admin-success">AUTO</span>;
-  }
-  if (p === "manual") {
-    return <span title="MANUAL • diproses admin SK" className="rounded-md border border-[#FFB800]/25 bg-[#FFB800]/10 px-2 py-0.5 text-xs font-bold text-admin-warning">MANUAL</span>;
-  }
-  if (p === "h2h" || p === "smm" || p === "vip") {
-    return <span title={`${p.toUpperCase()} • belum didukung fase 1`} className="rounded-md border border-admin-border bg-admin-subtle px-2 py-0.5 text-xs font-bold text-admin-muted">{p.toUpperCase()}</span>;
-  }
-  return <span className="rounded-md border border-admin-border bg-admin-subtle px-2 py-0.5 text-xs font-bold text-admin-muted">{process || "?"}</span>;
+  if (p === "auto") return <Badge variant="success" title="AUTO · lisensi langsung">AUTO</Badge>;
+  if (p === "manual") return <Badge variant="warning" title="MANUAL · diproses admin SK">MANUAL</Badge>;
+  if (p === "h2h" || p === "smm" || p === "vip") return <Badge variant="secondary" title={`${p.toUpperCase()} · belum didukung fase 1`}>{p.toUpperCase()}</Badge>;
+  return <Badge variant="secondary">{process || "?"}</Badge>;
 }
 
 const RETRYABLE_SK_STATUS = ["pending", "retry", "failed", "blocked_balance"];
@@ -183,6 +170,8 @@ function canRetrySkLink(order: { status: string; attempt_count?: number; max_att
   if (!RETRYABLE_SK_STATUS.includes(order.status)) return false;
   return Number(order.attempt_count ?? 0) < Number(order.max_attempts ?? 3);
 }
+
+const ORDER_FILTERS: [string, string][] = [["all", "Semua"], ["pending", "Pending"], ["submitted", "Terkirim"], ["processing", "Diproses"], ["retry", "Retry"], ["blocked_balance", "Saldo habis"], ["failed", "Gagal"], ["completed", "Selesai"]];
 
 export function SekalipayManager() {
   const toast = useToast();
@@ -674,9 +663,10 @@ export function SekalipayManager() {
   const markupTotalPages = Math.max(1, Math.ceil(markupFiltered.length / markupPerPage));
   const markupSafePage = Math.min(markupPage, markupTotalPages);
   const markupPaged = markupFiltered.slice((markupSafePage - 1) * markupPerPage, markupSafePage * markupPerPage);
+  const orderPages = Math.max(1, Math.ceil(orderTotal / ORDER_PER_PAGE));
 
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-4 space-y-6">
       <SupplierTabs
         tabs={[
           { id: "ringkas", label: "Ringkas" },
@@ -690,175 +680,195 @@ export function SekalipayManager() {
         onChange={(tab) => openTab(tab as typeof skTab)}
       />
       {skTab === "ringkas" && (
-      <section className="admin-surface overflow-hidden rounded-xl">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
+      <section className="space-y-4">
+        <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-admin-fg">Saldo Sekalipay</h2>
-            <p className="mt-0.5 text-xs text-admin-muted">Diambil real-time dari API SK setiap dibuka. Supplier kedua paralel WR.</p>
+            <h2 className="text-lg font-semibold text-admin-fg">Saldo Sekalipay</h2>
+            <p className="mt-1 text-sm text-admin-muted">Diambil real-time dari API SK setiap dibuka. Supplier kedua paralel WR.</p>
           </div>
-          <button onClick={() => void loadSaldo()} disabled={saldoLoading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg disabled:opacity-40">
-            <IosIcon name="refresh" size={13} tint="white" /> Muat ulang
-          </button>
+          <Button variant="outline" onClick={() => void loadSaldo()} disabled={saldoLoading}>{saldoLoading ? <Spinner size={13} /> : <RefreshCw />} Muat ulang</Button>
         </header>
-        <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
-          <div className={`rounded-xl border p-4 ${saldo.current?.isLow ? "border-red-400/20 bg-red-500/[0.06]" : "border-emerald-400/15 bg-emerald-400/[0.06]"}`}>
-            <p className="text-xs uppercase tracking-wide text-admin-muted">Saldo saat ini</p>
-            <p className={`mt-1 text-lg font-bold tabular-nums ${saldo.current?.isLow ? "text-admin-danger" : "text-admin-success"}`}>
-              {saldoLoading ? "…" : balance != null ? formatRupiah(balance) : "—"}
-            </p>
-            {saldo.current?.isLow && <p className="mt-1 text-xs text-admin-danger">Di bawah batas {formatRupiah(saldo.current.threshold)} — segera top up.</p>}
-          </div>
-          <div className="rounded-xl border border-admin-border bg-admin-subtle p-4">
-            <p className="text-xs uppercase tracking-wide text-admin-muted">Estimasi kapasitas</p>
-            <p className="mt-1 text-lg font-bold text-admin-fg tabular-nums">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
-            <p className="mt-1 text-xs text-admin-muted">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
-          </div>
-          <div className="rounded-xl border border-admin-border bg-admin-subtle p-4">
-            <p className="text-xs uppercase tracking-wide text-admin-muted">Sync terakhir</p>
-            <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="non-auto" />
-            <button onClick={() => void forceSync()} disabled={syncing} className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
-              {syncing ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />}{syncing ? "Sync…" : "Force Sync Now"}
-            </button>
-          </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card className={saldo.current?.isLow ? "border-admin-danger/30" : undefined}>
+            <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-wide">Saldo saat ini</CardDescription></CardHeader>
+            <CardContent className="p-4 pt-0">
+              {saldoLoading ? <Skeleton className="h-8 w-32" /> : <p className={`text-2xl font-semibold tabular-nums ${saldo.current?.isLow ? "text-admin-danger" : "text-admin-success"}`}>{balance != null ? formatRupiah(balance) : "—"}</p>}
+              <p className="mt-1 text-xs text-admin-muted">
+                {saldo.current?.isLow ? `Di bawah batas ${formatRupiah(saldo.current.threshold)} — segera top up.` : "Di atas batas aman operasional."}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-wide">Estimasi kapasitas</CardDescription></CardHeader>
+            <CardContent className="p-4 pt-0">
+              <p className="text-2xl font-semibold tabular-nums text-admin-fg">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
+              <p className="mt-1 text-xs text-admin-muted">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-wide">Sync terakhir</CardDescription></CardHeader>
+            <CardContent className="p-4 pt-0">
+              <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="non-auto" />
+              <Button className="mt-3" size="sm" onClick={() => void forceSync()} disabled={syncing}>{syncing ? <Spinner size={13} /> : <RefreshCw />}{syncing ? "Sync…" : "Force Sync Now"}</Button>
+            </CardContent>
+          </Card>
         </div>
       </section>
       )}
       {skTab === "antrean" && (
-      <>
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Uji sandbox order</h3><p className="mt-0.5 text-xs text-admin-muted">Tanpa potong saldo. Isi product_id + variant_id SK (lihat respons sync / daftar item).</p></div>
-        </header>
-        <div className="flex flex-wrap items-center gap-2 p-4">
-          <input value={sandboxProduct} onChange={(e) => setSandboxProduct(e.target.value)} placeholder="product_id" inputMode="numeric" className="h-9 w-32 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-          <input value={sandboxVariant} onChange={(e) => setSandboxVariant(e.target.value)} placeholder="variant_id" inputMode="numeric" className="h-9 w-32 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-          <button onClick={() => void runSandbox()} disabled={sandboxing} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
-            {sandboxing ? <Spinner size={13} /> : null}{sandboxing ? "Mengirim…" : "Kirim sandbox"}
-          </button>
-          {sandboxResult && <p className="w-full font-mono text-xs text-admin-muted">{sandboxResult}</p>}
-        </div>
-      </section>
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Antrean order SK</h3><p className="mt-0.5 text-xs text-admin-muted">Order lunas yang diteruskan ke Sekalipay. Cari by invoice SK atau kode Axvara.</p></div>
-          <input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice SK / kode Axvara…" className="h-9 w-full max-w-[240px] rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none sm:ml-auto" />
-          <div className="flex flex-wrap gap-2">
-            {[["all", "Semua"], ["pending", "Pending"], ["submitted", "Terkirim"], ["processing", "Diproses"], ["retry", "Retry"], ["blocked_balance", "Saldo habis"], ["failed", "Gagal"], ["completed", "Selesai"]].map(([value, label]) => (
-              <button key={value} onClick={() => { setOrderStatus(value); setOrderPage(1); void loadOrders(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${orderStatus === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}>{label}</button>
-            ))}
+      <div className="space-y-4">
+      <Card>
+        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Uji sandbox order</CardTitle><CardDescription className="mt-1 text-xs">Tanpa potong saldo. Isi product_id + variant_id SK (lihat respons sync / daftar item).</CardDescription></CardHeader>
+        <CardContent className="space-y-2 p-4 pt-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={sandboxProduct} onChange={(e) => setSandboxProduct(e.target.value)} placeholder="product_id" inputMode="numeric" aria-label="product_id sandbox" className="w-32" />
+            <Input value={sandboxVariant} onChange={(e) => setSandboxVariant(e.target.value)} placeholder="variant_id" inputMode="numeric" aria-label="variant_id sandbox" className="w-32" />
+            <Button onClick={() => void runSandbox()} disabled={sandboxing}>{sandboxing ? <Spinner size={13} /> : null}{sandboxing ? "Mengirim…" : "Kirim sandbox"}</Button>
           </div>
-        </header>
-        {!orders.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada order SK pada filter ini.</p> : (
-          <div className="divide-y divide-admin-border">
-            {orders.map((order) => (
-              <article key={order.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={order.status} />
-                    <span className="font-mono text-xs font-semibold text-admin-accent">{order.order_code}</span>
-                    <span className="text-xs text-admin-muted">{formatRupiah(order.sk_cost)} modal</span>
-                    {order.sk_invoice && <span className="font-mono text-xs text-admin-muted">{order.sk_invoice}</span>}
-                    {!["completed", "failed"].includes(order.status) && (() => {
-                      const age = ageLabel(order);
-                      if (!age) return null;
-                      const late = age.hours >= 13;
-                      return (
-                        <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${late ? "border-red-400/30 bg-red-500/10 text-admin-danger" : "border-admin-border bg-admin-subtle text-admin-muted"}`}>
-                          {age.text}{late ? " · lewat batas" : ""}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  {(order.customer_name || order.customer_wa || order.customer_email) && (
-                    <p className="mt-1 text-xs text-admin-muted">
-                      {[order.customer_name, order.customer_wa, order.customer_email].filter(Boolean).join(" · ")}
-                      {order.sales_channel ? ` · ${order.sales_channel}` : ""}
-                    </p>
-                  )}
-                  {order.last_error && <p className="mt-1 font-mono text-xs text-admin-danger">{order.last_error}</p>}
+          {sandboxResult && <p className="font-mono text-xs text-admin-muted">{sandboxResult}</p>}
+        </CardContent>
+      </Card>
+      <Card className="overflow-hidden">
+        <CardHeader className="gap-3 p-4">
+          <div className="min-w-0"><CardTitle className="text-base">Antrean order SK</CardTitle><CardDescription className="mt-1 text-xs">Order lunas yang diteruskan ke Sekalipay. Cari by invoice SK atau kode Axvara.</CardDescription></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={orderQuery} onChange={(e) => setOrderQuery(e.target.value)} placeholder="Cari invoice SK / kode Axvara…" aria-label="Cari invoice SK atau kode Axvara" className="w-full max-w-[260px]" />
+            <NativeSelect value={orderStatus} onChange={(e) => { setOrderStatus(e.target.value); setOrderPage(1); void loadOrders(1); }} aria-label="Filter status order SK" className="w-[180px]">
+              {ORDER_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </NativeSelect>
+          </div>
+        </CardHeader>
+        {!orders.length ? <p className="border-t border-admin-border p-10 text-center text-sm text-admin-muted">Belum ada order SK pada filter ini.</p> : <>
+          <div className="hidden border-t border-admin-border md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Order</TableHead>
+                  <TableHead>Modal</TableHead>
+                  <TableHead>Pembeli</TableHead>
+                  <TableHead>Umur antrean</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orders.map((order) => {
+                  const age = ["completed", "failed"].includes(order.status) ? null : ageLabel(order);
+                  const late = age ? age.hours >= 13 : false;
+                  const retryable = canRetrySkLink(order);
+                  return <TableRow key={order.id}>
+                    <TableCell><StatusBadge status={order.status} /></TableCell>
+                    <TableCell>
+                      <p className="font-mono text-xs font-semibold text-admin-accent">{order.order_code}</p>
+                      {order.sk_invoice && <p className="mt-1 font-mono text-xs text-admin-muted">{order.sk_invoice}</p>}
+                      {order.last_error && <p className="mt-1 font-mono text-xs text-admin-danger">{order.last_error}</p>}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs tabular-nums">{formatRupiah(order.sk_cost)}</TableCell>
+                    <TableCell className="text-xs text-admin-muted">{[order.customer_name, order.customer_wa, order.customer_email].filter(Boolean).join(" · ") || "—"}{order.sales_channel ? ` · ${order.sales_channel}` : ""}</TableCell>
+                    <TableCell>{age ? <Badge variant={late ? "destructive" : "secondary"}>{age.text}{late ? " · lewat batas" : ""}</Badge> : <span className="text-xs text-admin-muted">—</span>}</TableCell>
+                    <TableCell>
+                      <div className="flex justify-end">
+                        {retryable ? <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id}>{retrying === order.id ? <Spinner size={13} /> : <RefreshCw />} Retry</Button>
+                          <Button size="sm" variant="outline" className="border-admin-danger/30 text-admin-danger" onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id}>{voiding === order.id ? <Spinner size={13} /> : <X />} Batal</Button>
+                        </div> : RETRYABLE_SK_STATUS.includes(order.status) ? <div className="space-y-1 text-right">
+                          <Badge variant="destructive">Percobaan habis</Badge>
+                          <p className="max-w-[260px] text-xs leading-4 text-admin-muted">Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan.</p>
+                        </div> : null}
+                      </div>
+                    </TableCell>
+                  </TableRow>;
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-3 border-t border-admin-border p-4 md:hidden">
+            {orders.map((order) => {
+              const age = ["completed", "failed"].includes(order.status) ? null : ageLabel(order);
+              const late = age ? age.hours >= 13 : false;
+              const retryable = canRetrySkLink(order);
+              return <article key={order.id} className="space-y-2 rounded-md border border-admin-border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={order.status} />
+                  {age && <Badge variant={late ? "destructive" : "secondary"}>{age.text}{late ? " · lewat batas" : ""}</Badge>}
                 </div>
-                {canRetrySkLink(order) ? (
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
-                      {retrying === order.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="black" />} Retry
-                    </button>
-                    <button onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id} className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3.5 text-xs font-bold text-admin-danger transition hover:bg-red-500/20 disabled:opacity-40">
-                      {voiding === order.id ? <Spinner size={13} /> : null} Batal
-                    </button>
-                  </div>
-                ) : RETRYABLE_SK_STATUS.includes(order.status) ? (
-                  <span title="Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan." className="inline-flex h-9 shrink-0 items-center rounded-xl border border-red-400/25 bg-red-500/10 px-3 text-xs font-semibold text-admin-danger">
-                    Percobaan habis
-                  </span>
-                ) : null}
-              </article>
-            ))}
+                <p className="font-mono text-xs font-semibold text-admin-accent">{order.order_code}</p>
+                <p className="text-xs text-admin-muted">{formatRupiah(order.sk_cost)} modal{order.sk_invoice ? ` · ${order.sk_invoice}` : ""}</p>
+                {(order.customer_name || order.customer_wa || order.customer_email) && <p className="text-xs text-admin-muted">{[order.customer_name, order.customer_wa, order.customer_email].filter(Boolean).join(" · ")}{order.sales_channel ? ` · ${order.sales_channel}` : ""}</p>}
+                {order.last_error && <p className="font-mono text-xs text-admin-danger">{order.last_error}</p>}
+                {retryable ? <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => void retryOrder(order.id)} disabled={retrying === order.id || voiding === order.id}>{retrying === order.id ? <Spinner size={13} /> : <RefreshCw />} Retry</Button>
+                  <Button size="sm" variant="outline" className="border-admin-danger/30 text-admin-danger" onClick={() => void voidOrder(order.id, order.order_code)} disabled={retrying === order.id || voiding === order.id}>{voiding === order.id ? <Spinner size={13} /> : <X />} Batal</Button>
+                </div> : RETRYABLE_SK_STATUS.includes(order.status) ? <div className="space-y-1">
+                  <Badge variant="destructive">Percobaan habis</Badge>
+                  <p className="text-xs leading-4 text-admin-muted">Percobaan otomatis sudah habis. Serahkan manual dari tab Pesanan.</p>
+                </div> : null}
+              </article>;
+            })}
           </div>
-        )}
+        </>}
         {orderTotal > ORDER_PER_PAGE && (
-          <div className="flex items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
-            <p className="text-xs text-admin-muted">Hal {orderPage} dari {Math.max(1, Math.ceil(orderTotal / ORDER_PER_PAGE))} • {orderTotal} order</p>
-            <div className="flex items-center gap-1.5">
-              <button disabled={orderPage <= 1} onClick={() => void loadOrders(orderPage - 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
-              <button disabled={orderPage >= Math.ceil(orderTotal / ORDER_PER_PAGE)} onClick={() => void loadOrders(orderPage + 1)} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
+            <p className="text-xs text-admin-muted">Hal {orderPage} dari {orderPages} · {orderTotal} order</p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={orderPage <= 1} onClick={() => void loadOrders(orderPage - 1)}><ChevronLeft /> Sebelumnya</Button>
+              <Button variant="outline" size="sm" disabled={orderPage >= orderPages} onClick={() => void loadOrders(orderPage + 1)}>Berikutnya <ChevronRight /></Button>
             </div>
           </div>
         )}
-      </section>
-      </>
+      </Card>
+      </div>
       )}
       {skTab === "aturan" && (
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="border-b border-admin-border p-4"><h3 className="text-sm font-semibold text-admin-fg">Exclusion rules</h3><p className="mt-0.5 text-xs text-admin-muted">Produk yang cocok pola tidak dibuatkan katalog (registry tetap dicatat).</p></header>
-        <div className="space-y-2 p-4">
-          {exclusions.map((rule) => (
-            <div key={rule.id} className="flex items-center gap-3 rounded-xl border border-admin-border bg-black/15 px-3 py-2">
-              <span className="min-w-0 flex-1 font-mono text-xs text-admin-muted">{rule.pattern}</span>
-              {rule.reason && <span className="hidden max-w-[40%] truncate text-xs text-admin-muted sm:inline">{rule.reason}</span>}
-              <button onClick={() => void deleteExclusion(rule.id)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-admin-danger transition hover:bg-red-500/20" aria-label={`Hapus exclusion ${rule.pattern}`}>
-                <IosIcon name="close" size={13} tint="#F87171" />
-              </button>
-            </div>
-          ))}
-          <div className="flex gap-2">
-            <input value={newPattern} onChange={(e) => setNewPattern(e.target.value)} placeholder="cth: pulsa" className="h-10 min-w-0 flex-1 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-            <button onClick={() => void addExclusion()} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary">
-              <IosIcon name="plus" size={13} tint="black" /> Tambah
-            </button>
+      <Card className="overflow-hidden">
+        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Exclusion rules</CardTitle><CardDescription className="mt-1 text-xs">Produk yang cocok pola tidak dibuatkan katalog (registry tetap dicatat).</CardDescription></CardHeader>
+        <CardContent className="space-y-3 p-4 pt-0">
+          {exclusions.length === 0 ? <p className="text-sm text-admin-muted">Belum ada aturan exclusion.</p> : <div className="rounded-md border border-admin-border">
+            <Table>
+              <TableHeader><TableRow><TableHead>Pola</TableHead><TableHead>Alasan</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {exclusions.map((rule) => <TableRow key={rule.id}>
+                  <TableCell className="font-mono text-xs text-admin-fg">{rule.pattern}</TableCell>
+                  <TableCell className="text-xs text-admin-muted">{rule.reason ?? "—"}</TableCell>
+                  <TableCell>
+                    <div className="flex justify-end">
+                      <Tooltip><TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" className="text-admin-danger" onClick={() => void deleteExclusion(rule.id)} aria-label={`Hapus exclusion ${rule.pattern}`}><Trash2 /></Button>
+                      </TooltipTrigger><TooltipContent>Hapus exclusion</TooltipContent></Tooltip>
+                    </div>
+                  </TableCell>
+                </TableRow>)}
+              </TableBody>
+            </Table>
+          </div>}
+          <div className="flex flex-wrap gap-2">
+            <Input value={newPattern} onChange={(e) => setNewPattern(e.target.value)} placeholder="cth: pulsa" aria-label="Pola exclusion baru" className="min-w-0 flex-1" />
+            <Button onClick={() => void addExclusion()}><Plus /> Tambah</Button>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
       )}
       {skTab === "markup" && (
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Markup per varian</h3><p className="mt-0.5 text-xs text-admin-muted">Ubah markup → harga jual Axvara dihitung ulang otomatis.</p></div>
-          <input value={markupQuery} onChange={(e) => { setMarkupQuery(e.target.value); setMarkupPage(1); }} placeholder="Cari varian…" className="ml-auto h-9 w-full max-w-[220px] rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-        </header>
-        <div className="flex flex-wrap items-center gap-2 border-b border-admin-border p-3" role="tablist" aria-label="Status tampil varian">
-          {([["live", `Live (${markupCountsLocal.live})`], ["hidden", `Disembunyikan otomatis (${markupCountsLocal.hidden})`], ["off", `Nonaktif manual (${markupCountsLocal.off})`], ["all", `Semua (${markups.length})`]] as const).map(([value, label]) => (
-            <button
-              key={value}
-              role="tab"
-              aria-selected={markupTab === value}
-              onClick={() => { setMarkupTab(value); setMarkupPage(1); }}
-              className={`h-8 whitespace-nowrap rounded-md px-3.5 text-xs font-bold transition ${markupTab === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
-            >
-              {label}
-            </button>
-          ))}
-          <select
-            value={markupPerPage}
-            onChange={(e) => { setMarkupPerPage(Number(e.target.value) as 20 | 50 | 100); setMarkupPage(1); }}
-            aria-label="Jumlah per halaman"
-            className="ml-auto h-8 shrink-0 rounded-md bg-admin-subtle border border-admin-border px-2.5 text-xs font-semibold text-admin-muted focus:outline-none focus:border-admin-accent/40"
-          >
-            <option value={20}>20 / hal</option>
-            <option value={50}>50 / hal</option>
-            <option value={100}>100 / hal</option>
-          </select>
+      <Card className="overflow-hidden">
+        <CardHeader className="gap-3 p-4">
+          <div className="min-w-0"><CardTitle className="text-base">Markup per varian</CardTitle><CardDescription className="mt-1 text-xs">Ubah markup → harga jual Axvara dihitung ulang otomatis.</CardDescription></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={markupQuery} onChange={(e) => { setMarkupQuery(e.target.value); setMarkupPage(1); }} placeholder="Cari varian…" aria-label="Cari varian" className="w-full max-w-[240px]" />
+            <NativeSelect value={markupPerPage} onChange={(e) => { setMarkupPerPage(Number(e.target.value) as 20 | 50 | 100); setMarkupPage(1); }} aria-label="Jumlah per halaman" className="w-[110px]">
+              <option value={20}>20 / hal</option>
+              <option value={50}>50 / hal</option>
+              <option value={100}>100 / hal</option>
+            </NativeSelect>
+          </div>
+        </CardHeader>
+        <div className="border-t border-admin-border px-4 py-3">
+          <Tabs value={markupTab} onValueChange={value => { setMarkupTab(value as typeof markupTab); setMarkupPage(1); }}>
+            <TabsList aria-label="Status tampil varian">
+              {([["live", `Live (${markupCountsLocal.live})`], ["hidden", `Disembunyikan otomatis (${markupCountsLocal.hidden})`], ["off", `Nonaktif manual (${markupCountsLocal.off})`], ["all", `Semua (${markups.length})`]] as const).map(([value, label]) => <TabsTrigger key={value} value={value}>{label}</TabsTrigger>)}
+            </TabsList>
+          </Tabs>
         </div>
-        <div className="border-b border-admin-border p-3">
+        <div className="border-y border-admin-border px-4 py-3">
           <BulkMarkupToolbar
             visibleIds={markupPaged.map((r) => (r as MarkupRow).sk_variant_id)}
             totalCount={markupFiltered.length}
@@ -874,163 +884,205 @@ export function SekalipayManager() {
             onApply={applyBulkMarkup}
           />
         </div>
-        {!markups.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada varian SK tersinkron.</p> : markupFiltered.length === 0 ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada varian pada tab ini — coba ubah kata kunci.</p> : (
-          <div className="divide-y divide-admin-border">
+        {!markups.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada varian SK tersinkron.</p> : markupFiltered.length === 0 ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada varian pada tab ini — coba ubah kata kunci.</p> : <>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10"><span className="sr-only">Pilih</span></TableHead>
+                  <TableHead>Varian</TableHead>
+                  <TableHead>Modal</TableHead>
+                  <TableHead>Jual</TableHead>
+                  <TableHead>Stok</TableHead>
+                  <TableHead>Markup</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {markupPaged.map((row) => {
+                  const edit = editingMarkup[row.sk_variant_id] ?? { percent: String(row.markup_percent), fixed: String(row.markup_fixed) };
+                  const vStatus = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_status ?? "live";
+                  const vReason = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_reason ?? "";
+                  return <TableRow key={row.sk_variant_id}>
+                    <TableCell>
+                      <Checkbox checked={bulkSelected.has(row.sk_variant_id)} aria-label={`Pilih ${row.sk_variant_name} untuk bulk markup`} onCheckedChange={() => setBulkSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(row.sk_variant_id)) next.delete(row.sk_variant_id);
+                        else next.add(row.sk_variant_id);
+                        return next;
+                      })} />
+                    </TableCell>
+                    <TableCell className="min-w-[220px]">
+                      <p className="truncate text-sm font-semibold text-admin-fg">{row.sk_product_name ? `${row.sk_product_name} — ` : ""}{row.sk_variant_name}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2"><ProcessBadge process={row.sk_order_process} /><VariantStatusBadge status={vStatus} reason={vReason} /></div>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs tabular-nums">{formatRupiah(row.sk_price)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs font-semibold tabular-nums text-admin-fg">{formatRupiah(row.axvara_sell_price)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs tabular-nums">{row.sk_stock}{row.sk_min_order && Number(row.sk_min_order) > 1 ? <p className="text-admin-muted">Min. {row.sk_min_order}</p> : null}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" aria-label={`Markup persen ${row.sk_variant_name}`} className="w-16 text-right tabular-nums" />
+                        <Input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" aria-label={`Markup nominal ${row.sk_variant_name}`} className="w-24 text-right tabular-nums" />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end"><Button size="sm" onClick={() => void saveMarkup(row)}>Simpan</Button></div>
+                    </TableCell>
+                  </TableRow>;
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-3 p-4 md:hidden">
             {markupPaged.map((row) => {
               const edit = editingMarkup[row.sk_variant_id] ?? { percent: String(row.markup_percent), fixed: String(row.markup_fixed) };
               const vStatus = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_status ?? "live";
               const vReason = (row as MarkupRow & { variant_status?: string; variant_reason?: string }).variant_reason ?? "";
-              return (
-                <article key={row.sk_variant_id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={bulkSelected.has(row.sk_variant_id)}
-                        onChange={() => setBulkSelected((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(row.sk_variant_id)) next.delete(row.sk_variant_id);
-                          else next.add(row.sk_variant_id);
-                          return next;
-                        })}
-                        aria-label={`Pilih ${row.sk_variant_name} untuk bulk markup`}
-                        className="h-4 w-4 shrink-0 accent-admin-accent"
-                      />
-                      <p className="truncate text-sm font-semibold text-admin-fg">{row.sk_product_name ? `${row.sk_product_name} — ` : ""}{row.sk_variant_name}</p>
-                      <ProcessBadge process={row.sk_order_process} />
-                      <VariantStatusBadge status={vStatus} reason={vReason} />
-                    </div>
-                    <p className="mt-1 text-xs text-admin-muted">Modal {formatRupiah(row.sk_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.sk_stock}{row.sk_min_order && Number(row.sk_min_order) > 1 ? ` · Min. ${row.sk_min_order}` : ""}{row.sk_status ? ` · ${row.sk_status}` : ""}{row.axvara_variant_id ? "" : " · TANPA katalog"}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex items-center gap-1.5 text-xs text-admin-muted">%<input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" className="h-9 w-16 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none" /></label>
-                    <label className="flex items-center gap-1.5 text-xs text-admin-muted">+Rp<input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" className="h-9 w-24 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none" /></label>
-                    <button onClick={() => void saveMarkup(row)} className="inline-flex h-9 items-center rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle">Simpan</button>
-                  </div>
-                </article>
-              );
+              return <article key={row.sk_variant_id} className="space-y-2 rounded-md border border-admin-border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Checkbox checked={bulkSelected.has(row.sk_variant_id)} aria-label={`Pilih ${row.sk_variant_name} untuk bulk markup`} onCheckedChange={() => setBulkSelected((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(row.sk_variant_id)) next.delete(row.sk_variant_id);
+                    else next.add(row.sk_variant_id);
+                    return next;
+                  })} />
+                  <p className="truncate text-sm font-semibold text-admin-fg">{row.sk_product_name ? `${row.sk_product_name} — ` : ""}{row.sk_variant_name}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2"><ProcessBadge process={row.sk_order_process} /><VariantStatusBadge status={vStatus} reason={vReason} /></div>
+                <p className="text-xs text-admin-muted">Modal {formatRupiah(row.sk_price)} · Jual {formatRupiah(row.axvara_sell_price)} · Stok {row.sk_stock}{row.sk_min_order && Number(row.sk_min_order) > 1 ? ` · Min. ${row.sk_min_order}` : ""}{row.sk_status ? ` · ${row.sk_status}` : ""}{row.axvara_variant_id ? "" : " · TANPA katalog"}{vStatus !== "live" && vReason ? ` · ${vReason}` : ""}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input value={edit.percent} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: e.target.value, fixed: edit.fixed } }))} inputMode="numeric" aria-label={`Markup persen ${row.sk_variant_name}`} className="w-16 text-right tabular-nums" />
+                  <Input value={edit.fixed} onChange={(e) => setEditingMarkup((s) => ({ ...s, [row.sk_variant_id]: { percent: edit.percent, fixed: e.target.value } }))} inputMode="numeric" aria-label={`Markup nominal ${row.sk_variant_name}`} className="w-24 text-right tabular-nums" />
+                  <Button size="sm" onClick={() => void saveMarkup(row)}>Simpan</Button>
+                </div>
+              </article>;
             })}
           </div>
-        )}
+        </>}
         {markupFiltered.length > markupPerPage && (
-          <div className="flex items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
-            <p className="text-xs text-admin-muted">Hal {markupSafePage} dari {markupTotalPages} • {markupFiltered.length} varian</p>
-            <div className="flex items-center gap-1.5">
-              <button disabled={markupSafePage <= 1} onClick={() => setMarkupPage((p) => Math.max(1, p - 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none"><IosIcon name="chevron-left" size={12} tint="white" /> Sebelumnya</button>
-              <span className="text-xs text-admin-muted px-1">{markupSafePage} / {markupTotalPages}</span>
-              <button disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage((p) => Math.min(markupTotalPages, p + 1))} className="inline-flex h-8 items-center gap-1 px-3 rounded-md admin-surface text-xs font-semibold text-admin-muted disabled:opacity-40 disabled:pointer-events-none">Berikutnya <IosIcon name="chevron-right" size={12} tint="white" /></button>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-admin-border px-4 py-3">
+            <p className="text-xs text-admin-muted">Hal {markupSafePage} dari {markupTotalPages} · {markupFiltered.length} varian</p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={markupSafePage <= 1} onClick={() => setMarkupPage((p) => Math.max(1, p - 1))}><ChevronLeft /> Sebelumnya</Button>
+              <span className="text-xs tabular-nums text-admin-muted">{markupSafePage} / {markupTotalPages}</span>
+              <Button variant="outline" size="sm" disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage((p) => Math.min(markupTotalPages, p + 1))}>Berikutnya <ChevronRight /></Button>
             </div>
           </div>
         )}
-      </section>
+      </Card>
       )}
       {skTab === "audit" && (
-      <>
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Mutasi saldo <span className="ml-1 rounded-md bg-admin-primary/15 px-2 py-0.5 text-xs font-bold text-admin-accent">KHAS SK</span></h3><p className="mt-0.5 text-xs text-admin-muted">Audit credit/debit + saldo sebelum/sesudah per invoice. WR tidak punya ini.</p></div>
-          <div className="ml-auto flex flex-wrap gap-2">
-            {[["all", "Semua"], ["credit", "Masuk"], ["debit", "Keluar"]].map(([value, label]) => (
-              <button key={value} onClick={() => setMutationDir(value)} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${mutationDir === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}>{label}</button>
-            ))}
-            <button onClick={() => void loadMutations()} disabled={mutationsLoading} className="inline-flex h-8 items-center gap-2 rounded-lg border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg disabled:opacity-40">
-              {mutationsLoading ? <Spinner size={12} /> : <IosIcon name="refresh" size={12} tint="white" />} Muat
-            </button>
+      <div className="space-y-4">
+      <Card className="overflow-hidden">
+        <CardHeader className="gap-3 p-4">
+          <div className="min-w-0">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">Mutasi saldo <Badge variant="info">KHAS SK</Badge></CardTitle>
+            <CardDescription className="mt-1 text-xs">Audit credit/debit + saldo sebelum/sesudah per invoice. WR tidak punya ini.</CardDescription>
           </div>
-        </header>
-        {!mutations.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada mutasi — tekan Muat.</p> : (
-          <div className="divide-y divide-admin-border">
-            {mutations.map((m, i) => (
-              <div key={`${m.invoice}-${i}`} className="flex flex-wrap items-center gap-2 p-4">
-                <span className={`rounded-md border px-2 py-0.5 text-xs font-bold ${m.direction === "credit" ? "border-emerald-400/25 bg-emerald-500/10 text-admin-success" : "border-red-400/25 bg-red-500/10 text-admin-danger"}`}>
-                  {m.direction === "credit" ? "+" : "−"}{formatRupiah(m.amount)}
-                </span>
-                <span className="font-mono text-xs text-admin-muted">{m.invoice}</span>
-                <span className="text-xs text-admin-muted">{m.type}</span>
-                <span className="ml-auto text-xs text-admin-muted tabular-nums">{formatRupiah(m.balance_before)} → {formatRupiah(m.balance_after)}</span>
-              </div>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <NativeSelect value={mutationDir} onChange={(e) => setMutationDir(e.target.value)} aria-label="Arah mutasi" className="w-[150px]">
+              {[["all", "Semua"], ["credit", "Masuk"], ["debit", "Keluar"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </NativeSelect>
+            <Button variant="outline" size="sm" onClick={() => void loadMutations()} disabled={mutationsLoading}>{mutationsLoading ? <Spinner size={12} /> : <RefreshCw />} Muat</Button>
           </div>
-        )}
-      </section>
+        </CardHeader>
+        {!mutations.length ? <p className="border-t border-admin-border p-10 text-center text-sm text-admin-muted">Belum ada mutasi — tekan Muat.</p> : <div className="border-t border-admin-border">
+          <Table>
+            <TableHeader><TableRow><TableHead>Nominal</TableHead><TableHead>Invoice</TableHead><TableHead>Jenis</TableHead><TableHead>Saldo</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {mutations.map((m, i) => <TableRow key={`${m.invoice}-${i}`}>
+                <TableCell><Badge variant={m.direction === "credit" ? "success" : "destructive"} className="tabular-nums">{m.direction === "credit" ? "+" : "−"}{formatRupiah(m.amount)}</Badge></TableCell>
+                <TableCell className="font-mono text-xs text-admin-muted">{m.invoice}</TableCell>
+                <TableCell className="text-xs text-admin-muted">{m.type}</TableCell>
+                <TableCell className="whitespace-nowrap text-xs tabular-nums text-admin-muted">{formatRupiah(m.balance_before)} → {formatRupiah(m.balance_after)}</TableCell>
+              </TableRow>)}
+            </TableBody>
+          </Table>
+        </div>}
+      </Card>
 
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Transaksi SK <span className="ml-1 rounded-md bg-admin-primary/15 px-2 py-0.5 text-xs font-bold text-admin-accent">KHAS SK</span></h3><p className="mt-0.5 text-xs text-admin-muted">Daftar transaksi di sisi Sekalipay (audit/refund). WR tidak punya ini.</p></div>
-          <button onClick={() => void loadTransactions()} disabled={trxLoading} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg disabled:opacity-40">
-            {trxLoading ? <Spinner size={12} /> : <IosIcon name="refresh" size={12} tint="white" />} Muat
-          </button>
-        </header>
-        {!transactions.length ? <p className="p-10 text-center text-sm text-admin-muted">Belum ada data — tekan Muat.</p> : (
-          <div className="divide-y divide-admin-border">
-            {transactions.map((t) => (
-              <div key={t.invoice} className="flex flex-wrap items-center gap-2 p-4">
-                <StatusBadge status={t.status} />
-                <span className="font-mono text-xs text-admin-muted">{t.invoice}</span>
-                <span className="font-mono text-xs text-admin-muted">{t.ref_id}</span>
-                <span className="ml-auto text-xs text-admin-muted tabular-nums">{formatRupiah(t.amount)}</span>
-              </div>
-            ))}
+      <Card className="overflow-hidden">
+        <CardHeader className="gap-3 p-4">
+          <div className="min-w-0">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">Transaksi SK <Badge variant="info">KHAS SK</Badge></CardTitle>
+            <CardDescription className="mt-1 text-xs">Daftar transaksi di sisi Sekalipay (audit/refund). WR tidak punya ini.</CardDescription>
           </div>
-        )}
-      </section>
-      </>
+          <Button variant="outline" size="sm" onClick={() => void loadTransactions()} disabled={trxLoading}>{trxLoading ? <Spinner size={12} /> : <RefreshCw />} Muat</Button>
+        </CardHeader>
+        {!transactions.length ? <p className="border-t border-admin-border p-10 text-center text-sm text-admin-muted">Belum ada data — tekan Muat.</p> : <div className="border-t border-admin-border">
+          <Table>
+            <TableHeader><TableRow><TableHead>Status</TableHead><TableHead>Invoice</TableHead><TableHead>Ref</TableHead><TableHead>Nominal</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {transactions.map((t) => <TableRow key={t.invoice}>
+                <TableCell><StatusBadge status={t.status} /></TableCell>
+                <TableCell className="font-mono text-xs text-admin-muted">{t.invoice}</TableCell>
+                <TableCell className="font-mono text-xs text-admin-muted">{t.ref_id}</TableCell>
+                <TableCell className="whitespace-nowrap text-xs tabular-nums text-admin-muted">{formatRupiah(t.amount)}</TableCell>
+              </TableRow>)}
+            </TableBody>
+          </Table>
+        </div>}
+      </Card>
+      </div>
       )}
       {skTab === "alat" && (
-      <>
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="border-b border-admin-border p-4"><h3 className="text-sm font-semibold text-admin-fg">Cek akun <span className="ml-1 rounded-md bg-admin-primary/15 px-2 py-0.5 text-xs font-bold text-admin-accent">KHAS SK</span></h3><p className="mt-0.5 text-xs text-admin-muted">Validasi nickname/nama sebelum order (game, e-wallet). WR tidak punya ini.</p></header>
-        <div className="flex flex-wrap items-center gap-2 p-4">
-          <input value={validateItem} onChange={(e) => setValidateItem(e.target.value)} placeholder="item_id" inputMode="numeric" className="h-9 w-28 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-          <input value={validateCustomer} onChange={(e) => setValidateCustomer(e.target.value)} placeholder="User ID / nomor" className="h-9 min-w-[160px] flex-1 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-          <input value={validateZone} onChange={(e) => setValidateZone(e.target.value)} placeholder="zone/server (opsional)" className="h-9 w-40 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-          <button onClick={() => void runValidate()} disabled={validating} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
-            {validating ? <Spinner size={13} /> : null}{validating ? "Mengecek…" : "Cek akun"}
-          </button>
-          {validateResult && <p className="w-full font-mono text-xs text-admin-muted">{validateResult}</p>}
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4">
-          <div className="min-w-0"><h3 className="text-sm font-semibold text-admin-fg">Stock lock <span className="ml-1 rounded-md bg-admin-primary/15 px-2 py-0.5 text-xs font-bold text-admin-accent">KHAS SK</span></h3><p className="mt-0.5 text-xs text-admin-muted">Reservasi stok 10 mnt anti-overselling. WR tidak punya ini.</p></div>
-          <button onClick={() => void loadLocks()} className="ml-auto inline-flex h-8 items-center gap-2 rounded-lg border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">
-            <IosIcon name="refresh" size={12} tint="white" /> Muat lock aktif
-          </button>
-        </header>
-        <div className="flex flex-wrap items-center gap-2 p-4">
-          <input value={lockItem} onChange={(e) => setLockItem(e.target.value)} placeholder="item_id" inputMode="numeric" className="h-9 w-28 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-          <input value={lockQty} onChange={(e) => setLockQty(e.target.value)} placeholder="qty" inputMode="numeric" className="h-9 w-20 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-          <button onClick={() => void createLock()} disabled={locking} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">
-            {locking ? <Spinner size={13} /> : null}{locking ? "Mengunci…" : "Kunci 10 mnt"}
-          </button>
-        </div>
-        {locks.length > 0 && (
-          <div className="divide-y divide-admin-border border-t border-admin-border">
-            {locks.map((l) => (
-              <div key={l.lock_token} className="flex flex-wrap items-center gap-2 p-4">
-                <span className="font-mono text-xs text-admin-accent">{l.lock_token}</span>
-                <span className="text-xs text-admin-muted">item {l.item_id} × {l.quantity}</span>
-                <span className="text-xs text-admin-muted">s/d {formatDate(l.expires_at)}</span>
-                <button onClick={() => void releaseLock(l.lock_token)} className="ml-auto inline-flex h-8 items-center rounded-lg border border-red-400/30 bg-red-500/10 px-3 text-xs font-bold text-admin-danger transition hover:bg-red-500/20">Lepas</button>
-              </div>
-            ))}
+      <div className="space-y-4">
+      <Card>
+        <CardHeader className="p-4 pb-3"><CardTitle className="flex flex-wrap items-center gap-2 text-base">Cek akun <Badge variant="info">KHAS SK</Badge></CardTitle><CardDescription className="mt-1 text-xs">Validasi nickname/nama sebelum order (game, e-wallet). WR tidak punya ini.</CardDescription></CardHeader>
+        <CardContent className="space-y-2 p-4 pt-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={validateItem} onChange={(e) => setValidateItem(e.target.value)} placeholder="item_id" inputMode="numeric" aria-label="item_id validasi" className="w-28" />
+            <Input value={validateCustomer} onChange={(e) => setValidateCustomer(e.target.value)} placeholder="User ID / nomor" aria-label="Customer ID validasi" className="min-w-[160px] flex-1" />
+            <Input value={validateZone} onChange={(e) => setValidateZone(e.target.value)} placeholder="zone/server (opsional)" aria-label="Zone validasi" className="w-40" />
+            <Button onClick={() => void runValidate()} disabled={validating}>{validating ? <Spinner size={13} /> : null}{validating ? "Mengecek…" : "Cek akun"}</Button>
           </div>
-        )}
-      </section>
+          {validateResult && <p className="font-mono text-xs text-admin-muted">{validateResult}</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="gap-3 p-4">
+          <div className="min-w-0"><CardTitle className="flex flex-wrap items-center gap-2 text-base">Stock lock <Badge variant="info">KHAS SK</Badge></CardTitle><CardDescription className="mt-1 text-xs">Reservasi stok 10 mnt anti-overselling. WR tidak punya ini.</CardDescription></div>
+          <Button variant="outline" size="sm" onClick={() => void loadLocks()}><RefreshCw /> Muat lock aktif</Button>
+        </CardHeader>
+        <CardContent className="space-y-3 p-4 pt-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={lockItem} onChange={(e) => setLockItem(e.target.value)} placeholder="item_id" inputMode="numeric" aria-label="item_id lock" className="w-28" />
+            <Input value={lockQty} onChange={(e) => setLockQty(e.target.value)} placeholder="qty" inputMode="numeric" aria-label="Jumlah lock" className="w-20" />
+            <Button onClick={() => void createLock()} disabled={locking}>{locking ? <Spinner size={13} /> : null}{locking ? "Mengunci…" : "Kunci 10 mnt"}</Button>
+          </div>
+          {locks.length > 0 && <div className="rounded-md border border-admin-border">
+            <Table>
+              <TableHeader><TableRow><TableHead>Token</TableHead><TableHead>Item</TableHead><TableHead>Berlaku sampai</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {locks.map((l) => <TableRow key={l.lock_token}>
+                  <TableCell className="font-mono text-xs text-admin-accent">{l.lock_token}</TableCell>
+                  <TableCell className="text-xs text-admin-muted">item {l.item_id} · {l.quantity} unit</TableCell>
+                  <TableCell className="text-xs text-admin-muted">{formatDate(l.expires_at)}</TableCell>
+                  <TableCell>
+                    <div className="flex justify-end">
+                      <Button size="sm" variant="outline" className="border-admin-danger/30 text-admin-danger" onClick={() => void releaseLock(l.lock_token)}>Lepas</Button>
+                    </div>
+                  </TableCell>
+                </TableRow>)}
+              </TableBody>
+            </Table>
+          </div>}
+        </CardContent>
+      </Card>
 
 
-      <section className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle">
-        <header className="border-b border-admin-border p-4"><h3 className="text-sm font-semibold text-admin-fg">Detail varian</h3><p className="mt-0.5 text-xs text-admin-muted">Capability registry (min.order, status, deskripsi, required fields) + live API.</p></header>
-        <div className="flex flex-wrap items-center gap-2 p-4">
-          <input value={detailId} onChange={(e) => setDetailId(e.target.value)} placeholder="variant_id SK" inputMode="numeric" className="h-9 w-36 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
-          <button onClick={() => void loadDetail()} disabled={detailLoading} className="inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle disabled:opacity-40">
-            {detailLoading ? <Spinner size={13} /> : null}{detailLoading ? "Memuat…" : "Lihat detail"}
-          </button>
-          {detailResult && <p className="w-full whitespace-pre-wrap font-mono text-xs text-admin-muted">{detailResult}</p>}
-        </div>
-      </section>
-      </>
+      <Card>
+        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Detail varian</CardTitle><CardDescription className="mt-1 text-xs">Capability registry (min.order, status, deskripsi, required fields) + live API.</CardDescription></CardHeader>
+        <CardContent className="space-y-2 p-4 pt-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={detailId} onChange={(e) => setDetailId(e.target.value)} placeholder="variant_id SK" inputMode="numeric" aria-label="variant_id detail" className="w-36" />
+            <Button onClick={() => void loadDetail()} disabled={detailLoading}>{detailLoading ? <Spinner size={13} /> : null}{detailLoading ? "Memuat…" : "Lihat detail"}</Button>
+          </div>
+          {detailResult && <p className="whitespace-pre-wrap break-all font-mono text-xs text-admin-muted">{detailResult}</p>}
+        </CardContent>
+      </Card>
+      </div>
       )}
     </div>
   );

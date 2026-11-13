@@ -3,11 +3,12 @@ import { navigateWithDraftGuard, pushAdminHistory } from "./AdminWorkspace";
 
 import { useEffect, useRef, useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
+import { Button, Card, CardContent, Skeleton, Tabs, TabsList, TabsTrigger } from "@/components/admin/ui";
 import { ProductsPanel } from "./pedia/ProductsPanel";
 import { OrdersPanel } from "./pedia/OrdersPanel";
 import { ServicesPanel } from "./pedia/ServicesPanel";
 import { SettingsPanel, type SettingsData } from "./pedia/SettingsPanel";
-import { BUTTON, usePanel, needsAction, productStatus, type Catalog, type ProviderHealth, type Row } from "./pedia/shared";
+import { usePanel, needsAction, productStatus, type Catalog, type ProviderHealth, type Row } from "./pedia/shared";
 
 type Tab = "orders" | "products" | "services" | "settings";
 const TABS: [Tab, string][] = [["orders", "Pesanan"], ["products", "Produk"], ["services", "Layanan IndoSMM"], ["settings", "Pengaturan"]];
@@ -50,18 +51,52 @@ export function PediaManager({ initialTab }: { initialTab?: string }) {
   const provider = health.data.providers.find(p => p.supplier === "indosmm"), balance = provider?.balance.value;
   const lowBalance = balance != null && settings.data.settings.pedia_balance_alert_rp != null && balance < settings.data.settings.pedia_balance_alert_rp;
   const sellable = catalog.data.products.filter(p => productStatus(p, catalog.data.tiers.filter(t => t.product_id === p.id)).label === "Siap dijual").length;
-  return <div className="mt-5 min-w-0 space-y-4 [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-admin-accent [&_summary:focus-visible]:outline [&_summary:focus-visible]:outline-2 [&_summary:focus-visible]:outline-admin-accent">
-    <header><h2 className="font-display text-xl font-semibold text-admin-fg">Pedia</h2><p className="mt-1 text-xs text-admin-muted">Supplier: IndoSMM</p></header>
-    <section aria-label="Ringkasan Pedia" className="grid grid-cols-[1.4fr_1fr_1fr] divide-x divide-admin-border rounded-xl border border-admin-border bg-admin-subtle md:grid-cols-3">
-      <div className="flex min-w-0 flex-col items-start justify-between gap-1 p-3 md:flex-row md:items-center md:gap-3"><div><p className="text-xs text-admin-muted">Saldo IndoSMM</p><p className={`mt-1 text-sm font-semibold ${lowBalance ? "text-admin-warning" : "text-admin-fg"}`}>{health.loading ? "Memeriksa..." : balance == null ? "Belum tersedia" : formatRupiah(balance)}{lowBalance && <span className="mt-1 block text-xs font-normal">Di bawah ambang</span>}</p><p className="mt-1 text-xs text-admin-muted">{provider?.balance.history?.[0]?.created_at ? `Diperiksa ${formatWibDateTime(provider.balance.history[0].created_at)}` : "Belum ada waktu pemeriksaan"}{provider?.balance.stale ? " · tersimpan" : ""}</p></div><button className={`${BUTTON} mt-1 md:mt-0`} disabled={health.loading} onClick={() => void health.load()}>Periksa</button></div>
-      <div className="p-3"><p className="text-xs text-admin-muted">Produk dijual</p><p className="mt-1 text-sm font-semibold text-admin-fg">{catalog.loading ? "Memuat..." : catalog.error ? "Belum tersedia" : `${sellable} / ${catalog.data.products.length}`}</p></div>
-      <button className="min-w-0 p-3 text-left transition hover:bg-admin-subtle" onClick={() => navigate("orders", true)}><span className="block text-xs text-admin-muted">Pesanan perlu tindakan</span><span className={`mt-1 block text-sm font-semibold ${attention ? "text-admin-warning" : "text-admin-fg"}`}>{orders.loading ? "Memuat..." : orders.error ? "Belum tersedia" : `${attention} →`}</span></button>
+  return <div className="mt-5 min-w-0 space-y-6">
+    <header>
+      <h2 className="text-lg font-semibold text-admin-fg">Pedia</h2>
+      <p className="mt-1 text-sm text-admin-muted">Supplier: IndoSMM</p>
+    </header>
+    <section aria-label="Ringkasan Pedia" className="grid gap-3 sm:grid-cols-3">
+      <Card>
+        <CardContent className="space-y-1 p-4">
+          <p className="text-xs text-admin-muted">Saldo IndoSMM</p>
+          <p className={`text-2xl font-semibold tabular-nums ${lowBalance ? "text-admin-warning" : "text-admin-fg"}`}>{health.loading ? "…" : balance == null ? "—" : formatRupiah(balance)}</p>
+          {lowBalance && <p className="text-xs text-admin-warning">Di bawah ambang</p>}
+          <p className="text-xs text-admin-muted">{provider?.balance.history?.[0]?.created_at ? `Diperiksa ${formatWibDateTime(provider.balance.history[0].created_at)}` : "Belum ada waktu pemeriksaan"}{provider?.balance.stale ? " · tersimpan" : ""}</p>
+          <Button variant="outline" size="sm" disabled={health.loading} onClick={() => void health.load()}>Periksa</Button>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="space-y-1 p-4">
+          <p className="text-xs text-admin-muted">Produk dijual</p>
+          <p className="text-2xl font-semibold tabular-nums text-admin-fg">{catalog.loading ? "…" : catalog.error ? "—" : `${sellable} / ${catalog.data.products.length}`}</p>
+          <p className="text-xs text-admin-muted">Siap dijual / total produk</p>
+        </CardContent>
+      </Card>
+      <Card className="transition-colors hover:border-admin-accent/40">
+        <CardContent className="p-0">
+          <Button variant="ghost" className="h-auto w-full flex-col items-start gap-1 rounded-xl p-4 text-left" onClick={() => navigate("orders", true)}>
+            <span className="text-xs font-normal text-admin-muted">Pesanan perlu tindakan</span>
+            <span className={`text-2xl font-semibold tabular-nums ${attention ? "text-admin-warning" : "text-admin-fg"}`}>{orders.loading ? "…" : orders.error ? "—" : attention}</span>
+            <span className="text-xs font-normal text-admin-muted">Buka daftar tindakan</span>
+          </Button>
+        </CardContent>
+      </Card>
     </section>
-    <nav aria-label="Bagian Pedia" className="grid grid-cols-2 gap-1 rounded-xl border border-admin-border bg-admin-subtle p-1 md:flex md:w-fit">{TABS.map(([id, label]) => <button key={id} aria-current={tab === id ? "page" : undefined} onClick={() => navigate(id)} className={`min-h-11 rounded-lg px-4 text-xs font-semibold transition ${tab === id ? "bg-admin-primary text-admin-inverse" : "text-admin-muted hover:text-admin-fg"}`}>{label}</button>)}</nav>
-    {tab === null && <p role="status" className="py-4 text-sm text-admin-muted">Memuat pesanan...</p>}
+    <div className="overflow-x-auto">
+      <Tabs value={tab ?? ""} onValueChange={value => navigate(value as Tab)}>
+        <TabsList aria-label="Bagian Pedia" className="md:w-fit">
+          {TABS.map(([id, label]) => <TabsTrigger key={id} value={id} aria-current={tab === id ? "page" : undefined}>{label}</TabsTrigger>)}
+        </TabsList>
+      </Tabs>
+    </div>
+    {tab === null && <div role="status" className="space-y-2 py-4"><Skeleton className="h-4 w-40" /><span className="sr-only">Memuat pesanan...</span></div>}
     {tab === "products" && <ProductsPanel catalog={catalog} editing={editing} onEdit={setEditing} onBrowse={() => navigate("services")} />}
     {tab === "orders" && <OrdersPanel panel={orders} onlyAction={onlyAction} />}
-    {tab === "services" && <><ServicesPanel catalog={catalog.data} compare={compare} onCompare={value => navigate("services", false, value)} onAssigned={async id => { await catalog.load(); setEditing(id); navigate("products"); }} />{catalog.error && <p role="alert" className="text-sm text-admin-danger">Produk tujuan belum dimuat. <button className={BUTTON} onClick={() => void catalog.load()}>Muat ulang produk</button></p>}</>}
+    {tab === "services" && <><ServicesPanel catalog={catalog.data} compare={compare} onCompare={value => navigate("services", false, value)} onAssigned={async id => { await catalog.load(); setEditing(id); navigate("products"); }} />{catalog.error && <div role="alert" className="rounded-md border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-sm text-admin-danger">
+      <p>Produk tujuan belum dimuat.</p>
+      <Button variant="outline" size="sm" className="mt-2" onClick={() => void catalog.load()}>Coba lagi</Button>
+    </div>}</>}
     {tab === "settings" && <SettingsPanel health={health} settings={settings} />}
   </div>;
 }

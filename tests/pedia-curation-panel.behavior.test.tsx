@@ -5,6 +5,9 @@ import {PediaCurationPanel} from "@/components/admin/PediaCurationPanel";
 const product={id:1,name:"Followers Instagram",platform:"instagram",metric:"followers",target_kind:"profile"};
 const row={supplier:"indosmm",service_id:99,name:"Instagram Followers Global",rate_idr_per_1k:1000,min_qty:10,max_qty:1000,estimated_cost:100,region:"Global",warnings:["Belum diuji hasil kirimnya"],suggested_name:"Followers Global · Tanpa refill",suggested_description:"Deskripsi aman <script>literal</script>",suggested_terms:"Tanpa refill dari AXVARA",suggested_instructions:"Gunakan link profil"};
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+// jsdom tidak menyediakan ResizeObserver; Radix Checkbox mengukurnya. Dipasang
+// langsung pada globalThis agar tidak ikut terhapus vi.unstubAllGlobals().
+Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, writable: true, value: class { observe() {} unobserve() {} disconnect() {} } });
 it("does not fetch or write before a need is selected, then compares the chosen amount",async()=>{
  const fetch=vi.fn(async(_url:string,_init?:RequestInit)=>Response.json({ok:true,rows:[row]}));vi.stubGlobal("fetch",fetch);
  render(<PediaCurationPanel products={[product]} onCreated={vi.fn()}/>);

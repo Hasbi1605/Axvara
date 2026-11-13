@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { render } from "./setup/admin-render";
 import { PediaManager } from "@/components/admin/PediaManager";
 
@@ -9,6 +10,8 @@ const tier = { id: 1, product_id: 1, supplier: "indosmm", tier: "standar", label
 const settings = { pedia_markup_g1: 150, pedia_markup_g2: 60, pedia_markup_g3: 20, pedia_min_profit_g1: 500, pedia_min_profit_g2: 2000, pedia_min_profit_g3: 1000, pedia_min_order_rp: 1000, pedia_balance_alert_rp: 100000 };
 let catalog: { products: typeof product[]; tiers: typeof tier[] }, writes: { url: string; body: Record<string, unknown>; method: string }[], orderRows: Record<string, unknown>[], failWrite: boolean, failRead: string, partialWrite: boolean;
 beforeEach(() => {
+  // jsdom tidak menyediakan ResizeObserver; Radix Checkbox mengukurnya.
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   window.history.replaceState(null, "", "/admin?section=pedia&keep=1");
   catalog = { products: [{ ...product }, { ...product, id: 2, name: "Views TikTok", slug: "views-tiktok", platform: "tiktok" }], tiers: [{ ...tier }] };
   writes = []; orderRows = []; failWrite = false; failRead = ""; partialWrite = false;
@@ -96,7 +99,7 @@ it("supplier explorer fixes supplier, pages, filters and preserves assignment pa
   expect(screen.queryByLabelText("Supplier")).toBeNull(); expect(screen.getByLabelText("Kartu layanan IndoSMM").className).toContain("md:hidden");
   fireEvent.click(within(table).getByRole("button", { name: "Tambahkan layanan 99 ke produk" })); fireEvent.change(screen.getByLabelText("Produk tujuan"), { target: { value: "1" } }); fireEvent.change(screen.getByLabelText("Varian tujuan"), { target: { value: "1" } }); fireEvent.submit(screen.getByRole("form", { name: "Hubungkan layanan" })); await screen.findByRole("form", { name: "Edit produk" });
   expect(writes[0].body).toEqual({ kind: "tier", id: 1, supplier: "indosmm", supplier_service_id: 99, backup_service_id: null });
-  fireEvent.click(screen.getByRole("button", { name: "Layanan IndoSMM" })); fireEvent.click(await screen.findByRole("button", { name: "Berikutnya" })); await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("page=2"), expect.anything())); fireEvent.click(screen.getByLabelText("Indonesia")); await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("indonesia=1"), expect.anything()));
+  await userEvent.click(screen.getByRole("tab", { name: "Layanan IndoSMM" })); fireEvent.click(await screen.findByRole("button", { name: "Berikutnya" })); await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("page=2"), expect.anything())); fireEvent.click(screen.getByLabelText("Indonesia")); await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("indonesia=1"), expect.anything()));
 });
 
 it.each(["products", "services", "orders", "settings"])("%s exposes failed reads", async tab => {

@@ -7,12 +7,10 @@ import ts from "typescript";
 export const PENDING_MIGRATION = [
   "AdminOverview.tsx", "AgentIntegration.tsx", "ArticleEditor.tsx", "ArticlesManager.tsx", "BannerManager.tsx",
   "BotAutomationManager.tsx", "BroadcastManager.tsx", "BulkMarkupToolbar.tsx", "BulkTierEditor.tsx", "CategoryManager.tsx",
-  "FulfillmentInventoryPanel.tsx", "GamesManager.tsx", "ImageDropzone.tsx", "NewsletterSubscribers.tsx", "OrderAccessAdmin.tsx",
-  "OrdersManager.tsx", "OverviewCharts.tsx", "PaymentMethodsManager.tsx", "PaymentReconciliation.tsx", "PediaCurationPanel.tsx",
-  "PediaManager.tsx", "ProductEditorModal.tsx", "ProofThumbnail.tsx", "ReportExportActions.tsx", "SekalipayManager.tsx",
-  "StoreSettingsManager.tsx", "SupplierLinkActions.tsx", "SupplierLinksManager.tsx", "SupplierPairsManager.tsx",
-  "TunvnManager.tsx", "VariantEditor.tsx", "WarungRebahanManager.tsx", "WhatsAppNotifications.tsx",
-  "pedia/OrdersPanel.tsx", "pedia/ProductEditor.tsx", "pedia/ProductsPanel.tsx", "pedia/ServicesPanel.tsx", "pedia/SettingsPanel.tsx", "pedia/shared.tsx",
+  "FulfillmentInventoryPanel.tsx", "ImageDropzone.tsx", "NewsletterSubscribers.tsx", "OrderAccessAdmin.tsx",
+  "OrdersManager.tsx", "OverviewCharts.tsx", "PaymentMethodsManager.tsx", "PaymentReconciliation.tsx",
+  "ProductEditorModal.tsx", "ProofThumbnail.tsx", "ReportExportActions.tsx",
+  "StoreSettingsManager.tsx", "VariantEditor.tsx", "WhatsAppNotifications.tsx",
   "sections/CredentialQueue.tsx", "sections/ProductCopyTab.tsx", "sections/ProductVariantRows.tsx", "sections/ProductsSection.tsx",
   "sections/SharedVariantCopyFields.tsx", "sections/SingleVariantFields.tsx", "sections/VariantCopyEditor.tsx", "sections/VariantWarrantyFields.tsx",
 ].map(file => `src/components/admin/${file}`).concat("src/app/(shop)/admin/page.tsx");
