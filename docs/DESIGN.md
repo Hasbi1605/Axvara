@@ -1,5 +1,27 @@
 # DESIGN.md — AXVARA Design System
 
+## Kebutuhan dan varian Pedia (13 November 2026, implementasi lokal)
+
+- Kebutuhan = satu pill per `product.metric`, urutan kemunculan pertama katalog,
+  label ID/EN `pediaMetricLabel` + MetricIcon. Banyak produk supplier tidak lagi
+  menjadi pill; pola scroll horizontal/ekspansi mobile dan Liquid Glass tetap.
+- Di bawah jumlah, ServicePicker membandingkan seluruh tier dari semua produk
+  bermetrik sama dengan baris/chip/harga existing. Awal delapan baris + pilihan
+  aktif bila di luar delapan; tombol Tampilkan semua/Show all dapat dilipat ulang,
+  `aria-expanded`, Enter/Space dan outline cyan existing. Tidak ada warna/font baru.
+- Nama pendek hanya saat render: bracket teknis/dekor/emoji/duplikasi dibuang,
+  wilayah/kualitas/kecepatan tetap; refill/drop/Instant Start tetap chip. Nama
+  bertabrakan memakai qualifier pembeda atau Varian/Variant N, konsisten di baris
+  dan ringkasan/sheet. Info layanan mempertahankan nama lengkap asli white-label.
+- Memilih varian produk lain memindahkan slug+tier nyata dan membawa jumlah,
+  target, checklist serta kontak. Fokus kembali ke radio pilihan; perpindahan
+  metrik tetap memakai draft independen per produk (target profil tidak bocor ke post).
+- Chromium lokal1280/390/320: fixture SQLite/D1 lokal69 produk (68 Instagram,
+  enam metrik), delapan/semua14/pilihan kesembilan, switch metrik/varian, qty/target
+  carry-over, Enter/Space, sheet Escape/focus-return dan ID/EN lulus tanpa overflow.
+  Route/CSS/JS200; 503 harga sengaja untuk error/retry dan HMR proxy lokal terputus.
+  Screenshot di direktori evidence Pedia13November; bukan deployment/transaksi produksi.
+
 ## Temp mail publik (12 November 2026, implementasi lokal)
 
 - Web standalone mempertahankan Midnight `#080C1E`, cyan `#00E5FF`, gold

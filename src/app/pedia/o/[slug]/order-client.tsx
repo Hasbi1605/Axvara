@@ -18,8 +18,9 @@ import { PaymentMethodPicker } from "@/components/storefront/PaymentMethodPicker
 import { parsePayOptions, reconcileSelection, type PayOption } from "@/lib/payment-ui";
 import { pediaPlatform, pediaTargetExample } from "@/lib/pedia/platforms";
 import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
-import { fill, pediaChecklistText, pediaCopy, pediaNumber, pediaServiceName, pediaServiceText, pediaTargetKindLabel } from "@/lib/pedia/copy";
+import { fill, pediaChecklistText, pediaCopy, pediaNumber, pediaServiceText, pediaTargetKindLabel } from "@/lib/pedia/copy";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import { pediaVariantNames, shortPediaName } from "@/lib/pedia/display-name";
 
 const rupiah = (value: number, locale: "id" | "en" = "id") => `Rp${value.toLocaleString(locale === "en" ? "en-US" : "id-ID")}`;
 const fieldClass = "mt-2 min-h-11 w-full rounded-xl border border-white/30 bg-white/[0.035] px-3.5 text-base text-white placeholder:text-white/55 focus:border-[#00E5FF] focus:outline-none md:text-sm";
@@ -33,7 +34,7 @@ const KEY_TERM = /refill|garansi|jangan|privat|tunggu/i;
 
 export type PediaOrderDraft = { slug: string; targetKind: string; tierId: number | null; qty: number | null; target: string; checks: Record<string, boolean>; wa: string; email: string };
 
-export function OrderClient({ product, initialTarget, initialDraft, ordersEnabled, embedded = false, withinPlatform = false, onLockedChange, products = [], onProductChange }: { product: PediaCatalogProduct; initialTarget: string; initialDraft?: PediaOrderDraft; ordersEnabled: boolean; embedded?: boolean; withinPlatform?: boolean; onLockedChange?: (locked: boolean) => void; products?: PediaCatalogProduct[]; onProductChange?: (slug: string, draft: PediaOrderDraft) => void }) {
+export function OrderClient({ product, initialTarget, initialDraft, ordersEnabled, embedded = false, withinPlatform = false, onLockedChange, products = [], onProductChange }: { product: PediaCatalogProduct; initialTarget: string; initialDraft?: PediaOrderDraft; ordersEnabled: boolean; embedded?: boolean; withinPlatform?: boolean; onLockedChange?: (locked: boolean) => void; products?: PediaCatalogProduct[]; onProductChange?: (slug: string, draft: PediaOrderDraft, selectedTierId?: number) => void }) {
   const draft = initialDraft?.slug === product.slug && initialDraft.targetKind === product.target_kind ? initialDraft : undefined;
   const locale = useDisplayLocale();
   const t = pediaCopy(locale);
@@ -72,7 +73,9 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
   const checklist = product.checklist ?? [];
   const platform = PEDIA_PLATFORM_LABEL[product.platform as PediaPlatform] ?? product.platform;
   const kind = pediaTargetKindLabel(product.target_kind as PediaTargetKind, locale);
-  const productName = pediaServiceName(product.name, locale);
+  const productName = shortPediaName(product.name, "", locale);
+  const variants = useMemo(() => (products.length ? products : [product]).filter((p) => p.metric === product.metric), [products, product]);
+  const variantNames = useMemo(() => pediaVariantNames(variants, locale), [variants, locale]);
   const detected = detectPediaLink(target, product.platform);
   const kindOk = detected && pediaTargetMatches(product.target_kind, detected.targetKind, product);
   const targetOk = !!detected && detected.platform === product.platform && !!kindOk && target.trim().length <= 600;
@@ -118,7 +121,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
   // Nominal tampilan (USD hanya tampilan; quote/charge tetap IDR/QRIS).
   const display = useDisplayPrices([packageTotal, currentQuote?.total ?? 0, currentQuote?.payable ?? 0].filter((value) => value > 0));
   const money = (value: number) => (display.currency === "USD" ? display.text(value) : rupiah(value, locale));
-  const tierName = tier ? pediaServiceName(tier.public_name ?? tier.label_note ?? product.name, locale) : "";
+  const tierName = tier ? variantNames.get(tier.id) ?? shortServiceName(product.name, product.metric, tier, locale) : "";
   useEffect(() => { onLockedChange?.(attempted); }, [attempted, onLockedChange]);
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
@@ -383,7 +386,11 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
     if (!validate(stage)) return;
     goToStage(stage + 1);
   };
-  const pickTier = (id: number) => {
+  const pickTier = (id: number, slug = product.slug) => {
+    if (slug !== product.slug) {
+      if (!attempted) onProductChange?.(slug, { slug: product.slug, targetKind: product.target_kind, tierId, qty, target, checks, wa, email }, id);
+      return;
+    }
     setTierId(id);
     setQuantityNotice("");
   };
@@ -401,7 +408,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
   const cta = <>
     {!ordersEnabled && <p className="mb-2 text-xs text-white/60">{t.orderOrdersOff}</p>}
     {stage === 3 && currentQuote && !attempted && <p role="status" className="mb-3 text-sm leading-5 text-white/80">{currentQuote.total !== packageTotal ? fill(t.orderPriceChanged, { from: money(packageTotal), to: money(currentQuote.total) }) : ""}{fill(t.orderConsent, { total: money(currentQuote.payable) })}</p>}
-    {canOpenSheet && tier && <button type="button" onClick={(event) => { sheetOpener.current = event.currentTarget; setSheet(true); }} aria-haspopup="dialog" aria-expanded={sheet} aria-label={fill(t.orderDetailsAria, { detail: `${qty != null && quantityValid ? `${n(qty)}, ` : ""}${tierName}` })} className="ax-glass-card mb-1.5 flex min-h-10 w-full items-center justify-between gap-3 rounded-xl px-3 text-left text-xs xl:hidden"><span className="min-w-0 truncate text-white/80">{qty != null && quantityValid ? <span className="font-semibold text-white">{n(qty)} · </span> : null}{shortServiceName(product.name, product.metric, tier, locale)} · {refillLabel(tier.refill_days)}</span><span className="flex shrink-0 items-center gap-1 font-semibold text-[#00E5FF]">{t.orderDetails}<ChevronUp size={14} aria-hidden="true" /></span></button>}
+    {canOpenSheet && tier && <button type="button" onClick={(event) => { sheetOpener.current = event.currentTarget; setSheet(true); }} aria-haspopup="dialog" aria-expanded={sheet} aria-label={fill(t.orderDetailsAria, { detail: `${qty != null && quantityValid ? `${n(qty)}, ` : ""}${tierName}` })} className="ax-glass-card mb-1.5 flex min-h-10 w-full items-center justify-between gap-3 rounded-xl px-3 text-left text-xs xl:hidden"><span className="min-w-0 truncate text-white/80">{qty != null && quantityValid ? <span className="font-semibold text-white">{n(qty)} · </span> : null}{tierName} · {refillLabel(tier.refill_days)}</span><span className="flex shrink-0 items-center gap-1 font-semibold text-[#00E5FF]">{t.orderDetails}<ChevronUp size={14} aria-hidden="true" /></span></button>}
     <div className="flex items-center gap-3"><div className={totalCls}>{totalBlock}</div>{(stage === 2 || stage === 3) && !attempted && <button type="button" disabled={!!busy} onClick={() => goToStage(stage - 1)} aria-label={fill(t.orderBackTo, { label: stage === 2 ? stageLabels[0] : stageLabels[1] })} title={t.orderBack} className="ax-glass-card inline-flex min-h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white/75 transition hover:text-white disabled:opacity-40"><ArrowLeft size={18} aria-hidden="true" /></button>}<button type="button" onClick={stage < 3 ? advance : pay} disabled={!ordersEnabled || !!busy} className="pedia-cta min-h-12 min-w-0 flex-1 rounded-xl bg-[#00E5FF] px-2 py-3 text-sm font-semibold max-[379px]:text-[13px] sm:px-3 text-[#070a1e] hover:bg-[#70f2ff] disabled:bg-white/10 disabled:text-white/60">{busy || (stage === 1 ? t.orderCtaNext : stage === 2 ? t.orderCtaContact : currentQuote && !attempted ? t.orderCtaApprove : attempted ? t.orderCtaRetry : <><span className="max-xl:sr-only">{t.orderCtaPay}</span><span aria-hidden="true" className="hidden max-xl:inline">{t.orderCtaPayShort}</span></>)}<ArrowRight aria-hidden="true" size={16} className="ml-2 inline shrink-0 max-[399px]:hidden" /></button></div>
   </>;
   return <div className={`pedia-checkout ${embedded ? "py-5" : withinPlatform ? `${stage === 3 && currentQuote && !attempted ? "pb-56" : "pb-40"} xl:pb-8` : `mx-auto max-w-[1280px] px-4 ${stage === 3 && currentQuote && !attempted ? "pb-56" : "pb-40"} pt-6 sm:px-6 lg:px-8 xl:pb-12`}`}>
@@ -435,7 +442,7 @@ export function OrderClient({ product, initialTarget, initialDraft, ordersEnable
               {quantityNotice && <p role="status" className="mt-2 text-xs text-amber-200">{quantityNotice}</p>}{inlineError("quantity")}
               <div role="status" aria-live="polite">{qty != null && comparison?.failed && <p className="mt-2 text-[13px] leading-5 text-white/65">{t.orderPriceRetry} <button type="button" disabled={attempted} onClick={comparison.retry} className="min-h-11 font-medium text-[#00E5FF] underline underline-offset-4 disabled:opacity-40">{t.orderPriceRetryAction}</button></p>}</div>
             </fieldset></div>
-            <div className="mt-5 xl:mt-6"><ServicePicker product={product} tierId={tierId} onSelect={pickTier} onClear={() => setTierId(null)} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded info={(t) => <ServiceInfoCard t={t} productDescription={productDescription} productName={product.name} />} />{inlineError("tier")}</div>
+            <div className="mt-5 xl:mt-6"><ServicePicker key={product.metric} product={product} products={products.length ? variants : undefined} tierId={tierId} onSelect={pickTier} onClear={() => setTierId(null)} qty={qty} prices={comparisonPrices} pricesSettled={embedded || !!comparison} locked={attempted} expanded info={(t) => <ServiceInfoCard t={t} productDescription={productDescription} productName={product.name} />} />{inlineError("tier")}</div>
           </section>
         </>}
         {stage === 2 && <section aria-labelledby="pedia-stage-heading">

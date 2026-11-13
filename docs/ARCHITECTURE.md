@@ -491,6 +491,20 @@ instructions hanya tahapTarget, rendering copy tetap escaped/pre-line. Endpoint
 prices/quote/orders, pembayaran, supplier, snapshot, cron, env dan schema tidak
 berubah; preview embedded tetap tidak memanggil API harga/order.
 
+Revisi 13 November 2026 (implementasi lokal; publikasi melalui CI): `NeedPicker`
+mengelompokkan produk dengan `groupPediaMetrics` (dari `src/lib/pedia/display-name.ts`)
+menjadi satu pill per `product.metric` berlabel `pediaMetricLabel`, bukan per produk.
+`ServicePicker` menerima `products` opsional, meratakan tier dari semua produk bermetrik
+sama (dengan `quantity_step` diwarisi produk pemilik) dan memakai `pediaVariantNames`
+untuk label pendek; delapan baris awal, pilihan aktif selalu terlihat, tombol lipat
+`aria-expanded`. `shortPediaName` hanya mengubah tampilan: nama sumber, slug, dan ID
+order tetap. Nama lengkap asli tetap dirender `ServiceInfoCard`. Handoff lintas produk
+memakai `onProductChange(slug, draft, selectedTierId)`: `ServicePicker` memanggil
+`onSelect(tier.id, owner.slug)`, `OrderClient` meneruskan slug pemilik ke
+`PlatformPageClient`, yang menyimpan draf sumber lalu draf tujuan hanya bila
+`selectedTierId` memang milik produk tujuan. Kontrak katalog/prices/quote/orders,
+pembayaran, supplier, snapshot, cron, env dan schema tidak berubah.
+
 ## GoPay pribadi dan callback bertanda tangan — 27 Oktober 2026
 
 ✅ Implementasi terverifikasi; receiver Pages dirilis melalui CI. Provider baru

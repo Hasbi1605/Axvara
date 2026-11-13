@@ -6,6 +6,7 @@ import type { PediaCatalogProduct, PediaCatalogTier } from "@/app/api/pedia/cata
 import { hasInstantStart, pediaDropLabel, refillLabel } from "@/lib/pedia/terms";
 import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { fill, pediaCopy, pediaNumber, pediaRegionLabel, pediaServiceName } from "@/lib/pedia/copy";
+import { pediaVariantNames, shortPediaName } from "@/lib/pedia/display-name";
 
 const rupiah = (v: number, locale: "id" | "en" = "id") => `Rp${v.toLocaleString(locale === "en" ? "en-US" : "id-ID")}`;
 export function serviceDisplayName(productName: string, t: PediaCatalogTier, locale: "id" | "en" = "id") {
@@ -14,11 +15,8 @@ export function serviceDisplayName(productName: string, t: PediaCatalogTier, loc
 // 2026-11-02 (owner): nama seragam [Metrik] [Wilayah] [Kualitas], mis.
 // "Followers Indonesia Real", "Views Reels Global". Refill/No Refill dan label
 // drop hanya tampil sebagai chip; sisa label itu pada nama lama dibuang.
-const CHIP_PART = /^(?:Refill\s+(?:\d+\s+(?:hari|Days)|Lifetime)|No Refill|Tanpa refill|Instant Start|No Drop|Less Drop|High Drop)$/i;
 export function shortServiceName(productName: string, _metric: string, t: PediaCatalogTier, locale: "id" | "en" = "id") {
-  const full = serviceDisplayName(productName, t, locale);
-  const short = full.split(/\s*·\s*/).filter((p) => !CHIP_PART.test(p.trim())).join(" · ").trim();
-  return short || full;
+  return shortPediaName(serviceDisplayName(productName, t, locale), "", locale);
 }
 // 2026-11-01 (owner): istilah SMM dipertahankan (Refill 30 Days, No Refill, No Drop, …).
 const DROP_CHIP: Record<string, string> = { no_drop: "border-emerald-300/25 bg-emerald-300/10 text-emerald-200", less_drop: "border-amber-300/25 bg-amber-300/10 text-amber-200", high_drop: "border-red-300/30 bg-red-400/10 text-red-200" };
@@ -68,8 +66,8 @@ function incompatReason(t: PediaCatalogTier, product: PediaCatalogProduct, qty: 
   return "";
 }
 
-export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices = {}, pricesSettled = false, locked = false, expanded = false, info }: {
-  product: PediaCatalogProduct; tierId: number | null; onSelect: (id: number) => void; onClear?: () => void; qty: number | null;
+export function ServicePicker({ product, products, tierId, onSelect, onClear, qty, prices = {}, pricesSettled = false, locked = false, expanded = false, info }: {
+  product: PediaCatalogProduct; products?: PediaCatalogProduct[]; tierId: number | null; onSelect: (id: number, slug?: string) => void; onClear?: () => void; qty: number | null;
   prices?: Record<number, number>; pricesSettled?: boolean; locked?: boolean; expanded?: boolean;
   /** 2026-11-01: info layanan dirender tepat di bawah kartu yang dipilih. */
   info?: (t: PediaCatalogTier) => ReactNode;
@@ -79,7 +77,9 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
   const [category, setCategory] = useState("");
   const locale = useDisplayLocale();
   const t = pediaCopy(locale);
-  const tiers = product.tiers;
+  const owners = useMemo(() => new Map((products ?? [product]).flatMap((p) => p.tiers.map((tier) => [tier.id, p] as const))), [products, product]);
+  const tiers = useMemo(() => products ? products.flatMap((p) => p.tiers.map((tier) => ({ ...tier, quantity_step: tier.quantity_step ?? p.step }))) : product.tiers, [products, product]);
+  const names = useMemo(() => products ? pediaVariantNames(products, locale) : null, [products, locale]);
   // 2026-11-01 (owner): filter Refill/No Refill + wilayah. Pilihan yang tidak
   // termasuk filter baru dilepas (tidak lagi disematkan di atas daftar).
   const matches = (tier: PediaCatalogTier, id: string) => id === "" || (id === "refill" ? tier.refill_days > 0 : id === "norefill" ? tier.refill_days <= 0 : (tier.region ?? "global") === id);
@@ -102,10 +102,10 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tiers, category, validQuantity, qty, prices]);
   const picked = tiers.find((tier) => tier.id === tierId);
-  // Nama yang sama dibedakan oleh chip (Refill N Days/drop) di kartu yang sama.
-  const nameOf = (tier: PediaCatalogTier) => shortServiceName(product.name, product.metric, tier, locale);
+  // Cross-product variants need stable, distinct labels beyond their chips.
+  const nameOf = (tier: PediaCatalogTier) => names?.get(tier.id) ?? shortServiceName(product.name, product.metric, tier, locale);
   const compact = !expanded && !!picked && !compare;
-  const visible = compact && picked ? [picked] : expanded || showAll ? [...relevant] : relevant.slice(0, 3);
+  const visible = compact && picked ? [picked] : (products ? showAll : expanded || showAll) ? [...relevant] : relevant.slice(0, products ? 8 : 3);
   if (!compact && picked && relevant.includes(picked) && !visible.includes(picked)) visible.push(picked);
   const resetFilters = () => { setCategory(""); setShowAll(false); };
 
@@ -149,19 +149,21 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
         const valid = validQuantity(tier);
         const benchmarkValid = 1000 >= (tier.min_qty ?? 1) && 1000 <= (tier.max_qty ?? Infinity) && 1000 % (tier.quantity_step ?? product.step) === 0;
         const disabled = qty != null && !valid && tier.id !== tierId;
+        // ponytail: cross-product comparisons use saved package totals; live free-quantity pricing stays on the selected product until a batch API exists.
         const exact = qty != null && valid ? prices[tier.id] ?? tier.prices[String(qty)] : undefined;
         const name = nameOf(tier);
-        const reason = qty != null && !valid ? incompatReason(tier, product, qty, locale) : "";
+        const owner = owners.get(tier.id) ?? product;
+        const reason = qty != null && !valid ? incompatReason(tier, owner, qty, locale) : "";
         const selected = tier.id === tierId;
         const ref = qty == null && tier.price_ref && tier.price_ref.price > 0 ? tier.price_ref : null;
         const priceText = ref ? money(ref.price) : qty != null ? !valid ? t.qtyUnavailable : exact != null ? money(exact) : pricesSettled ? t.priceUnavailable : t.priceChecking : benchmarkValid && tier.price_per_1k != null && tier.price_per_1k > 0 ? money(tier.price_per_1k) : cheapest ? `${t.priceFrom} ${money(cheapest.price)}` : t.seePrice;
         const priceNote = ref ? fill(t.forComments, { qty: pediaNumber(ref.qty, locale) }) : qty != null && valid ? fill(t.forQty, { qty: pediaNumber(qty, locale) }) : qty != null ? t.changeQty : benchmarkValid && tier.price_per_1k != null && tier.price_per_1k > 0 ? t.per1kNote : cheapest ? fill(t.minimumQty, { qty: pediaNumber(cheapest.qty, locale) }) : fill(t.minQty, { qty: pediaNumber(tier.min_qty ?? 1, locale) });
         return <Fragment key={tier.id}>{showGroup && <p className={`${index ? "pt-3" : ""} text-[12px] font-semibold uppercase tracking-[0.08em] text-white/50`}>{group}</p>}<label style={{ animationDelay: `${Math.min(index, 6) * 35}ms` }} className={`pedia-service-row pedia-rise ax-liquid relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 rounded-[14px] px-3.5 py-3 transition sm:flex sm:items-center duration-200 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF] ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:-translate-y-0.5"} ${selected ? "pedia-tier-selected" : "ax-glass-card ax-glass-cyan"}`}>
-          <input type="radio" name="pedia-tier" value={tier.id} checked={selected} disabled={disabled} onChange={() => { if (disabled || locked) return; onSelect(tier.id); setCompare(false); setShowAll(false); }} className="sr-only" aria-describedby={[reason ? `pedia-tier-${tier.id}-reason` : "", selected && info ? `pedia-tier-${tier.id}-info` : ""].filter(Boolean).join(" ") || undefined} />
+          <input type="radio" name="pedia-tier" value={tier.id} checked={selected} disabled={disabled} onChange={() => { if (disabled || locked) return; if (products) onSelect(tier.id, owner.slug); else onSelect(tier.id); setCompare(false); setShowAll(false); }} className="sr-only" aria-describedby={[reason ? `pedia-tier-${tier.id}-reason` : "", selected && info ? `pedia-tier-${tier.id}-info` : ""].filter(Boolean).join(" ") || undefined} />
           <span aria-hidden="true" className={`row-start-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${selected ? "border-[#00E5FF] bg-[#00E5FF] text-[#080C1E]" : "border-white/40"}`}>{selected && <Check size={12} strokeWidth={3} />}</span>
           <span className="contents sm:flex sm:min-w-0 sm:flex-1 sm:flex-col sm:gap-1.5">
             <span className="col-start-2 block break-words text-[13px] font-semibold leading-[1.3] tracking-[-0.01em] text-white sm:text-sm"><span className="align-middle">{name}</span>{selected && <span className="sr-only">{t.selectedSr}</span>}</span>
-            <ServiceChips t={tier} eta compact productName={product.name} className="col-span-3 col-start-1" />
+            <ServiceChips t={tier} eta compact productName={owner.name} className="col-span-3 col-start-1" />
             {reason && <span id={`pedia-tier-${tier.id}-reason`} className="col-span-2 col-start-2 text-xs leading-5 text-amber-200">{fill(t.rowReason, { qty: pediaNumber(qty ?? 0, locale), reason: reason.toLowerCase() })}</span>}
           </span>
           <span className="col-start-3 row-start-1 max-w-36 shrink-0 text-right">
@@ -172,6 +174,6 @@ export function ServicePicker({ product, tierId, onSelect, onClear, qty, prices 
       })}
     </div>
     {!relevant.length && <p className="mt-3 rounded-xl border border-white/10 p-4 text-sm text-white/65">{fill(t.pickerNoMatch, { shown: relevant.length, total: tiers.length })}</p>}
-    {!expanded && !compact && !showAll && relevant.length > 3 && <button type="button" className="mt-3 min-h-11 w-full rounded-xl border border-white/10 px-3 text-sm text-[#00E5FF] transition hover:bg-white/[0.03]" onClick={() => setShowAll(true)}>{fill(t.pickerSeeAll, { count: relevant.length })}</button>}
+    {products && relevant.length > 8 ? <button type="button" aria-expanded={showAll} className="mt-3 min-h-11 w-full rounded-xl border border-white/10 px-3 text-sm text-[#00E5FF] transition hover:bg-white/[0.03]" onClick={() => setShowAll(!showAll)}>{showAll ? t.variantsShowLess : fill(t.variantsShowAll, { count: relevant.length })}</button> : !expanded && !compact && !showAll && relevant.length > 3 && <button type="button" className="mt-3 min-h-11 w-full rounded-xl border border-white/10 px-3 text-sm text-[#00E5FF] transition hover:bg-white/[0.03]" onClick={() => setShowAll(true)}>{fill(t.pickerSeeAll, { count: relevant.length })}</button>}
   </fieldset>;
 }

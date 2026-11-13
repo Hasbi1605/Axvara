@@ -25,10 +25,11 @@ export function PlatformPageClient({ platform, name, products, initialSlug = "",
   const t = pediaCopy(useDisplayLocale());
   useEffect(() => {
     if (previousSlug.current !== slug) {
-      container.current?.querySelector<HTMLButtonElement>('.pedia-needs [aria-pressed="true"]')?.focus({ preventScroll: true });
+      const sameMetric = products.find((p) => p.slug === previousSlug.current)?.metric === product?.metric;
+      container.current?.querySelector<HTMLElement>(sameMetric ? '#pedia-tier input:checked' : '.pedia-needs [aria-pressed="true"]')?.focus({ preventScroll: true });
       previousSlug.current = slug;
     }
-  }, [slug]);
+  }, [slug, products, product?.metric]);
 
   return <div ref={container} className="mx-auto max-w-[1280px] px-4 pb-8 pt-3 sm:px-6 sm:pt-5 lg:px-8">
     <a href="/pedia#pedia-catalog" className="hidden min-h-11 items-center gap-2 text-sm text-white/55 transition hover:text-white sm:inline-flex">
@@ -42,9 +43,13 @@ export function PlatformPageClient({ platform, name, products, initialSlug = "",
       <div className="min-w-0 flex-1"><h1 className="font-display text-lg font-semibold tracking-tight text-white sm:text-[22px]">{name}</h1></div>
     </header>
     {products.length ? <>
-      {product && (isPaymentMaintenanceEnabled() ? <ManualOrderPanel /> : <OrderClient key={product.slug} product={product} initialTarget={product.slug === firstSlug.current ? initialTarget : ""} initialDraft={drafts.current.get(product.slug)} ordersEnabled={ordersEnabled} withinPlatform onLockedChange={setLocked} products={products} onProductChange={(next, draft) => {
+      {product && (isPaymentMaintenanceEnabled() ? <ManualOrderPanel /> : <OrderClient key={product.slug} product={product} initialTarget={product.slug === firstSlug.current ? initialTarget : ""} initialDraft={drafts.current.get(product.slug)} ordersEnabled={ordersEnabled} withinPlatform onLockedChange={setLocked} products={products} onProductChange={(next, draft, selectedTierId) => {
         if (locked || next === slug || !products.some((p) => p.slug === next)) return;
+        const destination = products.find((p) => p.slug === next)!;
         drafts.current.set(slug, draft);
+        if (selectedTierId != null && destination.tiers.some((tier) => tier.id === selectedTierId)) {
+          drafts.current.set(next, { ...draft, slug: next, targetKind: destination.target_kind, tierId: selectedTierId });
+        }
         setSlug(next);
       }} />)}
     </> : <p className="my-8 rounded-2xl border border-white/10 p-5 text-sm text-white/60">{t.platformEmpty} <a href="/pedia" className="text-[#00E5FF]">{t.platformOther}</a></p>}

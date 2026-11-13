@@ -4,7 +4,7 @@
 import type { PediaCatalogTier } from "@/app/api/pedia/catalog/route";
 import { hasInstantStart, pediaDropLabel, pediaDropMeaning, pediaTerms, refillLabel, refillPromise, serviceTermNames } from "@/lib/pedia/terms";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
-import { fill, pediaCopy, pediaNumber, pediaServiceText } from "@/lib/pedia/copy";
+import { fill, pediaCopy, pediaNumber, pediaServiceName, pediaServiceText } from "@/lib/pedia/copy";
 
 // Only omit exact generated duplicates; custom refill conditions must survive.
 const DUPLICATE_TERMS = new Set([
@@ -68,6 +68,7 @@ export function ServiceInfoCard({ t, productDescription, productName = "" }: { t
     <p className="mt-1.5 text-[11px] leading-4 text-white/40 sm:mt-2">{copy.infoEstimateNote}</p>
     <div className="mt-3 border-t border-white/[0.06] pt-3 sm:mt-4 sm:pt-4">
       <h3 className={sectionLabel}>{copy.infoTitle}</h3>
+      <p className="mt-1 break-words font-medium text-white/90">{pediaServiceName(fullName, locale)}</p>
       {descriptions.map((text) => <p key={text} className="mt-1 max-w-[65ch] whitespace-pre-line break-words text-[13px] leading-5 text-white/85 sm:mt-1.5 sm:text-[14px] sm:leading-6">{text}</p>)}
       <dl className="mt-2 grid gap-x-4 sm:mt-3 sm:grid-cols-[minmax(0,9rem)_1fr] sm:gap-y-2">
         <dt className="font-medium text-white/90">{refillLabel(t.refill_days)}</dt><dd className="mb-1.5 text-[12.5px] text-white/65 sm:mb-0 sm:text-[13px]">{refill}</dd>

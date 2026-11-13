@@ -2,13 +2,20 @@
 // BLOCKER #2: delta lebih besar dari kapasitas per-request TIDAK boleh hilang
 // atau di-ack. Semua ID masuk antrean durable; kegagalan tulis tidak di-ack;
 // baris sisa dikerjakan heartbeat berikut tanpa memutar ulang awalan.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { MANAGED_PER_CALL } from "@/lib/pedia/auto-catalog";
 import { managedPendingCount, drainManagedWork, loadSupplierDescriptions, MANAGED_DRAIN_PER_CALL } from "@/lib/pedia/metadata-refresh";
 
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+// Jam dipaku ke 2026-11-12 supaya jendela throttle 6 jam dihitung dari
+// `fetchedAt` fixture (2026-11-12T10:00Z), bukan tanggal berjalan: tanpa ini
+// heartbeat "kedua" selalu dianggap lewat 6 jam dan refresh ulang terus
+// (mengantrekan lagi seluruh layanan). Hanya `Date` yang di-fake agar
+// promise/D1 fixture tetap berjalan normal.
+const NOW = new Date("2026-11-12T10:30:00.000Z");
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 vi.mock("@/lib/pedia/supplier-descriptions", async (orig) => {
   const real = await orig<typeof import("@/lib/pedia/supplier-descriptions")>();

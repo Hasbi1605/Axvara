@@ -668,6 +668,14 @@ selama halaman terbuka, tanpa membawa target atau quote ke kebutuhan berbeda.
 Grid desktop mulai1280px; rail sticky hanya jika muat, mobile memakai satu kolom.
 
 Komponen: `NeedPicker`, `ServicePicker`, `PlatformPageClient`, `OrderClient`.
+
+Revisi 13 November 2026 (implementasi lokal; publikasi melalui CI): kebutuhan diringkas
+satu pill per metrik, sedangkan `ServicePicker` menampilkan seluruh varian dari semua
+produk bermetrik sama (delapan awal + "Tampilkan semua", pilihan aktif selalu terlihat).
+Label pendek, dedupe, dan qualifier/"Varian n" berasal dari `src/lib/pedia/display-name.ts`
+(`shortPediaName`, `pediaVariantNames`, `groupPediaMetrics`), dan nama lengkap tetap tampil
+di `ServiceInfoCard`. Memilih varian produk lain meneruskan slug pemilik + tier ke
+`PlatformPageClient` dan tetap membawa jumlah, target, checklist, serta kontak.
 Kontrak harga/quote/retry/QRIS dan supplier tidak berubah. Rincian:
 [spesifikasi UX](docs/pedia/purchase-ux-2026-10-27.md) dan
 [laporan verifikasi](issue/pedia-purchase-ux-2026-10-27.md).

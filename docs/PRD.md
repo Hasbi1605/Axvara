@@ -1247,6 +1247,8 @@ Revisi filter layanan Pedia 1 November 2026 (implementasi lokal untuk publikasi 
 
 Tipografi harga 22 Oktober mengikuti AXVARA pusat: harga kartu/daftar layanan Inter bold 700, 14px mobile/17px mulai sm, tracking −0.02em dan line-height 1 tanpa tabular-nums; total ringkasan Space Grotesk bold 700/18px, total ringkas mobile 14px; nominal QRIS/pembayaran diterima Space Grotesk bold 700/24px dengan kelas `leading-8`; line-height aktual mengikuti `.font-display` global seperti pusat. Acuan aktual: ProductCard storefront, total checkout pusat dan nominal QRIS pusat. Ini menggantikan ukuran harga pada redesain 20 Oktober; susunan beranda/checkout, nominal dan format jumlah tetap.
 
+Revisi navigasi katalog Pedia 13 November 2026 (implementasi lokal; publikasi melalui CI): kebutuhan ditampilkan satu pill per metrik, bukan per produk supplier, sehingga banyak layanan bermetrik sama tidak lagi memenuhi baris pill. Setelah jumlah, daftar layanan memuat seluruh varian dari semua produk bermetrik sama — delapan baris awal, pilihan aktif selalu terlihat, dan tombol "Tampilkan semua (n)" dapat dilipat kembali. Nama layanan dipersingkat hanya saat render (bracket teknis, emoji, dan label refill/drop dibuang; wilayah/kualitas/kecepatan tetap), nama kembar dibedakan qualifier atau "Varian n", dan nama lengkap asli tetap tampil di panel info layanan. Memilih varian dari produk lain langsung berpindah produk tanpa kehilangan jumlah, target, checklist, dan kontak. Kontrak API katalog, harga, quote, pesanan, dan pembayaran tidak berubah.
+
 
 ## Galeri foto produk — 21 Oktober 2026
 
