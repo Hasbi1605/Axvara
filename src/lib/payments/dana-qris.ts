@@ -239,6 +239,13 @@ export function activeQrisProvider(): QrisProvider {
   return DANA_QRIS_PROVIDER;
 }
 
+/** Label akun tujuan QRIS yang disimpan di order (`payment_account`), mengikuti provider aktif. */
+export function qrisPaymentAccountLabel(provider: QrisProvider = activeQrisProvider()): string {
+  if (provider === GOPAY_QRIS_PROVIDER) return "GoPay Merchant";
+  if (provider === "klikqris") return "KlikQRIS";
+  return "DANA Business";
+}
+
 export function qrisStaticPayload(provider: QrisProvider): string {
   if (provider === "klikqris") return "";
   return provider === GOPAY_QRIS_PROVIDER
@@ -364,7 +371,7 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
            SET payment_method='qris', payment_account=?, payment_status='pending',
                expires_at=COALESCE(expires_at,?), updated_at=datetime('now')
            WHERE code=? AND status='pending'`,
-        ).bind(provider === GOPAY_QRIS_PROVIDER ? "GoPay Merchant" : "DANA Business", expiresAt, orderCode),
+        ).bind(qrisPaymentAccountLabel(provider), expiresAt, orderCode),
         d1.prepare(`DELETE FROM operation_guards WHERE operation_id=?`).bind(guardId),
       ]);
       // 2026-10-10: QR GoPay baru → bangunkan poller VPS (idle 60 dtk) agar

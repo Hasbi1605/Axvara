@@ -21,7 +21,7 @@ import {
 import { getActiveVariant, formatDuration, buyerWarrantyLabel, effectiveVariantStock, type VariantSummary } from "@/lib/catalog";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
-import { createActiveQrisInvoice, isActiveQrisConfigured } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice, isActiveQrisConfigured, qrisPaymentAccountLabel } from "@/lib/payments/dana-qris";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
 // 2026-09-25): grup Axvara_Notif hanya menerima "Lunas — Telegram" saat order
@@ -305,7 +305,7 @@ export async function createAndSendVariantInvoice(
         telegramChatId: String(chatId),
         telegramUserId: String(from.id),
         paymentMethod: "qris",
-        paymentAccount: "DANA Business",
+        paymentAccount: qrisPaymentAccountLabel(),
         fulfillmentStatus: uniqueFulfillment ? "reserved" : "not_required",
       });
       if (created.isExisting) {

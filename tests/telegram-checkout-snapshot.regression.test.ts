@@ -22,7 +22,7 @@ vi.mock("@/lib/telegram/api", () => ({
 vi.mock("@/lib/telegram/handlers/catalog", () => ({ handleShowQty: vi.fn() }));
 vi.mock("@/lib/telegram/handlers/discovery", () => ({ showEmailConfirmation: vi.fn() }));
 vi.mock("@/lib/telegram/payment-maintenance", () => ({ notifyPaymentMaintenance: vi.fn(async () => false) }));
-vi.mock("@/lib/payments/dana-qris", () => ({ isActiveQrisConfigured: () => true, createActiveQrisInvoice: vi.fn() }));
+vi.mock("@/lib/payments/dana-qris", () => ({ isActiveQrisConfigured: () => true, createActiveQrisInvoice: vi.fn(), qrisPaymentAccountLabel: () => "GoPay Merchant" }));
 vi.mock("@/lib/telegram/invoice-retry", () => ({ retryTelegramInvoiceDelivery: vi.fn(async () => true) }));
 vi.mock("@/lib/commerce", () => ({ createChannelOrderAtomic: vi.fn(async () => ({ code: "EXISTING", isExisting: true })) }));
 

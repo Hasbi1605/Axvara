@@ -3,6 +3,7 @@
 ## Instruksi owner 13 November 2026: perbaikan audit admin pembayaran
 - `PATCH /api/admin/orders/[code]` menolak 409 seluruh perubahan status legacy untuk `nowpayments:*`/`sekalipay_gateway:*` (termasuk batal) karena status crypto/gateway hanya dari IPN/callback/rekonsiliasi provider; `status:"lunas"` generik untuk `qris` ditolak 409 — gunakan jalur ACC QRIS (`paid_qris`) yang memperbarui ledger. Jangan membuka kembali jalan pintas ini atau melonggarkan regex AXV untuk AXG.
 - Filter admin: `method` menerima ID berkolon modern; `manual` mengecualikan QRIS/crypto/gateway; `kind=games` terpisah. UI rekening bank legacy baca-saja; jangan menghidupkan kembali transfer manual di checkout.
+- Label akun QRIS di order (`payment_account`) WAJIB dari `qrisPaymentAccountLabel()` (provider aktif), bukan `payment_methods.account_name`; admin tidak lagi mengedit nama pemilik QRIS.
 - Status: implementasi lokal + tes; belum ada bukti deployment.
 
 ## Keputusan owner 9 November 2026: AXG untuk AXVARA Games

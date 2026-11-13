@@ -16,7 +16,7 @@ import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 import { outOfStockMessage, errorMessage, invoiceMessage } from "@/lib/telegram/messages";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
-import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
+import { createActiveQrisInvoice, qrisPaymentAccountLabel } from "@/lib/payments/dana-qris";
 import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-10-10, paritas Web
 // 2026-09-25): hanya "Lunas — Telegram" yang masuk grup.
@@ -130,7 +130,7 @@ export async function createAndSendCartInvoice(
         telegramChatId: String(chatId),
         telegramUserId: String(from.id),
         paymentMethod: "qris",
-        paymentAccount: "DANA Business",
+        paymentAccount: qrisPaymentAccountLabel(),
         fulfillmentStatus: lines.every((line) => line.fulfillmentMode === "unique")
           ? "reserved"
           : "not_required",

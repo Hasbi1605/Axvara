@@ -2,6 +2,7 @@
 // Shared between web, Telegram, and WhatsApp for order creation,
 // stock reservation, and payment management.
 
+import { qrisPaymentAccountLabel } from "@/lib/payments/dana-qris";
 import {
   queryFirst,
   queryAll,
@@ -771,7 +772,7 @@ export async function getActivePaymentMethods(): Promise<{
   const ewallet = methods.find((m) => String(m.id) === "ewallet");
 
   return {
-    qris: qris ? { name: String(qris.account_name || "DANA Business") } : null,
+    qris: qris ? { name: qrisPaymentAccountLabel() } : null,
     seabank: seabank?.account_number ? { account: String(seabank.account_number), name: String(seabank.account_name || "") } : null,
     ewallet: ewallet?.account_number ? { account: String(ewallet.account_number), name: String(ewallet.account_name || "") } : null,
   };

@@ -118,15 +118,15 @@ export function AdminShell({
                <Tooltip key={id}><TooltipTrigger asChild><Button variant="ghost"
                 onClick={() => { onSection(id); setMobileOpen(false); }}
                  title={collapsed ? label : undefined}
-                 aria-label={label}
+                 aria-label={badge > 0 ? `${label}, ${badge} perlu tindakan` : label}
                 aria-current={active ? "page" : undefined}
                  className={`flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition ${active ? "bg-admin-subtle font-semibold text-admin-fg" : "text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
               >
                  <span aria-hidden="true" className="flex w-5 shrink-0 items-center justify-center">
                   <IosIcon name={icon} size={16} tint={active ? "black" : "white"} className={active ? "" : "opacity-80"} />
                 </span>
-                <span className={`min-w-0 flex-1 ${collapsed ? "lg:hidden" : ""}`}>{label}</span>
-                 {badge > 0 && <Badge variant="warning" className={collapsed ? "lg:hidden" : ""}>{badge > 99 ? "99+" : badge}</Badge>}
+                <span className={`min-w-0 flex-1 truncate text-left ${collapsed ? "lg:hidden" : ""}`} title={label}>{label}</span>
+                 {badge > 0 && <Badge variant="warning" className={`ml-auto shrink-0 px-2 tabular-nums ${collapsed ? "lg:hidden" : ""}`}>{badge > 99 ? "99+" : badge}</Badge>}
                </Button></TooltipTrigger>{collapsed && !mobile && <TooltipContent side="right">{label}</TooltipContent>}</Tooltip>
             );
           })}</div>

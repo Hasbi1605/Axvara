@@ -36,7 +36,7 @@ export async function preflightWhatsAppPayment(
   if (!requestedMethod || requestedMethod === "QRIS") {
     const qris = methods.find(m => String(m.id) === "qris");
     const danaConfigured = isActiveQrisConfigured();
-    if (!qris || !danaConfigured) missing.push("QRIS Dinamis DANA (environment belum lengkap)");
+    if (!qris || !danaConfigured) missing.push("QRIS Dinamis (konfigurasi provider aktif belum lengkap)");
   }
 
   if (!requestedMethod || requestedMethod === "SEABANK") {

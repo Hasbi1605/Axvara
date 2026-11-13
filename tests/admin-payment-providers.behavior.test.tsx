@@ -52,6 +52,8 @@ it("keeps payment method copy rail-neutral without an extra health request", asy
   expect(await screen.findByText(/merchant QRIS yang aktif/)).toBeTruthy();
   expect(screen.queryByText(/DANA Business/)).toBeNull();
   expect(screen.queryByText(/melalui QRIS Hook/)).toBeNull();
+  expect(screen.queryByLabelText(/Nama pemilik/)).toBeNull();
+  expect(screen.getByLabelText("QRIS aktif di checkout")).toBeTruthy();
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
@@ -69,7 +71,9 @@ it("keeps a persistent retryable error instead of claiming zero events on 503", 
 it("legacy bank records are read-only and cannot be added from the checkout settings", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ payment_methods: [{ id: "bca", label: "BCA", account_name: "Legacy", account_number: "123", is_active: true }] }) })));
   render(<PaymentMethodsManager />);
-  expect(await screen.findByText("Legacy")).toBeTruthy();
-  expect(screen.getByDisplayValue("123").closest("fieldset")?.disabled).toBe(true);
+  expect(await screen.findByText("Rekening transfer lama")).toBeTruthy();
+  expect(screen.getByText(/· 123/)).toBeTruthy();
+  expect(screen.queryByDisplayValue("123")).toBeNull();
+  expect(screen.queryByRole("button", { name: /Simpan/ })).toBeNull();
   expect(screen.queryByRole("button", { name: /Tambah bank/ })).toBeNull();
 });
