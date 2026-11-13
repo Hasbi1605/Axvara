@@ -50,7 +50,7 @@ export async function recountOnce(db, call, options) {
     AND length(trim(supplier_order_id))>0 AND (start_count IS NULL OR start_count=0)`, ...options.codes);
   const result = { scanned: rows.length, corrected: 0, zero: 0, skipped: 0 };
   for (const row of rows) {
-    if (!options.codes.includes(row.order_code) || !["indosmm", "providersmm"].includes(row.supplier)) { result.skipped++; continue; }
+    if (!options.codes.includes(row.order_code) || row.supplier !== "indosmm") { result.skipped++; continue; }
     let response;
     for (let attempt = 0; attempt < 3; attempt++) {
       try { response = await call(row.supplier, String(row.supplier_order_id)); } catch { response = null; }
@@ -103,7 +103,7 @@ function proxyCaller() {
   try { url = new URL(base); } catch { throw Error("invalid proxy URL"); }
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) throw Error("invalid proxy URL");
   return async (supplier, order) => {
-    const response = await fetch(`${base.replace(/\/+$/, "")}/${supplier === "indosmm" ? "indosmm" : "psmm"}/status`, {
+    const response = await fetch(`${base.replace(/\/+$/, "")}/indosmm/status`, {
       method: "POST", headers: { "content-type": "application/json", "x-proxy-token": token },
       body: JSON.stringify({ order }), signal: AbortSignal.timeout(20_000),
     });

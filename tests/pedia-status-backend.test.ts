@@ -315,7 +315,7 @@ describe("lookup + status truthfulness", () => {
     expect(body.order.done).toBe(27);
     expect(body.order.paid_at).toBe("2026-11-02T10:00:00.000Z");
     expect(body.order.service_name).toContain("HQ Low Drop");
-    expect(JSON.stringify(body.order)).not.toMatch(/indosmm|providersmm|supplier/i);
+    expect(JSON.stringify(body.order)).not.toMatch(/indosmm|supplier/i);
     // Wrong contact still 404 (proof preserved).
     const bad = await lookupPediaOrder(PEDIA_CODE, "wrong@example.test", false, new NextRequest("http://x/", { method: "POST" }));
     expect(bad.status).toBe(404);
@@ -341,7 +341,7 @@ describe("lookup + status truthfulness", () => {
     expect(body.order.eta_start).toBe("0-1 jam");
     expect(body.order.eta_finish).toBe("1-12 jam");
     expect(body.order.paid_at).toBe("2026-11-02T10:00:00.000Z");
-    expect(JSON.stringify(body.order)).not.toMatch(/indosmm|providersmm|supplier_order|charge|rate/i);
+    expect(JSON.stringify(body.order)).not.toMatch(/indosmm|supplier_order|charge|rate/i);
   });
 });
 
@@ -429,7 +429,7 @@ describe("lifecycle emails: one send per phase, recovery, white-label", () => {
       expect(mail.text).toContain("/pesanan/" + PEDIA_CODE);
       expect(mail.text).not.toContain("contact");
       expect(mail.text).not.toContain("PIN");
-      expect(mail.text).not.toMatch(/indosmm|providersmm|supplier/i);
+      expect(mail.text).not.toMatch(/indosmm|supplier/i);
       expect(mail.text).toContain("First");
       expect(mail.text).toContain("100");
     }
@@ -873,9 +873,9 @@ describe("email refresh T12: branded html, receipt, discovery, blank counts", ()
       expect(mail.html).toContain("Lihat Status Pesanan →");
       expect(mail.html).toContain("pedia.axvara.tech/pesanan/" + PEDIA_CODE);
       expect(mail.html).toContain("STATUS:");
-      expect(mail.html).not.toMatch(/indosmm|providersmm|22024298|buyerAccessCode|access_code/i);
+      expect(mail.html).not.toMatch(/indosmm|22024298|buyerAccessCode|access_code/i);
       expect(mail.text).toContain("Halaman pesanan: https://pedia.axvara.tech/pesanan/" + PEDIA_CODE);
-      expect(mail.text).not.toMatch(/PIN|kredensial|akun|garansi|indosmm|providersmm/i);
+      expect(mail.text).not.toMatch(/PIN|kredensial|akun|garansi|indosmm/i);
     }
     expect(pediaMails[0].html).toContain("Pembayaran Diterima");
     expect(pediaMails[1].html).toContain("Pesanan Diproses");
@@ -1006,7 +1006,7 @@ describe("email refresh T12: branded html, receipt, discovery, blank counts", ()
     expect(mail.html).toContain("&lt;script&gt;");
     expect(mail.text).toContain("Jumlah awal: 0");
     expect(mail.text).toContain("Sisa: 100");
-    expect(mail.text).not.toMatch(/indosmm|providersmm/i);
+    expect(mail.text).not.toMatch(/indosmm/i);
     expect(mail.html).toContain("Lihat Status Pesanan →");
   });
 });

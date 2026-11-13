@@ -1,10 +1,10 @@
-// tests/pedia-saldo-throttle.test.ts — Anti-spam notif saldo ProviderSMM.
+// tests/pedia-saldo-throttle.test.ts — Anti-spam notif saldo IndoSMM.
 //
-// Insiden owner 2026-10-09: "Saldo ProviderSMM menipis" spam tiap jam
+// Insiden owner 2026-10-09: "Saldo IndoSMM menipis" spam tiap jam
 // (00:35→08:40, 9×/8 jam) saat saldo Rp 0 stagnan — gate cuma 1 jam tanpa
 // syarat turun, state cuma timestamp. Dikunci 1:1 WR/SK: kirim ulang hanya
 // bila (a) >6 jam sejak bunyi terakhir, atau (b) saldo TURUN melewati
-// kelipatan Rp5.000. State `amount|ms` di store_settings.pedia_balance_alert_at.
+// kelipatan Rp5.000. State `amount|ms` di store_settings.pedia_indosmm_balance_alert_at.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess, QueryBudgetExceeded } from "@/lib/db-access";
@@ -46,7 +46,7 @@ describe("throttle notif saldo SMM (cermin WR/SK 1:1)", () => {
       expect(await notifyPediaLowBalance(0, db)).toBe(false);
       expect(sent.length).toBe(1);
       // State format baru amount|ms.
-      const row = fx.sql.prepare("SELECT value FROM store_settings WHERE key='pedia_balance_alert_at'").get() as { value: string };
+      const row = fx.sql.prepare("SELECT value FROM store_settings WHERE key='pedia_indosmm_balance_alert_at'").get() as { value: string };
       expect(String(row.value)).toMatch(/^0\|\d+$/);
     } finally {
       fx.close();
@@ -102,13 +102,13 @@ describe("throttle notif saldo SMM (cermin WR/SK 1:1)", () => {
       telegramStub(sent);
       const db = createDatabaseAccess(fx.db);
       // State prod lama: datetime ISO (ditulis gate 1 jam yang lama).
-      fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES('pedia_balance_alert_at', datetime('now'))").run();
+      fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES('pedia_indosmm_balance_alert_at', datetime('now'))").run();
       // Dalam 6 jam + amount lama tak diketahui → bungkam, tapi state
       // dimigrasi ke format baru (timestamp lama dipertahankan) agar cek
       // berikut konsisten.
       expect(await notifyPediaLowBalance(0, db)).toBe(false);
       expect(sent.length).toBe(0);
-      const row = fx.sql.prepare("SELECT value FROM store_settings WHERE key='pedia_balance_alert_at'").get() as { value: string };
+      const row = fx.sql.prepare("SELECT value FROM store_settings WHERE key='pedia_indosmm_balance_alert_at'").get() as { value: string };
       expect(String(row.value)).toMatch(/^\d+\|\d+$/);
       // Cek berikut (format baru, stagnan) → tetap bungkam.
       expect(await notifyPediaLowBalance(0, db)).toBe(false);
@@ -131,7 +131,7 @@ describe("throttle notif saldo SMM (cermin WR/SK 1:1)", () => {
     }
   });
 
-  it.each(["providersmm", "indosmm"] as const)("D1 read/write failure or missing DB never sends an unthrottled %s message", async supplier => {
+  it.each(["indosmm"] as const)("D1 read/write failure or missing DB never sends an unthrottled %s message", async supplier => {
     const fx = createD1Fixture();
     try {
       env();
@@ -180,22 +180,22 @@ describe("throttle notif saldo SMM (cermin WR/SK 1:1)", () => {
       const results = await Promise.all(Array.from({ length: 5 }, () => notifyPediaLowBalance(0, db)));
       expect(results.filter(Boolean)).toHaveLength(1);
       expect(sent).toHaveLength(1);
-      fx.sql.prepare("UPDATE store_settings SET value=? WHERE key='pedia_balance_alert_at'").run(`0|${Date.now() - 7 * 60 * 60 * 1000}`);
+      fx.sql.prepare("UPDATE store_settings SET value=? WHERE key='pedia_indosmm_balance_alert_at'").run(`0|${Date.now() - 7 * 60 * 60 * 1000}`);
       const next = await Promise.all(Array.from({ length: 5 }, () => notifyPediaLowBalance(0, db)));
       expect(next.filter(Boolean)).toHaveLength(1);
       expect(sent).toHaveLength(2);
     } finally { fx.close(); }
   });
 
-  it("providers have independent markers and Telegram rejection is not reported as delivered", async () => {
+  it("one marker throttles the only supplier and Telegram rejection is not reported as delivered", async () => {
     const fx = createD1Fixture();
     try {
       env(); const sent: unknown[] = []; telegramStub(sent);
       const db = createDatabaseAccess(fx.db);
-      expect(await notifyPediaLowBalance(0, db, "providersmm")).toBe(true);
       expect(await notifyPediaLowBalance(0, db, "indosmm")).toBe(true);
-      expect(sent).toHaveLength(2);
-      fx.sql.prepare("UPDATE store_settings SET value=? WHERE key='pedia_balance_alert_at'").run(`0|${Date.now() - 7 * 60 * 60 * 1000}`);
+      expect(await notifyPediaLowBalance(0, db, "indosmm")).toBe(false);
+      expect(sent).toHaveLength(1);
+      fx.sql.prepare("UPDATE store_settings SET value=? WHERE key='pedia_indosmm_balance_alert_at'").run(`0|${Date.now() - 7 * 60 * 60 * 1000}`);
       const fetch = vi.fn(async () => ({ ok: false, json: async () => ({ ok: false, error_code: 429, description: "retry later" }) }));
       vi.stubGlobal("fetch", fetch);
       expect(await notifyPediaLowBalance(0, db)).toBe(false);

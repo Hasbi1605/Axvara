@@ -2,12 +2,13 @@
 // fase "pedia" (PEDIA-PRD PD-30–33 + §9.2/9.4).
 //
 // Alur per item queued (lunas): guard margin vs rate TERKINI → submit via
-// proxy /psmm/order/add (atau /refill, backup) dengan Idempotency-Key =
-// order_code (VPS 24 jam) → submitted; poll via /psmm/order/status →
+// proxy /indosmm/order/add (atau /refill, backup) dengan Idempotency-Key =
+// order_code (VPS 24 jam) → submitted; poll via /indosmm/order/status →
 // in_progress / completed (capture start_count+remains) / partial+canceled→
 // tindak lanjut manual; api_error → needs_check (MANUAL, bukan auto-refund).
 // Durable submitting + lease: interrupted submissions require reconciliation;
-// neither a retry nor another provider is selected automatically.
+// neither a retry nor another provider is selected automatically. An item of a
+// supplier this build no longer knows (historical rows) never dispatches.
 
 import type { createDatabaseAccess } from "@/lib/db-access";
 import { callPediaProvider, isPediaProvider, type ProxyCaller } from "@/lib/pedia/proxy";

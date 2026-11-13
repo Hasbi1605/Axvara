@@ -130,7 +130,7 @@ describe('migration 0093 in sqlite', () => {
     const db = setup();
     db.prepare("UPDATE pedia_tiers SET public_name='Nama admin', description_md='Deskripsi admin' WHERE id=388").run();
     db.prepare("UPDATE pedia_tiers SET supplier_service_id=1 WHERE id=46").run();
-    db.prepare("UPDATE pedia_tiers SET supplier='providersmm' WHERE id=47").run();
+    db.prepare("UPDATE pedia_tiers SET supplier='legacy_supplier' WHERE id=47").run();
     db.exec(migration);
     const get = (id: number) => db.prepare('SELECT public_name, description_md FROM pedia_tiers WHERE id=?').get(id);
     expect(get(388)).toEqual({ public_name: 'Nama admin', description_md: 'Deskripsi admin' });

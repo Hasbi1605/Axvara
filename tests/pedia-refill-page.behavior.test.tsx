@@ -30,7 +30,7 @@ describe("pediaRefillState", () => {
     const { REFILL_REASON_TEXT, refillStatusLabel } = await import("@/lib/pedia/refill-policy");
     const all = [...PEDIA_TERMS.flatMap((t) => [t.term, t.meaning]), ...PEDIA_REFILL_STEPS.flat(), ...PEDIA_REFILL_RULES, ...Object.values(DROP_MEANING), ...Object.values(REFILL_REASON_TEXT),
       ...["requested", "submitted", "manual_requested", "completed", "rejected", "supplier_rejected", "canceled"].map((s) => refillStatusLabel(s)!)];
-    for (const text of all) expect(text).not.toMatch(/supplier|indosmm|providersmm/i);
+    for (const text of all) expect(text).not.toMatch(/supplier|indosmm/i);
     expect(whiteLabel("Estimasi supplier dapat berubah mengikuti antrean.")).toBe("Estimasi dapat berubah mengikuti antrean.");
     expect(whiteLabel("Followers global menurut supplier, akun HQ menurut supplier.")).toBe("Followers global, akun HQ.");
     expect(whiteLabel("No Drop (label supplier): belum drop.")).toBe("No Drop: belum drop.");

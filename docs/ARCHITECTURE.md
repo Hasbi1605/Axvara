@@ -992,7 +992,8 @@ axvara/
 │   │                            # Skeletons (satu bentuk skeleton per halaman: overlay navigasi + loading halaman)
 │   └── admin/                   # Shell, login gate, hooks (useAdminAuth/useProductManager),
 │       └── sections/            # satu komponen per section admin (page.tsx tinggal shell + routing)
-│       └── PediaManager.tsx     # 5 panel: Produk/Layanan Supplier/Pesanan/Kredit/Pengaturan; daftar ringkas + editor produk/tingkat terpisah
+│       ├── PediaManager.tsx     # shell admin Pedia: status strip + 4 tab (Pesanan · Produk · Layanan IndoSMM · Pengaturan); ?tab= lama dipetakan
+│       ├── pedia/               # OrdersPanel/ProductsPanel/ProductEditor/ServicesPanel/SettingsPanel/shared: per-tab loading, payload mutasi tetap
 │   ├── shared/                  # ServicesMenu + CrossServicePromo (Market/Pedia; URL src/lib/site.ts)
 │   ├── pedia/                   # PediaNavbar (client + field cari pill ala Market via usePediaSearch), PediaBottomNav, Typewriter, LinkPasteHero (komponen hidup, tak dipakai beranda sejak 2026-10-12), PlatformGrid, PediaOrbit (kembar OrbitHero: 8 sosmed + inti mark Pedia), PediaServiceCards (Market + Bot Telegram), PediaWhatsAppLink (CTA Hubungi Admin → hub /wa), OrderTicker (tidak dirender), StatusWidgets
 ├── src/hooks/
@@ -1033,7 +1034,7 @@ axvara/
 │   ├── config.ts                # payment methods, site config
 │   ├── fetch-timeout.ts         # fetchWithTimeout + FetchTimeoutError (fetch browser tak punya batas waktu)
 │   ├── utils.ts                 # formatRupiah, generateOrderCode
-│   ├── pedia/                   # Lib Pedia: quote JWE+legacy/pricing, link (deteksi+mask), proxy router ProviderSMM/IndoSMM via VPS,
+│   ├── pedia/                   # Lib Pedia: quote JWE+legacy/pricing, link (deteksi+mask), proxy router IndoSMM via VPS, ops-config (env efektif),
 │   │                            # dispatch (job+poll), credits (PDK-), notify/email (Email B), seed (9 produk/27 jasa/39 tingkat), lookup (PD-13)
 ├── stores/
 │   ├── cart.ts                  # Zustand cart store (localStorage) — badge/judul pakai lineCount() = jumlah baris varian (2026-09-19); count() sum-qty hanya untuk subtotal
@@ -1048,14 +1049,14 @@ axvara/
 
 **Pedia working-tree 2026-10-12: implementasi lokal, BELUM deployed; tidak ada flag diubah.** Menggantikan spec overhaul 2026-10-11; riwayat QA/deploy lama bukan bukti diff ini live. Schema 0059 sudah memiliki identitas supplier gabungan/status submitting/featured, tidak ada migrasi baru untuk perubahan ini. Detail UI: `docs/PEDIA-DESIGN.md`; kontrak/gate: `docs/PEDIA-PRD.md` dan §16.10.
 
-- `GET /api/pedia/catalog` cache 60 detik, tanpa identitas/rate/nama/order supplier publik. Tier aktif wajib `providersmm|indosmm`, layanan `present=1`, tipe `Default`, rate positif dan min/max valid; harga finite positif, jumlah dalam batas/paket/step. Tier tanpa paket valid dan produk tanpa paket tersedia dihilangkan. Key bounds `(supplier,service_id)`; min/max boleh publik. Endpoint katalog memakai data D1 tersimpan, bukan live probe gate IndoSMM per request.
+- `GET /api/pedia/catalog` cache 60 detik, tanpa identitas/rate/nama/order supplier publik. Tier aktif wajib supplier penjualan `indosmm`, layanan `present=1`, tipe `Default`, rate positif dan min/max valid; harga finite positif, jumlah dalam batas/paket/step. Tier tanpa paket valid dan produk tanpa paket tersedia dihilangkan. Key bounds `(supplier,service_id)`; min/max boleh publik. Endpoint katalog memakai data D1 tersimpan, bukan live probe gate IndoSMM per request.
 - Server meneruskan seluruh katalog; client awal maks 8 featured atau fallback 6 Jelajahi layanan tanpa klaim laris. Cari/filter/Tampilkan semua menjangkau semua produk terbit. `catalogCard()` memasangkan harga/jumlah/tier/refill dari satu paket; tagline TIDAK dirender di kartu/detail sejak 2026-10-12 (hapus AI slop; field tetap di DB/admin). `description_md` adalah field katalog publik opsional (`string|null`), ditampilkan pada detail/order sebagai teks literal escaped dengan newline dipertahankan, bukan render Markdown/HTML; tidak ditambahi link-helper teknis. `ServicesMenu`/`CrossServicePromo` memakai `AXVARA_SERVICES` di site.ts; URL absolut, UTM promo, komunitas satu sumber. Kedua layout memakai satu `Footer` dengan newsletter dan bantuan kedua host; AppSwitcher dihapus, bukan disimpan. Revisi footer 2026-10-15 (implementasi; publikasi CI): navigasi Layanan AXVARA berasal dari `AXVARA_SERVICES`, tanpa kategori/tautan Semua produk/artikel dan tanpa fetch `/api/categories`. Ikon WhatsApp sesudah Facebook memakai SVG `currentColor` satu tone dengan sosial lainnya dan URL absolut `${SITE.webUrl}${waHubLink()}` (pesan default Halo AXVARA); teks chat/jam layanan dihapus. Pill Grup WA/Bot Order Telegram di bawah ikon memakai settings `whatsappGroupUrl` (fallback `WA_GROUP_HREF`)/`TG_BOT_HREF` dan aset brand lokal; bot tetap kanal Market. Navigasi layanan/bantuan dua kolom di mobile, empat kolom utama di desktop; form subscriber tetap same-origin.
 - `OrderClient` tier/jumlah awal null, radio native, paket-only; pergantian tier yang tak mendukung jumlah mereset quantity null. Satu CTA per viewport meminta quote (25 detik), lalu order (60 detik) jika total sama dan tanpa kredit. Total berubah atau input kredit menghentikan langkah sebelum order dan meminta Setujui & lanjut ke pembayaran. Perubahan input membatalkan quote/respons lama; quote server 30 menit, client refresh 29 menit sebelum percobaan pertama.
 - Ref in-flight mencegah klik ganda; percobaan order mengunci data. Ambigu/network/5xx serta 408/429 mempertahankan token/kontak untuk retry, 4xx lain membuka kunci/membuang quote. Ini pagar client, **bukan atomisitas penuh order/kredit/invoice**. Order tutup hanya pesan dekat CTA disabled, kontak/kredit/S&K tidak dirender, tanpa banner berulang di hero/judul.
 - Admin GET produk menyertakan `live_type/rate/min/max/present` untuk readiness. ID admin wajib desimal positif kanonik, tanpa nol awal/notasi eksponen/pecahan. PUT parsial memvalidasi hanya field yang dikirim tanpa mereset field lain; paket wajib bilangan positif sesuai `step`, checklist berupa array objek `id/label` dengan ID unik setelah trim dan field bantuan opsional bertipe string. Edit tier atau paket/step produk langsung menghitung ulang harga tersimpan pada tier terdampak; harga derived tidak dapat diedit lewat PUT. Supplier hilang tidak dihidupkan ulang: harga dikosongkan dan tier `present=0` dinonaktifkan. **Simpan dan reprice berurutan, tidak atomik:** `500 reprice_failed` berarti edit sudah tersimpan tetapi harga mungkin belum seluruhnya diperbarui. Guard margin menyimpan penonaktifan sebelum harga baru agar replay setelah kegagalan tidak melewati pemeriksaan harga lama.
 - GET admin gagal mengembalikan `500 load_failed`, bukan daftar kosong sukses; PUT/recovery gagal memberi `save_failed`, UI menampilkan feedback + Muat ulang, dan resync dengan `errors` dianggap berhasil sebagian. `mark_submitted/resubmit` memeriksa hasil update berpagar status (race → 409); resubmit dan cancel+kredit mewajibkan `confirm=true`. Konfirmasi UI recovery berupa form; ConfirmDialog dipakai untuk resync, kredit manual, pengaturan, bukan semua edit.
 - Pengaturan disimpan ke `store_settings`, default valid + riwayat saldo 7 hari + overview per-provider saldo live/cache/error; bukan bulk override tingkat atau saldo live header global. Jalur reprice/quote/order masih membaca `PEDIA_MIN_ORDER_RP` dari env, field minimum tersimpan belum menggantikannya; ambang cron masih env. Tidak ada kontrak konsumsi default oleh seluruh jalur harga.
-- Admin sekarang punya create produk/tingkat nonaktif, filter supplier/kompatibilitas/mapping, pilihan provider+service berpasangan, preview storefront tersimpan terpenuhi, API refill terpisah dari masa kurasi. `PediaManager` membentuk `PediaCatalogProduct` dari produk/tier tersimpan dan paket layak, termasuk tingkat nonaktif untuk kurasi; memakai `ProductCard`/`catalogCard` aktual + `OrderClient` embedded dalam mode preview aman. Draf tetap privat, tidak membuka route publik; navigasi kartu dicegah, pemesanan disabled, interaksi preview tidak memanggil API quote/order. Mobile CTA inline, bukan fixed; tautan kembali tidak dirender. Save/reload memperbarui preview; input belum disimpan tidak ikut, unsaved live preview di luar scope. Pengaturan menyajikan overview saldo live/cache/error/pricing/sync per provider, bukan header global. `mark_submitted` memverifikasi status/ID desimal positif kanonik pada provider asal dan konflik; `resubmit/cancel_credit` hanya sebelum `submit_attempts>0` atau supplier ID ada, bukan retry buta setelah timeout.
+- (Histori 2026-10-12; UI admin digantikan redesign 13 November 2026 — §16.10c-ter.) Admin punya create produk/tingkat nonaktif, filter supplier/kompatibilitas/mapping, pilihan provider+service berpasangan, preview storefront tersimpan terpenuhi, API refill terpisah dari masa kurasi. `PediaManager` membentuk `PediaCatalogProduct` dari produk/tier tersimpan dan paket layak, termasuk tingkat nonaktif untuk kurasi; memakai `ProductCard`/`catalogCard` aktual + `OrderClient` embedded dalam mode preview aman. Draf tetap privat, tidak membuka route publik; navigasi kartu dicegah, pemesanan disabled, interaksi preview tidak memanggil API quote/order. Mobile CTA inline, bukan fixed; tautan kembali tidak dirender. Save/reload memperbarui preview; input belum disimpan tidak ikut, unsaved live preview di luar scope. Pengaturan menyajikan overview saldo live/cache/error/pricing/sync per provider, bukan header global. `mark_submitted` memverifikasi status/ID desimal positif kanonik pada provider asal dan konflik; `resubmit/cancel_credit` hanya sebelum `submit_attempts>0` atau supplier ID ada, bukan retry buta setelah timeout.
 
 Route API dan modul besar dipecah per domain, tetapi **path publik lama dipertahankan sebagai
 barrel** (`src/lib/db.ts`, `src/lib/fulfillment/deliver.ts`, `src/lib/telegram/messages.ts`).
@@ -3635,7 +3636,45 @@ tetap tersimpan sebagai `secret_text`. Guard CI dan bukti insiden ada di §17.2.
   katalog otomatis dari delta yang tidak memuat ID. Overview admin mengikuti
   supplier jual aktif.
 
-### 16.10c-bis Katalog otomatis Pedia + deskripsi resmi + gate syarat (12 November 2026)
+### 16.10c-ter IndoSMM kembali satu-satunya supplier; kode ProviderSMM dihapus (13 November 2026)
+Implementasi lokal; publikasi lewat CI. Bagian 12 November (16.10b/16.10c-bis) adalah snapshot historis yang digantikan.
+- `src/lib/pedia/sales-policy.ts`: `PEDIA_SALE_PROVIDER='indosmm'`, tanpa supplier riwayat. Katalog publik,
+  pembanding harga, quote, order, draft/aktivasi admin, shortlist, dan overview hanya IndoSMM. Baris
+  supplier lain yang masih aktif di D1 tidak dijual; retry order tersimpan tetap dicari lewat `quote_id`
+  sebelum gate.
+- Dihapus: `src/lib/pedia/auto-catalog.ts`, `metadata-refresh.ts`, `supplier-descriptions.ts`; client
+  `/psmm/*` dan `callPsmmProxy`; jalur materialisasi/deskripsi/`managedTermsFresh`; checkpoint
+  `pedia_diff_*`; kolom/field API khusus katalog otomatis. PEDIA_PROVIDERS = `["indosmm"]`.
+- `/api/supplier-sync` membalas HTTP 200 `{ok:true, ignored:true}` untuk `source:"providersmm"` TANPA
+  tulis D1 (sementara sampai VPS berhenti mengirim; hapus cabang sesudahnya). Diff IndoSMM tidak
+  berubah: validasi IDR/batas 100, checkpoint `pedia_indosmm_diff_*`, ack non-2xx pada tulis parsial.
+- Skema 0117 (kolom `managed`/`managed_snapshot_at`) dipertahankan karena prod sudah menerapkannya,
+  tetapi inert sejak 13 November; tidak ada migrasi baru. Pembersihan data/reaktivasi tier = paket terpisah.
+- Item order dengan `supplier` yang tidak dikenal build ini dirender generik dan tidak pernah dispatch
+  (`needs_check`); jangan hapus/remap baris sebelum migrasi pembersihan.
+- Nilai operasional minimum order dan ambang alert saldo dibaca dari env melalui
+  `src/lib/pedia/ops-config.ts`; GET `/api/admin/pedia/settings` mengembalikan nilai EFEKTIF itu.
+- **Migrasi data (B2).** `0119_pedia_providersmm_purge.sql` menghapus data provider lama secara
+  idempoten/FK-safe: guard order legacy (expired + belum dibayar/dikirim) dihitung ke tabel sementara,
+  dependen order dihapus berurutan, lalu tier psmm tanpa referensi, produk yang hanya berisi tier psmm
+  (auto/`psmm-`/seluruh tier psmm) tanpa order, mirror/statistik/saldo psmm, dan key `store_settings`
+  `pedia_pending:*`/`pedia_psmm_*`/`pedia_managed_*`/`pedia_diff_*`/`pedia_balance_alert_at`/
+  `pedia_balance_checked_at`. `0120_pedia_indosmm_reactivate.sql` mengaktifkan kembali 21 tier kurasi
+  IndoSMM (5 alasan NULL + 16 margin pulih) yang lolos mirror/rate/tipe/margin dan tidak ada di 0089;
+  guard `is_active=0` membuat re-run no-op. Prefix `pedia_indosmm_*`, kolom 0117, arsip 0062,
+  IndoSMM/Market/Games tidak disentuh.
+- **UI admin (P3, 13 November 2026).** `PediaManager.tsx` kini hanya shell + status strip (saldo
+  IndoSMM + "Periksa", produk dijual `<siap>/<total>`, pesanan perlu tindakan → tab Pesanan
+  terfilter) dan 4 tab: **Pesanan · Produk · Layanan IndoSMM · Pengaturan**. `?tab=` lama dipetakan
+  (`services`/`curation` → Layanan IndoSMM, `credits` → Produk); default Pesanan bila ada tindakan,
+  selain itu Produk. Panel di `src/components/admin/pedia/{OrdersPanel,ProductsPanel,ProductEditor,
+  ServicesPanel,SettingsPanel,shared}.tsx`; tiap tab memuat datanya sendiri (Pesanan/Pengaturan tidak
+  menunggu katalog). Tab "Arsip lama" (kredit) dihapus — API kredit tidak berubah; kurasi menjadi mode
+  "Bandingkan per kebutuhan" di Layanan IndoSMM; minimum order dan ambang saldo read-only "dari
+  konfigurasi server". Tidak ada kartu/label/supplier ProviderSMM; payload mutasi, guard, dan
+  konfirmasi API tetap. Status: implementasi lokal; publikasi melalui CI.
+
+### 16.10c-bis Katalog otomatis Pedia + deskripsi resmi + gate syarat (12 November 2026) — HISTORI, digantikan 13 November 2026
 Implementasi lokal; publikasi lewat CI. Bootstrap produksi, deployment, dan QA admin produksi belum dijalankan.
 
 **Kebijakan supplier.** `src/lib/pedia/sales-policy.ts` menetapkan `PEDIA_SALE_PROVIDER='providersmm'`
@@ -3691,7 +3730,8 @@ dengan layanan live valid, deskripsi `ok`, dan cap `managed_snapshot_at` = versi
 atau versi yang tidak lagi cocok, SETELAH lookup retry order tersimpan (retry lama tetap 200). Snapshot
 copy memakai deskripsi resmi; nama/deskripsi publik white-label; payload tanpa ID/biaya supplier.
 
-**Admin.** `/api/admin/pedia/overview` menambah `managed_products/managed_tiers/managed_active/
+**Admin.** *(Histori 12 November 2026; API `managed_*`/resync sudah dihapus 13 November dan UI-nya
+digantikan — lihat §16.10c-ter.)* `/api/admin/pedia/overview` menambah `managed_products/managed_tiers/managed_active/
 managed_blocked` + `catalog.{blocked,blocked_total,queue_pending,description_fresh_at}`;
 `GET /api/admin/pedia/services` menambah `tier_managed/tier_active/tier_disabled_reason/description_status`
 dan filter `?managed=` yang diterapkan di SQL sebelum `COUNT`/`LIMIT` (default semua tipe). `POST` resync
@@ -3701,8 +3741,9 @@ tampilan aman (field sumber dibuang sebelum gate); aktivasi menolak baris diblok
 via `managedActivationEligible` (cap versi = snapshot aktif, cermin valid, `planManagedService` eligible)
 → 409 `managed_ineligible` tanpa mutasi.
 
-**UI admin (`src/components/admin/PediaManager.tsx`).** Ringkasan diagnostik berlabel manusiawi; "Tarik
-ulang" resumable (`busy` terpisah dari progres yang dipertahankan, lanjut dari cursor terakhir supplier
+**UI admin (`src/components/admin/PediaManager.tsx`).** *(Histori 12 November 2026; "Tarik ulang"/
+kartu katalog otomatis sudah dihapus dan UI digantikan 13 November — §16.10c-ter.)* Ringkasan diagnostik
+berlabel manusiawi; "Tarik ulang" resumable (`busy` terpisah dari progres yang dipertahankan, lanjut dari cursor terakhir supplier
 yang sama, `refresh` hanya request pertama, cursor tidak maju = error, sukses `done` mengaktifkan kembali
 tombol + memuat ulang). Filter kelayakan server-side; filter kompatibilitas default OFF; filter supplier
 kedua provider untuk diagnosa riwayat.
@@ -4117,11 +4158,12 @@ respons Telegram ok; penolakan/timeout tetap menahan reservasi untuk menghindari
 retry ambigu tiap tick. Ini dapat menunda alert sampai jadwal pengingat berikut,
 bukan jaminan exactly-once atau mekanisme retry notifikasi pembeli.
 
-`api/cron/lite` tidak memanggil proxy ProviderSMM jika baca/tulis checkpoint
-30 menit gagal. Kegagalan supplier itu tidak menghentikan checkpoint IndoSMM.
-Tidak ada tabel, env Pages, kontrak proxy, jadwal cron, dispatch atau jalur uang
-baru. Tes menginjeksi error read/write/budget, dua cron paralel, dua provider,
-12 tick lima-menit saat DB terblokir lalu pulih, serta Telegram menolak.
+`api/cron/lite` (sejak 13 November 2026) hanya memantau saldo IndoSMM; tidak
+ada lagi cek/alert supplier lama. Bila baca/tulis checkpoint 30 menit gagal,
+tidak ada panggilan proxy pada tick itu. Tidak ada tabel, env Pages, kontrak
+proxy, jadwal cron, dispatch atau jalur uang baru. Tes menginjeksi error
+read/write/budget, dua cron paralel, 12 tick lima-menit saat DB terblokir lalu
+pulih, serta Telegram menolak.
 
 Indeks `idx_orders_telegram_pending_chat` pada migrasi0075 mempersempit guard/precheck ke chat terkait. EXPLAIN fixture berubah dari pencarian seluruh status pending menjadi pencarian chat+status+payment_status; ini bukti plan lokal, bukan angka penghematan produksi.
 

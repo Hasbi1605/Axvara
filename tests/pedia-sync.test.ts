@@ -1,10 +1,10 @@
-// tests/pedia-sync.test.ts — PEDIA M1: diff providersmm → D1 (PD-30–33).
+// tests/pedia-sync.test.ts — PEDIA M1: diff IndoSMM → D1 (PD-30–33).
 // Dikunci: upsert cermin, hitung ulang harga paket, guard margin (PD-32),
 // layanan hilang → nonaktif (PD-33), idempoten, indeks dipakai (pola 0057).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { applyProvidersmmDiff } from "@/lib/pedia/sync";
+import { applyPediaDiff } from "@/lib/pedia/sync";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -34,22 +34,22 @@ async function seedProductTier(db: ReturnType<typeof createDatabaseAccess>) {
   await db.execRun(
     `INSERT INTO pedia_tiers (product_id, tier, supplier, supplier_service_id, price_group,
        markup_pct, min_profit_rp, refill_days, package_prices_json, is_active)
-     VALUES (?, 'standar', 'providersmm', 86, 'G3', 20, 1000, 30, '{}', 1)`,
+     VALUES (?, 'standar', 'indosmm', 86, 'G3', 20, 1000, 30, '{}', 1)`,
     Number(p?.id),
   );
   return Number(p?.id);
 }
 
-describe("diff providersmm PD-30–33", () => {
+describe("diff IndoSMM PD-30–33", () => {
   it("upsert cermin + hitung ulang harga paket dari rate terkini", async () => {
     const { db: d1 } = createD1Fixture();
     const db = createDatabaseAccess(d1);
     await seedProductTier(db);
-    const r = await applyProvidersmmDiff(db, [svc()], []);
+    const r = await applyPediaDiff(db, "indosmm", [svc()], [], "IDR");
     expect(r.upserted).toBe(1);
     expect(r.errors).toEqual([]);
     const row = await db.queryFirst(
-      `SELECT * FROM pedia_supplier_services WHERE supplier='providersmm' AND service_id=86`,
+      `SELECT * FROM pedia_supplier_services WHERE supplier='indosmm' AND service_id=86`,
     );
     expect(Number(row?.rate_idr_per_1k)).toBe(38750);
     // 250 @ rate 38750 G3 → 12000 (lihat pedia-pricing.test).
@@ -62,8 +62,8 @@ describe("diff providersmm PD-30–33", () => {
     const { db: d1 } = createD1Fixture();
     const db = createDatabaseAccess(d1);
     await seedProductTier(db);
-    await applyProvidersmmDiff(db, [svc()], []);
-    const r = await applyProvidersmmDiff(db, [svc({ rate: 200000 })], []);
+    await applyPediaDiff(db, "indosmm", [svc()], [], "IDR");
+    const r = await applyPediaDiff(db, "indosmm", [svc({ rate: 200000 })], [], "IDR");
     expect(r.tiersAutoDisabled).toEqual([{ tierId: expect.any(Number), reason: "margin" }]);
     const tier = await db.queryFirst(`SELECT * FROM pedia_tiers WHERE supplier_service_id=86`);
     expect(Number(tier?.is_active)).toBe(0);
@@ -74,8 +74,8 @@ describe("diff providersmm PD-30–33", () => {
     const { db: d1 } = createD1Fixture();
     const db = createDatabaseAccess(d1);
     await seedProductTier(db);
-    await applyProvidersmmDiff(db, [svc()], []);
-    const r = await applyProvidersmmDiff(db, [], [86]);
+    await applyPediaDiff(db, "indosmm", [svc()], [], "IDR");
+    const r = await applyPediaDiff(db, "indosmm", [], [86], "IDR");
     expect(r.markedMissing).toBe(1);
     const tier = await db.queryFirst(`SELECT * FROM pedia_tiers WHERE supplier_service_id=86`);
     expect(Number(tier?.is_active)).toBe(0);
@@ -86,9 +86,9 @@ describe("diff providersmm PD-30–33", () => {
     const { db: d1 } = createD1Fixture();
     const db = createDatabaseAccess(d1);
     await seedProductTier(db);
-    await applyProvidersmmDiff(db, [svc()], []);
-    await applyProvidersmmDiff(db, [svc({ rate: 200000 })], []);
-    await applyProvidersmmDiff(db, [svc()], []);
+    await applyPediaDiff(db, "indosmm", [svc()], [], "IDR");
+    await applyPediaDiff(db, "indosmm", [svc({ rate: 200000 })], [], "IDR");
+    await applyPediaDiff(db, "indosmm", [svc()], [], "IDR");
     const tier = await db.queryFirst(`SELECT * FROM pedia_tiers WHERE supplier_service_id=86`);
     expect(Number(tier?.is_active)).toBe(0);
   });
@@ -97,9 +97,9 @@ describe("diff providersmm PD-30–33", () => {
     const { db: d1 } = createD1Fixture();
     const db = createDatabaseAccess(d1);
     await seedProductTier(db);
-    await applyProvidersmmDiff(db, [svc()], []);
+    await applyPediaDiff(db, "indosmm", [svc()], [], "IDR");
     const before = await db.queryFirst(`SELECT package_prices_json FROM pedia_tiers WHERE supplier_service_id=86`);
-    const r = await applyProvidersmmDiff(db, [svc()], []);
+    const r = await applyPediaDiff(db, "indosmm", [svc()], [], "IDR");
     expect(r.errors).toEqual([]);
     const after = await db.queryFirst(`SELECT package_prices_json FROM pedia_tiers WHERE supplier_service_id=86`);
     expect(after?.package_prices_json).toBe(before?.package_prices_json);

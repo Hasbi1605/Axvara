@@ -7,7 +7,8 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider } from "@/lib/pedia/proxy";
 import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { pediaBounds } from "@/lib/pedia/bounds";
-import { PEDIA_CATALOG_BOUNDS_SQL, managedTermsFresh } from "@/lib/pedia/catalog-queries";
+import { PEDIA_CATALOG_BOUNDS_SQL } from "@/lib/pedia/catalog-queries";
+import { pediaMinOrderRp } from "@/lib/pedia/ops-config";
 import { whiteLabel } from "@/lib/pedia/terms";
 import { CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
 
@@ -135,12 +136,12 @@ async function readCatalog() {
   const unavailable = () => { failed = true; return []; };
   const products = await db.queryAll(
     `SELECT id, slug, platform, metric, target_kind, name, tagline, description_md,
-            packages_json, step, checklist_json, is_featured, managed
+            packages_json, step, checklist_json, is_featured
        FROM pedia_products WHERE is_active=1 ORDER BY sort_order, id`,
   ).catch(unavailable);
   const tiers = await db.queryAll(
     `SELECT id, product_id, tier, label_note, refill_days, refill_anchor, eta_start, eta_finish,
-            package_prices_json, supplier, supplier_service_id, managed, managed_snapshot_at,
+            package_prices_json, supplier, supplier_service_id,
             public_name, description_md, terms_md, instructions_md, recommendation_note, min_qty_override, max_qty_override, quantity_step, region, quality, speed_note, drop_risk, drop_label, speed_per_day, input_kind,
             is_recommended, sort_order, markup_pct, min_profit_rp
        FROM pedia_tiers WHERE is_active=1 ORDER BY is_recommended DESC, sort_order, id`,
@@ -149,14 +150,6 @@ async function readCatalog() {
   const bounds = await db.queryAll(
     PEDIA_CATALOG_BOUNDS_SQL,
   ).catch(unavailable);
-  // PSMM-P5: deskripsi resmi dibaca SEKALI dari snapshot atomik last-good
-  // (bukan tabel lama, bukan fetch upstream per pembeli/N+1).
-  const { loadSupplierSnapshot } = await import("@/lib/pedia/metadata-refresh");
-  const snapshot = await loadSupplierSnapshot(db).catch(() => ({
-    descriptions: new Map<number, string>(), statuses: new Map<number, "ok" | "empty" | "oversize">(), fetchedAt: null as string | null,
-  }));
-  const officialDescriptions = snapshot.descriptions;
-  const descriptionStatus = snapshot.statuses;
   const boundByService = new Map<string, { min: number; max: number; rate: number; apiRefill: boolean; avgTime: string | null; orders: number; success: number | null; refill: number | null }>();
   const num = (v: unknown) => v == null || !Number.isFinite(Number(v)) ? null : Number(v);
   for (const b of bounds) {
@@ -164,21 +157,14 @@ async function readCatalog() {
       avgTime: b.avg_time != null && /\d/.test(String(b.avg_time)) ? String(b.avg_time).slice(0, 40) : null, orders: Number(b.orders_7d) || 0, success: num(b.success_rate), refill: num(b.refill_rate) });
   }
   const { computePediaPrice } = await import("@/lib/pedia/pricing");
-  const minOrderRp = Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000;
+  const minOrderRp = pediaMinOrderRp();
   const tiersByProduct = new Map<number, PediaCatalogTier[]>();
-  const managedProductIds = new Set<number>();
   for (const t of tiers) {
     if (!isPediaProvider(t.supplier)) continue;
-    // PSMM-P5: katalog publik = baris OTOMATIS supplier jual saja. Baris kurasi
-    // (termasuk ProviderSMM lama) tidak pernah ditawarkan ke pembeli sehingga
-    // tidak muncul tawaran ganda; tetap ada untuk order tersimpan + admin.
-    if (String(t.managed ?? "curated") !== "auto") continue;
+    // INDO-POLICY-20: public offers come from the sale supplier only.
+    // Historical rows of a retired supplier stay in DB for saved orders and
+    // admin, but are never offered to buyers.
     if (t.supplier !== PEDIA_SALE_PROVIDER) continue;
-    // Deskripsi resmi wajib `ok`; empty/oversize/missing = tidak dijual.
-    const serviceId = Number(t.supplier_service_id);
-    if (descriptionStatus.get(serviceId) !== "ok") continue;
-    // C: syarat material yang belum direkonsiliasi ke snapshot aktif tidak dijual.
-    if (!managedTermsFresh(t, snapshot.fetchedAt)) continue;
     const bound = boundByService.get(`${t.supplier}:${t.supplier_service_id}`);
     if (!bound || !Number.isSafeInteger(bound.min) || !Number.isSafeInteger(bound.max) || bound.min <= 0 || bound.max < bound.min) continue;
     // Komentar custom dibatasi 200 baris per pesanan (src/lib/pedia/custom-comments.ts).
@@ -190,10 +176,6 @@ async function readCatalog() {
     const region = ["indonesia", "global", "mixed"].includes(String(t.region)) ? String(t.region) as PediaCatalogTier["region"] : "global";
     const quality = ["ekonomis", "standar", "hq", "real"].includes(String(t.quality)) ? String(t.quality) as PediaCatalogTier["quality"] : "standar";
     const dropRisk = ["rendah", "sedang", "tinggi"].includes(String(t.drop_risk)) ? String(t.drop_risk) as PediaCatalogTier["drop_risk"] : "sedang";
-    // PSMM-P5: deskripsi = teks resmi tersanitasi (last-good), bukan
-    // description_md kurasi. Wajib whiteLabel di render.
-    const official = officialDescriptions.get(serviceId) ?? null;
-    managedProductIds.add(Number(t.product_id));
     list.push({
       id: Number(t.id), tier: String(t.tier),
       label_note: t.label_note != null ? whiteLabel(String(t.label_note)) : null,
@@ -206,7 +188,7 @@ async function readCatalog() {
         Object.entries(prices).filter(([k, v]) => Number.isSafeInteger(Number(k)) && Number(k) >= limits.min && Number(k) <= limits.max && Number(k) % limits.step === 0 && typeof v === "number" && Number.isFinite(v) && v > 0),
       ),
       public_name: t.public_name != null && String(t.public_name).trim() ? whiteLabel(String(t.public_name)) : null,
-      description: official != null && official.trim() ? whiteLabel(official) : null,
+      description: t.description_md != null && String(t.description_md).trim() ? whiteLabel(String(t.description_md)) : null,
       terms: t.terms_md != null ? whiteLabel(String(t.terms_md)) : null,
       instructions: t.instructions_md != null ? whiteLabel(String(t.instructions_md)) : null,
       recommendation_note: t.recommendation_note != null ? whiteLabel(String(t.recommendation_note)) : null,
@@ -236,9 +218,6 @@ async function readCatalog() {
   }
   const out: PediaCatalogProduct[] = [];
   for (const p of products) {
-    // PSMM-P5: hanya produk yang punya tier otomatis TERJUAL yang tampil.
-    if (String(p.managed ?? "curated") !== "auto") continue;
-    if (!managedProductIds.has(Number(p.id))) continue;
     const allPackages = parseJsonArray(p.packages_json);
     const step = Number(p.step) || 1;
     const pt = tiersByProduct.get(Number(p.id)) ?? [];
@@ -265,9 +244,7 @@ async function readCatalog() {
     const minPrice = Math.min(...availableTiers.flatMap((t) => Object.values(t.prices)));
     out.push({
       slug: String(p.slug), platform: String(p.platform), metric: String(p.metric),
-      target_kind: String(p.target_kind),
-      // PSMM-P5: nama produk ikut white-label (dulu nama mentah supplier).
-      name: whiteLabel(String(p.name)),
+      target_kind: String(p.target_kind), name: whiteLabel(String(p.name)),
       tagline: p.tagline != null ? whiteLabel(String(p.tagline)) : null,
       description_md: p.description_md != null ? whiteLabel(String(p.description_md)) : null,
       packages, step: Number(p.step) || 1,

@@ -131,7 +131,7 @@ describe("Pedia buyer status page", () => {
     stubOrder(order);
     const { container } = render(<BuyerPage />);
     await screen.findByText("Pesanan Berjalan");
-    expect(container.textContent).not.toMatch(/IndoSMM|ProviderSMM|supplier|kredensial|PIN|garansi|detail akun|email.*detail/i);
+    expect(container.textContent).not.toMatch(/IndoSMM|supplier|kredensial|PIN|garansi|detail akun|email.*detail/i);
   });
 
   it("polls awaiting 5s, running 10s and needs_check 30s; stops at terminal; pauses when hidden", async () => {

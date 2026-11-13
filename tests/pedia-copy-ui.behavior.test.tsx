@@ -95,7 +95,7 @@ describe("Service info wording", () => {
   it("shows glossary lines for the characteristic in the name and leaks no supplier terms", () => {
     const { container } = render(<ServiceInfoCard t={tier({ public_name: "Followers Global Real People · Akun berpostingan · Instant Start", quality: "real" })} productName="x" />);
     for (const text of ["Akun Real People, bukan akun campuran.", "Akun pengirim sudah memiliki postingan.", "Pesanan langsung masuk antrean kirim setelah pembayaran terkonfirmasi."]) expect(container.textContent).toContain(text);
-    expect(container.textContent).not.toMatch(/indosmm|supplier|penyedia|providersmm/i);
+    expect(container.textContent).not.toMatch(/indosmm|supplier|penyedia/i);
   });
 });
 

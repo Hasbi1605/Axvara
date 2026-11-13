@@ -392,18 +392,18 @@ export async function notifyPediaNeedsCheck(db: Db, orderCode: string, reason: s
  * stagnan. Kini cermin `warung-rebahan/saldo.ts` + `sekalipay/saldo.ts`:
  * kirim ulang hanya bila (a) belum pernah kirim dalam 6 jam terakhir, atau
  * (b) saldo TURUN melewati kelipatan Rp5.000. State `amount|timestamp_ms`
- * disimpan di `store_settings.pedia_balance_alert_at` (kunci yang sama —
- * tanpa migrasi skema; format datetime lama tetap dibaca: timestamp tak
- * diketahui → tulis format baru, tanpa spam ganda).
+ * disimpan di `store_settings.pedia_indosmm_balance_alert_at` (tanpa migrasi
+ * skema; format datetime lama tetap dibaca: timestamp tak diketahui → tulis
+ * format baru, tanpa spam ganda).
  *
  * State wajib tersedia dan diklaim atomik SEBELUM jaringan. Saat D1/budget
  * gagal, alert saldo ditunda; jangan menganggap error baca sebagai belum ada
  * state atau tetap mengirim sesudah error tulis. Reservasi dipertahankan bila
  * Telegram gagal/ambigu untuk menghindari pengiriman ulang tiap tick.
  * Mengembalikan true hanya bila Telegram mengakui pesan. */
-export async function notifyPediaLowBalance(balance: number, db?: Db, supplier: PediaProvider = "providersmm"): Promise<boolean> {
+export async function notifyPediaLowBalance(balance: number, db?: Db, supplier: PediaProvider = "indosmm"): Promise<boolean> {
   if (!db || !isPediaProvider(supplier) || !Number.isFinite(balance) || balance < 0) return false;
-  const key = supplier === "providersmm" ? "pedia_balance_alert_at" : "pedia_indosmm_balance_alert_at";
+  const key = "pedia_indosmm_balance_alert_at";
   const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!chatId) return false;
   const now = Date.now();
@@ -451,7 +451,7 @@ export async function notifyPediaLowBalance(balance: number, db?: Db, supplier: 
   const { sendMessage } = await import("@/lib/telegram/api");
   const result = await sendMessage({
     chat_id: chatId,
-    text: `🔴 <b>Saldo ${supplier === "providersmm" ? "ProviderSMM" : "IndoSMM"} menipis</b>\nSisa Rp ${Math.round(amount).toLocaleString("id-ID")}. Top up di panel provider sebelum order macet.`,
+    text: `🔴 <b>Saldo IndoSMM menipis</b>\nSisa Rp ${Math.round(amount).toLocaleString("id-ID")}. Top up di panel provider sebelum order macet.`,
     parse_mode: "HTML",
   }).catch(() => null);
   return result?.ok === true;

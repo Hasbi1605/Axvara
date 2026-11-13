@@ -1,5 +1,67 @@
 # Aturan agent — Pedia (SMM)
 
+## Keputusan owner 13 November 2026 — IndoSMM satu-satunya supplier (menggantikan bagian 12 November)
+
+Bagian 12 November di bawah adalah **snapshot historis yang digantikan**; jangan
+menghidupkan kembali katalog otomatis/ProviderSMM dari catatan itu.
+
+- **Supplier jual.** `src/lib/pedia/sales-policy.ts`: `PEDIA_SALE_PROVIDER='indosmm'`
+  satu-satunya gate katalog/pembanding/quote/order/draft-aktivasi admin/shortlist/overview.
+  Katalog publik menampilkan tier kurasi IndoSMM yang aktif dan punya cermin live
+  (batas/harga); baris supplier lain yang masih aktif di D1 TIDAK pernah dijual.
+  Retry order tersimpan tetap dicari lewat `quote_id` LEBIH DULU sebelum gate.
+- **ProviderSMM dihapus dari kode.** `auto-catalog.ts`, `metadata-refresh.ts`,
+  `supplier-descriptions.ts`, proxy `/psmm/*`, jalur materialisasi/deskripsi,
+  `pedia_diff_*`, dan panel/endpoint khusus katalog otomatis sudah tidak ada.
+  Jangan menambah cabang supplier baru.
+- **Diff VPS supplier lama (sementara).** `/api/supplier-sync` membalas HTTP 200
+  `{ok:true, ignored:true}` untuk `source:"providersmm"` TANPA menulis D1, agar
+  snapshot VPS maju tanpa retry berulang; hapus cabang ini setelah VPS berhenti
+  mengirim. Diff IndoSMM tidak berubah (validasi IDR/batas 100, checkpoint
+  `pedia_indosmm_diff_*`, ack non-2xx pada tulis parsial).
+- **Skema 0117 tetap.** Kolom `managed`/`managed_snapshot_at` dipertahankan karena
+  prod sudah menerapkan 0117, tetapi **inert sejak 13 November 2026** (tidak
+  dibaca/ditulis jalur jual). Migrasi data ada di paket B2 di bawah.
+- **Order lama.** `pedia_order_items.supplier` yang tidak dikenal build ini
+  dirender generik dan TIDAK pernah dispatch (`needs_check`); jangan hapus/remap
+  baris sebelum migrasi pembersihan data dijalankan.
+- **Nilai operasional.** Minimum order dan ambang alert saldo selalu dari env
+  (`src/lib/pedia/ops-config.ts`: `PEDIA_MIN_ORDER_RP`, `PEDIA_BALANCE_ALERT_RP`);
+  GET admin settings mengembalikan nilai EFEKTIF itu, bukan nilai tersimpan.
+
+### Migrasi data B2 — purge ProviderSMM + reaktivasi kurasi IndoSMM (13 November 2026)
+
+- **`0119_pedia_providersmm_purge.sql`.** Idempoten + FK-safe. Menghapus HANYA
+  order legacy yang cocok guard (`item status='expired'` + `supplier_order_id IS NULL`,
+  order `order_kind='pedia'`, `paid_at IS NULL`, `payment_status='expired'`,
+  `status IN ('expired','kadaluarsa')`) beserta dependennya (payments, invoice
+  history, notice log, claims, followups, credits/ledger, dst.), lalu tier
+  `providersmm` tanpa referensi order, produk yang hanya berisi tier supplier lama
+  (auto/`psmm-`, atau seluruh tier-nya psmm) tanpa order, mirror/statistik/saldo
+  providersmm, dan key `store_settings` `pedia_pending:*`, `pedia_psmm_*`,
+  `pedia_managed_*`, `pedia_diff_*`, `pedia_balance_alert_at`,
+  `pedia_balance_checked_at`. Prefix `pedia_indosmm_*`, kolom 0117,
+  `pedia_tiers_archive0062*`, IndoSMM/Market/Games tidak disentuh. Item/order yang
+  tidak cocok guard bertahan, sehingga tier/produknya ikut bertahan.
+- **`0120_pedia_indosmm_reactivate.sql`.** Daftar ID dihitung dari SELECT baca-saja
+  produksi memakai helper repo (`pediaBounds`/`computePediaPrice`/`passesMarginGuard`,
+  minimum order env): curated indosmm nonaktif, alasan NULL/margin, mirror `present=1`,
+  rate>0, tipe cocok, margin paket termurah lulus, bukan premium tool, dan bukan ID
+  yang dinonaktifkan 0089. Hasil aktual 13 November: **21 tier** (5 alasan NULL +
+  16 margin pulih); 149 dari 190 kandidat adalah deaktivasi sengaja 0089 sehingga
+  tidak dihidupkan. Tabel lengkap: `B2-reactivation.md` (orchestration).
+  Guard `supplier='indosmm' AND managed='curated' AND is_active=0` membuat re-run
+  tidak mengubah apa pun.
+- **UI admin (13 November 2026).** `PediaManager.tsx` = shell + status strip (saldo
+  IndoSMM, produk dijual x/y, pesanan perlu tindakan) dan 4 tab **Pesanan · Produk ·
+  Layanan IndoSMM · Pengaturan**; `?tab=` lama dipetakan (`services`/`curation` →
+  Layanan IndoSMM, `credits` → Produk), default Pesanan bila ada tindakan. Panel di
+  `src/components/admin/pedia/` (`OrdersPanel`, `ProductsPanel`, `ProductEditor`,
+  `ServicesPanel`, `SettingsPanel`, `shared`), tiap tab memuat datanya sendiri. Tab
+  "Arsip lama" dihapus (API kredit tetap); kurasi = "Bandingkan per kebutuhan" di
+  Layanan IndoSMM; minimum order/ambang saldo read-only dari konfigurasi server.
+  Payload mutasi dan guard API tidak berubah. Implementasi lokal; publikasi melalui CI.
+
 ## Keputusan owner 12 November 2026 — katalog otomatis Pedia (ProviderSMM)
 
 Satu fitur (implementasi lokal; publikasi lewat CI). Bootstrap produksi, deployment, dan
@@ -69,7 +131,7 @@ tidak menyapu). Products PUT: baris/produk `auto` hanya menerima pricing, jeda, 
 `managedActivationEligible` gagal (cap versi, cermin valid, `planManagedService` eligible) → 409
 `managed_ineligible` tanpa mutasi; jeda/pricing/unpause sah tetap boleh.
 
-**UI & fixture.** `PediaManager`: ringkasan berlabel manusiawi, "Tarik ulang" resumable (`busy`
+**UI & fixture.** *(Histori 12 November 2026; digantikan redesign admin 13 November.)* `PediaManager`: ringkasan berlabel manusiawi, "Tarik ulang" resumable (`busy`
 terpisah dari progres dipertahankan, lanjut cursor terakhir, `refresh` request pertama, cursor
 tidak maju = error, sukses `done` mengaktifkan kembali + reload). Fixture dev aman:
 `scripts/pedia-managed-fixture.mjs` (mencap versi baris auto); helper

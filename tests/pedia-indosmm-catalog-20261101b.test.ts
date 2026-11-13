@@ -17,7 +17,7 @@ describe("Pedia IndoSMM catalog 2026-11-01 tahap 2", () => {
       expect(parsed && pediaTargetMatches(p.target_kind, parsed.targetKind), p.slug).toBe(true);
     }
     for (const s of manifest.services) {
-      for (const t of [s.public_name, s.description, s.terms, s.instructions]) expect(t).not.toMatch(/supplier|indosmm|providersmm|penyedia/i);
+      for (const t of [s.public_name, s.description, s.terms, s.instructions]) expect(t).not.toMatch(/supplier|indosmm|penyedia/i);
       if (s.input_kind === "comments") { expect(s.product_slug).toMatch(/^comments-custom-/); expect(s.max_qty_override).toBeLessThanOrEqual(200); }
       else expect(s.product_slug).not.toMatch(/^comments-custom-/);
     }

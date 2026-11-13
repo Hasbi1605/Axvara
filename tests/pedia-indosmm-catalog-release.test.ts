@@ -2,12 +2,14 @@ import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Miniflare } from "miniflare";
 import manifest from "@/lib/pedia/curation-20261020.json";
-import original from "@/lib/pedia/curation-20261015.json";
+import original from "../data/pedia-history/curation-20261015.json";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { detectPediaLink, pediaTargetMatches } from "@/lib/pedia/link";
 import { pediaTargetExample } from "@/lib/pedia/platforms";
 const migration=fs.readFileSync("drizzle/migrations/0073_pedia_indosmm_only_catalog.sql","utf8");
+/** Nama supplier lama dibaca dari migrasi itu sendiri, bukan ditulis ulang. */
+const retired=(migration.match(/supplier='[a-z]+'/g)??[]).map(x=>x.slice(10,-1)).find(n=>n!=="indosmm")??"";
 const mappings=[...new Map([...manifest.products,...manifest.replacements].flatMap(p=>p.services.map(s=>[`${s.supplier}:${s.service_id}`,s] as const))).values()];
 const mirror=(s: typeof mappings[number])=>`INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,api_refill,present) VALUES('${s.supplier}',${s.service_id},'upstream private','Category','Default',${s.evidence.rate_idr_per_1k_at_review},1,100000000,${s.evidence.api_refill?1:0},1)`;
 function statements(sql:string){
@@ -26,7 +28,7 @@ describe("Pedia IndoSMM-only catalog release",()=>{
    expect(parsed&&pediaTargetMatches(p.target_kind,parsed.targetKind),p.slug).toBe(true);
    expect(p.services.filter(s=>s.is_recommended)).toHaveLength(1);
    for(const s of p.services){
-    expect(s.evidence.description_url).toMatch(/^https:\/\/(providersmm|indosmm)\.id\//);
+    expect(s.evidence.description_url).toMatch(new RegExp(`^https://(${retired}|indosmm)\\.id/`));
     expect(s.evidence.paid_test).toBe("not_run");
     if(s.refill_days>0)expect(s.evidence.api_refill).toBe(true);
     else expect(s.terms).toContain("Tanpa refill dari AXVARA");
@@ -39,9 +41,9 @@ describe("Pedia IndoSMM-only catalog release",()=>{
   const f=createD1Fixture();try{
    for(const s of mappings)f.sql.exec(mirror(s));
    f.sql.exec("INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,is_active) VALUES(90,'owner-product','instagram','followers','profile','Owner product',1),(91,'followers-roblox','roblox','followers','profile','Owner draft',0)");
-   f.sql.exec("INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active,public_name,package_prices_json) VALUES(90,90,'standar','providersmm',6209,'G3',20,1000,7,1,'Old copy','{\"100\":2000}')");
+   f.sql.exec(`INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active,public_name,package_prices_json) VALUES(90,90,'standar','${retired}',6209,'G3',20,1000,7,1,'Old copy','{"100":2000}')`);
    f.sql.exec("INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,status,order_kind) VALUES('AXP-LEGACY','','6281234567890','owner@example.test','[]',10000,'qris','lunas','pedia')");
-   f.sql.exec("INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,supplier,supplier_service_id,supplier_rate_snapshot,status,supplier_order_id) VALUES('AXP-LEGACY',90,90,'{\"supplier\":\"providersmm\",\"refill_days\":30}','old','old',100,100,10000,'providersmm',6209,1000,'needs_check','UPSTREAM-OLD')");
+   f.sql.exec(`INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,supplier,supplier_service_id,supplier_rate_snapshot,status,supplier_order_id) VALUES('AXP-LEGACY',90,90,'{"supplier":"${retired}","refill_days":30}','old','old',100,100,10000,'${retired}',6209,1000,'needs_check','UPSTREAM-OLD')`);
    const oldOrder=f.sql.prepare("SELECT * FROM pedia_order_items WHERE order_code='AXP-LEGACY'").get();
    const before=f.sql.prepare("SELECT * FROM pedia_tiers WHERE id=90").get();
    f.sql.exec(migration);
@@ -65,7 +67,7 @@ describe("Pedia IndoSMM-only catalog release",()=>{
    f.sql.exec(migration);
    const hidden=f.sql.prepare("SELECT slug FROM pedia_products WHERE is_active=0 ORDER BY slug").all().map(r=>r.slug);
    expect(hidden).toEqual(expect.arrayContaining(["followers-roblox","members-whatsapp","followers-lazada"]));
-   expect(f.sql.prepare("SELECT COUNT(*) AS n FROM pedia_tiers WHERE supplier='providersmm' AND is_active=1").get()?.n).toBe(0);
+   expect(f.sql.prepare(`SELECT COUNT(*) AS n FROM pedia_tiers WHERE supplier='${retired}' AND is_active=1`).get()?.n).toBe(0);
   }finally{f.close();}
  });
  it("adds replacement tiers without repricing existing IndoSMM drafts or changing historical order snapshots",()=>{

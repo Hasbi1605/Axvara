@@ -12,7 +12,7 @@ vi.mock("@/components/pedia/usePediaPrices", () => ({ usePediaPrices: () => null
 const metrics = ["followers", "likes", "views", "comments", "shares"];
 function fixture(count = 60, kinds = metrics): PediaCatalogProduct[] {
   return Array.from({ length: count }, (_, i) => ({
-    slug: `psmm-${i}`, platform: "instagram", metric: kinds[i % kinds.length], target_kind: "profile",
+    slug: `pedia-${i}`, platform: "instagram", metric: kinds[i % kinds.length], target_kind: "profile",
     name: `Instagram ${kinds[i % kinds.length]} [Max: Unlimited] [All Type Link] HQ ⚠ ★`,
     packages: [100], step: 1, min_price: 3000, is_featured: 0, tagline: null, image: null,
     checklist: [{ id: "public", label: "Akun publik" }],
@@ -42,13 +42,13 @@ describe("catalog navigation at supplier scale", () => {
     const manyMetrics = [...metrics, "subscribers", "members", "plays", "saves", "reactions", "connections", "visits", "listeners", "claps", "downloads", "forks", "traffic", "reposts", "quotes"];
     const products = fixture(620, manyMetrics), onChange = vi.fn();
     expect([...groupPediaMetrics(products).keys()]).toEqual(manyMetrics);
-    const { rerender } = render(<NeedPicker products={products} slug="psmm-19" platform="Instagram" locked={false} onChange={onChange} />);
+    const { rerender } = render(<NeedPicker products={products} slug="pedia-19" platform="Instagram" locked={false} onChange={onChange} />);
     const nav = screen.getByRole("navigation"), pills = within(nav).getAllByRole("button");
     expect(pills).toHaveLength(manyMetrics.length);
     expect(nav.textContent).not.toMatch(/[\[⚠]/);
     fireEvent.click(pills[0]); expect(onChange).not.toHaveBeenCalled();
-    fireEvent.click(pills[2]); expect(onChange).toHaveBeenLastCalledWith("psmm-2");
-    rerender(<NeedPicker products={products} slug="psmm-19" platform="Instagram" locked onChange={onChange} />);
+    fireEvent.click(pills[2]); expect(onChange).toHaveBeenLastCalledWith("pedia-2");
+    rerender(<NeedPicker products={products} slug="pedia-19" platform="Instagram" locked onChange={onChange} />);
     expect(within(nav).getAllByRole("button").every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
   });
   it("limits rows to eight plus the selected variant and supports keyboard show-all", async () => {
@@ -63,7 +63,7 @@ describe("catalog navigation at supplier scale", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tampilkan lebih sedikit" }));
     expect(screen.getAllByRole("radio")).toHaveLength(9);
     fireEvent.click(screen.getByDisplayValue("6"));
-    expect(onSelect).toHaveBeenCalledWith(6, "psmm-5");
+    expect(onSelect).toHaveBeenCalledWith(6, "pedia-5");
   });
   it("switches the real product+tier while retaining quantity, target, checks and contact", async () => {
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -93,6 +93,6 @@ describe("catalog navigation at supplier scale", () => {
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     const [url, options] = fetch.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/pedia/quote");
-    expect(JSON.parse(String(options.body))).toEqual({ product_slug: "psmm-5", tier_id: 6, quantity: 100, target: "https://instagram.com/customer" });
+    expect(JSON.parse(String(options.body))).toEqual({ product_slug: "pedia-5", tier_id: 6, quantity: 100, target: "https://instagram.com/customer" });
   });
 });

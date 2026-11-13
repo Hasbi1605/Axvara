@@ -113,7 +113,7 @@ describe("admin Pedia M2", () => {
     }));
     const { createDatabaseAccess } = await import("@/lib/db-access");
     const db = createDatabaseAccess();
-    await db.execRun(`INSERT INTO pedia_tiers(product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active) SELECT id,'standar','providersmm',86,'G3',20,1000,0 FROM pedia_products LIMIT 1`);
+    await db.execRun(`INSERT INTO pedia_tiers(product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active) SELECT id,'standar','indosmm',86,'G3',20,1000,0 FROM pedia_products LIMIT 1`);
     const tier = await db.queryFirst(`SELECT id FROM pedia_tiers LIMIT 1`);
     vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", "https://proxy.example");
     vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "test");

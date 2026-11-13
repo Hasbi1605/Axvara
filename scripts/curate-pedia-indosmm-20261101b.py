@@ -193,7 +193,7 @@ for slug, lst in byp.items():
             elif step == 'opsi': seen[s['public_name']] += 1; s['public_name'] += f" · Opsi {seen[s['public_name']]}"
 for s in out['services']:
     for k in ('public_name', 'description', 'terms', 'instructions'):
-        assert not re.search(r'supplier|indosmm|providersmm|penyedia', s[k], re.I), (s['service_id'], k)
+        assert not re.search(r'supplier|indosmm|penyedia', s[k], re.I), (s['service_id'], k)
 json.dump(out, open('src/lib/pedia/curation-20261101b.json', 'w'), ensure_ascii=False, indent=1)
 c = collections.Counter(s['product_slug'] for s in out['services'])
 print('services', len(out['services']), 'new products', [p['slug'] for p in out['new_products']])

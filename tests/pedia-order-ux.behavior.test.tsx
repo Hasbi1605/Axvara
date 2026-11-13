@@ -754,7 +754,7 @@ describe("Pedia configurator", () => {
     expect(card.textContent).not.toContain("Pengajuan Refill");
     expect(card.textContent).not.toContain("Drop rate");
     expect(card.textContent).toContain("Akun Real (Real Accounts), bukan akun campuran.");
-    expect(card.textContent).not.toMatch(/supplier|indosmm|providersmm|label Real|karakter akun|kelas Real|kelas HQ|lewat AXVARA|dari AXVARA/i);
+    expect(card.textContent).not.toMatch(/supplier|indosmm|label Real|karakter akun|kelas Real|kelas HQ|lewat AXVARA|dari AXVARA/i);
   });
 
   it.each([null, undefined, NaN, -1, 101])("hides unavailable or invalid refill-request statistics (%s)", (refill_pct) => {

@@ -16,7 +16,7 @@ export function shortlistPediaServices(rows:CurationService[],product:CurationPr
   // SMM never offers premium tools (Canva/Gemini/CapCut live on Market).
   if(r.supplier!==PEDIA_SALE_PROVIDER)continue;
   if(isPediaPremiumToolCandidate(r.name,r.category))continue;
-  if(!['providersmm','indosmm'].includes(r.supplier)||r.present!==1||r.type!=='Default'||!Number.isSafeInteger(r.service_id)||r.service_id<=0||!Number.isFinite(r.rate_idr_per_1k)||r.rate_idr_per_1k<=0||!Number.isSafeInteger(r.min_qty)||!Number.isSafeInteger(r.max_qty)||r.min_qty<=0||r.max_qty<r.min_qty||quantity<r.min_qty||quantity>r.max_qty)continue;
+  if(r.present!==1||r.type!=='Default'||!Number.isSafeInteger(r.service_id)||r.service_id<=0||!Number.isFinite(r.rate_idr_per_1k)||r.rate_idr_per_1k<=0||!Number.isSafeInteger(r.min_qty)||!Number.isSafeInteger(r.max_qty)||r.min_qty<=0||r.max_qty<r.min_qty||quantity<r.min_qty||quantity>r.max_qty)continue;
   if(!platformTerms.some(w=>text.includes(w))||!metricTerms.some(w=>name.includes(w)))continue;
   if(/custom|subscription|live.?stream|live views|poll|vote|comment|komentar|100%\s*drop|drop.{0,12}100%/.test(name))continue;
   if(product.metric==='reposts'&&/quote/.test(name))continue;

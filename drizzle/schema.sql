@@ -1440,11 +1440,14 @@ CREATE TABLE IF NOT EXISTS pedia_tiers (
   speed_per_day TEXT,
   -- Migrasi 0087: 'comments' = pembeli menulis komentar custom.
   input_kind TEXT CHECK (input_kind IS NULL OR input_kind IN ('comments')),
-  -- Migrasi 0117: 'auto' = dibangkitkan materializer ProviderSMM (boleh
+  -- Migrasi 0117: 'auto' = dibangkitkan materializer katalog otomatis (boleh
   -- di-upsert sync); 'curated' = kurasi manusia, tidak pernah ditimpa sync.
+  -- Inert since 2026-11-13: kolom dipertahankan (prod sudah menerapkan 0117),
+  -- tetapi tidak dibaca/ditulis jalur jual lagi.
   managed TEXT NOT NULL DEFAULT 'curated' CHECK (managed IN ('curated','auto')),
-  -- Migrasi 0117: versi snapshot deskripsi resmi saat rekonsiliasi terakhir;
-  -- NULL/berbeda dari snapshot aktif = syarat belum terselaraskan (tidak dijual).
+  -- Migrasi 0117: versi snapshot deskripsi resmi saat rekonsiliasi terakhir.
+  -- Inert since 2026-11-13: dipertahankan untuk kompatibilitas prod (0117
+  -- sudah diterapkan), tidak dibaca/ditulis lagi.
   managed_snapshot_at TEXT,
   UNIQUE(product_id, supplier, supplier_service_id)
 );

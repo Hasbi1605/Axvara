@@ -1,5 +1,43 @@
 # DESIGN.md — AXVARA Design System
 
+## Admin Pedia IndoSMM (13 November 2026, implementasi lokal)
+
+- Header singkat "Supplier: IndoSMM" dan satu strip tiga status: saldo + Periksa
+  + waktu pemeriksaan (amber bila di bawah ambang), produk siap dijual/total,
+  pesanan perlu tindakan yang membuka filter terkait. Data belum berhasil dimuat
+  tidak ditampilkan sebagai nol. Midnight/Cyan/Gold, SF Pro dan shell Market tetap.
+- Navigasi hanya Pesanan, Produk, Layanan IndoSMM, Pengaturan. Default Pesanan
+  bila ada tindakan; selain itu Produk. Query tab lama dipetakan, view compare
+  dan filter tindakan ikut back/forward. Data pesanan/pengaturan tidak menunggu
+  katalog; loading, empty, error dan retry milik panel masing-masing.
+- Produk desktop memakai tabel glass lima kolom: produk + ikon platform, jumlah
+  varian aktif/total, harga mulai, status + alasan singkat, sakelar Market + Edit.
+  Produk nonaktif tidak disebut siap dijual; produk aktif tanpa paket layak amber.
+  Filter nama/slug/ID layanan, platform, status; 50 hasil/halaman. Di bawah768px
+  memakai kartu, bukan tabel yang terpotong. Tidak menampilkan daftar ID supplier.
+- Editor memisahkan Informasi produk dan daftar Varian ringkas. Edit varian
+  membuka nama publik, ID IndoSMM, kelompok harga/markup/minimum untung, refill
+  dan status; field lain tetap ada di Pengaturan lanjutan tertutup. Harga/margin
+  dan pratinjau storefront tersimpan dilipat; pratinjau tetap privat tanpa order.
+- Pesanan perlu tindakan dikelompokkan pertama; pesanan lainnya25/halaman dalam
+  baris responsif dengan target terpotong + Salin, supplier singkat dan detail
+  tertutup. Panel tindakan hanya pada status yang memerlukannya. Tombol retry/
+  pembatalan hasil ambigu tetap disabled dan alasan terlihat, bukan tooltip saja;
+  konfirmasi, pemeriksaan supplier dan pengakuan risiko tagihan tetap dipertahankan.
+- Layanan supplier tetap IndoSMM: search/platform/pemakaian + Indonesia/refill,
+  satu baris kesehatan, tambah ke produk, pagination50, kartu mobile. Mode
+  Bandingkan per kebutuhan memuat kurasi existing dan menyimpan draf nonaktif.
+  Pengaturan hanya mengedit enam nilai harga G1–G3; Minimum order/Ambang saldo
+  read-only dari server, kesehatan/saldo dan riwayat7hari terpisah.
+- Kontrol44px (saklar Market46x24 existing), aria switch/aksi, fokus cyan2px dan
+  input berlabel. Chromium lokal1280/390 dengan fixture120 produk/540 varian,
+  4.400 layanan dan30 pesanan: semua tab/editor/advanced/compare tanpa overflow;
+  save produk/varian/settings, mapping, draft, rekonsiliasi, filter/pagination,
+  back/forward, keyboard, error503+retry dan katalog tertunda diuji. Route/CSS/JS200;
+  final reload tanpa pageerror/asset gagal. R2 lokal tanpa binding sempat500 dan
+  HMR saat edit dependency memberi warning; final QA memakai gambar placeholder
+  fixture lokal. Ini bukan bukti produksi, persistensi backend atau deployment.
+
 ## Kebutuhan dan varian Pedia (13 November 2026, implementasi lokal)
 
 - Kebutuhan = satu pill per `product.metric`, urutan kemunculan pertama katalog,
@@ -1694,7 +1732,7 @@ Identitas Midnight/Cyan/Gold dipertahankan. Enam metrik di atas; baris berikutny
 - Ringkasan: grid grafik memakai satu kolom minmax(0,1fr) pada mobile agar lebar intrinsik SVG tidak memicu scroll horizontal. Preset periode di kiri dan pemilih bulan/rentang di kanan dalam satu toolbar tanpa card, catatan batas atau tombol Terapkan. Bulan berubah langsung berlaku; rentang menunggu dua tanggal lengkap/valid. Rentang/WIB/waktu pembuatan sejajar baris sesi admin di atas, membungkus pada mobile. Teks total/pending/stok menipis dan kartu estimasi modal dihilangkan. Saat fetch loading/error, metadata, angka dan unduhan lama disembunyikan. PDF/Excel sejajar di samping pemilih bulan/tanggal pada toolbar yang sama, membungkus saat layar sempit, memakai styling glass yang sama dan state menyiapkan/gagal yang jelas.
 - PDF: A4 putih, header Midnight + aksen cyan, tabel berpaginasi dengan header diulang; periode, WIB, modal estimasi dan batas definisi untung dicantumkan. XLSX berisi Ringkasan/Harian/Supplier/Channel/Top Produk, header Midnight, kolom angka numerik dan label membungkus.
 - Sakelar banner berada tepat sebelum Edit, track 46×24 px hijau/abu dan knob putih 18 px sama seperti Produk; role switch/aria-checked/aria-busy, fokus keyboard, disabled saat menyimpan dan error terkait tetap tersedia. Di mobile grup aksi turun ke baris sendiri. `AdminStatusSwitch` dipakai Banner dan Pedia.
-- Pedia admin memakai tabel `ax-glass rounded-[20px]` seperti Produk: header uppercase 11px/white-40, sel px-4/py-3, divider white/5 dan hover white/3. Daftar produk/layanan/pesanan/kredit serta harga tingkat/riwayat saldo berbagi `DataTable`, scroll horizontal terbatas pada wrapper berlabel yang bisa difokuskan. Toolbar filter ringkas, CTA cyan berbentuk pil, Edit putih dan sakelar aktif sejajar; panel luar tidak lagi card bertumpuk.
+- Snapshot15Oktober Pedia admin: tabel `ax-glass rounded-[20px]` seperti Produk, header uppercase11px, sel px-4/py-3, divider white/5 dan hover white/3. Struktur tabel mobile/kredit diganti oleh revisi Admin Pedia IndoSMM13November di atas; CTA cyan, Edit putih dan sakelar Market tetap.
 - Rekonsiliasi menampilkan konfigurasi provider efektif dan label event-owned; judul netral Rekonsiliasi QRIS, panduan GoBiz untuk GoPay dan QRIS Hook untuk DANA legacy.
 - Logo overlay CrossAppTransition memakai brightness-0 invert agar SVG eksternal terlihat putih; filter X menyembunyikan label visual yang mengulang ikon, tetap aria-label X dan target 44px.
 
@@ -1750,9 +1788,9 @@ laporan tetap waktu sebenarnya; skeleton/loading/error dan layout/token tetap.
 Laporan kuota berkala berada di GitHub Actions summary/artifact, tanpa kontrol
 atau polling baru pada layar pelanggan/admin.
 
-## Pedia admin — ringkasan katalog otomatis + resync resumable (12 November 2026, lokal)
+## Histori Pedia admin — ringkasan katalog otomatis + resync resumable (12 November 2026)
 
-Implementasi lokal; belum deployment. Menambah lapisan informasi pada shell admin Pedia yang sudah ada (tanpa redesign, token Midnight `#080C1E`/`#070a1e`, cyan `#00E5FF`, gold `#FFB800`, SF Pro, `ax-glass`/`ax-liquid` tetap).
+Snapshot historis, diganti revisi Admin Pedia IndoSMM13November di atas; bukan instruksi menghidupkan kembali UI ini. Pada12November lapisan informasi ditambahkan pada shell admin dengan token Midnight/Cyan/Gold, SF Pro, `ax-glass`/`ax-liquid` existing.
 
 - **Ringkasan katalog otomatis** (`PediaCatalogSummary`, tepat di bawah judul "Pedia"): kartu `rounded-xl border-white/10 bg-white/[0.03]` berisi lima metrik label-nilai (Layanan cermin, Tier otomatis, Aktif dijual hijau, Ditahan amber, Antrean sinkron) memakai `tabular-nums`. Satu baris "Deskripsi resmi diperbarui: …" dan maksimal empat alasan blokir teratas (label manusiawi, bukan kode mentah) dengan angka di kanan. Data tidak tersedia ditulis "Belum tersedia", bukan 0.
 - **Tab Layanan Supplier**: kolom baru "Katalog otomatis" menampilkan status Aktif dijual / Ditahan + alasan berlabel + status deskripsi (tersedia / kosong di sumber / terlalu panjang / belum ada). Filter baru "Kelayakan otomatis" (Semua / Aktif dijual / Ditahan / Belum otomatis) berdampingan dengan filter lama; baris non-otomatis diberi label redup "Belum otomatis". Kontrol form native (`label` terasosiasi, `min-h-11`), fokus `outline-[#00E5FF]`, tabel tetap `DataTable` dengan scroll wrapper berlabel.

@@ -27,21 +27,17 @@ async function seedCatalog() {
   const f = createD1Fixture();
   fixtures.push(f);
   const db = createDatabaseAccess();
-  f.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active,managed)
-    VALUES(1,'followers-instagram','instagram','followers','profile','Followers Instagram','[250]',1,1,'auto');
-    INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active,managed)
-    VALUES(1,1,'standar','providersmm',86,'G3',0,1000,0,1,'auto');`);
+  f.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active)
+    VALUES(1,'followers-instagram','instagram','followers','profile','Followers Instagram','[250]',1,1);
+    INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active)
+    VALUES(1,1,'standar','indosmm',86,'G3',0,1000,0,1);`);
   // Market product dengan id numerik SAMA (1) dan stok terbatas: Pedia tidak boleh
   // menyentuhnya saat cancel/expiry (product_id item Pedia = pedia_products id).
   f.sql.exec("INSERT INTO products(id,name,slug,price,stock) VALUES(1,'Market Fixture','market-fixture',10000,50)");
-  await applyPediaDiff(db, "providersmm", [{
+  await applyPediaDiff(db, "indosmm", [{
     service_id: 86, name: "IG Followers", type: "Default", category: "IG",
     rate: 46000, min_qty: 250, max_qty: 1000, api_refill: 0, api_cancel: 0, api_dripfeed: 0,
   } as never], [], "IDR");
-  const desc86 = JSON.stringify({ fetched_at: "2026-11-12T10:00:00.000Z", source_url: "https://providersmm.id/services", entries: { "86": { status: "ok", text: "Syarat resmi berlaku." } } });
-  f.sql.prepare("INSERT INTO store_settings(key,value,updated_at) VALUES('pedia_psmm_desc_snapshot',?,datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(desc86);
-  f.sql.prepare("INSERT INTO store_settings(key,value,updated_at) VALUES('pedia_psmm_desc_last_at','2026-11-12T10:00:00.000Z',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
-  f.sql.prepare("UPDATE pedia_tiers SET managed_snapshot_at=? WHERE managed='auto' AND supplier='providersmm'").run('2026-11-12T10:00:00.000Z');
   return f;
 }
 

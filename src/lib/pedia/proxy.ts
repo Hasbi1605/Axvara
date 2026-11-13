@@ -1,17 +1,17 @@
-// src/lib/pedia/proxy.ts — Client Pages → VPS proxy `/psmm/*` (PEDIA-PRD §9.1/9.4).
+// src/lib/pedia/proxy.ts — Client Pages → VPS proxy `/indosmm/*` (PEDIA-PRD §9.1/9.4).
 //
-// Pages TIDAK PERNAH menyimpan API key ProviderSMM (D7). Semua panggilan
+// Pages TIDAK PERNAH menyimpan API key supplier (D7). Semua panggilan
 // memakai env EXISTING `WARUNG_REBAHAN_PROXY_URL` + `_TOKEN` (host & token
 // proxy sama dengan WR/SK). Timeout dispatch 20 dtk (§9.4).
 
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export const PEDIA_PROXY_TIMEOUT_MS = 20_000;
-export const PEDIA_PROVIDERS = ["providersmm", "indosmm"] as const;
+export const PEDIA_PROVIDERS = ["indosmm"] as const;
 export type PediaProvider = typeof PEDIA_PROVIDERS[number];
 export type PediaAction = "services" | "add" | "status" | "refill" | "refill_status" | "cancel" | "balance";
 export function isPediaProvider(value: unknown): value is PediaProvider {
-  return value === "providersmm" || value === "indosmm";
+  return value === "indosmm";
 }
 
 function proxyBase(): string {
@@ -26,35 +26,26 @@ export function isPediaProxyConfigured(): boolean {
   return Boolean(proxyBase() && proxyToken());
 }
 
-export type PsmmResult<T> =
+export type PediaProxyResult<T> =
   | { ok: true; data: T; status: number; duplicate?: boolean }
   | { ok: false; kind: "timeout" | "http" | "unreadable" | "not_configured" | "api_error" | "invalid_provider" | "invalid_action"; status?: number; body?: unknown; supplierMessage?: string };
 
-/** POST {proxy}/psmm/:action. Body diteruskan; key disuntik di VPS.
- * `idempotencyKey` (order_code) dikirim sebagai header Idempotency-Key —
- * VPS mendedupe 24 jam (PD-31). */
-export async function callPsmmProxy<T = unknown>(
-  action: string,
-  body: Record<string, unknown> = {},
-  timeoutMs = PEDIA_PROXY_TIMEOUT_MS,
-  idempotencyKey?: string,
-): Promise<PsmmResult<T>> {
-  return callPediaProxy<T>("providersmm", action as PediaAction, body, timeoutMs, idempotencyKey);
-}
-
 /** The optional fifth argument preserves existing injected callers' argument order. */
-export type ProxyCaller = <T = unknown>(action: string, body?: Record<string, unknown>, timeoutMs?: number, idempotencyKey?: string, provider?: PediaProvider) => Promise<PsmmResult<T>>;
+export type ProxyCaller = <T = unknown>(action: string, body?: Record<string, unknown>, timeoutMs?: number, idempotencyKey?: string, provider?: PediaProvider) => Promise<PediaProxyResult<T>>;
 
-export const callPediaProvider: ProxyCaller = (action, body, timeoutMs, idempotencyKey, provider = "providersmm") =>
+export const callPediaProvider: ProxyCaller = (action, body, timeoutMs, idempotencyKey, provider = "indosmm") =>
   callPediaProxy(provider, action as PediaAction, body, timeoutMs, idempotencyKey);
 
+/** POST {proxy}/indosmm/:action. Body diteruskan; key disuntik di VPS.
+ * `idempotencyKey` (order_code) dikirim sebagai header Idempotency-Key —
+ * VPS mendedupe 24 jam (PD-31). */
 export async function callPediaProxy<T = unknown>(
   provider: PediaProvider,
   action: PediaAction,
   body: Record<string, unknown> = {},
   timeoutMs = PEDIA_PROXY_TIMEOUT_MS,
   idempotencyKey?: string,
-): Promise<PsmmResult<T>> {
+): Promise<PediaProxyResult<T>> {
   if (!isPediaProvider(provider)) return { ok: false, kind: "invalid_provider" };
   if (!["services", "add", "status", "refill", "refill_status", "cancel", "balance"].includes(action)) return { ok: false, kind: "invalid_action" };
   if (!isPediaProxyConfigured()) return { ok: false, kind: "not_configured" };
@@ -64,7 +55,7 @@ export async function callPediaProxy<T = unknown>(
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${proxyBase()}/${provider === "providersmm" ? "psmm" : "indosmm"}/${action}`, {
+    res = await fetchWithTimeout(`${proxyBase()}/indosmm/${action}`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -80,8 +71,8 @@ export async function callPediaProxy<T = unknown>(
     return { ok: false, kind: "unreadable", status: res.status, body: text.slice(0, 200) };
   }
   if (res.status < 200 || res.status >= 300 || json === null || typeof json !== "object" || "error" in json) {
-    // Respons API ProviderSMM (via VPS): {error: "..."} = penolakan bisnis
-    // (saldo kurang, quantity invalid) → api_error = MANUAL, bukan retry.
+    // Business rejection from the supplier (via VPS): {error: "..."} = saldo
+    // kurang / quantity invalid → api_error = MANUAL, bukan retry.
     const msg = (json as Record<string, unknown>)?.error;
     if (typeof msg === "string" && msg) {
       return { ok: false, kind: "api_error", status: res.status, body: json, supplierMessage: msg.slice(0, 200) };

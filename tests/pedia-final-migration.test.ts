@@ -1,4 +1,4 @@
-// tests/pedia-final-migration.test.ts — PSMM-FINAL-PATCH C (2026-11-12).
+// tests/pedia-final-migration.test.ts — migrasi 0117 (2026-11-12).
 // Migrasi 0117 harus bisa diterapkan pada skema PRA-0117 dan menambah kolom
 // `managed` (produk+tier) serta `managed_snapshot_at` (tier) dengan default
 // aman: seluruh baris lama menjadi `curated` dan cap versi kosong (gate
@@ -18,9 +18,9 @@ const MIGRATION = fs.readFileSync("drizzle/migrations/0117_pedia_managed_catalog
 function preMigration() {
   const sql = new DatabaseSync(":memory:");
   sql.exec(`CREATE TABLE pedia_products (id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT UNIQUE NOT NULL, platform TEXT NOT NULL, metric TEXT NOT NULL, target_kind TEXT NOT NULL, name TEXT NOT NULL, packages_json TEXT NOT NULL DEFAULT '[]', step INTEGER NOT NULL DEFAULT 1, is_active INTEGER NOT NULL DEFAULT 0)`);
-  sql.exec(`CREATE TABLE pedia_tiers (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, tier TEXT NOT NULL DEFAULT 'standar', supplier TEXT NOT NULL DEFAULT 'providersmm', supplier_service_id INTEGER NOT NULL, price_group TEXT NOT NULL, markup_pct REAL NOT NULL, min_profit_rp INTEGER NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, UNIQUE(product_id, supplier, supplier_service_id))`);
+  sql.exec(`CREATE TABLE pedia_tiers (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, tier TEXT NOT NULL DEFAULT 'standar', supplier TEXT NOT NULL DEFAULT 'indosmm', supplier_service_id INTEGER NOT NULL, price_group TEXT NOT NULL, markup_pct REAL NOT NULL, min_profit_rp INTEGER NOT NULL, is_active INTEGER NOT NULL DEFAULT 0, UNIQUE(product_id, supplier, supplier_service_id))`);
   sql.exec(`INSERT INTO pedia_products (slug,platform,metric,target_kind,name) VALUES ('legacy','instagram','followers','profile','Legacy')`);
-  sql.exec(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active) VALUES (1,'standar','providersmm',86,'G3',20,1000,1)`);
+  sql.exec(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active) VALUES (1,'standar','indosmm',86,'G3',20,1000,1)`);
   return sql;
 }
 

@@ -1,9 +1,9 @@
 import { pediaBounds } from "./bounds";
-// src/lib/pedia/sync.ts — Terapkan diff ProviderSMM → D1 (PEDIA-PRD §9.3, PD-30–33).
+// src/lib/pedia/sync.ts — Terapkan diff katalog IndoSMM → D1 (PEDIA-PRD §9.3, PD-30–33).
 //
-// Kontrak dengan `axvara-wr-proxy/src/psmm-diff.ts`:
+// Kontrak dengan proxy VPS:
 //   Header  x-supplier-sync-token: <SUPPLIER_SYNC_TOKEN>  (cek di route)
-//   Body    { source: "providersmm",
+//   Body    { source: "indosmm",
 //             services: [{service_id,name,type,category,rate,min_qty,max_qty,
 //                          api_refill,api_cancel,api_dripfeed}],
 //             removed_service_ids: number[], heartbeat?: true }
@@ -20,9 +20,10 @@ import { pediaBounds } from "./bounds";
 import { pediaServiceTypeFor } from "@/lib/pedia/custom-comments";
 import type { DatabaseAccess } from "@/lib/db-access";
 import { computePediaPrice, passesMarginGuard } from "@/lib/pedia/pricing";
+import { pediaMinOrderRp } from "@/lib/pedia/ops-config";
 import { isPediaProvider, type PediaProvider } from "@/lib/pedia/proxy";
 
-export type PsmmDiffService = {
+export type PediaDiffService = {
   service_id: number;
   name: string;
   type: string;
@@ -36,7 +37,7 @@ export type PsmmDiffService = {
   currency?: string;
 };
 
-export type PsmmSyncResult = {
+export type PediaSyncResult = {
   upserted: number;
   markedMissing: number;
   tiersRepriced: number;
@@ -65,27 +66,17 @@ async function notifyAdminPediaDisabled(text: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
-/** Terapkan satu diff providersmm. Idempoten (upsert + guard bersyarat). */
-export async function applyProvidersmmDiff(
-  db: DatabaseAccess,
-  services: PsmmDiffService[],
-  removedServiceIds: number[],
-): Promise<PsmmSyncResult> {
-  return applyPediaDiff(db, "providersmm", services, removedServiceIds, "IDR");
-}
-
-/** Rates are per 1,000 units. Only verified IDR may enter the IDR column.
- * Legacy ProviderSMM diffs already use IDR; IndoSMM must supply currency. */
+/** Terapkan satu diff IndoSMM. Idempoten (upsert + guard bersyarat). */
 export async function applyPediaDiff(
   db: DatabaseAccess,
   supplier: PediaProvider,
-  services: PsmmDiffService[],
+  services: PediaDiffService[],
   removedServiceIds: number[],
   currency?: string,
-): Promise<PsmmSyncResult> {
+): Promise<PediaSyncResult> {
   if (!isPediaProvider(supplier)) throw new Error("invalid_provider");
-  if ((currency ?? (supplier === "providersmm" ? "IDR" : "")).toUpperCase() !== "IDR") throw new Error("unsupported_currency");
-  const out: PsmmSyncResult = {
+  if ((currency ?? "").toUpperCase() !== "IDR") throw new Error("unsupported_currency");
+  const out: PediaSyncResult = {
     upserted: 0, markedMissing: 0, tiersRepriced: 0, tiersAutoDisabled: [], errors: [],
   };
   if (!Array.isArray(services) || !Array.isArray(removedServiceIds) || services.length > MAX_SERVICES_PER_CALL || removedServiceIds.length > MAX_SERVICES_PER_CALL) throw new Error("invalid_diff");
@@ -162,7 +153,7 @@ export async function applyPediaDiff(
       WHERE t.supplier=? AND t.supplier_service_id IN (${placeholders})`,
     supplier, ...[...touched],
   );
-  const minOrderRp = Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000;
+  const minOrderRp = pediaMinOrderRp();
 
   for (const t of tiers) {
     const tierId = Number(t.id);

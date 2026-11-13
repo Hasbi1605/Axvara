@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { seedOfficialDescriptions } from "./helpers/pedia-managed-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { createActiveQrisInvoice, createDanaQrisInvoice, calculateCrc16 } from "@/lib/payments/dana-qris";
@@ -170,12 +169,11 @@ describe("KlikQRIS invoice contract and durable creation",()=>{
  });
  it("passes the Pedia checkout phone to KlikQRIS and reuses its invoice on retry",async()=>{
   vi.stubEnv("PEDIA_ENABLED","true");vi.stubEnv("PEDIA_ORDERS_ENABLED","true");
-  fixture.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active,managed) VALUES(1,'followers-instagram','instagram','followers','profile','Followers','[100]',1,1,'auto');
-   INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active,managed) VALUES(1,1,'standar','providersmm',1,'G3',0,1000,1,'auto');
-   INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('providersmm',1,'Fixture','Fixture','Default',10000,1,1000,1);`);
-  await seedOfficialDescriptions(createDatabaseAccess(), [1]);
+  fixture.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active) VALUES(1,'followers-instagram','instagram','followers','profile','Followers','[100]',1,1);
+   INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,is_active) VALUES(1,1,'standar','indosmm',1,'G3',0,1000,1);
+   INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present) VALUES('indosmm',1,'Fixture','Fixture','Default',10000,1,1000,1);`);
   const {createPediaQuoteToken}=await import("@/lib/pedia/quote");
-  const {token}=await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"https://instagram.com/buyer/",target_normalized:"https://instagram.com/buyer/",unit_price:2500/150,total:2500,credit_code_hash:null,credit_used:0,supplier:"providersmm",supplier_service_id:1,supplier_rate_snapshot:10000,refill_days:0,min_profit_rp:1000,terms_version:"2026-11-12T10:00:00.000Z"});
+  const {token}=await createPediaQuoteToken({product_id:1,tier_id:1,quantity:150,target_raw:"https://instagram.com/buyer/",target_normalized:"https://instagram.com/buyer/",unit_price:2500/150,total:2500,credit_code_hash:null,credit_used:0,supplier:"indosmm",supplier_service_id:1,supplier_rate_snapshot:10000,refill_days:0,min_profit_rp:1000});
   const {POST}=await import("@/app/api/pedia/orders/route");
   const request=()=>new NextRequest("https://axvara.tech/api/pedia/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({quote_token:token,customer_wa:"0812-3456-7890",customer_email:"buyer@example.test"})});
   const response=await POST(request());expect(response.status).toBe(201);

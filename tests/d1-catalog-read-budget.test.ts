@@ -17,8 +17,8 @@ it("D1 catalog reads scale with curated services, including colliding provider I
       db.prepare("CREATE TABLE pedia_supplier_services(supplier TEXT,service_id INTEGER,min_qty INTEGER,max_qty INTEGER,rate_idr_per_1k INTEGER,present INTEGER,type TEXT,api_refill INTEGER DEFAULT 0,PRIMARY KEY(supplier,service_id))"),
       db.prepare("CREATE TABLE pedia_service_stats(supplier TEXT,service_id INTEGER,avg_time TEXT,orders_7d INTEGER,success_rate REAL,refill_rate REAL,PRIMARY KEY(supplier,service_id))"),
       db.prepare("INSERT INTO pedia_products VALUES(1,1),(2,0)"),
-      db.prepare("INSERT INTO pedia_tiers(id,product_id,is_active,supplier,supplier_service_id) VALUES(1,1,1,'providersmm',1),(2,1,1,'indosmm',1),(3,2,1,'providersmm',2),(4,1,0,'providersmm',3),(5,1,1,'providersmm',4)"),
-      db.prepare("INSERT INTO pedia_supplier_services(supplier,service_id,min_qty,max_qty,rate_idr_per_1k,present,type) VALUES('providersmm',1,10,100,1000,1,'Default'),('indosmm',1,20,200,2000,1,'Default'),('providersmm',2,10,100,1000,1,'Default'),('providersmm',3,10,100,1000,1,'Default'),('providersmm',4,10,100,1000,0,'Default')"),
+      db.prepare("INSERT INTO pedia_tiers(id,product_id,is_active,supplier,supplier_service_id) VALUES(1,1,1,'indosmm',1),(2,1,1,'legacy_supplier',1),(3,2,1,'legacy_supplier',2),(4,1,0,'indosmm',3),(5,1,1,'indosmm',4)"),
+      db.prepare("INSERT INTO pedia_supplier_services(supplier,service_id,min_qty,max_qty,rate_idr_per_1k,present,type) VALUES('indosmm',1,10,100,1000,1,'Default'),('legacy_supplier',1,20,200,2000,1,'Default'),('legacy_supplier',2,10,100,1000,1,'Default'),('indosmm',3,10,100,1000,1,'Default'),('indosmm',4,10,100,1000,0,'Default')"),
     ]);
     const before = await db.prepare(PEDIA_CATALOG_BOUNDS_SQL).all();
     // Thousands of unrelated live supplier services must not inflate catalog reads.
@@ -26,8 +26,8 @@ it("D1 catalog reads scale with curated services, including colliding provider I
     const after = await db.prepare(PEDIA_CATALOG_BOUNDS_SQL).all();
     expect(after.results).toEqual(before.results);
     expect(after.results).toEqual(expect.arrayContaining([
-      expect.objectContaining({ supplier: "providersmm", service_id: 1, min_qty: 10 }),
-      expect.objectContaining({ supplier: "indosmm", service_id: 1, min_qty: 20 }),
+      expect.objectContaining({ supplier: "indosmm", service_id: 1, min_qty: 10 }),
+      expect.objectContaining({ supplier: "legacy_supplier", service_id: 1, min_qty: 20 }),
     ]));
     expect(after.results).toHaveLength(2);
     expect(after.meta.rows_read).toBeLessThan(40);

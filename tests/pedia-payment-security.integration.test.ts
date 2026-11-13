@@ -22,23 +22,19 @@ const CRYPTO_CODE = "AXP-20261107-NP000001";
 
 /** Order Pedia pin6 (seperti yang dibuat route orders) + produk/tier untuk dispatch. */
 function seedPediaOrder(f: ReturnType<typeof createD1Fixture>, code: string, paymentMethod: string) {
-  const desc86 = JSON.stringify({ fetched_at: "2026-11-12T10:00:00.000Z", source_url: "https://providersmm.id/services", entries: { "86": { status: "ok", text: "Syarat resmi berlaku." } } });
-  f.sql.prepare("INSERT INTO store_settings(key,value,updated_at) VALUES('pedia_psmm_desc_snapshot',?,datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(desc86);
-  f.sql.prepare("INSERT INTO store_settings(key,value,updated_at) VALUES('pedia_psmm_desc_last_at','2026-11-12T10:00:00.000Z',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
-  f.sql.prepare("UPDATE pedia_tiers SET managed_snapshot_at=? WHERE managed='auto' AND supplier='providersmm'").run('2026-11-12T10:00:00.000Z');
-  f.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active,managed)
-    VALUES(1,'followers-instagram','instagram','followers','profile','Followers','[100]',1,1,'auto');
-    INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active,managed)
-    VALUES(1,1,'standar','providersmm',86,'G3',0,1000,0,1,'auto');
+  f.sql.exec(`INSERT INTO pedia_products(id,slug,platform,metric,target_kind,name,packages_json,step,is_active)
+    VALUES(1,'followers-instagram','instagram','followers','profile','Followers','[100]',1,1);
+    INSERT INTO pedia_tiers(id,product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,refill_days,is_active)
+    VALUES(1,1,'standar','indosmm',86,'G3',0,1000,0,1);
     INSERT INTO pedia_supplier_services(supplier,service_id,name,category,type,rate_idr_per_1k,min_qty,max_qty,present,api_refill)
-    VALUES('providersmm',86,'IG','IG','Default',46000,100,1000,1,0);`);
+    VALUES('indosmm',86,'IG','IG','Default',46000,100,1000,1,0);`);
   f.sql.prepare(`INSERT INTO orders(code,quote_id,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_account,status,
       sales_channel,order_kind,payment_status,expires_at,buyer_access_version,buyer_access_format)
     VALUES(?,?, 'Buyer',?,?,'[]',10000,?,?,'pending','web','pedia','pending',datetime('now','+15 minutes'),1,'pin6')`)
     .run(code, `pedia:${code}`, WA, EMAIL, paymentMethod, paymentMethod.startsWith("nowpayments") ? "NOWPayments" : "Sekalipay");
   f.sql.prepare(`INSERT INTO pedia_order_items(order_code,product_id,tier_id,snapshot_json,target_raw,target_normalized,quantity,unit_price,total,credit_used,
       supplier,supplier_service_id,supplier_rate_snapshot,status,submit_attempts)
-    VALUES(?,1,1,'{}','https://www.instagram.com/x/','https://www.instagram.com/x/',100,100,10000,0,'providersmm',86,46000,'queued',0)`)
+    VALUES(?,1,1,'{}','https://www.instagram.com/x/','https://www.instagram.com/x/',100,100,10000,0,'indosmm',86,46000,'queued',0)`)
     .run(code);
 }
 

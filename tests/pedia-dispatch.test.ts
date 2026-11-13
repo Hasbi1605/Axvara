@@ -30,13 +30,13 @@ async function seedPaidItem(over: Record<string, unknown> = {}) {
   await db.execRun(
     `INSERT INTO pedia_tiers (product_id, tier, supplier, supplier_service_id, price_group,
        markup_pct, min_profit_rp, refill_days, package_prices_json, is_active)
-     VALUES (?, 'standar', 'providersmm', 86, 'G3', 20, 1000, 30, '{"100":5000}', 1)`,
+     VALUES (?, 'standar', 'indosmm', 86, 'G3', 20, 1000, 30, '{"100":5000}', 1)`,
     Number(p?.id),
   );
   await db.execRun(
     `INSERT INTO pedia_supplier_services (supplier, service_id, name, category, type,
        rate_idr_per_1k, min_qty, max_qty, present)
-     VALUES ('providersmm', 86, 'IG', 'IG', 'Default', 38750, 100, 1000, 1)`,
+     VALUES ('indosmm', 86, 'IG', 'IG', 'Default', 38750, 100, 1000, 1)`,
   );
   await db.execRun(
     `INSERT INTO pedia_order_items
@@ -44,7 +44,7 @@ async function seedPaidItem(over: Record<string, unknown> = {}) {
         quantity, unit_price, total, credit_used, supplier, supplier_service_id,
         supplier_rate_snapshot, status, submit_attempts)
      VALUES ('AXP-T1', ?, 1, '{}', 'https://www.instagram.com/x/',
-       'https://www.instagram.com/x/', 100, 100, 10000, 0, 'providersmm', 86, 38750,
+       'https://www.instagram.com/x/', 100, 100, 10000, 0, 'indosmm', 86, 38750,
        'queued', 0)`,
     Number(p?.id),
   );
@@ -211,7 +211,7 @@ describe("operator recount", () => {
     const { main } = await import("../scripts/pedia-recount-start-count.mjs");
     const db = await seedPaidItem({ status: "completed", supplier_order_id: "SUP-HISTORY", start_count: 0 });
     const call = vi.fn(async (supplier: string, order: string) => {
-      expect([supplier, order]).toEqual(["providersmm", "SUP-HISTORY"]);
+      expect([supplier, order]).toEqual(["indosmm", "SUP-HISTORY"]);
       return { status: "Completed", start_count: "8278" };
     });
     const args = ["--database", "fixture", "--code", "AXP-T1", "--limit", "1"];

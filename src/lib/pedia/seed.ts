@@ -1,6 +1,6 @@
 // src/lib/pedia/seed.ts — Kurasi awal Pedia (PEDIA-PRD §7.3).
 //
-// Data API ProviderSMM 2026-10-07 (576 layanan, rate IDR per 1K —
+// Data API supplier 2026-10-07 (576 layanan, rate IDR per 1K —
 // diverifikasi langsung via API `services`). Harga final mengikuti rumus
 // §7.2; WAJIB dicek ulang setelah uji order (PRD §14 pra-launch).
 //

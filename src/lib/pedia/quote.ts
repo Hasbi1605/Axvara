@@ -24,12 +24,6 @@ export type PediaQuotePayload = {
   supplier: PediaProvider;
   supplier_service_id: number;
   supplier_rate_snapshot: number;
-  /** PSMM-P5: snapshot kepemilikan katalog saat quote agar order baru tidak
-   *  bisa memakai baris kurasi walau tier_id dipalsukan. */
-  managed?: "curated" | "auto";
-  /** PSMM-ACCEPTANCE-CLOSE 1: versi snapshot syarat resmi yang ditandatangani
-   *  saat quote; order baru memverifikasinya terhadap snapshot aktif. */
-  terms_version?: string;
   refill_days?: number;
   supplier_target?: string;
   refill_anchor?: "created" | "completed";
@@ -86,7 +80,7 @@ export async function verifyPediaQuoteToken(token: string): Promise<PediaQuotePa
       : await jose.jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
     if (payload.purpose !== "pedia_quote" || !payload.jti) return null;
     const p = payload as unknown as Record<string, unknown>;
-    const supplier = p.supplier ?? "providersmm";
+    const supplier = p.supplier ?? "indosmm";
     if (!isPediaProvider(supplier)) return null;
     const num = (v: unknown) => Number(v);
     if (![p.product_id, p.tier_id, p.quantity, p.total].every((v) => Number.isFinite(num(v)))) return null;
@@ -114,9 +108,6 @@ export async function verifyPediaQuoteToken(token: string): Promise<PediaQuotePa
       paymentMethods = p.payment_methods as CheckoutQuotePaymentMethod[];
     }
     if (p.locale !== undefined && !["id", "en"].includes(String(p.locale))) return null;
-    // Versi syarat (bila ada) harus string non-kosong; quote lama tanpa field
-    // ini tetap terverifikasi sebagai token (legacy), gate order yang memutuskan.
-    if (p.terms_version !== undefined && (typeof p.terms_version !== "string" || !p.terms_version || p.terms_version.length > 64)) return null;
     return {
       purpose: "pedia_quote",
       product_id: num(p.product_id), tier_id: num(p.tier_id),
@@ -128,8 +119,6 @@ export async function verifyPediaQuoteToken(token: string): Promise<PediaQuotePa
       supplier,
       supplier_service_id: num(p.supplier_service_id),
       supplier_rate_snapshot: num(p.supplier_rate_snapshot),
-      managed: p.managed === "auto" ? "auto" : undefined,
-      terms_version: typeof p.terms_version === "string" ? p.terms_version : undefined,
       refill_days: p.refill_days as number | undefined,
       supplier_target: p.supplier_target as string | undefined,
       refill_anchor: p.refill_anchor as "created" | "completed" | undefined,

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { PRICE_GROUP_DEFAULTS } from "@/lib/pedia/pricing";
+import { pediaBalanceAlertRp, pediaMinOrderRp } from "@/lib/pedia/ops-config";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -57,8 +58,11 @@ export async function GET(request: NextRequest) {
       pedia_min_profit_g1: num("pedia_min_profit_g1", PRICE_GROUP_DEFAULTS.G1.min_profit_rp),
       pedia_min_profit_g2: num("pedia_min_profit_g2", PRICE_GROUP_DEFAULTS.G2.min_profit_rp),
       pedia_min_profit_g3: num("pedia_min_profit_g3", PRICE_GROUP_DEFAULTS.G3.min_profit_rp),
-      pedia_min_order_rp: num("pedia_min_order_rp", 1000),
-      pedia_balance_alert_rp: num("pedia_balance_alert_rp", 100000),
+      // Nilai EFEKTIF operasional: jalur uang dan alert saldo membaca env
+      // produksi, bukan store_settings (lihat ops-config). Key lama tetap,
+      // tanpa field baru; PUT tidak diubah.
+      pedia_min_order_rp: pediaMinOrderRp(),
+      pedia_balance_alert_rp: pediaBalanceAlertRp(),
     },
     balance_history: history,
   });

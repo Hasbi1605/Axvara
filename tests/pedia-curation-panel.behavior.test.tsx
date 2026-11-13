@@ -20,7 +20,7 @@ it("creates an inactive no-refill draft with reviewed edited copy, never publish
  vi.stubGlobal("fetch",vi.fn(async(_url:string,init?:RequestInit)=>{if(init?.method){write=JSON.parse(String(init.body));return Response.json({ok:true,id:8});}return Response.json({ok:true,rows:[row]});}));
  const onCreated=vi.fn(async()=>{});render(<PediaCurationPanel products={[product]} onCreated={onCreated}/>);
  fireEvent.change(screen.getByLabelText("Kebutuhan produk"),{target:{value:"1"}});
- fireEvent.click(await screen.findByRole("button",{name:"Siapkan draf indosmm #99"}));
+ fireEvent.click(await screen.findByRole("button",{name:"Siapkan draf IndoSMM #99"}));
  expect(document.querySelector("form script")).toBeNull();
  fireEvent.change(screen.getByLabelText("Nama publik"),{target:{value:"Draf ditinjau"}});
  fireEvent.click(screen.getByRole("checkbox"));fireEvent.submit(screen.getByRole("form",{name:"Draf kandidat"}));
@@ -31,7 +31,7 @@ it("clears stale candidate and draft selection when the quantity changes",async(
  vi.stubGlobal("fetch",vi.fn(async()=>Response.json({ok:true,rows:[row]})));
  render(<PediaCurationPanel products={[product]} onCreated={vi.fn()}/>);
  fireEvent.change(screen.getByLabelText("Kebutuhan produk"),{target:{value:"1"}});
- fireEvent.click(await screen.findByRole("button",{name:"Siapkan draf indosmm #99"}));
+ fireEvent.click(await screen.findByRole("button",{name:"Siapkan draf IndoSMM #99"}));
  fireEvent.change(screen.getByLabelText("Jumlah pembanding"),{target:{value:"500"}});
  expect(screen.queryByRole("form",{name:"Draf kandidat"})).toBeNull();
 });

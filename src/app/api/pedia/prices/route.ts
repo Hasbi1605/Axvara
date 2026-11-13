@@ -5,6 +5,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { pediaBounds } from "@/lib/pedia/bounds";
+import { pediaMinOrderRp } from "@/lib/pedia/ops-config";
 import { PEDIA_SALE_PROVIDER } from "@/lib/pedia/sales-policy";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
 
@@ -32,6 +33,6 @@ export async function GET(request: NextRequest) {
       ORDER BY t.id LIMIT 100`, product.id, PEDIA_SALE_PROVIDER,
   );
   const prices = rows.filter((r) => { const b = pediaBounds(r, r, Number(product.step)); return b && quantity >= b.min && quantity <= b.max && quantity % b.step === 0; })
-    .map((r) => ({ tier_id: Number(r.id), total: computePediaPrice({ supplierRatePer1k: Number(r.rate_idr_per_1k), quantity, markupPct: Number(r.markup_pct), minProfitRp: Number(r.min_profit_rp), minOrderRp: Number(process.env.PEDIA_MIN_ORDER_RP || 1000) || 1000 }) }));
+    .map((r) => ({ tier_id: Number(r.id), total: computePediaPrice({ supplierRatePer1k: Number(r.rate_idr_per_1k), quantity, markupPct: Number(r.markup_pct), minProfitRp: Number(r.min_profit_rp), minOrderRp: pediaMinOrderRp() }) }));
   return NextResponse.json({ ok: true, product_slug: slug, quantity, prices }, { headers: { "Cache-Control": "no-store" } });
 }

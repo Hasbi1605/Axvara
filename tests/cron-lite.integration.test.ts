@@ -214,9 +214,9 @@ describe("/api/cron/lite", () => {
     // default 5 dtk membuat test ini flaky di full suite paralel.
   }, 20_000);
 
-  // 2026-11-01 (owner): ProviderSMM diputus — tidak ada cek saldo/alert walau
-  // penandanya sudah lama, sementara IndoSMM tetap dicek.
-  it("pedia_orders: tidak lagi memanggil saldo ProviderSMM, IndoSMM tetap dicek", async () => {
+  // 2026-11-13 (owner): IndoSMM satu-satunya supplier — hanya saldo IndoSMM
+  // yang dicek dari cron, tanpa panggilan ke supplier lama mana pun.
+  it("pedia_orders: hanya memanggil saldo IndoSMM", async () => {
     const fx = createD1Fixture();
     try {
       vi.stubEnv("CRON_SECRET", "s");
@@ -226,7 +226,7 @@ describe("/api/cron/lite", () => {
       vi.stubGlobal("fetch", fetch);
       expect((await call("pedia_orders")).status).toBe(200);
       const urls = fetch.mock.calls.map((c) => String((c as unknown[])[0]));
-      expect(urls.some((u) => u.includes("/psmm/"))).toBe(false);
+      expect(urls.filter((u) => u.includes("/balance")).every((u) => u.includes("/indosmm/"))).toBe(true);
       expect(urls.some((u) => u.includes("/indosmm/balance"))).toBe(true);
       expect(fx.sql.prepare("SELECT supplier FROM pedia_supplier_balance_log").all()).toEqual([{ supplier: "indosmm" }]);
     } finally { vi.unstubAllGlobals(); fx.close(); }

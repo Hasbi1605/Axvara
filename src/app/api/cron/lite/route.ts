@@ -28,7 +28,7 @@
 //                 segarkan status supplier berjalan (2026-10-13), reconcile
 //                 macet, kirim kredensial
 //   sk_orders   — pola yang sama untuk Sekalipay (termasuk probe yatim)
-//   pedia_orders — dispatch + poll order Pedia ke ProviderSMM (PD-30–33);
+//   pedia_orders — dispatch + poll order Pedia ke IndoSMM (PD-30–33);
 //                 saldo dicek maks 1×/30 mnt (hemat statement)
 //   games_orders — AXVARA Games: promosi lunas → queued, dispatch Digiflazz,
 //                 pemulihan lease basi, polling dengan ref_id sama (GAMES §12.3)
@@ -390,9 +390,10 @@ async function runSkOrders(db: Db) {
 
 // pedia_orders (PEDIA M4, PD-30–33): dispatch + poll + alert saldo.
 // Budget: klaim atomik + ≤20 item + poll ≤20 + saldo 1×/30mnt + penanda.
-// Saldo dicek via proxy /psmm/balance; bila < ambang → ping admin dengan
-// throttle 1:1 WR/SK (6 jam ATAU turun Rp5.000 — `notifyPediaLowBalance`,
-// kunci store_settings pedia_balance_alert_at format `amount|ms`).
+// Saldo dicek via proxy /indosmm/balance; bila < ambang (env
+// PEDIA_BALANCE_ALERT_RP) → ping admin dengan throttle 1:1 WR/SK (6 jam ATAU
+// turun Rp5.000 — `notifyPediaLowBalance`, kunci store_settings
+// pedia_indosmm_balance_alert_at format `amount|ms`).
 async function runPediaOrders(db: Db) {
   const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
   const out: Record<string, unknown> = {};
@@ -405,10 +406,8 @@ async function runPediaOrders(db: Db) {
     if (error instanceof QueryBudgetExceeded) throw error;
     out.dispatch_error = error instanceof Error ? error.message.slice(0, 80) : "failed";
   }
-  // 2026-11-01 (owner): ProviderSMM diputus. Saldo/alert ProviderSMM tidak lagi
-  // dicek atau dikirim ke Telegram; hanya IndoSMM yang dipantau.
-  // Independent checkpoint and currency gate: one supplier's failure cannot
-  // suppress the other. Do not convert undocumented USD account balances.
+  // 2026-11-13 (owner): IndoSMM satu-satunya supplier. Independent checkpoint
+  // and currency gate: do not convert undocumented USD account balances.
   if (db.canSpend(5)) {
     try {
       const key = "pedia_indosmm_balance_checked_at";
@@ -423,7 +422,8 @@ async function runPediaOrders(db: Db) {
         if (res.ok && res.data.currency?.toUpperCase() === "IDR" && Number.isFinite(v) && v >= 0) {
           out.indosmm_balance = v;
           await db.execRun(`INSERT INTO pedia_supplier_balance_log (supplier,balance) VALUES ('indosmm',?)`, v);
-          if (v < (Number(process.env.PEDIA_BALANCE_ALERT_RP || 100000) || 100000)) {
+          const { pediaBalanceAlertRp } = await import("@/lib/pedia/ops-config");
+          if (v < pediaBalanceAlertRp()) {
             const { notifyPediaLowBalance } = await import("@/lib/pedia/notify");
             out.indosmm_balance_alerted = await notifyPediaLowBalance(v, db, "indosmm");
           }

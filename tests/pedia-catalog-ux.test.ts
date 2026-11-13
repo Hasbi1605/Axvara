@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { seedOfficialDescriptions } from "./helpers/pedia-managed-fixture";
 import { GET } from "@/app/api/pedia/catalog/route";
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -9,18 +8,17 @@ async function seed() {
   const fixture = createD1Fixture();
   vi.stubEnv("PEDIA_ENABLED", "true");
   const db = createDatabaseAccess(fixture.db);
-  // PSMM-P5: katalog publik = produk+tier OTOMATIS dengan deskripsi resmi `ok`.
-  await db.execRun(`INSERT INTO pedia_products (slug, platform, metric, target_kind, name, packages_json, step, is_active, managed) VALUES ('ig','instagram','followers','profile','IG','[500,100,250,100,105]',10,1,'auto')`);
+  // katalog publik = produk+tier OTOMATIS dengan deskripsi resmi `ok`.
+  await db.execRun(`INSERT INTO pedia_products (slug, platform, metric, target_kind, name, packages_json, step, is_active) VALUES ('ig','instagram','followers','profile','IG','[500,100,250,100,105]',10,1)`);
   const product = await db.queryFirst("SELECT id FROM pedia_products WHERE slug='ig'");
   for (const [tier, service, min, max, prices] of [
     ["premium", 3, 250, 500, '{"100":1000,"250":5000,"500":8000}'],
     ["standar", 2, 100, 250, '{"100":3000,"105":3500,"250":6000,"500":9000}'],
     ["hemat", 1, 100, 500, '{"100":2000,"250":0,"500":-1,"750":10000}'],
   ] as const) {
-    await db.execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,type,category,rate_idr_per_1k,min_qty,max_qty,present) VALUES ('providersmm',?,'private-name','Default','IG',500,?,?,1)`, service, min, max);
-    await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,package_prices_json,is_active,managed) VALUES (?,?,'providersmm',?,'G3',20,1000,?,1,'auto')`, Number(product?.id), tier, service, prices);
+    await db.execRun(`INSERT INTO pedia_supplier_services (supplier,service_id,name,type,category,rate_idr_per_1k,min_qty,max_qty,present) VALUES ('indosmm',?,'private-name','Default','IG',500,?,?,1)`, service, min, max);
+    await db.execRun(`INSERT INTO pedia_tiers (product_id,tier,supplier,supplier_service_id,price_group,markup_pct,min_profit_rp,package_prices_json,is_active) VALUES (?,?,'indosmm',?,'G3',20,1000,?,1)`, Number(product?.id), tier, service, prices);
   }
-  await seedOfficialDescriptions(db, [1, 2, 3], "Deskripsi resmi layanan.");
   return db;
 }
 describe("public catalog safe tier packages", () => {

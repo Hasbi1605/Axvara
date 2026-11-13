@@ -15,7 +15,7 @@ try {
       (1,'indosmm',6405,'Followers global, akun real/aktif.',NULL),
       (2,'indosmm',575,'Copy admin khusus',NULL),
       (3,'indosmm',9999,'Followers global, akun real/aktif.',NULL),
-      (4,'providersmm',6405,'Followers global, akun real/aktif.',NULL);
+      (4,'legacy_supplier',6405,'Followers global, akun real/aktif.',NULL);
     INSERT INTO pedia_order_items VALUES ('{"description":"akun real/aktif"}');`);
   const migration = readFileSync('drizzle/migrations/0090_pedia_source_copy_20261102.sql', 'utf8');
   db.exec(migration);

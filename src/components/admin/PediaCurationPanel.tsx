@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { CurationCandidate, CurationProduct } from "@/lib/pedia/curation-shortlist";
 import { formatRupiah } from "@/lib/utils";
-const input="mt-2 min-h-11 w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-base text-white [color-scheme:dark]";
+const input="mt-1 min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#00E5FF]/50 [color-scheme:dark]";
 export function PediaCurationPanel({products,onCreated}:{products:CurationProduct[];onCreated:(productId:number)=>Promise<void>}){
  const [productId,setProductId]=useState(""),[quantity,setQuantity]=useState("100"),[rows,setRows]=useState<CurationCandidate[]>([]),[loading,setLoading]=useState(false),[error,setError]=useState(""),[limited,setLimited]=useState(false),[all,setAll]=useState(false),[busy,setBusy]=useState(false),[selected,setSelected]=useState<CurationCandidate|null>(null);
  const saving=useRef(false),context=useRef("");const key=`${productId}:${quantity}`;context.current=key;
@@ -33,7 +33,7 @@ export function PediaCurationPanel({products,onCreated}:{products:CurationProduc
   }catch(e){setError(e instanceof Error?e.message:"Draf gagal disimpan.");}finally{saving.current=false;setBusy(false);}
  }
  return <section className="mt-4 min-w-0 space-y-5" aria-label="Kurasi terarah">
-  <div><h3 className="text-lg font-semibold text-white">Kurasi berdasarkan kebutuhan</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-white/55">Pilih kebutuhan dan jumlah pembanding. Kandidat IndoSMM disaring dari mirror tersimpan; nama dan flag API belum membuktikan kualitas. Draf selalu nonaktif dan tanpa janji refill sampai ditinjau.</p></div>
+   <div><h3 className="text-sm font-semibold text-white">Bandingkan per kebutuhan</h3><p className="mt-2 max-w-3xl text-xs leading-5 text-white/55">Bandingkan layanan IndoSMM untuk jumlah yang sama. Nama dan dukungan API bukan bukti kualitas. Draf dibuat nonaktif, tanpa janji refill sampai ditinjau.</p></div>
   <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
    <label className="text-sm text-white/70">Kebutuhan produk<select aria-label="Kebutuhan produk" className={input} value={productId} disabled={busy} onChange={e=>setProductId(e.target.value)}><option value="">Pilih kebutuhan</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
    <label className="text-sm text-white/70">Jumlah pembanding<input aria-label="Jumlah pembanding" className={input} type="number" min={1} max={100000000} step={1} value={quantity} disabled={busy} onChange={e=>setQuantity(e.target.value)} /></label>
@@ -43,12 +43,12 @@ export function PediaCurationPanel({products,onCreated}:{products:CurationProduc
   {limited&&<p className="text-sm text-amber-200">Kandidat berasal dari 200 layanan termurah yang cocok dengan pencarian awal. Daftar ini bukan seluruh katalog atau penilaian mutu.</p>}
   {!loading&&product&&<p className="text-sm text-white/60">{rows.length} kandidat untuk {Number(quantity).toLocaleString("id-ID")} · wakil wilayah/refill ditampilkan sebelum varian serupa. Seluruh modal memakai jumlah yang sama.</p>}
   <div className="space-y-3">{(all?rows:rows.slice(0,3)).map(row=><article key={`${row.supplier}:${row.service_id}`} className="rounded-2xl border border-white/10 p-4 sm:p-5">
-   <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-between"><div className="min-w-0 flex-1"><p className="break-words font-medium text-white">{row.name}</p><p className="mt-1 text-xs text-white/45">{row.supplier} #{row.service_id} · {row.region} · Min {row.min_qty.toLocaleString("id-ID")} / maks {row.max_qty.toLocaleString("id-ID")}</p></div><p className="text-sm text-white">Estimasi modal <strong>{formatRupiah(Math.ceil(row.estimated_cost))}</strong></p></div>
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-between"><div className="min-w-0 flex-1"><p className="break-words font-medium text-white">{row.name}</p><p className="mt-1 text-xs text-white/45">IndoSMM #{row.service_id} · {row.region} · Min {row.min_qty.toLocaleString("id-ID")} / maks {row.max_qty.toLocaleString("id-ID")}</p></div><p className="text-sm text-white">Estimasi modal <strong>{formatRupiah(Math.ceil(row.estimated_cost))}</strong></p></div>
    <ul className="mt-3 space-y-1 text-xs leading-5 text-amber-200/85">{row.warnings.map(w=><li key={w}>{w}</li>)}</ul>
    {row.used_in&&<p className="mt-2 text-xs text-white/50">Sudah dipakai: {row.used_in}</p>}
-   <button type="button" disabled={busy} onClick={()=>{setSelected(row);setError("");}} className="mt-3 min-h-11 rounded-full border border-[#00E5FF]/35 px-4 text-sm text-[#00E5FF]">Siapkan draf {row.supplier} #{row.service_id}</button>
+    <button type="button" disabled={busy} onClick={()=>{setSelected(row);setError("");}} className="mt-3 min-h-11 rounded-full border border-[#00E5FF]/35 px-4 text-sm text-[#00E5FF]">Siapkan draf IndoSMM #{row.service_id}</button>
   </article>)}</div>
-  {!loading&&product&&!rows.length&&<p className="text-sm text-white/60">{limited?"Belum ada kandidat cocok dalam 200 layanan pertama yang diperiksa.":"Belum ada kandidat cocok di mirror."} Gunakan Layanan Supplier untuk meninjau katalog dan ketentuan; jangan memaksa layanan yang berbeda kebutuhan.</p>}
+   {!loading&&product&&!rows.length&&<p className="text-sm text-white/60">{limited?"Belum ada kandidat cocok dalam 200 layanan pertama yang diperiksa.":"Belum ada kandidat cocok di katalog."} Gunakan Semua layanan untuk meninjau layanan dan ketentuan.</p>}
   {!all&&rows.length>3&&<button type="button" onClick={()=>setAll(true)} className="min-h-11 text-sm text-[#00E5FF]">Lihat semua {rows.length} kandidat</button>}
   {selected&&<form key={`${selected.supplier}:${selected.service_id}`} onSubmit={save} aria-label="Draf kandidat" className="space-y-4 rounded-2xl border border-[#00E5FF]/20 p-5">
    <h4 className="font-medium text-white">Tinjau draf {product?.name}</h4>

@@ -25,7 +25,7 @@ describe("Pedia IndoSMM catalog 2026-11-01", () => {
       expect(s.terms).toContain(s.refill_days > 0 ? "halaman Refill Pedia" : "No Refill: jumlah yang drop tidak diisi ulang.");
       if (s.refill_days > 0) expect(s.terms).toContain(s.evidence.api_refill ? "diproses otomatis" : "diproses admin");
       // White label: tidak ada nama/kata supplier pada teks publik.
-      for (const text of [s.public_name, s.description, s.terms, s.instructions]) expect(text).not.toMatch(/supplier|indosmm|providersmm|penyedia/i);
+      for (const text of [s.public_name, s.description, s.terms, s.instructions]) expect(text).not.toMatch(/supplier|indosmm|penyedia/i);
       expect(s.evidence.success_rate ?? 0).toBeGreaterThanOrEqual(85);
     }
     for (const p of manifest.new_products) {

@@ -7,6 +7,15 @@ rollout. Aturan terkini ada di `AGENTS.md`; bila bertentangan, `AGENTS.md`
 dan keputusan owner terbaru yang berlaku. Pengaman kompatibilitas untuk order,
 refill dan recovery lama di bawah tetap berlaku.
 
+### Catatan 13 November 2026 — histori dua-supplier ditandai superseded
+Keputusan owner 13 November 2026 mengembalikan IndoSMM sebagai satu-satunya
+supplier dan menghapus kode ProviderSMM/katalog otomatis. Semua kontrak
+`/psmm/*`, `pedia_diff_*`, snapshot deskripsi resmi, dan materialisasi otomatis di
+bawah adalah **histori** (bukti pada tanggalnya), bukan kontrak aktif. Kontrak
+aktif: `docs/agent-rules/pedia.md` bagian teratas + `docs/ARCHITECTURE.md`
+§16.10c-ter. Pengaman order lama (snapshot supplier/service, ambiguous handling,
+tanpa retry/failover otomatis) tetap berlaku.
+
 ### Histori Pedia katalog/checkout 2026-10-15
 - Snapshot `docs/pedia/catalog-checkout-2026-10-15.md` menggantikan UI/katalog 12 Oktober pada saat itu; bukan spesifikasi UI terkini. Untuk perubahan baru, ikuti `docs/pedia/purchase-ux-2026-10-27.md`, kebijakan IndoSMM20Oktober dan resolusi manual24Oktober. Snapshot awal: 38 jenis/131 mapping pada16platform, migrasi0065/0066, hanya mirror layak diaktifkan; konfigurator16Oktober kemudian digantikan.
 - Harga jumlah bebas dari `/api/pedia/prices`; order/job/debit/ledger atomik D1. QR gagal diulang memakai quote sama. Cron Pedia membalik reservasi kredit pra-pensiun sekali ke arsip beku dan mengantrekannya untuk penyelesaian manual. Tidak ada flag dispatch baru; proses lewat cron existing.
