@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { Zap } from "lucide-react";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Textarea } from "@/components/admin/ui";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, PageHeader, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@/components/admin/ui";
 import { SupplierTabs, type SupplierTabId } from "@/components/admin/SupplierTabs";
 import { AdminStatusSwitch } from "./AdminStatusSwitch";
 import { TUNVN_BUFF_MARKUP_PERCENT, TUNVN_CHATGPT_MARKUP_PERCENT } from "@/lib/tunvn/pricing";
@@ -39,15 +39,21 @@ type BuffData = {
   muse_product: { id: number; is_active: number } | null;
 };
 type Row = Record<string, unknown>;
-type DispatchLink = { id:number; order_code:string; item_index:number; kind:string; quantity:number; cost_usdt:number; status:string; provider_order_group:string|null; provider_batch_id:string|null; provider_order_code:string|null; last_error:string|null; receipt_json:string|null; has_receipt:number; can_retry?:number; purchase_disabled?:number };
+type DispatchLink = { id:number; order_code:string; item_index:number; kind:string; quantity:number; cost_usdt:number; status:string; provider_order_group:string|null; provider_batch_id:string|null; provider_order_code:string|null; last_error:string|null; receipt_json:string|null; has_receipt:number; can_retry?:number; purchase_disabled?:number; request_sent_at?:string|null; completed_at?:string|null };
 
 const TABS: { id: SupplierTabId; label: string }[] = [
-  { id: "ringkas", label: "Ringkasan" },
-  { id: "antrean", label: "Katalog & Terbit" },
-  { id: "markup", label: "Buff Muse" },
-  { id: "alat", label: "Publikasi" },
+  { id: "ringkas", label: "Ringkas" },
+  { id: "antrean", label: "Antrean" },
+  { id: "markup", label: "Markup" },
+  { id: "alat", label: "Alat" },
 ];
 const PUBLISHABLE = [86, 83];
+/** Label status pengiriman yang manusiawi (D5) — kode mentah hanya di receipt. */
+const LINK_STATUS_LABEL: Record<string, string> = {
+  pending: "Menunggu", ordering: "Antre dikirim", submitted: "Diproses supplier", processing: "Diproses supplier",
+  completed: "Selesai", failed: "Gagal", needs_admin: "Perlu tindakan", retry: "Dicoba ulang", canceled: "Dibatalkan",
+};
+const linkStatusLabel = (status: string) => LINK_STATUS_LABEL[status] ?? "Status lain";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init });
@@ -58,6 +64,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 const usdt = (value: number | null | undefined) => (value === null || value === undefined ? "-" : `${value} USDT`);
+const compactTunvnTime = (value: string | null | undefined) => value ? formatWibDateTime(value, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) ?? String(value) : "Belum pernah";
 
 /** Panel admin TUNVN PREHUB: saldo, katalog, kontrol terbit/markup/deskripsi, Buff, publikasi. */
 export function TunvnManager() {
@@ -169,25 +176,21 @@ export function TunvnManager() {
 
   const items = (products?.items ?? []).filter((item) => !q || `${item.supplier_product_id} ${item.name} ${item.admin_name ?? ""}`.toLowerCase().includes(q.toLowerCase()));
   const counts = products?.counts ?? { total: 0, published: 0, requested: 0, in_stock: 0 };
-  const stats = [
-    { label: "Koneksi API", value: products?.configured ? "Terhubung" : "Belum terkonfigurasi", tone: products?.configured ? "text-admin-success" : "text-admin-warning" },
-    { label: "Saldo wallet", value: balance?.ok ? `${usdt(balance.balance_usdt)} · ${Number(balance.balance_vnd ?? 0).toLocaleString("id-ID")} VND` : "Tidak terbaca", hint: balance?.username },
-    { label: "Produk mirror", value: String(counts.total) },
-    { label: "Tampil publik", value: String(counts.published), hint: `${counts.requested} diminta terbit`, tone: "text-admin-success" },
-    { label: "Sinkron terakhir", value: formatWibDateTime(products?.last_sync_at) ?? "Belum pernah" },
-  ];
+  // Satu baris pendek: nominal USDT (mata uang wallet), VND hanya sebagai hint.
+  const walletUsdt = balance?.ok && balance.balance_usdt != null
+    ? `${Number(balance.balance_usdt).toLocaleString("id-ID", { maximumFractionDigits: 4 })} USDT`
+    : balance?.error === "not_configured" ? "Belum terkonfigurasi" : "Belum terbaca";
+  const walletVnd = balance?.ok && balance.balance_vnd != null ? `${Number(balance.balance_vnd).toLocaleString("id-ID")} VND` : null;
+  const syncOneLine = compactTunvnTime(products?.last_sync_at);
 
-  return <div className="mt-5 min-w-0 space-y-6">
-    <header>
-      <h2 className="text-lg font-semibold text-admin-fg">TUNVN PREHUB</h2>
-      <p className="mt-1 text-sm text-admin-muted">Reseller Telegram TUNVN. Semua produk mulai nonaktif; tampil publik hanya bila permintaan terbit + produk aktif dinyalakan di sini.</p>
-    </header>
+  return <div className="min-w-0 space-y-6">
+    <PageHeader title="Saldo TUNVN" description="Reseller Telegram TUNVN: katalog, markup, dan pengiriman otomatis." actions={<Button variant="outline" onClick={() => void load()} disabled={loading}>Muat ulang</Button>} />
 
     <SupplierTabs tabs={TABS} active={tab} onChange={setTab} />
 
     <div aria-live="polite" className="space-y-2 text-sm">
-      {busy && <p role="status" className="text-admin-accent">Memproses…</p>}
-      {error && <div role="alert" className="rounded-md border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-admin-danger">
+      {busy && <p role="status" className="text-admin-muted">Memproses…</p>}
+      {error && <div role="alert" className="rounded-xl border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-admin-danger">
         <p>{error}</p>
         <Button variant="outline" size="sm" className="mt-2" onClick={() => void load()}>Coba lagi</Button>
       </div>}
@@ -197,48 +200,77 @@ export function TunvnManager() {
     {loading && <p role="status" className="text-sm text-admin-muted">Memuat data TUNVN…</p>}
 
     {!loading && tab === "ringkas" && <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Status TUNVN">
-        {stats.map((stat) => <Card key={stat.label}>
-          <CardHeader className="p-4 pb-2"><CardDescription className="text-sm">{stat.label}</CardDescription></CardHeader>
-          <CardContent className="p-4 pt-0">
-            <p className={`text-2xl font-semibold tabular-nums ${stat.tone ?? "text-admin-fg"}`}>{stat.value}</p>
-            {stat.hint && <p className="mt-1 text-xs text-admin-muted">{stat.hint}</p>}
-          </CardContent>
-        </Card>)}
+      <div className="grid gap-3 sm:grid-cols-3" aria-label="Status TUNVN">
+        <StatCard label="Saldo wallet" value={<span className="block truncate">{walletUsdt}</span>} hint={[walletVnd, balance?.username ? `akun ${balance.username}` : null].filter(Boolean).join(" · ") || "Diambil dari API TUNVN"} />
+        <StatCard label="Produk tampil" value={counts.published} hint={`${counts.total} produk mirror · ${counts.requested} diminta terbit`} />
+        <StatCard label="Sinkron terakhir" value={syncOneLine} hint="Katalog ditarik lewat tab Alat" />
       </div>
-      <Card>
-        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Pengiriman otomatis</CardTitle><CardDescription className="mt-1 text-xs">100 baris terbaru. Rekonsiliasi hanya membaca batch Buff yang diketahui; tidak membeli ulang. Receipt tambahan hanya untuk admin.</CardDescription></CardHeader>
-        <CardContent className="space-y-3 p-4 pt-0">
-          {!links.length && <p className="text-sm text-admin-muted">Belum ada pesanan otomatis.</p>}
-          {links.map(link => <div key={link.id} className="min-w-0 space-y-1 border-t border-admin-border pt-3 text-xs text-admin-muted">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={link.status === "needs_admin" ? "warning" : link.status === "completed" ? "success" : "secondary"}>{link.status}</Badge>
-              <p className="break-all font-semibold text-admin-fg">{link.order_code} · item {link.item_index+1}</p>
+      <Card className="overflow-hidden">
+        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Pengiriman otomatis</CardTitle><CardDescription className="mt-1 text-xs">100 pesanan terbaru. Rekonsiliasi hanya membaca batch yang diketahui; tidak membeli ulang.</CardDescription></CardHeader>
+        <CardContent className="p-0">
+          {!links.length ? <p className="p-6 text-sm text-admin-muted">Belum ada pesanan otomatis.</p> : <>
+            {/* Desktop tabel HANYA >=md; di 390 hanya kartu (jangan render dua-duanya). */}
+            <div className="hidden overflow-x-auto md:block"><Table>
+              <caption className="sr-only">Pengiriman otomatis TUNVN</caption>
+              <TableHeader><TableRow>
+                <TableHead>Pesanan</TableHead><TableHead>Unit</TableHead><TableHead className="text-right">Biaya</TableHead><TableHead>Status</TableHead><TableHead>Waktu</TableHead><TableHead className="text-right">Aksi</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {links.map(link => <TableRow key={link.id}>
+                  <TableCell className="whitespace-nowrap">
+                    <p className="font-medium text-admin-fg">{link.order_code}</p>
+                    <p className="mt-1 text-xs text-admin-muted">item {link.item_index + 1}</p>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-xs text-admin-muted">{link.kind} · {link.quantity} unit</TableCell>
+                  <TableCell className="whitespace-nowrap text-right text-xs tabular-nums">{usdt(link.cost_usdt)}</TableCell>
+                  <TableCell className="min-w-[150px] text-xs">
+                    <Badge variant={link.purchase_disabled ? "warning" : link.status === "completed" ? "success" : link.status === "needs_admin" ? "warning" : link.status === "failed" ? "destructive" : "secondary"}>{linkStatusLabel(link.status)}</Badge>
+                    {link.purchase_disabled ? <p className="mt-1 text-admin-muted">Penanganan manual</p> : link.last_error && <p className="mt-1 text-admin-warning">{TUNVN_ERROR_LABEL[link.last_error] ?? "Perlu diperiksa"}</p>}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-xs text-admin-muted">{formatWibDateTime(String(link.completed_at ?? link.request_sent_at ?? "")) ?? "-"}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right">
+                    <div className="flex flex-wrap justify-end gap-1.5">
+                      {Boolean(link.can_retry) && <Button variant="outline" size="sm" className="whitespace-nowrap" disabled={!!busy} onClick={() => void dispatchAction(link.id, "retry")}>Coba lagi</Button>}
+                      {link.kind === "buff" && link.provider_batch_id && ["processing", "needs_admin"].includes(link.status) && <Button variant="outline" size="sm" className="whitespace-nowrap" disabled={!!busy} onClick={() => void dispatchAction(link.id, "reconcile")}>Periksa status</Button>}
+                      {Boolean(link.has_receipt) && <Button variant="ghost" size="sm" className="whitespace-nowrap" disabled={!!busy} onClick={() => void dispatchAction(link.id, "reveal")}>Lihat receipt</Button>}
+                    </div>
+                  </TableCell>
+                </TableRow>)}
+              </TableBody>
+            </Table></div>
+            <div className="space-y-3 p-4 md:hidden" aria-label="Kartu pengiriman TUNVN">
+              {links.map(link => <article key={link.id} className="space-y-2 rounded-xl border border-admin-border p-4 text-xs text-admin-muted">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-admin-fg">{link.order_code} · item {link.item_index + 1}</p>
+                  <Badge variant={link.status === "completed" ? "success" : link.status === "needs_admin" ? "warning" : link.status === "failed" ? "destructive" : "secondary"}>{linkStatusLabel(link.status)}</Badge>
+                </div>
+                <p>{link.kind} · {link.quantity} unit · {usdt(link.cost_usdt)}</p>
+                <p>{formatWibDateTime(String(link.completed_at ?? link.request_sent_at ?? "")) ?? "-"}</p>
+                {link.purchase_disabled ? <p className="text-admin-warning">Pembelian otomatis dinonaktifkan · penanganan manual</p> : link.last_error && <p className="text-admin-warning">{TUNVN_ERROR_LABEL[link.last_error] ?? "Perlu diperiksa"}</p>}
+                <div className="flex flex-wrap gap-2">
+                  {Boolean(link.can_retry) && <Button variant="outline" size="sm" disabled={!!busy} onClick={() => void dispatchAction(link.id, "retry")}>Coba lagi</Button>}
+                  {link.kind === "buff" && link.provider_batch_id && ["processing", "needs_admin"].includes(link.status) && <Button variant="outline" size="sm" disabled={!!busy} onClick={() => void dispatchAction(link.id, "reconcile")}>Periksa status</Button>}
+                  {Boolean(link.has_receipt) && <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => void dispatchAction(link.id, "reveal")}>Lihat receipt</Button>}
+                </div>
+              </article>)}
             </div>
-            <p>{link.kind} · {link.quantity} unit · snapshot biaya {usdt(link.cost_usdt)}</p>
-            <p className="break-all">{[link.provider_order_group,link.provider_batch_id,link.provider_order_code].filter(Boolean).join(" · ") || "Belum ada ID penyedia"}</p>
-            {link.receipt_json && <p className="break-all">{link.receipt_json}</p>}
-            {link.purchase_disabled ? <p className="text-admin-warning">Pembelian otomatis dinonaktifkan · penanganan manual</p> : link.last_error && <p className="text-admin-warning">{TUNVN_ERROR_LABEL[link.last_error] ?? link.last_error}</p>}
-            <div className="flex flex-wrap gap-2">
-              {Boolean(link.can_retry) && <Button type="button" size="sm" className="h-12 px-3 text-xs font-semibold" disabled={!!busy} onClick={()=>void dispatchAction(link.id,"retry")}>Retry</Button>}
-              {link.kind==="buff" && link.provider_batch_id && ["processing","needs_admin"].includes(link.status) && <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reconcile")}>Periksa status batch</Button>}
-              {Boolean(link.has_receipt) && <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reveal")}>Buka receipt privat</Button>}
-            </div>
-          </div>)}
-          {receipt && <div className="space-y-2">
-            <Button type="button" variant="outline" size="sm" onClick={()=>setReceipt("")}>Tutup receipt</Button>
-            <pre className="whitespace-pre-wrap break-all text-xs text-admin-muted">{receipt}</pre>
-          </div>}
+          </>}
         </CardContent>
       </Card>
+      <Dialog open={!!receipt} onOpenChange={open => { if (!open) setReceipt(""); }}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Receipt pengiriman TUNVN</DialogTitle><DialogDescription>Data mentah hanya untuk admin; jangan dibagikan ke pembeli.</DialogDescription></DialogHeader>
+          <pre className="whitespace-pre-wrap break-all rounded-lg border border-admin-border bg-admin-subtle p-3 text-xs text-admin-muted">{receipt || "Receipt tidak tersedia."}</pre>
+        </DialogContent>
+      </Dialog>
       <Card>
         <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Kontrol publikasi</CardTitle></CardHeader>
         <CardContent className="p-4 pt-0">
           <ul className="list-disc space-y-1 pl-5 text-sm leading-5 text-admin-muted">
-            <li>Tab <b className="text-admin-fg">Katalog &amp; Terbit</b>: atur markup, nama, dan deskripsi tiap produk; nyalakan <b className="text-admin-fg">Diminta terbit</b> lalu <b className="text-admin-fg">Produk aktif</b> untuk menampilkannya.</li>
-            <li>Harga jual dihitung ulang otomatis dari modal USDT dikali kurs tersimpan dan markup. Tombol Publikasi menyegarkan kurs + stok dari TUNVN.</li>
-            <li>Tab <b className="text-admin-fg">Buff Muse</b>: markup per varian, harga manual opsional, dan saklar aktif per varian pada produk Muse AI.</li>
-            <li>Order eligible diproses otomatis setelah lunas. Jika saldo kurang, top up TUNVN lalu Retry; pembelian ambigu tidak boleh diulang.</li>
+            <li>Tab <b className="text-admin-fg">Antrean</b>: atur markup, nama, dan deskripsi tiap produk; nyalakan <b className="text-admin-fg">Diminta terbit</b> lalu <b className="text-admin-fg">Produk aktif</b> untuk menampilkannya.</li>
+            <li>Harga jual dihitung ulang otomatis dari modal USDT dikali kurs tersimpan dan markup. Tab Alat menyegarkan kurs + stok dari TUNVN.</li>
+            <li>Tab <b className="text-admin-fg">Markup</b>: markup per varian, harga manual opsional, dan saklar aktif per varian pada produk Muse AI.</li>
+            <li>Order eligible diproses otomatis setelah lunas. Jika saldo kurang, top up TUNVN lalu Coba lagi; pembelian ambigu tidak boleh diulang.</li>
           </ul>
         </CardContent>
       </Card>
@@ -260,7 +292,7 @@ export function TunvnManager() {
               <div className="flex flex-wrap items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-admin-fg">#{item.supplier_product_id} {item.admin_name || item.name}</p>
-                  <p className="mt-0.5 truncate text-xs text-admin-muted">{item.name} · stok {item.stock} · sinkron {formatWibDateTime(item.synced_at) ?? "-"}</p>
+                  <p className="mt-0.5 truncate text-xs text-admin-muted">{item.name} · stok {item.stock} · sinkron {compactTunvnTime(item.synced_at)}</p>
                   <p className="mt-1 text-xs text-admin-muted">Modal {usdt(item.price_usdt)} ({item.price_vnd.toLocaleString("id-ID")} VND) · Harga {item.sell_price_idr ? formatRupiah(item.sell_price_idr) : "-"} · Kurs {item.fx_idr_per_usdt ? `Rp${Math.round(item.fx_idr_per_usdt).toLocaleString("id-ID")}` : "-"}</p>
                 </div>
                 <Badge variant={live ? "success" : "secondary"}>{live ? "Tampil publik" : "Tersembunyi"}</Badge>

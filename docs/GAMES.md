@@ -437,13 +437,23 @@ lewat `readJsonBody`.
     `{dry_run?}` → `{eligible, enabled_now, skipped_unhealthy}`); jangan membuat
     aktivasi massal baru.
 - **UI admin:** tab "Games" (`src/components/admin/GamesManager.tsx`) mengikuti pola tab
-  Pedia (subset "Katalog"): status sinkron + hitungan, filter brand + cari, tabel
-  (kode/nama/brand/modal/harga Oura/harga jual/margin/sumber harga/seller/grup/toggle
-  aktif), edit harga Oura inline, dan tombol "Aktifkan gelombang 1 (sehat)" dengan
-  pratinjau `dry_run` lalu konfirmasi. Copy Indonesia; loading/error/empty state.
+  Pedia/Produk (round 2, 13 November 2026): `PageHeader` + 4 StatCard netral
+  (Sinkron terakhir ringkas, Total varian, **Bisa dijual** = `sync.counts.sellable`,
+  Supplier aktif), satu toolbar (cari, game, filter "Bisa dijual", status jual), lalu
+  tabel desktop / kartu mobile berisi kode+nama, game, stok, status jual manusiawi,
+  harga jual, margin, grup, toggle aktif. Daftar default `?sort=sellable` sehingga SKU
+  yang benar-benar bisa dijual tampil dulu. **UI harga Oura sudah dihapus** (kolom
+  input, stat, hint) dan tombol "Aktifkan gelombang 1" tidak ada karena endpoint
+  `enable-wave` dihapus; `PATCH` masih menerima `reference_price` null/int untuk
+  kompatibilitas. Grup tampilan bisa diubah dari tabel maupun kartu mobile (PATCH
+  `display_group`), dan guard aktivasi sama di kedua tampilan: `supplier_active`,
+  modal > 0, dan kontrak didukung (server tetap otoritatif). Deskripsi supplier
+  dibersihkan dari emoji. Copy Indonesia; loading/error/empty state, tanpa angka palsu.
 - **Batas bukti:** implementasi + tes fixture lokal (`tests/games-admin.test.ts`,
-  `tests/games-admin-migration.test.ts`); belum ada deployment, data produksi, atau
-  keputusan harga Oura gelombang 1 yang diisi ke tabel referensi.
+  `tests/games-admin-migration.test.ts`, `tests/games-admin-summary.test.tsx`,
+  `tests/admin-round2-ui3-corrections.behavior.test.tsx`); belum ada deployment,
+  data produksi, atau pengisian tabel harga referensi. Kolom `reference_price` /
+  `games_reference_prices` tetap ada di DB untuk kompatibilitas API.
 
 ### 12.8 API pembeli B1 + B2 — QRIS, gateway, crypto (9 November 2026, lokal; belum deploy)
 

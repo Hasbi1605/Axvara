@@ -1,5 +1,5 @@
 "use client";
-import { Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Input, Label, Switch, Tabs, TabsList, TabsTrigger, Skeleton } from "@/components/admin/ui";
+import { Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Input, Label, Switch, Tabs, TabsList, TabsTrigger, Skeleton, PageHeader } from "@/components/admin/ui";
 import { Save } from "lucide-react";
 
 import { useCallback, useEffect, useState } from "react";
@@ -17,7 +17,7 @@ type PaymentMethod = {
   sort_order: number;
 };
 
-export function PaymentMethodsManager() {
+export function PaymentMethodsManager({ onChanged }: { onChanged?: () => void }) {
   const toast = useToast();
   const initialTab = typeof window === "undefined" ? "methods" : new URLSearchParams(window.location.search).get("payment_tab") === "qris" ? "qris" : "methods";
   const [paymentTab, setPaymentTab] = useState<"methods" | "qris">(initialTab);
@@ -91,6 +91,7 @@ export function PaymentMethodsManager() {
 
   return (
     <Tabs value={paymentTab} onValueChange={value => changeTab(value as typeof paymentTab)} className="mt-4 space-y-6">
+      <PageHeader title="Pembayaran" description="Kelola metode pembayaran dan periksa event rekonsiliasi." />
       <TabsList aria-label="Bagian pembayaran" className="h-auto justify-start">
         <TabsTrigger value="methods">Metode Pembayaran</TabsTrigger>
         <TabsTrigger value="qris">QRIS &amp; Rekonsiliasi</TabsTrigger>
@@ -137,7 +138,7 @@ export function PaymentMethodsManager() {
           </dl>
         </details>
       )}
-      </> : <PaymentReconciliation />}
+      </> : <PaymentReconciliation onChanged={onChanged} />}
     </Tabs>
   );
 }

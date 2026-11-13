@@ -1,5 +1,114 @@
 # ARCHITECTURE.md — AXVARA
 
+## Admin round 2: anatomi seragam, alur pembeli WA pensiun, rekonsiliasi "sudah dicek" (13 November 2026, implementasi lokal)
+
+Status: **implementasi terintegrasi dan terverifikasi lokal; deployment belum
+diverifikasi.** Seluruh paket round 2 (keputusan owner 13 November 2026) mencakup
+UI1–UI4, koreksi UI3 round 1, dan koreksi payment-terminal. Verifikasi akhir PM:
+`NODE_ENV=test npx vitest run --run` **436 file / 5925 tes PASS** (mulai 23:46:25,
+57,80 dtk) dan `NODE_ENV=production npm run build:pages` **exit 0** (compile/
+typecheck/lint Next, **171 edge route**, 8 output prerender, patch routes PASS)
+dengan hanya warning yang sudah ada plus dua parameter `_title`/`_description`
+baru di `Panel` bersama (non-blocking). Review visual PM PASS dari tangkapan UI4
+(orders desktop, payments gelap, editor mobile) dan bukti koreksi UI3 (games
+1280/390 + TUNVN 390 terang/gelap) — semuanya fixture browser, **bukan** transaksi
+atau sesi admin produksi. Publishing lewat CI, deployment terverifikasi dan klaim
+live tetap langkah terpisah: jangan menyatakan bagian ini live.
+
+### Kontrak backend (BE, terintegrasi lokal)
+Sudah dirinci di "Status Rollout Produksi WhatsApp" (pensiun pembeli WA + kontrak
+`mark_reviewed`/`attention`/`fulfillment_action`/`sellable`). Ringkas:
+- Alur pembeli WA (pencarian, pemesanan+pembayaran, intake bukti manual) DIHAPUS
+  dari kode; handler `catalog/payment/proof` + `whatsapp/session` hilang, flag
+  `WHATSAPP_GROUP_DISCOVERY/PAYMENT/PROOF_INTAKE` dan `preflightWhatsAppPayment`
+  dihapus. Katalog digest/broadcast/welcome grup, event grup, outbox dan perintah
+  admin `.d` tetap. Webhook hanya membalas SATU arahan ke website/Telegram untuk
+  perintah eksplisit lama (`list`, `cari …`, `pay`/`payment`, metode manual, caption
+  bukti); angka biasa dan media balasan TIDAK dibalas (anti-spam) dan percakapan
+  biasa senyap. Data order WhatsApp historis utuh.
+- `POST /api/admin/payments/events` `{action:"mark_reviewed", event_id, note}`:
+  catatan wajib 5–500 karakter, hanya event `received/ignored/failed` yang belum
+  direview, hasil `ignored` terminal + `reviewed_by/review_note/processed_at`,
+  idempoten, **tidak menyentuh order/ledger/status pembayaran**; event reviewed
+  tidak bisa `retry_match`/`confirm_match` (409 `event_reviewed`).
+- "Perlu dicek" = satu helper `PAYMENT_ATTENTION_WHERE`
+  (`received/ignored/failed AND reviewed_by IS NULL`, tanpa jendela waktu), dipakai
+  `GET /api/admin/overview.payment_attention` dan
+  `GET /api/admin/payments/events` (`attention`, filter `status=attention`,
+  `counts`); badge sidebar = angka halaman.
+- `GET /api/admin/bot/health` menambah `fulfillment_action` (≤20 order
+  `lunas+paid` dengan fulfillment `manual_required/failed` atau `queued/retry`
+  macet >15 menit + `whatsapp_outbox_failed_7d`), read-only, plus
+  `whatsapp_discovery/payment/proof_intake=false` dan `whatsapp_buyer_flows:"retired"`.
+- `GET /api/admin/games/products`: `sync.counts.sellable` (enabled + supplier aktif
+  + stok>0/unlimited), `items[].sellable`, filter `?sellable=1|0`, urutan
+  `?sort=sellable`. Endpoint `games/products/enable-wave`, `admin/pedia/credits`,
+  `admin/warung/credentials` DIHAPUS; komponen mati `VariantEditor.tsx` +
+  `FulfillmentInventoryPanel.tsx` dihapus setelah cakupan uji interaksi grosir
+  dipindah ke `ProductVariantRows`. Tidak ada migrasi, env baru, atau perubahan
+  kontrak pembayaran/akses/idempotensi/kredensial.
+
+### UI admin round 2 (UI1–UI4, terintegrasi lokal)
+- **Primitive (UI1, `main`)**: `PageHeader`/`StatCard` diekspor dari
+  `src/components/admin/ui`; nilai statistik selalu netral (tone hanya untuk hint),
+  chevron `NativeSelect`/Radix Select, padding tabel `px-4`+`py-3` dengan
+  `first:pl-6`/`last:pr-6`, `Badge` default `secondary`. Editor produk: tanpa
+  eyebrow dekoratif, tanpa field alias WhatsApp (payload tidak mengirim/menghapus
+  kolom DB), header varian auto-tinggi + Badge + chevron, dan akar overflow
+  `min-w-0` pada rantai dialog→tab→varian→kredensial (URL kredensial panjang
+  terpotong, tidak memotong tombol).
+- **Pesanan (UI2, `main`)**: satu toolbar (cari 300 ms + menu radio Kanal/Status/
+  Jenis/Pembayaran + rentang Tanggal), chip filter aktif + Reset, default 25 dengan
+  "Muat 25 lagi" yang hanya meminta halaman berikutnya dan menambah baris tanpa
+  mengubah scroll, footer "Menampilkan X dari Y", label manusia + waktu WIB,
+  bukti hanya di detail. Guard pembayaran/akses tidak berubah (QRIS ACC, provider
+  reconciled, Games tanpa aksi Market, handover, kredensial).
+- **Pedia/Games/TUNVN/WR-SK (UI3 + koreksi round 1, terintegrasi lokal)**:
+  Pedia `PageHeader`+3 StatCard dan tab **Perlu tindakan · Produk · Layanan
+  IndoSMM · Pengaturan** (tab aksi hanya memuat pesanan yang perlu tindakan dengan
+  seluruh guard; riwayat penuh di Pesanan `kind=pedia`; alias `?tab=` lama tetap;
+  `supplier_order_id`/`refill_supplier_id` hanya di detail terlipat, helper refill
+  menyebut ID yang dibutuhkan CS). Games: seluruh UI Harga Oura dihapus
+  (kolom/input/stat), stat "Bisa dijual" memakai `sellable`, default
+  `sort=sellable` + filter "Bisa dijual", emoji deskripsi supplier dibersihkan;
+  tabel desktop muat di kontainer 1280 (terukur 966/966 tanpa kolom Aktif
+  terpotong) dan kartu mobile mempertahankan select Grup + guard eligibility yang
+  sama (`supplier_active`, `cost>0`, `contract_supported`; server tetap otoritatif).
+  TUNVN: `PageHeader "Saldo TUNVN"` + 3 StatCard, tab setara WR/SK, pengiriman
+  otomatis sebagai tabel ringkas (tabel hanya `>=md`, kartu di 390) dengan receipt
+  di dialog dan fallback error manusiawi. WR/SK: StatCard sama, "Force Sync Now" →
+  "Sinkron sekarang", kapasitas/sinkron memakai Skeleton saat memuat (bukan "~0
+  order"/"Belum pernah"). WR vs SK: Simpan hanya saat baris berubah, label kolom
+  (bukan per baris), teks perbandingan manusia ("SK lebih murah · Rp 5.400 vs
+  Rp 7.000", "Keduanya habis"), tanpa "Pecundang"/"sweep cron".
+- **Siaran/Kanal/Rekonsiliasi/Ringkasan (UI4, terintegrasi lokal)**: Siaran
+  menjadi dua tab Template/Riwayat, editor di Sheet dengan pratinjau, pengiriman
+  satu Dialog berlangkah Tujuan → Tinjau → Kirim, seluruh pengaman lama
+  dipertahankan (pending send retry id sama, sessionStorage, review wajib, arsip
+  nonaktif, ConfirmDialog hentikan). Rekonsiliasi memakai `attention` dari API +
+  aksi "Tandai sudah dicek" ber-catatan (dialog) dan menandai baris reviewed (meter
+  audit `reviewed_by`/`review_note` kini ikut di SELECT GET); Kanal & Fulfillment
+  mengganti kartu mentah job/outbox dengan daftar "Perlu tindakan" dari
+  `fulfillment_action`; Ringkasan memakai PageHeader/StatCard netral + tab periode
+  Kustom; loader badge sidebar memakai satu fetch overview lintas section.
+
+### Hardening terminal rekonsiliasi (koreksi payment, terintegrasi lokal)
+- Setiap operasi event-mode (`retry_match`, `confirm_match`, transisi paid, job,
+  biaya) memeriksa `reviewed_by IS NULL` **di dalam batch atomik D1 yang sama**
+  dengan tulisan pembayaran/order/job — bukan hanya pada pembacaan awal. Event
+  yang sudah ditandai "sudah dicek" karena itu tidak bisa dilunasi oleh permintaan
+  yang balapan; pemenang klaim CAS tetap satu dan audit `reviewed_by`/`review_note`
+  terlindungi pada semua UPDATE kegagalan.
+- `mark_reviewed` memeriksa status `matched` sebelum metadata review dan membaca
+  ulang setelah CAS meleset: event `matched` → 409 `event_not_actionable`; hanya
+  `ignored`+reviewed yang idempoten `already_reviewed` (catatan pertama
+  dipertahankan); event hilang → 404.
+- Retry/confirm hanya menerima provider legacy eksak **DANA/GoPay** (provider null
+  = DANA lama). Provider lain (gateway/crypto/tak dikenal/kosong) gagal tertutup
+  409 `provider_requires_manual_review` tanpa tulisan; penolakan manual KlikQRIS
+  yang sudah ada dipertahankan. Rumus biaya, expiry, kredensial, dan auth tidak
+  berubah.
+
 ## Admin shadcn/ui: primitive, portal bertema dan guard (13 November 2026, implementasi lokal)
 
 Menggantikan bagian "Workspace admin" di bawah hanya untuk dialog/toast.
@@ -5076,5 +5185,5 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
 - **Order baru:** gate `gamesOrderingOpen` = `GAMES_SK_ENABLED==='true'` + SK enabled/transport + bukan sandbox. Quote menandatangani `supplier`, `sk_variant_id`, `target_snapshot`, `contract_digest`, `cost_snapshot`, `customer_no` display; order membuat satu batch atomik yang memeriksa ulang supplier/enabled/active/stok/min_order/`game_slug`/`required_fields_json`/harga/modal. SKU Digiflazz dan token lama ditolak. Tidak ada env yang dipasang.
 - **Dispatch:** `src/lib/games/sk-dispatch.ts` + `dispatch.ts` per item supplier. Ref kompak `AXG`; preflight live (status/stock/min_order/kontrak/harga/saldo) sebelum fence; fence mengikat attempt+item+lease+order paid; tidak ada POST kedua (GET ref sama). Parser sukses hanya completed+SN sah+unit konsisten+biaya terverifikasi; biaya aktual disimpan di `attempts.price` sebagai deteksi pasca-debit (SK tidak punya `max_price`). Attempt/order legacy Digiflazz tetap memakai jalur lama. Tidak ada seller cadangan SK.
 - **Webhook:** `POST /api/webhook/sekalipay` memeriksa signature existing, lalu ref Games dikenal diproses lebih dulu (GET by ref, invoice tersimpan otoritas, hint salah ditolak 503 tanpa mutasi) dan dedupe `dana_webhook_events` provider `sekalipay_games`; ref premium/unknown tetap jalur lama. Nickname publik memakai `validateSkAccount` gratis dengan cache/rate-limit; modul nickname Digiflazz lama tidak dipakai route baru.
-- **Admin:** `GET /api/admin/games/products` hanya supplier `sekalipay` (counts supplier/contract/availability + `sellable` = enabled & supplier aktif & stok>0/unlimited; filter `?sellable=1`, urutan `?sort=sellable`), `PATCH` menolak legacy `legacy_parked`, `POST .../enable-wave` DIHAPUS 13 November 2026. Tab Games menampilkan varian/stok/kontrak/deskripsi; kontrol harga Oura/grup/urutan/enabled tetap. Baris Digiflazz tidak dihapus.
+- **Admin:** `GET /api/admin/games/products` hanya supplier `sekalipay` (counts supplier/contract/availability + `sellable` = enabled & supplier aktif & stok>0/unlimited; filter `?sellable=1`, urutan `?sort=sellable`), `PATCH` menolak legacy `legacy_parked`, `POST .../enable-wave` DIHAPUS 13 November 2026. Tab Games menampilkan varian/stok/kontrak/deskripsi; kontrol grup/urutan/enabled tetap, sedangkan **UI harga pembanding Oura dihapus 13 November 2026** (API `PATCH` masih menerima `reference_price` int/null untuk kompatibilitas dan `sell_price` tetap dihitung dari batas bawah modal bila referensi null). Baris Digiflazz tidak dihapus.
 - **Batas bukti final terintegrasi (12 November 2026, setelah fix stok -1 dispatch):** full suite serial parent `npx vitest run --run --maxWorkers=1` **438 file/5.923 tes lulus** (228,77 dtk), lalu `npm run build:pages` penuh **PASS 173 edge route** (Next compile/lint/typecheck + konversi; 19,02 dtk hanya durasi konversi, bukan total build). Pemulihan jujur: default-worker suite timeout fixture workerd `telegram-bulk-checkout` 5 dtk, run 2-worker gagal 2 fixture workerd `telegram-payment-rails`; keduanya lulus saat ditargetkan dan serial penuh lulus tanpa perubahan kode/assertion/timeout. Checkpoint 419/5.760 pra-integrasi dan 438/5.920 pra-fix stok tetap histori. QA browser publik 1280/390 lulus; admin diuji pada artefak Next lokal 8792 dengan fixture jaringan browser (bukan auth/backend persist/produksi). Tidak ada deployment/push, env/secret, aktivasi gate, atau transaksi supplier nyata. Angka 47 produk/1.619 varian adalah snapshot bertanggal. Gate produksi `GAMES_SK_ENABLED` masih kosong.

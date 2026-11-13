@@ -49,6 +49,7 @@ it("rapid filters cannot overwrite newer data, and loading/errors never relabel 
   await act(async () => { pending[1].resolve(response(report("Late today"))); });
   expect(screen.getByText("Newest month")).toBeTruthy();
   expect(screen.queryByText("Late today")).toBeNull();
+  await userEvent.click(screen.getByRole("tab", { name: "Kustom" }));
   fireEvent.change(screen.getByLabelText("Bulan historis"), { target: { value: "2024-02" } });
   await act(async () => {});
   expect(pending[3].url).toContain("date_from=2024-02-01&date_to=2024-02-29");

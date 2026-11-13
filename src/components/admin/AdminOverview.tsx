@@ -1,5 +1,5 @@
 "use client";
-import { Button, Card, Input, Label, Tabs, TabsList, TabsTrigger, Skeleton } from "@/components/admin/ui";
+import { Button, Card, Input, Label, Tabs, TabsList, TabsTrigger, Skeleton, PageHeader, StatCard } from "@/components/admin/ui";
 
 import { useState, type ReactNode } from "react";
 import { formatRupiah } from "@/lib/utils";
@@ -106,9 +106,10 @@ export type AdminOverviewProps = {
 export function AdminOverview({ data, loading, error, onRetry, selection, onSelectionChange, renderReportActions }: AdminOverviewProps) {
   const [period, setPeriod] = useState<Period>("week");
   const [month, setMonth] = useState(todayWibDateString().slice(0, 7));
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(typeof selection === "object" ? selection.date_from : "");
+  const [to, setTo] = useState(typeof selection === "object" ? selection.date_to : "");
   const [rangeError, setRangeError] = useState<string | null>(null);
+  const [custom, setCustom] = useState(typeof selection === "object");
   const active = selection ?? period;
   const report = selection ? data.selected_report : data.period_reports?.[period];
   const label = typeof active === "string" ? PERIOD_LABEL[active] : `${active.date_from} – ${active.date_to} WIB`;
@@ -127,7 +128,7 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
     setMonth(value);
     setRangeError(null);
     if (!value) return;
-    try { apply(reportMonthSelection(value)); }
+    try { const range = reportMonthSelection(value); resolveReportRange(range); if (typeof range === "object") { setFrom(range.date_from); setTo(range.date_to); } apply(range); }
     catch (error) { setRangeError(error instanceof Error ? error.message : "Bulan tidak valid."); }
   };
   const changeDates = (nextFrom: string, nextTo: string) => {
@@ -158,17 +159,18 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
     ["Rata2 / order", bucket.orders ? formatRupiah(Math.round(bucket.revenue / bucket.orders)) : "—", "text-admin-fg"],
   ] as const;
 
-  return <div className="mt-4 space-y-6"><header><h2 className="text-xl font-semibold text-admin-fg">Ringkasan</h2><p className="mt-1 text-sm text-admin-muted">Pantau pesanan, omzet, dan untung produk pada periode terpilih.</p></header>
+  return <div className="mt-4 space-y-6"><PageHeader title="Ringkasan" description="Pantau pesanan, omzet, dan untung produk pada periode terpilih." actions={!loading && !error && data.selected_report && selection ? (renderReportActions ? renderReportActions({ report: data.selected_report, disabled: false }) : <ReportExportActions report={data.selected_report} disabled={false} />) : undefined} />
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <Tabs value={typeof active === "string" ? active : ""} onValueChange={value => choose(value as Period)}><TabsList aria-label="Periode laporan">
+      <Tabs value={custom || typeof active !== "string" ? "custom" : active} onValueChange={value => { setCustom(value === "custom"); if (value !== "custom") choose(value as Period); }}><TabsList aria-label="Periode laporan" className="h-auto flex-wrap">
         {(Object.keys(PERIOD_LABEL) as Period[]).map((key) => (
           <TabsTrigger key={key} value={key}>
             {PERIOD_LABEL[key]}
           </TabsTrigger>
         ))}
+        {onSelectionChange && <TabsTrigger value="custom">Kustom</TabsTrigger>}
       </TabsList></Tabs>
       <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label="Filter dan unduhan laporan">
-      {onSelectionChange && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-admin-muted">
+      {onSelectionChange && custom && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-admin-muted">
         <Label className="sr-only" htmlFor="report-month">Bulan historis</Label>
         <Input id="report-month" type="month" max={todayWibDateString().slice(0, 7)} value={month} onChange={e => changeMonth(e.target.value)} className="h-9 w-[180px] min-w-0 rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
         <div className="flex min-w-0 items-center gap-2">
@@ -179,20 +181,14 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
           <Input id="report-to" type="date" max={todayWibDateString()} value={to} onChange={e => changeDates(from, e.target.value)} className="h-9 min-w-0 w-[136px] rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
         </div>
       </div>}
-      {!loading && !error && data.selected_report && selection && (
-        renderReportActions ? renderReportActions({ report: data.selected_report, disabled: false }) : <ReportExportActions report={data.selected_report} disabled={false} />
-      )}
       </div>
     </div>
     {rangeError && <p role="alert" className="text-sm text-admin-danger">{rangeError}</p>}
     {error ? <div role="alert" className="rounded-xl border border-admin-danger/20 bg-admin-danger/[0.06] p-5"><p className="text-sm text-admin-danger">{error}</p><Button variant="default" type="button" onClick={onRetry} disabled={loading} className="mt-3 rounded-xl bg-admin-primary px-4 py-2 text-xs font-semibold text-admin-inverse">Muat ulang ringkasan</Button></div>
       : loading ? <div role="status" className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-64 w-full" /><span className="sr-only">Memuat laporan {label}…</span></div>
       : <>
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
-      {metrics.map(([label, value, tone]) => <Card key={label} className="admin-surface rounded-xl p-4">
-        <p className="text-sm text-admin-muted">{label}</p>
-        <p className={`mt-1 font-sans text-2xl font-semibold tabular-nums ${tone}`}>{loading ? "—" : value}</p>
-      </Card>)}
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      {metrics.map(([label, value]) => <StatCard key={label} label={label} value={value} />)}
     </div>
     {report && <p className="text-xs leading-5 text-admin-muted">Pembayaran merchant {formatRupiah(report.merchant_paid ?? report.revenue)} · Kredit digunakan {formatRupiah(report.credit_used ?? 0)}. Untung produk belum dikurangi MDR dan biaya operasional.</p>}
 
@@ -212,7 +208,7 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
         {top.map((row,i)=><div key={`${row.name}:${i}`} className="rounded-xl bg-admin-subtle p-3">
           <div className="flex items-start justify-between gap-3">
             <p className="min-w-0 text-sm font-semibold leading-5 text-admin-fg"><span className="mr-2 text-admin-muted">{i+1}.</span>{row.name}</p>
-            <p className={`shrink-0 text-sm font-semibold tabular-nums ${row.profit<0?'text-admin-danger':'text-admin-success'}`}>{loading?'—':formatRupiah(row.profit)}</p>
+             <p className="shrink-0 text-sm font-semibold tabular-nums text-admin-fg">{formatRupiah(row.profit)}</p>
           </div>
           <p className="mt-1 text-xs leading-5 tabular-nums text-admin-muted">{row.qty}x terjual · omzet {formatRupiah(row.revenue)} · modal {formatRupiah(row.cost)} · margin {marginOf(row.revenue,row.profit)}</p>
         </div>)}

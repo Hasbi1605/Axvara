@@ -150,7 +150,7 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
         </div>
         {explanation && <p className="mt-1 break-words text-xs leading-4 text-admin-muted">{explanation}</p>}
         {(canRetrySupplierLink(link) || canCheck(link) || canVoid(link)) && <div className="mt-2 flex flex-wrap gap-2">
-          {canRetrySupplierLink(link) && <Button size="sm" className="h-12 px-3 text-xs font-semibold" onClick={() => void run(link, "retry")} disabled={busy !== null}>{busy === `${key}:retry` ? <Spinner size={11} /> : <RefreshCw />} Retry</Button>}
+          {canRetrySupplierLink(link) && <Button variant="outline" size="sm" className="h-12 px-3 text-xs font-semibold" onClick={() => void run(link, "retry")} disabled={busy !== null}>{busy === `${key}:retry` ? <Spinner size={11} /> : <RefreshCw />} Retry</Button>}
           {canCheck(link) && <Button variant="outline" size="sm" className="h-12 px-3 text-xs font-semibold" onClick={() => void run(link, "sync-now")} disabled={busy !== null}>{busy === `${key}:sync-now` ? <Spinner size={11} /> : <RefreshCw />} Cek status</Button>}
           {canVoid(link) && <Button variant="outline" size="sm" className="h-12 border-admin-danger/30 px-3 text-xs font-semibold text-admin-danger" onClick={() => void run(link, "void")} disabled={busy !== null}>{busy === `${key}:void` ? <Spinner size={11} /> : <X />} Batal</Button>}
         </div>}

@@ -44,7 +44,7 @@ it("loads products only on section entry, refreshes on return and ignores ordina
   expect(counts["/api/categories?all=1"]).toBe(2);
 });
 
-it("opens a direct products section without loading financial reports, then loads them on entering summary", async () => {
+it("loads overview once for shell badges on direct products entry and reuses it on entering summary", async () => {
   window.history.replaceState(null, "", "/admin?section=products");
   const counts: Record<string, number> = {};
   vi.stubGlobal("fetch", vi.fn(async (input: unknown) => {
@@ -55,7 +55,7 @@ it("opens a direct products section without loading financial reports, then load
   }));
   render(<ToastProvider><AdminPage /></ToastProvider>);
   await act(async () => {});
-  expect(counts["/api/admin/overview"] ?? 0).toBe(0);
+  expect(counts["/api/admin/overview"]).toBe(1);
   fireEvent.click(screen.getByRole("button", { name: /Ringkasan/ }));
   await act(async () => {});
   expect(counts["/api/admin/overview"]).toBe(1);
@@ -74,5 +74,5 @@ it.each(["orders", "links", "settings"])("direct %s entry does not fetch the pro
   await act(async () => {});
   expect(urls).not.toContain("/api/products");
   expect(urls).not.toContain("/api/categories?all=1");
-  expect(urls).not.toContain("/api/admin/overview");
+  expect(urls.filter(url => url === "/api/admin/overview")).toHaveLength(1);
 });

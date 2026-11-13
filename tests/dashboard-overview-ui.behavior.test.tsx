@@ -138,15 +138,16 @@ it("failed finance load shows a retry action rather than zero profit metrics", (
   expect(retry).toHaveBeenCalledTimes(1);
 });
 
-it("month and complete date edits apply automatically while invalid ranges preserve the report", () => {
+it("custom month and date edits apply automatically while invalid ranges preserve the report", async () => {
   const change = vi.fn();
   render(<AdminOverview data={data} loading={false} selection="week" onSelectionChange={change} />);
+  expect(screen.queryByLabelText("Bulan historis")).toBeNull();
+  await userEvent.click(screen.getByRole("tab", { name: "Kustom" }));
   fireEvent.change(screen.getByLabelText("Bulan historis"), { target: { value: "2024-02" } });
   expect(change).toHaveBeenLastCalledWith({ date_from: "2024-02-01", date_to: "2024-02-29" });
   fireEvent.change(screen.getByLabelText("Tanggal awal"), { target: { value: "2024-03-01" } });
   expect(change).toHaveBeenCalledTimes(1);
-  expect(screen.queryByRole("alert")).toBeNull();
-  fireEvent.change(screen.getByLabelText("Tanggal akhir"), { target: { value: "2024-02-29" } });
+  // Month selection fills both dates, so an inverted edit is rejected immediately.
   expect(screen.getByRole("alert").textContent).toContain("Tanggal awal");
   expect(change).toHaveBeenCalledTimes(1);
   fireEvent.change(screen.getByLabelText("Tanggal awal"), { target: { value: "2024-02-20" } });
@@ -174,7 +175,7 @@ it("selected historical report scopes all financial content and exposes exports 
   const toolbar = screen.getByRole("group", { name: "Filter dan unduhan laporan" });
   expect(within(toolbar).getByLabelText("Bulan historis")).toBeTruthy();
   expect(within(toolbar).getByLabelText("Tanggal akhir")).toBeTruthy();
-  expect(within(toolbar).getByRole("button", { name: "Export fixture" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Export fixture" })).toBeTruthy();
   view.rerender(<AdminOverview data={{ ...data, selected_report: report }} selection={selection} onSelectionChange={vi.fn()} loading={true} renderReportActions={actions} />);
   expect(screen.queryByText("Untung Produk")).toBeNull();
   expect(screen.queryByText("Netflix")).toBeNull();

@@ -113,9 +113,13 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   return <Label className="block min-w-0 space-y-2 text-xs font-medium text-admin-muted"><span className="block">{label}</span>{children}</Label>;
 }
 
-/** Bagian panel: header judul + deskripsi muted. */
-export function Panel({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return <section className="mt-4 min-w-0"><header className="mb-4"><h3 className="text-base font-semibold text-admin-fg">{title}</h3><p className="mt-1 text-sm leading-5 text-admin-muted">{description}</p></header>{children}</section>;
+/**
+ * Pembungkus konten tab. Sejak 13 November 2026 TIDAK merender judul/deskripsi
+ * lagi: anatomi halaman hanya punya SATU PageHeader di PediaManager, tab cukup
+ * menampilkan toolbar + tabel (tidak ada header bersarang).
+ */
+export function Panel({ title: _title, description: _description, children }: { title: string; description: string; children: ReactNode }) {
+  return <section className="min-w-0 space-y-4">{children}</section>;
 }
 
 export function DataTable({ title, columns, children }: { title: string; columns: string[]; children: ReactNode }) {

@@ -129,9 +129,9 @@ export default function AdminPage() {
   useEffect(()=>{ if(auth.authed && tab === "products") void load(); },[auth.authed, tab, load]);
   useEffect(()=>{
     const requests = overviewRequest;
-    if(auth.authed && tab === "summary") void loadOverview();
+    if(auth.authed) void loadOverview();
     return () => { ++requests.current; };
-  },[auth.authed, tab, loadOverview]);
+  },[auth.authed, loadOverview]);
 
   if(auth.checkingAuth) return <AdminAuthChecking />;
 
@@ -163,7 +163,7 @@ export default function AdminPage() {
       {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
       {tab==="categories" && <Suspense fallback={sectionFallback("kategori")}>{<CategoryManagerLazy />}</Suspense>}
-      {tab==="payments" && <Suspense fallback={sectionFallback("pembayaran")}>{<PaymentMethodsManagerLazy />}</Suspense>}
+      {tab==="payments" && <Suspense fallback={sectionFallback("pembayaran")}>{<PaymentMethodsManagerLazy onChanged={loadOverview} />}</Suspense>}
       {tab==="warung" && <Suspense fallback={sectionFallback("Warung Rebahan")}>{<WarungRebahanManagerLazy />}</Suspense>}
       {tab==="sekalipay" && <Suspense fallback={sectionFallback("Sekalipay")}>{<SekalipayManagerLazy />}</Suspense>}
       {tab==="pairs" && <Suspense fallback={sectionFallback("pasangan supplier")}>{<SupplierPairsManagerLazy />}</Suspense>}

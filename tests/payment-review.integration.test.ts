@@ -23,7 +23,7 @@ beforeEach(async () => {
   vi.stubEnv("DANA_STATIC_QRIS", qr + calculateCrc16(qr));
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Network disabled in fixture"); }));
 });
-afterEach(() => { fixture.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 async function invoice(code: string) {
   insertTestOrder(fixture.sql, code);
@@ -161,5 +161,128 @@ describe("R1 payment handlers preserve invoice/event identity", () => {
     expect(state("RACE")).toBe("lunas");
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(1);
     expect(fixture.sql.prepare("SELECT status FROM dana_webhook_events").get()?.status).toBe("matched");
+  });
+});
+
+describe("terminal reconciliation review races", () => {
+  async function pendingEvent() {
+    const inv = await invoice("TERMINAL");
+    fixture.sql.prepare("INSERT INTO dana_webhook_events(event_key,payload_hash,amount,status) VALUES('terminal','hash',?,'ignored')").run(inv.payableAmount);
+    return Number(fixture.sql.prepare("SELECT id FROM dana_webhook_events WHERE event_key='terminal'").get()!.id);
+  }
+  const row = (id: number) => fixture.sql.prepare("SELECT * FROM dana_webhook_events WHERE id=?").get(id);
+  const mark = (id: number, note = "Mutasi diperiksa, tidak ada pembayaran.") => retryEvent(id, { action: "mark_reviewed", note });
+  const manual = { action: "confirm_match", order_code: "TERMINAL", verified: true, review_note: "Mutasi telah diverifikasi untuk invoice ini." };
+
+  it.each(["retry_match", "confirm_match"])("review wins after %s pre-read but before atomic payment claim", async action => {
+    const id = await pendingEvent();
+    const orderBefore = fixture.sql.prepare("SELECT * FROM orders").get();
+    const ledgerBefore = fixture.sql.prepare("SELECT * FROM payment_transactions").get();
+    const batch = fixture.db.batch.bind(fixture.db);
+    let reviewed: Record<string, unknown> | undefined;
+    vi.spyOn(fixture.db, "batch").mockImplementationOnce(async statements => {
+      expect((await mark(id)).status).toBe(200);
+      reviewed = row(id);
+      return batch(statements);
+    });
+    const response = await retryEvent(id, action === "confirm_match" ? manual : {});
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "event_reviewed" });
+    expect(row(id)).toEqual(reviewed);
+    expect(fixture.sql.prepare("SELECT * FROM orders").get()).toEqual(orderBefore);
+    expect(fixture.sql.prepare("SELECT * FROM payment_transactions").get()).toEqual(ledgerBefore);
+    expect(fixture.sql.prepare("SELECT count(*) n FROM fulfillment_jobs").get()!.n).toBe(0);
+    expect((await (await listEvents("?status=attention")).json()).attention).toBe(0);
+  });
+
+  it.each([false, true])("matched wins before mark CAS, with manual audit=%s", async confirmed => {
+    const id = await pendingEvent();
+    fixture.control.beforeRun = async query => {
+      if (!query.includes("SET status='ignored', reviewed_by=")) return;
+      fixture.control.beforeRun = null;
+      expect((await retryEvent(id, confirmed ? manual : {})).status).toBe(200);
+    };
+    const response = await mark(id);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "event_not_actionable" });
+    expect(state("TERMINAL")).toBe("lunas");
+    expect(row(id)).toMatchObject({ status: "matched", reviewed_by: confirmed ? "admin@axvara.tech" : null, review_note: confirmed ? manual.review_note : null });
+    expect((await mark(id)).status).toBe(409);
+    expect(fixture.sql.prepare("SELECT count(*) n FROM fulfillment_jobs").get()!.n).toBe(1);
+  });
+
+  it("a concurrent genuine repeat preserves the first reviewer note", async () => {
+    const id = await pendingEvent();
+    fixture.control.beforeRun = async query => {
+      if (!query.includes("SET status='ignored', reviewed_by=")) return;
+      fixture.control.beforeRun = null;
+      expect((await mark(id, "First terminal review note")).status).toBe(200);
+    };
+    const response = await mark(id, "Second review must not overwrite");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "already_reviewed" });
+    expect(row(id)).toMatchObject({ status: "ignored", review_note: "First terminal review note" });
+    expect(state("TERMINAL")).toBe("pending");
+  });
+
+  it.each(["no_active_exact_amount", "amount_reused_requires_review", "payment_transition_failed"])("late %s failure cannot rewrite terminal review audit", async reason => {
+    const id = await pendingEvent();
+    if (reason === "no_active_exact_amount") fixture.sql.exec("UPDATE payment_transactions SET payable_amount=payable_amount+1");
+    if (reason === "amount_reused_requires_review") {
+      const inv = await invoice("HISTORY");
+      fixture.sql.prepare("UPDATE payment_transactions SET status='expired',payable_amount=(SELECT payable_amount FROM payment_transactions WHERE order_code='TERMINAL') WHERE order_code='HISTORY'").run();
+      expect(inv.payableAmount).toBeGreaterThan(0);
+    }
+    if (reason === "payment_transition_failed") vi.spyOn(fixture.db, "batch").mockRejectedValueOnce(new Error("operation_guards CHECK constraint"));
+    let reviewed: Record<string, unknown> | undefined;
+    fixture.control.beforeRun = async query => {
+      if (!query.includes("UPDATE dana_webhook_events") || !query.includes("last_error=")) return;
+      fixture.control.beforeRun = null;
+      expect((await mark(id)).status).toBe(200);
+      reviewed = row(id);
+    };
+    expect((await retryEvent(id)).status).toBe(409);
+    expect(reviewed).toBeDefined();
+    expect(row(id)).toEqual(reviewed);
+    expect((await (await listEvents("?status=attention")).json()).attention).toBe(0);
+    expect(state("TERMINAL")).toBe("pending");
+  });
+
+  it.each(["sekalipay_gateway", "nowpayments", "unknown", ""])("rejects nonlegacy provider %s instead of paying a same-amount DANA invoice", async provider => {
+    const id = await pendingEvent();
+    fixture.sql.prepare("UPDATE dana_webhook_events SET provider=? WHERE id=?").run(provider, id);
+    const before = row(id);
+    for (const extra of [{}, manual]) {
+      const response = await retryEvent(id, extra);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: "provider_requires_manual_review" });
+      expect(row(id)).toEqual(before);
+      expect(state("TERMINAL")).toBe("pending");
+      expect(fixture.sql.prepare("SELECT status FROM payment_transactions").get()!.status).toBe("pending");
+      expect(fixture.sql.prepare("SELECT count(*) n FROM fulfillment_jobs").get()!.n).toBe(0);
+    }
+  });
+
+  it.each(["dana", "gopay"])("unreviewed %s retry still pays once", async provider => {
+    const id = await pendingEvent();
+    fixture.sql.prepare("UPDATE dana_webhook_events SET provider=? WHERE id=?").run(provider, id);
+    fixture.sql.prepare("UPDATE payment_transactions SET provider=?").run(provider);
+    expect((await retryEvent(id)).status).toBe(200);
+    expect((await retryEvent(id)).status).toBe(200);
+    expect(state("TERMINAL")).toBe("lunas");
+    expect(fixture.sql.prepare("SELECT status FROM payment_transactions").get()!.status).toBe("paid");
+    expect(fixture.sql.prepare("SELECT count(*) n FROM fulfillment_jobs").get()!.n).toBe(1);
+  });
+
+  it("keeps null-provider legacy events bound to DANA", async () => {
+    // Current schema forbids NULL; model an older nullable-provider database.
+    const schema = String(fixture.sql.prepare("SELECT sql FROM sqlite_master WHERE name='dana_webhook_events'").get()!.sql);
+    fixture.sql.exec("DROP TABLE dana_webhook_events");
+    fixture.sql.exec(schema.replace("provider TEXT NOT NULL", "provider TEXT"));
+    const id = await pendingEvent();
+    fixture.sql.prepare("UPDATE dana_webhook_events SET provider=NULL WHERE id=?").run(id);
+    expect((await retryEvent(id)).status).toBe(200);
+    expect(state("TERMINAL")).toBe("lunas");
+    expect(row(id)).toMatchObject({ provider: null, status: "matched", reviewed_by: null });
   });
 });

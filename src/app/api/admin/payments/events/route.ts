@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
   const offset = (page - 1) * limit;
   const [events, totalRow, countRows, lastRows, attentionRow] = await Promise.all([
-    queryAll(`SELECT id,amount,sender_name,status,order_code,last_error,created_at,processed_at,COALESCE(provider,'dana') AS provider
+    queryAll(`SELECT id,amount,sender_name,status,order_code,last_error,created_at,processed_at,reviewed_by,review_note,COALESCE(provider,'dana') AS provider
       FROM dana_webhook_events${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`, ...bindings, limit, offset),
     queryFirst(`SELECT COUNT(*) AS count FROM dana_webhook_events${where}`, ...bindings),
     // Event yang sudah ditandai "sudah dicek" tidak lagi dihitung sebagai
@@ -68,17 +68,17 @@ export async function POST(request: NextRequest) {
     || typeof body.review_note !== "string" || body.review_note.trim().length < 10 || body.review_note.length > 500)) {
     return NextResponse.json({ error: "manual_verification_required" }, { status: 400 });
   }
-  const event = await queryFirst("SELECT id,amount,status,order_code,created_at,provider FROM dana_webhook_events WHERE id=?", eventId);
+  const event = await queryFirst("SELECT id,amount,status,order_code,created_at,provider,reviewed_by FROM dana_webhook_events WHERE id=?", eventId);
   if (!event) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
+  const eventProvider = event.provider ?? "dana";
+  if (eventProvider === "klikqris") return NextResponse.json({ error: "klikqris_requires_manual_review", message: "Periksa pembayaran KlikQRIS dan stok secara manual. Pelunasan otomatis setelah 15 menit tidak diizinkan." }, { status: 409 });
+  if (eventProvider !== "dana" && eventProvider !== "gopay") return NextResponse.json({ error: "provider_requires_manual_review" }, { status: 409 });
   if (String(event.status) === "matched") return NextResponse.json({ ok: true, status: "already_matched", order_code: event.order_code });
   // Event yang sudah ditandai "sudah dicek" bersifat terminal: tidak boleh
   // dicocokkan ulang secara diam-diam karena admin sudah menyatakan selesai.
-  const reviewed = await queryFirst("SELECT reviewed_by FROM dana_webhook_events WHERE id=?", eventId);
-  if (reviewed?.reviewed_by) return NextResponse.json({ error: "event_reviewed", message: "Event ini sudah ditandai sudah dicek." }, { status: 409 });
-  if (event.provider === "klikqris") return NextResponse.json({ error: "klikqris_requires_manual_review", message: "Periksa pembayaran KlikQRIS dan stok secara manual. Pelunasan otomatis setelah 15 menit tidak diizinkan." }, { status: 409 });
+  if (event.reviewed_by != null) return NextResponse.json({ error: "event_reviewed", message: "Event ini sudah ditandai sudah dicek." }, { status: 409 });
   // Retry mengikuti provider event (dana vs gopay) agar nominal silang
   // provider tidak saling klaim. Event lama tanpa provider = dana.
-  const eventProvider = String(event.provider || "dana") === "gopay" ? "gopay" : "dana";
 
   // Same canonical JS expiry check as the webhook: an admin retry must
   // never resurrect an already-expired invoice. Same causal guard: an event
@@ -101,13 +101,13 @@ export async function POST(request: NextRequest) {
     const reason = live.length >= 1 && matches.length === 0
       ? "event_predates_invoice"
       : matches.length > 1 ? "multiple_active_exact_amount" : "no_active_exact_amount";
-    await execRun("UPDATE dana_webhook_events SET status='ignored',last_error=?,processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed')", reason, eventId);
+    await execRun("UPDATE dana_webhook_events SET status='ignored',last_error=?,processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed') AND reviewed_by IS NULL", reason, eventId);
     return NextResponse.json({ error: reason }, { status: 409 });
   }
 
   const orderCode = String(matches[0].order_code);
   if (!manual && Number(matches[0].amount_history) > 0) {
-    await execRun("UPDATE dana_webhook_events SET status='ignored',last_error='amount_reused_requires_review',processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed')", eventId);
+    await execRun("UPDATE dana_webhook_events SET status='ignored',last_error='amount_reused_requires_review',processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed') AND reviewed_by IS NULL", eventId);
     return NextResponse.json({ error: "amount_reused_requires_review" }, { status: 409 });
   }
   // Same atomic paid+job batch as the webhook (issue #3): the retry path
@@ -132,9 +132,10 @@ export async function POST(request: NextRequest) {
     { id: eventId, ...(manual ? { reviewedBy: admin.email, reviewNote: body!.review_note!.trim() } : {}) },
   );
   if (!transitioned) {
-    const consumed = await queryFirst("SELECT order_code FROM dana_webhook_events WHERE id=? AND status='matched'", eventId);
-    if (consumed) return NextResponse.json({ ok: true, status: "already_matched", order_code: consumed.order_code });
-    await execRun("UPDATE dana_webhook_events SET status='failed',order_code=?,last_error='payment_transition_failed',processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed')", orderCode, eventId);
+    const consumed = await queryFirst("SELECT status,order_code,reviewed_by FROM dana_webhook_events WHERE id=?", eventId);
+    if (consumed?.status === "matched") return NextResponse.json({ ok: true, status: "already_matched", order_code: consumed.order_code });
+    if (consumed?.reviewed_by != null) return NextResponse.json({ error: "event_reviewed" }, { status: 409 });
+    await execRun("UPDATE dana_webhook_events SET status='failed',order_code=?,last_error='payment_transition_failed',processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed') AND reviewed_by IS NULL", orderCode, eventId);
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
   }
   try { await ensureFulfillmentForPaidOrder(orderCode); } catch { /* Cron akan retry idempoten. */ }
@@ -231,7 +232,6 @@ async function markReviewed(adminEmail: string, eventId: number, rawNote: unknow
   }
   const event = await queryFirst("SELECT id, status, reviewed_by FROM dana_webhook_events WHERE id=?", eventId);
   if (!event) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
-  if (event.reviewed_by) return NextResponse.json({ ok: true, status: "already_reviewed", event_id: eventId });
   const status = String(event.status);
   // Status yang menunggu tindakan = definisi bersama PAYMENT_ATTENTION_WHERE
   // (received/ignored/failed). `ignored` ikut boleh ditandai karena event lama
@@ -243,11 +243,17 @@ async function markReviewed(adminEmail: string, eventId: number, rawNote: unknow
       message: status === "matched" ? "Event ini sudah cocok dengan pesanan." : "Event ini tidak sedang menunggu tindakan.",
     }, { status: 409 });
   }
+  if (event.reviewed_by != null) return NextResponse.json({ ok: true, status: "already_reviewed", event_id: eventId });
   const updated = await execRun(
     `UPDATE dana_webhook_events SET status='ignored', reviewed_by=?, review_note=?, processed_at=datetime('now')
       WHERE id=? AND reviewed_by IS NULL AND status IN ('received','ignored','failed')`,
     adminEmail, note, eventId,
   );
-  if (!updated.changes) return NextResponse.json({ ok: true, status: "already_reviewed", event_id: eventId });
+  if (!updated.changes) {
+    const current = await queryFirst("SELECT status,reviewed_by FROM dana_webhook_events WHERE id=?", eventId);
+    if (!current) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
+    if (current.status === "ignored" && current.reviewed_by != null) return NextResponse.json({ ok: true, status: "already_reviewed", event_id: eventId });
+    return NextResponse.json({ error: "event_not_actionable" }, { status: 409 });
+  }
   return NextResponse.json({ ok: true, status: "reviewed", event_id: eventId, reviewed_by: adminEmail });
 }

@@ -1,5 +1,28 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Admin round 2 — anatomi seragam + pensiun alur beli WA13November2026 (implementasi
+lokal terintegrasi di `main`, termasuk UI1–UI4 dan koreksi review): setiap section
+memakai satu PageHeader + StatCard netral + satu toolbar + tabel/kartu, warna hanya
+untuk makna status dan label memakai bahasa manusia. Alur pembeli WhatsApp
+(pencarian, pemesanan+pembayaran, bukti manual) DIHAPUS dari kode — bukan flag env;
+katalog digest/siaran/sambutan grup, event grup, outbox dan perintah admin `.d`
+tetap, dan hanya perintah eksplisit lama (list/cari/pay/metode/bukti) dijawab satu
+arahan ke website/Telegram — angka biasa dan media balasan tidak dibalas. Rekonsiliasi punya
+aksi "sudah dicek" ber-catatan yang hanya menutup event (order/ledger/status tidak
+berubah) dan satu definisi "Perlu dicek" untuk badge sidebar + halaman; Kanal &
+Fulfillment menampilkan "Perlu tindakan" dari `bot/health`; Games memakai hitungan
+"Bisa dijual" yang sebenarnya dan UI harga Oura dihapus; API mati
+(`games/products/enable-wave`, `pedia/credits`, `warung/credentials`) dan komponen
+`VariantEditor`/`FulfillmentInventoryPanel` dihapus. Kontrak pembayaran, akses
+pembeli, idempotensi order dan kredensial tidak berubah; tanpa env/migrasi baru.
+Verifikasi akhir PM pada sumber terintegrasi: `npx vitest run --run` **436 file /
+5925 tes PASS** dan `npm run build:pages` **exit 0** (**171 edge route**, 8 output
+prerender) dengan warning non-blocking; review visual fixture browser PASS.
+Rekonsiliasi juga diperkuat terhadap race: cek "belum direview" ikut di batch atomik
+paid/order/job, dan retry/confirm hanya untuk provider legacy DANA/GoPay (provider
+lain 409 `provider_requires_manual_review`). Build lokal bukan bukti CI/deployment;
+deployment belum diverifikasi. Detail di DESIGN/ARCHITECTURE/PRD bagian teratas.
+
 Admin shadcn/ui13November2026 (implementasi lokal, menunggu publikasi CI): seluruh
 panel admin memakai primitive shadcn/ui di `src/components/admin/ui/` (Radix + cva +
 sonner + lucide), dialog/konfirmasi Radix dengan API lama, menu tema di header, dan

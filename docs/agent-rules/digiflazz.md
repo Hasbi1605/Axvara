@@ -18,8 +18,8 @@
 - Cek Username adalah transaksi BERBIAYA, bukan nominal topup yang dapat dijual.
   `ffcekusername` (FF+FF MAX), `mlcekusername`, `pubgcekusername` dan nama
   `/cek\s*username/i` wajib tersembunyi dari katalog/sitemap/quote/order baru,
-  enable admin409 `not_sellable`, enable-wave melewatinya. Jangan hapus SKU dari
-  sinkron: modalnya dibutuhkan cek nickname.
+  enable admin409 `not_sellable` (aktivasi massal sudah dihapus). Jangan hapus SKU
+  dari sinkron: modalnya dibutuhkan cek nickname.
 - Hanya endpoint nickname berpagar D1 (`docs/GAMES.md` §5.2, ARCHITECTURE §16.29)
   memakai utility. Max_price modal katalog bila ada, fallback snapshot5/24/80,
   ceiling80/cek; IP10/device5 per15menit, global500/hari UTC. Cache sukses24jam,

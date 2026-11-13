@@ -50,7 +50,7 @@ export function ProfitChart({ series, loading, label = "30 hari" }: { series: Re
         </g>)}
         {!series.length&&<text x={width/2} y={H/2} textAnchor="middle" fill="rgb(var(--admin-muted))" fontSize="12">Belum ada transaksi pada periode ini</text>}
       </svg>
-      {selected&&<div role="status" className="pointer-events-none absolute right-0 top-0 max-w-full rounded-xl border border-admin-border bg-admin-card/95 px-3 py-2 shadow-xl"><p className="text-xs text-admin-muted">{selected.date} WIB</p><p className={`mt-1 font-semibold ${selected.profit<0?'text-admin-danger':'text-admin-success'}`}>{formatRupiah(selected.profit)}</p><p className="mt-1 text-xs text-admin-muted">{selected.orders} order · omzet {formatRupiah(selected.revenue)} · modal {formatRupiah(selected.cost)}</p></div>}
+      {selected&&<div role="status" className="pointer-events-none absolute right-0 top-0 max-w-full rounded-xl border border-admin-border bg-admin-card/95 px-3 py-2 shadow-xl"><p className="text-xs text-admin-muted">{selected.date} WIB</p><p className="mt-1 font-semibold text-admin-fg">{formatRupiah(selected.profit)}</p><p className="mt-1 text-xs text-admin-muted">{selected.orders} order · omzet {formatRupiah(selected.revenue)} · modal {formatRupiah(selected.cost)}</p></div>}
     </div>
   </Card>;
 }
@@ -75,7 +75,7 @@ export function RevenueDonut({ rows, loading }: { rows: NamedBucket[]; loading: 
 export function ProfitBars({ title, rows, loading }: { title: string; rows: NamedBucket[]; loading: boolean }) {
   const max = Math.max(1,...rows.map(r=>Math.abs(r.profit))), losses=rows.some(r=>r.profit<0);
   return <Card className="admin-surface rounded-xl p-4 sm:p-5"><CardHeader className="space-y-1 p-0"><h2 className="text-sm font-semibold text-admin-fg">{title}</h2><p className="text-xs text-admin-muted">Periode terpilih · untung produk</p></CardHeader><div className="mt-4 space-y-6">{rows.map(r=><div key={r.label}>
-    <div className="flex justify-between gap-3 text-xs"><span className="font-semibold text-admin-muted">{r.label}</span><span className={`font-semibold tabular-nums ${r.profit<0?'text-admin-danger':'text-admin-success'}`}>{loading?'—':formatRupiah(r.profit)}</span></div>
+    <div className="flex justify-between gap-3 text-xs"><span className="font-semibold text-admin-muted">{r.label}</span><span className="font-semibold tabular-nums text-admin-fg">{loading?'—':formatRupiah(r.profit)}</span></div>
     <div className="relative mt-2 h-2 overflow-hidden rounded-md bg-admin-subtle">{losses&&<span className="absolute inset-y-0 left-1/2 w-px bg-admin-subtle"/>}<span className="absolute inset-y-0 rounded-md" style={{width:`${Math.abs(r.profit)/max*(losses?50:100)}%`,left:losses?(r.profit<0?`${50-Math.abs(r.profit)/max*50}%`:'50%'):'0%',background:r.profit<0?'rgb(var(--admin-danger))':r.color}}/></div>
     <p className="mt-1 text-xs leading-4 text-admin-muted">{r.orders} pesanan · omzet {formatRupiah(r.revenue)} · modal {formatRupiah(r.cost)} · margin {r.revenue?`${(r.profit/r.revenue*100).toFixed(1)}%`:'—'}</p>
   </div>)}</div></Card>;

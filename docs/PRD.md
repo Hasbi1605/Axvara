@@ -1,5 +1,61 @@
 # PRD — AXVARA
 
+## Admin round 2: alur beli WA pensiun, rekonsiliasi terminal, anatomi seragam (13 November 2026, implementasi lokal)
+
+Keputusan owner 13 November 2026 (spec round 2). Seluruh paket sudah terintegrasi
+di `main` lokal: UI1–UI4, koreksi UI3 round 1, dan koreksi payment-terminal.
+Verifikasi akhir PM pada sumber terintegrasi: **436 file / 5925 tes
+PASS** dan `build:pages` **exit 0** (171 edge route), review visual PASS dari
+fixture browser. **Verifikasi lokal bukan bukti deployment atau transaksi nyata;
+status deployment belum diverifikasi.**
+
+- **Pembeli WhatsApp dipensiunkan (kode, bukan env)**: pencarian/discovery produk,
+  pemesanan+pembayaran, dan intake bukti manual di grup WA tidak lagi dilayani.
+  HANYA perintah eksplisit yang dikenali — `list`, `cari <kata>`, `pay`/`payment`,
+  nama metode manual (QRIS/SEABANK/EWALLET), dan caption bukti — yang mendapat SATU
+  balasan sopan berisi arahan ke website/Telegram. Angka biasa tanpa perintah dan
+  media/lampiran balasan TIDAK dibalas (pilihan sadar anti-spam); percakapan biasa
+  tetap senyap. Yang berlanjut: katalog digest siap 09.00/17.00 WIB, siaran,
+  sambutan anggota, event grup, outbox, dan perintah admin `.d`. Riwayat order
+  WhatsApp lama tidak diubah/dihapus. Admin & Fulfillment menampilkan alur ini mati.
+- **Rekonsiliasi QRIS punya jalan selesai**: event lama yang tidak bisa dicocokkan
+  dapat ditandai "sudah dicek" dengan catatan wajib (5–500 karakter, diaudit atas
+  nama admin). Tindakan ini hanya menutup event; order, ledger, dan status
+  pembayaran tidak pernah diubah, dan event yang sudah ditandai tidak bisa
+  dicocokkan ulang. Angka "Perlu dicek" memakai satu definisi untuk badge sidebar
+  dan halaman Rekonsiliasi, sehingga tanda selesai benar-benar menghentikan badge.
+  **Race hardening:** pengecekan "belum direview" ikut di dalam batch atomik yang
+  sama dengan tulisan paid/order/job, jadi permintaan yang balapan tidak bisa
+  melunasi event yang sudah ditandai (409 `event_reviewed`). Jika pembayaran menang,
+  penandaan ditolak 409 `event_not_actionable`; penanda ulang sejati tetap 200
+  `already_reviewed` dengan catatan pertama. Retry/confirm hanya
+  menerima provider **DANA/GoPay** legacy; provider lain (gateway/crypto/tak
+  dikenal) diarahkan ke review manual 409 `provider_requires_manual_review`. Rumus
+  biaya, expiry, kredensial, dan auth tidak berubah.
+- **Fulfillment "Perlu tindakan"**: Kanal & Fulfillment menampilkan sampai 20 order
+  yang macet atau butuh admin (`fulfillment_status` manual_required/failed, atau
+  queued/retry yang lebih tua dari 15 menit) dengan tautan ke Pesanan, plus jumlah
+  pesan WhatsApp gagal 7 hari. Read-only.
+- **Katalog Games jujur**: stat "Bisa dijual" hanya menghitung SKU yang admin
+  aktifkan, supplier aktif, dan stok tersedia (atau tak terbatas); daftar default
+  menaruh SKU itu lebih dulu dan bisa difilter. UI harga pembanding "Oura" dihapus
+  (produksi tidak punya data harga pembanding; harga jual tidak berubah), baris
+  Digiflazz lama tetap tersimpan untuk histori.
+- **API/komponen mati dihapus**: `games/products/enable-wave` (dulu 410),
+  `admin/pedia/credits`, `admin/warung/credentials`, dan komponen `VariantEditor`/
+  `FulfillmentInventoryPanel` yang tidak dirender halaman mana pun. Tidak ada
+  penghapusan data order/katalog.
+- **Anatomi admin seragam (D1–D6)**: satu PageHeader + StatCard netral + satu toolbar
+  + tabel desktop/kartu mobile per section; warna hanya untuk makna status; satu
+  tombol solid utama per halaman; label manusia (bukan kode mentah); loading memakai
+  Skeleton/"Memuat…", bukan angka palsu. Produk/editor varian, Pesanan (toolbar
+  faceted + "Muat 25 lagi"), Pedia, Games, TUNVN, WR/SK, WR vs SK, Siaran, Kanal,
+  Rekonsiliasi, Ringkasan dan badge sidebar mengikuti pola ini.
+- Kontrak pembayaran (rumus/fee/expiry), akses pembeli, idempotensi order, dan
+  kredensial **tidak berubah** oleh paket ini; yang ditambah hanya pengaman race
+  dan metadata audit rekonsiliasi. Status: implementasi lokal terintegrasi +
+  tes (436 file/5925) dan Pages build 171 route; deployment belum diverifikasi.
+
 ## Panel admin terpadu light/dark + perbaikan audit (13 November 2026, implementasi lokal)
 
 - Seluruh panel admin memakai satu design system bergaya shadcn-admin dengan

@@ -17,8 +17,8 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-it.each([["orders", "Pesanan"], ["products", "Produk"], ["services", "Layanan IndoSMM"], ["curation", "Layanan IndoSMM"], ["credits", "Produk"], ["settings", "Pengaturan"]])("maps legacy tab %s and exposes exactly four navigation choices", async (initialTab, label) => {
-  render(<PediaManager initialTab={initialTab} />); const nav = await screen.findByRole("tablist", { name: "Bagian Pedia" }); expect(within(nav).getAllByRole("tab").map(e => e.textContent)).toEqual(["Pesanan", "Produk", "Layanan IndoSMM", "Pengaturan"]); expect(within(nav).getByRole("tab", { name: label }).getAttribute("aria-current")).toBe("page");
+it.each([["orders", "Perlu tindakan"], ["products", "Produk"], ["services", "Layanan IndoSMM"], ["curation", "Layanan IndoSMM"], ["credits", "Produk"], ["settings", "Pengaturan"], ["action", "Perlu tindakan"]])("maps legacy tab %s and exposes exactly four navigation choices", async (initialTab, label) => {
+  render(<PediaManager initialTab={initialTab} />); const nav = await screen.findByRole("tablist", { name: "Bagian Pedia" }); expect(within(nav).getAllByRole("tab").map(e => e.textContent)).toEqual(["Perlu tindakan", "Produk", "Layanan IndoSMM", "Pengaturan"]); expect(within(nav).getByRole("tab", { name: label }).getAttribute("aria-current")).toBe("page");
   if (initialTab === "curation") expect(await screen.findByLabelText("Kebutuhan produk")).toBeTruthy();
 });
 
@@ -29,11 +29,11 @@ it("preserves query parameters, maps URL-only curation, and follows back/forward
   window.history.replaceState(null, "", "/admin?section=pedia&tab=curation&keep=1"); const view = render(<PediaManager />); expect(await screen.findByLabelText("Kebutuhan produk")).toBeTruthy();
   await userEvent.click(screen.getByRole("tab", { name: "Pengaturan" })); expect(window.location.search).toContain("tab=settings"); expect(window.location.search).toContain("keep=1");
   window.history.replaceState(null, "", "/admin?section=pedia&tab=credits"); fireEvent.popState(window); expect(await screen.findByText("Muat kurasi awal")).toBeTruthy();
-  window.history.replaceState(null, "", "/admin?section=pedia&tab=orders"); fireEvent.popState(window); expect(await screen.findByLabelText("Status pesanan")).toBeTruthy();
+  window.history.replaceState(null, "", "/admin?section=pedia&tab=orders"); fireEvent.popState(window); expect(await screen.findByText(/Perlu tindakan \(/)).toBeTruthy();
   view.rerender(<PediaManager initialTab="settings" />); expect(await screen.findByLabelText("Markup G1 (%)")).toBeTruthy();
 });
 
-it("status-strip link selects orders and needs-action filter", async () => { rows = [{ order_code: "AXP-CHECK", status: "needs_check", can_resubmit: false }]; render(<PediaManager initialTab="products" />); fireEvent.click(screen.getByRole("button", { name: /Pesanan perlu tindakan/ })); await waitFor(() => expect((screen.getByLabelText("Status pesanan") as HTMLSelectElement).value).toBe("action")); expect(window.location.search).toContain("status=action"); expect(screen.queryByRole("region", { name: "Semua pesanan" })).toBeNull(); });
+it("needs-action tab only lists actionable orders and links full history", async () => { rows = [{ order_code: "AXP-CHECK", status: "needs_check", can_resubmit: false }, { order_code: "AXP-DONE", status: "completed" }]; render(<PediaManager initialTab="products" />); await waitFor(() => expect(screen.getByRole("tab", { name: "Perlu tindakan" })).toBeTruthy()); await userEvent.click(screen.getByRole("tab", { name: "Perlu tindakan" })); await waitFor(() => expect(window.location.search).toContain("tab=action")); expect(await screen.findByText(/Perlu tindakan \(1\)/)).toBeTruthy(); expect(screen.queryByText(/AXP-DONE/)).toBeNull(); expect(screen.getByRole("link", { name: "Pesanan" }).getAttribute("href")).toBe("/admin?section=orders&kind=pedia"); });
 
 it.each(["products", "services", "orders", "settings", "curation"])("%s has no retired supplier, sync, or internal jargon", async initialTab => {
   render(<PediaManager initialTab={initialTab} />); await waitFor(() => expect(screen.queryAllByText("Memuat data...")).toHaveLength(0));
@@ -43,5 +43,5 @@ it.each(["products", "services", "orders", "settings", "curation"])("%s has no r
 
 it.each(["orders", "settings"])("%s renders its own response while catalog never resolves", async initialTab => {
   const original = vi.mocked(fetch).getMockImplementation()!; vi.mocked(fetch).mockImplementation((input, init) => String(input).includes("products") ? new Promise(() => {}) : original(input, init));
-  render(<PediaManager initialTab={initialTab} />); expect(await (initialTab === "orders" ? screen.findByLabelText("Status pesanan") : screen.findByLabelText("Markup G1 (%)"))).toBeTruthy(); expect(screen.queryByText("Memuat Pedia…")).toBeNull();
+  render(<PediaManager initialTab={initialTab} />); expect(await (initialTab === "orders" ? screen.findByText(/Perlu tindakan \(/) : screen.findByLabelText("Markup G1 (%)"))).toBeTruthy(); expect(screen.queryByText("Memuat Pedia…")).toBeNull();
 });

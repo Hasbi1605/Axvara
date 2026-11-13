@@ -309,6 +309,7 @@ export async function transitionPendingPaymentToPaid(
       ).bind(options?.paymentMethod ?? "qris", providerPaidAt ?? null, orderCode),
     ];
     if (event) {
+      // Review must remain terminal even if it wins after the caller's pre-read.
       // eventMode 'received_text' (crypto): nominal sudah divalidasi desimal
       // eksak di adapter sebelum klaim ini — di sini guard hanya mengikat event
       // ke (provider, order, payment id, expiry) agar event asing tak bisa paid.
@@ -321,7 +322,7 @@ export async function transitionPendingPaymentToPaid(
                AND pt.provider='sekalipay_gateway' AND pt.provider_payment_id IS NOT NULL
                AND (e.event_key='sekalipaygw:' || pt.provider_payment_id || ':paid'
                  OR (pt.gateway_is_sandbox=1 AND e.event_key='sekalipaygw:' || pt.provider_payment_id || ':completed'))
-               AND e.status IN ('received','ignored','failed') AND e.amount=pt.payable_amount
+               AND e.status IN ('received','ignored','failed') AND e.reviewed_by IS NULL AND e.amount=pt.payable_amount
                AND pt.requested_amount+pt.gateway_fee=pt.payable_amount AND pt.gateway_fee>=0
                AND o.subtotal=pt.requested_amount AND o.payment_method='sekalipay_gateway:' || pt.gateway_channel
                AND pt.last_error IS NULL AND pt.gateway_fee_consented_at IS NOT NULL
@@ -335,7 +336,7 @@ export async function transitionPendingPaymentToPaid(
              JOIN payment_transactions pt ON pt.order_code=e.order_code AND pt.order_code=?
              WHERE e.id=? AND e.order_code=? AND e.provider=pt.provider AND pt.provider='nowpayments'
                AND e.event_key='nowpayments:' || pt.provider_payment_id || ':finished'
-               AND e.status IN ('received','ignored','failed')
+               AND e.status IN ('received','ignored','failed') AND e.reviewed_by IS NULL
                 AND pt.provider_payment_id IS NOT NULL
                 AND pt.requested_amount=e.amount
                 AND (pt.last_error IS NULL OR (pt.last_error='nowpayments_finalize_failed_manual_review'
@@ -347,7 +348,7 @@ export async function transitionPendingPaymentToPaid(
          SELECT ?,CASE WHEN EXISTS(
            SELECT 1 FROM dana_webhook_events e
            JOIN payment_transactions pt ON pt.order_code=?
-           WHERE e.id=? AND e.status IN ('received','ignored','failed')
+           WHERE e.id=? AND e.status IN ('received','ignored','failed') AND e.reviewed_by IS NULL
              AND e.amount=pt.payable_amount
              AND julianday(e.created_at)>=julianday(COALESCE(pt.invoice_issued_at,pt.created_at))
              AND datetime(pt.expires_at)>datetime('now')
@@ -363,7 +364,7 @@ export async function transitionPendingPaymentToPaid(
         `UPDATE dana_webhook_events
          SET status='matched',order_code=?,last_error=NULL,processed_at=datetime('now'),
              reviewed_by=?,review_note=?
-         WHERE id=? AND status IN ('received','ignored','failed')`,
+         WHERE id=? AND status IN ('received','ignored','failed') AND reviewed_by IS NULL`,
       ).bind(orderCode, event.reviewedBy ?? null, event.reviewNote ?? null, event.id));
       statements.push(d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(`${guardId}:event`));
     }

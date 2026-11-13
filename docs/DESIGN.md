@@ -1,5 +1,58 @@
 # DESIGN.md — AXVARA Design System
 
+## Admin round 2: anatomi seragam, warna bermakna, label manusia (13 November 2026, implementasi lokal)
+
+Menggantikan bagian "Panel admin memakai shadcn/ui sungguhan" di bawah hanya pada
+aturan tata letak/istilah; token, tema dan primitive tetap.
+- **Anatomi halaman identik** untuk setiap section: `PageHeader` (h2 `text-xl
+  font-semibold` + satu kalimat deskripsi muted + aksi utama di kanan) → maksimal
+  4–5 `StatCard` sama tinggi (label `text-sm font-medium` muted, nilai `text-2xl`
+  `font-semibold tabular-nums` **netral**, hint kecil muted) → **satu** baris
+  toolbar → Tabel (desktop) / kartu bertumpuk (mobile). Tidak ada header kedua di
+  dalam tab; judul tab tidak mengulang judul+deskripsi halaman.
+- **Warna = makna (D1)**: angka/nilai selalu `text-admin-fg`. Success hanya
+  selesai/aman, warning hanya perlu dicek, danger hanya gagal/bahaya, secondary
+  (abu) netral/nonaktif, info hanya catatan informatif. Tidak ada eyebrow cyan
+  dekoratif ("Katalog") dan tidak ada nilai stat berwarna (Modal kuning, Margin cyan).
+- **Satu primary per halaman/dialog/kartu (D2)** = aksi utama; aksi baris selalu
+  outline/ghost `size sm`. Tidak ada tombol putih solid berulang per baris
+  (Pedia Edit, aksi pesanan, TUNVN, Link Supplier, WR vs SK sudah outline).
+- **Label manusia (D5)**: kode mentah tidak tampil — lunas→Lunas, qris→QRIS,
+  completed→Selesai, delivered→Terkirim, manual_required→Perlu tindakan,
+  blocked_balance→Saldo supplier habis; istilah dev ("sweep cron", "Pecundang",
+  "Force Sync Now") diganti ("Sinkron sekarang", perbandingan modal manusia).
+  Raw JSON/ID batch hanya di dalam dialog receipt.
+- **Loading tidak menipu (D6)**: Skeleton atau "Memuat…", tidak pernah "0 pesanan",
+  "Belum pernah", atau status merah saat data belum ada; error = alert danger +
+  "Coba lagi"; supplier tak terbaca tampil "—"/"Belum terbaca" netral.
+- **Round 2 per area**: Produk (kolom Terjual/Urutan berupa input berbingkai
+  h-8/w-16 terpusat, nama kategori bukan slug; editor tanpa field alias WhatsApp,
+  header varian accordion auto-tinggi + Badge/chevron, dialog tidak overflow saat
+  URL kredensial panjang). Pesanan (satu toolbar faceted + chip filter + "Muat 25
+  lagi", tabel 7 kolom tanpa kolom bukti, waktu WIB ringkas). Pedia (3 StatCard +
+  tab Perlu tindakan). Games (4 StatCard termasuk "Bisa dijual" dari `sellable`,
+  tanpa UI Oura, deskripsi supplier tanpa emoji). TUNVN (`Saldo TUNVN` + 3 StatCard,
+  pengiriman otomatis tabel ringkas + dialog receipt). WR/SK (StatCard sama,
+  "Sinkron sekarang"). WR vs SK (perbandingan manusia, Simpan hanya saat dirty).
+  Siaran (tab Template/Riwayat, editor Sheet + pratinjau, dialog kirim 3 langkah).
+  Rekonsiliasi (StatCard, "Tandai sudah dicek" ber-catatan, error manusia).
+- **Koreksi round 1 (Games/TUNVN/Pedia/WR-SK)**: tabel Games dirancang muat di
+  kontainer 1280 (terukur 966/966, tidak ada kolom Aktif terpotong) dengan teks
+  panjang `truncate`/`line-clamp` + tooltip; kartu mobile mempertahankan select Grup
+  dan guard eligibility yang sama dengan desktop. TUNVN merender tabel hanya
+  `>=md` dan kartu di bawahnya (satu tampilan saja per breakpoint). Pedia
+  menaruh identifier supplier hanya di `<details>` terlipat. D6: kapasitas/sinkron
+  WR/SK dan hitungan tindakan Pedia memakai Skeleton/"memuat" saat data belum ada.
+- Bukti Chromium lokal (seluruh API, termasuk simulasi tulis, diintersep) 1280/390 × terang/
+  gelap: UI1 Produk/editor/kredensial/Pesanan, UI2 Pesanan (filter, chip, load-more,
+  detail, empty), UI3 Pedia 4 tab + Games + TUNVN + WR/SK + WR vs SK + koreksi
+  Games@1280/390 & TUNVN@390, UI4 Siaran (template/editor/kirim/riwayat/hentikan) +
+  Kanal + Rekonsiliasi + Ringkasan. Semua sesi melaporkan tanpa overflow halaman,
+  tanpa pageerror, tanpa mutasi produksi. PM memberi verdict visual PASS pada sumber
+  terintegrasi memakai tangkapan tersebut (orders desktop, payments gelap, editor
+  mobile, games/TUNVN); bukti tetap fixture browser — bukan sesi admin produksi,
+  transaksi nyata, atau deployment.
+
 ## Panel admin memakai shadcn/ui sungguhan (13 November 2026, implementasi lokal)
 
 Menggantikan bagian "bergaya shadcn-admin" di bawah hanya pada komponen/dialog;

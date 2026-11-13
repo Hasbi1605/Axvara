@@ -57,15 +57,20 @@ menghidupkan kembali katalog otomatis/ProviderSMM dari catatan itu.
   tidak dihidupkan. Tabel lengkap: `B2-reactivation.md` (orchestration).
   Guard `supplier='indosmm' AND managed='curated' AND is_active=0` membuat re-run
   tidak mengubah apa pun.
-- **UI admin (13 November 2026).** `PediaManager.tsx` = shell + status strip (saldo
-  IndoSMM, produk dijual x/y, pesanan perlu tindakan) dan 4 tab **Pesanan · Produk ·
-  Layanan IndoSMM · Pengaturan**; `?tab=` lama dipetakan (`services`/`curation` →
-  Layanan IndoSMM, `credits` → Produk), default Pesanan bila ada tindakan. Panel di
+- **UI admin (13 November 2026).** `PediaManager.tsx` = `PageHeader` + 3 StatCard
+  (saldo IndoSMM dengan aksi outline "Periksa", produk siap dijual, perlu tindakan)
+  dan 4 tab **Perlu tindakan · Produk · Layanan IndoSMM · Pengaturan**; `?tab=` lama
+  dipetakan (`orders` → Perlu tindakan, `services`/`curation` → Layanan IndoSMM,
+  `credits` → Produk), default Perlu tindakan bila ada tindakan. Panel di
   `src/components/admin/pedia/` (`OrdersPanel`, `ProductsPanel`, `ProductEditor`,
-  `ServicesPanel`, `SettingsPanel`, `shared`), tiap tab memuat datanya sendiri. Tab
-  "Arsip lama" dihapus (API kredit tetap); kurasi = "Bandingkan per kebutuhan" di
-  Layanan IndoSMM; minimum order/ambang saldo read-only dari konfigurasi server.
-  Payload mutasi dan guard API tidak berubah. Implementasi lokal; publikasi melalui CI.
+  `ServicesPanel`, `SettingsPanel`, `shared`), tiap tab memuat datanya sendiri dan
+  TIDAK merender judul/deskripsi sendiri (satu PageHeader per halaman). Tab "Perlu
+  tindakan" HANYA memuat pesanan yang memerlukan tindakan dengan seluruh guard aksi
+  existing; riwayat penuh ada di Pesanan utama (`/admin?section=orders&kind=pedia`)
+  dan ditautkan dari toolbar. Tab "Arsip lama" dihapus (API kredit tetap); kurasi =
+  "Bandingkan per kebutuhan" di Layanan IndoSMM; minimum order/ambang saldo read-only
+  dari konfigurasi server. Payload mutasi dan guard API tidak berubah. Implementasi
+  lokal; UI3 belum di-commit dan publikasi melalui CI.
 
 ## Keputusan owner 12 November 2026 — katalog otomatis Pedia (ProviderSMM)
 

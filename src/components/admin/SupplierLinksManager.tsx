@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
-import { Badge, Button, Card, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, Skeleton, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/admin/ui";
+import { Badge, Button, Card, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, PageHeader, Skeleton, Switch, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 import { Dialog } from "@/components/ui/Dialog";
@@ -139,14 +139,8 @@ export function SupplierLinksManager() {
   };
 
   return (
-    <div className="mt-4 space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-admin-fg">Link Supplier</h2>
-          <p className="mt-1 text-sm text-admin-muted">Shortlink axvara.tech/go/… — supplier ganti URL? Ubah 1 baris di sini.</p>
-        </div>
-        <Button onClick={openNew}><Plus /> Link Baru</Button>
-      </header>
+    <div className="min-w-0 space-y-6">
+      <PageHeader title="Link Supplier" description="Shortlink axvara.tech/go/… untuk tujuan supplier; ubah satu baris di sini tanpa redeploy katalog." actions={<Button onClick={openNew}><Plus /> Link baru</Button>} />
 
       {error && !showForm && <div className="rounded-md border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-sm text-admin-danger" role="alert">
         <p>{error}</p>

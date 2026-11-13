@@ -6,13 +6,13 @@
 // detail capability per varian, sandbox order.
 
 "use client";
-import { SupplierSyncStatus, type SupplierDiffStatus, type SupplierSyncLogRow } from "@/components/admin/SupplierSyncStatus";
+import { SupplierSyncStatus, syncCompactValue, type SupplierDiffStatus, type SupplierSyncLogRow } from "@/components/admin/SupplierSyncStatus";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import { formatWibDateTime } from "@/lib/utils";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, Input, NativeSelect, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@/components/admin/ui";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, PageHeader, StatCard, Checkbox, Input, NativeSelect, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 import { BulkMarkupToolbar } from "@/components/admin/BulkMarkupToolbar";
@@ -177,6 +177,8 @@ export function SekalipayManager() {
   const toast = useToast();
   const [saldo, setSaldo] = useState<SaldoData>({});
   const [saldoLoading, setSaldoLoading] = useState(true);
+  // D6: sampai sync-log selesai, "Sinkron terakhir" harus Skeleton — bukan "Belum pernah".
+  const [logsLoading, setLogsLoading] = useState(true);
   const [logs, setLogs] = useState<SyncLogRow[]>([]);
   const [diffStatus, setDiffStatus] = useState<SupplierDiffStatus>(null);
   const [syncing, setSyncing] = useState(false);
@@ -249,11 +251,13 @@ export function SekalipayManager() {
   }, [toast]);
 
   const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
     try {
       const res = await fetch("/api/admin/sekalipay/sync-log?limit=5", { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
       if (res.ok) { setLogs(body.logs || []); setDiffStatus(body.diff ?? null); }
     } catch { /* sync log opsional */ }
+    finally { setLogsLoading(false); }
   }, []);
 
   const loadOrders = useCallback(async (page = 1) => {
@@ -667,6 +671,7 @@ export function SekalipayManager() {
 
   return (
     <div className="mt-4 space-y-6">
+      <PageHeader title="Saldo Sekalipay" description="Saldo, kapasitas, dan sinkronisasi katalog supplier." actions={<Button variant="outline" onClick={() => void loadSaldo()} disabled={saldoLoading}>{saldoLoading ? <Spinner size={13} /> : <RefreshCw />} Muat ulang</Button>} />
       <SupplierTabs
         tabs={[
           { id: "ringkas", label: "Ringkas" },
@@ -681,38 +686,17 @@ export function SekalipayManager() {
       />
       {skTab === "ringkas" && (
       <section className="space-y-4">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-admin-fg">Saldo Sekalipay</h2>
-            <p className="mt-1 text-sm text-admin-muted">Diambil real-time dari API SK setiap dibuka. Supplier kedua paralel WR.</p>
-          </div>
-          <Button variant="outline" onClick={() => void loadSaldo()} disabled={saldoLoading}>{saldoLoading ? <Spinner size={13} /> : <RefreshCw />} Muat ulang</Button>
-        </header>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Card className={saldo.current?.isLow ? "border-admin-danger/30" : undefined}>
-            <CardHeader className="p-4 pb-2"><CardDescription className="text-sm">Saldo saat ini</CardDescription></CardHeader>
-            <CardContent className="p-4 pt-0">
-              {saldoLoading ? <Skeleton className="h-8 w-32" /> : <p className={`text-2xl font-semibold tabular-nums ${balance == null ? "text-admin-muted" : saldo.current?.isLow ? "text-admin-danger" : "text-admin-success"}`}>{balance != null ? formatRupiah(balance) : "—"}</p>}
-              <p className="mt-1 text-xs text-admin-muted">
-                {balance == null ? "Saldo belum diketahui — muat ulang untuk memeriksa." : saldo.current?.isLow ? `Di bawah batas ${formatRupiah(saldo.current.threshold)} — segera top up.` : "Di atas batas aman operasional."}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="p-4 pb-2"><CardDescription className="text-sm">Estimasi kapasitas</CardDescription></CardHeader>
-            <CardContent className="p-4 pt-0">
-              <p className="text-2xl font-semibold tabular-nums text-admin-fg">~{saldo.capacity?.estimatedOrders ?? 0} order</p>
-              <p className="mt-1 text-xs text-admin-muted">Rata-rata modal {formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="p-4 pb-2"><CardDescription className="text-sm">Sync terakhir</CardDescription></CardHeader>
-            <CardContent className="p-4 pt-0">
-              <SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="non-auto" />
-              <Button className="mt-3" size="sm" onClick={() => void forceSync()} disabled={syncing}>{syncing ? <Spinner size={13} /> : <RefreshCw />}{syncing ? "Sync…" : "Force Sync Now"}</Button>
-            </CardContent>
-          </Card>
+          <StatCard label="Saldo saat ini" value={saldoLoading ? <Skeleton className="h-8 w-32" /> : balance != null ? formatRupiah(balance) : "—"} hint={balance == null ? "Saldo belum diketahui — muat ulang untuk memeriksa." : saldo.current?.isLow ? `Di bawah batas ${formatRupiah(saldo.current.threshold)} — segera top up.` : "Di atas batas aman operasional."} tone={saldo.current?.isLow ? "warning" : "secondary"} />
+          <StatCard label="Estimasi kapasitas" value={saldoLoading ? <Skeleton className="h-8 w-28" /> : `~${saldo.capacity?.estimatedOrders ?? 0} order`} hint={saldoLoading ? "Memuat kapasitas…" : `Rata-rata modal ${formatRupiah(saldo.capacity?.avgOrderCost ?? 0)}/order.`} />
+          <StatCard label="Sinkron terakhir" value={logsLoading ? <Skeleton className="h-8 w-28" /> : syncCompactValue(logs as SupplierSyncLogRow[], diffStatus)} hint={logsLoading ? "Memuat status sinkron…" : "Detail di bawah"} />
         </div>
+        <Card>
+          <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4">
+            <div className="min-w-0 space-y-1"><SupplierSyncStatus logs={logs as SupplierSyncLogRow[]} diff={diffStatus} excludedLabel="non-auto" loading={logsLoading} /></div>
+            <Button variant="outline" size="sm" onClick={() => void forceSync()} disabled={syncing}>{syncing ? <Spinner size={13} /> : <RefreshCw />}{syncing ? "Menyinkronkan…" : "Sinkron sekarang"}</Button>
+          </CardContent>
+        </Card>
       </section>
       )}
       {skTab === "antrean" && (

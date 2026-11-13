@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
 import { isPediaPremiumToolCandidate } from "@/lib/pedia/sales-policy";
-import { Button, Card, CardContent, Checkbox, Input, Label, NativeSelect } from "@/components/admin/ui";
+import { Button, Checkbox, Input, Label, NativeSelect } from "@/components/admin/ui";
 import { PediaCurationPanel } from "../PediaCurationPanel";
 import { Field, Panel, Feedback, DataTable, Pagination, HealthLine, usePanel, type Catalog, type Row } from "./shared";
 
@@ -22,18 +22,16 @@ export function ServicesPanel({ catalog, compare, onCompare, onAssigned }: { cat
   };
   return <Panel title="Layanan IndoSMM" description="Pilih layanan untuk produk atau bandingkan kandidat sesuai kebutuhan.">
     <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Tampilan layanan">
-      <Button variant={!compare ? "default" : "outline"} size="sm" aria-pressed={!compare} onClick={() => onCompare(false)}>Semua layanan</Button>
-      <Button variant={compare ? "default" : "outline"} size="sm" aria-pressed={compare} onClick={() => onCompare(true)}>Bandingkan per kebutuhan</Button>
+      <Button variant={!compare ? "secondary" : "outline"} size="sm" aria-pressed={!compare} onClick={() => onCompare(false)}>Semua layanan</Button>
+      <Button variant={compare ? "secondary" : "outline"} size="sm" aria-pressed={compare} onClick={() => onCompare(true)}>Bandingkan per kebutuhan</Button>
     </div>
     {compare ? <PediaCurationPanel products={catalog.products} onCreated={onAssigned} /> : <>
       <Feedback panel={panel} />
-      <Card className="my-4">
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_160px_160px]">
-          <Field label="Cari layanan"><Input value={q} onChange={e => setQ(e.target.value)} placeholder="Nama atau ID layanan" /></Field>
-          <Field label="Platform layanan"><NativeSelect value={platform} onChange={e => { setPlatform(e.target.value); setPage(1); }}><option value="">Semua platform</option>{PEDIA_PLATFORM_CONFIG.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</NativeSelect></Field>
-          <Field label="Pemakaian layanan"><NativeSelect value={mapping} onChange={e => { setMapping(e.target.value); setPage(1); }}><option value="">Semua layanan</option><option value="mapped">Sudah dipakai</option><option value="unmapped">Belum dipakai</option></NativeSelect></Field>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[220px] flex-1"><Field label="Cari layanan"><Input value={q} onChange={e => setQ(e.target.value)} placeholder="Nama atau ID layanan" /></Field></div>
+        <div className="w-[170px]"><Field label="Platform layanan"><NativeSelect value={platform} onChange={e => { setPlatform(e.target.value); setPage(1); }}><option value="">Semua platform</option>{PEDIA_PLATFORM_CONFIG.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</NativeSelect></Field></div>
+        <div className="w-[170px]"><Field label="Pemakaian layanan"><NativeSelect value={mapping} onChange={e => { setMapping(e.target.value); setPage(1); }}><option value="">Semua layanan</option><option value="mapped">Sudah dipakai</option><option value="unmapped">Belum dipakai</option></NativeSelect></Field></div>
+      </div>
       <div className="mb-3 flex flex-wrap gap-5 text-sm text-admin-muted">
         <div className="flex items-center gap-2"><Checkbox id="services-indonesia" checked={indonesia} onCheckedChange={value => { setIndonesia(value === true); setPage(1); }} /><Label htmlFor="services-indonesia" className="font-normal">Indonesia</Label></div>
         <div className="flex items-center gap-2"><Checkbox id="services-refill" checked={refill} onCheckedChange={value => { setRefill(value === true); setPage(1); }} /><Label htmlFor="services-refill" className="font-normal">Refill disebut di nama</Label></div>

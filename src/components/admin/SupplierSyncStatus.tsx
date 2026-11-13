@@ -45,14 +45,25 @@ export function describeDiffChange(change: NonNullable<SupplierDiffStatus>["last
   return parts.join(" ");
 }
 
+/** Satu baris ringkas untuk StatCard "Sinkron terakhir" (WR/SK & TUNVN). */
+export function syncCompactValue(logs: SupplierSyncLogRow[], diff: SupplierDiffStatus): string {
+  if (diff?.last_at) return fmt(diff.last_at);
+  const products = logs.filter((l) => l.sync_type === "products");
+  const row = products.find((l) => l.trigger === "cron") ?? products[0];
+  return row ? fmt(row.created_at) : "Belum pernah";
+}
+
 export function SupplierSyncStatus({
   logs,
   diff,
   excludedLabel,
+  loading = false,
 }: {
   logs: SupplierSyncLogRow[];
   diff: SupplierDiffStatus;
   excludedLabel: string;
+  /** D6: selama sync-log dimuat, jangan tampilkan "Belum pernah"/status tebakan. */
+  loading?: boolean;
 }) {
   const products = logs.filter((l) => l.sync_type === "products");
   const lastManual = products.find((l) => l.trigger !== "cron") ?? null;
@@ -60,6 +71,7 @@ export function SupplierSyncStatus({
   const diffKnown = Boolean(diff?.last_at);
   const errorRecent = diff?.last_error?.at && diff.last_at && diff.last_error.at >= diff.last_at;
 
+  if (loading) return <p role="status" className="mt-1 text-sm font-semibold text-admin-muted">Memuat status sinkron…</p>;
   return (
     <>
       {diffKnown ? (
@@ -85,7 +97,7 @@ export function SupplierSyncStatus({
       ) : (
         <>
           <p className="mt-1 text-sm font-semibold text-admin-fg">Belum pernah</p>
-          <p className="mt-1 text-xs text-admin-muted">Tekan Force Sync untuk sync pertama.</p>
+          <p className="mt-1 text-xs text-admin-muted">Tekan Sinkron sekarang untuk sync pertama.</p>
         </>
       )}
       {(lastManual || lastSweep) && (

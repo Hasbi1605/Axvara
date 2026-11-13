@@ -54,6 +54,9 @@ describe("B3 — satu definisi 'Perlu dicek' (overview = Rekonsiliasi)", () => {
     // Angka kartu UI (jumlah status attention) identik dengan badge overview.
     expect(Number(counts.received || 0) + Number(counts.ignored || 0) + Number(counts.failed || 0)).toBe(overview.payment_attention);
     expect(events.events).toHaveLength(3);
+    const all = await (await eventsRoute(await adminRequest("http://x/api/admin/payments/events?status=all"))).json();
+    expect(all.events.find((event: { id: number }) => event.id === reviewedId)).toMatchObject({ reviewed_by: "admin@axvara.tech", review_note: "sudah dicek" });
+    expect(all.events.find((event: { id: number }) => event.id !== reviewedId)).toMatchObject({ reviewed_by: null, review_note: null });
   });
 });
 

@@ -3,16 +3,16 @@
 // produk yang sama di dua supplier dipilih OTOMATIS mana yang tampil
 // (stok dulu, modal kemudian), bukan manual.
 //
-// Admin di sini: lihat 28 pasangan + pemenang + alasan, atur prefer
+// Admin di sini: lihat pasangan + pemenang + alasan, atur prefer
 // (auto/WR/SK + margin), hitung ulang manual. Pembeli tidak pernah
 // melihat tab ini — mereka hanya melihat pemenangnya di katalog.
 
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw, Trophy } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
-import { Badge, Button, Card, Input, Label, NativeSelect, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/admin/ui";
+import { Badge, Button, Card, Input, NativeSelect, PageHeader, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 
@@ -34,6 +34,43 @@ type PairRow = {
   decided_at: string | null;
   reason: string | null;
 };
+
+const hasStock = (stock: number) => stock < 0 || stock > 0;
+
+/** Teks perbandingan manusiawi untuk satu pasangan (D5, tanpa angka mentah). */
+export function pairComparison(pair: PairRow): string {
+  if (!hasStock(pair.wr_stock) && !hasStock(pair.sk_stock)) return "Keduanya habis";
+  if (!pair.wr_active && !pair.sk_active) return "Keduanya nonaktif";
+  if (!pair.wr_active) return "WR nonaktif";
+  if (!pair.sk_active) return "SK nonaktif";
+  if (pair.wr_modal != null && pair.sk_modal != null && pair.wr_modal !== pair.sk_modal) {
+    const cheap = pair.sk_modal < pair.wr_modal ? "SK" : "WR";
+    const low = Math.min(pair.wr_modal, pair.sk_modal), high = Math.max(pair.wr_modal, pair.sk_modal);
+    return `${cheap} lebih murah · ${formatRupiah(low)} vs ${formatRupiah(high)}`;
+  }
+  if (pair.wr_modal != null && pair.sk_modal != null) return "Modal sama";
+  if (pair.wr_stock !== pair.sk_stock) {
+    const more = pair.sk_stock > pair.wr_stock ? "SK" : "WR";
+    return `Stok ${more} lebih banyak`;
+  }
+  return "Keduanya tersedia";
+}
+
+/** Alasan pemenang dalam bahasa manusia; kode internal tidak ditampilkan. */
+export function humanPairReason(reason: string | null): string {
+  if (!reason) return "Belum dihitung";
+  if (reason === "pasangan_yatim") return "Pasangan belum lengkap";
+  if (reason.includes("dua-duanya nonaktif")) return "Keduanya nonaktif";
+  if (reason.includes("dua-duanya habis")) return "Keduanya habis";
+  if (reason.startsWith("stok SK habis")) return "Stok SK habis";
+  if (reason.startsWith("stok WR habis")) return "Stok WR habis";
+  if (reason.includes("nonaktif manual")) return "Salah satu supplier nonaktif";
+  if (reason.startsWith("modal tak terbaca")) return "Modal belum terbaca";
+  if (reason.startsWith("modal seri")) return "Modal sama";
+  if (reason.startsWith("prefer")) return "Sesuai preferensi admin";
+  if (reason.startsWith("modal")) return "Modal lebih murah";
+  return "Dipilih otomatis";
+}
 
 export function SupplierPairsManager() {
   const toast = useToast();
@@ -85,7 +122,7 @@ export function SupplierPairsManager() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Gagal menyimpan");
-      toast.success("Preferensi disimpan + pemenang dihitung ulang.");
+      toast.success("Preferensi disimpan dan pemenang dihitung ulang.");
       await load();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Gagal menyimpan");
@@ -95,16 +132,14 @@ export function SupplierPairsManager() {
   };
 
   return (
-    <div className="mt-4 space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-admin-fg">Pemenang otomatis WR vs SK</h2>
-          <p className="mt-1 text-sm text-admin-muted">Stok dulu, modal kemudian. Dihitung ulang tiap sweep cron dari data live. Pecundang + produk habis disembunyikan dari katalog publik (tetap ada di admin).</p>
-        </div>
-        <Button onClick={() => void decideAll()} disabled={deciding || loading}>{deciding ? <Spinner size={13} /> : <RefreshCw />} Hitung ulang</Button>
-      </header>
+    <div className="min-w-0 space-y-6">
+      <PageHeader
+        title="WR vs SK"
+        description="Produk yang sama di dua supplier dipilih otomatis: stok lebih dulu, lalu modal. Yang tidak tampil disembunyikan dari katalog."
+        actions={<Button onClick={() => void decideAll()} disabled={deciding || loading}>{deciding ? <Spinner size={13} /> : <RefreshCw />} Hitung ulang</Button>}
+      />
 
-      {error && <div className="rounded-md border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-sm text-admin-danger" role="alert">
+      {error && <div className="rounded-xl border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-sm text-admin-danger" role="alert">
         <p>{error}</p>
         <Button variant="outline" size="sm" className="mt-2" onClick={() => void load()}>Coba lagi</Button>
       </div>}
@@ -117,56 +152,54 @@ export function SupplierPairsManager() {
         ) : (
           <>
             <div className="hidden md:block">
-              <Table className="min-w-[900px]">
+              <Table>
+                <caption className="sr-only">Pasangan produk Warung Rebahan dan Sekalipay</caption>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Produk</TableHead>
                     <TableHead>WR</TableHead>
                     <TableHead>SK</TableHead>
-                    <TableHead>Pemenang</TableHead>
+                    <TableHead>Perbandingan</TableHead>
                     <TableHead>Preferensi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {pairs.map((pair) => <TableRow key={pair.id}>
-                    <TableCell className="whitespace-nowrap font-mono text-xs text-admin-muted">#{pair.id}</TableCell>
-                    <TableCell>
-                      <p className="font-medium text-admin-fg">{pair.wr_name}</p>
-                      <p className="mt-1 text-xs text-admin-muted">Stok {pair.wr_stock}{pair.wr_modal != null ? ` · modal ${formatRupiah(pair.wr_modal)}` : ""}{pair.wr_active ? "" : " · nonaktif"}</p>
+                    <TableCell className="min-w-[160px]">
+                      <p className="font-medium text-admin-fg">{pair.wr_name || pair.sk_name}</p>
+                      <p className="mt-1 text-xs text-admin-muted">Pasangan #{pair.id}</p>
                     </TableCell>
-                    <TableCell>
-                      <p className="font-medium text-admin-fg">{pair.sk_name}</p>
-                      <p className="mt-1 text-xs text-admin-muted">Stok {pair.sk_stock}{pair.sk_modal != null ? ` · modal ${formatRupiah(pair.sk_modal)}` : ""}{pair.sk_active ? "" : " · nonaktif"}</p>
+                    <TableCell className="whitespace-nowrap text-xs">
+                      <Badge variant={pair.winner === "WR" ? "success" : "secondary"}>{pair.winner === "WR" ? "Tampil" : "Tidak tampil"}</Badge>
+                      <p className="mt-1 text-admin-muted">stok {pair.wr_stock < 0 ? "tak terbatas" : pair.wr_stock}{pair.wr_modal != null ? ` · modal ${formatRupiah(pair.wr_modal)}` : ""}{pair.wr_active ? "" : " · nonaktif"}</p>
                     </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        {pair.winner == null
-                          ? <Badge variant="secondary">Belum ada pemenang</Badge>
-                          : <Badge variant={pair.winner === "WR" ? "success" : "info"}><Trophy /> {pair.winner === "WR" ? "WR" : "SK"}</Badge>}
-                        {pair.reason && <p className="font-mono text-xs text-admin-muted">{pair.reason}</p>}
-                      </div>
+                    <TableCell className="whitespace-nowrap text-xs">
+                      <Badge variant={pair.winner === "SK" ? "success" : "secondary"}>{pair.winner === "SK" ? "Tampil" : "Tidak tampil"}</Badge>
+                      <p className="mt-1 text-admin-muted">stok {pair.sk_stock < 0 ? "tak terbatas" : pair.sk_stock}{pair.sk_modal != null ? ` · modal ${formatRupiah(pair.sk_modal)}` : ""}{pair.sk_active ? "" : " · nonaktif"}</p>
                     </TableCell>
-                    <TableCell>
-                      <PairPreference pair={pair} saving={saving === pair.id} onSave={savePrefer} />
+                    <TableCell className="min-w-[220px] text-xs">
+                      <p className="text-admin-fg">{pairComparison(pair)}</p>
+                      <p className="mt-1 text-admin-muted">{humanPairReason(pair.reason)}</p>
                     </TableCell>
+                    <TableCell><PairPreference pair={pair} saving={saving === pair.id} onSave={savePrefer} /></TableCell>
                   </TableRow>)}
                 </TableBody>
               </Table>
             </div>
-            <div className="space-y-3 p-4 md:hidden">
-              {pairs.map((pair) => <article key={pair.id} className="space-y-3 rounded-md border border-admin-border p-3">
-                <div className="space-y-1">
-                  <Badge variant={pair.winner === "WR" ? "success" : "secondary"}>WR · stok {pair.wr_stock}</Badge>
-                  <p className="text-xs text-admin-muted">{pair.wr_name}{pair.wr_modal != null ? ` · modal ${formatRupiah(pair.wr_modal)}` : ""}{pair.wr_active ? "" : " · nonaktif"}</p>
+            <div className="space-y-3 p-4 md:hidden" aria-label="Kartu pasangan supplier">
+              {pairs.map((pair) => <article key={pair.id} className="space-y-3 rounded-xl border border-admin-border p-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium text-admin-fg">{pair.wr_name || pair.sk_name}</p>
+                    <Badge variant={pair.winner ? "success" : "secondary"}>{pair.winner ? `${pair.winner} tampil` : "Belum ada pemenang"}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-admin-muted">Pasangan #{pair.id} · {pairComparison(pair)}</p>
                 </div>
-                <div className="space-y-1">
-                  <Badge variant={pair.winner === "SK" ? "info" : "secondary"}>SK · stok {pair.sk_stock}</Badge>
-                  <p className="text-xs text-admin-muted">{pair.sk_name}{pair.sk_modal != null ? ` · modal ${formatRupiah(pair.sk_modal)}` : ""}{pair.sk_active ? "" : " · nonaktif"}</p>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div><p className="font-medium text-admin-fg">WR</p><p className="mt-0.5 text-admin-muted">stok {pair.wr_stock < 0 ? "tak terbatas" : pair.wr_stock}{pair.wr_modal != null ? ` · ${formatRupiah(pair.wr_modal)}` : ""}</p></div>
+                  <div><p className="font-medium text-admin-fg">SK</p><p className="mt-0.5 text-admin-muted">stok {pair.sk_stock < 0 ? "tak terbatas" : pair.sk_stock}{pair.sk_modal != null ? ` · ${formatRupiah(pair.sk_modal)}` : ""}</p></div>
                 </div>
-                {pair.winner == null
-                  ? <Badge variant="secondary">Belum ada pemenang</Badge>
-                  : <Badge variant={pair.winner === "WR" ? "success" : "info"}><Trophy /> Pemenang {pair.winner}: {pair.winner === "WR" ? pair.wr_name : pair.sk_name}</Badge>}
-                {pair.reason && <p className="font-mono text-xs text-admin-muted">{pair.reason}</p>}
+                <p className="text-xs text-admin-muted">{humanPairReason(pair.reason)}</p>
                 <PairPreference pair={pair} saving={saving === pair.id} onSave={savePrefer} />
               </article>)}
             </div>
@@ -184,19 +217,20 @@ function PairPreference({ pair, saving, onSave }: {
 }) {
   const [prefer, setPrefer] = useState<"auto" | "WR" | "SK">(pair.prefer);
   const [margin, setMargin] = useState(String(pair.prefer_margin));
-  return <div className="flex flex-wrap items-end gap-2">
-    <div className="space-y-1">
-      <Label className="text-xs text-admin-muted" htmlFor={`pair-prefer-${pair.id}`}>Preferensi kualitas</Label>
-      <NativeSelect id={`pair-prefer-${pair.id}`} value={prefer} onChange={(event) => setPrefer(event.target.value as "auto" | "WR" | "SK")} title="Preferensi kualitas (mengalahkan selisih modal kecil)" className="w-[150px]">
-        <option value="auto">Auto</option>
-        <option value="WR">Utamakan WR</option>
-        <option value="SK">Utamakan SK</option>
-      </NativeSelect>
+  // Nilai server berubah setelah simpan/refetch → sinkronkan, jangan biarkan
+  // tombol "Simpan" tetap aktif karena draft lama.
+  useEffect(() => { setPrefer(pair.prefer); setMargin(String(pair.prefer_margin)); }, [pair.prefer, pair.prefer_margin]);
+  const dirty = prefer !== pair.prefer || margin !== String(pair.prefer_margin);
+  return <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Preferensi pasangan ${pair.id}`}>
+    <NativeSelect value={prefer} onChange={(event) => setPrefer(event.target.value as "auto" | "WR" | "SK")} aria-label={`Preferensi kualitas pasangan ${pair.id}`} title="Preferensi kualitas (mengalahkan selisih modal kecil)" className="w-[152px]">
+      <option value="auto">Otomatis</option>
+      <option value="WR">Utamakan WR</option>
+      <option value="SK">Utamakan SK</option>
+    </NativeSelect>
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-admin-muted">Toleransi</span>
+      <Input value={margin} onChange={(event) => setMargin(event.target.value)} inputMode="numeric" aria-label={`Toleransi margin pasangan ${pair.id}`} title="Toleransi margin (Rp)" className="w-20 text-right tabular-nums" />
     </div>
-    <div className="space-y-1">
-      <Label className="text-xs text-admin-muted" htmlFor={`pair-margin-${pair.id}`}>Toleransi margin (Rp)</Label>
-      <Input id={`pair-margin-${pair.id}`} value={margin} onChange={(event) => setMargin(event.target.value)} inputMode="numeric" className="w-24 text-right tabular-nums" />
-    </div>
-    <Button size="sm" onClick={() => onSave(pair, prefer, Math.max(0, Math.floor(Number(margin) || 0)))} disabled={saving}>{saving ? <Spinner size={13} /> : null} Simpan</Button>
+    <Button variant="outline" size="sm" onClick={() => onSave(pair, prefer, Math.max(0, Math.floor(Number(margin) || 0)))} disabled={saving || !dirty}>{saving ? <Spinner size={13} /> : null} Simpan</Button>
   </div>;
 }

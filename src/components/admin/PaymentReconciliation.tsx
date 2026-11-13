@@ -1,18 +1,19 @@
 "use client";
-import { Badge, Button, Checkbox, Input, Label, Textarea, Card, Table, TableHeader, TableHead, TableBody, TableRow, TableCell, Skeleton } from "@/components/admin/ui";
+import { Badge, Button, Checkbox, Input, Label, Textarea, Card, Table, TableHeader, TableHead, TableBody, TableRow, TableCell, Skeleton, StatCard } from "@/components/admin/ui";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Loading";
 import { IosIcon } from "@/components/admin/AdminIcon";
 import { useToast } from "@/components/ui/Toast";
+import { Dialog } from "@/components/ui/Dialog";
 
 type QrisProvider = "dana" | "gopay" | "klikqris";
 type ProviderHealth = { enabled: boolean; payload_configured: boolean; webhook_configured: boolean; webhook_url: string; secret_header: string; last_event_at?: string | null };
-type EventRow = { id: number; provider?: QrisProvider; amount: number; sender_name?: string; status: "received" | "matched" | "ignored" | "failed"; order_code?: string; last_error?: string; created_at: string; processed_at?: string };
-type EventsData = { events?: EventRow[]; counts?: Record<string, number>; pagination?: { page: number; pages: number; total: number }; last_event_at?: string | null; health?: ProviderHealth & { provider?: QrisProvider; providers?: Record<QrisProvider, ProviderHealth>; mode: string }; error?: string };
+type EventRow = { id: number; provider?: string; amount: number; sender_name?: string; status: "received" | "matched" | "ignored" | "failed"; reviewed_by?: string | null; review_note?: string; order_code?: string; last_error?: string; created_at: string; processed_at?: string };
+type EventsData = { events?: EventRow[]; attention?: number; counts?: Record<string, number>; pagination?: { page: number; pages: number; total: number }; last_event_at?: string | null; health?: ProviderHealth & { provider?: QrisProvider; providers?: Record<QrisProvider, ProviderHealth>; mode: string }; error?: string };
 
-export function PaymentReconciliation() {
+export function PaymentReconciliation({ onChanged }: { onChanged?: () => void }) {
   const toast = useToast();
   const initial = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("event_status");
   const [status, setStatus] = useState(initial || "attention");
@@ -21,6 +22,10 @@ export function PaymentReconciliation() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retrying, setRetrying] = useState<number | null>(null);
+  const [reviewEvent, setReviewEvent] = useState<EventRow | null>(null);
+  const [note, setNote] = useState("");
+  const [reviewError, setReviewError] = useState("");
+  const [reviewSaving, setReviewSaving] = useState(false);
 
   // Generation/abort guard (paritas OrdersManager): ganti filter/page cepat
   // tidak boleh membiarkan respons basi menimpa data/loading milik request
@@ -57,15 +62,26 @@ export function PaymentReconciliation() {
       const response = await fetch("/api/admin/payments/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: verification ? "confirm_match" : "retry_match", event_id: eventId, ...verification }) });
       const body = await response.json().catch(() => ({})) as { error?: string; order_code?: string };
       if (!response.ok) throw new Error(retryErrorMessage(body.error) || "Pencocokan ulang gagal");
-      toast.success(`Pembayaran cocok dengan ${body.order_code}.`); await load();
+      toast.success(`Pembayaran cocok dengan ${body.order_code}.`); await load(); onChanged?.();
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : "Pencocokan ulang gagal"); }
     finally { setRetrying(null); }
   };
   const healthOk = Boolean(data.health?.enabled && data.health.payload_configured && data.health.webhook_configured);
-  const provider = data.health?.provider || "dana";
-  const providerLabel = provider === "klikqris" ? "KlikQRIS" : provider === "gopay" ? "GoPay" : "DANA";
-  const lastEventAt = data.health?.providers ? data.health.providers[provider]?.last_event_at : data.last_event_at;
-  const attention = Number(data.counts?.received || 0) + Number(data.counts?.ignored || 0) + Number(data.counts?.failed || 0);
+  const provider = data.health ? data.health.provider || "dana" : undefined;
+  const providerLabel = provider === "klikqris" ? "KlikQRIS" : provider === "gopay" ? "GoPay" : provider === "dana" ? "DANA" : "";
+  const lastEventAt = provider && data.health?.providers ? data.health.providers[provider]?.last_event_at : data.last_event_at;
+  const attention = data.attention;
+  const markReviewed = async () => {
+    if (!reviewEvent || reviewSaving || note.trim().length < 5 || note.trim().length > 500) return;
+    setReviewSaving(true); setReviewError("");
+    try {
+      const response = await fetch("/api/admin/payments/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark_reviewed", event_id: reviewEvent.id, note: note.trim() }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(retryErrorMessage(body.error) || "Event belum berhasil ditandai. Coba lagi.");
+      setReviewEvent(null); setNote(""); toast.success("Event ditandai sudah dicek. Status pesanan tidak diubah."); await load(); onChanged?.();
+    } catch (cause) { setReviewError(cause instanceof Error ? cause.message : "Event belum berhasil ditandai."); }
+    finally { setReviewSaving(false); }
+  };
   const copyWebhookUrl = async () => {
     if (!data.health?.webhook_url) return;
     await navigator.clipboard.writeText(data.health.webhook_url);
@@ -76,11 +92,11 @@ export function PaymentReconciliation() {
     {error && <div role="alert" className="rounded-xl border border-admin-danger/30 p-4 text-sm text-admin-danger">{error}. Status belum diketahui. <Button variant="ghost" type="button" onClick={() => void load()} className="underline">Coba lagi</Button>
 </div>}
     <div className="grid gap-3 sm:grid-cols-3">
-<HealthCard title={`Konfigurasi QRIS ${providerLabel}`} value={loading || error ? "Belum diketahui" : healthOk ? "Terkonfigurasi" : "Belum lengkap"} ok={!loading && !error && healthOk} />
-<HealthCard title={`Event terakhir ${providerLabel}`} value={loading || error ? "Belum diketahui" : lastEventAt ? formatDate(lastEventAt) : "Belum ada"} ok={!loading && !error && Boolean(lastEventAt)} />
-<HealthCard title="Perlu dicek" value={loading || error ? "—" : String(attention)} ok={!loading && !error && attention === 0} />
+<StatCard label={`Konfigurasi QRIS${!loading && data.health ? ` ${providerLabel}` : ""}`} value={loading ? <Skeleton className="h-8 w-32" /> : error || !data.health ? "Belum diketahui" : <span className="text-base">{healthOk ? "Terkonfigurasi" : "Belum lengkap"}</span>} />
+<StatCard label={`Event terakhir${!loading && data.health ? ` ${providerLabel}` : ""}`} value={loading ? <Skeleton className="h-8 w-32" /> : error || !data.health ? "Belum diketahui" : <span className="text-base">{lastEventAt ? formatDate(lastEventAt) : "Belum ada"}</span>} />
+<StatCard label="Perlu dicek" value={loading ? <Skeleton className="h-8 w-16" /> : error || attention == null ? "—" : attention} />
 </div>
-    {data.health && <Card className="rounded-xl border border-admin-accent/20 bg-admin-primary/[0.05] p-4 sm:p-5">
+    {!loading && data.health && <Card className="p-4 sm:p-5">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">{provider === "klikqris" ? <>
 <h3 className="text-sm font-semibold text-admin-fg">Gateway KlikQRIS</h3>
@@ -92,7 +108,7 @@ export function PaymentReconciliation() {
 <h3 className="text-sm font-semibold text-admin-fg">Setup aplikasi QRIS Hook</h3>
 <p className="mt-1 text-xs leading-5 text-admin-muted">Provider efektif untuk invoice baru: DANA. Aktifkan Notification Access, pilih merchant DANA, matikan Debug Mode, lalu isi URL dan <strong className="text-admin-muted">nilai rahasia sebenarnya</strong> yang tersimpan sebagai Pages Secret <span className="font-mono text-admin-muted">DANA_WEBHOOK_SECRET</span>.</p>
 </>}</div>
-        <Button variant="default" type="button" onClick={() => void copyWebhookUrl()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary">
+        <Button variant="outline" type="button" onClick={() => void copyWebhookUrl()}>
 <IosIcon name="copy" size={13} tint="currentColor" /> Salin URL</Button>
       </div>
       <dl className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -119,7 +135,7 @@ export function PaymentReconciliation() {
 </div>
 <Button variant="outline" type="button" onClick={() => void load()} disabled={loading} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">
 <IosIcon name="refresh" size={13} tint="currentColor" /> Muat ulang</Button>
-<div className="flex w-full flex-wrap gap-2">{[["attention", "Perlu dicek"], ["all", "Semua"], ["matched", "Cocok"], ["failed", "Gagal"]].map(([value, label]) => <Button variant="default" size="sm" type="button" key={value} onClick={() => { setStatus(value); setPage(1); }} className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${status === value ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}>{label}</Button>)}</div>
+<div className="flex w-full flex-wrap gap-2">{[["attention", "Perlu dicek"], ["all", "Semua"], ["matched", "Cocok"], ["failed", "Gagal"]].map(([value, label]) => <Button variant="outline" size="sm" type="button" key={value} aria-pressed={status === value} onClick={() => { setStatus(value); setPage(1); }} className={status === value ? "bg-admin-subtle" : ""}>{label}</Button>)}</div>
 </header>
       {loading ? <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-admin-muted">
 <div className="w-full space-y-4 p-6">
@@ -139,13 +155,16 @@ export function PaymentReconciliation() {
 <div className="min-w-0">
 <div className="flex flex-wrap items-center gap-2">
 <EventBadge status={event.status} />
-<span className="text-xs font-semibold text-admin-accent">{event.provider === "klikqris" ? "KlikQRIS" : event.provider === "gopay" ? "GoPay" : "DANA"}</span>
+<span className="text-xs font-medium text-admin-muted">{event.provider === "klikqris" ? "KlikQRIS" : event.provider === "gopay" ? "GoPay" : !event.provider || event.provider === "dana" ? "DANA" : event.provider === "nowpayments" ? "Crypto" : "Gateway"}</span>
 <span className="font-semibold text-admin-fg">{formatRupiah(event.amount)}</span>
 <span className="text-xs text-admin-muted">{event.sender_name || "Pengirim tidak terbaca"}</span>
 </div>
-<p className="mt-2 text-xs text-admin-muted">{formatDate(event.created_at)}{event.order_code ? ` · ${event.order_code}` : ""}</p>{event.last_error && <p className="mt-1 font-mono text-xs text-admin-danger">{event.last_error}</p>}</div>
+<p className="mt-2 text-xs text-admin-muted">{formatDate(event.created_at)}{event.order_code ? ` · ${event.order_code}` : ""}</p>{event.last_error && <p className="mt-1 text-xs text-admin-warning" title={event.last_error}>{retryErrorMessage(event.last_error)}</p>}{event.reviewed_by && <Badge variant="secondary" className="mt-2" title={event.review_note}>Sudah dicek</Badge>}</div>
 </TableCell>
-<TableCell className="block space-y-3 align-top md:table-cell">{["received", "ignored", "failed"].includes(event.status) && event.provider !== "klikqris" && <Button variant="default" type="button" onClick={() => void retry(event.id)} disabled={retrying === event.id} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">{retrying === event.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} tint="currentColor" />}{retrying === event.id ? "Mencocokkan…" : "Coba cocokkan"}</Button>}{["received", "ignored", "failed"].includes(event.status) && event.provider !== "klikqris" && <ManualPaymentReview provider={event.provider || "dana"} disabled={retrying === event.id} onConfirm={values => void retry(event.id, values)} />}{event.provider === "klikqris" && event.status === "failed" && <p className="text-xs text-admin-muted">Pembayaran terkonfirmasi KlikQRIS. Periksa status pesanan dan stok sebelum penyelesaian manual.</p>}</TableCell>
+<TableCell className="block space-y-3 align-top md:table-cell">{!event.reviewed_by && ["received", "ignored", "failed"].includes(event.status) && <>
+  {(!event.provider || ["dana", "gopay"].includes(event.provider)) && <><Button variant="outline" size="sm" onClick={() => void retry(event.id)} disabled={retrying !== null}>{retrying === event.id ? <Spinner size={13} /> : <IosIcon name="refresh" size={13} />}{retrying === event.id ? "Mencocokkan…" : "Coba cocokkan"}</Button><ManualPaymentReview provider={(event.provider || "dana") as QrisProvider} disabled={retrying !== null} onConfirm={values => void retry(event.id, values)} /></>}
+  <Button variant="outline" size="sm" onClick={() => { setReviewEvent(event); setNote(""); setReviewError(""); }}>Tandai sudah dicek</Button>
+</>}{event.provider === "klikqris" && event.status === "failed" && <p className="text-xs text-admin-muted">Pembayaran terkonfirmasi KlikQRIS. Periksa status pesanan dan stok sebelum penyelesaian manual.</p>}</TableCell>
 </TableRow>)}</TableBody>
 </Table>}
       <footer className="flex items-center justify-between border-t border-admin-border p-3 text-xs text-admin-muted">
@@ -156,13 +175,17 @@ export function PaymentReconciliation() {
 </div>
 </footer>
     </Card>
+    {reviewEvent && <Dialog title="Tandai sudah dicek" onClose={() => !reviewSaving && setReviewEvent(null)} busy={reviewSaving} className="max-w-lg p-5">
+      <h2 className="text-lg font-semibold">Tandai sudah dicek</h2><p className="mt-2 text-sm text-admin-muted">Catat hasil pemeriksaan event {formatRupiah(reviewEvent.amount)}. Tindakan ini menghapus perhatian pada event, bukan melunasi atau mengubah pesanan.</p>
+      <form className="mt-4 space-y-4" onSubmit={event => { event.preventDefault(); void markReviewed(); }}>
+        <div className="space-y-2"><Label htmlFor="event-review-note">Catatan pemeriksaan</Label><Textarea id="event-review-note" autoFocus required minLength={5} maxLength={500} disabled={reviewSaving} value={note} onChange={event => setNote(event.target.value)} /><p className="text-xs text-admin-muted">Wajib 5–500 karakter.</p></div>
+        {reviewError && <p role="alert" className="text-sm text-admin-danger">{reviewError}</p>}
+        <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" type="button" disabled={reviewSaving} onClick={() => setReviewEvent(null)}>Batal</Button><Button type="submit" disabled={reviewSaving || note.trim().length < 5}>{reviewSaving ? "Menyimpan…" : "Tandai sudah dicek"}</Button></div>
+      </form>
+    </Dialog>}
   </div>;
 }
 
-function HealthCard({ title, value, ok }: { title: string; value: string; ok: boolean }) { return <Card className={`rounded-xl border p-4 ${ok ? "border-admin-success/15 bg-admin-success/[0.06]" : "border-admin-danger/15 bg-admin-danger/[0.06]"}`}>
-<p className="text-sm text-admin-muted">{title}</p>
-<p className={`mt-1 text-sm font-semibold tabular-nums ${ok ? "text-admin-success" : "text-admin-danger"}`}>{value}</p>
-</Card>; }
 function EventBadge({ status }: { status: EventRow["status"] }) {
   const label = status === "matched" ? "Cocok" : status === "ignored" ? "Tidak cocok" : status === "received" ? "Diterima" : "Gagal";
   const tone =
@@ -178,6 +201,12 @@ function formatDate(value: string) { return formatWibDateTime(value) ?? value; }
 
 function retryErrorMessage(code?: string) {
   switch (code) {
+    case "sekalipay_gateway_manual_review": return "Butuh verifikasi manual (gateway)";
+    case "nowpayments_manual_review": return "Butuh verifikasi manual (crypto)";
+    case "note_required": return "Isi catatan pemeriksaan sepanjang 5–500 karakter.";
+    case "event_not_found": return "Event tidak ditemukan. Muat ulang daftar.";
+    case "event_not_actionable": return "Event sudah cocok dan tidak dapat ditandai ulang.";
+    case "event_reviewed": return "Event sudah dicek dan tidak dapat dicocokkan ulang.";
     case "amount_reused_requires_review":
       return "Nominal ini pernah digunakan pesanan lain. Periksa mutasi, lalu gunakan Verifikasi manual.";
     case "manual_verification_required":
@@ -189,7 +218,7 @@ function retryErrorMessage(code?: string) {
     case "event_predates_invoice":
       return "Event ini tercatat SEBELUM invoice aktif dibuat, jadi tidak bisa menjadi pembayarnya. Cek mutasi merchant sesuai invoice secara manual.";
     default:
-      return code;
+      return code ? "Event perlu diperiksa. Buka detail pesanan dan cocokkan mutasi merchant." : undefined;
   }
 }
 
@@ -213,7 +242,7 @@ function ManualPaymentReview({ provider, disabled, onConfirm }: {
 </Label>
       <Label className="flex items-start gap-2">
 <Checkbox required  name="verified" />Saya sudah memeriksa mutasi dan memastikan pembayaran ini belum digunakan untuk pesanan lain.</Label>
-      <Button variant="default" type="submit" disabled={disabled} className="justify-self-start rounded-xl bg-admin-primary px-4 py-2 font-semibold text-admin-inverse disabled:opacity-40">Konfirmasi pembayaran</Button>
+      <Button variant="outline" type="submit" disabled={disabled} className="justify-self-start">Konfirmasi pembayaran</Button>
     </form>
   </details>;
 }

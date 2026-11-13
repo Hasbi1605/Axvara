@@ -4,7 +4,7 @@ import { useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
 import { PlatformIcon } from "@/components/pedia/PlatformGrid";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, NativeSelect } from "@/components/admin/ui";
+import { Badge, Button, Input, NativeSelect } from "@/components/admin/ui";
 import { AdminStatusSwitch } from "../AdminStatusSwitch";
 import { ProductEditor } from "./ProductEditor";
 import { Field, Panel, Feedback, DataTable, Pagination, productStatus, parse, usablePackages, type Catalog, type PanelState, type Product } from "./shared";
@@ -19,7 +19,7 @@ export function ProductsPanel({ catalog, editing, onEdit, onBrowse }: { catalog:
   });
   const actions = (p: Product) => <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Aksi ${p.name}`}>
     <AdminStatusSwitch checked={!!p.is_active} label={`${p.is_active ? "Nonaktifkan" : "Aktifkan"} ${p.name}`} describedBy={`product-status-${p.id}`} disabled={catalog.busy || catalog.loading} busy={catalog.busy} onChange={() => void catalog.write("/api/admin/pedia/products", { id: p.id, is_active: p.is_active ? 0 : 1 }, `${p.name} ${p.is_active ? "dinonaktifkan" : "diaktifkan"}.`)} />
-    <Button size="sm" onClick={() => onEdit(p.id)} aria-label={`Edit ${p.name}`}>Edit</Button>
+    <Button variant="outline" size="sm" onClick={() => onEdit(p.id)} aria-label={`Edit ${p.name}`}>Edit</Button>
   </div>;
   const rows = filtered.slice((page - 1) * 50, page * 50).map(p => {
     const tiers = tiersFor(p.id), state = productStatus(p, tiers), prices = tiers.filter(t => t.is_active).flatMap(t => usablePackages(p, t).map(qty => Number(parse<Record<string, number>>(t.package_prices_json, {})[qty])));
@@ -36,20 +36,13 @@ export function ProductsPanel({ catalog, editing, onEdit, onBrowse }: { catalog:
         if (result?.id) { setCreating(false); onEdit(Number(result.id)); } return result;
       }} onCreateTier={body => catalog.write("/api/admin/pedia/products", body, "Varian dibuat. Periksa harga sebelum aktivasi.", "POST")} />
     </> : <>
-      <Card className="my-4">
-        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Filter</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 p-4 pt-0 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_150px_170px_auto]">
-          <Field label="Cari produk"><Input value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} placeholder="Nama, slug, atau ID layanan" /></Field>
-          <Field label="Platform"><NativeSelect value={platform} onChange={e => { setPlatform(e.target.value); setPage(1); }}><option value="">Semua platform</option>{PEDIA_PLATFORM_CONFIG.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</NativeSelect></Field>
-          <Field label="Status produk"><NativeSelect value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="">Semua status</option><option>Siap dijual</option><option value="attention">Perlu perhatian</option><option>Nonaktif</option></NativeSelect></Field>
-          <div className="flex items-end gap-2 sm:col-span-2 xl:col-span-1">
-            <Button disabled={catalog.busy} onClick={() => setCreating(true)} className="w-full xl:w-auto">Buat produk</Button>
-          </div>
-          {(query || platform || status) && <div className="sm:col-span-2 xl:col-span-4">
-            <Button variant="outline" size="sm" onClick={() => { setQuery(""); setPlatform(""); setStatus(""); setPage(1); }}>Hapus filter</Button>
-          </div>}
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[220px] flex-1"><Field label="Cari produk"><Input value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} placeholder="Nama, slug, atau ID layanan" /></Field></div>
+        <div className="w-[170px]"><Field label="Platform"><NativeSelect value={platform} onChange={e => { setPlatform(e.target.value); setPage(1); }}><option value="">Semua platform</option>{PEDIA_PLATFORM_CONFIG.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</NativeSelect></Field></div>
+        <div className="w-[170px]"><Field label="Status produk"><NativeSelect value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="">Semua status</option><option>Siap dijual</option><option value="attention">Perlu perhatian</option><option>Nonaktif</option></NativeSelect></Field></div>
+        <Button disabled={catalog.busy} onClick={() => setCreating(true)}>Buat produk</Button>
+        {(query || platform || status) && <Button variant="outline" size="sm" onClick={() => { setQuery(""); setPlatform(""); setStatus(""); setPage(1); }}>Hapus filter</Button>}
+      </div>
       {!catalog.loading && !catalog.error && !catalog.data.products.length && <div className="space-y-3"><p className="text-sm text-admin-muted">Belum ada produk. Mulai dengan produk nonaktif atau kurasi awal.</p><Button disabled={catalog.busy} onClick={() => void catalog.write("/api/admin/pedia/products", { action: "seed" }, "Kurasi awal dimuat.", "POST")}>Muat kurasi awal</Button></div>}
       {!catalog.loading && !catalog.error && !!catalog.data.products.length && !filtered.length && <p className="py-6 text-sm text-admin-muted">Tidak ada produk yang cocok dengan filter.</p>}
       {!!rows.length && <>

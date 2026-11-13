@@ -328,13 +328,13 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
 </div> : orders.length === 0 ? !error && <p className="p-10 text-center text-sm text-admin-muted">Tidak ada pesanan yang cocok dengan filter.</p> : <Table className="block md:table md:table-fixed" aria-label="Daftar pesanan">
 <TableHeader className="hidden md:table-header-group">
 <TableRow>
-<TableHead className="w-[23%]">Pesanan</TableHead>
-<TableHead className="w-[18%]">Produk</TableHead>
-<TableHead className="w-[12%] text-right">Total</TableHead>
-<TableHead className="w-[13%]">Status</TableHead>
-<TableHead className="w-[13%]">Kanal/Metode</TableHead>
-<TableHead className="w-[10%]">Waktu</TableHead>
-<TableHead className="w-[11%] text-right">Aksi</TableHead>
+<TableHead className="w-[22%]">Pesanan</TableHead>
+<TableHead className="w-[16%]">Produk</TableHead>
+<TableHead className="w-[11%] text-right">Total</TableHead>
+<TableHead className="w-[11%]">Status</TableHead>
+<TableHead className="w-[12%]">Kanal/Metode</TableHead>
+<TableHead className="w-[13%]">Waktu</TableHead>
+<TableHead className="w-[15%] text-right">Aksi</TableHead>
 </TableRow>
 </TableHeader>
 <TableBody className="block space-y-3 p-3 md:table-row-group md:space-y-0 md:p-0">{orders.map((order) => <OrderRow key={order.code} order={order} onChanged={() => { void load(); onChanged?.(); }} onDetail={() => setSelected(order)} onAction={(kind) => { setAction({ kind, order }); setActionNote(""); }} />)}</TableBody>
@@ -371,7 +371,7 @@ function OrderRow({ order, onDetail, onAction, onChanged }: { order: Order; onDe
   const needsHandover = isMarket && order.status === "lunas"
     && hasHandoverItems(order) && ["manual_required", "retry", "failed"].includes(String(order.fulfillmentStatus ?? ""));
   return <TableRow className="block rounded-md border border-admin-border bg-admin-card md:table-row md:rounded-none md:border-x-0 md:border-t-0">
-    <TableCell className="block min-w-0 align-top md:table-cell">
+    <TableCell className="block min-w-0 align-top first:pl-4 md:table-cell md:first:pl-6">
 <Button variant="link" type="button" onClick={onDetail} className="h-auto max-w-full justify-start whitespace-normal break-all p-0 text-left font-mono text-xs font-semibold text-admin-fg">{order.code}</Button>
 <p className="mt-2 truncate text-sm font-medium text-admin-fg" title={displayName(order)}>{displayName(order)}</p>
 <p className="mt-0.5 truncate text-xs text-admin-muted" title={order.wa || order.email}>{order.wa || order.email || "Kontak tidak tersedia"}</p>
@@ -380,10 +380,11 @@ function OrderRow({ order, onDetail, onAction, onChanged }: { order: Order; onDe
     <TableCell className="block align-top md:table-cell md:text-right"><span className="mr-2 text-xs text-admin-muted md:hidden">Total</span><span className="tabular-nums text-admin-fg">{formatRupiah(order.paymentAmount)}</span></TableCell>
     <TableCell className="block align-top md:table-cell"><div className="flex flex-wrap gap-2 [&>span]:whitespace-normal"><StatusBadge status={order.status} />{isPedia ? <>
 <PediaStatusChip order={order} />
-</> : <FulfillmentBadge status={order.fulfillmentStatus} supplierActive={hasActiveSupplierLink(order.supplierLinks)} />}</div>{isPedia && order.status === "pending" && <PediaAwaitingPayment />}{order.proofStatus === "rejected" && <p className="mt-1 text-xs text-admin-danger">Bukti ditolak{order.proofRejectionReason ? `: ${order.proofRejectionReason}` : ""}</p>}{(!isMarket || providerPayment) && order.status === "pending" && !isPedia && <p className="mt-1 text-xs text-admin-muted">Menunggu verifikasi provider</p>}{order.kind === "games" && <p className="mt-1 text-xs text-admin-muted">Games · pemrosesan otomatis</p>}</TableCell>
+</> : <FulfillmentBadge status={order.fulfillmentStatus} supplierActive={hasActiveSupplierLink(order.supplierLinks)} />}</div>{isPedia && order.status === "pending" && <PediaAwaitingPayment />}{order.proofStatus === "rejected" && <p className="mt-1 text-xs text-admin-danger" title={order.proofRejectionReason}>Bukti ditolak</p>}{(!isMarket || providerPayment) && order.status === "pending" && !isPedia && <p className="mt-1 text-xs text-admin-muted" title="Menunggu verifikasi provider">Otomatis</p>}</TableCell>
     <TableCell className="block align-top md:table-cell"><div className="flex flex-wrap gap-2 [&>span]:whitespace-normal [&>span]:break-words"><ChannelBadge channel={order.salesChannel} /><MethodBadge method={order.method} /></div></TableCell>
-    <TableCell className="block align-top text-xs text-admin-muted md:table-cell"><time dateTime={order.createdAt}>{formatDate(order.createdAt)}</time></TableCell>
-    <TableCell className="block align-top md:table-cell"><div className="flex flex-wrap gap-2 md:justify-end">
+    <TableCell className="block whitespace-nowrap align-top text-xs text-admin-muted md:table-cell"><time dateTime={order.createdAt} title={`${formatDate(order.createdAt)} WIB`}>{formatOrderTime(order.createdAt)}</time></TableCell>
+    <TableCell className="block align-top last:pr-4 md:table-cell md:last:pr-6"><div className="flex flex-wrap gap-2 md:justify-end">
+    <div className="flex items-center gap-1">
       <Button variant="outline" size="sm" onClick={onDetail}>Detail</Button>
       {(needsHandover || (isMarket && !providerPayment && order.status === "pending")) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Tindakan lain ${order.code}`}><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
         {needsHandover && <DropdownMenuItem onSelect={() => onAction("handover")}>Kirim ke pembeli</DropdownMenuItem>}
@@ -392,7 +393,7 @@ function OrderRow({ order, onDetail, onAction, onChanged }: { order: Order; onDe
           <DropdownMenuItem className="text-admin-danger" onSelect={() => onAction("cancel")}>Batalkan pesanan</DropdownMenuItem>
         </>}
       </DropdownMenuContent></DropdownMenu>}
-      {isPedia && <PediaFollowUpLink order={order} />}
+      </div>{isPedia && <PediaFollowUpLink order={order} />}
       {order.status === "lunas" && order.supplierLinks?.length ? <SupplierLinkActions links={order.supplierLinks} onChanged={onChanged} compact /> : null}
     </div>
   </TableCell>
@@ -650,6 +651,11 @@ function FulfillmentBadge({ status, supplierActive = false }: { status?: string;
 // Timestamp D1 berformat spasi adalah UTC — parsing wajib lewat helper kanonis
 // (formatWibDateTime), bukan `new Date(value)` yang membacanya sebagai lokal.
 function formatDate(value: string) { return formatWibDateTime(value) ?? value; }
+function formatOrderTime(value: string) {
+  const currentYear = formatWibDateTime(new Date().toISOString(), { year: "numeric" });
+  const year = formatWibDateTime(value, { year: "numeric" });
+  return formatWibDateTime(value, { day: "numeric", month: "short", ...(year !== currentYear ? { year: "numeric" } : {}), hour: "2-digit", minute: "2-digit" })?.replace(",", "") ?? "—";
+}
 function normalizePedia(raw: unknown): PediaSummary | null {
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Record<string, unknown>;
