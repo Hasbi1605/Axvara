@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
-import { IosIcon } from "@/components/admin/AdminIcon";
+import { Zap } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Textarea } from "@/components/admin/ui";
 import { SupplierTabs, type SupplierTabId } from "@/components/admin/SupplierTabs";
 import { AdminStatusSwitch } from "./AdminStatusSwitch";
 import { TUNVN_BUFF_MARKUP_PERCENT, TUNVN_CHATGPT_MARKUP_PERCENT } from "@/lib/tunvn/pricing";
@@ -40,10 +41,6 @@ type BuffData = {
 type Row = Record<string, unknown>;
 type DispatchLink = { id:number; order_code:string; item_index:number; kind:string; quantity:number; cost_usdt:number; status:string; provider_order_group:string|null; provider_batch_id:string|null; provider_order_code:string|null; last_error:string|null; receipt_json:string|null; has_receipt:number; can_retry?:number; purchase_disabled?:number };
 
-const INPUT = "mt-1 min-h-10 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-sm text-admin-fg outline-none transition focus:border-admin-accent/50 [color-scheme:inherit]";
-const TEXTAREA = `${INPUT} min-h-24`;
-const BUTTON = "inline-flex min-h-9 items-center justify-center whitespace-nowrap rounded-md border border-admin-border bg-admin-subtle px-3.5 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50";
-const PRIMARY = "inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-admin-primary px-4 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary/90 disabled:opacity-50";
 const TABS: { id: SupplierTabId; label: string }[] = [
   { id: "ringkas", label: "Ringkasan" },
   { id: "antrean", label: "Katalog & Terbit" },
@@ -172,63 +169,84 @@ export function TunvnManager() {
 
   const items = (products?.items ?? []).filter((item) => !q || `${item.supplier_product_id} ${item.name} ${item.admin_name ?? ""}`.toLowerCase().includes(q.toLowerCase()));
   const counts = products?.counts ?? { total: 0, published: 0, requested: 0, in_stock: 0 };
+  const stats = [
+    { label: "Koneksi API", value: products?.configured ? "Terhubung" : "Belum terkonfigurasi", tone: products?.configured ? "text-admin-success" : "text-admin-warning" },
+    { label: "Saldo wallet", value: balance?.ok ? `${usdt(balance.balance_usdt)} · ${Number(balance.balance_vnd ?? 0).toLocaleString("id-ID")} VND` : "Tidak terbaca", hint: balance?.username },
+    { label: "Produk mirror", value: String(counts.total) },
+    { label: "Tampil publik", value: String(counts.published), hint: `${counts.requested} diminta terbit`, tone: "text-admin-success" },
+    { label: "Sinkron terakhir", value: formatWibDateTime(products?.last_sync_at) ?? "Belum pernah" },
+  ];
 
-  return <div className="mt-5 min-w-0 space-y-4">
+  return <div className="mt-5 min-w-0 space-y-6">
     <header>
-      <h2 className="font-display text-xl font-semibold text-admin-fg">TUNVN PREHUB</h2>
-      <p className="mt-1 text-xs text-admin-muted">Reseller Telegram TUNVN. Semua produk mulai nonaktif; tampil publik hanya bila permintaan terbit + produk aktif dinyalakan di sini.</p>
+      <h2 className="text-lg font-semibold text-admin-fg">TUNVN PREHUB</h2>
+      <p className="mt-1 text-sm text-admin-muted">Reseller Telegram TUNVN. Semua produk mulai nonaktif; tampil publik hanya bila permintaan terbit + produk aktif dinyalakan di sini.</p>
     </header>
 
     <SupplierTabs tabs={TABS} active={tab} onChange={setTab} />
 
     <div aria-live="polite" className="space-y-2 text-sm">
       {busy && <p role="status" className="text-admin-accent">Memproses…</p>}
-      {error && <p role="alert" className="text-admin-danger">{error} <button type="button" className="underline" onClick={() => void load()}>Muat ulang</button></p>}
+      {error && <div role="alert" className="rounded-md border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-admin-danger">
+        <p>{error}</p>
+        <Button variant="outline" size="sm" className="mt-2" onClick={() => void load()}>Coba lagi</Button>
+      </div>}
       {success && <p role="status" className="text-admin-success">{success}</p>}
     </div>
 
     {loading && <p role="status" className="text-sm text-admin-muted">Memuat data TUNVN…</p>}
 
     {!loading && tab === "ringkas" && <>
-      <section className="admin-surface space-y-3 rounded-xl p-4" aria-label="Pengiriman otomatis">
-        <h3 className="text-sm font-semibold text-admin-fg">Pengiriman otomatis</h3>
-        <p className="text-xs text-admin-muted">100 baris terbaru. Rekonsiliasi hanya membaca batch Buff yang diketahui; tidak membeli ulang. Receipt tambahan hanya untuk admin.</p>
-        {!links.length && <p className="text-xs text-admin-muted">Belum ada pesanan otomatis.</p>}
-        {links.map(link=><div key={link.id} className="min-w-0 space-y-1 border-t border-admin-border pt-3 text-xs text-admin-muted">
-          <p className="break-all font-semibold text-admin-fg">{link.order_code} · item {link.item_index+1} · {link.status}</p>
-          <p>{link.kind} ×{link.quantity} · snapshot biaya {usdt(link.cost_usdt)}</p>
-          <p className="break-all">{[link.provider_order_group,link.provider_batch_id,link.provider_order_code].filter(Boolean).join(" · ") || "Belum ada ID penyedia"}</p>
-          {link.receipt_json && <p className="break-all">{link.receipt_json}</p>}
-          {link.purchase_disabled ? <p className="text-admin-warning">Pembelian otomatis dinonaktifkan · penanganan manual</p> : link.last_error && <p className="text-admin-warning">{TUNVN_ERROR_LABEL[link.last_error] ?? link.last_error}</p>}
-          <div className="flex flex-wrap gap-2">
-            {Boolean(link.can_retry) && <button type="button" className={`${PRIMARY} min-h-12`} disabled={!!busy} onClick={()=>void dispatchAction(link.id,"retry")}>Retry</button>}
-            {link.kind==="buff" && link.provider_batch_id && ["processing","needs_admin"].includes(link.status) && <button type="button" className={BUTTON} disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reconcile")}>Periksa status batch</button>}
-            {Boolean(link.has_receipt) && <button type="button" className={BUTTON} disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reveal")}>Buka receipt privat</button>}
-          </div>
-        </div>)}
-        {receipt && <div><button type="button" className={BUTTON} onClick={()=>setReceipt("")}>Tutup receipt</button><pre className="mt-2 whitespace-pre-wrap break-all text-xs text-admin-muted">{receipt}</pre></div>}
-      </section>
-      <section className="admin-surface grid gap-3 rounded-xl p-4 text-sm text-admin-muted sm:grid-cols-2 xl:grid-cols-5" aria-label="Status TUNVN">
-        <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Koneksi API</p><p className={`mt-1 font-semibold ${products?.configured ? "text-admin-success" : "text-admin-warning"}`}>{products?.configured ? "Terhubung" : "Belum terkonfigurasi"}</p></div>
-        <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Saldo wallet</p><p className="mt-1 font-semibold text-admin-fg">{balance?.ok ? `${usdt(balance.balance_usdt)} · ${Number(balance.balance_vnd ?? 0).toLocaleString("id-ID")} VND` : "Tidak terbaca"}</p>{balance?.username && <p className="mt-0.5 text-xs text-admin-muted">{balance.username}</p>}</div>
-        <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Produk mirror</p><p className="mt-1 font-semibold text-admin-fg">{counts.total}</p></div>
-        <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Tampil publik</p><p className="mt-1 font-semibold text-admin-success">{counts.published}</p><p className="mt-0.5 text-xs text-admin-muted">{counts.requested} diminta terbit</p></div>
-        <div><p className="text-xs uppercase tracking-[0.08em] text-admin-muted">Sinkron terakhir</p><p className="mt-1 font-semibold text-admin-fg">{formatWibDateTime(products?.last_sync_at) ?? "Belum pernah"}</p></div>
-      </section>
-      <section className="admin-surface rounded-xl p-4 text-sm text-admin-muted">
-        <h3 className="font-semibold text-admin-fg">Kontrol publikasi</h3>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5">
-          <li>Tab <b className="text-admin-fg">Katalog &amp; Terbit</b>: atur markup, nama, dan deskripsi tiap produk; nyalakan <b className="text-admin-fg">Diminta terbit</b> lalu <b className="text-admin-fg">Produk aktif</b> untuk menampilkannya.</li>
-          <li>Harga jual dihitung ulang otomatis dari modal USDT × kurs tersimpan × (1 + markup). Tombol Publikasi menyegarkan kurs + stok dari TUNVN.</li>
-          <li>Tab <b className="text-admin-fg">Buff Muse</b>: markup per varian, harga manual opsional, dan saklar aktif per varian pada produk Muse AI.</li>
-          <li>Order eligible diproses otomatis setelah lunas. Jika saldo kurang, top up TUNVN lalu Retry; pembelian ambigu tidak boleh diulang.</li>
-        </ul>
-      </section>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Status TUNVN">
+        {stats.map((stat) => <Card key={stat.label}>
+          <CardHeader className="p-4 pb-2"><CardDescription className="text-xs uppercase tracking-[0.08em]">{stat.label}</CardDescription></CardHeader>
+          <CardContent className="p-4 pt-0">
+            <p className={`text-2xl font-semibold tabular-nums ${stat.tone ?? "text-admin-fg"}`}>{stat.value}</p>
+            {stat.hint && <p className="mt-1 text-xs text-admin-muted">{stat.hint}</p>}
+          </CardContent>
+        </Card>)}
+      </div>
+      <Card>
+        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Pengiriman otomatis</CardTitle><CardDescription className="mt-1 text-xs">100 baris terbaru. Rekonsiliasi hanya membaca batch Buff yang diketahui; tidak membeli ulang. Receipt tambahan hanya untuk admin.</CardDescription></CardHeader>
+        <CardContent className="space-y-3 p-4 pt-0">
+          {!links.length && <p className="text-sm text-admin-muted">Belum ada pesanan otomatis.</p>}
+          {links.map(link => <div key={link.id} className="min-w-0 space-y-1 border-t border-admin-border pt-3 text-xs text-admin-muted">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={link.status === "needs_admin" ? "warning" : link.status === "completed" ? "success" : "secondary"}>{link.status}</Badge>
+              <p className="break-all font-semibold text-admin-fg">{link.order_code} · item {link.item_index+1}</p>
+            </div>
+            <p>{link.kind} · {link.quantity} unit · snapshot biaya {usdt(link.cost_usdt)}</p>
+            <p className="break-all">{[link.provider_order_group,link.provider_batch_id,link.provider_order_code].filter(Boolean).join(" · ") || "Belum ada ID penyedia"}</p>
+            {link.receipt_json && <p className="break-all">{link.receipt_json}</p>}
+            {link.purchase_disabled ? <p className="text-admin-warning">Pembelian otomatis dinonaktifkan · penanganan manual</p> : link.last_error && <p className="text-admin-warning">{TUNVN_ERROR_LABEL[link.last_error] ?? link.last_error}</p>}
+            <div className="flex flex-wrap gap-2">
+              {Boolean(link.can_retry) && <Button type="button" size="sm" className="h-12 px-3 text-xs font-semibold" disabled={!!busy} onClick={()=>void dispatchAction(link.id,"retry")}>Retry</Button>}
+              {link.kind==="buff" && link.provider_batch_id && ["processing","needs_admin"].includes(link.status) && <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reconcile")}>Periksa status batch</Button>}
+              {Boolean(link.has_receipt) && <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={()=>void dispatchAction(link.id,"reveal")}>Buka receipt privat</Button>}
+            </div>
+          </div>)}
+          {receipt && <div className="space-y-2">
+            <Button type="button" variant="outline" size="sm" onClick={()=>setReceipt("")}>Tutup receipt</Button>
+            <pre className="whitespace-pre-wrap break-all text-xs text-admin-muted">{receipt}</pre>
+          </div>}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Kontrol publikasi</CardTitle></CardHeader>
+        <CardContent className="p-4 pt-0">
+          <ul className="list-disc space-y-1 pl-5 text-sm leading-5 text-admin-muted">
+            <li>Tab <b className="text-admin-fg">Katalog &amp; Terbit</b>: atur markup, nama, dan deskripsi tiap produk; nyalakan <b className="text-admin-fg">Diminta terbit</b> lalu <b className="text-admin-fg">Produk aktif</b> untuk menampilkannya.</li>
+            <li>Harga jual dihitung ulang otomatis dari modal USDT dikali kurs tersimpan dan markup. Tombol Publikasi menyegarkan kurs + stok dari TUNVN.</li>
+            <li>Tab <b className="text-admin-fg">Buff Muse</b>: markup per varian, harga manual opsional, dan saklar aktif per varian pada produk Muse AI.</li>
+            <li>Order eligible diproses otomatis setelah lunas. Jika saldo kurang, top up TUNVN lalu Retry; pembelian ambigu tidak boleh diulang.</li>
+          </ul>
+        </CardContent>
+      </Card>
     </>}
 
     {!loading && tab === "antrean" && <>
       <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_auto]">
-        <label className="block min-w-0 text-xs font-medium text-admin-muted">Cari produk mirror<input className={INPUT} value={q} onChange={(e) => setQ(e.target.value)} placeholder="chatgpt, Muse, capcut…" /></label>
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari produk mirror…" aria-label="Cari produk mirror" />
         <p className="self-end text-xs text-admin-muted">{items.length} produk tampil</p>
       </div>
       {items.length === 0 && <p className="text-sm text-admin-muted">Belum ada produk mirror. Jalankan Publikasi untuk sinkron pertama.</p>}
@@ -237,125 +255,139 @@ export function TunvnManager() {
           const publishable = PUBLISHABLE.includes(item.supplier_product_id);
           const live = item.visible === 1;
           const expanded = openId === item.supplier_product_id;
-          return <section key={item.supplier_product_id} className="admin-surface rounded-xl p-4">
-            <div className="flex flex-wrap items-start gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-admin-fg">#{item.supplier_product_id} {item.admin_name || item.name}</p>
-                <p className="mt-0.5 truncate text-xs text-admin-muted">{item.name} · stok {item.stock} · sinkron {formatWibDateTime(item.synced_at) ?? "-"}</p>
-                <p className="mt-1 text-xs text-admin-muted">Modal {usdt(item.price_usdt)} ({item.price_vnd.toLocaleString("id-ID")} VND) · Harga {item.sell_price_idr ? formatRupiah(item.sell_price_idr) : "-"} · Kurs {item.fx_idr_per_usdt ? `Rp${Math.round(item.fx_idr_per_usdt).toLocaleString("id-ID")}` : "-"}</p>
+          return <Card key={item.supplier_product_id}>
+            <CardContent className="p-4">
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-admin-fg">#{item.supplier_product_id} {item.admin_name || item.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-admin-muted">{item.name} · stok {item.stock} · sinkron {formatWibDateTime(item.synced_at) ?? "-"}</p>
+                  <p className="mt-1 text-xs text-admin-muted">Modal {usdt(item.price_usdt)} ({item.price_vnd.toLocaleString("id-ID")} VND) · Harga {item.sell_price_idr ? formatRupiah(item.sell_price_idr) : "-"} · Kurs {item.fx_idr_per_usdt ? `Rp${Math.round(item.fx_idr_per_usdt).toLocaleString("id-ID")}` : "-"}</p>
+                </div>
+                <Badge variant={live ? "success" : "secondary"}>{live ? "Tampil publik" : "Tersembunyi"}</Badge>
+                <Button type="button" variant="outline" size="sm" aria-expanded={expanded} onClick={() => setOpenId(expanded ? null : item.supplier_product_id)}>{expanded ? "Tutup" : "Atur"}</Button>
               </div>
-              <span className={`rounded-md border px-2 py-0.5 text-xs font-bold ${live ? "border-emerald-400/25 bg-emerald-500/10 text-admin-success" : "border-admin-border bg-admin-subtle text-admin-muted"}`}>{live ? "Tampil publik" : "Tersembunyi"}</span>
-              <button type="button" className={BUTTON} aria-expanded={expanded} onClick={() => setOpenId(expanded ? null : item.supplier_product_id)}>{expanded ? "Tutup" : "Atur"}</button>
-            </div>
 
-            {expanded && <div className="mt-4 grid gap-4 border-t border-admin-border pt-4 lg:grid-cols-2">
-              <div className="space-y-3">
-                <label className="block text-xs font-medium text-admin-muted">Markup % (0–1000)
-                  <input className={INPUT} type="number" min={0} max={1000} step="0.5" inputMode="decimal"
-                    value={draft(`m${item.supplier_product_id}`, String(item.markup_percent))}
-                    onChange={(e) => setDraft(`m${item.supplier_product_id}`, e.target.value)}
-                    onBlur={() => saveMarkup(item)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); saveMarkup(item); } }} />
-                </label>
-                <label className="block text-xs font-medium text-admin-muted">Nama publik (kosong = bawaan)
-                  <input className={INPUT} maxLength={160}
-                    value={draft(`n${item.supplier_product_id}`, item.admin_name ?? "")}
-                    placeholder={item.axvara_name ?? item.name}
-                    onChange={(e) => setDraft(`n${item.supplier_product_id}`, e.target.value)} />
-                </label>
-                <label className="block text-xs font-medium text-admin-muted">Deskripsi publik (kosong = bawaan)
-                  <textarea className={TEXTAREA} maxLength={4000}
-                    value={draft(`d${item.supplier_product_id}`, item.admin_description ?? "")}
-                    placeholder={item.axvara_description ?? ""}
-                    onChange={(e) => setDraft(`d${item.supplier_product_id}`, e.target.value)} />
-                </label>
-                <button type="button" className={BUTTON} disabled={busy === `p${item.supplier_product_id}`} onClick={() => saveText(item)}>Simpan nama &amp; deskripsi</button>
-                <p className="text-xs text-admin-muted">Markup bawaan: ChatGPT {TUNVN_CHATGPT_MARKUP_PERCENT}%. Mengubah markup langsung menghitung ulang harga dari kurs tersimpan.</p>
-              </div>
-              <div className="space-y-3">
-                {publishable ? <>
-                  <div className="flex items-center justify-between gap-3 rounded-xl border border-admin-border bg-admin-subtle px-3 py-2">
-                    <span className="text-xs text-admin-muted">Diminta terbit</span>
-                    <AdminStatusSwitch checked={item.publish_requested === 1} label={`Permintaan terbit ${item.name}`} disabled={busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
-                      onChange={() => void patchProduct(item.supplier_product_id, { publish_requested: item.publish_requested !== 1 }, `Permintaan terbit ${item.name} ${item.publish_requested === 1 ? "dimatikan" : "dinyalakan"}.`)} />
+              {expanded && <div className="mt-4 grid gap-4 border-t border-admin-border pt-4 lg:grid-cols-2">
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label htmlFor={`tunvn-markup-${item.supplier_product_id}`} className="text-xs font-medium text-admin-muted">Markup (0–1000%)</label>
+                    <Input id={`tunvn-markup-${item.supplier_product_id}`} type="number" min={0} max={1000} step="0.5" inputMode="decimal"
+                      value={draft(`m${item.supplier_product_id}`, String(item.markup_percent))}
+                      onChange={(e) => setDraft(`m${item.supplier_product_id}`, e.target.value)}
+                      onBlur={() => saveMarkup(item)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); saveMarkup(item); } }} />
                   </div>
-                  {item.supplier_product_id === 86 && <div className="flex items-center justify-between gap-3 rounded-xl border border-admin-border bg-admin-subtle px-3 py-2">
-                    <span className="text-xs text-admin-muted">ChatGPT Private aktif di Market</span>
-                    <AdminStatusSwitch checked={item.axvara_is_active === 1} label="ChatGPT Private aktif" disabled={busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
-                      onChange={() => void patchProduct(item.supplier_product_id, { axvara_is_active: item.axvara_is_active !== 1 }, `${item.name} ${item.axvara_is_active === 1 ? "dinonaktifkan" : "diaktifkan"}.`)} />
-                  </div>}
-                  <p className="text-xs leading-4 text-admin-muted">Satu produk ChatGPT Private, dua varian. Diminta terbit mengatur varian ini saja; saklar produk bersama ada di Business. Mematikan GPay tidak menyembunyikan Business. Aktifkan minimal satu varian sebelum produk.</p>
-                </> : <p className="text-xs leading-5 text-admin-warning">Produk ini belum punya pemetaan terbit AXVARA, jadi hanya bisa diatur markup/nama/deskripsinya dan tetap tersembunyi. Pemetaan terbit baru ditambah lewat rilis katalog berikutnya.</p>}
-              </div>
-            </div>}
-          </section>;
+                  <div className="space-y-2">
+                    <label htmlFor={`tunvn-name-${item.supplier_product_id}`} className="text-xs font-medium text-admin-muted">Nama publik (kosong = bawaan)</label>
+                    <Input id={`tunvn-name-${item.supplier_product_id}`} maxLength={160}
+                      value={draft(`n${item.supplier_product_id}`, item.admin_name ?? "")}
+                      placeholder={item.axvara_name ?? item.name}
+                      onChange={(e) => setDraft(`n${item.supplier_product_id}`, e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor={`tunvn-desc-${item.supplier_product_id}`} className="text-xs font-medium text-admin-muted">Deskripsi publik (kosong = bawaan)</label>
+                    <Textarea id={`tunvn-desc-${item.supplier_product_id}`} className="min-h-24" maxLength={4000}
+                      value={draft(`d${item.supplier_product_id}`, item.admin_description ?? "")}
+                      placeholder={item.axvara_description ?? ""}
+                      onChange={(e) => setDraft(`d${item.supplier_product_id}`, e.target.value)} />
+                  </div>
+                  <Button type="button" variant="outline" size="sm" disabled={busy === `p${item.supplier_product_id}`} onClick={() => saveText(item)}>Simpan nama &amp; deskripsi</Button>
+                  <p className="text-xs text-admin-muted">Markup bawaan: ChatGPT {TUNVN_CHATGPT_MARKUP_PERCENT}%. Mengubah markup langsung menghitung ulang harga dari kurs tersimpan.</p>
+                </div>
+                <div className="space-y-3">
+                  {publishable ? <>
+                    <div className="flex items-center justify-between gap-3 rounded-md border border-admin-border bg-admin-subtle/60 px-3 py-2">
+                      <span className="text-xs text-admin-muted">Diminta terbit</span>
+                      <AdminStatusSwitch checked={item.publish_requested === 1} label={`Permintaan terbit ${item.name}`} disabled={busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
+                        onChange={() => void patchProduct(item.supplier_product_id, { publish_requested: item.publish_requested !== 1 }, `Permintaan terbit ${item.name} ${item.publish_requested === 1 ? "dimatikan" : "dinyalakan"}.`)} />
+                    </div>
+                    {item.supplier_product_id === 86 && <div className="flex items-center justify-between gap-3 rounded-md border border-admin-border bg-admin-subtle/60 px-3 py-2">
+                      <span className="text-xs text-admin-muted">ChatGPT Private aktif di Market</span>
+                      <AdminStatusSwitch checked={item.axvara_is_active === 1} label="ChatGPT Private aktif" disabled={busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
+                        onChange={() => void patchProduct(item.supplier_product_id, { axvara_is_active: item.axvara_is_active !== 1 }, `${item.name} ${item.axvara_is_active === 1 ? "dinonaktifkan" : "diaktifkan"}.`)} />
+                    </div>}
+                    <p className="text-xs leading-4 text-admin-muted">Satu produk ChatGPT Private, dua varian. Diminta terbit mengatur varian ini saja; saklar produk bersama ada di Business. Mematikan GPay tidak menyembunyikan Business. Aktifkan minimal satu varian sebelum produk.</p>
+                  </> : <p className="text-xs leading-5 text-admin-warning">Produk ini belum punya pemetaan terbit AXVARA, jadi hanya bisa diatur markup/nama/deskripsinya dan tetap tersembunyi. Pemetaan terbit baru ditambah lewat rilis katalog berikutnya.</p>}
+                </div>
+              </div>}
+            </CardContent>
+          </Card>;
         })}
       </div>
     </>}
 
     {!loading && tab === "markup" && <>
-      <section className="admin-surface rounded-xl p-4 text-sm text-admin-muted">
-        <h3 className="font-semibold text-admin-fg">Probe Buff live</h3>
-        {buff?.probe ? <p className="mt-1 text-xs">Modal terverifikasi {buff.probe.cost_per_b_usdt.toFixed(4)} USDT/1B · status layanan {buff.probe.fundable ? <span className="text-admin-success">bisa diproses</span> : <span className="text-admin-warning">sementara tidak bisa</span>} · Produk Muse {buff.muse_product?.is_active ? <span className="text-admin-success">aktif</span> : <span className="text-admin-warning">nonaktif</span>}.</p>
-          : <p className="mt-1 text-xs text-admin-warning">Probe tidak tersedia{buff?.probe_error ? ` (${buff.probe_error})` : ""}; harga varian memakai snapshot terakhir.</p>}
-      </section>
+      <Card>
+        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Probe Buff live</CardTitle></CardHeader>
+        <CardContent className="p-4 pt-0">
+          {buff?.probe ? <p className="text-xs text-admin-muted">Modal terverifikasi {buff.probe.cost_per_b_usdt.toFixed(4)} USDT/1B · status layanan {buff.probe.fundable ? <span className="text-admin-success">bisa diproses</span> : <span className="text-admin-warning">sementara tidak bisa</span>} · Produk Muse {buff.muse_product?.is_active ? <span className="text-admin-success">aktif</span> : <span className="text-admin-warning">nonaktif</span>}.</p>
+            : <p className="text-xs text-admin-warning">Probe tidak tersedia{buff?.probe_error ? ` (${buff.probe_error})` : ""}; harga varian memakai snapshot terakhir.</p>}
+        </CardContent>
+      </Card>
       {(buff?.variants ?? []).length === 0 && <p className="text-sm text-admin-muted">Varian Buff belum dibuat. Jalankan Publikasi sekali untuk membuatnya (tetap nonaktif).</p>}
       <div className="space-y-3">
-        {(buff?.variants ?? []).map((variant) => <section key={variant.sku} className="admin-surface rounded-xl p-4">
-          <div className="flex flex-wrap items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-admin-fg">{variant.label}</p>
-              <p className="mt-0.5 text-xs text-admin-muted">{variant.sku} · {variant.tunvn_buff_quantity_b}B token · modal {usdt(variant.tunvn_cost_usdt)} · kurs {variant.tunvn_fx_idr_per_usdt ? `Rp${Math.round(variant.tunvn_fx_idr_per_usdt).toLocaleString("id-ID")}` : "-"}</p>
-              <p className="mt-1 text-sm font-semibold text-admin-fg">{formatRupiah(variant.price)}</p>
+        {(buff?.variants ?? []).map((variant) => <Card key={variant.sku}>
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-admin-fg">{variant.label}</p>
+                <p className="mt-0.5 text-xs text-admin-muted">{variant.sku} · {variant.tunvn_buff_quantity_b}B token · modal {usdt(variant.tunvn_cost_usdt)} · kurs {variant.tunvn_fx_idr_per_usdt ? `Rp${Math.round(variant.tunvn_fx_idr_per_usdt).toLocaleString("id-ID")}` : "-"}</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-admin-fg">{formatRupiah(variant.price)}</p>
+              </div>
+              <AdminStatusSwitch checked={variant.is_active === 1} label={`Aktif ${variant.label}`} disabled={busy === variant.sku} busy={busy === variant.sku}
+                onChange={() => void patchBuff(variant.sku, { is_active: variant.is_active !== 1 }, `${variant.label} ${variant.is_active === 1 ? "dinonaktifkan" : "diaktifkan"}.`)} />
             </div>
-            <AdminStatusSwitch checked={variant.is_active === 1} label={`Aktif ${variant.label}`} disabled={busy === variant.sku} busy={busy === variant.sku}
-              onChange={() => void patchBuff(variant.sku, { is_active: variant.is_active !== 1 }, `${variant.label} ${variant.is_active === 1 ? "dinonaktifkan" : "diaktifkan"}.`)} />
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <label className="block text-xs font-medium text-admin-muted">Markup %
-              <input className={INPUT} type="number" min={0} max={1000} step="0.5" inputMode="decimal"
-                value={draft(`bm${variant.sku}`, String(variant.tunvn_markup_percent ?? TUNVN_BUFF_MARKUP_PERCENT))}
-                onChange={(e) => setDraft(`bm${variant.sku}`, e.target.value)}
-                onBlur={() => {
-                  const raw = drafts[`bm${variant.sku}`]; if (raw === undefined) return;
-                  const value = Number(raw);
-                  if (!Number.isFinite(value) || value < 0 || value > 1000) { setError("Markup harus 0–1000%."); return; }
-                  if (value !== (variant.tunvn_markup_percent ?? TUNVN_BUFF_MARKUP_PERCENT)) void patchBuff(variant.sku, { markup_percent: value }, `Markup ${variant.label} disimpan ${value}%.`);
-                }} />
-            </label>
-            <label className="block text-xs font-medium text-admin-muted">Harga manual Rp (kosong = rumus)
-              <input className={INPUT} type="number" min={0} step={100} inputMode="numeric"
-                value={draft(`bp${variant.sku}`, variant.tunvn_admin_price_idr === null ? "" : String(variant.tunvn_admin_price_idr))}
-                onChange={(e) => setDraft(`bp${variant.sku}`, e.target.value)}
-                onBlur={() => {
-                  const raw = drafts[`bp${variant.sku}`]; if (raw === undefined) return;
-                  const value = raw.trim() === "" ? null : Number(raw);
-                  if (value !== null && (!Number.isInteger(value) || value < 0)) { setError("Harga manual harus bilangan bulat ≥ 0."); return; }
-                  void patchBuff(variant.sku, { admin_price_idr: value }, `Harga ${variant.label} disimpan.`);
-                }} />
-            </label>
-            <label className="block text-xs font-medium text-admin-muted">Label varian
-              <input className={INPUT} maxLength={120}
-                value={draft(`bl${variant.sku}`, variant.label)}
-                onChange={(e) => setDraft(`bl${variant.sku}`, e.target.value)}
-                onBlur={() => {
-                  const raw = drafts[`bl${variant.sku}`]; if (raw === undefined || raw.trim() === "" || raw === variant.label) return;
-                  void patchBuff(variant.sku, { label: raw.trim() }, `Label ${variant.sku} disimpan.`);
-                }} />
-            </label>
-          </div>
-        </section>)}
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div className="space-y-2">
+                <label htmlFor={`buff-markup-${variant.sku}`} className="text-xs font-medium text-admin-muted">Markup %</label>
+                <Input id={`buff-markup-${variant.sku}`} type="number" min={0} max={1000} step="0.5" inputMode="decimal"
+                  value={draft(`bm${variant.sku}`, String(variant.tunvn_markup_percent ?? TUNVN_BUFF_MARKUP_PERCENT))}
+                  onChange={(e) => setDraft(`bm${variant.sku}`, e.target.value)}
+                  onBlur={() => {
+                    const raw = drafts[`bm${variant.sku}`]; if (raw === undefined) return;
+                    const value = Number(raw);
+                    if (!Number.isFinite(value) || value < 0 || value > 1000) { setError("Markup harus 0–1000%."); return; }
+                    if (value !== (variant.tunvn_markup_percent ?? TUNVN_BUFF_MARKUP_PERCENT)) void patchBuff(variant.sku, { markup_percent: value }, `Markup ${variant.label} disimpan ${value}%.`);
+                  }} />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor={`buff-price-${variant.sku}`} className="text-xs font-medium text-admin-muted">Harga manual Rp (kosong = rumus)</label>
+                <Input id={`buff-price-${variant.sku}`} type="number" min={0} step={100} inputMode="numeric"
+                  value={draft(`bp${variant.sku}`, variant.tunvn_admin_price_idr === null ? "" : String(variant.tunvn_admin_price_idr))}
+                  onChange={(e) => setDraft(`bp${variant.sku}`, e.target.value)}
+                  onBlur={() => {
+                    const raw = drafts[`bp${variant.sku}`]; if (raw === undefined) return;
+                    const value = raw.trim() === "" ? null : Number(raw);
+                    if (value !== null && (!Number.isInteger(value) || value < 0)) { setError("Harga manual harus bilangan bulat ≥ 0."); return; }
+                    void patchBuff(variant.sku, { admin_price_idr: value }, `Harga ${variant.label} disimpan.`);
+                  }} />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor={`buff-label-${variant.sku}`} className="text-xs font-medium text-admin-muted">Label varian</label>
+                <Input id={`buff-label-${variant.sku}`} maxLength={120}
+                  value={draft(`bl${variant.sku}`, variant.label)}
+                  onChange={(e) => setDraft(`bl${variant.sku}`, e.target.value)}
+                  onBlur={() => {
+                    const raw = drafts[`bl${variant.sku}`]; if (raw === undefined || raw.trim() === "" || raw === variant.label) return;
+                    void patchBuff(variant.sku, { label: raw.trim() }, `Label ${variant.sku} disimpan.`);
+                  }} />
+              </div>
+            </div>
+          </CardContent>
+        </Card>)}
       </div>
     </>}
 
-    {!loading && tab === "alat" && <section className="admin-surface space-y-3 rounded-xl p-4 text-sm text-admin-muted">
-      <h3 className="font-semibold text-admin-fg">Sinkron &amp; perbarui katalog</h3>
-      <p className="text-xs leading-5">Menarik katalog terbaru dari TUNVN dan menghitung ulang harga dengan kurs USDT dari snapshot AXVARA. Status terbit, markup, nama, dan deskripsi yang diatur admin tidak ditimpa; produk yang tidak diminta terbit tetap tersembunyi.</p>
-      <button className={PRIMARY} disabled={busy === "publish" || !products?.configured} onClick={() => void publish()}>
-        <IosIcon name="lightning-bolt" size={14} tint="black" /> {busy === "publish" ? "Menyinkronkan…" : "Sinkron & perbarui sekarang"}
-      </button>
-      {!products?.configured && <p className="text-xs text-admin-warning">API TUNVN belum terkonfigurasi di Pages (TUNVN_ENABLED/TUNVN_API_KEY). Tombol aktif setelah env dipasang dan deployment berjalan.</p>}
-      <button className={BUTTON} onClick={() => void load()}>Muat ulang data</button>
-    </section>}
+    {!loading && tab === "alat" && <Card>
+      <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Sinkron &amp; perbarui katalog</CardTitle></CardHeader>
+      <CardContent className="space-y-3 p-4 pt-0">
+        <p className="text-sm leading-5 text-admin-muted">Menarik katalog terbaru dari TUNVN dan menghitung ulang harga dengan kurs USDT dari snapshot AXVARA. Status terbit, markup, nama, dan deskripsi yang diatur admin tidak ditimpa; produk yang tidak diminta terbit tetap tersembunyi.</p>
+        <Button disabled={busy === "publish" || !products?.configured} onClick={() => void publish()}>
+          <Zap /> {busy === "publish" ? "Menyinkronkan…" : "Sinkron & perbarui sekarang"}
+        </Button>
+        {!products?.configured && <p className="text-xs text-admin-warning">API TUNVN belum terkonfigurasi di Pages (TUNVN_ENABLED/TUNVN_API_KEY). Tombol aktif setelah env dipasang dan deployment berjalan.</p>}
+        <Button variant="outline" onClick={() => void load()}>Muat ulang data</Button>
+      </CardContent>
+    </Card>}
   </div>;
 }

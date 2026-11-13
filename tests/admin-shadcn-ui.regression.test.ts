@@ -6,13 +6,8 @@ import ts from "typescript";
 // Subsequent section packets remove entries only after migrating their controls.
 export const PENDING_MIGRATION = [
   "AgentIntegration.tsx", "ArticleEditor.tsx", "ArticlesManager.tsx", "BannerManager.tsx",
-  "BotAutomationManager.tsx", "BroadcastManager.tsx",
-  "GamesManager.tsx", "NewsletterSubscribers.tsx",
-  "PediaCurationPanel.tsx",
-  "PediaManager.tsx", "SekalipayManager.tsx",
-  "StoreSettingsManager.tsx", "SupplierLinkActions.tsx", "SupplierLinksManager.tsx", "SupplierPairsManager.tsx",
-  "TunvnManager.tsx", "WarungRebahanManager.tsx", "WhatsAppNotifications.tsx",
-  "pedia/OrdersPanel.tsx", "pedia/ProductEditor.tsx", "pedia/ProductsPanel.tsx", "pedia/ServicesPanel.tsx", "pedia/SettingsPanel.tsx", "pedia/shared.tsx",
+  "BotAutomationManager.tsx", "BroadcastManager.tsx", "NewsletterSubscribers.tsx",
+  "StoreSettingsManager.tsx", "WhatsAppNotifications.tsx",
 ].map(file => `src/components/admin/${file}`);
 
 const palette = /(?:text|bg|border|ring|fill|stroke|from|to|via)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-\d+)?\b/;

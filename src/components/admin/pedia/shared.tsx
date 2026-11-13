@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { pediaBounds } from "@/lib/pedia/bounds";
 import { pediaMargin } from "@/lib/pedia/pricing";
 import { pediaServiceHealth } from "@/lib/pedia/service-stats";
+import { Button, Label, Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/admin/ui";
+import { buttonVariants } from "@/components/admin/ui/button";
+import { cn } from "@/lib/utils";
 
 export type Row = Record<string, unknown>;
 export type Product = {
@@ -27,10 +31,13 @@ export type Tier = {
 };
 export type Catalog = { products: Product[]; tiers: Tier[] };
 export type ProviderHealth = { supplier: string; balance: { value: number | null; stale: boolean; history?: { created_at: string }[] }; error: string | null; pricing_verified: boolean; last_sync_at: string | null };
-export const INPUT = "mt-1 min-h-11 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-sm text-admin-fg outline-none transition focus:border-admin-accent/50 [color-scheme:inherit]";
-export const BUTTON = "inline-flex min-h-11 items-center justify-center rounded-md border border-admin-border bg-admin-subtle px-3.5 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle disabled:cursor-not-allowed disabled:opacity-50";
-export const PRIMARY = "inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-admin-primary px-4 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary/90 disabled:opacity-50";
-export const EDIT = "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle disabled:opacity-40";
+
+/** Kelas kontrol lama yang masih dipakai panel; primitif Input/Textarea sudah memuatnya. */
+export const INPUT = "";
+export const BUTTON = buttonVariants({ variant: "outline", size: "sm" });
+export const PRIMARY = buttonVariants({ size: "default" });
+export const EDIT = buttonVariants({ size: "sm" });
+
 export const TIER_ORDER = ["hemat", "standar", "premium"];
 export const STATUS: Record<string, string> = { awaiting_payment: "Menunggu pembayaran", queued: "Antrean", submitting: "Sedang dikirim", submitted: "Diproses", in_progress: "Berjalan", completed: "Selesai", partial: "Selesai sebagian", canceled: "Dibatalkan", needs_check: "Perlu diperiksa", expired: "Kedaluwarsa" };
 export function parse<T>(raw: unknown, fallback: T): T { try { return JSON.parse(String(raw)) ?? fallback; } catch { return fallback; } }
@@ -46,11 +53,11 @@ export function usablePackages(p: Product, t: Tier): number[] {
     Number.isFinite(Number(prices[qty])) && Number(prices[qty]) > 0 && pediaMargin({ supplierRatePer1k: Number(t.live_rate), quantity: qty, sellPrice: Number(prices[qty]) }) >= t.min_profit_rp);
 }
 export function productStatus(p: Product, tiers: Tier[]) {
-  if (!p.is_active) return { label: "Nonaktif", reason: "", style: "text-admin-muted" };
-  if (tiers.some(t => t.is_active && usablePackages(p, t).length)) return { label: "Siap dijual", reason: "", style: "text-admin-success" };
+  if (!p.is_active) return { label: "Nonaktif", reason: "", style: "text-admin-muted", variant: "secondary" as const };
+  if (tiers.some(t => t.is_active && usablePackages(p, t).length)) return { label: "Siap dijual", reason: "", style: "text-admin-success", variant: "success" as const };
   const active = tiers.filter(t => t.is_active);
   const reason = !active.length ? "Belum ada varian aktif" : active.every(t => !Object.values(parse<Record<string, number>>(t.package_prices_json, {})).some(v => Number(v) > 0)) ? "Belum ada harga" : "Periksa batas jumlah, layanan, dan margin";
-  return { label: "Aktif, belum bisa dijual", reason, style: "text-admin-warning" };
+  return { label: "Aktif, belum bisa dijual", reason, style: "text-admin-warning", variant: "warning" as const };
 }
 export function needsAction(r: Row) { return r.status === "needs_check" || r.followup_state === "open" || ["manual_requested", "needs_check", "requested"].includes(String(r.refill_status)); }
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -87,16 +94,51 @@ export function usePanel<T>(url: string, initial: T) {
   return { data, loading, busy, error, success, load, write, setError, setSuccess };
 }
 export type PanelState<T> = ReturnType<typeof usePanel<T>>;
+
+/** Umpan balik status panel (loading/busy/error/sukses) dengan aksi coba lagi. */
 export function Feedback({ panel }: { panel: Pick<PanelState<unknown>, "loading" | "busy" | "error" | "success" | "load"> }) {
-  return <div aria-live="polite" className="space-y-2 text-sm">{panel.loading && <p role="status" className="text-admin-muted">Memuat data...</p>}{panel.busy && <p role="status" className="text-admin-accent">Menyimpan perubahan...</p>}{panel.error && <p role="alert" className="text-admin-danger">{panel.error} <button disabled={panel.busy || panel.loading} onClick={() => void panel.load()} className="min-h-11 underline">Muat ulang</button></p>}{panel.success && <p role="status" className="text-admin-success">{panel.success}</p>}</div>;
+  return <div aria-live="polite" className="space-y-2 text-sm">
+    {panel.loading && <p role="status" className="text-admin-muted">Memuat data...</p>}
+    {panel.busy && <p role="status" className="text-admin-accent">Menyimpan perubahan...</p>}
+    {panel.error && <div role="alert" className="rounded-md border border-admin-danger/30 bg-admin-danger/10 px-3 py-2 text-admin-danger">
+      <p>{panel.error}</p>
+      <Button variant="outline" size="sm" className="mt-2" disabled={panel.busy || panel.loading} onClick={() => void panel.load()}>Coba lagi</Button>
+    </div>}
+    {panel.success && <p role="status" className="text-admin-success">{panel.success}</p>}
+  </div>;
 }
-export function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block min-w-0 text-xs font-medium text-admin-muted">{label}{children}</label>; }
-export function Panel({ title, description, children }: { title: string; description: string; children: ReactNode }) { return <section className="mt-4 min-w-0"><header className="mb-4"><h3 className="text-sm font-semibold text-admin-fg">{title}</h3><p className="mt-1 text-xs leading-5 text-admin-muted">{description}</p></header>{children}</section>; }
+
+/** Label + kontrol form (gap rapat label→input, asosiasi implisit lewat <label>). */
+export function Field({ label, children }: { label: string; children: ReactNode }) {
+  return <Label className="block min-w-0 space-y-2 text-xs font-medium text-admin-muted"><span className="block">{label}</span>{children}</Label>;
+}
+
+/** Bagian panel: header judul + deskripsi muted. */
+export function Panel({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+  return <section className="mt-4 min-w-0"><header className="mb-4"><h3 className="text-base font-semibold text-admin-fg">{title}</h3><p className="mt-1 text-sm leading-5 text-admin-muted">{description}</p></header>{children}</section>;
+}
+
 export function DataTable({ title, columns, children }: { title: string; columns: string[]; children: ReactNode }) {
-  return <div className="admin-surface min-w-0 overflow-hidden rounded-xl"><table className="w-full table-fixed text-left text-sm text-admin-muted"><caption className="sr-only">{title}</caption><thead className="border-b border-admin-border text-xs uppercase tracking-[0.08em] text-admin-muted"><tr>{columns.map(column => <th key={column} scope="col" className="px-4 py-3 font-semibold">{column}</th>)}</tr></thead><tbody className="divide-y divide-admin-border [&_td]:break-words [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_tr:hover]:bg-admin-subtle">{children}</tbody></table></div>;
+  return <div className="rounded-md border border-admin-border">
+    <Table>
+      <caption className="sr-only">{title}</caption>
+      <TableHeader><TableRow>{columns.map(column => <TableHead key={column} className="text-xs uppercase tracking-[0.08em]">{column}</TableHead>)}</TableRow></TableHeader>
+      <TableBody className="[&_td]:align-top [&_td]:break-words">{children}</TableBody>
+    </Table>
+  </div>;
 }
-export function Pagination({ page, total, size, loading, onPage }: { page: number; total: number; size: number; loading: boolean; onPage: (page: number) => void }) { return <div className="mt-4 flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-admin-muted">Halaman {page} / {Math.max(1, Math.ceil(total / size))} · {total} hasil</span><div className="flex gap-2"><button className={BUTTON} disabled={page <= 1 || loading} onClick={() => onPage(page - 1)}>Sebelumnya</button><button className={BUTTON} disabled={page * size >= total || loading} onClick={() => onPage(page + 1)}>Berikutnya</button></div></div>; }
+
+export function Pagination({ page, total, size, loading, onPage }: { page: number; total: number; size: number; loading: boolean; onPage: (page: number) => void }) {
+  return <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+    <span className="text-xs text-admin-muted">Halaman {page} / {Math.max(1, Math.ceil(total / size))} · {total} hasil</span>
+    <div className="flex gap-2">
+      <Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => onPage(page - 1)}><ChevronLeft /> Sebelumnya</Button>
+      <Button variant="outline" size="sm" disabled={page * size >= total || loading} onClick={() => onPage(page + 1)}>Berikutnya <ChevronRight /></Button>
+    </div>
+  </div>;
+}
+
 export function HealthLine({ row }: { row: Row }) {
   const health = pediaServiceHealth({ orders_7d: row.stat_orders, success_rate: row.stat_success, cancel_rate: row.stat_cancel, ai_score: row.stat_score });
-  return <p className={`text-xs ${health === "berisiko" ? "text-admin-danger" : "text-admin-muted"}`}>{health === "belum_ada_data" ? "Belum ada data 7 hari" : `${health === "sehat" ? "Sehat" : health === "cukup" ? "Cukup" : "Berisiko"} · ${Number(row.stat_orders)} pesanan/7 hari · success ${Math.round(Number(row.stat_success))}% · cancel ${Math.round(Number(row.stat_cancel))}%`}</p>;
+  return <p className={cn("text-xs", health === "berisiko" ? "text-admin-danger" : "text-admin-muted")}>{health === "belum_ada_data" ? "Belum ada data 7 hari" : `${health === "sehat" ? "Sehat" : health === "cukup" ? "Cukup" : "Berisiko"} · ${Number(row.stat_orders)} pesanan/7 hari · success ${Math.round(Number(row.stat_success))}% · cancel ${Math.round(Number(row.stat_cancel))}%`}</p>;
 }

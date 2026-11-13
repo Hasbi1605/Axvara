@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { BUTTON, PRIMARY, INPUT, Field, Panel, Feedback, type PanelState, type ProviderHealth, type Row } from "./shared";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from "@/components/admin/ui";
+import { Field, Panel, Feedback, type PanelState, type ProviderHealth, type Row } from "./shared";
 
 export type SettingsData = { settings: Record<string, number>; balance_history: Row[] };
 export function SettingsPanel({ health, settings }: { health: PanelState<{ providers: ProviderHealth[] }>; settings: PanelState<SettingsData> }) {
@@ -15,13 +16,42 @@ export function SettingsPanel({ health, settings }: { health: PanelState<{ provi
     {!settings.loading && !settings.error && !hasSettings && <p className="py-4 text-sm text-admin-muted">Belum ada pengaturan harga. Muat ulang untuk memeriksa kembali.</p>}
     {!settings.loading && !settings.error && hasSettings && <>
       <form aria-label="Pengaturan Pedia" className="space-y-4" onSubmit={e => { e.preventDefault(); const f = new FormData(e.currentTarget); setDraft(Object.fromEntries([1, 2, 3].flatMap(g => [`pedia_markup_g${g}`, `pedia_min_profit_g${g}`]).map(key => [key, Number(f.get(key))]))); }}>
-        <h4 className="text-sm font-semibold text-admin-fg">Kelompok harga</h4><fieldset disabled={settings.busy} className="grid gap-3 sm:grid-cols-3">{[1, 2, 3].map(g => <div key={g} className="space-y-3 rounded-xl border border-admin-border bg-admin-subtle p-4"><h5 className="text-sm font-semibold text-admin-fg">G{g}</h5><Field label={`Markup G${g} (%)`}><input name={`pedia_markup_g${g}`} type="number" min={0} max={1000} step="any" required defaultValue={settings.data.settings[`pedia_markup_g${g}`]} className={INPUT} /></Field><Field label={`Minimum untung G${g} (Rp)`}><input name={`pedia_min_profit_g${g}`} type="number" min={0} max={10000000} required defaultValue={settings.data.settings[`pedia_min_profit_g${g}`]} className={INPUT} /></Field></div>)}</fieldset>
-        <p className="text-xs text-admin-muted">Harga setiap varian tetap dikelola melalui editor produk.</p><button className={PRIMARY} disabled={settings.busy}>Simpan pengaturan</button>
+        <h4 className="text-sm font-semibold text-admin-fg">Kelompok harga</h4>
+        <fieldset disabled={settings.busy} className="grid gap-3 sm:grid-cols-3">
+          {[1, 2, 3].map(g => <Card key={g}>
+            <CardHeader className="p-4 pb-2"><CardTitle className="text-sm">G{g}</CardTitle></CardHeader>
+            <CardContent className="space-y-3 p-4 pt-0">
+              <Field label={`Markup G${g} (%)`}><Input name={`pedia_markup_g${g}`} type="number" min={0} max={1000} step="any" required defaultValue={settings.data.settings[`pedia_markup_g${g}`]} /></Field>
+              <Field label={`Minimum untung G${g} (Rp)`}><Input name={`pedia_min_profit_g${g}`} type="number" min={0} max={10000000} required defaultValue={settings.data.settings[`pedia_min_profit_g${g}`]} /></Field>
+            </CardContent>
+          </Card>)}
+        </fieldset>
+        <p className="text-xs text-admin-muted">Harga setiap varian tetap dikelola melalui editor produk.</p>
+        <Button disabled={settings.busy}>Simpan pengaturan</Button>
       </form>
-      <dl className="my-5 grid gap-3 sm:grid-cols-2">{[["pedia_min_order_rp", "Minimum order"], ["pedia_balance_alert_rp", "Ambang saldo"]].map(([key, label]) => <div key={key} className="rounded-xl border border-admin-border p-4"><dt className="text-xs text-admin-muted">{label} <span className="block pt-1 text-admin-muted">dari konfigurasi server</span></dt><dd className="mt-2 text-sm font-semibold text-admin-fg">{settings.data.settings[key] == null ? "Belum tersedia" : formatRupiah(settings.data.settings[key])}</dd></div>)}</dl>
+      <dl className="my-5 grid gap-3 sm:grid-cols-2">
+        {[["pedia_min_order_rp", "Minimum order"], ["pedia_balance_alert_rp", "Ambang saldo"]].map(([key, label]) => <Card key={key}>
+          <CardContent className="p-4">
+            <dt className="text-xs text-admin-muted">{label} <span className="block pt-1">dari konfigurasi server</span></dt>
+            <dd className="mt-2 text-sm font-semibold text-admin-fg tabular-nums">{settings.data.settings[key] == null ? "Belum tersedia" : formatRupiah(settings.data.settings[key])}</dd>
+          </CardContent>
+        </Card>)}
+      </dl>
     </>}
-    <section className="my-5 space-y-3 border-t border-admin-border pt-5" aria-label="Saldo dan kesehatan IndoSMM"><div className="flex flex-wrap items-center justify-between gap-3"><h4 className="text-sm font-semibold text-admin-fg">Saldo dan kesehatan IndoSMM</h4><button className={BUTTON} disabled={health.loading} onClick={() => void health.load()}>Periksa saldo dan health</button></div><Feedback panel={health} />{provider && <div className="space-y-1 text-xs text-admin-muted"><p className="text-sm font-semibold text-admin-fg">{provider.balance.value == null ? "Saldo belum tersedia" : formatRupiah(provider.balance.value)} <span className="font-normal text-admin-muted">{provider.balance.stale ? "· saldo tersimpan" : "· saldo terkini"}</span></p><p>{provider.pricing_verified ? "Katalog dan tarif terbaca" : "Katalog dan tarif belum terverifikasi"} · Diperbarui {formatWibDateTime(provider.last_sync_at ?? "") ?? "belum tersedia"}</p>{provider.error && <p className="text-admin-warning">Pemeriksaan IndoSMM belum lengkap. Coba periksa kembali.</p>}</div>}</section>
-    <details className="border-t border-admin-border pt-2"><summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-admin-fg">Riwayat saldo 7 hari</summary><div className="divide-y divide-admin-border">{settings.data.balance_history.filter(r => r.supplier === "indosmm").map((r, i) => <div key={i} className="flex flex-wrap justify-between gap-2 py-3 text-xs"><strong className="text-admin-fg">{formatRupiah(Number(r.balance))}</strong><span className="text-admin-muted">{formatWibDateTime(String(r.created_at)) ?? "-"}</span></div>)}</div>{!settings.loading && !settings.error && !settings.data.balance_history.length && <p className="py-3 text-sm text-admin-muted">Belum ada riwayat saldo.</p>}</details>
+    <section className="my-5 space-y-3 border-t border-admin-border pt-5" aria-label="Saldo dan kesehatan IndoSMM">
+      <div className="flex flex-wrap items-center justify-between gap-3"><h4 className="text-sm font-semibold text-admin-fg">Saldo dan kesehatan IndoSMM</h4><Button variant="outline" size="sm" disabled={health.loading} onClick={() => void health.load()}>Periksa saldo dan health</Button></div>
+      <Feedback panel={health} />
+      {provider && <div className="space-y-1 text-xs text-admin-muted">
+        <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-admin-fg"><span className="tabular-nums">{provider.balance.value == null ? "Saldo belum tersedia" : formatRupiah(provider.balance.value)}</span><Badge variant="secondary">{provider.balance.stale ? "saldo tersimpan" : "saldo terkini"}</Badge></p>
+        <p>{provider.pricing_verified ? "Katalog dan tarif terbaca" : "Katalog dan tarif belum terverifikasi"} · Diperbarui {formatWibDateTime(provider.last_sync_at ?? "") ?? "belum tersedia"}</p>
+        {provider.error && <p className="text-admin-warning">Pemeriksaan IndoSMM belum lengkap. Coba periksa kembali.</p>}
+      </div>}
+    </section>
+    <details className="border-t border-admin-border pt-2">
+      <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-admin-fg">Riwayat saldo 7 hari</summary>
+      <div className="divide-y divide-admin-border">{settings.data.balance_history.filter(r => r.supplier === "indosmm").map((r, i) => <div key={i} className="flex flex-wrap justify-between gap-2 py-3 text-xs"><strong className="text-admin-fg tabular-nums">{formatRupiah(Number(r.balance))}</strong><span className="text-admin-muted">{formatWibDateTime(String(r.created_at)) ?? "-"}</span></div>)}</div>
+      {!settings.loading && !settings.error && !settings.data.balance_history.length && <p className="py-3 text-sm text-admin-muted">Belum ada riwayat saldo.</p>}
+    </details>
     <ConfirmDialog open={!!draft} title="Simpan pengaturan Pedia?" description="Nilai kelompok harga akan diperbarui. Pengaturan varian tetap dikelola per produk." confirmLabel="Simpan" variant="default" loading={settings.busy} onClose={() => { if (!settings.busy) setDraft(null); }} onConfirm={async () => { if (draft && await settings.write("/api/admin/pedia/settings", draft, "Pengaturan tersimpan.")) setDraft(null); }} />
   </Panel>;
 }

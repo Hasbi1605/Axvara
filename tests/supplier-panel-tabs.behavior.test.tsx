@@ -83,22 +83,23 @@ describe("tab dalam-halaman WR", () => {
     await userEvent.click(screen.getByRole("tab", { name: /^Markup/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
-    // Default Live: hanya V Live.
-    expect(screen.getByText(/V Live/)).toBeTruthy();
+    // Default Live: hanya V Live. Tabel desktop + kartu mobile sama-sama ada di
+    // DOM (CSS yang menyembunyikan), jadi hitung semua kemunculan.
+    expect(screen.getAllByText(/V Live/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/V Habis/)).toBeNull();
     // Badge Live tampil.
     expect(screen.getAllByText("Live").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("tab", { name: /Disembunyikan otomatis/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Disembunyikan otomatis/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-    expect(screen.getByText(/V Habis/)).toBeTruthy();
+    expect(screen.getAllByText(/V Habis/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/V Live/)).toBeNull();
     // Tombol Simpan tetap ada di tab Hidden (markup boleh diubah).
     expect(screen.getAllByRole("button", { name: "Simpan" }).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("tab", { name: /Nonaktif manual/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /Nonaktif manual/ }));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-    expect(screen.getByText(/V Off/)).toBeTruthy();
+    expect(screen.getAllByText(/V Off/).length).toBeGreaterThan(0);
   });
 });
 

@@ -6,6 +6,7 @@
 // tercatat di *_sync_log per potongan). Kartu menampilkan keduanya terpisah
 // agar delta 1 varian / heartbeat 0/0 tidak terbaca sebagai sync penuh.
 
+import { CircleDot, History } from "lucide-react";
 import { formatWibDateTime } from "@/lib/utils";
 
 export type SupplierSyncLogRow = {
@@ -63,7 +64,7 @@ export function SupplierSyncStatus({
     <>
       {diffKnown ? (
         <>
-          <p className={`mt-1 text-sm font-semibold ${diff?.healthy ? "text-admin-fg" : "text-admin-warning"}`}>
+          <p className={`mt-1 text-sm font-semibold tabular-nums ${diff?.healthy ? "text-admin-fg" : "text-admin-warning"}`}>
             {diff?.healthy ? "Diff VPS aktif" : "Diff VPS berhenti"} · cek {fmt(diff?.last_at)}
           </p>
           <p className="mt-1 text-xs text-admin-muted">
@@ -89,16 +90,18 @@ export function SupplierSyncStatus({
       )}
       {(lastManual || lastSweep) && (
         <div className="mt-2 space-y-1 border-t border-admin-border pt-2 text-xs text-admin-muted">
-          <p>
-            🟢 Sync penuh: {lastSweep
+          <p className="flex items-start gap-1.5">
+            <CircleDot className="mt-0.5 size-3 shrink-0 text-admin-success" aria-hidden />
+            <span>Sync penuh: {lastSweep
               ? `${lastSweep.status} · ${fmt(lastSweep.created_at)} · ${lastSweep.products_total ?? lastSweep.products_synced ?? 0} produk`
               : "—"}
-            {diff?.healthy ? " (cadangan tiap 60 mnt)" : ""}
+            {diff?.healthy ? " (cadangan tiap 60 mnt)" : ""}</span>
           </p>
-          <p>
-            🔵 Manual: {lastManual
+          <p className="flex items-start gap-1.5">
+            <History className="mt-0.5 size-3 shrink-0 text-admin-accent" aria-hidden />
+            <span>Manual: {lastManual
               ? `${lastManual.status} · ${fmt(lastManual.created_at)} · ${lastManual.products_synced ?? 0}p/${lastManual.variants_synced ?? 0}v · ${lastManual.products_excluded ?? 0} ${excludedLabel}`
-              : "—"}
+              : "—"}</span>
           </p>
         </div>
       )}

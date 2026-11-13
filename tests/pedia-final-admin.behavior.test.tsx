@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PediaManager } from "@/components/admin/PediaManager";
 
 let rows: Record<string, unknown>[];
@@ -17,16 +18,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 it.each([["orders", "Pesanan"], ["products", "Produk"], ["services", "Layanan IndoSMM"], ["curation", "Layanan IndoSMM"], ["credits", "Produk"], ["settings", "Pengaturan"]])("maps legacy tab %s and exposes exactly four navigation choices", async (initialTab, label) => {
-  render(<PediaManager initialTab={initialTab} />); const nav = screen.getByRole("navigation", { name: "Bagian Pedia" }); expect(within(nav).getAllByRole("button").map(e => e.textContent)).toEqual(["Pesanan", "Produk", "Layanan IndoSMM", "Pengaturan"]); expect(within(nav).getByRole("button", { name: label }).getAttribute("aria-current")).toBe("page");
+  render(<PediaManager initialTab={initialTab} />); const nav = await screen.findByRole("tablist", { name: "Bagian Pedia" }); expect(within(nav).getAllByRole("tab").map(e => e.textContent)).toEqual(["Pesanan", "Produk", "Layanan IndoSMM", "Pengaturan"]); expect(within(nav).getByRole("tab", { name: label }).getAttribute("aria-current")).toBe("page");
   if (initialTab === "curation") expect(await screen.findByLabelText("Kebutuhan produk")).toBeTruthy();
 });
 
-it("defaults to products without needs-action orders", async () => { render(<PediaManager />); await screen.findByText("Muat kurasi awal"); expect(screen.getByRole("button", { name: "Produk" }).getAttribute("aria-current")).toBe("page"); });
+it("defaults to products without needs-action orders", async () => { render(<PediaManager />); await screen.findByText("Muat kurasi awal"); expect(screen.getByRole("tab", { name: "Produk" }).getAttribute("aria-current")).toBe("page"); });
 it("defaults to orders for open followups even on a completed order", async () => { rows = [{ order_code: "AXP-FOLLOW", status: "completed", followup_state: "open" }]; render(<PediaManager />); expect(await screen.findByText("Perlu tindakan (1)")).toBeTruthy(); });
 
 it("preserves query parameters, maps URL-only curation, and follows back/forward and props", async () => {
   window.history.replaceState(null, "", "/admin?section=pedia&tab=curation&keep=1"); const view = render(<PediaManager />); expect(await screen.findByLabelText("Kebutuhan produk")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Pengaturan" })); expect(window.location.search).toContain("tab=settings"); expect(window.location.search).toContain("keep=1");
+  await userEvent.click(screen.getByRole("tab", { name: "Pengaturan" })); expect(window.location.search).toContain("tab=settings"); expect(window.location.search).toContain("keep=1");
   window.history.replaceState(null, "", "/admin?section=pedia&tab=credits"); fireEvent.popState(window); expect(await screen.findByText("Muat kurasi awal")).toBeTruthy();
   window.history.replaceState(null, "", "/admin?section=pedia&tab=orders"); fireEvent.popState(window); expect(await screen.findByLabelText("Status pesanan")).toBeTruthy();
   view.rerender(<PediaManager initialTab="settings" />); expect(await screen.findByLabelText("Markup G1 (%)")).toBeTruthy();
