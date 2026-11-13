@@ -1,4 +1,5 @@
 "use client";
+import { Button, Card, Input, Label, Tabs, TabsList, TabsTrigger, Skeleton } from "@/components/admin/ui";
 
 import { useState, type ReactNode } from "react";
 import { formatRupiah } from "@/lib/utils";
@@ -141,13 +142,13 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
   const channels = report?.channels ?? data.profit_by_channel;
   const top = report?.top_products ?? data.top_profit_products;
   const supplierRows: NamedBucket[] = [
-    { label: "Warung Rebahan", color: "#818CF8", ...suppliers.wr },
-    { label: "Sekalipay", color: "#00E5FF", ...suppliers.sk },
-    { label: "Stok sendiri", color: "#FFB800", ...suppliers.manual },
-    ...(report && report.suppliers.pedia.orders > 0 ? [{ label: "Pedia", color: "#34D399", ...report.suppliers.pedia }] : []),
+    { label: "Warung Rebahan", color: "rgb(var(--admin-info))", ...suppliers.wr },
+    { label: "Sekalipay", color: "rgb(var(--admin-accent))", ...suppliers.sk },
+    { label: "Stok sendiri", color: "rgb(var(--admin-warning))", ...suppliers.manual },
+    ...(report && report.suppliers.pedia.orders > 0 ? [{ label: "Pedia", color: "rgb(var(--admin-success))", ...report.suppliers.pedia }] : []),
   ];
   const channelRows = Object.entries({ Web: channels.web, Telegram: channels.telegram, WhatsApp: channels.whatsapp })
-    .map(([label,r])=>({ ...r, label, cost: r.revenue-r.profit, color: "#00E5FF" }));
+    .map(([label,r])=>({ ...r, label, cost: r.revenue-r.profit, color: "rgb(var(--admin-accent))" }));
   const metrics = [
     ["Pesanan lunas", String(bucket.orders), "text-admin-fg"],
     ["Omzet", formatRupiah(bucket.revenue), "text-admin-fg"],
@@ -157,26 +158,25 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
     ["Rata2 / order", bucket.orders ? formatRupiah(Math.round(bucket.revenue / bucket.orders)) : "—", "text-admin-fg"],
   ] as const;
 
-  return <div className="mt-4 space-y-4">
+  return <div className="mt-4 space-y-6"><header><h2 className="text-xl font-semibold text-admin-fg">Ringkasan</h2><p className="mt-1 text-sm text-admin-muted">Pantau pesanan, omzet, dan untung produk pada periode terpilih.</p></header>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="inline-flex rounded-xl border border-admin-border bg-admin-subtle p-1" role="tablist" aria-label="Periode laporan">
+      <Tabs value={typeof active === "string" ? active : ""} onValueChange={value => choose(value as Period)}><TabsList aria-label="Periode laporan">
         {(Object.keys(PERIOD_LABEL) as Period[]).map((key) => (
-          <button key={key} type="button" role="tab" aria-selected={active === key} onClick={() => choose(key)}
-            className={`h-8 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition ${active === key ? "bg-admin-primary text-admin-inverse" : "text-admin-muted hover:text-admin-fg"}`}>
+          <TabsTrigger key={key} value={key}>
             {PERIOD_LABEL[key]}
-          </button>
+          </TabsTrigger>
         ))}
-      </div>
+      </TabsList></Tabs>
       <div className="flex min-w-0 flex-wrap items-center gap-2" role="group" aria-label="Filter dan unduhan laporan">
       {onSelectionChange && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-admin-muted">
-        <label className="sr-only" htmlFor="report-month">Bulan historis</label>
-        <input id="report-month" type="month" max={todayWibDateString().slice(0, 7)} value={month} onChange={e => changeMonth(e.target.value)} className="h-9 min-w-0 rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
+        <Label className="sr-only" htmlFor="report-month">Bulan historis</Label>
+        <Input id="report-month" type="month" max={todayWibDateString().slice(0, 7)} value={month} onChange={e => changeMonth(e.target.value)} className="h-9 w-[180px] min-w-0 rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
         <div className="flex min-w-0 items-center gap-2">
-          <label className="sr-only" htmlFor="report-from">Tanggal awal</label>
-          <input id="report-from" type="date" max={todayWibDateString()} value={from} onChange={e => changeDates(e.target.value, to)} className="h-9 min-w-0 w-[136px] rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
+          <Label className="sr-only" htmlFor="report-from">Tanggal awal</Label>
+          <Input id="report-from" type="date" max={todayWibDateString()} value={from} onChange={e => changeDates(e.target.value, to)} className="h-9 min-w-0 w-[136px] rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
           <span aria-hidden="true">–</span>
-          <label className="sr-only" htmlFor="report-to">Tanggal akhir</label>
-          <input id="report-to" type="date" max={todayWibDateString()} value={to} onChange={e => changeDates(from, e.target.value)} className="h-9 min-w-0 w-[136px] rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
+          <Label className="sr-only" htmlFor="report-to">Tanggal akhir</Label>
+          <Input id="report-to" type="date" max={todayWibDateString()} value={to} onChange={e => changeDates(from, e.target.value)} className="h-9 min-w-0 w-[136px] rounded-lg border border-admin-border bg-admin-subtle px-2 text-admin-fg [color-scheme:inherit]" />
         </div>
       </div>}
       {!loading && !error && data.selected_report && selection && (
@@ -185,14 +185,14 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
       </div>
     </div>
     {rangeError && <p role="alert" className="text-sm text-admin-danger">{rangeError}</p>}
-    {error ? <div role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.06] p-5"><p className="text-sm text-admin-danger">{error}</p><button type="button" onClick={onRetry} disabled={loading} className="mt-3 rounded-xl bg-admin-primary px-4 py-2 text-xs font-bold text-admin-inverse">Muat ulang ringkasan</button></div>
-      : loading ? <p role="status" className="py-8 text-sm text-admin-muted">Memuat laporan {label}…</p>
+    {error ? <div role="alert" className="rounded-xl border border-admin-danger/20 bg-admin-danger/[0.06] p-5"><p className="text-sm text-admin-danger">{error}</p><Button variant="default" type="button" onClick={onRetry} disabled={loading} className="mt-3 rounded-xl bg-admin-primary px-4 py-2 text-xs font-semibold text-admin-inverse">Muat ulang ringkasan</Button></div>
+      : loading ? <div role="status" className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-64 w-full" /><span className="sr-only">Memuat laporan {label}…</span></div>
       : <>
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      {metrics.map(([label, value, tone]) => <div key={label} className="admin-surface rounded-xl p-4">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
+      {metrics.map(([label, value, tone]) => <Card key={label} className="admin-surface rounded-xl p-4">
         <p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p>
-        <p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading ? "—" : value}</p>
-      </div>)}
+        <p className={`mt-1 font-sans text-2xl font-semibold tabular-nums ${tone}`}>{loading ? "—" : value}</p>
+      </Card>)}
     </div>
     {report && <p className="text-xs leading-5 text-admin-muted">Pembayaran merchant {formatRupiah(report.merchant_paid ?? report.revenue)} · Kredit digunakan {formatRupiah(report.credit_used ?? 0)}. Untung produk belum dikurangi MDR dan biaya operasional.</p>}
 
@@ -204,7 +204,7 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
       <ProfitBars title="Untung per supplier" rows={supplierRows} loading={loading} />
       <ProfitBars title="Untung per channel" rows={channelRows} loading={loading} />
     </div>
-    <section className="admin-surface rounded-xl p-4 sm:p-5">
+    <Card className="admin-surface rounded-xl p-4 sm:p-5">
       <h2 className="text-sm font-semibold text-admin-fg">Top 5 penyumbang untung</h2>
       <p className="mt-1 text-xs text-admin-muted">{label} · modal dihitung per item sesuai asal produk</p>
       <div className="mt-4 space-y-2.5">
@@ -212,12 +212,12 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
         {top.map((row,i)=><div key={`${row.name}:${i}`} className="rounded-xl bg-admin-subtle p-3">
           <div className="flex items-start justify-between gap-3">
             <p className="min-w-0 text-sm font-semibold leading-5 text-admin-fg"><span className="mr-2 text-admin-muted">{i+1}.</span>{row.name}</p>
-            <p className={`shrink-0 text-sm font-bold tabular-nums ${row.profit<0?'text-admin-danger':'text-admin-success'}`}>{loading?'—':formatRupiah(row.profit)}</p>
+            <p className={`shrink-0 text-sm font-semibold tabular-nums ${row.profit<0?'text-admin-danger':'text-admin-success'}`}>{loading?'—':formatRupiah(row.profit)}</p>
           </div>
           <p className="mt-1 text-xs leading-5 tabular-nums text-admin-muted">{row.qty}x terjual · omzet {formatRupiah(row.revenue)} · modal {formatRupiah(row.cost)} · margin {marginOf(row.revenue,row.profit)}</p>
         </div>)}
       </div>
-    </section>
+    </Card>
     </>}
   </div>;
 }

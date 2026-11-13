@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import AdminPage from "@/app/(shop)/admin/page";
@@ -31,16 +32,16 @@ it("rapid filters cannot overwrite newer data, and loading/errors never relabel 
   const header = screen.getByTestId("admin-session-header");
   expect(within(header).getByText("fixture@example.test")).toBeTruthy();
   expect(within(header).getByText(/Asia\/Jakarta · Dibuat/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("tab", { name: "Minggu ini" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Minggu ini" }));
   await act(async () => {});
   expect(pending).toHaveLength(1);
   expect(screen.getByText("Original week")).toBeTruthy();
-  fireEvent.click(screen.getByRole("tab", { name: "Hari ini" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Hari ini" }));
   await act(async () => {});
   expect(screen.queryByText("Original week")).toBeNull();
   expect(within(header).queryByText(/Dibuat/)).toBeNull();
   expect(pending[1].url).toContain("period=today");
-  fireEvent.click(screen.getByRole("tab", { name: "Bulan ini" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Bulan ini" }));
   await act(async () => {});
   expect(pending[2].url).toContain("period=month");
   await act(async () => { pending[2].resolve(response(report("Newest month"))); });

@@ -143,7 +143,7 @@ describe("BulkTierEditor di VariantEditor", () => {
     const { posts } = setup([variant()]);
     await ready();
     const toggle = screen.getByRole("checkbox", { name: /Harga grosir/ }) as HTMLInputElement;
-    expect(toggle.checked).toBe(true);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(toggle);
     expect(screen.getByText("Nonaktif")).toBeTruthy();
     expect(screen.getByTestId("bulk-11-summary").textContent).toBe("Pengaturan disimpan; harga grosir tidak berlaku.");

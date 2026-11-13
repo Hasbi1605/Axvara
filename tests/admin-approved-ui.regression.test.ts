@@ -32,7 +32,8 @@ describe("butir 1/1b — modal produk bertab dengan Simpan sticky", () => {
   const modal = read("src/components/admin/ProductEditorModal.tsx");
 
   it("punya tab Produk/Varian/Deskripsi & S&K/Foto", () => {
-    expect(modal).toContain('role="tablist"');
+    expect(modal).toContain('<TabsList');
+    expect(modal).toContain('<TabsTrigger');
     expect(modal).toContain('["detail", "Produk"]');
     expect(modal).toContain('["varian", "Varian"]');
     // 2026-09-24: deskripsi + S&K per varian pindah ke tab sendiri agar tab

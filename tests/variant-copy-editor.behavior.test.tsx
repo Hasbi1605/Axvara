@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import userEvent from "@testing-library/user-event";
 //
 // tests/variant-copy-editor.behavior.test.tsx — Editor S&K + cara aktivasi
 // per varian di panel admin (migrasi 0041) dan penandanya di daftar produk.
@@ -233,18 +234,18 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
 
   it("dirty teks memblokir Simpan Produk, close dan Escape meminta izin; batal draft membuka simpan", async () => {
     renderModal(wrForm);
-    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     fireEvent.click(await screen.findByRole("button", { name: /Premium Anti Limit · 28 Hari/ }));
     fireEvent.change(screen.getByLabelText("Syarat & Ketentuan"), { target: { value: "Draft belum disimpan" } });
     expect(screen.getByRole("button", { name: /Simpan Produk$/ })).toHaveProperty("disabled", true);
-    fireEvent.click(screen.getByRole("tab", { name: "Foto" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Foto" }));
     fireEvent.click(screen.getByRole("button", { name: "Tutup editor produk" }));
     expect(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
     fireEvent.click(within(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
     fireEvent.keyDown(screen.getByRole("dialog", { name: "Edit Produk" }), { key: "Escape" });
     expect(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
     fireEvent.click(within(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
-    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", "Draft belum disimpan");
     fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));
     expect(screen.getByRole("button", { name: /Simpan Produk$/ })).toHaveProperty("disabled", false);
@@ -258,15 +259,15 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     // Tab Produk aktif: deskripsi tidak lagi di sini.
     expect(screen.queryByRole("textbox", { name: "Deskripsi khusus (override)" })).toBeNull();
     // Hanya panel tab aktif yang tampil (atribut hidden), bukan semua sekaligus.
-    expect(screen.getAllByRole("tabpanel").map((p) => p.getAttribute("aria-labelledby"))).toEqual(["product-editor-tab-detail"]);
+    expect(screen.getAllByRole("tabpanel").map((p) => p.getAttribute("aria-labelledby"))).toEqual([screen.getByRole("tab", { name: "Produk" }).id]);
 
-    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     const variantPanel = screen.getByRole("tabpanel", { name: /^Varian/ });
     expect(within(variantPanel).queryByText("Syarat & Ketentuan · Cara Aktivasi")).toBeNull();
     expect(within(variantPanel).getByRole("button", { name: /Premium Legal/ }).getAttribute("aria-expanded")).toBe("false");
 
-    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     expect(screen.queryByRole("textbox", { name: "Nama" })).toBeNull();
     expect(screen.getByRole("textbox", { name: "Nama (English)" })).toBeTruthy();
@@ -285,12 +286,12 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/admin/variant-copy?product_id=1")).toBe(true);
   });
 
-  it("produk non-WR: kolom Deskripsi bisa diedit dari tab ini", () => {
+  it("produk non-WR: kolom Deskripsi bisa diedit dari tab ini", async () => {
     const { onSetForm } = renderModal({ name: "Canva Pro", slug: "canva-premium", description: "Lama", wrManaged: false }, [
       { id: 1, sku: "CANVA-1", label: "Invite 1 Bulan", price: 2000, stock: -1, is_active: 1 },
       { id: 3, sku: "CANVA-3", label: "Head 1 Bulan", price: 5000, stock: 10, is_active: 0 },
     ]);
-    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
     expect(within(panel).queryByRole("textbox", { name: "Deskripsi khusus (override)" })).toBeNull();
     fireEvent.change(within(panel).getByRole("textbox", { name: "Deskripsi" }), { target: { value: "Baru" } });
@@ -298,12 +299,12 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     expect(within(panel).getByText(/S&K dan cara penggunaan bersama diatur pada tab Varian/)).toBeTruthy();
   });
 
-  it("produk baru: tanpa permintaan S&K ke server, varian diminta disimpan dulu", () => {
+  it("produk baru: tanpa permintaan S&K ke server, varian diminta disimpan dulu", async () => {
     renderModal({ name: "Baru", slug: "baru" }, [{ sku: "BARU-1", label: "Paket 1", price: 50000, stock: -1, is_active: 1 }], vi.fn(), false);
-    fireEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
     expect(within(panel).getByText(/Panduan tersimpan bersama Simpan Produk/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
     expect(screen.getByLabelText("S&K bersama")).toBeTruthy();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith("/api/admin/variant-copy"))).toBe(false);
   });
@@ -336,9 +337,9 @@ describe("editor produk mode single: paritas garansi + pengiriman + template (20
     return { onSetForm };
   }
 
-  it("tab Varian mode single menampilkan Min. Beli + Masa Garansi + Cara Pengiriman + Template pesan", () => {
+  it("tab Varian mode single menampilkan Min. Beli + Masa Garansi + Cara Pengiriman + Template pesan", async () => {
     renderSingleModal();
-    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Varian/ });
     expect(within(panel).getByText("Min. Beli")).toBeTruthy();
     expect(within(panel).getByText("Masa Garansi")).toBeTruthy();
@@ -347,9 +348,9 @@ describe("editor produk mode single: paritas garansi + pengiriman + template (20
     expect(within(panel).getByRole("textbox", { name: "Template pesan untuk pembeli" })).toBeTruthy();
   });
 
-  it("mengubah garansi + pengiriman mode single memanggil onSetForm", () => {
+  it("mengubah garansi + pengiriman mode single memanggil onSetForm", async () => {
     const { onSetForm } = renderSingleModal();
-    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Varian/ });
     fireEvent.change(within(panel).getByRole("combobox", { name: "Masa Garansi" }), { target: { value: "limited" } });
     expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ warranty_type: "limited" }));
@@ -357,9 +358,9 @@ describe("editor produk mode single: paritas garansi + pengiriman + template (20
     expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ fulfillment_mode: "shared" }));
   });
 
-  it("produk baru tanpa variantId: panel fulfillment meminta simpan dulu", () => {
+  it("produk baru tanpa variantId: panel fulfillment meminta simpan dulu", async () => {
     renderSingleModal(singleForm, []);
-    fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Varian/ });
     expect(within(panel).getByText(/Simpan produk terlebih dahulu/).textContent).toContain("agar varian punya ID");
   });

@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { render } from "./setup/admin-render";
 import { PaymentReconciliation } from "@/components/admin/PaymentReconciliation";
 import { PaymentMethodsManager } from "@/components/admin/PaymentMethodsManager";
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/components/ui/Toast", () => ({ useToast: () => toast }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 
 function stubEvents(provider?: "dana" | "gopay") {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({

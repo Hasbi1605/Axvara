@@ -10,6 +10,7 @@
 // - Konfirmasi menampilkan hitungan eksplisit sebelum harga katalog berubah.
 
 "use client";
+import { Button, Checkbox, Input, Label } from "@/components/admin/ui";
 
 import { useState } from "react";
 import { Spinner } from "@/components/ui/Loading";
@@ -63,62 +64,60 @@ export function BulkMarkupToolbar({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-admin-border bg-black/15 px-3 py-2">
-      <label className="flex items-center gap-1.5 text-xs text-admin-muted" title="Pilih baris satu per satu">
-        <input
-          type="checkbox"
-          checked={allChecked}
-          ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked; }}
-          onChange={(e) => { setUseAllVisible(false); onToggleAllVisible(e.target.checked); }}
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-admin-border bg-admin-subtle/15 px-3 py-2">
+      <Label className="flex items-center gap-1.5 text-xs text-admin-muted" title="Pilih baris satu per satu">
+        <Checkbox
+          checked={someChecked && !allChecked ? "indeterminate" : allChecked}
+          onCheckedChange={(checked) => { setUseAllVisible(false); onToggleAllVisible((checked === true)); }}
           className="h-4 w-4 accent-admin-accent"
         />
         Pilih tampil ({selected.size})
-      </label>
-      <button
+      </Label>
+      <Button variant="default" size="sm"
         type="button"
         onClick={() => setUseAllVisible((v) => !v)}
         title="Pakai semua yang tampil (abaikan checklist)"
         aria-pressed={useAllVisible}
-        className={`h-8 rounded-lg px-2.5 text-xs font-bold transition ${useAllVisible ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
+        className={`h-8 rounded-lg px-2.5 text-xs font-semibold transition ${useAllVisible ? "bg-admin-primary text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
       >
         Set semua tampil
-      </button>
+      </Button>
       <div className="flex items-center gap-1" role="group" aria-label="Preset markup">
         {PRESETS.map((p) => (
-          <button
+          <Button variant="outline" size="sm"
             key={p}
             type="button"
             onClick={() => setPercent(String(p))}
             aria-pressed={pct === p}
-            className={`h-8 rounded-lg px-2.5 text-xs font-bold transition ${pct === p ? "bg-[#FFB800] text-[#080C1E]" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
+            className={`h-8 rounded-lg px-2.5 text-xs font-semibold transition ${pct === p ? "bg-admin-warning text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
           >
             {p}%
-          </button>
+          </Button>
         ))}
       </div>
-      <label className="flex items-center gap-1.5 text-xs text-admin-muted">
+      <Label className="flex items-center gap-1.5 text-xs text-admin-muted">
         %
-        <input
+        <Input
           value={percent}
           onChange={(e) => setPercent(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
           inputMode="numeric"
           aria-label="Markup persen bulk"
-          className="h-8 w-16 rounded-lg border border-admin-border bg-black/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none"
+          className="h-8 w-16 rounded-lg border border-admin-border bg-admin-subtle/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none"
         />
-      </label>
-      <label className="flex items-center gap-1.5 text-xs text-admin-muted" title="Bila dicentang, Rp per varian ikut direset ke 0. Bila mati, Rp dipertahankan.">
-        <input type="checkbox" checked={resetFixed} onChange={(e) => setResetFixed(e.target.checked)} className="h-4 w-4 accent-admin-accent" />
+      </Label>
+      <Label className="flex items-center gap-1.5 text-xs text-admin-muted" title="Bila dicentang, Rp per varian ikut direset ke 0. Bila mati, Rp dipertahankan.">
+        <Checkbox  checked={resetFixed} onCheckedChange={(checked) => setResetFixed((checked === true))} className="h-4 w-4 accent-admin-accent" />
         reset Rp ke 0
-      </label>
-      <button
+      </Label>
+      <Button variant="default" size="sm"
         type="button"
         onClick={() => void apply()}
         disabled={applying || !effectiveIds.length || !pctValid}
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-admin-primary px-3 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40"
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-admin-primary px-3 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40"
       >
         {applying ? <Spinner size={12} /> : null}
         Terapkan ke {effectiveIds.length} varian
-      </button>
+      </Button>
     </div>
   );
 }

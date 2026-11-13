@@ -114,7 +114,9 @@ describe("Wajib email pembeli: centang dikunci sampai nilai tersimpan termuat", 
         onSetFormVariants={noop} onUpload={noop} onSave={noop}
       /></ToastProvider>,
     );
-    return (screen.getByText(/Wajib email pembeli/).closest("label")!.querySelector("input")) as HTMLInputElement;
+    const userEvent = (await import("@testing-library/user-event")).default;
+    await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+    return screen.getByRole("checkbox", { name: /Wajib email pembeli/ }) as HTMLButtonElement;
   }
 
   it("edit produk saat detail masih dimuat: centang disabled + label memuat", async () => {
@@ -126,7 +128,7 @@ describe("Wajib email pembeli: centang dikunci sampai nilai tersimpan termuat", 
   it("detail termuat: centang aktif mencerminkan nilai tersimpan", async () => {
     const box = await renderModal({ editing: true, loadingVariants: false, requireEmail: true });
     expect(box.disabled).toBe(false);
-    expect(box.checked).toBe(true);
+    expect(box.getAttribute("aria-checked")).toBe("true");
   });
 
   it("produk baru tidak dikunci walau nilai belum ada", async () => {

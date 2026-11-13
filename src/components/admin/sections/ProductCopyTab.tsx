@@ -1,4 +1,5 @@
 "use client";
+import { Button, Input, Label, Textarea } from "@/components/admin/ui";
 // Tab "Deskripsi & S&K" di editor produk: deskripsi produk + S&K dan cara
 // aktivasi per varian. Dipisah dari tab Varian (permintaan owner) supaya baris
 // varian hanya berisi harga, stok, garansi, dan pengiriman.
@@ -42,23 +43,23 @@ export function ProductCopyTab({
     <div className="mt-5 space-y-6">
       <section aria-labelledby={`${id}-description-title`} className="space-y-4">
         <h4 id={`${id}-description-title`} className="text-sm font-semibold text-admin-fg">Deskripsi produk</h4>
-        <div className="space-y-1.5">
-          <label htmlFor={nameEnId} className="block text-xs font-semibold text-admin-muted">Nama (English)</label>
-          <input
+        <div className="space-y-2">
+          <Label htmlFor={nameEnId} className="block text-xs font-semibold text-admin-muted">Nama (English)</Label>
+          <Input
             id={nameEnId}
             value={form.nameEn ?? ""}
             onChange={(e) => onSetForm({ ...form, nameEn: e.target.value })}
             maxLength={120}
             placeholder="English product name shown when the buyer selects English…"
-            className="h-11 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/30 focus:outline-none"
+            className="h-9 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/30 focus:outline-none"
           />
           <p className="text-xs leading-4 text-admin-muted">Kosongkan untuk memakai terjemahan token otomatis (durasi/tier) dari nama Indonesia.</p>
         </div>
-        <div className="space-y-1.5">
-          <label htmlFor={descriptionId} className="block text-xs font-semibold text-admin-muted">
+        <div className="space-y-2">
+          <Label htmlFor={descriptionId} className="block text-xs font-semibold text-admin-muted">
             Deskripsi{form.wrManaged ? " (dari WR)" : ""}
-          </label>
-          <textarea
+          </Label>
+          <Textarea
             id={descriptionId}
             value={form.description ?? ""}
             readOnly={form.wrManaged}
@@ -71,9 +72,9 @@ export function ProductCopyTab({
           {!form.wrManaged && <p id={`${descriptionId}-hint`} className="text-xs leading-4 text-admin-muted">{FORMAT_HINT}</p>}
         </div>
         {form.wrManaged && (
-          <div className="space-y-1.5">
-            <label htmlFor={overrideId} className="block text-xs font-semibold text-admin-muted">Deskripsi khusus (override)</label>
-            <textarea
+          <div className="space-y-2">
+            <Label htmlFor={overrideId} className="block text-xs font-semibold text-admin-muted">Deskripsi khusus (override)</Label>
+            <Textarea
               id={overrideId}
               value={form.adminDescriptionOverride ?? ""}
               onChange={(e) => onSetForm({ ...form, adminDescriptionOverride: e.target.value })}
@@ -86,12 +87,12 @@ export function ProductCopyTab({
             <p id={`${overrideId}-hint`} className="text-xs leading-4 text-admin-muted">
               Jika diisi, teks ini yang tampil di storefront dan tidak akan ditimpa sync. Kosongkan untuk kembali memakai deskripsi WR. {FORMAT_HINT}
             </p>
-            {!form.adminDescriptionOverride?.trim() && <button type="button" className="min-h-11 text-xs font-semibold text-admin-accent" onClick={() => onSetForm({ ...form, adminDescriptionOverride: form.description ?? "" })}>Gunakan teks sumber sebagai awal</button>}
+            {!form.adminDescriptionOverride?.trim() && <Button variant="ghost" type="button" className="min-h-9 text-xs font-semibold text-admin-accent" onClick={() => onSetForm({ ...form, adminDescriptionOverride: form.description ?? "" })}>Gunakan teks sumber sebagai awal</Button>}
           </div>
         )}
-        <div className="space-y-1.5">
-          <label htmlFor={descriptionEnId} className="block text-xs font-semibold text-admin-muted">Deskripsi (English)</label>
-          <textarea
+        <div className="space-y-2">
+          <Label htmlFor={descriptionEnId} className="block text-xs font-semibold text-admin-muted">Deskripsi (English)</Label>
+          <Textarea
             id={descriptionEnId}
             value={form.descriptionEn ?? ""}
             onChange={(e) => onSetForm({ ...form, descriptionEn: e.target.value })}

@@ -1,4 +1,5 @@
 "use client";
+import { Button, Checkbox, Input, Label } from "@/components/admin/ui";
 
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -210,7 +211,7 @@ type Props = {
   onChange: (next: BulkDraft) => void;
 };
 
-const fieldClass = "h-11 w-full min-w-0 rounded-xl border bg-admin-subtle px-3 text-sm tabular-nums text-admin-fg outline-none transition placeholder:text-admin-muted focus:bg-admin-subtle disabled:opacity-50";
+const fieldClass = "h-9 w-full min-w-0 rounded-xl border bg-admin-subtle px-3 text-sm tabular-nums text-admin-fg outline-none transition placeholder:text-admin-muted focus:bg-admin-subtle disabled:opacity-50";
 const microLabel = "text-xs font-semibold uppercase tracking-[0.08em] text-admin-muted";
 
 export function bulkFieldId(idPrefix: string, rowKey: string, field: "qty" | "price") {
@@ -278,39 +279,38 @@ export function BulkTierEditor({ idPrefix, draft, validation, basePrice, minQty,
   const baseRange = firstQty === undefined ? `${minQty}+ pcs` : firstQty - 1 >= minQty ? `${minQty}–${firstQty - 1} pcs` : "tidak terpakai (tingkat pertama mulai di Min. beli)";
   const summary = validation.sorted.filter((row) => row.price !== null).map((row) => `${row.qty}+ ${formatRupiah(row.price as number)}`).join(" · ");
   const chip = invalid
-    ? { text: "Perlu diperbaiki", className: "border-red-400/25 bg-red-500/10 text-admin-danger" }
+    ? { text: "Perlu diperbaiki", className: "border-admin-danger/25 bg-admin-danger/10 text-admin-danger" }
     : draft.enabled
-      ? { text: `${draft.rows.length} tingkat`, className: "border-emerald-400/25 bg-emerald-400/10 text-admin-success" }
+      ? { text: `${draft.rows.length} tingkat`, className: "border-admin-success/25 bg-admin-success/10 text-admin-success" }
       : { text: "Nonaktif", className: "border-admin-border bg-admin-subtle text-admin-muted" };
 
   return (
     <section className="mt-4 rounded-xl border border-admin-border bg-admin-subtle p-3 sm:p-4" aria-label="Harga grosir">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-          <label className="flex min-h-11 cursor-pointer items-center gap-2.5">
-            <input
+          <Label className="flex min-h-9 cursor-pointer items-center gap-2.5">
+            <Checkbox
               id={bulkToggleId(idPrefix)}
-              type="checkbox"
               checked={draft.enabled}
               disabled={disabled}
-              onChange={(event) => toggleEnabled(event.target.checked)}
+              onCheckedChange={(checked) => toggleEnabled((checked === true))}
               className="h-5 w-5 shrink-0 accent-admin-accent"
               aria-describedby={`${idPrefix}-status`}
             />
             <span className={microLabel}>Harga grosir</span>
-          </label>
+          </Label>
           <span id={`${idPrefix}-status`} className={`inline-flex h-6 items-center rounded-md border px-2.5 text-xs font-semibold ${chip.className}`}>{chip.text}</span>
         </div>
-        <button
+        <Button variant="outline"
           type="button"
           aria-expanded={draft.open}
           aria-controls={bodyId}
           onClick={() => onChange({ ...draft, open: !draft.open })}
-          className="inline-flex h-11 items-center rounded-md border border-admin-border bg-admin-subtle px-4 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg"
+          className="inline-flex h-9 items-center rounded-md border border-admin-border bg-admin-subtle px-4 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg"
         >
           {draft.open ? "Tutup" : "Atur"}
           <span className="sr-only"> harga grosir</span>
-        </button>
+        </Button>
       </div>
 
       {!draft.open && (
@@ -327,7 +327,7 @@ export function BulkTierEditor({ idPrefix, draft, validation, basePrice, minQty,
         {draft.open && (
           <div className="mt-3 space-y-3">
             {draft.storedInvalid && !draft.touched && (
-              <p role="status" className="rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-2 text-xs leading-5 text-admin-danger">
+              <p role="status" className="rounded-lg border border-admin-danger/25 bg-admin-danger/10 px-3 py-2 text-xs leading-5 text-admin-danger">
                 Konfigurasi harga grosir yang tersimpan tidak valid, jadi tidak dipakai pembeli. Selama tidak diubah di sini, data tersebut tidak disentuh saat Simpan Semua. Atur ulang tingkat lalu simpan untuk memperbaikinya.
               </p>
             )}
@@ -336,7 +336,7 @@ export function BulkTierEditor({ idPrefix, draft, validation, basePrice, minQty,
                 Pengaturan disimpan; harga grosir tidak berlaku. Semua tingkat tetap tersimpan dan bisa diaktifkan lagi.
               </p>
             )}
-            {validation.notes.map((note) => <p key={note} className="rounded-lg border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-2 text-xs leading-5 text-admin-warning">{note}</p>)}
+            {validation.notes.map((note) => <p key={note} className="rounded-lg border border-admin-warning/25 bg-admin-warning/10 px-3 py-2 text-xs leading-5 text-admin-warning">{note}</p>)}
             {validation.groupError && <p id={`${idPrefix}-group-error`} role="alert" className="text-xs text-admin-danger">{validation.groupError}</p>}
 
             <p className="text-xs tabular-nums text-admin-muted">
@@ -356,9 +356,9 @@ export function BulkTierEditor({ idPrefix, draft, validation, basePrice, minQty,
                 return (
                   <li key={row.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] items-start gap-2 sm:grid-cols-[minmax(0,140px)_minmax(0,180px)_minmax(0,1fr)_44px] sm:gap-3">
                     <div className="min-w-0">
-                      <label htmlFor={qtyId} className={`${microLabel} ${index > 0 ? "sm:sr-only" : ""}`}>Min. jumlah<span className="sr-only"> tingkat {index + 1}</span></label>
+                      <Label htmlFor={qtyId} className={`${microLabel} ${index > 0 ? "sm:sr-only" : ""}`}>Min. jumlah<span className="sr-only"> tingkat {index + 1}</span></Label>
                       <div className="relative mt-1.5">
-                        <input
+                        <Input
                           id={qtyId}
                           type="text"
                           inputMode="numeric"
@@ -370,16 +370,16 @@ export function BulkTierEditor({ idPrefix, draft, validation, basePrice, minQty,
                           aria-invalid={errors.qty ? true : undefined}
                           aria-describedby={qtyMessage ? `${qtyId}-msg` : undefined}
                           onChange={(event) => editRow(row.key, "qty", event.target.value)}
-                          className={`${fieldClass} pr-10 ${errors.qty ? "border-red-400/60" : "border-admin-border focus:border-admin-accent/50"}`}
+                          className={`${fieldClass} pr-10 ${errors.qty ? "border-admin-danger/60" : "border-admin-border focus:border-admin-accent/50"}`}
                         />
                         <span aria-hidden className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-admin-muted">pcs</span>
                       </div>
                     </div>
                     <div className="min-w-0">
-                      <label htmlFor={priceId} className={`${microLabel} ${index > 0 ? "sm:sr-only" : ""}`}>Harga / pcs<span className="sr-only"> tingkat {index + 1}</span></label>
+                      <Label htmlFor={priceId} className={`${microLabel} ${index > 0 ? "sm:sr-only" : ""}`}>Harga / pcs<span className="sr-only"> tingkat {index + 1}</span></Label>
                       <div className="relative mt-1.5">
                         <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-xs text-admin-muted">Rp</span>
-                        <input
+                        <Input
                           id={priceId}
                           type="text"
                           inputMode="numeric"
@@ -391,21 +391,21 @@ export function BulkTierEditor({ idPrefix, draft, validation, basePrice, minQty,
                           aria-invalid={errors.price ? true : undefined}
                           aria-describedby={priceMessage ? `${priceId}-msg` : undefined}
                           onChange={(event) => editRow(row.key, "price", event.target.value)}
-                          className={`${fieldClass} pl-9 ${errors.price ? "border-red-400/60" : "border-admin-border focus:border-admin-accent/50"}`}
+                          className={`${fieldClass} pl-9 ${errors.price ? "border-admin-danger/60" : "border-admin-border focus:border-admin-accent/50"}`}
                         />
                       </div>
                     </div>
-                    <button
+                    <Button variant="outline" size="icon"
                       id={`${idPrefix}-${row.key}-delete`}
                       type="button"
                       disabled={disabled}
                       aria-label={`Hapus tingkat ${label} pcs`}
                       onClick={() => requestRemove(row)}
-                      className={`mt-[26px] ${index > 0 ? "sm:mt-1.5" : ""} flex h-11 w-11 items-center justify-center rounded-xl border border-red-400/25 bg-red-500/10 transition hover:bg-red-500/20 disabled:opacity-40 sm:col-start-4 sm:row-start-1`}
+                      className={`mt-[26px] ${index > 0 ? "sm:mt-1.5" : ""} flex h-9 w-11 items-center justify-center rounded-xl border border-admin-danger/25 bg-admin-danger/10 transition hover:bg-admin-danger/20 disabled:opacity-40 sm:col-start-4 sm:row-start-1`}
                     >
-                      <IosIcon name="trash" size={14} tint="#F87171" />
-                    </button>
-                    <p className={`col-span-3 min-w-0 text-xs tabular-nums text-admin-muted sm:col-span-1 sm:col-start-3 sm:row-start-1 ${index > 0 ? "sm:mt-1.5" : "sm:mt-[26px]"} sm:flex sm:h-11 sm:items-center`}>
+                      <IosIcon name="trash" size={14} tint="currentColor" />
+                    </Button>
+                    <p className={`col-span-3 min-w-0 text-xs tabular-nums text-admin-muted sm:col-span-1 sm:col-start-3 sm:row-start-1 ${index > 0 ? "sm:mt-1.5" : "sm:mt-[26px]"} sm:flex sm:h-9 sm:items-center`}>
                       {previewText(validation.sorted, row.key, basePrice)}
                     </p>
                     {(qtyMessage || priceMessage) && (
@@ -421,15 +421,15 @@ export function BulkTierEditor({ idPrefix, draft, validation, basePrice, minQty,
 
             <div className="flex flex-wrap items-center gap-3">
               {draft.rows.length < MAX_BULK_TIERS ? (
-                <button
+                <Button variant="outline"
                   id={`${idPrefix}-add`}
                   type="button"
                   disabled={disabled}
                   onClick={() => addRow()}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-md border border-admin-accent/25 bg-admin-primary/10 px-4 text-xs font-bold text-admin-accent transition hover:bg-admin-primary/20 disabled:opacity-40"
+                  className="inline-flex min-h-9 items-center gap-2 rounded-md border border-admin-accent/25 bg-admin-primary/10 px-4 text-xs font-semibold text-admin-accent transition hover:bg-admin-primary/20 disabled:opacity-40"
                 >
-                  <IosIcon name="plus" size={12} tint="#00E5FF" /> Tambah tingkat
-                </button>
+                  <IosIcon name="plus" size={12} tint="currentColor" /> Tambah tingkat
+                </Button>
               ) : (
                 <p id={`${idPrefix}-add`} tabIndex={-1} className="text-xs text-admin-muted">Maksimal {MAX_BULK_TIERS} tingkat</p>
               )}

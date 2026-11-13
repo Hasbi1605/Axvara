@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import userEvent from "@testing-library/user-event";
 //
 // Dashboard Fase 1 render: kartu periode default Minggu + Untung Produk +
 // grafik + tabel supplier/channel tampil tanpa crash.
@@ -85,7 +86,7 @@ it("grafik interaktif: toggle chip + tooltip harian", async () => {
 it("ganti ke Hari ini mengubah angka kartu", async () => {
   render(<AdminOverview data={{ ...data, orders_today: 1, revenue_today: 25000, cost_today: 10000, profit_today: 15000 }} loading={false} />);
   await act(async () => {});
-  fireEvent.click(screen.getByRole("tab", { name: "Hari ini" }));
+  await userEvent.click(screen.getByRole("tab", { name: "Hari ini" }));
   await act(async () => {});
   expect(screen.getByText((_, el) => el?.textContent?.replace(/\s/g, "") === "Rp15.000")).toBeTruthy();
 });
@@ -100,7 +101,7 @@ it("summary omits operational pills and cost-estimate notices without losing rep
   expect(screen.getByText("Untung Produk")).toBeTruthy();
 });
 
-it("switching period updates the chart, top products, supplier amounts and composition together", () => {
+it("switching period updates the chart, top products, supplier amounts and composition together", async () => {
   const report = (name:string,amount:number,date:string):PeriodReport => ({
     orders:1,revenue:amount,cost:10000,profit:amount-10000,estimated_orders:0,
     series:[{date,orders:1,revenue:amount,cost:10000,profit:amount-10000}],
@@ -110,11 +111,11 @@ it("switching period updates the chart, top products, supplier amounts and compo
   });
   render(<AdminOverview data={{...data,period_reports:{today:report('Today service',15000,'09:00'),week:report('Week service',20000,'2026-10-13'),month:report('Month service',30000,'2026-10-01')}}} loading={false}/>);
   expect(screen.getByText('Week service')).toBeTruthy();
-  fireEvent.click(screen.getByRole('tab',{name:'Bulan ini'}));
+  await userEvent.click(screen.getByRole('tab',{name:'Bulan ini'}));
   expect(screen.queryByText('Week service')).toBeNull(); expect(screen.getByText('Month service')).toBeTruthy();
   expect(screen.getByText('Omzet vs Untung — Bulan ini')).toBeTruthy();
   expect(screen.getByRole('img',{name:/Stok sendiri 100.0%/})).toBeTruthy();
-  fireEvent.click(screen.getByRole('tab',{name:'Hari ini'}));
+  await userEvent.click(screen.getByRole('tab',{name:'Hari ini'}));
   expect(screen.getByText('Today service')).toBeTruthy(); expect(screen.getByText('09:00')).toBeTruthy();
 });
 

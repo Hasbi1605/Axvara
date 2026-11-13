@@ -1,4 +1,5 @@
 "use client";
+import { Button } from "@/components/admin/ui";
 import { useState } from "react";
 import type { SelectedReport } from "@/lib/dashboard-report";
 
@@ -17,7 +18,7 @@ export function ReportExportActions({ report, disabled }: { report: SelectedRepo
     finally { setBusy(null); }
   };
   return <div className="flex flex-wrap items-center gap-2">
-    {([['pdf', 'PDF'], ['xlsx', 'Excel (.xlsx)']] as const).map(([format, label]) => <button key={format} type="button" disabled={disabled || busy !== null} onClick={() => void download(format)} className="min-h-10 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs font-semibold text-admin-fg transition hover:bg-admin-subtle disabled:opacity-40">{busy === format ? "Menyiapkan…" : `Unduh ${label}`}</button>)}
+    {([['pdf', 'PDF'], ['xlsx', 'Excel (.xlsx)']] as const).map(([format, label]) => <Button variant="outline" key={format} type="button" disabled={disabled || busy !== null} onClick={() => void download(format)} className="min-h-9 rounded-xl border border-admin-border bg-admin-subtle px-3 text-xs font-semibold text-admin-fg transition hover:bg-admin-subtle disabled:opacity-40">{busy === format ? "Menyiapkan…" : `Unduh ${label}`}</Button>)}
     {error && <p role="alert" className="w-full text-xs text-admin-danger">{error}</p>}
   </div>;
 }

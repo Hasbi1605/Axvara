@@ -3,6 +3,7 @@
 // and Market entry-point redirects. Fixture endpoints only; no production calls.
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { render } from "./setup/admin-render";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const route = vi.hoisted(() => ({ code: "AXP-20261102-2C24A247" }));
@@ -199,7 +200,7 @@ describe("Admin OrdersManager Pedia rows", () => {
   ])("hides legacy manual actions in row/detail for $code", async (extra) => {
     stubAdmin([adminRow({ ...extra, status: "pending", payment_status: "unpaid", pedia: null })]);
     render(<OrdersManager />);
-    const row = (await screen.findAllByText(extra.code))[0].closest("article")!;
+    const row = (await screen.findAllByText(extra.code))[0].closest("tr")!;
     for (const name of [/ACC pembayaran/, /Konfirmasi lunas/, /Tolak/, /Batalkan/]) expect(within(row).queryByRole("button", { name })).toBeNull();
     fireEvent.click(within(row).getByRole("button", { name: "Detail" }));
     const dialog = await screen.findByRole("dialog", { name: "Detail pesanan" });
@@ -212,7 +213,7 @@ describe("Admin OrdersManager Pedia rows", () => {
   it("shows Pedia chip + actual lifecycle + purchased quantity, never handover for a Pedia order with a false manual_required flag", async () => {
     stubAdmin([adminRow({})]);
     render(<OrdersManager />);
-    const row = (await screen.findAllByText(CODE))[0].closest("article")!;
+    const row = (await screen.findAllByText(CODE))[0].closest("tr")!;
     expect(within(row).getByText("Pedia")).toBeTruthy();
     expect(within(row).getByTestId("pedia-status-chip").textContent).toBe("Berjalan");
     expect(within(row).queryByText("Perlu handover")).toBeNull();
@@ -225,7 +226,7 @@ describe("Admin OrdersManager Pedia rows", () => {
   it("derives a name from the email for legacy blank rows and keeps the unknown state for a missing item", async () => {
     stubAdmin([adminRow({ customer_name: "", pedia: null })]);
     render(<OrdersManager />);
-    const row = (await screen.findAllByText(CODE))[0].closest("article")!;
+    const row = (await screen.findAllByText(CODE))[0].closest("tr")!;
     expect(within(row).getByText("Ahmad Fauzi")).toBeTruthy();
     expect(within(row).getByTestId("pedia-status-chip").textContent).toBe("Status belum diketahui");
     expect(within(row).queryByText("Selesai")).toBeNull();
@@ -235,7 +236,7 @@ describe("Admin OrdersManager Pedia rows", () => {
   it("falls back to quantity from the item snapshot and shows no lifecycle chip before payment", async () => {
     stubAdmin([adminRow({ status: "pending", payment_status: "unpaid", fulfillment_status: null, pedia: { status: "queued", quantity: null, done: null, target: null, supplier: null, supplier_order_id: null, last_error: null } })]);
     render(<OrdersManager />);
-    const row = (await screen.findAllByText(CODE))[0].closest("article")!;
+    const row = (await screen.findAllByText(CODE))[0].closest("tr")!;
     expect(within(row).queryByTestId("pedia-status-chip")).toBeNull();
     expect(row.textContent).toContain("Followers Instagram · 100");
   });
@@ -243,7 +244,7 @@ describe("Admin OrdersManager Pedia rows", () => {
   it("links needs_check to Admin → Pedia → Pesanan without re-implementing actions; detail hides the Market PIN widget and handover", async () => {
     stubAdmin([adminRow({ pedia: { status: "needs_check", quantity: 100, done: null, target: "https://instagram.com/buyer", supplier: "indosmm", supplier_order_id: "1", last_error: "timeout" } })]);
     render(<OrdersManager />);
-    const row = (await screen.findAllByText(CODE))[0].closest("article")!;
+    const row = (await screen.findAllByText(CODE))[0].closest("tr")!;
     const link = within(row).getByRole("link", { name: "Tindak lanjut di Pedia" });
     expect(link.getAttribute("href")).toBe("/admin?section=pedia&tab=orders");
     fireEvent.click(within(row).getByRole("button", { name: "Detail" }));
@@ -257,7 +258,7 @@ describe("Admin OrdersManager Pedia rows", () => {
   it("pending Pedia rows and details expose no Market ACC/Tolak/Konfirmasi/Batalkan actions (API rejects AXP)", async () => {
     stubAdmin([adminRow({ status: "pending", payment_status: "unpaid", fulfillment_status: null })]);
     render(<OrdersManager />);
-    const row = (await screen.findAllByText(CODE))[0].closest("article")!;
+    const row = (await screen.findAllByText(CODE))[0].closest("tr")!;
     for (const name of [/ACC pembayaran/, /Tolak/, /Konfirmasi lunas/, /Batalkan/]) expect(within(row).queryByRole("button", { name })).toBeNull();
     expect(within(row).getByText("Menunggu pembayaran QRIS")).toBeTruthy();
     fireEvent.click(within(row).getByRole("button", { name: "Detail" }));
@@ -272,12 +273,16 @@ describe("Admin OrdersManager Pedia rows", () => {
       adminRow({ code: "AXV-20261102-MANU0001", order_kind: "apps", pedia: undefined, status: "pending", payment_status: "unpaid", fulfillment_status: null, payment_method: "seabank" }),
     ]);
     render(<OrdersManager />);
-    const qrisRow = (await screen.findAllByText("AXV-20261102-QRIS0001"))[0].closest("article")!;
+    const qrisRow = (await screen.findAllByText("AXV-20261102-QRIS0001"))[0].closest("tr")!;
     expect(within(qrisRow).getByRole("button", { name: /ACC pembayaran/ })).toBeTruthy();
-    expect(within(qrisRow).getByRole("button", { name: /Tolak/ })).toBeTruthy();
-    const manualRow = (await screen.findAllByText("AXV-20261102-MANU0001"))[0].closest("article")!;
+    await userEvent.click(within(qrisRow).getByRole("button", { name: /Tindakan lain/ }));
+    expect(screen.getByRole("menuitem", { name: "Batalkan pesanan" })).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    const manualRow = (await screen.findAllByText("AXV-20261102-MANU0001"))[0].closest("tr")!;
     expect(within(manualRow).getByRole("button", { name: /Konfirmasi lunas/ })).toBeTruthy();
-    expect(within(manualRow).getByRole("button", { name: "Batalkan" })).toBeTruthy();
+    await userEvent.click(within(manualRow).getByRole("button", { name: /Tindakan lain/ }));
+    expect(screen.getByRole("menuitem", { name: "Batalkan pesanan" })).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
     fireEvent.click(within(manualRow).getByRole("button", { name: "Detail" }));
     const dialog = await screen.findByRole("dialog", { name: "Detail pesanan" });
     expect(within(dialog).getByRole("button", { name: /Konfirmasi lunas/ })).toBeTruthy();
@@ -288,11 +293,11 @@ describe("Admin OrdersManager Pedia rows", () => {
   it("keeps Market rows unchanged: manual_required still shows Perlu handover + Kirim ke pembeli and the PIN widget", async () => {
     stubAdmin([adminRow({ code: "AXV-20261102-AAAA1111", order_kind: "apps", pedia: undefined, items: [{ name: "Netflix", price: 1000, qty: 2 }] })]);
     render(<OrdersManager />);
-    const row = (await screen.findAllByText("AXV-20261102-AAAA1111"))[0].closest("article")!;
+    const row = (await screen.findAllByText("AXV-20261102-AAAA1111"))[0].closest("tr")!;
     expect(within(row).getByText("Perlu handover")).toBeTruthy();
     expect(within(row).getByRole("button", { name: /Kirim ke pembeli/ })).toBeTruthy();
     expect(within(row).queryByText("Pedia")).toBeNull();
-    expect(row.textContent).toContain("Netflix ×2");
+    expect(row.textContent).toContain("Netflix x2");
     fireEvent.click(within(row).getByRole("button", { name: "Detail" }));
     expect(await screen.findByTestId("market-access-widget")).toBeTruthy();
   });

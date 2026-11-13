@@ -27,6 +27,9 @@
   }
 }
 .admin-theme *, .admin-theme ::before, .admin-theme ::after { border-color: rgb(var(--admin-border)); }
+/* The storefront pointer spotlight must not paint over admin surfaces. */
+body:has(.admin-theme) > .pointer-events-none.fixed.will-change-transform[aria-hidden] { display: none; }
+.admin-login [aria-label="Tema admin"] { background: transparent; color: rgb(var(--admin-fg)); }
 .admin-theme :is(button, input, select, textarea) { font-family: inherit; }
 .admin-theme :focus-visible { outline: 2px solid rgb(var(--admin-ring)); outline-offset: 3px; box-shadow: none; }
 .admin-theme :is(button, select, summary) { cursor: pointer; }

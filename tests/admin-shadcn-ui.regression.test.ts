@@ -5,17 +5,15 @@ import ts from "typescript";
 
 // Subsequent section packets remove entries only after migrating their controls.
 export const PENDING_MIGRATION = [
-  "AdminOverview.tsx", "AgentIntegration.tsx", "ArticleEditor.tsx", "ArticlesManager.tsx", "BannerManager.tsx",
-  "BotAutomationManager.tsx", "BroadcastManager.tsx", "BulkMarkupToolbar.tsx", "BulkTierEditor.tsx", "CategoryManager.tsx",
-  "FulfillmentInventoryPanel.tsx", "GamesManager.tsx", "ImageDropzone.tsx", "NewsletterSubscribers.tsx", "OrderAccessAdmin.tsx",
-  "OrdersManager.tsx", "OverviewCharts.tsx", "PaymentMethodsManager.tsx", "PaymentReconciliation.tsx", "PediaCurationPanel.tsx",
-  "PediaManager.tsx", "ProductEditorModal.tsx", "ProofThumbnail.tsx", "ReportExportActions.tsx", "SekalipayManager.tsx",
+  "AgentIntegration.tsx", "ArticleEditor.tsx", "ArticlesManager.tsx", "BannerManager.tsx",
+  "BotAutomationManager.tsx", "BroadcastManager.tsx",
+  "GamesManager.tsx", "NewsletterSubscribers.tsx",
+  "PediaCurationPanel.tsx",
+  "PediaManager.tsx", "SekalipayManager.tsx",
   "StoreSettingsManager.tsx", "SupplierLinkActions.tsx", "SupplierLinksManager.tsx", "SupplierPairsManager.tsx",
-  "TunvnManager.tsx", "VariantEditor.tsx", "WarungRebahanManager.tsx", "WhatsAppNotifications.tsx",
+  "TunvnManager.tsx", "WarungRebahanManager.tsx", "WhatsAppNotifications.tsx",
   "pedia/OrdersPanel.tsx", "pedia/ProductEditor.tsx", "pedia/ProductsPanel.tsx", "pedia/ServicesPanel.tsx", "pedia/SettingsPanel.tsx", "pedia/shared.tsx",
-  "sections/CredentialQueue.tsx", "sections/ProductCopyTab.tsx", "sections/ProductVariantRows.tsx", "sections/ProductsSection.tsx",
-  "sections/SharedVariantCopyFields.tsx", "sections/SingleVariantFields.tsx", "sections/VariantCopyEditor.tsx", "sections/VariantWarrantyFields.tsx",
-].map(file => `src/components/admin/${file}`).concat("src/app/(shop)/admin/page.tsx");
+].map(file => `src/components/admin/${file}`);
 
 const palette = /(?:text|bg|border|ring|fill|stroke|from|to|via)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-\d+)?\b/;
 function violations(source: string) {

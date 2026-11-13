@@ -238,7 +238,7 @@ describe("BUG-03: Admin modal input lisensi/key saat konfirmasi lunas", () => {
   it("orders manager punya textarea untuk lisensi/key input", () => {
     const src = fs.readFileSync(path.join(process.cwd(), "src/components/admin/OrdersManager.tsx"), "utf-8");
     expect(src).toMatch(/[Ll]isensi \/ key/);
-    expect(src).toContain("<textarea");
+    expect(src).toContain("<Textarea");
   });
 });
 

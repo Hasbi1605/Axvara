@@ -1,4 +1,5 @@
 "use client";
+import { Button } from "@/components/admin/ui";
 import { useState } from "react";
 import { OrderAccessNotice } from "@/components/storefront/OrderAccessNotice";
 
@@ -22,11 +23,11 @@ export function OrderAccessAdmin({ code }: { code: string }) {
   }
   return <section className="rounded-xl border border-admin-border p-3">
     <p className="mb-3 text-xs leading-5 text-admin-muted">Untuk membantu pembeli yang kehilangan kode, periksa kepemilikan pesanan sebelum membagikannya.</p>
-    {access ? <OrderAccessNotice accessCode={access} /> : <button type="button" disabled={loading} onClick={() => void reveal()} className="min-h-11 rounded-xl border border-admin-border px-4 text-xs font-semibold text-admin-accent disabled:opacity-50">{loading ? "Memuat…" : "Lihat kode akses pembeli"}</button>}
+    {access ? <OrderAccessNotice accessCode={access} /> : <Button variant="outline" type="button" disabled={loading} onClick={() => void reveal()} className="min-h-9 rounded-xl border border-admin-border px-4 text-xs font-semibold text-admin-accent disabled:opacity-50">{loading ? "Memuat…" : "Lihat kode akses pembeli"}</Button>}
     {access && <div className="mt-2">
       {confirmRotate && <p className="mb-2 text-xs leading-5 text-admin-warning">Kode dan token akses lama akan dicabut. Berikan kode baru hanya ke pembeli yang sudah diverifikasi.</p>}
-      <button type="button" disabled={loading} onClick={() => confirmRotate ? void reveal(true) : setConfirmRotate(true)} className="min-h-11 rounded-xl border border-amber-200/25 px-4 text-xs text-admin-warning focus-visible:outline focus-visible:outline-2 disabled:opacity-50">{loading ? "Memuat…" : confirmRotate ? "Konfirmasi ganti kode" : "Ganti kode akses"}</button>
-      {confirmRotate && <button type="button" disabled={loading} onClick={() => setConfirmRotate(false)} className="ml-2 min-h-11 px-3 text-xs text-admin-muted">Batal</button>}
+      <Button variant="outline" type="button" disabled={loading} onClick={() => confirmRotate ? void reveal(true) : setConfirmRotate(true)} className="min-h-9 rounded-xl border border-admin-warning/25 px-4 text-xs text-admin-warning focus-visible:outline focus-visible:outline-2 disabled:opacity-50">{loading ? "Memuat…" : confirmRotate ? "Konfirmasi ganti kode" : "Ganti kode akses"}</Button>
+      {confirmRotate && <Button variant="ghost" type="button" disabled={loading} onClick={() => setConfirmRotate(false)} className="ml-2 min-h-9 px-3 text-xs text-admin-muted">Batal</Button>}
     </div>}
     {error && <p role="alert" className="mt-2 text-xs text-admin-warning">{error}</p>}
   </section>;

@@ -1,4 +1,5 @@
 "use client";
+import { Badge, Button, Checkbox, Input, Label, NativeSelect, Switch, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/components/admin/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -93,62 +94,61 @@ export function ProductEditorModal({
   return (
     <>
     <Dialog title={editing ? "Edit Produk" : "Produk Baru"} onClose={requestClose} busy={saving || variantCopy.saving} className="w-[880px] !overflow-hidden !p-0">
-          <section className="flex max-h-[calc(100dvh-2rem)] flex-col">
+          <Tabs value={tab} onValueChange={value => { setTab(value as typeof tab); if (bodyRef.current) bodyRef.current.scrollTop = 0; }} className="flex max-h-[calc(100dvh-2rem)] flex-col">
             <div className="shrink-0 px-6 pt-6">
             <div className="flex items-center justify-between gap-3">
-              <div><p className="text-xs font-bold uppercase tracking-[0.15em] text-admin-accent">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-display text-lg font-bold text-admin-fg">{editing? "Edit Produk":"Produk Baru"}</h3></div>
-              <button onClick={requestClose} disabled={saving || variantCopy.saving} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-admin-subtle text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50" aria-label="Tutup editor produk"><IosIcon name="close" size={14} tint="white" /></button>
+              <div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-admin-accent">Katalog</p><h3 id="product-editor-title" className="mt-0.5 font-sans text-lg font-semibold text-admin-fg">{editing? "Edit Produk":"Produk Baru"}</h3></div>
+              <Button variant="outline" size="icon" type="button" onClick={requestClose} disabled={saving || variantCopy.saving} className="flex h-9 w-11 shrink-0 items-center justify-center rounded-md bg-admin-subtle text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50" aria-label="Tutup editor produk"><IosIcon name="close" size={14} tint="currentColor" /></Button>
             </div>
 
-            {formError && <p className="mt-4 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-admin-danger">{formError}</p>}
+            {formError && <p className="mt-4 rounded-xl bg-admin-danger/10 border border-admin-danger/20 px-3 py-2 text-sm text-admin-danger">{formError}</p>}
 
             {form.wrManaged && (
-              <p className="mt-4 flex items-start gap-2 rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-2 text-xs leading-5 text-admin-warning">
-                <span className="mt-[1px] shrink-0 rounded-md bg-[#FFB800]/20 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-admin-warning">WR</span>
+              <p className="mt-4 flex items-start gap-2 rounded-xl border border-admin-warning/25 bg-admin-warning/10 px-3 py-2 text-xs leading-5 text-admin-warning">
+                <Badge variant="outline" className="mt-[1px] shrink-0 rounded-md bg-admin-warning/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-admin-warning">WR</Badge>
                 <span>Dikelola otomatis Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR dan akan ditimpa tiap sync. Yang bisa kamu atur di sini: foto, badge, <strong>harga coret (diskon)</strong>, kategori, urutan, aktif/nonaktif, serta deskripsi khusus dan S&amp;K + cara aktivasi per varian di tab Deskripsi &amp; S&amp;K. Markup diatur di tab Warung Rebahan.</span>
               </p>
             )}
 
-            <div className="mt-4 inline-flex max-w-full overflow-x-auto rounded-xl border border-admin-border bg-admin-subtle p-1" role="tablist" aria-label="Bagian editor produk">
+            <TabsList className="mt-4 w-full justify-start" aria-label="Bagian editor produk">
               {tabs.map(([id, label]) => (
-                <button key={id} id={`product-editor-tab-${id}`} type="button" role="tab" aria-selected={tab === id} aria-controls={`product-editor-panel-${id}`} onClick={() => { setTab(id); if (bodyRef.current) bodyRef.current.scrollTop = 0; }} className={`inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold transition sm:px-4 ${tab === id ? "bg-admin-primary text-admin-inverse" : "text-admin-muted hover:text-admin-fg"}`}>
+                <TabsTrigger key={id} value={id} className="text-xs sm:text-sm">
                   {label}{id === "varian" && hasMultiVariants && formVariants.length > 0 ? ` (${formVariants.length})` : ""}
                   {id === "konten" && copyReviewCount > 0 && (
-                    <span className="rounded-md bg-[#FFB800] px-1.5 py-px text-xs font-bold text-[#080C1E]">
+                    <Badge variant="outline" className="rounded-md bg-admin-warning px-1.5 py-px text-xs font-semibold text-admin-inverse">
                       {copyReviewCount}<span className="sr-only"> varian S&amp;K perlu ditinjau</span>
-                    </span>
+                    </Badge>
                   )}
-                </button>
+                </TabsTrigger>
               ))}
-            </div>
+            </TabsList>
             </div>
 
             <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
-            <div id="product-editor-panel-detail" role="tabpanel" aria-labelledby="product-editor-tab-detail" hidden={tab !== "detail"}>
+            <TabsContent value="detail" forceMount hidden={tab !== "detail"} className="mt-0">
             <div className="mt-5 grid sm:grid-cols-2 gap-4">
-              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Nama *</span><input value={form.name??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className={`w-full h-11 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></label>
-              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Slug *</span><input value={form.slug??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className={`w-full h-11 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted font-mono focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></label>
-              <label className="sm:col-span-2 space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Nama di WhatsApp (Alias)</span><input value={form.whatsappAlias??""} onChange={e=>onSetForm({...form,whatsappAlias:e.target.value})} maxLength={50} placeholder="CHATGPT" className="w-full h-11 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/30" /><span className="block text-xs leading-4 text-admin-muted">Dipakai pada daftar dan header detail produk WhatsApp. Jika kosong, bot memakai nama produk web.</span></label>
-              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Kategori</span><select value={form.categorySlug??cats[0]?.slug??""} onChange={e=>onSetForm({...form,categorySlug:e.target.value})} className="w-full h-11 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg focus:outline-none focus:border-admin-accent/30">
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Nama *</span><Input value={form.name??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className={`w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></Label>
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Slug *</span><Input value={form.slug??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className={`w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted font-mono focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></Label>
+              <Label className="sm:col-span-2 space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Nama di WhatsApp (Alias)</span><Input value={form.whatsappAlias??""} onChange={e=>onSetForm({...form,whatsappAlias:e.target.value})} maxLength={50} placeholder="CHATGPT" className="w-full h-9 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/30" /><span className="block text-xs leading-4 text-admin-muted">Dipakai pada daftar dan header detail produk WhatsApp. Jika kosong, bot memakai nama produk web.</span></Label>
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Kategori</span><NativeSelect value={form.categorySlug??cats[0]?.slug??""} onChange={e=>onSetForm({...form,categorySlug:e.target.value})} className="w-full h-9 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg focus:outline-none focus:border-admin-accent/30">
                 {cats.map((category) => <option key={category.id} value={category.slug} className="bg-admin-card">{category.name}</option>)}
-              </select></label>
-              <label className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Badge</span><input value={form.badge??""} onChange={e=>onSetForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-11 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/30" /></label>
-              <div className="space-y-1.5"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Posisi tampil</span><div aria-label="Posisi tampil produk" className="flex h-11 w-full items-center rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm font-semibold text-admin-muted">{form.displayPosition ?? "—"}</div><span className="block text-xs leading-4 text-admin-muted">Sama dengan kolom Urutan di daftar. Ubah satu posisi secara aman memakai tombol ↑↓ setelah menutup editor.</span></div>
+              </NativeSelect></Label>
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Badge</span><Input value={form.badge??""} onChange={e=>onSetForm({...form,badge:e.target.value})} placeholder="Terlaris / Baru / Hemat 92%" className="w-full h-9 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none focus:border-admin-accent/30" /></Label>
+              <div className="space-y-2"><span className="flex items-center gap-1.5 text-xs font-semibold text-admin-muted">Posisi tampil</span><div aria-label="Posisi tampil produk" className="flex h-9 w-full items-center rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm font-semibold text-admin-muted">{form.displayPosition ?? "—"}</div><span className="block text-xs leading-4 text-admin-muted">Sama dengan kolom Urutan di daftar. Ubah satu posisi secara aman memakai tombol naik/turun setelah menutup editor.</span></div>
             </div>
 
-            </div>
+            </TabsContent>
 
             {/* Toggle Multi-Varian ala Marketplace */}
-            <div id="product-editor-panel-varian" role="tabpanel" aria-labelledby="product-editor-tab-varian" hidden={tab !== "varian"}>
+            <TabsContent value="varian" forceMount hidden={tab !== "varian"} className="mt-0">
             <div className="mt-5 rounded-xl border border-admin-border bg-admin-subtle p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h4 className="text-sm font-semibold text-admin-fg">Variasi Produk</h4>
                   <p className="mt-0.5 text-xs text-admin-muted">Aktifkan jika produk memiliki beberapa pilihan durasi, akun, atau paket harga.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
+                <Switch checked={hasMultiVariants} aria-label="Variasi Produk"
+                  onCheckedChange={() => {
                     const next = !hasMultiVariants;
                     onSetHasMultiVariants(next);
                     // Paritas single↔multi 2026-09-28: jangan hilangkan nilai
@@ -220,14 +220,11 @@ export function ProductEditorModal({
                       });
                     }
                   }}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-md border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${hasMultiVariants ? "bg-admin-primary" : "bg-admin-subtle"}`}
-                >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-md bg-admin-card shadow ring-0 transition duration-200 ease-in-out ${hasMultiVariants ? "translate-x-5" : "translate-x-0 bg-admin-primary"}`} />
-                </button>
+                />
               </div>
 
               {loadingVariants ? (
-                <div className="py-6 text-center text-xs text-admin-muted">Memuat rincian varian...</div>
+                <div className="py-6 text-center text-xs text-admin-muted"><Skeleton className="h-9 w-full" /><span className="sr-only">Memuat rincian varian...</span></div>
               ) : hasMultiVariants ? (
                 <ProductVariantRows form={form} formVariants={formVariants} onSetFormVariants={onSetFormVariants} productId={editingId} editing={editing} />
               ) : (
@@ -240,27 +237,27 @@ export function ProductEditorModal({
                       readOnly={form.wrManaged}
                       onChange={(val) => onSetForm({ ...form, price: val ?? 0 })}
                       placeholder="89000"
-                      className={`mt-1 h-10 w-full px-3 rounded-xl border text-sm focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border text-admin-fg focus:border-admin-accent/30"}`}
+                      className={`mt-1 h-9 w-full px-3 rounded-xl border text-sm focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border text-admin-fg focus:border-admin-accent/30"}`}
                     />
                   </div>
                   <div>
-                    <span className="text-xs font-semibold text-admin-muted">Harga Coret <span className="normal-case text-admin-success">✎ bisa diedit</span></span>
+                    <span className="text-xs font-semibold text-admin-muted">Harga Coret <span className="normal-case text-admin-success">bisa diedit</span></span>
                     <MoneyInput
                       value={form.comparePrice}
                       allowEmpty
                       onChange={(val) => onSetForm({ ...form, comparePrice: val ?? undefined })}
                       placeholder="300000"
-                      className="mt-1 h-10 w-full px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg focus:outline-none focus:border-admin-accent/30"
+                      className="mt-1 h-9 w-full px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg focus:outline-none focus:border-admin-accent/30"
                     />
                   </div>
                   <div>
                     <span className="text-xs font-semibold text-admin-muted">Stok (-1 = ∞){form.wrManaged ? " (WR)" : ""}</span>
-                    <input
+                    <Input
                       type="number"
                       value={form.stock ?? -1}
                       readOnly={form.wrManaged || form.fulfillment_mode === "unique"}
                       onChange={(e) => onSetForm({ ...form, stock: Number(e.target.value) })}
-                      className={`mt-1 h-10 w-full px-3 rounded-xl border text-sm focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border text-admin-fg focus:border-admin-accent/30"}`}
+                      className={`mt-1 h-9 w-full px-3 rounded-xl border text-sm focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border text-admin-fg focus:border-admin-accent/30"}`}
                     />
                   </div>
                 </div>
@@ -280,10 +277,10 @@ export function ProductEditorModal({
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={form.isActive !== false} onChange={(e) => onSetForm({ ...form, isActive: e.target.checked })} className="w-4 h-4 rounded accent-admin-accent" />
+              <Label className="flex items-center gap-2">
+                <Checkbox  checked={form.isActive !== false} onCheckedChange={(checked) => onSetForm({ ...form, isActive: (checked === true) })} className="w-4 h-4 rounded accent-admin-accent" />
                 <span className="text-sm text-admin-muted">Aktif tampil di toko</span>
-              </label>
+              </Label>
               {/* Toggle email wajib (migrasi 0033): untuk produk non-WR yang
                   butuh kirim ke email. Varian WR Invite/Link otomatis butuh
                   tanpa toggle ini. */}
@@ -293,16 +290,16 @@ export function ProductEditorModal({
               {(() => {
                 const requireEmailPending = editing && (loadingVariants || typeof form.requireEmail !== "boolean");
                 return (
-                  <label className="flex items-center gap-2" title="Pembeli wajib isi email sebelum bayar (untuk produk yang dikirim via email)">
-                    <input type="checkbox" disabled={requireEmailPending} aria-busy={requireEmailPending} checked={form.requireEmail === true} onChange={(e) => onSetForm({ ...form, requireEmail: e.target.checked })} className="w-4 h-4 rounded accent-admin-accent disabled:opacity-40" />
+                  <Label className="flex items-center gap-2" title="Pembeli wajib isi email sebelum bayar (untuk produk yang dikirim via email)">
+                    <Checkbox  disabled={requireEmailPending} aria-busy={requireEmailPending} checked={form.requireEmail === true} onCheckedChange={(checked) => onSetForm({ ...form, requireEmail: (checked === true) })} className="w-4 h-4 rounded accent-admin-accent disabled:opacity-40" />
                     <span className="text-sm text-admin-muted">Wajib email pembeli{requireEmailPending ? " (memuat…)" : ""}</span>
-                  </label>
+                  </Label>
                 );
               })()}
               <div className="text-xs text-admin-muted">
-                <label className="flex items-center gap-2">
+                <Label className="flex items-center gap-2">
                   <span className="text-admin-muted">Terjual</span>
-                  <input
+                  <Input
                     type="number" min={0} max={9999999} step={1}
                     value={form.soldCount ?? 0}
                     onChange={(e) => onSetForm({ ...form, soldCount: Math.max(0, Math.min(9999999, Math.floor(Number(e.target.value) || 0))) })}
@@ -310,14 +307,14 @@ export function ProductEditorModal({
                     title="Angka Terjual — pembelian asli tetap menambah di atas angka ini"
                     className="h-8 w-[90px] rounded-lg border border-admin-border bg-admin-subtle px-2 text-center text-xs font-semibold text-admin-fg outline-none transition focus:border-admin-accent/40"
                   />
-                </label>
+                </Label>
                 <span className="mt-1 block text-xs leading-4 text-admin-muted">Bisa diedit manual; order lunas tetap menambah otomatis.</span>
               </div>
             </div>
 
-            </div>
+            </TabsContent>
 
-            <div id="product-editor-panel-konten" role="tabpanel" aria-labelledby="product-editor-tab-konten" hidden={tab !== "konten"}>
+            <TabsContent value="konten" forceMount hidden={tab !== "konten"} className="mt-0">
               <ProductCopyTab
                 form={form}
                 onSetForm={onSetForm}
@@ -326,9 +323,9 @@ export function ProductEditorModal({
                 loadingVariants={loadingVariants}
                 variantCopy={variantCopy}
               />
-            </div>
+            </TabsContent>
 
-            <div id="product-editor-panel-media" role="tabpanel" aria-labelledby="product-editor-tab-media" hidden={tab !== "media"}>
+            <TabsContent value="media" forceMount hidden={tab !== "media"} className="mt-0">
             <div className="mt-5">
               <p className="text-xs font-semibold text-admin-muted mb-2">Foto Produk — maks 8 (PNG/JPG → WebP otomatis)</p>
               <div className="grid grid-cols-4 gap-2">
@@ -336,32 +333,32 @@ export function ProductEditorModal({
                   <div key={url} className="relative group aspect-square rounded-xl overflow-hidden bg-admin-subtle border border-admin-border">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={url} alt="" className={`w-full h-full ${i === 0 ? "object-cover" : "object-contain"}`} />
-                    {i===0 && <span className="absolute top-1 left-1 text-xs font-bold px-1.5 py-0.5 rounded-md bg-admin-primary text-admin-inverse">Utama</span>}
-                    <button onClick={()=>onSetFormImages(prev=>prev.filter((_,idx)=>idx!==i))} className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-md bg-black/60 text-admin-fg opacity-0 transition group-hover:opacity-100"><IosIcon name="close" size={10} tint="white" /></button>
-                    {i>0 && <button onClick={()=>onSetFormImages(prev=>{ const a=[...prev]; const t=a[i]; a[i]=a[0]; a[0]=t; return a; })} className="absolute bottom-1 left-1 right-1 text-xs font-bold bg-admin-subtle text-admin-inverse rounded-md py-1 opacity-0 group-hover:opacity-100 transition">Jadikan utama</button>}
+                    {i===0 && <span className="absolute top-1 left-1 text-xs font-semibold px-1.5 py-0.5 rounded-md bg-admin-primary text-admin-inverse">Utama</span>}
+                    <Button variant="outline" type="button" aria-label={`Hapus foto ${i + 1}`} size="icon" onClick={()=>onSetFormImages(prev=>prev.filter((_,idx)=>idx!==i))} className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-md bg-admin-subtle/60 text-admin-fg transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"><IosIcon name="close" size={10} tint="currentColor" /></Button>
+                    {i>0 && <Button variant="default" type="button" onClick={()=>onSetFormImages(prev=>{ const a=[...prev]; const t=a[i]; a[i]=a[0]; a[0]=t; return a; })} className="absolute bottom-1 left-1 right-1 text-xs font-semibold bg-admin-primary text-admin-inverse rounded-md py-1 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">Jadikan utama</Button>}
                   </div>
                 ))}
                 {formImages.length<8 && (
-                  <label className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition ${uploading?"opacity-50 pointer-events-none":"border-admin-border hover:border-admin-accent/40 hover:bg-admin-subtle"}`}>
-                    <IosIcon name="plus" size={18} tint="white" className="opacity-40" /><span className="text-xs text-admin-muted">{uploading?"Upload...":"Tambah"}</span>
+                  <Label className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition ${uploading?"opacity-50 pointer-events-none":"border-admin-border hover:border-admin-accent/40 hover:bg-admin-subtle"}`}>
+                    <IosIcon name="plus" size={18} tint="currentColor" className="opacity-40" /><span className="text-xs text-admin-muted">{uploading?"Upload...":"Tambah"}</span>
                     <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden" onChange={onUpload} disabled={uploading} />
-                  </label>
+                  </Label>
                 )}
               </div>
-              <p className="text-xs text-admin-muted mt-2">Foto pertama = cover WebP 1600×900. Foto kedua dan seterusnya tampil utuh dengan rasio asli, maksimal 1920 px. Foto lama yang terpotong perlu diunggah ulang dari gambar asli.</p>
+              <p className="text-xs text-admin-muted mt-2">Foto pertama = cover WebP 1600x900. Foto kedua dan seterusnya tampil utuh dengan rasio asli, maksimal 1920 px. Foto lama yang terpotong perlu diunggah ulang dari gambar asli.</p>
             </div>
 
-            </div>
+            </TabsContent>
             </div>
 
              <div className="shrink-0 flex flex-wrap gap-3 justify-end border-t border-admin-border bg-admin-card px-6 py-4">
               {(variantCopy.dirty || variantCopy.saving) && <p role="status" className="w-full text-xs text-admin-warning">{variantCopy.saving ? "Teks varian sedang disimpan…" : "Simpan atau batalkan perubahan teks di panel varian sebelum Simpan Produk."}</p>}
-              <button onClick={requestClose} disabled={saving || variantCopy.saving} className="h-11 px-5 rounded-md border border-admin-border bg-admin-subtle text-sm font-semibold text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">Batal</button>
-              <button onClick={onSave} disabled={saving || uploading || variantCopy.dirty || variantCopy.saving} className="h-11 px-6 rounded-md bg-admin-primary text-admin-inverse text-sm font-bold hover:bg-admin-primary transition disabled:opacity-60 inline-flex items-center gap-2">
-                {saving ? <Spinner size={16} className="border-[#080C1E]/20 border-t-[#080C1E]" /> : <IosIcon name="checked" size={15} tint="black" />} {saving ? "Menyimpan…" : "Simpan Produk"}
-              </button>
+              <Button variant="outline" type="button" onClick={requestClose} disabled={saving || variantCopy.saving} className="h-9 px-5 rounded-md border border-admin-border bg-admin-subtle text-sm font-semibold text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">Batal</Button>
+              <Button variant="default" type="button" onClick={onSave} disabled={saving || uploading || variantCopy.dirty || variantCopy.saving} className="h-9 px-6 rounded-md bg-admin-primary text-admin-inverse text-sm font-semibold hover:bg-admin-primary transition disabled:opacity-60 inline-flex items-center gap-2">
+                {saving ? <Spinner size={16} className="border-admin-inverse/20 border-t-admin-inverse" /> : <IosIcon name="checked" size={15} tint="currentColor" />} {saving ? "Menyimpan…" : "Simpan Produk"}
+              </Button>
             </div>
-          </section>
+          </Tabs>
         </Dialog>
     <ConfirmDialog open={discardCopy} title="Buang perubahan teks varian?" description="Perubahan teks varian belum disimpan." confirmLabel="Buang perubahan" onClose={() => setDiscardCopy(false)} onConfirm={() => { setDiscardCopy(false); onRequestClose(); }} />
     </>

@@ -1,4 +1,5 @@
 "use client";
+import { Button } from "@/components/admin/ui";
 import { Suspense, lazy, useEffect, useState, useCallback, useRef } from "react";
 import type { ReportSelection } from "@/lib/revenue";
 import { formatWibDateTime } from "@/lib/utils";
@@ -150,14 +151,14 @@ export default function AdminPage() {
     <AdminShell section={tab} onSection={(section)=>navigateAdmin(section)} badges={{ orders: overview.pending_orders, payments: overview.payment_attention, bot: overview.fulfillment_attention }}>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-admin-muted" data-testid="admin-session-header">
         <div className="flex flex-wrap items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-md bg-emerald-400 animate-pulse" /> Masuk sebagai <span className="text-admin-muted">{auth.authEmail || "admin"}</span> <span className="opacity-40">·</span> maks. 8 jam <span className="opacity-40">·</span> idle 2 jam
+        <span className="w-1.5 h-1.5 rounded-md bg-admin-success animate-pulse" /> Masuk sebagai <span className="text-admin-muted">{auth.authEmail || "admin"}</span> <span className="opacity-40">·</span> maks. 8 jam <span className="opacity-40">·</span> idle 2 jam
         </div>
         {tab === "summary" && !overviewLoading && !overviewError && overview.selected_report && <p>
           {overview.selected_report.from} – {overview.selected_report.to} · {overview.selected_report.timezone} · Dibuat {formatWibDateTime(overview.selected_report.generated_at)} WIB
         </p>}
       </div>
 
-      {tab === "products" && pm.listError && <div className="mt-4 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-admin-danger flex items-center justify-between gap-3"><span>{pm.listError}</span><button onClick={pm.load} className="h-8 px-3 rounded-md bg-admin-primary text-admin-inverse text-xs font-bold shrink-0 transition hover:bg-admin-subtle">Coba lagi</button></div>}
+      {tab === "products" && pm.listError && <div className="mt-4 rounded-xl bg-admin-danger/10 border border-admin-danger/20 px-4 py-3 text-sm text-admin-danger flex items-center justify-between gap-3"><span>{pm.listError}</span><Button variant="default" size="sm" type="button" onClick={pm.load} className="h-8 px-3 rounded-md bg-admin-primary text-admin-inverse text-xs font-semibold shrink-0 transition hover:bg-admin-subtle">Coba lagi</Button></div>}
 
       {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection} />}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}

@@ -1,4 +1,5 @@
 "use client";
+import { Button } from "@/components/admin/ui";
 
 import { useRef, useState } from "react";
 import { IosIcon } from "@/components/admin/AdminIcon";
@@ -133,33 +134,33 @@ export function ImageDropzone({ area, value, onUploaded, onRemove }: Props) {
             alt="Preview"
             className={
               preserveRatio
-                ? "max-h-[320px] w-full rounded-lg bg-black/20 object-contain"
+                ? "max-h-[320px] w-full rounded-lg bg-admin-subtle/20 object-contain"
                 : "aspect-video w-full rounded-lg object-cover"
             }
           />
           <div className="mt-2 flex justify-center gap-2">
-            <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-admin-accent/25 bg-admin-primary/10 px-3 text-xs font-bold text-admin-accent transition hover:bg-admin-primary/20" onClick={() => input.current?.click()}>
-              <IosIcon name="edit" size={12} tint="#00E5FF" /> Ganti
-            </button>
-            <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-400/25 bg-red-500/10 px-3 text-xs font-bold text-admin-danger transition hover:bg-red-500/20" onClick={onRemove}>
-              <IosIcon name="trash" size={12} tint="#F87171" /> Hapus
-            </button>
+            <Button variant="outline" size="sm" type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-admin-accent/25 bg-admin-primary/10 px-3 text-xs font-semibold text-admin-accent transition hover:bg-admin-primary/20" onClick={() => input.current?.click()}>
+              <IosIcon name="edit" size={12} tint="currentColor" /> Ganti
+            </Button>
+            <Button variant="outline" size="sm" type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-admin-danger/25 bg-admin-danger/10 px-3 text-xs font-semibold text-admin-danger transition hover:bg-admin-danger/20" onClick={onRemove}>
+              <IosIcon name="trash" size={12} tint="currentColor" /> Hapus
+            </Button>
           </div>
         </div>
       ) : (
-        <button type="button" disabled={busy} onClick={() => input.current?.click()} className="min-h-36 w-full rounded-lg text-sm text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">
+        <Button variant="outline" type="button" disabled={busy} onClick={() => input.current?.click()} className="min-h-36 w-full rounded-lg text-sm text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">
           {busy ? (
             "Mengonversi & upload…"
           ) : (
             <span className="inline-flex flex-col items-center gap-1">
-              <IosIcon name="upload" size={22} tint="white" />
+              <IosIcon name="upload" size={22} tint="currentColor" />
               <span>Tarik gambar atau klik · PNG/JPG/WebP</span>
               <span className="text-xs text-admin-muted">
-                {preserveRatio ? "Rasio asli dipertahankan · maks. 1920 px" : "Otomatis WebP 1600×900"}
+                {preserveRatio ? "Rasio asli dipertahankan · maks. 1920 px" : "Otomatis WebP 1600x900"}
               </span>
             </span>
           )}
-        </button>
+        </Button>
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 "use client";
+import { Button, Card, Input, Label } from "@/components/admin/ui";
 
 import { useCallback, useEffect, useState } from "react";
 import { CATEGORY_ICON_OPTIONS, IosIcon, categoryIcon, resolveCategoryIconName } from "@/components/admin/AdminIcon";
@@ -103,13 +104,13 @@ export function CategoryManager() {
 
   return (
     <section className="mt-4">
-      <div className="admin-surface rounded-xl overflow-hidden">
+      <Card className="admin-surface rounded-xl overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-admin-border p-4 sm:p-5">
           <div className="min-w-0"><h2 className="text-sm font-semibold text-admin-fg">Kategori</h2><p className="text-xs text-admin-muted">Nama, ikon, dan urutan dipakai bersama oleh katalog dan footer.</p></div>
-          <button type="button" onClick={openNew} className="ml-auto inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary"><IosIcon name="plus" size={14} tint="black" /> Kategori Baru</button>
+          <Button variant="default" type="button" onClick={openNew} className="ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-admin-primary px-5 text-sm font-semibold text-admin-inverse transition hover:bg-admin-primary"><IosIcon name="plus" size={14} tint="currentColor" /> Kategori Baru</Button>
         </div>
 
-        {error && !showForm && <p className="mx-4 mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-admin-danger sm:mx-5">{error}</p>}
+        {error && !showForm && <p className="mx-4 mt-4 rounded-xl border border-admin-danger/20 bg-admin-danger/10 px-3 py-2 text-sm text-admin-danger sm:mx-5">{error}</p>}
         {loading ? (
           <div className="flex items-center justify-center gap-2 p-10 text-sm text-admin-muted"><Spinner size={18} /> Memuat kategori…</div>
         ) : list.length === 0 ? (
@@ -120,36 +121,36 @@ export function CategoryManager() {
               const hasProducts = (category.product_count ?? 0) > 0;
               return (
                 <div key={category.id} className="flex items-center gap-3 px-4 py-3 transition hover:bg-admin-subtle sm:px-5">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-subtle"><IosIcon name={categoryIcon(category.slug, category.icon)} size={18} tint="white" /></span>
+                  <span className="flex h-9 w-10 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-subtle"><IosIcon name={categoryIcon(category.slug, category.icon)} size={18} tint="currentColor" /></span>
                   <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-admin-fg">{category.name}</p><p className="text-xs text-admin-muted">/{category.slug} · urutan {category.sort_order ?? 0} · {category.product_count ?? 0} produk</p></div>
-                  <button type="button" onClick={() => openEdit(category)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md bg-admin-primary px-3 text-xs font-bold text-admin-inverse transition hover:bg-admin-subtle"><IosIcon name="edit" size={12} tint="black" /> Edit</button>
-                  <button type="button" onClick={() => setDeleteTarget(category)} disabled={hasProducts || deleting === category.id} title={hasProducts ? "Pindahkan semua produk sebelum menghapus kategori" : "Hapus kategori"} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-500 text-admin-fg shadow-[0_2px_10px_rgba(239,68,68,0.35)] transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label={`Hapus ${category.name}`}><IosIcon name="trash" size={16} tint="white" /></button>
+                  <Button variant="default" size="sm" type="button" onClick={() => openEdit(category)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md bg-admin-primary px-3 text-xs font-semibold text-admin-inverse transition hover:bg-admin-subtle"><IosIcon name="edit" size={12} tint="currentColor" /> Edit</Button>
+                  <Button variant="outline" size="icon" type="button" onClick={() => setDeleteTarget(category)} disabled={hasProducts || deleting === category.id} title={hasProducts ? "Pindahkan semua produk sebelum menghapus kategori" : "Hapus kategori"} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-admin-danger text-admin-fg shadow-sm transition hover:bg-admin-danger disabled:cursor-not-allowed disabled:opacity-30" aria-label={`Hapus ${category.name}`}><IosIcon name="trash" size={16} tint="currentColor" /></Button>
                 </div>
               );
             })}
           </div>
         )}
-      </div>
+      </Card>
 
       {showForm && (
         <Dialog title={editing ? "Edit Kategori" : "Kategori Baru"} onClose={() => !saving && setShowForm(false)} busy={saving} className="w-[560px]">
-            <div className="flex items-center justify-between gap-3"><div><h3 id="category-form-title" className="text-lg font-bold text-admin-fg">{editing ? "Edit Kategori" : "Kategori Baru"}</h3><p className="mt-0.5 text-xs text-admin-muted">Slug dibuat sekali dan tetap stabil ketika nama diganti.</p></div>
-              <button type="button" onClick={() => setShowForm(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-admin-subtle transition hover:bg-admin-subtle" aria-label="Tutup form kategori"><IosIcon name="close" size={14} tint="white" /></button>
+            <div className="flex items-center justify-between gap-3"><div><h3 id="category-form-title" className="text-lg font-semibold text-admin-fg">{editing ? "Edit Kategori" : "Kategori Baru"}</h3><p className="mt-0.5 text-xs text-admin-muted">Slug dibuat sekali dan tetap stabil ketika nama diganti.</p></div>
+              <Button variant="outline" size="icon" type="button" onClick={() => setShowForm(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-admin-subtle transition hover:bg-admin-subtle" aria-label="Tutup form kategori"><IosIcon name="close" size={14} tint="currentColor" /></Button>
             </div>
             {editing && <div className="mt-4 rounded-xl border border-admin-border bg-admin-subtle px-3 py-2"><p className="text-xs text-admin-muted">Slug permanen</p><code className="text-sm text-admin-muted">/{editing.slug}</code></div>}
-            {error && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-admin-danger">{error}</p>}
-            <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Nama kategori</span><input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} maxLength={40} autoFocus className="h-11 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></label>
+            {error && <p className="mt-4 rounded-xl border border-admin-danger/20 bg-admin-danger/10 px-3 py-2 text-sm text-admin-danger">{error}</p>}
+            <Label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Nama kategori</span><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} maxLength={40} autoFocus className="h-9 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></Label>
             <div className="mt-4">
               <p className="text-xs font-semibold text-admin-muted">Ikon</p>
               <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
                 {CATEGORY_ICON_OPTIONS.map((option) => {
                   const active = form.icon === option.value;
-                  return <button key={option.value} type="button" onClick={() => setForm((current) => ({ ...current, icon: option.value }))} aria-pressed={active} title={option.label} className={`flex h-14 flex-col items-center justify-center gap-1 rounded-xl border text-xs transition ${active ? "border-admin-accent/50 bg-admin-primary/10 text-admin-accent" : "border-admin-border bg-admin-subtle text-admin-muted hover:bg-admin-subtle"}`}><IosIcon name={option.value} size={18} tint={active ? "#00E5FF" : "white"} /><span>{option.label}</span></button>;
+                  return <Button variant="outline" key={option.value} type="button" onClick={() => setForm((current) => ({ ...current, icon: option.value }))} aria-pressed={active} title={option.label} className={`flex h-14 flex-col items-center justify-center gap-1 rounded-xl border text-xs transition ${active ? "border-admin-accent/50 bg-admin-primary/10 text-admin-accent" : "border-admin-border bg-admin-subtle text-admin-muted hover:bg-admin-subtle"}`}><IosIcon name={option.value} size={18} tint="currentColor" /><span>{option.label}</span></Button>;
                 })}
               </div>
             </div>
-            <label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Urutan tampil</span><input type="number" min={0} max={999} value={form.sort_order} onChange={(event) => setForm((current) => ({ ...current, sort_order: Number(event.target.value) }))} className="h-11 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></label>
-            <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setShowForm(false)} disabled={saving} className="h-10 rounded-md border border-admin-border bg-admin-subtle px-4 text-sm text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">Batal</button><button type="button" onClick={() => void save()} disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-50">{saving ? <Spinner size={14} className="border-[#080C1E]/20 border-t-[#080C1E]" /> : <IosIcon name="checked" size={14} tint="black" />}{saving ? "Menyimpan…" : "Simpan Kategori"}</button></div>
+            <Label className="mt-4 grid gap-1.5"><span className="text-xs font-semibold text-admin-muted">Urutan tampil</span><Input type="number" min={0} max={999} value={form.sort_order} onChange={(event) => setForm((current) => ({ ...current, sort_order: Number(event.target.value) }))} className="h-9 rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/40 focus:outline-none" /></Label>
+            <div className="mt-6 flex justify-end gap-2"><Button variant="outline" type="button" onClick={() => setShowForm(false)} disabled={saving} className="h-9 rounded-md border border-admin-border bg-admin-subtle px-4 text-sm text-admin-muted transition hover:bg-admin-subtle disabled:opacity-50">Batal</Button><Button variant="default" type="button" onClick={() => void save()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-semibold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-50">{saving ? <Spinner size={14} className="border-admin-inverse/20 border-t-admin-inverse" /> : <IosIcon name="checked" size={14} tint="currentColor" />}{saving ? "Menyimpan…" : "Simpan Kategori"}</Button></div>
         </Dialog>
       )}
 

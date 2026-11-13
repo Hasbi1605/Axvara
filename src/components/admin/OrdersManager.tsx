@@ -1,5 +1,7 @@
 "use client";
+import { Badge, Button, Card, Input, Label, NativeSelect, Textarea, Table, TableHeader, TableHead, TableBody, TableRow, TableCell, Separator, Skeleton, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Tabs, TabsList, TabsTrigger } from "@/components/admin/ui";
 
+import { MoreHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deriveNameFromEmail, formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { pediaStatusLabel } from "@/components/pedia/StatusWidgets";
@@ -42,7 +44,7 @@ type ActionState = { kind: "paid" | "paid_qris" | "approve" | "reject" | "cancel
 
 const PER_PAGE = 8;
 const BUYER_NOT_NOTIFIED = "Serah terima tercatat, tetapi kabar ke pembeli GAGAL terkirim. Hubungi pembeli secara manual.";
-const inputClass = "h-10 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg outline-none placeholder:text-admin-muted focus:border-admin-accent/40";
+const inputClass = "h-9 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg outline-none placeholder:text-admin-muted focus:border-admin-accent/40";
 
 export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   const toast = useToast();
@@ -245,34 +247,105 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   const channelTotal = (counts.web || 0) + (counts.telegram || 0) + (counts.whatsapp || 0);
   const channelTabs = [["all", "Semua", channelTotal, null], ["web", "Web", counts.web || 0, "globe"], ["telegram", "Telegram", counts.telegram || 0, "telegram-app"], ["whatsapp", "WhatsApp", counts.whatsapp || 0, "whatsapp"]] as const;
 
-  return <div className="mt-4 space-y-4">
+  return <div className="mt-4 space-y-6">
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {[["Total pesanan", stats.total, "text-admin-fg"], ["Pending", stats.pending, "text-admin-warning"], ["Lunas", stats.paid, "text-admin-success"], ["Omzet", formatRupiah(stats.revenue), "text-admin-fg"]].map(([label, value, tone]) => <div key={String(label)} className="admin-surface rounded-xl p-4"><p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p><p className={`mt-1 font-display text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{loading || error ? "—" : value}</p>{hasActiveFilters && <p className="mt-1 text-xs text-admin-accent">hasil filter</p>}</div>)}
+      {[["Total pesanan", stats.total, "text-admin-fg"], ["Pending", stats.pending, "text-admin-warning"], ["Lunas", stats.paid, "text-admin-success"], ["Omzet", formatRupiah(stats.revenue), "text-admin-fg"]].map(([label, value, tone]) => <Card key={String(label)} className="admin-surface rounded-xl p-4">
+<p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p>
+<p className={`mt-1 font-sans text-xl font-semibold tabular-nums sm:text-2xl ${tone}`}>{loading || error ? "—" : value}</p>{hasActiveFilters && <p className="mt-1 text-xs text-admin-accent">hasil filter</p>}</Card>)}
     </div>
 
-    <section className="admin-surface overflow-hidden rounded-xl">
+    <Card className="admin-surface overflow-hidden rounded-xl">
       <header className="border-b border-admin-border p-4 sm:p-5">
-        <div className="flex flex-wrap items-center gap-3"><div className="min-w-0"><h2 className="text-sm font-semibold text-admin-fg">Pesanan</h2><p className="mt-0.5 text-xs text-admin-muted">Cari, filter, periksa pembayaran, dan proses fulfillment.</p></div><a href={exportHref} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-admin-border px-3.5 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg"><IosIcon name="download" size={13} tint="white" /> Export CSV</a></div>
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:flex" role="tablist" aria-label="Filter kanal pesanan">{channelTabs.map(([value, label, count, icon]) => <button key={value} role="tab" aria-selected={channel === value} onClick={() => changeFilter(setChannel, value)} className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition ${channel === value ? "border-admin-accent/40 bg-admin-primary text-admin-inverse" : "border-admin-border bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}>{icon ? <IosIcon name={icon} size={13} tint={channel === value ? "black" : value === "telegram" ? "#229ED9" : value === "whatsapp" ? "#25D366" : "white"} /> : null}{label}<span className={`rounded-md px-1.5 py-0.5 text-xs font-bold ${channel === value ? "bg-black/15" : "bg-admin-subtle"}`}>{count}</span></button>)}</div>
+        <div className="flex flex-wrap items-center gap-3">
+<div className="min-w-0">
+<h2 className="text-xl font-semibold text-admin-fg">Pesanan</h2>
+<p className="mt-0.5 text-sm text-admin-muted">Cari, filter, periksa pembayaran, dan proses fulfillment.</p>
+</div>
+<a href={exportHref} className="ml-auto inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-admin-border px-3.5 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">
+<IosIcon name="download" size={13} tint="currentColor" /> Export CSV</a>
+</div>
+        <Tabs value={channel} onValueChange={value => changeFilter(setChannel, value)} className="mt-4">
+<TabsList aria-label="Filter kanal pesanan" className="h-auto justify-start">{channelTabs.map(([value, label, count, icon]) => <TabsTrigger key={value} value={value} className="gap-2">{icon ? <IosIcon name={icon} size={13} tint="currentColor" /> : null}{label}<Badge variant="outline" className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${channel === value ? "bg-admin-subtle/15" : "bg-admin-subtle"}`}>{count}</Badge>
+</TabsTrigger>)}</TabsList></Tabs>
         <div className="mt-3 grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <form onSubmit={(event) => { event.preventDefault(); setQuery(draftQuery.trim()); setPage(1); }}><label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted" htmlFor="order-search">Pencarian</label><div className="relative"><IosIcon name="search" size={15} tint="white" className="absolute left-3 top-3 opacity-45" /><input id="order-search" value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} className={`${inputClass} pl-9`} placeholder="Kode, nama, WA, produk…" /></div></form>
-          <label className="block"><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Status</span><select value={status} onChange={(event) => changeFilter(setStatus, event.target.value)} className={inputClass}><option value="all">Semua status</option><option value="pending">Pending</option><option value="lunas">Lunas</option><option value="dibatalkan">Dibatalkan</option><option value="kadaluarsa">Kedaluwarsa</option></select></label>
-          <label className="block"><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Jenis</span><select value={kind} onChange={(event) => changeFilter(setKind, event.target.value)} className={inputClass} aria-label="Filter jenis pesanan"><option value="all">Semua jenis</option><option value="apps">Aplikasi</option><option value="pedia">Pedia</option><option value="games">Games</option></select></label>
-          <label className="block"><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Pembayaran</span><select value={method} onChange={(event) => changeFilter(setMethod, event.target.value)} className={inputClass}><option value="all">Semua pembayaran</option><option value="qris">QRIS</option><option value="manual">Transfer manual</option>{methods.filter((item) => !["qris"].includes(item)).map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}</select></label>
-          <label className="block"><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Dari tanggal</span><input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} className={inputClass} /></label>
-          <label className="block"><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Sampai tanggal</span><input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className={inputClass} /></label>
-          <button onClick={clearFilters} className="h-10 whitespace-nowrap rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted hover:bg-admin-subtle">Reset</button>
+          <form onSubmit={(event) => { event.preventDefault(); setQuery(draftQuery.trim()); setPage(1); }}>
+<Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted" htmlFor="order-search">Pencarian</Label>
+<div className="relative">
+<IosIcon name="search" size={15} tint="currentColor" className="absolute left-3 top-3 opacity-45" />
+<Input id="order-search" value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} className={`${inputClass} pl-9`} placeholder="Kode, nama, WA, produk…" />
+</div>
+</form>
+          <Label className="block">
+<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Status</span>
+<NativeSelect value={status} onChange={(event) => changeFilter(setStatus, event.target.value)} className={inputClass}>
+<option value="all">Semua status</option>
+<option value="pending">Pending</option>
+<option value="lunas">Lunas</option>
+<option value="dibatalkan">Dibatalkan</option>
+<option value="kadaluarsa">Kedaluwarsa</option>
+</NativeSelect>
+</Label>
+          <Label className="block">
+<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Jenis</span>
+<NativeSelect value={kind} onChange={(event) => changeFilter(setKind, event.target.value)} className={inputClass} aria-label="Filter jenis pesanan">
+<option value="all">Semua jenis</option>
+<option value="apps">Aplikasi</option>
+<option value="pedia">Pedia</option>
+<option value="games">Games</option>
+</NativeSelect>
+</Label>
+          <Label className="block">
+<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Pembayaran</span>
+<NativeSelect value={method} onChange={(event) => changeFilter(setMethod, event.target.value)} className={inputClass}>
+<option value="all">Semua pembayaran</option>
+<option value="qris">QRIS</option>
+<option value="manual">Transfer manual</option>{methods.filter((item) => !["qris"].includes(item)).map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}</NativeSelect>
+</Label>
+          <Label className="block">
+<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Dari tanggal</span>
+<Input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} className={inputClass} />
+</Label>
+          <Label className="block">
+<span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-admin-muted">Sampai tanggal</span>
+<Input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className={inputClass} />
+</Label>
+          <Button variant="outline" type="button" onClick={clearFilters} className="h-9 whitespace-nowrap rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted hover:bg-admin-subtle">Reset</Button>
         </div>
         {activeFilters.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Filter aktif</span>
-          {activeFilters.map((filter) => <button key={filter.label} type="button" onClick={filter.clear} className="inline-flex h-8 items-center gap-2 rounded-md border border-admin-accent/30 bg-admin-primary/10 px-3 text-xs font-semibold text-admin-accent transition hover:bg-admin-primary/20" aria-label={`Hapus filter ${filter.label}`}>{filter.label}<IosIcon name="close" size={10} tint="#5cefff" /></button>)}
+          {activeFilters.map((filter) => <Button variant="outline" size="sm" key={filter.label} type="button" onClick={filter.clear} className="inline-flex h-8 items-center gap-2 rounded-md border border-admin-accent/30 bg-admin-primary/10 px-3 text-xs font-semibold text-admin-accent transition hover:bg-admin-primary/20" aria-label={`Hapus filter ${filter.label}`}>{filter.label}<IosIcon name="close" size={10} tint="currentColor" />
+</Button>)}
         </div>}
       </header>
 
-      {error ? <div className="m-4 flex items-center justify-between gap-3 rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-admin-danger"><span>{error}</span><button onClick={() => void load()} className="rounded-lg bg-admin-primary px-3 py-1.5 text-xs font-bold text-admin-inverse">Coba lagi</button></div> : loading ? <div className="flex min-h-56 items-center justify-center gap-3 text-sm text-admin-muted"><Spinner size={22} /> Memuat pesanan…</div> : orders.length === 0 ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada pesanan yang cocok dengan filter.</p> : <div className="divide-y divide-admin-border">{orders.map((order) => <OrderRow key={order.code} order={order} onChanged={() => { void load(); onChanged?.(); }} onDetail={() => setSelected(order)} onAction={(kind) => { setAction({ kind, order }); setActionNote(""); }} />)}</div>}
+      {error ? <div className="m-4 flex items-center justify-between gap-3 rounded-xl border border-admin-danger/20 bg-admin-danger/10 p-3 text-sm text-admin-danger">
+<span>{error}</span>
+<Button variant="default" type="button" onClick={() => void load()} className="rounded-lg bg-admin-primary px-3 py-1.5 text-xs font-semibold text-admin-inverse">Coba lagi</Button>
+</div> : loading ? <div className="flex min-h-56 items-center justify-center gap-3 text-sm text-admin-muted">
+<div className="w-full space-y-4 p-6">
+<Skeleton className="h-16 w-full" />
+<Skeleton className="h-16 w-full" />
+<span className="sr-only">Memuat pesanan…</span>
+</div>
+</div> : orders.length === 0 ? <p className="p-10 text-center text-sm text-admin-muted">Tidak ada pesanan yang cocok dengan filter.</p> : <Table className="block md:table">
+<TableHeader className="hidden md:table-header-group">
+<TableRow>
+<TableHead className="w-36">Bukti</TableHead>
+<TableHead>Pesanan</TableHead>
+<TableHead className="text-right">Tindakan</TableHead>
+</TableRow>
+</TableHeader>
+<TableBody className="block space-y-3 p-3 md:table-row-group md:space-y-0 md:p-0">{orders.map((order) => <OrderRow key={order.code} order={order} onChanged={() => { void load(); onChanged?.(); }} onDetail={() => setSelected(order)} onAction={(kind) => { setAction({ kind, order }); setActionNote(""); }} />)}</TableBody>
+</Table>}
 
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-admin-border px-4 py-3 text-xs text-admin-muted sm:px-5"><span>Hal {page} dari {pages} · {total} pesanan</span><div className="flex gap-2"><button disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))} className="h-8 rounded-md border border-admin-border px-3 transition hover:bg-admin-subtle disabled:opacity-30">Sebelumnya</button><button disabled={page >= pages || loading} onClick={() => setPage((current) => Math.min(pages, current + 1))} className="h-8 rounded-md border border-admin-border px-3 transition hover:bg-admin-subtle disabled:opacity-30">Berikutnya</button></div></footer>
-    </section>
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-admin-border px-4 py-3 text-xs text-admin-muted sm:px-5">
+<span>Hal {page} dari {pages} · {total} pesanan</span>
+<div className="flex gap-2">
+<Button variant="outline" size="sm" type="button" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))} className="h-8 rounded-md border border-admin-border px-3 transition hover:bg-admin-subtle disabled:opacity-30">Sebelumnya</Button>
+<Button variant="outline" size="sm" type="button" disabled={page >= pages || loading} onClick={() => setPage((current) => Math.min(pages, current + 1))} className="h-8 rounded-md border border-admin-border px-3 transition hover:bg-admin-subtle disabled:opacity-30">Berikutnya</Button>
+</div>
+</footer>
+    </Card>
 
     {selected && <OrderDetail order={selected} onChanged={() => { setSelected(null); void load(); onChanged?.(); }} onClose={() => setSelected(null)} onAction={(kind) => { setSelected(null); setAction({ kind, order: selected }); setActionNote(""); setHandoverMessages({}); }} />}
     {action && action.kind === "handover"
@@ -298,11 +371,43 @@ function OrderRow({ order, onDetail, onAction, onChanged }: { order: Order; onDe
   const providerPayment = /^(nowpayments|sekalipay_gateway):/i.test(order.method);
   const needsHandover = isMarket && order.status === "lunas"
     && hasHandoverItems(order) && ["manual_required", "retry", "failed"].includes(String(order.fulfillmentStatus ?? ""));
-  return <article className="grid gap-4 px-4 py-4 hover:bg-admin-subtle sm:px-5 lg:grid-cols-[136px_minmax(0,1fr)_auto] lg:items-center">
-    {providerPayment ? <div className="rounded-xl border border-admin-border bg-admin-subtle p-3 text-xs text-admin-muted">Pembayaran provider otomatis. Tanpa bukti transfer manual.</div> : qris && !order.fileName ? <div className="flex h-[90px] items-center justify-center rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] px-3 text-center"><div><p className="text-xs font-semibold text-admin-success">QRIS otomatis</p><p className="mt-1 text-xs leading-4 text-admin-muted">Tidak perlu bukti. Menunggu QRIS Hook.</p></div></div> : <ProofThumbnail proof={order.fileName} />}
-    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><button onClick={onDetail} className="font-mono text-xs font-bold text-admin-accent hover:underline">{order.code}</button><StatusBadge status={order.status} /><ChannelBadge channel={order.salesChannel} /><MethodBadge method={order.method} />{isPedia ? <><PediaChip /><PediaStatusChip order={order} /></> : <FulfillmentBadge status={order.fulfillmentStatus} supplierActive={hasActiveSupplierLink(order.supplierLinks)} />}</div><p className="mt-2 truncate text-sm font-semibold text-admin-fg">{displayName(order)}</p><p className="mt-0.5 truncate text-xs text-admin-muted">{order.wa || order.email || "Kontak tidak tersedia"}</p><p className="mt-1 line-clamp-2 text-xs leading-5 text-admin-muted">{isPedia ? pediaItemLine(order) : order.items.map((item) => `${item.name} ×${item.qty}`).join(", ")} · {formatRupiah(order.paymentAmount)}</p>{qris && order.fileName && <p className="mt-1 text-xs text-admin-success">Bukti hanya referensi; status pembayaran tetap dari QRIS Hook.</p>}{order.proofStatus === "rejected" && <p className="mt-1 text-xs leading-4 text-admin-danger">Bukti ditolak{order.proofRejectionReason ? `: ${order.proofRejectionReason}` : ""}</p>}{order.status === "lunas" && order.supplierLinks?.length ? <SupplierLinkActions links={order.supplierLinks} onChanged={onChanged} compact /> : null}</div>
-    <div className="flex flex-wrap gap-2 lg:max-w-[310px] lg:justify-end"><button onClick={onDetail} className="inline-flex h-9 items-center rounded-md border border-admin-border bg-admin-subtle px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">Detail</button>{isPedia && order.status === "pending" && <PediaAwaitingPayment />}{(!isMarket || providerPayment) && order.status === "pending" && !isPedia && <span className="text-xs text-admin-muted">Menunggu verifikasi provider</span>}{order.kind === "games" && <span className="text-xs font-semibold text-admin-accent">Games · pemrosesan otomatis</span>}{isMarket && !providerPayment && order.status === "pending" && <>{qris ? <><button onClick={() => onAction("paid_qris")} title="Dana benar masuk (cek mutasi manual) — lunaskan + kirim kredensial seperti hook normal" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-emerald-700 px-3.5 text-xs font-bold text-white transition hover:bg-emerald-800"><IosIcon name="checked" size={12} tint="black" /> ACC pembayaran</button><button onClick={() => onAction("cancel")} title="Dana tidak masuk — batalkan pesanan" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-red-400/25 bg-red-500/10 px-3.5 text-xs font-semibold text-admin-danger transition hover:bg-red-500/20"><IosIcon name="close" size={12} tint="#F87171" /> Tolak</button></> : order.salesChannel === "whatsapp" ? order.proofId && order.proofStatus === "submitted" ? <><button onClick={() => onAction("approve")} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-emerald-700 px-3.5 text-xs font-bold text-white transition hover:bg-emerald-800"><IosIcon name="checked" size={12} tint="black" /> Mutasi cocok</button><button onClick={() => onAction("reject")} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-red-400/25 bg-red-500/10 px-3.5 text-xs font-semibold text-admin-danger transition hover:bg-red-500/20"><IosIcon name="close" size={12} tint="#F87171" /> Tolak</button></> : <span className="inline-flex h-9 items-center rounded-md border border-admin-border px-3 text-xs text-admin-muted">Menunggu bukti</span> : <button onClick={() => onAction("paid")} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-emerald-700 px-3.5 text-xs font-bold text-white transition hover:bg-emerald-800"><IosIcon name="checked" size={12} tint="black" /> Konfirmasi lunas</button>}{!qris && <button onClick={() => onAction("cancel")} className="inline-flex h-9 items-center rounded-md border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">Batalkan</button>}</>}{needsHandover && <button onClick={() => onAction("handover")} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-bold text-admin-inverse transition hover:brightness-110"><IosIcon name="checked" size={12} tint="black" /> Kirim ke pembeli</button>}{isPedia && <PediaFollowUpLink order={order} />}</div>
-  </article>;
+  return <TableRow className="block rounded-md border border-admin-border bg-admin-card md:table-row md:rounded-none md:border-x-0 md:border-t-0">
+<TableCell className="block align-top md:table-cell md:w-36">
+    {providerPayment ? <div className="rounded-xl border border-admin-border bg-admin-subtle p-3 text-xs text-admin-muted">Pembayaran provider otomatis. Tanpa bukti transfer manual.</div> : qris && !order.fileName ? <div className="flex h-[90px] items-center justify-center rounded-xl border border-admin-success/15 bg-admin-success/[0.06] px-3 text-center">
+<div>
+<p className="text-xs font-semibold text-admin-success">QRIS otomatis</p>
+<p className="mt-1 text-xs leading-4 text-admin-muted">Tidak perlu bukti. Menunggu QRIS Hook.</p>
+</div>
+</div> : <ProofThumbnail proof={order.fileName} />}</TableCell>
+    <TableCell className="block min-w-0 align-top md:table-cell">
+<div className="min-w-0">
+<div className="flex flex-wrap items-center gap-2">
+<Button variant="link" type="button" onClick={onDetail} className="h-auto justify-start p-0 font-mono text-xs font-semibold text-admin-accent hover:underline">{order.code}</Button>
+<StatusBadge status={order.status} />
+<ChannelBadge channel={order.salesChannel} />
+<MethodBadge method={order.method} />{isPedia ? <>
+<PediaChip />
+<PediaStatusChip order={order} />
+</> : <FulfillmentBadge status={order.fulfillmentStatus} supplierActive={hasActiveSupplierLink(order.supplierLinks)} />}</div>
+<p className="mt-2 truncate text-sm font-semibold text-admin-fg">{displayName(order)}</p>
+<p className="mt-0.5 truncate text-xs text-admin-muted">{order.wa || order.email || "Kontak tidak tersedia"}</p>
+<p className="mt-1 line-clamp-2 text-xs leading-5 text-admin-muted">{isPedia ? pediaItemLine(order) : order.items.map((item) => `${item.name} x${item.qty}`).join(", ")} · {formatRupiah(order.paymentAmount)}</p>{qris && order.fileName && <p className="mt-1 text-xs text-admin-success">Bukti hanya referensi; status pembayaran tetap dari QRIS Hook.</p>}{order.proofStatus === "rejected" && <p className="mt-1 text-xs leading-4 text-admin-danger">Bukti ditolak{order.proofRejectionReason ? `: ${order.proofRejectionReason}` : ""}</p>}{order.status === "lunas" && order.supplierLinks?.length ? <SupplierLinkActions links={order.supplierLinks} onChanged={onChanged} compact /> : null}</div>
+</TableCell>
+    <TableCell className="block align-top md:table-cell md:w-64">
+<div className="flex flex-wrap gap-2 md:max-w-64 md:justify-end">
+<Button variant="outline" type="button" onClick={onDetail} className="inline-flex h-9 items-center rounded-md border border-admin-border bg-admin-subtle px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg">Detail</Button>{isPedia && order.status === "pending" && <PediaAwaitingPayment />}{(!isMarket || providerPayment) && order.status === "pending" && !isPedia && <span className="text-xs text-admin-muted">Menunggu verifikasi provider</span>}{order.kind === "games" && <span className="text-xs font-semibold text-admin-accent">Games · pemrosesan otomatis</span>}{isMarket && !providerPayment && order.status === "pending" && <>{qris ? <>
+<Button variant="outline" type="button" onClick={() => onAction("paid_qris")} title="Dana benar masuk (cek mutasi manual) — lunaskan + kirim kredensial seperti hook normal" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary/90">
+<IosIcon name="checked" size={12} tint="currentColor" /> ACC pembayaran</Button>
+
+</> : order.salesChannel === "whatsapp" ? order.proofId && order.proofStatus === "submitted" ? <>
+<Button variant="outline" type="button" onClick={() => onAction("approve")} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary/90">
+<IosIcon name="checked" size={12} tint="currentColor" /> Mutasi cocok</Button>
+
+</> : <span className="inline-flex h-9 items-center rounded-md border border-admin-border px-3 text-xs text-admin-muted">Menunggu bukti</span> : <Button variant="outline" type="button" onClick={() => onAction("paid")} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary/90">
+<IosIcon name="checked" size={12} tint="currentColor" /> Konfirmasi lunas</Button>}</>}{isMarket && !providerPayment && order.status === "pending" && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label={`Tindakan lain ${order.code}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{!qris && order.salesChannel === "whatsapp" && order.proofId && order.proofStatus === "submitted" && <DropdownMenuItem className="text-admin-danger" onSelect={() => onAction("reject")}>Tolak bukti</DropdownMenuItem>}<DropdownMenuItem className="text-admin-danger" onSelect={() => onAction("cancel")}>Batalkan pesanan</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}{needsHandover && <Button variant="default" type="button" onClick={() => onAction("handover")} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-admin-primary px-3.5 text-xs font-semibold text-admin-inverse transition hover:brightness-110">
+<IosIcon name="checked" size={12} tint="currentColor" /> Kirim ke pembeli</Button>}{isPedia && <PediaFollowUpLink order={order} />}</div>
+  </TableCell>
+</TableRow>;
 }
 
 function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; onClose: () => void; onAction: (kind: NonNullable<ActionState>["kind"]) => void; onChanged: () => void }) {
@@ -315,18 +420,76 @@ function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; on
   const needsHandover = isMarket && order.status === "lunas"
     && hasHandoverItems(order) && ["manual_required", "retry", "failed"].includes(String(order.fulfillmentStatus ?? ""));
   const qris = order.method.toLowerCase() === "qris";
-  return <AdminDialog title="Detail pesanan" onClose={onClose}><div className="space-y-4"><div className="flex flex-wrap items-center gap-2"><p className="font-mono text-sm font-bold text-admin-accent">{order.code}</p><StatusBadge status={order.status} /></div><div className="mt-2 flex flex-wrap items-center gap-2"><ChannelBadge channel={order.salesChannel} /><MethodBadge method={order.method} />{isPedia ? <><PediaChip /><PediaStatusChip order={order} /></> : <FulfillmentBadge status={order.fulfillmentStatus} supplierActive={hasActiveSupplierLink(order.supplierLinks)} />}<span className="text-xs text-admin-muted">{formatDate(order.createdAt)}</span></div>{!isPedia && order.status === "lunas" && order.supplierLinks?.length ? <SupplierLinkActions links={order.supplierLinks} onChanged={onChanged} /> : null}{inputError && <p role="alert" className="text-xs text-admin-danger">Input pembeli gagal dimuat. Tutup dan buka kembali detail.</p>}{buyerInputs.map(input => <Info key={input.item_index} label={`Kode Invite Muse · item ${input.item_index+1}`} value={input.value} />)}{isMarket && <OrderAccessAdmin key={order.code} code={order.code} />}<div className="grid grid-cols-2 gap-3 text-sm"><Info label="Pelanggan" value={isPedia ? displayName(order) : order.name || "—"} /><Info label="WhatsApp" value={order.wa || "—"} /><Info label="Email" value={order.email || "—"} /><Info label="Pembayaran" value={`${order.method.toUpperCase()} · ${formatRupiah(order.paymentAmount)}`} /></div><div className="rounded-xl border border-admin-border bg-admin-subtle p-4"><p className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Item</p>{isPedia ? <PediaItemBox order={order} /> : order.items.map((item, index) => <div key={`${item.name}-${index}`} className="mt-3 flex justify-between gap-4 text-sm"><span className="text-admin-muted">{item.name} ×{item.qty}</span><span className="font-semibold text-admin-fg">{formatRupiah(item.price * item.qty)}</span></div>)}</div>{isPedia && <PediaFollowUpLink order={order} />}{qris ? <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] p-3 text-xs leading-5 text-admin-success">QRIS diproses otomatis. Bukti gambar, jika ada, hanya dipakai sebagai referensi.</div> : order.fileName ? <ProofThumbnail proof={order.fileName} /> : null}{order.adminNote && <Info label="Catatan admin" value={order.adminNote} />}{order.proofStatus === "rejected" && <Info label="Bukti ditolak" value={order.proofRejectionReason || "Tanpa alasan tercatat"} />}{needsHandover && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4"><button onClick={() => onAction("handover")} className="inline-flex h-10 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse transition hover:brightness-110"><IosIcon name="checked" size={14} tint="black" /> Kirim ke pembeli</button></div>}{isPedia && order.status === "pending" && <div className="border-t border-admin-border pt-4"><PediaAwaitingPayment /></div>}{(!isMarket || providerPayment) && !isPedia && order.status === "pending" && <p className="text-sm text-admin-muted">Menunggu verifikasi provider. Pesanan ini tidak memakai aksi manual Market.</p>}{isMarket && !providerPayment && order.status === "pending" && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">{!qris && (order.salesChannel !== "whatsapp" ? <button onClick={() => onAction("paid")} className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-700 px-5 text-sm font-bold text-white transition hover:bg-emerald-800"><IosIcon name="checked" size={14} tint="black" /> Konfirmasi lunas</button> : order.proofStatus === "submitted" && <><button onClick={() => onAction("approve")} className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-700 px-5 text-sm font-bold text-white transition hover:bg-emerald-800"><IosIcon name="checked" size={14} tint="black" /> Mutasi cocok</button><button onClick={() => onAction("reject")} className="inline-flex h-10 items-center gap-2 rounded-md border border-red-400/25 bg-red-500/10 px-5 text-sm font-semibold text-admin-danger transition hover:bg-red-500/20"><IosIcon name="close" size={13} tint="#F87171" /> Tolak bukti</button></>)}<button onClick={() => onAction("cancel")} className="inline-flex h-10 items-center gap-2 rounded-md border border-red-400/25 bg-red-500/10 px-5 text-sm font-semibold text-admin-danger transition hover:bg-red-500/20"><IosIcon name="close" size={13} tint="#F87171" /> Batalkan pesanan</button></div>}</div></AdminDialog>;
+  return <AdminDialog title="Detail pesanan" onClose={onClose}>
+<div className="space-y-4">
+<div className="flex flex-wrap items-center gap-2">
+<p className="font-mono text-sm font-semibold text-admin-accent">{order.code}</p>
+<StatusBadge status={order.status} />
+</div>
+<div className="mt-2 flex flex-wrap items-center gap-2">
+<ChannelBadge channel={order.salesChannel} />
+<MethodBadge method={order.method} />{isPedia ? <>
+<PediaChip />
+<PediaStatusChip order={order} />
+</> : <FulfillmentBadge status={order.fulfillmentStatus} supplierActive={hasActiveSupplierLink(order.supplierLinks)} />}<span className="text-xs text-admin-muted">{formatDate(order.createdAt)}</span>
+</div>{!isPedia && order.status === "lunas" && order.supplierLinks?.length ? <SupplierLinkActions links={order.supplierLinks} onChanged={onChanged} /> : null}{inputError && <p role="alert" className="text-xs text-admin-danger">Input pembeli gagal dimuat. Tutup dan buka kembali detail.</p>}{buyerInputs.map(input => <Info key={input.item_index} label={`Kode Invite Muse · item ${input.item_index+1}`} value={input.value} />)}<Separator />{isMarket && <OrderAccessAdmin key={order.code} code={order.code} />}<div className="grid grid-cols-2 gap-3 text-sm">
+<Info label="Pelanggan" value={isPedia ? displayName(order) : order.name || "—"} />
+<Info label="WhatsApp" value={order.wa || "—"} />
+<Info label="Email" value={order.email || "—"} />
+<Info label="Pembayaran" value={`${order.method.toUpperCase()} · ${formatRupiah(order.paymentAmount)}`} />
+</div>
+<Separator />
+<div className="rounded-md border border-admin-border bg-admin-subtle p-4">
+<p className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Item</p>{isPedia ? <PediaItemBox order={order} /> : order.items.map((item, index) => <div key={`${item.name}-${index}`} className="mt-3 flex justify-between gap-4 text-sm">
+<span className="text-admin-muted">{item.name} x{item.qty}</span>
+<span className="font-semibold text-admin-fg">{formatRupiah(item.price * item.qty)}</span>
+</div>)}</div>{isPedia && <PediaFollowUpLink order={order} />}{qris ? <div className="rounded-xl border border-admin-success/15 bg-admin-success/[0.06] p-3 text-xs leading-5 text-admin-success">QRIS diproses otomatis. Bukti gambar, jika ada, hanya dipakai sebagai referensi.</div> : order.fileName ? <ProofThumbnail proof={order.fileName} /> : null}{order.adminNote && <Info label="Catatan admin" value={order.adminNote} />}{order.proofStatus === "rejected" && <Info label="Bukti ditolak" value={order.proofRejectionReason || "Tanpa alasan tercatat"} />}{needsHandover && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">
+<Button variant="default" type="button" onClick={() => onAction("handover")} className="inline-flex h-9 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-semibold text-admin-inverse transition hover:brightness-110">
+<IosIcon name="checked" size={14} tint="currentColor" /> Kirim ke pembeli</Button>
+</div>}{isPedia && order.status === "pending" && <div className="border-t border-admin-border pt-4">
+<PediaAwaitingPayment />
+</div>}{(!isMarket || providerPayment) && !isPedia && order.status === "pending" && <p className="text-sm text-admin-muted">Menunggu verifikasi provider. Pesanan ini tidak memakai aksi manual Market.</p>}{isMarket && !providerPayment && order.status === "pending" && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">{!qris && (order.salesChannel !== "whatsapp" ? <Button variant="default" type="button" onClick={() => onAction("paid")} className="inline-flex h-9 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-semibold text-admin-inverse transition hover:bg-admin-primary/90">
+<IosIcon name="checked" size={14} tint="currentColor" /> Konfirmasi lunas</Button> : order.proofStatus === "submitted" && <>
+<Button variant="default" type="button" onClick={() => onAction("approve")} className="inline-flex h-9 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-semibold text-admin-inverse transition hover:bg-admin-primary/90">
+<IosIcon name="checked" size={14} tint="currentColor" /> Mutasi cocok</Button>
+<Button variant="outline" type="button" onClick={() => onAction("reject")} className="inline-flex h-9 items-center gap-2 rounded-md border border-admin-danger/25 bg-admin-danger/10 px-5 text-sm font-semibold text-admin-danger transition hover:bg-admin-danger/20">
+<IosIcon name="close" size={13} tint="currentColor" /> Tolak bukti</Button>
+</>)}<Button variant="outline" type="button" onClick={() => onAction("cancel")} className="inline-flex h-9 items-center gap-2 rounded-md border border-admin-danger/25 bg-admin-danger/10 px-5 text-sm font-semibold text-admin-danger transition hover:bg-admin-danger/20">
+<IosIcon name="close" size={13} tint="currentColor" /> Batalkan pesanan</Button>
+</div>}</div>
+</AdminDialog>;
 }
 
 function ActionDialog({ action, note, setNote, saving, onClose, onConfirm }: { action: NonNullable<ActionState>; note: string; setNote: (value: string) => void; saving: boolean; onClose: () => void; onConfirm: () => void }) {
   const copy = { paid: ["Konfirmasi pesanan lunas?", "Lisensi / key / catatan untuk pembeli", "Konfirmasi lunas"], paid_qris: ["ACC pembayaran QRIS?", "Hasil cek mutasi merchant sesuai invoice (wajib, min. 10 karakter) - cth: mutasi Rp18.286 masuk 12.45 dari TULISIRFAN", "ACC & lunaskan"], handover: ["Kirim ke pembeli", "Catatan internal (opsional)", "Kirim ke pembeli"], approve: ["Mutasi pembayaran sudah cocok?", "Catatan opsional", "Setujui & lunaskan"], reject: ["Tolak bukti pembayaran?", "Alasan penolakan wajib diisi", "Tolak bukti"], cancel: ["Batalkan pesanan?", "Alasan atau catatan pembatalan", "Batalkan pesanan"] }[action.kind];
   const danger = ["reject", "cancel"].includes(action.kind);
   const noteRequired = action.kind === "reject" || action.kind === "paid_qris";
-  return <AdminDialog title={copy[0]} onClose={onClose} busy={saving}>{action.kind === "paid_qris" && <div className="rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 p-3 text-xs leading-5 text-admin-warning">Pastikan dana benar masuk di mutasi merchant sesuai invoice dengan nominal persis {formatRupiah(action.order.paymentAmount)}. ACC melunaskan pesanan dan menjadwalkan pengiriman serta notifikasi - tidak bisa dibatalkan.</div>}<div className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-bold text-admin-accent">{action.order.code}</span><StatusBadge status={action.order.status} /><ChannelBadge channel={action.order.salesChannel} /><MethodBadge method={action.order.method} /></div><p className="mt-3 text-sm text-admin-muted">{action.order.name}</p><label className="mt-4 block"><span className="text-xs font-semibold text-admin-muted">{copy[1]}</span><textarea autoFocus value={note} onChange={(event) => setNote(event.target.value)} rows={4} className="mt-2 w-full resize-none rounded-xl border border-admin-border bg-admin-subtle p-3 text-sm text-admin-fg outline-none focus:border-admin-accent/40" /></label><div className="mt-5 flex justify-end gap-2"><button disabled={saving} onClick={onClose} className="h-10 rounded-md border border-admin-border px-4 text-sm text-admin-muted transition hover:bg-admin-subtle">Batal</button><button disabled={saving || (noteRequired && !note.trim())} onClick={onConfirm} className={`inline-flex h-10 items-center gap-2 rounded-md px-5 text-sm font-bold text-white transition disabled:opacity-50 ${danger ? "bg-red-700 hover:bg-red-800" : "bg-emerald-700 hover:bg-emerald-800"}`}>{saving ? <Spinner size={14} /> : <IosIcon name={danger ? "close" : "checked"} size={13} tint="white" />}{copy[2]}</button></div></AdminDialog>;
+  return <AdminDialog title={copy[0]} onClose={onClose} busy={saving}>{action.kind === "paid_qris" && <div className="rounded-xl border border-admin-warning/25 bg-admin-warning/10 p-3 text-xs leading-5 text-admin-warning">Pastikan dana benar masuk di mutasi merchant sesuai invoice dengan nominal persis {formatRupiah(action.order.paymentAmount)}. ACC melunaskan pesanan dan menjadwalkan pengiriman serta notifikasi - tidak bisa dibatalkan.</div>}<div className="flex flex-wrap items-center gap-2">
+<span className="font-mono text-xs font-semibold text-admin-accent">{action.order.code}</span>
+<StatusBadge status={action.order.status} />
+<ChannelBadge channel={action.order.salesChannel} />
+<MethodBadge method={action.order.method} />
+</div>
+<p className="mt-3 text-sm text-admin-muted">{action.order.name}</p>
+<Label className="mt-4 block">
+<span className="text-xs font-semibold text-admin-muted">{copy[1]}</span>
+<Textarea autoFocus value={note} onChange={(event) => setNote(event.target.value)} rows={4} className="mt-2 w-full resize-none rounded-xl border border-admin-border bg-admin-subtle p-3 text-sm text-admin-fg outline-none focus:border-admin-accent/40" />
+</Label>
+<div className="mt-5 flex justify-end gap-2">
+<Button variant="outline" type="button" disabled={saving} onClick={onClose} className="h-9 rounded-md border border-admin-border px-4 text-sm text-admin-muted transition hover:bg-admin-subtle">Batal</Button>
+<Button variant="destructive" type="button" disabled={saving || (noteRequired && !note.trim())} onClick={onConfirm} className={`inline-flex h-9 items-center gap-2 rounded-md px-5 text-sm font-semibold text-admin-inverse transition disabled:opacity-50 ${danger ? "bg-admin-danger hover:bg-admin-danger/90" : "bg-admin-primary hover:bg-admin-primary/90"}`}>{saving ? <Spinner size={14} /> : <IosIcon name={danger ? "close" : "checked"} size={13} tint="currentColor" />}{copy[2]}</Button>
+</div>
+</AdminDialog>;
 }
 
 function AdminDialog({ title, onClose, children, busy = false }: { title: string; onClose: () => void; children: React.ReactNode; busy?: boolean }) {
-  return <Dialog title={title} onClose={onClose} busy={busy} className="w-[calc(100%-2rem)] max-w-xl p-5 sm:p-6"><header className="mb-5 flex items-center justify-between gap-3"><h2 className="text-base font-semibold text-admin-fg">{title}</h2><button disabled={busy} onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-admin-subtle" aria-label="Tutup dialog"><IosIcon name="close" size={13} /></button></header>{children}</Dialog>;
+  return <Dialog title={title} onClose={onClose} busy={busy} className="w-[calc(100%-2rem)] max-w-xl p-5 sm:p-6">
+<header className="mb-5 flex items-center justify-between gap-3">
+<h2 className="text-base font-semibold text-admin-fg">{title}</h2>
+<Button variant="outline" size="icon" type="button" disabled={busy} onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-admin-subtle" aria-label="Tutup dialog">
+<IosIcon name="close" size={13} />
+</Button>
+</header>{children}</Dialog>;
 }
 
 type HandoverItem = { item_index: number; status: string; label?: string; template_text?: string; fulfillment_mode?: string };
@@ -374,22 +537,40 @@ function HandoverDialog({ order, note, setNote, messages, setMessages, saving, o
     : state.email
       ? <>Dikirim ke email <span className="font-medium text-admin-muted">{state.email}</span> dan tampil di halaman pesanan.</>
       : "Pesanan ini tidak punya email pembeli. Isi tetap tersimpan di halaman pesanan; kabari pembeli lewat WA.";
-  return <AdminDialog title="Kirim ke pembeli" onClose={onClose} busy={saving}><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-bold text-admin-accent">{order.code}</span><StatusBadge status={order.status} /><ChannelBadge channel={order.salesChannel} /></div><p className="mt-3 text-sm text-admin-muted">{order.name}</p>
+  return <AdminDialog title="Kirim ke pembeli" onClose={onClose} busy={saving}>
+<div className="flex flex-wrap items-center gap-2">
+<span className="font-mono text-xs font-semibold text-admin-accent">{order.code}</span>
+<StatusBadge status={order.status} />
+<ChannelBadge channel={order.salesChannel} />
+</div>
+<p className="mt-3 text-sm text-admin-muted">{order.name}</p>
     {state.loading ? <p className="mt-4 text-sm text-admin-muted">Memuat item...</p>
       : state.error ? <p role="alert" className="mt-4 text-sm text-admin-danger">{state.error}</p>
       : <>
         <p className="mt-3 text-xs leading-5 text-admin-muted">{destination}</p>
-        {pending.map((item) => <label key={item.item_index} className="mt-4 block"><span className="text-xs font-semibold text-admin-muted">Detail untuk pembeli · {item.label || `Item ${item.item_index + 1}`}</span><textarea value={messages[item.item_index] ?? ""} onChange={(event) => setMessages({ ...messages, [item.item_index]: event.target.value })} rows={4} maxLength={4000} placeholder="Akun, link undangan, atau instruksi. Kosongkan bila produk sudah kamu kirim lewat WA." className="mt-2 w-full resize-y rounded-xl border border-admin-border bg-admin-subtle p-3 font-mono text-sm text-admin-fg placeholder:font-sans placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" /></label>)}
-        <label className="mt-4 block"><span className="text-xs font-semibold text-admin-muted">Catatan internal (opsional, tidak dikirim ke pembeli)</span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} className="mt-2 h-10 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/50 focus:outline-none" /></label>
+        {pending.map((item) => <Label key={item.item_index} className="mt-4 block">
+<span className="text-xs font-semibold text-admin-muted">Detail untuk pembeli · {item.label || `Item ${item.item_index + 1}`}</span>
+<Textarea value={messages[item.item_index] ?? ""} onChange={(event) => setMessages({ ...messages, [item.item_index]: event.target.value })} rows={4} maxLength={4000} placeholder="Akun, link undangan, atau instruksi. Kosongkan bila produk sudah kamu kirim lewat WA." className="mt-2 w-full resize-y rounded-xl border border-admin-border bg-admin-subtle p-3 font-mono text-sm text-admin-fg placeholder:font-sans placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none" />
+</Label>)}
+        <Label className="mt-4 block">
+<span className="text-xs font-semibold text-admin-muted">Catatan internal (opsional, tidak dikirim ke pembeli)</span>
+<Input value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} className="mt-2 h-9 w-full rounded-xl border border-admin-border bg-admin-subtle px-3 text-sm text-admin-fg focus:border-admin-accent/50 focus:outline-none" />
+</Label>
       </>}
-    <div className="mt-5 flex justify-end gap-2"><button onClick={onClose} disabled={saving} className="h-10 rounded-md border border-admin-border px-4 text-sm font-semibold text-admin-muted hover:bg-admin-subtle disabled:opacity-50">Batal</button><button onClick={onConfirm} disabled={saving || state.loading || Boolean(state.error)} className="inline-flex h-10 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-bold text-admin-inverse disabled:opacity-50">{saving ? "Mengirim..." : "Kirim ke pembeli"}</button></div>
+    <div className="mt-5 flex justify-end gap-2">
+<Button variant="outline" type="button" onClick={onClose} disabled={saving} className="h-9 rounded-md border border-admin-border px-4 text-sm font-semibold text-admin-muted hover:bg-admin-subtle disabled:opacity-50">Batal</Button>
+<Button variant="default" type="button" onClick={onConfirm} disabled={saving || state.loading || Boolean(state.error)} className="inline-flex h-9 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-semibold text-admin-inverse disabled:opacity-50">{saving ? "Mengirim..." : "Kirim ke pembeli"}</Button>
+</div>
   </AdminDialog>;
 }
 
-function Info({ label, value }: { label: string; value: string }) { return <div className="rounded-xl border border-admin-border bg-admin-subtle p-3"><p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p><p className="mt-1 break-words text-sm text-admin-muted">{value}</p></div>; }
+function Info({ label, value }: { label: string; value: string }) { return <div className="rounded-xl border border-admin-border bg-admin-subtle p-3">
+<p className="text-xs uppercase tracking-wide text-admin-muted">{label}</p>
+<p className="mt-1 break-words text-sm text-admin-muted">{value}</p>
+</div>; }
 
 /** Penanda jenis pesanan; sama dengan gaya ChannelBadge. */
-function PediaChip() { return <span className="rounded-md border border-admin-border bg-admin-subtle px-2.5 py-1 text-xs font-bold text-admin-muted">Pedia</span>; }
+function PediaChip() { return <Badge variant="outline" className="rounded-md border border-admin-border bg-admin-subtle px-2.5 py-1 text-xs font-semibold text-admin-muted">Pedia</Badge>; }
 
 /**
  * Chip status lifecycle Pedia dari item durable. Hanya untuk pesanan lunas:
@@ -401,11 +582,11 @@ function PediaStatusChip({ order }: { order: Order }) {
   const status = order.pedia?.status;
   const label = status ? pediaStatusLabel(status) : "Status belum diketahui";
   const tone = !status ? "border-admin-border bg-admin-subtle text-admin-muted"
-    : status === "completed" ? "border-emerald-400/25 bg-emerald-400/10 text-admin-success"
-    : status === "needs_check" ? "border-violet-400/30 bg-violet-400/10 text-admin-info"
-    : status === "partial" || status === "canceled" ? "border-amber-400/30 bg-amber-400/10 text-admin-warning"
+    : status === "completed" ? "border-admin-success/25 bg-admin-success/10 text-admin-success"
+    : status === "needs_check" ? "border-admin-info/30 bg-admin-info/10 text-admin-info"
+    : status === "partial" || status === "canceled" ? "border-admin-warning/30 bg-admin-warning/10 text-admin-warning"
     : "border-admin-accent/25 bg-admin-primary/10 text-admin-accent";
-  return <span data-testid="pedia-status-chip" className={`rounded-md border px-2.5 py-1 text-xs font-bold ${tone}`}>{label}</span>;
+  return <Badge data-testid="pedia-status-chip" className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${tone}`}>{label}</Badge>;
 }
 
 /** Pedia pending: pembayaran hanya via QRIS otomatis; PATCH admin menolak kode AXP, jadi tanpa aksi ACC/Tolak/Batalkan. */
@@ -415,7 +596,7 @@ function PediaAwaitingPayment() { return <span className="inline-flex h-9 items-
 function PediaFollowUpLink({ order }: { order: Order }) {
   const status = order.pedia?.status;
   if (order.status !== "lunas" || !status || !["needs_check", "partial", "canceled"].includes(status)) return null;
-  return <a href="/admin?section=pedia&tab=orders" className="inline-flex min-h-11 items-center rounded-md border border-admin-border bg-admin-subtle px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg sm:h-9 sm:min-h-0">Tindak lanjut di Pedia</a>;
+  return <a href="/admin?section=pedia&tab=orders" className="inline-flex min-h-9 items-center rounded-md border border-admin-border bg-admin-subtle px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle hover:text-admin-fg sm:h-9 sm:min-h-0">Tindak lanjut di Pedia</a>;
 }
 
 /** Jumlah beli Pedia = quantity item (bukan qty baris keranjang yang selalu 1). */
@@ -438,7 +619,9 @@ function pediaItemLine(order: Order): string {
 function PediaItemBox({ order }: { order: Order }) {
   const quantity = pediaQuantity(order);
   const done = order.pedia?.done;
-  return <div className="mt-3 space-y-1.5 text-sm"><p className="text-admin-muted">{order.items[0]?.name || "Layanan Pedia"}{quantity !== null ? ` · ${formatCount(quantity)}` : ""}</p>{order.pedia?.target && <p className="break-all text-xs text-admin-muted">Tujuan: {order.pedia.target}</p>}{order.status === "lunas" && quantity !== null && typeof done === "number" && <p className="text-xs text-admin-muted">{formatCount(done)}/{formatCount(quantity)} masuk</p>}{order.pedia?.lastError && <p className="break-words text-xs text-admin-warning">Catatan: {order.pedia.lastError}</p>}<p className="pt-1 font-semibold text-admin-fg">{formatRupiah(order.paymentAmount)}</p></div>;
+  return <div className="mt-3 space-y-2 text-sm">
+<p className="text-admin-muted">{order.items[0]?.name || "Layanan Pedia"}{quantity !== null ? ` · ${formatCount(quantity)}` : ""}</p>{order.pedia?.target && <p className="break-all text-xs text-admin-muted">Tujuan: {order.pedia.target}</p>}{order.status === "lunas" && quantity !== null && typeof done === "number" && <p className="text-xs text-admin-muted">{formatCount(done)}/{formatCount(quantity)} masuk</p>}{order.pedia?.lastError && <p className="break-words text-xs text-admin-warning">Catatan: {order.pedia.lastError}</p>}<p className="pt-1 font-semibold text-admin-fg">{formatRupiah(order.paymentAmount)}</p>
+</div>;
 }
 
 /** Nama dari server; baris lama kosong memakai turunan email (seperti Market). */
@@ -461,18 +644,18 @@ function FulfillmentBadge({ status, supplierActive = false }: { status?: string;
   // Item WR/SK berstatus manual_required selama supplier masih memproses —
   // "Perlu handover" di situ menyesatkan (2026-10-10). Status supplier tampil
   // di SupplierLinkActions; handover manual tetap tersedia sebagai cadangan.
-  if (supplierActive && status === "manual_required") return <span className="rounded-md border border-admin-accent/25 bg-admin-primary/10 px-2.5 py-1 text-xs font-bold text-admin-accent">Via supplier</span>;
+  if (supplierActive && status === "manual_required") return <Badge variant="outline" className="rounded-md border border-admin-accent/25 bg-admin-primary/10 px-2.5 py-1 text-xs font-semibold text-admin-accent">Via supplier</Badge>;
   const label = status === "manual_required" ? "Perlu handover"
     : status === "failed" ? "Kirim GAGAL"
     : status === "queued" ? "Antre kirim"
     : status === "sending" ? "Mengirim…"
     : status;
   const tone = status === "failed"
-    ? "border-red-400/30 bg-red-500/10 text-admin-danger"
+    ? "border-admin-danger/30 bg-admin-danger/10 text-admin-danger"
     : status === "manual_required"
-      ? "border-[#FFB800]/30 bg-[#FFB800]/10 text-admin-warning"
+      ? "border-admin-warning/30 bg-admin-warning/10 text-admin-warning"
       : "border-admin-border bg-admin-subtle text-admin-muted";
-  return <span className={`rounded-md border px-2.5 py-1 text-xs font-bold ${tone}`}>{label}</span>;
+  return <Badge variant="outline" className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${tone}`}>{label}</Badge>;
 }
 // Timestamp D1 berformat spasi adalah UTC — parsing wajib lewat helper kanonis
 // (formatWibDateTime), bukan `new Date(value)` yang membacanya sebagai lokal.

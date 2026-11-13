@@ -1,4 +1,5 @@
 "use client";
+import { Input, Label, NativeSelect } from "@/components/admin/ui";
 
 import { useId } from "react";
 
@@ -39,9 +40,9 @@ export function WarrantyFields({
   const openInput = "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none";
   return (
     <div className="pt-3">
-      <label htmlFor={typeId} className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</label>
+      <Label htmlFor={typeId} className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Masa Garansi{wrLocked ? " (WR)" : ""}</Label>
       <div className="flex flex-wrap items-center gap-2">
-        <select
+        <NativeSelect
           id={typeId}
           value={value.warranty_type || "full"}
           disabled={locked}
@@ -59,11 +60,11 @@ export function WarrantyFields({
           <option value="limited" className="bg-admin-card">Garansi Terbatas</option>
           <option value="none" className="bg-admin-card">Tanpa Garansi</option>
           <option value="custom" className="bg-admin-card">Teks Kustom</option>
-        </select>
+        </NativeSelect>
 
         {(value.warranty_type === "full" || value.warranty_type === "limited") && (
           <div className="flex items-center gap-1.5">
-            <input
+            <Input
               type="number"
               min={1}
               value={value.warranty_value ?? 1}
@@ -74,7 +75,7 @@ export function WarrantyFields({
               }}
               className={`h-9 w-16 rounded-xl border px-2 text-xs text-center focus:outline-none ${locked ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border text-admin-fg focus:border-admin-accent/50"}`}
             />
-            <select
+            <NativeSelect
               value={value.warranty_unit || "month"}
               disabled={locked}
               onChange={(e) => onChange({ warranty_unit: e.target.value })}
@@ -84,12 +85,12 @@ export function WarrantyFields({
               <option value="month" className="bg-admin-card">Bulan</option>
               <option value="year" className="bg-admin-card">Tahun</option>
               <option value="lifetime" className="bg-admin-card">Selamanya</option>
-            </select>
+            </NativeSelect>
           </div>
         )}
 
         {value.warranty_type === "custom" && (
-          <input
+          <Input
             value={value.warranty_label || ""}
             readOnly={locked}
             onChange={(e) => onChange({ warranty_label: e.target.value })}

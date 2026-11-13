@@ -1,4 +1,5 @@
 "use client";
+import { Badge, Button, Label, Textarea } from "@/components/admin/ui";
 // Editor S&K + cara aktivasi per varian (migrasi 0041). Disimpan lewat
 // PUT /api/admin/variant-copy dengan tombol sendiri — bukan bagian form
 // produk — agar menyimpan foto/badge tidak ikut menandai suntingan yang
@@ -47,10 +48,10 @@ export function useVariantCopyEntries(productId?: number | string) {
 export type VariantCopyState = ReturnType<typeof useVariantCopyEntries>;
 
 function statusBadge(entry: VariantCopyEntry): { label: string; className: string } {
-  if (entry.adminStale) return { label: `${entry.supplier ?? "Supplier"} mengubah teks — suntingan dijeda`, className: "border-red-400/30 bg-red-500/10 text-admin-danger" };
-  if (entry.status === "admin") return { label: "Disunting admin", className: "border-emerald-400/25 bg-emerald-500/10 text-admin-success" };
+  if (entry.adminStale) return { label: `${entry.supplier ?? "Supplier"} mengubah teks — suntingan dijeda`, className: "border-admin-danger/30 bg-admin-danger/10 text-admin-danger" };
+  if (entry.status === "admin") return { label: "Disunting admin", className: "border-admin-success/25 bg-admin-success/10 text-admin-success" };
   if (entry.status === "axvara") return { label: "Versi Axvara (otomatis)", className: "border-admin-accent/25 bg-admin-primary/10 text-admin-accent" };
-  if (entry.status === "pemasok") return { label: `Teks ${entry.supplier ?? "supplier"} — belum versi Axvara`, className: "border-[#FFB800]/30 bg-[#FFB800]/10 text-admin-warning" };
+  if (entry.status === "pemasok") return { label: `Teks ${entry.supplier ?? "supplier"} — belum versi Axvara`, className: "border-admin-warning/30 bg-admin-warning/10 text-admin-warning" };
   return { label: "Belum ada teks varian", className: "border-admin-border bg-admin-subtle text-admin-muted" };
 }
 
@@ -148,7 +149,7 @@ export function VariantCopyEditor({
 
   return (
     <div className="rounded-xl border border-admin-border bg-admin-subtle">
-      <button
+      <Button variant="ghost"
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
@@ -156,34 +157,34 @@ export function VariantCopyEditor({
       >
         <span className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-admin-fg">{title ?? "Syarat & Ketentuan · Cara Aktivasi"}</span>
-          {inactive && <span className="rounded-md bg-admin-subtle px-2 py-0.5 text-xs font-semibold text-admin-muted">Nonaktif</span>}
+          {inactive && <Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-0.5 text-xs font-semibold text-admin-muted">Nonaktif</Badge>}
           {loading && !entry ? <Spinner size={12} /> : badge && (
-            <span className={`rounded-md border px-2 py-0.5 text-xs font-bold ${badge.className}`}>{badge.label}</span>
+            <Badge variant="outline" className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${badge.className}`}>{badge.label}</Badge>
           )}
         </span>
         <span className="text-xs font-semibold text-admin-accent">{open ? "Tutup" : "Sunting"}</span>
-      </button>
+      </Button>
 
       {open && (
         <div className="border-t border-admin-border px-4 pb-4 pt-3">
-          {error && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-admin-danger">{error}</p>}
+          {error && <p role="alert" className="rounded-xl border border-admin-danger/20 bg-admin-danger/10 px-3 py-2 text-xs text-admin-danger">{error}</p>}
           {entry && (
             <>
               {entry.adminStale && (
-                <p role="alert" className="mb-3 rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2.5 text-xs leading-5 text-admin-danger">
+                <p role="alert" className="mb-3 rounded-xl border border-admin-danger/25 bg-admin-danger/10 px-3 py-2.5 text-xs leading-5 text-admin-danger">
                   {entry.supplier ?? "Supplier"} mengubah teks. Pembeli melihat versi otomatis terbaru; kolom di bawah berisi suntingan admin yang dijeda. Bandingkan sebelum menyimpan ulang.
                 </p>
               )}
               {entry.status === "pemasok" && !entry.adminStale && (
-                <p className="mb-3 rounded-xl border border-[#FFB800]/25 bg-[#FFB800]/10 px-3 py-2.5 text-xs leading-5 text-admin-warning">
+                <p className="mb-3 rounded-xl border border-admin-warning/25 bg-admin-warning/10 px-3 py-2.5 text-xs leading-5 text-admin-warning">
                   Pembeli melihat teks {entry.supplier ?? "supplier"} yang dirapikan otomatis. Kamu bisa langsung menyunting teks di bawah.
                 </p>
               )}
               {!entry.autoTerms && !entry.autoActivation && !entry.hasOverride && <p className="mb-3 text-xs text-admin-muted">Supplier belum menyediakan panduan varian. Bagian dari deskripsi produk, jika ada, tetap tampil di pratinjau.</p>}
               {entry.adminStale && <details className="mb-3 text-xs text-admin-muted"><summary className="cursor-pointer py-2">Yang dilihat pembeli sekarang (versi otomatis)</summary><pre className="whitespace-pre-wrap break-words font-sans">{entry.effectiveTerms}{"\n\n"}{entry.effectiveActivation}</pre></details>}
-              <label className="block">
+              <Label className="block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Syarat &amp; Ketentuan</span>
-                <textarea
+                <Textarea
                   value={terms}
                   disabled={saving}
                   onChange={(e) => setTerms(e.target.value)}
@@ -192,10 +193,10 @@ export function VariantCopyEditor({
                   placeholder={"Detail paket:\n- Berupa akun siap pakai\nAturan pakai:\n- Dilarang mengganti password\nGaransi:\n- Garansi 20 hari"}
                   className={textareaClass}
                 />
-              </label>
-              <label className="mt-3 block">
+              </Label>
+              <Label className="mt-3 block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Cara Aktivasi</span>
-                <textarea
+                <Textarea
                   value={activation}
                   disabled={saving}
                   onChange={(e) => setActivation(e.target.value)}
@@ -204,10 +205,10 @@ export function VariantCopyEditor({
                   placeholder={"1. Buka aplikasi\n2. Login dengan akun yang dikirim\nCatatan:\n- Hubungi admin bila gagal login"}
                   className={textareaClass}
                 />
-              </label>
-              <label className="mt-3 block">
+              </Label>
+              <Label className="mt-3 block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Syarat &amp; Ketentuan (English)</span>
-                <textarea
+                <Textarea
                   value={termsEn}
                   disabled={saving}
                   onChange={(e) => setTermsEn(e.target.value)}
@@ -216,10 +217,10 @@ export function VariantCopyEditor({
                   placeholder={"Package details:\n- Ready-to-use account\nUsage rules:\n- Do not change the password\nWarranty:\n- 20-day warranty"}
                   className={textareaClass}
                 />
-              </label>
-              <label className="mt-3 block">
+              </Label>
+              <Label className="mt-3 block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-admin-muted">Cara Aktivasi (English)</span>
-                <textarea
+                <Textarea
                   value={activationEn}
                   disabled={saving}
                   onChange={(e) => setActivationEn(e.target.value)}
@@ -228,7 +229,7 @@ export function VariantCopyEditor({
                   placeholder={"1. Open the app\n2. Log in with the account we send"}
                   className={textareaClass}
                 />
-              </label>
+              </Label>
               <p className="mt-2 text-xs leading-4 text-admin-muted">
                 S&amp;K: judul &quot;Detail paket:&quot;, &quot;Proses &amp; pengiriman:&quot;, &quot;Aturan pakai:&quot;, &quot;Garansi:&quot;, lalu baris &quot;- &quot; (baris tanpa judul dikelompokkan otomatis). Cara aktivasi: baris bernomor; judul bebas untuk kelompok langkah, &quot;Catatan:&quot; untuk catatan.
                 {!entry.supplier && " S&K yang berlaku untuk semua varian cukup ditulis sekali di kolom Deskripsi di atas (judul “Syarat & Ketentuan:”)."}
@@ -250,28 +251,28 @@ export function VariantCopyEditor({
                 <p className="mb-3 text-admin-muted">Menggabungkan draft varian dengan deskripsi produk di form. Deskripsi tetap perlu Simpan Produk. Catatan transaksi supplier tidak diubah.</p>
                 {!preview.sections.length && !preview.activation.length && !preview.notes.length ? <p>Belum ada S&amp;K atau panduan.</p> : <div className="space-y-4"><TermsBody sections={preview.sections} size="xs" locale="id" /><ActivationBody groups={preview.activation} notes={preview.notes} size="xs" /></div>}
               </details>
-              {saveError && <div role="alert" className="mt-3 text-xs text-admin-danger"><p>{saveError}</p>{onReload && <button type="button" disabled={saving || loading} className="min-h-11 underline" onClick={() => { preserveDraft.current = true; onReload(); }}>Muat sumber terbaru (pertahankan draft)</button>}</div>}
+              {saveError && <div role="alert" className="mt-3 text-xs text-admin-danger"><p>{saveError}</p>{onReload && <Button variant="ghost" type="button" disabled={saving || loading} className="min-h-9 underline" onClick={() => { preserveDraft.current = true; onReload(); }}>Muat sumber terbaru (pertahankan draft)</Button>}</div>}
               <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                 {dirty && <span className="mr-auto text-xs text-admin-warning">Belum disimpan</span>}
-                {dirty && <button type="button" disabled={saving} className="min-h-11 px-3 text-xs text-admin-muted" onClick={() => { preserveDraft.current = false; setTerms(initialTerms); setActivation(initialActivation); setTermsEn(initialTermsEn); setActivationEn(initialActivationEn); setSaveError(null); }}>Batalkan perubahan</button>}
+                {dirty && <Button variant="ghost" type="button" disabled={saving} className="min-h-9 px-3 text-xs text-admin-muted" onClick={() => { preserveDraft.current = false; setTerms(initialTerms); setActivation(initialActivation); setTermsEn(initialTermsEn); setActivationEn(initialActivationEn); setSaveError(null); }}>Batalkan perubahan</Button>}
                 {entry.hasOverride && (
-                  <button
+                  <Button variant="outline"
                     type="button"
                     disabled={saving}
                     onClick={() => void save("", "", "S&K varian kembali ke versi otomatis.", "", "")}
-                    className="inline-flex min-h-11 items-center rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle disabled:opacity-40"
+                    className="inline-flex min-h-9 items-center rounded-xl border border-admin-border px-3 text-xs font-semibold text-admin-muted transition hover:bg-admin-subtle disabled:opacity-40"
                   >
                     Kembali ke versi otomatis
-                  </button>
+                  </Button>
                 )}
-                <button
+                <Button variant="default"
                   type="button"
                   disabled={saving || (!dirty && !entry.adminStale)}
                   onClick={() => void save(terms, activation, entry.adminStale && !dirty ? "Suntingan ditinjau dan dipakai lagi." : "S&K varian disimpan.")}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40"
+                  className="inline-flex min-h-9 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40"
                 >
                   {saving && <Spinner size={13} />} {entry.adminStale && !dirty ? "Tandai sudah ditinjau" : "Simpan S&K varian"}
-                </button>
+                </Button>
               </div>
             </>
           )}

@@ -1,4 +1,5 @@
 "use client";
+import { Badge, Button, Input, Label, NativeSelect, Textarea } from "@/components/admin/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import { IosIcon } from "@/components/admin/AdminIcon";
@@ -166,7 +167,7 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
   if (mode === "__wr__") {
     return (
       <div className="mt-3 rounded-xl border border-admin-border bg-admin-subtle px-3 py-3 text-xs text-admin-muted">
-        <button type="button" onClick={() => void load()} className="font-semibold text-admin-accent hover:underline">Muat status stok WR</button>
+        <Button variant="ghost" type="button" onClick={() => void load()} className="font-semibold text-admin-accent hover:underline">Muat status stok WR</Button>
         {counts && <span className="ml-2">Tersedia {counts.available} · Terpakai {counts.delivered} · Dipesan {counts.reserved}</span>}
       </div>
     );
@@ -181,7 +182,7 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
         <p className="mt-0.5 text-xs leading-5 text-admin-muted">
           Admin mengirim pesanan ini dari Pesanan → Kirim ke pembeli. Teks di bawah mengisi otomatis kolom detail di dialog itu dan bisa disunting sebelum dikirim. Bisa memakai {"{email}"}, {"{nama}"}, {"{kode}"}, dan {"{produk}"}.
         </p>
-        <textarea
+        <Textarea
           aria-label="Template pesan untuk pembeli"
           value={handoverTemplate}
           onChange={(e) => setHandoverTemplate(e.target.value)}
@@ -190,9 +191,9 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
           placeholder="Contoh: Undangan Canva sudah dikirim ke {email}. Buka email dari Canva lalu terima undangannya."
           className="mt-3 w-full resize-y rounded-xl border border-admin-border bg-admin-subtle p-3 text-sm text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none"
         />
-        <button type="button" onClick={() => void saveHandoverTemplate()} disabled={loading || !dirty} className="mt-3 rounded-md bg-admin-primary px-4 py-2 text-xs font-bold text-admin-inverse disabled:opacity-40">
+        <Button variant="default" type="button" onClick={() => void saveHandoverTemplate()} disabled={loading || !dirty} className="mt-3 rounded-md bg-admin-primary px-4 py-2 text-xs font-semibold text-admin-inverse disabled:opacity-40">
           {loading ? "Menyimpan..." : "Simpan template"}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -207,35 +208,35 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
         <div className="flex items-center gap-2">
           {mode === "shared" ? (
             sharedCurrent ? (
-              <span className="rounded-md bg-emerald-500/10 px-2 py-1 text-xs font-bold text-admin-success">Pesan bersama aktif</span>
+              <Badge variant="outline" className="rounded-md bg-admin-success/10 px-2 py-1 text-xs font-semibold text-admin-success">Pesan bersama aktif</Badge>
             ) : (
-              <span className="rounded-md bg-admin-subtle px-2 py-1 text-xs text-admin-muted">Belum ada isi</span>
+              <Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-xs text-admin-muted">Belum ada isi</Badge>
             )
           ) : (
-            counts && <div className="flex flex-wrap gap-1.5 text-xs"><span className="rounded-md bg-emerald-500/10 px-2 py-1 text-admin-success">Tersedia {counts.available}</span><span className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Terpakai {counts.delivered}</span><span className="rounded-md bg-[#FFB800]/10 px-2 py-1 text-admin-warning">Dipesan {counts.reserved}</span></div>
+            counts && <div className="flex flex-wrap gap-1.5 text-xs"><Badge variant="outline" className="rounded-md bg-admin-success/10 px-2 py-1 text-admin-success">Tersedia {counts.available}</Badge><Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Terpakai {counts.delivered}</Badge><Badge variant="outline" className="rounded-md bg-admin-warning/10 px-2 py-1 text-admin-warning">Dipesan {counts.reserved}</Badge></div>
           )}
-          <button type="button" onClick={() => void load()} className="text-xs font-semibold text-admin-accent hover:underline">Muat ulang</button>
+          <Button variant="ghost" type="button" onClick={() => void load()} className="text-xs font-semibold text-admin-accent hover:underline">Muat ulang</Button>
         </div>
       </div>
       {/* Selisih angka unique (2026-10-02, cermin FulfillmentInventoryPanel):
           kolom stock vs kredensial tersisa. */}
       {mode === "unique" && stockMismatch && variantStock != null && counts && (
-        <p role="alert" className="mt-3 rounded-xl border border-[#FFB800]/30 bg-[#FFB800]/[0.08] px-3 py-2 text-xs leading-5 text-admin-warning">
+        <p role="alert" className="mt-3 rounded-xl border border-admin-warning/30 bg-admin-warning/[0.08] px-3 py-2 text-xs leading-5 text-admin-warning">
           Angka stok kolom ({variantStock}) tidak sama dengan kredensial tersisa ({counts.available}). Pembeli melihat yang terkecil. Impor ulang atau hapus 1 baris untuk menyelaraskan.
         </p>
       )}
       {mode === "shared" ? (
         <div className="mt-3">
           {sharedCurrent ? (
-            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3">
-              <p className="text-xs font-bold uppercase tracking-[0.08em] text-admin-success">Isi saat ini</p>
+            <div className="rounded-xl border border-admin-success/20 bg-admin-success/[0.06] p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-admin-success">Isi saat ini</p>
               <p className="mt-1 whitespace-pre-wrap break-words text-sm text-admin-fg">{sharedCurrent}</p>
             </div>
           ) : (
             <p className="rounded-xl border border-admin-border bg-admin-subtle px-3 py-2.5 text-xs text-admin-muted">Belum ada pesan bersama — isi di bawah lalu simpan.</p>
           )}
-          <textarea value={sharedText} onChange={(e) => setSharedText(e.target.value)} rows={3} placeholder={sharedCurrent ? "Tulis pesan baru untuk MENGGANTI isi di atas…" : "Link, akun bersama, atau instruksi yang dikirim ke setiap pembeli…"} className="mt-3 w-full resize-none rounded-xl border border-admin-border bg-admin-card/65 p-3 text-sm text-admin-fg outline-none placeholder:text-admin-muted focus:border-admin-accent/40" />
-          <button type="button" onClick={() => void saveShared()} disabled={loading || !sharedText.trim()} className="mt-2 inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">{loading && <Spinner size={13} />} {sharedCurrent ? "Ganti pesan bersama" : "Simpan pesan bersama"}</button>
+          <Textarea value={sharedText} onChange={(e) => setSharedText(e.target.value)} rows={3} placeholder={sharedCurrent ? "Tulis pesan baru untuk MENGGANTI isi di atas…" : "Link, akun bersama, atau instruksi yang dikirim ke setiap pembeli…"} className="mt-3 w-full resize-none rounded-xl border border-admin-border bg-admin-card/65 p-3 text-sm text-admin-fg outline-none placeholder:text-admin-muted focus:border-admin-accent/40" />
+          <Button variant="default" type="button" onClick={() => void saveShared()} disabled={loading || !sharedText.trim()} className="mt-2 inline-flex h-9 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">{loading && <Spinner size={13} />} {sharedCurrent ? "Ganti pesan bersama" : "Simpan pesan bersama"}</Button>
         </div>
       ) : (
         <div className="mt-3">
@@ -245,10 +246,10 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
           ) : (
             <p className="rounded-xl border border-admin-border bg-admin-subtle px-3 py-2.5 text-xs text-admin-muted">Belum ada stok unik — impor di bawah.</p>
           )}
-          <textarea value={inventoryText} onChange={(e) => setInventoryText(e.target.value)} rows={4} placeholder={"Satu link, akun, atau key per baris\nhttps://contoh.com/aktivasi/...\nemail:password\nLICENSE-KEY"} className="mt-3 w-full resize-none rounded-xl border border-admin-border bg-admin-card/65 p-3 font-mono text-xs text-admin-fg outline-none placeholder:text-admin-muted focus:border-admin-accent/40" />
+          <Textarea value={inventoryText} onChange={(e) => setInventoryText(e.target.value)} rows={4} placeholder={"Satu link, akun, atau key per baris\nhttps://contoh.com/aktivasi/...\nemail:password\nLICENSE-KEY"} className="mt-3 w-full resize-none rounded-xl border border-admin-border bg-admin-card/65 p-3 font-mono text-xs text-admin-fg outline-none placeholder:text-admin-muted focus:border-admin-accent/40" />
           <div className="mt-2 flex items-center justify-between gap-3">
             <p className="text-xs text-admin-muted">Maksimal 100 entri. Impor langsung tersimpan.</p>
-            <button type="button" onClick={() => void importInventory()} disabled={loading || !inventoryText.trim()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-bold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">{loading && <Spinner size={13} />} Impor stok unik</button>
+            <Button variant="default" type="button" onClick={() => void importInventory()} disabled={loading || !inventoryText.trim()} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-admin-primary px-4 text-xs font-semibold text-admin-inverse transition hover:bg-admin-primary disabled:opacity-40">{loading && <Spinner size={13} />} Impor stok unik</Button>
           </div>
         </div>
       )}
@@ -296,7 +297,7 @@ export function ProductVariantRows({
         {form.wrManaged ? (
           <span className="text-xs text-admin-warning/80">Varian dikelola Warung Rebahan — markup diatur di tab Warung Rebahan. Harga coret tetap bisa kamu edit ✎.</span>
         ) : (
-        <button
+        <Button variant="outline" size="sm"
           type="button"
             onClick={() => {
               const idx = formVariants.length + 1;
@@ -316,10 +317,10 @@ export function ProductVariantRows({
                 },
               ]);
             }}
-          className="inline-flex h-8 items-center gap-1 rounded-md border border-admin-accent/25 bg-admin-primary/10 px-3 text-xs font-bold text-admin-accent transition hover:bg-admin-primary/20"
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-admin-accent/25 bg-admin-primary/10 px-3 text-xs font-semibold text-admin-accent transition hover:bg-admin-primary/20"
         >
-          <IosIcon name="plus" size={12} tint="#00E5FF" /> Tambah Varian
-        </button>
+          <IosIcon name="plus" size={12} tint="currentColor" /> Tambah Varian
+        </Button>
         )}
       </div>
 
@@ -338,16 +339,16 @@ export function ProductVariantRows({
           const openInput = "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none";
           return (
           <div key={v.id || idx} className="overflow-hidden rounded-xl border border-admin-border bg-admin-subtle transition hover:border-admin-border">
-            <button type="button" aria-expanded={openVariant === idx} aria-controls={`variant-fields-${v.id ?? idx}`} onClick={()=>setOpenVariant(openVariant === idx ? null : idx)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
+            <Button variant="ghost" type="button" aria-expanded={openVariant === idx} aria-controls={`variant-fields-${v.id ?? idx}`} onClick={()=>setOpenVariant(openVariant === idx ? null : idx)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
               <span className="min-w-0"><span className="block text-sm font-semibold text-admin-fg">{v.label || `Varian ${idx+1}`}</span><span className="mt-1 block text-xs text-admin-muted">{formatRupiah(v.price)} · {v.is_active ? "Aktif" : "Nonaktif"} · {v.stock === -1 ? "Stok tanpa batas" : `Stok ${v.stock}`}</span></span>
               <span className="shrink-0 text-xs font-semibold text-admin-accent">{openVariant === idx ? "Tutup" : "Sunting"}</span>
-            </button>
+            </Button>
             <div role="region" aria-label={`Pengaturan varian ${v.label || idx+1}`} id={`variant-fields-${v.id ?? idx}`} hidden={openVariant !== idx} className="border-t border-admin-border p-4">
             {/* Baris 1: Nama Varian & Aksi */}
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-admin-border">
               <div className="flex-1 min-w-0">
                 <span className="block text-xs uppercase font-semibold text-admin-muted mb-1">Nama Varian / Paket *{wrLocked ? " (WR)" : ""}</span>
-                <input
+                <Input
                   value={v.label}
                   readOnly={wrLocked}
                   onChange={(e) => {
@@ -359,28 +360,28 @@ export function ProductVariantRows({
                 />
               </div>
               <div className="flex items-center gap-2 pt-4">
-                <button
+                <Button variant="outline" size="sm"
                   type="button"
                   onClick={() => {
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, is_active: item.is_active ? 0 : 1 } : item));
                   }}
                   title={v.is_active ? "Aktif" : "Nonaktif"}
-                  className={`inline-flex h-8 items-center gap-1.5 px-3 rounded-xl text-xs font-bold transition ${v.is_active ? "bg-emerald-500/20 text-admin-success border border-emerald-500/30" : "bg-admin-subtle text-admin-muted border border-admin-border"}`}
+                  className={`inline-flex h-8 items-center gap-1.5 px-3 rounded-xl text-xs font-semibold transition ${v.is_active ? "bg-admin-success/20 text-admin-success border border-admin-success/30" : "bg-admin-subtle text-admin-muted border border-admin-border"}`}
                 >
                   {v.is_active ? "Aktif" : "Mati"}
-                </button>
+                </Button>
                 {formVariants.length > 1 && !wrLocked && (
-                  <button
+                  <Button variant="outline" size="icon"
                     type="button"
                     onClick={() => {
                       onSetFormVariants((curr) => curr.filter((_, i) => i !== idx));
                     }}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-admin-danger hover:bg-red-500/20 transition"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-admin-danger/10 text-admin-danger hover:bg-admin-danger/20 transition"
                     title="Hapus varian"
                     aria-label="Hapus varian"
                   >
-                    <IosIcon name="trash" size={14} tint="#F87171" />
-                  </button>
+                    <IosIcon name="trash" size={14} tint="currentColor" />
+                  </Button>
                 )}
               </div>
             </div>
@@ -399,7 +400,7 @@ export function ProductVariantRows({
                 />
               </div>
               <div>
-                <span className="block text-xs uppercase font-semibold text-admin-muted mb-1 sm:min-h-[28px]">Harga Coret (Rp) <span className="normal-case tracking-normal text-admin-success">✎ bisa diedit</span></span>
+                <span className="block text-xs uppercase font-semibold text-admin-muted mb-1 sm:min-h-[28px]">Harga Coret (Rp) <span className="normal-case tracking-normal text-admin-success">bisa diedit</span></span>
                 <MoneyInput
                   value={v.comparePrice}
                   allowEmpty
@@ -413,7 +414,7 @@ export function ProductVariantRows({
               </div>
               <div>
                 <span className="block text-xs uppercase font-semibold text-admin-muted mb-1 sm:min-h-[28px]">Stok{wrLocked ? " (WR)" : ""}</span>
-                <input
+                <Input
                   type="number"
                   min={-1}
                   value={v.stock}
@@ -430,7 +431,7 @@ export function ProductVariantRows({
                   GSuite = 50; produk lain tinggal set angka bila butuh. */}
               <div>
                 <span className="block text-xs uppercase font-semibold text-admin-muted mb-1 sm:min-h-[28px]">Min. Beli <span className="normal-case tracking-normal text-admin-muted">(minimal 1)</span></span>
-                <input
+                <Input
                   type="number"
                   min={1}
                   max={100}
@@ -442,12 +443,12 @@ export function ProductVariantRows({
                   className={openInput}
                 />
               </div>
-              <label className="text-xs text-admin-muted">Input pembeli
-                <select value={v.buyer_field_key ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null } : item))} className={openInput}>
+              <Label className="text-xs text-admin-muted">Input pembeli
+                <NativeSelect value={v.buyer_field_key ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null } : item))} className={openInput}>
                   <option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option>
-                </select>
-              </label>
-              <label className="text-xs text-admin-muted">Maks. beli (kosong = 100)<input type="number" min={1} max={100} value={v.max_qty ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,max_qty:e.target.value ? Number(e.target.value) : null } : item))} className={openInput} /></label>
+                </NativeSelect>
+              </Label>
+              <Label className="text-xs text-admin-muted">Maks. beli (kosong = 100)<Input type="number" min={1} max={100} value={v.max_qty ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,max_qty:e.target.value ? Number(e.target.value) : null } : item))} className={openInput} /></Label>
               {/* Modal manual per unit (migrasi 0058, milik admin): untuk
                   produk manual/stok sendiri yang modalnya tak tercatat di
                   link supplier. 0 = murni tanpa modal. */}
@@ -506,7 +507,7 @@ export function ProductVariantRows({
               <div className="pt-3">
                 <span className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Cara Pengiriman</span>
                 {tunvnAutomatic ? <p className="text-xs leading-5 text-admin-accent">Diproses otomatis setelah pembayaran dikonfirmasi. Mode internal tetap manual; tidak perlu mengisi stok kredensial lokal.</p> : <>
-                <select
+                <NativeSelect
                   value={v.fulfillment_mode || "manual"}
                   onChange={(e) => {
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, fulfillment_mode: e.target.value } : item));
@@ -514,7 +515,7 @@ export function ProductVariantRows({
                   className="h-9 rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none"
                 >
                   {FULFILLMENT_OPTIONS.map((opt) => <option key={opt.value} value={opt.value} className="bg-admin-card">{opt.label}</option>)}
-                </select>
+                </NativeSelect>
                 <p className="mt-1.5 text-xs leading-4 text-admin-muted">
                   {(v.fulfillment_mode || "manual") === "manual"
                     ? "Badge pembeli: Made By Order (disiapkan admin)."
@@ -536,7 +537,7 @@ export function ProductVariantRows({
       {formVariants.length > 0 && (
         <div className="mt-3 rounded-xl bg-admin-primary/5 border border-admin-accent/20 px-3 py-2 flex items-center justify-between text-xs">
           <span className="text-admin-muted">Tampilan Harga di Katalog:</span>
-          <span className="font-bold text-admin-accent">
+          <span className="font-semibold text-admin-accent">
             {activePrices.length ? `Mulai ${formatRupiah(minPrice)}` : "Belum ada varian aktif"}
           </span>
         </div>

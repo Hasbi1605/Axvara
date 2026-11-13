@@ -1,4 +1,5 @@
 "use client";
+import { Input, Label, NativeSelect } from "@/components/admin/ui";
 
 // Field mode single (toggle "Variasi Produk" OFF) — paritas 2026-09-28.
 // Sebelumnya cabang single di ProductEditorModal hanya menampilkan
@@ -58,15 +59,15 @@ export function SingleVariantFields({
     "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none";
   return (
     <div className="mt-4 space-y-3 rounded-xl border border-admin-border bg-admin-subtle p-4">
-      <label className="block text-xs text-admin-muted">Input pembeli<select value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></select></label>
-      <label className="block text-xs text-admin-muted">Maks. beli (kosong = 100)<input type="number" min={1} max={100} value={form.max_qty ?? ""} onChange={e => onSetForm({ ...form,max_qty:e.target.value ? Number(e.target.value) : null })} className={openInput}/></label>
+      <Label className="block text-xs text-admin-muted">Input pembeli<NativeSelect value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></NativeSelect></Label>
+      <Label className="block text-xs text-admin-muted">Maks. beli (kosong = 100)<Input type="number" min={1} max={100} value={form.max_qty ?? ""} onChange={e => onSetForm({ ...form,max_qty:e.target.value ? Number(e.target.value) : null })} className={openInput}/></Label>
       {/* Min. Beli (migrasi 0034, milik admin — bukan WR). */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <span className="block text-xs uppercase font-semibold text-admin-muted mb-1">
             Min. Beli <span className="normal-case tracking-normal text-admin-muted">(1 = bebas)</span>
           </span>
-          <input
+          <Input
             type="number"
             min={1}
             max={100}
@@ -121,8 +122,8 @@ export function SingleVariantFields({
 
       {!wrLocked ? (
         <div className="pt-3">
-          <label htmlFor={fulfillmentId} className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Cara Pengiriman</label>
-          <select
+          <Label htmlFor={fulfillmentId} className="block text-xs uppercase font-semibold text-admin-muted mb-1.5">Cara Pengiriman</Label>
+          <NativeSelect
             id={fulfillmentId}
             value={form.fulfillment_mode || "manual"}
             onChange={(e) => onSetForm({ ...form, fulfillment_mode: e.target.value })}
@@ -133,7 +134,7 @@ export function SingleVariantFields({
                 {opt.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
           <p className="mt-1.5 text-xs leading-4 text-admin-muted">
             {(form.fulfillment_mode || "manual") === "manual"
               ? "Badge pembeli: Made By Order (disiapkan admin)."

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import userEvent from "@testing-library/user-event";
 //
 // Harga grosir di editor produk admin (keputusan owner 2026-11-08):
 // hanya untuk produk MANUAL. Editor tidak pernah tampil untuk produk supplier
@@ -63,7 +64,7 @@ async function openEditor() {
   await waitFor(() => expect(document.getElementById("product-editor-title")?.textContent).toMatch(/Edit Produk/));
   // Panel tab lain `hidden` (tidak ada di accessibility tree) — buka tab Varian
   // seperti admin sungguhan sebelum mengakses kontrol harga grosir.
-  fireEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
+  await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
   await act(async () => {});
 }
 
