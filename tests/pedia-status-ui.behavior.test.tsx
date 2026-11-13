@@ -216,7 +216,7 @@ describe("Admin OrdersManager Pedia rows", () => {
     const row = (await screen.findAllByText(CODE))[0].closest("tr")!;
     expect(within(row).getByText("Pedia")).toBeTruthy();
     expect(within(row).getByTestId("pedia-status-chip").textContent).toBe("Berjalan");
-    expect(within(row).queryByText("Perlu handover")).toBeNull();
+    expect(within(row).queryByText("Perlu tindakan")).toBeNull();
     expect(within(row).queryByRole("button", { name: /Kirim ke pembeli/ })).toBeNull();
     expect(row.textContent).toContain("Followers Instagram · 100 · 27/100 masuk");
     expect(row.textContent).not.toContain("×1");
@@ -274,13 +274,13 @@ describe("Admin OrdersManager Pedia rows", () => {
     ]);
     render(<OrdersManager />);
     const qrisRow = (await screen.findAllByText("AXV-20261102-QRIS0001"))[0].closest("tr")!;
-    expect(within(qrisRow).getByRole("button", { name: /ACC pembayaran/ })).toBeTruthy();
     await userEvent.click(within(qrisRow).getByRole("button", { name: /Tindakan lain/ }));
+    expect(screen.getByRole("menuitem", { name: /ACC pembayaran/ })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Batalkan pesanan" })).toBeTruthy();
     await userEvent.keyboard("{Escape}");
     const manualRow = (await screen.findAllByText("AXV-20261102-MANU0001"))[0].closest("tr")!;
-    expect(within(manualRow).getByRole("button", { name: /Konfirmasi lunas/ })).toBeTruthy();
     await userEvent.click(within(manualRow).getByRole("button", { name: /Tindakan lain/ }));
+    expect(screen.getByRole("menuitem", { name: /Konfirmasi lunas/ })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Batalkan pesanan" })).toBeTruthy();
     await userEvent.keyboard("{Escape}");
     fireEvent.click(within(manualRow).getByRole("button", { name: "Detail" }));
@@ -290,12 +290,14 @@ describe("Admin OrdersManager Pedia rows", () => {
     expect(within(dialog).queryByText("Menunggu pembayaran QRIS")).toBeNull();
   });
 
-  it("keeps Market rows unchanged: manual_required still shows Perlu handover + Kirim ke pembeli and the PIN widget", async () => {
+  it("keeps Market recovery: manual_required shows Perlu tindakan + Kirim ke pembeli and the PIN widget", async () => {
     stubAdmin([adminRow({ code: "AXV-20261102-AAAA1111", order_kind: "apps", pedia: undefined, items: [{ name: "Netflix", price: 1000, qty: 2 }] })]);
     render(<OrdersManager />);
     const row = (await screen.findAllByText("AXV-20261102-AAAA1111"))[0].closest("tr")!;
-    expect(within(row).getByText("Perlu handover")).toBeTruthy();
-    expect(within(row).getByRole("button", { name: /Kirim ke pembeli/ })).toBeTruthy();
+    expect(within(row).getByText("Perlu tindakan")).toBeTruthy();
+    await userEvent.click(within(row).getByRole("button", { name: /Tindakan lain/ }));
+    expect(screen.getByRole("menuitem", { name: /Kirim ke pembeli/ })).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
     expect(within(row).queryByText("Pedia")).toBeNull();
     expect(row.textContent).toContain("Netflix x2");
     fireEvent.click(within(row).getByRole("button", { name: "Detail" }));

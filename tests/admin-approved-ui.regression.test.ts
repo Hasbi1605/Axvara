@@ -24,7 +24,7 @@ describe("butir 4 — metrik Pesanan mengikuti filter", () => {
   });
 
   it("kartu metrik menandai dirinya saat filter aktif", () => {
-    expect(read("src/components/admin/OrdersManager.tsx")).toContain("hasil filter");
+    expect(read("src/components/admin/OrdersManager.tsx")).toContain("Hasil filter");
   });
 });
 
