@@ -178,8 +178,8 @@ describe("games catalog", () => {
     const data = await res.json();
     expect(data.ordering_open).toBe(true);
     expect(data.games).toEqual([
-      { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond", icon: "/brand/games/free-fire-icon.webp", banner: "/brand/games/free-fire-banner.webp", min_price: 22000, sku_count: 1 },
-      { slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton", currency: "diamond", icon: "/brand/games/mobile-legends-icon.webp", banner: "/brand/games/mobile-legends-banner.webp", min_price: 11000, sku_count: 1 },
+      { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond", icon: "/brand/games/free-fire-icon.webp", banner: "/brand/games/free-fire-banner.webp", min_price: 22000, sku_count: 1, sellable_count: 1, featured_rank: null },
+      { slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton", currency: "diamond", icon: "/brand/games/mobile-legends-icon.webp", banner: "/brand/games/mobile-legends-banner.webp", min_price: 11000, sku_count: 1, sellable_count: 1, featured_rank: null },
     ]);
     expect(JSON.stringify(data)).not.toMatch(/cost|margin|seller|ml86b/);
   });
@@ -187,6 +187,14 @@ describe("games catalog", () => {
   it("keeps seller-inactive SKUs visible but unavailable, without leaking cost", async () => {
     seedSku({ buyer_sku_code: "sk:101", display_group: "bestseller", display_order: 2 });
     seedSku({ buyer_sku_code: "sk:172", product_name: "172 Diamond", sell_price: 21000, supplier_active: 0 });
+    // Varian yang mendukung cek nickname menandai dirinya di kontrak publik (P9).
+    seedSku({
+      buyer_sku_code: "sk:173", product_name: "86 Diamond (Filipina)", sell_price: 12500, product_type_name: "Filipina",
+      required_fields_json: JSON.stringify({
+        version: 1, fields: [{ key: "note", label: "User ID :", required: true, input: "text", min: 1, max: 50 }],
+        requires_zone_id: false, validation_available: true, open_denom: false, supported: true, reason: null,
+      }),
+    });
     const { GET } = await import("@/app/api/games/catalog/[slug]/route");
     const res = await GET(new Request("http://x/") as never, { params: Promise.resolve({ slug: "mobile-legends" }) });
     const data = await res.json();
@@ -194,9 +202,26 @@ describe("games catalog", () => {
     expect(data.game.slug).toBe("mobile-legends");
     expect(data.products.map(({ buyer_sku_code, name, price, group, display_order, available }: Record<string, unknown>) =>
       ({ buyer_sku_code, name, price, group, display_order, available }))).toEqual([
+      // Urutan detail: display_order dulu, lalu harga naik.
       { buyer_sku_code: "sk:101", name: "86 Diamond", price: 11000, group: "bestseller", display_order: 2, available: true },
+      { buyer_sku_code: "sk:173", name: "86 Diamond (Filipina)", price: 12500, group: "all", display_order: null, available: true },
       { buyer_sku_code: "sk:172", name: "172 Diamond", price: 21000, group: "all", display_order: null, available: false },
     ]);
+    type DetailProduct = {
+      buyer_sku_code: string; validation_available: boolean; type_label: string | null;
+      region_code: string | null; category: string; fields: { label: string }[];
+    };
+    const byId = new Map<string, DetailProduct>(
+      (data.products as DetailProduct[]).map((product) => [product.buyer_sku_code, product]),
+    );
+    // UI hanya menampilkan tombol "Cek ID" bila true.
+    expect(byId.get("sk:173")).toMatchObject({ validation_available: true, type_label: "Filipina", region_code: "PH", category: "topup" });
+    // Baris ini punya override admin `bestseller`, jadi kategori = override.
+    expect(byId.get("sk:101")).toMatchObject({ validation_available: false, type_label: null, region_code: null, category: "bestseller" });
+    // Label supplier dibersihkan untuk pembeli.
+    expect(byId.get("sk:173")?.fields[0].label).toBe("User ID");
+    expect(data.game.description).toBe("");
+    expect(data.game.id_guide).toBe("");
     expect(JSON.stringify(data)).not.toMatch(/"cost"|"margin"|"seller_active"|"backup_sku_code"/);
     // Game tidak dikenal tetap 404.
     expect((await GET(new Request("http://x/") as never, { params: Promise.resolve({ slug: "valorant" }) })).status).toBe(404);
@@ -353,6 +378,30 @@ describe("games orders", () => {
     const res = await placeOrder(token);
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("quote_stale");
+    expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()).toEqual({ n: 0 });
+  });
+
+  it("applies a markup change to the NEXT quote while the locked token stays fenced", async () => {
+    const { recomputeGamesSkPrices } = await import("@/lib/games/markup");
+    // Modal 10.000, default global 5 %/R100 → 10.500.
+    seedSku({ cost: 10000, sell_price: 10500 });
+    const firstToken = await quoteToken();
+    const firstPayload = await (await import("@/lib/games/quote")).verifyGamesQuoteToken(firstToken);
+    expect(firstPayload?.unit_price).toBe(10500);
+
+    // Markup varian 20 % → harga baru dihitung dari modal yang SAMA.
+    await fx.sql.prepare("INSERT INTO games_variant_markup(buyer_sku_code,markup_percent,markup_fixed,updated_at) VALUES('sk:101',20,0,?)")
+      .run(new Date().toISOString());
+    expect(await recomputeGamesSkPrices(createDatabaseAccess(fx.db), { all: true })).toEqual({ updated: 1 });
+
+    // Quote berikutnya memakai harga baru…
+    const next = await makeQuote();
+    expect(next.status).toBe(200);
+    expect((await next.json()).total).toBe(12000);
+    // …dan token lama tetap ditolak dengan quote_stale (semantik hari ini).
+    const stale = await placeOrder(firstToken);
+    expect(stale.status).toBe(409);
+    expect((await stale.json()).error).toBe("quote_stale");
     expect(fx.sql.prepare("SELECT COUNT(*) AS n FROM orders").get()).toEqual({ n: 0 });
   });
 

@@ -11,6 +11,13 @@ import {
 } from "@/lib/games/registry";
 import { effectiveGroup, type GamesDisplayGroup } from "@/lib/games/admin";
 import { isGamesNicknameProduct } from "@/lib/games/sellable";
+import {
+  cleanGamesFieldLabel,
+  gamesEffectiveCategory,
+  gamesRegionCode,
+  gamesTypeLabel,
+  type GamesCategory,
+} from "@/lib/games/variant-kind";
 
 type Row = Record<string, unknown>;
 
@@ -31,6 +38,14 @@ export interface GamesDetailProduct {
   availability_reason?: string | null;
   /** Nama game upstream untuk grup/identitas. */
   game_brand?: string | null;
+  /** Label tipe untuk pembeli (ejaan Indonesia); null bila tipe kosong/DIGITAL. */
+  type_label: string | null;
+  /** ISO-2 atau "GLOBAL" bila tipe adalah negara/global; selain itu null. */
+  region_code: string | null;
+  /** Section Oura-style: override admin, selain itu aturan otomatis. */
+  category: GamesCategory;
+  /** True hanya bila varian mendukung cek nickname SK (predikat route nickname). */
+  validation_available: boolean;
 }
 
 export interface GamesDetailGame {
@@ -41,11 +56,36 @@ export interface GamesDetailGame {
   icon: string | null;
   banner: string | null;
   fields: GamesField[];
+  /** Deskripsi singkat dari admin (`games_meta`); "" bila belum diisi. */
+  description: string;
+  /** Panduan mencari ID dari admin (`games_meta`); "" bila belum diisi. */
+  id_guide: string;
+}
+
+export interface GamesCatalogItem {
+  slug: string;
+  name: string;
+  publisher: string;
+  currency: GamesCurrency;
+  icon: string | null;
+  banner: string | null;
+  /** Harga terendah dari varian yang BISA DIJUAL; null bila tidak ada. */
+  min_price: number | null;
+  /** Jumlah varian berharga (kompatibilitas UI lama). */
+  sku_count: number;
+  /** Jumlah varian yang saat ini benar-benar bisa dibeli. */
+  sellable_count: number;
+  /** Urutan "Populer sekarang" dari admin (1–99); null = tidak diurutkan. */
+  featured_rank: number | null;
 }
 
 const CATALOG_COLUMNS = `game_brand, buyer_sku_code, product_name, sell_price, supplier, sk_variant_id,
   sk_product_id, sk_product_name, game_slug, stock, min_order, supplier_active, required_fields_json,
-  validation_json, image_url, cost, display_group, display_order, product_type, product_type_name`;
+  validation_json, image_url, cost, display_group, display_order, product_type, product_type_name, enabled`;
+
+const DETAIL_COLUMNS = `buyer_sku_code, product_name, sell_price, seller_active, display_group, display_order,
+  product_type, product_type_name, supplier, supplier_active, sk_variant_id, sk_product_id, sk_product_name,
+  game_slug, stock, min_order, cost, required_fields_json, validation_json, image_url, description, enabled`;
 
 const isSkRow = (row: Row): boolean => {
   const productId = Number(row.sk_product_id);
@@ -70,27 +110,74 @@ export function gamesSkContractSupported(row: Row): boolean {
   return parseGamesSkContract(row.required_fields_json)?.supported === true;
 }
 
+export interface GamesMetaRow {
+  slug: string;
+  display_name: string | null;
+  publisher: string | null;
+  icon_url: string | null;
+  banner_url: string | null;
+  description: string | null;
+  id_guide: string | null;
+  featured_rank: number | null;
+  hidden: number;
+  markup_percent: number | null;
+}
+
+const text = (value: unknown): string => String(value ?? "").trim();
+
+function toMeta(row: Row): GamesMetaRow {
+  const rank = Number(row.featured_rank);
+  return {
+    slug: text(row.slug),
+    display_name: text(row.display_name) || null,
+    publisher: text(row.publisher) || null,
+    icon_url: text(row.icon_url) || null,
+    banner_url: text(row.banner_url) || null,
+    description: text(row.description) || null,
+    id_guide: text(row.id_guide) || null,
+    featured_rank: Number.isInteger(rank) && rank > 0 ? rank : null,
+    hidden: Number(row.hidden) === 1 ? 1 : 0,
+    markup_percent: row.markup_percent === null || row.markup_percent === undefined ? null : Number(row.markup_percent),
+  };
+}
+
+async function loadGamesMeta(): Promise<Map<string, GamesMetaRow>> {
+  const rows = await createDatabaseAccess()
+    .queryAll("SELECT * FROM games_meta")
+    .catch(() => [] as Row[]);
+  const meta = new Map<string, GamesMetaRow>();
+  for (const row of rows) {
+    const entry = toMeta(row);
+    if (entry.slug) meta.set(entry.slug, entry);
+  }
+  return meta;
+}
+
 const registryOrder = new Map<string, number>(GAMES_REGISTRY.map((game, index) => [game.slug, index]));
 
-/** Urutan stabil: empat game legacy dulu, lalu nama. */
-const compareGames = (a: { slug: string; name: string }, b: { slug: string; name: string }): number => {
+/** Urutan listing: bisa dijual dulu → popularitas admin → registry → nama. */
+const compareGames = (a: GamesCatalogItem, b: GamesCatalogItem): number => {
+  const sellableA = a.sellable_count > 0 ? 0 : 1;
+  const sellableB = b.sellable_count > 0 ? 0 : 1;
+  if (sellableA !== sellableB) return sellableA - sellableB;
+  const rankA = a.featured_rank ?? Number.MAX_SAFE_INTEGER;
+  const rankB = b.featured_rank ?? Number.MAX_SAFE_INTEGER;
+  if (rankA !== rankB) return rankA - rankB;
   const orderA = registryOrder.get(a.slug) ?? Number.MAX_SAFE_INTEGER;
   const orderB = registryOrder.get(b.slug) ?? Number.MAX_SAFE_INTEGER;
   if (orderA !== orderB) return orderA - orderB;
   return a.name.localeCompare(b.name);
 };
 
-export async function getGamesCatalog() {
+export async function getGamesCatalog(): Promise<GamesCatalogItem[]> {
   // Katalog publik SK-only. Baris Digiflazz legacy tidak pernah ditampilkan
   // sebagai game yang bisa dibeli baru.
   const rows = [...await createDatabaseAccess().queryAll(
     `SELECT ${CATALOG_COLUMNS} FROM games_products WHERE supplier='sekalipay' AND enabled=1 AND sell_price>0`,
   ).catch(() => [] as Row[])];
+  const meta = await loadGamesMeta();
 
-  const skGames: {
-    slug: string; name: string; publisher: string; currency: GamesCurrency;
-    icon: string | null; banner: string | null; min_price: number; sku_count: number;
-  }[] = [];
+  const skGames: GamesCatalogItem[] = [];
   const skSlugs = new Set<string>();
   const skRows = rows.filter((row) => isSkRow(row) && !isGamesNicknameProduct(row));
   if (skRows.length > 0) {
@@ -107,17 +194,26 @@ export async function getGamesCatalog() {
       if (skSlugs.has(slug)) continue;
       const prices = group.map((row) => Number(row.sell_price)).filter((price) => Number.isFinite(price) && price > 0);
       if (prices.length === 0) continue;
+      const overlay = meta.get(slug);
+      // Admin menyembunyikan game: hilang dari list, sitemap, dan pencarian.
+      if (overlay?.hidden === 1) continue;
+      const sellablePrices = group
+        .filter((row) => gamesSkAvailability(row).available)
+        .map((row) => Number(row.sell_price))
+        .filter((price) => Number.isFinite(price) && price > 0);
       const registry = gamesRegistryGame(slug);
       skSlugs.add(slug);
       skGames.push({
         slug,
-        name: registry?.name ?? (upstreamName || `Game ${productId}`),
-        publisher: registry?.publisher ?? "",
+        name: overlay?.display_name ?? registry?.name ?? (upstreamName || `Game ${productId}`),
+        publisher: overlay?.publisher ?? registry?.publisher ?? "",
         currency: registry?.currency ?? "topup",
-        icon: registry?.icon ?? sanitizeSkImageUrl(group[0].image_url),
-        banner: registry?.banner ?? null,
-        min_price: Math.min(...prices),
+        icon: overlay?.icon_url ?? registry?.icon ?? sanitizeSkImageUrl(group[0].image_url),
+        banner: overlay?.banner_url ?? registry?.banner ?? null,
+        min_price: sellablePrices.length > 0 ? Math.min(...sellablePrices) : null,
         sku_count: group.length,
+        sellable_count: sellablePrices.length,
+        featured_rank: overlay?.featured_rank ?? null,
       });
     }
   }
@@ -125,15 +221,14 @@ export async function getGamesCatalog() {
   return skGames.sort(compareGames);
 }
 
-export type GamesCatalogGame = Awaited<ReturnType<typeof getGamesCatalog>>[number];
-
-const DETAIL_COLUMNS = `buyer_sku_code, product_name, sell_price, seller_active, display_group, display_order,
-  product_type, product_type_name, supplier, supplier_active, sk_variant_id, sk_product_id, sk_product_name,
-  game_slug, stock, min_order, cost, required_fields_json, validation_json, image_url, description, enabled`;
+export type GamesCatalogGame = GamesCatalogItem;
 
 export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailGame; products: GamesDetailProduct[] } | null> {
   const normalized = String(slug ?? "").trim().toLowerCase();
   const registry = gamesRegistryGame(normalized);
+  const meta = (await loadGamesMeta()).get(normalized);
+  // Game yang disembunyikan admin tidak punya halaman publik (404).
+  if (meta?.hidden === 1) return null;
   // Detail publik juga SK-only. Admin-disabled tetap dikirim agar terlihat
   // dengan alasan, tetapi baris Digiflazz legacy tidak pernah dirender.
   const rows = await createDatabaseAccess().queryAll(
@@ -149,18 +244,21 @@ export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailG
     const gameSlug = String(first.game_slug ?? "").trim() || normalized || gamesSlugify(upstreamName);
     const game: GamesDetailGame = {
       slug: gameSlug,
-      name: registry?.name ?? (upstreamName || String(first.product_name ?? "")),
-      publisher: registry?.publisher ?? "",
+      name: meta?.display_name ?? registry?.name ?? (upstreamName || String(first.product_name ?? "")),
+      publisher: meta?.publisher ?? registry?.publisher ?? "",
       currency: registry?.currency ?? "topup",
-      icon: registry?.icon ?? sanitizeSkImageUrl(first.image_url),
-      banner: registry?.banner ?? null,
+      icon: meta?.icon_url ?? registry?.icon ?? sanitizeSkImageUrl(first.image_url),
+      banner: meta?.banner_url ?? registry?.banner ?? null,
       // Field bersifat per-varian (product_type berbeda); UI P3 membacanya dari
       // `products[].fields`, bukan dari level game.
       fields: [],
+      description: meta?.description ?? "",
+      id_guide: meta?.id_guide ?? "",
     };
     const products: GamesDetailProduct[] = skRows.filter((row) => !isGamesNicknameProduct(row)).map((row) => {
       const contract = parseGamesSkContract(row.required_fields_json);
       const availability = gamesSkAvailability(row);
+      const typeName = String(row.product_type_name ?? "").trim();
       return {
         buyer_sku_code: String(row.buyer_sku_code),
         name: String(row.product_name ?? ""),
@@ -169,11 +267,19 @@ export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailG
         display_order: row.display_order == null ? null : Number(row.display_order),
         available: availability.available,
         availability_reason: availability.reason,
-        fields: contract?.fields ?? [],
+        fields: (contract?.fields ?? []).map((field) => ({ ...field, label: cleanGamesFieldLabel(field.label) })),
         unsupported_reason: contract?.reason ?? (contract ? null : "invalid_contract"),
         description: String(row.description ?? ""),
-        product_type_name: String(row.product_type_name ?? "").trim() || null,
+        product_type_name: typeName || null,
         game_brand: String(row.sk_product_name ?? row.game_brand ?? "").trim() || null,
+        type_label: gamesTypeLabel(typeName),
+        region_code: gamesRegionCode(typeName),
+        category: gamesEffectiveCategory({
+          displayGroup: row.display_group,
+          productName: row.product_name,
+          productTypeName: typeName,
+        }),
+        validation_available: contract?.validation_available === true,
       };
     });
     return { game, products };
@@ -182,19 +288,21 @@ export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailG
   // Tidak ada SK: game registry lama tetap 200 dengan header dan "nominal
   // segera tersedia", tanpa SKU DGF yang bisa dibeli.
   if (!registry) return null;
-  return { game: publicRegistryGame(registry), products: [] };
+  return { game: publicRegistryGame(registry, meta), products: [] };
 }
 
 export type GamesDetail = NonNullable<Awaited<ReturnType<typeof getGamesDetail>>>;
 
-function publicRegistryGame(game: (typeof GAMES_REGISTRY)[number]): GamesDetailGame {
+function publicRegistryGame(game: (typeof GAMES_REGISTRY)[number], meta?: GamesMetaRow): GamesDetailGame {
   return {
     slug: game.slug,
-    name: game.name,
-    publisher: game.publisher,
+    name: meta?.display_name ?? game.name,
+    publisher: meta?.publisher ?? game.publisher,
     currency: game.currency,
-    icon: game.icon,
-    banner: game.banner,
+    icon: meta?.icon_url ?? game.icon,
+    banner: meta?.banner_url ?? game.banner,
+    description: meta?.description ?? "",
+    id_guide: meta?.id_guide ?? "",
     fields: game.fields.map((field) => ({
       key: field.key,
       label: field.label,

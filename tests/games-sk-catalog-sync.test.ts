@@ -122,7 +122,8 @@ describe("syncGamesSkCatalog", () => {
       image_url: "https://sekalipay.com/images/products/ML.png",
       description: "Instant delivery. Region ID only.",
     });
-    expect(Number(ml.sell_price)).toBe(Math.ceil(10001 * 1.03));
+    // OD1 (14 Nov 2026): 5 %/R100 → ceil(10001 × 1,05 / 100) × 100.
+    expect(Number(ml.sell_price)).toBe(10600);
     const contract = parseGamesSkContract(ml.required_fields_json);
     expect(contract).toMatchObject({ supported: true, requires_zone_id: false, open_denom: false });
     expect(contract!.fields).toEqual([{ key: "note", label: "User ID :", required: true, input: "text", min: 1, max: 50 }]);
@@ -155,11 +156,27 @@ describe("syncGamesSkCatalog", () => {
     expect(row("sk:102")).toBeUndefined();
   });
 
-  it("reuses computeGamesSellPrice with the admin reference for sk:<variant>", async () => {
+  it("prices with the markup formula and no longer reads the retired Oura reference", async () => {
+    // Harga referensi lama tidak boleh dipakai lagi untuk baris Sekalipay (OD1).
     fx.sql.exec("INSERT INTO games_reference_prices(buyer_sku_code,price,source,captured_at,updated_at) VALUES('sk:101',20000,'admin','2026-11-12T00:00:00Z','2026-11-12T00:00:00Z')");
     stubCatalog([product(33, "Mobile Legends", [variant(101, { price: 15000 })])]);
     await syncGamesSkCatalog(db(), { now: T0 });
-    expect(row("sk:101")).toMatchObject({ cost: 15000, reference_price: 20000, sell_price: 19600 });
+    expect(row("sk:101")).toMatchObject({ cost: 15000, reference_price: null, sell_price: 15800 });
+  });
+
+  it("uses game and variant markup overrides and preserves them on upsert", async () => {
+    stubCatalog([product(33, "Mobile Legends", [variant(101, { price: 10000 }), variant(102, { price: 10000 })])]);
+    await syncGamesSkCatalog(db(), { now: T0 });
+    expect(Number(row("sk:101")!.sell_price)).toBe(10500);
+    // Markup khusus game 10 % berlaku pada sinkron berikutnya.
+    fx.sql.exec("INSERT INTO games_meta(slug,markup_percent,hidden) VALUES('mobile-legends',10,0)");
+    fx.sql.exec("INSERT INTO games_variant_markup(buyer_sku_code,markup_percent,markup_fixed,updated_at) VALUES('sk:102',20,500,'2026-11-14T00:00:00Z')");
+    await syncGamesSkCatalog(db(), { now: T0 + 10 * 60_000, force: true });
+    expect(Number(row("sk:101")!.sell_price)).toBe(11000);
+    // Override varian 20 % + Rp500 menang atas markup game dan TIDAK ditimpa.
+    expect(Number(row("sk:102")!.sell_price)).toBe(12500);
+    expect(fx.sql.prepare("SELECT markup_percent,markup_fixed FROM games_variant_markup WHERE buyer_sku_code='sk:102'").get())
+      .toEqual({ markup_percent: 20, markup_fixed: 500 });
   });
 
   it("preserves an admin-disabled enabled flag and never touches legacy Digiflazz rows", async () => {
@@ -217,7 +234,8 @@ describe("syncGamesSkCatalog", () => {
     expect(refused).toMatchObject({ ok: false, error: "budget_exceeded", budget: 40 });
     expect(fx.sql.prepare("SELECT COUNT(*) c FROM games_products").get()).toEqual({ c: 0 });
     expect(setting()).toBeUndefined();
-    expect(fx.control.queries).toBeLessThanOrEqual(3);
+    // 5 baca (setting sinkron, slug, setting harga, markup game, override varian).
+    expect(fx.control.queries).toBeLessThanOrEqual(5);
 
     // 1.619 varian (snapshot nyata) tetap muat dalam budget.
     vi.unstubAllGlobals();

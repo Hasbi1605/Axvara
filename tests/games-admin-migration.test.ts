@@ -16,7 +16,7 @@ describe("0108 games admin migration", () => {
   it("mirrors games_reference_prices and the new product columns in drizzle/schema.sql", () => {
     expect(body(admin, "games_reference_prices")).toBe(body(schema, "games_reference_prices"));
     for (const column of [
-      "display_group TEXT CHECK (display_group IS NULL OR display_group IN ('special','bestseller'))",
+      "display_group TEXT CHECK (display_group IS NULL OR display_group IN ( 'special','bestseller','promo','first_topup','pass','pack','topup','other'))",
       "display_order INTEGER",
     ]) {
       expect(body(schema, "games_products")).toContain(column);

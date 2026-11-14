@@ -10,11 +10,12 @@ vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
 
 const noteField: GamesSkContractField = { key: "note", label: "User ID", required: true, input: "text", min: 1, max: 50 };
 const zoneField: GamesSkContractField = { key: "zone_id", label: "Zone ID", required: true, input: "text", min: 1, max: 20 };
-const game: GamesDetail["game"] = { slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton", currency: "diamond", icon: null, banner: null, fields: [] };
+const game: GamesDetail["game"] = { slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton", currency: "diamond", icon: null, banner: null, fields: [], description: "", id_guide: "" };
 const product = (over: Partial<GamesDetail["products"][number]>) => ({
   buyer_sku_code: "sk:1", name: "86 Diamond", group: "bestseller" as const, price: 12000, available: true,
   display_order: 1, fields: [noteField, zoneField], unsupported_reason: null, availability_reason: null,
-  description: "Region ID only", product_type_name: "Membership", ...over,
+  description: "Region ID only", product_type_name: "Membership",
+  type_label: null, region_code: null, category: "topup" as const, validation_available: false, ...over,
 });
 const detail: GamesDetail = {
   game,

@@ -1762,7 +1762,8 @@ CREATE TABLE IF NOT EXISTS games_products (
   reference_price INTEGER CHECK (reference_price IS NULL OR reference_price > 0),
   sell_price INTEGER NOT NULL DEFAULT 0 CHECK (sell_price >= 0),
   enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
-  display_group TEXT CHECK (display_group IS NULL OR display_group IN ('special','bestseller')),
+  display_group TEXT CHECK (display_group IS NULL OR display_group IN (
+    'special','bestseller','promo','first_topup','pass','pack','topup','other')),
   display_order INTEGER,
   supplier TEXT NOT NULL DEFAULT 'digiflazz' CHECK (supplier IN ('digiflazz','sekalipay')),
   supplier_active INTEGER NOT NULL DEFAULT 0 CHECK (supplier_active IN (0,1)),
@@ -1794,6 +1795,37 @@ CREATE TABLE IF NOT EXISTS games_reference_prices (
 CREATE INDEX IF NOT EXISTS idx_games_products_synced ON games_products(synced_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_games_products_sk_variant ON games_products(sk_variant_id) WHERE supplier='sekalipay';
 CREATE INDEX IF NOT EXISTS idx_games_products_sk_product ON games_products(supplier, sk_product_id);
+
+-- Migrasi 0122: metadata game yang dapat diedit admin (nama, ikon, banner,
+-- deskripsi, panduan ID, urutan populer, sembunyikan, markup khusus game).
+CREATE TABLE IF NOT EXISTS games_meta (
+  slug TEXT PRIMARY KEY,
+  display_name TEXT,
+  publisher TEXT,
+  icon_url TEXT,
+  banner_url TEXT,
+  description TEXT,
+  id_guide TEXT,
+  featured_rank INTEGER,
+  hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0,1)),
+  markup_percent REAL CHECK (markup_percent IS NULL OR (markup_percent >= 0 AND markup_percent <= 100)),
+  updated_at TEXT,
+  updated_by TEXT
+);
+
+-- Migrasi 0122: override markup per VARIAN (NULL = ikut markup game/global).
+-- Tabel sendiri agar sinkron katalog tidak pernah menimpa edit admin.
+CREATE TABLE IF NOT EXISTS games_variant_markup (
+  buyer_sku_code TEXT PRIMARY KEY,
+  markup_percent REAL CHECK (markup_percent IS NULL OR (markup_percent >= 0 AND markup_percent <= 100)),
+  markup_fixed INTEGER CHECK (markup_fixed IS NULL OR (markup_fixed >= 0 AND markup_fixed <= 1000000)),
+  updated_at TEXT
+);
+
+-- Default harga Games (OD1): markup 5 %, pembulatan Rp100. Tidak menimpa nilai
+-- yang sudah diubah admin.
+INSERT OR IGNORE INTO store_settings (key, value) VALUES ('games_markup_percent', '5');
+INSERT OR IGNORE INTO store_settings (key, value) VALUES ('games_price_rounding', '100');
 
 CREATE TABLE IF NOT EXISTS games_order_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

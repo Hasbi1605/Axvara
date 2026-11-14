@@ -7,16 +7,20 @@ export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  // Sitemap publik hanya slug dari katalog SK yang enabled/berharga. Baris
-  // Digiflazz legacy tidak pernah dipublikasikan sebagai game baru.
-  const rows = await createDatabaseAccess().queryAll(
+  // Sitemap publik hanya slug dari katalog SK yang enabled/berharga dan tidak
+  // disembunyikan admin (`games_meta.hidden`). Baris Digiflazz legacy tidak
+  // pernah dipublikasikan sebagai game baru.
+  const db = createDatabaseAccess();
+  const rows = await db.queryAll(
     "SELECT buyer_sku_code, product_name, game_slug FROM games_products WHERE supplier='sekalipay' AND enabled=1 AND sell_price>0",
   ).catch(() => []);
+  const hiddenRows = await db.queryAll("SELECT slug FROM games_meta WHERE hidden=1").catch(() => []);
+  const hidden = new Set(hiddenRows.map((row) => String(row.slug ?? "").trim()).filter(Boolean));
   const sellable = rows.filter(row => !isGamesNicknameProduct(row));
   const slugs = new Set<string>();
   for (const row of sellable) {
     const slug = String(row.game_slug ?? "").trim();
-    if (/^[a-z0-9-]{1,64}$/.test(slug)) slugs.add(slug);
+    if (/^[a-z0-9-]{1,64}$/.test(slug) && !hidden.has(slug)) slugs.add(slug);
   }
   return [
     { url: `${SITE.gamesUrl}/`, changeFrequency: "daily", priority: 1 },

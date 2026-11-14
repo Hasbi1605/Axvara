@@ -34,4 +34,20 @@ describe("Games sitemap", () => {
     expect(urls).not.toContain("https://games.axvara.tech/utility-game");
     expect(urls).toHaveLength(15);
   });
+
+  it("excludes games hidden by admin (games_meta.hidden=1)", async () => {
+    insert("sk:3001", {
+      supplier: "sekalipay", supplier_active: 1, sk_variant_id: 3001, sk_product_id: 3001,
+      sk_product_name: "Visible", game_slug: "visible-game", sell_price: 1000, enabled: 1,
+    });
+    insert("sk:3002", {
+      supplier: "sekalipay", supplier_active: 1, sk_variant_id: 3002, sk_product_id: 3002,
+      sk_product_name: "Hidden", game_slug: "hidden-game", sell_price: 1000, enabled: 1,
+    });
+    fx.sql.exec("INSERT INTO games_meta(slug,hidden) VALUES('hidden-game',1),('visible-game',0)");
+    const { default: sitemap } = await import("@/app/games/sitemap");
+    const urls = (await sitemap()).map((entry) => entry.url);
+    expect(urls).toContain("https://games.axvara.tech/visible-game");
+    expect(urls).not.toContain("https://games.axvara.tech/hidden-game");
+  });
 });

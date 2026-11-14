@@ -10,7 +10,9 @@
 //    diadmit sebelum klaim tulis supaya satu run tidak melewati budget cron.
 //  * `enabled=1` hanya saat insert; update TIDAK pernah mengubah `enabled`
 //    (admin yang menonaktifkan tetap nonaktif pada sinkron berikutnya).
-//  * Harga memakai `computeGamesSellPrice` yang sudah ada (ceil modal).
+//  * Harga memakai `computeGamesMarkupPrice` (OD1: default 5 %/R100) dengan
+//    markup efektif varian → game → global. Override markup admin
+//    (`markup_percent`/`markup_fixed`) TIDAK pernah ditimpa upsert.
 
 import type { DatabaseAccess } from "@/lib/db-access";
 import {
@@ -19,7 +21,13 @@ import {
   skFetch,
   type SkVariant,
 } from "@/lib/sekalipay/client";
-import { computeGamesSellPrice } from "./pricing";
+import { computeGamesMarkupPrice } from "./pricing";
+import {
+  gamesEffectiveMarkup,
+  readGamesPricingSettings,
+  readVariantMarkupMap,
+  type GamesPricingSettings,
+} from "./markup";
 import { isGamesNicknameProduct } from "./sellable";
 import {
   GAMES_SK_NOTE_MAX,
@@ -35,8 +43,9 @@ export const GAMES_SK_CATALOG_SETTING_KEY = "games_sk_catalog_sync_at";
 export const GAMES_SK_CATALOG_MIN_INTERVAL_MS = 9 * 60_000;
 /** Budget cron lite D1 (docs/ARCHITECTURE §cron). Admission sebelum tulis. */
 export const GAMES_SK_CATALOG_STATEMENT_BUDGET = 40;
-/** Statement baca yang SUDAH terpakai sebelum admission: setting, slug, referensi. */
-export const GAMES_SK_CATALOG_READ_STATEMENTS = 3;
+/** Statement baca yang SUDAH terpakai sebelum admission: setting sinkron, slug,
+ * setting harga, markup game, dan override markup varian. */
+export const GAMES_SK_CATALOG_READ_STATEMENTS = 5;
 /** Statement tulis tetap setelah admission: klaim CAS + deaktivasi. */
 export const GAMES_SK_CATALOG_WRITE_OVERHEAD = 2;
 /** Sisa budget untuk chunk upsert (40 − 3 baca − 2 tulis). */
@@ -255,13 +264,20 @@ interface GamesSkDbRow {
   image: string | null;
   fieldsJson: string;
   validationJson: string | null;
-  reference: number | null;
+}
+
+export interface GamesSkMarkupContext {
+  settings: GamesPricingSettings;
+  /** slug → markup persen khusus game (games_meta). */
+  gamePercent: Map<string, number>;
+  /** buyer_sku_code → override markup varian yang sudah ada di DB. */
+  variantMarkup: Map<string, { percent: number | null; fixed: number | null }>;
 }
 
 function buildRows(
   fetched: GamesSkFetchedVariant[],
   knownSlugs: Map<number, string>,
-  refs: Map<string, number>,
+  markup: GamesSkMarkupContext,
 ): { rows: GamesSkDbRow[]; contracts: GamesSkContract[]; products: number } {
   // Slug stabil per produk: pakai yang sudah tersimpan, selain itu turunkan
   // dari nama supplier dan de-duplikasi deterministik (urutan product id).
@@ -294,15 +310,29 @@ function buildRows(
     const minOrder = minOrderRaw === undefined || minOrderRaw === null
       ? 1
       : Number.isInteger(Number(minOrderRaw)) && Number(minOrderRaw) >= 1 ? Number(minOrderRaw) : Number.MAX_SAFE_INTEGER;
-    const reference = refs.get(sku) ?? null;
-    const sell = cost > 0 ? computeGamesSellPrice({ cost, referencePrice: reference }).price : 0;
+    const slug = slugs.get(productId) ?? (gamesSlugify(productName) || `game-${productId}`);
+    // Markup efektif: override varian (sudah tersimpan) → markup game → global.
+    const existing = markup.variantMarkup.get(sku);
+    const effective = gamesEffectiveMarkup(
+      { markup_percent: existing?.percent ?? null, markup_fixed: existing?.fixed ?? null },
+      markup.gamePercent.get(slug) ?? null,
+      markup.settings,
+    );
+    const sell = cost > 0
+      ? computeGamesMarkupPrice({
+          cost,
+          markupPercent: effective.percent,
+          markupFixed: effective.fixed,
+          rounding: markup.settings.rounding,
+        })
+      : 0;
     return {
       sku,
       variantId,
       skSku: gamesSkPlainText(variant.sku, LABEL_MAX),
       productId,
       productName,
-      slug: slugs.get(productId) ?? (gamesSlugify(productName) || `game-${productId}`),
+      slug,
       brand: productName,
       typeName: gamesSkPlainText(variant.product_type?.name, LABEL_MAX),
       name: gamesSkPlainText(variant.name, 120),
@@ -315,7 +345,6 @@ function buildRows(
       image: sanitizeSkImageUrl(productImage),
       fieldsJson: JSON.stringify(contract),
       validationJson: JSON.stringify({ available: contract.validation_available, requires_zone_id: contract.requires_zone_id }),
-      reference,
     };
   });
   return { rows, contracts, products: productIds.length };
@@ -373,14 +402,20 @@ export async function syncGamesSkCatalog(
     const slug = String(row.slug ?? "").trim();
     if (Number.isInteger(productId) && productId > 0 && slug) knownSlugs.set(productId, slug);
   }
-  const refRows = await db.queryAll(
-    "SELECT buyer_sku_code, price FROM games_reference_prices WHERE buyer_sku_code LIKE 'sk:%'",
-  );
-  const refs = new Map<string, number>();
-  for (const row of refRows) {
-    const price = Number(row.price);
-    if (Number.isFinite(price) && price > 0) refs.set(String(row.buyer_sku_code), price);
+  const settings = await readGamesPricingSettings(db);
+  const gameMarkupRows = await db.queryAll(
+    "SELECT slug, markup_percent FROM games_meta WHERE markup_percent IS NOT NULL",
+  ).catch(() => [] as Record<string, unknown>[]);
+  const gamePercent = new Map<string, number>();
+  for (const row of gameMarkupRows) {
+    const slug = String(row.slug ?? "").trim();
+    const percent = Number(row.markup_percent);
+    if (slug && Number.isFinite(percent)) gamePercent.set(slug, percent);
   }
+  // Override markup varian yang sudah diedit admin harus bertahan DAN dipakai
+  // saat menghitung harga pada sinkron ini. Tabel terpisah: upsert katalog
+  // tidak pernah menulisnya.
+  const variantMarkup = await readVariantMarkupMap(db);
 
   const built = buildRows(
     fetched.rows.filter((row) => !isGamesNicknameProduct({
@@ -388,7 +423,7 @@ export async function syncGamesSkCatalog(
       product_name: `${row.productName} ${String(row.variant.name ?? "")}`,
     })),
     knownSlugs,
-    refs,
+    { settings, gamePercent, variantMarkup },
   );
   const chunked = chunkRows(built.rows);
   if ("error" in chunked) return { ok: false, error: chunked.error, detail: chunked.detail };
@@ -451,15 +486,14 @@ const UPSERT_SQL = `INSERT INTO games_products
   (buyer_sku_code, supplier, supplier_active, sk_variant_id, sk_sku, sk_product_id, sk_product_name,
    game_slug, game_brand, product_type, product_type_name, product_name, cost, sell_price, stock,
    min_order, unlimited_stock, description, image_url, required_fields_json, validation_json,
-   enabled, reference_price, synced_at, updated_at)
+   enabled, synced_at, updated_at)
 SELECT json_extract(value,'$.sku'), 'sekalipay', json_extract(value,'$.active'),
   json_extract(value,'$.variantId'), json_extract(value,'$.skSku'), json_extract(value,'$.productId'),
   json_extract(value,'$.productName'), json_extract(value,'$.slug'), json_extract(value,'$.brand'),
   json_extract(value,'$.typeName'), json_extract(value,'$.typeName'), json_extract(value,'$.name'),
   json_extract(value,'$.cost'), json_extract(value,'$.sell'), json_extract(value,'$.stock'),
   json_extract(value,'$.minOrder'), 0, json_extract(value,'$.desc'), json_extract(value,'$.image'),
-  json_extract(value,'$.fieldsJson'), json_extract(value,'$.validationJson'), 1,
-  json_extract(value,'$.reference'), ?, ?
+  json_extract(value,'$.fieldsJson'), json_extract(value,'$.validationJson'), 1, ?, ?
 FROM json_each(?) WHERE true
 ON CONFLICT(buyer_sku_code) DO UPDATE SET
   supplier = 'sekalipay',
@@ -482,7 +516,6 @@ ON CONFLICT(buyer_sku_code) DO UPDATE SET
   image_url = COALESCE(excluded.image_url, games_products.image_url),
   required_fields_json = excluded.required_fields_json,
   validation_json = excluded.validation_json,
-  reference_price = excluded.reference_price,
   synced_at = excluded.synced_at,
   updated_at = excluded.updated_at`;
 
