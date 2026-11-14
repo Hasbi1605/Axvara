@@ -72,6 +72,20 @@ describe("Games homepage", () => {
     expect(screen.getByRole("link", { name: /AXVARA Market/ }).getAttribute("href")).toBe("https://axvara.tech/?utm_source=games&utm_medium=cross_promo");
     expect(screen.getByRole("link", { name: /AXVARA Pedia/ }).getAttribute("href")).toBe("https://pedia.axvara.tech/?utm_source=games&utm_medium=cross_promo");
   });
+  it("home drops how-to/trust/FAQ sections and the catalog subtitle; chips follow the Pedia style; popular has the 3D flame", () => {
+    render(<GamesHome games={[game]} orbitGames={[game]} orderingOpen />);
+    for (const text of ["Cara top up", "Siap kapan pun kamu bermain", "Pertanyaan umum", "Temukan game yang ingin kamu isi."]) expect(screen.queryByText(text)).toBeNull();
+    const active = screen.getByRole("button", { name: "Semua" });
+    expect(active.getAttribute("aria-pressed")).toBe("true");
+    expect(active.className).toContain("bg-white");
+    expect(document.querySelector('img[src="/brand/games/ui/fire-3d.webp"]')).toBeTruthy();
+  });
+  it("orbit uses the 8 curated popular games, never Free Fire MAX, and fills gaps from the catalog", async () => {
+    const { selectOrbitGames, GAMES_ORBIT } = await import("@/lib/games/popular");
+    const slugs = ["free-fire-max", "aniimo", ...GAMES_ORBIT].map((slug) => ({ slug }));
+    expect(selectOrbitGames(slugs).map((g) => g.slug)).toEqual([...GAMES_ORBIT]);
+    expect(selectOrbitGames([{ slug: "free-fire-max" }, { slug: "aniimo" }, { slug: "pubg-mobile" }]).map((g) => g.slug)).toEqual(["pubg-mobile", "aniimo"]);
+  });
   it("supplies orbit planets from the DB catalog, not a registry whitelist", async () => {
     vi.stubEnv("GAMES_DEV_FIXTURE", "");
     db.queryAll.mockResolvedValue(Array.from({ length: 6 }, (_, i) => ({
@@ -81,7 +95,8 @@ describe("Games homepage", () => {
     const { default: page } = await import("@/app/games/page");
     const element = await page();
     expect(element.props.games.map((game: { slug: string }) => game.slug)).toEqual(["game-0", "game-1", "game-2", "game-3", "game-4", "game-5"]);
-    expect(element.props.orbitGames.map((game: { slug: string }) => game.slug)).toEqual(["game-0", "game-1", "game-2", "game-3"]);
+    // Tanpa slug orbit kurasi di katalog: orbit diisi game katalog berurutan sampai 8.
+    expect(element.props.orbitGames.map((game: { slug: string }) => game.slug)).toEqual(["game-0", "game-1", "game-2", "game-3", "game-4", "game-5"]);
     db.queryAll.mockResolvedValue([]);
     expect((await page()).props.orbitGames).toEqual([]);
     vi.unstubAllEnvs();

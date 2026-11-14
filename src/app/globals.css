@@ -299,3 +299,32 @@ body {
   .banner-slide-in, .banner-slide-out { animation: none; filter: none; }
   .banner-stage { transition: none; }
 }
+
+/* Games — Populer sekarang (14 Nov 2026): api 3D berkedip halus, glow berdenyut,
+   dan kilau diagonal bergelombang kiri→kanan antar kartu. Hanya transform/opacity
+   (compositor-only); dimatikan total saat prefers-reduced-motion. */
+@keyframes axFlameFlicker {
+  0%, 100% { transform: translateY(0) scale(1, 1) rotate(0deg); }
+  25% { transform: translateY(-1px) scale(0.97, 1.05) rotate(-2deg); }
+  50% { transform: translateY(0) scale(1.02, 0.98) rotate(1.5deg); }
+  75% { transform: translateY(-0.5px) scale(0.99, 1.03) rotate(-1deg); }
+}
+@keyframes axFlameGlow {
+  0%, 100% { opacity: 0.45; transform: scale(0.9); }
+  50% { opacity: 0.8; transform: scale(1.1); }
+}
+@keyframes axCardSheen {
+  0% { transform: translateX(-160%) skewX(-18deg); }
+  18%, 100% { transform: translateX(420%) skewX(-18deg); }
+}
+.ax-flame { animation: axFlameFlicker 2.6s ease-in-out infinite; transform-origin: 50% 90%; will-change: transform; }
+.ax-flame-glow { animation: axFlameGlow 2.6s ease-in-out infinite; will-change: opacity, transform; }
+.ax-card-sheen { animation: axCardSheen 7s cubic-bezier(.4,0,.2,1) infinite; animation-delay: var(--sheen-delay, 0s); will-change: transform; }
+.ax-card-sheen-hover { transform: translateX(-160%) skewX(-18deg); }
+@media (hover: hover) and (pointer: fine) {
+  .group:hover .ax-card-sheen-hover { transform: translateX(420%) skewX(-18deg); transition: transform 0.9s cubic-bezier(.4,0,.2,1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ax-flame, .ax-flame-glow, .ax-card-sheen { animation: none; }
+  .ax-card-sheen, .ax-card-sheen-hover { display: none; }
+}

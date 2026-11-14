@@ -45,12 +45,12 @@ const ELLIPSE = 0.38; // flatten factor for 62deg tilt
 // Offset tiap ring di-stagger (bukan ringIdx*18 yang menumpuk 3 planet di
 // satu sisi) agar planet tersebar merata sejak frame pertama.
 const RING_PHASE = [200, 20, 140, 320];
-function placeItems(items: OrbitItem[]) {
+function placeItems(items: OrbitItem[], phases: readonly number[] = RING_PHASE) {
   const out: { item: OrbitItem; r: number; baseAngle: number; speed: number }[] = [];
   RINGS.forEach((ring, ringIdx) => {
     const ringItems = items.filter((it) => it.ring === ringIdx);
     ringItems.forEach((item, i) => {
-      const base = (360 / ringItems.length) * i + (RING_PHASE[ringIdx] ?? ringIdx * 18);
+      const base = (360 / ringItems.length) * i + (phases[ringIdx] ?? ringIdx * 18);
       out.push({ item, r: ring.r, baseAngle: base, speed: ring.speed });
     });
   });
@@ -73,12 +73,14 @@ function placeItems(items: OrbitItem[]) {
  * Planet disamakan persis resep Market: sphere 38/42px + ikon asli 22/24px
  * + gloss/tint/border/shadow sama agar rapih sama rata.
  */
-export function PediaOrbit({ items = ITEMS, brand = "Pedia", mark = "/brand/pedia-mark.svg", renderIcon }: {
+export function PediaOrbit({ items = ITEMS, brand = "Pedia", mark = "/brand/pedia-mark.svg", renderIcon, ringPhase }: {
   items?: OrbitItem[]; brand?: string; mark?: string;
+  /** Opsional: sudut awal per ring (derajat). Default RING_PHASE Pedia. */
+  ringPhase?: readonly number[];
   /** Opsional (Games): isi sphere dengan art penuh, menggantikan ikon logo 24px. */
   renderIcon?: (item: OrbitItem) => ReactNode;
 } = {}) {
-  const placements = useMemo(() => placeItems(items), [items]);
+  const placements = useMemo(() => placeItems(items, ringPhase), [items, ringPhase]);
   const locale = useDisplayLocale();
   const containerRef = useRef<HTMLDivElement>(null);
   const planetRefs = useRef<(HTMLElement | null)[]>([]);

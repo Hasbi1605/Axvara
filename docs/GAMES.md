@@ -745,6 +745,21 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
 
 ### 14.5 Storefront (OD4, P1–P14) — `src/app/games/*`, `src/components/games/*`
 
+- **Koreksi owner 14 Nov 2026 malam (lokal; menggantikan bagian terkait di bawah):** (1) orbit
+  hero = 8 game tetap `GAMES_ORBIT` (`mobile-legends`, `pubg-mobile`, `free-fire`, `genshin-impact`,
+  `honor-of-kings`, `valorant`, `roblox`, `call-of-duty-mobile`; Free Fire MAX dikecualikan),
+  ring 0/1/1/1/2/2/3/3 dan sudut awal per ring `GAMES_ORBIT_PHASE` 200/20/50/110 (prop opsional
+  `ringPhase` PediaOrbit; default Pedia tidak berubah), slug yang tak ada diisi game katalog
+  berikutnya; (2) ikon populer = Microsoft Fluent Emoji 3D "Fire" (MIT,
+  `public/brand/games/ui/fire-3d.webp` 96 px) dengan kedip halus `ax-flame` + glow oranye
+  berdenyut 2,6 s; (3) thumbnail populer art di-zoom 1.14 (hover 1.2) agar penuh tanpa sudut putih;
+  (4) kilau diagonal `ax-card-sheen` kiri→kanan bergelombang antar kartu (jeda 0,15 s, siklus 7 s,
+  sapuan ±1,2 s, intensitas putih/cyan ≤20 %) + kilau langsung saat hover; (5) hover GameCard: ring
+  cyan 1,5 px /70 + inset 4 px, scale 1.02, glow lembut, art zoom 1.08 500 ms ease-out; (6) subjudul
+  katalog dihapus; (7) chip genre gaya katalog Pedia: aktif putih solid teks midnight, nonaktif
+  `ax-glass-card` border white/10, tinggi 36 px, ikon lucide per genre; (8) beranda tanpa Cara top
+  up, kartu kepercayaan dan FAQ (detail game tetap memakai HowToTopUp). Semua animasi
+  transform/opacity saja dan mati total pada `prefers-reduced-motion`.
 - Koreksi 14 Nov 2026 (sore): hero kembali ke §4.1 — `PediaOrbit` animasi (art game di
   planet via `renderIcon`) + headline "Satu tempat untuk / Top up game" + typewriter cyan + CTA pill putih "Top Up Game"
   dan pill kaca "Bantuan WhatsApp".
