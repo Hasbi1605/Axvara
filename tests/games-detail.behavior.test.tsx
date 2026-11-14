@@ -85,6 +85,21 @@ describe("Games detail (selected SKU contract)", () => {
     await screen.findByText(/Nickname terdeteksi:/);
     expect(screen.queryByText(/Akun ini terdeteksi region/)).toBeNull();
   });
+  it("shows other games as a scrollable rail (up to 16, sellable first) and no how-to section", () => {
+    const others = Array.from({ length: 20 }, (_, i) => ({ slug: `g-${i}`, name: `Game ${i}`, publisher: "P", currency: "diamond" as const, icon: null, banner: null, portrait: null, min_price: i % 2 ? 1000 : null, sku_count: 1, sellable_count: i % 2, featured_rank: null }));
+    render(<GameClient detail={{ game, products: [product({})] }} orderingOpen otherGames={[...others, { ...others[0], slug: game.slug }]} />);
+    expect(screen.queryByText("Cara top up")).toBeNull();
+    const rail = document.querySelector("[data-games-rail]")!;
+    const links = within(rail as HTMLElement).getAllByRole("link");
+    expect(links).toHaveLength(16);
+    expect(links[0].getAttribute("href")).toBe("/games/g-1");
+    expect(links.some((a) => a.getAttribute("href") === `/games/${game.slug}`)).toBe(false);
+    expect(rail.className).toContain("overflow-x-auto");
+    expect(rail.className).toContain("snap-x");
+    expect(screen.getByRole("button", { name: "Geser ke kiri" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Geser ke kanan" })).toBeTruthy();
+  });
+
   it("tap/click on a nominal smoothly scrolls to payment, keyboard selection does not; icons tilt on hover", () => {
     vi.useFakeTimers();
     const scroll = vi.fn();

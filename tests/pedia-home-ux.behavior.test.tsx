@@ -160,7 +160,8 @@ describe("Pedia platform-first storefront", () => {
     expect(ropes).toHaveLength(1);
     expect(ropes[0].compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const catalog = screen.getByRole("region", { name: "Pilih platform" });
-    for (const name of [/AXVARA Market/, /Bot Telegram/]) {
+    // Koreksi owner 14 Nov 2026: kartu kanan = AXVARA Games (bukan Bot Telegram).
+    for (const name of [/AXVARA Market/, /AXVARA Games/]) {
       const promo = screen.getByRole("link", { name });
       expect(hero.compareDocumentPosition(promo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(promo.compareDocumentPosition(catalog) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

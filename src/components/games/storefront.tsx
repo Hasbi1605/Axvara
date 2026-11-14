@@ -1,6 +1,5 @@
 "use client";
 import Link from "next/link";
-import { CreditCard, Gamepad2, IdCard, Sparkles } from "lucide-react";
 import type { GamesCatalogGame } from "@/lib/games/catalog";
 import { gamesCopy } from "@/lib/games/copy";
 import { GameImage } from "./GameImage";
@@ -24,11 +23,4 @@ export function GameCard({ game, t }: { game: GamesCatalogGame; t: ReturnType<ty
       </span>
     </span>
   </Link>;
-}
-
-export function HowToTopUp({ t }: { t: ReturnType<typeof gamesCopy> }) {
-  const icons = [Gamepad2, IdCard, CreditCard, Sparkles];
-  return <section><h2 className="font-display text-2xl font-bold">{t.how}</h2><p className="mt-2 text-sm text-white/55">{t.howSub}</p>
-    <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">{t.steps.map((step, i) => { const Icon = icons[i]; return <div key={step} className="ax-glass rounded-2xl border border-white/10 p-5"><Icon size={20} strokeWidth={1.75} className="text-[#00E5FF]" /><span className="mt-6 block text-xs text-[#FFB800]">0{i + 1}</span><h3 className="mt-2 font-display text-sm font-bold sm:text-base">{step}</h3><p className="mt-2 text-xs leading-5 text-white/60">{t.stepDescriptions[i]}</p></div>; })}</div>
-  </section>;
 }

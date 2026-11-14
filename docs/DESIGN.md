@@ -2016,6 +2016,15 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   cyan tipis + ikon item miring -10° & scale 1.1 (300 ms, pointer hover saja); memilih nominal lewat
   klik/tap men-scroll halus ke "Metode pembayaran" (block start, kontak ikut terlihat), navigasi
   keyboard tidak men-scroll.
+- **Koreksi owner 14 Nov 2026 (larut malam, lokal):** (1) kartu lintas layanan beranda Pedia =
+  AXVARA Market + AXVARA Games (kartu Bot Telegram dihapus; Telegram tetap di footer); (2) overlay
+  `CrossAppTransition` (logo tujuan + cincin putar + "Memuat AXVARA …") kini juga untuk tujuan/asal
+  Games dan terpasang di layout Games; (3) "Cara top up" dihapus juga dari halaman detail game
+  (komponen `HowToTopUp` + copy langkah dihapus); (4) "Game lainnya" = karusel horizontal
+  `GamesRail` (hingga 16 game, yang bisa dibeli dulu; snap per kartu, panah ‹ › desktop redup di
+  ujung, fade tepi, ±6 kartu desktop / ±2,5 kartu HP); (5) footer bersama punya baris "Metode
+  pembayaran" di atas © (chip putih 28/32 px: QRIS · GoPay, DANA, OVO, ShopeePay, LinkAja · BCA, BNI,
+  BRI, Mandiri, Permata · USDT, BTC, ETH; logo lokal yang sama dengan picker; dekoratif).
 - **Beranda.** **Koreksi owner 14 Nov 2026 malam (lokal; menggantikan bagian terkait di bawah):** (1) orbit
   hero = 8 game tetap `GAMES_ORBIT` (`mobile-legends`, `pubg-mobile`, `free-fire`, `genshin-impact`,
   `honor-of-kings`, `valorant`, `roblox`, `call-of-duty-mobile`; Free Fire MAX dikecualikan),

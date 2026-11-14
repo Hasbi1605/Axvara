@@ -55,6 +55,8 @@ describe("rilis Pedia 2026-10-14 — UX setara Market", () => {
     const pediaLayout = read("src/app/pedia/layout.tsx");
     expect(shopLayout).toContain("<CrossAppTransition />");
     expect(pediaLayout).toContain("<CrossAppTransition />");
+    expect(overlay).toContain("Memuat AXVARA Games");
+    expect(read("src/app/games/layout.tsx")).toContain("<CrossAppTransition />");
     // Pedia kini juga punya indikator navigasi internal seperti Market.
     expect(pediaLayout).toContain("<NavigationProgress />");
   });

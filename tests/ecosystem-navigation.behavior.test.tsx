@@ -111,6 +111,13 @@ describe("shared service navigation", () => {
     expect(screen.getByRole("link", { name: /AXVARA Pedia/ })).toBeTruthy();
   });
 
+  it("Pedia promotes Market and Games (no Telegram bot card)", () => {
+    render(<PediaServiceCards />);
+    const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual([`${SITE.webUrl}/?utm_source=pedia&utm_medium=cross_promo`, `${SITE.gamesUrl}/?utm_source=pedia&utm_medium=cross_promo`]);
+    expect(screen.queryByText(/Telegram/)).toBeNull();
+  });
+
   it("uses Games as the source when promoting another service", () => {
     render(<CrossServicePromo current="games" target="pedia" />);
     expect(screen.getByRole("link").getAttribute("href")).toBe(`${SITE.pediaUrl}/?utm_source=games&utm_medium=cross_promo`);

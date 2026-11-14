@@ -9,6 +9,7 @@ import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { catalogCopy } from "@/lib/i18n/catalog-copy";
 import { gamesCopy } from "@/lib/games/copy";
 import { isPediaOrderFlow, pediaRoutePath } from "@/lib/pedia/route-path";
+import { FooterPayments } from "./FooterPayments";
 
 // Ikon brand satu tone (fill=currentColor) dari Simple Icons versi terbaru
 // (2026-10-03, diverifikasi via cdn.jsdelivr.net/npm/simple-icons@latest):
@@ -175,7 +176,9 @@ export function Footer({ pediaLayout = false }: { pediaLayout?: boolean } = {}) 
           </div>
         </div>
 
-        <div className="mt-10 border-t border-white/10 pt-6">
+        <FooterPayments locale={locale} />
+
+        <div className="mt-6 border-t border-white/10 pt-6">
           <p className="text-xs text-white/35">© 2026 {storeSettings.name}</p>
         </div>
       </div>

@@ -745,6 +745,15 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
 
 ### 14.5 Storefront (OD4, P1–P14) — `src/app/games/*`, `src/components/games/*`
 
+- **Koreksi owner 14 Nov 2026 (larut malam, lokal):** (1) kartu lintas layanan beranda Pedia =
+  AXVARA Market + AXVARA Games (kartu Bot Telegram dihapus; Telegram tetap di footer); (2) overlay
+  `CrossAppTransition` (logo tujuan + cincin putar + "Memuat AXVARA …") kini juga untuk tujuan/asal
+  Games dan terpasang di layout Games; (3) "Cara top up" dihapus juga dari halaman detail game
+  (komponen `HowToTopUp` + copy langkah dihapus); (4) "Game lainnya" = karusel horizontal
+  `GamesRail` (hingga 16 game, yang bisa dibeli dulu; snap per kartu, panah ‹ › desktop redup di
+  ujung, fade tepi, ±6 kartu desktop / ±2,5 kartu HP); (5) footer bersama punya baris "Metode
+  pembayaran" di atas © (chip putih 28/32 px: QRIS · GoPay, DANA, OVO, ShopeePay, LinkAja · BCA, BNI,
+  BRI, Mandiri, Permata · USDT, BTC, ETH; logo lokal yang sama dengan picker; dekoratif).
 - **Koreksi owner 14 Nov 2026 malam — halaman detail (lokal):** banner full-bleed kiri–kanan
   tapi ramping (190/260/330 px, fade ke midnight), kartu ikon 3D lebih besar (112/176/212 px), miring
   `rotateZ(-4deg)` + tilt pointer, tepi kaca (ikon di-zoom 1.1 agar sudut putih App Store hilang),

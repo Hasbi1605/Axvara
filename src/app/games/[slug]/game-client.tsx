@@ -7,7 +7,8 @@ import { GameImage } from "@/components/games/GameImage";
 import { GameHero } from "@/components/games/detail/GameHero";
 import { ItemIcon } from "@/components/games/detail/ItemIcon";
 import { InstantBadge } from "@/components/games/detail/InstantBadge";
-import { GameCard, HowToTopUp, gamesFocus as focus } from "@/components/games/storefront";
+import { gamesFocus as focus } from "@/components/games/storefront";
+import { GamesRail } from "@/components/games/GamesRail";
 import { PaymentMethodPicker } from "@/components/storefront/PaymentMethodPicker";
 import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { gamesCopy } from "@/lib/games/copy";
@@ -178,7 +179,8 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
   const mismatch = detectedRegion && selectedRegion && selectedRegion !== "GLOBAL" && detectedRegion !== selectedRegion;
   const detectedName = detectedRegion ? t.regionNames[detectedRegion] ?? detectedRegion : "";
   const detectedType = products.find((p) => p.region_code === detectedRegion);
-  const related = otherGames.filter((other) => other.slug !== game.slug && other.sellable_count > 0).slice(0, 6);
+  // Karusel "Game lainnya": hingga 16 game, yang bisa dibeli lebih dulu (urutan katalog dipertahankan).
+  const related = [...otherGames.filter((other) => other.slug !== game.slug)].sort((a, b) => Number(b.sellable_count > 0) - Number(a.sellable_count > 0)).slice(0, 16);
   const plainDescription = (selected?.description ?? "").replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+/gu, "").trim();
   useEffect(() => {
     const text = descriptionRef.current;
@@ -285,6 +287,6 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
     </aside></div>
     <div data-game-bottom-bar className="ax-glass-strong fixed inset-x-0 bottom-0 z-30 flex min-h-16 items-center gap-3 border-t border-white/10 px-4 pb-[env(safe-area-inset-bottom)] lg:hidden"><div className="min-w-0 flex-1"><p className="text-xs text-white/55">{t.total}</p><p className="font-display text-base font-bold tabular-nums">{totalText}</p></div><button onClick={pay} disabled={payDisabled} className={`my-2 max-w-[65%] ${payClass}`}>{payLabel}</button></div>
     </>}
-    <div className="mt-14 space-y-14">{game.description && <section><h2 className="font-display text-2xl font-bold">{t.about} {game.name}</h2><p className="mt-4 max-w-3xl whitespace-pre-line text-sm leading-7 text-white/60">{game.description}</p></section>}<HowToTopUp t={t} />{related.length > 0 && <section><h2 className="font-display text-2xl font-bold">{t.otherGames}</h2><div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">{related.map((other) => <GameCard key={other.slug} game={other} t={t} />)}</div></section>}</div>
+    <div className="mt-14 space-y-14">{game.description && <section><h2 className="font-display text-2xl font-bold">{t.about} {game.name}</h2><p className="mt-4 max-w-3xl whitespace-pre-line text-sm leading-7 text-white/60">{game.description}</p></section>}{related.length > 0 && <GamesRail title={t.otherGames} games={related} t={t} />}</div>
   </div></>;
 }

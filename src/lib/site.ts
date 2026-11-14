@@ -17,6 +17,7 @@ export const SITE = {
   gamesUrl: "https://games.axvara.tech",
   marketMark: "/brand/axvara-mark.svg",
   pediaMark: "/brand/pedia-mark.svg",
+  gamesMark: "/brand/games-mark.svg",
   supportHours: "09.00–23.00 WIB",
   social: {
     instagram: "https://www.instagram.com/axvara.tech/",

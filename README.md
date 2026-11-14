@@ -2036,7 +2036,7 @@ tick; pengingat berikutnya mengikuti throttle, sehingga alert bisa tertunda.
 Tidak mengubah dispatch, pembayaran, harga, supplier atau notifikasi pembeli.
 
 
-AXVARA Games (implementasi bertahap, 9 November 2026): spesifikasi di `docs/GAMES.md`;
+AXVARA Games (implementasi bertahap, 9 November 2026): spesifikasi di `docs/GAMES.md`; (14 Nov 2026, lokal) karusel "Game lainnya" `GamesRail`, overlay lintas aplikasi `CrossAppTransition` kini juga Games, dan footer bersama menampilkan baris metode pembayaran (`FooterPayments`);
 supplier Digiflazz (`docs/agent-rules/digiflazz.md`). Backend inti memakai
 `src/lib/games/{pricing,digiflazz,catalog-sync,dispatch}.ts`, proxy VPS `/dgf/*`,
 migrasi `0107_games_core.sql`, cron lite `games_catalog`/`games_orders`, dan webhook

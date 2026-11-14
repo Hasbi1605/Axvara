@@ -1,6 +1,7 @@
 "use client";
 
-// Overlay transisi TENGAH HALAMAN untuk perpindahan Market ↔ Pedia.
+// Overlay transisi TENGAH HALAMAN untuk perpindahan Market ↔ Pedia ↔ Games
+// (Games ditambahkan 14 Nov 2026 atas permintaan owner).
 //
 // Kedua aplikasi hidup di origin berbeda (axvara.tech vs pedia.axvara.tech),
 // jadi navigasinya selalu muat-ulang penuh — indikator route-transition Next
@@ -10,17 +11,18 @@
 // logo aplikasi tujuan + spinner + teks kecil "Memuat AXVARA Pedia/Market"
 // ditampilkan menutupi layar, lalu navigasi berjalan di baliknya. Layar tujuan
 // mengambil alih begitu siap — tidak ada kedipan putih di tengah.
-// Dipasang di kedua layout (shop + pedia) agar dua arah sama terawat.
+// Dipasang di ketiga layout (shop + pedia + games) agar semua arah sama terawat.
 
 import { useEffect, useRef, useState } from "react";
 import { SITE } from "@/lib/site";
 import { BrandLoader } from "@/components/ui/BrandLoader";
 
-type Dest = "market" | "pedia";
+type Dest = "market" | "pedia" | "games";
 
 const DEST_INFO: Record<Dest, { label: string; mark: string }> = {
   market: { label: "Memuat AXVARA Market", mark: SITE.marketMark },
   pedia: { label: "Memuat AXVARA Pedia", mark: SITE.pediaMark },
+  games: { label: "Memuat AXVARA Games", mark: SITE.gamesMark },
 };
 
 function crossAppTarget(anchor: HTMLAnchorElement): Dest | null {
@@ -35,6 +37,7 @@ function crossAppTarget(anchor: HTMLAnchorElement): Dest | null {
   const there = url.hostname;
   if (there === here) return null;
   if (there === new URL(SITE.pediaUrl).hostname) return "pedia";
+  if (there === new URL(SITE.gamesUrl).hostname) return "games";
   if (there === new URL(SITE.webUrl).hostname) return "market";
   return null;
 }
