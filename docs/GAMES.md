@@ -80,11 +80,17 @@ Urutan section (atas → bawah):
    Tepat sesudahnya dua kartu ekosistem **AXVARA Market + AXVARA Pedia**, pola
    `CommunityBar`/`CrossServicePromo` Market identik (utm_source=games), berdampingan
    juga pada375px, sebelum katalog/populer. Tidak ada kartu komunitas tambahan.
-3. **Populer sekarang** — 6–8 kartu game besar (ikon + nama + publisher), urutan dari admin.
-4. **Tab kategori** — "Top Up Game" (MVP); tab lain disembunyikan sampai ada isinya
-   (Oura menampilkan banyak tab sekaligus — kita tidak menampilkan tab kosong).
-5. **Grid semua game** — ikon persegi radius 16px + nama + publisher; 3 kolom mobile,
-   4 tablet, 6 desktop; "Tampilkan lainnya" seperti katalog Market.
+3. **Populer sekarang** — **14 Nov 2026 koreksi owner:** maks 9 kartu horizontal 1/2/3 kolom,
+   urutan admin `featured_rank` atau daftar default terkurasi; termasuk belum bisa dijual,
+   disembunyikan hanya bila hasil kosong. Detail pemilihan/tampilan di §14.5.
+4. **Kategori genre** — chip di bawah heading/count katalog: Semua · MOBA · Shooter & Battle
+   Royale · RPG & Petualangan · Olahraga & Balap · Strategi · Kasual & Sosial. Genre kosong
+   disembunyikan, slug belum dipetakan hanya di Semua; chip menyaring grid, bukan populer.
+5. **Grid semua game** — **14 Nov 2026 koreksi owner (G2b):** portrait 2:3 full-bleed tanpa teks
+   saat diam di pointer-fine; hover/fokus ring cyan + gap, scale dan overlay nama/publisher/status;
+   touch menampilkan overlay selalu. Fallback ikon square tetap utuh. Grid 2/3/4/6 kolom
+   (base/sm/md/lg). Semua hasil filter
+   selalu terlihat tanpa batas 12 atau tombol "Tampilkan lainnya"; count mengikuti filter.
 6. **Cara top up** — 4 langkah ber-ikon (Pilih game → Masukkan ID → Bayar → Diamond masuk).
 7. **Kepercayaan** — proses otomatis 24 jam, rail pembayaran (logo QRIS/VA/e-wallet/crypto),
    bantuan WA; tanpa angka rating palsu (§5.4).
@@ -743,10 +749,34 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
   planet via `renderIcon`) + headline "Satu tempat untuk / Top up game" + typewriter cyan + CTA pill putih "Top Up Game"
   dan pill kaca "Bantuan WhatsApp".
   `GamesOrbit` statis dan copy "Top up game favoritmu" dari 648c9cb5 dibatalkan.
-- Beranda: hero orbit memakai 4 game pertama urutan API (bukan registry statis), "Populer
-  sekarang" dari `featured_rank` (maks 8; bila kosong 6 game bisa dijual pertama; section
-  disembunyikan bila <4), grid semua game non-hidden dengan harga "Mulai Rp…" hanya dari varian
-  bisa dijual (tanpa harga karangan) dan kartu tidak-tersedia diredupkan tapi tetap bisa diklik.
+- **14 Nov 2026 koreksi owner (lokal, belum bukti deployment):** beranda mempertahankan hero
+  orbit 4 game pertama API, CrossServicePromo, cara top up, trust dan FAQ; aturan berikut
+  menggantikan populer minimum 4/maksimum 8, katalog 12 + "Tampilkan lainnya" dan kartu redup.
+  - Populer: `src/lib/games/popular.ts`, `featured_rank` admin terurut naik maks 9 bila ada;
+    kalau tidak ada gunakan `mobile-legends`, `magic-chess-go-go`, `pubg-mobile`, `free-fire`,
+    `genshin-impact`, `honor-of-kings`, `valorant`, `roblox`, `honkai-star-rail` dalam urutan itu,
+    hanya slug yang ada di katalog. Tidak mensyaratkan sellable; sembunyi hanya jika 0 hasil.
+    Heading ikon Flame gold + subjudul existing; grid horizontal 1/2/3 kolom (base/sm/lg),
+    thumbnail 64/72 px + nama/publisher. Koreksi G2b14Nov: tint ikon blur opacity75 %/saturasi150 %
+    agar tiap game jelas berwarna, garis diagonal putih4 %, gradient midnight hanya area teks.
+    Publisher memakai metadata admin/registry sungguhan, bukan label fixture. Tidak memakai
+    warna/aset Oura. Hover/fokus lift2px + border cyan/glow + zoom1.05.
+  - Katalog: heading/count hasil filter → subjudul → chip genre → grid. Mapping slug statis
+    `src/lib/games/genres.ts`, urutan chip §4; label ID/EN. Genre kosong tidak ditampilkan,
+    slug baru hanya di Semua. Tombol `aria-pressed` 44 px, aktif cyan, scroll satu baris mobile
+    tanpa overflow halaman, wrap mulai sm. Count live berubah; populer tidak ikut disaring.
+    Seluruh hasil filter dirender langsung, grid 2/3/4/6 kolom (base/sm/md/lg).
+  - **GameCard G2b — 14 Nov 2026 koreksi owner:** shared (termasuk Game lainnya di detail),
+    rasio2:3/radius16px; `GamesCatalogItem.portrait` dari `gamesLocalAsset(slug).portrait` (aset
+    lokal600×900), full-bleed object-cover. Saat diam di pointer-fine/hover-capable hanya gambar,
+    tanpa border/frame/teks. Hover/focus-visible: ring cyan3px + gap inset3px, glow/scale1.045,
+    gradient bawah midnight dan nama2baris + publisher white/70 + status slide/fade masuk300ms
+    ease-out. Touch/no-hover selalu menampilkan overlay nama lebih kecil. Accessible name
+    tautan selalu nama + harga/status. Portrait null memakai fill ikon blur + ikon square utuh
+    (tanpa crop logo tepi); header detail **tetap menggunakan ikon square**, bukan portrait.
+    Harga "Mulai Rp…" hanya varian bisa dijual (tanpa harga karangan), selainnya pill "Segera
+    tersedia"; tanpa `opacity-70`. Reduced-motion tanpa scale/slide/transisi, overlay/ring tetap
+    muncul. GameImage lazy + async + no-referrer dan fallback monogram dipertahankan.
 - Halaman game: header ≤216 px di 390 (banner ≤120 px, tile 72 px) + chip "Pengiriman instan",
   "24 jam", "Pembayaran aman". Urutan langkah **1 Data akun → 2 Pilih nominal → 3 Metode
   pembayaran → 4 Kontak**.
@@ -775,14 +805,15 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
 - Sumber tunggal `scripts/games-assets.manifest.json` (48 slug SK) + generator
   `node scripts/games-assets.mjs`; provenance `docs/games-assets.md`; peta runtime
   `src/lib/games/assets.ts`.
-- Hasil: **43 ikon** 512×512 q82 + **20 banner** 1600 px q80 adaptif (≤250 KB) = **4.953.118 byte
-  (±4,72 MiB)** di `public/brand/games/`. 23 game ikon-saja dan 5 game di-skip penuh
-  (`valorant`, `point-blank`, `marvel-rivals`, `laplace-m`, `au2-mobile`) sehingga **28 game
-  tanpa banner** memakai fallback P14. `au2-mobile` dilewati karena identitas publisher belum
-  pasti; ikon Honkai: Star Rail diverifikasi resmi (artwork March 7th, seller Cognosphere).
-- Hanya artwork resmi publisher (App Store ID/Google Play); 8 banner yang dinilai PM terlalu
-  berat UI/gameplay ditolak (`banner_skip`). Tanpa unggah R2/migrasi: berkas statis `public/`
-  diterima sebagai keputusan PM.
+- Hasil: **48 ikon** 512×512 q82 + **23 banner** 1600 px q80 adaptif (≤250 KB) + **48 portrait**
+  600×900 q80 (≤120 KB) = **7.726.332 byte (±7,37 MiB)** di `public/brand/games/`. Kelima slug
+  yang dulu di-skip (`valorant`, `point-blank`, `marvel-rivals`, `laplace-m`, `au2-mobile`) kini
+  memakai sumber resmi; 25 game tanpa banner tetap ikon/portrait-saja, tanpa `portrait_skip`.
+  Portrait = 30 crop aset resmi + 18 outpaint GPT Image atas input resmi
+  (`scripts/games-assets-src/portraits/`, master lokal).
+- Sumber artwork resmi publisher (App Store ID, Google Play, Steam, situs resmi publisher); 8
+  banner yang dinilai PM terlalu berat UI/gameplay ditolak (`banner_skip`). Tanpa unggah R2/migrasi:
+  berkas statis `public/` diterima sebagai keputusan PM.
 - Presedensi render: unggahan admin `games_meta` → aset lokal resmi → fallback AXVARA.
   Gambar produk Sekalipay tidak dirender dan entri CSP-nya dihapus.
 

@@ -1998,11 +1998,37 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
 
 - **Beranda.** Hero orbit tetap (pusat kaca 3D + mark putih); planet = **4 game pertama urutan API**
   (bisa dijual dulu, lalu `featured_rank`), bukan empat registry statis, tanpa tumpang tindih label
-  di 1280/1440/768/390. "Populer sekarang" = `featured_rank` (maks 8) atau 6 game bisa dijual
-  pertama, disembunyikan bila <4. Grid "Semua game" (heading + count) memakai kartu kecil seragam:
-  ikon persegi frame P14, nama 1 baris, baris kedua "Mulai Rp…" (text-white/80, tabular) hanya dari
-  varian bisa dijual, atau pill redup "Segera tersedia"; kartu tak tersedia `opacity-70` tetap bisa
-  diklik.
+  di 1280/1440/768/390. **14 Nov 2026 koreksi owner (lokal):** hero, promo ekosistem, cara top up,
+  kepercayaan dan FAQ tidak berubah. Aturan beranda berikut menggantikan populer minimum 4 /
+  maksimum 8, katalog dibatasi 12 dan kartu `opacity-70` sebelumnya.
+  - **Populer sekarang:** ikon `Flame` gold kecil, subjudul existing, kartu horizontal 1/2/3 kolom
+    (mobile/sm/lg), tile 64/72 px, nama + publisher. `featured_rank` admin terurut naik maks 9;
+    bila kosong, urutan `mobile-legends`, `magic-chess-go-go`, `pubg-mobile`, `free-fire`,
+    `genshin-impact`, `honor-of-kings`, `valorant`, `roblox`, `honkai-star-rail`, hanya slug yang
+    ada di katalog. Termasuk game belum bisa dijual; sembunyi hanya bila hasil kosong. Latar tint
+    ikon blur 2xl opacity 75 %/saturasi 150 %, garis diagonal putih 4 % sudut 115° dan gradient
+    midnight hanya di area teks (koreksi owner G2b, 14 Nov 2026: tint tiap game lebih jelas) —
+    inspirasi struktur Oura, bukan aset/paletnya. Hover pointer-fine/fokus: lift 2 px, border
+    cyan/50 + glow lembut, thumbnail zoom 1.05, transisi 300 ms.
+  - **Kategori & katalog:** heading "Semua game" + count hasil filter → subjudul → chip → grid.
+    Urutan chip Semua · MOBA · Shooter & Battle Royale · RPG & Petualangan · Olahraga & Balap ·
+    Strategi · Kasual & Sosial, hanya genre berisi. Mapping statis `src/lib/games/genres.ts`;
+    slug baru/tak dipetakan hanya di Semua. Chip 44 px `aria-pressed`, cyan/15 saat aktif,
+    scroll horizontal mobile (bukan overflow halaman), wrap mulai sm, ring fokus cyan.
+    Semua game hasil filter selalu dirender, tanpa "Tampilkan lainnya". Grid 2/3/4/6 kolom
+    (base/sm/md/lg), count live diperbarui; populer tidak ikut filter genre.
+  - **Kartu game portrait — koreksi owner G2b, 14 Nov 2026:** rasio **2:3**, radius 16 px,
+    artwork portrait 600×900 full-bleed `object-cover` dari aset lokal resmi, tanpa border/frame
+    atau teks terlihat saat diam di pointer-fine/hover-capable. Hover/focus-visible: ring cyan
+    3 px + gap inset 3 px, glow, scale 1.045; gradient bawah midnight dan overlay nama putih
+    maksimal 2 baris + publisher white/70 + harga/status slide/fade masuk, ease-out 300 ms.
+    Touch/no-hover selalu menampilkan overlay nama lebih kecil agar tetap terbaca. Accessible
+    name tautan selalu nama game + harga/status, tidak bergantung visibilitas overlay.
+    `portrait=null`: fallback ikon square utuh di atas fill ikon blur, tidak memotong logo tepi;
+    tanpa harga karangan ("Mulai Rp…" hanya varian bisa dijual, selainnya pill "Segera tersedia").
+    Shared dengan "Game lainnya" pada detail, **header detail tetap ikon square**, bukan portrait.
+    `GameImage` mempertahankan lazy, async, no-referrer dan monogram bila gagal. Reduced-motion
+    meniadakan scale/slide/transisi; overlay/ring/fokus tetap muncul.
 - **Header game.** Banner maks 200 px desktop / ≤120 px mobile dengan gradient midnight, tile ikon
   112 px (72 px mobile) menumpang kiri bawah, nama Space Grotesk 700, publisher, chip `Zap`
   "Pengiriman instan" · `Clock` "24 jam" · `ShieldCheck` "Pembayaran aman". Total tinggi ≤260 px di

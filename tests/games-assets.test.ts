@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { createD1Fixture } from "./helpers/d1-fixture";
-import { GAMES_LOCAL_ASSETS, gamesLocalAsset, gamesLocalBanner, gamesLocalIcon } from "@/lib/games/assets";
+import { GAMES_LOCAL_ASSETS, gamesLocalAsset, gamesLocalBanner, gamesLocalIcon, gamesLocalPortrait } from "@/lib/games/assets";
 import { getGamesCatalog, getGamesDetail } from "@/lib/games/catalog";
 
 const ROOT = path.resolve(__dirname, "..");
@@ -27,7 +29,14 @@ const TOPUP_SHOP_HOSTS = [
   "oura", "ditopup", "codashop", "unipin", "sekalipay", "itemku", "pinterest",
   "fandom", "wikia", "wiki", "midjourney", "openai",
 ];
-const OFFICIAL_HOSTS = ["mzstatic.com", "play-lh.googleusercontent.com", "apps.apple.com", "play.google.com"];
+// CDN/kanal resmi: Apple, Google Play, Steam, dan situs resmi publisher.
+const OFFICIAL_HOSTS = [
+  "mzstatic.com", "play-lh.googleusercontent.com", "apps.apple.com", "play.google.com",
+  "steamstatic.com", "steampowered.com", "zlongame.com", "uniugame.com", "rgpub.io",
+];
+const OFFICIAL_PAGE_HOSTS = [
+  "apps.apple.com", "play.google.com", "store.steampowered.com", "laplacem.zlongame.com",
+];
 
 async function sizes(file: string) {
   const { default: sharp } = await import("sharp");
@@ -47,7 +56,7 @@ describe("manifest aset game", () => {
         continue;
       }
       expect(game.publisher, slug).toBeTruthy();
-      expect(game.page, slug).toMatch(/^https:\/\/apps\.apple\.com\//);
+      expect(OFFICIAL_PAGE_HOSTS, slug).toContain(new URL(game.page).hostname.toLowerCase());
       expect(game.icon?.source, slug).toMatch(/^https:\/\//);
       expect(game.icon?.licence, slug).toBeTruthy();
       expect(Boolean(game.banner) !== Boolean(game.banner_skip), slug).toBe(true);
@@ -57,12 +66,63 @@ describe("manifest aset game", () => {
   it("hanya mengunduh dari CDN resmi Apple/Google, tidak dari toko top-up", () => {
     for (const [slug, game] of Object.entries<any>(MANIFEST.games)) {
       if (game.skip) continue;
-      const urls = [game.page, game.icon?.source, game.banner?.source].filter(Boolean);
+      const portrait = game.portrait;
+      if (portrait?.source.startsWith("local:")) {
+        expect(portrait.source, slug).toBe(`local:scripts/games-assets-src/portraits/${slug}.webp`);
+        expect(portrait.page, slug).toBe(game.page);
+        const kind = slug === "free-fire-max" ? "banner" : "icon";
+        expect(portrait.generated, slug).toBe(`GPT Image (Codex image_gen) outpaint of official ${kind} ${game[kind].source}`);
+      }
+      const urls = [game.page, game.icon?.source, game.banner?.source, portrait?.source]
+        .filter((url) => url && !url.startsWith("local:"));
       for (const url of urls) {
         const host = new URL(url).hostname.toLowerCase();
         expect(OFFICIAL_HOSTS.some((official) => host.endsWith(official)), `${slug}: ${host}`).toBe(true);
         expect(TOPUP_SHOP_HOSTS.some((blocked) => host.includes(blocked)), `${slug}: ${host}`).toBe(false);
       }
+    }
+  });
+
+  it("master outpaint lengkap 800×1200 dan FF MAX memakai input berbeda dari FF", async () => {
+    const generated = Object.entries<any>(MANIFEST.games).filter(([, game]) => game.portrait?.generated);
+    expect(generated).toHaveLength(18);
+    for (const [slug, game] of generated) {
+      const file = path.join(ROOT, game.portrait.source.slice("local:".length));
+      expect(existsSync(file), slug).toBe(true);
+      expect(await sizes(file), slug).toEqual({ width: 800, height: 1200 });
+    }
+    expect(MANIFEST.games["free-fire"].portrait.generated).not.toBe(MANIFEST.games["free-fire-max"].portrait.generated);
+    expect(readFileSync(path.join(ROOT, "public/brand/games/free-fire-portrait.webp")))
+      .not.toEqual(readFileSync(path.join(ROOT, "public/brand/games/free-fire-max-portrait.webp")));
+  });
+
+  it("generator membaca master lokal offline dan menolak path di luar master slug", () => {
+    const fixtureRoot = mkdtempSync(path.join(tmpdir(), "axvara-portrait-test-"));
+    try {
+      const masterDir = path.join(fixtureRoot, "scripts/games-assets-src/portraits");
+      mkdirSync(masterDir, { recursive: true });
+      copyFileSync(path.join(ROOT, "scripts/games-assets-src/portraits/growtopia.webp"), path.join(masterDir, "growtopia.webp"));
+      const game = structuredClone(MANIFEST.games.growtopia);
+      // data: keeps the icon step offline; only portrait accepts local: inputs.
+      game.icon.source = `data:image/webp;base64,${readFileSync(path.join(ROOT, "public/brand/games/growtopia-icon.webp")).toString("base64")}`;
+      const manifestPath = path.join(fixtureRoot, "scripts/games-assets.manifest.json");
+      const run = () => spawnSync(process.execPath, [path.join(ROOT, "scripts/games-assets.mjs"), "--only", "growtopia"], {
+        cwd: fixtureRoot, encoding: "utf8", timeout: 15000,
+      });
+      writeFileSync(manifestPath, JSON.stringify({ games: { growtopia: game } }));
+      const result = run();
+      expect(result.status, result.stderr + result.stdout).toBe(0);
+      expect(readFileSync(path.join(fixtureRoot, "public/brand/games/growtopia-portrait.webp")))
+        .toEqual(readFileSync(path.join(ROOT, "public/brand/games/growtopia-portrait.webp")));
+      for (const source of ["local:../outside.webp", "local:scripts/games-assets-src/portraits/roblox.webp"]) {
+        game.portrait.source = source;
+        writeFileSync(manifestPath, JSON.stringify({ games: { growtopia: game } }));
+        const invalid = run();
+        expect(invalid.status).not.toBe(0);
+        expect(invalid.stderr).toContain("portrait lokal wajib master per slug");
+      }
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
     }
   });
 
@@ -91,6 +151,18 @@ describe("manifest aset game", () => {
         expect(expected?.banner, slug).toBeNull();
         expect(existsSync(path.join(ROOT, `public/brand/games/${slug}-banner.webp`)), slug).toBe(false);
       }
+
+      if (game.portrait) {
+        expect(expected?.portrait, slug).toBe(`/brand/games/${slug}-portrait.webp`);
+        const portraitFile = path.join(ROOT, `public/brand/games/${slug}-portrait.webp`);
+        expect(existsSync(portraitFile), slug).toBe(true);
+        expect(await sizes(portraitFile), slug).toEqual({ width: 600, height: 900 });
+        expect(statSync(portraitFile).size, slug).toBeLessThanOrEqual(120 * 1024);
+      } else {
+        expect(game.portrait_skip, slug).toBeTruthy();
+        expect(expected?.portrait, slug).toBeNull();
+        expect(existsSync(path.join(ROOT, `public/brand/games/${slug}-portrait.webp`)), slug).toBe(false);
+      }
     }
   });
 
@@ -98,9 +170,12 @@ describe("manifest aset game", () => {
     expect(Object.keys(GAMES_LOCAL_ASSETS).sort()).toEqual(
       Object.entries<any>(MANIFEST.games).filter(([, game]) => !game.skip).map(([slug]) => slug).sort(),
     );
-    expect(gamesLocalAsset("tidak-ada-game")).toEqual({ icon: null, banner: null });
+    expect(gamesLocalAsset("tidak-ada-game")).toEqual({ icon: null, banner: null, portrait: null });
     expect(gamesLocalIcon("MOBILE-LEGENDS")).toBe("/brand/games/mobile-legends-icon.webp");
     expect(gamesLocalBanner("valorant")).toBeNull();
+    expect(gamesLocalPortrait("MOBILE-LEGENDS")).toBe("/brand/games/mobile-legends-portrait.webp");
+    expect(gamesLocalPortrait("growtopia")).toBe("/brand/games/growtopia-portrait.webp");
+    expect(gamesLocalPortrait("tidak-ada-game")).toBeNull();
   });
 });
 
@@ -151,10 +226,10 @@ describe("katalog publik: presedensi aset OD5", () => {
   });
 
   it("game tanpa aset resmi mengirim null (UI memakai fallback AXVARA)", async () => {
-    seed({ game_slug: "valorant", sk_product_name: "Valorant", sk_product_id: 700, sk_variant_id: 7 });
+    seed({ game_slug: "game-tanpa-aset", sk_product_name: "Game Tanpa Aset", sk_product_id: 700, sk_variant_id: 7 });
     const [game] = await getGamesCatalog();
-    expect(game).toMatchObject({ slug: "valorant", icon: null, banner: null });
-    const detail = (await getGamesDetail("valorant"))!;
+    expect(game).toMatchObject({ slug: "game-tanpa-aset", icon: null, banner: null });
+    const detail = (await getGamesDetail("game-tanpa-aset"))!;
     expect(detail.game).toMatchObject({ icon: null, banner: null });
   });
 });

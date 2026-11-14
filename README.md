@@ -2079,14 +2079,19 @@ section kategori, pill "Pengiriman instan" per kartu, state Habis eksplisit, rai
 mobile, frame P14 dan banner generatif blur 48 px. Admin Games: tab Game/Varian/Harga, editor per
 game, markup efektif + kategori penuh dengan scroll internal, bulk aman (field tak dikirim
 dipertahankan); API baru `GET/PUT /api/admin/games/pricing`, `GET/PATCH /api/admin/games/games`,
-`POST /api/admin/games/products/bulk-markup`. Aset resmi: `scripts/games-assets.mjs` +
-`scripts/games-assets.manifest.json` → 43 ikon + 20 banner (4.953.118 byte) di
+`POST /api/admin/games/products/bulk-markup`. Aset: `scripts/games-assets.mjs` +
+`scripts/games-assets.manifest.json` → 48 ikon + 23 banner + 48 portrait (7.726.332 byte) di
 `public/brand/games/`, provenance `docs/games-assets.md`; gambar produk Sekalipay tidak dirender
-dan entri CSP-nya dihapus. Tanpa env/secret baru; gate order, quote/order, dispatch, webhook,
+dan entri CSP-nya dihapus. **Storefront 14 Nov 2026 (lokal):** "Populer sekarang" maks 9 kartu
+(`featured_rank` admin, selain itu daftar default 9 slug di `src/lib/games/popular.ts`), chip genre
+statis `src/lib/games/genres.ts`, semua game tampil tanpa "Tampilkan lainnya", dan kartu game
+portrait 2:3 `600×900` Oura-style (hover/fokus overlay, fallback ikon square) — `portrait` juga
+dipakai grid "Game lainnya" di detail; header detail tetap ikon square. Pipeline/aset lengkap di
+ARCHITECTURE §16.42. Tanpa env/secret baru; gate order, quote/order, dispatch, webhook,
 nickname tidak berubah. Verifikasi terintegrasi final: full suite **448 file/6.149 tes lulus**
 (exit 0, 68,03 dtk), fokus G-ADMIN 9/140 · G-ASSETS 4/146 · G-STORE-2 4/42, `tsc`/lint/
 `build:pages` lulus pada sumber final, QA Chromium 1280/390 + admin terang/gelap (fixture).
-Kontrak lengkap `docs/GAMES.md` §14 dan ARCHITECTURE §16.41.
+Kontrak lengkap `docs/GAMES.md` §14 dan ARCHITECTURE §16.41–§16.42.
 
 Seed referensi Oura A2 (lokal, belum deploy): `drizzle/migrations/0111_games_reference_seed.sql`
 menambah198 SKU utama (FF16/FF MAX8/ML156/PUBG18), tidak menimpa baris admin existing

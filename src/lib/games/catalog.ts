@@ -71,6 +71,7 @@ export interface GamesCatalogItem {
   currency: GamesCurrency;
   icon: string | null;
   banner: string | null;
+  portrait: string | null;
   /** Harga terendah dari varian yang BISA DIJUAL; null bila tidak ada. */
   min_price: number | null;
   /** Jumlah varian berharga (kompatibilitas UI lama). */
@@ -215,6 +216,7 @@ export async function getGamesCatalog(): Promise<GamesCatalogItem[]> {
         // `image_url` produk Sekalipay tidak pernah dikirim ke storefront.
         icon: overlay?.icon_url ?? local.icon ?? registry?.icon ?? null,
         banner: overlay?.banner_url ?? local.banner ?? registry?.banner ?? null,
+        portrait: local.portrait,
         min_price: sellablePrices.length > 0 ? Math.min(...sellablePrices) : null,
         sku_count: group.length,
         sellable_count: sellablePrices.length,

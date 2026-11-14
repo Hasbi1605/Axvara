@@ -4,7 +4,8 @@
 // halaman sumber, URL berkas, lisensi, atau `skip`). Output:
 //   public/brand/games/<slug>-icon.webp    512×512  q82
 //   public/brand/games/<slug>-banner.webp  1600 lebar q80, ≤250 KB
-//   src/lib/games/assets.ts                peta slug → { icon, banner }
+//   public/brand/games/<slug>-portrait.webp 600×900 q80 adaptif, ≤120 KB
+//   src/lib/games/assets.ts                peta slug → { icon, banner, portrait }
 //   docs/games-assets.md                   tabel provenance
 // Pemakaian:
 //   node scripts/games-assets.mjs [--only <slug>] [--contact-sheet <file>]
@@ -25,6 +26,10 @@ const ICON_QUALITY = 82;
 const BANNER_WIDTH = 1600;
 const BANNER_QUALITY = 80;
 const BANNER_MAX_BYTES = 250 * 1024;
+const PORTRAIT_WIDTH = 600;
+const PORTRAIT_HEIGHT = 900;
+const PORTRAIT_QUALITY = 80;
+const PORTRAIT_MAX_BYTES = 120 * 1024;
 const UA = "axvara-games-assets/1.0 (+https://axvara.tech)";
 
 const args = process.argv.slice(2);
@@ -48,6 +53,28 @@ function assertManifest() {
     }
     if (!game.publisher || !game.page) problems.push(`${slug}: publisher/page wajib`);
     if (!game.icon?.source) problems.push(`${slug}: icon.source wajib`);
+    if (game.icon.region) {
+      const region = game.icon.region;
+      const numbers = [region.left, region.top, region.width, region.height];
+      if (!numbers.every((value) => Number.isInteger(value) && value >= 0) || !region.width || !region.height) {
+        problems.push(`${slug}: icon.region harus {left,top,width,height} bilangan bulat ≥ 0`);
+      }
+    }
+    if (game.portrait) {
+      if (!game.portrait.source) problems.push(`${slug}: portrait.source wajib`);
+      if (game.portrait.source?.startsWith("local:") && (
+        game.portrait.source !== `local:scripts/games-assets-src/portraits/${slug}.webp` ||
+        !game.portrait.generated || game.portrait.page !== game.page
+      )) problems.push(`${slug}: portrait lokal wajib master per slug + generated + page resmi`);
+      if (game.portrait.region) {
+        const region = game.portrait.region;
+        const numbers = [region.left, region.top, region.width, region.height];
+        if (!numbers.every((value) => Number.isInteger(value) && value >= 0) || !region.width || !region.height) {
+          problems.push(`${slug}: portrait.region harus {left,top,width,height} bilangan bulat ≥ 0`);
+        }
+      }
+    }
+    if (game.portrait && game.portrait_skip) problems.push(`${slug}: pilih portrait atau portrait_skip`);
     if (game.banner && game.banner_skip) problems.push(`${slug}: pilih banner atau banner_skip`);
     if (!game.banner && !game.banner_skip) problems.push(`${slug}: banner_skip wajib bila tanpa banner`);
   }
@@ -71,8 +98,12 @@ async function download(url) {
 async function buildIcon(slug, game) {
   const input = await download(game.icon.source);
   const file = path.join(OUT_DIR, `${slug}-icon.webp`);
-  await sharp(input)
-    .rotate()
+  let pipeline = sharp(input).rotate();
+  if (game.icon.region) {
+    const { left, top, width, height } = game.icon.region;
+    pipeline = pipeline.extract({ left, top, width, height });
+  }
+  await pipeline
     .resize({ width: ICON_SIZE, height: ICON_SIZE, fit: "cover", position: "centre" })
     .webp({ quality: ICON_QUALITY })
     .toFile(file);
@@ -116,31 +147,70 @@ async function buildBanner(slug, game) {
   };
 }
 
+async function buildPortrait(slug, game) {
+  const input = game.portrait.source.startsWith("local:")
+    ? await readFile(path.join(ROOT, game.portrait.source.slice("local:".length)))
+    : await download(game.portrait.source);
+  const probe = await sharp(input).metadata();
+  const file = path.join(OUT_DIR, `${slug}-portrait.webp`);
+  const render = (quality) => {
+    let pipeline = sharp(input).rotate();
+    if (game.portrait.region) {
+      const { left, top, width, height } = game.portrait.region;
+      pipeline = pipeline.extract({ left, top, width, height });
+    }
+    return pipeline
+      .resize({ width: PORTRAIT_WIDTH, height: PORTRAIT_HEIGHT, fit: "cover", position: "centre" })
+      .webp({ quality })
+      .toBuffer();
+  };
+  let quality = PORTRAIT_QUALITY;
+  let buffer = await render(quality);
+  for (const next of [72, 66, 60, 54, 48]) {
+    if (buffer.byteLength <= PORTRAIT_MAX_BYTES) break;
+    quality = next;
+    buffer = await render(quality);
+  }
+  await writeFile(file, buffer);
+  const meta = await sharp(file).metadata();
+  return {
+    file,
+    url: `/brand/games/${slug}-portrait.webp`,
+    width: meta.width,
+    height: meta.height,
+    bytes: buffer.byteLength,
+    sourceWidth: probe.width ?? null,
+    sourceHeight: probe.height ?? null,
+    quality,
+  };
+}
+
 async function writeAssetsTs(entries) {
   const lines = [
     "// AUTO-GENERATED oleh scripts/games-assets.mjs dari scripts/games-assets.manifest.json.",
     "// Jangan edit manual: ubah manifest lalu jalankan `node scripts/games-assets.mjs`.",
-    "// Aset = artwork resmi publisher (App Store ID). Tanpa gambar produk Sekalipay.",
+    "// Ikon/banner resmi; portrait dapat berupa outpaint GPT Image bertanda provenance. Tanpa gambar produk Sekalipay.",
     "",
     "export interface GamesLocalAsset {",
     "  icon: string | null;",
     "  banner: string | null;",
+    "  portrait: string | null;",
     "}",
     "",
     "export const GAMES_LOCAL_ASSETS: Readonly<Record<string, GamesLocalAsset>> = Object.freeze({",
   ];
   for (const entry of entries) {
-    if (!entry.icon && !entry.banner) continue;
+    if (!entry.icon && !entry.banner && !entry.portrait) continue;
     lines.push(
       `  ${JSON.stringify(entry.slug)}: { icon: ${entry.icon ? JSON.stringify(entry.icon) : "null"}, banner: ${
         entry.banner ? JSON.stringify(entry.banner) : "null"
-      } },`,
+      }, portrait: ${entry.portrait ? JSON.stringify(entry.portrait) : "null"} },`,
     );
   }
   lines.push(
     "});",
     "",
-    "const EMPTY: GamesLocalAsset = Object.freeze({ icon: null, banner: null });",
+    "const EMPTY: GamesLocalAsset = Object.freeze({ icon: null, banner: null, portrait: null });",
     "",
     "export function gamesLocalAsset(slug: unknown): GamesLocalAsset {",
     "  const key = String(slug ?? \"\").trim().toLowerCase();",
@@ -149,6 +219,7 @@ async function writeAssetsTs(entries) {
     "",
     "export const gamesLocalIcon = (slug: unknown): string | null => gamesLocalAsset(slug).icon;",
     "export const gamesLocalBanner = (slug: unknown): string | null => gamesLocalAsset(slug).banner;",
+    "export const gamesLocalPortrait = (slug: unknown): string | null => gamesLocalAsset(slug).portrait;",
     "",
   );
   await writeFile(ASSETS_TS, lines.join("\n"));
@@ -161,15 +232,18 @@ function tableRow(cells) {
 async function writeDoc(results) {
   const generated = manifest.generated ?? "2026-11-14";
   const lines = [
-    "# AXVARA Games — Aset Game Resmi (provenance)",
+    "# AXVARA Games — Aset game dan provenance",
     "",
     `> Dibuat oleh \`scripts/games-assets.mjs\` dari \`scripts/games-assets.manifest.json\` pada ${generated}.`,
-    "> Sumber HANYA listing resmi publisher (Apple App Store ID). Tidak ada aset dari toko top-up",
-    "> (Oura, ditopup, Codashop, UniPin, Sekalipay), wiki fan, Pinterest, atau generator AI.",
+    "> Input ikon/banner HANYA listing/kanal resmi publisher (Apple App Store, Google Play, Steam, atau situs resmi publisher).",
+    "> Portrait bertanda GPT Image adalah outpaint dari input resmi, bukan poster resmi publisher; master lokal dan sumber input dicatat di bawah.",
+    "> Tidak ada aset dari toko top-up (Oura, ditopup, Codashop, UniPin, Sekalipay), wiki fan, atau Pinterest.",
     "> Penggunaan nominatif untuk identifikasi produk; tanpa modifikasi logo dan tanpa klaim afiliasi.",
     "",
-    `Total berkas: ${results.filter((r) => r.icon).length} ikon + ${results.filter((r) => r.banner).length} banner = ${results.reduce(
-      (sum, r) => sum + (r.iconBytes ?? 0) + (r.bannerBytes ?? 0),
+    `Total berkas: ${results.filter((r) => r.icon).length} ikon + ${results.filter((r) => r.banner).length} banner + ${
+      results.filter((r) => r.portrait).length
+    } portrait = ${results.reduce(
+      (sum, r) => sum + (r.iconBytes ?? 0) + (r.bannerBytes ?? 0) + (r.portraitBytes ?? 0),
       0,
     )} byte.`,
     "",
@@ -184,24 +258,38 @@ async function writeDoc(results) {
     if (!result || !game || game.skip) continue;
     const iconCell = result.icon ? `${result.iconWidth}×${result.iconHeight} ikon` : "—";
     const bannerCell = result.banner ? `${result.bannerWidth}×${result.bannerHeight} banner` : "—";
+    const portraitCell = result.portrait ? `${result.portraitWidth}×${result.portraitHeight} portrait` : "—";
     lines.push(
       tableRow([
         `\`${slug}\``,
         game.publisher,
         `[${new URL(game.page).hostname}](${game.page})`,
-        `[ikon](${game.icon.source})${result.banner ? ` · [banner](${game.banner.source})` : ""}`,
-        `${iconCell}${result.banner ? ` + ${bannerCell}` : ""}`,
+        `[ikon](${game.icon.source})${result.banner ? ` · [banner](${game.banner.source})` : ""}${
+          result.portrait ? ` · [portrait](${game.portrait.source.startsWith("local:") ? `../${game.portrait.source.slice("local:".length)}` : game.portrait.source})` : ""
+        }`,
+        [iconCell, result.banner ? bannerCell : null, result.portrait ? portraitCell : null].filter(Boolean).join(" + "),
         generated,
       ]),
     );
+    if (game.portrait?.generated) {
+      lines.push(`| | | | _${game.portrait.generated}_ | _Master 800×1200 WebP q85; hasil 600×900 ≤120 KB_ | |`);
+    }
     if (game.banner_skip && !game.skip) {
       lines.push(`| | | | | _Banner dilewati: ${game.banner_skip}_ | |`);
+    }
+    if (game.portrait_skip && !game.skip) {
+      lines.push(`| | | | | _Portrait dilewati: ${game.portrait_skip}_ | |`);
     }
   }
   lines.push("", "## Dilewati (tanpa sumber resmi)", "", tableRow(["Slug", "Alasan"]), tableRow(["---", "---"]));
   for (const slug of slugs) {
     const game = manifest.games[slug];
     if (game?.skip) lines.push(tableRow([`\`${slug}\``, game.skip]));
+  }
+  lines.push("", "## Portrait tanpa aset resmi (hand-off generator gambar)", "", tableRow(["Slug", "Alasan"]), tableRow(["---", "---"]));
+  for (const slug of slugs) {
+    const game = manifest.games[slug];
+    if (game?.portrait_skip) lines.push(tableRow([`\`${slug}\``, game.portrait_skip]));
   }
   lines.push(
     "",
@@ -210,6 +298,8 @@ async function writeDoc(results) {
     "- Urutan aset di storefront: unggahan admin `games_meta` → aset lokal resmi → fallback AXVARA (monogram/blur).",
     "- `image_url` produk Sekalipay tidak pernah dirender di storefront dan tidak lagi ada di CSP `img-src`.",
     "- Aset yang ditolak PM dihapus dari manifest (pakai `skip`) dan fallback AXVARA dipakai.",
+    "- Portrait kartu 600×900 (2:3), WebP q80 adaptif ≤120 KB: crop resmi atau outpaint GPT Image atas input resmi. Logo/karakter mengikuti input; provenance `generated` menandai hasil AI secara eksplisit.",
+    "- Master outpaint tersimpan 800×1200 WebP q85 di `scripts/games-assets-src/portraits/`; sumber `local:` hanya menerima path master slug yang sama, tanpa unduh atau panggilan AI ulang.",
     "- Contact sheet: slug tanpa awalan = aset ada; `× slug` = tidak ada/dilewati (fallback AXVARA).",
     "",
   );
@@ -242,10 +332,54 @@ async function buildContactSheet(file) {
     Buffer.from(
       `<svg width="${width}" height="26" xmlns="http://www.w3.org/2000/svg">
         <rect width="100%" height="100%" fill="#080C1E"/>
-        <text x="${width / 2}" y="18" fill="${muted ? "#6B7280" : "#E6F9FF"}" font-family="Helvetica,Arial,sans-serif" font-size="13"
+        <text x="${width / 2}" y="18" fill="${muted ? "#6B7280" : "#E6F9FF"}" font-family="Helvetica,Arial,sans-serif" font-size="${
+          text.length > 15 ? 9 : text.length > 12 ? 11 : 13
+        }"
           text-anchor="middle">${text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>
       </svg>`,
     );
+
+  const sectionLabel = (text, width) =>
+    Buffer.from(
+      `<svg width="${width}" height="34" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#080C1E"/>
+        <text x="8" y="23" fill="#00E5FF" font-family="Helvetica,Arial,sans-serif" font-size="17" font-weight="bold">${text}</text>
+      </svg>`,
+    );
+
+  const portraitCols = 8;
+  const portraitCellW = 110;
+  const portraitCellH = 190;
+  const portraits = [];
+  for (const slug of slugs) {
+    const portraitPath = path.join(OUT_DIR, `${slug}-portrait.webp`);
+    try {
+      const buffer = await sharp(portraitPath).resize({ width: 96, height: 144, fit: "cover" }).png().toBuffer();
+      portraits.push({ slug, buffer });
+    } catch {
+      portraits.push({ slug, buffer: null });
+    }
+  }
+  const portraitRows = Math.ceil(portraits.length / portraitCols);
+  const portraitGrid = await sharp({
+    create: {
+      width: portraitCols * portraitCellW,
+      height: portraitRows * portraitCellH,
+      channels: 4,
+      background: "#080C1E",
+    },
+  })
+    .png()
+    .toBuffer();
+  const portraitComposites = [];
+  portraits.forEach((item, index) => {
+    const x = (index % portraitCols) * portraitCellW + 7;
+    const y = Math.floor(index / portraitCols) * portraitCellH;
+    if (item.buffer) portraitComposites.push({ input: item.buffer, left: x, top: y, width: 96, height: 144 });
+    portraitComposites.push({ input: label(item.buffer ? item.slug : `× ${item.slug}`, 96, !item.buffer), left: x, top: y + 146 });
+  });
+  const portraitSheet = await sharp(portraitGrid).composite(portraitComposites).png().toBuffer();
+  const portraitMeta = await sharp(portraitSheet).metadata();
 
   const iconCols = 8;
   const iconCell = 150;
@@ -288,14 +422,42 @@ async function buildContactSheet(file) {
   });
   const bannerSheet = await sharp(bannerGrid).composite(bannerComposites).png().toBuffer();
   const bannerMeta = await sharp(bannerSheet).metadata();
-  const sheetWidth = Math.max(iconCols * iconCell, bannerCols * bannerCellW);
+  const sheetWidth = Math.max(iconCols * iconCell, bannerCols * bannerCellW, portraitCols * portraitCellW);
+  const sectionH = 34;
+  const iconHeight = iconRows * (iconCell + 26);
+  const bannerHeight = bannerMeta.height ?? 0;
+  const portraitHeight = portraitMeta.height ?? 0;
+  const iconCount = icons.filter((item) => item.buffer).length;
+  const bannerCount = banners.filter((item) => item.buffer).length;
+  const portraitCount = portraits.filter((item) => item.buffer).length;
+
+  const iconTop = sectionH;
+  const bannerTop = iconTop + iconHeight + 10 + sectionH;
+  const portraitTop = bannerTop + bannerHeight + 10 + sectionH;
 
   await sharp({
-    create: { width: sheetWidth, height: iconRows * (iconCell + 26) + (bannerMeta.height ?? 0) + 8, channels: 4, background: "#080C1E" },
+    create: {
+      width: sheetWidth,
+      height: portraitTop + portraitHeight + 10,
+      channels: 4,
+      background: "#080C1E",
+    },
   })
     .composite([
-      { input: iconSheet, left: 0, top: 0 },
-      { input: bannerSheet, left: 0, top: iconRows * (iconCell + 26) + 8 },
+      { input: sectionLabel(`IKON 512×512 — ${iconCount} aset`, sheetWidth), left: 0, top: 0 },
+      { input: iconSheet, left: 0, top: iconTop },
+      {
+        input: sectionLabel(`BANNER 1600×lebar — ${bannerCount} aset`, sheetWidth),
+        left: 0,
+        top: iconTop + iconHeight + 10,
+      },
+      { input: bannerSheet, left: 0, top: bannerTop },
+      {
+        input: sectionLabel(`PORTRAIT 600×900 — ${portraitCount} aset, × = dilewati`, sheetWidth),
+        left: 0,
+        top: bannerTop + bannerHeight + 10,
+      },
+      { input: portraitSheet, left: 0, top: portraitTop },
     ])
     .png()
     .toFile(file);
@@ -316,7 +478,7 @@ const results = [];
 let failures = 0;
 for (const slug of slugs) {
   const game = manifest.games[slug];
-  const result = { slug, icon: null, banner: null, iconBytes: 0, bannerBytes: 0 };
+  const result = { slug, icon: null, banner: null, portrait: null, iconBytes: 0, bannerBytes: 0, portraitBytes: 0 };
   if (only && slug !== only) {
     results.push(result);
     continue;
@@ -352,6 +514,21 @@ for (const slug of slugs) {
       console.log(`banner! ${slug} — ${error.message}`);
     }
   }
+  if (game.portrait) {
+    try {
+      const portrait = await buildPortrait(slug, game);
+      result.portrait = portrait.url;
+      result.portraitBytes = portrait.bytes;
+      result.portraitWidth = portrait.width;
+      result.portraitHeight = portrait.height;
+      console.log(
+        `portrait ${slug} ${portrait.width}×${portrait.height} ${(portrait.bytes / 1024).toFixed(1)} KB (q${portrait.quality})`,
+      );
+    } catch (error) {
+      failures += 1;
+      console.log(`portrait! ${slug} — ${error.message}`);
+    }
+  }
   results.push(result);
 }
 
@@ -360,8 +537,14 @@ if (!only) {
   await writeDoc(results);
   const iconCount = results.filter((r) => r.icon).length;
   const bannerCount = results.filter((r) => r.banner).length;
-  const totalBytes = results.reduce((sum, r) => sum + (r.iconBytes ?? 0) + (r.bannerBytes ?? 0), 0);
-  console.log(`\n${iconCount} ikon + ${bannerCount} banner = ${(totalBytes / 1024).toFixed(1)} KB (${totalBytes} byte)`);
+  const portraitCount = results.filter((r) => r.portrait).length;
+  const totalBytes = results.reduce(
+    (sum, r) => sum + (r.iconBytes ?? 0) + (r.bannerBytes ?? 0) + (r.portraitBytes ?? 0),
+    0,
+  );
+  console.log(
+    `\n${iconCount} ikon + ${bannerCount} banner + ${portraitCount} portrait = ${(totalBytes / 1024).toFixed(1)} KB (${totalBytes} byte)`,
+  );
   console.log(`src/lib/games/assets.ts + docs/games-assets.md diperbarui`);
 }
 if (failures) process.exitCode = 1;

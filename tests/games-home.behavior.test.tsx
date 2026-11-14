@@ -6,12 +6,15 @@ import { GamesNavbar } from "@/components/games/GamesNavbar";
 import { DisplayPreferencesProvider } from "@/hooks/useDisplayPrices";
 import { getGamesCatalog, getGamesDetail } from "@/lib/games/catalog";
 import { GAMES_REGISTRY } from "@/lib/games/registry";
+import { GAMES_LOCAL_ASSETS } from "@/lib/games/assets";
+import { GameCard } from "@/components/games/storefront";
+import { gamesCopy } from "@/lib/games/copy";
 
 const db = vi.hoisted(() => ({ queryAll: vi.fn() }));
 vi.mock("@/lib/db-access", () => ({ createDatabaseAccess: () => db }));
 vi.mock("@/components/storefront/PreferenceControls", () => ({ PreferenceControls: () => null }));
 vi.mock("@/components/shared/ServicesMenu", () => ({ ServicesMenu: () => null }));
-const game = { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond" as const, icon: "/brand/games/free-fire-icon.webp", banner: null, min_price: 1000, sku_count: 1, sellable_count: 1, featured_rank: null };
+const game = { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond" as const, icon: "/brand/games/free-fire-icon.webp", banner: null, portrait: null, min_price: 1000, sku_count: 1, sellable_count: 1, featured_rank: null };
 beforeEach(() => { vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} })); vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); document.cookie = "axv_locale=; max-age=0; path=/"; });
 
@@ -23,7 +26,10 @@ describe("Games homepage", () => {
       { supplier: "digiflazz", game_brand: "FREE FIRE", buyer_sku_code: "ff140", product_name: "140 Diamond", sell_price: 900 },
       { supplier: "sekalipay", sk_product_id: 35, sk_product_name: "Utility", game_slug: "utility", buyer_sku_code: "mlcekusername", product_name: "Cek Username", sell_price: 10 },
     ]);
-    expect((await getGamesCatalog()).map((g) => g.slug)).toEqual(["free-fire", "mobile-legends"]);
+    const catalog = await getGamesCatalog();
+    expect(catalog.map((g) => g.slug)).toEqual(["free-fire", "mobile-legends"]);
+    expect(catalog[0].portrait).toBe(GAMES_LOCAL_ASSETS["free-fire"].portrait);
+    expect(catalog[0].publisher).toBe("Garena");
     expect(db.queryAll.mock.calls[0][0]).toContain("supplier='sekalipay'");
     expect(db.queryAll.mock.calls[0][0]).toContain("enabled=1 AND sell_price>0");
   });
@@ -81,12 +87,13 @@ describe("Games homepage", () => {
     vi.unstubAllEnvs();
   });
 
-  it("renders every DB game through 'show more' without a wave/whitelist limit", () => {
+  it("renders every DB game immediately without show-more or a wave/whitelist limit", () => {
     const games = Array.from({ length: 14 }, (_, i) => ({ ...game, slug: `game-${i}`, name: `Game ${i}` }));
     render(<GamesHome games={games} orbitGames={games.slice(0, 4)} orderingOpen />);
-    expect(screen.getAllByRole("link", { name: /Game \d/ }).length).toBeGreaterThanOrEqual(12);
-    fireEvent.click(screen.getByRole("button", { name: "Tampilkan lainnya" }));
-    expect(screen.getByRole("link", { name: /Game 13/ })).toBeTruthy();
+    const catalog = screen.getByRole("region", { name: "Semua game" });
+    expect(within(catalog).getAllByRole("link")).toHaveLength(14);
+    expect(within(catalog).getByRole("link", { name: /Game 13/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Tampilkan lainnya" })).toBeNull();
     expect(document.body.textContent).not.toMatch(/gelombang|wave/i);
   });
   it("renders initials placeholders instead of empty img sources", () => {
@@ -96,13 +103,57 @@ describe("Games homepage", () => {
     expect(screen.getAllByText("NI").length).toBeGreaterThan(0);
   });
 
-  it("hides popular below four qualifying games and otherwise uses six sellable games", () => {
-    const { rerender } = render(<GamesHome games={[game]} orbitGames={GAMES_REGISTRY} orderingOpen />);
+  it("hides popular only when no featured/default game exists, and includes a single unsellable game", () => {
+    const { rerender } = render(<GamesHome games={[{ ...game, slug: "unknown-game" }]} orbitGames={GAMES_REGISTRY} orderingOpen />);
     expect(screen.queryByRole("heading", { name: "Populer sekarang" })).toBeNull();
-    rerender(<GamesHome games={Array.from({ length: 9 }, (_, i) => ({ ...game, slug: `game-${i}` }))} orbitGames={GAMES_REGISTRY} orderingOpen />);
-    expect(screen.getByRole("heading", { name: "Populer sekarang" })).toBeTruthy();
+    rerender(<GamesHome games={[{ ...game, sellable_count: 0, min_price: null }]} orbitGames={GAMES_REGISTRY} orderingOpen />);
     const popular = screen.getByRole("region", { name: "Populer sekarang" });
-    expect(within(popular).getAllByRole("link")).toHaveLength(6);
+    expect(within(popular).getAllByRole("link")).toHaveLength(1);
+    expect(within(popular).getByRole("link", { name: "Free Fire Garena" }).getAttribute("href")).toBe("/games/free-fire");
+  });
+  it("uses the curated default popular order filtered by catalog, regardless of sellable status", () => {
+    const slugs = ["mobile-legends", "magic-chess-go-go", "pubg-mobile", "free-fire", "genshin-impact", "honor-of-kings", "valorant", "roblox", "honkai-star-rail"];
+    const games = [...slugs].reverse().map((slug) => ({ ...game, slug, sellable_count: 0, min_price: null }));
+    const { rerender } = render(<GamesHome games={[{ ...game, slug: "unknown-game" }, ...games]} orbitGames={[]} orderingOpen />);
+    const popularLinks = () => within(screen.getByRole("region", { name: "Populer sekarang" })).getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(popularLinks()).toEqual(slugs.map((slug) => `/games/${slug}`));
+    rerender(<GamesHome games={games.filter((g) => ["roblox", "mobile-legends", "free-fire"].includes(g.slug))} orbitGames={[]} orderingOpen />);
+    expect(popularLinks()).toEqual(["/games/mobile-legends", "/games/free-fire", "/games/roblox"]);
+  });
+  it("caps ranked popular games at nine and does not fill missing ranks with defaults", () => {
+    const games = Array.from({ length: 11 }, (_, i) => ({ ...game, slug: `ranked-${i}`, featured_rank: 11 - i, sellable_count: 0 }));
+    const { rerender } = render(<GamesHome games={[game, ...games]} orbitGames={[]} orderingOpen />);
+    const popularLinks = () => within(screen.getByRole("region", { name: "Populer sekarang" })).getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(popularLinks()).toEqual(Array.from({ length: 9 }, (_, i) => `/games/ranked-${10 - i}`));
+    rerender(<GamesHome games={[game, games[0]]} orbitGames={[]} orderingOpen />);
+    expect(popularLinks()).toEqual(["/games/ranked-0"]);
+  });
+  it("filters every mapped genre, updates count and pressed state, hides empty chips, and keeps unknown games only in All", () => {
+    const games = [game, { ...game, slug: "mobile-legends" }, { ...game, slug: "genshin-impact" }, { ...game, slug: "magic-chess-go-go" }, { ...game, slug: "roblox" }, { ...game, slug: "new-db-game" }];
+    render(<GamesHome games={games} orbitGames={[]} orderingOpen />);
+    const catalog = screen.getByRole("region", { name: "Semua game" });
+    const chips = within(catalog).getByRole("group", { name: "Kategori game" });
+    const all = within(chips).getByRole("button", { name: "Semua" });
+    expect(all.getAttribute("aria-pressed")).toBe("true");
+    expect(within(catalog).getByText("6 game")).toBeTruthy();
+    expect(within(chips).queryByRole("button", { name: "Olahraga & Balap" })).toBeNull();
+    const labels = ["MOBA", "Shooter & Battle Royale", "RPG & Petualangan", "Strategi", "Kasual & Sosial"];
+    const slugs = ["mobile-legends", "free-fire", "genshin-impact", "magic-chess-go-go", "roblox"];
+    for (const [i, label] of labels.entries()) {
+      const chip = within(chips).getByRole("button", { name: label });
+      fireEvent.click(chip);
+      expect(chip.getAttribute("aria-pressed")).toBe("true");
+      expect(all.getAttribute("aria-pressed")).toBe("false");
+      expect(within(chips).getAllByRole("button", { pressed: true })).toEqual([chip]);
+      expect(within(catalog).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([`/games/${slugs[i]}`]);
+      expect(within(catalog).getByText("1 game")).toBeTruthy();
+    }
+    fireEvent.click(all);
+    expect(within(catalog).getAllByRole("link")).toHaveLength(6);
+    expect(within(catalog).getByText("6 game")).toBeTruthy();
+    expect(within(catalog).getAllByRole("link").some((a) => a.getAttribute("href") === "/games/new-db-game")).toBe(true);
+    // Filtering the catalog must not filter the independently curated popular block.
+    expect(within(screen.getByRole("region", { name: "Populer sekarang" })).getAllByRole("link")).toHaveLength(5);
   });
   it("honors featured ranks, shows honest availability, and counts the whole catalog", () => {
     const games = Array.from({ length: 10 }, (_, i) => ({ ...game, slug: `game-${i}`, name: `Game ${i}`, featured_rank: i < 4 ? 4 - i : null, sellable_count: i === 9 ? 0 : 1 }));
@@ -111,7 +162,8 @@ describe("Games homepage", () => {
     expect(screen.getByText("10 game")).toBeTruthy();
     const unavailable = screen.getByRole("link", { name: /Game 9/ });
     expect(unavailable.textContent).toContain("Segera tersedia");
-    expect(unavailable.className).toContain("opacity-70");
+    expect(within(unavailable).getByText("Segera tersedia").className).toContain("rounded-full");
+    expect(unavailable.className).not.toContain("opacity-70");
     expect(screen.getAllByText(/Mulai/)[0].textContent).toContain("Rp1.000");
     // Hero disetujui GAMES §4.1 (pola Pedia): headline dua baris + typewriter cyan.
     const h1 = screen.getByRole("heading", { level: 1 });
@@ -131,12 +183,35 @@ describe("Games homepage", () => {
       expect(img.getAttribute("referrerpolicy")).toBe("no-referrer");
       expect(img.getAttribute("decoding")).toBe("async");
     }
-    const card = screen.getByRole("link", { name: /Free Fire Mulai/ });
-    const img = card.querySelector("img")!;
-    expect(img.getAttribute("loading")).toBe("lazy");
-    fireEvent.error(img);
+    const card = within(screen.getByRole("region", { name: "Semua game" })).getByRole("link", { name: "Free Fire Mulai Rp1.000" });
+    for (const img of card.querySelectorAll("img")) {
+      expect(img.getAttribute("loading")).toBe("lazy");
+      fireEvent.error(img);
+    }
     expect(card.querySelector("img")).toBeNull();
-    expect(within(card).getByText("FF")).toBeTruthy();
+    expect(within(card).getAllByText("FF")).toHaveLength(2);
+  });
+  it("uses full-bleed portrait art when available, keeps overlay metadata in the DOM, and names the link even at rest", () => {
+    render(<GameCard game={{ ...game, portrait: "/brand/games/free-fire-portrait.webp" }} t={gamesCopy("id")} />);
+    const card = screen.getByRole("link", { name: "Free Fire Mulai Rp1.000" });
+    expect(card.className).toContain("aspect-[2/3]");
+    expect(card.querySelectorAll("img")).toHaveLength(1);
+    const image = card.querySelector("img")!;
+    expect(image.getAttribute("src")).toBe("/brand/games/free-fire-portrait.webp");
+    expect(image.getAttribute("class")).toContain("object-cover");
+    expect(image.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(image.getAttribute("decoding")).toBe("async");
+    expect(image.getAttribute("loading")).toBe("lazy");
+    expect(within(card).getByText("Free Fire")).toBeTruthy();
+    expect(within(card).getByText("Garena")).toBeTruthy();
+    expect(within(card).getByText("Mulai Rp1.000")).toBeTruthy();
+  });
+  it("uses square-icon plus blur fallback when no portrait exists and includes unavailable status in its accessible name", () => {
+    render(<GameCard game={{ ...game, portrait: null, sellable_count: 0, min_price: null }} t={gamesCopy("id")} />);
+    const card = screen.getByRole("link", { name: "Free Fire Segera tersedia" });
+    expect(Array.from(card.querySelectorAll("img")).map((img) => img.getAttribute("src"))).toEqual([game.icon, game.icon]);
+    expect(within(card).getByText("Segera tersedia")).toBeTruthy();
+    expect(card.className).not.toContain("opacity-70");
   });
   it("keeps the animated orbit hero with game art planets (regression: static quadrants froze the hero)", () => {
     const frames: FrameRequestCallback[] = [];
@@ -158,6 +233,10 @@ describe("Games homepage", () => {
     document.cookie = "axv_locale=en; path=/";
     render(<DisplayPreferencesProvider><GamesNavbar games={[game]} /><GamesHome games={[game]} orbitGames={GAMES_REGISTRY} orderingOpen={false} /></DisplayPreferencesProvider>);
     expect(await screen.findByText("AXVARA Games ordering opens soon")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Popular now" })).toBeTruthy();
+    const categories = screen.getByRole("group", { name: "Game categories" });
+    expect(within(categories).getByRole("button", { name: "All", pressed: true })).toBeTruthy();
+    expect(within(categories).getByRole("button", { name: "Shooter & Battle Royale" })).toBeTruthy();
     const input = screen.getByRole("searchbox", { name: "Search games on AXVARA Games" });
     fireEvent.change(input, { target: { value: "free" } });
     expect(within(input.parentElement!).getByRole("link", { name: "Free Fire" }).getAttribute("href")).toBe("/games/free-fire");
