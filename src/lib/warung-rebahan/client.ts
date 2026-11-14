@@ -75,6 +75,8 @@ export type JaspayOrderResult = {
   total?: number;
   refunded?: number;
   progress?: { done?: number; success?: number };
+  phase?: "preparing" | "queued" | "running" | null;
+  queue_position?: number | null;
   success_count: number;
   accounts: JaspayAccount[];
   created_at?: string;
@@ -401,7 +403,8 @@ function assertJaspayInvoice(value: unknown): string {
 /** Katalog mentah Jaspay (validasi + normalisasi di jaspay.ts/sync). */
 export async function fetchJaspayProducts(): Promise<unknown[]> {
   const res = await wrFetch<unknown[]>("/jaspay/products");
-  return Array.isArray(res.data) ? res.data : [];
+  if (!Array.isArray(res.data)) throw new WrNetworkError("jaspay_catalog_malformed", "/jaspay/products");
+  return res.data;
 }
 
 export async function createJaspayOrder(params: {
@@ -435,6 +438,8 @@ export async function createJaspayOrder(params: {
     total: data.total == null ? undefined : Number(data.total),
     refunded: data.refunded == null ? undefined : Number(data.refunded),
     progress: (data.progress ?? undefined) as JaspayOrderResult["progress"],
+    phase: data.phase as JaspayOrderResult["phase"],
+    queue_position: data.queue_position as number | null | undefined,
     success_count: Number(data.success_count ?? (data.progress as { success?: unknown } | undefined)?.success ?? 0) || 0,
     accounts,
     created_at: data.created_at == null ? undefined : String(data.created_at),
@@ -465,6 +470,8 @@ export async function fetchJaspayStatus(invoice: string): Promise<JaspayOrderRes
     total: data.total == null ? undefined : Number(data.total),
     refunded: data.refunded == null ? undefined : Number(data.refunded),
     progress: (data.progress ?? undefined) as JaspayOrderResult["progress"],
+    phase: data.phase as JaspayOrderResult["phase"],
+    queue_position: data.queue_position as number | null | undefined,
     success_count: Number(data.success_count ?? (data.progress as { success?: unknown } | undefined)?.success ?? 0) || 0,
     accounts,
     created_at: data.created_at == null ? undefined : String(data.created_at),

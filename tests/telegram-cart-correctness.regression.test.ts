@@ -82,7 +82,7 @@ describe("cart summaries and atomic quantity guards", () => {
     seedVariant(1);
     seedVariant(2);
     fixture.sql.exec(`INSERT INTO wr_products(wr_product_id,wr_product_name) VALUES('wp','Produk');
-      INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price) VALUES('wv','wp','Paket',500);
+      INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_delivery_class) VALUES('wv','wp','Paket',500,'restock');
       UPDATE product_variants SET wr_variant_id='wv',duration_value=7,duration_unit='day' WHERE id=1;
       UPDATE product_variants SET duration_value=6,duration_unit='month' WHERE id=2`);
     await addToCart("42", 1, 1, 1);

@@ -1,5 +1,57 @@
 # ARCHITECTURE.md — AXVARA
 
+## WR automatic-only + katalog/progres Jaspay (14 November 2026, implementasi lokal)
+
+Menggantikan kontrak penjualan baru pada snapshot §16.8a; pengaman order lama
+pada bagian tersebut tetap. `warung-rebahan/new-sales.ts` menyatukan predicate
+penjualan: non-WR atau namespace Jaspay atau WR Premium `restock`. Katalog
+shared, `/api/products` publik, SEO PDP, katalog/keranjang Telegram dan hitung
+pasangan supplier memakai kebijakan ini. `/api/checkout/quote` dan POST order
+menolak paket manual lama; `db/orders-create.ts` + `commerce.ts` memagar ulang
+secara atomik, termasuk qty Jaspay agregat lintas baris keranjang. Pembacaan
+admin/dispatch/rekonsiliasi historis tidak memakai predicate penjualan baru.
+Produk supplier tanpa variant tidak dapat melewati guard reservasi web.
+
+`syncJaspayCatalog` menerima default package `id:""` sebagai ID
+`jaspay:<product>:`; decoder membedakannya dari segmen hilang/malformed.
+POST supplier menghilangkan package kosong, ref tetap deterministik. ID kosong
+hanya sah untuk satu paket eksplisit, bukan field ID hilang atau beberapa
+default ambigu. Durasi diambil dari produk atau paket, ketentuan deskripsi
+termasuk garansi disimpan di `wr_terms`; availability pulih lewat stok tanpa
+mengubah `is_active` admin. Tidak mewariskan kurasi/garansi varian Premium.
+Pemetaan 10 key Jaspay ke UUID produk Premium eksplisit hanya menautkan registry
+baru ke parent aktif yang sama; tidak mengganti ID varian/item/order lama.
+Parent baru mengisi gambar/galeri kosong dari parent asal, termasuk yang nonaktif;
+gambar admin tujuan, nama/slug/foto/EN parent existing dipertahankan.
+
+Job lite `jaspay_catalog` pada cron Worker setiap menit SESUDAH job order,
+budget40 dengan cadangan2, maksimal satu produk per invocation. Cursor durable
+`wr_sync_state.jaspay_catalog_cursor` berputar melewati semua produk ternormalisasi;
+feed lengkap dipakai untuk zero-missing Jaspay, bukan hanya potongan cursor.
+HTTP/parser gagal tidak mengosongkan katalog. Fase heavy existing tetap cadangan.
+Tidak ada trigger jadwal, env atau secret baru. Bootstrap snapshot10 produk
+memerlukan hingga10 tick sukses; bukan bukti katalog sudah live setelah push.
+
+Migrasi `0121_jaspay_progress.sql` menambah `wr_order_links.jaspay_progress`
+JSON nullable (tanpa akun/secret) dan menandai pasangan supplier lama dirty untuk
+hitung ulang setelah perubahan kebijakan. `warung-rebahan/progress.ts` hanya
+menyimpan phase allowlist, queue position, done/success dan timestamp. Snapshot
+processing tidak meregresikan terminal atau jumlah processed yang lebih tinggi.
+Receipt, recovery exact-ref, webhook dan poll memakai terminal handler yang sama;
+Jaspay tetap berjalan saat saklar MBO manual legacy mati.
+
+GET `/api/orders` dan `/api/orders/[code]`, serta POST `/api/orders/lookup`,
+menambah `automatic_progress`: array `{label,stage,ready,total,queuePosition,
+updatedAt}` sesudah guard akses existing. Stage preparing/queued/running/ready/
+needs_check/failed. Tidak mengirim invoice supplier, raw payload atau akun.
+Query tambahan hanya untuk order Jaspay; order non-Jaspay mempertahankan budget
+read lama. Komponen `storefront/AutomaticOrderProgress.tsx` dipakai di
+`/pesanan/[code]`; mixed cart tetap dipoll saat item Jaspay lain masih berjalan
+meskipun kredensial satu item sudah tersedia. Pengambilan kredensial tetap
+memerlukan proof/capability existing, bukan data progres.
+
+Publikasi melalui CI main; deployment dan transaksi produksi belum diverifikasi.
+
 ## Header admin bersama (14 November 2026, implementasi lokal)
 
 `src/components/admin/ui/page-header.tsx` menjadi primitive header seluruh

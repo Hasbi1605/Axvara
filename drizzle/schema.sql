@@ -901,6 +901,7 @@ CREATE TABLE IF NOT EXISTS wr_order_links (
   last_error      TEXT,
   wr_account_details TEXT,
   wr_account_iv   TEXT,
+  jaspay_progress TEXT CHECK (jaspay_progress IS NULL OR json_valid(jaspay_progress)),
   completed_at    TEXT,
   idempotency_key TEXT,
   lease_owner TEXT,

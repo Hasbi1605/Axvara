@@ -1521,9 +1521,54 @@ async function jaspaySku(variantId: string): Promise<string> {
   return `WR-J${hex.slice(0, 28).toUpperCase()}`;
 }
 
+// Explicit supplier identities from the reviewed 14-Nov catalog, never display-name matching.
+const JASPAY_LEGACY_PRODUCTS: Record<string, string> = {
+  zoom: "38eda557-044d-11f1-bf18-bc241112a182",
+  scribd: "07ca3373-133e-11f1-bf18-bc241112a182",
+  hma: "69282bbf-045f-11f1-bf18-bc241112a182",
+  expressvpn: "a86ef8b6-045f-11f1-bf18-bc241112a182",
+  picsart: "ea549518-12ee-11f1-bf18-bc241112a182",
+  wink: "b563be16-1337-11f1-bf18-bc241112a182",
+  meitu: "5f0e4cb2-1338-11f1-97d9-bc241112a182",
+  remini: "1522e51e-8d1b-11f1-97d9-bc241112a182",
+  crunchyroll: "a5b0d8fd-133f-11f1-bf18-bc241112a182",
+  surfshark: "b3526693-0460-11f1-bf18-bc241112a182",
+};
+
+async function upsertJaspayProduct(key: string, product: WrProduct, db: DatabaseAccess): Promise<void> {
+  const legacyId = JASPAY_LEGACY_PRODUCTS[key];
+  if (legacyId) {
+    const parent = await db.queryFirst(
+      "SELECT id FROM products WHERE source='warung_rebahan' AND wr_product_id=? AND is_active=1", legacyId);
+    if (parent) {
+      // Only a new registry is attached. Never remap existing variants/orders, or
+      // overwrite the parent image, name, slug, EN copy or admin activation.
+      await db.execRun(`INSERT INTO wr_products(wr_product_id,wr_product_name,wr_description,axvara_product_id)
+        VALUES(?,?,?,?) ON CONFLICT(wr_product_id) DO UPDATE SET
+        wr_product_name=excluded.wr_product_name,wr_description=excluded.wr_description,
+        axvara_product_id=COALESCE(wr_products.axvara_product_id,excluded.axvara_product_id),
+        is_excluded=0,exclude_reason=NULL`,
+        product.id, product.name, product.description, Number(parent.id));
+      return;
+    }
+  }
+  const created = await upsertWrProduct(product, { excluded: false, reason: null }, db);
+  if (legacyId && created.axvaraProductId > 0) {
+    // Owner 14-Nov: inherit the original MBO imagery even if the old parent
+    // is inactive. Only fill empty images; admin changes on the new parent win.
+    await db.execRun(`UPDATE products SET
+      image_url=COALESCE(NULLIF(image_url,''),(SELECT image_url FROM products WHERE source='warung_rebahan' AND wr_product_id=?)),
+      images=CASE WHEN images IS NULL OR images IN ('','[]') THEN
+        (SELECT images FROM products WHERE source='warung_rebahan' AND wr_product_id=?) ELSE images END
+      WHERE id=? AND (image_url IS NULL OR image_url='' OR images IS NULL OR images IN ('','[]'))`,
+      legacyId, legacyId, created.axvaraProductId);
+  }
+}
+
 export async function syncJaspayCatalog(
   database?: DatabaseAccess,
   fetchFn: () => Promise<unknown[]> = fetchJaspayProducts,
+  options: { maxProducts?: number } = {},
 ): Promise<JaspaySyncResult> {
   const started = Date.now();
   const db = database ?? createDatabaseAccess();
@@ -1544,8 +1589,8 @@ export async function syncJaspayCatalog(
     result.durationMs = Date.now() - started;
     return result;
   }
-  if (!Array.isArray(raw)) {
-    result.errors.push("catalog_malformed_not_array");
+  if (!Array.isArray(raw) || !raw.length) {
+    result.errors.push(Array.isArray(raw) ? "catalog_empty" : "catalog_malformed_not_array");
     result.durationMs = Date.now() - started;
     return result;
   }
@@ -1555,12 +1600,23 @@ export async function syncJaspayCatalog(
   const cachedRules = (await db
     .queryAll(`SELECT pattern, reason FROM wr_exclusions`)
     .catch(() => [] as Row[])) as { pattern: string; reason: string | null }[];
-  const seen = new Set<string>();
+  const seen = new Set(products.flatMap(p => p.packages.map(k => jaspayVariantId(p.productKey, k.packageId))));
+  const bounded = options.maxProducts != null;
+  let work = products;
+  if (bounded) {
+    const cursor = await db.queryFirst("SELECT value FROM wr_sync_state WHERE key='jaspay_catalog_cursor'");
+    const sorted = [...products].sort((a, b) => a.productId.localeCompare(b.productId));
+    const next = sorted.findIndex(p => p.productId.localeCompare(String(cursor?.value ?? "")) > 0);
+    work = sorted.slice(next < 0 ? 0 : next, (next < 0 ? 0 : next) + Math.max(1, options.maxProducts!));
+  }
+  const checkpoint = async (id: string) => {
+    if (bounded) await db.execRun("INSERT INTO wr_sync_state(key,value) VALUES('jaspay_catalog_cursor',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", id);
+  };
   // Zero-missing hanya boleh memakai seen-set LENGKAP: feed sukses, semua
   // produk diproses tanpa error/berhenti karena budget.
   let complete = true;
-  for (const product of products) {
-    if (!db.canSpend(8)) {
+  for (const product of work) {
+    if (!db.canSpend(12 + product.packages.length * 6)) {
       complete = false;
       break;
     }
@@ -1572,15 +1628,13 @@ export async function syncJaspayCatalog(
           exclude,
           db,
         );
+        await checkpoint(product.productId);
         continue;
       }
       // Upsert produk Jaspay lewat jalur premium (registry + pasangan
       // katalog + slug anti-bentrok yang sama).
-      await upsertWrProduct(
-        { id: product.productId, name: product.name, category: "", description: product.description ?? "", variants: [] },
-        { excluded: false, reason: null },
-        db,
-      );
+      await upsertJaspayProduct(product.productKey,
+        { id: product.productId, name: product.name, category: "Productivity", description: product.description ?? "", variants: [] }, db);
       const reg = await db.queryFirst(
         `SELECT axvara_product_id FROM wr_products WHERE wr_product_id=?`,
         product.productId,
@@ -1603,7 +1657,8 @@ export async function syncJaspayCatalog(
         const markupPercent = existing?.markup_percent != null ? Number(existing.markup_percent) : defaultMarkupPercent();
         const markupFixed = existing?.markup_fixed != null ? Number(existing.markup_fixed) : defaultMarkupFixed();
         const sellPrice = calculateSellPrice(pkg.price, markupPercent, markupFixed);
-        const duration = parseWrDuration(product.duration);
+        const packageDuration = product.duration || /(?:^|[|])duration=(\d+)(?:[|]|$)/.exec(pkg.packageId)?.[1]?.concat(" Hari") || /(\d+)\s*hari/i.exec(pkg.packageName)?.[0] || null;
+        const duration = parseWrDuration(packageDuration);
         if (!existing) {
           if (product.maxQuantity == null) {
             // Cap invalid/missing: varian baru TIDAK dibuat (fail-closed;
@@ -1645,7 +1700,7 @@ export async function syncJaspayCatalog(
               sellPrice,
               stock,
               "manual",
-              stock === 0 ? 0 : 1,
+              1,
               product.defaultPackage != null && pkg.packageId === product.defaultPackage ? -1 : 0,
               variantId,
               1,
@@ -1681,11 +1736,11 @@ export async function syncJaspayCatalog(
               product.productId,
               pkg.packageName,
               pkg.price,
-              product.duration ?? null,
+              packageDuration,
               null,
               null,
               stock,
-              null,
+              product.description ?? null,
               product.afterNote ?? null,
               newVariantId || null,
               markupPercent,
@@ -1722,17 +1777,18 @@ export async function syncJaspayCatalog(
             || Number(existing.axvara_sell_price ?? -1) !== sellPrice;
           await db.execRun(
             `UPDATE wr_variants SET wr_variant_name=?, wr_price=?, wr_duration=?,
-               wr_stock=?, wr_delivery_terms=?, axvara_sell_price=?,
+               wr_stock=?, wr_terms=?, wr_delivery_terms=?, axvara_sell_price=?,
                wr_delivery_class='made_by_order', wr_delivery_source='api', wr_delivery_mode='manual',
                wr_max_quantity=?, last_synced_at=?, updated_at=?
              WHERE wr_variant_id=?
                AND (wr_variant_name IS NOT ? OR wr_price IS NOT ? OR wr_duration IS NOT ?
-                    OR wr_stock IS NOT ? OR wr_delivery_terms IS NOT ? OR axvara_sell_price IS NOT ?
+                    OR wr_stock IS NOT ? OR wr_terms IS NOT ? OR wr_delivery_terms IS NOT ? OR axvara_sell_price IS NOT ?
                     OR wr_delivery_class IS NOT 'made_by_order' OR wr_max_quantity IS NOT ?)`,
             pkg.packageName,
             pkg.price,
-            product.duration ?? null,
+            packageDuration,
             stock,
+            product.description ?? null,
             product.afterNote ?? null,
             sellPrice,
             capValid ? product.maxQuantity : existing.wr_max_quantity ?? null,
@@ -1741,16 +1797,18 @@ export async function syncJaspayCatalog(
             variantId,
             pkg.packageName,
             pkg.price,
-            product.duration ?? null,
+            packageDuration,
             stock,
+            product.description ?? null,
             product.afterNote ?? null,
             sellPrice,
             capValid ? product.maxQuantity : existing.wr_max_quantity ?? null,
-          ).catch(() => undefined);
+          );
           const axId = existing.axvara_variant_id != null ? Number(existing.axvara_variant_id) : 0;
           if (axId > 0) {
             await db.execRun(
               `UPDATE product_variants SET price=?, stock=?,
+                 compare_price=CASE WHEN compare_price <= ? THEN NULL ELSE compare_price END,
                  duration_value=?, duration_unit=?, duration_label=?,
                  updated_at=datetime('now')
                WHERE id=?
@@ -1758,6 +1816,7 @@ export async function syncJaspayCatalog(
                       OR duration_unit IS NOT ? OR duration_label IS NOT ?)`,
               sellPrice,
               stock,
+              sellPrice,
               duration.value,
               duration.unit,
               duration.label || null,
@@ -1767,7 +1826,7 @@ export async function syncJaspayCatalog(
               duration.value,
               duration.unit,
               duration.label || null,
-            ).catch(() => undefined);
+            );
           }
           result.variantsSynced++;
           if (stockChanged) result.stockChanges++;
@@ -1777,6 +1836,7 @@ export async function syncJaspayCatalog(
       if (axvaraProductId > 0 && db.canSpend(2)) {
         await refreshParentAggregates(axvaraProductId, db).catch(() => undefined);
       }
+      await checkpoint(product.productId);
       result.synced++;
     } catch (error) {
       complete = false;

@@ -1,3 +1,4 @@
+import { wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameBuyerCode, buyerFieldsSchema, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
@@ -215,6 +216,10 @@ export async function POST(req: NextRequest) {
       }
       if (Number(variantRow.is_active) === 0) {
         issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "inactive", message: `${row.name} — ${variantRow.label} sedang nonaktif.` });
+        continue;
+      }
+      if (!wrNewSaleAllowed(variantRow)) {
+        issues.push({ product_id: productId, slug: item.slug, variant_id: item.variant_id, type: "inactive", message: `${row.name} — paket ini tidak lagi tersedia. Pilih paket otomatis terbaru.` });
         continue;
       }
       effectivePrice = Number(variantRow.price);

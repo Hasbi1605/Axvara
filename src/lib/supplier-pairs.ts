@@ -1,3 +1,4 @@
+import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 // src/lib/supplier-pairs.ts — Pemenang otomatis WR vs SK per pasangan.
 // Keputusan owner 2026-09-30: produk yang sama di dua supplier dipilih
 // OTOMATIS mana yang tampil (stok dulu, modal kemudian), bukan manual.
@@ -63,12 +64,12 @@ export type PairStats = {
 // Compute finite stock and unlimited in the same pass over each product.
 const stockSql = (col: string) => `(SELECT CASE WHEN MAX(CASE WHEN v.stock=-1 THEN 1 ELSE 0 END)=1
     THEN -1 ELSE COALESCE(SUM(CASE WHEN v.stock>0 THEN v.stock ELSE 0 END),0) END
-    FROM product_variants v WHERE v.product_id=sp.${col} AND v.is_active=1)`;
+    FROM product_variants v WHERE v.product_id=sp.${col} AND v.is_active=1 AND ${wrNewSaleSql("v")})`;
 const modalSql = (col: string) => `COALESCE(
     (SELECT MIN(s.sk_price) FROM sk_products s JOIN product_variants v ON v.sk_variant_id=s.sk_variant_id
       WHERE v.product_id=sp.${col} AND v.is_active=1 AND s.sk_stock>0),
     (SELECT MIN(w.wr_price) FROM wr_variants w JOIN product_variants v ON v.wr_variant_id=w.wr_variant_id
-      WHERE v.product_id=sp.${col} AND v.is_active=1 AND w.wr_stock>0))`;
+      WHERE v.product_id=sp.${col} AND v.is_active=1 AND w.wr_stock!=0 AND ${wrNewSaleSql("v")}))`;
 
 const PAIR_STATS_SQL = `SELECT sp.*,
     EXISTS(SELECT 1 FROM products p WHERE p.id=sp.wr_product_id) AS st_wr_exists,

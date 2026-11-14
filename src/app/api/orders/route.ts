@@ -1,3 +1,5 @@
+import { wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
+import { readAutomaticProgress } from "@/lib/warung-rebahan/progress";
 import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 import { NextRequest, NextResponse } from "next/server";
 import { deriveNameFromEmail } from "@/lib/utils";
@@ -276,7 +278,7 @@ export async function POST(req: NextRequest) {
     if (variantIds.length > 0) {
       const rows = await queryAll(
         `SELECT pv.id, pv.min_qty AS min_qty, pv.label AS label, p.name AS product_name,
-                pv.wr_variant_id AS wr_variant_id, wv.wr_max_quantity AS wr_max_quantity
+                pv.wr_variant_id AS wr_variant_id, wv.wr_delivery_class AS wr_delivery_class, wv.wr_max_quantity AS wr_max_quantity
          FROM product_variants pv
          LEFT JOIN products p ON p.id = pv.product_id
          LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
@@ -286,6 +288,7 @@ export async function POST(req: NextRequest) {
       const minById = new Map<number, { min: number; name: string }>();
       const capById = new Map<number, { cap: number | null; jaspay: boolean; name: string }>();
       for (const r of rows) {
+        if (!wrNewSaleAllowed(r)) return NextResponse.json({ error: "Paket ini tidak lagi tersedia. Pilih paket otomatis terbaru." }, { status: 409 });
         minById.set(Number(r.id), {
           min: Math.max(1, Number(r.min_qty ?? 1) || 1),
           name: `${String(r.product_name ?? "Produk")} — ${String(r.label ?? "")}`.trim(),
@@ -727,6 +730,7 @@ export async function GET(req: NextRequest) {
     let instantDelivery = false;
     let supplierOwned = false;
     let supplierRunning = false;
+    let hasAutomaticProgress = false;
     if (String(row.status) === "lunas") {
       // Satu query untuk tiga flag halaman pesanan (hemat statement):
       // - creds: detail akun sudah siap diambil pembeli (WR completed ATAU
@@ -751,6 +755,7 @@ export async function GET(req: NextRequest) {
            FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
          )
           SELECT
+           EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND wr_variant_id LIKE 'jaspay:%') AS has_automatic_progress,
            (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND status='completed'
                     AND wr_account_details IS NOT NULL)
            OR EXISTS(SELECT 1 FROM fulfillment_items WHERE order_code=? AND status='delivered'
@@ -788,7 +793,9 @@ export async function GET(req: NextRequest) {
         code,
         code,
         code,
+        code,
       ).catch(() => null);
+      hasAutomaticProgress = Number(flags?.has_automatic_progress ?? 0) === 1;
       credentialsReady = Number(flags?.creds ?? 0) === 1;
       queuedDelivery = Number(flags?.queued ?? 0) === 1;
       instantDelivery = Number(flags?.instant ?? 0) === 1;
@@ -869,6 +876,7 @@ export async function GET(req: NextRequest) {
         // /pesanan/[code] membutuhkan ini untuk membedakan lunas-terkirim dari
         // lunas-gagal-kirim (audit ronde 4, W-H1); /api/orders/lookup sudah punya.
         fulfillment_status: row.fulfillment_status ?? null,
+        automatic_progress: hasAutomaticProgress ? await readAutomaticProgress(code, { queryAll }).catch(() => []) : [],
         unique_units_progress: uniqueUnitsProgress,
         qris_reissue_allowed: row.payment_provider !== "klikqris" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
         qris: row.dynamic_qris_url ? {

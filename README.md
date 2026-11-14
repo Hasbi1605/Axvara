@@ -1,5 +1,31 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## WR otomatis: Jaspay dan stok Premium (14 November 2026)
+
+Implementasi lokal, publikasi melalui CI main; deployment belum diverifikasi.
+Penjualan baru WR hanya Jaspay atau Premium restock otomatis. MBO Premium manual/
+mixed/unknown dijeda dari kanal pembeli dan dipagar ulang pada reservasi atomik;
+order lama, invoice, data supplier/admin dan jalur penyelesaiannya tetap utuh.
+
+- Katalog Jaspay mendukung default package ID kosong, semua paket durasi,
+  availability, batas jumlah agregat, ketentuan/garansi supplier dan markup
+  existing. Tidak fallback ke manual. Varian baru memakai identitas baru pada
+  parent yang dipetakan eksplisit; gambar/galeri MBO asal dipakai kembali,
+  termasuk saat asal nonaktif, tanpa menimpa gambar tujuan milik admin.
+- Worker menjalankan `jaspay_catalog` lite tiap menit, satu produk/tick dengan
+  cursor durable dan budget40 existing, sesudah job order. Hingga10 tick sukses
+  untuk snapshot10 produk; tidak perlu env/secret/trigger jadwal baru.
+- Migrasi0121 menambah JSON progres aman pada link WR dan mengantrekan ulang
+  keputusan pasangan supplier. Webhook/poll invoice yang sama menyelesaikan
+  pengiriman terenkripsi. Default package tidak dikirim sebagai package kosong.
+- Status API menambah `automatic_progress` tanpa kredensial/invoice supplier;
+  `/pesanan/[code]` menampilkan tahap/antrean nyata dan hitungan akun,100% hanya
+  setelah completed. Mixed cart tetap diperbarui ketika item lain masih dibuat.
+  Proof/PIN/capability/email/Telegram mengikuti aturan existing.
+- Fixture: `tests/fixtures/wr-jaspay-catalog-20261114.json`; test utama
+  `jaspay-automatic-sales`, `jaspay-catalog.workerd`, `automatic-order-progress`.
+  Bukan tes transaksi supplier produksi. Rincian docs/ARCHITECTURE + PRD + DESIGN.
+
 Header admin14November2026 (implementasi lokal, publikasi CI): seluruh section
 memakai `PageHeader` bersama dengan titik awal seragam dan tinggi minimum
 72px desktop/144px mobile. Baris identitas/durasi sesi dan metadata waktu laporan

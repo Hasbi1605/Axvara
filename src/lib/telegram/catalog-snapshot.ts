@@ -1,3 +1,4 @@
+import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 import { queryAll } from "@/lib/db";
 import { cachePublicCatalog } from "@/lib/catalog-cache";
 import { purchasableStockSql } from "@/lib/catalog-availability";
@@ -12,10 +13,10 @@ export type TelegramCatalogProduct = {
  * Sold-out rows are kept for the existing search 'habis' fallback.
  */
 export async function readTelegramCatalog(): Promise<TelegramCatalogProduct[]> {
-  const response = await cachePublicCatalog("telegram-catalog-v1", 30, async () => {
+  const response = await cachePublicCatalog("telegram-catalog-auto-v2", 30, async () => {
     const rows = await queryAll(`SELECT p.id,p.name,p.name_en,p.category_id,p.sort_order,p.sold_count,p.whatsapp_alias,p.aliases,
       MIN(CASE WHEN pv.id IS NOT NULL AND ${purchasableStockSql("pv")} THEN pv.price END) AS price
-      FROM products p LEFT JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
+      FROM products p LEFT JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
       WHERE p.is_active=1 AND p.telegram_enabled=1 AND ${notLoserProductSql("p")}
       GROUP BY p.id ORDER BY p.sort_order ASC,p.name ASC`);
     return Response.json(rows);

@@ -1,5 +1,35 @@
 # PRD — AXVARA
 
+## Penjualan WR otomatis melalui Jaspay (14 November 2026, implementasi lokal)
+
+Keputusan owner: penjualan baru WR memakai Jaspay untuk produk yang tersedia,
+atau Premium dengan pengiriman stok otomatis (`restock`). Varian Premium
+manual/mixed/kelas belum diketahui dijeda dari katalog pembeli, keranjang,
+quote dan reservasi atomik web/Telegram; admin tetap dapat membaca data asli.
+Pembelian/order lama tetap memakai varian dan invoice asal, tanpa migrasi
+invoice, pembelian ulang atau pengiriman kredensial berdasarkan tebakan.
+
+Katalog Jaspay mengikuti API, termasuk paket default dengan ID string kosong,
+paket per durasi, availability serta batas jumlah agregat. Snapshot fixture
+14 November: 10 produk tersedia/17 paket tersedia, dua paket Zoom akun sendiri
+nonaktif, enam aplikasi maintenance tanpa paket. Stok tersedia = -1; batas
+jumlah bukan stok akun. Tidak fallback ke Premium manual ketika maintenance.
+Paket baru memakai modal+markup existing, durasi/ketentuan Jaspay dan garansi
+`none`; janji garansi varian lama tidak diwariskan. Gambar/galeri produk MBO
+asal dipakai kembali berdasarkan ID supplier eksplisit (termasuk asal nonaktif),
+tanpa menimpa suntingan gambar admin yang sudah ada pada produk tujuan.
+
+Status pembayaran dan kesiapan produk terpisah. Jaspay selesai koheren memicu
+penyimpanan terenkripsi dan pengiriman existing melalui webhook atau poll
+invoice yang sama. Halaman pesanan menampilkan persiapan/antrean (posisi bila
+tersedia)/pembuatan/siap, termasuk beberapa item yang selesai berbeda waktu.
+Satu akun tidak menampilkan persentase buatan; banyak akun memakai jumlah
+berhasil, dan 100% hanya setelah link benar-benar completed. Parsial/malformed/
+gagal menjadi pengecualian untuk tindak lanjut, tanpa membeli ulang. Proof
+c1/p1, PIN, akses kredensial dan aturan kanal email/Telegram tetap berlaku.
+
+Publikasi melalui CI main; deployment dan transaksi produksi belum diverifikasi.
+
 ## Header admin konsisten (14 November 2026, implementasi lokal)
 
 - Semua section memakai header bersama dengan posisi awal dan tinggi minimum

@@ -1,3 +1,4 @@
+import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 // src/lib/catalog.ts — Shared catalog service for all channels
 // Single source of truth for product + variant queries.
 // Web, Telegram, and WhatsApp all use these same functions.
@@ -155,7 +156,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
       COUNT(pv.id) as variant_count,
       CASE WHEN SUM(CASE WHEN pv.stock != 0 THEN 1 ELSE 0 END) > 0 THEN 'available' ELSE 'out_of_stock' END as availability
     FROM products p
-    INNER JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1
+    INNER JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")}
     WHERE p.is_active = 1
     GROUP BY p.id
     HAVING variant_count > 0
@@ -248,7 +249,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
      JOIN products p ON p.id = pv.product_id
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
      LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
-     WHERE pv.product_id=? AND pv.is_active=1
+     WHERE pv.product_id=? AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
      ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
     Number(product.id)
   );
@@ -351,7 +352,7 @@ export async function getActiveVariant(variantId: number): Promise<VariantSummar
      JOIN products p ON p.id = pv.product_id
      LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id
      LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
-     WHERE pv.id=? AND pv.is_active=1 AND p.is_active=1`,
+     WHERE pv.id=? AND pv.is_active=1 AND p.is_active=1 AND ${wrNewSaleSql("pv")}`,
     variantId
   );
   if (!row) return null;

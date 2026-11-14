@@ -153,7 +153,7 @@ describe("checkout consent and required-email snapshot", () => {
   it("cart factory requires email for an Invite line even when the first line does not", async () => {
     seedVariant(2);
     fixture.sql.exec(`INSERT INTO wr_products(wr_product_id,wr_product_name) VALUES('wp','Invite');
-      INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_type) VALUES('invite','wp','Invite',500,'Invite');
+      INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_type,wr_delivery_class) VALUES('invite','wp','Invite',500,'Invite','restock');
       UPDATE product_variants SET wr_variant_id='invite' WHERE id=2;
       UPDATE telegram_users SET buyer_email=NULL`);
     await addToCart("42", 1, 1, 1);

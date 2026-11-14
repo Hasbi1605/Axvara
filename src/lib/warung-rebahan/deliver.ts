@@ -20,7 +20,8 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { decryptSecret, encryptSecret } from "@/lib/fulfillment/crypto";
 import { isEnabled } from "@/lib/feature-flags";
 import { rewriteSupplierDocsLinks } from "@/lib/product-copy/format";
-import { isJaspayVariantId } from "./jaspay";
+import { decodeJaspayVariantId, isJaspayVariantId } from "./jaspay";
+import { persistJaspayProgress } from "./progress";
 import type { JaspayOrderResult } from "./client";
 export type WrOrderLinkRow = {
   id: number;
@@ -514,6 +515,9 @@ export async function handleJaspayTerminal(
   if (!link) return false;
   // No wrong-family fallback: invoice JSP milik link Jaspay saja.
   if (!isJaspayVariantId(String(link.wr_variant_id || ""))) return false;
+  const identity = decodeJaspayVariantId(String(link.wr_variant_id));
+  if (!identity || (result.product && result.product !== identity.product)) return false;
+  await persistJaspayProgress(link, result, db);
   const status = result.refunded_event ? "failed" : jaspayStatusOf(result);
   const now = new Date().toISOString();
   if (status === "processing") {

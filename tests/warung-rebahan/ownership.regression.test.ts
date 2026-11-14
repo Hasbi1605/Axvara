@@ -255,6 +255,7 @@ describe("override konsisten di SEMUA kanal (web, Telegram, WhatsApp)", () => {
   });
 
   it("listActiveProducts memakai override, bukan deskripsi WR", async () => {
+    fixture.sql.exec("INSERT INTO wr_products(wr_product_id,wr_product_name) VALUES('prod-capcut','CapCut'); INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_delivery_class) VALUES('var-1','prod-capcut','Pro 7 Hari',5000,'restock')");
     const { listActiveProducts } = await import("@/lib/catalog");
     const rows = await listActiveProducts();
     const wr = rows.find((r) => r.slug === "capcut-pro-wr");
@@ -303,8 +304,8 @@ describe("S&K varian WR terbaca storefront via JOIN (tanpa migrasi)", () => {
        VALUES ('prod-capcut', 'CapCut (WR)', 1)`,
     ).run();
     fixture.sql.prepare(
-      `INSERT INTO wr_variants (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_stock, wr_terms, wr_delivery_terms, axvara_variant_id, axvara_sell_price)
-       VALUES ('var-1', 'prod-capcut', 'Pro 7 Hari', 5000, 10, '1. Fresh, made by order\n2. Garansi sejak pembelian', 'Klik Verifikasi via kode sandi', 1, 7500)`,
+      `INSERT INTO wr_variants (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_stock, wr_terms, wr_delivery_terms, axvara_variant_id, axvara_sell_price, wr_delivery_class)
+       VALUES ('var-1', 'prod-capcut', 'Pro 7 Hari', 5000, 10, '1. Fresh, made by order\n2. Garansi sejak pembelian', 'Klik Verifikasi via kode sandi', 1, 7500, 'restock')`,
     ).run();
   });
 

@@ -46,7 +46,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
+const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "jaspay_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 10;
 const ORPHAN_LEDGER_PER_RUN = 10;
@@ -133,6 +133,14 @@ export async function POST(request: NextRequest) {
         const synced = await publishTunvnCatalog(db, Number(rate.num) / Number(rate.den), { force: false });
         Object.assign(result, synced);
         if ("ok" in synced && !synced.ok) return NextResponse.json(result, { status: 503 });
+      }
+    }
+    else if (job === "jaspay_catalog") {
+      const { syncJaspayCatalog } = await import("@/lib/warung-rebahan/sync");
+      const synced = await syncJaspayCatalog(db, undefined, { maxProducts: 1 });
+      Object.assign(result, synced);
+      if (synced.errors.length && !synced.errors.includes("warung_rebahan_disabled")) {
+        return NextResponse.json({ ...result, ok: false }, { status: 503 });
       }
     }
     else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db));

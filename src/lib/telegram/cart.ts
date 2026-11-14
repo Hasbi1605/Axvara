@@ -1,3 +1,4 @@
+import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 // src/lib/telegram/cart.ts — Keranjang multi-item Telegram (Fase 2).
 // Satu baris per (user_id, variant_id). Checkout gabungan tetap memakai SATU
 // order + SATU invoice QRIS: payment_transactions UNIQUE(order_code) tidak
@@ -105,7 +106,7 @@ export async function addToCart(
                 WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available') AS inventory_available
         FROM product_variants pv JOIN products p ON p.id=pv.product_id AND p.is_active=1 AND p.telegram_enabled=1
        LEFT JOIN telegram_carts c ON c.user_id=? AND c.variant_id=pv.id
-       WHERE pv.id=? AND pv.product_id=? AND pv.is_active=1
+       WHERE pv.id=? AND pv.product_id=? AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
      )
       INSERT INTO telegram_carts (user_id, product_id, variant_id, qty, buyer_fields, updated_at)
        SELECT ?, product_id, id, next_qty, ?, strftime('%Y-%m-%d %H:%M:%f','now') FROM candidate
@@ -141,7 +142,7 @@ export async function setCartLineQty(userId: string, variantId: number, rawQty: 
      )
      UPDATE telegram_carts SET qty=(SELECT next_qty FROM candidate), updated_at=${CART_UPDATED_AT}
      WHERE id IN (
-       SELECT c.id FROM candidate c JOIN product_variants pv ON pv.id=? AND pv.product_id=c.product_id AND pv.is_active=1
+       SELECT c.id FROM candidate c JOIN product_variants pv ON pv.id=? AND pv.product_id=c.product_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
        JOIN products p ON p.id=c.product_id AND p.is_active=1 AND p.telegram_enabled=1
         WHERE c.next_qty=CAST(c.next_qty AS INTEGER) AND c.next_qty>=MAX(1,pv.min_qty) AND c.next_qty<=? AND (pv.stock=-1 OR c.next_qty<=pv.stock)
           AND (pv.max_qty IS NULL OR c.next_qty<=pv.max_qty)
@@ -207,7 +208,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
              WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available') AS inventory_available
      FROM telegram_carts c
      LEFT JOIN products p ON p.id=c.product_id
-     LEFT JOIN product_variants pv ON pv.id=c.variant_id AND pv.is_active=1
+     LEFT JOIN product_variants pv ON pv.id=c.variant_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
      WHERE c.user_id=?
      ORDER BY c.updated_at ASC, c.id ASC
      LIMIT ?`,
@@ -294,7 +295,7 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
        AND NOT EXISTS (
         SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id AND p.is_active=1 AND p.telegram_enabled=1
          WHERE pv.id=telegram_carts.variant_id AND pv.product_id=telegram_carts.product_id
-          AND pv.is_active=1 AND pv.stock!=0
+          AND pv.is_active=1 AND pv.stock!=0 AND ${wrNewSaleSql("pv")}
           AND (pv.fulfillment_mode!='unique' OR EXISTS (
             SELECT 1 FROM fulfillment_inventory fi
             WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available'

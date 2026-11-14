@@ -1,3 +1,4 @@
+import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 // Reservasi stok atomik saat pembuatan order (jalur uang) dipisah dari helper
 // transisi agar tiap file tetap di bawah ~400 baris dan lebih mudah diaudit.
 // PURE MOVE: seluruh SQL, urutan statement di dalam d1.batch(), pesan error,
@@ -95,6 +96,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
             `INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(
               SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
               WHERE pv.id=? AND pv.product_id=? AND p.is_active=1 AND pv.is_active=1
+                AND ${wrNewSaleSql("pv")}
                 AND pv.price=? AND pv.bulk_pricing_enabled=? AND pv.bulk_pricing_tiers=? AND pv.fulfillment_mode=? AND (pv.stock=-1 OR pv.stock>=?)
                 AND ? >= COALESCE(pv.min_qty,1)
                 AND pv.buyer_field_key IS ? AND pv.max_qty IS ?
@@ -117,7 +119,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
       } else {
         statements.push(
           d1.prepare(
-            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1 AND price=? AND (stock=-1 OR stock>=?)) THEN 1 ELSE 0 END",
+            "INSERT INTO operation_guards (operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1 AND source!='warung_rebahan' AND wr_product_id IS NULL AND wr_auto_managed=0 AND price=? AND (stock=-1 OR stock>=?)) THEN 1 ELSE 0 END",
           ).bind(guardIds[index], item.product_id, item.price, item.qty),
         );
       }

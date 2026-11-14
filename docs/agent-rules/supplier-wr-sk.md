@@ -1,5 +1,26 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Penjualan WR otomatis — keputusan owner 14 November 2026
+
+- Owner menyetujui Jaspay sebagai jalur utama penawaran yang didukung, seluruh
+  paket available masuk katalog dan Premium manual/mixed/unknown dijeda untuk
+  pembelian baru. Premium restock otomatis dan SK tetap. Kebijakan harus dicek
+  di katalog/quote/keranjang dan transaksi reservasi web/Telegram, termasuk qty
+  Jaspay agregat. Bukan izin mengganti invoice/order/varian historis atau membeli
+  ulang; penyelesaian order lama tetap jalur asal, tanpa gate penjualan baru.
+- Default package eksplisit `id:""` sah sebagai `jaspay:<product>:` dan di-omit
+  pada POST; ID hilang/malformed/lebih dari satu default ambigu ditolak. Paket
+  baru tidak mewarisi garansi Premium; deskripsi/ketentuan Jaspay otoritatif.
+- Owner mewajibkan gambar dan galeri Jaspay sama dengan produk MBO asal yang
+  dijeda. Gunakan pemetaan ID supplier eksplisit; reuse parent aktif atau isi
+  gambar tujuan yang kosong dari parent asal (termasuk nonaktif). Pertahankan
+  gambar admin tujuan dan seluruh identitas/riwayat order lama.
+- Katalog mempunyai job lite ber-cursor satu produk/tick, budget40, setiap menit
+  sesudah order. Pengiriman otomatis memakai webhook + poll invoice dikenal;
+  progress phase/antrean/hitungan nyata, bukan animasi persentase berbasis timer.
+  Completed koheren saja berarti100%; partial/malformed tetap pengecualian aman.
+- Implementasi lokal/publikasi CI terpisah dari bukti deployment/transaksi nyata.
+
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
 - `products.description_en` (0103), `products.name_en`, `product_variants.admin_terms_en`/`admin_activation_en` (0105) adalah kolom **admin-owned**: sync WR/SK tidak boleh menulisnya dan `WR_OWNED_PRODUCT_FIELDS` tidak memuatnya. Seed EN (0104 untuk deskripsi, 0106 untuk nama/S&K admin) hanya mengisi baris yang masih NULL; jangan pernah menimpa suntingan admin atau menganggapnya field supplier.

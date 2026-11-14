@@ -1,3 +1,4 @@
+import { wrSaleQuantitySql } from "@/lib/warung-rebahan/new-sales";
 // src/lib/commerce.ts — Channel-agnostic commerce operations
 // Shared between web, Telegram, and WhatsApp for order creation,
 // stock reservation, and payment management.
@@ -136,6 +137,8 @@ export async function createChannelOrderAtomic(
   catch { throw new StockReservationError(); }
   if (input.lines.some(line => !Number.isSafeInteger(line.qty) || line.qty < 1)) throw new StockReservationError();
 
+  const aggregateSaleQty = new Map<number, number>();
+  for (const line of input.lines) aggregateSaleQty.set(line.variantId, (aggregateSaleQty.get(line.variantId) ?? 0) + line.qty);
   const d1 = getD1();
   let orderMinutes = input.orderWindowMinutes ?? QRIS_ORDER_WINDOW_MINUTES;
   let owners: (Record<string, unknown> | undefined)[] = [];
@@ -341,6 +344,7 @@ export async function createChannelOrderAtomic(
              WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND pv.bulk_pricing_enabled=? AND pv.bulk_pricing_tiers=?
                AND p.is_active=1 AND p.telegram_enabled=1
                AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=?)
+               AND ${wrSaleQuantitySql("pv", String(aggregateSaleQty.get(line.variantId)))}
                AND ? >= COALESCE(pv.min_qty,1)
                AND (
                  pv.fulfillment_mode!='shared'
@@ -358,6 +362,7 @@ export async function createChannelOrderAtomic(
              WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND p.is_active=1
                AND (? != 'telegram' OR p.telegram_enabled=1)
                AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=?)
+               AND ${wrSaleQuantitySql("pv", String(aggregateSaleQty.get(line.variantId)))}
                AND ? >= COALESCE(pv.min_qty,1)
                AND (
                  pv.fulfillment_mode!='shared'
@@ -638,6 +643,7 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
            SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
            WHERE pv.id=? AND pv.product_id=? AND pv.price=? AND p.is_active=1
              AND pv.fulfillment_mode=? AND pv.is_active=1 AND (pv.stock=-1 OR pv.stock>=1)
+             AND ${wrSaleQuantitySql("pv", "1")}
               AND 1 >= COALESCE(pv.min_qty,1)
               AND pv.buyer_field_key IS NULL AND (pv.max_qty IS NULL OR pv.max_qty>=1)
              AND (

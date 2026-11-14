@@ -1,5 +1,15 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Katalog Jaspay otomatis — 14 November 2026 (implementasi lokal)
+
+- Worker menambah langkah lite `jaspay_catalog` pada trigger menit existing,
+  sesudah seluruh job order, satu produk/tick dengan cursor durable dan budget40
+  (cadangan2). Tidak menambah trigger jadwal/env/secret. Heavy sync existing
+  tetap cadangan; hasil snapshot10 produk baru lengkap setelah hingga10 tick
+  sukses, bukan segera terverifikasi live saat push.
+- Progress aman menambah satu query hanya untuk order Jaspay; non-Jaspay tetap
+  memakai jumlah read sebelumnya. Akun/kredensial tidak masuk JSON progres.
+
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
 ### Workers Paid dan unit unik — 2026-10-23

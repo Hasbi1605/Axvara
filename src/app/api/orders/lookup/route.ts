@@ -1,3 +1,5 @@
+import { readAutomaticProgress } from "@/lib/warung-rebahan/progress";
+import { queryAll } from "@/lib/db";
 import { readUniqueUnitProgress } from "@/lib/orders/unit-progress";
 import { NextRequest, NextResponse } from "next/server";
 import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
@@ -100,12 +102,14 @@ async function lookup(req: NextRequest) {
   let credentialsReady = false;
   let supplierOwned = false;
   let supplierRunning = false;
+  let hasAutomaticProgress = false;
   let fulfillmentStatus = row.fulfillment_status ?? null;
   if (String(row.status) === "lunas") {
     // Detail WR ATAU isi produk non-WR terkirim (migrasi 0043) + kepemilikan
     // supplier (pagar kalimat sesat) + link masih berjalan (pemicu segar).
     const cred = await queryFirst(
       `SELECT
+        EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND wr_variant_id LIKE 'jaspay:%') AS has_automatic_progress,
         (EXISTS(SELECT 1 FROM wr_order_links
            WHERE order_code=? AND status='completed' AND wr_account_details IS NOT NULL)
          OR EXISTS(SELECT 1 FROM fulfillment_items
@@ -118,8 +122,9 @@ async function lookup(req: NextRequest) {
               AND json_extract(je.value,'$.tunvn_eligibility.cost_usdt')>0))) AS supplier_owned,
         (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))
          OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))) AS supplier_running`,
-      code, code, code, code, Number(row.supplier_purchase_disabled ?? 0), String(row.items ?? "[]"), code, code,
+      code, code, code, code, code, Number(row.supplier_purchase_disabled ?? 0), String(row.items ?? "[]"), code, code,
     ).catch(() => null);
+    hasAutomaticProgress = Number(cred?.has_automatic_progress ?? 0) === 1;
     credentialsReady = Number(cred?.creds ?? 0) === 1;
     supplierOwned = Number((cred as Record<string, unknown> | null)?.supplier_owned ?? 0) === 1;
     supplierRunning = Number((cred as Record<string, unknown> | null)?.supplier_running ?? 0) === 1;
@@ -178,6 +183,7 @@ async function lookup(req: NextRequest) {
       buyer_pin_required: requiresOrderAccessCode(row),
       supplier_owned: supplierOwned,
       supplier_running: supplierRunning,
+      automatic_progress: hasAutomaticProgress ? await readAutomaticProgress(code, { queryAll }).catch(() => []) : [],
       qris_reissue_allowed: row.payment_provider !== "klikqris" && row.status === "pending" && row.sales_channel !== "whatsapp" && Number(row.qris_reissue_count || 0) < MAX_QRIS_REISSUES,
       qris: row.dynamic_qris_url
         ? {

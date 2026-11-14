@@ -1,5 +1,24 @@
 # DESIGN.md — AXVARA Design System
 
+## Progres produk otomatis (14 November 2026, implementasi lokal)
+
+Halaman `/pesanan/[code]` memakai `AutomaticOrderProgress` untuk item Jaspay.
+Permukaan mengikuti Midnight storefront existing, border putih10%, teks utama
+putih90%, teks bantu putih70%, aksen Cyan #00E5FF, selesai emerald dan kendala
+Gold #FFB800. Label status selalu berupa teks, bukan warna saja. Teks status
+14px, bantu12px, label panjang dapat membungkus pada390px.
+
+Satu akun: spinner + tahap nyata Menyiapkan produkmu/Menunggu giliran/Membuat
+produkmu; posisi antrean hanya bila API memberikannya. Banyak akun: progressbar
+ARIA + hitungan akun siap; nilai maksimal99 selama belum completed. Produk
+siap menampilkan100% dan detail kredensial existing di bawah. Kendala menghentikan
+spinner, menjelaskan tindak lanjut dan tidak meminta pembelian ulang. Tidak ada
+persentase berbasis timer, klaim stok instan, merek supplier, atau janji12jam
+pada kartu ini. `aria-live=polite`, reduced motion dan salinan ID/EN tersedia.
+Polling mempertahankan batas existing dan berhenti saat tab tersembunyi.
+Gambar/galeri katalog Jaspay tetap identik dengan produk MBO asal; bukan aset
+pengganti generik. Publikasi CI; deployment belum diverifikasi.
+
 ## Header admin bersama (14 November 2026, implementasi lokal)
 
 - Semua section memakai `PageHeader`: judul `text-xl`/line-height 28px,

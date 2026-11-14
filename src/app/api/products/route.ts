@@ -1,3 +1,4 @@
+import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { manualCopyUpdate } from "@/lib/product-copy/manual-write";
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
     slug: (params.get("slug") ?? "").trim().slice(0, 80),
   });
   const { cachePublicCatalog } = await import("@/lib/catalog-cache");
-  return cachePublicCatalog(`market?${key}`, params.get("slug")?.trim() ? 10 : 30, () => readProducts(req));
+  return cachePublicCatalog(`market-auto-v2?${key}`, params.get("slug")?.trim() ? 10 : 30, () => readProducts(req));
 }
 
 async function readProducts(req: NextRequest) {
@@ -37,10 +38,10 @@ async function readProducts(req: NextRequest) {
   // The explicit active=1 path is public and always returns the same safe
   // subset, so it can skip auth work and be cached independently.
   const isPublicCatalog = active === "1";
-  const variantCatalog = isPublicCatalog && isD1Mode() && isVariantsReadEnabled();
   const isAdminRequest = isPublicCatalog
     ? false
     : !!(await import("@/lib/auth").then((m) => m.requireAdmin(req).catch(() => null)));
+  const variantCatalog = !isAdminRequest && isD1Mode() && isVariantsReadEnabled();
 
   // Stok kartu = varian yang BISA DIBELI (lihat catalog-availability): varian
   // stok 3 min 50 dulu membuat kartu "tersedia" padahal PDP menolaknya.
@@ -77,16 +78,16 @@ async function readProducts(req: NextRequest) {
               -- (harga tampilnya pun fallback ke min_price — pasangan konsisten).
               COALESCE(
                 (SELECT pv2.compare_price FROM product_variants pv2
-                  WHERE pv2.product_id=p.id AND pv2.is_active=1
+                  WHERE pv2.product_id=p.id AND pv2.is_active=1 AND ${wrNewSaleSql("pv2")}
                     AND ${purchasableStockSql("pv2")}
                   ORDER BY pv2.price ASC, pv2.id ASC LIMIT 1),
                 (SELECT pv3.compare_price FROM product_variants pv3
-                  WHERE pv3.product_id=p.id AND pv3.is_active=1
+                  WHERE pv3.product_id=p.id AND pv3.is_active=1 AND ${wrNewSaleSql("pv3")}
                   ORDER BY pv3.price ASC, pv3.id ASC LIMIT 1)
               ) as variant_compare_price
        FROM products p
        LEFT JOIN categories c ON c.id=p.category_id
-       INNER JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
+       INNER JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
        WHERE 1=1`
     : `SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE 1=1`;
   const params: unknown[] = [];

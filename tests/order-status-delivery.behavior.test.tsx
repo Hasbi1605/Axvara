@@ -187,6 +187,22 @@ describe("/pesanan/[code] — blok pasca-pembayaran", () => {
     expect(screen.queryByText("h***@gmail.com")).toBeNull();
     expect(screen.queryByText("08213****7434")).toBeNull();
   });
+
+  it("continues Jaspay polling when one mixed-cart item is ready and another is still being created", async () => {
+    vi.useFakeTimers();
+    try {
+      const state = { progress: [{label:"Scribd",stage:"ready",ready:1,total:1,queuePosition:null}, {label:"HMA",stage:"queued",ready:0,total:1,queuePosition:2}] };
+      vi.stubGlobal("fetch",vi.fn(async (url: string) => ({ok:true,status:200,json:async()=>String(url).includes('/credentials')
+        ? {credentials:[]} : orderPayload({credentials_ready:true,buyer_pin_required:false,supplier_owned:true,supplier_running:true,fulfillment_status:'queued',automatic_progress:state.progress})})));
+      render(<OrderStatusPage />);
+      await act(async()=>{await vi.advanceTimersByTimeAsync(50);});
+      expect(screen.getByText('Urutan antrean: 2')).toBeTruthy();
+      state.progress = state.progress.map(p=>({...p,stage:'ready',ready:1,queuePosition:null}));
+      await act(async()=>{await vi.advanceTimersByTimeAsync(2200);});
+      expect(screen.queryByText('Urutan antrean: 2')).toBeNull();
+      expect(screen.getAllByText('Produk siap')).toHaveLength(2);
+    } finally {vi.useRealTimers();}
+  });
 });
 
 // Laporan owner 2026-09-25 (Canva Invite 1 Bulan, kirim otomatis): produk

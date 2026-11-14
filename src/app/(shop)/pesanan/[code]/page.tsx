@@ -2,6 +2,8 @@
 
 export const runtime = "edge";
 
+import { AutomaticOrderProgress } from "@/components/storefront/AutomaticOrderProgress";
+import type { AutomaticProgressItem } from "@/lib/warung-rebahan/progress";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -60,6 +62,7 @@ type Order = {
   fulfillmentStatus?: string | null;
   /** true bila order PIN6 baru butuh PIN untuk unlock kredensial; false = legacy kontak saja. */
   buyerPinRequired: boolean;
+  automaticProgress?: AutomaticProgressItem[];
   uniqueUnitsProgress?: {ready:number;total:number};
   /** Tampilan aman non-QRIS dari server (gateway/crypto); null untuk QRIS/lama. */
   payment: PaymentView | null;
@@ -86,6 +89,7 @@ function fromApi(value: Record<string, unknown>): Order {
     supplierRunning: value.supplier_running === true,
     fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : null,
     buyerPinRequired: value.buyer_pin_required !== false,
+    automaticProgress: Array.isArray(value.automatic_progress) ? value.automatic_progress as AutomaticProgressItem[] : [],
     uniqueUnitsProgress: value.unique_units_progress as Order["uniqueUnitsProgress"],
     qris: value.qris as QrisInvoice | null | undefined,
     payment: normalizePaymentView(value.payment),
@@ -397,8 +401,9 @@ export default function OrderSuccessPage() {
   const instantSending = supplierSending
     || (instantDelivery && !supplierOwned && !["delivered", "manual_required", "failed"].includes(String(fulfillmentStatus)));
   const uniqueUnitsPending = Boolean(order?.uniqueUnitsProgress && order.uniqueUnitsProgress.ready < order.uniqueUnitsProgress.total);
+  const automaticPending = order?.automaticProgress?.some(item => ["preparing", "queued", "running"].includes(item.stage)) === true;
   useEffect(() => {
-    if (orderStatus !== "lunas" || (credentialsReady && !uniqueUnitsPending)) return;
+    if (orderStatus !== "lunas" || (credentialsReady && !uniqueUnitsPending && !automaticPending)) return;
     const fast = instantSending ? INSTANT_POLL_DELAYS_MS : [];
     const maxAttempts = fast.length + (handedToAdmin ? 3 : 30);
     let attempts = 0;
@@ -432,7 +437,7 @@ export default function OrderSuccessPage() {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [orderStatus, credentialsReady, uniqueUnitsPending, instantSending, handedToAdmin, pollOrder]);
+  }, [orderStatus, credentialsReady, uniqueUnitsPending, automaticPending, instantSending, handedToAdmin, pollOrder]);
 
   useEffect(() => {
     // Detak 1 dtk dibutuhkan semua hitung mundur tahap pending: QRIS DAN gateway/crypto.
@@ -806,9 +811,11 @@ export default function OrderSuccessPage() {
           </section>
         )}
 
+        {isPaid && Boolean(order.automaticProgress?.length) && <AutomaticOrderProgress items={order.automaticProgress!} locale={order.locale} />}
+
         {isPaid && (order.credentialsReady ? (
           <WrCredentialsPanel key={order.code} code={order.code} prefillContact={verifiedContact} buyerPinRequired={order.buyerPinRequired} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} locale={order.locale} />
-        ) : !isDeliveryFailed && (
+        ) : !isDeliveryFailed && !order.automaticProgress?.length && (
           // Detail akun belum/tidak pernah ada: jangan tampilkan form verifikasi
           // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
           // janji menit untuk baris antrean — plafonnya 12 jam (keputusan owner

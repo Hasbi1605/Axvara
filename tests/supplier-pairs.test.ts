@@ -16,7 +16,7 @@ function seedPairProducts(fx: ReturnType<typeof createD1Fixture>) {
   fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,wr_variant_id) VALUES(1,1,'WR-A','Private',15000,10,'manual','wr-a'),(2,1,'WR-B','Sharing',9000,0,'manual','wr-b')").run();
   fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,sk_variant_id) VALUES(3,2,'SK-31','1P2U',18500,5,'manual','31')").run();
   fx.sql.prepare("INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id,last_synced_at) VALUES('wr-nf','Netflix Premium',1,datetime('now'))").run();
-  fx.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price) VALUES('wr-a','wr-nf','Private',5000,10,1,15000),('wr-b','wr-nf','Sharing',3000,0,2,9000)").run();
+  fx.sql.prepare("INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price,wr_delivery_class) VALUES('wr-a','wr-nf','Private',5000,10,1,15000,'restock'),('wr-b','wr-nf','Sharing',3000,0,2,9000,'restock')").run();
   fx.sql.prepare("INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_category,sk_variant_name,sk_price,sk_stock,sk_order_process,axvara_product_id,axvara_variant_id,axvara_sell_price) VALUES('31','14','Netflix','Aplikasi Premium','1P2U',4000,3,'auto',2,3,18500)").run();
 }
 

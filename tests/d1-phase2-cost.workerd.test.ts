@@ -25,7 +25,7 @@ it("D1 measures fewer reads for catalog, unique inventory and active-first atten
       "CREATE TABLE supplier_pairs(id INTEGER PRIMARY KEY,wr_product_id INTEGER NOT NULL,sk_product_id INTEGER NOT NULL,winner TEXT,prefer TEXT DEFAULT 'auto',prefer_margin INTEGER DEFAULT 2000,reason TEXT,decided_at TEXT,updated_at TEXT)",
       "CREATE INDEX pairs_wr ON supplier_pairs(wr_product_id)",
       "CREATE INDEX pairs_sk ON supplier_pairs(sk_product_id)",
-      "CREATE TABLE wr_variants(wr_variant_id TEXT,wr_price INTEGER,wr_stock INTEGER)",
+      "CREATE TABLE wr_variants(wr_variant_id TEXT,wr_price INTEGER,wr_stock INTEGER,wr_delivery_class TEXT DEFAULT 'restock')",
       "CREATE TABLE sk_products(sk_variant_id TEXT,sk_price INTEGER,sk_stock INTEGER)",
     ].map(sql=>db.prepare(sql)));
     const numbers=(max:number)=>`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<${max})`;

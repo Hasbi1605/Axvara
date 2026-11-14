@@ -1,3 +1,4 @@
+import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 
 import type { Metadata } from "next";
 import { NextRequest } from "next/server";
@@ -36,7 +37,7 @@ async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
     `SELECT pv.price, pv.compare_price, pv.stock, pv.min_qty
      FROM product_variants pv
      JOIN products p ON p.id=pv.product_id
-     WHERE p.slug=? AND p.is_active=1 AND pv.is_active=1
+     WHERE p.slug=? AND p.is_active=1 AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
      ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
     slug,
   )) as SeoRow[];

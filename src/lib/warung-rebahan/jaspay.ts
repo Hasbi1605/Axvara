@@ -60,10 +60,12 @@ export function jaspayVariantId(product: string, pkg: string): string {
 export function decodeJaspayVariantId(wrVariantId: string): { product: string; package: string } | null {
   if (!isJaspayVariantId(wrVariantId)) return null;
   const parts = String(wrVariantId).split(":");
-  if (parts.length !== 3 || !parts[1] || !parts[2]) return null;
+  if (parts.length !== 3 || !parts[1]) return null;
   const product = decodeSegment(parts[1]);
   const pack = decodeSegment(parts[2]);
-  if (!product || !pack) return null;
+  // An explicit trailing ':' identifies the supplier's default package.
+  // Missing segments and malformed escapes still fail closed.
+  if (!product || pack === null) return null;
   return { product, package: pack };
 }
 
@@ -134,6 +136,7 @@ export type JaspayNormalizedProduct = {
 };
 
 function toNonNegInt(value: unknown): number | null {
+  if (value == null || String(value).trim() === "") return null;
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return null;
   const floored = Math.floor(n);
@@ -163,7 +166,9 @@ export function normalizeJaspayCatalog(apiProducts: unknown): JaspayNormalizedPr
       const packageId = String(pkg.id ?? "").trim();
       const packageName = String(pkg.name ?? "").trim();
       const price = toNonNegInt(pkg.price);
-      if (!packageId || !packageName || price == null) continue;
+      // WR uses id:"" for single default packages (Scribd, HMA, etc.).
+      // Do not confuse an absent ID or multiple ambiguous defaults with it.
+      if (pkg.id == null || (!packageId && pkgs.length !== 1) || !packageName || price == null) continue;
       packages.push({
         packageId,
         packageName,

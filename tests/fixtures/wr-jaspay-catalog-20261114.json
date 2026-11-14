@@ -1,0 +1,303 @@
+[
+  {
+    "product": "zoom",
+    "name": "Zoom Pro",
+    "duration": "",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "mode=baru|duration=7",
+    "packages": [
+      {
+        "id": "mode=sendiri|duration=7",
+        "name": "Akun sendiri · 7 hari",
+        "price": 2500,
+        "original_price": 5500,
+        "available": false
+      },
+      {
+        "id": "mode=sendiri|duration=14",
+        "name": "Akun sendiri · 14 hari",
+        "price": 4000,
+        "original_price": 6000,
+        "available": false
+      },
+      {
+        "id": "mode=baru|duration=7",
+        "name": "Akun baru · 7 hari",
+        "price": 2000,
+        "original_price": 5000,
+        "available": true
+      },
+      {
+        "id": "mode=baru|duration=14",
+        "name": "Akun baru · 14 hari",
+        "price": 3500,
+        "original_price": 5000,
+        "available": true
+      }
+    ],
+    "description": "Kamu menerima akun Zoom yang sudah aktif\nLogin menggunakan email + password yang diberikan\nMax 100 Peserta\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": "Akses OTP : https://aksesemail.my.id\nSaat login klik verif via one time passcode\nJangan salah password sampai 5x, klo ke blokir kesalahan sendiri no garansi!\nTidak ada garansi / refund setelah aktivasi berhasil"
+  },
+  {
+    "product": "hma",
+    "name": "HMA VPN",
+    "duration": "30 Hari",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "",
+    "packages": [
+      {
+        "id": "",
+        "name": "30 Hari",
+        "price": 5000,
+        "original_price": 7000,
+        "available": true
+      }
+    ],
+    "description": "Kamu menerima LICENSE CODE HMA, bukan akun email.\nDurasi 30 Hari\nMaksimal digunakan di 5 perangkat\nHanya Bisa di Windows / Android\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": "Cara pakai:\n1. Install app HMA VPN\n2. Buka → Got a code? / Enter license key\n3. Masukkan code yang diberikan"
+  },
+  {
+    "product": "expressvpn",
+    "name": "Express VPN",
+    "duration": "3 Hari",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "",
+    "packages": [
+      {
+        "id": "",
+        "name": "3 Hari",
+        "price": 3000,
+        "original_price": 4000,
+        "available": true
+      }
+    ],
+    "description": "Mendapatkan akun, password dan key\nDurasi 3 Hari\nAktivasi melalui website & aplikasi resmi\nMaksimal digunakan di 5 perangkat\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": "Login ExpressVPN pakai Email + Password (activation/license code) di atas."
+  },
+  {
+    "product": "meitu",
+    "name": "Meitu VIP",
+    "duration": "",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "variant=vip|login=email|duration=7",
+    "packages": [
+      {
+        "id": "variant=vip|login=email|duration=7",
+        "name": "VIP · Email · 7 hari",
+        "price": 4000,
+        "original_price": 5000,
+        "available": true
+      },
+      {
+        "id": "variant=vip|login=email|duration=14",
+        "name": "VIP · Email · 14 hari",
+        "price": 5500,
+        "original_price": 7000,
+        "available": true
+      },
+      {
+        "id": "variant=vipplus|login=email|duration=7",
+        "name": "VIP+ · Email · 7 hari",
+        "price": 5000,
+        "original_price": 7000,
+        "available": true
+      },
+      {
+        "id": "variant=vipplus|login=email|duration=14",
+        "name": "VIP+ · Email · 14 hari",
+        "price": 8000,
+        "original_price": 10000,
+        "available": true
+      }
+    ],
+    "description": "Mendapatkan Akun\nVIP untuk Android aja\nVIP+ bisa Android dan iOS\nPerangkat iOS cenderung lebih mudah terdeteksi\nAndroid pun tidak sepenuhnya aman\nTanda terdeteksi: \n• Badge VIP tidak tampil di profil.\n• Fitur VIP tidak bisa diakses.\n• Meski saat ditekan tulisan VIP masih menunjukkan tanggal kedaluwarsa.\nTidak ada garansi apabila perangkat terdeteksi\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": "Kalau akun terbaca bukan VIP/VIP+ / Account error\nPerangkat kamu kemungkinan terdeteksi. Coba langkah ini:\n\nAndroid :\n1. Resinstall / Hapus data Aplikasi\n2. Login pakai Data jangan Wifi\n3. Klo masih gabisa Coba pakai APK Clone untuk login ulang.\n\niOS :\n1. Uninstall aplikasi Wink\n2. Install kembali aplikasi Wink\n3. Aktifkan Mode Pesawat ± 5 detik, lalu matikan lagi\n4. Bersihkan cache app Meitu\n5. Login pakai akun yang dibeli lewat BOT\n6. Kalau masih belum VIP, restart HP (matikan lalu nyalakan lagi)\n7. Kalau tetap tidak berhasil, coba perangkat lain\nCatatan: cara ini tidak menjamin 100% berhasil, tapi layak dicoba lebih dulu kalau kamu mengalami deteksi saat login."
+  },
+  {
+    "product": "wink",
+    "name": "Wink VIP",
+    "duration": "",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "variant=vipplus|login=email|duration=7",
+    "packages": [
+      {
+        "id": "variant=vip|login=email|duration=7",
+        "name": "VIP · Email · 7 hari",
+        "price": 4000,
+        "original_price": 5000,
+        "available": true
+      },
+      {
+        "id": "variant=vip|login=email|duration=14",
+        "name": "VIP · Email · 14 hari",
+        "price": 5500,
+        "original_price": 6500,
+        "available": true
+      },
+      {
+        "id": "variant=vipplus|login=email|duration=7",
+        "name": "VIP+ · Email · 7 hari",
+        "price": 5000,
+        "original_price": 6000,
+        "available": true
+      },
+      {
+        "id": "variant=vipplus|login=email|duration=14",
+        "name": "VIP+ · Email · 14 hari",
+        "price": 8000,
+        "original_price": 10000,
+        "available": true
+      }
+    ],
+    "description": "Mendapatkan Akun\nVIP untuk Android aja\nVIP+ bisa Android dan iOS\nPerangkat iOS cenderung lebih mudah terdeteksi\nAndroid pun tidak sepenuhnya aman\nTanda terdeteksi: \n• Badge VIP tidak tampil di profil.\n• Fitur VIP tidak bisa diakses.\n• Meski saat ditekan tulisan VIP masih menunjukkan tanggal kedaluwarsa.\nTidak ada garansi apabila perangkat terdeteksi\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": "Kalau akun terbaca bukan VIP/VIP+ / Account error\nPerangkat kamu kemungkinan terdeteksi. Coba langkah ini:\n\nAndroid :\n1. Resinstall / Hapus data Aplikasi\n2. Login pakai Data jangan Wifi\n3. Klo masih gabisa Coba pakai APK Clone untuk login ulang.\n\niOS :\n1. Uninstall aplikasi Meitu\n2. Install kembali aplikasi Meitu\n3. Aktifkan Mode Pesawat ± 5 detik, lalu matikan lagi\n4. Bersihkan cache app Meitu\n5. Login pakai akun yang dibeli lewat BOT\n6. Kalau masih belum VIP, restart HP (matikan lalu nyalakan lagi)\n7. Kalau tetap tidak berhasil, coba perangkat lain\nCatatan: cara ini tidak menjamin 100% berhasil, tapi layak dicoba lebih dulu kalau kamu mengalami deteksi saat login."
+  },
+  {
+    "product": "scribd",
+    "name": "Scribd",
+    "duration": "30 Hari",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "",
+    "packages": [
+      {
+        "id": "",
+        "name": "30 Hari",
+        "price": 5000,
+        "original_price": 7000,
+        "available": true
+      }
+    ],
+    "description": "Kamu menerima email + password akun Scribd\nDurasi 30 Hari\nMax login 2 device\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": "Cara pakai:\n1. Buka scribd.com atau install app Scribd\n2. Login dengan email + password yang diberikan"
+  },
+  {
+    "product": "picsart",
+    "name": "PicsArt Pro",
+    "duration": "7 Hari",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "",
+    "packages": [
+      {
+        "id": "",
+        "name": "7 Hari",
+        "price": 4000,
+        "original_price": 5000,
+        "available": true
+      }
+    ],
+    "description": "Kamu menerima email + password akun PicsArt\nDurasi 7 Hari\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": "Cara pakai:\n1. Install app PicsArt\n2. Buka → Sign In\n3. Masukkan email + password yang diberikan"
+  },
+  {
+    "product": "remini",
+    "name": "Remini",
+    "duration": "7 Hari",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "",
+    "packages": [
+      {
+        "id": "",
+        "name": "7 Hari",
+        "price": 3000,
+        "original_price": 4000,
+        "available": true
+      }
+    ],
+    "description": "Mendapatkan link redeem (bukan email & password)\nDurasi 7 Hari\nBuka link itu di browser untuk menebus langganan Remini-mu\nSiapin akun gmail untuk redeem\nHanya untuk Website (tidak bisa di aplikasi mobile)\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": "Buka link di browser untuk menebus langganan Remini-mu\nSimpan linknya — 1 link hanya untuk 1 pemakaian"
+  },
+  {
+    "product": "crunchyroll",
+    "name": "Crunchyroll",
+    "duration": "7 Hari",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "",
+    "packages": [
+      {
+        "id": "",
+        "name": "7 Hari",
+        "price": 5000,
+        "original_price": 7000,
+        "available": true
+      }
+    ],
+    "description": "Plan: Mega Fan\nKirim password yang kamu mau untuk akun Crunchyroll-mu.\n6-64 karakter, tanpa spasi.\nHanya huruf, angka, dan simbol biasa (tanpa emoji, tanpa tanda |).\nBerlaku untuk semua 1 akun di pesanan ini.\nEmail akun dibuatkan otomatis\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": ""
+  },
+  {
+    "product": "surfshark",
+    "name": "Surfshark VPN",
+    "duration": "7 Hari",
+    "available": true,
+    "max_quantity": 10,
+    "default_package": "",
+    "packages": [
+      {
+        "id": "",
+        "name": "7 Hari",
+        "price": 3500,
+        "original_price": null,
+        "available": true
+      }
+    ],
+    "description": "Kamu menerima AKUN Surfshark (email + password pilihanmu)\nLogin di app Surfshark pakai email & password itu\nTidak ada garansi / refund setelah aktivasi berhasil",
+    "after_note": ""
+  },
+  {
+    "product": "canva",
+    "name": "Canva Pro Head",
+    "available": false,
+    "packages": [],
+    "description": null,
+    "after_note": null
+  },
+  {
+    "product": "capcut",
+    "name": "Capcut GetLink",
+    "available": false,
+    "packages": [],
+    "description": null,
+    "after_note": null
+  },
+  {
+    "product": "adspower",
+    "name": "AdsPower",
+    "available": false,
+    "packages": [],
+    "description": null,
+    "after_note": null
+  },
+  {
+    "product": "applemusic",
+    "name": "Apple Music",
+    "available": false,
+    "packages": [],
+    "description": null,
+    "after_note": null
+  },
+  {
+    "product": "beautyplus",
+    "name": "Beautyplus",
+    "available": false,
+    "packages": [],
+    "description": null,
+    "after_note": null
+  },
+  {
+    "product": "outlook",
+    "name": "Outlook",
+    "available": false,
+    "packages": [],
+    "description": null,
+    "after_note": null
+  }
+]

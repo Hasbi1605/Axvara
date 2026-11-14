@@ -375,7 +375,7 @@ export async function processWrPendingOrders(
          -- storefront (maks 12 jam, lihat delivery-class.ts).
          -- Saklar mundur: WARUNG_REBAHAN_AUTO_ORDER_MBO='false' mengembalikan
          -- perilaku lama tanpa deploy (kelas antrean kembali ditahan).
-         ${isWrAutoOrderQueuedEnabled() ? "" : "AND COALESCE(wv.wr_delivery_class, 'made_by_order') = 'restock'"}
+         ${isWrAutoOrderQueuedEnabled() ? "" : "AND (l.wr_variant_id LIKE 'jaspay:%' OR COALESCE(wv.wr_delivery_class, 'made_by_order') = 'restock')"}
        ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT ?`,
       ...(options.orderCode ? [options.orderCode] : []),
       Math.max(1, Math.min(4, Math.floor(options.limit ?? 4))),
@@ -732,7 +732,7 @@ async function processOneJaspayLink(
     }
     // Terminal sinkron dari upstream: selesaikan via handler Jaspay yang
     // sama dengan webhook/poll (tanpa duplikasi logika).
-    if (order.status === "completed" || order.status === "partial" || order.status === "failed") {
+    if (["processing", "completed", "partial", "failed"].includes(order.status)) {
       const { handleJaspayTerminal } = await import("./deliver");
       await handleJaspayTerminal(invoice, order, db).catch(() => undefined);
     }
@@ -826,7 +826,7 @@ export async function recoverJaspayByExactRef(
     return false;
   }
   // Baca ulang terminal lewat handler monotonik yang sama.
-  if (order.status === "completed" || order.status === "partial" || order.status === "failed") {
+  if (["processing", "completed", "partial", "failed"].includes(order.status)) {
     const { handleJaspayTerminal } = await import("./deliver");
     await handleJaspayTerminal(invoice, order, db).catch(() => undefined);
   }
@@ -860,8 +860,8 @@ export async function pollKnownJaspayInvoice(
   }
   if (String(status.invoice || "").trim() !== invoice) return false;
   if (status.status === "processing") {
-    const { advanceWrLinkMonotonic } = await import("./deliver");
-    await advanceWrLinkMonotonic(invoice, "processing", null, db).catch(() => false);
+    const { handleJaspayTerminal } = await import("./deliver");
+    await handleJaspayTerminal(invoice, status, db);
     return false;
   }
   const { handleJaspayTerminal } = await import("./deliver");

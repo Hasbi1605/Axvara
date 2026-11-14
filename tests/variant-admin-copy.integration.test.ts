@@ -44,8 +44,8 @@ beforeEach(() => {
       VALUES (2, 2, 'CANVA-3', 'Head 1 Bulan', 5000, 10, 1, 0);
   `);
   fixture.sql.prepare(
-    `INSERT INTO wr_variants (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_stock, wr_terms, wr_delivery_terms, axvara_variant_id, axvara_sell_price)
-     VALUES ('var-legal', 'prod-nf', 'Premium Legal', 40000, 3, ?, ?, 1, 55000)`,
+    `INSERT INTO wr_variants (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_stock, wr_terms, wr_delivery_terms, axvara_variant_id, axvara_sell_price, wr_delivery_class)
+     VALUES ('var-legal', 'prod-nf', 'Premium Legal', 40000, 3, ?, ?, 1, 55000, 'restock')`,
   ).run(legal.terms, legal.deliveryTerms);
 });
 
