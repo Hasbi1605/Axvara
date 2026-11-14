@@ -759,9 +759,9 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
   0.7–1.08) sehingga ikon satuan tidak lebih besar dari tumpukan; pembayaran memakai
   `PaymentMethodPicker` persis seperti Market/Pedia tanpa daftar harga mentah tambahan. Semua animasi
   mati pada reduced motion. Revisi lanjutan (malam, owner): badge trust hero kembali lepas tanpa pill/bulatan, hanya animasi
-  ikon bergiliran yang dipertahankan; badge INSTAN = stiker raster GPT Image (Codex image_gen) ID/EN
-  `public/brand/games/ui/instant-badge-{id,en}.webp` 60×20 (plat terang, petir cyan + garis kecepatan,
-  "Pengiriman/INSTAN" | "Delivery/INSTANT"), glow tipis saat terpilih; hover kartu nominal = outline
+  ikon bergiliran yang dipertahankan; badge INSTAN dikembalikan ke desain asli (bolt + garis kecepatan SVG, "Pengiriman/INSTAN" |
+  "Instant/DELIVERY", kilau saat terpilih) di strip bawah kartu nominal (22 px HP / 28 px desktop, border-top tipis; badge mungil ala Oura, ikon 11/14 px, teks 5.5–7.5 / 6.5–9 px; di HP label tipe disembunyikan);
+  stiker GPT Image dibatalkan atas permintaan owner; hover kartu nominal = outline
   cyan tipis + ikon item miring -10° & scale 1.1 (300 ms, pointer hover saja); memilih nominal lewat
   klik/tap men-scroll halus ke "Metode pembayaran" (block start, kontak ikut terlihat), navigasi
   keyboard tidak men-scroll.

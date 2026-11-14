@@ -136,7 +136,7 @@ describe("Games detail (selected SKU contract)", () => {
     fireEvent.click(nextRadio);
     expect(card.querySelector("[data-instant-badge]")!.getAttribute("data-selected")).toBe("false");
     expect(nextBadge.getAttribute("data-selected")).toBe("true");
-    expect(nextBadge.querySelector("img")!.getAttribute("src")).toBe("/brand/games/ui/instant-badge-id.webp");
+    expect(within(nextBadge as HTMLElement).getByText("INSTAN").parentElement!.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("falls back to the cheapest available in the first available section, or first variant fields", () => {
@@ -222,12 +222,10 @@ describe("Games detail (selected SKU contract)", () => {
     const card = screen.getByRole("radio", { name: /86 Diamond/ }).closest("label")!;
     expect(within(card).getByText("Pengiriman instan").className).toBe("sr-only");
     const badge = card.querySelector("[data-instant-badge]")!;
-    const badgeImage = badge.querySelector("img")!;
-    expect(badgeImage.getAttribute("src")).toBe("/brand/games/ui/instant-badge-id.webp");
-    expect(badgeImage.getAttribute("alt")).toBe("");
-    expect(badgeImage.getAttribute("aria-hidden")).toBe("true");
-    expect(badgeImage.getAttribute("width")).toBe("60");
-    expect(badgeImage.getAttribute("height")).toBe("20");
+    // Badge asli (bolt + garis kecepatan, "Pengiriman / INSTAN") dikembalikan atas permintaan owner 14 Nov 2026.
+    expect(badge.querySelector("svg")).toBeTruthy();
+    expect(within(badge as HTMLElement).getByText("INSTAN").parentElement!.getAttribute("aria-hidden")).toBe("true");
+    expect(within(badge as HTMLElement).getByText("Pengiriman")).toBeTruthy();
     expect(badge.getAttribute("data-selected")).toBe("true");
     expect(screen.getByRole("radio", { name: /Pengiriman instan/ })).toBeTruthy();
   });
@@ -240,10 +238,7 @@ describe("Games detail (selected SKU contract)", () => {
     expect(screen.getByText("Secure payment")).toBeTruthy();
     const radio = screen.getByRole("radio", { name: /Instant delivery/ });
     expect(radio.closest("label")!.textContent?.match(/Instant delivery/g)).toHaveLength(1);
-    const badgeImage = radio.closest("label")!.querySelector("[data-instant-badge] img")!;
-    expect(badgeImage.getAttribute("src")).toBe("/brand/games/ui/instant-badge-en.webp");
-    expect(badgeImage.getAttribute("alt")).toBe("");
-    expect(badgeImage.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByText("DELIVERY").parentElement!.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("falls back to a category icon when an item image fails and ranks by price rather than availability", () => {
@@ -259,7 +254,7 @@ describe("Games detail (selected SKU contract)", () => {
     expect(image.getAttribute("loading")).toBe("lazy");
     fireEvent.error(image);
     expect(high.querySelector('img[src^="/brand/games/items/"]')).toBeNull();
-    expect(high.querySelector("[data-instant-badge] img")).toBeTruthy();
+    expect(high.querySelector("[data-instant-badge] svg")).toBeTruthy();
     expect(high.querySelector("svg[data-item-icon-fallback].lucide-gem")).toBeTruthy();
     expect(screen.getByRole("radio", { name: /Low/ }).closest("label")!.querySelector("img")!.getAttribute("src")).toBe("/brand/games/items/mlbb-diamond-1.webp");
   });

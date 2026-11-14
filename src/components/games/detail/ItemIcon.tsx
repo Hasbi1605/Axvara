@@ -14,7 +14,7 @@ export function ItemIcon({ src, category, className = "" }: { src: string; categ
     if (image.current?.complete && image.current.naturalWidth === 0) setFailedSource(src);
   }, [src]);
   const Icon = categoryIcons[category];
-  return <span aria-hidden="true" className={`flex h-7 w-7 shrink-0 items-center justify-center ${className}`}>
+  return <span aria-hidden="true" className={`flex h-6 w-6 shrink-0 sm:h-7 sm:w-7 items-center justify-center ${className}`}>
     {failedSource === src ? <Icon data-item-icon-fallback size={20} strokeWidth={1.75} className="text-[#00E5FF]/80" />
       // eslint-disable-next-line @next/next/no-img-element
       : <img ref={image} src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailedSource(src)} style={{ transform: `scale(${gamesItemIconScale(src)})` }} className="h-full w-full object-contain" />}

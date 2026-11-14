@@ -26,7 +26,7 @@
   border-radius: inherit;
   background: linear-gradient(155deg, rgb(255 255 255 / .22), transparent 38%, transparent 70%, rgb(0 0 0 / .25));
 }
-.iconCard::after {
+.iconCard::after, .selectedBadge::after {
   content: "";
   position: absolute;
   z-index: 2;
@@ -36,6 +36,9 @@
   transform: translateX(-150%);
   animation: sheen 7s ease-in-out infinite;
 }
+
+.selectedBadge { position: relative; overflow: hidden; }
+.selectedBadge::after { animation-duration: 5s; }
 
 /* Animasi ikon trust bergiliran (tanpa wadah/pill — koreksi owner): tiap ikon beraksi
    jelas ±2 dtk dalam siklus 6 dtk (instan → layanan → aman). */
@@ -62,7 +65,7 @@
 @keyframes seal { 0%, 34%, 100% { transform: rotate(0) scale(1); } 6% { transform: rotate(-16deg) scale(1.2); } 13% { transform: rotate(9deg) scale(.98); } 20% { transform: rotate(0) scale(1.04); } 26% { transform: scale(1); } }
 @keyframes verify { 0%, 4% { stroke-dashoffset: 1; } 20%, 100% { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .floating, .bolt, .speed, .bubble, .dot, .seal, .check, .iconCard::after { animation: none; }
+  .floating, .bolt, .speed, .bubble, .dot, .seal, .check, .iconCard::after, .selectedBadge::after { animation: none; }
   .iconCard { transform: rotateZ(-4deg) rotateX(6deg) rotateY(-14deg); transition: none; }
   .check { stroke-dashoffset: 0; }
 }
