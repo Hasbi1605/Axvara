@@ -213,3 +213,43 @@ describe("existing invoices during payment maintenance", () => {
     expect(fixture.sql.prepare("SELECT status FROM payment_transactions WHERE order_code=?").get(A)!.status).toBe("paid");
   });
 });
+
+describe("QRIS amount reuse window (finite 299 pool, 2026-11-14)", () => {
+  function stubGopay() {
+    vi.stubEnv("GOPAY_QRIS_ENABLED", "true");
+    const source = "00020101021126610014COM.GO-JEK.WWW01189360091431111111110210G1111111110303UMI53033605802ID6304";
+    vi.stubEnv("GOPAY_STATIC_QRIS", source + calculateCrc16(source));
+    vi.stubEnv("GOPAY_POLLER_SECRET", "fixture-secret");
+  }
+  function oldUse(provider: string, code: string, amount: number, hoursAgo: number) {
+    fixture.sql.prepare(`INSERT INTO payment_invoice_history(provider,order_code,payable_amount,issued_at,expires_at)
+      VALUES(?,?,?,datetime('now',?),datetime('now',?))`).run(provider, code, amount, `-${hoursAgo} hours`, `-${hoursAgo} hours`);
+  }
+  it.each(["dana", "gopay"] as const)("auto-settles %s when the other order's use ended over 24h before the invoice", async (provider) => {
+    stubGopay();
+    const invoice = await checkout(A, provider);
+    oldUse(provider, "OLD-2-DAYS", invoice.payableAmount, 48);
+    expect((await webhook(invoice.payableAmount, `stale-history-${provider}`, provider)).status).toBe(200);
+    expect(order(A).status).toBe("lunas");
+  });
+  it.each(["dana", "gopay"] as const)("still routes %s to review when the other use ended within 24h", async (provider) => {
+    stubGopay();
+    const invoice = await checkout(A, provider);
+    oldUse(provider, "OLD-23-HOURS", invoice.payableAmount, 23);
+    expect((await webhook(invoice.payableAmount, `recent-history-${provider}`, provider)).status).toBe(200);
+    expect(order(A).status).toBe("pending");
+    expect(fixture.sql.prepare("SELECT last_error FROM dana_webhook_events ORDER BY id DESC LIMIT 1").get()!.last_error)
+      .toBe("amount_reused_requires_review");
+  });
+  it("allocates the least-recently-used amount once the pool is exhausted, and that payment auto-settles", async () => {
+    stubGopay();
+    for (let code = 1; code <= 299; code++) {
+      oldUse("gopay", `USED-${code}`, 10000 + code, code === 7 ? 72 : code === 9 ? 30 : 1);
+    }
+    chooseCode(42);
+    const invoice = await checkout(A, "gopay");
+    expect(invoice.payableAmount).toBe(10007);
+    expect((await webhook(invoice.payableAmount, "lru-gopay", "gopay")).status).toBe(200);
+    expect(order(A).status).toBe("lunas");
+  });
+});
