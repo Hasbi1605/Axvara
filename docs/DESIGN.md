@@ -1996,6 +1996,26 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
 
 ### Storefront
 
+- **Koreksi owner 14 Nov 2026 malam — halaman detail (lokal):** banner full-bleed kiri–kanan
+  tapi ramping (190/260/330 px, fade ke midnight), kartu ikon 3D lebih besar (112/176/212 px), miring
+  `rotateZ(-4deg)` + tilt pointer, tepi kaca (ikon di-zoom 1.1 agar sudut putih App Store hilang),
+  bayangan berlapis + kilau periodik; badge trust jadi pill kaca dengan spotlight bergiliran 2 s
+  dalam siklus 6 s (instan → layanan → aman); setiap tahapan = kartu kaca iOS dengan header strip
+  (nomor di squircle gradien cyan→biru, judul 17 px, garis pemisah); Data akun ramping (input 44 px,
+  Cek ID satu baris dengan input bila hanya satu field, bantuan + "Ingat ID" satu baris);
+  "Nominal sedang tidak tersedia" pindah ke kartu nominal; chip tipe bergaya chip beranda/Pedia;
+  kartu nominal ramping ±74 px (nama 12–12.5 px, harga 13–14 px, badge INSTAN/Habis kanan atas,
+  centang kanan bawah, kaca + highlight 1 px); badge INSTAN = pill kaca cyan ⚡ + kilau, hanya untuk
+  varian yang bisa dibeli; ikon item dinormalisasi `GAMES_ITEM_ICON_SCALE` (sqrt(0.42/luas bbox),
+  0.7–1.08) sehingga ikon satuan tidak lebih besar dari tumpukan; pembayaran memakai
+  `PaymentMethodPicker` persis seperti Market/Pedia tanpa daftar harga mentah tambahan. Semua animasi
+  mati pada reduced motion. Revisi lanjutan (malam, owner): badge trust hero kembali lepas tanpa pill/bulatan, hanya animasi
+  ikon bergiliran yang dipertahankan; badge INSTAN = stiker raster GPT Image (Codex image_gen) ID/EN
+  `public/brand/games/ui/instant-badge-{id,en}.webp` 60×20 (plat terang, petir cyan + garis kecepatan,
+  "Pengiriman/INSTAN" | "Delivery/INSTANT"), glow tipis saat terpilih; hover kartu nominal = outline
+  cyan tipis + ikon item miring -10° & scale 1.1 (300 ms, pointer hover saja); memilih nominal lewat
+  klik/tap men-scroll halus ke "Metode pembayaran" (block start, kontak ikut terlihat), navigasi
+  keyboard tidak men-scroll.
 - **Beranda.** **Koreksi owner 14 Nov 2026 malam (lokal; menggantikan bagian terkait di bawah):** (1) orbit
   hero = 8 game tetap `GAMES_ORBIT` (`mobile-legends`, `pubg-mobile`, `free-fire`, `genshin-impact`,
   `honor-of-kings`, `valorant`, `roblox`, `call-of-duty-mobile`; Free Fire MAX dikecualikan),

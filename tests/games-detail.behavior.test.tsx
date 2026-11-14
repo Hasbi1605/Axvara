@@ -85,6 +85,30 @@ describe("Games detail (selected SKU contract)", () => {
     await screen.findByText(/Nickname terdeteksi:/);
     expect(screen.queryByText(/Akun ini terdeteksi region/)).toBeNull();
   });
+  it("tap/click on a nominal smoothly scrolls to payment, keyboard selection does not; icons tilt on hover", () => {
+    vi.useFakeTimers();
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+    render(<GameClient detail={{ game, products: [
+      product({ buyer_sku_code: "a", product_type_name: "Indonesia", group: "all", price: 1000 }),
+      product({ buyer_sku_code: "b", product_type_name: "Indonesia", group: "all", price: 2000 }),
+    ] }} orderingOpen />);
+    const radio = document.querySelector<HTMLInputElement>('input[value="b"]')!;
+    const card = radio.closest("label")!;
+    expect(card.className).toContain("group");
+    expect([...card.querySelectorAll("span")].some((el) => el.className.includes("group-hover:-rotate-[10deg]"))).toBe(true);
+    fireEvent.click(document.querySelector<HTMLInputElement>('input[value="a"]')!); // keyboard/programmatic: no pointerdown
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(scroll).not.toHaveBeenCalled();
+    fireEvent.pointerDown(card);
+    fireEvent.click(radio);
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ block: "start" }));
+    expect(radio.checked).toBe(true);
+    } finally { Element.prototype.scrollIntoView = original; vi.useRealTimers(); }
+  });
   it("orders the four steps, defaults to Indonesia and prefers its cheapest available topup", () => {
     render(<GameClient detail={{ game, products: [
       product({ buyer_sku_code: "sg", product_type_name: "Singapore", group: "bestseller", price: 500 }),
@@ -94,7 +118,7 @@ describe("Games detail (selected SKU contract)", () => {
       product({ buyer_sku_code: "id-topup", product_type_name: "Indonesia", group: "all", price: 1000 }),
       product({ buyer_sku_code: "id-topup-expensive", product_type_name: "Indonesia", group: "all", price: 2000 }),
     ] }} orderingOpen />);
-    expect(screen.getAllByRole("heading", { level: 2 }).slice(0, 4).map((h) => h.textContent)).toEqual(["1Data akun", "2Pilih nominal", "3Metode pembayaran", "4Kontak"]);
+    expect(screen.getAllByRole("heading", { level: 2 }).slice(0, 4).map((h) => h.textContent)).toEqual(["Data akun", "Pilih nominal", "Metode pembayaran", "Kontak"]);
     expect(screen.getByRole("button", { name: "Indonesia (5)" }).getAttribute("aria-pressed")).toBe("true");
     expect(document.querySelector<HTMLInputElement>('input[value="id-topup"]')!.checked).toBe(true);
     const card = document.querySelector<HTMLInputElement>('input[value="id-topup"]')!.closest("label")!;
@@ -104,7 +128,15 @@ describe("Games detail (selected SKU contract)", () => {
     expect(off.textContent).toContain("Rp100");
     expect(within(off).getByText("Habis")).toBeTruthy();
     expect(within(off).queryByText("Pengiriman instan")).toBeNull();
+    expect(off.querySelector("[data-instant-badge]")).toBeNull();
     expect(screen.queryByText("Belum dipilih")).toBeNull();
+    const nextRadio = document.querySelector<HTMLInputElement>('input[value="id-topup-expensive"]')!;
+    const nextBadge = nextRadio.closest("label")!.querySelector("[data-instant-badge]")!;
+    expect(nextBadge.getAttribute("data-selected")).toBe("false");
+    fireEvent.click(nextRadio);
+    expect(card.querySelector("[data-instant-badge]")!.getAttribute("data-selected")).toBe("false");
+    expect(nextBadge.getAttribute("data-selected")).toBe("true");
+    expect(nextBadge.querySelector("img")!.getAttribute("src")).toBe("/brand/games/ui/instant-badge-id.webp");
   });
 
   it("falls back to the cheapest available in the first available section, or first variant fields", () => {
@@ -157,7 +189,8 @@ describe("Games detail (selected SKU contract)", () => {
   it("frames local art and creates an icon-blurred banner, then a monogram on icon failure", () => {
     render(<GameClient detail={{ game: { ...game, icon: "/brand/games/free-fire-icon.webp" }, products: [] }} orderingOpen={false} />);
     const banner = document.querySelector('[data-game-image="generated-banner"]')!;
-    expect(banner.className).toContain("rounded-2xl border border-white/10");
+    // Banner full-bleed tanpa bingkai (koreksi owner 14 Nov 2026 malam).
+    expect(banner.className).not.toContain("rounded-2xl border");
     expect(banner.querySelector("img")!.className).toContain("blur-[48px]");
     fireEvent.error(banner.querySelector("img")!);
     expect(within(banner as HTMLElement).getByText("ML")).toBeTruthy();
@@ -185,10 +218,17 @@ describe("Games detail (selected SKU contract)", () => {
     for (const label of ["Proses instan", "Layanan 24/7", "Pembayaran aman"]) expect(within(header).getByText(label)).toBeTruthy();
     expect(header.querySelectorAll("svg")).toHaveLength(3);
     expect(header.querySelector("[data-game-icon-card]")).toBeTruthy();
-    expect(header.firstElementChild!.className).toContain("aspect-[16/9] max-h-[440px] w-full sm:aspect-[21/9]");
+    expect(header.firstElementChild!.className).toContain("h-[190px] w-full overflow-hidden bg-[#0F1430] sm:h-[260px] lg:h-[330px]");
     const card = screen.getByRole("radio", { name: /86 Diamond/ }).closest("label")!;
     expect(within(card).getByText("Pengiriman instan").className).toBe("sr-only");
-    expect(within(card).getByText("INSTAN").parentElement!.getAttribute("aria-hidden")).toBe("true");
+    const badge = card.querySelector("[data-instant-badge]")!;
+    const badgeImage = badge.querySelector("img")!;
+    expect(badgeImage.getAttribute("src")).toBe("/brand/games/ui/instant-badge-id.webp");
+    expect(badgeImage.getAttribute("alt")).toBe("");
+    expect(badgeImage.getAttribute("aria-hidden")).toBe("true");
+    expect(badgeImage.getAttribute("width")).toBe("60");
+    expect(badgeImage.getAttribute("height")).toBe("20");
+    expect(badge.getAttribute("data-selected")).toBe("true");
     expect(screen.getByRole("radio", { name: /Pengiriman instan/ })).toBeTruthy();
   });
 
@@ -200,7 +240,10 @@ describe("Games detail (selected SKU contract)", () => {
     expect(screen.getByText("Secure payment")).toBeTruthy();
     const radio = screen.getByRole("radio", { name: /Instant delivery/ });
     expect(radio.closest("label")!.textContent?.match(/Instant delivery/g)).toHaveLength(1);
-    expect(screen.getByText("DELIVERY").parentElement!.getAttribute("aria-hidden")).toBe("true");
+    const badgeImage = radio.closest("label")!.querySelector("[data-instant-badge] img")!;
+    expect(badgeImage.getAttribute("src")).toBe("/brand/games/ui/instant-badge-en.webp");
+    expect(badgeImage.getAttribute("alt")).toBe("");
+    expect(badgeImage.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("falls back to a category icon when an item image fails and ranks by price rather than availability", () => {
@@ -210,12 +253,13 @@ describe("Games detail (selected SKU contract)", () => {
       product({ buyer_sku_code: "middle", name: "Middle", category: "topup", price: 2000 }),
     ] }} orderingOpen={false} />);
     const high = screen.getByRole("radio", { name: /High/ }).closest("label")!;
-    const image = high.querySelector<HTMLImageElement>("img")!;
+    const image = high.querySelector<HTMLImageElement>('img[src^="/brand/games/items/"]')!;
     expect(image.getAttribute("src")).toBe("/brand/games/items/mlbb-diamond-3.webp");
     expect(image.alt).toBe("");
     expect(image.getAttribute("loading")).toBe("lazy");
     fireEvent.error(image);
-    expect(high.querySelector("img")).toBeNull();
+    expect(high.querySelector('img[src^="/brand/games/items/"]')).toBeNull();
+    expect(high.querySelector("[data-instant-badge] img")).toBeTruthy();
     expect(high.querySelector("svg[data-item-icon-fallback].lucide-gem")).toBeTruthy();
     expect(screen.getByRole("radio", { name: /Low/ }).closest("label")!.querySelector("img")!.getAttribute("src")).toBe("/brand/games/items/mlbb-diamond-1.webp");
   });
@@ -439,7 +483,8 @@ describe("Games detail (selected SKU contract)", () => {
     const payment = document.getElementById("game-payment")!;
     await waitFor(() => expect(within(payment).getAllByText(/QRIS/).length).toBeGreaterThan(0));
     fireEvent.click(within(payment).getByRole("button", { name: /Virtual Account/i }));
-    expect(within(payment).getByText(/14\.000/)).toBeTruthy();
+    // Sama seperti Market/Pedia: tanpa daftar harga mentah di bawah picker; total tampil di ringkasan & tombol bayar.
+    expect(within(payment).queryByText(/Bank Test: /)).toBeNull();
     fireEvent.click(within(payment).getByRole("radio", { name: /Bank Test/i }));
     fireEvent.change(screen.getByLabelText("Nomor WhatsApp"), { target: { value: "081234567890" } });
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "buyer@example.com" } });

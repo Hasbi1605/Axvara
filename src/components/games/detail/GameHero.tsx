@@ -32,17 +32,20 @@ export function GameHero({ game, t }: { game: GamesDetailGame; t: ReturnType<typ
       frame.current = null;
     });
   };
-  return <header data-game-header className="relative overflow-hidden rounded-3xl bg-[#0F1430]">
-    <div className="relative aspect-[16/9] max-h-[440px] w-full sm:aspect-[21/9]">
-      <GameImage src={game.banner} fallbackSrc={game.icon} banner name={game.name} className="h-full w-full text-4xl" imageClassName="object-[center_30%]" eager />
-      <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-[#0F1430] via-[#080C1E]/20 to-transparent" />
+  // Koreksi owner 14 Nov 2026 malam: banner full-bleed kiri–kanan tapi ramping (±200/280/330 px),
+  // kartu ikon 3D lebih besar & miring, info game di container di bawah banner.
+  return <header data-game-header className="relative">
+    <div className="relative h-[190px] w-full overflow-hidden bg-[#0F1430] sm:h-[260px] lg:h-[330px]">
+      <GameImage src={game.banner} fallbackSrc={game.icon} banner name={game.name} framed={false} className="h-full w-full text-4xl" imageClassName="object-[center_35%]" eager />
+      <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-[#080C1E] via-[#080C1E]/25 to-[#080C1E]/10" />
+      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#00E5FF]/25 to-transparent" />
     </div>
-    <div className="relative -mt-12 grid grid-cols-[96px_minmax(0,1fr)] items-end gap-x-4 gap-y-4 px-5 pb-6 sm:-mt-20 sm:grid-cols-[152px_minmax(0,1fr)] sm:gap-x-7 sm:px-8 sm:pb-8">
-      <div className={`${styles.perspective} h-24 w-24 sm:h-[152px] sm:w-[152px]`} onPointerMove={tilt} onPointerLeave={reset} onPointerCancel={reset}>
-        <div className={`${styles.floating} h-full w-full`}><div ref={card} data-game-icon-card className={`${styles.iconCard} h-full w-full`}><GameImage src={game.icon} name={game.name} framed={false} className="h-full w-full text-3xl sm:text-5xl" eager /></div></div>
+    <div className="relative mx-auto grid max-w-[1280px] grid-cols-[112px_minmax(0,1fr)] items-end gap-x-4 gap-y-1 px-4 sm:grid-cols-[176px_minmax(0,1fr)] sm:gap-x-7 sm:px-6 lg:grid-cols-[212px_minmax(0,1fr)] lg:px-8">
+      <div className={`${styles.perspective} -mt-14 h-28 w-28 sm:-mt-24 sm:h-44 sm:w-44 lg:-mt-28 lg:h-[212px] lg:w-[212px]`} onPointerMove={tilt} onPointerLeave={reset} onPointerCancel={reset}>
+        <div className={`${styles.floating} h-full w-full`}><div ref={card} data-game-icon-card className={`${styles.iconCard} h-full w-full`}><GameImage src={game.icon} name={game.name} framed={false} className="h-full w-full text-3xl sm:text-5xl" imageClassName="scale-[1.1]" eager /></div></div>
       </div>
-      <div className="min-w-0 pb-1"><h1 className="font-display text-2xl font-bold leading-tight sm:text-4xl">{game.name}</h1>{game.publisher && <p className="mt-2 text-xs text-white/60 sm:text-sm">{game.publisher}</p>}</div>
-      <div className="col-span-2 -mt-1 sm:col-span-1 sm:col-start-2 sm:-mt-3"><TrustIcons t={t} /></div>
+      <div className="min-w-0 pb-1 pt-3 sm:pt-4"><h1 className="font-display text-2xl font-bold leading-tight sm:text-[34px]">{game.name}</h1>{game.publisher && <p className="mt-1 text-xs text-white/60 sm:text-sm">{game.publisher}</p>}</div>
+      <div className="col-span-2 sm:col-span-1 sm:col-start-2 sm:-mt-1"><TrustIcons t={t} /></div>
     </div>
   </header>;
 }

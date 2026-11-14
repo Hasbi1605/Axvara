@@ -37,3 +37,14 @@ describe("Games item artwork", () => {
     expect(gamesItemIcon("mobile-legends", { ...topup, category }, { index: 3, total: 4 })).toContain("-3.webp");
   });
 });
+
+describe("item icon visual scale (owner correction 14 Nov 2026)", () => {
+  it("shrinks single-item icons relative to flat stacks so sizes look even", async () => {
+    const { gamesItemIconScale, GAMES_ITEM_ICON_SCALE } = await import("@/lib/games/item-icons");
+    for (const set of ["pubg-uc", "mlbb-diamond", "ff-diamond", "robux", "valorant-points"]) {
+      expect(gamesItemIconScale(`/brand/games/items/${set}-1.webp`)).toBeLessThan(gamesItemIconScale(`/brand/games/items/${set}-2.webp`));
+    }
+    for (const v of Object.values(GAMES_ITEM_ICON_SCALE)) { expect(v).toBeGreaterThanOrEqual(0.7); expect(v).toBeLessThanOrEqual(1.08); }
+    expect(gamesItemIconScale("/brand/games/items/unknown.webp")).toBe(1);
+  });
+});
