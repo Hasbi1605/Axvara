@@ -40,6 +40,30 @@
 .selectedBadge { position: relative; overflow: hidden; }
 .selectedBadge::after { animation-duration: 5s; }
 
+/* Badge INSTAN (koreksi owner 14 Nov 2026): idle diam; hover kartu = petir menyala sekali
+   (0,6 s) + garis kecepatan melesat; kartu terpilih = denyut halus berkala. Teks tidak bergerak. */
+.badgeBolt { transform-box: fill-box; transform-origin: 50% 60%; }
+.badgeSpeed { transform-box: fill-box; }
+@media (hover: hover) and (pointer: fine) {
+  :global(.group):hover .badgeBolt { animation: badgeZap 600ms cubic-bezier(.3,.7,.4,1) 1; }
+  :global(.group):hover .badgeSpeed { animation: badgeDash 600ms cubic-bezier(.3,.7,.4,1) 1; }
+}
+.selectedBadge .badgeBolt { animation: badgePulse 2.5s ease-in-out infinite; }
+.selectedBadge .badgeSpeed { animation: badgeTrail 2.5s ease-in-out infinite; }
+@keyframes badgeZap {
+  0%, 100% { transform: scale(1) rotate(0); filter: none; }
+  30% { transform: scale(1.28) rotate(-10deg); filter: drop-shadow(0 0 3px rgb(0 229 255 / .9)); }
+  60% { transform: scale(.94) rotate(3deg); }
+}
+@keyframes badgeDash { 0%, 100% { transform: translateX(0); opacity: 1; } 35% { transform: translateX(-4px); opacity: .35; } 65% { transform: translateX(1px); opacity: 1; } }
+@keyframes badgePulse {
+  0%, 60%, 100% { transform: scale(1) rotate(0); filter: none; }
+  12% { transform: scale(1.22) rotate(-8deg); filter: drop-shadow(0 0 3px rgb(0 229 255 / .85)); }
+  24% { transform: scale(.96) rotate(2deg); }
+  36% { transform: scale(1.06) rotate(0); }
+}
+@keyframes badgeTrail { 0%, 60%, 100% { transform: translateX(0); opacity: 1; } 12% { transform: translateX(-3px); opacity: .4; } 30% { transform: translateX(0); opacity: 1; } }
+
 /* Animasi ikon trust bergiliran (tanpa wadah/pill — koreksi owner): tiap ikon beraksi
    jelas ±2 dtk dalam siklus 6 dtk (instan → layanan → aman). */
 .bolt { transform-origin: center; transform-box: fill-box; animation: charge 6s ease-in-out infinite; animation-delay: var(--trust-delay, 0s); }
@@ -65,7 +89,7 @@
 @keyframes seal { 0%, 34%, 100% { transform: rotate(0) scale(1); } 6% { transform: rotate(-16deg) scale(1.2); } 13% { transform: rotate(9deg) scale(.98); } 20% { transform: rotate(0) scale(1.04); } 26% { transform: scale(1); } }
 @keyframes verify { 0%, 4% { stroke-dashoffset: 1; } 20%, 100% { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .floating, .bolt, .speed, .bubble, .dot, .seal, .check, .iconCard::after, .selectedBadge::after { animation: none; }
+  .floating, .bolt, .speed, .bubble, .dot, .seal, .check, .iconCard::after, .selectedBadge::after, .badgeBolt, .badgeSpeed, .selectedBadge .badgeBolt, .selectedBadge .badgeSpeed { animation: none !important; }
   .iconCard { transform: rotateZ(-4deg) rotateX(6deg) rotateY(-14deg); transition: none; }
   .check { stroke-dashoffset: 0; }
 }

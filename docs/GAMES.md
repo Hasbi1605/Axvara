@@ -760,7 +760,7 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
   `PaymentMethodPicker` persis seperti Market/Pedia tanpa daftar harga mentah tambahan. Semua animasi
   mati pada reduced motion. Revisi lanjutan (malam, owner): badge trust hero kembali lepas tanpa pill/bulatan, hanya animasi
   ikon bergiliran yang dipertahankan; badge INSTAN dikembalikan ke desain asli (bolt + garis kecepatan SVG, "Pengiriman/INSTAN" |
-  "Instant/DELIVERY", kilau saat terpilih) di strip bawah kartu nominal (22 px HP / 28 px desktop, border-top tipis; badge mungil ala Oura, ikon 11/14 px, teks 5.5–7.5 / 6.5–9 px; di HP label tipe disembunyikan);
+  "Instant/DELIVERY", kilau saat terpilih) di strip bawah kartu nominal (22 px HP / 28 px desktop, border-top tipis; badge mungil ala Oura, ikon 11/14 px, teks 5.5–7.5 / 6.5–9 px; di HP label tipe disembunyikan); animasi badge: idle diam, hover kartu (pointer) = petir menyala sekali 0,6 s + garis kecepatan melesat, kartu terpilih = denyut halus tiap 2,5 s; teks tidak bergerak; mati pada reduced motion;
   stiker GPT Image dibatalkan atas permintaan owner; hover kartu nominal = outline
   cyan tipis + ikon item miring -10° & scale 1.1 (300 ms, pointer hover saja); memilih nominal lewat
   klik/tap men-scroll halus ke "Metode pembayaran" (block start, kontak ikut terlihat), navigasi
