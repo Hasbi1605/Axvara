@@ -369,6 +369,12 @@ Full suite5518tes dan build Pages lulus; belum merupakan bukti deployment produk
   registry selalu menjadi planet bertaut, walaupun belum ada SKU enabled. Ring,
   sphere38/42px, ikon22/24px, kaca3D pusat90/102px, perlakuan mark putih, animasi,
   mobile hemat/reduced-motion tidak dibuat ulang. Default Pedia tidak berubah.
+  Koreksi 14 Nov 2026: orbit statis `GamesOrbit` (648c9cb5) dihapus dan hero
+  kembali ke `PediaOrbit` animasi; planet = empat game pertama katalog DB, art
+  game mengisi penuh sphere lewat prop opsional `renderIcon` (GameImage +
+  fallback inisial, no-referrer). Headline juga dikembalikan ke §4.1 GAMES
+  ("Satu tempat untuk / Top up game" + Typewriter cyan Termurah/Tercepat/Terpercaya);
+  copy "Top up game favoritmu" tanpa typewriter dari 648c9cb5 tidak punya keputusan owner.
 - Tepat di bawah hero: dua `CrossServicePromo` Market + Pedia dengan utm_source=games,
   dimensi/wrapper CommunityBar Market, tetap dua kolom berdampingan di375px.
 - Game registry kosong tetap menampilkan header dan "Nominal segera tersedia"

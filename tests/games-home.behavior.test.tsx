@@ -113,8 +113,16 @@ describe("Games homepage", () => {
     expect(unavailable.textContent).toContain("Segera tersedia");
     expect(unavailable.className).toContain("opacity-70");
     expect(screen.getAllByText(/Mulai/)[0].textContent).toContain("Rp1.000");
-    expect(screen.getByRole("heading", { level: 1 }).textContent).not.toMatch(/Termurah|Tercepat/);
-    expect(screen.getByText("Pilih game, pilih nominal, bayar — tanpa login. Proses otomatis 24 jam.")).toBeTruthy();
+    // Hero disetujui GAMES §4.1 (pola Pedia): headline dua baris + typewriter cyan.
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1.textContent).toContain("Satu tempat untuk");
+    expect(h1.textContent).toContain("Top up game");
+    expect(h1.textContent).toMatch(/Termurah/);
+    const cta = screen.getByRole("link", { name: "Top Up Game" });
+    expect(cta.getAttribute("href")).toBe("#games-catalog");
+    expect(cta.className).toContain("bg-white");
+    expect(screen.getAllByRole("link", { name: "Bantuan WhatsApp" })[0].className).toContain("border-white/15");
+    expect(screen.getByText("Top up Free Fire, Mobile Legends, dan PUBG Mobile. Pilih game, lihat nominal, lalu pesan tanpa login.")).toBeTruthy();
   });
   it("sends no Referer for every image and replaces failed game art with initials", () => {
     render(<GamesHome games={[game]} orbitGames={[game]} orderingOpen />);
@@ -129,6 +137,22 @@ describe("Games homepage", () => {
     fireEvent.error(img);
     expect(card.querySelector("img")).toBeNull();
     expect(within(card).getByText("FF")).toBeTruthy();
+  });
+  it("keeps the animated orbit hero with game art planets (regression: static quadrants froze the hero)", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { frames.push(cb); return frames.length; });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const games = Array.from({ length: 4 }, (_, i) => ({ ...game, slug: `game-${i}`, name: `Game ${i}` }));
+    render(<GamesHome games={games} orbitGames={games} orderingOpen />);
+    const orbit = screen.getByRole("group", { name: "Orbit AXVARA Games" });
+    const planets = within(orbit).getAllByRole("link");
+    expect(planets.map((a) => a.getAttribute("href"))).toEqual(["/games/game-0", "/games/game-1", "/games/game-2", "/games/game-3"]);
+    expect(planets[0].querySelector("img")?.getAttribute("src")).toBe(game.icon);
+    expect(planets[0].style.transform).toContain("px");
+    expect(frames.length).toBeGreaterThan(0);
+    expect(document.querySelector("[data-games-orbit]")).toBeNull();
+    vi.unstubAllGlobals();
   });
   it("uses the English cookie and filters navbar search", async () => {
     document.cookie = "axv_locale=en; path=/";

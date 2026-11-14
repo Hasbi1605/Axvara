@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowRight, CircleHelp, Plus, ShieldCheck, Zap } from "lucide-react";
-import { GamesOrbit } from "@/components/games/GamesOrbit";
+import { PediaOrbit, type OrbitItem } from "@/components/pedia/PediaOrbit";
+import { Typewriter } from "@/components/pedia/Typewriter";
 import { GameImage } from "@/components/games/GameImage";
 import { GameCard, HowToTopUp, gamesFocus as focus } from "@/components/games/storefront";
 import { CrossServicePromo } from "@/components/shared/CrossServicePromo";
@@ -14,6 +15,10 @@ export function GamesHome({ games, orbitGames, orderingOpen }: { games: GamesCat
   const locale = useDisplayLocale();
   const t = gamesCopy(locale);
   const [expanded, setExpanded] = useState(false);
+  // Orbit animasi (mesin PediaOrbit, rAF + reduced-motion statis) dengan art game penuh di tiap planet.
+  const orbitItems = useMemo<OrbitItem[]>(() => orbitGames.slice(0, 4).map((game, ring) => ({
+    label: game.name, icon: game.icon ?? "", color: "#00E5FF", ring, href: `/games/${game.slug}`,
+  })), [orbitGames]);
   const featured = games.filter((game) => game.featured_rank != null).sort((a, b) => a.featured_rank! - b.featured_rank!);
   const popular = featured.length ? featured.slice(0, 8) : games.filter((game) => game.sellable_count > 0).slice(0, 6);
   return <>
@@ -22,12 +27,12 @@ export function GamesHome({ games, orbitGames, orderingOpen }: { games: GamesCat
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.08),transparent_65%)]" />
       <div className="relative grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-8">
         <div className="min-w-0 max-w-3xl">
-          <h1 className="font-display text-[clamp(32px,9.3vw,40px)] font-bold leading-[1.08] tracking-[-0.02em] text-white sm:text-[56px] lg:text-[clamp(48px,4.85vw,62px)]"><span className="block">{t.heroFirst}</span>{" "}<span className="block text-[#00E5FF]">{t.heroSecond}</span></h1>
+          <h1 className="font-display text-[clamp(32px,9.3vw,40px)] font-bold leading-[1.08] tracking-[-0.02em] text-white sm:text-[56px] lg:text-[clamp(48px,4.85vw,62px)]"><span className="block">{t.heroFirst}</span><span className="block">{t.heroSecond}</span><Typewriter locale={locale} words={t.words} screenReaderText={t.words.join(", ")} /></h1>
           <p className="mt-4 max-w-[46ch] text-[15px] leading-6 text-white/60">{t.heroBody}</p>
-          <div className="mt-6 flex flex-wrap gap-3"><a href="#games-catalog" className={`inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/5 px-5 text-sm font-semibold text-white ${focus}`}>{t.catalog}<ArrowRight size={20} strokeWidth={1.75} /></a><a href={SITE.webUrl + waHubLink()} className={`inline-flex min-h-11 items-center rounded-full px-3 text-sm text-white/65 ${focus}`}>{t.whatsapp}</a></div>
+          <div className="mt-6 flex flex-wrap gap-3"><a href="#games-catalog" className={`inline-flex min-h-11 items-center rounded-full bg-white px-6 text-sm font-semibold text-[#080C1E] ${focus}`}>{t.heroCta}</a><a href={SITE.webUrl + waHubLink()} className={`inline-flex min-h-11 items-center rounded-full border border-white/15 bg-white/5 px-6 text-sm font-medium text-white/85 ${focus}`}>{t.whatsapp}</a></div>
           <p className="mt-5 text-xs leading-5 text-white/45">{t.heroTrust}</p>
         </div>
-        <div className="mt-2 flex min-w-0 justify-center lg:mt-0 lg:justify-end"><GamesOrbit games={orbitGames} /></div>
+        <div className="mt-2 flex min-w-0 shrink-0 justify-center lg:mt-0 lg:justify-end"><PediaOrbit items={orbitItems} brand="Games" mark="/brand/games-mark.svg" renderIcon={(item) => <GameImage src={item.icon || null} name={item.label} framed={false} className="h-full w-full rounded-full text-[11px]" eager />} /></div>
       </div>
     </section>
     <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 -mt-1 mb-2"><div className="flex flex-row gap-2 sm:gap-3"><CrossServicePromo current="games" target="market" locale={locale} /><CrossServicePromo current="games" target="pedia" locale={locale} /></div></div>

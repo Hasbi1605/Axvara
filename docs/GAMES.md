@@ -739,6 +739,10 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
 
 ### 14.5 Storefront (OD4, P1–P14) — `src/app/games/*`, `src/components/games/*`
 
+- Koreksi 14 Nov 2026 (sore): hero kembali ke §4.1 — `PediaOrbit` animasi (art game di
+  planet via `renderIcon`) + headline "Satu tempat untuk / Top up game" + typewriter cyan + CTA pill putih "Top Up Game"
+  dan pill kaca "Bantuan WhatsApp".
+  `GamesOrbit` statis dan copy "Top up game favoritmu" dari 648c9cb5 dibatalkan.
 - Beranda: hero orbit memakai 4 game pertama urutan API (bukan registry statis), "Populer
   sekarang" dari `featured_rank` (maks 8; bila kosong 6 game bisa dijual pertama; section
   disembunyikan bila <4), grid semua game non-hidden dengan harga "Mulai Rp…" hanya dari varian

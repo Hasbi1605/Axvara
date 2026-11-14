@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useCallback, useMemo } from "react";
+import { useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 
 export type OrbitItem = {
@@ -73,7 +73,11 @@ function placeItems(items: OrbitItem[]) {
  * Planet disamakan persis resep Market: sphere 38/42px + ikon asli 22/24px
  * + gloss/tint/border/shadow sama agar rapih sama rata.
  */
-export function PediaOrbit({ items = ITEMS, brand = "Pedia", mark = "/brand/pedia-mark.svg" }: { items?: OrbitItem[]; brand?: string; mark?: string } = {}) {
+export function PediaOrbit({ items = ITEMS, brand = "Pedia", mark = "/brand/pedia-mark.svg", renderIcon }: {
+  items?: OrbitItem[]; brand?: string; mark?: string;
+  /** Opsional (Games): isi sphere dengan art penuh, menggantikan ikon logo 24px. */
+  renderIcon?: (item: OrbitItem) => ReactNode;
+} = {}) {
   const placements = useMemo(() => placeItems(items), [items]);
   const locale = useDisplayLocale();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -366,6 +370,8 @@ export function PediaOrbit({ items = ITEMS, brand = "Pedia", mark = "/brand/pedi
           <img
             src={mark}
             alt=""
+            referrerPolicy="no-referrer"
+            decoding="async"
             width={36}
             height={32}
             className="relative h-[32px] w-[36px] sm:h-[36px] sm:w-[40px] brightness-0 invert drop-shadow-[0_1px_8px_rgba(0,229,255,0.22)]"
@@ -441,6 +447,7 @@ export function PediaOrbit({ items = ITEMS, brand = "Pedia", mark = "/brand/pedi
                 boxShadow: `0 6px 16px rgba(0,0,0,0.18), 0 0 10px ${item.color}20, inset 0 1px 1px rgba(255,255,255,0.85)`,
               }}
             >
+              {renderIcon ? renderIcon(item) : <>
               {!item.dark && (
                 <>
                   <div className="absolute inset-0 rounded-full pointer-events-none opacity-60" style={{ background: `radial-gradient(ellipse 70% 60% at 50% 55%, ${item.color}18, transparent 68%)` }} />
@@ -466,6 +473,7 @@ export function PediaOrbit({ items = ITEMS, brand = "Pedia", mark = "/brand/pedi
                 draggable={false}
               />
               <span className="hidden text-[9px] font-bold text-[#1A1A1E] text-center leading-none px-1 relative">{item.label.slice(0, 3)}</span>
+              </>}
             </div>
             {/* label statis — gaya tetap, tidak ditulis per frame.
                 Tanpa backdrop-blur per frame (biang lag mobile). */}
