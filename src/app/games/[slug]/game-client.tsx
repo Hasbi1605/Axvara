@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, Info } from "lucide-react";
@@ -45,6 +45,16 @@ function firstVariant(products: Product[], type: string) {
   return topups[0] ?? available.sort((a, b) => GAMES_CATEGORY_ORDER.indexOf(a.category) - GAMES_CATEGORY_ORDER.indexOf(b.category) || a.price - b.price)[0] ?? inType[0] ?? products[0];
 }
 
+/** Kartu nominal di-memo: ganti pilihan hanya merender ulang kartu lama + baru, bukan seluruh grid (perf, 15 Nov 2026). */
+const NominalCard = memo(function NominalCard({ p, on, locked, category, iconSrc, priceText, showType, t, onPick, onPointer }: { p: Product; on: boolean; locked: boolean; category: Product["category"]; iconSrc: string; priceText: string; showType: boolean; t: ReturnType<typeof gamesCopy>; onPick: (code: string) => void; onPointer: (pickable: boolean) => void }) {
+  return <label aria-disabled={!p.available} data-nominal-card onPointerDown={() => onPointer(p.available && !locked)} className={`group relative flex min-w-0 flex-col justify-between gap-1 overflow-hidden rounded-xl border px-2.5 py-2 sm:min-h-[74px] sm:gap-1.5 sm:px-3 sm:py-2.5 transition-[border-color,background-color,box-shadow] duration-[160ms] motion-reduce:transition-none has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF] ${on ? "border-[#00E5FF]/60 bg-[#00E5FF]/[.08] shadow-[inset_0_1px_0_rgba(255,255,255,.1),0_0_0_1px_rgba(0,229,255,.18),0_6px_20px_rgba(0,229,255,.1)]" : "border-white/10 bg-white/[.045] shadow-[inset_0_1px_0_rgba(255,255,255,.07)] [@media(hover:hover)]:hover:border-[#00E5FF]/45 [@media(hover:hover)]:hover:bg-white/[.07] [@media(hover:hover)]:hover:shadow-[inset_0_1px_0_rgba(255,255,255,.08),0_0_0_1px_rgba(0,229,255,.12)]"} ${!p.available ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
+    <input type="radio" name="game-sku" value={p.buyer_sku_code} checked={on} disabled={!p.available || locked} onChange={() => onPick(p.buyer_sku_code)} className="sr-only" />
+    <span className="flex items-start gap-1.5">{category === "bestseller" && <span className="mt-px shrink-0 rounded-full bg-[#FFB800]/15 px-1.5 py-[2px] text-[9px] font-semibold text-[#FFB800]">{t.bestseller}</span>}<span title={p.name} className="line-clamp-2 min-w-0 flex-1 break-words text-[12px] font-medium leading-[16px] text-white/90 sm:text-[12.5px]">{p.name}</span>{on && <Check aria-hidden="true" size={15} strokeWidth={2.5} className="mt-px shrink-0 text-[#00E5FF]" />}</span>
+    {showType && p.type_label && <span className="-mt-1 hidden text-[10px] text-white/40 sm:block">{p.type_label}</span>}
+    <span className="flex items-center justify-between gap-1.5"><span className="flex min-w-0 items-center gap-1.5"><ItemIcon src={iconSrc} category={category} className={p.available ? "transition-transform duration-300 ease-out [@media(hover:hover)]:group-hover:-rotate-[10deg] [@media(hover:hover)]:group-hover:scale-110 motion-reduce:!transform-none motion-reduce:transition-none" : ""} /><span className="truncate text-[12.5px] font-semibold tabular-nums text-white sm:text-sm">{priceText}</span></span></span>
+    <span className="-mx-2.5 -mb-2 mt-0.5 flex min-h-[22px] items-center justify-end border-t border-white/[.06] bg-[#080C1E]/35 px-1.5 py-[3px] sm:-mx-3 sm:-mb-2.5 sm:min-h-[28px] sm:px-2 sm:py-1">{p.available ? <InstantBadge t={t} selected={on} /> : <span className="px-1 text-[10px] text-white/50 sm:text-[11px]">{["stock_empty", "supplier_off"].includes(p.availability_reason ?? "") ? t.soldOut : t.notAvailable}</span>}</span>
+    </label>;
+});
 export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: GamesDetail; orderingOpen: boolean; otherGames?: GamesCatalogGame[] }) {
   const game = detail.game;
   const locale = useDisplayLocale();
@@ -76,6 +86,9 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
   const inFlight = useRef(false);
   /** True saat varian dipilih lewat pointer (klik/tap) — hanya itu yang memicu auto-scroll ke pembayaran; navigasi keyboard tidak. */
   const pointerPick = useRef(false); const attempted = useRef<{ token: string; method: string; wa: string; email: string } | null>(null);
+  const scrollAfterPick = useRef(false);
+  const pickSku = useCallback((code: string) => { setSku(code); if (pointerPick.current) { pointerPick.current = false; scrollAfterPick.current = true; } }, []);
+  const notePointer = useCallback((pickable: boolean) => { pointerPick.current = pickable; }, []);
   const selected = products.find((p) => p.buyer_sku_code === sku);
   const contract = selected?.fields ?? [];
   const contractReady = Boolean(selected?.available && selected.unsupported_reason == null && contract.length > 0);
@@ -129,6 +142,14 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.buyer_sku_code]);
 
+  // Scroll ke pembayaran setelah render pilihan baru selesai digambar (2 frame), agar animasi scroll tidak bertabrakan dengan render.
+  useEffect(() => {
+    if (!scrollAfterPick.current) return;
+    scrollAfterPick.current = false;
+    let frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => document.getElementById("game-payment")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" })); });
+    return () => cancelAnimationFrame(frame);
+  }, [sku]);
+
   useEffect(() => { if (!storageReady) return; try { if (remember) localStorage.setItem(`games-id:${game.slug}`, valuesKey); else localStorage.removeItem(`games-id:${game.slug}`); } catch {} }, [remember, valuesKey, game.slug, storageReady]);
 
   // Nickname hanya untuk varian SK terpilih yang tersedia + kontrak didukung.
@@ -172,7 +193,14 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
 
   const types = Array.from(new Set(products.map((p) => p.type_label ?? "other"))).map((type) => ({ type, count: products.filter((p) => (p.type_label ?? "other") === type).length }))
     .sort((a, b) => a.type === "Indonesia" ? -1 : b.type === "Indonesia" ? 1 : a.type === "other" ? 1 : b.type === "other" ? -1 : b.count - a.count || a.type.localeCompare(b.type));
-  const visible = products.filter((p) => (activeType === "all" || (p.type_label ?? "other") === activeType) && p.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const visible = useMemo(() => products.filter((p) => (activeType === "all" || (p.type_label ?? "other") === activeType) && p.name.toLowerCase().includes(search.trim().toLowerCase())), [products, activeType, search]);
+  // Grup kategori + ikon item dihitung sekali per filter, bukan tiap klik nominal.
+  const groups = useMemo(() => GAMES_CATEGORY_ORDER.flatMap((category) => {
+    const items = visible.filter((p) => p.category === category).sort((a, b) => Number(b.available) - Number(a.available) || a.price - b.price);
+    if (!items.length) return [];
+    const priceRanks = new Map([...items].sort((a, b) => a.price - b.price).map((p, index) => [p.buyer_sku_code, index]));
+    return [{ category, items: items.map((p) => ({ p, iconSrc: gamesItemIcon(game.slug, { ...p, currency: game.currency }, { index: priceRanks.get(p.buyer_sku_code) ?? 0, total: items.length }) })) }];
+  }), [visible, game.slug, game.currency]);
   const countryTypes = new Set(products.map((p) => p.region_code).filter((code) => code && code !== "GLOBAL"));
   const detectedRegion = nickname.state === "ok" ? regionCodeFromNickname(nickname.value) : null;
   const selectedRegion = selected?.region_code;
@@ -256,21 +284,9 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
         {countryTypes.size >= 2 && <p className="mt-4 text-xs leading-6 text-white/55">{t.regionHelp}</p>}
         {types.length >= 2 && <div aria-label={t.typeLabel} className="-mx-1 mt-3 flex gap-1.5 overflow-x-auto px-1 py-1.5 scrollbar-none sm:gap-2">{[...types, { type: "all", count: products.length }].map(({ type, count }) => <button key={type} type="button" disabled={!!attempted.current} onClick={() => chooseType(type)} aria-pressed={activeType === type} aria-label={`${type === "all" ? t.allTypes : type === "other" ? t.categories.other : type} (${count})`} className={`flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm font-medium transition motion-reduce:transition-none ${activeType === type ? "border-white bg-white text-[#080C1E] shadow" : "ax-glass-card border-white/10 text-white/70 hover:bg-white/10 hover:text-white"} ${focus}`}>{type === "all" ? t.allTypes : type === "other" ? t.categories.other : type}<span className={`text-xs tabular-nums ${activeType === type ? "text-[#080C1E]/55" : "text-white/40"}`}>{count}</span></button>)}</div>}
         {!visible.length && <p role="status" className="py-8 text-center text-sm text-white/60">{t.noAmountMatch}</p>}
-        {GAMES_CATEGORY_ORDER.map((category) => {
-          const items = visible.filter((p) => p.category === category).sort((a, b) => Number(b.available) - Number(a.available) || a.price - b.price);
-          if (!items.length) return null;
-          const priceOrder = [...items].sort((a, b) => a.price - b.price);
-          const priceRanks = new Map(priceOrder.map((p, index) => [p.buyer_sku_code, index]));
-          return <div key={category} className="mt-5"><h3 className="flex items-baseline gap-2 text-sm font-semibold text-white/90">{t.categories[category]}<span className="text-xs font-normal text-white/45">{items.length}</span></h3>
-            <div role="radiogroup" aria-label={t.categories[category]} className="mt-2.5 grid grid-cols-2 gap-2.5 md:grid-cols-3">{items.map((p) => { const on = sku === p.buyer_sku_code && p.available; return <label key={p.buyer_sku_code} aria-disabled={!p.available} data-nominal-card onPointerDown={() => { pointerPick.current = p.available && !attempted.current; }} className={`group relative flex min-w-0 flex-col justify-between gap-1 overflow-hidden rounded-xl border px-2.5 py-2 sm:min-h-[74px] sm:gap-1.5 sm:px-3 sm:py-2.5 transition-[border-color,background-color,box-shadow] duration-[160ms] motion-reduce:transition-none has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF] ${on ? "border-[#00E5FF]/60 bg-[#00E5FF]/[.08] shadow-[inset_0_1px_0_rgba(255,255,255,.1),0_0_0_1px_rgba(0,229,255,.18),0_6px_20px_rgba(0,229,255,.1)]" : "border-white/10 bg-white/[.045] shadow-[inset_0_1px_0_rgba(255,255,255,.07)] [@media(hover:hover)]:hover:border-[#00E5FF]/45 [@media(hover:hover)]:hover:bg-white/[.07] [@media(hover:hover)]:hover:shadow-[inset_0_1px_0_rgba(255,255,255,.08),0_0_0_1px_rgba(0,229,255,.12)]"} ${!p.available ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
-              <input type="radio" name="game-sku" value={p.buyer_sku_code} checked={on} disabled={!p.available || !!attempted.current} onChange={() => { setSku(p.buyer_sku_code); if (pointerPick.current) { pointerPick.current = false; window.setTimeout(() => document.getElementById("game-payment")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }), 180); } }} className="sr-only" />
-              <span className="flex items-start gap-1.5">{category === "bestseller" && <span className="mt-px shrink-0 rounded-full bg-[#FFB800]/15 px-1.5 py-[2px] text-[9px] font-semibold text-[#FFB800]">{t.bestseller}</span>}<span title={p.name} className="line-clamp-2 min-w-0 flex-1 break-words text-[12px] font-medium leading-[16px] text-white/90 sm:text-[12.5px]">{p.name}</span>{on && <Check aria-hidden="true" size={15} strokeWidth={2.5} className="mt-px shrink-0 text-[#00E5FF]" />}</span>
-              {activeType === "all" && p.type_label && <span className="-mt-1 hidden text-[10px] text-white/40 sm:block">{p.type_label}</span>}
-              <span className="flex items-center justify-between gap-1.5"><span className="flex min-w-0 items-center gap-1.5"><ItemIcon src={gamesItemIcon(game.slug, { ...p, currency: game.currency }, { index: priceRanks.get(p.buyer_sku_code) ?? 0, total: items.length })} category={category} className={p.available ? "transition-transform duration-300 ease-out [@media(hover:hover)]:group-hover:-rotate-[10deg] [@media(hover:hover)]:group-hover:scale-110 motion-reduce:!transform-none motion-reduce:transition-none" : ""} /><span className="truncate text-[12.5px] font-semibold tabular-nums text-white sm:text-sm">{p.price > 0 ? prices.text(p.price) : "—"}</span></span></span>
-              <span className="-mx-2.5 -mb-2 mt-0.5 flex min-h-[22px] items-center justify-end border-t border-white/[.06] bg-[#080C1E]/35 px-1.5 py-[3px] sm:-mx-3 sm:-mb-2.5 sm:min-h-[28px] sm:px-2 sm:py-1">{p.available ? <InstantBadge t={t} selected={on} /> : <span className="px-1 text-[10px] text-white/50 sm:text-[11px]">{["stock_empty", "supplier_off"].includes(p.availability_reason ?? "") ? t.soldOut : t.notAvailable}</span>}</span>
-            </label>; })}</div>
-          </div>;
-        })}
+        {groups.map(({ category, items }) => <div key={category} className="mt-5"><h3 className="flex items-baseline gap-2 text-sm font-semibold text-white/90">{t.categories[category]}<span className="text-xs font-normal text-white/45">{items.length}</span></h3>
+          <div role="radiogroup" aria-label={t.categories[category]} className="mt-2.5 grid grid-cols-2 gap-2.5 md:grid-cols-3">{items.map(({ p, iconSrc }) => <NominalCard key={p.buyer_sku_code} p={p} on={sku === p.buyer_sku_code && p.available} locked={!!attempted.current} category={category} iconSrc={iconSrc} priceText={p.price > 0 ? prices.text(p.price) : "—"} showType={activeType === "all"} t={t} onPick={pickSku} onPointer={notePointer} />)}</div>
+        </div>)}
       </div></section>
       <section id="game-payment" className={`${stepCard} scroll-mt-24`}><StepHeader n={3} title={t.payment} /><div className="px-4 py-4 sm:px-5">{quote ? <><PaymentMethodPicker options={quote.options} selectedId={method} onSelect={setMethod} locale={locale} disabled={!!attempted.current} /></> : quoteBusy ? <div role="status" aria-label={t.loading} className="space-y-3 motion-safe:animate-pulse"><div className="h-14 rounded-xl bg-white/5" /><div className="h-14 rounded-xl bg-white/5" /><span className="sr-only">{t.loading}</span></div> : <p className="text-sm text-white/60">{!orderingOpen ? t.previewPayment : t.paymentHint}</p>}</div></section>
       <section id="game-contact" className={stepCard}><StepHeader n={4} title={t.contact} /><div className="px-4 py-4 sm:px-5"><p className="text-xs text-white/55">{t.contactHint}</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-medium text-white/70">{t.whatsappLabel}<input type="tel" autoComplete="tel" disabled={!!attempted.current} className={`${inputClass} mt-1.5`} value={wa} onChange={(e) => setWa(e.target.value)} /></label><label className="text-xs font-medium text-white/70">{t.emailLabel}<input type="email" autoComplete="email" disabled={!!attempted.current} className={`${inputClass} mt-1.5`} value={email} onChange={(e) => setEmail(e.target.value)} /></label></div></div></section>
