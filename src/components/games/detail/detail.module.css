@@ -1,0 +1,41 @@
+.perspective { perspective: 700px; }
+.floating { animation: float 6s ease-in-out infinite; }
+.iconCard {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / .15);
+  border-radius: 22px;
+  transform: rotateX(var(--tilt-x, 5deg)) rotateY(var(--tilt-y, -12deg));
+  transition: transform 220ms ease-out;
+  box-shadow: 9px 15px 24px rgb(0 0 0 / .4), 0 4px 6px rgb(0 0 0 / .25), 0 24px 35px -19px rgb(0 229 255 / .4), inset 0 1px 0 rgb(255 255 255 / .2);
+}
+.iconCard::after, .selectedBadge::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: -35%;
+  background: linear-gradient(110deg, transparent 40%, rgb(255 255 255 / .27) 49%, transparent 58%);
+  transform: translateX(-150%);
+  animation: sheen 7s ease-in-out infinite;
+}
+.bolt { transform-origin: center; transform-box: fill-box; animation: charge 4.5s ease-in-out infinite; }
+.speed { animation: speed 4.5s ease-in-out infinite; }
+.dot { transform-box: fill-box; animation: typing 1.8s ease-in-out infinite; }
+.dot:nth-of-type(2) { animation-delay: 150ms; }
+.dot:nth-of-type(3) { animation-delay: 300ms; }
+.seal { transform-origin: center; transform-box: fill-box; animation: seal 4s ease-in-out infinite; }
+.check { stroke-dasharray: 1; stroke-dashoffset: 0; animation: verify 4s ease-in-out infinite; }
+.selectedBadge { position: relative; overflow: hidden; }
+.selectedBadge::after { animation-duration: 5s; }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes sheen { 0%, 76% { transform: translateX(-150%); } 94%, 100% { transform: translateX(150%); } }
+@keyframes charge { 0%, 64%, 100% { transform: scale(1) rotate(0); opacity: 1; } 72% { transform: scale(1.16) rotate(-6deg); opacity: .7; } 80% { transform: scale(.94) rotate(3deg); opacity: 1; } 88% { transform: scale(1.06) rotate(0); opacity: .8; } }
+@keyframes speed { 0%, 64%, 100% { transform: translateX(0); opacity: .6; } 72% { transform: translateX(-3px); opacity: 1; } 86% { transform: translateX(2px); opacity: .3; } }
+@keyframes typing { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-2.5px); opacity: 1; } }
+@keyframes seal { 0%, 8%, 40%, 100% { transform: rotate(0) scale(1); } 18% { transform: rotate(-10deg) scale(1.08); } 28% { transform: rotate(6deg) scale(1); } }
+@keyframes verify { 0%, 12% { stroke-dashoffset: 1; } 35%, 100% { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .floating, .bolt, .speed, .dot, .seal, .check, .iconCard::after, .selectedBadge::after { animation: none; }
+  .iconCard { transform: rotateX(5deg) rotateY(-12deg); transition: none; }
+  .check { stroke-dashoffset: 0; }
+}

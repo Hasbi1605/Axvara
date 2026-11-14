@@ -2029,10 +2029,15 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
     Shared dengan "Game lainnya" pada detail, **header detail tetap ikon square**, bukan portrait.
     `GameImage` mempertahankan lazy, async, no-referrer dan monogram bila gagal. Reduced-motion
     meniadakan scale/slide/transisi; overlay/ring/fokus tetap muncul.
-- **Header game.** Banner maks 200 px desktop / ≤120 px mobile dengan gradient midnight, tile ikon
-  112 px (72 px mobile) menumpang kiri bawah, nama Space Grotesk 700, publisher, chip `Zap`
-  "Pengiriman instan" · `Clock` "24 jam" · `ShieldCheck` "Pembayaran aman". Total tinggi ≤260 px di
-  390×844 (terukur 216 px) agar langkah 1 terlihat di atas fold.
+- **Header game (revisi 14 Nov 2026, `GameHero`).** Banner `aspect-[16/9]` mobile / `aspect-[21/9]`
+  ≥sm, maks 440 px, `object-[center_30%]`, gradient bawah ke #0F1430. Ikon square = **kartu 3D
+  melayang** 96 px / 152 px (`detail.module.css`: perspective 700, rotateX 5° rotateY −12°, float
+  translateY −6 px 6 s, sheen 7 s, bayangan berlapis + glow cyan; pointer-fine tilt ±10° via rAF;
+  reduced-motion = miring statis tanpa animasi). Nama Space Grotesk 700, publisher, lalu baris
+  trust lega (`gap-x-6`, 13–14 px medium) dengan ikon SVG duotone animasi 24 px: petir gold
+  berdenyut + garis kecepatan "Proses instan", gelembung chat cyan dengan titik mengetik
+  "Layanan 24/7", segel verifikasi biru bergoyang + centang tergambar ulang "Pembayaran aman".
+  *Snapshot lama: banner 200 px, tile 112/72 px, chip lucide `Zap`/`Clock`/`ShieldCheck`.*
 - **Langkah.** `1 Data akun → 2 Pilih nominal → 3 Metode pembayaran → 4 Kontak` (angka gold, kartu
   glass). Langkah 1 langsung berisi field varian tersedia termurah kategori `topup` di chip default
   (Indonesia); tanpa varian tersedia, field varian pertama `disabled` + catatan jujur.
@@ -2041,14 +2046,17 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   border cyan + bg cyan/10.
 - **Section kategori.** Judul section `text-base` semibold putih + count redup (urutan: Terlaris ·
   Spesial · Promo · Top up pertama · Pass & membership · Paket mingguan/bulanan · Top up · Lainnya),
-  hanya section tidak kosong, 12 kartu lalu "Tampilkan semua (N)". Dengan chip "Semua" setiap kartu
+  hanya section tidak kosong, semua kartu langsung tampil (tanpa "Tampilkan semua", 14 Nov 2026). Dengan chip "Semua" setiap kartu
   menampilkan `type_label` kecil.
 - **Kartu nominal (Oura structure, AXVARA skin).** `ax-glass` rounded-2xl; nama penuh membungkus tanpa dipotong;
-  baris ikon kategori cyan/80 + harga Space Grotesk 16–18 px tabular; strip footer lebih gelap
-  dengan pill **"Pengiriman instan"** (`Zap` 12 px, cyan on cyan/10) pada kartu tersedia, atau label
+  nama 12–13 px medium clamp 2 baris; **ikon item game 32/36 px** (diamond MLBB, UC, Genesis
+  Crystal, VP, Robux… 3 tier per peringkat harga; pass/member/gift/pack/promo/special; fallback
+  ikon lucide) + harga 14–15 px semibold tabular; strip footer lebih gelap dengan **badge
+  "Pengiriman / INSTAN"** (petir + garis kecepatan, italic 8/11 px, cyan on white/6, shimmer
+  hanya kartu terpilih) pada kartu tersedia, atau label
   redup "Habis"/"Tidak tersedia" dengan harga tetap terlihat; `aria-disabled`; kartu terpilih border
   cyan + glow + centang; badge gold kecil "Terlaris"; grid 2 kolom mobile / 3 kolom ≥md, tinggi
-  seragam dengan tinggi minimum 128 px.
+  seragam dengan tinggi minimum 108 px.
 - **Rail & mobile.** Rail desktop sticky 360 px: blok varian terpilih (ikon 40 px, nama, "Ganti"
   yang menggulir ke pencarian nominal), baris Tipe · Proses · deskripsi 2 baris + "Selengkapnya"
   (hanya bila benar-benar terpotong), lalu ID/nickname · Harga · Biaya · **Total**; CTA "Bayar

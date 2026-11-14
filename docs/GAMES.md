@@ -777,18 +777,25 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
     Harga "Mulai Rp…" hanya varian bisa dijual (tanpa harga karangan), selainnya pill "Segera
     tersedia"; tanpa `opacity-70`. Reduced-motion tanpa scale/slide/transisi, overlay/ring tetap
     muncul. GameImage lazy + async + no-referrer dan fallback monogram dipertahankan.
-- Halaman game: header ≤216 px di 390 (banner ≤120 px, tile 72 px) + chip "Pengiriman instan",
-  "24 jam", "Pembayaran aman". Urutan langkah **1 Data akun → 2 Pilih nominal → 3 Metode
+- Halaman game (revisi 14 Nov 2026, `src/components/games/detail/*`): banner hero `aspect-[16/9]`
+  mobile / `aspect-[21/9]` ≥sm, maks 440 px, `object-[center_30%]` (art tampil utuh, bukan strip
+  6:1); ikon square sebagai **kartu 3D melayang** 96/152 px (miring, float 6 s, sheen, tilt ikut
+  pointer halus; reduced-motion = miring statis) + baris trust animasi SVG duotone "Proses
+  instan" · "Layanan 24/7" · "Pembayaran aman". *Snapshot lama: header ≤216 px di 390 (banner
+  ≤120 px, tile 72 px) + chip "Pengiriman instan", "24 jam", "Pembayaran aman".* Urutan langkah **1 Data akun → 2 Pilih nominal → 3 Metode
   pembayaran → 4 Kontak**.
   - Langkah 1 langsung terisi karena **varian tersedia termurah berkategori `topup` di chip
     default** dipilih otomatis (chip default `Indonesia` bila ada); bila tidak ada, varian
     tersedia pertama di section pertama; bila game tidak punya varian tersedia, field varian
     pertama tampil **disabled** + catatan "Nominal sedang tidak tersedia".
   - Chip: satu baris TIPE/REGION + count (Indonesia · lainnya by count · "Lainnya" · Semua
-    terakhir), hanya bila ≥2 grup. Section kategori Oura-style dengan label dari §14.4; 12 kartu
-    per section lalu "Tampilkan semua (N)"; search lintas section.
-  - Kartu nominal: nama penuh membungkus tanpa dipotong, ikon kategori + harga tabular, strip footer
-    **"Pengiriman instan"** pada kartu tersedia; tidak tersedia menampilkan "Habis"/"Tidak
+    terakhir), hanya bila ≥2 grup. Section kategori Oura-style dengan label dari §14.4; **semua kartu
+    langsung tampil** (batas 12 + "Tampilkan semua (N)" dihapus 14 Nov 2026); search lintas section.
+  - Kartu nominal: nama 12–13 px medium (clamp 2 baris, `title` nama penuh), **ikon item per game**
+    (`src/lib/games/item-icons.ts` → `public/brand/games/items/*.webp`: set mata uang 3 tier per
+    peringkat harga dalam section + pass/member/gift/pack/promo/special; fallback ikon lucide bila
+    gambar gagal) + harga 14–15 px semibold, footer **badge bergambar "Pengiriman / INSTAN"**
+    (teks aksesibel tetap "Pengiriman instan") pada kartu tersedia; tidak tersedia menampilkan "Habis"/"Tidak
     tersedia" dengan harga tetap terlihat dan `aria-disabled`.
   - Rail desktop sticky 360 px (varian terpilih + Tipe/Proses/deskripsi clamp + ID/nickname +
     Harga/Biaya/Total) dan bar bawah mobile satu baris ±66 px. "Selengkapnya" hanya muncul

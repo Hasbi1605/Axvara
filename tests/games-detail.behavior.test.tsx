@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { GameClient } from "@/app/games/[slug]/game-client";
+import { ItemIcon } from "@/components/games/detail/ItemIcon";
 import type { GamesDetail, GamesDetailGame, GamesDetailProduct } from "@/lib/games/catalog";
 import type { GamesSkContractField } from "@/lib/games/registry";
 import { gamesEffectiveCategory, gamesRegionCode, gamesTypeLabel } from "@/lib/games/variant-kind";
@@ -163,17 +164,71 @@ describe("Games detail (selected SKU contract)", () => {
     expect(banner.querySelector("img")).toBeNull();
   });
 
-  it("reveals each category separately after 12 cards and keeps full pass names", () => {
+  it("renders every category item without a reveal button and keeps full pass names accessible", () => {
     const products = Array.from({ length: 14 }, (_, i) => product({ buyer_sku_code: `pass-${i}`, name: `Weekly Diamond Pass ${i + 1}x`, group: "all", product_type_name: "Indonesia", price: 1000 + i }));
     render(<GameClient detail={{ game, products }} orderingOpen={false} />);
     const section = screen.getByRole("radiogroup", { name: "Pass & membership" });
-    expect(within(section).getAllByRole("radio")).toHaveLength(12);
-    fireEvent.click(screen.getByRole("button", { name: "Tampilkan semua (14)" }));
     expect(within(section).getAllByRole("radio")).toHaveLength(14);
-    expect(within(section).getByText("Weekly Diamond Pass 14x").className).not.toMatch(/truncate|line-clamp/);
+    expect(screen.queryByRole("button", { name: /Tampilkan semua/ })).toBeNull();
+    const name = within(section).getByText("Weekly Diamond Pass 14x");
+    expect(name.getAttribute("title")).toBe("Weekly Diamond Pass 14x");
+    expect(name.className).toContain("line-clamp-2");
+    expect(within(section).getByRole("radio", { name: /Weekly Diamond Pass 14x/ })).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox", { name: "Cari nominal" }), { target: { value: "missing" } });
     expect(screen.getByText("Tidak ada nominal cocok")).toBeTruthy();
     expect(screen.queryByRole("radiogroup")).toBeNull();
+  });
+
+  it("renders filled trust icons, the floating hero card and an accessible instant badge", () => {
+    render(<GameClient detail={{ game, products: [product({ category: "topup" })] }} orderingOpen={false} />);
+    const header = document.querySelector<HTMLElement>("[data-game-header]")!;
+    for (const label of ["Proses instan", "Layanan 24/7", "Pembayaran aman"]) expect(within(header).getByText(label)).toBeTruthy();
+    expect(header.querySelectorAll("svg")).toHaveLength(3);
+    expect(header.querySelector("[data-game-icon-card]")).toBeTruthy();
+    expect(header.firstElementChild!.className).toContain("aspect-[16/9] max-h-[440px] w-full sm:aspect-[21/9]");
+    const card = screen.getByRole("radio", { name: /86 Diamond/ }).closest("label")!;
+    expect(within(card).getByText("Pengiriman instan").className).toBe("sr-only");
+    expect(within(card).getByText("INSTAN").parentElement!.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByRole("radio", { name: /Pengiriman instan/ })).toBeTruthy();
+  });
+
+  it("localizes the trust row and instant badge without duplicating its accessible label", async () => {
+    document.cookie = "axv_locale=en; path=/";
+    render(<DisplayPreferencesProvider><GameClient detail={{ game, products: [product({})] }} orderingOpen={false} /></DisplayPreferencesProvider>);
+    expect(await screen.findByText("Instant process")).toBeTruthy();
+    expect(screen.getByText("24/7 support")).toBeTruthy();
+    expect(screen.getByText("Secure payment")).toBeTruthy();
+    const radio = screen.getByRole("radio", { name: /Instant delivery/ });
+    expect(radio.closest("label")!.textContent?.match(/Instant delivery/g)).toHaveLength(1);
+    expect(screen.getByText("DELIVERY").parentElement!.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("falls back to a category icon when an item image fails and ranks by price rather than availability", () => {
+    render(<GameClient detail={{ game, products: [
+      product({ buyer_sku_code: "high", name: "High", category: "topup", price: 3000 }),
+      product({ buyer_sku_code: "low", name: "Low", category: "topup", price: 1000, available: false }),
+      product({ buyer_sku_code: "middle", name: "Middle", category: "topup", price: 2000 }),
+    ] }} orderingOpen={false} />);
+    const high = screen.getByRole("radio", { name: /High/ }).closest("label")!;
+    const image = high.querySelector<HTMLImageElement>("img")!;
+    expect(image.getAttribute("src")).toBe("/brand/games/items/mlbb-diamond-3.webp");
+    expect(image.alt).toBe("");
+    expect(image.getAttribute("loading")).toBe("lazy");
+    fireEvent.error(image);
+    expect(high.querySelector("img")).toBeNull();
+    expect(high.querySelector("svg[data-item-icon-fallback].lucide-gem")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /Low/ }).closest("label")!.querySelector("img")!.getAttribute("src")).toBe("/brand/games/items/mlbb-diamond-1.webp");
+  });
+
+  it("handles image failures cached before hydration and retries a different artwork source", () => {
+    const complete = vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
+    const { container, rerender } = render(<ItemIcon src="/missing.webp" category="topup" />);
+    expect(container.querySelector("svg[data-item-icon-fallback]")).toBeTruthy();
+    expect(container.querySelector("img")).toBeNull();
+    complete.mockReturnValue(false);
+    rerender(<ItemIcon src="/brand/games/items/mlbb-diamond-1.webp" category="topup" />);
+    expect(container.querySelector("img")!.getAttribute("src")).toBe("/brand/games/items/mlbb-diamond-1.webp");
+    expect(container.querySelector("svg[data-item-icon-fallback]")).toBeNull();
   });
 
   it("keeps unavailable account fields visible but disabled and never requests nickname/quote", async () => {

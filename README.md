@@ -2075,8 +2075,11 @@ admin → aset resmi lokal → fallback (`src/lib/games/assets.ts`, `src/lib/gam
 `hidden`/`featured_rank`/`min_price` hanya varian bisa dijual, label field dibersihkan dan label
 generik diganti mayoritas game. Storefront Oura+ditopup: langkah `Data akun → Nominal → Metode →
 Kontak` dengan varian tersedia termurah kategori `topup` terpilih otomatis, chip tipe/region,
-section kategori, pill "Pengiriman instan" per kartu, state Habis eksplisit, rail sticky + bar
-mobile, frame P14 dan banner generatif blur 48 px. Admin Games: tab Game/Varian/Harga, editor per
+section kategori (semua kartu langsung tampil), badge bergambar "Pengiriman / INSTAN" + ikon item
+per game (`public/brand/games/items/`, `src/lib/games/item-icons.ts`) per kartu, hero detail
+`src/components/games/detail/*` (banner 16:9/21:9 maks 440 px, ikon kartu 3D melayang, trust
+row SVG animasi), state Habis eksplisit, rail sticky + bar mobile, frame P14 dan banner
+generatif blur 48 px. Admin Games: tab Game/Varian/Harga, editor per
 game, markup efektif + kategori penuh dengan scroll internal, bulk aman (field tak dikirim
 dipertahankan); API baru `GET/PUT /api/admin/games/pricing`, `GET/PATCH /api/admin/games/games`,
 `POST /api/admin/games/products/bulk-markup`. Aset: `scripts/games-assets.mjs` +

@@ -2,12 +2,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BadgePercent, Check, Clock, Flame, Gem, Gift, Info, Package, ShieldCheck, Sparkles, Star, Ticket, Zap } from "lucide-react";
+import { Check, Info } from "lucide-react";
 import { GameImage } from "@/components/games/GameImage";
+import { GameHero } from "@/components/games/detail/GameHero";
+import { ItemIcon } from "@/components/games/detail/ItemIcon";
+import { InstantBadge } from "@/components/games/detail/InstantBadge";
 import { GameCard, HowToTopUp, gamesFocus as focus } from "@/components/games/storefront";
 import { PaymentMethodPicker } from "@/components/storefront/PaymentMethodPicker";
 import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { gamesCopy } from "@/lib/games/copy";
+import { gamesItemIcon } from "@/lib/games/item-icons";
 import type { GamesCatalogGame, GamesDetail, GamesDetailProduct } from "@/lib/games/catalog";
 import { GAMES_CATEGORY_ORDER, cleanGamesFieldLabel, regionCodeFromNickname } from "@/lib/games/variant-kind";
 import { parsePayOptions, type PayOption } from "@/lib/payment-ui";
@@ -25,7 +29,6 @@ function fieldInvalid(field: ProductField, raw: string | undefined): boolean {
   return value.length < field.min || value.length > field.max;
 }
 const inputClass = `h-12 w-full rounded-xl border border-white/15 bg-white/[.04] px-4 text-white ${focus}`;
-const categoryIcons = { topup: Gem, pass: Ticket, first_topup: Sparkles, pack: Package, promo: BadgePercent, bestseller: Flame, special: Star, other: Gift };
 function firstVariant(products: Product[], type: string) {
   const inType = products.filter((p) => type === "all" || (p.type_label ?? "other") === type);
   const available = inType.filter((p) => p.available);
@@ -48,7 +51,6 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
   const [touched, setTouched] = useState(false);
   const [nickname, setNickname] = useState<{ state: "idle" | "checking" | "ok" | "unavailable" | "invalid"; value?: string }>({ state: "idle" });
   const [sku, setSku] = useState<string | null>(() => firstVariant(products, defaultType)?.buyer_sku_code ?? null);
-  const [expandedSections, setExpandedSections] = useState<string[]>([]);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionClamped, setDescriptionClamped] = useState(false);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
@@ -214,7 +216,7 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
     : nickname.state === "invalid" ? nickname.value || t.nicknameInvalid
     : nickname.state === "unavailable" ? t.nicknameUnavailable : "";
   const chooseType = (type: string) => {
-    setActiveType(type); setExpandedSections([]);
+    setActiveType(type);
     if (!selected?.available || (type !== "all" && (selected.type_label ?? "other") !== type)) setSku(firstVariant(products, type)?.buyer_sku_code ?? null);
   };
   const payLabel = !orderingOpen ? t.opensSoon : busy ? t.processing : option ? `${t.payAmount} ${totalText}` : t.pay;
@@ -222,17 +224,7 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
   const payClass = `min-h-12 rounded-xl bg-[#00E5FF] px-4 text-sm font-bold text-[#080C1E] disabled:opacity-40 ${focus}`;
   return <div className="mx-auto max-w-[1280px] px-4 pb-24 pt-4 sm:px-6 lg:px-8">
     {!orderingOpen && <p role="status" className="mb-4 rounded-xl border border-white/10 bg-white/[.03] p-3 text-center text-sm text-white/70">{t.notice}</p>}
-    <header data-game-header className="relative overflow-hidden rounded-3xl bg-[#0F1430]">
-      <div className="relative h-[100px] sm:h-[180px] lg:h-[200px]">
-        <GameImage src={game.banner} fallbackSrc={game.icon} banner name={game.name} className="h-full w-full text-4xl" eager />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#080C1E] via-[#080C1E]/30 to-transparent" />
-      </div>
-      <div className="relative -mt-9 flex items-end gap-3 px-4 pb-4 sm:-mt-14 sm:gap-5 sm:px-6">
-        <GameImage src={game.icon} name={game.name} className="h-[72px] w-[72px] text-2xl sm:h-28 sm:w-28" eager />
-        <div className="min-w-0 pb-1"><h1 className="font-display text-2xl font-bold leading-tight sm:text-4xl">{game.name}</h1>{game.publisher && <p className="mt-1 text-xs text-white/60 sm:text-sm">{game.publisher}</p>}</div>
-      </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-2 px-4 pb-4 text-[11px] text-white/70 sm:px-6 sm:text-xs">{[[Zap, t.instant], [Clock, t.timeChip], [ShieldCheck, t.secureChip]].map(([Icon, text]) => { const Glyph = Icon as typeof Zap; return <span key={text as string} className="flex items-center gap-1.5"><Glyph size={20} strokeWidth={1.75} className="text-[#00E5FF]" />{text as string}</span>; })}</div>
-    </header>
+    <GameHero game={game} t={t} />
     {!products.length ? <p role="status" className="mt-6 rounded-2xl border border-white/10 bg-white/[.03] p-8 text-center text-white/60">{t.nominalSoon}</p> : <>
     <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]"><div className="min-w-0 space-y-5">
       <section id="game-account" className="ax-glass rounded-2xl border border-white/10 p-5"><h2 className="font-display text-xl font-bold"><span className="mr-3 rounded-lg bg-[#FFB800]/15 px-3 py-1 text-[#FFB800]">1</span>{t.account}</h2>
@@ -249,24 +241,23 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
       </section>
       <section id="game-nominal" onKeyDown={nominalKeys} className="ax-glass scroll-mt-24 rounded-2xl border border-white/10 p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="flex items-center gap-3 font-display text-xl font-bold"><span className="rounded-lg bg-[#FFB800]/15 px-3 py-1 text-[#FFB800]">2</span>{t.nominal}</h2><span className="text-xs text-white/50">{products.length} {t.variants}</span></div>
-        <input aria-label={t.searchAmount} placeholder={t.searchNominal} value={search} onChange={(e) => { setSearch(e.target.value); setExpandedSections([]); }} className={`${inputClass} mt-5`} />
+        <input aria-label={t.searchAmount} placeholder={t.searchNominal} value={search} onChange={(e) => setSearch(e.target.value)} className={`${inputClass} mt-5`} />
         {countryTypes.size >= 2 && <p className="mt-4 text-xs leading-6 text-white/55">{t.regionHelp}</p>}
         {types.length >= 2 && <div aria-label={t.typeLabel} className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 py-2">{[...types, { type: "all", count: products.length }].map(({ type, count }) => <button key={type} type="button" disabled={!!attempted.current} onClick={() => chooseType(type)} aria-pressed={activeType === type} className={`min-h-11 shrink-0 rounded-full border px-4 text-xs ${activeType === type ? "border-[#00E5FF] bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/15 text-white/70"} ${focus}`}>{type === "all" ? t.allTypes : type === "other" ? t.categories.other : type} <span className="ml-1 opacity-60">({count})</span></button>)}</div>}
         {!visible.length && <p role="status" className="py-8 text-center text-sm text-white/60">{t.noAmountMatch}</p>}
         {GAMES_CATEGORY_ORDER.map((category) => {
           const items = visible.filter((p) => p.category === category).sort((a, b) => Number(b.available) - Number(a.available) || a.price - b.price);
           if (!items.length) return null;
-          const Icon = categoryIcons[category];
-          const expanded = expandedSections.includes(category);
+          const priceOrder = [...items].sort((a, b) => a.price - b.price);
+          const priceRanks = new Map(priceOrder.map((p, index) => [p.buyer_sku_code, index]));
           return <div key={category} className="mt-6"><h3 className="flex items-baseline gap-2 text-base font-semibold text-white">{t.categories[category]}<span className="text-xs font-normal text-white/45">{items.length}</span></h3>
-            <div role="radiogroup" aria-label={t.categories[category]} className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">{(expanded ? items : items.slice(0, 12)).map((p) => <label key={p.buyer_sku_code} aria-disabled={!p.available} className={`ax-glass relative flex min-h-[128px] min-w-0 flex-col overflow-hidden rounded-2xl border transition duration-[160ms] motion-reduce:transition-none has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF] ${sku === p.buyer_sku_code && p.available ? "border-[#00E5FF] bg-[#00E5FF]/10 shadow-[0_0_20px_rgba(0,229,255,.12)]" : "border-white/10"} ${!p.available ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+            <div role="radiogroup" aria-label={t.categories[category]} className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">{items.map((p) => <label key={p.buyer_sku_code} aria-disabled={!p.available} className={`ax-glass relative flex min-h-[108px] min-w-0 flex-col overflow-hidden rounded-2xl border transition duration-[160ms] motion-reduce:transition-none has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF] ${sku === p.buyer_sku_code && p.available ? "border-[#00E5FF] bg-[#00E5FF]/10 shadow-[0_0_20px_rgba(0,229,255,.12)]" : "border-white/10"} ${!p.available ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
               <input type="radio" name="game-sku" value={p.buyer_sku_code} checked={sku === p.buyer_sku_code && p.available} disabled={!p.available || !!attempted.current} onChange={() => setSku(p.buyer_sku_code)} className="sr-only" />
               {category === "bestseller" && <span className="self-start rounded-br-lg bg-[#FFB800]/15 px-2 py-1 text-[10px] font-semibold text-[#FFB800]">{t.bestseller}</span>}
-              <span className="flex flex-1 flex-col px-3 pb-3 pt-3"><span className="block break-words pr-2 text-[13px] font-semibold leading-5 text-white sm:text-sm">{p.name}</span>{activeType === "all" && p.type_label && <span className="mt-1 text-[11px] text-white/45">{p.type_label}</span>}<span className="mt-auto flex items-center gap-1.5 pt-3"><Icon aria-hidden="true" size={18} strokeWidth={1.75} className="shrink-0 text-[#00E5FF]/80" /><span className="font-display text-base font-bold tabular-nums sm:text-lg">{p.price > 0 ? prices.text(p.price) : "—"}</span></span></span>
-              <span className="flex min-h-8 justify-end bg-[#080C1E]/35 px-2 py-1.5">{p.available ? <span className="inline-flex items-center gap-1 rounded-full bg-[#00E5FF]/10 px-2 py-0.5 text-[10px] font-semibold text-[#00E5FF] sm:text-[11px]"><Zap aria-hidden="true" size={12} strokeWidth={1.75} />{t.instant}</span> : <span className="text-[11px] text-white/55">{["stock_empty", "supplier_off"].includes(p.availability_reason ?? "") ? t.soldOut : t.notAvailable}</span>}</span>
+              <span className="flex flex-1 flex-col p-3"><span title={p.name} className="line-clamp-2 break-words pr-2 text-[12px] font-medium leading-[18px] text-white/90 sm:text-[13px]">{p.name}</span>{activeType === "all" && p.type_label && <span className="mt-1 text-[11px] text-white/45">{p.type_label}</span>}<span className="mt-auto flex items-center gap-1.5 pt-2"><ItemIcon src={gamesItemIcon(game.slug, { ...p, currency: game.currency }, { index: priceRanks.get(p.buyer_sku_code) ?? 0, total: items.length })} category={category} /><span className="text-sm font-semibold tabular-nums sm:text-[15px]">{p.price > 0 ? prices.text(p.price) : "—"}</span></span></span>
+              <span className="flex min-h-8 items-center justify-end bg-[#080C1E]/35 px-2 py-1.5">{p.available ? <InstantBadge t={t} selected={sku === p.buyer_sku_code} /> : <span className="text-[11px] text-white/55">{["stock_empty", "supplier_off"].includes(p.availability_reason ?? "") ? t.soldOut : t.notAvailable}</span>}</span>
               {sku === p.buyer_sku_code && p.available && <Check aria-hidden="true" size={16} strokeWidth={1.75} className="absolute right-2 top-2 text-[#00E5FF]" />}
             </label>)}</div>
-            {!expanded && items.length > 12 && <button type="button" onClick={() => setExpandedSections((previous) => [...previous, category])} className={`mt-3 min-h-11 rounded-xl px-2 text-sm text-[#00E5FF] ${focus}`}>{t.showSection} ({items.length})</button>}
           </div>;
         })}
       </section>
