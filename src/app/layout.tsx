@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { faviconIcons } from "@/lib/favicons";
 // 2026-10-12: self-hosted variable fonts (public/fonts) via next/font/local.
 // next/font/google fetch CSS Google saat build — gagal di CI bila runner tak
 // bisa akses fonts.googleapis.com (TypeError null reading '1' di loader.js).
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
   applicationName: "AXVARA",
-  icons: { icon: "/favicon.svg" },
+  icons: faviconIcons("market"),
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

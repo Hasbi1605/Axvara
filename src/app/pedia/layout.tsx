@@ -1,4 +1,5 @@
 import { isPaymentMaintenanceEnabled } from "@/lib/payment-maintenance";
+import { faviconIcons } from "@/lib/favicons";
 import { PaymentMaintenanceNotice } from "@/components/shared/PaymentMaintenanceNotice";
 // src/app/pedia/layout.tsx — Layout Pedia (PEDIA-PRD §9.2).
 import type { Metadata } from "next";
@@ -19,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL("https://pedia.axvara.tech"),
     title: { default: site.titleDefault, template: site.titleTemplate },
     description: site.description,
-    icons: { icon: "/brand/pedia-mark-favicon.png", apple: "/brand/pedia-apple-touch-180.png" },
+    icons: faviconIcons("pedia"),
     openGraph: {
       type: "website", siteName: "Axvara Pedia", locale: site.ogLocale,
       title: site.titleDefault, description: site.description,

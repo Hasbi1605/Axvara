@@ -2136,3 +2136,16 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   "{n} harga diperbarui".
 - **Status.** Terang/gelap 1280/390 diperiksa dengan fixture; tanpa overflow halaman (scroll hanya di
   region tabel), tanpa error konsol di luar fixture 503 yang disengaja. Bukan sesi admin produksi.
+
+## Favicon per layanan — 14 November 2026 (lokal)
+
+Favicon lama burik: `public/favicon.svg` Market punya `stroke="white"` di level `<svg>` sehingga
+kotak latar ikut bergaris tepi putih, garis prisma ±0,7 px di 16 px; Pedia PNG 64 px dengan mark
+kecil; Games tidak punya favicon (ikut Market). Kini tiap layanan punya set sendiri di
+`public/brand/favicons/{market,pedia,games}/` dengan glyph yang disederhanakan untuk ukuran kecil
+(grid 64: Market = prisma lengkap garis 4,6/4 px; Pedia = bingkai + 2 batang; Games = bingkai +
+tuas analog), kotak midnight rx 14 bergradien `#141A3D→#070A1E` + glow cyan 16 % di atas + tepi
+putih 10 %. Berkas: `favicon.svg`, `favicon.ico` (PNG 16/32/48), `apple-touch-icon.png` 180 (kotak
+penuh tanpa sudut, iOS memberi mask), `icon-192.png`, `icon-512.png`; dirujuk lewat
+`faviconIcons()` (`src/lib/favicons.ts`) di layout root/Pedia dan `gamesMetadata`. `public/favicon.svg`
+dan `public/favicon.ico` root = set Market (fallback).
