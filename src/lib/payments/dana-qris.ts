@@ -187,6 +187,18 @@ export function makeDynamicQris(staticPayload: string, amount: number): string {
   return `${payloadWithoutChecksum}${calculateCrc16(payloadWithoutChecksum)}`;
 }
 
+/** amount → epoch ms pemakaian terakhir (tak terbaca = sekarang, paling dihindari). */
+function lastUsedByAmount(rows: Record<string, unknown>[]): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const row of rows) {
+    const amount = Number(row.payable_amount);
+    const julian = Number(row.last_used_jd);
+    const at = row.last_used_jd != null && Number.isFinite(julian) ? (julian - 2440587.5) * 86_400_000 : Date.now();
+    map.set(amount, Math.max(map.get(amount) ?? 0, at));
+  }
+  return map;
+}
+
 function randomUniqueCode(): number {
   const bytes = new Uint16Array(1);
   crypto.getRandomValues(bytes);
@@ -329,16 +341,20 @@ async function createQrisInvoice(provider: QrisProvider, orderCode: string, requ
   const orderDeadline = parseDbTimeUtc(order?.expires_at);
   const expiresAt = new Date(Math.min(Date.now() + DANA_QRIS_EXPIRY_MINUTES * 60_000, Number.isFinite(orderDeadline) ? orderDeadline : Infinity)).toISOString();
   const qrisUrl = publicQrisUrl(orderCode);
-  // Prefer unused amounts. Once the finite range is exhausted, reused
-  // amounts remain payable but require an administrator's bank verification.
+  // Least-recently-used: nominal yang belum pernah dipakai dahulu, lalu yang
+  // terakhir dipakai paling lama. Nominal di luar DANA_AMOUNT_REUSE_WINDOW_HOURS
+  // aman dicocokkan otomatis; hanya bila seluruh pool terpakai dalam jendela
+  // itu pembayaran butuh verifikasi bank admin.
   const history = await queryAll(
-    "SELECT DISTINCT payable_amount FROM payment_invoice_history WHERE provider=? AND payable_amount BETWEEN ? AND ?",
+    `SELECT payable_amount, MAX(julianday(COALESCE(expires_at,issued_at))) AS last_used_jd
+     FROM payment_invoice_history WHERE provider=? AND payable_amount BETWEEN ? AND ?
+     GROUP BY payable_amount`,
     provider, requestedAmount + 1, requestedAmount + DANA_QRIS_MAX_UNIQUE_CODE,
   );
-  const used = new Set(history.map(row => Number(row.payable_amount)));
+  const lastUsed = lastUsedByAmount(history);
   const start = randomUniqueCode();
   const codes = Array.from({ length: DANA_QRIS_MAX_UNIQUE_CODE }, (_, i) => 1 + ((start - 1 + i) % DANA_QRIS_MAX_UNIQUE_CODE))
-    .sort((a, b) => Number(used.has(requestedAmount + a)) - Number(used.has(requestedAmount + b)));
+    .sort((a, b) => (lastUsed.get(requestedAmount + a) ?? 0) - (lastUsed.get(requestedAmount + b) ?? 0));
 
   for (let attempt = 0; attempt < 40; attempt++) {
     const uniqueCode = codes[attempt];
@@ -489,11 +505,11 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
   // menolaknya sebagai `amount_reused_requires_review`, dan hindari nominal
   // yang baru saja dipakai order ini sendiri.
   const history = await queryAll(
-    `SELECT payable_amount, order_code FROM payment_invoice_history
+    `SELECT payable_amount, order_code, julianday(COALESCE(expires_at,issued_at)) AS last_used_jd FROM payment_invoice_history
      WHERE provider=? AND payable_amount BETWEEN ? AND ?`,
     detectedProvider, requestedAmount + 1, requestedAmount + DANA_QRIS_MAX_UNIQUE_CODE,
   );
-  const used = new Set(history.map((historyRow) => Number(historyRow.payable_amount)));
+  const lastUsed = lastUsedByAmount(history);
   const usedByOrder = new Set(history.filter((h) => h.order_code === orderCode).map((h) => Number(h.payable_amount)));
   const start = randomUniqueCode();
   const codes = Array.from(
@@ -501,7 +517,7 @@ export async function reissueDanaQrisInvoice(orderCode: string): Promise<QrisRei
     (_, index) => 1 + ((start - 1 + index) % DANA_QRIS_MAX_UNIQUE_CODE),
   )
     .filter((code) => requestedAmount + code !== previousAmount && !usedByOrder.has(requestedAmount + code))
-    .sort((a, b) => Number(used.has(requestedAmount + a)) - Number(used.has(requestedAmount + b)));
+    .sort((a, b) => (lastUsed.get(requestedAmount + a) ?? 0) - (lastUsed.get(requestedAmount + b) ?? 0));
 
   for (let attempt = 0; attempt < Math.min(40, codes.length); attempt++) {
     const uniqueCode = codes[attempt];

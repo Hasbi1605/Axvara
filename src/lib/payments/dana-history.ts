@@ -4,10 +4,21 @@
 // Berlaku untuk SEMUA rail QRIS (dana + gopay): history ber-provider sehingga
 // nominal yang pernah dipakai rail lain tidak saling mengotori. Matcher WAJIB
 // filter provider sebelum memakai predikat ini (lihat webhook dana/gopay).
+//
+// 2026-11-14: riwayat hanya dianggap bentrok bila invoice order lain dengan
+// nominal sama masih hidup/berakhir dalam DANA_AMOUNT_REUSE_WINDOW_HOURS
+// sebelum invoice ini terbit. Pool kode unik hanya 299 per harga; tanpa
+// jendela, produk laris (mis. Google AI Pro) menghabiskan pool selamanya dan
+// SETIAP pembayaran barunya jatuh ke `amount_reused_requires_review`.
+// Rentang legacy DANA tetap selalu dianggap tidak pasti.
+export const DANA_AMOUNT_REUSE_WINDOW_HOURS = 24;
+
 export const DANA_AMOUNT_REUSED_SQL = `(EXISTS (
   SELECT 1 FROM payment_invoice_history history
   WHERE history.provider=pt.provider AND history.payable_amount=pt.payable_amount
     AND history.order_code<>pt.order_code
+    AND julianday(COALESCE(history.expires_at,history.issued_at))
+      > julianday(COALESCE(pt.invoice_issued_at,pt.created_at)) - ${DANA_AMOUNT_REUSE_WINDOW_HOURS / 24.0}
 ) OR EXISTS (
   SELECT 1 FROM dana_qris_legacy_ranges legacy
   WHERE pt.provider='dana' AND pt.payable_amount BETWEEN legacy.min_amount AND legacy.max_amount

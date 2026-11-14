@@ -809,10 +809,12 @@ perubahan skema di luar migrasi 0122.
 ### 14.9 Verifikasi & batas bukti
 
 - Full suite terintegrasi (parent, sumber final): `NODE_ENV=test npx vitest run --run`
-  **448 file / 6.149 tes lulus, exit 0, 68,03 dtk**.
+  **448 file / 6.154 tes lulus, exit 0, 61,93 dtk**, setelah menggabungkan perbaikan QRIS
+  `b1b72f13` tanpa mengubah sumber Games.
 - Fokus koreksi: G-ADMIN **9 file/140 tes**, G-ASSETS **4 file/146 tes**, G-STORE-2
   **4 file/42 tes**. `tsc --noEmit`, `npm run lint`, dan `NODE_ENV=production npm run build:pages`
-  lulus pada sumber final (log G-STORE-2; input aplikasi/dependency tidak berubah sesudahnya).
+  lulus ulang pada sumber gabungan final (log G-PM-merged-*). Sumber UI/aset tidak berubah
+  setelah QA G-STORE-2; hanya dokumentasi yang diselaraskan setelah verifikasi akhir.
 - Browser: Chromium 1280/390 (home, ML, nominal, Habis, pass names, region hint, Roblox, AU2,
   keyboard, reduced motion, loading/error) + admin terang/gelap 1280/390 — semua dengan fixture
   lokal, tanpa order/pembayaran/produksi. Angka lama (443/6.057 backend, 437/5.941 storefront,

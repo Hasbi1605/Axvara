@@ -1,5 +1,10 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Perbaikan 14 November 2026: jendela reuse nominal QRIS 24 jam
+- Gejala: notifikasi "Pembayaran GoPay masuk tanpa pasangan invoice — nominal sudah pernah dipakai" berulang, terutama Google AI Pro. Sebab: pool kode unik 299 per harga + `payment_invoice_history` permanen; setelah 299 invoice (termasuk yang tidak dibayar/reissue) setiap nominal baru dianggap reuse sehingga poller yang sudah mencocokkan order tetap ditolak `amount_reused_requires_review`.
+- `DANA_AMOUNT_REUSED_SQL` (webhook dana/gopay, retry admin, guard atomik) kini hanya menghitung riwayat order lain yang `COALESCE(expires_at,issued_at)` > terbit invoice ini − `DANA_AMOUNT_REUSE_WINDOW_HOURS` (24). Rentang `dana_qris_legacy_ranges` tetap selalu bentrok. Allocator create/reissue memilih nominal least-recently-used. Jangan menghapus jendela atau mengubah 24 jam tanpa keputusan owner.
+- Event yang sudah `ignored` sebelum perbaikan tidak dicocokkan ulang otomatis; rekonsiliasi lewat panel admin (retry hanya berhasil bila invoice order masih hidup).
+
 ## Instruksi owner 13 November 2026: audit rekonsiliasi + "sudah dicek"
 - Aksi baru `POST /api/admin/payments/events` body `{action:"mark_reviewed", event_id, note}`: `note` wajib 5–500 karakter (trim), hanya untuk event attention (`received/ignored/failed` yang belum direview), set status terminal `ignored` + `reviewed_by`/`review_note`/`processed_at`, idempoten (`already_reviewed`), dan **tidak pernah** menyentuh order/ledger/status pembayaran. Event yang sudah direview tidak bisa `retry_match`/`confirm_match` (409 `event_reviewed`). Event `matched` → 409 `event_not_actionable`.
 - SATU definisi "Perlu dicek" (`PAYMENT_ATTENTION_WHERE` di `src/lib/admin-overview-queries.ts`): `status IN ('received','ignored','failed') AND reviewed_by IS NULL`, TANPA jendela waktu. Dipakai bersama oleh `/api/admin/overview` (`payment_attention`) dan `/api/admin/payments/events` (`attention` + filter `status=attention` + `counts` attention-status). Jangan membuat definisi/jendela kedua; badge sidebar harus sama dengan halaman Rekonsiliasi.
