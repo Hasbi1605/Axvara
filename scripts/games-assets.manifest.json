@@ -12,10 +12,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/71/69/87/716987bc-c98f-d85e-1803-e96f08e1a067/FPX_AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/71/69/87/716987bc-c98f-d85e-1803-e96f08e1a067/FPX_AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/aniimo.webp",
+        "official_source": "https://kg-web-cdn.akamaized.net/master/official-website/worldx_office_frontend/images/first-page/pc/1p/hero-bg-20261023.webp",
+        "page": "https://apps.apple.com/id/app/aniimo/id6759098797",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "arena-breakout": {
@@ -27,11 +39,23 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f7/7b/16/f77b16b9-53a4-2234-dbbc-42b3596a2fc9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/arena-breakout.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f7/7b/16/f77b16b9-53a4-2234-dbbc-42b3596a2fc9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "page": "https://apps.apple.com/id/app/arena-breakout-realistic-fps/id1560765304"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/arena-breakout.webp",
+        "official_source": "https://arenabreakout.com/pre-register/img/header_pc.1c79a012.jpg",
+        "page": "https://apps.apple.com/id/app/arena-breakout-realistic-fps/id1560765304",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "arena-of-valor": {
@@ -44,8 +68,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/56/0f/ca/560fcaff-99e2-17bb-55cd-972cf7e1d75e/1.__U9996_U5f35_U5f62_U8c61_U5716_2796x1290.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/arena-of-valor.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/56/0f/ca/560fcaff-99e2-17bb-55cd-972cf7e1d75e/1.__U9996_U5f35_U5f62_U8c61_U5716_2796x1290.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/garena-aov-10th-anniversary/id1222857607",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/56/0f/ca/560fcaff-99e2-17bb-55cd-972cf7e1d75e/1.__U9996_U5f35_U5f62_U8c61_U5716_2796x1290.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/56/0f/ca/560fcaff-99e2-17bb-55cd-972cf7e1d75e/1.__U9996_U5f35_U5f62_U8c61_U5716_2796x1290.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/arena-of-valor.webp",
@@ -63,8 +105,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://danceclub.uniugame.com/images/topbg.jpg",
-        "licence": "Key visual resmi dari situs resmi publisher (danceclub.uniugame.com, judul halaman 'AU2 Mobile'); tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/au2-mobile.webp",
+        "official_source": "https://danceclub.uniugame.com/images/topbg.jpg",
+        "page": "https://apps.apple.com/id/app/au2-mobile-lovely-babies/id1428629860",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://danceclub.uniugame.com/images/topbg.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://danceclub.uniugame.com/images/topbg.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "note": "Identitas terkonfirmasi: 'AU2 Mobile' = game dance/rhythm Uniugame (App Store ID 1428629860, bundle com.uniugame.dancingidol), bukan 'Aura Kingdom 2'.",
       "portrait": {
@@ -81,10 +141,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/0d/c8/11/0dc811aa-f0d4-edc9-f96f-68565607a992/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/0d/c8/11/0dc811aa-f0d4-edc9-f96f-68565607a992/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/blood-strike.webp",
+        "official_source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3199170/library_hero.jpg",
+        "page": "https://apps.apple.com/id/app/blood-strike-x-dj-snake/id1637059453",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "call-of-duty-mobile": {
@@ -97,8 +169,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/10/4a/be/104abe32-0b56-85eb-366f-d5459323acb2/1_2688x1242.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/call-of-duty-mobile.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/74/90/fa/7490fa0c-5957-f720-4e62-f4ccd78808ba/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg",
+        "page": "https://apps.apple.com/id/app/call-of-duty-mobile-garena/id1465688043",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/74/90/fa/7490fa0c-5957-f720-4e62-f4ccd78808ba/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/74/90/fa/7490fa0c-5957-f720-4e62-f4ccd78808ba/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg"
+          ],
+          "reference": "scripts/games-assets-src/portraits/call-of-duty-mobile.webp"
+        }
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/call-of-duty-mobile.webp",
@@ -115,10 +205,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/fb/89/62/fb8962d6-3484-b5fe-3407-01e7a786d160/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/fb/89/62/fb8962d6-3484-b5fe-3407-01e7a786d160/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/captain-tsubasa-ace.webp",
+        "official_source": "https://play-lh.googleusercontent.com/JU6augJ4_wQbgaeUxTi60ZccCFx65J1Ee3u4WRqqWdg1lHkuKZL_C0_yWt_nnT5YTCGfn0BqlNoPH3cAf9MN=s0",
+        "page": "https://apps.apple.com/id/app/captain-tsubasa-ace/id1637404845",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "crossfire-legends": {
@@ -130,11 +232,23 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/76/41/85/7641854c-3d5d-2819-974a-972b55a250bf/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/crossfire-legends.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/76/41/85/7641854c-3d5d-2819-974a-972b55a250bf/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
         "page": "https://apps.apple.com/id/app/crossfire-legends/id6743618701"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/crossfire-legends.webp",
+        "official_source": "https://cdn-mainsite-aka.vnggames.com/products/cfl/mainsite/dist/assets/cfl-ms-25-intro/images/characters.png",
+        "page": "https://apps.apple.com/id/app/crossfire-legends/id6743618701",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "delta-force": {
@@ -147,8 +261,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/38/fb/85/38fb85c7-5c43-3a77-2f50-932ae1b0ecd3/1._Phantom_blade_2208x1242.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/delta-force.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/38/fb/85/38fb85c7-5c43-3a77-2f50-932ae1b0ecd3/1._Phantom_blade_2208x1242.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/garena-delta-force/id6670604287",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/38/fb/85/38fb85c7-5c43-3a77-2f50-932ae1b0ecd3/1._Phantom_blade_2208x1242.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/38/fb/85/38fb85c7-5c43-3a77-2f50-932ae1b0ecd3/1._Phantom_blade_2208x1242.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/delta-force.webp",
@@ -166,8 +298,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/26/e7/b8/26e7b828-0677-14b6-27bb-35ea88ff1642/1_IOS_2796x1290_en-US.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/dragon-city.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/26/e7/b8/26e7b828-0677-14b6-27bb-35ea88ff1642/1_IOS_2796x1290_en-US.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/dragon-city-collect-battle/id561941526",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/26/e7/b8/26e7b828-0677-14b6-27bb-35ea88ff1642/1_IOS_2796x1290_en-US.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/26/e7/b8/26e7b828-0677-14b6-27bb-35ea88ff1642/1_IOS_2796x1290_en-US.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/21/81/16/21811675-76dc-6ae8-9653-00b4b8d49042/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.jpg",
@@ -183,10 +333,31 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/41/d1/84/41d18457-ec03-6812-f0a7-8a83686c6009/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/41/d1/84/41d18457-ec03-6812-f0a7-8a83686c6009/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/fc-mobile.webp",
+        "official_source": "https://drop-assets.ea.com/images/5Qf8ub7pOwQ5nMgVpsXM84/ae587df085ef6e37b7a3b2dba29e4b84/EAS_FC25_STD_MOBILE_04.jpg",
+        "page": "https://apps.apple.com/id/app/ea-sports-fc-football-mobile/id1094930513",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://drop-assets.ea.com/images/5Qf8ub7pOwQ5nMgVpsXM84/ae587df085ef6e37b7a3b2dba29e4b84/EAS_FC25_STD_MOBILE_04.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://drop-assets.ea.com/images/5Qf8ub7pOwQ5nMgVpsXM84/ae587df085ef6e37b7a3b2dba29e4b84/EAS_FC25_STD_MOBILE_04.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       }
     },
     "football-master-2": {
@@ -198,11 +369,32 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5a/14/35/5a143502-07f4-911c-14b8-24a57a8369aa/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/football-master-2.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5a/14/35/5a143502-07f4-911c-14b8-24a57a8369aa/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "page": "https://apps.apple.com/id/app/football-master-2-soccer-star/id1559688336"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/football-master-2.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5a/14/35/5a143502-07f4-911c-14b8-24a57a8369aa/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "page": "https://apps.apple.com/id/app/football-master-2-soccer-star/id1559688336",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5a/14/35/5a143502-07f4-911c-14b8-24a57a8369aa/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5a/14/35/5a143502-07f4-911c-14b8-24a57a8369aa/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg"
+          ],
+          "reference": "scripts/games-assets-src/portraits/football-master-2.webp"
+        }
       }
     },
     "free-fire": {
@@ -215,8 +407,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/56/54/58/56545827-aeb3-4a7b-e0ce-b14d27260c80/FFO_KV_2208x1242.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari listing publisher (App Store / Google Play); tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/free-fire.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/16/6b/ef166bba-1d69-85f5-ed84-6b7c6e73b55c/AppIcon-1788350393-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.png",
+        "page": "https://apps.apple.com/id/app/free-fire-x-naruto-shippuden/id1300146617",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/16/6b/ef166bba-1d69-85f5-ed84-6b7c6e73b55c/AppIcon-1788350393-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.png",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/16/6b/ef166bba-1d69-85f5-ed84-6b7c6e73b55c/AppIcon-1788350393-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.png"
+          ],
+          "reference": "scripts/games-assets-src/portraits/free-fire.webp"
+        }
       },
       "note": "Aset gelombang 1 dari docs r2-assets.md; sumber resmi sama, diregenerasi 14 Nov 2026.",
       "portrait": {
@@ -235,8 +445,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/30/54/6f/30546fcd-d914-f7c8-a4e0-64a65e39d0fd/2208x1242_FFM.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari listing publisher (App Store / Google Play); tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/free-fire-max.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/30/54/6f/30546fcd-d914-f7c8-a4e0-64a65e39d0fd/2208x1242_FFM.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/free-fire-max-x-naruto/id1480516829",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/30/54/6f/30546fcd-d914-f7c8-a4e0-64a65e39d0fd/2208x1242_FFM.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/30/54/6f/30546fcd-d914-f7c8-a4e0-64a65e39d0fd/2208x1242_FFM.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "note": "Aset gelombang 1 dari docs r2-assets.md; sumber resmi sama, diregenerasi 14 Nov 2026.",
       "portrait": {
@@ -255,8 +483,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/9c/07/b3/9c07b30d-5053-7669-5485-b83de5c26838/_U5546_U5e97_U56fe6-2688x1242.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/gangstar-mirage-city.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/9c/07/b3/9c07b30d-5053-7669-5485-b83de5c26838/_U5546_U5e97_U56fe6-2688x1242.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/gangstar-mirage-city-online/id6472700792",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/9c/07/b3/9c07b30d-5053-7669-5485-b83de5c26838/_U5546_U5e97_U56fe6-2688x1242.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/9c/07/b3/9c07b30d-5053-7669-5485-b83de5c26838/_U5546_U5e97_U56fe6-2688x1242.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/70/41/2e/70412e0e-94ae-262d-a256-eaa9d8762e66/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
@@ -273,8 +519,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/00/a0/86/00a08645-0f74-fc4a-2994-274fce072694/1.png/2208x1242bb.png",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/garena-undawn.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/00/a0/86/00a08645-0f74-fc4a-2994-274fce072694/1.png/2208x1242bb.png",
+        "page": "https://apps.apple.com/id/app/garena-undawn/id1538722240",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/00/a0/86/00a08645-0f74-fc4a-2994-274fce072694/1.png/2208x1242bb.png",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/00/a0/86/00a08645-0f74-fc4a-2994-274fce072694/1.png/2208x1242bb.png"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/garena-undawn.webp",
@@ -292,8 +556,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/5e/56/3e/5e563e37-ace1-d6fa-dd9b-4f507b2b37c9/EN-2796x1290-_U65e0logo.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/genshin-impact.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/5e/56/3e/5e563e37-ace1-d6fa-dd9b-4f507b2b37c9/EN-2796x1290-_U65e0logo.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/genshin-impact/id1517783697",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/5e/56/3e/5e563e37-ace1-d6fa-dd9b-4f507b2b37c9/EN-2796x1290-_U65e0logo.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/5e/56/3e/5e563e37-ace1-d6fa-dd9b-4f507b2b37c9/EN-2796x1290-_U65e0logo.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/15/9e/b1/159eb1a7-fc58-2b43-b330-c5e619a77e2d/AppIcon-0-0-1x_U007epad-0-1-85-220.png/1024x1024bb.jpg",
@@ -309,11 +591,23 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/47/81/75/4781755c-90ab-220f-277d-990c68a33480/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/growtopia.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/47/81/75/4781755c-90ab-220f-277d-990c68a33480/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
         "page": "https://apps.apple.com/id/app/growtopia/id590495115"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/growtopia.webp",
+        "official_source": "https://s3.eu-west-1.amazonaws.com/cdn.growtopiagame.com/website/resources/assets/images/grow_header.jpg",
+        "page": "https://apps.apple.com/id/app/growtopia/id590495115",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "haikyu-fly-high": {
@@ -326,8 +620,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/ac/a1/b3/aca1b3c6-dd1c-f0e4-46a6-9c6f6f377807/HiQ_MKT_G_012_EN_PRE_Store_Banner_1_2208x1242__U0023Egg__U0023_U6851_U914d_U56ed.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/haikyu-fly-high.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/ac/a1/b3/aca1b3c6-dd1c-f0e4-46a6-9c6f6f377807/HiQ_MKT_G_012_EN_PRE_Store_Banner_1_2208x1242__U0023Egg__U0023_U6851_U914d_U56ed.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/haikyu-fly-high/id6737688139",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/ac/a1/b3/aca1b3c6-dd1c-f0e4-46a6-9c6f6f377807/HiQ_MKT_G_012_EN_PRE_Store_Banner_1_2208x1242__U0023Egg__U0023_U6851_U914d_U56ed.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/ac/a1/b3/aca1b3c6-dd1c-f0e4-46a6-9c6f6f377807/HiQ_MKT_G_012_EN_PRE_Store_Banner_1_2208x1242__U0023Egg__U0023_U6851_U914d_U56ed.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/40/9c/df/409cdfa8-8f1b-6eda-d072-d3d94b13e65f/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
@@ -349,10 +661,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/34/8b/e4/348be4c2-b208-594d-8559-b70acf6b40a0/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/34/8b/e4/348be4c2-b208-594d-8559-b70acf6b40a0/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/heartopia.webp",
+        "official_source": "https://website.xdcdn.net/poster/133737826/ai-resource/RGcU80vj.jpg",
+        "page": "https://apps.apple.com/id/app/heartopia/id6746151928",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "honkai-star-rail": {
@@ -364,10 +688,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b9/19/0a/b9190ac1-9dfc-6d88-5ac4-96dd4e6d6ff4/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b9/19/0a/b9190ac1-9dfc-6d88-5ac4-96dd4e6d6ff4/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/honkai-star-rail.webp",
+        "official_source": "https://play-lh.googleusercontent.com/051CQwb9h4yW9Vxtk9nAIZlAMO_Trf1w8J85sZoahHXQYi14AF_6uSqbQcX-OL471QK9HJmVobgc1lyMfhbWhg=s0",
+        "page": "https://apps.apple.com/id/app/honkai-star-rail/id1599719154",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "honor-of-kings": {
@@ -379,11 +715,32 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ba/a1/4f/baa14fb9-493b-d323-99f3-82b9f5ac75c0/AppIcon-1x_U007emarketing-0-7-0-85-220-0.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/honor-of-kings.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ba/a1/4f/baa14fb9-493b-d323-99f3-82b9f5ac75c0/AppIcon-1x_U007emarketing-0-7-0-85-220-0.png/1024x1024bb.jpg",
         "page": "https://apps.apple.com/id/app/honor-of-kings/id1619254071"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/honor-of-kings.webp",
+        "official_source": "https://www.honorofkings.com/img/story_img1.jpg",
+        "page": "https://apps.apple.com/id/app/honor-of-kings/id1619254071",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://www.honorofkings.com/img/story_img1.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://www.honorofkings.com/img/story_img1.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       }
     },
     "identity-v": {
@@ -396,8 +753,17 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/49/59/db/4959db8c-a6f9-3c14-25ea-1ed411bf1595/0.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/identity-v.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/49/59/db/4959db8c-a6f9-3c14-25ea-1ed411bf1595/0.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/identity-v/id1347780764",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/cd/1c/78/cd1c78b5-de24-734e-749a-507f872745a7/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
@@ -420,8 +786,17 @@
         "licence": "Crop persegi dari key art resmi di situs resmi publisher (laplacem.zlongame.com); tanpa modifikasi isi, tanpa UI."
       },
       "banner": {
-        "source": "https://laplacem.zlongame.com/img/page1.jpg",
-        "licence": "Key art resmi dari situs resmi publisher (laplacem.zlongame.com); tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/laplace-m.webp",
+        "official_source": "https://laplacem.zlongame.com/img/page1.jpg",
+        "page": "https://laplacem.zlongame.com/",
+        "status": "recropped",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 792
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       },
       "note": "Tidak lagi terdaftar di App Store/Play (game lama); aset diambil dari situs resmi Zlongame yang masih online. Crop digeser agar wordmark 'Laplace M' tidak terpotong.",
       "portrait": {
@@ -444,10 +819,31 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4c/10/e5/4c10e5d1-2fbb-48f2-0851-49d5c0b30ee9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4c/10/e5/4c10e5d1-2fbb-48f2-0851-49d5c0b30ee9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/league-of-legends-wild-rift.webp",
+        "official_source": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/news_live/3229a91c0b046bbb8ef3a8fb4487cd975f8611b0-1920x1080.jpg",
+        "page": "https://apps.apple.com/id/app/league-of-legends-wild-rift/id1480616990",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://cmsassets.rgpub.io/sanity/images/dsfx7636/news_live/3229a91c0b046bbb8ef3a8fb4487cd975f8611b0-1920x1080.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://cmsassets.rgpub.io/sanity/images/dsfx7636/news_live/3229a91c0b046bbb8ef3a8fb4487cd975f8611b0-1920x1080.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       }
     },
     "lifeafter": {
@@ -460,8 +856,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/d6/22/07/d62207bc-7718-200f-db6d-e7ba1824f6c3/2208x1242-_U4e3bKV.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/lifeafter.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/d6/22/07/d62207bc-7718-200f-db6d-e7ba1824f6c3/2208x1242-_U4e3bKV.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/lifeafter/id1441752845",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/d6/22/07/d62207bc-7718-200f-db6d-e7ba1824f6c3/2208x1242-_U4e3bKV.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/d6/22/07/d62207bc-7718-200f-db6d-e7ba1824f6c3/2208x1242-_U4e3bKV.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4c/6d/8d/4c6d8d47-9e3d-8387-705e-ec84ad2a70a1/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
@@ -478,8 +892,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/9d/d1/25/9dd1259f-e7fe-90dc-5598-11d0dc84d320/2688x1242-1.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/lineage2m.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/9d/d1/25/9dd1259f-e7fe-90dc-5598-11d0dc84d320/2688x1242-1.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/lineage2m/id6739482834",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/9d/d1/25/9dd1259f-e7fe-90dc-5598-11d0dc84d320/2688x1242-1.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/9d/d1/25/9dd1259f-e7fe-90dc-5598-11d0dc84d320/2688x1242-1.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/lineage2m.webp",
@@ -496,7 +928,6 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/f5/11/fe/f511fe51-70ae-b2b4-0977-9a08c3181cb3/ipa-project-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/f5/11/fe/f511fe51-70ae-b2b4-0977-9a08c3181cb3/ipa-project-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi), digeser agar badge promo terpotong minimal; tanpa modifikasi isi, tanpa UI.",
@@ -506,6 +937,19 @@
           "width": 683,
           "height": 1024
         }
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/machina-waking.webp",
+        "official_source": "https://play-lh.googleusercontent.com/M3-mhUrZvX7CWT0ST_4wdEDrEqQduNgWcyHetLviex3hxxbGa-ifd2RgQb4XSTo8gsC5s2wFpa-LOn3qXqZCxQ=s0",
+        "page": "https://apps.apple.com/id/app/machina-waking/id6698864769",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "magic-chess-go-go": {
@@ -517,10 +961,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4b/d6/7f/4bd67f60-7839-781f-324c-488a2ee3cf0d/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4b/d6/7f/4bd67f60-7839-781f-324c-488a2ee3cf0d/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/magic-chess-go-go.webp",
+        "official_source": "https://akmweb.youngjoygame.com/web/gms/image/fe231ec3e3e48e910de00e4cb1627452.jpg",
+        "page": "https://apps.apple.com/id/app/magic-chess-go-go/id6612014908",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "marvel-rivals": {
@@ -533,8 +989,17 @@
         "licence": "Crop persegi dari library hero resmi di listing Steam publisher (NetEase Games); tanpa modifikasi isi, tanpa UI."
       },
       "banner": {
-        "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2767030/page_bg_raw.jpg",
-        "licence": "Key art latar resmi dari listing Steam publisher (NetEase Games); tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/marvel-rivals.webp",
+        "official_source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2767030/page_bg_raw.jpg",
+        "page": "https://store.steampowered.com/app/2767030/",
+        "status": "recropped",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 901
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       },
       "note": "Judul PC/console NetEase: sumber resmi Steam app 2767030 (developer & publisher 'NetEase Games'), bukan toko top-up.",
       "portrait": {
@@ -552,8 +1017,17 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://play-lh.googleusercontent.com/LzFc5Sb33eTUjSez6SPMgPhkm17t2MtG8x7AwD0Wv2xbSdVyNu9MPCNh9SE251Ts07Dk-aCtqPrLE8HOXW8GBA=s0",
-        "licence": "Gambar promosi/key visual resmi dari listing publisher (App Store / Google Play); tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/mobile-legends.webp",
+        "official_source": "https://play-lh.googleusercontent.com/LzFc5Sb33eTUjSez6SPMgPhkm17t2MtG8x7AwD0Wv2xbSdVyNu9MPCNh9SE251Ts07Dk-aCtqPrLE8HOXW8GBA=s0",
+        "page": "https://apps.apple.com/id/app/mobile-legends-bang-bang/id1160056295",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       },
       "note": "Aset gelombang 1 dari docs r2-assets.md; sumber resmi sama, diregenerasi 14 Nov 2026.",
       "portrait": {
@@ -577,8 +1051,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/0a/b0/4c/0ab04c27-011b-3d41-85e3-6957e0cfb164/f447203c-8c71-41f1-8b49-cd890f5cdac9_2208_1242_U9996_U56fe2.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/mobile-legends-adventure.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/0a/b0/4c/0ab04c27-011b-3d41-85e3-6957e0cfb164/f447203c-8c71-41f1-8b49-cd890f5cdac9_2208_1242_U9996_U56fe2.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/mobile-legends-adventure/id1456213261",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/0a/b0/4c/0ab04c27-011b-3d41-85e3-6957e0cfb164/f447203c-8c71-41f1-8b49-cd890f5cdac9_2208_1242_U9996_U56fe2.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/0a/b0/4c/0ab04c27-011b-3d41-85e3-6957e0cfb164/f447203c-8c71-41f1-8b49-cd890f5cdac9_2208_1242_U9996_U56fe2.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/b4/0e/c5/b40ec517-b9a3-4cb2-1c20-cd5b46d5cddf/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg",
@@ -595,8 +1087,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/3b/e9/a5/3be9a54e-b6e9-4668-7bda-210e94847b07/cba7d403-4aa8-45ba-bc60-65c8e41096b0_2208x1242-1-en.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/mu-origin-2.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/3b/e9/a5/3be9a54e-b6e9-4668-7bda-210e94847b07/cba7d403-4aa8-45ba-bc60-65c8e41096b0_2208x1242-1-en.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/mu-origin-2/id1444994196",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/3b/e9/a5/3be9a54e-b6e9-4668-7bda-210e94847b07/cba7d403-4aa8-45ba-bc60-65c8e41096b0_2208x1242-1-en.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/3b/e9/a5/3be9a54e-b6e9-4668-7bda-210e94847b07/cba7d403-4aa8-45ba-bc60-65c8e41096b0_2208x1242-1-en.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/mu-origin-2.webp",
@@ -614,8 +1124,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/05/e4/11/05e41116-0cf8-8046-21c0-a01212913505/_U5723_U8bde2208x1242-EN.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/one-punch-man.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/05/e4/11/05e41116-0cf8-8046-21c0-a01212913505/_U5723_U8bde2208x1242-EN.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/one-punch-man-the-strongest/id1491275510",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/05/e4/11/05e41116-0cf8-8046-21c0-a01212913505/_U5723_U8bde2208x1242-EN.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/05/e4/11/05e41116-0cf8-8046-21c0-a01212913505/_U5723_U8bde2208x1242-EN.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/58/d2/ff/58d2ff5c-135b-96c0-98dc-b502d392a80e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
@@ -631,11 +1159,23 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/bf/2a/69/bf2a69f3-89f8-344c-acdb-b2f61b1fc34e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/onmyoji-arena.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/bf/2a/69/bf2a69f3-89f8-344c-acdb-b2f61b1fc34e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "page": "https://apps.apple.com/id/app/onmyoji-arena/id1343073274"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/onmyoji-arena.webp",
+        "official_source": "https://play-lh.googleusercontent.com/20HKSjJcLzhBoqO6iquvTfrrNcAxP3aPx9bGRb7sU3raw0kmvtGbiSfTgaI9dNw4lSsPeLZfT2RWILib-Soyeg=s0",
+        "page": "https://apps.apple.com/id/app/onmyoji-arena/id1343073274",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "point-blank": {
@@ -647,12 +1187,33 @@
         "source": "https://play-lh.googleusercontent.com/M2hEx9f2IoX3Aa1Ys22C3Di5j-WLeF9nt7Rjymjeh2NRVPfnUyRefHxLVZP1NGp49OwV2hnfuuIJ2ElJkBjG0c4=s0",
         "licence": "Logo PB resmi dari listing Google Play publisher (Zepetto); nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Situs resmi pointblank.zepetto.com hanya menyediakan wordmark 400×60 dan banner negara beresolusi rendah; tidak ada key art landscape resmi yang layak.",
       "note": "Point Blank (PC, Zepetto) tidak dijual di App Store/Steam; ikon logo PB diambil dari listing Google Play resmi Zepetto untuk aplikasi pendamping Point Blank.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/point-blank.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://play-lh.googleusercontent.com/M2hEx9f2IoX3Aa1Ys22C3Di5j-WLeF9nt7Rjymjeh2NRVPfnUyRefHxLVZP1NGp49OwV2hnfuuIJ2ElJkBjG0c4=s0",
         "page": "https://play.google.com/store/apps/details?id=com.zepetto.PointBlank.CompanionApp"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/point-blank.webp",
+        "official_source": "https://www.zepetto.com/images/v2/pb_info04.jpg",
+        "page": "https://play.google.com/store/apps/details?id=com.zepetto.PointBlank.CompanionApp",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://www.zepetto.com/images/v2/pb_info04.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://www.zepetto.com/images/v2/pb_info04.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       }
     },
     "pubg-mobile": {
@@ -665,8 +1226,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/12/44/11/124411bd-7435-f006-e5b7-6203ada37693/0.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari listing publisher (App Store / Google Play); tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/pubg-mobile.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/12/44/11/124411bd-7435-f006-e5b7-6203ada37693/0.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/pubg-mobile/id1330123889",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/12/44/11/124411bd-7435-f006-e5b7-6203ada37693/0.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/12/44/11/124411bd-7435-f006-e5b7-6203ada37693/0.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "note": "Aset gelombang 1 dari docs r2-assets.md; sumber resmi sama, diregenerasi 14 Nov 2026.",
       "portrait": {
@@ -684,8 +1263,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/40/12/19/4012197c-8297-2f67-a60b-b7b12b3fdb15/2796x1290-EN.png/2208x1242bb.png",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/ragnarok-m-eternal-love.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/40/12/19/4012197c-8297-2f67-a60b-b7b12b3fdb15/2796x1290-EN.png/2208x1242bb.png",
+        "page": "https://apps.apple.com/id/app/ragnarok-m-eternal-love/id1404051022",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/40/12/19/4012197c-8297-2f67-a60b-b7b12b3fdb15/2796x1290-EN.png/2208x1242bb.png",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/40/12/19/4012197c-8297-2f67-a60b-b7b12b3fdb15/2796x1290-EN.png/2208x1242bb.png"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/21/00/48/21004879-2749-7dc1-462a-43032a41b535/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
@@ -701,11 +1298,23 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9b/bd/c0/9bbdc06e-9600-1277-5dbb-5fb39216c483/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/rainbow-six-mobile.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9b/bd/c0/9bbdc06e-9600-1277-5dbb-5fb39216c483/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "page": "https://apps.apple.com/id/app/rainbow-six-mobile/id1608916511"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/rainbow-six-mobile.webp",
+        "official_source": "https://play-lh.googleusercontent.com/LOshPgbahPoVZ6sAWJO4bOLMGHOAIpIwHVVflkW-d9bznfY7p8x7CYjhZxUAfXN9T5IYSKNg2JW6zzLwKJYFHcs=s0",
+        "page": "https://apps.apple.com/id/app/rainbow-six-mobile/id1608916511",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "roblox": {
@@ -717,11 +1326,23 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/19/a1/0f/19a10fa0-874d-bf10-221a-ed7fe7b4cfe1/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/roblox.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/19/a1/0f/19a10fa0-874d-bf10-221a-ed7fe7b4cfe1/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
         "page": "https://apps.apple.com/id/app/roblox/id431946152"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/roblox.webp",
+        "official_source": "https://play-lh.googleusercontent.com/XRnJa5L_GOx-Gq10qbyt7oGZwVkAx9jl-KUU68ooQm-HCGtK4neFOfnKIWdzTJRrD6pLs8sN8mO2Pm3E9oy2RvA=s0",
+        "page": "https://apps.apple.com/id/app/roblox/id431946152",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "sausage-man": {
@@ -734,8 +1355,26 @@
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
       "banner": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/19/b6/d0/19b6d0c6-d8fb-0c72-2fec-1fe0a900a854/2688x1242-_U730e_U6237_U5ea7_U539f_U8272_U6e32_U67d3_U56fe-_U521b_U9020_U4e0e_U7834_U574f-en.jpg/2208x1242bb.jpg",
-        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+        "source": "local:scripts/games-assets-src/banners/sausage-man.webp",
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/19/b6/d0/19b6d0c6-d8fb-0c72-2fec-1fe0a900a854/2688x1242-_U730e_U6237_U5ea7_U539f_U8272_U6e32_U67d3_U56fe-_U521b_U9020_U4e0e_U7834_U574f-en.jpg/2208x1242bb.jpg",
+        "page": "https://apps.apple.com/id/app/sausage-man/id1563750315",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/19/b6/d0/19b6d0c6-d8fb-0c72-2fec-1fe0a900a854/2688x1242-_U730e_U6237_U5ea7_U539f_U8272_U6e32_U67d3_U56fe-_U521b_U9020_U4e0e_U7834_U574f-en.jpg/2208x1242bb.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/19/b6/d0/19b6d0c6-d8fb-0c72-2fec-1fe0a900a854/2688x1242-_U730e_U6237_U5ea7_U539f_U8272_U6e32_U67d3_U56fe-_U521b_U9020_U4e0e_U7834_U574f-en.jpg/2208x1242bb.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       },
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/04/03/f0/0403f0f2-fc1a-4b6c-0b59-f51169dc11c6/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
@@ -751,11 +1390,23 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/67/f9/76/67f9766a-5bf8-e038-15c0-2b8010365d3e/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai.",
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/speed-drifters.webp",
         "generated": "GPT Image (Codex image_gen) outpaint of official icon https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/67/f9/76/67f9766a-5bf8-e038-15c0-2b8010365d3e/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
         "page": "https://apps.apple.com/id/app/garena-speed-drifters/id1416604843"
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/speed-drifters.webp",
+        "official_source": "https://speed.garena.tw/django-static/PC/img/bg_header.jpg",
+        "page": "https://apps.apple.com/id/app/garena-speed-drifters/id1416604843",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "state-of-survival": {
@@ -767,10 +1418,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/47/46/e1/4746e11d-b405-9206-8564-51ad8cad3d6e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/47/46/e1/4746e11d-b405-9206-8564-51ad8cad3d6e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/state-of-survival.webp",
+        "official_source": "https://play-lh.googleusercontent.com/4PZgr3F_Gh5Wwpki11_032IPiJ7_6-_3EyQbPPhPayFRWGoTEcuvbRrzJ8UOpKPlBzlf86rMpAfLHat6fW-JfQ=s0",
+        "page": "https://apps.apple.com/id/app/state-of-survival-zombie-war/id1452474937",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "super-sus": {
@@ -782,10 +1445,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5c/d0/3e/5cd03e2a-7899-7163-e0ed-ce928d7fa6ba/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5c/d0/3e/5cd03e2a-7899-7163-e0ed-ce928d7fa6ba/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/super-sus.webp",
+        "official_source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2920270/library_hero.jpg",
+        "page": "https://apps.apple.com/id/app/super-sus/id6498889637",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "valorant": {
@@ -797,7 +1472,6 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4d/d0/ea/4dd0eaf7-4498-51a2-43ea-821cd4223d76/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
         "licence": "Ikon resmi (logo VALORANT) dari satu-satunya listing App Store resmi VALORANT; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi VALORANT (mobile Tiongkok) hanya menyediakan screenshot portrait; tidak ada key art landscape resmi di listing.",
       "note": "VALORANT PC tidak ada di App Store/Steam. Listing resmi VALORANT satu-satunya ada di App Store CN, diterbitkan publisher berlisensi Riot (Shenzhen Tencent Tianyou); ikon = logo VALORANT resmi, bukan aset toko top-up.",
       "portrait": {
         "source": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/news/083baed63d306ee9ba41df4971ac0f6bb0222032-1920x1080.jpg?accountingTag=VAL",
@@ -808,6 +1482,28 @@
           "height": 1080
         },
         "licence": "Crop portrait dari key art resmi di halaman media Riot Games (playvalorant.com/en-us/media); tanpa modifikasi isi."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/valorant.webp",
+        "official_source": "https://cmsassets.rgpub.io/sanity/images/dsfx7636/news_live/9167b57d3c081d04e75abe28387d87a27bb83953-3440x1020.jpg",
+        "page": "https://apps.apple.com/cn/app/id6535673811",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://cmsassets.rgpub.io/sanity/images/dsfx7636/news_live/9167b57d3c081d04e75abe28387d87a27bb83953-3440x1020.jpg",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://cmsassets.rgpub.io/sanity/images/dsfx7636/news_live/9167b57d3c081d04e75abe28387d87a27bb83953-3440x1020.jpg"
+          ],
+          "reference": "official banner artwork"
+        }
       }
     },
     "where-winds-meet": {
@@ -819,10 +1515,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/7a/51/07/7a5107a1-5fa4-9ed7-86e9-2589bb0ed864/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/7a/51/07/7a5107a1-5fa4-9ed7-86e9-2589bb0ed864/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/where-winds-meet.webp",
+        "official_source": "https://www.wherewindsmeetgame.com/pc/gw/20251024112521/img/kv-pc-bg_6cd43691.jpg",
+        "page": "https://apps.apple.com/id/app/where-winds-meet/id6472396866",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "zenless-zone-zero": {
@@ -834,10 +1542,22 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/c8/ee/27/c8ee2769-fe15-e1ea-aeb7-2247a535767a/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/c8/ee/27/c8ee2769-fe15-e1ea-aeb7-2247a535767a/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/zenless-zone-zero.webp",
+        "official_source": "https://play-lh.googleusercontent.com/ZukZToKkbyw713RQmFKGy7jDVzR-kHR-sjex6auhQslgk_cvwD48nl7TxAVbMk-if_5fvWRqA2rRpMvPC63ndQ=s0",
+        "page": "https://apps.apple.com/id/app/zenless-zone-zero/id1606356401",
+        "status": "kept official",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1600,
+          "height": 900
+        },
+        "licence": "Crop art publisher resmi untuk identifikasi nominatif; tanpa klaim afiliasi."
       }
     },
     "zepeto": {
@@ -849,10 +1569,31 @@
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/17/6a/d7/176ad73d-139e-9b35-531a-6839264a4e4b/AppIcon-0-0-1x_U007emarketing-0-8-0-sRGB-0-85-220.png/1024x1024bb.jpg",
         "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
       },
-      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi.",
       "portrait": {
         "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/17/6a/d7/176ad73d-139e-9b35-531a-6839264a4e4b/AppIcon-0-0-1x_U007emarketing-0-8-0-sRGB-0-85-220.png/1024x1024bb.jpg",
         "licence": "Crop portrait 2:3 dari artwork resmi publisher (sumber sama dengan ikon resmi); tanpa modifikasi isi, tanpa UI."
+      },
+      "banner": {
+        "source": "local:scripts/games-assets-src/banners/zepeto.webp",
+        "official_source": "https://cf-web.zepeto.me/assets/img/im-default-og-new.png",
+        "page": "https://apps.apple.com/id/app/zepeto-avatar-connect-live/id1350301428",
+        "status": "generated",
+        "region": {
+          "left": 0,
+          "top": 0,
+          "width": 1672,
+          "height": 941
+        },
+        "licence": "Edit/outpaint GPT Image atas art publisher untuk identifikasi nominatif; tidak diklaim sebagai poster resmi.",
+        "generated": "GPT Image (Codex image_gen) edit/outpaint of official input https://cf-web.zepeto.me/assets/img/im-default-og-new.png",
+        "generation": {
+          "tool": "image_gen",
+          "model": "GPT Image (exact model version not exposed)",
+          "sources": [
+            "https://cf-web.zepeto.me/assets/img/im-default-og-new.png"
+          ],
+          "reference": "official banner artwork"
+        }
       }
     }
   }

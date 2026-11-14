@@ -2083,7 +2083,7 @@ generatif blur 48 px. Admin Games: tab Game/Varian/Harga, editor per
 game, markup efektif + kategori penuh dengan scroll internal, bulk aman (field tak dikirim
 dipertahankan); API baru `GET/PUT /api/admin/games/pricing`, `GET/PATCH /api/admin/games/games`,
 `POST /api/admin/games/products/bulk-markup`. Aset: `scripts/games-assets.mjs` +
-`scripts/games-assets.manifest.json` → 48 ikon + 23 banner + 48 portrait (7.726.332 byte) di
+`scripts/games-assets.manifest.json` → 48 ikon + 48 banner tepat 1600×900 (≤200 KB; 26 edit `image_gen` atas art resmi, 14 Nov 2026) + 48 portrait (10.023.192 byte) di
 `public/brand/games/`, provenance `docs/games-assets.md`; gambar produk Sekalipay tidak dirender
 dan entri CSP-nya dihapus. **Storefront 14 Nov 2026 (lokal):** "Populer sekarang" maks 9 kartu
 (`featured_rank` admin, selain itu daftar default 9 slug di `src/lib/games/popular.ts`), chip genre

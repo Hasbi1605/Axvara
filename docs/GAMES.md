@@ -827,14 +827,22 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
 - Sumber tunggal `scripts/games-assets.manifest.json` (48 slug SK) + generator
   `node scripts/games-assets.mjs`; provenance `docs/games-assets.md`; peta runtime
   `src/lib/games/assets.ts`.
-- Hasil: **48 ikon** 512×512 q82 + **23 banner** 1600 px q80 adaptif (≤250 KB) + **48 portrait**
-  600×900 q80 (≤120 KB) = **7.726.332 byte (±7,37 MiB)** di `public/brand/games/`. Kelima slug
+- Hasil (revisi banner 14 Nov 2026): **48 ikon** 512×512 q82 + **48 banner tepat 1600×900**
+  (cover-resize + region fokus per slug, tanpa letterbox, ≤200.000 byte, gagal keras bila lebih;
+  test `tests/games-assets.test.ts` memastikan 48 file berdimensi persis) + **48 portrait**
+  600×900 q80 (≤120 KB) = **10.023.192 byte** di `public/brand/games/`. Banner: 20 resmi
+  dipertahankan, 2 resmi di-recrop (`laplace-m`, `marvel-rivals`), 26 edit/outpaint Codex
+  `image_gen` atas art resmi (teks promo/musiman dibuang, karakter + logo resmi dipertahankan,
+  Free Fire vs MAX dibedakan); master `scripts/games-assets-src/banners/`, provenance per slug di
+  manifest. Safe zone: subjek tengah-kanan, kiri bawah ±35%×40% untuk ikon 3D + judul hero detail.
+  *Snapshot sebelumnya: 23 banner ≤250 KB + `banner_skip` 25 game = 7.726.332 byte.* Kelima slug
   yang dulu di-skip (`valorant`, `point-blank`, `marvel-rivals`, `laplace-m`, `au2-mobile`) kini
-  memakai sumber resmi; 25 game tanpa banner tetap ikon/portrait-saja, tanpa `portrait_skip`.
+  memakai sumber resmi; tanpa `portrait_skip`/`banner_skip`.
   Portrait = 30 crop aset resmi + 18 outpaint GPT Image atas input resmi
   (`scripts/games-assets-src/portraits/`, master lokal).
-- Sumber artwork resmi publisher (App Store ID, Google Play, Steam, situs resmi publisher); 8
-  banner yang dinilai PM terlalu berat UI/gameplay ditolak (`banner_skip`). Tanpa unggah R2/migrasi:
+- Sumber artwork resmi publisher (App Store ID, Google Play, Steam, situs resmi publisher);
+  *(histori: 8 banner berat UI/gameplay sempat ditolak via `banner_skip`, kini diganti banner
+  1600×900 di atas).* Tanpa unggah R2/migrasi:
   berkas statis `public/` diterima sebagai keputusan PM.
 - Presedensi render: unggahan admin `games_meta` → aset lokal resmi → fallback AXVARA.
   Gambar produk Sekalipay tidak dirender dan entri CSP-nya dihapus.

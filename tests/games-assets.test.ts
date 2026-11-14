@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -33,6 +33,9 @@ const TOPUP_SHOP_HOSTS = [
 const OFFICIAL_HOSTS = [
   "mzstatic.com", "play-lh.googleusercontent.com", "apps.apple.com", "play.google.com",
   "steamstatic.com", "steampowered.com", "zlongame.com", "uniugame.com", "rgpub.io",
+  "akamaized.net", "arenabreakout.com", "vnggames.com", "ea.com", "amazonaws.com",
+  "xdcdn.net", "honorofkings.com", "youngjoygame.com", "zepetto.com", "garena.tw",
+  "wherewindsmeetgame.com", "zepeto.me",
 ];
 const OFFICIAL_PAGE_HOSTS = [
   "apps.apple.com", "play.google.com", "store.steampowered.com", "laplacem.zlongame.com",
@@ -59,7 +62,8 @@ describe("manifest aset game", () => {
       expect(OFFICIAL_PAGE_HOSTS, slug).toContain(new URL(game.page).hostname.toLowerCase());
       expect(game.icon?.source, slug).toMatch(/^https:\/\//);
       expect(game.icon?.licence, slug).toBeTruthy();
-      expect(Boolean(game.banner) !== Boolean(game.banner_skip), slug).toBe(true);
+      expect(game.banner, slug).toBeTruthy();
+      expect(game.banner_skip, slug).toBeUndefined();
     }
   });
 
@@ -71,9 +75,19 @@ describe("manifest aset game", () => {
         expect(portrait.source, slug).toBe(`local:scripts/games-assets-src/portraits/${slug}.webp`);
         expect(portrait.page, slug).toBe(game.page);
         const kind = slug === "free-fire-max" ? "banner" : "icon";
-        expect(portrait.generated, slug).toBe(`GPT Image (Codex image_gen) outpaint of official ${kind} ${game[kind].source}`);
+        const source = kind === "banner" ? game.banner.official_source : game.icon.source;
+        expect(portrait.generated, slug).toBe(`GPT Image (Codex image_gen) outpaint of official ${kind} ${source}`);
       }
-      const urls = [game.page, game.icon?.source, game.banner?.source, portrait?.source]
+      const banner = game.banner;
+      expect(banner.source, slug).toBe(`local:scripts/games-assets-src/banners/${slug}.webp`);
+      expect(banner.page, slug).toBe(game.page);
+      expect(["kept official", "recropped", "generated"], slug).toContain(banner.status);
+      if (banner.status === "generated") {
+        expect(banner.generated, slug).toContain("GPT Image (Codex image_gen)");
+        expect(banner.generation.tool, slug).toBe("image_gen");
+        expect(banner.generation.sources, slug).toContain(banner.official_source);
+      }
+      const urls = [game.page, game.icon?.source, banner.official_source, portrait?.source, ...(banner.generation?.sources ?? [])]
         .filter((url) => url && !url.startsWith("local:"));
       for (const url of urls) {
         const host = new URL(url).hostname.toLowerCase();
@@ -96,14 +110,17 @@ describe("manifest aset game", () => {
       .not.toEqual(readFileSync(path.join(ROOT, "public/brand/games/free-fire-max-portrait.webp")));
   });
 
-  it("generator membaca master lokal offline dan menolak path di luar master slug", () => {
+  it("generator membaca master lokal offline dan menolak path, region, atau provenance banner tidak valid", () => {
     const fixtureRoot = mkdtempSync(path.join(tmpdir(), "axvara-portrait-test-"));
     try {
       const masterDir = path.join(fixtureRoot, "scripts/games-assets-src/portraits");
       mkdirSync(masterDir, { recursive: true });
       copyFileSync(path.join(ROOT, "scripts/games-assets-src/portraits/growtopia.webp"), path.join(masterDir, "growtopia.webp"));
+      const bannerDir = path.join(fixtureRoot, "scripts/games-assets-src/banners");
+      mkdirSync(bannerDir, { recursive: true });
+      copyFileSync(path.join(ROOT, "scripts/games-assets-src/banners/growtopia.webp"), path.join(bannerDir, "growtopia.webp"));
       const game = structuredClone(MANIFEST.games.growtopia);
-      // data: keeps the icon step offline; only portrait accepts local: inputs.
+      // data: keeps the icon step offline; banner/portrait use local masters.
       game.icon.source = `data:image/webp;base64,${readFileSync(path.join(ROOT, "public/brand/games/growtopia-icon.webp")).toString("base64")}`;
       const manifestPath = path.join(fixtureRoot, "scripts/games-assets.manifest.json");
       const run = () => spawnSync(process.execPath, [path.join(ROOT, "scripts/games-assets.mjs"), "--only", "growtopia"], {
@@ -114,6 +131,9 @@ describe("manifest aset game", () => {
       expect(result.status, result.stderr + result.stdout).toBe(0);
       expect(readFileSync(path.join(fixtureRoot, "public/brand/games/growtopia-portrait.webp")))
         .toEqual(readFileSync(path.join(ROOT, "public/brand/games/growtopia-portrait.webp")));
+      expect(readFileSync(path.join(fixtureRoot, "public/brand/games/growtopia-banner.webp")))
+        .toEqual(readFileSync(path.join(ROOT, "public/brand/games/growtopia-banner.webp")));
+      const originalPortrait = game.portrait.source;
       for (const source of ["local:../outside.webp", "local:scripts/games-assets-src/portraits/roblox.webp"]) {
         game.portrait.source = source;
         writeFileSync(manifestPath, JSON.stringify({ games: { growtopia: game } }));
@@ -121,12 +141,51 @@ describe("manifest aset game", () => {
         expect(invalid.status).not.toBe(0);
         expect(invalid.stderr).toContain("portrait lokal wajib master per slug");
       }
+      game.portrait.source = originalPortrait;
+      for (const source of ["local:../outside.webp", "local:scripts/games-assets-src/banners/roblox.webp"]) {
+        game.banner.source = source;
+        writeFileSync(manifestPath, JSON.stringify({ games: { growtopia: game } }));
+        expect(run().stderr).toContain("banner lokal wajib master per slug");
+      }
+      game.banner.source = MANIFEST.games.growtopia.banner.source;
+      game.banner.region.width = 0;
+      writeFileSync(manifestPath, JSON.stringify({ games: { growtopia: game } }));
+      expect(run().stderr).toContain("banner.region wajib");
+      game.banner.region = MANIFEST.games.growtopia.banner.region;
+      game.banner.status = "generated";
+      game.banner.generated = "GPT Image edit without provenance record";
+      writeFileSync(manifestPath, JSON.stringify({ games: { growtopia: game } }));
+      expect(run().stderr).toContain("sumber resmi + provenance");
+      delete game.banner;
+      game.banner_skip = "Legacy skipped banner";
+      writeFileSync(manifestPath, JSON.stringify({ games: { growtopia: game } }));
+      expect(run().stderr).toContain("banner wajib tanpa banner_skip");
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
   });
 
-  it("berkas lokal lengkap; ikon 512×512 dan banner ≤250 KB lebar 1600", async () => {
+  it("48 banner tepat 1600×900, ≤200 KB dan focal region master valid", async () => {
+    const files = readdirSync(path.join(ROOT, "public/brand/games")).filter((file) => file.endsWith("-banner.webp"));
+    expect(files).toHaveLength(48);
+    expect(files.sort()).toEqual(SK_GAME_SLUGS.map((slug) => `${slug}-banner.webp`).sort());
+    for (const file of files) {
+      expect(await sizes(path.join(ROOT, "public/brand/games", file)), file).toEqual({ width: 1600, height: 900 });
+      expect(statSync(path.join(ROOT, "public/brand/games", file)).size, file).toBeLessThanOrEqual(200_000);
+      const banner = MANIFEST.games[file.replace("-banner.webp", "")].banner;
+      const master = await sizes(path.join(ROOT, banner.source.slice("local:".length)));
+      const { left, top, width, height } = banner.region;
+      expect([left, top, width, height].every(Number.isInteger), file).toBe(true);
+      expect(left, file).toBeGreaterThanOrEqual(0);
+      expect(top, file).toBeGreaterThanOrEqual(0);
+      expect(width, file).toBeGreaterThan(0);
+      expect(height, file).toBeGreaterThan(0);
+      expect(left + width, file).toBeLessThanOrEqual(master.width);
+      expect(top + height, file).toBeLessThanOrEqual(master.height);
+    }
+  });
+
+  it("berkas lokal lengkap; ikon 512×512 dan banner ≤200 KB 1600×900", async () => {
     for (const [slug, game] of Object.entries<any>(MANIFEST.games)) {
       const expected = GAMES_LOCAL_ASSETS[slug];
       if (game.skip) {
@@ -145,8 +204,8 @@ describe("manifest aset game", () => {
         expect(existsSync(bannerFile), slug).toBe(true);
         const size = await sizes(bannerFile);
         expect(size.width, slug).toBe(1600);
-        expect(size.height, slug).toBeLessThanOrEqual(1000);
-        expect(statSync(bannerFile).size, slug).toBeLessThanOrEqual(250 * 1024);
+        expect(size.height, slug).toBe(900);
+        expect(statSync(bannerFile).size, slug).toBeLessThanOrEqual(200_000);
       } else {
         expect(expected?.banner, slug).toBeNull();
         expect(existsSync(path.join(ROOT, `public/brand/games/${slug}-banner.webp`)), slug).toBe(false);
@@ -172,7 +231,7 @@ describe("manifest aset game", () => {
     );
     expect(gamesLocalAsset("tidak-ada-game")).toEqual({ icon: null, banner: null, portrait: null });
     expect(gamesLocalIcon("MOBILE-LEGENDS")).toBe("/brand/games/mobile-legends-icon.webp");
-    expect(gamesLocalBanner("valorant")).toBeNull();
+    expect(gamesLocalBanner("valorant")).toBe("/brand/games/valorant-banner.webp");
     expect(gamesLocalPortrait("MOBILE-LEGENDS")).toBe("/brand/games/mobile-legends-portrait.webp");
     expect(gamesLocalPortrait("growtopia")).toBe("/brand/games/growtopia-portrait.webp");
     expect(gamesLocalPortrait("tidak-ada-game")).toBeNull();
