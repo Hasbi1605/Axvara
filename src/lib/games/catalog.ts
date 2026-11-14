@@ -1,10 +1,10 @@
 import { createDatabaseAccess } from "@/lib/db-access";
+import { gamesLocalAsset } from "@/lib/games/assets";
 import { GAMES_REGISTRY } from "@/lib/games/registry";
 import {
   gamesRegistryGame,
   gamesSlugify,
   parseGamesSkContract,
-  sanitizeSkImageUrl,
   type GamesCurrency,
   type GamesField,
   type GamesSkContractField,
@@ -14,8 +14,10 @@ import { isGamesNicknameProduct } from "@/lib/games/sellable";
 import {
   cleanGamesFieldLabel,
   gamesEffectiveCategory,
+  gamesFieldLabelMajority,
   gamesRegionCode,
   gamesTypeLabel,
+  isGenericGamesFieldLabel,
   type GamesCategory,
 } from "@/lib/games/variant-kind";
 
@@ -202,14 +204,17 @@ export async function getGamesCatalog(): Promise<GamesCatalogItem[]> {
         .map((row) => Number(row.sell_price))
         .filter((price) => Number.isFinite(price) && price > 0);
       const registry = gamesRegistryGame(slug);
+      const local = gamesLocalAsset(slug);
       skSlugs.add(slug);
       skGames.push({
         slug,
         name: overlay?.display_name ?? registry?.name ?? (upstreamName || `Game ${productId}`),
         publisher: overlay?.publisher ?? registry?.publisher ?? "",
         currency: registry?.currency ?? "topup",
-        icon: overlay?.icon_url ?? registry?.icon ?? sanitizeSkImageUrl(group[0].image_url),
-        banner: overlay?.banner_url ?? registry?.banner ?? null,
+        // OD5: admin → aset resmi lokal → null (UI memakai fallback AXVARA).
+        // `image_url` produk Sekalipay tidak pernah dikirim ke storefront.
+        icon: overlay?.icon_url ?? local.icon ?? registry?.icon ?? null,
+        banner: overlay?.banner_url ?? local.banner ?? registry?.banner ?? null,
         min_price: sellablePrices.length > 0 ? Math.min(...sellablePrices) : null,
         sku_count: group.length,
         sellable_count: sellablePrices.length,
@@ -242,21 +247,29 @@ export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailG
     const first = skRows[0];
     const upstreamName = String(first.sk_product_name ?? "").trim();
     const gameSlug = String(first.game_slug ?? "").trim() || normalized || gamesSlugify(upstreamName);
+    const local = gamesLocalAsset(gameSlug);
+    // V2: label generik ("Catatan", "Note", "Keterangan") diganti label
+    // mayoritas game untuk key yang sama; label asli dipakai bila tidak ada
+    // label bermakna sama sekali.
+    const contracts = skRows.map((row) => parseGamesSkContract(row.required_fields_json));
+    const labelMajority = gamesFieldLabelMajority(
+      contracts.map((contract) => contract?.fields ?? []),
+    );
     const game: GamesDetailGame = {
       slug: gameSlug,
       name: meta?.display_name ?? registry?.name ?? (upstreamName || String(first.product_name ?? "")),
       publisher: meta?.publisher ?? registry?.publisher ?? "",
       currency: registry?.currency ?? "topup",
-      icon: meta?.icon_url ?? registry?.icon ?? sanitizeSkImageUrl(first.image_url),
-      banner: meta?.banner_url ?? registry?.banner ?? null,
+      icon: meta?.icon_url ?? local.icon ?? registry?.icon ?? null,
+      banner: meta?.banner_url ?? local.banner ?? registry?.banner ?? null,
       // Field bersifat per-varian (product_type berbeda); UI P3 membacanya dari
       // `products[].fields`, bukan dari level game.
       fields: [],
       description: meta?.description ?? "",
       id_guide: meta?.id_guide ?? "",
     };
-    const products: GamesDetailProduct[] = skRows.filter((row) => !isGamesNicknameProduct(row)).map((row) => {
-      const contract = parseGamesSkContract(row.required_fields_json);
+    const products: GamesDetailProduct[] = skRows.map((row, index) => {
+      const contract = contracts[index];
       const availability = gamesSkAvailability(row);
       const typeName = String(row.product_type_name ?? "").trim();
       return {
@@ -267,7 +280,14 @@ export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailG
         display_order: row.display_order == null ? null : Number(row.display_order),
         available: availability.available,
         availability_reason: availability.reason,
-        fields: (contract?.fields ?? []).map((field) => ({ ...field, label: cleanGamesFieldLabel(field.label) })),
+        fields: (contract?.fields ?? []).map((field) => ({
+          ...field,
+          // V2 hanya mengganti label GENERIK; label bermakna milik varian
+          // (mis. "Player ID" vs "No Hp") dipertahankan setelah dirapikan.
+          label: isGenericGamesFieldLabel(field.label)
+            ? labelMajority.get(field.key) ?? cleanGamesFieldLabel(field.label)
+            : cleanGamesFieldLabel(field.label),
+        })),
         unsupported_reason: contract?.reason ?? (contract ? null : "invalid_contract"),
         description: String(row.description ?? ""),
         product_type_name: typeName || null,
@@ -294,13 +314,14 @@ export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailG
 export type GamesDetail = NonNullable<Awaited<ReturnType<typeof getGamesDetail>>>;
 
 function publicRegistryGame(game: (typeof GAMES_REGISTRY)[number], meta?: GamesMetaRow): GamesDetailGame {
+  const local = gamesLocalAsset(game.slug);
   return {
     slug: game.slug,
     name: meta?.display_name ?? game.name,
     publisher: meta?.publisher ?? game.publisher,
     currency: game.currency,
-    icon: meta?.icon_url ?? game.icon,
-    banner: meta?.banner_url ?? game.banner,
+    icon: meta?.icon_url ?? local.icon ?? game.icon,
+    banner: meta?.banner_url ?? local.banner ?? game.banner,
     description: meta?.description ?? "",
     id_guide: meta?.id_guide ?? "",
     fields: game.fields.map((field) => ({

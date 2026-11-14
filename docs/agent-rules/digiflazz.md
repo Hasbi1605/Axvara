@@ -208,3 +208,10 @@ mengimplementasikan atau menjalankan transaksi development sekalipun.
   `POST /api/admin/games/products/enable-wave` DIHAPUS 13 November 2026 (dulu
   membalas 410). Jangan membuat bulk activation baru. Gate `GAMES_SK_ENABLED`
   belum diset; tidak ada env/secret/deployment dalam perubahan ini.
+- Harga Games (14 November 2026, lokal): baris Sekalipay memakai markup OD1
+  (default 5 %/Rp100, precedence varian → game → global) dan **tidak lagi membaca**
+  `games_reference_prices`/harga referensi Oura. `PATCH` produk menolak
+  `reference_price` (`400 invalid_body`). Tabel/seed referensi dan rumus lama
+  `computeGamesSellPrice`/`gamesPriceFloor` dipertahankan hanya untuk baris
+  Digiflazz legacy; jangan menghapus baris `...b`/histori atau mengaktifkan kembali
+  price-list Digiflazz untuk Games. Detail `docs/GAMES.md` §14.

@@ -163,3 +163,49 @@ export function cleanGamesFieldLabel(label: unknown): string {
     .replace(/[\s:：]+$/u, "")
     .trim();
 }
+
+/**
+ * Label generik yang tidak menjelaskan apa pun ke pembeli. Supplier kadang
+ * memakai label ini untuk satu varian saja walau varian lain memakai label
+ * bermakna untuk key yang sama.
+ */
+const GENERIC_FIELD_LABELS = new Set(["", "catatan", "note", "notes", "keterangan", "ket"]);
+
+export function isGenericGamesFieldLabel(label: unknown): boolean {
+  return GENERIC_FIELD_LABELS.has(cleanGamesFieldLabel(label).toLowerCase());
+}
+
+/**
+ * Label mayoritas per key field di seluruh varian satu game. Label generik
+ * diabaikan; tie dimenangkan label yang lebih dulu muncul. Key tanpa label
+ * bermakna tidak masuk peta sehingga pemanggil tetap memakai label asli yang
+ * sudah dibersihkan.
+ */
+export function gamesFieldLabelMajority(
+  variants: Iterable<readonly { key: string; label: string }[]>,
+): Map<string, string> {
+  const counts = new Map<string, Map<string, number>>();
+  for (const fields of variants) {
+    for (const field of fields) {
+      const key = String(field.key ?? "").trim();
+      if (key === "" || isGenericGamesFieldLabel(field.label)) continue;
+      const label = cleanGamesFieldLabel(field.label);
+      const byLabel = counts.get(key) ?? new Map<string, number>();
+      byLabel.set(label, (byLabel.get(label) ?? 0) + 1);
+      counts.set(key, byLabel);
+    }
+  }
+  const majority = new Map<string, string>();
+  for (const [key, byLabel] of counts) {
+    let best: string | null = null;
+    let bestCount = 0;
+    for (const [label, count] of byLabel) {
+      if (count > bestCount) {
+        best = label;
+        bestCount = count;
+      }
+    }
+    if (best) majority.set(key, best);
+  }
+  return majority;
+}

@@ -2065,6 +2065,29 @@ perubahan kode/assertion/timeout. Checkpoint lama 419/5.760 (pra-integrasi) dan
 lulus; admin statis 8792 dengan fixture jaringan lulus (bukan auth/backend persist/
 produksi). Belum deploy/push; `display_order` masih API-only tanpa editor UI.
 
+Games 14 November 2026 (lokal di worktree integrasi, belum publikasi CI/deployment):
+harga jual kini **markup OD1** — default 5 % + pembulatan Rp100, precedence varian → game →
+global dengan `fixed` aditif (`src/lib/games/pricing.ts`, `src/lib/games/markup.ts`); migrasi
+`0122_games_markup_meta.sql` menambah `games_meta` (nama/publisher/ikon/banner/deskripsi/panduan
+ID/urutan/hidden/markup game) dan `games_variant_markup` (override per varian) + default
+`store_settings` 5/100, tanpa menyentuh baris Digiflazz. Katalog publik memakai presedensi
+admin → aset resmi lokal → fallback (`src/lib/games/assets.ts`, `src/lib/games/catalog.ts`),
+`hidden`/`featured_rank`/`min_price` hanya varian bisa dijual, label field dibersihkan dan label
+generik diganti mayoritas game. Storefront Oura+ditopup: langkah `Data akun → Nominal → Metode →
+Kontak` dengan varian tersedia termurah kategori `topup` terpilih otomatis, chip tipe/region,
+section kategori, pill "Pengiriman instan" per kartu, state Habis eksplisit, rail sticky + bar
+mobile, frame P14 dan banner generatif blur 48 px. Admin Games: tab Game/Varian/Harga, editor per
+game, markup efektif + kategori penuh dengan scroll internal, bulk aman (field tak dikirim
+dipertahankan); API baru `GET/PUT /api/admin/games/pricing`, `GET/PATCH /api/admin/games/games`,
+`POST /api/admin/games/products/bulk-markup`. Aset resmi: `scripts/games-assets.mjs` +
+`scripts/games-assets.manifest.json` → 43 ikon + 20 banner (4.953.118 byte) di
+`public/brand/games/`, provenance `docs/games-assets.md`; gambar produk Sekalipay tidak dirender
+dan entri CSP-nya dihapus. Tanpa env/secret baru; gate order, quote/order, dispatch, webhook,
+nickname tidak berubah. Verifikasi terintegrasi final: full suite **448 file/6.149 tes lulus**
+(exit 0, 68,03 dtk), fokus G-ADMIN 9/140 · G-ASSETS 4/146 · G-STORE-2 4/42, `tsc`/lint/
+`build:pages` lulus pada sumber final, QA Chromium 1280/390 + admin terang/gelap (fixture).
+Kontrak lengkap `docs/GAMES.md` §14 dan ARCHITECTURE §16.41.
+
 Seed referensi Oura A2 (lokal, belum deploy): `drizzle/migrations/0111_games_reference_seed.sql`
 menambah198 SKU utama (FF16/FF MAX8/ML156/PUBG18), tidak menimpa baris admin existing
 (`ON CONFLICT DO NOTHING`). Sinkron katalog berikutnya baru menghitung ulang harga

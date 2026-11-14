@@ -318,6 +318,8 @@ describe("POST /api/admin/games/products/bulk-markup", () => {
   it("sets a category for the selection without touching Digiflazz rows", async () => {
     seed({ sk_variant_id: 1 });
     seed({ sk_variant_id: 2 });
+    fx.sql.exec("INSERT INTO games_variant_markup(buyer_sku_code,markup_percent,markup_fixed) VALUES('sk:1',8,250),('sk:2',12,500)");
+    const before = fx.sql.prepare("SELECT * FROM games_variant_markup ORDER BY buyer_sku_code").all();
     fx.sql.exec("INSERT INTO games_products(buyer_sku_code,product_name,cost,sell_price,supplier) VALUES('ml86','legacy',15000,20000,'digiflazz')");
     const { POST } = await import("@/app/api/admin/games/products/bulk-markup/route");
     // Kode non-SK ditolak lebih dulu (skus hanya sk:<id>).
@@ -331,6 +333,43 @@ describe("POST /api/admin/games/products/bulk-markup", () => {
     expect(product("sk:1").display_group).toBe("promo");
     expect(product("sk:2").display_group).toBe("promo");
     expect(product("ml86").display_group).toBeNull();
+    expect(fx.sql.prepare("SELECT * FROM games_variant_markup ORDER BY buyer_sku_code").all()).toEqual(before);
+    expect(Number(product("sk:1").sell_price)).toBe(10500);
+    expect(Number(product("sk:2").sell_price)).toBe(10500);
+  });
+
+  it.each([
+    { markup_percent: 12 }, { markup_fixed: 350 },
+    { markup_percent: null }, { markup_fixed: null },
+    { markup_percent: 0 }, { markup_fixed: 0 },
+    { markup_percent: null, markup_fixed: null },
+  ])("atomically preserves omitted fields for 121 SKUs, including new overrides: %j", async patch => {
+    const skus = Array.from({ length: 121 }, (_, i) => seed({ sk_variant_id: i + 1 }));
+    // Existing rows deliberately have distinct percentages AND fixed amounts.
+    const existing = Array.from({ length: 120 }, (_, i) => ({ sku: skus[i], percent: i % 10 + 1, fixed: 200 + i }));
+    fx.sql.prepare(`INSERT INTO games_variant_markup(buyer_sku_code,markup_percent,markup_fixed)
+      SELECT json_extract(value,'$.sku'),json_extract(value,'$.percent'),json_extract(value,'$.fixed') FROM json_each(?)`).run(JSON.stringify(existing));
+    seed({ sk_variant_id: 999 });
+    fx.sql.exec("INSERT INTO games_variant_markup(buyer_sku_code,markup_percent,markup_fixed) VALUES('sk:999',77,999)");
+    const statements: string[] = [];
+    fx.control.fail = query => { statements.push(query); return false; };
+    const { POST } = await import("@/app/api/admin/games/products/bulk-markup/route");
+    const response = await POST(await json("http://x/api/admin/games/products/bulk-markup", "POST", { skus, ...patch }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ updated: 121 });
+    for (const [index, sku] of skus.entries()) {
+      const percent = "markup_percent" in patch ? patch.markup_percent : existing[index]?.percent ?? null;
+      const fixed = "markup_fixed" in patch ? patch.markup_fixed : existing[index]?.fixed ?? null;
+      if (patch.markup_percent === null && patch.markup_fixed === null) expect(variantMarkup(sku)).toBeUndefined();
+      else expect(variantMarkup(sku)).toMatchObject({ markup_percent: percent, markup_fixed: fixed });
+      expect(Number(product(sku).sell_price)).toBe(Math.ceil((10000 * (10000 + (percent ?? 5) * 100)) / 1_000_000) * 100 + (fixed ?? 0));
+    }
+    expect(variantMarkup("sk:999")).toMatchObject({ markup_percent: 77, markup_fixed: 999 });
+    expect(Number(product("sk:999").sell_price)).toBe(10500);
+    // No per-SKU read/modify/write loop: one markup write, one recompute, one settings read.
+    const business = statements.filter(query => /games_variant_markup|UPDATE games_products SET sell_price|FROM store_settings/.test(query));
+    expect(business).toHaveLength(3);
+    expect(business.filter(query => /^\s*SELECT[\s\S]*FROM games_variant_markup/.test(query))).toHaveLength(0);
   });
 
   it("resets markup overrides back to the default", async () => {

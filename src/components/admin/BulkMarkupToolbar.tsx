@@ -25,6 +25,11 @@ export function BulkMarkupToolbar({
   onToggleAllVisible,
   onClear,
   onApply,
+  presets,
+  maxPercent = 500,
+  confirmApply,
+  onError,
+  disabled = false,
 }: {
   /** Id varian yang terlihat di daftar saat ini. */
   visibleIds: string[];
@@ -36,35 +41,43 @@ export function BulkMarkupToolbar({
   onClear: () => void;
   /** Eksekusi bulk (konfirmasi sudah disetujui di dalam). */
   onApply: (args: { variantIds: string[]; percent: number; resetFixed: boolean }) => Promise<void>;
+  /** Optional Games controls; omitted props preserve Market/WR/SK/TUNVN behavior. */
+  presets?: readonly number[];
+  maxPercent?: number;
+  confirmApply?: (message: string) => Promise<boolean>;
+  onError?: (error: unknown) => void;
+  disabled?: boolean;
 }) {
-  const [percent, setPercent] = useState("20");
+  const [percent, setPercent] = useState(String(presets?.[0] ?? 20));
   const [resetFixed, setResetFixed] = useState(false);
   const [useAllVisible, setUseAllVisible] = useState(false);
   const [applying, setApplying] = useState(false);
 
   const effectiveIds = useAllVisible ? visibleIds : visibleIds.filter((id) => selected.has(id));
-  const pct = Math.floor(Number(percent));
-  const pctValid = Number.isInteger(pct) && pct >= 0 && pct <= 500;
+  const pct = presets ? Number(percent) : Math.floor(Number(percent));
+  const pctValid = (!presets || percent !== "") && Number.isFinite(pct) && pct >= 0 && pct <= maxPercent && (presets ? Math.abs(pct * 100 - Math.round(pct * 100)) < 1e-6 : Number.isInteger(pct));
   const allChecked = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
   const someChecked = visibleIds.some((id) => selected.has(id));
 
   const apply = async () => {
-    if (!pctValid || !effectiveIds.length || applying) return;
+    if (!pctValid || !effectiveIds.length || applying || disabled) return;
     const scope = useAllVisible ? "semua yang tampil" : `${effectiveIds.length} dipilih`;
     const msg = `Terapkan markup ${pct}% ke ${scope}${totalCount != null && useAllVisible ? ` (total hasil ${totalCount})` : ""}${resetFixed ? " + reset Rp ke 0" : ""}? Harga katalog ikut berubah.`;
-    if (!window.confirm(msg)) return;
+    if (!(confirmApply ? await confirmApply(msg) : window.confirm(msg))) return;
     setApplying(true);
     try {
       await onApply({ variantIds: effectiveIds, percent: pct, resetFixed });
       onClear();
       setUseAllVisible(false);
+    } catch (error) {
+      if (onError) onError(error); else throw error;
     } finally {
       setApplying(false);
     }
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-admin-border bg-admin-subtle/15 px-3 py-2">
+    <fieldset disabled={presets ? disabled || applying : false} className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-admin-border bg-admin-subtle/15 px-3 py-2">
       <Label className="flex items-center gap-1.5 text-xs text-admin-muted" title="Pilih baris satu per satu">
         <Checkbox
           checked={someChecked && !allChecked ? "indeterminate" : allChecked}
@@ -73,7 +86,7 @@ export function BulkMarkupToolbar({
         />
         Pilih tampil ({selected.size})
       </Label>
-      <Button variant="default" size="sm"
+      <Button variant={presets ? "outline" : "default"} size="sm"
         type="button"
         onClick={() => setUseAllVisible((v) => !v)}
         title="Pakai semua yang tampil (abaikan checklist)"
@@ -83,13 +96,13 @@ export function BulkMarkupToolbar({
         Set semua tampil
       </Button>
       <div className="flex items-center gap-1" role="group" aria-label="Preset markup">
-        {PRESETS.map((p) => (
+        {(presets ?? PRESETS).map((p) => (
           <Button variant="outline" size="sm"
             key={p}
             type="button"
             onClick={() => setPercent(String(p))}
             aria-pressed={pct === p}
-            className={`h-8 rounded-lg px-2.5 text-xs font-semibold transition ${pct === p ? "bg-admin-warning text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
+            className={`h-8 rounded-lg px-2.5 text-xs font-semibold transition ${pct === p ? presets ? "bg-admin-subtle text-admin-fg" : "bg-admin-warning text-admin-inverse" : "bg-admin-subtle text-admin-muted hover:bg-admin-subtle hover:text-admin-fg"}`}
           >
             {p}%
           </Button>
@@ -99,8 +112,8 @@ export function BulkMarkupToolbar({
         %
         <Input
           value={percent}
-          onChange={(e) => setPercent(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
-          inputMode="numeric"
+          onChange={(e) => setPercent(presets ? e.target.value : e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+          inputMode={presets ? "decimal" : "numeric"}
           aria-label="Markup persen bulk"
           className="h-8 w-16 rounded-lg border border-admin-border bg-admin-subtle/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none"
         />
@@ -118,6 +131,6 @@ export function BulkMarkupToolbar({
         {applying ? <Spinner size={12} /> : null}
         Terapkan ke {effectiveIds.length} varian
       </Button>
-    </div>
+    </fieldset>
   );
 }

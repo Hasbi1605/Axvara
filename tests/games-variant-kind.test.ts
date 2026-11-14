@@ -7,10 +7,12 @@ import {
   gamesAutoCategory,
   gamesCategoryLabel,
   gamesEffectiveCategory,
+  gamesFieldLabelMajority,
   gamesRegionCode,
   gamesRegionTypeNames,
   gamesTypeLabel,
   isGamesDisplayGroupValue,
+  isGenericGamesFieldLabel,
   regionCodeFromNickname,
 } from "@/lib/games/variant-kind";
 
@@ -182,5 +184,71 @@ describe("cleanGamesFieldLabel", () => {
     [null, ""],
   ])("%j → %j", (input, expected) => {
     expect(cleanGamesFieldLabel(input)).toBe(expected);
+  });
+});
+
+// V2 (PM 14 Nov): label generik supplier tidak boleh tampil ke pembeli.
+describe("isGenericGamesFieldLabel", () => {
+  it.each([
+    ["Catatan", true],
+    ["catatan", true],
+    ["  Catatan : ", true],
+    ["Note", true],
+    ["notes", true],
+    ["Keterangan", true],
+    ["Keterangan :", true],
+    ["", true],
+    [null, true],
+    ["User ID", false],
+    ["No Hp", false],
+    ["Zepetto ID", false],
+    ["Server akun kamu, global , sea , america", false],
+  ])("%j → %s", (input, expected) => {
+    expect(isGenericGamesFieldLabel(input)).toBe(expected);
+  });
+});
+
+describe("gamesFieldLabelMajority", () => {
+  const fields = (...labels: string[]) => labels.map((label) => ({ key: "note", label }));
+
+  it("memilih label mayoritas dan mengabaikan label generik", () => {
+    // Mobile Legends: 349 "User ID" vs 3 "Catatan".
+    const majority = gamesFieldLabelMajority([fields("User ID"), fields("Catatan"), fields("User ID")]);
+    expect(majority.get("note")).toBe("User ID");
+  });
+
+  it("cukup satu label bermakna untuk menang atas label generik", () => {
+    const majority = gamesFieldLabelMajority([fields("Catatan"), fields("Note"), fields("Customer ID")]);
+    expect(majority.get("note")).toBe("Customer ID");
+  });
+
+  it("key tanpa label bermakna tidak masuk peta", () => {
+    const majority = gamesFieldLabelMajority([fields("Catatan"), fields("Keterangan"), fields("")]);
+    expect(majority.has("note")).toBe(false);
+  });
+
+  it("tie dimenangkan label yang lebih dulu muncul (fc-mobile/zepeto)", () => {
+    const majority = gamesFieldLabelMajority([fields("Customer ID"), fields("Catatan"), fields("Customer ID")]);
+    expect(majority.get("note")).toBe("Customer ID");
+    const tie = gamesFieldLabelMajority([fields("A ID"), fields("B ID")]);
+    expect(tie.get("note")).toBe("A ID");
+  });
+
+  it("memisahkan per key: note dan zone_id tidak saling memengaruhi", () => {
+    const majority = gamesFieldLabelMajority([
+      [{ key: "note", label: "User ID" }, { key: "zone_id", label: "Zona ID" }],
+      [{ key: "note", label: "Catatan" }, { key: "zone_id", label: "Catatan" }],
+    ]);
+    expect(majority.get("note")).toBe("User ID");
+    expect(majority.get("zone_id")).toBe("Zona ID");
+  });
+
+  it("label dibersihkan saat dihitung (titik dua di akhir dibuang)", () => {
+    const majority = gamesFieldLabelMajority([fields("User ID :"), fields("User ID")]);
+    expect(majority.get("note")).toBe("User ID");
+  });
+
+  it("daftar kosong menghasilkan peta kosong", () => {
+    expect(gamesFieldLabelMajority([]).size).toBe(0);
   });
 });

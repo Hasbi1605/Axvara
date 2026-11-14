@@ -2,9 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { GameClient } from "@/app/games/[slug]/game-client";
-import type { GamesDetail } from "@/lib/games/catalog";
+import type { GamesDetail, GamesDetailGame, GamesDetailProduct } from "@/lib/games/catalog";
 import type { GamesSkContractField } from "@/lib/games/registry";
-import type { StoreGame, StoreProduct } from "@/components/games/storefront";
 import { gamesEffectiveCategory, gamesRegionCode, gamesTypeLabel } from "@/lib/games/variant-kind";
 import { DisplayPreferencesProvider } from "@/hooks/useDisplayPrices";
 
@@ -15,9 +14,9 @@ const noteField: GamesSkContractField = { key: "note", label: "User ID", require
 const zoneField: GamesSkContractField = { key: "zone_id", label: "Zone ID", required: true, input: "text", min: 1, max: 20 };
 const game: GamesDetail["game"] = { slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton", currency: "diamond", icon: null, banner: null, fields: [], description: "", id_guide: "" };
 // Integration (PM): derive B6 fields with the real G-BE helpers unless a test overrides them.
-const product = (over: Partial<StoreProduct>): StoreProduct => {
+const product = (over: Partial<GamesDetailProduct>): GamesDetailProduct => {
   const base = {
-    buyer_sku_code: "sk:1", name: "86 Diamond", group: "bestseller" as const, price: 12000, available: true,
+    buyer_sku_code: "sk:1", name: "86 Diamond", group: "all" as const, price: 12000, available: true,
     display_order: 1, fields: [noteField, zoneField], unsupported_reason: null, availability_reason: null,
     description: "Region ID only", product_type_name: "Membership", ...over,
   };
@@ -27,7 +26,7 @@ const product = (over: Partial<StoreProduct>): StoreProduct => {
     category: gamesEffectiveCategory({ displayGroup: base.group, productName: base.name, productTypeName: base.product_type_name }),
     validation_available: true,
     ...base,
-  } as StoreProduct;
+  };
 };
 const detail: GamesDetail = {
   game,
@@ -51,16 +50,17 @@ const quoteResponse = (code = "sk:1") => ({
 
 beforeEach(() => {
   vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   Element.prototype.scrollIntoView = vi.fn();
   localStorage.clear();
   navigation.push.mockClear();
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); document.cookie = "axv_locale=; max-age=0; path=/"; });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); document.cookie = "axv_locale=; max-age=0; path=/"; });
 
 describe("Games detail (selected SKU contract)", () => {
   it("uses image protection for header/rail and translated metadata guidance and CTA", async () => {
     document.cookie = "axv_locale=en; path=/";
-    const metadata: StoreGame = { ...game, icon: "https://sekalipay.com/images/products/test.png", banner: "/brand/games/mobile-legends-banner.webp", description: "Play together.", id_guide: "Use your profile ID and zone." };
+    const metadata: GamesDetailGame = { ...game, icon: "/brand/games/free-fire-icon.webp", banner: "/brand/games/mobile-legends-banner.webp", description: "Play together.", id_guide: "Use your profile ID and zone." };
     render(<DisplayPreferencesProvider><GameClient detail={{ game: metadata, products: detail.products }} orderingOpen /></DisplayPreferencesProvider>);
     expect(await screen.findByText("Use your profile ID and zone.")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "About Mobile Legends" })).toBeTruthy();
@@ -69,9 +69,9 @@ describe("Games detail (selected SKU contract)", () => {
       expect(img.getAttribute("referrerpolicy")).toBe("no-referrer");
       expect(img.getAttribute("decoding")).toBe("async");
     }
-    const image = document.querySelector('[data-game-header] img[src*="test.png"]')!;
+    const image = document.querySelector('[data-game-header] img[src*="free-fire-icon.webp"]')!;
     fireEvent.error(image);
-    expect(document.querySelector('[data-game-header] img[src*="test.png"]')).toBeNull();
+    expect(document.querySelector('[data-game-header] img[src*="free-fire-icon.webp"]')).toBeNull();
     expect(screen.getAllByText("ML").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "Pay now" }).length).toBeGreaterThan(0);
   });
@@ -84,18 +84,19 @@ describe("Games detail (selected SKU contract)", () => {
     await screen.findByText(/Nickname terdeteksi:/);
     expect(screen.queryByText(/Akun ini terdeteksi region/)).toBeNull();
   });
-  it("orders the four steps, defaults to Indonesia and selects the cheapest available in the first section", () => {
+  it("orders the four steps, defaults to Indonesia and prefers its cheapest available topup", () => {
     render(<GameClient detail={{ game, products: [
       product({ buyer_sku_code: "sg", product_type_name: "Singapore", group: "bestseller", price: 500 }),
       product({ buyer_sku_code: "id-off", product_type_name: "Indonesia", available: false, price: 100, availability_reason: "supplier_off" }),
-      product({ buyer_sku_code: "id-expensive", product_type_name: "Indonesia", price: 15000 }),
-      product({ buyer_sku_code: "id-cheap", product_type_name: "Indonesia", price: 12000 }),
+      product({ buyer_sku_code: "id-expensive", product_type_name: "Indonesia", group: "bestseller", price: 15000 }),
+      product({ buyer_sku_code: "id-cheap", product_type_name: "Indonesia", group: "bestseller", price: 12000 }),
       product({ buyer_sku_code: "id-topup", product_type_name: "Indonesia", group: "all", price: 1000 }),
+      product({ buyer_sku_code: "id-topup-expensive", product_type_name: "Indonesia", group: "all", price: 2000 }),
     ] }} orderingOpen />);
     expect(screen.getAllByRole("heading", { level: 2 }).slice(0, 4).map((h) => h.textContent)).toEqual(["1Data akun", "2Pilih nominal", "3Metode pembayaran", "4Kontak"]);
-    expect(screen.getByRole("button", { name: "Indonesia (4)" }).getAttribute("aria-pressed")).toBe("true");
-    expect(document.querySelector<HTMLInputElement>('input[value="id-cheap"]')!.checked).toBe(true);
-    const card = document.querySelector<HTMLInputElement>('input[value="id-cheap"]')!.closest("label")!;
+    expect(screen.getByRole("button", { name: "Indonesia (5)" }).getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelector<HTMLInputElement>('input[value="id-topup"]')!.checked).toBe(true);
+    const card = document.querySelector<HTMLInputElement>('input[value="id-topup"]')!.closest("label")!;
     expect(within(card).getByText("Pengiriman instan")).toBeTruthy();
     const off = document.querySelector<HTMLInputElement>('input[value="id-off"]')!.closest("label")!;
     expect(off.getAttribute("aria-disabled")).toBe("true");
@@ -103,6 +104,63 @@ describe("Games detail (selected SKU contract)", () => {
     expect(within(off).getByText("Habis")).toBeTruthy();
     expect(within(off).queryByText("Pengiriman instan")).toBeNull();
     expect(screen.queryByText("Belum dipilih")).toBeNull();
+  });
+
+  it("falls back to the cheapest available in the first available section, or first variant fields", () => {
+    const products = [
+      product({ buyer_sku_code: "off", available: false, category: "topup", fields: [noteField] }),
+      product({ buyer_sku_code: "later-cheaper", category: "pass", price: 100 }),
+      product({ buyer_sku_code: "first-expensive", category: "special", price: 300 }),
+      product({ buyer_sku_code: "first-cheapest", category: "special", price: 200 }),
+    ];
+    const { rerender } = render(<GameClient detail={{ game, products }} orderingOpen={false} />);
+    expect(document.querySelector<HTMLInputElement>('input[value="first-cheapest"]')!.checked).toBe(true);
+    rerender(<GameClient key="unavailable" detail={{ game, products: products.map((p) => ({ ...p, available: false })) }} orderingOpen={false} />);
+    expect((screen.getByLabelText("User ID") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByLabelText("Zone ID")).toBeNull();
+    expect(screen.getAllByRole("radio").every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
+  });
+
+  it("offers expand only for actual description overflow, strips emoji, and collapses again", () => {
+    let height = 24;
+    let resize = () => {};
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => height);
+    const computedStyle = window.getComputedStyle;
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+      const style = computedStyle(element, pseudo);
+      style.lineHeight = "24px";
+      return style;
+    });
+    vi.stubGlobal("ResizeObserver", class { constructor(callback: () => void) { resize = callback; } observe() {} disconnect() {} });
+    const { rerender } = render(<GameClient detail={{ game, products: [product({ description: "⚡ Short text ✅" })] }} orderingOpen={false} />);
+    expect(screen.getByRole("complementary").textContent).toContain("Tipe");
+    let text = screen.getByText("Short text");
+    expect(text.textContent).not.toMatch(/[⚡✅]/);
+    expect(screen.queryByRole("button", { name: "Selengkapnya" })).toBeNull();
+    height = 48; act(() => resize());
+    expect(screen.queryByRole("button", { name: "Selengkapnya" })).toBeNull();
+    height = 72;
+    const longText = "Only for this region. Check your User ID and server before paying. Other account regions are not supported.";
+    rerender(<GameClient detail={{ game, products: [product({ description: `⚡ ${longText} ✅` })] }} orderingOpen={false} />);
+    text = screen.getByText(longText);
+    fireEvent.click(screen.getByRole("button", { name: "Selengkapnya" }));
+    expect(screen.getByRole("button", { name: "Ringkas" }).getAttribute("aria-expanded")).toBe("true");
+    expect(text.className).not.toContain("line-clamp-2");
+    fireEvent.click(screen.getByRole("button", { name: "Ringkas" }));
+    expect(text.className).toContain("line-clamp-2");
+    expect(screen.getByRole("button", { name: "Selengkapnya" }).getAttribute("aria-expanded")).toBe("false");
+    height = 24; act(() => resize());
+    expect(screen.queryByRole("button", { name: "Selengkapnya" })).toBeNull();
+  });
+
+  it("frames local art and creates an icon-blurred banner, then a monogram on icon failure", () => {
+    render(<GameClient detail={{ game: { ...game, icon: "/brand/games/free-fire-icon.webp" }, products: [] }} orderingOpen={false} />);
+    const banner = document.querySelector('[data-game-image="generated-banner"]')!;
+    expect(banner.className).toContain("rounded-2xl border border-white/10");
+    expect(banner.querySelector("img")!.className).toContain("blur-[48px]");
+    fireEvent.error(banner.querySelector("img")!);
+    expect(within(banner as HTMLElement).getByText("ML")).toBeTruthy();
+    expect(banner.querySelector("img")).toBeNull();
   });
 
   it("reveals each category separately after 12 cards and keeps full pass names", () => {

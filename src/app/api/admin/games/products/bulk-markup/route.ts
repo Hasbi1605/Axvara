@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       changed = Number(result.changes ?? 0);
     }
     if (markupChanged) {
-      await writeVariantMarkup(db, skus, { percent: markup_percent ?? null, fixed: markup_fixed ?? null });
+      await writeVariantMarkup(db, skus, { percent: markup_percent, fixed: markup_fixed });
       changed = Math.max(changed, skus.length);
     }
     const repriced = markupChanged ? (await recomputeGamesSkPrices(db, { skus })).updated : 0;

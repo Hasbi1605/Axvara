@@ -26,11 +26,19 @@
 - Pembersihan order palsu produksi hanya atas instruksi owner, backup privat dahulu, cocokkan kode/pola kontak, lindungi paid/riwayat supplier/fulfillment dan lepaskan stok lewat expiry/transition existing. Pertahankan payment_invoice_history untuk deteksi pembayaran terlambat. Jangan menganggap pola kontak sebagai bukti satu source IP atau menjanjikan semua bot multi-IP terhenti.
 
 
-## CSP gambar katalog Games — 12 November 2026 (lokal)
+## CSP gambar katalog Games — 12 November 2026 (histori), dihapus 14 November 2026
 
-- CSP publik (`securityHeaders` middleware) menambahkan satu source path-scoped
-  `https://sekalipay.com/images/products/` untuk gambar produk SK yang sudah
-  lolos allowlist server. Jangan menambah host-wide/wildcard, jangan mengubah
-  `default-src`, `connect-src`, `script-src`, CSP admin, autentikasi, atau
-  header keamanan lain. Artefak lokal sudah dibangun ulang (split build 173 edge
-  route); deployment produksi belum dilakukan.
+- **[DIGANTIKAN 14 November 2026]** Storefront Games tidak lagi merender gambar produk
+  Sekalipay (aset resmi publisher lokal + fallback AXVARA, `docs/GAMES.md` §14), sehingga
+  source path `https://sekalipay.com/images/products/` **dihapus** dari `img-src` CSP publik
+  (`src/middleware.ts`). Daftar `img-src` publik kini: `'self'`, `https://images.unsplash.com`,
+  `https://picsum.photos`, `data:`, `blob:`. Jangan menambah host/wildcard baru dan jangan
+  mengubah `default-src`/`connect-src`/`script-src`, CSP admin, autentikasi, atau header
+  keamanan lain untuk kebutuhan aset; gambar baru harus same-origin (`public/`) atau lewat
+  aset yang sudah diizinkan.
+- Teks 12 November di bawah adalah histori (exception path-scoped untuk gambar produk SK):
+  CSP publik menambahkan satu source path-scoped `https://sekalipay.com/images/products/`
+  untuk gambar produk SK yang sudah lolos allowlist server. Larangan menambah host-wide/
+  wildcard dan mengubah `default-src`/`connect-src`/`script-src`/CSP admin/autentikasi/
+  header lain tetap berlaku. Artefak lokal 12 November dibangun ulang; deployment tidak
+  dilakukan saat itu.

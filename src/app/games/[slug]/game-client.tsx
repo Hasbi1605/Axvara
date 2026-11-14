@@ -4,16 +4,17 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BadgePercent, Check, Clock, Flame, Gem, Gift, Info, Package, ShieldCheck, Sparkles, Star, Ticket, Zap } from "lucide-react";
 import { GameImage } from "@/components/games/GameImage";
-import { CATEGORIES, GameCard, HowToTopUp, categoryOf, cleanFieldLabel, gamesFocus as focus, nicknameRegion, regionCode, sellableCount, typeLabel, type CatalogGame, type StoreGame, type StoreProduct } from "@/components/games/storefront";
+import { GameCard, HowToTopUp, gamesFocus as focus } from "@/components/games/storefront";
 import { PaymentMethodPicker } from "@/components/storefront/PaymentMethodPicker";
 import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { gamesCopy } from "@/lib/games/copy";
-import type { GamesDetail } from "@/lib/games/catalog";
+import type { GamesCatalogGame, GamesDetail, GamesDetailProduct } from "@/lib/games/catalog";
+import { GAMES_CATEGORY_ORDER, cleanGamesFieldLabel, regionCodeFromNickname } from "@/lib/games/variant-kind";
 import { parsePayOptions, type PayOption } from "@/lib/payment-ui";
 import { rememberPediaContact } from "@/lib/pedia/buyer-session";
 import { SITE, waHubLink } from "@/lib/site";
 
-type Product = StoreProduct;
+type Product = GamesDetailProduct;
 type ProductField = NonNullable<Product["fields"]>[number];
 const CONTROL = /[\u0000-\u001f\u007f]/;
 /** Validasi sama dengan server: trim, kontrol ditolak, panjang kontrak. */
@@ -26,19 +27,20 @@ function fieldInvalid(field: ProductField, raw: string | undefined): boolean {
 const inputClass = `h-12 w-full rounded-xl border border-white/15 bg-white/[.04] px-4 text-white ${focus}`;
 const categoryIcons = { topup: Gem, pass: Ticket, first_topup: Sparkles, pack: Package, promo: BadgePercent, bestseller: Flame, special: Star, other: Gift };
 function firstVariant(products: Product[], type: string) {
-  const inType = products.filter((p) => type === "all" || (typeLabel(p) ?? "other") === type);
-  const sorted = [...inType].sort((a, b) => CATEGORIES.indexOf(categoryOf(a)) - CATEGORIES.indexOf(categoryOf(b)) || a.price - b.price);
-  return sorted.find((p) => p.available) ?? sorted[0] ?? products[0];
+  const inType = products.filter((p) => type === "all" || (p.type_label ?? "other") === type);
+  const available = inType.filter((p) => p.available);
+  const topups = available.filter((p) => p.category === "topup").sort((a, b) => a.price - b.price);
+  return topups[0] ?? available.sort((a, b) => GAMES_CATEGORY_ORDER.indexOf(a.category) - GAMES_CATEGORY_ORDER.indexOf(b.category) || a.price - b.price)[0] ?? inType[0] ?? products[0];
 }
 
-export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: GamesDetail; orderingOpen: boolean; otherGames?: CatalogGame[] }) {
-  const game: StoreGame = detail.game;
+export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: GamesDetail; orderingOpen: boolean; otherGames?: GamesCatalogGame[] }) {
+  const game = detail.game;
   const locale = useDisplayLocale();
   const t = gamesCopy(locale);
   const router = useRouter();
   // Semua varian/region/tipe tetap baris terpisah; tidak ada penggabungan nominal.
   const products: Product[] = detail.products;
-  const defaultType = products.some((p) => typeLabel(p) === "Indonesia") ? "Indonesia" : "all";
+  const defaultType = products.some((p) => p.type_label === "Indonesia") ? "Indonesia" : "all";
   const [activeType, setActiveType] = useState(defaultType);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [remember, setRemember] = useState(false);
@@ -48,6 +50,8 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
   const [sku, setSku] = useState<string | null>(() => firstVariant(products, defaultType)?.buyer_sku_code ?? null);
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [descriptionClamped, setDescriptionClamped] = useState(false);
+  const descriptionRef = useRef<HTMLParagraphElement>(null);
   const [checkSequence, setCheckSequence] = useState(0);
   const manualCheck = useRef(false);
   const [search, setSearch] = useState("");
@@ -153,17 +157,26 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteKey, orderingOpen, valid, retry]);
 
-  const types = Array.from(new Set(products.map((p) => typeLabel(p) ?? "other"))).map((type) => ({ type, count: products.filter((p) => (typeLabel(p) ?? "other") === type).length }))
+  const types = Array.from(new Set(products.map((p) => p.type_label ?? "other"))).map((type) => ({ type, count: products.filter((p) => (p.type_label ?? "other") === type).length }))
     .sort((a, b) => a.type === "Indonesia" ? -1 : b.type === "Indonesia" ? 1 : a.type === "other" ? 1 : b.type === "other" ? -1 : b.count - a.count || a.type.localeCompare(b.type));
-  const visible = products.filter((p) => (activeType === "all" || (typeLabel(p) ?? "other") === activeType) && p.name.toLowerCase().includes(search.trim().toLowerCase()));
-  const countryTypes = new Set(products.map(regionCode).filter((code) => code && code !== "GLOBAL"));
-  const detectedRegion = nickname.state === "ok" ? nicknameRegion(nickname.value ?? "") : null;
-  const selectedRegion = selected ? regionCode(selected) : null;
+  const visible = products.filter((p) => (activeType === "all" || (p.type_label ?? "other") === activeType) && p.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const countryTypes = new Set(products.map((p) => p.region_code).filter((code) => code && code !== "GLOBAL"));
+  const detectedRegion = nickname.state === "ok" ? regionCodeFromNickname(nickname.value) : null;
+  const selectedRegion = selected?.region_code;
   const mismatch = detectedRegion && selectedRegion && selectedRegion !== "GLOBAL" && detectedRegion !== selectedRegion;
   const detectedName = detectedRegion ? t.regionNames[detectedRegion] ?? detectedRegion : "";
-  const detectedType = products.find((p) => regionCode(p) === detectedRegion);
-  const related = otherGames.filter((other) => other.slug !== game.slug && sellableCount(other) > 0).slice(0, 6);
+  const detectedType = products.find((p) => p.region_code === detectedRegion);
+  const related = otherGames.filter((other) => other.slug !== game.slug && other.sellable_count > 0).slice(0, 6);
   const plainDescription = (selected?.description ?? "").replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+/gu, "").trim();
+  useEffect(() => {
+    const text = descriptionRef.current;
+    if (!text) { setDescriptionClamped(false); return; }
+    const measure = () => setDescriptionClamped(text.scrollHeight > parseFloat(getComputedStyle(text).lineHeight) * 2 + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(text);
+    return () => observer.disconnect();
+  }, [plainDescription, locale]);
   const scrollTo = (id: string) => { const el = document.getElementById(id); el?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "center" }); (el?.querySelector("input:not(:disabled),button:not(:disabled)") as HTMLElement | null)?.focus({ preventScroll: true }); };
   const nominalKeys = (event: React.KeyboardEvent<HTMLElement>) => {
     const target = event.target;
@@ -202,7 +215,7 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
     : nickname.state === "unavailable" ? t.nicknameUnavailable : "";
   const chooseType = (type: string) => {
     setActiveType(type); setExpandedSections([]);
-    if (!selected?.available || (type !== "all" && (typeLabel(selected) ?? "other") !== type)) setSku(firstVariant(products, type)?.buyer_sku_code ?? null);
+    if (!selected?.available || (type !== "all" && (selected.type_label ?? "other") !== type)) setSku(firstVariant(products, type)?.buyer_sku_code ?? null);
   };
   const payLabel = !orderingOpen ? t.opensSoon : busy ? t.processing : option ? `${t.payAmount} ${totalText}` : t.pay;
   const payDisabled = !orderingOpen || busy || !selected?.available;
@@ -211,11 +224,11 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
     {!orderingOpen && <p role="status" className="mb-4 rounded-xl border border-white/10 bg-white/[.03] p-3 text-center text-sm text-white/70">{t.notice}</p>}
     <header data-game-header className="relative overflow-hidden rounded-3xl bg-[#0F1430]">
       <div className="relative h-[100px] sm:h-[180px] lg:h-[200px]">
-        {game.banner ? <GameImage src={game.banner} name={game.name} className="h-full w-full text-4xl" eager /> : <div aria-hidden="true" className="h-full bg-[radial-gradient(ellipse_at_25%_0%,rgba(0,229,255,.14),transparent_70%)]" />}
+        <GameImage src={game.banner} fallbackSrc={game.icon} banner name={game.name} className="h-full w-full text-4xl" eager />
         <div className="absolute inset-0 bg-gradient-to-t from-[#080C1E] via-[#080C1E]/30 to-transparent" />
       </div>
       <div className="relative -mt-9 flex items-end gap-3 px-4 pb-4 sm:-mt-14 sm:gap-5 sm:px-6">
-        <GameImage src={game.icon} name={game.name} className="h-[72px] w-[72px] rounded-2xl border border-white/20 text-2xl sm:h-28 sm:w-28" eager />
+        <GameImage src={game.icon} name={game.name} className="h-[72px] w-[72px] text-2xl sm:h-28 sm:w-28" eager />
         <div className="min-w-0 pb-1"><h1 className="font-display text-2xl font-bold leading-tight sm:text-4xl">{game.name}</h1>{game.publisher && <p className="mt-1 text-xs text-white/60 sm:text-sm">{game.publisher}</p>}</div>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 px-4 pb-4 text-[11px] text-white/70 sm:px-6 sm:text-xs">{[[Zap, t.instant], [Clock, t.timeChip], [ShieldCheck, t.secureChip]].map(([Icon, text]) => { const Glyph = Icon as typeof Zap; return <span key={text as string} className="flex items-center gap-1.5"><Glyph size={20} strokeWidth={1.75} className="text-[#00E5FF]" />{text as string}</span>; })}</div>
@@ -226,13 +239,13 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
         {!selected?.available && <p role="status" className="mt-4 text-sm text-white/60">{t.unavailableAmount}</p>}
         <div className="mt-5 grid gap-4 sm:grid-cols-2">{contract.map((field) => {
           const invalid = touched && fieldInvalid(field, fields[field.key]);
-          return <div key={field.key}><label htmlFor={`game-field-${field.key}`} className="text-sm text-white/80">{cleanFieldLabel(field.label)}{!field.required && <span className="ml-1 text-xs text-white/40">({t.optional})</span>}</label><input id={`game-field-${field.key}`} disabled={!selected?.available || !!attempted.current} className={`${inputClass} mt-2 disabled:opacity-50`} inputMode={field.input} maxLength={field.max} value={fields[field.key] ?? ""} onBlur={() => setTouched(true)} onChange={(e) => { setNickname({ state: "idle" }); setFields({ ...fields, [field.key]: e.target.value }); }} aria-invalid={invalid} aria-describedby={invalid ? `game-error-${field.key}` : undefined} />{invalid && <p id={`game-error-${field.key}`} className="mt-1 text-xs text-[#EF4444]">{t.invalidId}</p>}</div>;
+          return <div key={field.key}><label htmlFor={`game-field-${field.key}`} className="text-sm text-white/80">{cleanGamesFieldLabel(field.label)}{!field.required && <span className="ml-1 text-xs text-white/40">({t.optional})</span>}</label><input id={`game-field-${field.key}`} disabled={!selected?.available || !!attempted.current} className={`${inputClass} mt-2 disabled:opacity-50`} inputMode={field.input} maxLength={field.max} value={fields[field.key] ?? ""} onBlur={() => setTouched(true)} onChange={(e) => { setNickname({ state: "idle" }); setFields({ ...fields, [field.key]: e.target.value }); }} aria-invalid={invalid} aria-describedby={invalid ? `game-error-${field.key}` : undefined} />{invalid && <p id={`game-error-${field.key}`} className="mt-1 text-xs text-[#EF4444]">{t.invalidId}</p>}</div>;
         })}</div>
         <p className="mt-3 text-xs leading-6 text-white/60">{game.id_guide || (contract.some((field) => /hp|phone|nomor/i.test(field.label)) ? t.phoneHelp : t.profileHelp)}</p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2"><label className="flex min-h-11 items-center gap-2 text-xs text-white/70 sm:text-sm"><input type="checkbox" checked={remember} disabled={!selected?.available || !!attempted.current} onChange={(e) => setRemember(e.target.checked)} className={`h-4 w-4 accent-[#00E5FF] ${focus}`} />{t.remember}</label>
           {selected?.validation_available !== false && <button type="button" disabled={!selected?.available || nickname.state === "checking" || !!attempted.current} onClick={() => { if (!valid) { setTouched(true); scrollTo("game-account"); return; } manualCheck.current = true; setCheckSequence((n) => n + 1); }} className={`min-h-11 rounded-xl border border-white/20 px-4 text-sm text-white/85 disabled:opacity-40 ${focus}`}>{nickname.state === "checking" ? t.nicknameChecking : t.checkId}</button>}
         </div><p aria-live="polite" className="text-sm leading-6 text-white/70">{nicknameText}</p>
-        {mismatch && <div role="status" className="mt-3 rounded-xl border border-[#FFB800]/40 bg-[#FFB800]/[.04] p-3 text-sm leading-6 text-white/80"><p>{t.regionDetected} {detectedName}. {t.regionSelected} {selected && typeLabel(selected)}. {t.chooseRegion} {detectedName} {t.regionChoose}</p>{detectedType && <button type="button" disabled={!!attempted.current} onClick={() => { chooseType(typeLabel(detectedType) ?? "other"); scrollTo("game-nominal"); }} className={`min-h-11 text-[#00E5FF] ${focus}`}>{t.showRegion} {detectedName}</button>}</div>}
+        {mismatch && <div role="status" className="mt-3 rounded-xl border border-[#FFB800]/40 bg-[#FFB800]/[.04] p-3 text-sm leading-6 text-white/80"><p>{t.regionDetected} {detectedName}. {t.regionSelected} {selected?.type_label}. {t.chooseRegion} {detectedName} {t.regionChoose}</p>{detectedType && <button type="button" disabled={!!attempted.current} onClick={() => { chooseType(detectedType.type_label ?? "other"); scrollTo("game-nominal"); }} className={`min-h-11 text-[#00E5FF] ${focus}`}>{t.showRegion} {detectedName}</button>}</div>}
       </section>
       <section id="game-nominal" onKeyDown={nominalKeys} className="ax-glass scroll-mt-24 rounded-2xl border border-white/10 p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="flex items-center gap-3 font-display text-xl font-bold"><span className="rounded-lg bg-[#FFB800]/15 px-3 py-1 text-[#FFB800]">2</span>{t.nominal}</h2><span className="text-xs text-white/50">{products.length} {t.variants}</span></div>
@@ -240,8 +253,8 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
         {countryTypes.size >= 2 && <p className="mt-4 text-xs leading-6 text-white/55">{t.regionHelp}</p>}
         {types.length >= 2 && <div aria-label={t.typeLabel} className="-mx-1 mt-3 flex gap-2 overflow-x-auto px-1 py-2">{[...types, { type: "all", count: products.length }].map(({ type, count }) => <button key={type} type="button" disabled={!!attempted.current} onClick={() => chooseType(type)} aria-pressed={activeType === type} className={`min-h-11 shrink-0 rounded-full border px-4 text-xs ${activeType === type ? "border-[#00E5FF] bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/15 text-white/70"} ${focus}`}>{type === "all" ? t.allTypes : type === "other" ? t.categories.other : type} <span className="ml-1 opacity-60">({count})</span></button>)}</div>}
         {!visible.length && <p role="status" className="py-8 text-center text-sm text-white/60">{t.noAmountMatch}</p>}
-        {CATEGORIES.map((category) => {
-          const items = visible.filter((p) => categoryOf(p) === category).sort((a, b) => Number(b.available) - Number(a.available) || a.price - b.price);
+        {GAMES_CATEGORY_ORDER.map((category) => {
+          const items = visible.filter((p) => p.category === category).sort((a, b) => Number(b.available) - Number(a.available) || a.price - b.price);
           if (!items.length) return null;
           const Icon = categoryIcons[category];
           const expanded = expandedSections.includes(category);
@@ -249,7 +262,7 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
             <div role="radiogroup" aria-label={t.categories[category]} className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">{(expanded ? items : items.slice(0, 12)).map((p) => <label key={p.buyer_sku_code} aria-disabled={!p.available} className={`ax-glass relative flex min-h-[128px] min-w-0 flex-col overflow-hidden rounded-2xl border transition duration-[160ms] motion-reduce:transition-none has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[#00E5FF] ${sku === p.buyer_sku_code && p.available ? "border-[#00E5FF] bg-[#00E5FF]/10 shadow-[0_0_20px_rgba(0,229,255,.12)]" : "border-white/10"} ${!p.available ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
               <input type="radio" name="game-sku" value={p.buyer_sku_code} checked={sku === p.buyer_sku_code && p.available} disabled={!p.available || !!attempted.current} onChange={() => setSku(p.buyer_sku_code)} className="sr-only" />
               {category === "bestseller" && <span className="self-start rounded-br-lg bg-[#FFB800]/15 px-2 py-1 text-[10px] font-semibold text-[#FFB800]">{t.bestseller}</span>}
-              <span className="flex flex-1 flex-col px-3 pb-3 pt-3"><span className="block break-words pr-2 text-[13px] font-semibold leading-5 text-white sm:text-sm">{p.name}</span>{activeType === "all" && typeLabel(p) && <span className="mt-1 text-[11px] text-white/45">{typeLabel(p)}</span>}<span className="mt-auto flex items-center gap-1.5 pt-3"><Icon aria-hidden="true" size={18} strokeWidth={1.75} className="shrink-0 text-[#00E5FF]/80" /><span className="font-display text-base font-bold tabular-nums sm:text-lg">{p.price > 0 ? prices.text(p.price) : "—"}</span></span></span>
+              <span className="flex flex-1 flex-col px-3 pb-3 pt-3"><span className="block break-words pr-2 text-[13px] font-semibold leading-5 text-white sm:text-sm">{p.name}</span>{activeType === "all" && p.type_label && <span className="mt-1 text-[11px] text-white/45">{p.type_label}</span>}<span className="mt-auto flex items-center gap-1.5 pt-3"><Icon aria-hidden="true" size={18} strokeWidth={1.75} className="shrink-0 text-[#00E5FF]/80" /><span className="font-display text-base font-bold tabular-nums sm:text-lg">{p.price > 0 ? prices.text(p.price) : "—"}</span></span></span>
               <span className="flex min-h-8 justify-end bg-[#080C1E]/35 px-2 py-1.5">{p.available ? <span className="inline-flex items-center gap-1 rounded-full bg-[#00E5FF]/10 px-2 py-0.5 text-[10px] font-semibold text-[#00E5FF] sm:text-[11px]"><Zap aria-hidden="true" size={12} strokeWidth={1.75} />{t.instant}</span> : <span className="text-[11px] text-white/55">{["stock_empty", "supplier_off"].includes(p.availability_reason ?? "") ? t.soldOut : t.notAvailable}</span>}</span>
               {sku === p.buyer_sku_code && p.available && <Check aria-hidden="true" size={16} strokeWidth={1.75} className="absolute right-2 top-2 text-[#00E5FF]" />}
             </label>)}</div>
@@ -263,9 +276,9 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
       {recoveryCode && <Link href={`/games/pesanan/${recoveryCode}`} className="inline-flex min-h-11 items-center text-sm text-[#00E5FF]">{t.recoveryOrder} · {recoveryCode}</Link>}
     </div><aside className="ax-glass rounded-2xl border border-white/10 p-5 lg:sticky lg:top-24 lg:p-6">
       <h2 className="font-display text-xl font-bold">{t.summary}</h2>
-      {selected && <><div className="mt-5 flex items-start gap-3"><GameImage src={game.icon} name={game.name} className="h-10 w-10 rounded-xl border border-white/10 text-sm" /><div className="min-w-0 flex-1"><p className="text-xs text-white/45">{game.name}</p><p className="mt-1 break-words text-sm font-semibold leading-6">{selected.name}</p></div></div><button type="button" disabled={!!attempted.current} onClick={() => scrollTo("game-nominal")} className={`min-h-11 text-sm text-[#00E5FF] ${focus}`}>{t.change}</button>
-        <dl className="space-y-2 border-t border-white/10 pt-4 text-xs"><div className="flex justify-between gap-4"><dt className="text-white/50">{t.typeLabel}</dt><dd>{typeLabel(selected) ?? t.categories.other}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/50">{t.process}</dt><dd>{t.auto}</dd></div></dl>
-        {plainDescription && <div className="mt-3 text-xs leading-6 text-white/60"><p className={descriptionExpanded ? "" : "line-clamp-2"}>{plainDescription}</p><button type="button" onClick={() => setDescriptionExpanded(!descriptionExpanded)} aria-expanded={descriptionExpanded} className={`min-h-11 text-[#00E5FF] ${focus}`}>{descriptionExpanded ? t.detailsLess : t.detailsMore}</button></div>}
+      {selected && <><div className="mt-5 flex items-start gap-3"><GameImage src={game.icon} name={game.name} className="h-10 w-10 text-sm" /><div className="min-w-0 flex-1"><p className="text-xs text-white/45">{game.name}</p><p className="mt-1 break-words text-sm font-semibold leading-6">{selected.name}</p></div></div><button type="button" disabled={!!attempted.current} onClick={() => scrollTo("game-nominal")} className={`min-h-11 text-sm text-[#00E5FF] ${focus}`}>{t.change}</button>
+        <dl className="space-y-2 border-t border-white/10 pt-4 text-xs"><div className="flex justify-between gap-4"><dt className="text-white/50">{t.typeLabel}</dt><dd>{selected.type_label ?? t.categories.other}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/50">{t.process}</dt><dd>{t.auto}</dd></div></dl>
+        {plainDescription && <div className="mt-3 text-xs leading-6 text-white/60"><p ref={descriptionRef} className={descriptionExpanded ? "" : "line-clamp-2"}>{plainDescription}</p>{descriptionClamped && <button type="button" onClick={() => setDescriptionExpanded(!descriptionExpanded)} aria-expanded={descriptionExpanded} className={`min-h-11 text-[#00E5FF] ${focus}`}>{descriptionExpanded ? t.detailsLess : t.detailsMore}</button>}</div>}
       </>}
       <dl className="mt-4 space-y-4 border-t border-white/10 pt-5 text-sm"><div className="flex justify-between gap-4"><dt className="shrink-0 text-white/55">{t.accountId}</dt><dd className="min-w-0 break-words text-right">{contract.map((field) => fields[field.key]).filter(Boolean).join(" / ") || "—"}{nickname.state === "ok" && <span className="mt-1 block text-xs text-white/60">{nickname.value}</span>}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/55">{t.method}</dt><dd className="text-right">{option?.label ?? "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/55">{t.price}</dt><dd className="font-display tabular-nums">{selected && selected.price > 0 ? prices.text(selected.price) : "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/55">{t.fee}</dt><dd className="font-display tabular-nums">{feeText}</dd></div><div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4"><dt className="font-semibold">{t.total}</dt><dd className="font-display text-xl font-bold tabular-nums">{totalText}</dd></div></dl>
       <button onClick={pay} disabled={payDisabled} className={`mt-5 hidden w-full lg:block ${payClass}`}>{payLabel}</button><a href={SITE.webUrl + waHubLink()} className={`mt-3 flex min-h-11 items-center justify-center gap-2 text-sm text-white/60 ${focus}`}><Info size={18} strokeWidth={1.75} />{t.whatsapp}</a>

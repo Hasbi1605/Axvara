@@ -3,9 +3,16 @@
 > **Status (9 November 2026): backend inti, admin data, API pembeli B1 QRIS + B2 gateway/crypto dan S1 routing/nickname berbiaya diimplementasikan lokal; belum ada bukti deployment Games.**
 > Env Digiflazz, UI storefront, nickname publik, deposit dan transaksi nyata belum termasuk bukti B1/B2; non-QRIS kini diuji fixture lokal B2.
 > §1–§11 mempertahankan rancangan awal; keputusan terbuka yang sudah dijawab
-> digantikan §9, dan kontrak implementasi terkini ada di §12.
+> digantikan §9. Kontrak implementasi terkini ada di **§14**; §12–§13 adalah histori kontrak
+> backend 9–12 November yang sebagian sudah digantikan §14.
 > Ringkasan ada di `docs/PRD.md`, `docs/DESIGN.md`, `docs/ARCHITECTURE.md`;
 > aturan supplier di `docs/agent-rules/digiflazz.md`.
+>
+> **Status dokumen (14 November 2026): §14 adalah kontrak implementasi lokal yang berlaku
+> sekarang — markup OD1, katalog SK + `games_meta`, storefront Oura+ditopup, admin per game,
+> dan aset resmi lokal. §1–§13 dipertahankan sebagai histori/kontrak lama; klaim yang
+> bertentangan ditandai di tempatnya. "Lokal" berarti kode + tes di worktree integrasi
+> `games-sk-integration`, bukan publikasi CI dan bukan deployment terverifikasi.**
 
 ## 1. Posisi produk
 
@@ -16,10 +23,11 @@
   kode buyer `<game>[id]<nominal>` (contoh `ml86`, `mlid97`, `ff140`, `pubg60`).
 - **[DISETUJUI]** Pembayaran: rail yang sudah ada di Market/Pedia — QRIS,
   Virtual Account, e-wallet (gateway Sekalipay) dan crypto (NOWPayments).
-- **[DISETUJUI]** Harga jual = harga Oura Store −2%, batas bawah = modal Digiflazz
-  + biaya kanal pembayaran + margin minimum 3%. SKU tanpa pembanding memakai batas
-  bawah. Snapshot 9 Nov 2026: ruang FF/FF MAX median ~24%, ML ~5%, PUBG ~6%,
-  Valorant ~5,5%, CODM ~8%, Genshin <1%.
+- **[DIGANTIKAN §14 OD1, 14 November 2026]** Harga jual = markup 5 % + pembulatan Rp100 di
+  atas modal supplier (bukan lagi Oura −2 % / lantai 3 %). Teks di bawah adalah aturan lama
+  9 November dan hanya berlaku sebagai histori: harga jual = harga Oura Store −2%, batas
+  bawah = modal Digiflazz + biaya kanal + margin minimum 3 %. Snapshot 9 Nov 2026: ruang
+  FF/FF MAX median ~24 %, ML ~5 %, PUBG ~6 %, Valorant ~5,5 %, CODM ~8 %, Genshin <1 %.
 - **Acuan UX: Oura Store** (ourastore.com) karena pola belinya sudah dikenal pembeli
   game Indonesia. Kita meniru **pola alur dan tata letak**, bukan aset, ilustrasi,
   banner, warna, logo atau teks mereka. Identitas visual tetap AXVARA (§6).
@@ -91,7 +99,8 @@ Hero Games memakai kelas tipografi, CTA, grid dan padding hero Pedia persis,
 tanpa eyebrow kuning "AXVARA GAMES". Radial gold Games dihapus; glow cyan Pedia.
 Orbit memakai ulang `PediaOrbit`, termasuk pusat orb kaca3D dan games-mark putih
 dengan perlakuan identik pedia-mark, ring/planet/animasi serta aturan mobile/reduced-motion.
-**Empat planet berasal dari registry**, tidak dari SKU enabled. Masing-masing dapat
+**[DIGANTIKAN §14, 14 November 2026]** Planet kini berasal dari empat game pertama
+urutan katalog API. **Histori:** empat planet berasal dari registry, tidak dari SKU enabled. Masing-masing dapat
 diklik ke `/games/<slug>` meski katalog kosong. Halaman game registry tanpa SKU
 enabled harus200 + header game + **"Nominal segera tersedia"** (EN tersedia),
 robots noindex sampai ada SKU; tidak menampilkan form checkout/nickname. Slug di
@@ -121,8 +130,9 @@ rail ringkasan sticky di kanan (desktop) / bar bawah (mobile)**.
 - Banner game lebar (rasio ~5:1 desktop, 2.5:1 mobile) dengan overlay gradien midnight
   agar teks terbaca; tile ikon game menumpang di kiri bawah; nama game (Space Grotesk 700),
   publisher, chip: ⚡ Proses otomatis · 🕐 24 jam · 🛡 Pembayaran aman (Lucide, bukan emoji).
-- "Pengiriman instan" cukup sekali di header, **tidak** diulang di setiap kartu nominal
-  (Oura mengulang badge di tiap kartu sehingga kartu tinggi dan ramai).
+- **[DIGANTIKAN §14 OD4]** "Pengiriman instan" kini muncul **per kartu nominal yang tersedia**
+  (permintaan owner, pola ditopup), bukan sekali di header. Kalimat lama: "cukup sekali di
+  header, tidak diulang di setiap kartu" — tidak lagi berlaku.
 
 ### 5.2 Langkah bernomor (kartu glass, nomor dalam kotak gold; MVP tanpa Jumlah)
 Urutan implementasi MVP: **1 Data akun → 2 Pilih nominal → 3 Metode pembayaran → 4 Kontak** (langkah Jumlah/stepper disembunyikan karena quantity selalu 1 — lihat §12.8 P5).
@@ -162,6 +172,10 @@ Urutan implementasi MVP: **1 Data akun → 2 Pilih nominal → 3 Metode pembayar
 Masalah di Oura: ML punya ±150 nominal dalam satu daftar panjang; promo dan reguler
 dengan harga hampir sama tampil ganda; pembayaran tertimbun jauh di bawah.
 
+**[DIGANTIKAN §14 OD4]** Daftar chip rentang harga + grup Spesial/Terlaris/Semua di bawah
+diganti chip TIPE/REGION ber-count dan section KATEGORI Oura-style (lihat §14). Teks lama
+dipertahankan sebagai histori:
+
 AXVARA:
 - **Grup** berurutan: Spesial (WDP/Twilight/Membership), Terlaris, Semua nominal.
 - **Terlaris** (6–8 nominal pilihan admin) tampil default; "Semua nominal" dilipat
@@ -200,9 +214,11 @@ AXVARA:
 
 - Ikon chrome navbar/bottom nav: `IosIcon` mengikuti Market/Pedia; ikon konten:
   Lucide (outline 20px, stroke 1.75), keputusan PM 9 November 2026.
-- Ikon/banner game: logo & key art resmi publisher hanya untuk identifikasi produk,
-  disimpan di R2 dan dikelola admin; **jangan mengambil banner, ilustrasi, atau gambar
-  buatan Oura**. Panduan "cara cari ID" dibuat sendiri dari screenshot game.
+- **[DIGANTIKAN §14 OD5]** Ikon/banner game: aset resmi publisher kini disimpan sebagai
+  berkas statis di `public/brand/games/` (tanpa unggah R2) dengan urutan admin `games_meta`
+  → aset lokal resmi → fallback AXVARA; **jangan mengambil banner, ilustrasi, atau gambar
+  buatan Oura**. Kalimat "disimpan di R2 dan dikelola admin" tidak lagi akurat untuk paket
+  ini. Panduan "cara cari ID" tetap dibuat sendiri.
 - Ikon mata uang (diamond, UC, VP, CP, dsb.): SVG buatan AXVARA.
 
 ## 8. Alur pesanan (ringkas; detail teknis di ARCHITECTURE)
@@ -341,9 +357,10 @@ setelah route ini terdeploy.
 Cron lite `games_catalog` (throttle ≥10 menit lewat `store_settings`): `price-list`
 `cmd:prepaid`, filter kategori Games, upsert per kode utama; kode berakhiran `b` mengisi
 kolom cadangan dari kode dasar. SKU yang hilang dari daftar → `seller_active=0`.
-`sell_price` dihitung ulang dari `games_reference_prices` (cermin `reference_price`
-ikut ditulis). `enabled`, `display_group`, dan `display_order` tidak pernah diubah
-oleh sinkron.
+[Histori Digiflazz — untuk baris Sekalipay lihat §14: `sell_price` kini dihitung dari markup
+OD1, bukan `games_reference_prices`.] `sell_price` dihitung ulang dari
+`games_reference_prices` (cermin `reference_price` ikut ditulis). `enabled`,
+`display_group`, dan `display_order` tidak pernah diubah oleh sinkron.
 
 ### 12.6 Status implementasi (9 November 2026)
 - Selesai: G1 proxy (terpasang VPS), G2 klien, G3 schema (migrasi 0107), G4 sinkron +
@@ -384,7 +401,9 @@ Kontrak keputusan PM untuk bagian A. Semua admin di balik Cloudflare Access + JW
 admin + idle (`requireAdmin`, audit `admin_authorized`); body PATCH dibatasi 8.000 byte
 lewat `readJsonBody`.
 
-- **P1 Harga referensi = tabel.** `games_reference_prices(buyer_sku_code PK, price
+- **[DIGANTIKAN §14 OD1 untuk baris SK]** Harga referensi Oura tidak lagi dipakai menghitung
+  harga jual Games; tabel/seed di bawah tetap ada sebagai histori dan untuk baris Digiflazz lama.
+- **P1 Harga referensi = tabel (histori).** `games_reference_prices(buyer_sku_code PK, price
   INTEGER NOT NULL CHECK(price>0), source TEXT NOT NULL, captured_at TEXT NOT NULL,
   updated_at TEXT NOT NULL)` (migrasi 0108) adalah sumber kebenaran harga Oura. Tabel
   boleh berisi kode yang belum ada di `games_products` (seed sebelum sinkron pertama).
@@ -407,7 +426,10 @@ lewat `readJsonBody`.
   katalog berikutnya membaca referensi lalu menghitung ulang cermin `reference_price`
   dan `sell_price` via rumus existing. JSON mentah tidak dimasukkan repo; daftar
   penolakan ada pada evidence A2 di workspace orkestrasi. Belum deployment seed.
-- **P2 Grup nominal.** `games_products.display_group TEXT NULL CHECK (display_group IS
+- **P2 Grup nominal (histori).** `display_group` kini menerima 8 kategori Oura
+  (`special|bestseller|promo|first_topup|pass|pack|topup|other`) sebagai override section di
+  §14; dua nilai lama tetap diterima. Definisi awal 9 November:
+  `games_products.display_group TEXT NULL CHECK (display_group IS
   NULL OR display_group IN ('special','bestseller'))` + `display_order INTEGER NULL`.
   `effectiveGroup(row)`: `display_group` bila terisi; NULL → `special` bila
   `product_type='Membership'` atau nama cocok
@@ -591,9 +613,11 @@ produksi tetap di luar B2, full suite/build milik PM.
   snapshot yang benar-benar dikirim (batas bukti yang terdokumentasi, bukan
   field rekaan). Tidak ada refund/rebuy otomatis; kegagalan/partial/mismatch →
   `needs_check`. Ikon/banner yang kosong dirender sebagai placeholder inisial
-  atau aset merek; tidak pernah mengirim `src=""`. CSP publik mengizinkan
-  tepat path `https://sekalipay.com/images/products/` (bukan host/wildcard
-  lain); CSP admin tidak diubah.
+  atau aset merek; tidak pernah mengirim `src=""`. **[DIGANTIKAN §14 OD5]** Storefront tidak
+  lagi merender gambar produk Sekalipay, sehingga entri `img-src
+  https://sekalipay.com/images/products/` **dihapus** dari CSP publik 14 November 2026
+  (aturan 12 November di bawah menjadi histori; header keamanan lain tidak berubah, CSP admin
+  tetap).
 - **Webhook** hanya memproses ref Games yang dikenal setelah signature valid;
   invoice tersimpan otoritas, GET by ref authoritative, hint invoice dari
   payload tidak pernah ditulis sebelum korelasi dan hint salah ditolak tanpa
@@ -625,3 +649,171 @@ produksi tetap di luar B2, full suite/build milik PM.
   persist nyata; `display_order` masih API-only tanpa editor (header admin
   menyebut "urutan" — keterbatasan UI kecil yang jujur); tidak ada deployment,
   env/flag aktivasi, atau transaksi supplier nyata.
+
+## 14. Implementasi terkini — markup, katalog SK, storefront, admin, aset (14 November 2026, lokal)
+
+> Status: **implementasi + verifikasi lokal di worktree integrasi `games-sk-integration`**
+> (`36056e42` + perubahan paket G-BE/G-STORE/G-ASSETS/G-ADMIN/G-STORE-2 yang diterima).
+> Publikasi melalui CI setelah commit/push; deployment belum terverifikasi.
+> Tidak ada perubahan gate pembelian `GAMES_SK_ENABLED`; status aktivasi produksi tidak
+> diperiksa ulang dalam paket ini dan snapshot tugas lama bukan bukti status sekarang. Angka 48 game/1.644 varian adalah snapshot bertanggal.
+
+### 14.1 Harga & markup (OD1)
+
+- Rumus aritmetika bilangan bulat di `src/lib/games/pricing.ts`
+  (`computeGamesMarkupPrice`): `bp = round(pct×100)`,
+  `harga = ceil(cost×(10000+bp) / (10000×R))×R + fixed`.
+  Default **markup 5 %**, **R = Rp100**, `fixed` default 0.
+- Validasi: `cost` bilangan bulat > 0; `pct` 0–100 dengan maksimal 2 desimal; `fixed`
+  bilangan bulat 0–1.000.000; `R` ∈ {1, 100, 500, 1000}; input lain melempar `RangeError`.
+  Hasil selalu ≥ modal (lebih besar bila pct/fixed > 0).
+- Precedence markup efektif: **varian → game → global**. Persen memakai nilai paling
+  spesifik yang ada; `fixed` bersifat **aditif** di atas hasil pembulatan. Sumber:
+  `games_variant_markup` → `games_meta.markup_percent` → `store_settings`
+  (`games_markup_percent`, `games_price_rounding`).
+- Pasangan acuan 5 %/R100 (dipakai tes): `11750→12400`, `321115→337200`,
+  `1641500→1723600`, `4825225→5066500`, `1106018→1161400`.
+- Harga referensi Oura **tidak lagi dibaca** untuk baris Sekalipay. Helper lama
+  (`computeGamesSellPrice`/`gamesPriceFloor`) dipertahankan hanya untuk jalur Digiflazz legacy.
+- `PATCH /api/admin/games/products` menolak `reference_price` (`400 invalid_body`); kolom dan
+  `games_reference_prices` tetap disimpan sebagai histori.
+
+### 14.2 Data & migrasi 0122
+
+`drizzle/migrations/0122_games_markup_meta.sql` (+ cermin `drizzle/schema.sql`), aditif/idempoten:
+
+- **Rebuild `games_products`**: `display_group` menerima 8 kategori
+  (`special|bestseller|promo|first_topup|pass|pack|topup|other` atau NULL). SQLite/D1 tidak bisa
+  melonggarkan CHECK di tempat, karena itu tabel dibangun ulang (kolom/CHECK/index lain sama,
+  id AUTOINCREMENT lanjut, FK `games_order_items.product_id` tetap valid).
+- **`games_meta`** (PK `slug`): `display_name`, `publisher`, `icon_url`, `banner_url`,
+  `description`, `id_guide`, `featured_rank`, `hidden` (default 0), `markup_percent`,
+  `updated_at`, `updated_by`.
+- **`games_variant_markup`** (PK `buyer_sku_code`): `markup_percent`, `markup_fixed`,
+  `updated_at`. Override varian **tidak** disimpan sebagai kolom `games_products` (spesifikasi
+  awal) supaya re-run migrasi/sinkron tidak menghapus override; tabel ini tidak pernah ditulis
+  oleh sync.
+- `store_settings` diisi `INSERT OR IGNORE`: `games_markup_percent='5'`,
+  `games_price_rounding='100'`.
+- Hitung ulang sekali untuk baris Sekalipay memakai rumus SQL integer
+  (`((cost*10500+999999)/1000000)*100`), ditandai `_games_0122_probe` agar re-run 0122 tidak
+  menimpa harga admin. Baris Digiflazz, `reference_price`, dan `games_reference_prices` tidak disentuh.
+- `recomputeGamesSkPrices(db, {all}|{slug}|{skus[]})`: satu `UPDATE` dengan subquery
+  `games_meta`/`games_variant_markup`; daftar SKU lewat satu parameter `json_each` (batas 100
+  parameter D1 aman). `cost=0` dan baris Digiflazz dilewati.
+
+### 14.3 API admin (B5)
+
+Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict()` (key asing →
+`400 invalid_body`), pesan Indonesia.
+
+| Endpoint | Kontrak singkat |
+|---|---|
+| `GET /api/admin/games/pricing` | `{markup_percent, rounding}` efektif |
+| `PUT /api/admin/games/pricing` | `{markup_percent?(0–100,≤2dp), rounding?(1/100/500/1000)}`, minimal satu; simpan setting lalu hitung ulang SEMUA baris SK; balas `{markup_percent, rounding, updated}` |
+| `GET /api/admin/games/games` | per game SK (termasuk hidden): name/publisher/icon/banner/description/id_guide/featured_rank/hidden, `markup_percent` (override\|null) + `effective_markup_percent`, `variants_total`, `sellable_count`, `supplier_off_count`, `min_price` (hanya varian bisa dijual) |
+| `PATCH /api/admin/games/games` | `{slug, display_name?, publisher?, icon_url?, banner_url?, description?(≤600), id_guide?(≤600), featured_rank?(1–99\|null), hidden?, markup_percent?(0–100\|null)}`; URL `https://` atau path `/r2/…` hasil `/api/upload`; slug tanpa baris SK → 404; markup berubah → hitung ulang game itu |
+| `PATCH /api/admin/games/products` | tambah `markup_percent`/`markup_fixed`, `display_group` 8 nilai, `reference_price` dihapus |
+| `POST /api/admin/games/products/bulk-markup` | `{skus:["sk:<id>"] (1–2000), markup_percent?, markup_fixed?, display_group?}` minimal satu. **Field yang tidak dikirim dipertahankan per SKU; `null` mereset field itu; `0` tetap 0; `null`+`null` menghapus override; kategori saja hanya mengubah kategori tanpa harga.** Satu UPSERT `json_each` + satu reprice (≤3 statement bisnis) |
+| `GET /api/admin/games/products` | item + `markup_source:"global"\|"game"\|"variant"`, `effective_markup_percent`, `markup_fixed`, `region`; filter baru `?region=PH` (case-insensitive, kode asing → `400 invalid_region`); `sync.counts.supplier_off` |
+
+### 14.4 Katalog publik (`src/lib/games/catalog.ts`)
+
+- Presedensi field: **`games_meta` → aset/registry lokal → nilai SK**. Game `hidden=1` hilang
+  dari list, sitemap, pencarian, dan detail 404. Katalog publik tetap **SK-only**; baris Digiflazz
+  legacy tidak pernah dirender.
+- Item list: `min_price` = harga terendah varian yang **bisa dijual** (null bila 0),
+  `sku_count`, `sellable_count`, `featured_rank`. Urutan: bisa dijual dulu → `featured_rank`
+  asc (null terakhir) → registry → nama.
+- Item produk (detail): `type_label` (ejaan Indonesia: Filipina/Rusia/Turki/Singapura/Brasil;
+  DIGITAL/kosong → null), `region_code` (ISO-2 atau `GLOBAL`), `category` (override
+  `display_group`, selain itu aturan otomatis: first_topup → pass → pack → topup → other),
+  `validation_available` (kontrak SK, predikat sama dengan route nickname), `availability_reason`
+  jujur (`supplier_off`/`stock_empty`/`admin_disabled`/`no_price`/…).
+- Label field dibersihkan (`"User ID :"`→`"User ID"`). **V2:** label generik
+  (`Catatan`/`Note`/`Notes`/`Keterangan`/`Ket`/kosong) diganti **label mayoritas game untuk key
+  yang sama**; label bermakna per varian (mis. `Player ID` vs `No Hp`) **dipertahankan**.
+  Contoh nyata: ML 349×`User ID` vs 3×`Catatan` → semua `User ID`.
+- Export UI: `GAMES_CATEGORY_SECTIONS` (urutan + label Indonesia), `GAMES_CATEGORY_ORDER`,
+  `gamesCategoryLabel`, `cleanGamesFieldLabel`, `regionCodeFromNickname`.
+
+### 14.5 Storefront (OD4, P1–P14) — `src/app/games/*`, `src/components/games/*`
+
+- Beranda: hero orbit memakai 4 game pertama urutan API (bukan registry statis), "Populer
+  sekarang" dari `featured_rank` (maks 8; bila kosong 6 game bisa dijual pertama; section
+  disembunyikan bila <4), grid semua game non-hidden dengan harga "Mulai Rp…" hanya dari varian
+  bisa dijual (tanpa harga karangan) dan kartu tidak-tersedia diredupkan tapi tetap bisa diklik.
+- Halaman game: header ≤216 px di 390 (banner ≤120 px, tile 72 px) + chip "Pengiriman instan",
+  "24 jam", "Pembayaran aman". Urutan langkah **1 Data akun → 2 Pilih nominal → 3 Metode
+  pembayaran → 4 Kontak**.
+  - Langkah 1 langsung terisi karena **varian tersedia termurah berkategori `topup` di chip
+    default** dipilih otomatis (chip default `Indonesia` bila ada); bila tidak ada, varian
+    tersedia pertama di section pertama; bila game tidak punya varian tersedia, field varian
+    pertama tampil **disabled** + catatan "Nominal sedang tidak tersedia".
+  - Chip: satu baris TIPE/REGION + count (Indonesia · lainnya by count · "Lainnya" · Semua
+    terakhir), hanya bila ≥2 grup. Section kategori Oura-style dengan label dari §14.4; 12 kartu
+    per section lalu "Tampilkan semua (N)"; search lintas section.
+  - Kartu nominal: nama penuh membungkus tanpa dipotong, ikon kategori + harga tabular, strip footer
+    **"Pengiriman instan"** pada kartu tersedia; tidak tersedia menampilkan "Habis"/"Tidak
+    tersedia" dengan harga tetap terlihat dan `aria-disabled`.
+  - Rail desktop sticky 360 px (varian terpilih + Tipe/Proses/deskripsi clamp + ID/nickname +
+    Harga/Biaya/Total) dan bar bawah mobile satu baris ±66 px. "Selengkapnya" hanya muncul
+    ketika deskripsi benar-benar terpotong (`ResizeObserver`).
+  - Hint region hanya **saran**: nickname dengan `(XX)` berbeda dari `region_code` varian
+    menampilkan callout gold + tombol pindah chip; **tidak** memblokir checkout. `GLOBAL`
+    tidak pernah konflik.
+- Frame P14: tile radius 16 px, border 1 px white/10, kaca midnight + glow cyan saat hover.
+  Banner tak tersedia = ikon lokal diperbesar 125 % + **blur 48 px** + gradient midnight + grid
+  halus; ikon hilang/gagal = monogram. Tidak ada aset supplier/kompetitor di layar.
+
+### 14.6 Aset gambar (OD5)
+
+- Sumber tunggal `scripts/games-assets.manifest.json` (48 slug SK) + generator
+  `node scripts/games-assets.mjs`; provenance `docs/games-assets.md`; peta runtime
+  `src/lib/games/assets.ts`.
+- Hasil: **43 ikon** 512×512 q82 + **20 banner** 1600 px q80 adaptif (≤250 KB) = **4.953.118 byte
+  (±4,72 MiB)** di `public/brand/games/`. 23 game ikon-saja dan 5 game di-skip penuh
+  (`valorant`, `point-blank`, `marvel-rivals`, `laplace-m`, `au2-mobile`) sehingga **28 game
+  tanpa banner** memakai fallback P14. `au2-mobile` dilewati karena identitas publisher belum
+  pasti; ikon Honkai: Star Rail diverifikasi resmi (artwork March 7th, seller Cognosphere).
+- Hanya artwork resmi publisher (App Store ID/Google Play); 8 banner yang dinilai PM terlalu
+  berat UI/gameplay ditolak (`banner_skip`). Tanpa unggah R2/migrasi: berkas statis `public/`
+  diterima sebagai keputusan PM.
+- Presedensi render: unggahan admin `games_meta` → aset lokal resmi → fallback AXVARA.
+  Gambar produk Sekalipay tidak dirender dan entri CSP-nya dihapus.
+
+### 14.7 Admin Games (A1–A7)
+
+- Section Games: `PageHeader` + 4 StatCard (Sinkron terakhir · Bisa dijual n/total · Supplier
+  nonaktif · Markup default) + alert agregat bila supplier-off >50 %, tab URL **Game | Varian |
+  Harga** (popstate), tautan "Lihat pesanan Games".
+- **Game**: tabel desktop/kartu mobile (ikon, nama+publisher, bisa dijual, mulai, markup
+  Default/Khusus, populer, tampil, Edit). Sheet editor: nama, publisher, ikon/banner
+  (`ImageDropzone` → `/api/upload`), deskripsi ≤600, panduan ID ≤600, urutan 1–99, markup
+  khusus + preview, satu tombol Simpan, draft guard.
+- **Varian**: kolom Modal · Markup (efektif + badge sumber + "+Rp" tetap) · Harga jual · Margin ·
+  **Kategori** (Select "Otomatis (label)" + 8 kategori, label penuh, scroll internal tabel) ·
+  Popover "Atur markup"/reset · bulk `BulkMarkupToolbar` (preset 3/5/8/10 %, persen + reset Rp tetap ke 0,
+  "Set kategori"). Bulk aman: field tak dikirim dipertahankan, reset hanya eksplisit.
+  Supplier-off memakai badge sekunder (bukan "Perlu diperiksa" per baris).
+- **Harga**: markup default %, pembulatan Rp1/100/500/1.000, tiga contoh hidup, hitung ulang di
+  balik konfirmasi jumlah varian, toast "{n} harga diperbarui".
+
+### 14.8 Yang TIDAK berubah
+
+Gate order SK, quote/order admission, kunci harga `quote_stale`/`duplicate_active_order`,
+dispatch SK (sent-fence, tanpa POST kedua, tanpa fallback supplier), webhook, nickname,
+kebijakan expiry, dan semua header keamanan lain. **Tidak ada env/secret baru** dan tidak ada
+perubahan skema di luar migrasi 0122.
+
+### 14.9 Verifikasi & batas bukti
+
+- Full suite terintegrasi (parent, sumber final): `NODE_ENV=test npx vitest run --run`
+  **448 file / 6.149 tes lulus, exit 0, 68,03 dtk**.
+- Fokus koreksi: G-ADMIN **9 file/140 tes**, G-ASSETS **4 file/146 tes**, G-STORE-2
+  **4 file/42 tes**. `tsc --noEmit`, `npm run lint`, dan `NODE_ENV=production npm run build:pages`
+  lulus pada sumber final (log G-STORE-2; input aplikasi/dependency tidak berubah sesudahnya).
+- Browser: Chromium 1280/390 (home, ML, nominal, Habis, pass names, region hint, Roblox, AU2,
+  keyboard, reduced motion, loading/error) + admin terang/gelap 1280/390 — semua dengan fixture
+  lokal, tanpa order/pembayaran/produksi. Angka lama (443/6.057 backend, 437/5.941 storefront,
+  447/6.100 assets, 6.105/3 admin) adalah checkpoint histori, bukan hasil final.

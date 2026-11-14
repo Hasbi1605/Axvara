@@ -50,13 +50,15 @@ it("serves a nested sitemap recognized by installed Next 15; only enabled sellab
   expect((await sitemap()).map(row => row.url)).toEqual(["https://games.axvara.tech/", "https://games.axvara.tech/free-fire"]);
   expect(gamesMetadata("/free-fire", "FF", "Top up")).toMatchObject({ alternates: { canonical: "https://games.axvara.tech/free-fire" }, openGraph: { url: "https://games.axvara.tech/free-fire" } });
 });
-it("allows only the Sekalipay product image path in the public CSP; admin CSP stays strict", async () => {
+it("allows only first-party image hosts in the public CSP; admin CSP stays strict", async () => {
   const publicRes = await call("games.axvara.tech", "/games");
   const csp = publicRes.headers.get("content-security-policy")!;
   const imgSrc = csp.split(";").map((part) => part.trim()).find((part) => part.startsWith("img-src"))!
     .split(/\s+/).slice(1);
-  // Daftar sumber persis: gambar produk SK path-scoped, tanpa host arbitrer.
-  expect(imgSrc).toEqual(["'self'", "https://images.unsplash.com", "https://picsum.photos", "https://sekalipay.com/images/products/", "data:", "blob:"]);
+  // OD5: gambar produk Sekalipay tidak dirender lagi, jadi host-nya tidak
+  // lagi diizinkan. Aset game berasal dari /brand/games (same-origin).
+  expect(imgSrc).toEqual(["'self'", "https://images.unsplash.com", "https://picsum.photos", "data:", "blob:"]);
+  expect(imgSrc.some((src) => src.includes("sekalipay.com"))).toBe(false);
   expect(csp).not.toContain("*");
   expect(csp).toContain("default-src 'self'");
   expect(csp).toContain("connect-src 'self'");

@@ -366,7 +366,9 @@ describe("DB-driven Games catalog resolution", () => {
       "free-fire", "free-fire-max", "mobile-legends", "pubg-mobile",
     ]));
     for (const game of catalog) {
-      expect(game.icon === null || String(game.icon).startsWith("https://sekalipay.com/images/products/") || String(game.icon).startsWith("/brand/games/")).toBe(true);
+      // OD5: katalog publik hanya memakai aset resmi lokal (atau null untuk
+      // fallback AXVARA); gambar produk Sekalipay tidak pernah dikirim.
+      expect(game.icon === null || String(game.icon).startsWith("/brand/games/"), game.slug).toBe(true);
     }
   });
 

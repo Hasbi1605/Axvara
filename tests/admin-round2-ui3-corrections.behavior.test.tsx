@@ -32,51 +32,52 @@ const gameItem = (over: Record<string, unknown> = {}) => ({
   reference_price: null, sell_price: 21100, seller_active: 1, backup_seller_active: 0,
   backup_sku_code: null, enabled: 0, display_group: null, display_order: null,
   synced_at: "2026-11-13 06:00:00", contract_supported: true,
+  markup_source: "global", markup_percent: null, effective_markup_percent: 5, markup_fixed: 0,
   availability: { available: false, reason: "admin_disabled" }, sellable: false,
   margin: { cost: 19500, sell: 21100, floor: 20085, margin_rp: 1600, margin_pct: 8.2, source: "floor", competitive: null },
   effectiveGroup: "all", ...over,
 });
 
 function gamesFetch(items: Record<string, unknown>[]) {
+  window.history.replaceState(null, "", "/admin?section=games&tab=variants");
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: unknown, init?: RequestInit) => {
     calls.push({ url: String(input), init });
-    return Response.json({ items, total: items.length, brands: [], limit: 50, offset: 0,
-      sync: { last_sync_at: "2026-11-13 06:00:00", counts: { total: items.length, enabled: 1, supplier_active: 1, seller_active: 1, with_reference: 0, contract_supported: 1, sellable: 0 } } });
+    return Response.json({ items, total: items.length, brands: [], limit: 50, offset: 0, games: [], pricing: { markup_percent: 5, rounding: 100 },
+      sync: { last_sync_at: "2026-11-13 06:00:00", counts: { total: items.length, enabled: 1, supplier_active: 1, seller_active: 1, with_reference: 0, contract_supported: 1, sellable: 0, supplier_off: items.filter(item => item.supplier_active === 0).length } } });
   }));
   return calls;
 }
 
 describe("Games: kontrol desktop muat & kartu mobile lengkap", () => {
-  it("desktop table tidak memakai min-width yang memaksa scroll dan kolom kontrol berukuran tetap", async () => {
+  it("desktop table menjaga overflow di region sendiri dan label kategori utuh", async () => {
     gamesFetch([gameItem()]);
     renderAdmin(<ToastProvider><GamesManager /></ToastProvider>);
     const table = await screen.findByRole("table");
-    // Tidak ada min-w-[...] pada sel: lebar memakai persentase/w tetap agar total
-    // tabel + switch muat di kontainer 1280.
+    // A4: kontrol lengkap boleh bergulir dalam region, bukan melebarkan halaman.
     expect(table.querySelectorAll("td").length).toBeGreaterThan(0);
     const mins = [...table.querySelectorAll("td, th")].map((cell) => cell.className.match(/min-w-\[(\d+)px\]/)?.[1]).filter(Boolean);
     expect(mins, `masih ada min-width px: ${mins.join(",")}`).toEqual([]);
-    expect(within(table).getByRole("combobox", { name: "Grup sk:ml-86" })).toBeTruthy();
+    expect(within(table).getByRole("combobox", { name: "Kategori sk:ml-86" })).toBeTruthy();
     expect(within(table).getByRole("switch", { name: /Aktifkan sk:ml-86/ })).toBeTruthy();
-    // Kolom Grup memakai lebar terbatas (max-w), bukan min-width yang melebar.
-    expect(within(table).getByRole("combobox", { name: "Grup sk:ml-86" }).className).toContain("max-w-[150px]");
+    expect(within(table).getByRole("combobox", { name: "Kategori sk:ml-86" }).className).toContain("w-full");
+    expect(screen.getByRole("region", { name: "Tabel varian game" }).className).toContain("overflow-x-auto");
   });
 
-  it("kartu mobile mempertahankan select Grup dan guard eligibility yang sama", async () => {
+  it("kartu mobile mempertahankan select Kategori dan guard eligibility yang sama", async () => {
     const calls = gamesFetch([gameItem(), gameItem({ buyer_sku_code: "sk:ff-70", supplier_active: 0, enabled: 0 })]);
     renderAdmin(<ToastProvider><GamesManager /></ToastProvider>);
     const cards = await screen.findByLabelText("Kartu varian game");
-    // Dua kartu + dua kontrol Grup (satu per SKU) tetap tersedia di mobile.
-    expect(within(cards).getAllByRole("combobox", { name: /Grup sk:/ }).length).toBe(2);
+    // Dua kartu + dua kontrol Kategori (satu per SKU) tetap tersedia di mobile.
+    expect(within(cards).getAllByRole("combobox", { name: /Kategori sk:/ }).length).toBe(2);
     // SKU dengan supplier nonaktif: switch aktivasi harus disabled (guard sama
     // dengan desktop), sedangkan SKU yang sehat tetap bisa diaktifkan.
     const blocked = within(cards).getByRole("switch", { name: /Aktifkan sk:ff-70/ });
     expect((blocked as HTMLButtonElement).disabled).toBe(true);
     expect(within(cards).getByText(/Belum bisa diaktifkan: supplier nonaktif/)).toBeTruthy();
     expect((within(cards).getByRole("switch", { name: /Aktifkan sk:ml-86/ }) as HTMLButtonElement).disabled).toBe(false);
-    // Grup bisa diubah dari kontrol mobile → PATCH dengan display_group benar.
-    fireEvent.change(within(cards).getByRole("combobox", { name: "Grup sk:ml-86" }), { target: { value: "bestseller" } });
+    // Kategori bisa diubah dari kontrol mobile → PATCH dengan display_group benar.
+    fireEvent.change(within(cards).getByRole("combobox", { name: "Kategori sk:ml-86" }), { target: { value: "bestseller" } });
     await waitFor(() => expect(calls.some((call) => call.init?.method === "PATCH")).toBe(true));
     const patch = calls.find((call) => call.init?.method === "PATCH")!;
     expect(JSON.parse(String(patch.init!.body))).toEqual({ buyer_sku_code: "sk:ml-86", display_group: "bestseller" });

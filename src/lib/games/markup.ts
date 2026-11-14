@@ -108,15 +108,16 @@ export async function readVariantMarkupMap(db: DatabaseAccess): Promise<Map<stri
 
 /**
  * Tulis override markup untuk sekumpulan varian dalam SATU statement per
- * operasi: `null/null` berarti kembali ikut markup game/global (baris dihapus).
+ * operasi: field tidak dikirim dipertahankan secara atomik di UPSERT; null
+ * menghapus override field itu. `null/null` menghapus baris override.
  * Tidak pernah menyentuh baris Digiflazz (`skus` selalu `sk:<id>`).
  */
 export async function writeVariantMarkup(
   db: DatabaseAccess,
   skus: string[],
-  markup: GamesVariantMarkup,
+  markup: Partial<GamesVariantMarkup>,
 ): Promise<void> {
-  if (skus.length === 0) return;
+  if (skus.length === 0 || (markup.percent === undefined && markup.fixed === undefined)) return;
   const payload = JSON.stringify(skus);
   if (markup.percent === null && markup.fixed === null) {
     await db.execRun(
@@ -129,10 +130,11 @@ export async function writeVariantMarkup(
     `INSERT INTO games_variant_markup(buyer_sku_code, markup_percent, markup_fixed, updated_at)
      SELECT value, ?, ?, datetime('now') FROM json_each(?) WHERE true
      ON CONFLICT(buyer_sku_code) DO UPDATE SET
-       markup_percent = excluded.markup_percent,
-       markup_fixed = excluded.markup_fixed,
+       markup_percent = CASE WHEN ? THEN excluded.markup_percent ELSE games_variant_markup.markup_percent END,
+       markup_fixed = CASE WHEN ? THEN excluded.markup_fixed ELSE games_variant_markup.markup_fixed END,
        updated_at = excluded.updated_at`,
-    markup.percent, markup.fixed, payload,
+    markup.percent ?? null, markup.fixed ?? null, payload,
+    Number(markup.percent !== undefined), Number(markup.fixed !== undefined),
   );
 }
 

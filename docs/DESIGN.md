@@ -87,7 +87,10 @@ aturan tata letak/istilah; token, tema dan primitive tetap.
 - **Koreksi round 1 (Games/TUNVN/Pedia/WR-SK)**: tabel Games dirancang muat di
   kontainer 1280 (terukur 966/966, tidak ada kolom Aktif terpotong) dengan teks
   panjang `truncate`/`line-clamp` + tooltip; kartu mobile mempertahankan select Grup
-  dan guard eligibility yang sama dengan desktop. TUNVN merender tabel hanya
+  dan guard eligibility yang sama dengan desktop.
+  **[DIGANTIKAN 14 November 2026]** Untuk kolom **Kategori** Games: label penuh tanpa
+  truncate 150 px dan tabel menggulir **di dalam region tabel sendiri** (lihat
+  "Games storefront + admin delta"). Aturan Grup dua nilai juga diganti 8 kategori. TUNVN merender tabel hanya
   `>=md` dan kartu di bawahnya (satu tampilan saja per breakpoint). Pedia
   menaruh identifier supplier hanya di `<details>` terlipat. D6: kapasitas/sinkron
   WR/SK dan hitungan tindakan Pedia memakai Skeleton/"memuat" saat data belum ada.
@@ -1974,5 +1977,73 @@ Snapshot historis, diganti revisi Admin Pedia IndoSMM13November di atas; bukan i
 - Langkah Data akun merender field dari **varian SK terpilih** (bukan metadata game): label/keterangan supplier, wajib/opsional, input teks, batas `note` 50 dan `zone_id` 20. Jenis produk (Membership/region) dan deskripsi plain text tampil pada kartu informasi varian.
 - Daftar nominal tidak menggabungkan varian dengan nama/nominal sama; identitas `sk:<id>` dan region/tipe tetap terpisah. Baris off/stok habis/admin-disabled tampil redup dengan alasan; open-denom/unsupported nonaktif.
 - Mengganti varian mereset interseksi field, quote, dan nickname; POST memakai `buyer_sku_code` varian aktif. Token/visual tetap Midnight+Cyan+Gold, kartu glass, orbit/hero existing. Nickname sukses ditampilkan sebagai deteksi, bukan jaminan kepemilikan.
+- **[DIPERBARUI 14 November 2026]** Label field kini dibersihkan dan label generik pemasok ("Catatan"/"Note"/"Keterangan") diganti label mayoritas game untuk key yang sama; label bermakna per varian dipertahankan. Kartu/daftar nominal memakai section kategori + chip tipe/region (lihat delta di bawah).
 
 Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (katalog>12, search, varian region/tipe, kontrak field per varian, disabled/unsupported, placeholder gambar, tanpa overflow), dan admin statis pada artefak Next lokal 8792 lulus dengan fixture jaringan browser. Desain existing diterima; bukan bukti auth/backend persist/produksi dan belum deploy. `display_order` tetap API-only (tanpa editor UI) meski header admin menyebut "urutan".
+
+## Games storefront + admin delta — Oura+ditopup, frame P14, kategori (14 November 2026, lokal)
+
+> Implementasi lokal di worktree integrasi; belum publikasi CI/deployment. Token tidak berubah:
+> midnight `#080C1E`/`#0F1430`, cyan `#00E5FF` (aksi/terpilih/fokus), gold `#FFB800` (nomor
+> langkah + badge "Terlaris"), `ax-glass`, Space Grotesk (judul/harga), Inter (body), Lucide
+> 20 px stroke 1.75, tanpa emoji dan tanpa warna baru. Detail kontrak: `docs/GAMES.md` §14.
+
+### Storefront
+
+- **Beranda.** Hero orbit tetap (pusat kaca 3D + mark putih); planet = **4 game pertama urutan API**
+  (bisa dijual dulu, lalu `featured_rank`), bukan empat registry statis, tanpa tumpang tindih label
+  di 1280/1440/768/390. "Populer sekarang" = `featured_rank` (maks 8) atau 6 game bisa dijual
+  pertama, disembunyikan bila <4. Grid "Semua game" (heading + count) memakai kartu kecil seragam:
+  ikon persegi frame P14, nama 1 baris, baris kedua "Mulai Rp…" (text-white/80, tabular) hanya dari
+  varian bisa dijual, atau pill redup "Segera tersedia"; kartu tak tersedia `opacity-70` tetap bisa
+  diklik.
+- **Header game.** Banner maks 200 px desktop / ≤120 px mobile dengan gradient midnight, tile ikon
+  112 px (72 px mobile) menumpang kiri bawah, nama Space Grotesk 700, publisher, chip `Zap`
+  "Pengiriman instan" · `Clock` "24 jam" · `ShieldCheck` "Pembayaran aman". Total tinggi ≤260 px di
+  390×844 (terukur 216 px) agar langkah 1 terlihat di atas fold.
+- **Langkah.** `1 Data akun → 2 Pilih nominal → 3 Metode pembayaran → 4 Kontak` (angka gold, kartu
+  glass). Langkah 1 langsung berisi field varian tersedia termurah kategori `topup` di chip default
+  (Indonesia); tanpa varian tersedia, field varian pertama `disabled` + catatan jujur.
+- **Chip tipe/region.** Satu baris pill outline yang bisa digulir horizontal, label + count,
+  Indonesia dulu, "Lainnya" untuk tipe null, "Semua" terakhir; hanya tampil bila ≥2 grup. Terpilih =
+  border cyan + bg cyan/10.
+- **Section kategori.** Judul section `text-base` semibold putih + count redup (urutan: Terlaris ·
+  Spesial · Promo · Top up pertama · Pass & membership · Paket mingguan/bulanan · Top up · Lainnya),
+  hanya section tidak kosong, 12 kartu lalu "Tampilkan semua (N)". Dengan chip "Semua" setiap kartu
+  menampilkan `type_label` kecil.
+- **Kartu nominal (Oura structure, AXVARA skin).** `ax-glass` rounded-2xl; nama penuh membungkus tanpa dipotong;
+  baris ikon kategori cyan/80 + harga Space Grotesk 16–18 px tabular; strip footer lebih gelap
+  dengan pill **"Pengiriman instan"** (`Zap` 12 px, cyan on cyan/10) pada kartu tersedia, atau label
+  redup "Habis"/"Tidak tersedia" dengan harga tetap terlihat; `aria-disabled`; kartu terpilih border
+  cyan + glow + centang; badge gold kecil "Terlaris"; grid 2 kolom mobile / 3 kolom ≥md, tinggi
+  seragam dengan tinggi minimum 128 px.
+- **Rail & mobile.** Rail desktop sticky 360 px: blok varian terpilih (ikon 40 px, nama, "Ganti"
+  yang menggulir ke pencarian nominal), baris Tipe · Proses · deskripsi 2 baris + "Selengkapnya"
+  (hanya bila benar-benar terpotong), lalu ID/nickname · Harga · Biaya · **Total**; CTA "Bayar
+  Rp{total}". Bar mobile satu baris ±66 px (total kiri, CTA kanan) + safe area.
+- **State jujur.** Skeleton saat memuat, error + "Coba lagi" aksesibel, empty state pencarian,
+  "Habis" tetap terlihat dan tidak dapat dipilih, hint region berupa callout gold (saran, bukan
+  blokir), reduced motion menonaktifkan transisi/animation.
+- **Frame P14.** Tile radius 16 px, border 1 px `rgba(255,255,255,.1)`, kaca midnight, glow cyan
+  `0.12/20px` saat hover; banner generatif = ikon resmi diperbesar 125 % + blur 48 px + gradient
+  midnight + grid halus 32 px (tanpa teks di gambar); monogram gradient midnight→cyan/10 untuk ikon
+  hilang. Merek pembayaran/logo brand tidak memakai frame ini.
+
+### Admin Games
+
+- **Anatomi.** `PageHeader` "Games" + satu kalimat, 4 StatCard netral (Sinkron terakhir · Bisa
+  dijual n/total · Supplier nonaktif · Markup default), alert warning agregat bila supplier-off
+  >50 %, tab URL Game | Varian | Harga, tautan "Lihat pesanan Games" (outline sm).
+- **Tab Game.** Tabel desktop / kartu mobile: ikon, nama + publisher redup, "Bisa dijual n/total",
+  Mulai, Markup (badge Default/Khusus), Populer, Switch Tampil, Edit. Sheet editor memakai pola
+  round-2 (field dikelompokkan, counter ≤600, preview harga contoh, satu primary Simpan, draft guard,
+  Esc → konfirmasi buang).
+- **Tab Varian.** Kolom Modal · Markup (badge sumber Default/Game/Varian + "+Rp" tetap) · Harga jual ·
+  Margin · **Kategori** (Select "Otomatis (label)" + 8 label penuh; tidak truncate; tabel menggulir
+  di dalam region fokusnya) · aksi "Atur markup" (Popover % + Rp tetap + reset) · checkbox + bulk
+  toolbar (preset 3/5/8/10 %, "Set kategori"). Badge supplier-off sekunder, bukan peringatan per baris.
+- **Tab Harga.** Kartu markup default (2 desimal) + pembulatan Rp1/100/500/1.000 + tiga contoh hidup
+  (Rp1.502, Rp50.000, Rp321.115) + "Simpan & hitung ulang" dengan konfirmasi jumlah varian + toast
+  "{n} harga diperbarui".
+- **Status.** Terang/gelap 1280/390 diperiksa dengan fixture; tanpa overflow halaman (scroll hanya di
+  region tabel), tanpa error konsol di luar fixture 503 yang disengaja. Bukan sesi admin produksi.

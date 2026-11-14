@@ -1,0 +1,564 @@
+{
+  "version": 1,
+  "generated": "2026-11-14",
+  "note": "Aset resmi publisher (listing App Store ID / Google Play publisher). Dibuat oleh scripts/games-assets.mjs. Jangan menambah aset dari toko top-up, wiki fan, Pinterest, atau generator AI.",
+  "games": {
+    "aniimo": {
+      "publisher": "Pawprint Interactive",
+      "seller": "PAWPRINT INTERACTIVE ENTERTAINMENT PTE. LTD",
+      "app": "Aniimo",
+      "page": "https://apps.apple.com/id/app/aniimo/id6759098797",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/71/69/87/716987bc-c98f-d85e-1803-e96f08e1a067/FPX_AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "arena-breakout": {
+      "publisher": "Level Infinite (Proxima Beta)",
+      "seller": "PROXIMA BETA PTE.LIMITED",
+      "app": "Arena Breakout: Realistic FPS",
+      "page": "https://apps.apple.com/id/app/arena-breakout-realistic-fps/id1560765304",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f7/7b/16/f77b16b9-53a4-2234-dbbc-42b3596a2fc9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "arena-of-valor": {
+      "publisher": "Garena / MOBA Games",
+      "seller": "MOBA Games Private Limited",
+      "app": "Garena AOV: 10th Anniversary",
+      "page": "https://apps.apple.com/id/app/garena-aov-10th-anniversary/id1222857607",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/64/1c/f5/641cf589-1ea0-5863-d67a-a3d137ba92fc/AppIcon-1x_U007emarketing-0-11-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/56/0f/ca/560fcaff-99e2-17bb-55cd-972cf7e1d75e/1.__U9996_U5f35_U5f62_U8c61_U5716_2796x1290.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "au2-mobile": {
+      "publisher": "Belum terkonfirmasi (kandidat: Uniugame 'AU2 Mobile-Lovely Babies' vs X-LEGEND 'Aura Kingdom 2')",
+      "skip": "Identitas publisher belum pasti; ikon & banner dilewati sampai terkonfirmasi (fallback monogram AXVARA)."
+    },
+    "blood-strike": {
+      "publisher": "NetEase",
+      "seller": "Hong Kong Netease Interactive Entertainment Limited",
+      "app": "Blood Strike x DJ SNAKE",
+      "page": "https://apps.apple.com/id/app/blood-strike-x-dj-snake/id1637059453",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/0d/c8/11/0dc811aa-f0d4-edc9-f96f-68565607a992/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "call-of-duty-mobile": {
+      "publisher": "Garena / Activision",
+      "seller": "Garena Mobile Private Limited",
+      "app": "Call of Duty®: Mobile - Garena",
+      "page": "https://apps.apple.com/id/app/call-of-duty-mobile-garena/id1465688043",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/74/90/fa/7490fa0c-5957-f720-4e62-f4ccd78808ba/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/10/4a/be/104abe32-0b56-85eb-366f-d5459323acb2/1_2688x1242.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "captain-tsubasa-ace": {
+      "publisher": "Tadpole Entertainment",
+      "seller": "Tadpole Entertainment Company Limited",
+      "app": "CAPTAIN TSUBASA: ACE",
+      "page": "https://apps.apple.com/id/app/captain-tsubasa-ace/id1637404845",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/fb/89/62/fb8962d6-3484-b5fe-3407-01e7a786d160/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai."
+    },
+    "crossfire-legends": {
+      "publisher": "Level Infinite (Proxima Beta)",
+      "seller": "PROXIMA BETA PTE.LIMITED",
+      "app": "Crossfire: Legends",
+      "page": "https://apps.apple.com/id/app/crossfire-legends/id6743618701",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/76/41/85/7641854c-3d5d-2819-974a-972b55a250bf/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "delta-force": {
+      "publisher": "Garena / Good Mobile Games",
+      "seller": "Good Mobile Games Private Limited",
+      "app": "Garena® Delta Force",
+      "page": "https://apps.apple.com/id/app/garena-delta-force/id6670604287",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/05/1a/18/051a1849-242e-8886-36be-9ce087946358/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/38/fb/85/38fb85c7-5c43-3a77-2f50-932ae1b0ecd3/1._Phantom_blade_2208x1242.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "dragon-city": {
+      "publisher": "Socialpoint",
+      "seller": "Socialpoint",
+      "app": "Dragon City: Collect & Battle!",
+      "page": "https://apps.apple.com/id/app/dragon-city-collect-battle/id561941526",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/21/81/16/21811675-76dc-6ae8-9653-00b4b8d49042/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/26/e7/b8/26e7b828-0677-14b6-27bb-35ea88ff1642/1_IOS_2796x1290_en-US.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "fc-mobile": {
+      "publisher": "EA Swiss Sarl",
+      "seller": "EA Swiss Sarl",
+      "app": "EA SPORTS FC™ Football Mobile",
+      "page": "https://apps.apple.com/id/app/ea-sports-fc-football-mobile/id1094930513",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/41/d1/84/41d18457-ec03-6812-f0a7-8a83686c6009/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "football-master-2": {
+      "publisher": "Gala Sports",
+      "seller": "Gala Sports Technology Limited",
+      "app": "Football Master 2-Soccer Star",
+      "page": "https://apps.apple.com/id/app/football-master-2-soccer-star/id1559688336",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5a/14/35/5a143502-07f4-911c-14b8-24a57a8369aa/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai."
+    },
+    "free-fire": {
+      "publisher": "Garena",
+      "seller": "GARENA INTERNATIONAL I PRIVATE LIMITED",
+      "app": "Free Fire x NARUTO SHIPPUDEN",
+      "page": "https://apps.apple.com/id/app/free-fire-x-naruto-shippuden/id1300146617",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/16/6b/ef166bba-1d69-85f5-ed84-6b7c6e73b55c/AppIcon-1788350393-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.png",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/56/54/58/56545827-aeb3-4a7b-e0ce-b14d27260c80/FFO_KV_2208x1242.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari listing publisher (App Store / Google Play); tanpa modifikasi isi."
+      },
+      "note": "Aset gelombang 1 dari docs r2-assets.md; sumber resmi sama, diregenerasi 14 Nov 2026."
+    },
+    "free-fire-max": {
+      "publisher": "Garena",
+      "seller": "GARENA INTERNATIONAL I PRIVATE LIMITED",
+      "app": "Free Fire MAX x NARUTO",
+      "page": "https://apps.apple.com/id/app/free-fire-max-x-naruto/id1480516829",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/1f/e2/e6/1fe2e61d-b767-537a-dfac-364e8d991981/AppIcon-1788424861-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.png",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/30/54/6f/30546fcd-d914-f7c8-a4e0-64a65e39d0fd/2208x1242_FFM.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari listing publisher (App Store / Google Play); tanpa modifikasi isi."
+      },
+      "note": "Aset gelombang 1 dari docs r2-assets.md; sumber resmi sama, diregenerasi 14 Nov 2026."
+    },
+    "gangstar-mirage-city": {
+      "publisher": "Gameloft / Proxima Beta",
+      "seller": "PROXIMA BETA PTE.LIMITED",
+      "app": "Gangstar Mirage City: Online",
+      "page": "https://apps.apple.com/id/app/gangstar-mirage-city-online/id6472700792",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/70/41/2e/70412e0e-94ae-262d-a256-eaa9d8762e66/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/9c/07/b3/9c07b30d-5053-7669-5485-b83de5c26838/_U5546_U5e97_U56fe6-2688x1242.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "garena-undawn": {
+      "publisher": "Garena",
+      "seller": "Garena Mobile Private Limited",
+      "app": "Garena Undawn",
+      "page": "https://apps.apple.com/id/app/garena-undawn/id1538722240",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/65/7f/09/657f0947-cbe2-fae8-2bd9-5a844848cead/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/00/a0/86/00a08645-0f74-fc4a-2994-274fce072694/1.png/2208x1242bb.png",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "genshin-impact": {
+      "publisher": "HoYoverse (Cognosphere)",
+      "seller": "COGNOSPHERE PTE. LTD.",
+      "app": "Genshin Impact",
+      "page": "https://apps.apple.com/id/app/genshin-impact/id1517783697",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/15/9e/b1/159eb1a7-fc58-2b43-b330-c5e619a77e2d/AppIcon-0-0-1x_U007epad-0-1-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/5e/56/3e/5e563e37-ace1-d6fa-dd9b-4f507b2b37c9/EN-2796x1290-_U65e0logo.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "growtopia": {
+      "publisher": "Ubisoft",
+      "seller": "Ubisoft",
+      "app": "Growtopia",
+      "page": "https://apps.apple.com/id/app/growtopia/id590495115",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/47/81/75/4781755c-90ab-220f-277d-990c68a33480/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai."
+    },
+    "haikyu-fly-high": {
+      "publisher": "Garena",
+      "seller": "GARENA INTERNATIONAL II PRIVATE LIMITED",
+      "app": "HAIKYU!! FLY HIGH",
+      "page": "https://apps.apple.com/id/app/haikyu-fly-high/id6737688139",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/40/9c/df/409cdfa8-8f1b-6eda-d072-d3d94b13e65f/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/ac/a1/b3/aca1b3c6-dd1c-f0e4-46a6-9c6f6f377807/HiQ_MKT_G_012_EN_PRE_Store_Banner_1_2208x1242__U0023Egg__U0023_U6851_U914d_U56ed.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "heartopia": {
+      "publisher": "XD (HK)",
+      "seller": "XD (HK) Limited",
+      "app": "Heartopia",
+      "page": "https://apps.apple.com/id/app/heartopia/id6746151928",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/34/8b/e4/348be4c2-b208-594d-8559-b70acf6b40a0/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "honkai-star-rail": {
+      "publisher": "HoYoverse (Cognosphere)",
+      "seller": "COGNOSPHERE PTE. LTD.",
+      "app": "Honkai: Star Rail",
+      "page": "https://apps.apple.com/id/app/honkai-star-rail/id1599719154",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b9/19/0a/b9190ac1-9dfc-6d88-5ac4-96dd4e6d6ff4/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "honor-of-kings": {
+      "publisher": "Level Infinite (Proxima Beta)",
+      "seller": "PROXIMA BETA PTE.LIMITED",
+      "app": "Honor of Kings",
+      "page": "https://apps.apple.com/id/app/honor-of-kings/id1619254071",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ba/a1/4f/baa14fb9-493b-d323-99f3-82b9f5ac75c0/AppIcon-1x_U007emarketing-0-7-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "identity-v": {
+      "publisher": "NetEase",
+      "seller": "Hong Kong Netease Interactive Entertainment Limited",
+      "app": "Identity V",
+      "page": "https://apps.apple.com/id/app/identity-v/id1347780764",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/cd/1c/78/cd1c78b5-de24-734e-749a-507f872745a7/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/49/59/db/4959db8c-a6f9-3c14-25ea-1ed411bf1595/0.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "laplace-m": {
+      "publisher": "Zlongame",
+      "skip": "Laplace M tidak lagi terdaftar di App Store ID; listing 'Rage of Dragons' bukan milik publisher asli."
+    },
+    "league-of-legends-wild-rift": {
+      "publisher": "Riot Games",
+      "seller": "Riot Games",
+      "app": "League of Legends: Wild Rift",
+      "page": "https://apps.apple.com/id/app/league-of-legends-wild-rift/id1480616990",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4c/10/e5/4c10e5d1-2fbb-48f2-0851-49d5c0b30ee9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai."
+    },
+    "lifeafter": {
+      "publisher": "NetEase",
+      "seller": "Hong Kong Netease Interactive Entertainment Limited",
+      "app": "LifeAfter",
+      "page": "https://apps.apple.com/id/app/lifeafter/id1441752845",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4c/6d/8d/4c6d8d47-9e3d-8387-705e-ec84ad2a70a1/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/d6/22/07/d62207bc-7718-200f-db6d-e7ba1824f6c3/2208x1242-_U4e3bKV.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "lineage2m": {
+      "publisher": "NCSOFT (NCV Games)",
+      "seller": "NCV Games Pte. Ltd",
+      "app": "Lineage2M",
+      "page": "https://apps.apple.com/id/app/lineage2m/id6739482834",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/bb/71/c3/bb71c308-4d72-d1b0-8fb2-dc4740761604/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/9d/d1/25/9dd1259f-e7fe-90dc-5598-11d0dc84d320/2688x1242-1.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "machina-waking": {
+      "publisher": "Guangzhou Diansheng",
+      "seller": "Guangzhou Diansheng Information Technology Co., Ltd.",
+      "app": "Machina Waking",
+      "page": "https://apps.apple.com/id/app/machina-waking/id6698864769",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/f5/11/fe/f511fe51-70ae-b2b4-0977-9a08c3181cb3/ipa-project-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "magic-chess-go-go": {
+      "publisher": "Moonton / Vizta Pte. Ltd.",
+      "seller": "VIZTA PTE. LTD.",
+      "app": "Magic Chess: Go Go",
+      "page": "https://apps.apple.com/id/app/magic-chess-go-go/id6612014908",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4b/d6/7f/4bd67f60-7839-781f-324c-488a2ee3cf0d/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "marvel-rivals": {
+      "publisher": "NetEase Games / Marvel",
+      "skip": "Tidak ada listing resmi Marvel Rivals di App Store/Play ID (judul PC/console NetEase)."
+    },
+    "mobile-legends": {
+      "publisher": "Moonton (Youngjoy Technology Limited)",
+      "seller": "YOUNGJOY TECHNOLOGY LIMITED",
+      "app": "Mobile Legends: Bang Bang",
+      "page": "https://apps.apple.com/id/app/mobile-legends-bang-bang/id1160056295",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d9/88/76/d9887647-00fd-09c8-8a61-c6c31a1bfe2a/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.png",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://play-lh.googleusercontent.com/LzFc5Sb33eTUjSez6SPMgPhkm17t2MtG8x7AwD0Wv2xbSdVyNu9MPCNh9SE251Ts07Dk-aCtqPrLE8HOXW8GBA=s0",
+        "licence": "Gambar promosi/key visual resmi dari listing publisher (App Store / Google Play); tanpa modifikasi isi."
+      },
+      "note": "Aset gelombang 1 dari docs r2-assets.md; sumber resmi sama, diregenerasi 14 Nov 2026."
+    },
+    "mobile-legends-adventure": {
+      "publisher": "Moonton",
+      "seller": "Shanghai Moonton Technology Co., Ltd.",
+      "app": "Mobile Legends: Adventure",
+      "page": "https://apps.apple.com/id/app/mobile-legends-adventure/id1456213261",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/b4/0e/c5/b40ec517-b9a3-4cb2-1c20-cd5b46d5cddf/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/0a/b0/4c/0ab04c27-011b-3d41-85e3-6957e0cfb164/f447203c-8c71-41f1-8b49-cd890f5cdac9_2208_1242_U9996_U56fe2.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "mu-origin-2": {
+      "publisher": "GameNow Technology",
+      "seller": "GAMENOW TECHNOLOGY LIMITED",
+      "app": "MU ORIGIN 2",
+      "page": "https://apps.apple.com/id/app/mu-origin-2/id1444994196",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ff/c8/14/ffc814e2-e515-2081-62be-9d730c2d30fe/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/3b/e9/a5/3be9a54e-b6e9-4668-7bda-210e94847b07/cba7d403-4aa8-45ba-bc60-65c8e41096b0_2208x1242-1-en.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "one-punch-man": {
+      "publisher": "FingerFun",
+      "seller": "FingerFun (HK) Limited",
+      "app": "ONE PUNCH MAN: The Strongest",
+      "page": "https://apps.apple.com/id/app/one-punch-man-the-strongest/id1491275510",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/58/d2/ff/58d2ff5c-135b-96c0-98dc-b502d392a80e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/05/e4/11/05e41116-0cf8-8046-21c0-a01212913505/_U5723_U8bde2208x1242-EN.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "onmyoji-arena": {
+      "publisher": "NetEase",
+      "seller": "Hong Kong Netease Interactive Entertainment Limited",
+      "app": "Onmyoji Arena",
+      "page": "https://apps.apple.com/id/app/onmyoji-arena/id1343073274",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/bf/2a/69/bf2a69f3-89f8-344c-acdb-b2f61b1fc34e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "point-blank": {
+      "publisher": "Zepetto",
+      "skip": "Tidak ada listing resmi Point Blank di App Store/Play ID (judul PC Zepetto)."
+    },
+    "pubg-mobile": {
+      "publisher": "Level Infinite / Tencent Mobile International",
+      "seller": "Tencent Mobile International Limited",
+      "app": "PUBG MOBILE",
+      "page": "https://apps.apple.com/id/app/pubg-mobile/id1330123889",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/6d/98/24/6d9824dd-f75f-9bd6-221e-33324fedecb2/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.png",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/12/44/11/124411bd-7435-f006-e5b7-6203ada37693/0.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari listing publisher (App Store / Google Play); tanpa modifikasi isi."
+      },
+      "note": "Aset gelombang 1 dari docs r2-assets.md; sumber resmi sama, diregenerasi 14 Nov 2026."
+    },
+    "ragnarok-m-eternal-love": {
+      "publisher": "Gravity Interactive",
+      "seller": "Gravity Interactive, Inc.",
+      "app": "Ragnarok M : Eternal Love",
+      "page": "https://apps.apple.com/id/app/ragnarok-m-eternal-love/id1404051022",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/21/00/48/21004879-2749-7dc1-462a-43032a41b535/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/40/12/19/4012197c-8297-2f67-a60b-b7b12b3fdb15/2796x1290-EN.png/2208x1242bb.png",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "rainbow-six-mobile": {
+      "publisher": "Ubisoft",
+      "seller": "Ubisoft Nova",
+      "app": "Rainbow Six Mobile",
+      "page": "https://apps.apple.com/id/app/rainbow-six-mobile/id1608916511",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9b/bd/c0/9bbdc06e-9600-1277-5dbb-5fb39216c483/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai."
+    },
+    "roblox": {
+      "publisher": "Roblox Corporation",
+      "seller": "Roblox Corporation",
+      "app": "Roblox",
+      "page": "https://apps.apple.com/id/app/roblox/id431946152",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/19/a1/0f/19a10fa0-874d-bf10-221a-ed7fe7b4cfe1/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "sausage-man": {
+      "publisher": "XD Entertainment",
+      "seller": "XD Entertainment Pte Ltd",
+      "app": "Sausage Man",
+      "page": "https://apps.apple.com/id/app/sausage-man/id1563750315",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/04/03/f0/0403f0f2-fc1a-4b6c-0b59-f51169dc11c6/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/19/b6/d0/19b6d0c6-d8fb-0c72-2fec-1fe0a900a854/2688x1242-_U730e_U6237_U5ea7_U539f_U8272_U6e32_U67d3_U56fe-_U521b_U9020_U4e0e_U7834_U574f-en.jpg/2208x1242bb.jpg",
+        "licence": "Gambar promosi/key visual resmi dari galeri listing App Store publisher; tanpa modifikasi isi."
+      }
+    },
+    "speed-drifters": {
+      "publisher": "Garena",
+      "seller": "Garena Online Private Ltd.",
+      "app": "Garena Speed Drifters",
+      "page": "https://apps.apple.com/id/app/garena-speed-drifters/id1416604843",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/67/f9/76/67f9766a-5bf8-e038-15c0-2b8010365d3e/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai."
+    },
+    "state-of-survival": {
+      "publisher": "FunPlus",
+      "seller": "FunPlus International AG",
+      "app": "State of Survival: Zombie War",
+      "page": "https://apps.apple.com/id/app/state-of-survival-zombie-war/id1452474937",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/47/46/e1/4746e11d-b405-9206-8564-51ad8cad3d6e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai."
+    },
+    "super-sus": {
+      "publisher": "Giant Network",
+      "seller": "Giant Network Technology Co., Ltd.",
+      "app": "Super Sus",
+      "page": "https://apps.apple.com/id/app/super-sus/id6498889637",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5c/d0/3e/5cd03e2a-7899-7163-e0ed-ce928d7fa6ba/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Ditolak PM (review visual 14 Nov 2026): gambar listing menampilkan UI/gameplay berat, bukan key art; fallback AXVARA P14 dipakai."
+    },
+    "valorant": {
+      "publisher": "Riot Games",
+      "skip": "Tidak ada listing resmi VALORANT di App Store/Play ID (judul PC; VALORANT Mobile belum rilis di Indonesia)."
+    },
+    "where-winds-meet": {
+      "publisher": "NetEase",
+      "seller": "NETEASE INTERACTIVE ENTERTAINMENT PTE. LTD",
+      "app": "Where Winds Meet",
+      "page": "https://apps.apple.com/id/app/where-winds-meet/id6472396866",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/7a/51/07/7a5107a1-5fa4-9ed7-86e9-2589bb0ed864/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "zenless-zone-zero": {
+      "publisher": "HoYoverse (Cognosphere)",
+      "seller": "COGNOSPHERE PTE. LTD.",
+      "app": "Zenless Zone Zero",
+      "page": "https://apps.apple.com/id/app/zenless-zone-zero/id1606356401",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/c8/ee/27/c8ee2769-fe15-e1ea-aeb7-2247a535767a/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    },
+    "zepeto": {
+      "publisher": "NAVER Z",
+      "seller": "NAVER Z Corporation",
+      "app": "ZEPETO: Avatar, Connect & Live",
+      "page": "https://apps.apple.com/id/app/zepeto-avatar-connect-live/id1350301428",
+      "icon": {
+        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/17/6a/d7/176ad73d-139e-9b35-531a-6839264a4e4b/AppIcon-0-0-1x_U007emarketing-0-8-0-sRGB-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+      },
+      "banner_skip": "Listing resmi hanya menyediakan screenshot portrait; tidak ada key art landscape resmi."
+    }
+  }
+}

@@ -25,7 +25,7 @@ it("migrates, reprices and serves the catalog contract in real workerd D1", asyn
       resolveDir: process.cwd(), loader: "ts", contents: `
         import {recomputeGamesSkPrices, readGamesPricingSettings, writeVariantMarkup} from './src/lib/games/markup';
         import {getGamesCatalog, getGamesDetail} from './src/lib/games/catalog';
-        import {createDatabaseAccess} from './src/lib/db-access';
+        import {createDatabaseAccess, createBudgetedDatabase} from './src/lib/db-access';
         export default {async fetch(req,env){
           globalThis.DB=env.DB;
           const db=createDatabaseAccess();
@@ -33,6 +33,13 @@ it("migrates, reprices and serves the catalog contract in real workerd D1", asyn
           if(url.pathname==='/recompute') return Response.json(await recomputeGamesSkPrices(db,{all:true}));
           if(url.pathname==='/settings') return Response.json(await readGamesPricingSettings(db));
           if(url.pathname==='/markup') { await writeVariantMarkup(db,['sk:1'],{percent:12,fixed:250}); return Response.json({ok:true}); }
+          if(url.pathname==='/bulk-markup') {
+            const body=await req.json();
+            const budget=createBudgetedDatabase(5,2,env.DB);
+            await writeVariantMarkup(budget.access,body.skus,body.markup);
+            const result=await recomputeGamesSkPrices(budget.access,{skus:body.skus});
+            return Response.json({...result,statements:budget.used});
+          }
           if(url.pathname==='/catalog') return Response.json(await getGamesCatalog());
           if(url.pathname==='/detail') return Response.json(await getGamesDetail('mobile-legends'));
           return new Response('nope',{status:404});
@@ -113,5 +120,44 @@ it("migrates, reprices and serves the catalog contract in real workerd D1", asyn
     await db.prepare("UPDATE games_meta SET hidden=1 WHERE slug='mobile-legends'").run();
     expect(await (await runtime.dispatchFetch("https://fixture.test/catalog")).json()).toEqual([]);
     expect(await (await runtime.dispatchFetch("https://fixture.test/detail")).json()).toEqual(null);
+
+    // >100 SKU, distinct overrides and brand-new rows: atomically preserve omitted
+    // fields in D1, with only three business statements including settings/reprice.
+    const skus = Array.from({ length: 121 }, (_, i) => `sk:${i + 100}`);
+    await db.prepare(`INSERT INTO games_products(buyer_sku_code,product_name,cost,sell_price,supplier,game_slug)
+      SELECT value,'Diamond',10000,1,'sekalipay','mobile-legends' FROM json_each(?)`).bind(JSON.stringify(skus)).run();
+    await db.prepare(`INSERT INTO games_variant_markup(buyer_sku_code,markup_percent,markup_fixed)
+      SELECT value,8 + CAST(key AS INTEGER) % 3,200 + CAST(key AS INTEGER) FROM json_each(?)
+      WHERE CAST(key AS INTEGER)<120`).bind(JSON.stringify(skus)).run();
+    const bulk = async (markup: Record<string, number | null>) => {
+      const response = await runtime.dispatchFetch("https://fixture.test/bulk-markup", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ skus, markup }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ updated: 121, statements: 3 });
+    };
+    const rows = async () => (await db.prepare(`SELECT p.buyer_sku_code sku,p.sell_price price,v.markup_percent percent,v.markup_fixed fixed
+      FROM games_products p LEFT JOIN games_variant_markup v USING(buyer_sku_code)
+      WHERE p.buyer_sku_code IN (SELECT value FROM json_each(?)) ORDER BY p.sk_variant_id,p.id`).bind(JSON.stringify(skus)).all()).results;
+    await bulk({ fixed: 500 });
+    expect(await rows()).toEqual(skus.map((sku, i) => ({ sku, price: 10000 + (i < 120 ? 8 + i % 3 : 5) * 100 + 500, percent: i < 120 ? 8 + i % 3 : null, fixed: 500 })));
+    // Restore distinct fixed amounts before percent-only update.
+    await db.prepare(`UPDATE games_variant_markup SET markup_fixed=200 + CAST(substr(buyer_sku_code,4) AS INTEGER)-100
+      WHERE buyer_sku_code IN (SELECT value FROM json_each(?))`).bind(JSON.stringify(skus)).run();
+    await bulk({ percent: 12 });
+    expect(await rows()).toEqual(skus.map((sku, i) => ({ sku, price: 11400 + i, percent: 12, fixed: 200 + i })));
+    await bulk({ percent: null });
+    expect(await rows()).toEqual(skus.map((sku, i) => ({ sku, price: 10700 + i, percent: null, fixed: 200 + i })));
+    await bulk({ percent: 0 });
+    expect(await rows()).toEqual(skus.map((sku, i) => ({ sku, price: 10200 + i, percent: 0, fixed: 200 + i })));
+    await bulk({ fixed: null });
+    expect(await rows()).toEqual(skus.map(sku => ({ sku, price: 10000, percent: 0, fixed: null })));
+    await bulk({ fixed: 0 });
+    expect(await rows()).toEqual(skus.map(sku => ({ sku, price: 10000, percent: 0, fixed: 0 })));
+    await bulk({ percent: null, fixed: null });
+    expect(await rows()).toEqual(skus.map(sku => ({ sku, price: 10500, percent: null, fixed: null })));
+    expect(await db.prepare("SELECT COUNT(*) n FROM games_variant_markup WHERE buyer_sku_code IN (SELECT value FROM json_each(?))").bind(JSON.stringify(skus)).first()).toEqual({ n: 0 });
+    // Outside the batch, the original per-row PATCH-compatible override stays intact.
+    expect(await db.prepare("SELECT markup_percent,markup_fixed FROM games_variant_markup WHERE buyer_sku_code='sk:1'").first()).toEqual({ markup_percent: 12, markup_fixed: 250 });
   } finally { await runtime.dispose(); }
 }, 60_000);
