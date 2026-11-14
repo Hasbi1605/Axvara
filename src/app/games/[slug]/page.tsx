@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getGamesDetail } from "@/lib/games/catalog";
+import { getGamesCatalog, getGamesDetail } from "@/lib/games/catalog";
 import { gamesOrderingOpen } from "@/lib/games/ordering";
 import { requestLocale } from "@/lib/i18n/server-locale";
 import { gamesCopy } from "@/lib/games/copy";
@@ -19,5 +19,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function GamePage({ params }: { params: Promise<{ slug: string }> }) {
   const detail = await getGamesDetail((await params).slug);
   if (!detail) notFound();
-  return <GameClient detail={detail} orderingOpen={gamesOrderingOpen()} />;
+  const games = await getGamesCatalog();
+  return <GameClient detail={detail} otherGames={games} orderingOpen={gamesOrderingOpen()} />;
 }

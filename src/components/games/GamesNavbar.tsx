@@ -9,6 +9,7 @@ import { PreferenceControls } from "@/components/storefront/PreferenceControls";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { gamesCopy } from "@/lib/games/copy";
 import type { GamesCatalogGame } from "@/lib/games/catalog";
+import { GameImage } from "./GameImage";
 
 export function GamesNavbar({ games }: { games: GamesCatalogGame[] }) {
   const t = gamesCopy(useDisplayLocale());
@@ -32,8 +33,7 @@ export function GamesNavbar({ games }: { games: GamesCatalogGame[] }) {
             clean Pedia frame. File: public/brand/games-mark.svg (viewBox 144×128).
             currentColor tak turun ke <img>, jadi svg difilter putih via CSS
             (brightness(0) invert(1)) — pola sama persis dengan PediaNavbar. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/games-mark.svg" alt="" width={36} height={32} className="h-[32px] w-[36px] shrink-0 brightness-0 invert" />
+        <GameImage src="/brand/games-mark.svg" name="AXVARA Games" className="h-[32px] w-[36px] !bg-transparent" imageClassName="brightness-0 invert object-contain" eager />
         <span className="hidden whitespace-nowrap font-display text-[22px] font-[300] leading-none tracking-[0.16em] text-white md:inline">AXVARA GAMES</span>
         <span className="max-[343px]:hidden max-w-[130px] truncate whitespace-nowrap font-display text-[15px] font-[300] leading-none tracking-[0.12em] text-white md:hidden">AXVARA GAMES</span>
       </Link>
