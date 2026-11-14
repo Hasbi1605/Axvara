@@ -1,33 +1,62 @@
-// /api/admin/games/products — daftar + edit SKU AXVARA Games (docs/GAMES.md
-// §12.7 P1–P3). GET: item dengan margin & grup efektif + status sinkron.
-// PATCH: enabled / harga referensi (Oura) / override grup & urutan.
-// `games_reference_prices` adalah sumber kebenaran harga pembanding; PATCH
-// menulis tabel itu, menghitung ulang sell_price, lalu mencerminkan keduanya.
+// /api/admin/games/products — daftar + edit SKU AXVARA Games (docs/GAMES.md §14).
+// GET: item dengan margin, markup efektif/sumber, region, grup efektif, dan
+// status sinkron. PATCH: enabled / kategori / urutan / markup varian.
+// Harga referensi Oura sudah dipensiunkan (OD1); `reference_price` DITOLAK
+// sebagai key asing (`invalid_body`) dan nilai lamanya dipertahankan sebagai
+// histori. Markup efektif = varian → game (`games_meta`) → global.
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
-import { computeGamesSellPrice } from "@/lib/games/pricing";
-import { effectiveGroup, gamesAdminSyncStatus, gamesMargin, listGamesProducts } from "@/lib/games/admin";
+import {
+  effectiveGroup,
+  gamesAdminPricingContext,
+  gamesAdminSyncStatus,
+  gamesMargin,
+  listGamesProducts,
+} from "@/lib/games/admin";
+import { gamesAdminGames } from "@/lib/games/admin-games";
+import {
+  gamesEffectiveMarkup,
+  gamesRowMarkupPrice,
+  readVariantMarkupMap,
+  writeVariantMarkup,
+} from "@/lib/games/markup";
 import { gamesSkAvailability, gamesSkContractSupported } from "@/lib/games/catalog";
 import type { D1Statement } from "@/lib/db";
 import { isGamesNicknameProduct } from "@/lib/games/sellable";
 import { gamesNicknameSummary } from "@/lib/games/nickname";
+import {
+  GAMES_DISPLAY_GROUP_VALUES,
+  gamesEffectiveCategory,
+  gamesRegionCode,
+  gamesRegionTypeNames,
+} from "@/lib/games/variant-kind";
+import { GAMES_MARKUP_MAX_FIXED, GAMES_MARKUP_MAX_PERCENT } from "@/lib/games/pricing";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
+const markupPercentSchema = z.number({ error: "Markup harus berupa angka." })
+  .min(0, "Markup minimal 0%.").max(GAMES_MARKUP_MAX_PERCENT, "Markup maksimal 100%.")
+  .refine((value) => Math.abs(Math.round(value * 100) - value * 100) < 1e-6, { message: "Markup maksimal 2 desimal." });
+
+const markupFixedSchema = z.number({ error: "Markup tetap harus berupa angka." })
+  .int("Markup tetap harus bilangan bulat.").min(0, "Markup tetap tidak boleh negatif.")
+  .max(GAMES_MARKUP_MAX_FIXED, "Markup tetap terlalu besar.");
+
 const patchSchema = z.object({
   buyer_sku_code: z.string({ error: "Kode SKU wajib diisi." }).trim().min(1, "Kode SKU wajib diisi.").max(80, "Kode SKU terlalu panjang."),
   enabled: z.boolean({ error: "enabled harus boolean." }).optional(),
-  reference_price: z.number({ error: "Harga Oura harus berupa angka." }).int("Harga Oura harus bilangan bulat.")
-    .positive("Harga Oura harus lebih dari 0.").max(1_000_000_000, "Harga Oura terlalu besar.").nullable().optional(),
-  display_group: z.enum(["special", "bestseller"], { error: "Grup harus special, bestseller, atau null." }).nullable().optional(),
+  display_group: z.enum(GAMES_DISPLAY_GROUP_VALUES, { error: "Kategori tidak dikenal." }).nullable().optional(),
   display_order: z.number({ error: "Urutan harus berupa angka." }).int("Urutan harus bilangan bulat.")
     .min(0, "Urutan tidak boleh negatif.").max(1_000_000, "Urutan terlalu besar.").nullable().optional(),
+  markup_percent: markupPercentSchema.nullable().optional(),
+  markup_fixed: markupFixedSchema.nullable().optional(),
 }).strict().refine(
-  (value) => ["enabled", "reference_price", "display_group", "display_order"].some((key) => value[key as keyof typeof value] !== undefined),
+  (value) => ["enabled", "display_group", "display_order", "markup_percent", "markup_fixed"]
+    .some((key) => value[key as keyof typeof value] !== undefined),
   { message: "Tidak ada perubahan." },
 );
 
@@ -57,6 +86,10 @@ export async function GET(request: NextRequest) {
   if (sortRaw !== "default" && sortRaw !== "sellable") {
     return NextResponse.json({ error: "invalid_sort", message: "sort harus default atau sellable." }, { status: 400 });
   }
+  const regionRaw = params.get("region")?.trim() || null;
+  if (regionRaw !== null && !gamesRegionTypeNames(regionRaw)) {
+    return NextResponse.json({ error: "invalid_region", message: "Region tidak dikenal." }, { status: 400 });
+  }
   const db = createDatabaseAccess();
   try {
     const page = await listGamesProducts(db, {
@@ -64,14 +97,49 @@ export async function GET(request: NextRequest) {
       enabled: enabledRaw === null ? null : enabledRaw === "1",
       sellable: sellableRaw === null ? null : sellableRaw === "1",
       sort: sortRaw as "default" | "sellable",
+      region: regionRaw,
       limit, offset,
     });
+    const pricing = await gamesAdminPricingContext(db);
+    const variantMarkup = await readVariantMarkupMap(db);
+    const gamesPage = await gamesAdminGames(db);
     const sync = await gamesAdminSyncStatus(db);
     const nickname_checks = await gamesNicknameSummary(db);
     return NextResponse.json({
       ok: true,
-      items: page.items.map((row) => ({ ...row, effectiveGroup: effectiveGroup(row), margin: gamesMargin(row), contract_supported: gamesSkContractSupported(row), availability: gamesSkAvailability(row), sellable: row.enabled === 1 && row.supplier_active === 1 && (row.unlimited_stock === 1 || Number(row.stock) > 0) })),
-      total: page.total, limit: page.limit, offset: page.offset, brands: page.brands, sync, nickname_checks,
+      items: page.items.map((row) => {
+        const gamePercent = pricing.gamePercent.get(String(row.game_slug ?? "").trim()) ?? null;
+        const override = variantMarkup.get(String(row.buyer_sku_code ?? ""));
+        const markup = gamesEffectiveMarkup(
+          { markup_percent: override?.percent ?? null, markup_fixed: override?.fixed ?? null },
+          gamePercent,
+          pricing.settings,
+        );
+        return {
+          ...row,
+          effectiveGroup: effectiveGroup(row),
+          category: gamesEffectiveCategory({
+            displayGroup: row.display_group,
+            productName: row.product_name,
+            productTypeName: row.product_type_name,
+          }),
+          markup_source: markup.source,
+          effective_markup_percent: markup.percent,
+          markup_percent: override?.percent ?? null,
+          markup_fixed: override?.fixed ?? 0,
+          game_markup_percent: gamePercent,
+          region: gamesRegionCode(row.product_type_name),
+          margin: gamesMargin(row),
+          contract_supported: gamesSkContractSupported(row),
+          availability: gamesSkAvailability(row),
+          sellable: row.enabled === 1 && row.supplier_active === 1 && (row.unlimited_stock === 1 || Number(row.stock) > 0),
+        };
+      }),
+      total: page.total, limit: page.limit, offset: page.offset, brands: page.brands,
+      // Ringkasan per game untuk tab "Game" (dipakai juga oleh StatCards admin).
+      games: gamesPage.games,
+      pricing: pricing.settings,
+      sync, nickname_checks,
     });
   } catch { return NextResponse.json({ error: "load_failed" }, { status: 500 }); }
 }
@@ -83,7 +151,10 @@ export async function PATCH(request: NextRequest) {
   if (!body.ok) return body.response;
   const parsed = patchSchema.safeParse(body.data);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "invalid_body" }, { status: 400 });
+    const issue = parsed.error.issues[0];
+    // Key asing (termasuk `reference_price` yang sudah dipensiunkan) = invalid_body.
+    const error = issue?.code === "unrecognized_keys" ? "invalid_body" : issue?.message ?? "invalid_body";
+    return NextResponse.json({ error, message: issue?.message ?? "Body tidak valid." }, { status: 400 });
   }
   const patch = parsed.data;
   const db = createDatabaseAccess();
@@ -91,7 +162,7 @@ export async function PATCH(request: NextRequest) {
   const d1 = db.d1;
   try {
     const current = await db.queryFirst(
-      `SELECT buyer_sku_code, product_name, cost, seller_active, supplier, supplier_active, required_fields_json
+      `SELECT buyer_sku_code, product_name, cost, seller_active, supplier, supplier_active, required_fields_json, game_slug
          FROM games_products WHERE buyer_sku_code=?`, patch.buyer_sku_code,
     );
     if (!current) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -115,26 +186,30 @@ export async function PATCH(request: NextRequest) {
     if (patch.enabled !== undefined) { sets.push("enabled=?"); values.push(patch.enabled ? 1 : 0); }
     if (patch.display_group !== undefined) { sets.push("display_group=?"); values.push(patch.display_group); }
     if (patch.display_order !== undefined) { sets.push("display_order=?"); values.push(patch.display_order); }
-    if (patch.reference_price !== undefined) {
-      const reference = patch.reference_price;
-      const now = new Date().toISOString();
-      if (reference === null) {
-        statements.push(d1.prepare(`DELETE FROM games_reference_prices WHERE buyer_sku_code=?`).bind(patch.buyer_sku_code));
-      } else {
-        statements.push(d1.prepare(
-          `INSERT INTO games_reference_prices(buyer_sku_code,price,source,captured_at,updated_at) VALUES(?,?,?,?,?)
-           ON CONFLICT(buyer_sku_code) DO UPDATE SET price=excluded.price, source=excluded.source,
-             captured_at=excluded.captured_at, updated_at=excluded.updated_at`,
-        ).bind(patch.buyer_sku_code, reference, "admin", now, now));
-      }
-      sets.push("reference_price=?");
-      values.push(reference);
-      // Modal 0 (baris belum tersinkron) tidak bisa dihitung: mirror saja.
+
+    const markupChanged = patch.markup_percent !== undefined || patch.markup_fixed !== undefined;
+    if (markupChanged) {
+      const currentMarkup = await db.queryFirst(
+        "SELECT markup_percent, markup_fixed FROM games_variant_markup WHERE buyer_sku_code=?",
+        patch.buyer_sku_code,
+      );
+      const percent = patch.markup_percent !== undefined ? patch.markup_percent : asNumberOrNull(currentMarkup?.markup_percent);
+      const fixed = patch.markup_fixed !== undefined ? patch.markup_fixed : asNumberOrNull(currentMarkup?.markup_fixed);
       const cost = Number(current.cost);
       if (cost > 0) {
+        // Harga baru memakai markup efektif hasil PATCH (varian → game → global).
+        const pricing = await gamesAdminPricingContext(db);
+        const gamePercent = pricing.gamePercent.get(String(current.game_slug ?? "").trim()) ?? null;
+        const price = gamesRowMarkupPrice(
+          { cost, markup_percent: percent, markup_fixed: fixed },
+          gamePercent,
+          pricing.settings,
+        );
         sets.push("sell_price=?");
-        values.push(computeGamesSellPrice({ cost, referencePrice: reference }).price);
+        values.push(price);
       }
+      // Override varian disimpan di tabel sendiri agar sinkron tidak menimpanya.
+      await writeVariantMarkup(db, [patch.buyer_sku_code], { percent, fixed });
     }
     sets.push("updated_at=datetime('now')");
     statements.push(d1.prepare(
@@ -144,4 +219,10 @@ export async function PATCH(request: NextRequest) {
     await d1.batch(statements);
     return NextResponse.json({ ok: true });
   } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
+}
+
+function asNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }

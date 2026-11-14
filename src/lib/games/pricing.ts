@@ -36,6 +36,67 @@ export interface GamesPriceResult {
   competitive: boolean | null;
 }
 
+/** Pembulatan harga yang diizinkan (keputusan owner OD1, dokumen GAMES §14). */
+export const GAMES_PRICE_ROUNDINGS = [1, 100, 500, 1000] as const;
+export type GamesPriceRounding = (typeof GAMES_PRICE_ROUNDINGS)[number];
+export const GAMES_MARKUP_DEFAULT_PERCENT = 5;
+export const GAMES_PRICE_DEFAULT_ROUNDING: GamesPriceRounding = 100;
+export const GAMES_MARKUP_MAX_PERCENT = 100;
+export const GAMES_MARKUP_MAX_FIXED = 1_000_000;
+
+export interface GamesMarkupPriceInput {
+  /** Modal supplier per item (rupiah, bilangan bulat positif). */
+  cost: number;
+  /** Markup persen 0–100, maksimal 2 desimal. Default 5. */
+  markupPercent?: number;
+  /** Markup tetap rupiah 0–1.000.000. Default 0. */
+  markupFixed?: number;
+  /** Pembulatan rupiah: 1 | 100 | 500 | 1000. Default 100. */
+  rounding?: GamesPriceRounding;
+}
+
+/**
+ * Harga jual Games (OD1, 14 November 2026), aritmetika bilangan bulat:
+ *   bp    = round(pct × 100)
+ *   harga = ceil(cost × (10000 + bp) / (10000 × R)) × R + fixed
+ * Contoh 5 %/R100: 11750 → 12400, 321115 → 337200.
+ */
+export function computeGamesMarkupPrice(input: GamesMarkupPriceInput): number {
+  const cost = input.cost;
+  if (!Number.isSafeInteger(cost) || cost <= 0) throw new RangeError("cost tidak valid");
+  const percent = input.markupPercent ?? GAMES_MARKUP_DEFAULT_PERCENT;
+  if (!Number.isFinite(percent) || percent < 0 || percent > GAMES_MARKUP_MAX_PERCENT) {
+    throw new RangeError("markupPercent tidak valid");
+  }
+  const basisPoints = Math.round(percent * 100);
+  // Lebih dari 2 desimal (0,005 %) tidak bisa direpresentasikan basis point.
+  if (Math.abs(basisPoints - percent * 100) > 1e-6) throw new RangeError("markupPercent maksimal 2 desimal");
+  const fixed = input.markupFixed ?? 0;
+  if (!Number.isSafeInteger(fixed) || fixed < 0 || fixed > GAMES_MARKUP_MAX_FIXED) {
+    throw new RangeError("markupFixed tidak valid");
+  }
+  const rounding = input.rounding ?? GAMES_PRICE_DEFAULT_ROUNDING;
+  if (!(GAMES_PRICE_ROUNDINGS as readonly number[]).includes(rounding)) throw new RangeError("rounding tidak valid");
+  const denominator = 10_000 * rounding;
+  const scaled = cost * (10_000 + basisPoints);
+  if (!Number.isSafeInteger(scaled) || !Number.isSafeInteger(denominator)) throw new RangeError("cost terlalu besar");
+  const price = Math.ceil(scaled / denominator) * rounding + fixed;
+  if (!Number.isSafeInteger(price) || price <= 0) throw new RangeError("harga tidak valid");
+  return price;
+}
+
+/** Markup persen yang benar-benar dipakai: varian → game → global. */
+export function effectiveMarkupPercent(
+  variant: number | null | undefined,
+  game: number | null | undefined,
+  global: number,
+): number {
+  for (const value of [variant, game]) {
+    if (value !== null && value !== undefined && Number.isFinite(Number(value))) return Number(value);
+  }
+  return global;
+}
+
 function assertAmount(name: string, value: number, allowZero = false): void {
   if (!Number.isFinite(value) || value < 0 || (!allowZero && value === 0)) {
     throw new RangeError(`${name} tidak valid`);

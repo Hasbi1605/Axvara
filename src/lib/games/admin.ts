@@ -10,6 +10,12 @@
 // modul server ke bundle klien.
 
 import { computeGamesSellPrice, gamesPriceFloor } from "./pricing";
+import {
+  gamesEffectiveMarkup,
+  readGamesPricingSettings,
+  type GamesPricingSettings,
+} from "./markup";
+import { gamesRegionTypeNames } from "./variant-kind";
 import type { DatabaseAccess } from "@/lib/db-access";
 import { isGamesNicknameProduct } from "./sellable";
 
@@ -113,6 +119,8 @@ export interface GamesListFilters {
   sellable?: boolean | null;
   /** "sellable" = SKU bisa dijual tampil lebih dulu, sisanya urutan lama. */
   sort?: "default" | "sellable" | null;
+  /** Kode region B6 (ID/MY/SG/PH/BR/RU/TR/GLOBAL/…) — dicocokkan pada tipe supplier. */
+  region?: string | null;
   limit?: number;
   offset?: number;
 }
@@ -153,6 +161,14 @@ export async function listGamesProducts(db: DatabaseAccess, filters: GamesListFi
     params.push(pattern, pattern);
   }
   if (filters.sellable === true) where.push(GAMES_SELLABLE_SQL);
+  if (filters.region) {
+    const typeNames = gamesRegionTypeNames(filters.region);
+    if (!typeNames) where.push("0");
+    else {
+      where.push(`lower(trim(product_type_name)) IN (${typeNames.map(() => "?").join(",")})`);
+      params.push(...typeNames);
+    }
+  }
   const clause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
   // Default: urutan katalog lama. `sort=sellable` menaruh SKU yang benar-benar
   // bisa dijual di atas, sisanya tetap urutan lama (stabil, tanpa ORDER BY baru
@@ -183,7 +199,7 @@ export async function listGamesProducts(db: DatabaseAccess, filters: GamesListFi
 
 export interface GamesSyncStatus {
   last_sync_at: string | null;
-  counts: { total: number; enabled: number; supplier_active: number; seller_active: number; with_reference: number; contract_supported: number; sellable: number };
+  counts: { total: number; enabled: number; supplier_active: number; seller_active: number; with_reference: number; contract_supported: number; sellable: number; supplier_off: number };
 }
 
 /** Status header admin: waktu sinkron katalog terakhir + hitungan katalog. */
@@ -203,9 +219,32 @@ export async function gamesAdminSyncStatus(db: DatabaseAccess): Promise<GamesSyn
     // stok (atau stok tak terbatas). Angka ini yang dipakai UI, bukan `enabled`.
     sellable: rows.filter((row) => Number(row.enabled) === 1 && Number(row.supplier_active) === 1
       && (Number(row.unlimited_stock) === 1 || Number(row.stock) > 0)).length,
+    // Varian yang dinonaktifkan supplier (mis. status "off" massal Sekalipay):
+    // satu angka agregat untuk alert, bukan ribuan peringatan per baris.
+    supplier_off: rows.filter((row) => Number(row.supplier_active) === 0).length,
   };
   return {
     last_sync_at: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : (raw || null),
     counts,
   };
+}
+
+export interface GamesAdminPricingContext {
+  settings: GamesPricingSettings;
+  /** slug → markup khusus game (null = ikut default). */
+  gamePercent: Map<string, number | null>;
+}
+
+/** Setting harga global + markup per game (2 statement, dipakai GET/PATCH admin). */
+export async function gamesAdminPricingContext(db: DatabaseAccess): Promise<GamesAdminPricingContext> {
+  const settings = await readGamesPricingSettings(db);
+  const rows = await db.queryAll("SELECT slug, markup_percent FROM games_meta");
+  const gamePercent = new Map<string, number | null>();
+  for (const row of rows) {
+    const slug = String(row.slug ?? "").trim();
+    if (!slug) continue;
+    const value = row.markup_percent === null || row.markup_percent === undefined ? null : Number(row.markup_percent);
+    gamePercent.set(slug, value !== null && Number.isFinite(value) ? value : null);
+  }
+  return { settings, gamePercent };
 }

@@ -26,7 +26,7 @@ const indexes = (sql: string) => (sql.match(/CREATE INDEX IF NOT EXISTS idx_game
 // bukan melonggarkan pemeriksaan kolom lain.
 const SUPPLIER_COLUMN = ", supplier TEXT NOT NULL DEFAULT 'digiflazz' CHECK (supplier IN ('digiflazz','sekalipay'))";
 const LATER_COLUMNS = [
-  ", display_group TEXT CHECK (display_group IS NULL OR display_group IN ('special','bestseller'))",
+  ", display_group TEXT CHECK (display_group IS NULL OR display_group IN ( 'special','bestseller','promo','first_topup','pass','pack','topup','other'))",
   ", display_order INTEGER",
   SUPPLIER_COLUMN,
   ", supplier_active INTEGER NOT NULL DEFAULT 0 CHECK (supplier_active IN (0,1))",

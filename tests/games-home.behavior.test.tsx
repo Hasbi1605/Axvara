@@ -11,7 +11,7 @@ const db = vi.hoisted(() => ({ queryAll: vi.fn() }));
 vi.mock("@/lib/db-access", () => ({ createDatabaseAccess: () => db }));
 vi.mock("@/components/storefront/PreferenceControls", () => ({ PreferenceControls: () => null }));
 vi.mock("@/components/shared/ServicesMenu", () => ({ ServicesMenu: () => null }));
-const game = { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond" as const, icon: "/brand/games/free-fire-icon.webp", banner: null, min_price: 1000, sku_count: 1 };
+const game = { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond" as const, icon: "/brand/games/free-fire-icon.webp", banner: null, min_price: 1000, sku_count: 1, sellable_count: 1, featured_rank: null };
 beforeEach(() => { vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} })); vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); document.cookie = "axv_locale=; max-age=0; path=/"; });
 

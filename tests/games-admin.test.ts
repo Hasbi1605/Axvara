@@ -105,7 +105,7 @@ describe("admin games products API", () => {
 
     const data = await (await GET(await authedRequest("http://x/api/admin/games/products?limit=10"))).json();
     expect(data.total).toBe(3);
-    expect(data.sync.counts).toEqual({ total: 3, enabled: 1, supplier_active: 2, seller_active: 2, with_reference: 1, contract_supported: 3, sellable: 0 });
+    expect(data.sync.counts).toEqual({ total: 3, enabled: 1, supplier_active: 2, seller_active: 2, with_reference: 1, contract_supported: 3, sellable: 0, supplier_off: 1 });
     expect(data.sync.last_sync_at).toBe("2026-11-12T03:00:00.000Z");
     expect(data.brands).toEqual(["Free Fire", "Mobile Legends", "PUBG Mobile"]);
     expect(data.items.find((item: { buyer_sku_code: string }) => item.buyer_sku_code === "ml86")).toBeUndefined();
@@ -195,17 +195,25 @@ describe("admin games products API", () => {
     expect(product("sk:204").enabled).toBe(0);
   });
 
-  it("writes games_reference_prices, mirrors it, and recomputes sell_price (and clears both on null)", async () => {
+  it("stores variant markup, reprices with it, and rejects the retired reference_price key", async () => {
     seed({ cost: 10000, sell_price: 10300 });
     const { PATCH } = await import("@/app/api/admin/games/products/route");
-    expect((await PATCH(await json("http://x/api/admin/games/products", "PATCH", { buyer_sku_code: "sk:101", reference_price: 20000 }))).status).toBe(200);
-    expect(reference("sk:101")).toMatchObject({ price: 20000, source: "admin" });
-    expect(product("sk:101")).toMatchObject({ reference_price: 20000, sell_price: 19600, enabled: 0 });
-    await PATCH(await json("http://x/api/admin/games/products", "PATCH", { buyer_sku_code: "sk:101", reference_price: 15000 }));
-    expect(product("sk:101")).toMatchObject({ reference_price: 15000, sell_price: 14700 });
-    await PATCH(await json("http://x/api/admin/games/products", "PATCH", { buyer_sku_code: "sk:101", reference_price: null }));
+    // Markup varian 10 % → ceil(10000 × 1,10 / 100) × 100.
+    expect((await PATCH(await json("http://x/api/admin/games/products", "PATCH", { buyer_sku_code: "sk:101", markup_percent: 10 }))).status).toBe(200);
+    expect(product("sk:101")).toMatchObject({ sell_price: 11000 });
+    expect(fx.sql.prepare("SELECT markup_percent,markup_fixed FROM games_variant_markup WHERE buyer_sku_code='sk:101'").get())
+      .toEqual({ markup_percent: 10, markup_fixed: null });
+    // Kembali ke markup global 5 % + Rp250 tetap.
+    expect((await PATCH(await json("http://x/api/admin/games/products", "PATCH", { buyer_sku_code: "sk:101", markup_percent: null, markup_fixed: 250 }))).status).toBe(200);
+    expect(product("sk:101")).toMatchObject({ sell_price: 10750 });
+    expect(fx.sql.prepare("SELECT markup_percent,markup_fixed FROM games_variant_markup WHERE buyer_sku_code='sk:101'").get())
+      .toEqual({ markup_percent: null, markup_fixed: 250 });
+    // Harga referensi Oura pensiun: key-nya ditolak sebagai invalid_body.
+    const retired = await PATCH(await json("http://x/api/admin/games/products", "PATCH", { buyer_sku_code: "sk:101", reference_price: 20000 }));
+    expect(retired.status).toBe(400);
+    expect(await retired.json()).toMatchObject({ error: "invalid_body" });
     expect(reference("sk:101")).toBeUndefined();
-    expect(product("sk:101")).toMatchObject({ reference_price: null, sell_price: 10300 });
+    expect(product("sk:101")).toMatchObject({ reference_price: null, sell_price: 10750 });
   });
 
   it("stores group/order overrides and the enabled flag for SK", async () => {
