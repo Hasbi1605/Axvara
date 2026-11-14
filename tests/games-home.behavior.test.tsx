@@ -11,7 +11,7 @@ const db = vi.hoisted(() => ({ queryAll: vi.fn() }));
 vi.mock("@/lib/db-access", () => ({ createDatabaseAccess: () => db }));
 vi.mock("@/components/storefront/PreferenceControls", () => ({ PreferenceControls: () => null }));
 vi.mock("@/components/shared/ServicesMenu", () => ({ ServicesMenu: () => null }));
-const game = { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond" as const, icon: "/brand/games/free-fire-icon.webp", banner: null, min_price: 1000, sku_count: 1 };
+const game = { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond" as const, icon: "/brand/games/free-fire-icon.webp", banner: null, min_price: 1000, sku_count: 1, sellable_count: 1 };
 beforeEach(() => { vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} })); vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); document.cookie = "axv_locale=; max-age=0; path=/"; });
 
@@ -96,11 +96,39 @@ describe("Games homepage", () => {
     expect(screen.getAllByText("NI").length).toBeGreaterThan(0);
   });
 
-  it("hides popular when it would duplicate the whole catalog", () => {
+  it("hides popular below four qualifying games and otherwise uses six sellable games", () => {
     const { rerender } = render(<GamesHome games={[game]} orbitGames={GAMES_REGISTRY} orderingOpen />);
     expect(screen.queryByRole("heading", { name: "Populer sekarang" })).toBeNull();
     rerender(<GamesHome games={Array.from({ length: 9 }, (_, i) => ({ ...game, slug: `game-${i}` }))} orbitGames={GAMES_REGISTRY} orderingOpen />);
     expect(screen.getByRole("heading", { name: "Populer sekarang" })).toBeTruthy();
+    const popular = screen.getByRole("region", { name: "Populer sekarang" });
+    expect(within(popular).getAllByRole("link")).toHaveLength(6);
+  });
+  it("honors featured ranks, shows honest availability, and counts the whole catalog", () => {
+    const games = Array.from({ length: 10 }, (_, i) => ({ ...game, slug: `game-${i}`, name: `Game ${i}`, featured_rank: i < 4 ? 4 - i : null, sellable_count: i === 9 ? 0 : 1 }));
+    render(<GamesHome games={games} orbitGames={games.slice(0, 4)} orderingOpen />);
+    expect(within(screen.getByRole("region", { name: "Populer sekarang" })).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/games/game-3", "/games/game-2", "/games/game-1", "/games/game-0"]);
+    expect(screen.getByText("10 game")).toBeTruthy();
+    const unavailable = screen.getByRole("link", { name: /Game 9/ });
+    expect(unavailable.textContent).toContain("Segera tersedia");
+    expect(unavailable.className).toContain("opacity-70");
+    expect(screen.getAllByText(/Mulai/)[0].textContent).toContain("Rp1.000");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).not.toMatch(/Termurah|Tercepat/);
+    expect(screen.getByText("Pilih game, pilih nominal, bayar — tanpa login. Proses otomatis 24 jam.")).toBeTruthy();
+  });
+  it("sends no Referer for every image and replaces failed game art with initials", () => {
+    render(<GamesHome games={[game]} orbitGames={[game]} orderingOpen />);
+    // Cross-service promos are shared brand chrome, not Games-owned catalog art.
+    for (const img of document.querySelectorAll("section img")) {
+      expect(img.getAttribute("referrerpolicy")).toBe("no-referrer");
+      expect(img.getAttribute("decoding")).toBe("async");
+    }
+    const card = screen.getByRole("link", { name: /Free Fire Mulai/ });
+    const img = card.querySelector("img")!;
+    expect(img.getAttribute("loading")).toBe("lazy");
+    fireEvent.error(img);
+    expect(card.querySelector("img")).toBeNull();
+    expect(within(card).getByText("FF")).toBeTruthy();
   });
   it("uses the English cookie and filters navbar search", async () => {
     document.cookie = "axv_locale=en; path=/";
