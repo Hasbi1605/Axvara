@@ -2029,7 +2029,7 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   kartu ringkas (thumbnail 40 px, nama 12 px 2 baris, publisher 10 px; bila jumlah ganjil kartu
   terakhir disembunyikan di HP agar grid genap), katalog potret = 3 kolom (overlay nama 11 px +
   status 9–10 px, publisher hanya ≥sm), baris chip genre mendapat fade tepi kanan
-  (mask 78 %→transparan) yang hilang saat di-scroll mentok kanan (`data-at-end`). Desktop tetap.
+  (mask 78 %→transparan) yang hilang saat di-scroll mentok kanan (`data-at-end`). Desktop tetap. Tipografi & jarak HP ikut ringkas: judul seksi 18 px (sm 24 px), subjudul/jumlah 12 px, ikon api 20 px, chip genre 32 px/12 px, jarak antarseksi 40 px (sm 80 px).
 - **Beranda.** **Koreksi owner 14 Nov 2026 malam (lokal; menggantikan bagian terkait di bawah):** (1) orbit
   hero = 8 game tetap `GAMES_ORBIT` (`mobile-legends`, `pubg-mobile`, `free-fire`, `genshin-impact`,
   `honor-of-kings`, `valorant`, `roblox`, `call-of-duty-mobile`; Free Fire MAX dikecualikan),
