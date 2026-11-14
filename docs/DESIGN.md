@@ -2025,6 +2025,11 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   ujung, fade tepi, ±6 kartu desktop / ±2,5 kartu HP); (5) footer bersama punya baris "Metode
   pembayaran" di atas © (chip putih 28/32 px: QRIS · GoPay, DANA, OVO, ShopeePay, LinkAja · BCA, BNI,
   BRI, Mandiri, Permata · USDT, BTC, ETH; logo lokal yang sama dengan picker; dekoratif).
+- **Koreksi owner 14 Nov 2026 (mobile, lokal):** di <640 px bagian Populer = grid 2 kolom
+  kartu ringkas (thumbnail 40 px, nama 12 px 2 baris, publisher 10 px; bila jumlah ganjil kartu
+  terakhir disembunyikan di HP agar grid genap), katalog potret = 3 kolom (overlay nama 11 px +
+  status 9–10 px, publisher hanya ≥sm), baris chip genre mendapat fade tepi kanan
+  (mask 78 %→transparan) yang hilang saat di-scroll mentok kanan (`data-at-end`). Desktop tetap.
 - **Beranda.** **Koreksi owner 14 Nov 2026 malam (lokal; menggantikan bagian terkait di bawah):** (1) orbit
   hero = 8 game tetap `GAMES_ORBIT` (`mobile-legends`, `pubg-mobile`, `free-fire`, `genshin-impact`,
   `honor-of-kings`, `valorant`, `roblox`, `call-of-duty-mobile`; Free Fire MAX dikecualikan),

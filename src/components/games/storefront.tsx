@@ -16,10 +16,10 @@ export function GameCard({ game, t }: { game: GamesCatalogGame; t: ReturnType<ty
         <GameImage src={game.icon} name={game.name} framed={false} className="aspect-square w-full text-2xl [mask-image:linear-gradient(black_65%,transparent)]" imageClassName="!object-contain" />
       </>}
       <span data-game-overlay className="absolute inset-0 bg-gradient-to-t from-[#080C1E] via-[#080C1E]/25 to-transparent opacity-100 transition-opacity duration-300 ease-out [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover:!opacity-100 group-focus-visible:!opacity-100 motion-reduce:transition-none" />
-      <span data-game-overlay className="absolute inset-x-0 bottom-0 p-3 opacity-100 transition-[opacity,transform] duration-300 ease-out sm:p-3.5 [@media(hover:hover)_and_(pointer:fine)]:translate-y-3 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover:!translate-y-0 group-hover:!opacity-100 group-focus-visible:!translate-y-0 group-focus-visible:!opacity-100 motion-reduce:!transform-none motion-reduce:transition-none">
-        <span className="line-clamp-2 font-display text-sm font-bold leading-snug text-white sm:text-base">{game.name}</span>
-        <span className="mt-1 block truncate text-xs text-white/70">{game.publisher}</span>
-        <span className={sellable ? "mt-2 block text-xs tabular-nums text-white/85" : "mt-2 inline-block rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/70"}>{status}</span>
+      <span data-game-overlay className="absolute inset-x-0 bottom-0 p-2 opacity-100 transition-[opacity,transform] duration-300 ease-out sm:p-3.5 [@media(hover:hover)_and_(pointer:fine)]:translate-y-3 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover:!translate-y-0 group-hover:!opacity-100 group-focus-visible:!translate-y-0 group-focus-visible:!opacity-100 motion-reduce:!transform-none motion-reduce:transition-none">
+        <span className="line-clamp-2 font-display text-[11px] font-bold leading-tight text-white sm:text-base sm:leading-snug">{game.name}</span>
+        <span className="mt-1 hidden truncate text-xs text-white/70 sm:block">{game.publisher}</span>
+        <span className={sellable ? "mt-1 block text-[10px] tabular-nums text-white/85 sm:mt-2 sm:text-xs" : "mt-1 inline-block rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] text-white/70 sm:mt-2 sm:px-2 sm:py-1 sm:text-[11px]"}>{status}</span>
       </span>
     </span>
   </Link>;

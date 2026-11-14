@@ -745,6 +745,11 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
 
 ### 14.5 Storefront (OD4, P1–P14) — `src/app/games/*`, `src/components/games/*`
 
+- **Koreksi owner 14 Nov 2026 (mobile, lokal):** di <640 px bagian Populer = grid 2 kolom
+  kartu ringkas (thumbnail 40 px, nama 12 px 2 baris, publisher 10 px; bila jumlah ganjil kartu
+  terakhir disembunyikan di HP agar grid genap), katalog potret = 3 kolom (overlay nama 11 px +
+  status 9–10 px, publisher hanya ≥sm), baris chip genre mendapat fade tepi kanan
+  (mask 78 %→transparan) yang hilang saat di-scroll mentok kanan (`data-at-end`). Desktop tetap.
 - **Koreksi owner 14 Nov 2026 (larut malam, lokal):** (1) kartu lintas layanan beranda Pedia =
   AXVARA Market + AXVARA Games (kartu Bot Telegram dihapus; Telegram tetap di footer); (2) overlay
   `CrossAppTransition` (logo tujuan + cincin putar + "Memuat AXVARA …") kini juga untuk tujuan/asal

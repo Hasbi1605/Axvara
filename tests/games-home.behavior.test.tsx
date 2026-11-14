@@ -72,6 +72,26 @@ describe("Games homepage", () => {
     expect(screen.getByRole("link", { name: /AXVARA Market/ }).getAttribute("href")).toBe("https://axvara.tech/?utm_source=games&utm_medium=cross_promo");
     expect(screen.getByRole("link", { name: /AXVARA Pedia/ }).getAttribute("href")).toBe("https://pedia.axvara.tech/?utm_source=games&utm_medium=cross_promo");
   });
+  it("mobile layout mirrors Oura: popular 2 columns (odd last hidden on mobile), catalog 3 columns, chip row fades until scrolled to the end", () => {
+    const games = Array.from({ length: 12 }, (_, i) => ({ ...game, slug: ["mobile-legends", "magic-chess-go-go", "pubg-mobile", "free-fire", "genshin-impact", "honor-of-kings", "valorant", "roblox", "honkai-star-rail", "a", "b", "c"][i], name: `Game ${i}` }));
+    render(<GamesHome games={games} orbitGames={games} orderingOpen />);
+    const popular = screen.getByRole("region", { name: "Populer sekarang" });
+    const grid = popular.querySelector(".grid")!;
+    expect(grid.className).toContain("grid-cols-2");
+    const cards = within(popular).getAllByRole("link");
+    expect(cards).toHaveLength(9);
+    expect(cards[8].className).toContain("max-sm:hidden");
+    expect(cards[7].className).not.toContain("max-sm:hidden");
+    const catalogGrid = document.querySelector("#games-catalog .grid")!;
+    expect(catalogGrid.className).toMatch(/(^|\s)grid-cols-3(\s|$)/);
+    const chips = document.querySelector<HTMLElement>("[data-genre-chips]")!;
+    expect(chips.className).toContain("[mask-image:linear-gradient(to_right,black_78%,transparent)]");
+    Object.defineProperties(chips, { scrollLeft: { value: 200, configurable: true }, clientWidth: { value: 300, configurable: true }, scrollWidth: { value: 500, configurable: true } });
+    fireEvent.scroll(chips);
+    expect(chips.getAttribute("data-at-end")).toBe("true");
+    expect(chips.className).not.toContain("black_78%");
+  });
+
   it("home drops how-to/trust/FAQ sections and the catalog subtitle; chips follow the Pedia style; popular has the 3D flame", () => {
     render(<GamesHome games={[game]} orbitGames={[game]} orderingOpen />);
     for (const text of ["Cara top up", "Siap kapan pun kamu bermain", "Pertanyaan umum", "Temukan game yang ingin kamu isi."]) expect(screen.queryByText(text)).toBeNull();
