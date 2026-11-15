@@ -12,7 +12,7 @@ it("D1 measures fewer reads for catalog, unique inventory and active-first atten
   try {
     const db=await runtime.getD1Database("DB");
     await db.batch([
-      "CREATE TABLE products(id INTEGER PRIMARY KEY,is_active INTEGER DEFAULT 1)",
+      "CREATE TABLE products(id INTEGER PRIMARY KEY,is_active INTEGER DEFAULT 1,archived_at TEXT)",
       "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,product_id INTEGER,stock INTEGER,price INTEGER,is_active INTEGER,fulfillment_mode TEXT,min_qty INTEGER,wr_variant_id TEXT,sk_variant_id TEXT)",
       "CREATE TABLE fulfillment_inventory(id INTEGER PRIMARY KEY,product_id INTEGER,variant_id INTEGER,status TEXT)",
       "CREATE INDEX old_inventory_index ON fulfillment_inventory(product_id,status)",

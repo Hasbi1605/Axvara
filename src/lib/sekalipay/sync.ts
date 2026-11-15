@@ -227,7 +227,7 @@ function planSkCatalogRefreshWrite(
       // (insiden Alight/Viu 2026-10-06). NULL-kan coret basi agar harga jual
       // otoritatif selalu tembus — katalog menimpa sync yang menimpa admin.
       sql: `UPDATE product_variants SET price=?, stock=?, label=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now')
-            WHERE id=? AND (price IS NOT ? OR stock IS NOT ? OR label IS NOT ? OR (compare_price IS NOT NULL AND compare_price <= ?))`,
+            WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=? AND (price IS NOT ? OR stock IS NOT ? OR label IS NOT ? OR (compare_price IS NOT NULL AND compare_price <= ?))`,
       params: [sellPrice, stock, label, sellPrice, axvaraVariantId, sellPrice, stock, label, sellPrice],
       optional: true,
     },
@@ -237,7 +237,7 @@ function planSkCatalogRefreshWrite(
             stock=CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1 AND stock=-1)
               THEN -1 ELSE COALESCE((SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END) FROM product_variants WHERE product_id=? AND is_active=1),0) END,
             updated_at=datetime('now')
-        WHERE id=?
+        WHERE products.archived_at IS NULL AND id=?
           AND (price IS NOT COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price)
                OR stock IS NOT CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1 AND stock=-1)
                  THEN -1 ELSE COALESCE((SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END) FROM product_variants WHERE product_id=? AND is_active=1),0) END)`,
@@ -527,7 +527,7 @@ async function createAxvaraCatalogForSk(
     now,
     now,
   );
-  const axvaraProductId = Number(created.lastInsertRowid ?? 0);
+  const axvaraProductId = Number(created.changes === 0 ? 0 : created.lastInsertRowid ?? 0);
   if (!axvaraProductId) throw new Error("sk_product_insert_failed");
   return axvaraProductId;
 }
@@ -820,10 +820,9 @@ export async function syncSkProducts(
       }
       if (catalogAllowed && axvaraProductId > 0 && !(axvaraVariantId > 0)) {
         const created = await db.execRun(
-          `INSERT INTO product_variants
-            (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order,
-             sk_variant_id, sk_auto_managed, created_at, updated_at)
-           VALUES (?,?,?,?,?, 'manual', 1, 0, ?, 1, ?, ?)`,
+          `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order,
+             sk_variant_id, sk_auto_managed, created_at, updated_at) WITH archive_candidate(product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order,
+             sk_variant_id, sk_auto_managed, created_at, updated_at) AS (VALUES (?,?,?,?,?, 'manual', 1, 0, ?, 1, ?, ?)) SELECT * FROM archive_candidate WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=archive_candidate.product_id AND archive_parent.archived_at IS NULL)`,
           axvaraProductId,
           `SK-${skVariantId}`.slice(0, 40),
           variant.name,
@@ -833,7 +832,7 @@ export async function syncSkProducts(
           now,
           now,
         ).catch(() => ({ changes: 0 as number | undefined, lastInsertRowid: undefined as number | undefined }));
-        axvaraVariantId = Number(created.lastInsertRowid ?? 0);
+        axvaraVariantId = Number(created.changes === 0 ? 0 : created.lastInsertRowid ?? 0);
         if (!axvaraVariantId) {
           const conflict = await db
             .queryFirst(`SELECT id FROM product_variants WHERE sku=?`, `SK-${skVariantId}`.slice(0, 40))
@@ -842,7 +841,7 @@ export async function syncSkProducts(
         }
         if (axvaraVariantId > 0) {
           await db.execRun(
-            `UPDATE product_variants SET sk_variant_id=?, sk_auto_managed=1, updated_at=datetime('now') WHERE id=?`,
+            `UPDATE product_variants SET sk_variant_id=?, sk_auto_managed=1, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
             skVariantId,
             axvaraVariantId,
           ).catch(() => ({ changes: 0 }));
@@ -1051,7 +1050,7 @@ export async function zeroMissingSkVariants(
     const axvaraVariantId = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
     if (axvaraVariantId > 0) {
       await db.execRun(
-        `UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE id=?`,
+        `UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
         axvaraVariantId,
       ).catch(() => ({ changes: 0 }));
     }
@@ -1082,7 +1081,7 @@ export async function zeroSkVariantsByIds(ids: string[], db: DatabaseAccess): Pr
     );
     const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
     if (vid > 0) {
-      await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE id=?`, vid)
+      await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`, vid)
         .catch(() => ({ changes: 0 }));
     }
   }

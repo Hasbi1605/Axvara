@@ -1,3 +1,4 @@
+import { ARCHIVED_MESSAGE } from "@/lib/product-archive";
 // PATCH /api/admin/tunvn/buff/[sku] — kontrol admin varian Buff Muse.
 // Mengatur markup per varian, harga manual (override, kosong = ikut rumus),
 // dan status aktif varian. Harga rumus memakai FX tersimpan pada varian.
@@ -38,6 +39,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const variant = await db.queryFirst("SELECT * FROM product_variants WHERE sku=?", sku);
     if (!variant) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (body.is_active === true && await db.queryFirst("SELECT id FROM products WHERE id=? AND archived_at IS NOT NULL", variant.product_id)) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
     const quantityB = Number(variant.tunvn_buff_quantity_b ?? 0);
     const markup = body.markup_percent !== undefined ? body.markup_percent : Number(variant.tunvn_markup_percent ?? 40);
     const adminPrice = body.admin_price_idr !== undefined ? body.admin_price_idr : (variant.tunvn_admin_price_idr ?? null);
@@ -61,7 +63,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
     const updated = await db.queryFirst("SELECT * FROM product_variants WHERE sku=?", sku);
     return NextResponse.json({ ok: true, variant: updated });
-  } catch {
+  } catch (error) { if (String(error).includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
     return NextResponse.json({ error: "save_failed" }, { status: 500 });
   }
 }

@@ -1,5 +1,31 @@
 # PRD — AXVARA
 
+## Siklus Arsip Produk admin (15 November 2026, implementasi lokal)
+
+Tombol sampah berarti **Arsipkan**, dengan konfirmasi bahwa produk hilang dari
+daftar operasional dan toko, dapat dipulihkan dari tab Arsip, dan tidak akan
+muncul kembali karena sync supplier. Arsip berbeda dari saklar Nonaktif:
+`archived_at` terisi dan produk beserta seluruh variannya nonaktif. Live,
+Disembunyikan otomatis, Nonaktif manual, Semua, serta kartu statistik tidak
+menghitung Arsip. Tab **Arsip (n)** tetap menyediakan badge supplier/filter dan
+alasan larangan hapus permanen. Pulihkan mengosongkan penanda arsip dan tetap
+membiarkan produk/varian nonaktif; admin mengaktifkan kembali secara eksplisit.
+Aktivasi melalui editor produk, editor varian, atau panel supplier ditolak409
+“Pulihkan dari Arsip dulu” selama parent diarsipkan.
+
+Hapus permanen membutuhkan konfirmasi terpisah dan hanya tersedia untuk produk
+manual yang sudah diarsipkan, tanpa identitas supplier di parent/varian, tanpa
+order (termasuk ID di JSON), fulfillment, inventory, modal historis, mirror/link
+supplier, pasangan, keranjang Telegram atau sesi WhatsApp yang merujuknya.
+Pemeriksaan diulang atomik sebelum menghapus varian dan parent; relasi baru
+menolak409. JSON order rusak juga menolak untuk menjaga histori. Produk supplier
+selalu tetap di Arsip untuk mempertahankan identitas anti-duplikat. Sync boleh
+memperbarui mirror supplier, tetapi melewati penulisan katalog pada parent yang
+diarsipkan, termasuk varian baru dan proyeksi harga/stok. Katalog pembeli,
+Telegram/WhatsApp dan checkout tetap memakai guard aktif existing; tidak ada
+perubahan invoice/order historis. Migrasi0126 dan seluruh perilaku ini baru lokal,
+belum migrasi remote, publikasi CI atau deployment.
+
 ## Identitas asal produk di admin (15 November 2026, implementasi lokal)
 
 Produk bernama sama lintas WR/SK/TUNVN/AIVault/Manual tetap terpisah. Admin

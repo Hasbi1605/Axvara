@@ -348,7 +348,7 @@ function planLinkedProductWrites(wrProduct: WrProduct, linked: number, now: stri
       // Hanya `description` (milik WR). `admin_description_override` TIDAK
       // PERNAH disentuh sync — itu kolom milik admin (migrasi 0030).
       sql: `UPDATE products SET description=?, updated_at=datetime('now')
-           WHERE id=? AND description IS NOT ?`,
+           WHERE products.archived_at IS NULL AND id=? AND description IS NOT ?`,
       params: [description, linked, description],
       optional: true,
     },
@@ -513,7 +513,7 @@ async function createAxvaraCatalogForWr(
     now,
     now,
   );
-  const axvaraProductId = Number(created.lastInsertRowid ?? 0);
+  const axvaraProductId = Number(created.changes === 0 ? 0 : created.lastInsertRowid ?? 0);
   if (!axvaraProductId) throw new Error("wr_product_insert_failed");
   return axvaraProductId;
 }
@@ -625,7 +625,7 @@ function planExistingVariantWrites(
           duration_value=?, duration_unit=?, duration_label=?,
           warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
           updated_at=datetime('now')
-         WHERE id=?
+         WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?
            AND (label IS NOT ? OR price IS NOT ? OR stock IS NOT ?
                 OR (compare_price IS NOT NULL AND compare_price <= ?)
                 OR duration_value IS NOT ? OR duration_unit IS NOT ?
@@ -713,12 +713,13 @@ async function insertNewVariant(
   const uuidAlnum = String(wrVariant.id).replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "X";
   const sku = `WR-${uuidAlnum.slice(0, 24)}${uuidAlnum.slice(-6)}`;
   const created = await execRun(
-    `INSERT INTO product_variants
-      (product_id, sku, label, duration_value, duration_unit, duration_label,
+    `INSERT INTO product_variants (product_id, sku, label, duration_value, duration_unit, duration_label,
        warranty_type, warranty_value, warranty_unit, warranty_label,
        price, stock, fulfillment_mode, is_active, sort_order,
-       wr_variant_id, wr_auto_managed, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?)`,
+       wr_variant_id, wr_auto_managed, created_at, updated_at) WITH archive_candidate(product_id, sku, label, duration_value, duration_unit, duration_label,
+       warranty_type, warranty_value, warranty_unit, warranty_label,
+       price, stock, fulfillment_mode, is_active, sort_order,
+       wr_variant_id, wr_auto_managed, created_at, updated_at) AS (VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?)) SELECT * FROM archive_candidate WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=archive_candidate.product_id AND archive_parent.archived_at IS NULL)`,
     axvaraProductId,
     sku,
     wrVariant.name,
@@ -739,7 +740,7 @@ async function insertNewVariant(
     now,
     now,
   ).catch(() => ({ changes: 0 as number | undefined, lastInsertRowid: undefined as number | undefined }));
-  let axvaraVariantId = Number(created.lastInsertRowid ?? 0);
+  let axvaraVariantId = Number(created.changes === 0 ? 0 : created.lastInsertRowid ?? 0);
   if (!axvaraVariantId) {
     // SKU collision (retry sync / UUID pendek sama): pakai baris yang ada.
     const conflict = await queryFirst(
@@ -812,7 +813,7 @@ async function insertNewVariant(
   if (axvaraVariantId > 0) {
     await execRun(
       `UPDATE product_variants SET wr_variant_id=?, wr_auto_managed=1,
-        updated_at=datetime('now') WHERE id=?`,
+        updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
       wrVariant.id,
       axvaraVariantId,
     ).catch(() => ({ changes: 0 }));
@@ -843,7 +844,7 @@ function planParentAggregateWrite(axvaraProductId: number): SqlWrite {
            FROM product_variants WHERE product_id=? AND is_active=1
          ),0) END,
          updated_at=datetime('now')
-     WHERE id=?
+     WHERE products.archived_at IS NULL AND id=?
        AND (price IS NOT COALESCE((
               SELECT MIN(price) FROM product_variants
               WHERE product_id=? AND is_active=1
@@ -981,7 +982,7 @@ export async function zeroMissingVariants(
       row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
     if (axvaraVariantId > 0) {
       await execRun(
-        `UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE id=?`,
+        `UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
         axvaraVariantId,
       ).catch(() => ({ changes: 0 }));
     }
@@ -1442,7 +1443,7 @@ export async function zeroVariantsByIds(ids: string[], db: DatabaseAccess): Prom
     );
     const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
     if (vid > 0) {
-      await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE id=?`, vid)
+      await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`, vid)
         .catch(() => ({ changes: 0 }));
     }
     if (row.product_id != null) parents.add(Number(row.product_id));
@@ -1539,7 +1540,7 @@ async function upsertJaspayProduct(key: string, product: WrProduct, db: Database
   const legacyId = JASPAY_LEGACY_PRODUCTS[key];
   if (legacyId) {
     const parent = await db.queryFirst(
-      "SELECT id FROM products WHERE source='warung_rebahan' AND wr_product_id=? AND is_active=1", legacyId);
+      "SELECT id FROM products WHERE source='warung_rebahan' AND wr_product_id=? AND (is_active=1 OR archived_at IS NOT NULL)", legacyId);
     if (parent) {
       // Only a new registry is attached. Never remap existing variants/orders, or
       // overwrite the parent image, name, slug, EN copy or admin activation.
@@ -1560,7 +1561,7 @@ async function upsertJaspayProduct(key: string, product: WrProduct, db: Database
       image_url=COALESCE(NULLIF(image_url,''),(SELECT image_url FROM products WHERE source='warung_rebahan' AND wr_product_id=?)),
       images=CASE WHEN images IS NULL OR images IN ('','[]') THEN
         (SELECT images FROM products WHERE source='warung_rebahan' AND wr_product_id=?) ELSE images END
-      WHERE id=? AND (image_url IS NULL OR image_url='' OR images IS NULL OR images IN ('','[]'))`,
+      WHERE products.archived_at IS NULL AND id=? AND (image_url IS NULL OR image_url='' OR images IS NULL OR images IN ('','[]'))`,
       legacyId, legacyId, created.axvaraProductId);
   }
 }
@@ -1681,12 +1682,13 @@ export async function syncJaspayCatalog(
           }
           try {
             const created = await db.execRun(
-              `INSERT INTO product_variants
-                (product_id, sku, label, duration_value, duration_unit, duration_label,
+              `INSERT INTO product_variants (product_id, sku, label, duration_value, duration_unit, duration_label,
                  warranty_type, warranty_value, warranty_unit, warranty_label,
                  price, stock, fulfillment_mode, is_active, sort_order,
-                 wr_variant_id, wr_auto_managed, created_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?)`,
+                 wr_variant_id, wr_auto_managed, created_at, updated_at) WITH archive_candidate(product_id, sku, label, duration_value, duration_unit, duration_label,
+                 warranty_type, warranty_value, warranty_unit, warranty_label,
+                 price, stock, fulfillment_mode, is_active, sort_order,
+                 wr_variant_id, wr_auto_managed, created_at, updated_at) AS (VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?)) SELECT * FROM archive_candidate WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=archive_candidate.product_id AND archive_parent.archived_at IS NULL)`,
               axvaraProductId,
               sku,
               pkg.packageName,
@@ -1762,7 +1764,7 @@ export async function syncJaspayCatalog(
             // Bind hanya bila baris belum milik varian lain.
             await db.execRun(
               `UPDATE product_variants SET wr_variant_id=?, wr_auto_managed=1, updated_at=datetime('now')
-               WHERE id=? AND (wr_variant_id IS NULL OR wr_variant_id=?)`,
+               WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=? AND (wr_variant_id IS NULL OR wr_variant_id=?)`,
               variantId,
               newVariantId,
               variantId,
@@ -1811,7 +1813,7 @@ export async function syncJaspayCatalog(
                  compare_price=CASE WHEN compare_price <= ? THEN NULL ELSE compare_price END,
                  duration_value=?, duration_unit=?, duration_label=?,
                  updated_at=datetime('now')
-               WHERE id=?
+               WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?
                  AND (price IS NOT ? OR stock IS NOT ? OR duration_value IS NOT ?
                       OR duration_unit IS NOT ? OR duration_label IS NOT ?)`,
               sellPrice,
@@ -1872,7 +1874,7 @@ export async function syncJaspayCatalog(
       );
       const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
       if (vid > 0) {
-        await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE id=?`, vid).catch(
+        await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`, vid).catch(
           () => ({ changes: 0 }),
         );
       }

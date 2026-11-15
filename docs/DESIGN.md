@@ -1,5 +1,18 @@
 # DESIGN.md — AXVARA Design System
 
+## Tab Arsip Produk admin (15 November 2026, implementasi lokal)
+
+Arsip adalah tab kelima setelah Semua, dengan jumlah tersendiri; empat kartu
+statistik tetap mencerminkan katalog operasional. Baris Arsip memakai kartu
+responsif pada desktop/mobile: nama membungkus, badge supplier existing tetap
+terlihat, chip Arsip memakai secondary, alasan larangan permanen memakai teks
+muted. Pulihkan memakai outline; Hapus permanen memakai warna danger dan disabled
+bila API tidak mengizinkan, dengan alasan yang selalu terbaca. Baris Arsip tidak
+menawarkan saklar aktif atau reorder. Filter supplier/pencarian tetap bekerja;
+empty state menyebut Arsip. Tidak menambah token warna atau pola dialog baru.
+ConfirmDialog existing membedakan arsip yang dapat dipulihkan dari penghapusan
+permanen, fokus awal Batal dan fokus kembali ke pemicu sesudah pembatalan.
+
 ## Identitas supplier admin (15 November 2026, implementasi lokal)
 
 Aturan **status ≠ supplier** menggantikan badge asal abu-abu pada Produk.

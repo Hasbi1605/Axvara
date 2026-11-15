@@ -157,8 +157,8 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       return { sid: id, slug: plan.slug, sell: member.usable ? member.sell : previous ? Number(previous.price) : 0 };
     }))));
 
-    await db.execRun("UPDATE products SET is_active=0 WHERE slug IN ('chatgpt-business-1-bulan-tunvn','chatgpt-gpay-1-bulan-tunvn')");
-    await db.execRun(`UPDATE product_variants SET is_active=0 WHERE sku IN (${RETIRED_BUNDLE_SKUS.map(() => "?").join(",")})`, ...RETIRED_BUNDLE_SKUS);
+    await db.execRun("UPDATE products SET is_active=0 WHERE archived_at IS NULL AND slug IN ('chatgpt-business-1-bulan-tunvn','chatgpt-gpay-1-bulan-tunvn')");
+    await db.execRun(`UPDATE product_variants SET is_active=0 WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND sku IN (${RETIRED_BUNDLE_SKUS.map(() => "?").join(",")})`, ...RETIRED_BUNDLE_SKUS);
 
     // Buff Muse: perilaku lama dipertahankan (probe tanpa charge, harga manual
     // admin, saklar admin tidak diubah sync).
@@ -186,11 +186,9 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
           const costUsdt = checked.sell_price_usdt * quantityB;
           const keepActive = existing ? Number(existing.is_active ?? 0) : 0;
           await db.execRun(
-            `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty)
-             VALUES (?,?,?,?, ?, 'manual', ?, ?, ?, ?, ?, ?, 'muse_invite_code',30)
-             ON CONFLICT(sku) DO UPDATE SET price=excluded.price, stock=excluded.stock, tunvn_cost_usdt=excluded.tunvn_cost_usdt,
+            `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty) WITH archive_candidate(product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty) AS (VALUES (?,?,?,?, ?, 'manual', ?, ?, ?, ?, ?, ?, 'muse_invite_code',30)) SELECT * FROM archive_candidate WHERE EXISTS(SELECT 1 FROM products p WHERE p.id=archive_candidate.product_id AND p.archived_at IS NULL) ON CONFLICT(sku) DO UPDATE SET price=excluded.price, stock=excluded.stock, tunvn_cost_usdt=excluded.tunvn_cost_usdt,
                tunvn_markup_percent=excluded.tunvn_markup_percent, tunvn_fx_idr_per_usdt=excluded.tunvn_fx_idr_per_usdt,
-               updated_at=datetime('now') WHERE product_variants.tunvn_markup_percent IS ? AND product_variants.tunvn_admin_price_idr IS ?`,
+               updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products p WHERE p.id=product_variants.product_id AND p.archived_at IS NULL) AND product_variants.tunvn_markup_percent IS ? AND product_variants.tunvn_admin_price_idr IS ?`,
             museId, sku, `Buff Token Muse AI per ${quantityB}B`, sell, checked.fundable ? -1 : 0, keepActive,
             9 + TUNVN_BUFF_VARIANT_B.indexOf(quantityB) + 1, quantityB, costUsdt, markup, idrPerUsdt,
             existing?.tunvn_markup_percent ?? null, existing?.tunvn_admin_price_idr ?? null,
@@ -260,7 +258,7 @@ SELECT json_extract(j.value,'$.category'),json_extract(j.value,'$.name'),json_ex
   COALESCE((SELECT MIN(999989, MAX(sort_order)) + 10 FROM products),10),
   'manual','manual',1,json_extract(j.value,'$.family'),datetime('now'),datetime('now')
 FROM json_each(?) AS j
-WHERE NOT EXISTS(SELECT 1 FROM products p WHERE p.slug=json_extract(j.value,'$.slug'))`;
+WHERE NOT EXISTS(SELECT 1 FROM products p WHERE p.slug=json_extract(j.value,'$.slug') OR p.tunvn_family=json_extract(j.value,'$.family'))`;
 
 const INSERT_VARIANTS_SQL = `INSERT INTO product_variants
   (product_id,sku,label,price,stock,fulfillment_mode,is_active,sort_order,tunvn_source_product_id,created_at,updated_at)
@@ -268,14 +266,14 @@ SELECT p.id,json_extract(j.value,'$.sku'),json_extract(j.value,'$.label'),json_e
   json_extract(j.value,'$.stock'),'manual',0,json_extract(j.value,'$.sort'),json_extract(j.value,'$.sid'),
   datetime('now'),datetime('now')
 FROM json_each(?) AS j JOIN products p ON p.slug=json_extract(j.value,'$.slug')
-WHERE NOT EXISTS(SELECT 1 FROM product_variants v WHERE v.tunvn_source_product_id=json_extract(j.value,'$.sid'))
+WHERE p.archived_at IS NULL AND NOT EXISTS(SELECT 1 FROM product_variants v WHERE v.tunvn_source_product_id=json_extract(j.value,'$.sid'))
 ON CONFLICT(sku) DO UPDATE SET tunvn_source_product_id=excluded.tunvn_source_product_id
   WHERE product_variants.tunvn_source_product_id IS NULL`;
 
 const UPDATE_VARIANTS_SQL = `UPDATE product_variants AS pv
 SET price=json_extract(j.value,'$.price'), stock=json_extract(j.value,'$.stock'), updated_at=datetime('now')
 FROM json_each(?) AS j
-WHERE pv.id=json_extract(j.value,'$.vid') AND pv.tunvn_source_product_id IS NOT NULL
+WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=pv.product_id AND archive_parent.archived_at IS NULL) AND pv.id=json_extract(j.value,'$.vid') AND pv.tunvn_source_product_id IS NOT NULL
   AND pv.tunvn_admin_price_idr IS json_extract(j.value,'$.admin_price')
   AND (json_extract(j.value,'$.cas')=0 OR EXISTS(SELECT 1 FROM tunvn_products t
         WHERE t.supplier_product_id=pv.tunvn_source_product_id AND t.markup_percent=json_extract(j.value,'$.markup')))
@@ -297,5 +295,5 @@ const RECOMPUTE_PRODUCTS_SQL = `UPDATE products SET
   stock=CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=products.id AND is_active=1 AND stock=-1) THEN -1
     ELSE COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=products.id AND is_active=1),0) END,
   updated_at=datetime('now')
-WHERE EXISTS(SELECT 1 FROM product_variants pv WHERE pv.product_id=products.id
+WHERE products.archived_at IS NULL AND EXISTS(SELECT 1 FROM product_variants pv WHERE pv.product_id=products.id
   AND (pv.tunvn_source_product_id IS NOT NULL OR pv.tunvn_buff_quantity_b IS NOT NULL))`;

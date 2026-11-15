@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Permintaan reorder tidak valid." }, { status: 400 });
 
   const rows = await queryAll(
-    "SELECT id, is_active, stock, sort_order FROM products",
+    "SELECT id, is_active, stock, sort_order FROM products WHERE archived_at IS NULL",
   ) as ProductOrderRow[];
   const ordered = sortProductsForDisplay(rows);
   const targetIndex = ordered.findIndex((row) => Number(row.id) === parsed.data.productId);
@@ -98,13 +98,13 @@ export async function POST(request: NextRequest) {
       if (d1) {
         // D1 batch = transaksi: pembaca tidak pernah melihat setengah urutan.
         await d1.batch(changed.map((row) =>
-          d1.prepare("UPDATE products SET sort_order=?, updated_at=datetime('now') WHERE id=?")
+          d1.prepare("UPDATE products SET sort_order=?, updated_at=datetime('now') WHERE id=? AND archived_at IS NULL")
             .bind(row.sortOrder, row.id),
         ));
       } else {
         // Dev tanpa D1: fallback berurutan. Produksi selalu memakai batch D1.
         for (const row of changed) {
-          await execRun("UPDATE products SET sort_order=?, updated_at=datetime('now') WHERE id=?", row.sortOrder, row.id);
+          await execRun("UPDATE products SET sort_order=?, updated_at=datetime('now') WHERE id=? AND archived_at IS NULL", row.sortOrder, row.id);
         }
       }
     }

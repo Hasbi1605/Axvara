@@ -1,3 +1,4 @@
+import { ARCHIVED_MESSAGE } from "@/lib/product-archive";
 // POST /api/admin/variants — Create variant or batch save
 // PUT /api/admin/variants?id= — Update variant
 // DELETE /api/admin/variants?id= — Deactivate/delete variant
@@ -151,7 +152,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ variants: withBulk, aliases });
 }
 
-export async function POST(request: NextRequest) {
+async function POSTImpl(request: NextRequest) {
   const authed = await requireAdmin(request);
   if (!authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -172,11 +173,13 @@ export async function POST(request: NextRequest) {
 
     // Check product exists (sekaligus identitas supplier untuk guard grosir)
     const product = await queryFirst(
-      `SELECT id, is_active, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
+      `SELECT id, archived_at, is_active, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
          FROM products WHERE id=?`,
       product_id,
     );
     if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
+
+    if (product.archived_at && variants.some(v => v.is_active === 1)) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
 
     // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
     // Menonaktifkan (enabled=false) tetap boleh agar data lama bisa dibersihkan.
@@ -439,11 +442,12 @@ export async function POST(request: NextRequest) {
   if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
 
   const product = await queryFirst(
-    `SELECT id, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
+    `SELECT id, archived_at, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
        FROM products WHERE id=?`,
     v.product_id,
   );
   if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
+  if (product.archived_at && v.is_active === 1) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
 
   // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
   // Varían baru pada produk supplier tidak boleh langsung aktif.
@@ -493,7 +497,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true, id: result.lastInsertRowid }, { status: 201 });
 }
 
-export async function PUT(request: NextRequest) {
+async function PUTImpl(request: NextRequest) {
   const authed = await requireAdmin(request);
   if (!authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -519,6 +523,8 @@ export async function PUT(request: NextRequest) {
   const existing = await queryFirst(`SELECT * FROM product_variants WHERE id=?`, Number(id));
   if (!existing) return NextResponse.json({ error: "variant_not_found" }, { status: 404 });
   if (String(existing.sku).startsWith("TUNVN-") && v.sku !== undefined && v.sku !== existing.sku) return NextResponse.json({ error:"Identitas varian tidak boleh diubah." },{ status:409 });
+
+  if (v.is_active === 1 && await queryFirst("SELECT id FROM products WHERE id=? AND archived_at IS NOT NULL", existing.product_id)) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
 
   // Merge with existing for cross field validation
   const merged = { ...existing, ...v } as z.infer<typeof SingleVariantSchema>;
@@ -706,4 +712,20 @@ export async function DELETE(request: NextRequest) {
   // the stable SKU/ID for auditability and always archive instead of deleting.
   await execRun(`UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE id=?`, Number(id));
   return NextResponse.json({ ok: true, action: "deactivated" });
+}
+
+export async function POST(request: NextRequest) {
+  try { return await POSTImpl(request); }
+  catch (error) {
+    if (String(error).includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
+    throw error;
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try { return await PUTImpl(request); }
+  catch (error) {
+    if (String(error).includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
+    throw error;
+  }
 }

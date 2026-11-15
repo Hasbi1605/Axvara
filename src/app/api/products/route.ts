@@ -1,3 +1,5 @@
+import { productTabCounts } from "@/lib/product-lifecycle";
+import { hardDeleteReasonSql } from "@/lib/product-archive";
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -90,9 +92,10 @@ async function readProducts(req: NextRequest) {
        INNER JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
        WHERE 1=1`
     : `SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE 1=1`;
+  if (isAdminRequest && isD1Mode()) sql = sql.replace("SELECT p.*", `SELECT CASE WHEN p.archived_at IS NOT NULL THEN (${hardDeleteReasonSql}) ELSE 'Arsipkan produk dulu.' END AS hard_delete_reason, p.*`);
   const params: unknown[] = [];
   // F08: public always is_active=1, admin can see all
-  if (!isAdminRequest || active === "1") sql += ` AND p.is_active=1`;
+  if (!isAdminRequest || active === "1") sql += ` AND p.is_active=1 AND p.archived_at IS NULL`;
   else if (active === "0") sql += ` AND p.is_active=0`;
   // Pemenang pasangan WR vs SK (migrasi 0053, keputusan owner 2026-09-30):
   // katalog PUBLIK menyembunyikan pecundang. BUKAN is_active (itu milik
@@ -272,6 +275,7 @@ async function readProducts(req: NextRequest) {
       ? (r.variant_compare_price == null ? undefined : Number(r.variant_compare_price))
       : (r.compare_price as number | null | undefined) ?? undefined;
     return {
+      ...(isAdminRequest ? { archivedAt: r.archived_at == null ? null : String(r.archived_at), canHardDelete: !!r.archived_at && r.hard_delete_reason === null, hardDeleteReason: r.hard_delete_reason == null ? null : String(r.hard_delete_reason) } : {}),
       id: String(r.id),
       slug: r.slug,
       name: r.name,
@@ -324,7 +328,7 @@ async function readProducts(req: NextRequest) {
       ? "public, max-age=10, s-maxage=10, stale-while-revalidate=30"
       : "public, max-age=30, s-maxage=30, stale-while-revalidate=60";
   return NextResponse.json(
-    { products: data },
+    { products: data, ...(isAdminRequest ? { counts: productTabCounts(data) } : {}) },
     {
       headers: {
         "Cache-Control": cacheControl,

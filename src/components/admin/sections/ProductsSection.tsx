@@ -75,6 +75,7 @@ export function ProductsSection({
   onNew,
   onEdit,
   onDelete,
+  onRestore,
   onToggleActive,
   reordering,
   onMove,
@@ -98,8 +99,8 @@ export function ProductsSection({
   liveProducts: number;
   hiddenProducts: number;
   offProducts: number;
-  liveTab: "live" | "hidden" | "off" | "all";
-  onLiveTabChange: (value: "live" | "hidden" | "off" | "all") => void;
+  liveTab: "live" | "hidden" | "off" | "all" | "archive";
+  onLiveTabChange: (value: "live" | "hidden" | "off" | "all" | "archive") => void;
   perPageAdmin: 20 | 50 | 100;
   onPerPageChange: (value: 20 | 50 | 100) => void;
   supplierFilter: "all" | "WR" | "SK" | "TUNVN" | "AIVault" | "Manual";
@@ -111,6 +112,7 @@ export function ProductsSection({
   onNew: () => void;
   onEdit: (p: Prod) => void;
   onDelete: (p: Prod) => void;
+  onRestore?: (p: Prod) => void;
   onToggleActive: (p: Prod) => void;
   reordering: string | null;
   onMove: (p: Prod, direction: -1 | 1) => void;
@@ -171,7 +173,7 @@ export function ProductsSection({
       <PageHeader title="Produk" description="Katalog, harga, stok varian, dan status tampil di toko." actions={<Button type="button" onClick={onNew}><Plus aria-hidden="true" /> Produk baru</Button>} />
       {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-admin-danger/20 bg-admin-danger/10 px-4 py-3 text-sm text-admin-danger"><span>{error}</span><Button variant="outline" size="sm" type="button" onClick={onRetry} className="shrink-0">Coba lagi</Button></div>}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <StatCard label="Total produk" value={loadingList ? <Skeleton className="h-8 w-16" /> : prods.length} />
+          <StatCard label="Total produk" value={loadingList ? <Skeleton className="h-8 w-16" /> : prods.filter(p => !p.archivedAt).length} />
           <StatCard label="Live di toko" value={loadingList ? <Skeleton className="h-8 w-16" /> : liveProducts} />
           <StatCard label="Disembunyikan otomatis" value={loadingList ? <Skeleton className="h-8 w-16" /> : hiddenProducts} />
           <StatCard label="Nonaktif" value={loadingList ? <Skeleton className="h-8 w-16" /> : offProducts} />
@@ -208,7 +210,7 @@ export function ProductsSection({
               (urutan antar yang tampil); di tab Hidden tombol dimatikan agar
               jelas urutan di sana tidak berpengaruh ke storefront. */}
           <div className="mt-3 max-w-full overflow-x-auto"><TabsList aria-label="Status tampil produk" className="justify-start">
-            {([["live", `Live (${liveProducts})`], ["hidden", `Disembunyikan otomatis (${hiddenProducts})`], ["off", `Nonaktif manual (${offProducts})`], ["all", `Semua (${prods.length})`]] as const).map(([value, label]) => (
+            {([["live", `Live (${liveProducts})`], ["hidden", `Disembunyikan otomatis (${hiddenProducts})`], ["off", `Nonaktif manual (${offProducts})`], ["all", `Semua (${prods.filter(p => !p.archivedAt).length})`], ["archive", `Arsip (${prods.filter(p => p.archivedAt).length})`]] as const).map(([value, label]) => (
               <TabsTrigger value={value}
                 key={value}
                 title={value === "live" ? "Yang tampil di storefront — atur urutan di sini" : value === "hidden" ? "Kalah pasangan / stok habis — urutan di sini tidak berpengaruh" : value === "off" ? "Yang kamu matikan sendiri" : "Semua produk untuk audit"}
@@ -231,7 +233,18 @@ export function ProductsSection({
           <Card className="mt-4 admin-surface rounded-xl overflow-hidden">
             {loadingList ? (
               <div className="p-10 flex flex-col items-center gap-3 text-admin-muted"><Skeleton className="h-6 w-48" /><span className="text-sm">Memuat produk…</span></div>
-            ) : (<>
+            ) : liveTab === "archive" ? <div className="divide-y divide-admin-border">
+              {paged.map(p => <div key={p.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0"><p className="break-words font-semibold text-admin-fg">{p.name}</p><div className="mt-1 flex flex-wrap gap-2"><SupplierBadge supplier={p.supplier} slug={p.slug} /><Badge variant="secondary">Arsip</Badge></div>
+                  {p.hardDeleteReason && <p className="mt-2 text-xs text-admin-muted">{p.hardDeleteReason}</p>}</div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button variant="outline" size="sm" disabled={toggling === p.id} onClick={() => onRestore?.(p)} aria-label={`Pulihkan ${p.name}`}>Pulihkan</Button>
+                  <Button variant="outline" size="sm" className="text-admin-danger" disabled={!p.canHardDelete || toggling === p.id} title={p.hardDeleteReason || "Hapus permanen"} onClick={() => onDelete(p)} aria-label={`Hapus permanen ${p.name}`}>Hapus permanen</Button>
+                </div>
+              </div>)}
+              {filtered.length === 0 && <p className="p-8 text-center text-sm text-admin-muted">Tidak ada produk di Arsip.</p>}
+            </div> : (<>
+
             <div className="divide-y divide-admin-border md:hidden">
               {paged.map(p=>{ const inHiddenTab = liveTab === "hidden"; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (<Card key={p.id} className="border-0 p-4 shadow-none">
                 <div className="flex items-start gap-3">

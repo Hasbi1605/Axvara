@@ -1,4 +1,5 @@
 "use client";
+import { productStatus, productTabCounts } from "@/lib/product-lifecycle";
 import { useAdminDraft } from "./AdminWorkspace";
 import { useCallback, useMemo, useState } from "react";
 import { toWebp16x9, toWebpOriginalRatio } from "@/components/admin/ImageDropzone";
@@ -29,7 +30,7 @@ export type PerPageAdmin = 20 | 50 | 100;
 /** Tab status toko (keputusan owner 2026-10-01): Live = tampil di
  *  storefront; Hidden = disembunyikan otomatis (kalah/restok-otomatis);
  *  Off = nonaktif manual; Semua = audit. */
-export type LiveTab = "live" | "hidden" | "off" | "all";
+export type LiveTab = "live" | "hidden" | "off" | "all" | "archive";
 
 /** Nama field WR-owned dalam bahasa yang dikenali admin di form. */
 const WR_FIELD_LABEL: Record<string, string> = {
@@ -102,7 +103,7 @@ export function normalizeSortOrder(value: unknown): number | null {
  * sebenarnya di seluruh katalog, bukan tetangga satu halaman.
  */
 export function globalProductOrder(list: Prod[]): Prod[] {
-  return sortProductsForDisplay(list);
+  return sortProductsForDisplay(list.filter(p => !p.archivedAt));
 }
 
 export function useProductManager(toast: AdminToast, onUnauthorized: () => void) {
@@ -633,15 +634,28 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const r = await fetch(`/api/products/${deleteTarget.id}`,{method:"DELETE"});
+      const r = await fetch(`/api/products/${deleteTarget.id}${deleteTarget.archivedAt ? "?permanent=1" : ""}`,{method:"DELETE"});
       const j = await r.json().catch(()=>({}));
       if (!r.ok) throw new Error(j.error || `Gagal hapus (${r.status})`);
-      toast.success(`“${deleteTarget.name}” dinonaktifkan dan diarsipkan.`);
+      toast.success(deleteTarget.archivedAt ? `“${deleteTarget.name}” dihapus permanen.` : `“${deleteTarget.name}” dipindahkan ke Arsip.`);
       setDeleteTarget(null);
       await load();
     } catch(e){
       toast.error(e instanceof Error ? e.message : "Gagal hapus");
     } finally { setDeleting(false); }
+  };
+
+  const restoreProduct = async (p: Prod) => {
+    if (toggling) return;
+    setToggling(p.id);
+    try {
+      const response = await fetch(`/api/products/${p.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ archived: false }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Gagal memulihkan produk");
+      toast.success(`“${p.name}” dipulihkan dalam keadaan nonaktif.`);
+      await load();
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal memulihkan produk"); }
+    finally { setToggling(null); }
   };
 
   // Exact-one-step reorder + jump-to-position. Request DIANTREKAN berurutan
@@ -721,45 +735,32 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     }
   };
 
-  const activeProducts=prods.filter(p=>p.isActive).length;
+  const currentProducts = prods.filter(p => !p.archivedAt);
+  const activeProducts=currentProducts.filter(p=>p.isActive).length;
   // Satuan "stok menipis" = VARIAN aktif berstok 0..5, sama persis dengan
   // kartu Ringkasan. Sebelumnya layar ini menghitung produk, sehingga satu
   // label menampilkan dua angka berbeda (66 di Ringkasan vs 33 di sini).
-  const lowStock = prods.reduce((total, p) => total + (p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)), 0);
-  const soldProducts=prods.reduce((total,product)=>total+product.soldCount,0);
+  const lowStock = currentProducts.reduce((total, p) => total + (p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)), 0);
+  const soldProducts=currentProducts.reduce((total,product)=>total+product.soldCount,0);
   // Urutan daftar admin meniru storefront (page.tsx): ready dulu, habis
   // belakangan — plus nonaktif PALING belakang (storefront tak menampilkan
   // nonaktif sama sekali karena ?active=1, tapi admin perlu melihatnya).
   // Tanpa ini produk habis/nonaktif (Netflix, Capcut, Claude di screenshot
   // owner 2026-09-19) nangkring di atas dan produk ready tenggelam.
-  const isOut = (p: Prod): boolean => p.stock != null && p.stock !== -1 && p.stock <= 0;
-  // Filter "hanya stok menipis" dipicu dari kartu Ringkasan (?low_stock=1).
-  // Tanpa ini kartu itu cuma memindah tab: daftar tetap menampilkan semua
-  // produk dan admin harus mencari sendiri varian mana yang tipis.
-  /** Status toko kanonis: server (live_status) bila ada, fallback lokal
-   *  (is_active + stok) bila API lama. Pecundang tak bisa dihitung lokal —
-   *  fallback menganggapnya live agar tidak hilang dari tab Live. */
-  const liveOf = (p: Prod): "live" | "hidden_loser" | "hidden_soldout" | "off" => {
-    if (p.liveStatus) return p.liveStatus;
-    if (!p.isActive) return "off";
-    if (isOut(p)) return "hidden_soldout";
-    return "live";
-  };
-  // Hitungan kartu atas: Total + Live + Hidden otomatis + Nonaktif manual.
-  // "Produk aktif" lama menipu karena termasuk yang hidden (pecundang/habis).
-  const liveProducts = prods.filter((p) => liveOf(p) === "live").length;
-  const hiddenProducts = prods.filter((p) => liveOf(p) === "hidden_loser" || liveOf(p) === "hidden_soldout").length;
-  const offProducts = prods.filter((p) => liveOf(p) === "off").length;
+  const isOut = (p: Prod) => p.stock !== -1 && p.stock <= 0;
+  const counts = productTabCounts(prods);
+  const liveProducts = counts.live, hiddenProducts = counts.hidden, offProducts = counts.off;
   const filtered = useMemo(
     () => prods
       .filter(p=> {
+        if (liveTab === "archive" ? !p.archivedAt : !!p.archivedAt) return false;
         if (q && !`${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())) return false;
         if (onlyLowStock && !((p.lowStockVariants ?? (p.stock >= 0 && p.stock <= 5 ? 1 : 0)) > 0)) return false;
         if (supplierFilter !== "all" && (p.supplier ?? "Manual") !== supplierFilter) return false;
         // Tab status toko: hidden = kalah + habis; off = nonaktif manual.
-        if (liveTab === "live" && liveOf(p) !== "live") return false;
-        if (liveTab === "hidden" && !(liveOf(p) === "hidden_loser" || liveOf(p) === "hidden_soldout")) return false;
-        if (liveTab === "off" && liveOf(p) !== "off") return false;
+        if (liveTab === "live" && productStatus(p) !== "live") return false;
+        if (liveTab === "hidden" && !(productStatus(p) === "hidden_loser" || productStatus(p) === "hidden_soldout")) return false;
+        if (liveTab === "off" && productStatus(p) !== "off") return false;
         return true;
       })
       .map(p => ({ ...p, categoryName: cats.find(cat => cat.slug === p.categorySlug)?.name }))
@@ -803,6 +804,6 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     setForm, setFormImages, setHasMultiVariants, setFormVariants, setConfirmProductClose,
     openEdit, openNew, closeModal, handleUpload, save, requestCloseProductModal,
     // hapus & toggle & urutan & terjual
-    deleteTarget, deleting, toggling, reordering, savingSold, setDeleteTarget, confirmDelete, toggleActive, moveProduct, jumpProduct, saveSoldCount,
+    deleteTarget, deleting, toggling, reordering, savingSold, setDeleteTarget, confirmDelete, restoreProduct, toggleActive, moveProduct, jumpProduct, saveSoldCount,
   };
 }

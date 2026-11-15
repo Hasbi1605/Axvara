@@ -1,3 +1,4 @@
+import { ARCHIVED_MESSAGE } from "@/lib/product-archive";
 // PATCH /api/admin/tunvn/products/[id] — kontrol per produk mirror TUNVN.
 // id = supplier_product_id. Revisi owner 15 Nov 2026: berlaku untuk SEMUA
 // supplier id yang sudah dipetakan ke varian (bukan hanya 86/83). Varian
@@ -51,10 +52,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: "variant_missing", message: "Jalankan Sinkron dulu agar varian TUNVN ini dibuat." }, { status: 409 });
     }
     const product = variant
-      ? await db.queryFirst("SELECT id, name, is_active FROM products WHERE id=?", variant.product_id)
+      ? await db.queryFirst("SELECT id, name, is_active, archived_at FROM products WHERE id=?", variant.product_id)
       : mirror.axvara_product_id
-        ? await db.queryFirst("SELECT id, name, is_active FROM products WHERE id=?", mirror.axvara_product_id)
+        ? await db.queryFirst("SELECT id, name, is_active, archived_at FROM products WHERE id=?", mirror.axvara_product_id)
         : null;
+
+    if (product?.archived_at && (body.is_active === true || body.publish_requested === true || body.axvara_is_active === true)) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
 
     const isActive = body.is_active === undefined
       ? (body.publish_requested === undefined ? null : Number(body.publish_requested))
@@ -118,5 +121,5 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!db.d1) return NextResponse.json({ error: "database_unavailable" }, { status: 503 });
     await db.d1.batch(writes.map(([sql, values]) => db.d1!.prepare(sql).bind(...values)));
     return NextResponse.json({ ok: true, item: await db.queryFirst("SELECT * FROM tunvn_products WHERE supplier_product_id=?", supplierId), fx_missing: !(fx > 0) });
-  } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
+  } catch (error) { if (String(error).includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 }); return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 }

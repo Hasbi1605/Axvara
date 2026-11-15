@@ -1,3 +1,4 @@
+import { ARCHIVED_MESSAGE } from "@/lib/product-archive";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
@@ -21,6 +22,7 @@ export async function PATCH(request: NextRequest,{params}:{params:Promise<{id:st
   try {
     const row=await db.queryFirst(`SELECT m.*,v.id AS vid,v.aivault_admin_price_idr,v.is_active FROM aivault_products m JOIN product_variants v ON v.aivault_service_id=m.service_id AND v.sku='AV-'||m.service_id AND v.product_id=m.axvara_product_id WHERE m.service_id=?`,id);
     if (!row) return NextResponse.json({error:"not_mapped"},{status:404});
+    if (parsed.data.is_active === true && await db.queryFirst("SELECT id FROM products WHERE id=? AND archived_at IS NOT NULL", row.axvara_product_id)) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
     const body=parsed.data,markup=body.markup_percent ?? Number(row.markup_percent), manual=body.admin_price_idr===undefined ? row.aivault_admin_price_idr : body.admin_price_idr;
     const fx=Number(row.fx_idr_per_usd);
     if (!(fx>0)) return NextResponse.json({error:"fx_unavailable"},{status:409});
@@ -34,5 +36,5 @@ export async function PATCH(request: NextRequest,{params}:{params:Promise<{id:st
       db.d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guard),
     ]);
     return NextResponse.json({ok:true});
-  } catch { return NextResponse.json({error:"save_failed_or_stale"},{status:409}); }
+  } catch (error) { if (String(error).includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 }); return NextResponse.json({error:"save_failed_or_stale"},{status:409}); }
 }

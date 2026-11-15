@@ -1,5 +1,17 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+
+## Arsip Produk — keputusan owner 15 November 2026 (lokal)
+
+`products.archived_at` (migrasi0126) memisahkan Arsip dari Nonaktif. Identitas
+supplier parent/varian dan relasi histori tetap disimpan: lookup sync tidak
+boleh mengecualikan Arsip lalu membuat pengganti. Penulisan katalog, varian
+baru, proyeksi harga/stok, aktivasi dan restock melewati parent Arsip; mirror
+supplier boleh terus sinkron. Panel/editor mengembalikan409 “Pulihkan dari
+Arsip dulu” saat aktivasi. Pulihkan tetap nonaktif; produk supplier tidak pernah
+eligible hapus permanen. Lihat PRD “Siklus Arsip Produk” dan ARCHITECTURE “Arsip
+Produk admin”. Implementasi/migrasi baru lokal; tanpa perubahan produksi.
+
 ## Revisi owner 15 November 2026: semua produk TUNVN masuk katalog (lokal)
 
 - Owner memutuskan SELURUH produk mirror `tunvn_products` (kecuali #60 API TEST,

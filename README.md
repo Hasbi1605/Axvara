@@ -1,5 +1,23 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Arsip Produk admin (15 November 2026, lokal saja)
+
+Sampah pada Produk memindahkan parent dan variannya ke **Arsip**, terpisah dari
+Nonaktif manual. Tab/kartu operasional mengecualikan Arsip; tab Arsip menjaga
+badge supplier dan menyediakan Pulihkan (tetap nonaktif) serta Hapus permanen
+bersyarat dengan alasan. Produk supplier atau yang memiliki riwayat/relasi tidak
+boleh dihapus permanen. Sinkron WR/SK/Jaspay/TUNVN/AIVault tetap menemukan identitas
+Arsip agar tidak membuat ulang, dan melewati penulisan katalog yang diarsipkan.
+
+Migrasi `0126_product_archive.sql`: timestamp + indeks parsial + trigger pagar
+aktivasi bersamaan. API admin memakai DELETE untuk arsip, PATCH
+`{archived:false}` untuk pulihkan dan DELETE `?permanent=1` untuk hapus manual
+eligible; batch mengulang pemeriksaan relasi. Aktivasi Arsip409 “Pulihkan dari
+Arsip dulu”. Daftar admin menambah `archivedAt`, `canHardDelete`,
+`hardDeleteReason` dan hitungan tab; katalog publik tetap tanpa field admin.
+Tanpa env/secret baru. Implementasi dan verifikasi fixture lokal, belum migrasi
+remote, publikasi atau deployment; tugas ini tidak commit/push.
+
 Admin Produk15November2026 (lokal): asal WR cyan, SK ungu, TUNVN pink,
 AIVault indigo, Manual slate/outline putus-putus. Badge pill bertitik dan nama
 lengkap aksesibel membedakan supplier dari status Live/Stok habis/Nonaktif;

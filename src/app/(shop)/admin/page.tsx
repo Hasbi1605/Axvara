@@ -208,6 +208,7 @@ export default function AdminPage() {
           onNew={pm.openNew}
           onEdit={pm.openEdit}
           onDelete={pm.setDeleteTarget}
+          onRestore={pm.restoreProduct}
           onToggleActive={pm.toggleActive}
           reordering={pm.reordering}
           onMove={pm.moveProduct}
@@ -250,9 +251,9 @@ export default function AdminPage() {
 
       <ConfirmDialog
         open={!!pm.deleteTarget}
-        title="Arsipkan produk?"
-        description={pm.deleteTarget ? `"${pm.deleteTarget.name}" akan dinonaktifkan dan disimpan sebagai arsip agar riwayat pesanan tetap aman.` : ""}
-        confirmLabel="Arsipkan produk"
+        title={pm.deleteTarget?.archivedAt ? "Hapus permanen produk?" : "Arsipkan produk?"}
+        description={pm.deleteTarget?.archivedAt ? `“${pm.deleteTarget.name}” akan dihapus permanen beserta variannya. Tindakan ini tidak bisa dibatalkan.` : "Produk disembunyikan dari daftar & toko, bisa dipulihkan dari tab Arsip; sync supplier tidak akan memunculkannya lagi."}
+        confirmLabel={pm.deleteTarget?.archivedAt ? "Hapus permanen" : "Arsipkan produk"}
         cancelLabel="Batal"
         variant="danger"
         loading={pm.deleting}

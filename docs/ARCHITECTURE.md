@@ -1,5 +1,50 @@
 # ARCHITECTURE.md — AXVARA
 
+## Arsip Produk admin — migrasi0126 (15 November 2026, lokal)
+
+`drizzle/migrations/0126_product_archive.sql` menambah `products.archived_at TEXT`
+dan indeks parsial `idx_products_archived`. Bootstrap `drizzle/schema.sql` setara.
+Tiga trigger `archived_product_activation`, `archived_variant_activation` dan
+`archived_variant_insert` menolak `product_archived` jika write bersamaan mencoba
+mengaktifkan parent/varian arsip; error ini diterjemahkan409 pada endpoint admin.
+Tidak ada env, secret, cron atau kontrak proxy baru.
+
+- `DELETE /api/products/:id`: batch mengisi timestamp sekali, mematikan parent
+  dan seluruh varian, menyembunyikan mirror TUNVN, respons `action:"archived"`.
+- `PATCH /api/products/:id` body strict `{archived:false}`: guard transaksi bahwa
+  parent masih Arsip; varian dan parent tetap nonaktif, `action:"restored"`.
+- `DELETE /api/products/:id?permanent=1`: eligibility bersama di
+  `src/lib/product-archive.ts`, pemeriksaan awal + `operation_guards` di dalam
+  `d1.batch` sebelum menghapus varian/parent. Hanya Arsip manual tanpa identitas
+  WR/SK/TUNVN/AIVault dan tanpa relasi/histori (FK maupun non-FK) boleh dihapus.
+  Selain orders.items JSON + orders.variant_id, guard mencakup fulfillment_items,
+  fulfillment_inventory/jobs, order_item_costs, supplier mirror/variant links,
+  tunvn/aivault_order_links, supplier_pairs, telegram_carts dan whatsapp_sessions.
+  JSON order tidak valid gagal tertutup. Penolakan409 membawa alasan aman.
+- Ketiga mutasi tetap `requireAdmin` (audit otorisasi fixed-route existing), rate
+  limit `products:write`; restore body maksimum2048byte. Tanpa D1 mutasi503.
+- Daftar `/api/products` admin mengirim `archivedAt`, `canHardDelete`,
+  `hardDeleteReason` serta `counts:{live,hidden,off,all,archive}`. `products` tetap
+  mencakup Arsip untuk tab khusus; empat hitungan operasional mengecualikannya.
+  Field/angka ini tidak dikirim di katalog publik. `product-lifecycle.ts`
+  menyamakan hitungan API/hook. Reorder hanya membaca/menulis non-Arsip.
+
+WR/SK: lookup supplier identity tetap tanpa filter Arsip (termasuk registry
+kosong), UPDATE katalog dan INSERT varian memakai guard parent `archived_at IS
+NULL`. INSERT bersyarat yang changes0 tidak memakai last_insert_rowid lama.
+Jaspay juga menautkan legacy yang diarsipkan agar tidak membuat pengganti.
+TUNVN: family/slug yang tersimpan memblokir parent baru; INSERT/UPDATE varian
+akun, upsert Buff, cleanup retired dan agregat melewati Arsip. AIVault: family
+tersimpan memblokir parent baru meskipun slug diedit; varian/agregat melewati
+Arsip. Statistik pasangan menganggap Arsip tidak aktif, tanpa menghapus pair;
+restock-reinsert melewati Arsip. Panel supplier dan editor menolak aktivasi
+Arsip sebelum write; trigger melindungi race setelah pembacaan.
+
+Tab Arsip memakai kartu responsif dengan supplier badge, tombol Pulihkan,
+tombol Hapus permanen nonaktif beserta alasan jika tidak eligible. ConfirmDialog
+existing menangani arsip/hapus permanen; dialog memfokuskan Batal dan mengembalikan
+fokus saat ditutup. Kode/migrasi hanya lokal; belum diterapkan remote/deploy.
+
 ## Identitas supplier admin bersama (15 November 2026, lokal)
 
 `src/components/admin/supplier-style.tsx` mengekspor `SUPPLIER_STYLES` (label,

@@ -29,7 +29,7 @@ export async function maybeReinsertRestockedProduct(
   const after = await db
     .queryFirst(
       `SELECT p.stock AS parent_stock, p.sort_order AS parent_order, p.is_active AS parent_active
-       FROM products p WHERE p.id=?`,
+       FROM products p WHERE p.id=? AND p.archived_at IS NULL`,
       productId,
     )
     .catch(() => null);
@@ -45,7 +45,7 @@ export async function maybeReinsertRestockedProduct(
   // dikecualikan: mereka di bucket paling belakang dan tidak tampil.
   const rows = await db
     .queryAll(
-      `SELECT sort_order FROM products WHERE id != ? AND is_active=1`,
+      `SELECT sort_order FROM products WHERE id != ? AND is_active=1 AND archived_at IS NULL`,
       productId,
     )
     .catch(() => [] as { sort_order?: unknown }[]);
@@ -53,7 +53,7 @@ export async function maybeReinsertRestockedProduct(
   const newKey = reinsertionKey(oldKey, takenKeys);
   if (newKey === oldKey) return { reinserted: false, oldKey, newKey };
   await db
-    .execRun(`UPDATE products SET sort_order=?, updated_at=datetime('now') WHERE id=?`, newKey, productId)
+    .execRun(`UPDATE products SET sort_order=?, updated_at=datetime('now') WHERE id=? AND archived_at IS NULL`, newKey, productId)
     .catch(() => ({ changes: 0 }));
   return { reinserted: true, oldKey, newKey };
 }

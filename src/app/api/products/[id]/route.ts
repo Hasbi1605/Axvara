@@ -1,3 +1,5 @@
+import { ARCHIVED_MESSAGE, hardDeleteReasonSql, hardDeleteEligibleSql } from "@/lib/product-archive";
+import { readJsonBody } from "@/lib/http-body";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { manualCopyUpdate } from "@/lib/product-copy/manual-write";
@@ -182,11 +184,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const data = parsed.data;
   const existing = await queryFirst(
     `SELECT id, name, slug, description, price, compare_price, stock, source, wr_product_id, wr_auto_managed,
-            sk_product_id, sk_auto_managed, aivault_family
+            sk_product_id, sk_auto_managed, aivault_family, archived_at
        FROM products WHERE id=?`,
     id,
-  ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number; aivault_family?: string | null } | undefined;
+  ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number; aivault_family?: string | null; archived_at?: string | null } | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (existing.archived_at && (data.isActive === true || data.variants?.some(v => v.is_active === 1))) {
+    return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
+  }
   const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id FROM product_variants WHERE product_id=?", id);
   // Identitas TUNVN = kolom durable, bukan slug: semua family TUNVN memakai
   // jalur aktivasi/publikasi yang sama.
@@ -239,7 +244,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       "SELECT id FROM product_variants WHERE product_id=? AND is_active=1 LIMIT 1",
       id,
     );
-    if (!activeVariant && !tunvnVariants.length && !existing.aivault_family) {
+    if (!activeVariant && !data.variants?.some(v => v.is_active === 1) && !tunvnVariants.length && !existing.aivault_family) {
       return NextResponse.json(
         { error: "Aktifkan minimal satu varian sebelum mengaktifkan produk." },
         { status: 409 },
@@ -622,6 +627,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
       if (msg.includes("UNIQUE")) return NextResponse.json({ error: "slug sudah dipakai" }, { status: 409 });
       console.error("500 src/app/api/products/[id]/route.ts :", msg);
     return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
@@ -640,26 +646,62 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json({ ok: true });
 }
 
+/** Restore never reactivates either level; activation is an explicit later action. */
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!checkRateLimit(req, "products:write")) return NextResponse.json({ error: "Terlalu banyak permintaan" }, { status: 429 });
+  if (!await requireAdmin(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const raw = await readJsonBody(req, 2048);
+  if (!raw.ok) return raw.response;
+  if (!z.object({ archived: z.literal(false) }).strict().safeParse(raw.data).success) return NextResponse.json({ error: "Body tidak valid" }, { status: 400 });
+  const { id } = await params;
+  if (!await queryFirst("SELECT id FROM products WHERE id=?", id)) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const d1 = getD1();
+  if (!d1) return NextResponse.json({ error: "database_unavailable" }, { status: 503 });
+  const guard = `restore-product:${crypto.randomUUID()}`;
+  try {
+    await d1.batch([
+      d1.prepare("INSERT INTO operation_guards(operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM products WHERE id=? AND archived_at IS NOT NULL) THEN 1 ELSE 0 END").bind(guard,id),
+      d1.prepare("UPDATE product_variants SET is_active=0,updated_at=datetime('now') WHERE product_id=?").bind(id),
+      d1.prepare("UPDATE products SET archived_at=NULL,is_active=0,updated_at=datetime('now') WHERE id=?").bind(id),
+      d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guard),
+    ]);
+  } catch (error) {
+    if (/operation_guards|CHECK constraint/i.test(String(error))) return NextResponse.json({ error: "Produk tidak lagi di Arsip. Muat ulang daftar." }, { status: 409 });
+    throw error;
+  }
+  return NextResponse.json({ ok: true, action: "restored" });
+}
+
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!checkRateLimit(req, "products:write")) return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
-  const admin = await requireAdmin(req);
-  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!await requireAdmin(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  const product = await queryFirst("SELECT id FROM products WHERE id=?", id);
+  const product = await queryFirst(`SELECT p.id, ${hardDeleteReasonSql} AS reason FROM products p WHERE p.id=?`, id);
   if (!product) return NextResponse.json({ error: "not found" }, { status: 404 });
   const d1 = getD1();
-  if (d1) {
-    // Variants and historical orders reference the product graph. Archive it
-    // instead of issuing a FK-breaking hard delete.
-    await d1.batch([
-      d1.prepare("UPDATE products SET is_active=0, updated_at=datetime('now') WHERE id=?").bind(id),
-      d1.prepare("UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE product_id=?").bind(id),
-    ]);
-    await decideDirtyWinners(undefined, Number(id)).catch(() => {
-      console.error("Supplier pair refresh deferred after product archive");
-    });
-    return NextResponse.json({ ok: true, action: "archived" });
+  if (!d1) return NextResponse.json({ error: "database_unavailable" }, { status: 503 });
+  if (req.nextUrl.searchParams.get("permanent") === "1") {
+    if (product.reason) return NextResponse.json({ error: product.reason }, { status: 409 });
+    // Re-check the whole graph INSIDE the transaction, before deleting variants.
+    const guard = `delete-product:${crypto.randomUUID()}`;
+    try {
+      await d1.batch([
+        d1.prepare(`INSERT INTO operation_guards(operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM products p WHERE p.id=? AND ${hardDeleteEligibleSql}) THEN 1 ELSE 0 END`).bind(guard,id),
+        d1.prepare("DELETE FROM product_variants WHERE product_id=?").bind(id),
+        d1.prepare("DELETE FROM products WHERE id=?").bind(id),
+        d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guard),
+      ]);
+    } catch (error) {
+      if (/operation_guards|CHECK constraint|FOREIGN KEY/i.test(String(error))) return NextResponse.json({ error: "Produk berubah atau memiliki relasi baru. Muat ulang Arsip." }, { status: 409 });
+      throw error;
+    }
+    return NextResponse.json({ ok: true, action: "deleted" });
   }
-  await execRun("DELETE FROM products WHERE id=?", id);
-  return NextResponse.json({ ok: true });
+  await d1.batch([
+    d1.prepare("UPDATE products SET archived_at=COALESCE(archived_at,datetime('now')),is_active=0,updated_at=datetime('now') WHERE id=?").bind(id),
+    d1.prepare("UPDATE product_variants SET is_active=0,updated_at=datetime('now') WHERE product_id=?").bind(id),
+    d1.prepare("UPDATE tunvn_products SET visible=0,publish_requested=0 WHERE axvara_product_id=?").bind(id),
+  ]);
+  await decideDirtyWinners(undefined, Number(id)).catch(() => { console.error("Supplier pair refresh deferred after product archive"); });
+  return NextResponse.json({ ok: true, action: "archived" });
 }
