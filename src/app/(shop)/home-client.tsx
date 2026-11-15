@@ -13,6 +13,7 @@ import { resolveCategorySlug } from "@/lib/products";
 import { sortProductsForDisplay } from "@/lib/product-order";
 import { useSearch } from "@/stores/search";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
+import { HeroTrustRow } from "@/components/storefront/HeroTrustRow";
 
 const PER_PAGE = 16;
 
@@ -128,13 +129,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
                   <img src="/icons/ios11/chat-32.png" alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain brightness-0 invert opacity-70" draggable={false} /> {t.contactAdmin}
                 </StoreWhatsAppLink>
               </div>
-              <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tracking-wide text-white/40">
-                <span>{t.trustFast}</span>
-                <span className="opacity-30">•</span>
-                <span>{t.trustWarranty}</span>
-                <span className="opacity-30">•</span>
-                <span>{t.trustSupport}</span>
-              </div>
+              <HeroTrustRow items={[t.trustFast, t.trustWarranty, t.trustSupport]} />
             </div>
             {/* Single orbit — shown at center on mobile, right on desktop */}
             <div className="flex justify-center lg:justify-end shrink-0 mt-6 lg:mt-0">

@@ -168,7 +168,7 @@ describe("Pedia platform-first storefront", () => {
     expect(screen.getByRole("link", { name: "Lihat layanan" }).getAttribute("href")).toBe("#pedia-catalog");
     expect(screen.getByRole("link", { name: /Hubungi admin/ }).getAttribute("href")).toContain("/wa?pesan=");
     expect(screen.getByText("optimasi media sosial.")).toBeTruthy();
-    expect(document.body.textContent).toContain("Order cepat tanpa login • Garansi refill • Support WA admin");
+    expect(document.body.textContent).toContain("Order cepat tanpa login•Garansi refill•Support WA admin");
   });
   it("makes non-featured published platforms discoverable immediately and searches all services", () => {
     renderPediaHome([product, tiktok]);

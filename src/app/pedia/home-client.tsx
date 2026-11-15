@@ -8,6 +8,7 @@ import { ScrollRope } from "@/components/storefront/ScrollRope";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { pediaCopy } from "@/lib/pedia/copy";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import { HeroTrustRow } from "@/components/storefront/HeroTrustRow";
 
 export function PediaHomeClient({ products }: { products: PediaCatalogProduct[]; ordersEnabled?: boolean }) {
   const locale = useDisplayLocale();
@@ -21,7 +22,7 @@ export function PediaHomeClient({ products }: { products: PediaCatalogProduct[];
           <h1 className="font-display text-[clamp(32px,9.3vw,40px)] font-bold leading-[1.08] tracking-[-0.02em] text-white sm:text-[56px] lg:text-[clamp(48px,4.85vw,62px)]"><span className="block">{t.heroLine1}</span><span className="block">{t.heroLine2}</span></h1>
           <p className="mt-4 max-w-[46ch] text-[15px] leading-6 text-white/60">{t.heroBody}</p>
           <div className="mt-6 flex flex-wrap gap-3"><a href="#pedia-catalog" className="inline-flex min-h-11 items-center rounded-full bg-white px-6 text-sm font-semibold text-[#080C1E]">{t.browse}</a><PediaWhatsAppLink className="inline-flex min-h-11 items-center rounded-full border border-white/15 bg-white/5 px-6 text-sm font-medium text-white/85">{t.contactAdmin}</PediaWhatsAppLink></div>
-          <p className="mt-5 text-xs leading-5 text-white/45">{t.heroTrust}</p>
+          <HeroTrustRow items={[t.heroTrustFast, t.heroTrustRefill, t.heroTrustSupport]} />
         </div>
         <div className="flex min-w-0 justify-center lg:justify-end shrink-0 mt-6 lg:mt-0"><PediaOrbit /></div>
       </div>

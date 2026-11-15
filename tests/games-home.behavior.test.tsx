@@ -212,7 +212,11 @@ describe("Games homepage", () => {
     expect(cta.getAttribute("href")).toBe("#games-catalog");
     expect(cta.className).toContain("bg-white");
     expect(screen.getAllByRole("link", { name: "Bantuan WhatsApp" })[0].className).toContain("border-white/15");
-    expect(screen.getByText("Top up Free Fire, Mobile Legends, dan PUBG Mobile. Pilih game, lihat nominal, lalu pesan tanpa login.")).toBeTruthy();
+    expect(screen.getByText("Top up Mobile Legends, Free Fire, PUBG, dan game lainnya. Pesan cepat dan otomatis tanpa perlu login.")).toBeTruthy();
+    // Baris trust bergaya Market (11px, tracking-wide, putih/40, pemisah •).
+    const trust = screen.getByText("Proses instan").parentElement!.parentElement!;
+    expect(trust.className).toContain("text-[11px]");
+    expect(trust.textContent).toBe("Proses instan•Pembayaran aman•Support WA admin");
   });
   it("sends no Referer for every image and replaces failed game art with initials", () => {
     render(<GamesHome games={[game]} orbitGames={[game]} orderingOpen />);

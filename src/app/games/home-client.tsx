@@ -12,6 +12,7 @@ import type { GamesCatalogGame } from "@/lib/games/catalog";
 import { GAMES_GENRES, GAMES_GENRE_BY_SLUG, type GamesGenre } from "@/lib/games/genres";
 import { GAMES_ORBIT_PHASE, GAMES_ORBIT_RINGS, selectPopularGames } from "@/lib/games/popular";
 import { SITE, waHubLink } from "@/lib/site";
+import { HeroTrustRow } from "@/components/storefront/HeroTrustRow";
 
 /** Ikon chip kategori — gaya chip disamakan dengan katalog Pedia/Market. */
 const GENRE_ICONS: Record<GamesGenre, LucideIcon> = {
@@ -40,7 +41,7 @@ export function GamesHome({ games, orbitGames, orderingOpen }: { games: GamesCat
           <h1 className="font-display text-[clamp(32px,9.3vw,40px)] font-bold leading-[1.08] tracking-[-0.02em] text-white sm:text-[56px] lg:text-[clamp(48px,4.85vw,62px)]"><span className="block">{t.heroFirst}</span><span className="block">{t.heroSecond}</span></h1>
           <p className="mt-4 max-w-[46ch] text-[15px] leading-6 text-white/60">{t.heroBody}</p>
           <div className="mt-6 flex flex-wrap gap-3"><a href="#games-catalog" className={`inline-flex min-h-11 items-center rounded-full bg-white px-6 text-sm font-semibold text-[#080C1E] ${focus}`}>{t.heroCta}</a><a href={SITE.webUrl + waHubLink()} className={`inline-flex min-h-11 items-center rounded-full border border-white/15 bg-white/5 px-6 text-sm font-medium text-white/85 ${focus}`}>{t.whatsapp}</a></div>
-          <p className="mt-5 text-xs leading-5 text-white/45">{t.heroTrust}</p>
+          <HeroTrustRow items={t.heroTrust} />
         </div>
         <div className="mt-2 flex min-w-0 shrink-0 justify-center lg:mt-0 lg:justify-end"><PediaOrbit items={orbitItems} ringPhase={GAMES_ORBIT_PHASE} brand="Games" mark="/brand/games-mark.svg" renderIcon={(item) => <GameImage src={item.icon || null} name={item.label} framed={false} className="h-full w-full rounded-full text-[11px]" eager />} /></div>
       </div>
