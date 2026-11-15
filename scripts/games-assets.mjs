@@ -118,7 +118,10 @@ async function versionedUrl(file, url) {
 }
 
 async function buildIcon(slug, game) {
-  const input = await download(game.icon.source);
+  // Ikon persegi = potongan area karakter dari master portrait lokal (15 Nov 2026), tanpa logo judul.
+  const input = game.icon.source.startsWith("local:")
+    ? await readFile(path.join(ROOT, game.icon.source.slice("local:".length)))
+    : await download(game.icon.source);
   const file = path.join(OUT_DIR, `${slug}-icon.webp`);
   let pipeline = sharp(input).rotate();
   if (game.icon.region) {
@@ -288,7 +291,7 @@ async function writeDoc(results) {
         `\`${slug}\``,
         game.publisher,
         `[${new URL(game.page).hostname}](${game.page})`,
-        `[ikon](${game.icon.source})${result.banner ? ` · [master banner](../${game.banner.source.slice("local:".length)}) · [input banner resmi](${game.banner.official_source})` : ""}${
+        `[ikon](${game.icon.source.startsWith("local:") ? `../${game.icon.source.slice("local:".length)}` : game.icon.source})${result.banner ? ` · [master banner](../${game.banner.source.slice("local:".length)}) · [input banner resmi](${game.banner.official_source})` : ""}${
           result.portrait ? ` · [portrait](${game.portrait.source.startsWith("local:") ? `../${game.portrait.source.slice("local:".length)}` : game.portrait.source})` : ""
         }`,
         [iconCell, result.banner ? bannerCell : null, result.portrait ? portraitCell : null].filter(Boolean).join(" + "),

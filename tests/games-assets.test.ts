@@ -66,7 +66,9 @@ describe("manifest aset game", () => {
       }
       expect(game.publisher, slug).toBeTruthy();
       expect(OFFICIAL_PAGE_HOSTS, slug).toContain(new URL(game.page).hostname.toLowerCase());
-      expect(game.icon?.source, slug).toMatch(/^https:\/\//);
+      // Ikon = potongan master portrait lokal; ikon app resmi lama tetap tercatat sebagai official_source.
+      expect(game.icon?.source, slug).toBe(`local:scripts/games-assets-src/portraits/${slug}.webp`);
+      expect(game.icon?.official_source, slug).toMatch(/^https:\/\//);
       expect(game.icon?.licence, slug).toBeTruthy();
       expect(game.banner, slug).toBeTruthy();
       expect(game.banner_skip, slug).toBeUndefined();
@@ -92,7 +94,7 @@ describe("manifest aset game", () => {
         expect(banner.generation.tool, slug).toBe("image_gen");
         expect(banner.generation.sources, slug).toContain(banner.official_source);
       }
-      const urls = [game.page, game.icon?.source, banner.official_source, portrait?.source, ...(banner.generation?.sources ?? [])]
+      const urls = [game.page, game.icon?.source, game.icon?.official_source, banner.official_source, portrait?.source, ...(banner.generation?.sources ?? [])]
         .filter((url) => url && !url.startsWith("local:"));
       for (const url of urls) {
         const host = new URL(url).hostname.toLowerCase();
@@ -126,8 +128,7 @@ describe("manifest aset game", () => {
       mkdirSync(bannerDir, { recursive: true });
       copyFileSync(path.join(ROOT, "scripts/games-assets-src/banners/growtopia.webp"), path.join(bannerDir, "growtopia.webp"));
       const game = structuredClone(MANIFEST.games.growtopia);
-      // data: keeps the icon step offline; banner/portrait use local masters.
-      game.icon.source = `data:image/webp;base64,${readFileSync(path.join(ROOT, "public/brand/games/growtopia-icon.webp")).toString("base64")}`;
+      // Semua langkah offline: ikon (potongan), banner dan portrait membaca master lokal.
       const manifestPath = path.join(fixtureRoot, "scripts/games-assets.manifest.json");
       const run = () => spawnSync(process.execPath, [path.join(ROOT, "scripts/games-assets.mjs"), "--only", "growtopia"], {
         cwd: fixtureRoot, encoding: "utf8", timeout: 15000,
@@ -139,6 +140,8 @@ describe("manifest aset game", () => {
         .toEqual(readFileSync(path.join(ROOT, "public/brand/games/growtopia-portrait.webp")));
       expect(readFileSync(path.join(fixtureRoot, "public/brand/games/growtopia-banner.webp")))
         .toEqual(readFileSync(path.join(ROOT, "public/brand/games/growtopia-banner.webp")));
+      expect(readFileSync(path.join(fixtureRoot, "public/brand/games/growtopia-icon.webp")))
+        .toEqual(readFileSync(path.join(ROOT, "public/brand/games/growtopia-icon.webp")));
       const originalPortrait = game.portrait.source;
       for (const source of ["local:../outside.webp", "local:scripts/games-assets-src/portraits/roblox.webp"]) {
         game.portrait.source = source;

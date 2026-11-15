@@ -2118,6 +2118,7 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   midnight + grid halus 32 px (tanpa teks di gambar); monogram gradient midnight→cyan/10 untuk ikon
   hilang. Merek pembayaran/logo brand tidak memakai frame ini.
   **Revisi 15 Nov 2026:** 48 portrait diganti gaya Oura (karakter resmi + logo judul resmi terpanggang di gambar, gradien navy seragam; master 1200×1800 di `scripts/games-assets-src/portraits/`, sumber di `docs/games-portrait-sources.md`); kartu ber-portrait tidak lagi menampilkan overlay nama/publisher/harga (desktop maupun touch), nama tetap di aria-label; game belum tersedia memakai pill kecil "Segera tersedia" di pojok kanan atas; overlay teks hanya untuk fallback ikon.
+  **Revisi 15 Nov 2026 (owner):** kartu ikon 3D kini kaca TEGAK saat diam (tanpa roll −4°/condong/melayang/kilau otomatis); kedalaman dari bayangan berlapis + tepi kaca + kilap statis; hover desktop condong mengikuti kursor maks ±5° + kilau sekali; HP & reduced-motion diam. Ikon persegi semua game = potongan area karakter dari master portrait (tanpa logo; manifest `icon.source` lokal + `region`, ikon app resmi lama di `icon.official_source`), sehingga ikon, banner dan portrait memakai karakter yang sama.
 
 ### Admin Games
 

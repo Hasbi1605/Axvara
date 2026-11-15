@@ -856,6 +856,7 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
 - Frame P14: tile radius 16 px, border 1 px white/10, kaca midnight + glow cyan saat hover.
   Banner tak tersedia = ikon lokal diperbesar 125 % + **blur 48 px** + gradient midnight + grid
   halus; ikon hilang/gagal = monogram. Tidak ada aset supplier/kompetitor di layar.
+  **Revisi 15 Nov 2026 (owner):** kartu ikon 3D kini kaca TEGAK saat diam (tanpa roll −4°/condong/melayang/kilau otomatis); kedalaman dari bayangan berlapis + tepi kaca + kilap statis; hover desktop condong mengikuti kursor maks ±5° + kilau sekali; HP & reduced-motion diam. Ikon persegi semua game = potongan area karakter dari master portrait (tanpa logo; manifest `icon.source` lokal + `region`, ikon app resmi lama di `icon.official_source`), sehingga ikon, banner dan portrait memakai karakter yang sama.
 
 ### 14.6 Aset gambar (OD5)
 

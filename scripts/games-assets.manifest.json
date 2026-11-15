@@ -9,8 +9,15 @@
       "app": "Aniimo",
       "page": "https://apps.apple.com/id/app/aniimo/id6759098797",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/71/69/87/716987bc-c98f-d85e-1803-e96f08e1a067/FPX_AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/aniimo.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/71/69/87/716987bc-c98f-d85e-1803-e96f08e1a067/FPX_AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/aniimo.webp",
@@ -38,8 +45,15 @@
       "app": "Arena Breakout: Realistic FPS",
       "page": "https://apps.apple.com/id/app/arena-breakout-realistic-fps/id1560765304",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f7/7b/16/f77b16b9-53a4-2234-dbbc-42b3596a2fc9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/arena-breakout.webp",
+        "region": {
+          "left": 200,
+          "top": 60,
+          "width": 760,
+          "height": 760
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f7/7b/16/f77b16b9-53a4-2234-dbbc-42b3596a2fc9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/arena-breakout.webp",
@@ -67,8 +81,15 @@
       "app": "Garena AOV: 10th Anniversary",
       "page": "https://apps.apple.com/id/app/garena-aov-10th-anniversary/id1222857607",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/64/1c/f5/641cf589-1ea0-5863-d67a-a3d137ba92fc/AppIcon-1x_U007emarketing-0-11-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/arena-of-valor.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/64/1c/f5/641cf589-1ea0-5863-d67a-a3d137ba92fc/AppIcon-1x_U007emarketing-0-11-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/arena-of-valor.webp",
@@ -105,8 +126,15 @@
       "app": "AU2 Mobile-Lovely Babies",
       "page": "https://apps.apple.com/id/app/au2-mobile-lovely-babies/id1428629860",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/aa/ba/0c/aaba0c0b-c7a1-4dec-c505-0f0f718350d2/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/au2-mobile.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/aa/ba/0c/aaba0c0b-c7a1-4dec-c505-0f0f718350d2/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/au2-mobile.webp",
@@ -144,8 +172,15 @@
       "app": "Blood Strike x DJ SNAKE",
       "page": "https://apps.apple.com/id/app/blood-strike-x-dj-snake/id1637059453",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/0d/c8/11/0dc811aa-f0d4-edc9-f96f-68565607a992/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/blood-strike.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/0d/c8/11/0dc811aa-f0d4-edc9-f96f-68565607a992/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/blood-strike.webp",
@@ -173,8 +208,15 @@
       "app": "Call of Duty®: Mobile - Garena",
       "page": "https://apps.apple.com/id/app/call-of-duty-mobile-garena/id1465688043",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/74/90/fa/7490fa0c-5957-f720-4e62-f4ccd78808ba/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/call-of-duty-mobile.webp",
+        "region": {
+          "left": 200,
+          "top": 60,
+          "width": 800,
+          "height": 800
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/74/90/fa/7490fa0c-5957-f720-4e62-f4ccd78808ba/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/call-of-duty-mobile.webp",
@@ -211,8 +253,15 @@
       "app": "CAPTAIN TSUBASA: ACE",
       "page": "https://apps.apple.com/id/app/captain-tsubasa-ace/id1637404845",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/fb/89/62/fb8962d6-3484-b5fe-3407-01e7a786d160/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/captain-tsubasa-ace.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/fb/89/62/fb8962d6-3484-b5fe-3407-01e7a786d160/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/captain-tsubasa-ace.webp",
@@ -240,8 +289,15 @@
       "app": "Crossfire: Legends",
       "page": "https://apps.apple.com/id/app/crossfire-legends/id6743618701",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/76/41/85/7641854c-3d5d-2819-974a-972b55a250bf/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/crossfire-legends.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/76/41/85/7641854c-3d5d-2819-974a-972b55a250bf/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/crossfire-legends.webp",
@@ -269,8 +325,15 @@
       "app": "Garena® Delta Force",
       "page": "https://apps.apple.com/id/app/garena-delta-force/id6670604287",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/05/1a/18/051a1849-242e-8886-36be-9ce087946358/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/delta-force.webp",
+        "region": {
+          "left": 300,
+          "top": 120,
+          "width": 760,
+          "height": 760
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/05/1a/18/051a1849-242e-8886-36be-9ce087946358/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/delta-force.webp",
@@ -307,8 +370,15 @@
       "app": "Dragon City: Collect & Battle!",
       "page": "https://apps.apple.com/id/app/dragon-city-collect-battle/id561941526",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/21/81/16/21811675-76dc-6ae8-9653-00b4b8d49042/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/dragon-city.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/21/81/16/21811675-76dc-6ae8-9653-00b4b8d49042/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/dragon-city.webp",
@@ -345,8 +415,15 @@
       "app": "EA SPORTS FC™ Football Mobile",
       "page": "https://apps.apple.com/id/app/ea-sports-fc-football-mobile/id1094930513",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/41/d1/84/41d18457-ec03-6812-f0a7-8a83686c6009/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/fc-mobile.webp",
+        "region": {
+          "left": 330,
+          "top": 40,
+          "width": 620,
+          "height": 620
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/41/d1/84/41d18457-ec03-6812-f0a7-8a83686c6009/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/fc-mobile.webp",
@@ -383,8 +460,15 @@
       "app": "Football Master 2-Soccer Star",
       "page": "https://apps.apple.com/id/app/football-master-2-soccer-star/id1559688336",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5a/14/35/5a143502-07f4-911c-14b8-24a57a8369aa/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/football-master-2.webp",
+        "region": {
+          "left": 60,
+          "top": 120,
+          "width": 1080,
+          "height": 1080
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5a/14/35/5a143502-07f4-911c-14b8-24a57a8369aa/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/football-master-2.webp",
@@ -421,8 +505,15 @@
       "app": "Free Fire x NARUTO SHIPPUDEN",
       "page": "https://apps.apple.com/id/app/free-fire-x-naruto-shippuden/id1300146617",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/16/6b/ef166bba-1d69-85f5-ed84-6b7c6e73b55c/AppIcon-1788350393-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.png",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/free-fire.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/16/6b/ef166bba-1d69-85f5-ed84-6b7c6e73b55c/AppIcon-1788350393-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.png",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/free-fire.webp",
@@ -460,8 +551,15 @@
       "app": "Free Fire MAX x NARUTO",
       "page": "https://apps.apple.com/id/app/free-fire-max-x-naruto/id1480516829",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/1f/e2/e6/1fe2e61d-b767-537a-dfac-364e8d991981/AppIcon-1788424861-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.png",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/free-fire-max.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/1f/e2/e6/1fe2e61d-b767-537a-dfac-364e8d991981/AppIcon-1788424861-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.png",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/free-fire-max.webp",
@@ -499,8 +597,15 @@
       "app": "Gangstar Mirage City: Online",
       "page": "https://apps.apple.com/id/app/gangstar-mirage-city-online/id6472700792",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/70/41/2e/70412e0e-94ae-262d-a256-eaa9d8762e66/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/gangstar-mirage-city.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/70/41/2e/70412e0e-94ae-262d-a256-eaa9d8762e66/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/gangstar-mirage-city.webp",
@@ -537,8 +642,15 @@
       "app": "Garena Undawn",
       "page": "https://apps.apple.com/id/app/garena-undawn/id1538722240",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/65/7f/09/657f0947-cbe2-fae8-2bd9-5a844848cead/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/garena-undawn.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/65/7f/09/657f0947-cbe2-fae8-2bd9-5a844848cead/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/garena-undawn.webp",
@@ -575,8 +687,15 @@
       "app": "Genshin Impact",
       "page": "https://apps.apple.com/id/app/genshin-impact/id1517783697",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/15/9e/b1/159eb1a7-fc58-2b43-b330-c5e619a77e2d/AppIcon-0-0-1x_U007epad-0-1-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/genshin-impact.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/15/9e/b1/159eb1a7-fc58-2b43-b330-c5e619a77e2d/AppIcon-0-0-1x_U007epad-0-1-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/genshin-impact.webp",
@@ -613,8 +732,15 @@
       "app": "Growtopia",
       "page": "https://apps.apple.com/id/app/growtopia/id590495115",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/47/81/75/4781755c-90ab-220f-277d-990c68a33480/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/growtopia.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/47/81/75/4781755c-90ab-220f-277d-990c68a33480/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/growtopia.webp",
@@ -642,8 +768,15 @@
       "app": "HAIKYU!! FLY HIGH",
       "page": "https://apps.apple.com/id/app/haikyu-fly-high/id6737688139",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/40/9c/df/409cdfa8-8f1b-6eda-d072-d3d94b13e65f/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/haikyu-fly-high.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/40/9c/df/409cdfa8-8f1b-6eda-d072-d3d94b13e65f/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/haikyu-fly-high.webp",
@@ -680,8 +813,15 @@
       "app": "Heartopia",
       "page": "https://apps.apple.com/id/app/heartopia/id6746151928",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/34/8b/e4/348be4c2-b208-594d-8559-b70acf6b40a0/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/heartopia.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/34/8b/e4/348be4c2-b208-594d-8559-b70acf6b40a0/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/heartopia.webp",
@@ -709,8 +849,15 @@
       "app": "Honkai: Star Rail",
       "page": "https://apps.apple.com/id/app/honkai-star-rail/id1599719154",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b9/19/0a/b9190ac1-9dfc-6d88-5ac4-96dd4e6d6ff4/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/honkai-star-rail.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b9/19/0a/b9190ac1-9dfc-6d88-5ac4-96dd4e6d6ff4/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/honkai-star-rail.webp",
@@ -738,8 +885,15 @@
       "app": "Honor of Kings",
       "page": "https://apps.apple.com/id/app/honor-of-kings/id1619254071",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ba/a1/4f/baa14fb9-493b-d323-99f3-82b9f5ac75c0/AppIcon-1x_U007emarketing-0-7-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/honor-of-kings.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ba/a1/4f/baa14fb9-493b-d323-99f3-82b9f5ac75c0/AppIcon-1x_U007emarketing-0-7-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/honor-of-kings.webp",
@@ -776,8 +930,15 @@
       "app": "Identity V",
       "page": "https://apps.apple.com/id/app/identity-v/id1347780764",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/cd/1c/78/cd1c78b5-de24-734e-749a-507f872745a7/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/identity-v.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/cd/1c/78/cd1c78b5-de24-734e-749a-507f872745a7/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/identity-v.webp",
@@ -805,14 +966,15 @@
       "app": "Laplace M",
       "page": "https://laplacem.zlongame.com/",
       "icon": {
-        "source": "https://laplacem.zlongame.com/img/page1.jpg",
+        "source": "local:scripts/games-assets-src/portraits/laplace-m.webp",
         "region": {
-          "left": 160,
-          "top": 0,
-          "width": 950,
-          "height": 950
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
         },
-        "licence": "Crop persegi dari key art resmi di situs resmi publisher (laplacem.zlongame.com); tanpa modifikasi isi, tanpa UI."
+        "official_source": "https://laplacem.zlongame.com/img/page1.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/laplace-m.webp",
@@ -841,8 +1003,15 @@
       "app": "League of Legends: Wild Rift",
       "page": "https://apps.apple.com/id/app/league-of-legends-wild-rift/id1480616990",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4c/10/e5/4c10e5d1-2fbb-48f2-0851-49d5c0b30ee9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/league-of-legends-wild-rift.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4c/10/e5/4c10e5d1-2fbb-48f2-0851-49d5c0b30ee9/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/league-of-legends-wild-rift.webp",
@@ -879,8 +1048,15 @@
       "app": "LifeAfter",
       "page": "https://apps.apple.com/id/app/lifeafter/id1441752845",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4c/6d/8d/4c6d8d47-9e3d-8387-705e-ec84ad2a70a1/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/lifeafter.webp",
+        "region": {
+          "left": 280,
+          "top": 80,
+          "width": 760,
+          "height": 760
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4c/6d/8d/4c6d8d47-9e3d-8387-705e-ec84ad2a70a1/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/lifeafter.webp",
@@ -917,8 +1093,15 @@
       "app": "Lineage2M",
       "page": "https://apps.apple.com/id/app/lineage2m/id6739482834",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/bb/71/c3/bb71c308-4d72-d1b0-8fb2-dc4740761604/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/lineage2m.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/bb/71/c3/bb71c308-4d72-d1b0-8fb2-dc4740761604/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/lineage2m.webp",
@@ -955,8 +1138,15 @@
       "app": "Machina Waking",
       "page": "https://apps.apple.com/id/app/machina-waking/id6698864769",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/f5/11/fe/f511fe51-70ae-b2b4-0977-9a08c3181cb3/ipa-project-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/machina-waking.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/f5/11/fe/f511fe51-70ae-b2b4-0977-9a08c3181cb3/ipa-project-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/machina-waking.webp",
@@ -984,8 +1174,15 @@
       "app": "Magic Chess: Go Go",
       "page": "https://apps.apple.com/id/app/magic-chess-go-go/id6612014908",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4b/d6/7f/4bd67f60-7839-781f-324c-488a2ee3cf0d/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/magic-chess-go-go.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4b/d6/7f/4bd67f60-7839-781f-324c-488a2ee3cf0d/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/magic-chess-go-go.webp",
@@ -1013,8 +1210,15 @@
       "app": "Marvel Rivals",
       "page": "https://store.steampowered.com/app/2767030/",
       "icon": {
-        "source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2767030/library_hero.jpg",
-        "licence": "Crop persegi dari library hero resmi di listing Steam publisher (NetEase Games); tanpa modifikasi isi, tanpa UI."
+        "source": "local:scripts/games-assets-src/portraits/marvel-rivals.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2767030/library_hero.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/marvel-rivals.webp",
@@ -1043,8 +1247,15 @@
       "app": "Mobile Legends: Bang Bang",
       "page": "https://apps.apple.com/id/app/mobile-legends-bang-bang/id1160056295",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d9/88/76/d9887647-00fd-09c8-8a61-c6c31a1bfe2a/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.png",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/mobile-legends.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d9/88/76/d9887647-00fd-09c8-8a61-c6c31a1bfe2a/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.png",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/mobile-legends.webp",
@@ -1073,8 +1284,15 @@
       "app": "Mobile Legends: Adventure",
       "page": "https://apps.apple.com/id/app/mobile-legends-adventure/id1456213261",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/b4/0e/c5/b40ec517-b9a3-4cb2-1c20-cd5b46d5cddf/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/mobile-legends-adventure.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/b4/0e/c5/b40ec517-b9a3-4cb2-1c20-cd5b46d5cddf/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/mobile-legends-adventure.webp",
@@ -1111,8 +1329,15 @@
       "app": "MU ORIGIN 2",
       "page": "https://apps.apple.com/id/app/mu-origin-2/id1444994196",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ff/c8/14/ffc814e2-e515-2081-62be-9d730c2d30fe/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/mu-origin-2.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ff/c8/14/ffc814e2-e515-2081-62be-9d730c2d30fe/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/mu-origin-2.webp",
@@ -1149,8 +1374,15 @@
       "app": "ONE PUNCH MAN: The Strongest",
       "page": "https://apps.apple.com/id/app/one-punch-man-the-strongest/id1491275510",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/58/d2/ff/58d2ff5c-135b-96c0-98dc-b502d392a80e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/one-punch-man.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/58/d2/ff/58d2ff5c-135b-96c0-98dc-b502d392a80e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/one-punch-man.webp",
@@ -1187,8 +1419,15 @@
       "app": "Onmyoji Arena",
       "page": "https://apps.apple.com/id/app/onmyoji-arena/id1343073274",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/bf/2a/69/bf2a69f3-89f8-344c-acdb-b2f61b1fc34e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/onmyoji-arena.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/bf/2a/69/bf2a69f3-89f8-344c-acdb-b2f61b1fc34e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/onmyoji-arena.webp",
@@ -1216,8 +1455,15 @@
       "app": "Point Blank App",
       "page": "https://play.google.com/store/apps/details?id=com.zepetto.PointBlank.CompanionApp",
       "icon": {
-        "source": "https://play-lh.googleusercontent.com/M2hEx9f2IoX3Aa1Ys22C3Di5j-WLeF9nt7Rjymjeh2NRVPfnUyRefHxLVZP1NGp49OwV2hnfuuIJ2ElJkBjG0c4=s0",
-        "licence": "Logo PB resmi dari listing Google Play publisher (Zepetto); nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/point-blank.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://play-lh.googleusercontent.com/M2hEx9f2IoX3Aa1Ys22C3Di5j-WLeF9nt7Rjymjeh2NRVPfnUyRefHxLVZP1NGp49OwV2hnfuuIJ2ElJkBjG0c4=s0",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "note": "Point Blank (PC, Zepetto) tidak dijual di App Store/Steam; ikon logo PB diambil dari listing Google Play resmi Zepetto untuk aplikasi pendamping Point Blank.",
       "portrait": {
@@ -1255,8 +1501,15 @@
       "app": "PUBG MOBILE",
       "page": "https://apps.apple.com/id/app/pubg-mobile/id1330123889",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/6d/98/24/6d9824dd-f75f-9bd6-221e-33324fedecb2/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.png",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/pubg-mobile.webp",
+        "region": {
+          "left": 200,
+          "top": 40,
+          "width": 800,
+          "height": 800
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/6d/98/24/6d9824dd-f75f-9bd6-221e-33324fedecb2/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/1024x1024bb.png",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/pubg-mobile.webp",
@@ -1294,8 +1547,15 @@
       "app": "Ragnarok M : Eternal Love",
       "page": "https://apps.apple.com/id/app/ragnarok-m-eternal-love/id1404051022",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/21/00/48/21004879-2749-7dc1-462a-43032a41b535/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/ragnarok-m-eternal-love.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/21/00/48/21004879-2749-7dc1-462a-43032a41b535/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/ragnarok-m-eternal-love.webp",
@@ -1332,8 +1592,15 @@
       "app": "Rainbow Six Mobile",
       "page": "https://apps.apple.com/id/app/rainbow-six-mobile/id1608916511",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9b/bd/c0/9bbdc06e-9600-1277-5dbb-5fb39216c483/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/rainbow-six-mobile.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9b/bd/c0/9bbdc06e-9600-1277-5dbb-5fb39216c483/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/rainbow-six-mobile.webp",
@@ -1361,8 +1628,15 @@
       "app": "Roblox",
       "page": "https://apps.apple.com/id/app/roblox/id431946152",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/19/a1/0f/19a10fa0-874d-bf10-221a-ed7fe7b4cfe1/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/roblox.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/19/a1/0f/19a10fa0-874d-bf10-221a-ed7fe7b4cfe1/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/roblox.webp",
@@ -1390,8 +1664,15 @@
       "app": "Sausage Man",
       "page": "https://apps.apple.com/id/app/sausage-man/id1563750315",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/04/03/f0/0403f0f2-fc1a-4b6c-0b59-f51169dc11c6/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/sausage-man.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/04/03/f0/0403f0f2-fc1a-4b6c-0b59-f51169dc11c6/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "banner": {
         "source": "local:scripts/games-assets-src/banners/sausage-man.webp",
@@ -1428,8 +1709,15 @@
       "app": "Garena Speed Drifters",
       "page": "https://apps.apple.com/id/app/garena-speed-drifters/id1416604843",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/67/f9/76/67f9766a-5bf8-e038-15c0-2b8010365d3e/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/speed-drifters.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/67/f9/76/67f9766a-5bf8-e038-15c0-2b8010365d3e/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/speed-drifters.webp",
@@ -1457,8 +1745,15 @@
       "app": "State of Survival: Zombie War",
       "page": "https://apps.apple.com/id/app/state-of-survival-zombie-war/id1452474937",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/47/46/e1/4746e11d-b405-9206-8564-51ad8cad3d6e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/state-of-survival.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/47/46/e1/4746e11d-b405-9206-8564-51ad8cad3d6e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/state-of-survival.webp",
@@ -1486,8 +1781,15 @@
       "app": "Super Sus",
       "page": "https://apps.apple.com/id/app/super-sus/id6498889637",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5c/d0/3e/5cd03e2a-7899-7163-e0ed-ce928d7fa6ba/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/super-sus.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5c/d0/3e/5cd03e2a-7899-7163-e0ed-ce928d7fa6ba/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/super-sus.webp",
@@ -1515,8 +1817,15 @@
       "app": "无畏契约：源能行动 (VALORANT Mobile)",
       "page": "https://apps.apple.com/cn/app/id6535673811",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4d/d0/ea/4dd0eaf7-4498-51a2-43ea-821cd4223d76/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi (logo VALORANT) dari satu-satunya listing App Store resmi VALORANT; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/valorant.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4d/d0/ea/4dd0eaf7-4498-51a2-43ea-821cd4223d76/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "note": "VALORANT PC tidak ada di App Store/Steam. Listing resmi VALORANT satu-satunya ada di App Store CN, diterbitkan publisher berlisensi Riot (Shenzhen Tencent Tianyou); ikon = logo VALORANT resmi, bukan aset toko top-up.",
       "portrait": {
@@ -1554,8 +1863,15 @@
       "app": "Where Winds Meet",
       "page": "https://apps.apple.com/id/app/where-winds-meet/id6472396866",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/7a/51/07/7a5107a1-5fa4-9ed7-86e9-2589bb0ed864/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/where-winds-meet.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/7a/51/07/7a5107a1-5fa4-9ed7-86e9-2589bb0ed864/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/where-winds-meet.webp",
@@ -1583,8 +1899,15 @@
       "app": "Zenless Zone Zero",
       "page": "https://apps.apple.com/id/app/zenless-zone-zero/id1606356401",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/c8/ee/27/c8ee2769-fe15-e1ea-aeb7-2247a535767a/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/zenless-zone-zero.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/c8/ee/27/c8ee2769-fe15-e1ea-aeb7-2247a535767a/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/zenless-zone-zero.webp",
@@ -1612,8 +1935,15 @@
       "app": "ZEPETO: Avatar, Connect & Live",
       "page": "https://apps.apple.com/id/app/zepeto-avatar-connect-live/id1350301428",
       "icon": {
-        "source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/17/6a/d7/176ad73d-139e-9b35-531a-6839264a4e4b/AppIcon-0-0-1x_U007emarketing-0-8-0-sRGB-0-85-220.png/1024x1024bb.jpg",
-        "licence": "Ikon resmi dari listing App Store publisher; nominative fair use untuk identifikasi produk, tanpa modifikasi logo."
+        "source": "local:scripts/games-assets-src/portraits/zepeto.webp",
+        "region": {
+          "left": 100,
+          "top": 40,
+          "width": 1000,
+          "height": 1000
+        },
+        "official_source": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/17/6a/d7/176ad73d-139e-9b35-531a-6839264a4e4b/AppIcon-0-0-1x_U007emarketing-0-8-0-sRGB-0-85-220.png/1024x1024bb.jpg",
+        "licence": "Potongan persegi area karakter dari master portrait (art resmi publisher, disusun GPT Image; tanpa logo judul) — sumber: docs/games-portrait-sources.md. Ikon app resmi lama: official_source."
       },
       "portrait": {
         "source": "local:scripts/games-assets-src/portraits/zepeto.webp",
