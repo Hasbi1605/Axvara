@@ -5522,5 +5522,15 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   suntingan admin; `0128_supplier_copy_followup.sql` menambah ChatGPT Plus AIVault,
   hold Gemini AIVault 1 jam, dan mengosongkan harga manual Buff 1500. `SECTION_BY_HEADING` di `src/lib/product-copy/format.ts`
   menerima judul EN.
+- Koreksi CI15November2026: #712 dibatalkan oleh push berikutnya; #713/#714
+  lulus test/type-check/build tetapi gagal menerapkan0127 karena literal pola
+  `LIKE`87byte melebihi batas D1 50byte. Pengaman template0127/0128 kini memakai
+  `substr(description, -86)=…`, tanpa mengubah isi salinan atau menimpa suntingan
+  admin. `tests/d1-migration-like-limit.test.ts` memeriksa literal LIKE/GLOB semua
+  migrasi sebelum tahap deploy. Migrasi/deploy tetap hanya melalui CI; koreksi
+  lokal belum menjadi bukti salinan tampil di PDP produksi.
+- Koreksi migrasi diverifikasi di D1/workerd lokal: seluruh106statement0127/0128
+  diterapkan, salinan ID/EN dan shortlink terisi, replay idempoten dan suntingan
+  admin tetap terjaga. Tidak menjalankan migrasi manual atau QA produksi.
 - Verifikasi lokal memakai fixture SQLite/jsdom dan Chrome headless dengan route
   mock; bukan bukti deployment atau tampilan PDP produksi.

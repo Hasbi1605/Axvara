@@ -25,7 +25,7 @@ INSERT OR IGNORE INTO supplier_links (slug, destination, title) VALUES
 UPDATE products SET description='Akun ChatGPT siap pakai dengan email dan password sendiri, bukan sharing. Pilih varian Business atau Plus (Google Pay) sesuai kebutuhan.
 - Akun jadi, langsung login
 - Dikirim otomatis setelah pembayaran
-- Garansi 1x24 jam sesuai varian', updated_at=datetime('now') WHERE tunvn_family='chatgpt' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi 1x24 jam sesuai varian', updated_at=datetime('now') WHERE tunvn_family='chatgpt' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Ready-to-use ChatGPT account with its own email and password, not a shared account. Choose the Business or Plus (Google Pay) variant to suit your needs.
 - Ready-made account, log in right away
 - Delivered automatically after payment
@@ -34,7 +34,7 @@ UPDATE products SET description_en='Ready-to-use ChatGPT account with its own em
 UPDATE products SET description='CapCut Pro untuk edit video dengan fitur premium dan kredit AI. Tersedia paket 7 hari, 1 bulan, Team 1 bulan, dan 6 bulan.
 - Akun jadi, langsung login
 - Kredit AI sesuai paket
-- Garansi penuh selama masa aktif sesuai aturan pakai', updated_at=datetime('now') WHERE tunvn_family='capcut' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi penuh selama masa aktif sesuai aturan pakai', updated_at=datetime('now') WHERE tunvn_family='capcut' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='CapCut Pro for video editing with premium features and AI credits. Available as 7-day, 1-month, Team 1-month and 6-month plans.
 - Ready-made account, log in right away
 - AI credits per plan
@@ -43,7 +43,7 @@ UPDATE products SET description_en='CapCut Pro for video editing with premium fe
 UPDATE products SET description='Grok Premium + Cursor Premium dalam satu akun: asisten AI Grok dan editor kode AI Cursor.
 - Akun jadi, langsung login
 - Pilihan 14 hari atau 1 bulan
-- Garansi sesuai varian', updated_at=datetime('now') WHERE tunvn_family='grok-cursor' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi sesuai varian', updated_at=datetime('now') WHERE tunvn_family='grok-cursor' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Grok Premium + Cursor Premium in one account: the Grok AI assistant plus the Cursor AI code editor.
 - Ready-made account, log in right away
 - 14-day or 1-month options
@@ -52,7 +52,7 @@ UPDATE products SET description_en='Grok Premium + Cursor Premium in one account
 UPDATE products SET description='Kredit Claude API melalui API gateway untuk developer dan integrasi aplikasi. Produk berupa kode redeem, bukan akun claude.ai.
 - Kredit $100 atau $500
 - Masa aktif 30 hari
-- Garansi penuh selama masa aktif', updated_at=datetime('now') WHERE tunvn_family='claude-api' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi penuh selama masa aktif', updated_at=datetime('now') WHERE tunvn_family='claude-api' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Claude API credit through an API gateway for developers and app integrations. Delivered as a redeem code, not a claude.ai account.
 - $100 or $500 credit
 - 30-day validity
@@ -61,7 +61,7 @@ UPDATE products SET description_en='Claude API credit through an API gateway for
 UPDATE products SET description='Microsoft 365 akun Admin 12 bulan untuk aplikasi Office dan layanan Microsoft 365, bisa menambah hingga 5 anggota family.
 - Masa aktif 12 bulan
 - Bisa tambah 5 anggota
-- Garansi penuh selama masa aktif', updated_at=datetime('now') WHERE tunvn_family='microsoft-365' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi penuh selama masa aktif', updated_at=datetime('now') WHERE tunvn_family='microsoft-365' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Microsoft 365 Admin account for 12 months for Office apps and Microsoft 365 services, with up to 5 family members.
 - 12-month active period
 - Add up to 5 members
@@ -70,7 +70,7 @@ UPDATE products SET description_en='Microsoft 365 Admin account for 12 months fo
 UPDATE products SET description='Link redeem Spotify Premium 3 bulan untuk akun baru atau akun yang belum pernah Premium.
 - Masa aktif 3 bulan setelah aktivasi
 - Bisa diaktifkan dari negara mana pun
-- Wajib kartu untuk aktivasi', updated_at=datetime('now') WHERE tunvn_family='spotify' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Wajib kartu untuk aktivasi', updated_at=datetime('now') WHERE tunvn_family='spotify' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Spotify Premium 3-month redeem link for new accounts or accounts that have never had Premium.
 - 3 months of Premium after activation
 - Can be activated from any country
@@ -79,7 +79,7 @@ UPDATE products SET description_en='Spotify Premium 3-month redeem link for new 
 UPDATE products SET description='ElevenLabs Creator untuk text-to-speech dan voice AI dengan kredit bulanan besar.
 - Paket Creator 3 bulan
 - 131 ribu kredit per bulan
-- Garansi 3 hari', updated_at=datetime('now') WHERE tunvn_family='elevenlabs' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi 3 hari', updated_at=datetime('now') WHERE tunvn_family='elevenlabs' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='ElevenLabs Creator for AI text-to-speech and voice with a large monthly credit allowance.
 - Creator plan for 3 months
 - 131k credits per month
@@ -88,7 +88,7 @@ UPDATE products SET description_en='ElevenLabs Creator for AI text-to-speech and
 UPDATE products SET description='Grammarly Pro 12 bulan untuk cek tata bahasa, gaya tulisan, dan parafrase berbahasa Inggris.
 - Akun jadi, langsung login
 - Masa aktif 12 bulan
-- Garansi 10 hari', updated_at=datetime('now') WHERE tunvn_family='grammarly' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi 10 hari', updated_at=datetime('now') WHERE tunvn_family='grammarly' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Grammarly Pro for 12 months for English grammar, style and paraphrasing checks.
 - Ready-made account, log in right away
 - 12-month active period
@@ -97,7 +97,7 @@ UPDATE products SET description_en='Grammarly Pro for 12 months for English gram
 UPDATE products SET description='Key HMA VPN (Hide My Ass) untuk Android dan PC.
 - Masa aktif 30 hari
 - Berupa license key
-- Garansi 25 hari', updated_at=datetime('now') WHERE tunvn_family='hma' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi 25 hari', updated_at=datetime('now') WHERE tunvn_family='hma' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='HMA VPN (Hide My Ass) key for Android and PC.
 - 30-day active period
 - Delivered as a license key
@@ -106,7 +106,7 @@ UPDATE products SET description_en='HMA VPN (Hide My Ass) key for Android and PC
 UPDATE products SET description='Kupon Nord VPN 3 bulan, aktivasi tanpa kartu.
 - Masa aktif 3 bulan
 - Aktivasi dengan email sendiri
-- Garansi kupon 3 hari', updated_at=datetime('now') WHERE tunvn_family='nord' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi kupon 3 hari', updated_at=datetime('now') WHERE tunvn_family='nord' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Nord VPN 3-month coupon, activated without a card.
 - 3-month active period
 - Activate with your own email
@@ -118,7 +118,7 @@ UPDATE products SET description='Google Gemini Plus 6 bulan lewat link redeem re
 - Storage 400 GB untuk Drive, Photos & Gmail
 - Tanpa kartu kredit / metode pembayaran
 
-Detail benefit, syarat, dan cara aktivasi mengikuti varian yang dipilih.', updated_at=datetime('now') WHERE tunvn_family='gemini' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+Detail benefit, syarat, dan cara aktivasi mengikuti varian yang dipilih.', updated_at=datetime('now') WHERE tunvn_family='gemini' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Google Gemini Plus for 6 months via an official redeem link to your own Google account, with 400 GB storage and no credit card required.
 - 6-month active period after claiming
 - Invite up to 5 family accounts
@@ -130,7 +130,7 @@ Benefit details, terms, and activation steps follow the selected variant.' WHERE
 UPDATE products SET description='Link promo LinkedIn Premium Career 3 bulan untuk akun yang belum pernah Premium.
 - Masa aktif 3 bulan
 - Upgrade akun LinkedIn milik sendiri
-- Tanpa garansi', updated_at=datetime('now') WHERE tunvn_family='linkedin' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Tanpa garansi', updated_at=datetime('now') WHERE tunvn_family='linkedin' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='LinkedIn Premium Career 3-month promo link for accounts that have never had Premium.
 - 3-month active period
 - Upgrades your own LinkedIn account
@@ -139,7 +139,7 @@ UPDATE products SET description_en='LinkedIn Premium Career 3-month promo link f
 UPDATE products SET description='Nomor telepon sewa sekali pakai untuk menerima kode verifikasi (misalnya verifikasi nomor Codex/OpenAI).
 - Kode tampil otomatis di halaman link
 - Satu link untuk satu kode
-- Dikirim otomatis setelah pembayaran', updated_at=datetime('now') WHERE tunvn_family='codex-phone' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Dikirim otomatis setelah pembayaran', updated_at=datetime('now') WHERE tunvn_family='codex-phone' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='One-time rental phone number to receive a verification code (for example Codex/OpenAI phone verification).
 - The code appears automatically on the link page
 - One link receives one code
@@ -905,7 +905,7 @@ UPDATE products SET description='Google Gemini Plus 6 bulan lewat link redeem re
 - Storage 400 GB untuk Drive, Photos & Gmail
 - Tanpa kartu kredit / metode pembayaran
 
-Detail benefit, syarat, dan cara aktivasi mengikuti varian yang dipilih.', updated_at=datetime('now') WHERE aivault_family='gemini' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+Detail benefit, syarat, dan cara aktivasi mengikuti varian yang dipilih.', updated_at=datetime('now') WHERE aivault_family='gemini' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Google Gemini Plus for 6 months via an official redeem link to your own Google account, with 400 GB storage and no credit card required.
 - 6-month active period after claiming
 - Invite up to 5 family accounts
@@ -918,7 +918,7 @@ UPDATE products SET description='Notion Education Plus 12 bulan dengan email edu
 - Masa aktif 12 bulan (1 tahun penuh)
 - Unlimited blocks, pages, dan upload file
 - Notion AI dengan model GPT-5, Sonnet, Opus, Gemini, Grok, DeepSeek
-- Tanpa kartu, 100% sudah aktif', updated_at=datetime('now') WHERE aivault_family='notion' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Tanpa kartu, 100% sudah aktif', updated_at=datetime('now') WHERE aivault_family='notion' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Notion Education Plus for 12 months with a dedicated edu email, pre-activated with no card. Great for notes, docs and workspace collaboration with Notion AI.
 - 12-month active period (full 1 year)
 - Unlimited blocks, pages and file uploads
@@ -928,7 +928,7 @@ UPDATE products SET description_en='Notion Education Plus for 12 months with a d
 UPDATE products SET description='Udemy Personal Plan 1 bulan: akses 26.000+ kursus pilihan dengan rating tinggi, akun privat dengan mailbox khusus.
 - Topik programming, IT, AI, bisnis, desain, marketing, dan lainnya
 - Sertifikat penyelesaian resmi
-- Sudah aktif, tanpa kartu atau pengaturan tagihan', updated_at=datetime('now') WHERE aivault_family='udemy' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Sudah aktif, tanpa kartu atau pengaturan tagihan', updated_at=datetime('now') WHERE aivault_family='udemy' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Udemy Personal Plan for 1 month: access to 26,000+ curated top-rated courses on a private account with a dedicated mailbox.
 - Topics in programming, IT, AI, business, design, marketing and more
 - Official certificates of completion
@@ -938,7 +938,7 @@ UPDATE products SET description='Adobe Express Premium lewat link promo resmi ya
 - Adobe Firefly Generative AI (250+ kredit/bulan)
 - 200 juta+ foto, video, dan musik Adobe Stock
 - 25.000+ Adobe Fonts dan storage cloud 100 GB
-- Bisa dipakai di web, iOS, dan Android dengan login yang sama', updated_at=datetime('now') WHERE aivault_family='adobe-express' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Bisa dipakai di web, iOS, dan Android dengan login yang sama', updated_at=datetime('now') WHERE aivault_family='adobe-express' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Adobe Express Premium via an official promo link activated on your own Adobe account, no card required.
 - Adobe Firefly Generative AI (250+ credits/month)
 - 200M+ Adobe Stock photos, videos and music
@@ -948,7 +948,7 @@ UPDATE products SET description_en='Adobe Express Premium via an official promo 
 UPDATE products SET description='Apple Music Individual 5 bulan lewat link aktivasi resmi ke akun Apple milikmu (khusus akun baru region India).
 - Masa aktif 5 bulan
 - Aktivasi di akun sendiri
-- Wajib metode pembayaran UPI / kartu valid milik pembeli', updated_at=datetime('now') WHERE aivault_family='apple-music' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Wajib metode pembayaran UPI / kartu valid milik pembeli', updated_at=datetime('now') WHERE aivault_family='apple-music' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='Apple Music Individual for 5 months via an official activation link on your own Apple account (new Indian-region accounts only).
 - 5-month active period
 - Activated on your own account

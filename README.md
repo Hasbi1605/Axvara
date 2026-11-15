@@ -8,6 +8,13 @@ Produk tidak lagi membekukan harga rumus menjadi manual dan tidak merusak SKU
 `AV-<service_id>`. Migrasi `0127`/`0128` mengisi deskripsi, S&K, dan cara aktivasi
 TUNVN + AIVault ID/EN dengan shortlink `axvara.tech/go/*`. Detail: ARCHITECTURE §16.45.
 
+Koreksi CI15November2026: #712 dibatalkan karena push berikutnya; #713/#714
+gagal menerapkan0127 (`LIKE or GLOB pattern too complex`, batas pola D1 50byte).
+Pengaman template0127/0128 diganti `substr(description, -86)=…` dan test
+menjaga panjang literal LIKE/GLOB semua migrasi. Isi salinan/suntingan admin
+tetap dijaga; migrasi dan deploy menunggu CI berikutnya, bukan deploy manual
+atau bukti deskripsi sudah tampil di produksi.
+
 ## Arsip Produk admin (15 November 2026, lokal saja)
 
 Sampah pada Produk memindahkan parent dan variannya ke **Arsip**, terpisah dari

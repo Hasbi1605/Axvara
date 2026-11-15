@@ -12,7 +12,7 @@ UPDATE products SET description='ChatGPT Plus 1 bulan penuh (30 hari) dengan aku
 - Akun privat, bukan sharing
 - Fitur Plus lengkap: batas pesan tinggi, custom GPT, web search, dan code execution
 - Akses Codex (verifikasi nomor dilakukan pembeli)
-- Garansi penuh 30 hari', updated_at=datetime('now') WHERE aivault_family='chatgpt-plus' AND (description IS NULL OR description='' OR description LIKE '%Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
+- Garansi penuh 30 hari', updated_at=datetime('now') WHERE aivault_family='chatgpt-plus' AND (description IS NULL OR description='' OR substr(description, -86)='Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.');
 UPDATE products SET description_en='ChatGPT Plus for a full month (30 days) on a 100% private account, billed officially via Apple Pay with a full 30-day warranty.
 - Private account, not shared
 - Full Plus features: high message limits, custom GPTs, web search and code execution

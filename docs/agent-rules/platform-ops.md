@@ -1,5 +1,16 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Batas pola LIKE/GLOB di D1 — 15 November 2026
+
+- D1 produksi menolak literal `LIKE`/`GLOB` panjang (`LIKE or GLOB pattern too
+  complex`, SQLITE_ERROR 7500; batas 50 byte) walau SQLite lokal/test lulus.
+  Migrasi 0127 gagal di CI #713 dan #714 karenanya (rollback; deploy terhenti).
+  #712 dibatalkan setelah push berikutnya sesuai `cancel-in-progress`, bukan
+  kegagalan migrasi. Batas resmi: https://developers.cloudflare.com/d1/platform/limits/.
+- Untuk mencocokkan teks panjang pakai `substr(col, -N)=…`, `instr`, atau
+  kesamaan penuh. `tests/d1-migration-like-limit.test.ts` menolak literal >50
+  byte di semua migrasi. Cek ekspresi baru dengan SELECT baca-saja bila ragu.
+
 ### Katalog Jaspay otomatis — 14 November 2026 (implementasi lokal)
 
 - Worker menambah langkah lite `jaspay_catalog` pada trigger menit existing,

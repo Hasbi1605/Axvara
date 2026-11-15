@@ -10,8 +10,11 @@
 - Pembeli melihat deskripsi, S&K (Detail paket, Proses & pengiriman, Aturan
   pakai, Garansi) dan cara aktivasi TUNVN serta AIVault (hold link Gemini
   1 jam di kedua supplier) dalam bahasa Indonesia dan Inggris;
-  link bantu pihak ketiga memakai shortlink `axvara.tech/go/*`. Status: lokal,
-  menunggu publikasi CI (migrasi 0127 + 0128); belum terverifikasi di produksi.
+  link bantu pihak ketiga memakai shortlink `axvara.tech/go/*`. Status: kode
+  sudah dipush, tetapi CI #713/#714 gagal menerapkan0127 (pola LIKE melebihi
+  batas D1). Koreksi lokal0127/0128 memakai pemeriksaan akhiran template tanpa
+  pola LIKE panjang; tetap tidak menimpa suntingan admin. Menunggu CI berikutnya;
+  salinan belum terverifikasi di produksi. #712 dibatalkan oleh push berikutnya.
 
 ## Siklus Arsip Produk admin (15 November 2026, implementasi lokal)
 
