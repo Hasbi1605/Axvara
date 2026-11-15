@@ -5396,6 +5396,12 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
 - Writer hanya memakai fixture palsu untuk patch ini; tidak membuat pembelian,
   replay, polling atau panggilan provider nyata tambahan.
 
+#### Family ChatGPT Plus + slug fallback pendek — 15 November 2026 (lokal)
+
+- `src/lib/aivault/families.ts`: family eksplisit `chatgpt-plus` (`service_chatgpt_plus_1m` → label "Plus 1 Bulan (Apple Pay)", nama "ChatGPT Plus", slug `chatgpt-plus-av`, images `chatgpt-plus-1-bulan`/`chatgpt-tunvn`/`chatgpt-sk`/`chatgpt-premium`). Fallback 1:1 kini memakai `slugify(nama)` + 8 hex FNV-1a32(service id) + `-av` (maks 80 karakter) alih-alih hex penuh service id; key `service:${serviceId}` tetap sehingga identitas fallback tidak berpindah. Publisher tetap `INSERT OR IGNORE` + relink hanya lewat kepemilikan `aivault_family`, jadi kolisi hash tidak menimpa produk lain.
+- Migrasi `0125_aivault_chatgpt_plus_family.sql` (tanpa DDL baru) memindahkan hanya baris fallback ChatGPT Plus yang nonaktif: `aivault_family='chatgpt-plus'`, slug `chatgpt-plus-av`, nama "ChatGPT Plus", deskripsi diganti hanya bila masih auto-default nama lama, `image_url`/`images` diisi aset ChatGPT yang disetujui bila kosong, label varian nonaktif menjadi "Plus 1 Bulan (Apple Pay)". Idempoten dan tidak mengaktifkan produk.
+- Test: pemetaan eksplisit, format/panjang/determinisme slug fallback, penerbitan idempoten di atas baris id174 (tanpa duplikat), dan migrasi 0125 (move + guard baris aktif/copy admin). Status lokal; migrasi remote/deploy belum dilakukan.
+
 Snapshot implementasi sebelum publikasi `bef50574` (histori):
 
 Kontrak owner/safety lengkap: `docs/agent-rules/aivault.md`. PM telah membuat

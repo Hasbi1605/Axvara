@@ -1,5 +1,27 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Family eksplisit ChatGPT Plus + slug fallback pendek — 15 November 2026 (lokal)
+
+- Upstream menambah `service_chatgpt_plus_1m` ("ChatGPT Plus 1 Month (Apple
+  Pay)") setelah peta statis, sehingga fallback membuat produk id174 dengan slug
+  hex-encoded penuh dan tanpa gambar. Peta `src/lib/aivault/families.ts` kini
+  memuat family eksplisit `chatgpt-plus` → nama "ChatGPT Plus", slug
+  `chatgpt-plus-av`, label "Plus 1 Bulan (Apple Pay)", images
+  `["chatgpt-plus-1-bulan","chatgpt-tunvn","chatgpt-sk","chatgpt-premium"]`.
+- Slug fallback 1:1 sekarang `slugify(nama)` + "-" + 8 hex FNV-1a32(service id)
+  + "-av" (≤80 karakter). Key `service:${serviceId}` TIDAK berubah agar identitas
+  fallback lama tidak pindah. Kolisi hash32 sangat kecil; publisher memakai
+  `INSERT OR IGNORE` + kepemilikan family eksplisit sehingga tidak pernah
+  mengambil alih produk WR/SK/TUNVN/AIVault lain.
+- Migrasi `0125_aivault_chatgpt_plus_family.sql` memindahkan HANYA baris lama
+  yang tepat (`aivault_family='service:service_chatgpt_plus_1m'`, nonaktif,
+  belum ada `chatgpt-plus-av`): family/slug/nama ke ChatGPT Plus, deskripsi
+  diganti hanya bila masih auto-default nama lama, `image_url` diisi aset
+  ChatGPT yang disetujui bila kosong, `images` menjadi JSON array berisi aset
+  yang sama bila masih NULL/''/'[]', lalu label varian nonaktif menjadi
+  "Plus 1 Bulan (Apple Pay)". Tidak menambah DDL/kolom atau mengaktifkan apa pun.
+- Status: perubahan lokal + test; migrasi remote/deploy belum dilakukan.
+
 ## Bukti live 15 Nov 2026 — laporan PM
 
 - PM melaporkan kode `bef50574` sudah dipush ke main dan menjalankan SATU
