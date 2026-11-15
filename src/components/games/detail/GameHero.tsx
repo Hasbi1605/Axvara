@@ -36,12 +36,21 @@ export function GameHero({ game, t }: { game: GamesDetailGame; t: ReturnType<typ
   // kartu ikon 3D besar, info game di container di bawah banner. Revisi 15 Nov 2026: kartu kaca TEGAK
   // (tanpa miring/melayang/kilau otomatis); hover desktop condong ±5° mengikuti kursor + kilau sekali.
   return <header data-game-header className="relative">
-    <div className="relative h-[190px] w-full overflow-hidden bg-[#0F1430] sm:h-[260px] lg:h-[330px]">
-      <GameImage src={game.banner} fallbackSrc={game.icon} banner name={game.name} framed={false} className="h-full w-full text-4xl" imageClassName="object-[center_35%]" eager />
-      <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-[#080C1E] via-[#080C1E]/25 to-[#080C1E]/10" />
-      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#00E5FF]/25 to-transparent" />
+    {/* Desktop (revisi owner 15 Nov 2026): banner "sinematik" di dalam container (±2,65:1, 460 px) agar
+        wajah/adegan tidak terpotong jadi strip 5:1 dan gambar tidak ditarik selebar layar; sisi kiri–kanan
+        diisi salinan banner buram + gelap (ambient). HP/tablet tetap full-bleed seperti sebelumnya. */}
+    <div aria-hidden="true" data-game-banner-ambient className="pointer-events-none absolute inset-x-0 top-0 hidden h-[600px] overflow-hidden lg:block">
+      <GameImage src={game.banner} fallbackSrc={game.icon} banner name={game.name} framed={false} className="h-full w-full scale-110 opacity-60 blur-3xl" eager />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#080C1E]/50 via-[#080C1E]/75 to-[#080C1E]" />
     </div>
-    <div className="relative mx-auto grid max-w-[1280px] grid-cols-[112px_minmax(0,1fr)] items-end gap-x-4 gap-y-1 px-4 sm:grid-cols-[176px_minmax(0,1fr)] sm:gap-x-7 sm:px-6 lg:grid-cols-[212px_minmax(0,1fr)] lg:px-8">
+    <div className="relative lg:mx-auto lg:max-w-[1280px] lg:px-8 lg:pt-6">
+      <div data-game-banner className="relative h-[190px] w-full overflow-hidden bg-[#0F1430] sm:h-[260px] lg:h-[460px] lg:rounded-3xl lg:border lg:border-white/10 lg:shadow-[0_24px_60px_rgba(0,0,0,.45)]">
+        <GameImage src={game.banner} fallbackSrc={game.icon} banner name={game.name} framed={false} className="h-full w-full text-4xl" imageClassName="object-[center_35%] lg:object-[center_30%]" eager />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-[#080C1E] via-[#080C1E]/25 to-[#080C1E]/10 lg:via-transparent lg:to-transparent" />
+        <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#00E5FF]/25 to-transparent lg:hidden" />
+      </div>
+    </div>
+    <div className="relative mx-auto grid max-w-[1280px] grid-cols-[112px_minmax(0,1fr)] items-end gap-x-4 gap-y-1 px-4 sm:grid-cols-[176px_minmax(0,1fr)] sm:gap-x-7 sm:px-6 lg:grid-cols-[212px_minmax(0,1fr)] lg:px-16">
       <div className={`${styles.perspective} -mt-14 h-28 w-28 sm:-mt-24 sm:h-44 sm:w-44 lg:-mt-28 lg:h-[212px] lg:w-[212px]`} onPointerMove={tilt} onPointerLeave={reset} onPointerCancel={reset}>
         <div ref={card} data-game-icon-card className={`${styles.iconCard} h-full w-full`}><GameImage src={game.icon} name={game.name} framed={false} className="h-full w-full text-3xl sm:text-5xl" imageClassName="scale-[1.1]" eager /></div>
       </div>

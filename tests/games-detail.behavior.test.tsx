@@ -227,13 +227,15 @@ describe("Games detail (selected SKU contract)", () => {
     expect(screen.queryByRole("radiogroup")).toBeNull();
   });
 
-  it("renders filled trust icons, the floating hero card and an accessible instant badge", () => {
+  it("renders filled trust icons, the upright 3D hero card and an accessible instant badge", () => {
     render(<GameClient detail={{ game, products: [product({ category: "topup" })] }} orderingOpen={false} />);
     const header = document.querySelector<HTMLElement>("[data-game-header]")!;
     for (const label of ["Proses instan", "Layanan 24/7", "Pembayaran aman"]) expect(within(header).getByText(label)).toBeTruthy();
     expect(header.querySelectorAll("svg")).toHaveLength(3);
     expect(header.querySelector("[data-game-icon-card]")).toBeTruthy();
-    expect(header.firstElementChild!.className).toContain("h-[190px] w-full overflow-hidden bg-[#0F1430] sm:h-[260px] lg:h-[330px]");
+    // HP tetap full-bleed 190/260 px; desktop banner sinematik 460 px di container + ambient blur (15 Nov 2026).
+    expect(header.querySelector("[data-game-banner]")!.className).toContain("h-[190px] w-full overflow-hidden bg-[#0F1430] sm:h-[260px] lg:h-[460px] lg:rounded-3xl");
+    expect(header.querySelector("[data-game-banner-ambient]")!.getAttribute("aria-hidden")).toBe("true");
     const card = screen.getByRole("radio", { name: /86 Diamond/ }).closest("label")!;
     expect(within(card).getByText("Pengiriman instan").className).toBe("sr-only");
     const badge = card.querySelector("[data-instant-badge]")!;
