@@ -36,12 +36,15 @@ async function fulfillPaidOrder(orderCode: string, orderKind: unknown): Promise<
   if (!order) return;
   const { createTunvnOrderLinks,processTunvnOrders } = await import("@/lib/tunvn/orders");
   await createTunvnOrderLinks(orderCode);
+  const { createAivaultOrderLinks, processAivaultOrders } = await import("@/lib/aivault/orders");
+  await createAivaultOrderLinks(orderCode);
   // Bind supplier ownership before generic fulfillment can mark a manual-mode
   // supplier variant as requiring admin handover or send misleading notices.
   const { ensureFulfillmentItems } = await import("@/lib/fulfillment/delivery/inventory-binding");
   await ensureFulfillmentItems(order);
   const work: (() => Promise<unknown>)[] = [];
   work.push(() => processTunvnOrders(undefined,{ orderCode }));
+  work.push(() => processAivaultOrders(undefined,{ orderCode }));
   try {
     const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
     const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");

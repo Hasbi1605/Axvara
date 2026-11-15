@@ -46,7 +46,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "jaspay_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
+const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "aivault_orders", "aivault_catalog", "jaspay_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 10;
 const ORPHAN_LEDGER_PER_RUN = 10;
@@ -116,6 +116,24 @@ export async function POST(request: NextRequest) {
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db));
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
+    else if (job === "aivault_orders") {
+      const { processAivaultOrders }=await import("@/lib/aivault/orders");
+      result.aivault_orders_processed=await processAivaultOrders(db);
+    }
+    else if (job === "aivault_catalog") {
+      const { isAivaultConfigured,isAivaultSyncEnabled }=await import("@/lib/aivault/client");
+      if (!isAivaultConfigured() || !isAivaultSyncEnabled()) result.skipped="not_configured";
+      else {
+        const { loadCurrentFxSnapshot }=await import("@/lib/payments/market-snapshot");
+        const { parseRateRational }=await import("@/lib/payments/fx");
+        const fx=await loadCurrentFxSnapshot(db.d1), rate=fx ? parseRateRational(fx.rateText) : null;
+        if (!rate) return NextResponse.json({...result,ok:false,error:"fx_unavailable"},{status:503});
+        const { publishAivaultCatalog }=await import("@/lib/aivault/catalog");
+        const synced=await publishAivaultCatalog(db,Number(rate.num)/Number(rate.den),{force:false});
+        Object.assign(result,synced);
+        if ("ok" in synced && !synced.ok) return NextResponse.json(result,{status:503});
+      }
+    }
     else if (job === "tunvn_orders") {
       const { processTunvnOrders }=await import("@/lib/tunvn/orders");
       result.tunvn_orders_processed=await processTunvnOrders(db);

@@ -1,5 +1,20 @@
 # DESIGN.md — AXVARA Design System
 
+## Panel supplier AIVault (15 November 2026, lokal saja)
+
+Section Supplier→AIVault memakai primitive admin existing: PageHeader, StatCard
+netral, tab Ringkas/Antrean/Markup/Alat, kartu family dan form varian responsif.
+Harga modal memakai USD, harga jual IDR; markup dan harga manual terpisah,
+switch aktivasi memiliki label aksesibel dan hint bila parent masih nonaktif.
+Antrean memakai teks status bersama badge, retry pra-send dan dialog receipt
+privat (Escape menutup/fokus kembali). Load/error/empty state eksplisit;
+kegagalan endpoint menampilkan bagian+HTTP status tanpa menghapus data lain.
+Bukan token/font/aset baru. Badge dan filter asal TUNVN/AIVault tetap terpisah
+di admin Produk. Chrome fixture
+1440px/390px memeriksa form/switch/retry/reveal/sync, fokus/keyboard dan overflow;
+route fixture dihapus, bukan bukti login atau transaksi produksi.
+
+
 ## Progres produk otomatis (14 November 2026, implementasi lokal)
 
 Halaman `/pesanan/[code]` memakai `AutomaticOrderProgress` untuk item Jaspay.

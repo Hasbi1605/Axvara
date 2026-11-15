@@ -36,6 +36,7 @@ export function withoutPrivateBuyerData(items: unknown[]): unknown[] {
     const publicItem = { ...raw } as Record<string,unknown>;
     delete publicItem.buyer_fields;
     delete publicItem.tunvn_eligibility;
+    delete publicItem.aivault_eligibility;
     return publicItem;
   });
 }
@@ -56,4 +57,15 @@ export function tunvnEligibility(row: Record<string, unknown>, qty: number): Tun
   const cost = Number(account ? row.tunvn_source_cost_usdt : row.tunvn_cost_usdt);
   return { version: 1, kind: buff ? "buff" : "account", source_product_id: account ? sourceId : null, source_variant_id: Number(row.id), source_unit_b: buff ? 1 : null, quantity: qty,
     ...(Number.isFinite(cost) && cost > 0 ? { cost_usdt: Math.round(cost * qty * 10000) / 10000 } : {}) };
+}
+
+export type AivaultEligibility = { version: 1; service_id: string; source_variant_id: number; quantity: number; cost_usd?: number };
+/** Only supplier-owned, separate AV variants may opt NEW orders into automatic delivery. */
+export function aivaultEligibility(row: Record<string, unknown>, qty: number): AivaultEligibility | undefined {
+  const service = row.aivault_service_id;
+  if (typeof service !== "string" || !/^[A-Za-z0-9_-]{1,160}$/.test(service) || row.sku !== `AV-${service}` || !row.aivault_family
+    || !Number.isSafeInteger(Number(row.id)) || Number(row.id)<1 || !Number.isSafeInteger(qty) || qty<1 || qty>100) return undefined;
+  const cost=Number(row.aivault_source_cost_usd);
+  return { version:1,service_id:service,source_variant_id:Number(row.id),quantity:qty,
+    ...(Number.isFinite(cost) && cost>0 ? {cost_usd:Math.round(cost*qty*1e8)/1e8} : {}) };
 }

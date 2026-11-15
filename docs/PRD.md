@@ -1,5 +1,32 @@
 # PRD — AXVARA
 
+## Supplier AIVault Hub (15 November 2026, implementasi lokal)
+
+Owner menambahkan AIVault sebagai supplier terpisah dari TUNVN/WR/SK. Seluruh
+katalog dimirror ke admin Produk, dikelompokkan per family (Adobe Express,
+Gemini, Apple Music, Notion, Udemy; fallback satu produk per service). Semua
+produk/varian baru nonaktif; sync tidak mengaktifkan atau menimpa nama,
+deskripsi, kategori, gambar dan label milik admin. Gambar mengambil produk
+AXVARA sejenis existing. Default markup35% dari modal USD tierqty1, konversi
+FX snapshot AXVARA USD≈USDT, ceilRp100; tanpa FX fail-closed. Admin bisa
+mengubah markup/harga manual dan aktivasi varian/parent.
+
+Setelah paid web/Telegram, snapshot server memilih service AIVault asal,
+preflight memeriksa saldo/stok/identitas, kemudian membeli dengan ID eksternal
+stabil. Receipt dan kredensial terenkripsi; queued dipoll hingga delivered
+atau failed. Timeout/5xx/429/JSON rusak boleh replay ID identik maksimal3attempt;
+402/409 dan kondisi ambigu di luar kontrak ditahan untuk admin. Tidak menerima
+harga normal otomatis, tidak mencampur produk supplier, tidak backfill order
+lama, tidak mengubah PIN/proof/kanal pengiriman. Panel Supplier→AIVault memberi
+saldo USD, katalog, antrean100link, harga dan sync; error parsial tidak
+mengosongkan seluruh panel. Receipt privat hanya reveal admin yang diaudit.
+
+Status lokal saja: commit WIP dibuat PM, resolusi rebase belum di-stage/continue
+oleh writer; belum push/deploy, env Pages atau migrasi remote.
+Satu tes nyata Gemini Plus6M diizinkan hanya untuk PM sesudah deploy; writer
+memakai fixture tanpa pembelian provider. Lihat aturan AIVault + ARCHITECTURE16.44.
+
+
 ## Penjualan WR otomatis melalui Jaspay (14 November 2026, implementasi lokal)
 
 Keputusan owner: penjualan baru WR memakai Jaspay untuk produk yang tersedia,

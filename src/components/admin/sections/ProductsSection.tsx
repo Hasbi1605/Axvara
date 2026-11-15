@@ -12,7 +12,7 @@ import { adjacentReorderProduct } from "@/lib/product-order";
 // meneruskan event, tanpa memiliki state bisnis sendiri.
 
 /** Filter asal supplier di daftar admin (keputusan owner 2026-09-30). */
-export type SupplierFilter = "all" | "WR" | "SK" | "Manual";
+export type SupplierFilter = "all" | "WR" | "SK" | "TUNVN" | "AIVault" | "Manual";
 
 /** Varian aktif yang S&K-nya perlu ditinjau (teks WR belum versi Axvara / suntingan dijeda). */
 function CopyReviewBadge({ count }: { count?: number }) {
@@ -46,6 +46,7 @@ function LiveStatusBadge({ status, reason }: { status?: Prod["liveStatus"]; reas
 /** Badge asal supplier — HANYA admin (keputusan owner 2026-09-30). Pembeli
  *  tidak pernah melihat ini; pembeda di storefront hanya nama bersih. */
 function SupplierBadge({ supplier, slug }: { supplier?: Prod["supplier"]; slug: string }) {
+  if (supplier === "AIVault") return <Badge variant="secondary" title={`Supplier: AIVault · slug /${slug}`}>AIVault</Badge>;
   if (supplier === "WR") {
     return <Badge variant="secondary" title={`Supplier: Warung Rebahan · slug /${slug}`}>WR</Badge>;
   }
@@ -116,8 +117,8 @@ export function ProductsSection({
   onLiveTabChange: (value: "live" | "hidden" | "off" | "all") => void;
   perPageAdmin: 20 | 50 | 100;
   onPerPageChange: (value: 20 | 50 | 100) => void;
-  supplierFilter: "all" | "WR" | "SK" | "TUNVN" | "Manual";
-  onSupplierFilterChange: (value: "all" | "WR" | "SK" | "TUNVN" | "Manual") => void;
+  supplierFilter: "all" | "WR" | "SK" | "TUNVN" | "AIVault" | "Manual";
+  onSupplierFilterChange: (value: "all" | "WR" | "SK" | "TUNVN" | "AIVault" | "Manual") => void;
   onQueryChange: (value: string) => void;
   onPageChange: (updater: (prev: number) => number) => void;
   onlyLowStock: boolean;
@@ -201,15 +202,16 @@ export function ProductsSection({
             {/* Filter asal supplier (WR/SK/Manual) — lokal, tanpa request. */}
             <NativeSelect
               value={supplierFilter}
-              onChange={e=>{ onSupplierFilterChange(e.target.value as "all" | "WR" | "SK" | "TUNVN" | "Manual"); onPageChange(()=>1); }}
+              onChange={e=>{ onSupplierFilterChange(e.target.value as "all" | "WR" | "SK" | "TUNVN" | "AIVault" | "Manual"); onPageChange(()=>1); }}
               aria-label="Filter asal supplier"
-              title="Filter asal supplier (WR/SK/TUNVN/Manual)"
+              title="Filter asal supplier (WR/SK/TUNVN/AIVault/Manual)"
               className="w-full sm:w-44"
             >
               <option value="all">Semua asal</option>
               <option value="WR">WR</option>
               <option value="SK">SK</option>
               <option value="TUNVN">TUNVN</option>
+              <option value="AIVault">AIVault</option>
               <option value="Manual">Manual</option>
             </NativeSelect>
           </div>

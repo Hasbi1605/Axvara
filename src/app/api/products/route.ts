@@ -154,14 +154,15 @@ async function readProducts(req: NextRequest) {
   // hanya melihat nama bersih; WR/SK/Manual hanya dibedakan di admin + slug).
   // SK = sk_product_id NOT NULL (source tetap 'manual' karena CHECK D1 lama);
   // WR = source warung_rebahan ATAU wr_product_id NOT NULL; selainnya Manual.
-  const supplierByProduct = new Map<string, "WR" | "SK" | "TUNVN" | "Manual">();
+  const supplierByProduct = new Map<string, "WR" | "SK" | "TUNVN" | "AIVault" | "Manual">();
   if (isAdminRequest) {
     const supRows = await queryAll(
-      `SELECT id, source, wr_product_id, sk_product_id, tunvn_family FROM products`,
+      `SELECT id, source, wr_product_id, sk_product_id, tunvn_family, aivault_family FROM products`,
     ).catch(() => [] as Record<string, unknown>[]);
     for (const row of supRows) {
       const key = String(row.id);
       if (row.tunvn_family != null) supplierByProduct.set(key, "TUNVN");
+      else if (row.aivault_family != null) supplierByProduct.set(key,"AIVault");
       else if (row.sk_product_id != null) supplierByProduct.set(key, "SK");
       else if (String(row.source ?? "") === "warung_rebahan" || row.wr_product_id != null) supplierByProduct.set(key, "WR");
       else supplierByProduct.set(key, "Manual");

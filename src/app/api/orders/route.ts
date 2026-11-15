@@ -748,9 +748,9 @@ export async function GET(req: NextRequest) {
       const flags = await queryFirst(
         `WITH lines AS (
             SELECT CAST(json_extract(je.value,'$.variant_id') AS INTEGER) AS variant_id,
-                   (json_extract(je.value,'$.tunvn_eligibility.version')=1
+                   (((json_extract(je.value,'$.aivault_eligibility.version')=1 AND json_extract(je.value,'$.aivault_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.tunvn_eligibility.version')=1
                     AND json_extract(je.value,'$.tunvn_eligibility.kind') IN ('account','buff')
-                    AND json_extract(je.value,'$.tunvn_eligibility.cost_usdt')>0
+                    AND json_extract(je.value,'$.tunvn_eligibility.cost_usdt')>0))
                     AND ?=0) AS automatic
            FROM json_each(CASE WHEN json_valid(?) THEN ? ELSE '[]' END) je
          )

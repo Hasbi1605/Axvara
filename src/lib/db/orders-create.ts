@@ -8,7 +8,7 @@ import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 
 import { getD1, getSharedMem, getOrderMem } from "./client";
 import { StockReservationError } from "./errors";
-import { assertSameBuyerCode, buyerSnapshotMatches, tunvnEligibility, validateBuyerFields } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, buyerSnapshotMatches, aivaultEligibility, tunvnEligibility, validateBuyerFields } from "@/lib/buyer-fields";
 import type { D1Statement, AtomicOrderItem } from "./types";
 import { markUniqueUnitLines } from "@/lib/fulfillment/units";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
@@ -39,7 +39,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     if (owners.length !== productIds.length) throw new StockReservationError();
     const minutes = owners.some(row => isManualProductForBulk(bulkOwnerFromProductRow(row))) ? 15 : supplierMinutes;
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
-    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.sku,pv.buyer_field_key,pv.max_qty,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,p.slug AS product_slug,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
+    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.sku,pv.buyer_field_key,pv.max_qty,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,pv.aivault_service_id,p.aivault_family,(SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) AS aivault_source_cost_usd,p.slug AS product_slug,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
         p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
         p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed
       FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
@@ -62,10 +62,13 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
         if (!row) throw new Error("missing");
         validateBuyerFields(row, item.buyer_fields, qtyByVariant.get(item.variant_id ?? 0) ?? item.qty);
         if (!buyerSnapshotMatches(item, { buyer_field_key: (row.buyer_field_key ?? null) as "muse_invite_code" | null, max_qty: row.max_qty == null ? null : Number(row.max_qty), buyer_fields: item.buyer_fields })) throw new Error("stale");
-        const clean = { ...item } as typeof item & { tunvn_eligibility?: unknown };
+        const clean = { ...item } as typeof item & { tunvn_eligibility?: unknown; aivault_eligibility?: unknown };
         delete clean.tunvn_eligibility;
+        delete clean.aivault_eligibility;
+        const avEligibility = input.adminPaymentTest ? undefined : aivaultEligibility(row,item.qty);
+        if (row.aivault_service_id && !input.adminPaymentTest && !avEligibility?.cost_usd) throw new Error("invalid_aivault_identity");
         const eligibility = input.adminPaymentTest ? undefined : tunvnEligibility(row, item.qty);
-        return { ...clean, ...(eligibility ? { tunvn_eligibility: eligibility } : {}) };
+        return { ...clean, ...(avEligibility ? { aivault_eligibility:avEligibility } : {}), ...(eligibility ? { tunvn_eligibility: eligibility } : {}) };
       });
     } catch { throw new StockReservationError(); }
     for (const item of input.items) {
@@ -102,6 +105,8 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                 AND pv.buyer_field_key IS ? AND pv.max_qty IS ?
                 AND (pv.max_qty IS NULL OR ? <= pv.max_qty)
                  AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ? AND pv.tunvn_source_product_id IS ?
+                 AND pv.aivault_service_id IS ? AND p.aivault_family IS ? AND (SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) IS ?
+                 ${bulkById.get(item.variant_id)?.aivault_service_id ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='aivault_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""}
                   AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
                   ${String(bulkById.get(item.variant_id)?.sku ?? "").startsWith("TUNVN-") ? "AND NOT EXISTS (SELECT 1 FROM store_settings WHERE key='tunvn_catalog_lease' AND json_extract(value,'$.until') > unixepoch('now')*1000)" : ""}
                 -- WR3 Jaspay: cap wajib ada dan >= qty agregat varian ini;
@@ -114,6 +119,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
             item.buyer_field_key ?? null,item.max_qty ?? null,qtyByVariant.get(item.variant_id) ?? item.qty,
              bulkById.get(item.variant_id)?.sku ?? null,bulkById.get(item.variant_id)?.tunvn_buff_quantity_b ?? null,bulkById.get(item.variant_id)?.product_slug ?? null,
              bulkById.get(item.variant_id)?.tunvn_source_product_id ?? null,
+             bulkById.get(item.variant_id)?.aivault_service_id ?? null,bulkById.get(item.variant_id)?.aivault_family ?? null,bulkById.get(item.variant_id)?.aivault_source_cost_usd ?? null,
              bulkById.get(item.variant_id)?.tunvn_cost_usdt ?? null,bulkById.get(item.variant_id)?.tunvn_source_cost_usdt ?? null,
             qtyByVariant.get(item.variant_id) ?? item.qty),
         );

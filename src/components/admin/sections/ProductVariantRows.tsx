@@ -335,7 +335,7 @@ export function ProductVariantRows({
           const wrLocked = Number(v.wr_auto_managed ?? 0) === 1 || Boolean(form.wrManaged);
           // Semua varian akun TUNVN (SKU TUNVN-{id}) dikirim otomatis setelah
           // lunas; Buff Muse tetap perilaku lama (bukan akun).
-          const tunvnAutomatic = /^TUNVN-\d+$/.test(v.sku)
+          const tunvnAutomatic = v.sku.startsWith("AV-") || /^TUNVN-\d+$/.test(v.sku)
             || (form.slug === "muse-ai-1-miliar-token" && v.sku === "TUNVN-BUFF-1B");
           const lockedInput = "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-muted cursor-not-allowed";
           const openInput = "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none";

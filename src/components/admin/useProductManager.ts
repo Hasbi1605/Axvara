@@ -112,7 +112,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const [onlyLowStock, setOnlyLowStock] = useState(false);
   // Filter asal supplier (WR/SK/Manual) — pola onlyLowStock: state di hook
   // agar pagination + reorder ikut benar, UI select di ProductsSection.
-  const [supplierFilter, setSupplierFilter] = useState<"all" | "WR" | "SK" | "TUNVN" | "Manual">("all");
+  const [supplierFilter, setSupplierFilter] = useState<"all" | "WR" | "SK" | "TUNVN" | "AIVault" | "Manual">("all");
   // Tab status toko + ukuran halaman (keputusan owner 2026-10-01).
   const [liveTab, setLiveTab] = useState<LiveTab>("live");
   const [perPageAdmin, setPerPageAdmin] = useState<PerPageAdmin>(PER_PAGE_ADMIN_DEFAULT);

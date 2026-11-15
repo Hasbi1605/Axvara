@@ -81,4 +81,6 @@ pdp-mobile-375.png
 .admin-credentials*
 .fulfillment-credentials*
 .pages-env-backup*
+
+# AIVault reseller credentials (local only)
 .aivault-credentials*

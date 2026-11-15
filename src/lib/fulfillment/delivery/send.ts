@@ -19,6 +19,7 @@ import type { Row } from "./types";
 import { MAX_ATTEMPTS, RETRY_DELAYS } from "./types";
 import { findReservedForOrderVariant, inventoryMatchesItem } from "./inventory-binding";
 import { isValidBuyerEmail, sendWebDeliveryEmail, orderLineLabel } from "./buyer-email";
+import { eligibleAivaultLine } from "@/lib/aivault/orders";
 import { eligibleTunvnLine } from "@/lib/tunvn/orders";
 
 /**
@@ -244,6 +245,12 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   // Item milik pipeline Sekalipay (0049, pola WR): diselesaikan via
   // sk_order_links; agregat order dihitung refreshOrderAggregate yang sama.
   if (itemRow.sk_link_id != null) return false;
+  if (itemRow.aivault_link_id != null) {
+    const avLink=await database.queryFirst("SELECT status FROM aivault_order_links WHERE id=? AND order_code=? AND item_index=?",itemRow.aivault_link_id,orderCode,itemRow.item_index);
+    if (avLink?.status!=="completed") return false;
+  } else {
+    try { if (eligibleAivaultLine(JSON.parse(String(order.items ?? "[]"))[Number(itemRow.item_index)] ?? {})) return false; } catch { /* manifest validation below */ }
+  }
   let tunvnKind: unknown;
   if (itemRow.tunvn_link_id != null) {
     const link=await database.queryFirst("SELECT status,kind FROM tunvn_order_links WHERE id=? AND order_code=? AND item_index=?",itemRow.tunvn_link_id,orderCode,itemRow.item_index);
@@ -255,7 +262,7 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   const lease = await claimItemLease(itemRow, database, parent);
   if ("skip" in lease) return lease.skip;
   const { item, leaseFence } = lease;
-  if (item.tunvn_link_id != null) {
+  if (item.tunvn_link_id != null || item.aivault_link_id != null) {
     try {
       if (item.delivered_ciphertext && item.delivered_iv) {
         const plaintext=await decryptSecret(String(item.delivered_ciphertext),String(item.delivered_iv));

@@ -5352,3 +5352,60 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
   workerd (identitas dispatch/fence), plus full suite `NODE_ENV=test npx vitest
   run --run` **452 file/6.215 test lulus**. Belum ada migrasi remote, push,
   deployment, pembelian supplier, atau transaksi produksi.
+
+### 16.44 AIVault Hub — supplier terpisah (15 November 2026, lokal saja)
+
+Kontrak owner/safety lengkap: `docs/agent-rules/aivault.md`. PM telah membuat
+commit WIP lokal; resolusi rebase ke main menggabungkan TUNVN §16.43 dan
+AIVault §16.44, belum stage/continue oleh writer. Belum push, env Pages,
+migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
+
+- `src/lib/aivault/{client,families,sync,catalog,purchase,orders}.ts` memisahkan
+  GET/parser, pemetaan family, mirror USD, publisher dan dispatcher idempoten.
+  Migrasi `0124_aivault_supplier.sql` menambah `aivault_products`,
+  `aivault_order_links`, `products.aivault_family`,
+  `product_variants.aivault_service_id/aivault_admin_price_idr`,
+  `fulfillment_items.aivault_link_id` beserta indeks unik/due. Tidak mengubah
+  identitas/order TUNVN/WR/SK atau mengaktifkan katalog.
+- Catalog sync json_each chunk50, publisher jumlah statement tetap dengan
+  lease90detik/throttle2menit dan CAS markup/manual/snapshot. Product copy,
+  kategori (mapSkCategory), gambar kandidat existing dan label ditulis sekali.
+  Family terpisah, SKU `AV-<service_id>`, source/mode manual. Produk dan varian
+  baru inactive. Harga tierqty1 USD≈USDT × FX snapshot ×markup35%, ceilRp100;
+  tanpa FX tidak menerbitkan harga. Admin dapat mengaktifkan di Produk atau
+  mengatur varian dari panel AIVault, termasuk harga manual nullable.
+- Factory web/Telegram memberi snapshot internal `aivault_eligibility` version1
+  dengan service, source_variant_id, quantity, cost_usd; reservasi CAS menahan
+  perubahan service/family/biaya dan lease katalog. Buyer views menghapus marker,
+  SKU supplier disembunyikan dan varian mendapat automatic_delivery. Order lama
+  tidak di-backfill. Admin payment test/disable tidak boleh dispatch.
+- Paid fulfillment membuat link sebelum pengiriman umum; cron lite
+  `aivault_orders` tiapmenit + `aivault_catalog` tiap3menit ditambahkan pada router
+  dan `mcp-worker/src/cron.ts`, menggunakan budget40 existing. Satu link/invocation;
+  queued dipoll exact ID dengan gap≥1menit. Tidak ada webhook publik/env cron baru.
+- POST `/api/v1/order` hanya dari purchase.ts lewat dispatcher. External ID
+  `<order_code>-<item_index>` immutable, sent fence+attempt+lease/CAS sebelum
+  transport. Receipt penuh terenkripsi sebelum interpretasi, credential qty
+  yang dibeli masuk delivered_ciphertext/iv, lalu delivery existing. Generic
+  fulfillment menahan item AV sampai link completed. Preflight quote memastikan
+  stock/balance/identity serta tanpa normal-price override. Bentuk custom pricing
+  yang belum terbukti aman ditahan untuk admin.
+- Berbeda dari TUNVN, timeout/5xx/429/invalidJSON aman replay external ID identik
+  maksimal3attempt dengan backoff2/4menit berdasarkan kontrak idempotensi AIVault.
+  Replay setelah fence tidak mengulang gate quote stock/balance yang dapat habis
+  akibat debit pertama; tetap memeriksa paid/disable/snapshot/ownership/identity.
+  400/401/402/403/404/409 dan partial/mismatch → needs_admin; queued → GET polling,
+  failed → needs_admin, tanpa ID baru/fallback normal-price. Manual retry hanya
+  pra-send attempt0 dengan capability SQL yang sama untuk GET dan CAS.
+- Section `aivault`, `AivaultManager`, `/api/admin/aivault/{products,balance,
+  publish,orders}` dan PATCH `products/[id]`: requireAdmin, mutasi zod strict,
+  error JSON, body limit; reveal receipt privat/no-store+audit POST. Load memakai
+  allSettled dan error bagian+status. Badge origin AIVault hanya admin Produk.
+- Empat env Pages **kelak secret_text**, belum dipasang: `AIVAULT_API_KEY`,
+  `AIVAULT_BASE_URL` default `https://reseller.aivaulthub.store`, `AIVAULT_ENABLED`,
+  `AIVAULT_SYNC_ENABLED`. HTTPS/key/master/sync gate fail-closed; kredensial lokal
+  ignored `.aivault-credentials*`. Penambahan env mengikuti backup§16.2; tidak ada
+  perubahan backup/env pada pekerjaan lokal ini. Tidak ada registrasi webhook.
+- Verifikasi memakai SQLite/workerd dan fetch mock, bukan transaksi produksi.
+  Chrome desktop/mobile memakai route fixture sementara yang dihapus, bukan
+  bukti akses admin produksi. Satu tes nyata Gemini6M hanya PM sesudah deploy.

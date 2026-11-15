@@ -18,6 +18,9 @@ it("runs createChannelOrderAtomic against real Miniflare D1", async () => {
     "CREATE TABLE operation_guards (operation_id TEXT PRIMARY KEY, valid INTEGER CHECK(valid=1))",
     "ALTER TABLE product_variants ADD COLUMN tunvn_cost_usdt REAL",
     "CREATE TABLE tunvn_products(supplier_product_id INTEGER PRIMARY KEY,price_usdt REAL)",
+  "ALTER TABLE products ADD COLUMN aivault_family TEXT",
+  "ALTER TABLE product_variants ADD COLUMN aivault_service_id TEXT",
+  "CREATE TABLE aivault_products(service_id TEXT PRIMARY KEY,unit_price_usd REAL)",
     "CREATE TABLE fulfillment_inventory (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER, variant_id INTEGER, status TEXT, order_code TEXT, secret_ciphertext TEXT, secret_iv TEXT, secret_fingerprint TEXT, reserved_at TEXT, sort_order INTEGER)",
   ].join(";");
   const seed = `

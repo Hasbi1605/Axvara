@@ -1,5 +1,32 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## AIVault Hub (15 November 2026, lokal saja)
+
+Supplier baru AIVault terpisah dari WR/SK/TUNVN. Migrasi0124 menambah mirror,
+link order durable dan penanda family/service/fulfillment;0123 dicadangkan untuk
+TUNVN paralel. Katalog dibuat **nonaktif**, nama/deskripsi/gambar/label milik admin
+sesudah pembuatan. Harga USD tierqty1 memakai FX AXVARA≈USDT +markup35%, ceilRp100,
+atau override admin per varian. Tanpa FX tidak publish harga.
+
+Supplier→AIVault menyediakan Ringkas/Antrean/Markup/Alat. Admin Produk tetap
+memiliki badge dan filter terpisah untuk TUNVN dan AIVault. Semua API
+`/api/admin/aivault/*` requireAdmin; reveal receipt audit POST privat. Checkout
+baru web/Telegram mencatat eligibility internal, hanya paid dan tanpa disable
+boleh membeli. Receipt penuh terenkripsi, queued dipoll exact ID tiap≥1menit,
+pengiriman kredensial melalui pipeline existing. Timeout/5xx/429/invalidJSON
+memakai ID eksternal yang sama, maksimum3attempt;402/409/identity/partial butuh
+admin. Tidak memakai accept_normal_price atau webhook baru.
+
+Cron lite `aivault_orders` tiapmenit, `aivault_catalog` tiap3menit, budget40.
+Env kelak Pages secret_text: AIVAULT_API_KEY, AIVAULT_BASE_URL (default HTTPS
+reseller.aivaulthub.store), AIVAULT_ENABLED, AIVAULT_SYNC_ENABLED; default mati,
+tanpa konfigurasi tidak fetch. Lokal `.aivault-credentials*` ignored. **Commit WIP lokal dibuat PM;
+resolusi rebase belum di-stage/continue oleh writer. Belum push/deploy/migrasi
+remote/env Pages**. Satu tes berbayar Gemini Plus6M
+hanya boleh dijalankan PM sesudah deployment. Detail ARCHITECTURE§16.44 dan
+[aturan AIVault](docs/agent-rules/aivault.md).
+
+
 ## WR otomatis: Jaspay dan stok Premium (14 November 2026)
 
 Implementasi lokal, publikasi melalui CI main; deployment belum diverifikasi.

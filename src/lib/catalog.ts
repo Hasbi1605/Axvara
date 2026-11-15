@@ -7,7 +7,7 @@ import { queryAll, queryFirst, isD1Mode } from "@/lib/db";
 import { bulkOwnerFromJoinedRow, isManualProductForBulk, validateBulkPricing, type BulkTier } from "@/lib/bulk-pricing";
 import type { Locale } from "@/lib/i18n/locale";
 import { translateVariantLabel } from "@/lib/i18n/variant-copy";
-import { tunvnEligibility } from "@/lib/buyer-fields";
+import { aivaultEligibility, tunvnEligibility } from "@/lib/buyer-fields";
 
 // ---- Types ----
 
@@ -224,7 +224,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
   const variants = await queryAll(
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
-            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.tunvn_buff_quantity_b, pv.tunvn_source_product_id, p.slug AS product_slug, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.tunvn_buff_quantity_b, pv.tunvn_source_product_id, pv.aivault_service_id,p.aivault_family,p.slug AS product_slug, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
             p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
             p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed,
@@ -336,7 +336,7 @@ export async function getActiveVariant(variantId: number): Promise<VariantSummar
   if (!isD1Mode() || !isVariantsReadEnabled()) return null;
 
   const row = await queryFirst(
-    `SELECT pv.*, p.is_active as product_active, p.slug AS product_slug,
+    `SELECT pv.*, p.is_active as product_active, p.aivault_family,p.slug AS product_slug,
             p.require_email AS require_email,
             p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
             p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed,
@@ -625,7 +625,7 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
   return {
     id: Number(row.id),
     product_id: Number(row.product_id || 0),
-    sku: String(row.sku ?? "").startsWith("TUNVN-") ? "" : String(row.sku),
+    sku: /^(TUNVN-|AV-)/.test(String(row.sku ?? "")) ? "" : String(row.sku),
     label: String(row.label),
     duration_value: row.duration_value != null ? Number(row.duration_value) : null,
     duration_unit: row.duration_unit ? String(row.duration_unit) : null,
@@ -660,7 +660,7 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     min_qty: Math.max(1, Number(row.min_qty ?? 1) || 1),
     max_qty: row.max_qty == null ? null : Number(row.max_qty),
     buyer_field_key: row.buyer_field_key === "muse_invite_code" ? "muse_invite_code" : null,
-    ...(tunvnEligibility(row,1) ? { automatic_delivery:true } : {}),
+    ...((aivaultEligibility(row,1) || tunvnEligibility(row,1)) ? { automatic_delivery:true } : {}),
     manual_cost: Math.max(0, Math.floor(Number(row.manual_cost ?? 0) || 0)),
     fulfillment_mode: String(row.fulfillment_mode || "manual"),
     is_active: Number(row.is_active ?? 1),

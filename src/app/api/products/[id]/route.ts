@@ -182,10 +182,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const data = parsed.data;
   const existing = await queryFirst(
     `SELECT id, name, slug, description, price, compare_price, stock, source, wr_product_id, wr_auto_managed,
-            sk_product_id, sk_auto_managed
+            sk_product_id, sk_auto_managed, aivault_family
        FROM products WHERE id=?`,
     id,
-  ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number } | undefined;
+  ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number; aivault_family?: string | null } | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
   const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id FROM product_variants WHERE product_id=?", id);
   // Identitas TUNVN = kolom durable, bukan slug: semua family TUNVN memakai
@@ -193,7 +193,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const tunvnVariants = storedVariants.filter(v => v.tunvn_source_product_id != null);
   for (const incoming of data.variants ?? []) {
     const current = storedVariants.find(v => Number(v.id) === incoming.id);
-    if (String(current?.sku).startsWith("TUNVN-") && incoming.sku && incoming.sku !== current?.sku) return NextResponse.json({ error: "Identitas varian tidak boleh diubah." }, { status: 409 });
+    if (existing.aivault_family && (!current || !String(current.sku).startsWith("AV-") || (incoming.fulfillment_mode && incoming.fulfillment_mode!=="manual") || incoming.buyer_field_key)) return NextResponse.json({error:"Produk AIVault hanya boleh memakai varian supplier asal."},{status:409});
+    if (!existing.aivault_family && String(incoming.sku ?? "").startsWith("AV-")) return NextResponse.json({error:"Varian AIVault harus dibuat melalui sinkron supplier."},{status:409});
+    if (/^(TUNVN-|AV-)/.test(String(current?.sku)) && incoming.sku && incoming.sku !== current?.sku) return NextResponse.json({ error: "Identitas varian tidak boleh diubah." }, { status: 409 });
     if ((current?.sku ?? incoming.sku)?.toString().match(/^TUNVN-BUFF-(5|10|20|30)B$/) && incoming.is_active !== 0) return NextResponse.json({ error: "Paket lama sudah dipensiunkan." }, { status: 409 });
     const maxQty = incoming.max_qty === undefined ? current?.max_qty : incoming.max_qty;
     if (maxQty != null && Number(maxQty) < (incoming.min_qty ?? Number(current?.min_qty ?? 1))) return NextResponse.json({ error: "Maksimum di bawah minimum." }, { status: 400 });
@@ -237,7 +239,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       "SELECT id FROM product_variants WHERE product_id=? AND is_active=1 LIMIT 1",
       id,
     );
-    if (!activeVariant && !tunvnVariants.length) {
+    if (!activeVariant && !tunvnVariants.length && !existing.aivault_family) {
       return NextResponse.json(
         { error: "Aktifkan minimal satu varian sebelum mengaktifkan produk." },
         { status: 409 },
@@ -247,7 +249,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const hasExplicitVariants = Array.isArray(data.variants);
   if (hasExplicitVariants && data.variants) {
     const activeVars = data.variants.filter(v => (v.is_active ?? 1) !== 0);
-    if (data.isActive !== false && activeVars.length === 0 && !tunvnVariants.length) {
+    if (data.isActive !== false && activeVars.length === 0 && !tunvnVariants.length && !existing.aivault_family) {
       return NextResponse.json({ error: "Minimal satu varian harus aktif." }, { status: 400 });
     }
   }
@@ -498,6 +500,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             }
             const copyWrite = manualCopyUpdate(id, autoSku, v);
             if (v.buyer_field_key !== undefined || v.max_qty !== undefined) statements.push(d1.prepare(`UPDATE product_variants SET buyer_field_key=CASE WHEN ? THEN ? ELSE buyer_field_key END,max_qty=CASE WHEN ? THEN ? ELSE max_qty END WHERE product_id=? AND sku=?`).bind(v.buyer_field_key !== undefined ? 1 : 0,v.buyer_field_key ?? null,v.max_qty !== undefined ? 1 : 0,v.max_qty ?? null,id,autoSku));
+            if (autoSku.startsWith("AV-")) statements.push(d1.prepare("UPDATE product_variants SET aivault_admin_price_idr=? WHERE product_id=? AND sku=?").bind(v.price,id,autoSku));
             if (autoSku.startsWith("TUNVN-")) statements.push(d1.prepare("UPDATE product_variants SET tunvn_admin_price_idr=? WHERE product_id=? AND sku=?").bind(v.price,id,autoSku));
             if (copyWrite) statements.push(d1.prepare(copyWrite.sql).bind(...copyWrite.params));
           });
@@ -545,6 +548,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         // Batch ATOMIC via operation_guards precondition di statements:
         // guard gagal => CHECK => SELURUH batch rollback (D1), lalu map
         // constraint ke 409 stale (bukan 500).
+        if (existing.aivault_family && data.isActive===true && !hasExplicitVariants) {
+          statements.push(d1.prepare("UPDATE product_variants SET is_active=1 WHERE product_id=? AND aivault_service_id IS NOT NULL AND sku='AV-'||aivault_service_id AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1)").bind(id,id));
+          statements.push(d1.prepare("UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price),stock=COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=? AND is_active=1),0) WHERE id=?").bind(id,id,id));
+        }
         // Produk dengan varian akun TUNVN (family apa pun): aktivasi admin
         // menyinkronkan permintaan terbit + visibilitas mirror sesuai status
         // varian. Identitasnya kolom tunvn_source_product_id, bukan slug.
