@@ -178,8 +178,8 @@ describe("games catalog", () => {
     const data = await res.json();
     expect(data.ordering_open).toBe(true);
     expect(data.games).toEqual([
-      { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond", icon: "/brand/games/free-fire-icon.webp", banner: "/brand/games/free-fire-banner.webp", portrait: "/brand/games/free-fire-portrait.webp", min_price: 22000, sku_count: 1, sellable_count: 1, featured_rank: null },
-      { slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton", currency: "diamond", icon: "/brand/games/mobile-legends-icon.webp", banner: "/brand/games/mobile-legends-banner.webp", portrait: "/brand/games/mobile-legends-portrait.webp", min_price: 11000, sku_count: 1, sellable_count: 1, featured_rank: null },
+      { slug: "free-fire", name: "Free Fire", publisher: "Garena", currency: "diamond", icon: expect.stringMatching(/^\/brand\/games\/free-fire-icon\.webp\?v=[0-9a-f]{10}$/), banner: expect.stringMatching(/^\/brand\/games\/free-fire-banner\.webp\?v=[0-9a-f]{10}$/), portrait: expect.stringMatching(/^\/brand\/games\/free-fire-portrait\.webp\?v=[0-9a-f]{10}$/), min_price: 22000, sku_count: 1, sellable_count: 1, featured_rank: null },
+      { slug: "mobile-legends", name: "Mobile Legends", publisher: "Moonton", currency: "diamond", icon: expect.stringMatching(/^\/brand\/games\/mobile-legends-icon\.webp\?v=[0-9a-f]{10}$/), banner: expect.stringMatching(/^\/brand\/games\/mobile-legends-banner\.webp\?v=[0-9a-f]{10}$/), portrait: expect.stringMatching(/^\/brand\/games\/mobile-legends-portrait\.webp\?v=[0-9a-f]{10}$/), min_price: 11000, sku_count: 1, sellable_count: 1, featured_rank: null },
     ]);
     expect(JSON.stringify(data)).not.toMatch(/cost|margin|seller|ml86b/);
   });

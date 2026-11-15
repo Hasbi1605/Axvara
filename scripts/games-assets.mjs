@@ -12,6 +12,7 @@
 //   node scripts/games-assets.mjs --contact-sheet <file>   (tanpa unduh ulang)
 import { mkdir, readFile, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import sharp from "sharp";
 
@@ -110,6 +111,12 @@ async function download(url) {
   }
 }
 
+/** URL publik + `?v=<hash isi>` agar cache CDN/browser (/brand/* max-age 1 hari + SWR 7 hari) langsung pecah saat gambar berubah. */
+async function versionedUrl(file, url) {
+  const hash = createHash("sha256").update(await readFile(file)).digest("hex").slice(0, 10);
+  return `${url}?v=${hash}`;
+}
+
 async function buildIcon(slug, game) {
   const input = await download(game.icon.source);
   const file = path.join(OUT_DIR, `${slug}-icon.webp`);
@@ -125,7 +132,7 @@ async function buildIcon(slug, game) {
   const meta = await sharp(file).metadata();
   return {
     file,
-    url: `/brand/games/${slug}-icon.webp`,
+    url: await versionedUrl(file, `/brand/games/${slug}-icon.webp`),
     width: meta.width,
     height: meta.height,
     bytes: (await stat(file)).size,
@@ -153,7 +160,7 @@ async function buildBanner(slug, game) {
   const meta = await sharp(file).metadata();
   return {
     file,
-    url: `/brand/games/${slug}-banner.webp`,
+    url: await versionedUrl(file, `/brand/games/${slug}-banner.webp`),
     width: meta.width,
     height: meta.height,
     bytes: buffer.byteLength,
@@ -191,7 +198,7 @@ async function buildPortrait(slug, game) {
   const meta = await sharp(file).metadata();
   return {
     file,
-    url: `/brand/games/${slug}-portrait.webp`,
+    url: await versionedUrl(file, `/brand/games/${slug}-portrait.webp`),
     width: meta.width,
     height: meta.height,
     bytes: buffer.byteLength,

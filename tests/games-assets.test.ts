@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -45,6 +46,11 @@ async function sizes(file: string) {
   const { default: sharp } = await import("sharp");
   const meta = await sharp(file).metadata();
   return { width: meta.width ?? 0, height: meta.height ?? 0 };
+}
+
+/** Versi cache-busting yang ditulis generator: 10 hex pertama sha256 isi berkas. */
+function fileVersion(rel: string): string {
+  return createHash("sha256").update(readFileSync(path.join(ROOT, rel))).digest("hex").slice(0, 10);
 }
 
 describe("manifest aset game", () => {
@@ -193,13 +199,13 @@ describe("manifest aset game", () => {
         expect(existsSync(path.join(ROOT, `public/brand/games/${slug}-icon.webp`)), slug).toBe(false);
         continue;
       }
-      expect(expected?.icon, slug).toBe(`/brand/games/${slug}-icon.webp`);
+      expect(expected?.icon, slug).toBe(`/brand/games/${slug}-icon.webp?v=${fileVersion(`public/brand/games/${slug}-icon.webp`)}`);
       const iconFile = path.join(ROOT, `public/brand/games/${slug}-icon.webp`);
       expect(existsSync(iconFile), slug).toBe(true);
       expect(await sizes(iconFile), slug).toEqual({ width: 512, height: 512 });
 
       if (game.banner) {
-        expect(expected?.banner, slug).toBe(`/brand/games/${slug}-banner.webp`);
+        expect(expected?.banner, slug).toBe(`/brand/games/${slug}-banner.webp?v=${fileVersion(`public/brand/games/${slug}-banner.webp`)}`);
         const bannerFile = path.join(ROOT, `public/brand/games/${slug}-banner.webp`);
         expect(existsSync(bannerFile), slug).toBe(true);
         const size = await sizes(bannerFile);
@@ -212,7 +218,7 @@ describe("manifest aset game", () => {
       }
 
       if (game.portrait) {
-        expect(expected?.portrait, slug).toBe(`/brand/games/${slug}-portrait.webp`);
+        expect(expected?.portrait, slug).toBe(`/brand/games/${slug}-portrait.webp?v=${fileVersion(`public/brand/games/${slug}-portrait.webp`)}`);
         const portraitFile = path.join(ROOT, `public/brand/games/${slug}-portrait.webp`);
         expect(existsSync(portraitFile), slug).toBe(true);
         expect(await sizes(portraitFile), slug).toEqual({ width: 600, height: 900 });
@@ -230,10 +236,10 @@ describe("manifest aset game", () => {
       Object.entries<any>(MANIFEST.games).filter(([, game]) => !game.skip).map(([slug]) => slug).sort(),
     );
     expect(gamesLocalAsset("tidak-ada-game")).toEqual({ icon: null, banner: null, portrait: null });
-    expect(gamesLocalIcon("MOBILE-LEGENDS")).toBe("/brand/games/mobile-legends-icon.webp");
-    expect(gamesLocalBanner("valorant")).toBe("/brand/games/valorant-banner.webp");
-    expect(gamesLocalPortrait("MOBILE-LEGENDS")).toBe("/brand/games/mobile-legends-portrait.webp");
-    expect(gamesLocalPortrait("growtopia")).toBe("/brand/games/growtopia-portrait.webp");
+    expect(gamesLocalIcon("MOBILE-LEGENDS")).toMatch(/^\/brand\/games\/mobile-legends-icon\.webp\?v=[0-9a-f]{10}$/);
+    expect(gamesLocalBanner("valorant")).toMatch(/^\/brand\/games\/valorant-banner\.webp\?v=[0-9a-f]{10}$/);
+    expect(gamesLocalPortrait("MOBILE-LEGENDS")).toMatch(/^\/brand\/games\/mobile-legends-portrait\.webp\?v=[0-9a-f]{10}$/);
+    expect(gamesLocalPortrait("growtopia")).toMatch(/^\/brand\/games\/growtopia-portrait\.webp\?v=[0-9a-f]{10}$/);
     expect(gamesLocalPortrait("tidak-ada-game")).toBeNull();
   });
 });
@@ -265,13 +271,13 @@ describe("katalog publik: presedensi aset OD5", () => {
   it("tanpa upload admin: aset resmi lokal dipakai, bukan gambar Sekalipay", async () => {
     seed();
     const [game] = await getGamesCatalog();
-    expect(game.icon).toBe("/brand/games/mobile-legends-icon.webp");
-    expect(game.banner).toBe("/brand/games/mobile-legends-banner.webp");
+    expect(game.icon).toMatch(/^\/brand\/games\/mobile-legends-icon\.webp\?v=[0-9a-f]{10}$/);
+    expect(game.banner).toMatch(/^\/brand\/games\/mobile-legends-banner\.webp\?v=[0-9a-f]{10}$/);
     expect(JSON.stringify(game)).not.toContain("sekalipay.com");
 
     const detail = (await getGamesDetail("mobile-legends"))!;
-    expect(detail.game.icon).toBe("/brand/games/mobile-legends-icon.webp");
-    expect(detail.game.banner).toBe("/brand/games/mobile-legends-banner.webp");
+    expect(detail.game.icon).toMatch(/^\/brand\/games\/mobile-legends-icon\.webp\?v=[0-9a-f]{10}$/);
+    expect(detail.game.banner).toMatch(/^\/brand\/games\/mobile-legends-banner\.webp\?v=[0-9a-f]{10}$/);
   });
 
   it("upload admin menang atas aset lokal (list + detail)", async () => {
