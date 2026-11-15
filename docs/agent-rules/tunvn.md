@@ -29,6 +29,9 @@
   `mail-dongvan`, `muse-login`. Parser S&K kini mengenali judul EN (Package
   details/Process & delivery/Usage rules/Warranty). Gemini #115 meniru varian
   manual Gemini Plus 6 Bulan (hold link 1 jam), bukan garansi 24 jam supplier.
+- Migrasi `0128_supplier_copy_followup.sql` mengosongkan harga manual Buff
+  `TUNVN-BUFF-1B` yang terkunci 1500 (hanya bila masih 1500); cron
+  `tunvn_catalog` tiap 3 menit menghitung ulang harga dari rumus.
 
 ## Arsip Produk — keputusan owner 15 November 2026 (lokal)
 

@@ -25,6 +25,10 @@
   manual Gemini Plus 6 Bulan + aturan AIVault (garansi 24 jam cek bot, satu kali
   klaim, akun tanpa konflik Google One). Adobe 12 Bulan diturunkan dari materi 6
   Bulan tanpa klaim jeda tagihan. ChatGPT Plus (Apple Pay) belum diisi.
+- Migrasi `0128_supplier_copy_followup.sql` (keputusan owner 15 Nov malam):
+  ChatGPT Plus AIVault diisi dari materi supplier (garansi penuh 30 hari, larangan
+  9Router, 2FA via `go/otp-2fa`); hold link Gemini AIVault disamakan **1 jam**
+  seperti TUNVN/manual (hanya bila teks masih hasil 0127).
 
 ## Arsip Produk — keputusan owner 15 November 2026 (lokal)
 

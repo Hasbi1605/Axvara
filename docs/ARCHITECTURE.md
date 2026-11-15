@@ -5519,7 +5519,8 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   (tanpa sanitasi regex) agar identitas `AV-<service_id>` tidak rusak.
 - Migrasi data `0127_supplier_copy_id_en.sql` (lihat aturan TUNVN/AIVault): salinan produk/
   varian ID+EN dan 5 shortlink `supplier_links` baru; idempoten dan tidak menimpa
-  suntingan admin. `SECTION_BY_HEADING` di `src/lib/product-copy/format.ts`
+  suntingan admin; `0128_supplier_copy_followup.sql` menambah ChatGPT Plus AIVault,
+  hold Gemini AIVault 1 jam, dan mengosongkan harga manual Buff 1500. `SECTION_BY_HEADING` di `src/lib/product-copy/format.ts`
   menerima judul EN.
 - Verifikasi lokal memakai fixture SQLite/jsdom dan Chrome headless dengan route
   mock; bukan bukti deployment atau tampilan PDP produksi.

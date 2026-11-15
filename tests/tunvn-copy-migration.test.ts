@@ -9,6 +9,7 @@ import { TUNVN_FAMILIES, tunvnDefaultDescription } from "@/lib/tunvn/families";
 import { aivaultDefaultDescription } from "@/lib/aivault/families";
 
 const M = fs.readFileSync("drizzle/migrations/0127_supplier_copy_id_en.sql", "utf8");
+const M128 = fs.readFileSync("drizzle/migrations/0128_supplier_copy_followup.sql", "utf8");
 let fx: ReturnType<typeof createD1Fixture>;
 
 beforeEach(() => {
@@ -113,5 +114,35 @@ describe("0127 salinan TUNVN ID/EN", () => {
     expect(parseAdminVariantCopy(notion.admin_terms_en, notion.admin_activation_en)!.sections.map(s => s.kind)).toEqual(["paket", "proses", "aturan", "garansi"]);
     for (const sku of ["AV-service_gemini_plus_6m", "AV-service_notion_plus", "AV-service_udemy_1m", "AV-service_adobe_express_6m", "AV-service_1789191781", "AV-service_1789191878"]) expect(M, sku).toContain(`WHERE sku='${sku}'`);
     expect(M).not.toContain("AV-service_chatgpt_plus_1m");
+  });
+
+  it("0128: ChatGPT Plus AIVault terisi, Gemini AIVault jadi hold 1 jam tanpa menimpa suntingan, Buff 1500 dikosongkan", () => {
+    fx.sql.exec(`
+      INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, aivault_family)
+        VALUES (62, 2, 'ChatGPT Plus', 'chatgpt-plus-av', '${aivaultDefaultDescription("ChatGPT Plus")}', 1000, 0, 0, 'chatgpt-plus');
+      INSERT INTO product_variants (id, product_id, sku, label, price, stock, is_active, aivault_service_id)
+        VALUES (602, 62, 'AV-service_chatgpt_plus_1m', 'Plus 1 Bulan (Apple Pay)', 1000, 0, 0, 'service_chatgpt_plus_1m');
+      INSERT INTO product_variants (id, product_id, sku, label, price, stock, is_active, tunvn_buff_quantity_b, tunvn_admin_price_idr)
+        VALUES (504, 52, 'TUNVN-BUFF-1B', 'Buff Token Muse AI per 1B', 1500, -1, 1, 1, 1500);
+    `);
+    fx.sql.exec(M);
+    fx.sql.exec(M128);
+    const av = variant(600);
+    expect(av.admin_terms).toContain("garansi hold link hanya 1 jam");
+    expect(av.admin_terms).not.toContain("24 jam");
+    expect(av.admin_terms_en).toContain("only 1 hour after purchase");
+    expect(av.admin_terms).toContain("dicek bot 100% valid");
+    const gpt = variant(602);
+    expect(gpt.admin_terms).toContain("Dilarang memakai 9Router");
+    expect(gpt.admin_activation).toContain("axvara.tech/go/otp-2fa");
+    expect(gpt.admin_activation_en).not.toContain("2fa.live");
+    expect(product(62).description).toContain("ChatGPT Plus 1 bulan penuh");
+    expect(fx.sql.prepare("SELECT tunvn_admin_price_idr, price FROM product_variants WHERE id=504").get()).toEqual({ tunvn_admin_price_idr: null, price: 1500 });
+
+    // Suntingan admin setelahnya tidak ditimpa bila 0128 dijalankan ulang.
+    fx.sql.exec("UPDATE product_variants SET admin_terms='Gemini suntingan admin' WHERE id=600; UPDATE product_variants SET tunvn_admin_price_idr=2000 WHERE id=504");
+    fx.sql.exec(M128);
+    expect(variant(600).admin_terms).toBe("Gemini suntingan admin");
+    expect((fx.sql.prepare("SELECT tunvn_admin_price_idr FROM product_variants WHERE id=504").get() as { tunvn_admin_price_idr: number }).tunvn_admin_price_idr).toBe(2000);
   });
 });
