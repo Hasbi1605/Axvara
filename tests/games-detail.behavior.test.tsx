@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { GameClient } from "@/app/games/[slug]/game-client";
@@ -245,6 +247,28 @@ describe("Games detail (selected SKU contract)", () => {
     expect(within(badge as HTMLElement).getByText("Pengiriman")).toBeTruthy();
     expect(badge.getAttribute("data-selected")).toBe("true");
     expect(screen.getByRole("radio", { name: /Pengiriman instan/ })).toBeTruthy();
+  });
+
+  it("keeps scrolling light on low-end phones: no blur on step cards, lite mobile bar, trust icons pause while scrolling", () => {
+    vi.useFakeTimers();
+    try {
+      render(<GameClient detail={{ game, products: [product({ category: "topup" })] }} orderingOpen={false} />);
+      for (const id of ["game-account", "game-nominal", "game-payment", "game-contact"]) expect(document.getElementById(id)!.className).not.toContain("backdrop-blur");
+      expect(document.querySelector("[data-game-bottom-bar]")!.className).toContain("ax-glass-lite-mobile");
+      const row = document.querySelector("[data-trust-row]")!;
+      expect(row.hasAttribute("data-paused")).toBe(false);
+      fireEvent.scroll(window);
+      expect(row.hasAttribute("data-paused")).toBe(true);
+      act(() => { vi.advanceTimersByTime(200); });
+      expect(row.hasAttribute("data-paused")).toBe(false);
+    } finally { vi.useRealTimers(); }
+    // Badge INSTAN terpilih berdenyut/berkilau sekali (bukan infinite) dan keyframes denyut tanpa filter.
+    const css = readFileSync(join(process.cwd(), "src/components/games/detail/detail.module.css"), "utf8");
+    expect(css).not.toMatch(/\.selectedBadge[^{]*\{[^}]*infinite/);
+    expect(css.match(/@keyframes badgePulse \{[^@]*/)![0]).not.toContain("filter");
+    expect(css).toContain(".trustRow[data-paused] * { animation-play-state: paused !important; }");
+    const globals = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
+    expect(globals.indexOf(".ax-glass-lite-mobile")).toBeGreaterThan(globals.indexOf(".ax-glass-strong {"));
   });
 
   it("localizes the trust row and instant badge without duplicating its accessible label", async () => {

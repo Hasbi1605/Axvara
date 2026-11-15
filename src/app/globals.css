@@ -85,6 +85,18 @@ body {
     inset 0 1px 0 rgba(255,255,255,0.12);
 }
 
+/* ax-glass-lite-mobile: pasangan ax-glass-strong untuk bar sticky/fixed AXVARA Games. Di HP (<768 px)
+   blur diganti latar hampir solid — backdrop-filter pada bar yang menempel dihitung ulang setiap frame
+   scroll dan membuat HP kelas bawah patah-patah (perf 15 Nov 2026). Tablet/desktop tetap kaca penuh.
+   Harus berada SETELAH .ax-glass-strong agar menang pada spesifisitas yang sama. */
+@media (max-width: 767px) {
+  .ax-glass-lite-mobile {
+    background: rgba(12, 17, 41, 0.94);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 /* ax-glass-card: Lightweight glass for cards, buttons, skeletons.
    NO backdrop-filter — translucent gradient + border + shadow only.
    Looks glassy without the GPU cost of blur compositing. */

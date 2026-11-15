@@ -25,6 +25,7 @@
   border-radius: inherit;
   background: linear-gradient(155deg, rgb(255 255 255 / .22), transparent 38%, transparent 70%, rgb(0 0 0 / .25));
 }
+/* Perf HP kelas bawah (15 Nov 2026): kilau badge terpilih SEKALI saat dipilih, bukan tak berhenti. */
 .selectedBadge::after {
   content: "";
   position: absolute;
@@ -33,7 +34,7 @@
   inset: -35%;
   background: linear-gradient(110deg, transparent 40%, rgb(255 255 255 / .3) 49%, transparent 58%);
   transform: translateX(-150%);
-  animation: sheen 7s ease-in-out infinite;
+  animation: sheen 1.6s ease-in-out 1 forwards;
 }
 
 .iconCard::after {
@@ -49,18 +50,19 @@
   .perspective:hover .iconCard::after { transform: translateX(150%); transition: transform 900ms cubic-bezier(.4,0,.2,1); }
 }
 .selectedBadge { position: relative; overflow: hidden; }
-.selectedBadge::after { animation-duration: 5s; }
 
 /* Badge INSTAN (koreksi owner 14 Nov 2026): idle diam; hover kartu = petir menyala sekali
-   (0,6 s) + garis kecepatan melesat; kartu terpilih = denyut halus berkala. Teks tidak bergerak. */
+   (0,6 s) + garis kecepatan melesat. Teks tidak bergerak. Perf 15 Nov 2026: kartu terpilih
+   berdenyut SEKALI saat dipilih (bukan tiap 2,5 s tanpa henti) dan tanpa `filter` di keyframes,
+   karena animasi filter/SVG digambar ulang CPU tiap frame dan membuat scroll HP murah patah. */
 .badgeBolt { transform-box: fill-box; transform-origin: 50% 60%; }
 .badgeSpeed { transform-box: fill-box; }
 @media (hover: hover) and (pointer: fine) {
   :global(.group):hover .badgeBolt { animation: badgeZap 600ms cubic-bezier(.3,.7,.4,1) 1; }
   :global(.group):hover .badgeSpeed { animation: badgeDash 600ms cubic-bezier(.3,.7,.4,1) 1; }
 }
-.selectedBadge .badgeBolt { animation: badgePulse 2.5s ease-in-out infinite; }
-.selectedBadge .badgeSpeed { animation: badgeTrail 2.5s ease-in-out infinite; }
+.selectedBadge .badgeBolt { animation: badgePulse 2.5s ease-in-out 1; }
+.selectedBadge .badgeSpeed { animation: badgeTrail 2.5s ease-in-out 1; }
 @keyframes badgeZap {
   0%, 100% { transform: scale(1) rotate(0); filter: none; }
   30% { transform: scale(1.28) rotate(-10deg); filter: drop-shadow(0 0 3px rgb(0 229 255 / .9)); }
@@ -68,8 +70,8 @@
 }
 @keyframes badgeDash { 0%, 100% { transform: translateX(0); opacity: 1; } 35% { transform: translateX(-4px); opacity: .35; } 65% { transform: translateX(1px); opacity: 1; } }
 @keyframes badgePulse {
-  0%, 60%, 100% { transform: scale(1) rotate(0); filter: none; }
-  12% { transform: scale(1.22) rotate(-8deg); filter: drop-shadow(0 0 3px rgb(0 229 255 / .85)); }
+  0%, 60%, 100% { transform: scale(1) rotate(0); }
+  12% { transform: scale(1.22) rotate(-8deg); }
   24% { transform: scale(.96) rotate(2deg); }
   36% { transform: scale(1.06) rotate(0); }
 }
@@ -85,6 +87,9 @@
 .dot:nth-of-type(3) { animation-delay: calc(var(--trust-delay, 0s) + 240ms); }
 .seal { transform-origin: center; transform-box: fill-box; animation: seal 6s ease-in-out infinite; animation-delay: var(--trust-delay, 0s); }
 .check { stroke-dasharray: 1; stroke-dashoffset: 0; animation: verify 6s ease-in-out infinite; animation-delay: var(--trust-delay, 0s); }
+/* Ikon trust dijeda saat baris di luar layar atau halaman sedang di-scroll (TrustIcons
+   men-set data-paused lewat IntersectionObserver + listener scroll pasif; perf 15 Nov 2026). */
+.trustRow[data-paused] * { animation-play-state: paused !important; }
 @keyframes sheen { 0%, 76% { transform: translateX(-150%); } 94%, 100% { transform: translateX(150%); } }
 @keyframes charge {
   0%, 34%, 100% { transform: scale(1) rotate(0); }

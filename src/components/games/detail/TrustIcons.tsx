@@ -1,12 +1,27 @@
 "use client";
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { gamesCopy } from "@/lib/games/copy";
 import styles from "./detail.module.css";
 
 export function TrustIcons({ t }: { t: Pick<ReturnType<typeof gamesCopy>, "trustInstant" | "trustSupport" | "trustSecure"> }) {
   const id = useId().replace(/:/g, "");
+  const row = useRef<HTMLDivElement>(null);
+  // Perf HP kelas bawah (15 Nov 2026): animasi SVG ini digambar ulang CPU tiap frame. Jeda saat baris
+  // di luar layar atau selama scroll (lanjut 150 ms setelah scroll berhenti). Atribut DOM langsung,
+  // tanpa state React, agar scroll tidak memicu render ulang.
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    let visible = true, scrolling = false, timer: ReturnType<typeof setTimeout> | undefined;
+    const sync = () => el.toggleAttribute("data-paused", !visible || scrolling);
+    const onScroll = () => { scrolling = true; sync(); clearTimeout(timer); timer = setTimeout(() => { scrolling = false; sync(); }, 150); };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    const io = typeof IntersectionObserver === "function" ? new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; sync(); }) : null;
+    io?.observe(el);
+    return () => { window.removeEventListener("scroll", onScroll); io?.disconnect(); clearTimeout(timer); };
+  }, []);
   const item = "inline-flex items-center gap-1 whitespace-nowrap min-[375px]:gap-1.5 sm:gap-2";
-  return <div className="mt-4 flex flex-wrap justify-between gap-x-1 gap-y-3 text-[11px] font-medium text-white/85 min-[375px]:gap-x-2 min-[375px]:text-[11.5px] min-[400px]:text-xs sm:justify-start sm:gap-x-6 sm:text-sm">
+  return <div ref={row} data-trust-row className={`${styles.trustRow} mt-4 flex flex-wrap justify-between gap-x-1 gap-y-3 text-[11px] font-medium text-white/85 min-[375px]:gap-x-2 min-[375px]:text-[11.5px] min-[400px]:text-xs sm:justify-start sm:gap-x-6 sm:text-sm`}>
     <span className={item} style={{ ["--trust-delay" as string]: "0s" }}>
       <svg aria-hidden="true" width="24" height="24" viewBox="0 0 28 28" className="h-[18px] w-[18px] shrink-0 sm:h-6 sm:w-6">
         <defs><linearGradient id={`${id}-gold`} x2="0" y2="1"><stop stopColor="#FFB800" /><stop offset="1" stopColor="#FF8A00" /></linearGradient></defs>
