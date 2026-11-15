@@ -35,6 +35,7 @@ it('moves a row to Arsip, preserves supplier badges, restores inactive, and send
   await user.click(screen.getAllByLabelText('Arsipkan Manual fixture')[0]);await user.click(screen.getByRole('button',{name:'Arsipkan produk'}));
   await screen.findByRole('tab',{name:'Arsip (2)'});expect(screen.queryByText('Manual fixture')).toBeNull();
   await user.click(screen.getByRole('tab',{name:'Arsip (2)'}));
+  expect(screen.getByRole('tab',{name:'Arsip (2)'}).getAttribute('title')).toBe('Produk yang diarsipkan — pulihkan atau hapus permanen di sini');
   expect(screen.getByLabelText('Hapus permanen Supplier fixture').hasAttribute('disabled')).toBe(true);
   expect(screen.getByText('Produk supplier harus tetap di Arsip.')).toBeTruthy();
   expect(document.querySelector('[data-supplier="TUNVN"]')).toBeTruthy();

@@ -213,7 +213,7 @@ export function ProductsSection({
             {([["live", `Live (${liveProducts})`], ["hidden", `Disembunyikan otomatis (${hiddenProducts})`], ["off", `Nonaktif manual (${offProducts})`], ["all", `Semua (${prods.filter(p => !p.archivedAt).length})`], ["archive", `Arsip (${prods.filter(p => p.archivedAt).length})`]] as const).map(([value, label]) => (
               <TabsTrigger value={value}
                 key={value}
-                title={value === "live" ? "Yang tampil di storefront — atur urutan di sini" : value === "hidden" ? "Kalah pasangan / stok habis — urutan di sini tidak berpengaruh" : value === "off" ? "Yang kamu matikan sendiri" : "Semua produk untuk audit"}
+                title={value === "live" ? "Yang tampil di storefront — atur urutan di sini" : value === "hidden" ? "Kalah pasangan / stok habis — urutan di sini tidak berpengaruh" : value === "off" ? "Yang kamu matikan sendiri" : value === "archive" ? "Produk yang diarsipkan — pulihkan atau hapus permanen di sini" : "Semua produk untuk audit"}
               >
                 {label}
               </TabsTrigger>
