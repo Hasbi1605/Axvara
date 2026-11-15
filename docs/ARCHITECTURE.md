@@ -1,5 +1,16 @@
 # ARCHITECTURE.md — AXVARA
 
+## Identitas supplier admin bersama (15 November 2026, lokal)
+
+`src/components/admin/supplier-style.tsx` mengekspor `SUPPLIER_STYLES` (label,
+nama lengkap, kelas identitas) dan `SupplierBadge`. `ProductsSection` memakai
+badge bersama di tabel/kartu dan legenda dekat select asal; opsi select diambil
+dari mapping yang sama. `ProductVariantRows` memakai badge pada header editor.
+Palet terang/gelap/sistem didefinisikan di `admin.css`, terpisah dari token
+status. Tidak ada perubahan API, schema, env, auth atau logika filter/state.
+Lihat DESIGN untuk mapping dan aturan status ≠ supplier. Implementasi lokal,
+tanpa publikasi/deployment pada tugas ini.
+
 ## WR automatic-only + katalog/progres Jaspay (14 November 2026, implementasi lokal)
 
 Menggantikan kontrak penjualan baru pada snapshot §16.8a; pengaman order lama

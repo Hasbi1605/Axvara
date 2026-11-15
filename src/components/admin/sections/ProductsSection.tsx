@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import type { Prod } from "../product-types";
 import { adjacentReorderProduct } from "@/lib/product-order";
+import { SupplierBadge, SUPPLIER_STYLES } from "../supplier-style";
 
 // Section "Produk" dipisah karena inilah bagian terbesar page.tsx: kartu statistik,
 // pencarian, tabel/daftar responsif, dan pagination. Semua state tetap dimiliki
@@ -43,22 +44,6 @@ function LiveStatusBadge({ status, reason }: { status?: Prod["liveStatus"]; reas
   }
   return <Badge variant="secondary" title={reason || "Nonaktif manual"}>Nonaktif</Badge>;
 }
-/** Badge asal supplier — HANYA admin (keputusan owner 2026-09-30). Pembeli
- *  tidak pernah melihat ini; pembeda di storefront hanya nama bersih. */
-function SupplierBadge({ supplier, slug }: { supplier?: Prod["supplier"]; slug: string }) {
-  if (supplier === "AIVault") return <Badge variant="secondary" title={`Supplier: AIVault · slug /${slug}`}>AIVault</Badge>;
-  if (supplier === "WR") {
-    return <Badge variant="secondary" title={`Supplier: Warung Rebahan · slug /${slug}`}>WR</Badge>;
-  }
-  if (supplier === "TUNVN") {
-    return <Badge variant="secondary" title={`Supplier: TUNVN PREHUB · slug /${slug}`}>TUNVN</Badge>;
-  }
-  if (supplier === "SK") {
-    return <Badge variant="secondary" title={`Supplier: Sekalipay · slug /${slug}`}>SK</Badge>;
-  }
-  return <Badge title="Produk manual Axvara" className="rounded-md border border-admin-border bg-admin-subtle px-2 py-0.5 text-xs font-semibold text-admin-muted">Manual</Badge>;
-}
-
 export function ProductsSection({
   error,
   onRetry,
@@ -194,26 +179,29 @@ export function ProductsSection({
       </div>
 
       <div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="relative w-full sm:w-72">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="relative w-full sm:w-72 sm:shrink-0">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-admin-muted" aria-hidden="true" />
               <Input value={q} onChange={e=>{ onQueryChange(e.target.value); onPageChange(()=>1); }} aria-label="Cari produk" placeholder="Cari produk, slug, badge..." className="pl-9" />
             </div>
-            {/* Filter asal supplier (WR/SK/Manual) — lokal, tanpa request. */}
+            {/* Filter asal supplier — lokal, tanpa request. */}
             <NativeSelect
               value={supplierFilter}
               onChange={e=>{ onSupplierFilterChange(e.target.value as "all" | "WR" | "SK" | "TUNVN" | "AIVault" | "Manual"); onPageChange(()=>1); }}
               aria-label="Filter asal supplier"
+              aria-describedby="supplier-legend"
               title="Filter asal supplier (WR/SK/TUNVN/AIVault/Manual)"
-              className="w-full sm:w-44"
+              className="w-full sm:w-44 sm:shrink-0"
             >
               <option value="all">Semua asal</option>
-              <option value="WR">WR</option>
-              <option value="SK">SK</option>
-              <option value="TUNVN">TUNVN</option>
-              <option value="AIVault">AIVault</option>
-              <option value="Manual">Manual</option>
+              {(Object.keys(SUPPLIER_STYLES) as Array<keyof typeof SUPPLIER_STYLES>).map(supplier => (
+                <option key={supplier} value={supplier}>{SUPPLIER_STYLES[supplier].label}</option>
+              ))}
             </NativeSelect>
+            <div id="supplier-legend" role="group" aria-label="Legenda asal supplier" className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-admin-muted">Asal:</span>
+              {(Object.keys(SUPPLIER_STYLES) as Array<keyof typeof SUPPLIER_STYLES>).map(supplier => <SupplierBadge key={supplier} supplier={supplier} />)}
+            </div>
           </div>
           {/* Tab status toko (2026-10-01): 1 daftar mencampur 4 kondisi yang
               aturannya beda kini dipisah. Tombol naikturun hanya bermakna di tab Live

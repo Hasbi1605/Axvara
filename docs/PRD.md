@@ -1,5 +1,16 @@
 # PRD — AXVARA
 
+## Identitas asal produk di admin (15 November 2026, implementasi lokal)
+
+Produk bernama sama lintas WR/SK/TUNVN/AIVault/Manual tetap terpisah. Admin
+membedakannya lewat badge supplier dengan hue, titik dan pill tersendiri;
+status Live/Stok habis/Nonaktif mempertahankan warna semantiknya dan tampil
+setelah identitas supplier. Nama lengkap tersedia lewat title/label aksesibel.
+Filter asal tetap memakai nilai/perilaku yang sama, ditambah legenda lima asal
+yang membungkus di mobile; header editor varian memakai identitas yang sama.
+Hanya presentasi admin, tanpa perubahan katalog pembeli atau supplier/backend.
+Status lokal; belum dipublikasikan/deploy melalui tugas ini.
+
 ## Supplier AIVault Hub (15 November 2026, implementasi lokal)
 
 Owner menambahkan AIVault sebagai supplier terpisah dari TUNVN/WR/SK. Seluruh

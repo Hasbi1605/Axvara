@@ -1,5 +1,12 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+Admin Produk15November2026 (lokal): asal WR cyan, SK ungu, TUNVN pink,
+AIVault indigo, Manual slate/outline putus-putus. Badge pill bertitik dan nama
+lengkap aksesibel membedakan supplier dari status Live/Stok habis/Nonaktif;
+legenda dekat filter dan header varian memakai komponen bersama
+`src/components/admin/supplier-style.tsx`. Tema terang/gelap/sistem tetap didukung.
+Tidak ada perubahan kontrak API/filter atau publikasi/deployment pada tugas ini.
+
 ## AIVault Hub (15 November 2026, lokal saja)
 
 Supplier baru AIVault terpisah dari WR/SK/TUNVN. Migrasi0124 menambah mirror,

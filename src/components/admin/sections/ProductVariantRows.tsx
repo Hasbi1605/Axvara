@@ -1,5 +1,6 @@
 "use client";
 import { Badge, Button, Input, Label, NativeSelect, Textarea } from "@/components/admin/ui";
+import { SupplierBadge } from "../supplier-style";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
@@ -294,7 +295,7 @@ export function ProductVariantRows({
   return (
     <div className="mt-4 min-w-0 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="text-sm font-medium text-admin-fg">Daftar pilihan paket / varian</span>
+        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-admin-fg">Daftar pilihan paket / varian <SupplierBadge supplier={form.supplier} /></span>
         {form.wrManaged ? (
           <span className="text-xs text-admin-muted">Varian dikelola Warung Rebahan — markup diatur di tab Warung Rebahan. Harga coret tetap bisa kamu edit.</span>
         ) : (

@@ -1,5 +1,42 @@
 # DESIGN.md — AXVARA Design System
 
+## Identitas supplier admin (15 November 2026, implementasi lokal)
+
+Aturan **status ≠ supplier** menggantikan badge asal abu-abu pada Produk.
+Warna identitas hanya untuk asal produk; success hijau tetap Live, warning
+amber tetap stok habis/S&K perlu ditinjau, danger tetap gagal, secondary abu-abu
+tetap Nonaktif. Angka/statistik dan warna storefront tidak berubah.
+
+`src/components/admin/supplier-style.tsx` menyatukan label pendek, nama lengkap,
+dan kelas badge untuk daftar Produk, legenda filter serta header varian editor.
+Badge supplier selalu lebih dulu daripada status: pill dengan titik dekoratif,
+tint 10%, border 40%, nama pendek terlihat, `title`/`aria-label` nama lengkap;
+Manual memakai border putus-putus. Status tetap chip `rounded-md` tanpa titik.
+Legenda noninteraktif membungkus di layar kecil; select/filter tetap native.
+
+| Supplier | Nama lengkap | Hue | Teks gelap | Teks terang | Kontras min gelap / terang |
+| --- | --- | --- | --- | --- | --- |
+| WR | Warung Rebahan | Cyan | `#67E8F9` | `#155E75` | 10,16:1 / 5,97:1 |
+| SK | Sekalipay | Ungu | `#D8B4FE` | `#6B21A8` | 8,53:1 / 7,03:1 |
+| TUNVN | TUNVN PREHUB | Pink | `#F9A8D4` | `#9D174D` | 8,38:1 / 6,34:1 |
+| AIVault | AIVault Hub | Indigo | `#A5B4FC` | `#3730A3` | 7,66:1 / 8,00:1 |
+| Manual | Manual Axvara | Slate, outline putus-putus | `#CBD5E1` | `#334155` | 9,94:1 / 8,38:1 |
+
+Palet identitas di `admin.css` terpisah dari token semantik status dan mengikuti
+Terang/Gelap/Ikuti sistem. Warna bukan satu-satunya pembeda: label, titik, bentuk,
+dan nama aksesibel tetap tersedia. Status implementasi lokal; bukan bukti deploy.
+
+Verifikasi Chrome headless157, fixture lokal pada route sementara (sudah dihapus),
+1440×1000 dan390×844: lima asal + Live/Nonaktif/Stok habis/S&K terlihat, filter
+kelima asal, empty pencarian dan Tab ke select dengan outline cyan2px lulus;
+tanpa overflow halaman, error console/page atau request gagal. Route dan6aset
+CSS/JS200. Kontras tabel di atas adalah minimum teks terhadap background
+terkomposit badge (tint10% + permukaan ancestor), mencakup legenda/tabel/kartu;
+semua ≥4,5:1 dan mode sistem mengikuti tema masing-masing. Screenshot di
+`/tmp/supplier-badges-desktop.png` dan `/tmp/supplier-badges-mobile.png`.
+Fixture menguji presentasi/filter; bukan auth, persistensi backend atau transaksi.
+
+
 ## Panel supplier AIVault (15 November 2026, lokal saja)
 
 Section Supplier→AIVault memakai primitive admin existing: PageHeader, StatCard
