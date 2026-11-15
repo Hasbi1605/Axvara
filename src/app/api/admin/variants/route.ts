@@ -360,7 +360,11 @@ async function POSTImpl(request: NextRequest) {
 
       for (const v of variants) {
         if (v.buyer_field_key !== undefined || v.max_qty !== undefined) statements.push(d1.prepare(`UPDATE product_variants SET buyer_field_key=CASE WHEN ? THEN ? ELSE buyer_field_key END,max_qty=CASE WHEN ? THEN ? ELSE max_qty END WHERE product_id=? AND sku=?`).bind(v.buyer_field_key !== undefined ? 1 : 0,v.buyer_field_key ?? null,v.max_qty !== undefined ? 1 : 0,v.max_qty ?? null,product_id,v.sku));
-        if (v.sku.startsWith("TUNVN-")) statements.push(d1.prepare("UPDATE product_variants SET tunvn_admin_price_idr=? WHERE product_id=? AND sku=?").bind(v.price,product_id,v.sku));
+        // Harga manual hanya ditulis bila harganya BERUBAH dari baris tersimpan:
+        // batch dari panel Produk selalu membawa semua varian, jadi menulis
+        // tanpa syarat membekukan harga rumus supplier menjadi override manual.
+        const stored = v.id ? batchRows.find(row => Number(row.id) === Number(v.id)) : undefined;
+        if (v.sku.startsWith("TUNVN-") && stored && Number(v.price) !== Number(stored.price)) statements.push(d1.prepare("UPDATE product_variants SET tunvn_admin_price_idr=? WHERE product_id=? AND sku=?").bind(v.price,product_id,v.sku));
       }
       // Keep legacy/admin summary columns aligned with the authoritative active
       // variants. Public channel reads still query product_variants directly.
@@ -612,7 +616,9 @@ async function PUTImpl(request: NextRequest) {
 
   const updates: string[] = [];
   const params: unknown[] = [];
-  if (String(existing.sku).startsWith("TUNVN-") && v.price !== undefined) {
+  // Harga manual hanya ditulis bila admin benar-benar mengubah harga; nilai
+  // yang sama dengan baris tersimpan adalah simpan ulang panel, bukan edit.
+  if (String(existing.sku).startsWith("TUNVN-") && v.price !== undefined && Number(v.price) !== Number(existing.price)) {
     updates.push("tunvn_admin_price_idr=?");
     params.push(v.price);
   }

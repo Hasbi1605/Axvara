@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { isTunvnConfigured } from "@/lib/tunvn/client";
-import { tunvnFamilyForSupplierId } from "@/lib/tunvn/families";
+import { isTunvnExcludedProduct, tunvnFamilyForSupplierId } from "@/lib/tunvn/families";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -18,9 +18,9 @@ export async function GET(request: NextRequest) {
     const items = await db.queryAll(
       `SELECT t.supplier_product_id, t.name, t.price_vnd, t.price_usdt, t.stock, t.visible,
               t.axvara_product_id, t.markup_percent, t.sell_price_idr, t.fx_idr_per_usdt, t.synced_at,
-              t.admin_name, t.admin_description, t.publish_requested,
+              t.admin_name, t.admin_description, t.publish_requested, t.description AS supplier_description,
               p.name AS axvara_name, p.description AS axvara_description, p.is_active AS axvara_is_active,
-              p.slug AS axvara_slug, p.tunvn_family AS family,
+              p.slug AS axvara_slug, p.tunvn_family AS family, p.archived_at AS axvara_archived_at,
               v.id AS variant_id, v.sku AS variant_sku, v.label AS variant_label,
               v.price AS variant_price, v.is_active AS variant_is_active, v.tunvn_admin_price_idr
          FROM tunvn_products t
@@ -41,6 +41,10 @@ export async function GET(request: NextRequest) {
         // Key family dari peta statis (fallback 1:1 juga dikenali) agar panel
         // bisa mengelompokkan kartu walau produk belum terbit.
         family_key: tunvnFamilyForSupplierId(Number(item.supplier_product_id))?.family.key ?? `p${item.supplier_product_id}`,
+        // Flag baca-saja untuk panel: produk pengecualian (#60) dan produk
+        // induk yang sudah diarsipkan tidak boleh ditawarkan untuk diterbitkan.
+        excluded: isTunvnExcludedProduct(Number(item.supplier_product_id)) ? 1 : 0,
+        product_archived: item.axvara_archived_at != null ? 1 : 0,
       })),
       counts: {
         total: Number(counts?.total ?? 0),

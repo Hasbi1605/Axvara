@@ -1,6 +1,31 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
 
+## Panel Markup, sinkron harga Produk dan salinan — 15 November 2026 (lokal)
+
+- Harga manual supplier (`aivault_admin_price_idr`/`tunvn_admin_price_idr`) dari
+  menu Produk (`PUT /api/products/[id]`, `/api/admin/variants` PUT/POST batch)
+  HANYA ditulis bila harga yang dikirim berbeda dari baris tersimpan. Simpan
+  ulang form Produk tidak lagi membekukan harga rumus menjadi override.
+- SKU varian supplier tersimpan (`AV-<service_id>` dengan huruf kecil/underscore,
+  `TUNVN-*`) dipertahankan apa adanya saat Produk disimpan; regex sanitasi lama
+  akan mengubah `AV-service_gemini_plus_6m` menjadi `AV-6` (memutus sync/PATCH).
+  Cek produksi baca-saja 15 Nov: 7 SKU AV masih utuh, tidak ada kerusakan.
+- Panel Markup TUNVN/AIVault memakai baris bersama `SupplierPriceRow`: Simpan
+  eksplisit per baris, hanya field berubah yang dikirim; harga manual kosong =
+  rumus, klien menolak 0. GET panel menambah `product_archived` (+ `excluded`,
+  `supplier_description` untuk TUNVN; `muse_product.archived` untuk Buff).
+- AIVault: judul grup panel memakai nama produk AXVARA (fallback nama family);
+  API AIVault tidak punya deskripsi produk (dicek baca-saja 15 Nov) — salinan
+  ditulis admin.
+- Migrasi `0127_supplier_copy_id_en.sql` mengisi deskripsi produk ID/EN 5 family
+  (gemini, notion, udemy, adobe-express, apple-music; hanya menimpa template
+  `aivaultDefaultDescription`) dan S&K + cara aktivasi ID/EN 6 varian `AV-*`
+  (hanya bila kosong) dari screenshot owner 15 Nov. Gemini = salinan varian
+  manual Gemini Plus 6 Bulan + aturan AIVault (garansi 24 jam cek bot, satu kali
+  klaim, akun tanpa konflik Google One). Adobe 12 Bulan diturunkan dari materi 6
+  Bulan tanpa klaim jeda tagihan. ChatGPT Plus (Apple Pay) belum diisi.
+
 ## Arsip Produk — keputusan owner 15 November 2026 (lokal)
 
 `products.archived_at` (migrasi0126) memisahkan Arsip dari Nonaktif. Identitas

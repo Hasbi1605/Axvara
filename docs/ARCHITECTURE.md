@@ -5503,3 +5503,23 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 - Verifikasi memakai SQLite/workerd dan fetch mock, bukan transaksi produksi.
   Chrome desktop/mobile memakai route fixture sementara yang dihapus, bukan
   bukti akses admin produksi. Satu tes nyata Gemini6M hanya PM sesudah deploy.
+
+### 16.45 Panel harga supplier TUNVN/AIVault + salinan TUNVN ID/EN — 15 November 2026 (lokal)
+
+- Komponen admin `src/components/admin/SupplierPriceRow.tsx` (baris harga
+  bersama) dipakai `TunvnManager` dan `AivaultManager`; AIVault memakai
+  `SupplierTabs`. Muat ulang setelah simpan tidak melepas isi tab.
+- Kontrak API (aditif): `GET /api/admin/tunvn/products` → `excluded`,
+  `product_archived`, `supplier_description`; `GET /api/admin/aivault/products`
+  → `product_archived`; `GET /api/admin/tunvn/buff` → `muse_product.archived`.
+- `PATCH /api/admin/tunvn/{products/[id],buff/[sku]}`: `admin_price_idr` 0 →
+  NULL; Buff menyegarkan ringkasan produk induk dalam batch yang sama.
+- `PUT /api/products/[id]` dan `/api/admin/variants`: kolom harga manual
+  supplier hanya ditulis bila harga berubah; SKU varian tersimpan dipertahankan
+  (tanpa sanitasi regex) agar identitas `AV-<service_id>` tidak rusak.
+- Migrasi data `0127_supplier_copy_id_en.sql` (lihat aturan TUNVN/AIVault): salinan produk/
+  varian ID+EN dan 5 shortlink `supplier_links` baru; idempoten dan tidak menimpa
+  suntingan admin. `SECTION_BY_HEADING` di `src/lib/product-copy/format.ts`
+  menerima judul EN.
+- Verifikasi lokal memakai fixture SQLite/jsdom dan Chrome headless dengan route
+  mock; bukan bukti deployment atau tampilan PDP produksi.

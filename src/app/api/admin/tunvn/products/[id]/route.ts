@@ -71,13 +71,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const markup = body.markup_percent ?? Number(mirror.markup_percent ?? 35);
-    const adminPrice = body.admin_price_idr !== undefined
+    // 0 dari panel berarti "ikut rumus", bukan harga gratis; kolom override
+    // disimpan NULL agar markup/kurs/modal kembali memengaruhi harga.
+    const rawAdminPrice = body.admin_price_idr !== undefined
       ? body.admin_price_idr
       : variant?.tunvn_admin_price_idr != null ? Number(variant.tunvn_admin_price_idr) : null;
+    const adminPrice = rawAdminPrice === null || Number(rawAdminPrice) === 0 ? null : Number(rawAdminPrice);
     const fx = Number(mirror.fx_idr_per_usdt ?? 0);
     const cost = Number(mirror.price_usdt ?? 0);
     let sell: number | null = null;
-    if (adminPrice !== null && adminPrice > 0) sell = adminPrice;
+    if (adminPrice !== null) sell = adminPrice;
     else if (fx > 0 && cost > 0) sell = tunvnSellPriceIdr(cost, fx, markup);
 
     const writes: [string, unknown[]][] = [[

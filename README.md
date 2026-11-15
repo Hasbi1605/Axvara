@@ -1,5 +1,13 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Panel harga supplier TUNVN/AIVault (15 November 2026, lokal saja)
+
+Tab Markup TUNVN/AIVault memakai baris harga bersama (`SupplierPriceRow`):
+Simpan per baris, harga manual kosong = rumus, tanpa VND. Simpan ulang di menu
+Produk tidak lagi membekukan harga rumus menjadi manual dan tidak merusak SKU
+`AV-<service_id>`. Migrasi `0127` mengisi deskripsi, S&K, dan cara aktivasi
+TUNVN + AIVault ID/EN dengan shortlink `axvara.tech/go/*`. Detail: ARCHITECTURE §16.45.
+
 ## Arsip Produk admin (15 November 2026, lokal saja)
 
 Sampah pada Produk memindahkan parent dan variannya ke **Arsip**, terpisah dari

@@ -192,7 +192,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (existing.archived_at && (data.isActive === true || data.variants?.some(v => v.is_active === 1))) {
     return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
   }
-  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id FROM product_variants WHERE product_id=?", id);
+  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id,price,aivault_admin_price_idr,tunvn_admin_price_idr FROM product_variants WHERE product_id=?", id);
   // Identitas TUNVN = kolom durable, bukan slug: semua family TUNVN memakai
   // jalur aktivasi/publikasi yang sama.
   const tunvnVariants = storedVariants.filter(v => v.tunvn_source_product_id != null);
@@ -430,7 +430,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             );
           }
           data.variants.forEach((v, idx) => {
-            const autoSku = (v.sku?.trim() || `${existingSlug}-${idx + 1}`).replace(/[^A-Z0-9-]/g, "");
+            const storedRow = v.id ? storedVariants.find((row) => Number(row.id) === Number(v.id)) : undefined;
+            // SKU varian supplier (AV-/TUNVN-) adalah identitas: service id
+            // AIVault memuat huruf kecil sehingga sanitasi regex lama merusak
+            // SKU saat Produk disimpan ulang.
+            const storedSku = storedRow ? String(storedRow.sku ?? "") : "";
+            const desiredSku = v.sku?.trim() || storedSku || `${existingSlug}-${idx + 1}`;
+            const autoSku = desiredSku === storedSku ? storedSku : desiredSku.replace(/[^A-Z0-9-]/g, "");
             // min_qty milik ADMIN (bukan WR-owned): boleh ditulis dari sini.
             // Sync WR tidak pernah menyentuh kolom ini (lihat sync.ts).
             const minQty = Math.max(1, Math.min(100, Number(v.min_qty ?? 1) || 1));
@@ -505,8 +511,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             }
             const copyWrite = manualCopyUpdate(id, autoSku, v);
             if (v.buyer_field_key !== undefined || v.max_qty !== undefined) statements.push(d1.prepare(`UPDATE product_variants SET buyer_field_key=CASE WHEN ? THEN ? ELSE buyer_field_key END,max_qty=CASE WHEN ? THEN ? ELSE max_qty END WHERE product_id=? AND sku=?`).bind(v.buyer_field_key !== undefined ? 1 : 0,v.buyer_field_key ?? null,v.max_qty !== undefined ? 1 : 0,v.max_qty ?? null,id,autoSku));
-            if (autoSku.startsWith("AV-")) statements.push(d1.prepare("UPDATE product_variants SET aivault_admin_price_idr=? WHERE product_id=? AND sku=?").bind(v.price,id,autoSku));
-            if (autoSku.startsWith("TUNVN-")) statements.push(d1.prepare("UPDATE product_variants SET tunvn_admin_price_idr=? WHERE product_id=? AND sku=?").bind(v.price,id,autoSku));
+            // Harga manual hanya ditulis bila admin BENAR-BENAR mengubah harga.
+            // Form Produk selalu mengirim semua varian; menulis tanpa syarat
+            // membekukan harga rumus supplier menjadi override manual sehingga
+            // markup/kurs/modal berikutnya berhenti memengaruhi harga.
+            const priceChanged = !storedRow || Number(v.price) !== Number(storedRow.price);
+            if (v.id && priceChanged && autoSku.startsWith("AV-")) statements.push(d1.prepare("UPDATE product_variants SET aivault_admin_price_idr=? WHERE id=? AND product_id=?").bind(v.price,v.id,id));
+            if (v.id && priceChanged && autoSku.startsWith("TUNVN-")) statements.push(d1.prepare("UPDATE product_variants SET tunvn_admin_price_idr=? WHERE id=? AND product_id=?").bind(v.price,v.id,id));
             if (copyWrite) statements.push(d1.prepare(copyWrite.sql).bind(...copyWrite.params));
           });
 

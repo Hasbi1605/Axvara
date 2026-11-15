@@ -1,6 +1,35 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
 
+## Panel Markup, sinkron harga Produk dan salinan — 15 November 2026 (lokal)
+
+- Harga manual supplier (`aivault_admin_price_idr`/`tunvn_admin_price_idr`) dari
+  menu Produk (`PUT /api/products/[id]`, `/api/admin/variants` PUT/POST batch)
+  HANYA ditulis bila harga yang dikirim berbeda dari baris tersimpan. Simpan
+  ulang form Produk tidak lagi membekukan harga rumus menjadi override.
+- SKU varian supplier tersimpan (`AV-<service_id>` dengan huruf kecil/underscore,
+  `TUNVN-*`) dipertahankan apa adanya saat Produk disimpan; regex sanitasi lama
+  akan mengubah `AV-service_gemini_plus_6m` menjadi `AV-6` (memutus sync/PATCH).
+  Cek produksi baca-saja 15 Nov: 7 SKU AV masih utuh, tidak ada kerusakan.
+- Panel Markup TUNVN/AIVault memakai baris bersama `SupplierPriceRow`: Simpan
+  eksplisit per baris, hanya field berubah yang dikirim; harga manual kosong =
+  rumus, klien menolak 0. GET panel menambah `product_archived` (+ `excluded`,
+  `supplier_description` untuk TUNVN; `muse_product.archived` untuk Buff).
+- TUNVN: PATCH produk/Buff menormalkan `admin_price_idr: 0` → NULL (ikut rumus);
+  PATCH Buff kini menghitung ulang `products.price/stock` induk dalam satu batch.
+  Tab ke-2 panel bernama **Katalog** (permintaan terbit + saklar produk induk);
+  nama/deskripsi/label diatur dari menu Produk. #60 disembunyikan dari panel.
+  VND tidak ditampilkan. Deskripsi supplier mentah tampil terlipat di Katalog
+  sebagai rujukan admin, bukan untuk pembeli.
+- Migrasi `0127_supplier_copy_id_en.sql`: deskripsi produk ID/EN 13 family (hanya
+  menimpa template `tunvnDefaultDescription`; produk owner Muse tidak disentuh)
+  dan S&K + cara aktivasi ID/EN 25 varian `TUNVN-*` (hanya bila kosong). Link
+  pihak ketiga memakai shortlink `axvara.tech/go/*`: existing `otp-generator`,
+  `otp-2fa`, `grok-web`; baru `claude-api`, `claude-api-docs`, `mail-fvia`,
+  `mail-dongvan`, `muse-login`. Parser S&K kini mengenali judul EN (Package
+  details/Process & delivery/Usage rules/Warranty). Gemini #115 meniru varian
+  manual Gemini Plus 6 Bulan (hold link 1 jam), bukan garansi 24 jam supplier.
+
 ## Arsip Produk — keputusan owner 15 November 2026 (lokal)
 
 `products.archived_at` (migrasi0126) memisahkan Arsip dari Nonaktif. Identitas

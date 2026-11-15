@@ -1,5 +1,18 @@
 # PRD — AXVARA
 
+## Harga supplier & salinan TUNVN (15 November 2026, implementasi lokal)
+
+- Admin mengatur markup/harga manual varian TUNVN/AIVault per baris dengan
+  tombol Simpan; harga manual kosong = ikut rumus (modal × kurs × markup).
+- Menyimpan produk di menu Produk tanpa mengubah harga tidak mengubah varian
+  supplier menjadi harga manual; mengubah harga di Produk tetap menjadi harga
+  manual (perilaku lama yang disengaja).
+- Pembeli melihat deskripsi, S&K (Detail paket, Proses & pengiriman, Aturan
+  pakai, Garansi) dan cara aktivasi TUNVN serta AIVault (kecuali ChatGPT Plus
+  AIVault) dalam bahasa Indonesia dan Inggris;
+  link bantu pihak ketiga memakai shortlink `axvara.tech/go/*`. Status: lokal,
+  menunggu publikasi CI (migrasi 0127); belum terverifikasi di produksi.
+
 ## Siklus Arsip Produk admin (15 November 2026, implementasi lokal)
 
 Tombol sampah berarti **Arsipkan**, dengan konfirmasi bahwa produk hilang dari

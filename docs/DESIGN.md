@@ -50,6 +50,27 @@ semua ≥4,5:1 dan mode sistem mengikuti tema masing-masing. Screenshot di
 Fixture menguji presentasi/filter; bukan auth, persistensi backend atau transaksi.
 
 
+## Baris harga supplier TUNVN/AIVault (15 November 2026, lokal saja)
+
+Tab Markup TUNVN dan AIVault memakai komponen bersama
+`src/components/admin/SupplierPriceRow.tsx`: satu varian = satu baris. Desktop
+≥md memakai grid kolom Varian | Markup % | Harga manual | Harga jual
+(+ label `rumus`/`manual`) | Simpan | Aktif dengan header kolom per kartu produk
+induk; HP menjadi kartu ringkas (dua input berdampingan, harga + Simpan + saklar
+di bawah, info modal boleh turun baris). Simpan eksplisit per baris, hanya aktif
+bila ada perubahan dan menampilkan "Belum disimpan."; validasi klien (`noValidate`,
+markup 0–1000, harga manual bulat ≥1 atau kosong = rumus) dengan pesan per baris.
+Draf baris lain tidak hilang saat satu baris disimpan; muat ulang setelah simpan
+tidak melepas isi tab. Status induk berupa badge di judul kartu (`Induk nonaktif`,
+`Arsip`), varian belum dipetakan berupa badge + input nonaktif. Modal tampil
+sebagai `USDT`/`$` ≈ Rupiah; VND tidak ditampilkan di panel TUNVN mana pun.
+Tab AIVault memakai `SupplierTabs` (lebar sesuai isi, bukan `w-full`). TUNVN:
+judul `TUNVN`, tab ke-2 berganti nama **Katalog** (permintaan terbit + saklar
+produk induk saja; nama/deskripsi/label diatur di Produk), #60 API TEST
+disembunyikan, tombol duplikat "Muat ulang data" di Alat dihapus; Katalog menampilkan deskripsi supplier mentah dalam `<details>` terlipat sebagai rujukan admin. Tidak ada
+token/font/aset baru. Chrome headless fixture 1440/390 terang+gelap: tanpa
+overflow, console bersih, Simpan hanya mengirim field yang berubah.
+
 ## Panel supplier AIVault (15 November 2026, lokal saja)
 
 Section Supplier→AIVault memakai primitive admin existing: PageHeader, StatCard

@@ -390,6 +390,12 @@ const SECTION_BY_HEADING: Record<string, CopySectionKind> = {
   "aturan pakai": "aturan",
   aturan: "aturan",
   garansi: "garansi",
+  // Judul EN (salinan admin *_en): tanpa ini baris EN jatuh ke tebakan regex ID.
+  "package details": "paket",
+  "process & delivery": "proses",
+  "process and delivery": "proses",
+  "usage rules": "aturan",
+  warranty: "garansi",
 };
 const NOTE_HEADING = /^(?:catatan|note|notes|tips|info)$/i;
 const ADMIN_LIST_PREFIX = /^(?:[-–—•·*▪]+\s*|\d{1,2}[.)](?![\d.])\s*)/u;
