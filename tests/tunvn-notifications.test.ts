@@ -67,7 +67,7 @@ it("renders English using the immutable order locale",async()=>{
   expect(mail.mock.calls[0][0]).toMatchObject({subject:expect.stringContaining("is being processed"),text:expect.stringContaining("No account credentials are needed")});
 });
 it("announces accepted account preparation without including credentials",async()=>{
-  fixture.sql.exec("UPDATE products SET slug='chatgpt-tunvn'; UPDATE product_variants SET sku='TUNVN-86',buyer_field_key=NULL,max_qty=NULL,tunvn_buff_quantity_b=NULL");
+  fixture.sql.exec("UPDATE products SET slug='chatgpt-tunvn'; UPDATE product_variants SET sku='TUNVN-86',tunvn_source_product_id=86,buyer_field_key=NULL,max_qty=NULL,tunvn_buff_quantity_b=NULL");
   fixture.sql.prepare("UPDATE orders SET items=?").run(JSON.stringify([{product_id:1,variant_id:1,qty:1,price:1500,fulfillment_mode:"manual",tunvn_eligibility:{version:1,kind:"account",source_product_id:86,source_variant_id:1,source_unit_b:null,quantity:1,cost_usdt:2}}]));
   vi.stubGlobal("fetch",vi.fn(async(url:unknown)=>{
     const path=new URL(String(url)).pathname;

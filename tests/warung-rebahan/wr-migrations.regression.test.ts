@@ -74,6 +74,15 @@ const STRIP_SNIPPETS = [
   -- Migrasi 0113: override harga jual manual admin untuk varian Buff.
   tunvn_admin_price_idr INTEGER CHECK (tunvn_admin_price_idr IS NULL OR tunvn_admin_price_idr >= 0),
 `,
+  // 0123: identitas katalog TUNVN penuh belum ada di skema pra-WR.
+  `  tunvn_family TEXT,
+`,
+  `CREATE INDEX IF NOT EXISTS idx_products_tunvn_family ON products(tunvn_family) WHERE tunvn_family IS NOT NULL;
+`,
+  `  tunvn_source_product_id INTEGER CHECK (tunvn_source_product_id IS NULL OR tunvn_source_product_id >= 1),
+`,
+  `CREATE INDEX IF NOT EXISTS idx_variants_tunvn_source ON product_variants(tunvn_source_product_id) WHERE tunvn_source_product_id IS NOT NULL;
+`,
   `  supplier_purchase_disabled INTEGER NOT NULL DEFAULT 0 CHECK(supplier_purchase_disabled IN (0,1)),
 `,
   `  buyer_fields TEXT NOT NULL DEFAULT '{}',

@@ -16,10 +16,13 @@ type Item = {
   synced_at: string | null; admin_name: string | null; admin_description: string | null;
   publish_requested: number; axvara_name: string | null; axvara_description: string | null;
   axvara_is_active: number | null; variant_price: number | null; variant_is_active: number | null;
+  axvara_slug: string | null; family: string | null; family_key: string;
+  variant_id: number | null; variant_sku: string | null; variant_label: string | null;
+  tunvn_admin_price_idr: number | null;
 };
 type ProductsData = {
   ok: boolean; configured: boolean; items: Item[];
-  counts: { total: number; published: number; requested: number; in_stock: number };
+  counts: { total: number; published: number; requested: number; in_stock: number; mapped: number; active_variants: number };
   last_sync_at: string | null;
 };
 type BalanceData = {
@@ -47,7 +50,6 @@ const TABS: { id: SupplierTabId; label: string }[] = [
   { id: "markup", label: "Markup" },
   { id: "alat", label: "Alat" },
 ];
-const PUBLISHABLE = [86, 83];
 /** Label status pengiriman yang manusiawi (D5) — kode mentah hanya di receipt. */
 const LINK_STATUS_LABEL: Record<string, string> = {
   pending: "Menunggu", ordering: "Antre dikirim", submitted: "Diproses supplier", processing: "Diproses supplier",
@@ -55,15 +57,18 @@ const LINK_STATUS_LABEL: Record<string, string> = {
 };
 const linkStatusLabel = (status: string) => LINK_STATUS_LABEL[status] ?? "Status lain";
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
+async function request<T>(url: string, init?: RequestInit, label = "Permintaan"): Promise<T> {
   const response = await fetch(url, { cache: "no-store", ...init });
+  // Respons non-JSON (mis. HTML 502 dari edge/timeout) dulu menjadi pesan
+  // generik tanpa nama bagian yang gagal. Sekarang sebut bagian + status.
   const data = await response.json().catch(() => null) as (Row & { error?: string; message?: string }) | null;
-  if (!data) throw new Error("Permintaan gagal. Coba lagi.");
-  if (!response.ok && data.error !== "not_configured") throw new Error(String(data.message || data.error || "Permintaan gagal. Coba lagi."));
+  if (!data) throw new Error(`${label} gagal dimuat (HTTP ${response.status}).`);
+  if (!response.ok && data.error !== "not_configured") throw new Error(`${label}: ${String(data.message || data.error || `HTTP ${response.status}`)}`);
   return data as T;
 }
 
 const usdt = (value: number | null | undefined) => (value === null || value === undefined ? "-" : `${value} USDT`);
+const messageOf = (reason: unknown, fallback: string) => reason instanceof Error && reason.message ? reason.message : fallback;
 const compactTunvnTime = (value: string | null | undefined) => value ? formatWibDateTime(value, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) ?? String(value) : "Belum pernah";
 
 /** Panel admin TUNVN PREHUB: saldo, katalog, kontrol terbit/markup/deskripsi, Buff, publikasi. */
@@ -86,19 +91,27 @@ export function TunvnManager() {
   const load = useCallback(async () => {
     const current = ++generation.current;
     setLoading(true); setError("");
-    try {
-      const [nextProducts, nextBalance, nextBuff, nextOrders] = await Promise.all([
-        request<ProductsData>("/api/admin/tunvn/products"),
-        request<BalanceData>("/api/admin/tunvn/balance"),
-        request<BuffData>("/api/admin/tunvn/buff"),
-        request<{items:DispatchLink[]}>("/api/admin/tunvn/orders"),
-      ]);
-      if (current !== generation.current) return;
-      setProducts(nextProducts); setBalance(nextBalance); setBuff(nextBuff);
-      setLinks(nextOrders.items ?? []);
-    } catch (e) {
-      if (current === generation.current) setError(e instanceof Error ? e.message : "Data TUNVN gagal dimuat.");
-    } finally { if (current === generation.current) setLoading(false); }
+    // allSettled: satu endpoint lambat/gagal (mis. probe Buff 502) tidak boleh
+    // mengosongkan seluruh panel — dulu Promise.all membuat tab Markup kosong
+    // dengan pesan generik "Permintaan gagal".
+    const [nextProducts, nextBalance, nextBuff, nextOrders] = await Promise.allSettled([
+      request<ProductsData>("/api/admin/tunvn/products", undefined, "Katalog TUNVN"),
+      request<BalanceData>("/api/admin/tunvn/balance", undefined, "Saldo TUNVN"),
+      request<BuffData>("/api/admin/tunvn/buff", undefined, "Probe Buff"),
+      request<{items:DispatchLink[]}>("/api/admin/tunvn/orders", undefined, "Pesanan TUNVN"),
+    ]);
+    if (current !== generation.current) return;
+    const failures: string[] = [];
+    if (nextProducts.status === "fulfilled") setProducts(nextProducts.value);
+    else failures.push(messageOf(nextProducts.reason, "Katalog TUNVN gagal dimuat."));
+    if (nextBalance.status === "fulfilled") setBalance(nextBalance.value);
+    else failures.push(messageOf(nextBalance.reason, "Saldo TUNVN gagal dimuat."));
+    if (nextBuff.status === "fulfilled") setBuff(nextBuff.value);
+    else failures.push(messageOf(nextBuff.reason, "Probe Buff gagal dimuat."));
+    if (nextOrders.status === "fulfilled") setLinks(nextOrders.value.items ?? []);
+    else failures.push(messageOf(nextOrders.reason, "Pesanan TUNVN gagal dimuat."));
+    if (failures.length) setError(failures.join(" "));
+    setLoading(false);
   }, []);
   useEffect(() => { void load(); const pending = generation; return () => { pending.current++; }; }, [load]);
 
@@ -142,12 +155,12 @@ export function TunvnManager() {
     if (busy) return;
     setBusy("publish"); setError(""); setSuccess("");
     try {
-      const result = await request<Row & { chatgpt?: number; buff_variants?: number; idr_per_usdt?: number; activated?: number; error?: string }>(
-        "/api/admin/tunvn/publish", { method: "POST" },
+      const result = await request<Row & { families?: number; variants?: number; buff_variants?: number; idr_per_usdt?: number; activated?: number; error?: string }>(
+        "/api/admin/tunvn/publish", { method: "POST" }, "Sinkron TUNVN",
       );
       if (result.error) throw new Error(String(result.error));
       await load();
-      setSuccess(`Sinkron selesai: ${result.chatgpt ?? 0} produk ChatGPT diperbarui, ${result.buff_variants ?? 0} varian Buff, ${result.activated ?? 0} tampil publik (kurs Rp${Number(result.idr_per_usdt ?? 0).toLocaleString("id-ID")}/USDT).`);
+      setSuccess(`Sinkron selesai: ${result.families ?? 0} produk induk, ${result.variants ?? 0} varian akun, ${result.buff_variants ?? 0} varian Buff, ${result.activated ?? 0} tampil publik (kurs Rp${Number(result.idr_per_usdt ?? 0).toLocaleString("id-ID")}/USDT).`);
     } catch (e) { setError(e instanceof Error ? e.message : "Publikasi gagal."); }
     finally { setBusy(""); }
   }
@@ -175,7 +188,25 @@ export function TunvnManager() {
   }
 
   const items = (products?.items ?? []).filter((item) => !q || `${item.supplier_product_id} ${item.name} ${item.admin_name ?? ""}`.toLowerCase().includes(q.toLowerCase()));
-  const counts = products?.counts ?? { total: 0, published: 0, requested: 0, in_stock: 0 };
+  // Kelompokkan mirror per keluarga untuk tab Markup: satu kartu per produk
+  // induk AXVARA, satu baris kontrol per varian. Buff tetap kartu terpisah.
+  const familyGroups = (() => {
+    const map = new Map<string, { key: string; name: string; slug: string; active: boolean; items: Item[] }>();
+    for (const item of products?.items ?? []) {
+      const key = item.family_key || `p${item.supplier_product_id}`;
+      const group = map.get(key) ?? {
+        key,
+        name: item.axvara_name ?? item.name,
+        slug: item.axvara_slug ?? "belum diterbitkan",
+        active: item.axvara_is_active === 1,
+        items: [],
+      };
+      group.items.push(item);
+      map.set(key, group);
+    }
+    return [...map.values()].sort((a, b) => a.slug.localeCompare(b.slug));
+  })();
+  const counts = products?.counts ?? { total: 0, published: 0, requested: 0, in_stock: 0, mapped: 0, active_variants: 0 };
   // Satu baris pendek: nominal USDT (mata uang wallet), VND hanya sebagai hint.
   const walletUsdt = balance?.ok && balance.balance_usdt != null
     ? `${Number(balance.balance_usdt).toLocaleString("id-ID", { maximumFractionDigits: 4 })} USDT`
@@ -202,7 +233,7 @@ export function TunvnManager() {
     {!loading && tab === "ringkas" && <>
       <div className="grid gap-3 sm:grid-cols-3" aria-label="Status TUNVN">
         <StatCard label="Saldo wallet" value={<span className="block truncate">{walletUsdt}</span>} hint={[walletVnd, balance?.username ? `akun ${balance.username}` : null].filter(Boolean).join(" · ") || "Diambil dari API TUNVN"} />
-        <StatCard label="Produk tampil" value={counts.published} hint={`${counts.total} produk mirror · ${counts.requested} diminta terbit`} />
+        <StatCard label="Produk tampil" value={counts.published} hint={`${counts.active_variants} varian aktif · ${counts.mapped} varian terpetakan · ${counts.total} mirror`} />
         <StatCard label="Sinkron terakhir" value={syncOneLine} hint="Katalog ditarik lewat tab Alat" />
       </div>
       <Card className="overflow-hidden">
@@ -284,7 +315,7 @@ export function TunvnManager() {
       {items.length === 0 && <p className="text-sm text-admin-muted">Belum ada produk mirror. Jalankan Publikasi untuk sinkron pertama.</p>}
       <div className="space-y-3">
         {items.map((item) => {
-          const publishable = PUBLISHABLE.includes(item.supplier_product_id);
+          const publishable = item.variant_id != null;
           const live = item.visible === 1;
           const expanded = openId === item.supplier_product_id;
           return <Card key={item.supplier_product_id}>
@@ -333,12 +364,12 @@ export function TunvnManager() {
                       <AdminStatusSwitch checked={item.publish_requested === 1} label={`Permintaan terbit ${item.name}`} disabled={busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
                         onChange={() => void patchProduct(item.supplier_product_id, { publish_requested: item.publish_requested !== 1 }, `Permintaan terbit ${item.name} ${item.publish_requested === 1 ? "dimatikan" : "dinyalakan"}.`)} />
                     </div>
-                    {item.supplier_product_id === 86 && <div className="flex items-center justify-between gap-3 rounded-md border border-admin-border bg-admin-subtle/60 px-3 py-2">
-                      <span className="text-xs text-admin-muted">ChatGPT Private aktif di Market</span>
-                      <AdminStatusSwitch checked={item.axvara_is_active === 1} label="ChatGPT Private aktif" disabled={busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
+                    <div className="flex items-center justify-between gap-3 rounded-md border border-admin-border bg-admin-subtle/60 px-3 py-2">
+                      <span className="text-xs text-admin-muted">{item.axvara_name ?? item.name} aktif di Market</span>
+                      <AdminStatusSwitch checked={item.axvara_is_active === 1} label={`${item.axvara_name ?? item.name} aktif`} disabled={busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
                         onChange={() => void patchProduct(item.supplier_product_id, { axvara_is_active: item.axvara_is_active !== 1 }, `${item.name} ${item.axvara_is_active === 1 ? "dinonaktifkan" : "diaktifkan"}.`)} />
-                    </div>}
-                    <p className="text-xs leading-4 text-admin-muted">Satu produk ChatGPT Private, dua varian. Diminta terbit mengatur varian ini saja; saklar produk bersama ada di Business. Mematikan GPay tidak menyembunyikan Business. Aktifkan minimal satu varian sebelum produk.</p>
+                    </div>
+                    <p className="text-xs leading-4 text-admin-muted">Produk induk bisa berisi beberapa varian TUNVN. Diminta terbit mengatur varian ini saja; saklar produk bersama memengaruhi semua varian. Aktifkan minimal satu varian sebelum produk.</p>
                   </> : <p className="text-xs leading-5 text-admin-warning">Produk ini belum punya pemetaan terbit AXVARA, jadi hanya bisa diatur markup/nama/deskripsinya dan tetap tersembunyi. Pemetaan terbit baru ditambah lewat rilis katalog berikutnya.</p>}
                 </div>
               </div>}
@@ -356,6 +387,73 @@ export function TunvnManager() {
             : <p className="text-xs text-admin-warning">Probe tidak tersedia{buff?.probe_error ? ` (${buff.probe_error})` : ""}; harga varian memakai snapshot terakhir.</p>}
         </CardContent>
       </Card>
+      <p className="text-xs leading-5 text-admin-muted">Semua varian akun TUNVN, dikelompokkan per produk induk AXVARA. Harga jual = modal USDT dikali kurs tersimpan dikali markup; harga manual mengalahkan rumus. Varian baru dibuat nonaktif — aktifkan saklar varian di sini atau produknya di menu Produk.</p>
+      {familyGroups.length === 0 && <p className="text-sm text-admin-muted">Belum ada produk akun. Jalankan Sinkron di tab Alat sekali untuk membuatnya (tetap nonaktif).</p>}
+      <div className="space-y-3">
+        {familyGroups.map((group) => <Card key={group.key}>
+          <CardHeader className="p-4 pb-3">
+            <CardTitle className="text-base">{group.name}</CardTitle>
+            <CardDescription className="mt-1 text-xs">{group.slug} · {group.items.length} varian</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 p-4 pt-0">
+            {!group.active && <p className="text-xs leading-4 text-admin-warning">Produk induk nonaktif — aktifkan di menu Produk.</p>}
+            {group.items.map((item) => {
+              const mapped = item.variant_id != null;
+              const label = item.variant_label ?? item.name;
+              return <div key={item.supplier_product_id} className="space-y-3 rounded-xl border border-admin-border bg-admin-subtle/60 p-3">
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-admin-fg">{label}</p>
+                    <p className="mt-0.5 text-xs text-admin-muted">#{item.supplier_product_id} {item.name} · modal {usdt(item.price_usdt)} ({item.price_vnd.toLocaleString("id-ID")} VND) · stok {item.stock}</p>
+                    <p className="mt-1 text-sm font-semibold tabular-nums text-admin-fg">{item.variant_price != null ? formatRupiah(item.variant_price) : "-"}</p>
+                  </div>
+                  <AdminStatusSwitch checked={item.variant_is_active === 1} label={`Aktif ${label}`} disabled={!mapped || busy === `p${item.supplier_product_id}`} busy={busy === `p${item.supplier_product_id}`}
+                    onChange={() => void patchProduct(item.supplier_product_id, { is_active: item.variant_is_active !== 1 }, `${label} ${item.variant_is_active === 1 ? "dinonaktifkan" : "diaktifkan"}.`)} />
+                </div>
+                {!mapped && <p className="text-xs leading-4 text-admin-warning">Varian belum dibuat — jalankan Sinkron di tab Alat.</p>}
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <label htmlFor={`tunvn-vlabel-${item.supplier_product_id}`} className="text-xs font-medium text-admin-muted">Label varian</label>
+                    <Input id={`tunvn-vlabel-${item.supplier_product_id}`} maxLength={120} disabled={!mapped}
+                      value={draft(`vl${item.supplier_product_id}`, label)}
+                      onChange={(e) => setDraft(`vl${item.supplier_product_id}`, e.target.value)}
+                      onBlur={() => {
+                        const raw = drafts[`vl${item.supplier_product_id}`]; if (raw === undefined || !raw.trim() || raw.trim() === label) return;
+                        void patchProduct(item.supplier_product_id, { label: raw.trim() }, `Label ${item.name} disimpan.`);
+                      }} />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor={`tunvn-vmarkup-${item.supplier_product_id}`} className="text-xs font-medium text-admin-muted">Markup %</label>
+                    <Input id={`tunvn-vmarkup-${item.supplier_product_id}`} type="number" min={0} max={1000} step="0.5" inputMode="decimal" disabled={!mapped}
+                      value={draft(`vm${item.supplier_product_id}`, String(item.markup_percent))}
+                      onChange={(e) => setDraft(`vm${item.supplier_product_id}`, e.target.value)}
+                      onBlur={() => {
+                        const raw = drafts[`vm${item.supplier_product_id}`]; if (raw === undefined) return;
+                        const value = Number(raw);
+                        if (!Number.isFinite(value) || value < 0 || value > 1000) { setError("Markup harus 0–1000%."); return; }
+                        if (value === item.markup_percent) return;
+                        void patchProduct(item.supplier_product_id, { markup_percent: value }, `Markup ${item.name} disimpan ${value}%.`);
+                      }} />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor={`tunvn-vprice-${item.supplier_product_id}`} className="text-xs font-medium text-admin-muted">Harga manual Rp (kosong = rumus)</label>
+                    <Input id={`tunvn-vprice-${item.supplier_product_id}`} type="number" min={0} step={100} inputMode="numeric" disabled={!mapped}
+                      value={draft(`vp${item.supplier_product_id}`, item.tunvn_admin_price_idr == null ? "" : String(item.tunvn_admin_price_idr))}
+                      onChange={(e) => setDraft(`vp${item.supplier_product_id}`, e.target.value)}
+                      onBlur={() => {
+                        const raw = drafts[`vp${item.supplier_product_id}`]; if (raw === undefined) return;
+                        const value = raw.trim() === "" ? null : Number(raw);
+                        if (value !== null && (!Number.isInteger(value) || value < 0)) { setError("Harga manual harus bilangan bulat ≥ 0."); return; }
+                        void patchProduct(item.supplier_product_id, { admin_price_idr: value }, `Harga ${item.name} disimpan.`);
+                      }} />
+                  </div>
+                </div>
+              </div>;
+            })}
+          </CardContent>
+        </Card>)}
+      </div>
+      <h3 className="pt-2 text-sm font-semibold text-admin-fg">Buff Token Muse</h3>
       {(buff?.variants ?? []).length === 0 && <p className="text-sm text-admin-muted">Varian Buff belum dibuat. Jalankan Publikasi sekali untuk membuatnya (tetap nonaktif).</p>}
       <div className="space-y-3">
         {(buff?.variants ?? []).map((variant) => <Card key={variant.sku}>

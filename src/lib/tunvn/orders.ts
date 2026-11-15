@@ -38,7 +38,8 @@ export function eligibleTunvnLine(value:unknown):Row|null {
   if (!e || e.version!==1 || e.source_variant_id!==item.variant_id || e.quantity!==item.qty
     || !Number.isSafeInteger(item.qty) || Number(item.qty)<1 || Number(item.qty)>100
     || !Number.isSafeInteger(item.product_id) || !Number.isSafeInteger(item.variant_id) || !Number.isFinite(e.cost_usdt) || Number(e.cost_usdt)<=0) return null;
-  if (e.kind==="account" && [83,86].includes(Number(e.source_product_id)) && e.source_unit_b===null && !item.unique_units) return e;
+  const sourceId=Number(e.source_product_id);
+  if (e.kind==="account" && Number.isSafeInteger(sourceId) && sourceId>=1 && sourceId!==60 && e.source_unit_b===null && !item.unique_units) return e;
   const fields=item.buyer_fields as Row|undefined;
   if (e.kind==="buff" && e.source_product_id===null && e.source_unit_b===1 && Number(item.qty)<=30
     && item.buyer_field_key==="muse_invite_code" && item.max_qty===30 && /^[A-Za-z0-9]{6}$/.test(String(fields?.muse_invite_code ?? ""))) return e;
@@ -189,9 +190,9 @@ async function processLink(db:DatabaseAccess,id:number,reconcile=false):Promise<
       return;
     }
     if (Number(link.attempt_count)>=3) { await settle(db,link,"needs_admin","attempts_exhausted"); return; }
-    const variant=await db.queryFirst(`SELECT pv.sku,pv.tunvn_buff_quantity_b,pv.buyer_field_key,pv.max_qty,pv.fulfillment_mode,pv.is_active,p.slug,p.is_active AS product_active,pv.wr_variant_id,pv.sk_variant_id,p.source,p.wr_product_id,p.sk_product_id,p.wr_auto_managed,p.sk_auto_managed FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=?`,link.variant_id,link.product_id);
+    const variant=await db.queryFirst(`SELECT pv.sku,pv.tunvn_buff_quantity_b,pv.tunvn_source_product_id,pv.buyer_field_key,pv.max_qty,pv.fulfillment_mode,pv.is_active,p.slug,p.is_active AS product_active,pv.wr_variant_id,pv.sk_variant_id,p.source,p.wr_product_id,p.sk_product_id,p.wr_auto_managed,p.sk_auto_managed FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=?`,link.variant_id,link.product_id);
     const valid=variant && variant.fulfillment_mode==="manual" && variant.is_active===1 && variant.product_active===1 && !variant.wr_variant_id && !variant.sk_variant_id && !variant.wr_product_id && !variant.sk_product_id && !Number(variant.wr_auto_managed) && !Number(variant.sk_auto_managed) && variant.source==="manual" && (link.kind==="account"
-      ? variant.slug==="chatgpt-tunvn" && variant.sku===`TUNVN-${link.source_product_id}`
+      ? variant.sku===`TUNVN-${link.source_product_id}` && Number(variant.tunvn_source_product_id)===Number(link.source_product_id)
       : variant.slug==="muse-ai-1-miliar-token" && variant.sku==="TUNVN-BUFF-1B" && variant.tunvn_buff_quantity_b===1 && variant.buyer_field_key==="muse_invite_code" && variant.max_qty===30);
     if (!valid) { await settle(db,link,"needs_admin","source_changed"); return; }
     await preflight(link);
@@ -199,7 +200,7 @@ async function processLink(db:DatabaseAccess,id:number,reconcile=false):Promise<
       AND datetime(lease_expires_at)>datetime('now')
       AND EXISTS(SELECT 1 FROM orders WHERE code=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0 AND items=?)
       AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.id=? AND f.tunvn_link_id=? AND f.status NOT IN ('delivered','sending') AND f.fulfillment_mode='manual' AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.inventory_id IS NULL AND f.product_id=tunvn_order_links.product_id AND f.variant_id=tunvn_order_links.variant_id AND f.qty=tunvn_order_links.quantity)
-      AND EXISTS(SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=? AND pv.sku=? AND p.slug=? AND p.source='manual' AND pv.fulfillment_mode='manual' AND pv.is_active=1 AND p.is_active=1 AND pv.wr_variant_id IS NULL AND pv.sk_variant_id IS NULL AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0 AND pv.buyer_field_key IS ? AND pv.max_qty IS ? AND pv.tunvn_buff_quantity_b IS ?)`,new Date().toISOString(),id,owner,link.order_code,order.items,fulfillment.id,id,link.variant_id,link.product_id,variant!.sku,variant!.slug,variant!.buyer_field_key,variant!.max_qty,variant!.tunvn_buff_quantity_b);
+      AND EXISTS(SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=? AND pv.sku=? AND p.slug=? AND p.source='manual' AND pv.fulfillment_mode='manual' AND pv.is_active=1 AND p.is_active=1 AND pv.wr_variant_id IS NULL AND pv.sk_variant_id IS NULL AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0 AND pv.buyer_field_key IS ? AND pv.max_qty IS ? AND pv.tunvn_buff_quantity_b IS ? AND pv.tunvn_source_product_id IS ?)`,new Date().toISOString(),id,owner,link.order_code,order.items,fulfillment.id,id,link.variant_id,link.product_id,variant!.sku,variant!.slug,variant!.buyer_field_key,variant!.max_qty,variant!.tunvn_buff_quantity_b,variant!.tunvn_source_product_id ?? null);
     if (!sent.changes) return;
     link.attempt_count=Number(link.attempt_count)+1;
     const response=link.kind==="account" ? await buyTunvnProduct(Number(link.source_product_id),Number(link.quantity)) : await orderTunvnBuff(String(link.invite_code),Number(link.quantity));

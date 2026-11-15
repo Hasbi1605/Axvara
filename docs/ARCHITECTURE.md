@@ -5286,3 +5286,69 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
 - **Detail.** Grid "Game lainnya" di `src/app/games/[slug]/game-client.tsx` memakai kartu portrait yang sama; kelas grid disesuaikan `grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6`. Header detail, rail varian, nickname, harga dan checkout tidak berubah.
 - **Test.** `tests/games-home.behavior.test.tsx` (katalog penuh, presedensi/default/limit populer, filter genre, portrait/publisher/accessible name, fallback) dan `tests/games-detail.behavior.test.tsx` (grid terkait) diperluas; `tests/games-orders.test.ts` menyesuaikan fixture portrait; `tests/games-assets.test.ts` memvalidasi provenance portrait (host resmi, master lokal 800×1200, penolakan traversal/slug salah, fixture offline) dan 48 berkas 600×900 ≤120 KB.
 - **Batas bukti.** Semua implementasi lokal di worktree integrasi, **belum publikasi CI/deployment**: generator + regen `assets.ts`/`docs/games-assets.md`, fokus 3 file/83 tes lulus dan suite katalog/detail/home terfokus lulus, QA Chromium 1280/390 dengan fixture lokal (D1 lokal kosong), `git diff --check` bersih. Angka render/aset adalah hasil run lokal, bukan status produksi.
+
+### 16.43 TUNVN — katalog penuh semua produk mirror sebagai family varian (15 November 2026, lokal, belum deploy)
+
+- **Keputusan owner 15 November 2026.** Seluruh baris `tunvn_products` (kecuali
+  #60 API TEST) menjadi produk katalog AXVARA di menu admin "Produk", pola
+  WR/SK. Produk serupa menjadi VARIAN satu produk induk; semua produk/varian
+  baru nonaktif dan hanya admin yang mengaktifkan. Aturan lengkap di
+  `docs/agent-rules/tunvn.md` (bagian teratas).
+- **Peta family statis (`src/lib/tunvn/families.ts`).** `TUNVN_FAMILIES` memuat
+  14 family (chatgpt, muse, capcut, grok-cursor, claude-api, microsoft-365,
+  spotify, elevenlabs, grammarly, hma, nord, gemini, linkedin, codex-phone) +
+  label pembeli Indonesia, `imageFromSlugs`, dan `markFamily`. Muse memakai
+  `markFamily:false` (produk owner tidak diberi `tunvn_family`). `#60`
+  dikecualikan permanen di `tunvnFamilyForSupplierId`/publisher; id tak dikenal
+  memakai `tunvnFallbackFamily` 1:1 (`slugify(nama)+"-tunvn"`).
+- **Migrasi `0123_tunvn_full_catalog.sql`.** Menambah `products.tunvn_family`
+  dan `product_variants.tunvn_source_product_id` (+ index parsial), backfill
+  ChatGPT (produk → `chatgpt`, SKU 86/83 → id sumber), lalu MENGGANTI trigger
+  `tunvn_variant_publication` agar bekerja untuk setiap varian dengan
+  `tunvn_source_product_id` (bukan daftar SKU ChatGPT). Tidak ada seed produk
+  baru; publisher yang membuatnya. `drizzle/schema.sql` memuat kolom/index/
+  trigger yang sama untuk bootstrap.
+- **Publisher (`publishTunvnCatalog`).** Setelah sync mirror + FX fail-closed,
+  satu pass generik: baca mirror, produk kandidat family, varian akun
+  ber-`tunvn_source_product_id`, dan kategori (4 query); rencanakan family di
+  memori; INSERT produk baru (1 statement `json_each`, slug collision-safe,
+  `source='manual'`, `fulfillment_mode='manual'`, `telegram_enabled=1`,
+  `is_active=0`, kategori `mapSkCategory(name)` atau fallback `ai-chatbot`,
+  gambar pertama dari `imageFromSlugs`); INSERT varian baru
+  (`sku='TUNVN-{id}'`, `price=max(0,...)`, `stock=mirror stock`, `is_active=0`);
+  UPDATE batch harga/stok varian existing dengan CAS `tunvn_admin_price_idr`
+  dan `markup_percent` yang dibaca; UPDATE mirror (`axvara_product_id`,
+  `sell_price_idr`, `fx`, `publish_requested`/`visible` dari status varian+
+  produk); recompute agregat semua produk TUNVN (1 statement); deaktivasi SKU/
+  slug pensiun. Total ±13 statement + sync (budget cron 40 tetap; test workerd
+  membuktikan ≤38). Hasil publish: `{families, variants, buff_variants,
+  activated, idr_per_usdt}` (menggantikan `chatgpt`). Nama/deskripsi/gambar/
+  kategori produk tidak pernah ditulis ulang; `is_active` juga tidak.
+- **Eligibility/dispatch generik.** `tunvnEligibility` (server-only) menerima
+  varian akun bila SKU `TUNVN-{n}` dan `tunvn_source_product_id === n`, `n>=1`,
+  `n!==60` — tanpa cek slug. Pemanggil wajib SELECT kolom itu: commerce
+  (`createChannelOrderAtomic`), `createOrderWithStock`, `getProductDetail`,
+  `telegramPaidDeliveryProfile`, dan quote (memakai `pv.*`). Guard atomik
+  mem-pin `pv.tunvn_source_product_id`. `eligibleTunvnLine` menerima sumber id
+  positif apa pun selain 60; `processLink` memvalidasi SKU+kolom dan send-fence
+  menambah `pv.tunvn_source_product_id IS ?`; `buyTunvnProduct` menerima id
+  aman ≥1 selain 60. Buff tetap aturan lama.
+- **Admin.** `GET /api/admin/tunvn/products` join varian lewat
+  `tunvn_source_product_id` (+ produk/family) dan mengembalikan hitungan
+  `mapped`/`active_variants`; `PATCH /products/[id]` berlaku untuk semua id
+  terpetakan (markup 0–1000, `admin_price_idr`, `label`, `is_active` varian,
+  copy lama), 409 `variant_missing` bila varian belum dibuat, 409 untuk #60,
+  404 tanpa mirror. Varian akun di `PUT /api/products/[id]` dideteksi dari
+  kolom durable (aktivasi/publikasi/visible di-sync untuk supplier id terkait).
+  Daftar admin "Produk" memberi badge/filter asal **TUNVN** (`tunvn_family`);
+  `ProductVariantRows` menandai semua `TUNVN-{n}` otomatis. Panel TUNVN tab
+  Markup menampilkan kartu per family; `load()` memakai `Promise.allSettled`
+  dengan pesan error bernama bagian + HTTP (error panel "Permintaan gagal" kini
+  menyebut bagian + HTTP; penyebab produksi belum dipastikan).
+- **Batas bukti.** Implementasi + test lokal: `tests/tunvn-catalog.test.ts`
+  (family map, publisher generik termasuk gambar/kategori/#60, CAS harga admin,
+  budget statement, migrasi 0123), `tests/tunvn-input.test.ts` (eligibility
+  family, PATCH, GET admin, aktivasi produk), `tests/tunvn-orders.test.ts` dan
+  workerd (identitas dispatch/fence), plus full suite `NODE_ENV=test npx vitest
+  run --run` **452 file/6.215 test lulus**. Belum ada migrasi remote, push,
+  deployment, pembelian supplier, atau transaksi produksi.

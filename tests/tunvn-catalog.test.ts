@@ -7,6 +7,7 @@ import {
   tunvnBuffSellPriceIdr, tunvnChatGptSellPriceIdr,
 } from "@/lib/tunvn/pricing";
 import { publishTunvnCatalog, TUNVN_CHATGPT_IMAGE_URL } from "@/lib/tunvn/catalog";
+import { TUNVN_FAMILIES, tunvnFamilyForSupplierId, tunvnFallbackFamily } from "@/lib/tunvn/families";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { NextRequest } from "next/server";
 
@@ -38,6 +39,12 @@ beforeEach(() => {
 afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 const db = () => createDatabaseAccess(fx.db);
+const supplier = (products = [upstreamProduct(86), upstreamProduct(83)], cost = 0.0588, fundable = true) => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(String(url).endsWith("/buff/check") ? {
+    success: true, gross_cost_vnd: 390, sell_price_vnd: 390, sell_price_usdt: cost, fundable,
+    orders_breakdown: [{ invite_code: "AXVARA", quantity_b: 1, valid: true }],
+  } : { success: true, products })));
+};
 
 describe("TUNVN pricing (markup owner 35%/40%, kurs Rp18.086)", () => {
   it("computes ChatGPT prices rounded up to Rp100", () => {
@@ -70,13 +77,35 @@ describe("0112 tunvn catalog publish migration", () => {
   });
 });
 
+describe("0123 tunvn full catalog migration", () => {
+  it("adds durable identity columns, backfills ChatGPT and generalizes the trigger", () => {
+    const sqlite = new DatabaseSync(":memory:");
+    try {
+      sqlite.exec(`CREATE TABLE products(id INTEGER PRIMARY KEY, slug TEXT UNIQUE, name TEXT, is_active INTEGER DEFAULT 1);
+        CREATE TABLE product_variants(id INTEGER PRIMARY KEY, product_id INTEGER, sku TEXT UNIQUE, is_active INTEGER DEFAULT 0);
+        CREATE TABLE tunvn_products(supplier_product_id INTEGER PRIMARY KEY, publish_requested INTEGER NOT NULL DEFAULT 0);
+        INSERT INTO products(id,slug,name) VALUES(1,'chatgpt-tunvn','ChatGPT Private');
+        INSERT INTO product_variants(id,product_id,sku) VALUES(1,1,'TUNVN-86'),(2,1,'TUNVN-83'),(3,1,'TUNVN-BUFF-1B');
+        INSERT INTO tunvn_products(supplier_product_id) VALUES(86),(83);`);
+      sqlite.exec(fs.readFileSync("drizzle/migrations/0123_tunvn_full_catalog.sql", "utf8"));
+      const columns = (table: string) => (sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((row) => row.name);
+      expect(columns("products")).toContain("tunvn_family");
+      expect(columns("product_variants")).toContain("tunvn_source_product_id");
+      expect(sqlite.prepare("SELECT tunvn_family FROM products WHERE slug='chatgpt-tunvn'").get()).toEqual({ tunvn_family: "chatgpt" });
+      expect(sqlite.prepare("SELECT sku,tunvn_source_product_id FROM product_variants ORDER BY id").all()).toEqual([
+        { sku: "TUNVN-86", tunvn_source_product_id: 86 },
+        { sku: "TUNVN-83", tunvn_source_product_id: 83 },
+        { sku: "TUNVN-BUFF-1B", tunvn_source_product_id: null },
+      ]);
+      sqlite.exec("UPDATE product_variants SET is_active=1 WHERE sku='TUNVN-83'");
+      expect(sqlite.prepare("SELECT publish_requested FROM tunvn_products WHERE supplier_product_id=83").get()).toEqual({ publish_requested: 1 });
+      // Idempoten: migrasi dijalankan ulang harus melewati backfill yang sudah ada.
+      expect(sqlite.prepare("SELECT COUNT(*) n FROM products WHERE tunvn_family='chatgpt'").get()).toEqual({ n: 1 });
+    } finally { sqlite.close(); }
+  });
+});
+
 describe("publishTunvnCatalog", () => {
-  const supplier = (products=[upstreamProduct(86),upstreamProduct(83)],cost=0.0588,fundable=true) => {
-    vi.stubGlobal("fetch", vi.fn(async (url:string) => Response.json(String(url).endsWith("/buff/check") ? {
-      success:true,gross_cost_vnd:390,sell_price_vnd:390,sell_price_usdt:cost,fundable,
-      orders_breakdown:[{invite_code:"AXVARA",quantity_b:1,valid:true}],
-    } : {success:true,products})));
-  };
   it("refreshes upstream stock, live unit costs and prices within the cron40 budget without changing admin gates/copy",async () => {
     await publishTunvnCatalog(db(),RATE);
     fx.sql.exec("UPDATE products SET is_active=1,name='Admin copy' WHERE slug='chatgpt-tunvn'; UPDATE product_variants SET is_active=1 WHERE sku IN ('TUNVN-86','TUNVN-BUFF-1B')");
@@ -145,12 +174,14 @@ describe("publishTunvnCatalog", () => {
   it("does not overwrite a manual price that changes between read and upsert",async () => {
     await publishTunvnCatalog(db(),RATE);
     const access=db(); const write=access.execRun;
+    // CAS di UPDATE varian: harga manual yang diedit admin setelah pembacaan
+    // sinkron tidak boleh ditimpa rumus publikasi.
     access.execRun=async(sql,...params)=>{
-      if(sql.includes("INSERT INTO product_variants")) fx.sql.exec("UPDATE product_variants SET price=12345,tunvn_admin_price_idr=12345 WHERE sku IN ('TUNVN-86','TUNVN-BUFF-1B')");
+      if(sql.includes("UPDATE product_variants AS pv")) fx.sql.exec("UPDATE product_variants SET price=12345,tunvn_admin_price_idr=12345 WHERE sku='TUNVN-86'");
       return write(sql,...params);
     };
     expect(await publishTunvnCatalog(access,20000)).toMatchObject({ok:true});
-    expect(fx.sql.prepare("SELECT price FROM product_variants WHERE sku IN ('TUNVN-86','TUNVN-BUFF-1B')").all()).toEqual([{price:12345},{price:12345}]);
+    expect(fx.sql.prepare("SELECT price,tunvn_admin_price_idr FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({price:12345,tunvn_admin_price_idr:12345});
   });
   it("retains sibling deactivation, base Muse and manual account overrides through publication",async () => {
     await publishTunvnCatalog(db(),RATE);
@@ -167,7 +198,7 @@ describe("publishTunvnCatalog", () => {
   });
   it("creates one hidden ChatGPT product and one per-1B Buff variant", async () => {
     const result = await publishTunvnCatalog(db(), RATE);
-    expect(result).toMatchObject({ ok: true, chatgpt: 2, buff_variants: 1, idr_per_usdt: RATE, activated: 0 });
+    expect(result).toMatchObject({ ok: true, families: 1, variants: 2, buff_variants: 1, idr_per_usdt: RATE, activated: 0 });
 
     const business = fx.sql.prepare("SELECT * FROM products WHERE slug='chatgpt-tunvn'").get() as Record<string, unknown>;
     expect(business).toMatchObject({ name:"ChatGPT Private",price: 112_400, stock: 0, is_active: 0, image_url: TUNVN_CHATGPT_IMAGE_URL });
@@ -187,7 +218,7 @@ describe("publishTunvnCatalog", () => {
   it("is idempotent on re-publish and refreshes price from a new FX", async () => {
     await publishTunvnCatalog(db(), RATE);
     const again = await publishTunvnCatalog(db(), 20_000);
-    expect(again).toMatchObject({ ok: true, chatgpt: 2 });
+    expect(again).toMatchObject({ ok: true, families: 1, variants: 2 });
     expect(fx.sql.prepare("SELECT COUNT(*) c FROM products WHERE slug='chatgpt-tunvn'").get()).toEqual({ c: 1 });
     expect(fx.sql.prepare("SELECT COUNT(*) c FROM product_variants WHERE sku LIKE 'TUNVN-BUFF-%'").get()).toEqual({ c: 1 });
     expect(fx.sql.prepare("SELECT price FROM product_variants WHERE sku='TUNVN-86'").get())
@@ -221,5 +252,87 @@ describe("publishTunvnCatalog", () => {
     vi.stubEnv("TUNVN_SYNC_ENABLED", "false");
     expect(await publishTunvnCatalog(db(), RATE)).toEqual({ skipped: "not_configured" });
     expect(fx.sql.prepare("SELECT COUNT(*) c FROM products WHERE slug LIKE 'chatgpt-%-tunvn'").get()).toEqual({ c: 0 });
+  });
+});
+
+describe("family map (owner 15 Nov 2026)", () => {
+  it("maps every supplier id exactly once and never maps #60", () => {
+    const ids = TUNVN_FAMILIES.flatMap(family => family.members.map(member => member.supplier_product_id));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).not.toContain(60);
+    expect(tunvnFamilyForSupplierId(60)).toBeNull();
+    expect(tunvnFamilyForSupplierId(44)?.family.key).toBe("capcut");
+    expect(tunvnFamilyForSupplierId(86)?.member.label).toBe("Business 1 Bulan");
+    const muse = tunvnFamilyForSupplierId(97)?.family;
+    expect(muse).toMatchObject({ key: "muse", markFamily: false, slug: "muse-ai-1-miliar-token" });
+  });
+
+  it("builds a collision-safe 1:1 fallback family for unknown products", () => {
+    expect(tunvnFallbackFamily(999, "  Produk Baru X  ")).toMatchObject({
+      key: "p999", name: "Produk Baru X", slug: "produk-baru-x-tunvn", imageFromSlugs: [],
+    });
+    expect(tunvnFallbackFamily(1000, "")).toMatchObject({ key: "p1000", slug: "produk-tunvn-1000-tunvn" });
+  });
+});
+
+describe("generic family publication", () => {
+  const mirror = (id: number, name: string, priceUsdt: number, stock: number) => upstreamProduct(id, { name, price_usdt: priceUsdt, stock });
+
+  it("creates one inactive parent per family with variants, images, category and #60 excluded", async () => {
+    fx.sql.exec("INSERT INTO products(name,slug,price,image_url) VALUES('CapCut Pro','capcut-pro',10000,'/r2/capcut.webp'),('Claude Pro','claude-pro',10000,'/r2/claude.webp')");
+    supplier([
+      mirror(44, "CAPCUT PRO 7D", 1, 5),
+      mirror(87, "CAPCUT PRO 1M", 2, 2),
+      mirror(69, "CLAUDE API 100", 10, 1),
+      mirror(97, "MUSE 1B", 0.5, 8),
+      mirror(60, "API TEST", 1, 99),
+      mirror(999, "PRODUK BARU X", 1.5, 3),
+    ]);
+    const result = await publishTunvnCatalog(db(), RATE);
+    expect(result).toMatchObject({ ok: true, families: 4, variants: 5 });
+
+    const capcut = fx.sql.prepare("SELECT * FROM products WHERE slug='capcut-pro-tunvn'").get() as Record<string, unknown>;
+    expect(capcut).toMatchObject({ name: "CapCut Pro", is_active: 0, tunvn_family: "capcut", image_url: "/r2/capcut.webp", category_id: 3, price: 24500 });
+    const capcutVariants = fx.sql.prepare("SELECT sku,label,price,stock,is_active,tunvn_source_product_id FROM product_variants WHERE product_id=? ORDER BY sku").all(capcut.id);
+    expect(capcutVariants).toEqual([
+      { sku: "TUNVN-44", label: "7 Hari · 500 Kredit", price: 24500, stock: 5, is_active: 0, tunvn_source_product_id: 44 },
+      { sku: "TUNVN-87", label: "1 Bulan", price: 48900, stock: 2, is_active: 0, tunvn_source_product_id: 87 },
+    ]);
+
+    expect(fx.sql.prepare("SELECT name,is_active,image_url,tunvn_family FROM products WHERE slug='claude-api-tunvn'").get())
+      .toEqual({ name: "Claude API Credit", is_active: 0, image_url: "/r2/claude.webp", tunvn_family: "claude-api" });
+    // Muse: produk owner tidak berubah identitasnya, varian baru menempel.
+    expect(fx.sql.prepare("SELECT name,is_active,tunvn_family FROM products WHERE slug='muse-ai-1-miliar-token'").get())
+      .toEqual({ name: "Muse AI 1 Miliar Token", is_active: 1, tunvn_family: null });
+    expect(fx.sql.prepare("SELECT product_id,is_active,stock FROM product_variants WHERE sku='TUNVN-97'").get())
+      .toMatchObject({ is_active: 0, stock: 8 });
+    // Fallback 1:1.
+    const fallback = fx.sql.prepare("SELECT * FROM products WHERE slug='produk-baru-x-tunvn'").get() as Record<string, unknown>;
+    expect(fallback).toMatchObject({ name: "PRODUK BARU X", tunvn_family: "p999", is_active: 0 });
+    expect(fx.sql.prepare("SELECT label,price FROM product_variants WHERE sku='TUNVN-999'").get())
+      .toEqual({ label: "PRODUK BARU X", price: 36700 });
+    // #60 tidak pernah dibuat/dibeli.
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM product_variants WHERE tunvn_source_product_id=60 OR sku='TUNVN-60'").get()).toEqual({ n: 0 });
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM products WHERE tunvn_family='p60'").get()).toEqual({ n: 0 });
+    // Tidak ada varian TUNVN yang tiba-tiba aktif.
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM product_variants WHERE tunvn_source_product_id IS NOT NULL AND is_active=1").get()).toEqual({ n: 0 });
+  });
+
+  it("respects admin manual price and markup on later publishes", async () => {
+    supplier([mirror(44, "CAPCUT 7D", 1, 5), mirror(87, "CAPCUT 1M", 2, 2)]);
+    await publishTunvnCatalog(db(), RATE);
+    fx.sql.exec("UPDATE product_variants SET tunvn_admin_price_idr=50000,price=50000 WHERE sku='TUNVN-44'; UPDATE tunvn_products SET markup_percent=60 WHERE supplier_product_id=87");
+    await publishTunvnCatalog(db(), RATE);
+    expect(fx.sql.prepare("SELECT price FROM product_variants WHERE sku='TUNVN-44'").get()).toEqual({ price: 50000 });
+    expect(fx.sql.prepare("SELECT price FROM product_variants WHERE sku='TUNVN-87'").get()).toEqual({ price: 57900 });
+  });
+
+  it("keeps the publication statement count constant for the whole mirror", async () => {
+    const all = TUNVN_FAMILIES.flatMap(family => family.members.map(member => mirror(member.supplier_product_id, `UPSTREAM ${member.supplier_product_id}`, 1, 4)));
+    supplier(all);
+    const budget = createBudgetedDatabase(40, 2, fx.db);
+    const result = await publishTunvnCatalog(budget.access, RATE);
+    expect(result).toMatchObject({ ok: true, families: TUNVN_FAMILIES.length, variants: all.length });
+    expect(budget.used).toBeLessThanOrEqual(25);
   });
 });

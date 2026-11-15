@@ -221,7 +221,7 @@ export async function createChannelOrderAtomic(
   const guardIds: string[] = [];
   const statements: D1Statement[] = [];
   const configIds = [...new Set(input.lines.map(line => line.variantId))];
-  const configs = (await d1.prepare(`SELECT pv.id,pv.sku,pv.max_qty,pv.buyer_field_key,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,p.slug AS product_slug FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${configIds.map(() => "?").join(",")})`).bind(...configIds).all()).results as Record<string, unknown>[];
+  const configs = (await d1.prepare(`SELECT pv.id,pv.sku,pv.max_qty,pv.buyer_field_key,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,p.slug AS product_slug FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${configIds.map(() => "?").join(",")})`).bind(...configIds).all()).results as Record<string, unknown>[];
   const configById = new Map(configs.map(row => [Number(row.id),row]));
   try {
     assertSameBuyerCode(input.items as BuyerFieldSnapshot[]);
@@ -238,9 +238,9 @@ export async function createChannelOrderAtomic(
       const eligibility = tunvnEligibility(row,line.qty);
       const guardId = `${input.orderCode}:input:${index}`;
       guardIds.push(guardId);
-      statements.push(d1.prepare(`INSERT INTO operation_guards(operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.buyer_field_key IS ? AND pv.max_qty IS ? AND (pv.max_qty IS NULL OR pv.max_qty>=?) AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ? AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
+      statements.push(d1.prepare(`INSERT INTO operation_guards(operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.buyer_field_key IS ? AND pv.max_qty IS ? AND (pv.max_qty IS NULL OR pv.max_qty>=?) AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ? AND pv.tunvn_source_product_id IS ? AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
         ${String(row.sku ?? "").startsWith("TUNVN-") ? "AND NOT EXISTS (SELECT 1 FROM store_settings WHERE key='tunvn_catalog_lease' AND json_extract(value,'$.until') > unixepoch('now')*1000)" : ""}
-        ) THEN 1 ELSE 0 END`).bind(guardId,line.variantId,row.buyer_field_key ?? null,row.max_qty ?? null,qty,row.sku ?? null,row.tunvn_buff_quantity_b ?? null,row.product_slug ?? null,row.tunvn_cost_usdt ?? null,row.tunvn_source_cost_usdt ?? null));
+        ) THEN 1 ELSE 0 END`).bind(guardId,line.variantId,row.buyer_field_key ?? null,row.max_qty ?? null,qty,row.sku ?? null,row.tunvn_buff_quantity_b ?? null,row.product_slug ?? null,row.tunvn_source_product_id ?? null,row.tunvn_cost_usdt ?? null,row.tunvn_source_cost_usdt ?? null));
       return { ...clean,...(eligibility ? { tunvn_eligibility:eligibility } : {}) };
     });
   } catch { throw new StockReservationError(); }

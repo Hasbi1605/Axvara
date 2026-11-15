@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.stubEnv("PRODUCT_VARIANTS_WRITE","true");
   fx=createD1Fixture(); clearRateLimitBucketsForTest(); auth.admin=true;
   fx.sql.exec(`INSERT INTO products(id,name,slug,price,stock,is_active,telegram_enabled) VALUES(1,'Muse AI','muse-ai-1-miliar-token',1500,-1,1,1),(2,'ChatGPT Private','chatgpt-tunvn',112400,30,0,1);
-    INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,tunvn_buff_quantity_b,buyer_field_key,max_qty) VALUES(1,1,'TUNVN-BUFF-1B','Buff per 1B',1500,-1,1,1,'muse_invite_code',30),(2,1,'MUSE-ACCOUNT','Account',16000,20,1,NULL,NULL,NULL),(3,2,'TUNVN-86','Business 1 Bulan',112400,22,0,NULL,NULL,NULL),(4,2,'TUNVN-83','GPay 1 Bulan',121200,6,0,NULL,NULL,NULL);
+    INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,tunvn_buff_quantity_b,buyer_field_key,max_qty,tunvn_source_product_id) VALUES(1,1,'TUNVN-BUFF-1B','Buff per 1B',1500,-1,1,1,'muse_invite_code',30,NULL),(2,1,'MUSE-ACCOUNT','Account',16000,20,1,NULL,NULL,NULL,NULL),(3,2,'TUNVN-86','Business 1 Bulan',112400,22,0,NULL,NULL,NULL,86),(4,2,'TUNVN-83','GPay 1 Bulan',121200,6,0,NULL,NULL,NULL,83);
     INSERT INTO tunvn_products(supplier_product_id,name,price_usdt,fx_idr_per_usdt,axvara_product_id) VALUES(86,'Business',4.6,18086,2),(83,'GPay',4.96,18086,2);`);
 });
 afterEach(() => { fx.close(); vi.unstubAllEnvs(); });
@@ -120,9 +120,14 @@ describe("atomic snapshot and eligibility",() => {
     await expect(atomic()).rejects.toThrow(); expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()).toEqual({ n:0 });
   });
   it("only current canonical identities qualify; bundles/base Muse/old rows remain manual",() => {
-    expect(tunvnEligibility({ id:3,sku:"TUNVN-86",product_slug:"chatgpt-tunvn" },2)).toMatchObject({ kind:"account",source_product_id:86,quantity:2 });
+    expect(tunvnEligibility({ id:3,sku:"TUNVN-86",tunvn_source_product_id:86 },2)).toMatchObject({ kind:"account",source_product_id:86,quantity:2 });
+    // Family mana pun (bukan hanya ChatGPT) ikut otomatis.
+    expect(tunvnEligibility({ id:9,sku:"TUNVN-73",tunvn_source_product_id:73 },1)).toMatchObject({ kind:"account",source_product_id:73 });
     for (const sku of ["TUNVN-BUFF-5B","TUNVN-BUFF-10B","TUNVN-BUFF-20B","TUNVN-BUFF-30B","MUSE-ACCOUNT"]) expect(tunvnEligibility({ id:1,sku,product_slug:"muse-ai-1-miliar-token",...config },1)).toBeUndefined();
-    expect(tunvnEligibility({ id:3,sku:"TUNVN-86",product_slug:"chatgpt-business-1-bulan-tunvn" },1)).toBeUndefined();
+    // Identitas harus cocok dengan kolom durable; #60 tidak pernah eligible.
+    expect(tunvnEligibility({ id:9,sku:"TUNVN-73",tunvn_source_product_id:72 },1)).toBeUndefined();
+    expect(tunvnEligibility({ id:3,sku:"TUNVN-86" },1)).toBeUndefined();
+    expect(tunvnEligibility({ id:9,sku:"TUNVN-60",tunvn_source_product_id:60 },1)).toBeUndefined();
   });
   it("Telegram order snapshots input and stamps via the atomic factory",async () => {
     await createChannelOrderAtomic({ orderCode:"AXV-20261110-AABBCCDD",lines:[{ productId:1,variantId:1,qty:2,fulfillmentMode:"manual",stock:-1 }],items:[atomicItem(2)],variantSnapshot:"{}",subtotal:3000,primaryVariantId:1,customerName:"Fixture",salesChannel:"telegram",telegramChatId:"123",telegramUserId:"123",paymentMethod:"qris",paymentAccount:"-",fulfillmentStatus:"manual_required" });
@@ -149,10 +154,24 @@ describe("admin gates and data access",() => {
     expect((await patch(86,{ markup_percent:90,extra:true })).status).toBe(400);
     expect(fx.sql.prepare("SELECT * FROM tunvn_products WHERE supplier_product_id=86").get()).toEqual(before);
   });
-  it("missing canonical product is explicit and has no partial mirror write",async () => {
-    fx.sql.exec("UPDATE products SET slug='not-published' WHERE id=2");
-    expect((await patch(86,{ publish_requested:true })).status).toBe(404);
-    expect(fx.sql.prepare("SELECT publish_requested FROM tunvn_products WHERE supplier_product_id=86").get()).toEqual({ publish_requested:0 });
+  it("variant-only fields require a synced variant and never write partial mirror state",async () => {
+    fx.sql.exec("DELETE FROM product_variants WHERE id=3");
+    expect((await patch(86,{ is_active:true })).status).toBe(409);
+    expect(fx.sql.prepare("SELECT publish_requested,visible FROM tunvn_products WHERE supplier_product_id=86").get()).toEqual({ publish_requested:0,visible:0 });
+  });
+  it("admin catalog lists mapped variants by durable identity, not slug",async () => {
+    fx.sql.exec("UPDATE tunvn_products SET axvara_product_id=2");
+    const { GET }=await import("@/app/api/admin/tunvn/products/route");
+    const body=await (await GET(new NextRequest("http://localhost/api/admin/tunvn/products"))).json();
+    expect(body.counts).toMatchObject({ total:2,mapped:2,active_variants:0 });
+    expect(body.items.find((row:{supplier_product_id:number})=>row.supplier_product_id===86))
+      .toMatchObject({ variant_sku:"TUNVN-86",variant_label:"Business 1 Bulan",axvara_name:"ChatGPT Private",family_key:"chatgpt",variant_id:3 });
+  });
+  it("rejects the excluded API TEST product and unknown mirror ids without writes",async () => {
+    fx.sql.exec("INSERT INTO tunvn_products(supplier_product_id,name,price_usdt) VALUES(60,'API TEST',1)");
+    expect((await patch(60,{ markup_percent:50 })).status).toBe(409);
+    expect((await patch(9999,{ markup_percent:50 })).status).toBe(404);
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM tunvn_products WHERE supplier_product_id=60 AND markup_percent<>35").get()).toEqual({ n:0 });
   });
   it("activates either variant and deactivating one never hides the other",async () => {
     expect((await patch(86,{ publish_requested:true,axvara_is_active:true })).status).toBe(200);

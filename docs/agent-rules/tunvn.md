@@ -1,5 +1,43 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Revisi owner 15 November 2026: semua produk TUNVN masuk katalog (lokal)
+
+- Owner memutuskan SELURUH produk mirror `tunvn_products` (kecuali #60 API TEST,
+  dikecualikan permanen) menjadi produk katalog AXVARA di menu admin "Produk",
+  pola WR/SK. Produk serupa dikelompokkan sebagai varian satu produk induk
+  ("family") lewat peta statis `src/lib/tunvn/families.ts`; id tak terpetakan
+  memakai fallback 1:1 `slugify(nama)+"-tunvn"` (collision-safe).
+- Semua produk/varian BARU dibuat `is_active=0`. Sync tidak pernah mengaktifkan
+  apa pun; admin mengaktifkan dari menu Produk (saklar produk/varian) atau panel
+  TUNVN (saklar varian). Nama/deskripsi/gambar/kategori ditulis SEKALI saat
+  produk dibuat, lalu milik admin — publish tidak menimpanya.
+- Markup default 35% (`tunvn_products.markup_percent`); harga manual admin
+  (`tunvn_admin_price_idr`) selalu menang. Gambar disalin dari produk kandidat
+  (`imageFromSlugs`) saat pembuatan; ChatGPT memakai aset `f87f491e…webp` yang
+  sudah disetujui.
+- Identitas durable baru: `products.tunvn_family` + `product_variants.
+  tunvn_source_product_id` (migrasi `0123_tunvn_full_catalog.sql`). Eligibility
+  dan dispatch akun memakai SKU `TUNVN-{id}` + kolom tersebut, BUKAN slug —
+  menggantikan pengecekan `chatgpt-tunvn`/83/86 di kode lama. #60 tetap ditolak
+  di eligibility, purchase, publisher, dan panel.
+- Muse: produk owner `muse-ai-1-miliar-token` tidak berubah nama/deskripsi/
+  gambar/status dan TIDAK diberi `tunvn_family`; lima varian akun baru menempel
+  nonaktif. Buff (`TUNVN-BUFF-1B`) tetap perilaku lama (markup 40%, probe tanpa
+  charge).
+- Panel TUNVN: GET products mengembalikan join varian/family + hitungan
+  (`mapped`, `active_variants`); PATCH `/products/[id]` menerima markup,
+  harga manual, label, `is_active` varian (menyetel `publish_requested`) untuk
+  SEMUA id terpetakan, 409 bila varian belum ada. Tab Markup menampilkan kartu
+  per family; `load()` memakai `Promise.allSettled` dan pesan error menyebut
+  bagian + status HTTP (error panel "Permintaan gagal" kini menyebut bagian +
+  HTTP; penyebab produksi belum dipastikan).
+- Dispatch otomatis: `eligibleTunvnLine` menerima sumber id akun positif apa pun
+  selain 60; validasi varian dan send-fence mencocokkan
+  `tunvn_source_product_id`. Buff tidak berubah. Tidak ada pembelian/transaksi
+  untuk QA.
+- Status: implementasi lokal + test; belum publikasi, migrasi remote,
+  deployment, atau transaksi produksi. Detail teknis di ARCHITECTURE §16.43.
+
 ## Publikasi gabungan 11 November 2026
 
 - Owner mengizinkan satu commit/push recovery yang sudah direview langsung bersama

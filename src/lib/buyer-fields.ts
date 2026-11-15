@@ -39,14 +39,21 @@ export function withoutPrivateBuyerData(items: unknown[]): unknown[] {
     return publicItem;
   });
 }
-/** Server-only opt-in for new, current identities; legacy bundles never qualify. */
+/** Server-only opt-in for new, current identities; legacy bundles never qualify.
+ *
+ * Revisi owner 15 Nov 2026: identitas varian akun = SKU `TUNVN-{id}` DAN
+ * kolom durable `tunvn_source_product_id` yang sama (bukan slug produk) — jadi
+ * setiap family TUNVN ikut otomatis, sedangkan baris lama/retired tidak.
+ * #60 (API TEST) tidak pernah boleh dibeli. Buff tetap perilaku lama. */
 export function tunvnEligibility(row: Record<string, unknown>, qty: number): TunvnEligibility | undefined {
   const sku = String(row.sku ?? "");
-  const account = (sku === "TUNVN-86" || sku === "TUNVN-83") && row.product_slug === "chatgpt-tunvn";
+  const match = /^TUNVN-(\d+)$/.exec(sku);
+  const sourceId = match ? Number(match[1]) : 0;
+  const account = sourceId >= 1 && sourceId !== 60 && Number(row.tunvn_source_product_id) === sourceId;
   const buff = sku === "TUNVN-BUFF-1B" && row.product_slug === "muse-ai-1-miliar-token"
     && Number(row.tunvn_buff_quantity_b) === 1 && row.buyer_field_key === "muse_invite_code" && Number(row.max_qty) === 30;
   if (!account && !buff) return undefined;
   const cost = Number(account ? row.tunvn_source_cost_usdt : row.tunvn_cost_usdt);
-  return { version: 1, kind: buff ? "buff" : "account", source_product_id: account ? Number(sku.slice(6)) : null, source_variant_id: Number(row.id), source_unit_b: buff ? 1 : null, quantity: qty,
+  return { version: 1, kind: buff ? "buff" : "account", source_product_id: account ? sourceId : null, source_variant_id: Number(row.id), source_unit_b: buff ? 1 : null, quantity: qty,
     ...(Number.isFinite(cost) && cost > 0 ? { cost_usdt: Math.round(cost * qty * 10000) / 10000 } : {}) };
 }

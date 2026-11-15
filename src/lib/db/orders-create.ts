@@ -39,7 +39,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
     if (owners.length !== productIds.length) throw new StockReservationError();
     const minutes = owners.some(row => isManualProductForBulk(bulkOwnerFromProductRow(row))) ? 15 : supplierMinutes;
     const ids = [...new Set(input.items.map(item => item.variant_id).filter((id): id is number => id != null))];
-    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.sku,pv.buyer_field_key,pv.max_qty,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,p.slug AS product_slug,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
+    const modes = (ids.length ? (await d1.prepare(`SELECT pv.id,pv.sku,pv.buyer_field_key,pv.max_qty,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,p.slug AS product_slug,pv.fulfillment_mode,pv.price,pv.bulk_pricing_enabled,pv.bulk_pricing_tiers,
         p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
         p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed
       FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${ids.map(()=>"?").join(",")})`).bind(...ids).all()).results : []) as Record<string,unknown>[];
@@ -101,7 +101,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                 AND ? >= COALESCE(pv.min_qty,1)
                 AND pv.buyer_field_key IS ? AND pv.max_qty IS ?
                 AND (pv.max_qty IS NULL OR ? <= pv.max_qty)
-                 AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ?
+                 AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ? AND pv.tunvn_source_product_id IS ?
                   AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
                   ${String(bulkById.get(item.variant_id)?.sku ?? "").startsWith("TUNVN-") ? "AND NOT EXISTS (SELECT 1 FROM store_settings WHERE key='tunvn_catalog_lease' AND json_extract(value,'$.until') > unixepoch('now')*1000)" : ""}
                 -- WR3 Jaspay: cap wajib ada dan >= qty agregat varian ini;
@@ -113,6 +113,7 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
           ).bind(guardIds[index], item.variant_id, item.product_id, Number(bulkById.get(item.variant_id)?.price), Number(bulkById.get(item.variant_id)?.bulk_pricing_enabled), String(bulkById.get(item.variant_id)?.bulk_pricing_tiers), byId.get(item.variant_id) ?? "manual", item.qty, item.qty,
             item.buyer_field_key ?? null,item.max_qty ?? null,qtyByVariant.get(item.variant_id) ?? item.qty,
              bulkById.get(item.variant_id)?.sku ?? null,bulkById.get(item.variant_id)?.tunvn_buff_quantity_b ?? null,bulkById.get(item.variant_id)?.product_slug ?? null,
+             bulkById.get(item.variant_id)?.tunvn_source_product_id ?? null,
              bulkById.get(item.variant_id)?.tunvn_cost_usdt ?? null,bulkById.get(item.variant_id)?.tunvn_source_cost_usdt ?? null,
             qtyByVariant.get(item.variant_id) ?? item.qty),
         );

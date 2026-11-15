@@ -187,8 +187,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     id,
   ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number } | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
-  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty FROM product_variants WHERE product_id=?", id);
-  const tunvnVariants = storedVariants.filter(v => String(v.sku).startsWith("TUNVN-"));
+  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id FROM product_variants WHERE product_id=?", id);
+  // Identitas TUNVN = kolom durable, bukan slug: semua family TUNVN memakai
+  // jalur aktivasi/publikasi yang sama.
+  const tunvnVariants = storedVariants.filter(v => v.tunvn_source_product_id != null);
   for (const incoming of data.variants ?? []) {
     const current = storedVariants.find(v => Number(v.id) === incoming.id);
     if (String(current?.sku).startsWith("TUNVN-") && incoming.sku && incoming.sku !== current?.sku) return NextResponse.json({ error: "Identitas varian tidak boleh diubah." }, { status: 409 });
@@ -235,7 +237,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       "SELECT id FROM product_variants WHERE product_id=? AND is_active=1 LIMIT 1",
       id,
     );
-    if (!activeVariant && !(existing.slug === "chatgpt-tunvn" && tunvnVariants.length)) {
+    if (!activeVariant && !tunvnVariants.length) {
       return NextResponse.json(
         { error: "Aktifkan minimal satu varian sebelum mengaktifkan produk." },
         { status: 409 },
@@ -245,7 +247,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const hasExplicitVariants = Array.isArray(data.variants);
   if (hasExplicitVariants && data.variants) {
     const activeVars = data.variants.filter(v => (v.is_active ?? 1) !== 0);
-    if (data.isActive !== false && activeVars.length === 0 && existing.slug !== "chatgpt-tunvn") {
+    if (data.isActive !== false && activeVars.length === 0 && !tunvnVariants.length) {
       return NextResponse.json({ error: "Minimal satu varian harus aktif." }, { status: 400 });
     }
   }
@@ -543,12 +545,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         // Batch ATOMIC via operation_guards precondition di statements:
         // guard gagal => CHECK => SELURUH batch rollback (D1), lalu map
         // constraint ke 409 stale (bukan 500).
-        if (existing.slug === "chatgpt-tunvn") {
+        // Produk dengan varian akun TUNVN (family apa pun): aktivasi admin
+        // menyinkronkan permintaan terbit + visibilitas mirror sesuai status
+        // varian. Identitasnya kolom tunvn_source_product_id, bukan slug.
+        if (tunvnVariants.length) {
+          const tunvnSupplierIds = `SELECT tunvn_source_product_id FROM product_variants WHERE product_id=? AND tunvn_source_product_id IS NOT NULL`;
           if (data.isActive === true && !hasExplicitVariants) {
-            statements.push(d1.prepare("UPDATE product_variants SET is_active=1 WHERE product_id=? AND sku IN ('TUNVN-86','TUNVN-83') AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1)").bind(id,id));
+            statements.push(d1.prepare("UPDATE product_variants SET is_active=1 WHERE product_id=? AND tunvn_source_product_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1)").bind(id,id));
           }
-          if (data.isActive === true || hasExplicitVariants) statements.push(d1.prepare(`UPDATE tunvn_products SET publish_requested=COALESCE((SELECT is_active FROM product_variants WHERE product_id=? AND sku='TUNVN-'||tunvn_products.supplier_product_id),0) WHERE supplier_product_id IN (86,83)`).bind(id));
-          statements.push(d1.prepare(`UPDATE tunvn_products SET visible=CASE WHEN publish_requested=1 AND EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1) THEN 1 ELSE 0 END WHERE supplier_product_id IN (86,83)`).bind(id));
+          if (data.isActive === true || hasExplicitVariants) statements.push(d1.prepare(`UPDATE tunvn_products SET publish_requested=COALESCE((SELECT is_active FROM product_variants WHERE product_id=? AND sku='TUNVN-'||tunvn_products.supplier_product_id),0) WHERE supplier_product_id IN (${tunvnSupplierIds})`).bind(id,id));
+          statements.push(d1.prepare(`UPDATE tunvn_products SET visible=CASE WHEN publish_requested=1 AND EXISTS(SELECT 1 FROM products WHERE id=? AND is_active=1) THEN 1 ELSE 0 END WHERE supplier_product_id IN (${tunvnSupplierIds})`).bind(id,id));
         }
         let batchOk = true;
         try {

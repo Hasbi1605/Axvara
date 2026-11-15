@@ -172,6 +172,19 @@ bundle5/10/20/30B dihapus dari daftar edit. Baris nonaktif tetap menjadi arsip
 relasi pesanan lama, tidak dihapus fisik. Akun Muse asli dan status Buff1B tidak
 diubah. Tanpa migrasi/env baru; berlaku melalui CI berikutnya, bukan klaim live.
 
+TUNVN katalog penuh (15 November 2026, **lokal; belum deploy**): seluruh produk
+mirror `tunvn_products` (kecuali #60 API TEST) dipetakan ke produk katalog AXVARA
+lewat peta family statis `src/lib/tunvn/families.ts` — produk serupa menjadi
+varian satu produk induk, id tak dikenal memakai fallback 1:1 `-tunvn`. Migrasi
+`0123_tunvn_full_catalog.sql` menambah `products.tunvn_family` +
+`product_variants.tunvn_source_product_id` (identitas dispatch/eligibility
+menggantikan slug `chatgpt-tunvn`/83/86), dan trigger publikasi digeneralisasi.
+Semua produk/varian baru **nonaktif** (markup default 35%, gambar disalin dari
+produk kandidat, nama/deskripsi milik admin setelah dibuat). Panel TUNVN tab
+Markup menampilkan kartu per family dengan saklar varian, markup, dan harga
+manual; daftar admin Produk memberi badge/filter TUNVN. Detail §16.43
+`docs/ARCHITECTURE.md` dan `docs/agent-rules/tunvn.md`.
+
 TUNVN T2B (10 November 2026, **diimplementasikan lokal; belum deploy**): order
 Market baru paid dengan opt-in server versi1 + snapshot biaya USDT memakai
 `tunvn_order_links` (migrasi0116, UNIQUE order/item, lease/CAS dan fence sebelum

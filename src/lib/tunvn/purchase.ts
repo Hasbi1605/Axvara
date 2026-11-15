@@ -14,7 +14,10 @@ export async function tunvnRequest(path:"buy"|"buff/order"|"buff/check"|"buff/st
 }
 
 export function buyTunvnProduct(productId:number,quantity:number):Promise<PurchaseResponse> {
-  if (![83,86].includes(productId) || !Number.isSafeInteger(quantity) || quantity<1 || quantity>100) throw new Error("invalid_purchase");
+  // #60 (API TEST) tidak pernah boleh dibeli; id lain divalidasi lagi oleh
+  // snapshot eligibility/identitas varian sebelum fence.
+  if (!Number.isSafeInteger(productId) || productId<1 || productId>1_000_000 || productId===60
+    || !Number.isSafeInteger(quantity) || quantity<1 || quantity>100) throw new Error("invalid_purchase");
   return tunvnRequest("buy",{ product_id:productId,quantity,currency:"usdt" });
 }
 export function tunvnBuffText(code:string,quantity:number):string {

@@ -224,7 +224,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
   const variants = await queryAll(
     `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
             pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
-            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.tunvn_buff_quantity_b, p.slug AS product_slug, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.tunvn_buff_quantity_b, pv.tunvn_source_product_id, p.slug AS product_slug, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order,
             pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
             p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
             p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed,

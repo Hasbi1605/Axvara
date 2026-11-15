@@ -49,6 +49,9 @@ function SupplierBadge({ supplier, slug }: { supplier?: Prod["supplier"]; slug: 
   if (supplier === "WR") {
     return <Badge variant="secondary" title={`Supplier: Warung Rebahan · slug /${slug}`}>WR</Badge>;
   }
+  if (supplier === "TUNVN") {
+    return <Badge variant="secondary" title={`Supplier: TUNVN PREHUB · slug /${slug}`}>TUNVN</Badge>;
+  }
   if (supplier === "SK") {
     return <Badge variant="secondary" title={`Supplier: Sekalipay · slug /${slug}`}>SK</Badge>;
   }
@@ -113,8 +116,8 @@ export function ProductsSection({
   onLiveTabChange: (value: "live" | "hidden" | "off" | "all") => void;
   perPageAdmin: 20 | 50 | 100;
   onPerPageChange: (value: 20 | 50 | 100) => void;
-  supplierFilter: "all" | "WR" | "SK" | "Manual";
-  onSupplierFilterChange: (value: "all" | "WR" | "SK" | "Manual") => void;
+  supplierFilter: "all" | "WR" | "SK" | "TUNVN" | "Manual";
+  onSupplierFilterChange: (value: "all" | "WR" | "SK" | "TUNVN" | "Manual") => void;
   onQueryChange: (value: string) => void;
   onPageChange: (updater: (prev: number) => number) => void;
   onlyLowStock: boolean;
@@ -198,14 +201,15 @@ export function ProductsSection({
             {/* Filter asal supplier (WR/SK/Manual) — lokal, tanpa request. */}
             <NativeSelect
               value={supplierFilter}
-              onChange={e=>{ onSupplierFilterChange(e.target.value as "all" | "WR" | "SK" | "Manual"); onPageChange(()=>1); }}
+              onChange={e=>{ onSupplierFilterChange(e.target.value as "all" | "WR" | "SK" | "TUNVN" | "Manual"); onPageChange(()=>1); }}
               aria-label="Filter asal supplier"
-              title="Filter asal supplier (WR/SK/Manual)"
+              title="Filter asal supplier (WR/SK/TUNVN/Manual)"
               className="w-full sm:w-44"
             >
               <option value="all">Semua asal</option>
               <option value="WR">WR</option>
               <option value="SK">SK</option>
+              <option value="TUNVN">TUNVN</option>
               <option value="Manual">Manual</option>
             </NativeSelect>
           </div>

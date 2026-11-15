@@ -53,12 +53,16 @@ CREATE TABLE IF NOT EXISTS products (
   -- Varian WR tipe Invite/Link otomatis butuh email tanpa toggle ini.
   require_email INTEGER NOT NULL DEFAULT 0
     CHECK (require_email IN (0, 1)),
+  -- Migrasi 0123: key keluarga produk TUNVN (badge/identitas asal di admin).
+  -- Ditulis publisher SEKALI saat produk dibuat dan tidak pernah ditimpa sync.
+  tunvn_family TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_products_source ON products(source) WHERE source = 'warung_rebahan';
 CREATE INDEX IF NOT EXISTS idx_products_sk_id ON products(sk_product_id) WHERE sk_product_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_products_wr_id ON products(wr_product_id) WHERE wr_product_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_products_tunvn_family ON products(tunvn_family) WHERE tunvn_family IS NOT NULL;
 CREATE TABLE IF NOT EXISTS orders (
   supplier_purchase_disabled INTEGER NOT NULL DEFAULT 0 CHECK(supplier_purchase_disabled IN (0,1)),
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -649,6 +653,9 @@ CREATE TABLE IF NOT EXISTS product_variants (
   tunvn_fx_idr_per_usdt REAL CHECK (tunvn_fx_idr_per_usdt IS NULL OR tunvn_fx_idr_per_usdt > 0),
   -- Migrasi 0113: override harga jual manual admin untuk varian Buff.
   tunvn_admin_price_idr INTEGER CHECK (tunvn_admin_price_idr IS NULL OR tunvn_admin_price_idr >= 0),
+  -- Migrasi 0123: id produk upstream TUNVN untuk varian akun mana pun.
+  -- Identitas dispatch/eligibility (bukan slug) — lihat src/lib/tunvn/families.ts.
+  tunvn_source_product_id INTEGER CHECK (tunvn_source_product_id IS NULL OR tunvn_source_product_id >= 1),
 
   -- Migrasi 0058: modal manual per varian (rupiah, milik admin, default 0).
   -- Untuk produk manual/stok sendiri yang modalnya tidak tercatat di link
@@ -690,6 +697,7 @@ CREATE TABLE IF NOT EXISTS product_variants (
 );
 CREATE INDEX IF NOT EXISTS idx_variants_wr_id ON product_variants(wr_variant_id) WHERE wr_variant_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_variants_sk_id ON product_variants(sk_variant_id) WHERE sk_variant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_variants_tunvn_source ON product_variants(tunvn_source_product_id) WHERE tunvn_source_product_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_product_variants_product ON product_variants(product_id, is_active, sort_order);
 CREATE INDEX IF NOT EXISTS idx_product_variants_sku ON product_variants(sku);
@@ -1965,9 +1973,11 @@ CREATE INDEX IF NOT EXISTS idx_tunvn_products_synced ON tunvn_products(synced_at
 -- tunvn_products.axvara_product_id/markup_percent/sell_price_idr/fx_idr_per_usdt
 -- dan product_variants.tunvn_* tercantum pada definisi tabel masing-masing.
 
+-- Migrasi 0123: identitas durable (bukan daftar SKU ChatGPT) agar setiap
+-- varian akun TUNVN menyinkronkan permintaan terbit mirror-nya.
 CREATE TRIGGER IF NOT EXISTS tunvn_variant_publication AFTER UPDATE OF is_active ON product_variants
-WHEN NEW.sku IN ('TUNVN-86','TUNVN-83') BEGIN
-  UPDATE tunvn_products SET publish_requested=NEW.is_active WHERE supplier_product_id=CAST(substr(NEW.sku,7) AS INTEGER);
+WHEN NEW.tunvn_source_product_id IS NOT NULL BEGIN
+  UPDATE tunvn_products SET publish_requested=NEW.is_active WHERE supplier_product_id=NEW.tunvn_source_product_id;
 END;
 CREATE TRIGGER IF NOT EXISTS tunvn_retired_bundle_update BEFORE UPDATE OF is_active ON product_variants
 WHEN NEW.sku IN ('TUNVN-BUFF-5B','TUNVN-BUFF-10B','TUNVN-BUFF-20B','TUNVN-BUFF-30B') AND NEW.is_active=1 BEGIN

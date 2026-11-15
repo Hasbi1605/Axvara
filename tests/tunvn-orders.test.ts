@@ -35,7 +35,7 @@ beforeEach(()=>{
   vi.stubEnv("TUNVN_BASE_URL","https://supplier.test");stubFulfillmentKey();
   fixture=createD1Fixture();
   fixture.sql.exec(`INSERT INTO products(id,name,slug,price,source) VALUES(1,'ChatGPT Private','chatgpt-tunvn',10000,'manual'),(2,'Muse','muse-ai-1-miliar-token',2000,'manual');
-    INSERT INTO product_variants(id,product_id,sku,label,price,fulfillment_mode) VALUES(1,1,'TUNVN-86','Business',10000,'manual');
+    INSERT INTO product_variants(id,product_id,sku,label,price,fulfillment_mode,tunvn_source_product_id) VALUES(1,1,'TUNVN-86','Business',10000,'manual',86);
     INSERT INTO product_variants(id,product_id,sku,label,price,fulfillment_mode,buyer_field_key,max_qty,tunvn_buff_quantity_b) VALUES(2,2,'TUNVN-BUFF-1B','Buff',2000,'manual','muse_invite_code',30,1);`);
   stock=100;balance=100;price=2;purchaseStatus=200;
   purchase={success:true,order:{order_group:"ORD_FIXTURE",quantity:1,total_items:1,total_price:2,currency:"USDT"},items:["fixture@example.test | secret"]};

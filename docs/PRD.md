@@ -320,6 +320,21 @@ dijalankan — bukan status live.
   separuh. Tidak mengubah order lama/pembayaran/dispatch. Preflight paid tetap.
 - Lokal/tes fixture, bukan transaksi produksi; belum ada bukti deployment.
 
+## Keputusan owner 15 November 2026: katalog penuh TUNVN (lokal)
+
+- Seluruh produk mirror TUNVN (kecuali #60 API TEST) masuk katalog AXVARA sebagai
+  produk/varian, dikelompokkan per family (ChatGPT Private, Muse AI, CapCut Pro,
+  Grok + Cursor, Claude API, Microsoft 365, Spotify, ElevenLabs, Grammarly, HMA,
+  Nord, Google AI / Gemini, LinkedIn, Codex Verify Phone; id lain fallback 1:1).
+- Semua produk/varian baru **nonaktif**; admin mengaktifkan dari menu Produk atau
+  panel TUNVN. Sync tidak pernah mengaktifkan atau menulis ulang nama/deskripsi/
+  gambar/kategori milik admin.
+- Harga jual default markup 35% dari modal USDT × kurs; harga manual admin
+  mengalahkan rumus. Produk Muse AI milik owner tidak berubah identitas/status.
+- Produk yang aktif dikirim otomatis setelah lunas (jalur `/api/buy` yang sama
+  dengan ChatGPT); Buff Muse tetap perilaku lama. #60 tidak pernah dijual.
+- Status: implementasi lokal + test; belum deploy/migrasi remote.
+
 ## Keputusan owner 10 November 2026: ChatGPT Private + Buff Muse (T2A/T2B lokal)
 
 - Revisi owner berikutnya: hapus pilihan bundle Buff5/10/20/30B juga dari kedua

@@ -81,7 +81,7 @@ export async function telegramPaidDeliveryProfile(
   }
   const rows = await database.queryAll(
     `SELECT pv.id, pv.fulfillment_mode, pv.wr_variant_id, pv.sk_variant_id,
-             pv.sku,pv.tunvn_buff_quantity_b,pv.buyer_field_key,pv.max_qty,p.slug AS product_slug,
+             pv.sku,pv.tunvn_buff_quantity_b,pv.tunvn_source_product_id,pv.buyer_field_key,pv.max_qty,p.slug AS product_slug,
             wv.wr_delivery_class, sp.sk_order_process
       FROM product_variants pv
       JOIN products p ON p.id=pv.product_id
