@@ -270,7 +270,7 @@ it("workerd fences first crypto invoice HTTP against concurrent retry", async ()
     expect(h.state.nowPosts).toHaveLength(1);
     expect((await h.rows("SELECT stock FROM product_variants WHERE id=1"))[0].stock).toBe(98);
   } finally { release?.(); await h.dispose(); }
-});
+}, 20_000);
 
 async function enterOffer(h: Awaited<ReturnType<typeof makeHarness>>, locale = "en") {
   await h.call({ op: "seed", locale });

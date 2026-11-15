@@ -35,6 +35,13 @@
   selain 60; validasi varian dan send-fence mencocokkan
   `tunvn_source_product_id`. Buff tidak berubah. Tidak ada pembelian/transaksi
   untuk QA.
+- Pembersihan produksi 15 Nov 2026 (owner): produk sisa
+  `chatgpt-gpay-1-bulan-tunvn` (id118, nonaktif, 0 varian, 0 order, tanpa
+  referensi FK) DIHAPUS dari D1 lewat DELETE bersyarat; digantikan ChatGPT
+  Private #117. Produk bernama sama lintas supplier (WR/SK/TUNVN/AIVault) sengaja
+  TIDAK dihapus — dibedakan lewat badge/filter; menghapus produk family TUNVN/
+  AIVault akan dibuat ulang sync, jadi butuh daftar abaikan bila kelak diminta.
+  Varian bundle Buff 5/10/20/30B tetap arsip.
 - Status: implementasi lokal + test; belum publikasi, migrasi remote,
   deployment, atau transaksi produksi. Detail teknis di ARCHITECTURE §16.43.
 
