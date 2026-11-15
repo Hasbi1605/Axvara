@@ -2,7 +2,7 @@ import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {NextRequest} from "next/server";
 import {createD1Fixture,insertTestOrder,stubFulfillmentKey} from "./helpers/d1-fixture";
 import {createDatabaseAccess,createBudgetedDatabase} from "@/lib/db-access";
-import {processAivaultOrders,retryAivaultOrder} from "@/lib/aivault/orders";
+import {processAivaultOrders,retryAivaultOrder,matchesAivaultReceiptReference} from "@/lib/aivault/orders";
 import {decryptSecret} from "@/lib/fulfillment/crypto";
 import {processItem} from "@/lib/fulfillment/delivery/send";
 vi.mock("@/lib/auth",()=>({requireAdmin:vi.fn(async()=>({sid:"fixture"}))}));
@@ -24,7 +24,7 @@ beforeEach(()=>{
     const path=new URL(String(url)).pathname;
     if(path.endsWith("/quote"))return Response.json({service_id:sid,quantity:1,currency:"USD",stock,sufficient_balance:fundable,pricing:{unit_price:0.5,final_total:0.5}});
     if(init?.method==="POST"){expect(link().request_sent_at).toBeTruthy();if(timeout)throw new Error("fixture timeout");return Response.json(post,{status:postStatus});}
-    if(path.endsWith("/order/API_TEST"))return Response.json(poll);
+    if(path.endsWith("/order/API_TEST") || path.endsWith("/order/API1VLJZG0"))return Response.json(poll);
     throw new Error("Unexpected fixture request");
   }));
 });
@@ -131,4 +131,43 @@ it("a delayed admin-error write cannot downgrade a newer completed item",async()
   insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});fundable=false;
   f.control.afterRun=async q=>{if(q.startsWith("UPDATE aivault_order_links SET status=")){f.sql.exec("UPDATE aivault_order_links SET status='completed'; UPDATE fulfillment_items SET status='queued',delivered_ciphertext='newer-sealed',delivered_iv='newer-iv'");}};
   await tick();expect(f.sql.prepare("SELECT status,delivered_ciphertext FROM fulfillment_items").get()).toMatchObject({status:"queued",delivered_ciphertext:"newer-sealed"});
+});
+
+// Field sets reported by PM from the single authorized live Gemini purchase.
+// Redeem URLs below are fake fixtures, never values returned by the supplier.
+const fakeRedeemUrl="https://redeem.example.test/gemini/fixture-only";
+const liveFirstReceipt=()=>({success:true,order_id:"API1VLJZG0",service_id:sid,quantity:1,total_cost:0.5,new_balance:2.0,currency:"USD",price_breakdown:{unit_price:0.5,base_total:0.5,final_total:0.5},external_order_id:`${code}-0`,products:[fakeRedeemUrl]});
+const liveReplayReceipt=()=>({success:true,order_id:"API1VLJZG0",service_id:sid,quantity:1,total_cost:0.5,new_balance:2.0,currency:"USD",idempotent_replay:true,products:[fakeRedeemUrl]});
+const livePollReceipt=()=>({order_id:"API1VLJZG0",status:"delivered",service_id:sid,quantity:1,total_cost:0.5,currency:"USD",created_at:"2026-11-15T10:00:00",products:[fakeRedeemUrl]});
+it("accepts the live HTTP201 first-send shape and seals the fake redeem URL",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});post=liveFirstReceipt();await tick();
+  expect(link()).toMatchObject({status:"completed",provider_order_id:"API1VLJZG0",receipt_http_status:201});
+  const fi=f.sql.prepare("SELECT * FROM fulfillment_items").get()!;expect(await decryptSecret(String(fi.delivered_ciphertext),String(fi.delivered_iv))).toBe(fakeRedeemUrl);
+  expect(JSON.stringify(link())).not.toContain(fakeRedeemUrl);
+});
+it("accepts the live HTTP200 replay without external_order_id or price_breakdown after timeout",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});timeout=true;await tick();timeout=false;postStatus=200;post=liveReplayReceipt();due();await tick();
+  expect(link()).toMatchObject({status:"completed",provider_order_id:"API1VLJZG0",attempt_count:2,receipt_http_status:200});
+  expect(buys().map(([,i])=>JSON.parse(String(i?.body)).external_order_id)).toEqual([`${code}-0`,`${code}-0`]);
+  const sealed=JSON.parse(await decryptSecret(String(link().receipt_ciphertext),String(link().receipt_iv)));
+  expect(sealed).toEqual(liveReplayReceipt());expect(sealed).not.toHaveProperty("external_order_id");expect(sealed).not.toHaveProperty("price_breakdown");
+});
+it.each([{external_order_id:"different-order"},{external_order_id:null},{idempotent_replay:false},{idempotent_replay:"true"},{service_id:"different-service"},{service_id:null},{quantity:2},{currency:"INR"},{total_cost:0},{order_id:"../invalid"}])("rejects mismatched/incomplete replay identity %j",async over=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});postStatus=200;post={...liveReplayReceipt(),...over};await tick();
+  expect(link()).toMatchObject({status:"needs_admin",last_error:"receipt_identity_mismatch"});expect(f.sql.prepare("SELECT delivered_ciphertext FROM fulfillment_items").get()?.delivered_ciphertext).toBeNull();
+});
+it("requires a replay provider ID to match an already stored ID for POST and GET",async()=>{
+  const saved={external_order_id:`${code}-0`,provider_order_id:"API1VLJZG0"};
+  expect(matchesAivaultReceiptReference(saved,liveReplayReceipt())).toBe(true);
+  expect(matchesAivaultReceiptReference(saved,{...liveReplayReceipt(),order_id:"API_DIFFERENT"})).toBe(false);
+  // Known IDs use exact GET polling; a replay-shaped body from another ID is held.
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});post={...liveFirstReceipt(),status:"queued",products:[]};await tick();
+  poll={...liveReplayReceipt(),order_id:"API_DIFFERENT",status:"delivered"};due();await tick();
+  expect(link()).toMatchObject({status:"needs_admin",provider_order_id:"API1VLJZG0",last_error:"receipt_identity_mismatch"});expect(buys()).toHaveLength(1);
+});
+it("accepts the live delivered GET shape without external_order_id or success",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});post={...liveFirstReceipt(),status:"queued",products:[]};await tick();
+  poll=livePollReceipt();due();await tick();
+  expect(link()).toMatchObject({status:"completed",provider_order_id:"API1VLJZG0"});expect(buys()).toHaveLength(1);
+  const fi=f.sql.prepare("SELECT * FROM fulfillment_items").get()!;expect(await decryptSecret(String(fi.delivered_ciphertext),String(fi.delivered_iv))).toBe(fakeRedeemUrl);
 });

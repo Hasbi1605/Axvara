@@ -14,7 +14,7 @@ it("native workerd D1 batches catalog families, fences concurrent dispatch, and 
         const path=new URL(url).pathname;
         if(path.endsWith('/products')) return Response.json({currency:'USD',products:[{service_id:'service_gemini_plus_6m',name:'Gemini Plus',stock:10,custom_pricing:false,pricing_tiers:[{min:1,max:100,price:0.5}]}]});
         if(path.endsWith('/quote')) return Response.json({service_id:'service_gemini_plus_6m',quantity:1,currency:'USD',stock:10,sufficient_balance:true,pricing:{unit_price:0.5,final_total:0.5}});
-        if(init?.method==='POST'){const input=JSON.parse(init.body);posts.push(input.external_order_id);if(body.timeout)throw Error('timeout');return Response.json({success:true,order_id:'API_WORKER',external_order_id:input.external_order_id,quantity:1,currency:'USD',total_cost:0.5,products:['native-credential']},{status:201});}
+        if(init?.method==='POST'){const input=JSON.parse(init.body);posts.push(input.external_order_id);if(body.timeout)throw Error('timeout');return Response.json({success:true,order_id:'API_WORKER',external_order_id:input.external_order_id,service_id:input.service_id,quantity:1,currency:'USD',total_cost:0.5,products:['native-credential']},{status:201});}
         throw Error('unexpected fixture transport');
       };
       const budgets=[];const results=await Promise.all(Array.from({length:body.catalog?1:3},async()=>{const b=createBudgetedDatabase(40,2,env.DB);budgets.push(b);return body.catalog ? publishAivaultCatalog(b.access,20000,{force:true}) : processAivaultOrders(b.access,{orderCode:'NATIVE-AV'});}));

@@ -53,6 +53,13 @@ async function saveReceipt(db: DatabaseAccess, link: Row, r: { status: number; t
   return (await db.execRun(`UPDATE aivault_order_links SET receipt_ciphertext=?,receipt_iv=?,receipt_http_status=?,updated_at=datetime('now')
     WHERE id=? AND lease_owner=? AND attempt_count=? AND status!='completed' AND datetime(lease_expires_at)>datetime('now')`,sealed.ciphertext,sealed.iv,r.status,link.id,link.lease_owner,link.attempt_count)).changes;
 }
+/** Replays omit external_order_id; a present value and a stored provider ID must still match. */
+export function matchesAivaultReceiptReference(link: Row, json: Row, poll = false): boolean {
+  if (link.provider_order_id != null && json.order_id!==link.provider_order_id) return false;
+  return poll ? json.order_id===link.provider_order_id
+    : json.external_order_id===link.external_order_id
+      || (!Object.hasOwn(json,"external_order_id") && json.idempotent_replay===true);
+}
 /** false means safe idempotent replay, never a fresh external ID. Entire body already sealed. */
 async function interpret(db: DatabaseAccess, link: Row, r: { status: number; text: string }, poll = false): Promise<boolean> {
   if (r.status===429 || r.status>=500) return false;
@@ -65,9 +72,9 @@ async function interpret(db: DatabaseAccess, link: Row, r: { status: number; tex
   if (!record(json)) return false;
   const provider=validProviderId(json.order_id) ? json.order_id : null;
   const cost=numeric(json.total_cost);
-  // The exact poll URL provides identity for GET; POST must echo our idempotency key.
-  if (!provider || (poll ? provider!==link.provider_order_id : json.external_order_id!==link.external_order_id)
-    || (json.service_id!=null && json.service_id!==link.service_id) || json.quantity!==link.quantity || json.currency!=="USD" || cost===null || cost<=0) {
+  // The exact GET ID or POST echo/explicit replay must match the durable link.
+  if (!provider || !matchesAivaultReceiptReference(link,json,poll)
+    || json.service_id!==link.service_id || json.quantity!==link.quantity || json.currency!=="USD" || cost===null || cost<=0) {
     await settle(db,link,"needs_admin","receipt_identity_mismatch"); return true;
   }
   const products=Array.isArray(json.products) ? json.products : [];

@@ -1,5 +1,37 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Bukti live 15 Nov 2026 — laporan PM
+
+- PM melaporkan kode `bef50574` sudah dipush ke main dan menjalankan SATU
+  pembelian Gemini Plus6M (`service_gemini_plus_6m`), qty1, external ID
+  `AXV-QA-20261115-GEMINI-1`, provider ID `API1VLJZG0`. Bukti ini mengonfirmasi
+  kontrak provider; tidak sendiri membuktikan status CI/deployment/env AXVARA.
+  Patch kompatibilitas receipt sesudah bukti ini masih lokal, belum commit/push.
+- POST pertama HTTP201: `success:true`, `order_id`, `service_id`, `quantity:1`,
+  `total_cost:0.5`, `new_balance:2.0`, `currency:"USD"`, `price_breakdown`,
+  `external_order_id` identik, dan `products` satu string. Produk Gemini nyata
+  berupa URL redeem HTTPS (PM melaporkan panjang86karakter); nilai/URL asli
+  tidak dicatat di repo, log atau fixture.
+- POST identik dengan external ID yang SAMA HTTP200: `success:true`, order ID,
+  service, quantity, total_cost, currency dan produk identik, `new_balance:2.0`,
+  `idempotent_replay:true`; **tanpa external_order_id dan price_breakdown**.
+  Saldo2.5→2.0 hanya sekali: idempotensi dikonfirmasi live oleh PM, bukan sekadar
+  fixture. Replay tersebut bukan pembelian kedua; izin tes berbayar sudah dipakai.
+- GET `/api/v1/order/API1VLJZG0` HTTP200: `order_id`, `status:"delivered"`,
+  `service_id`, `quantity:1`, `total_cost:0.5`, `currency:"USD"`, `created_at`,
+  dan produk yang sama; tidak membutuhkan success/external_order_id.
+- Quote nyata mengirim `custom_pricing:null`. Parser existing menerima null
+  seperti false/field absen, tanpa price_conflict, selama guard lain lulus.
+- Validasi POST menerima external ID yang cocok, atau field external ID yang
+  benar-benar absen DAN `idempotent_replay===true`. Nilai yang hadir tetapi
+  berbeda/null tetap mismatch. Jika provider ID sudah tersimpan, order ID harus
+  sama untuk POST maupun GET; service/jumlah/USD/biaya positif dan kecukupan
+  products tetap wajib. Receipt penuh tetap disegel sebelum interpretasi.
+- Writer hanya memakai fixture palsu untuk patch ini; tidak membuat pembelian,
+  replay, polling atau panggilan provider nyata tambahan.
+
+Histori sebelum publikasi `bef50574` (bukan status main saat ini):
+
 Status: implementasi lokal di worktree `feat/aivault-supplier`; commit WIP lokal
 dibuat PM, resolusi rebase ke main belum di-stage/continue oleh writer. Belum
 push, migrasi remote, konfigurasi Pages, atau deployment. Migrasi0123 tetap
@@ -65,7 +97,8 @@ integrasi bersama; source dispatcher TUNVN tidak diubah.
   Semua API requireAdmin; input mutasi zod strict + body limit; reveal receipt
   POST privat/no-store melalui audit requireAdmin. UI memakai Promise.allSettled
   supaya kegagalan saldo tidak mengosongkan katalog; tampilkan bagian+HTTP status.
-- Owner mengizinkan **SATU pembelian nyata Gemini Plus6M**, **oleh PM sesudah
-  deployment**, bukan oleh code writer. Tugas ini hanya GET baca-saja + fixture;
+- Histori izin: owner mengizinkan **SATU pembelian nyata Gemini Plus6M**, **oleh
+  PM sesudah deployment**, bukan oleh code writer. Izin sudah dipakai PM pada
+  15Nov2026 sesuai bukti di atas; writer tetap hanya fixture untuk patch ini;
   jangan memanggil endpoint tulis provider, deploy atau migrasi remote untuk QA.
   Izin ini tidak mencakup pembelian produk lain atau pengulangan tes berbayar.

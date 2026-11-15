@@ -14,6 +14,10 @@ describe("AIVault pure contracts",()=>{
     expect(parseAivaultQuote(q)).toMatchObject({price_conflict:false,final_total:0.8});expect(parseAivaultQuote({...q,requires_accept_normal_price:true})).toMatchObject({price_conflict:true});
     expect(parseAivaultQuote({...q,custom_pricing:true})).toMatchObject({price_conflict:true});expect(parseAivaultQuote({...q,pricing:{final_total:0}})).toBeNull();
   });
+  it("accepts the live Gemini quote custom_pricing:null without a price conflict",()=>{
+    const quote={service_id:"service_gemini_plus_6m",service_name:"Gemini Plus 6 Months",quantity:1,stock:2952,stock_warning:null,custom_pricing:null,currency:"USD",pricing:{unit_price:0.5,slab_range:"1-10000",base_total:0.5,bulk_discount_pct:0,bulk_discount_amount:0,final_total:0.5,price_source:"normal"},your_balance:2.5,sufficient_balance:true};
+    expect(parseAivaultQuote(quote)).toMatchObject({service_id:quote.service_id,quantity:1,price_conflict:false,unit_price:0.5,final_total:0.5});
+  });
   it("maps explicit families and collision-safe one-to-one fallbacks",()=>{
     expect(aivaultFamily("service_1789191781","ignored")).toMatchObject({key:"adobe-express",label:"12 Bulan"});
     expect(aivaultFamily("service_adobe_express_6m","ignored")).toMatchObject({key:"adobe-express",label:"6 Bulan"});
