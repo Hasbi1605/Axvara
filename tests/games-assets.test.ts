@@ -74,9 +74,8 @@ describe("manifest aset game", () => {
       if (portrait?.source.startsWith("local:")) {
         expect(portrait.source, slug).toBe(`local:scripts/games-assets-src/portraits/${slug}.webp`);
         expect(portrait.page, slug).toBe(game.page);
-        const kind = slug === "free-fire-max" ? "banner" : "icon";
-        const source = kind === "banner" ? game.banner.official_source : game.icon.source;
-        expect(portrait.generated, slug).toBe(`GPT Image (Codex image_gen) outpaint of official ${kind} ${source}`);
+        expect(portrait.generated, slug).toContain("GPT Image (Codex gpt-6.1-sol image_gen)");
+        expect(portrait.generated, slug).toContain("docs/games-portrait-sources.md");
       }
       const banner = game.banner;
       expect(banner.source, slug).toBe(`local:scripts/games-assets-src/banners/${slug}.webp`);
@@ -97,15 +96,16 @@ describe("manifest aset game", () => {
     }
   });
 
-  it("master outpaint lengkap 800×1200 dan FF MAX memakai input berbeda dari FF", async () => {
+  it("48 master portrait gaya Oura 1200×1800 dan FF MAX berbeda dari FF", async () => {
     const generated = Object.entries<any>(MANIFEST.games).filter(([, game]) => game.portrait?.generated);
-    expect(generated).toHaveLength(18);
+    expect(generated).toHaveLength(48);
     for (const [slug, game] of generated) {
       const file = path.join(ROOT, game.portrait.source.slice("local:".length));
       expect(existsSync(file), slug).toBe(true);
-      expect(await sizes(file), slug).toEqual({ width: 800, height: 1200 });
+      expect(await sizes(file), slug).toEqual({ width: 1200, height: 1800 });
     }
-    expect(MANIFEST.games["free-fire"].portrait.generated).not.toBe(MANIFEST.games["free-fire-max"].portrait.generated);
+    expect(readFileSync(path.join(ROOT, "scripts/games-assets-src/portraits/free-fire.webp")))
+      .not.toEqual(readFileSync(path.join(ROOT, "scripts/games-assets-src/portraits/free-fire-max.webp")));
     expect(readFileSync(path.join(ROOT, "public/brand/games/free-fire-portrait.webp")))
       .not.toEqual(readFileSync(path.join(ROOT, "public/brand/games/free-fire-max-portrait.webp")));
   });

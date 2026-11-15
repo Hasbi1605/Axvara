@@ -95,6 +95,7 @@ Urutan section (atas → bawah):
 7. **Kepercayaan** — proses otomatis 24 jam, rail pembayaran (logo QRIS/VA/e-wallet/crypto),
    bantuan WA; tanpa angka rating palsu (§5.4).
 8. **FAQ singkat** + footer bersama.
+  **Revisi 15 Nov 2026:** 48 portrait diganti gaya Oura (karakter resmi + logo judul resmi terpanggang di gambar, gradien navy seragam; master 1200×1800 di `scripts/games-assets-src/portraits/`, sumber di `docs/games-portrait-sources.md`); kartu ber-portrait tidak lagi menampilkan overlay nama/publisher/harga (desktop maupun touch), nama tetap di aria-label; game belum tersedia memakai pill kecil "Segera tersedia" di pojok kanan atas; overlay teks hanya untuk fallback ikon.
 
 **Tidak ada popup saat halaman dibuka** (Oura memunculkan popup "follow channel" yang
 menutup konten). Ajakan komunitas cukup di footer/pill komunitas yang sudah ada.

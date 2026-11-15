@@ -233,7 +233,7 @@ describe("Games homepage", () => {
     expect(card.querySelector("img")).toBeNull();
     expect(within(card).getAllByText("FF")).toHaveLength(2);
   });
-  it("uses full-bleed portrait art when available, keeps overlay metadata in the DOM, and names the link even at rest", () => {
+  it("uses full-bleed portrait art (logo baked in) without text overlay, still named by aria-label", () => {
     render(<GameCard game={{ ...game, portrait: "/brand/games/free-fire-portrait.webp" }} t={gamesCopy("id")} />);
     const card = screen.getByRole("link", { name: "Free Fire Mulai Rp1.000" });
     expect(card.className).toContain("aspect-[2/3]");
@@ -244,9 +244,14 @@ describe("Games homepage", () => {
     expect(image.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(image.getAttribute("decoding")).toBe("async");
     expect(image.getAttribute("loading")).toBe("lazy");
-    expect(within(card).getByText("Free Fire")).toBeTruthy();
-    expect(within(card).getByText("Garena")).toBeTruthy();
-    expect(within(card).getByText("Mulai Rp1.000")).toBeTruthy();
+    // Portrait gaya Oura sudah memuat logo judul: tanpa overlay nama/publisher/harga (15 Nov 2026).
+    expect(card.querySelector("[data-game-overlay]")).toBeNull();
+    expect(within(card).queryByText("Garena")).toBeNull();
+  });
+  it("portrait card of a not-yet-sellable game shows a small coming-soon pill", () => {
+    render(<GameCard game={{ ...game, portrait: "/brand/games/free-fire-portrait.webp", sellable_count: 0, min_price: null }} t={gamesCopy("id")} />);
+    const card = screen.getByRole("link", { name: "Free Fire Segera tersedia" });
+    expect(within(card).getByText("Segera tersedia").className).toContain("rounded-full");
   });
   it("uses square-icon plus blur fallback when no portrait exists and includes unavailable status in its accessible name", () => {
     render(<GameCard game={{ ...game, portrait: null, sellable_count: 0, min_price: null }} t={gamesCopy("id")} />);

@@ -2117,6 +2117,7 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   `0.12/20px` saat hover; banner generatif = ikon resmi diperbesar 125 % + blur 48 px + gradient
   midnight + grid halus 32 px (tanpa teks di gambar); monogram gradient midnight→cyan/10 untuk ikon
   hilang. Merek pembayaran/logo brand tidak memakai frame ini.
+  **Revisi 15 Nov 2026:** 48 portrait diganti gaya Oura (karakter resmi + logo judul resmi terpanggang di gambar, gradien navy seragam; master 1200×1800 di `scripts/games-assets-src/portraits/`, sumber di `docs/games-portrait-sources.md`); kartu ber-portrait tidak lagi menampilkan overlay nama/publisher/harga (desktop maupun touch), nama tetap di aria-label; game belum tersedia memakai pill kecil "Segera tersedia" di pojok kanan atas; overlay teks hanya untuk fallback ikon.
 
 ### Admin Games
 
