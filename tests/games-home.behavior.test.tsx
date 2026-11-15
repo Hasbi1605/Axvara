@@ -82,6 +82,9 @@ describe("Games homepage", () => {
     expect(cards).toHaveLength(9);
     expect(cards[8].className).toContain("max-sm:hidden");
     expect(cards[7].className).not.toContain("max-sm:hidden");
+    // Kilau hanya saat hover (owner 15 Nov 2026): tanpa kilau otomatis bergelombang.
+    expect(popular.querySelector(".ax-card-sheen")).toBeNull();
+    expect(cards.every((card) => card.querySelector(".ax-card-sheen-hover") && !card.getAttribute("style")?.includes("--sheen-delay"))).toBe(true);
     const catalogGrid = document.querySelector("#games-catalog .grid")!;
     expect(catalogGrid.className).toMatch(/(^|\s)grid-cols-3(\s|$)/);
     const chips = document.querySelector<HTMLElement>("[data-genre-chips]")!;

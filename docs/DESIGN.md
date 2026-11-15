@@ -2038,8 +2038,8 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   berikutnya; (2) ikon populer = Microsoft Fluent Emoji 3D "Fire" (MIT,
   `public/brand/games/ui/fire-3d.webp` 96 px) dengan kedip halus `ax-flame` + glow oranye
   berdenyut 2,6 s; (3) thumbnail populer art di-zoom 1.14 (hover 1.2) agar penuh tanpa sudut putih;
-  (4) kilau diagonal `ax-card-sheen` kiri→kanan bergelombang antar kartu (jeda 0,15 s, siklus 7 s,
-  sapuan ±1,2 s, intensitas putih/cyan ≤20 %) + kilau langsung saat hover; (5) hover GameCard: ring
+  (4) kilau diagonal kiri→kanan hanya saat hover (`ax-card-sheen-hover`, 0,9 s, intensitas putih/cyan ≤20 %;
+  kilau otomatis bergelombang dihapus 15 Nov 2026 — keputusan owner: orbit satu-satunya gerak terus-menerus); (5) hover GameCard: ring
   cyan 1,5 px /70 + inset 4 px, scale 1.02, glow lembut, art zoom 1.08 500 ms ease-out; (6) subjudul
   katalog dihapus; (7) chip genre gaya katalog Pedia: aktif putih solid teks midnight, nonaktif
   `ax-glass-card` border white/10, tinggi 36 px, ikon lucide per genre; (8) beranda tanpa Cara top
