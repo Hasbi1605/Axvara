@@ -200,11 +200,11 @@ describe("Games homepage", () => {
     expect(within(unavailable).getByText("Segera tersedia").className).toContain("rounded-full");
     expect(unavailable.className).not.toContain("opacity-70");
     expect(screen.getAllByText(/Mulai/)[0].textContent).toContain("Rp1.000");
-    // Hero disetujui GAMES §4.1 (pola Pedia): headline dua baris + typewriter cyan.
+    // Hero statis dua baris tanpa typewriter (keputusan owner 15 Nov 2026: tidak bersaing dengan orbit).
     const h1 = screen.getByRole("heading", { level: 1 });
-    expect(h1.textContent).toContain("Satu tempat untuk");
-    expect(h1.textContent).toContain("Top up game");
-    expect(h1.textContent).toMatch(/Termurah/);
+    expect(h1.textContent).toBe("Satu tempat untuktop up game favorit.");
+    expect(h1.querySelectorAll(":scope > span")).toHaveLength(2);
+    expect(h1.textContent).not.toMatch(/Termurah|Terpercaya/);
     const cta = screen.getByRole("link", { name: "Top Up Game" });
     expect(cta.getAttribute("href")).toBe("#games-catalog");
     expect(cta.className).toContain("bg-white");

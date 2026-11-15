@@ -7,7 +7,6 @@ import { LinkPasteHero } from "@/components/pedia/LinkPasteHero";
 import { usePediaSearch } from "@/stores/pedia-search";
 import { catalogCard, ProductCard } from "@/components/pedia/PlatformGrid";
 import { PlatformPageClient } from "@/app/pedia/p/[platform]/platform-client";
-import { Typewriter } from "@/components/pedia/Typewriter";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
 import { PEDIA_PLATFORM_CONFIG } from "@/lib/pedia/platforms";
 import { SITE } from "@/lib/site";
@@ -168,7 +167,7 @@ describe("Pedia platform-first storefront", () => {
     }
     expect(screen.getByRole("link", { name: "Lihat layanan" }).getAttribute("href")).toBe("#pedia-catalog");
     expect(screen.getByRole("link", { name: /Hubungi admin/ }).getAttribute("href")).toContain("/wa?pesan=");
-    expect(screen.getByText("optimasi media sosial")).toBeTruthy();
+    expect(screen.getByText("optimasi media sosial.")).toBeTruthy();
     expect(document.body.textContent).toContain("Order cepat tanpa login • Garansi refill • Support WA admin");
   });
   it("makes non-featured published platforms discoverable immediately and searches all services", () => {
@@ -221,29 +220,14 @@ describe("Pedia platform-first storefront", () => {
     expect(screen.getByRole("button", { name: /^Followers/ }).getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("renders factual static copy for reduced motion without character announcements", () => {
+  it("hero headline is static two lines without a typewriter (owner 15 Nov 2026)", () => {
     vi.useFakeTimers();
-    render(<Typewriter />);
-    act(() => vi.advanceTimersByTime(10000));
-    expect(screen.getByText("Termurah").closest("[aria-hidden=true]")).toBeTruthy();
-    expect(screen.getByText("Termurah. Termudah. Terpercaya.").className).toBe("sr-only");
-    expect(document.querySelector("[aria-live]")).toBeNull();
-  });
-
-  it("types and deletes with stable geometry and pauses while the tab is hidden", () => {
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
-    vi.useFakeTimers();
-    render(<Typewriter />);
-    act(() => vi.advanceTimersByTime(2200));
-    expect(screen.getByText("Termura")).toBeTruthy();
-    // Typewriter cyan; headline "Satu tempat untuk / optimasi media sosial" putih.
-    expect(screen.getByText("Termura").parentElement?.className).toContain("text-[#00E5FF]");
-    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
-    act(() => { document.dispatchEvent(new Event("visibilitychange")); vi.advanceTimersByTime(10000); });
-    expect(screen.getByText("Termura")).toBeTruthy();
-    hidden.mockRestore();
-    act(() => { document.dispatchEvent(new Event("visibilitychange")); vi.advanceTimersByTime(2200); });
-    expect(screen.getByText("Termur")).toBeTruthy();
+    render(<PediaHomeClient products={[]} />);
+    const h1 = screen.getByRole("heading", { level: 1 });
+    act(() => vi.advanceTimersByTime(5000));
+    expect(h1.textContent).toBe("Satu tempat untukoptimasi media sosial.");
+    expect(h1.querySelectorAll(":scope > span")).toHaveLength(2);
+    expect(h1.querySelector("[class*='00E5FF']")).toBeNull();
   });
 
   it("provides honest empty-catalog feedback and no fake platform availability", () => {

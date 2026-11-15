@@ -122,7 +122,7 @@ Pilihan awal berikut adalah histori keputusan hybrid, bukan alternatif terbuka:
 
 Keputusan: **Opsi C**. Orbit memakai komponen orbit Pedia (aturan hemat mobile:
 compositor-only, keempat planet tetap tampil ≤640px, reduced-motion statis). Headline:
-"Satu tempat untuk / Top up game" + typewriter cyan *Termurah / Tercepat / Terpercaya*
+"Satu tempat untuk / top up game favorit." statis dua baris putih (typewriter dihapus 15 Nov 2026 (keputusan owner: bersaing dengan orbit))
 (pola Pedia). Carousel memakai kontrak banner carousel existing (ARCHITECTURE "Kontrak
 banner carousel"), rasio 3:1 desktop / 2:1 mobile, autoplay berhenti saat interaksi,
 tanpa autoplay saat reduced motion.
@@ -795,7 +795,7 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
   up, kartu kepercayaan dan FAQ (detail game tetap memakai HowToTopUp). Semua animasi
   transform/opacity saja dan mati total pada `prefers-reduced-motion`.
 - Koreksi 14 Nov 2026 (sore): hero kembali ke §4.1 — `PediaOrbit` animasi (art game di
-  planet via `renderIcon`) + headline "Satu tempat untuk / Top up game" + typewriter cyan + CTA pill putih "Top Up Game"
+  planet via `renderIcon`) + headline statis "Satu tempat untuk / top up game favorit." (typewriter dihapus 15 Nov 2026 (keputusan owner: bersaing dengan orbit)) + CTA pill putih "Top Up Game"
   dan pill kaca "Bantuan WhatsApp".
   `GamesOrbit` statis dan copy "Top up game favoritmu" dari 648c9cb5 dibatalkan.
 - **14 Nov 2026 koreksi owner (lokal, belum bukti deployment):** beranda mempertahankan hero

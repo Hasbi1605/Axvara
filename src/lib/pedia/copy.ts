@@ -34,12 +34,11 @@ const ID = {
   clear: "Clear",
   // Beranda
   heroLine1: "Satu tempat untuk",
-  heroLine2: "optimasi media sosial",
+  heroLine2: "optimasi media sosial.",
   heroBody: "Followers, likes, views, dan layanan digital lainnya. Pilih kebutuhanmu, lihat harga, lalu pesan tanpa login.",
   browse: "Lihat layanan",
   contactAdmin: "Hubungi admin",
   heroTrust: "Order cepat tanpa login • Garansi refill • Support WA admin",
-  typewriterSr: "Termurah. Termudah. Terpercaya.",
   telegramTitle: "Bot Telegram",
   telegramBody: "Order aplikasi dan tools premium",
   // Katalog platform
@@ -460,12 +459,11 @@ const EN: PediaCopy = {
   homeAria: "Axvara Pedia — home",
   clear: "Clear",
   heroLine1: "One place for",
-  heroLine2: "social media growth",
+  heroLine2: "social media growth.",
   heroBody: "Followers, likes, views, and other digital services. Pick what you need, check the price, and order without an account.",
   browse: "Browse services",
   contactAdmin: "Contact admin",
   heroTrust: "Fast order without login • Refill guarantee • WhatsApp admin support",
-  typewriterSr: "Cheapest. Easiest. Trusted.",
   telegramTitle: "Telegram bot",
   telegramBody: "Order premium apps and tools",
   catalogResults: "Search results",
@@ -859,11 +857,6 @@ const EN: PediaCopy = {
 /** Kamus chrome pembeli Pedia. Default tetap Indonesia (`id`). */
 export function pediaCopy(locale: Locale): PediaCopy {
   return locale === "en" ? EN : ID;
-}
-
-/** Kata animasi hero: hanya kata sifat, tanpa klaim kebijakan. */
-export function pediaTypewriterWords(locale: Locale): string[] {
-  return locale === "en" ? ["Cheapest", "Easiest", "Trusted"] : ["Termurah", "Termudah", "Terpercaya"];
 }
 
 const REGION_ID: Record<string, string> = { indonesia: "Indonesia", global: "Global", mixed: "Campuran" };

@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Crosshair, Crown, LayoutGrid, Smile, Swords, Trophy, WandSparkles, type LucideIcon } from "lucide-react";
 import { PediaOrbit, type OrbitItem } from "@/components/pedia/PediaOrbit";
-import { Typewriter } from "@/components/pedia/Typewriter";
 import { GameImage } from "@/components/games/GameImage";
 import { GameCard, gamesFocus as focus } from "@/components/games/storefront";
 import { CrossServicePromo } from "@/components/shared/CrossServicePromo";
@@ -38,7 +37,7 @@ export function GamesHome({ games, orbitGames, orderingOpen }: { games: GamesCat
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.08),transparent_65%)]" />
       <div className="relative grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-8">
         <div className="min-w-0 max-w-3xl">
-          <h1 className="font-display text-[clamp(32px,9.3vw,40px)] font-bold leading-[1.08] tracking-[-0.02em] text-white sm:text-[56px] lg:text-[clamp(48px,4.85vw,62px)]"><span className="block">{t.heroFirst}</span><span className="block">{t.heroSecond}</span><Typewriter locale={locale} words={t.words} screenReaderText={t.words.join(", ")} /></h1>
+          <h1 className="font-display text-[clamp(32px,9.3vw,40px)] font-bold leading-[1.08] tracking-[-0.02em] text-white sm:text-[56px] lg:text-[clamp(48px,4.85vw,62px)]"><span className="block">{t.heroFirst}</span><span className="block">{t.heroSecond}</span></h1>
           <p className="mt-4 max-w-[46ch] text-[15px] leading-6 text-white/60">{t.heroBody}</p>
           <div className="mt-6 flex flex-wrap gap-3"><a href="#games-catalog" className={`inline-flex min-h-11 items-center rounded-full bg-white px-6 text-sm font-semibold text-[#080C1E] ${focus}`}>{t.heroCta}</a><a href={SITE.webUrl + waHubLink()} className={`inline-flex min-h-11 items-center rounded-full border border-white/15 bg-white/5 px-6 text-sm font-medium text-white/85 ${focus}`}>{t.whatsapp}</a></div>
           <p className="mt-5 text-xs leading-5 text-white/45">{t.heroTrust}</p>
