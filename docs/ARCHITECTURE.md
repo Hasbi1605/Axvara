@@ -1,5 +1,61 @@
 # ARCHITECTURE.md — AXVARA
 
+## Grup produk lintas supplier — migrasi0129 (16 November 2026)
+
+Menggantikan model pasangan WR/SK dan Opsi B pada snapshot lama di bawah.
+`src/lib/product-groups.ts` menjadi sumber keputusan; `supplier-pairs.ts` hanya
+shim ekspor agar kontrak caller cron/VPS/Telegram existing tetap kompatibel.
+`supplier_pairs` dan histori order dipertahankan, bukan target mutasi baru.
+
+- Schema0129: `product_groups` (nama, prefer_product_id, prefer_margin,
+  winner_product_id, reason, decided_at, timestamps), `product_group_members`
+  (PK group_id/product_id, product_id UNIQUE, position), `product_group_dirty`
+  (group_id, token version, pending + indeks). Bootstrap hanya DDL.
+- Migrasi menyalin 33 pasangan lama, prefer/winner lama ke ID produk, lalu
+  mengganti MBO→Jaspay di grup: Zoom15→113, Express VPN20→121, Wink25→115,
+  Meitu26→114. Guard ID+nama kedua produk dan keanggotaan mencegah salah target.
+  Produk lama diarsipkan (termasuk yang sudah OFF), variannya dimatikan;
+  identitas, invoice, item dan kredensial historis tidak dipindahkan/dihapus.
+  Tidak mengelompokkan Grammarly/ChatGPT/Gemini/Canva otomatis.
+- Urutan: buang nonaktif/Arsip → Manual live → anggota berstok → modal/30 hari
+  termurah → prefer bila selisih ≤ margin. Beberapa Manual live: stok terbesar
+  (−1=∞), modal, position. Stock mengikuti minimum beli dan inventory available
+  untuk unique; tanpa kredensial siap jual Manual tidak menahan supplier.
+  Semua habis: prefer aktif → Manual aktif → position; semua nonaktif: winner
+  NULL (tidak menambahkan filter pecundang; guard aktif tetap berlaku).
+- Modal varian: WR `wr_price` dengan `wrNewSaleSql`, SK `sk_price`/stok mirror,
+  TUNVN akun `price_usdt` atau Buff `tunvn_cost_usdt`, AIVault `unit_price_usd`,
+  Manual `manual_cost` (NULL tidak terbaca, 0 sah). FX supplier→snapshot D1 id1;
+  day=N, month=N×30, year=N×365, biaya ×30/durasi. Lifetime/custom/NULL tidak
+  dinormalisasi. Ambil MIN varian aktif yang dapat dibeli; kurs/modal katalog
+  terkini hanya untuk seleksi, bukan rewrite modal order historis.
+- Statistik seluruh anggota dalam satu SELECT; dirty drain membatasi **10 grup
+  utuh**, bukan 10 baris anggota. Budget existing, CAS token saat write/ack,
+  token tetap setelah ack, error SELECT/write tetap gagal dan menyisakan kerja.
+  Trigger stok/aktivasi/durasi/modal/registry/FX/inventory/anggota/preferensi
+  mengantrekan ulang; perubahan mirror TUNVN/AIVault hanya grup terkait.
+  Grup yatim tetap dikuras. Sweep penuh existing cadangan; `changed` menghitung
+  winner yang benar-benar berubah, bukan sekadar perubahan alasan.
+- Admin `/admin?section=pairs` kini `ProductGroupsManager`: GET/POST
+  `/api/admin/product-groups`, PATCH/DELETE `/:id`, POST/DELETE `/:id/members`,
+  POST `/decide`. Nama trim1–120, 2–10 ID unik, margin integer0–1.000.000,
+  prefer harus anggota; 409 `already_grouped` menyertakan group_id. Admin auth,
+  rate limit existing, JSON maksimum2048byte, no-store. Create memakai D1 batch
+  atomik; UNIQUE dan trigger memagari konflik/arsip/kapasitas. Hapus anggota
+  membersihkan prefer dan menghapus grup bila tersisa <2, satu batch; hapus grup
+  memakai FK cascade. Endpoint `/api/admin/supplier-pairs*` lama menjawab410.
+- Filter grup dipakai `/api/products?active=1`, daftar `/api/catalog`, Telegram
+  katalog/cari/bestseller/promo serta markup/liveStatus admin. URL PDP pecundang
+  redirect ke winner aktif non-Arsip; exception redirect tidak tertelan catch.
+  Penghapusan permanen memeriksa relasi grup. Cache katalog existing dapat
+  tertinggal30detik. Tidak ada env/secret/cron/proxy/dispatch/failover order baru.
+
+Verifikasi lokal: fixture API/SQL/RTL, race/budget, migrasi+replay D1/workerd,
+Chromium Paseo1280/390 dengan komponen asli dan API tiruan (buat, prefer/margin,
+tambah/keluarkan, auto-delete, hapus, hitung ulang, fokus/Escape, tanpa overflow).
+Halaman QA sementara dihapus sebelum publikasi. Publikasi melalui CI main;
+belum ada bukti migrasi/deployment produksi untuk0129.
+
 ## Arsip Produk admin — migrasi0126 (15 November 2026, lokal)
 
 `drizzle/migrations/0126_product_archive.sql` menambah `products.archived_at TEXT`

@@ -8,7 +8,8 @@ export function logD1ReadCost(sql: string, meta?: { rows_read?: number; rows_wri
     : sql.includes("total_orders") || sql.includes("fj.status AS status") ? "overview_metrics"
     : sql.includes("FROM products p") ? "market_catalog"
     : sql.includes("pedia_supplier_services") ? "pedia_catalog"
-    : sql.includes("FROM supplier_pairs sp") || sql.includes("supplier_pair_dirty") ? "supplier_pairs" : "other";
+    : sql.includes("FROM supplier_pairs sp") || sql.includes("supplier_pair_dirty") ? "supplier_pairs"
+    : sql.includes("product_group_members") || sql.includes("product_group_dirty") ? "product_groups" : "other";
   try { console.info("[d1-read]", JSON.stringify({ scope, rows_read: meta.rows_read, rows_written: meta.rows_written ?? 0 })); }
   catch { /* Observability cannot fail a database read. */ }
 }

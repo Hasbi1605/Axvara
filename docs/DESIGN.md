@@ -1,5 +1,43 @@
 # DESIGN.md — AXVARA Design System
 
+## Grup produk lintas supplier — 2026-11-16
+
+Implementasi lokal pengganti WR vs SK: menu Supplier → **Grup produk**, section
+teknis `pairs` tetap agar tautan admin existing tidak putus. Header bersama dengan
+Hitung ulang outline dan satu primary Grup baru; empat aturan ringkas bernomor:
+Manual live → stok → modal/30 hari → preferensi dalam margin. Semua habis tetap
+menyisakan satu wakil sebagai kartu habis; bukan menyembunyikan seluruh grup.
+
+Daftar memakai kartu per grup, bukan tabel lebar: nama dan Kelola grup di header,
+anggota sebagai baris yang menjadi vertikal di mobile. SupplierBadge mempertahankan
+warna identitas existing; Aktif/Nonaktif/Arsip memakai secondary. Pemenang diberi
+badge success **Tampil di toko**, lainnya **Disembunyikan** netral. Stok −1 ditulis
+∞, modal/30 hari Rupiah atau —; alasan API berbahasa manusia dan waktu WIB terlihat.
+Nama panjang membungkus; pencarian mencakup nama grup, nama produk, dan slug.
+
+Dialog admin existing (maksimal 640px, tepi viewport 16px) menyediakan nama 1–120
+karakter, pemilih produk dengan pencarian, badge supplier, stok/status, dan batas
+2–10 pilihan. Produk arsip disembunyikan; produk dalam grup lain disabled disertai
+nama grupnya. Daftar pemilih scroll internal agar dialog tetap muat pada 390px.
+Kelola memungkinkan tambah/keluarkan anggota, preferensi anggota atau Otomatis,
+serta MoneyInput margin Rp0–1.000.000; kesalahan validasi diberi teks danger.
+ConfirmDialog mengonfirmasi keluar/hapus dan menjelaskan bahwa grup <2 anggota
+dihapus otomatis serta anggota tampil sendiri-sendiri lagi. Aksi disabled saat
+menyimpan; toast menjelaskan sukses/400/409 tanpa menghilangkan draft pada error.
+Loading, error+retry, kosong, dan pencarian tanpa hasil berbeda. Semua kontrol
+punya label aksesibel; tidak menambah token atau dependensi. Test RTL memakai
+fixture lokal; QA browser desktop/390px terintegrasi dilakukan lead, bukan bukti
+deployment atau transaksi produksi.
+
+Verifikasi lanjutan16November: Chromium Paseo1280×900/light dan390×844/light/dark,
+komponen asli+API tiruan: buat grup (termasuk409 mempertahankan draft), prefer
+dan margin2500, tambah/keluarkan, auto-delete, hapus, hitung ulang; nama/slug
+arsip tidak ditawarkan, kandidat grup lain disabled. Tanpa overflow horizontal,
+dialog scroll internal, fokus tetap di dialog, Escape mengembalikan fokus ke
+Kelola grup, konfirmasi hapus berfokus Batal. Route/aset CSS/JS200; fixture
+sementara dihapus sebelum publikasi. Auth/admin D1 nyata tidak dibuka di browser;
+kontrak API/D1 diuji terpisah. Tidak ada transaksi atau mutasi produksi.
+
 ## Tinjauan S&K supplier — 2026-11-16
 
 Implementasi lokal; menggantikan warning tunggal S&K pada snapshot admin di bawah.

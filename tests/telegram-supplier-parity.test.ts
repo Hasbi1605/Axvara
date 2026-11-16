@@ -235,10 +235,11 @@ describe("WR delivery Telegram: format seragam + requeue setelah START", () => {
   });
 });
 
-describe("Katalog Telegram memfilter pecundang pasangan WR/SK", () => {
+describe("Katalog Telegram memfilter pecundang grup", () => {
   beforeEach(() => {
-    // Pasangan Prime Video: WR (2) menang → SK (1) disembunyikan.
-    fixture.sql.exec(`INSERT INTO supplier_pairs(wr_product_id,sk_product_id,winner) VALUES(2,1,'WR')`);
+    // Grup Prime Video: produk 2 menang → produk 1 disembunyikan.
+    fixture.sql.exec(`INSERT INTO product_groups(id,name,winner_product_id) VALUES(900,'Prime',2);
+      INSERT INTO product_group_members(group_id,product_id,position) VALUES(900,2,0),(900,1,1)`);
   });
 
   it("listTelegramProducts + bestseller + pencarian tidak memuat pecundang", async () => {
@@ -260,12 +261,14 @@ describe("Katalog Telegram memfilter pecundang pasangan WR/SK", () => {
     expect(callbacks).not.toContain("prd:1");
   });
 
-  it("winner NULL (Opsi B) → SK tetap disembunyikan; winner SK → WR disembunyikan", async () => {
+  it("grup tanpa winner tidak menyembunyikan apa pun; winner lain mengganti yang tampil", async () => {
     const { listTelegramProducts } = await import("@/lib/telegram/handlers/catalog");
-    fixture.sql.exec(`UPDATE supplier_pairs SET winner=NULL`);
-    expect((await listTelegramProducts()).map((p) => p.id)).not.toContain(1);
-    fixture.sql.exec(`UPDATE supplier_pairs SET winner='SK'`);
-    const ids = (await listTelegramProducts()).map((p) => p.id);
+    fixture.sql.exec(`UPDATE product_groups SET winner_product_id=NULL WHERE id=900`);
+    let ids = (await listTelegramProducts()).map((p) => p.id);
+    expect(ids).toContain(1);
+    expect(ids).toContain(2);
+    fixture.sql.exec(`UPDATE product_groups SET winner_product_id=1 WHERE id=900`);
+    ids = (await listTelegramProducts()).map((p) => p.id);
     expect(ids).toContain(1);
     expect(ids).not.toContain(2);
   });

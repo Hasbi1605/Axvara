@@ -24,6 +24,7 @@ export const productHistorySql = `EXISTS(SELECT 1 FROM orders o WHERE ${variantR
   OR EXISTS(SELECT 1 FROM sk_products r WHERE r.axvara_product_id=p.id OR ${variantRef("r.axvara_variant_id")})
   OR EXISTS(SELECT 1 FROM tunvn_products r WHERE r.axvara_product_id=p.id)
   OR EXISTS(SELECT 1 FROM aivault_products r WHERE r.axvara_product_id=p.id)
+  OR EXISTS(SELECT 1 FROM product_group_members r WHERE r.product_id=p.id)
   OR EXISTS(SELECT 1 FROM supplier_pairs r WHERE r.wr_product_id=p.id OR r.sk_product_id=p.id)
   OR EXISTS(SELECT 1 FROM telegram_carts r WHERE r.product_id=p.id OR ${variantRef("r.variant_id")})
   OR EXISTS(SELECT 1 FROM whatsapp_sessions r WHERE r.selected_product_id=p.id OR ${variantRef("r.selected_variant_id")})`;

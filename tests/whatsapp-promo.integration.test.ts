@@ -27,7 +27,8 @@ beforeEach(() => {
     (7,6,'SKU7','Loser',1,-1,1),(8,7,'SKU8','Inactive',1,-1,1);
     UPDATE products SET telegram_enabled=0 WHERE id=5;
     UPDATE products SET is_active=0 WHERE id=7;
-    INSERT INTO supplier_pairs(wr_product_id,sk_product_id,winner) VALUES(1,6,'WR');`);
+    INSERT INTO product_groups(id,name,winner_product_id) VALUES(900,'Promo',1);
+    INSERT INTO product_group_members(group_id,product_id,position) VALUES(900,1,0),(900,6,1);`);
 });
 afterEach(() => { fixture.close(); vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 

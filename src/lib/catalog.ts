@@ -8,6 +8,7 @@ import { bulkOwnerFromJoinedRow, isManualProductForBulk, validateBulkPricing, ty
 import type { Locale } from "@/lib/i18n/locale";
 import { translateVariantLabel } from "@/lib/i18n/variant-copy";
 import { aivaultEligibility, tunvnEligibility } from "@/lib/buyer-fields";
+import { notLoserProductSql } from "@/lib/product-groups";
 
 // ---- Types ----
 
@@ -157,7 +158,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
       CASE WHEN SUM(CASE WHEN pv.stock != 0 THEN 1 ELSE 0 END) > 0 THEN 'available' ELSE 'out_of_stock' END as availability
     FROM products p
     INNER JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")}
-    WHERE p.is_active = 1
+    WHERE p.is_active = 1 AND ${notLoserProductSql("p")}
     GROUP BY p.id
     HAVING variant_count > 0
     ORDER BY p.sort_order ASC, p.name ASC

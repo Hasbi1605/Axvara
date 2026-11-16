@@ -1,5 +1,29 @@
 # PRD — AXVARA
 
+## Grup produk lintas supplier — keputusan owner16 November2026
+
+Menggantikan pasangan WR/SK/Opsi B di snapshot lama. Admin dapat mengelompokkan
+2–10 produk sejenis dari WR/SK/TUNVN/AIVault/Manual, mengganti nama1–120 karakter,
+menambah/keluarkan anggota, memilih preferensi dan margin Rp0–1.000.000,
+menghapus grup dan menghitung ulang. Satu produk satu grup; <2 anggota berarti
+grup dihapus otomatis. Identitas supplier dan histori order tetap terpisah.
+
+Produk nonaktif atau Arsip tidak pernah menjadi winner/wakil, termasuk Manual
+atau preferensi. Manual live (stok benar-benar dapat dibeli, termasuk inventory
+unique/minimum) menang; beberapa Manual: stok lalu modal. Berikutnya anggota
+berstok, modal per30hari termurah, preferensi dalam margin. Durasi7hari dan1bulan
+dibandingkan setara (Surfshark3500/7hari=15000/30hari, bukan lebih murah dari
+8350/1bulan). Lifetime/custom/tanpa durasi memakai modal mentah. Semua habis:
+wakil prefer aktif→Manual aktif→position; semua nonaktif: tidak ada winner.
+Nama alasan manusiawi, stok tak terbatas ditulis∞.
+
+Migrasi0129 membawa33 pasangan lama dan mengganti MBO→Jaspay Zoom/Express VPN/
+Wink/Meitu dengan guard ID+nama, mengarsipkan yang lama tanpa merusak order.
+Grammarly/ChatGPT/Gemini/Canva tidak otomatis dikelompokkan. Semua daftar
+katalog/promo dan pengalihan PDP memakai winner grup; tanpa failover transaksi.
+Status implementasi/QA lokal; publikasi CI main, migrasi/deployment belum
+terverifikasi. Detail schema, biaya dan API: ARCHITECTURE bagian Grup produk.
+
 ## Harga supplier & salinan TUNVN (15 November 2026, implementasi lokal)
 
 - Admin mengatur markup/harga manual varian TUNVN/AIVault per baris dengan
@@ -1218,6 +1242,9 @@ tidak cocok diperlakukan ambigu dan tidak dibeli ulang otomatis. Penolakan
 `PRODUCT_TEMPORARILY_UNAVAILABLE` SK yang eksplisit tetap boleh retry biasa.
 
 ## Aktivasi manual pasangan WR/SK — 25 Oktober 2026
+
+> Histori: model pasangan diganti Grup produk pada16 November2026; produk OFF
+> tetap selalu kalah, kini berlaku untuk semua supplier dan Manual.
 
 ✅ Diimplementasikan; publikasi melalui CI. Produk yang dinonaktifkan manual
 keluar dari pemilihan pemenang WR vs SK. Bila hanya SK aktif (contoh ChatGPT WR

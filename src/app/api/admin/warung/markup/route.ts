@@ -36,16 +36,14 @@ export async function GET(request: NextRequest) {
             pv.price AS current_price, pv.stock AS pv_stock, pv.min_qty AS pv_min_qty,
             pv.is_active AS pv_is_active, pv.product_id AS pv_product_id,
             p.is_active AS p_is_active,
-            CASE WHEN pair.winner IS NOT NULL
-                   AND pair.wr_product_id = wp.axvara_product_id
-                   AND pair.winner != 'WR'
+            CASE WHEN EXISTS(SELECT 1 FROM product_group_members gm JOIN product_groups gp ON gp.id=gm.group_id
+                   WHERE gm.product_id=wp.axvara_product_id AND gp.winner_product_id IS NOT NULL
+                     AND gp.winner_product_id<>gm.product_id)
                  THEN 1 ELSE 0 END AS parent_is_loser
      FROM wr_variants wv
      LEFT JOIN wr_products wp ON wp.wr_product_id=wv.wr_product_id
      LEFT JOIN product_variants pv ON pv.id=wv.axvara_variant_id
      LEFT JOIN products p ON p.id=pv.product_id
-     LEFT JOIN supplier_pairs pair ON pair.wr_product_id=wp.axvara_product_id
-       AND pair.winner IS NOT NULL
       ${q ? "WHERE lower(wv.wr_variant_name) LIKE ? OR lower(wp.wr_product_name) LIKE ?" : ""}
       ORDER BY wp.wr_product_name ASC, wv.wr_variant_name ASC LIMIT ?`,
     ...(q ? [like, like, limit] : [limit]),

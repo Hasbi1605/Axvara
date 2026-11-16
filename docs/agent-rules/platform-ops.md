@@ -1,5 +1,17 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Antrean grup produk —16 November2026
+
+Migrasi0129 menambah `product_group_dirty(group_id,version,pending)` menggantikan
+antrean pasangan untuk keputusan katalog. Shim mempertahankan request/response
+`action:pairs` dan cron existing; tanpa env/jadwal baru. Satu SELECT statistik,
+drain maksimal10 **grup utuh**, bukan10 anggota. Budget existing, CAS versi pada
+write+ack dan token tetap setelah ack wajib; error tidak dianggap daftar kosong.
+Grup yatim juga dikuras. Trigger inventory/minimum/durasi/modal/FX/aktivitas/
+anggota/prefer menjaga keputusan; mirror TUNVN/AIVault hanya grup terkait.
+Status lokal (termasuk migrasi+replay D1/workerd), bukan bukti penggunaan atau
+deployment produksi. Lihat ARCHITECTURE “Grup produk lintas supplier”.
+
 ### Batas pola LIKE/GLOB di D1 — 15 November 2026
 
 - D1 produksi menolak literal `LIKE`/`GLOB` panjang (`LIKE or GLOB pattern too

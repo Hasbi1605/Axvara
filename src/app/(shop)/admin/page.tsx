@@ -27,7 +27,7 @@ const CategoryManagerLazy = lazy(() => import("@/components/admin/CategoryManage
 const PaymentMethodsManagerLazy = lazy(() => import("@/components/admin/PaymentMethodsManager").then((m) => ({ default: m.PaymentMethodsManager })));
 const WarungRebahanManagerLazy = lazy(() => import("@/components/admin/WarungRebahanManager").then((m) => ({ default: m.WarungRebahanManager })));
 const SekalipayManagerLazy = lazy(() => import("@/components/admin/SekalipayManager").then((m) => ({ default: m.SekalipayManager })));
-const SupplierPairsManagerLazy = lazy(() => import("@/components/admin/SupplierPairsManager").then((m) => ({ default: m.SupplierPairsManager })));
+const ProductGroupsManagerLazy = lazy(() => import("@/components/admin/ProductGroupsManager").then((m) => ({ default: m.ProductGroupsManager })));
 const SupplierLinksManagerLazy = lazy(() => import("@/components/admin/SupplierLinksManager").then((m) => ({ default: m.SupplierLinksManager })));
 const PediaManagerLazy = lazy(() => import("@/components/admin/PediaManager").then((m) => ({ default: m.PediaManager })));
 const GamesManagerLazy = lazy(() => import("@/components/admin/GamesManager").then((m) => ({ default: m.GamesManager })));
@@ -154,7 +154,7 @@ export default function AdminPage() {
       {tab==="payments" && <Suspense fallback={sectionFallback("pembayaran")}>{<PaymentMethodsManagerLazy onChanged={loadOverview} />}</Suspense>}
       {tab==="warung" && <Suspense fallback={sectionFallback("Warung Rebahan")}>{<WarungRebahanManagerLazy />}</Suspense>}
       {tab==="sekalipay" && <Suspense fallback={sectionFallback("Sekalipay")}>{<SekalipayManagerLazy />}</Suspense>}
-      {tab==="pairs" && <Suspense fallback={sectionFallback("pasangan supplier")}>{<SupplierPairsManagerLazy />}</Suspense>}
+      {tab==="pairs" && <Suspense fallback={sectionFallback("grup produk")}>{<ProductGroupsManagerLazy />}</Suspense>}
       {tab==="links" && <Suspense fallback={sectionFallback("tautan supplier")}>{<SupplierLinksManagerLazy />}</Suspense>}
       {tab==="pedia" && <Suspense fallback={sectionFallback("Pedia")}>{<PediaManagerLazy initialTab={new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("tab") ?? undefined} />}</Suspense>}
       {tab==="games" && <Suspense fallback={sectionFallback("Games")}>{<GamesManagerLazy />}</Suspense>}

@@ -1,5 +1,17 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Grup produk lintas supplier —16 November2026
+
+TUNVN dapat menjadi anggota grup2–10 bersama WR/SK/AIVault/Manual dari admin
+Supplier→Grup produk. Tidak dibuat grup TUNVN otomatis. Nonaktif/Arsip selalu
+kalah; Manual live menang, lalu stok→modal per30hari→prefer dalam margin.
+Modal akun `price_usdt × fx_idr_per_usdt`, Buff `tunvn_cost_usdt ×
+tunvn_fx_idr_per_usdt`, fallback snapshot D1id1; durasi day/month/year dinormalisasi,
+lifetime/custom/NULL tidak. Mirror/FX/varian menandai antrean grup. Keputusan
+katalog tidak memindahkan supplier/order historis atau menambah retry pembelian.
+Migrasi0129/kode/QA lokal; publikasi CI, deployment belum terverifikasi.
+Kontrak lengkap: ARCHITECTURE “Grup produk lintas supplier”.
+
 
 ## Pengiriman langsung setelah Retry/pembelian — 16 November 2026 (lokal)
 

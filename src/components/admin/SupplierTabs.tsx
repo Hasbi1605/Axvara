@@ -7,7 +7,7 @@ export function SupplierTabs({ tabs, active, onChange }: { tabs: { id: SupplierT
 }
 export function VariantStatusBadge({ status = "live", reason }: { status?: string; reason?: string }) {
   if (status === "live") return <Badge variant="success" title={reason || "Tampil di storefront"}>Live</Badge>;
-  if (status === "hidden_loser") return <Badge variant="secondary" title={reason || "Produk kalah pasangan"}>Hidden: kalah</Badge>;
+  if (status === "hidden_loser") return <Badge variant="secondary" title={reason || "Anggota grup lain dipilih"}>Hidden: kalah</Badge>;
   if (status === "hidden_nocatalog") return <Badge variant="secondary" title={reason || "Tanpa pasangan katalog"}>Hidden: tanpa katalog</Badge>;
   if (status === "hidden_soldout") return <Badge variant="warning" title={reason || "Stok habis"}>Hidden: habis</Badge>;
   return <Badge variant="destructive" title={reason || "Nonaktif manual"}>Off</Badge>;

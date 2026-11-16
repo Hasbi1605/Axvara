@@ -1,5 +1,16 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Grup produk lintas supplier —16 November2026
+
+AIVault dapat dikelompokkan2–10 produk lintas supplier melalui admin
+Supplier→Grup produk; tidak ada grup AIVault otomatis. Nonaktif/Arsip selalu
+kalah; Manual live menang, lalu stok→modal per30hari→prefer dalam margin.
+Modal `unit_price_usd × fx_idr_per_usd` (fallback snapshot D1id1), dinormalisasi
+day/month/year; lifetime/custom/NULL tidak. Perubahan mirror/FX/varian menandai
+antrean grup. Tidak memindahkan order historis, dispatch atau failover supplier.
+Migrasi0129/kode/QA lokal; publikasi CI, deployment belum terverifikasi.
+Kontrak lengkap: ARCHITECTURE “Grup produk lintas supplier”.
+
 
 ## Modal di Ringkasan admin — 16 November 2026 (lokal)
 

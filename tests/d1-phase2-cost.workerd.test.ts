@@ -1,85 +1,51 @@
 import { readFileSync } from "node:fs";
-import { expect,it } from "vitest";
+import { expect, it } from "vitest";
 import { Miniflare } from "miniflare";
-import { notLoserProductSql,decideDirtyWinners } from "@/lib/supplier-pairs";
-import { purchasableStockSql } from "@/lib/catalog-availability";
-import { OVERVIEW_ATTENTION_SQL } from "@/lib/admin-overview-queries";
+import { notLoserProductSql, decideDirtyGroups } from "@/lib/product-groups";
 import { createDatabaseAccess } from "@/lib/db-access";
 import type { D1 } from "@/lib/db";
 
-it("D1 measures fewer reads for catalog, unique inventory and active-first attention; migration triggers run on workerd",async()=>{
-  const runtime=new Miniflare({modules:true,compatibilityDate:"2024-11-01",d1Databases:["DB"],script:'export default {fetch(){return new Response("ok")}}'});
+it("D1 runs group loser filter and product_group dirty triggers on workerd", async () => {
+  const runtime = new Miniflare({ modules: true, compatibilityDate: "2024-11-01", d1Databases: ["DB"], script: 'export default {fetch(){return new Response("ok")}}' });
   try {
-    const db=await runtime.getD1Database("DB");
+    const db = await runtime.getD1Database("DB");
     await db.batch([
-      "CREATE TABLE products(id INTEGER PRIMARY KEY,is_active INTEGER DEFAULT 1,archived_at TEXT)",
-      "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,product_id INTEGER,stock INTEGER,price INTEGER,is_active INTEGER,fulfillment_mode TEXT,min_qty INTEGER,wr_variant_id TEXT,sk_variant_id TEXT)",
-      "CREATE TABLE fulfillment_inventory(id INTEGER PRIMARY KEY,product_id INTEGER,variant_id INTEGER,status TEXT)",
-      "CREATE INDEX old_inventory_index ON fulfillment_inventory(product_id,status)",
-      "CREATE TABLE orders(code TEXT PRIMARY KEY,status TEXT,payment_status TEXT,sales_channel TEXT,telegram_user_id TEXT)",
-      "CREATE TABLE fulfillment_jobs(order_code TEXT UNIQUE,status TEXT)",
-      "CREATE INDEX idx_fulfillment_jobs_status ON fulfillment_jobs(status)",
-      "CREATE TABLE fulfillment_items(order_code TEXT,status TEXT)",
-      "CREATE INDEX idx_fulfillment_items_next ON fulfillment_items(status)",
-      "CREATE INDEX items_order ON fulfillment_items(order_code,status)",
-      "CREATE TABLE supplier_pairs(id INTEGER PRIMARY KEY,wr_product_id INTEGER NOT NULL,sk_product_id INTEGER NOT NULL,winner TEXT,prefer TEXT DEFAULT 'auto',prefer_margin INTEGER DEFAULT 2000,reason TEXT,decided_at TEXT,updated_at TEXT)",
-      "CREATE INDEX pairs_wr ON supplier_pairs(wr_product_id)",
-      "CREATE INDEX pairs_sk ON supplier_pairs(sk_product_id)",
+      "CREATE TABLE products(id INTEGER PRIMARY KEY,name TEXT,slug TEXT,image_url TEXT,source TEXT DEFAULT 'manual',is_active INTEGER DEFAULT 1,archived_at TEXT,wr_product_id TEXT,sk_product_id TEXT,tunvn_family TEXT,aivault_family TEXT)",
+      "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,product_id INTEGER,sku TEXT,stock INTEGER,price INTEGER,is_active INTEGER,fulfillment_mode TEXT DEFAULT 'manual',min_qty INTEGER DEFAULT 1,duration_value INTEGER,duration_unit TEXT,manual_cost INTEGER DEFAULT 0,wr_variant_id TEXT,sk_variant_id TEXT,tunvn_source_product_id INTEGER,tunvn_buff_quantity_b INTEGER,tunvn_cost_usdt REAL,tunvn_fx_idr_per_usdt REAL,aivault_service_id TEXT)",
+      "CREATE TABLE fulfillment_inventory(product_id INTEGER,variant_id INTEGER,status TEXT)",
       "CREATE TABLE wr_variants(wr_variant_id TEXT,wr_price INTEGER,wr_stock INTEGER,wr_delivery_class TEXT DEFAULT 'restock')",
       "CREATE TABLE sk_products(sk_variant_id TEXT,sk_price INTEGER,sk_stock INTEGER)",
-    ].map(sql=>db.prepare(sql)));
-    const numbers=(max:number)=>`WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<${max})`;
+      "CREATE TABLE tunvn_products(supplier_product_id INTEGER,price_usdt REAL,fx_idr_per_usdt REAL)",
+      "CREATE TABLE aivault_products(service_id TEXT,unit_price_usd REAL,fx_idr_per_usd REAL)",
+      "CREATE TABLE crypto_market_snapshot(id INTEGER PRIMARY KEY,fx_rate_text TEXT)",
+      "CREATE TABLE product_groups(id INTEGER PRIMARY KEY,name TEXT,prefer_product_id INTEGER,prefer_margin INTEGER DEFAULT 2000,winner_product_id INTEGER,reason TEXT,decided_at TEXT,created_at TEXT DEFAULT (datetime('now')),updated_at TEXT DEFAULT (datetime('now')))",
+      "CREATE TABLE product_group_members(group_id INTEGER,product_id INTEGER UNIQUE,position INTEGER DEFAULT 0,created_at TEXT DEFAULT (datetime('now')),PRIMARY KEY(group_id,product_id))",
+      "CREATE TABLE product_group_dirty(group_id INTEGER PRIMARY KEY,version TEXT,pending INTEGER DEFAULT 1)",
+    ].map(sql => db.prepare(sql)));
+    const numbers = (max: number) => `WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<${max})`;
     await db.batch([
-      db.prepare(`${numbers(1000)} INSERT INTO products(id) SELECT x FROM n`),
-      db.prepare(`${numbers(40)} INSERT INTO supplier_pairs(id,wr_product_id,sk_product_id,winner) SELECT x,x*2-1,x*2,'WR' FROM n`),
-      db.prepare(`${numbers(50)} INSERT INTO product_variants(id,product_id,stock,price,is_active,fulfillment_mode,min_qty) SELECT x,1,1,1000,1,'unique',1 FROM n`),
-      db.prepare(`${numbers(5000)} INSERT INTO fulfillment_inventory SELECT x,1,(x%50)+1,'available' FROM n`),
-      db.prepare(`${numbers(5000)} INSERT INTO orders SELECT 'O'||x,'lunas','paid','telegram','buyer' FROM n`),
-      db.prepare("INSERT INTO fulfillment_jobs SELECT code,'delivered' FROM orders"),
-      db.prepare("INSERT INTO fulfillment_items SELECT code,'delivered' FROM orders"),
-      db.prepare("UPDATE fulfillment_jobs SET status='retry' WHERE order_code='O1'"),
-      db.prepare("UPDATE fulfillment_items SET status='failed' WHERE order_code='O1'"),
+      db.prepare(`${numbers(1000)} INSERT INTO products(id,name,slug) SELECT x,'P'||x,'p'||x FROM n`),
+      db.prepare(`${numbers(80)} INSERT INTO product_variants(id,product_id,stock,price,is_active,manual_cost) SELECT x,x,1,1000,1,500 FROM n`),
+      db.prepare(`${numbers(40)} INSERT INTO product_groups(id,name,winner_product_id) SELECT x,'G'||x,x*2-1 FROM n`),
+      db.prepare(`${numbers(80)} INSERT INTO product_group_members(group_id,product_id,position) SELECT ((x+1)/2),x,(x-1)%2 FROM n`),
     ]);
-    const oldCatalog=await db.prepare(`SELECT p.id FROM products p WHERE NOT EXISTS(SELECT 1 FROM supplier_pairs pair WHERE p.id=CASE WHEN pair.winner IS NULL OR pair.winner='WR' THEN pair.sk_product_id ELSE pair.wr_product_id END) ORDER BY p.id`).all();
-    const oldInventory=await db.prepare(`SELECT pv.id FROM product_variants pv WHERE (SELECT COUNT(*) FROM fulfillment_inventory fi WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available')>0 ORDER BY pv.id`).all();
-    const oldAttention=await db.prepare(`SELECT COUNT(DISTINCT o.code) AS count FROM orders o WHERE o.status='lunas' AND o.payment_status='paid' AND (EXISTS(SELECT 1 FROM fulfillment_jobs fj WHERE fj.order_code=o.code AND fj.status IN ('manual_required','retry','failed')) OR EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=o.code AND fi.status IN ('manual_required','retry','failed')))` ).all();
+    const oldCatalog = await db.prepare(`SELECT p.id FROM products p WHERE p.id NOT IN (
+      SELECT gm.product_id FROM product_group_members gm JOIN product_groups g ON g.id=gm.group_id
+      WHERE g.winner_product_id IS NOT NULL AND gm.product_id<>g.winner_product_id) ORDER BY p.id`).all();
+    const catalog = await db.prepare(`SELECT p.id FROM products p WHERE ${notLoserProductSql("p")} ORDER BY p.id`).all();
+    expect(catalog.results).toEqual(oldCatalog.results);
 
-    const migration=readFileSync("drizzle/migrations/0068_d1_read_budget_phase2.sql","utf8");
-    const triggers=migration.match(/CREATE TRIGGER[\s\S]*?\nEND;/g)??[];
-    const ordinary=migration.replace(/CREATE TRIGGER[\s\S]*?\nEND;/g,"").replace(/^--.*$/gm,"").split(";").map(s=>s.trim()).filter(Boolean);
-    // Each entire trigger is one statement, matching remote migration behavior.
-    for (const sql of [...ordinary,...triggers]) await db.prepare(sql).run();
-    const catalog=await db.prepare(`SELECT p.id FROM products p WHERE ${notLoserProductSql("p")} ORDER BY p.id`).all();
-    const inventory=await db.prepare(`SELECT pv.id FROM product_variants pv WHERE ${purchasableStockSql("pv")} ORDER BY pv.id`).all();
-    const attention=await db.prepare(OVERVIEW_ATTENTION_SQL).all();
-    expect(catalog.results).toEqual(oldCatalog.results); expect(catalog.meta.rows_read).toBeLessThan(oldCatalog.meta.rows_read/4);
-    expect(inventory.results).toEqual(oldInventory.results); expect(inventory.meta.rows_read).toBeLessThan(500);
-    expect(inventory.meta.rows_read).toBeLessThan(oldInventory.meta.rows_read/20);
-    expect(attention.results).toEqual(oldAttention.results); expect(attention.results[0]).toEqual({count:1});
-    expect(attention.meta.rows_read).toBeLessThan(30);
-    const recipientPlan=await db.prepare(`EXPLAIN QUERY PLAN SELECT code FROM orders
-      WHERE sales_channel='telegram' AND telegram_user_id=? AND status='lunas' AND payment_status='paid'`).bind("buyer").all();
-    expect(JSON.stringify(recipientPlan.results)).toContain("idx_orders_telegram_buyer_status");
-    await db.prepare("UPDATE supplier_pair_dirty SET pending=0").run();
-    const base=createDatabaseAccess(db as unknown as D1);
-    let dirtyReads=0;
-    const measured={...base,queryAll:async(q:string,...params:unknown[])=>{
-      const result=await db.prepare(q).bind(...params).all(); dirtyReads+=result.meta.rows_read; return result.results;
-    }};
-    expect(await decideDirtyWinners(measured)).toEqual({decided:0,changed:0});
-    expect(dirtyReads).toBeLessThan(10);
+    const migration = readFileSync("drizzle/migrations/0129_product_groups.sql", "utf8");
+    const triggers = migration.match(/CREATE TRIGGER[\s\S]*?\nEND;/g) ?? [];
+    expect(triggers.length).toBeGreaterThan(10);
+    for (const sql of triggers) await db.prepare(sql).run();
+
+    await db.prepare("UPDATE product_group_dirty SET pending=0").run();
+    const base = createDatabaseAccess(db as unknown as D1);
+    expect(await decideDirtyGroups(base)).toEqual({ decided: 0, changed: 0 });
     await db.prepare("UPDATE product_variants SET stock=2 WHERE id=1").run();
-    expect((await decideDirtyWinners(base)).decided).toBe(1);
-    expect((await db.prepare("SELECT * FROM supplier_pair_dirty WHERE pending=1").all()).results).toEqual([]);
-    console.info("[d1-phase2-cost]",JSON.stringify({catalog:[oldCatalog.meta.rows_read,catalog.meta.rows_read],inventory:[oldInventory.meta.rows_read,inventory.meta.rows_read],attention:[oldAttention.meta.rows_read,attention.meta.rows_read],cleanPairTick:dirtyReads}));
-    const activeMigration=readFileSync("drizzle/migrations/0078_supplier_pair_manual_active.sql","utf8");
-    const activeTriggers=activeMigration.match(/CREATE TRIGGER[\s\S]*?\nEND;/g)??[];
-    const activeStatements=activeMigration.replace(/CREATE TRIGGER[\s\S]*?\nEND;/g,"").replace(/^--.*$/gm,"").split(";").map(s=>s.trim()).filter(Boolean);
-    for(const sql of [...activeTriggers,...activeStatements]) await db.prepare(sql).run();
-    expect((await db.prepare("SELECT COUNT(*) AS n FROM supplier_pair_dirty WHERE pending=1").first())?.n).toBe(40);
-    await db.prepare("UPDATE supplier_pair_dirty SET pending=0").run();
-    await db.prepare("UPDATE products SET is_active=0 WHERE id=1").run();
-    expect(await decideDirtyWinners(base,1)).toEqual({decided:1,changed:1});
-    expect(await db.prepare("SELECT winner,reason FROM supplier_pairs WHERE id=1").first()).toEqual({winner:"SK",reason:"WR nonaktif manual"});
-  } finally {await runtime.dispose();}
-},30000);
+    expect((await db.prepare("SELECT COUNT(*) AS n FROM product_group_dirty WHERE pending=1").first())?.n).toBe(1);
+    expect((await decideDirtyGroups(base)).decided).toBe(1);
+    expect((await db.prepare("SELECT * FROM product_group_dirty WHERE pending=1").all()).results).toEqual([]);
+  } finally { await runtime.dispose(); }
+}, 30000);

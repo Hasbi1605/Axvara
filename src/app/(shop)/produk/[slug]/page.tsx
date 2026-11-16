@@ -129,36 +129,34 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  // Pecundang pasangan WR vs SK (keputusan owner 2026-10-01; Opsi B
-  // 2026-10-02): URL langsung pecundang dialihkan ke slug pemenang/wakil
-  // agar konsisten dengan daftar + search (keduanya tidak menampilkan
-  // pecundang). Winner None → sisi SK dialihkan ke wakil WR. URL lama
-  // tidak 404 — pindah ke produk yang menang/wakil. Best-effort: gagal
-  // baca = lanjut normal.
+  // URL anggota yang kalah menuju winner aktif grup. Only database reads
+  // are best-effort; Next's redirect exception must escape the catch.
+  let winnerSlug: string | null = null;
   try {
     const me = (await queryFirst(`SELECT id FROM products WHERE slug=?`, slug)) as
       | Record<string, unknown>
       | undefined;
     if (me?.id != null) {
       const myId = Number(me.id);
-      const pair = (await queryFirst(
-        `SELECT winner, wr_product_id, sk_product_id FROM supplier_pairs
-         WHERE wr_product_id=? OR sk_product_id=?`,
-        myId, myId,
+      // Grup produk lintas supplier (16 Nov 2026): URL anggota yang bukan
+      // winner dialihkan ke slug winner agar 1 barang = 1 kartu.
+      const group = (await queryFirst(
+        `SELECT g.winner_product_id AS winner_id FROM product_group_members m
+         JOIN product_groups g ON g.id=m.group_id
+         WHERE m.product_id=? AND g.winner_product_id IS NOT NULL AND g.winner_product_id<>m.product_id
+         LIMIT 1`,
+        myId,
       )) as Record<string, unknown> | undefined;
-      if (pair) {
-        // Opsi B: None → SK = pecundang (wakil = WR).
-        const loserId = Number(pair.winner == null || pair.winner === "WR" ? pair.sk_product_id : pair.wr_product_id);
-        if (loserId === myId) {
-          const winnerId = Number(pair.winner == null || pair.winner === "WR" ? pair.wr_product_id : pair.sk_product_id);
-          const winner = (await queryFirst(`SELECT slug FROM products WHERE id=? AND is_active=1`, winnerId)) as
-            | Record<string, unknown>
-            | undefined;
-          if (winner?.slug) redirect(`/produk/${String(winner.slug)}`);
-        }
+      const winnerId = Number(group?.winner_id ?? 0);
+      if (Number.isInteger(winnerId) && winnerId > 0) {
+        const winner = (await queryFirst(`SELECT slug FROM products WHERE id=? AND is_active=1 AND archived_at IS NULL`, winnerId)) as
+          | Record<string, unknown>
+          | undefined;
+        if (winner?.slug) winnerSlug = String(winner.slug);
       }
     }
   } catch { /* abaikan — lanjut render normal */ }
+  if (winnerSlug) redirect(`/produk/${winnerSlug}`);
   const [product, initialProducts, initialCatalog] = await Promise.all([
     getSeoProduct(slug).catch(() => null),
     loadInitialProducts(slug),

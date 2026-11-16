@@ -45,19 +45,19 @@ describe("/api/cron/lite", () => {
     const fx=createD1Fixture();
     try {
       vi.stubEnv("CRON_SECRET","s");
-      fx.sql.exec(`DELETE FROM supplier_pair_dirty;
-        INSERT INTO products(id,name,slug,price,stock) VALUES(1,'WR','wr',1000,1),(2,'SK','sk',1000,0);
+      fx.sql.exec(`INSERT INTO products(id,name,slug,price,stock) VALUES(1,'WR','wr',1000,1),(2,'SK','sk',1000,0);
         INSERT INTO product_variants(id,product_id,sku,label,price,stock) VALUES(1,1,'WR','WR',1000,1),(2,2,'SK','SK',1000,0);
-        INSERT INTO supplier_pairs(id,wr_product_id,sk_product_id) VALUES(99,1,2)`);
+        INSERT INTO product_groups(id,name) VALUES(99,'Uji');
+        INSERT INTO product_group_members(group_id,product_id,position) VALUES(99,1,0),(99,2,1)`);
       expect((await call("cleanup")).body).toMatchObject({ok:true,pairs_decided:1,pairs_changed:1});
-      expect(fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get()?.winner).toBe("WR");
+      expect(fx.sql.prepare("SELECT winner_product_id AS winner FROM product_groups WHERE id=99").get()?.winner).toBe(1);
       fx.sql.exec("UPDATE product_variants SET stock=0 WHERE id=1; UPDATE product_variants SET stock=1 WHERE id=2");
-      fx.control.fail=q=>q.startsWith("UPDATE supplier_pairs");
+      fx.control.fail=q=>q.startsWith("UPDATE product_groups");
       expect((await call("cleanup")).status).toBe(500);
-      expect(fx.sql.prepare("SELECT pending FROM supplier_pair_dirty WHERE pair_id=99").get()?.pending).toBe(1);
+      expect(fx.sql.prepare("SELECT pending FROM product_group_dirty WHERE group_id=99").get()?.pending).toBe(1);
       fx.control.fail=null;
       expect((await call("cleanup")).body).toMatchObject({ok:true,cleanup_skipped:"interval",pairs_decided:1});
-      expect(fx.sql.prepare("SELECT winner FROM supplier_pairs WHERE id=99").get()?.winner).toBe("SK");
+      expect(fx.sql.prepare("SELECT winner_product_id AS winner FROM product_groups WHERE id=99").get()?.winner).toBe(2);
       expect((await call("cleanup")).body).toMatchObject({ok:true,pairs_decided:0});
     } finally {fx.close();}
   });

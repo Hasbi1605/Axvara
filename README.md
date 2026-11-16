@@ -1,5 +1,28 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Grup produk lintas supplier (16 November 2026)
+
+Admin → Supplier → **Grup produk** (`/admin?section=pairs`, bookmark tetap)
+menggantikan Pasangan WR/SK. Buat grup2–10 produk WR/SK/TUNVN/AIVault/Manual,
+kelola anggota/nama/preferensi dan margin Rp0–1.000.000, hitung ulang atau hapus.
+Satu produk hanya boleh masuk satu grup; keluarkan hingga <2 menghapus grup.
+
+Nonaktif/Arsip **selalu kalah**, termasuk Manual dan preferensi admin. Manual
+yang aktif dan benar-benar punya stok siap jual menang; berikutnya stok, modal
+per30hari, lalu preferensi dalam margin. Semua habis menyisakan wakil aktif;
+semua nonaktif tidak memiliki winner. Katalog web/shared/Telegram/promo memakai
+filter yang sama; PDP pecundang menuju winner. Cache dapat tertinggal30detik.
+
+Migrasi `0129_product_groups.sql` menyalin33 pasangan menjadi grup dan mengganti
+MBO→Jaspay (Zoom15→113, Express VPN20→121, Wink25→115, Meitu26→114) dengan
+guard ID+nama, mengarsipkan yang lama tanpa memindahkan histori order. Schema
+menambah `product_groups`, `product_group_members`, `product_group_dirty`.
+API admin baru `/api/admin/product-groups`, `/:id`, `/:id/members`, `/decide`;
+API pasangan lama410. Tidak ada env/cron/proxy baru atau failover pesanan.
+Detail kontrak/modal/CAS: ARCHITECTURE “Grup produk lintas supplier”.
+Status implementasi dan QA lokal; publikasi hanya CI main, deployment belum
+diverifikasi. Catatan pasangan WR/SK/Opsi B lama di bawah adalah histori.
+
 ## Panel harga supplier TUNVN/AIVault (15 November 2026, lokal saja)
 
 Tab Markup TUNVN/AIVault memakai baris harga bersama (`SupplierPriceRow`):
@@ -918,6 +941,9 @@ tidak cocok diperlakukan ambigu dan tidak dibeli ulang otomatis. Penolakan
 `PRODUCT_TEMPORARILY_UNAVAILABLE` SK yang eksplisit tetap boleh retry biasa.
 
 ## Produk pasangan WR/SK yang dinonaktifkan — 25 Oktober 2026
+
+> Histori: model pasangan digantikan Grup produk lintas supplier pada0129
+> (16 November2026); ketentuan OFF manual tetap dipertahankan.
 
 Produk OFF manual tidak lagi ikut memenangkan pasangan. Jika ChatGPT WR OFF dan
 SK ON, SK menjadi wakil katalog; jika kedua sisi ON, stok/modal/preferensi kembali

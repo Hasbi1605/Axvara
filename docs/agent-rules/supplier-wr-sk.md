@@ -1,5 +1,22 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Grup produk lintas supplier — keputusan owner16 November2026
+
+- Menggantikan pasangan WR/SK/Opsi B; `supplier-pairs.ts` shim ke
+  `product-groups.ts`. `supplier_pairs` tetap arsip, bukan target tulis baru.
+- Nonaktif/Arsip selalu kalah, juga Manual/prefer. Manual live menang;
+  berikutnya stok→modal per30hari→prefer dalam margin. Semua habis: prefer
+  aktif→Manual aktif→position; semua nonaktif winnerNULL. Stok−1 ditulis∞.
+  Unique tanpa inventory available dan stok di bawah minimum tidak live.
+- Modal WR wajib lolos `wrNewSaleSql`; normalisasi day/month/year30/365,
+  lifetime/custom/NULL tidak dinormalisasi. Lihat ARCHITECTURE Grup produk.
+- Migrasi0129 menyalin33 pasangan dan mengganti Zoom15→113, Express VPN20→121,
+  Wink25→115, Meitu26→114 dengan guard nama kedua sisi; MBO diarsipkan termasuk
+  yang sudah OFF. Tidak memindahkan invoice/varian/order lama atau failover.
+- Admin mengatur sendiri grup supplier lain; jangan otomatis mengelompokkan
+  Grammarly/ChatGPT/Gemini/Canva. API pasangan lama410; bookmark section=pairs
+  tetap, label Grup produk. Status lokal + QA, publikasi CI; belum bukti deploy.
+
 
 ## Tinjau S&K: tanda "teks supplier sudah oke" + formatter judul — 16 November 2026 (lokal)
 

@@ -179,10 +179,11 @@ describe("status toko admin (live_status)", () => {
     // Produk 2 (SK Prod): habiskan stok → hidden_soldout.
     fixture.sql.prepare(`UPDATE product_variants SET stock=0 WHERE product_id=2`).run();
     // Pasangan: WR #1 menang vs SK #2 → #2 pecundang.
-    fixture.sql.prepare(
-      `INSERT INTO supplier_pairs (wr_product_id, sk_product_id, winner, prefer, prefer_margin, decided_at, reason)
-       VALUES (1, 2, 'WR', 'auto', 2000, '2026-10-01T00:00:00Z', 'test')`,
-    ).run();
+    fixture.sql.exec(
+      `INSERT INTO product_groups (id, name, winner_product_id, decided_at, reason)
+       VALUES (900, 'Markup', 1, '2026-10-01T00:00:00Z', 'test');
+    INSERT INTO product_group_members(group_id, product_id, position) VALUES (900, 1, 0), (900, 2, 1)`,
+    );
     const { GET } = await import("@/app/api/products/route");
     // Tanpa sesi admin → publik: tanpa liveStatus/liveReason (tidak bocor).
     const pub = await (await GET(new NextRequest("http://localhost/api/products?active=1"))).json() as {

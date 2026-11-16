@@ -12,6 +12,7 @@ import { needsCopyReview, resolveVariantCopyDetailed } from "@/lib/product-copy/
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
+import { notLoserProductSql } from "@/lib/product-groups";
 
 export const runtime = "edge";
 
@@ -31,7 +32,6 @@ export async function GET(req: NextRequest) {
 }
 
 async function readProducts(req: NextRequest) {
-  let catalogDegraded = false;
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.toLowerCase().trim() ?? "";
   const cat = searchParams.get("cat") ?? "";
@@ -111,24 +111,12 @@ async function readProducts(req: NextRequest) {
   // checkout/quote tetap menolak varian habis — tampil ≠ bisa dibeli.
   // PDP langsung (?slug=) + search (?q=) tidak berubah.
   if (isPublicCatalog && variantCatalog) {
-    // Pecundang pasangan: produk yang kalah decideWinner. Opsi B (keputusan
-    // owner 2026-10-02): saat winner None (dua-duanya habis), sisi SK ikut
-    // disembunyikan dan WR tampil sebagai wakil 1 kartu — katalog stabil
-    // (1 barang = 1 kartu), kontrak kartu habis untuk trust tetap utuh.
-    const loserRows = await queryAll(
-      `SELECT CASE WHEN winner IS NULL OR winner='WR' THEN sk_product_id ELSE wr_product_id END AS loser
-       FROM supplier_pairs`,
-    ).catch(() => { catalogDegraded = true; return [] as Record<string, unknown>[]; });
-    const loserIds = loserRows
-      .map((r) => Number(r.loser ?? 0))
-      .filter((id) => Number.isInteger(id) && id > 0);
-    if (loserIds.length) {
-      sql += ` AND p.id NOT IN (${loserIds.map(() => "?").join(",")})`;
-      params.push(...loserIds);
-    }
-    // Daftar publik tidak lagi memfilter stok-habis (2026-10-01): kartu
-    // habis tampil di akhir dengan overlay. Pecundang pasangan di atas
-    // tetap disaring — itu keputusan pemenang, bukan status stok.
+    // Grup produk lintas supplier (16 Nov 2026): katalog publik hanya
+    // menampilkan winner tiap grup. Grup tanpa winner tidak menyembunyikan
+    // apa pun. BUKAN is_active (itu milik admin).
+    sql += ` AND ${notLoserProductSql("p")}`;
+    // Daftar publik tidak memfilter stok-habis (2026-10-01): kartu habis
+    // tampil di akhir dengan overlay. Pecundang grup tetap disaring.
   }
   // Slug kategori lama (?cat= bookmark) dipetakan ke slug baru (migrasi 0046)
   // agar filter lama tidak 404/kosong.
@@ -179,20 +167,21 @@ async function readProducts(req: NextRequest) {
   // tidak menerimanya (tidak bocor ke pembeli).
   const liveStatusByProduct = new Map<string, { status: "live" | "hidden_loser" | "hidden_soldout" | "off"; reason: string }>();
   if (isAdminRequest) {
-    // Opsi B: None → SK = pecundang (wakil = WR). winner_id = sisi WR agar
-    // alasan admin jujur ("Wakil WR — dua-duanya habis").
+    // Anggota grup yang bukan winner = pecundang. Alasan admin memakai nama
+    // produk winner (grup lintas supplier, bukan lagi label WR/SK).
     const pairRows = await queryAll(
-      `SELECT CASE WHEN winner IS NULL OR winner='WR' THEN sk_product_id ELSE wr_product_id END AS loser,
-              CASE WHEN winner IS NULL OR winner='WR' THEN wr_product_id ELSE sk_product_id END AS winner_id,
-              winner
-       FROM supplier_pairs`,
+      `SELECT gm.product_id AS loser, g.winner_product_id AS winner_id, wp.name AS winner_name
+       FROM product_group_members gm
+       JOIN product_groups g ON g.id=gm.group_id
+       LEFT JOIN products wp ON wp.id=g.winner_product_id
+       WHERE g.winner_product_id IS NOT NULL AND gm.product_id<>g.winner_product_id`,
     ).catch(() => [] as Record<string, unknown>[]);
     const loserToWinner = new Map<number, { winnerId: number; winner: string }>();
     for (const r of pairRows) {
       const loser = Number(r.loser ?? 0);
       const winnerId = Number(r.winner_id ?? 0);
       if (Number.isInteger(loser) && loser > 0 && Number.isInteger(winnerId) && winnerId > 0) {
-        loserToWinner.set(loser, { winnerId, winner: r.winner == null ? "WR (wakil — dua-duanya habis)" : String(r.winner) });
+        loserToWinner.set(loser, { winnerId, winner: String(r.winner_name ?? `produk #${winnerId}`) });
       }
     }
     const buyableSql = purchasableStockSql("pvx");
@@ -326,9 +315,7 @@ async function readProducts(req: NextRequest) {
   // PDP by-slug dibaca tepat setelah ada yang beli (2026-10-02): cache
   // 30 detik terlalu basi untuk angka stok (insiden Head 18 Bulan).
   // Daftar katalog tetap 30 detik; hanya ?slug= yang 10 detik.
-  const cacheControl = catalogDegraded
-    ? "no-store"
-    : !isPublicCatalog
+  const cacheControl = !isPublicCatalog
     ? "private, no-store, max-age=0"
     : slug
       ? "public, max-age=10, s-maxage=10, stale-while-revalidate=30"

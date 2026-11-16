@@ -3,6 +3,7 @@ import { SITE } from "@/lib/site";
 import { siteOrigin } from "@/lib/site-url";
 import { sendMessage } from "@/lib/telegram/api";
 import { escapeHtml, formatRupiah } from "@/lib/telegram/messages/format";
+import { notLoserProductSql } from "@/lib/product-groups";
 
 export type PromoSlot = "morning" | "evening";
 
@@ -134,10 +135,7 @@ export async function loadPromoProducts(database: DatabaseAccess): Promise<Promo
        JOIN product_variants pv ON pv.product_id=p.id AND pv.is_active=1
        LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.is_active=1 AND COALESCE(p.telegram_enabled, 1)=1
-        AND NOT EXISTS (
-          SELECT 1 FROM supplier_pairs pair
-          WHERE p.id = CASE WHEN pair.winner IS NULL OR pair.winner='WR' THEN pair.sk_product_id ELSE pair.wr_product_id END
-        )
+        AND ${notLoserProductSql("p")}
       GROUP BY p.id
      HAVING promo_price IS NOT NULL
       ORDER BY p.sort_order ASC, p.id ASC`,
