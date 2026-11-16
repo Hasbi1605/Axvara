@@ -11,14 +11,14 @@ export type PeriodReport = ReportBucket & {
   merchant_paid?: number;
   credit_used?: number;
   series: ReportPoint[];
-  suppliers: Record<"wr" | "sk" | "manual" | "pedia", ReportBucket>;
+  suppliers: Record<"wr" | "sk" | "manual" | "pedia" | "tunvn" | "aivault", ReportBucket>;
   channels: Record<"web" | "telegram" | "whatsapp", ReportBucket>;
   top_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[];
 };
 const bucket = (): ReportBucket => ({ orders: 0, revenue: 0, cost: 0, profit: 0 });
 export type SelectedReport = PeriodReport & { from: string; to: string; timezone: "Asia/Jakarta"; generated_at: string };
 const emptyReport = (): PeriodReport => ({ ...bucket(), estimated_orders: 0, merchant_paid: 0, credit_used: 0, series: [],
-  suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket() },
+  suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket(), tunvn: bucket(), aivault: bucket() },
   channels: { web: bucket(), telegram: bucket(), whatsapp: bucket() }, top_products: [] });
 
 export function emptySelectedReport(selection: ReportSelection, now = new Date()): SelectedReport {
@@ -38,6 +38,9 @@ export function emptySelectedReport(selection: ReportSelection, now = new Date()
  * Missing historical cost snapshots use the catalog and remain estimates.
  * D1 limits compound SELECTs to five terms and caps subquery expansion.
  * Read scoped totals once for all dimensions to avoid multiplying CTE expansion.
+ * TUNVN/AIVault costs come from their durable order links (already per-line, not
+ * per unit); the USD→IDR kurs is the last catalog snapshot, so reruns may differ
+ * slightly from the rate at purchase time.
  */
 export function financialReportSql(now = new Date(), selection?: ReportSelection): string {
   const today = todayWibDateString(now), week = weekWibStartDateString(now), month = `${today.slice(0, 7)}-01`;
@@ -67,7 +70,14 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
       MAX(1,CAST(COALESCE(json_extract(j.value,'$.qty'),fi.qty,1) AS INTEGER)) qty,
       MAX(0,COALESCE(json_extract(j.value,'$.price'),0)) * MAX(1,CAST(COALESCE(json_extract(j.value,'$.qty'),fi.qty,1) AS INTEGER)) gross,
       s.source snapshot_source, s.unit_cost snapshot_cost, s.supplier_variant_id snapshot_supplier_id,
-      pv.manual_cost, pv.wr_variant_id, pv.sk_variant_id, fi.wr_link_id, fi.sk_link_id, fi.id fi_id
+      pv.manual_cost, pv.wr_variant_id, pv.sk_variant_id, fi.wr_link_id, fi.sk_link_id, fi.id fi_id,
+      pv.sku pv_sku, pv.aivault_service_id pv_aivault_service_id,
+      pv.tunvn_fx_idr_per_usdt pv_tunvn_fx, pv.tunvn_cost_usdt pv_tunvn_cost,
+      json_type(j.value,'$.tunvn_eligibility') tunvn_elig,
+      json_extract(j.value,'$.tunvn_eligibility.cost_usdt') tunvn_elig_cost,
+      json_extract(j.value,'$.tunvn_eligibility.source_product_id') tunvn_elig_source_id,
+      json_type(j.value,'$.aivault_eligibility') aivault_elig,
+      json_extract(j.value,'$.aivault_eligibility.cost_usd') aivault_elig_cost
     FROM paid o JOIN json_each(o.report_items) j
     LEFT JOIN order_item_costs s ON s.order_code=o.code AND s.item_index=CAST(j.key AS INTEGER)
     LEFT JOIN fulfillment_items fi ON fi.order_code=o.code AND fi.item_index=CAST(j.key AS INTEGER)
@@ -88,21 +98,50 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
   ), pools AS (
     SELECT l.*,
       CASE WHEN COALESCE(l.order_kind,'market')='pedia' THEN 'pedia' WHEN w.id IS NOT NULL THEN 'wr'
-        WHEN s.id IS NOT NULL THEN 'sk' ELSE COALESCE(l.snapshot_source,
+        WHEN s.id IS NOT NULL THEN 'sk'
+        WHEN l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL THEN 'tunvn'
+        WHEN l.aivault_elig IS NOT NULL OR l.pv_aivault_service_id IS NOT NULL OR al.id IS NOT NULL THEN 'aivault'
+        ELSE COALESCE(l.snapshot_source,
           CASE WHEN l.wr_variant_id IS NOT NULL THEN 'wr' WHEN l.sk_variant_id IS NOT NULL THEN 'sk' ELSE 'manual' END) END source,
       CASE WHEN COALESCE(l.order_kind,'market')='pedia' THEN ROUND(COALESCE(pi.supplier_charge,pi.supplier_rate_snapshot*pi.quantity/1000.0,0))
         WHEN w.id IS NOT NULL THEN ROUND(w.wr_cost) WHEN s.id IS NOT NULL THEN ROUND(s.sk_cost) ELSE NULL END cost_pool,
       CASE WHEN COALESCE(l.order_kind,'market')='pedia' THEN pi.supplier_charge IS NULL
         WHEN w.id IS NOT NULL THEN w.status NOT IN ('completed','failed')
         WHEN s.id IS NOT NULL THEN s.status NOT IN ('completed','failed')
+        WHEN l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL THEN
+          tl.id IS NULL OR tl.status!='completed'
+          OR COALESCE(tl.cost_usdt,l.tunvn_elig_cost,CASE WHEN l.pv_sku LIKE 'TUNVN-BUFF%' THEN l.pv_tunvn_cost ELSE tp.price_usdt END*l.qty) IS NULL
+          OR COALESCE(CASE WHEN l.pv_sku LIKE 'TUNVN-BUFF%' THEN l.pv_tunvn_fx ELSE tp.fx_idr_per_usdt END,
+            CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
+        WHEN l.aivault_elig IS NOT NULL OR l.pv_aivault_service_id IS NOT NULL OR al.id IS NOT NULL THEN
+          al.id IS NULL OR al.status!='completed'
+          OR COALESCE(al.cost_usd,l.aivault_elig_cost,ap.unit_price_usd*l.qty) IS NULL
+          OR COALESCE(ap.fx_idr_per_usd,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
         ELSE l.snapshot_cost IS NULL OR COALESCE(l.snapshot_source,'manual')!='manual' END estimated,
-      COALESCE(l.snapshot_cost,CASE WHEN l.wr_variant_id IS NOT NULL THEN
-        (SELECT wr_price FROM wr_variants WHERE wr_variant_id=l.wr_variant_id)
-        WHEN l.sk_variant_id IS NOT NULL THEN (SELECT sk_price FROM sk_products WHERE sk_variant_id=l.sk_variant_id)
-        ELSE l.manual_cost END,0)*l.qty own_cost,
+      CASE WHEN (l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL)
+              AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
+          ROUND(COALESCE(COALESCE(tl.cost_usdt,l.tunvn_elig_cost,
+            CASE WHEN l.pv_sku LIKE 'TUNVN-BUFF%' THEN l.pv_tunvn_cost ELSE tp.price_usdt END*l.qty),0)
+            * COALESCE(CASE WHEN l.pv_sku LIKE 'TUNVN-BUFF%' THEN l.pv_tunvn_fx ELSE tp.fx_idr_per_usdt END,
+              CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END,0))
+        WHEN (l.aivault_elig IS NOT NULL OR l.pv_aivault_service_id IS NOT NULL OR al.id IS NOT NULL)
+              AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
+          ROUND(COALESCE(COALESCE(al.cost_usd,l.aivault_elig_cost,ap.unit_price_usd*l.qty),0)
+            * COALESCE(ap.fx_idr_per_usd,
+              CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END,0))
+        ELSE COALESCE(l.snapshot_cost,CASE WHEN l.wr_variant_id IS NOT NULL THEN
+          (SELECT wr_price FROM wr_variants WHERE wr_variant_id=l.wr_variant_id)
+          WHEN l.sk_variant_id IS NOT NULL THEN (SELECT sk_price FROM sk_products WHERE sk_variant_id=l.sk_variant_id)
+          ELSE l.manual_cost END,0)*l.qty END own_cost,
       COALESCE(CAST(w.id AS TEXT),CAST(s.id AS TEXT),'own:'||l.item_index) pool_key
     FROM bindings l LEFT JOIN wr_order_links w ON w.id=l.wl_id LEFT JOIN sk_order_links s ON s.id=l.sl_id
     LEFT JOIN pedia_order_items pi ON pi.order_code=l.code
+    LEFT JOIN tunvn_order_links tl ON tl.order_code=l.code AND tl.item_index=l.item_index
+    LEFT JOIN aivault_order_links al ON al.order_code=l.code AND al.item_index=l.item_index
+    LEFT JOIN tunvn_products tp ON tp.supplier_product_id=COALESCE(CAST(tl.source_product_id AS INTEGER),
+      CAST(l.tunvn_elig_source_id AS INTEGER),CASE WHEN l.pv_sku LIKE 'TUNVN-%' THEN CAST(substr(l.pv_sku,7) AS INTEGER) END)
+    LEFT JOIN aivault_products ap ON ap.service_id=COALESCE(al.service_id,l.pv_aivault_service_id)
+    LEFT JOIN crypto_market_snapshot cm ON cm.id=1
   ), shares AS (
     SELECT p.*,
       CASE WHEN SUM(gross) OVER(PARTITION BY code)>0 THEN

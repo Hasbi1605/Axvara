@@ -105,7 +105,7 @@ it("switching period updates the chart, top products, supplier amounts and compo
   const report = (name:string,amount:number,date:string):PeriodReport => ({
     orders:1,revenue:amount,cost:10000,profit:amount-10000,estimated_orders:0,
     series:[{date,orders:1,revenue:amount,cost:10000,profit:amount-10000}],
-    suppliers:{wr:{orders:0,revenue:0,cost:0,profit:0},sk:{orders:0,revenue:0,cost:0,profit:0},manual:{orders:1,revenue:amount,cost:10000,profit:amount-10000},pedia:{orders:0,revenue:0,cost:0,profit:0}},
+    suppliers:{wr:{orders:0,revenue:0,cost:0,profit:0},sk:{orders:0,revenue:0,cost:0,profit:0},manual:{orders:1,revenue:amount,cost:10000,profit:amount-10000},pedia:{orders:0,revenue:0,cost:0,profit:0},tunvn:{orders:0,revenue:0,cost:0,profit:0},aivault:{orders:0,revenue:0,cost:0,profit:0}},
     channels:{web:{orders:1,revenue:amount,cost:10000,profit:amount-10000},telegram:{orders:0,revenue:0,cost:0,profit:0},whatsapp:{orders:0,revenue:0,cost:0,profit:0}},
     top_products:[{name,qty:1,revenue:amount,cost:10000,profit:amount-10000}],
   });

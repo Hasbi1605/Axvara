@@ -18,7 +18,7 @@ it("measures report, facets, pagination, reservation and active queue costs in D
       "CREATE INDEX costs_order ON order_item_costs(order_code,item_index)", "CREATE INDEX items_order ON fulfillment_items(order_code,item_index)",
       "CREATE INDEX paid_order ON payment_transactions(order_code)", "CREATE INDEX pedia_order ON pedia_order_items(order_code)",
       "CREATE INDEX orders_paid ON orders(status,payment_status)",
-      "INSERT INTO product_variants VALUES(1,10000,NULL,NULL),(2,0,'w2',NULL),(3,0,NULL,'s3')",
+      "INSERT INTO product_variants(id,manual_cost,wr_variant_id,sk_variant_id) VALUES(1,10000,NULL,NULL),(2,0,'w2',NULL),(3,0,NULL,'s3')",
       `WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<400)
         INSERT INTO orders(code,subtotal,order_kind,items,sales_channel,paid_at,updated_at,status,created_at)
         SELECT 'O'||x,50001,'market','[{"product_id":1,"variant_id":1,"name":"Own","qty":1,"price":14000},{"product_id":2,"variant_id":2,"name":"WR","qty":1,"price":16000},{"product_id":3,"variant_id":3,"name":"SK","qty":1,"price":20000}]',

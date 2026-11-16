@@ -1703,7 +1703,7 @@ mengubah `games_products`/enabled. Harga jual baru dihitung sinkron berikutnya (
 
 **Laporan pendapatan (issue #12, review R9 2026-09-08):** sumber waktu kanonis `src/lib/revenue.ts` — `orders.paid_at` (ditulis sekali saat transisi lunas via COALESCE-guard di semua jalur QRIS/manual/admin, dalam batch yang sama dengan flip status) dengan bucket WIB (`datetime(..., '+7 hours')` di SQL, helper `isSameWibDay/isSameWibMonth` di dev-fallback). Hierarki: ledger `paid_at` → `paid_at` order → `reviewed_at` bukti → `updated_at` fallback. Migrasi `0016_revenue_paid_at.sql` membackfill data lama (QRIS dari ledger, manual dari `reviewed_at`, sisa lunas dari `updated_at`, non-lunas tetap NULL, idempoten). Overview menandai `revenue_timezone: Asia/Jakarta` + `revenue_from/to` agar mudah diaudit.
 
-**Dashboard untung (revisi 2026-10-15, implementasi; publikasi via CI):** `src/lib/dashboard-report.ts` membaca satu query agregat CTE dengan fakta per item lunas; respons dibatasi agregat (bukan seluruh order mentah). `orders.paid_at`/ledger pembayaran tetap menentukan kalender WIB. Modal link WR/SK dialokasikan ke baris supplier yang bersangkutan; modal stok sendiri dari snapshot, fallback katalog untuk riwayat tanpa snapshot. Pedia memakai `supplier_charge`, fallback rate snapshot × quantity, dan kelompok supplier tersendiri. Biaya supplier dinormalisasi ke rupiah utuh untuk konsistensi tampilan. Pembagian nominal pembayaran/biaya supplier mempertahankan setiap rupiah (sisa pembulatan pada baris terakhir); supplier/channel/Top 5/series memakai fakta yang sama. Item campuran tidak disembunyikan oleh keberadaan link supplier pada item lain. Jumlah pesanan per supplier menghitung pesanan yang mengandung item asal itu; pada keranjang campuran jumlah kelompok tidak dijumlahkan sebagai total order.
+**Dashboard untung (revisi 2026-10-15, implementasi; publikasi via CI):** `src/lib/dashboard-report.ts` membaca satu query agregat CTE dengan fakta per item lunas; respons dibatasi agregat (bukan seluruh order mentah). `orders.paid_at`/ledger pembayaran tetap menentukan kalender WIB. Modal link WR/SK dialokasikan ke baris supplier yang bersangkutan; modal stok sendiri dari snapshot, fallback katalog untuk riwayat tanpa snapshot. Pedia memakai `supplier_charge`, fallback rate snapshot × quantity, dan kelompok supplier tersendiri. TUNVN dan AIVault memakai modal dari link order mereka (`tunvn_order_links.cost_usdt` / `aivault_order_links.cost_usd`, sudah total per baris), fallback snapshot `tunvn_eligibility`/`aivault_eligibility`, lalu harga katalog terkini; kurs IDR-nya kurs katalog terakhir (`tunvn_products.fx_idr_per_usdt` / `aivault_products.fx_idr_per_usd`, fallback `crypto_market_snapshot`), bukan kurs persis saat order. Baris tersebut hanya dikenali sebagai TUNVN/AIVault bila bukan Pedia dan tidak terikat link WR/SK. Biaya supplier dinormalisasi ke rupiah utuh untuk konsistensi tampilan. Pembagian nominal pembayaran/biaya supplier mempertahankan setiap rupiah (sisa pembulatan pada baris terakhir); supplier/channel/Top 5/series memakai fakta yang sama. Item campuran tidak disembunyikan oleh keberadaan link supplier pada item lain. Jumlah pesanan per supplier menghitung pesanan yang mengandung item asal itu; pada keranjang campuran jumlah kelompok tidak dijumlahkan sebagai total order.
 
 `GET /api/admin/overview` mempertahankan field `revenue/cost/profit _today/_week/_month/_total`, breakdown seluruh waktu dan `daily_series` 30 hari untuk kompatibilitas; menambahkan `period_reports.{today,week,month}` berisi `{orders,revenue,cost,profit,estimated_orders,series,suppliers,channels,top_products}`. UI memakai laporan periode untuk SEMUA panel. `today.series` per jam WIB sampai jam berjalan; minggu/bulan harian sampai tanggal berjalan. Top 5 mencakup seluruh transaksi periode (batas 500 order dihapus). Query gagal tidak diganti dengan untung 0; UI menampilkan pesan gagal beserta tombol muat ulang. Grafik `OverviewCharts.tsx` mengukur container, mendukung nilai rugi dan sumbu order tersendiri; donat memakai omzet nonnegatif, batang untung mendukung rugi. Pergantian periode memakai payload yang sama, tanpa polling atau cron tambahan.
 
@@ -5534,3 +5534,31 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   admin tetap terjaga. Tidak menjalankan migrasi manual atau QA produksi.
 - Verifikasi lokal memakai fixture SQLite/jsdom dan Chrome headless dengan route
   mock; bukan bukti deployment atau tampilan PDP produksi.
+
+### 16.46 Modal TUNVN/AIVault di Ringkasan admin — 16 November 2026 (lokal)
+
+- `financialReportSql` kini mengenali baris TUNVN/AIVault sebagai supplier
+  tersendiri (`source='tunvn'|'aivault'`) di samping wr/sk/manual/pedia, tanpa
+  migrasi D1. Deteksinya: ada `tunvn_order_links`/`aivault_order_links` untuk
+  `(order_code,item_index)`, ATAU snapshot `$.tunvn_eligibility` /
+  `$.aivault_eligibility` di `orders.items`, ATAU `product_variants.sku LIKE
+  'TUNVN-%'` / `product_variants.aivault_service_id IS NOT NULL`. Deteksi ini
+  mengalahkan `snapshot_source='manual'` dari `order_item_costs`, tetapi hanya
+  bila baris bukan Pedia dan tidak terikat link WR/SK.
+- Modal IDR = `ROUND(cost_usd_total × fx)` dengan urutan cost link → eligibility
+  JSON → harga katalog terkini (TUNVN akun `price_usdt`, Buff `tunvn_cost_usdt`,
+  AIVault `unit_price_usd`, dikali `qty`). Cost link/eligibility sudah total per
+  baris sehingga TIDAK dikali `qty` lagi. Nilai masuk sebagai `own_cost` dengan
+  `cost_pool` NULL agar alokasi supplier existing tidak berubah.
+- `estimated` true bila link tidak ada/`status != 'completed'` atau kurs tidak
+  tersedia. Kurs memakai snapshot katalog terakhir (`fx_idr_per_usdt` /
+  `fx_idr_per_usd`, fallback `crypto_market_snapshot.fx_rate_text`), jadi laporan
+  dapat berbeda tipis dari kurs saat order dibuat.
+- Batas D1 tetap dijaga: compound SELECT tetap tiga cabang (<5), referensi
+  `facts`/`scoped` tidak bertambah, join TUNVN/AIVault ditempatkan di CTE
+  `pools` (bukan subquery berulang). `PeriodReport.suppliers`, objek nol overview
+  (`profit_by_supplier`), label ekspor, dan baris UI Ringkasan (opsional untuk
+  payload cache lama) ikut ditambah `tunvn`/`aivault`.
+- Verifikasi lokal: test D1/workerd menyertakan order link completed (4,6 USDT ×
+  18.086 = Rp83.196; 0,5 USD × 16.500 = Rp8.250) dan order tanpa link yang tetap
+  estimasi; bukan bukti deployment atau angka produksi.

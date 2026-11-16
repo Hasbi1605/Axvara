@@ -1,6 +1,27 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
 
+## Modal di Ringkasan admin — 16 November 2026 (lokal)
+
+- `financialReportSql` (`src/lib/dashboard-report.ts`) kini punya bucket supplier
+  `tunvn` sendiri, bukan `manual`. Baris dikenali TUNVN bila ada
+  `tunvn_order_links` untuk `(order_code,item_index)`, item punya
+  `tunvn_eligibility`, atau `product_variants.sku LIKE 'TUNVN-%'`; hanya bila
+  baris bukan Pedia dan tidak terikat link WR/SK.
+- Modal = `ROUND(cost_usdt × fx)`. Sumber cost berurutan: link (total per baris,
+  TIDAK dikali qty lagi) → snapshot eligibility → harga katalog terkini (akun
+  `price_usdt`; Buff `tunvn_cost_usdt`) × qty. Disimpan sebagai `own_cost` dengan
+  `cost_pool` NULL agar alokasi existing tidak berubah.
+- Kurs = `tunvn_products.fx_idr_per_usdt` (Buff: `pv.tunvn_fx_idr_per_usdt`),
+  fallback `crypto_market_snapshot.fx_rate_text`. Ini kurs katalog terakhir, bukan
+  kurs persis saat order. `estimated` true bila link tidak ada/`status !=
+  'completed'` atau kurs tidak tersedia.
+- Tanpa migrasi D1; batas compound SELECT (<5) dan referensi `facts`/`scoped`
+  tetap. `PeriodReport.suppliers`, `profit_by_supplier` overview, label ekspor,
+  dan baris UI Ringkasan ikut ditambah `tunvn` (opsional untuk payload cache lama).
+- Status: implementasi lokal + test; belum publikasi/deploy. Bukan bukti angka
+  produksi.
+
 ## Panel Markup, sinkron harga Produk dan salinan — 15 November 2026 (lokal)
 
 - Harga manual supplier (`aivault_admin_price_idr`/`tunvn_admin_price_idr`) dari

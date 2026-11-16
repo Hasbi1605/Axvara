@@ -38,7 +38,7 @@ export type AdminOverviewData = {
   profit_month: number;
   profit_total: number;
   profit_estimated_orders: number;
-  profit_by_supplier: { wr: SupplierBucket; sk: SupplierBucket; manual: SupplierBucket };
+  profit_by_supplier: { wr: SupplierBucket; sk: SupplierBucket; manual: SupplierBucket; pedia?: SupplierBucket; tunvn?: SupplierBucket; aivault?: SupplierBucket };
   top_profit_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[];
   profit_by_channel: { web: ChannelBucket; telegram: ChannelBucket; whatsapp: ChannelBucket };
   daily_series: { date: string; orders: number; revenue: number; cost: number; profit: number }[];
@@ -68,6 +68,9 @@ export const EMPTY_ADMIN_OVERVIEW: AdminOverviewData = {
     wr: { orders: 0, revenue: 0, cost: 0, profit: 0 },
     sk: { orders: 0, revenue: 0, cost: 0, profit: 0 },
     manual: { orders: 0, revenue: 0, cost: 0, profit: 0 },
+    pedia: { orders: 0, revenue: 0, cost: 0, profit: 0 },
+    tunvn: { orders: 0, revenue: 0, cost: 0, profit: 0 },
+    aivault: { orders: 0, revenue: 0, cost: 0, profit: 0 },
   },
   top_profit_products: [],
   profit_by_channel: {
@@ -146,7 +149,9 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
     { label: "Warung Rebahan", color: "rgb(var(--admin-info))", ...suppliers.wr },
     { label: "Sekalipay", color: "rgb(var(--admin-accent))", ...suppliers.sk },
     { label: "Stok sendiri", color: "rgb(var(--admin-warning))", ...suppliers.manual },
-    ...(report && report.suppliers.pedia.orders > 0 ? [{ label: "Pedia", color: "rgb(var(--admin-success))", ...report.suppliers.pedia }] : []),
+    ...(suppliers.pedia?.orders ? [{ label: "Pedia", color: "rgb(var(--admin-success))", ...suppliers.pedia }] : []),
+    ...(suppliers.tunvn?.orders ? [{ label: "TUNVN", color: "rgb(var(--admin-danger))", ...suppliers.tunvn }] : []),
+    ...(suppliers.aivault?.orders ? [{ label: "AIVault", color: "rgb(var(--admin-info))", ...suppliers.aivault }] : []),
   ];
   const channelRows = Object.entries({ Web: channels.web, Telegram: channels.telegram, WhatsApp: channels.whatsapp })
     .map(([label,r])=>({ ...r, label, cost: r.revenue-r.profit, color: "rgb(var(--admin-accent))" }));
