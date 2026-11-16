@@ -105,7 +105,7 @@ Produk admin”. Implementasi/migrasi baru lokal; tanpa perubahan produksi.
   dijeda. Gunakan pemetaan ID supplier eksplisit; reuse parent aktif atau isi
   gambar tujuan yang kosong dari parent asal (termasuk nonaktif). Pertahankan
   gambar admin tujuan dan seluruh identitas/riwayat order lama.
-- Katalog mempunyai job lite ber-cursor satu produk/tick, budget40, setiap menit
+- Katalog mempunyai job lite ber-cursor setiap menit [16Nov: beberapa produk/tick, budget96 — lihat platform-ops.md; awalnya satu produk/tick, budget40]
   sesudah order. Pengiriman otomatis memakai webhook + poll invoice dikenal;
   progress phase/antrean/hitungan nyata, bukan animasi persentase berbasis timer.
   Completed koheren saja berarti100%; partial/malformed tetap pengecualian aman.

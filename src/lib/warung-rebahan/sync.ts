@@ -1595,16 +1595,24 @@ export async function syncJaspayCatalog(
     const cursor = await db.queryFirst("SELECT value FROM wr_sync_state WHERE key='jaspay_catalog_cursor'");
     const sorted = [...products].sort((a, b) => a.productId.localeCompare(b.productId));
     const next = sorted.findIndex(p => p.productId.localeCompare(String(cursor?.value ?? "")) > 0);
-    work = sorted.slice(next < 0 ? 0 : next, (next < 0 ? 0 : next) + Math.max(1, options.maxProducts!));
+    // Owner 16-Nov: rotate with wrap-around so one tick can cover several
+    // products (budget-bound) without revisiting any product twice.
+    const start = next < 0 ? 0 : next;
+    work = [...sorted.slice(start), ...sorted.slice(0, start)].slice(0, Math.max(1, options.maxProducts!));
   }
   const checkpoint = async (id: string) => {
-    if (bounded) await db.execRun("INSERT INTO wr_sync_state(key,value) VALUES('jaspay_catalog_cursor',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", id);
+    if (bounded) await db.execRun("INSERT INTO wr_sync_state(key,value,updated_at) VALUES('jaspay_catalog_cursor',?,datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at", id);
   };
-  // Zero-missing hanya boleh memakai seen-set LENGKAP: feed sukses, semua
-  // produk diproses tanpa error/berhenti karena budget.
+  // Zero-missing hanya boleh memakai seen-set LENGKAP: feed sukses dan tidak
+  // ada produk yang error. Mode bounded memakai seen-set feed penuh; berhenti
+  // karena budget SETELAH >=1 produk tersinkron adalah batas tick normal
+  // (cursor melanjutkan), bukan kegagalan. Sisakan budget untuk zero-missing.
+  const ZERO_MISSING_RESERVE = 4;
   let complete = true;
   for (const product of work) {
-    if (!db.canSpend(12 + product.packages.length * 6)) {
+    const cost = 12 + product.packages.length * 6;
+    if (bounded && result.synced > 0 && !db.canSpend(cost + ZERO_MISSING_RESERVE)) break;
+    if (!db.canSpend(cost)) {
       complete = false;
       break;
     }

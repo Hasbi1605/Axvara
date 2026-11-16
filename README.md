@@ -132,7 +132,7 @@ order lama, invoice, data supplier/admin dan jalur penyelesaiannya tetap utuh.
   existing. Tidak fallback ke manual. Varian baru memakai identitas baru pada
   parent yang dipetakan eksplisit; gambar/galeri MBO asal dipakai kembali,
   termasuk saat asal nonaktif, tanpa menimpa gambar tujuan milik admin.
-- Worker menjalankan `jaspay_catalog` lite tiap menit, satu produk/tick dengan
+- Worker menjalankan `jaspay_catalog` lite tiap menit, beberapa produk/tick (budget96 sejak 16 Nov 2026; dulu satu produk/tick) dengan
   cursor durable dan budget40 existing, sesudah job order. Hingga10 tick sukses
   untuk snapshot10 produk; tidak perlu env/secret/trigger jadwal baru.
 - Migrasi0121 menambah JSON progres aman pada link WR dan mengantrekan ulang

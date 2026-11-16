@@ -1,5 +1,15 @@
 # ARCHITECTURE.md — AXVARA
 
+## Jaspay katalog multi-produk per tick — 16 November 2026
+
+- `src/app/api/cron/lite/route.ts`: `jaspay_catalog` budget 96 (lainnya 40 kecuali
+  `fulfillment`), `maxProducts` = `JASPAY_PRODUCTS_PER_TICK` (10).
+- `syncJaspayCatalog` (bounded): urutan produk dirotasi wrap-around dari cursor;
+  produk berikutnya hanya diambil bila budget cukup + cadangan 4 statement untuk
+  zero-missing; berhenti karena budget setelah >=1 produk tidak membatalkan
+  zero-missing. Cursor menulis `updated_at`. Siklus penuh ±3 menit (dulu ±11).
+- Tanpa migrasi/env/trigger baru. Catatan "satu produk/tick" di bawah = histori.
+
 ## Gate penjualan WR MBO per cakupan Jaspay — 16 November 2026
 
 - `src/lib/warung-rebahan/new-sales.ts` kini memiliki `JASPAY_LEGACY_PRODUCTS`

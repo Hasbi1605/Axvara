@@ -76,6 +76,31 @@ it("rotates the whole catalog under the unchanged 40-statement cron budget", asy
   } finally { fx.close(); }
 });
 
+it("covers the whole catalog in a few ticks under the 96-statement Jaspay budget, wrapping the cursor and still zeroing missing packages", async () => {
+  const fx = await setupWrFixture(); enable();
+  try {
+    const synced: number[] = [];
+    for (let tick = 0; tick < 3; tick++) {
+      const budget = createBudgetedDatabase(96, 2, fx.db);
+      const result = await syncJaspayCatalog(budget.access, async () => catalog, { maxProducts: 10 });
+      expect(result.errors).toEqual([]);
+      expect(budget.used).toBeLessThanOrEqual(94);
+      synced.push(result.synced);
+    }
+    expect(Math.min(...synced)).toBeGreaterThanOrEqual(2);
+    expect(synced.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(10);
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM products WHERE wr_product_id LIKE 'jaspay:%'").get()).toMatchObject({ n: 10 });
+    expect(fx.sql.prepare("SELECT COUNT(*) n FROM product_variants WHERE wr_variant_id LIKE 'jaspay:%' AND stock=-1").get()).toMatchObject({ n: 17 });
+    // A package that vanished from the full feed is zeroed on a budget-bounded tick.
+    const victim = fx.sql.prepare("SELECT wr_variant_id FROM wr_variants WHERE wr_variant_id LIKE 'jaspay:%' AND wr_stock=-1 ORDER BY wr_variant_id LIMIT 1").get()!;
+    const feed = catalog.filter(p => `jaspay:${p.product}` !== String(victim.wr_variant_id).split(":").slice(0, 2).join(":"));
+    const budget = createBudgetedDatabase(96, 2, fx.db);
+    const result = await syncJaspayCatalog(budget.access, async () => feed, { maxProducts: 10 });
+    expect(result.errors).toEqual([]);
+    expect(fx.sql.prepare("SELECT wr_stock FROM wr_variants WHERE wr_variant_id=?").get(victim.wr_variant_id)).toMatchObject({ wr_stock: 0 });
+  } finally { fx.close(); }
+});
+
 it("inherits image and gallery from an inactive MBO parent without reactivating it or overwriting new admin images", async () => {
   const fx = await setupWrFixture(); enable();
   try {

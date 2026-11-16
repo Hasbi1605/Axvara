@@ -51,6 +51,8 @@ type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 10;
 const ORPHAN_LEDGER_PER_RUN = 10;
 const FULFILLMENT_PER_RUN = 4;
+/** Plafon produk Jaspay per tick; budget 96 yang benar-benar membatasi. */
+const JASPAY_PRODUCTS_PER_TICK = 10;
 
 type Items = { product_id: number; variant_id?: number; qty: number }[];
 const parseItems = (raw: unknown): Items => {
@@ -71,8 +73,9 @@ export async function POST(request: NextRequest) {
   const job = request.nextUrl.searchParams.get("job") as LiteJob | null;
   if (!job || !LITE_JOBS.includes(job)) return NextResponse.json({ error: "invalid_job" }, { status: 400 });
 
-  // Paid: fulfillment mendapat96 statement untuk beberapa unit; job lain40.
-  const db = createBudgetedDatabase(job === "fulfillment" ? 96 : 40).access;
+  // Paid: fulfillment mendapat96 statement untuk beberapa unit; Jaspay96
+  // (owner 16 Nov 2026: beberapa produk/tick, siklus penuh ±3 menit); job lain40.
+  const db = createBudgetedDatabase(job === "fulfillment" || job === "jaspay_catalog" ? 96 : 40).access;
   const result: Record<string, unknown> = { ok: true, job };
   try {
     if (job === "payments") {
@@ -155,7 +158,7 @@ export async function POST(request: NextRequest) {
     }
     else if (job === "jaspay_catalog") {
       const { syncJaspayCatalog } = await import("@/lib/warung-rebahan/sync");
-      const synced = await syncJaspayCatalog(db, undefined, { maxProducts: 1 });
+      const synced = await syncJaspayCatalog(db, undefined, { maxProducts: JASPAY_PRODUCTS_PER_TICK });
       Object.assign(result, synced);
       if (synced.errors.length && !synced.errors.includes("warung_rebahan_disabled")) {
         return NextResponse.json({ ...result, ok: false }, { status: 503 });

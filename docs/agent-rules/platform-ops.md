@@ -1,5 +1,15 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Jaspay katalog multi-produk per tick —16 November2026
+
+Keputusan owner (Workers Paid): job lite `jaspay_catalog` memakai budget **96**
+(sama dengan `fulfillment`; job lite lain tetap40) dan plafon10 produk/tick.
+Cursor `wr_sync_state.jaspay_catalog_cursor` berputar wrap-around tanpa memproses
+produk dua kali per tick dan kini memperbarui `updated_at`. Berhenti karena
+budget sesudah >=1 produk = batas tick normal; cadangan4 statement disisakan
+agar zero-missing (seen-set feed penuh) tetap jalan. Siklus11 produk ±3 tick
+(sebelumnya ±11). Tanpa trigger/env baru; fetch feed tetap satu per tick.
+
 ### Antrean grup produk —16 November2026
 
 Migrasi0129 menambah `product_group_dirty(group_id,version,pending)` menggantikan
