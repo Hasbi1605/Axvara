@@ -1,5 +1,17 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## PIN setelah pembayaran (16 November 2026)
+
+PIN6 existing tersedia di halaman pesanan/lacak setelah lunas, termasuk saat
+produk masih diproses, hanya untuk proof checkout asli atau capability akun
+terverifikasi. Produk otomatis terbuka tanpa PIN selama akses sah berlaku;
+perangkat lain/sesi berakhir memakai kontak checkout+PIN. Email produk siap
+tetap salinan. Kartu minimalis memakai glass card standar, satu baris PIN/Salin
+dan helper singkat. POST privat `/api/orders/[code]/pin` tidak menerima kontak/p1;
+PIN tidak masuk status publik, URL/history/storage. Tanpa env/migrasi/cron baru.
+Mengganti aturan email-only28Oktober; implementasi lokal, publikasi melalui CI,
+deployment belum diverifikasi. Detail: `docs/agent-rules/buyer-credentials.md`.
+
 ## Pengiriman AI Vault & progres Jaspay (16 November 2026)
 
 Jalur pembayaran AIVault mencoba pengiriman lagi setelah pembelian supplier,
@@ -719,7 +731,7 @@ Gagal harga Pedia menyediakan tombol coba ulang dan status aksesibel, tetap
 menjaga jumlah/layanan/draf dan pemeriksaan harga sebelum pembayaran. Tidak ada
 dependency/env/migrasi/cron baru atau perubahan keamanan/kontrak order.
 
-## Invoice, kontak dan PIN untuk kredensial, 28 Oktober 2026
+## Snapshot invoice, kontak dan PIN, 28 Oktober 2026 (PIN web diganti 16 November)
 
 ✅ Implementasi lokal untuk publikasi CI. Email produk siap berisi **kredensial
 lengkap + PIN enam karakter** pada pesan yang sama. Tidak ada email PIN lebih awal,

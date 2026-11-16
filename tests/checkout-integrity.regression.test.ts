@@ -285,7 +285,8 @@ describe("Authoritative UI and admin state", () => {
     const copySource = statusPage + copyFile;
     // Render kondisional — bukan lagi `isPaid` saja (form mati untuk produk manual).
     expect(statusPage).toContain("order.credentialsReady");
-    expect(statusPage).toMatch(/isPaid && \(order\.credentialsReady \?/);
+    expect(statusPage).toContain("credentialsReady={order.credentialsReady}");
+    expect(read("src/components/storefront/WrCredentialsPanel.tsx")).toContain("if (!credentialsReady) return null;");
     // Fallback: info pengiriman ke kontak checkout, bukan form verifikasi WA.
     expect(copySource).toContain("Pengiriman Produk");
     // Kabar web lewat email (bot WA mati); WA hanya untuk order tanpa email.

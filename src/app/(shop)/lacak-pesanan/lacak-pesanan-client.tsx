@@ -693,8 +693,8 @@ export default function LacakPesananClient() {
             </div>
           )}
           {isPaid && order.automaticProgress.length > 0 && <AutomaticOrderProgress items={order.automaticProgress} locale={order.locale} />}
-          {isPaid && order.credentialsReady && (
-            <WrCredentialsPanel deliveryProgress={order.deliveryProgress} key={order.code} code={order.code} prefillContact={wa} prefillPin={pin} buyerPinRequired={order.buyerPinRequired} adminView={adminView} locale={order.locale} />
+          {isPaid && (order.buyerPinRequired || order.credentialsReady) && (
+            <WrCredentialsPanel credentialsReady={order.credentialsReady} deliveryProgress={order.deliveryProgress} key={order.code} code={order.code} prefillContact={wa} prefillPin={pin} buyerPinRequired={order.buyerPinRequired} adminView={adminView} locale={order.locale} />
           )}
           {isPaid && !order.credentialsReady && order.supplierRunning && !order.automaticProgress.length && (
             <p className="mt-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60" role="status">

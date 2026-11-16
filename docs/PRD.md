@@ -1,5 +1,19 @@
 # PRD — AXVARA
 
+## PIN pascabayar dan akses otomatis — 16 November 2026
+
+- Pembeli dengan bukti checkout asli/capability akun yang sah memperoleh PIN6
+  existing di halaman pesanan/lacak setelah pembayaran terverifikasi, tanpa
+  menunggu supplier selesai. Email produk siap tetap salinan produk+PIN, bukan
+  sumber tunggal. Tidak membuat PIN kedua atau mengirim email PIN awal.
+- Produk siap langsung terbuka tanpa memasukkan PIN selama akses sah berlaku.
+  Di perangkat lain/sesi berakhir gunakan kontak checkout+PIN; invoice+kontak
+  atau sesi status tidak boleh mengungkap PIN. Error jaringan memberi retry,
+  bukan memaksa PIN ulang. PIN tidak dipersist/ditaruh di URL atau status publik.
+- UI minimalis satu baris PIN/Salin pada glass card standar AXVARA dengan helper
+  singkat; ID/EN mengikuti order. Implementasi/test lokal; publikasi CI main,
+  deployment belum diverifikasi. Mengganti ketentuan email-only28Oktober.
+
 ## Pengiriman supplier & progres pembeli — 16 November 2026
 
 - AIVault di pembayaran baru dan Retry admin yang completed langsung mencoba

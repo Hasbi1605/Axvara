@@ -109,7 +109,7 @@ describe("Market warranty claim guidance", () => {
   });
 
   it("keeps one warranty accordion inside the account card before contact verification", async () => {
-    stubOrder();
+    stubOrder({ buyer_pin_required: true });
     render(<OrderStatusPage />);
     const account = await screen.findByRole("region", { name: "Ambil detail akun" });
     const button = within(account).getByRole("button", { name: "Syarat klaim garansi" });

@@ -27,8 +27,8 @@ export function orderCopy(locale: Locale) {
     access: {
       title: en ? "Open your order" : "Buka pesananmu",
       lead: en
-        ? "Enter your order code and the WhatsApp number or email used at checkout. A 6-character PIN from the email is only needed to open account details, not to view status."
-        : "Isi kode invoice dan No. WA atau email checkout. PIN 6 karakter dari email hanya dibutuhkan untuk membuka detail akun, bukan untuk melihat status.",
+        ? "Enter your order code and checkout WhatsApp number or email. Account details open automatically with valid access; otherwise use your checkout contact and PIN. Status never needs a PIN."
+        : "Isi kode invoice dan No. WA atau email checkout. Detail akun terbuka otomatis selama akses sah masih berlaku; jika tidak, gunakan kontak checkout dan PIN. Status tidak membutuhkan PIN.",
       contactLabel: en ? "Checkout WhatsApp number or email *" : "No. WA atau email checkout *",
       contactPlaceholder: en ? "0812… or name@email.com" : "0812… atau nama@email.com",
       submit: en ? "Open order" : "Buka pesanan",
@@ -129,9 +129,9 @@ export function orderCopy(locale: Locale) {
       codeError: en ? "Code format is not right yet. Example: AXV-20260917-AB12CD34." : "Format kode belum tepat. Contoh: AXV-20260917-AB12CD34.",
       contactLabel: en ? "Checkout WhatsApp number or email *" : "No. WA atau email checkout *",
       contactError: en ? "Enter the checkout WhatsApp number or email used when ordering." : "Isi No. WA atau email checkout yang dipakai saat memesan.",
-      pinLabel: en ? "Access PIN (from the email sent at checkout)" : "PIN akses (didapat di email yang diisi saat checkout)",
-      pinPlaceholder: en ? "PIN from the product-ready email" : "PIN dari email produk siap",
-      pinError: en ? "Enter the 6-character PIN from the email, or the old access code. Leave empty for status only." : "Isi PIN 6 karakter dari email, atau kode akses lama. Kosongkan untuk status saja.",
+      pinLabel: en ? "Access PIN (optional — another device)" : "PIN akses (opsional — perangkat lain)",
+      pinPlaceholder: en ? "PIN from the order page or email" : "PIN dari halaman pesanan atau email",
+      pinError: en ? "Enter the 6-character PIN or old access code. Leave empty for status or automatic access." : "Isi PIN 6 karakter atau kode akses lama. Kosongkan untuk status atau akses otomatis.",
       submit: en ? "Track Order" : "Lacak Pesanan",
       submitting: en ? "Tracking…" : "Melacak…",
       slow: en ? "Slow connection, still tracking…" : "Koneksi lambat, masih melacak…",
@@ -184,13 +184,13 @@ export function orderCopy(locale: Locale) {
       faq: en
         ? [
             ["Where do I find my order code?", "After checkout you are redirected to /pesanan/AXV-... Keep the code. Telegram orders can be reopened via /orders; WA orders are recorded in the group."],
-            ["I lost my access PIN", "The 6-character PIN is only in the product-ready email (check inbox/spam). Order status can still be viewed with the code + checkout contact, without a PIN."],
+            ["I lost my access PIN", "After payment, find your PIN on the order page in the original checkout tab or with verified account access. A copy is included in the product-ready email. If both are unavailable, contact the admin. Status only needs the order code + checkout contact."],
             ["Status is Pending after paying QRIS", "Wait 1–2 minutes; this page rechecks automatically every 10 seconds. Make sure the amount is exact. If more than 10 minutes, contact the admin with the order code."],
             ["Status is Pending after paying with another method", "Status is updated automatically by the payment system. Confirmation time varies by method; if it does not change, contact the admin with the order code."],
           ]
         : [
             ["Di mana saya menemukan kode pesanan?", "Setelah checkout kamu diarahkan ke halaman /pesanan/AXV-... Simpan kodenya. Order Telegram bisa dilihat lagi lewat /orders, order WA tercatat di grup."],
-            ["PIN akses saya hilang?", "PIN 6 karakter hanya ada di email produk siap (cek inbox/spam). Status pesanan tetap bisa dilihat dengan kode + kontak checkout tanpa PIN."],
+            ["PIN akses saya hilang?", "Setelah lunas, PIN tersedia di halaman pesanan pada tab checkout asli atau akses akun terverifikasi. Salinannya juga ada di email produk siap. Jika keduanya tidak tersedia, hubungi admin. Status cukup kode pesanan + kontak checkout."],
             ["Status Pending padahal sudah bayar QRIS?", "Tunggu 1–2 menit lalu halaman ini memeriksa ulang otomatis tiap 10 detik. Pastikan nominal tepat. Jika lebih dari 10 menit, hubungi admin dengan kode pesanan."],
             ["Status Pending setelah membayar dengan metode lain?", "Status diperbarui otomatis oleh sistem pembayaran. Waktu konfirmasi dapat berbeda menurut metode; jika belum berubah, hubungi admin dengan kode pesanan."],
           ],
@@ -244,11 +244,13 @@ export function orderCopy(locale: Locale) {
           ],
     },
     accessNotice: {
-      pinLabel: en ? "Order access PIN" : "PIN akses pesanan",
+      pinLabel: en ? "Order PIN" : "PIN pesanan",
       codeLabel: en ? "Order access code" : "Kode akses pesanan",
       copyPin: en ? "Copy PIN" : "Salin PIN",
       copyCode: en ? "Copy access code" : "Salin kode akses",
-      pinBody: en ? "The PIN was sent to the email you entered at checkout. Keep it to open this order on another device. Do not share it." : "PIN dikirim ke email yang kamu isi saat checkout. Simpan PIN untuk membuka pesanan di perangkat lain. Jangan bagikan PIN kepada orang lain.",
+      pinBody: en ? "Save for access on another device." : "Simpan untuk akses di perangkat lain.",
+      loading: en ? "Loading your order PIN…" : "Memuat PIN pesanan…",
+      loadFailed: en ? "Could not load the PIN. Your product access is unchanged." : "PIN belum termuat. Akses produkmu tidak berubah.",
       codeBody: en ? "Keep this code to track and open the order on another device. Share it only with people who may access your order." : "Simpan kode ini untuk melacak dan membuka pesanan di perangkat lain. Bagikan hanya kepada orang yang berhak mengakses pesananmu.",
       copyError: en ? "Your browser blocked automatic copy. Select the code above and copy it manually." : "Browser tidak mengizinkan salin otomatis. Pilih teks kode di atas lalu salin manual.",
     },
@@ -270,8 +272,8 @@ export function orderCopy(locale: Locale) {
       networkReload: en ? "Network problem. Try reloading." : "Jaringan bermasalah. Coba muat ulang.",
       networkRetry: en ? "Network problem. Try again." : "Jaringan bermasalah. Coba lagi.",
       needContact: en ? "Enter the email or checkout WhatsApp number used when ordering." : "Isi email atau No. WA checkout yang dipakai saat memesan.",
-      needPin: en ? "Enter the 6-character PIN from the purchase email." : "Isi PIN 6 karakter dari email pembelian.",
-      mismatch: en ? "Contact or PIN does not match. Check the purchase email." : "Kontak atau PIN tidak cocok. Periksa email pembelian.",
+      needPin: en ? "Enter the 6-character PIN from the order page or email." : "Isi PIN 6 karakter dari halaman pesanan atau email.",
+      mismatch: en ? "Contact or PIN does not match. Check your saved PIN or product email." : "Kontak atau PIN tidak cocok. Periksa PIN yang disimpan atau email produk.",
       notReady: en ? "Account details are not available yet — wait a few minutes then reload." : "Detail akun belum tersedia — tunggu beberapa menit lalu muat ulang.",
       verifyFailed: en ? "Verification failed. Try again." : "Gagal memverifikasi. Coba lagi.",
       copyFailed: en ? "Failed to copy. Select the account text to copy it." : "Gagal menyalin. Pilih teks akun untuk menyalinnya.",
@@ -279,7 +281,7 @@ export function orderCopy(locale: Locale) {
       loadingAdmin: en ? "Loading account details…" : "Memuat detail akun…",
       unavailable: en ? "Account details are not available yet." : "Detail akun belum tersedia.",
       openTitle: en ? "Open account details" : "Ambil detail akun",
-      pinIntro: en ? "Enter the checkout contact and the PIN from the product-ready email to open the account." : "Masukkan kontak checkout dan PIN dari email produk siap untuk membuka akun.",
+      pinIntro: en ? "Automatic access is unavailable here. Enter your checkout contact and PIN from the paid order page or product-ready email to open the account." : "Akses otomatis tidak tersedia di sini. Masukkan kontak checkout dan PIN dari halaman pesanan lunas atau email produk siap untuk membuka akun.",
       legacyIntro: en ? "Enter the email or WhatsApp number used at checkout to open details for an older order." : "Masukkan email atau No. WA yang dipakai saat checkout untuk membuka akun pesanan lama.",
       registered: (hint: string) => (en ? `Registered: ${hint}` : `Terdaftar: ${hint}`),
       contactField: en ? "Checkout email or WhatsApp number *" : "Email atau No. WA checkout *",

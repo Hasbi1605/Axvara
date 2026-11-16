@@ -60,7 +60,7 @@ describe("panel Detail Akun Digital", () => {
     sessionStorage.setItem(checkoutContactKey(CODE), "081234567890");
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     render(<WrCredentialsPanel buyerPinRequired={false} code={CODE} />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Memeriksa…" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Memeriksa…"));
     cleanup();
     const calls = stubCredentials(true, null);
     render(<WrCredentialsPanel buyerPinRequired={false} code={CODE} />);
@@ -103,7 +103,7 @@ describe("panel Detail Akun Digital", () => {
     expect(screen.getByText("Terdaftar: 62812****7890 · r***@gmail.com")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Email atau No. WA checkout"), { target: { value: " Rani@Gmail.com " } });
     fireEvent.click(screen.getByRole("button", { name: "Tampilkan" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Kontak atau PIN tidak cocok. Periksa email pembelian."));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Kontak atau PIN tidak cocok. Periksa PIN yang disimpan atau email produk."));
     expect(calls[0].body).toEqual({ contact: "Rani@Gmail.com" });
   });
 });

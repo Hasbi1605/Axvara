@@ -1,5 +1,17 @@
 # DESIGN.md — AXVARA Design System
 
+## PIN pascabayar minimalis — 2026-11-16
+
+Halaman pesanan/lacak paid memakai `OrderAccessNotice` ringkas: label kecil
+**PIN pesanan**, PIN monospace16px dan aksi **Salin** pada satu baris; helper
+hanya “Simpan untuk akses di perangkat lain.”. `ax-glass-card` existing,
+rounded2xl, tanpa panel biru solid/border cyan, ikon/aset atau animasi baru.
+Target Salin44px dan outline keyboard cyan; PIN selectable + pesan salin manual
+saat clipboard ditolak. Locale pesanan untuk buyer, fallback display untuk admin.
+Loading/retry terpisah dari kartu; form PIN tidak muncul selama auto-unlock.
+Kartu hanya setelah lunas dengan proof kuat, juga saat supplier masih proses.
+Mengganti desain email-only28Oktober; tampilan admin code26 tetap kompatibel.
+
 ## Progres Jaspay di Lacak Pesanan — 2026-11-16
 
 `/lacak-pesanan` memakai `AutomaticOrderProgress` existing seperti
@@ -867,7 +879,7 @@ Anchor katalog berjarak144px mobile (termasuk pencarian terbuka),80px mulai lg.
 Gagal harga Pedia tampil inline dengan live status polite dan tombol coba ulang
 minimal44px; fokus keyboard dan pilihan pembeli tetap, tanpa dialog baru.
 
-## Form akses kredensial, 28 Oktober 2026
+## Snapshot form akses kredensial, 28 Oktober 2026 (PIN web diganti 16 November)
 
 ✅ Implementasi lokal untuk publikasi CI. During, ENERGY2/RHYTHM2/MOTION1 mengikuti
 Midnight/Cyan AXVARA. Kartu tampilan/salin PIN di atas pembayaran dihapus. Halaman

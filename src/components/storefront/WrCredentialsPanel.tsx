@@ -2,9 +2,8 @@
 
 // Panel pengambilan detail akun digital (Warung Rebahan) di halaman pesanan.
 // Kredensial TIDAK dibuka hanya dengan kode order: pembeli memverifikasi
-// kepemilikan lewat proof checkout asli atau kontak penuh + PIN dari
-// email pembelian. PIN hanya React state, tidak
-// pernah disimpan di storage/URL, tidak pernah ditampilkan plaintext.
+// kepemilikan lewat proof checkout asli atau kontak penuh + PIN.
+// PIN tampil sesudah paid hanya dengan proof kuat; tidak disimpan di storage/URL.
 // Setelah verifikasi hanya capability token yang disimpan (GET polling).
 
 import { useEffect, useRef, useState } from "react";
@@ -16,6 +15,8 @@ import { forgetCheckoutCredentialGrant, orderAccessHeaders, readCheckoutCredenti
 import { normalizeOrderAccessCode } from "@/lib/order-access-format";
 import type { Locale } from "@/lib/i18n/locale";
 import { orderCopy } from "@/lib/i18n/order-copy";
+import { BuyerOrderPin } from "./BuyerOrderPin";
+import { OrderAccessNotice } from "./OrderAccessNotice";
 
 // `label` hanya ada untuk isi produk non-WR (nama baris pesanan).
 // `terms` = S&K + cara aktivasi ter-resolusi (resolver PDP yang sama),
@@ -40,14 +41,18 @@ function normalizePin(raw: string): string {
   return [6, 26].includes(normalized.length) ? normalized : "";
 }
 
-export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "", buyerPinRequired = true, contactHint = "", deliveryProgress, adminView = false, locale = "id" }: { code: string; prefillContact?: string; prefillPin?: string; buyerPinRequired?: boolean; contactHint?: string; deliveryProgress?: {ready:number;total:number}; adminView?: boolean; locale?: Locale }) {
+export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "", buyerPinRequired = true, credentialsReady = true, contactHint = "", deliveryProgress, adminView = false, locale = "id" }: { code: string; prefillContact?: string; prefillPin?: string; buyerPinRequired?: boolean; credentialsReady?: boolean; contactHint?: string; deliveryProgress?: {ready:number;total:number}; adminView?: boolean; locale?: Locale }) {
   const text = orderCopy(locale).credentials;
   const [contact, setContact] = useState(prefillContact);
   const [pin, setPin] = useState(prefillPin);
   const [loading, setLoading] = useState(false);
+  const [automaticPending, setAutomaticPending] = useState(true);
+  const [automaticError, setAutomaticError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [creds, setCreds] = useState<Credential[] | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [verifiedPin, setVerifiedPin] = useState("");
   const [copied, setCopied] = useState<number | null>(null);
   const accountRef = useRef<HTMLElement | null>(null);
   const scrolledForCode = useRef<string | null>(null);
@@ -88,6 +93,8 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
   const loadedForReady = useRef(-1);
   useEffect(() => {
     let cancelled = false;
+    if (!credentialsReady) return;
+    setAutomaticError(false);
     if (adminView) {
       const controller = new AbortController();
       setLoading(true);
@@ -112,16 +119,22 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
     const autoPin = normalizePin(prefillPin);
     const checkoutGrant = readCheckoutCredentialGrant(code);
     const verifyFromContact = () => {
+      setAutomaticPending(false);
       if (triedPrefill.current) return;
       if (!checkoutGrant && !isContactValue(autoContact)) return;
-      // PIN6 outside the original checkout needs the PIN from its email.
+      // Outside checkout, contact + PIN are still required.
       if (buyerPinRequired && !autoPin && !checkoutGrant) return;
       triedPrefill.current = true;
+      setAutomaticPending(true);
       if (!contactEdited.current) setContact(autoContact);
       if (autoPin && !pinEdited.current) setPin(autoPin);
       void verifyWith(autoContact, buyerPinRequired ? autoPin : "", checkoutGrant);
     };
     const requestedReady = deliveryProgress?.ready ?? 0;
+    const retryAccess = () => {
+      if (checkoutGrant || (!buyerPinRequired && isContactValue(autoContact))) verifyFromContact();
+      else { setAutomaticError(true); setAutomaticPending(false); }
+    };
     let saved: string | null = null;
     try { saved = sessionStorage.getItem(tokenKey); } catch { /* Optional tab storage. */ }
     if (!saved) {
@@ -129,6 +142,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
       return;
     }
     if (loadedForReady.current >= requestedReady) return;
+    setAutomaticPending(true);
     setLoading(true);
     void (async () => {
       try {
@@ -138,17 +152,22 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
           const body = (await r.json()) as { credentials?: Credential[] };
           if (cancelled) return;
           if (body.credentials?.length) {
+            setAutomaticPending(false);
             loadedForReady.current = requestedReady;
             setCreds(body.credentials);
             setToken(saved);
             return;
           }
+          retryAccess(); return;
         } else if (r.status === 401 || r.status === 403) {
           // Hanya token yang ditolak server yang dibuang; 429/5xx sementara tidak.
           try { sessionStorage.removeItem(tokenKey); } catch { /* Storage opsional. */ }
+        } else {
+          retryAccess(); return;
         }
       } catch {
-        /* jaringan: lanjut ke kontak checkout */
+        if (!cancelled) retryAccess();
+        return;
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -156,7 +175,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, deliveryProgress?.ready, token, adminView, buyerPinRequired]);
+  }, [code, credentialsReady, deliveryProgress?.ready, token, adminView, buyerPinRequired, prefillContact, prefillPin, retry]);
 
   async function verifyWith(contactValue: string, pinValue: string, checkoutGrant = "") {
     const requestedReady = deliveryProgress?.ready ?? 0;
@@ -187,23 +206,29 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
         error?: string;
       };
       if (!r.ok) {
+        if (checkoutGrant && responseBody.error !== "verification_failed") setAutomaticError(true);
         if (checkoutGrant && responseBody.error === "verification_failed") forgetCheckoutCredentialGrant(code);
         setError(responseBody.error === "verification_failed" ? text.mismatch : responseBody.error === "not_ready" ? text.notReady : text.verifyFailed);
         return;
       }
       loadedForReady.current = requestedReady;
       setCreds(responseBody.credentials ?? []);
+      if (buyerPinRequired && cleanPin && !checkoutGrant) setVerifiedPin(cleanPin);
       if (responseBody.capability_token) {
         try { sessionStorage.setItem(`wr-cred-token:${code}`, responseBody.capability_token); } catch { /* Credentials remain available in this response. */ }
         setToken(responseBody.capability_token);
       }
     } catch {
       setError(text.networkRetry);
+      if (checkoutGrant) setAutomaticError(true);
     } finally {
       setLoading(false);
+      setAutomaticPending(false);
     }
   }
 
+  function renderPanel() {
+  if (!credentialsReady) return null;
   if (creds?.length) {
     return (
       <section ref={accountRef} className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label={text.headingAria}>
@@ -247,6 +272,12 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
   if (adminView) return <section className="ax-glass-card mt-6 rounded-2xl p-4 text-left" aria-label={text.adminHeading}>
     <p role="status" className="text-sm text-white/65">{loading ? text.loadingAdmin : text.unavailable}</p>
     {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
+  </section>;
+
+  if (automaticPending) return <p role="status" className="mt-4 text-xs text-white/65">{text.checking}</p>;
+  if (automaticError) return <section className="mt-4 text-left text-xs text-white/65">
+    <p role="alert">{text.networkRetry}</p>
+    <button type="button" onClick={() => { triedPrefill.current = false; setRetry(n => n + 1); }} className="min-h-11 px-3 font-semibold text-[#00E5FF] underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">{orderCopy(locale).common.retry}</button>
   </section>;
 
   const pinRequired = buyerPinRequired;
@@ -306,4 +337,9 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
       <WarrantyClaimAccordion className="mt-3" locale={locale} />
     </section>
   );
+  }
+  return <>
+    {!adminView && buyerPinRequired && (verifiedPin ? <OrderAccessNotice accessCode={verifiedPin} locale={locale} /> : <BuyerOrderPin code={code} credentialToken={token} locale={locale} />)}
+    {renderPanel()}
+  </>;
 }

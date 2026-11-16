@@ -30,7 +30,7 @@ it("PIN-shaped history is scrubbed from recent history",async()=>{localStorage.s
 
 it("tracking fields omit helper text but retain validation and the email PIN label", () => {
  render(<Lacak/>);
- const code=screen.getByLabelText("Kode pesanan *"),contact=screen.getByLabelText("No. WA atau email checkout *"),pin=screen.getByLabelText("PIN akses (didapat di email yang diisi saat checkout)");
+ const code=screen.getByLabelText("Kode pesanan *"),contact=screen.getByLabelText("No. WA atau email checkout *"),pin=screen.getByLabelText("PIN akses (opsional — perangkat lain)");
  for(const input of [code,contact,pin]) expect(input.parentElement?.querySelector("p")).toBeNull();
  expect(contact.hasAttribute("aria-describedby")).toBe(false);expect(pin.hasAttribute("aria-describedby")).toBe(false);
  fireEvent.change(code,{target:{value:CODE}});fireEvent.change(contact,{target:{value:CONTACT}});
@@ -55,12 +55,13 @@ it("new credential unlock requires separate contact and PIN inputs without stori
 it("the original checkout tab opens new credentials automatically without entering or storing a PIN", async () => {
  const grant=session().replace(/^p1/,"c1");
  expect(rememberCheckoutCredentialGrant(CODE,grant)).toBe(true);
- const fetcher=vi.fn(async(_url:RequestInfo|URL,_init?:RequestInit)=>Response.json({credentials:[{details:"ORIGINAL-CHECKOUT-ACCOUNT",completed_at:null}],capability_token:"k".repeat(64)}));
+ const fetcher=vi.fn(async(url:RequestInfo|URL,_init?:RequestInit)=>Response.json(String(url).endsWith('/pin')?{pin:PIN}:{credentials:[{details:"ORIGINAL-CHECKOUT-ACCOUNT",completed_at:null}],capability_token:"k".repeat(64)}));
  vi.stubGlobal("fetch",fetcher); render(<WrCredentialsPanel code={CODE} buyerPinRequired/>);
  await screen.findByText("ORIGINAL-CHECKOUT-ACCOUNT");
- expect(fetcher).toHaveBeenCalledTimes(1);
- expect(new Headers(fetcher.mock.calls[0][1]?.headers).get("x-checkout-credential-grant")).toBe(grant);
- expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).not.toHaveProperty("access_code");
+ const calls=fetcher.mock.calls.filter(([url])=>String(url).endsWith('/credentials'));
+ expect(calls).toHaveLength(1);
+ expect(new Headers(calls[0][1]?.headers).get("x-checkout-credential-grant")).toBe(grant);
+ expect(JSON.parse(calls[0][1]?.body as string)).not.toHaveProperty("access_code");
  expect(screen.queryByLabelText("PIN akses")).toBeNull();
  expect(localStorage.length).toBe(0); expect(location.href).not.toContain(grant);
 });

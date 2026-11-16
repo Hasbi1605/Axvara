@@ -1,5 +1,28 @@
 # ARCHITECTURE.md — AXVARA
 
+## PIN setelah pembayaran — 16 November 2026
+
+- Route Edge baru POST `/api/orders/[code]/pin`, privat/no-store dan rate bucket
+  `orders:lookup`. Ambil pin6 order durable; verifikasi c1 original-checkout atau
+  capability `x-credential-token` existing, lalu status=lunas/payment_status=paid.
+  Derivasi PIN existing dan recheck versi/format/payment/quote, serta revokasi
+  capability sebelum respons `{pin}`. Tidak perlu kredensial siap, tidak membuat
+  capability/recovery code baru. Missing key/DB503; kontak/p1/body bukan proof.
+  Status/lookup/checkout tetap tidak mengembalikan PIN; legacy/code26 tidak diubah.
+- `WrCredentialsPanel` menerima `credentialsReady` (defaulttrue). Dua halaman
+  buyer memasangnya sejak paid untuk order pin6, tetapi belum-ready hanya
+  menjalankan `BuyerOrderPin`; tidak membuat form retrieval yang pasti gagal.
+  Komponen baru mengambil PIN dengan proof header, abort saat unmount, retry
+  error sementara, hanya React state/DOM. Token hasil verifikasi memicu update;
+  verifikasi manual menampilkan PIN yang sudah dibuktikan bahkan bila token
+  issuance existing mengembalikan null. AdminView tidak memakai endpoint buyer.
+- Otomatis buka kredensial c1/capability tanpa flash form; error sementara
+  mempertahankan proof dan menawarkan retry. Rejected proof kembali ke form
+  kontak+PIN. Lifetime c1 tetap24jam, capability30hari/tab, rotasi tetap mencabut.
+  Email produk+PIN, bot, schema, env, cron dan dependency tidak berubah.
+  Kontrak ini mengganti bagian PIN web pada snapshot28Oktober; lokal/publikasi CI,
+  bukan bukti deployment atau transaksi produksi.
+
 ## Pengiriman AIVault & refresh/progres Jaspay — 16 November 2026
 
 - `payments/paid-fulfillment.ts` mencoba `ensureFulfillmentForPaidOrder` lagi
@@ -600,7 +623,7 @@ preview/jumlah kosong atau non-integer tidak meminta harga. OrderClient menyajik
 live status tanpa mengubah draf atau memanggil quote/order. Tidak ada route API,
 schema, env, dependency, cron, provider atau kontrak pembayaran baru.
 
-## Proof pembeli dan email kredensial, 28 Oktober 2026
+## Snapshot proof pembeli dan email kredensial, 28 Oktober 2026 (PIN web diganti 16 November)
 
 ✅ Implementasi lokal untuk publikasi CI, menggantikan kontrak PIN checkout
 27Oktober. Migrasi0081/0082 dan formatpin6/code26 tetap; factory baru version1/pin6,

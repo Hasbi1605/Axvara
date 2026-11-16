@@ -84,7 +84,7 @@ describe("account details auto-scroll", () => {
       .mockResolvedValueOnce(response({credentials:[unit,unit,unit]}));
     vi.stubGlobal('fetch',fetcher);
     const view=render(<WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:2,total:3}}/>);
-    await screen.findByRole('button',{name:'Memeriksa…'});
+    await screen.findByText('Memeriksa…');
     view.rerender(<WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact='buyer@example.test' deliveryProgress={{ready:3,total:3}}/>);
     await act(async()=>{complete(response({credentials:[unit,unit],capability_token:'fixture-capability'}))});
     await screen.findByRole('button',{name:'Salin akun 3'});
@@ -95,7 +95,7 @@ describe("account details auto-scroll", () => {
     let complete!: (value: Response) => void;
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { complete = resolve; })));
     const view = render(<StrictMode><WrCredentialsPanel buyerPinRequired={false} code={CODE} prefillContact="buyer@example.test" /></StrictMode>);
-    await screen.findByRole("button", { name: "Memeriksa…" });
+    await screen.findByText("Memeriksa…");
     expect(scroll).not.toHaveBeenCalled();
     await act(async () => { complete(response(credentials())); });
     await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));

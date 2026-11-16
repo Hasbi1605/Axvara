@@ -2,13 +2,37 @@
 
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
+## PIN di halaman setelah lunas — keputusan owner 16 November 2026
+
+- Menggantikan larangan PIN web/email-only pada snapshot28Oktober di bawah.
+  Tetap bernama **PIN**, memakai PIN6 existing, bukan kode kedua. Sesudah
+  `status=lunas` DAN `payment_status=paid`, pemilik c1 checkout asli yang valid
+  atau capability kredensial terverifikasi boleh melihat/menyalin PIN di halaman
+  pesanan/lacak, termasuk sebelum produk siap. Email produk siap tetap salinan
+  kredensial+PIN; tidak ada email PIN awal, perubahan bot, env atau migrasi.
+- POST privat/no-store `/api/orders/[code]/pin` hanya menerima header
+  `x-checkout-credential-grant` atau `x-credential-token`. Invoice+kontak, PIN di
+  body, p1, admin/session status bukan izin reveal. PIN tidak masuk status/lookup,
+  checkout response, GET publik, URL, log, history atau storage browser.
+  Recheck versi/format/payment/quote dan revokasi capability sebelum respons;
+  key/DB gagal503, rotasi/expiry/order lain ditolak. Tidak menerbitkan token baru.
+- Selama c1/capability sah, detail produk otomatis terbuka begitu siap tanpa
+  form PIN. Gangguan sementara menawarkan retry, bukan meminta PIN ulang;
+  proof yang ditolak kembali ke kontak checkout+PIN. Setelah verifikasi manual
+  berhasil, PIN terverifikasi tampil juga bila issuance token tidak mengembalikan
+  token baru. Semua PIN hanya state/DOM, bukan persist.
+- Kartu ringkas memakai `ax-glass-card` existing: satu baris label/PIN/Salin,
+  helper “Simpan untuk akses di perangkat lain.”, locale pesanan. Target/fokus
+  keyboard dan fallback salin manual dipertahankan. Berlaku implementasi lokal;
+  publikasi CI, deployment belum diverifikasi.
+
 ## Salinan email pembeli Telegram — 4 November 2026
 - Keputusan owner: order Telegram yang memuat produk wajib email (`needsEmailForVariant`) dan punya `customer_email` valid menerima email yang SAMA dengan web (Pesanan Siap berisi kredensial lengkap + tanda terima + kabar pembeli). Gerbang wajib-email jangan dihapus: email tersimpan Telegram ikut menempel ke order berikutnya, dan owner tidak ingin email untuk produk yang tidak memintanya.
 - DM Telegram tetap kanal otoritatif dan private-only; email hanya salinan best-effort idempoten (`buyer_notice_log`). Kegagalan email tidak boleh menggagalkan, me-retry, atau menggandakan DM. Tidak mengirim PIN/kredensial ke pesan Telegram di luar aturan yang ada.
 
 - Email pembeli Market (kredensial, akses PIN, handover, bukti bayar, gagal kirim, QRIS kedaluwarsa) mengikuti `order.locale`: subject/isi/tombol EN bila pesanan EN, default ID. Nama produk di email memakai `name_en`/terjemahan token saat EN. Sender, penerima, secret, rate limit, dan semantics pengiriman tidak berubah; email admin tetap ID.
 
-## Kredensial pembeli: invoice + kontak + PIN — 28 Oktober 2026
+## Snapshot kredensial pembeli — 28 Oktober 2026 (bagian PIN web diganti 16 November)
 - Koreksi owner menggantikan aturan PIN checkout27Oktober: PIN6 huruf+angka hanya dikirim bersama kredensial lengkap dalam email produk siap. Jangan mengirim email khusus PIN saat order dibuat/paid, mengembalikan PIN dalam respons buyer, menampilkan kartu/reveal PIN buyer, menaruh PIN dalam URL/fragment/storage atau pesan Telegram. Kredensial tetap langsung tampil dalam email.
 - Kredensial web pin6 lewat lacak tanpa proof checkout asli wajib invoice + email/WA checkout penuh + PIN sebagai field terpisah. Admission D1 atomik sebelum compare, max10 gagal/in-flight per order+versi/15menit lintasIP, sukses decrement slot sendiri, error503 fail-closed. Kontak salah/PIN salah sama-sama generik404. Belum lunas/kredensial belum tersedia tidak menuntut PIN yang belum dikirim.
 - Sesi status p1 HMAC256/order+versi/24jam hanya untuk GET status masked/wake melalui allowStatusSession eksplisit. Prefixb1 lama ditolak. Cancel/reissue/refill tetap kontak, tidak cukup sesi status. Pedia tanpa kredensial tidak memakai PIN untuk status/refill.

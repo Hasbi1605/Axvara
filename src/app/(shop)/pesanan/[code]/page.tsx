@@ -813,9 +813,8 @@ export default function OrderSuccessPage() {
 
         {isPaid && Boolean(order.automaticProgress?.length) && <AutomaticOrderProgress items={order.automaticProgress!} locale={order.locale} />}
 
-        {isPaid && (order.credentialsReady ? (
-          <WrCredentialsPanel key={order.code} code={order.code} prefillContact={verifiedContact} buyerPinRequired={order.buyerPinRequired} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} locale={order.locale} />
-        ) : !isDeliveryFailed && !order.automaticProgress?.length && (
+        {isPaid && (order.buyerPinRequired || order.credentialsReady) && <WrCredentialsPanel key={order.code} code={order.code} prefillContact={verifiedContact} buyerPinRequired={order.buyerPinRequired} credentialsReady={order.credentialsReady} deliveryProgress={order.uniqueUnitsProgress} contactHint={[order.wa, order.email].filter(Boolean).join(" · ")} locale={order.locale} />}
+        {isPaid && !order.credentialsReady && !isDeliveryFailed && !order.automaticProgress?.length && (
           // Detail akun belum/tidak pernah ada: jangan tampilkan form verifikasi
           // yang pasti gagal. Beri kepastian ke mana produk dikirim, dan JANGAN
           // janji menit untuk baris antrean — plafonnya 12 jam (keputusan owner
@@ -840,7 +839,7 @@ export default function OrderSuccessPage() {
               </>
             )}
           </section>
-        ))}
+        )}
 
         {isPaid && !order.credentialsReady && <WarrantyClaimAccordion locale={order.locale} />}
 
