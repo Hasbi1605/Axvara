@@ -2157,6 +2157,7 @@ generik diganti mayoritas game. Storefront Oura+ditopup: langkah `Data akun → 
 Kontak` dengan varian tersedia termurah kategori `topup` terpilih otomatis, chip tipe/region,
 section kategori (semua kartu langsung tampil), badge bergambar "Pengiriman / INSTAN" + ikon item
 per game (`public/brand/games/items/`, `src/lib/games/item-icons.ts`) per kartu, hero detail
+Bottom nav mobile Games (16 Nov 2026, lokal): **Beranda · Kategori · Lacak · Bantuan**; Kategori membuka `src/components/games/GamesCategorySheet.tsx` (genre → filter katalog via event `axvara:games-genre` atau `/games?genre=<slug>#games-catalog`).
 `src/components/games/detail/*` (banner 16:9/21:9 maks 440 px, ikon kartu 3D melayang, trust
 row SVG animasi), state Habis eksplisit, rail sticky + bar mobile, frame P14 dan banner
 generatif blur 48 px. Admin Games: tab Game/Varian/Harga, editor per

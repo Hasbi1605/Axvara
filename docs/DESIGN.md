@@ -487,6 +487,11 @@ Chrome Games senada Pedia 1:1 (keputusan PM 9 November 2026): navbar + bottom na
 mengikuti struktur/ukuran/`IosIcon`/shell Pedia; ikon konten Games Lucide 20px
 stroke 1.75; H2 seksi 24px Market; chip rentang 44px; bottom nav sembunyi di
 `/games/[slug]` (order bar ±64px + safe-area menggantikan).
+Revisi 16 November 2026 (lokal): tab kedua bottom nav Games = **Kategori** (bukan tautan
+"Game"): tombol `aria-haspopup="dialog"` membuka bottom-sheet `GamesCategorySheet`
+(shell CategorySheet Market: portal, panel `#0B1025` radius atas 24px, `fadeInUp`
+0.25s, focus trap/Escape/klik backdrop, tombol Tutup) berisi baris genre ikon Lucide
+yang sama dengan chip katalog (kotak cyan 10% 36px + chevron). Hanya genre yang punya game.
 
 Detail lengkap: `docs/GAMES.md` §4–§7. Ringkasan:
 - S1 lokal: header GamesManager memakai satu baris status teks existing untuk

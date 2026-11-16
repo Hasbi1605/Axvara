@@ -16,6 +16,6 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function GamesLayout({ children }: { children: React.ReactNode }) {
   const games = await getGamesCatalog();
   return <DisplayPreferencesProvider><div className="min-h-screen overflow-x-clip bg-[#080C1E] text-[#F1F5FF]">
-    <GamesNavbar games={games} /><main className="pb-10">{children}</main><Footer pediaLayout /><GamesBottomNav /><CrossAppTransition />
+    <GamesNavbar games={games} /><main className="pb-10">{children}</main><Footer pediaLayout /><GamesBottomNav games={games} /><CrossAppTransition />
   </div></DisplayPreferencesProvider>;
 }

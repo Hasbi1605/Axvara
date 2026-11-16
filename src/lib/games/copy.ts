@@ -4,7 +4,8 @@ const copy = {
   id: {
     catalogLoading: "Memuat game…", payAmount: "Bayar",
     title: "AXVARA Games — Top up game", description: "Temukan top up game favoritmu di AXVARA Games.",
-    trackFull: "Lacak Pesanan", gamesTab: "Game", clear: "Bersihkan", searchAria: "Cari game di AXVARA Games", searchPlaceholder: "Cari Mobile Legends, Free Fire…", searchShort: "Cari game…", searchToggle: "Cari game", home: "Beranda", track: "Lacak", help: "Bantuan", navigation: "Navigasi Games", accountId: "ID akun", method: "Metode", subtotal: "Subtotal", amountLabel: "Nominal", recoveryOrder: "Lihat pesanan yang tersimpan",
+    trackFull: "Lacak Pesanan", gamesTab: "Kategori", clear: "Bersihkan", searchAria: "Cari game di AXVARA Games", searchPlaceholder: "Cari Mobile Legends, Free Fire…", searchShort: "Cari game…", searchToggle: "Cari game", home: "Beranda", track: "Lacak", help: "Bantuan", navigation: "Navigasi Games", accountId: "ID akun", method: "Metode", subtotal: "Subtotal", amountLabel: "Nominal", recoveryOrder: "Lihat pesanan yang tersimpan",
+    categorySheetTitle: "Kategori game", categorySheetLead: "Pilih kategori untuk menyaring katalog.", close: "Tutup",
     notice: "Pemesanan AXVARA Games segera dibuka", heroFirst: "Satu tempat untuk", heroSecond: "top up game favorit.", heroTrust: ["Proses instan", "Pembayaran aman", "Support WA admin"],
     heroBody: "Top up Mobile Legends, Free Fire, PUBG, dan game lainnya. Pesan cepat dan otomatis tanpa perlu login.",
     popular: "Populer sekarang", popularSub: "Pilihan game untuk sesi bermain berikutnya.", catalog: "Semua game", heroCta: "Top Up Game", catalogSub: "Temukan game yang ingin kamu isi.",
@@ -25,7 +26,8 @@ const copy = {
   en: {
     catalogLoading: "Loading games…", payAmount: "Pay",
     title: "AXVARA Games — Game top ups", description: "Discover top ups for your favorite games at AXVARA Games.",
-    trackFull: "Track Order", gamesTab: "Games", clear: "Clear search", searchAria: "Search games on AXVARA Games", searchPlaceholder: "Search Mobile Legends, Free Fire…", searchShort: "Search games…", searchToggle: "Search games", home: "Home", track: "Track", help: "Help", navigation: "Games navigation", accountId: "Account ID", method: "Method", subtotal: "Subtotal", amountLabel: "Amount", recoveryOrder: "View saved order",
+    trackFull: "Track Order", gamesTab: "Categories", clear: "Clear search", searchAria: "Search games on AXVARA Games", searchPlaceholder: "Search Mobile Legends, Free Fire…", searchShort: "Search games…", searchToggle: "Search games", home: "Home", track: "Track", help: "Help", navigation: "Games navigation", accountId: "Account ID", method: "Method", subtotal: "Subtotal", amountLabel: "Amount", recoveryOrder: "View saved order",
+    categorySheetTitle: "Game categories", categorySheetLead: "Pick a category to filter the catalog.", close: "Close",
     notice: "AXVARA Games ordering opens soon", heroFirst: "One place for", heroSecond: "your favorite game top ups.", heroTrust: ["Instant process", "Secure payment", "WhatsApp admin support"],
     heroBody: "Top up Mobile Legends, Free Fire, PUBG and more games. Fast, automatic ordering with no login required.",
     popular: "Popular now", popularSub: "Games for your next play session.", catalog: "All games", heroCta: "Game Top Ups", catalogSub: "Find the game you want to top up.",

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { AXVARA_GAMES_GENRE_EVENT, requestGamesGenre } from "@/components/games/GamesCategorySheet";
 import { GamesHome } from "@/app/games/home-client";
 import { GamesNavbar } from "@/components/games/GamesNavbar";
 import { DisplayPreferencesProvider } from "@/hooks/useDisplayPrices";
@@ -192,6 +193,20 @@ describe("Games homepage", () => {
     expect(within(catalog).getAllByRole("link").some((a) => a.getAttribute("href") === "/games/new-db-game")).toBe(true);
     // Filtering the catalog must not filter the independently curated popular block.
     expect(within(screen.getByRole("region", { name: "Populer sekarang" })).getAllByRole("link")).toHaveLength(5);
+  });
+  it("applies the bottom-nav Kategori pick via ?genre= on load and via the genre event, ignoring unknown values", () => {
+    window.history.replaceState(null, "", "/games?genre=moba#games-catalog");
+    const games = [game, { ...game, slug: "mobile-legends" }];
+    render(<GamesHome games={games} orbitGames={[]} orderingOpen />);
+    const catalog = screen.getByRole("region", { name: "Semua game" });
+    const pressed = () => within(catalog).getAllByRole("button", { pressed: true }).map((b) => b.textContent);
+    expect(pressed()).toEqual(["MOBA"]);
+    expect(within(catalog).getByText("1 game")).toBeTruthy();
+    act(() => { requestGamesGenre("shooter"); });
+    expect(pressed()).toEqual(["Shooter & Battle Royale"]);
+    act(() => { window.dispatchEvent(new CustomEvent(AXVARA_GAMES_GENRE_EVENT, { detail: "bogus" })); });
+    expect(pressed()).toEqual(["Shooter & Battle Royale"]);
+    window.history.replaceState(null, "", "/");
   });
   it("honors featured ranks, shows honest availability, and counts the whole catalog", () => {
     const games = Array.from({ length: 10 }, (_, i) => ({ ...game, slug: `game-${i}`, name: `Game ${i}`, featured_rank: i < 4 ? 4 - i : null, sellable_count: i === 9 ? 0 : 1 }));

@@ -221,6 +221,10 @@ AXVARA:
 
 - Ikon chrome navbar/bottom nav: `IosIcon` mengikuti Market/Pedia; ikon konten:
   Lucide (outline 20px, stroke 1.75), keputusan PM 9 November 2026.
+- Bottom nav mobile (16 Nov 2026, lokal): **Beranda · Kategori · Lacak · Bantuan**. Kategori
+  membuka sheet genre (`src/components/games/GamesCategorySheet.tsx`); di beranda memilih
+  genre mengirim event `axvara:games-genre` ke `GamesHome` + gulir ke `#games-catalog`, dari
+  halaman lain navigasi ke `/games?genre=<slug>#games-catalog` (nilai tak dikenal diabaikan).
 - **[DIGANTIKAN §14 OD5]** Ikon/banner game: aset resmi publisher kini disimpan sebagai
   berkas statis di `public/brand/games/` (tanpa unggah R2) dengan urutan admin `games_meta`
   → aset lokal resmi → fallback AXVARA; **jangan mengambil banner, ilustrasi, atau gambar

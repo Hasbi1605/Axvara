@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { X } from "lucide-react";
 import { IosIcon, type IosIconName } from "@/components/ui/IosIcon";
 import { ServicesMenu } from "@/components/shared/ServicesMenu";
@@ -10,6 +10,8 @@ import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { gamesCopy } from "@/lib/games/copy";
 import type { GamesCatalogGame } from "@/lib/games/catalog";
 import { GameImage } from "./GameImage";
+import { GamesCategorySheet, requestGamesGenre } from "./GamesCategorySheet";
+import { GAMES_GENRES, GAMES_GENRE_BY_SLUG, type GamesGenre } from "@/lib/games/genres";
 
 export function GamesNavbar({ games }: { games: GamesCatalogGame[] }) {
   const t = gamesCopy(useDisplayLocale());
@@ -47,20 +49,31 @@ export function GamesNavbar({ games }: { games: GamesCatalogGame[] }) {
   </header>;
 }
 
-export function GamesBottomNav() {
+export function GamesBottomNav({ games }: { games?: readonly Pick<GamesCatalogGame, "slug">[] }) {
   const t = gamesCopy(useDisplayLocale());
   const path = usePathname() ?? "/";
-  const [hash, setHash] = useState("");
-  useEffect(() => { const sync = () => setHash(window.location.hash); sync(); window.addEventListener("hashchange", sync); return () => window.removeEventListener("hashchange", sync); }, []);
+  const router = useRouter();
+  const [sheetOpen, setSheetOpen] = useState(false);
   // Order bar (±64px + safe-area) replaces the global bottom nav only on game slug
   // pages (/games/[slug]); status/lacak/bantuan pages keep the nav (Lacak active on /pesanan/*).
   if (/^\/(?:games\/)?[a-z0-9-]+$/.test(path) && !["/games", "/lacak", "/bantuan", "/ketentuan", "/games/lacak", "/games/bantuan", "/games/ketentuan"].includes(path)) return null;
   const normalized = path.replace(/^\/games(?=\/|$)/, "") || "/";
-  const tabs: { href: string; label: string; icon: IosIconName; active: boolean }[] = [
-    { href: "/games", label: t.home, icon: "home", active: normalized === "/" && hash !== "#games-catalog" },
-    { href: "/games#games-catalog", label: t.gamesTab, icon: "category", active: normalized === "/" && hash === "#games-catalog" },
-    { href: "/games/lacak", label: t.track, icon: "purchase-order", active: normalized === "/lacak" || normalized.startsWith("/pesanan/") },
-    { href: "/games/bantuan", label: t.help, icon: "chat", active: normalized === "/bantuan" },
-  ];
-  return <nav aria-label={t.navigation} className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#080C1E]/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(0,0,0,0.6)] md:hidden"><div className="flex items-center justify-around">{tabs.map((tab) => <Link prefetch={false} key={tab.href} href={tab.href} aria-current={tab.active ? "page" : undefined} className="flex flex-1 justify-center"><span className={`flex flex-col items-center justify-center rounded-xl px-2.5 py-1 transition-all duration-200 ${tab.active ? "text-[#00E5FF]" : "text-white/55 hover:text-white/90 active:scale-95"}`}><span aria-hidden className="relative flex h-6 w-6 items-center justify-center"><IosIcon name={tab.icon} size={20} tint={tab.active ? "#00E5FF" : "white"} className={tab.active ? "" : "opacity-55"} /></span><span className={`mt-1 text-[10.5px] leading-none tracking-tight ${tab.active ? "font-bold text-[#00E5FF]" : "font-medium"}`}>{tab.label}</span>{tab.active && <span aria-hidden className="mt-1 h-1 w-1 rounded-full bg-[#00E5FF] shadow-[0_0_4px_#00E5FF]" />}</span></Link>)}</div></nav>;
+  // Same genre list as the homepage chips: All + genres that have at least one game.
+  const genres = games ? GAMES_GENRES.filter((key) => key === "all" || games.some((game) => GAMES_GENRE_BY_SLUG[game.slug] === key)) : GAMES_GENRES;
+  const pick = (genre: GamesGenre) => {
+    setSheetOpen(false);
+    if (normalized === "/") {
+      requestGamesGenre(genre);
+      document.getElementById("games-catalog")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    } else router.push(`/games?genre=${genre}#games-catalog`);
+  };
+  const tab = (label: string, icon: IosIconName, active: boolean) => <span className={`flex flex-col items-center justify-center rounded-xl px-2.5 py-1 transition-all duration-200 ${active ? "text-[#00E5FF]" : "text-white/55 hover:text-white/90 active:scale-95"}`}><span aria-hidden className="relative flex h-6 w-6 items-center justify-center"><IosIcon name={icon} size={20} tint={active ? "#00E5FF" : "white"} className={active ? "" : "opacity-55"} /></span><span className={`mt-1 text-[10.5px] leading-none tracking-tight ${active ? "font-bold text-[#00E5FF]" : "font-medium"}`}>{label}</span>{active && <span aria-hidden className="mt-1 h-1 w-1 rounded-full bg-[#00E5FF] shadow-[0_0_4px_#00E5FF]" />}</span>;
+  const link = (href: string, label: string, icon: IosIconName, active: boolean) => <Link prefetch={false} key={href} href={href} aria-current={active ? "page" : undefined} className="flex flex-1 justify-center">{tab(label, icon, active)}</Link>;
+  return <nav aria-label={t.navigation} className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#080C1E]/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(0,0,0,0.6)] md:hidden"><div className="flex items-center justify-around">
+    {link("/games", t.home, "home", normalized === "/" && !sheetOpen)}
+    {/* Kategori = popup genre (bukan link): filter katalog tanpa meninggalkan halaman. */}
+    <button type="button" onClick={() => setSheetOpen(true)} aria-haspopup="dialog" aria-expanded={sheetOpen} className="flex flex-1 justify-center">{tab(t.gamesTab, "category", sheetOpen)}</button>
+    {link("/games/lacak", t.track, "purchase-order", normalized === "/lacak" || normalized.startsWith("/pesanan/"))}
+    {link("/games/bantuan", t.help, "chat", normalized === "/bantuan")}
+  </div>{sheetOpen && <GamesCategorySheet genres={genres} onPick={pick} onClose={() => setSheetOpen(false)} />}</nav>;
 }

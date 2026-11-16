@@ -1,7 +1,6 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Crosshair, Crown, LayoutGrid, Smile, Swords, Trophy, WandSparkles, type LucideIcon } from "lucide-react";
 import { PediaOrbit, type OrbitItem } from "@/components/pedia/PediaOrbit";
 import { GameImage } from "@/components/games/GameImage";
 import { GameCard, gamesFocus as focus } from "@/components/games/storefront";
@@ -13,11 +12,10 @@ import { GAMES_GENRES, GAMES_GENRE_BY_SLUG, type GamesGenre } from "@/lib/games/
 import { GAMES_ORBIT_PHASE, GAMES_ORBIT_RINGS, selectPopularGames } from "@/lib/games/popular";
 import { SITE, waHubLink } from "@/lib/site";
 import { HeroTrustRow } from "@/components/storefront/HeroTrustRow";
+import { AXVARA_GAMES_GENRE_EVENT, GAMES_GENRE_ICONS, isGamesGenre } from "@/components/games/GamesCategorySheet";
 
-/** Ikon chip kategori — gaya chip disamakan dengan katalog Pedia/Market. */
-const GENRE_ICONS: Record<GamesGenre, LucideIcon> = {
-  all: LayoutGrid, moba: Swords, shooter: Crosshair, rpg: WandSparkles, sports: Trophy, strategy: Crown, casual: Smile,
-};
+/** Ikon chip kategori — dipakai bersama sheet Kategori di bottom nav. */
+const GENRE_ICONS = GAMES_GENRE_ICONS;
 
 export function GamesHome({ games, orbitGames, orderingOpen }: { games: GamesCatalogGame[]; orbitGames: readonly Pick<GamesCatalogGame, "slug" | "name" | "icon">[]; orderingOpen: boolean }) {
   const locale = useDisplayLocale();
@@ -25,6 +23,14 @@ export function GamesHome({ games, orbitGames, orderingOpen }: { games: GamesCat
   const [genre, setGenre] = useState<GamesGenre>("all");
   /** Fade tepi kanan baris chip di HP sebagai petunjuk bisa digeser; hilang saat mentok kanan. */
   const [chipsAtEnd, setChipsAtEnd] = useState(false);
+  // Sheet "Kategori" di bottom nav: event di homepage, `?genre=` saat datang dari halaman lain.
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("genre");
+    if (isGamesGenre(fromUrl)) setGenre(fromUrl);
+    const onGenre = (e: Event) => { const next = (e as CustomEvent<unknown>).detail; if (isGamesGenre(next)) setGenre(next); };
+    window.addEventListener(AXVARA_GAMES_GENRE_EVENT, onGenre);
+    return () => window.removeEventListener(AXVARA_GAMES_GENRE_EVENT, onGenre);
+  }, []);
   // Orbit animasi (mesin PediaOrbit, rAF + reduced-motion statis) dengan art game penuh di tiap planet.
   const orbitItems = useMemo<OrbitItem[]>(() => orbitGames.slice(0, GAMES_ORBIT_RINGS.length).map((game, i) => ({
     label: game.name, icon: game.icon ?? "", color: "#00E5FF", ring: GAMES_ORBIT_RINGS[i], href: `/games/${game.slug}`,
