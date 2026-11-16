@@ -9,6 +9,8 @@ import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { supportTelegramLink } from "@/lib/site";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { WrCredentialsPanel } from "@/components/storefront/WrCredentialsPanel";
+import { AutomaticOrderProgress } from "@/components/storefront/AutomaticOrderProgress";
+import type { AutomaticProgressItem } from "@/lib/warung-rebahan/progress";
 import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import { DeviceOrders } from "@/components/storefront/DeviceOrders";
 import { IosIcon } from "@/components/ui/IosIcon";
@@ -50,6 +52,7 @@ type TrackedOrder = {
   /** true bila order PIN6 baru butuh PIN untuk unlock kredensial; false = legacy kontak saja. */
   buyerPinRequired: boolean;
   deliveryProgress?: { ready: number; total: number };
+  automaticProgress: AutomaticProgressItem[];
   /** true bila order milik pipeline supplier (WR/SK). */
   supplierOwned: boolean;
   /** true bila link supplier masih berjalan (belum terminal). */
@@ -121,6 +124,7 @@ function fromApi(value: Record<string, unknown>): TrackedOrder {
     credentialsReady: value.credentials_ready === true,
     buyerPinRequired: value.buyer_pin_required !== false,
     deliveryProgress: value.unique_units_progress as { ready: number; total: number } | undefined,
+    automaticProgress: Array.isArray(value.automatic_progress) ? value.automatic_progress as AutomaticProgressItem[] : [],
     supplierOwned: value.supplier_owned === true,
     supplierRunning: value.supplier_running === true,
     fulfillmentStatus: value.fulfillment_status ? String(value.fulfillment_status) : undefined,
@@ -343,7 +347,8 @@ export default function LacakPesananClient() {
     try { await refreshTracked(); } finally { setCheckingPay(false); }
   };
   const awaitingSupplier = Boolean(order && order.status === "lunas" && (
-    (!order.credentialsReady && order.supplierRunning) ||
+    order.supplierRunning ||
+    order.automaticProgress.some(item => ["preparing", "queued", "running"].includes(item.stage)) ||
     (order.deliveryProgress && order.deliveryProgress.ready < order.deliveryProgress.total)
   ));
   useEffect(() => {
@@ -687,10 +692,11 @@ export default function LacakPesananClient() {
               </p>
             </div>
           )}
+          {isPaid && order.automaticProgress.length > 0 && <AutomaticOrderProgress items={order.automaticProgress} locale={order.locale} />}
           {isPaid && order.credentialsReady && (
             <WrCredentialsPanel deliveryProgress={order.deliveryProgress} key={order.code} code={order.code} prefillContact={wa} prefillPin={pin} buyerPinRequired={order.buyerPinRequired} adminView={adminView} locale={order.locale} />
           )}
-          {isPaid && !order.credentialsReady && order.supplierRunning && (
+          {isPaid && !order.credentialsReady && order.supplierRunning && !order.automaticProgress.length && (
             <p className="mt-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left text-xs leading-6 text-white/60" role="status">
               <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-white/20 border-t-[#00E5FF]" aria-hidden />
               {ui.lacak.supplierRunning}

@@ -1,5 +1,18 @@
 # PRD — AXVARA
 
+## Pengiriman supplier & progres pembeli — 16 November 2026
+
+- AIVault di pembayaran baru dan Retry admin yang completed langsung mencoba
+  pengiriman kredensial, bukan hanya mengantrekannya. Email/PIN, dedupe dan
+  retry existing tetap; supplier queued bukan janji instan dan tetap dipoll
+  minimal1menit, penyelesaian melalui cron memakai fulfillment existing.
+- Pesanan beberapa item tetap memperbarui supplier yang belum selesai meski
+  kredensial item lain sudah tersedia. Throttle20detik/order tidak berubah.
+- Halaman pesanan dan Lacak Pesanan menampilkan fase Jaspay, antrean dan jumlah
+  akun siap yang sama. Satu akun memakai indikator proses tanpa persen palsu;
+  100% hanya completed koheren, partial/gagal ditampilkan sebagai pemeriksaan.
+- Implementasi/test lokal; publikasi melalui CI main, deployment belum dibuktikan.
+
 ## Grup produk lintas supplier — keputusan owner16 November2026
 
 Menggantikan pasangan WR/SK/Opsi B di snapshot lama. Admin dapat mengelompokkan

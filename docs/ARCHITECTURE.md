@@ -1,5 +1,27 @@
 # ARCHITECTURE.md — AXVARA
 
+## Pengiriman AIVault & refresh/progres Jaspay — 16 November 2026
+
+- `payments/paid-fulfillment.ts` mencoba `ensureFulfillmentForPaidOrder` lagi
+  setelah pemrosesan TUNVN/AIVault order terkait, menutup race delivery generik
+  yang mendahului receipt. Batas satu link/supplier dan waitUntil existing tetap.
+  POST admin AIVault Retry juga mencoba delivery hanya bila link completed;
+  kegagalan kirim tidak mengulang pembelian atau menghilangkan antrean durable.
+  Cron lite40statement tidak mendapat pemanggilan delivery tanpa budget baru:
+  queued upstream tetap GET exact ID minimal1menit dan delivery melalui job
+  fulfillment existing. Tidak ada perubahan scheduler, fence atau eligibility.
+- API status `/api/orders` (termasuk wrapper `/:code`) dan `/lookup` memanggil
+  refresh bila `supplier_running`, tanpa syarat `!credentials_ready` karena
+  flag kredensial berarti ANY item siap. Auth/proof, no-store, CAS gerbang20detik
+  dan batas refresh existing tidak berubah; tidak menambah pembelian.
+- Klien Lacak Pesanan menyimpan `automatic_progress` aman dan merender komponen
+  `AutomaticOrderProgress` existing. Poll5detik tetap berjalan bila supplier atau
+  fase otomatis belum selesai, termasuk mixed cart; hidden/429/in-flight guards
+  tetap. Kredensial/PIN tidak masuk payload progres; tanpa schema/env baru.
+- Test regresi mencakup paid/retry AIVault, ketiga pintu status Jaspay mixed cart,
+  fase/jumlah/terminal ID/EN dan polling klien. Verifikasi lokal; deployment belum
+  diverifikasi, tanpa transaksi supplier atau notifikasi produksi untuk QA.
+
 ## Grup produk lintas supplier — migrasi0129 (16 November 2026)
 
 Menggantikan model pasangan WR/SK dan Opsi B pada snapshot lama di bawah.

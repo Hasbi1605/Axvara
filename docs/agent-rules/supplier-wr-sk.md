@@ -1,5 +1,15 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Refresh mixed cart & progres Jaspay — 16 November 2026
+
+API status/lookup tetap menyegarkan link supplier yang berjalan walau item lain
+sudah punya kredensial (`credentials_ready` berarti ANY, bukan ALL). Gerbang
+CAS20detik/order dan proof buyer existing tetap. Lacak Pesanan memakai progres
+fase/antrean/jumlah nyata yang sama dengan halaman pesanan, terus polling bila
+ada link/fase berjalan; satu akun tidak memakai persentase timer.100% hanya
+completed koheren, partial tetap pemeriksaan. Tanpa env/cron atau rebuy baru;
+verifikasi fixture lokal, deployment belum diverifikasi.
+
 ## Grup produk lintas supplier — keputusan owner16 November2026
 
 - Menggantikan pasangan WR/SK/Opsi B; `supplier-pairs.ts` shim ke

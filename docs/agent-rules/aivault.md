@@ -1,5 +1,14 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Pengiriman langsung paid/Retry — 16 November 2026
+
+Jalur paid mencoba delivery lagi sesudah proses pembelian AIVault; Retry admin
+yang completed juga memanggil pipeline buyer existing. Dedupe/CAS, PIN dan
+antrean durable tidak berubah; kirim gagal bukan alasan membeli ulang.
+Queued upstream tetap dipoll exact ID minimal1menit; jalur cron tetap memakai
+fulfillment existing, tanpa delivery tak berbudget di job40statement. Lokal,
+publikasi CI; bukan bukti deployment atau pengiriman produksi.
+
 ## Grup produk lintas supplier —16 November2026
 
 AIVault dapat dikelompokkan2–10 produk lintas supplier melalui admin

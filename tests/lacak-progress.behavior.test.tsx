@@ -23,3 +23,50 @@ it('polls 1/3 through 3/3, pauses hidden, backs off 429 and never overlaps reque
  ready=3;await act(async()=>{resolve(response())});expect(screen.getByTestId('progress').textContent).toBe('3/3');
  await act(async()=>{await vi.advanceTimersByTimeAsync(60000)});expect(fetcher).toHaveBeenCalledTimes(4);
 });
+
+it('keeps polling mixed Jaspay orders and renders truthful phases, counts, queue and completion',async()=>{
+ vi.useFakeTimers();vi.stubGlobal('requestAnimationFrame',()=>1);
+ let stage='queued',ready=0;
+ const fetcher=vi.fn(async()=>Response.json({order:{code:'AXV-20261116-ABCDEF12',status:'lunas',items:[{name:'Scribd',price:1000,qty:1}],subtotal:1000,
+  credentials_ready:true,supplier_running:true,automatic_progress:[{label:'Scribd',stage,ready,total:1,queuePosition:stage==='queued'?3:null}]}}));
+ vi.stubGlobal('fetch',fetcher);render(<Page/>);
+ const contact=screen.getByLabelText(/No. WA atau email checkout/);
+ fireEvent.change(screen.getByLabelText(/Kode pesanan/),{target:{value:'AXV-20261116-ABCDEF12'}});
+ fireEvent.change(contact,{target:{value:'buyer@example.test'}});
+ await act(async()=>{fireEvent.submit(contact.closest('form')!)});
+ expect(screen.getByText('Urutan antrean: 3')).toBeTruthy();
+ expect(screen.queryByRole('progressbar')).toBeNull();
+ stage='running';await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});
+ expect(screen.getByText('Membuat produkmu')).toBeTruthy();
+ expect(screen.queryByText(/Urutan antrean/)).toBeNull();
+ stage='ready';ready=1;
+ fetcher.mockImplementation(async()=>Response.json({order:{code:'AXV-20261116-ABCDEF12',status:'lunas',items:[],subtotal:1000,credentials_ready:true,supplier_running:false,
+  automatic_progress:[{label:'Scribd',stage,ready,total:1,queuePosition:null}]}}));
+ await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});
+ expect(screen.getByText('Produk siap')).toBeTruthy();
+ expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
+ const calls=fetcher.mock.calls.length;
+ await act(async()=>{await vi.advanceTimersByTimeAsync(30000)});
+ expect(fetcher).toHaveBeenCalledTimes(calls);
+});
+
+it('shows actual multi-account progress and stops polling an attention state without pretending completion',async()=>{
+ vi.useFakeTimers();vi.stubGlobal('requestAnimationFrame',()=>1);
+ let stage='running';
+ const fetcher=vi.fn(async()=>Response.json({order:{code:'AXV-20261116-ABCDEF12',status:'lunas',locale:'en',items:[],subtotal:1000,
+  credentials_ready:false,supplier_running:false,automatic_progress:[{label:'Scribd',stage,ready:2,total:3,queuePosition:null}]}}));
+ vi.stubGlobal('fetch',fetcher);render(<Page/>);
+ const contact=screen.getByLabelText(/No. WA atau email checkout/);
+ fireEvent.change(screen.getByLabelText(/Kode pesanan/),{target:{value:'AXV-20261116-ABCDEF12'}});
+ fireEvent.change(contact,{target:{value:'buyer@example.test'}});
+ await act(async()=>{fireEvent.submit(contact.closest('form')!)});
+ expect(screen.getByText('2 of 3 ready')).toBeTruthy();
+ expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('66');
+ stage='needs_check';await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});
+ expect(screen.getByText("We're checking your product")).toBeTruthy();
+ expect(screen.queryByRole('progressbar')).toBeNull();
+ expect(screen.queryByText('100%')).toBeNull();
+ const calls=fetcher.mock.calls.length;
+ await act(async()=>{await vi.advanceTimersByTimeAsync(30000)});
+ expect(fetcher).toHaveBeenCalledTimes(calls);
+});

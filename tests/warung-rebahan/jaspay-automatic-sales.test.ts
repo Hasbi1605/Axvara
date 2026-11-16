@@ -12,8 +12,9 @@ import { pollKnownJaspayInvoice, processWrPendingOrders } from "@/lib/warung-reb
 import { readAutomaticProgress } from "@/lib/warung-rebahan/progress";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { createChannelOrderAtomic } from "@/lib/commerce";
+import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); clearRateLimitBucketsForTest(); });
 function enable() {
   vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
   vi.stubEnv("WARUNG_REBAHAN_AUTO_ORDER_ENABLED", "true");
@@ -160,5 +161,43 @@ it("enforces the supplier cap for duplicate Telegram cart lines inside the reser
     await expect(order([6,6])).rejects.toBeInstanceOf(StockReservationError);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()).toMatchObject({n:0});
     await expect(order([1])).resolves.toMatchObject({isExisting:false});
+  } finally {fx.close();}
+});
+
+it.each(["query", "path", "lookup"])("public %s refreshes unfinished Jaspay even when another item already has credentials", async route => {
+  const fx=await setupWrFixture(); enable();
+  const code="AXV-20261116-ABCDEF12";
+  try {
+    seedWrCatalog(fx);
+    await syncJaspayCatalog(createDatabaseAccess(fx.db),async()=>catalog.filter(p=>p.product==='scribd'));
+    const v=fx.sql.prepare("SELECT id,product_id FROM product_variants WHERE wr_variant_id='jaspay:scribd:'").get()!;
+    fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,fulfillment_status)
+      VALUES(?,'Buyer','6281234567890',?,15000,'qris','lunas','paid','queued')`).run(code,JSON.stringify([
+        {product_id:1,variant_id:1,name:'Ready item',qty:1,price:7500},
+        {product_id:v.product_id,variant_id:v.id,name:'Scribd',qty:1,price:7500},
+      ]));
+    fx.sql.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,recipient_channel,status,delivered_ciphertext)
+      VALUES(?,0,1,1,1,'shared','web','delivered','already-encrypted')`).run(code);
+    const f=fx.sql.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,recipient_channel,status)
+      VALUES(?,1,?,?,1,'manual','web','queued') RETURNING id`).get(code,v.product_id,v.id)!;
+    const link=fx.sql.prepare(`INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,status,wr_order_id,request_sent_at,fulfillment_item_id)
+      VALUES(?,'jaspay:scribd:',1,5000,'processing','JSP-MIXED',datetime('now'),?) RETURNING id`).get(code,f.id)!;
+    fx.sql.prepare('UPDATE fulfillment_items SET wr_link_id=? WHERE id=?').run(link.id,f.id);
+    const fetcher=vi.fn(async(url:string)=>{
+      expect(String(url)).toContain('/jaspay/status');
+      return Response.json({success:true,data:{invoice:'JSP-MIXED',status:'completed',product:'scribd',quantity:1,success_count:1,
+        accounts:[{email:'fixture@example.test',password:'fixture-password'}]}});
+    });
+    vi.stubGlobal('fetch',fetcher);
+    let res:Response;
+    if(route==='lookup') res=await (await import('@/app/api/orders/lookup/route')).POST(new NextRequest('http://localhost/api/orders/lookup',{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code,wa:'6281234567890'}),
+    }));
+    else if(route==='path') res=await (await import('@/app/api/orders/[code]/route')).GET(new NextRequest('http://localhost/api/orders'),{params:Promise.resolve({code})});
+    else res=await (await import('@/app/api/orders/route')).GET(new NextRequest(`http://localhost/api/orders?code=${code}`));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({order:{credentials_ready:true,supplier_running:false,automatic_progress:[{stage:'ready',ready:1,total:1}]}});
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fx.sql.prepare('SELECT status FROM wr_order_links WHERE id=?').get(link.id)).toMatchObject({status:'completed'});
   } finally {fx.close();}
 });

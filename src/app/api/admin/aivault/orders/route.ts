@@ -33,6 +33,11 @@ export async function POST(request: NextRequest) {
       return json({ok:true,receipt:await decryptSecret(String(link.receipt_ciphertext),String(link.receipt_iv))});
     }
     if (!await retryAivaultOrder(db,Number(link.id))) return json({error:"no_safe_retry"},409);
-    return json({ok:true,link:await db.queryFirst("SELECT status,last_error FROM aivault_order_links WHERE id=?",link.id)});
+    const updated=await db.queryFirst("SELECT status,last_error FROM aivault_order_links WHERE id=?",link.id);
+    if (updated?.status==="completed") {
+      const { ensureFulfillmentForPaidOrder }=await import("@/lib/fulfillment/deliver");
+      await ensureFulfillmentForPaidOrder(String(link.order_code)).catch(()=>false);
+    }
+    return json({ok:true,link:updated});
   } catch { return json({error:"action_deferred"},503); }
 }

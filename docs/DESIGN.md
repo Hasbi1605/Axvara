@@ -1,5 +1,17 @@
 # DESIGN.md — AXVARA Design System
 
+## Progres Jaspay di Lacak Pesanan — 2026-11-16
+
+`/lacak-pesanan` memakai `AutomaticOrderProgress` existing seperti
+`/pesanan/[code]`: Menyiapkan/Menunggu giliran/Membuat/Siap, posisi antrean
+hanya saat queued. Satu akun yang belum selesai memakai spinner (menghormati
+reduced-motion), bukan persen timer. Multiakun menampilkan jumlah siap dan bar
+dari hitungan nyata;100% hanya completed koheren. Partial/gagal memakai pesan
+pemeriksaan amber tanpa bar sukses. Region `aria-live=polite`, bar berlabel
+dengan nilai ARIA existing, nama panjang membungkus. Notis supplier generik
+tidak diduplikasi bila progres tersedia. Poll berhenti setelah semua terminal;
+item siap tidak menghentikan progres item lain. Tanpa token/aset baru; lokal.
+
 ## Grup produk lintas supplier — 2026-11-16
 
 Implementasi lokal pengganti WR vs SK: menu Supplier → **Grup produk**, section

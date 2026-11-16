@@ -808,7 +808,8 @@ export async function GET(req: NextRequest) {
     // ulang flag agar respons ini tidak basi satu siklus. Bila refresh
     // barusan menyelesaikan kredensial, halaman langsung menampilkannya
     // detik ini juga. Kegagalan = diam (cron lite tetap penjamin).
-    if (String(row.status) === "lunas" && supplierRunning && !credentialsReady) {
+    // credentialsReady means ANY item is ready, not that every supplier finished.
+    if (String(row.status) === "lunas" && supplierRunning) {
       try {
         const { createDatabaseAccess } = await import("@/lib/db-access");
         const { maybeRefreshSupplierOrder } = await import("@/lib/orders/supplier-refresh");

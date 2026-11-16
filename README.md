@@ -1,5 +1,16 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Pengiriman AI Vault & progres Jaspay (16 November 2026)
+
+Jalur pembayaran AIVault mencoba pengiriman lagi setelah pembelian supplier,
+seperti TUNVN; Retry admin yang selesai juga langsung mencoba kirim. Cron tetap
+backstop, termasuk supplier yang masih queued (poll minimal1menit; penyelesaian
+melalui cron tetap memakai antrean fulfillment). Tidak menambah pembelian ulang.
+Refresh WR/SK tetap berjalan selama ada link aktif, walau item lain sudah siap.
+Lacak Pesanan kini memakai progres Jaspay yang sama dengan halaman pesanan:
+fase/antrean nyata, jumlah akun siap dan100% hanya setelah completed koheren.
+Tanpa env/migrasi/cron baru; verifikasi lokal, deployment belum diverifikasi.
+
 ## Grup produk lintas supplier (16 November 2026)
 
 Admin → Supplier → **Grup produk** (`/admin?section=pairs`, bookmark tetap)

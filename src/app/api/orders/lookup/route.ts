@@ -130,7 +130,8 @@ async function lookup(req: NextRequest) {
     supplierRunning = Number((cred as Record<string, unknown> | null)?.supplier_running ?? 0) === 1;
     // Sama seperti halaman pesanan: pembeli yang menunggu memicu tarikan
     // status vendor sekarang (gerbang 20 dtk/order). Best-effort diam.
-    if (supplierRunning && !credentialsReady) {
+    // One ready item must not stop refresh for the remaining supplier items.
+    if (supplierRunning) {
       try {
         const { createDatabaseAccess } = await import("@/lib/db-access");
         const { maybeRefreshSupplierOrder } = await import("@/lib/orders/supplier-refresh");
