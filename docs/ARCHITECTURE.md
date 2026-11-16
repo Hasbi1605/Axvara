@@ -5817,3 +5817,13 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   paket969/aturan271/garansi200/proses43; C tanpa override garansi
   934/323/191/43 (regresi Vision+ garansi 3→1); sesudah perbaikan
   934/313/201/43 (Vision+ garansi kembali 3). Bukan bukti produksi/deploy.
+
+### 16.49 AXVARA Games — parser H2H nested, recheck admin, email & data admin — 17 November 2026 (lokal → CI)
+
+- **Parser** `src/lib/games/sk-dispatch.ts`: `items[0].h2h_results` (object/array) + fallback top-level, `qty|quantity`, `dispatch_message|log_message`; `applySkTransactionDetail(..., { adminRecheck })` boleh membuka `needs_check` hanya pada sukses terverifikasi (guard order `lunas`/`paid`).
+- **API admin baru** (auth `requireAdmin` + audit existing, rate limit 10/menit, `private, no-store`):
+  - `GET /api/admin/games/orders/[code]` → `{ok,games:{order_code,game_name,product_name,customer_no,nickname,status,sn,supplier,sk_invoice,supplier_ref,last_error,cost,cost_snapshot,max_price}}`.
+  - `POST /api/admin/games/orders/[code]/recheck` (tanpa body) → `{ok,outcome,item_status,sn?,message}`; GET SK by ref saja, tidak pernah POST transaksi.
+- **Email Games** `src/lib/games/notify.ts` (`notifyGamesPaid/Completed/BuyerNeedsCheck`) lewat `sendToBuyer` (kini diekspor) + ledger `games-<fase>:<kode>`; dipicu `paid-fulfillment` (rail QRIS/gateway/crypto), loop dispatch, transisi sukses dan needs_check. `notifyBuyerPaymentReceived` merutekan `order_kind='games'` ke email Games.
+- **Admin data**: `src/lib/games/order-display.ts` (`GAMES_ORDER_LABEL_SQL`) dipakai `GET /api/admin/orders` (items sintetis saat baca, pencarian, CSV) dan `financialReportSql` (sumber `games`, modal attempt aktif `order_code+attempt_no+supplier`, cache finansial v4). Telegram admin paid memakai ringkasan Games; fulfillment/handover Market + seleksi orphan cron operasi mengecualikan `games`.
+- **Storefront**: `src/app/games/pesanan/[code]/status-client.tsx`, `src/app/games/lacak/track-client.tsx`, `src/lib/games/order-copy.ts`; komponen bersama `src/components/storefront/QrisImage.tsx` (dipakai juga halaman pesanan Pedia). Tidak ada migrasi, env, atau route publik baru.

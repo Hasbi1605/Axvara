@@ -7,6 +7,7 @@ import { csvCell } from "@/lib/csv";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { TUNVN_RETRYABLE_SQL } from "@/lib/tunvn/orders";
+import { GAMES_ORDER_LABEL_SQL } from "@/lib/games/order-display";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -43,7 +44,10 @@ export async function GET(req: NextRequest) {
   else if (/^(?:[a-z0-9_-]{1,32}|(?:nowpayments|sekalipay_gateway):[a-z0-9_-]{1,64})$/.test(method)) { conditions.push("LOWER(o.payment_method)=?"); bindings.push(method); }
   if (proof === "submitted") conditions.push("EXISTS(SELECT 1 FROM payment_proofs pf WHERE pf.order_code=o.code AND pf.status='submitted')");
   if (query) {
-    conditions.push("LOWER(o.code || ' ' || COALESCE(o.customer_name,'') || ' ' || COALESCE(o.customer_wa,'') || ' ' || COALESCE(o.items,'')) LIKE ?");
+    conditions.push(`LOWER(o.code || ' ' || COALESCE(o.customer_name,'') || ' ' || COALESCE(o.customer_wa,'') || ' ' || COALESCE(o.items,'') || ' ' ||
+      COALESCE((SELECT ${GAMES_ORDER_LABEL_SQL} FROM games_order_items gi
+        JOIN games_products gp ON gp.id=gi.product_id LEFT JOIN games_meta gm ON gm.slug=gp.game_slug
+        WHERE gi.order_code=o.code AND o.order_kind='games'),'')) LIKE ?`);
     bindings.push(`%${query.toLowerCase()}%`);
   }
   // Prefix tanggal UTC mencakup format ISO dan SQLite. Batas mentah
@@ -53,10 +57,15 @@ export async function GET(req: NextRequest) {
   const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
 
   const select = `SELECT o.*, COALESCE(pt.payable_amount,o.subtotal) AS payment_amount,
+      CASE WHEN o.order_kind='games' THEN ${GAMES_ORDER_LABEL_SQL} END AS games_product_name,
+      gi.unit_price AS games_unit_price,
       pp.id AS proof_id, pp.status AS proof_status,
       pp.claimed_method AS proof_claimed_method, pp.r2_key AS proof_r2_key,
       pp.rejection_reason AS proof_rejection_reason
     FROM orders o
+    LEFT JOIN games_order_items gi ON gi.order_code=o.code AND o.order_kind='games'
+    LEFT JOIN games_products gp ON gp.id=gi.product_id
+    LEFT JOIN games_meta gm ON gm.slug=gp.game_slug
     LEFT JOIN payment_transactions pt ON pt.order_code=o.code
     LEFT JOIN payment_proofs pp ON pp.id=(
       SELECT MAX(latest.id) FROM payment_proofs latest WHERE latest.order_code=o.code
@@ -210,6 +219,7 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
 function normalizeOrder(row: Record<string, unknown>) {
   let items: unknown[] = [];
   try { items = withoutPrivateBuyerData(JSON.parse(String(row.items || "[]"))); } catch { items = []; }
+  if (row.order_kind === "games") items = [{ name: String(row.games_product_name || "Pesanan Games"), qty: 1, price: Number(row.games_unit_price ?? row.subtotal) }];
   // Server-normalized display name: stored name first, email-derived fallback
   // for legacy Pedia rows (or any blank), never "Tanpa nama" from the API.
   const storedName = String(row.customer_name ?? "").trim();
@@ -251,7 +261,7 @@ function makeCsv(rows: Record<string, unknown>[]) {
   const lines = rows.map((row) => {
     let itemNames = "";
     try {
-      const items = JSON.parse(String(row.items || "[]")) as { name?: string; qty?: number }[];
+      const items = (row.order_kind === "games" ? normalizeOrder(row).items : JSON.parse(String(row.items || "[]"))) as { name?: string; qty?: number }[];
       itemNames = items.map((item) => `${item.name || "Produk"} x${item.qty || 1}`).join("; ");
     } catch { itemNames = String(row.items || ""); }
     return [row.code, row.created_at, row.sales_channel || "web", row.status, row.payment_status, row.customer_name, row.customer_wa, row.customer_email, row.payment_method, row.payment_amount ?? row.subtotal, itemNames].map(csvCell).join(",");

@@ -5,7 +5,8 @@ export const OVERVIEW_ATTENTION_SQL = `SELECT COUNT(DISTINCT o.code) AS count FR
   UNION ALL
   SELECT order_code FROM fulfillment_items INDEXED BY idx_fulfillment_items_next WHERE status IN ('manual_required','retry','failed')
 ) attention CROSS JOIN orders o ON o.code=attention.order_code
-WHERE o.status='lunas' AND o.payment_status='paid'`;
+WHERE o.status='lunas' AND o.payment_status='paid'
+  AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')`;
 
 // SATU definisi "Perlu dicek" untuk Rekonsiliasi dan badge overview
 // (keputusan owner 13 November 2026): event QRIS yang masih menunggu tindakan
@@ -21,4 +22,5 @@ export const PAYMENT_ATTENTION_SQL = `SELECT COUNT(*) AS count FROM dana_webhook
 export const OVERVIEW_JOB_QUEUE_SQL = `SELECT fj.status AS status,COUNT(*) AS count
 FROM fulfillment_jobs fj INDEXED BY idx_fulfillment_jobs_status CROSS JOIN orders o ON o.code=fj.order_code
 WHERE fj.status IN ('queued','sending','retry','failed','manual_required')
-  AND o.status='lunas' AND o.payment_status='paid' GROUP BY fj.status`;
+  AND o.status='lunas' AND o.payment_status='paid'
+  AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games') GROUP BY fj.status`;

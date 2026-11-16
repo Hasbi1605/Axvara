@@ -23,7 +23,7 @@ export async function telegramEmailCopyTarget(orderCode: string, database: Datab
       orderCode,
     );
     if (!order || String(order.sales_channel || "") !== "telegram") return null;
-    if (String(order.order_kind) === "pedia") return null;
+    if (["pedia", "games"].includes(String(order.order_kind))) return null;
     const email = String(order.customer_email ?? "").trim();
     if (!isValidBuyerEmail(email)) return null;
 

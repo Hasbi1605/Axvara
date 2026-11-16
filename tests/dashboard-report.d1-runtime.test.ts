@@ -61,6 +61,19 @@ it("D1 executes all six report kinds in one query for empty and mixed carts", as
     expect(selected.find(row => row.kind === "summary")).toMatchObject({ period: "selected", orders: 1, revenue: 50001, cost: 30000 });
     const historicalSql = financialReportSql(new Date("2026-10-15T10:00:00Z"), { date_from: "2024-02-01", date_to: "2024-02-29" });
     expect((await db.prepare(historicalSql).all()).results).toEqual([]);
+    await db.batch([
+      db.prepare("INSERT INTO orders VALUES('GAME',15600,'games','[]',NULL,'web','2026-10-15T07:00:00Z','2026-10-15T07:00:00Z','lunas')"),
+      db.prepare("INSERT INTO games_products VALUES(50,'mobile-legends','MOBILE LEGENDS','Mobile Legends','50 Diamond')"),
+      db.prepare("INSERT INTO games_order_items VALUES('GAME',50,15600,14826,'success',1,'sekalipay','sk:50')"),
+      db.prepare("INSERT INTO games_dispatch_attempts VALUES(1,'GAME',1,'sekalipay','sk:50','success',14825)"),
+    ]);
+    const gamesRows: Record<string, unknown>[] = (await db.prepare(sql).all()).results;
+    expect(gamesRows.find(row => row.kind === "supplier" && row.period === "today" && row.label === "games"))
+      .toMatchObject({ orders: 1, revenue: 15600, cost: 14825 });
+    expect(gamesRows.find(row => row.kind === "top" && row.period === "today" && row.label === "Mobile Legends — 50 Diamond"))
+      .toMatchObject({ qty: 1, revenue: 15600, cost: 14825 });
+    expect(gamesRows.find(row => row.kind === "summary" && row.period === "today"))
+      .toMatchObject({ orders: 2, revenue: 65601, cost: 44825, estimated: 1 });
   } finally {
     await runtime.dispose();
   }

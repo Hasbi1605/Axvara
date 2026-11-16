@@ -238,7 +238,8 @@ export async function getDueJobs(limit = 8, database: DatabaseAccess = createDat
        FROM fulfillment_jobs fj
        JOIN orders o ON o.code = fj.order_code
        WHERE fj.status IN ('queued','retry')
-       AND o.status='lunas' AND o.payment_status='paid'
+        AND o.status='lunas' AND o.payment_status='paid'
+        AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')
        AND (fj.locked_until IS NULL OR datetime(fj.locked_until) < datetime('now'))
        AND datetime(fj.next_attempt_at) <= datetime('now')
        ORDER BY fj.next_attempt_at ASC

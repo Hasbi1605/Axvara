@@ -925,3 +925,43 @@ perubahan skema di luar migrasi 0122.
   keyboard, reduced motion, loading/error) + admin terang/gelap 1280/390 — semua dengan fixture
   lokal, tanpa order/pembayaran/produksi. Angka lama (443/6.057 backend, 437/5.941 storefront,
   447/6.100 assets, 6.105/3 admin) adalah checkpoint histori, bukan hasil final.
+
+## 15. Perbaikan pasca-order nyata pertama (17 November 2026, lokal → CI)
+
+Dipicu order produksi `AXG-20261116-4206447D` (ML 50 Diamond, QRIS GoPay): top up
+**sukses di Sekalipay** (SN `MLBB1611263232621`, modal Rp14.825) tetapi AXVARA
+menandainya `needs_check` "completed tanpa hasil H2H". Audit baca-saja D1 + payload
+webhook tersimpan (`dana_webhook_events` provider `sekalipay_games`).
+
+- **Parser H2H (akar masalah).** Sekalipay mengirim `h2h_results` **per item**
+  (`items[0].h2h_results`, object), bukan level atas; pesan di `dispatch_message`,
+  qty di `quantity`. `parseSkH2hOutcome` kini membaca nested (object/array), fallback
+  top-level lama, `qty|quantity`, `dispatch_message|log_message`. Hasil nested mewarisi
+  varian item yang sudah diverifikasi; semua guard lama (satu item qty1, target, SN nyata,
+  unit konsisten — kini tepat 1 unit dan SN unit sama, modal ≤ batas quote) tetap.
+  Fixture = dua payload asli (`tests/fixtures/games-sk-webhooks.ts`).
+- **Pemulihan admin GET-only.** `POST /api/admin/games/orders/[code]/recheck` menarik
+  status SK by ref/invoice tersimpan (tidak pernah POST transaksi baru) dan hanya membuka
+  `needs_check` → `success` bila parser sukses + modal lolos; mismatch/pending/modal tak
+  valid mempertahankan `needs_check`. Tombol "Cek ulang Sekalipay" di Detail pesanan admin.
+  Order di atas dipulihkan lewat tombol ini setelah deploy (bukan oleh perubahan kode).
+- **Email pembeli Games (ID/EN)**: Pembayaran diterima (saat dispatch/paid scheduler semua
+  rail), Top up berhasil (+SN), Perlu tindakan admin — branded shell `sendToBuyer`, sekali
+  per fase (`buyer_notice_log` `games-<fase>:<kode>`), tautan `https://games.axvara.tech/pesanan/<kode>`
+  tanpa PIN; gagal email tidak mengubah status.
+- **Telegram admin.** "Games butuh tindakan manual" menyebut invoice/ref Sekalipay (teks
+  Digiflazz hanya untuk item legacy DGF). Notif "Pembayaran diterima — Web" untuk Games
+  memakai ringkasan Games (game — nominal, ID/nickname, status otomatis/SN, tombol ke
+  halaman Games), bukan "perlu dikirim admin". Games dikecualikan dari jalur handover/
+  fulfillment Market (termasuk seleksi orphan cron operasi).
+- **Admin data.** `orders.items` Games tetap `"[]"`; daftar/detail/CSV/pencarian pesanan
+  dan laporan keuangan membaca `games_order_items` (+ `games_products`/`games_meta`) dengan
+  label bersama `GAMES_ORDER_LABEL_SQL`. Modal = `games_dispatch_attempts.price` attempt aktif
+  (tidak estimasi); belum ada harga → `cost_snapshot` (estimasi); expired/gagal tanpa tagihan → 0;
+  tagihan positif tidak pernah disembunyikan. Sumber omzet baru `games`.
+- **Storefront.** Halaman pesanan dan `/games/lacak` mengikuti hierarki Pedia (lihat DESIGN):
+  QRIS ringkas + **Cek Pembayaran**, timeline 4 langkah, kartu SN, riwayat
+  "Terakhir dilacak" + "Pesanan di perangkat ini" (`localStorage` `axg-track-recent`/`axg-orders`).
+  Teks bantuan/ketentuan "seller cadangan" diganti (SK tidak punya cadangan otomatis).
+- **Verifikasi:** full suite 482 file / 6.611 tes lulus, `tsc` bersih; Chromium (Playwright,
+  route fixture) 1440/390: 5 status + lacak tanpa overflow/error console. Belum bukti produksi.

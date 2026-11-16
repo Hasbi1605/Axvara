@@ -911,6 +911,7 @@ export async function POST(request: NextRequest) {
           const orphans = await queryAll(
             `SELECT o.code FROM orders o LEFT JOIN fulfillment_jobs fj ON fj.order_code=o.code
              WHERE o.status='lunas' AND o.payment_status='paid' AND fj.order_code IS NULL
+               AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')
              ORDER BY o.created_at ASC LIMIT ?`, FULFILLMENT_PER_RUN,
           );
           for (const orphan of orphans) {

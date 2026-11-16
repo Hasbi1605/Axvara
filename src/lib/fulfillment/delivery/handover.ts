@@ -146,8 +146,8 @@ export async function recordManualHandoverDetailed(
     orderCode,
   );
   if (!order) return { ok: false, reason: "not_found" };
-  // Pedia never uses Market handover: reject safely at the caller layer.
-  if (String(order.order_kind || "apps") === "pedia") return { ok: false, reason: "not_found" };
+  // Pedia/Games never use Market handover: reject safely at the caller layer.
+  if (["pedia", "games"].includes(String(order.order_kind))) return { ok: false, reason: "not_found" };
   if (String(order.status) !== "lunas" || String(order.payment_status) !== "paid") {
     return { ok: false, reason: "not_paid" };
   }

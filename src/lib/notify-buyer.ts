@@ -217,7 +217,7 @@ async function sendTelegramEmailCopy(orderCode: string, notice: Notice, database
  * `emailOnly` (hanya order Telegram): lewati DM Telegram dan kirim salinan email
  * saja, untuk kabar yang DM-nya sudah dikirim jalur lain (mis. pesan lunas).
  */
-async function sendToBuyer(
+export async function sendToBuyer(
   orderCode: string,
   notice: Notice,
   database: DatabaseAccess,
@@ -586,6 +586,10 @@ export async function notifyBuyerPaymentReceived(
     if (String(kind.order_kind || "apps") === "pedia") {
       const { notifyPediaPaid } = await import("@/lib/pedia/notify");
       return await notifyPediaPaid(database, orderCode);
+    }
+    if (kind.order_kind === "games") {
+      const { notifyGamesPaid } = await import("@/lib/games/notify");
+      return await notifyGamesPaid(database, orderCode);
     }
   } catch {
     return false;

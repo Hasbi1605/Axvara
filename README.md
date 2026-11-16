@@ -2328,6 +2328,10 @@ B1+B2 API pembeli QRIS/gateway/crypto (lokal, belum deploy):
   klaim durable existing. Consent memakai `POST /api/orders/[code]/payment-consent` dengan
   kontak penuh dan total tepat. Paid DANA/GoPay/KlikQRIS/gateway/crypto memicu scheduler Games,
   bukan job Market/WR/SK; late/underpaid/mismatch tetap manual review tanpa dispatch.
+- 17 November 2026: parser H2H SK membaca `items[].h2h_results`; admin `GET /api/admin/games/orders/[code]`
+  + `POST .../recheck` (GET-only, pulihkan needs_check yang sebenarnya sukses); email pembeli Games
+  (dibayar/berhasil+SN/perlu admin); laporan/daftar/CSV/Telegram admin membaca `games_order_items`;
+  halaman pesanan + `/games/lacak` bergaya Pedia dengan "Pesanan di perangkat ini". Detail ARCHITECTURE §16.49.
   Guard pembayaran bersama menerima AXG, guard/route Market tetap AXV-only.
 
 Registry/format ID di `src/lib/games/registry.ts`; kontrak API lengkap dan rentang

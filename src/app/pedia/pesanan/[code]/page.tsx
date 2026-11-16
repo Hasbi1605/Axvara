@@ -17,6 +17,7 @@ import { SITE, supportTelegramLink } from "@/lib/site";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { StatusPill } from "@/components/pedia/StatusWidgets";
 import { GatewayPaymentPanel } from "@/components/storefront/GatewayPaymentPanel";
+import { QrisImage, sameOriginQris } from "@/components/storefront/QrisImage";
 import { usePaymentConsent } from "@/hooks/usePaymentConsent";
 import { normalizePaymentView, type PaymentView } from "@/lib/payment-ui";
 import { formatCheckedTime, formatCount, isProcessingStatus, knownCount, pediaEstimate, pediaHeader, pediaPollMs, pediaProgress, stepThreeLabel } from "@/components/pedia/status-view";
@@ -43,38 +44,6 @@ type Status = {
   payment_method?: string;
   payment?: unknown;
 };
-
-// API mengirim URL absolut domain Market; CSP Pedia (img-src 'self') memblokirnya.
-// Path QRIS identik di kedua host, jadi pakai same-origin.
-const sameOriginQris = (url: string) => {
-  try { const u = new URL(url, "https://x.invalid"); return u.pathname.startsWith("/api/payments/qris/") ? `${u.pathname}${u.search}` : url; } catch { return url; }
-};
-
-function QrisImage({ src, alt }: { src: string; alt: string }) {
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const [attempt, setAttempt] = useState(0);
-  const url = attempt > 0 ? `${src}${src.includes("?") ? "&" : "?"}retry=${attempt}` : src;
-  return (
-    <div className="mx-auto mt-2 min-h-[224px] w-[224px] max-w-full rounded-xl bg-white p-2.5 sm:min-h-[240px] sm:w-[240px]">
-      <div className="relative aspect-square w-full">
-        {state !== "ready" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-[#080C1E]/[0.04] text-[#080C1E]/60" role="status">
-            {state === "loading" ? (
-              <><InlineSpinner className="h-7 w-7" tone="dark" /><span className="text-xs font-medium">Memuat QRIS…</span></>
-            ) : (
-              <>
-                <span className="text-xs font-semibold text-[#080C1E]/80">QRIS gagal dimuat</span>
-                <button type="button" onClick={() => { setState("loading"); setAttempt((n) => n + 1); }} className="h-9 rounded-xl bg-[#080C1E] px-4 text-xs font-bold text-white">Muat ulang QRIS</button>
-              </>
-            )}
-          </div>
-        )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img key={url} src={url} alt={alt} onLoad={() => setState("ready")} onError={() => setState("error")} className={`h-full w-full rounded-xl object-contain transition-opacity duration-300 ${state === "ready" ? "opacity-100" : "opacity-0"}`} />
-      </div>
-    </div>
-  );
-}
 
 export default function PediaOrderStatusPage() {
   const { code } = useParams<{ code: string }>();

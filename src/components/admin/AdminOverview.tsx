@@ -43,7 +43,7 @@ export type AdminOverviewData = {
   profit_month: number;
   profit_total: number;
   profit_estimated_orders: number;
-  profit_by_supplier: { wr: SupplierBucket; sk: SupplierBucket; manual: SupplierBucket; pedia?: SupplierBucket; tunvn?: SupplierBucket; aivault?: SupplierBucket };
+  profit_by_supplier: { wr: SupplierBucket; sk: SupplierBucket; manual: SupplierBucket; pedia?: SupplierBucket; tunvn?: SupplierBucket; aivault?: SupplierBucket; games?: SupplierBucket };
   top_profit_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[];
   profit_by_channel: { web: ChannelBucket; telegram: ChannelBucket; whatsapp: ChannelBucket };
   daily_series: { date: string; orders: number; revenue: number; cost: number; profit: number }[];
@@ -225,6 +225,7 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
     { label: "Sekalipay", color: "rgb(var(--admin-accent))", ...suppliers.sk },
     { label: "Stok sendiri", color: "rgb(var(--admin-warning))", ...suppliers.manual },
     ...(suppliers.pedia?.orders ? [{ label: "Pedia", color: "rgb(var(--admin-success))", ...suppliers.pedia }] : []),
+    ...(suppliers.games?.orders ? [{ label: "Games", color: "rgb(var(--admin-accent))", ...suppliers.games }] : []),
     ...(suppliers.tunvn?.orders ? [{ label: "TUNVN", color: "rgb(var(--admin-danger))", ...suppliers.tunvn }] : []),
     ...(suppliers.aivault?.orders ? [{ label: "AIVault", color: "rgb(var(--admin-info))", ...suppliers.aivault }] : []),
   ];

@@ -118,7 +118,9 @@ export function adminWebOrderPaidMessage(params: {
 } & PaidStatus): string {
   const { orderCode, productNames, amount, customerName, customerEmail, customerWa, paymentMethod, needsAdmin, deliveryLines } = params;
   return [
-    needsAdmin ? "🛠 <b>Pembayaran diterima — Web · perlu dikirim admin</b>" : "💳 <b>Pembayaran diterima — Web</b>",
+    needsAdmin ? params.orderStatus === "PERLU PEMERIKSAAN ADMIN"
+      ? "🟡 <b>Pembayaran diterima — Web · perlu pemeriksaan admin</b>"
+      : "🛠 <b>Pembayaran diterima — Web · perlu dikirim admin</b>" : "💳 <b>Pembayaran diterima — Web</b>",
     "━━━━━━━━━━━━━━━━━━━━━",
     "",
     `📦 ${escapeHtml(truncate(productNames, 120))}`,

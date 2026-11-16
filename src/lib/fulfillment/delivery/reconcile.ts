@@ -22,9 +22,9 @@ export async function reconcileOrphanLight(orderCode: string, database: Database
   // units via processJobItems; it must never happen under a flat orphan cost.
   const order = await database.queryFirst(`SELECT * FROM orders WHERE code=? AND status='lunas' AND payment_status='paid'`, orderCode);
   if (!order) return false;
-  // Pedia never heals into the Market outbox: existing false rows are ignored
+  // Pedia/Games never heal into the Market outbox: existing false rows are ignored
   // safely by readers, and no new rows are created here.
-  if (String(order.order_kind || "apps") === "pedia") return false;
+  if (["pedia", "games"].includes(String(order.order_kind))) return false;
   const items = parseOrderItems(order.items);
   if (!items.length) return false;
   await createFulfillmentJob(orderCode, null, "queued", Number(order.variant_id || items[0].variant_id || 0) || null,
@@ -38,6 +38,7 @@ export async function reconcileSettledJobs(limit = 2, database: DatabaseAccess =
   const orders = await database.queryAll(
     `SELECT o.*, fj.id AS job_id FROM orders o JOIN fulfillment_jobs fj ON fj.order_code=o.code
      WHERE o.status='lunas' AND o.payment_status='paid' AND fj.status='delivered'
+       AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')
        AND COALESCE(o.fulfillment_status,'none') NOT IN ('delivered','manual_required') LIMIT ?`, limit,
   );
   let repaired = 0;
@@ -87,7 +88,7 @@ export async function reconcileMissingFulfillmentJobs(limit = 8): Promise<number
     `SELECT o.code FROM orders o
      LEFT JOIN fulfillment_jobs fj ON fj.order_code=o.code
      WHERE o.status='lunas' AND o.payment_status='paid'
-       AND COALESCE(o.order_kind,'apps')!='pedia'
+       AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')
        AND fj.order_code IS NULL
      ORDER BY o.updated_at ASC LIMIT ?`,
     limit,
@@ -136,7 +137,7 @@ export async function backfillMissingFulfillmentItems(limit = 8): Promise<number
      JOIN fulfillment_jobs fj ON fj.order_code=o.code
      LEFT JOIN fulfillment_items fi ON fi.order_code=o.code
      WHERE o.status='lunas' AND o.payment_status='paid'
-       AND COALESCE(o.order_kind,'apps')!='pedia'
+       AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games')
        AND fi.order_code IS NULL
      ORDER BY o.updated_at ASC LIMIT ?`,
     limit,

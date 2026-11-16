@@ -121,6 +121,10 @@ export async function applyGamesTransactionResult(db: Db, refId: string, tx: Dig
       `UPDATE games_dispatch_attempts SET status='success', rc=?, message=?, sn=?, price=?, updated_at=datetime('now') WHERE ref_id=? AND ${OPEN_ATTEMPT}`,
       tx.rc, message, tx.sn, tx.price, refId,
     );
+    try {
+      const { notifyGamesCompleted } = await import("./notify");
+      await notifyGamesCompleted(db, orderCode);
+    } catch { /* best-effort */ }
     return "success";
   }
 
@@ -623,14 +627,15 @@ export async function processGamesPaidOrders(sender?: GamesTransactionSender, sh
   // Pending > 24 jam sejak attempt dibuat → needs_check + notifikasi.
   if (db.canSpend(1 + STALE_PENDING_PER_RUN * 3)) {
     const stale = await db.queryAll(
-      `SELECT i.order_code, i.attempt_no, a.ref_id AS a_ref
+      `SELECT i.order_code, i.attempt_no, i.supplier, a.ref_id AS a_ref
          FROM games_order_items i LEFT JOIN games_dispatch_attempts a ON a.order_code=i.order_code AND a.attempt_no=i.attempt_no
         WHERE i.status='pending' AND ${AGE_EXPR} >= ${GAMES_PENDING_MAX_SECONDS}
         ORDER BY i.id ASC LIMIT ${STALE_PENDING_PER_RUN}`,
     );
     for (const row of stale) {
       if (!db.canSpend(3)) break;
-      if (await failToNeedsCheck(db, String(row.order_code), Number(row.attempt_no), row.a_ref ? String(row.a_ref) : null, "pending lebih dari 24 jam; cek manual di dashboard Digiflazz")) out.needs_check++;
+      const supplier = row.supplier === "sekalipay" ? "Sekalipay" : "Digiflazz";
+      if (await failToNeedsCheck(db, String(row.order_code), Number(row.attempt_no), row.a_ref ? String(row.a_ref) : null, `pending lebih dari 24 jam; cek manual di dashboard ${supplier}`)) out.needs_check++;
     }
   }
 
@@ -649,6 +654,12 @@ export async function processGamesPaidOrders(sender?: GamesTransactionSender, sh
     for (const item of queued) {
       const cost = String(item.supplier ?? "digiflazz") === "sekalipay" ? SK_DISPATCH_COST : DISPATCH_COST;
       if (!db.canSpend(cost + POLL_RESERVE) || Date.now() - startedAt > NETWORK_WINDOW_MS) break;
+      if (db.canSpend(cost + POLL_RESERVE + 5)) {
+        try {
+          const { notifyGamesPaid } = await import("./notify");
+          await notifyGamesPaid(db, String(item.order_code));
+        } catch { /* payment state and dispatch never depend on email */ }
+      }
       await dispatchOne(db, item, send, out, skReady);
       if (out.error) break; // config rusak: sisa antrean akan gagal sama.
     }

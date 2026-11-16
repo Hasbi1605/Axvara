@@ -2229,6 +2229,20 @@ Snapshot historis, diganti revisi Admin Pedia IndoSMM13November di atas; bukan i
 
 Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (katalog>12, search, varian region/tipe, kontrak field per varian, disabled/unsupported, placeholder gambar, tanpa overflow), dan admin statis pada artefak Next lokal 8792 lulus dengan fixture jaringan browser. Desain existing diterima; bukan bukti auth/backend persist/produksi dan belum deploy. `display_order` tetap API-only (tanpa editor UI) meski header admin menyebut "urutan".
 
+## Games pesanan + lacak = pola Pedia (17 November 2026, lokal → CI)
+
+- **Halaman pesanan** (`/games/pesanan/[code]`): satu kartu `ax-glass-card` terpusat seperti Pedia.
+  Menunggu bayar (max 760 px): header ringkas ikon jam berputar + "Selesaikan pembayaran" + kode
+  (salin), panel QRIS cyan-tint (QR 224/240 px, total, kode unik, countdown gold, **Simpan QRIS** +
+  **Cek Pembayaran**, catatan cek otomatis), ringkasan lipat (`MobileCollapsible`), Lacak/Lanjut top up,
+  bantuan WA/Telegram. Setelah bayar (max 640 px): ikon status 64 px, judul status, pill (cyan
+  diproses, emerald berhasil, violet dicek admin, abu kedaluwarsa), "Dibayar … WIB", lead, kartu SN
+  emerald (mono, Salin), kartu admin violet + CTA WA, ringkasan, timeline 4 langkah ala Pedia,
+  "Perbarui status" sekunder hanya saat belum final.
+- **Lacak** (`/games/lacak`): kicker cyan, form kaca ber-ikon search, petunjuk/validasi per field,
+  "Terakhir dilacak" (kontak dimask), "Pesanan di perangkat ini" (terbuka default), FAQ accordion.
+- QR memakai komponen bersama `QrisImage` (juga Pedia). Token warna tidak berubah.
+
 ## Games storefront + admin delta — Oura+ditopup, frame P14, kategori (14 November 2026, lokal)
 
 > Implementasi lokal di worktree integrasi; belum publikasi CI/deployment. Token tidak berubah:

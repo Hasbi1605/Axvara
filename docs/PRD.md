@@ -544,6 +544,13 @@ dijalankan — bukan status live.
 
 ## Keputusan owner 9 November 2026: AXVARA Games (implementasi bertahap, belum ada bukti deployment)
 
+- Perbaikan 17 November 2026 (lokal → CI, belum bukti produksi; dipicu order nyata pertama
+  AXG-20261116-4206447D yang sukses di Sekalipay tetapi tercatat needs_check): status sukses dibaca
+  dari `items[].h2h_results` SK; admin bisa "Cek ulang Sekalipay" (GET-only) untuk memulihkan;
+  pembeli Games menerima email Pembayaran diterima, Top up berhasil (+SN) dan Perlu tindakan admin
+  seperti Market/Pedia; halaman pesanan memakai "Cek Pembayaran" dan hierarki Pedia; `/games/lacak`
+  menampilkan "Pesanan di perangkat ini"; admin menampilkan nama produk dan modal aktual Games
+  (tidak estimasi); notif Telegram Games menyebut Sekalipay, bukan Digiflazz. Detail GAMES §15.
 - Koreksi hero10November2026 (lokal, baseline UI Games live diamati; fix belum deploy):
   orbit/kelas hero memakai Pedia persis, empat planet dari registry walau katalog kosong,
   tanpa eyebrow/glow gold; kartu Market+Pedia berdampingan. Game registry tanpa SKU

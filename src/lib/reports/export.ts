@@ -22,7 +22,7 @@ export function reportTables(report: SelectedReport): Table[] {
       ["Pesanan dengan modal estimasi", report.estimated_orders], ["Catatan", REPORT_NOTE],
     ] },
     { title: "Harian", headers: ["Tanggal / jam WIB", "Pesanan", "Omzet (Rp)", "Modal (Rp)", "Untung (Rp)"], rows: report.series.map(r => [r.date, ...financial(r)]) },
-    { title: "Supplier", headers: ["Asal produk", "Pesanan", "Omzet (Rp)", "Modal (Rp)", "Untung (Rp)"], rows: groups(report.suppliers, { wr: "Warung Rebahan", sk: "Sekalipay", manual: "Stok sendiri", pedia: "Pedia", tunvn: "TUNVN", aivault: "AIVault" }) },
+    { title: "Supplier", headers: ["Asal produk", "Pesanan", "Omzet (Rp)", "Modal (Rp)", "Untung (Rp)"], rows: groups(report.suppliers, { wr: "Warung Rebahan", sk: "Sekalipay", manual: "Stok sendiri", pedia: "Pedia", games: "Games", tunvn: "TUNVN", aivault: "AIVault" }) },
     { title: "Channel", headers: ["Kanal", "Pesanan", "Omzet (Rp)", "Modal (Rp)", "Untung (Rp)"], rows: groups(report.channels, { web: "Web", telegram: "Telegram", whatsapp: "WhatsApp" }) },
     { title: "Top Produk", headers: ["Produk / varian", "Jumlah terjual", "Omzet (Rp)", "Modal (Rp)", "Untung (Rp)"], rows: report.top_products.map(r => [r.name, r.qty, r.revenue, r.cost, r.profit]) },
   ];

@@ -431,7 +431,7 @@ function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; on
 </div>
 <Separator />
 <div className="rounded-md border border-admin-border bg-admin-subtle p-4">
-<p className="text-sm font-medium text-admin-muted">Item</p>{isPedia ? <PediaItemBox order={order} /> : order.items.map((item, index) => <div key={`${item.name}-${index}`} className="mt-3 flex justify-between gap-4 text-sm">
+<p className="text-sm font-medium text-admin-muted">Item</p>{order.kind === "games" ? <GamesItemBox order={order} onChanged={onChanged} /> : isPedia ? <PediaItemBox order={order} /> : order.items.map((item, index) => <div key={`${item.name}-${index}`} className="mt-3 flex justify-between gap-4 text-sm">
 <span className="text-admin-muted">{item.name} x{item.qty}</span>
 <span className="font-semibold text-admin-fg">{formatRupiah(item.price * item.qty)}</span>
 </div>)}</div>{isPedia && <PediaFollowUpLink order={order} />}{order.status === "lunas" && <RefundReplaceAction order={order} onChanged={onChanged} />}{qris && <div className="rounded-md border border-admin-info/20 bg-admin-info/10 p-3 text-xs leading-5 text-admin-info">QRIS diproses otomatis. Bukti gambar, jika ada, hanya dipakai sebagai referensi.</div>}{order.fileName && <ProofThumbnail proof={order.fileName} />}{order.adminNote && <Info label="Catatan admin" value={order.adminNote} />}{order.proofStatus === "rejected" && <Info label="Bukti ditolak" value={order.proofRejectionReason || "Tanpa alasan tercatat"} />}{needsHandover && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">
@@ -449,6 +449,60 @@ function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; on
 <IosIcon name="close" size={13} tint="currentColor" /> Batalkan pesanan</Button>
 </div>}</div>
 </AdminDialog>;
+}
+
+type GamesDetail = { game_name?: string | null; product_name?: string | null; customer_no?: string | null; nickname?: string | null; status?: string | null; sn?: string | null; supplier?: string | null; sk_invoice?: string | null; supplier_ref?: string | null; last_error?: string | null; cost?: number | null; max_price?: number | null };
+const GAMES_ITEM_STATUS: Record<string, string> = { awaiting_payment: "Menunggu pembayaran", queued: "Antre kirim", submitting: "Dikirim ke Sekalipay", pending: "Diproses Sekalipay", success: "Berhasil", needs_check: "Perlu dicek admin", expired: "Kedaluwarsa", failed: "Gagal" };
+
+/** Item Games (games_order_items) + pemulihan "Cek ulang Sekalipay" (GET status by ref, tanpa beli ulang). */
+function GamesItemBox({ order, onChanged }: { order: Order; onChanged: () => void }) {
+  const toast = useToast();
+  const [detail, setDetail] = useState<GamesDetail | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true; setDetail(null); setFailed(false);
+    void fetch(`/api/admin/games/orders/${encodeURIComponent(order.code)}`, { cache: "no-store" })
+      .then(async (r) => { if (!r.ok) throw new Error(); return r.json(); })
+      .then((data) => { if (active) setDetail(data.games ?? null); })
+      .catch(() => { if (active) setFailed(true); });
+    return () => { active = false; };
+  }, [order.code]);
+  const recheck = async () => {
+    if (busy) return;
+    setBusy(true); setResult(null);
+    try {
+      const r = await fetch(`/api/admin/games/orders/${encodeURIComponent(order.code)}/recheck`, { method: "POST", cache: "no-store" });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof data.error === "string" ? data.error : typeof data.message === "string" ? data.message : "Cek ulang gagal");
+      const status = String(data.item_status ?? "");
+      setDetail((current) => current ? { ...current, status, sn: data.sn ?? current.sn } : current);
+      const text = status === "success" ? `Berhasil — SN ${data.sn ?? "-"}` : `${GAMES_ITEM_STATUS[status] ?? status}${data.message ? ` · ${data.message}` : ""}`;
+      setResult(text);
+      if (status === "success") { toast.success(`${order.code} ditandai berhasil.`); onChanged(); }
+    } catch (cause) {
+      setResult(cause instanceof Error ? cause.message : "Cek ulang gagal");
+    } finally { setBusy(false); }
+  };
+  const fallback = order.items[0]?.name;
+  const status = String(detail?.status ?? "");
+  const canRecheck = order.status === "lunas" && (detail?.supplier ?? "sekalipay") === "sekalipay" && ["needs_check", "pending", "submitting"].includes(status);
+  return <div className="mt-3 space-y-2 text-sm">
+    {failed && <p role="alert" className="text-xs text-admin-danger">Detail Games gagal dimuat.</p>}
+    <p className="font-semibold text-admin-fg">{detail ? [detail.game_name, detail.product_name].filter(Boolean).join(" — ") || fallback || "Top up game" : fallback || "Memuat…"}</p>
+    {detail?.customer_no && <p className="break-all text-xs text-admin-muted">ID akun: {detail.customer_no}{detail.nickname ? ` · ${detail.nickname}` : ""}</p>}
+    {detail && <p className="text-xs text-admin-muted">Status: <span className={status === "success" ? "text-admin-success" : status === "needs_check" ? "text-admin-warning" : "text-admin-fg"}>{GAMES_ITEM_STATUS[status] ?? (status || "—")}</span>{detail.sk_invoice ? ` · Invoice ${detail.sk_invoice}` : ""}</p>}
+    {detail?.sn && <p className="break-all font-mono text-xs text-admin-fg">SN: {detail.sn}</p>}
+    {detail?.last_error && status !== "success" && <p className="break-words text-xs text-admin-warning">Catatan: {detail.last_error}</p>}
+    {detail && typeof detail.cost === "number" && <p className="text-xs text-admin-muted">Modal Sekalipay: {formatRupiah(detail.cost)}</p>}
+    <p className="pt-1 font-semibold text-admin-fg">{formatRupiah(order.paymentAmount)}</p>
+    {canRecheck && <div className="border-t border-admin-border pt-3">
+      <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void recheck()}>{busy ? "Mengecek Sekalipay…" : "Cek ulang Sekalipay"}</Button>
+      <p className="mt-1 text-[11px] text-admin-muted">Menarik status transaksi yang sudah dikirim (tanpa membeli ulang).</p>
+    </div>}
+    {result && <p role="status" className="text-xs text-admin-fg">{result}</p>}
+  </div>;
 }
 
 /** Catat refund/replace order ini sebagai pengeluaran (16 Nov 2026); masuk Untung Bersih Ringkasan. */

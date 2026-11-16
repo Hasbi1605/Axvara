@@ -28,6 +28,11 @@ async function fulfillPaidOrder(orderCode: string, orderKind: unknown): Promise<
     return;
   }
   if (orderKind === "games") {
+    try {
+      const { notifyGamesPaid } = await import("@/lib/games/notify");
+      const { createDatabaseAccess } = await import("@/lib/db-access");
+      await notifyGamesPaid(createDatabaseAccess(), orderCode);
+    } catch { /* Email failure never blocks fulfillment on any payment rail. */ }
     const { processGamesPaidOrders } = await import("@/lib/games/dispatch");
     await processGamesPaidOrders();
     return;

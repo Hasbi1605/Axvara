@@ -4,6 +4,7 @@ import { resolveReportRange, revenuePaidAtWibSql, todayWibDateString, weekWibSta
 import { fillDailySeries } from "@/lib/dashboard-profit";
 import { emptyExpenseTotals, type ReportFinance, type ReportPointFinance, type ExpenseCategory, type PaymentFeeSettings } from "@/lib/finance/types";
 import { defaultPaymentFees, readPaymentFees, financeCacheRevision } from "@/lib/finance/payment-fees";
+import { GAMES_ORDER_LABEL_SQL } from "@/lib/games/order-display";
 
 export type ReportPeriod = "today" | "week" | "month";
 export type ReportBucket = { orders: number; revenue: number; cost: number; profit: number };
@@ -13,7 +14,7 @@ export type PeriodReport = ReportBucket & ReportFinance & {
   merchant_paid?: number;
   credit_used?: number;
   series: ReportPoint[];
-  suppliers: Record<"wr" | "sk" | "manual" | "pedia" | "tunvn" | "aivault", ReportBucket>;
+  suppliers: Record<"wr" | "sk" | "manual" | "pedia" | "games" | "tunvn" | "aivault", ReportBucket>;
   channels: Record<"web" | "telegram" | "whatsapp", ReportBucket>;
   top_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[];
 };
@@ -22,7 +23,7 @@ const pointFinance = (): ReportPointFinance => ({ expenses: 0, payment_fees: 0, 
 const finance = (): ReportFinance => ({ payment_fees: 0, unique_code_bonus: 0, refund_expenses: 0, operational_expenses: 0, net_profit: 0, expenses_by_category: emptyExpenseTotals(), estimated_order_codes: [] });
 export type SelectedReport = PeriodReport & { from: string; to: string; timezone: "Asia/Jakarta"; generated_at: string };
 const emptyReport = (): PeriodReport => ({ ...bucket(), ...finance(), estimated_orders: 0, merchant_paid: 0, credit_used: 0, series: [],
-  suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket(), tunvn: bucket(), aivault: bucket() },
+  suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket(), games: bucket(), tunvn: bucket(), aivault: bucket() },
   channels: { web: bucket(), telegram: bucket(), whatsapp: bucket() }, top_products: [] });
 
 export function emptySelectedReport(selection: ReportSelection, now = new Date()): SelectedReport {
@@ -60,13 +61,18 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
         WHEN 'klikqris' THEN ROUND(COALESCE(pt.payable_amount,o.subtotal)*${fees.mdr_bps.klikqris}/10000.0)
         WHEN 'dana' THEN ROUND(COALESCE(pt.payable_amount,o.subtotal)*${fees.mdr_bps.dana}/10000.0) ELSE 0 END payment_fee,
       CASE WHEN pt.provider IN ('gopay','klikqris','dana') THEN MAX(0,pt.payable_amount-o.subtotal) ELSE 0 END unique_bonus,
-      CASE WHEN COALESCE(o.order_kind,'market')='pedia' OR NOT json_valid(o.items)
+      CASE WHEN o.order_kind='games' THEN json_array(json_object('name',${GAMES_ORDER_LABEL_SQL},
+          'product_id',gi.product_id,'qty',1,'price',COALESCE(gi.unit_price,o.subtotal)))
+        WHEN COALESCE(o.order_kind,'market')='pedia' OR NOT json_valid(o.items)
           OR json_array_length(o.items)=0
         THEN json_array(json_object('name',COALESCE(json_extract(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END,'$[0].name'),'Pesanan'),
           'product_id',NULL,'variant_id',o.variant_id,'qty',1,'price',o.subtotal))
         ELSE o.items END report_items
     FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code
     LEFT JOIN pedia_order_items pi ON pi.order_code=o.code
+    LEFT JOIN games_order_items gi ON gi.order_code=o.code AND o.order_kind='games'
+    LEFT JOIN games_products gp ON gp.id=gi.product_id
+    LEFT JOIN games_meta gm ON gm.slug=gp.game_slug
     LEFT JOIN (SELECT order_code,MAX(reviewed_at) reviewed_at FROM payment_proofs
       WHERE status='approved' GROUP BY order_code) pp ON pp.order_code=o.code WHERE o.status='lunas'
       ${range ? `AND date(${revenuePaidAtWibSql("o")}) BETWEEN '${range.from}' AND '${range.to}'` : ""}
@@ -105,16 +111,25 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
     FROM lines l
   ), pools AS (
     SELECT l.*,
-      CASE WHEN COALESCE(l.order_kind,'market')='pedia' THEN 'pedia' WHEN w.id IS NOT NULL THEN 'wr'
+      CASE WHEN l.order_kind='games' THEN 'games'
+        WHEN COALESCE(l.order_kind,'market')='pedia' THEN 'pedia' WHEN w.id IS NOT NULL THEN 'wr'
         WHEN s.id IS NOT NULL THEN 'sk'
         WHEN l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL THEN 'tunvn'
         WHEN l.aivault_elig IS NOT NULL OR l.pv_aivault_service_id IS NOT NULL OR al.id IS NOT NULL THEN 'aivault'
         ELSE COALESCE(l.snapshot_source,
           CASE WHEN l.wr_variant_id IS NOT NULL THEN 'wr' WHEN l.sk_variant_id IS NOT NULL THEN 'sk' ELSE 'manual' END) END source,
-      CASE WHEN COALESCE(l.order_kind,'market')='pedia' THEN ROUND(COALESCE(pi.supplier_charge,pi.supplier_rate_snapshot*pi.quantity/1000.0,0))
+      CASE WHEN l.order_kind='games' THEN CASE
+          WHEN gi.status='success' THEN COALESCE(CASE WHEN ga.status='success' AND ga.price>=0 THEN ROUND(ga.price) END,gi.cost_snapshot,0)
+          WHEN ga.price>=0 THEN ROUND(ga.price)
+          WHEN gi.status='expired' OR ga.status='failed' THEN 0
+          ELSE COALESCE(gi.cost_snapshot,0) END
+        WHEN COALESCE(l.order_kind,'market')='pedia' THEN ROUND(COALESCE(pi.supplier_charge,pi.supplier_rate_snapshot*pi.quantity/1000.0,0))
         WHEN w.id IS NOT NULL THEN CASE WHEN w.status='failed' THEN 0 ELSE ROUND(w.wr_cost) END
         WHEN s.id IS NOT NULL THEN CASE WHEN s.status='failed' THEN 0 ELSE ROUND(s.sk_cost) END ELSE NULL END cost_pool,
-      CASE WHEN COALESCE(l.order_kind,'market')='pedia' THEN pi.supplier_charge IS NULL
+      CASE WHEN l.order_kind='games' THEN CASE
+          WHEN gi.status='success' THEN ga.id IS NULL OR ga.status!='success' OR ga.price IS NULL OR ga.price<0
+          WHEN ga.price>=0 OR gi.status='expired' OR ga.status='failed' THEN 0 ELSE 1 END
+        WHEN COALESCE(l.order_kind,'market')='pedia' THEN pi.supplier_charge IS NULL
         WHEN w.id IS NOT NULL THEN w.status NOT IN ('completed','failed')
         WHEN s.id IS NOT NULL THEN s.status NOT IN ('completed','failed')
         WHEN l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL THEN
@@ -145,6 +160,9 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
       COALESCE(CAST(w.id AS TEXT),CAST(s.id AS TEXT),'own:'||l.item_index) pool_key
     FROM bindings l LEFT JOIN wr_order_links w ON w.id=l.wl_id LEFT JOIN sk_order_links s ON s.id=l.sl_id
     LEFT JOIN pedia_order_items pi ON pi.order_code=l.code
+    LEFT JOIN games_order_items gi ON gi.order_code=l.code AND l.order_kind='games'
+    LEFT JOIN games_dispatch_attempts ga ON ga.order_code=gi.order_code AND ga.attempt_no=gi.attempt_no
+      AND ga.supplier=gi.supplier
     LEFT JOIN tunvn_order_links tl ON tl.order_code=l.code AND tl.item_index=l.item_index
     LEFT JOIN aivault_order_links al ON al.order_code=l.code AND al.item_index=l.item_index
     LEFT JOIN tunvn_products tp ON tp.supplier_product_id=COALESCE(CAST(tl.source_product_id AS INTEGER),
@@ -287,7 +305,7 @@ export async function readOverviewFinancialReport(now = new Date()): Promise<Fin
   const cached = db && process.env.NODE_ENV === "production" ? overviewSnapshots.get(db) : undefined;
   if (cached && cached.key === key && cached.expiresAt > Date.now()) return cached.value;
   const load = () => readFinancialReport(now).then(report => ({ ...report, generatedAt: now.toISOString() }));
-  const value = db ? readPrivateFinancialSnapshot(`overview-finance-v3:${key}`, load) : load();
+  const value = db ? readPrivateFinancialSnapshot(`overview-finance-v4:${key}`, load) : load();
   if (db && process.env.NODE_ENV === "production") {
     overviewSnapshots.set(db, { key, expiresAt: Date.now() + FINANCIAL_SNAPSHOT_TTL_MS, value });
     void value.then(snapshot => {

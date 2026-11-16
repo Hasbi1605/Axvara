@@ -7,7 +7,7 @@
 //    timeout/5xx/404/ref sudah ada → GET ref yang sama.
 //  * Sukses HANYA dari GET authoritative: transaksi `completed`, tepat satu
 //    item cart qty1 yang cocok varian/target, tepat satu hasil H2H dengan
-//    variant_id terdeklarasi, dispatch `completed`, SN nyata, unit konsisten,
+//    variant_id cocok (diwarisi item untuk hasil nested), dispatch `completed`, SN nyata, unit konsisten,
 //    dan biaya tertagih terverifikasi <= batas quote.
 //  * Biaya tertagih = `amount` terdokumentasi bila valid, jika tidak
 //    `price + fees`; disimpan di attempts.price. Pemeriksaan ini DETEKSI
@@ -134,7 +134,10 @@ export function parseSkH2hOutcome(detail: SkTrxDetail, expected: SkParserExpecta
   if (items.length !== 1) return { kind: "mismatch", message: `items count ${items.length}` };
   const item = items[0];
   if (Number(item?.variant_id) !== expected.variantId) return { kind: "mismatch", message: "variant mismatch" };
-  if (Number(item?.qty) !== 1) return { kind: "mismatch", message: "quantity mismatch" };
+  if (Number(item?.qty ?? item?.quantity) !== 1
+    || (item?.qty != null && item?.quantity != null && Number(item.qty) !== Number(item.quantity))) {
+    return { kind: "mismatch", message: "quantity mismatch" };
+  }
   const expectedDisplay = targetDisplay(expected.target);
   // SK detail hanya mengekspos note/target; bila membawa bentuk "note|zone"
   // bandingkan penuh. Bila hanya note, zone tidak tersedia di respons — bukti
@@ -150,14 +153,18 @@ export function parseSkH2hOutcome(detail: SkTrxDetail, expected: SkParserExpecta
   }
 
   const txStatus = lower(detail?.status);
-  const results = asArray(detail?.h2h_results).filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object");
+  const nested = item?.h2h_results != null;
+  const results = asArray(nested ? item.h2h_results : detail?.h2h_results).filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object");
   if (results.length > 1) return { kind: "mismatch", message: `h2h results ${results.length}` };
   const result = results[0];
-  if (result && (result.variant_id === undefined || Number(result.variant_id) !== expected.variantId)) {
+  // A per-item result inherits the already-verified cart variant. Legacy
+  // top-level results must still declare their own variant.
+  if (result && ((!nested && result.variant_id === undefined)
+    || (result.variant_id !== undefined && Number(result.variant_id) !== expected.variantId))) {
     return { kind: "mismatch", message: "h2h variant mismatch" };
   }
   const dispatchStatus = result ? lower(result.dispatch_status) : null;
-  const message = clip(result ? result.log_message : `status ${txStatus}`);
+  const message = clip(result ? result.dispatch_message ?? result.log_message : `status ${txStatus}`);
   const units = asArray(result?.units);
   const unitsJson = units.length > 0 ? JSON.stringify(units).slice(0, 4_000) : null;
 
@@ -188,7 +195,18 @@ export function parseSkH2hOutcome(detail: SkTrxDetail, expected: SkParserExpecta
     const total = num(result?.total_units);
     const delivered = num(result?.delivered_units);
     const failed = num(result?.failed_units);
-    if ((failed !== null && failed > 0) || (total !== null && delivered !== null && delivered < total)) {
+    if (["total_units", "delivered_units", "failed_units"].some((key) => result[key] != null
+      && (num(result[key]) === null || !Number.isInteger(num(result[key]))))) {
+      return { kind: "mismatch", message: "unit count invalid" };
+    }
+    if (units.length > 1 || (total !== null && total !== 1)
+      || (delivered !== null && delivered > 1) || (failed !== null && failed < 0)) {
+      return { kind: "mismatch", message: "unit count mismatch" };
+    }
+    if (units.some((unit) => str((unit as Row)?.sn).trim() && str((unit as Row)?.sn).trim() !== sn)) {
+      return { kind: "mismatch", message: "unit SN mismatch" };
+    }
+    if ((failed !== null && failed > 0) || (delivered !== null && delivered !== 1)) {
       return { kind: "partial", message: `unit ${delivered ?? "?"}/${total ?? "?"}`, dispatchStatus, unitsJson };
     }
     const cost = parseSkActualCost(detail);
@@ -234,17 +252,17 @@ async function markNeedsCheck(
 }
 
 /**
- * Terapkan detail SK (polling/webhook) ke item SK aktif. Idempoten dan tidak
- * pernah menurunkan status terminal. Invoice tersimpan adalah otoritas; hint
+ * Terapkan detail SK (polling/webhook) ke item SK aktif. Recovery admin hanya
+ * membuka needs_check untuk sukses terverifikasi. Invoice tersimpan otoritas; hint
  * webhook tidak pernah ditulis sebelum korelasi GET.
  */
 export async function applySkTransactionDetail(
   db: Db,
   detail: SkTrxDetail,
-  context: { refId: string; invoiceHint?: string | null },
+  context: { refId: string; invoiceHint?: string | null; adminRecheck?: boolean },
 ): Promise<SkApplyOutcome> {
   const cur = await db.queryFirst(
-    `SELECT a.attempt_no AS a_no, a.sk_invoice AS a_invoice, i.order_code, i.status AS i_status, i.attempt_no AS i_no,
+    `SELECT a.attempt_no AS a_no, a.sk_invoice AS a_invoice, i.sk_invoice AS i_invoice, i.order_code, i.status AS i_status, i.attempt_no AS i_no,
             i.supplier AS i_supplier, i.sk_variant_id, i.target_snapshot, i.max_price, i.cost_snapshot, i.unit_price
        FROM games_dispatch_attempts a
        JOIN games_order_items i ON i.order_code=a.order_code
@@ -255,16 +273,22 @@ export async function applySkTransactionDetail(
   const orderCode = String(cur.order_code);
   const attemptNo = Number(cur.a_no);
   if (cur.i_supplier !== "sekalipay" || attemptNo !== Number(cur.i_no)
-    || (cur.i_status !== "submitting" && cur.i_status !== "pending")) return "ignored";
+    || (cur.i_status !== "submitting" && cur.i_status !== "pending"
+      && !(context.adminRecheck && cur.i_status === "needs_check"))) return "ignored";
   const variantId = Number(cur.sk_variant_id);
   if (!Number.isInteger(variantId) || variantId <= 0) return "ignored";
   const target = parseGamesSkTargetSnapshot(cur.target_snapshot);
-  const invoice = String(cur.a_invoice ?? "").trim() || null;
+  const invoice = String(cur.a_invoice || cur.i_invoice || "").trim() || null;
+  if (cur.a_invoice && cur.i_invoice && cur.a_invoice !== cur.i_invoice) return "ignored";
   const outcome = parseSkH2hOutcome(detail, { variantId, refId: context.refId, invoice, target });
+  const recovering = context.adminRecheck && cur.i_status === "needs_check";
+  // Admin GET recovery alone can reopen needs_check, and only on verified
+  // success. Pending/mismatch never erase the original manual-review state.
+  if (recovering && outcome.kind !== "success") return "needs_check";
   const detailInvoice = str(detail?.invoice).trim() || null;
   const cost = parseSkActualCost(detail);
-  const guard = `order_code=? AND attempt_no=? AND supplier='sekalipay' AND status IN ('submitting','pending')`;
-  const attemptGuard = `ref_id=? AND status IN ('submitting','pending','ambiguous')`;
+  const guard = `order_code=? AND attempt_no=? AND supplier='sekalipay' AND status IN (${recovering ? "'needs_check'" : "'submitting','pending'"})${recovering ? " AND EXISTS(SELECT 1 FROM orders o WHERE o.code=games_order_items.order_code AND o.order_kind='games' AND o.status='lunas' AND o.payment_status='paid')" : ""}`;
+  const attemptGuard = `ref_id=? AND status IN (${recovering ? "'failed','submitting','pending','ambiguous'" : "'submitting','pending','ambiguous'"})`;
 
   if (outcome.kind === "success") {
     const maxPrice = Number(cur.max_price);
@@ -274,6 +298,7 @@ export async function applySkTransactionDetail(
     else if (!Number.isFinite(maxPrice) || outcome.actualCost > maxPrice) costFailure = `actual_cost_exceeded:${outcome.actualCost}>${Number(cur.max_price)}`;
     else if (!Number.isFinite(revenueCeiling) || outcome.actualCost > revenueCeiling) costFailure = `actual_cost_exceeded:${outcome.actualCost}>${Number(cur.unit_price)}`;
     if (costFailure) {
+      if (recovering) return "needs_check";
       return markNeedsCheck(db, {
         orderCode, attemptNo, refId: context.refId, message: `${outcome.message} [${costFailure}]`,
         reason: costFailure, invoice: detailInvoice, actualCost: outcome.actualCost, sn: outcome.sn,
@@ -292,6 +317,10 @@ export async function applySkTransactionDetail(
          dispatch_status=?, units_json=?, updated_at=datetime('now') WHERE ${attemptGuard}`,
       outcome.message, outcome.sn, outcome.actualCost, detailInvoice, outcome.dispatchStatus, outcome.unitsJson, context.refId,
     );
+    try {
+      const { notifyGamesCompleted } = await import("./notify");
+      await notifyGamesCompleted(db, orderCode);
+    } catch { /* Email never changes fulfillment state. */ }
     return "success";
   }
 

@@ -702,11 +702,13 @@ export function webOrderAdminKeyboard(params: {
  * Tombol notif "Lunas — Web". Tombol WA hanya bila nomor valid (62…), karena
  * satu URL tombol yang ditolak Telegram menggagalkan seluruh pesan.
  */
-export function webPaidAdminKeyboard(params: { customerWa: string; orderCode: string; siteUrl: string }): InlineKeyboardMarkup {
+export function webPaidAdminKeyboard(params: { customerWa: string; orderCode: string; siteUrl: string; orderKind?: string }): InlineKeyboardMarkup {
   const rows: InlineKeyboardButton[][] = [];
   const digits = params.customerWa.replace(/\D/g, "");
   if (/^62\d{8,13}$/.test(digits)) rows.push([{ text: "💬 WA Pembeli", url: `https://wa.me/${digits}` }]);
-  rows.push([{ text: "👁 Lihat pesanan pembeli", url: `${params.siteUrl}/lacak-pesanan?code=${encodeURIComponent(params.orderCode)}&admin=1` }]);
+  rows.push([{ text: "👁 Lihat pesanan pembeli", url: params.orderKind === "games"
+    ? `${SITE.gamesUrl}/pesanan/${encodeURIComponent(params.orderCode)}`
+    : `${params.siteUrl}/lacak-pesanan?code=${encodeURIComponent(params.orderCode)}&admin=1` }]);
   rows.push([{ text: "🔧 Buka Pesanan", url: `${params.siteUrl}/admin?section=orders&q=${encodeURIComponent(params.orderCode)}` }]);
   return { inline_keyboard: rows };
 }

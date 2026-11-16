@@ -17,6 +17,7 @@ import type { GamesCatalogGame, GamesDetail, GamesDetailProduct } from "@/lib/ga
 import { GAMES_CATEGORY_ORDER, cleanGamesFieldLabel, regionCodeFromNickname } from "@/lib/games/variant-kind";
 import { parsePayOptions, type PayOption } from "@/lib/payment-ui";
 import { rememberPediaContact } from "@/lib/pedia/buyer-session";
+import { rememberGamesDeviceOrder } from "@/lib/games/order-copy";
 import { SITE, waHubLink } from "@/lib/site";
 
 type Product = GamesDetailProduct;
@@ -249,7 +250,7 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
         throw new Error(data.message || data.error || t.orderError);
       }
       if (typeof data.code !== "string" || !/^AXG-\d{8}-[A-Z0-9]{8}$/.test(data.code)) throw new Error(t.orderError);
-      rememberPediaContact(data.code, payload.email); router.push(`/games/pesanan/${data.code}`);
+      rememberPediaContact(data.code, payload.email); rememberGamesDeviceOrder(data.code, [game.name, selected?.name].filter(Boolean).join(" — ")); router.push(`/games/pesanan/${data.code}`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : t.orderError); }
     finally { inFlight.current = false; setBusy(false); }
   };

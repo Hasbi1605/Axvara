@@ -54,9 +54,9 @@ export async function ensureFulfillmentItems(
 ): Promise<Row[]> {
   const { queryAll, queryFirst, execRun } = database;
   const orderCode = String(order.code);
-  // Pedia orders never materialize Market fulfillment rows. Return whatever
+  // Pedia/Games never materialize Market fulfillment rows. Return whatever
   // exists (false rows stay inert) so callers reconcile safely without writes.
-  if (String(order.order_kind || "apps") === "pedia") {
+  if (["pedia", "games"].includes(String(order.order_kind))) {
     return queryAll(`SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`, orderCode);
   }
   const items = parseOrderItems(order.items);
