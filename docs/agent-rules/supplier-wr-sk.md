@@ -1,5 +1,14 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Modal laporan supplier gagal — keputusan owner 16 November 2026 (lokal)
+
+Link WR/SK `failed` tanpa keberhasilan dihitung modal Rp0 dan bukan estimasi
+(saldo supplier dikembalikan). Retry existing mereset baris yang sama; laporan
+juga mendahulukan link `completed` bila ada beberapa link historis. Link yang
+terikat item tidak boleh memakai modal item lain. Order gagal lama tidak dihapus;
+refund/replace nyata dicatat sebagai pengeluaran opsional bertaut kode order.
+Ini kontrak laporan, bukan perubahan status supplier, retry atau dispatch.
+
 ## Penjualan WR manual tanpa pengganti Jaspay — keputusan owner 16 November 2026
 
 - Menggantikan sebagian aturan14November "Premium manual/mixed/unknown dijeda":

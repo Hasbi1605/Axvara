@@ -1,5 +1,29 @@
 # PRD — AXVARA
 
+## Untung Bersih, Pengeluaran & audit modal Ringkasan — 16 November 2026
+
+Keputusan owner 16 Nov 2026 (desain disetujui):
+- Pengeluaran dihitung **pada tanggal dibayar** (cash basis), nominal Rupiah yang
+  benar-benar terpotong; kategori Hosting & server, Kuota & internet, AI & tools,
+  Domain, Iklan, Refund ke pembeli, Replace / ganti akun, Lainnya. Refund/replace
+  boleh ditautkan ke kode order (juga dari detail pesanan). Pengeluaran berulang
+  bulanan dibuat otomatis tiap bulan pada tanggal yang sama.
+- Untung bersih = omzet − modal produk − biaya pembayaran − refund & replace −
+  operasional. MDR QRIS per penyedia dapat diatur (GoPay Merchant 0%, gratis);
+  bonus kode unik ditampilkan sebagai info (sudah termasuk omzet). Biaya gateway
+  non-QRIS dihitung sebagai biaya pembayaran.
+- Modal order lunas tidak boleh bergeser saat modal produk/kurs diubah: item
+  manual lama dibekukan, kurs TUNVN/AIVault disimpan saat order. Link supplier
+  gagal tanpa retry = modal Rp0 (saldo dikembalikan); order lama yang gagal **tidak
+  dihapus**. Order dengan modal estimasi ditampilkan dengan daftar "Tinjau"
+  (menggantikan keputusan 15 Okt yang menyembunyikannya).
+- Status: implementasi lokal + test, publikasi via CI; deployment belum diverifikasi.
+- Rincian Refund & replace mencakup kedua kategori dan mengikuti rentang tanggal
+  Ringkasan persis (termasuk lintas bulan); operasional terpisah dari keduanya.
+  Pencatatan dari detail pesanan langsung menyegarkan angka Ringkasan.
+  MDR merupakan konfigurasi laporan saat ini, sehingga perubahan persentase
+  berlaku pada periode historis juga (bukan rekonstruksi settlement bank).
+
 ## Penjualan WR manual tanpa pengganti Jaspay — 16 November 2026
 
 - Keputusan owner: varian WR Premium manual (`made_by_order`) kembali dijual ke

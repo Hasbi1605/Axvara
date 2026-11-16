@@ -571,6 +571,10 @@ async function runNotify(db: Db, deadline: number) {
 async function runCleanup(db: Db) {
   const { runMaintenanceCleanup } = await import("@/lib/maintenance-cleanup");
   const cleanup = await runMaintenanceCleanup(db);
+  if (db.canSpend(3)) {
+    const { materializeRecurring } = await import("@/lib/finance/expenses");
+    await materializeRecurring(db);
+  }
   if (!db.canSpend(3)) return cleanup;
   // Drain WR-only changes and failed VPS pair requests on the existing cron.
   // Critical order work has its own jobs; this drain is bounded and resumable.

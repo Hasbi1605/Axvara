@@ -28,13 +28,14 @@ it("production private cache coalesces, expires and preserves the actual generat
   vi.useFakeTimers(); vi.setSystemTime(now);
   const queries = fixture.control.queries;
   const snapshots = await Promise.all([readOverviewFinancialReport(now), readOverviewFinancialReport(now)]);
-  expect(fixture.control.queries - queries).toBe(1);
+  // Two fresh revision probes; one coalesced fee + sales + expense load.
+  expect(fixture.control.queries - queries).toBe(5);
   expect(snapshots[0]).toBe(snapshots[1]);
   const later = new Date(now.getTime() + 30_000); vi.setSystemTime(later);
   expect(selectedReportFromFinancial("today", await readOverviewFinancialReport(later), later).generated_at).toBe(now.toISOString());
   const expired = new Date(now.getTime() + 301_000); vi.setSystemTime(expired);
   expect((await readOverviewFinancialReport(expired)).generatedAt).toBe(expired.toISOString());
-  expect(fixture.control.queries - queries).toBe(2);
+  expect(fixture.control.queries - queries).toBe(10);
 });
 
 it("failed reports are not cached", async () => {

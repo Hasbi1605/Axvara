@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAdminDraft, pushAdminHistory } from "@/components/admin/AdminWorkspace";
 import { useToast } from "@/components/ui/Toast";
 import { PaymentReconciliation } from "@/components/admin/PaymentReconciliation";
+import { PaymentFeesCard } from "@/components/admin/finance/PaymentFeesCard";
 
 type PaymentMethod = {
   id: string;
@@ -122,6 +123,7 @@ export function PaymentMethodsManager({ onChanged }: { onChanged?: () => void })
           </CardFooter>
         </Card>
       ) : <p className="text-sm text-admin-muted">Metode QRIS belum tersedia di database.</p>}
+      <PaymentFeesCard onChanged={onChanged} />
       {legacy.length > 0 && (
         <details className="group max-w-2xl rounded-md border border-admin-border">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-admin-fg">

@@ -83,11 +83,14 @@ it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and p
     const db=await runtime.getD1Database("DB");
     const statements=[
       "CREATE TABLE products(id INTEGER PRIMARY KEY,slug TEXT,source TEXT DEFAULT 'manual',is_active INTEGER DEFAULT 1,wr_product_id TEXT,sk_product_id TEXT,wr_auto_managed INTEGER DEFAULT 0,sk_auto_managed INTEGER DEFAULT 0)",
-      "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,product_id INTEGER,sku TEXT,fulfillment_mode TEXT DEFAULT 'manual',is_active INTEGER DEFAULT 1,wr_variant_id TEXT,sk_variant_id TEXT,buyer_field_key TEXT,max_qty INTEGER,tunvn_buff_quantity_b INTEGER,tunvn_source_product_id INTEGER)",
+      "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,product_id INTEGER,sku TEXT,fulfillment_mode TEXT DEFAULT 'manual',is_active INTEGER DEFAULT 1,wr_variant_id TEXT,sk_variant_id TEXT,buyer_field_key TEXT,max_qty INTEGER,tunvn_buff_quantity_b INTEGER,tunvn_source_product_id INTEGER,tunvn_fx_idr_per_usdt REAL)",
+      "CREATE TABLE tunvn_products(supplier_product_id INTEGER PRIMARY KEY,fx_idr_per_usdt REAL)",
+      "CREATE TABLE crypto_market_snapshot(id INTEGER PRIMARY KEY,fx_rate_text TEXT)",
       "CREATE TABLE orders(id INTEGER PRIMARY KEY,code TEXT UNIQUE,items TEXT,status TEXT DEFAULT 'lunas',payment_status TEXT DEFAULT 'paid',sales_channel TEXT DEFAULT 'web',order_kind TEXT DEFAULT 'apps',created_at TEXT DEFAULT (datetime('now')))",
       "CREATE TABLE fulfillment_items(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,product_id INTEGER,variant_id INTEGER,qty INTEGER DEFAULT 1,fulfillment_mode TEXT DEFAULT 'manual',wr_link_id INTEGER,sk_link_id INTEGER,inventory_id INTEGER,status TEXT DEFAULT 'queued',delivered_ciphertext TEXT,delivered_iv TEXT,last_error TEXT,locked_until TEXT)",
       "CREATE TABLE fulfillment_jobs(order_code TEXT,status TEXT,attempt_count INTEGER,next_attempt_at TEXT,locked_until TEXT)",
       ...readFileSync("drizzle/migrations/0116_tunvn_order_links.sql","utf8").split(";").map(s=>s.trim()).filter(Boolean),
+      "ALTER TABLE tunvn_order_links ADD COLUMN fx_idr_per_usdt REAL",
       "INSERT INTO products(id,slug) VALUES(1,'chatgpt-tunvn'),(2,'muse-ai-1-miliar-token')",
       "INSERT INTO product_variants(id,product_id,sku,tunvn_source_product_id) VALUES(1,1,'TUNVN-86',86)",
       "INSERT INTO product_variants(id,product_id,sku,buyer_field_key,max_qty,tunvn_buff_quantity_b) VALUES(2,2,'TUNVN-BUFF-1B','muse_invite_code',30,1)",

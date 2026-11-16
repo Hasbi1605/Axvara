@@ -31,8 +31,10 @@ export async function createAivaultOrderLinks(code: string, db: DatabaseAccess =
   for (let index=0; index<items.length; index++) {
     const item=items[index], e=eligibleAivaultLine(item);
     if (!e || existing.some(l => l.item_index === index)) continue;
-    const r = await db.execRun(`INSERT OR IGNORE INTO aivault_order_links(order_code,item_index,variant_id,product_id,service_id,quantity,cost_usd,external_order_id)
-      SELECT code,?,?,?,?,?,?,? FROM orders WHERE code=? AND items=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0 AND COALESCE(order_kind,'apps')='apps' AND sales_channel IN ('web','telegram')`,index,item.variant_id,item.product_id,e.service_id,item.qty,e.cost_usd,`${code}-${index}`,code,order.items);
+    const r = await db.execRun(`INSERT OR IGNORE INTO aivault_order_links(order_code,item_index,variant_id,product_id,service_id,quantity,cost_usd,external_order_id,fx_idr_per_usd)
+      SELECT code,?,?,?,?,?,?,?,COALESCE((SELECT fx_idr_per_usd FROM aivault_products WHERE service_id=?),
+        (SELECT CASE WHEN CAST(fx_rate_text AS REAL)>0 THEN CAST(fx_rate_text AS REAL) END FROM crypto_market_snapshot WHERE id=1))
+      FROM orders WHERE code=? AND items=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0 AND COALESCE(order_kind,'apps')='apps' AND sales_channel IN ('web','telegram')`,index,item.variant_id,item.product_id,e.service_id,item.qty,e.cost_usd,`${code}-${index}`,e.service_id,code,order.items);
     return Number(r.changes ?? 0);
   }
   return 0;

@@ -1,5 +1,20 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Untung Bersih & Pengeluaran (16 November 2026)
+
+Status: implementasi dan verifikasi lokal; publikasi lewat CI, bukan bukti deployment.
+
+Ringkasan admin kini menampilkan Omzet → Modal → Untung kotor → Biaya pembayaran
+→ Refund & replace → Operasional → **Untung bersih**. Menu baru **Pengeluaran**
+(`?section=expenses`) mencatat hosting/kuota/AI/domain/iklan/refund/replace/lainnya
+pada tanggal dibayar, termasuk pengeluaran berulang bulanan (dibuat otomatis oleh
+cron lite `cleanup`). MDR per penyedia QRIS diatur di Pembayaran → Metode (default
+0%). Migrasi `0130_finance_expenses.sql`; API `/api/admin/expenses*` dan
+`/api/admin/payment-fees`. Modal order lama dibekukan (snapshot manual + kurs
+TUNVN/AIVault), link supplier gagal tanpa retry = modal Rp0.
+Rincian refund/replace dan operasional mengikuti rentang Ringkasan yang sama,
+termasuk lintas bulan; catatan refund dari detail pesanan menyegarkan Ringkasan.
+
 ## WR manual tanpa pengganti Jaspay dijual lagi (16 November 2026)
 
 Varian WR manual/Made By Order kembali tampil dan bisa dibeli bila produknya tidak

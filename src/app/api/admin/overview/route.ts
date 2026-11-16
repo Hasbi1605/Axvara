@@ -19,6 +19,7 @@ import {
 import { emptySelectedReport, readOverviewFinancialReport, readSelectedFinancialReport, selectedReportFromFinancial } from "@/lib/dashboard-report";
 import { OVERVIEW_ATTENTION_SQL, OVERVIEW_JOB_QUEUE_SQL, PAYMENT_ATTENTION_SQL } from "@/lib/admin-overview-queries";
 import { FINANCIAL_SNAPSHOT_TTL_MS } from "@/lib/admin-report-cache";
+import { financeCacheRevision } from "@/lib/finance/payment-fees";
 import { readAdminOverviewSnapshot } from "@/lib/admin-overview-cache";
 import { parseExpiry } from "@/lib/expiry";
 import { topProfitByItems } from "@/lib/dashboard-profit";
@@ -141,8 +142,12 @@ export async function GET(request: NextRequest) {
       if (point) { point.orders++; point.revenue += amount; point.profit += amount; }
     }
     selected.top_products = topProfitByItems(selectedOrders);
+    selected.net_profit = selected.profit;
+    selected.estimated_order_codes = selectedOrders.slice(0,20).map(o => String(o.code));
+    for (const point of selected.series) point.net_profit = point.profit;
     return NextResponse.json({
       ...zero,
+      generated_at: now.toISOString(),
       selected_report: selected,
       total_orders: orders.length,
       pending_orders: orders.filter((order) => String(order.status) === "pending").length,
@@ -177,7 +182,7 @@ export async function GET(request: NextRequest) {
   }
 
   const range = resolveReportRange(selection, now);
-  const key = JSON.stringify([admin.email, selection, range.from, range.to, now.toISOString().slice(0, 13)]);
+  const key = JSON.stringify([admin.email, selection, range.from, range.to, now.toISOString().slice(0, 13),await financeCacheRevision()]);
   const value = await readAdminOverviewSnapshot(key, () => readD1Overview(selection, now));
   return NextResponse.json(value, { headers: { "Cache-Control": "private, no-store" } });
 }
@@ -297,6 +302,7 @@ async function readD1Overview(selection: ReportSelection, now: Date) {
 
   return { cacheable, expiresAt: Date.parse(financial.generatedAt) + FINANCIAL_SNAPSHOT_TTL_MS, value: {
     ...zero,
+    generated_at: financial.generatedAt,
     selected_report: selected,
     total_orders: Number(orders?.total_orders || 0),
     pending_orders: Number(orders?.pending_orders || 0),

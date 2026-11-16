@@ -8,11 +8,12 @@ import { Button, Badge, TooltipProvider, Tooltip, TooltipTrigger, TooltipContent
 import { useToast } from "@/components/ui/Toast";
 import { AdminThemeMenu, navigateWithDraftGuard } from "./AdminWorkspace";
 
-export type AdminSection = "summary" | "products" | "orders" | "categories" | "payments" | "warung" | "sekalipay" | "tunvn" | "aivault" | "pairs" | "links" | "pedia" | "games" | "articles" | "banners" | "broadcasts" | "subscribers" | "bot" | "agent" | "settings";
+export type AdminSection = "summary" | "expenses" | "products" | "orders" | "categories" | "payments" | "warung" | "sekalipay" | "tunvn" | "aivault" | "pairs" | "links" | "pedia" | "games" | "articles" | "banners" | "broadcasts" | "subscribers" | "bot" | "agent" | "settings";
 
 const navigationGroups: { label: string; items: [AdminSection, string, IosIconName][] }[] = [
   { label: "Operasional", items: [
     ["summary", "Ringkasan", "dashboard"],
+    ["expenses", "Pengeluaran", "wallet"],
     ["orders", "Pesanan", "purchase-order"],
   ] },
   { label: "Katalog", items: [

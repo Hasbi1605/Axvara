@@ -13,6 +13,7 @@ import { OrderAccessAdmin } from "@/components/admin/OrderAccessAdmin";
 import { ProofThumbnail } from "@/components/admin/ProofThumbnail";
 import { useToast } from "@/components/ui/Toast";
 import { hasActiveSupplierLink, SupplierLinkActions, type SupplierLink } from "@/components/admin/SupplierLinkActions";
+import { ExpenseFormSheet } from "@/components/admin/finance/ExpenseFormSheet";
 
 type OrderChannel = "web" | "telegram" | "whatsapp";
 /** Ringkasan item Pedia dari API admin; `null` = baris item belum terbaca (status tidak diketahui). */
@@ -433,7 +434,7 @@ function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; on
 <p className="text-sm font-medium text-admin-muted">Item</p>{isPedia ? <PediaItemBox order={order} /> : order.items.map((item, index) => <div key={`${item.name}-${index}`} className="mt-3 flex justify-between gap-4 text-sm">
 <span className="text-admin-muted">{item.name} x{item.qty}</span>
 <span className="font-semibold text-admin-fg">{formatRupiah(item.price * item.qty)}</span>
-</div>)}</div>{isPedia && <PediaFollowUpLink order={order} />}{qris && <div className="rounded-md border border-admin-info/20 bg-admin-info/10 p-3 text-xs leading-5 text-admin-info">QRIS diproses otomatis. Bukti gambar, jika ada, hanya dipakai sebagai referensi.</div>}{order.fileName && <ProofThumbnail proof={order.fileName} />}{order.adminNote && <Info label="Catatan admin" value={order.adminNote} />}{order.proofStatus === "rejected" && <Info label="Bukti ditolak" value={order.proofRejectionReason || "Tanpa alasan tercatat"} />}{needsHandover && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">
+</div>)}</div>{isPedia && <PediaFollowUpLink order={order} />}{order.status === "lunas" && <RefundReplaceAction order={order} onChanged={onChanged} />}{qris && <div className="rounded-md border border-admin-info/20 bg-admin-info/10 p-3 text-xs leading-5 text-admin-info">QRIS diproses otomatis. Bukti gambar, jika ada, hanya dipakai sebagai referensi.</div>}{order.fileName && <ProofThumbnail proof={order.fileName} />}{order.adminNote && <Info label="Catatan admin" value={order.adminNote} />}{order.proofStatus === "rejected" && <Info label="Bukti ditolak" value={order.proofRejectionReason || "Tanpa alasan tercatat"} />}{needsHandover && <div className="flex flex-wrap justify-end gap-2 border-t border-admin-border pt-4">
 <Button variant="default" type="button" onClick={() => onAction("handover")} className="inline-flex h-9 items-center gap-2 rounded-md bg-admin-primary px-5 text-sm font-semibold text-admin-inverse transition hover:brightness-110">
 <IosIcon name="checked" size={14} tint="currentColor" /> Kirim ke pembeli</Button>
 </div>}{isPedia && order.status === "pending" && <div className="border-t border-admin-border pt-4">
@@ -448,6 +449,17 @@ function OrderDetail({ order, onClose, onAction, onChanged }: { order: Order; on
 <IosIcon name="close" size={13} tint="currentColor" /> Batalkan pesanan</Button>
 </div>}</div>
 </AdminDialog>;
+}
+
+/** Catat refund/replace order ini sebagai pengeluaran (16 Nov 2026); masuk Untung Bersih Ringkasan. */
+function RefundReplaceAction({ order, onChanged }: { order: Order; onChanged: () => void }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  return <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-admin-border p-3">
+    <Button variant="outline" size="sm" type="button" onClick={() => setOpen(true)}>Catat refund/replace</Button>
+    <ExpenseFormSheet open={open} onOpenChange={setOpen} draft={{ category: "refund", order_code: order.code, amount: order.paymentAmount > 0 ? order.paymentAmount : undefined }}
+      onSaved={() => { toast.success(`Dicatat sebagai pengeluaran untuk ${order.code}.`); onChanged(); }} />
+  </div>;
 }
 
 function ActionDialog({ action, note, setNote, saving, onClose, onConfirm }: { action: NonNullable<ActionState>; note: string; setNote: (value: string) => void; saving: boolean; onClose: () => void; onConfirm: () => void }) {

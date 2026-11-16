@@ -1,5 +1,53 @@
 # ARCHITECTURE.md — AXVARA
 
+## Untung Bersih, Pengeluaran & perbaikan modal Ringkasan — 16 November 2026
+
+Status: implementasi lokal; migrasi/deployment produksi belum diverifikasi.
+
+- **Migrasi 0130** (`drizzle/migrations/0130_finance_expenses.sql`, dicerminkan di
+  `schema.sql`): `expense_recurring` (template bulanan, `day_of_month` 1..31
+  dijepit ke akhir bulan, `start_month`, `active`, `last_generated_month`) dan
+  `operating_expenses` (`spent_on` tanggal WIB dibayar, kategori
+  hosting/internet/ai_tools/domain/ads/refund/replace/other, `amount` Rp>0,
+  `note`≤200, `order_code` FK opsional, `recurring_id`+`recurring_month` UNIQUE).
+  Trigger insert/update/delete menulis `store_settings.finance_revision`.
+  Kolom `tunvn_order_links.fx_idr_per_usdt` + `aivault_order_links.fx_idr_per_usd`
+  dibackfill sekali dari kurs yang dipakai laporan saat migrasi; baris baru
+  menyimpan kurs saat link dibuat. Backfill `order_item_costs` untuk item manual
+  lunas yang belum punya snapshot (±160 baris Sep–awal Okt) memakai modal saat migrasi.
+- **Kontrak bersama** `src/lib/finance/types.ts` (client+server). Server:
+  `src/lib/finance/expenses.ts`, `src/lib/finance/payment-fees.ts`.
+- **API admin** (Edge, `requireAdmin` + rate limit + body limit + zod strict):
+  `GET/POST /api/admin/expenses` (`?month=` atau `?from&to` ≤366 hari,
+  `&category`), `PATCH/DELETE /api/admin/expenses/[id]`,
+  `PATCH/DELETE /api/admin/expenses/recurring/[id]` (hapus template; entri lama
+  tetap), `GET/PUT /api/admin/payment-fees` (MDR bps per gopay/klikqris/dana,
+  `store_settings.payment_mdr_bps`, default 0). Tanggal masa depan / sebelum
+  2026-01-01 ditolak; `order_code` wajib ada (`order_not_found`).
+- **Cron**: job lite `cleanup` (tiap 5 menit, tanpa trigger baru) memanggil
+  `materializeRecurring` — idempoten lewat UNIQUE, maks 3 bulan susulan per run, budget-aware.
+- **Laporan** `src/lib/dashboard-report.ts`: `PeriodReport` + `ReportPoint`
+  menambah `ReportFinance`/`ReportPointFinance`. `payment_fees` = `gateway_fee`
+  + MDR × payable per provider QRIS (sekali per order); `unique_code_bonus` =
+  payable − subtotal QRIS (info, sudah di omzet); pengeluaran per `spent_on`
+  (refund+replace terpisah dari operasional; seri jam dibukukan 00:00);
+  `net_profit` = untung kotor − biaya pembayaran − refund/replace − operasional;
+  `estimated_order_codes` ≤20. Link WR/SK: `completed` didahulukan; link `failed`
+  tanpa link completed = modal Rp0 dan bukan estimasi. Kurs TUNVN/AIVault memakai
+  kurs beku link, fallback rantai lama hanya bila NULL. Cache snapshot (memori +
+  terenkripsi) memasukkan `finance_revision` + nilai MDR ke kunci, sehingga
+  edit pengeluaran/MDR langsung terlihat. Overview mengembalikan `generated_at`.
+- **Ekspor** PDF/XLSX menambah Biaya pembayaran, Refund & replace, Operasional,
+  Untung bersih, Bonus kode unik dan total per kategori.
+- **UI**: section admin baru `expenses` (`src/components/admin/finance/ExpensesManager.tsx`),
+  panel bersama `ExpenseFormSheet.tsx`, kartu MDR `PaymentFeesCard.tsx` di
+  Pembayaran, `AdminOverview` kartu Untung Bersih, tombol refund/replace di detail pesanan.
+  Tautan rincian membawa `from`/`to` persis periode Ringkasan serta filter klien
+  gabungan `refund_replace`/`operational` (API menerima kategori tunggal saja).
+  Respons daftar terlambat tidak dapat menimpa filter periode terbaru; panel
+  memakai radio native berkulit primitive admin dan mengembalikan fokus pembuka.
+  Refund dari detail pesanan memanggil refresh Ringkasan setelah simpan.
+
 ## Jaspay katalog multi-produk per tick — 16 November 2026
 
 - `src/app/api/cron/lite/route.ts`: `jaspay_catalog` budget 96 (lainnya 40 kecuali

@@ -8,6 +8,8 @@ import { act, cleanup, render, screen, fireEvent, within } from "@testing-librar
 import { AdminOverview, EMPTY_ADMIN_OVERVIEW, ProfitChart } from "@/components/admin/AdminOverview";
 import type { PeriodReport } from "@/lib/dashboard-report";
 import { emptySelectedReport } from "@/lib/dashboard-report";
+import { AdminPortalContext } from "@/components/admin/ui/portal";
+import { emptyExpenseTotals } from "@/lib/finance/types";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin",
@@ -50,8 +52,8 @@ it("default periode Minggu: Untung Produk + margin + supplier + grafik tampil", 
   expect(screen.getByRole("tab", { name: "Minggu ini" }).getAttribute("aria-selected")).toBe("true");
   // Kartu Untung Produk minggu = 40rb (formatRupiah = "Rp" + NBSP + angka).
   expect(screen.getByText("Untung Produk")).toBeTruthy();
-  expect(screen.getByText((_, el) => el?.textContent?.replace(/\s/g, "") === "Rp40.000")).toBeTruthy();
-  expect(screen.getByText("40.0%")).toBeTruthy();
+  expect(screen.getAllByText((_, el) => el?.tagName === "P" && el?.textContent?.replace(/\s/g, "") === "Rp40.000").length).toBeGreaterThan(0);
+  expect(screen.getByText("margin 40.0%")).toBeTruthy();
   // Tabel supplier + top produk + grafik.
   expect(screen.getByText("Untung per supplier")).toBeTruthy();
   expect(screen.getByText("Netflix")).toBeTruthy();
@@ -88,23 +90,25 @@ it("ganti ke Hari ini mengubah angka kartu", async () => {
   await act(async () => {});
   await userEvent.click(screen.getByRole("tab", { name: "Hari ini" }));
   await act(async () => {});
-  expect(screen.getByText((_, el) => el?.textContent?.replace(/\s/g, "") === "Rp15.000")).toBeTruthy();
+  expect(screen.getAllByText((_, el) => el?.tagName === "P" && el?.textContent?.replace(/\s/g, "") === "Rp15.000").length).toBeGreaterThan(0);
 });
 
-it("summary omits operational pills and cost-estimate notices without losing report figures", () => {
+it("summary omits operational pills but shows the owner-approved estimate notice (16 Nov 2026) without losing report figures", () => {
   const report = emptySelectedReport("week");
   report.estimated_orders = 151;
   report.orders = 202; report.revenue = 2563172; report.cost = 1546775; report.profit = 1016397;
   render(<AdminOverview data={{ ...data, selected_report: report }} selection="week" loading={false} />);
   expect(screen.queryByText(/Stok menipis|Senin–Minggu|Pending|memakai estimasi modal/)).toBeNull();
+  expect(screen.getByText("151 order modalnya masih estimasi")).toBeTruthy();
   expect(screen.getByText("202")).toBeTruthy();
-  expect(screen.getByText("Untung Produk")).toBeTruthy();
+  expect(screen.getAllByText("Untung bersih").length).toBeGreaterThan(0);
 });
 
 it("switching period updates the chart, top products, supplier amounts and composition together", async () => {
   const report = (name:string,amount:number,date:string):PeriodReport => ({
     orders:1,revenue:amount,cost:10000,profit:amount-10000,estimated_orders:0,
-    series:[{date,orders:1,revenue:amount,cost:10000,profit:amount-10000}],
+    payment_fees:0,unique_code_bonus:0,refund_expenses:0,operational_expenses:0,net_profit:amount-10000,expenses_by_category:emptyExpenseTotals(),estimated_order_codes:[],
+    series:[{date,orders:1,revenue:amount,cost:10000,profit:amount-10000,expenses:0,payment_fees:0,net_profit:amount-10000}],
     suppliers:{wr:{orders:0,revenue:0,cost:0,profit:0},sk:{orders:0,revenue:0,cost:0,profit:0},manual:{orders:1,revenue:amount,cost:10000,profit:amount-10000},pedia:{orders:0,revenue:0,cost:0,profit:0},tunvn:{orders:0,revenue:0,cost:0,profit:0},aivault:{orders:0,revenue:0,cost:0,profit:0}},
     channels:{web:{orders:1,revenue:amount,cost:10000,profit:amount-10000},telegram:{orders:0,revenue:0,cost:0,profit:0},whatsapp:{orders:0,revenue:0,cost:0,profit:0}},
     top_products:[{name,qty:1,revenue:amount,cost:10000,profit:amount-10000}],
@@ -113,7 +117,7 @@ it("switching period updates the chart, top products, supplier amounts and compo
   expect(screen.getByText('Week service')).toBeTruthy();
   await userEvent.click(screen.getByRole('tab',{name:'Bulan ini'}));
   expect(screen.queryByText('Week service')).toBeNull(); expect(screen.getByText('Month service')).toBeTruthy();
-  expect(screen.getByText('Omzet vs Untung — Bulan ini')).toBeTruthy();
+  expect(screen.getByText('Omzet vs Untung bersih — Bulan ini')).toBeTruthy();
   expect(screen.getByRole('img',{name:/Stok sendiri 100.0%/})).toBeTruthy();
   await userEvent.click(screen.getByRole('tab',{name:'Hari ini'}));
   expect(screen.getByText('Today service')).toBeTruthy(); expect(screen.getByText('09:00')).toBeTruthy();
@@ -186,4 +190,40 @@ it("selected historical report scopes all financial content and exposes exports 
   expect(screen.queryByText("Export fixture")).toBeNull();
   expect(screen.getByRole("alert").textContent).toContain("Gagal memuat periode baru");
   expect(screen.getByLabelText("Tanggal awal")).toBeTruthy();
+});
+
+it("net profit card walks omzet → modal → kotor → fees/refund/operasional, links to Pengeluaran and lists estimated orders", async () => {
+  const report = emptySelectedReport("week");
+  Object.assign(report, { orders: 3, revenue: 300000, cost: 180000, profit: 120000, estimated_orders: 2,
+    payment_fees: 3000, unique_code_bonus: 412, refund_expenses: 20000, operational_expenses: 150000, net_profit: -53000,
+    estimated_order_codes: ["AXV-20261116-AAAA1111", "AXV-20261116-BBBB2222"] });
+  const navigate = vi.fn();
+  const record = vi.fn();
+  render(<AdminPortalContext.Provider value={document.body}><AdminOverview data={{ ...data, generated_at: "2026-11-16T12:05:00.000Z", selected_report: report }} selection="week" loading={false} onNavigate={navigate} onRecordExpense={record} /></AdminPortalContext.Provider>);
+  const card = screen.getByRole("generic", { name: "Untung bersih Minggu ini" });
+  expect(within(card).getByText("Untung bersih")).toBeTruthy();
+  for (const row of ["Omzet", "Modal produk", "Untung kotor", "Biaya pembayaran", "Refund & replace", "Operasional"]) expect(within(card).getByText(row)).toBeTruthy();
+  expect(within(card).getByText((_, el) => el?.tagName === "P" && el?.textContent?.replace(/\s/g, "") === "-Rp53.000" || el?.tagName === "P" && el?.textContent?.replace(/\s/g, "") === "Rp-53.000")).toBeTruthy();
+  expect(within(card).getByText("Pengeluaran dihitung pada tanggal dibayar.")).toBeTruthy();
+  expect(screen.queryByText(/Wajar negatif|menunggu supplier selesai|Pantau pesanan, omzet/)).toBeNull();
+  expect(screen.getByText("Diperbarui 19.05", { exact: false })).toBeTruthy();
+  expect(screen.getByText("Bonus kode unik")).toBeTruthy();
+  await userEvent.click(within(card).getByRole("button", { name: /Operasional .*lihat rincian/ }));
+  expect(navigate).toHaveBeenCalledWith("expenses", expect.objectContaining({ from: report.from, to: report.to, category: "operational" }));
+  await userEvent.click(within(card).getByRole("button", { name: /Refund & replace .*lihat rincian/ }));
+  expect(navigate).toHaveBeenLastCalledWith("expenses", expect.objectContaining({ from: report.from, to: report.to, category: "refund_replace" }));
+  await userEvent.click(screen.getByRole("button", { name: "+ Catat pengeluaran" }));
+  expect(record).toHaveBeenCalledTimes(1);
+  expect(screen.getByText("2 order modalnya masih estimasi")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Tinjau ›" }));
+  await userEvent.click(await screen.findByRole("button", { name: "AXV-20261116-BBBB2222" }));
+  expect(navigate).toHaveBeenLastCalledWith("orders", { q: "AXV-20261116-BBBB2222" });
+});
+
+it("hides the estimate notice when every cost is final", () => {
+  const report = emptySelectedReport("week");
+  Object.assign(report, { orders: 1, revenue: 10000, cost: 5000, profit: 5000, estimated_orders: 0, net_profit: 5000, payment_fees: 0, refund_expenses: 0, operational_expenses: 0, unique_code_bonus: 0, estimated_order_codes: [] });
+  render(<AdminOverview data={{ ...data, selected_report: report }} selection="week" loading={false} />);
+  expect(screen.queryByText(/modalnya masih estimasi/)).toBeNull();
+  expect(screen.getByText("Omzet vs Untung bersih — Minggu ini")).toBeTruthy();
 });

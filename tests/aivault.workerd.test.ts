@@ -27,6 +27,7 @@ it("native workerd D1 batches catalog families, fences concurrent dispatch, and 
     const db=await runtime.getD1Database("DB");
     const tables=fixture.sql.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('categories','products','product_variants','store_settings','aivault_products')").all() as {sql:string}[];
     await db.batch(tables.map(t=>db.prepare(t.sql)));
+    await db.prepare("CREATE TABLE crypto_market_snapshot(id INTEGER PRIMARY KEY,fx_rate_text TEXT)").run();
     await db.prepare("INSERT INTO categories(id,name,slug) VALUES(1,'AI','ai-chatbot')").run();
     const call=async(body:Record<string,unknown>)=>{const response=await runtime.dispatchFetch("https://fixture.test",{method:"POST",body:JSON.stringify(body)});const r=await response.json() as {posts:string[];used:number[];results:unknown[]};expect(r.used.every(n=>n<=38)).toBe(true);return r;};
     expect((await call({catalog:true})).results).toMatchObject([{ok:true}]);

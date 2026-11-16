@@ -1,5 +1,15 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Keuangan admin: pengeluaran + untung bersih —16 November2026
+
+Migrasi0130 menambah `operating_expenses`/`expense_recurring` dan kurs beku link
+TUNVN/AIVault. Template berulang dimaterialisasi di job lite `cleanup` existing
+(idempoten UNIQUE, maks3 bulan susulan, budget-aware); tanpa jadwal cron/env baru.
+Cache Ringkasan memakai `store_settings.finance_revision` (trigger) + nilai MDR di
+kunci snapshot; jangan menghapus trigger itu tanpa mengganti invalidasi cache.
+Jangan menghapus order lama yang gagal di supplier untuk "membersihkan" laporan:
+modal link `failed` tanpa link completed sudah Rp0.
+
 ### Jaspay katalog multi-produk per tick —16 November2026
 
 Keputusan owner (Workers Paid): job lite `jaspay_catalog` memakai budget **96**

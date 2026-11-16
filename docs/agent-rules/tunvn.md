@@ -1,5 +1,14 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Kurs modal dibekukan per link — 16 November 2026 (lokal)
+
+Migrasi0130 menambah `tunvn_order_links.fx_idr_per_usdt`; backfill sekali dari
+kurs katalog/varian Buff lalu fallback snapshot D1 yang tersedia. Link baru
+menyimpan kurs saat dibuat. Laporan memakai kurs link terlebih dahulu; rantai
+katalog/snapshot lama hanya fallback bila NULL. Ini mengganti aturan kurs
+katalog dinamis pada bagian Ringkasan di bawah, bukan harga jual atau dispatch.
+Belum merupakan bukti migrasi/deployment produksi.
+
 ## Grup produk lintas supplier —16 November2026
 
 TUNVN dapat menjadi anggota grup2–10 bersama WR/SK/AIVault/Manual dari admin

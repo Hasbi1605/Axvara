@@ -1,5 +1,14 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Kurs modal dibekukan per link — 16 November 2026 (lokal)
+
+Migrasi0130 menambah `aivault_order_links.fx_idr_per_usd`; backfill sekali dari
+kurs produk lalu fallback snapshot D1 yang tersedia. Link baru menyimpan kurs
+saat dibuat. Laporan mengutamakan kurs link; rantai katalog/snapshot lama hanya
+fallback bila NULL. Mengganti aturan kurs katalog dinamis di bagian Ringkasan
+di bawah, tanpa mengubah harga jual atau dispatch. Migrasi/deployment produksi
+belum diverifikasi.
+
 ## Pengiriman langsung paid/Retry — 16 November 2026
 
 Jalur paid mencoba delivery lagi sesudah proses pembelian AIVault; Retry admin

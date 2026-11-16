@@ -27,7 +27,7 @@ it("empty historical range emits every zero day, including leap day, with metada
   const report = await readSelectedFinancialReport({ date_from: "2024-02-01", date_to: "2024-02-29" }, now);
   expect(report).toMatchObject({ from: "2024-02-01", to: "2024-02-29", timezone: "Asia/Jakarta", generated_at: now.toISOString(), orders: 0, revenue: 0, cost: 0, profit: 0, top_products: [] });
   expect(report.series).toHaveLength(29);
-  expect(report.series[28]).toEqual({ date: "2024-02-29", orders: 0, revenue: 0, cost: 0, profit: 0 });
+  expect(report.series[28]).toEqual({ date: "2024-02-29", orders: 0, revenue: 0, cost: 0, profit: 0,expenses:0,payment_fees:0,net_profit:0 });
   expect(emptySelectedReport("today", now).series).toHaveLength(1);
 });
 
@@ -42,7 +42,7 @@ it("historical report uses inclusive WIB payment boundaries and preserves cash/c
   }
   const report = await readSelectedFinancialReport({ date_from: "2024-02-29", date_to: "2024-02-29" }, now);
   expect(report).toMatchObject({ orders: 2, revenue: 15000, cost: 8000, profit: 7000, estimated_orders: 0 });
-  expect(report.series).toEqual([{ date: "2024-02-29", orders: 2, revenue: 15000, cost: 8000, profit: 7000 }]);
+  expect(report.series).toEqual([{ date: "2024-02-29", orders: 2, revenue: 15000, cost: 8000, profit: 7000,expenses:0,payment_fees:0,net_profit:7000 }]);
   expect(report.suppliers.manual).toMatchObject({ revenue: 15000, cost: 8000 });
   expect(report.channels.telegram).toMatchObject({ revenue: 15000, profit: 7000 });
   expect(report.top_products[0]).toMatchObject({ name: "History", qty: 2, revenue: 15000, cost: 8000 });

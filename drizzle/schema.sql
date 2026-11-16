@@ -1929,6 +1929,7 @@ CREATE TABLE IF NOT EXISTS tunvn_order_links (
   kind TEXT NOT NULL CHECK(kind IN ('account','buff')), source_product_id INTEGER,
   quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 100), invite_code TEXT,
   cost_usdt REAL NOT NULL CHECK(cost_usdt>0), currency TEXT NOT NULL DEFAULT 'usdt' CHECK(currency='usdt'),
+  fx_idr_per_usdt REAL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','claimed','processing','completed','needs_admin')),
   attempt_count INTEGER NOT NULL DEFAULT 0,
   next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')), lease_owner TEXT, lease_expires_at TEXT, request_sent_at TEXT,
@@ -2013,6 +2014,7 @@ CREATE TABLE IF NOT EXISTS aivault_order_links (
   service_id TEXT NOT NULL,
   quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 100),
   cost_usd REAL NOT NULL CHECK(cost_usd>0),
+  fx_idr_per_usd REAL,
   external_order_id TEXT NOT NULL UNIQUE,
   provider_order_id TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','claimed','processing','completed','needs_admin')),
@@ -2245,4 +2247,41 @@ CREATE TRIGGER IF NOT EXISTS pg_dirty_inventory_update AFTER UPDATE OF product_i
 WHEN OLD.product_id IS NOT NEW.product_id OR OLD.variant_id IS NOT NEW.variant_id OR OLD.status IS NOT NEW.status BEGIN
   INSERT OR REPLACE INTO product_group_dirty(group_id,version,pending)
     SELECT group_id,lower(hex(randomblob(16))),1 FROM product_group_members WHERE product_id IN (OLD.product_id,NEW.product_id);
+END;
+
+-- Finance (0130): cash-basis expenses and monthly templates.
+CREATE TABLE IF NOT EXISTS expense_recurring (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  category TEXT NOT NULL CHECK(category IN ('hosting','internet','ai_tools','domain','ads','refund','replace','other')),
+  amount INTEGER NOT NULL CHECK(amount>0 AND amount<=1000000000),
+  note TEXT CHECK(note IS NULL OR length(note)<=200),
+  day_of_month INTEGER NOT NULL CHECK(day_of_month BETWEEN 1 AND 31),
+  start_month TEXT NOT NULL CHECK(start_month GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' AND substr(start_month,6,2) BETWEEN '01' AND '12'),
+  active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+  last_generated_month TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS operating_expenses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  spent_on TEXT NOT NULL CHECK(spent_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(spent_on,'+0 days') IS NOT NULL AND date(spent_on,'+0 days')=spent_on),
+  category TEXT NOT NULL CHECK(category IN ('hosting','internet','ai_tools','domain','ads','refund','replace','other')),
+  amount INTEGER NOT NULL CHECK(amount>0 AND amount<=1000000000),
+  note TEXT CHECK(note IS NULL OR length(note)<=200),
+  order_code TEXT REFERENCES orders(code),
+  recurring_id INTEGER REFERENCES expense_recurring(id) ON DELETE SET NULL,
+  recurring_month TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(recurring_id,recurring_month)
+);
+CREATE INDEX IF NOT EXISTS idx_expenses_spent_on ON operating_expenses(spent_on);
+CREATE TRIGGER IF NOT EXISTS expense_insert_revision AFTER INSERT ON operating_expenses BEGIN
+  INSERT INTO store_settings(key,value) VALUES('finance_revision',lower(hex(randomblob(16)))) ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+END;
+CREATE TRIGGER IF NOT EXISTS expense_update_revision AFTER UPDATE ON operating_expenses BEGIN
+  INSERT INTO store_settings(key,value) VALUES('finance_revision',lower(hex(randomblob(16)))) ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+END;
+CREATE TRIGGER IF NOT EXISTS expense_delete_revision AFTER DELETE ON operating_expenses BEGIN
+  INSERT INTO store_settings(key,value) VALUES('finance_revision',lower(hex(randomblob(16)))) ON CONFLICT(key) DO UPDATE SET value=excluded.value;
 END;

@@ -56,9 +56,12 @@ export async function createTunvnOrderLinks(orderCode:string,db:DatabaseAccess=c
   for (let index=0;index<lines.length;index++) {
     const item=lines[index],e=eligibleTunvnLine(item);
     if (!e || existing.some(row=>row.item_index===index)) continue;
-    const result=await db.execRun(`INSERT OR IGNORE INTO tunvn_order_links(order_code,item_index,variant_id,product_id,kind,source_product_id,quantity,invite_code,cost_usdt)
-      SELECT code,?,?,?,?,?,?,?,? FROM orders WHERE code=? AND items=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0 AND COALESCE(order_kind,'apps')='apps'`,
-      index,item.variant_id,item.product_id,e.kind,e.source_product_id,item.qty,e.kind==="buff" ? (item.buyer_fields as Row).muse_invite_code : null,e.cost_usdt,orderCode,order.items);
+    const result=await db.execRun(`INSERT OR IGNORE INTO tunvn_order_links(order_code,item_index,variant_id,product_id,kind,source_product_id,quantity,invite_code,cost_usdt,fx_idr_per_usdt)
+      SELECT code,?,?,?,?,?,?,?,?,COALESCE(
+        (SELECT CASE WHEN pv.sku LIKE 'TUNVN-BUFF%' THEN pv.tunvn_fx_idr_per_usdt ELSE tp.fx_idr_per_usdt END FROM product_variants pv LEFT JOIN tunvn_products tp ON tp.supplier_product_id=? WHERE pv.id=?),
+        (SELECT CASE WHEN CAST(fx_rate_text AS REAL)>0 THEN CAST(fx_rate_text AS REAL) END FROM crypto_market_snapshot WHERE id=1))
+      FROM orders WHERE code=? AND items=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0 AND COALESCE(order_kind,'apps')='apps'`,
+      index,item.variant_id,item.product_id,e.kind,e.source_product_id,item.qty,e.kind==="buff" ? (item.buyer_fields as Row).muse_invite_code : null,e.cost_usdt,e.source_product_id,item.variant_id,orderCode,order.items);
     await db.execRun(`UPDATE fulfillment_items SET tunvn_link_id=(SELECT id FROM tunvn_order_links WHERE order_code=? AND item_index=?) WHERE order_code=? AND item_index=? AND wr_link_id IS NULL AND sk_link_id IS NULL AND status!='delivered'`,orderCode,index,orderCode,index);
     return Number(result.changes ?? 0);
   }

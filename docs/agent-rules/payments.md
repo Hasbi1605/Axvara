@@ -1,5 +1,15 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Biaya pembayaran di laporan admin — 16 November 2026 (lokal)
+
+MDR gopay/klikqris/dana disimpan di `store_settings.payment_mdr_bps` lewat API
+admin `/api/admin/payment-fees` (0–1000 bps, default semua0; GoPay gratis).
+Untung bersih mengurangi `gateway_fee` tersimpan + MDR dari nominal payable,
+masing-masing sekali per order. Bonus kode unik QRIS adalah info, sudah di omzet,
+bukan pendapatan tambahan kedua. Ini perhitungan laporan saja: nominal invoice,
+callback, poller, settlement dan status pembayaran tidak berubah. Perubahan MDR
+menghitung ulang periode historis juga; bukan snapshot MDR per transaksi.
+
 ## Audit jeda konfirmasi GoPay — 16 November 2026
 
 - Diukur baca-saja dari 12 order GoPay paid: GoPay paid→AXVARA lunas 4–31 detik

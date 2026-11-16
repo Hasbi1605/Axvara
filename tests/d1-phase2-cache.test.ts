@@ -54,7 +54,7 @@ it("overview route checks auth/revocation and validation before serving a comple
   fx.sql.exec(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status)
     VALUES('NEW','X','6280','[]',1000,'qris','pending')`);
   expect(await (await read()).json()).toEqual(first);
-  expect(fx.control.queries-afterFirst).toBe(1); // Revocation lookup still runs; report queries do not.
+  expect(fx.control.queries-afterFirst).toBe(2); // Revocation + fresh durable finance revision; panel aggregates remain cached.
   expect((await read("?period=bogus")).status).toBe(400);
   expect((await read("",false)).status).toBe(401);
   vi.advanceTimersByTime(40_000);

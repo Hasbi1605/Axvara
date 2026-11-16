@@ -151,7 +151,7 @@ describe("kontrak respons overview Fase 1", () => {
       expect(route).toContain(key);
     }
     const ui = read("src/components/admin/AdminOverview.tsx") + read("src/components/admin/OverviewCharts.tsx");
-    for (const label of ["Untung Produk", "Minggu ini", "Untung per supplier", "Top 5 penyumbang untung", "Untung per channel", "Omzet vs Untung"]) {
+    for (const label of ["Untung Produk", "Minggu ini", "Untung per supplier", "Top 5 penyumbang untung", "Untung per channel", "Omzet vs", "Untung bersih", "Catat pengeluaran"]) {
       expect(ui).toContain(label);
     }
     // 3 card legacy + teks rumus terhapus dari Ringkasan (2026-10-07).

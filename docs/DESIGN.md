@@ -1,5 +1,55 @@
 # DESIGN.md — AXVARA Design System
 
+## Ringkasan Untung Bersih + Pengeluaran — 16 November 2026
+
+Keputusan owner (desain disetujui 16 Nov): satu angka utama, rincian terbaca
+atas→bawah, input tidak memenuhi halaman.
+
+- **Kartu Untung Bersih** (`AdminOverview` → `NetProfitCard`, kiri 3fr di
+  desktop, paling atas di HP): angka 3xl/4xl hijau (`text-admin-success`) atau
+  merah bila negatif (`text-admin-danger`), pill "margin x%", lalu `<dl>`
+  berurutan Omzet → − Modal produk → = Untung kotor (tebal) → − Biaya pembayaran
+  → − Refund & replace › → − Operasional ›. Baris bertanda › adalah `Button`
+  ghost penuh-lebar yang membuka menu Pengeluaran pada rentang periode persis
+  yang aktif (refund+replace digabung, operasional mengecualikan keduanya). Kolom tanda (−/=) lebar tetap agar angka
+  rata kanan. Catatan kecil cukup "Pengeluaran dihitung pada tanggal dibayar".
+  Tanpa field keuangan (data lama)
+  kartu jatuh ke label "Untung Produk" tanpa baris biaya.
+- **Kartu kecil** kanan (HP 2 kolom): Pesanan lunas, Rata2/order, Bonus kode
+  unik (hint "Sudah termasuk omzet"). Kartu Omzet/Modal/Margin terpisah lama
+  dilebur ke kartu utama.
+- **Peringatan estimasi** (menggantikan keputusan 15 Okt yang menyembunyikannya):
+  strip `admin-warning/30` dengan ikon info, "N order modalnya masih estimasi"
+  + "Tinjau ›" (Popover daftar ≤20 kode → Pesanan `?q=kode`). Tidak tampil bila 0.
+- **"Diperbarui HH.MM ↻"** di toolbar periode (WIB, `aria-live`), tombol ↻ memuat ulang.
+- Header Ringkasan: tombol utama **"+ Catat pengeluaran"** sebelum unduh PDF/Excel.
+- Grafik: seri "Untung" menjadi **"Untung bersih"** bila tersedia; tooltip
+  menambah "biaya & pengeluaran" bila omzet − modal ≠ untung.
+- **Panel Catat pengeluaran** (`finance/ExpenseFormSheet`, `Sheet` kanan
+  `sm:max-w-md`, layar penuh di HP): chip kategori radio native (pill, aktif =
+  `admin-primary`, panah keyboard + ring fokus), Jumlah (MoneyInput titik ribuan) + Tanggal (2026-01-01 sampai hari ini),
+  Kode order (mono, hanya Refund/Replace), Keterangan, sakelar "Berulang tiap
+  bulan" (bukan untuk Refund/Replace, tidak untuk mode ubah). Footer sticky Batal/Simpan;
+  Escape/Batal mengembalikan fokus ke pembuka.
+- **Menu Pengeluaran** (sidebar Operasional setelah Ringkasan, ikon wallet):
+  filter Bulan + Kategori (termasuk gabungan Refund & replace / Operasional),
+  atau rentang bawaan Ringkasan dengan aksi "Pilih bulan"; kartu total periode + chip total per kategori (klik =
+  filter), daftar dikelompokkan per tanggal (subtotal), baris dengan badge
+  "Bulanan"/kode order dan aksi Ubah/Hapus (ConfirmDialog), kolom kanan
+  "Berulang tiap bulan" dengan sakelar Aktif/Dijeda + Hentikan. Aksi baris di
+  bawah nominal pada HP agar kode order panjang tidak overflow. Empty state
+  dengan CTA.
+- **Detail pesanan lunas**: tombol outline "Catat refund/replace" tanpa paragraf
+  pengantar membuka panel yang sama (kategori refund, kode order dan
+  nominal terisi).
+- **Pembayaran → Metode**: kartu "Biaya transaksi (MDR)" tiga input persen
+  (GoPay/KlikQRIS/DANA, sufiks %, validasi 0–10% dua desimal), Simpan aktif hanya bila berubah.
+- Revisi owner: helper dipangkas; header Ringkasan/Pengeluaran tanpa deskripsi
+  berulang, estimasi cukup jumlah+Tinjau, form "Isi nominal yang dibayar",
+  bulanan "Setiap tanggal N", MDR satu kalimat+"0 = tanpa potongan".
+  Label field, deskripsi dialog aksesibel, error dan peringatan perubahan entri
+  berulang tetap ada. Grafik tidak memerlukan instruksi hover/ketuk.
+
 ## Teks cek otomatis QRIS — 16 November 2026
 
 Indikator di bawah panel QR halaman pembayaran Market dan Pedia berubah dari

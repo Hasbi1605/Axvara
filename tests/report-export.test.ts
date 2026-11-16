@@ -9,7 +9,7 @@ function fixture() {
   Object.assign(report, { orders: 1, revenue: 12345, cost: 4000, profit: 8345, merchant_paid: 7345, credit_used: 5000, estimated_orders: 1 });
   report.suppliers.manual = { orders: 1, revenue: 12345, cost: 4000, profit: 8345 };
   report.channels.web = { ...report.suppliers.manual };
-  report.series[0] = { date: "2024-01-01", ...report.suppliers.manual };
+  report.series[0] = { date: "2024-01-01", ...report.suppliers.manual,expenses: 0,payment_fees: 0,net_profit: 8345 };
   report.top_products = [{ name: '=HYPERLINK("https://example.test") 🚀 Produk — ü', qty: 1, revenue: 12345, cost: 4000, profit: 8345 }];
   return report;
 }

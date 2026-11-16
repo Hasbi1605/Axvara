@@ -41,9 +41,11 @@ const NewsletterSubscribersLazy = lazy(() => import("@/components/admin/Newslett
 const AgentIntegrationLazy = lazy(() => import("@/components/admin/AgentIntegration").then((m) => ({ default: m.AgentIntegration })));
 const StoreSettingsManagerLazy = lazy(() => import("@/components/admin/StoreSettingsManager").then((m) => ({ default: m.StoreSettingsManager })));
 const ProductsSectionLazy = lazy(() => import("@/components/admin/sections/ProductsSection").then((m) => ({ default: m.ProductsSection })));
+const ExpensesManagerLazy = lazy(() => import("@/components/admin/finance/ExpensesManager").then((m) => ({ default: m.ExpensesManager })));
+const ExpenseFormSheetLazy = lazy(() => import("@/components/admin/finance/ExpenseFormSheet").then((m) => ({ default: m.ExpenseFormSheet })));
 const ProductEditorModalLazy = lazy(() => import("@/components/admin/ProductEditorModal").then((m) => ({ default: m.ProductEditorModal })));
 
-const ADMIN_SECTIONS: AdminSection[] = ["summary","products","orders","categories","payments","warung","sekalipay","tunvn","aivault","pairs","links","pedia","games","articles","banners","broadcasts","subscribers","bot","agent","settings"];
+const ADMIN_SECTIONS: AdminSection[] = ["summary","expenses","products","orders","categories","payments","warung","sekalipay","tunvn","aivault","pairs","links","pedia","games","articles","banners","broadcasts","subscribers","bot","agent","settings"];
 
 export default function AdminPage() {
   const toast = useToast();
@@ -59,6 +61,8 @@ export default function AdminPage() {
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [reportSelection, setReportSelection] = useState<ReportSelection>("week");
+  // Panel "Catat pengeluaran" dari Ringkasan (dimuat saat pertama dibuka).
+  const [expenseSheet, setExpenseSheet] = useState<"closed" | "open" | "idle">("closed");
   const overviewRequest = useRef(0);
 
   const loadOverview = useCallback(async()=>{
@@ -148,7 +152,11 @@ export default function AdminPage() {
 
   return (
     <AdminShell section={tab} onSection={(section)=>navigateAdmin(section)} badges={{ orders: overview.pending_orders, payments: overview.payment_attention, bot: overview.fulfillment_attention }}>
-      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection} />}
+      {tab==="summary" && <AdminOverview data={overview} loading={overviewLoading} error={overviewError} onRetry={loadOverview} selection={reportSelection} onSelectionChange={changeReportSelection}
+        onRecordExpense={() => setExpenseSheet("open")} onNavigate={(section, params) => navigateAdmin(section, params)} />}
+      {expenseSheet !== "closed" && <Suspense fallback={null}><ExpenseFormSheetLazy open={expenseSheet === "open"} onOpenChange={(open) => setExpenseSheet(open ? "open" : "idle")}
+        onSaved={(result) => { toast.success(result.recurring ? "Pengeluaran dicatat dan akan berulang tiap bulan." : "Pengeluaran dicatat."); void loadOverview(); }} /></Suspense>}
+      {tab==="expenses" && <Suspense fallback={sectionFallback("pengeluaran")}><ExpensesManagerLazy onChanged={loadOverview} /></Suspense>}
       {tab==="orders" && <OrdersManager onChanged={loadOverview} />}
       {tab==="categories" && <Suspense fallback={sectionFallback("kategori")}>{<CategoryManagerLazy />}</Suspense>}
       {tab==="payments" && <Suspense fallback={sectionFallback("pembayaran")}>{<PaymentMethodsManagerLazy onChanged={loadOverview} />}</Suspense>}

@@ -75,10 +75,10 @@ it("production financial reports survive module/binding replacement without exte
     // A fresh isolate module has no WeakMap snapshot, but can read encrypted edge data.
     const secondModule = await import("@/lib/dashboard-report");
     expect(await secondModule.readOverviewFinancialReport(new Date())).toEqual(first);
-    expect(fx.control.queries).toBe(queries);
+    expect(fx.control.queries).toBe(queries+1); // Fresh durable finance revision, encrypted sales snapshot reused.
     vi.advanceTimersByTime(31_000);
     expect((await secondModule.readOverviewFinancialReport(new Date())).generatedAt).toBe(new Date().toISOString());
-    expect(fx.control.queries).toBe(queries + 1);
+    expect(fx.control.queries).toBe(queries+5); // Revision + fee settings + sales + expense aggregates on expiry.
   } finally { fx.close(); }
 });
 

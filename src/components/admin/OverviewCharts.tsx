@@ -9,7 +9,7 @@ const compact = (value: number) => {
   return sign + (v >= 1e6 ? `${(v / 1e6).toFixed(1)}jt` : v >= 1000 ? `${Math.round(v / 1000)}rb` : `${Math.round(v)}`);
 };
 
-export function ProfitChart({ series, loading, label = "30 hari" }: { series: ReportPoint[]; loading: boolean; label?: string }) {
+export function ProfitChart({ series, loading, label = "30 hari", profitLabel = "Untung" }: { series: Pick<ReportPoint, "date" | "orders" | "revenue" | "cost" | "profit">[]; loading: boolean; label?: string; profitLabel?: string }) {
   const ref = useRef<HTMLDivElement>(null), id = useId().replace(/:/g, "");
   const [width, setWidth] = useState(640), [active, setActive] = useState<number | null>(null);
   const [show, setShow] = useState({ revenue: true, profit: true, orders: false });
@@ -29,10 +29,10 @@ export function ProfitChart({ series, loading, label = "30 hari" }: { series: Re
   const yo = (v: number) => H-B-v/maxOrders*(H-T-B);
   const path = (field: "revenue" | "profit" | "orders") => series.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${(field==='orders'?yo(p[field]):y(p[field])).toFixed(1)}`).join(' ');
   const selected = active == null ? null : series[active];
-  return <Card className="admin-surface min-w-0 rounded-xl p-4 sm:p-5" aria-label={`Grafik omzet dan untung ${label}`}>
+  return <Card className="admin-surface min-w-0 rounded-xl p-4 sm:p-5" aria-label={`Grafik omzet dan ${profitLabel.toLowerCase()} ${label}`}>
     <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0 p-0">
-      <div><h2 className="text-sm font-semibold text-admin-fg">Omzet vs Untung — {label}</h2><p className="mt-1 text-xs text-admin-muted">WIB · {loading ? 'Memuat…' : 'Ketuk atau arahkan kursor untuk detail'}{show.orders ? ' · Sumbu kanan: jumlah order' : ''}</p></div>
-      <div className="flex gap-1.5">{([['revenue','Omzet','rgb(var(--admin-accent))'],['profit','Untung','rgb(var(--admin-success))'],['orders','Order','rgb(var(--admin-warning))']] as const).map(([key,text,color])=><Button variant="outline" key={key} type="button" aria-pressed={show[key]} onClick={()=>setShow(s=>({...s,[key]:!s[key]}))} className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold ${show[key]?'border-admin-border bg-admin-subtle text-admin-fg':'border-admin-border text-admin-muted'}`}><span className="h-1.5 w-1.5 rounded-md" style={{background:color}} />{text}</Button>)}</div>
+      <div><h2 className="text-sm font-semibold text-admin-fg">Omzet vs {profitLabel} — {label}</h2><p className="mt-1 text-xs text-admin-muted">WIB{loading ? ' · Memuat…' : ''}{show.orders ? ' · Sumbu kanan: jumlah order' : ''}</p></div>
+      <div className="flex gap-1.5">{([['revenue','Omzet','rgb(var(--admin-accent))'],['profit',profitLabel,'rgb(var(--admin-success))'],['orders','Order','rgb(var(--admin-warning))']] as const).map(([key,text,color])=><Button variant="outline" key={key} type="button" aria-pressed={show[key]} onClick={()=>setShow(s=>({...s,[key]:!s[key]}))} className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold ${show[key]?'border-admin-border bg-admin-subtle text-admin-fg':'border-admin-border text-admin-muted'}`}><span className="h-1.5 w-1.5 rounded-md" style={{background:color}} />{text}</Button>)}</div>
     </CardHeader>
     <div ref={ref} className="relative mt-4 min-w-0">
       <svg viewBox={`0 0 ${width} ${H}`} style={{width:'100%',height:H}} role="img" aria-label={`Grafik garis omzet, untung, dan order ${label}`} onMouseLeave={()=>setActive(null)}>
@@ -46,11 +46,11 @@ export function ProfitChart({ series, loading, label = "30 hari" }: { series: Re
         </g>)}
         {series.map((p,i)=><g key={p.date}>
           {(i%Math.max(1,Math.ceil(series.length/5))===0||i===series.length-1)&&<text x={x(i)} y={H-8} textAnchor="middle" fill="rgb(var(--admin-muted))" fontSize="10">{p.date.includes(':')?p.date:`${p.date.slice(8)}/${p.date.slice(5,7)}`}</text>}
-          <rect x={i===0?L:(x(i-1)+x(i))/2} y={T} width={series.length===1?inner:i===0||i===series.length-1?inner/(series.length-1)/2:inner/(series.length-1)} height={H-T-B} fill="transparent" tabIndex={0} role="button" aria-label={`${p.date}, ${p.orders} order, untung ${formatRupiah(p.profit)}`} onFocus={()=>setActive(i)} onMouseEnter={()=>setActive(i)} onClick={()=>setActive(i)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setActive(i);}}}><title>{`${p.date} · ${p.orders} order · omzet ${formatRupiah(p.revenue)} · untung ${formatRupiah(p.profit)}`}</title></rect>
+          <rect x={i===0?L:(x(i-1)+x(i))/2} y={T} width={series.length===1?inner:i===0||i===series.length-1?inner/(series.length-1)/2:inner/(series.length-1)} height={H-T-B} fill="transparent" tabIndex={0} role="button" aria-label={`${p.date}, ${p.orders} order, ${profitLabel.toLowerCase()} ${formatRupiah(p.profit)}`} onFocus={()=>setActive(i)} onMouseEnter={()=>setActive(i)} onClick={()=>setActive(i)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setActive(i);}}}><title>{`${p.date} · ${p.orders} order · omzet ${formatRupiah(p.revenue)} · ${profitLabel.toLowerCase()} ${formatRupiah(p.profit)}`}</title></rect>
         </g>)}
         {!series.length&&<text x={width/2} y={H/2} textAnchor="middle" fill="rgb(var(--admin-muted))" fontSize="12">Belum ada transaksi pada periode ini</text>}
       </svg>
-      {selected&&<div role="status" className="pointer-events-none absolute right-0 top-0 max-w-full rounded-xl border border-admin-border bg-admin-card/95 px-3 py-2 shadow-xl"><p className="text-xs text-admin-muted">{selected.date} WIB</p><p className="mt-1 font-semibold text-admin-fg">{formatRupiah(selected.profit)}</p><p className="mt-1 text-xs text-admin-muted">{selected.orders} order · omzet {formatRupiah(selected.revenue)} · modal {formatRupiah(selected.cost)}</p></div>}
+      {selected&&<div role="status" className="pointer-events-none absolute right-0 top-0 max-w-full rounded-xl border border-admin-border bg-admin-card/95 px-3 py-2 shadow-xl"><p className="text-xs text-admin-muted">{selected.date} WIB</p><p className="mt-1 font-semibold text-admin-fg">{profitLabel} {formatRupiah(selected.profit)}</p><p className="mt-1 text-xs text-admin-muted">{selected.orders} order · omzet {formatRupiah(selected.revenue)} · modal {formatRupiah(selected.cost)}{selected.revenue-selected.cost-selected.profit!==0?` · biaya & pengeluaran ${formatRupiah(selected.revenue-selected.cost-selected.profit)}`:""}</p></div>}
     </div>
   </Card>;
 }

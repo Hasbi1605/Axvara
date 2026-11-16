@@ -44,8 +44,8 @@ it("retains legacy DANA setup when old health responses omit provider", async ()
   expect(screen.queryByText("Poller GoBiz server (GoPay)")).toBeNull();
 });
 
-it("keeps payment method copy rail-neutral without an extra health request", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ payment_methods: [
+it("keeps payment method copy rail-neutral with a separate MDR request and no health request", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url === "/api/admin/payment-fees" ? { mdr_bps: { gopay: 0, klikqris: 0, dana: 0 } } : ({ payment_methods: [
     { id: "qris", label: "QRIS", account_name: "Merchant", account_number: "", is_active: true, sort_order: 1 },
   ] }) })));
   render(<PaymentMethodsManager />);
@@ -54,7 +54,8 @@ it("keeps payment method copy rail-neutral without an extra health request", asy
   expect(screen.queryByText(/melalui QRIS Hook/)).toBeNull();
   expect(screen.queryByLabelText(/Nama pemilik/)).toBeNull();
   expect(screen.getByLabelText("QRIS aktif di checkout")).toBeTruthy();
-  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(fetch).mock.calls.map(([url]) => url).sort()).toEqual(["/api/admin/payment-fees", "/api/payment-methods?all=1"]);
 });
 
 it("keeps a persistent retryable error instead of claiming zero events on 503", async () => {
@@ -69,11 +70,11 @@ it("keeps a persistent retryable error instead of claiming zero events on 503", 
 });
 
 it("legacy bank records are read-only and cannot be added from the checkout settings", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ payment_methods: [{ id: "bca", label: "BCA", account_name: "Legacy", account_number: "123", is_active: true }] }) })));
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () => url === "/api/admin/payment-fees" ? { mdr_bps: { gopay: 0, klikqris: 0, dana: 0 } } : ({ payment_methods: [{ id: "bca", label: "BCA", account_name: "Legacy", account_number: "123", is_active: true }] }) })));
   render(<PaymentMethodsManager />);
   expect(await screen.findByText("Rekening transfer lama")).toBeTruthy();
   expect(screen.getByText(/· 123/)).toBeTruthy();
   expect(screen.queryByDisplayValue("123")).toBeNull();
-  expect(screen.queryByRole("button", { name: /Simpan/ })).toBeNull();
+  expect(screen.getByRole("button", { name: "Simpan" })).toHaveProperty("disabled", true);
   expect(screen.queryByRole("button", { name: /Tambah bank/ })).toBeNull();
 });

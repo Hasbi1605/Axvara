@@ -1,8 +1,9 @@
 import type { SelectedReport } from "@/lib/dashboard-report";
 import type { CellObject } from "write-excel-file/universal";
+import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL } from "@/lib/finance/types";
 
 type Table = { title: string; headers: string[]; rows: (string | number)[][] };
-export const REPORT_NOTE = "Untung produk belum dikurangi MDR dan biaya operasional. Modal tanpa snapshot atau supplier belum selesai merupakan estimasi. Omzet termasuk kredit yang digunakan dan pembulatan invoice.";
+export const REPORT_NOTE = "Untung produk adalah untung kotor. Untung bersih dikurangi biaya pembayaran, refund/replace, dan operasional. Modal tanpa snapshot atau supplier belum selesai merupakan estimasi. Bonus kode unik sudah termasuk omzet.";
 export const reportFilename = (report: SelectedReport, format: "pdf" | "xlsx") => `AXVARA-laporan-${report.from}_${report.to}.${format}`;
 
 /** Both downloadable documents use the exact immutable response shown on screen. */
@@ -14,6 +15,8 @@ export function reportTables(report: SelectedReport): Table[] {
       ["Tanggal awal (WIB)", report.from], ["Tanggal akhir (WIB, inklusif)", report.to], ["Zona waktu", report.timezone],
       ["Dibuat (WIB)", new Date(report.generated_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", hour12: false })],
       ["Pesanan lunas", report.orders], ["Omzet (Rp)", report.revenue], ["Modal (Rp)", report.cost], ["Untung produk (Rp)", report.profit],
+      ["Biaya pembayaran (Rp)", report.payment_fees], ["Refund & replace (Rp)",report.refund_expenses], ["Operasional (Rp)",report.operational_expenses], ["Untung bersih (Rp)",report.net_profit], ["Bonus kode unik (info, Rp)",report.unique_code_bonus],
+      ...EXPENSE_CATEGORIES.map(category => [`Pengeluaran: ${EXPENSE_CATEGORY_LABEL[category]} (Rp)`,report.expenses_by_category[category]]),
       ["Margin (%)", report.revenue ? report.profit / report.revenue * 100 : 0],
       ["Pembayaran merchant (Rp)", report.merchant_paid ?? report.revenue], ["Kredit digunakan (Rp)", report.credit_used ?? 0],
       ["Pesanan dengan modal estimasi", report.estimated_orders], ["Catatan", REPORT_NOTE],

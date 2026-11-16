@@ -9,6 +9,8 @@ type Props = {
   className?: string;
   allowEmpty?: boolean;
   readOnly?: boolean;
+  id?: string;
+  "aria-describedby"?: string;
 };
 
 function formatThousands(num: number | null | undefined): string {
@@ -23,6 +25,8 @@ export function MoneyInput({
   className = "",
   allowEmpty = false,
   readOnly = false,
+  id,
+  "aria-describedby": describedBy,
 }: Props) {
   const [displayValue, setDisplayValue] = React.useState<string>(formatThousands(value));
 
@@ -45,6 +49,8 @@ export function MoneyInput({
 
   return (
     <input
+      id={id}
+      aria-describedby={describedBy}
       type="text"
       inputMode="numeric"
       value={displayValue}
