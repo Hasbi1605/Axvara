@@ -54,6 +54,8 @@ export type AdminCopyInput = {
 
 export type VariantCopyStatus = "admin" | "axvara" | "pemasok" | "none";
 
+export type VariantCopyReviewKind = "changed" | "raw" | null;
+
 export type VariantCopyResolution = {
   copy: VariantCopy | null;
   status: VariantCopyStatus;
@@ -62,6 +64,14 @@ export type VariantCopyResolution = {
   /** Salinan tanpa suntingan admin (kurasi atau teks WR dirapikan). */
   auto: VariantCopy | null;
   supplierKey: string;
+  /**
+   * Jenis tinjauan (16 November 2026): "changed" = teks supplier berubah sejak
+   * suntingan/tanda tinjau admin; "raw" = teks supplier tampil apa adanya dan
+   * belum ditandai oke; null = tidak perlu ditinjau.
+   */
+  reviewKind: VariantCopyReviewKind;
+  /** Teks supplier apa adanya sudah cocok dengan sidik jari yang ditandai admin. */
+  reviewed: boolean;
 };
 
 export function resolveVariantCopyDetailed(
@@ -79,13 +89,24 @@ export function resolveVariantCopyDetailed(
       : supplierVariantCopy(terms, deliveryTerms);
   const adminCopy = admin ? parseAdminVariantCopy(admin.terms, admin.activation) : null;
   const adminCopyEn = admin ? parseAdminVariantCopy(admin.termsEn, admin.activationEn) : null;
-  const adminFresh = adminCopy !== null && (admin?.fingerprint ?? "") === supplierKey;
-  if (adminFresh) {
-    // EN hanya tampil bila admin mengisi EN; tanpa EN jatuh ke kurasi EN/WR.
-    if (locale === "en") return { copy: adminCopyEn ?? auto, status: adminCopyEn ? "admin" : auto ? auto.source : "none", adminStale: false, auto, supplierKey };
-    return { copy: adminCopy, status: "admin", adminStale: false, auto, supplierKey };
-  }
-  return { copy: auto, status: auto ? auto.source : "none", adminStale: adminCopy !== null || adminCopyEn !== null, auto, supplierKey };
+  const fingerprint = admin?.fingerprint ?? "";
+  const adminFresh = adminCopy !== null && fingerprint === supplierKey;
+  const adminStale = !adminFresh && (adminCopy !== null || adminCopyEn !== null);
+  // EN hanya tampil bila admin mengisi EN; tanpa EN jatuh ke kurasi EN/WR.
+  const copy = adminFresh ? (locale === "en" ? adminCopyEn ?? auto : adminCopy) : auto;
+  const status: VariantCopyStatus = adminFresh
+    ? (locale === "en" ? (adminCopyEn ? "admin" : auto ? auto.source : "none") : "admin")
+    : auto ? auto.source : "none";
+  // Tinjauan dihitung dari salinan ID (bukan locale): admin menyunting teks ID.
+  // "reviewed" = teks supplier yang tampil persis sama dengan sidik jari yang
+  // sudah ditandai admin, tanpa override ID.
+  const idStatus: VariantCopyStatus = adminFresh ? "admin" : auto ? auto.source : "none";
+  const noOverride = adminCopy === null;
+  const reviewed = noOverride && fingerprint !== "" && fingerprint === supplierKey && idStatus === "pemasok";
+  let reviewKind: VariantCopyReviewKind = null;
+  if (adminStale || (noOverride && fingerprint !== "" && fingerprint !== supplierKey && idStatus === "pemasok")) reviewKind = "changed";
+  else if (idStatus === "pemasok" && !reviewed) reviewKind = "raw";
+  return { copy, status, adminStale, auto, supplierKey, reviewKind, reviewed };
 }
 
 export function resolveVariantCopy(
@@ -97,9 +118,10 @@ export function resolveVariantCopy(
   return resolveVariantCopyDetailed(terms, deliveryTerms, admin, locale).copy;
 }
 
-/** Varian yang perlu ditinjau admin: teks WR tampil apa adanya, atau suntingannya dijeda. */
+/** Varian yang perlu ditinjau admin: teks supplier mentah belum ditandai oke,
+ * atau suntingan/tanda tinjau dijeda karena supplier mengubah teksnya. */
 export function needsCopyReview(resolution: VariantCopyResolution): boolean {
-  return resolution.status === "pemasok" || resolution.adminStale;
+  return resolution.reviewKind !== null;
 }
 
 export function adminCopyOf(variant: Pick<VariantSummary, "admin_terms" | "admin_activation" | "admin_copy_fingerprint" | "admin_terms_en" | "admin_activation_en">): AdminCopyInput {

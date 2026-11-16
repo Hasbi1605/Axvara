@@ -1,6 +1,26 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
 
+## Tinjau S&K: tanda "teks supplier sudah oke" + formatter judul — 16 November 2026 (lokal)
+
+- `resolveVariantCopyDetailed` menambah `reviewKind` (`changed`/`raw`/`null`) dan
+  `reviewed`; `needsCopyReview()` = `reviewKind !== null`. Salinan yang tampil ke
+  pembeli TIDAK berubah.
+- `PUT /api/admin/variant-copy` menerima `action:"acknowledge"|"unacknowledge"`.
+  Acknowledge menulis HANYA `admin_copy_fingerprint=supplierKey` (409
+  `has_override`, 400 `not_pemasok`); unacknowledge mengosongkan fingerprint.
+  Kolom EN dan teks admin tidak disentuh; CAS sumber+kolom admin sama. Jalur
+  simpan teks lama (termasuk clear saat kosong/sama dengan otomatis) tetap.
+- `GET /api/products` admin menambah `copyReviewChanged`/`copyReviewRaw` di
+  samping total `copyReview`.
+- Formatter supplier: baris judul-saja (S&K/Syarat/Ketentuan/Rules/Wajib
+  diingat/Penting → aturan; Catatan/Note/Notes → notes) jadi penanda bagian,
+  bukan butir, termasuk di teks aktivasi. Di bawah judul aturan, baris yang
+  jelas garansi tetap masuk garansi. Kurasi dan `supplierFingerprint` tetap.
+- Regresi dump read-only `/tmp/copy-rows.json` (194 varian `pemasok`): butir
+  judul-saja 15→0 (varian 14→0), butir non-judul tetap 1.914, domain supplier 0.
+- Status: implementasi lokal + test; tanpa migrasi, belum commit/deploy.
+
 ## Hapus tab Audit SK & Alat di panel Sekalipay — 16 November 2026 (lokal)
 
 - Permintaan owner: hapus tab **Audit SK** (mutasi saldo + transaksi) dan

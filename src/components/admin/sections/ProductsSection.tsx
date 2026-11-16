@@ -9,14 +9,18 @@ import { SupplierBadge, SUPPLIER_STYLES } from "../supplier-style";
 
 // Section "Produk" dipisah karena inilah bagian terbesar page.tsx: kartu statistik,
 // pencarian, tabel/daftar responsif, dan pagination. Semua state tetap dimiliki
-// page.tsx dan diturunkan lewat props eksplisit — komponen ini hanya merender dan
-// meneruskan event, tanpa memiliki state bisnis sendiri.
+// page.tsx dan diturunkan lewat props eksplisit. Filter tinjauan S&K lokal
+// diterapkan ke hasil pencarian/status/supplier sebelum pagination.
 
 /** Filter asal supplier di daftar admin (keputusan owner 2026-09-30). */
 export type SupplierFilter = "all" | "WR" | "SK" | "TUNVN" | "AIVault" | "Manual";
 
 /** Varian aktif yang S&K-nya perlu ditinjau (teks WR belum versi Axvara / suntingan dijeda). */
-function CopyReviewBadge({ count }: { count?: number }) {
+function CopyReviewBadge({ count, changed, raw }: { count?: number; changed?: number; raw?: number }) {
+  if (changed !== undefined && raw !== undefined) return <div className="mt-1 flex flex-wrap gap-1">
+    {changed > 0 && <Badge variant="outline" title="Supplier mengubah teks sejak suntingan atau tinjauan terakhir. Buka tab Deskripsi & S&K untuk meninjau ulang." className="whitespace-normal rounded-md border-admin-danger/30 bg-admin-danger/10 text-admin-danger">Supplier mengubah S&amp;K · {changed} varian</Badge>}
+    {raw > 0 && <Badge variant="outline" title="Teks supplier belum dirapikan atau ditandai sudah oke. Buka tab Deskripsi & S&K." className="whitespace-normal rounded-md border-admin-border text-admin-muted">S&amp;K belum dirapikan · {raw} varian</Badge>}
+  </div>;
   if (!count) return null;
   return (
     <Badge variant="outline"
@@ -48,11 +52,11 @@ export function ProductsSection({
   error,
   onRetry,
   prods,
-  paged,
-  filtered,
+  paged: basePaged,
+  filtered: baseFiltered,
   q,
-  safePage,
-  totalPages,
+  safePage: baseSafePage,
+  totalPages: baseTotalPages,
   perPage,
   loadingList,
   toggling,
@@ -121,6 +125,14 @@ export function ProductsSection({
   /** Edit angka Terjual inline (ketik + Enter) — SET absolut. */
   onSoldCount: (p: Prod, soldCount: number) => void;
 }) {
+  const [copyFilter, setCopyFilter] = useState("all");
+  const matchesCopy = (p: Prod, kind: string) => kind === "changed" ? (p.copyReviewChanged ?? 0) > 0 : kind === "raw" ? (p.copyReviewRaw ?? 0) > 0 : (p.copyReview ?? 0) > 0;
+  const copyFiltered = copyFilter !== "all" && liveTab !== "archive";
+  const filtered = copyFiltered ? baseFiltered.filter(p => matchesCopy(p, copyFilter)) : baseFiltered;
+  const totalPages = copyFiltered ? Math.max(1, Math.ceil(filtered.length / perPage)) : baseTotalPages;
+  const safePage = Math.min(baseSafePage, totalPages);
+  const paged = copyFiltered ? filtered.slice((safePage - 1) * perPage, safePage * perPage) : basePaged;
+  const copyCount = (kind: string) => prods.filter(p => !p.archivedAt && matchesCopy(p, kind)).length;
   // Posisi tampil produk di daftar penuh (tanpa potong halaman): dipakai
   // untuk menonaktifkan tombol naik di puncak dan turun di dasar, SEKALIGUS
   // sebagai angka yang TAMPIL di kolom Urutan (pos + 1, selalu 1..N rapi).
@@ -200,6 +212,12 @@ export function ProductsSection({
                 <option key={supplier} value={supplier}>{SUPPLIER_STYLES[supplier].label}</option>
               ))}
             </NativeSelect>
+            <NativeSelect aria-label="Tinjauan S&K" value={copyFilter} disabled={liveTab === "archive"} className="w-full min-w-0 sm:w-64" onChange={e => { setCopyFilter(e.target.value); onPageChange(() => 1); }}>
+              <option value="all">Semua tinjauan S&amp;K</option>
+              <option value="changed">Supplier mengubah teks ({copyCount("changed")})</option>
+              <option value="raw">Belum dirapikan ({copyCount("raw")})</option>
+              <option value="review">Semua yang perlu ditinjau ({copyCount("review")})</option>
+            </NativeSelect>
             <div id="supplier-legend" role="group" aria-label="Legenda asal supplier" className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-admin-muted">Asal:</span>
               {(Object.keys(SUPPLIER_STYLES) as Array<keyof typeof SUPPLIER_STYLES>).map(supplier => <SupplierBadge key={supplier} supplier={supplier} />)}
@@ -220,13 +238,14 @@ export function ProductsSection({
             ))}
             </TabsList></div>
 
-          {onlyLowStock && (
+          {(onlyLowStock || copyFiltered) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="text-sm text-admin-muted">Filter aktif</span>
-              <Button variant="outline" size="sm" type="button" onClick={onClearLowStock}>
+              {onlyLowStock && <Button variant="outline" size="sm" type="button" onClick={onClearLowStock}>
                 Stok menipis · varian ≤ 5
                 <X aria-hidden="true" />
-              </Button>
+              </Button>}
+              {copyFiltered && <Button variant="outline" size="sm" type="button" aria-label="Reset tinjauan S&K" onClick={() => { setCopyFilter("all"); onPageChange(() => 1); }}>Tinjauan S&amp;K · {copyFilter === "changed" ? "Supplier mengubah teks" : copyFilter === "raw" ? "Belum dirapikan" : "Perlu ditinjau"}<X aria-hidden="true" /></Button>}
             </div>
           )}
 
@@ -246,11 +265,11 @@ export function ProductsSection({
             </div> : (<>
 
             <div className="divide-y divide-admin-border md:hidden">
-              {paged.map(p=>{ const inHiddenTab = liveTab === "hidden"; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (<Card key={p.id} className="border-0 p-4 shadow-none">
+              {paged.map(p=>{ const inHiddenTab = liveTab === "hidden" || copyFiltered; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (<Card key={p.id} className="border-0 p-4 shadow-none">
                 <div className="flex items-start gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.image || "/brand/axvara-mark.svg"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-admin-subtle object-cover" />
-                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-admin-fg">{p.name}</p><div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div><p className="mt-0.5 truncate text-xs text-admin-muted">{p.categoryName || "Tanpa kategori"} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p>{p.liveStatus !== "live" && p.liveReason ? <p className="mt-0.5 truncate text-xs text-admin-muted">{p.liveReason}</p> : null}<CopyReviewBadge count={p.copyReview} /></div><Switch checked={p.isActive} onCheckedChange={() => onToggleActive(p)} disabled={toggling === p.id} aria-label={`Toggle aktif ${p.name}`} title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"} /></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-admin-fg">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Stok {p.stock === -1 ? "∞" : p.stock}</Badge><span className="text-admin-muted">{p.soldCount} terjual</span></div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-admin-fg">{p.name}</p><div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div><p className="mt-0.5 truncate text-xs text-admin-muted">{p.categoryName || "Tanpa kategori"} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p>{p.liveStatus !== "live" && p.liveReason ? <p className="mt-0.5 truncate text-xs text-admin-muted">{p.liveReason}</p> : null}<CopyReviewBadge count={p.copyReview} changed={p.copyReviewChanged} raw={p.copyReviewRaw} /></div><Switch checked={p.isActive} onCheckedChange={() => onToggleActive(p)} disabled={toggling === p.id} aria-label={`Toggle aktif ${p.name}`} title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"} /></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-admin-fg">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Stok {p.stock === -1 ? "∞" : p.stock}</Badge><span className="text-admin-muted">{p.soldCount} terjual</span></div></div>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
@@ -267,7 +286,7 @@ export function ProductsSection({
                   <TableRow><TableHead className="">Produk</TableHead><TableHead className="hidden px-2 xl:table-cell">Kategori</TableHead><TableHead className="px-2 text-right">Harga</TableHead><TableHead className="px-2 text-center">Stok</TableHead><TableHead className="px-2 text-center">Terjual</TableHead><TableHead className="px-2 text-center">Urutan</TableHead><TableHead className="px-2 text-center">Aktif</TableHead><TableHead className=" text-right">Aksi</TableHead></TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paged.map(p=>{ const inHiddenTab = liveTab === "hidden"; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (
+                  {paged.map(p=>{ const inHiddenTab = liveTab === "hidden" || copyFiltered; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (
                     <TableRow key={p.id}>
                       <TableCell className="py-3 ">
                         <div className="flex min-w-[180px] items-center gap-3">
@@ -278,7 +297,7 @@ export function ProductsSection({
                             <div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div>
                             <p className="text-xs text-admin-muted line-clamp-1">/{p.slug} {p.badge? `· ${p.badge}`:""}</p>
                             {p.liveStatus !== "live" && p.liveReason ? <p className="text-xs text-admin-muted line-clamp-1">{p.liveReason}</p> : null}
-                            <CopyReviewBadge count={p.copyReview} />
+                            <CopyReviewBadge count={p.copyReview} changed={p.copyReviewChanged} raw={p.copyReviewRaw} />
                           </div>
                         </div>
                       </TableCell>
@@ -305,9 +324,9 @@ export function ProductsSection({
                             onBlur={() => commitJump(p)}
                             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setJumpDraft((prev) => { const next = { ...prev }; delete next[p.id]; return next; }); }}
                             inputMode="numeric"
-                            disabled={liveTab === "hidden"}
+                            disabled={liveTab === "hidden" || copyFiltered}
                             aria-label={`Pindah ${p.name} ke posisi 1 sampai ${filtered.length}`}
-                            title={liveTab === "hidden" ? "Urutan di tab Hidden tidak berpengaruh ke storefront — atur di tab Live" : `Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${filtered.length} — Ketik lalu Enter untuk lompat (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
+                            title={copyFiltered ? "Reset tinjauan S&K untuk mengatur urutan katalog" : liveTab === "hidden" ? "Urutan di tab Hidden tidak berpengaruh ke storefront — atur di tab Live" : `Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${filtered.length} — Ketik lalu Enter untuk lompat (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
                             className="mr-1 h-8 min-h-0 w-16 border-admin-input bg-admin-card px-1 text-center tabular-nums text-admin-fg shadow-none hover:border-admin-input focus-visible:border-admin-input md:text-sm"
                           />
                           <Button variant="outline" type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon" className="size-8"><ArrowUp size={16} aria-hidden="true" /></Button>

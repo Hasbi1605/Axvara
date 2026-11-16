@@ -230,6 +230,8 @@ async function readProducts(req: NextRequest) {
   // Varian aktif yang S&K-nya perlu ditinjau admin (teks WR belum punya versi
   // Axvara, atau suntingan admin dijeda karena WR mengubah teks). Hanya admin.
   const copyReviewByProduct = new Map<string, number>();
+  const copyReviewChangedByProduct = new Map<string, number>();
+  const copyReviewRawByProduct = new Map<string, number>();
   if (isAdminRequest && isD1Mode()) {
     const copyRows = await queryAll(
       `SELECT pv.product_id, pv.admin_terms, pv.admin_activation, pv.admin_copy_fingerprint,
@@ -253,6 +255,8 @@ async function readProducts(req: NextRequest) {
       if (!needsCopyReview(resolution)) continue;
       const key = String(row.product_id);
       copyReviewByProduct.set(key, (copyReviewByProduct.get(key) ?? 0) + 1);
+      if (resolution.reviewKind === "changed") copyReviewChangedByProduct.set(key, (copyReviewChangedByProduct.get(key) ?? 0) + 1);
+      else copyReviewRawByProduct.set(key, (copyReviewRawByProduct.get(key) ?? 0) + 1);
     }
   }
   const data = rows.map((r: Record<string, unknown>) => {
@@ -301,6 +305,8 @@ async function readProducts(req: NextRequest) {
       // "stok menipis" selalu nol.
       lowStockVariants: isAdminRequest && isD1Mode() ? (lowStockByProduct.get(String(r.id)) ?? 0) : undefined,
       copyReview: isAdminRequest && isD1Mode() ? (copyReviewByProduct.get(String(r.id)) ?? 0) : undefined,
+      copyReviewChanged: isAdminRequest && isD1Mode() ? (copyReviewChangedByProduct.get(String(r.id)) ?? 0) : undefined,
+      copyReviewRaw: isAdminRequest && isD1Mode() ? (copyReviewRawByProduct.get(String(r.id)) ?? 0) : undefined,
       // Badge asal supplier — HANYA admin (keputusan owner 2026-09-30).
       // Storefront tidak menerima field ini sehingga tidak bisa bocor ke pembeli.
       supplier: isAdminRequest ? (supplierByProduct.get(String(r.id)) ?? "Manual") : undefined,

@@ -49,6 +49,8 @@ export type VariantCopyState = ReturnType<typeof useVariantCopyEntries>;
 
 function statusBadge(entry: VariantCopyEntry): { label: string; className: string } {
   if (entry.adminStale) return { label: `${entry.supplier ?? "Supplier"} mengubah teks — suntingan dijeda`, className: "border-admin-danger/30 bg-admin-danger/10 text-admin-danger" };
+  if (entry.reviewKind === "changed") return { label: `${entry.supplier ?? "Supplier"} mengubah teks — tinjau ulang`, className: "border-admin-danger/30 bg-admin-danger/10 text-admin-danger" };
+  if (entry.reviewed) return { label: `Teks ${entry.supplier ?? "supplier"} — sudah ditinjau`, className: "border-admin-border bg-admin-subtle text-admin-muted" };
   if (entry.status === "admin") return { label: "Disunting admin", className: "border-admin-success/25 bg-admin-success/10 text-admin-success" };
   if (entry.status === "axvara") return { label: "Versi Axvara (otomatis)", className: "border-admin-accent/25 bg-admin-primary/10 text-admin-accent" };
   if (entry.status === "pemasok") return { label: `Teks ${entry.supplier ?? "supplier"} — belum versi Axvara`, className: "border-admin-warning/30 bg-admin-warning/10 text-admin-warning" };
@@ -120,14 +122,16 @@ export function VariantCopyEditor({
 
   const badge = entry ? statusBadge(entry) : null;
 
-  const save = async (nextTerms: string, nextActivation: string, successMessage: string, nextTermsEn = termsEn, nextActivationEn = activationEn) => {
+  const save = async (nextTerms: string, nextActivation: string, successMessage: string, nextTermsEn = termsEn, nextActivationEn = activationEn, action?: "acknowledge" | "unacknowledge") => {
     setSaving(true);
     setSaveError(null);
     try {
       const res = await fetch("/api/admin/variant-copy", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ variant_id: variantId, terms: nextTerms, activation: nextActivation, terms_en: nextTermsEn, activation_en: nextActivationEn, supplier_key: entry?.supplierKey }),
+        body: JSON.stringify(action
+          ? { variant_id: variantId, supplier_key: entry?.supplierKey, action }
+          : { variant_id: variantId, terms: nextTerms, activation: nextActivation, terms_en: nextTermsEn, activation_en: nextActivationEn, supplier_key: entry?.supplierKey }),
       });
       const data = await res.json().catch(() => ({})) as { variant?: VariantCopyEntry; error?: string };
       if (!res.ok || !data.variant) throw new Error(data.error || `Gagal menyimpan (${res.status})`);
@@ -175,9 +179,9 @@ export function VariantCopyEditor({
                   {entry.supplier ?? "Supplier"} mengubah teks. Pembeli melihat versi otomatis terbaru; kolom di bawah berisi suntingan admin yang dijeda. Bandingkan sebelum menyimpan ulang.
                 </p>
               )}
-              {entry.status === "pemasok" && !entry.adminStale && (
+              {entry.status === "pemasok" && !entry.adminStale && !entry.reviewed && (
                 <p className="mb-3 rounded-xl border border-admin-warning/25 bg-admin-warning/10 px-3 py-2.5 text-xs leading-5 text-admin-warning">
-                  Pembeli melihat teks {entry.supplier ?? "supplier"} yang dirapikan otomatis. Kamu bisa langsung menyunting teks di bawah.
+                  Pembeli melihat teks {entry.supplier ?? "supplier"}. Kalau teks supplier sudah layak, tandai oke; kalau perlu dirapikan, kamu bisa langsung menyunting teks di bawah.
                 </p>
               )}
               {!entry.autoTerms && !entry.autoActivation && !entry.hasOverride && <p className="mb-3 text-xs text-admin-muted">Supplier belum menyediakan panduan varian. Bagian dari deskripsi produk, jika ada, tetap tampil di pratinjau.</p>}
@@ -255,6 +259,10 @@ export function VariantCopyEditor({
               <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                 {dirty && <span className="mr-auto text-xs text-admin-warning">Belum disimpan</span>}
                 {dirty && <Button variant="ghost" type="button" disabled={saving} className="min-h-9 px-3 text-xs text-admin-muted" onClick={() => { preserveDraft.current = false; setTerms(initialTerms); setActivation(initialActivation); setTermsEn(initialTermsEn); setActivationEn(initialActivationEn); setSaveError(null); }}>Batalkan perubahan</Button>}
+                {!dirty && (entry.reviewKind === "raw" || (entry.reviewKind === "changed" && !entry.hasOverride)) && <Button variant="outline" type="button" disabled={saving || loading} className="min-h-9 text-xs" onClick={() => void save(terms, activation, "Ditandai sudah ditinjau. Teks tetap ikut update supplier.", termsEn, activationEn, "acknowledge")}>
+                  {entry.reviewKind === "changed" ? "Teks baru sudah oke" : "Teks supplier sudah oke"}
+                </Button>}
+                {!dirty && entry.reviewed && <Button variant="ghost" type="button" disabled={saving || loading} className="min-h-9 text-xs text-admin-muted underline" onClick={() => void save(terms, activation, "Tanda tinjauan dibatalkan.", termsEn, activationEn, "unacknowledge")}>Batalkan tanda</Button>}
                 {entry.hasOverride && (
                   <Button variant="outline"
                     type="button"

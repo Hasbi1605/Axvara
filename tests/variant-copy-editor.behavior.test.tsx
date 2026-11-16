@@ -15,6 +15,7 @@ import type { FormVariant, Prod, ProductForm } from "@/components/admin/product-
 import { useState } from "react";
 import { act } from "@testing-library/react";
 import { ProductVariantRows, NonWrFulfillmentPanel } from "@/components/admin/sections/ProductVariantRows";
+import { AdminPortalContext } from "@/components/admin/ui/portal";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -30,6 +31,8 @@ const base: VariantCopyEntry = {
   status: "axvara",
   adminStale: false,
   needsReview: false,
+  reviewKind: null,
+  reviewed: false,
   hasOverride: false,
   adminTerms: "",
   adminActivation: "",
@@ -60,6 +63,55 @@ function stubSave(returned: Partial<VariantCopyEntry>) {
 }
 
 describe("VariantCopyEditor", () => {
+  it.each(["raw", "changed"] as const)("acknowledges %s without rewriting supplier text; response updates status", async (reviewKind) => {
+    const entry = { ...base, status: "pemasok" as const, reviewKind, needsReview: true };
+    const fetchMock = stubSave({ ...entry, reviewed: true, needsReview: false, reviewKind: null });
+    function Editor() {
+      const [current, setCurrent] = useState(entry as VariantCopyEntry);
+      return <VariantCopyEditor variantId={13} entry={current} loading={false} error={null} onSaved={setCurrent} />;
+    }
+    render(<ToastProvider><Editor /></ToastProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /Syarat & Ketentuan/ }));
+    expect(screen.getByText(reviewKind === "raw" ? "Teks WR — belum versi Axvara" : "WR mengubah teks — tinjau ulang")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: reviewKind === "raw" ? "Teks supplier sudah oke" : "Teks baru sudah oke" }));
+    await screen.findByText("Teks WR — sudah ditinjau");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ variant_id: 13, supplier_key: base.supplierKey, action: "acknowledge" });
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("PUT");
+    expect(await screen.findByText("Ditandai sudah ditinjau. Teks tetap ikut update supplier.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Batalkan tanda" })).toBeTruthy();
+  });
+
+  it("unacknowledges reviewed supplier text and hides review actions while dirty", async () => {
+    const fetchMock = stubSave({ reviewKind: "raw", reviewed: false, needsReview: true, status: "pemasok" });
+    const { onSaved } = renderEditor({ ...base, status: "pemasok", reviewed: true });
+    fireEvent.change(screen.getByLabelText("Syarat & Ketentuan"), { target: { value: "Draft" } });
+    expect(screen.queryByRole("button", { name: "Batalkan tanda" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Batalkan tanda" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ reviewed: false, reviewKind: "raw" })));
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ variant_id: 13, supplier_key: base.supplierKey, action: "unacknowledge" });
+  });
+
+  it("dirty supplier text hides acknowledge; conflict offers reload and disables actions in flight", async () => {
+    let resolve!: (value: unknown) => void;
+    const fetchMock = vi.fn(() => new Promise(r => { resolve = r; }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onReload = vi.fn();
+    const onSaved = vi.fn();
+    render(<ToastProvider><VariantCopyEditor variantId={13} entry={{ ...base, status: "pemasok", reviewKind: "raw", needsReview: true }} loading={false} error={null} onSaved={onSaved} onReload={onReload} /></ToastProvider>);
+    fireEvent.click(screen.getByRole("button", { name: /Syarat & Ketentuan/ }));
+    fireEvent.change(screen.getByLabelText("Syarat & Ketentuan"), { target: { value: "Draft" } });
+    expect(screen.queryByRole("button", { name: "Teks supplier sudah oke" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Teks supplier sudah oke" }));
+    expect(screen.getByRole("button", { name: "Teks supplier sudah oke" })).toHaveProperty("disabled", true);
+    await act(async () => resolve({ ok: false, status: 409, json: async () => ({ error: "Teks supplier berubah" }) }));
+    expect(screen.getByRole("alert").textContent).toContain("Teks supplier berubah");
+    fireEvent.click(screen.getByRole("button", { name: "Muat sumber terbaru (pertahankan draft)" }));
+    expect(onReload).toHaveBeenCalledOnce();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", base.autoTerms);
+  });
   it("shows automatic supplier processing instead of local manual fulfillment controls", () => {
     vi.stubGlobal("fetch",vi.fn(async()=>({ok:true,json:async()=>({})})));
     const update=vi.fn();
@@ -144,7 +196,7 @@ describe("VariantCopyEditor", () => {
   });
 
   it("suntingan dijeda: peringatan tampil, teks admin dimuat, bisa ditandai sudah ditinjau tanpa mengubah", async () => {
-    const stale: VariantCopyEntry = { ...base, status: "pemasok", adminStale: true, needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun", adminActivation: "" };
+   const stale: VariantCopyEntry = { ...base, status: "pemasok", reviewKind: "changed", adminStale: true, needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun", adminActivation: "" };
     const fetchMock = stubSave({ status: "admin", adminStale: false, needsReview: false });
     renderEditor(stale);
     expect(screen.getByText("WR mengubah teks — suntingan dijeda")).toBeTruthy();
@@ -178,6 +230,47 @@ describe("VariantCopyEditor", () => {
 });
 
 describe("daftar produk admin", () => {
+  it("separates changed/raw badges, filters the full existing result before pagination and resets", () => {
+    const prod = (id: string, extra: Partial<Prod> = {}): Prod => ({ id, slug: id, name: `Produk ${id}`, description: "", price: 1000, categorySlug: "akun-premium", image: "", images: [], soldCount: 0, stock: 1, isActive: true, ...extra });
+    const list = [prod("both", { copyReview: 3, copyReviewChanged: 1, copyReviewRaw: 2 }), prod("raw", { copyReview: 1, copyReviewChanged: 0, copyReviewRaw: 1 }), prod("legacy", { copyReview: 4 }), prod("excluded", { copyReview: 1, copyReviewChanged: 1, copyReviewRaw: 0 }), prod("archive", { archivedAt: "2026-11-15", copyReview: 1, copyReviewChanged: 1, copyReviewRaw: 0 })];
+    // Existing status/supplier/search result is supplied by the page; copy filter must intersect it.
+    const existing = list.slice(0, 3);
+    function List() {
+      const [page, setPage] = useState(1);
+      return <ProductsSection prods={list} filtered={existing} paged={existing.slice(page - 1, page)} q="existing search" safePage={page} totalPages={3} perPage={1}
+        loadingList={false} toggling={null} activeProducts={4} lowStock={0} soldProducts={0} onQueryChange={vi.fn()} onPageChange={setPage} onlyLowStock={false} onClearLowStock={vi.fn()}
+        supplierFilter="all" onSupplierFilterChange={vi.fn()} liveProducts={4} hiddenProducts={0} offProducts={0} liveTab="all" onLiveTabChange={vi.fn()} perPageAdmin={20} onPerPageChange={vi.fn()}
+        onNew={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onToggleActive={vi.fn()} reordering={null} onMove={vi.fn()} onJump={vi.fn()} onSoldCount={vi.fn()} />;
+    }
+    render(<List />);
+    expect(screen.getAllByText("Supplier mengubah S&K · 1 varian")).toHaveLength(2);
+    expect(screen.getAllByText("S&K belum dirapikan · 2 varian")).toHaveLength(2);
+    expect(screen.getAllByText("Supplier mengubah S&K · 1 varian")[0].className).toContain("text-admin-danger");
+    expect(screen.getAllByText("S&K belum dirapikan · 2 varian")[0].className).toContain("text-admin-muted");
+    const filter = screen.getByRole("combobox", { name: "Tinjauan S&K" });
+    expect(within(filter).getByRole("option", { name: "Supplier mengubah teks (2)" })).toBeTruthy();
+    expect(within(filter).getByRole("option", { name: "Belum dirapikan (2)" })).toBeTruthy();
+    expect(within(filter).getByRole("option", { name: "Semua yang perlu ditinjau (4)" })).toBeTruthy();
+    fireEvent.change(filter, { target: { value: "changed" } });
+    expect(screen.getByText("Filter aktif")).toBeTruthy();
+    for (const button of screen.getAllByRole("button", { name: "Turunkan Produk both" })) expect(button).toHaveProperty("disabled", true);
+    expect(screen.getByRole("textbox", { name: "Pindah Produk both ke posisi 1 sampai 1" })).toHaveProperty("disabled", true);
+    expect(screen.getByText(/Hal 1 dari 1 · 1 produk/)).toBeTruthy();
+    expect(screen.queryByText("Produk excluded")).toBeNull();
+    fireEvent.change(filter, { target: { value: "raw" } });
+    expect(screen.getByText(/Hal 1 dari 2 · 2 produk/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    expect(screen.getAllByText("Produk raw")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Reset tinjauan S&K" }));
+    expect(filter).toHaveProperty("value", "all");
+    expect(screen.queryByText("Filter aktif")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    expect(screen.getAllByText("S&K perlu ditinjau · 4 varian")).toHaveLength(2);
+    fireEvent.change(filter, { target: { value: "review" } });
+    expect(screen.getByText(/Hal 1 dari 3 · 3 produk/)).toBeTruthy();
+  });
+
   it("produk dengan S&K varian yang perlu ditinjau diberi penanda", () => {
     const prod = (id: string, copyReview: number): Prod => ({
       id, slug: `p-${id}`, name: `Produk ${id}`, description: "", price: 1000, categorySlug: "akun-premium",
@@ -211,21 +304,21 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     { ...base, variantId: 13, status: "pemasok", adminStale: true, needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun" },
   ];
 
-  function renderModal(form: ProductForm, formVariants = variants, onSetForm = vi.fn(), editing = true) {
+  function renderModal(form: ProductForm, formVariants = variants, onSetForm = vi.fn(), editing = true, copyEntries = entries) {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
       ok: true,
       status: 200,
-      json: async () => (String(url).startsWith("/api/admin/variant-copy") ? { variants: entries } : {}),
+      json: async () => (String(url).startsWith("/api/admin/variant-copy") ? { variants: copyEntries } : {}),
     })));
     render(
-      <ToastProvider>
+      <AdminPortalContext.Provider value={document.body}><ToastProvider>
         <ProductEditorModal
           editing={editing} editingId={editing ? 1 : undefined} saving={false} uploading={false} loadingVariants={false}
           hasMultiVariants formError={null} form={form} formImages={[]} formVariants={formVariants} cats={[]}
           onRequestClose={vi.fn()} onSetForm={onSetForm} onSetFormImages={vi.fn()} onSetHasMultiVariants={vi.fn()}
           onSetFormVariants={vi.fn()} onUpload={vi.fn()} onSave={vi.fn()}
         />
-      </ToastProvider>,
+      </ToastProvider></AdminPortalContext.Provider>,
     );
     return { onSetForm };
   }
@@ -284,6 +377,18 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     renderModal(wrForm);
     await waitFor(() => expect(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }).textContent).toContain("1 varian S&K perlu ditinjau"));
     expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/admin/variant-copy?product_id=1")).toBe(true);
+    expect(within(screen.getByRole("tab", { name: /^Deskripsi & S&K/ })).getByText("1").className).toContain("text-admin-danger");
+  });
+
+  it("raw-only tab count stays neutral and ignores inactive changed variants", async () => {
+    renderModal(wrForm, variants, vi.fn(), true, [
+      { ...base, needsReview: true, reviewKind: "raw", status: "pemasok" },
+      { ...base, variantId: 12, isActive: false, needsReview: true, reviewKind: "changed" },
+    ]);
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }).textContent).toContain("1 varian S&K perlu ditinjau"));
+    const badge = within(screen.getByRole("tab", { name: /^Deskripsi & S&K/ })).getByText("1");
+    expect(badge.className).toContain("text-admin-muted");
+    expect(badge.className).not.toContain("text-admin-danger");
   });
 
   it("produk non-WR: kolom Deskripsi bisa diedit dari tab ini", async () => {
@@ -325,14 +430,14 @@ describe("editor produk mode single: paritas garansi + pengiriman + template (20
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })));
     const onSetForm = vi.fn();
     render(
-      <ToastProvider>
+      <AdminPortalContext.Provider value={document.body}><ToastProvider>
         <ProductEditorModal
           editing editingId={2} saving={false} uploading={false} loadingVariants={false}
           hasMultiVariants={false} formError={null} form={form} formImages={[]} formVariants={formVariants} cats={[]}
           onRequestClose={vi.fn()} onSetForm={onSetForm} onSetFormImages={vi.fn()} onSetHasMultiVariants={vi.fn()}
           onSetFormVariants={vi.fn()} onUpload={vi.fn()} onSave={vi.fn()}
         />
-      </ToastProvider>,
+      </ToastProvider></AdminPortalContext.Provider>,
     );
     return { onSetForm };
   }

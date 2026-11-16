@@ -18,6 +18,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { syncProducts } from "@/lib/warung-rebahan/sync";
 import { supplierFingerprint } from "@/lib/product-copy/text";
 import { parseProductDescription, type VariantCopyEntry } from "@/lib/product-copy/format";
+import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 
 const auth = vi.hoisted(() => ({ admin: true as boolean }));
 vi.mock("@/lib/auth", () => ({
@@ -29,6 +30,7 @@ let fixture: ReturnType<typeof createD1Fixture>;
 
 beforeEach(() => {
   auth.admin = true;
+  clearRateLimitBucketsForTest();
   vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External network disabled"); }));
   fixture = createD1Fixture();
@@ -372,5 +374,121 @@ describe("S&K admin versi Inggris (migrasi 0105)", () => {
     // Varian tanpa EN tetap memakai fallback otomatis (kurasi EN), bukan kolom mentah.
     const wr = await storefrontVariant("netflix-premium");
     expect(wr.copy_en.source).toBe("axvara");
+  });
+});
+
+describe("tanda tinjau teks supplier (16 November 2026)", () => {
+  const rawTerms = "Mendapatkan akun private\nGaransi 5 hari\nDilarang ganti password";
+  const rawDelivery = "1. Buka aplikasi\n2. Login";
+
+  function seedRaw() {
+    fixture.sql.exec(`
+      INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, source, wr_product_id, wr_auto_managed)
+        VALUES (4, 2, 'Raw WR', 'raw-wr', 'Raw', 10000, 5, 1, 'warung_rebahan', 'prod-raw', 1);
+      INSERT INTO product_variants (id, product_id, sku, label, price, stock, is_active, sort_order, wr_variant_id, wr_auto_managed)
+        VALUES (4, 4, 'WR-RAW', 'Raw', 10000, 5, 1, 0, 'var-raw', 1);
+      INSERT INTO wr_products (wr_product_id, wr_product_name, axvara_product_id) VALUES ('prod-raw', 'Raw WR', 4);
+    `);
+    fixture.sql.prepare(
+      `INSERT INTO wr_variants (wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_stock, wr_terms, wr_delivery_terms, axvara_variant_id, axvara_sell_price, wr_delivery_class)
+       VALUES ('var-raw', 'prod-raw', 'Raw', 4000, 5, ?, ?, 4, 10000, 'restock')`,
+    ).run(rawTerms, rawDelivery);
+  }
+
+  async function listRow(slug: string) {
+    const { GET } = await import("@/app/api/products/route");
+    const list = await (await GET(new NextRequest("http://localhost/api/products"))).json();
+    return list.products.find((p: { slug: string }) => p.slug === slug);
+  }
+
+  it("acknowledge menandai teks supplier oke tanpa mengubah teks admin/storefront", async () => {
+    seedRaw();
+    const [entry] = await getCopy(4);
+    expect(entry).toMatchObject({ status: "pemasok", reviewKind: "raw", reviewed: false, needsReview: true, hasOverride: false });
+    expect((await listRow("raw-wr"))).toMatchObject({ copyReview: 1, copyReviewRaw: 1, copyReviewChanged: 0 });
+
+    const before = adminColumns(4);
+    const res = await putCopy({ variant_id: 4, supplier_key: entry.supplierKey, action: "acknowledge" });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { variant: VariantCopyEntry };
+    expect(body.variant).toMatchObject({ status: "pemasok", reviewKind: null, reviewed: true, needsReview: false, hasOverride: false });
+    expect(adminColumns(4)).toEqual({ ...before, admin_copy_fingerprint: entry.supplierKey });
+    expect((await listRow("raw-wr"))).toMatchObject({ copyReview: 0, copyReviewRaw: 0, copyReviewChanged: 0 });
+
+    // Storefront tetap menampilkan teks supplier terrapikan (perilaku tidak berubah).
+    const shown = await storefrontVariant("raw-wr");
+    expect(shown.copy.source).toBe("pemasok");
+    expect(JSON.stringify(shown.copy)).toContain("Garansi 5 hari");
+  });
+
+  it("unacknowledge menghapus tanda dan mengembalikan raw", async () => {
+    seedRaw();
+    const [entry] = await getCopy(4);
+    expect((await putCopy({ variant_id: 4, supplier_key: entry.supplierKey, action: "acknowledge" })).status).toBe(200);
+    expect(adminColumns(4).admin_copy_fingerprint).toBe(entry.supplierKey);
+
+    const res = await putCopy({ variant_id: 4, supplier_key: entry.supplierKey, action: "unacknowledge" });
+    expect(res.status).toBe(200);
+    expect((await res.json() as { variant: VariantCopyEntry }).variant).toMatchObject({ reviewKind: "raw", reviewed: false, needsReview: true });
+    expect(adminColumns(4).admin_copy_fingerprint).toBeNull();
+  });
+
+  it("acknowledge lalu supplier berubah → changed", async () => {
+    seedRaw();
+    const [entry] = await getCopy(4);
+    expect((await putCopy({ variant_id: 4, supplier_key: entry.supplierKey, action: "acknowledge" })).status).toBe(200);
+    fixture.sql.prepare("UPDATE wr_variants SET wr_terms=? WHERE wr_variant_id='var-raw'").run(`${rawTerms}\nDilarang login TV`);
+
+    const [after] = await getCopy(4);
+    expect(after).toMatchObject({ status: "pemasok", reviewKind: "changed", reviewed: false, needsReview: true });
+    expect(await listRow("raw-wr")).toMatchObject({ copyReview: 1, copyReviewRaw: 0, copyReviewChanged: 1 });
+  });
+
+  it("menolak supplier_key basi, override ID, dan varian bukan pemasok", async () => {
+    seedRaw();
+    const [raw] = await getCopy(4);
+    expect((await putCopy({ variant_id: 4, supplier_key: "sidik-jari-basi", action: "acknowledge" })).status).toBe(409);
+
+    // Override ID menghalangi acknowledge/unacknowledge.
+    expect((await putCopy({ variant_id: 4, supplier_key: raw.supplierKey, terms: "Aturan pakai:\n- Dilarang berbagi", activation: "" })).status).toBe(200);
+    const override = await putCopy({ variant_id: 4, supplier_key: raw.supplierKey, action: "acknowledge" });
+    expect(override.status).toBe(409);
+    expect((await override.json()).error).toBe("has_override");
+
+    // Varian terkurasi (bukan pemasok) tidak bisa ditandai oke.
+    const [curated] = await getCopy(1);
+    const notPemasok = await putCopy({ variant_id: 1, supplier_key: curated.supplierKey, action: "acknowledge" });
+    expect(notPemasok.status).toBe(400);
+    expect((await notPemasok.json()).error).toBe("not_pemasok");
+  });
+
+  it("CAS acknowledge gagal bila sumber berubah di antara baca dan tulis", async () => {
+    seedRaw();
+    const [entry] = await getCopy(4);
+    fixture.control.beforeRun = async (query) => {
+      if (!query.includes("UPDATE product_variants SET admin_copy_fingerprint")) return;
+      fixture.control.beforeRun = null;
+      fixture.sql.prepare("UPDATE wr_variants SET wr_terms=? WHERE wr_variant_id='var-raw'").run("Perubahan saat menyimpan");
+    };
+    const res = await putCopy({ variant_id: 4, supplier_key: entry.supplierKey, action: "acknowledge" });
+    expect(res.status).toBe(409);
+    expect(adminColumns(4).admin_copy_fingerprint).toBeNull();
+  });
+
+  it("acknowledge mempertahankan teks EN yang sudah ada", async () => {
+    seedRaw();
+    fixture.sql.prepare("UPDATE product_variants SET admin_terms_en=?, admin_activation_en=? WHERE id=4")
+      .run("Package details:\n- English only", "1. Log in");
+    const [entry] = await getCopy(4);
+    const res = await putCopy({ variant_id: 4, supplier_key: entry.supplierKey, action: "acknowledge" });
+    expect(res.status).toBe(200);
+    expect(fixture.sql.prepare("SELECT admin_terms_en, admin_activation_en, admin_copy_fingerprint FROM product_variants WHERE id=4").get())
+      .toEqual({ admin_terms_en: "Package details:\n- English only", admin_activation_en: "1. Log in", admin_copy_fingerprint: entry.supplierKey });
+  });
+
+  it("action tetap butuh admin", async () => {
+    seedRaw();
+    auth.admin = false;
+    expect((await putCopy({ variant_id: 4, supplier_key: "x", action: "acknowledge" })).status).toBe(401);
   });
 });

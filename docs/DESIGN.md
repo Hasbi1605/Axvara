@@ -1,5 +1,30 @@
 # DESIGN.md — AXVARA Design System
 
+## Tinjauan S&K supplier — 2026-11-16
+
+Implementasi lokal; menggantikan warning tunggal S&K pada snapshot admin di bawah.
+Daftar Produk desktop/mobile memisahkan `Supplier mengubah S&K · n varian`
+(danger merah) dari `S&K belum dirapikan · n varian` (outline netral, admin-muted).
+Keduanya dapat tampil bersama; payload lama tetap memakai badge lama. Tooltip
+menjelaskan perbedaan dan mengarahkan ke tab Deskripsi & S&K.
+
+NativeSelect `Tinjauan S&K` memfilter hasil status/supplier/pencarian sebelum
+pagination: Semua, Supplier mengubah teks, Belum dirapikan, Semua yang perlu
+ditinjau. Angka opsi menghitung produk non-arsip, bukan varian. Chip `Filter aktif`
+menyediakan reset; select full-width di mobile, membungkus bersama toolbar desktop.
+Filter dinonaktifkan di Arsip. Reorder dijeda selama filter S&K aktif agar posisi
+subset tidak terkirim sebagai posisi katalog; reset filter untuk mengatur urutan.
+
+Editor memakai danger untuk perubahan supplier (suntingan dijeda / tinjau ulang),
+warning untuk teks mentah, dan muted netral untuk `sudah ditinjau`. Tombol outline
+`Teks supplier sudah oke` / `Teks baru sudah oke` tidak menyunting teks; tombol ghost
+`Batalkan tanda` membatalkan tinjauan. Aksi tanda hanya muncul saat draft bersih,
+disabled saat menyimpan/memuat; konflik mempertahankan draft dan menawarkan muat
+sumber terbaru. Kotak info menjelaskan pilihan tandai oke atau sunting. Angka tab
+menghitung varian aktif needsReview: danger bila ada changed, netral bila hanya raw.
+Tidak menambah token, aset, atau komponen baru. Test RTL memakai fixture lokal;
+verifikasi visual/interaksi browser dan deployment belum dibuktikan di entri ini.
+
 ## Tab Arsip Produk admin (15 November 2026, implementasi lokal)
 
 Arsip adalah tab kelima setelah Semua, dengan jumlah tersendiri; empat kartu

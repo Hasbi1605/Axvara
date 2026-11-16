@@ -329,3 +329,111 @@ describe("resolveVariantCopy — suntingan admin per varian", () => {
     expect(JSON.parse(JSON.stringify(out))).not.toHaveProperty("admin_terms");
   });
 });
+
+describe("tanda tinjau S&K (16 November 2026)", () => {
+  const terms = "Mendapatkan akun private\nGaransi 5 hari";
+  const delivery = "1. Buka aplikasi\n2. Login";
+  const key = supplierFingerprint(terms, delivery);
+
+  it("tanpa override + sidik jari cocok → reviewed, tidak perlu ditinjau", () => {
+    const res = resolveVariantCopyDetailed(terms, delivery, { terms: null, activation: null, fingerprint: key });
+    expect(res).toMatchObject({ status: "pemasok", reviewed: true, reviewKind: null, adminStale: false });
+    expect(needsCopyReview(res)).toBe(false);
+    // Salinan yang tampil tetap teks supplier terrapikan (tidak berubah).
+    expect(res.copy?.source).toBe("pemasok");
+  });
+
+  it("tanpa override + sidik jari kosong → raw", () => {
+    const res = resolveVariantCopyDetailed(terms, delivery, { terms: null, activation: null, fingerprint: "" });
+    expect(res).toMatchObject({ reviewed: false, reviewKind: "raw" });
+    expect(needsCopyReview(res)).toBe(true);
+  });
+
+  it("acknowledge lalu supplier berubah → changed", () => {
+    const res = resolveVariantCopyDetailed(`${terms}\nDilarang login TV`, delivery, { terms: null, activation: null, fingerprint: key });
+    expect(res).toMatchObject({ status: "pemasok", reviewed: false, reviewKind: "changed" });
+    expect(needsCopyReview(res)).toBe(true);
+  });
+
+  it("suntingan admin dijeda → changed", () => {
+    const res = resolveVariantCopyDetailed(`${terms}\nDilarang login TV`, delivery, { terms: "Aturan pakai:\n- Dilarang berbagi", activation: "", fingerprint: key });
+    expect(res).toMatchObject({ status: "pemasok", adminStale: true, reviewed: false, reviewKind: "changed" });
+  });
+
+  it("suntingan admin segar → tidak perlu ditinjau", () => {
+    const res = resolveVariantCopyDetailed(terms, delivery, { terms: "Aturan pakai:\n- Dilarang berbagi", activation: "", fingerprint: key });
+    expect(res).toMatchObject({ status: "admin", reviewKind: null, reviewed: false });
+    expect(needsCopyReview(res)).toBe(false);
+  });
+
+  it("teks terkurasi tidak pernah 'reviewed' walau sidik jarinya ditandai", () => {
+    const legal = pair("netflix-premium · Premium Legal");
+    const curatedKey = supplierFingerprint(legal.terms, legal.deliveryTerms);
+    const res = resolveVariantCopyDetailed(legal.terms, legal.deliveryTerms, { terms: null, activation: null, fingerprint: curatedKey });
+    expect(res).toMatchObject({ status: "axvara", reviewKind: null, reviewed: false });
+    expect(needsCopyReview(res)).toBe(false);
+  });
+});
+
+describe("formatter supplier: baris judul-saja bukan butir (16 November 2026)", () => {
+  const norm = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+  it("Vision+ Private: judul S&K/Wajib diingat jadi penanda bagian, bukan butir", () => {
+    const terms = "AKUN PRIVATE!\n1 BULAN DURASI";
+    const delivery = [
+      "𝗪𝗔𝗝𝗜𝗕 𝗗𝗜𝗜𝗡𝗚𝗔𝗧!",
+      "—langsung login dari apk/web, bukan login dari google.",
+      "",
+      "𝗦&𝗞",
+      "— boleh login 5 device, limit screen adalah 2 screen.",
+      "— garansi apabila bf, tidak untuk dissable (banned)/limit atau akun dicuri (hacked).",
+      "— garansi berlaku 25 hari.",
+    ].join("\n");
+    const copy = supplierVariantCopy(terms, delivery)!;
+    const items = copy.sections.flatMap((section) => section.items);
+    expect(items.map(norm)).not.toContain("wajib diingat");
+    expect(items.map(norm)).not.toContain("s k");
+    const aturan = copy.sections.find((section) => section.kind === "aturan")?.items ?? [];
+    expect(aturan).toContain("Langsung login dari apk/web, bukan login dari google.");
+    expect(aturan).toContain("Boleh login 5 device, limit screen adalah 2 screen.");
+    // Baris garansi di bawah judul "S&K" tetap masuk bagian garansi.
+    const garansi = copy.sections.find((section) => section.kind === "garansi")?.items ?? [];
+    expect(garansi.join(" ")).toContain("Garansi apabila bf, tidak untuk dissable (banned)/limit atau akun dicuri (hacked).");
+    expect(garansi).toContain("Garansi berlaku 25 hari.");
+    expect(aturan).not.toContain("Garansi berlaku 25 hari.");
+    expect(copy.activation).toEqual([]);
+  });
+
+  it("Catatan/Note memindahkan baris ke notes, bukan butir", () => {
+    const copy = supplierVariantCopy("Mendapatkan akun\nCatatan:\n- garansi tidak berlaku untuk banned\nNote:\n— hubungi admin", null)!;
+    expect(copy.sections.flatMap((section) => section.items).map(norm)).not.toContain("catatan");
+    expect(copy.notes).toEqual(["Garansi tidak berlaku untuk banned", "Hubungi admin"]);
+  });
+
+  it("judul-saja di teks aktivasi menutup langkah, bukan menjadi butir langkah", () => {
+    const delivery = [
+      "Akses mail :",
+      "https://generator.email/emailnyadisini",
+      "ganti tulisan emailnya ganti ke",
+      "S&K",
+      "- MAXIMAL 3-4 DEVICE",
+      "- DILARANG OTAK ATIK PEMBAYARAN",
+    ].join("\n");
+    const copy = supplierVariantCopy("AKUN DARI ADMIN", delivery)!;
+    const steps = copy.activation.flatMap((group) => group.steps);
+    expect(steps.map(norm)).not.toContain("s k");
+    expect(steps).toContain("Ganti tulisan emailnya ganti ke");
+    const aturan = copy.sections.find((section) => section.kind === "aturan")?.items ?? [];
+    expect(aturan).toContain("Maximal 3-4 device");
+    expect(aturan).toContain("Dilarang otak atik pembayaran");
+  });
+
+  it("baris non-judul tidak hilang; hanya penanda yang dibuang", () => {
+    const copy = supplierVariantCopy("Mendapatkan akun\nS&K\nDilarang ganti password\nPenting!\nGaransi 7 hari", null)!;
+    const items = copy.sections.flatMap((section) => section.items);
+    expect(items).toHaveLength(3);
+    expect(items.join(" ")).toContain("Mendapatkan akun");
+    expect(items.join(" ")).toContain("Dilarang ganti password");
+    expect(items.join(" ")).toContain("Garansi 7 hari");
+  });
+});

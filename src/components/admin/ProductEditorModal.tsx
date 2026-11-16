@@ -91,6 +91,9 @@ export function ProductEditorModal({
   const copyReviewCount = variantCopy.entries.size > 0
     ? [...variantCopy.entries.values()].filter((entry) => entry.isActive && entry.needsReview).length
     : (form.copyReview ?? 0);
+  const copyReviewChanged = variantCopy.entries.size > 0
+    ? [...variantCopy.entries.values()].some((entry) => entry.isActive && (entry.reviewKind === "changed" || entry.adminStale))
+    : (form.copyReviewChanged ?? 0) > 0;
   return (
     <>
     <Dialog title={editing ? "Edit Produk" : "Produk Baru"} onClose={requestClose} busy={saving || variantCopy.saving} className="w-[880px] !overflow-hidden !p-0">
@@ -115,7 +118,7 @@ export function ProductEditorModal({
                 <TabsTrigger key={id} value={id} className="text-xs sm:text-sm">
                   {label}{id === "varian" && hasMultiVariants && formVariants.length > 0 ? ` (${formVariants.length})` : ""}
                   {id === "konten" && copyReviewCount > 0 && (
-                    <Badge variant="warning" className="px-1.5 py-px text-xs">
+                    <Badge variant="outline" className={`px-1.5 py-px text-xs ${copyReviewChanged ? "border-admin-danger/30 bg-admin-danger/10 text-admin-danger" : "border-admin-border text-admin-muted"}`}>
                       {copyReviewCount}<span className="sr-only"> varian S&amp;K perlu ditinjau</span>
                     </Badge>
                   )}

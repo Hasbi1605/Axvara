@@ -2131,7 +2131,7 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET/POST | `/api/admin/orders/:code/handover` | admin | Kirim ke pembeli: GET item + `label` + `template_text` terisi; POST `{item_index, note?, buyer_message?}` → isi dienkripsi, dikirim ke pembeli (email/DM), tampil di halaman pesanan |
 | GET/PUT | `/api/store-settings` | public/admin | Identitas storefront / update terautentikasi |
 | GET | `/api/catalog[?slug=]` | public | Katalog produk/varian aktif terpusat. Detail `?slug=` (sejak 2026-09-24): tiap varian membawa `copy` (S&K berkelompok + cara aktivasi versi Axvara, atau teks WR yang dirapikan) dan `terms`/`delivery_terms` mentah dikosongkan (`null`) |
-| GET/PUT | `/api/admin/variant-copy` | admin | S&K + cara aktivasi versi admin per varian (`admin_terms`, `admin_activation`, `admin_copy_fingerprint`, 0041). GET memberi status/sumber dan teks editor, PUT menyimpan suntingan supplier dengan review/fingerprint. **2026-10-15:** stok sendiri memakai `SharedVariantCopyFields` pada tab Varian (single/multi), disimpan bersama batch POST/PUT produk lewat `manualCopyUpdate` hanya untuk varian tanpa WR/SK ID, fingerprint kosong; input kosong menghapus field, input tidak dikirim mempertahankan field, GET detail publik tidak mengirim field editor mentah. Link/akun/key unik tetap di inventory; impor/revoke merupakan aksi terpisah yang langsung tersimpan. Save foto/badge tidak mencap ulang override supplier. |
+| GET/PUT | `/api/admin/variant-copy` | admin | S&K + cara aktivasi versi admin per varian (`admin_terms`, `admin_activation`, `admin_copy_fingerprint`, 0041). GET memberi status/sumber dan teks editor. PUT menyimpan suntingan supplier dengan review/fingerprint; **16 November 2026** juga menerima `{variant_id,supplier_key,action:"acknowledge"|"unacknowledge"}` untuk menandai/mencabut "teks supplier sudah oke" (hanya `admin_copy_fingerprint`, tanpa override ID). **2026-10-15:** stok sendiri memakai `SharedVariantCopyFields` pada tab Varian (single/multi), disimpan bersama batch POST/PUT produk lewat `manualCopyUpdate` hanya untuk varian tanpa WR/SK ID, fingerprint kosong; input kosong menghapus field, input tidak dikirim mempertahankan field, GET detail publik tidak mengirim field editor mentah. Link/akun/key unik tetap di inventory; impor/revoke merupakan aksi terpisah yang langsung tersimpan. Save foto/badge tidak mencap ulang override supplier. |
 | GET/POST/PUT/DELETE | `/api/admin/variants` | admin | Kelola SKU, durasi, garansi, harga, stok, dan mode fulfillment varian |
 | POST | `/api/whatsapp/webhook` | Shared Baileys webhook token | Command grup, order, pembayaran, dan intake bukti |
 | POST | `/api/admin/proofs/:id` | admin | CAS approve/reject bukti dari baris Pesanan dan otorisasi pembayaran manual |
@@ -2905,6 +2905,24 @@ ID supplier dan teks sumber mentah dalam statement yang sama; zero changes 409.
 Fingerprint SK tidak lagi kosong; supplier tanpa teks tetap fingerprint kosong.
 Sync tetap memiliki mirror, hanya kolom admin yang disunting. Stok sendiri tetap
 disimpan lewat batch Simpan Produk sebagaimana kontrak 15 Oktober.
+
+**Tinjau S&K 16 November 2026 (lokal):** `resolveVariantCopyDetailed` kini
+mengembalikan `reviewKind` (`changed` bila `adminStale` atau sidik jari
+tersimpan non-kosong berbeda dari supplier, `raw` bila teks supplier mentah
+belum ditandai oke, `null` bila tidak perlu ditinjau) dan `reviewed` (tanpa
+override ID, `admin_copy_fingerprint` non-kosong sama dengan `supplierKey`,
+status `pemasok`). `needsCopyReview()` = `reviewKind !== null`; salinan yang
+tampil tidak berubah. `PUT /api/admin/variant-copy` menerima
+`{variant_id,supplier_key,action:"acknowledge"|"unacknowledge"}`: acknowledge
+menulis HANYA `admin_copy_fingerprint=supplierKey` (409 `has_override` bila ada
+override ID, 400 `not_pemasok` bila bukan teks supplier mentah), unacknowledge
+mengosongkan fingerprint; kolom EN dibiarkan, CAS sumber+kolom admin sama.
+`GET /api/products` admin menambah `copyReviewChanged` dan `copyReviewRaw` di
+samping total `copyReview`. Formatter supplier (`supplierVariantCopy`)
+memperlakukan baris judul-saja (S&K/Syarat/Ketentuan/Rules/Wajib diingat/
+Penting → bagian aturan; Catatan/Note/Notes → notes) sebagai penanda bagian,
+bukan butir, termasuk di teks aktivasi; kurasi dan `supplierFingerprint` tidak
+berubah.
 
 Editor mempertahankan draft saat reload konflik; override stale ditampilkan
 sebagai draft dijeda, versi efektif dan sumber asli dapat dibandingkan. Preview
@@ -5586,3 +5604,32 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 - Verifikasi lokal: tab panel SK kini empat, tidak ada request ke route lama;
   `next build` sukses (route lama hilang dari manifest), `tsc --noEmit` bersih,
   ESLint 0 error. Bukan bukti deployment/produksi.
+
+### 16.48 Tinjau S&K: tanda "teks supplier sudah oke" + formatter judul — 16 November 2026 (lokal)
+
+- `resolveVariantCopyDetailed` menambah `reviewKind` (`changed`/`raw`/`null`)
+  dan `reviewed`; `needsCopyReview()` = `reviewKind !== null`. Salinan yang
+  tampil tidak berubah. `reviewed` = tanpa override ID, `admin_copy_fingerprint`
+  non-kosong sama dengan sidik jari supplier, status `pemasok`. `changed` =
+  `adminStale` atau sidik jari tersimpan berbeda; `raw` = teks supplier mentah
+  belum ditandai oke. Tanpa migrasi D1.
+- `PUT /api/admin/variant-copy` menerima action `acknowledge`/`unacknowledge`.
+  Acknowledge menulis HANYA `admin_copy_fingerprint=supplierKey` (409
+  `has_override` bila override ID ada, 400 `not_pemasok` bila bukan teks
+  supplier); unacknowledge mengosongkan fingerprint. Kolom EN dipertahankan;
+  CAS sumber+kolom admin sama seperti jalur simpan teks. Jalur lama (simpan teks,
+  clear saat kosong/sama dengan otomatis) tidak berubah.
+- `GET /api/products` admin menambah `copyReviewChanged`/`copyReviewRaw`
+  (selain total `copyReview`), hanya admin+D1.
+- Formatter supplier memperlakukan baris judul-saja sebagai penanda bagian
+  (aturan/notes), bukan butir, termasuk di teks aktivasi. Di bawah judul
+  "aturan", baris yang `classifyTermLine`-nya `garansi` tetap masuk bagian
+  garansi (bukan ditelan aturan). Kurasi (`CURATED_VARIANT_COPY`) dan
+  `supplierFingerprint` tidak berubah.
+- Regresi formatter pada dump read-only `/tmp/copy-rows.json` (194 varian
+  `pemasok`, semua baris): sebelum 14 varian/15 butir judul-saja, sesudah
+  0/0; butir non-judul tetap 1.914; domain supplier (`sekalipay|pastebin|
+  warung rebahan|jaspay`) 0 sebelum dan sesudah. Butir per bagian: sebelum-C
+  paket969/aturan271/garansi200/proses43; C tanpa override garansi
+  934/323/191/43 (regresi Vision+ garansi 3→1); sesudah perbaikan
+  934/313/201/43 (Vision+ garansi kembali 3). Bukan bukti produksi/deploy.

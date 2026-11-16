@@ -67,6 +67,45 @@ function lineKey(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
+// Baris yang HANYA berisi judul bagian pada teks supplier tidak boleh tampil
+// sebagai butir. Dikenali setelah NFKC/emoji dibersihkan dan tanda baca ujung
+// diabaikan (lineKey sudah membuang ":")— 16 November 2026.
+const SUPPLIER_RULE_HEADINGS = new Set([
+  "s k", "syarat", "syarat ketentuan", "syarat dan ketentuan", "ketentuan",
+  "rules", "aturan", "peraturan", "wajib diingat", "penting",
+  "terms", "terms conditions", "terms and conditions",
+]);
+const SUPPLIER_NOTE_HEADINGS = new Set(["catatan", "note", "notes"]);
+
+/** Penanda bagian untuk baris judul-saja (null = bukan judul). */
+function supplierHeadingMarker(text: string): CopySectionKind | "notes" | null {
+  const key = lineKey(text);
+  if (!key) return null;
+  if (SUPPLIER_NOTE_HEADINGS.has(key)) return "notes";
+  if (SUPPLIER_RULE_HEADINGS.has(key)) return "aturan";
+  return null;
+}
+
+/** Kelompokkan baris supplier: judul-saja menjadi penanda bagian, sisanya
+ * butir sampai judul berikutnya. Baris catatan masuk `notes`. */
+function classifySupplierLines(lines: readonly string[]): { sections: CopySection[]; notes: string[] } {
+  const buckets: Partial<Record<CopySectionKind, string[]>> = {};
+  const notes: string[] = [];
+  let current: CopySectionKind | "notes" | null = null;
+  for (const line of lines) {
+    const marker = supplierHeadingMarker(line);
+    if (marker === "notes") { current = "notes"; continue; }
+    if (marker) { current = marker; continue; }
+    if (current === "notes") { notes.push(line); continue; }
+    const inferred = classifyTermLine(line);
+    // Judul "aturan" tidak menelan baris yang jelas garansi (mis. "garansi
+    // berlaku 25 hari" di bawah S&K); bagian lain tetap mengikuti judul.
+    const kind = current === "aturan" && inferred === "garansi" ? "garansi" : current ?? inferred;
+    (buckets[kind] ??= []).push(line);
+  }
+  return { sections: buildSections(buckets), notes };
+}
+
 /** Susun bagian S&K dalam urutan tetap; bagian kosong dibuang. */
 export function buildSections(entries: Partial<Record<CopySectionKind, readonly string[]>>): CopySection[] {
   return COPY_SECTION_ORDER
@@ -83,12 +122,20 @@ export function classifyTermLines(lines: readonly string[]): CopySection[] {
   return buildSections(buckets);
 }
 
-function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: ActivationGroup[]; rules: string[] } {
+function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: ActivationGroup[]; rules: string[]; notes: string[] } {
   const groups: ActivationGroup[] = [];
   const rules: string[] = [];
+  const notes: string[] = [];
   let current: ActivationGroup | null = null;
+  // Penanda judul-saja di teks aktivasi memindahkan baris berikutnya ke
+  // bagian/notes sampai judul lain (16 November 2026).
+  let mode: "auto" | "aturan" | "notes" = "auto";
   for (const line of lines) {
+    const marker = supplierHeadingMarker(line.text);
+    if (marker === "notes") { mode = "notes"; current = null; continue; }
+    if (marker) { mode = "aturan"; current = null; rules.push(line.text); continue; }
     if (isHeading(line.text)) {
+      mode = "auto";
       current = { title: stripHeading(line.text), steps: [] };
       groups.push(current);
       continue;
@@ -96,7 +143,11 @@ function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: Activat
     const key = lineKey(line.text);
     if (seen.has(key)) continue;
     seen.add(key);
-    if (current) {
+    if (mode === "notes") {
+      notes.push(line.text);
+    } else if (mode === "aturan") {
+      rules.push(line.text);
+    } else if (current) {
       current.steps.push(line.text);
     } else if (line.numbered || STEP_RE.test(line.text)) {
       if (!groups.length || groups[0].title !== null) groups.unshift({ title: null, steps: [] });
@@ -105,7 +156,7 @@ function splitDelivery(lines: CleanLine[], seen: Set<string>): { groups: Activat
       rules.push(line.text);
     }
   }
-  return { groups: groups.filter((g) => g.steps.length > 0), rules };
+  return { groups: groups.filter((g) => g.steps.length > 0), rules, notes };
 }
 
 /**
@@ -360,13 +411,9 @@ export function supplierVariantCopy(terms: string | null | undefined, deliveryTe
     .filter((line) => !JASPAY_CROSS_SELL_RE.test(line.text));
   if (!termLines.length && !deliveryLines.length) return null;
   const seen = new Set(termLines.map((line) => lineKey(line.text)));
-  const { groups, rules } = splitDelivery(deliveryLines, seen);
-  return {
-    source: "pemasok",
-    sections: classifyTermLines([...termLines.map((line) => line.text), ...rules]),
-    activation: groups,
-    notes: [],
-  };
+  const { groups, rules, notes: deliveryNotes } = splitDelivery(deliveryLines, seen);
+  const { sections, notes } = classifySupplierLines([...termLines.map((line) => line.text), ...rules]);
+  return { source: "pemasok", sections, activation: groups, notes: [...notes, ...deliveryNotes] };
 }
 
 // ---- Teks editor admin (S&K + cara aktivasi per varian) ----
@@ -417,6 +464,14 @@ export type VariantCopyEntry = {
   /** Ada suntingan admin, tapi supplier mengubah teks sejak disimpan (suntingan dijeda). */
   adminStale: boolean;
   needsReview: boolean;
+  /**
+   * Jenis tinjauan (16 Nov 2026): "changed" = supplier mengubah teks sejak
+   * suntingan/tanda tinjau admin; "raw" = teks supplier belum dirapikan dan
+   * belum ditandai oke; null = tidak perlu ditinjau.
+   */
+  reviewKind: "changed" | "raw" | null;
+  /** Teks supplier apa adanya sudah ditandai oke oleh admin (sidik jari cocok, tanpa suntingan). */
+  reviewed: boolean;
   hasOverride: boolean;
   adminTerms: string;
   adminActivation: string;

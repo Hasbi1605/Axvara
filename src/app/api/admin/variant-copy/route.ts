@@ -64,6 +64,8 @@ function toEntry(row: Row): VariantCopyEntry {
     status: resolution.status,
     adminStale: resolution.adminStale,
     needsReview: needsCopyReview(resolution),
+    reviewKind: resolution.reviewKind,
+    reviewed: resolution.reviewed,
     hasOverride: adminTerms !== null || adminActivation !== null,
     adminTerms: adminTerms ?? "",
     adminActivation: adminActivation ?? "",
@@ -87,7 +89,13 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ variants: rows.map(toEntry) }, { headers: NO_STORE });
 }
 
-const putSchema = z.object({
+const actionSchema = z.object({
+  variant_id: z.coerce.number().int().positive(),
+  supplier_key: z.string().max(32),
+  action: z.enum(["acknowledge", "unacknowledge"]),
+});
+
+const editSchema = z.object({
   variant_id: z.coerce.number().int().positive(),
   terms: z.string().max(VARIANT_COPY_MAX_CHARS, "S&K terlalu panjang"),
   activation: z.string().max(VARIANT_COPY_MAX_CHARS, "Cara aktivasi terlalu panjang"),
@@ -95,6 +103,8 @@ const putSchema = z.object({
   activation_en: z.string().max(VARIANT_COPY_MAX_CHARS, "English activation too long").optional().default(""),
   supplier_key: z.string().max(32),
 });
+
+const putSchema = z.union([actionSchema, editSchema]);
 
 const normalize = (value: string) => value.replace(/\r\n?/g, "\n").trim();
 
@@ -112,15 +122,57 @@ export async function PUT(req: NextRequest) {
   const row = await queryFirst(`${VARIANT_COPY_SQL} WHERE pv.id=?`, parsed.data.variant_id) as Row | undefined;
   if (!row) return NextResponse.json({ error: "Varian tidak ditemukan" }, { status: 404 });
 
-  const terms = normalize(parsed.data.terms);
-  const activation = normalize(parsed.data.activation);
-  const termsEn = normalize(parsed.data.terms_en);
-  const activationEn = normalize(parsed.data.activation_en);
+  const data = parsed.data;
   const variantId = Number(row.id);
-  const supplier = resolveVariantCopyDetailed(text(row.wr_terms) ?? text(row.sk_description), text(row.wr_delivery_terms) ?? text(row.sk_seller_note));
-  if (parsed.data.supplier_key !== supplier.supplierKey) {
+  const supplierTerms = text(row.wr_terms) ?? text(row.sk_description);
+  const supplierActivation = text(row.wr_delivery_terms) ?? text(row.sk_seller_note);
+  const supplier = resolveVariantCopyDetailed(supplierTerms, supplierActivation);
+  if (data.supplier_key !== supplier.supplierKey) {
     return NextResponse.json({ error: "Teks supplier berubah. Muat sumber terbaru lalu tinjau kembali; draft tetap tersedia.", variant: toEntry(row) }, { status: 409, headers: NO_STORE });
   }
+
+  // Tanda "teks supplier sudah oke" (16 November 2026): acknowledge menyimpan
+  // sidik jari supplier saat ini tanpa mengubah teks admin/EN; unacknowledge
+  // menghapus tanda itu. Tidak ada teks admin yang ditulis di jalur ini.
+  if ("action" in data) {
+    const adminTerms = text(row.admin_terms);
+    const adminActivation = text(row.admin_activation);
+    if (adminTerms !== null || adminActivation !== null) {
+      return NextResponse.json({ error: "has_override" }, { status: 409, headers: NO_STORE });
+    }
+    const current = resolveVariantCopyDetailed(supplierTerms, supplierActivation, {
+      terms: adminTerms,
+      activation: adminActivation,
+      fingerprint: row.admin_copy_fingerprint == null ? null : String(row.admin_copy_fingerprint),
+    });
+    if (data.action === "acknowledge" && current.status !== "pemasok") {
+      return NextResponse.json({ error: "not_pemasok" }, { status: 400, headers: NO_STORE });
+    }
+    const nextFingerprint = data.action === "acknowledge" ? supplier.supplierKey : null;
+    // CAS sama: kolom admin + teks sumber tidak boleh berubah sejak dibaca.
+    const savedResult = await execRun(
+      `UPDATE product_variants SET admin_copy_fingerprint=?, updated_at=datetime('now') WHERE id=?
+        AND admin_terms IS ? AND admin_activation IS ? AND admin_terms_en IS ? AND admin_activation_en IS ? AND admin_copy_fingerprint IS ?
+        AND EXISTS (${VARIANT_COPY_SQL} WHERE pv.id=?
+          AND pv.wr_variant_id IS ? AND pv.sk_variant_id IS ?
+          AND wv.wr_terms IS ? AND wv.wr_delivery_terms IS ?
+          AND sp.sk_description IS ? AND sp.sk_seller_note IS ?)`,
+      nextFingerprint, variantId,
+      row.admin_terms ?? null, row.admin_activation ?? null, row.admin_terms_en ?? null, row.admin_activation_en ?? null, row.admin_copy_fingerprint ?? null,
+      variantId, row.wr_variant_id ?? null, row.sk_variant_id ?? null,
+      row.wr_terms ?? null, row.wr_delivery_terms ?? null, row.sk_description ?? null, row.sk_seller_note ?? null,
+    );
+    if (!savedResult.changes) {
+      return NextResponse.json({ error: "Sumber atau suntingan berubah saat menyimpan. Muat ulang sumber dan tinjau draft sebelum mencoba lagi." }, { status: 409, headers: NO_STORE });
+    }
+    const saved = await queryFirst(`${VARIANT_COPY_SQL} WHERE pv.id=?`, variantId) as Row;
+    return NextResponse.json({ ok: true, variant: toEntry(saved) }, { headers: NO_STORE });
+  }
+
+  const terms = normalize(data.terms);
+  const activation = normalize(data.activation);
+  const termsEn = normalize(data.terms_en);
+  const activationEn = normalize(data.activation_en);
   const incoming = parseAdminVariantCopy(terms, activation);
   // Teks yang isinya sama dengan salinan otomatis tidak dibekukan ke DB, agar
   // perbaikan kurasi berikutnya dan perubahan supplier tetap mengalir.
