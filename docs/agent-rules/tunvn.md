@@ -1,6 +1,14 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
 
+## Pengiriman langsung setelah Retry/pembelian — 16 November 2026 (lokal)
+
+- Retry admin yang menghasilkan link `completed` langsung menjalankan
+  `ensureFulfillmentForPaidOrder` (email/WA/Telegram kredensial di request yang sama);
+  jalur bayar baru menjalankan delivery lagi setelah pembelian TUNVN order itu.
+  Cron tetap backstop; jangan menambah delivery tak berbudget di route cron lite.
+  Detail ARCHITECTURE §16.35a.
+
 ## Modal di Ringkasan admin — 16 November 2026 (lokal)
 
 - `financialReportSql` (`src/lib/dashboard-report.ts`) kini punya bucket supplier

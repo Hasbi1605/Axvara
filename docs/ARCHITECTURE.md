@@ -4952,6 +4952,19 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
   tanpa MBO/overflow, Tab dan CSS/JS200; bukan QA PDP penuh, transaksi supplier/email
   nyata atau bukti deployment. Publikasi hanya melalui CI main, tanpa migrasi baru.
 
+### 16.35a TUNVN pengiriman langsung setelah beli — 16 November 2026 (lokal)
+
+- Kasus `AXV-20261116-F04356BC`: Retry admin membeli ke TUNVN 14:22:46 WIB, tetapi
+  email kredensial baru 14:24:30 karena `settle(completed)` hanya mengantrikan
+  `fulfillment_jobs` untuk langkah cron `lite:fulfillment` berikutnya.
+- POST `/api/admin/tunvn/orders` `retry`: bila link menjadi `completed`, route
+  memanggil `ensureFulfillmentForPaidOrder(order_code)` di request yang sama
+  (claim job CAS idempoten; gagal → cron tetap memulihkan).
+- `paid-fulfillment.ts`: pembelian TUNVN berjalan paralel dengan pass delivery
+  generik yang biasanya melihat link belum selesai; setelah `processTunvnOrders`
+  memproses link order ini, delivery dijalankan sekali lagi. Jalur cron auto-recovery
+  TUNVN tidak berubah (tetap diantar tick fulfillment berikutnya, ±1 menit).
+
 ### 16.35 TUNVN retry pra-beli — 10 November 2026 (lokal, publikasi CI)
 
 - `tunvn/orders.ts` membedakan whitelist error preflight dari error ambigu tanpa

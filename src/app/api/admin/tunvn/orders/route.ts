@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
+import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
 import { processTunvnOrders, retryTunvnOrder, TUNVN_RETRYABLE_SQL } from "@/lib/tunvn/orders";
 
 export const runtime = "edge";
@@ -36,6 +37,9 @@ export async function POST(request: NextRequest) {
     if (body.action === "retry") {
       if (!await retryTunvnOrder(budget.access,Number(link.id))) return json({ error: "no_safe_retry", message: "Retry hanya untuk kegagalan sebelum pembelian, tanpa receipt atau pengiriman aktif." },409);
       const updated=await budget.access.queryFirst("SELECT status,last_error FROM tunvn_order_links WHERE id=?",link.id);
+      // Retry completes the supplier purchase inline; deliver to the buyer now
+      // instead of waiting for the next cron fulfillment tick (idempotent CAS job).
+      if (updated?.status==="completed") await ensureFulfillmentForPaidOrder(String(link.order_code)).catch(()=>false);
       return json({ ok:true,link:updated });
     }
     if (body.action === "reveal") {

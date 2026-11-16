@@ -43,7 +43,14 @@ async function fulfillPaidOrder(orderCode: string, orderKind: unknown): Promise<
   const { ensureFulfillmentItems } = await import("@/lib/fulfillment/delivery/inventory-binding");
   await ensureFulfillmentItems(order);
   const work: (() => Promise<unknown>)[] = [];
-  work.push(() => processTunvnOrders(undefined,{ orderCode }));
+  // TUNVN buys run concurrently with the generic delivery below, so that pass
+  // usually sees the link unfinished; deliver again once this purchase settles.
+  work.push(async () => {
+    if (await processTunvnOrders(undefined,{ orderCode })) {
+      const { ensureFulfillmentForPaidOrder } = await import("@/lib/fulfillment/deliver");
+      await ensureFulfillmentForPaidOrder(orderCode);
+    }
+  });
   work.push(() => processAivaultOrders(undefined,{ orderCode }));
   try {
     const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
