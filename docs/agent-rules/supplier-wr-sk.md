@@ -1,6 +1,28 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
 
+## Hapus tab Audit SK & Alat di panel Sekalipay — 16 November 2026 (lokal)
+
+- Permintaan owner: hapus tab **Audit SK** (mutasi saldo + transaksi) dan
+  **Alat** (cek akun/validate, stock-lock, detail varian) dari panel admin
+  Sekalipay. Tab **Ringkas/Antrean/Markup/Aturan** tetap; exclusion rules tidak
+  berubah.
+- Route yang dihapus (tanpa pemakai lain, sudah dicek ulang dengan grep):
+  `/api/admin/sekalipay/{mutations,transactions,validate,locks,variants}`.
+  Fungsi client khusus yang ikut dihapus: `lockSkStock`, `listSkStockLocks`,
+  `releaseSkStockLock`, `SkStockLock`, `fetchSkBalanceMutations`,
+  `SkBalanceMutation`, `fetchSkTransactions`, `SkTransactionSummary`,
+  `fetchSkValidationServices`, `SkValidationService`; helper
+  `getSkBalanceMutations` di `src/lib/sekalipay/saldo.ts` juga dihapus.
+- **Dipertahankan** karena masih dipakai fitur lain: `validateSkAccount`
+  (validasi nickname Games, `src/lib/games/nickname.ts`) dan
+  `fetchSkItemDetail` (dispatch Games & order SK). `SupplierTabId` tetap
+  menyimpan `alat` karena dipakai panel TUNVN/AIVault; hanya `audit` yang
+  dihapus dari tipe.
+- Status: implementasi lokal + test; belum commit/deploy. Tidak menyentuh data,
+  env, atau transaksi produksi. Jangan hidupkan kembali tab/route tanpa
+  keputusan owner baru.
+
 ## Arsip Produk — keputusan owner 15 November 2026 (lokal)
 
 `products.archived_at` (migrasi0126) memisahkan Arsip dari Nonaktif. Identitas

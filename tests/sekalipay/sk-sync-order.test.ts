@@ -621,7 +621,7 @@ describe("sekalipay fitur khas (validasi, lock, mutasi, trx)", () => {
     );
   }
 
-  it("validate + lock + release memakai endpoint SK yang benar", async () => {
+  it("validate memakai endpoint SK yang benar", async () => {
     vi.stubEnv("SEKALIPAY_ENABLED", "true");
     vi.stubEnv("SEKALIPAY_PROXY_URL", "https://proxy.test");
     vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "tok");
@@ -631,47 +631,12 @@ describe("sekalipay fitur khas (validasi, lock, mutasi, trx)", () => {
       if (String(url).includes("/v1/item/validate")) {
         return { message: "OK", data: { display_name: "Aqaa.", account_name: "Aqaa.", region: null, cached: false } };
       }
-      if (String(url).includes("/v1/item/lock/") && (init?.method || "GET") === "DELETE") {
-        return { message: "OK" };
-      }
-      if (String(url).includes("/v1/item/lock")) {
-        return { success: true, data: { lock_token: "LCK-1", item_id: 101, quantity: 1, locked_at: "2026-09-30T00:00:00Z", expires_at: "2026-09-30T00:10:00Z" } };
-      }
       return { message: "OK", data: [] };
     });
-    const { validateSkAccount, lockSkStock, releaseSkStockLock, listSkStockLocks } = await import(
-      "@/lib/sekalipay/client"
-    );
+    const { validateSkAccount } = await import("@/lib/sekalipay/client");
     const v = await validateSkAccount({ itemId: 101, customerId: "256632355", zoneId: "9402" });
     expect(v.account_name).toBe("Aqaa.");
-    const lock = await lockSkStock({ itemId: 101, quantity: 1 });
-    expect(lock.lock_token).toBe("LCK-1");
-    expect(await releaseSkStockLock("LCK-1")).toBe(true);
-    await listSkStockLocks();
     expect(calls.some((c) => c.includes("POST /sk/v1/item/validate"))).toBe(true);
-    expect(calls.some((c) => c.includes("POST /sk/v1/item/lock"))).toBe(true);
-    expect(calls.some((c) => c.includes("DELETE /sk/v1/item/lock/LCK-1"))).toBe(true);
-  });
-
-  it("mutasi + transaksi memakai query yang benar", async () => {
-    vi.stubEnv("SEKALIPAY_ENABLED", "true");
-    vi.stubEnv("SEKALIPAY_PROXY_URL", "https://proxy.test");
-    vi.stubEnv("SEKALIPAY_PROXY_TOKEN", "tok");
-    const calls: string[] = [];
-    stubSkFetch((url) => {
-      calls.push(String(url).split("proxy.test")[1]);
-      if (String(url).includes("/v1/balance/mutations")) {
-        return { message: "OK", data: [{ invoice: "INV-1", direction: "debit", type: "payment", amount: 50000, balance_before: 125000, balance_after: 75000 }], meta: {} };
-      }
-      return { message: "OK", data: { transactions: [], pagination: {} } };
-    });
-    const { getSkBalanceMutations } = await import("@/lib/sekalipay/saldo");
-    const { fetchSkTransactions } = await import("@/lib/sekalipay/client");
-    const m = await getSkBalanceMutations({ perPage: 10, direction: "debit" });
-    expect(m.mutations[0]?.invoice).toBe("INV-1");
-    await fetchSkTransactions({ page: 1, perPage: 10 });
-    expect(calls.some((c) => c.includes("/sk/v1/balance/mutations") && c.includes("direction=debit"))).toBe(true);
-    expect(calls.some((c) => c.includes("/sk/v1/trx"))).toBe(true);
   });
 });
 

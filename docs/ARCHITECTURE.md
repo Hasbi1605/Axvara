@@ -3100,9 +3100,7 @@ Insiden `AXV-20261019-98C8CC33`: probe 12 order lunas terbaru berjalan dua kali 
   (nol query/deferred ekstra, dikunci test R12).
 - **Admin:** tab **Sekalipay** setara WR (saldo + kapasitas, Force Sync +
   sync manual/cron terpisah, antrean + umur + retry/void CAS, exclusion rules,
-  markup per varian + **bulk markup cermin WR** via `POST /api/admin/sekalipay/markup/bulk`, toolbar bersama yang sama) + **tab dalam-halaman Ringkas/Antrean/Markup/Aturan/Audit/Alat (2026-10-01, cermin WR)** — sandbox di tab Antrean, mutasi + transaksi di Audit, cek akun + lock + detail di Alat (semua lazy-load) + fitur khas SK: mutasi saldo audit, cek akun validasi,
-  stock-lock 10 mnt, daftar transaksi SK, detail capability per varian,
-  sandbox order. API `/api/admin/sekalipay/*`, rate-limit
+  markup per varian + **bulk markup cermin WR** via `POST /api/admin/sekalipay/markup/bulk`, toolbar bersama yang sama) + **tab dalam-halaman Ringkas/Antrean/Markup/Aturan (2026-10-01, cermin WR)** — sandbox di tab Antrean (semua lazy-load). **16 November 2026:** tab **Audit SK** (mutasi saldo + transaksi) dan **Alat** (cek akun/validate, stock-lock 10 mnt, detail varian) dihapus atas permintaan owner, beserta route `/api/admin/sekalipay/{mutations,transactions,validate,locks,variants}` dan fungsi client/saldo khususnya; panel SK kini hanya Ringkas/Antrean/Markup/Aturan. API `/api/admin/sekalipay/*`, rate-limit
   `webhook:sekalipay` 60/mnt.
 - **DB (migrasi 0049 + 0050):** tabel `sk_products/sk_order_links/sk_sync_log/
   sk_saldo_log/sk_webhook_events/sk_sync_state/sk_exclusions`, kolom `sk_*`
@@ -5562,3 +5560,25 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 - Verifikasi lokal: test D1/workerd menyertakan order link completed (4,6 USDT ×
   18.086 = Rp83.196; 0,5 USD × 16.500 = Rp8.250) dan order tanpa link yang tetap
   estimasi; bukan bukti deployment atau angka produksi.
+
+### 16.47 Panel Sekalipay: hapus tab Audit SK & Alat — 16 November 2026 (lokal)
+
+- Permintaan owner: panel admin Sekalipay hanya memuat **Ringkas/Antrean/
+  Markup/Aturan**. Tab **Audit SK** (mutasi saldo + transaksi) dan **Alat**
+  (cek akun/validate, stock-lock, detail varian) dihapus, termasuk state,
+  loader, effect, dan blok render-nya di `SekalipayManager.tsx`.
+- Route dihapus: `/api/admin/sekalipay/{mutations,transactions,validate,locks,
+  variants}`. Grep ulang memastikan tidak ada pemakai lain di `src/`,
+  `mcp-worker/`, atau `gateway/`.
+- Fungsi khusus ikut dihapus dari `src/lib/sekalipay/client.ts`: `lockSkStock`,
+  `listSkStockLocks`, `releaseSkStockLock` (+ tipe `SkStockLock`),
+  `fetchSkBalanceMutations` (+ `SkBalanceMutation`), `fetchSkTransactions`
+  (+ `SkTransactionSummary`), `fetchSkValidationServices` (+
+  `SkValidationService`); `getSkBalanceMutations` di
+  `src/lib/sekalipay/saldo.ts` juga dihapus.
+- Dipertahankan: `validateSkAccount` (dipakai `src/lib/games/nickname.ts`) dan
+  `fetchSkItemDetail` (dispatch Games + order SK). `SupplierTabId` tetap
+  menyimpan `alat` karena TUNVN/AIVault memakainya; hanya `audit` dihapus.
+- Verifikasi lokal: tab panel SK kini empat, tidak ada request ke route lama;
+  `next build` sukses (route lama hilang dari manifest), `tsc --noEmit` bersih,
+  ESLint 0 error. Bukan bukti deployment/produksi.

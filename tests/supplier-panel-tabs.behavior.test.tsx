@@ -5,8 +5,8 @@
 // pagination antrean + sub-tab status markup Live/Hidden/Off.
 //
 // Yang dikunci:
-// 1. Mount hanya fetch Ringkas (saldo+log); Antrean/Markup/Aturan/Audit/Alat
-//    fetch saat tab dibuka pertama, cache setelahnya (tidak refetch).
+// 1. Mount hanya fetch Ringkas (saldo+log); Antrean/Markup/Aturan fetch saat
+//    tab dibuka pertama, cache setelahnya (tidak refetch).
 // 2. Antrean punya pagination (total + halaman) — halaman 2 dulu hilang.
 // 3. Markup: sub-tab status default Live + badge per baris + pagination lokal.
 // 4. API markup mengembalikan variant_status + total; API orders total + page.
@@ -104,30 +104,25 @@ describe("tab dalam-halaman WR", () => {
 });
 
 describe("tab dalam-halaman SK", () => {
-  it("5 tab; Audit/Alat lazy (mutasi/transaksi/lock tidak fetch saat mount)", async () => {
+  it("hanya Ringkas/Antrean/Markup/Aturan; Audit/Alat tidak ada (16 Nov 2026)", async () => {
     const calls = stubSupplierApi();
     render(<ToastProvider><SekalipayManager /></ToastProvider>);
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
-    // 5 tab utama tampil.
-    for (const label of ["Ringkas", "Antrean", "Markup", "Aturan", "Audit SK", "Alat"]) {
+    // Hanya empat tab yang tersisa setelah Audit/Alat dihapus.
+    for (const label of ["Ringkas", "Antrean", "Markup", "Aturan"]) {
       expect(screen.getByRole("tab", { name: new RegExp(label) }), `tab ${label}`).toBeTruthy();
     }
+    expect(screen.queryByRole("tab", { name: /Audit SK/ })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /^Alat/ })).toBeNull();
+
     const hit = (frag: string) => calls.filter((u) => u.includes(frag)).length;
     expect(hit("/sekalipay/orders"), "antrean lazy").toBe(0);
     expect(hit("/sekalipay/markup"), "markup lazy").toBe(0);
-    expect(hit("/sekalipay/mutations"), "mutasi lazy (tab Audit)").toBe(0);
-    expect(hit("/sekalipay/transactions"), "transaksi lazy (tab Audit)").toBe(0);
-    expect(hit("/sekalipay/locks"), "lock lazy (tab Alat)").toBe(0);
-
-    await userEvent.click(screen.getByRole("tab", { name: /Audit SK/ }));
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-    expect(hit("/sekalipay/mutations"), "buka Audit = fetch mutasi").toBe(1);
-    expect(hit("/sekalipay/transactions"), "buka Audit = fetch transaksi").toBe(1);
-
-    await userEvent.click(screen.getByRole("tab", { name: /^Alat/ }));
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-    expect(hit("/sekalipay/locks"), "buka Alat = fetch lock").toBe(1);
+    // Route lama yang dihapus tidak boleh dipanggil sama sekali.
+    for (const frag of ["/sekalipay/mutations", "/sekalipay/transactions", "/sekalipay/locks", "/sekalipay/validate", "/sekalipay/variants"]) {
+      expect(hit(frag), `${frag} tidak dipanggil`).toBe(0);
+    }
   });
 
   it("sandbox berada di tab Antrean (bukan section sendiri)", async () => {

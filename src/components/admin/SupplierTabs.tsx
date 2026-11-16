@@ -1,7 +1,7 @@
 "use client";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Badge } from "./ui/badge";
-export type SupplierTabId = "ringkas" | "antrean" | "markup" | "aturan" | "audit" | "alat";
+export type SupplierTabId = "ringkas" | "antrean" | "markup" | "aturan" | "alat";
 export function SupplierTabs({ tabs, active, onChange }: { tabs: { id: SupplierTabId; label: string; count?: number }[]; active: SupplierTabId; onChange: (tab: SupplierTabId) => void }) {
   return <Tabs value={active} onValueChange={value => onChange(value as SupplierTabId)}><TabsList aria-label="Bagian panel supplier">{tabs.map(tab => <TabsTrigger key={tab.id} value={tab.id}>{tab.label}{tab.count != null && tab.count > 0 ? ` (${tab.count})` : ""}</TabsTrigger>)}</TabsList></Tabs>;
 }

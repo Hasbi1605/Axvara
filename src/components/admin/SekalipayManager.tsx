@@ -1,9 +1,9 @@
 // src/components/admin/SekalipayManager.tsx — Tab admin Sekalipay (supplier kedua).
 // Setara WarungRebahanManager: saldo + kapasitas, status sync + Force Sync,
 // antrean order SK (retry/void + umur antrean), exclusion rules, markup per
-// varian. Fitur khas SK (tidak dimiliki WR): mutasi saldo audit, cek akun
-// (validasi nickname), stock-lock anti-overselling, daftar transaksi SK,
-// detail capability per varian, sandbox order.
+// varian, sandbox order. Tab Audit/Alat beserta mutasi saldo, cek akun,
+// stock-lock, daftar transaksi, dan detail varian dihapus atas permintaan
+// owner (16 November 2026).
 
 "use client";
 import { SupplierSyncStatus, syncCompactValue, type SupplierDiffStatus, type SupplierSyncLogRow } from "@/components/admin/SupplierSyncStatus";
@@ -11,7 +11,6 @@ import { SupplierSyncStatus, syncCompactValue, type SupplierDiffStatus, type Sup
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
-import { formatWibDateTime } from "@/lib/utils";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, PageHeader, StatCard, Checkbox, Input, NativeSelect, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tabs, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
@@ -79,43 +78,6 @@ type MarkupRow = {
   sk_product_name: string | null;
   current_price: number | null;
 };
-
-type MutationRow = {
-  invoice: string;
-  direction: string;
-  type: string;
-  amount: number;
-  balance_before: number;
-  balance_after: number;
-};
-
-type LockRow = {
-  lock_token: string;
-  item_id: number;
-  quantity: number;
-  locked_at: string;
-  expires_at: string;
-};
-
-type SkTrxRow = {
-  invoice: string;
-  ref_id: string;
-  status: string;
-  price: number;
-  fees: number;
-  amount: number;
-  activity: string;
-  created_at: string;
-};
-
-function formatDate(raw: string | null | undefined): string {
-  if (!raw) return "—";
-  try {
-    return formatWibDateTime(raw) ?? String(raw);
-  } catch {
-    return String(raw);
-  }
-}
 
 /** Umur antrean (cermin WR ageLabel): request_sent_at → created_at → updated_at. */
 function ageLabel(order: { request_sent_at?: string | null; created_at?: string | null; updated_at?: string | null }): { text: string; hours: number } | null {
@@ -205,7 +167,7 @@ export function SekalipayManager() {
   // Seleksi bulk markup (2026-10-01, cermin WR): checklist per baris + preset %.
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
   // Tab dalam-halaman (2026-10-01, cermin SystemTabs + WR): Ringkas default.
-  const [skTab, setSkTab] = useState<Extract<SupplierTabId, "ringkas" | "antrean" | "markup" | "aturan" | "audit" | "alat">>("ringkas");
+  const [skTab, setSkTab] = useState<Extract<SupplierTabId, "ringkas" | "antrean" | "markup" | "aturan">>("ringkas");
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(["ringkas"]));
   const [orderPage, setOrderPage] = useState(1);
   const [orderTotal, setOrderTotal] = useState(0);
@@ -213,24 +175,6 @@ export function SekalipayManager() {
   const [markupTab, setMarkupTab] = useState<"live" | "hidden" | "off" | "all">("live");
   const [markupPerPage, setMarkupPerPage] = useState<20 | 50 | 100>(20);
   const [markupPage, setMarkupPage] = useState(1);
-  // Khas SK: mutasi saldo, validasi akun, stock-lock, transaksi, detail varian.
-  const [mutations, setMutations] = useState<MutationRow[]>([]);
-  const [mutationsLoading, setMutationsLoading] = useState(false);
-  const [mutationDir, setMutationDir] = useState("all");
-  const [validateItem, setValidateItem] = useState("");
-  const [validateCustomer, setValidateCustomer] = useState("");
-  const [validateZone, setValidateZone] = useState("");
-  const [validating, setValidating] = useState(false);
-  const [validateResult, setValidateResult] = useState<string | null>(null);
-  const [locks, setLocks] = useState<LockRow[]>([]);
-  const [lockItem, setLockItem] = useState("");
-  const [lockQty, setLockQty] = useState("1");
-  const [locking, setLocking] = useState(false);
-  const [transactions, setTransactions] = useState<SkTrxRow[]>([]);
-  const [trxLoading, setTrxLoading] = useState(false);
-  const [detailId, setDetailId] = useState("");
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailResult, setDetailResult] = useState<string | null>(null);
 
   const loadSaldo = useCallback(async () => {
     setSaldoLoading(true);
@@ -289,42 +233,6 @@ export function SekalipayManager() {
     } catch { /* opsional */ }
   }, [markupQueryLive]);
 
-  const loadMutations = useCallback(async () => {
-    setMutationsLoading(true);
-    try {
-      const res = await fetch(`/api/admin/sekalipay/mutations?per_page=10${mutationDir !== "all" ? `&direction=${mutationDir}` : ""}`, { cache: "no-store" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Gagal memuat mutasi");
-      setMutations(body.mutations || []);
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Gagal memuat mutasi saldo");
-    } finally {
-      setMutationsLoading(false);
-    }
-  }, [mutationDir, toast]);
-
-  const loadLocks = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/sekalipay/locks", { cache: "no-store" });
-      const body = await res.json().catch(() => ({}));
-      if (res.ok) setLocks(body.locks || []);
-    } catch { /* opsional */ }
-  }, []);
-
-  const loadTransactions = useCallback(async () => {
-    setTrxLoading(true);
-    try {
-      const res = await fetch("/api/admin/sekalipay/transactions?per_page=10", { cache: "no-store" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Gagal memuat transaksi");
-      setTransactions(body.transactions || []);
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Gagal memuat transaksi SK");
-    } finally {
-      setTrxLoading(false);
-    }
-  }, [toast]);
-
   // Lazy-load per tab (cermin WR): SATU jalur fetch via effect di bawah.
   // openTab hanya tandai loaded + reset halaman (jangan fetch di sini agar
   // tidak dobel dengan effect).
@@ -365,20 +273,6 @@ export function SekalipayManager() {
     void loadOrders(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedTabs, skOrderFilterKey]);
-  const auditKey = mutationDir;
-  const lastAuditFetchKey = useRef<string | null>(null);
-  useEffect(() => {
-    if (!loadedTabs.has("audit")) return;
-    const key = `audit|${auditKey}`;
-    if (lastAuditFetchKey.current === key) return;
-    lastAuditFetchKey.current = key;
-    void loadMutations();
-    void loadTransactions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadedTabs, auditKey]);
-  useEffect(() => {
-    if (loadedTabs.has("alat")) void loadLocks();
-  }, [loadLocks, loadedTabs]);
 
   useEffect(() => {
     const timer = setTimeout(() => setOrderQueryLive(orderQuery.trim()), 400);
@@ -546,103 +440,6 @@ export function SekalipayManager() {
     await loadMarkups();
   };
 
-  const runValidate = async () => {
-    const itemId = Number(validateItem);
-    if (!Number.isInteger(itemId) || itemId <= 0 || !validateCustomer.trim()) {
-      toast.error("Isi item_id + customer ID dulu.");
-      return;
-    }
-    setValidating(true);
-    setValidateResult(null);
-    try {
-      const res = await fetch("/api/admin/sekalipay/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item_id: itemId, customer_id: validateCustomer.trim(), zone_id: validateZone.trim() || undefined }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Validasi gagal");
-      const r = body.result ?? {};
-      setValidateResult(`OK · ${r.display_name ?? r.account_name ?? JSON.stringify(r).slice(0, 200)}${r.region ? ` (${r.region})` : ""}${r.cached ? " · cache" : ""}`);
-      toast.success("Akun ditemukan.");
-    } catch (cause) {
-      const msg = cause instanceof Error ? cause.message : "Validasi gagal";
-      setValidateResult(`GAGAL · ${msg}`);
-      toast.error(msg);
-    } finally {
-      setValidating(false);
-    }
-  };
-
-  const createLock = async () => {
-    const itemId = Number(lockItem);
-    const qty = Math.max(1, Math.floor(Number(lockQty) || 1));
-    if (!Number.isInteger(itemId) || itemId <= 0) {
-      toast.error("Isi item_id (variant_id SK) dulu.");
-      return;
-    }
-    setLocking(true);
-    try {
-      const res = await fetch("/api/admin/sekalipay/locks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item_id: itemId, quantity: qty }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Lock gagal");
-      toast.success(`Stok dikunci 10 mnt: ${body.lock?.lock_token ?? ""}`);
-      await loadLocks();
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Lock gagal");
-    } finally {
-      setLocking(false);
-    }
-  };
-
-  const releaseLock = async (token: string) => {
-    try {
-      const res = await fetch(`/api/admin/sekalipay/locks?token=${encodeURIComponent(token)}`, { method: "DELETE" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Release gagal");
-      toast.success("Lock dilepas.");
-      await loadLocks();
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : "Release gagal");
-    }
-  };
-
-  const loadDetail = async () => {
-    const vid = detailId.trim();
-    if (!vid) {
-      toast.error("Isi variant_id SK dulu.");
-      return;
-    }
-    setDetailLoading(true);
-    setDetailResult(null);
-    try {
-      const res = await fetch(`/api/admin/sekalipay/variants/${encodeURIComponent(vid)}`, { cache: "no-store" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Gagal memuat detail");
-      const v = body.variant ?? {};
-      const lines = [
-        `${v.sk_product_name ?? ""} — ${v.sk_variant_name ?? ""}`,
-        `Modal ${formatRupiah(Number(v.sk_price ?? 0))} · Jual ${formatRupiah(Number(v.axvara_sell_price ?? 0))} · Stok ${v.sk_stock} · Min.order ${v.sk_min_order ?? 1} · Status ${v.sk_status ?? "-"}`,
-        `Proses ${v.sk_order_process ?? "-"}${v.axvara_product_id ? ` · Katalog #${v.axvara_product_id}` : " · TANPA katalog"}`,
-      ];
-      if (v.sk_description) lines.push(`Deskripsi: ${String(v.sk_description).slice(0, 200)}`);
-      if (v.sk_seller_note) lines.push(`Seller note: ${String(v.sk_seller_note).slice(0, 200)}`);
-      if (v.sk_required_fields) lines.push(`Wajib: ${JSON.stringify(v.sk_required_fields).slice(0, 200)}`);
-      if (v.sk_validation) lines.push(`Validasi: ${JSON.stringify(v.sk_validation).slice(0, 200)}`);
-      setDetailResult(lines.join("\n"));
-    } catch (cause) {
-      const msg = cause instanceof Error ? cause.message : "Gagal memuat detail";
-      setDetailResult(`GAGAL · ${msg}`);
-      toast.error(msg);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
   // Kartu "Sync terakhir" dirender SupplierSyncStatus (diff VPS + sweep penuh + manual).
   const balance = saldo.current?.balance ?? saldo.capacity?.balance ?? null;
   const markupCounts = loadedTabs.has("markup") ? (() => {
@@ -678,8 +475,6 @@ export function SekalipayManager() {
           { id: "antrean", label: "Antrean", count: activeOrderCount ?? undefined },
           { id: "markup", label: "Markup", count: markupCounts?.total ?? undefined },
           { id: "aturan", label: "Aturan", count: exclusions.length || undefined },
-          { id: "audit", label: "Audit SK" },
-          { id: "alat", label: "Alat" },
         ]}
         active={skTab}
         onChange={(tab) => openTab(tab as typeof skTab)}
@@ -954,119 +749,6 @@ export function SekalipayManager() {
           </div>
         )}
       </Card>
-      )}
-      {skTab === "audit" && (
-      <div className="space-y-4">
-      <Card className="overflow-hidden">
-        <CardHeader className="gap-3 p-4">
-          <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">Mutasi saldo <Badge variant="info">KHAS SK</Badge></CardTitle>
-            <CardDescription className="mt-1 text-xs">Audit credit/debit + saldo sebelum/sesudah per invoice. WR tidak punya ini.</CardDescription>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <NativeSelect value={mutationDir} onChange={(e) => setMutationDir(e.target.value)} aria-label="Arah mutasi" className="w-[150px]">
-              {[["all", "Semua"], ["credit", "Masuk"], ["debit", "Keluar"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </NativeSelect>
-            <Button variant="outline" size="sm" onClick={() => void loadMutations()} disabled={mutationsLoading}>{mutationsLoading ? <Spinner size={12} /> : <RefreshCw />} Muat</Button>
-          </div>
-        </CardHeader>
-        {!mutations.length ? <p className="border-t border-admin-border p-10 text-center text-sm text-admin-muted">Belum ada mutasi — tekan Muat.</p> : <div className="border-t border-admin-border">
-          <Table>
-            <TableHeader><TableRow><TableHead>Nominal</TableHead><TableHead>Invoice</TableHead><TableHead>Jenis</TableHead><TableHead>Saldo</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {mutations.map((m, i) => <TableRow key={`${m.invoice}-${i}`}>
-                <TableCell><Badge variant={m.direction === "credit" ? "success" : "destructive"} className="tabular-nums">{m.direction === "credit" ? "+" : "−"}{formatRupiah(m.amount)}</Badge></TableCell>
-                <TableCell className="font-mono text-xs text-admin-muted">{m.invoice}</TableCell>
-                <TableCell className="text-xs text-admin-muted">{m.type}</TableCell>
-                <TableCell className="whitespace-nowrap text-xs tabular-nums text-admin-muted">{formatRupiah(m.balance_before)} → {formatRupiah(m.balance_after)}</TableCell>
-              </TableRow>)}
-            </TableBody>
-          </Table>
-        </div>}
-      </Card>
-
-      <Card className="overflow-hidden">
-        <CardHeader className="gap-3 p-4">
-          <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">Transaksi SK <Badge variant="info">KHAS SK</Badge></CardTitle>
-            <CardDescription className="mt-1 text-xs">Daftar transaksi di sisi Sekalipay (audit/refund). WR tidak punya ini.</CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => void loadTransactions()} disabled={trxLoading}>{trxLoading ? <Spinner size={12} /> : <RefreshCw />} Muat</Button>
-        </CardHeader>
-        {!transactions.length ? <p className="border-t border-admin-border p-10 text-center text-sm text-admin-muted">Belum ada data — tekan Muat.</p> : <div className="border-t border-admin-border">
-          <Table>
-            <TableHeader><TableRow><TableHead>Status</TableHead><TableHead>Invoice</TableHead><TableHead>Ref</TableHead><TableHead>Nominal</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {transactions.map((t) => <TableRow key={t.invoice}>
-                <TableCell><StatusBadge status={t.status} /></TableCell>
-                <TableCell className="font-mono text-xs text-admin-muted">{t.invoice}</TableCell>
-                <TableCell className="font-mono text-xs text-admin-muted">{t.ref_id}</TableCell>
-                <TableCell className="whitespace-nowrap text-xs tabular-nums text-admin-muted">{formatRupiah(t.amount)}</TableCell>
-              </TableRow>)}
-            </TableBody>
-          </Table>
-        </div>}
-      </Card>
-      </div>
-      )}
-      {skTab === "alat" && (
-      <div className="space-y-4">
-      <Card>
-        <CardHeader className="p-4 pb-3"><CardTitle className="flex flex-wrap items-center gap-2 text-base">Cek akun <Badge variant="info">KHAS SK</Badge></CardTitle><CardDescription className="mt-1 text-xs">Validasi nickname/nama sebelum order (game, e-wallet). WR tidak punya ini.</CardDescription></CardHeader>
-        <CardContent className="space-y-2 p-4 pt-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input value={validateItem} onChange={(e) => setValidateItem(e.target.value)} placeholder="item_id" inputMode="numeric" aria-label="item_id validasi" className="w-28" />
-            <Input value={validateCustomer} onChange={(e) => setValidateCustomer(e.target.value)} placeholder="User ID / nomor" aria-label="Customer ID validasi" className="min-w-[160px] flex-1" />
-            <Input value={validateZone} onChange={(e) => setValidateZone(e.target.value)} placeholder="zone/server (opsional)" aria-label="Zone validasi" className="w-40" />
-            <Button onClick={() => void runValidate()} disabled={validating}>{validating ? <Spinner size={13} /> : null}{validating ? "Mengecek…" : "Cek akun"}</Button>
-          </div>
-          {validateResult && <p className="font-mono text-xs text-admin-muted">{validateResult}</p>}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="gap-3 p-4">
-          <div className="min-w-0"><CardTitle className="flex flex-wrap items-center gap-2 text-base">Stock lock <Badge variant="info">KHAS SK</Badge></CardTitle><CardDescription className="mt-1 text-xs">Reservasi stok 10 mnt anti-overselling. WR tidak punya ini.</CardDescription></div>
-          <Button variant="outline" size="sm" onClick={() => void loadLocks()}><RefreshCw /> Muat lock aktif</Button>
-        </CardHeader>
-        <CardContent className="space-y-3 p-4 pt-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input value={lockItem} onChange={(e) => setLockItem(e.target.value)} placeholder="item_id" inputMode="numeric" aria-label="item_id lock" className="w-28" />
-            <Input value={lockQty} onChange={(e) => setLockQty(e.target.value)} placeholder="qty" inputMode="numeric" aria-label="Jumlah lock" className="w-20" />
-            <Button onClick={() => void createLock()} disabled={locking}>{locking ? <Spinner size={13} /> : null}{locking ? "Mengunci…" : "Kunci 10 mnt"}</Button>
-          </div>
-          {locks.length > 0 && <div className="rounded-md border border-admin-border">
-            <Table>
-              <TableHeader><TableRow><TableHead>Token</TableHead><TableHead>Item</TableHead><TableHead>Berlaku sampai</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {locks.map((l) => <TableRow key={l.lock_token}>
-                  <TableCell className="font-mono text-xs text-admin-accent">{l.lock_token}</TableCell>
-                  <TableCell className="text-xs text-admin-muted">item {l.item_id} · {l.quantity} unit</TableCell>
-                  <TableCell className="text-xs text-admin-muted">{formatDate(l.expires_at)}</TableCell>
-                  <TableCell>
-                    <div className="flex justify-end">
-                      <Button size="sm" variant="outline" className="border-admin-danger/30 text-admin-danger" onClick={() => void releaseLock(l.lock_token)}>Lepas</Button>
-                    </div>
-                  </TableCell>
-                </TableRow>)}
-              </TableBody>
-            </Table>
-          </div>}
-        </CardContent>
-      </Card>
-
-
-      <Card>
-        <CardHeader className="p-4 pb-3"><CardTitle className="text-base">Detail varian</CardTitle><CardDescription className="mt-1 text-xs">Capability registry (min.order, status, deskripsi, required fields) + live API.</CardDescription></CardHeader>
-        <CardContent className="space-y-2 p-4 pt-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input value={detailId} onChange={(e) => setDetailId(e.target.value)} placeholder="variant_id SK" inputMode="numeric" aria-label="variant_id detail" className="w-36" />
-            <Button onClick={() => void loadDetail()} disabled={detailLoading}>{detailLoading ? <Spinner size={13} /> : null}{detailLoading ? "Memuat…" : "Lihat detail"}</Button>
-          </div>
-          {detailResult && <p className="whitespace-pre-wrap break-all font-mono text-xs text-admin-muted">{detailResult}</p>}
-        </CardContent>
-      </Card>
-      </div>
       )}
     </div>
   );
