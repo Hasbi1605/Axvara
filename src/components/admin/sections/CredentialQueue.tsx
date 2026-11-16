@@ -1,12 +1,12 @@
 "use client";
-import { Button } from "@/components/admin/ui";
+import { Button, Checkbox } from "@/components/admin/ui";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowDown, ArrowUp, GripVertical } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, GripVertical } from "lucide-react";
 
 type Credential = { id: number; secret: string };
 type Props = {
@@ -14,12 +14,17 @@ type Props = {
   disabled: boolean;
   onMove: (id: number, index: number) => void;
   onRemove: (id: number) => void;
+  /** Pilihan untuk hapus/salin massal; opsional agar pemakai lama tetap jalan. */
+  selected?: ReadonlySet<number>;
+  onToggle?: (id: number, checked: boolean) => void;
+  onCopy?: (row: Credential) => void;
 };
 const EASING = "cubic-bezier(0.2, 0.8, 0.2, 1)";
 
-function CredentialRow({ row, index, total, disabled, onMove, onRemove, reducedMotion }: {
+function CredentialRow({ row, index, total, disabled, onMove, onRemove, reducedMotion, selected, onToggle, onCopy }: {
   row: Credential; index: number; total: number; reducedMotion: boolean;
 } & Omit<Props, "inventory">) {
+  const isSelected = selected?.has(row.id) ?? false;
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging, activeIndex, overIndex } = useSortable({
     id: row.id, disabled,
     transition: { duration: reducedMotion ? 0 : 220, easing: EASING },
@@ -30,8 +35,11 @@ function CredentialRow({ row, index, total, disabled, onMove, onRemove, reducedM
   return (
     <li ref={setNodeRef} data-inventory-id={row.id} data-dragging={isDragging || undefined}
       style={{ transform: CSS.Transform.toString(transform), transition, willChange: activeIndex >= 0 ? "transform" : undefined }}
-      className={`relative grid min-w-0 grid-cols-[auto_1.25rem_minmax(0,1fr)] items-center gap-2 rounded-lg border px-2.5 py-1.5 sm:grid-cols-[auto_1.25rem_minmax(0,1fr)_auto] ${isDragging ? "border-dashed border-admin-accent/70 bg-admin-primary/[0.08]" : "border-transparent bg-admin-subtle"}`}>
+      data-selected={isSelected || undefined}
+      className={`relative grid min-w-0 ${onToggle ? "grid-cols-[auto_auto_1.25rem_minmax(0,1fr)] sm:grid-cols-[auto_auto_1.25rem_minmax(0,1fr)_auto]" : "grid-cols-[auto_1.25rem_minmax(0,1fr)] sm:grid-cols-[auto_1.25rem_minmax(0,1fr)_auto]"} items-center gap-2 rounded-lg border px-2.5 py-1.5 ${isDragging ? "border-dashed border-admin-accent/70 bg-admin-primary/[0.08]" : isSelected ? "border-admin-accent/40 bg-admin-primary/[0.06]" : "border-transparent bg-admin-subtle"}`}>
       {isDragging && <span data-drop-indicator="true" aria-hidden="true" className="pointer-events-none absolute -top-1 left-0 right-0 h-0.5 rounded-md bg-admin-primary shadow-sm" />}
+      {onToggle && <Checkbox checked={isSelected} onCheckedChange={value => onToggle(row.id, value === true)} disabled={disabled || activeIndex >= 0}
+        aria-label={`Pilih kredensial ${index + 1}`} className="mx-1" />}
       <Button variant="outline" size="icon" type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} disabled={disabled}
         aria-label={`Geser kredensial ${index + 1}`} title="Tarik untuk mengatur urutan; Spasi untuk memakai keyboard"
         className={`shrink-0 touch-none select-none rounded p-1.5 text-admin-muted hover:bg-admin-subtle hover:text-admin-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-admin-accent disabled:opacity-30 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}>
@@ -39,7 +47,8 @@ function CredentialRow({ row, index, total, disabled, onMove, onRemove, reducedM
       </Button>
       <span className="w-5 shrink-0 text-center text-xs text-admin-muted">{destination + 1}</span>
       <span className={`min-w-0 flex-1 truncate font-mono text-xs ${isDragging ? "text-admin-accent/60" : "text-admin-fg"}`}>{isDragging ? `Lepas di urutan ${destination + 1}` : row.secret}</span>
-      <div className="col-span-3 flex items-center justify-end gap-1 sm:col-span-1">
+      <div className={`${onToggle ? "col-span-4" : "col-span-3"} flex items-center justify-end gap-1 sm:col-span-1`}>
+      {onCopy && <Button variant="outline" size="icon" type="button" aria-label={`Salin kredensial ${index + 1}`} title="Salin kredensial" onClick={() => onCopy(row)} disabled={activeIndex >= 0} className="size-8 shrink-0 rounded p-1 text-admin-muted hover:bg-admin-subtle hover:text-admin-accent disabled:opacity-20"><Copy size={14} /></Button>}
       <Button variant="outline" size="icon" type="button" aria-label={`Naikkan kredensial ${index + 1}`} title="Naikkan" onClick={() => onMove(row.id, index - 1)} disabled={disabled || activeIndex >= 0 || index === 0} className="size-8 shrink-0 rounded p-1 text-admin-muted hover:bg-admin-subtle hover:text-admin-accent disabled:opacity-20"><ArrowUp size={14} /></Button>
       <Button variant="outline" size="icon" type="button" aria-label={`Turunkan kredensial ${index + 1}`} title="Turunkan" onClick={() => onMove(row.id, index + 1)} disabled={disabled || activeIndex >= 0 || index === total - 1} className="size-8 shrink-0 rounded p-1 text-admin-muted hover:bg-admin-subtle hover:text-admin-accent disabled:opacity-20"><ArrowDown size={14} /></Button>
       <Button variant="ghost" type="button" onClick={() => onRemove(row.id)} disabled={disabled || activeIndex >= 0} className="shrink-0 text-xs font-semibold text-admin-danger hover:text-admin-danger hover:underline disabled:opacity-40">Hapus</Button>
@@ -48,7 +57,7 @@ function CredentialRow({ row, index, total, disabled, onMove, onRemove, reducedM
   );
 }
 
-export function CredentialQueue({ inventory, disabled, onMove, onRemove }: Props) {
+export function CredentialQueue({ inventory, disabled, onMove, onRemove, selected, onToggle, onCopy }: Props) {
   const container = useRef<HTMLUListElement>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [targetIndex, setTargetIndex] = useState<number | null>(null);
@@ -83,7 +92,7 @@ export function CredentialQueue({ inventory, disabled, onMove, onRemove }: Props
       <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
         <ul ref={container} aria-label="Urutan pengiriman kredensial"
           className={`min-w-0 max-w-full max-h-48 space-y-2 overflow-y-auto overscroll-contain rounded-xl border border-admin-border bg-admin-card/65 p-2.5 ${active ? "select-none" : ""}`}>
-          {inventory.map((row, index) => <CredentialRow key={row.id} row={row} index={index} total={inventory.length} disabled={disabled} reducedMotion={reducedMotion} onMove={onMove} onRemove={onRemove} />)}
+          {inventory.map((row, index) => <CredentialRow key={row.id} row={row} index={index} total={inventory.length} disabled={disabled} reducedMotion={reducedMotion} onMove={onMove} onRemove={onRemove} selected={selected} onToggle={onToggle} onCopy={onCopy} />)}
         </ul>
       </SortableContext>
       {typeof document !== "undefined" && createPortal(

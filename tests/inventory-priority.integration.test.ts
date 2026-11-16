@@ -82,4 +82,50 @@ describe("unique credential priority", () => {
       expect((await POST(request([1, 2, 3]))).status).toBe(401);
     } finally { fx.close(); }
   });
+
+  it("bulk delete revokes only available credentials of the requested variant and syncs stock", async () => {
+    const fx = await setup();
+    try {
+      await reserveInventory(1, "HELD", 1); // id 1 keburu dipesan
+      const { DELETE } = await import("@/app/api/admin/fulfillment/route");
+      const request = (body: unknown) => new NextRequest("http://localhost/api/admin/fulfillment", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      // id 4 milik varian lain: tidak boleh ikut terhapus walau dikirim.
+      const response = await DELETE(request({ product_id: 1, variant_id: 1, inventory_ids: [1, 2, 4] }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, revoked: 1, skipped: 2 });
+      const status = (id: number) => fx.sql.prepare("SELECT status FROM fulfillment_inventory WHERE id=?").get(id)?.status;
+      expect([status(1), status(2), status(3), status(4)]).toEqual(["reserved", "revoked", "available", "available"]);
+      expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(1);
+      expect(await (await DELETE(request({ product_id: 1, variant_id: 1, inventory_ids: [3] }))).json()).toMatchObject({ revoked: 1, skipped: 0 });
+      expect(status(3)).toBe("revoked");
+    } finally { fx.close(); }
+  });
+
+  it.each([
+    [{ product_id: 1, variant_id: 1, inventory_ids: [] }],
+    [{ product_id: 1, variant_id: 1, inventory_ids: [2, 2] }],
+    [{ product_id: 1, variant_id: 1, inventory_ids: [0] }],
+    [{ product_id: 1, variant_id: 1, inventory_ids: Array.from({ length: 101 }, (_, i) => i + 1) }],
+    [{ variant_id: 1, inventory_ids: [2] }],
+    [{ product_id: 1, variant_id: 1, inventory_ids: "2" }],
+  ])("bulk delete rejects invalid payload %j without touching stock", async body => {
+    const fx = await setup();
+    try {
+      const { DELETE } = await import("@/app/api/admin/fulfillment/route");
+      const response = await DELETE(new NextRequest("http://localhost/api/admin/fulfillment", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+      expect(response.status).toBe(400);
+      expect(fx.sql.prepare("SELECT COUNT(*) n FROM fulfillment_inventory WHERE status='revoked'").get()?.n).toBe(0);
+    } finally { fx.close(); }
+  });
+
+  it("bulk delete requires an admin session", async () => {
+    const fx = await setup();
+    try {
+      const { DELETE } = await import("@/app/api/admin/fulfillment/route");
+      vi.mocked(requireAdmin).mockResolvedValueOnce(null);
+      const response = await DELETE(new NextRequest("http://localhost/api/admin/fulfillment", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ product_id: 1, variant_id: 1, inventory_ids: [2] }) }));
+      expect(response.status).toBe(401);
+      expect(fx.sql.prepare("SELECT status FROM fulfillment_inventory WHERE id=2").get()?.status).toBe("available");
+    } finally { fx.close(); }
+  });
 });

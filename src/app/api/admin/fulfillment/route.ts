@@ -225,7 +225,25 @@ export async function DELETE(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const body = await request.json() as { inventory_id: number };
+  const body = await request.json().catch(() => ({})) as { inventory_id?: number; inventory_ids?: unknown; product_id?: unknown; variant_id?: unknown };
+  // Hapus massal (16 Nov 2026): dibatasi ke satu produk/varian, maks 100 ID
+  // unik. Baris yang sudah dipesan/terkirim dilewati, bukan error seluruhnya.
+  if (body.inventory_ids !== undefined) {
+    const productId = Number(body.product_id);
+    const variantId = body.variant_id == null ? null : Number(body.variant_id);
+    const ids = body.inventory_ids;
+    if (!Number.isSafeInteger(productId) || productId <= 0 || (variantId !== null && (!Number.isSafeInteger(variantId) || variantId <= 0))
+      || !Array.isArray(ids) || !ids.length || ids.length > 100
+      || ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+      return NextResponse.json({ error: "invalid_inventory_ids" }, { status: 400 });
+    }
+    const { revokeInventoryBatch, syncUniqueVariantStock } = await import("@/lib/fulfillment/inventory");
+    const revoked = await revokeInventoryBatch(productId, variantId, ids as number[]);
+    if (revoked) {
+      try { await syncUniqueVariantStock(productId, variantId); } catch { /* sync best-effort — revoke sudah sukses */ }
+    }
+    return NextResponse.json({ ok: true, revoked, skipped: ids.length - revoked });
+  }
   if (!body.inventory_id) {
     return NextResponse.json({ error: "inventory_id required" }, { status: 400 });
   }

@@ -1,8 +1,9 @@
 "use client";
-import { Badge, Button, Input, Label, NativeSelect, Textarea } from "@/components/admin/ui";
+import { Badge, Button, Checkbox, Input, Label, NativeSelect, Textarea } from "@/components/admin/ui";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SupplierBadge } from "../supplier-style";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Copy, Trash2 } from "lucide-react";
 import { formatRupiah } from "@/lib/utils";
 import { IosIcon } from "@/components/admin/AdminIcon";
 import { MoneyInput } from "@/components/ui/MoneyInput";
@@ -29,6 +30,21 @@ import {
 // admin; shared/unique = instan dari stok sendiri. Sinkron 1:1 dengan
 // fulfillment_mode agar display buyer (badge/ETA) tidak menebak.
 // Diekspor 2026-09-28 agar mode single memakai opsi yang sama (paritas).
+/** Salin ke clipboard; fallback textarea untuk konteks non-secure/izin ditolak. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* coba fallback di bawah */ }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+    document.body.appendChild(area); area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  } catch { return false; }
+}
+
 export const FULFILLMENT_OPTIONS = [
   { value: "manual", label: "Made By Order — admin kerjakan manual" },
   { value: "shared", label: "Kirim otomatis — pesan/instruksi bersama" },
@@ -63,6 +79,8 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
   const [sharedText, setSharedText] = useState("");
   const [inventoryText, setInventoryText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
   const pid = Number(productId);
   const loadGeneration = useRef(0);
   const invalidateLoad = useCallback(() => { loadGeneration.current++; }, []);
@@ -87,7 +105,10 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
       setVariantStock(typeof data.variant_stock === "number" ? data.variant_stock : null);
       setStockMismatch(data.stock_mismatch === true);
       setSharedCurrent(typeof data.shared_secret === "string" ? data.shared_secret : null);
-      setInventory(Array.isArray(data.inventory) ? data.inventory : []);
+      const rows = Array.isArray(data.inventory) ? data.inventory : [];
+      setInventory(rows);
+      // Pilihan hanya untuk baris yang masih ada (terjual/dihapus = lepas).
+      setSelected(prev => { const live = new Set(rows.map(row => row.id)); const next = new Set([...prev].filter(id => live.has(id))); return next.size === prev.size ? prev : next; });
       if (mode === "unique" && typeof data.available === "number") onStockChange?.(data.available);
     } catch { /* counts pendukung — gagal muat tidak menghalangi simpan. */ }
   };
@@ -142,6 +163,37 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
       toast.success("Stok dihapus."); await load();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menghapus"); }
     finally { setLoading(false); }
+  };
+
+  const toggleOne = (id: number, checked: boolean) => setSelected(prev => {
+    const next = new Set(prev);
+    if (checked) next.add(id); else next.delete(id);
+    return next;
+  });
+  const toggleAll = (checked: boolean) => setSelected(checked ? new Set(inventory.map(row => row.id)) : new Set());
+
+  const copyRows = async (rows: { secret: string }[]) => {
+    if (!rows.length) return;
+    const ok = await copyText(rows.map(row => row.secret).join("\n"));
+    if (ok) toast.success(rows.length === 1 ? "Kredensial disalin." : `${rows.length} kredensial disalin.`);
+    else toast.error("Gagal menyalin — izinkan akses clipboard di browser.");
+  };
+
+  const removeSelected = async () => {
+    const ids = inventory.filter(row => selected.has(row.id)).map(row => row.id);
+    if (!ids.length) { setConfirmBulk(false); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/fulfillment", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: pid, variant_id: variantId, inventory_ids: ids }) });
+      const data = await res.json().catch(() => ({})) as { error?: string; revoked?: number; skipped?: number };
+      if (!res.ok) throw new Error(data.error || "Gagal menghapus");
+      const revoked = Number(data.revoked || 0), skipped = Number(data.skipped || 0);
+      if (skipped > 0) toast.error(`${revoked} stok dihapus; ${skipped} dilewati karena sudah dipesan/terkirim.`);
+      else toast.success(`${revoked} stok dihapus.`);
+      setSelected(new Set());
+      await load();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Gagal menghapus"); }
+    finally { setLoading(false); setConfirmBulk(false); }
   };
 
   const moveInventory = async (id: number, targetIndex: number) => {
@@ -243,8 +295,30 @@ export function NonWrFulfillmentPanel({ productId, variantId, mode, onStockChang
       ) : (
         <div className="mt-3">
           <p className="mb-2 text-xs text-admin-muted">Kredensial paling atas dikirim lebih dulu. Geser pegangan atau gunakan panah. Urutan langsung tersimpan.</p>
-          {inventory.length > 0 ? (
-            <CredentialQueue inventory={inventory} disabled={loading} onMove={(id, index) => void moveInventory(id, index)} onRemove={id => void removeOne(id)} />
+          {inventory.length > 0 ? (<>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-admin-border bg-admin-subtle px-3 py-2">
+              <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-admin-fg">
+                <Checkbox aria-label="Pilih semua kredensial" disabled={loading}
+                  checked={selected.size === 0 ? false : selected.size === inventory.length ? true : "indeterminate"}
+                  onCheckedChange={value => toggleAll(value === true)} />
+                {selected.size ? `${selected.size} dari ${inventory.length} dipilih` : "Pilih semua"}
+              </label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button variant="outline" size="sm" type="button" disabled={!selected.size}
+                  onClick={() => void copyRows(inventory.filter(row => selected.has(row.id)))}
+                  className="h-8 gap-1.5 rounded-lg px-3 text-xs"><Copy size={13} /> Salin terpilih</Button>
+                <Button variant="outline" size="sm" type="button" disabled={loading || !selected.size} onClick={() => setConfirmBulk(true)}
+                  className="h-8 gap-1.5 rounded-lg px-3 text-xs text-admin-danger hover:text-admin-danger"><Trash2 size={13} /> Hapus terpilih{selected.size ? ` (${selected.size})` : ""}</Button>
+              </div>
+            </div>
+            <CredentialQueue inventory={inventory} disabled={loading} onMove={(id, index) => void moveInventory(id, index)} onRemove={id => void removeOne(id)}
+              selected={selected} onToggle={toggleOne} onCopy={row => void copyRows([row])} />
+            <ConfirmDialog open={confirmBulk} loading={loading}
+              title={`Hapus ${selected.size} kredensial?`}
+              description="Kredensial terpilih ditarik dari stok dan tidak akan dikirim ke pembeli. Kredensial yang keburu dipesan pembeli dilewati otomatis."
+              confirmLabel={`Hapus ${selected.size}`}
+              onClose={() => setConfirmBulk(false)} onConfirm={() => void removeSelected()} />
+          </>
           ) : (
             <p className="rounded-xl border border-admin-border bg-admin-subtle px-3 py-2.5 text-xs text-admin-muted">Belum ada stok unik — impor di bawah.</p>
           )}

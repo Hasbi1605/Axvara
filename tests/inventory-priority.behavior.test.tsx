@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { NonWrFulfillmentPanel } from "@/components/admin/sections/ProductVariantRows";
 import { ToastProvider } from "@/components/ui/Toast";
+import { AdminPortalContext } from "@/components/admin/ui/portal";
 afterEach(async () => {
   cleanup();
   // PointerSensor briefly suppresses the synthetic click after a drag ends.
@@ -130,5 +131,78 @@ describe("credential priority controls", () => {
     fireEvent.click(screen.getByLabelText("Naikkan kredensial 3"));
     await screen.findByText("Stok berubah");
     await waitFor(() => expect(order()).toEqual(["CREDENTIAL-1", "CREDENTIAL-2", "CREDENTIAL-3"]));
+  });
+
+  it("select all, partial selection and bulk delete with confirmation", async () => {
+    let inventory = [1, 2, 3].map(id => ({ id, secret: `CREDENTIAL-${id}` }));
+    const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      if (init?.method === "DELETE") {
+        const body = JSON.parse(String(init.body));
+        inventory = inventory.filter(row => !body.inventory_ids.includes(row.id));
+        return { ok: true, json: async () => ({ ok: true, revoked: body.inventory_ids.length, skipped: 0 }) };
+      }
+      return { ok: true, json: async () => ({ available: inventory.length, reserved: 0, delivered: 0, inventory }) };
+    });
+    vi.stubGlobal("fetch", fetch);
+    render(<AdminPortalContext.Provider value={document.body}><ToastProvider><NonWrFulfillmentPanel productId={1} variantId={1} mode="unique" /></ToastProvider></AdminPortalContext.Provider>);
+    await screen.findByText("CREDENTIAL-3");
+    const bulkDelete = () => screen.getByRole("button", { name: /Hapus terpilih/ }) as HTMLButtonElement;
+    expect(bulkDelete().disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("Pilih semua kredensial"));
+    expect(screen.getByText("3 dari 3 dipilih")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Pilih kredensial 2"));
+    expect(screen.getByText("2 dari 3 dipilih")).toBeTruthy();
+    expect(screen.getByLabelText("Pilih semua kredensial").getAttribute("data-state")).toBe("indeterminate");
+    expect(screen.getByLabelText("Pilih semua kredensial").querySelector(".lucide-minus")).toBeTruthy();
+
+    fireEvent.click(bulkDelete());
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Hapus 2 kredensial?")).toBeTruthy();
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Hapus 2" }));
+    await screen.findByText("2 stok dihapus.");
+    const call = fetch.mock.calls.find(([, init]) => init?.method === "DELETE")!;
+    expect(JSON.parse(String(call[1]!.body))).toEqual({ product_id: 1, variant_id: 1, inventory_ids: [1, 3] });
+    await waitFor(() => expect(order()).toEqual(["CREDENTIAL-2"]));
+    expect(screen.getByText("Pilih semua")).toBeTruthy();
+  });
+
+  it("reports credentials skipped because checkout reserved them", async () => {
+    const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => init?.method === "DELETE"
+      ? { ok: true, json: async () => ({ ok: true, revoked: 1, skipped: 1 }) }
+      : { ok: true, json: async () => ({ available: 2, reserved: 0, delivered: 0, inventory: [1, 2].map(id => ({ id, secret: `CREDENTIAL-${id}` })) }) });
+    vi.stubGlobal("fetch", fetch);
+    render(<AdminPortalContext.Provider value={document.body}><ToastProvider><NonWrFulfillmentPanel productId={1} variantId={1} mode="unique" /></ToastProvider></AdminPortalContext.Provider>);
+    await screen.findByText("CREDENTIAL-2");
+    fireEvent.click(screen.getByLabelText("Pilih semua kredensial"));
+    fireEvent.click(screen.getByRole("button", { name: /Hapus terpilih/ }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Hapus 2" }));
+    await screen.findByText("1 stok dihapus; 1 dilewati karena sudah dipesan/terkirim.");
+  });
+
+  it("copies a single credential and the selected credentials in queue order", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    setup();
+    await screen.findByText("CREDENTIAL-3");
+    fireEvent.click(screen.getByLabelText("Salin kredensial 2"));
+    await screen.findByText("Kredensial disalin.");
+    expect(writeText).toHaveBeenLastCalledWith("CREDENTIAL-2");
+    expect((screen.getByRole("button", { name: /Salin terpilih/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText("Pilih kredensial 3"));
+    fireEvent.click(screen.getByLabelText("Pilih kredensial 1"));
+    fireEvent.click(screen.getByRole("button", { name: /Salin terpilih/ }));
+    await screen.findByText("2 kredensial disalin.");
+    expect(writeText).toHaveBeenLastCalledWith("CREDENTIAL-1\nCREDENTIAL-3");
+  });
+
+  it("shows an error when the clipboard is unavailable", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn(async () => { throw new Error("denied"); }) } });
+    Object.defineProperty(document, "execCommand", { configurable: true, value: vi.fn(() => false) });
+    setup();
+    await screen.findByText("CREDENTIAL-1");
+    fireEvent.click(screen.getByLabelText("Salin kredensial 1"));
+    await screen.findByText("Gagal menyalin — izinkan akses clipboard di browser.");
   });
 });

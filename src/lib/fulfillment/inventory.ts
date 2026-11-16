@@ -306,6 +306,34 @@ export async function revokeInventory(inventoryId: number): Promise<boolean> {
 }
 
 /**
+ * Revoke several available credentials of ONE product/variant at once (admin
+ * bulk delete). IDs outside that variant or no longer `available` (already
+ * reserved/delivered by checkout) are skipped, never touched. Returns how many
+ * rows were actually revoked.
+ */
+export async function revokeInventoryBatch(productId: number, variantId: number | null, inventoryIds: number[]): Promise<number> {
+  const ids = [...new Set(inventoryIds)].filter(id => Number.isSafeInteger(id) && id > 0);
+  if (!ids.length) return 0;
+  if (isD1Mode()) {
+    const result = await execRun(
+      `UPDATE fulfillment_inventory SET status='revoked'
+       WHERE id IN (${ids.map(() => "?").join(",")}) AND product_id=? AND variant_id IS ? AND status='available'`,
+      ...ids, productId, variantId,
+    );
+    return Number(result.changes ?? 0);
+  }
+  let revoked = 0;
+  for (const item of getInventoryMem()) {
+    if (ids.includes(Number(item.id)) && Number(item.product_id) === productId
+      && (item.variant_id == null ? null : Number(item.variant_id)) === variantId && item.status === "available") {
+      item.status = "revoked";
+      revoked++;
+    }
+  }
+  return revoked;
+}
+
+/**
  * Find the reserved inventory item for an order.
  */
 export async function findReservedForOrder(orderCode: string): Promise<Row | undefined> {
