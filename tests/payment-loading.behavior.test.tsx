@@ -194,7 +194,7 @@ describe("/pesanan/[code] saat memuat", () => {
     await screen.findByAltText(`QRIS dinamis pesanan ${CODE}`);
     // Ikon jam berputar: pembeli tahu halaman hidup, bukan laman kosong.
     expect(screen.getByRole("status", { name: /Menunggu pembayaran/ })).toBeTruthy();
-    expect(screen.getByText(/Mengecek pembayaran otomatis tiap 5 detik/)).toBeTruthy();
+    expect(screen.getByText(/Dicek otomatis — biasanya terkonfirmasi dalam 30 detik setelah bayar/)).toBeTruthy();
     expect(screen.queryByText(/Batas bayar otomatis 15 menit/)).toBeNull();
     const check = screen.getByRole("button", { name: "Cek Pembayaran" });
     expect(check).toBeTruthy();

@@ -37,7 +37,7 @@ describe("order page EN (order.locale)", () => {
     stubOrder(body());
     render(<OrderPage />);
     expect(await screen.findByRole("heading", { name: "QRIS Payment" })).toBeTruthy();
-    for (const label of ["Scan QRIS", "Amount to pay", "Includes unique code", "Valid for", "Pay exactly the total amount.", "Save QRIS", "Check payment", "Checking payment automatically every 5 seconds"]) {
+    for (const label of ["Scan QRIS", "Amount to pay", "Includes unique code", "Valid for", "Pay exactly the total amount.", "Save QRIS", "Check payment", "Checked automatically — usually confirmed within 30 seconds of payment"]) {
       expect(text(), label).toContain(label);
     }
     expect(text()).not.toMatch(/Simpan QRIS|Cek Pembayaran|Total bayar/);

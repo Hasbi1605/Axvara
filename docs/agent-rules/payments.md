@@ -1,5 +1,15 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Audit jeda konfirmasi GoPay — 16 November 2026
+
+- Diukur baca-saja dari 12 order GoPay paid: GoPay paid→AXVARA lunas 4–31 detik
+  (median ~11 detik), lunas→notif admin Telegram 1–3 detik, halaman pembeli
+  polling 5 detik. Jeda berasal dari cadence poller GoBiz 15/30/60 detik yang
+  disengaja (anti-suspend), bukan bug.
+- Keputusan owner: cadence poller TIDAK diubah; hanya teks indikator pembeli
+  diganti agar jujur ("biasanya terkonfirmasi dalam 30 detik"). Jangan
+  mempercepat poll GoBiz tanpa keputusan owner baru.
+
 ## Perbaikan 14 November 2026: jendela reuse nominal QRIS 24 jam
 - Gejala: notifikasi "Pembayaran GoPay masuk tanpa pasangan invoice — nominal sudah pernah dipakai" berulang, terutama Google AI Pro. Sebab: pool kode unik 299 per harga + `payment_invoice_history` permanen; setelah 299 invoice (termasuk yang tidak dibayar/reissue) setiap nominal baru dianggap reuse sehingga poller yang sudah mencocokkan order tetap ditolak `amount_reused_requires_review`.
 - `DANA_AMOUNT_REUSED_SQL` (webhook dana/gopay, retry admin, guard atomik) kini hanya menghitung riwayat order lain yang `COALESCE(expires_at,issued_at)` > terbit invoice ini − `DANA_AMOUNT_REUSE_WINDOW_HOURS` (24). Rentang `dana_qris_legacy_ranges` tetap selalu bentrok. Allocator create/reissue memilih nominal least-recently-used. Jangan menghapus jendela atau mengubah 24 jam tanpa keputusan owner.

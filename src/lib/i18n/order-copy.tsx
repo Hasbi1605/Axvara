@@ -48,7 +48,7 @@ export function orderCopy(locale: Locale) {
       saveQris: en ? "Save QRIS" : "Simpan QRIS",
       check: en ? "Check payment" : "Cek Pembayaran",
       checking: en ? "Checking…" : "Mengecek…",
-      autoCheck: en ? "Checking payment automatically every 5 seconds" : "Mengecek pembayaran otomatis tiap 5 detik",
+      autoCheck: en ? "Checked automatically — usually confirmed within 30 seconds of payment" : "Dicek otomatis — biasanya terkonfirmasi dalam 30 detik setelah bayar",
       lastChecked: (time: string) => (en ? `last checked ${time}` : `terakhir dicek ${time}`),
       expiredTitle: en ? "QRIS expired" : "QRIS sudah kedaluwarsa",
       expiredReissue: en ? "Your order is still active. You can request a new QRIS once. Do not pay the old QRIS." : "Pesanan masih aktif. Kamu dapat meminta QRIS baru 1 kali. Jangan bayar QRIS lama.",

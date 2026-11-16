@@ -1,5 +1,15 @@
 # DESIGN.md — AXVARA Design System
 
+## Teks cek otomatis QRIS — 16 November 2026
+
+Indikator di bawah panel QR halaman pembayaran Market dan Pedia berubah dari
+"Mengecek pembayaran otomatis tiap 5 detik" menjadi **"Dicek otomatis — biasanya
+terkonfirmasi dalam 30 detik setelah bayar"** (EN: "Checked automatically — usually
+confirmed within 30 seconds of payment"). Alasannya: teks lama terbaca sebagai janji
+konfirmasi 5 detik, padahal GoPay Merchant butuh 4–31 detik (median ~11 detik).
+Polling halaman tetap 5 detik; elemen, spinner, warna dan layout tidak berubah.
+Catatan 2026-10-18 di bawah yang menyebut teks lama adalah histori.
+
 ## PIN pascabayar minimalis — 2026-11-16
 
 Halaman pesanan/lacak paid memakai `OrderAccessNotice` ringkas: label kecil
