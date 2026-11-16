@@ -1,5 +1,12 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## WR manual tanpa pengganti Jaspay dijual lagi (16 November 2026)
+
+Varian WR manual/Made By Order kembali tampil dan bisa dibeli bila produknya tidak
+tergantikan Jaspay (pemetaan eksplisit `JASPAY_LEGACY_PRODUCTS` atau parent punya
+paket `jaspay:`). Yang tergantikan tetap dijeda walau Jaspay habis. Gate tunggal di
+`src/lib/warung-rebahan/new-sales.ts`; tanpa migrasi/env.
+
 ## PIN setelah pembayaran (16 November 2026)
 
 PIN6 existing tersedia di halaman pesanan/lacak setelah lunas, termasuk saat

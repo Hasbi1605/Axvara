@@ -12,6 +12,7 @@ import { pollKnownJaspayInvoice, processWrPendingOrders } from "@/lib/warung-reb
 import { readAutomaticProgress } from "@/lib/warung-rebahan/progress";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { createChannelOrderAtomic } from "@/lib/commerce";
+import { JASPAY_LEGACY_PRODUCTS, wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
 import { clearRateLimitBucketsForTest } from "@/lib/rateLimit";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); clearRateLimitBucketsForTest(); });
@@ -93,12 +94,15 @@ it("inherits image and gallery from an inactive MBO parent without reactivating 
   } finally {fx.close();}
 });
 
-it("blocks old manual quotes, reservation and public cards while leaving premium automatic stock available", async () => {
+const SCRIBD_LEGACY = JASPAY_LEGACY_PRODUCTS.scribd;
+
+it("blocks Jaspay-covered manual quotes, reservation and public cards while leaving premium automatic stock available", async () => {
   const fx = await setupWrFixture(); enable();
   try {
     seedWrCatalog(fx);
     expect(await getActiveVariant(1)).not.toBeNull();
-    fx.sql.exec("UPDATE wr_variants SET wr_delivery_class='made_by_order'");
+    // Owner 16-Nov: only MBO replaced by Jaspay (explicit legacy mapping) stays paused.
+    fx.sql.exec(`UPDATE products SET wr_product_id='${SCRIBD_LEGACY}' WHERE id=1; UPDATE wr_variants SET wr_delivery_class='made_by_order'`);
     const { POST } = await import("@/app/api/checkout/quote/route");
     const response = await POST(new NextRequest("http://localhost/api/checkout/quote", { method: "POST", body: JSON.stringify({items:[{product_id:1,variant_id:1,qty:1}]}) }));
     expect(response.status).toBe(409);
@@ -109,6 +113,46 @@ it("blocks old manual quotes, reservation and public cards while leaving premium
     const cards = await (await GET(new NextRequest("http://localhost/api/products?active=1"))).json();
     expect(cards.products).toEqual([]);
   } finally { fx.close(); }
+});
+
+it("sells manual (MBO) packages whose product has no Jaspay replacement across quote, reservation and catalog", async () => {
+  const fx = await setupWrFixture(); enable();
+  try {
+    seedWrCatalog(fx);
+    fx.sql.exec("UPDATE wr_variants SET wr_delivery_class='made_by_order'");
+    const { POST } = await import("@/app/api/checkout/quote/route");
+    const response = await POST(new NextRequest("http://localhost/api/checkout/quote", { method: "POST", body: JSON.stringify({items:[{product_id:1,variant_id:1,qty:1}]}) }));
+    expect(response.status).toBe(200);
+    expect(await getActiveVariant(1)).not.toBeNull();
+    await createOrderWithStock({ code: "AXV-MBO-OK", quoteId: "mbo-quote", customerName: "Buyer", customerWa: "628000000000", customerEmail: "fixture@example.test", items: [{ product_id:1,variant_id:1,name:"MBO package",price:7500,qty:1 }], subtotal:7500,paymentMethod:"qris",paymentAccount:"fixture",proofUrl:null });
+    expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()).toMatchObject({stock:9});
+    const { GET } = await import("@/app/api/products/route");
+    const cards = await (await GET(new NextRequest("http://localhost/api/products?active=1"))).json();
+    expect(cards.products.map((p: { id: string }) => p.id)).toEqual(["1"]);
+  } finally { fx.close(); }
+});
+
+it("keeps MBO paused when its parent carries a Jaspay package, even if that package is inactive and sold out", async () => {
+  const fx = await setupWrFixture(); enable();
+  try {
+    seedWrCatalog(fx);
+    fx.sql.exec(`UPDATE wr_variants SET wr_delivery_class='made_by_order';
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,fulfillment_mode,wr_variant_id) VALUES(2,1,'WR-J1','Jaspay',7500,0,0,'manual','jaspay:capcut:')`);
+    expect(await getActiveVariant(1)).toBeNull();
+    const { POST } = await import("@/app/api/checkout/quote/route");
+    const response = await POST(new NextRequest("http://localhost/api/checkout/quote", { method: "POST", body: JSON.stringify({items:[{product_id:1,variant_id:1,qty:1}]}) }));
+    expect(response.status).toBe(409);
+  } finally { fx.close(); }
+});
+
+it("wrNewSaleAllowed fails closed for unknown class or missing coverage flag", () => {
+  expect(wrNewSaleAllowed({ wr_variant_id: null })).toBe(true);
+  expect(wrNewSaleAllowed({ wr_variant_id: "jaspay:x:" })).toBe(true);
+  expect(wrNewSaleAllowed({ wr_variant_id: "v", wr_delivery_class: "restock" })).toBe(true);
+  expect(wrNewSaleAllowed({ wr_variant_id: "v", wr_delivery_class: "made_by_order", wr_jaspay_covered: 0 })).toBe(true);
+  expect(wrNewSaleAllowed({ wr_variant_id: "v", wr_delivery_class: "made_by_order", wr_jaspay_covered: 1 })).toBe(false);
+  expect(wrNewSaleAllowed({ wr_variant_id: "v", wr_delivery_class: "made_by_order" })).toBe(false);
+  expect(wrNewSaleAllowed({ wr_variant_id: "v", wr_delivery_class: null, wr_jaspay_covered: 0 })).toBe(false);
 });
 
 it("omits the default package on purchase, persists queue state and delivers the known invoice on polling without a second purchase", async () => {

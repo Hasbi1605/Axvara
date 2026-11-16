@@ -1,5 +1,14 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Penjualan WR manual tanpa pengganti Jaspay — keputusan owner 16 November 2026
+
+- Menggantikan sebagian aturan14November "Premium manual/mixed/unknown dijeda":
+  `made_by_order` dijual bila produk tidak tercakup Jaspay (`JASPAY_LEGACY_PRODUCTS`
+  atau parent punya varian `jaspay:`). Kelas unknown tetap dijeda.
+- Tanpa cadangan (pilihan owner): tercakup = tetap dijeda walau Jaspay habis/nonaktif.
+- Produk Jaspay baru yang menggantikan MBO lama wajib ditambahkan ke pemetaan
+  eksplisit; jangan mencocokkan nama. Gate tunggal `new-sales.ts`.
+
 ## Refresh mixed cart & progres Jaspay — 16 November 2026
 
 API status/lookup tetap menyegarkan link supplier yang berjalan walau item lain

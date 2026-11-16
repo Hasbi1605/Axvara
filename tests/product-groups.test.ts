@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { JASPAY_LEGACY_PRODUCTS } from "@/lib/warung-rebahan/new-sales";
 import {
   decideAllGroups,
   decideDirtyGroups,
@@ -216,14 +217,24 @@ describe("product groups — DB & invalidation", () => {
     expect(group.members[0].modal_per_30d).toBe(expected);
   });
 
-  it("WR MBO non-restock dikeluarkan dan decided_at diteruskan ke admin", async () => {
+  it("WR MBO yang tergantikan Jaspay dikeluarkan dan decided_at diteruskan ke admin", async () => {
     f.sql.exec("UPDATE product_variants SET stock=0 WHERE id=11; UPDATE wr_variants SET wr_delivery_class='made_by_order'; UPDATE sk_products SET sk_stock=0");
+    f.sql.exec(`UPDATE products SET wr_product_id='${JASPAY_LEGACY_PRODUCTS.scribd}' WHERE id=2`);
     const db = createDatabaseAccess(f.db);
     await decideAllGroups(db);
     const [group] = await listProductGroups(db);
     expect(group.members[1]).toMatchObject({ stock: 0, live: false, modal_per_30d: null });
     expect(group.decided_at).toBe(f.sql.prepare("SELECT decided_at FROM product_groups WHERE id=1").get()?.decided_at);
     expect(group.decided_at).toBeTypeOf("string");
+  });
+
+  it("WR MBO tanpa pengganti Jaspay tetap bersaing (stok & modal terbaca)", async () => {
+    f.sql.exec("UPDATE product_variants SET stock=0 WHERE id=11; UPDATE wr_variants SET wr_delivery_class='made_by_order'; UPDATE sk_products SET sk_stock=0");
+    const db = createDatabaseAccess(f.db);
+    await decideAllGroups(db);
+    const [group] = await listProductGroups(db);
+    expect(group.members[1]).toMatchObject({ product_id: 2, stock: 9, live: true });
+    expect(group.winner_product_id).toBe(2);
   });
 
   it("modal akun TUNVN, Buff, AIVault memakai sumber sendiri dan fallback FX", async () => {

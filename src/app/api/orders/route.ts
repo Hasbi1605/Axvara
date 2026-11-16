@@ -1,4 +1,4 @@
-import { wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
+import { wrJaspayCoveredSql, wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
 import { readAutomaticProgress } from "@/lib/warung-rebahan/progress";
 import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 import { NextRequest, NextResponse } from "next/server";
@@ -278,7 +278,8 @@ export async function POST(req: NextRequest) {
     if (variantIds.length > 0) {
       const rows = await queryAll(
         `SELECT pv.id, pv.min_qty AS min_qty, pv.label AS label, p.name AS product_name,
-                pv.wr_variant_id AS wr_variant_id, wv.wr_delivery_class AS wr_delivery_class, wv.wr_max_quantity AS wr_max_quantity
+                pv.wr_variant_id AS wr_variant_id, wv.wr_delivery_class AS wr_delivery_class, wv.wr_max_quantity AS wr_max_quantity,
+                ${wrJaspayCoveredSql("pv.product_id")} AS wr_jaspay_covered
          FROM product_variants pv
          LEFT JOIN products p ON p.id = pv.product_id
          LEFT JOIN wr_variants wv ON wv.wr_variant_id = pv.wr_variant_id

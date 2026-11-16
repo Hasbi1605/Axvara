@@ -1,5 +1,17 @@
 # ARCHITECTURE.md — AXVARA
 
+## Gate penjualan WR MBO per cakupan Jaspay — 16 November 2026
+
+- `src/lib/warung-rebahan/new-sales.ts` kini memiliki `JASPAY_LEGACY_PRODUCTS`
+  (dipindah dari `sync.ts`, sync mengimpornya) dan `wrJaspayCoveredSql(productIdExpr)`.
+- `wrNewSaleSql` mengizinkan: non-WR, `jaspay:%`, `restock`, atau
+  `made_by_order` yang produknya tidak tercakup Jaspay. Semua pemakai existing
+  (katalog/PDP/`/api/products`/grup produk/keranjang+snapshot Telegram/reservasi
+  `commerce.ts`/`orders-create.ts`) ikut otomatis.
+- Twin JS `wrNewSaleAllowed` butuh kolom `wr_jaspay_covered` (quote + orders
+  memilihnya); flag hilang atau kelas selain `made_by_order` = fail-closed.
+- Tanpa migrasi/env/cron baru; fulfillment historis tidak memakai predikat ini.
+
 ## PIN setelah pembayaran — 16 November 2026
 
 - Route Edge baru POST `/api/orders/[code]/pin`, privat/no-store dan rate bucket

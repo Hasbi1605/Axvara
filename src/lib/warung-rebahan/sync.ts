@@ -20,6 +20,7 @@ import {
   type WrVariant,
 } from "./client";
 import { deliveryClassFromApiMode, WR_DEFAULT_DELIVERY_CLASS } from "./delivery-class";
+import { JASPAY_LEGACY_PRODUCTS } from "./new-sales";
 
 export type SyncResult = {
   total: number;
@@ -1521,20 +1522,6 @@ async function jaspaySku(variantId: string): Promise<string> {
   const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
   return `WR-J${hex.slice(0, 28).toUpperCase()}`;
 }
-
-// Explicit supplier identities from the reviewed 14-Nov catalog, never display-name matching.
-const JASPAY_LEGACY_PRODUCTS: Record<string, string> = {
-  zoom: "38eda557-044d-11f1-bf18-bc241112a182",
-  scribd: "07ca3373-133e-11f1-bf18-bc241112a182",
-  hma: "69282bbf-045f-11f1-bf18-bc241112a182",
-  expressvpn: "a86ef8b6-045f-11f1-bf18-bc241112a182",
-  picsart: "ea549518-12ee-11f1-bf18-bc241112a182",
-  wink: "b563be16-1337-11f1-bf18-bc241112a182",
-  meitu: "5f0e4cb2-1338-11f1-97d9-bc241112a182",
-  remini: "1522e51e-8d1b-11f1-97d9-bc241112a182",
-  crunchyroll: "a5b0d8fd-133f-11f1-bf18-bc241112a182",
-  surfshark: "b3526693-0460-11f1-bf18-bc241112a182",
-};
 
 async function upsertJaspayProduct(key: string, product: WrProduct, db: DatabaseAccess): Promise<void> {
   const legacyId = JASPAY_LEGACY_PRODUCTS[key];

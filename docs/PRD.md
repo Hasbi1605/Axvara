@@ -1,5 +1,16 @@
 # PRD — AXVARA
 
+## Penjualan WR manual tanpa pengganti Jaspay — 16 November 2026
+
+- Keputusan owner: varian WR Premium manual (`made_by_order`) kembali dijual ke
+  pembeli baru bila produknya TIDAK tergantikan Jaspay. "Tergantikan" =
+  `wr_product_id` ada di pemetaan eksplisit `JASPAY_LEGACY_PRODUCTS` atau parent
+  memuat paket `jaspay:` apa pun (status apa pun). Tanpa pencocokan nama.
+- Tanpa cadangan: MBO yang tergantikan tetap dijeda walau paket Jaspay habis/nonaktif.
+- Kelas pengiriman tak dikenal tetap dijeda; label "Made By Order" + ETA maksimal
+  12 jam dan auto-forward FR-S22 tetap. Aturan14November untuk produk tergantikan
+  tetap berlaku. Status: implementasi lokal + test, publikasi CI; deployment belum diverifikasi.
+
 ## PIN pascabayar dan akses otomatis — 16 November 2026
 
 - Pembeli dengan bukti checkout asli/capability akun yang sah memperoleh PIN6

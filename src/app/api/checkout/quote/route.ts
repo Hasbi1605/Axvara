@@ -1,4 +1,4 @@
-import { wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
+import { wrJaspayCoveredSql, wrNewSaleAllowed } from "@/lib/warung-rebahan/new-sales";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameBuyerCode, buyerFieldsSchema, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
@@ -125,6 +125,7 @@ export async function POST(req: NextRequest) {
   if (variantIds.size > 0) {
     const rows = await queryAll(
       `SELECT pv.*, wv.wr_type AS wr_type, wv.wr_delivery_class AS wr_delivery_class,
+              ${wrJaspayCoveredSql("pv.product_id")} AS wr_jaspay_covered,
               wv.wr_max_quantity AS wr_max_quantity,
               sp.sk_order_process AS sk_order_process, p.require_email AS require_email,
               -- Unit kredensial tersisa khusus unique (2026-10-02, insiden Head
