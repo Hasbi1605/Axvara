@@ -16,8 +16,8 @@
 //   `part=sync` (katalog, diulang `&continue=1` selama `more: true`);
 //   order didahulukan agar tetap jalan walau sync kena limit;
 // - alarm Telegram ber-state di Workers KV: 1 pesan saat gangguan mulai
-//   (2 tick gagal beruntun), pengingat tiap 6 jam, 1 pesan saat pulih
-//   (3 tick sukses beruntun). Tanpa KV → fallback stateless :00/:30.
+//   (hard 2 / soft 6 eksekusi gagal per step), pengingat tiap 6 jam,
+//   pulih setelah tiap step terdampak sukses 3 kali. KV rusak → :00/:30.
 
 export type KvLike = {
   get(key: string): Promise<string | null>;
@@ -34,8 +34,8 @@ export type CronEnv = {
 
 /**
  * Tingkat alarm per langkah (2026-10-05):
- * - `hard`: dialarmkan setelah 2 tick gagal beruntun (menyentuh pembeli);
- * - `soft`: baru dialarmkan setelah 6 tick (6 mnt pada cadence Paid) beruntun;
+ * - `hard`: dialarmkan setelah 2 eksekusi gagal beruntun (menyentuh pembeli);
+ * - `soft`: baru dialarmkan setelah 6 eksekusi gagal beruntun per step;
  * - `none`: tidak pernah dialarmkan (pelengkap/cadangan — inti sudah
  *   dikerjakan langkah lite, kesegaran katalog dijaga diff VPS).
  */
@@ -83,6 +83,7 @@ export const CRON_STEPS: CronStep[] = [
   // AXVARA Games (docs/GAMES.md §12.5): sinkron katalog Digiflazz tiap 10 mnt;
   // throttle & no-op tanpa kredensial dijaga di dalam job.
   { phase: "lite", lite: "games_catalog", alarm: "soft", everyMinutes: 10 },
+  { phase: "publish-scheduled", alarm: "soft", everyMinutes: 5 },
   // Pelengkap per jam (stranded ledger, manual-WA, reconcile tambahan, saldo,
   // watchdog, sync cadangan). Tidak dialarmkan: inti sudah di lite.
   { phase: "expiry", alarm: "none", heavy: true },
@@ -101,16 +102,15 @@ export const MAX_CHUNKS_PER_PHASE = 10;
 export const STEP_DELAY_MS = 0;
 /** A stalled origin must not prevent subsequent order/notification jobs. */
 export const STEP_TIMEOUT_MS = 45_000;
-/** Fallback tanpa KV: alarm hanya di tick menit kelipatan 30. */
+/** Fallback KV hilang/rusak: hard DAN soft di tick menit kelipatan 30. */
 export const ALERT_EVERY_MINUTES = 30;
 export const ALARM_START_AFTER_FAILED_TICKS = 2;
 export const ALARM_RECOVER_AFTER_OK_TICKS = 3;
 export const ALARM_REMINDER_MS = 6 * 60 * 60 * 1000;
 export const ALARM_KV_KEY = "cron_alarm_v1";
 /**
- * Langkah `:sync` = pengaman berkala sejak diff VPS (2026-10-04) menjaga
- * kesegaran. Kegagalannya baru dialarmkan bila beruntun ≥ 6 tick (6 mnt pada cadence Paid);
- * kegagalan langkah lain (order, notify, …) tetap 2 tick.
+ * Ambang soft dihitung per eksekusi step, bukan tick penjadwal: Games
+ * tiap 10 menit perlu 6 kegagalan, tick non-due tidak mengubah hitungan.
  */
 export const SOFT_ALARM_AFTER_TICKS = 6;
 const isSoft = (f: PhaseOutcome) => f.alarm === "soft" || (f.alarm === undefined && f.step.endsWith(":sync"));
@@ -118,17 +118,30 @@ const isSoft = (f: PhaseOutcome) => f.alarm === "soft" || (f.alarm === undefined
 export type PhaseOutcome = { step: string; calls: number; ok: boolean; status: number; error?: string; alarm?: AlarmTier };
 export type AlarmState = {
   since: number | null;
-  failedTicks: number;
-  okTicks: number;
   alertedAt: number | null;
   lastFailures: string[];
-  /** Tick beruntun yang HANYA gagal di langkah `:sync`. */
-  softTicks?: number;
+  steps: Record<string, { failedTicks: number; okTicks: number; outcome: PhaseOutcome }>;
+  /** Kegagalan sejak pesan terakhir, termasuk step baru yang sudah pulih. */
+  pendingFailures: PhaseOutcome[];
 };
 export type AlarmAction = "none" | "start" | "reminder" | "recovered";
 export type TickReport = { outcomes: PhaseOutcome[]; failures: PhaseOutcome[]; alerted: boolean; action: AlarmAction };
 
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
+
+function sanitizeError(value: string, env: CronEnv): string {
+  for (const secret of [env.AXVARA_CRON_SECRET, env.TELEGRAM_BOT_TOKEN]) {
+    if (!secret) continue;
+    const escaped = secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    value = value.replace(new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "g"), "[REDACTED]");
+  }
+  return value
+    .replace(/https:\/\/api\.telegram\.org\/bot[^/\s]+/gi, "https://api.telegram.org/bot[REDACTED]")
+    .replace(/\bBearer\s+[^\s"',;<>]+/gi, "Bearer [REDACTED]")
+    .replace(/([\w-]*(?:token|secret|key|authorization)[\w-]*["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&<>]+)/gi, "$1[REDACTED]")
+    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, "[REDACTED]")
+    .replace(/\s+/g, " ").trim().slice(0, 120);
+}
 
 export function stepLabel(step: Pick<CronStep, "phase" | "part" | "lite">): string {
   if (step.lite) return `lite:${step.lite}`;
@@ -138,7 +151,7 @@ export function stepLabel(step: Pick<CronStep, "phase" | "part" | "lite">): stri
 async function callStep(env: CronEnv, step: CronStep, fetchFn: FetchFn): Promise<PhaseOutcome> {
   const headers = { authorization: `Bearer ${env.AXVARA_CRON_SECRET}` };
   const label = stepLabel(step);
-  const path = step.lite ? "/api/cron/lite" : "/api/cron/operations";
+  const path = step.phase === "publish-scheduled" ? "/api/cron/publish-scheduled" : step.lite ? "/api/cron/lite" : "/api/cron/operations";
   const base = step.lite ? `job=${step.lite}` : `phase=${step.phase}${step.part ? `&part=${step.part}` : ""}`;
   const maxCalls = step.chunked ? MAX_CHUNKS_PER_PHASE : 1;
   let calls = 0;
@@ -147,11 +160,20 @@ async function callStep(env: CronEnv, step: CronStep, fetchFn: FetchFn): Promise
     calls++;
     let response: Response;
     try {
-      response = await fetchFn(`${env.AXVARA_API_ORIGIN}${path}?${query}`, { method: "POST", headers, signal: AbortSignal.timeout(STEP_TIMEOUT_MS) });
+      const suffix = step.phase === "publish-scheduled" ? "" : `?${query}`;
+      response = await fetchFn(`${env.AXVARA_API_ORIGIN}${path}${suffix}`, { method: "POST", headers, signal: AbortSignal.timeout(STEP_TIMEOUT_MS) });
     } catch (error) {
-      return { step: label, calls, ok: false, status: 0, error: error instanceof Error ? error.message.slice(0, 120) : "fetch_failed" };
+      return { step: label, calls, ok: false, status: 0, error: sanitizeError(error instanceof Error ? error.message : "fetch_failed", env) };
     }
-    if (!response.ok) return { step: label, calls, ok: false, status: response.status };
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      let detail = text;
+      try {
+        const body = JSON.parse(text) as { error?: unknown } | null;
+        if (typeof body?.error === "string") detail = body.error;
+      } catch { /* Non-JSON error bodies remain useful after redaction. */ }
+      return { step: label, calls, ok: false, status: response.status, error: sanitizeError(detail, env) || undefined };
+    }
     const body = (await response.json().catch(() => null)) as { more?: unknown } | null;
     if (!body || body.more !== true) return { step: label, calls, ok: true, status: response.status };
   }
@@ -167,7 +189,7 @@ function wib(ms: number): string {
 }
 
 function describe(failure: PhaseOutcome): string {
-  return `${failure.step}: ${failure.status ? `HTTP ${failure.status}` : failure.error ?? "gagal"}`;
+  return `${failure.step}: ${failure.status ? `HTTP ${failure.status}${failure.error ? ` — ${failure.error}` : ""}` : failure.error ?? "gagal"}`;
 }
 
 export function formatAlert(failures: PhaseOutcome[], scheduledTime: number, kind: "start" | "reminder" | "stateless" = "stateless", since?: number | null): string {
@@ -194,83 +216,78 @@ export function formatRecovery(since: number, now: number, lastFailures: string[
   ].join("\n");
 }
 
-const EMPTY_STATE: AlarmState = { since: null, failedTicks: 0, okTicks: 0, alertedAt: null, lastFailures: [] };
+const EMPTY_STATE: AlarmState = { since: null, alertedAt: null, lastFailures: [], steps: {}, pendingFailures: [] };
 
 /**
  * Transisi alarm murni (mudah diuji). `changed` = perlu ditulis ke KV —
- * hanya saat transisi, agar gangguan panjang tidak menghabiskan kuota tulis
- * KV gratis (1.000/hari).
+ * hanya saat counter/episode/detail berubah. Outcome absen (non-due) tidak
+ * dianggap sukses; sukses step lain tidak dapat memulihkan step yang gagal.
  */
 export function nextAlarmState(
   prev: AlarmState,
-  allFailures: PhaseOutcome[],
+  outcomes: PhaseOutcome[],
   now: number,
 ): { state: AlarmState; action: AlarmAction; changed: boolean } {
-  const prevSoft = prev.softTicks ?? 0;
-  const hard = allFailures.filter((f) => !isSoft(f));
-  const soft = allFailures.filter(isSoft);
-  const softTicks = soft.length && !hard.length ? Math.min(prevSoft + 1, SOFT_ALARM_AFTER_TICKS) : 0;
-  const failures = hard.length ? allFailures : softTicks >= SOFT_ALARM_AFTER_TICKS ? soft : [];
-  // Ambang soft tercapai = sudah "cukup lama gagal": langsung memenuhi syarat mulai.
-  const failedTicks = !hard.length && softTicks >= SOFT_ALARM_AFTER_TICKS
-    ? Math.max(prev.failedTicks, ALARM_START_AFTER_FAILED_TICKS - 1)
-    : prev.failedTicks;
-  const inner = innerAlarmState({ ...prev, softTicks, failedTicks }, failures, now);
-  return { ...inner, changed: inner.changed || softTicks !== prevSoft };
-}
-
-function innerAlarmState(
-  prev: AlarmState,
-  failures: PhaseOutcome[],
-  now: number,
-): { state: AlarmState; action: AlarmAction; changed: boolean } {
-  if (failures.length > 0) {
-    const state: AlarmState = {
-      since: prev.since ?? now,
-      failedTicks: Math.min(prev.failedTicks + 1, ALARM_START_AFTER_FAILED_TICKS),
-      okTicks: 0,
-      alertedAt: prev.alertedAt,
-      lastFailures: failures.map(describe).slice(0, 8),
-      softTicks: prev.softTicks ?? 0,
-    };
-    if (state.alertedAt == null && state.failedTicks >= ALARM_START_AFTER_FAILED_TICKS) {
-      return { state: { ...state, alertedAt: now }, action: "start", changed: true };
+  const steps = { ...prev.steps };
+  const pending = new Map(prev.pendingFailures.map((f) => [f.step, f]));
+  for (const outcome of outcomes) {
+    if (outcome.alarm === "none") continue;
+    const previous = steps[outcome.step];
+    if (!outcome.ok) {
+      const threshold = isSoft(outcome) ? SOFT_ALARM_AFTER_TICKS : ALARM_START_AFTER_FAILED_TICKS;
+      steps[outcome.step] = { failedTicks: Math.min((previous?.failedTicks ?? 0) + 1, threshold), okTicks: 0, outcome };
+      if (!previous || previous.failedTicks === 0 || pending.has(outcome.step)) pending.set(outcome.step, outcome);
+    } else if (previous) {
+      if (prev.alertedAt == null) {
+        delete steps[outcome.step];
+        pending.delete(outcome.step);
+      } else {
+        steps[outcome.step] = { ...previous, failedTicks: 0, okTicks: Math.min(previous.okTicks + 1, ALARM_RECOVER_AFTER_OK_TICKS) };
+      }
     }
-    if (state.alertedAt != null && now - state.alertedAt >= ALARM_REMINDER_MS) {
-      return { state: { ...state, alertedAt: now }, action: "reminder", changed: true };
-    }
-    const changed = prev.failedTicks !== state.failedTicks || prev.okTicks !== 0 || prev.since == null;
-    return { state, action: "none", changed };
   }
-  // Tick sukses.
+  const tracked = Object.values(steps);
+  let state: AlarmState = {
+    since: prev.since ?? (tracked.length ? now : null),
+    alertedAt: prev.alertedAt,
+    lastFailures: tracked.map(({ outcome }) => describe(outcome)),
+    steps,
+    pendingFailures: [...pending.values()],
+  };
+  let action: AlarmAction = "none";
   if (prev.alertedAt == null) {
-    // Belum pernah dialarmkan: gangguan sesaat dilupakan diam-diam.
-    const changed = prev.since != null || prev.failedTicks !== 0;
-    return { state: { ...EMPTY_STATE, softTicks: prev.softTicks ?? 0 }, action: "none", changed };
+    if (!tracked.length) state = EMPTY_STATE;
+    else if (tracked.some((s) => s.failedTicks >= (isSoft(s.outcome) ? SOFT_ALARM_AFTER_TICKS : ALARM_START_AFTER_FAILED_TICKS))) {
+      state.alertedAt = now;
+      action = "start";
+    }
+  } else if (tracked.every((s) => s.okTicks >= ALARM_RECOVER_AFTER_OK_TICKS)) {
+    state = EMPTY_STATE;
+    action = "recovered";
+  } else if (tracked.some((s) => s.failedTicks > 0) && now - prev.alertedAt >= ALARM_REMINDER_MS) {
+    state.alertedAt = now;
+    action = "reminder";
   }
-  const okTicks = prev.okTicks + 1;
-  if (okTicks >= ALARM_RECOVER_AFTER_OK_TICKS) {
-    return { state: { ...EMPTY_STATE, softTicks: prev.softTicks ?? 0 }, action: "recovered", changed: true };
-  }
-  return { state: { ...prev, failedTicks: 0, okTicks }, action: "none", changed: true };
+  return { state, action, changed: JSON.stringify(prev) !== JSON.stringify(state) };
 }
 
 async function readState(kv: KvLike): Promise<AlarmState> {
-  try {
-    const raw = await kv.get(ALARM_KV_KEY);
-    if (!raw) return EMPTY_STATE;
-    const parsed = JSON.parse(raw) as Partial<AlarmState>;
-    return {
-      since: typeof parsed.since === "number" ? parsed.since : null,
-      failedTicks: Number(parsed.failedTicks ?? 0) || 0,
-      okTicks: Number(parsed.okTicks ?? 0) || 0,
-      alertedAt: typeof parsed.alertedAt === "number" ? parsed.alertedAt : null,
-      lastFailures: Array.isArray(parsed.lastFailures) ? parsed.lastFailures.map(String) : [],
-      softTicks: Number(parsed.softTicks ?? 0) || 0,
-    };
-  } catch {
-    return EMPTY_STATE;
-  }
+  const raw = await kv.get(ALARM_KV_KEY);
+  if (raw === null) return EMPTY_STATE;
+  let parsed: AlarmState;
+  try { parsed = JSON.parse(raw) as AlarmState; }
+  catch { throw new Error("invalid_alarm_state"); }
+  if (!parsed || !Array.isArray(parsed.lastFailures) ||
+      !(parsed.since === null || Number.isFinite(parsed.since)) ||
+      !(parsed.alertedAt === null || Number.isFinite(parsed.alertedAt))) throw new Error("invalid_alarm_state");
+  // State agregat lama tidak dapat diatribusikan ke step: mulai counter baru,
+  // tanpa mengirim recovery palsu untuk episode lama.
+  if (!("steps" in parsed)) return EMPTY_STATE;
+  if (!parsed.steps || Array.isArray(parsed.steps) || !Array.isArray(parsed.pendingFailures) ||
+      Object.entries(parsed.steps).some(([label, s]) => !s || !Number.isInteger(s.failedTicks) || s.failedTicks < 0 ||
+        !Number.isInteger(s.okTicks) || s.okTicks < 0 || !s.outcome || s.outcome.step !== label || s.outcome.ok !== false) ||
+      parsed.pendingFailures.some((f) => !f || typeof f.step !== "string" || f.ok !== false)) throw new Error("invalid_alarm_state");
+  return parsed;
 }
 
 async function sendAlert(env: CronEnv, text: string, fetchFn: FetchFn): Promise<boolean> {
@@ -311,35 +328,32 @@ export async function runOperationsTick(
   // Langkah `none` tetap tercatat di outcomes (diagnosa) tapi bukan kegagalan alarm.
   const failures = outcomes.filter((o) => !o.ok && o.alarm !== "none");
 
-  if (!env.CRON_STATE) {
-    let alerted = false;
-    const hardOnly = failures.filter((f) => !isSoft(f));
-    if (hardOnly.length > 0 && shouldAlert(scheduledTime)) {
-      alerted = await sendAlert(env, formatAlert(hardOnly, scheduledTime), fetchFn);
+  let alerted = false;
+  try {
+    if (!env.CRON_STATE) throw new Error("binding_missing");
+    const prev = await readState(env.CRON_STATE);
+    const { state, changed, action } = nextAlarmState(prev, outcomes, scheduledTime);
+    if (changed) {
+      // Verifikasi write SEBELUM kirim; kegagalan KV memakai fallback, bukan
+      // mengulang pesan stateful setiap tick. Ack pesan ditulis setelah terkirim.
+      const pending = action === "recovered" ? prev : { ...state, alertedAt: prev.alertedAt };
+      await env.CRON_STATE.put(ALARM_KV_KEY, JSON.stringify(pending));
+    }
+    if (action === "start" || action === "reminder") {
+      const reportFailures = new Map(state.pendingFailures.map((f) => [f.step, f]));
+      for (const s of Object.values(state.steps)) if (s.failedTicks > 0) reportFailures.set(s.outcome.step, s.outcome);
+      alerted = await sendAlert(env, formatAlert([...reportFailures.values()], scheduledTime, action, state.since), fetchFn);
+      if (alerted) await env.CRON_STATE.put(ALARM_KV_KEY, JSON.stringify({ ...state, pendingFailures: [] }));
+    } else if (action === "recovered" && prev.since != null) {
+      alerted = await sendAlert(env, formatRecovery(prev.since, scheduledTime, prev.lastFailures), fetchFn);
+      if (alerted) await env.CRON_STATE.put(ALARM_KV_KEY, JSON.stringify(state));
+    }
+    return { outcomes, failures, alerted, action };
+  } catch (error) {
+    console.error("cron CRON_STATE unavailable; stateless fallback", sanitizeError(error instanceof Error ? error.message : "storage_failed", env));
+    if (!alerted && failures.length > 0 && shouldAlert(scheduledTime)) {
+      alerted = await sendAlert(env, formatAlert(failures, scheduledTime), fetchFn);
     }
     return { outcomes, failures, alerted, action: alerted ? "start" : "none" };
   }
-
-  const prev = await readState(env.CRON_STATE);
-  const next = nextAlarmState(prev, failures, scheduledTime);
-  let { state, changed } = next;
-  const { action } = next;
-  let alerted = false;
-  if (action === "start" || action === "reminder") {
-    alerted = await sendAlert(env, formatAlert(failures, scheduledTime, action, state.since), fetchFn);
-    if (!alerted && action === "start") {
-      // Telegram gagal/tidak dikonfigurasi: jangan tandai "sudah dialarmkan"
-      // agar tick berikut mencoba lagi; tulis KV hanya bila state berubah.
-      state = { ...state, alertedAt: null };
-      changed = prev.failedTicks !== state.failedTicks || prev.since == null || prev.okTicks !== 0;
-    }
-  } else if (action === "recovered" && prev.since != null) {
-    alerted = await sendAlert(env, formatRecovery(prev.since, scheduledTime, prev.lastFailures), fetchFn);
-  }
-  if (changed) {
-    try {
-      await env.CRON_STATE.put(ALARM_KV_KEY, JSON.stringify(state));
-    } catch { /* KV gagal: tick berikut mengevaluasi ulang */ }
-  }
-  return { outcomes, failures, alerted, action };
 }

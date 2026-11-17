@@ -273,6 +273,7 @@ describe("Worker runOperationsTick", () => {
   };
   const at = (minute: number) => Date.UTC(2026, 9, 3, 13, minute);
   const label = (u: string) => {
+    if (new URL(u).pathname.endsWith("/publish-scheduled")) return "publish-scheduled";
     const q = new URL(u).searchParams;
     if (q.get("job")) return `lite:${q.get("job")}`;
     return q.get("part") ? `${q.get("phase")}:${q.get("part")}` : String(q.get("phase"));
@@ -310,13 +311,14 @@ describe("Worker runOperationsTick", () => {
     };
   }
 
-  it("tick biasa (:05) hanya langkah lite; route besar tidak dipanggil", async () => {
+  it("tick biasa (:05) hanya langkah lite + publish; route besar tidak dipanggil", async () => {
     const { fn, calls } = mockFetch(() => ({ status: 200 }));
     // sleepFn no-op: jeda Worker tidak memperlambat test.
     const report = await runOperationsTick(env, at(5), fn as never, async () => undefined);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
       "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
+      "publish-scheduled",
     ]);
     expect(calls.some((u) => u.includes("/api/cron/operations"))).toBe(false);
   });
@@ -327,6 +329,7 @@ describe("Worker runOperationsTick", () => {
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
       "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup", "lite:games_catalog",
+      "publish-scheduled",
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
     ]);
@@ -384,7 +387,7 @@ describe("Worker runOperationsTick", () => {
     expect(calls.filter((u) => u.includes("phase=sekalipay&part=sync"))).toHaveLength(MAX_CHUNKS_PER_PHASE);
   });
 
-  it("tanpa KV: fallback stateless — alarm hanya di tick :00/:30, hanya langkah lite (hard)", async () => {
+  it("tanpa KV: fallback stateless — alarm hanya di tick :00/:30, heavy tetap diabaikan", async () => {
     const failing = (url: string) => (url.includes("job=wr_orders") || url.includes("phase=") ? { status: 503 } : { status: 200 });
     const quiet = mockFetch(failing);
     const r1 = await runOperationsTick(env, at(25), quiet.fn as never, async () => undefined);
@@ -409,7 +412,7 @@ describe("Worker runOperationsTick", () => {
     const kvEnv = { ...env, CRON_STATE: mem.kv };
     const fail = mockFetch((url) => (url.includes("job=notify_a") ? { status: 503 } : { status: 200 }));
     const tick = (m: number, f: typeof fail) => runOperationsTick(kvEnv, at(0) + m * 60_000, f.fn as never, async () => undefined);
-    // notify = soft: butuh 6 tick beruntun berisi soft SAJA (tanpa hard).
+    // notify = soft: butuh 6 eksekusi gagal beruntun step itu.
     const actions: string[] = [];
     for (let i = 0; i < 6; i++) actions.push((await tick(i * 5, fail)).action);
     expect(actions).toEqual(["none", "none", "none", "none", "none", "start"]);
@@ -478,13 +481,15 @@ describe("Worker runOperationsTick", () => {
   it("nextAlarmState: pengingat setelah 6 jam; pulih butuh 3 tick sukses beruntun", () => {
     const f: PhaseOutcome[] = [{ step: "sekalipay:orders", calls: 1, ok: false, status: 503 }];
     const t0 = at(0);
-    const alerted: AlarmState = { since: t0, failedTicks: 2, okTicks: 0, alertedAt: t0, lastFailures: [] };
+    const alerted: AlarmState = { since: t0, alertedAt: t0, lastFailures: ["sekalipay:orders: HTTP 503"], pendingFailures: [],
+      steps: { "sekalipay:orders": { failedTicks: 2, okTicks: 0, outcome: f[0] } } };
     expect(nextAlarmState(alerted, f, t0 + ALARM_REMINDER_MS - 1).action).toBe("none");
     expect(nextAlarmState(alerted, f, t0 + ALARM_REMINDER_MS).action).toBe("reminder");
-    const ok1 = nextAlarmState(alerted, [], t0 + 1).state;
+    expect(nextAlarmState(alerted, [], t0 + 1).state).toEqual(alerted);
+    const ok1 = nextAlarmState(alerted, [{ ...f[0], ok: true, status: 200 }], t0 + 1).state;
     const backToFail = nextAlarmState(ok1, f, t0 + 2);
     expect(backToFail.action).toBe("none"); // masih episode yang sama, tanpa alarm ulang
-    expect(backToFail.state.okTicks).toBe(0);
+    expect(backToFail.state.steps["sekalipay:orders"].okTicks).toBe(0);
   });
 
   it("Telegram gagal saat alarm mulai → dicoba lagi tick berikut", async () => {

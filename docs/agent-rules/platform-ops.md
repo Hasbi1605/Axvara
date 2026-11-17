@@ -1,5 +1,30 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Alarm cron per step — 18 November 2026 (lokal, F1)
+
+- `CRON_STATE` key `cron_alarm_v1` menyimpan counter per label step: hard setelah2
+  dan soft setelah6 **eksekusi gagal beruntun step itu**. Tick non-due/step absen
+  tidak mengubah counter; hanya respons sukses step yang sama mereset kegagalan.
+  Campuran hard/soft tidak saling mereset. Episode pulih setelah setiap step
+  terdampak mempunyai3 eksekusi sukses beruntun, bukan3 tick penjadwal umum.
+- `publish-scheduled` tetap POST path/header existing setiap5menit, kini masuk
+  pipeline outcome sebagai soft. Trigger menit, urutan job lite/order, cadence
+  katalog dan heavy hourly tidak berubah; tidak ada env/binding baru.
+- Non-2xx membawa field JSON `error` (fallback teks), diringkas maksimal120karakter
+  sesudah redaksi bearer/token/key/secret dan secret Worker yang diketahui.
+  Error jaringan/KV juga diredaksi. Body sukses tetap hanya menentukan `more`.
+  Reminder6jam mencakup step baru yang gagal sejak pesan terakhir, termasuk yang
+  kemudian pulih; riwayat recovery tidak dipotong8step. Tidak ada pesan tambahan
+  setiap tick untuk perubahan identitas failure.
+- Binding hilang, state korup, get/put gagal → log tersanitasi + fallback stateless
+  hard **dan** soft pada :00/:30. Key belum ada bukan error. Ketika storage pulih,
+  counter stateful kembali berjalan; tidak menganggap fallback sebagai ack KV.
+- Write counter diverifikasi sebelum pengiriman; ack start/reminder/recovery
+  hanya ditulis setelah Telegram berhasil. Ack gagal dapat menyebabkan pesan
+  ulang pada tick berikut (KV+Telegram bukan transaksi atomik). Payload agregat
+  lama tanpa `steps` mulai counter baru sekali, tanpa membuat recovery palsu;
+  atribusi counter lama ke step tidak dapat dipastikan. Belum dipublikasikan.
+
 ### Sinkronisasi katalog 1 menit & drain grup segera — 17 November 2026 (lokal)
 
 - `mcp-worker/src/cron.ts` menghapus `everyMinutes: 3` pada `lite:tunvn_catalog` dan `lite:aivault_catalog` sehingga keduanya berjalan setiap 1 menit di trigger `* * * * *` existing (`jaspay_catalog` tetap tiap menit). `cleanup` tetap 5 menit dan `games_catalog` tetap 10 menit.

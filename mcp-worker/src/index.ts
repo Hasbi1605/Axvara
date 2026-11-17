@@ -332,15 +332,8 @@ export default {
   },
   async scheduled(controller: WorkerScheduledController, env: Env, context: WorkerExecutionContext) {
     if (!env.AXVARA_CRON_SECRET) return;
-    const headers = { authorization: `Bearer ${env.AXVARA_CRON_SECRET}` };
-    // Publish scheduled articles + expire stale orders
-    if (new Date(controller.scheduledTime).getUTCMinutes() % 5 === 0) {
-      context.waitUntil(fetch(`${env.AXVARA_API_ORIGIN}/api/cron/publish-scheduled`, {
-        method: "POST", headers, signal: AbortSignal.timeout(45_000),
-      }));
-    }
     // Paid: operations tetap terpisah per fase dengan batch/lease terjaga
-    // + alarm Telegram bila ada fase gagal — lihat ./cron.ts.
+    // + publish lima-menitan dan alarm Telegram — lihat ./cron.ts.
     context.waitUntil(runOperationsTick(env, controller.scheduledTime).then((report) => {
       if (report.failures.length) console.error("cron failures", JSON.stringify(report.failures));
     }));
