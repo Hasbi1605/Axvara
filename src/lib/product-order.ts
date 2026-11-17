@@ -2,7 +2,7 @@
  * Urutan kanonis produk yang dipakai storefront + admin reorder.
  *
  * `sort_order` hanyalah KUNCI urut; posisi yang dilihat manusia adalah index
- * setelah aturan status diterapkan. Produk aktif+ready selalu di depan,
+ * setelah kategori dan aturan status diterapkan. Di setiap kategori, produk aktif+ready di depan,
  * aktif+habis sesudahnya, nonaktif paling belakang. Reorder hanya boleh
  * bertukar di bucket yang sama karena nilai sort_order tidak dapat melewati
  * aturan status tersebut.
@@ -14,7 +14,44 @@ export type OrderableProduct = {
   stock?: number | null;
   sortOrder?: number | null;
   sort_order?: number | null;
+  categorySlug?: string | null;
+  category_id?: number | string | null;
 };
+
+export type OrderableCategory = {
+  id: number | string;
+  slug: string;
+  name: string;
+  sort_order?: number | null;
+  icon?: string | null;
+};
+
+export function sortCategoriesForDisplay<T extends OrderableCategory>(categories: T[]): T[] {
+  return categories.slice().sort((a, b) =>
+    Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)
+    || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+    || Number(a.id) - Number(b.id));
+}
+
+export function productCategoryKey(product: OrderableProduct): string {
+  return product.categorySlug ? `slug:${product.categorySlug}` : `id:${product.category_id ?? "unknown"}`;
+}
+
+/** Kategori tak dikenal/kosong tetap terlihat di kelompok terakhir. */
+export function groupProductsByCategory<T extends OrderableProduct, C extends OrderableCategory>(products: T[], categories: C[]): { category: C | null; products: T[] }[] {
+  const bySlug = new Map(categories.map(category => [category.slug, category]));
+  const byId = new Map(categories.map(category => [String(category.id), category]));
+  const groups = new Map<C | null, T[]>();
+  for (const product of products) {
+    const category = (product.categorySlug ? bySlug.get(product.categorySlug) : byId.get(String(product.category_id))) ?? null;
+    const items = groups.get(category) ?? [];
+    items.push(product);
+    groups.set(category, items);
+  }
+  return [...sortCategoriesForDisplay(categories), null]
+    .filter(category => groups.has(category))
+    .map(category => ({ category, products: sortProductsForDisplay(groups.get(category)!) }));
+}
 
 function active(product: OrderableProduct): boolean {
   if (typeof product.isActive === "boolean") return product.isActive;
@@ -42,7 +79,7 @@ export function productSortOrder(product: OrderableProduct): number {
 }
 
 export function productOrderBucket(product: OrderableProduct): string {
-  return `${active(product) ? "active" : "inactive"}:${productIsSoldOut(product) ? "sold" : "ready"}`;
+  return `${productCategoryKey(product)}:${active(product) ? "active" : "inactive"}:${productIsSoldOut(product) ? "sold" : "ready"}`;
 }
 
 export function sortProductsForDisplay<T extends OrderableProduct>(products: T[]): T[] {
@@ -63,7 +100,9 @@ export function adjacentReorderProduct<T extends OrderableProduct>(
   productId: string | number,
   direction: -1 | 1,
 ): T | null {
-  const ordered = sortProductsForDisplay(products);
+  const target = products.find(product => String(product.id) === String(productId));
+  if (!target) return null;
+  const ordered = sortProductsForDisplay(products.filter(product => productCategoryKey(product) === productCategoryKey(target)));
   const index = ordered.findIndex((product) => Number(product.id) === Number(productId));
   if (!Number.isInteger(index) || index < 0) return null;
   const current = ordered[index];
@@ -79,7 +118,7 @@ export function adjacentReorderProduct<T extends OrderableProduct>(
  *
  * `restockerKey` = sort_order lama yang TIDAK PERNAH diubah siapa pun
  * (sync/cron tidak menulis kolom itu — hanya reorder + edit produk).
- * `takenKeys` = sort_order produk lain yang menempati kunci (aktif saja;
+ * `takenKeys` = sort_order produk lain dalam KATEGORI SAMA yang menempati kunci (aktif saja;
  * ready maupun habis — yang habis tidak tampil tapi key-nya tetap ditempati,
  * jadi slot tidak boleh menimpanya).
  *

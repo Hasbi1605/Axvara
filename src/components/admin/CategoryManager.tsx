@@ -1,7 +1,8 @@
 "use client";
 import { Button, Card, Input, Label, PageHeader } from "@/components/admin/ui";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { CATEGORY_ICON_OPTIONS, IosIcon, categoryIcon, resolveCategoryIconName } from "@/components/admin/AdminIcon";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
@@ -24,6 +25,10 @@ export function CategoryManager() {
   const [deleting, setDeleting] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Cat | null>(null);
+  const listRef = useRef(list);
+  const queue = useRef(Promise.resolve());
+  const [reordering, setReordering] = useState(false);
+  const updateList = (categories: Cat[]) => { listRef.current = categories; setList(categories); };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -31,7 +36,8 @@ export function CategoryManager() {
       const response = await fetch("/api/categories?all=1", { cache: "no-store" });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error ?? "Kategori gagal dimuat");
-      setList(body.categories ?? []);
+      listRef.current = body.categories ?? [];
+      setList(listRef.current);
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Kategori gagal dimuat");
@@ -42,12 +48,35 @@ export function CategoryManager() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const move = (id: number, direction: -1 | 1) => {
+    queue.current = queue.current.then(async () => {
+      const snapshot = listRef.current;
+      const index = snapshot.findIndex(category => category.id === id);
+      if (index < 0 || !snapshot[index + direction]) return;
+      const optimistic = snapshot.slice();
+      [optimistic[index], optimistic[index + direction]] = [optimistic[index + direction], optimistic[index]];
+      updateList(optimistic.map((category, i) => ({ ...category, sort_order: (i + 1) * 10 })));
+      setReordering(true);
+      try {
+        const response = await fetch("/api/categories/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ categoryId: id, direction }) });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error ?? "Urutan kategori gagal disimpan");
+        updateList(body.categories.map((category: Cat) => ({ ...snapshot.find(item => item.id === category.id), ...category })));
+        toast.success("Urutan kategori disimpan.");
+      } catch (error) {
+        updateList(snapshot);
+        toast.error(error instanceof Error ? error.message : "Urutan kategori gagal disimpan");
+      } finally { setReordering(false); }
+    });
+  };
+
   // Modal kategori dulu bukan dialog yang sah: halaman di belakangnya masih
   // bisa di-scroll dan Escape tidak menutup apa pun, padahal modal produk dan
   // ConfirmDialog sudah punya keduanya.
 
 
   const openNew = () => {
+    if (reordering) return;
     const nextOrder = Math.max(0, ...list.map((category) => Number(category.sort_order) || 0)) + 1;
     setEditing(null);
     setForm(emptyForm(nextOrder));
@@ -56,6 +85,7 @@ export function CategoryManager() {
   };
 
   const openEdit = (category: Cat) => {
+    if (reordering) return;
     setEditing(category);
     setForm({ name: category.name, icon: resolveCategoryIconName(category.icon, category.slug), sort_order: Number(category.sort_order) || 0 });
     setError(null);
@@ -86,6 +116,7 @@ export function CategoryManager() {
   };
 
   const remove = async (category: Cat) => {
+    if (reordering) return;
     if ((category.product_count ?? 0) > 0) return;
     setDeleteTarget(null);
     setDeleting(category.id);
@@ -116,12 +147,16 @@ export function CategoryManager() {
           <p className="p-8 text-center text-sm text-admin-muted">Belum ada kategori.</p>
         ) : (
           <div className="divide-y divide-admin-border">
-            {list.map((category) => {
+            {list.map((category, index) => {
               const hasProducts = (category.product_count ?? 0) > 0;
               return (
-                <div key={category.id} className="flex items-center gap-3 px-4 py-3 transition hover:bg-admin-subtle sm:px-5">
+                <div key={category.id} className="flex flex-wrap items-center gap-2 px-4 py-3 transition hover:bg-admin-subtle sm:px-5">
                   <span className="flex h-9 w-10 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-subtle"><IosIcon name={categoryIcon(category.slug, category.icon)} size={18} tint="currentColor" /></span>
-                  <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-admin-fg">{category.name}</p><p className="text-xs text-admin-muted">/{category.slug} · urutan {category.sort_order ?? 0} · {category.product_count ?? 0} produk</p></div>
+                  <div className="min-w-0 flex-1 basis-36"><p className="text-sm font-semibold text-admin-fg">{category.name}</p><p className="break-words text-xs text-admin-muted">/{category.slug} · urutan {category.sort_order ?? 0} · {category.product_count ?? 0} produk</p></div>
+                  <div className="flex gap-1" role="group" aria-label={`Urutan ${category.name}`}>
+                    <Button variant="outline" size="icon" onClick={() => move(category.id, -1)} disabled={index === 0 || saving || deleting !== null} aria-label={`Naikkan ${category.name}`}><ArrowUp size={16} /></Button>
+                    <Button variant="outline" size="icon" onClick={() => move(category.id, 1)} disabled={index === list.length - 1 || saving || deleting !== null} aria-label={`Turunkan ${category.name}`}><ArrowDown size={16} /></Button>
+                  </div>
                   <Button variant="default" size="sm" type="button" onClick={() => openEdit(category)} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md bg-admin-primary px-3 text-xs font-semibold text-admin-inverse transition hover:bg-admin-subtle"><IosIcon name="edit" size={12} tint="currentColor" /> Edit</Button>
                   <Button variant="outline" size="icon" type="button" onClick={() => setDeleteTarget(category)} disabled={hasProducts || deleting === category.id} title={hasProducts ? "Pindahkan semua produk sebelum menghapus kategori" : "Hapus kategori"} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-admin-danger text-admin-fg shadow-sm transition hover:bg-admin-danger disabled:cursor-not-allowed disabled:opacity-30" aria-label={`Hapus ${category.name}`}><IosIcon name="trash" size={16} tint="currentColor" /></Button>
                 </div>

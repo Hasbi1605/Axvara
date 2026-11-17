@@ -6,9 +6,16 @@ import { readFileSync } from "node:fs";
 import { DisplayPreferencesProvider, useDisplayContext, useDisplayPrices, usdText } from "@/hooks/useDisplayPrices";
 import { Price, PriceNote } from "@/components/storefront/Price";
 import { CHANGE_EVENT } from "@/hooks/usePreferences";
-import { catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty } from "@/lib/i18n/catalog-copy";
+import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty } from "@/lib/i18n/catalog-copy";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); document.cookie = "axv_currency=; Max-Age=0; Path=/"; document.cookie = "axv_locale=; Max-Age=0; Path=/"; });
+
+it("group category actions and unknown headings have ID/EN copy", () => {
+  expect(catalogCopy("id").seeAllCategory).toBe("Lihat semua");
+  expect(catalogCopy("en").seeAllCategory).toBe("See all");
+  expect(catalogCopy("id").uncategorized).toBe("Lainnya");
+  expect(catalogCopy("en").uncategorized).toBe("Other");
+});
 
 it("batches catalog amounts and renders the server's cents without writing preferences", async () => {
   document.cookie = "axv_currency=USD; Path=/";

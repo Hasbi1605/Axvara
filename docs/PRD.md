@@ -1,5 +1,26 @@
 # PRD — AXVARA
 
+## Katalog per kategori — 17 November 2026 (lokal)
+
+- **Semua**, tanpa pencarian: satu section per kategori terisi, urutan kategori
+  `sort_order → name → id`; kategori tidak dikenal/kosong masuk **Lainnya** terakhir.
+  Di dalam kategori: aktif → ready sebelum habis → urutan produk → id. Produk
+  habis tetap di ekor kategorinya sendiri, bukan ekor seluruh katalog.
+- Pratinjau maksimal dua baris: 4 produk mobile / 8 mulai `lg`, tanpa limit global16.
+  **Lihat semua →** (EN **See all →**) muncul bila >4, membuka filter kategori dan
+  menggulir ke katalog. Mode kategori/pencarian tetap16 → Tampilkan semua → Ciutkan.
+  Angka total/tampil mengikuti kartu yang benar-benar terlihat pada breakpoint.
+- Pills menempel di bawah navbar hanya pada mode grup. **Semua** tetap terpilih
+  putih; kategori yang terlihat diberi aksen cyan oleh scrollspy, bukan filter baru.
+  Katalog dan kategori dirender dari server; fallback klien satu request per sumber.
+- Admin Kategori: ↑↓ satu langkah, optimistis + antrean/rollback, field numerik tetap.
+  Admin Produk: header kategori, posisi/jump1..N dalam kategori penuh (bukan hasil
+  search/pagination), panah hanya antarproduk se-kategori dan se-status. Filter dan
+  pagination tetap berlaku; jumlah header menyebut produk pada halaman tersebut.
+- Ikon header memakai ikon 3D kategori custom AXVARA, dibuat dengan image generation,
+  dipangkas192px WebP (tampil32px mobile/40px desktop); pills/admin tetap
+  glyph existing. Implementasi lokal, bukan bukti publikasi/deployment produksi.
+
 ## Jalur simpan S&K Manual dan salin massal — 17 November 2026 (lokal)
 
 - S&K/aktivasi per varian Manual ID+EN disunting melalui tab **Deskripsi & S&K** + drawer `CopyEditorSheet` dan endpoint `variant-copy`, bukan lagi tab Varian atau payload Simpan Produk (single maupun multi). Produk/varian baru harus disimpan lebih dahulu agar punya ID.

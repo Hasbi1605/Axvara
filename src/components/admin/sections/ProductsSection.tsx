@@ -1,9 +1,10 @@
 "use client";
 import { ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Badge, Button, Card, Input, NativeSelect, PageHeader, StatCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Switch, Skeleton, Tabs, TabsList, TabsTrigger } from "@/components/admin/ui";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
-import type { Prod } from "../product-types";
+import type { Prod, Cat } from "../product-types";
+import { globalProductOrder } from "../useProductManager";
 import { adjacentReorderProduct } from "@/lib/product-order";
 import { SupplierBadge, SUPPLIER_STYLES } from "../supplier-style";
 
@@ -52,6 +53,7 @@ export function ProductsSection({
   error,
   onRetry,
   prods,
+  cats = [],
   paged: basePaged,
   filtered: baseFiltered,
   q,
@@ -89,6 +91,7 @@ export function ProductsSection({
   error?: string | null;
   onRetry?: () => void;
   prods: Prod[];
+  cats?: Cat[];
   paged: Prod[];
   filtered: Prod[];
   q: string;
@@ -145,7 +148,11 @@ export function ProductsSection({
   // (adjacentReorderProduct): sort_order tidak dapat melewati batas
   // ready/habis/nonaktif, jadi tombol di batas kelompok mati — menekan yang
   // mati tidak mengirim request dan tidak mengubah apa pun.
-  const orderIndex = new Map(filtered.map((p, i) => [p.id, i]));
+  const fullOrder = globalProductOrder(prods, cats);
+  const categoryProducts = (p: Prod) => fullOrder.filter(item => item.categorySlug === p.categorySlug);
+  const orderIndex = new Map(fullOrder.map(p => [p.id, categoryProducts(p).findIndex(item => item.id === p.id)]));
+  const categorySize = (p: Prod) => categoryProducts(p).length;
+  const categoryHeader = (p: Prod) => `${p.categoryName || cats.find(cat => cat.slug === p.categorySlug)?.name || "Tanpa kategori"} · ${paged.filter(item => item.categorySlug === p.categorySlug).length} produk di halaman ini`;
   // Badge posisi yang bisa diketik: ketik "1" + Enter untuk lompat ke puncak
   // dalam SATU request (bukan 29x klik naik). Nilai dikunci 1..N saat commit.
   const [jumpDraft, setJumpDraft] = useState<Record<string, string>>({});
@@ -159,7 +166,7 @@ export function ProductsSection({
     if (!raw) return;
     const n = Math.floor(Number(raw));
     if (!Number.isFinite(n)) return;
-    const target = Math.max(1, Math.min(filtered.length, n));
+    const target = Math.max(1, Math.min(categorySize(p), n));
     const current = (orderIndex.get(p.id) ?? 0) + 1;
     if (target === current) return;
     onJump(p, target);
@@ -265,11 +272,13 @@ export function ProductsSection({
             </div> : (<>
 
             <div className="divide-y divide-admin-border md:hidden">
-              {paged.map(p=>{ const inHiddenTab = liveTab === "hidden" || copyFiltered; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (<Card key={p.id} className="border-0 p-4 shadow-none">
+              {paged.map((p, index)=>{ const inHiddenTab = liveTab === "hidden" || copyFiltered; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(fullOrder, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(fullOrder, p.id, 1)); const busy = reordering === p.id; return (<Fragment key={p.id}>
+                {(index === 0 || paged[index - 1].categorySlug !== p.categorySlug) && <h3 className="bg-admin-subtle px-4 py-3 text-xs font-semibold text-admin-muted">{categoryHeader(p)}</h3>}
+                <Card className="border-0 p-4 shadow-none">
                 <div className="flex items-start gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.image || "/brand/axvara-mark.svg"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-admin-subtle object-cover" />
-                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-admin-fg">{p.name}</p><div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div><p className="mt-0.5 truncate text-xs text-admin-muted">{p.categoryName || "Tanpa kategori"} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {filtered.length}</p>{p.liveStatus !== "live" && p.liveReason ? <p className="mt-0.5 truncate text-xs text-admin-muted">{p.liveReason}</p> : null}<CopyReviewBadge count={p.copyReview} changed={p.copyReviewChanged} raw={p.copyReviewRaw} /></div><Switch checked={p.isActive} onCheckedChange={() => onToggleActive(p)} disabled={toggling === p.id} aria-label={`Toggle aktif ${p.name}`} title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"} /></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-admin-fg">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Stok {p.stock === -1 ? "∞" : p.stock}</Badge><span className="text-admin-muted">{p.soldCount} terjual</span></div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-admin-fg">{p.name}</p><div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div><p className="mt-0.5 truncate text-xs text-admin-muted">{p.categoryName || "Tanpa kategori"} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {categorySize(p)}</p>{p.liveStatus !== "live" && p.liveReason ? <p className="mt-0.5 truncate text-xs text-admin-muted">{p.liveReason}</p> : null}<CopyReviewBadge count={p.copyReview} changed={p.copyReviewChanged} raw={p.copyReviewRaw} /></div><Switch checked={p.isActive} onCheckedChange={() => onToggleActive(p)} disabled={toggling === p.id} aria-label={`Toggle aktif ${p.name}`} title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"} /></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-admin-fg">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Stok {p.stock === -1 ? "∞" : p.stock}</Badge><span className="text-admin-muted">{p.soldCount} terjual</span></div></div>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
@@ -278,7 +287,7 @@ export function ProductsSection({
                   </div>
                   <Button variant="outline" size="sm" type="button" onClick={()=>onEdit(p)}><Pencil aria-hidden="true" /> Edit Produk & Varian</Button><Button variant="outline" size="icon" type="button" onClick={()=>onDelete(p)} className="size-8 text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><Trash2 aria-hidden="true" /></Button>
                 </div>
-              </Card>);})}
+              </Card></Fragment>);})}
             </div>
             <div className="hidden overflow-x-auto md:block" role="region" aria-label="Daftar produk" tabIndex={0}>
               <Table>
@@ -286,8 +295,10 @@ export function ProductsSection({
                   <TableRow><TableHead className="">Produk</TableHead><TableHead className="hidden px-2 xl:table-cell">Kategori</TableHead><TableHead className="px-2 text-right">Harga</TableHead><TableHead className="px-2 text-center">Stok</TableHead><TableHead className="px-2 text-center">Terjual</TableHead><TableHead className="px-2 text-center">Urutan</TableHead><TableHead className="px-2 text-center">Aktif</TableHead><TableHead className=" text-right">Aksi</TableHead></TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paged.map(p=>{ const inHiddenTab = liveTab === "hidden" || copyFiltered; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(filtered, p.id, 1)); const busy = reordering === p.id; return (
-                    <TableRow key={p.id}>
+                  {paged.map((p, index)=>{ const inHiddenTab = liveTab === "hidden" || copyFiltered; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(fullOrder, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(fullOrder, p.id, 1)); const busy = reordering === p.id; return (
+                    <Fragment key={p.id}>
+                    {(index === 0 || paged[index - 1].categorySlug !== p.categorySlug) && <TableRow className="bg-admin-subtle"><TableCell colSpan={8} className="py-2 text-xs font-semibold text-admin-muted">{categoryHeader(p)}</TableCell></TableRow>}
+                    <TableRow>
                       <TableCell className="py-3 ">
                         <div className="flex min-w-[180px] items-center gap-3">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -325,8 +336,8 @@ export function ProductsSection({
                             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setJumpDraft((prev) => { const next = { ...prev }; delete next[p.id]; return next; }); }}
                             inputMode="numeric"
                             disabled={liveTab === "hidden" || copyFiltered}
-                            aria-label={`Pindah ${p.name} ke posisi 1 sampai ${filtered.length}`}
-                            title={copyFiltered ? "Reset tinjauan S&K untuk mengatur urutan katalog" : liveTab === "hidden" ? "Urutan di tab Hidden tidak berpengaruh ke storefront — atur di tab Live" : `Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${filtered.length} — Ketik lalu Enter untuk lompat (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
+                            aria-label={`Pindah ${p.name} ke posisi 1 sampai ${categorySize(p)}`}
+                            title={copyFiltered ? "Reset tinjauan S&K untuk mengatur urutan katalog" : liveTab === "hidden" ? "Urutan di tab Hidden tidak berpengaruh ke storefront — atur di tab Live" : `Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${categorySize(p)} — Ketik lalu Enter untuk lompat dalam kategori (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
                             className="mr-1 h-8 min-h-0 w-16 border-admin-input bg-admin-card px-1 text-center tabular-nums text-admin-fg shadow-none hover:border-admin-input focus-visible:border-admin-input md:text-sm"
                           />
                           <Button variant="outline" type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon" className="size-8"><ArrowUp size={16} aria-hidden="true" /></Button>
@@ -342,7 +353,7 @@ export function ProductsSection({
                           <Button variant="outline" size="icon" type="button" onClick={()=>onDelete(p)} className="size-8 text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><Trash2 aria-hidden="true" /></Button>
                         </div>
                       </TableCell>
-                    </TableRow>
+                    </TableRow></Fragment>
                   );})}
                 </TableBody>
               </Table>

@@ -92,7 +92,7 @@ describe("Article contracts", () => {
     const pills = read("src/components/storefront/CategoryPills.tsx");
     const manager = read("src/components/admin/CategoryManager.tsx");
     expect(api).not.toContain('fields.push("name=?", "slug=?")');
-    expect(pills).toContain("categoryIcon(c.slug, c.icon)");
+    expect(pills).toContain("categoryIcon(category.slug, category.icon)");
     expect(manager).toContain("CATEGORY_ICON_OPTIONS.map");
   });
 

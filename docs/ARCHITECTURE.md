@@ -1,5 +1,43 @@
 # ARCHITECTURE.md — AXVARA
 
+## Katalog berkelompok + urutan kategori — 17 November 2026 (lokal)
+
+- `src/lib/product-order.ts`: `groupProductsByCategory` murni mengurutkan kategori
+  `sort_order/name/id`, menghilangkan grup kosong, unknown terakhir; aturan produk
+  aktif/ready/sort/id tetap di dalam setiap kategori. `sortProductsForDisplay`
+  tetap datar untuk caller Telegram/PDP yang tidak meminta grouping. Bucket reorder
+  kini identitas kategori + status; restock membatasi `takenKeys` ke kategori sama
+  lewat subquery PK pada SELECT existing (tetap2read, maksimal1write, tanpa read baru).
+- `POST /api/categories/reorder`: admin + scope rate limit `categories:reorder`
+  120/menit/isolate, zod strict `{categoryId:number>0,direction:-1|1}`. Server membaca
+  kategori, tukar satu tetangga, normalisasi10,20,…, tulis hanya yang berubah dalam
+  satu batch D1; fallback dev berurutan. Respons privat `{ok,categories}` urutan final;
+  401/400/404/409 batas/429/500. Cache kategori publik tetap60detik, sama dengan PUT;
+  tidak menambah purge atau env/migrasi.
+- `POST /api/products/reorder` membaca kategori via LEFT JOIN (satu SELECT), lalu
+  normalisasi seluruh urutan grup10,20,… dalam satu batch, changed-only. `targetPosition`
+  adalah posisi kategori1..N, dijepit ke rentang bucket status kategori dengan
+  `clamped:true` (HTTP200); panah batas409. Guard admin/rate limit tetap.
+- SSR `src/app/(shop)/page.tsx` memanggil GET produk dan kategori langsung, paralel,
+  memakai cache publik existing tanpa self-fetch. `initialCategories` + `initialProducts`
+  membentuk section/link HTML awal. HomeClient memiliki fallback kategori satu kali;
+  CategoryPills menerima props (fallback internal hanya untuk caller tanpa props).
+  Tidak mengubah query katalog produk atau menambah read per supplier sync.
+- HomeClient Semua tanpa pencarian memakai section4/8 kartu dengan CSS, counter
+  breakpoint, navbar `ResizeObserver`, dan satu `IntersectionObserver` section untuk
+  scrollspy + reveal ikon sekali. Horizontal reveal menggulir container pills saja
+  (`scrollTo`, bukan `scrollIntoView` yang ikut menggulir halaman). Observer dibersihkan.
+- Aset `public/brand/catalog/category-3d/<slug>.webp`: **ikon 3D kategori custom AXVARA,
+  dibuat dengan image generation, dipangkas 192px webp**; map murni
+  `src/lib/category-3d-icons.ts`, tes keberadaan semua file.
+  Slug unmapped kembali ke glyph kategori; same-origin, tanpa CDN/emoji/library baru.
+  Enam slug: ai-chatbot, streaming-hiburan, produktivitas-office, desain-video,
+  developer-tools, bundle-hemat. Header32/40px, glow statis, lazy selain section pertama,
+  decode async, dekoratif; reduced-motion menonaktifkan fade sekali240ms.
+- Admin `ProductsSection` menerima `cats`, header grup berlaku pada item halaman;
+  posisi dan tetangga memakai katalog penuh sebelum filter. Tidak menyentuh auth,
+  checkout, supplier dispatch atau deployment. Status implementasi lokal.
+
 ## Untung Bersih, Pengeluaran & perbaikan modal Ringkasan — 16 November 2026
 
 Status: implementasi lokal; migrasi/deployment produksi belum diverifikasi.

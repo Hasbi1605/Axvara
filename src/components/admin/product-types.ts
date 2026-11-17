@@ -5,7 +5,7 @@
 /** `lowStockVariants` & `copyReview` & `supplier` & `liveStatus`/`liveReason` hanya dikirim untuk admin. */
 export type Prod = { archivedAt?: string|null; canHardDelete?: boolean; hardDeleteReason?: string|null; id:string; slug:string; name:string; whatsappAlias?:string; description:string; adminDescriptionOverride?:string|null; descriptionEn?:string|null; nameEn?:string|null; wrManaged?:boolean; supplier?: "WR" | "SK" | "TUNVN" | "AIVault" | "Manual"; liveStatus?: "live" | "hidden_loser" | "hidden_soldout" | "off"; liveReason?: string; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; lowStockVariants?:number; copyReview?:number; copyReviewChanged?:number; copyReviewRaw?:number; comparePrice?:number; categorySlug:string; categoryName?:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number; requireEmail?:boolean };
 
-export type Cat = { id:number; slug:string; name:string };
+export type Cat = { id:number; slug:string; name:string; sort_order?:number; icon?:string|null };
 
 /** Draft harga grosir (editor admin). Lihat `BulkTierEditor`. */
 type BulkDraft = import("./BulkTierEditor").BulkDraft;

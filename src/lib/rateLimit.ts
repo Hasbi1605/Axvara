@@ -50,6 +50,7 @@ export const RATE_LIMITS = {
   // habis). Scope sendiri + batas longgar agar tidak berbagi bucket dengan
   // simpan produk/upload; proteksi DDoS global tetap di WAF (lapis pertama).
   "products:reorder": 120,
+  "categories:reorder": 120,
   "auth:login": 5,
   "newsletter:subscribe": 5,
   // PEDIA (2026-10-07, PEDIA-PRD §9.7): scope publik Pedia.

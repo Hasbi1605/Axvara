@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getD1, isD1Mode, queryAll, execRun } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { adjacentReorderProduct, productOrderBucket, sortProductsForDisplay } from "@/lib/product-order";
+import { adjacentReorderProduct, groupProductsByCategory, productOrderBucket, type OrderableCategory } from "@/lib/product-order";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -23,6 +23,10 @@ type ProductOrderRow = {
   is_active: number;
   stock: number;
   sort_order: number;
+  category_id: number | null;
+  category_slug: string | null;
+  category_name: string | null;
+  category_order: number | null;
 };
 
 /**
@@ -30,7 +34,7 @@ type ProductOrderRow = {
  *
  * Satu-satunya jalur UI untuk reorder. Dua mode:
  * - { productId, direction } — geser tepat satu posisi (tombol ↑↓).
- * - { productId, targetPosition } — lompat langsung ke posisi 1..N
+ * - { productId, targetPosition } — lompat langsung ke posisi 1..N dalam kategori
  *   (badge posisi yang bisa diketik; 30 → 1 dalam SATU request, bukan 29× klik).
  *
  * Server membaca urutan kanonis, memindahkan target, lalu menormalisasi
@@ -40,7 +44,7 @@ type ProductOrderRow = {
  *
  * Batas bucket status: target tidak bisa melewati batas aktif-ready /
  * aktif-habis / nonaktif (sort_order memang tidak bisa melewatinya) —
- * targetPosition yang keluar bucket dijepit ke ujung bucket + 409 jujur.
+ * targetPosition yang keluar bucket dijepit + clamped:true; panah batas =409.
  * Hanya baris yang key-nya berubah yang ditulis ulang (hemat write D1,
  * bukan full-rewrite buta tiap klik).
  */
@@ -53,22 +57,27 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Permintaan reorder tidak valid." }, { status: 400 });
 
   const rows = await queryAll(
-    "SELECT id, is_active, stock, sort_order FROM products WHERE archived_at IS NULL",
+    "SELECT p.id, p.is_active, p.stock, p.sort_order, p.category_id, c.slug AS category_slug, c.name AS category_name, c.sort_order AS category_order FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.archived_at IS NULL",
   ) as ProductOrderRow[];
-  const ordered = sortProductsForDisplay(rows);
+  const categories = Array.from(new Map(rows.filter(row => row.category_slug).map(row => [row.category_id, {
+    id: row.category_id!, slug: row.category_slug!, name: row.category_name!, sort_order: row.category_order,
+  } satisfies OrderableCategory])).values());
+  const ordered = groupProductsByCategory(rows, categories).flatMap(group => group.products);
   const targetIndex = ordered.findIndex((row) => Number(row.id) === parsed.data.productId);
   if (targetIndex < 0) return NextResponse.json({ error: "not found" }, { status: 404 });
   const target = ordered[targetIndex];
   const bucket = productOrderBucket(target);
-  // Index global tetangga se-bucket: inilah "satu posisi" yang sebenarnya.
+  // Bucket kategori + status: panah tidak dapat berpindah kategori.
   const bucketMembers = ordered.filter((row) => productOrderBucket(row) === bucket);
-  const bucketIndex = bucketMembers.findIndex((row) => Number(row.id) === parsed.data.productId);
 
   let clamped = false;
   if (parsed.data.targetPosition !== undefined) {
     // Lompat: keluarkan target, jepit posisi ke dalam bucket, sisipkan lagi.
-    const clampedPosition = Math.max(1, Math.min(bucketMembers.length, parsed.data.targetPosition));
-    clamped = clampedPosition !== parsed.data.targetPosition;
+    const categoryMembers = ordered.filter(row => row.category_id === target.category_id);
+    const bucketStart = categoryMembers.findIndex(row => productOrderBucket(row) === bucket);
+    const categoryPosition = Math.max(bucketStart + 1, Math.min(bucketStart + bucketMembers.length, parsed.data.targetPosition));
+    const clampedPosition = categoryPosition - bucketStart;
+    clamped = categoryPosition !== parsed.data.targetPosition;
     const rest = bucketMembers.filter((row) => Number(row.id) !== parsed.data.productId);
     rest.splice(clampedPosition - 1, 0, target);
     // Rakit ulang urutan global: bucket lain tidak tersentuh.
@@ -84,7 +93,6 @@ export async function POST(request: NextRequest) {
     const neighborIndex = ordered.findIndex((row) => Number(row.id) === Number(neighbor.id));
     [ordered[targetIndex], ordered[neighborIndex]] = [ordered[neighborIndex], ordered[targetIndex]];
   }
-  void bucketIndex;
 
   const desired = ordered.map((row, index) => ({ id: Number(row.id), sortOrder: (index + 1) * 10 }));
   // Hemat write D1: hanya baris yang key-nya benar-benar berubah.

@@ -591,7 +591,7 @@ describe("editor: modal membaca posisi 1..N, tidak mengirim kunci posisi", () =>
     const { result } = renderManager();
     await act(async () => { await result.current.load(); });
     act(() => { result.current.openNew(); });
-    expect(result.current.form.displayPosition).toBe(2);
+    expect(result.current.form.displayPosition).toBe(1); // Kategori default AI belum berisi produk.
     expect(result.current.form.sortOrder).toBeGreaterThan(0);
   });
 });
@@ -690,6 +690,21 @@ describe("endpoint POST /api/products/reorder (server, D1 fixture)", () => {
     const res = await post({ productId: 1, direction: 1 });
     expect(res.status).toBe(200);
     expect(fixture.control.queries - before).toBeLessThanOrEqual(4);
+  });
+
+  it("category-first: batas panah dan posisi lompat lokal kategori, status bucket dijepit jujur", async () => {
+    fixture.sql.exec("UPDATE categories SET sort_order=20 WHERE id=1; UPDATE categories SET sort_order=10 WHERE id=2; UPDATE products SET category_id=2 WHERE id IN (2,4)");
+    // Kategori 2: ready2, sold4. Kategori1: ready1,ready3,inactive5.
+    expect((await post({ productId: 2, direction: 1 })).status).toBe(409);
+    const response = await post({ productId: 4, targetPosition: 2 });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.clamped).toBe(false); // sold4 posisi2, bukan posisi1 dalam bucket.
+    expect(body.products.map((product: { id: number }) => product.id)).toEqual([2, 4, 1, 3, 5]);
+    const move = await post({ productId: 3, targetPosition: 1 });
+    expect((await move.json()).products.map((product: { id: number }) => product.id)).toEqual([2, 4, 3, 1, 5]);
+    const clamp = await post({ productId: 5, targetPosition: 1 });
+    expect((await clamp.json()).clamped).toBe(true);
   });
 });
 
@@ -868,5 +883,20 @@ describe("kolom Urutan = nomor posisi 1..N walau raw kembar/lompat", () => {
     rerender(<ProductsSection {...props} prods={moved} paged={ordered} filtered={ordered} />);
     const inputs = [...container.querySelectorAll('td input[title^="Posisi"]')] as HTMLInputElement[];
     expect(inputs.map((el) => el.value)).toEqual(["1", "2", "3"]);
+  });
+
+  it("header grup halaman + posisi kategori penuh tetap benar saat search/pagination hanya menampilkan subset", () => {
+    const cats = [{ id: 1, name: "AI", slug: "ai", sort_order: 20 }, { id: 2, name: "Desain", slug: "design", sort_order: 10 }];
+    const list = [prod(1, 10, { categorySlug: "ai" }), prod(2, 20, { categorySlug: "ai" }), prod(3, 10, { categorySlug: "design" })];
+    const visible = [list[2], list[1]];
+    const { container } = render(<ProductsSection {...sectionProps(list)} cats={cats} filtered={visible} paged={visible} />);
+    expect(container.textContent).toContain("Desain · 1 produk di halaman ini");
+    expect(container.textContent).toContain("AI · 1 produk di halaman ini");
+    const inputs = [...container.querySelectorAll('td input[title^="Posisi"]')] as HTMLInputElement[];
+    expect(inputs.map(input => input.value)).toEqual(["1", "2"]);
+    const down = container.querySelector('td button[aria-label="Turunkan Produk 3"]') as HTMLButtonElement;
+    expect(down.disabled).toBe(true); // Tidak turun ke kategori AI.
+    const up = container.querySelector('td button[aria-label="Naikkan Produk 2"]') as HTMLButtonElement;
+    expect(up.disabled).toBe(false); // Tetangga kategori1 ada di luar subset.
   });
 });

@@ -17,7 +17,7 @@ async function readCategories(req: NextRequest) {
   if (wantAll && !(await requireAdmin(req))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const rows = await queryAll("SELECT c.*, COUNT(p.id) AS product_count FROM categories c LEFT JOIN products p ON p.category_id=c.id GROUP BY c.id ORDER BY c.sort_order, c.name");
+  const rows = await queryAll("SELECT c.*, COUNT(p.id) AS product_count FROM categories c LEFT JOIN products p ON p.category_id=c.id GROUP BY c.id ORDER BY c.sort_order, c.name, c.id");
   return NextResponse.json(
     { categories: rows },
     { headers: { "Cache-Control": wantAll ? "private, no-store" : "public, max-age=60, s-maxage=60, stale-while-revalidate=120" } }

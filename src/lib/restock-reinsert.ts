@@ -11,7 +11,7 @@ import { reinsertionKey } from "@/lib/product-order";
  *   yang disuplai pemanggil (prefetch / outcome), bukan SELECT baru;
  * - stok parent SESUDAH batch > 0 (atau -1) — dibaca via 1 SELECT agregat.
  *
- * Bila transisi terkonfirmasi: baca daftar sort_order produk ready lain
+ * Bila transisi terkonfirmasi: baca daftar sort_order produk aktif lain se-kategori
  * (1 SELECT), hitung kunci selipan via reinsertionKey(), tulis 1 UPDATE
  * hanya bila berbeda. Total biaya saat transisi: 2 query + 1 write.
  * Bila bukan transisi: 0 query tambahan.
@@ -39,13 +39,17 @@ export async function maybeReinsertRestockedProduct(
   // Bukan transisi habis→ready (masih habis / nonaktif) → diam.
   if (!isReady || Number(after.parent_active ?? 1) !== 1) return noop;
   const oldKey = Number(after.parent_order ?? 0);
+  // Daftar kunci kategori sama, tanpa read tambahan (subquery PK di SELECT
+  // existing). Kategori lain tidak boleh menjadi jangkar reinsertion.
   // Daftar kunci yang ditempati produk AKTIF lain (ready + habis — yang
   // habis tidak tampil tapi key-nya tetap ditempati). Pecundang pasangan
   // tetap dihitung sebagai tetangga dengan alasan yang sama. Nonaktif
   // dikecualikan: mereka di bucket paling belakang dan tidak tampil.
   const rows = await db
     .queryAll(
-      `SELECT sort_order FROM products WHERE id != ? AND is_active=1 AND archived_at IS NULL`,
+      `SELECT sort_order FROM products WHERE id != ? AND is_active=1 AND archived_at IS NULL
+       AND category_id IS (SELECT category_id FROM products WHERE id=?)`,
+      productId,
       productId,
     )
     .catch(() => [] as { sort_order?: unknown }[]);

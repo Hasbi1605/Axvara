@@ -294,10 +294,16 @@ describe("payload useProductManager mode varian", () => {
 
   it("daftar admin meniru storefront: ready dulu, habis belakangan, nonaktif paling belakang (2026-09-19)", async () => {
     const src = (await import("node:fs")).readFileSync("src/components/admin/useProductManager.ts", "utf8");
-    // Kunci urutan: aktif dulu, lalu habis, lalu sort_order admin, lalu id.
-    expect(src).toContain("Number(!a.isActive) - Number(!b.isActive)");
-    expect(src).toContain("Number(isOut(a)) - Number(isOut(b))");
-    expect(src).toContain("(a.sortOrder ?? 0) - (b.sortOrder ?? 0)");
+    // Aturan status kini dipusatkan di helper bersama, di dalam kategori.
+    expect(src).toContain("groupProductsByCategory");
+    const { groupProductsByCategory } = await import("@/lib/product-order");
+    const groups = groupProductsByCategory([
+      { id: 1, categorySlug: "a", stock: 0, sortOrder: 0 },
+      { id: 2, categorySlug: "a", stock: -1, sortOrder: 20 },
+      { id: 3, categorySlug: "a", stock: -1, isActive: false, sortOrder: 0 },
+      { id: 4, categorySlug: "a", stock: 5, sortOrder: 10 },
+    ], [{ id: 1, name: "A", slug: "a", sort_order: 0 }]);
+    expect(groups[0].products.map(product => product.id)).toEqual([4, 2, 1, 3]);
   });
 
   it("produk nonaktif diurut PALING belakang, bukan depan (bug screenshot owner 2026-09-20)", async () => {

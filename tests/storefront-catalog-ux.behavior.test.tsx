@@ -14,6 +14,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 // Beranda interaktif kini di home-client.tsx (page.tsx = server, SSR katalog).
 // Tanpa `initialProducts` klien memuat /api/products seperti sebelumnya.
 import { HomeClient as HomePage } from "@/app/(shop)/home-client";
+import { useSearch } from "@/stores/search";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -28,7 +29,7 @@ function product(id: number, overrides: Record<string, unknown> = {}) {
     name: `Produk ${id}`,
     description: "desc",
     price: 10000,
-    categorySlug: "tools-pro",
+    categorySlug: "produktivitas-office",
     image: "",
     images: [],
     soldCount: 0,
@@ -60,7 +61,7 @@ function stubCatalog(products: Record<string, unknown>[]) {
   })));
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); useSearch.setState({ q: "" }); vi.unstubAllGlobals(); });
 
 describe("urutan katalog: ready dulu, habis di belakang (pertahanan lapis-2)", () => {
   it("kartu habis yang lolos API tetap dipindah ke belakang", async () => {
@@ -98,6 +99,7 @@ describe("tampilkan semua menggantikan batch berulang", () => {
     render(<HomePage />);
     await act(async () => {});
 
+    fireEvent.click(screen.getByRole("button", { name: "Produktivitas & Office" }));
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(16);
     // Tidak ada kontrol pagination lama.
     expect(screen.queryByLabelText("Next")).toBeNull();
@@ -125,9 +127,10 @@ describe("tampilkan semua menggantikan batch berulang", () => {
     render(<HomePage />);
     await act(async () => {});
 
-    fireEvent.click(screen.getByRole("button", { name: /Tampilkan semua \(5 produk lainnya\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Produktivitas & Office" }));
+    fireEvent.click(screen.getByRole("button", { name: /Tampilkan semua \(2 produk lainnya\)/i }));
     await act(async () => {});
-    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(21);
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(18);
 
     fireEvent.click(screen.getByRole("button", { name: /AI.*Chatbot/i }));
     await act(async () => {});
@@ -135,7 +138,9 @@ describe("tampilkan semua menggantikan batch berulang", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Semua/i }));
     await act(async () => {});
-    expect(screen.getAllByRole("heading", { level: 3 }), "kembali ke 16 awal").toHaveLength(16);
+    expect(screen.getAllByRole("heading", { level: 3 }), "kembali ke pratinjau per kategori").toHaveLength(11);
+    fireEvent.click(screen.getByRole("button", { name: "Produktivitas & Office" }));
+    expect(screen.getAllByRole("heading", { level: 3 }), "kategori kembali ke 16 awal").toHaveLength(16);
   });
 });
 
@@ -146,7 +151,7 @@ describe("LCP mobile: 4 kartu pertama eager + prioritas tinggi, sisanya lazy", (
     await act(async () => {});
 
     const imgs = Array.from(container.querySelectorAll('img[alt^="Produk "]'));
-    expect(imgs).toHaveLength(10);
+    expect(imgs).toHaveLength(8);
     imgs.slice(0, 4).forEach((img) => {
       expect(img.getAttribute("loading")).toBe("eager");
       expect(img.getAttribute("fetchpriority")).toBe("high");
@@ -161,6 +166,7 @@ describe("LCP mobile: 4 kartu pertama eager + prioritas tinggi, sisanya lazy", (
     const { container } = render(<HomePage />);
     await act(async () => {});
 
+    fireEvent.click(screen.getByRole("button", { name: "Produktivitas & Office" }));
     // Pembungkus content-visibility = parent grid > a kartu produk.
     const grid = container.querySelector(".mt-6.grid") as HTMLElement;
     const wrappers = Array.from(grid.children) as HTMLElement[];
@@ -171,6 +177,53 @@ describe("LCP mobile: 4 kartu pertama eager + prioritas tinggi, sisanya lazy", (
     wrappers.slice(8, 10).forEach((card) => {
       expect(card.style.contentVisibility).toBe("auto");
     });
+  });
+});
+
+describe("Semua dikelompokkan per kategori", () => {
+  const categories = [
+    { id: 1, slug: "ai-chatbot", name: "AI & Chatbot", sort_order: 20 },
+    { id: 2, slug: "desain-video", name: "Desain & Video", sort_order: 10 },
+  ];
+
+  it("header mengikuti urutan kategori, habis di ekor grup, eyebrow disembunyikan hanya pada grup", async () => {
+    stubCatalog([]);
+    const { container } = render(<HomePage initialCategories={categories} initialProducts={[
+      product(1, { categorySlug: "ai-chatbot", stock: 0 }),
+      product(2, { categorySlug: "desain-video", stock: 0 }),
+      product(3, { categorySlug: "ai-chatbot", stock: 5 }),
+      product(4, { categorySlug: "desain-video", stock: 5 }),
+    ]} />);
+    const sections = [...container.querySelectorAll("[data-catalog-category]")];
+    expect(sections.map(section => section.getAttribute("data-catalog-category"))).toEqual(["desain-video", "ai-chatbot"]);
+    const icons = sections.map(section => section.querySelector<HTMLImageElement>(".catalog-category-icon")!);
+    expect(icons.map(icon => icon.getAttribute("src"))).toEqual(["/brand/catalog/category-3d/desain-video.webp", "/brand/catalog/category-3d/ai-chatbot.webp"]);
+    expect(icons.map(icon => icon.getAttribute("loading"))).toEqual(["eager", "lazy"]);
+    expect(icons.every(icon => icon.alt === "" && icon.width === 40 && icon.getAttribute("decoding") === "async")).toBe(true);
+    expect(sections.map(section => [...section.querySelectorAll("h3")].map(node => node.textContent))).toEqual([["Produk 4", "Produk 2"], ["Produk 3", "Produk 1"]]);
+    expect(container.querySelector('a[href="/produk/produk-1"] p.uppercase')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "AI & Chatbot" }));
+    expect(container.querySelector("[data-catalog-category]")).toBeNull();
+    expect(container.querySelector('a[href="/produk/produk-1"] p.uppercase')?.textContent).toBe("AI & Chatbot");
+    fireEvent.click(screen.getByRole("button", { name: "Semua" }));
+    act(() => useSearch.setState({ q: "Produk 4" }));
+    expect(container.querySelector("[data-catalog-category]")).toBeNull();
+    expect(screen.getAllByRole("heading", { level: 3 }).map(node => node.textContent)).toEqual(["Produk 4"]);
+  });
+
+  it("maksimal delapan kartu per grup, empat terakhir desktop saja, Lihat semua membuka kategori", async () => {
+    stubCatalog([]);
+    const { container } = render(<HomePage initialCategories={categories} initialProducts={Array.from({ length: 12 }, (_, index) => product(index + 1, { categorySlug: "ai-chatbot" }))} />);
+    const section = container.querySelector('[data-catalog-category="ai-chatbot"]')!;
+    expect(section.querySelectorAll("h3")).toHaveLength(8);
+    expect(section.querySelectorAll(".hidden.lg\\:block")).toHaveLength(4);
+    expect(screen.getByText("12 produk • tampil 4")).toBeTruthy();
+    expect(screen.getByText("12 produk • tampil 8")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Tampilkan semua/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Lihat semua.*AI & Chatbot/ }));
+    expect(container.querySelector("[data-catalog-category]")).toBeNull();
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(12);
+    expect(screen.getByRole("button", { name: "AI & Chatbot" }).getAttribute("aria-pressed")).toBe("true");
   });
 });
 

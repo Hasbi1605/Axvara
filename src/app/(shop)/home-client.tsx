@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { OrbitHero } from "@/components/storefront/OrbitHero";
 import { ScrollRope } from "@/components/storefront/ScrollRope";
 import { CategoryPills } from "@/components/storefront/CategoryPills";
@@ -9,8 +9,11 @@ import { useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { catalogCopy } from "@/lib/i18n/catalog-copy";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
 import type { Product } from "@/lib/products";
-import { resolveCategorySlug } from "@/lib/products";
-import { sortProductsForDisplay } from "@/lib/product-order";
+import { resolveCategorySlug, categories as fallbackCategories } from "@/lib/products";
+import { groupProductsByCategory, sortCategoriesForDisplay, sortProductsForDisplay, type OrderableCategory } from "@/lib/product-order";
+import { IosIcon, categoryIcon } from "@/components/ui/IosIcon";
+import { marketCategoryName } from "@/lib/i18n/market-categories";
+import { category3dIcon } from "@/lib/category-3d-icons";
 import { useSearch } from "@/stores/search";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { HeroTrustRow } from "@/components/storefront/HeroTrustRow";
@@ -23,7 +26,7 @@ const PER_PAGE = 16;
  * tanpa JavaScript (termasuk crawler AI) melihat toko kosong. Bila server
  * gagal memuat, klien jatuh kembali ke fetch seperti sebelumnya.
  */
-export function HomeClient({ initialProducts }: { initialProducts?: Product[] }) {
+export function HomeClient({ initialProducts, initialCategories }: { initialProducts?: Product[]; initialCategories?: OrderableCategory[] }) {
   const hasInitial = Array.isArray(initialProducts);
   const [activeCat, setActiveCat] = useState("semua");
   // Pagination 2 tahap (keputusan owner 2026-10-01): 16 awal (grid pas —
@@ -34,6 +37,58 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
   const [catalogProducts, setCatalogProducts] = useState<Product[]>(initialProducts ?? []);
   const [catalogLoading, setCatalogLoading] = useState(!hasInitial);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<OrderableCategory[]>(initialCategories ?? fallbackCategories.filter(category => category.slug !== "semua").map((category, index) => ({ ...category, sort_order: index })));
+  const grouped = activeCat === "semua" && !q.trim();
+  const groups = useMemo(() => groupProductsByCategory(catalogProducts, categories), [catalogProducts, categories]);
+  const sections = useRef<HTMLDivElement>(null);
+  const pills = useRef<HTMLDivElement>(null);
+  const [navbarHeight, setNavbarHeight] = useState(64);
+  const [inView, setInView] = useState<string>();
+
+  useEffect(() => {
+    if (initialCategories) return;
+    const controller = new AbortController();
+    fetch("/api/categories", { signal: controller.signal }).then(response => { if (!response.ok) throw new Error("categories"); return response.json(); }).then(body => {
+      if (Array.isArray(body.categories)) setCategories(body.categories);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [initialCategories]);
+
+  useEffect(() => {
+    const navbar = document.querySelector("[data-store-navbar]");
+    if (!navbar) return;
+    const measure = () => setNavbarHeight(navbar.getBoundingClientRect().height);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(navbar);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    setInView(undefined);
+    if (!grouped || !sections.current || typeof IntersectionObserver === "undefined") return;
+    const visible = new Set<Element>();
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          visible.add(entry.target);
+          (entry.target as HTMLElement).dataset.revealed = "true";
+        }
+        else visible.delete(entry.target);
+      }
+      const first = [...visible].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0] as HTMLElement | undefined;
+      if (first) setInView(first.dataset.catalogCategory);
+    }, { rootMargin: `-${navbarHeight + (pills.current?.offsetHeight ?? 60)}px 0px -55% 0px`, threshold: 0 });
+    sections.current.querySelectorAll("[data-catalog-category]").forEach(section => observer.observe(section));
+    return () => observer.disconnect();
+  }, [grouped, groups, navbarHeight]);
+
+  const selectCategory = (slug: string) => {
+    setActiveCat(slug);
+    setShowAll(false);
+    document.getElementById("katalog")?.scrollIntoView?.({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  };
 
   useEffect(() => {
     const requestedCategory = new URLSearchParams(window.location.search).get("category");
@@ -77,7 +132,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const matched = catalogProducts.filter((p) => {
-      const catOk = activeCat === "semua" || p.categorySlug === activeCat;
+      const catOk = activeCat === "semua" || (activeCat === "__other" ? !categories.some(category => category.slug === p.categorySlug) : p.categorySlug === activeCat);
       if (!needle) return catOk;
       const hay = `${p.name} ${p.nameEn ?? ""} ${p.description} ${p.descriptionEn ?? ""} ${p.categorySlug} ${p.badge ?? ""}`.toLowerCase();
       return catOk && hay.includes(needle);
@@ -90,12 +145,12 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
     // ready → sortOrder → id. Nonaktif tidak pernah sampai ke storefront
     // (?active=1), jadi cabang byActive admin tidak berlaku di sini.
     return sortProductsForDisplay(matched);
-  }, [activeCat, q, catalogProducts]);
+  }, [activeCat, q, catalogProducts, categories]);
 
   // Filter baru = daftar baru: kembali ke 16 awal.
   useEffect(() => { setShowAll(false); }, [q, activeCat]);
-  const paged = showAll ? filtered : filtered.slice(0, PER_PAGE);
-  const remaining = Math.max(0, filtered.length - paged.length);
+  const paged = grouped ? groups.flatMap(group => group.products.slice(0, 8)) : showAll ? filtered : filtered.slice(0, PER_PAGE);
+  const remaining = grouped ? 0 : Math.max(0, filtered.length - paged.length);
   // Satu pemilik harga untuk seluruh koleksi tampil (<= 64 per request).
   const prices = useDisplayPrices(paged.flatMap(productCardAmounts), { debounce: true });
   const t = catalogCopy(prices.locale);
@@ -145,10 +200,12 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
       <section id="katalog" className="scroll-mt-36 lg:scroll-mt-20 mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{t.catalogTitle}</h2>
-          <span className="text-xs text-white/40">{t.productCount(filtered.length, paged.length)}</span>
+          <span className="text-xs text-white/40">
+            {grouped ? <><span className="lg:hidden">{t.productCount(filtered.length, groups.reduce((count, group) => count + Math.min(4, group.products.length), 0))}</span><span className="hidden lg:inline">{t.productCount(filtered.length, paged.length)}</span></> : t.productCount(filtered.length, paged.length)}
+          </span>
         </div>
-        <div className="mt-4">
-          <CategoryPills active={activeCat} onChange={(c) => { setActiveCat(c); setShowAll(false); }} />
+        <div ref={pills} className={grouped ? "sticky z-40 mt-4 -mx-4 border-b border-white/[0.06] bg-[#080C1E]/85 px-4 py-1 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8" : "mt-4"} style={grouped ? { top: navbarHeight } : undefined}>
+          <CategoryPills categories={sortCategoriesForDisplay(categories)} active={activeCat} inView={grouped ? inView : undefined} onChange={selectCategory} />
         </div>
         {catalogError && (
           <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3">
@@ -170,6 +227,31 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
         ) : (
           <>
           <PriceNote prices={prices} className="mt-3 text-[11px] text-white/45" />
+          {grouped ? <div ref={sections}>
+            {groups.map(({ category, products }, groupIndex) => {
+              const icon = category3dIcon(category?.slug ?? "");
+              return <section key={category?.slug ?? "unknown"} data-catalog-category={category?.slug} aria-labelledby={`category-${category?.slug ?? "unknown"}`} className="catalog-category-section mt-10 scroll-mt-40 sm:mt-14">
+              <div className="mb-5 flex items-center gap-2 sm:gap-3">
+                <span aria-hidden="true" className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center sm:h-10 sm:w-10">
+                  {icon ? <>
+                    <span className="pointer-events-none absolute -inset-[5px] rounded-full opacity-50 blur-[7px]" style={{ background: `radial-gradient(circle, ${icon.glow}, transparent 70%)` }} />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={icon.src} alt="" width={40} height={40} decoding="async" loading={groupIndex === 0 ? "eager" : "lazy"} className="catalog-category-icon relative h-8 w-8 object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,.25)] sm:h-10 sm:w-10" />
+                  </> : <IosIcon name={categoryIcon(category?.slug ?? "", category?.icon)} size={24} tint="white" alt="" className="opacity-80" />}
+                </span>
+                <h2 id={`category-${category?.slug ?? "unknown"}`} className="min-w-0 font-display text-sm font-semibold text-white sm:text-lg">{category ? marketCategoryName(category.slug, prices.locale, category.name) : t.uncategorized}</h2>
+                <span className="shrink-0 text-xs text-white/40">· {products.length}</span>
+                <div aria-hidden className="h-px min-w-2 flex-1" style={{ background: "linear-gradient(90deg, rgba(0,229,255,.35), transparent)" }} />
+                {products.length > 4 && <button onClick={() => selectCategory(category?.slug ?? "__other")} className="min-h-11 shrink-0 rounded text-xs font-medium text-[#00E5FF]/85 hover:text-[#00E5FF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]">{t.seeAllCategory} <span aria-hidden>→</span><span className="sr-only"> {category ? marketCategoryName(category.slug, prices.locale, category.name) : t.uncategorized}</span></button>}
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
+                {products.slice(0, 8).map((product, index) => <div key={product.id} className={index >= 4 ? "hidden lg:block" : undefined}>
+                  <ProductCard product={product} index={groupIndex * 8 + index} prices={prices} hideCategory />
+                </div>)}
+              </div>
+            </section>;
+            })}
+          </div> :
           <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
             {paged.map((p, i) => (
               <div
@@ -179,7 +261,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
                 <ProductCard product={p} index={i} prices={prices} />
               </div>
             ))}
-          </div>
+          </div>}
           </>
         )}
 
@@ -196,7 +278,7 @@ export function HomeClient({ initialProducts }: { initialProducts?: Product[] })
             <span className="text-xs text-white/35">{t.totalProducts(filtered.length)}</span>
           </div>
         )}
-        {showAll && filtered.length > PER_PAGE && (
+        {!grouped && showAll && filtered.length > PER_PAGE && (
           <div className="mt-8 flex flex-col items-center gap-2">
             <button
               onClick={() => setShowAll(false)}

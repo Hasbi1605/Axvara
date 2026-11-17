@@ -57,7 +57,7 @@ export function Navbar() {
   if (pathname === "/link" || pathname === "/wa") return null;
 
   return (
-    <header className="sticky top-0 z-50 ax-glass-strong border-b border-white/10">
+    <header data-store-navbar className="sticky top-0 z-50 ax-glass-strong border-b border-white/10">
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 h-[64px] flex items-center gap-2 sm:gap-4">
         <Link prefetch={false} href="/" className="flex min-w-0 items-center gap-2 sm:gap-3 shrink-0 group" aria-label={storeSettings.name}>
           {/* Prism mark — wireframe, precise from chosen reference */}

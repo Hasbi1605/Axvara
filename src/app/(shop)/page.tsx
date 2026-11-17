@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { NextRequest } from "next/server";
 import type { Product } from "@/lib/products";
+import type { OrderableCategory } from "@/lib/product-order";
 import { homeJsonLd, safeJsonLd } from "@/lib/site-seo";
 import { HomeClient } from "./home-client";
 
@@ -31,11 +32,21 @@ async function loadCatalog(): Promise<Product[] | undefined> {
 }
 
 export default async function HomePage() {
-  const products = await loadCatalog();
+  const [products, categories] = await Promise.all([loadCatalog(), loadCategories()]);
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(homeJsonLd(products ?? [])) }} />
-      <HomeClient initialProducts={products} />
+      <HomeClient initialProducts={products} initialCategories={categories} />
     </>
   );
+}
+
+async function loadCategories(): Promise<OrderableCategory[] | undefined> {
+  try {
+    const { GET } = await import("@/app/api/categories/route");
+    const response = await GET(new NextRequest("https://axvara.tech/api/categories"));
+    if (!response.ok) return undefined;
+    const data = await response.json() as { categories?: OrderableCategory[] };
+    return Array.isArray(data.categories) ? data.categories : undefined;
+  } catch { return undefined; }
 }

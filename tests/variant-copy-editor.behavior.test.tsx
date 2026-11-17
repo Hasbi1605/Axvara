@@ -647,7 +647,7 @@ describe("daftar produk admin", () => {
     fireEvent.change(filter, { target: { value: "changed" } });
     expect(screen.getByText("Filter aktif")).toBeTruthy();
     for (const button of screen.getAllByRole("button", { name: "Turunkan Produk both" })) expect(button).toHaveProperty("disabled", true);
-    expect(screen.getByRole("textbox", { name: "Pindah Produk both ke posisi 1 sampai 1" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("textbox", { name: "Pindah Produk both ke posisi 1 sampai 4" })).toHaveProperty("disabled", true);
     expect(screen.getByText(/Hal 1 dari 1 · 1 produk/)).toBeTruthy();
     expect(screen.queryByText("Produk excluded")).toBeNull();
     fireEvent.change(filter, { target: { value: "raw" } });

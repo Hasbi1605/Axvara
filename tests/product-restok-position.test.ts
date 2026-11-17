@@ -189,4 +189,15 @@ describe("maybeReinsertRestockedProduct (DB)", () => {
       fx.close();
     }
   });
+
+  it("key kategori lain tidak menjadi jangkar; tetap dua read tanpa query tambahan", async () => {
+    const fx = seedDb();
+    try {
+      fx.sql.exec("UPDATE products SET category_id=1; UPDATE products SET stock=5 WHERE id=3; INSERT INTO products(id,name,slug,price,stock,is_active,sort_order,category_id) VALUES(99,'Lain','lain',1000,5,1,30,2)");
+      const before = fx.control.queries;
+      const result = await maybeReinsertRestockedProduct(createDatabaseAccess(fx.db), 3, true);
+      expect(result).toEqual({ reinserted: false, oldKey: 30, newKey: 30 });
+      expect(fx.control.queries - before).toBe(2);
+    } finally { fx.close(); }
+  });
 });

@@ -184,6 +184,7 @@ export default function AdminPage() {
           error={pm.listError}
           onRetry={pm.load}
           prods={pm.prods}
+          cats={pm.cats}
           paged={pm.paged}
           filtered={pm.filtered}
           q={pm.q}

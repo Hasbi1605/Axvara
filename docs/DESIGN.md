@@ -1,5 +1,37 @@
 # DESIGN.md — AXVARA Design System
 
+## Pemisah katalog per kategori — 17 November 2026 (lokal)
+
+Semua tanpa pencarian memakai section longgar (`mt-10 sm:mt-14`), bukan box baru.
+Header berurutan: ikon32px mobile/40px desktop → nama kategori terlokalisasi →
+jumlah muted `· N` → hairline fleksibel1px gradasi cyan35% ke transparan → teks
+**Lihat semua →** / **See all →** (bila >4, target min44px, outline fokus cyan).
+Grid dua kolom mobile/empat `lg`, maksimal dua baris4/8 kartu via CSS. Eyebrow
+kategori kartu disembunyikan hanya pada mode ini; mode flat mempertahankannya.
+
+Ikon header **ikon 3D kategori custom AXVARA, dibuat dengan image generation,
+dipangkas 192px webp**, objek glass glossy transparan, file WebP lokal pada
+`public/brand/catalog/category-3d/`; bukan emoji.
+Glow radial lembut statis mengikuti kategori: AI cyan, Streaming pink, Office gold,
+Desain ungu, Developer hijau-cyan, Bundle gold (inset−5px, blur7px, opacity50%).
+Shadow kecil; fade/scale .92→1
+sekali240ms saat section terlihat melalui observer existing, tanpa loop atau
+will-change permanen; reduced-motion mematikan animasi. Gambar dekoratif alt kosong,
+dimensi eksplisit, decoding async; section berikutnya lazy. Slug baru/unmapped
+memakai glyph kategori existing, admin icon picker tidak berubah.
+
+Pills mempertahankan ukuran keputusan8November (24px/36px, ikon10px/14px), glyph
+IosIcon existing. Pada mode grup saja bar sticky tepat di bawah tinggi navbar
+terukur, latar Midnight85% + backdrop blur + garis bawah white6%. **Semua** putih
+tetap selected; scrollspy memberi tint cyan10%/border35% pada kategori terlihat,
+tanpa mengubah filter. Di mobile highlight menggeser container horizontal saja,
+tanpa scroll halaman, reduced-motion memakai instant. Tab/fokus tombol tetap jelas.
+
+Admin memakai primitive/token existing: header grup muted berisi nama dan jumlah
+produk halaman; posisi kategori penuh, ↑↓ disabled di batas kategori/status.
+Kategori ↑↓ optimistis, antrean serial, rollback+toast; field numerik tetap tersedia.
+Tidak ada aset 3D di pills/admin. Status lokal; bukan bukti deployment.
+
 ## Editor admin "Deskripsi & S&K" — 17 November 2026 (lokal)
 
 Redesign tab **Deskripsi & S&K** di `ProductEditorModal` memakai primitive admin existing (`Sheet`, `Popover`, `Checkbox`, `DropdownMenu`, `Table`, `Badge`, `Button`, `Textarea`, `Label`, `Tooltip`) dan token admin existing (termasuk `.admin-preview` untuk pratinjau gelap toko), dengan teks minimalis bebas helper berulang, berlaku untuk seluruh supplier termasuk **Manual**:

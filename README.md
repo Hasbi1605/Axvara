@@ -1,5 +1,24 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Katalog berkelompok & urutan kategori (17 November 2026)
+
+Implementasi lokal: beranda **Semua** tanpa pencarian dikelompokkan per kategori,
+urut `sort_order/name/id`; ready mendahului habis di kategori masing-masing.
+Pratinjau4mobile/8desktop (`lg`), **Lihat semua →** membuka kategori; kategori/search
+tetap16 → semua. Counter responsif, section dari SSR produk+kategori, pills sticky
+di bawah navbar dan scrollspy cyan tanpa mengganti pilihan Semua. Header memakai
+ikon 3D kategori custom AXVARA, dibuat dengan image generation, dipangkas192px WebP
+lokal (tampil32/40px); glyph fallback untuk
+slug baru. Detail tampilan/aset: `docs/DESIGN.md` dan `docs/ARCHITECTURE.md`.
+
+Admin → Kategori: ↑↓ tersimpan via `POST /api/categories/reorder` (admin, rate limit,
+strict body, batch normalisasi10/20/…, cache publik60detik seperti PUT existing).
+Field **Urutan tampil** tetap bekerja. Admin Produk memakai header per kategori;
+posisi/jump dihitung di kategori penuh, bukan subset filter/halaman; ↑↓ tidak dapat
+melintasi kategori/status. `groupProductsByCategory` helper bersama; restock tidak
+memakai kunci kategori lain dan tidak menambah read sync. Tanpa env/migrasi baru,
+tanpa perubahan kanal bot/PDP yang tetap memakai sort datar existing.
+
 ## Bot Promo WhatsApp kedua (17 November 2026)
 
 Implementasi lokal; publikasi via CI, pairing nomor promo dilakukan owner setelah

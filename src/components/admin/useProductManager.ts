@@ -17,7 +17,7 @@ import {
   type BulkValidation,
 } from "@/components/admin/BulkTierEditor";
 import type { Prod, Cat, FormVariant, ProductForm } from "@/components/admin/product-types";
-import { adjacentReorderProduct, sortProductsForDisplay } from "@/lib/product-order";
+import { adjacentReorderProduct, groupProductsByCategory } from "@/lib/product-order";
 
 // Hook ini memusatkan seluruh state + handler katalog produk (daftar, filter, pagination,
 // editor form, varian, upload, simpan, hapus, toggle aktif). Dipisah dari page.tsx BUKAN
@@ -98,12 +98,12 @@ export function normalizeSortOrder(value: unknown): number | null {
 
 /**
  * Urutan GLOBAL produk untuk swap ↑↓: sama persis dengan `filtered` di bawah
- * (aktif dulu, ready dulu, lalu sortOrder, lalu id) — TANPA filter q/lowStock
+ * (kategori dulu; status, sortOrder dan id di dalam kategori) — TANPA filter q/lowStock
  * dan TANPA potong halaman, sehingga tetangga yang ditukar adalah tetangga
  * sebenarnya di seluruh katalog, bukan tetangga satu halaman.
  */
-export function globalProductOrder(list: Prod[]): Prod[] {
-  return sortProductsForDisplay(list.filter(p => !p.archivedAt));
+export function globalProductOrder(list: Prod[], categories: Cat[] = []): Prod[] {
+  return groupProductsByCategory(list.filter(p => !p.archivedAt), categories).flatMap(group => group.products);
 }
 
 export function useProductManager(toast: AdminToast, onUnauthorized: () => void) {
@@ -193,7 +193,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   },[onUnauthorized]);
 
   const openEdit = async (p: Prod) => {
-    const position = globalProductOrder(prods).findIndex((item) => item.id === p.id) + 1;
+    const position = globalProductOrder(prods, cats).filter(item => item.categorySlug === p.categorySlug).findIndex((item) => item.id === p.id) + 1;
     // Modal dan tabel berbicara bahasa yang sama: posisi 1..N. Raw sort_order
     // tidak lagi diedit dari modal karena ia hanya kunci teknis server.
     // sortOrder produk existing sengaja dikosongkan dari form: payload edit
@@ -328,11 +328,11 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   // (garansi=none + manual, seperti varian DEFAULT otomatis server) agar
   // tampilan UI dan nilai tersimpan tidak pernah divergen.
   const openNew = () => {
-    const ordered = globalProductOrder(prods);
+    const ordered = globalProductOrder(prods, cats);
     const maxSortOrder = ordered.reduce((max, product) => Math.max(max, Number(product.sortOrder ?? 0)), 0);
     // Hitung posisi tampilan dari ordered (bukan dari asumsi): produk baru
     // masuk paling belakang daftar tampil.
-    const nextPosition = ordered.length + 1;
+    const nextPosition = ordered.filter(product => product.categorySlug === "ai-chatbot").length + 1;
     const nextForm: ProductForm = {
       name: "",
       slug: "",
@@ -666,7 +666,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const runReorder = useCallback(async (p: Prod, body: Record<string, unknown>, movedLabel: string) => {
     if (toggling) return;
     const run = reorderQueue.tail.then(async () => {
-      const ordered = globalProductOrder(prods);
+      const ordered = globalProductOrder(prods, cats);
       const idx = ordered.findIndex((x) => x.id === p.id);
       if (idx < 0) return;
       setReordering(p.id);
@@ -693,7 +693,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     // Antrean tidak boleh putus oleh satu kegagalan.
     reorderQueue.tail = run.catch(() => undefined);
     await reorderQueue.tail;
-  }, [prods, toggling, toast, reorderQueue]);
+  }, [prods, cats, toggling, toast, reorderQueue]);
   const moveProduct = (p: Prod, direction: -1 | 1) => {
     // Guard lokal cepat: tombol mati tidak mengirim request sama sekali.
     if (reordering || toggling) return;
@@ -703,7 +703,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   };
   const jumpProduct = (p: Prod, targetPosition: number) => {
     if (reordering || toggling) return;
-    const current = globalProductOrder(prods).findIndex((x) => x.id === p.id) + 1;
+    const current = globalProductOrder(prods, cats).filter(item => item.categorySlug === p.categorySlug).findIndex((x) => x.id === p.id) + 1;
     if (current < 1 || current === targetPosition) return;
     void runReorder(p, { productId: Number(p.id), targetPosition }, `“${p.name}” pindah ke posisi ${targetPosition}.`);
   };
@@ -744,11 +744,10 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   // nonaktif sama sekali karena ?active=1, tapi admin perlu melihatnya).
   // Tanpa ini produk habis/nonaktif (Netflix, Capcut, Claude di screenshot
   // owner 2026-09-19) nangkring di atas dan produk ready tenggelam.
-  const isOut = (p: Prod) => p.stock !== -1 && p.stock <= 0;
   const counts = productTabCounts(prods);
   const liveProducts = counts.live, hiddenProducts = counts.hidden, offProducts = counts.off;
   const filtered = useMemo(
-    () => prods
+    () => groupProductsByCategory(prods
       .filter(p=> {
         if (liveTab === "archive" ? !p.archivedAt : !!p.archivedAt) return false;
         if (q && !`${p.name} ${p.slug} ${p.badge??""}`.toLowerCase().includes(q.toLowerCase())) return false;
@@ -760,16 +759,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         if (liveTab === "off" && productStatus(p) !== "off") return false;
         return true;
       })
-      .map(p => ({ ...p, categoryName: cats.find(cat => cat.slug === p.categorySlug)?.name }))
-      .sort((a, b) => {
-        const byActive = Number(!a.isActive) - Number(!b.isActive);
-        if (byActive !== 0) return byActive;
-        const bySold = Number(isOut(a)) - Number(isOut(b));
-        if (bySold !== 0) return bySold;
-        const byOrder = (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-        if (byOrder !== 0) return byOrder;
-        return Number(a.id) - Number(b.id);
-      }),
+      .map(p => ({ ...p, categoryName: cats.find(cat => cat.slug === p.categorySlug)?.name })), cats).flatMap(group => group.products),
     [prods, cats, q, onlyLowStock, supplierFilter, liveTab],
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPageAdmin));

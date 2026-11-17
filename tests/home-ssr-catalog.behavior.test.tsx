@@ -7,6 +7,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import type { Product } from "@/lib/products";
+import type { OrderableCategory } from "@/lib/product-order";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -25,11 +26,12 @@ afterEach(() => { cleanup(); fx.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals
 
 it("server memuat katalog D1 dan menyerahkannya ke klien", async () => {
   const { default: HomePage } = await import("@/app/(shop)/page");
-  const tree = (await HomePage()) as ReactElement<{ children: ReactElement<{ initialProducts?: Product[] }>[] }>;
+  const tree = (await HomePage()) as ReactElement<{ children: ReactElement<{ initialProducts?: Product[]; initialCategories?: OrderableCategory[] }>[] }>;
   const children = Array.isArray(tree.props.children) ? tree.props.children : [tree.props.children];
   const client = children.find((child) => (child?.props as { initialProducts?: Product[] } | undefined)?.initialProducts !== undefined);
   expect(client?.props.initialProducts?.map((p) => p.slug)).toEqual(["netflix-premium"]);
-});
+  expect(client?.props.initialCategories?.length).toBeGreaterThan(0);
+}, 15000); // Cold transform memuat dua graph handler SSR, bukan batas latensi request.
 
 it("server tidak menambah preload manual (Next mengelolanya dari fetchpriority high kartu)", async () => {
   const { default: HomePage } = await import("@/app/(shop)/page");
@@ -56,9 +58,11 @@ it("klien dengan data awal langsung merender kartu + link produk tanpa fetch", a
   const fetchSpy = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
   vi.stubGlobal("fetch", fetchSpy);
   const { HomeClient } = await import("@/app/(shop)/home-client");
-  render(<HomeClient initialProducts={[{ id: "1", slug: "netflix-premium", name: "Netflix Premium", description: "", price: 26000, categorySlug: "akun-premium", image: "", images: [], soldCount: 0, stock: 5 } as unknown as Product]} />);
+  render(<HomeClient initialCategories={[{ id: 1, name: "AI & Chatbot", slug: "ai-chatbot", sort_order: 0 }]} initialProducts={[{ id: "1", slug: "netflix-premium", name: "Netflix Premium", description: "", price: 26000, categorySlug: "ai-chatbot", image: "", images: [], soldCount: 0, stock: 5 } as unknown as Product]} />);
   expect(screen.getAllByText("Netflix Premium").length).toBeGreaterThan(0);
   expect(document.querySelector('a[href="/produk/netflix-premium"]')).not.toBeNull();
   const productCalls = fetchSpy.mock.calls.filter((call) => String((call as unknown[])[0]).includes("/api/products"));
   expect(productCalls).toHaveLength(0);
+  expect(fetchSpy.mock.calls.filter(call => String((call as unknown[])[0]).includes("/api/categories"))).toHaveLength(0);
+  expect(screen.getByRole("heading", { name: "AI & Chatbot", level: 2 })).toBeTruthy();
 });

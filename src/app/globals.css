@@ -327,11 +327,21 @@ body {
 }
 .ax-flame { animation: axFlameFlicker 2.6s ease-in-out infinite; transform-origin: 50% 90%; will-change: transform; }
 .ax-flame-glow { animation: axFlameGlow 2.6s ease-in-out infinite; will-change: opacity, transform; }
+/* Ikon kategori: satu kemunculan ringan, dipicu observer section existing.
+   Default tetap terlihat untuk SSR dan browser tanpa IntersectionObserver. */
+@keyframes catalogIconReveal {
+  from { opacity: .35; transform: scale(.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.catalog-category-section[data-revealed="true"] .catalog-category-icon {
+  animation: catalogIconReveal 240ms cubic-bezier(.23,1,.32,1) both;
+}
 .ax-card-sheen-hover { transform: translateX(-160%) skewX(-18deg); }
 @media (hover: hover) and (pointer: fine) {
   .group:hover .ax-card-sheen-hover { transform: translateX(420%) skewX(-18deg); transition: transform 0.9s cubic-bezier(.4,0,.2,1); }
 }
 @media (prefers-reduced-motion: reduce) {
   .ax-flame, .ax-flame-glow { animation: none; }
+  .catalog-category-icon { animation: none !important; }
   .ax-card-sheen-hover { display: none; }
 }
