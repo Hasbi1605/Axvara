@@ -1,5 +1,44 @@
 # ARCHITECTURE.md — AXVARA
 
+## C0: fence kredensial push per item — 18 November 2026 (lokal)
+
+- Migrasi `0135_fulfillment_send_claims.sql` dan blok identik `schema.sql`
+  membuat `fulfillment_send_claims`: PK `(item_id,channel)` dengan FK item
+  `ON DELETE CASCADE`, channel Telegram/WhatsApp, status `sending/sent/failed`,
+  token, `payload_hash`, `part_count`, `attempt_count`, `message_id`, error
+  generik dan `updated_at`. Tanpa trigger/env baru; `IF NOT EXISTS` idempoten.
+  Tidak mengubah `buyer_notice_log` (CHECK existing email/Telegram tetap).
+- `delivery/send-fence.ts` memakai `INSERT … SELECT … WHERE EXISTS` dengan
+  lease item persis+aktif, `ON CONFLICT … DO UPDATE … WHERE` failed/stale,
+  lalu `changes` dan token. CAS takeover hanya sesudah600detik dan <5klaim;
+  checkpoint/settle selalu token+status. Baca/tulis ledger gagal menutup kirim.
+  Tidak memakai `INSERT OR REPLACE`. Ledger tidak mengandung plaintext/target.
+- `delivery/send.ts` memakai fence dari `sendItem` untuk shared/unique dan
+  receipt TUNVN/AIVault. Sebelum push shared, ciphertext/IV disnapshot di item
+  agar rotasi secret tidak mengubah kredensial saat pemulihan settlement.
+  Native Telegram text timeout10detik, WA15detik; helper berhenti memulai
+  bagian sesudah30detik sejak sebelum klaim (transport≤40/45detik). Batas ini
+  bukan SLA durasi D1 atau jaminan penghentian kerja provider yang sudah diterima.
+- Sukses bagian dicheckpoint+message ID; bagian terakhir menulis `sent`.
+  Retry `sent` langsung menyelesaikan item/inventory tanpa push kedua. Penolakan
+  pasti menulis `failed`; timeout/jaringan/5xx/hasil tak terbaca tetap `sending`
+  sampai stale. Telegram4xx kecuali408 dan daftar reason WA pra-kirim saja
+  dianggap pasti; WA `outcomeUnknown:false` tanpa reason dikenal tetap ambigu.
+  SHA-256 seluruh pesan mencegah resume indeks pada payload berubah sebelum
+  sent (error menuju admin). Setelah sent, payload lama dipercaya. Tidak ada
+  klaim exactly-once provider sesudah takeover ambigu/checkpoint hilang.
+- `delivery/process.ts` menambah admission4statement untuk push, helper
+  menyisakan8statement bagi settlement/retry+outcome job; multipart bisa yield
+  dengan checkpoint. Pending/ambigu/yield menunda10menit tanpa menambah gagal
+  item/job. Max5klaim ledger termasuk yield membatasi replay otomatis. Web/email
+  dan salinan email Telegram tetap pipeline lama; owner-fetch Telegram dan
+  handover admin sengaja tidak memakai ledger otomatis. Tidak ada API resend
+  admin baru/aktivasi WA. Kontrak lengkap: `agent-rules/buyer-credentials.md`.
+- Verifikasi lokal: native D1/workerd konkurensi/failed/stale/replay, Wrangler
+  `d1 execute --local --file drizzle/schema.sql` lalu migrasi0135 dua kali,
+  test shared/unique kedua kanal, copy email, handover, timeout dan budget.
+  Belum publikasi/deployment; full suite integrasi final milik PM.
+
 ## A-S: probe sintetis dan CSP Analytics — 18 November 2026 (lokal)
 
 - `mcp-worker/src/synthetic.ts` menambah tiga `PhaseOutcome` (`synth:home`,

@@ -48,17 +48,34 @@ const itemStatuses = (code: string) =>
   fixture.sql.prepare("SELECT status FROM fulfillment_items WHERE order_code=? ORDER BY item_index").all(code).map((r) => r.status);
 
 describe("R2 aggregate delivery is never premature", () => {
+  it("ambiguous automatic send waits without exhausting item/job retries", async () => {
+    await orderWith("C0-JOB-UNKNOWN", ["shared"]);
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "Request timeout" });
+    for (let i = 0; i < 7; i++) await ensureFulfillmentForPaidOrder("C0-JOB-UNKNOWN");
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
+    expect(fixture.sql.prepare("SELECT status,attempt_count FROM fulfillment_items WHERE order_code=?").get("C0-JOB-UNKNOWN"))
+      .toMatchObject({ status: "retry", attempt_count: 0 });
+    expect(fixture.sql.prepare("SELECT status,attempt_count FROM fulfillment_jobs WHERE order_code=?").get("C0-JOB-UNKNOWN"))
+      .toMatchObject({ status: "retry", attempt_count: 0 });
+    fixture.sql.exec("UPDATE fulfillment_send_claims SET updated_at=datetime('now','-601 seconds')");
+    await ensureFulfillmentForPaidOrder("C0-JOB-UNKNOWN");
+    expect(orderStatus("C0-JOB-UNKNOWN")).toBe("delivered");
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(2);
+  });
+
   it("gagal mengirim lanjutan panduan mempertahankan retry, lalu selesai setelah semua bagian terkirim", async () => {
     await orderWith("TG-PARTIAL-TERMS", ["shared"]);
     fixture.sql.prepare("UPDATE product_variants SET admin_terms=? WHERE id=1").run("Jangan mengubah email tanpa izin. ".repeat(180));
     vi.mocked(sendMessage).mockResolvedValueOnce({ ok: true, result: { message_id: 1 } } as never);
-    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "Too Many Requests" });
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, error_code: 429, description: "Too Many Requests" });
     await ensureFulfillmentForPaidOrder("TG-PARTIAL-TERMS");
     expect(itemStatuses("TG-PARTIAL-TERMS")).toEqual(["retry"]);
     expect(orderStatus("TG-PARTIAL-TERMS")).toBe("retry");
     await ensureFulfillmentForPaidOrder("TG-PARTIAL-TERMS");
     expect(itemStatuses("TG-PARTIAL-TERMS")).toEqual(["delivered"]);
     expect(orderStatus("TG-PARTIAL-TERMS")).toBe("delivered");
+    const firstPart = vi.mocked(sendMessage).mock.calls[0][0].text;
+    expect(vi.mocked(sendMessage).mock.calls.filter(([params]) => params.text === firstPart)).toHaveLength(1);
   });
 
   it("kredensial stok sendiri menyertakan copy tiap varian, bukan copy item lain", async () => {

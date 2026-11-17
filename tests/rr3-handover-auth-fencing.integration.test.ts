@@ -232,17 +232,24 @@ describe("RR3-08 stale worker cannot overwrite a mixed manual order", () => {
     send.mockImplementationOnce(async () => { calls++; enteredResolve(); await gate; return { ok: true, result: { message_id: 9 } }; });
     const stale = delivery.ensureFulfillmentForPaidOrder("AXV-20260908-RR080001");
     await entered;
-    // Lease lewat; worker baru menyelesaikan pekerjaan.
+    // Lease item lewat, tetapi fence kirim 10 menit masih aktif: worker
+    // baru menunggu hasil pengirim pertama, bukan mengirim kredensial ganda.
     fixture.sql.prepare("UPDATE fulfillment_jobs SET locked_until='2020-01-01T00:00:00.000Z'").run();
     fixture.sql.prepare("UPDATE fulfillment_items SET locked_until='2020-01-01T00:00:00.000Z'").run();
     await delivery.releaseStaleJobs();
     await delivery.ensureFulfillmentForPaidOrder("AXV-20260908-RR080001");
     expect(fixture.sql.prepare("SELECT fulfillment_status FROM orders WHERE code='AXV-20260908-RR080001'").get()?.fulfillment_status)
-      .toBe("manual_required");
+      .toBe("retry");
     release();
     await stale;
+    expect(fixture.sql.prepare("SELECT fulfillment_status FROM orders WHERE code='AXV-20260908-RR080001'").get()?.fulfillment_status)
+      .toBe("retry");
+    // Ledger sent memulihkan settlement tanpa kirim kedua; worker basi
+    // tidak boleh menimpa state pemilik baru.
+    await delivery.ensureFulfillmentForPaidOrder("AXV-20260908-RR080001");
     // Hasil worker baru tetap berlaku.
     expect(calls).toBe(1);
+    expect(send.mock.calls.filter(([params]) => String(params.text).includes("FIXTURE-SHARED-1"))).toHaveLength(1);
     expect(fixture.sql.prepare("SELECT fulfillment_status FROM orders WHERE code='AXV-20260908-RR080001'").get()?.fulfillment_status)
       .toBe("manual_required");
     const jobs = fixture.sql.prepare("SELECT status FROM fulfillment_jobs WHERE order_code='AXV-20260908-RR080001'").all();

@@ -161,13 +161,13 @@ describe("non-WR shared: DM Telegram + satu email Pesanan Siap", () => {
     await ensureFulfillmentForPaidOrder(code);
     expect(emails).toHaveLength(1);
 
-    // Item dipaksa retry: DM boleh terkirim lagi (perilaku lama), email TIDAK.
+    // Item dipaksa retry: fence otomatis mencegah DM kedua, email tetap SATU.
     fixture.sql.prepare("UPDATE fulfillment_items SET status='retry', locked_until=NULL WHERE order_code=?").run(code);
     const order = fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(code)!;
     const item = fixture.sql.prepare("SELECT * FROM fulfillment_items WHERE order_code=?").get(code)!;
     const { processItem } = await import("@/lib/fulfillment/delivery/send");
     expect(await processItem(order, item, undefined, db())).toBe(true);
-    expect(dmsWith("UNDANGAN-TG")).toHaveLength(2);
+    expect(dmsWith("UNDANGAN-TG")).toHaveLength(1);
     expect(emails).toHaveLength(1);
   });
 

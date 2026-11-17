@@ -21,6 +21,7 @@ import { findReservedForOrderVariant, inventoryMatchesItem } from "./inventory-b
 import { isValidBuyerEmail, sendWebDeliveryEmail, orderLineLabel } from "./buyer-email";
 import { eligibleAivaultLine } from "@/lib/aivault/orders";
 import { eligibleTunvnLine } from "@/lib/tunvn/orders";
+import { CredentialSendDeferred, sendFencedCredential } from "./send-fence";
 
 /**
  * Klaim lease baris item (FASE 1). Immediate pass (no due-gate): retry rows
@@ -96,21 +97,32 @@ async function settleManualOrWeb(
  * Mode shared (FASE 3): satu shared secret varian untuk seluruh pembeli.
  */
 async function deliverShared(
-  itemId: number, leaseFence: string, recipientChannel: string, recipientTarget: string,
+  item: Row, itemId: number, leaseFence: string, recipientChannel: string, recipientTarget: string,
   orderCode: string, productId: number, variantId: number, qty: number, database: DatabaseAccess,
 ): Promise<boolean> {
   const { queryFirst, execRun, isD1Mode } = database;
-  const secret = variantId && isD1Mode()
+  const push = recipientChannel === "telegram" || recipientChannel === "whatsapp";
+  const snapshot = push && item.delivered_ciphertext && item.delivered_iv;
+  const secret = !snapshot && variantId && isD1Mode()
     ? await queryFirst(
         `SELECT shared_secret_ciphertext, shared_secret_iv FROM product_variants WHERE id=? AND product_id=?`,
         variantId, productId,
       )
     : null;
-  const ct = String(secret?.shared_secret_ciphertext || "");
-  const iv = String(secret?.shared_secret_iv || "");
+  const ct = String((snapshot ? item.delivered_ciphertext : secret?.shared_secret_ciphertext) || "");
+  const iv = String((snapshot ? item.delivered_iv : secret?.shared_secret_iv) || "");
   if (!ct || !iv) throw new Error("Shared secret not configured for product");
+  // Persist the encrypted payload BEFORE push, so a lost item settlement or
+  // rotated shared secret cannot make a ledger replay expose different details.
+  if (push && !snapshot) {
+    const saved = await execRun(
+      "UPDATE fulfillment_items SET delivered_ciphertext=?,delivered_iv=? WHERE id=? AND locked_until=? AND status='sending'",
+      ct, iv, itemId, leaseFence,
+    );
+    if (!saved.changes) throw new Error("lease_lost_during_delivery");
+  }
   const plaintext = await decryptSecret(ct, iv);
-  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database, variantId);
+  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, leaseFence, plaintext, qty, database, variantId);
   // Fenced write: only applies while THIS worker still holds the lease.
   // Ciphertext yang barusan dikirim ikut disalin (migrasi 0043) supaya
   // halaman pesanan tetap menampilkan isi yang SAMA walau pesan bersama
@@ -210,7 +222,7 @@ async function deliverUnique(
   const secretCt = String(inventoryItem.secret_ciphertext);
   const secretIv = String(inventoryItem.secret_iv);
   const plaintext = await decryptSecret(secretCt, secretIv);
-  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, plaintext, qty, database, variantId, unitLabel);
+  await sendItem(recipientChannel, recipientTarget, orderCode, itemId, leaseFence, plaintext, qty, database, variantId, unitLabel);
   const d1 = database.d1;
   // Keep inventory and item settlement atomic, both under the item lease.
   // A worker resuming after its lease was taken cannot consume the unit.
@@ -266,14 +278,15 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
     try {
       if (item.delivered_ciphertext && item.delivered_iv) {
         const plaintext=await decryptSecret(String(item.delivered_ciphertext),String(item.delivered_iv));
-        await sendItem(String(item.recipient_channel),String(item.recipient_target ?? ""),orderCode,itemId,plaintext,Number(item.qty),database,Number(item.variant_id));
+        await sendItem(String(item.recipient_channel),String(item.recipient_target ?? ""),orderCode,itemId,leaseFence,plaintext,Number(item.qty),database,Number(item.variant_id));
       } else if (tunvnKind==="buff") {
         const { notifyBuyerBuffCompleted }=await import("@/lib/notify-buyer");
         if (!await notifyBuyerBuffCompleted(orderCode,Number(item.item_index),database)) throw new Error("buff_notice_deferred");
       } else throw new Error("supplier_receipt_missing");
       const done=await execRun("UPDATE fulfillment_items SET status='delivered',delivered_message_id=?,locked_until=NULL,last_error=NULL WHERE id=? AND locked_until=? AND status='sending'",`item:${itemId}`,itemId,leaseFence);
       return Boolean(done.changes);
-    } catch {
+    } catch (error) {
+      if (await deferFencedSend(error, itemId, leaseFence, database)) return false;
       await scheduleItemRetry(itemId,"supplier_delivery_deferred",leaseFence,database);
       return false;
     }
@@ -313,13 +326,14 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
     const settledManual = await settleManualOrWeb(itemId, leaseFence, recipientChannel, mode, order.customer_email, database);
     if (settledManual !== null) return settledManual;
     if (mode === "shared") {
-      return await deliverShared(itemId, leaseFence, recipientChannel, recipientTarget, orderCode, productId, variantId, qty, database);
+      return await deliverShared(item, itemId, leaseFence, recipientChannel, recipientTarget, orderCode, productId, variantId, qty, database);
     }
     if (mode === "unique") {
       return await deliverUnique(item, itemId, leaseFence, recipientChannel, recipientTarget, orderCode, productId, variantId, qty, database, orderLineLabel(order.items, Number(item.item_index)));
     }
     throw new Error(`Unknown fulfillment mode: ${mode}`);
   } catch (error) {
+    if (await deferFencedSend(error, itemId, leaseFence, database)) return false;
     const errMsg = (error instanceof Error ? error.message : "Unknown delivery error").slice(0, 500);
     // A lost lease is not a delivery failure: the new owner proceeds, and
     // this worker must not consume the retry budget or overwrite its error.
@@ -365,13 +379,13 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
 
 /** Kanal web lewat email pembeli; kanal lain lewat sendToRecipient. */
 async function sendItem(
-  channel: string, target: string, orderCode: string, itemId: number, plaintext: string, qty: number, database: DatabaseAccess, variantId: number, label?: string,
+  channel: string, target: string, orderCode: string, itemId: number, leaseFence: string, plaintext: string, qty: number, database: DatabaseAccess, variantId: number, label?: string,
 ): Promise<void> {
   if (channel === "web") {
     await sendWebDeliveryEmail({ database, orderCode, itemId, plaintext });
     return;
   }
-  await sendToRecipient(channel, target, orderCode, plaintext, qty, database, variantId, label);
+  await sendToRecipient(channel, target, orderCode, plaintext, qty, database, variantId, label, { itemId, leaseFence });
   if (channel === "telegram") {
     // Salinan email (2026-11-04) untuk pembeli Telegram dengan produk wajib-email.
     // DM Telegram sudah sukses dan otoritatif; email best-effort, idempoten per
@@ -394,6 +408,7 @@ export async function sendToRecipient(
   database: DatabaseAccess = createDatabaseAccess(),
   variantId = 0,
   productName?: string,
+  automatic?: { itemId: number; leaseFence: string },
 ): Promise<string> {
   const qtySuffix = qty > 1 ? ` (×${qty})` : "";
   if (channel === "whatsapp") {
@@ -403,10 +418,19 @@ export async function sendToRecipient(
     if (!isEnabled("WHATSAPP_CREDENTIAL_DM_ENABLED")) {
       throw new Error("web_channel_requires_manual_handover:serahkan manual via admin_note");
     }
-    const sendResult = await sendTextMessage({
-      target,
-      message: `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}${qtySuffix}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`,
-    });
+    const message = `*PRODUK AXVARA SIAP!*\nOrder: ${orderCode}${qtySuffix}\n\nDetail akses/lisensi Anda:\n${plaintext}\n\nSimpan baik-baik.`;
+    if (automatic) {
+      return sendFencedCredential(database, automatic.itemId, automatic.leaseFence, "whatsapp", [message], async text => {
+        const result = await sendTextMessage({ target, message: text });
+        // The legacy gateway /send may return 500 or an unreadable response
+        // after sending. Only its explicit pre-send rejections are retryable.
+        return { ...result, definiteFailure: result.outcomeUnknown !== true && [
+          "baileys_gateway_not_configured", "unauthorized", "whatsapp_not_connected",
+          "missing_target_or_message", "target_not_allowed", "gateway_cooldown_active",
+        ].includes(result.error ?? "") };
+      });
+    }
+    const sendResult = await sendTextMessage({ target, message });
     if (!sendResult.ok) throw new Error(sendResult.error || "WhatsApp direct delivery failed");
     return sendResult.messageId || "";
   }
@@ -420,11 +444,34 @@ export async function sendToRecipient(
     ? await resolveCredentialTermsForVariants([variantId], database)
     : await resolveCredentialTermsByItem(orderCode, database);
   const { credentialMessages } = await import("@/lib/telegram/messages/credential");
-  const { sendTelegramCredentialParts } = await import("@/lib/telegram/credential-delivery");
-  const sent = await sendTelegramCredentialParts(target, credentialMessages({
+  const messages = credentialMessages({
     orderCode, plaintext, productName, copy: copies.get(variantId || 0), secretTag: "code",
-  }));
+  });
+  if (automatic) {
+    if (!/^[1-9]\d*$/.test(target) || !Number.isSafeInteger(Number(target))) throw new Error("no_private_telegram_chat");
+    return sendFencedCredential(database, automatic.itemId, automatic.leaseFence, "telegram", messages, async text => {
+      const sent = await sendMessage({ chat_id: target, text, parse_mode: "HTML", disable_web_page_preview: true });
+      return {
+        ok: Boolean(sent?.ok), messageId: String(sent?.result?.message_id ?? ""),
+        definiteFailure: Number(sent?.error_code) >= 400 && Number(sent?.error_code) < 500 && sent?.error_code !== 408,
+      };
+    });
+  }
+  const { sendTelegramCredentialParts } = await import("@/lib/telegram/credential-delivery");
+  const sent = await sendTelegramCredentialParts(target, messages);
   return sent.messageId;
+}
+
+/** Waiting for another send/unknown result is not another failed send attempt. */
+async function deferFencedSend(error: unknown, itemId: number, leaseFence: string, database: DatabaseAccess): Promise<boolean> {
+  if (!(error instanceof CredentialSendDeferred)) return false;
+  await database.execRun(
+    `UPDATE fulfillment_items SET status='retry',last_error=?,locked_until=NULL,
+       attempt_count=MAX(0,attempt_count-1),next_attempt_at=datetime('now','+10 minutes'),updated_at=datetime('now')
+     WHERE id=? AND locked_until=? AND status='sending'`,
+    error.message, itemId, leaseFence,
+  ).catch(() => undefined);
+  return true;
 }
 
 /**

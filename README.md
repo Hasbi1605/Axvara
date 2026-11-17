@@ -1,5 +1,20 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Fence kirim kredensial C0 (18 November 2026, lokal)
+
+Migrasi0135 menambah tabel kecil `fulfillment_send_claims` (PK item+kanal,
+FK `ON DELETE CASCADE`, tanpa trigger), bukan mengubah ledger email atau
+menumpuk metadata item di konfigurasi. Klaim CAS+token mengamankan push
+Telegram/WhatsApp; sukses dicheckpoint per bagian, retry `sent` hanya
+memulihkan item. Ambigu tetap `sending` selama600detik; sender berhenti
+memulai bagian setelah30detik, timeout native10/15detik (transport≤40/45detik).
+Maks5klaim otomatis dan hash payload mencegah replay tak terbatas/resume isi
+berubah. Pending tidak menghabiskan retry item/job. Email, owner-fetch Telegram,
+handover admin dan kill-switch WA tetap; tidak ada endpoint/env baru.
+Schema+0135 dua kali diverifikasi Wrangler D1 lokal; native workerd menguji
+CAS konkurensi/failed/stale. Belum deployment, bukan exactly-once provider
+setelah takeover ambigu. Detail `docs/ARCHITECTURE.md` C0 dan aturan kredensial.
+
 ## Probe kesehatan A-S (18 November 2026, lokal)
 
 Scheduler menambah home/katalog/quote setelah seluruh job cron, memakai alarm

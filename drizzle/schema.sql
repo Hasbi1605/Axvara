@@ -1061,6 +1061,21 @@ CREATE TABLE IF NOT EXISTS buyer_notice_log (
 );
 CREATE INDEX IF NOT EXISTS idx_buyer_notice_order ON buyer_notice_log(order_code);
 
+-- Automatic Telegram/WhatsApp credential sends (0135); not admin resends.
+CREATE TABLE IF NOT EXISTS fulfillment_send_claims (
+  item_id INTEGER NOT NULL REFERENCES fulfillment_items(id) ON DELETE CASCADE,
+  channel TEXT NOT NULL CHECK (channel IN ('telegram', 'whatsapp')),
+  status TEXT NOT NULL CHECK (status IN ('sending', 'sent', 'failed')),
+  token TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  part_count INTEGER NOT NULL DEFAULT 0 CHECK (part_count >= 0),
+  attempt_count INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count >= 1),
+  message_id TEXT,
+  error TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (item_id, channel)
+);
+
 -- Kolom WR di katalog utama (0027) + marker kepemilikan WR (0029).
 -- Guard PRAGMA agar schema.sql tetap rerun-aman di fixture/dev.
 -- Kolom SK di katalog utama + registry mirror + exactly-once (0049).

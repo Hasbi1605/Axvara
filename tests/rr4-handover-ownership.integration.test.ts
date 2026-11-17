@@ -197,7 +197,9 @@ describe("RR4-05 final attempt failure syncs job, item, and order", () => {
     fixture.sql.prepare("UPDATE fulfillment_jobs SET attempt_count=4 WHERE order_code='AXV-20260908-RR450001'").run();
     fixture.sql.prepare("UPDATE fulfillment_items SET attempt_count=4 WHERE order_code='AXV-20260908-RR450001'").run();
     const { sendMessage } = await import("@/lib/telegram/api");
-    (sendMessage as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Request timeout"));
+    // Penolakan pasti tetap menghabiskan retry. Timeout sekarang ambigu dan
+    // menunggu fence kirim, bukan kegagalan terminal langsung.
+    (sendMessage as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: false, error_code: 403, description: "Forbidden" });
     const product = fixture.sql.prepare("SELECT * FROM products WHERE id=1").get()!;
     const fresh = fixture.sql.prepare("SELECT * FROM orders WHERE code='AXV-20260908-RR450001'").get()!;
     const jobId = Number(fixture.sql.prepare("SELECT id FROM fulfillment_jobs WHERE order_code='AXV-20260908-RR450001'").get()?.id);

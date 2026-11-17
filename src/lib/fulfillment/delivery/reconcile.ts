@@ -79,9 +79,9 @@ export async function reconcileSettledJobs(limit = 2, database: DatabaseAccess =
  * (UNIQUE order_code); already-delivered orders are skipped by callers that
  * check fulfillment_status, and processJob claims each job via CAS, so a
  * retry or a recovered worker reuses progress instead of resending what
- * already shipped. No singular-delivery promise is made about the provider:
- * after an ambiguous crash the retry budget bounds redelivery; reconcile
- * against provider logs when in doubt (see releaseStaleJobs).
+ * already shipped. Push also consults the per-item send ledger: sent is not
+ * replayed and sending waits 600s before bounded takeover. No singular-delivery
+ * promise is made about an ambiguous provider result (see releaseStaleJobs).
  */
 export async function reconcileMissingFulfillmentJobs(limit = 8): Promise<number> {
   const orphans = await queryAll(

@@ -99,6 +99,7 @@ export async function processJobItems(
   const start = Number(claimed.item_cursor ?? 0);
   let attempted = 0;
   let failure: string | null = null;
+  let sendDeferred = false;
   // Item milik pipeline WR (wr_link_id NOT NULL) dilewati di sini (P0-5):
   // WR menyelesaikannya via wr_order_links, bukan processItem. Tanpa filter
   // ini, item WR queued memicu scheduleRetryFenced selamanya.
@@ -115,17 +116,22 @@ export async function processJobItems(
   const todo = pending.filter((r) => Number(r.item_index) >= start).concat(pending.filter((r) => Number(r.item_index) < start));
   for (const row of todo.slice(0, Math.max(0, maxItems))) {
     // Worst-case item recovery + finalization are reserved before any provider call.
-    // Shared/manual need at most eight statements including a failed settle,
-    // retry, cursor and error reread; unique may also repair an inventory binding.
+    // Push additionally reserves its durable claim/read/checkpoint and snapshot.
+    // Multi-part sends yield before exhausting the remaining checkpoint budget.
     const copyCost = String(row.recipient_channel || channel) === "telegram" && row.fulfillment_mode !== "manual" ? 1 : 0;
-    const itemCost = (row.tunvn_link_id != null || row.aivault_link_id != null ? 16 : row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8) + copyCost;
+    const pushCost = ["telegram", "whatsapp"].includes(String(row.recipient_channel || channel)) && row.fulfillment_mode !== "manual" ? 4 : 0;
+    const itemCost = (row.tunvn_link_id != null || row.aivault_link_id != null ? 16 : row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8) + copyCost + pushCost;
     if (!database.canSpend(itemCost + COST_PER_JOB_FRAME) || (shouldContinue && !shouldContinue())) break;
     if (row.status === "failed") { failure ??= String(row.last_error || "item failed"); continue; }
     const ok = await processItem(order, row, process.env.TELEGRAM_ADMIN_CHAT_ID, database, { jobId, lease });
     attempted++;
     const checkpoint = await execRun(`UPDATE fulfillment_jobs SET item_cursor=? WHERE id=? AND locked_until=? AND status='sending'`, Number(row.item_index) + 1, jobId, lease);
     if (!checkpoint.changes) return { done: false, reason: "not_owned", attempted, finished: false };
-    if (!ok) failure ??= String((await queryFirst(`SELECT last_error FROM fulfillment_items WHERE id=?`, Number(row.id)))?.last_error || "item delivery failed");
+    if (!ok) {
+      const error = String((await queryFirst(`SELECT last_error FROM fulfillment_items WHERE id=?`, Number(row.id)))?.last_error || "item delivery failed");
+      if (error.startsWith("credential_send_deferred:")) sendDeferred = true;
+      else failure ??= error;
+    }
   }
   const rows = await queryAll(`SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index ASC`, orderCode);
   const mismatches = fulfillmentLineMismatches(order.items, rows);
@@ -142,6 +148,10 @@ export async function processJobItems(
   if (failure) {
     const outcome = await scheduleRetryFenced(jobId, failure, lease, database, true);
     return { done: false, reason: outcome.owned ? "item_failed" : "not_owned", attempted, finished: false };
+  }
+  if (sendDeferred) {
+    const owned = await writeJobOutcome(jobId, lease, "retry", "retry", database, { error: "credential_send_pending", delay: 10 });
+    return { done: false, reason: owned ? "budget_yield" : "not_owned", attempted, finished: false };
   }
   // A normal checkpoint is not a failed delivery attempt.
   const owned = await writeJobOutcome(jobId, lease, "queued", null, database);

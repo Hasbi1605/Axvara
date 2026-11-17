@@ -271,8 +271,10 @@ export async function getDueJobs(limit = 8, database: DatabaseAccess = createDat
  * - Unknown provider outcome is explicit: recovery CANNOT know whether the
  *   dead worker's send reached Telegram/WhatsApp before dying. Recovered
  *   rows carry last_error='stale_lock_recovered:delivery_outcome_unknown'
- *   so the admin can reconcile against provider logs; resend is bounded by
- *   the normal attempt budget and makes no singular-delivery promise.
+ *   so the admin can reconcile against provider logs. Automatic push now also
+ *   consults fulfillment_send_claims: a live 600s send claim waits, sent only
+ *   heals item settlement. Stale ambiguous sends have a five-claim ceiling;
+ *   there is still no singular-delivery promise from the provider.
  */
 export async function releaseStaleJobs(database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
   const { execRun, isD1Mode } = database;

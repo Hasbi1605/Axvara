@@ -106,7 +106,7 @@ it("a failed third unit retries the same credential while the first two remain d
  await web();fx.sql.exec(`UPDATE orders SET status='lunas',payment_status='paid',sales_channel='telegram',telegram_chat_id='12345',telegram_user_id='12345' WHERE code='${code}'`);
  let failed=false;
  vi.mocked(sendMessage).mockImplementation(async params=>{
-  if(String(params.text).includes('UNIT-3')&&!failed){failed=true;return {ok:false,description:'fixture send failure'} as never;}
+  if(String(params.text).includes('UNIT-3')&&!failed){failed=true;return {ok:false,error_code:403,description:'fixture send failure'} as never;}
   return {ok:true,result:{message_id:1}} as never;
  });
  await ensureFulfillmentForPaidOrder(code);

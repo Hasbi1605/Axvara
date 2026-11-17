@@ -1,5 +1,23 @@
 # PRD — AXVARA
 
+## C0: kredensial otomatis tidak dikirim ulang saat lease item pulih — 18 November 2026 (lokal)
+
+- Shared/unique dan receipt TUNVN/AIVault yang dikirim lewat Telegram/WhatsApp
+  memakai satu klaim durable per item/kanal. Dua eksekutor yang bertabrakan
+  tidak mengirim paralel; setelah sukses, retry hanya memulihkan status item.
+- Pengiriman multipart melanjutkan bagian yang belum diakui, bukan mengulang
+  kredensial di bagian awal. Hasil ambigu menunggu sedikitnya10menit sebelum
+  takeover; lebih memilih terlambat daripada langsung menggandakan kiriman.
+  Pemulihan sesudah10menit masih dapat menggandakan bagian yang hasilnya tidak
+  diketahui; tidak ada janji exactly-once provider. Maks5klaim otomatis;
+  payload berubah sebelum selesai atau batas habis membutuhkan tindak lanjut
+  admin lewat retry/manual existing.
+- Email tidak berubah. Ambil ulang detail oleh pemilik Telegram dan handover
+  admin tetap jalur eksplisit terpisah; tidak membuat endpoint resend admin
+  baru atau mengaktifkan WhatsApp. Shared push memakai snapshot terenkripsi
+  pertama meski secret varian dirotasi saat settlement belum selesai.
+- Implementasi dan fixture/native D1 lokal, bukan bukti deployment/pengiriman nyata.
+
 ## A-S: kesehatan checkout tanpa transaksi — 18 November 2026 (lokal)
 
 Tiga probe per tick menit memeriksa home/katalog/quote setelah pekerjaan order.

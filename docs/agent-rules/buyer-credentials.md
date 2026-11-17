@@ -1,5 +1,38 @@
 # Aturan agent — Kredensial pembeli (invoice + kontak + PIN)
 
+## C0 fence kirim otomatis per item/kanal — 18 November 2026 (lokal)
+
+- Migrasi `0135_fulfillment_send_claims.sql` menambah ledger khusus D1 dengan
+  PK `(item_id,channel)` Telegram/WhatsApp, status `sending/sent/failed`, token
+  kepemilikan, SHA-256 payload, checkpoint bagian dan jumlah klaim. Jangan
+  memakai `store_settings`, membangun ulang `buyer_notice_log`, atau menyimpan
+  plaintext/penerima di ledger ini. FK item `ON DELETE CASCADE`; tanpa trigger.
+- Otomatis shared/unique dan receipt TUNVN/AIVault mengklaim lewat UPSERT CAS
+  hanya saat lease item persis masih aktif. Hanya pemenang boleh mengirim;
+  ledger hilang/gagal dibaca = fail-closed, bukan fallback kirim tanpa klaim.
+  Sukses `sent` memulihkan settlement item tanpa kirim ulang. Snapshot shared
+  push disimpan terenkripsi sebelum kirim dan dipakai lagi saat pemulihan.
+- Penolakan Telegram4xx eksplisit (kecuali408), atau reason WA pra-kirim yang
+  dikenal = `failed`, boleh retry. Timeout/jaringan/5xx/hasil tak terbaca dan
+  checkpoint gagal = tetap `sending`; baru dapat diambil alih sesudah **600
+  detik**. WA `outcomeUnknown:false` sendiri BUKAN bukti penolakan pasti.
+  Stop memulai bagian setelah30detik; timeout native Telegram teks10detik,
+  WA15detik, sehingga transport terakhir≤40/45detik, jauh di bawah600detik.
+- Tiap bagian sukses dicheckpoint; retry hanya melanjutkan bagian yang belum
+  diakui. Payload berubah sebelum `sent` ditolak `credential_send_payload_changed`
+  agar indeks checkpoint tidak menunjuk isi berbeda; admin perlu merekonsiliasi.
+  `sent` dipercaya tanpa mengirim ulang sekalipun copy/S&K sudah berubah.
+- Pending/ambigu/yield menunda item/job10menit tanpa menghabiskan jatah gagal.
+  Ledger membatasi maksimal5 klaim otomatis (termasuk yield); habis masuk retry
+  gagal normal menuju tindak lanjut admin, bukan mengirim tanpa batas. Klaim
+  basi setelah hasil ambigu tetap bisa menggandakan bagian terakhir: bukan
+  jaminan exactly-once di provider. Lebih baik terlambat daripada replay segera.
+- Email web/salinan Telegram dan ledger email TIDAK berubah. Tombol pembeli
+  `resendTelegramCredentials` (pemilik + chat privat) dan handover admin memakai
+  jalur eksplisit existing, bukan fence item otomatis. Tidak membuat API resend
+  admin baru, tidak mengaktifkan DM/bot WhatsApp atau mengubah kill-switch.
+- Status: implementasi/fixture/native D1 lokal; belum publikasi/deployment.
+
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
 ## PIN di halaman setelah lunas — keputusan owner 16 November 2026
