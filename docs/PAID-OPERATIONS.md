@@ -37,11 +37,14 @@ belum trafik pembeli/bot. Ini perhitungan jadwal, bukan metering tagihan.
 Tidak ada panggilan gateway ketika tidak ada invoice due; pekerjaan berat
 katalog tidak dipercepat. Jatah Workers Paid10juta request dan30juta CPU-ms
 per bulan harus tetap diukur; jumlah request saja tidak membuktikan biayaCPU.
-Revisi lokal 17 Nov 2026 (belum deploy): `tunvn_catalog` dan `aivault_catalog` naik
+Revisi 17–18 Nov 2026: `tunvn_catalog` dan `aivault_catalog` naik
 dari 3 menit menjadi setiap 1 menit (+1.920 request origin/hari dibanding 3 menitan),
 probe Buff TUNVN cron tetap 3 menit (`tunvn_buff_sync_at`), dan `aivault_catalog` /
 `tunvn_catalog` / `jaspay_catalog` langsung menguras `decideDirtyWinners` saat
-sukses dengan `db.canSpend(4)` (backstop `cleanup` 5 menit tetap ada).
+sukses dengan `db.canSpend(4)` (backstop `cleanup` 5 menit tetap ada). Sisi
+Pages/Workers masih lokal (belum deploy); diff sync 1 menit di `axvara-wr-proxy`
+sudah terpasang di VPS pada 18 Nov 2026 (`dist.backup-diff1m-20261118`, `/health`
+200, `"diff sync started (1 min)"`).
 
 `scripts/cloudflare-plan.cjs` membaca langganan account. D1 monitor memakai
 awal/akhir periode aktual dan jatah25miliar rows read/50juta rows written pada

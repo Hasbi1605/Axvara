@@ -4,7 +4,7 @@
 
 - `mcp-worker/src/cron.ts` menghapus `everyMinutes: 3` pada `lite:tunvn_catalog` dan `lite:aivault_catalog` sehingga keduanya berjalan setiap 1 menit di trigger `* * * * *` existing (`jaspay_catalog` tetap tiap menit). `cleanup` tetap 5 menit dan `games_catalog` tetap 10 menit.
 - `src/app/api/cron/lite/route.ts` menambah `drainDirtyGroupsIfBudget(db, result)` setelah run `aivault_catalog`, `tunvn_catalog`, dan `jaspay_catalog` yang sukses (tidak skipped/503): memeriksa `db.canSpend(4)`, memanggil `decideDirtyWinners(db)` dari `@/lib/supplier-pairs`, menulis `pairs_decided` + `pairs_changed`, dan mengisolasi error non-`QueryBudgetExceeded` agar job katalog tetap 200. `decideDirtyWinners(db)` di `runCleanup` tetap sebagai backstop 5 menit.
-- Budget statement tidak berubah (`jaspay_catalog` 96, `tunvn_catalog`/`aivault_catalog` 40). Implementasi lokal + test; belum deploy ke Pages/Workers/VPS.
+- Budget statement tidak berubah (`jaspay_catalog` 96, `tunvn_catalog`/`aivault_catalog` 40). Implementasi Pages/Workers masih lokal + test (belum deploy ke Pages/Workers); diff sync 1 menit `axvara-wr-proxy` sudah dideploy ke VPS pada 18 Nov 2026 (`dist.backup-diff1m-20261118`, `sha256sum` cocok, `/health` 200, `"diff sync started (1 min)"`).
 
 ### Retry metadata Cloudflare —17November2026 (lokal)
 

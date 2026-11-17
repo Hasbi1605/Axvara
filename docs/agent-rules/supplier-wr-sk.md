@@ -1,5 +1,18 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Diff sync VPS 1 menit + trigger pairs WR/SK — 18 November 2026 (VPS terpasang)
+
+- `axvara-wr-proxy/src/diff-sync.ts` & `src/index.ts` menurunkan interval diff
+  WR/SK dari 3 menit menjadi 1 menit (`DEFAULT_DIFF_INTERVAL_MS = 60_000`, log
+  `"diff sync started (1 min)"`) dan memicu `POST /api/supplier-sync`
+  `{ supplier: "sk", action: "pairs" }` setiap WR atau SK menerapkan perubahan
+  (`ok && (sent || removed)`), bukan hanya SK.
+- Rilis VPS terverifikasi 18 Nov 2026 (`00:12 WIB`): backup penuh
+  `/opt/axvara/wr-proxy/dist.backup-diff1m-20261118`, 4 modul `dist/*.js` cocok
+  `sha256sum` lokal (`.env` dan `state/` utuh), `systemctl is-active wr-proxy`
+  = `active`, `GET /health` HTTP 200 (`sekalipay:true,skg:true,dgf:true,indosmm:true`),
+  `journalctl` mencatat `"diff sync started (1 min)"`.
+
 ## Modal laporan supplier gagal — keputusan owner 16 November 2026 (lokal)
 
 Link WR/SK `failed` tanpa keberhasilan dihitung modal Rp0 dan bukan estimasi
