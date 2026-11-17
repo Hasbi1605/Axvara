@@ -44,11 +44,11 @@ export async function GET(req: NextRequest) {
   else if (/^(?:[a-z0-9_-]{1,32}|(?:nowpayments|sekalipay_gateway):[a-z0-9_-]{1,64})$/.test(method)) { conditions.push("LOWER(o.payment_method)=?"); bindings.push(method); }
   if (proof === "submitted") conditions.push("EXISTS(SELECT 1 FROM payment_proofs pf WHERE pf.order_code=o.code AND pf.status='submitted')");
   if (query) {
-    conditions.push(`LOWER(o.code || ' ' || COALESCE(o.customer_name,'') || ' ' || COALESCE(o.customer_wa,'') || ' ' || COALESCE(o.items,'') || ' ' ||
+    conditions.push(`INSTR(LOWER(o.code || ' ' || COALESCE(o.customer_name,'') || ' ' || COALESCE(o.customer_wa,'') || ' ' || COALESCE(o.items,'') || ' ' ||
       COALESCE((SELECT ${GAMES_ORDER_LABEL_SQL} FROM games_order_items gi
         JOIN games_products gp ON gp.id=gi.product_id LEFT JOIN games_meta gm ON gm.slug=gp.game_slug
-        WHERE gi.order_code=o.code AND o.order_kind='games'),'')) LIKE ?`);
-    bindings.push(`%${query.toLowerCase()}%`);
+        WHERE gi.order_code=o.code AND o.order_kind='games'),'')), ?) > 0`);
+    bindings.push(query.toLowerCase());
   }
   // Prefix tanggal UTC mencakup format ISO dan SQLite. Batas mentah
   // mempertahankan peluang pemakaian indeks tanpa fungsi date() pada kolom.

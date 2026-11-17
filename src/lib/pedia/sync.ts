@@ -137,22 +137,27 @@ export async function applyPediaDiff(
   // 3. Untuk tingkat yang memakai layanan yang berubah/hilang: hitung ulang
   //    harga paket + guard margin. Scope dibatasi ke service_id yang tersentuh
   //    agar tick diff kecil (kuota D1 §9.8).
-  const touched = new Set<number>([
+  const touched = [...new Set<number>([
     ...list.map((s) => Number(s?.service_id)).filter(Number.isFinite),
     ...removed,
-  ]);
-  if (touched.size === 0) return out;
+  ])];
+  if (touched.length === 0) return out;
 
-  const placeholders = [...touched].map(() => "?").join(",");
-  const tiers = await db.queryAll(
-    `SELECT t.*, s.rate_idr_per_1k AS live_rate, s.present AS live_present,
-            s.min_qty AS live_min, s.max_qty AS live_max, s.type AS live_type
-       FROM pedia_tiers t
-       LEFT JOIN pedia_supplier_services s
-         ON s.supplier=t.supplier AND s.service_id=t.supplier_service_id
-      WHERE t.supplier=? AND t.supplier_service_id IN (${placeholders})`,
-    supplier, ...[...touched],
-  );
+  const tiers: Record<string, unknown>[] = [];
+  for (let i = 0; i < touched.length; i += 50) {
+    const chunk = touched.slice(i, i + 50);
+    const placeholders = chunk.map(() => "?").join(",");
+    const chunkRows = await db.queryAll(
+      `SELECT t.*, s.rate_idr_per_1k AS live_rate, s.present AS live_present,
+              s.min_qty AS live_min, s.max_qty AS live_max, s.type AS live_type
+         FROM pedia_tiers t
+         LEFT JOIN pedia_supplier_services s
+           ON s.supplier=t.supplier AND s.service_id=t.supplier_service_id
+        WHERE t.supplier=? AND t.supplier_service_id IN (${placeholders})`,
+      supplier, ...chunk,
+    );
+    tiers.push(...chunkRows);
+  }
   const minOrderRp = pediaMinOrderRp();
 
   for (const t of tiers) {

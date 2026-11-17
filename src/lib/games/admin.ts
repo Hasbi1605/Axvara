@@ -137,8 +137,6 @@ export interface GamesListPage {
   brands: string[];
 }
 
-const likeEscape = (value: string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
-
 /** Daftar SKU admin: filter brand (case-insensitive), enabled, cari kode/nama. */
 export async function listGamesProducts(db: DatabaseAccess, filters: GamesListFilters = {}): Promise<GamesListPage> {
   const limit = Math.min(Math.max(Math.trunc(filters.limit ?? 50) || 50, 1), GAMES_ADMIN_MAX_LIMIT);
@@ -157,9 +155,9 @@ export async function listGamesProducts(db: DatabaseAccess, filters: GamesListFi
   }
   const query = String(filters.q ?? "").trim();
   if (query) {
-    where.push("(lower(buyer_sku_code) LIKE ? ESCAPE '\\' OR lower(product_name) LIKE ? ESCAPE '\\')");
-    const pattern = `%${likeEscape(query.toLowerCase())}%`;
-    params.push(pattern, pattern);
+    where.push("(INSTR(LOWER(COALESCE(buyer_sku_code,'')), ?) > 0 OR INSTR(LOWER(COALESCE(product_name,'')), ?) > 0)");
+    const needle = query.toLowerCase();
+    params.push(needle, needle);
   }
   if (filters.sellable === true) where.push(GAMES_SELLABLE_SQL);
   if (filters.region) {

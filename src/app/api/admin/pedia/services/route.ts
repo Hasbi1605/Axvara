@@ -62,11 +62,13 @@ export async function GET(request: NextRequest) {
   if (q.get("compatible") === "1") where.push(`s.type='Default' AND s.present=1 AND s.rate_idr_per_1k>0 AND s.min_qty>0 AND s.max_qty>=s.min_qty`);
   if (["mapped", "unmapped"].includes(q.get("mapping") || "")) where.push(`${q.get("mapping") === "unmapped" ? "NOT " : ""}EXISTS (SELECT 1 FROM pedia_tiers t WHERE t.supplier=s.supplier AND t.supplier_service_id=s.service_id)`);
   if (search) {
-    where.push(`(s.name LIKE ? ESCAPE '\\' OR CAST(s.service_id AS TEXT) LIKE ?)`);
-    const like = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    params.push(like, `%${search.replace(/\D/g, "") || "§"}%`);
+    where.push(`(INSTR(LOWER(COALESCE(s.name,'')), ?) > 0 OR INSTR(CAST(s.service_id AS TEXT), ?) > 0)`);
+    params.push(search.toLowerCase(), search.replace(/\D/g, "") || "§");
   }
-  if (platform) { where.push(`s.name LIKE ? ESCAPE '\\'`); params.push(`%${platform}%`); }
+  if (platform) {
+    where.push(`INSTR(LOWER(COALESCE(s.name,'')), ?) > 0`);
+    params.push(platform.toLowerCase());
+  }
   if (indonesia) { where.push(`s.name LIKE '%ndonesia%'`); }
   if (garansi) {
     where.push(`(s.name LIKE '%aransi%' OR s.name LIKE '%efill%' OR s.name LIKE '%♻%' OR s.name LIKE '%R30%')`);

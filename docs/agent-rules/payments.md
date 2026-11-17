@@ -1,5 +1,8 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Trigger `payment_invoice_history_*` aman di bawah UPSERT — 18 November 2026 (lokal, F4)
+
+- Migrasi `0133_payment_invoice_history_upsert.sql` (selaras `drizzle/schema.sql`) mendefinisikan ulang trigger `payment_invoice_history_insert` dan `payment_invoice_history_update` dari `INSERT OR IGNORE` ke `INSERT ... ON CONFLICT(provider, order_code, payable_amount) DO NOTHING` agar tidak terkena override `ABORT` SQLite bila `payment_transactions` ditulis dengan `ON CONFLICT ... DO UPDATE` untuk `dana`/`gopay`. Trigger baru pada ledger pembayaran dilarang memakai `INSERT OR IGNORE`/`OR REPLACE`.
 ## Isolasi stok Market saat expiry — 18 November 2026 (lokal)
 
 `transitionPendingPaymentOrder` (expiry + `stale_initializing`) dan

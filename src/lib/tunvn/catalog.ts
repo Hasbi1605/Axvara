@@ -78,8 +78,8 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
     const knownSlugs = [...new Set(families.flatMap(f => [f.family.slug, ...f.family.imageFromSlugs]))];
     const products = await db.queryAll(
       `SELECT id, slug, tunvn_family, image_url, is_active FROM products
-        WHERE tunvn_family IS NOT NULL OR slug LIKE '%tunvn' OR slug IN (${knownSlugs.map(() => "?").join(",")})`,
-      ...knownSlugs,
+        WHERE tunvn_family IS NOT NULL OR slug LIKE '%tunvn' OR slug IN (SELECT value FROM json_each(?))`,
+      JSON.stringify(knownSlugs),
     ) as ProductRow[];
     const productBySlug = new Map(products.map(p => [String(p.slug), p]));
 

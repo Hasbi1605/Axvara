@@ -131,6 +131,14 @@ guard ID+nama, mengarsipkan yang lama tanpa memindahkan histori order. Schema
 menambah `product_groups`, `product_group_members`, `product_group_dirty`.
 Migrasi `0132_product_group_dirty_upsert.sql` mengganti trigger dirty grup ke
 `ON CONFLICT DO UPDATE` agar tidak menggagalkan sync supplier berbentuk UPSERT.
+Migrasi `0133_payment_invoice_history_upsert.sql` mengganti trigger
+`payment_invoice_history_*` dari `INSERT OR IGNORE` ke
+`ON CONFLICT(provider, order_code, payable_amount) DO NOTHING` agar aman di
+bawah `UPSERT` `payment_transactions` (DANA/GoPay).
+Query `IN (...)` berpotensi >100 ID dipotong ≤50/statement atau memakai
+`json_each(?)`, pencarian admin panjang memakai `INSTR(LOWER(...), ?) > 0`
+(batas `LIKE`/`GLOB` D1 50 byte), dan `/api/supplier-sync` membalas 500 pada
+error parsial/removal agar snapshot VPS tidak maju palsu.
 API admin baru `/api/admin/product-groups`, `/:id`, `/:id/members`, `/decide`;
 API pasangan lama410. Tidak ada env/cron/proxy baru atau failover pesanan.
 Detail kontrak/modal/CAS: ARCHITECTURE “Grup produk lintas supplier”.

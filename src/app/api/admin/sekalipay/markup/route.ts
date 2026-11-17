@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q")?.trim().slice(0, 60) || "";
   // Limit 200: registry SK premium ~153 baris muat 1 request (cermin WR).
   const limit = Math.min(200, Math.max(1, Number(request.nextUrl.searchParams.get("limit") || 200)));
-  const like = `%${q.toLowerCase()}%`;
+  const needle = q.toLowerCase();
   const rows = await queryAll(
     `SELECT sp.sk_variant_id, sp.sk_variant_name, sp.sk_price, sp.sk_stock,
             sp.sk_order_process, sp.sk_min_order, sp.sk_status,
@@ -41,15 +41,15 @@ export async function GET(request: NextRequest) {
      LEFT JOIN product_variants pv ON pv.id=sp.axvara_variant_id
      LEFT JOIN products p ON p.id=pv.product_id
      WHERE sp.sk_category='Aplikasi Premium'
-      ${q ? "AND (lower(sp.sk_variant_name) LIKE ? OR lower(sp.sk_product_name) LIKE ?)" : ""}
+      ${q ? "AND (INSTR(LOWER(COALESCE(sp.sk_variant_name,'')), ?) > 0 OR INSTR(LOWER(COALESCE(sp.sk_product_name,'')), ?) > 0)" : ""}
      ORDER BY sp.sk_product_name ASC, sp.sk_variant_name ASC LIMIT ?`,
-    ...(q ? [like, like, limit] : [limit]),
+    ...(q ? [needle, needle, limit] : [limit]),
   ).catch(() => []);
   const totalRow = await queryFirst(
     `SELECT COUNT(*) AS total FROM sk_products sp
      WHERE sp.sk_category='Aplikasi Premium'
-      ${q ? "AND (lower(sp.sk_variant_name) LIKE ? OR lower(sp.sk_product_name) LIKE ?)" : ""}`,
-    ...(q ? [like, like] : []),
+      ${q ? "AND (INSTR(LOWER(COALESCE(sp.sk_variant_name,'')), ?) > 0 OR INSTR(LOWER(COALESCE(sp.sk_product_name,'')), ?) > 0)" : ""}`,
+    ...(q ? [needle, needle] : []),
   ).catch(() => null);
   const withStatus = (rows as Record<string, unknown>[]).map((r) => {
     const pvActive = r.pv_is_active == null ? 1 : Number(r.pv_is_active);

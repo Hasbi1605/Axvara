@@ -1431,15 +1431,17 @@ export async function syncProducts(
 export async function zeroVariantsByIds(ids: string[], db: DatabaseAccess): Promise<number> {
   const unique = [...new Set(ids.map(String).filter((id) => id.length > 0 && !id.startsWith("jaspay:")))].slice(0, 200);
   if (!unique.length) return 0;
-  const rows = await db
-    .queryAll(
+  const rows: Row[] = [];
+  for (const part of chunked(unique, PREFETCH_PARAM_CHUNK)) {
+    const chunkRows = await db.queryAll(
       `SELECT w.wr_variant_id, w.axvara_variant_id, pv.product_id FROM wr_variants w
        LEFT JOIN product_variants pv ON pv.id = w.axvara_variant_id
-       WHERE w.is_active=1 AND w.wr_variant_id IN (${unique.map(() => "?").join(",")})
+       WHERE w.is_active=1 AND w.wr_variant_id IN (${placeholders(part.length)})
          AND (w.wr_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
-      ...unique,
-    )
-    .catch(() => [] as Row[]);
+      ...part,
+    );
+    rows.push(...chunkRows);
+  }
   const now = new Date().toISOString();
   const parents = new Set<number>();
   for (const row of rows) {
@@ -1449,8 +1451,10 @@ export async function zeroVariantsByIds(ids: string[], db: DatabaseAccess): Prom
     );
     const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
     if (vid > 0) {
-      await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`, vid)
-        .catch(() => ({ changes: 0 }));
+      await db.execRun(
+        `UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
+        vid,
+      );
     }
     if (row.product_id != null) parents.add(Number(row.product_id));
   }

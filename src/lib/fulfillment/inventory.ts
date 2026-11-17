@@ -315,12 +315,17 @@ export async function revokeInventoryBatch(productId: number, variantId: number 
   const ids = [...new Set(inventoryIds)].filter(id => Number.isSafeInteger(id) && id > 0);
   if (!ids.length) return 0;
   if (isD1Mode()) {
-    const result = await execRun(
-      `UPDATE fulfillment_inventory SET status='revoked'
-       WHERE id IN (${ids.map(() => "?").join(",")}) AND product_id=? AND variant_id IS ? AND status='available'`,
-      ...ids, productId, variantId,
-    );
-    return Number(result.changes ?? 0);
+    let revoked = 0;
+    for (let i = 0; i < ids.length; i += 50) {
+      const chunk = ids.slice(i, i + 50);
+      const result = await execRun(
+        `UPDATE fulfillment_inventory SET status='revoked'
+         WHERE id IN (${chunk.map(() => "?").join(",")}) AND product_id=? AND variant_id IS ? AND status='available'`,
+        ...chunk, productId, variantId,
+      );
+      revoked += Number(result.changes ?? 0);
+    }
+    return revoked;
   }
   let revoked = 0;
   for (const item of getInventoryMem()) {

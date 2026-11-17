@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       trigger: "cron",
       applyOnly: { products: products as never, removedVariantIds: removed },
     });
-    if (result.errors.length && result.synced === 0 && result.stockChanges === 0) {
+    if (result.errors.length) {
       return NextResponse.json({ ok: false, errors: result.errors.slice(0, 3) }, { status: 500 });
     }
     return NextResponse.json({
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     trigger: "cron",
     applyOnly: { rows: rows as never, removedVariantIds: removed },
   });
-  if (result.errors.length && result.synced === 0 && result.stockChanges === 0) {
+  if (result.errors.length) {
     return NextResponse.json({ ok: false, errors: result.errors.slice(0, 3) }, { status: 500 });
   }
   return NextResponse.json({

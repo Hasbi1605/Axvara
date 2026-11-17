@@ -1,5 +1,11 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Penegakan batas D1 di fixture & hardening query/trigger — 18 November 2026 (lokal, F4)
+
+- `tests/helpers/d1-fixture.ts` menegakkan batas D1 yang terverifikasi di `workerd` Miniflare: maks **100** bound parameter per statement (`>100` melempar `D1_ERROR: too many SQL variables`) dan maks **50 byte UTF-8** untuk pola `LIKE`/`GLOB` literal maupun bound `?` (`>50` melempar `D1_ERROR: LIKE or GLOB pattern too complex`).
+- Query `IN (...)` berkapasitas >100 (`zeroSkVariantsByIds`, `zeroVariantsByIds`, `applyPediaDiff`, `revokeInventoryBatch`) wajib di-chunk ≤50 ID/statement (menyisakan ruang parameter non-ID) atau memakai `json_each(?)` (`publishTunvnCatalog`), tanpa `.catch(() => [])`; pencarian admin panjang memakai `INSTR(LOWER(...), ?) > 0` alih-alih `LIKE ?`.
+- Migrasi `0133_payment_invoice_history_upsert.sql` mengganti `INSERT OR IGNORE` pada trigger `payment_invoice_history_{insert,update}` menjadi `ON CONFLICT(provider, order_code, payable_amount) DO NOTHING` agar aman di bawah `UPSERT` luar pada `payment_transactions`.
+
 ### Penanda sukses sync, 503 subjob inti cron lite, & watchdog basi — 18 November 2026 (lokal)
 
 - Penanda sukses `<sumber>_success_at` (ms epoch `store_settings`) + error tersanitasi `<sumber>_last_error` (≤200 char, tanpa secret) ditulis lewat `src/lib/sync-status.ts` HANYA sesudah mirror + publish/proyeksi penuh berhasil (`tunvn_catalog`, `aivault_catalog`, `jaspay_catalog`, `games_sk_catalog`, `games_catalog`, `pedia_indosmm_balance`); checkpoint klaim throttle tetap ada. Saldo supplier (`supplier-balance-alert.ts`) mencatat `<supplier>_balance_error` `{ at, error, streak }` pada kegagalan beruntun tanpa alert baru, dan `<supplier>_balance_last_ok_at` saat sukses.

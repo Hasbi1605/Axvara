@@ -212,6 +212,12 @@ shim ekspor agar kontrak caller cron/VPS/Telegram existing tetap kompatibel.
   statement luar sehingga OR REPLACE gagal UNIQUE dan seluruh sync katalog ikut
   gagal. Trigger dirty baru WAJIB memakai pola UPSERT ini (`WHERE true` bila
   SELECT tanpa WHERE).
+- Migrasi0133 (18 Nov 2026): `payment_invoice_history_insert` &
+  `payment_invoice_history_update` diganti dari `INSERT OR IGNORE` ke
+  `INSERT … ON CONFLICT(provider, order_code, payable_amount) DO NOTHING`
+  (`drizzle/migrations/0133_payment_invoice_history_upsert.sql`, selaras
+  `drizzle/schema.sql`) agar aman bila `payment_transactions` ditulis lewat
+  `ON CONFLICT ... DO UPDATE` untuk `dana`/`gopay`.
 - Migrasi menyalin 33 pasangan lama, prefer/winner lama ke ID produk, lalu
   mengganti MBO→Jaspay di grup: Zoom15→113, Express VPN20→121, Wink25→115,
   Meitu26→114. Guard ID+nama kedua produk dan keanggotaan mencegah salah target.
@@ -2249,8 +2255,16 @@ render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
     tampil di Produk Serupa, kontrak 2026-10-01; filler katalog lain hanya
     bila kategori sama < 4, hemat rows-read) — tidak ada lagi fetch seluruh
     katalog per halaman.
-  - Batas D1 yang dipatuhi kode: 100 bound parameter/query (batch IN
-    dipotong), LIKE max 50 byte (pola search dipotong 40 char).
+  - Batas D1 yang dipatuhi kode (dan ditegakkan di `tests/helpers/d1-fixture.ts`
+    setelah dikonfirmasi di `workerd` Miniflare): maks 100 bound parameter/query
+    (`zeroSkVariantsByIds`, `zeroVariantsByIds`, `applyPediaDiff`,
+    `revokeInventoryBatch` dipotong ≤50 ID/statement; `publishTunvnCatalog`
+    memakai `json_each(?)` 1 parameter; tanpa `.catch(() => [])` di jalur zero
+    dan `/api/supplier-sync` membalas 500 bila `result.errors.length > 0` agar
+    VPS `diff-sync` mengulang), serta `LIKE`/`GLOB` max 50 byte UTF-8
+    (pencarian admin `/api/admin/orders`, `/api/admin/pedia/services`,
+    `/api/admin/{sekalipay,warung}/markup`, `listGamesProducts` memakai
+    `INSTR(LOWER(...), ?) > 0`).
 - CSP header via Next.js middleware
 - Jangan commit `.env`, `wrangler.toml` dengan secrets — pakai Pages Variables
   - R3 (lokal, 4 Nov 2026) kirim invoice rail baru (gateway/crypto): view status

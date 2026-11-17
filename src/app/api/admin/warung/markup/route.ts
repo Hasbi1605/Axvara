@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   // Limit 200: registry WR ~92 baris muat 1 request (tab markup fetch 1x,
   // filter + pagination murni klien cermin halaman Produk).
   const limit = Math.min(200, Math.max(1, Number(request.nextUrl.searchParams.get("limit") || 200)));
-  const like = `%${q.toLowerCase()}%`;
+  const needle = q.toLowerCase();
   const rows = await queryAll(
     `SELECT wv.wr_variant_id, wv.wr_variant_name, wv.wr_price, wv.wr_stock,
             wv.markup_percent, wv.markup_fixed, wv.axvara_sell_price,
@@ -44,17 +44,17 @@ export async function GET(request: NextRequest) {
      LEFT JOIN wr_products wp ON wp.wr_product_id=wv.wr_product_id
      LEFT JOIN product_variants pv ON pv.id=wv.axvara_variant_id
      LEFT JOIN products p ON p.id=pv.product_id
-      ${q ? "WHERE lower(wv.wr_variant_name) LIKE ? OR lower(wp.wr_product_name) LIKE ?" : ""}
+      ${q ? "WHERE INSTR(LOWER(COALESCE(wv.wr_variant_name,'')), ?) > 0 OR INSTR(LOWER(COALESCE(wp.wr_product_name,'')), ?) > 0" : ""}
       ORDER BY wp.wr_product_name ASC, wv.wr_variant_name ASC LIMIT ?`,
-    ...(q ? [like, like, limit] : [limit]),
+    ...(q ? [needle, needle, limit] : [limit]),
   ).catch(() => []);
   // Total hasil filter (tanpa LIMIT) untuk pagination jujur.
   const totalRow = await queryFirst(
     `SELECT COUNT(*) AS total
      FROM wr_variants wv
      LEFT JOIN wr_products wp ON wp.wr_product_id=wv.wr_product_id
-      ${q ? "WHERE lower(wv.wr_variant_name) LIKE ? OR lower(wp.wr_product_name) LIKE ?" : ""}`,
-    ...(q ? [like, like] : []),
+      ${q ? "WHERE INSTR(LOWER(COALESCE(wv.wr_variant_name,'')), ?) > 0 OR INSTR(LOWER(COALESCE(wp.wr_product_name,'')), ?) > 0" : ""}`,
+    ...(q ? [needle, needle] : []),
   ).catch(() => null);
   // Status toko per varian (cermin liveStatus produk, hierarki:
   // off > kalah > tanpa-katalog > habis > live).

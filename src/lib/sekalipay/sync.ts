@@ -1067,16 +1067,18 @@ export async function zeroMissingSkVariants(
 export async function zeroSkVariantsByIds(ids: string[], db: DatabaseAccess): Promise<number> {
   const unique = [...new Set(ids.map(String).filter((id) => id.length > 0))].slice(0, 200);
   if (!unique.length) return 0;
-  const rows = await db
-    .queryAll(
+  const rows: Row[] = [];
+  for (const chunk of skChunked(unique, SK_PREFETCH_PARAM_CHUNK)) {
+    const part = await db.queryAll(
       `SELECT s.sk_variant_id, s.axvara_variant_id FROM sk_products s
        LEFT JOIN product_variants pv ON pv.id = s.axvara_variant_id
-       WHERE s.is_active=1 AND s.sk_category=? AND s.sk_variant_id IN (${unique.map(() => "?").join(",")})
+       WHERE s.is_active=1 AND s.sk_category=? AND s.sk_variant_id IN (${skPlaceholders(chunk.length)})
          AND (s.sk_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
       SK_SYNC_CATEGORY,
-      ...unique,
-    )
-    .catch(() => [] as Row[]);
+      ...chunk,
+    );
+    rows.push(...part);
+  }
   const now = new Date().toISOString();
   for (const row of rows) {
     await db.execRun(
@@ -1085,8 +1087,10 @@ export async function zeroSkVariantsByIds(ids: string[], db: DatabaseAccess): Pr
     );
     const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
     if (vid > 0) {
-      await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`, vid)
-        .catch(() => ({ changes: 0 }));
+      await db.execRun(
+        `UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
+        vid,
+      );
     }
   }
   return rows.length;

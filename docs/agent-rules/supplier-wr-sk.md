@@ -18,6 +18,8 @@
 
 ## Diff sync VPS 1 menit + trigger pairs WR/SK — 18 November 2026 (VPS terpasang)
 
+- **Error removal & batas 100 param (18 Nov 2026, lokal F4):** `zeroSkVariantsByIds` (`src/lib/sekalipay/sync.ts`) dan `zeroVariantsByIds` (`src/lib/warung-rebahan/sync.ts`) dipotong per 50 ID tanpa `.catch(() => [])` / penelanan error `UPDATE product_variants`; `POST /api/supplier-sync` membalas HTTP 500 kapan pun `result.errors.length > 0` (termasuk bila `synced > 0`) karena `axvara-wr-proxy/src/diff-sync.ts` memajukan snapshot pada setiap 2xx.
+
 - `axvara-wr-proxy/src/diff-sync.ts` & `src/index.ts` menurunkan interval diff
   WR/SK dari 3 menit menjadi 1 menit (`DEFAULT_DIFF_INTERVAL_MS = 60_000`, log
   `"diff sync started (1 min)"`) dan memicu `POST /api/supplier-sync`

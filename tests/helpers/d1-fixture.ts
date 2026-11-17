@@ -50,6 +50,102 @@ export function assertBindCount(query: string, params: unknown[]): void {
       `D1 bind mismatch: query has ${expected} placeholder(s) but got ${params.length} value(s): ${query.slice(0, 120)}`,
     );
   }
+  if (params.length > 100) {
+    throw new Error(
+      `D1_ERROR: too many SQL variables (${params.length} > 100): ${query.slice(0, 120)}`,
+    );
+  }
+  assertD1LikePatterns(query, params);
+}
+
+/**
+ * D1 (`workerd` & remote D1) enforces `SQLITE_LIMIT_LIKE_PATTERN_LENGTH = 50`
+ * bytes (UTF-8) on both literal and bound `LIKE`/`GLOB` patterns.
+ */
+export function assertD1LikePatterns(query: string, params: unknown[]): void {
+  let i = 0;
+  let paramIndex = 0;
+  let prevWord: string | null = null;
+  let prevWasDot = false;
+  const n = query.length;
+  while (i < n) {
+    const ch = query[i];
+    if (ch <= " ") { i++; continue; }
+    if (ch === "-" && query[i + 1] === "-") {
+      while (i < n && query[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && query[i + 1] === "*") {
+      i += 2;
+      while (i < n && !(query[i] === "*" && query[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    if (ch === "'") {
+      i++;
+      let literal = "";
+      while (i < n) {
+        if (query[i] === "'") {
+          if (query[i + 1] === "'") { literal += "'"; i += 2; continue; }
+          i++;
+          break;
+        }
+        literal += query[i++];
+      }
+      if (prevWord === "LIKE" || prevWord === "GLOB") {
+        const bytes = Buffer.byteLength(literal, "utf8");
+        if (bytes > 50) {
+          throw new Error(
+            `D1_ERROR: LIKE or GLOB pattern too complex (${bytes} > 50 bytes): ${query.slice(0, 120)}`,
+          );
+        }
+      }
+      prevWord = null;
+      prevWasDot = false;
+      continue;
+    }
+    if (ch === '"') {
+      i++;
+      while (i < n) {
+        if (query[i] === '"') {
+          if (query[i + 1] === '"') { i += 2; continue; }
+          i++;
+          break;
+        }
+        i++;
+      }
+      prevWord = null;
+      prevWasDot = false;
+      continue;
+    }
+    if (ch === "?") {
+      if ((prevWord === "LIKE" || prevWord === "GLOB") && params[paramIndex] != null) {
+        const bytes = Buffer.byteLength(String(params[paramIndex]), "utf8");
+        if (bytes > 50) {
+          throw new Error(
+            `D1_ERROR: LIKE or GLOB pattern too complex (${bytes} > 50 bytes): ${query.slice(0, 120)}`,
+          );
+        }
+      }
+      paramIndex++;
+      prevWord = null;
+      prevWasDot = false;
+      i++;
+      continue;
+    }
+    if (/[A-Za-z_]/.test(ch)) {
+      const start = i;
+      i++;
+      while (i < n && /[A-Za-z0-9_$]/.test(query[i])) i++;
+      const upper = query.slice(start, i).toUpperCase();
+      prevWord = !prevWasDot && (upper === "LIKE" || upper === "GLOB") ? upper : null;
+      prevWasDot = false;
+      continue;
+    }
+    prevWasDot = ch === ".";
+    prevWord = null;
+    i++;
+  }
 }
 
 export function createD1Fixture() {
