@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { readSyncTimestampSetting } from "@/lib/sync-status";
 import { isTunvnConfigured } from "@/lib/tunvn/client";
 import { isTunvnExcludedProduct, tunvnFamilyForSupplierId } from "@/lib/tunvn/families";
 
@@ -32,7 +33,8 @@ export async function GET(request: NextRequest) {
       `SELECT COUNT(*) AS total, COALESCE(SUM(visible),0) AS published, COALESCE(SUM(publish_requested),0) AS requested, COALESCE(SUM(CASE WHEN stock>0 THEN 1 ELSE 0 END),0) AS in_stock FROM tunvn_products`,
     );
     const mapped = items.filter(item => item.variant_id != null);
-    const last = await db.queryFirst("SELECT value FROM store_settings WHERE key='tunvn_catalog_sync_at'");
+    const lastValue = await readSyncTimestampSetting(db, "tunvn_catalog", "tunvn_catalog_sync_at");
+    const lastMs = lastValue ? Number(lastValue) : NaN;
     return NextResponse.json({
       ok: true,
       configured: isTunvnConfigured(),
@@ -54,7 +56,7 @@ export async function GET(request: NextRequest) {
         mapped: mapped.length,
         active_variants: mapped.filter(item => Number(item.variant_is_active ?? 0) === 1).length,
       },
-      last_sync_at: last?.value ? new Date(Number(last.value)).toISOString() : null,
+      last_sync_at: Number.isFinite(lastMs) ? new Date(lastMs).toISOString() : null,
     });
   } catch {
     return NextResponse.json({ error: "load_failed" }, { status: 500 });

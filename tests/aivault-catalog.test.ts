@@ -94,6 +94,13 @@ it("throttles repeated cron within 45s, runs at 45s, uses 45s lease, and rejects
   vi.mocked(fetch).mockResolvedValueOnce(Response.json({currency:"USD",products:[]}));
   expect(await publishAivaultCatalog(db,20000,{now:now+90_000})).toMatchObject({ok:false});
   expect(f.sql.prepare("SELECT stock FROM aivault_products").get()?.stock).toBe(5);
+  expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='aivault_catalog_success_at'").get()).toEqual({ value: String(now+45_000) });
+  const avErr = f.sql.prepare("SELECT value FROM store_settings WHERE key='aivault_catalog_last_error'").get() as { value: string };
+  expect(JSON.parse(avErr.value).error).toBe("invalid_or_empty_catalog");
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({currency:"USD",products:[upstream()]}));
+  expect(await publishAivaultCatalog(db,20000,{now:now+135_000})).toMatchObject({ok:true});
+  expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='aivault_catalog_success_at'").get()).toEqual({ value: String(now+135_000) });
+  expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='aivault_catalog_last_error'").get()).toEqual({ value: "" });
 });
 it("publishes derived bulk pricing tiers and caps max_qty at 100 without adding statements",async()=>{
   const db=createDatabaseAccess(f.db);

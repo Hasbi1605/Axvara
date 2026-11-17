@@ -1,5 +1,10 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Penanda sukses katalog, error saldo beruntun, & watchdog basi — 18 November 2026 (lokal)
+
+- `publishTunvnCatalog` (`src/lib/tunvn/catalog.ts`) kini menulis `store_settings.tunvn_catalog_success_at` (ms epoch) dan mengosongkan `tunvn_catalog_last_error` HANYA setelah mirror + proyeksi keluarga/varian + Buff + recompute selesai tanpa error; `tunvn_catalog_sync_at` tetap menjadi klaim throttle tanpa rollback. Kegagalan mencatat `tunvn_catalog_last_error` tersanitasi (`≤200` char, tanpa secret). `/api/admin/tunvn/products` mengutamakan `tunvn_catalog_success_at`.
+- Watchdog `checkSyncStaleness` (`src/lib/sync-staleness.ts`, dipanggil di akhir `cleanup`) memantau `tunvn_catalog_success_at` dengan ambang 15 menit (grace 1 jam bila belum pernah sukses). `checkTunvnLowBalance` mencatat `tunvn_balance_error` `{ at, error, streak }` saat gagal beruntun dan `tunvn_balance_last_ok_at` saat sukses.
+
 ## Sinkronisasi katalog 1 menit + throttle probe Buff 3 menit — 17 November 2026 (lokal)
 
 - `mcp-worker/src/cron.ts` menjalankan `lite:tunvn_catalog` setiap 1 menit (menghapus `everyMinutes: 3`), budget tetap 40 tanpa env/trigger baru.

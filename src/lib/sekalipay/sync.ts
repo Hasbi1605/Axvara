@@ -952,9 +952,11 @@ export async function syncSkProducts(
     // Penanda diff VPS sehat: cron memakai ini untuk menjarangkan sweep
     // pengaman berpotongan (60 mnt) selama diff berjalan.
     const nowIso = new Date().toISOString();
-    await writeSyncState(db, "diff_last_at", nowIso);
     result.durationMs = Date.now() - started;
     const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
+    if (status !== "failed") {
+      await writeSyncState(db, "diff_last_at", nowIso);
+    }
     // Kiriman diff TIDAK ditulis ke *_sync_log (2026-10-04): heartbeat 0/0 dan
     // delta 1–4 varian sempat menutupi kartu "Sync terakhir" admin (dibaca
     // sebagai sync penuh). Log kini khusus sweep penuh/manual; diff tercatat
@@ -969,6 +971,8 @@ export async function syncSkProducts(
     }
     if (result.errors.length) {
       await writeSyncState(db, "diff_last_error", JSON.stringify({ at: nowIso, error: result.errors[0].slice(0, 200) }));
+    } else {
+      await writeSyncState(db, "diff_last_error", "");
     }
     return result;
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createDatabaseAccess } from "@/lib/db-access";
+import { readSyncTimestampSetting } from "@/lib/sync-status";
 import { isAivaultConfigured } from "@/lib/aivault/client";
 import { aivaultFamily } from "@/lib/aivault/families";
 import { parseAivaultBulkMarkup } from "@/lib/aivault/bulk";
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
       v.bulk_pricing_enabled,v.bulk_pricing_tiers,
       p.name AS product_name,p.is_active AS product_active,p.archived_at AS product_archived_at,p.aivault_family FROM aivault_products m
       LEFT JOIN products p ON p.id=m.axvara_product_id LEFT JOIN product_variants v ON v.aivault_service_id=m.service_id AND v.product_id=p.id ORDER BY m.service_id`);
-    const last=await db.queryFirst("SELECT value FROM store_settings WHERE key='aivault_catalog_sync_at'");
+    const lastValue=await readSyncTimestampSetting(db,"aivault_catalog","aivault_catalog_sync_at");
     return NextResponse.json({ok:true,configured:isAivaultConfigured(),items:items.map(row=>{
       const bulkMarkupTiers = parseAivaultBulkMarkup(row.bulk_markup_tiers_json);
       let bulkTiersPreview: BulkTier[] = [];
@@ -35,6 +36,6 @@ export async function GET(request: NextRequest) {
         bulk_markup_tiers: bulkMarkupTiers,
         bulk_tiers_preview: bulkTiersPreview,
       };
-    }),last_sync_at:last?.value ?? null},{headers:{"Cache-Control":"private, no-store"}});
+    }),last_sync_at:lastValue},{headers:{"Cache-Control":"private, no-store"}});
   } catch { return NextResponse.json({error:"load_failed"},{status:503}); }
 }

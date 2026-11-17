@@ -327,6 +327,19 @@ describe("/api/cron/lite", () => {
       expect(urls.filter((u) => u.includes("/balance")).every((u) => u.includes("/indosmm/"))).toBe(true);
       expect(urls.some((u) => u.includes("/indosmm/balance"))).toBe(true);
       expect(fx.sql.prepare("SELECT supplier FROM pedia_supplier_balance_log").all()).toEqual([{ supplier: "indosmm" }]);
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='pedia_indosmm_balance_success_at'").get()).toBeTruthy();
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='pedia_indosmm_balance_last_error'").get()).toEqual({ value: "" });
+
+      // Failed balance fetch does not advance pedia_indosmm_balance_success_at and records pedia_indosmm_balance_last_error.
+      const prevSuccess = fx.sql.prepare("SELECT value FROM store_settings WHERE key='pedia_indosmm_balance_success_at'").get() as { value: string };
+      fx.sql.exec("DELETE FROM store_settings WHERE key='pedia_indosmm_balance_checked_at'");
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 502 })));
+      const failedBal = await call("pedia_orders");
+      expect(failedBal.status).toBe(200);
+      expect(failedBal.body.indosmm_balance_error).toBe("http");
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='pedia_indosmm_balance_success_at'").get()).toEqual(prevSuccess);
+      const balErr = fx.sql.prepare("SELECT value FROM store_settings WHERE key='pedia_indosmm_balance_last_error'").get() as { value: string };
+      expect(JSON.parse(balErr.value).error).toBe("http");
     } finally { vi.unstubAllGlobals(); fx.close(); }
   });
 

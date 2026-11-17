@@ -23,6 +23,7 @@ import { readJsonBody } from "@/lib/http-body";
 import { constantTimeEqual } from "@/lib/security";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { isPediaProvider } from "@/lib/pedia/proxy";
+import { recordSyncError } from "@/lib/sync-status";
 
 export const runtime = "edge";
 
@@ -63,16 +64,21 @@ export async function POST(request: NextRequest) {
       result = await applyPediaDiff(db, body.source, services as never, removed as number[], typeof body.currency === "string" ? body.currency : undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : "sync_failed";
+      await recordSyncError(db, "pedia_indosmm_diff", message);
       return NextResponse.json({ error: message }, { status: /^(invalid_|unsupported_currency)/.test(message) ? 400 : 500 });
     }
-    if (result.errors.length) return NextResponse.json({ ok: false, errors: result.errors.slice(0, 3) }, { status: 500 });
+    if (result.errors.length) {
+      await recordSyncError(db, "pedia_indosmm_diff", result.errors[0]);
+      return NextResponse.json({ ok: false, errors: result.errors.slice(0, 3) }, { status: 500 });
+    }
     // Penanda "terakhir berubah" hanya ditulis setelah cermin tersimpan penuh.
     const prefix = "pedia_indosmm_diff";
     try {
       await db.execRun(
-        `INSERT INTO store_settings (key, value, updated_at) VALUES (?, datetime('now'), datetime('now'))
-          ON CONFLICT(key) DO UPDATE SET value=datetime('now'), updated_at=datetime('now')`,
+        `INSERT INTO store_settings (key, value, updated_at) VALUES (?, datetime('now'), datetime('now')), (?, '', datetime('now'))
+          ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
         `${prefix}_last_at`,
+        `${prefix}_last_error`,
       );
       if (result.upserted > 0 || result.markedMissing > 0) {
         await db.execRun(

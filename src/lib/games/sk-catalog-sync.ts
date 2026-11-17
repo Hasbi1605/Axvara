@@ -15,6 +15,7 @@
 //    (`markup_percent`/`markup_fixed`) TIDAK pernah ditimpa upsert.
 
 import type { DatabaseAccess } from "@/lib/db-access";
+import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import {
   getSkProxyUrl,
   isSkEnabled,
@@ -46,8 +47,8 @@ export const GAMES_SK_CATALOG_STATEMENT_BUDGET = 40;
 /** Statement baca yang SUDAH terpakai sebelum admission: setting sinkron, slug,
  * setting harga, markup game, dan override markup varian. */
 export const GAMES_SK_CATALOG_READ_STATEMENTS = 5;
-/** Statement tulis tetap setelah admission: klaim CAS + deaktivasi. */
-export const GAMES_SK_CATALOG_WRITE_OVERHEAD = 2;
+/** Statement tulis tetap setelah admission: klaim CAS + deaktivasi + penanda sukses. */
+export const GAMES_SK_CATALOG_WRITE_OVERHEAD = 3;
 /** Sisa budget untuk chunk upsert (40 − 3 baca − 2 tulis). */
 export const GAMES_SK_CATALOG_MAX_CHUNKS = GAMES_SK_CATALOG_STATEMENT_BUDGET - GAMES_SK_CATALOG_READ_STATEMENTS - GAMES_SK_CATALOG_WRITE_OVERHEAD;
 const CHUNK_ROWS = 250;
@@ -371,12 +372,15 @@ function chunkRows(rows: GamesSkDbRow[]): { payloads: string[] } | { error: "pay
   return { payloads };
 }
 
+export function isGamesSkCatalogConfigured(): boolean {
+  return isSkEnabled() && (Boolean(getSkProxyUrl()) || Boolean(process.env.SEKALIPAY_API_KEY?.trim()));
+}
+
 export async function syncGamesSkCatalog(
   db: DatabaseAccess,
   opts: { now?: number; force?: boolean } = {},
 ): Promise<GamesSkCatalogSyncResult> {
-  if (!isSkEnabled()) return { skipped: "not_configured" };
-  if (!getSkProxyUrl() && !process.env.SEKALIPAY_API_KEY?.trim()) return { skipped: "not_configured" };
+  if (!isGamesSkCatalogConfigured()) return { skipped: "not_configured" };
   const now = opts.now ?? Date.now();
 
   // Throttle berbasis nilai terakhir yang SUKSES diklaim. Run yang gagal
@@ -389,7 +393,10 @@ export async function syncGamesSkCatalog(
   }
 
   const fetched = await fetchGamesSkCatalog();
-  if (!fetched.ok) return { ok: false, error: fetched.error, detail: fetched.detail };
+  if (!fetched.ok) {
+    await recordSyncError(db, "games_sk_catalog", `${fetched.error}:${fetched.detail}`, now);
+    return { ok: false, error: fetched.error, detail: fetched.detail };
+  }
 
   const slugRows = await db.queryAll(
     `SELECT sk_product_id, MIN(game_slug) AS slug FROM games_products
@@ -426,7 +433,10 @@ export async function syncGamesSkCatalog(
     { settings, gamePercent, variantMarkup },
   );
   const chunked = chunkRows(built.rows);
-  if ("error" in chunked) return { ok: false, error: chunked.error, detail: chunked.detail };
+  if ("error" in chunked) {
+    await recordSyncError(db, "games_sk_catalog", `${chunked.error}:${chunked.detail}`, now);
+    return { ok: false, error: chunked.error, detail: chunked.detail };
+  }
 
   // Admission: hitung sisa statement SETELAH 3 baca yang sudah terpakai di atas;
   // `canSpend` menilai sisa itu terhadap ceiling cron yang sebenarnya.
@@ -434,6 +444,7 @@ export async function syncGamesSkCatalog(
   const statements = remainingStatements + GAMES_SK_CATALOG_READ_STATEMENTS;
   if (remainingStatements > GAMES_SK_CATALOG_MAX_CHUNKS + GAMES_SK_CATALOG_WRITE_OVERHEAD
     || statements > GAMES_SK_CATALOG_STATEMENT_BUDGET || !db.canSpend(remainingStatements)) {
+    await recordSyncError(db, "games_sk_catalog", `budget_exceeded:${statements}>${GAMES_SK_CATALOG_STATEMENT_BUDGET}`, now);
     return {
       ok: false,
       error: "budget_exceeded",
@@ -459,16 +470,23 @@ export async function syncGamesSkCatalog(
 
   const syncedAt = new Date(now).toISOString();
   let deactivated = 0;
-  if (db.d1) {
-    // Satu batch atomik: kegagalan di tengah tidak meninggalkan snapshot parsial.
-    const results = await db.d1.batch([
-      ...chunked.payloads.map((payload) => db.d1!.prepare(UPSERT_SQL).bind(syncedAt, syncedAt, payload)),
-      db.d1.prepare(DEACTIVATE_SQL).bind(syncedAt),
-    ]);
-    deactivated = Number(results[results.length - 1]?.meta?.changes ?? 0);
-  } else {
-    for (const payload of chunked.payloads) await db.execRun(UPSERT_SQL, syncedAt, syncedAt, payload);
-    deactivated = Number((await db.execRun(DEACTIVATE_SQL, syncedAt)).changes ?? 0);
+  try {
+    if (db.d1) {
+      // Satu batch atomik: kegagalan di tengah tidak meninggalkan snapshot parsial.
+      const results = await db.d1.batch([
+        ...chunked.payloads.map((payload) => db.d1!.prepare(UPSERT_SQL).bind(syncedAt, syncedAt, payload)),
+        db.d1.prepare(DEACTIVATE_SQL).bind(syncedAt),
+        db.d1.prepare(SUCCESS_MARKER_SQL).bind("games_sk_catalog_success_at", String(now), "games_sk_catalog_last_error"),
+      ]);
+      deactivated = Number(results[chunked.payloads.length]?.meta?.changes ?? 0);
+    } else {
+      for (const payload of chunked.payloads) await db.execRun(UPSERT_SQL, syncedAt, syncedAt, payload);
+      deactivated = Number((await db.execRun(DEACTIVATE_SQL, syncedAt)).changes ?? 0);
+      await recordSyncSuccess(db, "games_sk_catalog", now);
+    }
+  } catch (error) {
+    await recordSyncError(db, "games_sk_catalog", error, now);
+    throw error;
   }
 
   return {
@@ -481,6 +499,10 @@ export async function syncGamesSkCatalog(
     statements,
   };
 }
+
+const SUCCESS_MARKER_SQL = `INSERT INTO store_settings (key, value, updated_at)
+VALUES (?, ?, datetime('now')), (?, '', datetime('now'))
+ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`;
 
 const UPSERT_SQL = `INSERT INTO games_products
   (buyer_sku_code, supplier, supplier_active, sk_variant_id, sk_sku, sk_product_id, sk_product_name,
