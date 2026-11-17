@@ -11,6 +11,7 @@
 // PENUH tervalidasi; respons malformed/empty/partial tidak me-zero katalog.
 
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import {
   fetchJaspayProducts,
   fetchProducts,
@@ -1338,9 +1339,11 @@ export async function syncProducts(
     // Penanda diff VPS sehat: cron memakai ini untuk menjarangkan sweep
     // pengaman berpotongan (60 mnt) selama diff berjalan.
     const nowIso = new Date().toISOString();
-    await writeSyncState(db, "diff_last_at", nowIso);
     result.durationMs = Date.now() - started;
     const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
+    if (status !== "failed") {
+      await writeSyncState(db, "diff_last_at", nowIso);
+    }
     // Kiriman diff TIDAK ditulis ke *_sync_log (2026-10-04): heartbeat 0/0 dan
     // delta 1–4 varian sempat menutupi kartu "Sync terakhir" admin (dibaca
     // sebagai sync penuh). Log kini khusus sweep penuh/manual; diff tercatat
@@ -1355,6 +1358,8 @@ export async function syncProducts(
     }
     if (result.errors.length) {
       await writeSyncState(db, "diff_last_error", JSON.stringify({ at: nowIso, error: result.errors[0].slice(0, 200) }));
+    } else {
+      await writeSyncState(db, "diff_last_error", "");
     }
     return result;
   }
@@ -1573,12 +1578,16 @@ export async function syncJaspayCatalog(
   try {
     raw = await fetchFn();
   } catch (error) {
-    result.errors.push((error instanceof Error ? error.message : String(error)).slice(0, 300));
+    const message = (error instanceof Error ? error.message : String(error)).slice(0, 300);
+    result.errors.push(message);
+    await recordSyncError(db, "jaspay_catalog", message);
     result.durationMs = Date.now() - started;
     return result;
   }
   if (!Array.isArray(raw) || !raw.length) {
-    result.errors.push(Array.isArray(raw) ? "catalog_empty" : "catalog_malformed_not_array");
+    const err = Array.isArray(raw) ? "catalog_empty" : "catalog_malformed_not_array";
+    result.errors.push(err);
+    await recordSyncError(db, "jaspay_catalog", err);
     result.durationMs = Date.now() - started;
     return result;
   }
@@ -1606,8 +1615,8 @@ export async function syncJaspayCatalog(
   // Zero-missing hanya boleh memakai seen-set LENGKAP: feed sukses dan tidak
   // ada produk yang error. Mode bounded memakai seen-set feed penuh; berhenti
   // karena budget SETELAH >=1 produk tersinkron adalah batas tick normal
-  // (cursor melanjutkan), bukan kegagalan. Sisakan budget untuk zero-missing.
-  const ZERO_MISSING_RESERVE = 4;
+  // (cursor melanjutkan), bukan kegagalan. Sisakan budget untuk zero-missing + penanda sukses.
+  const ZERO_MISSING_RESERVE = 5;
   let complete = true;
   for (const product of work) {
     const cost = 12 + product.packages.length * 6;
@@ -1843,6 +1852,9 @@ export async function syncJaspayCatalog(
     }
   }
   if (!complete) {
+    if (result.errors.length) {
+      await recordSyncError(db, "jaspay_catalog", result.errors[0]);
+    }
     result.durationMs = Date.now() - started;
     return result;
   }
@@ -1859,7 +1871,7 @@ export async function syncJaspayCatalog(
     for (const row of rows) {
       const id = String(row.wr_variant_id || "");
       if (!id || seen.has(id)) continue;
-      if (!db.canSpend(2)) break;
+      if (!db.canSpend(3)) break;
       const now = new Date().toISOString();
       await db.execRun(
         `UPDATE wr_variants SET wr_stock=0, last_synced_at=?, updated_at=? WHERE wr_variant_id=?`,
@@ -1877,6 +1889,11 @@ export async function syncJaspayCatalog(
     }
   } catch (error) {
     result.errors.push((error instanceof Error ? error.message : String(error)).slice(0, 300));
+  }
+  if (result.errors.length) {
+    await recordSyncError(db, "jaspay_catalog", result.errors[0]);
+  } else if (db.canSpend(1)) {
+    await recordSyncSuccess(db, "jaspay_catalog");
   }
   result.durationMs = Date.now() - started;
   return result;

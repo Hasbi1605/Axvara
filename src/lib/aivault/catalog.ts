@@ -1,4 +1,5 @@
 import type { DatabaseAccess } from "@/lib/db-access";
+import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { mapSkCategory } from "@/lib/sekalipay/sync";
 import { isAivaultConfigured, isAivaultSyncEnabled } from "./client";
 import { syncAivaultCatalog } from "./sync";
@@ -58,14 +59,30 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
 }
 export async function publishAivaultCatalog(db: DatabaseAccess, fx: number, opts: { force?: boolean; now?: number } = {}) {
   if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled()) return { skipped: "not_configured" } as const;
-  if (!Number.isFinite(fx) || fx <= 0) return { ok:false, error:"fx_unavailable" } as const;
-  if (!db.canSpend(22)) return { ok:false,error:"catalog_budget_exceeded" } as const;
-  const now = opts.now ?? Date.now(), lease = JSON.stringify({ owner:crypto.randomUUID(), until:now+45_000 });
+  const now = opts.now ?? Date.now();
+  if (!Number.isFinite(fx) || fx <= 0) {
+    await recordSyncError(db, "aivault_catalog", "fx_unavailable", now);
+    return { ok:false, error:"fx_unavailable" } as const;
+  }
+  if (!db.canSpend(22)) {
+    await recordSyncError(db, "aivault_catalog", "catalog_budget_exceeded", now);
+    return { ok:false,error:"catalog_budget_exceeded" } as const;
+  }
+  const lease = JSON.stringify({ owner:crypto.randomUUID(), until:now+45_000 });
   const claim = await db.execRun(`INSERT INTO store_settings(key,value) VALUES('aivault_catalog_lease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(store_settings.value,'$.until')<=?`,lease,now);
   if (claim.changes !== 1) return { skipped:"claimed_elsewhere" } as const;
   try {
-    const result = await syncAivaultCatalog(db,opts);
+    const result = await syncAivaultCatalog(db,{...opts, skipSuccessMark: true});
     if (!("ok" in result) || !result.ok) return result;
-    return await projectAivaultCatalog(db,fx);
+    const projected = await projectAivaultCatalog(db,fx);
+    if (!projected.ok) {
+      await recordSyncError(db, "aivault_catalog", projected.error, now);
+      return projected;
+    }
+    await recordSyncSuccess(db, "aivault_catalog", now);
+    return projected;
+  } catch (error) {
+    await recordSyncError(db, "aivault_catalog", error, now);
+    throw error;
   } finally { await db.execRun("DELETE FROM store_settings WHERE key='aivault_catalog_lease' AND value=?",lease); }
 }

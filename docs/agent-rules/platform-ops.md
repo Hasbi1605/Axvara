@@ -1,5 +1,11 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Penanda sukses sync, 503 subjob inti cron lite, & watchdog basi — 18 November 2026 (lokal)
+
+- Penanda sukses `<sumber>_success_at` (ms epoch `store_settings`) + error tersanitasi `<sumber>_last_error` (≤200 char, tanpa secret) ditulis lewat `src/lib/sync-status.ts` HANYA sesudah mirror + publish/proyeksi penuh berhasil (`tunvn_catalog`, `aivault_catalog`, `jaspay_catalog`, `games_sk_catalog`, `games_catalog`, `pedia_indosmm_balance`); checkpoint klaim throttle tetap ada. Saldo supplier (`supplier-balance-alert.ts`) mencatat `<supplier>_balance_error` `{ at, error, streak }` pada kegagalan beruntun tanpa alert baru, dan `<supplier>_balance_last_ok_at` saat sukses.
+- `src/app/api/cron/lite/route.ts`: kegagalan subjob inti (`payments` pass NOWPayments/Sekalipay gateway, `pedia_orders` dispatch, `notify*` `telegram_retry`/`whatsapp_outbox`) tetap menjalankan subjob lain lalu membalas `503` `{ ok: false, failed_subjobs }` tanpa menulis `cron_lite_*_ok_at`. Yield `QueryBudgetExceeded` dan error subjob opsional tetap `200`.
+- `src/lib/sync-staleness.ts` dipanggil di akhir `runCleanup` (`job=cleanup`, guard `db.canSpend(6)`) tanpa env/migrasi baru: memantau sumber aktif (SK, Jaspay, TUNVN, AIVault, Games SK, Pedia IndoSMM diff bila ada penanda, FX `crypto_market_snapshot`; WR tetap ditangani `alertStaleWrSync` agar tidak alert ganda) dengan CAS episode di `store_settings`, grace 1 jam bila belum pernah sukses, pengingat 6 jam, dan notifikasi pulih ke `TELEGRAM_ADMIN_CHAT_ID` saat `TELEGRAM_BOT_ENABLED=true`.
+
 ### Sinkronisasi katalog 1 menit & drain grup segera — 17 November 2026 (lokal)
 
 - `mcp-worker/src/cron.ts` menghapus `everyMinutes: 3` pada `lite:tunvn_catalog` dan `lite:aivault_catalog` sehingga keduanya berjalan setiap 1 menit di trigger `* * * * *` existing (`jaspay_catalog` tetap tiap menit). `cleanup` tetap 5 menit dan `games_catalog` tetap 10 menit.

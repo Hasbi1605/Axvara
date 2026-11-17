@@ -234,8 +234,11 @@ describe("syncGamesSkCatalog", () => {
     expect(refused).toMatchObject({ ok: false, error: "budget_exceeded", budget: 40 });
     expect(fx.sql.prepare("SELECT COUNT(*) c FROM games_products").get()).toEqual({ c: 0 });
     expect(setting()).toBeUndefined();
-    // 5 baca (setting sinkron, slug, setting harga, markup game, override varian).
-    expect(fx.control.queries).toBeLessThanOrEqual(5);
+    // 5 baca + 1 penanda error ke store_settings; katalog tetap kosong.
+    expect(fx.control.queries).toBeLessThanOrEqual(6);
+    const errRow = fx.sql.prepare("SELECT value FROM store_settings WHERE key='games_sk_catalog_last_error'").get() as { value: string } | undefined;
+    expect(JSON.parse(errRow!.value).error).toContain("budget_exceeded");
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='games_sk_catalog_success_at'").get()).toBeUndefined();
 
     // 1.619 varian (snapshot nyata) tetap muat dalam budget.
     vi.unstubAllGlobals();
@@ -335,10 +338,16 @@ describe("syncGamesSkCatalog", () => {
   it("does not consume the throttle window when a run fails before claiming", async () => {
     stubCatalog([product(33, "Mobile Legends", [variant(101)])]);
     await syncGamesSkCatalog(db(), { now: T0 });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='games_sk_catalog_success_at'").get()).toEqual({ value: String(T0) });
     vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 502 })));
     expect(await syncGamesSkCatalog(db(), { now: T0 + 10 * 60_000 })).toMatchObject({ ok: false, error: "fetch_failed" });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='games_sk_catalog_success_at'").get()).toEqual({ value: String(T0) });
+    const err = fx.sql.prepare("SELECT value FROM store_settings WHERE key='games_sk_catalog_last_error'").get() as { value: string };
+    expect(JSON.parse(err.value).error).toContain("fetch_failed");
     stubCatalog([product(33, "Mobile Legends", [variant(101)])]);
     expect(await syncGamesSkCatalog(db(), { now: T0 + 10 * 60_000 + 30_000 })).toMatchObject({ ok: true });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='games_sk_catalog_success_at'").get()).toEqual({ value: String(T0 + 10 * 60_000 + 30_000) });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='games_sk_catalog_last_error'").get()).toEqual({ value: "" });
   });
 });
 

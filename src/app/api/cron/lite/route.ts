@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
   // (owner 16 Nov 2026: beberapa produk/tick, siklus penuh ±3 menit); job lain40.
   const db = createBudgetedDatabase(job === "fulfillment" || job === "jaspay_catalog" ? 96 : 40).access;
   const result: Record<string, unknown> = { ok: true, job };
+  const failedCore: string[] = [];
   try {
     if (job === "payments") {
       // Bounded: KlikQRIS (limit 4, shared 40-budget) + NOWPayments (limit 4,
@@ -106,14 +107,24 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         if (error instanceof QueryBudgetExceeded) throw error;
         (result as Record<string, unknown>).nowpayments_error = "pass_failed";
+        failedCore.push("nowpayments");
       }
       if (db.canSpend(6)) {
         try {
           const { reconcileDueSekalipayGatewayPayments } = await import("@/lib/payments/payment-view");
           Object.assign(result, await reconcileDueSekalipayGatewayPayments(db));
-        } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; result.gateway_error = "pass_failed"; }
+        } catch (error) {
+          if (error instanceof QueryBudgetExceeded) throw error;
+          result.gateway_error = "pass_failed";
+          failedCore.push("sekalipay_gateway");
+        }
       }
-      if (Number(result.payments_failed) > 0) return NextResponse.json({ ...result, ok: false }, { status: 503 });
+      if (Number(result.payments_failed) > 0 || failedCore.length > 0) {
+        return NextResponse.json(
+          { ...result, ok: false, ...(failedCore.length ? { failed_subjobs: failedCore } : {}) },
+          { status: 503 },
+        );
+      }
     }
     else if (job === "expiry") Object.assign(result, await runExpiry(db));
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db));
@@ -127,7 +138,11 @@ export async function POST(request: NextRequest) {
         const { loadCurrentFxSnapshot }=await import("@/lib/payments/market-snapshot");
         const { parseRateRational }=await import("@/lib/payments/fx");
         const fx=await loadCurrentFxSnapshot(db.d1), rate=fx ? parseRateRational(fx.rateText) : null;
-        if (!rate) return NextResponse.json({...result,ok:false,error:"fx_unavailable"},{status:503});
+        if (!rate) {
+          const { recordSyncError } = await import("@/lib/sync-status");
+          await recordSyncError(db, "aivault_catalog", "fx_unavailable");
+          return NextResponse.json({...result,ok:false,error:"fx_unavailable"},{status:503});
+        }
         const { publishAivaultCatalog }=await import("@/lib/aivault/catalog");
         const synced=await publishAivaultCatalog(db,Number(rate.num)/Number(rate.den),{force:false});
         Object.assign(result,synced);
@@ -144,7 +159,11 @@ export async function POST(request: NextRequest) {
         const { parseRateRational } = await import("@/lib/payments/fx");
         const fx = await loadCurrentFxSnapshot(db.d1);
         const rate = fx ? parseRateRational(fx.rateText) : null;
-        if (!rate) return NextResponse.json({ ...result, ok: false, error: "fx_unavailable" }, { status: 503 });
+        if (!rate) {
+          const { recordSyncError } = await import("@/lib/sync-status");
+          await recordSyncError(db, "tunvn_catalog", "fx_unavailable");
+          return NextResponse.json({ ...result, ok: false, error: "fx_unavailable" }, { status: 503 });
+        }
         const { publishTunvnCatalog } = await import("@/lib/tunvn/catalog");
         const synced = await publishTunvnCatalog(db, Number(rate.num) / Number(rate.den), { force: false });
         Object.assign(result, synced);
@@ -161,10 +180,10 @@ export async function POST(request: NextRequest) {
       }
       if (!synced.errors.length) await drainDirtyGroupsIfBudget(db, result);
     }
-    else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db));
-    else if (job === "notify_a") Object.assign(result, await runNotifyA(db));
-    else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline));
-    else if (job === "notify") Object.assign(result, await runNotify(db, deadline));
+    else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db, failedCore));
+    else if (job === "notify_a") Object.assign(result, await runNotifyA(db, failedCore));
+    else if (job === "notify_b") Object.assign(result, await runNotifyB(db, deadline, failedCore));
+    else if (job === "notify") Object.assign(result, await runNotify(db, deadline, failedCore));
     else if (job === "cleanup") Object.assign(result, await runCleanup(db));
     else if (job === "games_catalog") {
       // docs/GAMES.md §12.5: katalog baru = Sekalipay Game; Digiflazz tidak lagi
@@ -189,6 +208,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, job, error: error instanceof Error ? error.message.slice(0, 160) : "failed" }, { status: 500 });
     }
     result.budget_exhausted = true;
+  }
+  if (failedCore.length > 0) {
+    return NextResponse.json({ ...result, ok: false, failed_subjobs: failedCore }, { status: 503 });
   }
   try {
     await db.execRun(
@@ -475,7 +497,7 @@ async function runAivaultOrders(db: Db) {
 // PEDIA_BALANCE_ALERT_RP) → ping admin dengan throttle 1:1 WR/SK (6 jam ATAU
 // turun Rp5.000 — `notifyPediaLowBalance`, kunci store_settings
 // pedia_indosmm_balance_alert_at format `amount|ms`).
-async function runPediaOrders(db: Db) {
+async function runPediaOrders(db: Db, failedCore: string[]) {
   const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
   const out: Record<string, unknown> = {};
   try {
@@ -486,6 +508,7 @@ async function runPediaOrders(db: Db) {
   } catch (error) {
     if (error instanceof QueryBudgetExceeded) throw error;
     out.dispatch_error = error instanceof Error ? error.message.slice(0, 80) : "failed";
+    failedCore.push("dispatch");
   }
   // 2026-11-13 (owner): IndoSMM satu-satunya supplier. Independent checkpoint
   // and currency gate: do not convert undocumented USD account balances.
@@ -496,6 +519,7 @@ async function runPediaOrders(db: Db) {
       const { parseExpiry } = await import("@/lib/expiry");
       const ms = parseExpiry(String(last?.value ?? ""));
       if (ms === null || Date.now() - ms > 30 * 60 * 1000) {
+        const nowMs = Date.now();
         await db.execRun(`INSERT INTO store_settings (key,value,updated_at) VALUES (?,datetime('now'),datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, key);
         const { callPediaProxy } = await import("@/lib/pedia/proxy");
         const res = await callPediaProxy<{ balance?: string | number; currency?: string }>("indosmm", "balance", {}, 15_000);
@@ -503,18 +527,27 @@ async function runPediaOrders(db: Db) {
         if (res.ok && res.data.currency?.toUpperCase() === "IDR" && Number.isFinite(v) && v >= 0) {
           out.indosmm_balance = v;
           await db.execRun(`INSERT INTO pedia_supplier_balance_log (supplier,balance) VALUES ('indosmm',?)`, v);
+          if (db.canSpend(1)) {
+            const { recordSyncSuccess } = await import("@/lib/sync-status");
+            await recordSyncSuccess(db, "pedia_indosmm_balance", nowMs);
+          }
           const { pediaBalanceAlertRp } = await import("@/lib/pedia/ops-config");
           if (v < pediaBalanceAlertRp()) {
             const { notifyPediaLowBalance } = await import("@/lib/pedia/notify");
             out.indosmm_balance_alerted = await notifyPediaLowBalance(v, db, "indosmm");
           }
         } else {
-          out.indosmm_balance_error = res.ok ? "unsupported_currency_or_balance" : res.kind;
+          const err = res.ok ? "unsupported_currency_or_balance" : res.kind;
+          out.indosmm_balance_error = err;
+          const { recordSyncError } = await import("@/lib/sync-status");
+          await recordSyncError(db, "pedia_indosmm_balance", err, nowMs);
         }
       }
     } catch (error) {
       if (error instanceof QueryBudgetExceeded) throw error;
       out.indosmm_balance_error = "balance_failed";
+      const { recordSyncError } = await import("@/lib/sync-status");
+      await recordSyncError(db, "pedia_indosmm_balance", error);
     }
   }
   // 2026-11-01: kesehatan layanan IndoSMM 7 hari (maks 1×/jam, 3 statement).
@@ -549,18 +582,19 @@ async function runPromo(db: Db) {
 // `notify_b` = qris_expiry + reminders + whatsapp_outbox (3 import). `notify`
 // = alias gabungan A lalu B. Hasil digabung dengan kunci yang sama sehingga
 // pemantau lama (alarm Worker, dashboard) tidak berubah bentuk respons.
-async function runNotifyA(db: Db) {
+async function runNotifyA(db: Db, failedCore: string[]) {
   const out: Record<string, unknown> = {};
-  const guard = async (key: string, fn: () => Promise<unknown>) => {
+  const guard = async (key: string, fn: () => Promise<unknown>, core = false) => {
     try { out[key] = await fn(); } catch (error) {
       if (error instanceof QueryBudgetExceeded) throw error;
       out[`${key}_error`] = error instanceof Error ? error.message.slice(0, 80) : "failed";
+      if (core) failedCore.push(key);
     }
   };
   await guard("telegram_retry", async () => {
     const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
     return retryPendingTelegramNotifications(4, undefined, db);
-  });
+  }, true);
   await guard("invoice_retry", async () => {
     const { retryInvoicePendingTelegramInvoices } = await import("@/lib/telegram/invoice-retry");
     return retryInvoicePendingTelegramInvoices(2, db);
@@ -568,12 +602,13 @@ async function runNotifyA(db: Db) {
   return out;
 }
 
-async function runNotifyB(db: Db, deadline: number) {
+async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
   const out: Record<string, unknown> = {};
-  const guard = async (key: string, fn: () => Promise<unknown>) => {
+  const guard = async (key: string, fn: () => Promise<unknown>, core = false) => {
     try { out[key] = await fn(); } catch (error) {
       if (error instanceof QueryBudgetExceeded) throw error;
       out[`${key}_error`] = error instanceof Error ? error.message.slice(0, 80) : "failed";
+      if (core) failedCore.push(key);
     }
   };
   await guard("whatsapp_promo", async () => {
@@ -595,7 +630,7 @@ async function runNotifyB(db: Db, deadline: number) {
   await guard("whatsapp_outbox", async () => {
     const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
     return processDueWhatsAppOutbox(4, db);
-  });
+  }, true);
   // Sapu bounded antrean PIN checkout (maks 2/tick) bila budget/waktu
   // tersisa; tanpa job/cron/env/budget baru.
   await guard("checkout_pin_emails", async () => {
@@ -606,16 +641,16 @@ async function runNotifyB(db: Db, deadline: number) {
   return out;
 }
 
-async function runNotify(db: Db, deadline: number) {
+async function runNotify(db: Db, deadline: number, failedCore: string[]) {
   const out: Record<string, unknown> = {};
   try {
-    Object.assign(out, await runNotifyA(db));
+    Object.assign(out, await runNotifyA(db, failedCore));
   } catch (error) {
     // Budget habis di paruh A = sisa kerja dilanjutkan tick berikut.
     if (error instanceof QueryBudgetExceeded) throw error;
   }
   try {
-    Object.assign(out, await runNotifyB(db, deadline));
+    Object.assign(out, await runNotifyB(db, deadline, failedCore));
   } catch (error) {
     if (error instanceof QueryBudgetExceeded) throw error;
   }
@@ -645,7 +680,16 @@ async function runCleanup(db: Db) {
     } catch { copy.copy_review = { checked: false, error: "check_failed" }; }
   }
   const market = await runCryptoMarketRefresh(db);
-  return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...copy, ...market };
+  let staleness: Record<string, unknown> = {};
+  if (db.canSpend(6)) {
+    try {
+      const { checkSyncStaleness } = await import("@/lib/sync-staleness");
+      staleness = { staleness: await checkSyncStaleness(db) };
+    } catch {
+      staleness = { staleness: { checked: false, error: "check_failed" } };
+    }
+  }
+  return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...copy, ...market, ...staleness };
 }
 
 /**

@@ -1,5 +1,10 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Penanda sukses katalog, error saldo beruntun, & watchdog basi — 18 November 2026 (lokal)
+
+- `publishAivaultCatalog` (`src/lib/aivault/catalog.ts`) menulis `store_settings.aivault_catalog_success_at` (ms epoch) dan mengosongkan `aivault_catalog_last_error` HANYA setelah `syncAivaultCatalog` + `projectAivaultCatalog` selesai tanpa error; `aivault_catalog_sync_at` tetap menjadi klaim throttle (kini memperbarui `updated_at=datetime('now')`). `/api/admin/aivault/products` mengutamakan `aivault_catalog_success_at`.
+- Watchdog `checkSyncStaleness` (`src/lib/sync-staleness.ts`, dipanggil di akhir `cleanup`) memantau `aivault_catalog_success_at` dengan ambang 15 menit (grace 1 jam bila belum pernah sukses). `checkAivaultLowBalance` mencatat `aivault_balance_error` `{ at, error, streak }` saat gagal beruntun dan `aivault_balance_last_ok_at` saat sukses.
+
 ## Sinkronisasi katalog 1 menit + drain grup segera — 17 November 2026 (lokal)
 
 - `mcp-worker/src/cron.ts` menjalankan `lite:aivault_catalog` setiap 1 menit (menghapus `everyMinutes: 3`), budget tetap 40 tanpa env/trigger baru.

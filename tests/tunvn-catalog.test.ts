@@ -158,7 +158,40 @@ describe("publishTunvnCatalog", () => {
     const budget=createBudgetedDatabase(40,2,fx.db);
     expect(await publishTunvnCatalog(budget.access,RATE)).toEqual({ok:false,error:"catalog_budget_exceeded"});
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM tunvn_products").get()).toEqual({n:0});
-    expect(budget.used).toBe(4);
+    expect(budget.used).toBe(5);
+    const errRow = fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_last_error'").get() as { value: string } | undefined;
+    expect(JSON.parse(errRow!.value).error).toBe("catalog_budget_exceeded");
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toBeUndefined();
+  });
+
+  it("writes tunvn_catalog_success_at only after full projection succeeds, records sanitized errors on failure, and clears errors on recovery", async () => {
+    const t0 = 1_800_000_000_000;
+    const realFetch = fetch;
+    // 1) Failure during fetch advances throttle claim, leaves success_at unset, and stores sanitized error
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("token=test-key-not-real", { status: 502 })));
+    const fail1 = await publishTunvnCatalog(db(), RATE, { force: false, now: t0 });
+    expect(fail1).toEqual({ ok: false, error: "products_ambiguous" });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_sync_at'").get()).toEqual({ value: String(t0) });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toBeUndefined();
+    const err1 = fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_last_error'").get() as { value: string };
+    expect(JSON.parse(err1.value)).toMatchObject({ at: new Date(t0).toISOString(), error: "products_ambiguous:http_502" });
+
+    // 2) Full success writes tunvn_catalog_success_at and clears tunvn_catalog_last_error
+    vi.stubGlobal("fetch", realFetch);
+    const ok1 = await publishTunvnCatalog(db(), RATE, { force: false, now: t0 + 60_000 });
+    expect(ok1).toMatchObject({ ok: true });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toEqual({ value: String(t0 + 60_000) });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_last_error'").get()).toEqual({ value: "" });
+
+    // 3) Buff failure after mirror succeeds does NOT advance tunvn_catalog_success_at
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => String(url).endsWith("/buff/check")
+      ? new Response("", { status: 502 })
+      : realFetch(url)));
+    const failBuff = await publishTunvnCatalog(db(), RATE, { force: false, now: t0 + 240_000 });
+    expect(failBuff).toEqual({ ok: false, error: "buff_ambiguous" });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toEqual({ value: String(t0 + 60_000) });
+    const errBuff = fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_last_error'").get() as { value: string };
+    expect(JSON.parse(errBuff.value).error).toBe("buff_ambiguous");
   });
   it("a forced admin refresh cannot overtake a running catalog projection",async () => {
     const real=fetch;

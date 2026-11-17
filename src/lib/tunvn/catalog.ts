@@ -10,6 +10,7 @@
 // menerbitkan bersamaan; guard order TUNVN menolak saat lease aktif.
 
 import type { DatabaseAccess } from "@/lib/db-access";
+import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { checkTunvnBuff, isTunvnSyncEnabled } from "./client";
 import { syncTunvnCatalog } from "./sync";
 import { TUNVN_BUFF_VARIANT_B, tunvnBuffSellPriceIdr, tunvnSellPriceIdr } from "./pricing";
@@ -63,13 +64,16 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
     ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(store_settings.value,'$.until')<=?`, lease, now);
   if (claimed.changes !== 1) return { skipped: "claimed_elsewhere" };
   try {
-    const synced = await syncTunvnCatalog(db, { ...opts, reserveStatements: 28 });
+    const synced = await syncTunvnCatalog(db, { ...opts, reserveStatements: 28, skipSuccessMark: true });
     if ("ok" in synced && synced.ok === false) return { ok: false, error: synced.error };
     if ("skipped" in synced) return synced;
 
     const mirrors = await db.queryAll("SELECT * FROM tunvn_products ORDER BY supplier_product_id") as MirrorRow[];
     const families = planFamilies(mirrors);
-    if (!families.length) return { ok: true, families: 0, variants: 0, buff_variants: 0, idr_per_usdt: idrPerUsdt, activated: 0 };
+    if (!families.length) {
+      await recordSyncSuccess(db, "tunvn_catalog", now);
+      return { ok: true, families: 0, variants: 0, buff_variants: 0, idr_per_usdt: idrPerUsdt, activated: 0 };
+    }
 
     const knownSlugs = [...new Set(families.flatMap(f => [f.family.slug, ...f.family.imageFromSlugs]))];
     const products = await db.queryAll(
@@ -109,7 +113,10 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       return { family, rows, existing, productId, slug, categoryId, image, members, price: Number.isFinite(price) ? price : 0, stock };
     }).filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
 
-    if (!plans.length) return { ok: false, error: "category_missing" };
+    if (!plans.length) {
+      await recordSyncError(db, "tunvn_catalog", "category_missing", now);
+      return { ok: false, error: "category_missing" };
+    }
 
     const newProducts = plans.filter(plan => !plan.existing);
     if (newProducts.length) {
@@ -240,7 +247,11 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
     }
     await db.execRun(RECOMPUTE_PRODUCTS_SQL);
 
-    if (buffError) return { ok: false, error: buffError };
+    if (buffError) {
+      await recordSyncError(db, "tunvn_catalog", buffError, now);
+      return { ok: false, error: buffError };
+    }
+    await recordSyncSuccess(db, "tunvn_catalog", now);
     const productActiveBySlug = new Map(plans.map(plan => [plan.slug, plan.existing ? Number(plan.existing.is_active ?? 0) === 1 : false]));
     const activated = plans.reduce((count, plan) => count + plan.members.filter(member => {
       const id = Number(member.mirror.supplier_product_id);
@@ -248,6 +259,9 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       return Boolean(variant) && Number(variant!.is_active) === 1 && productActiveBySlug.get(plan.slug) === true;
     }).length, 0);
     return { ok: true, families: plans.length, variants: inserts.length + updates.filter(row => Number(row.cas) === 1).length, buff_variants: buff, idr_per_usdt: idrPerUsdt, activated };
+  } catch (error) {
+    await recordSyncError(db, "tunvn_catalog", error, now);
+    throw error;
   } finally {
     await db.execRun("DELETE FROM store_settings WHERE key='tunvn_catalog_lease' AND value=?", lease);
   }

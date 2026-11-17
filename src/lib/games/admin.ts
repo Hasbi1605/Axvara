@@ -17,6 +17,7 @@ import {
 } from "./markup";
 import { gamesRegionTypeNames } from "./variant-kind";
 import type { DatabaseAccess } from "@/lib/db-access";
+import { readSyncTimestampSetting } from "@/lib/sync-status";
 import { isGamesNicknameProduct } from "./sellable";
 
 export type GamesDisplayGroup = "special" | "bestseller" | "all";
@@ -204,8 +205,7 @@ export interface GamesSyncStatus {
 
 /** Status header admin: waktu sinkron katalog terakhir + hitungan katalog. */
 export async function gamesAdminSyncStatus(db: DatabaseAccess): Promise<GamesSyncStatus> {
-  const setting = await db.queryFirst("SELECT value FROM store_settings WHERE key=?", GAMES_SK_CATALOG_SYNC_KEY);
-  const raw = setting ? String(setting.value ?? "").trim() : "";
+  const raw = (await readSyncTimestampSetting(db, "games_sk_catalog", GAMES_SK_CATALOG_SYNC_KEY)) ?? "";
   const timestamp = raw === "" ? NaN : Number(raw);
   const rows = await db.queryAll("SELECT supplier_active, enabled, reference_price, required_fields_json, unlimited_stock, stock FROM games_products WHERE supplier='sekalipay'");
   const counts = {

@@ -11,6 +11,7 @@
 // dalam chunk 50 baris → ±12 statement upsert, bukan satu statement per baris.
 
 import type { DatabaseAccess } from "@/lib/db-access";
+import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { fetchPrepaidPriceList, isDigiflazzConfigured, type DigiflazzPriceItem } from "./digiflazz";
 import { computeGamesSellPrice } from "./pricing";
 
@@ -51,12 +52,17 @@ export async function syncGamesCatalog(
   if (listed.kind !== "ok") {
     const detail = listed.kind === "api_error" ? `${listed.rc} ${listed.message}`.trim()
       : listed.kind === "http_error" ? `http_${listed.status}` : listed.reason;
-    return { ok: false, error: `price_list_${listed.kind}`, detail: detail.slice(0, 200) };
+    const error = `price_list_${listed.kind}`;
+    await recordSyncError(db, "games_catalog", detail ? `${error}:${detail}` : error, now);
+    return { ok: false, error, detail: detail.slice(0, 200) };
   }
 
   const games = listed.items.filter((item) => isGames(item) && item.price > 0 && item.product_name !== "");
   // Daftar kosong hampir pasti salah filter/akun, bukan "semua SKU hilang".
-  if (games.length === 0) return { ok: false, error: "empty_games_catalog" };
+  if (games.length === 0) {
+    await recordSyncError(db, "games_catalog", "empty_games_catalog", now);
+    return { ok: false, error: "empty_games_catalog" };
+  }
 
   const codes = new Set(games.map((g) => g.buyer_sku_code));
   const isBackup = (g: DigiflazzPriceItem) => g.buyer_sku_code.endsWith("b") && codes.has(g.buyer_sku_code.slice(0, -1));
@@ -93,29 +99,36 @@ export async function syncGamesCatalog(
     };
   });
 
-  let upserted = 0;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
-    await db.execRun(UPSERT_SQL, syncedAt, syncedAt, JSON.stringify(chunk));
-    upserted += chunk.length;
+  try {
+    let upserted = 0;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const chunk = rows.slice(i, i + CHUNK);
+      await db.execRun(UPSERT_SQL, syncedAt, syncedAt, JSON.stringify(chunk));
+      upserted += chunk.length;
+    }
+
+    // Hanya setelah semua chunk sukses: baris yang pernah disinkron tapi tidak
+    // tersentuh run ini hilang dari price-list.
+    const gone = await db.execRun(
+      `UPDATE games_products SET seller_active=0, backup_seller_active=0, updated_at=datetime('now')
+       WHERE synced_at IS NOT NULL AND synced_at < ? AND (seller_active<>0 OR backup_seller_active<>0)`,
+      syncedAt,
+    );
+
+    await recordSyncSuccess(db, "games_catalog", now);
+
+    return {
+      ok: true,
+      games: games.length,
+      upserted,
+      backups_linked: rows.filter((r) => r.backup_sku).length,
+      deactivated: Number(gone.changes ?? 0),
+      invalid: listed.invalid,
+    };
+  } catch (error) {
+    await recordSyncError(db, "games_catalog", error, now);
+    throw error;
   }
-
-  // Hanya setelah semua chunk sukses: baris yang pernah disinkron tapi tidak
-  // tersentuh run ini hilang dari price-list.
-  const gone = await db.execRun(
-    `UPDATE games_products SET seller_active=0, backup_seller_active=0, updated_at=datetime('now')
-     WHERE synced_at IS NOT NULL AND synced_at < ? AND (seller_active<>0 OR backup_seller_active<>0)`,
-    syncedAt,
-  );
-
-  return {
-    ok: true,
-    games: games.length,
-    upserted,
-    backups_linked: rows.filter((r) => r.backup_sku).length,
-    deactivated: Number(gone.changes ?? 0),
-    invalid: listed.invalid,
-  };
 }
 
 const UPSERT_SQL = `INSERT INTO games_products

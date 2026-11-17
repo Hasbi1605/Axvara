@@ -1,4 +1,5 @@
 import { QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
+import { sanitizeSyncError } from "@/lib/sync-status";
 
 export type SupplierBalanceKey = "tunvn" | "aivault";
 
@@ -67,12 +68,31 @@ export async function checkSupplierLowBalance(
 
   const now = opts.now ?? Date.now();
   const checkedKey = `${opts.supplier}_balance_checked_at`;
+  const errorKey = `${opts.supplier}_balance_error`;
+  const lastOkKey = `${opts.supplier}_balance_last_ok_at`;
   const { parseExpiry } = await import("@/lib/expiry");
 
-  const last = await db.queryFirst(`SELECT value FROM store_settings WHERE key=?`, checkedKey);
-  const lastCheckedMs = parseExpiry(last?.value);
+  const settingsRows = await db.queryAll(
+    `SELECT key, value FROM store_settings WHERE key IN (?, ?)`,
+    checkedKey,
+    errorKey,
+  );
+  const lastRaw = settingsRows.find((r) => r.key === checkedKey)?.value;
+  const lastCheckedMs = parseExpiry(lastRaw);
   if (lastCheckedMs !== null && now - lastCheckedMs < SUPPLIER_BALANCE_CHECK_INTERVAL_MS) {
     return { checked: false };
+  }
+  let prevStreak = 0;
+  const prevErrRaw = settingsRows.find((r) => r.key === errorKey)?.value;
+  if (typeof prevErrRaw === "string" && prevErrRaw.trim()) {
+    try {
+      const parsed = JSON.parse(prevErrRaw) as { streak?: unknown };
+      if (Number.isInteger(parsed?.streak) && Number(parsed.streak) > 0) {
+        prevStreak = Number(parsed.streak);
+      }
+    } catch {
+      prevStreak = 1;
+    }
   }
 
   // Tulis checkpoint sebelum panggilan API agar upstream lambat/gagal tidak dipukul tiap menit.
@@ -83,21 +103,48 @@ export async function checkSupplierLowBalance(
     new Date(now).toISOString(),
   );
 
+  const recordBalanceFailure = async (errMsg: string) => {
+    if (!db.canSpend(1)) return;
+    await db.execRun(
+      `INSERT INTO store_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+      errorKey,
+      JSON.stringify({
+        at: new Date(now).toISOString(),
+        error: sanitizeSyncError(errMsg),
+        streak: prevStreak + 1,
+      }),
+    ).catch(() => undefined);
+  };
+
   let balance: number | null;
   try {
     balance = await opts.fetchBalance();
   } catch (error) {
     if (error instanceof QueryBudgetExceeded) throw error;
+    const errMsg = error instanceof Error && error.message ? error.message.slice(0, 60) : "balance_failed";
+    await recordBalanceFailure(errMsg);
     return {
       checked: true,
       alerted: false,
-      error: error instanceof Error && error.message ? error.message.slice(0, 60) : "balance_failed",
+      error: errMsg,
     };
   }
 
   if (balance === null || !Number.isFinite(balance) || balance < 0) {
+    await recordBalanceFailure("balance_unavailable");
     return { checked: true, alerted: false, error: "balance_unavailable" };
   }
+
+  // Sukses fetch: simpan timestamp sukses terakhir + kosongkan error/streak (1 statement).
+  await db.execRun(
+    `INSERT INTO store_settings (key, value, updated_at)
+     VALUES (?, ?, datetime('now')), (?, '', datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+    lastOkKey,
+    String(now),
+    errorKey,
+  );
 
   if (!(balance < opts.threshold)) {
     return { checked: true, balance, alerted: false };

@@ -222,6 +222,38 @@ describe("checkSupplierLowBalance", () => {
         now: t0,
       });
       expect(r1).toEqual({ checked: true, alerted: false, error: "balance_unavailable" });
+      const err1 = fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_balance_error'").get() as { value: string };
+      expect(JSON.parse(err1.value)).toMatchObject({ error: "balance_unavailable", streak: 1 });
+
+      // Consecutive failure increments streak without sending any alert.
+      const r1b = await checkSupplierLowBalance(db, {
+        supplier: "tunvn",
+        label: "TUNVN",
+        fetchBalance: async () => { throw new Error("timeout"); },
+        threshold: 5,
+        step: 1,
+        format: (n) => `${n} USDT`,
+        now: t0 + 31 * 60_000,
+      });
+      expect(r1b).toEqual({ checked: true, alerted: false, error: "timeout" });
+      const err1b = fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_balance_error'").get() as { value: string };
+      expect(JSON.parse(err1b.value)).toMatchObject({ error: "timeout", streak: 2 });
+
+      // Recovery stores tunvn_balance_last_ok_at and clears tunvn_balance_error.
+      const r1Ok = await checkSupplierLowBalance(db, {
+        supplier: "tunvn",
+        label: "TUNVN",
+        fetchBalance: async () => 10,
+        threshold: 5,
+        step: 1,
+        format: (n) => `${n} USDT`,
+        now: t0 + 62 * 60_000,
+      });
+      expect(r1Ok).toEqual({ checked: true, balance: 10, alerted: false });
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_balance_error'").get()).toEqual({ value: "" });
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_balance_last_ok_at'").get()).toEqual({
+        value: String(t0 + 62 * 60_000),
+      });
 
       const r2 = await checkSupplierLowBalance(db, {
         supplier: "aivault",

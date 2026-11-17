@@ -7,6 +7,7 @@
 // dan klaim throttle CAS di store_settings mencegah dua isolate menumpuk.
 
 import type { DatabaseAccess } from "@/lib/db-access";
+import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { fetchTunvnProducts, isTunvnSyncEnabled, type TunvnProduct } from "./client";
 
 export const TUNVN_CATALOG_SETTING_KEY = "tunvn_catalog_sync_at";
@@ -23,7 +24,7 @@ export type TunvnCatalogSyncResult =
 
 export async function syncTunvnCatalog(
   db: DatabaseAccess,
-  opts: { now?: number; force?: boolean; reserveStatements?: number } = {},
+  opts: { now?: number; force?: boolean; reserveStatements?: number; skipSuccessMark?: boolean } = {},
 ): Promise<TunvnCatalogSyncResult> {
   if (!isTunvnSyncEnabled()) return { skipped: "not_configured" };
   const now = opts.now ?? Date.now();
@@ -39,18 +40,24 @@ export async function syncTunvnCatalog(
     : await db.execRun("UPDATE store_settings SET value=?, updated_at=datetime('now') WHERE key=? AND value=?", String(now), TUNVN_CATALOG_SETTING_KEY, prevValue);
   if (claim.changes !== 1) return { skipped: "claimed_elsewhere" };
 
+  const fail = async (error: string, detail?: string): Promise<TunvnCatalogSyncResult> => {
+    await recordSyncError(db, "tunvn_catalog", detail ? `${error}:${detail}` : error, now);
+    return detail ? { ok: false, error, detail } : { ok: false, error };
+  };
+
   const listed = await fetchTunvnProducts();
   if (listed.kind !== "ok") {
     const detail = listed.kind === "api_error" ? listed.detail
       : listed.kind === "http_error" ? `http_${listed.status}` : listed.reason;
-    return { ok: false, error: `products_${listed.kind}`, detail: detail.slice(0, 200) };
+    return fail(`products_${listed.kind}`, detail.slice(0, 200));
   }
   // Daftar kosong = kemungkinan salah akun/gangguan, bukan "semua hilang".
-  if (listed.items.length === 0) return { ok: false, error: "empty_tunvn_catalog" };
-  if (listed.invalid > 0) return { ok: false, error: "invalid_tunvn_catalog" };
+  if (listed.items.length === 0) return fail("empty_tunvn_catalog");
+  if (listed.invalid > 0) return fail("invalid_tunvn_catalog");
   // ponytail: full mirror must fit40 statements; add chunk continuation if it grows.
-  if (!db.canSpend(Math.ceil(listed.items.length / CHUNK) + 1 + (opts.reserveStatements ?? 0))) {
-    return { ok: false, error: "catalog_budget_exceeded" };
+  const successReserve = opts.skipSuccessMark ? 0 : 1;
+  if (!db.canSpend(Math.ceil(listed.items.length / CHUNK) + 1 + successReserve + (opts.reserveStatements ?? 0))) {
+    return fail("catalog_budget_exceeded");
   }
 
   const syncedAt = new Date(now).toISOString();
@@ -67,30 +74,39 @@ export async function syncTunvnCatalog(
     dusdt: p.discount_price_usdt,
   }));
 
-  let upserted = 0;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
-    await db.execRun(UPSERT_SQL, syncedAt, syncedAt, JSON.stringify(chunk));
-    upserted += chunk.length;
+  try {
+    let upserted = 0;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const chunk = rows.slice(i, i + CHUNK);
+      await db.execRun(UPSERT_SQL, syncedAt, syncedAt, JSON.stringify(chunk));
+      upserted += chunk.length;
+    }
+
+    // Baris yang pernah disinkron tetapi absen pada run penuh ini dianggap
+    // hilang dari katalog upstream: stok nol + tetap tersembunyi (bukan hapus,
+    // agar integrasi masa depan masih punya jejak harga terakhir).
+    const gone = await db.execRun(
+      `UPDATE tunvn_products SET stock=0, visible=0, updated_at=datetime('now')
+        WHERE synced_at IS NOT NULL AND synced_at < ? AND stock<>0`,
+      syncedAt,
+    );
+
+    if (!opts.skipSuccessMark) {
+      await recordSyncSuccess(db, "tunvn_catalog", now);
+    }
+
+    return {
+      ok: true,
+      fetched: listed.items.length,
+      upserted,
+      deactivated: Number(gone.changes ?? 0),
+      invalid: listed.invalid,
+      usdt_vnd: listed.usdt_vnd,
+    };
+  } catch (error) {
+    await recordSyncError(db, "tunvn_catalog", error, now);
+    throw error;
   }
-
-  // Baris yang pernah disinkron tetapi absen pada run penuh ini dianggap
-  // hilang dari katalog upstream: stok nol + tetap tersembunyi (bukan hapus,
-  // agar integrasi masa depan masih punya jejak harga terakhir).
-  const gone = await db.execRun(
-    `UPDATE tunvn_products SET stock=0, visible=0, updated_at=datetime('now')
-      WHERE synced_at IS NOT NULL AND synced_at < ? AND stock<>0`,
-    syncedAt,
-  );
-
-  return {
-    ok: true,
-    fetched: listed.items.length,
-    upserted,
-    deactivated: Number(gone.changes ?? 0),
-    invalid: listed.invalid,
-    usdt_vnd: listed.usdt_vnd,
-  };
 }
 
 // visible TIDAK PERNAH ditulis di sini selain literal 0 pada INSERT; cabang
