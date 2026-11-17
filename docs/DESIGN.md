@@ -2,7 +2,12 @@
 
 ## Pemisah katalog per kategori — 17 November 2026 (lokal)
 
-Semua tanpa pencarian memakai section longgar (`mt-10 sm:mt-14`), bukan box baru.
+Semua tanpa pencarian memakai section tanpa box. Revisi owner17November:
+section pertama `mt-3 sm:mt-4` ditambah padding bawah strip8px memberi gap visual
+pill→header20px/24px; antarkategori tetap longgar (`mt-10 sm:mt-14`).
+Header→grid `mb-4 sm:mb-5` (16px/20px).
+Judul **Katalog Premium** berdiri sendiri tanpa teks total/tampil di kanan
+(revisi owner17November); jumlah pada masing-masing header kategori tetap.
 Header berurutan: ikon32px mobile/40px desktop → nama kategori terlokalisasi →
 jumlah muted `· N` → hairline fleksibel1px gradasi cyan35% ke transparan,
 tanpa tombol di header. Revisi owner 17 Nov: di bawah grid, tombol kaca terpusat
@@ -29,10 +34,21 @@ dimensi eksplisit, decoding async; section berikutnya lazy. Slug baru/unmapped
 memakai glyph kategori existing, admin icon picker tidak berubah.
 
 Pills mempertahankan ukuran keputusan8November (24px/36px, ikon10px/14px), glyph
-IosIcon existing. Pada mode grup saja bar sticky tepat di bawah tinggi navbar
-terukur, latar Midnight85% + backdrop blur + garis bawah white6%. **Semua** putih
-tetap selected; pill kategori yang dilewati TIDAK diberi tint (scrollspy dihapus,
-revisi owner 17 Nov). Tab/fokus tombol tetap jelas.
+IosIcon existing. Revisi owner17November mengembalikan wrapper `mt-4` polos
+sebelum pengelompokan: tanpa sticky, latar luar, backdrop blur atau garis bawah.
+Strip mobile `-mx-4 px-4`, mulai `sm` margin/padding horizontal nol, padding bawah8px
+tanpa tambahan padding atas. Klik filter tidak menggulir halaman. **Semua** putih
+tetap selected; kategori yang dilewati tanpa tint/auto-geser horizontal. Fokus
+keyboard cyan2px inset2px agar tidak terpotong oleh area scroll; `aria-pressed`
+dan urutan/sumber kategori terbaru tetap. Bukan rollback pengelompokan produk.
+
+Verifikasi pemulihan pill17November: Chromium Playwright dev lokal1440×1000,
+390×844 dan320×700 reduced-motion: gap terukur20/24px dan16/20px, tanpa wrapper
+berbidang/sticky/divider, scroll400px membawa strip400px; klik filter/Semua tidak
+menggulir halaman. Tab+Enter/fokus inset, geser horizontal mobile, ekspansi4→8→4,
+empty/reset pencarian dan sheet Kategori tetap bekerja. Header katalog tanpa
+counter pada ID/EN (EN390px), jumlah kategori tetap. Enam aset CSS/JS200 per
+viewport, tanpa overflow/error console/HTTP; data dev, bukan produksi.
 
 Admin memakai primitive/token existing: header grup muted berisi nama dan jumlah
 produk halaman; posisi kategori penuh, ↑↓ disabled di batas kategori/status.

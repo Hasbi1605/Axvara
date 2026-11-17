@@ -13,10 +13,16 @@
   setelah terbuka menjadi **Tampilkan lebih sedikit**. Tidak pindah filter/halaman. Mode kategori/pencarian tetap16 → Tampilkan semua → Ciutkan.
   Revisi tampilan lanjutan: tombol ramping32px dengan target sentuh44px, tanpa
   outer cyan menetap; cyan hanya saat ditekan, fokus keyboard netral tetap jelas.
-  Angka total/tampil mengikuti kartu yang benar-benar terlihat pada breakpoint.
-- Pills menempel di bawah navbar hanya pada mode grup. **Semua** tetap terpilih
-  putih; pill kategori yang sedang dilewati tidak diberi aksen apa pun (revisi owner).
-  Katalog dan kategori dirender dari server; fallback klien satu request per sumber.
+  Revisi owner17November: teks **N produk • tampil N** di kanan Katalog Premium
+  dihapus pada semua mode/bahasa; jumlah pada header tiap kategori tetap.
+- Revisi owner17November: perilaku pills kembali seperti sebelum pengelompokan:
+  scroll normal tanpa sticky, bidang luar/blur atau garis pembatas. Klik pill hanya
+  memfilter/reset pagination tanpa auto-scroll; navigasi sheet Kategori tetap
+  menggulir ke katalog. **Semua** tetap putih, tanpa aksen scrollspy. Area geser
+  mobile kembali melebar ke tepi container; gap ke header section pertama20px
+  mobile/24px mulai `sm`, header ke produk16/20px; jarak antarkategori tetap40/56px.
+  Pengelompokan/ekspansi produk tetap. Katalog dan kategori dirender dari server;
+  fallback klien satu request per sumber. Implementasi lokal, belum bukti deployment.
 - Admin Kategori: ↑↓ satu langkah, optimistis + antrean/rollback, field numerik tetap.
   Admin Produk: header kategori, posisi/jump1..N dalam kategori penuh (bukan hasil
   search/pagination), panah hanya antarproduk se-kategori dan se-status. Filter dan

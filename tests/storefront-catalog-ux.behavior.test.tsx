@@ -217,8 +217,8 @@ describe("Semua dikelompokkan per kategori", () => {
     const section = container.querySelector('[data-catalog-category="ai-chatbot"]')!;
     expect(section.querySelectorAll("h3")).toHaveLength(8);
     expect(section.querySelectorAll(".hidden.lg\\:block")).toHaveLength(4);
-    expect(screen.getByText("12 produk • tampil 4")).toBeTruthy();
-    expect(screen.getByText("12 produk • tampil 8")).toBeTruthy();
+    expect(screen.queryByText(/\d+ produk • tampil \d+/)).toBeNull();
+    expect(section.querySelector("h2")?.nextElementSibling?.textContent).toBe("· 12");
     expect(screen.queryByRole("button", { name: /Tampilkan semua/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Lihat semua/ })).toBeNull();
     const more = screen.getByRole("button", { name: /Tampilkan 8 lainnya.*Tampilkan 4 lainnya.*AI & Chatbot/ });

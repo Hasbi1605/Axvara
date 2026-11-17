@@ -108,7 +108,6 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
   const selectCategory = (slug: string) => {
     setActiveCat(slug);
     setShowAll(false);
-    document.getElementById("katalog")?.scrollIntoView?.({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   };
 
   useEffect(() => {
@@ -220,13 +219,8 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
 
       {/* Katalog with pagination — authoritative D1 data */}
       <section id="katalog" className="scroll-mt-36 lg:scroll-mt-20 mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-8 pt-2 pb-10">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{t.catalogTitle}</h2>
-          <span className="text-xs text-white/40">
-            {grouped ? <><span className="lg:hidden">{t.productCount(filtered.length, groups.reduce((count, group) => count + (expanded[groupKey(group.category)] ? group.products.length : Math.min(4, group.products.length)), 0))}</span><span className="hidden lg:inline">{t.productCount(filtered.length, paged.length)}</span></> : t.productCount(filtered.length, paged.length)}
-          </span>
-        </div>
-        <div className={grouped ? "sticky z-40 mt-4 -mx-4 border-b border-white/[0.06] bg-[#080C1E]/85 px-4 py-1 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8" : "mt-4"} style={grouped ? { top: navbarHeight } : undefined}>
+        <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{t.catalogTitle}</h2>
+        <div className="mt-4">
           <CategoryPills categories={sortCategoriesForDisplay(categories)} active={activeCat} onChange={selectCategory} />
         </div>
         {catalogError && (
@@ -256,8 +250,8 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
               const open = Boolean(expanded[key]);
               const busy = expanding === key;
               const categoryLabel = category ? marketCategoryName(category.slug, prices.locale, category.name) : t.uncategorized;
-              return <section key={category?.slug ?? "unknown"} data-catalog-category={category?.slug} aria-labelledby={`category-${category?.slug ?? "unknown"}`} className="catalog-category-section mt-10 scroll-mt-40 sm:mt-14">
-              <div className="mb-5 flex items-center gap-2 sm:gap-3">
+              return <section key={category?.slug ?? "unknown"} data-catalog-category={category?.slug} aria-labelledby={`category-${category?.slug ?? "unknown"}`} className={cn("catalog-category-section scroll-mt-40", groupIndex === 0 ? "mt-3 sm:mt-4" : "mt-10 sm:mt-14")}>
+              <div className="mb-4 flex items-center gap-2 sm:mb-5 sm:gap-3">
                 <span aria-hidden="true" className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center sm:h-10 sm:w-10">
                   {icon ? <>
                     <span className="pointer-events-none absolute -inset-[5px] rounded-full opacity-50 blur-[7px]" style={{ background: `radial-gradient(circle, ${icon.glow}, transparent 70%)` }} />

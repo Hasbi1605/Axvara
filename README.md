@@ -9,8 +9,13 @@ produk di section itu sendiri (spinner singkat + kartu muncul bertahap, lalu
 **Tampilkan lebih sedikit**), tanpa pindah filter; kategori/search tetap16 → semua.
 Tombol ramping32px (target sentuh44px), tanpa outer cyan menetap; fokus keyboard
 putih dan aksen cyan hanya saat ditekan.
-Counter responsif, section dari SSR produk+kategori, pills sticky di bawah navbar
-tanpa aksen scrollspy (revisi owner 17 November). Header memakai
+Section dari SSR produk+kategori. Revisi owner17November: teks total/tampil di kanan
+Katalog Premium dihapus, jumlah pada header masing-masing kategori tetap;
+pills kembali scroll normal seperti sebelum pengelompokan, tanpa bidang luar,
+blur, garis bawah atau auto-scroll saat diklik. Geser horizontal mobile melebar
+ke tepi container; gap pill→header pertama20/24px dan header→produk16/20px,
+antarkategori tetap40/56px. Filter/reset pagination, fokus keyboard, sumber/urutan
+kategori dan navigasi sheet tetap; grouping produk tidak di-rollback. Header memakai
 ikon 3D kategori custom AXVARA, dibuat dengan image generation, dipangkas192px WebP
 lokal (tampil32/40px); glyph fallback untuk
 slug baru. Detail tampilan/aset: `docs/DESIGN.md` dan `docs/ARCHITECTURE.md`.
