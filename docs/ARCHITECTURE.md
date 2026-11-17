@@ -1,5 +1,30 @@
 # ARCHITECTURE.md — AXVARA
 
+## F3: isolasi stok pembayaran & retry supplier — 18 November 2026 (lokal)
+
+- `orders-transition.ts`: kedua helper cancel/expiry (`transitionPendingOrder`,
+  `transitionPendingPaymentOrder`) membatasi UPDATE stok produk/varian dengan
+  `EXISTS orders … COALESCE(order_kind,'apps')='apps'` di batch atomik existing.
+  `incrementSoldCountForOrder` memakai filter jenis yang sama. Pedia/Games
+  tidak mereservasi stok Market; ID item yang bertabrakan tidak boleh restock
+  Market, termasuk cron expiry dan `stale_initializing`. Apps/legacy NULL tetap
+  restock sekali; nilai unlimited−1 dan guard paid-vs-expiry tidak berubah.
+- `wrFetch`: HTTP2xx tanpa envelope JSON terbaca dengan boolean `success`
+  menjadi `WrNetworkError('wr_network_response_unreadable')` pada proxy/direct.
+  Dispatcher existing mempertahankan `request_sent_at` dan status ambigu;
+  Premium missing-ID memakai rekonsiliasi admin exact invoice, known-ID dipoll.
+  Recovery exact-ref Jaspay existing tidak berubah. JSON valid `success:false`
+  tetap memakai klasifikasi penolakan saldo/stok existing.
+- `POST /api/admin/sekalipay/orders/[id]/retry`: pre-read JOIN order + CAS UPDATE
+  mensyaratkan order lunas/paid, invoice kosong, sent-fence NULL dan bukan
+  `cancelled_by_admin%`. Invoice/sent →409 `reconciliation_required`; void atau
+  nonpaid →409 `not_retryable`. Retry tidak menghapus sent-fence. `failed`
+  pra-kirim boleh reset attempt0 (termasuk kuota habis); status retryable lain
+  tetap mempertahankan counter dan batas existing. Dispatch memakai
+  `skipOrphanProbe:true`; autentikasi tidak berubah.
+- Verifikasi fixture SQLite + D1 native/workerd, tanpa mutasi produksi,
+  migrasi/env baru atau deployment. Full suite integrasi dijalankan PM.
+
 ## Katalog berkelompok + urutan kategori — 17 November 2026 (lokal)
 
 - `src/lib/product-order.ts`: `groupProductsByCategory` murni mengurutkan kategori

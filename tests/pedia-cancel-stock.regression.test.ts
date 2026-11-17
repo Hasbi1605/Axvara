@@ -3,7 +3,7 @@
 // products/product_variants dari orders.items (product_id = pedia_products id).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { transitionPendingOrder } from "@/lib/db";
+import { incrementSoldCountForOrder, transitionPendingOrder } from "@/lib/db/orders-transition";
 
 const fixtures: ReturnType<typeof createD1Fixture>[] = [];
 afterEach(() => { for (const f of fixtures.splice(0)) f.close(); vi.unstubAllEnvs(); });
@@ -14,7 +14,7 @@ const P = "AXP-20261107-STOCK001";
 // keduanya memakai id numerik 1 seperti kasus nyata Pedia (pedia_products id 1).
 const ITEMS = [{ product_id: 1, qty: 2 }, { product_id: 1, variant_id: 1, qty: 2 }];
 
-async function seed(orderKind: "apps" | "pedia", code: string) {
+async function seed(orderKind: "apps" | "pedia" | "games", code: string) {
   const f = createD1Fixture();
   fixtures.push(f);
   stubFulfillmentKey();
@@ -27,6 +27,54 @@ async function seed(orderKind: "apps" | "pedia", code: string) {
 const stocks = (f: ReturnType<typeof createD1Fixture>) => ({
   product: (f.sql.prepare("SELECT stock FROM products WHERE id=1").get() as { stock: number }).stock,
   variant: (f.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get() as { stock: number }).stock,
+});
+
+describe("cron expiry/stale initializing: isolasi stok Market", () => {
+  for (const kind of ["apps", "pedia", "games"] as const) {
+    it.each(["pending", "initializing"] as const)(`${kind} %s: transisi ledger tanpa restock lintas katalog`, async (transactionStatus) => {
+      const code = `${kind}-stock-${transactionStatus}`;
+      const f = await seed(kind, code);
+      f.sql.exec("UPDATE products SET sold_count=7; UPDATE orders SET expires_at=datetime('now','-1 minute')");
+      f.sql.prepare(`INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,status,requested_amount,payable_amount,expires_at,created_at)
+        VALUES(?,'gopay','static',?,'fixture',?,10000,10001,datetime('now','-1 minute'),datetime('now','-10 minutes'))`)
+        .run(code, code, transactionStatus);
+      vi.stubEnv("CRON_SECRET", "fixture");
+      const { POST } = await import("@/app/api/cron/lite/route");
+      const { NextRequest } = await import("next/server");
+      const call = () => POST(new NextRequest("https://fixture.test/api/cron/lite?job=expiry", {
+        method: "POST", headers: { authorization: "Bearer fixture" },
+      }));
+      const response = await call();
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject(transactionStatus === "pending" ? { expired_payments: 1 } : { stale_initializing: 1 });
+      expect(status(f, code)).toMatchObject(transactionStatus === "pending"
+        ? { status: "kadaluarsa", payment_status: "expired" }
+        : { status: "dibatalkan", payment_status: "failed" });
+      expect(f.sql.prepare("SELECT status FROM payment_transactions WHERE order_code=?").get(code)?.status)
+        .toBe(transactionStatus === "pending" ? "expired" : "failed");
+      const stock = kind === "apps" ? 52 : 50;
+      expect(stocks(f)).toEqual({ product: stock, variant: stock });
+      expect(f.sql.prepare("SELECT sold_count FROM products WHERE id=1").get()?.sold_count).toBe(7);
+      expect((await call()).status).toBe(200);
+      expect(stocks(f)).toEqual({ product: stock, variant: stock });
+    });
+  }
+
+  it.each(["pedia", "games"] as const)("%s tidak menambah sold_count Market lewat helper bersama", async kind => {
+    const f = await seed(kind, `${kind}-sold`);
+    await incrementSoldCountForOrder(`${kind}-sold`, f.db);
+    expect(f.sql.prepare("SELECT sold_count FROM products WHERE id=1").get()?.sold_count).toBe(0);
+  });
+
+  it("Games dengan items=[] aktual tetap expiry tanpa mutasi stok", async () => {
+    const f = await seed("games", "games-empty");
+    f.sql.exec("UPDATE orders SET items='[]'");
+    const { transitionPendingPaymentOrder } = await import("@/lib/db/orders-transition");
+    f.sql.exec(`INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,status,requested_amount,payable_amount)
+      VALUES('games-empty','gopay','static','games-empty','fixture','pending',10000,10001)`);
+    expect(await transitionPendingPaymentOrder({ orderCode: "games-empty", expectedTransactionStatus: "pending", transactionStatus: "expired", orderStatus: "kadaluarsa", paymentStatus: "expired", items: [] }, f.db)).toBe(true);
+    expect(stocks(f)).toEqual({ product: 50, variant: 50 });
+  });
 });
 const status = (f: ReturnType<typeof createD1Fixture>, code: string) =>
   f.sql.prepare("SELECT status,payment_status FROM orders WHERE code=?").get(code) as Record<string, unknown>;

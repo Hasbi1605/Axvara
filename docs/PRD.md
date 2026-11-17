@@ -1,5 +1,19 @@
 # PRD — AXVARA
 
+## Pengaman expiry & retry supplier — 18 November 2026 (lokal)
+
+- Cancel/expiry dan `stale_initializing` Pedia/Games tidak mengubah stok atau
+  sold_count Market, sekalipun ID item bertabrakan. Restock hanya apps/legacy
+  NULL yang benar-benar memakai reservasi Market, tetap sekali saja.
+- Pembelian WR dengan respons2xx tak terbaca tetap ambigu; jangan membuka
+  sent-fence atau membeli ulang. Rekonsiliasi existing dipertahankan; penolakan
+  `success:false` valid tetap mengikuti klasifikasi saldo/stok existing.
+- Retry admin SK hanya pra-kirim untuk order lunas/paid: invoice atau sent-fence
+  terisi →409 dan arahkan rekonsiliasi; order/link dibatalkan →409. Kegagalan
+  pra-kirim tanpa invoice/fence boleh memperoleh kuota baru, termasuk saat
+  attempt habis. Retry tidak menghapus jejak pengiriman.
+- Status: implementasi dan fixture lokal; bukan bukti deployment/transaksi nyata.
+
 ## Katalog per kategori — 17 November 2026 (lokal)
 
 - **Semua**, tanpa pencarian: satu section per kategori terisi, urutan kategori

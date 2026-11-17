@@ -1,5 +1,21 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Respons WR tak terbaca & retry admin SK — 18 November 2026 (lokal)
+
+- WR proxy/direct: HTTP2xx tanpa JSON envelope dengan boolean `success` adalah
+  `WrNetworkError` ambigu (`wr_network_response_unreadable`), bukan penolakan.
+  Dispatcher mempertahankan `request_sent_at`; Premium tanpa ID tetap perlu
+  rekonsiliasi exact invoice admin, tanpa POST pembelian kedua. Poll known-ID
+  dan recovery exact-ref Jaspay existing tidak berubah. JSON valid
+  `success:false` tetap memakai klasifikasi saldo/stok existing.
+- Retry admin SK hanya order lunas/paid, link retryable, invoice kosong dan
+  `request_sent_at IS NULL`, bukan `cancelled_by_admin%`. Invoice/sent ditolak
+  409 `reconciliation_required`; pembatalan/nonpaid 409 `not_retryable`.
+  Semua pagar diperiksa ulang di CAS UPDATE; retry tidak menghapus sent-fence.
+  `failed` pra-kirim tanpa invoice/fence boleh reset attempt0 termasuk exhausted;
+  status lain tidak mereset counter. Probe orphan tidak dijalankan dari retry.
+- Fixture lokal; tanpa perubahan proxy, env, produksi atau deployment.
+
 ## Diff sync VPS 1 menit + trigger pairs WR/SK — 18 November 2026 (VPS terpasang)
 
 - `axvara-wr-proxy/src/diff-sync.ts` & `src/index.ts` menurunkan interval diff

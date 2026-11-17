@@ -74,6 +74,27 @@ describe("Warung Rebahan error classification", () => {
 });
 
 describe("Warung Rebahan API client fetch", () => {
+  for (const mode of ["proxy", "direct"] as const) {
+    it.each(["/order", "/jaspay/order"])(`${mode} unreadable 2xx %s is a network/ambiguous result`, async endpoint => {
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "fixture");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", mode === "proxy" ? "https://proxy.fixture" : "");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "fixture");
+      vi.stubGlobal("fetch", vi.fn(async () => new Response("not-json", { status: 200 })));
+      const { wrFetch } = await import("@/lib/warung-rebahan/client");
+      await expect(wrFetch(endpoint)).rejects.toBeInstanceOf(WrNetworkError);
+    });
+    it.each([
+      ["Saldo tidak mencukupi", WrInsufficientBalanceError],
+      ["Stok produk habis", WrOutOfStockError],
+    ])(`${mode} valid success:false %s remains a definitive rejection`, async (message, ErrorClass) => {
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "fixture");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", mode === "proxy" ? "https://proxy.fixture" : "");
+      vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "fixture");
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({ success: false, message })));
+      const { createOrder } = await import("@/lib/warung-rebahan/client");
+      await expect(createOrder({ variant_id: "fixture" })).rejects.toBeInstanceOf(ErrorClass);
+    });
+  }
   it("mengirim api_key dan mengembalikan data saat success", async () => {
     vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
     vi.stubEnv("WARUNG_REBAHAN_API_KEY", "test-key");

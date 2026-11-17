@@ -29,6 +29,35 @@ function stubEnv() {
 }
 
 describe("regresi #1: timeout setelah vendor menerima tidak menghasilkan POST kedua", () => {
+  for (const mode of ["proxy", "direct"] as const) {
+    it.each(["invalid-json", "interrupted-body", "empty-body", "malformed-envelope"])(`${mode} 2xx %s retains fence across later ticks`, async fault => {
+      const fx = await setupWrFixture();
+      try {
+        seedWrCatalog(fx); seedWrOrder(fx, "AXV-20261118-WRBODY01"); stubEnv();
+        vi.stubEnv("WARUNG_REBAHAN_PROXY_URL", mode === "proxy" ? "https://proxy.fixture" : "");
+        vi.stubEnv("WARUNG_REBAHAN_PROXY_TOKEN", "fixture");
+        let buys = 0;
+        const fetcher = vi.fn(async (url: string) => {
+          if (!String(url).endsWith("/order")) return Response.json({ success: true, data: [] });
+          expect(String(url)).toBe(mode === "proxy" ? "https://proxy.fixture/wr/order" : "https://warungrebahan.com/api/v1/order");
+          buys++;
+          if (fault === "interrupted-body") return new Response(new ReadableStream({ start(controller) { controller.error(new TypeError("body interrupted")); } }), { status: 200 });
+          return new Response(fault === "invalid-json" ? "not-json" : fault === "empty-body" ? "" : "{}", { status: 200 });
+        });
+        vi.stubGlobal("fetch", fetcher);
+        const db = createDatabaseAccess(fx.db);
+        await createWrOrderLink("AXV-20261118-WRBODY01", [{ product_id: 1, variant_id: 1, qty: 1 }], db);
+        await processWrPendingOrders(db, { skipOrphanProbe: true });
+        const before = fx.sql.prepare("SELECT status,request_sent_at,last_error FROM wr_order_links").get();
+        expect(before).toMatchObject({ status: "submitted", request_sent_at: expect.any(String), last_error: expect.stringContaining("ambiguous_timeout") });
+        fx.sql.exec("UPDATE wr_order_links SET next_attempt_at=datetime('now','-1 minute'), updated_at=datetime('now','-10 minutes')");
+        await processWrPendingOrders(db, { skipOrphanProbe: true });
+        await reconcileMissingWrLinks(db);
+        expect(buys).toBe(1);
+        expect(fx.sql.prepare("SELECT request_sent_at FROM wr_order_links").get()?.request_sent_at).toBe(before?.request_sent_at);
+      } finally { fx.close(); }
+    });
+  }
   it.each([
     [500,{success:false,message:"Internal server error"}],
     [503,{success:false,message:"Service unavailable"}],

@@ -1,5 +1,15 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Pengaman uang F3 (18 November 2026, lokal)
+
+Expiry/stale-initializing Pedia/Games tidak pernah restock stok Market; helper
+stok/sold_count dibatasi apps/legacy NULL. Respons pembelian WR2xx tak terbaca
+tetap ambigu dengan sent-fence utuh, bukan izin membeli ulang. Retry admin SK
+menolak invoice/sent-fence terisi atau order/link dibatalkan (409); hanya order
+lunas/paid pra-kirim boleh retry, dan `failed` pra-kirim boleh reset attempt0.
+CAS memeriksa ulang pagar tersebut. Tanpa env/migrasi/deployment baru;
+detail `docs/ARCHITECTURE.md` bagian F3 dan aturan supplier/pembayaran.
+
 ## Katalog berkelompok & urutan kategori (17 November 2026)
 
 Implementasi lokal: beranda **Semua** tanpa pencarian dikelompokkan per kategori,

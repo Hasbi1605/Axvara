@@ -1,5 +1,14 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Isolasi stok Market saat expiry — 18 November 2026 (lokal)
+
+`transitionPendingPaymentOrder` (expiry + `stale_initializing`) dan
+`transitionPendingOrder` wajib membatasi restock SQL ke order
+`COALESCE(order_kind,'apps')='apps'`. Pedia/Games tidak pernah mereservasi stok
+Market, walau ID item bertabrakan; `incrementSoldCountForOrder` memakai filter
+jenis yang sama. Apps/legacy NULL tetap restock sekali dengan guard atomik
+paid-vs-expiry existing. Fixture SQLite dan D1 native/workerd, bukan produksi.
+
 ## Biaya pembayaran di laporan admin — 16 November 2026 (lokal)
 
 MDR gopay/klikqris/dana disimpan di `store_settings.payment_mdr_bps` lewat API

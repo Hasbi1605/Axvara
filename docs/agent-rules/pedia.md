@@ -1,5 +1,14 @@
 # Aturan agent — Pedia (SMM)
 
+## Expiry tanpa restock lintas katalog — 18 November 2026 (lokal)
+
+Guard SQL apps/legacy NULL kini berlaku di **kedua** helper bersama,
+`transitionPendingOrder` dan `transitionPendingPaymentOrder`, termasuk cron
+expiry/`stale_initializing`. Pedia dan Games tidak boleh menulis stok produk/
+varian atau sold_count Market dari ID item; pertahankan daftar restock kosong
+pada caller Pedia. Fixture ID bertabrakan + Games `items=[]` dan D1 native
+terverifikasi lokal; bukan koreksi data/deployment produksi.
+
 ## Keputusan owner 13 November 2026 — IndoSMM satu-satunya supplier (menggantikan bagian 12 November)
 
 Bagian 12 November di bawah adalah **snapshot historis yang digantikan**; jangan

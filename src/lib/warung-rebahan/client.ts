@@ -297,6 +297,11 @@ export async function wrFetch<T>(
     const json = (await res
       .json()
       .catch(() => null)) as WrApiResponse<T> | null;
+    // A 2xx purchase may already have charged the supplier. An unreadable
+    // receipt is not a rejection: preserve the dispatcher's sent fence.
+    if (res.ok && (!json || typeof json.success !== "boolean")) {
+      throw new WrNetworkError("wr_network_response_unreadable", endpoint);
+    }
     if (!res.ok || !json || json.success !== true) {
       const message =
         (json && typeof json.message === "string" && json.message) ||

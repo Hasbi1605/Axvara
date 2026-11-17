@@ -49,7 +49,7 @@ export async function transitionPendingOrder(
       // `orders.items[].product_id` (ids that can collide numerically with
       // Market ids). Guard in SQL so shared callers (admin/cron/webhooks) are
       // safe too.
-      const restockMarket = `EXISTS(SELECT 1 FROM orders o WHERE o.code=? AND COALESCE(o.order_kind,'apps') NOT IN ('pedia','games'))`;
+      const restockMarket = `EXISTS(SELECT 1 FROM orders o WHERE o.code=? AND COALESCE(o.order_kind,'apps')='apps')`;
       productQuantities.forEach((qty, productId) => {
         statements.push(
           d1.prepare(`UPDATE products SET stock=stock+? WHERE id=? AND stock!=-1 AND ${restockMarket}`).bind(qty, productId, code),
@@ -140,7 +140,7 @@ export async function transitionPendingOrder(
 
   const order = getOrderMem().find((row) => String(row.code) === code);
   if (!order || order.status !== "pending") throw new OrderTransitionError();
-  const restockMarket = !["pedia", "games"].includes(String((order as { order_kind?: unknown }).order_kind ?? "apps"));
+  const restockMarket = String((order as { order_kind?: unknown }).order_kind ?? "apps") === "apps";
   if (restockMarket && (status === "dibatalkan" || status === "kadaluarsa")) {
     productQuantities.forEach((qty, productId) => {
       const product = getSharedMem().find((row) => Number(row.id) === productId);
@@ -201,15 +201,17 @@ export async function transitionPendingPaymentOrder(input: {
         input.expiredOnly ? 1 : 0, input.orderCode),
     ];
 
+    // Other catalogs never reserved Market stock; numeric item IDs can collide.
+    const restockMarket = `EXISTS(SELECT 1 FROM orders o WHERE o.code=? AND COALESCE(o.order_kind,'apps')='apps')`;
     productQuantities.forEach((qty, productId) => {
       statements.push(
-        d1.prepare("UPDATE products SET stock=stock+? WHERE id=? AND stock!=-1").bind(qty, productId),
+        d1.prepare(`UPDATE products SET stock=stock+? WHERE id=? AND stock!=-1 AND ${restockMarket}`).bind(qty, productId, input.orderCode),
       );
     });
     variantQuantities.forEach((qty, variantId) => {
       statements.push(
-        d1.prepare("UPDATE product_variants SET stock=stock+?, updated_at=datetime('now') WHERE id=? AND stock!=-1")
-          .bind(qty, variantId),
+        d1.prepare(`UPDATE product_variants SET stock=stock+?, updated_at=datetime('now') WHERE id=? AND stock!=-1 AND ${restockMarket}`)
+          .bind(qty, variantId, input.orderCode),
       );
     });
     statements.push(
@@ -426,7 +428,7 @@ export async function incrementSoldCountForOrder(orderCode: string, database?: D
   const d1 = database === undefined ? getD1() : database;
   if (d1) {
     try {
-      const order = await d1.prepare("SELECT items FROM orders WHERE code=? AND COALESCE(order_kind,'apps')!='pedia'").bind(orderCode).first() as { items: string } | null;
+      const order = await d1.prepare("SELECT items FROM orders WHERE code=? AND COALESCE(order_kind,'apps')='apps'").bind(orderCode).first() as { items: string } | null;
       if (!order?.items) return;
       const items = JSON.parse(order.items) as { product_id: number; qty: number }[];
       if (!items.length) return;
