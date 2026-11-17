@@ -965,3 +965,24 @@ webhook tersimpan (`dana_webhook_events` provider `sekalipay_games`).
   Teks bantuan/ketentuan "seller cadangan" diganti (SK tidak punya cadangan otomatis).
 - **Verifikasi:** full suite 482 file / 6.611 tes lulus, `tsc` bersih; Chromium (Playwright,
   route fixture) 1440/390: 5 status + lacak tanpa overflow/error console. Belum bukti produksi.
+
+### 15.1 Lanjutan 17 November 2026 — email, total, nama nominal (lokal → CI)
+
+- **Email pembeli Games = 2 saja** (keputusan owner): "Pembayaran Diterima — Top Up Diproses"
+  (gabungan lunas + diproses, karena top up terkirim beberapa detik setelah bayar) dan
+  "Top Up Berhasil" (+SN). Email "Perlu Tindakan Admin" **dihapus**: `needs_check` cukup
+  Telegram admin (sama seperti Pedia), menghindari alarm palsu; halaman pesanan tetap
+  menampilkan status + WA admin. Nama game di email = nama tampilan toko (`games_meta.display_name`).
+- **Total halaman pesanan** = nominal yang benar-benar ditagih/dibayar (QRIS + kode unik, atau
+  total gateway), juga setelah lunas.
+- **Nama/keterangan nominal dirapikan untuk pembeli** (`src/lib/games/display-name.ts`,
+  `gamesVariantName`/`gamesVariantDescription`): buang awalan alias game ("Mobilelegend - 50 Diamond"
+  → "50 Diamond", "Aov 18 Vouchers" → "18 Vouchers"), titik ribuan ("1024 Cp" → "1.024 CP",
+  "9288 (7740+1548)" → "9.288 (7.740+1.548)"), singkatan unit kapital (CP/UC/VP/FC/FMP…), region
+  dalam kurung ("(filipina)" → "(Filipina)", kode ≤3 huruf → "(ID)/(USA)"). Keterangan seller:
+  "✅ Proses instant detikan" disembunyikan (badge INSTAN sudah ada), 4 pola region/voucher
+  ditulis ulang ID/EN, sisanya tanpa emoji + sentence case bila huruf kapital semua, restatement
+  nama dibuang. Diterapkan HANYA di output pembeli (katalog/detail, quote `sku.name`, status/lookup
+  pesanan, email); DB, sync, kategori/ikon (tetap dari nama mentah), admin, Telegram dan laporan tidak
+  berubah; tidak ada field nama mentah di JSON publik. Sweep 1.644 nominal aktif produksi (baca-saja):
+  1.013 nama berubah, hasil diperiksa PM.

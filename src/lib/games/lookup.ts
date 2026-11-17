@@ -10,6 +10,7 @@ import {
 import { deriveNameFromEmail } from "@/lib/utils";
 import { gamesGameForBrand } from "./registry";
 import { gamesBuyerStatus } from "./status";
+import { gamesVariantName } from "./display-name";
 
 const QRIS_PROVIDERS = new Set(["dana", "gopay", "klikqris"]);
 
@@ -94,7 +95,7 @@ export async function lookupGamesOrder(code: string, contactRaw: string, request
       customer_name: storedName || deriveNameFromEmail(String(order.customer_email ?? "")),
       ...maskedContact(order),
       items: [{
-        name: `${gameName || "Game"} · ${String(item.product_name ?? "")}`.trim().slice(0, 200),
+        name: `${gameName || "Game"} · ${gamesVariantName(String(item.product_name ?? ""), { name: gameName, slug: gameSlug })}`.trim().slice(0, 200),
         price: Number(item.total),
         qty: Number(item.quantity) || 1,
       }],

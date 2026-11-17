@@ -8,6 +8,7 @@ import { gamesGameForBrand } from "@/lib/games/registry";
 import { gamesBuyerStatus } from "@/lib/games/status";
 import { gamesPaymentBlock, gamesQrisBlock, loadGamesOrder, maskedContact } from "@/lib/games/lookup";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
+import { gamesVariantName } from "@/lib/games/display-name";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -117,7 +118,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       order_kind: "games",
       ...maskedContact(order),
       game: game ? { slug: game.slug, name: game.name, publisher: game.publisher } : null,
-      product_name: String(item.product_name ?? "").slice(0, 200),
+      product_name: gamesVariantName(String(item.product_name ?? ""), {
+        name: game?.name ?? String(item.sk_product_name ?? item.game_brand ?? ""),
+        slug: String(item.game_slug ?? game?.slug ?? ""),
+      }).slice(0, 200),
       customer_no: String(item.customer_no ?? ""),
       customer_nickname: item.customer_nickname != null ? String(item.customer_nickname) : null,
       quantity: Number(item.quantity) || 1,

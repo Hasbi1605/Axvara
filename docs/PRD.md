@@ -551,6 +551,10 @@ dijalankan — bukan status live.
   seperti Market/Pedia; halaman pesanan memakai "Cek Pembayaran" dan hierarki Pedia; `/games/lacak`
   menampilkan "Pesanan di perangkat ini"; admin menampilkan nama produk dan modal aktual Games
   (tidak estimasi); notif Telegram Games menyebut Sekalipay, bukan Digiflazz. Detail GAMES §15.
+- Lanjutan 17 November 2026: pembeli Games menerima 2 email saja (Pembayaran Diterima — Top Up
+  Diproses, dan Top Up Berhasil + SN); pengecekan admin cukup notif Telegram. Total di halaman
+  pesanan = nominal yang dibayar. Nama/keterangan nominal dirapikan otomatis untuk pembeli
+  (data supplier mentah tetap untuk admin). Detail GAMES §15.1.
 - Koreksi hero10November2026 (lokal, baseline UI Games live diamati; fix belum deploy):
   orbit/kelas hero memakai Pedia persis, empat planet dari registry walau katalog kosong,
   tanpa eyebrow/glow gold; kartu Market+Pedia berdampingan. Game registry tanpa SKU

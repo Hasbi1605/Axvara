@@ -113,9 +113,11 @@ export function GameStatus({ code }: { code: string }) {
   ];
   const codeButton = (cls: string) => <button type="button" onClick={() => void copy(order.code)} aria-label={t.copyCode} className={cls}><span className="break-all">{order.code}</span>{copied === order.code ? <Check size={11} aria-hidden="true" className="ml-1 inline" /> : <Copy size={11} aria-hidden="true" className="ml-1 inline opacity-70" />}</button>;
   const rows: [string, string][] = [[t.game, order.game?.name ?? "—"], [t.accountId, `${order.customer_no}${order.customer_nickname ? ` · ${order.customer_nickname}` : ""}`], [t.amount, order.product_name || "—"], [t.method, method]];
+  // Total = nominal yang benar-benar ditagih/dibayar: QRIS + kode unik, atau total gateway (+biaya).
+  const paidTotal = qris ? Number(qris.payable_amount) : payment?.kind === "gateway" && payment.total ? payment.total : order.total;
   const summary = <>
     <dl className="space-y-2">{rows.map(([key, value]) => <div key={key} className="flex justify-between gap-3 text-[13px] leading-5"><dt className="shrink-0 text-white/70">{key}</dt><dd className="min-w-0 break-words text-right font-medium text-white">{value}</dd></div>)}</dl>
-    <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">{t.total}</span><span className="shrink-0 font-bold text-white">{formatRupiah(qris && awaiting ? qris.payable_amount : order.total)}</span></div>
+    <div className="mt-3 flex justify-between gap-3 border-t border-white/10 pt-3"><span className="text-sm text-white/60">{t.total}</span><span className="shrink-0 font-bold text-white">{formatRupiah(paidTotal)}</span></div>
   </>;
 
   return (

@@ -168,14 +168,38 @@ describe("detail per varian: label, region, kategori", () => {
 
     const detail = (await getGamesDetail("mobile-legends"))!;
     const byName = new Map(detail.products.map((product) => [product.name, product]));
-    expect(byName.get("Mobilelegend - 5 Diamond")).toMatchObject({ type_label: null, region_code: null, category: "topup" });
-    expect(byName.get("5 Diamonds (filipina)")).toMatchObject({ type_label: "Filipina", region_code: "PH", category: "topup" });
-    expect(byName.get("Weekly Diamond Pass 2x (indonesia)")).toMatchObject({ type_label: "Indonesia", region_code: "ID", category: "pass" });
-    expect(byName.get("First Top Up 50+5 Diamonds (brazil)")).toMatchObject({ type_label: "Brasil", region_code: "BR", category: "first_topup" });
-    expect(byName.get("Twilight Pass (global)")).toMatchObject({ type_label: "Global", region_code: "GLOBAL", category: "pass" });
+    expect(byName.get("5 Diamond")).toMatchObject({ type_label: null, region_code: null, category: "topup" });
+    expect(byName.get("5 Diamonds (Filipina)")).toMatchObject({ type_label: "Filipina", region_code: "PH", category: "topup" });
+    expect(byName.get("Weekly Diamond Pass 2x (Indonesia)")).toMatchObject({ type_label: "Indonesia", region_code: "ID", category: "pass" });
+    expect(byName.get("First Top Up 50+5 Diamonds (Brazil)")).toMatchObject({ type_label: "Brasil", region_code: "BR", category: "first_topup" });
+    expect(byName.get("Twilight Pass (Global)")).toMatchObject({ type_label: "Global", region_code: "GLOBAL", category: "pass" });
 
     const roblox = (await getGamesDetail("roblox"))!;
     expect(roblox.products[0]).toMatchObject({ type_label: null, region_code: null, category: "other" });
+  });
+
+  it("normalizes buyer text only, preserves raw storage and raw-derived grouping", async () => {
+    seed({ sk_variant_id: 1, product_name: "Mobilelegend - 50 Diamond", description: "✅ Proses instant detikan" });
+    seed({ sk_variant_id: 2, product_name: "Mobilelegend - Weekly Diamond Pass", description: "ALL REGION KECUALI ❌ MY / SG / RU tidak didukung." });
+    seed({ sk_variant_id: 3, product_name: "Mobilelegend - 11500 Diamond", description: "11500 Diamond" });
+    const detail = (await getGamesDetail("mobile-legends"))!;
+    expect(detail.products).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "50 Diamond", description: null, category: "topup", group: "all" }),
+      expect.objectContaining({ name: "Weekly Diamond Pass", description: "Berlaku untuk semua region kecuali Malaysia, Singapura, dan Rusia.", category: "pass" }),
+      expect.objectContaining({ name: "11.500 Diamond", description: null }),
+    ]));
+    const en = (await getGamesDetail("mobile-legends", "en"))!;
+    expect(en.products.find((p) => p.buyer_sku_code === "sk:2")?.description)
+      .toBe("Valid for all regions except Malaysia, Singapore, and Russia.");
+    expect(fx.sql.prepare("SELECT product_name,description FROM games_products WHERE buyer_sku_code='sk:1'").get())
+      .toEqual({ product_name: "Mobilelegend - 50 Diamond", description: "✅ Proses instant detikan" });
+    expect(detail.products.every((p) => !("raw_name" in p))).toBe(true);
+  });
+
+  it("classifies before normalization even when a game alias contains a category keyword", async () => {
+    seed({ sk_product_name: "Battle Pass", game_slug: "battle-pass", product_name: "Battle Pass 100 Coins" });
+    const detail = (await getGamesDetail("battle-pass"))!;
+    expect(detail.products[0]).toMatchObject({ name: "100 Coins", category: "pass" });
   });
 
   it("override display_group menang atas aturan otomatis", async () => {

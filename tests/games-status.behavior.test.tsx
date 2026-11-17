@@ -88,6 +88,13 @@ describe("Games status and help", () => {
     expect(link.getAttribute("href")).toBe(`/games/pesanan/${code}`);
     expect(screen.getByText("Pesanan di perangkat ini")).toBeTruthy();
   });
+  it("keeps the paid QRIS amount (with unique code) as total after payment", async () => {
+    sessionStorage.setItem(`axp-contact:${code}`, JSON.stringify({ contact: "buyer@example.com", until: Date.now() + 10000 }));
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ order: { ...order, total: 15600, games_status: "success", qris: { image_url: "/qris", payable_amount: 15657, unique_code: 57, expires_at: "2026-11-16T13:31:31Z", status: "paid" } } }) })));
+    render(<GameStatus code={code} />);
+    expect(await screen.findByText("Rp 15.657")).toBeTruthy();
+    expect(screen.queryByText("Rp 15.600")).toBeNull();
+  });
   it("renders help and terms in English from cookie", async () => {
     document.cookie = "axv_locale=en; path=/";
     const rendered = render(<DisplayPreferencesProvider><GamesInformation kind="help" /></DisplayPreferencesProvider>);

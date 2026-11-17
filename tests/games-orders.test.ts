@@ -148,6 +148,21 @@ beforeEach(() => {
 afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("games catalog", () => {
+  it("localizes normalized descriptions from the buyer cookie without exposing raw text", async () => {
+    seedSku({ product_name: "Mobilelegend - 11500 Diamond", description: "ALL REGION KECUALI MY, SG, RUSIA (AKAN OTOMATIS GAGAL)" });
+    const { GET } = await import("@/app/api/games/catalog/[slug]/route");
+    for (const locale of ["id", "en"]) {
+      const response = await GET(new Request("http://x/", { headers: { cookie: `axv_locale=${locale}` } }) as never,
+        { params: Promise.resolve({ slug: "mobile-legends" }) });
+      const data = await response.json();
+      expect(data.products[0]).toMatchObject({ name: "11.500 Diamond", description: locale === "en"
+        ? "Valid for all regions except Malaysia, Singapore, and Russia."
+        : "Berlaku untuk semua region kecuali Malaysia, Singapura, dan Rusia." });
+      expect(JSON.stringify(data)).not.toContain("Mobilelegend");
+      expect(data.products[0]).not.toHaveProperty("raw_name");
+    }
+  });
+
   it.each([
     ["ffcekusername", "Utility"], ["mlcekusername", "Utility"], ["pubgcekusername", "Utility"], ["other-check", "ML CeK\t Username"],
   ])("never sells username utility %s even if legacy enabled", async (sku, name) => {
@@ -236,6 +251,17 @@ describe("games catalog", () => {
 });
 
 describe("games quote", () => {
+  it("uses the buyer display name without modifying the supplier name or stored order", async () => {
+    seedSku({ product_name: "Mobilelegend - 11500 Diamond" });
+    const response = await makeQuote();
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.sku.name).toBe("11.500 Diamond");
+    expect((await placeOrder(data.quote_token)).status).toBe(201);
+    expect(fx.sql.prepare("SELECT product_name FROM games_products WHERE buyer_sku_code='sk:101'").get())
+      .toEqual({ product_name: "Mobilelegend - 11500 Diamond" });
+  });
+
   it("signs the shared payment catalog with the SK target and sell price", async () => {
     seedSku();
     const res = await makeQuote();
@@ -527,6 +553,14 @@ describe("games status", () => {
     expect((await getStatus(CODE, "buyer@example.com")).status).toBe(200);
   });
 
+  it("cleans the buyer product name without changing stored supplier data", async () => {
+    fx.sql.prepare("UPDATE games_products SET product_name='Mobilelegend - 50 Diamond'").run();
+    const data = await (await getStatus(CODE, "buyer@example.com")).json();
+    expect(data.order.product_name).toBe("50 Diamond");
+    expect(fx.sql.prepare("SELECT product_name FROM games_products").get())
+      .toEqual({ product_name: "Mobilelegend - 50 Diamond" });
+  });
+
   it.each([
     ["awaiting_payment", "awaiting_payment"],
     ["queued", "processing"],
@@ -569,7 +603,7 @@ describe("games lookup", () => {
   const CODE = "AXG-20261109-LOOKUP01";
 
   it("rejects a wrong contact and returns a buyer-safe summary for the right one", async () => {
-    const productId = seedSku();
+    const productId = seedSku({ product_name: "Mobilelegend - 11500 Diamond" });
     addOrder(CODE);
     addItem(CODE, productId);
     fx.sql.prepare("UPDATE games_order_items SET status='success', sn='SN-9', supplier_message='ok' WHERE order_code=?").run(CODE);
@@ -581,6 +615,7 @@ describe("games lookup", () => {
     const data = await right.json();
     expect(data.order).toMatchObject({ code: CODE, order_kind: "games", games_status: "success", sn: "SN-9" });
     expect(data.order.customer_no).toBe("12345|6789");
+    expect(data.order.items[0].name).toBe("Mobile Legends · 11.500 Diamond");
     expect(JSON.stringify(data)).not.toMatch(/cost_snapshot|max_price|backup_sku|ml86b/);
   });
 

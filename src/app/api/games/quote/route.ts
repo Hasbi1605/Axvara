@@ -20,6 +20,7 @@ import { serializePediaQuoteMethods } from "@/lib/pedia/payment-methods";
 import { buildMethodCatalog } from "@/lib/payments/method-options";
 import type { Locale } from "@/lib/i18n/locale";
 import { isGamesNicknameProduct, sanitizeGamesNickname } from "@/lib/games/sellable";
+import { gamesVariantName } from "@/lib/games/display-name";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
   }
   const paymentMethods = serializePediaQuoteMethods(catalog.filter((method): method is Exclude<typeof method, { available: false }> => method.available));
   const registry = gamesRegistryGame(slug);
+  const game = { slug, name: registry?.name ?? String(product.sk_product_name ?? product.product_name ?? ""), publisher: registry?.publisher ?? "" };
   const { token, quoteId } = await createGamesQuoteToken({
     supplier: "sekalipay",
     sk_variant_id: variantId,
@@ -122,8 +124,8 @@ export async function POST(req: NextRequest) {
     payable: unitPrice,
     currency: "IDR",
     locale: quoteLocale,
-    game: { slug, name: registry?.name ?? String(product.sk_product_name ?? product.product_name ?? ""), publisher: registry?.publisher ?? "" },
-    sku: { buyer_sku_code: String(product.buyer_sku_code), name: String(product.product_name), price: unitPrice },
+    game,
+    sku: { buyer_sku_code: String(product.buyer_sku_code), name: gamesVariantName(String(product.product_name ?? ""), game), price: unitPrice },
     paymentMethods: catalog,
   }, { headers: { "Cache-Control": "private, no-store" } });
 }

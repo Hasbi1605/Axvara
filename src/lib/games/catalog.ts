@@ -11,6 +11,7 @@ import {
 } from "@/lib/games/registry";
 import { effectiveGroup, type GamesDisplayGroup } from "@/lib/games/admin";
 import { isGamesNicknameProduct } from "@/lib/games/sellable";
+import { gamesVariantDescription, gamesVariantName } from "@/lib/games/display-name";
 import {
   cleanGamesFieldLabel,
   gamesEffectiveCategory,
@@ -33,8 +34,8 @@ export interface GamesDetailProduct {
   /** Kontrak field varian SK (teks); kosong untuk baris Digiflazz legacy. */
   fields?: GamesSkContractField[];
   unsupported_reason?: string | null;
-  /** Teks polos supplier (termasuk batasan region); tidak di-sanitize agresif. */
-  description?: string;
+  /** Teks pembeli yang dirapikan; batasan region tetap dipertahankan. */
+  description?: string | null;
   product_type_name?: string | null;
   /** Alasan jujur bila `available:false` (SK). */
   availability_reason?: string | null;
@@ -230,7 +231,7 @@ export async function getGamesCatalog(): Promise<GamesCatalogItem[]> {
 
 export type GamesCatalogGame = GamesCatalogItem;
 
-export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailGame; products: GamesDetailProduct[] } | null> {
+export async function getGamesDetail(slug: string, locale: "id" | "en" = "id"): Promise<{ game: GamesDetailGame; products: GamesDetailProduct[] } | null> {
   const normalized = String(slug ?? "").trim().toLowerCase();
   const registry = gamesRegistryGame(normalized);
   const meta = (await loadGamesMeta()).get(normalized);
@@ -274,9 +275,10 @@ export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailG
       const contract = contracts[index];
       const availability = gamesSkAvailability(row);
       const typeName = String(row.product_type_name ?? "").trim();
+      const name = gamesVariantName(String(row.product_name ?? ""), game);
       return {
         buyer_sku_code: String(row.buyer_sku_code),
-        name: String(row.product_name ?? ""),
+        name,
         price: Number(row.sell_price) || 0,
         group: effectiveGroup(row),
         display_order: row.display_order == null ? null : Number(row.display_order),
@@ -291,7 +293,7 @@ export async function getGamesDetail(slug: string): Promise<{ game: GamesDetailG
             : cleanGamesFieldLabel(field.label),
         })),
         unsupported_reason: contract?.reason ?? (contract ? null : "invalid_contract"),
-        description: String(row.description ?? ""),
+        description: gamesVariantDescription(row.description == null ? null : String(row.description), locale, name),
         product_type_name: typeName || null,
         game_brand: String(row.sk_product_name ?? row.game_brand ?? "").trim() || null,
         type_label: gamesTypeLabel(typeName),

@@ -2332,6 +2332,8 @@ B1+B2 API pembeli QRIS/gateway/crypto (lokal, belum deploy):
   + `POST .../recheck` (GET-only, pulihkan needs_check yang sebenarnya sukses); email pembeli Games
   (dibayar/berhasil+SN/perlu admin); laporan/daftar/CSV/Telegram admin membaca `games_order_items`;
   halaman pesanan + `/games/lacak` bergaya Pedia dengan "Pesanan di perangkat ini". Detail ARCHITECTURE §16.49.
+- Lanjutan 17 Nov: email pembeli Games 2 jenis (lunas+diproses, berhasil+SN), needs_check hanya Telegram admin;
+  nama/keterangan nominal pembeli dirapikan `src/lib/games/display-name.ts` (DB/admin tetap mentah).
   Guard pembayaran bersama menerima AXG, guard/route Market tetap AXV-only.
 
 Registry/format ID di `src/lib/games/registry.ts`; kontrak API lengkap dan rentang

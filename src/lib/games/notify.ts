@@ -7,33 +7,37 @@ import { escapeHtml } from "@/lib/telegram/messages/format";
 import { sendToBuyer } from "@/lib/notify-buyer";
 import { renderBrandedNotice } from "@/lib/warung-rebahan/email-forward";
 import { SITE } from "@/lib/site";
+import { gamesVariantName } from "@/lib/games/display-name";
 
 /** One ledger key per lifecycle phase, shared by every payment/webhook/poll path. */
-async function notifyGamesBuyer(db: DatabaseAccess, orderCode: string, phase: "paid" | "completed" | "needs-check"): Promise<boolean> {
+// Pembeli hanya menerima 2 email (keputusan owner 17 Nov 2026): "Pembayaran
+// diterima — top up diproses" dan "Top up berhasil" (+SN). Status needs_check
+// cukup notif Telegram admin; halaman pesanan tetap menampilkan statusnya.
+async function notifyGamesBuyer(db: DatabaseAccess, orderCode: string, phase: "paid" | "completed"): Promise<boolean> {
   try {
     if (!db.canSpend(5)) return false;
     const row = await db.queryFirst(
       `SELECT o.locale, o.status AS order_status, o.payment_status, i.status, i.customer_no,
-              i.customer_nickname, i.sn, p.product_name, p.game_brand, p.sk_product_name
+              i.customer_nickname, i.sn, p.product_name, p.game_brand, p.sk_product_name, p.game_slug,
+              gm.display_name AS game_display_name
          FROM orders o JOIN games_order_items i ON i.order_code=o.code
          LEFT JOIN games_products p ON p.id=i.product_id
+         LEFT JOIN games_meta gm ON gm.slug=p.game_slug
         WHERE o.code=? AND o.order_kind='games'`, orderCode,
     );
     if (!row || row.order_status !== "lunas" || row.payment_status !== "paid") return false;
     if (phase === "completed" && (row.status !== "success" || !String(row.sn ?? "").trim())) return false;
-    if (phase === "needs-check" && row.status !== "needs_check") return false;
     const en = row.locale === "en";
-    const title = phase === "paid" ? (en ? "Payment Received" : "Pembayaran Diterima")
-      : phase === "completed" ? (en ? "Top Up Successful" : "Top Up Berhasil")
-      : (en ? "Admin Follow-up Required" : "Perlu Tindakan Admin");
-    // Late payment notices state the current lifecycle, not stale processing.
-    const processing = en ? "Your top up is being processed automatically." : "Top up kamu sedang diproses otomatis.";
+    const title = phase === "paid" ? (en ? "Payment Received — Top Up Processing" : "Pembayaran Diterima — Top Up Diproses")
+      : (en ? "Top Up Successful" : "Top Up Berhasil");
+    // Email lunas yang terlambat menyebut status terkini; tidak pernah menyebut pemeriksaan admin.
     const subtitle = row.status === "success" ? (en ? "Your top up was successful." : "Top up kamu berhasil.")
-      : row.status === "needs_check" ? (en ? "Our team is checking your order and will contact you." : "Tim kami sedang memeriksa pesanan dan akan menghubungimu.")
-      : processing;
+      : (en ? "Your payment is confirmed and your top up is being processed automatically." : "Pembayaranmu sudah kami terima dan top up sedang diproses otomatis.");
+    // Nama game = nama tampilan toko (games_meta), sama dengan storefront/admin.
+    const gameName = String(row.game_display_name || row.sk_product_name || row.game_brand || "Games").slice(0, 200);
     const details = [
-      { label: "Game", value: String(row.sk_product_name || row.game_brand || "Games").slice(0, 200) },
-      { label: en ? "Package" : "Nominal", value: String(row.product_name || "Top up").slice(0, 200) },
+      { label: "Game", value: gameName },
+      { label: en ? "Package" : "Nominal", value: (gamesVariantName(String(row.product_name ?? ""), { name: gameName, slug: String(row.game_slug ?? "") }) || "Top up").slice(0, 200) },
       { label: en ? "Account ID" : "ID Akun", value: String(row.customer_no).slice(0, 120) },
     ];
     if (row.customer_nickname) details.push({ label: "Nickname", value: String(row.customer_nickname).slice(0, 120) });
@@ -43,7 +47,7 @@ async function notifyGamesBuyer(db: DatabaseAccess, orderCode: string, phase: "p
       locale: en ? "en" : "id", orderCode, orderUrl, supportWa: SITE.adminWaLocal,
       title, subtitle, paragraphs: [subtitle], details,
       ctaLabel: en ? "View Order Status →" : "Lihat Status Pesanan →",
-      status: { label: title, tone: phase === "needs-check" ? "info" : "success" },
+      status: { label: title, tone: "success" },
     });
     const subject = `${title} — ${orderCode}`;
     return await sendToBuyer(orderCode, {
@@ -56,11 +60,9 @@ async function notifyGamesBuyer(db: DatabaseAccess, orderCode: string, phase: "p
 
 export const notifyGamesPaid = (db: DatabaseAccess, code: string) => notifyGamesBuyer(db, code, "paid");
 export const notifyGamesCompleted = (db: DatabaseAccess, code: string) => notifyGamesBuyer(db, code, "completed");
-export const notifyGamesBuyerNeedsCheck = (db: DatabaseAccess, code: string) => notifyGamesBuyer(db, code, "needs-check");
 
 /** Admin: pesanan Games butuh tindakan manual (MANUAL — bukan auto-refund). */
 export async function notifyGamesNeedsCheck(db: DatabaseAccess | null, orderCode: string, reason: string): Promise<"sent" | "rejected" | "unknown"> {
-  if (db) await notifyGamesBuyerNeedsCheck(db, orderCode).catch(() => false);
   const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   if (!chatId) return "unknown";
   const item = db && db.canSpend(1) ? await db.queryFirst(

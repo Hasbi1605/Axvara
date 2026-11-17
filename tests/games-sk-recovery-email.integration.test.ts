@@ -195,14 +195,13 @@ describe("Games buyer lifecycle email", () => {
     expect(await applySkTransactionDetail(db(), asDetail(gamesSkCompletedWebhook.data), { refId: REF })).toBe("ignored");
     expect(send).toHaveBeenCalledTimes(1);
   });
-  it("active mismatch triggers buyer/admin review notices without altering the paid state", async () => {
+  it("active mismatch notifies admin only (no buyer email) without altering the paid state", async () => {
     fx.sql.prepare("UPDATE games_order_items SET status='pending' WHERE order_code=?").run(CODE);
     fx.sql.prepare("UPDATE games_dispatch_attempts SET status='pending' WHERE ref_id=?").run(REF);
     const data = structuredClone(gamesSkCompletedWebhook.data);
     data.items[0].variant_id = 999;
     expect(await applySkTransactionDetail(db(), asDetail(data), { refId: REF })).toBe("needs_check");
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0][0].subject).toContain("Perlu Tindakan Admin");
+    expect(send).not.toHaveBeenCalled();
     expect(telegram).toHaveBeenCalledTimes(1);
     expect(fx.sql.prepare("SELECT status,payment_status FROM orders WHERE code=?").get(CODE)).toEqual({ status: "lunas", payment_status: "paid" });
   });
@@ -212,7 +211,7 @@ describe("Games buyer lifecycle email", () => {
     expect(await notifyGamesPaid(db(), CODE)).toBe(true);
     expect(send).toHaveBeenCalledTimes(1);
     const mail = send.mock.calls[0][0];
-    expect(mail.subject).toContain("Pembayaran Diterima");
+    expect(mail.subject).toBe(`Pembayaran Diterima — Top Up Diproses — ${CODE}`);
     expect(mail.text).toContain("diproses otomatis");
     expect(mail.text).toContain(`https://games.axvara.tech/pesanan/${CODE}`);
     expect(mail.html).not.toMatch(/Detail produk dikirim|credentials|Sekalipay|14825/);
@@ -232,15 +231,23 @@ describe("Games buyer lifecycle email", () => {
     expect(mail.subject).toContain(locale === "en" ? "Top Up Successful" : "Top Up Berhasil");
     expect(mail.text).not.toMatch(/[?&](?:pin|code|token)=/i);
   });
-  it("sends buyer follow-up without supplier internals and admin guidance with exact SK invoice/ref", async () => {
+  it("needs_check never emails the buyer; admin guidance has exact SK invoice/ref", async () => {
     await notifyGamesNeedsCheck(db(), CODE, "mismatch: <bad>");
     await notifyGamesNeedsCheck(db(), CODE, "mismatch: <bad>");
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0][0].text).toContain("akan menghubungimu");
-    expect(send.mock.calls[0][0].text).not.toMatch(/Sekalipay|mismatch|<bad>/);
+    expect(send).not.toHaveBeenCalled();
     expect(telegram.mock.calls[0][0].text).toContain(`Cek invoice Sekalipay ${INVOICE} (ref ${REF})`);
     expect(telegram.mock.calls[0][0].text).not.toContain("Digiflazz");
     expect(telegram.mock.calls[0][0].text).toContain("&lt;bad&gt;");
+  });
+  it("uses the store display name (games_meta) for the game in emails", async () => {
+    fx.sql.exec("UPDATE games_products SET game_slug='mobile-legends', sk_product_name='MLBB Supplier Name'");
+    fx.sql.exec("INSERT OR REPLACE INTO games_meta(slug,display_name) VALUES('mobile-legends','Mobile Legends: Bang Bang')");
+    fx.sql.prepare("UPDATE games_order_items SET status='success',sn=? WHERE order_code=?").run(SN, CODE);
+    expect(await notifyGamesCompleted(db(), CODE)).toBe(true);
+    expect(send.mock.calls[0][0].text).toContain("Mobile Legends: Bang Bang");
+    expect(send.mock.calls[0][0].text).not.toContain("MLBB Supplier Name");
+    expect(send.mock.calls[0][0].text).toContain("50 Diamond");
+    expect(send.mock.calls[0][0].text).not.toContain("Mobilelegend -");
   });
   it("does not send unpaid or premature completion mail", async () => {
     expect(await notifyGamesCompleted(db(), CODE)).toBe(false);

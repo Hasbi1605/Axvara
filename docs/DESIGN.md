@@ -2242,6 +2242,7 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
 - **Lacak** (`/games/lacak`): kicker cyan, form kaca ber-ikon search, petunjuk/validasi per field,
   "Terakhir dilacak" (kontak dimask), "Pesanan di perangkat ini" (terbuka default), FAQ accordion.
 - QR memakai komponen bersama `QrisImage` (juga Pedia). Token warna tidak berubah.
+- Nama nominal pembeli memakai format rapi (`gamesVariantName`): angka bertitik ribuan, unit kapital (CP/UC/VP), region Title Case/kode kapital; keterangan seller tanpa emoji dan tanpa huruf kapital semua (GAMES §15.1).
 
 ## Games storefront + admin delta — Oura+ditopup, frame P14, kategori (14 November 2026, lokal)
 

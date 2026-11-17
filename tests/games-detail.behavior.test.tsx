@@ -9,6 +9,7 @@ import type { GamesDetail, GamesDetailGame, GamesDetailProduct } from "@/lib/gam
 import type { GamesSkContractField } from "@/lib/games/registry";
 import { gamesEffectiveCategory, gamesRegionCode, gamesTypeLabel } from "@/lib/games/variant-kind";
 import { DisplayPreferencesProvider } from "@/hooks/useDisplayPrices";
+import { gamesVariantName } from "@/lib/games/display-name";
 
 const navigation = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
@@ -61,6 +62,14 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); document.cookie = "axv_locale=; max-age=0; path=/"; });
 
 describe("Games detail (selected SKU contract)", () => {
+  it("searches the displayed nominal after supplier prefix and number cleanup", () => {
+    const name = gamesVariantName("Mobilelegend - 11500 Diamond", game);
+    render(<GameClient detail={{ game, products: [product({ name }), product({ buyer_sku_code: "sk:2", name: "86 Diamond" })] }} orderingOpen />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Cari nominal" }), { target: { value: "11.500" } });
+    expect(screen.getByRole("radio", { name: /11\.500 Diamond/ })).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: /86 Diamond/ })).toBeNull();
+  });
+
   it("uses image protection for header/rail and translated metadata guidance and CTA", async () => {
     document.cookie = "axv_locale=en; path=/";
     const metadata: GamesDetailGame = { ...game, icon: "/brand/games/free-fire-icon.webp", banner: "/brand/games/mobile-legends-banner.webp", description: "Play together.", id_guide: "Use your profile ID and zone." };

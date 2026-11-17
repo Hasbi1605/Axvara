@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const locale = pediaApiLocale(request);
   const { slug } = await params;
-  const detail = await getGamesDetail(slug);
+  const detail = await getGamesDetail(slug, locale);
   if (!detail) {
     return NextResponse.json(
       { error: pick(locale, "Game tidak ditemukan.", "Game not found.") },

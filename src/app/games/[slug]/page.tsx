@@ -12,12 +12,13 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const [{ slug }, locale] = await Promise.all([params, requestLocale()]);
-  const detail = await getGamesDetail(slug);
+  const detail = await getGamesDetail(slug, locale);
   return detail ? { ...gamesMetadata(`/${detail.game.slug}`, `${detail.game.name} — AXVARA Games`, `${gamesCopy(locale).catalog}: ${detail.game.name}`), ...(!detail.products.length ? { robots: { index: false, follow: true } } : {}) } : {};
 }
 
 export default async function GamePage({ params }: { params: Promise<{ slug: string }> }) {
-  const detail = await getGamesDetail((await params).slug);
+  const [{ slug }, locale] = await Promise.all([params, requestLocale()]);
+  const detail = await getGamesDetail(slug, locale);
   if (!detail) notFound();
   const games = await getGamesCatalog();
   return <GameClient detail={detail} otherGames={games} orderingOpen={gamesOrderingOpen()} />;
