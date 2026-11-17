@@ -241,7 +241,12 @@ describe("RR5 bounded recovery and delivery", () => {
     expect(current().job?.attempt_count).toBe(0);
     vi.mocked(sendMessage).mockRejectedValueOnce(new Error("one transient timeout"));
     await delivery.processJobItems(jobId, order, product, 3);
-    expect(current().job?.status).toBe("retry"); expect(current().job?.attempt_count).toBe(1);
+    expect(current().job?.status).toBe("retry"); expect(current().job?.attempt_count).toBe(0);
+    // An unknown send is counted in the durable transport ledger, not as a
+    // failed job. Advance that claim too; changing only item/job due dates
+    // must never bypass the 600s unknown-outcome fence.
+    expect(fixture.sql.prepare("SELECT attempt_count FROM fulfillment_send_claims WHERE status='sending'").get()?.attempt_count).toBe(1);
+    fixture.sql.exec("UPDATE fulfillment_send_claims SET updated_at=datetime('now','-601 seconds') WHERE status='sending'");
     for (let i = 0; i < 12; i++) {
       fixture.sql.prepare("UPDATE fulfillment_jobs SET next_attempt_at=datetime('now','-1 minute') WHERE status='retry'").run();
       fixture.sql.prepare("UPDATE fulfillment_items SET next_attempt_at=datetime('now','-1 minute') WHERE status='retry'").run();
@@ -299,7 +304,9 @@ describe("RR5 bounded recovery and delivery", () => {
   it("RR5-05 a worker resumed after releasing its lease cannot overwrite the next owner's failed state", async () => {
     const { order, product, jobId } = await seed();
     fixture.sql.exec("UPDATE fulfillment_jobs SET attempt_count=3;UPDATE fulfillment_items SET attempt_count=3");
-    vi.mocked(sendMessage).mockRejectedValue(new Error("provider timeout"));
+    // This test needs two retryable failures to make the NEW owner terminal.
+    // A network timeout is now ambiguous and deliberately blocks the second send.
+    vi.mocked(sendMessage).mockResolvedValue({ ok: false, error_code: 403, description: "Forbidden" } as Awaited<ReturnType<typeof sendMessage>>);
     const entered = signal(), release = signal(); let paused = false;
     const pause = async (queries: string[]) => {
       if (!paused && queries.some((q) => /UPDATE fulfillment_jobs SET status='retry'/.test(q))) {
@@ -313,5 +320,28 @@ describe("RR5 bounded recovery and delivery", () => {
     release.release(); await old;
     expect(current().order.fulfillment_status).toBe("failed"); expect(current().job?.status).toBe("failed");
     vi.mocked(sendMessage).mockResolvedValue({ ok: true, result: { message_id: 1 } } as Awaited<ReturnType<typeof sendMessage>>);
+  });
+
+  it("RR5-05 an ambiguous old sender cannot overwrite a new owner's failed outcome from another item", async () => {
+    const { order, product, jobId } = await seed({ n: 2 });
+    fixture.sql.exec("UPDATE fulfillment_jobs SET attempt_count=4;UPDATE fulfillment_items SET attempt_count=3");
+    vi.mocked(sendMessage).mockRejectedValueOnce(new Error("provider timeout"));
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, error_code: 403, description: "Forbidden" } as Awaited<ReturnType<typeof sendMessage>>);
+    const entered = signal(), release = signal(); let paused = false;
+    fixture.control.afterBatch = async queries => {
+      if (!paused && queries.some(q => /UPDATE fulfillment_jobs SET status='retry'/.test(q))) {
+        paused = true; entered.release(); await release.promise;
+      }
+    };
+    const old = delivery.processJobItems(jobId, order, product, 1); await entered.promise;
+    await delivery.processJobItems(jobId, order, product, 2);
+    expect(current().order.fulfillment_status).toBe("failed");
+    expect(current().job?.status).toBe("failed");
+    expect(fixture.sql.prepare("SELECT status FROM fulfillment_send_claims WHERE item_id=?").get(current().items[0].id)?.status).toBe("sending");
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    release.release(); await old;
+    expect(current().order.fulfillment_status).toBe("failed");
+    expect(current().job?.status).toBe("failed");
+    expect(sendMessage).toHaveBeenCalledTimes(2);
   });
 });

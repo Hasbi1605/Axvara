@@ -62,7 +62,7 @@ export async function createFulfillmentJob(
  * Uses locked_until to prevent concurrent processing.
  */
 export async function claimJob(jobId: number, database: DatabaseAccess = createDatabaseAccess(), countAttempt = true): Promise<Row | null> {
-  const { queryFirst, execRun, isD1Mode } = database;
+  const { queryFirst, isD1Mode } = database;
   const lockUntil = new Date(Date.now() + 60_000).toISOString();
 
   if (isD1Mode()) {
@@ -70,13 +70,12 @@ export async function claimJob(jobId: number, database: DatabaseAccess = createD
     // legacy space-separated ke domain yang sama (issue #7): perbandingan
     // string mentah tidak pernah cocok untuk ISO sehingga lock kedaluwarsa
     // tertahan berjam-jam. Lock aktif tetap tidak bisa direbut (CAS).
-    const result = await execRun(
+    return await queryFirst(
       `UPDATE fulfillment_jobs SET status='sending', locked_until=?, attempt_count=attempt_count+${countAttempt ? 1 : 0}, updated_at=datetime('now')
-       WHERE id=? AND status IN ('queued','retry') AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))`,
+       WHERE id=? AND status IN ('queued','retry') AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))
+       RETURNING *`,
       lockUntil, jobId,
     );
-    if (!result.changes) return null;
-    return (await queryFirst(`SELECT * FROM fulfillment_jobs WHERE id=? AND locked_until=? AND status='sending'`, jobId, lockUntil)) ?? null;
   }
 
   const job = getJobsMem().find(

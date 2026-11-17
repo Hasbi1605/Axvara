@@ -11,13 +11,16 @@
   hanya saat lease item persis masih aktif. Hanya pemenang boleh mengirim;
   ledger hilang/gagal dibaca = fail-closed, bukan fallback kirim tanpa klaim.
   Sukses `sent` memulihkan settlement item tanpa kirim ulang. Snapshot shared
-  push disimpan terenkripsi sebelum kirim dan dipakai lagi saat pemulihan.
+  push disimpan terenkripsi di CAS lease item yang sama sebelum kirim dan
+  dipakai lagi saat pemulihan. Klaim item/job/ledger memakai native `RETURNING`
+  agar tidak menambah read round-trip pada pemenang; tetap budget cron existing.
 - Penolakan Telegram4xx eksplisit (kecuali408), atau reason WA pra-kirim yang
   dikenal = `failed`, boleh retry. Timeout/jaringan/5xx/hasil tak terbaca dan
   checkpoint gagal = tetap `sending`; baru dapat diambil alih sesudah **600
   detik**. WA `outcomeUnknown:false` sendiri BUKAN bukti penolakan pasti.
   Stop memulai bagian setelah30detik; timeout native Telegram teks10detik,
   WA15detik, sehingga transport terakhir≤40/45detik, jauh di bawah600detik.
+  Timestamp ledger presisi milidetik, tidak dibulatkan ke detik penuh.
 - Tiap bagian sukses dicheckpoint; retry hanya melanjutkan bagian yang belum
   diakui. Payload berubah sebelum `sent` ditolak `credential_send_payload_changed`
   agar indeks checkpoint tidak menunjuk isi berbeda; admin perlu merekonsiliasi.

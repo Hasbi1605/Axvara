@@ -19,7 +19,7 @@ export async function sendFencedCredential(
 ): Promise<string> {
   if (!messages.length) throw new Error("credential_send_empty");
   // Reserve eight tail statements for item settlement/retry and job outcome.
-  if (!database.canSpend(11)) throw new CredentialSendDeferred("credential_send_budget");
+  if (!database.canSpend(10)) throw new CredentialSendDeferred("credential_send_budget");
   const deadline = Date.now() + START_WINDOW_MS;
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(messages)));
   const payloadHash = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join("");
@@ -27,21 +27,24 @@ export async function sendFencedCredential(
   let claim;
   let row;
   try {
-    claim = await database.execRun(
-      `INSERT INTO fulfillment_send_claims (item_id,channel,status,token,payload_hash)
-       SELECT ?,?,'sending',?,? WHERE EXISTS (
+    claim = await database.queryFirst(
+      `INSERT INTO fulfillment_send_claims (item_id,channel,status,token,payload_hash,updated_at)
+       SELECT ?,?,'sending',?,?,strftime('%Y-%m-%d %H:%M:%f','now') WHERE EXISTS (
          SELECT 1 FROM fulfillment_items WHERE id=? AND locked_until=? AND status='sending'
            AND julianday(locked_until)>julianday('now'))
        ON CONFLICT(item_id,channel) DO UPDATE SET status='sending',token=excluded.token,
-         error=NULL,attempt_count=fulfillment_send_claims.attempt_count+1,updated_at=datetime('now')
+         error=NULL,attempt_count=fulfillment_send_claims.attempt_count+1,updated_at=strftime('%Y-%m-%d %H:%M:%f','now')
        WHERE fulfillment_send_claims.payload_hash=excluded.payload_hash
          AND fulfillment_send_claims.attempt_count<?
          AND (fulfillment_send_claims.status='failed' OR
            (fulfillment_send_claims.status='sending'
-            AND julianday(fulfillment_send_claims.updated_at)<julianday('now',?)))`,
+            AND julianday(fulfillment_send_claims.updated_at)<julianday('now',?)))
+       RETURNING *`,
       itemId, channel, token, payloadHash, itemId, leaseFence, MAX_ATTEMPTS, `-${SEND_CLAIM_STALE_SECONDS} seconds`,
     );
-    row = await database.queryFirst(
+    // Successful CAS already returned its state; read only on a lost claim
+    // to distinguish sent replay, active sending, changed payload and exhaustion.
+    row = claim ?? await database.queryFirst(
       `SELECT status,token,payload_hash,part_count,message_id,attempt_count,
          julianday(updated_at)<julianday('now',?) AS stale
        FROM fulfillment_send_claims WHERE item_id=? AND channel=?`,
@@ -54,15 +57,15 @@ export async function sendFencedCredential(
   if (row?.status === "sent") return String(row.message_id ?? "");
   if (!row) throw new CredentialSendDeferred("credential_send_lease_lost");
   if (row.payload_hash !== payloadHash) throw new Error("credential_send_payload_changed");
-  if (!claim.changes && Number(row.attempt_count) >= MAX_ATTEMPTS && (row.status === "failed" || row.stale)) {
+  if (!claim && Number(row.attempt_count) >= MAX_ATTEMPTS && (row.status === "failed" || row.stale)) {
     throw new Error("credential_send_attempts_exhausted");
   }
-  if (!claim.changes || row.token !== token) throw new CredentialSendDeferred("credential_send_pending");
+  if (!claim || row.token !== token) throw new CredentialSendDeferred("credential_send_pending");
   let messageId = String(row.message_id ?? "");
   for (let part = Number(row.part_count); part < messages.length; part++) {
     if (Date.now() >= deadline || !database.canSpend(9)) {
       await database.execRun(
-        "UPDATE fulfillment_send_claims SET status='failed',error='credential_send_yield',updated_at=datetime('now') WHERE item_id=? AND channel=? AND token=? AND status='sending'",
+        "UPDATE fulfillment_send_claims SET status='failed',error='credential_send_yield',updated_at=strftime('%Y-%m-%d %H:%M:%f','now') WHERE item_id=? AND channel=? AND token=? AND status='sending'",
         itemId, channel, token,
       );
       throw new CredentialSendDeferred("credential_send_yield");
@@ -73,7 +76,7 @@ export async function sendFencedCredential(
     if (!result.ok) {
       if (result.definiteFailure) {
         const failed = await database.execRun(
-          "UPDATE fulfillment_send_claims SET status='failed',error='credential_send_rejected',updated_at=datetime('now') WHERE item_id=? AND channel=? AND token=? AND status='sending'",
+          "UPDATE fulfillment_send_claims SET status='failed',error='credential_send_rejected',updated_at=strftime('%Y-%m-%d %H:%M:%f','now') WHERE item_id=? AND channel=? AND token=? AND status='sending'",
           itemId, channel, token,
         );
         if (!failed.changes) throw new CredentialSendDeferred("credential_send_lease_lost");
@@ -85,7 +88,7 @@ export async function sendFencedCredential(
     let saved;
     try {
       saved = await database.execRun(
-        `UPDATE fulfillment_send_claims SET part_count=?,message_id=?,status=?,error=NULL,updated_at=datetime('now')
+        `UPDATE fulfillment_send_claims SET part_count=?,message_id=?,status=?,error=NULL,updated_at=strftime('%Y-%m-%d %H:%M:%f','now')
          WHERE item_id=? AND channel=? AND token=? AND status='sending'`,
         part + 1, messageId, part === messages.length - 1 ? "sent" : "sending", itemId, channel, token,
       );

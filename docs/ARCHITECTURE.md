@@ -10,7 +10,7 @@
   Tidak mengubah `buyer_notice_log` (CHECK existing email/Telegram tetap).
 - `delivery/send-fence.ts` memakai `INSERT … SELECT … WHERE EXISTS` dengan
   lease item persis+aktif, `ON CONFLICT … DO UPDATE … WHERE` failed/stale,
-  lalu `changes` dan token. CAS takeover hanya sesudah600detik dan <5klaim;
+  lalu baris `RETURNING` dan token. CAS takeover hanya sesudah600detik dan <5klaim;
   checkpoint/settle selalu token+status. Baca/tulis ledger gagal menutup kirim.
   Tidak memakai `INSERT OR REPLACE`. Ledger tidak mengandung plaintext/target.
 - `delivery/send.ts` memakai fence dari `sendItem` untuk shared/unique dan
@@ -27,13 +27,22 @@
   SHA-256 seluruh pesan mencegah resume indeks pada payload berubah sebelum
   sent (error menuju admin). Setelah sent, payload lama dipercaya. Tidak ada
   klaim exactly-once provider sesudah takeover ambigu/checkpoint hilang.
-- `delivery/process.ts` menambah admission4statement untuk push, helper
-  menyisakan8statement bagi settlement/retry+outcome job; multipart bisa yield
+- Koreksi budget C0: klaim job memakai `UPDATE … RETURNING` (1statement);
+  klaim item juga1statement sekaligus membekukan ciphertext/IV shared push.
+  Ledger happy-path memakai `UPSERT … RETURNING` (1statement); SELECT tambahan
+  hanya saat CAS kalah/replay untuk membaca sent/pending/exhausted. Snapshot
+  shared tidak lagi punya SELECT secret + UPDATE snapshot terpisah. Kanal web
+  tetap melewati fence push, memakai pipeline email existing.
+- `delivery/process.ts` memakai admission shared/manual lama; unique push
+  hanya+1statement. Budget cron operations tetap40/tail2, fulfillment lite96;
+  helper menyisakan8statement bagi settlement/retry+outcome job; multipart bisa yield
   dengan checkpoint. Pending/ambigu/yield menunda10menit tanpa menambah gagal
   item/job. Max5klaim ledger termasuk yield membatasi replay otomatis. Web/email
   dan salinan email Telegram tetap pipeline lama; owner-fetch Telegram dan
   handover admin sengaja tidak memakai ledger otomatis. Tidak ada API resend
-  admin baru/aktivasi WA. Kontrak lengkap: `agent-rules/buyer-credentials.md`.
+  admin baru/aktivasi WA. Penanda waktu ledger memakai `strftime` milidetik
+  agar cutoff600detik tidak bergeser karena pembulatan ke detik penuh.
+  Kontrak lengkap: `agent-rules/buyer-credentials.md`.
 - Verifikasi lokal: native D1/workerd konkurensi/failed/stale/replay, Wrangler
   `d1 execute --local --file drizzle/schema.sql` lalu migrasi0135 dua kali,
   test shared/unique kedua kanal, copy email, handover, timeout dan budget.

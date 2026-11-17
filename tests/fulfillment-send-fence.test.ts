@@ -82,7 +82,7 @@ describe("durable automatic credential-send fence", () => {
     expect(ledger().status).toBe("sending");
     const mock = channel === "telegram" ? sendMessage : sendTextMessage;
     for (const age of [null, "-599 seconds"]) {
-      if (age) fixture.sql.prepare("UPDATE fulfillment_send_claims SET updated_at=datetime('now',?)").run(age);
+      if (age) fixture.sql.prepare("UPDATE fulfillment_send_claims SET updated_at=strftime('%Y-%m-%d %H:%M:%f','now',?)").run(age);
       expect(await processItem(order, item(), undefined, database)).toBe(false);
       expect(mock).toHaveBeenCalledTimes(2);
     }

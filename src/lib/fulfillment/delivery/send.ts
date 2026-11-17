@@ -42,26 +42,34 @@ import { CredentialSendDeferred, sendFencedCredential } from "./send-fence";
 async function claimItemLease(
   itemRow: Row, database: DatabaseAccess, parent?: { jobId: number; lease: string },
 ): Promise<{ item: Row; leaseFence: string } | { skip: boolean }> {
-  const { queryFirst, execRun } = database;
+  const { queryFirst } = database;
   const itemId = Number(itemRow.id);
   const lockUntil = new Date(Date.now() + 60_000).toISOString();
   const lockRequested = lockUntil;
-  const claim = await execRun(
-    `UPDATE fulfillment_items SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
+  // RETURNING yields only our won row. Freeze shared push ciphertext in the
+  // same CAS, avoiding separate item-read, secret-read and snapshot statements.
+  const claimed = await queryFirst(
+    `UPDATE fulfillment_items SET status='sending', locked_until=?, attempt_count=attempt_count+1, updated_at=datetime('now'),
+       delivered_ciphertext=CASE WHEN recipient_channel IN ('telegram','whatsapp') AND fulfillment_mode='shared'
+         AND (delivered_ciphertext IS NULL OR delivered_iv IS NULL)
+         THEN (SELECT shared_secret_ciphertext FROM product_variants WHERE id=fulfillment_items.variant_id AND product_id=fulfillment_items.product_id)
+         ELSE delivered_ciphertext END,
+       delivered_iv=CASE WHEN recipient_channel IN ('telegram','whatsapp') AND fulfillment_mode='shared'
+         AND (delivered_ciphertext IS NULL OR delivered_iv IS NULL)
+         THEN (SELECT shared_secret_iv FROM product_variants WHERE id=fulfillment_items.variant_id AND product_id=fulfillment_items.product_id)
+         ELSE delivered_iv END
       WHERE id=? AND status IN ('queued','retry')
         AND (locked_until IS NULL OR datetime(locked_until) < datetime('now'))
-        ${parent ? "AND EXISTS (SELECT 1 FROM fulfillment_jobs WHERE id=? AND locked_until=? AND status='sending')" : ""}`,
+        ${parent ? "AND EXISTS (SELECT 1 FROM fulfillment_jobs WHERE id=? AND locked_until=? AND status='sending')" : ""}
+      RETURNING *`,
     lockUntil, itemId, ...(parent ? [parent.jobId, parent.lease] : []),
-  ).catch(() => ({ changes: 0 as number | undefined }));
-  if (!claim.changes) {
+  ).catch(() => null);
+  if (!claimed) {
     if (String(itemRow.status) === "sending") return { skip: true };
     // A retry row claimed/locked by another worker is not our failure.
     if (String(itemRow.status) === "retry") return { skip: true };
     return { skip: false };
   }
-  // Read only the claim we actually won; never adopt a newer worker's lease.
-  const claimed = await queryFirst(`SELECT * FROM fulfillment_items WHERE id=? AND locked_until=? AND status='sending'`, itemId, lockRequested);
-  if (!claimed) return { skip: false };
   return { item: claimed, leaseFence: lockRequested };
 }
 
@@ -102,25 +110,15 @@ async function deliverShared(
 ): Promise<boolean> {
   const { queryFirst, execRun, isD1Mode } = database;
   const push = recipientChannel === "telegram" || recipientChannel === "whatsapp";
-  const snapshot = push && item.delivered_ciphertext && item.delivered_iv;
-  const secret = !snapshot && variantId && isD1Mode()
+  const secret = !push && variantId && isD1Mode()
     ? await queryFirst(
         `SELECT shared_secret_ciphertext, shared_secret_iv FROM product_variants WHERE id=? AND product_id=?`,
         variantId, productId,
       )
     : null;
-  const ct = String((snapshot ? item.delivered_ciphertext : secret?.shared_secret_ciphertext) || "");
-  const iv = String((snapshot ? item.delivered_iv : secret?.shared_secret_iv) || "");
+  const ct = String((push ? item.delivered_ciphertext : secret?.shared_secret_ciphertext) || "");
+  const iv = String((push ? item.delivered_iv : secret?.shared_secret_iv) || "");
   if (!ct || !iv) throw new Error("Shared secret not configured for product");
-  // Persist the encrypted payload BEFORE push, so a lost item settlement or
-  // rotated shared secret cannot make a ledger replay expose different details.
-  if (push && !snapshot) {
-    const saved = await execRun(
-      "UPDATE fulfillment_items SET delivered_ciphertext=?,delivered_iv=? WHERE id=? AND locked_until=? AND status='sending'",
-      ct, iv, itemId, leaseFence,
-    );
-    if (!saved.changes) throw new Error("lease_lost_during_delivery");
-  }
   const plaintext = await decryptSecret(ct, iv);
   await sendItem(recipientChannel, recipientTarget, orderCode, itemId, leaseFence, plaintext, qty, database, variantId);
   // Fenced write: only applies while THIS worker still holds the lease.

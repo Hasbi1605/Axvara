@@ -11,6 +11,9 @@ memulai bagian setelah30detik, timeout native10/15detik (transport≤40/45detik)
 Maks5klaim otomatis dan hash payload mencegah replay tak terbatas/resume isi
 berubah. Pending tidak menghabiskan retry item/job. Email, owner-fetch Telegram,
 handover admin dan kill-switch WA tetap; tidak ada endpoint/env baru.
+Koreksi budget: native `RETURNING` menggabungkan klaim+baca job/item/ledger;
+snapshot shared ikut CAS item. Budget cron40/tail2 tetap dan drain orphan
+shared/unique20baris diuji tanpa melonggarkan jumlah invocation/assertion.
 Schema+0135 dua kali diverifikasi Wrangler D1 lokal; native workerd menguji
 CAS konkurensi/failed/stale. Belum deployment, bukan exactly-once provider
 setelah takeover ambigu. Detail `docs/ARCHITECTURE.md` C0 dan aturan kredensial.

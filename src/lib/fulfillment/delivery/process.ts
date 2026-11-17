@@ -116,10 +116,10 @@ export async function processJobItems(
   const todo = pending.filter((r) => Number(r.item_index) >= start).concat(pending.filter((r) => Number(r.item_index) < start));
   for (const row of todo.slice(0, Math.max(0, maxItems))) {
     // Worst-case item recovery + finalization are reserved before any provider call.
-    // Push additionally reserves its durable claim/read/checkpoint and snapshot.
-    // Multi-part sends yield before exhausting the remaining checkpoint budget.
+    // Shared push folds snapshot + lease read into UPDATE RETURNING, offsetting
+    // its ledger CAS/checkpoint. Unique still needs one extra statement.
     const copyCost = String(row.recipient_channel || channel) === "telegram" && row.fulfillment_mode !== "manual" ? 1 : 0;
-    const pushCost = ["telegram", "whatsapp"].includes(String(row.recipient_channel || channel)) && row.fulfillment_mode !== "manual" ? 4 : 0;
+    const pushCost = ["telegram", "whatsapp"].includes(String(row.recipient_channel || channel)) && row.fulfillment_mode === "unique" ? 1 : 0;
     const itemCost = (row.tunvn_link_id != null || row.aivault_link_id != null ? 16 : row.fulfillment_mode === "unique" ? COST_PER_DELIVERY_ITEM : 8) + copyCost + pushCost;
     if (!database.canSpend(itemCost + COST_PER_JOB_FRAME) || (shouldContinue && !shouldContinue())) break;
     if (row.status === "failed") { failure ??= String(row.last_error || "item failed"); continue; }
