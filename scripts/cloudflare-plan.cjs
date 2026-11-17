@@ -1,4 +1,21 @@
 // Read subscription metadata only. Never print provider responses or secrets.
+const { setTimeout: delay } = require("node:timers/promises");
+
+// GET only: retry transport/timeouts and temporary HTTP failures, never writes.
+async function cloudflareMetadataGet(url, headers, fetchFn = fetch) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await fetchFn(url, { headers, signal: AbortSignal.timeout(30_000) });
+      if (attempt === 2 || !(response.status === 408 || response.status === 429 || response.status >= 500)) return response;
+      await response.body?.cancel();
+    } catch (error) {
+      if (attempt === 2 || !["TypeError", "AbortError", "TimeoutError"].includes(error?.name)) throw error;
+    }
+    console.warn(`Cloudflare metadata GET retry ${attempt + 2}/3.`);
+    await delay(500 * (attempt + 1));
+  }
+}
+
 function cloudflareAuth(env) {
   if (!/^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID || "")) throw new Error("Cloudflare account ID missing or invalid");
   if (env.CLOUDFLARE_API_KEY && env.CLOUDFLARE_EMAIL) return { "X-Auth-Key": env.CLOUDFLARE_API_KEY, "X-Auth-Email": env.CLOUDFLARE_EMAIL };
@@ -7,10 +24,8 @@ function cloudflareAuth(env) {
 }
 
 async function readWorkersPlan(env, fetchFn = fetch, now = new Date()) {
-  const response = await fetchFn(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/subscriptions`, {
-    headers: cloudflareAuth(env), signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error("Cloudflare subscription API unavailable");
+  const response = await cloudflareMetadataGet(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/subscriptions`, cloudflareAuth(env), fetchFn);
+  if (!response.ok) throw new Error(`Cloudflare subscription API HTTP ${response.status}`);
   const body = await response.json();
   if (body.success !== true || body.errors?.length || !Array.isArray(body.result)
     || body.result.some(s => !s || typeof s.rate_plan?.id !== "string" || typeof s.state !== "string")
@@ -23,4 +38,4 @@ async function readWorkersPlan(env, fetchFn = fetch, now = new Date()) {
   }
   return { name: "paid", variableLimit: 128, periodStart: new Date(start).toISOString(), periodEnd: new Date(end).toISOString() };
 }
-module.exports = { cloudflareAuth, readWorkersPlan };
+module.exports = { cloudflareAuth, readWorkersPlan, cloudflareMetadataGet };

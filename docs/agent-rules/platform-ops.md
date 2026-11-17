@@ -1,5 +1,15 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Retry metadata Cloudflare —17November2026 (lokal)
+
+- Shared GET metadata subscriptions + project Pages: maksimal3 percobaan,
+  timeout30detik/percobaan, backoff500/1000ms hanya untuk transport/timeout atau
+  HTTP408/429/5xx. Auth4xx/metadata/entitlement/kapasitas tetap fail-closed.
+- Tidak me-retry write/GraphQL/migrasi/deploy, tidak mengubah env atau secret.
+  Diagnosis CLI hanya alasan lokal/status HTTP aman; jangan log respons mentah.
+- CI44096428572 gagal di guard metadata; alasan spesifik tidak disimpan log lama.
+  Cek baca-saja17Nov lulus Paid88/128 (84+4), bukan bukti deploy atau izin bypass.
+
 ### Pengingat tinjauan S&K supplier —17 November2026 (lokal)
 
 - Job lite `cleanup` lima-menitan existing menjalankan cek perubahan copy WR/SK

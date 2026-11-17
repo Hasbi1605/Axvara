@@ -1209,7 +1209,7 @@ Popup memakai key sessionStorage.axvara-banner-carousel-shows dan key hide per-I
 existing24jam. Batas sesi lama per-banner dipensiunkan. Satu pembukaan per mount/
 kunjungan SPA, tidak memunculkan modal berikutnya sesudah tutup. Kontak/transaksi
 lain tidak berubah. Autoplay satu timer terlihat; pause fokus/hover/manual/hidden,
-reduced-motion manual; preload/decode hanya gambar tetangga berikut. Navigasi menunggu
+reduced-motion manual; preload/decode gambar pertama dan tetangga berikut. Navigasi menunggu
 decode gambar tujuan sebelum commit; versi permintaan menolak hasil lama. Node DOM
 slide lama tetap dipertahankan sebagai lapisan dekoratif aria-hidden/noninteraktif,
 bukan salinan gambar baru. Slide tujuan tetap transparan sampai elemen gambar aktual
@@ -1224,6 +1224,16 @@ atau melalui UI, sampai popup ditutup. Konfigurasi autoplay admin tetap. Hook us
 menjaga Escape/trap/restore. Pointer horizontal45px dan dominan terhadap vertikal,
 touch-action:pan-y; CTA tidak menjadi pegangan geser. Admin memakai dnd-kit existing,
 rollback/resync jika reorder gagal dan mengabaikan respons load lama.
+
+Revisi17November2026 (lokal): `PopupBanner` menyiapkan decode gambar pertama selama
+delay admin; readiness maksimum5000ms, kegagalan/timeout menandai fallback per-ID
+sebelum mount, cleanup timer dan guard disposed menolak hasil terlambat. Count sesi
+tetap saat open. `data-banner-state=open|closing` mengendalikan transisi CSS native
+`@starting-style`: backdrop180ms, panel300ms opacity/translateY20px/scale0,98,
+exit160ms/turun8px. State closing menunda unmount dan menghentikan autoplay/navigasi;
+trap fokus/scroll lock tetap aktif sampai exit selesai, lalu dipulihkan sekali.
+Reduced-motion langsung; close di tengah entrance me-retarget transisi tanpa jump.
+Tidak menunda navigasi tautan CTA atau mengubah kontrak backend/storage/carousel.
 
 
 ## Integritas audit dan Pedia tanpa wallet — 24 Oktober 2026
@@ -4585,6 +4595,18 @@ Output hanya jumlah/limit; nilai env dan respons/error mentah tidak dicetak.
 Tidak ada query D1, mutasi konfigurasi otomatis, secret runtime baru atau deploy
 manual. Perubahan env produksi dilakukan terarah melalui API PATCH, hanya key
 usang bernilai null; metadata env lain dan preview diperiksa tetap sama.
+
+Revisi17November2026 (lokal): batas mengikuti entitlement aktual melalui
+`cloudflare-plan.cjs` (Paid128/Free64; angka64 di atas adalah snapshot18Oktober).
+GET metadata subscriptions/Pages memakai maksimal3 percobaan, timeout30detik per
+percobaan dan backoff500/1000ms hanya untuk transport/timeout atau HTTP408/429/5xx.
+401/403/4xx lain, JSON/metadata tidak valid, entitlement dan kapasitas tetap
+fail-closed tanpa fallback paket atau bypass. CLI hanya mencetak alasan lokal/status
+HTTP yang diizinkan, tidak raw response/error/nilai secret. Tidak me-retry write,
+mutasi env, migrasi atau deploy. Run CI44096428572 berhenti pada guard metadata;
+log lama tidak menyimpan alasan spesifik, sehingga gangguan transport/API belum
+dapat dipastikan. Cek metadata baca-saja17Nov sesudah kegagalan: Paid88/128
+(84konfigurasi+4sistem), bukan kapasitas penuh atau bukti deployment.
 
 Referensi: [batas Workers](https://developers.cloudflare.com/workers/platform/limits/),
 [sistem Pages](https://developers.cloudflare.com/pages/configuration/build-configuration/),

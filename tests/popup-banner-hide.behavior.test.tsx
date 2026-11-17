@@ -94,7 +94,7 @@ describe("PopupBanner carousel", () => {
     expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");fireEvent.keyDown(screen.getByRole("region"),{key:"ArrowRight"});await waitFor(()=>expect(screen.getByRole("group").textContent).toContain("First"));expect(sessionStorage.getItem(BANNER_SESSION_KEY)).toBe("1");
   });
   it("does not reopen after returning home or remounting in the same session", async () => {
-    stubFetch();const view=render(<PopupBanner/>);await screen.findByRole("dialog");fireEvent.click(screen.getByRole("button",{name:"Tutup banner"}));navigation.pathname="/produk/demo";view.rerender(<PopupBanner/>);navigation.pathname="/";view.rerender(<PopupBanner/>);
+    stubFetch();const view=render(<PopupBanner/>);await screen.findByRole("dialog");fireEvent.click(screen.getByRole("button",{name:"Tutup banner"}));await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());navigation.pathname="/produk/demo";view.rerender(<PopupBanner/>);navigation.pathname="/";view.rerender(<PopupBanner/>);
     await act(async()=>{await new Promise(r=>setTimeout(r,20))});expect(screen.queryByRole("dialog")).toBeNull();view.unmount();render(<PopupBanner/>);await act(async()=>{await new Promise(r=>setTimeout(r,20))});expect(screen.queryByRole("dialog")).toBeNull();
   });
   it("works with blocked session/local storage", async()=>{
@@ -102,10 +102,10 @@ describe("PopupBanner carousel", () => {
   });
   it("hides only the selected info immediately and continues with its neighbor",async()=>{
     stubFetch([BANNER,{...BANNER,id:8,title:"Next info"}]);render(<PopupBanner/>);await screen.findByRole("dialog");fireEvent.click(screen.getByRole("checkbox",{name:"Jangan tampilkan lagi"}));expect(isBannerHidden(7)).toBe(true);expect(isBannerHidden(8)).toBe(false);expect(screen.getByText("Next info")).toBeTruthy();expect(screen.queryByRole("button",{name:"Banner berikutnya"})).toBeNull();expect(document.body.textContent).not.toMatch(/24 jam/i);
-    fireEvent.click(screen.getByRole("checkbox",{name:"Jangan tampilkan lagi"}));expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox",{name:"Jangan tampilkan lagi"}));await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
   });
   it("normal close does not hide info for 24 hours and restores focus",async()=>{
-    stubFetch();const button=document.createElement("button");document.body.append(button);button.focus();render(<PopupBanner/>);await screen.findByRole("dialog");await act(async()=>{await new Promise(r=>setTimeout(r,10))});fireEvent.keyDown(document,{key:"Escape"});expect(screen.queryByRole("dialog")).toBeNull();expect(isBannerHidden(7)).toBe(false);expect(document.activeElement).toBe(button);button.remove();
+    stubFetch();const button=document.createElement("button");document.body.append(button);button.focus();render(<PopupBanner/>);await screen.findByRole("dialog");await act(async()=>{await new Promise(r=>setTimeout(r,10))});fireEvent.keyDown(document,{key:"Escape"});await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());expect(isBannerHidden(7)).toBe(false);expect(document.activeElement).toBe(button);button.remove();
   });
   it("does not fetch away from home, including admin and checkout",async()=>{
     stubFetch();navigation.pathname="/admin";const view=render(<PopupBanner/>);navigation.pathname="/checkout";view.rerender(<PopupBanner/>);await act(async()=>{await new Promise(r=>setTimeout(r,10))});expect(fetch).not.toHaveBeenCalled();

@@ -47,6 +47,8 @@ export function unhideBanner(id: number): void {
 
 export const BANNER_SESSION_KEY = "axvara-banner-carousel-shows";
 export const BANNER_TRANSITION_MS = 420;
+export const BANNER_EXIT_MS = 160;
+export const BANNER_IMAGE_WAIT_MS = 5000;
 
 export function PopupBanner() {
   const t = catalogCopy(useDisplayLocale());
@@ -57,6 +59,7 @@ export function PopupBanner() {
   const [index, setIndex] = useState(0);
   const [settings, setSettings] = useState(DEFAULT_BANNER_SETTINGS);
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [paused, setPaused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -74,7 +77,7 @@ export function PopupBanner() {
   const transitionTimer = useRef<ReturnType<typeof setTimeout>>();
   const transitioning = useRef(false);
   const queuedCommit = useRef<(() => void) | null>(null);
-  const preparedImages = useRef(new Map<string, Promise<void>>());
+  const preparedImages = useRef(new Map<string, Promise<boolean>>());
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const shownThisVisitRef = useRef(false);
@@ -90,7 +93,19 @@ export function PopupBanner() {
     setOutgoing(null);
     setStageHeight(undefined);
   }, []);
-  const close = useCallback(() => { cancelTransition(); setOpen(false); }, [cancelTransition]);
+  const close = useCallback(() => {
+    cancelTransition();
+    setPaused(true);
+    if (reduced) setOpen(false);
+    else setClosing(true);
+  }, [cancelTransition, reduced]);
+  useEffect(() => {
+    if (!closing) return;
+    const finish = () => { setOpen(false); setClosing(false); };
+    if (reduced) { finish(); return; }
+    const timer = setTimeout(finish, BANNER_EXIT_MS);
+    return () => clearTimeout(timer);
+  }, [closing, reduced]);
   const beginTransition = useCallback(() => {
     if (!transitioning.current || transitionTimer.current !== undefined) return;
     setIncomingReady(true);
@@ -112,11 +127,12 @@ export function PopupBanner() {
     image.src = url;
     // Keep the current slide painted while the destination downloads/decodes.
     if (typeof image.decode !== "function") return;
-    const ready = image.decode().catch(() => {}).then(() => {});
+    const ready = image.decode().then(() => true, () => false);
     preparedImages.current.set(url, ready);
     return ready;
   }, []);
   const move = useCallback((step: number, manual = true) => {
+    if (closing) return;
     if (manual) setPaused(true);
     if (banners.length < 2) return;
     const target = (targetIndexRef.current + step + banners.length) % banners.length;
@@ -142,7 +158,7 @@ export function PopupBanner() {
     const ready = prepareImage(banners[target].image_url);
     if (ready) void ready.then(commit);
     else commit();
-  }, [banners, prepareImage, reduced]);
+  }, [banners, prepareImage, reduced, closing]);
 
   useLayoutEffect(() => {
     if (!outgoing || !slideRef.current) return;
@@ -176,11 +192,13 @@ export function PopupBanner() {
   useEffect(() => {
     cancelTransition();
     setOpen(false);
+    setClosing(false);
     if (isAdmin || !isHome) return;
     if (shownThisVisitRef.current) return;
     const controller = new AbortController();
     let disposed = false;
     let openTimer: ReturnType<typeof setTimeout> | undefined;
+    let imageTimer: ReturnType<typeof setTimeout> | undefined;
     // Defer the single request until after the home page's first paint.
     const fetchTimer = setTimeout(() => {
       fetch("/api/banners?active=1", { signal: controller.signal, cache: "no-store" })
@@ -199,20 +217,32 @@ export function PopupBanner() {
           setIndex(0);
           currentIndexRef.current = targetIndexRef.current = 0;
           setPaused(false);
+          // Decode during the configured delay, before the panel has a layout.
+          // A stalled/broken image gets a stable fallback, never a late resize.
+          const image = prepareImage(eligible[0].image_url);
+          const prepared = image && new Promise<boolean>(resolve => {
+            imageTimer = setTimeout(() => resolve(false), BANNER_IMAGE_WAIT_MS);
+            void image.then(ready => { clearTimeout(imageTimer); resolve(ready); });
+          });
           openTimer = setTimeout(() => {
-            if (disposed || shownThisVisitRef.current) return;
-            const current = eligible.filter(item => !isBannerHidden(item.id));
-            if (!current.length) return;
-            shownThisVisitRef.current = true;
-            setBanners(current);
-            setOpen(true);
-            // Count the popup once, never once per slide/loop.
-            try { sessionStorage.setItem(BANNER_SESSION_KEY, String(shown + 1)); } catch {}
+            const reveal = (ready = true) => {
+              if (disposed || shownThisVisitRef.current) return;
+              const current = eligible.filter(item => !isBannerHidden(item.id));
+              if (!current.length) return;
+              if (!ready) setImageFailed(failed => [...failed, eligible[0].id]);
+              shownThisVisitRef.current = true;
+              setBanners(current);
+              setOpen(true);
+              // Count the popup once, never once per slide/loop.
+              try { sessionStorage.setItem(BANNER_SESSION_KEY, String(shown + 1)); } catch {}
+            };
+            if (prepared) void prepared.then(reveal);
+            else reveal();
           }, nextSettings.delay_ms);
         }).catch(() => {});
     }, 0);
-    return () => { disposed = true; controller.abort(); clearTimeout(fetchTimer); clearTimeout(openTimer); };
-  }, [isAdmin, isHome, cancelTransition]);
+    return () => { disposed = true; controller.abort(); clearTimeout(fetchTimer); clearTimeout(openTimer); clearTimeout(imageTimer); };
+  }, [isAdmin, isHome, cancelTransition, prepareImage]);
 
   useEffect(() => {
     if (!open || banners.length < 2) return;
@@ -220,7 +250,7 @@ export function PopupBanner() {
     prepareImage(url);
   }, [open, banners, index, prepareImage]);
 
-  const rotating = open && banners.length > 1 && settings.autoplay && !paused && !hovered && !hidden && !reduced;
+  const rotating = open && !closing && banners.length > 1 && settings.autoplay && !paused && !hovered && !hidden && !reduced;
   useEffect(() => {
     if (!rotating) return;
     const timer = setTimeout(() => move(1, false), settings.interval_ms);
@@ -247,9 +277,9 @@ export function PopupBanner() {
     : [{ banner, index, decorative: false }];
   const waitingForImage = Boolean(outgoing && !incomingReady);
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-5" role="dialog" aria-modal="true" aria-label={t.bannerInfoLabel}>
-      <div aria-hidden="true" className="absolute inset-0 bg-[#070a1e]/75 backdrop-blur-sm" onClick={close} />
-      <div ref={panelRef} tabIndex={-1} className="relative flex max-h-[min(92dvh,100%)] w-[448px] max-w-full flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.5)] motion-safe:animate-[fadeInUp_0.24s_var(--ease-apple)]">
+    <div data-banner-state={closing ? "closing" : "open"} className="fixed inset-0 z-[70] flex items-center justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-5" role="dialog" aria-modal="true" aria-label={t.bannerInfoLabel}>
+      <div aria-hidden="true" className="banner-popup-backdrop absolute inset-0 bg-[#070a1e]/75 backdrop-blur-sm" onClick={close} />
+      <div ref={panelRef} tabIndex={-1} className="banner-popup-panel relative flex max-h-[min(92dvh,100%)] w-[448px] max-w-full flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.5)]">
         <button ref={closeRef} onClick={close} className="absolute right-2 top-2 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/65 text-white hover:bg-black/85" aria-label={t.bannerClose}>✕</button>
         <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden" role="region" aria-roledescription="carousel" aria-label={t.bannerCarouselLabel}
           onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}

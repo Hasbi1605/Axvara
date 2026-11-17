@@ -48,6 +48,14 @@ menambah env atau menampilkan nilai secret. Workflow monitor tetap Analytics
 per jam menit17, tanpa SQL/deploy. Alert email budget1/5/10 USD yang telah
 dipasang menghitung biaya usage akun di luar langganan; bukan hard cap.
 
+Revisi17November2026 (lokal): shared GET metadata subscriptions dan GET project
+Pages memakai maksimal3 percobaan dengan timeout30detik/percobaan, backoff500/1000ms
+untuk transport/timeout/HTTP408/429/5xx saja. Tidak mengubah/retry GraphQL Analytics,
+write/migrasi/deploy. Entitlement/JSON/metadata tidak valid, auth dan kapasitas tetap
+fail-closed. CLI guard hanya menampilkan alasan lokal/status HTTP aman, tanpa respons
+mentah. Cek baca-saja17Nov setelah CI44096428572 gagal metadata: Paid88/128,
+84konfigurasi+4sistem; alasan spesifik kegagalan lama tidak tersimpan pada log.
+
 Verifikasi metadata produksi baca-saja23 Oktober: Paid,64/128 variabel;
 Analytics periode30 September–30 Oktober sekitar76,3juta baca dan293ribu
 tulis. Ini baseline sebelum rilis percepatan, bukan hasil setelah deployment.

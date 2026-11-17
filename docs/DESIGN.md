@@ -573,8 +573,16 @@ token warna, tema dan cakupan 19 section tetap.
 
 ## Popup banner adaptif (11 November 2026, implementasi lokal)
 
+- Revisi gerak17November2026 (lokal): backdrop opacity0→1 selama180ms (blur tetap,
+  tidak dianimasikan); panel sebagai satu kesatuan opacity0→1 + translateY20→0px
+  + scale0,98→1 selama300ms, cubic-bezier(.22,1,.36,1), tanpa bounce atau stagger isi.
+  Tutup opacity→0 + translateY8px/scale0,99 maksimal160ms. CSS transition dengan
+  `@starting-style` dapat berbalik dari posisi saat ini bila ditutup saat masuk;
+  browser tanpa dukungan starting-style menampilkan panel langsung, tetap fungsional.
+  Reduced-motion tanpa transform/transisi masuk/tutup. Gambar pertama siap sebelum
+  mount, timeout5detik/failure memakai fallback stabil; ukuran/layout poster tidak berubah.
 - Pertahankan kartu putih448px, judul/deskripsi rata tengah, tombol biru #315DEA,
-  tombol tutup44px, carousel dan animasi existing; tanpa perubahan aset poster.
+  tombol tutup44px dan dissolve carousel existing; tanpa perubahan aset poster.
 - Tinggi maksimal min(92dvh,100% area tersedia), padding safe-area atas/bawah.
   Footer checkbox+CTA/Saya Paham tidak ikut scroll dan terlihat sejak popup dibuka.
 - Media mengisi sisa tinggi setelah caption/footer; object-contain menjaga rasio

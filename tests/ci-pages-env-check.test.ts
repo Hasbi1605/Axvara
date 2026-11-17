@@ -57,6 +57,30 @@ describe("Pages variable preflight", () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  it("recovers a temporary subscriptions/network failure and Pages 503 with bounded GET retries", async () => {
+    const fetchFn = vi.fn<typeof fetch>()
+      .mockRejectedValueOnce(new TypeError("private-provider-error"))
+      .mockResolvedValueOnce(freePlan.clone())
+      .mockResolvedValueOnce(new Response("never-log-this", { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ success: true, result: project(60) }));
+    expect(await checkPagesEnvironment(env, fetchFn)).toMatchObject({ total: 64 });
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+    expect(fetchFn.mock.calls.every(([, options]) => !options?.method && !options?.body)).toBe(true);
+  });
+
+  it("still fails closed after three temporary HTTP failures, without continuing to Pages", async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockImplementation(async () => new Response("never-log-this", { status: 503 }));
+    await expect(checkPagesEnvironment(env, fetchFn)).rejects.toThrow("Cloudflare subscription API HTTP 503");
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+    expect(fetchFn.mock.calls.every(([url]) => String(url).endsWith("/subscriptions"))).toBe(true);
+  });
+
+  it.each([401, 403])("does not retry permanent HTTP %s failures", async status => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(new Response("never-log-this", { status }));
+    await expect(checkPagesEnvironment(env, fetchFn)).rejects.toThrow(`HTTP ${status}`);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
   it.each(["missing", "plain_text"])("stops a release with a %s buyer key binding without exposing values", async (kind) => {
     const p = project(20);
     if (kind === "missing") delete p.deployment_configs.production.env_vars.BUYER_ORDER_ACCESS_SECRET;
@@ -108,6 +132,11 @@ describe("Pages variable preflight", () => {
       expect(failed.status).toBe(1);
       expect(failed.stderr).toContain("deployment stopped");
       expect(failed.stderr).not.toContain("private-key");
+      writeFileSync(preload, 'globalThis.fetch = async () => new Response("private-provider-error", {status:403});');
+      const forbidden = spawnSync(process.execPath, ["--require", preload, resolve("scripts/ci-pages-env-check.cjs")], { env, encoding: "utf8" });
+      expect(forbidden.status).toBe(1);
+      expect(forbidden.stderr).toContain("Cloudflare subscription API HTTP 403; deployment stopped");
+      expect(forbidden.stderr).not.toContain("private-provider-error");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

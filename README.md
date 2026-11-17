@@ -1196,6 +1196,12 @@ slide lama sebagai backing dan menghaluskan perubahan tinggi kartu. Input cepat
 digabung ke tujuan terbaru; reduced motion tetap tanpa animasi/autoplay.
 Jangan tampilkan lagi berlaku per info24jam; checkout/admin tetap tanpa popup.
 
+Revisi gerak17November2026 (lokal): backdrop fade180ms, panel fade + naik20px +
+zoom0,98→1 selama300ms tanpa pantulan; tutup fade/turun8px160ms, termasuk saat
+entrance belum selesai. Gambar pertama didecode selama jeda admin sebelum tampil;
+timeout5detik/gagal memakai fallback stabil. Fokus/scroll pulih setelah exit;
+reduced-motion langsung. Poster/isi/CTA/urutan/frekuensi tetap.
+
 Admin → Banner: ubah isi/gambar/CTA/aktif, drag pegangan atau gunakan naik/turun
 untuk urutan. Banner baru di akhir. Pengaturan popup terpisah: jeda buka0–10detik,
 interval4–20detik, otomatis dan frekuensi1–10per sesi. Perubahan terlihat pada
@@ -2008,6 +2014,14 @@ git push origin main
 `.github/workflows/ci.yml` adalah satu-satunya jalur deploy otomatis. Setiap push `main` menjalankan test/type-check root + test/build gateway, build adapter Pages, memeriksa/menerapkan migrasi D1 (bukti rilis identik atau Wrangler remote), merilis gateway lewat Heroku API bila source/release berubah, deploy Pages, lalu deploy MCP Worker. Cloudflare Pages Git build dinonaktifkan agar tidak terjadi deploy ganda. Setelah push berhasil, agent berhenti dan tidak memantau workflow.
 
 Perbaikan CI 2026-10-18: `scripts/ci-pages-env-check.cjs` memeriksa metadata konfigurasi produksi sebelum build/migrasi. Batas Workers Free adalah 64 variabel secret/text, termasuk empat variabel sistem Pages (`CF_PAGES`, `CF_PAGES_BRANCH`, `CF_PAGES_COMMIT_SHA`, `CF_PAGES_URL`); nama yang sama dihitung sekali. API gagal atau total >64 menghentikan rilis, tepat 64 memberi warning. Tidak membaca D1, mengubah env, atau mencetak nilai secret. Konfigurasi usang `PEDIA_DISPATCH_ENABLED` dihapus dari Pages produksi karena tidak dikonsumsi kode; dispatch antrean Pedia tetap berjalan lewat cron existing. Kini 60 konfigurasi + 4 sistem = 64: penambahan env berikutnya membutuhkan pengurangan konfigurasi yang benar-benar tidak dipakai. Secret KlikQRIS dan rail DANA/GoPay lama tetap ada. Sumber: [batas Workers](https://developers.cloudflare.com/workers/platform/limits/), [variabel sistem Pages](https://developers.cloudflare.com/pages/configuration/build-configuration/).
+
+Revisi17November2026 (lokal): angka Free64 di atas adalah snapshot18Oktober;
+preflight memakai langganan aktual Paid128/Free64. GET metadata subscriptions/Pages
+diulang maksimal3kali hanya untuk transport/timeout/HTTP408/429/5xx, backoff500/1000ms;
+auth/metadata/kapasitas tetap fail-closed. Diagnosis CLI menampilkan tahap/status HTTP
+aman tanpa secret/raw error. Run44096428572 gagal di guard metadata, bukan test/build;
+alasan API persis tidak tersimpan. Cek baca-saja setelahnya lulus88/128 (Paid), bukan
+bukti deployment. Tidak mengubah env/secrets atau melakukan deploy manual.
 
 Migrasi rebuild `0008_orders_multichannel.sql` aman untuk database produksi yang sudah memiliki transaksi dan fulfillment job: foreign key `order_code` pada seluruh tabel anak dipindahkan sementara, parent `orders` diganti, lalu key dipulihkan dan divalidasi sebelum commit. Tes regresi mengeksekusi skenario berisi child rows agar kegagalan constraint tidak baru ditemukan saat deploy.
 

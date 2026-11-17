@@ -289,6 +289,23 @@ body {
 @media (prefers-reduced-motion: reduce) { .ax-launch::before, .ax-launch::after { animation: none; } }
 
 /* Keep the previous slide as an opaque backing until the decoded image dissolves in. */
+.banner-popup-backdrop { opacity: 1; transition: opacity 180ms ease-out; }
+.banner-popup-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 300ms cubic-bezier(.22,1,.36,1), transform 300ms cubic-bezier(.22,1,.36,1);
+}
+@starting-style {
+  .banner-popup-backdrop { opacity: 0; }
+  .banner-popup-panel { opacity: 0; transform: translateY(20px) scale(.98); }
+}
+[data-banner-state="closing"] .banner-popup-backdrop { opacity: 0; transition-duration: 160ms; }
+[data-banner-state="closing"] .banner-popup-panel { opacity: 0; transform: translateY(8px) scale(.99); transition-duration: 160ms; }
+@media (prefers-reduced-motion: reduce) {
+  .banner-popup-backdrop, .banner-popup-panel { transition: none; }
+  .banner-popup-panel { transform: none !important; }
+}
+
 @keyframes bannerSlideIn {
   from { opacity: 0; transform: translateX(var(--banner-enter-from, 12px)); filter: blur(2px); }
   to { opacity: 1; transform: translateX(0); filter: blur(0px); }

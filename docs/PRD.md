@@ -1519,6 +1519,15 @@ berikutnya ketika modal ditutup. Batas sesi dihitung sekali per pembukaan, bukan
 slide. Jangan tampilkan lagi menyembunyikan info aktif24jam dan meneruskan ke tetangga;
 ketika semua disembunyikan modal ditutup. Key hide lama dipertahankan.
 
+Revisi gerak17November2026 (lokal; deployment belum diverifikasi): backdrop
+fade-in180ms dan seluruh panel muncul300ms dari bawah20px dengan opacity0→1,
+scale0,98→1, ease-out tanpa pantulan. Tutup fade-out/turun8px maksimal160ms dan
+dapat dipicu sebelum animasi masuk selesai; Escape/fokus/scroll lock dipertahankan
+sampai panel dilepas. Reduced-motion masuk/tutup langsung. Gambar pertama didecode
+selama jeda admin sebelum popup dipasang; gagal atau belum siap setelah5detik
+memakai fallback stabil. Counter sesi hanya bertambah saat popup benar-benar tampil.
+Tidak mengubah poster, konten, batas sesi, API, navigasi CTA atau urutan carousel.
+
 Revisi responsif11November2026 (implementasi lokal, deployment belum diverifikasi):
 popup maksimal92dvh dan tetap dalam area aman layar. Checkbox serta CTA/Saya Paham
 berada di luar konten yang dapat digulir, langsung terlihat tanpa scroll popup.

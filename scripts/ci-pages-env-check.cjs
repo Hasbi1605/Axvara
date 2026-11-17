@@ -2,7 +2,7 @@
 // Read configuration metadata only; never print values or mutate the project.
 const SYSTEM_VARIABLES = ["CF_PAGES", "CF_PAGES_BRANCH", "CF_PAGES_COMMIT_SHA", "CF_PAGES_URL"];
 const FREE_VARIABLE_LIMIT = 64;
-const { cloudflareAuth, readWorkersPlan } = require("./cloudflare-plan.cjs");
+const { cloudflareAuth, readWorkersPlan, cloudflareMetadataGet } = require("./cloudflare-plan.cjs");
 
 function variableBudget(project, limit = FREE_VARIABLE_LIMIT) {
   const variables = project?.deployment_configs?.production?.env_vars;
@@ -19,9 +19,7 @@ async function checkPagesEnvironment(env = process.env, fetchFn = fetch) {
   const account = env.CLOUDFLARE_ACCOUNT_ID;
   const headers = cloudflareAuth(env);
   const plan = await readWorkersPlan(env, fetchFn);
-  const response = await fetchFn(`https://api.cloudflare.com/client/v4/accounts/${account}/pages/projects/axvara`, {
-    headers, signal: AbortSignal.timeout(30_000),
-  });
+  const response = await cloudflareMetadataGet(`https://api.cloudflare.com/client/v4/accounts/${account}/pages/projects/axvara`, headers, fetchFn);
   if (!response.ok) throw new Error(`Pages configuration HTTP ${response.status}`);
   const body = await response.json();
   if (body?.success !== true || !body.result || (body.errors && (!Array.isArray(body.errors) || body.errors.length))) {
@@ -46,8 +44,12 @@ async function main() {
 }
 
 module.exports = { SYSTEM_VARIABLES, FREE_VARIABLE_LIMIT, variableBudget, checkPagesEnvironment };
-if (require.main === module) main().catch(() => {
-  // API errors may contain sensitive metadata; expose no raw response/errors.
-  console.error("Pages environment check failed: configuration unavailable; deployment stopped.");
+if (require.main === module) main().catch(error => {
+  // Only locally defined reasons/status codes are safe; never print raw errors.
+  const message = error?.message;
+  const known = ["Cloudflare account ID missing or invalid", "Cloudflare credentials missing", "Cloudflare subscription metadata incomplete", "Cloudflare paid billing period unavailable", "Pages configuration API failed", "Pages production environment metadata unavailable", "Pages buyer access secret metadata unavailable"];
+  const reason = known.includes(message) || /^(Pages configuration|Cloudflare subscription API) HTTP [1-5]\d{2}$/.test(message)
+    ? message : ["AbortError", "TimeoutError"].includes(error?.name) ? "metadata request timed out" : "metadata request or response unavailable";
+  console.error(`Pages environment check failed: ${reason}; deployment stopped.`);
   process.exitCode = 1;
 });
