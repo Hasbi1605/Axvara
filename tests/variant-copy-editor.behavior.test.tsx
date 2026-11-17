@@ -1,23 +1,27 @@
 // @vitest-environment jsdom
 import userEvent from "@testing-library/user-event";
 //
-// tests/variant-copy-editor.behavior.test.tsx — Editor S&K + cara aktivasi
-// per varian di panel admin (migrasi 0041) dan penandanya di daftar produk.
+// tests/variant-copy-editor.behavior.test.tsx — Editor Deskripsi & S&K
+// (CopyVariantTable, CopyEditorSheet, ProductCopyTab) dan penanda di daftar produk.
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { render } from "./setup/admin-render";
 import { ToastProvider } from "@/components/ui/Toast";
-import { VariantCopyEditor } from "@/components/admin/sections/VariantCopyEditor";
+import { ProductCopyTab } from "@/components/admin/sections/ProductCopyTab";
+import { useVariantCopyEntries } from "@/components/admin/sections/VariantCopyEditor";
 import { ProductsSection } from "@/components/admin/sections/ProductsSection";
 import { ProductEditorModal } from "@/components/admin/ProductEditorModal";
-import type { VariantCopyEntry } from "@/lib/product-copy/format";
-import type { FormVariant, Prod, ProductForm } from "@/components/admin/product-types";
-import { useState } from "react";
-import { act } from "@testing-library/react";
 import { ProductVariantRows, NonWrFulfillmentPanel } from "@/components/admin/sections/ProductVariantRows";
 import { AdminPortalContext } from "@/components/admin/ui/portal";
+import type { VariantCopyEntry } from "@/lib/product-copy/format";
+import type { FormVariant, Prod, ProductForm } from "@/components/admin/product-types";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 const base: VariantCopyEntry = {
   variantId: 13,
@@ -36,198 +40,586 @@ const base: VariantCopyEntry = {
   hasOverride: false,
   adminTerms: "",
   adminActivation: "",
+  adminTermsEn: "",
+  adminActivationEn: "",
   autoTerms: "Detail paket:\n- Paket Premium Ultra HD 4K\n\nGaransi:\n- Perbaikan garansi 1x24 jam",
   autoActivation: "1. Login di aplikasi",
   supplierTerms: "Plan: Premium Ultra HD 4K\nGaransi fixing 1x24 jam",
   supplierActivation: "",
 };
 
-function renderEditor(entry: VariantCopyEntry, onSaved = vi.fn()) {
-  render(
+const defaultVariants: FormVariant[] = [
+  { id: 12, sku: "WR-12", label: "Premium Anti Limit", duration_label: "28 Hari", price: 35000, stock: 0, is_active: 1, wr_auto_managed: 1 },
+  { id: 13, sku: "WR-13", label: "Premium Legal", duration_label: "28 Hari", price: 55000, stock: 3, is_active: 1, wr_auto_managed: 1 },
+];
+
+function CopyTabHarness({
+  initialForm,
+  variants = defaultVariants,
+  initialEntries,
+  productId = 1,
+  hasMultiVariants = true,
+  onFormChange,
+}: {
+  initialForm: ProductForm;
+  variants?: FormVariant[];
+  initialEntries: VariantCopyEntry[];
+  productId?: number;
+  hasMultiVariants?: boolean;
+  onFormChange?: (form: ProductForm) => void;
+}) {
+  const [form, setForm] = useState<ProductForm>(initialForm);
+  const variantCopy = useVariantCopyEntries(productId);
+  return (
     <ToastProvider>
-      <VariantCopyEditor variantId={entry.variantId} entry={entry} loading={false} error={null} onSaved={onSaved} />
-    </ToastProvider>,
+      <ProductCopyTab
+        productId={productId}
+        form={form}
+        onSetForm={(next) => {
+          setForm(next);
+          onFormChange?.(next);
+        }}
+        formVariants={variants}
+        hasMultiVariants={hasMultiVariants}
+        loadingVariants={false}
+        variantCopy={{
+          ...variantCopy,
+          entries: variantCopy.entries.size > 0
+            ? variantCopy.entries
+            : new Map(initialEntries.map((e) => [e.variantId, e])),
+        }}
+      />
+    </ToastProvider>
   );
-  fireEvent.click(screen.getByRole("button", { name: /Syarat & Ketentuan · Cara Aktivasi/ }));
-  return { onSaved };
 }
 
-function stubSave(returned: Partial<VariantCopyEntry>) {
-  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => ({
-    ok: true,
-    status: 200,
-    json: async () => ({ ok: true, variant: { ...base, ...JSON.parse(String(init?.body ?? "{}")), ...returned } }),
-  }));
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
+describe("ProductCopyTab & CopyVariantTable & CopyEditorSheet", () => {
+  it("renders status pills, EN completeness marker, sorts inactive variants last, and opens drawer with first-field focus", async () => {
+    const entries: VariantCopyEntry[] = [
+      { ...base, variantId: 10, status: "pemasok", reviewKind: "raw", needsReview: true, isActive: false },
+      { ...base, variantId: 11, status: "admin", hasOverride: true, adminTerms: "Detail paket:\n- Custom", adminTermsEn: "Package details:\n- Custom EN" },
+      { ...base, variantId: 12, status: "axvara" },
+      { ...base, variantId: 13, status: "pemasok", adminStale: true, reviewKind: "changed", needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Lama" },
+      { ...base, variantId: 14, status: "none", autoTerms: "", autoActivation: "" },
+    ];
+    const variants: FormVariant[] = [
+      { id: 10, sku: "V10", label: "Varian Nonaktif", price: 10000, stock: 1, is_active: 0 },
+      { id: 11, sku: "V11", label: "7 Hari", price: 15000, stock: 1, is_active: 1 },
+      { id: 12, sku: "V12", label: "1 Bulan", price: 25000, stock: 1, is_active: 1 },
+      { id: 13, sku: "V13", label: "Stale Varian", price: 35000, stock: 1, is_active: 1 },
+      { id: 14, sku: "V14", label: "Kosong Varian", price: 45000, stock: 1, is_active: 1 },
+    ];
 
-describe("VariantCopyEditor", () => {
-  it.each(["raw", "changed"] as const)("acknowledges %s without rewriting supplier text; response updates status", async (reviewKind) => {
-    const entry = { ...base, status: "pemasok" as const, reviewKind, needsReview: true };
-    const fetchMock = stubSave({ ...entry, reviewed: true, needsReview: false, reviewKind: null });
-    function Editor() {
-      const [current, setCurrent] = useState(entry as VariantCopyEntry);
-      return <VariantCopyEditor variantId={13} entry={current} loading={false} error={null} onSaved={setCurrent} />;
-    }
-    render(<ToastProvider><Editor /></ToastProvider>);
-    fireEvent.click(screen.getByRole("button", { name: /Syarat & Ketentuan/ }));
-    expect(screen.getByText(reviewKind === "raw" ? "Teks WR — belum versi Axvara" : "WR mengubah teks — tinjau ulang")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: reviewKind === "raw" ? "Teks supplier sudah oke" : "Teks baru sudah oke" }));
-    await screen.findByText("Teks WR — sudah ditinjau");
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ variant_id: 13, supplier_key: base.supplierKey, action: "acknowledge" });
-    expect(fetchMock.mock.calls[0][1]?.method).toBe("PUT");
-    expect(await screen.findByText("Ditandai sudah ditinjau. Teks tetap ikut update supplier.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Batalkan tanda" })).toBeTruthy();
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ variants: entries }),
+    })));
+
+    render(
+      <CopyTabHarness
+        initialForm={{ name: "Canva Pro", description: "Intro", wrManaged: false }}
+        variants={variants}
+        initialEntries={entries}
+      />,
+    );
+
+    // 1 missing description EN + 3 active variants without EN (12, 13, 14) = 4 kosong
+    expect(await screen.findByText(/4 kosong/)).toBeTruthy();
+
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("7 Hari"),
+      expect.stringContaining("1 Bulan"),
+      expect.stringContaining("Stale Varian"),
+      expect.stringContaining("Kosong Varian"),
+      expect.stringContaining("Varian Nonaktif"),
+    ]);
+
+    expect(within(rows[0]).getByText("Disunting admin")).toBeTruthy();
+    expect(within(rows[0]).getByLabelText("Versi English tersedia")).toBeTruthy();
+    expect(within(rows[1]).getByText("Kurasi AXVARA")).toBeTruthy();
+    expect(within(rows[1]).getByLabelText("Versi English kosong")).toBeTruthy();
+    expect(within(rows[2]).getByText("Perlu ditinjau")).toBeTruthy();
+    expect(within(rows[3]).getByText("Kosong")).toBeTruthy();
+    expect(within(rows[4]).getByText("Nonaktif")).toBeTruthy();
+    expect(within(rows[4]).getByText("Teks supplier")).toBeTruthy();
+
+    // Name (EN) hidden in ID mode, visible in EN mode
+    expect(screen.queryByLabelText("Nama (EN)")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /English/ }));
+    expect(screen.getByLabelText("Nama (EN)")).toBeTruthy();
+
+    // Open drawer for 7 Hari -> first field focused
+    fireEvent.click(screen.getByRole("button", { name: "Edit S&K 7 Hari" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("Detail paket")).toBe(document.activeElement);
   });
 
-  it("unacknowledges reviewed supplier text and hides review actions while dirty", async () => {
-    const fetchMock = stubSave({ reviewKind: "raw", reviewed: false, needsReview: true, status: "pemasok" });
-    const { onSaved } = renderEditor({ ...base, status: "pemasok", reviewed: true });
-    fireEvent.change(screen.getByLabelText("Syarat & Ketentuan"), { target: { value: "Draft" } });
-    expect(screen.queryByRole("button", { name: "Batalkan tanda" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));
-    fireEvent.click(screen.getByRole("button", { name: "Batalkan tanda" }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ reviewed: false, reviewKind: "raw" })));
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ variant_id: 13, supplier_key: base.supplierKey, action: "unacknowledge" });
-  });
-
-  it("dirty supplier text hides acknowledge; conflict offers reload and disables actions in flight", async () => {
-    let resolve!: (value: unknown) => void;
-    const fetchMock = vi.fn(() => new Promise(r => { resolve = r; }));
+  it("saves variant copy with ID + EN drafts kept across language toggle and inserts snippets", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        const body = JSON.parse(String(init.body));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            variant: {
+              ...base,
+              status: "admin",
+              hasOverride: true,
+              adminTerms: body.terms,
+              adminActivation: body.activation,
+              adminTermsEn: body.terms_en,
+              adminActivationEn: body.activation_en,
+            },
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ variants: [base] }) };
+    });
     vi.stubGlobal("fetch", fetchMock);
-    const onReload = vi.fn();
-    const onSaved = vi.fn();
-    render(<ToastProvider><VariantCopyEditor variantId={13} entry={{ ...base, status: "pemasok", reviewKind: "raw", needsReview: true }} loading={false} error={null} onSaved={onSaved} onReload={onReload} /></ToastProvider>);
-    fireEvent.click(screen.getByRole("button", { name: /Syarat & Ketentuan/ }));
-    fireEvent.change(screen.getByLabelText("Syarat & Ketentuan"), { target: { value: "Draft" } });
-    expect(screen.queryByRole("button", { name: "Teks supplier sudah oke" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));
-    fireEvent.click(screen.getByRole("button", { name: "Teks supplier sudah oke" }));
-    expect(screen.getByRole("button", { name: "Teks supplier sudah oke" })).toHaveProperty("disabled", true);
-    await act(async () => resolve({ ok: false, status: 409, json: async () => ({ error: "Teks supplier berubah" }) }));
-    expect(screen.getByRole("alert").textContent).toContain("Teks supplier berubah");
-    fireEvent.click(screen.getByRole("button", { name: "Muat sumber terbaru (pertahankan draft)" }));
-    expect(onReload).toHaveBeenCalledOnce();
-    expect(onSaved).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", base.autoTerms);
+
+    render(
+      <CopyTabHarness
+        initialForm={{ name: "Canva Pro", description: "Deskripsi", supplier: "Manual", wrManaged: false }}
+        variants={[defaultVariants[1]]}
+        initialEntries={[base]}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit S&K Premium Legal · 28 Hari" }));
+    const sheet = screen.getByRole("dialog");
+    const saveBtn = within(sheet).getByRole("button", { name: "Simpan" }) as HTMLButtonElement;
+    expect(saveBtn.disabled).toBe(true);
+
+    // Insert snippet in Proses & pengiriman (ID)
+    fireEvent.click(within(sheet).getByRole("button", { name: "+ Dikirim otomatis…" }));
+    expect(within(sheet).getByText("Belum disimpan")).toBeTruthy();
+    expect(saveBtn.disabled).toBe(false);
+    expect(within(sheet).getByTestId("product-terms-body").textContent).toContain("Dikirim otomatis setelah pembayaran terkonfirmasi");
+
+    // Switch to EN inside drawer; ID draft stays preserved while EN draft is edited
+    fireEvent.click(within(sheet).getByRole("button", { name: "EN" }));
+    expect(within(sheet).getByText(/Kosong — pembeli EN melihat versi Indonesia/)).toBeTruthy();
+    fireEvent.change(within(sheet).getByLabelText("Detail paket"), { target: { value: "Ready-to-use 4K account" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "+ Contact AXVARA admin…" }));
+    expect(within(sheet).getByTestId("product-terms-body").textContent).toContain("Ready-to-use 4K account");
+
+    // Switch back to ID and verify ID snippet draft is still there
+    fireEvent.click(within(sheet).getByRole("button", { name: "ID" }));
+    expect((within(sheet).getByRole("textbox", { name: "Proses & pengiriman" }) as HTMLTextAreaElement).value).toContain(
+      "Dikirim otomatis setelah pembayaran terkonfirmasi",
+    );
+
+    fireEvent.click(saveBtn);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const putCall = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
+    expect(putCall?.[0]).toBe("/api/admin/variant-copy");
+    const payload = JSON.parse(String(putCall?.[1]?.body));
+    expect(payload.variant_id).toBe(13);
+    expect(payload.terms).toContain("Dikirim otomatis setelah pembayaran terkonfirmasi");
+    expect(payload.terms_en).toContain("Package details:\n- Ready-to-use 4K account");
+    expect(payload.terms_en).toContain("Usage rules:\n- Need help? Contact AXVARA admin");
   });
+
+  it("acknowledges raw/changed supplier text, toggles Lihat teks baru, and reverts via overflow menu", async () => {
+    const rawEntry: VariantCopyEntry = {
+      ...base,
+      variantId: 12,
+      status: "pemasok",
+      reviewKind: "raw",
+      needsReview: true,
+      hasOverride: false,
+    };
+    const staleEntry: VariantCopyEntry = {
+      ...base,
+      variantId: 13,
+      status: "admin",
+      reviewKind: "changed",
+      adminStale: true,
+      needsReview: true,
+      hasOverride: true,
+      adminTerms: "Aturan pakai:\n- Dilarang berbagi akun",
+    };
+
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        const body = JSON.parse(String(init.body));
+        if (body.action === "acknowledge") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              ok: true,
+              variant: { ...rawEntry, reviewed: true, needsReview: false, reviewKind: null },
+            }),
+          };
+        }
+        if (body.terms === "") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              ok: true,
+              variant: { ...staleEntry, status: "axvara", hasOverride: false, adminStale: false, needsReview: false, reviewKind: null, adminTerms: "" },
+            }),
+          };
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({ variants: [rawEntry, staleEntry] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <CopyTabHarness
+        initialForm={{ name: "Netflix", wrManaged: true }}
+        variants={defaultVariants}
+        initialEntries={[rawEntry, staleEntry]}
+      />,
+    );
+
+    // Acknowledge raw supplier text
+    fireEvent.click(await screen.findByRole("button", { name: "Edit S&K Premium Anti Limit · 28 Hari" }));
+    let sheet = screen.getByRole("dialog");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Teks supplier sudah oke" }));
+    await screen.findByText(/Ditandai sudah ditinjau/);
+    fireEvent.click(within(sheet).getByRole("button", { name: "Tutup panel S&K" }));
+
+    // Open stale variant -> review banner + Lihat teks baru + revert in overflow menu
+    fireEvent.click(screen.getByRole("button", { name: "Edit S&K Premium Legal · 28 Hari" }));
+    sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByRole("alert").textContent).toContain("WR mengubah teks. Pembeli masih melihat suntinganmu.");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Lihat teks baru" }));
+    expect(within(sheet).getByText(/Perbaikan garansi 1x24 jam/)).toBeTruthy();
+
+    await userEvent.click(within(sheet).getByRole("button", { name: "Aksi lainnya" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Kembali ke versi otomatis" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const revertCall = fetchMock.mock.calls.find(
+      ([, init]) => init?.method === "PUT" && JSON.parse(String(init.body)).terms === "",
+    );
+    expect(revertCall).toBeTruthy();
+  });
+
+  it("copies ID+EN text to selected other variants via bulk endpoint and updates table statuses", async () => {
+    const entry12: VariantCopyEntry = { ...base, variantId: 12, status: "none", autoTerms: "", autoActivation: "" };
+    const entry13: VariantCopyEntry = { ...base, variantId: 13, status: "axvara" };
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/variant-copy/bulk" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            variants: body.variant_ids.map((id: number) => ({
+              ...entry12,
+              variantId: id,
+              status: "admin",
+              hasOverride: true,
+              adminTerms: body.terms,
+              adminActivation: body.activation,
+              adminTermsEn: body.terms_en,
+              adminActivationEn: body.activation_en,
+            })),
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ variants: [entry12, entry13] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <CopyTabHarness
+        initialForm={{ name: "Canva", wrManaged: false }}
+        variants={defaultVariants}
+        initialEntries={[entry12, entry13]}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit S&K Premium Legal · 28 Hari" }));
+    const sheet = screen.getByRole("dialog");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Salin ke varian lain" }));
+    const selectAll = screen.getByRole("checkbox", { name: /Pilih semua/ });
+    await userEvent.click(selectAll);
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan (1)" }));
+
+    await screen.findByText("Diterapkan ke 1 varian");
+    const bulkCall = fetchMock.mock.calls.find(([u]) => u === "/api/admin/variant-copy/bulk");
+    expect(JSON.parse(String(bulkCall?.[1]?.body))).toMatchObject({
+      product_id: 1,
+      variant_ids: [12],
+      terms: expect.stringContaining("Detail paket:"),
+    });
+  });
+
+  it("shows all >20 bulk targets, enforces 20-variant cap without blocking variants 21+, and allows selecting the last target", async () => {
+    const manyVariants: FormVariant[] = Array.from({ length: 23 }, (_, i) => ({
+      id: i + 1,
+      sku: `SKU-${i + 1}`,
+      label: `Varian ${i + 1}`,
+      price: 10000,
+      stock: -1,
+      is_active: 1,
+    }));
+    const manyEntries: VariantCopyEntry[] = manyVariants.map((v) => ({
+      ...base,
+      variantId: v.id!,
+      label: v.label,
+      status: v.id === 1 ? "axvara" : "none",
+      autoTerms: v.id === 1 ? base.autoTerms : "",
+      autoActivation: v.id === 1 ? base.autoActivation : "",
+    }));
+
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/variant-copy/bulk" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            variants: body.variant_ids.map((id: number) => ({
+              ...manyEntries[0],
+              variantId: id,
+              status: "admin",
+              hasOverride: true,
+              adminTerms: body.terms,
+              adminActivation: body.activation,
+            })),
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ variants: manyEntries }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <CopyTabHarness
+        initialForm={{ name: "Banyak Varian", wrManaged: false }}
+        variants={manyVariants}
+        initialEntries={manyEntries}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit S&K Varian 1" }));
+    const sheet = screen.getByRole("dialog");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Salin ke varian lain" }));
+
+    // 22 others visible; cap select-all selects first 20 and blocks a 21st
+    const selectCap = screen.getByRole("checkbox", { name: /Pilih 20 pertama \(dari 22\)/ });
+    await userEvent.click(selectCap);
+    expect(screen.getByText(/Maksimal 20 varian sekali salin \(20\/20 dipilih\)/)).toBeTruthy();
+    const lastCheckbox = screen.getByRole("checkbox", { name: "Varian 23" }) as HTMLButtonElement;
+    expect(lastCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(lastCheckbox.disabled).toBe(true);
+
+    // Clear all, then select the 22nd (last) target and apply
+    await userEvent.click(selectCap);
+    expect(lastCheckbox.disabled).toBe(false);
+    await userEvent.click(lastCheckbox);
+    expect(lastCheckbox.getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan (1)" }));
+
+    await screen.findByText("Diterapkan ke 1 varian");
+    const bulkCall = fetchMock.mock.calls.find(([u]) => u === "/api/admin/variant-copy/bulk");
+    expect(JSON.parse(String(bulkCall?.[1]?.body)).variant_ids).toEqual([23]);
+  });
+
+  it("enables Kembali ke versi otomatis for EN-only override and clears all 4 fields", async () => {
+    const enOnlyEntry: VariantCopyEntry = {
+      ...base,
+      variantId: 13,
+      status: "axvara",
+      hasOverride: false,
+      adminTerms: "",
+      adminActivation: "",
+      adminTermsEn: "Package details:\n- English only override",
+      adminActivationEn: "",
+    };
+
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            variant: { ...enOnlyEntry, adminTermsEn: "", adminActivationEn: "" },
+          }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ variants: [enOnlyEntry] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <CopyTabHarness
+        initialForm={{ name: "Canva EN", wrManaged: false }}
+        variants={[defaultVariants[1]]}
+        initialEntries={[enOnlyEntry]}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit S&K Premium Legal · 28 Hari" }));
+    const sheet = screen.getByRole("dialog");
+    await userEvent.click(within(sheet).getByRole("button", { name: "Aksi lainnya" }));
+    const revertItem = screen.getByRole("menuitem", { name: "Kembali ke versi otomatis" });
+    expect(revertItem.getAttribute("aria-disabled")).not.toBe("true");
+    await userEvent.click(revertItem);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const putCall = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
+    expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({
+      variant_id: 13,
+      terms: "",
+      activation: "",
+      terms_en: "",
+      activation_en: "",
+      supplier_key: base.supplierKey,
+    });
+    expect(screen.getByLabelText("Versi English kosong")).toBeTruthy();
+  });
+
+  it("handles 409 supplier-changed conflict preserving draft on reload and prompts unsaved discard", async () => {
+    let reloadCount = 0;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        return { ok: false, status: 409, json: async () => ({ error: "Teks supplier berubah" }) };
+      }
+      reloadCount += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          variants: [
+            {
+              ...base,
+              supplierKey: reloadCount > 1 ? "new-key" : "fixture-key",
+              autoTerms: reloadCount > 1 ? "Detail paket:\n- Sumber baru" : base.autoTerms,
+            },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <CopyTabHarness
+        initialForm={{ name: "SK Prod", supplier: "SK", wrManaged: false }}
+        variants={[defaultVariants[1]]}
+        initialEntries={[base]}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit S&K Premium Legal · 28 Hari" }));
+    const sheet = screen.getByRole("dialog");
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Aturan pakai" }), { target: { value: "Draft SK penting" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Simpan" }));
+
+    expect((await within(sheet).findByRole("alert")).textContent).toContain("Teks supplier berubah");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Muat ulang sumber (pertahankan draft)" }));
+    await waitFor(() => expect(reloadCount).toBeGreaterThanOrEqual(2));
+    expect((within(sheet).getByRole("textbox", { name: "Aturan pakai" }) as HTMLTextAreaElement).value).toBe("Draft SK penting");
+
+    // Closing while dirty triggers confirm dialog; confirming discards and closes
+    fireEvent.click(within(sheet).getByRole("button", { name: "Batal" }));
+    const confirm = screen.getByRole("alertdialog", { name: "Buang perubahan teks?" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Buang perubahan" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("product-wide drawer edits description S&K/activation via composeDescription with Terapkan button", async () => {
+    const onFormChange = vi.fn();
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ variants: [] }) })));
+
+    render(
+      <CopyTabHarness
+        initialForm={{
+          name: "Canva Pro",
+          description: "Pembuka bagus.\n\n- Fitur AI\n\nSyarat & Ketentuan:\n- Email aktif",
+          wrManaged: false,
+        }}
+        variants={[]}
+        initialEntries={[]}
+        onFormChange={onFormChange}
+      />,
+    );
+
+    expect(screen.getByText("1 aturan")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit S&K berlaku untuk semua varian" }));
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByText("Diterapkan ke form — klik Simpan Produk untuk menyimpan")).toBeTruthy();
+    const applyBtn = within(sheet).getByRole("button", { name: "Terapkan" }) as HTMLButtonElement;
+    expect(applyBtn.disabled).toBe(true);
+
+    fireEvent.change(within(sheet).getByLabelText("Garansi"), { target: { value: "Garansi 30 hari" } });
+    fireEvent.change(within(sheet).getByLabelText("Cara aktivasi"), { target: { value: "Buka email\nTerima undangan" } });
+    expect(applyBtn.disabled).toBe(false);
+
+    fireEvent.click(applyBtn);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(onFormChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: expect.stringContaining("Syarat & Ketentuan:\n- Email aktif\n- Garansi 30 hari"),
+      }),
+    );
+    expect(onFormChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: expect.stringContaining("Cara Aktivasi:\n1. Buka email\n2. Terima undangan"),
+      }),
+    );
+    expect(screen.getByText("2 aturan · 2 langkah")).toBeTruthy();
+  });
+});
+
+describe("ProductVariantRows & NonWrFulfillmentPanel", () => {
   it("shows automatic supplier processing instead of local manual fulfillment controls", () => {
-    vi.stubGlobal("fetch",vi.fn(async()=>({ok:true,json:async()=>({})})));
-    const update=vi.fn();
-    render(<ProductVariantRows form={{slug:"muse-ai-1-miliar-token",supplier:"Manual"}} formVariants={[{id:279,sku:"TUNVN-BUFF-1B",label:"Buff",price:1500,stock:-1,is_active:1,fulfillment_mode:"manual"}]} onSetFormVariants={update} productId={112}/>);
-    fireEvent.click(screen.getByRole("button",{name:/Buff/}));
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+    const update = vi.fn();
+    render(
+      <ProductVariantRows
+        form={{ slug: "muse-ai-1-miliar-token", supplier: "Manual" }}
+        formVariants={[{ id: 279, sku: "TUNVN-BUFF-1B", label: "Buff", price: 1500, stock: -1, is_active: 1, fulfillment_mode: "manual" }]}
+        onSetFormVariants={update}
+        productId={112}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Buff/ }));
     expect(screen.getByText(/Diproses otomatis setelah pembayaran/)).toBeTruthy();
     expect(screen.queryByText(/Badge pembeli: Made By Order/)).toBeNull();
     expect(document.querySelector('select option[value="shared"]')).toBeNull();
     expect(update).not.toHaveBeenCalled();
   });
-  it("SK terisi otomatis; konflik mempertahankan draft dan pratinjau mencakup deskripsi", async () => {
-    const onReload = vi.fn();
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 409, json: async () => ({ error: "Teks supplier berubah" }) })));
-    const entry = { ...base, supplier: "SK" as const, wrManaged: false };
-    const view = render(<ToastProvider><VariantCopyEditor variantId={13} entry={entry} loading={false} error={null} onSaved={vi.fn()} onReload={onReload} description={"Syarat & Ketentuan:\n- Aturan bersama"} /></ToastProvider>);
-    fireEvent.click(screen.getByRole("button", { name: /Syarat & Ketentuan/ }));
-    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", base.autoTerms);
-    fireEvent.change(screen.getByLabelText("Syarat & Ketentuan"), { target: { value: "Aturan pakai:\n- Draft SK" } });
-    fireEvent.click(screen.getByRole("button", { name: "Simpan S&K varian" }));
-    await screen.findByRole("alert");
-    fireEvent.click(screen.getByRole("button", { name: /Muat sumber terbaru/ }));
-    expect(onReload).toHaveBeenCalledOnce();
-    view.rerender(<ToastProvider><VariantCopyEditor variantId={13} entry={{ ...entry, autoTerms: "Sumber baru", supplierKey: "new-key" }} loading={false} error={null} onSaved={vi.fn()} description={"Syarat & Ketentuan:\n- Aturan bersama"} /></ToastProvider>);
-    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", "Aturan pakai:\n- Draft SK");
-    fireEvent.click(screen.getByText("Pratinjau setelah disimpan"));
-    expect(screen.getByText("Aturan bersama")).toBeTruthy();
-    expect(screen.getByText("Draft SK")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));
-    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", "Sumber baru");
-  });
-  it("own-stock common instructions survive switching the variant accordion", () => {
-    vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>({})})));
-    function Form() {
-      const [values,setValues]=useState<FormVariant[]>([{id:1,sku:'HEAD',label:'Head',price:14000,stock:1,is_active:1,fulfillment_mode:'unique'},{id:2,sku:'INVITE',label:'Invite',price:12000,stock:-1,is_active:1,fulfillment_mode:'shared'}]);
-      return <ProductVariantRows form={{name:'Own',supplier:'Manual'}} formVariants={values} onSetFormVariants={setValues} productId={1}/>;
-    }
-    render(<ToastProvider><Form/></ToastProvider>);
-    fireEvent.change(within(screen.getByRole('region',{name:/Pengaturan varian Head/})).getByLabelText('S&K bersama'),{target:{value:'- Jangan bagikan link'}});
-    fireEvent.click(screen.getByRole('button',{name:/^Invite/}));
-    expect((within(screen.getByRole('region',{name:/Pengaturan varian Invite/})).getByLabelText('S&K bersama') as HTMLTextAreaElement).value).toBe('');
-    fireEvent.change(within(screen.getByRole('region',{name:/Pengaturan varian Invite/})).getByLabelText('Cara penggunaan / aktivasi bersama'),{target:{value:'1. Terima undangan'}});
-    fireEvent.click(screen.getByRole('button',{name:/^Head/}));
-    expect((within(screen.getByRole('region',{name:/Pengaturan varian Head/})).getByLabelText('S&K bersama') as HTMLTextAreaElement).value).toBe('- Jangan bagikan link');
-    fireEvent.click(screen.getByRole('button',{name:/^Invite/}));
-    expect((within(screen.getByRole('region',{name:/Pengaturan varian Invite/})).getByLabelText('Cara penggunaan / aktivasi bersama') as HTMLTextAreaElement).value).toBe('1. Terima undangan');
+
+  it("own-stock variant accordions no longer expose a second copy editor", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+    const update = vi.fn();
+    const values: FormVariant[] = [
+      { id: 1, sku: "HEAD", label: "Head", price: 14000, stock: 1, is_active: 1, fulfillment_mode: "unique", admin_terms: "- Jangan bagikan link" },
+      { id: 2, sku: "INVITE", label: "Invite", price: 12000, stock: -1, is_active: 1, fulfillment_mode: "shared", admin_activation: "1. Terima undangan" },
+    ];
+    render(<ToastProvider><ProductVariantRows form={{ name: "Own", supplier: "Manual" }} formVariants={values} onSetFormVariants={update} productId={1} /></ToastProvider>);
+    expect(screen.queryByLabelText("S&K bersama")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Invite/ }));
+    expect(screen.queryByLabelText("Cara penggunaan / aktivasi bersama")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Head/ }));
+    expect(screen.queryByLabelText("S&K bersama")).toBeNull();
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("late inventory load cannot overwrite stock after its variant panel has unmounted", async () => {
-    let resolve!: (value:unknown)=>void;
-    const response=new Promise(r=>{resolve=r;});
-    vi.stubGlobal('fetch',vi.fn(()=>response));
-    const onStockChange=vi.fn();
-    const rendered=render(<ToastProvider><NonWrFulfillmentPanel productId={1} variantId={101} mode='unique' onStockChange={onStockChange}/></ToastProvider>);
+    let resolve!: (value: unknown) => void;
+    const response = new Promise((r) => { resolve = r; });
+    vi.stubGlobal("fetch", vi.fn(() => response));
+    const onStockChange = vi.fn();
+    const rendered = render(<ToastProvider><NonWrFulfillmentPanel productId={1} variantId={101} mode="unique" onStockChange={onStockChange} /></ToastProvider>);
     rendered.unmount();
-    await act(async()=>resolve({ok:true,json:async()=>({available:99})}));
+    await act(async () => resolve({ ok: true, json: async () => ({ available: 99 }) }));
     expect(onStockChange).not.toHaveBeenCalled();
-  });
-  it("terlipat dengan status; dibuka berisi salinan yang sedang tampil + teks asli WR sebagai pembanding", () => {
-    renderEditor(base);
-    expect(screen.getByText("Versi Axvara (otomatis)")).toBeTruthy();
-    expect((screen.getByLabelText("Syarat & Ketentuan") as HTMLTextAreaElement).value).toBe(base.autoTerms);
-    expect((screen.getByLabelText("Cara Aktivasi") as HTMLTextAreaElement).value).toBe(base.autoActivation);
-    expect(screen.getByText("Teks asli WR (pembanding)")).toBeTruthy();
-    // Belum ada perubahan → tidak ada yang perlu disimpan.
-    expect((screen.getByRole("button", { name: "Simpan S&K varian" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.queryByRole("button", { name: "Pakai versi otomatis" })).toBeNull();
-  });
-
-  it("menyunting lalu menyimpan mengirim teks varian ke endpoint khusus", async () => {
-    const fetchMock = stubSave({ status: "admin", hasOverride: true });
-    const { onSaved } = renderEditor(base);
-    const terms = screen.getByLabelText("Syarat & Ketentuan");
-    fireEvent.change(terms, { target: { value: `${base.autoTerms}\n- Dilarang berbagi akun` } });
-    expect(screen.getByText("Belum disimpan")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Simpan S&K varian" }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("/api/admin/variant-copy");
-    expect(init?.method).toBe("PUT");
-    expect(JSON.parse(String(init?.body))).toMatchObject({ variant_id: 13, terms: `${base.autoTerms}\n- Dilarang berbagi akun`, activation: base.autoActivation, terms_en: "", activation_en: "", supplier_key: base.supplierKey });
-    expect(onSaved.mock.calls[0][0]).toMatchObject({ status: "admin", hasOverride: true });
-  });
-
-  it("suntingan stale: peringatan menyebut pembeli masih melihat suntinganmu, teks admin dimuat, bisa ditandai sudah ditinjau", async () => {
-    const stale: VariantCopyEntry = { ...base, status: "admin", reviewKind: "changed", adminStale: true, needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun", adminActivation: "" };
-    const fetchMock = stubSave({ status: "admin", adminStale: false, needsReview: false });
-    renderEditor(stale);
-    expect(screen.getByText("WR mengubah teks — tinjau ulang")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toContain("Pembeli masih melihat suntinganmu");
-    expect(screen.getByText("Versi otomatis terbaru dari teks supplier (tidak tampil ke pembeli)")).toBeTruthy();
-    expect(screen.getByText(/Perbaikan garansi 1x24 jam/)).toBeTruthy();
-    expect((screen.getByLabelText("Syarat & Ketentuan") as HTMLTextAreaElement).value).toBe(stale.adminTerms);
-    const confirm = screen.getByRole("button", { name: "Tandai sudah ditinjau" }) as HTMLButtonElement;
-    expect(confirm.disabled).toBe(false);
-    fireEvent.click(confirm);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).terms).toBe(stale.adminTerms);
-  });
-
-  it("'Pakai versi otomatis' menghapus suntingan (teks kosong)", async () => {
-    const fetchMock = stubSave({ status: "axvara", hasOverride: false });
-    renderEditor({ ...base, status: "admin", hasOverride: true, adminTerms: "Garansi:\n- Garansi 7 hari" });
-    fireEvent.click(screen.getByRole("button", { name: "Kembali ke versi otomatis" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({ variant_id: 13, terms: "", activation: "", terms_en: "", activation_en: "", supplier_key: base.supplierKey });
-  });
-
-  it("teks WR yang belum dikurasi diberi ajakan menulis versi Axvara", () => {
-    renderEditor({ ...base, status: "pemasok", needsReview: true });
-    expect(screen.getByText("Teks WR — belum versi Axvara")).toBeTruthy();
-    expect(screen.getByText(/langsung menyunting teks di bawah/)).toBeTruthy();
-  });
-
-  it("varian baru (belum punya ID) diminta disimpan dulu", () => {
-    render(<ToastProvider><VariantCopyEditor loading={false} error={null} onSaved={vi.fn()} /></ToastProvider>);
-    expect(screen.getByText(/Simpan produk terlebih dahulu/)).toBeTruthy();
   });
 });
 
@@ -235,7 +627,6 @@ describe("daftar produk admin", () => {
   it("separates changed/raw badges, filters the full existing result before pagination and resets", () => {
     const prod = (id: string, extra: Partial<Prod> = {}): Prod => ({ id, slug: id, name: `Produk ${id}`, description: "", price: 1000, categorySlug: "akun-premium", image: "", images: [], soldCount: 0, stock: 1, isActive: true, ...extra });
     const list = [prod("both", { copyReview: 3, copyReviewChanged: 1, copyReviewRaw: 2 }), prod("raw", { copyReview: 1, copyReviewChanged: 0, copyReviewRaw: 1 }), prod("legacy", { copyReview: 4 }), prod("excluded", { copyReview: 1, copyReviewChanged: 1, copyReviewRaw: 0 }), prod("archive", { archivedAt: "2026-11-15", copyReview: 1, copyReviewChanged: 1, copyReviewRaw: 0 })];
-    // Existing status/supplier/search result is supplied by the page; copy filter must intersect it.
     const existing = list.slice(0, 3);
     function List() {
       const [page, setPage] = useState(1);
@@ -290,89 +681,54 @@ describe("daftar produk admin", () => {
         reordering={null} onMove={vi.fn()} onJump={vi.fn()} onSoldCount={vi.fn()}
       />,
     );
-    // Tampil di kartu mobile dan baris tabel desktop.
     expect(screen.getAllByText("S&K perlu ditinjau · 2 varian")).toHaveLength(2);
     expect(screen.queryByText(/S&K perlu ditinjau · 0/)).toBeNull();
   });
 });
 
-describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => {
-  const variants: FormVariant[] = [
-    { id: 12, sku: "WR-12", label: "Premium Anti Limit", duration_label: "28 Hari", price: 35000, stock: 0, is_active: 1, wr_auto_managed: 1 },
-    { id: 13, sku: "WR-13", label: "Premium Legal", duration_label: "28 Hari", price: 55000, stock: 3, is_active: 1, wr_auto_managed: 1 },
-  ];
+describe("editor produk: integrasi tab Deskripsi & S&K", () => {
   const entries: VariantCopyEntry[] = [
     { ...base, variantId: 12, label: "Premium Anti Limit" },
-    { ...base, variantId: 13, status: "pemasok", adminStale: true, needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun" },
+    { ...base, variantId: 13, status: "pemasok", adminStale: true, needsReview: true, reviewKind: "changed", hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun" },
   ];
 
-  function renderModal(form: ProductForm, formVariants = variants, onSetForm = vi.fn(), editing = true, copyEntries = entries) {
+  function renderModal(form: ProductForm, formVariants = defaultVariants, onSetForm = vi.fn(), editing = true, copyEntries = entries) {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
       ok: true,
       status: 200,
       json: async () => (String(url).startsWith("/api/admin/variant-copy") ? { variants: copyEntries } : {}),
     })));
     render(
-      <AdminPortalContext.Provider value={document.body}><ToastProvider>
-        <ProductEditorModal
-          editing={editing} editingId={editing ? 1 : undefined} saving={false} uploading={false} loadingVariants={false}
-          hasMultiVariants formError={null} form={form} formImages={[]} formVariants={formVariants} cats={[]}
-          onRequestClose={vi.fn()} onSetForm={onSetForm} onSetFormImages={vi.fn()} onSetHasMultiVariants={vi.fn()}
-          onSetFormVariants={vi.fn()} onUpload={vi.fn()} onSave={vi.fn()}
-        />
-      </ToastProvider></AdminPortalContext.Provider>,
+      <AdminPortalContext.Provider value={document.body}>
+        <ToastProvider>
+          <ProductEditorModal
+            editing={editing} editingId={editing ? 1 : undefined} saving={false} uploading={false} loadingVariants={false}
+            hasMultiVariants formError={null} form={form} formImages={[]} formVariants={formVariants} cats={[]}
+            onRequestClose={vi.fn()} onSetForm={onSetForm} onSetFormImages={vi.fn()} onSetHasMultiVariants={vi.fn()}
+            onSetFormVariants={vi.fn()} onUpload={vi.fn()} onSave={vi.fn()}
+          />
+        </ToastProvider>
+      </AdminPortalContext.Provider>,
     );
     return { onSetForm };
   }
 
   const wrForm: ProductForm = { name: "Netflix Premium", slug: "netflix-premium", description: "Teks WR", adminDescriptionOverride: "Versi Axvara", wrManaged: true };
 
-  it("dirty teks memblokir Simpan Produk, close dan Escape meminta izin; batal draft membuka simpan", async () => {
-    renderModal(wrForm);
-    await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /Premium Anti Limit · 28 Hari/ }));
-    fireEvent.change(screen.getByLabelText("Syarat & Ketentuan"), { target: { value: "Draft belum disimpan" } });
-    expect(screen.getByRole("button", { name: /Simpan Produk$/ })).toHaveProperty("disabled", true);
-    await userEvent.click(screen.getByRole("tab", { name: "Foto" }));
-    fireEvent.click(screen.getByRole("button", { name: "Tutup editor produk" }));
-    expect(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
-    fireEvent.click(within(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
-    fireEvent.keyDown(screen.getByRole("dialog", { name: "Edit Produk" }), { key: "Escape" });
-    expect(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).toBeTruthy();
-    fireEvent.click(within(screen.getByRole("alertdialog", { name: "Buang perubahan teks varian?" })).getByRole("button", { name: "Batal" }));
-    await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
-    expect(screen.getByLabelText("Syarat & Ketentuan")).toHaveProperty("value", "Draft belum disimpan");
-    fireEvent.click(screen.getByRole("button", { name: "Batalkan perubahan" }));
-    expect(screen.getByRole("button", { name: /Simpan Produk$/ })).toHaveProperty("disabled", false);
-  });
-
-  it("empat tab; deskripsi dan S&K per varian hanya ada di tab Deskripsi & S&K", async () => {
+  it("empat tab; deskripsi WR status pill, EN tersembunyi sampai dipilih, dan tabel varian di tab Deskripsi & S&K", async () => {
     renderModal(wrForm);
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Produk", "Varian (2)", expect.stringMatching(/^Deskripsi & S&K/), "Foto",
     ]);
-    // Tab Produk aktif: deskripsi tidak lagi di sini.
-    expect(screen.queryByRole("textbox", { name: "Deskripsi khusus (override)" })).toBeNull();
-    // Hanya panel tab aktif yang tampil (atribut hidden), bukan semua sekaligus.
-    expect(screen.getAllByRole("tabpanel").map((p) => p.getAttribute("aria-labelledby"))).toEqual([screen.getByRole("tab", { name: "Produk" }).id]);
-
-    await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
-    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
-    const variantPanel = screen.getByRole("tabpanel", { name: /^Varian/ });
-    expect(within(variantPanel).queryByText("Syarat & Ketentuan · Cara Aktivasi")).toBeNull();
-    expect(within(variantPanel).getByRole("button", { name: /Premium Legal/ }).getAttribute("aria-expanded")).toBe("false");
 
     await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
-    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
-    expect(screen.queryByRole("textbox", { name: "Nama" })).toBeNull();
-    expect(screen.getByRole("textbox", { name: "Nama (English)" })).toBeTruthy();
     const copyPanel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
-    expect((within(copyPanel).getByRole("textbox", { name: "Deskripsi (dari WR)" }) as HTMLTextAreaElement).readOnly).toBe(true);
-    expect((within(copyPanel).getByRole("textbox", { name: "Deskripsi khusus (override)" }) as HTMLTextAreaElement).value).toBe("Versi Axvara");
-    const legal = await within(copyPanel).findByRole("button", { name: /Premium Legal · 28 Hari.*WR mengubah teks/ });
-    expect(within(copyPanel).getByRole("button", { name: /Premium Anti Limit · 28 Hari.*Versi Axvara/ })).toBeTruthy();
-    fireEvent.click(legal);
-    expect((within(copyPanel).getByRole("textbox", { name: "Syarat & Ketentuan" }) as HTMLTextAreaElement).value).toBe("Aturan pakai:\n- Dilarang berbagi akun");
+    expect(within(copyPanel).queryByLabelText("Nama (EN)")).toBeNull();
+    expect((within(copyPanel).getByLabelText("Teks deskripsi") as HTMLTextAreaElement).value).toBe("Versi Axvara");
+    expect(within(copyPanel).getByText("Teks asli WR/SK (pembanding)")).toBeTruthy();
+    expect(within(copyPanel).getByText("Disunting admin")).toBeTruthy();
+    expect(within(copyPanel).getByRole("button", { name: "Pakai teks asli" })).toBeTruthy();
+    expect(await within(copyPanel).findByRole("button", { name: "Edit S&K Premium Legal · 28 Hari" })).toBeTruthy();
   });
 
   it("tab menampilkan jumlah varian yang S&K-nya perlu ditinjau", async () => {
@@ -383,7 +739,7 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
   });
 
   it("raw-only tab count stays neutral and ignores inactive changed variants", async () => {
-    renderModal(wrForm, variants, vi.fn(), true, [
+    renderModal(wrForm, defaultVariants, vi.fn(), true, [
       { ...base, needsReview: true, reviewKind: "raw", status: "pemasok" },
       { ...base, variantId: 12, isActive: false, needsReview: true, reviewKind: "changed" },
     ]);
@@ -393,26 +749,30 @@ describe("editor produk: tab Deskripsi & S&K (terpisah dari tab Varian)", () => 
     expect(badge.className).not.toContain("text-admin-danger");
   });
 
-  it("produk non-WR: kolom Deskripsi bisa diedit dari tab ini", async () => {
-    const { onSetForm } = renderModal({ name: "Canva Pro", slug: "canva-premium", description: "Lama", wrManaged: false }, [
-      { id: 1, sku: "CANVA-1", label: "Invite 1 Bulan", price: 2000, stock: -1, is_active: 1 },
-      { id: 3, sku: "CANVA-3", label: "Head 1 Bulan", price: 5000, stock: 10, is_active: 0 },
-    ]);
+  it("produk Manual memakai tabel varian dan drawer yang sama serta bisa mengedit deskripsi", async () => {
+    const { onSetForm } = renderModal(
+      { name: "Canva Pro", slug: "canva-premium", description: "Lama", wrManaged: false, supplier: "Manual" },
+      [
+        { id: 1, sku: "CANVA-1", label: "Invite 1 Bulan", price: 2000, stock: -1, is_active: 1 },
+        { id: 3, sku: "CANVA-3", label: "Head 1 Bulan", price: 5000, stock: 10, is_active: 0 },
+      ],
+    );
     await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
-    expect(within(panel).queryByRole("textbox", { name: "Deskripsi khusus (override)" })).toBeNull();
-    fireEvent.change(within(panel).getByRole("textbox", { name: "Deskripsi" }), { target: { value: "Baru" } });
+    expect(within(panel).queryByText("Teks asli WR/SK (pembanding)")).toBeNull();
+    fireEvent.change(within(panel).getByLabelText("Teks deskripsi"), { target: { value: "Baru" } });
     expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ description: "Baru" }));
-    expect(within(panel).getByText(/S&K dan cara penggunaan bersama diatur pada tab Varian/)).toBeTruthy();
+    expect(within(panel).getByRole("button", { name: "Edit S&K Invite 1 Bulan" })).toBeTruthy();
+    expect(within(panel).getByRole("button", { name: "Edit S&K berlaku untuk semua varian" })).toBeTruthy();
   });
 
-  it("produk baru: tanpa permintaan S&K ke server, varian diminta disimpan dulu", async () => {
+  it("produk baru: tanpa permintaan S&K ke server, varian baru disabled sampai disimpan", async () => {
     renderModal({ name: "Baru", slug: "baru" }, [{ sku: "BARU-1", label: "Paket 1", price: 50000, stock: -1, is_active: 1 }], vi.fn(), false);
     await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
     const panel = screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ });
-    expect(within(panel).getByText(/Panduan tersimpan bersama Simpan Produk/)).toBeTruthy();
-    await userEvent.click(screen.getByRole("tab", { name: /^Varian/ }));
-    expect(screen.getByLabelText("S&K bersama")).toBeTruthy();
+    expect(within(panel).getByText("Belum disimpan")).toBeTruthy();
+    expect((within(panel).getByRole("button", { name: "Edit S&K Paket 1" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(panel).getByRole("button", { name: "Edit S&K berlaku untuk semua varian" }) as HTMLButtonElement).disabled).toBe(false);
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).startsWith("/api/admin/variant-copy"))).toBe(false);
   });
 });
@@ -453,6 +813,8 @@ describe("editor produk mode single: paritas garansi + pengiriman + template (20
     expect(within(panel).getByText("Cara pengiriman")).toBeTruthy();
     expect(within(panel).getByText("Template pesan untuk pembeli")).toBeTruthy();
     expect(within(panel).getByRole("textbox", { name: "Template pesan untuk pembeli" })).toBeTruthy();
+    expect(within(panel).queryByLabelText("S&K bersama")).toBeNull();
+    expect(within(panel).queryByLabelText("Cara penggunaan / aktivasi bersama")).toBeNull();
   });
 
   it("mengubah garansi + pengiriman mode single memanggil onSetForm", async () => {

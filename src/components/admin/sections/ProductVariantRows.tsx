@@ -11,7 +11,6 @@ import { useToast } from "@/components/ui/Toast";
 import { Spinner } from "@/components/ui/Loading";
 import type { FormVariant, ProductForm } from "../product-types";
 import { WarrantyFields } from "./VariantWarrantyFields";
-import { SharedVariantCopyFields } from "./SharedVariantCopyFields";
 import { CredentialQueue } from "./CredentialQueue";
 import {
   BulkTierEditor,
@@ -603,7 +602,6 @@ export function ProductVariantRows({
                 </p>
                 <NonWrFulfillmentPanel productId={productId} variantId={typeof v.id === "number" ? v.id : undefined} mode={v.fulfillment_mode || "manual"} onStockChange={stock=>onSetFormVariants(curr=>curr.some(item=>item.id===v.id && item.stock!==stock)?curr.map(item=>item.id===v.id?{...item,stock}:item):curr)} />
                 </>}
-                {form.supplier !== "SK" && <SharedVariantCopyFields value={v} onChange={patch=>onSetFormVariants(curr=>curr.map((item,i)=>i===idx?{...item,...patch}:item))} />}
               </div>
             ) : (
               <NonWrFulfillmentPanel productId={productId} variantId={typeof v.id === "number" ? v.id : undefined} mode="__wr__" />

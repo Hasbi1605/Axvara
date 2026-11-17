@@ -500,8 +500,6 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       buyer_field_key: form.buyer_field_key,
       max_qty: form.max_qty,
       manual_cost: Math.max(0, Math.floor(Number(form.manual_cost ?? 0) || 0)),
-      admin_terms: !form.wrManaged && form.supplier !== "SK" ? form.admin_terms : undefined,
-      admin_activation: !form.wrManaged && form.supplier !== "SK" ? form.admin_activation : undefined,
       // Durasi bukan field mode single (tidak ada UI-nya) — teruskan nilai
       // varian DEFAULT existing agar tidak ter-nol-kan saat update in-place.
       duration_value: existingDefault?.duration_value ?? null,
@@ -584,8 +582,6 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
             buyer_field_key: vr.buyer_field_key,
             max_qty: vr.max_qty,
             manual_cost: Math.max(0, Math.floor(Number(vr.manual_cost ?? 0) || 0)),
-            admin_terms: !form.wrManaged && form.supplier !== "SK" ? vr.admin_terms : undefined,
-            admin_activation: !form.wrManaged && form.supplier !== "SK" ? vr.admin_activation : undefined,
             duration_value: vr.duration_value,
             duration_unit: vr.duration_unit,
             duration_label: vr.duration_label,

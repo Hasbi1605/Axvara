@@ -1,5 +1,5 @@
-/** Own-stock instructions are saved in the product batch. Supplier overrides
- * keep their separate review/fingerprint workflow. */
+/** Legacy product clients may still send own-stock copy explicitly. Omitted
+ * fields preserve copy edited through variant-copy (including EN/fingerprint). */
 export function manualCopyUpdate(productId: number | string, sku: string, value: { admin_terms?: string; admin_activation?: string }, bySlug = false) {
   if (value.admin_terms === undefined && value.admin_activation === undefined) return null;
   return { sql: `UPDATE product_variants SET

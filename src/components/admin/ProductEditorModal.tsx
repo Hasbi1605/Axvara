@@ -106,13 +106,6 @@ export function ProductEditorModal({
 
             {formError && <p className="mt-4 rounded-xl bg-admin-danger/10 border border-admin-danger/20 px-3 py-2 text-sm text-admin-danger">{formError}</p>}
 
-            {form.wrManaged && (
-              <p className="mt-4 flex items-start gap-2 rounded-xl border border-admin-warning/25 bg-admin-warning/10 px-3 py-2 text-xs leading-5 text-admin-warning">
-                <Badge variant="outline" className="mt-[1px] shrink-0 rounded-md bg-admin-warning/20 px-2 py-0.5 text-sm font-medium text-admin-warning">WR</Badge>
-                <span>Dikelola otomatis Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR dan akan ditimpa tiap sync. Yang bisa kamu atur di sini: foto, badge, <strong>harga coret (diskon)</strong>, kategori, urutan, aktif/nonaktif, serta deskripsi khusus dan S&amp;K + cara aktivasi per varian di tab Deskripsi &amp; S&amp;K. Markup diatur di tab Warung Rebahan.</span>
-              </p>
-            )}
-
             <TabsList className="mt-4 justify-start" aria-label="Bagian editor produk">
               {tabs.map(([id, label]) => (
                 <TabsTrigger key={id} value={id} className="text-xs sm:text-sm">
@@ -318,6 +311,7 @@ export function ProductEditorModal({
 
             <TabsContent value="konten" forceMount hidden={tab !== "konten"} className="mt-0">
               <ProductCopyTab
+                productId={editing ? editingId : undefined}
                 form={form}
                 onSetForm={onSetForm}
                 formVariants={formVariants}

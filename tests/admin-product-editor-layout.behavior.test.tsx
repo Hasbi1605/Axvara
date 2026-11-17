@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { render } from "./setup/admin-render";
 import { ProductEditorModal } from "@/components/admin/ProductEditorModal";
@@ -48,4 +48,64 @@ it("provides neutral statistics, sentence hierarchy, spaced tables and inset sel
   expect(screen.getByRole("columnheader").className).toContain("first:pl-6");
   expect(screen.getByRole("cell").className).toContain("py-3");
   expect(screen.getByRole("cell").className).toContain("last:pr-6");
+});
+
+it("WR modal omits the redundant yellow WR banner while keeping Nama/Slug readOnly and Kategori/Badge/tabs/Save working", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ variants: [] }) })));
+  const onSetForm = vi.fn();
+  const noop = vi.fn();
+  render(
+    <ToastProvider>
+      <ProductEditorModal
+        editing
+        editingId={1}
+        saving={false}
+        uploading={false}
+        loadingVariants={false}
+        hasMultiVariants
+        formError={null}
+        form={{
+          name: "Netflix Premium",
+          slug: "netflix-premium",
+          categorySlug: "streaming",
+          badge: "Terlaris",
+          wrManaged: true,
+        }}
+        formImages={[]}
+        cats={[
+          { id: 1, slug: "streaming", name: "Streaming" },
+          { id: 2, slug: "desain", name: "Desain" },
+        ]}
+        formVariants={[{ id: 11, sku: "WR-11", label: "1 Bulan", price: 20000, stock: 5, is_active: 1, wr_auto_managed: 1 }]}
+        onRequestClose={noop}
+        onSetForm={onSetForm}
+        onSetFormImages={noop}
+        onSetHasMultiVariants={noop}
+        onSetFormVariants={noop}
+        onUpload={noop}
+        onSave={noop}
+      />
+    </ToastProvider>,
+  );
+
+  expect(screen.queryByText(/Dikelola otomatis Warung Rebahan/)).toBeNull();
+  const nameInput = screen.getByRole("textbox", { name: "Nama *" }) as HTMLInputElement;
+  const slugInput = screen.getByRole("textbox", { name: "Slug *" }) as HTMLInputElement;
+  expect(nameInput.readOnly).toBe(true);
+  expect(slugInput.readOnly).toBe(true);
+
+  const catSelect = screen.getByRole("combobox", { name: "Kategori" }) as HTMLSelectElement;
+  const badgeInput = screen.getByRole("textbox", { name: "Badge" }) as HTMLInputElement;
+  expect(catSelect.disabled).toBe(false);
+  expect(badgeInput.readOnly).toBe(false);
+
+  fireEvent.change(catSelect, { target: { value: "desain" } });
+  expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ categorySlug: "desain" }));
+  fireEvent.change(badgeInput, { target: { value: "Hemat" } });
+  expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ badge: "Hemat" }));
+
+  expect(screen.getAllByRole("tab")).toHaveLength(4);
+  await userEvent.click(screen.getByRole("tab", { name: /^Deskripsi & S&K/ }));
+  expect(screen.getByRole("tabpanel", { name: /^Deskripsi & S&K/ })).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Simpan Produk" }) as HTMLButtonElement).disabled).toBe(false);
 });

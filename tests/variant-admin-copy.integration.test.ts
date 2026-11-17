@@ -240,6 +240,54 @@ describe("WR mengubah teks setelah admin menyunting", () => {
   });
 });
 
+describe("Manual product saves preserve copy owned by variant-copy", () => {
+  it("saving an existing variant without copy fields preserves ID, EN and fingerprint", async () => {
+    fixture.sql.exec(`UPDATE product_variants SET admin_terms='- Aturan',admin_activation='1. Login',
+      admin_terms_en='- Rules',admin_activation_en='1. Log in',admin_copy_fingerprint='' WHERE id=2`);
+    const columns = "admin_terms,admin_activation,admin_terms_en,admin_activation_en,admin_copy_fingerprint";
+    const before = fixture.sql.prepare(`SELECT ${columns} FROM product_variants WHERE id=2`).get();
+    const { PUT } = await import("@/app/api/products/[id]/route");
+    for (const body of [{ badge: "Baru" }, { variants: [{ id: 2, sku: "CANVA-3", label: "Head 1 Bulan", price: 5000, stock: 10 }] }]) {
+      const response = await PUT(new NextRequest("http://localhost/api/products/2", {
+        method: "PUT", body: JSON.stringify(body), headers: { "content-type": "application/json" },
+      }), { params: Promise.resolve({ id: "2" }) });
+      expect(response.status).toBe(200);
+      expect(fixture.sql.prepare(`SELECT ${columns} FROM product_variants WHERE id=2`).get()).toEqual(before);
+    }
+  });
+
+  it("legacy POST still accepts explicit Manual copy; later PUT omission leaves it intact", async () => {
+    const { POST } = await import("@/app/api/products/route");
+    const created = await POST(new NextRequest("http://localhost/api/products", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        name: "Legacy Manual", slug: "legacy-manual", variants: [{ sku: "LEGACY", label: "Default", price: 10000, admin_terms: "- Legacy rules", admin_activation: "1. Legacy login" }],
+      }),
+    }));
+    expect(created.status).toBe(200);
+    const { id } = await created.json();
+    const row = fixture.sql.prepare("SELECT id,admin_terms,admin_activation FROM product_variants WHERE product_id=?").get(id);
+    expect(row).toMatchObject({ admin_terms: "- Legacy rules", admin_activation: "1. Legacy login" });
+    const { PUT } = await import("@/app/api/products/[id]/route");
+    const response = await PUT(new NextRequest(`http://localhost/api/products/${id}`, {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ variants: [{ id: row!.id, sku: "LEGACY", label: "Default", price: 11000 }] }),
+    }), { params: Promise.resolve({ id: String(id) }) });
+    expect(response.status).toBe(200);
+    expect(fixture.sql.prepare("SELECT admin_terms,admin_activation FROM product_variants WHERE product_id=?").get(id)).toEqual({ admin_terms: "- Legacy rules", admin_activation: "1. Legacy login" });
+  });
+
+  it("legacy PUT with one explicit copy field preserves the omitted ID and EN fields", async () => {
+    fixture.sql.exec("UPDATE product_variants SET admin_terms='- Rules',admin_activation='1. Login',admin_terms_en='- English',admin_activation_en='1. English login' WHERE id=2");
+    const { PUT } = await import("@/app/api/products/[id]/route");
+    const response = await PUT(new NextRequest("http://localhost/api/products/2", {
+      method: "PUT", body: JSON.stringify({ variants: [{ id: 2, sku: "CANVA-3", label: "Head", price: 5000, admin_terms: "" }] }),
+    }), { params: Promise.resolve({ id: "2" }) });
+    expect(response.status).toBe(200);
+    expect(fixture.sql.prepare("SELECT admin_terms,admin_activation,admin_terms_en,admin_activation_en FROM product_variants WHERE id=2").get()).toEqual({
+      admin_terms: null, admin_activation: "1. Login", admin_terms_en: "- English", admin_activation_en: "1. English login",
+    });
+  });
+});
+
 describe("sync WR tidak pernah menyentuh kolom admin", () => {
   it("sweep penuh dengan harga & teks WR berubah: kolom admin utuh, wr_terms ikut berubah", async () => {
     vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");

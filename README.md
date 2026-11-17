@@ -1791,7 +1791,13 @@ baris `- ` untuk keunggulan, lalu baris `Syarat & Ketentuan:` / `Cara
 Aktivasi:` untuk bagian yang pindah ke kartu S&K. Detail: `docs/ARCHITECTURE.md`
 §15 "Salinan produk versi Axvara".
 
-**S&K dan panduan bersama per varian (2026-10-15).** Untuk stok sendiri, buka tab Varian: S&K bersama serta Cara penggunaan / aktivasi bersama berlaku untuk setiap pembeli varian itu dan tersimpan lewat **Simpan Produk**, termasuk saat membuat varian baru. Stok unik cukup berisi link/akun/key/detail khusus pembeli; impor/hapus stok tetap aksi terpisah yang langsung tersimpan. Modal varian memakai accordion dan stok unique mengikuti inventory. Produk supplier tetap memakai tab Deskripsi & S&K dan tombol tinjauan khusus, agar save produk tidak menyetujui otomatis teks WR yang berubah. Setelah bayar, panel kredensial menggabungkan panduan varian dan S&K/aktivasi deskripsi produk seperti PDP, lalu menampilkan accordion terpisah di bawah detail akses.
+**S&K dan panduan per varian (revisi lokal 17 November 2026).** Manual single/multi tidak lagi memiliki textarea S&K/aktivasi di tab Varian atau mengirim copy saat **Simpan Produk**; seluruh supplier termasuk Manual memakai tab **Deskripsi & S&K** (`ProductCopyTab`) dengan kontrol bahasa `Indonesia | English`, baris **"Berlaku untuk semua varian"**, tabel status varian ringkas, dan drawer kanan `CopyEditorSheet` (textarea polos per bagian, chip snippet, pratinjau toko langsung, `Salin ke varian lain`). Dua alur simpan terpisah: suntingan per varian dan salin massal langsung tersimpan lewat `/api/admin/variant-copy` & `POST /api/admin/variant-copy/bulk`, sedangkan deskripsi dan S&K umum produk diterapkan ke form lewat **Terapkan** lalu disimpan bersama **Simpan Produk**. Simpan produk/varian baru dahulu agar punya ID. `POST /api/admin/variant-copy/bulk` menerima `{product_id,variant_ids,terms,activation,terms_en,activation_en}` (1–20 ID unik, seluruhnya milik produk yang sama; pemilih UI menampilkan semua target dan membatasi pilihan maks 20 varian; tiap teks maks 4.000 karakter, JSON streamed maks 32.000 byte), menulis satu batch D1 dengan fingerprint WR/SK saat dibaca (`''` untuk non-supplier), kosong→NULL, dan mengembalikan `{variants}` lewat serializer GET/PUT yang sama. `Kembali ke versi otomatis` aktif baik untuk override ID maupun EN-only. Admin/rate bucket 30/menit sama dengan PUT; respons no-store. POST/PUT produk tetap menerima field copy Manual opsional untuk kompatibilitas; omission mempertahankan ID+EN/fingerprint. Stok unik cukup berisi link/akun/key/detail khusus pembeli; impor/hapus stok tetap aksi tersimpan terpisah. Modal varian memakai accordion dan stok unique mengikuti inventory. Editor produk juga tidak lagi menampilkan banner kuning WR panjang di atas tab (penjagaan `readOnly`/ownership WR tetap berlaku). Setelah bayar, panel kredensial tetap menggabungkan panduan varian dan S&K/aktivasi deskripsi produk seperti PDP. Implementasi lokal terintegrasi; publikasi melalui CI, deployment belum diverifikasi; tanpa migrasi/env/secret baru.
+
+Verifikasi akhir editor17November: full Vitest494file/6.867tes, build Pages,
+type-check/lint/audit gate lulus; pemeriksaan langsung di Paseo1280×900 dan
+390×844 mencakup draft ID/EN, preview, fokus, konflik/retry, simpan dan bulk
+melalui fixture lokal tanpa mutasi produksi. Rincian/batas bukti di
+`docs/DESIGN.md`; ini bukan bukti deployment.
 
 **Editor WR/SK (29 Oktober 2026, implementasi lokal).** Teks otomatis langsung
 terisi; sumber asli, override dijeda dan versi pembeli dibedakan. Pratinjau memakai
@@ -1802,7 +1808,7 @@ terbaru tidak membuang draft. Batalkan perubahan hanya membatalkan draft lokal;
 Kembali ke versi otomatis menghapus override tersimpan. Simpan Produk diblokir
 selama draft/simpan teks; penutupan modal meminta konfirmasi untuk draft dan
 ditahan saat simpan. Mirror WR/SK tidak diedit; badge tinjauan juga membaca SK.
-Stok sendiri tetap di tab Varian. Copy pascabayar memakai katalog terkini dan
+Catatan tab Varian stok sendiri di snapshot29Oktober diganti revisi17November di atas. Copy pascabayar memakai katalog terkini dan
 catatan transaksi SK tidak diubah. Verifikasi fixture bukan bukti deployment.
 
 **Muse AI (2026-10-21, ✅ live).** Produk manual 1 miliar token Rp16.000

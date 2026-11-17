@@ -45,6 +45,29 @@ function renderManager() {
   return renderHook(() => useProductManager({ success: vi.fn(), error: vi.fn() }, vi.fn()));
 }
 
+describe("product saves do not replay stale variant-copy drafts", () => {
+  it.each([[false, false], [false, true], [true, false], [true, true]])("create=%s multi=%s excludes Manual copy at every payload level", async (create, multi) => {
+    const calls = stubApi({ ok: true });
+    const { result } = renderManager();
+    if (create) act(() => { result.current.openNew(); });
+    else await act(async () => { await result.current.openEdit(listRow); });
+    act(() => {
+      result.current.setForm({ ...result.current.form, name: "Manual Product", slug: "manual-product", admin_terms: "Old ID terms", admin_activation: "Old ID activation" });
+      result.current.setHasMultiVariants(multi);
+      result.current.setFormVariants(variants.map(variant => ({ ...variant, sku: multi ? variant.sku : "DEFAULT-1", admin_terms: "Old terms", admin_activation: "Old activation" })).slice(0, multi ? 2 : 1));
+    });
+    await act(async () => { await result.current.save(); });
+    const saved = calls.find(call => call.method === (create ? "POST" : "PUT"))?.body;
+    expect(saved).toBeTruthy();
+    expect(saved).not.toHaveProperty("admin_terms");
+    expect(saved).not.toHaveProperty("admin_activation");
+    for (const variant of saved!.variants as Record<string, unknown>[]) {
+      expect(variant).not.toHaveProperty("admin_terms");
+      expect(variant).not.toHaveProperty("admin_activation");
+    }
+  });
+});
+
 describe("Wajib email pembeli: centang tersimpan dan termuat ulang", () => {
   it("editor membaca require_email dari detail produk, dan Simpan tidak menimpanya", async () => {
     const calls = stubApi({ ok: true, requireEmail: true });

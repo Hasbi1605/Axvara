@@ -1,5 +1,12 @@
 # PRD — AXVARA
 
+## Jalur simpan S&K Manual dan salin massal — 17 November 2026 (lokal)
+
+- S&K/aktivasi per varian Manual ID+EN disunting melalui tab **Deskripsi & S&K** + drawer `CopyEditorSheet` dan endpoint `variant-copy`, bukan lagi tab Varian atau payload Simpan Produk (single maupun multi). Produk/varian baru harus disimpan lebih dahulu agar punya ID.
+- `POST /api/admin/variant-copy/bulk` menerapkan empat teks ID+EN ke 1–20 ID unik dalam produk yang sama, satu batch D1 dengan fingerprint supplier tiap varian saat dibaca (kosong untuk non-supplier). Pemilih target di drawer menampilkan seluruh varian lain dan membatasi pilihan serentak maksimal 20 varian; `Kembali ke versi otomatis` aktif baik untuk override ID maupun EN-only. Teks kosong menjadi NULL; tidak ada migrasi/env baru. Respons memakai entri editor yang sama dengan GET/PUT.
+- POST/PUT produk tetap menerima field copy Manual opsional untuk klien lama; field yang tidak dikirim tidak mengubah copy ID, EN atau fingerprint tersimpan. S&K umum tingkat produk (`Berlaku untuk semua varian`) diterapkan ke form lalu disimpan lewat **Simpan Produk**.
+- Status: implementasi terintegrasi dan terverifikasi lokal (full Vitest 494 file/6.867 tes, build Pages, serta interaksi desktop/mobile langsung di Paseo; rincian `docs/DESIGN.md`). Rilis melalui CI, deployment belum diverifikasi. QA fixture tidak menulis produksi.
+
 ## Bot Promo WhatsApp kedua — keputusan owner 17 November 2026
 
 - Admin dapat memasang nomor owner yang sudah lama dipakai sebagai Bot Promo,

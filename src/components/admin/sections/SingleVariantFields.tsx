@@ -17,7 +17,6 @@ import { Input, Label, NativeSelect } from "@/components/admin/ui";
 import { useId, useRef } from "react";
 import type { ProductForm } from "../product-types";
 import { MoneyInput } from "@/components/ui/MoneyInput";
-import { SharedVariantCopyFields } from "./SharedVariantCopyFields";
 import { WarrantyFields } from "./VariantWarrantyFields";
 import { FULFILLMENT_OPTIONS, NonWrFulfillmentPanel } from "./ProductVariantRows";
 import {
@@ -142,7 +141,6 @@ export function SingleVariantFields({
               : "Badge pembeli: Kirim otomatis (dikirim sistem dari stok di bawah)."}
           </p>
           <NonWrFulfillmentPanel productId={productId} variantId={variantId} mode={form.fulfillment_mode || "manual"} onStockChange={stock=>{if(latestForm.current.stock!==stock)onSetForm({...latestForm.current,stock});}} />
-          {form.supplier !== "SK" && <SharedVariantCopyFields value={form} onChange={patch=>onSetForm({...form,...patch})} />}
         </div>
       ) : (
         <NonWrFulfillmentPanel productId={productId} variantId={variantId} mode="__wr__" />
