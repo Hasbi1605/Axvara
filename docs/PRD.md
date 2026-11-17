@@ -7,11 +7,15 @@
   Di dalam kategori: aktif → ready sebelum habis → urutan produk → id. Produk
   habis tetap di ekor kategorinya sendiri, bukan ekor seluruh katalog.
 - Pratinjau maksimal dua baris: 4 produk mobile / 8 mulai `lg`, tanpa limit global16.
-  **Lihat semua →** (EN **See all →**) muncul bila >4, membuka filter kategori dan
-  menggulir ke katalog. Mode kategori/pencarian tetap16 → Tampilkan semua → Ciutkan.
+  Revisi owner 17 November: tombol tengah di bawah grid **Tampilkan N lainnya**
+  (EN **Show N more**; N = sisa untuk breakpoint itu, desktop hanya bila >8) membuka
+  sisa produk di section yang sama dengan spinner ±420ms lalu kartu masuk bertahap;
+  setelah terbuka menjadi **Tampilkan lebih sedikit**. Tidak pindah filter/halaman. Mode kategori/pencarian tetap16 → Tampilkan semua → Ciutkan.
+  Revisi tampilan lanjutan: tombol ramping32px dengan target sentuh44px, tanpa
+  outer cyan menetap; cyan hanya saat ditekan, fokus keyboard netral tetap jelas.
   Angka total/tampil mengikuti kartu yang benar-benar terlihat pada breakpoint.
 - Pills menempel di bawah navbar hanya pada mode grup. **Semua** tetap terpilih
-  putih; kategori yang terlihat diberi aksen cyan oleh scrollspy, bukan filter baru.
+  putih; pill kategori yang sedang dilewati tidak diberi aksen apa pun (revisi owner).
   Katalog dan kategori dirender dari server; fallback klien satu request per sumber.
 - Admin Kategori: ↑↓ satu langkah, optimistis + antrean/rollback, field numerik tetap.
   Admin Produk: header kategori, posisi/jump1..N dalam kategori penuh (bukan hasil

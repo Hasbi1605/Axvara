@@ -4,8 +4,16 @@
 
 Semua tanpa pencarian memakai section longgar (`mt-10 sm:mt-14`), bukan box baru.
 Header berurutan: ikon32px mobile/40px desktop → nama kategori terlokalisasi →
-jumlah muted `· N` → hairline fleksibel1px gradasi cyan35% ke transparan → teks
-**Lihat semua →** / **See all →** (bila >4, target min44px, outline fokus cyan).
+jumlah muted `· N` → hairline fleksibel1px gradasi cyan35% ke transparan,
+tanpa tombol di header. Revisi owner 17 Nov: di bawah grid, tombol kaca terpusat
+**Tampilkan N lainnya** (revisi ramping owner: permukaan h-8/32px di dalam target
+sentuh min44px, rounded-full, border white10%, bg white3,5%, teks12px white75%,
+chevron12px tanpa badge; loading = spinner netral12px ±420ms), lalu kartu
+baru masuk bertahap (`catalogCardReveal` 420ms, opacity+translateY14px, stagger45ms;
+kartu5–8 hanya dianimasikan <lg); terbuka → **Tampilkan lebih sedikit** chevron atas.
+Tanpa outer cyan pada idle/hover atau setelah klik. Border cyan40% hanya selama
+active/tekan; fokus keyboard memakai outline putih60% di permukaan, tidak cyan.
+Selama loading memakai `aria-disabled` + guard klik agar fokus keyboard tetap ada.
 Grid dua kolom mobile/empat `lg`, maksimal dua baris4/8 kartu via CSS. Eyebrow
 kategori kartu disembunyikan hanya pada mode ini; mode flat mempertahankannya.
 
@@ -23,14 +31,20 @@ memakai glyph kategori existing, admin icon picker tidak berubah.
 Pills mempertahankan ukuran keputusan8November (24px/36px, ikon10px/14px), glyph
 IosIcon existing. Pada mode grup saja bar sticky tepat di bawah tinggi navbar
 terukur, latar Midnight85% + backdrop blur + garis bawah white6%. **Semua** putih
-tetap selected; scrollspy memberi tint cyan10%/border35% pada kategori terlihat,
-tanpa mengubah filter. Di mobile highlight menggeser container horizontal saja,
-tanpa scroll halaman, reduced-motion memakai instant. Tab/fokus tombol tetap jelas.
+tetap selected; pill kategori yang dilewati TIDAK diberi tint (scrollspy dihapus,
+revisi owner 17 Nov). Tab/fokus tombol tetap jelas.
 
 Admin memakai primitive/token existing: header grup muted berisi nama dan jumlah
 produk halaman; posisi kategori penuh, ↑↓ disabled di batas kategori/status.
 Kategori ↑↓ optimistis, antrean serial, rollback+toast; field numerik tetap tersedia.
 Tidak ada aset 3D di pills/admin. Status lokal; bukan bukti deployment.
+
+Verifikasi revisi tombol final17November: Chromium Playwright lokal terisolasi
+1440×900/390×900/320×900 + EN/reduced-motion; visual32px/target44px, tanpa outline
+pada idle/hover/setelah klik, border cyan hanya selama tekan dan fokus keyboard
+putih60% bertahan selama loading. Ekspansi8/4→12→8/4 di section yang sama, Semua
+tetap selected, spinner dan reduced-motion langsung, tanpa overflow/error console
+atau HTTP; enam aset CSS/JS HTTP200 per viewport. Data fixture saja, bukan produksi.
 
 ## Editor admin "Deskripsi & S&K" — 17 November 2026 (lokal)
 

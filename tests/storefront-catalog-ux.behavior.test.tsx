@@ -211,7 +211,7 @@ describe("Semua dikelompokkan per kategori", () => {
     expect(screen.getAllByRole("heading", { level: 3 }).map(node => node.textContent)).toEqual(["Produk 4"]);
   });
 
-  it("maksimal delapan kartu per grup, empat terakhir desktop saja, Lihat semua membuka kategori", async () => {
+  it("maksimal delapan kartu per grup; Tampilkan N lainnya membuka sisa di section yang sama dengan loading", async () => {
     stubCatalog([]);
     const { container } = render(<HomePage initialCategories={categories} initialProducts={Array.from({ length: 12 }, (_, index) => product(index + 1, { categorySlug: "ai-chatbot" }))} />);
     const section = container.querySelector('[data-catalog-category="ai-chatbot"]')!;
@@ -220,10 +220,72 @@ describe("Semua dikelompokkan per kategori", () => {
     expect(screen.getByText("12 produk • tampil 4")).toBeTruthy();
     expect(screen.getByText("12 produk • tampil 8")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Tampilkan semua/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Lihat semua.*AI & Chatbot/ }));
-    expect(container.querySelector("[data-catalog-category]")).toBeNull();
-    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(12);
-    expect(screen.getByRole("button", { name: "AI & Chatbot" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("button", { name: /Lihat semua/ })).toBeNull();
+    const more = screen.getByRole("button", { name: /Tampilkan 8 lainnya.*Tampilkan 4 lainnya.*AI & Chatbot/ });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(more);
+      expect(more.getAttribute("aria-busy")).toBe("true");
+      expect(section.querySelectorAll("h3")).toHaveLength(8);
+      act(() => { vi.advanceTimersByTime(420); });
+    } finally { vi.useRealTimers(); }
+    // Tetap di beranda + Semua: section sama kini memuat 12 kartu.
+    expect(container.querySelector('[data-catalog-category="ai-chatbot"]')).toBe(section);
+    expect(section.querySelectorAll("h3")).toHaveLength(12);
+    expect(section.querySelectorAll(".hidden.lg\\:block")).toHaveLength(0);
+    expect(section.querySelectorAll(".catalog-card-reveal")).toHaveLength(4);
+    expect(section.querySelectorAll(".catalog-card-reveal-mobile")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Semua" }).getAttribute("aria-pressed")).toBe("true");
+    const less = screen.getByRole("button", { name: /Tampilkan lebih sedikit/ });
+    expect(less.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(less);
+    expect(section.querySelectorAll("h3")).toHaveLength(8);
+  });
+
+  it("kategori <= 8 produk: tombol hanya untuk mobile", () => {
+    stubCatalog([]);
+    render(<HomePage initialCategories={categories} initialProducts={Array.from({ length: 6 }, (_, index) => product(index + 1, { categorySlug: "ai-chatbot" }))} />);
+    const more = screen.getByRole("button", { name: /Tampilkan 2 lainnya/ });
+    expect(more.parentElement!.className).toContain("lg:hidden");
+  });
+
+  it("reduced motion membuka langsung tanpa spinner atau timer", () => {
+    stubCatalog([]);
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(prefers-reduced-motion: reduce)", addEventListener() {}, removeEventListener() {} }));
+    const { container } = render(<HomePage initialCategories={categories} initialProducts={Array.from({ length: 12 }, (_, index) => product(index + 1, { categorySlug: "ai-chatbot" }))} />);
+    fireEvent.click(screen.getByRole("button", { name: /Tampilkan 8 lainnya/ }));
+    expect(container.querySelector('[data-catalog-category="ai-chatbot"]')!.querySelectorAll("h3")).toHaveLength(12);
+    expect(screen.getByRole("button", { name: /Tampilkan lebih sedikit/ }).getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("menjaga klik selama loading dan membersihkan timer saat beranda dilepas", () => {
+    stubCatalog([]);
+    const { unmount } = render(<HomePage initialCategories={categories} initialProducts={Array.from({ length: 24 }, (_, index) => product(index + 1, { categorySlug: index < 12 ? "ai-chatbot" : "desain-video" }))} />);
+    vi.useFakeTimers();
+    try {
+      const buttons = screen.getAllByRole("button", { name: /Tampilkan 8 lainnya/ }) as HTMLButtonElement[];
+      fireEvent.click(buttons[0]);
+      expect(buttons.every(button => button.getAttribute("aria-disabled") === "true" && !button.disabled)).toBe(true);
+      expect(buttons.map(button => button.getAttribute("aria-busy"))).toEqual(["true", "false"]);
+      fireEvent.click(buttons[1]);
+      expect(buttons[1].getAttribute("aria-busy")).toBe("false");
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("tombol visual ramping, target sentuh 44px, tanpa outline cyan menetap", () => {
+    stubCatalog([]);
+    render(<HomePage initialCategories={categories} initialProducts={Array.from({ length: 12 }, (_, index) => product(index + 1, { categorySlug: "ai-chatbot" }))} />);
+    const button = screen.getByRole("button", { name: /Tampilkan 8 lainnya/ });
+    const surface = button.firstElementChild!;
+    expect(button.className).toContain("min-h-11");
+    expect(surface.className).toContain("h-8");
+    expect(surface.className).toContain("group-focus-visible:outline-white/60");
+    expect(button.className + surface.className).not.toMatch(/outline-\[#00E5FF\]/);
+    expect(surface.className).toContain("group-active:border-[#00E5FF]/40");
   });
 });
 

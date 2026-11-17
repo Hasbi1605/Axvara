@@ -336,12 +336,22 @@ body {
 .catalog-category-section[data-revealed="true"] .catalog-category-icon {
   animation: catalogIconReveal 240ms cubic-bezier(.23,1,.32,1) both;
 }
+/* "Tampilkan N lainnya": kartu baru masuk bertahap (opacity/transform saja).
+   Kartu 5–8 sudah tampil di desktop, jadi hanya dianimasikan di bawah lg. */
+@keyframes catalogCardReveal {
+  from { opacity: 0; transform: translateY(14px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+.catalog-card-reveal { animation: catalogCardReveal 420ms cubic-bezier(.23,1,.32,1) var(--reveal-delay, 0ms) both; }
+@media (max-width: 1023.98px) {
+  .catalog-card-reveal-mobile { animation: catalogCardReveal 420ms cubic-bezier(.23,1,.32,1) var(--reveal-delay, 0ms) both; }
+}
 .ax-card-sheen-hover { transform: translateX(-160%) skewX(-18deg); }
 @media (hover: hover) and (pointer: fine) {
   .group:hover .ax-card-sheen-hover { transform: translateX(420%) skewX(-18deg); transition: transform 0.9s cubic-bezier(.4,0,.2,1); }
 }
 @media (prefers-reduced-motion: reduce) {
   .ax-flame, .ax-flame-glow { animation: none; }
-  .catalog-category-icon { animation: none !important; }
+  .catalog-category-icon, .catalog-card-reveal, .catalog-card-reveal-mobile { animation: none !important; }
   .ax-card-sheen-hover { display: none; }
 }

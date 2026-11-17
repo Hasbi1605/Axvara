@@ -24,9 +24,15 @@
   CategoryPills menerima props (fallback internal hanya untuk caller tanpa props).
   Tidak mengubah query katalog produk atau menambah read per supplier sync.
 - HomeClient Semua tanpa pencarian memakai section4/8 kartu dengan CSS, counter
-  breakpoint, navbar `ResizeObserver`, dan satu `IntersectionObserver` section untuk
-  scrollspy + reveal ikon sekali. Horizontal reveal menggulir container pills saja
-  (`scrollTo`, bukan `scrollIntoView` yang ikut menggulir halaman). Observer dibersihkan.
+  breakpoint, navbar `ResizeObserver`, dan satu `IntersectionObserver` section hanya
+  untuk reveal ikon sekali (unobserve setelah terlihat). Scrollspy/aksen pill dan
+  horizontal reveal dihapus (revisi owner 17 Nov). Ekspansi per section di state klien
+  (`expanded` per slug, `expanding` 420ms dengan cleanup timer saat unmount;
+  tombol ekspansi terkunci selama loading, reduced motion langsung): grid memuat semua
+  produk grup, harga ikut `useDisplayPrices` (chunk ≤64), tombol `aria-expanded`/
+  `aria-busy`/`aria-controls`; `aria-disabled` + guard klik menjaga fokus selama
+  loading. Ciutkan menggulir ke section bila header di atas navbar. Permukaan
+  tombol32px dalam target44px, outline keyboard netral; cyan hanya pada active.
 - Aset `public/brand/catalog/category-3d/<slug>.webp`: **ikon 3D kategori custom AXVARA,
   dibuat dengan image generation, dipangkas 192px webp**; map murni
   `src/lib/category-3d-icons.ts`, tes keberadaan semua file.

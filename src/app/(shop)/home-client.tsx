@@ -15,6 +15,7 @@ import { IosIcon, categoryIcon } from "@/components/ui/IosIcon";
 import { marketCategoryName } from "@/lib/i18n/market-categories";
 import { category3dIcon } from "@/lib/category-3d-icons";
 import { useSearch } from "@/stores/search";
+import { cn } from "@/lib/utils";
 import { StoreWhatsAppLink } from "@/components/storefront/StoreWhatsAppLink";
 import { HeroTrustRow } from "@/components/storefront/HeroTrustRow";
 
@@ -41,9 +42,20 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
   const grouped = activeCat === "semua" && !q.trim();
   const groups = useMemo(() => groupProductsByCategory(catalogProducts, categories), [catalogProducts, categories]);
   const sections = useRef<HTMLDivElement>(null);
-  const pills = useRef<HTMLDivElement>(null);
   const [navbarHeight, setNavbarHeight] = useState(64);
-  const [inView, setInView] = useState<string>();
+  // "Tampilkan N lainnya" membuka sisa produk di section itu sendiri
+  // (keputusan owner 2026-11-17), bukan pindah ke filter kategori.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expanding, setExpanding] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!expanding) return;
+    const timer = window.setTimeout(() => {
+      setExpanded(current => ({ ...current, [expanding]: true }));
+      setExpanding(null);
+    }, 420);
+    return () => window.clearTimeout(timer);
+  }, [expanding]);
 
   useEffect(() => {
     if (initialCategories) return;
@@ -66,23 +78,32 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
   }, []);
 
   useEffect(() => {
-    setInView(undefined);
     if (!grouped || !sections.current || typeof IntersectionObserver === "undefined") return;
-    const visible = new Set<Element>();
+    // Hanya memicu fade-in ikon sekali; pill tidak lagi diberi aksen scrollspy.
     const observer = new IntersectionObserver(entries => {
       for (const entry of entries) {
-        if (entry.isIntersecting) {
-          visible.add(entry.target);
-          (entry.target as HTMLElement).dataset.revealed = "true";
-        }
-        else visible.delete(entry.target);
+        if (!entry.isIntersecting) continue;
+        (entry.target as HTMLElement).dataset.revealed = "true";
+        observer.unobserve(entry.target);
       }
-      const first = [...visible].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0] as HTMLElement | undefined;
-      if (first) setInView(first.dataset.catalogCategory);
-    }, { rootMargin: `-${navbarHeight + (pills.current?.offsetHeight ?? 60)}px 0px -55% 0px`, threshold: 0 });
+    }, { rootMargin: "0px 0px -10% 0px", threshold: 0 });
     sections.current.querySelectorAll("[data-catalog-category]").forEach(section => observer.observe(section));
     return () => observer.disconnect();
-  }, [grouped, groups, navbarHeight]);
+  }, [grouped, groups]);
+
+  const reducedMotion = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const expandCategory = (key: string) => {
+    if (expanding) return;
+    // Umpan balik singkat sebelum kartu muncul; reduced motion langsung.
+    if (reducedMotion()) { setExpanded(current => ({ ...current, [key]: true })); return; }
+    setExpanding(key);
+  };
+  const collapseCategory = (key: string, section: HTMLElement | null) => {
+    setExpanded(current => ({ ...current, [key]: false }));
+    if (section && section.getBoundingClientRect().top < navbarHeight) {
+      section.scrollIntoView?.({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+    }
+  };
 
   const selectCategory = (slug: string) => {
     setActiveCat(slug);
@@ -149,7 +170,8 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
 
   // Filter baru = daftar baru: kembali ke 16 awal.
   useEffect(() => { setShowAll(false); }, [q, activeCat]);
-  const paged = grouped ? groups.flatMap(group => group.products.slice(0, 8)) : showAll ? filtered : filtered.slice(0, PER_PAGE);
+  const groupKey = (category: OrderableCategory | null) => category?.slug ?? "__other";
+  const paged = grouped ? groups.flatMap(group => expanded[groupKey(group.category)] ? group.products : group.products.slice(0, 8)) : showAll ? filtered : filtered.slice(0, PER_PAGE);
   const remaining = grouped ? 0 : Math.max(0, filtered.length - paged.length);
   // Satu pemilik harga untuk seluruh koleksi tampil (<= 64 per request).
   const prices = useDisplayPrices(paged.flatMap(productCardAmounts), { debounce: true });
@@ -201,11 +223,11 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display font-bold text-[20px] sm:text-[24px] text-white tracking-[-0.02em]">{t.catalogTitle}</h2>
           <span className="text-xs text-white/40">
-            {grouped ? <><span className="lg:hidden">{t.productCount(filtered.length, groups.reduce((count, group) => count + Math.min(4, group.products.length), 0))}</span><span className="hidden lg:inline">{t.productCount(filtered.length, paged.length)}</span></> : t.productCount(filtered.length, paged.length)}
+            {grouped ? <><span className="lg:hidden">{t.productCount(filtered.length, groups.reduce((count, group) => count + (expanded[groupKey(group.category)] ? group.products.length : Math.min(4, group.products.length)), 0))}</span><span className="hidden lg:inline">{t.productCount(filtered.length, paged.length)}</span></> : t.productCount(filtered.length, paged.length)}
           </span>
         </div>
-        <div ref={pills} className={grouped ? "sticky z-40 mt-4 -mx-4 border-b border-white/[0.06] bg-[#080C1E]/85 px-4 py-1 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8" : "mt-4"} style={grouped ? { top: navbarHeight } : undefined}>
-          <CategoryPills categories={sortCategoriesForDisplay(categories)} active={activeCat} inView={grouped ? inView : undefined} onChange={selectCategory} />
+        <div className={grouped ? "sticky z-40 mt-4 -mx-4 border-b border-white/[0.06] bg-[#080C1E]/85 px-4 py-1 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8" : "mt-4"} style={grouped ? { top: navbarHeight } : undefined}>
+          <CategoryPills categories={sortCategoriesForDisplay(categories)} active={activeCat} onChange={selectCategory} />
         </div>
         {catalogError && (
           <div className="mt-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-200 flex items-center justify-between gap-3">
@@ -230,6 +252,10 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
           {grouped ? <div ref={sections}>
             {groups.map(({ category, products }, groupIndex) => {
               const icon = category3dIcon(category?.slug ?? "");
+              const key = groupKey(category);
+              const open = Boolean(expanded[key]);
+              const busy = expanding === key;
+              const categoryLabel = category ? marketCategoryName(category.slug, prices.locale, category.name) : t.uncategorized;
               return <section key={category?.slug ?? "unknown"} data-catalog-category={category?.slug} aria-labelledby={`category-${category?.slug ?? "unknown"}`} className="catalog-category-section mt-10 scroll-mt-40 sm:mt-14">
               <div className="mb-5 flex items-center gap-2 sm:gap-3">
                 <span aria-hidden="true" className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center sm:h-10 sm:w-10">
@@ -242,13 +268,42 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
                 <h2 id={`category-${category?.slug ?? "unknown"}`} className="min-w-0 font-display text-sm font-semibold text-white sm:text-lg">{category ? marketCategoryName(category.slug, prices.locale, category.name) : t.uncategorized}</h2>
                 <span className="shrink-0 text-xs text-white/40">· {products.length}</span>
                 <div aria-hidden className="h-px min-w-2 flex-1" style={{ background: "linear-gradient(90deg, rgba(0,229,255,.35), transparent)" }} />
-                {products.length > 4 && <button onClick={() => selectCategory(category?.slug ?? "__other")} className="min-h-11 shrink-0 rounded text-xs font-medium text-[#00E5FF]/85 hover:text-[#00E5FF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00E5FF]">{t.seeAllCategory} <span aria-hidden>→</span><span className="sr-only"> {category ? marketCategoryName(category.slug, prices.locale, category.name) : t.uncategorized}</span></button>}
               </div>
-              <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
-                {products.slice(0, 8).map((product, index) => <div key={product.id} className={index >= 4 ? "hidden lg:block" : undefined}>
+              <div id={`category-grid-${key}`} className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
+                {(open ? products : products.slice(0, 8)).map((product, index) => <div
+                  key={product.id}
+                  // Tertutup: kartu 5–8 hanya desktop. Terbuka: kartu baru
+                  // (mobile ≥5, desktop ≥9) muncul bertahap, transform/opacity saja.
+                  className={!open && index >= 4 ? "hidden lg:block" : open && index >= 8 ? "catalog-card-reveal" : open && index >= 4 ? "catalog-card-reveal-mobile" : undefined}
+                  style={open && index >= 4 ? { ["--reveal-delay" as string]: `${Math.min(index - (index >= 8 ? 8 : 4), 7) * 45}ms` } : undefined}
+                >
                   <ProductCard product={product} index={groupIndex * 8 + index} prices={prices} hideCategory />
                 </div>)}
               </div>
+              {products.length > 4 && <div className={cn("mt-5 flex justify-center sm:mt-6", products.length <= 8 && "lg:hidden")}>
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-busy={busy}
+                  aria-controls={`category-grid-${key}`}
+                  onClick={(event) => !expanding && (open ? collapseCategory(key, event.currentTarget.closest("section")) : expandCategory(key))}
+                  className="group inline-flex min-h-11 items-center rounded-full focus-visible:outline-none aria-disabled:cursor-wait"
+                  aria-disabled={expanding !== null}
+                >
+                  <span className="inline-flex h-8 items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-4 text-xs font-medium text-white/75 transition-colors group-hover:bg-white/[0.07] group-hover:text-white group-active:border-[#00E5FF]/40 group-active:bg-white/10 group-focus-visible:outline group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-white/60 motion-reduce:transition-none">
+                  {open ? t.showLessInCategory : <>
+                    <span className="lg:hidden">{t.showMoreInCategory(products.length - 4)}</span>
+                    <span className="hidden lg:inline">{t.showMoreInCategory(Math.max(0, products.length - 8))}</span>
+                  </>}
+                  <span className="sr-only"> {categoryLabel}</span>
+                  <span aria-hidden="true" className="inline-flex h-3 w-3 items-center justify-center text-white/55">
+                    {busy
+                      ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-white/75" />
+                      : <svg viewBox="0 0 16 16" className={cn("h-3 w-3 transition-transform duration-300 motion-reduce:transition-none", open && "rotate-180")} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6l4 4 4-4" /></svg>}
+                  </span>
+                  </span>
+                </button>
+              </div>}
             </section>;
             })}
           </div> :

@@ -4,9 +4,13 @@
 
 Implementasi lokal: beranda **Semua** tanpa pencarian dikelompokkan per kategori,
 urut `sort_order/name/id`; ready mendahului habis di kategori masing-masing.
-Pratinjau4mobile/8desktop (`lg`), **Lihat semua →** membuka kategori; kategori/search
-tetap16 → semua. Counter responsif, section dari SSR produk+kategori, pills sticky
-di bawah navbar dan scrollspy cyan tanpa mengganti pilihan Semua. Header memakai
+Pratinjau4mobile/8desktop (`lg`); tombol tengah **Tampilkan N lainnya** membuka sisa
+produk di section itu sendiri (spinner singkat + kartu muncul bertahap, lalu
+**Tampilkan lebih sedikit**), tanpa pindah filter; kategori/search tetap16 → semua.
+Tombol ramping32px (target sentuh44px), tanpa outer cyan menetap; fokus keyboard
+putih dan aksen cyan hanya saat ditekan.
+Counter responsif, section dari SSR produk+kategori, pills sticky di bawah navbar
+tanpa aksen scrollspy (revisi owner 17 November). Header memakai
 ikon 3D kategori custom AXVARA, dibuat dengan image generation, dipangkas192px WebP
 lokal (tampil32/40px); glyph fallback untuk
 slug baru. Detail tampilan/aset: `docs/DESIGN.md` dan `docs/ARCHITECTURE.md`.

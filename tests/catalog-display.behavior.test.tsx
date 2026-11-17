@@ -11,8 +11,9 @@ import { catalogCopy, catalogDeliveryBadge, catalogDeliveryEta, catalogWarranty 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); document.cookie = "axv_currency=; Max-Age=0; Path=/"; document.cookie = "axv_locale=; Max-Age=0; Path=/"; });
 
 it("group category actions and unknown headings have ID/EN copy", () => {
-  expect(catalogCopy("id").seeAllCategory).toBe("Lihat semua");
-  expect(catalogCopy("en").seeAllCategory).toBe("See all");
+  expect(catalogCopy("id").showMoreInCategory(2)).toBe("Tampilkan 2 lainnya");
+  expect(catalogCopy("en").showMoreInCategory(2)).toBe("Show 2 more");
+  expect(catalogCopy("id").showLessInCategory).toBe("Tampilkan lebih sedikit");
   expect(catalogCopy("id").uncategorized).toBe("Lainnya");
   expect(catalogCopy("en").uncategorized).toBe("Other");
 });
