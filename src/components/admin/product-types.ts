@@ -54,6 +54,7 @@ export type FormVariant = {
 };
 
 export type ProductForm = Partial<Prod> & {
+  aivault_family?: string | null;
   buyer_field_key?: "muse_invite_code" | null;
   max_qty?: number | null;
   admin_terms?: string;

@@ -353,6 +353,7 @@ export function ProductVariantRows({
   // Harga grosir hanya untuk produk manual (owner 2026-11-08). Validasi di
   // sini mencerminkan kontrak server; server tetap otoritatif.
   const manualProduct = isBulkEligibleForm(form);
+  const aivaultProduct = form.aivault_family != null || form.supplier === "AIVault";
   const bulkValidations = formVariants.map((v) => validateBulkDraft(v.bulk ?? emptyBulkDraft(), {
     base: Number(v.price),
     minQty: Math.max(1, Number(v.min_qty ?? 1) || 1),
@@ -545,7 +546,7 @@ export function ProductVariantRows({
 
             {/* Harga grosir per varian — HANYA produk manual (owner 2026-11-08).
                 Produk supplier (WR/SK) tidak pernah menampilkan editor ini. */}
-            {!manualProduct ? (
+            {aivaultProduct ? <p className="mt-3 rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-xs leading-5 text-admin-muted">Harga grosir AIVault otomatis mengikuti markup — atur di menu AIVault → Markup.</p> : !manualProduct ? (
               <p className="mt-3 rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-xs leading-5 text-admin-muted">Harga grosir hanya untuk produk manual.</p>
             ) : !editing ? (
               <p className="mt-3 rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-xs leading-5 text-admin-muted">Simpan produk dulu, lalu atur harga grosir di Edit Produk.</p>

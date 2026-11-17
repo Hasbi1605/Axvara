@@ -8,7 +8,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryAll, queryFirst, execRun, getD1, D1Statement } from "@/lib/db";
 import { isEnabled } from "@/lib/feature-flags";
-import { bulkOwnerFromProductRow, isManualProductForBulk } from "@/lib/bulk-pricing";
+import {
+  AIVAULT_BULK_MANAGED_MESSAGE,
+  bulkConfigDiffersFromStored,
+  bulkOwnerFromProductRow,
+  isManualProductForBulk,
+} from "@/lib/bulk-pricing";
 import {
   WR_OWNED_VARIANT_FIELDS,
   WR_OWNERSHIP_MESSAGE,
@@ -173,7 +178,7 @@ async function POSTImpl(request: NextRequest) {
 
     // Check product exists (sekaligus identitas supplier untuk guard grosir)
     const product = await queryFirst(
-      `SELECT id, archived_at, is_active, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
+      `SELECT id, archived_at, is_active, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed, aivault_family
          FROM products WHERE id=?`,
       product_id,
     );
@@ -252,11 +257,15 @@ async function POSTImpl(request: NextRequest) {
     // bawah memakai pola yang sama dengan PUT products/[id].
     const batchIds = variants.filter((vv) => vv.id).map((vv) => Number(vv.id));
     const batchRows = (batchIds.length ? await queryAll(
-      `SELECT id, price, max_qty, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE product_id=? AND id IN (${batchIds.map(() => "?").join(",")})`,
+      `SELECT id, sku, price, max_qty, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE product_id=? AND id IN (${batchIds.map(() => "?").join(",")})`,
       product_id, ...batchIds,
     ).catch(() => []) : []) as Record<string, unknown>[];
     for (const variant of variants) {
       const stored = batchRows.find(row => Number(row.id) === variant.id);
+      const isAivault = Boolean(product.aivault_family) || String(stored?.sku ?? variant.sku ?? "").toUpperCase().startsWith("AV-");
+      if (isAivault && bulkConfigDiffersFromStored((variant as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, stored)) {
+        return NextResponse.json({ error: "bulk_pricing_aivault_managed", message: AIVAULT_BULK_MANAGED_MESSAGE }, { status: 409 });
+      }
       const maxQty = variant.max_qty === undefined ? stored?.max_qty : variant.max_qty;
       if (maxQty != null && Number(maxQty) < variant.min_qty) return NextResponse.json({ error:"Maksimum di bawah minimum." },{ status:400 });
     }
@@ -446,12 +455,17 @@ async function POSTImpl(request: NextRequest) {
   if (crossErr) return NextResponse.json({ error: crossErr }, { status: 400 });
 
   const product = await queryFirst(
-    `SELECT id, archived_at, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
+    `SELECT id, archived_at, source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed, aivault_family
        FROM products WHERE id=?`,
     v.product_id,
   );
   if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
   if (product.archived_at && v.is_active === 1) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
+
+  const isAivaultSingleCreate = Boolean(product.aivault_family) || v.sku.toUpperCase().startsWith("AV-");
+  if (isAivaultSingleCreate && bulkConfigDiffersFromStored((v as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, undefined)) {
+    return NextResponse.json({ error: "bulk_pricing_aivault_managed", message: AIVAULT_BULK_MANAGED_MESSAGE }, { status: 409 });
+  }
 
   // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
   // Varían baru pada produk supplier tidak boleh langsung aktif.
@@ -581,15 +595,19 @@ async function PUTImpl(request: NextRequest) {
   // retained boleh stale dan TIDAK memblokir edit base; re-enable WAJIB
   // valid vs base hasil.
   const rawBulk = (body as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined;
-  // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
-  // Menonaktifkan (enabled=false) tetap boleh agar data lama bisa dibersihkan.
-  if (rawBulk?.enabled === true) {
+  // Keputusan owner 2026-11-08 (direvisi 2026-11-17 untuk AIVault):
+  // harga grosir AIVault dikelola via menu AIVault → Markup; WR/SK dilarang.
+  if (rawBulk !== undefined) {
     const ownerRow = await queryFirst(
-      `SELECT source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed
+      `SELECT source, wr_product_id, wr_auto_managed, sk_product_id, sk_auto_managed, aivault_family
          FROM products WHERE id=?`,
       Number(existing.product_id),
     );
-    if (!isManualProductForBulk(bulkOwnerFromProductRow(ownerRow as unknown as Record<string, unknown> | null))) {
+    const isAivault = Boolean(ownerRow?.aivault_family) || String(existing.sku ?? "").toUpperCase().startsWith("AV-");
+    if (isAivault && bulkConfigDiffersFromStored(rawBulk, existing)) {
+      return NextResponse.json({ error: "bulk_pricing_aivault_managed", message: AIVAULT_BULK_MANAGED_MESSAGE }, { status: 409 });
+    }
+    if (rawBulk?.enabled === true && !isManualProductForBulk(bulkOwnerFromProductRow(ownerRow as unknown as Record<string, unknown> | null))) {
       return NextResponse.json({ error: "bulk_pricing_supplier_forbidden", message: "Harga grosir hanya untuk produk manual." }, { status: 400 });
     }
   }

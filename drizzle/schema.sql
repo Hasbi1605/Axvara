@@ -1997,6 +1997,7 @@ CREATE TABLE IF NOT EXISTS aivault_products (
   axvara_product_id INTEGER REFERENCES products(id),
   sell_price_idr INTEGER,
   fx_idr_per_usd REAL,
+  bulk_markup_tiers_json TEXT,
   synced_at TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

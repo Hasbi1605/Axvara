@@ -216,7 +216,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       const prodRes = await fetch(`/api/products/${p.id}`);
       if (prodRes.ok) {
         const prodData = (await prodRes.json().catch(() => ({}))) as {
-          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; nameEn?: string | null; wrManaged?: boolean; requireEmail?: boolean };
+          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; nameEn?: string | null; wrManaged?: boolean; requireEmail?: boolean; aivault_family?: unknown };
         };
         if (Array.isArray(prodData.product?.variants) && prodData.product.variants.length > 0) {
           rawVars = prodData.product.variants;
@@ -231,6 +231,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
           nextForm.descriptionEn = prodData.product.descriptionEn ?? "";
           nextForm.nameEn = prodData.product.nameEn ?? "";
           nextForm.wrManaged = Boolean(prodData.product.wrManaged);
+          nextForm.aivault_family = typeof prodData.product.aivault_family === "string" ? prodData.product.aivault_family : null;
           // Daftar produk tidak membawa require_email; tanpa baris ini
           // centang selalu tampil mati dan Simpan menulis 0 ke database.
           if (typeof prodData.product.requireEmail === "boolean") nextForm.requireEmail = prodData.product.requireEmail;

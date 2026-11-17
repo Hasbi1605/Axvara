@@ -3,6 +3,7 @@ import { mapSkCategory } from "@/lib/sekalipay/sync";
 import { isAivaultConfigured, isAivaultSyncEnabled } from "./client";
 import { syncAivaultCatalog } from "./sync";
 import { aivaultFamily, aivaultSellPrice, aivaultDefaultDescription } from "./families";
+import { deriveAivaultBulkTiers, parseAivaultBulkMarkup } from "./bulk";
 
 /** Fixed publisher statement count, regardless of family count. Copy and activation are admin-owned. */
 export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
@@ -12,9 +13,16 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
     LEFT JOIN product_variants v ON v.aivault_service_id=m.service_id AND v.sku='AV-'||m.service_id`);
   const rows = mirror.map(m => {
     const family = aivaultFamily(String(m.service_id),String(m.name));
+    const unitPrice = Number(m.unit_price_usd);
+    const markup = Number(m.markup_percent);
+    const price = m.admin_price == null ? aivaultSellPrice(unitPrice,fx,markup) : Number(m.admin_price);
+    const bulkMarkupRaw = m.bulk_markup_tiers_json == null ? null : String(m.bulk_markup_tiers_json);
+    const parsedBulk = parseAivaultBulkMarkup(m.bulk_markup_tiers_json);
+    const derivedBulk = parsedBulk ? deriveAivaultBulkTiers(unitPrice,fx,price,parsedBulk) : [];
     return { ...family, service_id:m.service_id, description:aivaultDefaultDescription(family.name), category:mapSkCategory(family.name),
-      price:m.admin_price == null ? aivaultSellPrice(Number(m.unit_price_usd),fx,Number(m.markup_percent)) : Number(m.admin_price),
-      stock:Number(m.stock), admin_price:m.admin_price ?? null, markup:Number(m.markup_percent), unit_price:Number(m.unit_price_usd), synced_at:m.synced_at };
+      price,
+      stock:Number(m.stock), admin_price:m.admin_price ?? null, markup, unit_price:unitPrice, synced_at:m.synced_at,
+      bulk_markup:bulkMarkupRaw, bulk_enabled:derivedBulk.length > 0 ? 1 : 0, bulk_tiers:derivedBulk.length > 0 ? JSON.stringify(derivedBulk) : "[]" };
   });
   const json = JSON.stringify(rows);
   await db.execRun(`INSERT OR IGNORE INTO products(category_id,name,slug,description,price,image_url,stock,is_active,source,fulfillment_mode,telegram_enabled,aivault_family)
@@ -31,12 +39,17 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
     FROM aivault_products m JOIN json_each(?) j ON json_extract(j.value,'$.service_id')=m.service_id WHERE m.axvara_product_id IS NOT NULL AND EXISTS(SELECT 1 FROM products p WHERE p.id=m.axvara_product_id AND p.archived_at IS NULL)`,json);
   // CAS both admin inputs and mirror snapshot: a concurrent edit/sync cannot overwrite a newer decision.
   await db.execRun(`UPDATE product_variants SET price=(SELECT json_extract(j.value,'$.price') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id),
-    stock=(SELECT m.stock FROM aivault_products m WHERE m.service_id=product_variants.aivault_service_id),updated_at=datetime('now')
+    stock=(SELECT m.stock FROM aivault_products m WHERE m.service_id=product_variants.aivault_service_id),
+    bulk_pricing_enabled=(SELECT json_extract(j.value,'$.bulk_enabled') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id),
+    bulk_pricing_tiers=(SELECT json_extract(j.value,'$.bulk_tiers') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id),
+    max_qty=CASE WHEN max_qty IS NULL OR max_qty > 100 THEN 100 ELSE max_qty END,
+    updated_at=datetime('now')
     WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND sku='AV-'||aivault_service_id AND fulfillment_mode='manual' AND wr_variant_id IS NULL AND sk_variant_id IS NULL AND tunvn_buff_quantity_b IS NULL
     AND EXISTS(SELECT 1 FROM aivault_products m JOIN json_each(?) j ON m.service_id=json_extract(j.value,'$.service_id')
       WHERE m.service_id=product_variants.aivault_service_id AND m.axvara_product_id=product_variants.product_id
       AND product_variants.aivault_admin_price_idr IS json_extract(j.value,'$.admin_price') AND m.markup_percent IS json_extract(j.value,'$.markup')
-      AND m.unit_price_usd IS json_extract(j.value,'$.unit_price') AND m.synced_at IS json_extract(j.value,'$.synced_at'))`,json,json);
+      AND m.unit_price_usd IS json_extract(j.value,'$.unit_price') AND m.synced_at IS json_extract(j.value,'$.synced_at')
+      AND m.bulk_markup_tiers_json IS json_extract(j.value,'$.bulk_markup'))`,json,json,json,json);
   await db.execRun(`UPDATE aivault_products SET sell_price_idr=(SELECT v.price FROM product_variants v WHERE v.aivault_service_id=aivault_products.service_id AND v.product_id=aivault_products.axvara_product_id),fx_idr_per_usd=? WHERE axvara_product_id IS NOT NULL`,fx);
   await db.execRun(`UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=products.id AND is_active=1),price),
     stock=COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=products.id AND is_active=1),0)

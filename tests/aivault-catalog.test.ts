@@ -25,11 +25,17 @@ it("uses a constant statement count for many families",async()=>{
   }
   expect(used[1]).toBe(used[0]);
 });
-it.each(["manual","markup"])("does not overwrite concurrent %s edits",async field=>{
+it.each(["manual","markup","bulk_markup"])("does not overwrite concurrent %s edits",async field=>{
   const db=createDatabaseAccess(f.db);await publishAivaultCatalog(db,20000,{force:true});
   let raced=false;
-  f.control.beforeRun=async query=>{if (!raced && query.includes("UPDATE product_variants SET price=")){raced=true;f.sql.exec(field==="manual" ? "UPDATE product_variants SET aivault_admin_price_idr=9999,price=9999 WHERE aivault_service_id IS NOT NULL" : "UPDATE aivault_products SET markup_percent=50; UPDATE product_variants SET price=15000 WHERE aivault_service_id IS NOT NULL");}};
-  await projectAivaultCatalog(db,30000);expect(f.sql.prepare("SELECT price FROM product_variants WHERE aivault_service_id IS NOT NULL").get()?.price).toBe(field==="manual" ? 9999 : 15000);
+  f.control.beforeRun=async query=>{if (!raced && query.includes("UPDATE product_variants SET price=")){raced=true;f.sql.exec(field==="manual" ? "UPDATE product_variants SET aivault_admin_price_idr=9999,price=9999 WHERE aivault_service_id IS NOT NULL" : field==="markup" ? "UPDATE aivault_products SET markup_percent=50; UPDATE product_variants SET price=15000 WHERE aivault_service_id IS NOT NULL" : "UPDATE aivault_products SET bulk_markup_tiers_json='[{\"min_qty\":5,\"markup_percent\":20}]'; UPDATE product_variants SET bulk_pricing_enabled=1,bulk_pricing_tiers='[{\"min_qty\":5,\"unit_price\":12000}]' WHERE aivault_service_id IS NOT NULL");}};
+  await projectAivaultCatalog(db,30000);
+  if (field==="bulk_markup") {
+    expect(f.sql.prepare("SELECT bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE aivault_service_id IS NOT NULL").get())
+      .toEqual({bulk_pricing_enabled:1,bulk_pricing_tiers:'[{"min_qty":5,"unit_price":12000}]'});
+  } else {
+    expect(f.sql.prepare("SELECT price FROM product_variants WHERE aivault_service_id IS NOT NULL").get()?.price).toBe(field==="manual" ? 9999 : 15000);
+  }
 });
 it("does not appropriate an unrelated slug and fails closed without FX",async()=>{
   f.sql.exec("INSERT INTO products(name,slug,price) VALUES('Owner','gemini-plus-av',500)");
@@ -77,4 +83,33 @@ it("0125 leaves an active row, admin copy and custom image untouched",()=>{
 it("throttles repeated cron and rejects malformed catalogs without zeroing stock",async()=>{
   const db=createDatabaseAccess(f.db),now=Date.now();await publishAivaultCatalog(db,20000,{now});vi.mocked(fetch).mockClear();expect(await publishAivaultCatalog(db,20000,{now:now+1000})).toEqual({skipped:"throttled"});expect(fetch).not.toHaveBeenCalled();
   vi.mocked(fetch).mockResolvedValueOnce(Response.json({currency:"USD",products:[]}));expect(await publishAivaultCatalog(db,20000,{now:now+180000})).toMatchObject({ok:false});expect(f.sql.prepare("SELECT stock FROM aivault_products").get()?.stock).toBe(5);
+});
+it("publishes derived bulk pricing tiers and caps max_qty at 100 without adding statements",async()=>{
+  const db=createDatabaseAccess(f.db);
+  await publishAivaultCatalog(db,18272.9,{force:true});
+  f.sql.exec(`UPDATE aivault_products SET markup_percent=80,bulk_markup_tiers_json='[{"min_qty":5,"markup_percent":58},{"min_qty":10,"markup_percent":47},{"min_qty":50,"markup_percent":36}]' WHERE service_id='service_gemini_plus_6m'`);
+  const budget=createBudgetedDatabase(9,0,f.db);
+  expect(await projectAivaultCatalog(budget.access,18272.9)).toMatchObject({ok:true});
+  expect(budget.used).toBeLessThanOrEqual(9);
+  expect(f.sql.prepare("SELECT price,bulk_pricing_enabled,bulk_pricing_tiers,max_qty FROM product_variants WHERE aivault_service_id='service_gemini_plus_6m'").get()).toEqual({
+    price:16500,
+    bulk_pricing_enabled:1,
+    bulk_pricing_tiers:'[{"min_qty":5,"unit_price":14500},{"min_qty":10,"unit_price":13500},{"min_qty":50,"unit_price":12500}]',
+    max_qty:100,
+  });
+  // Existing max_qty <= 100 is preserved, and higher FX increases derived bulk prices
+  f.sql.exec("UPDATE product_variants SET max_qty=40 WHERE aivault_service_id='service_gemini_plus_6m'");
+  expect(await projectAivaultCatalog(db,20000)).toMatchObject({ok:true});
+  expect(f.sql.prepare("SELECT price,bulk_pricing_tiers,max_qty FROM product_variants WHERE aivault_service_id='service_gemini_plus_6m'").get()).toEqual({
+    price:18000,
+    bulk_pricing_tiers:'[{"min_qty":5,"unit_price":15800},{"min_qty":10,"unit_price":14700},{"min_qty":50,"unit_price":13600}]',
+    max_qty:40,
+  });
+  // Clearing bulk_markup_tiers_json disables variant bulk pricing
+  f.sql.exec("UPDATE aivault_products SET bulk_markup_tiers_json=NULL WHERE service_id='service_gemini_plus_6m'");
+  expect(await projectAivaultCatalog(db,20000)).toMatchObject({ok:true});
+  expect(f.sql.prepare("SELECT bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE aivault_service_id='service_gemini_plus_6m'").get()).toEqual({
+    bulk_pricing_enabled:0,
+    bulk_pricing_tiers:"[]",
+  });
 });

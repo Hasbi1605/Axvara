@@ -271,6 +271,75 @@ describe("BULK1c admin bulk pricing", () => {
     });
   });
 
+  describe("AIVault grosir dikelola di menu AIVault → Markup (keputusan owner 2026-11-17)", () => {
+    const tierOn = { enabled: true, tiers: [{ min_qty: 5, unit_price: 90000 }] };
+    const tierOff = { enabled: false, tiers: [] };
+
+    beforeEach(() => {
+      fixture.sql.prepare("UPDATE products SET aivault_family='gemini' WHERE id=1").run();
+      fixture.sql.prepare("UPDATE product_variants SET sku='AV-service_gemini_plus_6m', aivault_service_id='service_gemini_plus_6m' WHERE id=1").run();
+    });
+
+    it("GET /api/products/[id] and GET /api/products expose aivault_family to admin", async () => {
+      const { GET: getById } = await import("@/app/api/products/[id]/route");
+      const resById = await getById(new NextRequest("http://localhost/api/products/1"), { params: Promise.resolve({ id: "1" }) });
+      expect(resById.status).toBe(200);
+      expect((await resById.json() as { product: { aivault_family: string | null } }).product.aivault_family).toBe("gemini");
+
+      const { GET: getList } = await import("@/app/api/products/route");
+      const resList = await getList(new NextRequest("http://localhost/api/products"));
+      expect(resList.status).toBe(200);
+      expect((await resList.json() as { products: { id: string; aivault_family: string | null }[] }).products.find((p) => p.id === "1")?.aivault_family).toBe("gemini");
+    });
+
+    it("rejects changing bulk_pricing on AIVault via PUT /api/products/[id] and /api/admin/variants with 409, while preserving unchanged saves", async () => {
+      const { PUT: putP } = await import("@/app/api/products/[id]/route");
+      const { PUT: putV, POST: postV } = await import("@/app/api/admin/variants/route");
+
+      // Unchanged/omitted save succeeds
+      const okOmitted = await putP(putProduct(1, {
+        variants: [{ id: 1, sku: "AV-service_gemini_plus_6m", label: "Varian 1", price: 100000, stock: -1, is_active: 1, sort_order: 0 }],
+      }), { params: Promise.resolve({ id: "1" }) });
+      expect(okOmitted.status).toBe(200);
+
+      // Matching stored bulk_pricing succeeds
+      const okSame = await putP(putProduct(1, {
+        variants: [{ id: 1, sku: "AV-service_gemini_plus_6m", label: "Varian 1", price: 100000, stock: -1, is_active: 1, sort_order: 0, bulk_pricing: tierOff }],
+      }), { params: Promise.resolve({ id: "1" }) });
+      expect(okSame.status).toBe(200);
+
+      // Attempting to enable or alter bulk_pricing via generic API -> 409 bulk_pricing_aivault_managed
+      const r1 = await putP(putProduct(1, {
+        variants: [{ id: 1, sku: "AV-service_gemini_plus_6m", label: "Varian 1", price: 100000, stock: -1, is_active: 1, sort_order: 0, bulk_pricing: tierOn }],
+      }), { params: Promise.resolve({ id: "1" }) });
+      expect(r1.status).toBe(409);
+      expect(await r1.json()).toEqual({ error: "bulk_pricing_aivault_managed", message: "Harga grosir AIVault diatur di menu AIVault → Markup." });
+
+      const r2 = await putV(putVariant(1, { price: 100000, bulk_pricing: tierOn }));
+      expect(r2.status).toBe(409);
+      expect(await r2.json()).toMatchObject({ error: "bulk_pricing_aivault_managed" });
+
+      const r3 = await postV(postVariant({
+        product_id: 1,
+        variants: [{ id: 1, product_id: 1, sku: "AV-TEST", label: "Varian 1", price: 100000, bulk_pricing: tierOn }],
+      }));
+      expect(r3.status).toBe(409);
+      expect(await r3.json()).toMatchObject({ error: "bulk_pricing_aivault_managed" });
+
+      const r4 = await postV(postVariant({ product_id: 1, sku: "AV-NEW", label: "AV New", price: 70000, bulk_pricing: tierOn }));
+      expect(r4.status).toBe(409);
+      expect(await r4.json()).toMatchObject({ error: "bulk_pricing_aivault_managed" });
+
+      // Attempting to turn OFF existing enabled bulk on AIVault via generic PUT -> also 409
+      fixture.sql.prepare("UPDATE product_variants SET bulk_pricing_enabled=1, bulk_pricing_tiers=? WHERE id=1")
+        .run(JSON.stringify([{ min_qty: 5, unit_price: 90000 }]));
+      const r5 = await putV(putVariant(1, { price: 100000, bulk_pricing: tierOff }));
+      expect(r5.status).toBe(409);
+      expect(await r5.json()).toMatchObject({ error: "bulk_pricing_aivault_managed" });
+      expect(bulkOf(1).bulk_pricing_enabled).toBe(1);
+    });
+  });
+
   it("POST variants create defaults off; explicit bulk validated & stored", async () => {
     const { POST } = await import("@/app/api/admin/variants/route");
     const plain = await POST(postVariant({ product_id: 1, sku: "BULK-NEW", label: "New", price: 70000 }));

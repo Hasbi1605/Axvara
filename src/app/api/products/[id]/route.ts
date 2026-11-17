@@ -5,7 +5,12 @@ import { z } from "zod";
 import { manualCopyUpdate } from "@/lib/product-copy/manual-write";
 import { VARIANT_COPY_MAX_CHARS } from "@/lib/product-copy/format";
 import { queryFirst, queryAll, execRun, getD1, isD1Mode } from "@/lib/db";
-import { bulkOwnerFromProductRow, isManualProductForBulk } from "@/lib/bulk-pricing";
+import {
+  AIVAULT_BULK_MANAGED_MESSAGE,
+  bulkConfigDiffersFromStored,
+  bulkOwnerFromProductRow,
+  isManualProductForBulk,
+} from "@/lib/bulk-pricing";
 import { requireAdmin } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
@@ -88,6 +93,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       descriptionEn: (row.description_en as string | null) ?? null,
       nameEn: (row.name_en as string | null) ?? null,
       wrManaged: isWrManaged(row),
+      aivault_family: (row.aivault_family as string | null) ?? null,
       price: row.price,
       comparePrice: row.compare_price ?? undefined,
       categorySlug: row.cat_slug as string,
@@ -192,7 +198,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (existing.archived_at && (data.isActive === true || data.variants?.some(v => v.is_active === 1))) {
     return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
   }
-  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id,price,aivault_admin_price_idr,tunvn_admin_price_idr FROM product_variants WHERE product_id=?", id);
+  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id,price,aivault_admin_price_idr,tunvn_admin_price_idr,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE product_id=?", id);
   // Identitas TUNVN = kolom durable, bukan slug: semua family TUNVN memakai
   // jalur aktivasi/publikasi yang sama.
   const tunvnVariants = storedVariants.filter(v => v.tunvn_source_product_id != null);
@@ -205,6 +211,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const maxQty = incoming.max_qty === undefined ? current?.max_qty : incoming.max_qty;
     if (maxQty != null && Number(maxQty) < (incoming.min_qty ?? Number(current?.min_qty ?? 1))) return NextResponse.json({ error: "Maksimum di bawah minimum." }, { status: 400 });
     if ((current?.sku ?? incoming.sku) === "TUNVN-BUFF-1B" && maxQty !== 30) return NextResponse.json({ error: "Buff Muse dibatasi 30 unit." }, { status: 400 });
+  }
+  if (Array.isArray(data.variants)) {
+    for (const incoming of data.variants) {
+      const current = incoming.id ? storedVariants.find(v => Number(v.id) === incoming.id) : undefined;
+      const isAivault = Boolean(existing.aivault_family) || String(current?.sku ?? incoming.sku ?? "").toUpperCase().startsWith("AV-");
+      if (isAivault && bulkConfigDiffersFromStored((incoming as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, current as Record<string, unknown> | undefined)) {
+        return NextResponse.json({ error: "bulk_pricing_aivault_managed", message: AIVAULT_BULK_MANAGED_MESSAGE }, { status: 409 });
+      }
+    }
   }
   // Keputusan owner 2026-11-08: harga grosir HANYA untuk produk manual.
   // Menonaktifkan (enabled=false) tetap boleh agar data lama bisa dibersihkan.

@@ -1,5 +1,21 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Harga grosir AIVault berbasis markup % (17 November 2026)
+
+Status: implementasi lokal; publikasi via CI, belum deployment produksi.
+
+Aturan grosir kini mengizinkan varian supplier **AIVault Hub** memakai tier
+berbasis **persentase markup** (`aivault_products.bulk_markup_tiers_json`,
+migrasi `0131_aivault_bulk_markup.sql` dengan seed awal Gemini Plus 6M 5+/10+/50+
+= markup 58/47/36), sementara WR dan Sekalipay-SK tetap dilarang. Harga grosir
+rupiah diturunkan otomatis oleh publisher dan `PATCH /api/admin/aivault/products/[id]`
+dari biaya USD + FX + markup tier (ceil Rp100) dengan `max_qty <= 100`.
+Pengaturan dilakukan di **Admin → AIVault → Markup** (dialog **Grosir** +
+pratinjau live); API produk/varian generik mengembalikan 409
+`bulk_pricing_aivault_managed` jika mencoba mengubah `bulk_pricing` AIVault, dan
+editor Produk menampilkan catatan read-only. Detail: `docs/agent-rules/aivault.md`
+dan `docs/ARCHITECTURE.md` §16.50.
+
 ## Untung Bersih & Pengeluaran (16 November 2026)
 
 Status: implementasi dan verifikasi lokal; publikasi lewat CI, bukan bukti deployment.

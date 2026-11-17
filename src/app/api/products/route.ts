@@ -268,7 +268,7 @@ async function readProducts(req: NextRequest) {
       ? (r.variant_compare_price == null ? undefined : Number(r.variant_compare_price))
       : (r.compare_price as number | null | undefined) ?? undefined;
     return {
-      ...(isAdminRequest ? { archivedAt: r.archived_at == null ? null : String(r.archived_at), canHardDelete: !!r.archived_at && r.hard_delete_reason === null, hardDeleteReason: r.hard_delete_reason == null ? null : String(r.hard_delete_reason) } : {}),
+      ...(isAdminRequest ? { archivedAt: r.archived_at == null ? null : String(r.archived_at), canHardDelete: !!r.archived_at && r.hard_delete_reason === null, hardDeleteReason: r.hard_delete_reason == null ? null : String(r.hard_delete_reason), aivault_family: (r.aivault_family as string | null) ?? null } : {}),
       id: String(r.id),
       slug: r.slug,
       name: r.name,

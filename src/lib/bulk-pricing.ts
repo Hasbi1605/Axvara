@@ -2,11 +2,12 @@ export type BulkTier = { min_qty: number; unit_price: number };
 export type BulkPricing = { enabled: boolean; tiers: BulkTier[] };
 
 /**
- * Kepemilikan produk untuk harga grosir (keputusan owner 2026-11-08):
- * grosir HANYA berlaku untuk produk manual, tidak pernah untuk produk
- * supplier WR/Sekalipay-SK. Supplier ditandai `source != 'manual'`,
- * `wr_product_id`/`sk_product_id` terisi, atau flag auto-managed = 1
- * (SK memakai source='manual' + sk_product_id NOT NULL).
+ * Kepemilikan produk untuk harga grosir (keputusan owner 2026-11-08, direvisi
+ * 2026-11-17): grosir berlaku untuk produk manual dan varian supplier AIVault
+ * (AIVault memakai `source='manual'` tanpa ID/flag WR/SK, namun tier grosirnya
+ * dikelola di menu AIVault → Markup berbasis markup %). Tetap dilarang untuk
+ * supplier WR/Sekalipay-SK (ditandai `source != 'manual'`,
+ * `wr_product_id`/`sk_product_id` terisi, atau flag auto-managed = 1).
  */
 export type BulkProductOwner = {
   source?: unknown;
@@ -44,7 +45,11 @@ export function bulkOwnerFromJoinedRow(row: Record<string, unknown> | null | und
   };
 }
 
-/** true hanya untuk produk manual. Baris tanpa identitas dianggap bukan manual (fail-closed). */
+/**
+ * `true` untuk produk manual serta produk AIVault (`source='manual'` tanpa
+ * identitas WR/SK), sehingga storefront/quote/order/Telegram membaca
+ * `bulk_pricing_*` tersimpan. Baris tanpa identitas dianggap bukan manual (fail-closed).
+ */
 export function isManualProductForBulk(owner: BulkProductOwner | null | undefined): boolean {
   if (!owner) return false;
   if (String(owner.source ?? "manual") !== "manual") return false;
@@ -104,6 +109,33 @@ export function bulkUnitPrice(basePrice: number, quantity: number, input: unknow
   const price = config.enabled ? config.tiers.reduce((current, tier) => quantity >= tier.min_qty ? tier.unit_price : current, basePrice) : basePrice;
   if (!Number.isSafeInteger(price * quantity)) throw new Error("bulk_pricing_total_overflow");
   return price;
+}
+
+export const AIVAULT_BULK_MANAGED_MESSAGE = "Harga grosir AIVault diatur di menu AIVault → Markup.";
+
+/** Cek apakah payload `bulk_pricing` mengubah konfigurasi tersimpan pada varian. */
+export function bulkConfigDiffersFromStored(
+  incoming: { enabled?: unknown; tiers?: unknown } | undefined,
+  storedRow: Record<string, unknown> | null | undefined,
+): boolean {
+  if (incoming === undefined) return false;
+  const storedEnabled = Number(storedRow?.bulk_pricing_enabled ?? 0) === 1;
+  let storedTiers: unknown = [];
+  try {
+    storedTiers = JSON.parse(String(storedRow?.bulk_pricing_tiers ?? "[]"));
+  } catch {
+    return true;
+  }
+  if (!Array.isArray(storedTiers)) return true;
+  if (incoming.enabled !== storedEnabled) return true;
+  if (!Array.isArray(incoming.tiers)) return true;
+  if (incoming.tiers.length !== storedTiers.length) return true;
+  return incoming.tiers.some((t, idx) => {
+    if (!t || typeof t !== "object" || Array.isArray(t)) return true;
+    const a = t as Record<string, unknown>;
+    const b = storedTiers[idx] as Record<string, unknown>;
+    return Object.keys(a).length !== 2 || a.min_qty !== b?.min_qty || a.unit_price !== b?.unit_price;
+  });
 }
 
 export function resolveBulkPrice(base: number, quantity: number, enabled: unknown, serialized: unknown): { price: number; tier?: number } {

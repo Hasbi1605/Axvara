@@ -48,6 +48,7 @@ export function SingleVariantFields({
   const wrLocked = Boolean(form.wrManaged);
   // Harga grosir hanya untuk produk manual (keputusan owner 2026-11-08).
   const manualProduct = isBulkEligibleForm(form);
+  const aivaultProduct = form.aivault_family != null || form.supplier === "AIVault";
   const bulkDraft = form.bulk ?? emptyBulkDraft();
   const bulkValidation = validateBulkDraft(bulkDraft, {
     base: Number(form.price ?? 0),
@@ -94,7 +95,7 @@ export function SingleVariantFields({
       </div>
 
       {/* Harga grosir — HANYA produk manual (owner 2026-11-08). */}
-      {!manualProduct ? (
+      {aivaultProduct ? <p className="mt-3 rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-xs leading-5 text-admin-muted">Harga grosir AIVault otomatis mengikuti markup — atur di menu AIVault → Markup.</p> : !manualProduct ? (
         <p className="rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-xs leading-5 text-admin-muted">Harga grosir hanya untuk produk manual.</p>
       ) : !editing ? (
         <p className="rounded-xl border border-admin-border bg-admin-subtle px-3 py-2 text-xs leading-5 text-admin-muted">Simpan produk dulu, lalu atur harga grosir di Edit Produk.</p>

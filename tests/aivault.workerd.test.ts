@@ -61,6 +61,14 @@ it("0124 applies locally after existing schema without altering products or hist
     db.exec("INSERT INTO products(name,slug,price,is_active) VALUES('Owner copy','owner',100,1)");
     db.exec(readFileSync("drizzle/migrations/0124_aivault_supplier.sql","utf8"));
     expect(db.prepare("SELECT name,is_active,aivault_family FROM products WHERE slug='owner'").get()).toMatchObject({name:"Owner copy",is_active:1,aivault_family:null});
+    db.exec("INSERT INTO aivault_products(service_id,name,stock,unit_price_usd,pricing_tiers_json) VALUES('service_gemini_plus_6m','Gemini',5,0.5,'[]'),('service_other','Other',5,1,'[]')");
+    db.exec(readFileSync("drizzle/migrations/0131_aivault_bulk_markup.sql","utf8"));
+    expect(db.prepare("SELECT bulk_markup_tiers_json FROM aivault_products WHERE service_id='service_gemini_plus_6m'").get()).toEqual({
+      bulk_markup_tiers_json:'[{"min_qty":5,"markup_percent":58},{"min_qty":10,"markup_percent":47},{"min_qty":50,"markup_percent":36}]',
+    });
+    expect(db.prepare("SELECT bulk_markup_tiers_json FROM aivault_products WHERE service_id='service_other'").get()).toEqual({
+      bulk_markup_tiers_json:null,
+    });
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   } finally{db.close();}
 });

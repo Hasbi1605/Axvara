@@ -1,5 +1,24 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Harga grosir AIVault berbasis markup % — 17 November 2026 (lokal)
+
+Keputusan owner 17 November 2026 mengecualikan AIVault dari aturan "grosir
+hanya untuk produk manual" (8 November); WR dan Sekalipay-SK tetap dilarang.
+Setiap tier grosir AIVault menyimpan persentase markup (`bulk_markup_tiers_json`
+pada `aivault_products`, NULL = nonaktif, 1–5 tier, `min_qty` 2–100 naik ketat,
+`markup_percent` 0–1000 turun ketat), bukan harga rupiah tetap. Publisher dan
+`PATCH /api/admin/aivault/products/[id]` menurunkan harga rupiah varian lewat
+`aivaultSellPrice(unit_price_usd, fx_idr_per_usd, tier.markup_percent)` (ceil
+Rp100), membuang tier dengan harga `>=` harga dasar efektif, mengklem agar
+non-increasing, membatasi `max_qty <= 100` (batas `purchase.ts`), dan memeriksa
+`markup_percent < markup_dasar` saat harga manual NULL (400
+`bulk_markup_not_below_base`). API produk/varian generik menolak perubahan
+`bulk_pricing` pada produk `aivault_family` atau SKU `AV-` dengan 409
+`bulk_pricing_aivault_managed`; `isManualProductForBulk` tetap true agar
+storefront/quote/order/Telegram membaca `bulk_pricing_*` tersimpan. Migrasi
+`0131_aivault_bulk_markup.sql` menambah kolom dan mengisi tier awal Gemini 6M
+(5+/10+/50+ = markup 58/47/36). Status: implementasi lokal; publikasi via CI.
+
 ## Kurs modal dibekukan per link — 16 November 2026 (lokal)
 
 Migrasi0130 menambah `aivault_order_links.fx_idr_per_usd`; backfill sekali dari

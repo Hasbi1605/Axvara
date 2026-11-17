@@ -28,7 +28,7 @@ const variants = [
 
 type PutCapture = { url: string; body: { variants?: Record<string, unknown>[] } };
 
-function setup(options: { supplier?: "Manual" | "WR" | "SK"; wrManaged?: boolean } = {}) {
+function setup(options: { supplier?: "Manual" | "WR" | "SK" | "AIVault"; wrManaged?: boolean; aivault_family?: string } = {}) {
   const product = {
     id: "7", name: "Fixture Grosir", slug: "fixture-grosir", description: "",
     price: 100000, categorySlug: "ai-chatbot", image: "", images: [],
@@ -43,7 +43,7 @@ function setup(options: { supplier?: "Manual" | "WR" | "SK"; wrManaged?: boolean
     if (url === "/api/products") return json({ products: [product] });
     if (url.startsWith("/api/categories")) return json({ categories: [] });
     if (url === "/api/admin/overview") return json({});
-    if (url === "/api/products/7" && init?.method === undefined) return json({ product: { variants, wrManaged: Boolean(options.wrManaged) } });
+    if (url === "/api/products/7" && init?.method === undefined) return json({ product: { variants, wrManaged: Boolean(options.wrManaged), aivault_family: options.aivault_family } });
     if (url === "/api/products/7" && init?.method === "PUT") {
       puts.push({ url, body: JSON.parse(String(init.body)) });
       return json({ ok: true });
@@ -71,6 +71,25 @@ async function openEditor() {
 const save = async () => { await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Simpan Produk/ })); }); };
 
 describe("editor harga grosir di modal produk", () => {
+  it("AIVault single-variant mode also shows only the markup note", async () => {
+    const { puts } = setup({ aivault_family: "gemini" });
+    await openEditor();
+    await userEvent.click(screen.getByRole("switch", { name: "Variasi Produk" }));
+    expect(screen.getAllByText("Harga grosir AIVault otomatis mengikuti markup — atur di menu AIVault → Markup.").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Atur harga grosir/ })).toBeNull();
+    await save();
+    await waitFor(() => expect(puts.length).toBe(1));
+    for (const variant of puts[0].body.variants!) expect(variant).not.toHaveProperty("bulk_pricing");
+  });
+  it.each(["Manual", "AIVault"] as const)("AIVault family (%s): note replaces fixed-price editor and payload omits bulk", async (supplier) => {
+    const { puts } = setup({ supplier, aivault_family: "gemini" });
+    await openEditor();
+    expect(screen.getAllByText("Harga grosir AIVault otomatis mengikuti markup — atur di menu AIVault → Markup.").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Atur harga grosir/ })).toBeNull();
+    await save();
+    await waitFor(() => expect(puts.length).toBe(1));
+    for (const variant of puts[0].body.variants!) expect(variant).not.toHaveProperty("bulk_pricing");
+  });
   it("produk manual: editor harga grosir tampil", async () => {
     setup({ supplier: "Manual" });
     await openEditor();
