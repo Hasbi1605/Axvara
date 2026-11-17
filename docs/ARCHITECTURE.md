@@ -180,6 +180,13 @@ shim ekspor agar kontrak caller cron/VPS/Telegram existing tetap kompatibel.
   winner_product_id, reason, decided_at, timestamps), `product_group_members`
   (PK group_id/product_id, product_id UNIQUE, position), `product_group_dirty`
   (group_id, token version, pending + indeks). Bootstrap hanya DDL.
+- Migrasi0132 (17 Nov 2026): 28 trigger `pg_dirty_*` menulis dirty lewat
+  `INSERT … ON CONFLICT(group_id) DO UPDATE SET version, pending=1`, bukan
+  `INSERT OR REPLACE`. Bila trigger terpicu dari statement UPSERT luar (mirror
+  `tunvn_products`, AIVault/WR/SK/FX), SQLite memaksa conflict ABORT milik
+  statement luar sehingga OR REPLACE gagal UNIQUE dan seluruh sync katalog ikut
+  gagal. Trigger dirty baru WAJIB memakai pola UPSERT ini (`WHERE true` bila
+  SELECT tanpa WHERE).
 - Migrasi menyalin 33 pasangan lama, prefer/winner lama ke ID produk, lalu
   mengganti MBO→Jaspay di grup: Zoom15→113, Express VPN20→121, Wink25→115,
   Meitu26→114. Guard ID+nama kedua produk dan keanggotaan mencegah salah target.

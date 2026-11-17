@@ -119,6 +119,8 @@ Migrasi `0129_product_groups.sql` menyalin33 pasangan menjadi grup dan mengganti
 MBO→Jaspay (Zoom15→113, Express VPN20→121, Wink25→115, Meitu26→114) dengan
 guard ID+nama, mengarsipkan yang lama tanpa memindahkan histori order. Schema
 menambah `product_groups`, `product_group_members`, `product_group_dirty`.
+Migrasi `0132_product_group_dirty_upsert.sql` mengganti trigger dirty grup ke
+`ON CONFLICT DO UPDATE` agar tidak menggagalkan sync supplier berbentuk UPSERT.
 API admin baru `/api/admin/product-groups`, `/:id`, `/:id/members`, `/decide`;
 API pasangan lama410. Tidak ada env/cron/proxy baru atau failover pesanan.
 Detail kontrak/modal/CAS: ARCHITECTURE “Grup produk lintas supplier”.

@@ -1,5 +1,17 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Sync katalog gagal karena trigger grup — 17 November 2026 (fix lokal)
+
+- Sejak 2026-11-17 11:10 UTC setiap `tunvn_catalog` gagal 500 `UNIQUE
+  constraint failed: product_group_dirty.group_id`: harga #83 berubah saat
+  produk 117 sudah anggota grup ChatGPT Plus (37), trigger `pg_dirty_tunvn_update`
+  (`INSERT OR REPLACE`) terpicu dari UPSERT mirror dan dipaksa ABORT. Mirror +
+  stok seluruh produk TUNVN membeku (checkpoint throttle tetap maju karena klaim
+  ditulis sebelum fetch). Upstream sendiri sehat (#83 stok14).
+- Fix: migrasi `0132_product_group_dirty_upsert.sql` (lihat ARCHITECTURE grup
+  produk). Percepatan interval sync tidak menolong kegagalan semacam ini; cek
+  respons `/api/cron/lite?job=tunvn_catalog` dan `tunvn_products.synced_at`.
+
 ## Pengingat saldo rendah Telegram admin — 17 November 2026 (lokal)
 
 - `checkSupplierLowBalance` (`src/lib/supplier-balance-alert.ts`) dijalankan di
