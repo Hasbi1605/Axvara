@@ -230,6 +230,15 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
       await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+5 minutes'),last_error=? WHERE id=? AND worker_id=?", promoBot ? "promo_bot_disabled_or_changed" : "notifications_disabled_or_changed", id, workerId);
       return false;
     }
+    if (promoBot && "enabledAt" in config && config.enabledAt) {
+      const enabledAtMs = Date.parse(config.enabledAt);
+      const rawCreatedAt = String(fresh.created_at ?? "").trim();
+      const createdAtMs = Date.parse(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(rawCreatedAt) ? `${rawCreatedAt.replace(" ", "T")}Z` : rawCreatedAt);
+      if (Number.isFinite(enabledAtMs) && Number.isFinite(createdAtMs) && enabledAtMs > createdAtMs) {
+        await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='promo_bot_reenabled_after_enqueue',updated_at=datetime('now') WHERE id=? AND worker_id=?", id, workerId);
+        return true;
+      }
+    }
     message = payload.message;
     botIdentity = { botNumber: payload.botNumber, botRevision: payload.botRevision };
   }

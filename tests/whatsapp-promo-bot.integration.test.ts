@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture } from "./helpers/d1-fixture";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { enqueueWhatsAppPromoBot, parsePromoBotConfig, PROMO_BOT_CONFIG_KEY } from "@/lib/whatsapp/promo-bot";
+import { enqueueWhatsAppPromoBot, parsePromoBotConfig, PROMO_BOT_CONFIG_KEY, type PromoBotConfig } from "@/lib/whatsapp/promo-bot";
 import { enqueueWhatsAppPromo } from "@/lib/whatsapp/promo-digest";
 import { processWhatsAppOutboxRow } from "@/lib/whatsapp/outbox";
 import { sendTextMessage } from "@/lib/whatsapp/gateway";
@@ -17,7 +17,7 @@ let connected = true, blocked = false;
 let groups = config.groups.map(g => ({ ...g, size: 10, canSend: true }));
 const row = () => fixture.sql.prepare("SELECT * FROM whatsapp_outbox ORDER BY id LIMIT 1").get()!;
 const stored = () => JSON.parse(String(fixture.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(PROMO_BOT_CONFIG_KEY)?.value));
-const setConfig = (patch: Partial<typeof config>) => fixture.sql.prepare("UPDATE store_settings SET value=? WHERE key=?").run(JSON.stringify({ ...config, ...patch }), PROMO_BOT_CONFIG_KEY);
+const setConfig = (patch: Partial<PromoBotConfig>) => fixture.sql.prepare("UPDATE store_settings SET value=? WHERE key=?").run(JSON.stringify({ ...config, ...patch }), PROMO_BOT_CONFIG_KEY);
 const post = (action: string, extra = {}) => POST(new NextRequest("http://localhost/api/admin/whatsapp-promo-bot", { method: "POST", body: JSON.stringify({ action, botNumber: config.botNumber, botRevision: config.botRevision, ...extra }) }));
 beforeEach(() => {
   vi.clearAllMocks(); vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-17T02:00:00Z"));
@@ -35,7 +35,9 @@ afterEach(() => { fixture.close(); vi.useRealTimers(); vi.unstubAllGlobals(); })
 
 it("strictly parses configuration and fails closed", () => {
   expect(parsePromoBotConfig(JSON.stringify(config))).toEqual(config);
-  for (const patch of [{ enabled: "true" }, { botNumber: null }, { botNumber: "08123456789" }, { botRevision: "bad" }, { groups: [{ id: "1@s.whatsapp.net", subject: "x" }] }, { groups: [config.groups[0], config.groups[0]] }, { groups: Array.from({ length: 21 }, (_, i) => ({ id: `${i}@g.us`, subject: "x" })) }]) expect(parsePromoBotConfig(JSON.stringify({ ...config, ...patch }))).toBeNull();
+  const withEnabledAt = { ...config, enabledAt: "2026-11-17T02:32:00.000Z" };
+  expect(parsePromoBotConfig(JSON.stringify(withEnabledAt))).toEqual(withEnabledAt);
+  for (const patch of [{ enabled: "true" }, { enabledAt: null }, { enabledAt: "" }, { enabledAt: 12345 }, { enabledAt: "not-a-date" }, { botNumber: null }, { botNumber: "08123456789" }, { botRevision: "bad" }, { groups: [{ id: "1@s.whatsapp.net", subject: "x" }] }, { groups: [config.groups[0], config.groups[0]] }, { groups: Array.from({ length: 21 }, (_, i) => ({ id: `${i}@g.us`, subject: "x" })) }]) expect(parsePromoBotConfig(JSON.stringify({ ...config, ...patch }))).toBeNull();
   expect(parsePromoBotConfig("{" )).toBeNull();
 });
 it("queues every selected group idempotently using five statements and current join link, not the AXVARA'S caption", async () => {
@@ -118,6 +120,63 @@ it("authenticates both routes before gateway or database work", async () => {
   vi.mocked(requireAdmin).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
   expect((await GET(new NextRequest("http://localhost/api/admin/whatsapp-promo-bot"))).status).toBe(401);
   expect((await post("enable")).status).toBe(401); expect(fetch).not.toHaveBeenCalled();
+});
+it("skips mid-slot activation until the next slot while allowing pre-slot and legacy configs", async () => {
+  const db = createDatabaseAccess();
+  // Enabled at 09:32 WIB -> morning slot (09:00) skipped before json_each, evening (17:00) enqueued
+  setConfig({ enabledAt: "2026-11-17T02:32:00.000Z" });
+  vi.setSystemTime(new Date("2026-11-17T02:32:00Z"));
+  const before = fixture.control.queries;
+  expect(await enqueueWhatsAppPromoBot(db)).toBe(0);
+  expect(fixture.control.queries - before).toBe(1);
+  vi.setSystemTime(new Date("2026-11-17T10:00:00Z"));
+  expect(await enqueueWhatsAppPromoBot(db)).toBe(2);
+  expect(row().idempotency_key).toBe("wa:promo2:2026-11-17:evening:123");
+
+  // Enabled before 09:00 WIB -> morning slot enqueued
+  fixture.sql.exec("DELETE FROM whatsapp_outbox");
+  setConfig({ enabledAt: "2026-11-17T01:55:00.000Z" });
+  vi.setSystemTime(new Date("2026-11-17T02:00:00Z"));
+  expect(await enqueueWhatsAppPromoBot(db)).toBe(2);
+
+  // Legacy config without enabledAt -> morning slot enqueued even at 09:32 WIB
+  fixture.sql.exec("DELETE FROM whatsapp_outbox");
+  setConfig({});
+  vi.setSystemTime(new Date("2026-11-17T02:32:00Z"));
+  expect(await enqueueWhatsAppPromoBot(db)).toBe(2);
+});
+it("sets enabledAt on false->true enable, preserves on true->true, and quarantines pre-reenable outbox rows", async () => {
+  setConfig({ enabled: false });
+  vi.setSystemTime(new Date("2026-11-17T02:32:00.000Z"));
+  expect((await post("enable")).status).toBe(200);
+  expect(stored().enabledAt).toBe("2026-11-17T02:32:00.000Z");
+
+  // Already enabled -> keep old enabledAt
+  vi.setSystemTime(new Date("2026-11-17T02:40:00.000Z"));
+  expect((await post("enable")).status).toBe(200);
+  expect(stored().enabledAt).toBe("2026-11-17T02:32:00.000Z");
+
+  // save_groups disables, then next enable sets a fresh enabledAt
+  expect((await post("save_groups", { groupIds: ["123@g.us"] })).status).toBe(200);
+  expect(stored().enabled).toBe(false);
+  vi.setSystemTime(new Date("2026-11-17T02:45:00.000Z"));
+  expect((await post("enable")).status).toBe(200);
+  expect(stored().enabledAt).toBe("2026-11-17T02:45:00.000Z");
+
+  // Outbox row created before enabledAt (D1 UTC format) -> dead without sending
+  setConfig({ enabledAt: "2026-11-17T02:32:00.000Z" });
+  const payload = JSON.stringify({ message: "promo", botNumber: config.botNumber, botRevision: config.botRevision, expiresAt: "2026-11-17T12:00:00+07:00" });
+  fixture.sql.prepare("INSERT INTO whatsapp_outbox(idempotency_key,channel,destination,message_type,payload,status,created_at) VALUES('wa:promo2:2026-11-17:morning:123','whatsapp','123@g.us','promo_bot_digest',?,'pending','2026-11-17 02:10:00')").run(payload);
+  expect(await processWhatsAppOutboxRow(row())).toBe(true);
+  expect(row()).toMatchObject({ status: "dead", last_error: "promo_bot_reenabled_after_enqueue" });
+  expect(sendTextMessage).not.toHaveBeenCalled();
+
+  // Outbox row created after enabledAt (D1 UTC format) -> sent path
+  fixture.sql.exec("DELETE FROM whatsapp_outbox");
+  fixture.sql.prepare("INSERT INTO whatsapp_outbox(idempotency_key,channel,destination,message_type,payload,status,created_at) VALUES('wa:promo2:2026-11-17:morning:123','whatsapp','123@g.us','promo_bot_digest',?,'pending','2026-11-17 02:35:00')").run(payload);
+  vi.mocked(sendTextMessage).mockResolvedValueOnce({ ok: true, messageId: "sent-after" });
+  expect(await processWhatsAppOutboxRow(row())).toBe(true);
+  expect(row()).toMatchObject({ status: "sent", provider_message_id: "sent-after" });
 });
 it("real send adapter selects promo-bot endpoint without changing main endpoint", async () => {
   vi.stubEnv("WHATSAPP_GATEWAY_URL", "https://fixture.test"); vi.stubEnv("WHATSAPP_WEBHOOK_TOKEN", "fixture");

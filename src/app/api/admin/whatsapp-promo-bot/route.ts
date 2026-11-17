@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
     } else {
       if (!old.groups.length) return json({ error: "Pilih dan simpan minimal satu grup terlebih dahulu." }, 409);
       config.enabled = true;
+      if (!old.enabled) config.enabledAt = new Date().toISOString();
     }
     if (!parsePromoBotConfig(JSON.stringify(config))) return json({ error: "Konfigurasi grup tidak valid." }, 400);
     if (!(await save(config)).changes) return changed();

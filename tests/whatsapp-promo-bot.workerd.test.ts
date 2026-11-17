@@ -27,5 +27,8 @@ it("D1 json_each inserts twenty distinct targets once across concurrent cron tic
     expect((await Promise.all([enqueueWhatsAppPromoBot(db, now), enqueueWhatsAppPromoBot(db, now)])).reduce((a, b) => a + b)).toBe(20);
     expect(await db.queryFirst("SELECT count(*) AS n, count(DISTINCT destination) AS destinations FROM whatsapp_outbox")).toEqual({ n: 20, destinations: 20 });
     expect((await db.queryFirst("SELECT payload FROM whatsapp_outbox LIMIT 1"))?.payload).toContain("Join Grup WA:");
+    await binding.prepare("UPDATE store_settings SET value=? WHERE key='whatsapp_promo_bot'").bind(JSON.stringify({ enabled: true, enabledAt: "2026-11-17T02:32:00.000Z", botNumber: "628123456789", botRevision: "initial", groups: [{ id: "999000@g.us", subject: "Extra" }] })).run();
+    expect(await enqueueWhatsAppPromoBot(db, new Date("2026-11-17T02:32:00Z"))).toBe(0);
+    expect(await enqueueWhatsAppPromoBot(db, new Date("2026-11-17T10:00:00Z"))).toBe(1);
   } finally { fixture.close(); await runtime.dispose(); }
 }, 20000);

@@ -2,6 +2,18 @@
 
 ## Bot Promo WhatsApp — 17 November 2026 (lokal)
 
+Revisi UI 17 November 2026 (permintaan owner): kartu diseragamkan dengan kartu
+"Katalog ready ke grup WhatsApp" — judul "Bot Promo ke grup WhatsApp", satu baris
+deskripsi, baris status dot (hijau aktif, kuning tersambung belum aktif, merah
+dijeda, abu belum tersambung) + teks "Bot tersambung · Promo aktif", baris tombol
+Hubungkan nomor bot/Cek koneksi/Aktifkan-Nonaktifkan promo/Edit grup/Ganti nomor
+bot (form nomor hanya muncul saat diperlukan; Simpan nomor nonaktif bila nomor
+tidak valid atau sama). Grup tersimpan tampil sebagai Badge; Edit grup membuka
+daftar Checkbox (maks 20, grup admin-only nonaktif) dengan Simpan/Batal; simpan
+grup pada bot aktif otomatis mengaktifkan kembali (mulai jadwal berikutnya).
+Switch dan helper panjang dihapus; footer satu baris "Baris terakhir pesan: Join
+Grup WA: <link>". Paragraf di bawah adalah snapshot versi pertama.
+
 Kartu `WhatsAppPromoBot` di Pengaturan Toko tepat di bawah kartu AXVARA'S existing.
 Primitive admin Card/Button/Input/Badge/Checkbox/Switch/Label, token admin saja;
 aksi membungkus di layar kecil, JID/footer panjang dapat mematah baris. Badge

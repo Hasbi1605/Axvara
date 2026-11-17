@@ -6,7 +6,7 @@ import { gatewayConfig } from "./gateway";
 
 export const PROMO_BOT_CONFIG_KEY = "whatsapp_promo_bot";
 export const PROMO_GROUP_ID = /^\d+(-\d+)?@g\.us$/;
-export type PromoBotConfig = { enabled: boolean; botNumber: string; botRevision: string; groups: { id: string; subject: string }[] };
+export type PromoBotConfig = { enabled: boolean; enabledAt?: string; botNumber: string; botRevision: string; groups: { id: string; subject: string }[] };
 export type PromoBotStatus = { configured: boolean; connected: boolean; blocked: boolean; botNumber: string | null; botRevision: string | null; lastSendAt?: string | null; lastAckAt?: string | null; pairingCode?: string; error?: string };
 export type PromoBotGroup = { id: string; subject: string; size: number; canSend: boolean };
 
@@ -14,8 +14,9 @@ export function parsePromoBotConfig(raw: unknown): PromoBotConfig | null {
   try {
     const v = JSON.parse(String(raw ?? "null"));
     if (!v || typeof v.enabled !== "boolean" || typeof v.botNumber !== "string" || normalizeBotNumber(v.botNumber) !== v.botNumber || !validBotRevision(v.botRevision) || !Array.isArray(v.groups) || v.groups.length > 20) return null;
+    if (v.enabledAt !== undefined && (typeof v.enabledAt !== "string" || !Number.isFinite(Date.parse(v.enabledAt)))) return null;
     if (v.groups.some((g: PromoBotGroup) => !g || typeof g.id !== "string" || !PROMO_GROUP_ID.test(g.id) || typeof g.subject !== "string" || g.subject.length > 500) || new Set(v.groups.map((g: PromoBotGroup) => g.id)).size !== v.groups.length) return null;
-    return { enabled: v.enabled, botNumber: v.botNumber, botRevision: v.botRevision, groups: v.groups.map((g: PromoBotGroup) => ({ id: g.id, subject: g.subject })) };
+    return { enabled: v.enabled, ...(v.enabledAt !== undefined ? { enabledAt: v.enabledAt } : {}), botNumber: v.botNumber, botRevision: v.botRevision, groups: v.groups.map((g: PromoBotGroup) => ({ id: g.id, subject: g.subject })) };
   } catch { return null; }
 }
 export async function readPromoBotConfig(db: DatabaseAccess) {
@@ -44,6 +45,8 @@ export async function enqueueWhatsAppPromoBot(db: DatabaseAccess, now = new Date
   if (!due || !db.getD1() || !db.canSpend(5)) return 0;
   const config = await readPromoBotConfig(db);
   if (!config?.enabled || !config.groups.length) return 0;
+  const slotStart = Date.parse(`${due.businessDate}T${due.slot === "morning" ? "09" : "17"}:00:00+07:00`);
+  if (config.enabledAt && Date.parse(config.enabledAt) > slotStart) return 0;
   const prefix = `wa:promo2:${due.businessDate}:${due.slot}:`;
   const missing = await db.queryFirst(`SELECT 1 AS missing FROM json_each(?) g WHERE NOT EXISTS (SELECT 1 FROM whatsapp_outbox WHERE idempotency_key=? || replace(json_extract(g.value,'$.id'),'@g.us','')) LIMIT 1`, JSON.stringify(config.groups), prefix);
   if (!missing) return 0;

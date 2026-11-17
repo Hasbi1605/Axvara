@@ -4692,7 +4692,7 @@ Indeks `idx_orders_telegram_pending_chat` pada migrasi0075 mempersempit guard/pr
 
 **17 November 2026 — Bot Promo kedua (implementasi lokal; publikasi via CI).**
 `src/lib/whatsapp/promo-bot.ts` memisahkan konfigurasi store_settings
-`whatsapp_promo_bot` JSON `{enabled,botNumber,botRevision,groups:[{id,subject}]}`
+`whatsapp_promo_bot` JSON `{enabled,enabledAt?,botNumber,botRevision,groups:[{id,subject}]}`
 (≤20 grup JID, parse fail-closed). Cron lite memanggil `enqueueWhatsAppPromoBot`
 sesudah promo AXVARA'S lewat guard terpisah: slot WIB09–<12/17–<20, minimal3produk,
 5statement maksimum independen jumlah grup (cek konfigurasi, missing-key
@@ -4704,6 +4704,7 @@ dibekukan saat enqueue, caption AXVARA'S tidak ditambah footer. Outbox memeriksa
 kembali enabled/pilihan grup/identitas; perubahan retry5menit
 `promo_bot_disabled_or_changed`, pacing/offline retry durable; expired dan
 `promo_group_not_allowed` dead, outcome ambigu eksplisit dead/manual-check.
+Update 17 Nov 2026: aksi `enable` (`false→true`) menulis `enabledAt` ISO (tidak diubah bila sudah aktif; opsional untuk config lama, gagal-tertutup bila bukan tanggal valid); bila `enabledAt > awal_slot` (09:00/17:00 WIB) scheduler langsung return `0` sebelum `json_each`, dan outbox menandai `dead` (`promo_bot_reenabled_after_enqueue`) bila `created_at` (UTC) < `enabledAt`.
 
 Route edge admin `/api/admin/whatsapp-promo-bot` requireAdmin/no-store:
 GET config+gateway; `?groups=1` mengambil grup fresh bila connected+identitas cocok.

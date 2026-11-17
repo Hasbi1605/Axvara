@@ -13,9 +13,9 @@ dan mengosongkan pilihan grup; simpan grup menjeda sampai diaktifkan kembali.
 Jangan memakai nomor yang sama dengan bot notifikasi. Kontrak gateway
 `/promo-bot/{status,number,pair,groups,send-promo}` memakai token existing,
 identitas nomor+revisi, ledger idempoten `wa:promo2:YYYY-MM-DD:slot:groupId`,
-pacing per nomor dan gambar promo existing. Outbox `promo_bot_digest`: cek
-aktivasi/grup/identitas lagi sebelum kirim; perubahan retry5menit tanpa menghabiskan
+pacing per nomor dan gambar promo existing. Outbox `promo_bot_digest`: cek aktivasi/grup/identitas lagi sebelum kirim; perubahan retry5menit tanpa menghabiskan
 attempt, expired/grup tidak diizinkan/hasil ambigu eksplisit dikarantina dead.
+Update 17 Nov 2026: aktivasi (`enabled:false→true`) mencatat `enabledAt` ISO (absen tetap valid untuk kompatibilitas mundur; nilai tidak valid gagal-tertutup). Scheduler melewati slot berjalan bila `enabledAt > awal_slot` (09.00/17.00 WIB), dan outbox menandai dead `promo_bot_reenabled_after_enqueue` untuk baris `created_at < enabledAt` agar aktivasi/aktivasi ulang di tengah slot dimulai dari jadwal berikutnya.
 Tidak ada env Pages baru. Pairing nomor promo dilakukan owner setelah deploy;
 QA hanya fixture, tanpa pairing/reset/pesan atau mutasi produksi.
 
