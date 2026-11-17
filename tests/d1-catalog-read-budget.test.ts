@@ -58,7 +58,7 @@ it("D1 recovery still finds an unlinked paid order without scanning thousands of
   try {
     const db = await runtime.getD1Database("DB");
     await db.batch([
-      db.prepare("CREATE TABLE orders(id INTEGER PRIMARY KEY,code TEXT,items TEXT,status TEXT,payment_status TEXT,paid_at TEXT,created_at TEXT)"),
+      db.prepare("CREATE TABLE orders(id INTEGER PRIMARY KEY,code TEXT,items TEXT,status TEXT,payment_status TEXT,paid_at TEXT,created_at TEXT,supplier_purchase_disabled INTEGER NOT NULL DEFAULT 0)"),
       db.prepare("CREATE INDEX idx_orders_status ON orders(status,payment_status)"),
       db.prepare(index!),
       db.prepare("CREATE TABLE product_variants(id INTEGER PRIMARY KEY,wr_variant_id TEXT)"),
@@ -66,8 +66,8 @@ it("D1 recovery still finds an unlinked paid order without scanning thousands of
       db.prepare("CREATE TABLE wr_order_links(order_code TEXT,wr_variant_id TEXT)"),
       db.prepare("CREATE INDEX link_order ON wr_order_links(order_code)"),
       db.prepare(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<5000)
-        INSERT INTO orders SELECT x,'OLD'||x,'[{"variant_id":1}]','lunas','paid',datetime('now','-90 days'),datetime('now','-90 days') FROM n`),
-      db.prepare(`INSERT INTO orders VALUES(5001,'LINKED','[{"variant_id":1}]','lunas','paid',datetime('now','-1 hour'),datetime('now','-1 hour')),
+        INSERT INTO orders(id,code,items,status,payment_status,paid_at,created_at) SELECT x,'OLD'||x,'[{"variant_id":1}]','lunas','paid',datetime('now','-90 days'),datetime('now','-90 days') FROM n`),
+      db.prepare(`INSERT INTO orders(id,code,items,status,payment_status,paid_at,created_at) VALUES(5001,'LINKED','[{"variant_id":1}]','lunas','paid',datetime('now','-1 hour'),datetime('now','-1 hour')),
         (5002,'ORPHAN','[{"variant_id":1}]','lunas','paid',datetime('now','-1 hour'),datetime('now','-1 hour'))`),
       db.prepare("INSERT INTO wr_order_links VALUES('LINKED','wr-a')"),
     ]);
