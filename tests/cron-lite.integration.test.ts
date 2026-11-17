@@ -83,7 +83,7 @@ describe("/api/cron/lite", () => {
       expect(fx.sql.prepare("SELECT pending FROM product_group_dirty WHERE group_id=50").get()?.pending).toBe(1);
 
       // 2) tunvn_catalog success drains dirty group 50
-      fx.sql.exec("UPDATE wr_variants SET wr_stock=0 WHERE wr_variant_id='wrv-1'; UPDATE product_variants SET stock=0 WHERE id=1; UPDATE sk_products SET sk_stock=5 WHERE sk_variant_id='skv-1'");
+      fx.sql.exec("UPDATE wr_variants SET wr_stock=0 WHERE wr_variant_id='wrv-1'; UPDATE product_variants SET stock=0 WHERE id=1; UPDATE sk_products SET sk_stock=5 WHERE sk_variant_id='skv-1'; UPDATE product_variants SET stock=5 WHERE id=2");
       vi.stubEnv("TUNVN_ENABLED", "true");
       vi.stubEnv("TUNVN_SYNC_ENABLED", "true");
       vi.stubEnv("TUNVN_API_KEY", "fixture");
@@ -101,7 +101,7 @@ describe("/api/cron/lite", () => {
       expect(fx.sql.prepare("SELECT winner_product_id AS w FROM product_groups WHERE id=50").get()?.w).toBe(2);
 
       // 3) jaspay_catalog: disabled skips drain; successful sync drains dirty group 50
-      fx.sql.exec("UPDATE wr_variants SET wr_stock=4 WHERE wr_variant_id='wrv-1'; UPDATE product_variants SET stock=4 WHERE id=1; UPDATE sk_products SET sk_stock=0 WHERE sk_variant_id='skv-1'");
+      fx.sql.exec("UPDATE wr_variants SET wr_stock=4 WHERE wr_variant_id='wrv-1'; UPDATE product_variants SET stock=4 WHERE id=1; UPDATE sk_products SET sk_stock=0 WHERE sk_variant_id='skv-1'; UPDATE product_variants SET stock=0 WHERE id=2");
       vi.stubEnv("WARUNG_REBAHAN_ENABLED", "false");
       vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "false");
       const jpSkipped = await call("jaspay_catalog");
