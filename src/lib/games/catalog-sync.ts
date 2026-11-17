@@ -73,12 +73,18 @@ export async function syncGamesCatalog(
   // dipakai untuk menghitung ulang sell_price sekaligus mencerminkannya.
   const refRows = await db.queryAll("SELECT buyer_sku_code, price FROM games_reference_prices");
   const refs = new Map(refRows.map((r) => [String(r.buyer_sku_code), Number(r.price)]));
+  const existingRows = await db.queryAll(
+    `SELECT buyer_sku_code, seller_active, backup_seller_active, stock, unlimited_stock, sell_price, product_name
+       FROM games_products WHERE supplier IS NULL OR supplier='digiflazz'`,
+  ).catch(() => [] as Record<string, unknown>[]);
+  const existingBySku = new Map(existingRows.map((r) => [String(r.buyer_sku_code ?? ""), r]));
 
   const syncedAt = new Date(now).toISOString();
+  let catalogChanged = false;
   const rows = games.filter((g) => !isBackup(g)).map((g) => {
     const backup = backups.get(g.buyer_sku_code);
     const ref = refs.get(g.buyer_sku_code);
-    return {
+    const item = {
       sku: g.buyer_sku_code,
       backup_sku: backup?.buyer_sku_code ?? null,
       brand: g.brand,
@@ -97,6 +103,17 @@ export async function syncGamesCatalog(
       reference: ref ?? null,
       sell: computeGamesSellPrice({ cost: Math.ceil(g.price), referencePrice: ref ?? null }).price,
     };
+    const prev = existingBySku.get(item.sku);
+    if (!prev
+      || Number(prev.seller_active) !== item.active
+      || Number(prev.backup_seller_active) !== item.backup_active
+      || Number(prev.stock) !== item.stock
+      || Number(prev.unlimited_stock) !== item.unlimited
+      || Number(prev.sell_price) !== item.sell
+      || String(prev.product_name ?? "") !== item.name) {
+      catalogChanged = true;
+    }
+    return item;
   });
 
   try {
@@ -116,13 +133,18 @@ export async function syncGamesCatalog(
     );
 
     await recordSyncSuccess(db, "games_catalog", now);
+    const deactivated = Number(gone.changes ?? 0);
+    if (catalogChanged || deactivated > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("games", db);
+    }
 
     return {
       ok: true,
       games: games.length,
       upserted,
       backups_linked: rows.filter((r) => r.backup_sku).length,
-      deactivated: Number(gone.changes ?? 0),
+      deactivated,
       invalid: listed.invalid,
     };
   } catch (error) {

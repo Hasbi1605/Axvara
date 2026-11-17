@@ -127,7 +127,7 @@ export async function GET() {
     return NextResponse.json({ error: "pedia_disabled" }, { status: 503 });
   }
   const { cachePublicCatalog } = await import("@/lib/catalog-cache");
-  return cachePublicCatalog("pedia", 60, readCatalog);
+  return cachePublicCatalog("pedia:catalog", 300, readCatalog, "pedia");
 }
 
 async function readCatalog() {
@@ -258,6 +258,6 @@ async function readCatalog() {
   return NextResponse.json({ ok: true, products: out }, {
     headers: failed
       ? { "Cache-Control": "no-store" }
-      : { "CDN-Cache-Control": "max-age=60", "Cache-Control": "public, max-age=60" },
+      : { "CDN-Cache-Control": "max-age=60", "Cache-Control": "public, max-age=30" },
   });
 }

@@ -124,6 +124,8 @@ export async function PUT(request: NextRequest) {
       sellPrice,
       Number(row.axvara_variant_id),
     ).catch(() => undefined);
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market");
   }
   return NextResponse.json({ ok: true, wr_variant_id, sell_price: sellPrice });
 }

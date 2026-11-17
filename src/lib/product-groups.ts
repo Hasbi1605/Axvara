@@ -310,6 +310,10 @@ export async function decideAllGroups(database?: DatabaseAccess): Promise<{ deci
   const { groups, dirty } = await loadGroupStats(db);
   let changed = 0;
   for (const group of groups) if (await updateGroupDecision(db, group, dirty.get(group.id) ?? null, false)) changed++;
+  if (changed > 0) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
+  }
   return { decided: groups.length, changed };
 }
 
@@ -324,6 +328,10 @@ export async function decideDirtyGroups(database?: DatabaseAccess, productId?: n
     if (await updateGroupDecision(db, group, dirty.get(group.id) ?? null, true)) changed++;
     decided++;
   }
+  if (changed > 0) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
+  }
   return { decided, changed };
 }
 
@@ -334,7 +342,11 @@ export async function decideGroup(groupId: number, database?: DatabaseAccess): P
   const group = groups[0];
   if (!group) return { winnerProductId: null, reason: "grup tidak ditemukan" };
   const decision = decideGroupFromStats(group, group.members);
-  await updateGroupDecision(db, group, dirty.get(group.id) ?? null, true);
+  const winnerChanged = await updateGroupDecision(db, group, dirty.get(group.id) ?? null, true);
+  if (winnerChanged) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
+  }
   return decision;
 }
 
@@ -468,10 +480,14 @@ export async function updateProductGroup(id: number, input: { name?: string; pre
 
 export async function deleteProductGroup(id: number, database?: DatabaseAccess): Promise<boolean> {
   const db = database ?? createDatabaseAccess();
-  const group = await db.queryFirst("SELECT id FROM product_groups WHERE id=?", id);
+  const group = await db.queryFirst("SELECT id, winner_product_id FROM product_groups WHERE id=?", id);
   if (!group) throw new ProductGroupError("not_found", "Grup tidak ditemukan", 404);
   // FK cascades delete members/dirty atomically, never partially dissolve it.
   await db.execRun("DELETE FROM product_groups WHERE id=?", id);
+  if (group.winner_product_id != null) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
+  }
   return true;
 }
 
@@ -489,6 +505,9 @@ export async function addGroupMember(id: number, productId: number, database?: D
     throw error;
   });
   await decideGroup(id, db);
+  // Even if winner_product_id stayed the same, the newly added member may now be hidden as a loser.
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market", db);
   return (await listProductGroups(db, id))[0];
 }
 
@@ -504,8 +523,12 @@ export async function removeGroupMember(id: number, productId: number, database?
     d1.prepare("DELETE FROM product_groups WHERE id=? AND (SELECT COUNT(*) FROM product_group_members WHERE group_id=?)<2").bind(id, id),
   ]);
   if (!(await db.queryFirst("SELECT id FROM product_groups WHERE id=?", id))) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
     return { group: null, deleted: true };
   }
   await decideGroup(id, db);
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market", db);
   return { group: (await listProductGroups(db, id))[0], deleted: false };
 }

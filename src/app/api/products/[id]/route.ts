@@ -659,15 +659,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Terjadi kesalahan pada server. Coba lagi." }, { status: 500 });
     }
   }
+  let groupWinnerChanged = false;
   if (data.isActive !== undefined || hasExplicitVariants || changesLegacyCommerceFields) {
     // The write is already durable. On failure the versioned queue remains
     // pending for the existing cron; do not tell admin that saving failed.
-    // Public catalog memakai edge cache TTL (tanpa invalidasi manual):
-    // quote berikutnya baca DB fresh (cache hanya membungkus respons publik,
-    // bukan harga yang dikunci) — jadi newly quoted prices pakai data baru.
-    await decideDirtyWinners(undefined, Number(id)).catch(() => {
+    const pairResult = await decideDirtyWinners(undefined, Number(id)).catch(() => {
       console.error("Supplier pair refresh deferred after product update");
+      return { decided: 0, changed: 0 };
     });
+    groupWinnerChanged = pairResult.changed > 0;
+  }
+  if (!groupWinnerChanged) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market");
   }
   return NextResponse.json({ ok: true });
 }
@@ -695,6 +699,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (/operation_guards|CHECK constraint/i.test(String(error))) return NextResponse.json({ error: "Produk tidak lagi di Arsip. Muat ulang daftar." }, { status: 409 });
     throw error;
   }
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market", d1);
   return NextResponse.json({ ok: true, action: "restored" });
 }
 
@@ -721,6 +727,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       if (/operation_guards|CHECK constraint|FOREIGN KEY/i.test(String(error))) return NextResponse.json({ error: "Produk berubah atau memiliki relasi baru. Muat ulang Arsip." }, { status: 409 });
       throw error;
     }
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", d1);
     return NextResponse.json({ ok: true, action: "deleted" });
   }
   await d1.batch([
@@ -728,6 +736,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     d1.prepare("UPDATE product_variants SET is_active=0,updated_at=datetime('now') WHERE product_id=?").bind(id),
     d1.prepare("UPDATE tunvn_products SET visible=0,publish_requested=0 WHERE axvara_product_id=?").bind(id),
   ]);
-  await decideDirtyWinners(undefined, Number(id)).catch(() => { console.error("Supplier pair refresh deferred after product archive"); });
+  const pairResult = await decideDirtyWinners(undefined, Number(id)).catch(() => { console.error("Supplier pair refresh deferred after product archive"); return { decided: 0, changed: 0 }; });
+  if (!pairResult.changed) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", d1);
+  }
   return NextResponse.json({ ok: true, action: "archived" });
 }

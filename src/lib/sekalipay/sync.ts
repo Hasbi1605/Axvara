@@ -1010,6 +1010,10 @@ export async function syncSkProducts(
     } else {
       await writeSyncState(db, "diff_last_error", "");
     }
+    if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", db);
+    }
     return result;
   }
   const sweepComplete = cursor >= scoped.length;
@@ -1035,13 +1039,14 @@ export async function syncSkProducts(
     await writeSyncState(db, "products_snapshot_complete", "0");
     result.snapshotComplete = false;
   }
+  let staleParentsRefreshed = 0;
   if (sweepComplete) {
     // Mode potongan: daftar id scope otoritatif dari potongan terakhir.
     const sliceAllIds = slice?.allVariantIds ?? null;
     if (options.allowZeroMissing !== false && (fullSweepInThisRun || sliceAllIds)) {
       try {
         result.stockChanges += await zeroMissingSkVariants(sliceAllIds ? new Set(sliceAllIds) : seenVariantIds, db);
-        await refreshStaleSkParentAggregates(db);
+        staleParentsRefreshed = await refreshStaleSkParentAggregates(db);
       } catch (error) {
         result.errors.push(error instanceof Error ? error.message : String(error));
       }
@@ -1052,6 +1057,10 @@ export async function syncSkProducts(
   result.durationMs = Date.now() - started;
   const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
   await logSkSync({ ...result, status }, db, trigger).catch(() => undefined);
+  if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0 || staleParentsRefreshed > 0) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
+  }
   return result;
 }
 
@@ -1082,7 +1091,7 @@ async function zeroSkVariantRows(rows: Row[], db: DatabaseAccess): Promise<numbe
  * Rekonsiliasi induk SK yang stok/harganya tertinggal dari varian aktif
  * (mis. baris lama sebelum perbaikan ini atau mutasi non-sync).
  */
-async function refreshStaleSkParentAggregates(db: DatabaseAccess): Promise<void> {
+async function refreshStaleSkParentAggregates(db: DatabaseAccess): Promise<number> {
   const rows = await db.queryAll(
     `SELECT p.id FROM products p
      WHERE p.sk_product_id IS NOT NULL
@@ -1097,6 +1106,7 @@ async function refreshStaleSkParentAggregates(db: DatabaseAccess): Promise<void>
   );
   const ids = rows.map((r) => Number(r.id)).filter((id) => Number.isInteger(id) && id > 0);
   await refreshSkParentAggregatesForIds(ids, db);
+  return ids.length;
 }
 
 /** Varian SK hilang dari respons: stok registry + katalog + induk di-refresh (bukan delete).

@@ -1361,6 +1361,10 @@ export async function syncProducts(
     } else {
       await writeSyncState(db, "diff_last_error", "");
     }
+    if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", db);
+    }
     return result;
   }
   const sweepComplete = cursor >= ordered.length;
@@ -1418,6 +1422,10 @@ export async function syncProducts(
   result.durationMs = Date.now() - started;
   const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
   await logSync({ ...result, status }, db, trigger).catch(() => undefined);
+  if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
+  }
   return result;
 }
 
@@ -1622,6 +1630,7 @@ export async function syncJaspayCatalog(
   // (cursor melanjutkan), bukan kegagalan. Sisakan budget untuk zero-missing + penanda sukses.
   const ZERO_MISSING_RESERVE = 5;
   let complete = true;
+  let catalogChanged = false;
   for (const product of work) {
     const cost = 12 + product.packages.length * 6;
     if (bounded && result.synced > 0 && !db.canSpend(cost + ZERO_MISSING_RESERVE)) break;
@@ -1781,6 +1790,7 @@ export async function syncJaspayCatalog(
           result.variantsSynced++;
           result.stockChanges++;
           result.priceChanges++;
+          catalogChanged = true;
         } else {
           const stockChanged = Number(existing.wr_stock ?? -1) !== stock;
           const priceChanged = Number(existing.wr_price ?? -1) !== pkg.price
@@ -1816,7 +1826,7 @@ export async function syncJaspayCatalog(
           );
           const axId = existing.axvara_variant_id != null ? Number(existing.axvara_variant_id) : 0;
           if (axId > 0) {
-            await db.execRun(
+            const updateRes = await db.execRun(
               `UPDATE product_variants SET price=?, stock=?,
                  compare_price=CASE WHEN compare_price <= ? THEN NULL ELSE compare_price END,
                  duration_value=?, duration_unit=?, duration_label=?,
@@ -1837,10 +1847,11 @@ export async function syncJaspayCatalog(
               duration.unit,
               duration.label || null,
             );
+            if (Number(updateRes?.changes ?? 0) > 0) catalogChanged = true;
           }
           result.variantsSynced++;
-          if (stockChanged) result.stockChanges++;
-          if (priceChanged) result.priceChanges++;
+          if (stockChanged) { result.stockChanges++; catalogChanged = true; }
+          if (priceChanged) { result.priceChanges++; catalogChanged = true; }
         }
       }
       if (axvaraProductId > 0 && db.canSpend(2)) {
@@ -1858,6 +1869,10 @@ export async function syncJaspayCatalog(
   if (!complete) {
     if (result.errors.length) {
       await recordSyncError(db, "jaspay_catalog", result.errors[0]);
+    }
+    if (catalogChanged) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", db);
     }
     result.durationMs = Date.now() - started;
     return result;
@@ -1885,11 +1900,13 @@ export async function syncJaspayCatalog(
       );
       const vid = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
       if (vid > 0) {
-        await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`, vid).catch(
+        const zeroRes = await db.execRun(`UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`, vid).catch(
           () => ({ changes: 0 }),
         );
+        if (Number(zeroRes?.changes ?? 0) > 0) catalogChanged = true;
       }
       result.stockChanges++;
+      catalogChanged = true;
     }
   } catch (error) {
     result.errors.push((error instanceof Error ? error.message : String(error)).slice(0, 300));
@@ -1898,6 +1915,10 @@ export async function syncJaspayCatalog(
     await recordSyncError(db, "jaspay_catalog", result.errors[0]);
   } else if (db.canSpend(1)) {
     await recordSyncSuccess(db, "jaspay_catalog");
+  }
+  if (catalogChanged) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
   }
   result.durationMs = Date.now() - started;
   return result;

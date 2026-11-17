@@ -57,5 +57,7 @@ export async function POST(req: NextRequest) {
        admin_copy_fingerprint=?, updated_at=datetime('now') WHERE id=? AND product_id=?`,
   ).bind(...values, toEntry(row).supplierKey, row.id, data.product_id)));
   const saved = await queryAll(`${VARIANT_COPY_SQL}${selection}`, data.product_id, ...data.variant_ids);
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market", d1);
   return NextResponse.json({ variants: saved.map(toEntry) }, { headers: NO_STORE });
 }

@@ -1,5 +1,11 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### B-H cache edge berbasis revisi & invalidasi — 18 November 2026 (lokal, belum deploy)
+
+- `src/lib/catalog-cache.ts` (`d1-v2/{scope}/{rev}/{key}`): tiga kunci revisi di `store_settings` (`catalog_revision_market`, `catalog_revision_pedia`, `catalog_revision_games`) dengan memoization per-isolate 5 detik (`WeakMap` lewat `unwrapD1`), coalescing pembacaan in-flight, dan restorasi header `Cache-Control` browser asli melalui `X-Axvara-Origin-Cache-Control`.
+- **Aturan `bumpCatalogRevision(scope)`:** maksimal 1 statement tulis `UPSERT` (`store_settings`) per eksekusi bermutasi (`changed > 0`); dilarang memanggil pada tick/sync no-op (`changed === 0`), replay idempoten, atau kegagalan. Pada `games/sk-catalog-sync.ts`, pembaruan `catalog_revision_games` saat berubah digabung dalam batch atomik penanda sukses yang sama (0 statement ekstra).
+- Setiap jalur tulis baru yang mengubah tampilan katalog (`products`, `product_variants`, `categories`, `fulfillment_items`, `supplier_pairs`/`product_groups`, `wr_*`/`sk_*`/`tunvn_*`/`aivault_*`/`pedia_*`/`games_*` aktif) wajib memanggil `bumpCatalogRevision` dengan scope yang sesuai (`market` / `pedia` / `games`). Scope B-H tidak mengubah `/api/catalog`, `/api/games/catalog/[slug]`, PDP, `wrangler.json`, `fulfillment/delivery/**`, maupun `mcp-worker/`.
+
 ### A-S probe sintetis — 18 November 2026 (lokal)
 
 - Home/katalog/quote hanya setelah seluruh `CRON_STEPS`, outcome `synth:*`

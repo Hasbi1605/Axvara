@@ -70,5 +70,9 @@ export async function POST(request: NextRequest) {
       failed.push({ id, error: e instanceof Error ? e.message : "update_failed" });
     }
   }
+  if (updated > 0) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market");
+  }
   return NextResponse.json({ ok: true, updated, failed });
 }

@@ -31,6 +31,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Gagal menyimpan urutan kategori." }, { status: 500 });
   }
-  // Sama seperti PUT kategori: cache publik kedaluwarsa setelah 60 detik.
+  if (changed.length > 0) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market");
+  }
   return NextResponse.json({ ok: true, categories }, { headers: { "Cache-Control": "private, no-store" } });
 }

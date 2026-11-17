@@ -76,7 +76,12 @@ export async function transitionPendingOrder(
         d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guardId),
       );
       try {
-        await d1.batch(statements);
+        const batchResults = await d1.batch(statements);
+        const restocked = batchResults.slice(1, -2).some((res) => Number(res?.meta?.changes ?? 0) > 0);
+        if (restocked) {
+          const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+          await bumpCatalogRevision("market", d1);
+        }
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -134,7 +139,7 @@ export async function transitionPendingOrder(
            AND NOT EXISTS(SELECT 1 FROM orders WHERE code=? AND status='lunas' AND payment_status='paid')`,
       ).bind(code, code),
     ]).catch(() => undefined);
-    await incrementSoldCountForOrder(code);
+    await incrementSoldCountForOrder(code, d1);
     return;
   }
 
@@ -239,7 +244,12 @@ export async function transitionPendingPaymentOrder(input: {
     );
 
     try {
-      await d1.batch(statements);
+      const batchResults = await d1.batch(statements);
+      const restocked = batchResults.slice(1, -3).some((res) => Number(res?.meta?.changes ?? 0) > 0);
+      if (restocked) {
+        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+        await bumpCatalogRevision("market", d1);
+      }
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -438,7 +448,11 @@ export async function incrementSoldCountForOrder(orderCode: string, database?: D
       agg.forEach((qty, pid) => {
         stmts.push(d1.prepare("UPDATE products SET sold_count=COALESCE(sold_count,0)+? WHERE id=?").bind(qty, pid));
       });
-      await d1.batch(stmts);
+      const batchResults = await d1.batch(stmts);
+      if (batchResults.some((res) => Number(res?.meta?.changes ?? 0) > 0)) {
+        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+        await bumpCatalogRevision("market", d1);
+      }
     } catch { /* best-effort */ }
     return;
   }

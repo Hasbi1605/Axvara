@@ -108,6 +108,8 @@ export async function PATCH(request: NextRequest) {
       row.updated_at, row.updated_by);
     const markupChanged = patch.markup_percent !== undefined && patch.markup_percent !== previousMarkup;
     const updated = markupChanged ? (await recomputeGamesSkPrices(db, { slug: patch.slug })).updated : 0;
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("games", db);
     return NextResponse.json({ ok: true, slug: patch.slug, markup_changed: markupChanged, updated });
   } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 }

@@ -50,5 +50,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     console.error("product_sold_count_failed", error instanceof Error ? error.message : String(error));
     return NextResponse.json({ error: "Gagal menyimpan angka Terjual." }, { status: 500 });
   }
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market", d1);
   return NextResponse.json({ ok: true, soldCount: parsed.data.soldCount }, { headers: { "Cache-Control": "private, no-store" } });
 }

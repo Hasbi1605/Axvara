@@ -57,6 +57,10 @@ export async function PUT(request: NextRequest) {
     };
     await writeGamesPricingSettings(db, settings);
     const { updated } = await recomputeGamesSkPrices(db, { all: true }, settings);
+    if (updated > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("games", db);
+    }
     return NextResponse.json({ ok: true, ...settings, updated });
   } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 }

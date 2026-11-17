@@ -72,6 +72,10 @@ export async function POST(request: NextRequest) {
       changed = Math.max(changed, skus.length);
     }
     const repriced = markupChanged ? (await recomputeGamesSkPrices(db, { skus })).updated : 0;
+    if (changed > 0 || repriced > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("games", db);
+    }
     return NextResponse.json({ ok: true, updated: repriced, changed });
   } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 }

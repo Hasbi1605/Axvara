@@ -426,6 +426,8 @@ async function POSTImpl(request: NextRequest) {
           after: { enabled: prep.enabled, tiers: prep.tiersJson },
         }));
       }
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", d1);
       return NextResponse.json({ ok: true, saved: variants.length });
     }
 
@@ -512,6 +514,8 @@ async function POSTImpl(request: NextRequest) {
     v.is_active, v.sort_order, bulkEnabled, bulkTiersJson, now, now,v.buyer_field_key ?? null,v.max_qty ?? null,
   );
 
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market");
   return NextResponse.json({ ok: true, id: result.lastInsertRowid }, { status: 201 });
 }
 
@@ -702,6 +706,8 @@ async function PUTImpl(request: NextRequest) {
     }));
   }
 
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market", d1put);
   return NextResponse.json({ ok: true });
 }
 
@@ -735,6 +741,8 @@ export async function DELETE(request: NextRequest) {
   // Inventory, jobs, and historical orders can all reference a variant. Keep
   // the stable SKU/ID for auditability and always archive instead of deleting.
   await execRun(`UPDATE product_variants SET is_active=0, updated_at=datetime('now') WHERE id=?`, Number(id));
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market");
   return NextResponse.json({ ok: true, action: "deactivated" });
 }
 

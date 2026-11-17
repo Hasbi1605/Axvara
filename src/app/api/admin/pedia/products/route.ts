@@ -167,6 +167,10 @@ export async function POST(request: NextRequest) {
       // skeletons only; IndoSMM drafts require a deliberately selected mapping.
 
     }
+    if (products > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("pedia", db);
+    }
     return NextResponse.json({ ok: true, seeded_products: products, seeded_tiers: tiers });
     } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
   }
@@ -201,6 +205,8 @@ export async function POST(request: NextRequest) {
     if (!r) return NextResponse.json({ error: "save_failed" }, { status: 500 });
     try { await reprice(db, Number(r.lastInsertRowid), true); }
     catch { return NextResponse.json({ error: "reprice_failed", saved: true, id: r.lastInsertRowid }, { status: 500 }); }
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("pedia", db);
     return NextResponse.json({ ok: true, id: r.lastInsertRowid });
     } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
   }
@@ -220,6 +226,8 @@ export async function POST(request: NextRequest) {
     p.checklist_json, p.packages_json, p.step, p.sort_order, p.is_active, p.is_featured,
   ).catch(() => null);
   if (!r) return NextResponse.json({ error: "save_failed" }, { status: 500 });
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("pedia", db);
   return NextResponse.json({ ok: true, id: r.lastInsertRowid });
 }
 
@@ -286,5 +294,7 @@ export async function PUT(request: NextRequest) {
       await reprice(db, id.data, isTier);
     } catch { return NextResponse.json({ error: "reprice_failed", saved: true, id: id.data }, { status: 500 }); }
   }
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("pedia", db);
   return NextResponse.json({ ok: true });
 }

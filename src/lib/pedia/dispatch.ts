@@ -202,11 +202,15 @@ async function dispatchOne(
   try { snapshot = JSON.parse(item.snapshot_json); } catch { /* legacy snapshot */ }
   const minProfit = Number(snapshot?.min_profit_rp ?? info.min_profit_rp);
   if (!Number.isFinite(rate) || !Number.isFinite(marginLive) || !Number.isFinite(minProfit) || marginLive < minProfit) {
-    await db.execRun(
+    const disabled = await db.execRun(
       `UPDATE pedia_tiers SET is_active=0, auto_disabled_reason='margin', updated_at=datetime('now')
-        WHERE id=?`,
+        WHERE id=? AND is_active=1`,
       item.tier_id,
-    ).catch(() => null);
+    ).catch(() => ({ changes: 0 }));
+    if (Number(disabled?.changes ?? 0) > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("pedia", db);
+    }
     await toNeedsCheck(db, item.order_code, "margin di bawah minimum (rate naik)");
     return "needs_check";
   }

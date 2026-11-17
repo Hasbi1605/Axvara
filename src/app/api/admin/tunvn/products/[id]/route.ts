@@ -123,6 +123,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     if (!db.d1) return NextResponse.json({ error: "database_unavailable" }, { status: 503 });
     await db.d1.batch(writes.map(([sql, values]) => db.d1!.prepare(sql).bind(...values)));
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
     return NextResponse.json({ ok: true, item: await db.queryFirst("SELECT * FROM tunvn_products WHERE supplier_product_id=?", supplierId), fx_missing: !(fx > 0) });
   } catch (error) { if (String(error).includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 }); return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 }

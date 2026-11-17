@@ -491,6 +491,8 @@ export async function createChannelOrderAtomic(
   try {
     const results = await d1.batch(statements);
     const orderId = results[orderInsertIndex]?.meta?.last_row_id ?? 0;
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", d1);
     return { code: input.orderCode, orderId, subtotal: input.subtotal, isExisting: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -728,6 +730,8 @@ export async function createPendingChannelOrder(input: ChannelOrderInput): Promi
       const results = await d1.batch(statements);
       const orderInsertResult = results[orderInsertIndex];
       const orderId = orderInsertResult?.meta?.last_row_id ?? 0;
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", d1);
 
       return {
         code: orderCode,

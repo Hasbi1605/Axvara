@@ -10,8 +10,12 @@ import { deriveAivaultBulkTiers, parseAivaultBulkMarkup } from "./bulk";
 export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
   if (!db.d1 || !db.canSpend(9)) return { ok: false, error: "catalog_budget_exceeded" } as const;
   if (!Number.isFinite(fx) || fx <= 0) return { ok: false, error: "fx_unavailable" } as const;
-  const mirror = await db.queryAll(`SELECT m.*,v.aivault_admin_price_idr AS admin_price FROM aivault_products m
+  const mirror = await db.queryAll(`SELECT m.*,v.aivault_admin_price_idr AS admin_price,
+    v.id AS v_id,v.price AS v_price,v.stock AS v_stock,v.bulk_pricing_enabled AS v_bulk_enabled,
+    v.bulk_pricing_tiers AS v_bulk_tiers,v.max_qty AS v_max_qty
+    FROM aivault_products m
     LEFT JOIN product_variants v ON v.aivault_service_id=m.service_id AND v.sku='AV-'||m.service_id`);
+  let anyVariantChanged = false;
   const rows = mirror.map(m => {
     const family = aivaultFamily(String(m.service_id),String(m.name));
     const unitPrice = Number(m.unit_price_usd);
@@ -20,13 +24,25 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
     const bulkMarkupRaw = m.bulk_markup_tiers_json == null ? null : String(m.bulk_markup_tiers_json);
     const parsedBulk = parseAivaultBulkMarkup(m.bulk_markup_tiers_json);
     const derivedBulk = parsedBulk ? deriveAivaultBulkTiers(unitPrice,fx,price,parsedBulk) : [];
+    const stock = Number(m.stock);
+    const bulkEnabled = derivedBulk.length > 0 ? 1 : 0;
+    const bulkTiersJson = derivedBulk.length > 0 ? JSON.stringify(derivedBulk) : "[]";
+    if (m.v_id == null
+      || Number(m.v_price) !== price
+      || Number(m.v_stock) !== stock
+      || Number(m.v_bulk_enabled ?? 0) !== bulkEnabled
+      || String(m.v_bulk_tiers ?? "[]") !== bulkTiersJson
+      || m.v_max_qty == null
+      || Number(m.v_max_qty) > 100) {
+      anyVariantChanged = true;
+    }
     return { ...family, service_id:m.service_id, description:aivaultDefaultDescription(family.name), category:mapSkCategory(family.name),
       price,
-      stock:Number(m.stock), admin_price:m.admin_price ?? null, markup, unit_price:unitPrice, synced_at:m.synced_at,
-      bulk_markup:bulkMarkupRaw, bulk_enabled:derivedBulk.length > 0 ? 1 : 0, bulk_tiers:derivedBulk.length > 0 ? JSON.stringify(derivedBulk) : "[]" };
+      stock, admin_price:m.admin_price ?? null, markup, unit_price:unitPrice, synced_at:m.synced_at,
+      bulk_markup:bulkMarkupRaw, bulk_enabled:bulkEnabled, bulk_tiers:bulkTiersJson };
   });
   const json = JSON.stringify(rows);
-  await db.execRun(`INSERT OR IGNORE INTO products(category_id,name,slug,description,price,image_url,stock,is_active,source,fulfillment_mode,telegram_enabled,aivault_family)
+  const newProdRes = await db.execRun(`INSERT OR IGNORE INTO products(category_id,name,slug,description,price,image_url,stock,is_active,source,fulfillment_mode,telegram_enabled,aivault_family)
     SELECT COALESCE((SELECT id FROM categories WHERE id=json_extract(j.value,'$.category')),(SELECT id FROM categories ORDER BY id LIMIT 1)),
       json_extract(j.value,'$.name'),json_extract(j.value,'$.slug'),json_extract(j.value,'$.description'),MIN(json_extract(j.value,'$.price')),
       (SELECT p.image_url FROM json_each(json_extract(j.value,'$.images')) i JOIN products p ON p.slug=i.value WHERE p.image_url IS NOT NULL AND p.image_url<>'' ORDER BY CAST(i.key AS INTEGER) LIMIT 1),
@@ -35,11 +51,11 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
   await db.execRun(`UPDATE aivault_products SET axvara_product_id=(SELECT p.id FROM products p JOIN json_each(?) j ON p.aivault_family=json_extract(j.value,'$.key')
     WHERE json_extract(j.value,'$.service_id')=aivault_products.service_id AND p.source='manual' AND p.fulfillment_mode='manual' AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0)
     WHERE service_id IN (SELECT json_extract(value,'$.service_id') FROM json_each(?))`,json,json);
-  await db.execRun(`INSERT OR IGNORE INTO product_variants(product_id,sku,label,price,stock,fulfillment_mode,is_active,aivault_service_id)
+  const newVarRes = await db.execRun(`INSERT OR IGNORE INTO product_variants(product_id,sku,label,price,stock,fulfillment_mode,is_active,aivault_service_id)
     SELECT m.axvara_product_id,'AV-'||m.service_id,json_extract(j.value,'$.label'),json_extract(j.value,'$.price'),m.stock,'manual',0,m.service_id
     FROM aivault_products m JOIN json_each(?) j ON json_extract(j.value,'$.service_id')=m.service_id WHERE m.axvara_product_id IS NOT NULL AND EXISTS(SELECT 1 FROM products p WHERE p.id=m.axvara_product_id AND p.archived_at IS NULL)`,json);
   // CAS both admin inputs and mirror snapshot: a concurrent edit/sync cannot overwrite a newer decision.
-  await db.execRun(`UPDATE product_variants SET price=(SELECT json_extract(j.value,'$.price') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id),
+  const updVarRes = await db.execRun(`UPDATE product_variants SET price=(SELECT json_extract(j.value,'$.price') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id),
     stock=(SELECT m.stock FROM aivault_products m WHERE m.service_id=product_variants.aivault_service_id),
     bulk_pricing_enabled=(SELECT json_extract(j.value,'$.bulk_enabled') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id),
     bulk_pricing_tiers=(SELECT json_extract(j.value,'$.bulk_tiers') FROM json_each(?) j WHERE json_extract(j.value,'$.service_id')=product_variants.aivault_service_id),
@@ -55,6 +71,10 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
   await db.execRun(`UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=products.id AND is_active=1),price),
     stock=COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=products.id AND is_active=1),0)
     WHERE products.archived_at IS NULL AND aivault_family IS NOT NULL`);
+  if (Number(newProdRes.changes ?? 0) > 0 || Number(newVarRes.changes ?? 0) > 0 || (anyVariantChanged && Number(updVarRes.changes ?? 0) > 0)) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
+  }
   return { ok: true, mirrored:rows.length, idr_per_usd:fx } as const;
 }
 export async function publishAivaultCatalog(db: DatabaseAccess, fx: number, opts: { force?: boolean; now?: number } = {}) {

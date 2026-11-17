@@ -84,6 +84,8 @@ export async function PATCH(request: NextRequest,{params}:{params:Promise<{id:st
       db.d1.prepare(`UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=products.id AND is_active=1),price),stock=COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=products.id AND is_active=1),0) WHERE id=?`).bind(row.axvara_product_id),
       db.d1.prepare("DELETE FROM operation_guards WHERE operation_id=?").bind(guard),
     ]);
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
     return NextResponse.json({ok:true});
   } catch (error) { if (String(error).includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 }); return NextResponse.json({error:"save_failed_or_stale"},{status:409}); }
 }

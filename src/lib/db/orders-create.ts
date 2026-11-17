@@ -269,6 +269,8 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
 
     try {
       await d1.batch(statements);
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", d1);
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

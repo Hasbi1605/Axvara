@@ -398,16 +398,23 @@ export async function syncGamesSkCatalog(
     return { ok: false, error: fetched.error, detail: fetched.detail };
   }
 
-  const slugRows = await db.queryAll(
-    `SELECT sk_product_id, MIN(game_slug) AS slug FROM games_products
-      WHERE supplier='sekalipay' AND sk_product_id IS NOT NULL AND game_slug IS NOT NULL AND game_slug<>''
-      GROUP BY sk_product_id`,
+  const existingRows = await db.queryAll(
+    `SELECT buyer_sku_code, sk_product_id, game_slug, supplier_active, sell_price, stock,
+            product_name, min_order, unlimited_stock, description, image_url,
+            required_fields_json, validation_json
+       FROM games_products WHERE supplier='sekalipay'`,
   );
   const knownSlugs = new Map<number, string>();
-  for (const row of slugRows) {
+  const existingBySku = new Map<string, Record<string, unknown>>();
+  for (const row of existingRows) {
+    const sku = String(row.buyer_sku_code ?? "");
+    if (sku) existingBySku.set(sku, row);
     const productId = Number(row.sk_product_id);
-    const slug = String(row.slug ?? "").trim();
-    if (Number.isInteger(productId) && productId > 0 && slug) knownSlugs.set(productId, slug);
+    const slug = String(row.game_slug ?? "").trim();
+    if (Number.isInteger(productId) && productId > 0 && slug) {
+      const prevSlug = knownSlugs.get(productId);
+      if (!prevSlug || slug < prevSlug) knownSlugs.set(productId, slug);
+    }
   }
   const settings = await readGamesPricingSettings(db);
   const gameMarkupRows = await db.queryAll(
@@ -432,6 +439,33 @@ export async function syncGamesSkCatalog(
     knownSlugs,
     { settings, gamePercent, variantMarkup },
   );
+  let catalogChanged = false;
+  const builtSkus = new Set<string>();
+  for (const row of built.rows) {
+    builtSkus.add(row.sku);
+    const prev = existingBySku.get(row.sku);
+    if (!prev
+      || Number(prev.supplier_active) !== row.active
+      || Number(prev.sell_price) !== row.sell
+      || Number(prev.stock) !== row.stock
+      || String(prev.product_name ?? "") !== row.name
+      || Number(prev.min_order) !== row.minOrder
+      || Number(prev.unlimited_stock) !== 0
+      || String(prev.description ?? "") !== row.desc
+      || String(prev.image_url ?? "") !== (row.image ?? String(prev.image_url ?? ""))
+      || String(prev.required_fields_json ?? "") !== row.fieldsJson
+      || String(prev.validation_json ?? "") !== row.validationJson) {
+      catalogChanged = true;
+    }
+  }
+  if (!catalogChanged) {
+    for (const [sku, prev] of existingBySku) {
+      if (!builtSkus.has(sku) && Number(prev.supplier_active) !== 0) {
+        catalogChanged = true;
+        break;
+      }
+    }
+  }
   const chunked = chunkRows(built.rows);
   if ("error" in chunked) {
     await recordSyncError(db, "games_sk_catalog", `${chunked.error}:${chunked.detail}`, now);
@@ -472,17 +506,31 @@ export async function syncGamesSkCatalog(
   let deactivated = 0;
   try {
     if (db.d1) {
+      const { generateCatalogRevision, noteCatalogRevisionUpdated } = await import("@/lib/catalog-cache");
+      const nextRevision = catalogChanged ? generateCatalogRevision(db) : null;
       // Satu batch atomik: kegagalan di tengah tidak meninggalkan snapshot parsial.
       const results = await db.d1.batch([
         ...chunked.payloads.map((payload) => db.d1!.prepare(UPSERT_SQL).bind(syncedAt, syncedAt, payload)),
         db.d1.prepare(DEACTIVATE_SQL).bind(syncedAt),
-        db.d1.prepare(SUCCESS_MARKER_SQL).bind("games_sk_catalog_success_at", String(now), "games_sk_catalog_last_error"),
+        nextRevision
+          ? db.d1.prepare(SUCCESS_MARKER_WITH_REV_SQL).bind(
+              "games_sk_catalog_success_at",
+              String(now),
+              "games_sk_catalog_last_error",
+              nextRevision,
+            )
+          : db.d1.prepare(SUCCESS_MARKER_SQL).bind("games_sk_catalog_success_at", String(now), "games_sk_catalog_last_error"),
       ]);
       deactivated = Number(results[chunked.payloads.length]?.meta?.changes ?? 0);
+      if (nextRevision) noteCatalogRevisionUpdated("games", nextRevision, db);
     } else {
       for (const payload of chunked.payloads) await db.execRun(UPSERT_SQL, syncedAt, syncedAt, payload);
       deactivated = Number((await db.execRun(DEACTIVATE_SQL, syncedAt)).changes ?? 0);
       await recordSyncSuccess(db, "games_sk_catalog", now);
+      if (catalogChanged || deactivated > 0) {
+        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+        await bumpCatalogRevision("games", db);
+      }
     }
   } catch (error) {
     await recordSyncError(db, "games_sk_catalog", error, now);
@@ -502,6 +550,10 @@ export async function syncGamesSkCatalog(
 
 const SUCCESS_MARKER_SQL = `INSERT INTO store_settings (key, value, updated_at)
 VALUES (?, ?, datetime('now')), (?, '', datetime('now'))
+ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`;
+
+const SUCCESS_MARKER_WITH_REV_SQL = `INSERT INTO store_settings (key, value, updated_at)
+VALUES (?, ?, datetime('now')), (?, '', datetime('now')), ('catalog_revision_games', ?, datetime('now'))
 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`;
 
 const UPSERT_SQL = `INSERT INTO games_products

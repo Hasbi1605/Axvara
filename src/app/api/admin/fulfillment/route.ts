@@ -157,6 +157,8 @@ export async function POST(request: NextRequest) {
         body.fulfillment_mode, productId,
       );
     }
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market");
     return NextResponse.json({ ok: true, mode: body.fulfillment_mode });
   }
 
@@ -194,6 +196,8 @@ export async function POST(request: NextRequest) {
         ciphertext, iv, productId,
       );
     }
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market");
     return NextResponse.json({ ok: true, mode: "shared" });
   }
 

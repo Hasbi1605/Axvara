@@ -88,6 +88,10 @@ export async function PUT(request: NextRequest) {
     );
     saved.push(key);
   }
+  if (saved.length > 0) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("pedia", db);
+  }
   return NextResponse.json({ ok: true });
   } catch { return NextResponse.json({ error: saved.length ? "save_partial" : "save_failed", saved_fields: saved }, { status: 500 }); }
 }

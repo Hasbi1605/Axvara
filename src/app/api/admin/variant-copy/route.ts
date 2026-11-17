@@ -115,6 +115,8 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Sumber atau suntingan berubah saat menyimpan. Muat ulang sumber dan tinjau draft sebelum mencoba lagi." }, { status: 409, headers: NO_STORE });
     }
     const saved = await queryFirst(`${VARIANT_COPY_SQL} WHERE pv.id=?`, variantId) as Row;
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market");
     return NextResponse.json({ ok: true, variant: toEntry(saved) }, { headers: NO_STORE });
   }
 
@@ -147,5 +149,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Sumber atau suntingan berubah saat menyimpan. Muat ulang sumber dan tinjau draft sebelum mencoba lagi." }, { status: 409, headers: NO_STORE });
   }
   const saved = await queryFirst(`${VARIANT_COPY_SQL} WHERE pv.id=?`, variantId) as Row;
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market");
   return NextResponse.json({ ok: true, variant: toEntry(saved) }, { headers: NO_STORE });
 }

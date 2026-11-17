@@ -1476,7 +1476,7 @@ tetap tidak dijual. Wakil aktif yang habis stok mengikuti tampilan stok habis;
 pergantian wakil tidak menambah stok atau mengalihkan order yang sudah tersimpan.
 Toggle admin menghitung ulang pasangan terkait sebelum memuat daftar; kegagalan
 perhitungan dilanjutkan antrean cron existing. Katalog publik dapat tertinggal
-hingga TTL cache existing (daftar Market30detik). Migrasi0078 mengantrekan ulang
+hingga TTL cache / memoization revisi (revisi lokal 2026-11-18 Paket B-H: ≤5 detik lintas colo, 0 detik per-isolate setelah mutasi; snapshot lama 30 detik). Migrasi 0078 mengantrekan ulang
 keputusan lama, termasuk produk yang sudah OFF sebelum perbaikan.
 
 ## Notifikasi pembayaran WA pembeli KlikQRIS — 24 Oktober 2026
@@ -2031,7 +2031,7 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 | NFR-6 | Biaya | Rp 0/bulan infra (Pages + D1 + R2 free tier), hanya domain |
 | NFR-7 | Aksesibilitas | Warna kontras WCAG AA, keyboard navigable, alt text |
 | NFR-8 | Bahasa | UI Bahasa Indonesia (formal santai), harga Rupiah |
-| NFR-9 | Kuota D1 | ✅ Implementasi 2026-10-16, publikasi melalui CI: katalog publik memakai cache server eksplisit (Market 30 dtk/produk tunggal 10 dtk, Pedia dan kategori 60 dtk). Pedia hanya membaca layanan rujukan aktif. Quote/order/status tetap memeriksa data aktual. Ringkasan admin dimuat saat section Ringkasan dibuka; laporan standar memakai satu agregasi bersama, snapshot keuangan privat terenkripsi maksimal lima menit (revisi 2026-10-19) dan waktu pembuatan aktual; status operasional Ringkasan maksimal 60 dtk. Cleanup data kedaluwarsa per jam; expiry pembayaran, fulfillment dan recovery order tetap setiap tick. Target terbaru 2026-10-17 ≤3 juta rows_read/hari perlu diukur satu siklus reset setelah rilis, bukan jaminan kapasitas. |
+| NFR-9 | Kuota D1 | ✅ Implementasi 2026-10-16, publikasi melalui CI (revisi lokal 2026-11-18 Paket B-H, belum deploy): katalog publik memakai cache server eksplisit (`d1-v2`, dikunci revisi `catalog_revision_{market,pedia,games}` dengan memoization per-isolate ≤5 dtk; TTL edge Market 300 dtk / `?slug=` 120 dtk / Telegram 180 dtk / Pedia 300 dtk / Games list 300 dtk / kategori 600 dtk, mempertahankan `Cache-Control` browser `5–30 dtk` dan invalidasi per mutasi; baseline lama Market 30/10 dtk, Pedia/kategori 60 dtk). Pedia hanya membaca layanan rujukan aktif. Quote/order/status tetap memeriksa data aktual. Ringkasan admin dimuat saat section Ringkasan dibuka; laporan standar memakai satu agregasi bersama, snapshot keuangan privat terenkripsi maksimal lima menit (revisi 2026-10-19) dan waktu pembuatan aktual; status operasional Ringkasan maksimal 60 dtk. Cleanup data kedaluwarsa per jam; expiry pembayaran, fulfillment dan recovery order tetap setiap tick. Target lama ≤3 juta rows_read/hari merupakan catatan histori Free sebelum migrasi ke Workers Paid. |
 | NFR-10 | Maintenance kuota | ✅ Implementasi 2026-10-17, publikasi melalui CI: saat D1 mengembalikan error kuota baca/tulis harian, halaman Market/Pedia menampilkan maintenance sementara dengan estimasi 07.00–08.00 WIB dan tanggal reset berikutnya, tombol order manual serta coba buka toko. Hub WhatsApp menyediakan pilihan nomor aktif dan support Telegram tanpa database; jam layanan admin tetap ditampilkan. Pesanan yang sudah dibayar diarahkan ke admin dengan kode dan bukti. Toko kembali tersedia setelah pemeriksaan D1 berhasil; estimasi bukan janji penyelesaian. API/webhook/cron tidak diganti halaman HTML. |
 
 
@@ -2040,8 +2040,8 @@ seluruh Ringkasan memakai snapshot privat maksimal 60 detik setelah pemeriksaan
 sesi/parameter. Revisi 2026-10-19: keuangan memakai snapshot terenkripsi maksimal
 lima menit lintas proses pada lokasi Cloudflare yang sama, dengan waktu pembuatan
 asli; status operasional tetap maksimal 60 detik. Umur snapshot tidak diperpanjang
-saat pindah periode/proses. Laporan rentang historis tetap dihitung baru. Katalog, kategori,
-pencarian dan bestseller Telegram berbagi snapshot publik 30 detik; detail/
+saat pindah periode/proses. Laporan rentang historis tetap dihitung baru. Katalog, kategori, pencarian dan bestseller Telegram berbagi snapshot publik berbasis revisi
+(Paket B-H lokal: TTL edge 180 detik pada `catalog_revision_market`, maksimal 5 detik stale lintas colo; baseline lama 30 detik); detail/
 checkout memvalidasi harga/stok aktual. Antrean pasangan berubah diproses
 bertahap lewat diff dan cron cleanup existing; kegagalan/perubahan bersamaan
 menyisakan pekerjaan untuk retry, sweep penuh tetap cadangan. Monitor analytics

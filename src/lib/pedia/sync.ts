@@ -240,5 +240,9 @@ export async function applyPediaDiff(
     );
     out.tiersRepriced++;
   }
+  if (out.tiersAutoDisabled.length > 0 || out.tiersRepriced > 0 || (out.markedMissing > 0 && tiers.length > 0)) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("pedia", db);
+  }
   return out;
 }

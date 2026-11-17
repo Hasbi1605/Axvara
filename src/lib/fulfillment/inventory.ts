@@ -119,6 +119,10 @@ export async function importInventory(
     }
   }
 
+  if (result.inserted > 0) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market");
+  }
   return result;
 }
 
@@ -255,6 +259,10 @@ export async function releaseInventory(inventoryId: number): Promise<boolean> {
        WHERE id=? AND status='reserved'`,
       inventoryId,
     );
+    if (result.changes) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market");
+    }
     return !!result.changes;
   }
 
@@ -296,6 +304,10 @@ export async function revokeInventory(inventoryId: number): Promise<boolean> {
       `UPDATE fulfillment_inventory SET status='revoked' WHERE id=? AND status='available'`,
       inventoryId,
     );
+    if (result.changes) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market");
+    }
     return !!result.changes;
   }
 
@@ -324,6 +336,10 @@ export async function revokeInventoryBatch(productId: number, variantId: number 
         ...chunk, productId, variantId,
       );
       revoked += Number(result.changes ?? 0);
+    }
+    if (revoked > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market");
     }
     return revoked;
   }
@@ -363,6 +379,10 @@ export async function releaseInventoryForOrder(orderCode: string): Promise<numbe
        WHERE order_code=? AND status='reserved'`,
       orderCode,
     );
+    if (result.changes) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market");
+    }
     return result.changes ?? 0;
   }
 

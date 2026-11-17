@@ -118,9 +118,10 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       return { ok: false, error: "category_missing" };
     }
 
+    let catalogChanged = false;
     const newProducts = plans.filter(plan => !plan.existing);
     if (newProducts.length) {
-      await db.execRun(INSERT_PRODUCTS_SQL, JSON.stringify(newProducts.map(plan => ({
+      const insertedProducts = await db.execRun(INSERT_PRODUCTS_SQL, JSON.stringify(newProducts.map(plan => ({
         category: plan.categoryId,
         name: plan.family.name,
         slug: plan.slug,
@@ -130,6 +131,7 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
         stock: plan.stock,
         family: plan.family.markFamily === false ? null : plan.family.key,
       }))));
+      if (Number(insertedProducts.changes ?? 0) > 0) catalogChanged = true;
     }
 
     const variantBySource = new Map(accountVariants.map(v => [Number(v.tunvn_source_product_id), v]));
@@ -157,8 +159,14 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       }
     }
 
-    if (inserts.length) await db.execRun(INSERT_VARIANTS_SQL, JSON.stringify(inserts));
-    if (updates.length) await db.execRun(UPDATE_VARIANTS_SQL, JSON.stringify(updates));
+    if (inserts.length) {
+      const insRes = await db.execRun(INSERT_VARIANTS_SQL, JSON.stringify(inserts));
+      if (Number(insRes.changes ?? 0) > 0) catalogChanged = true;
+    }
+    if (updates.length) {
+      const updRes = await db.execRun(UPDATE_VARIANTS_SQL, JSON.stringify(updates));
+      if (Number(updRes.changes ?? 0) > 0) catalogChanged = true;
+    }
 
     await db.execRun(UPDATE_MIRRORS_SQL, idrPerUsdt, JSON.stringify(plans.flatMap(plan => plan.members.map(member => {
       const id = Number(member.mirror.supplier_product_id);
@@ -167,8 +175,9 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       return { sid: id, slug: plan.slug, sell: member.usable ? member.sell : previous ? Number(previous.price) : 0 };
     }))));
 
-    await db.execRun("UPDATE products SET is_active=0 WHERE archived_at IS NULL AND slug IN ('chatgpt-business-1-bulan-tunvn','chatgpt-gpay-1-bulan-tunvn')");
-    await db.execRun(`UPDATE product_variants SET is_active=0 WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND sku IN (${RETIRED_BUNDLE_SKUS.map(() => "?").join(",")})`, ...RETIRED_BUNDLE_SKUS);
+    const retiredProds = await db.execRun("UPDATE products SET is_active=0 WHERE archived_at IS NULL AND is_active<>0 AND slug IN ('chatgpt-business-1-bulan-tunvn','chatgpt-gpay-1-bulan-tunvn')");
+    const retiredVars = await db.execRun(`UPDATE product_variants SET is_active=0 WHERE is_active<>0 AND EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND sku IN (${RETIRED_BUNDLE_SKUS.map(() => "?").join(",")})`, ...RETIRED_BUNDLE_SKUS);
+    if (Number(retiredProds.changes ?? 0) > 0 || Number(retiredVars.changes ?? 0) > 0) catalogChanged = true;
 
     // Buff Muse: perilaku lama dipertahankan (probe tanpa charge, harga manual
     // admin, saklar admin tidak diubah sync). Pada cron (force=false), probe
@@ -184,7 +193,7 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
         existingRows.set(
           quantityB,
           await db.queryFirst(
-            "SELECT tunvn_markup_percent, tunvn_admin_price_idr, tunvn_cost_usdt, stock, is_active FROM product_variants WHERE sku=?",
+            "SELECT price, tunvn_markup_percent, tunvn_admin_price_idr, tunvn_cost_usdt, stock, is_active FROM product_variants WHERE sku=?",
             `TUNVN-BUFF-${quantityB}B`,
           ),
         );
@@ -233,7 +242,7 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
             ? (checked.fundable ? -1 : 0)
             : Number(existing?.stock ?? 0);
           const keepActive = existing ? Number(existing.is_active ?? 0) : 0;
-          await db.execRun(
+          const buffRes = await db.execRun(
             `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty) WITH archive_candidate(product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty) AS (VALUES (?,?,?,?, ?, 'manual', ?, ?, ?, ?, ?, ?, 'muse_invite_code',30)) SELECT * FROM archive_candidate WHERE EXISTS(SELECT 1 FROM products p WHERE p.id=archive_candidate.product_id AND p.archived_at IS NULL) ON CONFLICT(sku) DO UPDATE SET price=excluded.price, stock=excluded.stock, tunvn_cost_usdt=excluded.tunvn_cost_usdt,
                tunvn_markup_percent=excluded.tunvn_markup_percent, tunvn_fx_idr_per_usdt=excluded.tunvn_fx_idr_per_usdt,
                updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products p WHERE p.id=product_variants.product_id AND p.archived_at IS NULL) AND product_variants.tunvn_markup_percent IS ? AND product_variants.tunvn_admin_price_idr IS ?`,
@@ -241,6 +250,9 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
             9 + TUNVN_BUFF_VARIANT_B.indexOf(quantityB) + 1, quantityB, costUsdt, markup, idrPerUsdt,
             existing?.tunvn_markup_percent ?? null, existing?.tunvn_admin_price_idr ?? null,
           );
+          if (Number(buffRes.changes ?? 0) > 0 && (!existing || Number(existing.price) !== sell || Number(existing.stock) !== stock)) {
+            catalogChanged = true;
+          }
           buff++;
         }
       }
@@ -252,6 +264,10 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       return { ok: false, error: buffError };
     }
     await recordSyncSuccess(db, "tunvn_catalog", now);
+    if (catalogChanged) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", db);
+    }
     const productActiveBySlug = new Map(plans.map(plan => [plan.slug, plan.existing ? Number(plan.existing.is_active ?? 0) === 1 : false]));
     const activated = plans.reduce((count, plan) => count + plan.members.filter(member => {
       const id = Number(member.mirror.supplier_product_id);

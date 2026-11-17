@@ -21,14 +21,15 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const params = new URL(req.url).searchParams;
   if (params.get("active") !== "1") return readProducts(req);
+  const slug = (params.get("slug") ?? "").trim().slice(0, 80);
   const key = new URLSearchParams({
-    variants: String(isVariantsReadEnabled()),
+    v: String(isVariantsReadEnabled()),
     q: (params.get("q") ?? "").toLowerCase().trim().slice(0, 40),
     cat: params.get("cat") ?? "",
-    slug: (params.get("slug") ?? "").trim().slice(0, 80),
+    slug,
   });
   const { cachePublicCatalog } = await import("@/lib/catalog-cache");
-  return cachePublicCatalog(`market-auto-v2?${key}`, params.get("slug")?.trim() ? 10 : 30, () => readProducts(req));
+  return cachePublicCatalog(`products:${key}`, slug ? 120 : 300, () => readProducts(req), "market");
 }
 
 async function readProducts(req: NextRequest) {
@@ -313,8 +314,8 @@ async function readProducts(req: NextRequest) {
   const cacheControl = !isPublicCatalog
     ? "private, no-store, max-age=0"
     : slug
-      ? "public, max-age=10, s-maxage=10, stale-while-revalidate=30"
-      : "public, max-age=30, s-maxage=30, stale-while-revalidate=60";
+      ? "public, max-age=5, s-maxage=10, stale-while-revalidate=30"
+      : "public, max-age=15, s-maxage=30, stale-while-revalidate=60";
   return NextResponse.json(
     { products: data, ...(isAdminRequest ? { counts: productTabCounts(data) } : {}) },
     {
@@ -491,6 +492,8 @@ export async function POST(req: NextRequest) {
       }
 
       const results = await d1.batch(statements);
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", d1);
       return NextResponse.json({ id: results[0]?.meta?.last_row_id });
     }
 

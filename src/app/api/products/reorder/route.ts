@@ -121,6 +121,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Gagal menyimpan urutan produk." }, { status: 500 });
   }
 
+  if (changed.length > 0) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", d1);
+  }
+
   return NextResponse.json({
     ok: true,
     moved: parsed.data.productId,

@@ -45,6 +45,8 @@ export async function PUT(
 
   values.push(id);
   await execRun(`UPDATE categories SET ${fields.join(",")} WHERE id=?`, ...values);
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market");
   return NextResponse.json({ ok: true });
 }
 
@@ -64,5 +66,7 @@ export async function DELETE(
   }
   const result = await execRun("DELETE FROM categories WHERE id=?", id);
   if (!result.changes) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market");
   return NextResponse.json({ ok: true });
 }

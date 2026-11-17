@@ -2280,8 +2280,7 @@ harian perlu pengukuran produksi; tidak disamakan dengan jumlah request fixture.
 memakai snapshot privat maksimal 60 detik setelah auth/revocation/validasi;
 revisi 2026-10-19 membagi umur data: keuangan maksimal lima menit, status
 operasional maksimal 60 detik. Berganti periode tidak memperpanjang TTL asal. Daftar, kategori,
-pencarian dan bestseller Telegram berbagi katalog publik 30 detik. Detail,
-checkout, pembayaran dan kredensial tetap memeriksa data aktual.
+pencarian dan bestseller Telegram berbagi katalog publik (snapshot `16–19 Okt`: 30 detik; revisi lokal `18 Nov 2026` Paket B-H, belum deploy: `caches.default` `d1-v2` berbasis revisi `catalog_revision_{market,pedia,games}` dengan memoization per-isolate 5 detik, TTL Market 300/120 dtk, kategori 600 dtk, Telegram 180 dtk, Pedia 300 dtk, daftar Games 300 dtk, `Cache-Control` browser asli dipertahankan pada `HIT`, dan invalidasi otomatis `bumpCatalogRevision` hanya ketika `changed > 0`). Detail, checkout, pembayaran dan kredensial tetap memeriksa data aktual.
 
 Query attention dimulai dari antrean bermasalah; filter pecundang dihitung
 sekali, inventory memakai EXISTS. Migrasi 0068 menambah indeks inventory/recipient

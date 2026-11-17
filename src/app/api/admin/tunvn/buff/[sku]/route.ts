@@ -99,6 +99,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
     }
     const updated = await db.queryFirst("SELECT * FROM product_variants WHERE sku=?", sku);
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db);
     return NextResponse.json({ ok: true, variant: updated });
   } catch (error) { if (String(error).includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
     return NextResponse.json({ error: "save_failed" }, { status: 500 });

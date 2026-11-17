@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
     slug, dest, title, 1, now, now,
   ).catch(() => null);
   if (!result) return NextResponse.json({ error: "gagal_menyimpan" }, { status: 500 });
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market");
   return NextResponse.json({ ok: true, id: result.lastInsertRowid });
 }
 
@@ -100,6 +102,8 @@ export async function PUT(request: NextRequest) {
   params.push(new Date().toISOString(), id);
   const result = await execRun(`UPDATE supplier_links SET ${sets.join(", ")} WHERE id=?`, ...params).catch(() => null);
   if (!result || result.changes === 0) return NextResponse.json({ error: "tidak_ditemukan" }, { status: 404 });
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market");
   return NextResponse.json({ ok: true });
 }
 
@@ -115,5 +119,7 @@ export async function DELETE(request: NextRequest) {
   }
   const result = await execRun(`DELETE FROM supplier_links WHERE id=?`, id).catch(() => null);
   if (!result || result.changes === 0) return NextResponse.json({ error: "tidak_ditemukan" }, { status: 404 });
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market");
   return NextResponse.json({ ok: true });
 }

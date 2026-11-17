@@ -118,12 +118,12 @@ describe("/api/catalog?slug= membawa inventory_available", () => {
     expect(res.headers.get("Cache-Control")).toBe("public, s-maxage=10, stale-while-revalidate=30");
   });
 
-  it("cache ?slug= products 10 detik, daftar tetap 30 detik", async () => {
+  it("cache ?slug= products max-age 5 detik, daftar max-age 15 detik (edge revisi 120/300 dtk)", async () => {
     const { GET } = await import("@/app/api/products/route");
     const bySlug = await GET(new NextRequest("http://localhost/api/products?active=1&slug=google-ai-pro-antigravity"));
-    expect(bySlug.headers.get("Cache-Control")).toBe("public, max-age=10, s-maxage=10, stale-while-revalidate=30");
+    expect(bySlug.headers.get("Cache-Control")).toBe("public, max-age=5, s-maxage=10, stale-while-revalidate=30");
     const list = await GET(new NextRequest("http://localhost/api/products?active=1"));
-    expect(list.headers.get("Cache-Control")).toBe("public, max-age=30, s-maxage=30, stale-while-revalidate=60");
+    expect(list.headers.get("Cache-Control")).toBe("public, max-age=15, s-maxage=30, stale-while-revalidate=60");
   });
 });
 

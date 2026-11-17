@@ -907,16 +907,20 @@ async function handleJaspayOrderError(
   if (error instanceof WrOutOfStockError) {
     // Jaspay: availability upstream mati => mirror stok 0 (jujur, bukan
     // retry buta). request_sent_at dihapus (pre-kirim pasti).
-    await execRun(
+    const zeroRes = await execRun(
       `UPDATE product_variants SET stock=0, updated_at=datetime('now')
-       WHERE wr_variant_id=?`,
+       WHERE wr_variant_id=? AND stock!=0`,
       String(link.wr_variant_id),
-    ).catch(() => undefined);
+    ).catch(() => ({ changes: 0 }));
     await execRun(
       `UPDATE wr_variants SET wr_stock=0, updated_at=? WHERE wr_variant_id=?`,
       new Date().toISOString(),
       String(link.wr_variant_id),
     ).catch(() => undefined);
+    if (Number(zeroRes?.changes ?? 0) > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", db).catch(() => undefined);
+    }
   }
   if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {
     const failed = await execRun(
@@ -979,16 +983,20 @@ async function handleOrderError(
   if (error instanceof WrOutOfStockError) {
     // Gagal pre-kirim yang pasti (vendor menolak sebelum membuat order):
     // aman untuk retry — hapus request_sent_at kembali.
-    await execRun(
+    const zeroRes = await execRun(
       `UPDATE product_variants SET stock=0, updated_at=datetime('now')
-       WHERE wr_variant_id=?`,
+       WHERE wr_variant_id=? AND stock!=0`,
       String(link.wr_variant_id),
-    ).catch(() => undefined);
+    ).catch(() => ({ changes: 0 }));
     await execRun(
       `UPDATE wr_variants SET wr_stock=0, updated_at=? WHERE wr_variant_id=?`,
       new Date().toISOString(),
       String(link.wr_variant_id),
     ).catch(() => undefined);
+    if (Number(zeroRes?.changes ?? 0) > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", db).catch(() => undefined);
+    }
   }
   if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {
     const failed = await execRun(

@@ -217,6 +217,8 @@ export async function PATCH(request: NextRequest) {
     ).bind(...values, patch.buyer_sku_code));
 
     await d1.batch(statements);
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("games", db);
     return NextResponse.json({ ok: true });
   } catch { return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 }

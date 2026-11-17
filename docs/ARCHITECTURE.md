@@ -4634,12 +4634,12 @@ Perbaikan log 0057 tetap terpasang; snapshot audit terakhir 4.582.928 rows_read.
   `provider='gopay' AND status IN ('initializing','pending')` dan filter pending.
   Invoice initializing tetap tidak dikirim; auth, expiry order/invoice, merchant
   dari QR tersimpan dan batas 50 tidak berubah. Tidak ada perubahan kontrak poller.
-- **Cache katalog:** `src/lib/catalog-cache.ts` memakai Cache API `caches.default`
+- **Cache katalog (baseline 2026-10-16; diperbarui secara lokal 2026-11-18 pada Paket B-H di §16.58):** `src/lib/catalog-cache.ts` memakai Cache API `caches.default`
   secara eksplisit di dalam handler, sehingga panggilan SSR langsung ke handler
-  Market ikut terlindungi. TTL Market 30 detik, by-slug 10, Pedia/kategori 60.
+  Market ikut terlindungi. Baseline 2026-10-16 memakai prefix `d1-v1` dan TTL 30/10/60 dtk; Paket B-H memperbarui ke `d1-v2` berbasis revisi (`catalog_revision_{market,pedia,games}`) + TTL 120–600 dtk + invalidasi mutasi (§16.58).
   Hanya katalog publik (`active=1` pada Market, kategori tanpa `all=1`); admin
   melewati cache dan autentikasi tetap dilakukan. Key Market mengikat search,
-  kategori, slug dan flag varian; prefix kontrak `d1-v1` perlu direvisi bila DTO
+  kategori, slug dan flag varian; prefix kontrak perlu direvisi bila DTO
   berubah. Cache per lokasi Cloudflare; bukan penyimpanan global atau jaminan hit
   lintas lokasi/deployment. Miss paralel digabung per proses (maks 128 key pending).
   Respons gagal/degraded/private/berkuki tidak disimpan; kegagalan Cache API
@@ -4708,8 +4708,8 @@ harian pascarilis. Laporan: `issue/d1-read-budget-phase2-2026-10-17.md`.
   Ringkasan status jobs hanya membaca status aktif; delivered tetap diabaikan
   oleh evaluator antrean dan sinyal kirim sukses tetap diukur terpisah. SUM omzet
   lama yang tidak dipakai respons dihapus; angka finansial tetap fact set existing.
-- **Telegram:** `telegram/catalog-snapshot.ts` memakai satu key publik
-  `telegram-catalog-v1`, TTL 30 detik, untuk daftar, filter kategori, pencarian dan
+- **Telegram (baseline 2026-10-17; diperbarui Paket B-H di §16.58):** `telegram/catalog-snapshot.ts` memakai satu key publik
+  `telegram-catalog-v1` (`d1-v1` 30 detik → Paket B-H `telegram:catalog` scope `market` 180 detik), untuk daftar, filter kategori, pencarian dan
   bestseller. Snapshot minimal menyertakan ID/nama/kategori/urutan/terjual/alias
   dan harga varian tersedia termurah; baris habis disimpan dengan harga null
   untuk jawaban pencarian “habis”. Tidak menyertakan data pelanggan/pesanan/
@@ -6262,3 +6262,22 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 - **Backup harian D1 → R2 (`scripts/d1-backup-r2.cjs`, `.github/workflows/d1-backup.yml`):**
   - Workflow GitHub Actions terjadwal harian `19:23 UTC` (`02:23 WIB`) + `workflow_dispatch` menggunakan Secrets CI existing (`CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, `CLOUDFLARE_ACCOUNT_ID`).
   - Mengekspor `axvara-db` (`c21453bf-68ab-4efd-8b0d-22fb360c4f33`) melalui D1 Export REST API (`output_format: "polling"`, `at_bookmark`→`current_bookmark`), memvalidasi dump (`≥10.000` byte, `CREATE TABLE` untuk `orders`, `products`, `payment_transactions`, `fulfillment_items`, serta terminasi `;` agar dump terpotong gagal tertutup), mengompresi `gzip -9` + `SHA-256`, lalu mengunggah ke bucket R2 privat terpisah `axvara-db-backups` (lifecycle 30 hari prefix `daily/`, key `daily/YYYY/MM/axvara-db-<ISO>.sql.gz`; menolak keras bucket publik `axvara-assets`). Signed URL, isi dump, dan kredensial diredaksi dari seluruh log/error; `GITHUB_STEP_SUMMARY` hanya menulis key, ukuran raw/gzip, SHA-256, dan durasi.
+
+### 16.58 Cache edge berbasis revisi & invalidasi katalog — 18 November 2026 (lokal, Paket B-H; belum deploy)
+
+- **Mesin cache revisi (`src/lib/catalog-cache.ts`):**
+  - Membagi invalidasi ke tiga kunci `store_settings`: `catalog_revision_market` (`market`), `catalog_revision_pedia` (`pedia`), dan `catalog_revision_games` (`games`), dibaca sekaligus melalui satu query `SELECT key, value FROM store_settings WHERE key IN (?, ?, ?)`, di-memoize per instance `D1Database` asli (`unwrapD1`) selama `REVISION_MEMO_TTL_MS = 5_000` ms (`WeakMap`) dengan coalescing in-flight agar request paralel di isolate yang sama tidak menggandakan pembacaan D1.
+  - Format URL internal `caches.default` diperbarui dari `d1-v1/...` menjadi `https://axvara.tech/__catalog-cache/d1-v2/{scope}/{revision}/{key}`, sehingga kenaikan revisi langsung merotasi key cache di seluruh edge Colo setelah jendela memoization ≤5 detik tanpa perlu panggilan purge global.
+  - Menyimpan nilai `Cache-Control` origin ke header internal `X-Axvara-Origin-Cache-Control` saat `cache.put`, menuliskan `Cache-Control: public, max-age=${ttlSeconds}` untuk Cloudflare Cache API, lalu memulihkan `Cache-Control` origin (dan menghapus header internal) saat melayani `HIT` agar browser dan downstream CDN tidak pernah mewarisi TTL internal `120–600` detik.
+  - `bumpCatalogRevision(scope, d1)` menjalankan satu `INSERT INTO store_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value` (best-effort melalui `unwrapD1`), segera memperbarui memo isolate (staleness `0` detik pada isolate yang memutasi), dan menghapus URL cache terlacak di `caches.default` lokal untuk scope tersebut.
+- **TTL publik & preservasi boundary:**
+  - `GET /api/products` (`scope: "market"`): edge TTL `120` detik untuk `?slug=` (`Cache-Control` browser `public, max-age=5, s-maxage=10, stale-while-revalidate=30`) dan `300` detik untuk daftar (`public, max-age=15, s-maxage=30, stale-while-revalidate=60`); query admin tetap bypass.
+  - `GET /api/categories` (`scope: "market"`): edge TTL `600` detik untuk daftar publik.
+  - `src/lib/telegram/catalog-snapshot.ts` (`telegram:catalog`, `scope: "market"`): edge TTL `180` detik.
+  - `GET /api/pedia/catalog` (`pedia:catalog`, `scope: "pedia"`): edge TTL `300` detik (mempertahankan `public, max-age=30` dan `CDN-Cache-Control: max-age=60`).
+  - `GET /api/games/catalog` (`games:list:open=...`, `scope: "games"`): edge TTL `300` detik dengan key membedakan `ordering_open` dan mempertahankan `public, max-age=5, s-maxage=10, stale-while-revalidate=30`.
+- **Titik invalidasi mutasi (hanya saat `changed > 0`, ≤1 tulis/eksekusi):**
+  - Checkout & order: `orders-create.ts`, `commerce.ts` (`createChannelOrderAtomic`, `createPendingChannelOrder` — skip pada idempotent/race replay), `orders-transition.ts` (restock cancel/expiry & `incrementSoldCountForOrder`, terisolasi ke order Market/legacy sehingga Pedia/Games tidak me-bump Market), `fulfillment/inventory.ts` (`import`/`release`/`revoke` ketika `>0`), dan `warung-rebahan/order.ts` (`WrOutOfStockError` ketika `AND stock!=0` `changes > 0`).
+  - Supplier sync & grup: `warung-rebahan/sync.ts` (`syncProducts`, `syncJaspayCatalog`), `sekalipay/sync.ts` (`syncSkProducts`, termasuk saat `staleParentsRefreshed > 0`), `tunvn/catalog.ts`, `aivault/catalog.ts`, `pedia/sync.ts` + `pedia/dispatch.ts` (auto-disable margin), `games/sk-catalog-sync.ts` (diinjeksikan atomik dalam `SUCCESS_MARKER_WITH_REV_SQL` tanpa statement ekstra saat `catalogChanged`), `games/catalog-sync.ts`, dan `product-groups.ts`.
+  - Admin mutations: `products/{route,[id],reorder,[id]/sold-count}`, `categories/{route,[id],reorder}`, `admin/{variants,variant-copy,variant-copy/bulk,fulfillment,supplier-links}`, `admin/{warung,sekalipay}/markup/{route,bulk}`, `admin/tunvn/{products/[id],buff/[sku]}`, `admin/aivault/products/[id]`, `admin/pedia/{products,settings}`, dan `admin/games/{games,pricing,products,products/bulk-markup}`.
+  - Catatan batas scope & dampak kuota: `/api/catalog`, `/api/games/catalog/[slug]`, PDP `/produk/[slug]`, `wrangler.json`, `src/lib/fulfillment/delivery/**`, dan `mcp-worker/` sengaja tidak disentuh oleh B-H (ranah B-S/C0). Estimasi dampak setelah rilis B-H+B-S: baca revisi `≤3` rows/5 dtk per isolate (~50–150 ribu `rows_read`/hari), tulis revisi ~200–500 baris/hari (<0,03% kuota 50 juta/30 hari), dengan penghematan baca katalog ~65–80% (~400–550 juta `rows_read`/30 hari; menunggu pengukuran produksi pasca-CI).

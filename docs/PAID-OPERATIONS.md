@@ -1,5 +1,11 @@
 # Operasional Workers Paid — 23 Oktober 2026
 
+## Cache katalog berbasis revisi (Paket B-H) — 18 November 2026 (lokal, belum deploy)
+
+- `src/lib/catalog-cache.ts` memindah cache edge ke namespace `d1-v2` yang dikunci oleh `catalog_revision_market`, `catalog_revision_pedia`, dan `catalog_revision_games` (`store_settings`), dengan memoization per-isolate `REVISION_MEMO_TTL_MS = 5_000` ms (`WeakMap<D1Database, ...>` via `unwrapD1`) sehingga pembacaan revisi maksimal 1 query / `≤3` `rows_read` per 5 detik per isolate aktif (~50–150 ribu `rows_read`/hari) dan staleness maksimum lintas lokasi `≤5` detik (0 detik pada isolate yang sama).
+- TTL `caches.default` dinaikkan ke Market list `300` dtk, `?slug=` `120` dtk, kategori `600` dtk, snapshot Telegram `180` dtk, Pedia `300` dtk, dan daftar Games `/api/games/catalog` `300` dtk (mempertahankan `Cache-Control` browser asli `5–30` dtk via `X-Axvara-Origin-Cache-Control` agar CDN/browser tidak mewarisi TTL internal). Estimasi dampak setelah rilis + selesainya paket B-S (`/api/catalog`, `/api/games/catalog/[slug]`, PDP deduplication): penghematan baca D1 katalog ~65–80% (~400–550 juta `rows_read`/30 hari; belum diukur di produksi).
+- `bumpCatalogRevision(scope)` menulis maksimal 1 baris (`INSERT ... ON CONFLICT DO UPDATE`, ~200–500 tulis/hari atau <0,03% kuota 50 juta `rows_written`/30 hari) HANYA ketika mutasi nyata (`changed > 0`), bukan pada no-op sync/tick. Rincian kontrak: ARCHITECTURE §16.58.
+
 ## Probe sintetis A-S — 18 November 2026 (lokal, belum deploy)
 
 Setelah seluruh job existing: home dan produk paralel, kemudian0–3PDP dinamis
