@@ -136,14 +136,17 @@ export async function checkSupplierLowBalance(
     return { checked: true, alerted: false, error: "balance_unavailable" };
   }
 
-  // Sukses fetch: simpan timestamp sukses terakhir + kosongkan error/streak (1 statement).
+  // Sukses fetch: simpan timestamp sukses terakhir, nilai terakhir, + kosongkan error/streak (1 statement).
+  const lastValueKey = `${opts.supplier}_balance_last_value`;
   await db.execRun(
     `INSERT INTO store_settings (key, value, updated_at)
-     VALUES (?, ?, datetime('now')), (?, '', datetime('now'))
+     VALUES (?, ?, datetime('now')), (?, '', datetime('now')), (?, ?, datetime('now'))
      ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
     lastOkKey,
     String(now),
     errorKey,
+    lastValueKey,
+    String(balance),
   );
 
   if (!(balance < opts.threshold)) {

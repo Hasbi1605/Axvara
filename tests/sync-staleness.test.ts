@@ -106,6 +106,10 @@ describe("checkSyncStaleness", () => {
       // 1) Initial stale alert -> 1 message with age, WIB time, and error
       const r1 = await checkSyncStaleness(db, { now: t0 });
       expect(r1).toMatchObject({ checked: true, alerted: ["tunvn"], reminded: [], recovered: [] });
+      const st1 = JSON.parse(
+        (fx.sql.prepare("SELECT value FROM store_settings WHERE key='sync_stale_state_tunvn'").get() as { value: string }).value,
+      );
+      expect(st1).toMatchObject({ alerted_at: t0, last_stale_at: t0 });
       expect(messages).toHaveLength(1);
       expect(messages[0].text).toContain("⚠️ <b>Sinkronisasi TUNVN basi</b>");
       expect(messages[0].text).toContain("38 menit");
@@ -130,6 +134,11 @@ describe("checkSyncStaleness", () => {
 
       const r4 = await checkSyncStaleness(db, { now: recoveredAt + 30_000 });
       expect(r4).toMatchObject({ checked: true, alerted: [], reminded: [], recovered: ["tunvn"] });
+      const stRec = JSON.parse(
+        (fx.sql.prepare("SELECT value FROM store_settings WHERE key='sync_stale_state_tunvn'").get() as { value: string }).value,
+      );
+      expect(stRec).toMatchObject({ last_stale_at: t0, last_recovered_at: recoveredAt + 30_000 });
+      expect(stRec.alerted_at).toBeUndefined();
       expect(messages).toHaveLength(3);
       expect(messages[2].text).toContain("✅ <b>Sinkronisasi TUNVN pulih</b>");
       expect(messages[2].text).toContain("WIB");

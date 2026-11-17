@@ -42,6 +42,16 @@ export const SYNC_STALENESS_THRESHOLDS_MS = {
 
 export type SyncSourceId = "sk" | "jaspay" | "tunvn" | "aivault" | "games_sk" | "pedia_indosmm" | "crypto_market";
 
+export const SYNC_SOURCE_LABELS: Record<SyncSourceId, string> = {
+  sk: "Sekalipay",
+  jaspay: "Jaspay",
+  tunvn: "TUNVN",
+  aivault: "AIVault",
+  games_sk: "Games",
+  pedia_indosmm: "Pedia (IndoSMM)",
+  crypto_market: "FX Pasar Crypto",
+};
+
 export interface SyncStalenessResult {
   checked: boolean;
   sources: string[];
@@ -52,9 +62,11 @@ export interface SyncStalenessResult {
   error?: string;
 }
 
-type StaleEpisodeState = {
+export type StaleEpisodeState = {
   alerted_at?: number | null;
   enabled_since?: number | null;
+  last_stale_at?: number | null;
+  last_recovered_at?: number | null;
 };
 
 type SourceProbe = {
@@ -104,7 +116,7 @@ function formatWibSuccess(ms: number | null): string {
   return formatted ? `${formatted} WIB` : iso;
 }
 
-function parseEpisodeState(raw: string | null): StaleEpisodeState {
+export function parseEpisodeState(raw: string | null): StaleEpisodeState {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw) as StaleEpisodeState;
@@ -112,10 +124,21 @@ function parseEpisodeState(raw: string | null): StaleEpisodeState {
     return {
       alerted_at: typeof parsed.alerted_at === "number" && Number.isFinite(parsed.alerted_at) ? parsed.alerted_at : null,
       enabled_since: typeof parsed.enabled_since === "number" && Number.isFinite(parsed.enabled_since) ? parsed.enabled_since : null,
+      last_stale_at: typeof parsed.last_stale_at === "number" && Number.isFinite(parsed.last_stale_at) ? parsed.last_stale_at : null,
+      last_recovered_at: typeof parsed.last_recovered_at === "number" && Number.isFinite(parsed.last_recovered_at) ? parsed.last_recovered_at : null,
     };
   } catch {
     return {};
   }
+}
+
+function serializeEpisodeState(state: StaleEpisodeState): string {
+  const out: Record<string, number> = {};
+  if (typeof state.alerted_at === "number" && Number.isFinite(state.alerted_at)) out.alerted_at = state.alerted_at;
+  if (typeof state.enabled_since === "number" && Number.isFinite(state.enabled_since)) out.enabled_since = state.enabled_since;
+  if (typeof state.last_stale_at === "number" && Number.isFinite(state.last_stale_at)) out.last_stale_at = state.last_stale_at;
+  if (typeof state.last_recovered_at === "number" && Number.isFinite(state.last_recovered_at)) out.last_recovered_at = state.last_recovered_at;
+  return JSON.stringify(out);
 }
 
 async function casState(
@@ -324,7 +347,16 @@ export async function checkSyncStaleness(
       if (source.lastSuccessMs === null) {
         if (state.enabled_since == null) {
           if (db.canSpend(1)) {
-            await casState(db, stateKey, raw, JSON.stringify({ enabled_since: now }));
+            await casState(
+              db,
+              stateKey,
+              raw,
+              serializeEpisodeState({
+                enabled_since: now,
+                last_stale_at: state.last_stale_at,
+                last_recovered_at: state.last_recovered_at,
+              }),
+            );
           }
           continue;
         }
@@ -341,7 +373,12 @@ export async function checkSyncStaleness(
           db,
           stateKey,
           raw,
-          JSON.stringify({ alerted_at: now, enabled_since: state.enabled_since }),
+          serializeEpisodeState({
+            alerted_at: now,
+            enabled_since: state.enabled_since,
+            last_stale_at: isReminder ? (state.last_stale_at ?? now) : now,
+            last_recovered_at: state.last_recovered_at,
+          }),
         );
         if (!claimed) continue;
         const lines = [
@@ -365,7 +402,16 @@ export async function checkSyncStaleness(
           continue;
         }
         if (!telegramReady) continue;
-        const claimed = await casState(db, stateKey, raw, JSON.stringify({ alerted_at: now }));
+        const claimed = await casState(
+          db,
+          stateKey,
+          raw,
+          serializeEpisodeState({
+            alerted_at: now,
+            last_stale_at: isReminder ? (state.last_stale_at ?? now) : now,
+            last_recovered_at: state.last_recovered_at,
+          }),
+        );
         if (!claimed) continue;
         const lines = [
           `⚠️ <b>Sinkronisasi ${escapeHtml(source.label)} basi</b>${isReminder ? " (pengingat)" : ""}`,
@@ -380,7 +426,15 @@ export async function checkSyncStaleness(
         else alerted.push(source.id);
       } else if (state.alerted_at != null) {
         if (!telegramReady) continue;
-        const claimed = await casState(db, stateKey, raw, JSON.stringify({}));
+        const claimed = await casState(
+          db,
+          stateKey,
+          raw,
+          serializeEpisodeState({
+            last_stale_at: state.last_stale_at ?? state.alerted_at,
+            last_recovered_at: now,
+          }),
+        );
         if (!claimed) continue;
         await sendTelegram(
           [
@@ -390,7 +444,15 @@ export async function checkSyncStaleness(
         );
         recovered.push(source.id);
       } else if (state.enabled_since != null && db.canSpend(1)) {
-        await casState(db, stateKey, raw, JSON.stringify({}));
+        await casState(
+          db,
+          stateKey,
+          raw,
+          serializeEpisodeState({
+            last_stale_at: state.last_stale_at,
+            last_recovered_at: state.last_recovered_at,
+          }),
+        );
       }
     }
 

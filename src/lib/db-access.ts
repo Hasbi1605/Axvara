@@ -38,6 +38,16 @@ export class QueryBudgetExceeded extends Error {
  * An aborted batch may execute fewer members; charging the full batch is conservative.
  * Two tail statements are reserved for the cron checkpoint. Admission happens BEFORE
  * touching D1; oversized batches are rejected whole, never committed halfway through. */
+const baseD1ByWrapper = new WeakMap<D1, D1>();
+
+/** Unwrap a budgeted D1 wrapper to its underlying D1 binding (for isolate-level WeakMaps). */
+export function unwrapD1(d1: D1 | null): D1 | null {
+  if (!d1) return null;
+  let cur: D1 = d1;
+  while (baseD1ByWrapper.has(cur)) cur = baseD1ByWrapper.get(cur)!;
+  return cur;
+}
+
 export function createBudgetedDatabase(limit = 40, reserveTail = 2, base = getD1()) {
   let used = 0;
   let ceiling = limit - reserveTail;
@@ -63,6 +73,7 @@ export function createBudgetedDatabase(limit = 40, reserveTail = 2, base = getD1
       return base.batch(statements.map((s) => originals.get(s) ?? s));
     },
   } : null;
+  if (db && base) baseD1ByWrapper.set(db, base);
   const access = createDatabaseAccess(db);
   if (!base) {
     // Dev fallback has no D1 statements; count its query API calls consistently.

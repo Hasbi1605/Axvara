@@ -69,6 +69,9 @@ describe("checkSupplierLowBalance", () => {
       });
       expect(r1).toEqual({ checked: true, balance: 4.1, alerted: true });
       expect(budgeted.used).toBeLessThanOrEqual(5);
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_balance_last_value'").get()).toEqual({
+        value: "4.1",
+      });
       expect(messages).toHaveLength(1);
       expect(messages[0].text).toBe(
         "💰 <b>Saldo TUNVN menipis</b>\nSisa 4.10 USDT (ambang 5 USDT). Top up agar auto-order TUNVN tidak tertahan.",
@@ -253,6 +256,9 @@ describe("checkSupplierLowBalance", () => {
       expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_balance_error'").get()).toEqual({ value: "" });
       expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_balance_last_ok_at'").get()).toEqual({
         value: String(t0 + 62 * 60_000),
+      });
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_balance_last_value'").get()).toEqual({
+        value: "10",
       });
 
       const r2 = await checkSupplierLowBalance(db, {

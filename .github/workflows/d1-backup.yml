@@ -1,0 +1,31 @@
+name: D1 daily backup to R2
+
+on:
+  schedule:
+    - cron: '23 19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axvara-d1-backup
+  cancel-in-progress: false
+
+# Exports axvara-db via D1 REST polling API and uploads gzipped SQL to private R2 bucket axvara-db-backups.
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Export D1 and upload backup to private R2 bucket
+        run: node scripts/d1-backup-r2.cjs
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

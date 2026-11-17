@@ -15,6 +15,8 @@ perubahan rail invoice lama, atau perpanjangan batas bayar 15 menit.
 | Fulfillment cadangan | Budget96 statement/invocation, empat job dan maksimal empat unit/job, lease/retry existing |
 | Lite lain | Budget40 statement; konfirmasi payment/fulfillment langsung memakai transaksi/outbox existing yang dibatasi jumlah kandidat, bukan klaim seluruh pohon panggilan tercakup budget40 |
 | Cleanup dan publish artikel | Lima menit |
+| Ringkasan harian admin (`job=promo` existing) | Sekali/hari 07:00 WIB (catch-up s.d. 11:59 WIB, ≤12 statement D1, CAS `store_settings.admin_daily_summary_state`) |
+| Backup harian D1 → R2 (`.github/workflows/d1-backup.yml`) | Sekali/hari `19:23 UTC` (`02:23 WIB`) + `workflow_dispatch` ke bucket privat `axvara-db-backups` (retensi 30 hari `daily/`) |
 | Route besar/sweep katalog | Hanya menit00 UTC, bukan menit01–04; chunk maksimum10/fase |
 | Request scheduler ke origin | Timeout45 detik, tanpa retry POST; server mungkin masih menyelesaikan kerja dengan lease existing |
 | Supplier refresh WR/SK | Webhook/poll pembeli + cadangan setiap menit; gerbang CAS20 detik, termasuk batch cron |

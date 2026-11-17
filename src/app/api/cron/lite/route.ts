@@ -603,9 +603,25 @@ async function runPromo(db: Db) {
   const started = Date.now();
   const { sendDueAdminPromoDigest } = await import("@/lib/telegram/promo-digest");
   const promo = await sendDueAdminPromoDigest(db);
+  let daily_summary: Record<string, unknown> = {};
+  if (db.canSpend(1)) {
+    try {
+      const { sendDueDailyAdminSummary } = await import("@/lib/telegram/daily-admin-summary");
+      const summary = await sendDueDailyAdminSummary(db);
+      daily_summary = {
+        due: summary.due,
+        sent: summary.sent,
+        ...(summary.skipped ? { skipped: summary.skipped } : {}),
+        ...(summary.date ? { date: summary.date } : {}),
+      };
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      daily_summary = { due: false, sent: false, error: "summary_failed" };
+    }
+  }
   const { processBroadcasts } = await import("@/lib/broadcasts/worker");
   const broadcasts = db.canSpend(8) ? await processBroadcasts(db, 8, Math.min(20000, Math.max(0, 40000 - (Date.now() - started)))) : null;
-  return { broadcasts, promo_due: promo.due, promo_full_sent: promo.fullSent, promo_short_sent: promo.shortSent, promo_skipped: promo.skipped ?? null };
+  return { broadcasts, promo_due: promo.due, promo_full_sent: promo.fullSent, promo_short_sent: promo.shortSent, promo_skipped: promo.skipped ?? null, daily_summary };
 }
 
 // notify (2026-10-05 malam, dipecah 2026-10-09): retry kabar order Telegram,

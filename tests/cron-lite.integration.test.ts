@@ -356,6 +356,11 @@ describe("/api/cron/lite", () => {
         `INSERT INTO telegram_promo_digests (business_date, slot, product_ids, full_message_id, short_message_id)
          VALUES ('2026-10-05','morning','[]','330','331')`,
       ).run();
+      // 09:10 WIB berada di jendela catch-up ringkasan harian (07:00-11:59 WIB);
+      // tandai sudah terkirim pagi agar test ini mengisolasi perilaku skip promo.
+      fx.sql.prepare(
+        `INSERT INTO store_settings (key, value) VALUES ('admin_daily_summary_state', ?)`,
+      ).run(JSON.stringify({ sent_date: "2026-10-05", sent_at: "2026-10-05T00:00:00.000Z" }));
       const fetchSpy = vi.spyOn(globalThis, "fetch");
       const { body } = await call("promo");
       expect(body).toMatchObject({ ok: true, job: "promo", promo_due: true, promo_skipped: "already_sent" });
