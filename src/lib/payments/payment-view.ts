@@ -52,9 +52,15 @@ export async function reconcileDueSekalipayGatewayPayments(db: DatabaseAccess) {
   if (!process.env.SEKALIPAY_GATEWAY_API_KEY?.trim() || !process.env.SEKALIPAY_GATEWAY_SECRET_KEY?.trim()) return result;
   const { reconcileSekalipayGatewayPayment } = await import("./sekalipay-gateway");
   for (const late of [false, true]) {
+    const lateScope = late
+      ? `(o.status!='pending' OR julianday(o.expires_at)<=julianday('now'))
+         AND o.status NOT IN ('dibatalkan','failed')
+         AND ((pt.expires_at IS NULL AND o.expires_at IS NULL)
+              OR MIN(COALESCE(julianday(pt.expires_at), 1e18), COALESCE(julianday(o.expires_at), 1e18)) > julianday('now', '-30 minutes'))`
+      : "o.status='pending' AND julianday(o.expires_at)>julianday('now')";
     const rows = await db.queryAll(`SELECT pt.order_code FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
       WHERE pt.provider='sekalipay_gateway' AND pt.status IN ('initializing','pending') AND ${gatewayPollEligible.replaceAll("last_error", "pt.last_error")}
-      AND ${late ? "(o.status!='pending' OR julianday(o.expires_at)<=julianday('now'))" : "o.status='pending' AND julianday(o.expires_at)>julianday('now')"}
+      AND ${lateScope}
       AND (pt.last_checked_at IS NULL OR julianday(pt.last_checked_at)<=julianday('now',?)) ORDER BY COALESCE(pt.last_checked_at,pt.created_at),pt.id LIMIT 4`, late ? "-21600 seconds" : "-60 seconds");
     for (const row of rows) {
       if (!await claimSekalipayGatewayPoll(String(row.order_code), late, db)) continue;

@@ -2,16 +2,19 @@
 // lite `cleanup` (lihat src/app/api/cron/lite/route.ts) hanya bila jatuh tempo.
 //   - Hanya butuh NOWPAYMENTS_API_KEY (jalur baca); TIDAK bergantung pada
 //     NOWPAYMENTS_ENABLED karena tampilan USD butuh kurs walau crypto create off.
-//   - Kurs: dua GET /estimate ke aset referensi tetap `usdtbsc` (1.000.000 IDR
+//   - Kurs: dua GET /estimate berurutan ke aset referensi tetap `usdtbsc` (1.000.000 IDR
 //     dan 100 USD) -> IDR/USD dengan bigint (computeIdrPerUsd), 2 desimal.
-//     Ditolak bila di luar 5000-50000, atau bila ada kurs tersimpan <=24h yang
-//     berubah >10% (nilai lama dipertahankan + last_error). Kurs lama >24h
-//     sudah tidak dipakai pembaca, jadi tidak lagi dijadikan jangkar.
+//     Dijalankan lebih dulu (tidak paralel dengan koin); pada HTTP 429 dilakukan
+//     satu retry dengan backoff (hormati Retry-After bila <=5 dtk, else 2 dtk)
+//     selama masih dalam deadline klien. Ditolak bila di luar 5000-50000, atau
+//     bila ada kurs tersimpan <=24h yang berubah >10% (nilai lama dipertahankan + last_error).
+//     Kurs lama >24h sudah tidak dipakai pembaca, jadi tidak lagi dijadikan jangkar.
 //   - Koin: /merchant/coins ∩ kurasi (crypto-assets.ts) -> /min-amount bentuk
-//     floating (tanpa is_fixed_rate / is_fee_paid_by_user), concurrency <=6,
-//     timeout 8 dtk. Koin yang min-nya gagal DIHILANGKAN (tidak ditebak). Bila
-//     merchant/coins gagal, atau SEMUA min gagal, atau deadline total terlewat,
-//     daftar sebelumnya dipertahankan + last_error.
+//     floating (tanpa is_fixed_rate / is_fee_paid_by_user), concurrency <=2,
+//     timeout 8 dtk, berhenti dini pada HTTP 429. Koin yang min-nya gagal DIHILANGKAN
+//     (tidak ditebak). Bila merchant/coins gagal, rate-limited (429), atau SEMUA min
+//     gagal, atau deadline total terlewat, daftar sebelumnya dipertahankan + last_error.
+//     Kegagalan koin tidak menggagalkan pembaruan FX yang sudah sukses.
 //   - Lease CAS (lease_until) agar isolate cron paralel tidak refresh ganda;
 //     penulisan akhir juga CAS pada lease milik sendiri. 3-4 statement D1.
 
@@ -35,7 +38,9 @@ const REQUEST_TIMEOUT_MS = 8_000;
 const TOTAL_DEADLINE_MS = 30_000;
 const LEASE_MS = 90_000;
 const MIN_RETRY_MS = 2 * 60_000;
-const CONCURRENCY = 6;
+const CONCURRENCY = 2;
+const FX_RETRY_BACKOFF_MS = 2_000;
+const FX_MAX_RETRY_AFTER_MS = 5_000;
 const BODY_LIMIT = 64_000;
 
 export type MarketRefreshResult = {
@@ -49,6 +54,7 @@ export type MarketRefreshOptions = {
   now?: number;
   force?: boolean;
   fetchImpl?: typeof fetch;
+  sleepImpl?: (ms: number) => Promise<void>;
   timeoutMs?: number;
   totalDeadlineMs?: number;
   concurrency?: number;
@@ -103,23 +109,25 @@ export async function refreshCryptoMarketSnapshot(db: DatabaseAccess, opts: Mark
   try {
     const client = makeClient(opts);
     const outcome = nowpaymentsOutcomeCurrency() ?? FX_REFERENCE_TICKER;
-    const [fxResult, listResult] = await Promise.all([
-      refreshFx(client, row, now).then((v) => ({ v }), (e: unknown) => ({ e })),
-      client.get("/merchant/coins").then((v) => ({ v }), (e: unknown) => ({ e })),
-    ]);
+    // Jalankan FX lebih dulu (tidak paralel dengan panggilan koin) agar tidak memicu burst 429.
+    const fxResult = await refreshFx(client, row, now).then((v) => ({ v }), (e: unknown) => ({ e }));
     if ("e" in fxResult) errors.push(`fx_${errName(fxResult.e)}`);
     else { fxText = fxResult.v; fxSource = CRYPTO_FX_SOURCE; fxAt = nowIso; fxUpdated = true; }
 
-    if ("e" in listResult) errors.push("coins_merchant_failed");
-    else {
+    const listResult = await client.get("/merchant/coins").then((v) => ({ v }), (e: unknown) => ({ e }));
+    if ("e" in listResult) {
+      errors.push(listResult.e instanceof HttpError && listResult.e.status === 429 ? "coins_merchant_http_429" : "coins_merchant_failed");
+    } else {
       const active = Array.isArray(listResult.v.selectedCurrencies)
         ? new Set((listResult.v.selectedCurrencies as unknown[]).map((t) => String(t).toLowerCase()))
         : null;
       if (!active) errors.push("coins_merchant_invalid");
       else {
         const candidates = listCryptoAssets().filter((asset) => active.has(asset.ticker)).map((asset) => asset.ticker);
-        const fetched = await fetchMinimums(client, candidates, outcome, opts.concurrency ?? CONCURRENCY);
-        if (fetched.deadline) errors.push("coins_deadline");
+        const concurrency = Math.max(1, Math.min(opts.concurrency ?? CONCURRENCY, CONCURRENCY));
+        const fetched = await fetchMinimums(client, candidates, outcome, concurrency);
+        if (fetched.rateLimited) errors.push("coins_http_429");
+        else if (fetched.deadline) errors.push("coins_deadline");
         else if (candidates.length > 0 && fetched.coins.length === 0) errors.push("coins_min_failed");
         else {
           coinsJson = JSON.stringify(fetched.coins);
@@ -149,15 +157,45 @@ function errName(error: unknown): string {
   return /^[a-z0-9_]{1,40}$/.test(message) ? message : "failed";
 }
 
-type Client = { get: (path: string) => Promise<Json>; expired: () => boolean };
+class HttpError extends Error {
+  status: number;
+  retryAfterMs: number | null;
+  constructor(status: number, retryAfterMs: number | null) {
+    super(`http_${status}`);
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+function parseRetryAfterMs(headerValue: string | null, now = Date.now()): number | null {
+  if (!headerValue) return null;
+  const trimmed = headerValue.trim();
+  if (!trimmed) return null;
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    const sec = Number(trimmed);
+    return Number.isFinite(sec) && sec >= 0 ? Math.round(sec * 1000) : null;
+  }
+  const ts = Date.parse(trimmed);
+  return Number.isFinite(ts) ? Math.max(0, ts - now) : null;
+}
+
+type Client = {
+  get: (path: string) => Promise<Json>;
+  expired: () => boolean;
+  remainingMs: () => number;
+  sleep: (ms: number) => Promise<void>;
+};
 
 function makeClient(opts: MarketRefreshOptions): Client {
   const timeout = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const started = Date.now();
   const total = opts.totalDeadlineMs ?? TOTAL_DEADLINE_MS;
   const base = nowpaymentsBaseUrl();
+  const sleep = opts.sleepImpl ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   return {
     expired: () => Date.now() - started > total,
+    remainingMs: () => total - (Date.now() - started),
+    sleep,
     get: async (path) => {
       const doFetch = opts.fetchImpl ?? fetch;
       let response: Response;
@@ -171,7 +209,7 @@ function makeClient(opts: MarketRefreshOptions): Client {
         throw new Error("network");
       }
       if (response.status >= 300 && response.status < 400) throw new Error("redirect");
-      if (!response.ok) throw new Error(`http_${response.status}`);
+      if (!response.ok) throw new HttpError(response.status, parseRetryAfterMs(response.headers?.get("retry-after") ?? null));
       try {
         const json = parseNowpaymentsWire(await readBoundedText(response as unknown as Request, BODY_LIMIT));
         if (!json || typeof json !== "object" || Array.isArray(json)) throw new Error("invalid_response");
@@ -184,7 +222,20 @@ function makeClient(opts: MarketRefreshOptions): Client {
 }
 
 async function estimate(client: Client, amount: string, from: "idr" | "usd"): Promise<string> {
-  const json = await client.get(`/estimate?amount=${amount}&currency_from=${from}&currency_to=${FX_REFERENCE_TICKER}`);
+  const path = `/estimate?amount=${amount}&currency_from=${from}&currency_to=${FX_REFERENCE_TICKER}`;
+  let json: Json;
+  try {
+    json = await client.get(path);
+  } catch (error) {
+    if (!(error instanceof HttpError) || error.status !== 429) throw error;
+    const waitMs = error.retryAfterMs !== null && error.retryAfterMs <= FX_MAX_RETRY_AFTER_MS
+      ? error.retryAfterMs
+      : FX_RETRY_BACKOFF_MS;
+    if (client.remainingMs() <= waitMs) throw error;
+    if (waitMs > 0) await client.sleep(waitMs);
+    if (client.expired()) throw error;
+    json = await client.get(path);
+  }
   if (String(json.currency_from ?? "").toLowerCase() !== from || String(json.currency_to ?? "").toLowerCase() !== FX_REFERENCE_TICKER) {
     throw new Error("estimate_mismatch");
   }
@@ -195,10 +246,8 @@ async function estimate(client: Client, amount: string, from: "idr" | "usd"): Pr
 
 /** Hitung kurs baru (teks 2 desimal) atau lempar kode error pendek. */
 async function refreshFx(client: Client, row: CryptoMarketRow | null, now: number): Promise<string> {
-  const [estIdr, estUsd] = await Promise.all([
-    estimate(client, FX_REFERENCE_IDR_AMOUNT, "idr"),
-    estimate(client, FX_REFERENCE_USD_AMOUNT, "usd"),
-  ]);
+  const estIdr = await estimate(client, FX_REFERENCE_IDR_AMOUNT, "idr");
+  const estUsd = await estimate(client, FX_REFERENCE_USD_AMOUNT, "usd");
   const rate = computeIdrPerUsd(estIdr, estUsd);
   if (!rate) throw new Error("out_of_range");
   const next = parseRateRational(rate);
@@ -213,23 +262,32 @@ async function refreshFx(client: Client, row: CryptoMarketRow | null, now: numbe
 async function fetchMinimums(client: Client, tickers: string[], outcome: string, concurrency = CONCURRENCY) {
   const coins: { ticker: string; min_usd_text: string }[] = [];
   let deadline = false;
+  let rateLimited = false;
   let next = 0;
   const results = new Map<string, string>();
   const worker = async () => {
-    while (next < tickers.length) {
+    while (!rateLimited && next < tickers.length) {
       const ticker = tickers[next++];
       if (client.expired()) { deadline = true; return; }
       try {
         const json = await client.get(`/min-amount?currency_from=${encodeURIComponent(ticker)}&currency_to=${encodeURIComponent(outcome)}&fiat_equivalent=usd`);
         const min = positive(json.fiat_equivalent);
         if (String(json.currency_from ?? "").toLowerCase() === ticker && min) results.set(ticker, min);
-      } catch { /* min gagal: koin dihilangkan, tidak ditebak */ }
+      } catch (error) {
+        if (error instanceof HttpError && error.status === 429) {
+          rateLimited = true;
+          return;
+        }
+        /* min gagal: koin dihilangkan, tidak ditebak */
+      }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, tickers.length) }, worker));
+  if (tickers.length > 0) {
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, tickers.length)) }, worker));
+  }
   for (const ticker of tickers) {
     const min = results.get(ticker);
     if (min && getCryptoAsset(ticker)) coins.push({ ticker, min_usd_text: min });
   }
-  return { coins, deadline };
+  return { coins, deadline, rateLimited };
 }

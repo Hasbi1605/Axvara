@@ -1,5 +1,10 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Pacing FX NOWPayments 429 & rekonsiliasi/expiry Sekalipay gateway basi — 18 November 2026 (lokal, G2)
+
+- `refreshCryptoMarketSnapshot` (`src/lib/payments/market-snapshot-refresh.ts`) wajib menjalankan dua `GET /estimate` berurutan lebih dulu (tidak paralel dengan `/merchant/coins`/`/min-amount`), melakukan maks satu retry pada `429` `estimate` (hormati `Retry-After <= 5s`, else `2s`, hanya bila masih dalam deadline klien), dan membatasi `fetchMinimums` pada konkurensi `<= 2` dengan berhenti dini pada `429` (`coins_http_429`) tanpa menggagalkan pembaruan `fx_effective_at` yang sudah sukses.
+- `reconcileStaleSekalipayGatewayPayments` (`src/lib/payments/sekalipay-gateway.ts`, dipanggil `cron/lite?job=payments`) menutup `sekalipay_gateway` non-final dengan order final atau lewat `expires_at + 30 mnt` (maks 5/tick, cooldown 30 menit, `db.canSpend`): `initializing` tanpa `provider_payment_id`/`provider_order_id` -> `expired` tanpa panggilan provider; baris ber-ref -> `GET payment/<ref>` read-only (`404`/unpaid/expired/canceled/failed -> `expired`/`failed` sesuai status order; `paid` -> `sekalipay_gateway_late_manual_review` + alert admin Telegram sekali via `last_admin_alert_at` tanpa mengubah order; error/ambigu -> biarkan). `cron/lite` `runExpiry` menutup `initializing` tanpa `provider_payment_id` lewat `transitionPendingPaymentOrder`/`orphanSwept`, sementara baris ber-ref tetap diserahkan ke rekonsiliasi provider.
+
 ## Trigger `payment_invoice_history_*` aman di bawah UPSERT — 18 November 2026 (lokal, F4)
 
 - Migrasi `0133_payment_invoice_history_upsert.sql` (selaras `drizzle/schema.sql`) mendefinisikan ulang trigger `payment_invoice_history_insert` dan `payment_invoice_history_update` dari `INSERT OR IGNORE` ke `INSERT ... ON CONFLICT(provider, order_code, payable_amount) DO NOTHING` agar tidak terkena override `ABORT` SQLite bila `payment_transactions` ditulis dengan `ON CONFLICT ... DO UPDATE` untuk `dana`/`gopay`. Trigger baru pada ledger pembayaran dilarang memakai `INSERT OR IGNORE`/`OR REPLACE`.

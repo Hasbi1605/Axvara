@@ -119,6 +119,16 @@ export async function POST(request: NextRequest) {
           failedCore.push("sekalipay_gateway");
         }
       }
+      if (db.canSpend(4)) {
+        try {
+          const { reconcileStaleSekalipayGatewayPayments } = await import("@/lib/payments/sekalipay-gateway");
+          Object.assign(result, await reconcileStaleSekalipayGatewayPayments(db));
+        } catch (error) {
+          if (error instanceof QueryBudgetExceeded) throw error;
+          result.gateway_stale_error = "pass_failed";
+          failedCore.push("sekalipay_gateway_stale");
+        }
+      }
       if (Number(result.payments_failed) > 0 || failedCore.length > 0) {
         return NextResponse.json(
           { ...result, ok: false, ...(failedCore.length ? { failed_subjobs: failedCore } : {}) },
@@ -250,12 +260,13 @@ async function runExpiry(db: Db) {
   // deadline menjadi 'expired' TANPA menyentuh stok: stok sudah dilepas
   // saat order dibatalkan, melepasnya lagi = stok dobel.
   const orphanSwept = await db.execRun(
-    `UPDATE payment_transactions SET status='expired', last_error='orphan_terminal_order', updated_at=datetime('now')
+    `UPDATE payment_transactions SET status='expired', last_error=COALESCE(last_error,'orphan_terminal_order'), updated_at=datetime('now')
      WHERE order_code IN (
        SELECT pt.order_code FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
-       WHERE pt.status='pending' AND pt.provider IN ('dana','gopay','klikqris')
+       WHERE ((pt.status='pending' AND pt.provider IN ('dana','gopay','klikqris')
+                 AND julianday(COALESCE(o.expires_at, pt.expires_at)) <= julianday('now'))
+              OR (pt.status='initializing' AND pt.provider='sekalipay_gateway' AND pt.provider_payment_id IS NULL AND pt.gateway_checkout_url IS NULL AND pt.gateway_virtual_account IS NULL AND pt.qris_payload IS NULL AND pt.qris_url IS NULL AND pt.direct_url IS NULL AND pt.provider_qris_url IS NULL))
          AND o.status!='pending'
-         AND julianday(COALESCE(o.expires_at, pt.expires_at)) <= julianday('now')
        ORDER BY julianday(COALESCE(o.expires_at, pt.expires_at)) ASC LIMIT ?
      )`,
     ORPHAN_LEDGER_PER_RUN,
@@ -304,10 +315,35 @@ async function runExpiry(db: Db) {
     }, db.d1).catch(() => false);
     if (changed) expired++;
   }
-  const gatewayExpired = await db.queryAll(`SELECT pt.order_code,o.items FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
-    WHERE pt.provider='sekalipay_gateway' AND pt.status IN ('initializing','pending') AND o.status='pending' AND julianday(o.expires_at)<=julianday('now') LIMIT ?`, EXPIRY_PER_RUN);
+  const gatewayExpired = await db.queryAll(
+    `SELECT pt.order_code, pt.status AS tx_status, pt.provider_payment_id, pt.last_error, o.expires_at AS order_expires_at, o.items,
+            (pt.gateway_checkout_url IS NULL AND pt.gateway_virtual_account IS NULL AND pt.qris_payload IS NULL AND pt.qris_url IS NULL AND pt.direct_url IS NULL AND pt.provider_qris_url IS NULL) AS no_instructions
+     FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
+     WHERE pt.provider='sekalipay_gateway'
+       AND pt.status IN ('initializing','pending','expired','failed')
+       AND o.status='pending' AND julianday(o.expires_at)<=julianday('now')
+     LIMIT ?`,
+    EXPIRY_PER_RUN,
+  );
   for (const tx of gatewayExpired) {
-    try { await transitionPendingOrder(String(tx.order_code), "kadaluarsa", "gateway_expired", parseItems(tx.items), db.d1); expired++; } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; }
+    try {
+      if (!isExpiredIso(tx.order_expires_at)) continue;
+      if (tx.tx_status === "initializing" && !tx.provider_payment_id && Number(tx.no_instructions) === 1) {
+        const changed = await transitionPendingPaymentOrder({
+          orderCode: String(tx.order_code),
+          expectedTransactionStatus: "initializing",
+          transactionStatus: "expired",
+          orderStatus: "kadaluarsa",
+          paymentStatus: "expired",
+          items: parseItems(tx.items),
+          lastError: tx.last_error ? String(tx.last_error) : "gateway_expired",
+        }, db.d1);
+        if (changed) expired++;
+      } else {
+        await transitionPendingOrder(String(tx.order_code), "kadaluarsa", "gateway_expired", parseItems(tx.items), db.d1);
+        expired++;
+      }
+    } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; }
   }
   // AXVARA Games (docs/GAMES.md §12): order belum bayar lewat deadline →
   // order kadaluarsa + item expired, tanpa restock Market.

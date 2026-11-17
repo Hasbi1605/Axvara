@@ -281,6 +281,142 @@ describe("refreshCryptoMarketSnapshot", () => {
     expect(row()!.fx_rate_text).toBeNull();
   });
 
+  it("caps concurrency at 2 for min-amount calls and runs FX estimates sequentially before coin calls", async () => {
+    const tickers = CRYPTO_ASSETS.map((a) => a.ticker);
+    const events: string[] = [];
+    let inflight = 0;
+    let maxInflight = 0;
+    let coinSeen = false;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      inflight++;
+      maxInflight = Math.max(maxInflight, inflight);
+      try {
+        await new Promise((r) => setTimeout(r, 3));
+        if (url.includes("/estimate?")) {
+          expect(coinSeen).toBe(false);
+          expect(inflight).toBe(1);
+          events.push("estimate");
+          const from = new URL(url).searchParams.get("currency_from");
+          return Response.json(from === "idr"
+            ? { currency_from: "idr", currency_to: "usdtbsc", estimated_amount: "55.4124257" }
+            : { currency_from: "usd", currency_to: "usdtbsc", estimated_amount: "100.2283127" });
+        }
+        coinSeen = true;
+        if (url.endsWith("/merchant/coins")) {
+          events.push("merchant");
+          return Response.json({ selectedCurrencies: tickers.map((t) => t.toUpperCase()) });
+        }
+        if (url.includes("/min-amount?")) {
+          events.push("min");
+          const t = new URL(url).searchParams.get("currency_from")!;
+          return Response.json({ currency_from: t, currency_to: "usdtbsc", min_amount: 0.01, fiat_equivalent: 0.5 });
+        }
+        throw new Error(`unexpected ${url}`);
+      } finally { inflight--; }
+    }));
+    expect(await refreshCryptoMarketSnapshot(access(), { concurrency: 6 })).toMatchObject({ status: "refreshed", fx: "updated", coins: 28 });
+    expect(maxInflight).toBeLessThanOrEqual(2);
+    expect(maxInflight).toBeGreaterThan(1);
+    expect(events.slice(0, 3)).toEqual(["estimate", "estimate", "merchant"]);
+  });
+
+  it("retries FX estimate once on 429 honoring Retry-After<=5s or 2s fallback within client deadline", async () => {
+    const oldAt = iso(-40 * MIN);
+    seed({ fx_rate_text: "18000.00", fx_source: "nowpayments-estimate", fx_effective_at: oldAt, coins_json: "[]", coins_refreshed_at: oldAt });
+    const sleeps: number[] = [];
+    let idrCalls = 0;
+    let usdCalls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/estimate?")) {
+        const from = new URL(url).searchParams.get("currency_from");
+        if (from === "idr") {
+          idrCalls++;
+          if (idrCalls === 1) return new Response("rate limit", { status: 429, headers: { "Retry-After": "3" } });
+          return Response.json({ currency_from: "idr", currency_to: "usdtbsc", estimated_amount: "55.4124257" });
+        }
+        usdCalls++;
+        if (usdCalls === 1) return new Response("rate limit", { status: 429, headers: { "Retry-After": "12" } });
+        return Response.json({ currency_from: "usd", currency_to: "usdtbsc", estimated_amount: "100.2283127" });
+      }
+      if (url.endsWith("/merchant/coins")) return Response.json({ selectedCurrencies: ["BTC"] });
+      return Response.json({ currency_from: "btc", currency_to: "usdtbsc", min_amount: 0.0001, fiat_equivalent: 1.95 });
+    }));
+    const res = await refreshCryptoMarketSnapshot(access(), {
+      force: true,
+      sleepImpl: async (ms) => { sleeps.push(ms); },
+    });
+    expect(res).toMatchObject({ status: "refreshed", fx: "updated", coins: 1 });
+    expect(sleeps).toEqual([3000, 2000]);
+    expect(row()!.fx_rate_text).toBe("18087.70");
+    expect(Date.parse(String(row()!.fx_effective_at))).toBeGreaterThan(Date.parse(oldAt));
+    expect(row()!.last_error).toBeNull();
+
+    // Persistent 429 retries only once; tight deadline skips sleep/retry.
+    let persistentCalls = 0;
+    const sleeps2: number[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/estimate?")) { persistentCalls++; return new Response("429", { status: 429 }); }
+      if (url.endsWith("/merchant/coins")) return Response.json({ selectedCurrencies: ["BTC"] });
+      return Response.json({ currency_from: "btc", currency_to: "usdtbsc", min_amount: 0.0001, fiat_equivalent: 1.95 });
+    }));
+    const failRes = await refreshCryptoMarketSnapshot(access(), {
+      force: true,
+      sleepImpl: async (ms) => { sleeps2.push(ms); },
+    });
+    expect(failRes).toMatchObject({ status: "refreshed", fx: "kept" });
+    expect(persistentCalls).toBe(2);
+    expect(sleeps2).toEqual([2000]);
+    expect(String(row()!.last_error)).toContain("fx_http_429");
+
+    persistentCalls = 0;
+    const sleeps3: number[] = [];
+    const deadlineRes = await refreshCryptoMarketSnapshot(access(), {
+      force: true,
+      totalDeadlineMs: 500,
+      sleepImpl: async (ms) => { sleeps3.push(ms); },
+    });
+    expect(deadlineRes).toMatchObject({ status: "refreshed", fx: "kept" });
+    expect(persistentCalls).toBe(1);
+    expect(sleeps3).toEqual([]);
+  });
+
+  it("429 on coins stops min-amount early, preserves previous coins, and still advances FX", async () => {
+    const oldCoins = JSON.stringify([{ ticker: "btc", min_usd_text: "2.5" }]);
+    const oldAt = iso(-40 * MIN);
+    seed({ fx_rate_text: "18000.00", fx_source: "nowpayments-estimate", fx_effective_at: oldAt, coins_json: oldCoins, coins_refreshed_at: oldAt });
+    const minCalls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/estimate?")) {
+        const from = new URL(url).searchParams.get("currency_from");
+        return Response.json(from === "idr"
+          ? { currency_from: "idr", currency_to: "usdtbsc", estimated_amount: "55.4124257" }
+          : { currency_from: "usd", currency_to: "usdtbsc", estimated_amount: "100.2283127" });
+      }
+      if (url.endsWith("/merchant/coins")) {
+        return Response.json({ selectedCurrencies: CRYPTO_ASSETS.map((a) => a.ticker.toUpperCase()) });
+      }
+      if (url.includes("/min-amount?")) {
+        const t = new URL(url).searchParams.get("currency_from")!;
+        minCalls.push(t);
+        if (minCalls.length >= 2) return new Response("rate limit", { status: 429 });
+        return Response.json({ currency_from: t, currency_to: "usdtbsc", min_amount: 0.01, fiat_equivalent: 0.5 });
+      }
+      throw new Error(`unexpected ${url}`);
+    }));
+    const res = await refreshCryptoMarketSnapshot(access(), { force: true });
+    expect(res).toMatchObject({ status: "refreshed", fx: "updated", coins: "kept" });
+    expect(minCalls.length).toBeLessThan(CRYPTO_ASSETS.length);
+    expect(row()!.coins_json).toBe(oldCoins);
+    expect(row()!.coins_refreshed_at).toBe(oldAt);
+    expect(row()!.fx_rate_text).toBe("18087.70");
+    expect(Date.parse(String(row()!.fx_effective_at))).toBeGreaterThan(Date.parse(oldAt));
+    expect(String(row()!.last_error)).toContain("coins_http_429");
+  });
+
   it("caps concurrency at 6 for min-amount calls", async () => {
     const tickers = CRYPTO_ASSETS.map((a) => a.ticker);
     const mock = mockProvider({ merchant: tickers });

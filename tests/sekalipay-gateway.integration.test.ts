@@ -890,3 +890,307 @@ describe("create rejection classification + invoice absence probe", () => {
     } finally { adopted.fixture.close(); }
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Rekonsiliasi & expiry Sekalipay gateway basi (G2): initializing tanpa ref, pending unpaid/paid/error, throttle 30 mnt,
+// batas per tick, dan penutupan atomik di cron expiry bila aman.
+// ---------------------------------------------------------------------------------------------------------------------
+describe("stale sekalipay_gateway reconciliation and root-cause expiry", () => {
+  const seedGatewayOrder = async (
+    fixture: ReturnType<typeof createD1Fixture>,
+    orderCode: string,
+    opts: {
+      orderStatus?: string;
+      paymentStatus?: string;
+      txStatus?: "initializing" | "pending";
+      providerOrderId?: string;
+      providerPaymentId?: string | null;
+      expiresAtOffsetSql?: string;
+      lastCheckedOffsetSql?: string | null;
+      lastError?: string | null;
+      qty?: number;
+    } = {},
+  ) => {
+    insertTestOrder(fixture.sql, orderCode, { channel: "web", qty: opts.qty ?? 1 });
+    fixture.sql.prepare(
+      `UPDATE orders SET payment_method='sekalipay_gateway:TESTVA', status=?, payment_status=?,
+       expires_at=datetime('now', ?) WHERE code=?`,
+    ).run(
+      opts.orderStatus ?? "kadaluarsa",
+      opts.paymentStatus ?? "expired",
+      opts.expiresAtOffsetSql ?? "-60 minutes",
+      orderCode,
+    );
+    fixture.sql.prepare(
+      `INSERT INTO payment_transactions
+       (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,
+        provider_payment_id,status,gateway_channel,gateway_estimated_fee,gateway_fee,gateway_is_sandbox,
+        expires_at,last_checked_at,last_error)
+       VALUES (?,'sekalipay_gateway','merchant',?,'fixture',10000,?,?,?,'TESTVA',500,500,0,
+        datetime('now', ?), ${opts.lastCheckedOffsetSql ? "datetime('now', ?)" : "NULL"}, ?)`,
+    ).run(
+      orderCode,
+      opts.providerOrderId ?? orderCode,
+      opts.txStatus === "initializing" ? null : 10500,
+      opts.providerPaymentId === undefined ? (opts.txStatus === "initializing" ? null : `SPY${orderCode}`) : opts.providerPaymentId,
+      opts.txStatus ?? "pending",
+      opts.expiresAtOffsetSql ?? "-60 minutes",
+      ...(opts.lastCheckedOffsetSql ? [opts.lastCheckedOffsetSql] : []),
+      opts.lastError ?? null,
+    );
+  };
+
+  it("initializing without provider_payment_id or ref closes to expired without calling provider", async () => {
+    const fixture = createD1Fixture();
+    stubFulfillmentKey();
+    try {
+      await insertTestProduct(fixture.sql);
+      await seedGatewayOrder(fixture, "AXV-20261107-49A6C50F", {
+        orderStatus: "kadaluarsa",
+        paymentStatus: "expired",
+        txStatus: "initializing",
+        providerPaymentId: null,
+      });
+      await seedGatewayOrder(fixture, "AXV-20261107-EMPTYREF", {
+        orderStatus: "pending",
+        paymentStatus: "pending",
+        txStatus: "initializing",
+        providerOrderId: "",
+        providerPaymentId: null,
+        expiresAtOffsetSql: "-45 minutes",
+      });
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const { createBudgetedDatabase } = await import("@/lib/db-access");
+      const { reconcileStaleSekalipayGatewayPayments } = await import("@/lib/payments/sekalipay-gateway");
+      const res = await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access);
+      expect(res).toEqual({ gateway_stale_checked: 0, gateway_stale_closed: 2, gateway_stale_manual_review: 0 });
+      expect(fetchMock).not.toHaveBeenCalled();
+      for (const id of ["AXV-20261107-49A6C50F", "AXV-20261107-EMPTYREF"]) {
+        expect(fixture.sql.prepare("SELECT status,last_checked_at FROM payment_transactions WHERE order_code=?").get(id))
+          .toMatchObject({ status: "expired", last_checked_at: expect.any(String) });
+      }
+    } finally { fixture.close(); }
+  });
+
+  it("initializing without invoice id but with buyer payment instructions is NOT closed blindly", async () => {
+    const fixture = createD1Fixture();
+    stubFulfillmentKey();
+    try {
+      await insertTestProduct(fixture.sql);
+      await seedGatewayOrder(fixture, "AXV-20261107-HASURL01", {
+        orderStatus: "kadaluarsa",
+        paymentStatus: "expired",
+        txStatus: "initializing",
+        providerPaymentId: null,
+      });
+      fixture.sql.prepare("UPDATE payment_transactions SET gateway_checkout_url='https://pay.example/x' WHERE order_code=?").run("AXV-20261107-HASURL01");
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const { createBudgetedDatabase } = await import("@/lib/db-access");
+      const { reconcileStaleSekalipayGatewayPayments } = await import("@/lib/payments/sekalipay-gateway");
+      const res = await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access);
+      expect(res.gateway_stale_closed).toBe(0);
+      expect(fixture.sql.prepare("SELECT status FROM payment_transactions WHERE order_code=?").get("AXV-20261107-HASURL01"))
+        .toMatchObject({ status: "initializing" });
+    } finally { fixture.close(); }
+  });
+
+  it("pending with ref + provider unpaid/canceled/404 closes to expired or failed by order status", async () => {
+    const fixture = createD1Fixture();
+    stubFulfillmentKey();
+    try {
+      await insertTestProduct(fixture.sql);
+      await seedGatewayOrder(fixture, "AXV-20261107-24858555", { orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "pending" });
+      await seedGatewayOrder(fixture, "AXV-20261107-BF6D630D", { orderStatus: "dibatalkan", paymentStatus: "failed", txStatus: "pending" });
+      await seedGatewayOrder(fixture, "AXV-20261107-9634C6DE", { orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "pending" });
+      vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", "k");
+      vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "s");
+      const fetchMock = vi.fn(async (url: string | URL | Request) => {
+        const ref = String(url).split("/").at(-1)!;
+        if (ref === "AXV-20261107-9634C6DE") return Response.json({ status: false, message: "not found" }, { status: 404 });
+        return Response.json({
+          status: true,
+          data: {
+            merchant_ref_id: ref,
+            invoice: `SPY${ref}`,
+            amount: 10000,
+            fee: 500,
+            total: 10500,
+            payment_code: "TESTVA",
+            status: ref === "AXV-20261107-BF6D630D" ? "canceled" : "pending",
+          },
+        });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const { createBudgetedDatabase } = await import("@/lib/db-access");
+      const { reconcileStaleSekalipayGatewayPayments } = await import("@/lib/payments/sekalipay-gateway");
+      const res = await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access);
+      expect(res).toEqual({ gateway_stale_checked: 3, gateway_stale_closed: 3, gateway_stale_manual_review: 0 });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fixture.sql.prepare("SELECT status,last_checked_at FROM payment_transactions WHERE order_code=?").get("AXV-20261107-24858555"))
+        .toMatchObject({ status: "expired", last_checked_at: expect.any(String) });
+      expect(fixture.sql.prepare("SELECT status,provider_status_text,last_checked_at FROM payment_transactions WHERE order_code=?").get("AXV-20261107-BF6D630D"))
+        .toMatchObject({ status: "failed", provider_status_text: "canceled", last_checked_at: expect.any(String) });
+      expect(fixture.sql.prepare("SELECT status FROM payment_transactions WHERE order_code=?").get("AXV-20261107-9634C6DE"))
+        .toMatchObject({ status: "expired" });
+    } finally { fixture.close(); }
+  });
+
+  it("pending with ref + provider paid keeps order unchanged, flags manual review, and alerts Telegram admin once", async () => {
+    const fixture = createD1Fixture();
+    stubFulfillmentKey();
+    try {
+      await insertTestProduct(fixture.sql);
+      await seedGatewayOrder(fixture, "AXV-20261116-28FFDCC9", { orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "pending" });
+      vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", "k");
+      vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "s");
+      vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "99999");
+      vi.stubEnv("TELEGRAM_BOT_TOKEN", "bot-token");
+      const telegramMessages: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const target = String(url);
+        if (target.includes("api.telegram.org")) {
+          telegramMessages.push(JSON.parse(String(init?.body ?? "{}")).text);
+          return Response.json({ ok: true, result: { message_id: 1 } });
+        }
+        return Response.json({
+          status: true,
+          data: {
+            merchant_ref_id: "AXV-20261116-28FFDCC9",
+            invoice: "SPYAXV-20261116-28FFDCC9",
+            amount: 10000,
+            fee: 500,
+            total: 10500,
+            payment_code: "TESTVA",
+            status: "paid",
+            paid_at: new Date().toISOString(),
+          },
+        });
+      }));
+      const { createBudgetedDatabase } = await import("@/lib/db-access");
+      const { reconcileStaleSekalipayGatewayPayments } = await import("@/lib/payments/sekalipay-gateway");
+      const first = await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access);
+      expect(first).toEqual({ gateway_stale_checked: 1, gateway_stale_closed: 0, gateway_stale_manual_review: 1 });
+      expect(fixture.sql.prepare("SELECT status,payment_status FROM orders WHERE code=?").get("AXV-20261116-28FFDCC9"))
+        .toEqual({ status: "kadaluarsa", payment_status: "expired" });
+      expect(fixture.sql.prepare("SELECT status,last_error,provider_status_text,last_admin_alert_at FROM payment_transactions WHERE order_code=?").get("AXV-20261116-28FFDCC9"))
+        .toMatchObject({ status: "pending", last_error: "sekalipay_gateway_late_manual_review", provider_status_text: "paid", last_admin_alert_at: expect.any(String) });
+      expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
+      expect(telegramMessages).toHaveLength(1);
+      expect(telegramMessages[0]).toContain("AXV-20261116-28FFDCC9");
+
+      // Re-running after >30m neither re-checks nor re-alerts.
+      fixture.sql.prepare("UPDATE payment_transactions SET last_checked_at=datetime('now','-31 minutes') WHERE order_code=?").run("AXV-20261116-28FFDCC9");
+      const second = await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access);
+      expect(second).toEqual({ gateway_stale_checked: 0, gateway_stale_closed: 0, gateway_stale_manual_review: 0 });
+      expect(telegramMessages).toHaveLength(1);
+    } finally { fixture.close(); }
+  });
+
+  it("provider error leaves row unchanged and enforces 30-minute throttle and per-tick limit", async () => {
+    const fixture = createD1Fixture();
+    stubFulfillmentKey();
+    try {
+      await insertTestProduct(fixture.sql);
+      const codes = Array.from({ length: 7 }, (_, i) => `AXV-20261107-STALE00${i}`);
+      for (const id of codes) {
+        await seedGatewayOrder(fixture, id, { orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "pending" });
+      }
+      vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", "k");
+      vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "s");
+      let mode: "error" | "expired" = "error";
+      const calledRefs: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
+        const ref = String(url).split("/").at(-1)!;
+        calledRefs.push(ref);
+        if (mode === "error") return Response.json({ status: false }, { status: 500 });
+        return Response.json({ status: true, data: { merchant_ref_id: ref, invoice: `SPY${ref}`, status: "expired" } });
+      }));
+      const { createBudgetedDatabase } = await import("@/lib/db-access");
+      const { reconcileStaleSekalipayGatewayPayments } = await import("@/lib/payments/sekalipay-gateway");
+      // Tick 1: limited to 5 rows; 500 error keeps all 5 pending and stamps last_checked_at
+      const tick1 = await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access);
+      expect(tick1).toEqual({ gateway_stale_checked: 5, gateway_stale_closed: 0, gateway_stale_manual_review: 0 });
+      expect(calledRefs).toHaveLength(5);
+      expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='pending'").get()?.n).toBe(7);
+
+      // Immediate tick 2: only the remaining 2 unchecked rows are tried (the first 5 are throttled for 30m)
+      calledRefs.length = 0;
+      const tick2 = await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access);
+      expect(tick2).toEqual({ gateway_stale_checked: 2, gateway_stale_closed: 0, gateway_stale_manual_review: 0 });
+      expect(calledRefs).toHaveLength(2);
+
+      // Immediate tick 3: all 7 are within 30 minutes -> 0 calls
+      calledRefs.length = 0;
+      const tick3 = await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access);
+      expect(tick3).toEqual({ gateway_stale_checked: 0, gateway_stale_closed: 0, gateway_stale_manual_review: 0 });
+      expect(calledRefs).toHaveLength(0);
+
+      // After 31 minutes with provider recovered, 5 close on first tick and 2 on second tick
+      mode = "expired";
+      fixture.sql.prepare("UPDATE payment_transactions SET last_checked_at=datetime('now','-31 minutes')").run();
+      expect(await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access))
+        .toEqual({ gateway_stale_checked: 5, gateway_stale_closed: 5, gateway_stale_manual_review: 0 });
+      expect(await reconcileStaleSekalipayGatewayPayments(createBudgetedDatabase(40, 0, fixture.db).access))
+        .toEqual({ gateway_stale_checked: 2, gateway_stale_closed: 2, gateway_stale_manual_review: 0 });
+      expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='expired'").get()?.n).toBe(7);
+    } finally { fixture.close(); }
+  });
+
+  it("cron expiry atomically closes initializing without provider_payment_id and payments closes all 6 production-like rows", async () => {
+    const fixture = createD1Fixture();
+    stubFulfillmentKey();
+    try {
+      await insertTestProduct(fixture.sql, "manual", 1);
+      // 1) Live expired order with initializing + NULL provider_payment_id -> closed atomically by job=expiry with stock restock
+      await seedGatewayOrder(fixture, "AXV-20261118-EXP00001", {
+        orderStatus: "pending",
+        paymentStatus: "pending",
+        txStatus: "initializing",
+        providerPaymentId: null,
+        expiresAtOffsetSql: "-5 minutes",
+        qty: 2,
+      });
+      fixture.sql.prepare("UPDATE product_variants SET stock=98 WHERE id=1").run();
+
+      vi.stubEnv("CRON_SECRET", "fixture-cron");
+      vi.stubEnv("SEKALIPAY_GATEWAY_API_KEY", "k");
+      vi.stubEnv("SEKALIPAY_GATEWAY_SECRET_KEY", "s");
+      const { POST } = await import("@/app/api/cron/lite/route");
+      const cron = (job: string) => POST(new NextRequest(`http://localhost/api/cron/lite?job=${job}`, { method: "POST", headers: { authorization: "Bearer fixture-cron" } }));
+
+      expect((await cron("expiry")).status).toBe(200);
+      expect(fixture.sql.prepare("SELECT status,payment_status FROM orders WHERE code=?").get("AXV-20261118-EXP00001"))
+        .toEqual({ status: "kadaluarsa", payment_status: "expired" });
+      expect(fixture.sql.prepare("SELECT status FROM payment_transactions WHERE order_code=?").get("AXV-20261118-EXP00001"))
+        .toEqual({ status: "expired" });
+      expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()?.stock).toBe(100);
+
+      // 2) Simulate the 6 stuck production rows -> closed in 2 ticks of job=payments without manual mutation
+      const stuck = [
+        { code: "AXV-20261107-49A6C50F", orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "initializing" as const, providerPaymentId: null },
+        { code: "AXV-20261116-28FFDCC9", orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "pending" as const, providerPaymentId: "SPY28" },
+        { code: "AXV-20261107-BF6D630D", orderStatus: "dibatalkan", paymentStatus: "failed", txStatus: "pending" as const, providerPaymentId: "SPYBF" },
+        { code: "AXV-20261107-24858555", orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "pending" as const, providerPaymentId: "SPY24" },
+        { code: "AXV-20261107-9634C6DE", orderStatus: "kadaluarsa", paymentStatus: "expired", txStatus: "pending" as const, providerPaymentId: "SPY96" },
+        { code: "AXV-20261107-8D111A0D", orderStatus: "dibatalkan", paymentStatus: "failed", txStatus: "pending" as const, providerPaymentId: "SPY8D" },
+      ];
+      for (const s of stuck) {
+        await seedGatewayOrder(fixture, s.code, { ...s, expiresAtOffsetSql: "-120 minutes" });
+      }
+      vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
+        const ref = String(url).split("/").at(-1)!;
+        const found = stuck.find((s) => s.code === ref);
+        return Response.json({ status: true, data: { merchant_ref_id: ref, invoice: found?.providerPaymentId ?? `SPY${ref}`, status: "expired" } });
+      }));
+      const p1 = await cron("payments");
+      expect(p1.status).toBe(200);
+      expect(await p1.json()).toMatchObject({ ok: true, gateway_stale_closed: 5 });
+      const p2 = await cron("payments");
+      expect(p2.status).toBe(200);
+      expect(await p2.json()).toMatchObject({ ok: true, gateway_stale_closed: 1 });
+      expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE provider='sekalipay_gateway' AND status IN ('initializing','pending')").get()?.n).toBe(0);
+    } finally { fixture.close(); }
+  });
+});

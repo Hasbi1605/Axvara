@@ -3,7 +3,7 @@ import { isSekalipayGatewayConfigured } from "./rails";
 import { execRun, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import { SITE } from "@/lib/site";
 import { parseFxTimestamp } from "./fx";
-import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 
 type Scalar = string | number | boolean | null | undefined;
 
@@ -383,6 +383,36 @@ export async function confirmGatewayFee(orderCode: string, expectedFinalTotal: n
   return Number(result.changes) === 1;
 }
 
+async function alertGatewayManualReviewOnce(orderCode: string, reason: string, db: DatabaseAccess): Promise<void> {
+  const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID?.trim();
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  if (!chatId || !token) return;
+  const claimed = await db.execRun(
+    `UPDATE payment_transactions SET last_admin_alert_at=datetime('now'),updated_at=datetime('now')
+     WHERE order_code=? AND provider='sekalipay_gateway' AND last_admin_alert_at IS NULL`,
+    orderCode,
+  ).catch(() => ({ changes: 0 }));
+  if (Number(claimed.changes) !== 1) return;
+  try {
+    const { sendMessage } = await import("@/lib/telegram/api");
+    const res = await sendMessage({
+      chat_id: chatId,
+      text: `Pembayaran Sekalipay Gateway perlu diperiksa manual.\nPesanan: ${orderCode}\nAlasan: ${reason}. Produk tidak dikirim otomatis. Periksa Metode & Rekonsiliasi.`,
+    });
+    if (!res.ok) {
+      await db.execRun(
+        "UPDATE payment_transactions SET last_admin_alert_at=NULL WHERE order_code=? AND provider='sekalipay_gateway'",
+        orderCode,
+      ).catch(() => {});
+    }
+  } catch {
+    await db.execRun(
+      "UPDATE payment_transactions SET last_admin_alert_at=NULL WHERE order_code=? AND provider='sekalipay_gateway'",
+      orderCode,
+    ).catch(() => {});
+  }
+}
+
 export function reconcileSekalipayGatewayPayment(orderCode?: string, db: DatabaseAccess = createDatabaseAccess()): Promise<"paid" | "already_paid" | "pending" | "manual_review"> {
   if (!orderCode) throw new Error("sekalipay_gateway_not_configured");
   return (async () => {
@@ -404,6 +434,7 @@ export function reconcileSekalipayGatewayPayment(orderCode?: string, db: Databas
     const sandbox = typeof remoteSandbox === "boolean" ? remoteSandbox : storedSandbox;
     const review = async (reason: string) => {
       await db.execRun("UPDATE payment_transactions SET last_error=CASE WHEN last_error IS NULL OR last_error IN ('sekalipay_gateway_finalize_probe','sekalipay_gateway_finalize_manual_review') THEN ? ELSE last_error END,last_checked_at=datetime('now'),updated_at=datetime('now') WHERE order_code=? AND provider='sekalipay_gateway' AND status!='paid'", reason, orderCode);
+      if (reason === "sekalipay_gateway_late_manual_review") await alertGatewayManualReviewOnce(orderCode, reason, db);
       return "manual_review" as const;
     };
     if (!tx.provider_payment_id || tx.payable_amount == null || tx.gateway_fee == null || tx.gateway_is_sandbox == null) {
@@ -422,6 +453,7 @@ export function reconcileSekalipayGatewayPayment(orderCode?: string, db: Databas
         last_error=CASE WHEN last_error IS NULL OR last_error IN ('sekalipay_gateway_finalize_probe','sekalipay_gateway_finalize_manual_review') THEN 'sekalipay_gateway_initializing_paid_manual_review' ELSE last_error END,
         last_checked_at=datetime('now'),updated_at=datetime('now') WHERE order_code=? AND provider='sekalipay_gateway' AND status='initializing'
         AND (provider_payment_id IS NULL OR provider_payment_id=?)`, data.invoice, data.total, data.fee, sandbox ? 1 : 0, orderCode, data.invoice);
+      await alertGatewayManualReviewOnce(orderCode, "sekalipay_gateway_initializing_paid_manual_review", db);
       return "manual_review";
     }
     if (data.merchant_ref_id !== orderCode || data.invoice !== tx.provider_payment_id || data.payment_code !== tx.gateway_channel
@@ -460,4 +492,178 @@ export function reconcileSekalipayGatewayPayment(orderCode?: string, db: Databas
     }
     return "paid";
   })();
+}
+
+export const SEKALIPAY_GATEWAY_STALE_LIMIT = 5;
+
+/**
+ * Rekonsiliasi berbatas untuk transaksi `sekalipay_gateway` non-final yang order-nya sudah final
+ * atau lewat `expires_at` + grace 30 menit:
+ * - `initializing` tanpa `provider_payment_id` / `provider_order_id` -> tutup `expired` tanpa memanggil provider.
+ * - punya ref -> cek GET read-only (`payment/<ref>`): unpaid/expired/failed/404 -> `expired`/`failed`
+ *   sesuai status order; paid -> `sekalipay_gateway_late_manual_review` + alert admin Telegram sekali
+ *   tanpa mengubah order; error/ambigu -> biarkan, coba lagi minimal 30 menit kemudian.
+ */
+export async function reconcileStaleSekalipayGatewayPayments(
+  db: DatabaseAccess = createDatabaseAccess(),
+  options?: { limit?: number },
+): Promise<{ gateway_stale_checked: number; gateway_stale_closed: number; gateway_stale_manual_review: number }> {
+  const out = { gateway_stale_checked: 0, gateway_stale_closed: 0, gateway_stale_manual_review: 0 };
+  if (!db.canSpend(2)) return out;
+  const limit = Math.max(1, Math.min(options?.limit ?? SEKALIPAY_GATEWAY_STALE_LIMIT, 10));
+  const rows = await db.queryAll(
+    `SELECT pt.order_code, pt.status, pt.provider_order_id, pt.provider_payment_id,
+            pt.gateway_is_sandbox, pt.last_error, o.status AS order_status
+     FROM payment_transactions pt
+     JOIN orders o ON o.code = pt.order_code
+     WHERE pt.provider = 'sekalipay_gateway'
+       AND pt.status IN ('initializing', 'pending')
+       AND COALESCE(pt.last_error, '') NOT LIKE '%manual_review%'
+       AND COALESCE(pt.last_error, '') NOT LIKE '%needs_review%'
+       AND (
+         o.status IN ('kadaluarsa', 'dibatalkan', 'batal', 'expired', 'failed')
+         OR (
+           (pt.expires_at IS NOT NULL OR o.expires_at IS NOT NULL)
+           AND MIN(COALESCE(julianday(pt.expires_at), 1e18), COALESCE(julianday(o.expires_at), 1e18)) <= julianday('now', '-30 minutes')
+         )
+       )
+       AND (pt.last_checked_at IS NULL OR julianday(pt.last_checked_at) <= julianday('now', '-30 minutes'))
+     ORDER BY COALESCE(pt.last_checked_at, pt.created_at) ASC, pt.id ASC
+     LIMIT ?`,
+    limit,
+  );
+  const gatewayKeysReady = Boolean(
+    process.env.SEKALIPAY_GATEWAY_API_KEY?.trim() && process.env.SEKALIPAY_GATEWAY_SECRET_KEY?.trim(),
+  );
+  const flagReview = async (orderCode: string, reason: string, remoteStatus: string | null, invoiceId: string | null) => {
+    await db.execRun(
+      `UPDATE payment_transactions
+       SET provider_payment_id = COALESCE(provider_payment_id, ?),
+           provider_status_text = COALESCE(?, provider_status_text),
+           last_error = CASE
+             WHEN last_error IS NULL OR last_error IN ('sekalipay_gateway_finalize_probe','sekalipay_gateway_finalize_manual_review','sekalipay_gateway_create_rejected') THEN ?
+             ELSE last_error
+           END,
+           last_checked_at = datetime('now'),
+           updated_at = datetime('now')
+       WHERE order_code = ? AND provider = 'sekalipay_gateway' AND status != 'paid'`,
+      invoiceId,
+      remoteStatus,
+      reason,
+      orderCode,
+    );
+    await alertGatewayManualReviewOnce(orderCode, reason, db);
+    out.gateway_stale_manual_review++;
+  };
+  for (const row of rows) {
+    const orderCode = String(row.order_code);
+    const hasProviderInvoiceId = typeof row.provider_payment_id === "string" && row.provider_payment_id.trim().length > 0;
+    const providerOrderRef = typeof row.provider_order_id === "string" && row.provider_order_id.trim().length > 0
+      ? row.provider_order_id.trim()
+      : null;
+    if (row.status === "initializing" && (!hasProviderInvoiceId || !providerOrderRef)) {
+      if (!db.canSpend(1)) break;
+      const closed = await db.execRun(
+        `UPDATE payment_transactions
+         SET status = 'expired',
+             last_checked_at = datetime('now'),
+             updated_at = datetime('now')
+         WHERE order_code = ? AND provider = 'sekalipay_gateway'
+           AND status = 'initializing' AND provider_payment_id IS NULL
+           -- Buyer never received payment instructions: safe to close without the provider.
+          AND gateway_checkout_url IS NULL AND gateway_virtual_account IS NULL AND qris_payload IS NULL AND qris_url IS NULL AND direct_url IS NULL AND provider_qris_url IS NULL`,
+        orderCode,
+      );
+      if (Number(closed.changes) === 1) out.gateway_stale_closed++;
+      continue;
+    }
+    if (!gatewayKeysReady) continue;
+    if (!db.canSpend(4)) break;
+    const claimed = await db.execRun(
+      `UPDATE payment_transactions
+       SET last_checked_at = datetime('now'), updated_at = datetime('now')
+       WHERE order_code = ? AND provider = 'sekalipay_gateway'
+         AND status IN ('initializing', 'pending')
+         AND COALESCE(last_error, '') NOT LIKE '%manual_review%'
+         AND COALESCE(last_error, '') NOT LIKE '%needs_review%'
+         AND (last_checked_at IS NULL OR julianday(last_checked_at) <= julianday('now', '-30 minutes'))`,
+      orderCode,
+    );
+    if (Number(claimed.changes) !== 1) continue;
+    out.gateway_stale_checked++;
+    const ref = providerOrderRef ?? orderCode;
+    let response: Awaited<ReturnType<typeof gatewayFetch>>;
+    try {
+      response = await gatewayFetch("GET", `payment/${ref}`, {}, db);
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+      continue;
+    }
+    const orderStatus = String(row.order_status ?? "");
+    const closedStatus = orderStatus === "dibatalkan" || orderStatus === "failed" ? "failed" : "expired";
+    if (response.status === 404) {
+      const closed = await db.execRun(
+        `UPDATE payment_transactions
+         SET status = ?, last_checked_at = datetime('now'), updated_at = datetime('now')
+         WHERE order_code = ? AND provider = 'sekalipay_gateway' AND status IN ('initializing', 'pending')`,
+        closedStatus,
+        orderCode,
+      );
+      if (Number(closed.changes) === 1) out.gateway_stale_closed++;
+      continue;
+    }
+    if (
+      response.status !== 200
+      || response.body.status !== true
+      || !response.body.data
+      || typeof response.body.data !== "object"
+      || Array.isArray(response.body.data)
+    ) {
+      continue;
+    }
+    const data = response.body.data as Row;
+    const remoteStatus = typeof data.status === "string" ? data.status.trim().toLowerCase() : "";
+    const safeStatusText = /^[a-z_]{1,32}$/.test(remoteStatus) ? remoteStatus : null;
+    const invoiceId = typeof data.invoice === "string" && /^[A-Za-z0-9_-]{1,191}$/.test(data.invoice)
+      ? data.invoice
+      : null;
+    const refMismatch = (typeof data.merchant_ref_id === "string"
+      && data.merchant_ref_id !== orderCode && data.merchant_ref_id !== ref)
+      || (hasProviderInvoiceId && typeof data.invoice === "string" && data.invoice !== String(row.provider_payment_id));
+    if (refMismatch) {
+      await flagReview(orderCode, "sekalipay_gateway_status_mismatch_manual_review", safeStatusText, null);
+      continue;
+    }
+    if (["pending", "unpaid", "expired", "canceled", "cancelled", "failed"].includes(remoteStatus)) {
+      const closed = await db.execRun(
+        `UPDATE payment_transactions
+         SET status = ?,
+             provider_status_text = COALESCE(?, provider_status_text),
+             last_checked_at = datetime('now'),
+             updated_at = datetime('now')
+         WHERE order_code = ? AND provider = 'sekalipay_gateway' AND status IN ('initializing', 'pending')`,
+        closedStatus,
+        safeStatusText,
+        orderCode,
+      );
+      if (Number(closed.changes) === 1) out.gateway_stale_closed++;
+      continue;
+    }
+    const storedSandbox = row.gateway_is_sandbox == null ? null : Number(row.gateway_is_sandbox) === 1;
+    const remoteSandbox = data.is_sandbox;
+    if (typeof remoteSandbox === "boolean" && storedSandbox !== null && remoteSandbox !== storedSandbox) {
+      await flagReview(orderCode, "sekalipay_gateway_status_mismatch_manual_review", safeStatusText, null);
+      continue;
+    }
+    const isSandbox = typeof remoteSandbox === "boolean" ? remoteSandbox : storedSandbox;
+    const isPaid = remoteStatus === "paid" || (remoteStatus === "completed" && isSandbox === true);
+    if (isPaid) {
+      await flagReview(orderCode, "sekalipay_gateway_late_manual_review", safeStatusText, invoiceId);
+      continue;
+    }
+    if (remoteStatus) {
+      await flagReview(orderCode, "sekalipay_gateway_status_manual_review", safeStatusText, invoiceId);
+    }
+  }
+  return out;
 }
