@@ -1,4 +1,12 @@
 import type { NextRequest } from "next/server";
+import { constantTimeEqual } from "@/lib/security";
+
+/** Server-authenticated probe only; reuse this guard to exclude funnel events. */
+export function isSyntheticRequest(req: Pick<Request, "headers">): boolean {
+  const secret = process.env.CRON_SECRET;
+  return req.headers.get("x-axvara-synthetic") === "1" && !!secret
+    && constantTimeEqual(req.headers.get("authorization") ?? "", `Bearer ${secret}`);
+}
 
 // Sentralisasi rate-limit (issue #14).
 //

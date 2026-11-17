@@ -1,5 +1,19 @@
 # PRD — AXVARA
 
+## A-S: kesehatan checkout tanpa transaksi — 18 November 2026 (lokal)
+
+Tiga probe per tick menit memeriksa home/katalog/quote setelah pekerjaan order.
+Gagal/timeout dua eksekusi berturut-turut memakai alarm hard F1; sukses lambat
+>4detik enam kali memakai soft. Quote memilih varian/minimum dari katalog,
+tanpa order/reservasi/panggilan provider pembayaran; token+QRIS lokal tersedia
+menjadi kontrak200, konflik stok/varian409 terstruktur tetap sehat. Pemeriksaan
+tidak mewakili rail eksternal yang sengaja tidak dipanggil. Secret cron sah +
+header sintetis wajib untuk bypass kuota pembeli dan pengecualian funnel.
+Waktu terbatas (20detik total,10detik/fase, sisa jendela55detik tick); tick sibuk
+bisa melewati probe, bukan SLA pemeriksaan tepat setiap menit. CSP publik
+menyiapkan dua origin Cloudflare Web Analytics, tanpa mengubah CSP admin.
+Implementasi/test dan QA Chrome lokal; bukan aktivasi dashboard/deployment.
+
 ## Masa aktif terpisah dari garansi — 18 November 2026 (G4, lokal)
 
 - Editor produk tunggal dan multi-varian menyediakan **Masa aktif (opsional)**:

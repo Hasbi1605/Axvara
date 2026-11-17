@@ -10,7 +10,7 @@ import { resolveBuyerPreferences } from "@/lib/i18n/locale";
 import { displayUsdCents } from "@/lib/i18n/format";
 import { loadCurrentFxSnapshot } from "@/lib/payments/market-snapshot";
 import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, isSyntheticRequest } from "@/lib/rateLimit";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { readJsonBody } from "@/lib/http-body";
 import { bulkOwnerFromProductRow, bulkUnitPrice, isManualProductForBulk, validateBulkPricing } from "@/lib/bulk-pricing";
@@ -48,9 +48,11 @@ type PriceChange = {
 };
 
 export async function POST(req: NextRequest) {
+  const synthetic = isSyntheticRequest(req);
   // Quote tanpa limit = enumerasi harga/stok gratis (issue #14): 20/mnt/IP
   // sebagai lapis kedua setelah 1 rule WAF Free (lihat ARCHITECTURE §9).
-  if (!checkRateLimit(req, "checkout:quote")) {
+  // Authenticated probes consume no buyer quota; quote itself never admits an order.
+  if (!synthetic && !checkRateLimit(req, "checkout:quote")) {
     return NextResponse.json({ error: "Terlalu banyak permintaan, coba lagi 1 menit." }, { status: 429, headers: { "Retry-After": "60" } });
   }
   const body = await readJsonBody(req);
@@ -377,7 +379,8 @@ export async function POST(req: NextRequest) {
   // same failure isolation). No web-only tail here anymore.
   // `catalog` = tampilan (termasuk kanal gateway di luar batas sebagai nonaktif); `paymentMethods` = HANYA yang bisa dipilih dan
   // menjadi satu-satunya yang ditandatangani/diterima create. Nonaktif tidak punya biaya/total dan tidak masuk token.
-  const catalog = await buildMethodCatalog(subtotal);
+  // Synthetic checks use local QRIS/crypto snapshots only; never refresh gateway methods.
+  const catalog = await buildMethodCatalog(subtotal, !synthetic);
   const paymentMethods = catalog.filter((method): method is Exclude<typeof method, { available: false }> => method.available);
   // Locale: cookie axv_locale (server read), otherwise Indonesia; client
   // body ignored. Signed into token; verified at create, persisted to orders.

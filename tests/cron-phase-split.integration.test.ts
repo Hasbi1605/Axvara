@@ -13,6 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createD1Fixture, insertTestProduct } from "./helpers/d1-fixture";
+import { syntheticResponse } from "./helpers/synthetic-response";
 import {
   ALARM_KV_KEY,
   ALARM_REMINDER_MS,
@@ -273,6 +274,9 @@ describe("Worker runOperationsTick", () => {
   };
   const at = (minute: number) => Date.UTC(2026, 9, 3, 13, minute);
   const label = (u: string) => {
+    if (new URL(u).pathname === "/") return "synth:home";
+    if (new URL(u).pathname === "/api/products") return "synth:catalog";
+    if (new URL(u).pathname === "/api/checkout/quote") return "synth:quote";
     if (new URL(u).pathname.endsWith("/publish-scheduled")) return "publish-scheduled";
     const q = new URL(u).searchParams;
     if (q.get("job")) return `lite:${q.get("job")}`;
@@ -284,6 +288,8 @@ describe("Worker runOperationsTick", () => {
     const fn = vi.fn(async (url: string, _init?: RequestInit) => {
       calls.push(url);
       if (url.startsWith("https://api.telegram.org/")) return new Response("{}", { status: 200 });
+      const synthetic = syntheticResponse(url);
+      if (synthetic) return synthetic;
       const r = handler(url);
       return new Response(JSON.stringify(r.body ?? { ok: true }), { status: r.status });
     });
@@ -319,6 +325,7 @@ describe("Worker runOperationsTick", () => {
     expect(calls.map(label)).toEqual([
       "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
       "publish-scheduled",
+      "synth:home", "synth:catalog", "synth:quote",
     ]);
     expect(calls.some((u) => u.includes("/api/cron/operations"))).toBe(false);
   });
@@ -332,8 +339,9 @@ describe("Worker runOperationsTick", () => {
       "publish-scheduled",
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
+      "synth:home", "synth:catalog", "synth:quote",
     ]);
-    expect(CRON_STEPS.map(stepLabel)).toEqual(calls.map(label));
+    expect(CRON_STEPS.map(stepLabel)).toEqual(calls.map(label).filter(name => !name.startsWith("synth:")));
     expect(fn.mock.calls[0][1]).toMatchObject({ method: "POST", headers: { authorization: "Bearer s" } });
     expect(calls[0]).toBe("https://axvara.test/api/cron/lite?job=payments");
   });

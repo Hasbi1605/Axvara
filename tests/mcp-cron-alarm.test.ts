@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../mcp-worker/src/index";
+import { syntheticResponse } from "./helpers/synthetic-response";
 import {
   ALARM_KV_KEY, ALARM_REMINDER_MS, runOperationsTick,
   type AlarmState, type CronEnv, type KvLike,
@@ -22,7 +23,7 @@ function fixture(handler: (job: string) => Response | Promise<Response>) {
       messages.push(JSON.parse(String(init?.body)).text);
       return Response.json({ ok: true });
     }
-    return handler(key(url));
+    return syntheticResponse(url) ?? handler(key(url));
   });
   let stored: string | null = null;
   const kv = { get: vi.fn(async () => stored), put: vi.fn(async (_key: string, value: string) => { stored = value; }) };
@@ -169,7 +170,7 @@ describe("error detail and publish-scheduled", () => {
     const f = fixture((job) => job === "tunvn_catalog" ? response() : ok());
     const result = await f.tick(0);
     expect(result.failures[0].error).toBe(detail);
-    expect(result.outcomes).toHaveLength(26);
+    expect(result.outcomes).toHaveLength(29);
   });
 
   it("redacts bearer, key/token/secret patterns and actual configured secrets before state or Telegram", async () => {

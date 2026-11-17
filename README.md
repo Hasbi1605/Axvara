@@ -1,5 +1,21 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Probe kesehatan A-S (18 November 2026, lokal)
+
+Scheduler menambah home/katalog/quote setelah seluruh job cron, memakai alarm
+F1 existing (hard2/soft6). Probe≤10detik/fase, total≤20detik dan sisa jendela
+tick55detik; tick sibuk melewati probe tanpa memulihkan alarm palsu. Target
+varian/minimum dinamis (maks3PDP); konflik quote409 terstruktur tetap sehat.
+Tidak membuat order/reservasi. Header sintetis harus disertai Bearer CRON secret
+constant-time: tidak memakai kuota pembeli/funnel,0D1write/quote, dan tidak
+refresh/call provider pembayaran (QRIS lokal+snapshot crypto/FX saja).
+Guard `isSyntheticRequest` tersedia untuk funnel B-S. Tambahan request3–6/tick
+(umumnya4); bukan jaminan0read. Tanpa env/binding/trigger/migrasi baru.
+CSP publik membuka hanya script/connect Cloudflare Web Analytics; admin tetap.
+QA Chrome desktop/mobile lokal lulus, belum aktivasi dashboard/deploy.
+Kontrak, batas budget dan perhitungan biaya: ARCHITECTURE bagian A-S serta
+`docs/PAID-OPERATIONS.md`.
+
 ## Akurasi stok F5a (18 November 2026, lokal)
 
 Winner grup WR/SK menghormati stok lokal setelah reservasi sekaligus mirror

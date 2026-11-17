@@ -1,5 +1,20 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### A-S probe sintetis — 18 November 2026 (lokal)
+
+- Home/katalog/quote hanya setelah seluruh `CRON_STEPS`, outcome `synth:*`
+  memakai F1/KV existing (hard2/soft6/recovery3/reminder6jam), bukan alarm kedua.
+- Timeout10detik/fase mencakup body/PDP, plafon20detik serta sisa jendela55detik
+  tick. Skip budget `alarm:none` tidak dianggap sukses/tidak mereset counter;
+  jangan mengurangi/menghentikan job order demi probe.
+- Quote synthetic wajib header1+Bearer cron secret constant-time;0D1write,
+ 0kuota pembeli/admission/reservasi/funnel,0provider fetch (gateway excluded,
+  crypto/FX snapshot-only). Guard `isSyntheticRequest` dapat dipakai B-S.
+ 200 memerlukan token+QRIS lokal available;409 issues valid sehat; katalog
+  kosong/rusak bukan sehat. Maks3PDP dinamis, tidak ada ID hardcode.
+- Tambahan3–6request/tick (umumnya4=5760/hari), bukan0read atau +3pasti.
+  Tidak ada env/secret/binding/trigger/migrasi baru, tanpa transaksi produksi.
+  Rincian/batas target: ARCHITECTURE A-S dan PAID-OPERATIONS. Belum deploy.
 ### Ringkasan harian Telegram 07.00 WIB & backup harian D1 → R2 — 18 November 2026 (lokal, Paket A-H)
 
 - **Ringkasan harian admin (`src/lib/telegram/daily-admin-summary.ts`):** menumpang `POST /api/cron/lite?job=promo` existing (impor dinamis di `runPromo`; tanpa env/cron/migrasi baru), hanya aktif saat `TELEGRAM_BOT_ENABLED=true`, `TELEGRAM_ADMIN_CHAT_ID` & `TELEGRAM_BOT_TOKEN` terisi, pada jendela `07:00–11:59 WIB` (catch-up bila tick 07.00 gagal; lewat 11:59 WIB dilewati hari itu). Memakai memo per-isolate (`unwrapD1` di `src/lib/db-access.ts`, 0 statement setelah terkirim) + CAS `store_settings.admin_daily_summary_state` (klaim 120 dtk; lepas bila kirim gagal; budget ≤12 statement D1). Isi 5 seksi HTML aman: (1) order lunas/omzet kemarin WIB per kanal + kadaluarsa/dibatalkan, (2) order lunas >30 menit macet + rekonsiliasi QRIS perlu cek, (3) saldo tersimpan WR/SK/IndoSMM/TUNVN/AIVault tanpa memanggil API supplier (`supplier-balance-alert.ts` kini menyimpan `<supplier>_balance_last_value` di upsert sukses yang sama tanpa statement ekstra), (4) sumber sync yang kini basi & sempat basi dalam 24 jam terakhir (`sync-staleness.ts` mempertahankan `last_stale_at`/`last_recovered_at` di JSON `sync_stale_state_*` tanpa statement ekstra), (5) maks 5 produk terlaris 30 hari berstatus aktif non-pecundang dengan stok efektif (`effectiveVariantStockSql`) `0..2`.

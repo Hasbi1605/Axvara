@@ -1,5 +1,22 @@
 # Aturan agent — Admin Access, hardening OWASP, checkout anti-abuse
 
+## A-S: exception quote synthetic dan CSP Analytics — 18 November 2026 (lokal)
+
+- Hanya header `x-axvara-synthetic:1` + Bearer `CRON_SECRET` sah constant-time
+  boleh melewati bucket quote pembeli; header tanpa secret/secret kosong/salah
+  tetap pembeli biasa. Tidak melewati body/produk/stok/token validation atau
+  admission create order. Quote tidak membuat order/reservasi/menulis D1;
+  helper `isSyntheticRequest` disediakan untuk pengecualian funnel B-S.
+- Synthetic tidak refresh metode gateway: `buildMethodCatalog(subtotal,false)`;
+  crypto/FX dibaca dari snapshot existing. Tidak boleh memanggil provider demi
+  probe. Header cron tidak dikirim ke home/katalog/PDP, redirect manual.
+- Pengecualian sempit atas larangan script/connect14Nov untuk Analytics:
+  CSP publik menambah hanya `https://static.cloudflareinsights.com` di
+  `script-src` dan `https://cloudflareinsights.com` di `connect-src`; wildcard,
+  CSP admin/API admin dan seluruh direktif/header lain tidak berubah. Bukan
+  izin menambah domain untuk gambar. QA Chrome1440/390+fixture script/connect
+  tanpa error/pelanggaran CSP; belum aktivasi dashboard/deployment.
+
 > Dipindah utuh dari `AGENTS.md` pada 2 November 2026 tanpa perubahan isi. Aturan di sini tetap berlaku (keputusan owner bertanggal); baca sebelum menyentuh area terkait. Indeks ada di `AGENTS.md` bagian "Aturan per area". Rujukan "di atas" menunjuk bagian lain di file asal; cari di file `docs/agent-rules/` lain.
 
 ## Admin Cloudflare Access — 27 Oktober 2026

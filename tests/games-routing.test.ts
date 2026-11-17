@@ -62,6 +62,10 @@ it("allows only first-party image hosts in the public CSP; admin CSP stays stric
   expect(csp).not.toContain("*");
   expect(csp).toContain("default-src 'self'");
   expect(csp).toContain("connect-src 'self'");
+  expect(csp.split(";").map(part => part.trim()).filter(part => /^(script-src|connect-src)/.test(part))).toEqual([
+    "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
+    "connect-src 'self' https://cloudflareinsights.com",
+  ]);
 
   const adminRes = await call("axvara.tech", "/admin?section=games");
   const adminCsp = adminRes.headers.get("content-security-policy")!;

@@ -1,5 +1,49 @@
 # ARCHITECTURE.md — AXVARA
 
+## A-S: probe sintetis dan CSP Analytics — 18 November 2026 (lokal)
+
+- `mcp-worker/src/synthetic.ts` menambah tiga `PhaseOutcome` (`synth:home`,
+  `synth:catalog`, `synth:quote`) setelah seluruh `CRON_STEPS`, sebelum alarm F1
+  existing (`cron_alarm_v1`, hard2/soft6, recovery3/reminder6jam). Home+produk
+  paralel, lalu PDP dinamis+quote; tidak memanggil `/api/orders`. Non-200/kontrak/
+  timeout hard; sukses valid >4000ms soft. Quote409 dengan `ok:false` dan daftar
+  issues bertipe dikenal/message valid sehat (stok/minimum/aktivitas berubah).
+- Timeout10detik mencakup fetch **dan body**, per fase quote termasuk PDP;
+  plafon bersama20detik serta sisa jendela55detik sejak tick mulai. Bila job
+  sebelumnya sudah menghabiskan jendela, probe yang belum dimulai dicatat
+  `calls:0,alarm:none,tick_budget_exhausted` (bukan sukses, tidak mereset F1).
+  Tidak membatalkan/memotong job order existing dan tidak menjamin seluruh tick
+  selesai55detik bila job existing sendiri lebih lama.
+- Target diambil dari `/api/products?active=1`, kemudian maksimal3 PDP ready
+  `/api/catalog?slug=…`: varian aktif tanpa buyer field wajib, stok/minimum,
+  maksimum qty dan inventory unique cukup, qty≤100. Tanpa target layak, quote
+  produk pertama tanpa variant memeriksa konflik terstruktur. Katalog kosong/
+  rusak tetap hard, bukan sehat palsu. Tidak ada ID hardcode/cache target basi;
+  batas3PDP berarti tidak membuktikan seluruh toko tidak punya varian layak.
+- `isSyntheticRequest` di `rateLimit.ts` memerlukan header
+  `x-axvara-synthetic:1` **dan** `Authorization: Bearer CRON_SECRET` constant-time,
+  gagal tertutup bila secret kosong. Header saja/secret salah = pembeli biasa.
+  Quote sah melewati bucket pembeli tanpa bucket baru, memakai
+  `buildMethodCatalog(subtotal,false)` agar tidak refresh metode gateway lewat
+  VPS/provider; crypto/FX hanya snapshot D1 existing. Probe200 wajib token dan
+  QRIS lokal available. Quote synth bukan pengujian kesehatan gateway/crypto.
+  Guard yang sama disediakan untuk pengecualian funnel B-S; baseline belum
+  mempunyai emitter funnel. Tidak melewati body/produk/stok/token validation.
+- Audit fixture quote200/409: **0 D1 writes**, seluruh statement SELECT,
+  `total_changes()` tetap; tidak ada tabel quote/admission/rate-limit/order/
+  inventory yang ditulis (JWT+counter pembeli stateless/in-memory). Maka1440
+  quote/hari menambah **0 D1 rows_written**; read produk/varian/metode/FX tetap
+  ada (termasuk COUNT unique), bukan klaim0read. Tiga probe =3 request dasar
+  +0–3PDP/tick (umumnya4 =5760request/hari, plafon6 =8640/hari tanpa skip),
+  bukan +3request pasti. D1 read home/katalog mengikuti cache existing; F1 tetap
+  dapat menulis KV saat counter/episode berubah. Tidak ada provider fetch dari
+  quote sintetis, env/binding/trigger/migrasi baru atau transaksi produksi.
+- CSP publik hanya menambah script `https://static.cloudflareinsights.com`
+  dan connect `https://cloudflareinsights.com`; CSP admin/API admin dan direktif
+  lain tetap. QA Chrome1440/390 lokal: route/CSS/JS200, injected script+connect
+  fixture diizinkan,0pelanggaran CSP/error; tier1 exit0. Belum aktivasi Analytics
+  dashboard/deployment; pengiriman beacon riil bukan bagian verifikasi.
+
 ## F5a: stok katalog/grup & orphan TUNVN — 18 November 2026 (lokal)
 
 - `catalog-availability.ts` memusatkan `effectiveVariantStockSql` dan padanan

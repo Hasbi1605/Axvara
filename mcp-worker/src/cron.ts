@@ -19,6 +19,8 @@
 //   (hard 2 / soft 6 eksekusi gagal per step), pengingat tiap 6 jam,
 //   pulih setelah tiap step terdampak sukses 3 kali. KV rusak → :00/:30.
 
+import { runSyntheticProbes, SYNTH_TICK_WINDOW_MS } from "./synthetic";
+
 export type KvLike = {
   get(key: string): Promise<string | null>;
   put(key: string, value: string): Promise<void>;
@@ -312,6 +314,7 @@ export async function runOperationsTick(
   /** Diinjeksi test agar tidak tidur sungguhan; runtime memakai setTimeout. */
   sleepFn: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<TickReport> {
+  const startedAt = Date.now();
   const outcomes: PhaseOutcome[] = [];
   // Langkah gagal tidak menghentikan langkah berikut: tiap langkah berdiri sendiri.
   const heavyTick = isHeavyTick(scheduledTime);
@@ -325,6 +328,7 @@ export async function runOperationsTick(
     stepped = true;
     outcomes.push({ ...(await callStep(env, step, fetchFn)), alarm: step.alarm });
   }
+  outcomes.push(...await runSyntheticProbes(env, fetchFn, SYNTH_TICK_WINDOW_MS - (Date.now() - startedAt)));
   // Langkah `none` tetap tercatat di outcomes (diagnosa) tapi bukan kegagalan alarm.
   const failures = outcomes.filter((o) => !o.ok && o.alarm !== "none");
 

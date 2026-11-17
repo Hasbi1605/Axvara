@@ -1,5 +1,30 @@
 # Operasional Workers Paid — 23 Oktober 2026
 
+## Probe sintetis A-S — 18 November 2026 (lokal, belum deploy)
+
+Setelah seluruh job existing: home dan produk paralel, kemudian0–3PDP dinamis
+dan quote. Tiga outcome masuk F1 yang sama: error/timeout/kontrak hard2;
+sukses>4000ms soft6; reminder6jam/recovery3 tetap. Timeout10detik per fase
+(termasuk body dan PDP+quote), total20detik, sisa jendela55detik sejak tick mulai.
+Tidak menunda/memotong job order; tick sudah sibuk mencatat skip `alarm:none`
+tanpa mengubah counter (bukan status sehat). Katalog kosong tetap gagal;
+409 quote terstruktur sehat bila tidak ada target layak/stok berubah.
+
+Autentikasi synthetic: header1+Bearer secret cron existing constant-time,
+tanpa secret valid tetap rate limit pembeli. Quote memakai metode lokal dan
+snapshot crypto/FX saja (`includeGateway=false`), **0 fetch provider**;200 wajib
+token+QRIS available. Tidak menguji kesehatan gateway/crypto eksternal.
+JWT stateless dan SELECT-only fixture membuktikan **0 D1 rows_written/quote**
+(termasuk0quote/rate-limit/admission/order/reservasi), sehingga1440/hari tetap0
+write quote; read produk/varian/metode/FX dan cache katalog tetap berbiaya.
+Tidak ada funnel emitter baseline; helper guard tersedia untuk B-S.
+
+Request tambahan3–6/tick (3 dasar+0–3PDP), umumnya4/tick=5760/hari=172800/30hari;
+plafon6/tick=8640/hari=259200/30hari, sebelum skip/timeout. F1 dapat menulis KV
+untuk counter/episode, bukan D1; tidak ada state alarm kedua/env/trigger baru.
+CSP publik menyiapkan dua origin Analytics saja; belum aktivasi dashboard.
+Rincian target, body contract dan batas bukti: ARCHITECTURE bagian A-S.
+
 ✅ Implementasi, publikasi melalui CI push main. Akun existing sudah Paid;
 verifikasi lokal bukan bukti deployment atau batas biaya produksi tercapai.
 
