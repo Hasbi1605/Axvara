@@ -2310,6 +2310,11 @@ Kolom baru di `orders`: `sales_channel`, `telegram_chat_id`, `telegram_user_id`,
 | GET | `/go/:slug` | publik | Shortlink internal `axvara.tech/go/*` (2026-10-03, migrasi 0056): redirect 307 ke destination + `click_count`/`last_clicked_at`; 404 bila slug tak ada/nonaktif/format salah; `X-Robots-Tag: noindex` (tak masuk sitemap) |
 | GET/POST/PUT/DELETE | `/api/admin/supplier-links` | admin | CRUD tabel `supplier_links` (tab admin "Link Supplier"): slug lowercase-dash (min 2, reserved: admin/api/go/produk/artikel/…), destination URL/path internal, toggle `is_active`; POST duplikat → 409 |
 
+**Tambahan lokal 17 November 2026 — tinjauan S&K:** job lite `cleanup` lima
+menitan juga menjalankan `checkCopyReviewChanges` setelah drain grup, sebelum
+refresh pasar crypto, hanya bila tersisa empat statement. Budget job tetap40;
+detail checkpoint/dedupe dan batas bukti ada di §16.52.
+
 ### Environment Baru
 
 Semua nilai nyata di Cloudflare Pages Secrets:
@@ -3052,8 +3057,8 @@ menghilangkan maksud/ketegasan pemasok**. Kode di `src/lib/product-copy/`:
 
 | Bagian | Sumber | Mekanisme |
 | --- | --- | --- |
-| S&K + cara aktivasi varian WR | `wr_variants` (milik sync, tidak disentuh) | `resolve.ts` menghitung `supplierFingerprint(wr_terms, wr_delivery_terms)` (`text.ts`: cyrb53 atas kata+angka per baris — kebal huruf besar/emoji/tanda baca/spasi, berubah bila kata/angka berubah). Urutan: **suntingan admin** (kolom varian migrasi 0041, lihat di bawah) → entri `curated.ts` (83 pasangan teks prod + 12 SK 2026-09-30) → `supplierVariantCopy()` di `format.ts`: teks WR dirapikan (tanpa emoji, huruf tebal Unicode dinormalkan NFKC, huruf besar berteriak jadi kalimat, baris ganda dibuang), dikelompokkan heuristik, baris aturan di teks aktivasi dipindah ke S&K. Suntingan admin dan kurasi hanya berlaku selama sidik jari sama dengan saat ditulis — aturan baru pemasok tidak pernah tertutup salinan lama. **Varian SK** mengalir lewat JOIN `sk_products` di `catalog.ts` (`terms=sk_description`, `delivery_terms=sk_seller_note`) sehingga mesin yang sama berlaku; `buyerDeliveryKind` kenal SK (`auto`=instan). |
-| S&K + cara aktivasi versi admin per varian (WR & non-WR) | `product_variants.admin_terms`, `admin_activation`, `admin_copy_fingerprint` (migrasi **0041**, milik admin) | Tab **Deskripsi & S&K** di editor produk (`sections/ProductCopyTab.tsx`, terpisah dari tab Varian sejak 2026-09-24 agar baris varian hanya berisi harga/stok/garansi/pengiriman): kolom deskripsi (+ deskripsi khusus untuk WR) lalu daftar varian, masing-masing panel `VariantCopyEditor.tsx` yang terbuka berisi salinan yang sedang tampil; entri dimuat saat modal dibuka (`useVariantCopyEntries` di `ProductEditorModal`) sehingga tab langsung menampilkan jumlah varian aktif yang perlu ditinjau. Disimpan HANYA lewat `PUT /api/admin/variant-copy` (tombol sendiri) yang mencap `admin_copy_fingerprint` = sidik jari teks WR saat itu (`''` untuk varian non-WR). Sync WR dan `PUT /api/products/:id` tidak pernah menulis kolom ini, jadi menyimpan foto/badge tidak diam-diam mencap ulang suntingan yang dijeda. Teks yang isinya sama dengan salinan otomatis tidak disimpan (NULL), teks kosong = kembali otomatis. Bila WR mengubah teks sesudahnya: storefront kembali ke teks WR terbaru, editor menampilkan peringatan + teks asli WR, daftar produk admin memberi badge "S&K perlu ditinjau · N varian" (`copyReview` di `GET /api/products` admin, juga untuk teks WR yang belum punya versi Axvara) sampai admin menyimpan ulang. |
+| S&K + cara aktivasi varian WR | `wr_variants` (milik sync, tidak disentuh) | `resolve.ts` menghitung `supplierFingerprint(wr_terms, wr_delivery_terms)` (`text.ts`: cyrb53 atas kata+angka per baris — kebal huruf besar/emoji/tanda baca/spasi, berubah bila kata/angka berubah). Urutan: **suntingan admin** (kolom varian migrasi 0041, lihat di bawah) → entri `curated.ts` (83 pasangan teks prod + 12 SK 2026-09-30) → `supplierVariantCopy()` di `format.ts`: teks WR dirapikan (tanpa emoji, huruf tebal Unicode dinormalkan NFKC, huruf besar berteriak jadi kalimat, baris ganda dibuang), dikelompokkan heuristik, baris aturan di teks aktivasi dipindah ke S&K. Kurasi hanya berlaku selama sidik jari sama dengan saat ditulis; suntingan admin tetap tampil ke pembeli walau sidik jari berubah (ditandai stale/changed untuk ditinjau ulang), dan teks bersumber `pemasok` disanitasi sebelum ke pembeli (`sanitize.ts`). **Varian SK** mengalir lewat JOIN `sk_products` di `catalog.ts` (`terms=sk_description`, `delivery_terms=sk_seller_note`) sehingga mesin yang sama berlaku; `buyerDeliveryKind` kenal SK (`auto`=instan). |
+| S&K + cara aktivasi versi admin per varian (WR & non-WR) | `product_variants.admin_terms`, `admin_activation`, `admin_copy_fingerprint` (migrasi **0041**, milik admin) | Tab **Deskripsi & S&K** di editor produk (`sections/ProductCopyTab.tsx`, terpisah dari tab Varian sejak 2026-09-24 agar baris varian hanya berisi harga/stok/garansi/pengiriman): kolom deskripsi (+ deskripsi khusus untuk WR) lalu daftar varian, masing-masing panel `VariantCopyEditor.tsx` yang terbuka berisi salinan yang sedang tampil; entri dimuat saat modal dibuka (`useVariantCopyEntries` di `ProductEditorModal`) sehingga tab langsung menampilkan jumlah varian aktif yang perlu ditinjau. Disimpan HANYA lewat `PUT /api/admin/variant-copy` (tombol sendiri) yang mencap `admin_copy_fingerprint` = sidik jari teks WR saat itu (`''` untuk varian non-WR). Sync WR dan `PUT /api/products/:id` tidak pernah menulis kolom ini, jadi menyimpan foto/badge tidak diam-diam mencap ulang suntingan yang stale. Teks yang isinya sama dengan salinan otomatis tidak disimpan (NULL), teks kosong = kembali otomatis. Bila WR mengubah teks sesudahnya: pembeli tetap melihat suntingan admin (atau auto EN bila admin EN kosong), editor menampilkan peringatan stale + pratinjau versi otomatis terbaru (tidak tampil ke pembeli) + teks asli supplier, daftar produk admin memberi badge tinjauan (`copyReview`/`copyReviewChanged`) sampai admin menyimpan ulang atau menandai ditinjau. |
 | Deskripsi produk WR | `products.admin_description_override` (milik admin) | Migrasi **0040** (data-only) mengisi versi Axvara untuk 47 produk WR hanya bila override masih kosong; `description` milik WR tetap utuh. |
 | Deskripsi + S&K produk non-WR | `products.description` (milik admin) | Migrasi 0040 mengganti 2 produk (Canva, GSuite) hanya bila isinya masih persis teks lama. Migrasi **0042** menambah S&K Canva (undangan dikirim lewat email + pastikan email aktif, keputusan owner) dengan guard yang sama. S&K yang berlaku untuk semua varian ditulis di sini; yang khusus satu varian lewat editor varian. |
 
@@ -5877,3 +5882,47 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 - **Modul bersama** `src/lib/supplier-balance-alert.ts`: `checkSupplierLowBalance(db, opts)` memakai maksimal 4 statement D1 per run (`store_settings.<supplier>_balance_checked_at` ditulis sebelum panggilan API, maks 1×/30 menit via `parseExpiry`; `store_settings.<supplier>_balance_alert_at` format `amount|ms` dengan CAS seperti `notifyPediaLowBalance`, alert ulang hanya setelah 6 jam atau saldo turun `>= 1` unit). Mengirim HTML Telegram via `@/lib/telegram/api` hanya bila `TELEGRAM_ADMIN_CHAT_ID` terisi dan `TELEGRAM_BOT_ENABLED === "true"`.
 - **Integrasi cron lite** (`src/app/api/cron/lite/route.ts`): `runTunvnOrders` (`job=tunvn_orders`) dan `runAivaultOrders` (`job=aivault_orders`) menjalankan cek saldo di `try/catch` terpisah dengan gate `db.canSpend(5)` (tetap rethrow `QueryBudgetExceeded`) setelah dispatch order; budget per job tetap 40 statement tanpa env/jadwal Worker baru. Mengekspos `tunvn_balance`, `tunvn_balance_alerted`, `tunvn_balance_error` dan pasangan `aivault_*`.
 - **Env opsional** (tidak dipasang di Cloudflare Pages; memakai default `5`): `TUNVN_BALANCE_ALERT_USDT` (default `5` USDT, finite `>= 0`) dan `AIVAULT_BALANCE_ALERT_USD` (default `5` USD, finite `>= 0`).
+
+### 16.52 S&K varian stale tetap tampil + sanitizer teks supplier — 17 November 2026 (lokal)
+
+- **Aturan stale baru** (`src/lib/product-copy/resolve.ts`): saat salinan admin ID ada (`parseAdminVariantCopy` non-null) namun `admin_copy_fingerprint !== supplierKey`, pembeli TETAP melihat salinan admin (ID = salinan admin, EN = salinan admin EN bila diisi atau fallback ke auto EN) dan `status = "admin"` (saat salinan admin dipakai) alih-alih jatuh ke teks mentah supplier. `adminStale = true`, `reviewKind = "changed"`, `needsCopyReview = true`, dan `auto` tidak berubah sehingga admin tetap wajib meninjau.
+- **Sanitizer teks pemasok** (`src/lib/product-copy/sanitize.ts`): `sanitizeSupplierCopy(copy, links)` murni (tanpa mutasi input) dan HANYA memodifikasi `VariantCopy` bersumber `"pemasok"` (`admin` dan `axvara` tidak disentuh). Membangun `SupplierLinkMap` (`buildSupplierLinkMap`) dari baris aktif `supplier_links` (tujuan internal `/...` diabaikan) lalu pada `sections[].items`, `activation[].steps`, dan `notes[]`:
+  - mengganti URL maupun bare domain yang `host` (lowercase tanpa `www.`) + `path` (tanpa trailing `/`) cocok persis dengan tujuan absolut aktif, atau fallback ke host-root (`/`) bila host cocok, menjadi `axvara.tech/go/<slug>`; URL tidak cocok dan email (`user@...`) dibiarkan;
+  - mengganti frasa case-insensitive `hubungi admin` / `chat admin` / `kontak admin` yang belum diikuti `AXVARA` menjadi `hubungi admin AXVARA`, serta `contact admin` / `contact the admin` menjadi `contact AXVARA admin` dengan menjaga kapitalisasi awal.
+- **Loader & memo** (`src/lib/supplier-links.ts`): `loadActiveSupplierLinkMap(db?)` membaca `SELECT slug, destination FROM supplier_links WHERE is_active=1 ORDER BY slug ASC` dengan memo per-isolate TTL `60_000` ms (maksimal 1 SELECT per isolate per jendela TTL); saat gagal query atau budget habis mengembalikan `EMPTY_SUPPLIER_LINK_MAP` tanpa melempar dan tanpa meracuni cache.
+- **Wiring pembeli**: diterapkan pada `/api/catalog` (`withVariantCopy(detail, links)` untuk `copy` dan `copy_en`), `handleProductTerms` (`src/lib/telegram/handlers/catalog.ts`), dan `resolveCredentialTermsForVariants` (`src/lib/orders/credential-terms.ts`) sebelum `mergeProductCopy`, tanpa query di dalam loop.
+- **Editor admin** (`src/components/admin/sections/VariantCopyEditor.tsx`): badge stale memakai `{Supplier} mengubah teks — tinjau ulang`, banner alert menegaskan pembeli masih melihat suntingan admin, dan panel `<details>` dilabeli `"Versi otomatis terbaru dari teks supplier (tidak tampil ke pembeli)"` menampilkan `autoTerms`/`autoActivation`.
+
+### 16.53 Pengingat perubahan teks supplier untuk tinjauan S&K — 17 November 2026 (lokal)
+
+- `src/lib/product-copy/review-alert.ts` menyeleksi varian aktif dari produk
+  aktif/non-Arsip, JOIN sumber WR/SK sekali (WR nonblank lalu SK), lalu memakai
+  `resolveVariantCopyDetailed(...).reviewKind === "changed"`. Varian `raw`,
+  manual tanpa ID supplier, dan yang tidak lagi perlu ditinjau tidak dialert.
+- `store_settings.copy_review_checked_at` menyimpan ISO UTC dengan CAS atas nilai
+  yang dibaca; hanya satu run memiliki jendela30menit, termasuk saat row belum
+  ada. `copy_review_alerted` adalah JSON `{variantId: supplierKey}`. Fingerprint
+  baru dikirim sekali; berubah lagi → alert lagi. Entry yang tidak lagi berubah
+  dipangkas. Penambahan/perubahan map hanya disimpan setelah sender Telegram
+  mengembalikan `ok:true`; pass tanpa alert boleh hanya memangkas. Gagal kirim
+  mempertahankan seluruh map dan dicoba lagi pada jendela berikutnya.
+- Maksimal empat statement: baca dua setting, CAS checkpoint, satu SELECT
+  varian, lalu upsert map bila berbeda. `db.canSpend(4)` wajib sebelum read;
+  budget kurang → skip. Tidak ada query per varian, trigger cron/env/secret atau
+  migrasi baru. Dipasang di `cleanup` lima-menitan existing setelah maintenance,
+  materialisasi pengeluaran, dan drain grup; bukan job pembayaran/order, budget
+  tetap40 dengan tail existing. Budget penuh dapat menunda cek hingga tick lain.
+- Satu pesan plain text lewat `telegram/api.sendMessage` ke
+  `TELEGRAM_ADMIN_CHAT_ID`, hanya bila `TELEGRAM_BOT_ENABLED=true`: judul
+  “⚠️ Teks supplier berubah — S&K perlu ditinjau (N varian)”, maks15 baris
+  produk/varian/WR|SK (nama diratakan dan dibatasi80karakter), `+M lainnya`,
+  pengingat “Varian yang sudah kamu sunting tetap menampilkan suntinganmu ke
+  pembeli. Tinjau di admin: Produk → filter Tinjauan S&K.”, lalu `https://axvara.tech/admin?section=products`. Tanpa
+  `parse_mode`, sehingga nama berisi HTML/Markdown tetap literal.
+- Hasil log `copy_review` berisi `checked`, `changed`/`alerted` atau alasan
+  `skipped`/`error`; error tidak dilempar ke caller maupun menggagalkan cleanup.
+  Verifikasi lokal memakai fixture dan sender mock, termasuk D1/workerd; belum
+  dipublikasikan/deploy, tanpa pesan/transaksi produksi. Crash atau kegagalan
+  tulis map setelah Telegram menerima pesan tetap dapat mengulang pada jendela
+  berikutnya; bukan jaminan exactly-once lintas jaringan dan D1. Retensi copy
+  admin untuk pembeli ditangani perubahan resolver terpisah (P1a), bukan modul ini.

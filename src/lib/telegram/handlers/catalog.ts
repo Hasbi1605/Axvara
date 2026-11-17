@@ -24,7 +24,9 @@ import {
 import { getProductDetail, getActiveVariant, formatVariantLabel, buyerWarrantyLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { resolveVariantCopy, adminCopyOf } from "@/lib/product-copy/resolve";
+import { sanitizeSupplierCopy } from "@/lib/product-copy/sanitize";
 import { mergeProductCopy, parseProductDescription, copySectionTitles } from "@/lib/product-copy/format";
+import { loadActiveSupplierLinkMap } from "@/lib/supplier-links";
 import { localizedProductDescription } from "@/lib/i18n/catalog-copy";
 import { productDisplayName } from "@/lib/i18n/product-name";
 import { needsEmailForVariant } from "@/lib/warung-rebahan/delivery-class";
@@ -354,8 +356,16 @@ export async function handleProductTerms(chatId: number, productId: number, vari
     return;
   }
   const variants = detail.variants.filter(v => v.id === variantId && v.is_active);
-  for (const variant of variants) {
-    const copy = mergeProductCopy(resolveVariantCopy(variant.terms, variant.delivery_terms, adminCopyOf(variant), ctx.locale), parseProductDescription(localizedProductDescription(detail, ctx.locale)));
+  const resolvedVariants = variants.map((variant) => ({
+    variant,
+    variantCopy: resolveVariantCopy(variant.terms, variant.delivery_terms, adminCopyOf(variant), ctx.locale),
+  }));
+  const links = resolvedVariants.some((item) => item.variantCopy?.source === "pemasok")
+    ? await loadActiveSupplierLinkMap()
+    : null;
+  for (const { variant, variantCopy } of resolvedVariants) {
+    const sanitized = links ? sanitizeSupplierCopy(variantCopy, links) : variantCopy;
+    const copy = mergeProductCopy(sanitized, parseProductDescription(localizedProductDescription(detail, ctx.locale)));
     const lines = [
       ...copy.sections.flatMap(section => [copySectionTitles(ctx.locale)[section.kind], ...section.items.map(item => `• ${item}`), ""]),
       ...copy.activation.flatMap(group => [group.title ?? (ctx.locale === "en" ? "How to activate" : "Cara aktivasi"), ...group.steps.map((step, i) => `${i + 1}. ${step}`), ""]),

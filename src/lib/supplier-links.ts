@@ -12,6 +12,9 @@
 // - redirect 307 (bukan 308): browser selalu cek ulang sehingga ganti tujuan
 //   di admin berlaku seketika tanpa cache permanen.
 // - noindex: link operasional, bukan konten SEO (robots.ts + metadata page).
+import { getD1, queryAll } from "@/lib/db";
+import type { DatabaseAccess } from "@/lib/db-access";
+import { buildSupplierLinkMap, EMPTY_SUPPLIER_LINK_MAP, type SupplierLinkMap } from "@/lib/product-copy/sanitize";
 
 export type SupplierLink = {
   id: number;
@@ -81,4 +84,74 @@ export function normalizeSupplierLink(row: Row): SupplierLink {
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
   };
+}
+
+export const SUPPLIER_LINKS_MEMO_TTL_MS = 60_000;
+
+type MemoEntry = {
+  expiresAt: number;
+  promise: Promise<SupplierLinkMap>;
+};
+
+let d1Memo = new WeakMap<object, MemoEntry>();
+let fallbackMemo: MemoEntry | null = null;
+
+/** Hanya untuk test yang memutasi supplier_links di fixture DB yang sama. */
+export function clearSupplierLinksMemoForTest(): void {
+  d1Memo = new WeakMap<object, MemoEntry>();
+  fallbackMemo = null;
+}
+
+/**
+ * Muat peta link supplier aktif dengan memo per-isolate (~60 detik).
+ * Maksimal 1 SELECT per isolate per jendela TTL; gagal query mengembalikan
+ * peta kosong tanpa melempar error.
+ */
+export async function loadActiveSupplierLinkMap(db?: DatabaseAccess): Promise<SupplierLinkMap> {
+  const globalD1 = getD1();
+  const scope: object | null = db
+    ? (globalD1 && db.getD1() !== null ? globalD1 : db)
+    : globalD1;
+  const now = Date.now();
+  const cached = scope ? d1Memo.get(scope) : fallbackMemo;
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
+  }
+
+  const clearEntry = (entry: MemoEntry) => {
+    if (scope) {
+      if (d1Memo.get(scope) === entry) d1Memo.delete(scope);
+    } else if (fallbackMemo === entry) {
+      fallbackMemo = null;
+    }
+  };
+
+  const entry: MemoEntry = {
+    expiresAt: now + SUPPLIER_LINKS_MEMO_TTL_MS,
+    promise: Promise.resolve(EMPTY_SUPPLIER_LINK_MAP),
+  };
+  if (scope) d1Memo.set(scope, entry);
+  else fallbackMemo = entry;
+
+  entry.promise = (async () => {
+    try {
+      if (db && !db.canSpend(1)) {
+        clearEntry(entry);
+        return EMPTY_SUPPLIER_LINK_MAP;
+      }
+      const sql = "SELECT slug, destination FROM supplier_links WHERE is_active=1 ORDER BY slug ASC";
+      const rows = await (db ? db.queryAll(sql) : queryAll(sql));
+      return buildSupplierLinkMap(
+        (Array.isArray(rows) ? rows : []).map((row) => ({
+          slug: String(row.slug ?? ""),
+          destination: String(row.destination ?? ""),
+        })),
+      );
+    } catch {
+      clearEntry(entry);
+      return EMPTY_SUPPLIER_LINK_MAP;
+    }
+  })();
+
+  return entry.promise;
 }

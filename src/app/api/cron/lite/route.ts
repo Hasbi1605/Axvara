@@ -621,8 +621,16 @@ async function runCleanup(db: Db) {
   // Critical order work has its own jobs; this drain is bounded and resumable.
   const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
   const pairs = await decideDirtyWinners(db);
+  const copy: Record<string, unknown> = {};
+  // Optional admin alert: <=4 statements, 30-minute CAS; never block cleanup.
+  if (db.canSpend(4)) {
+    try {
+      const { checkCopyReviewChanges } = await import("@/lib/product-copy/review-alert");
+      copy.copy_review = await checkCopyReviewChanges(db);
+    } catch { copy.copy_review = { checked: false, error: "check_failed" }; }
+  }
   const market = await runCryptoMarketRefresh(db);
-  return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...market };
+  return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...copy, ...market };
 }
 
 /**

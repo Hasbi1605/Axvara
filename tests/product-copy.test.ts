@@ -291,14 +291,56 @@ describe("resolveVariantCopy — suntingan admin per varian", () => {
     expect(needsCopyReview(res)).toBe(false);
   });
 
-  it("WR mengubah teks sejak disunting → suntingan dijeda, teks WR terbaru tampil, perlu ditinjau", () => {
+  it("WR mengubah teks sejak disunting → pembeli tetap melihat suntingan admin, tetap ditandai stale & perlu ditinjau", () => {
     const key = supplierFingerprint(legal.terms, legal.deliveryTerms);
     const changed = `${legal.terms}\nDilarang login di Smart TV`;
     const res = resolveVariantCopyDetailed(changed, legal.deliveryTerms, { ...adminText, fingerprint: key });
-    expect(res.status).toBe("pemasok");
+    expect(res.status).toBe("admin");
     expect(res.adminStale).toBe(true);
-    expect(res.copy?.sections.flatMap((s) => s.items)).toContain("Dilarang login di Smart TV");
+    expect(res.reviewKind).toBe("changed");
+    expect(res.copy?.source).toBe("admin");
+    expect(res.copy?.sections.flatMap((s) => s.items)).toEqual(["Dilarang berbagi akun"]);
+    expect(res.auto?.source).toBe("pemasok");
+    expect(res.auto?.sections.flatMap((s) => s.items)).toContain("Dilarang login di Smart TV");
     expect(needsCopyReview(res)).toBe(true);
+  });
+
+  it("stale admin copy pada locale EN: memakai admin EN bila ada, else auto EN", () => {
+    const key = supplierFingerprint(legal.terms, legal.deliveryTerms);
+    const changed = `${legal.terms}\nDilarang login di Smart TV`;
+    const withEn = resolveVariantCopyDetailed(changed, legal.deliveryTerms, {
+      ...adminText,
+      fingerprint: key,
+      termsEn: "Usage rules:\n- Do not share account",
+      activationEn: "1. Log in on the app",
+    }, "en");
+    expect(withEn.status).toBe("admin");
+    expect(withEn.adminStale).toBe(true);
+    expect(withEn.reviewKind).toBe("changed");
+    expect(withEn.copy?.source).toBe("admin");
+    expect(withEn.copy?.sections.flatMap((s) => s.items)).toEqual(["Do not share account"]);
+    expect(withEn.auto?.source).toBe("pemasok");
+
+    const withoutEn = resolveVariantCopyDetailed(changed, legal.deliveryTerms, {
+      ...adminText,
+      fingerprint: key,
+    }, "en");
+    expect(withoutEn.adminStale).toBe(true);
+    expect(withoutEn.reviewKind).toBe("changed");
+    expect(withoutEn.copy).toEqual(withoutEn.auto);
+    expect(withoutEn.copy?.source).toBe("pemasok");
+    expect(withoutEn.status).toBe("pemasok");
+
+    // Jika teks supplier cocok entri kurasi lain, fallback EN tanpa admin EN memakai kurasi EN.
+    const anotherCurated = pair("netflix-premium · Premium Anti Limit");
+    const withoutEnCurated = resolveVariantCopyDetailed(anotherCurated.terms, anotherCurated.deliveryTerms, {
+      ...adminText,
+      fingerprint: key,
+    }, "en");
+    expect(withoutEnCurated.adminStale).toBe(true);
+    expect(withoutEnCurated.copy).toEqual(withoutEnCurated.auto);
+    expect(withoutEnCurated.copy?.source).toBe("axvara");
+    expect(withoutEnCurated.status).toBe("axvara");
   });
 
   it("varian non-WR: suntingan admin berlaku (sidik jari kosong), tanpa suntingan → tanpa salinan", () => {
@@ -355,9 +397,9 @@ describe("tanda tinjau S&K (16 November 2026)", () => {
     expect(needsCopyReview(res)).toBe(true);
   });
 
-  it("suntingan admin dijeda → changed", () => {
+  it("suntingan admin stale → status tetap admin, reviewKind changed", () => {
     const res = resolveVariantCopyDetailed(`${terms}\nDilarang login TV`, delivery, { terms: "Aturan pakai:\n- Dilarang berbagi", activation: "", fingerprint: key });
-    expect(res).toMatchObject({ status: "pemasok", adminStale: true, reviewed: false, reviewKind: "changed" });
+    expect(res).toMatchObject({ status: "admin", adminStale: true, reviewed: false, reviewKind: "changed" });
   });
 
   it("suntingan admin segar → tidak perlu ditinjau", () => {

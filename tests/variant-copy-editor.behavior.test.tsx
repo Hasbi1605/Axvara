@@ -195,12 +195,14 @@ describe("VariantCopyEditor", () => {
     expect(onSaved.mock.calls[0][0]).toMatchObject({ status: "admin", hasOverride: true });
   });
 
-  it("suntingan dijeda: peringatan tampil, teks admin dimuat, bisa ditandai sudah ditinjau tanpa mengubah", async () => {
-   const stale: VariantCopyEntry = { ...base, status: "pemasok", reviewKind: "changed", adminStale: true, needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun", adminActivation: "" };
+  it("suntingan stale: peringatan menyebut pembeli masih melihat suntinganmu, teks admin dimuat, bisa ditandai sudah ditinjau", async () => {
+    const stale: VariantCopyEntry = { ...base, status: "admin", reviewKind: "changed", adminStale: true, needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun", adminActivation: "" };
     const fetchMock = stubSave({ status: "admin", adminStale: false, needsReview: false });
     renderEditor(stale);
-    expect(screen.getByText("WR mengubah teks — suntingan dijeda")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toContain("Pembeli melihat versi otomatis terbaru");
+    expect(screen.getByText("WR mengubah teks — tinjau ulang")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("Pembeli masih melihat suntinganmu");
+    expect(screen.getByText("Versi otomatis terbaru dari teks supplier (tidak tampil ke pembeli)")).toBeTruthy();
+    expect(screen.getByText(/Perbaikan garansi 1x24 jam/)).toBeTruthy();
     expect((screen.getByLabelText("Syarat & Ketentuan") as HTMLTextAreaElement).value).toBe(stale.adminTerms);
     const confirm = screen.getByRole("button", { name: "Tandai sudah ditinjau" }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(false);

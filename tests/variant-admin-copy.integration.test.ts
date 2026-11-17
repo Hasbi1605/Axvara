@@ -193,17 +193,19 @@ describe("PUT /api/admin/variant-copy → storefront", () => {
 describe("WR mengubah teks setelah admin menyunting", () => {
   const changedTerms = `${legal.terms}\nDilarang login di Smart TV`;
 
-  it("suntingan dijeda: storefront menampilkan aturan baru WR, panel & daftar produk menandai perlu ditinjau", async () => {
+  it("suntingan stale: storefront tetap menampilkan suntingan admin, panel & daftar produk menandai perlu ditinjau", async () => {
     await putCopy({ variant_id: 1, terms: "Aturan pakai:\n- Dilarang berbagi akun", activation: "1. Login di aplikasi" });
     fixture.sql.prepare("UPDATE wr_variants SET wr_terms=? WHERE wr_variant_id='var-legal'").run(changedTerms);
 
     const shown = await storefrontVariant("netflix-premium");
-    expect(shown.copy.source).toBe("pemasok");
-    expect(shown.copy.sections.flatMap((s: { items: string[] }) => s.items)).toContain("Dilarang login di Smart TV");
-    expect(JSON.stringify(shown.copy)).not.toContain("Dilarang berbagi akun");
+    expect(shown.copy.source).toBe("admin");
+    expect(JSON.stringify(shown.copy)).toContain("Dilarang berbagi akun");
+    expect(shown.copy.sections.flatMap((s: { items: string[] }) => s.items)).not.toContain("Dilarang login di Smart TV");
 
     const [entry] = await getCopy(1);
-    expect(entry).toMatchObject({ status: "pemasok", adminStale: true, needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun" });
+    expect(entry).toMatchObject({ status: "admin", adminStale: true, reviewKind: "changed", needsReview: true, hasOverride: true, adminTerms: "Aturan pakai:\n- Dilarang berbagi akun" });
+    expect(entry.effectiveTerms).toContain("Dilarang berbagi akun");
+    expect(entry.autoTerms).toContain("Dilarang login di Smart TV");
     expect(entry.supplierTerms).toContain("Dilarang login di Smart TV");
 
     const { GET } = await import("@/app/api/products/route");
@@ -334,12 +336,23 @@ describe("S&K admin versi Inggris (migrasi 0105)", () => {
     }, "id").copy!;
     expect(id.sections.flatMap((s) => s.items).join(" ")).not.toContain("English custom terms");
 
-    // Fingerprint berubah → admin EN tidak dipakai, fallback ke kurasi/teks WR (ID).
-    const stale = resolveVariantCopyDetailed(`${legal.terms}\nPerubahan supplier`, legal.deliveryTerms, {
+    // Fingerprint berubah → admin EN tetap tampil bila diisi (ditandai stale); tanpa admin EN fallback ke auto EN.
+    const staleWithEn = resolveVariantCopyDetailed(`${legal.terms}\nPerubahan supplier`, legal.deliveryTerms, {
       terms: saved.adminTerms, activation: saved.adminActivation, fingerprint: saved.supplierKey,
       termsEn: saved.adminTermsEn, activationEn: saved.adminActivationEn,
-    }, "en").copy!;
-    expect(stale.sections.flatMap((s) => s.items).join(" ")).not.toContain("English custom terms");
+    }, "en");
+    expect(staleWithEn.adminStale).toBe(true);
+    expect(staleWithEn.reviewKind).toBe("changed");
+    expect(staleWithEn.status).toBe("admin");
+    expect(staleWithEn.copy!.sections.flatMap((s) => s.items).join(" ")).toContain("English custom terms");
+
+    const staleWithoutEn = resolveVariantCopyDetailed(`${legal.terms}\nPerubahan supplier`, legal.deliveryTerms, {
+      terms: saved.adminTerms, activation: saved.adminActivation, fingerprint: saved.supplierKey,
+    }, "en");
+    expect(staleWithoutEn.adminStale).toBe(true);
+    expect(staleWithoutEn.reviewKind).toBe("changed");
+    expect(staleWithoutEn.copy).toEqual(staleWithoutEn.auto);
+    expect(staleWithoutEn.copy!.sections.flatMap((s) => s.items).join(" ")).not.toContain("English custom terms");
   });
 
   it("EN tanpa ID admin tidak tampil (EN hanya selama salinan admin ID berlaku)", async () => {

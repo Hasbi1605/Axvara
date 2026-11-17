@@ -1,5 +1,15 @@
 # DESIGN.md — AXVARA Design System
 
+## PDP multi-varian: satu S&K & satu Cara Aktivasi — 17 November 2026 (lokal)
+
+Menggantikan pemisahan judul tingkat produk ("Ketentuan produk" / "Cara aktivasi produk") pada PDP multi-varian (`2 November 2026` di bawah):
+
+- **Satu daftar S&K + satu kotak Cara Aktivasi** (`separated = true`, `product-detail-client.tsx`):
+  - **S1 (belum memilih varian dan salinan varian berbeda):** tetap tampilkan identitas "Belum ada varian dipilih" + tombol "Pilih varian". Jika deskripsi memiliki S&K atau cara aktivasi tingkat produk, tampilkan di bawahnya menggunakan `TermsBody` / kotak `ActivationBody` yang sama disertai chip **"Berlaku untuk semua varian"** (EN: `"Applies to all variants"`), bergaya `rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-semibold text-white` (mengikuti token `VariantIdentity` Midnight/Cyan tanpa warna/animasi baru).
+  - **S2 (varian terpilih atau semua varian berbagi salinan identik):** tampilkan baris identitas varian, lalu **satu** `TermsBody` hasil `mergeProductCopy(variantCopySource, parsedDescription)` (baris varian dulu, ketentuan produk setelahnya tanpa duplikat) dan **satu** kotak inset "Cara Aktivasi" (langkah varian bila ada, jika tidak ada memakai langkah produk + catatan). Jika varian tidak memiliki salinan sendiri tetapi deskripsi memiliki ketentuan/aktivasi tingkat produk, **jangan** tampilkan pesan `variantTermsMissing`; tampilkan identitas varian + chip "Berlaku untuk semua varian" + isi produk.
+  - **S3 (tidak ada salinan varian maupun ketentuan/aktivasi produk):** tampilkan pesan `variantTermsMissing` saja (teks tetap).
+- **Desktop & mobile:** Desktop memakai satu kartu glass "Syarat & Ketentuan" dan satu kotak inset "Cara Aktivasi" tanpa sub-blok "Ketentuan produk"/"Cara aktivasi produk". Mobile (`lg:hidden`) memakai paling banyak **dua** `MobileCollapsible`: "Syarat & Ketentuan" (`meta` = label varian terpilih, atau "Berlaku untuk semua varian" bila memakai salinan tingkat produk) dan "Cara Aktivasi" (`meta` = "N langkah"); bila hanya aktivasi tingkat produk yang ada tanpa S&K, chip "Berlaku untuk semua varian" tampil di atas panel lipat. Posisi slot tetap agar panel terbuka tidak menutup sendiri saat berganti varian. Produk varian tunggal / tanpa varian tetap tidak berubah.
+
 ## Bot Promo WhatsApp — 17 November 2026 (lokal)
 
 Revisi UI 17 November 2026 (permintaan owner): kartu diseragamkan dengan kartu
@@ -910,7 +920,7 @@ aktif dan tombol sejajar pada mobile agar tidak bersaing dengan CTA beli. Hanya 
 yang memakai live region polite, bukan keseluruhan S&K panjang. Harga/keranjang/
 checkout dan copy mengikuti satu state. Koreksi owner2November: Deskripsi umum
 tampil dulu, lalu S&K/aktivasi varian (mobile dan desktop); ketentuan dari
-deskripsi tetap berlabel Ketentuan produk.
+deskripsi tetap berlabel Ketentuan produk (snapshot 2 Nov; diganti 17 Nov 2026 menjadi satu S&K + satu Cara Aktivasi dengan chip Berlaku untuk semua varian).
 
 Koreksi owner2November: kartu promo Market dan Pedia selalu kanan-kiri (dua
 kolom) di semua lebar, tidak ditumpuk. Ikon28px mobile/36px mulai sm, padding/

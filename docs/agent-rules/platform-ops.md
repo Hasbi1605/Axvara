@@ -1,5 +1,20 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Pengingat tinjauan S&K supplier —17 November2026 (lokal)
+
+- Job lite `cleanup` lima-menitan existing menjalankan cek perubahan copy WR/SK
+  setelah drain grup, sebelum refresh crypto. Budget tetap40; hanya jalan bila
+  `db.canSpend(4)`. Empat statement maksimal: setting read/CAS/SELECT varian/map
+  write. Tidak menambah trigger, env, secret atau migrasi; order tetap terpisah.
+- `copy_review_checked_at` CAS di `store_settings` membatasi cek30menit dan satu
+  pemenang run bersamaan. `copy_review_alerted` menyimpan JSON variantId→supplierKey
+  hanya setelah Telegram `ok:true`; kirim gagal tidak mengubah map dan retry pada
+  jendela berikutnya. Prune tanpa kirim boleh untuk varian yang bukan `changed`.
+- Error terisolasi dalam hasil log `copy_review`, bukan kegagalan cleanup.
+  Budget sibuk dapat menunda; jangan menaikkan budget atau menambah cron untuk
+  mengatasinya. Detail/batas exactly-once dan mock QA ada di ARCHITECTURE §16.53;
+  implementasi lokal, bukan bukti deployment atau pesan produksi.
+
 ### Keuangan admin: pengeluaran + untung bersih —16 November2026
 
 Migrasi0130 menambah `operating_expenses`/`expense_recurring` dan kurs beku link

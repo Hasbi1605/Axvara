@@ -571,6 +571,20 @@ Rilis proxy menyalin seluruh dist dengan backup `dist.backup-jaspay-20261102`;
 env/state utuh, empat hash cocok, service active/health200/Jaspay tanpa token401.
 Ini bukan bukti deployment Pages atau transaksi end-to-end.
 
+## Pengingat tinjauan S&K supplier — 17 November 2026 (lokal)
+
+`src/lib/product-copy/review-alert.ts` mengingatkan admin via Telegram ketika
+copy WR/SK berstatus `changed` pada varian/produk aktif non-Arsip. Hook job lite
+`cleanup` lima-menitan existing, cek CAS30menit dan budget maksimal4statement
+(job tetap40); tidak ada cron/env/secret/migrasi baru. Dedupe JSON variantId→
+supplierKey di `store_settings.copy_review_alerted` baru ditulis setelah kirim
+sukses; checkpoint `copy_review_checked_at`, retry gagal pada jendela berikutnya,
+prune varian yang selesai ditinjau. Pesan plain text berisi maks15varian,
+`+M lainnya`, dan tautan `/admin?section=products`. Hasil/error terisolasi di
+`copy_review`, tidak memblokir cleanup. QA lokal memakai sender mock serta
+D1/workerd, tanpa pesan produksi; belum commit/deploy. Retensi copy admin pembeli
+adalah perubahan resolver terpisah. Detail dan batas dedupe: ARCHITECTURE §16.53.
+
 ## Detail varian Market dan kartu responsif - 2 November 2026
 
 Implementasi lokal; deployment belum diverifikasi. S&K/cara aktivasi kini mengikuti

@@ -12,7 +12,7 @@ import { useCart } from "@/stores/cart";
 import { ProductCard, productCardAmounts } from "@/components/storefront/ProductCard";
 import { QuickVariantModal } from "@/components/storefront/QuickVariantModal";
 import { ActivationBody, DescriptionBody, MobileCollapsible, TermsBody, VariantIdentity, activationStepCount } from "@/components/storefront/ProductCopy";
-import { isLongDescription, mergeProductCopy, parseProductDescription, type ParsedDescription, type VariantCopy } from "@/lib/product-copy/format";
+import { isLongDescription, mergeProductCopy, parseProductDescription, type VariantCopy } from "@/lib/product-copy/format";
 import { Bone, InlineSpinner, ProductDetailSkeleton } from "@/components/storefront/Skeletons";
 import { usePendingNavigation } from "@/hooks/usePendingNavigation";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
@@ -33,8 +33,6 @@ const DESC_FADE = {
   WebkitMaskImage: "linear-gradient(to bottom, #000 55%, transparent)",
   maskImage: "linear-gradient(to bottom, #000 55%, transparent)",
 };
-
-const EMPTY_DESCRIPTION: ParsedDescription = { blocks: [], sections: [], terms: [], activation: [] };
 
 const ShieldIcon = ({ className }: { className: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -405,24 +403,24 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   const variantCopiesDiffer = activeVariants.length > 1
     && new Set(activeVariants.map((v: VariantItem) => JSON.stringify(copyOf(v)))).size > 1;
   const sharedVariantCopy = choosableVariants && !variantCopiesDiffer && copyOf(activeVariants[0]) != null;
-  // Produk multi-varian: salinan varian (dari pilihan) dan ketentuan tingkat
-  // produk (dari deskripsi) dipisah dan diberi label jelas. Produk varian
-  // tunggal / tanpa varian: perilaku lama (digabung, tiap baris sekali).
+  // Produk multi-varian: satu S&K dan satu cara aktivasi mengikuti varian
+  // terpilih (digabung dengan ketentuan/aktivasi tingkat produk dari deskripsi).
+  // Produk varian tunggal / tanpa varian: perilaku lama tetap.
   const separated = choosableVariants;
   const variantPending = separated && !selectedVariant && !sharedVariantCopy;
   const variantCopySource = selectedVariant ? copyOf(selectedVariant) : sharedVariantCopy ? copyOf(activeVariants[0]) : null;
-  const variantCopy = separated && !variantPending ? mergeProductCopy(variantCopySource, EMPTY_DESCRIPTION) : null;
-  const variantCopyMissing = Boolean(variantCopy) && !variantCopy!.fromVariant;
-  const productCopy = separated ? mergeProductCopy(null, parsedDescription) : mergeProductCopy(copyOf(copyVariant), parsedDescription);
+  const productCopy = separated
+    ? mergeProductCopy(variantPending ? null : variantCopySource, parsedDescription)
+    : mergeProductCopy(copyOf(copyVariant), parsedDescription);
   const hasTerms = productCopy.sections.length > 0;
   const activationSteps = activationStepCount(productCopy.activation);
   const hasActivation = activationSteps > 0 || productCopy.notes.length > 0;
+  const hasMergedCopy = hasTerms || hasActivation;
+  const variantCopyMissing = separated && !variantPending && !productCopy.fromVariant && !hasMergedCopy;
+  const appliesAllVariants = separated && !productCopy.fromVariant && hasMergedCopy;
   const termsLabel = !separated && productCopy.fromVariant && copyVariant ? formatVariantLabel(copyVariant, prices.locale) : null;
   const identityLabel = selectedVariant ? formatVariantLabel(selectedVariant, prices.locale) : null;
   const identitySharedLabel = !selectedVariant && sharedVariantCopy ? t.allVariantsSame : null;
-  const variantTerms = variantCopy?.sections ?? [];
-  const variantActivationSteps = variantCopy ? activationStepCount(variantCopy.activation) : 0;
-  const variantHasActivation = variantActivationSteps > 0 || (variantCopy?.notes.length ?? 0) > 0;
   const openVariantPicker = () => setVariantModal("select");
   const identity = (
     <VariantIdentity
@@ -471,24 +469,17 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
           {t.variantTermsMissing}
         </p>
       )}
-      {separated && variantTerms.length > 0 && (
-        <MobileCollapsible title={t.terms} meta={identityLabel} icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}>
-          <TermsBody sections={variantTerms} size="xs" />
-        </MobileCollapsible>
-      )}
-      {separated && variantHasActivation && variantCopy && (
-        <MobileCollapsible
-          title={t.activation}
-          meta={variantActivationSteps > 0 ? t.steps(variantActivationSteps) : null}
-          icon={<StepsIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
-        >
-          <ActivationBody groups={variantCopy.activation} notes={variantCopy.notes} size="xs" />
-        </MobileCollapsible>
+      {separated && appliesAllVariants && !hasTerms && (
+        <div>
+          <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-semibold text-white">
+            {t.appliesAllVariants}
+          </span>
+        </div>
       )}
       {hasTerms && (
         <MobileCollapsible
-          title={separated ? t.termsProduct : t.terms}
-          meta={separated ? null : termsLabel}
+          title={t.terms}
+          meta={separated ? (appliesAllVariants ? t.appliesAllVariants : identityLabel) : termsLabel}
           icon={<ShieldIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
         >
           <TermsBody sections={productCopy.sections} size="xs" />
@@ -496,7 +487,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       )}
       {hasActivation && (
         <MobileCollapsible
-          title={separated ? t.activationProduct : t.activation}
+          title={t.activation}
           meta={activationSteps > 0 ? t.steps(activationSteps) : null}
           icon={<StepsIcon className="w-4 h-4 shrink-0 text-[#00E5FF]" />}
         >
@@ -608,23 +599,15 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                   {t.variantTermsMissing}
                 </p>
               )}
-              {variantCopy && variantTerms.length > 0 && (
-                <div className="mt-5 text-sm text-white/75 leading-relaxed">
-                  <TermsBody sections={variantTerms} />
-                </div>
-              )}
-              {variantCopy && variantHasActivation && (
-                <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
-                  <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
-                    <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
-                    {t.activation}
-                  </h3>
-                  <ActivationBody groups={variantCopy.activation} notes={variantCopy.notes} />
+              {appliesAllVariants && (
+                <div className="mt-3">
+                  <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-semibold text-white">
+                    {t.appliesAllVariants}
+                  </span>
                 </div>
               )}
               {hasTerms && (
-                <div className="mt-6 border-t border-white/10 pt-5 text-sm text-white/75 leading-relaxed">
-                  <h3 className="mb-3 text-[13px] font-semibold text-white">{t.termsProduct}</h3>
+                <div className="mt-5 text-sm text-white/75 leading-relaxed">
                   <TermsBody sections={productCopy.sections} />
                 </div>
               )}
@@ -632,7 +615,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
                 <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/75 leading-relaxed">
                   <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-white">
                     <StepsIcon className="w-4 h-4 text-[#00E5FF]" />
-                    {t.activationProduct}
+                    {t.activation}
                   </h3>
                   <ActivationBody groups={productCopy.activation} notes={productCopy.notes} />
                 </div>

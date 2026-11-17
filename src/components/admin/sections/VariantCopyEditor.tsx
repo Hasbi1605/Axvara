@@ -48,7 +48,7 @@ export function useVariantCopyEntries(productId?: number | string) {
 export type VariantCopyState = ReturnType<typeof useVariantCopyEntries>;
 
 function statusBadge(entry: VariantCopyEntry): { label: string; className: string } {
-  if (entry.adminStale) return { label: `${entry.supplier ?? "Supplier"} mengubah teks — suntingan dijeda`, className: "border-admin-danger/30 bg-admin-danger/10 text-admin-danger" };
+  if (entry.adminStale) return { label: `${entry.supplier ?? "Supplier"} mengubah teks — tinjau ulang`, className: "border-admin-danger/30 bg-admin-danger/10 text-admin-danger" };
   if (entry.reviewKind === "changed") return { label: `${entry.supplier ?? "Supplier"} mengubah teks — tinjau ulang`, className: "border-admin-danger/30 bg-admin-danger/10 text-admin-danger" };
   if (entry.reviewed) return { label: `Teks ${entry.supplier ?? "supplier"} — sudah ditinjau`, className: "border-admin-border bg-admin-subtle text-admin-muted" };
   if (entry.status === "admin") return { label: "Disunting admin", className: "border-admin-success/25 bg-admin-success/10 text-admin-success" };
@@ -176,7 +176,7 @@ export function VariantCopyEditor({
             <>
               {entry.adminStale && (
                 <p role="alert" className="mb-3 rounded-xl border border-admin-danger/25 bg-admin-danger/10 px-3 py-2.5 text-xs leading-5 text-admin-danger">
-                  {entry.supplier ?? "Supplier"} mengubah teks. Pembeli melihat versi otomatis terbaru; kolom di bawah berisi suntingan admin yang dijeda. Bandingkan sebelum menyimpan ulang.
+                  {entry.supplier ?? "Supplier"} mengubah teks. Pembeli masih melihat suntinganmu; bandingkan dengan teks supplier terbaru lalu simpan ulang atau tandai sudah ditinjau.
                 </p>
               )}
               {entry.status === "pemasok" && !entry.adminStale && !entry.reviewed && (
@@ -185,7 +185,7 @@ export function VariantCopyEditor({
                 </p>
               )}
               {!entry.autoTerms && !entry.autoActivation && !entry.hasOverride && <p className="mb-3 text-xs text-admin-muted">Supplier belum menyediakan panduan varian. Bagian dari deskripsi produk, jika ada, tetap tampil di pratinjau.</p>}
-              {entry.adminStale && <details className="mb-3 text-xs text-admin-muted"><summary className="cursor-pointer py-2">Yang dilihat pembeli sekarang (versi otomatis)</summary><pre className="whitespace-pre-wrap break-words font-sans">{entry.effectiveTerms}{"\n\n"}{entry.effectiveActivation}</pre></details>}
+              {entry.adminStale && <details className="mb-3 text-xs text-admin-muted"><summary className="cursor-pointer py-2">Versi otomatis terbaru dari teks supplier (tidak tampil ke pembeli)</summary><pre className="whitespace-pre-wrap break-words font-sans">{entry.autoTerms}{"\n\n"}{entry.autoActivation}</pre></details>}
               <Label className="block">
                 <span className="text-sm font-medium text-admin-muted">Syarat &amp; Ketentuan</span>
                 <Textarea

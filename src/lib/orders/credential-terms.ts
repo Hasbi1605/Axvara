@@ -18,9 +18,11 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import type { VariantCopy } from "@/lib/product-copy/format";
 import { resolveVariantCopy } from "@/lib/product-copy/resolve";
+import { sanitizeSupplierCopy } from "@/lib/product-copy/sanitize";
 import { mergeProductCopy, parseProductDescription } from "@/lib/product-copy/format";
 import { displayDescription } from "@/lib/catalog";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
+import { loadActiveSupplierLinkMap } from "@/lib/supplier-links";
 
 type OrderLine = { variant_id?: unknown };
 
@@ -92,18 +94,25 @@ export async function resolveCredentialTermsForVariants(
       ...uniqueIds,
     )
     .catch(() => [] as Record<string, unknown>[]);
-  for (const row of rows) {
+  const resolved = rows.map((row) => {
     const vid = Number(row.variant_id);
     const terms = (row.wr_terms as string | null) ?? (row.sk_description as string | null);
     const deliveryTerms = (row.wr_delivery_terms as string | null) ?? (row.sk_seller_note as string | null);
     const variantCopy = resolveVariantCopy(terms, deliveryTerms, {
-        terms: row.admin_terms as string | null,
-        activation: row.admin_activation as string | null,
-        fingerprint: row.admin_copy_fingerprint as string | null,
-      });
-    const merged = mergeProductCopy(variantCopy, parseProductDescription(displayDescription(row)));
+      terms: row.admin_terms as string | null,
+      activation: row.admin_activation as string | null,
+      fingerprint: row.admin_copy_fingerprint as string | null,
+    });
+    return { row, vid, variantCopy };
+  });
+  const links = resolved.some((item) => item.variantCopy?.source === "pemasok")
+    ? await loadActiveSupplierLinkMap(db)
+    : null;
+  for (const { row, vid, variantCopy } of resolved) {
+    const sanitized = links ? sanitizeSupplierCopy(variantCopy, links) : variantCopy;
+    const merged = mergeProductCopy(sanitized, parseProductDescription(displayDescription(row)));
     if (merged.sections.length || merged.activation.length || merged.notes.length) {
-      out.set(vid, { source: variantCopy?.source ?? "admin", sections: merged.sections, activation: merged.activation, notes: merged.notes });
+      out.set(vid, { source: sanitized?.source ?? "admin", sections: merged.sections, activation: merged.activation, notes: merged.notes });
     }
   }
   return out;
