@@ -169,13 +169,15 @@ export async function createSkOrderLink(
         `INSERT OR IGNORE INTO sk_order_links
           (order_code, sk_variant_id, quantity, sk_cost, status, attempt_count,
            max_attempts, next_attempt_at, idempotency_key)
-          VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'), ?)`,
-        orderCode,
+          SELECT code, ?,?,?, 'pending', 0, ?, datetime('now'), ?
+          FROM orders
+          WHERE code=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0`,
         String(skVariantId),
         qty,
         skCost * qty,
         SK_MAX_ATTEMPTS,
         key,
+        orderCode,
       );
       if (Number(res.changes ?? 0) > 0) {
         created++;
@@ -196,16 +198,20 @@ export async function createSkOrderLink(
           `INSERT INTO sk_order_links
             (order_code, sk_variant_id, quantity, sk_cost, status, attempt_count,
              max_attempts, next_attempt_at)
-            VALUES (?,?,?,?, 'pending', 0, ?, datetime('now'))`,
-          orderCode,
+            SELECT code, ?,?,?, 'pending', 0, ?, datetime('now')
+            FROM orders
+            WHERE code=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0`,
           String(skVariantId),
           qty,
           skCost * qty,
           SK_MAX_ATTEMPTS,
+          orderCode,
         );
-        created++;
-        const newId = Number((res as { lastInsertRowid?: number }).lastInsertRowid ?? 0);
-        if (newId > 0) createdLinkIds.push(newId);
+        if (Number(res.changes ?? 0) > 0) {
+          created++;
+          const newId = Number((res as { lastInsertRowid?: number }).lastInsertRowid ?? 0);
+          if (newId > 0) createdLinkIds.push(newId);
+        }
       } catch {
         /* concurrent loser */
       }
@@ -233,8 +239,8 @@ export async function createSkOrderLinksForOrder(
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!isSkEnabled()) return 0;
-  const order = await db.queryFirst(`SELECT items FROM orders WHERE code=?`, orderCode).catch(() => null);
-  if (!order) return 0;
+  const order = await db.queryFirst(`SELECT items, status, payment_status, supplier_purchase_disabled FROM orders WHERE code=?`, orderCode).catch(() => null);
+  if (!order || order.status !== "lunas" || order.payment_status !== "paid" || Number(order.supplier_purchase_disabled)) return 0;
   let items: SkOrderItemLike[] = [];
   try {
     const parsed = JSON.parse(String(order.items || "[]"));
@@ -265,7 +271,7 @@ export async function reconcileMissingSkLinks(
       // Filter actual missing links in SQL, rather than spending one query per
       // item across the latest paid orders. Linked history must not starve buys.
       `SELECT o.code, o.items FROM orders o
-       WHERE o.status='lunas' AND o.payment_status='paid'
+       WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0
          AND datetime(COALESCE(o.paid_at, o.created_at)) > datetime('now','-7 days')
          AND EXISTS (
            SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) je
@@ -325,7 +331,7 @@ export async function processSkPendingOrders(
        WHERE l.status IN ('pending','retry')
          AND l.attempt_count < l.max_attempts
           AND (l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
-          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid')
+          AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
           AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
             WHERE fi.order_code=l.order_code AND (fi.sk_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.sk_variant_id=l.sk_variant_id)
               AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
@@ -365,7 +371,8 @@ async function claimSkLink(
          updated_at=datetime('now')
        WHERE id=? AND status IN ('pending','retry') AND request_sent_at IS NULL
          AND COALESCE(sk_invoice,'')='' AND attempt_count=? AND attempt_count < max_attempts
-         AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))`,
+         AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
       attempt,
       leaseOwner,
       leaseUntil,
@@ -380,7 +387,8 @@ async function claimSkLink(
          updated_at=datetime('now')
        WHERE id=? AND status='claimed' AND request_sent_at IS NULL
          AND COALESCE(sk_invoice,'')='' AND attempt_count=?
-         AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))`,
+         AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now'))
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
       leaseOwner,
       leaseUntil,
       id, attempt,
@@ -454,7 +462,7 @@ async function processOneSkLink(link: Row, db: DatabaseAccess): Promise<"succeed
     `UPDATE sk_order_links SET request_sent_at=datetime('now'), updated_at=datetime('now')
      WHERE id=? AND status='claimed' AND lease_owner=? AND request_sent_at IS NULL
        AND datetime(lease_expires_at) > datetime('now')
-       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid')
+       AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
        AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
          WHERE fi.order_code=sk_order_links.order_code AND (fi.sk_link_id=sk_order_links.id OR fi.id=sk_order_links.fulfillment_item_id OR pv.sk_variant_id=sk_order_links.sk_variant_id)
            AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
@@ -588,7 +596,7 @@ export async function reconcileBlockedSkBalance(
           AND (CASE WHEN l.last_error='preflight_insufficient_balance' THEN datetime(l.created_at) >= datetime('now','-${SK_BLOCKED_MAX_AGE_HOURS} hours')
             ELSE datetime(l.updated_at) IS NULL OR datetime(l.updated_at) >= datetime('now','-${SK_BLOCKED_MAX_AGE_HOURS} hours') END)
          AND (COALESCE(l.last_error,'')!='preflight_insufficient_balance' OR l.next_attempt_at IS NULL OR datetime(l.next_attempt_at) <= datetime('now'))
-         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid')
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=l.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
          AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
            WHERE fi.order_code=l.order_code AND (fi.sk_link_id=l.id OR fi.id=l.fulfillment_item_id OR pv.sk_variant_id=l.sk_variant_id)
              AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))
@@ -617,7 +625,7 @@ export async function reconcileBlockedSkBalance(
             AND (CASE WHEN last_error='preflight_insufficient_balance' THEN datetime(created_at) >= datetime('now','-${SK_BLOCKED_MAX_AGE_HOURS} hours')
               ELSE datetime(updated_at) IS NULL OR datetime(updated_at) >= datetime('now','-${SK_BLOCKED_MAX_AGE_HOURS} hours') END)
            AND (COALESCE(last_error,'')!='preflight_insufficient_balance' OR next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
-           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid')
+           AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)
            AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi LEFT JOIN product_variants pv ON pv.id=fi.variant_id
              WHERE fi.order_code=sk_order_links.order_code AND (fi.sk_link_id=sk_order_links.id OR fi.id=sk_order_links.fulfillment_item_id OR pv.sk_variant_id=sk_order_links.sk_variant_id)
                AND (COALESCE(fi.last_error,'') LIKE 'manual_handover:%' OR fi.delivered_message_id='manual'))`,
@@ -636,7 +644,8 @@ export async function retryFailedSkOrders(database?: DatabaseAccess): Promise<nu
     .execRun(
       `UPDATE sk_order_links SET next_attempt_at=datetime('now'), updated_at=datetime('now')
        WHERE status='retry' AND attempt_count < max_attempts
-         AND datetime(next_attempt_at) <= datetime('now')`,
+         AND datetime(next_attempt_at) <= datetime('now')
+         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=sk_order_links.order_code AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0)`,
     )
     .catch(() => ({ changes: 0 as number | undefined }));
   return Number(res.changes ?? 0);

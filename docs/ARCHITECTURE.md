@@ -251,6 +251,12 @@ shim ekspor agar kontrak caller cron/VPS/Telegram existing tetap kompatibel.
   (`drizzle/migrations/0133_payment_invoice_history_upsert.sql`, selaras
   `drizzle/schema.sql`) agar aman bila `payment_transactions` ditulis lewat
   `ON CONFLICT ... DO UPDATE` untuk `dana`/`gopay`.
+- Migrasi0134 (18 Nov 2026, lokal G1): `drizzle/migrations/0134_retire_supplier_pair_dirty.sql`
+  (selaras `drizzle/schema.sql`) menjalankan `DROP TRIGGER IF EXISTS` untuk
+  seluruh 14 trigger `pair_dirty_*` dan `DELETE FROM supplier_pair_dirty`; tabel
+  `supplier_pairs` dan `supplier_pair_dirty` dipertahankan untuk kompatibilitas
+  shim/histori. Tidak ada kode aktif yang membaca/menulis `supplier_pair_dirty`
+  selain klasifikasi telemetry `src/lib/db/read-metrics.ts`.
 - Migrasi menyalin 33 pasangan lama, prefer/winner lama ke ID produk, lalu
   mengganti MBO→Jaspay di grup: Zoom15→113, Express VPN20→121, Wink25→115,
   Meitu26→114. Guard ID+nama kedua produk dan keanggotaan mencegah salah target.
@@ -565,7 +571,7 @@ Menggantikan bagian "Workspace admin" di bawah hanya untuk dialog/toast.
   `AdminWorkspace` (`src/components/admin/AdminWorkspace.tsx`). Cookie ditulis
   klien: `Path=/admin; Max-Age=31536000; SameSite=Lax` (+`Secure` di HTTPS); bukan
   data sensitif dan tidak dibaca API. Wrapper tema/toast hanya aktif bila
-  `usePathname()==="/admin"`; `/admin/payments/test` dirender apa adanya.
+  `usePathname()==="/admin"`; storefront dirender apa adanya.
 - `AdminWorkspace` mengekspor `useAdminDraft(dirty, busy)`, `navigateWithDraftGuard`
   dan `pushAdminHistory(url)` (pushState yang mempertahankan `history.state` Next +
   `adminIndex`). Guard memakai event cancelable `axvara:admin-navigate`, popstate
@@ -5720,7 +5726,10 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
 ### 16.22 Rail non-QRIS publik — 7 November 2026
 - Keputusan owner 7 November 2026: rail non-QRIS (Sekalipay gateway VA/E-Wallet + crypto NOWPayments) dibuka ke PUBLIK web + bot Telegram. Pages produksi `SEKALIPAY_GATEWAY_ENABLED=true` dan `NOWPAYMENTS_ENABLED=true` (`secret_text`, PATCH metadata 71 env tetap) — berlaku pada deployment CI berikutnya; belum ada bukti transaksi publik paid/settlement. Kill-switch: set flag ke `false` (`secret_text`) lalu rilis CI; read/reconcile invoice tersimpan tidak bergantung flag. Status "kedua rail publik tetap `false`" pada §16.21 dan catatan status di atas adalah snapshot 6 November.
 
-### 16.21 Tes pembayaran admin terisolasi — 6 November 2026 (versi `770a051` terdeploy; koreksi POST §16.20 aktif via canonical `d2edb19`)
+### 16.21 Tes pembayaran admin terisolasi — 6 November 2026 (DIPENSIUNKAN 18 November 2026, lokal G1)
+
+- **Status 18 November 2026 (lokal G1):** fitur tes pembayaran admin dipensiunkan karena NOWPayments dan Sekalipay gateway sudah terbukti jalan di publik: `src/app/(shop)/admin/payments/test/page.tsx` dan `PaymentTestScope.tsx` dihapus; `/api/admin/payments/test/{quote,orders}` mengembalikan `410` `{error:"Tes pembayaran admin sudah dipensiunkan."}` (`Cache-Control: no-store`); `isPaymentAdminTestEnabled` dan seluruh mode `adminTest`/`admin_payment_test` dihapus dari `rails.ts`, `method-options.ts`, `nowpayments.ts`, `sekalipay-gateway.ts`, `checkout/quote`, `orders/route.ts`, dan `checkout/page.tsx`; `verifyCheckoutQuoteToken` menolak token lama yang membawa `admin_payment_test`. `PAYMENT_ADMIN_TEST_ENABLED` tidak lagi dibaca (owner boleh menghapusnya kelak dari Pages dengan prosedur backup env). Kolom DB (`orders.supplier_purchase_disabled`, dll.) tetap dipertahankan untuk histori order lama, dan gate `supplier_purchase_disabled=0` kini diterapkan seragam di WR (`src/lib/warung-rebahan/order.ts`), SK (`src/lib/sekalipay/order.ts`), TUNVN, dan AIVault (link/riwayat lama tidak diubah).
+- Catatan 6 November di bawah adalah snapshot historis sebelum pensiun:
 
 - Route edge dinamis baru: `src/app/(shop)/admin/payments/test/page.tsx`, `/api/admin/payments/test/quote` dan `/api/admin/payments/test/orders`. Halaman server memeriksa `requireAdmin`, redirect unauthorized ke `/admin`, noindex/nofollow, notice saat nonaktif. `PaymentTestScope.tsx` menyediakan context defaultfalse hanya untuk memilih endpoint UI; bukan otorisasi. Checkout existing dipakai ulang, termasuk keranjang, quote, harga, stok, instruksi dan notifikasi nyata.
 - Dua route API me-re-export handler existing. Handler mengenali pathname admin eksak, memanggil `requireAdmin` (JWT aplikasi+idle+revokasi/password dan Access produksi), lalu meneruskan boolean internal `adminTest` ke katalog/preflight/create adapter. Tidak membaca switch header/body/query. `admin_payment_test?: true` divalidasi schema dan ditandatangani dalam quote, termasuk bentuk crypto ringkas; create memeriksa kesamaan scope SEBELUM saved-order retry. Salah scope403, sesi tidak sah401. Quote sukses `private, no-store`; limiter/body limit/anti-abuse existing tetap.

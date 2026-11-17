@@ -58,7 +58,6 @@ export type CheckoutQuotePaymentMethod = {
 
 export type CheckoutQuotePayload = {
   quote_id: string;
-  admin_payment_test?: true;
   items: CheckoutQuoteItem[];
   subtotal: number;
   payment_methods: CheckoutQuotePaymentMethod[];
@@ -397,7 +396,6 @@ export function isCanonicalMethodOption(value: unknown, idrSubtotal: number): bo
   return isValidCryptoMethod(method, idrSubtotal);
 }
 const quoteSchema = z.object({
-  admin_payment_test: z.literal(true).optional(),
   items: z.array(quoteItemSchema), subtotal: z.number().int().safe().nonnegative(),
   payment_methods: z.array(quoteMethodSchema), locale: z.enum(["id", "en"]).optional(),
 }).superRefine((quote, ctx) => {
@@ -555,6 +553,7 @@ export async function verifyCheckoutQuoteToken(token: string): Promise<CheckoutQ
     if (segments.length !== 3 || segments.some((segment) => jose.base64url.encode(jose.base64url.decode(segment)) !== segment)) return null;
     const { payload } = await jose.jwtVerify(token, secretKey());
     if (payload.purpose !== "checkout_quote" || !payload.jti || !Array.isArray(payload.items) || !Array.isArray(payload.payment_methods)) return null;
+    if (payload.admin_payment_test !== undefined) return null;
 
     let candidate: unknown = payload;
     if (payload.crypto !== undefined) {

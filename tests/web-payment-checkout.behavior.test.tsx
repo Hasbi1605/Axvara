@@ -8,7 +8,6 @@ import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } f
 // Fixture checkout/pesanan async; beri ruang bila mesin sedang sibuk (tidak mengubah asersi).
 configure({ asyncUtilTimeout: 4000 });
 import CheckoutPage from "@/app/(shop)/checkout/page";
-import { PaymentTestProvider } from "@/components/storefront/PaymentTestScope";
 import { PaymentMethodPicker } from "@/components/storefront/PaymentMethodPicker";
 import { parsePayOptions } from "@/lib/payment-ui";
 import { useCart, type CartItem } from "@/stores/cart";
@@ -45,13 +44,13 @@ function stub(opts: { quotes: Array<{ methods: unknown[]; extra?: Record<string,
   const posts: Array<Record<string, unknown>> = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
-    if (u === "/api/checkout/quote" || u === "/api/admin/payments/test/quote") {
+    if (u === "/api/checkout/quote") {
       quoteCalls.count++;
       const q = opts.quotes[Math.min(quoteN++, opts.quotes.length - 1)];
       const body = q.body ?? quoteBody(q.methods, q.extra);
       return new Response(JSON.stringify(body), { status: q.status ?? 200, headers: { "Content-Type": "application/json" } });
     }
-    if (u === "/api/orders" || u === "/api/admin/payments/test/orders") {
+    if (u === "/api/orders") {
       posts.push(JSON.parse(String(init?.body)));
       // `orders[]` = respons berurutan per POST (percobaan pertama boleh gagal).
       const picked = opts.orders ? opts.orders[Math.min(orderN++, opts.orders.length - 1)] : opts.order;
@@ -86,17 +85,17 @@ const railText = () => norm(document.querySelector("aside")?.textContent);
 beforeEach(() => { window.scrollTo = vi.fn(); nav.push.mockClear(); localStorage.clear(); sessionStorage.clear(); useCart.setState({ items: [cartLine()] }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-it.each([false, true])("checkout uses protected admin endpoints only inside the test provider (%s)", async admin => {
+it("checkout always uses public quote and order endpoints", async () => {
   stub({ quotes: [{ methods: [qrisM] }] });
-  render(admin ? <PaymentTestProvider><CheckoutPage /></PaymentTestProvider> : <CheckoutPage />);
+  render(<CheckoutPage />);
   await qrisVisible();
-  if (admin) expect(screen.getByText(/Transaksi nyata/)).toBeTruthy();
   fillAndAgree(); fireEvent.click(payButton());
   await waitFor(() => expect(nav.push).toHaveBeenCalled());
   const paths = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
-  expect(paths).toContain(admin ? "/api/admin/payments/test/quote" : "/api/checkout/quote");
-  expect(paths).toContain(admin ? "/api/admin/payments/test/orders" : "/api/orders");
-  expect(paths).not.toContain(admin ? "/api/orders" : "/api/admin/payments/test/orders");
+  expect(paths).toContain("/api/checkout/quote");
+  expect(paths).toContain("/api/orders");
+  expect(paths).not.toContain("/api/admin/payments/test/quote");
+  expect(paths).not.toContain("/api/admin/payments/test/orders");
 });
 
 describe("checkout: akordeon grup metode (logo, tanpa pengulangan)", () => {

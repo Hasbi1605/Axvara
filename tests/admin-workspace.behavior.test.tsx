@@ -65,8 +65,8 @@ it("Radix modal honours busy Escape and restores scroll/focus on unmount", async
   unmount(); expect(document.body.hasAttribute("data-scroll-locked")).toBe(false); await waitFor(() => expect(document.activeElement).toBe(button)); button.remove();
 });
 
-it("leaves the storefront checkout on /admin/payments/test outside the admin theme", () => {
-  pathname = "/admin/payments/test";
+it("leaves the storefront checkout outside the admin theme", () => {
+  pathname = "/checkout";
   const { container } = render(<AdminWorkspace initialTheme="light"><p>Checkout</p></AdminWorkspace>);
   expect(screen.getByText("Checkout")).toBeTruthy();
   expect(container.querySelector(".admin-theme")).toBeNull();

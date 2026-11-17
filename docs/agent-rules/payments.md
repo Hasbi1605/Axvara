@@ -1,5 +1,11 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Pensiun tes pembayaran admin — 18 November 2026 (lokal, G1)
+
+- Fitur tes pembayaran admin dipensiunkan karena NOWPayments dan Sekalipay gateway sudah terbukti jalan di publik: `src/app/(shop)/admin/payments/test/page.tsx` dan `src/components/storefront/PaymentTestScope.tsx` dihapus; `/api/admin/payments/test/{quote,orders}` mengembalikan `410` `{ error: "Tes pembayaran admin sudah dipensiunkan." }` (`Cache-Control: no-store`).
+- `isPaymentAdminTestEnabled` dan seluruh cabang `adminTest`/`admin_payment_test` dihapus dari `src/lib/payments/rails.ts`, `method-options.ts`, `nowpayments.ts`, `sekalipay-gateway.ts`, `src/app/api/checkout/quote/route.ts`, `src/app/api/orders/route.ts`, dan `src/app/(shop)/checkout/page.tsx`; `verifyCheckoutQuoteToken` (`src/lib/auth.ts`) menolak token lama yang membawa `admin_payment_test`.
+- Env `PAYMENT_ADMIN_TEST_ENABLED` tidak lagi dibaca aplikasi (jangan ubah env produksi di sini; owner boleh menghapusnya kelak dengan prosedur backup env). Kolom DB (`orders.supplier_purchase_disabled`, dll.) tetap dipertahankan untuk histori order lama; order bertanda `supplier_purchase_disabled=1` tetap tidak dibeli di supplier manapun (WR/SK/TUNVN/AIVault).
+
 ## Pacing FX NOWPayments 429 & rekonsiliasi/expiry Sekalipay gateway basi — 18 November 2026 (lokal, G2)
 
 - `refreshCryptoMarketSnapshot` (`src/lib/payments/market-snapshot-refresh.ts`) wajib menjalankan dua `GET /estimate` berurutan lebih dulu (tidak paralel dengan `/merchant/coins`/`/min-amount`), melakukan maks satu retry pada `429` `estimate` (hormati `Retry-After <= 5s`, else `2s`, hanya bila masih dalam deadline klien), dan membatasi `fetchMinimums` pada konkurensi `<= 2` dengan berhenti dini pada `429` (`coins_http_429`) tanpa menggagalkan pembaruan `fx_effective_at` yang sudah sukses.

@@ -123,7 +123,7 @@ export async function resolvePediaMethodSelection(input: {
       || pricing.totalCents <= BigInt(0)) return stale(locale);
     const market = await getCryptoMarketSnapshot();
     const { isNowpaymentsConfigured } = await import("@/lib/payments/rails");
-    if (!cryptoRailEnabled() || !isNowpaymentsConfigured(false) || !market.fx) {
+    if (!cryptoRailEnabled() || !isNowpaymentsConfigured() || !market.fx) {
       return { ok: false, status: 503, message: locale === "en" ? "Crypto payments are temporarily unavailable. Reload checkout." : "Pembayaran crypto sedang tidak tersedia. Muat ulang checkout." };
     }
     if (!isCryptoTotalStillPayable(Number(pricing.totalCents), ticker, market.coins)) {
@@ -152,11 +152,11 @@ export async function resolvePediaMethodSelection(input: {
 
   if (selected.kind === "gateway" && selected.gateway && selected.currency === "IDR") {
     const { isSekalipayGatewayConfigured } = await import("@/lib/payments/rails");
-    if (!isSekalipayGatewayConfigured(false)) {
+    if (!isSekalipayGatewayConfigured()) {
       return { ok: false, status: 503, message: locale === "en" ? "This payment method is unavailable." : "Metode pembayaran tidak tersedia." };
     }
     const { listSekalipayMethods } = await import("@/lib/payments/sekalipay-gateway");
-    const methods = await listSekalipayMethods(idrSubtotal, false).catch(() => []);
+    const methods = await listSekalipayMethods(idrSubtotal).catch(() => []);
     if (!methods.some((method) => method.code === selected.gateway!.channel)) {
       return { ok: false, status: 503, message: locale === "en" ? "This payment method is unavailable." : "Metode pembayaran tidak tersedia." };
     }

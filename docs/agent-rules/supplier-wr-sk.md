@@ -1,5 +1,9 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Gate seragam supplier_purchase_disabled & bersih-bersih supplier_pair_dirty — 18 November 2026 (lokal, G1)
+
+- WR (`src/lib/warung-rebahan/order.ts`: `createWrOrderLink`, `createWrOrderLinksForOrder`, `reconcileMissingWrLinks`, `processWrPendingOrders`, `claimLink`, `processOneLink`, `recoverJaspayByExactRef`, `reconcileBlockedBalance`, `retryFailedWrOrders`) dan SK (`src/lib/sekalipay/order.ts`: `createSkOrderLink`, `createSkOrderLinksForOrder`, `reconcileMissingSkLinks`, `processSkPendingOrders`, `claimSkLink`, `processOneSkLink`, `reconcileBlockedSkBalance`, `retryFailedSkOrders`) wajib menyaring `orders.status='lunas' AND orders.payment_status='paid' AND supplier_purchase_disabled=0` (seragam dengan `src/lib/tunvn/orders.ts` dan `src/lib/aivault/orders.ts`). Order bertanda `supplier_purchase_disabled=1` tidak dibuatkan link baru maupun mengirim POST pembelian; link/riwayat yang sudah ada tidak dimutasi.
+- Migrasi `drizzle/migrations/0134_retire_supplier_pair_dirty.sql` (selaras `drizzle/schema.sql`) menghapus 14 trigger `pair_dirty_*` (`DROP TRIGGER IF EXISTS`) dan mengosongkan antrean lama (`DELETE FROM supplier_pair_dirty`), sambil mempertahankan tabel `supplier_pairs`/`supplier_pair_dirty` untuk kompatibilitas shim/histori. Tidak ada kode aktif yang membaca/menulis `supplier_pair_dirty` selain klasifikasi telemetry `src/lib/db/read-metrics.ts`.
 ## Garansi bukan masa aktif — keputusan owner 18 November 2026 (G4, lokal)
 
 - Jangan menyalin `warranty_value/unit/type` ke `duration_value/unit/label` di

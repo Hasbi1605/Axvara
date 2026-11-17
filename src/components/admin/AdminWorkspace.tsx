@@ -77,7 +77,7 @@ export function AdminWorkspace({ children, initialTheme = "system" }: { children
     navigation?.addEventListener("navigate", traversal);
     return () => { window.removeEventListener(NAVIGATE, navigate); window.removeEventListener("beforeunload", unload); window.removeEventListener("popstate", pop, true); navigation?.removeEventListener("navigate", traversal); };
   }, []);
-  // Tema/toast admin hanya untuk panel `/admin`; `/admin/payments/test` merender checkout storefront asli.
+  // Tema/toast admin hanya untuk panel `/admin`; halaman storefront dirender apa adanya.
   if (pathname !== "/admin") return <>{children}</>;
   return <ThemeContext.Provider value={{ theme, changeTheme: value => { setTheme(value); document.cookie = `axvara-admin-theme=${value}; Path=/admin; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; } }}><div ref={setPortal} className="admin-theme" data-admin-theme={theme} onClickCapture={event => {
     const link = (event.target as Element).closest<HTMLAnchorElement>("a[href]");

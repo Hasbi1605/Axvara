@@ -146,6 +146,10 @@ Migrasi `0133_payment_invoice_history_upsert.sql` mengganti trigger
 `payment_invoice_history_*` dari `INSERT OR IGNORE` ke
 `ON CONFLICT(provider, order_code, payable_amount) DO NOTHING` agar aman di
 bawah `UPSERT` `payment_transactions` (DANA/GoPay).
+Migrasi `0134_retire_supplier_pair_dirty.sql` menghapus seluruh 14 trigger
+`pair_dirty_*` dan mengosongkan `supplier_pair_dirty` (tabel tetap dipertahankan
+untuk kompatibilitas shim/histori), serta menyamakan gate `supplier_purchase_disabled=0`
+pada dispatch WR/SK dengan TUNVN/AIVault.
 Query `IN (...)` berpotensi >100 ID dipotong ≤50/statement atau memakai
 `json_each(?)`, pencarian admin panjang memakai `INSTR(LOWER(...), ?) > 0`
 (batas `LIKE`/`GLOB` D1 50 byte), dan `/api/supplier-sync` membalas 500 pada
@@ -295,7 +299,7 @@ token `admin.*` + `src/components/admin/admin.css`), dialog native `ui/Dialog.ts
 guard draft lintas section/back-forward, serta perbaikan audit: PATCH pesanan
 menolak aksi manual legacy untuk crypto/gateway dan lunas QRIS generik (409),
 filter `kind=games`/metode berkolon, Games berlabel sendiri, rekening bank legacy
-baca-saja. Storefront dan `/admin/payments/test` tidak ikut bertema. Tanpa env/
+baca-saja. Storefront tidak ikut bertema. Tanpa env/
 migrasi/dependency baru. Detail DESIGN/ARCHITECTURE bagian teratas.
 
 Perbaikan CI temp mail12November2026 (lokal, menunggu publikasi CI): migrasi gagal
@@ -468,8 +472,9 @@ Finalisasi/pemulihan invoice gateway (LOKAL 6 November 2026, belum deploy): orde
 
 Koreksi tes ShopeePay6November2026: versi admin `770a051` sudah terdeploy; provider menolak create401 karena adapter menggunakan Enhanced HMAC pada akun IP whitelist. POST via proxy diperbaiki menjadi HMAC atas body JSON mentah yang diserialisasi sekali; direct Enhanced/GET tetap. GET katalog berhasil bukan bukti autentikasi POST. Tidak mengubah key/env/flag publik, tidak mengulang POST atau mereset klaim order lama. Status superseded: koreksi POST `38d2878` sudah aktif di canonical `d2edb1924250472af223cfce0b955e2412bca1ee` (success `2026-11-06T15:40:46.22327Z`); invoice tersimpan terbukti dibuat lewat GET, bukan bukti dibayar/settlement. Jangan terus mencoba checkout lama yang masih initializing. Rujukan: ARCHITECTURE §16.20 dan runbook pembayaran.
 
-## Tes pembayaran admin — 6 November 2026
-- Implementasi baru: `/admin/payments/test` memakai checkout/keranjang asli, login admin dan Cloudflare Access existing. Tambahkan produk ke keranjang, buka halaman ini, pilih metode/jaringan, lalu bayar sendiri. **Ini transaksi nyata; pesanan lunas tetap diproses dan dikirim.** Bukan sandbox atau URL rahasia.
+## Tes pembayaran admin — 6 November 2026 (DIPENSIUNKAN 18 November 2026, lokal G1)
+- **Pensiun 18 November 2026 (lokal G1):** fitur tes pembayaran admin dipensiunkan karena NOWPayments dan Sekalipay gateway sudah jalan di publik: halaman `/admin/payments/test` dan `PaymentTestScope` dihapus, `/api/admin/payments/test/{quote,orders}` mengembalikan `410` `{error:"Tes pembayaran admin sudah dipensiunkan."}`, `PAYMENT_ADMIN_TEST_ENABLED` tidak lagi dibaca (owner boleh menghapusnya kelak dari Pages dengan prosedur backup env), dan token `admin_payment_test` ditolak. Kolom DB (`orders.supplier_purchase_disabled`, dll.) tetap dipertahankan untuk histori order lama, dan gate `supplier_purchase_disabled=0` kini seragam di WR, SK, TUNVN, dan AIVault.
+- Snapshot 6 November (histori): `/admin/payments/test` memakai checkout/keranjang asli, login admin dan Cloudflare Access existing. Tambahkan produk ke keranjang, buka halaman ini, pilih metode/jaringan, lalu bayar sendiri. **Ini transaksi nyata; pesanan lunas tetap diproses dan dikirim.** Bukan sandbox atau URL rahasia.
 - Keputusan owner 7 November 2026: rail non-QRIS (Sekalipay gateway VA/E-Wallet + crypto NOWPayments) dibuka ke PUBLIK web + bot Telegram. Pages produksi `SEKALIPAY_GATEWAY_ENABLED=true` dan `NOWPAYMENTS_ENABLED=true` (`secret_text`, PATCH metadata 71 env tetap) — berlaku pada deployment CI berikutnya; belum ada bukti transaksi publik paid/settlement. Kalimat flag `false` di bawah adalah snapshot 6 November.
 - Quote/create ada di `/api/admin/payments/test/{quote,orders}`, server-side auth pada setiap request dan marker quote signed yang tidak bisa dipakai di checkout publik. Flag tes `PAYMENT_ADMIN_TEST_ENABLED=true` disiapkan; `NOWPAYMENTS_ENABLED=false` dan `SEKALIPAY_GATEWAY_ENABLED=false` tetap menutup web publik dan bot. Mematikan flag tes hanya menghentikan order baru; invoice tersimpan tetap dapat direkonsiliasi. Perubahan env memerlukan rilis CI.
 - Delapan env produksi ditambah sebagai `secret_text` dari berkas kredensial ignored, termasuk outcome `usdtbsc`; env existing utuh, total75/128termasuk4system. Jangan menyalin key ke browser atau mengubah MFA. Daftar lengkap dan rollback: `docs/ARCHITECTURE.md` §16.21 dan `docs/agent-rules/payments.md`.

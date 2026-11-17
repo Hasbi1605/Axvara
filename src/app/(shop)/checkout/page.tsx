@@ -22,7 +22,6 @@ import { usePreferences } from "@/hooks/usePreferences";
 import { useDisplayContext } from "@/hooks/useDisplayPrices";
 import { translateProductName } from "@/lib/i18n/product-name";
 import { checkoutMessage } from "@/lib/i18n/checkout-copy";
-import { PaymentTestScope } from "@/components/storefront/PaymentTestScope";
 
 
 type QuotedItem = { buyer_fields?: { muse_invite_code?: string }; product_id: number; variant_id?: number; name: string; price: number; base_price?: number; applied_tier_min_qty?: number; qty: number; stock: number; image: string; queued_delivery?: boolean; automatic_processing?: boolean };
@@ -52,7 +51,6 @@ type CatalogVariant = BulkVariantFields & {
 };
 
 function CheckoutInner() {
-  const adminTest = React.useContext(PaymentTestScope);
   const router = useRouter();
   const searchParams = useSearchParams();
   const cartItems = useCart((s) => s.items);
@@ -221,7 +219,7 @@ function CheckoutInner() {
     setQuoteToken(null);
     setQuoteAccepted(false);
     try {
-      const r = await fetchWithTimeout(adminTest ? "/api/admin/payments/test/quote" : "/api/checkout/quote", {
+      const r = await fetchWithTimeout("/api/checkout/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: quoteItems }),
@@ -261,7 +259,7 @@ function CheckoutInner() {
     } finally {
       if (requestId === quoteRequestId.current) setQuoteLoading(false);
     }
-  }, [adminTest]);
+  }, []);
 
   // expected_price = harga DASAR baris (item.price tidak pernah dimutasi jadi
   // harga tier): quote server membandingkannya dengan harga dasar, sehingga
@@ -532,7 +530,7 @@ function CheckoutInner() {
     let redirected = false;
     try {
       // 60 dtk: jalur ini menunggu stok + QRIS + notifikasi admin di server.
-      const r = await fetchWithTimeout(adminTest ? "/api/admin/payments/test/orders" : "/api/orders", {
+      const r = await fetchWithTimeout("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -681,8 +679,7 @@ function CheckoutInner() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-      <h1 className="font-display font-bold text-2xl text-white tracking-[-0.02em]">{adminTest ? text("Tes pembayaran admin", "Admin payment test") : "Checkout"}</h1>
-      {adminTest && <p className="mt-2 text-sm text-white/70">{text("Transaksi nyata dari keranjang atau produk pilihan. Pesanan lunas tetap diproses dan dikirim. Metode tes tidak dibuka untuk pembeli umum atau bot.", "Real transactions using your cart or selected product. Paid orders are processed and delivered. Test methods remain closed to public checkout and bots.")}</p>}
+      <h1 className="font-display font-bold text-2xl text-white tracking-[-0.02em]">Checkout</h1>
       <p className="text-sm text-white/50">{text("Pilih pembayaran, isi data, lalu selesaikan pesanan.", "Choose a payment method, enter your details, and complete your order.")}</p>
 
       {/* Ringkasan accordion — MOBILE ONLY (lg:hidden). Di desktop ringkasan
