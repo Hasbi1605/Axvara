@@ -1,5 +1,16 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Akurasi stok F5a (18 November 2026, lokal)
+
+Winner grup WR/SK menghormati stok lokal setelah reservasi sekaligus mirror
+supplier aktif (−1 hanya tanpa plafon di sisi tersebut). Unique stock−1
+berarti jumlah inventory `available`, bukan unlimited; stok finite tetap
+plafon. Kartu `/api/products`, katalog shared/bot, PDP dan quote memakai stok
+efektif/minimum beli yang sama. Probe orphan TUNVN melewati channel/snapshot
+invalid sebelum memilih satu order, tanpa mengubah send-fence/budget.
+Tanpa env/migrasi/aktivasi/transaksi produksi; refresh stok induk SK ditunda
+ke F5b. Detail `docs/ARCHITECTURE.md` F5a; belum bukti deployment.
+
 ## Pengaman uang F3 (18 November 2026, lokal)
 
 Expiry/stale-initializing Pedia/Games tidak pernah restock stok Market; helper

@@ -20,6 +20,7 @@
 // (grup, anggota), keputusan murni di JS, UPDATE hanya baris berubah.
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { effectiveVariantStockSql } from "@/lib/catalog-availability";
 
 type Row = Record<string, unknown>;
 export type ProductGroupSupplier = "WR" | "SK" | "TUNVN" | "AIVault" | "Manual";
@@ -82,10 +83,12 @@ const VARIANT_FROM = `FROM product_variants v
   LEFT JOIN sk_products sk ON sk.sk_variant_id=v.sk_variant_id
   LEFT JOIN tunvn_products tp ON tp.supplier_product_id=COALESCE(v.tunvn_source_product_id, CASE WHEN v.sku LIKE 'TUNVN-%' THEN CAST(substr(v.sku,7) AS INTEGER) END)
   LEFT JOIN aivault_products av ON av.service_id=v.aivault_service_id`;
-const EFFECTIVE_STOCK = `(CASE WHEN v.sk_variant_id IS NOT NULL THEN sk.sk_stock
-  WHEN v.fulfillment_mode='unique' THEN (SELECT CASE WHEN v.stock=-1 THEN COUNT(*) ELSE MIN(MAX(v.stock,0),COUNT(*)) END
-    FROM fulfillment_inventory fi WHERE fi.product_id=v.product_id AND fi.variant_id=v.id AND fi.status='available')
-  ELSE v.stock END)`;
+// Local reservations are authoritative too; -1 removes only that side's cap.
+const SUPPLIER_STOCK = `(CASE WHEN v.sk_variant_id IS NOT NULL THEN CASE WHEN sk.is_active=1 THEN sk.sk_stock ELSE 0 END
+  WHEN v.wr_variant_id IS NOT NULL THEN CASE WHEN wr.is_active=1 THEN wr.wr_stock ELSE 0 END ELSE -1 END)`;
+const LOCAL_STOCK = effectiveVariantStockSql("v");
+const EFFECTIVE_STOCK = `(CASE WHEN ${LOCAL_STOCK}=-1 THEN ${SUPPLIER_STOCK}
+  WHEN ${SUPPLIER_STOCK}=-1 THEN ${LOCAL_STOCK} ELSE MIN(${LOCAL_STOCK},${SUPPLIER_STOCK}) END)`;
 const BUYABLE_VARIANT = `${wrNewSaleSql("v")} AND (${EFFECTIVE_STOCK}=-1 OR ${EFFECTIVE_STOCK}>=MAX(1,COALESCE(v.min_qty,1)))`;
 const VARIANT_COST = `CASE
   WHEN v.sk_variant_id IS NOT NULL THEN sk.sk_price

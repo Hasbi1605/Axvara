@@ -1,5 +1,15 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Probe orphan eligible F5a — 18 November 2026 (lokal)
+
+`processTunvnOrders` menyeleksi hanya apps lunas/paid non-disable dari
+web/Telegram, dengan snapshot baris eligible tanpa link sebelum LIMIT1.
+JSON rusak, scalar, ID/qty/cost invalid, akun#60/unique, atau konfigurasi/kode
+Buff invalid tidak boleh menghalangi orphan valid yang lebih muda. SQL memakai
+snapshot server dengan ID akun numerik; validasi JS/sent-fence/receipt,
+satu link/run dan budget40 existing tetap. Test fixture + native D1 lokal;
+tidak ada transaksi/env/migrasi atau deployment produksi.
+
 ## Penanda sukses katalog, error saldo beruntun, & watchdog basi — 18 November 2026 (lokal)
 
 - `publishTunvnCatalog` (`src/lib/tunvn/catalog.ts`) kini menulis `store_settings.tunvn_catalog_success_at` (ms epoch) dan mengosongkan `tunvn_catalog_last_error` HANYA setelah mirror + proyeksi keluarga/varian + Buff + recompute selesai tanpa error; `tunvn_catalog_sync_at` tetap menjadi klaim throttle tanpa rollback. Kegagalan mencatat `tunvn_catalog_last_error` tersanitasi (`≤200` char, tanpa secret). `/api/admin/tunvn/products` mengutamakan `tunvn_catalog_success_at`.

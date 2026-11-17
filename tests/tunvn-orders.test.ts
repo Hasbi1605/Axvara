@@ -57,6 +57,42 @@ beforeEach(()=>{
 afterEach(()=>{fixture.close();vi.unstubAllGlobals();vi.unstubAllEnvs();vi.clearAllMocks();});
 
 describe("durable purchasing",()=>{
+  it.each(["whatsapp","version","cost","quantity","variant","source","excluded","units","unit_b","buff_code","buff_nul","buff_limit","buff_source","malformed","scalar","object"])("invalid older orphan (%s) cannot starve a valid web orphan",async invalid=>{
+    const item=invalid.startsWith("buff_") ? buff() : account();
+    const e=item.tunvn_eligibility as Row;
+    if(invalid==="version")e.version=true;
+    if(invalid==="cost")e.cost_usdt="2";
+    if(invalid==="quantity")e.quantity=2;
+    if(invalid==="variant")e.source_variant_id=99;
+    if(invalid==="source")e.source_product_id="86oops";
+    if(invalid==="excluded")e.source_product_id=60;
+    if(invalid==="units")item.unique_units=[];
+    if(invalid==="unit_b")delete e.source_unit_b;
+    if(invalid==="buff_code")item.buyer_fields={muse_invite_code:"invalid!"};
+    if(invalid==="buff_nul")item.buyer_fields={muse_invite_code:"Ab12Cd\0"};
+    if(invalid==="buff_limit")item.max_qty=20;
+    if(invalid==="buff_source")delete e.source_product_id;
+    const bad=seed([item],"AXV-20261110-BAD00001");
+    if(invalid==="whatsapp")fixture.sql.exec("UPDATE orders SET sales_channel='whatsapp'");
+    if(["malformed","scalar","object"].includes(invalid))fixture.sql.prepare("UPDATE orders SET items=?").run(invalid==="malformed" ? "{" : invalid==="scalar" ? '["not-json",1,null]' : JSON.stringify({line:item}));
+    const good=seed([account()],"AXV-20261110-GOOD0001");
+    const budget=createBudgetedDatabase(40,2,fixture.db);
+    await processTunvnOrders(budget.access);
+    expect(budget.used).toBeLessThanOrEqual(38);
+    expect(fixture.sql.prepare("SELECT count(*) n FROM tunvn_order_links WHERE order_code=?").get(bad.code)?.n).toBe(0);
+    expect(link()).toMatchObject({order_code:good.code,status:"completed"});
+    expect(buys()).toBe(1);
+  });
+
+  it("orphan probe accepts Telegram Buff and repairs later lines without disturbing existing links",async()=>{
+    purchase={batch_id:"BUFF_FIXTURE"};purchaseStatus=202;
+    const bad=account();(bad.tunvn_eligibility as Row).source_variant_id=99;
+    const order=seed([bad,buff()]);fixture.sql.exec("UPDATE orders SET sales_channel='telegram'");
+    await ensureFulfillmentItems(fixture.sql.prepare("SELECT * FROM orders WHERE code=?").get(order.code)!);
+    await tick();expect(link()).toMatchObject({order_code:order.code,item_index:1,status:"processing"});
+    due();await tick();expect(buys()).toBe(1);
+  });
+
   it("competing workers and paid replays produce one link and one POST",async()=>{
     const order=seed();await Promise.all([createTunvnOrderLinks(String(order.code)),createTunvnOrderLinks(String(order.code))]);
     await Promise.all([tick(),tick(),tick()]);

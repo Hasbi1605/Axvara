@@ -187,6 +187,36 @@ describe("product groups — DB & invalidation", () => {
     expect(await winnerForLoserProduct(1, db)).toBeNull();
   });
 
+  it.each([
+    [0, 9, 9, 9, 2, 0, 9],
+    [9, 9, 0, 9, 3, 9, 0],
+    [-1, 3, 9, 9, 3, 3, 9],
+    [3, -1, 0, 9, 3, 3, 0],
+    [-1, -1, 9, 9, 3, -1, 9],
+    [9, 9, -1, 3, 3, 9, 3],
+    [0, 9, 3, -1, 2, 0, 3],
+  ])("two suppliers cap local/mirror: SK %s/%s WR %s/%s", async (localSk, mirrorSk, localWr, mirrorWr, winner, skStock, wrStock) => {
+    f.sql.exec("DELETE FROM product_group_members WHERE product_id=1");
+    f.sql.prepare("UPDATE product_variants SET stock=? WHERE id=13").run(localSk);
+    f.sql.prepare("UPDATE sk_products SET sk_stock=? WHERE sk_variant_id='s1'").run(mirrorSk);
+    f.sql.prepare("UPDATE product_variants SET stock=? WHERE id=12").run(localWr);
+    f.sql.prepare("UPDATE wr_variants SET wr_stock=? WHERE wr_variant_id='w1'").run(mirrorWr);
+    const db = createDatabaseAccess(f.db);
+    await decideAllGroups(db);
+    const [group] = await listProductGroups(db);
+    expect(group.winner_product_id).toBe(winner);
+    expect(group.members.find(m => m.product_id === 3)?.stock).toBe(skStock);
+    expect(group.members.find(m => m.product_id === 2)?.stock).toBe(wrStock);
+  });
+
+  it.each(["sk_products", "wr_variants"])("inactive %s cannot hold a stocked supplier", async table => {
+    f.sql.exec(`DELETE FROM product_group_members WHERE product_id=1; UPDATE ${table} SET is_active=0`);
+    const db = createDatabaseAccess(f.db);
+    await decideAllGroups(db);
+    const [group] = await listProductGroups(db);
+    expect(group.winner_product_id).toBe(table === "sk_products" ? 2 : 3);
+  });
+
   it("grup tanpa winner tidak menyembunyikan anggota", async () => {
     f.sql.exec("UPDATE product_group_members SET product_id=10 WHERE product_id=1; INSERT INTO products(id,name,slug,price,stock,is_active) VALUES(10,'Off','off',1,0,0)");
     const db = createDatabaseAccess(f.db);

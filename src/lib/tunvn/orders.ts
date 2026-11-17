@@ -229,8 +229,38 @@ export async function retryTunvnOrder(db:DatabaseAccess,id:number):Promise<boole
 
 export async function processTunvnOrders(db:DatabaseAccess=createDatabaseAccess(),options:{ orderCode?:string;reconcileId?:number }={}):Promise<number> {
   if (!db.d1 || !isTunvnConfigured() || !isTunvnSyncEnabled() || !db.canSpend(30)) return 0;
+  // Match eligibleTunvnLine before LIMIT 1: an invalid old snapshot must not
+  // monopolize orphan repair. CASE also tolerates scalar/malformed JSON items.
+  const item = "CASE WHEN j.type='object' THEN j.value ELSE '{}' END";
+  const field = (path:string) => `json_extract(${item},'$.${path}')`;
+  const type = (path:string) => `json_type(${item},'$.${path}')`;
+  const number = (path:string) => `${type(path)} IN ('integer','real')`;
+  const integer = (path:string) => `(${number(path)} AND ${field(path)} BETWEEN -9007199254740991 AND 9007199254740991 AND ${field(path)}=CAST(${field(path)} AS INTEGER))`;
   const orphan=options.reconcileId ? null : options.orderCode ? { code:options.orderCode } : await db.queryFirst(`SELECT o.code FROM orders o WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps'
-    AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) j WHERE json_extract(j.value,'$.tunvn_eligibility.version')=1 AND json_extract(j.value,'$.tunvn_eligibility.cost_usdt')>0 AND NOT EXISTS(SELECT 1 FROM tunvn_order_links l WHERE l.order_code=o.code AND l.item_index=CAST(j.key AS INTEGER))) ORDER BY o.id LIMIT 1`);
+    AND o.sales_channel IN ('web','telegram')
+    AND json_type(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END)='array'
+    AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) j
+      WHERE ${number('tunvn_eligibility.version')} AND ${field('tunvn_eligibility.version')}=1
+        AND ${integer('product_id')} AND ${integer('variant_id')} AND ${integer('qty')} AND ${field('qty')} BETWEEN 1 AND 100
+        AND ${number('tunvn_eligibility.source_variant_id')} AND ${field('tunvn_eligibility.source_variant_id')}=${field('variant_id')}
+        AND ${number('tunvn_eligibility.quantity')} AND ${field('tunvn_eligibility.quantity')}=${field('qty')}
+        AND ${number('tunvn_eligibility.cost_usdt')} AND ${field('tunvn_eligibility.cost_usdt')}>0 AND ${field('tunvn_eligibility.cost_usdt')}<=1.7976931348623157e308
+        AND ((
+          ${field('tunvn_eligibility.kind')}='account'
+          AND ${integer('tunvn_eligibility.source_product_id')} AND ${field('tunvn_eligibility.source_product_id')}>=1
+          AND ${field('tunvn_eligibility.source_product_id')}!=60
+          AND ${type('tunvn_eligibility.source_unit_b')}='null'
+          AND (${type('unique_units')} IS NULL OR ${type('unique_units')} IN ('null','false')
+            OR (${number('unique_units')} AND ${field('unique_units')}=0)
+            OR (${type('unique_units')}='text' AND ${field('unique_units')}=''))
+        ) OR (
+          ${field('tunvn_eligibility.kind')}='buff' AND ${type('tunvn_eligibility.source_product_id')}='null'
+          AND ${number('tunvn_eligibility.source_unit_b')} AND ${field('tunvn_eligibility.source_unit_b')}=1 AND ${field('qty')}<=30
+          AND ${field('buyer_field_key')}='muse_invite_code' AND ${number('max_qty')} AND ${field('max_qty')}=30
+          AND ${type('buyer_fields.muse_invite_code')}='text' AND length(CAST(${field('buyer_fields.muse_invite_code')} AS BLOB))=6
+          AND ${field('buyer_fields.muse_invite_code')} NOT GLOB '*[^A-Za-z0-9]*'
+        ))
+        AND NOT EXISTS(SELECT 1 FROM tunvn_order_links l WHERE l.order_code=o.code AND l.item_index=CAST(j.key AS INTEGER))) ORDER BY o.id LIMIT 1`);
   if (orphan) await createTunvnOrderLinks(String(orphan.code),db);
   if (!db.canSpend(30)) return 0;
   const link=await db.queryFirst(`SELECT id FROM tunvn_order_links WHERE ${options.reconcileId ? "status IN ('processing','needs_admin') AND kind='buff' AND provider_batch_id IS NOT NULL" : `(status IN ('pending','claimed','processing') OR (${AUTO_RECOVERY_SQL})) AND datetime(next_attempt_at)<=datetime('now')`}

@@ -1936,6 +1936,10 @@ Implementasi lokal untuk publikasi CI, menggantikan susunan 27 September.
   `available` inventory) — bukan kolom mentah. Unit habis (0) = HABIS walau
   kolom masih > 0. Berlaku di kartu varian PDP, teks "Sisa N" stepper, plafon
   qty, auto-pilih varian tunggal, dan quote checkout.
+  Revisi lokal18November F5a: kolom−1 tetap mengikuti jumlah `available`,
+  bukan simbol∞; nol unit berarti HABIS di kartu maupun PDP. Inventory
+  efektif yang kurang dari minimum beli juga tidak dianggap tersedia oleh
+  katalog/bot. Tidak ada perubahan layout/token/animasi.
 - **Stok TOTAL + mobile paritas (2026-10-02 sore, revisi: "Stok: 21" padahal
   Head HABIS + mobile "Sisa 1").** Angka `Stok:` PDP/kartu = jumlah stok
   EFEKTIF varian yang bisa dibeli — varian unique tanpa unit menyumbang 0

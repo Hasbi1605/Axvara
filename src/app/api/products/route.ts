@@ -7,7 +7,7 @@ import { manualCopyUpdate } from "@/lib/product-copy/manual-write";
 import { VARIANT_COPY_MAX_CHARS } from "@/lib/product-copy/format";
 import { queryAll, queryFirst, execRun, getD1, isD1Mode } from "@/lib/db";
 import { isVariantsReadEnabled } from "@/lib/catalog";
-import { purchasableStockSql } from "@/lib/catalog-availability";
+import { effectiveVariantStockSql, purchasableStockSql } from "@/lib/catalog-availability";
 import { needsCopyReview, resolveVariantCopyDetailed } from "@/lib/product-copy/resolve";
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
@@ -52,19 +52,14 @@ async function readProducts(req: NextRequest) {
   // unique memakai min(kolom, available) — varian stock=1/available=0
   // menyumbang 0, bukan 1. Pola sama dengan /api/catalog?slug= (PDP) agar
   // "Stok: 21" padahal Head HABIS tidak terulang (1+20=21 → 0+20=20).
-  const effectiveStockSql = (alias = "pv") => `(CASE
-    WHEN ${alias}.fulfillment_mode = 'unique' THEN MIN(${alias}.stock, (SELECT COUNT(*) FROM fulfillment_inventory fi
-      WHERE fi.product_id = ${alias}.product_id AND fi.variant_id = ${alias}.id AND fi.status = 'available'))
-    ELSE ${alias}.stock
-  END)`;
-  const effective = effectiveStockSql("pv");
+  const effective = effectiveVariantStockSql("pv");
   let sql = variantCatalog
     ? `SELECT p.*, c.slug as cat_slug,
               MIN(pv.price) as min_price,
               MAX(pv.price) as max_price,
               COUNT(pv.id) as variant_count,
               CASE
-                WHEN MAX(CASE WHEN pv.stock=-1 THEN 1 ELSE 0 END)=1 THEN -1
+                WHEN MAX(CASE WHEN ${effective}=-1 THEN 1 ELSE 0 END)=1 THEN -1
                 ELSE SUM(CASE WHEN ${buyable} THEN ${effective} ELSE 0 END)
               END as variant_stock,
               -- Harga kartu harus milik varian yang BISA DIBELI. MIN(price)

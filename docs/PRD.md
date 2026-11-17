@@ -1,5 +1,20 @@
 # PRD — AXVARA
 
+## Akurasi stok & pemulihan orphan F5a — 18 November 2026 (lokal)
+
+- Winner grup WR/SK memakai batas terkecil antara stok varian lokal setelah
+  reservasi dan mirror supplier aktif; −1 hanya menghilangkan batas sisi itu.
+  Anggota lokal stok0 tidak menahan supplier lain yang masih tersedia.
+- Unique −1 bukan unlimited: stok efektif mengikuti jumlah inventory
+  `available` produk/varian yang sama (stok finite tetap menjadi plafon).
+  Kartu, katalog shared/bot, PDP dan quote sepakat; unit efektif di bawah
+  minimum beli berarti habis, bukan tersedia tetapi gagal checkout.
+- Probe orphan TUNVN hanya memilih order apps lunas/paid web/Telegram yang
+  tidak disable dan punya baris snapshot eligible tanpa link. Snapshot rusak,
+  channel lain atau baris invalid yang lebih tua tidak menahan orphan valid.
+- Implementasi/test fixture lokal, tanpa migrasi/env/aktivasi/transaksi nyata;
+  refresh stok induk SK tetap di luar F5a (paket F5b), bukan klaim deployment.
+
 ## Pengaman expiry & retry supplier — 18 November 2026 (lokal)
 
 - Cancel/expiry dan `stale_initializing` Pedia/Games tidak mengubah stok atau

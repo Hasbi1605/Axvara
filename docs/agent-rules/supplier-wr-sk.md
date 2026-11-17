@@ -1,5 +1,14 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Stok efektif grup F5a — 18 November 2026 (lokal)
+
+Winner WR/SK tidak boleh memakai mirror saja: batasi stok lokal setelah
+reservasi dengan stok mirror aktif. −1 hanya tanpa plafon pada sisi itu;
+lokal0 atau mirror nonaktif tetap0. Stok unique dibatasi inventory available
+dan minimum beli. Tidak mengubah sinkronisasi/refresh parent SK (milik F5b),
+identitas supplier, histori order atau retry/failover transaksi. Fixture dan
+native D1 lokal; belum bukti deployment.
+
 ## Respons WR tak terbaca & retry admin SK — 18 November 2026 (lokal)
 
 - WR proxy/direct: HTTP2xx tanpa JSON envelope dengan boolean `success` adalah

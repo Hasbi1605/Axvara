@@ -9,6 +9,8 @@ import type { Locale } from "@/lib/i18n/locale";
 import { translateVariantLabel } from "@/lib/i18n/variant-copy";
 import { aivaultEligibility, tunvnEligibility } from "@/lib/buyer-fields";
 import { notLoserProductSql } from "@/lib/product-groups";
+import { purchasableStockSql } from "@/lib/catalog-availability";
+export { effectiveVariantStock } from "@/lib/catalog-availability";
 
 // ---- Types ----
 
@@ -70,7 +72,7 @@ export type VariantSummary = {
    * Unit kredensial TERSISA untuk varian unique (2026-10-02): COUNT inventory
    * `available` milik varian ini (tanpa pool legacy bersama). null = bukan
    * varian unique / tidak dihitung (hindari query N+1 di daftar). PDP + quote
-   * memakai `effectiveVariantStock()` di bawah agar angka "Sisa" jujur —
+   * memakai `effectiveVariantStock()` dari catalog-availability agar "Sisa" jujur —
    * insiden Head 18 Bulan: stock=2 tapi available=1.
    */
   inventory_available?: number | null;
@@ -155,7 +157,7 @@ export async function listActiveProducts(): Promise<ProductSummary[]> {
       MIN(pv.price) as min_price,
       MAX(pv.price) as max_price,
       COUNT(pv.id) as variant_count,
-      CASE WHEN SUM(CASE WHEN pv.stock != 0 THEN 1 ELSE 0 END) > 0 THEN 'available' ELSE 'out_of_stock' END as availability
+      CASE WHEN SUM(CASE WHEN ${purchasableStockSql("pv")} THEN 1 ELSE 0 END) > 0 THEN 'available' ELSE 'out_of_stock' END as availability
     FROM products p
     INNER JOIN product_variants pv ON pv.product_id = p.id AND pv.is_active = 1 AND ${wrNewSaleSql("pv")}
     WHERE p.is_active = 1 AND ${notLoserProductSql("p")}
@@ -488,28 +490,6 @@ export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0]): 
  */
 export function buyerDeliveryEtaJaspay(): string {
   return "Dibuat otomatis setelah pembayaran dikonfirmasi; waktu proses mengikuti antrean.";
-}
-
-/**
- * Stok EFEKTIF untuk pembeli (2026-10-02, insiden Head 18 Bulan).
- *
- * Varian `unique` (satu secret per unit) punya DUA angka yang bisa selisih:
- * kolom `stock` (angka admin) dan unit `available` di fulfillment_inventory
- * (kredensial beneran). Kebenaran yang bisa dikirim = yang terkecil:
- * stock 2 + available 1 → Sisa 1, dan stock -1 (unlimited) tetap berarti
- * available (admin salah set unlimited tapi inventory terbatas = ikut
- * inventory, bukan janji palsu). Non-unique / tanpa hitungan inventory =
- * kolom stock apa adanya (perilaku lama).
- */
-export function effectiveVariantStock(
-  v: Pick<VariantSummary, "stock" | "fulfillment_mode"> & Partial<Pick<VariantSummary, "inventory_available">>,
-): number {
-  const stock = Number(v.stock ?? -1);
-  if (String(v.fulfillment_mode ?? "manual").trim().toLowerCase() !== "unique") return stock;
-  const inv = v.inventory_available == null ? null : Number(v.inventory_available);
-  if (inv == null || !Number.isFinite(inv)) return stock;
-  if (stock === -1) return Math.max(0, inv);
-  return Math.min(Math.max(0, stock), Math.max(0, inv));
 }
 
 /** True bila varian unique kehabisan kredensial walau kolom stock > 0. */

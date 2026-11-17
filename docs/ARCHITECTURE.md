@@ -1,5 +1,27 @@
 # ARCHITECTURE.md — AXVARA
 
+## F5a: stok katalog/grup & orphan TUNVN — 18 November 2026 (lokal)
+
+- `catalog-availability.ts` memusatkan `effectiveVariantStockSql` dan padanan
+  JS `effectiveVariantStock` (re-export `catalog.ts` tetap kompatibel).
+  Unique memakai COUNT inventory `available` produk+varian; stock−1 → COUNT,
+  finite → min(max(stock,0),COUNT). `purchasableStockSql`/JS menguji stok
+  efektif terhadap minimum beli. Payload JS lama tanpa hitungan inventory
+  tetap kompatibel; query PDP/checkout selalu membawa COUNT.
+- `/api/products` mengagregasi stok efektif, termasuk deteksi unlimited;
+  `listActiveProducts` memakai predikat purchasable yang sama dengan bot.
+  `product-groups.ts` menambahkan batas mirror aktif WR/SK pada stok lokal;
+  −1 berarti tidak membatasi sisi itu, bukan mengabaikan stok0 sisi lain.
+- `processTunvnOrders` memfilter channel dan validitas snapshot per baris
+  sebelum `ORDER BY o.id LIMIT 1`; JSON rusak/scalar diabaikan. Predicate
+  memeriksa versi, ID/qty/cost numerik, identitas snapshot, sumber akun bukan
+  #60, larangan unique akun, serta konfigurasi/kode Buff enam byte ASCII.
+  Probe memakai kontrak snapshot server (ID akun numerik); pemeriksaan JS,
+  budget40, satu link/run, send-fence dan dispatch existing tidak berubah.
+- Native D1/workerd dan fixture API menguji kontrak di atas. Tidak ada
+  migrasi/env/proxy baru atau perubahan jalur refresh stok induk SK (F5b).
+  Implementasi lokal, bukan bukti deployment/transaksi produksi.
+
 ## F3: isolasi stok pembayaran & retry supplier — 18 November 2026 (lokal)
 
 - `orders-transition.ts`: kedua helper cancel/expiry (`transitionPendingOrder`,
@@ -230,7 +252,7 @@ shim ekspor agar kontrak caller cron/VPS/Telegram existing tetap kompatibel.
   untuk unique; tanpa kredensial siap jual Manual tidak menahan supplier.
   Semua habis: prefer aktif → Manual aktif → position; semua nonaktif: winner
   NULL (tidak menambahkan filter pecundang; guard aktif tetap berlaku).
-- Modal varian: WR `wr_price` dengan `wrNewSaleSql`, SK `sk_price`/stok mirror,
+- Modal varian: WR `wr_price` dengan `wrNewSaleSql`, SK `sk_price`,
   TUNVN akun `price_usdt` atau Buff `tunvn_cost_usdt`, AIVault `unit_price_usd`,
   Manual `manual_cost` (NULL tidak terbaca, 0 sah). FX supplier→snapshot D1 id1;
   day=N, month=N×30, year=N×365, biaya ×30/durasi. Lifetime/custom/NULL tidak

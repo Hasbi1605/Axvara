@@ -126,5 +126,16 @@ it("workerd D1 fences competing paid dispatch, retains encrypted receipts, and p
     await db.prepare("UPDATE tunvn_order_links SET next_attempt_at=datetime('now','-1 minute') WHERE order_code=?").bind(buff).run();
     expect((await call(buff,true)).purchases).toBe(0);
     expect(await db.prepare("SELECT status FROM tunvn_order_links WHERE order_code=?").bind(buff).first()).toMatchObject({status:"completed"});
+    // Native D1 executes the full orphan predicate, including malformed/scalar
+    // payloads and an ineligible channel ahead of the valid paid snapshot.
+    const snapshot=await db.prepare("SELECT items FROM orders WHERE code=?").bind(code).first<{items:string}>();
+    await db.batch([
+      db.prepare("INSERT INTO orders(id,code,items) VALUES(10,'BAD-JSON','{'),(11,'BAD-SCALAR','[\"text\",null,1]')"),
+      db.prepare("INSERT INTO orders(id,code,items,sales_channel) VALUES(12,'BAD-CHANNEL',?,'whatsapp')").bind(snapshot!.items),
+      db.prepare("INSERT INTO orders(id,code,items) VALUES(13,'BAD-VARIANT',json_set(?,'$[0].tunvn_eligibility.source_variant_id',99)),(14,'GOOD-ORPHAN',?)").bind(snapshot!.items,snapshot!.items),
+      db.prepare("INSERT INTO fulfillment_items(id,order_code,item_index,product_id,variant_id) VALUES(14,'GOOD-ORPHAN',0,1,1)"),
+    ]);
+    expect((await call("")).purchases).toBe(1);
+    expect(await db.prepare("SELECT order_code,status FROM tunvn_order_links ORDER BY id DESC LIMIT 1").first()).toMatchObject({order_code:"GOOD-ORPHAN",status:"completed"});
   } finally {await runtime.dispose();}
 },30000);

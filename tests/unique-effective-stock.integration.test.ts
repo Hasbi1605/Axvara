@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createD1Fixture, stubFulfillmentKey } from "./helpers/d1-fixture";
-import { effectiveVariantStock, isUniqueInventoryEmpty } from "@/lib/catalog";
+import { effectiveVariantStock, isUniqueInventoryEmpty, listActiveProducts } from "@/lib/catalog";
 import { isPurchasableStock } from "@/lib/catalog-availability";
 import { syncUniqueVariantStock } from "@/lib/fulfillment/inventory";
 import { encryptSecret } from "@/lib/fulfillment/crypto";
@@ -193,6 +193,43 @@ describe("syncUniqueVariantStock + banner admin", () => {  it("import menyelaras
 });
 
 describe("kartu katalog memakai stok efektif (revisi sore 2026-10-02)", () => {
+  it.each([0, 3])("unique stock=-1 with %i available agrees across cards, PDP, shared catalog and quote", async available => {
+    fixture.sql.exec("UPDATE product_variants SET is_active=0 WHERE id=102; UPDATE product_variants SET stock=-1 WHERE id=101");
+    await seedInventory(60, 101, [...Array<string>(available).fill("available"), "reserved", "delivered"]);
+    const products = await import("@/app/api/products/route");
+    const cards = await (await products.GET(new NextRequest("http://localhost/api/products?active=1&slug=google-ai-pro-antigravity"))).json();
+    expect(cards.products[0].stock).toBe(available);
+    expect((await listActiveProducts())[0].availability).toBe(available ? "available" : "out_of_stock");
+    const catalog = await import("@/app/api/catalog/route");
+    const pdp = await (await catalog.GET(new Request("http://localhost/api/catalog?slug=google-ai-pro-antigravity"))).json();
+    const head = pdp.product.variants.find((v: { id: number }) => v.id === 101);
+    expect(effectiveVariantStock(head)).toBe(available);
+    expect(isPurchasableStock(head.stock, head.min_qty, head.inventory_available, head.fulfillment_mode)).toBe(available > 0);
+    vi.stubEnv("DANA_QRIS_ENABLED", "false");
+    fixture.sql.exec("INSERT OR IGNORE INTO payment_methods(id,label,account_number,account_name,is_active,sort_order) VALUES('qris','QRIS','-','AXVARA',1,1)");
+    const { POST } = await import("@/app/api/checkout/quote/route");
+    const quote = await POST(new NextRequest("http://localhost/api/checkout/quote", {
+      method: "POST", headers: { "Content-Type": "application/json", "cf-connecting-ip": "203.0.113.11" },
+      body: JSON.stringify({ items: [{ product_id: 60, variant_id: 101, qty: 1, expected_price: 18000 }] }),
+    }));
+    expect(quote.status).toBe(available ? 200 : 409);
+    if (available) expect((await quote.json()).items[0].stock).toBe(3);
+    else expect((await quote.json()).issues[0].type).toBe("out_of_stock");
+  });
+
+  it.each([-1, 5])("unique stock=%s with 3 available cannot satisfy min_qty=4 in either SQL or JS", async stock => {
+    fixture.sql.prepare("UPDATE product_variants SET stock=?,min_qty=4 WHERE id=101").run(stock);
+    fixture.sql.exec("UPDATE product_variants SET is_active=0 WHERE id=102");
+    await seedInventory(60, 101, ["available", "available", "available"]);
+    const { purchasableStockSql } = await import("@/lib/catalog-availability");
+    expect(fixture.sql.prepare(`SELECT ${purchasableStockSql("pv")} AS buyable FROM product_variants pv WHERE id=101`).get()?.buyable).toBe(0);
+    expect(isPurchasableStock(stock, 4, 3, "unique")).toBe(false);
+    expect((await listActiveProducts())[0].availability).toBe("out_of_stock");
+    const { GET } = await import("@/app/api/products/route");
+    const cards = await (await GET(new NextRequest("http://localhost/api/products?active=1"))).json();
+    expect(cards.products[0].stock).toBe(0);
+  });
+
   it("varian unique stock=1/available=0 = tak terbeli di SQL: harga + total ikut varian manual", async () => {
     // Head habis (0 available), Invite manual 20 → kartu harus 20, bukan 21,
     // dan harga kartu = harga Invite (bukan harga Head yang tak bisa dibeli).
