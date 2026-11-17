@@ -1,13 +1,14 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import { fetchAivaultProducts, isAivaultConfigured, isAivaultSyncEnabled, parseAivaultProducts } from "./client";
 export const AIVAULT_SYNC_KEY = "aivault_catalog_sync_at";
+export const AIVAULT_CATALOG_MIN_INTERVAL_MS = 45_000;
 export async function syncAivaultCatalog(db: DatabaseAccess, opts: { force?: boolean; now?: number } = {}) {
   if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled()) return { skipped: "not_configured" } as const;
   if (!db.canSpend(16)) return { ok: false, error: "catalog_budget_exceeded" } as const;
   const now = opts.now ?? Date.now();
   const prev = await db.queryFirst("SELECT value FROM store_settings WHERE key=?", AIVAULT_SYNC_KEY);
   const last = Number(prev?.value);
-  if (!opts.force && prev && Number.isFinite(last) && now-last >= 0 && now-last < 120_000) return { skipped: "throttled" } as const;
+  if (!opts.force && prev && Number.isFinite(last) && now-last >= 0 && now-last < AIVAULT_CATALOG_MIN_INTERVAL_MS) return { skipped: "throttled" } as const;
   const claim = prev
     ? await db.execRun("UPDATE store_settings SET value=? WHERE key=? AND value=?", String(now), AIVAULT_SYNC_KEY, prev.value)
     : await db.execRun("INSERT INTO store_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING", AIVAULT_SYNC_KEY, String(now));

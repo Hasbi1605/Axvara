@@ -184,7 +184,7 @@ pengiriman kredensial melalui pipeline existing. Timeout/5xx/429/invalidJSON
 memakai ID eksternal yang sama, maksimum3attempt;402/409/identity/partial butuh
 admin. Tidak memakai accept_normal_price atau webhook baru.
 
-Cron lite `aivault_orders` tiapmenit (termasuk cek saldo opsional per 30menit dengan ambang env opsional `AIVAULT_BALANCE_ALERT_USD` default `5`), `aivault_catalog` tiap3menit, budget40.
+Cron lite `aivault_orders` tiapmenit (termasuk cek saldo opsional per 30menit dengan ambang env opsional `AIVAULT_BALANCE_ALERT_USD` default `5`), `aivault_catalog` tiap 1 menit (revisi lokal 17 Nov 2026 dari 3 menit; throttle/lease 45 detik + drain grup segera saat sukses; belum deploy), budget40.
 Env kelak Pages secret_text: AIVAULT_API_KEY, AIVAULT_BASE_URL (default HTTPS
 reseller.aivaulthub.store), AIVAULT_ENABLED, AIVAULT_SYNC_ENABLED; default mati,
 tanpa konfigurasi tidak fetch. Lokal `.aivault-credentials*` ignored. **Commit WIP lokal dibuat PM;
@@ -352,7 +352,7 @@ ulang atau dipakai QA; status pengiriman/notifikasi tidak diubah. Tanpa env/migr
 baru; rincian ARCHITECTURE16.35 dan aturan TUNVN. Belum bukti deployment.
 
 TUNVN auto-sync10November2026 (lokal, publikasi CI): job `tunvn_catalog`
-memakai Worker cron existing setiap3menit, terpisah dari `tunvn_orders`.
+memakai Worker cron existing (revisi lokal 17 Nov 2026: setiap 1 menit dari sebelumnya 3 menit, throttle/lease 45 detik, probe Buff `/api/buff/check` tetap 3 menit di cron sambil menghitung ulang harga FX tiap 1 menit + drain grup segera; belum deploy), terpisah dari `tunvn_orders`.
 Stok/modal ChatGPT dari API, harga Buff dari probe tanpa charge `AXVARA 1`,
 FX segar dan markup tersimpan; harga manual/copy/saklar admin tetap. Buff fundable
 false menjadi stok0, true stok-1 (layanan, bukan stok akun). Error mempertahankan

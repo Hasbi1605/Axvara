@@ -6,7 +6,7 @@
 // selalu NONAKTIF; admin yang mengaktifkan dari menu Produk atau panel TUNVN.
 //
 // Anggaran statement dijaga konstan (~13 setelah sync) memakai json_each
-// batching, bukan query per varian. Lease 90 detik tetap mencegah dua isolate
+// batching, bukan query per varian. Lease 45 detik mencegah dua isolate
 // menerbitkan bersamaan; guard order TUNVN menolak saat lease aktif.
 
 import type { DatabaseAccess } from "@/lib/db-access";
@@ -20,6 +20,9 @@ import {
 import { mapSkCategory } from "@/lib/sekalipay/sync";
 
 export { TUNVN_CHATGPT_IMAGE_URL, TUNVN_MUSE_SLUG, tunvnDefaultDescription };
+
+export const TUNVN_BUFF_SYNC_SETTING_KEY = "tunvn_buff_sync_at";
+export const TUNVN_BUFF_MIN_INTERVAL_MS = 3 * 60_000;
 
 export type TunvnPublishResult =
   | { skipped: "not_configured" | "throttled" | "claimed_elsewhere" }
@@ -55,7 +58,7 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
   if (!Number.isFinite(idrPerUsdt) || idrPerUsdt <= 0) return { ok: false, error: "fx_unavailable" };
 
   const now = opts.now ?? Date.now();
-  const lease = JSON.stringify({ until: now + 90_000, owner: crypto.randomUUID() });
+  const lease = JSON.stringify({ until: now + 45_000, owner: crypto.randomUUID() });
   const claimed = await db.execRun(`INSERT INTO store_settings(key,value) VALUES('tunvn_catalog_lease',?)
     ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(store_settings.value,'$.until')<=?`, lease, now);
   if (claimed.changes !== 1) return { skipped: "claimed_elsewhere" };
@@ -161,35 +164,73 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
     await db.execRun(`UPDATE product_variants SET is_active=0 WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND sku IN (${RETIRED_BUNDLE_SKUS.map(() => "?").join(",")})`, ...RETIRED_BUNDLE_SKUS);
 
     // Buff Muse: perilaku lama dipertahankan (probe tanpa charge, harga manual
-    // admin, saklar admin tidak diubah sync).
+    // admin, saklar admin tidak diubah sync). Pada cron (force=false), probe
+    // /api/buff/check dibatasi minimal 3 menit; harga tetap dihitung ulang dari
+    // tunvn_cost_usdt tersimpan + FX segar.
     const museId = productIdOf(productBySlug.get(TUNVN_MUSE_SLUG))
       || Number((await db.queryFirst("SELECT id FROM products WHERE slug=?", TUNVN_MUSE_SLUG))?.id ?? 0);
     let buff = 0;
     let buffError: string | null = null;
     if (museId > 0) {
-      const checked = await checkTunvnBuff(1);
-      if (checked.kind !== "ok") buffError = `buff_${checked.kind}`;
-      else {
+      const existingRows = new Map<number, Row | null>();
+      for (const quantityB of TUNVN_BUFF_VARIANT_B) {
+        existingRows.set(
+          quantityB,
+          await db.queryFirst(
+            "SELECT tunvn_markup_percent, tunvn_admin_price_idr, tunvn_cost_usdt, stock, is_active FROM product_variants WHERE sku=?",
+            `TUNVN-BUFF-${quantityB}B`,
+          ),
+        );
+      }
+      const missingBuffVariant = TUNVN_BUFF_VARIANT_B.some((quantityB) => {
+        const row = existingRows.get(quantityB);
+        return !row || !(Number(row.tunvn_cost_usdt) > 0);
+      });
+      let shouldProbeBuff = opts.force === true || missingBuffVariant;
+      if (!shouldProbeBuff) {
+        const buffSync = await db.queryFirst("SELECT value FROM store_settings WHERE key=?", TUNVN_BUFF_SYNC_SETTING_KEY);
+        const lastBuffSync = buffSync ? Number(buffSync.value) : NaN;
+        if (!Number.isFinite(lastBuffSync) || now - lastBuffSync < 0 || now - lastBuffSync >= TUNVN_BUFF_MIN_INTERVAL_MS) {
+          shouldProbeBuff = true;
+        }
+      }
+      let checked: Awaited<ReturnType<typeof checkTunvnBuff>> | null = null;
+      if (shouldProbeBuff) {
+        checked = await checkTunvnBuff(1);
+        if (checked.kind !== "ok") buffError = `buff_${checked.kind}`;
+        else {
+          await db.execRun(
+            `INSERT INTO store_settings(key,value,updated_at) VALUES(?,?,datetime('now'))
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+            TUNVN_BUFF_SYNC_SETTING_KEY,
+            String(now),
+          );
+        }
+      }
+      if (!buffError) {
         for (const quantityB of TUNVN_BUFF_VARIANT_B) {
           const sku = `TUNVN-BUFF-${quantityB}B`;
-          const existing = await db.queryFirst(
-            "SELECT tunvn_markup_percent, tunvn_admin_price_idr, is_active FROM product_variants WHERE sku=?",
-            sku,
-          );
+          const existing = existingRows.get(quantityB) ?? null;
           const markup = existing?.tunvn_markup_percent !== null && existing?.tunvn_markup_percent !== undefined
             ? Number(existing.tunvn_markup_percent) : 40;
           const adminPrice = existing?.tunvn_admin_price_idr !== null && existing?.tunvn_admin_price_idr !== undefined
             ? Number(existing.tunvn_admin_price_idr) : null;
+          const costPerB = checked && checked.kind === "ok"
+            ? checked.sell_price_usdt
+            : Number(existing!.tunvn_cost_usdt) / quantityB;
           const sell = adminPrice !== null && adminPrice > 0
             ? adminPrice
-            : tunvnBuffSellPriceIdr(quantityB, idrPerUsdt, { markupPercent: markup, costUsdtPerB: checked.sell_price_usdt });
-          const costUsdt = checked.sell_price_usdt * quantityB;
+            : tunvnBuffSellPriceIdr(quantityB, idrPerUsdt, { markupPercent: markup, costUsdtPerB: costPerB });
+          const costUsdt = costPerB * quantityB;
+          const stock = checked && checked.kind === "ok"
+            ? (checked.fundable ? -1 : 0)
+            : Number(existing?.stock ?? 0);
           const keepActive = existing ? Number(existing.is_active ?? 0) : 0;
           await db.execRun(
             `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty) WITH archive_candidate(product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order, tunvn_buff_quantity_b, tunvn_cost_usdt, tunvn_markup_percent, tunvn_fx_idr_per_usdt,buyer_field_key,max_qty) AS (VALUES (?,?,?,?, ?, 'manual', ?, ?, ?, ?, ?, ?, 'muse_invite_code',30)) SELECT * FROM archive_candidate WHERE EXISTS(SELECT 1 FROM products p WHERE p.id=archive_candidate.product_id AND p.archived_at IS NULL) ON CONFLICT(sku) DO UPDATE SET price=excluded.price, stock=excluded.stock, tunvn_cost_usdt=excluded.tunvn_cost_usdt,
                tunvn_markup_percent=excluded.tunvn_markup_percent, tunvn_fx_idr_per_usdt=excluded.tunvn_fx_idr_per_usdt,
                updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products p WHERE p.id=product_variants.product_id AND p.archived_at IS NULL) AND product_variants.tunvn_markup_percent IS ? AND product_variants.tunvn_admin_price_idr IS ?`,
-            museId, sku, `Buff Token Muse AI per ${quantityB}B`, sell, checked.fundable ? -1 : 0, keepActive,
+            museId, sku, `Buff Token Muse AI per ${quantityB}B`, sell, stock, keepActive,
             9 + TUNVN_BUFF_VARIANT_B.indexOf(quantityB) + 1, quantityB, costUsdt, markup, idrPerUsdt,
             existing?.tunvn_markup_percent ?? null, existing?.tunvn_admin_price_idr ?? null,
           );

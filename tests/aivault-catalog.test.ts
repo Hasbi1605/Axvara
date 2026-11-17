@@ -80,9 +80,20 @@ it("0125 leaves an active row, admin copy and custom image untouched",()=>{
   expect(f.sql.prepare("SELECT label,is_active FROM product_variants WHERE aivault_service_id='service_chatgpt_plus_1m'").get()).toEqual({label:"Admin label",is_active:1});
 });
 
-it("throttles repeated cron and rejects malformed catalogs without zeroing stock",async()=>{
-  const db=createDatabaseAccess(f.db),now=Date.now();await publishAivaultCatalog(db,20000,{now});vi.mocked(fetch).mockClear();expect(await publishAivaultCatalog(db,20000,{now:now+1000})).toEqual({skipped:"throttled"});expect(fetch).not.toHaveBeenCalled();
-  vi.mocked(fetch).mockResolvedValueOnce(Response.json({currency:"USD",products:[]}));expect(await publishAivaultCatalog(db,20000,{now:now+180000})).toMatchObject({ok:false});expect(f.sql.prepare("SELECT stock FROM aivault_products").get()?.stock).toBe(5);
+it("throttles repeated cron within 45s, runs at 45s, uses 45s lease, and rejects malformed catalogs without zeroing stock",async()=>{
+  const db=createDatabaseAccess(f.db),now=Date.now();
+  await publishAivaultCatalog(db,20000,{now});
+  vi.mocked(fetch).mockClear();
+  expect(await publishAivaultCatalog(db,20000,{now:now+44_999})).toEqual({skipped:"throttled"});
+  expect(fetch).not.toHaveBeenCalled();
+  // Active 45s lease blocks concurrent runs, but expired 45s lease can be reclaimed.
+  f.sql.prepare("INSERT INTO store_settings(key,value) VALUES('aivault_catalog_lease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify({owner:"other",until:now+44_000}));
+  expect(await publishAivaultCatalog(db,20000,{now:now+43_999,force:true})).toEqual({skipped:"claimed_elsewhere"});
+  expect(await publishAivaultCatalog(db,20000,{now:now+45_000})).toMatchObject({ok:true});
+  expect(fetch).toHaveBeenCalledTimes(1);
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({currency:"USD",products:[]}));
+  expect(await publishAivaultCatalog(db,20000,{now:now+90_000})).toMatchObject({ok:false});
+  expect(f.sql.prepare("SELECT stock FROM aivault_products").get()?.stock).toBe(5);
 });
 it("publishes derived bulk pricing tiers and caps max_qty at 100 without adding statements",async()=>{
   const db=createDatabaseAccess(f.db);

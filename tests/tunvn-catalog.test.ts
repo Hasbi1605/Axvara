@@ -171,6 +171,51 @@ describe("publishTunvnCatalog", () => {
     release(); expect(await first).toMatchObject({ok:true});
     expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_lease'").get()).toBeUndefined();
   });
+  it("writes a 45s lease duration and throttles non-force Buff probes for 3 minutes while recomputing Buff price on FX changes", async () => {
+    const t0 = 1_800_000_000_000;
+    const seenLeaseUntils: number[] = [];
+    const access = db();
+    const origExecRun = access.execRun;
+    access.execRun = async (sql, ...params) => {
+      if (sql.includes("'tunvn_catalog_lease'") && typeof params[0] === "string") {
+        seenLeaseUntils.push(Number(JSON.parse(params[0]).until));
+      }
+      return origExecRun(sql, ...params);
+    };
+    await publishTunvnCatalog(access, 20_000, { force: false, now: t0 });
+    expect(seenLeaseUntils[0]).toBe(t0 + 45_000);
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_buff_sync_at'").get()).toEqual({ value: String(t0) });
+
+    // 1 minute later (past 45s catalog throttle, inside 3m Buff throttle):
+    // /api/products runs, /api/buff/check is NOT called, Buff price recomputes for new FX.
+    const fetcher = vi.mocked(fetch);
+    fetcher.mockClear();
+    supplier([upstreamProduct(86, { price_usdt: 4.6, stock: 10 }), upstreamProduct(83, { stock: 2 })], 0.99);
+    const budget = createBudgetedDatabase(40, 2, fx.db);
+    expect(await publishTunvnCatalog(budget.access, 25_000, { force: false, now: t0 + 60_000 })).toMatchObject({ ok: true, buff_variants: 1 });
+    expect(budget.used).toBeLessThanOrEqual(38);
+    const buffCalls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/buff/check"));
+    expect(buffCalls).toHaveLength(0);
+    // Stored cost 0.0588 * 25_000 * 1.4 = 2058 -> ceil100 = 2100; cost stays 0.0588.
+    expect(fx.sql.prepare("SELECT price,tunvn_cost_usdt,tunvn_fx_idr_per_usdt FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get())
+      .toEqual({ price: 2100, tunvn_cost_usdt: 0.0588, tunvn_fx_idr_per_usdt: 25_000 });
+
+    // 3 minutes later: Buff probe runs again and updates cost & timestamp.
+    await publishTunvnCatalog(db(), 25_000, { force: false, now: t0 + 180_000 });
+    const buffCallsAt3m = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/buff/check"));
+    expect(buffCallsAt3m).toHaveLength(1);
+    expect(fx.sql.prepare("SELECT price,tunvn_cost_usdt FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get())
+      .toEqual({ price: 34_700, tunvn_cost_usdt: 0.99 });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_buff_sync_at'").get()).toEqual({ value: String(t0 + 180_000) });
+
+    // Force mode bypasses the 3-minute Buff throttle immediately.
+    supplier(undefined, 0.2);
+    await publishTunvnCatalog(db(), 20_000, { force: true, now: t0 + 200_000 });
+    const buffCallsForced = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/buff/check"));
+    expect(buffCallsForced).toHaveLength(1);
+    expect(fx.sql.prepare("SELECT price,tunvn_cost_usdt FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get())
+      .toEqual({ price: 5600, tunvn_cost_usdt: 0.2 });
+  });
   it("does not overwrite a manual price that changes between read and upsert",async () => {
     await publishTunvnCatalog(db(),RATE);
     const access=db(); const write=access.execRun;

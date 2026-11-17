@@ -316,7 +316,7 @@ describe("Worker runOperationsTick", () => {
     const report = await runOperationsTick(env, at(5), fn as never, async () => undefined);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
-      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
+      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
     ]);
     expect(calls.some((u) => u.includes("/api/cron/operations"))).toBe(false);
   });
@@ -348,14 +348,14 @@ describe("Worker runOperationsTick", () => {
     expect(isHeavyTick(at(0))).toBe(true);
     for (const minute of [1,2,3,4,5,59]) expect(isHeavyTick(at(minute))).toBe(false);
   });
-  it("runs TUNVN catalog every three minutes independently of paid-order ticks",async () => {
-    for(const minute of [1,2,3,4,6]) {
-      const {fn,calls}=mockFetch(()=>({status:200}));
-      await tickNoSleep(env,at(minute),{fn});
-      expect(calls.some(url=>url.includes("job=tunvn_catalog"))).toBe(minute%3===0);
-      expect(calls.some(url=>url.includes("job=tunvn_orders"))).toBe(true);
-      expect(calls.some(url=>url.includes("job=aivault_orders"))).toBe(true);
-      expect(calls.some(url=>url.includes("job=aivault_catalog"))).toBe(minute%3===0);
+  it("runs TUNVN and AIVault catalogs every minute independently of paid-order ticks", async () => {
+    for (const minute of [1, 2, 3, 4, 6]) {
+      const { fn, calls } = mockFetch(() => ({ status: 200 }));
+      await tickNoSleep(env, at(minute), { fn });
+      expect(calls.some((url) => url.includes("job=tunvn_catalog"))).toBe(true);
+      expect(calls.some((url) => url.includes("job=tunvn_orders"))).toBe(true);
+      expect(calls.some((url) => url.includes("job=aivault_orders"))).toBe(true);
+      expect(calls.some((url) => url.includes("job=aivault_catalog"))).toBe(true);
     }
   });
 

@@ -41,6 +41,104 @@ describe("/api/cron/lite", () => {
       expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='cron_lite_tunvn_catalog_ok_at'").get()).toBeUndefined();
     } finally {fx.close(); vi.unstubAllGlobals();}
   });
+  it("drains dirty product groups immediately after successful aivault_catalog, tunvn_catalog, and jaspay_catalog runs, while skipping on throttled/error and isolating drain failures", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("USD_IDR_RATE", "");
+      fx.sql.prepare("INSERT INTO crypto_market_snapshot(id,fx_rate_text,fx_source,fx_effective_at) VALUES(1,'20000','nowpayments-estimate',?)").run(new Date().toISOString());
+      fx.sql.exec(`INSERT INTO products(id,name,slug,price,stock,is_active,source,wr_product_id,wr_auto_managed) VALUES
+        (1,'WR Item','wr-item',12000,10,1,'warung_rebahan','wr-1',1),
+        (2,'SK Item','sk-item',15000,0,1,'manual','sk-1',1);
+        INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,is_active,wr_variant_id,wr_auto_managed) VALUES
+        (1,1,'WR-1','1M',12000,10,'manual',1,'wrv-1',1);
+        INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,is_active,sk_variant_id,sk_auto_managed) VALUES
+        (2,2,'SK-1','1M',15000,0,'manual',1,'skv-1',1);
+        INSERT INTO wr_products(wr_product_id,wr_product_name,axvara_product_id) VALUES('wr-1','WR Item',1);
+        INSERT INTO wr_variants(wr_variant_id,wr_product_id,wr_variant_name,wr_price,wr_stock,axvara_variant_id,axvara_sell_price,wr_delivery_class,wr_delivery_source) VALUES('wrv-1','wr-1','1M',9000,10,1,12000,'restock','api');
+        INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_variant_name,sk_price,sk_stock,sk_order_process,axvara_product_id,axvara_variant_id,axvara_sell_price) VALUES('skv-1','sk-1','SK Item','1M',8000,0,'auto',2,2,15000);
+        INSERT INTO product_groups(id,name,winner_product_id) VALUES(50,'Group 50',2);
+        INSERT INTO product_group_members(group_id,product_id,position) VALUES(50,1,0),(50,2,1);`);
+
+      // 1) aivault_catalog success drains dirty group 50 immediately
+      vi.stubEnv("AIVAULT_ENABLED", "true");
+      vi.stubEnv("AIVAULT_SYNC_ENABLED", "true");
+      vi.stubEnv("AIVAULT_API_KEY", "fixture");
+      vi.stubEnv("AIVAULT_BASE_URL", "https://aivault.test");
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+        currency: "USD",
+        products: [{ service_id: "service_gemini_plus_6m", name: "Gemini Plus", stock: 5, custom_pricing: false, pricing_tiers: [{ min: 1, max: 100, price: 0.5 }] }],
+      })));
+      const av1 = await call("aivault_catalog");
+      expect(av1.status).toBe(200);
+      expect(av1.body).toMatchObject({ ok: true, pairs_decided: 1, pairs_changed: 1 });
+      expect(fx.sql.prepare("SELECT winner_product_id AS w FROM product_groups WHERE id=50").get()?.w).toBe(1);
+
+      // Throttled immediate re-run skips drain
+      fx.sql.exec("UPDATE product_group_dirty SET pending=1 WHERE group_id=50");
+      const avSkipped = await call("aivault_catalog");
+      expect(avSkipped.status).toBe(200);
+      expect(avSkipped.body).toMatchObject({ ok: true, skipped: "throttled" });
+      expect(avSkipped.body.pairs_decided).toBeUndefined();
+      expect(fx.sql.prepare("SELECT pending FROM product_group_dirty WHERE group_id=50").get()?.pending).toBe(1);
+
+      // 2) tunvn_catalog success drains dirty group 50
+      fx.sql.exec("UPDATE wr_variants SET wr_stock=0 WHERE wr_variant_id='wrv-1'; UPDATE product_variants SET stock=0 WHERE id=1; UPDATE sk_products SET sk_stock=5 WHERE sk_variant_id='skv-1'");
+      vi.stubEnv("TUNVN_ENABLED", "true");
+      vi.stubEnv("TUNVN_SYNC_ENABLED", "true");
+      vi.stubEnv("TUNVN_API_KEY", "fixture");
+      vi.stubEnv("TUNVN_BASE_URL", "https://tunvn.test");
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(String(url).endsWith("/buff/check") ? {
+        success: true, gross_cost_vnd: 390, sell_price_vnd: 390, sell_price_usdt: 0.0588, fundable: true,
+        orders_breakdown: [{ invite_code: "AXVARA", quantity_b: 1, valid: true }],
+      } : {
+        success: true,
+        products: [{ id: 86, name: "ACC CHAT GPT BUSINESS 1M(W1D)", price_vnd: 119_000, price_usdt: 4.6, discount_threshold: 0, discount_price_vnd: 0, discount_threshold_usdt: 0, discount_price_usdt: 0, stock: 5, description: "d" }],
+      })));
+      const tv1 = await call("tunvn_catalog");
+      expect(tv1.status).toBe(200);
+      expect(tv1.body).toMatchObject({ ok: true, pairs_decided: 1, pairs_changed: 1 });
+      expect(fx.sql.prepare("SELECT winner_product_id AS w FROM product_groups WHERE id=50").get()?.w).toBe(2);
+
+      // 3) jaspay_catalog: disabled skips drain; successful sync drains dirty group 50
+      fx.sql.exec("UPDATE wr_variants SET wr_stock=4 WHERE wr_variant_id='wrv-1'; UPDATE product_variants SET stock=4 WHERE id=1; UPDATE sk_products SET sk_stock=0 WHERE sk_variant_id='skv-1'");
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "false");
+      vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "false");
+      const jpSkipped = await call("jaspay_catalog");
+      expect(jpSkipped.status).toBe(200);
+      expect(jpSkipped.body.pairs_decided).toBeUndefined();
+
+      vi.stubEnv("WARUNG_REBAHAN_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_SYNC_ENABLED", "true");
+      vi.stubEnv("WARUNG_REBAHAN_API_KEY", "k");
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+        success: true,
+        data: [{ product: "zoom", name: "Zoom", description: "d", available: true, max_quantity: 10, packages: [{ id: 1, name: "1M", price: 10000, available: true }] }],
+      })));
+      const jpOk = await call("jaspay_catalog");
+      expect(jpOk.status).toBe(200);
+      expect(jpOk.body).toMatchObject({ ok: true, pairs_decided: 1, pairs_changed: 1 });
+      expect(fx.sql.prepare("SELECT winner_product_id AS w FROM product_groups WHERE id=50").get()?.w).toBe(1);
+
+      // 4) Non-QueryBudgetExceeded error inside drain does not fail the catalog job
+      fx.sql.exec("UPDATE product_group_dirty SET pending=1 WHERE group_id=50");
+      fx.sql.exec("DELETE FROM store_settings WHERE key='aivault_catalog_sync_at'");
+      fx.control.fail = (q) => q.startsWith("UPDATE product_group_dirty");
+      vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+        currency: "USD",
+        products: [{ service_id: "service_gemini_plus_6m", name: "Gemini Plus", stock: 5, custom_pricing: false, pricing_tiers: [{ min: 1, max: 100, price: 0.5 }] }],
+      })));
+      const avFailDrain = await call("aivault_catalog");
+      expect(avFailDrain.status).toBe(200);
+      expect(avFailDrain.body).toMatchObject({ ok: true });
+      expect(avFailDrain.body.pairs_decided).toBeUndefined();
+      expect(fx.sql.prepare("SELECT pending FROM product_group_dirty WHERE group_id=50").get()?.pending).toBe(1);
+    } finally {
+      fx.control.fail = null;
+      vi.unstubAllGlobals();
+      fx.close();
+    }
+  });
   it("cleanup drains WR-only pair changes and retries a failed decision even when housekeeping is throttled", async () => {
     const fx=createD1Fixture();
     try {

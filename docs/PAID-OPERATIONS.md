@@ -11,7 +11,7 @@ perubahan rail invoice lama, atau perpanjangan batas bayar 15 menit.
 |---|---|
 | MCP scheduler | Setiap menit, CPU maksimal1000ms/invocation |
 | KlikQRIS cadangan tanpa browser | `lite?job=payments`, empat invoice pending/aktif terlama sejak pemeriksaan, GET saja; jendela60 detik, CAS existing10 detik |
-| Expiry, fulfillment, WR/SK, Pedia, notify A/B, promo | Setiap menit; tanpa jeda2 detik peninggalan Free |
+| Expiry, fulfillment, WR/SK, Pedia, notify A/B, promo, Jaspay/TUNVN/AIVault catalog | Setiap menit; tanpa jeda2 detik peninggalan Free (revisi lokal 17 Nov 2026 untuk TUNVN/AIVault dari 3 menit ke 1 menit, probe Buff TUNVN tetap 3 menit di cron; belum deploy) |
 | Fulfillment cadangan | Budget96 statement/invocation, empat job dan maksimal empat unit/job, lease/retry existing |
 | Lite lain | Budget40 statement; konfirmasi payment/fulfillment langsung memakai transaksi/outbox existing yang dibatasi jumlah kandidat, bukan klaim seluruh pohon panggilan tercakup budget40 |
 | Cleanup dan publish artikel | Lima menit |
@@ -37,6 +37,11 @@ belum trafik pembeli/bot. Ini perhitungan jadwal, bukan metering tagihan.
 Tidak ada panggilan gateway ketika tidak ada invoice due; pekerjaan berat
 katalog tidak dipercepat. Jatah Workers Paid10juta request dan30juta CPU-ms
 per bulan harus tetap diukur; jumlah request saja tidak membuktikan biayaCPU.
+Revisi lokal 17 Nov 2026 (belum deploy): `tunvn_catalog` dan `aivault_catalog` naik
+dari 3 menit menjadi setiap 1 menit (+1.920 request origin/hari dibanding 3 menitan),
+probe Buff TUNVN cron tetap 3 menit (`tunvn_buff_sync_at`), dan `aivault_catalog` /
+`tunvn_catalog` / `jaspay_catalog` langsung menguras `decideDirtyWinners` saat
+sukses dengan `db.canSpend(4)` (backstop `cleanup` 5 menit tetap ada).
 
 `scripts/cloudflare-plan.cjs` membaca langganan account. D1 monitor memakai
 awal/akhir periode aktual dan jatah25miliar rows read/50juta rows written pada

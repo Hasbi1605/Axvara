@@ -1,5 +1,12 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Sinkronisasi katalog 1 menit + throttle probe Buff 3 menit — 17 November 2026 (lokal)
+
+- `mcp-worker/src/cron.ts` menjalankan `lite:tunvn_catalog` setiap 1 menit (menghapus `everyMinutes: 3`), budget tetap 40 tanpa env/trigger baru.
+- `src/lib/tunvn/sync.ts`: `TUNVN_CATALOG_MIN_INTERVAL_MS` diturunkan dari `120_000` menjadi `45_000` (45 detik) agar tick 1 menit toleran jitter.
+- `src/lib/tunvn/catalog.ts`: `tunvn_catalog_lease` diturunkan dari `90_000` menjadi `45_000` ms (`now + 45_000`). Pada mode cron (`opts.force` false), probe `checkTunvnBuff(1)` (`/api/buff/check`) dibatasi via `store_settings.tunvn_buff_sync_at` (`TUNVN_BUFF_MIN_INTERVAL_MS = 180_000` ms / 3 menit), kecuali saat `opts.force === true`, varian `TUNVN-BUFF-1B` belum ada/modal kosong, atau `now - lastBuffSync >= 180_000`. Saat probe dithrottle pada tick cron non-force, harga `TUNVN-BUFF-1B` tetap dihitung ulang dari `tunvn_cost_usdt`, `tunvn_markup_percent`, `tunvn_admin_price_idr`, dan `idrPerUsdt` segar tanpa memanggil `/api/buff/check` serta mempertahankan `stock` tersimpan.
+- `POST /api/cron/lite?job=tunvn_catalog` yang sukses langsung menjalankan `drainDirtyGroupsIfBudget(db, result)` bila `db.canSpend(4)`. Implementasi lokal + test; publikasi melalui CI.
+
 ## Sync katalog gagal karena trigger grup — 17 November 2026 (fix lokal)
 
 - Sejak 2026-11-17 11:10 UTC setiap `tunvn_catalog` gagal 500 `UNIQUE

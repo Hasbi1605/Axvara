@@ -144,12 +144,15 @@ describe("syncTunvnCatalog (hidden mirror)", () => {
     expect(row(69)).toMatchObject({ stock: 0, visible: 0 });
   });
 
-  it("throttles inside the minimum interval without refetching", async () => {
+  it("throttles inside the 45s minimum interval without refetching and resumes at 45s", async () => {
     const f = productsResponse([product(85)]);
     vi.stubGlobal("fetch", f);
     await syncTunvnCatalog(db(), { now: T0 });
-    expect(await syncTunvnCatalog(db(), { now: T0 + 60_000 })).toEqual({ skipped: "throttled" });
+    expect(await syncTunvnCatalog(db(), { now: T0 + 30_000 })).toEqual({ skipped: "throttled" });
+    expect(await syncTunvnCatalog(db(), { now: T0 + 44_999 })).toEqual({ skipped: "throttled" });
     expect(f).toHaveBeenCalledTimes(1);
+    expect(await syncTunvnCatalog(db(), { now: T0 + 45_000 })).toMatchObject({ ok: true });
+    expect(f).toHaveBeenCalledTimes(2);
   });
 
   it("refuses an empty upstream catalog instead of wiping the mirror", async () => {

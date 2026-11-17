@@ -1,5 +1,11 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Sinkronisasi katalog 1 menit + drain grup segera — 17 November 2026 (lokal)
+
+- `mcp-worker/src/cron.ts` menjalankan `lite:aivault_catalog` setiap 1 menit (menghapus `everyMinutes: 3`), budget tetap 40 tanpa env/trigger baru.
+- `src/lib/aivault/sync.ts` mengekspor `AIVAULT_CATALOG_MIN_INTERVAL_MS = 45_000` (diturunkan dari `120_000`); `src/lib/aivault/catalog.ts` menurunkan lease `aivault_catalog_lease` dari `90_000` menjadi `45_000` ms (`now + 45_000`).
+- `POST /api/cron/lite?job=aivault_catalog` yang sukses langsung menjalankan `drainDirtyGroupsIfBudget(db, result)` bila `db.canSpend(4)`. Implementasi lokal + test; belum deploy ke Pages/Workers.
+
 ## Pengingat saldo rendah Telegram admin — 17 November 2026 (lokal)
 
 - `checkSupplierLowBalance` (`src/lib/supplier-balance-alert.ts`) dijalankan di

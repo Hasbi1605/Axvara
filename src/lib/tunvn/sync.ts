@@ -10,8 +10,8 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import { fetchTunvnProducts, isTunvnSyncEnabled, type TunvnProduct } from "./client";
 
 export const TUNVN_CATALOG_SETTING_KEY = "tunvn_catalog_sync_at";
-// Cron is every3 minutes; a2-minute floor tolerates normal scheduling jitter.
-export const TUNVN_CATALOG_MIN_INTERVAL_MS = 2 * 60_000;
+// Cron is every 1 minute; a 45-second floor tolerates normal scheduling jitter.
+export const TUNVN_CATALOG_MIN_INTERVAL_MS = 45_000;
 const CHUNK = 50;
 const DESCRIPTION_MAX = 2_000;
 const NAME_MAX = 300;

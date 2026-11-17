@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
         const synced=await publishAivaultCatalog(db,Number(rate.num)/Number(rate.den),{force:false});
         Object.assign(result,synced);
         if ("ok" in synced && !synced.ok) return NextResponse.json(result,{status:503});
+        if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
       }
     }
     else if (job === "tunvn_orders") Object.assign(result, await runTunvnOrders(db));
@@ -148,6 +149,7 @@ export async function POST(request: NextRequest) {
         const synced = await publishTunvnCatalog(db, Number(rate.num) / Number(rate.den), { force: false });
         Object.assign(result, synced);
         if ("ok" in synced && !synced.ok) return NextResponse.json(result, { status: 503 });
+        if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
       }
     }
     else if (job === "jaspay_catalog") {
@@ -157,6 +159,7 @@ export async function POST(request: NextRequest) {
       if (synced.errors.length && !synced.errors.includes("warung_rebahan_disabled")) {
         return NextResponse.json({ ...result, ok: false }, { status: 503 });
       }
+      if (!synced.errors.length) await drainDirtyGroupsIfBudget(db, result);
     }
     else if (job === "pedia_orders") Object.assign(result, await runPediaOrders(db));
     else if (job === "notify_a") Object.assign(result, await runNotifyA(db));
@@ -198,6 +201,18 @@ export async function POST(request: NextRequest) {
 }
 
 type Db = DatabaseAccess;
+
+async function drainDirtyGroupsIfBudget(db: Db, result: Record<string, unknown>) {
+  if (!db.canSpend(4)) return;
+  try {
+    const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
+    const pairs = await decideDirtyWinners(db);
+    result.pairs_decided = pairs.decided;
+    result.pairs_changed = pairs.changed;
+  } catch (error) {
+    if (error instanceof QueryBudgetExceeded) throw error;
+  }
+}
 
 async function runExpiry(db: Db) {
   const { transitionPendingPaymentOrder, transitionPendingOrder } = await import("@/lib/db");

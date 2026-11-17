@@ -60,7 +60,7 @@ export async function publishAivaultCatalog(db: DatabaseAccess, fx: number, opts
   if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled()) return { skipped: "not_configured" } as const;
   if (!Number.isFinite(fx) || fx <= 0) return { ok:false, error:"fx_unavailable" } as const;
   if (!db.canSpend(22)) return { ok:false,error:"catalog_budget_exceeded" } as const;
-  const now = opts.now ?? Date.now(), lease = JSON.stringify({ owner:crypto.randomUUID(), until:now+90_000 });
+  const now = opts.now ?? Date.now(), lease = JSON.stringify({ owner:crypto.randomUUID(), until:now+45_000 });
   const claim = await db.execRun(`INSERT INTO store_settings(key,value) VALUES('aivault_catalog_lease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(store_settings.value,'$.until')<=?`,lease,now);
   if (claim.changes !== 1) return { skipped:"claimed_elsewhere" } as const;
   try {
