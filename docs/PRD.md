@@ -7,7 +7,7 @@
   pengiriman (diperkirakan8grup). Tidak menambah alur pembeli WhatsApp.
 - Katalog ready, gambar dan caption short sama dengan AXVARA'S, minimal3produk,
   pukul09.00/17.00 WIB, expiry12.00/20.00, jeda sekitar1menit antargrup.
-- Hanya Bot Promo menambah `Join Grup WA: <link Pengaturan Toko>` di bawah caption;
+- Hanya Bot Promo menambah `👥 *Join Grup WA:* <link Pengaturan Toko>` (bold + ikon, revisi owner 17 Nov) di bawah caption;
   perubahan undangan berlaku pada snapshot promo berikutnya, fallback WA_GROUP_HREF.
   Bot AXVARA'S promo/welcome tetap tidak mendapat footer tambahan ini.
 - Ganti nomor menjeda dan menghapus pilihan grup, simpan grup menjeda;

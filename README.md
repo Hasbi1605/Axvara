@@ -7,7 +7,7 @@ deploy. Admin → Pengaturan Toko → **Bot Promo WhatsApp** (di bawah notifikas
 simpan nomor berbeda dari bot AXVARA'S, pairing, muat dan simpan maksimal20grup,
 lalu aktifkan. Ganti nomor/simpan grup menjeda pengiriman. Katalog ready+gambar
 sama,09.00/17.00 WIB (batas12.00/20.00), jeda sekitar1menit antargrup.
-Hanya bot kedua menambah `Join Grup WA:` dari link Pengaturan Toko saat enqueue;
+Hanya bot kedua menambah `👥 *Join Grup WA:*` (bold + ikon) dari link Pengaturan Toko saat enqueue;
 bot AXVARA'S/welcome tidak berubah. Konfigurasi `whatsapp_promo_bot`, outbox
 `promo_bot_digest`, API admin `/api/admin/whatsapp-promo-bot`, gateway
 `/promo-bot/*`; tanpa env Pages baru. Detail: ARCHITECTURE§16.12 dan
@@ -154,7 +154,7 @@ pengiriman kredensial melalui pipeline existing. Timeout/5xx/429/invalidJSON
 memakai ID eksternal yang sama, maksimum3attempt;402/409/identity/partial butuh
 admin. Tidak memakai accept_normal_price atau webhook baru.
 
-Cron lite `aivault_orders` tiapmenit, `aivault_catalog` tiap3menit, budget40.
+Cron lite `aivault_orders` tiapmenit (termasuk cek saldo opsional per 30menit dengan ambang env opsional `AIVAULT_BALANCE_ALERT_USD` default `5`), `aivault_catalog` tiap3menit, budget40.
 Env kelak Pages secret_text: AIVAULT_API_KEY, AIVAULT_BASE_URL (default HTTPS
 reseller.aivaulthub.store), AIVAULT_ENABLED, AIVAULT_SYNC_ENABLED; default mati,
 tanpa konfigurasi tidak fetch. Lokal `.aivault-credentials*` ignored. **Commit WIP lokal dibuat PM;
@@ -494,7 +494,9 @@ Revisi instruksi owner di hari yang sama: dua produk ChatGPT TUNVN diterbitkan
 menjadi varian produk Muse manual (markup 40%), panel admin section `tunvn`
 dengan sidebar Supplier dropdown, dan env Pages `secret_text`
 (`TUNVN_API_KEY`/`TUNVN_BASE_URL`/`TUNVN_ENABLED=true`/`TUNVN_SYNC_ENABLED=true`)
-sudah dipasang (berlaku deployment CI berikutnya). Dispatch order otomatis
+sudah dipasang (berlaku deployment CI berikutnya); env opsional `TUNVN_BALANCE_ALERT_USDT`
+(default `5`) dan `AIVAULT_BALANCE_ALERT_USD` (default `5`) mengontrol ambang alert saldo
+admin Telegram tanpa perlu dipasang di Pages. Dispatch order otomatis
 belum dibangun; fulfillment manual. Detail: `docs/agent-rules/tunvn.md`,
 ARCHITECTURE §16.31, migrasi 0112.
 

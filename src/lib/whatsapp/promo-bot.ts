@@ -53,7 +53,7 @@ export async function enqueueWhatsAppPromoBot(db: DatabaseAccess, now = new Date
   const products = await loadPromoProducts(db);
   if (products.length < 3) return 0;
   const link = (await db.queryFirst("SELECT value FROM store_settings WHERE key=?", "whatsapp_group_url"))?.value;
-  const payload = JSON.stringify({ message: `${promoMessages(due.slot, products).short}\n\nJoin Grup WA: ${typeof link === "string" && link.trim() ? link.trim() : WA_GROUP_HREF}`, botNumber: config.botNumber, botRevision: config.botRevision, expiresAt: `${due.businessDate}T${due.slot === "morning" ? "12" : "20"}:00:00+07:00` });
+  const payload = JSON.stringify({ message: `${promoMessages(due.slot, products).short}\n\n👥 *Join Grup WA:* ${typeof link === "string" && link.trim() ? link.trim() : WA_GROUP_HREF}`, botNumber: config.botNumber, botRevision: config.botRevision, expiresAt: `${due.businessDate}T${due.slot === "morning" ? "12" : "20"}:00:00+07:00` });
   const result = await db.execRun(`INSERT OR IGNORE INTO whatsapp_outbox(idempotency_key,channel,destination,message_type,payload,status,attempt_count,next_attempt_at,created_at,updated_at)
     SELECT ? || replace(json_extract(value,'$.id'),'@g.us',''),'whatsapp',json_extract(value,'$.id'),'promo_bot_digest',?,'pending',0,datetime('now'),datetime('now'),datetime('now') FROM json_each(?)`, prefix, payload, JSON.stringify(config.groups));
   return Number(result.changes ?? 0);

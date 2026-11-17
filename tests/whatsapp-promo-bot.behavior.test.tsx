@@ -25,7 +25,7 @@ it("shows connection status, saved groups and the current join footer like the A
   setup({ enabled: true, savedGroups: [{ id: "123@g.us", subject: "Writable" }] });
   await screen.findByText("Bot tersambung · Promo aktif");
   expect(screen.getByText("Writable")).toBeTruthy();
-  expect(screen.getByText("Baris terakhir pesan: Join Grup WA: https://chat.whatsapp.com/current")).toBeTruthy();
+  expect(screen.getByText("Baris terakhir pesan: 👥 Join Grup WA: https://chat.whatsapp.com/current")).toBeTruthy();
   expect((screen.getByText("Hubungkan nomor bot") as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText("Nonaktifkan promo")).toBeTruthy();
   expect(screen.queryByLabelText("Nomor WhatsApp bot baru")).toBeNull();

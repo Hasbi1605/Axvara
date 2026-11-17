@@ -44,7 +44,7 @@ it("queues every selected group idempotently using five statements and current j
   const db = createDatabaseAccess(); const before = fixture.control.queries;
   expect(await enqueueWhatsAppPromoBot(db)).toBe(2); expect(fixture.control.queries - before).toBe(5);
   expect(row()).toMatchObject({ message_type: "promo_bot_digest", idempotency_key: "wa:promo2:2026-11-17:morning:123" });
-  expect(JSON.parse(String(row().payload)).message).toContain(`\n\nJoin Grup WA: ${WA_GROUP_HREF}`);
+  expect(JSON.parse(String(row().payload)).message).toContain(`\n\n👥 *Join Grup WA:* ${WA_GROUP_HREF}`);
   expect(await enqueueWhatsAppPromoBot(db)).toBe(0);
   fixture.sql.prepare("INSERT INTO store_settings(key,value) VALUES('whatsapp_group_url',?)").run("https://chat.whatsapp.com/newlink");
   vi.setSystemTime(new Date("2026-11-17T10:00:00Z")); expect(await enqueueWhatsAppPromoBot(db)).toBe(2);

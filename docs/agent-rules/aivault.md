@@ -1,5 +1,19 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Pengingat saldo rendah Telegram admin — 17 November 2026 (lokal)
+
+- `checkSupplierLowBalance` (`src/lib/supplier-balance-alert.ts`) dijalankan di
+  akhir cron lite `aivault_orders` hanya saat `isAivaultConfigured()` dan
+  `db.canSpend(5)`, tanpa menambah trigger cron/env Pages baru.
+- Checkpoint `store_settings.aivault_balance_checked_at` ditulis sebelum
+  `fetchAivaultBalance()` + `parseAivaultBalance` (USD, maks 1×/30 menit);
+  gagal/non-`ok`/shape tidak valid mencatat `aivault_balance_error` tanpa alert.
+- Ambang opsional `AIVAULT_BALANCE_ALERT_USD` (default `5`, finite `>= 0`;
+  tidak dipasang ke Pages), langkah penurunan `1` USD, format
+  `💰 <b>Saldo AIVault menipis</b>`. Throttle CAS 6 jam atau turun `>= 1` USD
+  via `store_settings.aivault_balance_alert_at` (`amount|ms`); mengirim ke
+  `TELEGRAM_ADMIN_CHAT_ID` hanya saat `TELEGRAM_BOT_ENABLED=true`.
+
 ## Harga grosir AIVault berbasis markup % — 17 November 2026 (lokal)
 
 Keputusan owner 17 November 2026 mengecualikan AIVault dari aturan "grosir

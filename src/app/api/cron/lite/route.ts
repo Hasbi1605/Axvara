@@ -119,10 +119,7 @@ export async function POST(request: NextRequest) {
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db));
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
-    else if (job === "aivault_orders") {
-      const { processAivaultOrders }=await import("@/lib/aivault/orders");
-      result.aivault_orders_processed=await processAivaultOrders(db);
-    }
+    else if (job === "aivault_orders") Object.assign(result, await runAivaultOrders(db));
     else if (job === "aivault_catalog") {
       const { isAivaultConfigured,isAivaultSyncEnabled }=await import("@/lib/aivault/client");
       if (!isAivaultConfigured() || !isAivaultSyncEnabled()) result.skipped="not_configured";
@@ -137,10 +134,7 @@ export async function POST(request: NextRequest) {
         if ("ok" in synced && !synced.ok) return NextResponse.json(result,{status:503});
       }
     }
-    else if (job === "tunvn_orders") {
-      const { processTunvnOrders }=await import("@/lib/tunvn/orders");
-      result.tunvn_orders_processed=await processTunvnOrders(db);
-    }
+    else if (job === "tunvn_orders") Object.assign(result, await runTunvnOrders(db));
     else if (job === "tunvn_catalog") {
       const { isTunvnSyncEnabled, isTunvnConfigured } = await import("@/lib/tunvn/client");
       if (!isTunvnSyncEnabled() || !isTunvnConfigured()) result.skipped = "not_configured";
@@ -414,6 +408,49 @@ async function runSkOrders(db: Db) {
     }
     out.reconciled = await order.reconcileStuckSkOrders(db).catch(() => 0);
   }
+  return out;
+}
+
+async function runSupplierBalanceCheck(
+  db: Db,
+  out: Record<string, unknown>,
+  prefix: "tunvn" | "aivault",
+  loadAndCheck: () => Promise<{ checked: boolean; balance?: number; alerted?: boolean; error?: string }>,
+) {
+  if (!db.canSpend(5)) return;
+  try {
+    const bal = await loadAndCheck();
+    if (!bal.checked) return;
+    if (bal.balance !== undefined) out[`${prefix}_balance`] = bal.balance;
+    if (bal.alerted !== undefined) out[`${prefix}_balance_alerted`] = bal.alerted;
+    if (bal.error !== undefined) out[`${prefix}_balance_error`] = bal.error;
+  } catch (error) {
+    if (error instanceof QueryBudgetExceeded) throw error;
+    out[`${prefix}_balance_error`] = "balance_failed";
+  }
+}
+
+async function runTunvnOrders(db: Db) {
+  const { processTunvnOrders } = await import("@/lib/tunvn/orders");
+  const out: Record<string, unknown> = {
+    tunvn_orders_processed: await processTunvnOrders(db),
+  };
+  await runSupplierBalanceCheck(db, out, "tunvn", async () => {
+    const { checkTunvnLowBalance } = await import("@/lib/supplier-balance-alert");
+    return checkTunvnLowBalance(db);
+  });
+  return out;
+}
+
+async function runAivaultOrders(db: Db) {
+  const { processAivaultOrders } = await import("@/lib/aivault/orders");
+  const out: Record<string, unknown> = {
+    aivault_orders_processed: await processAivaultOrders(db),
+  };
+  await runSupplierBalanceCheck(db, out, "aivault", async () => {
+    const { checkAivaultLowBalance } = await import("@/lib/supplier-balance-alert");
+    return checkAivaultLowBalance(db);
+  });
   return out;
 }
 

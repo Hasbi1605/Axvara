@@ -1,5 +1,19 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Pengingat saldo rendah Telegram admin — 17 November 2026 (lokal)
+
+- `checkSupplierLowBalance` (`src/lib/supplier-balance-alert.ts`) dijalankan di
+  akhir cron lite `tunvn_orders` hanya saat `isTunvnConfigured()` dan
+  `db.canSpend(5)`, tanpa menambah trigger cron/env Pages baru.
+- Checkpoint `store_settings.tunvn_balance_checked_at` ditulis sebelum
+  `fetchTunvnBalance()` (maks 1×/30 menit); gagal/non-`ok` mencatat
+  `tunvn_balance_error` tanpa alert.
+- Ambang opsional `TUNVN_BALANCE_ALERT_USDT` (default `5`, finite `>= 0`;
+  tidak dipasang ke Pages), langkah penurunan `1` USDT, format
+  `💰 <b>Saldo TUNVN menipis</b>`. Throttle CAS 6 jam atau turun `>= 1` USDT
+  via `store_settings.tunvn_balance_alert_at` (`amount|ms`); mengirim ke
+  `TELEGRAM_ADMIN_CHAT_ID` hanya saat `TELEGRAM_BOT_ENABLED=true`.
+
 ## Kurs modal dibekukan per link — 16 November 2026 (lokal)
 
 Migrasi0130 menambah `tunvn_order_links.fx_idr_per_usdt`; backfill sekali dari

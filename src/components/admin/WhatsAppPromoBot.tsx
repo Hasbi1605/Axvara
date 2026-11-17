@@ -133,6 +133,6 @@ export function WhatsAppPromoBot() {
       </div>
     </div>}
 
-    <p className="mt-4 break-all text-xs text-admin-muted">Baris terakhir pesan: Join Grup WA: {link}</p>
+    <p className="mt-4 break-all text-xs text-admin-muted">Baris terakhir pesan: 👥 Join Grup WA: {link}</p>
   </Card>;
 }
