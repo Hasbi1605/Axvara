@@ -2109,6 +2109,11 @@ QRIS & Rekonsiliasi**.
 
 ## 🔐 Admin
 
+- Editor produk (G4, 18 November 2026, lokal): **Masa aktif (opsional)** tersedia
+  terpisah dari **Masa garansi** pada mode tunggal/multi. Nilai + Hari/Bulan/Tahun
+  boleh kosong; mengubah garansi tidak mengubah durasi. Muat/simpan tanpa edit
+  mempertahankan durasi/label existing (termasuk lifetime/custom); WR-owned tetap
+  terkunci. Tidak ada backfill data lama. QA memakai fixture lokal, belum deploy.
 - URL: `/admin`
 - Produksi dilapisi Cloudflare Access dan MFA; lihat bagian proteksi admin di atas.
 - Credentials: set via Cloudflare Pages environment variables (`ADMIN_EMAIL`, `ADMIN_PASSWORD_SHA256` dalam format PBKDF2); satu pasang quote pembungkus dari paste shell/JSON didukung dan dinormalisasi server-side. Untuk PBKDF2, browser membuat proof atas challenge 5 menit sehingga Pages tidak melakukan derivasi berat.

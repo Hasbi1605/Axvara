@@ -218,6 +218,17 @@ Status: implementasi lokal; migrasi/deployment produksi belum diverifikasi.
 
 ## Grup produk lintas supplier — migrasi0129 (16 November 2026)
 
+**G4, 18 November 2026 (lokal):** editor tunggal/multi memakai
+`sections/VariantDurationFields.tsx` untuk `duration_value/unit/label`, terpisah
+dari `VariantWarrantyFields.tsx`. `useProductManager` memuat durasi DEFAULT ke
+`ProductForm`, lalu mengirimnya hanya dalam `variants[]` (bukan top-level).
+Muat/simpan tanpa edit mempertahankan ketiga kolom; edit/hapus durasi membersihkan
+label lama. Callback garansi tidak menulis kolom durasi. API produk/varian existing
+tetap menyimpan kedua kelompok secara terpisah; kontrak/schema/API tidak berubah.
+`NORMALIZE_30D` tetap memakai `duration_value/unit`, bukan garansi: day=N,
+month=N×30, year=N×365; lifetime/custom/NULL tidak dinormalisasi. WR-owned tetap
+terkunci. Tidak ada migrasi/backfill durasi historis atau perubahan algoritme grup.
+
 Menggantikan model pasangan WR/SK dan Opsi B pada snapshot lama di bawah.
 `src/lib/product-groups.ts` menjadi sumber keputusan; `supplier-pairs.ts` hanya
 shim ekspor agar kontrak caller cron/VPS/Telegram existing tetap kompatibel.

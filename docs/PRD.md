@@ -1,5 +1,16 @@
 # PRD — AXVARA
 
+## Masa aktif terpisah dari garansi — 18 November 2026 (G4, lokal)
+
+- Editor produk tunggal dan multi-varian menyediakan **Masa aktif (opsional)**:
+  nilai durasi + Hari/Bulan/Tahun, boleh dikosongkan. Garansi (nilai, satuan,
+  tipe) tidak pernah mengubah masa aktif, dan sebaliknya.
+- Membuka lalu menyimpan tanpa mengubah durasi mempertahankan nilai, satuan
+  dan label tersimpan, termasuk legacy lifetime/custom. Nilai historis yang
+  pernah tertimpa garansi tidak ditebak atau dimigrasi; admin dapat mengoreksi
+  masa aktif secara eksplisit. Varian WR terkunci tetap mengikuti sync.
+- Implementasi/test dan QA Chromium fixture lokal, bukan bukti deployment.
+
 ## Akurasi stok & pemulihan orphan F5a — 18 November 2026 (lokal)
 
 - Winner grup WR/SK memakai batas terkecil antara stok varian lokal setelah

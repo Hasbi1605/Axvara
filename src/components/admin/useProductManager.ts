@@ -298,6 +298,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         nextForm.manual_cost = v0.manual_cost ?? 0;
         nextForm.admin_terms = v0.admin_terms;
         nextForm.admin_activation = v0.admin_activation;
+        nextForm.duration_value = v0.duration_value ?? null;
+        nextForm.duration_unit = v0.duration_unit ?? null;
+        nextForm.duration_label = v0.duration_label ?? null;
         nextForm.warranty_type = v0.warranty_type || "none";
         nextForm.warranty_value = v0.warranty_value ?? null;
         nextForm.warranty_unit = v0.warranty_unit || null;
@@ -348,6 +351,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       isActive: true,
       min_qty: 1,
       manual_cost: 0,
+      duration_value: null,
+      duration_unit: null,
+      duration_label: null,
       warranty_type: "none",
       warranty_value: null,
       warranty_unit: null,
@@ -500,11 +506,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       buyer_field_key: form.buyer_field_key,
       max_qty: form.max_qty,
       manual_cost: Math.max(0, Math.floor(Number(form.manual_cost ?? 0) || 0)),
-      // Durasi bukan field mode single (tidak ada UI-nya) — teruskan nilai
-      // varian DEFAULT existing agar tidak ter-nol-kan saat update in-place.
-      duration_value: existingDefault?.duration_value ?? null,
-      duration_unit: existingDefault?.duration_unit ?? null,
-      duration_label: existingDefault?.duration_label ?? null,
+      duration_value: form.duration_value ?? null,
+      duration_unit: form.duration_unit ?? null,
+      duration_label: form.duration_label ?? null,
       warranty_type: form.warranty_type || "none",
       warranty_value: form.warranty_value ?? null,
       warranty_unit: form.warranty_unit || null,
@@ -536,6 +540,9 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       // Field form khusus mode single: hanya kontrak UI, sumber kebenaran
       // adalah entries `variants` di bawah — jangan bocor ke top-level API.
       min_qty: undefined,
+      duration_value: undefined,
+      duration_unit: undefined,
+      duration_label: undefined,
       warranty_type: undefined,
       warranty_value: undefined,
       warranty_unit: undefined,

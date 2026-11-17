@@ -1,5 +1,24 @@
 # DESIGN.md — AXVARA Design System
 
+## Editor masa aktif & garansi — 18 November 2026 (G4, lokal)
+
+`VariantDurationFields.tsx` dipakai bersama pada mode tunggal dan multi-varian,
+tepat sebelum Masa garansi. Label **Masa aktif (opsional)**, input angka dan
+NativeSelect **Satuan masa aktif** (Tidak diisi/Hari/Bulan/Tahun) memakai
+primitive Input/Label/NativeSelect serta token admin existing, tanpa token/aset
+baru. Nilai legacy Selamanya/Kustom tetap terlihat berikut label tersimpannya;
+tidak dinormalisasi saat membuka form. Mengubah nilai/satuan secara eksplisit
+mengosongkan label lama; mengosongkan masa aktif mengirim ketiganya NULL.
+WR: nilai readOnly dan satuan disabled, label **Masa aktif (WR)**. Pola admin
+tetap Indonesia (tidak ada locale switch chrome admin); pilihan EN pada tab
+Deskripsi & S&K tidak mengubah bahasa field ini.
+
+Chromium fixture1440/390px: tunggal/multi, simpan tanpa edit, perubahan garansi
+saja, edit/hapus masa aktif, urutan Tab dan outline fokus2px terverifikasi;
+CSS/JS200, tanpa overflow horizontal/error console. Probe tier1 lulus;
+indikator target<44px berasal dari ukuran kontrol admin existing (36px), bukan
+klaim semua layar memenuhi target44px. Fixture bukan auth/D1/produksi/deployment.
+
 ## Pemisah katalog per kategori — 17 November 2026 (lokal)
 
 Semua tanpa pencarian memakai section tanpa box. Revisi owner17November:

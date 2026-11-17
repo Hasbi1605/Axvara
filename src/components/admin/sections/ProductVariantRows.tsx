@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/Toast";
 import { Spinner } from "@/components/ui/Loading";
 import type { FormVariant, ProductForm } from "../product-types";
 import { WarrantyFields } from "./VariantWarrantyFields";
+import { DurationFields } from "./VariantDurationFields";
 import { CredentialQueue } from "./CredentialQueue";
 import {
   BulkTierEditor,
@@ -560,9 +561,13 @@ export function ProductVariantRows({
               />
             )}
 
-            {/* Baris 3: Pengaturan Garansi — komponen bersama dengan mode single
-                (paritas 2026-09-28). Sinkron durasi dipertahankan: nilai/satuan
-                garansi ikut menjadi durasi, seperti sebelumnya. */}
+            <DurationFields
+              value={v}
+              wrLocked={wrLocked}
+              onChange={(patch) => onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, ...patch } : item))}
+            />
+
+            {/* Garansi dan masa aktif disunting terpisah (owner 2026-11-18). */}
             <WarrantyFields
               value={v}
               wrLocked={wrLocked}
@@ -570,8 +575,6 @@ export function ProductVariantRows({
                 onSetFormVariants((curr) => curr.map((item, i) => i === idx ? {
                   ...item,
                   ...patch,
-                  ...(patch.warranty_value !== undefined && patch.warranty_type === undefined ? { duration_value: patch.warranty_value } : {}),
-                  ...(patch.warranty_unit !== undefined && patch.warranty_type === undefined ? { duration_unit: patch.warranty_unit } : {}),
                 } : item));
               }}
             />

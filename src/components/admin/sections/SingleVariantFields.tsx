@@ -18,6 +18,7 @@ import { useId, useRef } from "react";
 import type { ProductForm } from "../product-types";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { WarrantyFields } from "./VariantWarrantyFields";
+import { DurationFields } from "./VariantDurationFields";
 import { FULFILLMENT_OPTIONS, NonWrFulfillmentPanel } from "./ProductVariantRows";
 import {
   BulkTierEditor,
@@ -108,6 +109,8 @@ export function SingleVariantFields({
           onChange={(next) => onSetForm({ ...latestForm.current, bulk: next })}
         />
       )}
+
+      <DurationFields value={form} wrLocked={wrLocked} onChange={(patch) => onSetForm({ ...form, ...patch })} />
 
       <WarrantyFields
         value={{

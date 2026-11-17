@@ -52,7 +52,7 @@ beforeEach(() => {
      VALUES (4, 2, 'DEFAULT-2', 'Default', 50000, 10, 1, 0)`,
   ).run();
 });
-afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 function put(id: number, body: unknown) {
   return new NextRequest(`http://localhost/api/products/${id}`, {
@@ -267,6 +267,37 @@ describe("PUT /api/products/:id mode single paritas (2026-09-28)", () => {
   });
 });
 
+describe("garansi dan masa aktif tersimpan terpisah (G4)", () => {
+  it.each([1, 2])("PUT produk %s mempertahankan durasi saat garansi berubah", async (productId) => {
+    const { PUT } = await import("@/app/api/products/[id]/route");
+    const duration = { duration_value: 3, duration_unit: "month", duration_label: "3 Bulan" };
+    const variants = productId === 1 ? editedVariants : [{ id: 4, sku: "DEFAULT-2", label: "Default", price: 50000, stock: 10, is_active: 1 }];
+    for (const warranty of [
+      { warranty_type: "full", warranty_value: 7, warranty_unit: "day" },
+      { warranty_type: "limited", warranty_value: 1, warranty_unit: "year" },
+      { warranty_type: "none", warranty_value: null, warranty_unit: null },
+    ]) {
+      const response = await PUT(put(productId, { variants: variants.map(v => ({ ...v, ...duration, ...warranty })) }), { params: Promise.resolve({ id: String(productId) }) });
+      expect(response.status).toBe(200);
+      for (const row of fixture.sql.prepare("SELECT duration_value,duration_unit,duration_label,warranty_type,warranty_value,warranty_unit FROM product_variants WHERE product_id=?").all(productId)) {
+        expect(row).toMatchObject({ ...duration, ...warranty });
+      }
+    }
+  });
+
+  it("PUT admin/variants with only warranty fields does not clear or copy duration", async () => {
+    vi.stubEnv("PRODUCT_VARIANTS_WRITE", "true");
+    const { PUT } = await import("@/app/api/admin/variants/route");
+    fixture.sql.exec("UPDATE product_variants SET duration_value=3,duration_unit='month',duration_label='3 Bulan' WHERE id=4");
+    const warranty = { warranty_type: "limited", warranty_value: 7, warranty_unit: "day" };
+    const response = await PUT(new NextRequest("http://localhost/api/admin/variants?id=4", {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(warranty),
+    }));
+    expect(response.status).toBe(200);
+    expect(fixture.sql.prepare("SELECT duration_value,duration_unit,duration_label,warranty_type,warranty_value,warranty_unit FROM product_variants WHERE id=4").get()).toMatchObject({ duration_value: 3, duration_unit: "month", duration_label: "3 Bulan", ...warranty });
+  });
+});
+
 describe("payload useProductManager mode varian", () => {
   it("mode multi: tidak menyertakan kolom legacy price/stock/comparePrice", async () => {
     const src = (await import("node:fs")).readFileSync("src/components/admin/useProductManager.ts", "utf8");
@@ -288,8 +319,10 @@ describe("payload useProductManager mode varian", () => {
     expect(saveBlock).toContain("fulfillment_mode: undefined");
     // SKU produk baru memakai prefix DEFAULT- agar tetap terdeteksi single.
     expect(src).toContain("DEFAULT-${");
-    // Durasi varian DEFAULT existing dipertahankan (tidak di-nol-kan) saat update in-place.
-    expect(src).toContain("duration_value: existingDefault?.duration_value");
+    // Durasi dimuat ke form single agar tetap utuh saat simpan dan bisa diedit terpisah.
+    expect(src).toContain("nextForm.duration_value = v0.duration_value ?? null");
+    expect(src).toContain("duration_value: form.duration_value ?? null");
+    expect(saveBlock).toContain("duration_value: undefined");
   });
 
   it("daftar admin meniru storefront: ready dulu, habis belakangan, nonaktif paling belakang (2026-09-19)", async () => {

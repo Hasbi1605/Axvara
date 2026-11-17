@@ -69,6 +69,9 @@ export type ProductForm = Partial<Prod> & {
    * Seluruhnya milik admin (bukan WR-owned); produk WR-managed tetap read-only di UI.
    */
   min_qty?: number;
+  duration_value?: number | null;
+  duration_unit?: string | null;
+  duration_label?: string | null;
   warranty_type?: string;
   warranty_value?: number | null;
   warranty_unit?: string | null;

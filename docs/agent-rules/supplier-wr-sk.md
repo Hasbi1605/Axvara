@@ -1,5 +1,16 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Garansi bukan masa aktif — keputusan owner 18 November 2026 (G4, lokal)
+
+- Jangan menyalin `warranty_value/unit/type` ke `duration_value/unit/label` di
+  editor atau API. Masa aktif diisi sendiri pada mode tunggal/multi, boleh kosong;
+  durasi tersimpan tidak berubah saat form hanya dibuka/disimpan. Nilai legacy
+  lifetime/custom dan labelnya dipertahankan hingga admin menyunting masa aktif.
+- WR-owned tetap readOnly/disabled dan guard API existing tidak dilemahkan.
+  Normalisasi modal grup/30hari memakai durasi, bukan garansi. Tidak menebak atau
+  backfill durasi historis, tidak menyentuh sync supplier atau algoritme grup.
+- Test komponen/hook/API dan Chromium fixture lokal; belum bukti deployment.
+
 ## Refresh stok induk SK F5b — 18 November 2026 (lokal)
 
 - `zeroSkVariantsByIds`, `zeroMissingSkVariants`, serta jalur tulis/diff
