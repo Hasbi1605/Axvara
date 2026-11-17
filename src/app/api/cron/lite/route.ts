@@ -528,6 +528,10 @@ async function runNotifyB(db: Db, deadline: number) {
     const { enqueueWhatsAppPromo } = await import("@/lib/whatsapp/promo-digest");
     return enqueueWhatsAppPromo(db);
   });
+  await guard("whatsapp_promo_bot", async () => {
+    const { enqueueWhatsAppPromoBot } = await import("@/lib/whatsapp/promo-bot");
+    return enqueueWhatsAppPromoBot(db);
+  });
   await guard("qris_expiry_notices", async () => {
     const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
     return sendQrisExpiryNotifications(2, db);

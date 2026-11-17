@@ -4690,6 +4690,37 @@ Indeks `idx_orders_telegram_pending_chat` pada migrasi0075 mempersempit guard/pr
 
 ### 16.12 Notifikasi grup WA dan admin Telegram — 24 Oktober 2026
 
+**17 November 2026 — Bot Promo kedua (implementasi lokal; publikasi via CI).**
+`src/lib/whatsapp/promo-bot.ts` memisahkan konfigurasi store_settings
+`whatsapp_promo_bot` JSON `{enabled,botNumber,botRevision,groups:[{id,subject}]}`
+(≤20 grup JID, parse fail-closed). Cron lite memanggil `enqueueWhatsAppPromoBot`
+sesudah promo AXVARA'S lewat guard terpisah: slot WIB09–<12/17–<20, minimal3produk,
+5statement maksimum independen jumlah grup (cek konfigurasi, missing-key
+`json_each`, katalog, link toko, satu `INSERT OR IGNORE ... SELECT json_each`).
+Key `wa:promo2:YYYY-MM-DD:morning|evening:<groupId tanpa @g.us>`, tipe
+`promo_bot_digest`, destination grup; payload `{message,botNumber,botRevision,expiresAt}`.
+Caption short existing + `\n\nJoin Grup WA: <whatsapp_group_url atau WA_GROUP_HREF>`
+dibekukan saat enqueue, caption AXVARA'S tidak ditambah footer. Outbox memeriksa
+kembali enabled/pilihan grup/identitas; perubahan retry5menit
+`promo_bot_disabled_or_changed`, pacing/offline retry durable; expired dan
+`promo_group_not_allowed` dead, outcome ambigu eksplisit dead/manual-check.
+
+Route edge admin `/api/admin/whatsapp-promo-bot` requireAdmin/no-store:
+GET config+gateway; `?groups=1` mengambil grup fresh bila connected+identitas cocok.
+POST action number/pair/save_groups/enable/disable, mutasi konfigurasi CAS nilai
+mentah; ganti nomor pause dahulu, sesi baru disimpan disabled dengan grup kosong;
+save_groups memakai daftar fresh canSend dan menjeda. Enable perlu connected,
+tidak blocked, ≥1grup, identitas cocok. `WhatsAppPromoBot.tsx` dipasang sesudah
+`WhatsAppNotifications` di `StoreSettingsManager`, memakai primitive admin.
+Gateway token existing untuk GET `/promo-bot/status`, POST `/promo-bot/number`
+`{newBotNumber,botNumber|null,botRevision|null}`, POST `/promo-bot/pair`
+`{botNumber,botRevision}`, GET `/promo-bot/groups?botNumber=&botRevision=`, POST
+`/promo-bot/send-promo` `{target,message,idempotencyKey,botNumber,botRevision}`.
+Status mencakup configured/connected/blocked/nomor/revisi/lastSendAt/lastAckAt;
+grup id/subject/size/canSend. Pacing60detik per nomor promo, gambar existing sama.
+Tidak ada env Pages baru; nomor tidak boleh sama dengan bot notifikasi.
+Pairing owner setelah deploy; implementasi bukan bukti deployment/kiriman nyata.
+
 ✅ Diimplementasikan, publikasi lewat CI; koneksi/aktivasi mengikuti panel owner.
 Source gateway kanonis `gateway/{src,scripts,package*.json,Procfile,tsconfig.json}`.
 Baileys7.0.0-rc14/Node22, Heroku app existing `axvara-wa-gateway` akun#1 dan

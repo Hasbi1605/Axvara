@@ -4,18 +4,28 @@ import { createHash, randomUUID } from "node:crypto";
 export const DEFAULT_BOT_NUMBER = "6283181632507";
 export let BOT_NUMBER = DEFAULT_BOT_NUMBER;
 export let BOT_REVISION = "initial";
+export let PROMO_BOT_NUMBER: string | null = null;
+export let PROMO_BOT_REVISION: string | null = null;
 export const validBotNumber = (phone: unknown): phone is string => typeof phone === "string" && /^[1-9]\d{9,14}$/.test(phone);
 export function botIdentity() { return { botNumber: BOT_NUMBER, botRevision: BOT_REVISION }; }
 export function matchesBotIdentity(value: { botNumber?: string; botRevision?: string }) {
   return (value.botNumber ?? DEFAULT_BOT_NUMBER) === BOT_NUMBER && (value.botRevision ?? "initial") === BOT_REVISION;
 }
+export function promoBotIdentity() { return { botNumber: PROMO_BOT_NUMBER, botRevision: PROMO_BOT_REVISION }; }
+export function matchesPromoBotIdentity(value: { botNumber?: string | null; botRevision?: string | null }) {
+  return (value.botNumber ?? null) === PROMO_BOT_NUMBER && (value.botRevision ?? null) === PROMO_BOT_REVISION;
+}
 export { GROUP_NAME } from "./group-target.js";
-export function groupAllowsBotSend(group: { announce?: boolean; participants: { id: string; phoneNumber?: string; admin?: string | null }[] }, ownLid?: string) {
+export function groupAllowsBotSend(
+  group: { announce?: boolean; participants: { id: string; phoneNumber?: string; admin?: string | null }[] },
+  ownLid?: string,
+  phone = BOT_NUMBER,
+) {
   const normalize = (id: string) => id.replace(/:\d+@/, "@");
-  const own = new Set([BOT_NUMBER + "@s.whatsapp.net", ...(ownLid ? [normalize(ownLid)] : [])]);
+  const own = new Set([phone + "@s.whatsapp.net", ...(ownLid ? [normalize(ownLid)] : [])]);
   return group.participants.some(member => {
-    const phone = member.phoneNumber || "";
-    const matches = own.has(normalize(member.id)) || own.has(normalize(phone.includes("@") ? phone : phone + "@s.whatsapp.net"));
+    const memberPhone = member.phoneNumber || "";
+    const matches = own.has(normalize(member.id)) || own.has(normalize(memberPhone.includes("@") ? memberPhone : memberPhone + "@s.whatsapp.net"));
     return matches && (!group.announce || ["admin", "superadmin"].includes(member.admin || ""));
   });
 }
@@ -49,6 +59,11 @@ export async function initializeDurable(onLost: () => void) {
     id INTEGER PRIMARY KEY CHECK(id=1), phone TEXT NOT NULL, revision TEXT NOT NULL,
     group_id TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`);
+  await lease.query(`CREATE TABLE IF NOT EXISTS axvara_wa_promo_runtime (
+    id INTEGER PRIMARY KEY CHECK(id=1), phone TEXT, revision TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`);
+  await lease.query("INSERT INTO axvara_wa_promo_runtime(id,phone,revision) VALUES(1,NULL,NULL) ON CONFLICT DO NOTHING");
   await lease.query(`INSERT INTO axvara_wa_runtime(id,phone,revision,group_id)
     VALUES(1,$1,'initial',(SELECT group_id FROM axvara_wa_control WHERE phone=$1)) ON CONFLICT DO NOTHING`, [DEFAULT_BOT_NUMBER]);
   const runtime = (await lease.query("SELECT phone,revision FROM axvara_wa_runtime WHERE id=1")).rows[0];
@@ -60,21 +75,21 @@ export async function initializeDurable(onLost: () => void) {
   return lease;
 }
 
-export async function deliveryClaim(key: string, target: string, text: string) {
+export async function deliveryClaim(key: string, target: string, text: string, phone = BOT_NUMBER) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const control = (await client.query("SELECT * FROM axvara_wa_control WHERE phone=$1 FOR UPDATE", [BOT_NUMBER])).rows[0];
+    const control = (await client.query("SELECT * FROM axvara_wa_control WHERE phone=$1 FOR UPDATE", [phone])).rows[0];
     const existing = (await client.query("SELECT * FROM axvara_wa_delivery WHERE key=$1", [key])).rows[0];
     const hash = fingerprint(target, text);
     if (existing && existing.fingerprint !== hash) return { reason: "idempotency_conflict" } as const;
     if (existing?.status === "sent") return { sent: true, id: existing.message_id } as const;
     if (existing && existing.status !== "queued") return { reason: "delivery_outcome_unknown", outcomeUnknown: true } as const;
     if (control?.paused_until && new Date(control.paused_until).getTime() > Date.now()) return { reason: "gateway_cooldown_active" } as const;
-    if (new Date(control.next_send_at).getTime() > Date.now()) return { reason: "notification_paced" } as const;
+    if (control && new Date(control.next_send_at).getTime() > Date.now()) return { reason: "notification_paced" } as const;
     await client.query(`INSERT INTO axvara_wa_delivery(key,fingerprint,target,payload,status)
       VALUES($1,$2,$3,$4,'sending') ON CONFLICT(key) DO UPDATE SET status='sending',updated_at=now()`, [key, hash, target, text]);
-    await client.query("UPDATE axvara_wa_control SET next_send_at=now()+interval '60 seconds' WHERE phone=$1", [BOT_NUMBER]);
+    await client.query("UPDATE axvara_wa_control SET next_send_at=now()+interval '60 seconds' WHERE phone=$1", [phone]);
     await client.query("COMMIT");
     return { claimed: true } as const;
   } finally { await client.query("ROLLBACK").catch(() => {}); client.release(); }
@@ -116,4 +131,67 @@ export async function reloadBotIdentity() {
   if (!validBotNumber(row?.phone) || typeof row.revision !== "string") throw new Error("Invalid WhatsApp runtime settings");
   BOT_NUMBER = row.phone; BOT_REVISION = row.revision;
   return botIdentity();
+}
+
+export async function initializePromoRuntime() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS axvara_wa_promo_runtime (
+    id INTEGER PRIMARY KEY CHECK(id=1), phone TEXT, revision TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`);
+  await pool.query("INSERT INTO axvara_wa_promo_runtime(id,phone,revision) VALUES(1,NULL,NULL) ON CONFLICT DO NOTHING");
+  return reloadPromoBotIdentity(true);
+}
+
+/** Caller holds the promo mutex and has stopped the old socket. No auth/delivery rows are deleted. */
+export async function persistPromoBotNumber(phone: string, expected: { botNumber?: string | null; botRevision?: string | null }) {
+  if (!validBotNumber(phone)) throw new Error("invalid_bot_number");
+  if (phone === BOT_NUMBER) throw new Error("same_as_notification_bot");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const current = (await client.query("SELECT phone,revision FROM axvara_wa_promo_runtime WHERE id=1 FOR UPDATE")).rows[0];
+    const currentPhone = current?.phone ?? null;
+    const currentRevision = current?.revision ?? null;
+    if (currentPhone !== (expected.botNumber ?? null) || currentRevision !== (expected.botRevision ?? null)) {
+      throw new Error("bot_configuration_changed");
+    }
+    if (currentPhone === phone) {
+      await client.query("INSERT INTO axvara_wa_control(phone) VALUES($1) ON CONFLICT DO NOTHING", [phone]);
+      await client.query("COMMIT");
+      return promoBotIdentity();
+    }
+    await client.query("INSERT INTO axvara_wa_control(phone) VALUES($1) ON CONFLICT DO NOTHING", [phone]);
+    const revision = randomUUID();
+    await client.query(
+      "INSERT INTO axvara_wa_promo_runtime(id,phone,revision,updated_at) VALUES(1,$1,$2,now()) ON CONFLICT(id) DO UPDATE SET phone=$1,revision=$2,updated_at=now()",
+      [phone, revision],
+    );
+    await client.query("COMMIT");
+    PROMO_BOT_NUMBER = phone;
+    PROMO_BOT_REVISION = revision;
+    return promoBotIdentity();
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function reloadPromoBotIdentity(ensureControl = false) {
+  const row = (await pool.query("SELECT phone,revision FROM axvara_wa_promo_runtime WHERE id=1")).rows[0];
+  if (!row?.phone) {
+    PROMO_BOT_NUMBER = null;
+    PROMO_BOT_REVISION = null;
+    return promoBotIdentity();
+  }
+  if (!validBotNumber(row.phone) || typeof row.revision !== "string" || !row.revision) {
+    throw new Error("Invalid promo bot runtime settings");
+  }
+  PROMO_BOT_NUMBER = row.phone;
+  PROMO_BOT_REVISION = row.revision;
+  if (ensureControl) {
+    await pool.query("INSERT INTO axvara_wa_control(phone) VALUES($1) ON CONFLICT DO NOTHING", [PROMO_BOT_NUMBER]);
+  }
+  return promoBotIdentity();
 }

@@ -1,5 +1,24 @@
 # Aturan agent — WhatsApp gateway, grup, siaran
 
+Revisi17November2026 (keputusan owner; implementasi lokal, publikasi via CI):
+tambahkan nomor kedua **Bot Promo**, nomor pribadi owner yang sudah lama digunakan,
+untuk maksimal20grup pilihan manual admin (perkiraan8). Gambar dan caption
+`promoMessages(slot, products).short` sama dengan bot AXVARA'S; HANYA Bot Promo
+menambahkan `\n\nJoin Grup WA: <url>` dari store_settings `whatsapp_group_url`
+(fallback `WA_GROUP_HREF`), dibaca saat enqueue. Slot09.00–<12.00 dan17.00–<20.00
+WIB, jeda60detik antargrup pada nomor promo. Bot AXVARA'S/welcome tidak berubah.
+Konfigurasi JSON `whatsapp_promo_bot` terpisah: enabled/nomor/revisi/grup≤20;
+admin wajib memilih grup dan mengaktifkan sesi yang sesuai. Ganti nomor menjeda
+dan mengosongkan pilihan grup; simpan grup menjeda sampai diaktifkan kembali.
+Jangan memakai nomor yang sama dengan bot notifikasi. Kontrak gateway
+`/promo-bot/{status,number,pair,groups,send-promo}` memakai token existing,
+identitas nomor+revisi, ledger idempoten `wa:promo2:YYYY-MM-DD:slot:groupId`,
+pacing per nomor dan gambar promo existing. Outbox `promo_bot_digest`: cek
+aktivasi/grup/identitas lagi sebelum kirim; perubahan retry5menit tanpa menghabiskan
+attempt, expired/grup tidak diizinkan/hasil ambigu eksplisit dikarantina dead.
+Tidak ada env Pages baru. Pairing nomor promo dilakukan owner setelah deploy;
+QA hanya fixture, tanpa pairing/reset/pesan atau mutasi produksi.
+
 Revisi13November2026 (keputusan owner; implementasi lokal): alur PEMBELI lewat
 WhatsApp dipensiunkan — pencarian/discovery produk, pemesanan+pembayaran, dan
 intake bukti manual dihapus dari kode (bukan env flag). `handlers/catalog.ts`,

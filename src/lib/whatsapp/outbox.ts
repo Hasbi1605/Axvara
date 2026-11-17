@@ -206,13 +206,14 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     return true;
   }
   let message = String(fresh.payload || "");
-  const durableNotification = fresh.message_type === "promo_digest" || fresh.message_type === "group_welcome";
-  if (fresh.message_type === "promo_digest") {
+  const promoBot = fresh.message_type === "promo_bot_digest";
+  const durableNotification = promoBot || fresh.message_type === "promo_digest" || fresh.message_type === "group_welcome";
+  if (fresh.message_type === "promo_digest" || promoBot) {
     let payload: { message: string; botNumber: string; botRevision: string; expiresAt: string };
     try {
       payload = JSON.parse(message);
       const { normalizeBotNumber, validBotRevision } = await import("./bot-number");
-      if (typeof payload.message !== "string" || !payload.message || payload.message.length > 12000 || normalizeBotNumber(payload.botNumber) !== payload.botNumber || !validBotRevision(payload.botRevision) || !Number.isFinite(Date.parse(payload.expiresAt))) throw new Error("invalid_promo");
+      if (typeof payload.message !== "string" || !payload.message || payload.message.length > 12000 || typeof payload.botNumber !== "string" || normalizeBotNumber(payload.botNumber) !== payload.botNumber || !validBotRevision(payload.botRevision) || !Number.isFinite(Date.parse(payload.expiresAt))) throw new Error("invalid_promo");
     } catch {
       await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error='invalid_promo_payload' WHERE id=? AND worker_id=?", id, workerId);
       return true;
@@ -222,9 +223,11 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
       return true;
     }
     const { readSalesConfig } = await import("./sales-notifications");
-    const config = await readSalesConfig(database);
-    if (!config?.enabled || config.groupId !== fresh.destination || config.botNumber !== payload.botNumber || config.botRevision !== payload.botRevision) {
-      await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+5 minutes'),last_error='notifications_disabled_or_changed' WHERE id=? AND worker_id=?", id, workerId);
+    const { readPromoBotConfig } = await import("./promo-bot");
+    const config = promoBot ? await readPromoBotConfig(database) : await readSalesConfig(database);
+    const selected = config && ("groups" in config ? config.groups.some(g => g.id === fresh.destination) : config.groupId === fresh.destination);
+    if (!config?.enabled || !selected || config.botNumber !== payload.botNumber || config.botRevision !== payload.botRevision) {
+      await execRun("UPDATE whatsapp_outbox SET status='failed',worker_id=NULL,locked_until=NULL,attempt_count=attempt_count-1,next_attempt_at=datetime('now','+5 minutes'),last_error=? WHERE id=? AND worker_id=?", promoBot ? "promo_bot_disabled_or_changed" : "notifications_disabled_or_changed", id, workerId);
       return false;
     }
     message = payload.message;
@@ -247,6 +250,7 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
     message,
     idempotencyKey: String(fresh.idempotency_key || ""),
     promoNotification: fresh.message_type === "promo_digest",
+    ...(promoBot ? { promoBotNotification: true } : {}),
     welcomeNotification: fresh.message_type === "group_welcome",
     ...botIdentity,
   });
@@ -259,6 +263,10 @@ export async function processWhatsAppOutboxRow(row: Record<string, unknown>, dat
       id,
       workerId,
     );
+    return true;
+  }
+  if (promoBot && ["promo_group_not_allowed", "promo_expired"].includes(String(result.error))) {
+    await execRun("UPDATE whatsapp_outbox SET status='dead',worker_id=NULL,locked_until=NULL,last_error=?,updated_at=datetime('now') WHERE id=? AND worker_id=?", result.error, id, workerId);
     return true;
   }
   if (fresh.message_type === "group_welcome" && result.error === "bot_configuration_changed") {

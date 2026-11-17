@@ -63,6 +63,23 @@ laporan `../docs/security/dependency-audit-2026-10-27.md`. Deploy tetap hanya CI
   action `add` meneruskan maks 100 anggota (bot PN/LID disingkirkan) ke Pages
   `/api/whatsapp/group-events` tanpa menahan mutex selama HTTP. Detail:
   `../issue/broadcasts-welcome-2026-10-24.md`, ARCHITECTURE §16.13.
+- Promo bot 17 Nov 2026 (`src/promo-bot.ts`): sesi Baileys kedua yang
+  terisolasi di proses yang sama (mutex, socket, cache metadata grup 5 menit,
+  reconnect/backoff sendiri; tanpa `messages.upsert`, tanpa welcome webhook,
+  tanpa DM — hanya grup `@g.us` di mana nomor promo menjadi anggota dan berizin
+  kirim via `groupAllowsBotSend(..., phone)`). Identitas/revisi disimpan di
+  singleton PG `axvara_wa_promo_runtime(id=1, phone, revision)` (NULL = belum
+  dikonfigurasi); pacing/cooldown memakai `axvara_wa_control` per nomor promo,
+  ledger memakai `axvara_wa_delivery`, auth memakai `usePostgresAuthState(phone)`.
+  Nomor promo dilarang sama dengan `BOT_NUMBER` utama (`409 same_as_notification_bot`,
+  dan menolak start/terblokir jika bot utama beralih ke nomor promo). Endpoint
+  bertanda `x-gateway-token`: `GET /promo-bot/status`, `POST /promo-bot/number`
+  (CAS tanpa pairing otomatis), `POST /promo-bot/pair` (401 hanya hapus auth
+  promo), `GET /promo-bot/groups`, dan `POST /promo-bot/send-promo` (key
+  `wa:promo2:YYYY-MM-DD:morning|evening:<groupIdTanpa@g.us>` pada slot WIB
+  09.00–<12.00 / 17.00–<20.00, gambar `PROMO_IMAGE_URL`, pacing 60 detik per
+  nomor, timeout 25 detik → `unknown` + blokir sesi promo saja). `/health`
+  memaparkan `promoBot:{configured,connected,blocked}` + `memoryRssMb`.
 - Test `npm --prefix gateway test`, build `npm --prefix gateway run build`, lalu
   seluruh Vitest root. Sinkron PRD/ARCHITECTURE §16.12/README/CHANGELOG dan root
   AGENTS bila kontrak/env/rollout berubah.

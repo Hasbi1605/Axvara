@@ -1,5 +1,21 @@
 # PRD — AXVARA
 
+## Bot Promo WhatsApp kedua — keputusan owner 17 November 2026
+
+- Admin dapat memasang nomor owner yang sudah lama dipakai sebagai Bot Promo,
+  terpisah dari nomor bot AXVARA'S, memilih maksimal20grup manual dan mengaktifkan
+  pengiriman (diperkirakan8grup). Tidak menambah alur pembeli WhatsApp.
+- Katalog ready, gambar dan caption short sama dengan AXVARA'S, minimal3produk,
+  pukul09.00/17.00 WIB, expiry12.00/20.00, jeda sekitar1menit antargrup.
+- Hanya Bot Promo menambah `Join Grup WA: <link Pengaturan Toko>` di bawah caption;
+  perubahan undangan berlaku pada snapshot promo berikutnya, fallback WA_GROUP_HREF.
+  Bot AXVARA'S promo/welcome tetap tidak mendapat footer tambahan ini.
+- Ganti nomor menjeda dan menghapus pilihan grup, simpan grup menjeda;
+  aktifkan kembali setelah pairing dan memilih grup yang bisa dikirimi.
+  Identitas sesi dijaga dengan revisi/CAS, tidak replay kiriman basi/ambigu.
+- Status: implementasi lokal; publikasi via CI, tanpa env Pages baru. Pairing
+  nomor promo dilakukan owner setelah deploy, bukan saat QA.
+
 ## Untung Bersih, Pengeluaran & audit modal Ringkasan — 16 November 2026
 
 Keputusan owner 16 Nov 2026 (desain disetujui):

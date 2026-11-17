@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save } from "lucide-react";
 import { DEFAULT_STORE_SETTINGS, type StoreSettings } from "@/lib/site";
 import { WhatsAppNotifications } from "./WhatsAppNotifications";
+import { WhatsAppPromoBot } from "./WhatsAppPromoBot";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 import { publishStoreSettings } from "@/hooks/useStoreSettings";
@@ -122,6 +123,7 @@ export function StoreSettingsManager() {
         </Card>
       </div>
       <WhatsAppNotifications />
+      <WhatsAppPromoBot />
     </section>
   );
 }

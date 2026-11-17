@@ -1,5 +1,18 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Bot Promo WhatsApp kedua (17 November 2026)
+
+Implementasi lokal; publikasi via CI, pairing nomor promo dilakukan owner setelah
+deploy. Admin → Pengaturan Toko → **Bot Promo WhatsApp** (di bawah notifikasi):
+simpan nomor berbeda dari bot AXVARA'S, pairing, muat dan simpan maksimal20grup,
+lalu aktifkan. Ganti nomor/simpan grup menjeda pengiriman. Katalog ready+gambar
+sama,09.00/17.00 WIB (batas12.00/20.00), jeda sekitar1menit antargrup.
+Hanya bot kedua menambah `Join Grup WA:` dari link Pengaturan Toko saat enqueue;
+bot AXVARA'S/welcome tidak berubah. Konfigurasi `whatsapp_promo_bot`, outbox
+`promo_bot_digest`, API admin `/api/admin/whatsapp-promo-bot`, gateway
+`/promo-bot/*`; tanpa env Pages baru. Detail: ARCHITECTURE§16.12 dan
+`docs/agent-rules/whatsapp-gateway.md`.
+
 ## Harga grosir AIVault berbasis markup % (17 November 2026)
 
 Status: implementasi lokal; publikasi via CI, belum deployment produksi.

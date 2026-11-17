@@ -39,12 +39,39 @@ export function notificationContent(message: string, kind: boolean | "welcome" |
   return kind === "promo" ? { image: { url: PROMO_IMAGE_URL }, caption: message } : { text: message };
 }
 
-export function currentPromoKey(key: string, now = new Date()): boolean {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(now);
+export function currentPromoWibSlot(now = new Date()): { date: string; slot: "morning" | "evening" } | null {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value;
   const hour = Number(part("hour"));
   const slot = hour >= 9 && hour < 12 ? "morning" : hour >= 17 && hour < 20 ? "evening" : null;
-  return slot !== null && key === `wa:promo:${part("year")}-${part("month")}-${part("day")}:${slot}`;
+  if (!slot) return null;
+  return { date: `${part("year")}-${part("month")}-${part("day")}`, slot };
+}
+
+export function currentPromoKey(key: string, now = new Date()): boolean {
+  const current = currentPromoWibSlot(now);
+  return current !== null && key === `wa:promo:${current.date}:${current.slot}`;
+}
+
+export function validPromoBotKey(key: unknown): key is string {
+  return typeof key === "string" && /^wa:promo2:\d{4}-\d{2}-\d{2}:(morning|evening):\d+(-\d+)?$/.test(key);
+}
+
+export function currentPromoBotKey(key: string, now = new Date()): boolean {
+  const current = currentPromoWibSlot(now);
+  return current !== null && validPromoBotKey(key) && key.startsWith(`wa:promo2:${current.date}:${current.slot}:`);
+}
+
+export function promoBotKeyMatchesTarget(key: string, target: unknown): boolean {
+  if (!validPromoBotKey(key) || typeof target !== "string" || !target.endsWith("@g.us")) return false;
+  return key.split(":")[4] === target.slice(0, -"@g.us".length);
 }
 
 export function validNotificationKey(key: unknown, kind: boolean | "welcome" | "promo"): boolean {

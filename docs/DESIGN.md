@@ -1,5 +1,15 @@
 # DESIGN.md — AXVARA Design System
 
+## Bot Promo WhatsApp — 17 November 2026 (lokal)
+
+Kartu `WhatsAppPromoBot` di Pengaturan Toko tepat di bawah kartu AXVARA'S existing.
+Primitive admin Card/Button/Input/Badge/Checkbox/Switch/Label, token admin saja;
+aksi membungkus di layar kecil, JID/footer panjang dapat mematah baris. Badge
+Terhubung/Belum terhubung/Dijeda, nomor+pairing, pemilihan maksimal20grup dengan
+label aksesibel dan grup non-canSend disabled, simpan grup, saklar enable,
+preview footer Join Grup WA dari pengaturan toko. Kode pairing dihapus saat
+refresh/ganti nomor; error role=alert, tombol dikunci selama request.
+
 ## Ringkasan Untung Bersih + Pengeluaran — 16 November 2026
 
 Keputusan owner (desain disetujui 16 Nov): satu angka utama, rincian terbaca

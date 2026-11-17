@@ -14,6 +14,7 @@ import pino from "pino";
 import { usePostgresAuthState } from "./pg-auth.js";
 import { BOT_NUMBER, botIdentity, matchesBotIdentity, validBotNumber, persistBotNumber, reloadBotIdentity, pool, initializeDurable, deliveryClaim, settleDelivery, pauseOutbound, requiresManualReconnect, isRestriction, groupAllowsBotSend } from "./durable.js";
 import { isNotificationGroupName, selectNotificationGroup, notificationGroupStatus, validNotificationKey, notificationContent, currentPromoKey, loadPromoImage } from "./group-target.js";
+import { registerPromoBot } from "./promo-bot.js";
 // (registerWrProxy tidak lagi diimpor — proxy WR pindah ke axvara-wr-proxy)
 
 const logger = pino({ name: "axvara-wa-gateway" });
@@ -337,6 +338,11 @@ async function startSocket(): Promise<void> {
 }
 
 const app = Fastify({ logger: false, bodyLimit: 128 * 1024 });
+const promoBot = registerPromoBot(app, { validGatewayToken, getMainBotNumber: () => BOT_NUMBER, logger });
+
+setInterval(() => {
+  logger.info({ memoryRssMb: Math.round(process.memoryUsage().rss / 1e6) }, "Gateway memory RSS");
+}, 10 * 60_000).unref();
 
 app.get("/health", async () => ({
   status: "ok",
@@ -346,6 +352,8 @@ app.get("/health", async () => ({
   lastDisconnectAt,
   reconnectCount,
   blocked, lastAckAt, lastSendAt: lastSendAtIso, version: "sales-v1",
+  promoBot: promoBot.health(),
+  memoryRssMb: Math.round(process.memoryUsage().rss / 1e6),
 }));
 
 app.get<{ Params: { token: string } }>("/media/:token", async (request, reply) => {
@@ -431,6 +439,7 @@ app.post("/notification-number", async (request, reply) => sessionMutex.runExclu
     notificationGroup = null; groupMetadataCache.clear(); inboundMessages.clear(); mediaFiles.clear();
     latestQr = false; pairingCode = ""; pairingExpiresAt = 0; pairingCodeRequested = false;
     await persistBotNumber(body.newBotNumber, body);
+    promoBot.onMainBotNumberChanged();
     reconnectCount = 0; lastDisconnectCode = null; lastDisconnectAt = null;
     lastAckAt = null; lastSendAtIso = null; blocked = false; configurationFailed = false;
     switching = false;
@@ -584,16 +593,19 @@ app.all("/wr/*", async (_request, reply) => {
 
 async function main(): Promise<void> {
   if (!PUBLIC_BASE_URL) logger.warn("PUBLIC_BASE_URL is not set; incoming image proofs will not be forwarded");
-  await initializeDurable(() => { blocked = true; shuttingDown = true; void sock?.end(undefined); process.exitCode = 1; setTimeout(() => process.exit(1), 1000).unref(); });
+  await initializeDurable(() => { blocked = true; shuttingDown = true; void sock?.end(undefined); void promoBot.stop(); process.exitCode = 1; setTimeout(() => process.exit(1), 1000).unref(); });
   await app.listen({ port: PORT, host: "0.0.0.0" });
   logger.info({ port: PORT }, "HTTP server listening");
   await startWhatsApp();
+  await promoBot.start().catch((error) => {
+    logger.error({ error }, "Promo bot startup failed; main bot unaffected");
+  });
 }
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => {
   shuttingDown = true; isConnected = false;
   if (reconnectTimer) clearTimeout(reconnectTimer);
-  void (async () => { await sock?.end(undefined); await credsSaved; await app.close(); await pool.end(); process.exit(0); })();
+  void (async () => { await sock?.end(undefined); await credsSaved; await promoBot.stop(); await app.close(); await pool.end(); process.exit(0); })();
   setTimeout(() => process.exit(1), 8000).unref();
 });
 

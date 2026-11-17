@@ -40,6 +40,7 @@ export type SendMessageParams = {
   broadcastNotification?: boolean;
   welcomeNotification?: boolean;
   promoNotification?: boolean;
+  promoBotNotification?: boolean;
   botNumber?: string;
   botRevision?: string;
 };
@@ -219,7 +220,7 @@ export function isAdminMember(memberId: string): boolean {
 
 // ---- Outbound Messaging ----
 
-function gatewayConfig(): { url: string; token: string } | null {
+export function gatewayConfig(): { url: string; token: string } | null {
   const url = (process.env.WHATSAPP_GATEWAY_URL || "").trim().replace(/\/+$/, "");
   const token = (process.env.WHATSAPP_WEBHOOK_TOKEN || "").trim();
   return url && token ? { url, token } : null;
@@ -249,7 +250,7 @@ async function callGateway(path: string, payload: Record<string, unknown>, timeo
 }
 
 export function sendTextMessage(params: SendMessageParams): Promise<WhatsAppSendResult> {
-  return callGateway(params.promoNotification ? "/send-promo" : params.welcomeNotification ? "/send-welcome" : params.broadcastNotification ? "/send-broadcast" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey, ...((params.broadcastNotification || params.welcomeNotification || params.promoNotification) ? { botNumber: params.botNumber, botRevision: params.botRevision } : {}) }, 15_000);
+  return callGateway(params.promoBotNotification ? "/promo-bot/send-promo" : params.promoNotification ? "/send-promo" : params.welcomeNotification ? "/send-welcome" : params.broadcastNotification ? "/send-broadcast" : "/send", { target: normalizeWhatsAppTarget(params.target), message: params.message, inboxId: params.inboxId, idempotencyKey: params.idempotencyKey, ...((params.broadcastNotification || params.welcomeNotification || params.promoNotification || params.promoBotNotification) ? { botNumber: params.botNumber, botRevision: params.botRevision } : {}) }, 15_000);
 }
 
 /** Admin control plane. Never return gateway tokens to a browser. */
