@@ -23,7 +23,7 @@
   // 93KB / ~3,6 dtk, premium+delta 104 varian / 95KB / ~7 dtk. Cursor +
 // zero-missing berlaku dalam scope premium (bukan all-kategori).
 
-import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import {
   fetchSkItems,
   fetchSkCatalogSlice,
@@ -92,8 +92,11 @@ async function runSkWrites(writes: SkSqlWrite[], db: DatabaseAccess): Promise<vo
     try {
       await d1.batch(writes.map((write) => d1.prepare(write.sql).bind(...write.params)));
       return;
-    } catch {
-      /* turun ke jalur berurutan di bawah */
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded || !writes.some((w) => w.optional)) {
+        throw error;
+      }
+      /* turun ke jalur berurutan di bawah hanya untuk mengisolasi tulis optional */
     }
   }
   for (const write of writes) {
@@ -208,6 +211,46 @@ function planSkRegistryWrite(
 }
 
 /**
+ * Rencanakan refresh harga/stok induk SK dari agregat varian aktif
+ * (rumus identik WR: -1 bila ada varian aktif -1, else sum varian aktif >= 0).
+ */
+function planSkParentAggregateWrite(axvaraProductId: number): SkSqlWrite {
+  return {
+    sql: `UPDATE products
+      SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price),
+          stock=CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1 AND stock=-1)
+            THEN -1 ELSE COALESCE((SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END) FROM product_variants WHERE product_id=? AND is_active=1),0) END,
+          updated_at=datetime('now')
+      WHERE products.archived_at IS NULL AND id=?
+        AND (price IS NOT COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price)
+             OR stock IS NOT CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1 AND stock=-1)
+               THEN -1 ELSE COALESCE((SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END) FROM product_variants WHERE product_id=? AND is_active=1),0) END)`,
+    params: new Array(7).fill(axvaraProductId),
+  };
+}
+
+/** Sinkronkan stok & harga induk produk SK dari agregat varian aktif. */
+export async function refreshSkParentAggregates(
+  axvaraProductId: number,
+  db: DatabaseAccess,
+): Promise<void> {
+  if (!(axvaraProductId > 0)) return;
+  const write = planSkParentAggregateWrite(axvaraProductId);
+  await db.execRun(write.sql, ...write.params);
+}
+
+async function refreshSkParentAggregatesForIds(
+  productIds: Iterable<number>,
+  db: DatabaseAccess,
+): Promise<void> {
+  const unique = [...new Set(Array.from(productIds).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!unique.length) return;
+  for (const chunk of skChunked(unique, SK_PREFETCH_PARAM_CHUNK)) {
+    await runSkWrites(chunk.map((id) => planSkParentAggregateWrite(id)), db);
+  }
+}
+
+/**
  * Rencanakan refresh harga/stok pasangan katalog (cermin WR: hanya milik SK;
  * admin pegang foto/badge/sort/is_active/markup). Guard `IS NOT` agar tidak
  * ada tulis saat harga/stok/label sama — sweep baca-saja = nol tulis katalog.
@@ -229,21 +272,8 @@ function planSkCatalogRefreshWrite(
       sql: `UPDATE product_variants SET price=?, stock=?, label=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now')
             WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=? AND (price IS NOT ? OR stock IS NOT ? OR label IS NOT ? OR (compare_price IS NOT NULL AND compare_price <= ?))`,
       params: [sellPrice, stock, label, sellPrice, axvaraVariantId, sellPrice, stock, label, sellPrice],
-      optional: true,
     },
-    {
-      sql: `UPDATE products
-        SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price),
-            stock=CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1 AND stock=-1)
-              THEN -1 ELSE COALESCE((SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END) FROM product_variants WHERE product_id=? AND is_active=1),0) END,
-            updated_at=datetime('now')
-        WHERE products.archived_at IS NULL AND id=?
-          AND (price IS NOT COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price)
-               OR stock IS NOT CASE WHEN EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1 AND stock=-1)
-                 THEN -1 ELSE COALESCE((SELECT SUM(CASE WHEN stock>0 THEN stock ELSE 0 END) FROM product_variants WHERE product_id=? AND is_active=1),0) END)`,
-      params: new Array(7).fill(axvaraProductId),
-      optional: true,
-    },
+    planSkParentAggregateWrite(axvaraProductId),
   ];
 }
 
@@ -819,24 +849,30 @@ export async function syncSkProducts(
         }
       }
       if (catalogAllowed && axvaraProductId > 0 && !(axvaraVariantId > 0)) {
-        const created = await db.execRun(
-          `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order,
-             sk_variant_id, sk_auto_managed, created_at, updated_at) WITH archive_candidate(product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order,
-             sk_variant_id, sk_auto_managed, created_at, updated_at) AS (VALUES (?,?,?,?,?, 'manual', 1, 0, ?, 1, ?, ?)) SELECT * FROM archive_candidate WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=archive_candidate.product_id AND archive_parent.archived_at IS NULL)`,
-          axvaraProductId,
-          `SK-${skVariantId}`.slice(0, 40),
-          variant.name,
-          calculateSkSellPrice(Number(variant.price), defaultMarkupPercent(), defaultMarkupFixed()),
-          Number(variant.stock),
-          skVariantId,
-          now,
-          now,
-        ).catch(() => ({ changes: 0 as number | undefined, lastInsertRowid: undefined as number | undefined }));
+        let created: { changes?: number; lastInsertRowid?: number } = { changes: 0 };
+        try {
+          created = await db.execRun(
+            `INSERT INTO product_variants (product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order,
+               sk_variant_id, sk_auto_managed, created_at, updated_at) WITH archive_candidate(product_id, sku, label, price, stock, fulfillment_mode, is_active, sort_order,
+               sk_variant_id, sk_auto_managed, created_at, updated_at) AS (VALUES (?,?,?,?,?, 'manual', 1, 0, ?, 1, ?, ?)) SELECT * FROM archive_candidate WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=archive_candidate.product_id AND archive_parent.archived_at IS NULL)`,
+            axvaraProductId,
+            `SK-${skVariantId}`.slice(0, 40),
+            variant.name,
+            calculateSkSellPrice(Number(variant.price), defaultMarkupPercent(), defaultMarkupFixed()),
+            Number(variant.stock),
+            skVariantId,
+            now,
+            now,
+          );
+        } catch (error) {
+          if (error instanceof QueryBudgetExceeded || !/UNIQUE/i.test(error instanceof Error ? error.message : String(error))) {
+            throw error;
+          }
+        }
         axvaraVariantId = Number(created.changes === 0 ? 0 : created.lastInsertRowid ?? 0);
         if (!axvaraVariantId) {
           const conflict = await db
-            .queryFirst(`SELECT id FROM product_variants WHERE sku=?`, `SK-${skVariantId}`.slice(0, 40))
-            .catch(() => null);
+            .queryFirst(`SELECT id FROM product_variants WHERE sku=?`, `SK-${skVariantId}`.slice(0, 40));
           axvaraVariantId = conflict ? Number(conflict.id) : 0;
         }
         if (axvaraVariantId > 0) {
@@ -844,7 +880,7 @@ export async function syncSkProducts(
             `UPDATE product_variants SET sk_variant_id=?, sk_auto_managed=1, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
             skVariantId,
             axvaraVariantId,
-          ).catch(() => ({ changes: 0 }));
+          );
           result.newVariants++;
         }
       }
@@ -1005,6 +1041,7 @@ export async function syncSkProducts(
     if (options.allowZeroMissing !== false && (fullSweepInThisRun || sliceAllIds)) {
       try {
         result.stockChanges += await zeroMissingSkVariants(sliceAllIds ? new Set(sliceAllIds) : seenVariantIds, db);
+        await refreshStaleSkParentAggregates(db);
       } catch (error) {
         result.errors.push(error instanceof Error ? error.message : String(error));
       }
@@ -1018,68 +1055,10 @@ export async function syncSkProducts(
   return result;
 }
 
-/** Varian SK hilang dari respons: stok registry + katalog di-nol-kan (bukan delete).
- *
- * SCOPE-SAFE (2026-09-30, Bug A): hanya varian dalam KATEGORI SCOPE yang
- * boleh di-nol-kan. Tanpa filter kategori, satu sweep premium-only akan
- * memusnahkan stok Game (83) + Top Up (26) yang memang tidak ada di respons
- * scope — padahal mereka sehat di luar scope. Cermin prinsip WR: zero hanya
- * untuk yang SEHARUSNYA terlihat tapi tidak terlihat.
- */
-export async function zeroMissingSkVariants(
-  seenVariantIds: Set<string>,
-  db: DatabaseAccess,
-  scopeCategory: string = SK_SYNC_CATEGORY,
-): Promise<number> {
-  const rows = await db
-    .queryAll(
-      // Hanya baris yang MASIH punya stok (registry atau katalog): baris yang
-      // sudah 0 tidak ditulis ulang tiap sweep (4 Okt: 60 tulisan sia-sia per
-      // putaran berpotongan + potongan terakhir 27 dtk).
-      `SELECT s.sk_variant_id, s.axvara_variant_id FROM sk_products s
-       LEFT JOIN product_variants pv ON pv.id = s.axvara_variant_id
-       WHERE s.is_active=1 AND s.sk_category=? AND (s.sk_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
-      scopeCategory,
-    )
-    .catch(() => [] as Row[]);
-  let zeroed = 0;
+async function zeroSkVariantRows(rows: Row[], db: DatabaseAccess): Promise<number> {
+  if (!rows.length) return 0;
   const now = new Date().toISOString();
-  for (const row of rows) {
-    const id = String(row.sk_variant_id || "");
-    if (!id || seenVariantIds.has(id)) continue;
-    await db.execRun(
-      `UPDATE sk_products SET sk_stock=0, last_synced_at=?, updated_at=? WHERE sk_variant_id=?`,
-      now, now, id,
-    );
-    const axvaraVariantId = row.axvara_variant_id != null ? Number(row.axvara_variant_id) : 0;
-    if (axvaraVariantId > 0) {
-      await db.execRun(
-        `UPDATE product_variants SET stock=0, updated_at=datetime('now') WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?`,
-        axvaraVariantId,
-      ).catch(() => ({ changes: 0 }));
-    }
-    zeroed++;
-  }
-  return zeroed;
-}
-
-/** Nol-kan varian SK tertentu (mode diff: dihapus upstream), hanya yang masih berstok. */
-export async function zeroSkVariantsByIds(ids: string[], db: DatabaseAccess): Promise<number> {
-  const unique = [...new Set(ids.map(String).filter((id) => id.length > 0))].slice(0, 200);
-  if (!unique.length) return 0;
-  const rows: Row[] = [];
-  for (const chunk of skChunked(unique, SK_PREFETCH_PARAM_CHUNK)) {
-    const part = await db.queryAll(
-      `SELECT s.sk_variant_id, s.axvara_variant_id FROM sk_products s
-       LEFT JOIN product_variants pv ON pv.id = s.axvara_variant_id
-       WHERE s.is_active=1 AND s.sk_category=? AND s.sk_variant_id IN (${skPlaceholders(chunk.length)})
-         AND (s.sk_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
-      SK_SYNC_CATEGORY,
-      ...chunk,
-    );
-    rows.push(...part);
-  }
-  const now = new Date().toISOString();
+  const parents = new Set<number>();
   for (const row of rows) {
     await db.execRun(
       `UPDATE sk_products SET sk_stock=0, last_synced_at=?, updated_at=? WHERE sk_variant_id=?`,
@@ -1092,8 +1071,80 @@ export async function zeroSkVariantsByIds(ids: string[], db: DatabaseAccess): Pr
         vid,
       );
     }
+    const parentId = row.product_id != null ? Number(row.product_id) : 0;
+    if (parentId > 0) parents.add(parentId);
   }
+  await refreshSkParentAggregatesForIds(parents, db);
   return rows.length;
+}
+
+/**
+ * Rekonsiliasi induk SK yang stok/harganya tertinggal dari varian aktif
+ * (mis. baris lama sebelum perbaikan ini atau mutasi non-sync).
+ */
+async function refreshStaleSkParentAggregates(db: DatabaseAccess): Promise<void> {
+  const rows = await db.queryAll(
+    `SELECT p.id FROM products p
+     WHERE p.sk_product_id IS NOT NULL
+       AND p.archived_at IS NULL
+       AND (
+         p.price IS NOT COALESCE((SELECT MIN(pv.price) FROM product_variants pv WHERE pv.product_id=p.id AND pv.is_active=1), p.price)
+         OR p.stock IS NOT CASE
+           WHEN EXISTS(SELECT 1 FROM product_variants pv WHERE pv.product_id=p.id AND pv.is_active=1 AND pv.stock=-1) THEN -1
+           ELSE COALESCE((SELECT SUM(CASE WHEN pv.stock>0 THEN pv.stock ELSE 0 END) FROM product_variants pv WHERE pv.product_id=p.id AND pv.is_active=1), 0)
+         END
+       )`,
+  );
+  const ids = rows.map((r) => Number(r.id)).filter((id) => Number.isInteger(id) && id > 0);
+  await refreshSkParentAggregatesForIds(ids, db);
+}
+
+/** Varian SK hilang dari respons: stok registry + katalog + induk di-refresh (bukan delete).
+ *
+ * SCOPE-SAFE (2026-09-30, Bug A): hanya varian dalam KATEGORI SCOPE yang
+ * boleh di-nol-kan. Tanpa filter kategori, satu sweep premium-only akan
+ * memusnahkan stok Game (83) + Top Up (26) yang memang tidak ada di respons
+ * scope — padahal mereka sehat di luar scope. Cermin prinsip WR: zero hanya
+ * untuk yang SEHARUSNYA terlihat tapi tidak terlihat.
+ */
+export async function zeroMissingSkVariants(
+  seenVariantIds: Set<string>,
+  db: DatabaseAccess,
+  scopeCategory: string = SK_SYNC_CATEGORY,
+): Promise<number> {
+  const rows = await db.queryAll(
+    // Hanya baris yang MASIH punya stok (registry atau katalog): baris yang
+    // sudah 0 tidak ditulis ulang tiap sweep (4 Okt: 60 tulisan sia-sia per
+    // putaran berpotongan + potongan terakhir 27 dtk).
+    `SELECT s.sk_variant_id, s.axvara_variant_id, pv.product_id FROM sk_products s
+     LEFT JOIN product_variants pv ON pv.id = s.axvara_variant_id
+     WHERE s.is_active=1 AND s.sk_category=? AND (s.sk_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
+    scopeCategory,
+  );
+  const missing = rows.filter((row) => {
+    const id = String(row.sk_variant_id || "");
+    return id.length > 0 && !seenVariantIds.has(id);
+  });
+  return zeroSkVariantRows(missing, db);
+}
+
+/** Nol-kan varian SK tertentu (mode diff: dihapus upstream), lalu segarkan stok induk. */
+export async function zeroSkVariantsByIds(ids: string[], db: DatabaseAccess): Promise<number> {
+  const unique = [...new Set(ids.map(String).filter((id) => id.length > 0))].slice(0, 200);
+  if (!unique.length) return 0;
+  const rows: Row[] = [];
+  for (const chunk of skChunked(unique, SK_PREFETCH_PARAM_CHUNK)) {
+    const part = await db.queryAll(
+      `SELECT s.sk_variant_id, s.axvara_variant_id, pv.product_id FROM sk_products s
+       LEFT JOIN product_variants pv ON pv.id = s.axvara_variant_id
+       WHERE s.is_active=1 AND s.sk_category=? AND s.sk_variant_id IN (${skPlaceholders(chunk.length)})
+         AND (s.sk_stock > 0 OR COALESCE(pv.stock, 0) > 0)`,
+      SK_SYNC_CATEGORY,
+      ...chunk,
+    );
+    rows.push(...part);
+  }
+  return zeroSkVariantRows(rows, db);
 }
 
 async function logSkSync(

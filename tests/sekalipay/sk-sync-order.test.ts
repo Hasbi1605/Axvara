@@ -6,8 +6,10 @@ import {
   isSkExcluded,
   mapSkCategory,
   calculateSkSellPrice,
+  refreshSkParentAggregates,
   syncSkProducts,
   zeroMissingSkVariants,
+  zeroSkVariantsByIds,
 } from "@/lib/sekalipay/sync";
 import { createSkOrderLink, skIdempotencyKey, skRefId } from "@/lib/sekalipay/order";
 import { formatSkLicenses } from "@/lib/sekalipay/deliver";
@@ -568,6 +570,173 @@ describe("sekalipay sync helpers", () => {
       expect(Number(g.n)).toBe(0);
       const n = fx.sql.prepare("SELECT COUNT(*) n FROM sk_products").get() as { n: number };
       expect(Number(n.n)).toBe(1);
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("F5b/A1-4/A4-8: zeroSkVariantsByIds & zeroMissingSkVariants menyegarkan products.stock (0, sum, -1), tidak menelan error, dan memulihkan restock-reinsert", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      fx.sql.exec("INSERT INTO categories(id,name,slug) VALUES(1,'AI','ai') ON CONFLICT(id) DO NOTHING");
+      // Produk SK utama di sort_order=30 dan kompetitor aktif di sort_order=30 (kategori sama) agar reinsertion terlihat.
+      fx.sql.exec(`
+        INSERT INTO products(id,category_id,name,slug,price,stock,is_active,sort_order,source,sk_product_id,sk_auto_managed)
+        VALUES (1,1,'Google AI Pro','google-ai-pro-sk',15000,8,1,30,'manual','9',1),
+               (2,1,'Kompetitor','kompetitor',15000,5,1,30,'manual',NULL,0),
+               (3,1,'Unlimited Sibling','unlimited-sk',15000,-1,1,40,'manual','10',1);
+        INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode,is_active,sk_variant_id,sk_auto_managed)
+        VALUES (101,1,'SK-101','1 Bulan',15000,5,'manual',1,'101',1),
+               (102,1,'SK-102','3 Bulan',30000,3,'manual',1,'102',1),
+               (201,3,'SK-201','Auto',15000,4,'manual',1,'201',1),
+               (202,3,'MAN-202','Unlimited',15000,-1,'manual',1,NULL,0);
+        INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_variant_name,sk_category,sk_price,sk_stock,sk_order_process,axvara_product_id,axvara_variant_id,axvara_sell_price)
+        VALUES ('101','9','Google AI Pro','1 Bulan','Aplikasi Premium',10000,5,'auto',1,101,15000),
+               ('102','9','Google AI Pro','3 Bulan','Aplikasi Premium',20000,3,'auto',1,102,30000),
+               ('201','10','Unlimited Sibling','Auto','Aplikasi Premium',10000,4,'auto',3,201,15000);
+      `);
+      const db = createDatabaseAccess(fx.db);
+
+      // 1. Zero sebagian lewat diff (101 -> 0, 102 tetap 3) => induk 3; plus produk 3 punya sibling -1 => induk tetap -1.
+      expect(await zeroSkVariantsByIds(["101", "201"], db)).toBe(2);
+      expect((fx.sql.prepare("SELECT stock FROM products WHERE id=1").get() as { stock: number }).stock).toBe(3);
+      expect((fx.sql.prepare("SELECT stock FROM products WHERE id=3").get() as { stock: number }).stock).toBe(-1);
+
+      // 2. Zero varian terakhir lewat diff => induk 0.
+      const zeroDiff = await syncSkProducts(db, undefined, {
+        trigger: "cron",
+        applyOnly: { rows: [], removedVariantIds: ["102"] },
+      });
+      expect(zeroDiff.errors).toEqual([]);
+      expect((fx.sql.prepare("SELECT stock FROM products WHERE id=1").get() as { stock: number }).stock).toBe(0);
+
+      // 3. Restock via diff => parentStockBefore===0 akurat, induk naik dan maybeReinsertRestockedProduct terpicu (30 -> 31).
+      const restockDiff = await syncSkProducts(db, undefined, {
+        trigger: "cron",
+        applyOnly: {
+          rows: [{
+            categoryName: "Aplikasi Premium",
+            productId: 9,
+            productName: "Google AI Pro",
+            productImage: null,
+            variant: {
+              id: 101, sku: "N-101", name: "1 Bulan", price: 10000, stock: 4,
+              order_process: "auto", h2h_provider: null, provider_meta: null,
+              required_fields: null, validation: null, updated_at: null,
+            },
+          }],
+          removedVariantIds: [],
+        },
+      });
+      expect(restockDiff.errors).toEqual([]);
+      expect(restockDiff.restokReinserted).toBe(1);
+      const pAfterDiff = fx.sql.prepare("SELECT stock, sort_order FROM products WHERE id=1").get() as { stock: number; sort_order: number };
+      expect(pAfterDiff.stock).toBe(4);
+      expect(pAfterDiff.sort_order).toBe(31);
+
+      // 4. Jalur zeroMissingSkVariants / sweep penuh => induk kembali 0, lalu restock via diff memicu reinsert lagi (30 -> 31).
+      fx.sql.prepare("UPDATE products SET sort_order=30 WHERE id=1").run();
+      fx.sql.prepare("UPDATE products SET sort_order=30 WHERE id=2").run();
+      const missingCount = await zeroMissingSkVariants(new Set(["unrelated"]), db);
+      expect(missingCount).toBe(1);
+      expect((fx.sql.prepare("SELECT stock FROM products WHERE id=1").get() as { stock: number }).stock).toBe(0);
+
+      // Simulasikan produk basi historis (seperti #60/#106: seluruh varian sudah 0 & hilang dari feed, tapi products.stock=5) sembuh saat sweep penuh.
+      fx.sql.exec("UPDATE products SET stock=5 WHERE id=1");
+      const fullHeal = await syncSkProducts(db, async () => ({
+        server_time: "2026-11-18T00:00:00+07:00",
+        data: [{
+          id: 1, name: "Aplikasi Premium", icon: null,
+          products: [{
+            id: 10, name: "Unlimited Sibling", image: null,
+            variants: [{
+              id: 201, sku: "N-201", name: "Auto", price: 10000, stock: 2,
+              order_process: "auto" as const, h2h_provider: null, provider_meta: null,
+              required_fields: null, validation: null, updated_at: null,
+            }],
+          }],
+        }],
+      }), { trigger: "manual", full: true });
+      expect(fullHeal.errors).toEqual([]);
+      expect((fx.sql.prepare("SELECT stock FROM products WHERE id=1").get() as { stock: number }).stock).toBe(0);
+      expect((fx.sql.prepare("SELECT stock FROM products WHERE id=3").get() as { stock: number }).stock).toBe(-1);
+
+      const restockAfterSweep = await syncSkProducts(db, undefined, {
+        trigger: "cron",
+        applyOnly: {
+          rows: [{
+            categoryName: "Aplikasi Premium",
+            productId: 9,
+            productName: "Google AI Pro",
+            productImage: null,
+            variant: {
+              id: 102, sku: "N-102", name: "3 Bulan", price: 20000, stock: 6,
+              order_process: "auto", h2h_provider: null, provider_meta: null,
+              required_fields: null, validation: null, updated_at: null,
+            },
+          }],
+          removedVariantIds: [],
+        },
+      });
+      expect(restockAfterSweep.errors).toEqual([]);
+      expect(restockAfterSweep.restokReinserted).toBe(1);
+      expect((fx.sql.prepare("SELECT stock, sort_order FROM products WHERE id=1").get() as { stock: number; sort_order: number })).toEqual({ stock: 6, sort_order: 31 });
+    } finally {
+      fx.close();
+    }
+  });
+
+  it("F5b: refresh induk SK & jalur zero/diff tidak menelan error dan chunk <=100 param untuk >100 produk", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      const db = createDatabaseAccess(fx.db);
+
+      // 110 produk & varian SK terpisah: pastikan chunking batch refresh tetap <=100 param.
+      const ids: string[] = [];
+      for (let i = 1; i <= 110; i++) {
+        const skId = `SKM-${i}`;
+        ids.push(skId);
+        fx.sql.prepare("INSERT INTO products(id,name,slug,price,stock,is_active,source,sk_product_id,sk_auto_managed) VALUES(?,?,?,10000,5,1,'manual',?,1)")
+          .run(i, `Prod ${i}`, `prod-${i}`, `SP-${i}`);
+        fx.sql.prepare("INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,sk_variant_id,sk_auto_managed) VALUES(?,?,?, '1B',10000,5,1,?,1)")
+          .run(i, i, `SKU-${i}`, skId);
+        fx.sql.prepare("INSERT INTO sk_products(sk_variant_id,sk_product_id,sk_product_name,sk_variant_name,sk_category,sk_price,sk_stock,is_active,axvara_product_id,axvara_variant_id,axvara_sell_price) VALUES(?,?,?,'1B','Aplikasi Premium',5000,5,1,?,?,10000)")
+          .run(skId, `SP-${i}`, `Prod ${i}`, i, i);
+      }
+      expect(await zeroSkVariantsByIds(ids, db)).toBe(110);
+      expect((fx.sql.prepare("SELECT COUNT(*) n FROM products WHERE stock=0").get() as { n: number }).n).toBe(110);
+
+      // Error pada refresh induk / zeroMissingSkVariants / planSkCatalogRefreshWrite TIDAK boleh ditelan.
+      fx.sql.exec("UPDATE sk_products SET sk_stock=2 WHERE sk_variant_id='SKM-1'; UPDATE product_variants SET stock=2 WHERE id=1; UPDATE products SET stock=2 WHERE id=1;");
+      fx.control.fail = (q) => q.includes("UPDATE products") && q.includes("SET price=COALESCE");
+      await expect(refreshSkParentAggregates(1, db)).rejects.toThrow(/Injected database interruption/);
+      await expect(zeroSkVariantsByIds(["SKM-1"], db)).rejects.toThrow(/Injected database interruption/);
+      fx.sql.exec("UPDATE sk_products SET sk_stock=2 WHERE sk_variant_id='SKM-1'; UPDATE product_variants SET stock=2 WHERE id=1; UPDATE products SET stock=2 WHERE id=1;");
+      await expect(zeroMissingSkVariants(new Set(), db)).rejects.toThrow(/Injected database interruption/);
+
+      const diffFail = await syncSkProducts(db, undefined, {
+        trigger: "cron",
+        applyOnly: {
+          rows: [{
+            categoryName: "Aplikasi Premium",
+            productId: 1,
+            productName: "Prod 1",
+            productImage: null,
+            variant: {
+              id: "SKM-1" as unknown as number,
+              sku: "SKU-1", name: "1B", price: 5000, stock: 9,
+              order_process: "auto", h2h_provider: null, provider_meta: null,
+              required_fields: null, validation: null, updated_at: null,
+            },
+          }],
+          removedVariantIds: [],
+        },
+      });
+      expect(diffFail.errors.length).toBeGreaterThan(0);
     } finally {
       fx.close();
     }

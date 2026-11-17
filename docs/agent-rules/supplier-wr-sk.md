@@ -1,5 +1,21 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Refresh stok induk SK F5b — 18 November 2026 (lokal)
+
+- `zeroSkVariantsByIds`, `zeroMissingSkVariants`, serta jalur tulis/diff
+  `syncSkProducts` (`src/lib/sekalipay/sync.ts`) menyegarkan `products.stock`
+  dan `products.price` induk dengan rumus yang sama dengan WR (`-1` bila ada
+  varian aktif `-1`, else jumlah `stock > 0` varian aktif; `archived_at IS NULL`)
+  melalui `planSkParentAggregateWrite` / `refreshSkParentAggregates` dalam chunk
+  `≤50` statement (`≤100` parameter D1).
+- Sweep penuh tuntas (`sweepComplete` & `allowZeroMissing`) juga menjalankan
+  `refreshStaleSkParentAggregates` untuk memulihkan induk SK yang sudah basi
+  sebelumnya tanpa migrasi DB.
+- Error di jalur zero, refresh induk, maupun `planSkCatalogRefreshWrite` (serta
+  `QueryBudgetExceeded` di `runSkWrites`) tidak ditelan agar `/api/supplier-sync`
+  mengembalikan `500` dan `sk_sync_log` mencatat kegagalan.
+- Fixture lokal; tanpa migrasi, perubahan produksi, commit, push, atau deploy.
+
 ## Stok efektif grup F5a — 18 November 2026 (lokal)
 
 Winner WR/SK tidak boleh memakai mirror saja: batasi stok lokal setelah
