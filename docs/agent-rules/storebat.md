@@ -1,5 +1,12 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Env produksi + bukti kontrak live — 19 November 2026
+
+- Commit `6bf30ee6` dipush ke main (publikasi via CI; deployment belum diverifikasi PM). PM lalu memasang delapan env Pages production (`STOREBAT_*` + `MIRAI_*`, semuanya `secret_text`, flag sync+dispatch `true`) dengan PATCH berisi hanya kunci baru: nama production 84→92, preview tidak berubah. `.pages-env-backup` lokal diperbarui; salinan password manager owner belum. Env berlaku pada deployment berikutnya/yang sedang berjalan; produk tetap OFF.
+- Satu pembelian nyata sesuai izin owner (PM, langsung ke API, bukan lewat order AXVARA): `VenteBot API Test Product` (id `2147483000`, $0.01), qty1, key/customer_reference `AXV-QA-20261119-SB-1`. `POST /quote` 200 (`unit_price`/`total` 0.01, `delivery_type:"api_test"`). `POST /orders` 200: `success:true`, `status:"ok"`, `idempotent:false`, `balance_after:3.99`, `order.status:"COMPLETED"`, `order.idempotency_key` + `customer_reference` ikut dikembalikan, satu `items[].account_data` (nilai tidak dicatat).
+- Replay POST identik 200: order sama, `idempotent:true`, `balance_after`/`unit_price`/`total` **null**; tidak ada debit kedua. `GET /orders/{id}` dan `GET /orders/lookup?idempotency_key=` (`request_status:"completed"`) konsisten. `GET /me` tetap $4.00 sebelum/sesudah (produk tes tampaknya tidak mendebit).
+- Catatan: produk tes memakai `order.id` **negatif** (-88). `acceptOrder` mewajibkan id positif, jadi bila order nyata pernah ber-id negatif link berhenti aman di `needs_admin` (tanpa beli ulang); produk tes tidak pernah dimirror. Izin tes berbayar sudah terpakai; jangan ulangi.
+
 ## Review dan batas rollout — 19 November 2026 (lokal)
 
 - Temuan T8a ditutup: `fulfillment_status` Muse Buff jadi sumber utama dan receipt pending tidak menghentikan polling; `order.idempotency_key` boleh absen hanya bila referensi otoritatif cocok. HTTP 304 membersihkan error basi; trigger grup merotasi token CAS heksadesimal; link fulfillment/mapping tidak boleh mengambil milik Mirai (atau supplier lain). Laporan tetap menandai biaya Buff belum selesai sebagai estimasi bila refund masih nol. Uji schema workerd memeriksa keberadaan DDL, bukan posisi di akhir berkas.

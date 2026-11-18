@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-19 — Pasang 8 env Pages production StoreBat/Mirai (secret_text, sync+dispatch ON, produk tetap OFF) + catat bukti kontrak live StoreBat (1× produk tes $0.01: COMPLETED, replay idempoten tanpa debit kedua, lookup konsisten) — `docs/agent-rules/storebat.md` — (verifikasi: nama env production 84→92, preview tidak berubah, semua secret_text; `git diff --check`)
+
 - 2026-11-19 — Kurasi StoreBat/Mirai saat insert pertama: deskripsi ID/EN, S&K + cara aktivasi ID/EN per varian, kategori dan gambar R2 (43 baru + reuse produk existing), plus shortlink migrasi 0141; sync tidak menimpa suntingan admin — `src/lib/storebat/copy.ts`, `src/lib/mirai/copy.ts`, `src/lib/{storebat,mirai}/{families,catalog}.ts`, `drizzle/migrations/0141_storebat_mirai_supplier_links.sql`, `scripts/generate-storebat-mirai-copy.mjs` — (verifikasi: 14 file/145 tes StoreBat/Mirai/migrasi lulus; suite penuh lihat entri rilis)
 
 - 2026-11-19 — Perbaiki temuan review StoreBat/Mirai: polling Muse dan verifikasi receipt tanpa key bila referensi cocok, pagar harga Mirai dan GET setelah POST ambigu terakhir, token grup, heartbeat 304, pemisahan ownership, estimasi refund dan batch link — `src/lib/storebat/`, `src/lib/mirai/`, `src/lib/dashboard-report.ts`, `drizzle/schema.sql` — (verifikasi: T4-fix 10 file/95 tes fokus dan tsc lulus; PM menjalankan suite penuh sebelum push dan memverifikasi build Pages)
