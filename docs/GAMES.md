@@ -858,7 +858,7 @@ Semua `requireAdmin` (401 `unauthorized`), body via `readJsonBody`, zod `strict(
   - Rail desktop sticky 360 px (varian terpilih + Tipe/Proses/deskripsi clamp + ID/nickname +
     Harga/Biaya/Total) dan bar bawah mobile satu baris ±66 px. "Selengkapnya" hanya muncul
     ketika deskripsi benar-benar terpotong (`ResizeObserver`).
-  - Hint region hanya **saran**: nickname dengan `(XX)` berbeda dari `region_code` varian
+  - Hint region hanya **saran** (revisi 18 Nov 2026: SK produksi mengirim nama negara penuh, mis. `(Indonesia)`/`(Mexico)`; `splitNicknameRegion` memetakan nama penuh maupun `(XX)` ke ISO-2, sehingga hint kini benar-benar muncul): nickname dengan region dari `region_code` varian
     menampilkan callout gold + tombol pindah chip; **tidak** memblokir checkout. `GLOBAL`
     tidak pernah konflik.
 - Frame P14: tile radius 16 px, border 1 px white/10, kaca midnight + glow cyan saat hover.

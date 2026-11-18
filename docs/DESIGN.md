@@ -2504,6 +2504,23 @@ Status verifikasi (12 November 2026): QA browser nyata publik 1280/390 lulus (ka
   redup "Habis"/"Tidak tersedia" dengan harga tetap terlihat; `aria-disabled`; kartu terpilih border
   cyan + glow + centang; badge gold kecil "Terlaris"; grid 2 kolom mobile / 3 kolom ≥md, tinggi
   seragam dengan tinggi minimum 108 px.
+- **Kartu hasil cek ID (18 Nov 2026, keputusan owner, semua game).** Teks polos "Nickname
+  terdeteksi: … · Hasil cek bukan jaminan pemilik ID." diganti satu kartu `min-h-14` rounded-xl
+  di bawah input (`AccountCheckCard`, `data-account-check=<state>`). ok: lingkaran hijau + centang,
+  nickname tebal 15 px (truncate, title penuh) + "Akun ditemukan" redup, pill region kanan
+  (emoji bendera + nama negara) hanya bila hasil cek membawa akhiran region; invalid: tint merah
+  #EF4444; unavailable: tint gold #FFB800; checking: netral + spinner (`motion-reduce` diam). Bentuk
+  sama di semua state agar layout tidak melompat. Disclaimer kepemilikan dihapus. Rail ringkasan:
+  nickname + pill region kecil terpisah.
+- **Ilustrasi produk khusus (18 Nov 2026, lokal).** `gamesItemIcon` mencocokkan slug + pola
+  nama terlebih dahulu, bukan chip/region/kategori. Kelipatan dan varian region memakai aset
+  yang sama (misalnya WDP 1–5×); nominal tak cocok tetap mengikuti fallback semula. WebP
+  transparan 512×512 di `public/brand/games/items/`: `ml-weekly-diamond-pass` (kartu ungu +
+  berlian biru), `ml-twilight-pass`, `ml-starlight`, `ff-weekly-lite`, `ff-weekly-membership`,
+  `ff-monthly-membership`, `pubg-royale-pass`, `genshin-welkin-moon`, `hsr-express-supply-pass`,
+  `roblox-gift-card` dan set `wild-rift-core-1/2/3` (tier harga). Skala dari bbox piksel WebP
+  final dengan alfa > 0, dinormalisasi ke luas kanvas; `sqrt(0.42/luas relatif)`, clamp
+  0,7–1,08, bulatkan ke dua desimal. Artwork dekoratif, tidak menggantikan nama SKU.
 - **Rail & mobile.** Rail desktop sticky 360 px: blok varian terpilih (ikon 40 px, nama, "Ganti"
   yang menggulir ke pencarian nominal), baris Tipe · Proses · deskripsi 2 baris + "Selengkapnya"
   (hanya bila benar-benar terpotong), lalu ID/nickname · Harga · Biaya · **Total**; CTA "Bayar

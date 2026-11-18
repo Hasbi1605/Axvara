@@ -14,6 +14,8 @@ import {
   isGamesDisplayGroupValue,
   isGenericGamesFieldLabel,
   regionCodeFromNickname,
+  regionFlagEmoji,
+  splitNicknameRegion,
 } from "@/lib/games/variant-kind";
 
 // Nama nyata dari snapshot katalog Sekalipay (games-fixture-seed.sql, 14 Nov 2026).
@@ -79,6 +81,29 @@ describe("gamesRegionCode", () => {
   });
 });
 
+describe("splitNicknameRegion (bentuk produksi SK: nama negara penuh)", () => {
+  it("memisahkan nickname dan region nama penuh", () => {
+    expect(splitNicknameRegion("S A N T I A G O (Indonesia)")).toEqual({ name: "S A N T I A G O", region: "Indonesia", code: "ID" });
+    expect(splitNicknameRegion("VoidWalker (Mexico)")).toEqual({ name: "VoidWalker", region: "Mexico", code: "MX" });
+    expect(splitNicknameRegion("Player (Philippines)")).toMatchObject({ code: "PH" });
+    expect(regionCodeFromNickname("Player (Indonesia)")).toBe("ID");
+  });
+
+  it("region tak dikenal tetap dipisah tanpa kode; tanpa akhiran utuh", () => {
+    expect(splitNicknameRegion("Hero (Atlantis)")).toEqual({ name: "Hero", region: "Atlantis", code: null });
+    expect(splitNicknameRegion("Sekalipay3121")).toEqual({ name: "Sekalipay3121", region: null, code: null });
+    expect(splitNicknameRegion("(ID)")).toEqual({ name: "(ID)", region: null, code: null });
+    expect(splitNicknameRegion("Clan (2024)")).toEqual({ name: "Clan (2024)", region: null, code: null });
+    expect(splitNicknameRegion("Pro (Global)")).toMatchObject({ region: "Global", code: null });
+  });
+
+  it("emoji bendera hanya untuk ISO-2", () => {
+    expect(regionFlagEmoji("ID")).toBe("🇮🇩");
+    expect(regionFlagEmoji("GLOBAL")).toBe("");
+    expect(regionFlagEmoji(null)).toBe("");
+  });
+});
+
 describe("regionCodeFromNickname", () => {
   it("mengambil ISO-2 di akhir nickname", () => {
     expect(regionCodeFromNickname("Sekalipay3121 (ID)")).toBe("ID");
@@ -88,7 +113,7 @@ describe("regionCodeFromNickname", () => {
 
   it("null tanpa kode negara di akhir", () => {
     expect(regionCodeFromNickname("Sekalipay3121")).toBeNull();
-    expect(regionCodeFromNickname("Player (Indonesia)")).toBeNull();
+    expect(regionCodeFromNickname("Player (Atlantis)")).toBeNull();
     expect(regionCodeFromNickname("Player (ID) extra")).toBeNull();
     expect(regionCodeFromNickname("")).toBeNull();
     expect(regionCodeFromNickname(null)).toBeNull();

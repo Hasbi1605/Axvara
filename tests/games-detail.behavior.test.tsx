@@ -93,8 +93,28 @@ describe("Games detail (selected SKU contract)", () => {
     render(<GameClient detail={{ game, products: [product({ product_type_name: "Global" })] }} orderingOpen />);
     fireEvent.change(screen.getByLabelText("User ID"), { target: { value: "12345" } });
     fireEvent.change(screen.getByLabelText("Zone ID"), { target: { value: "678" } });
-    await screen.findByText(/Nickname terdeteksi:/);
+    await screen.findByText("Akun ditemukan");
     expect(screen.queryByText(/Akun ini terdeteksi region/)).toBeNull();
+  });
+  it("shows the checked account as a card: name and region pill split, no ownership disclaimer", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("nickname") ? { ok: true, json: async () => ({ status: "ok", nickname: "S A N T I A G O (Indonesia)" }) } : quoteResponse()));
+    render(<GameClient detail={{ game, products: [product({ product_type_name: "Malaysia" })] }} orderingOpen />);
+    fireEvent.change(screen.getByLabelText("User ID"), { target: { value: "12345" } });
+    fireEvent.change(screen.getByLabelText("Zone ID"), { target: { value: "678" } });
+    await screen.findByText("Akun ditemukan");
+    const card = document.querySelector('[data-account-check="ok"]') as HTMLElement;
+    expect(within(card).getByText("S A N T I A G O")).toBeTruthy();
+    expect(within(card).getByText("Indonesia")).toBeTruthy();
+    expect(screen.queryByText(/bukan jaminan pemilik ID/)).toBeNull();
+    // Full-name region from production now drives the existing mismatch hint.
+    expect(await screen.findByText(/Akun ini terdeteksi region Indonesia/)).toBeTruthy();
+  });
+  it("names an unmapped region by its country name, not the ISO code, in the mismatch hint", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url.includes("nickname") ? { ok: true, json: async () => ({ status: "ok", nickname: "VoidWalker (Mexico)" }) } : quoteResponse()));
+    render(<GameClient detail={{ game, products: [product({ product_type_name: "Indonesia" })] }} orderingOpen />);
+    fireEvent.change(screen.getByLabelText("User ID"), { target: { value: "12345" } });
+    fireEvent.change(screen.getByLabelText("Zone ID"), { target: { value: "678" } });
+    expect(await screen.findByText(/Akun ini terdeteksi region Mexico/)).toBeTruthy();
   });
   it("shows other games as a scrollable rail (up to 16, sellable first) and no how-to section", () => {
     const others = Array.from({ length: 20 }, (_, i) => ({ slug: `g-${i}`, name: `Game ${i}`, publisher: "P", currency: "diamond" as const, icon: null, banner: null, portrait: null, min_price: i % 2 ? 1000 : null, sku_count: 1, sellable_count: i % 2, featured_rank: null }));

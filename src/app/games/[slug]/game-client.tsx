@@ -2,7 +2,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, Info } from "lucide-react";
+import { AlertTriangle, Check, Info, Loader2, X } from "lucide-react";
 import { GameImage } from "@/components/games/GameImage";
 import { GameHero } from "@/components/games/detail/GameHero";
 import { ItemIcon } from "@/components/games/detail/ItemIcon";
@@ -14,7 +14,7 @@ import { useDisplayLocale, useDisplayPrices } from "@/hooks/useDisplayPrices";
 import { gamesCopy } from "@/lib/games/copy";
 import { gamesItemIcon } from "@/lib/games/item-icons";
 import type { GamesCatalogGame, GamesDetail, GamesDetailProduct } from "@/lib/games/catalog";
-import { GAMES_CATEGORY_ORDER, cleanGamesFieldLabel, regionCodeFromNickname } from "@/lib/games/variant-kind";
+import { GAMES_CATEGORY_ORDER, cleanGamesFieldLabel, regionCodeFromNickname, regionFlagEmoji, splitNicknameRegion } from "@/lib/games/variant-kind";
 import { parsePayOptions, type PayOption } from "@/lib/payment-ui";
 import { rememberPediaContact } from "@/lib/pedia/buyer-session";
 import { rememberGamesDeviceOrder } from "@/lib/games/order-copy";
@@ -208,7 +208,7 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
   const detectedRegion = nickname.state === "ok" ? regionCodeFromNickname(nickname.value) : null;
   const selectedRegion = selected?.region_code;
   const mismatch = detectedRegion && selectedRegion && selectedRegion !== "GLOBAL" && detectedRegion !== selectedRegion;
-  const detectedName = detectedRegion ? t.regionNames[detectedRegion] ?? detectedRegion : "";
+  const detectedName = detectedRegion ? t.regionNames[detectedRegion] ?? (splitNicknameRegion(nickname.value).region || detectedRegion) : "";
   const detectedType = products.find((p) => p.region_code === detectedRegion);
   // Karusel "Game lainnya": hingga 16 game, yang bisa dibeli lebih dulu (urutan katalog dipertahankan).
   const related = [...otherGames.filter((other) => other.slug !== game.slug)].sort((a, b) => Number(b.sellable_count > 0) - Number(a.sellable_count > 0)).slice(0, 16);
@@ -254,10 +254,9 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
     } catch (cause) { setError(cause instanceof Error ? cause.message : t.orderError); }
     finally { inFlight.current = false; setBusy(false); }
   };
-  const nicknameText = nickname.state === "checking" ? t.nicknameChecking
-    : nickname.state === "ok" ? `${t.nicknameFound}: ${nickname.value} · ${t.nicknameNote}`
-    : nickname.state === "invalid" ? nickname.value || t.nicknameInvalid
-    : nickname.state === "unavailable" ? t.nicknameUnavailable : "";
+  const account = nickname.state === "ok" ? splitNicknameRegion(nickname.value) : null;
+  const accountRegion = account?.region ? (account.code && t.regionNames[account.code]) || account.region : "";
+  const accountFlag = regionFlagEmoji(account?.code);
   const chooseType = (type: string) => {
     setActiveType(type);
     if (!selected?.available || (type !== "all" && (selected.type_label ?? "other") !== type)) setSku(firstVariant(products, type)?.buyer_sku_code ?? null);
@@ -278,7 +277,7 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
           {selected?.validation_available !== false && <button type="button" disabled={!selected?.available || nickname.state === "checking" || !!attempted.current} onClick={() => { if (!valid) { setTouched(true); scrollTo("game-account"); return; } manualCheck.current = true; setCheckSequence((n) => n + 1); }} className={`h-11 shrink-0 rounded-xl border border-[#00E5FF]/40 bg-[#00E5FF]/10 px-4 sm:px-5 text-sm font-semibold text-[#7DF3FF] transition hover:bg-[#00E5FF]/15 disabled:border-white/15 disabled:bg-white/[.04] disabled:text-white/40 ${focus}`}>{nickname.state === "checking" ? t.nicknameChecking : t.checkId}</button>}
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1"><p className="text-[11px] leading-5 text-white/50 sm:text-xs">{game.id_guide || (contract.some((field) => /hp|phone|nomor/i.test(field.label)) ? t.phoneHelp : t.profileHelp)}</p><label className="flex min-h-9 shrink-0 items-center gap-2 text-xs text-white/65"><input type="checkbox" checked={remember} disabled={!selected?.available || !!attempted.current} onChange={(e) => setRemember(e.target.checked)} className={`h-3.5 w-3.5 accent-[#00E5FF] ${focus}`} />{t.remember}</label>
-        </div><p aria-live="polite" className="text-sm leading-6 text-white/70">{nicknameText}</p>
+        </div><div aria-live="polite">{nickname.state !== "idle" && <AccountCheckCard state={nickname.state} name={account?.name ?? nickname.value} region={accountRegion} flag={accountFlag} t={t} />}</div>
         {mismatch && <div role="status" className="mt-3 rounded-xl border border-[#FFB800]/40 bg-[#FFB800]/[.04] p-3 text-sm leading-6 text-white/80"><p>{t.regionDetected} {detectedName}. {t.regionSelected} {selected?.type_label}. {t.chooseRegion} {detectedName} {t.regionChoose}</p>{detectedType && <button type="button" disabled={!!attempted.current} onClick={() => { chooseType(detectedType.type_label ?? "other"); scrollTo("game-nominal"); }} className={`min-h-11 text-[#00E5FF] ${focus}`}>{t.showRegion} {detectedName}</button>}</div>}
       </div></section>
       <section id="game-nominal" onKeyDown={nominalKeys} className={`${stepCard} scroll-mt-24`}><StepHeader n={2} title={t.nominal} aside={<span className="text-xs text-white/45">{products.length} {t.variants}</span>} /><div className="px-4 py-4 sm:px-5">
@@ -301,11 +300,32 @@ export function GameClient({ detail, orderingOpen, otherGames = [] }: { detail: 
         <dl className="space-y-2 border-t border-white/10 pt-4 text-xs"><div className="flex justify-between gap-4"><dt className="text-white/50">{t.typeLabel}</dt><dd>{selected.type_label ?? t.categories.other}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/50">{t.process}</dt><dd>{t.auto}</dd></div></dl>
         {plainDescription && <div className="mt-3 text-xs leading-6 text-white/60"><p ref={descriptionRef} className={descriptionExpanded ? "" : "line-clamp-2"}>{plainDescription}</p>{descriptionClamped && <button type="button" onClick={() => setDescriptionExpanded(!descriptionExpanded)} aria-expanded={descriptionExpanded} className={`min-h-11 text-[#00E5FF] ${focus}`}>{descriptionExpanded ? t.detailsLess : t.detailsMore}</button>}</div>}
       </>}
-      <dl className="mt-4 space-y-4 border-t border-white/10 pt-5 text-sm"><div className="flex justify-between gap-4"><dt className="shrink-0 text-white/55">{t.accountId}</dt><dd className="min-w-0 break-words text-right">{contract.map((field) => fields[field.key]).filter(Boolean).join(" / ") || "—"}{nickname.state === "ok" && <span className="mt-1 block text-xs text-white/60">{nickname.value}</span>}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/55">{t.method}</dt><dd className="text-right">{option?.label ?? "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/55">{t.price}</dt><dd className="font-display tabular-nums">{selected && selected.price > 0 ? prices.text(selected.price) : "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/55">{t.fee}</dt><dd className="font-display tabular-nums">{feeText}</dd></div><div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4"><dt className="font-semibold">{t.total}</dt><dd className="font-display text-xl font-bold tabular-nums">{totalText}</dd></div></dl>
+      <dl className="mt-4 space-y-4 border-t border-white/10 pt-5 text-sm"><div className="flex justify-between gap-4"><dt className="shrink-0 text-white/55">{t.accountId}</dt><dd className="min-w-0 break-words text-right">{contract.map((field) => fields[field.key]).filter(Boolean).join(" / ") || "—"}{account && <span className="mt-1 flex flex-wrap items-center justify-end gap-1.5 text-xs text-white/70"><span className="min-w-0 break-words">{account.name}</span>{accountRegion && <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[.05] px-2 py-0.5 text-[11px] text-white/70">{accountFlag && <span aria-hidden="true">{accountFlag}</span>}{accountRegion}</span>}</span>}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/55">{t.method}</dt><dd className="text-right">{option?.label ?? "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/55">{t.price}</dt><dd className="font-display tabular-nums">{selected && selected.price > 0 ? prices.text(selected.price) : "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-white/55">{t.fee}</dt><dd className="font-display tabular-nums">{feeText}</dd></div><div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4"><dt className="font-semibold">{t.total}</dt><dd className="font-display text-xl font-bold tabular-nums">{totalText}</dd></div></dl>
       <button onClick={pay} disabled={payDisabled} className={`mt-5 hidden w-full lg:block ${payClass}`}>{payLabel}</button><a href={SITE.webUrl + waHubLink()} className={`mt-3 flex min-h-11 items-center justify-center gap-2 text-sm text-white/60 ${focus}`}><Info size={18} strokeWidth={1.75} />{t.whatsapp}</a>
     </aside></div>
     <div data-game-bottom-bar className="ax-glass-strong ax-glass-lite-mobile fixed inset-x-0 bottom-0 z-30 flex min-h-16 items-center gap-3 border-t border-white/10 px-4 pb-[env(safe-area-inset-bottom)] lg:hidden"><div className="min-w-0 flex-1"><p className="text-xs text-white/55">{t.total}</p><p className="font-display text-base font-bold tabular-nums">{totalText}</p></div><button onClick={pay} disabled={payDisabled} className={`my-2 max-w-[65%] ${payClass}`}>{payLabel}</button></div>
     </>}
     <div className="mt-14 space-y-14">{game.description && <section><h2 className="font-display text-2xl font-bold">{t.about} {game.name}</h2><p className="mt-4 max-w-3xl whitespace-pre-line text-sm leading-7 text-white/60">{game.description}</p></section>}{related.length > 0 && <GamesRail title={t.otherGames} games={related} t={t} />}</div>
   </div></>;
+}
+
+type AccountCheckState = "checking" | "ok" | "unavailable" | "invalid";
+
+/** Hasil cek ID: satu kartu tinggi tetap untuk semua state agar layout tidak melompat. */
+function AccountCheckCard({ state, name, region, flag, t }: { state: AccountCheckState; name?: string; region: string; flag: string; t: ReturnType<typeof gamesCopy> }) {
+  const tone = state === "ok" ? "border-white/10 bg-white/[.04]"
+    : state === "invalid" ? "border-[#EF4444]/30 bg-[#EF4444]/[.06]"
+    : state === "unavailable" ? "border-[#FFB800]/30 bg-[#FFB800]/[.05]"
+    : "border-white/10 bg-white/[.03]";
+  const icon = state === "ok" ? <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#22C55E]/15 text-[#4ADE80]"><Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" /></span>
+    : state === "invalid" ? <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#EF4444]/15 text-[#F87171]"><X className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" /></span>
+    : state === "unavailable" ? <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#FFB800]/15 text-[#FFCC4D]"><AlertTriangle className="h-4 w-4" aria-hidden="true" /></span>
+    : <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[.06] text-white/60"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /></span>;
+  return <div data-account-check={state} className={`mt-3 flex min-h-14 items-center gap-3 rounded-xl border px-3 py-2.5 ${tone}`}>
+    {icon}
+    <div className="min-w-0 flex-1">{state === "ok"
+      ? <><p className="truncate text-[15px] font-semibold text-white" title={name}>{name}</p><p className="text-xs text-white/55">{t.nicknameFound}</p></>
+      : <p className={`text-sm ${state === "checking" ? "text-white/70" : "text-white/85"}`}>{state === "checking" ? t.nicknameChecking : state === "invalid" ? name || t.nicknameInvalid : t.nicknameUnavailable}</p>}</div>
+    {state === "ok" && region && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[.06] px-2.5 py-1 text-xs font-medium text-white/85">{flag && <span aria-hidden="true" className="text-sm leading-none">{flag}</span>}{region}</span>}
+  </div>;
 }

@@ -149,10 +149,41 @@ export function gamesRegionTypeNames(region: unknown): string[] | null {
   return names ? [...names] : null;
 }
 
-/** Nickname SK berakhiran "(XX)" → ISO-2 (mis. "Sekalipay3121 (ID)" → "ID"). */
+/** Negara akun yang tidak menjadi tipe supplier tetapi muncul di hasil cek ID SK. */
+const NICKNAME_REGIONS: Record<string, string> = {
+  mexico: "MX", "united kingdom": "GB", japan: "JP", korea: "KR", "south korea": "KR", taiwan: "TW",
+  "hong kong": "HK", cambodia: "KH", myanmar: "MM", laos: "LA", pakistan: "PK", egypt: "EG",
+  "saudi arabia": "SA", "united arab emirates": "AE", peru: "PE", colombia: "CO", argentina: "AR",
+  chile: "CL", canada: "CA", australia: "AU", germany: "DE", france: "FR", spain: "ES", italy: "IT",
+};
+
+export type NicknameParts = { name: string; region: string | null; code: string | null };
+
+/**
+ * Pisahkan akhiran region hasil cek ID: SK produksi mengirim nama penuh
+ * ("VoidWalker (Mexico)", "S A N T I A G O (Indonesia)"), versi lama kode ISO-2 "(ID)".
+ * `code` = ISO-2 bila dikenali; `region` = teks tampilan; tanpa akhiran → region null.
+ */
+export function splitNicknameRegion(nickname: unknown): NicknameParts {
+  const text = String(nickname ?? "").trim();
+  const match = /^(.*\S)\s*\(([\p{L}][\p{L} .'-]{1,31})\)$/u.exec(text);
+  if (!match) return { name: text, region: null, code: null };
+  const raw = match[2].trim();
+  const lower = raw.toLowerCase();
+  const code = /^[a-z]{2}$/i.test(raw) ? raw.toUpperCase()
+    : (TYPE_REGIONS[lower] && TYPE_REGIONS[lower] !== "GLOBAL" ? TYPE_REGIONS[lower] : NICKNAME_REGIONS[lower] ?? null);
+  return { name: match[1].trim(), region: raw, code };
+}
+
+/** Nickname SK berakhiran region ("(ID)" atau "(Indonesia)") → ISO-2; tidak dikenal → null. */
 export function regionCodeFromNickname(nickname: unknown): string | null {
-  const match = /\(([A-Za-z]{2})\)\s*$/.exec(String(nickname ?? ""));
-  return match ? match[1].toUpperCase() : null;
+  return splitNicknameRegion(nickname).code;
+}
+
+/** ISO-2 → emoji bendera (regional indicator); selain dua huruf → "". */
+export function regionFlagEmoji(code: string | null | undefined): string {
+  if (!code || !/^[A-Z]{2}$/.test(code)) return "";
+  return String.fromCodePoint(...[...code].map((char) => 0x1f1e6 + char.charCodeAt(0) - 65));
 }
 
 /** Label field supplier → teks bersih ("User ID :" → "User ID"). */
