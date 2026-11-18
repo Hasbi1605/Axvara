@@ -290,6 +290,23 @@ describe("product groups — DB & invalidation", () => {
     expect(updated.members[3].modal_per_30d).toBe(32000);
   });
 
+  it("modal Mirai memakai mirai_cost_usdt x frozen/current FX", async () => {
+    f.sql.exec(`
+      INSERT INTO products(id,name,slug,price,stock,mirai_family) VALUES(7,'Mirai GPT','api-gpt-token-mr',1,-1,'gpt');
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,mirai_package_code,mirai_cost_usdt,mirai_fx_idr_per_usdt) VALUES
+        (17,7,'MR-GPT_10M','10M Token · 1 Hari',5600,-1,'GPT_10M',0.5,20000);
+      INSERT INTO product_group_members(group_id,product_id,position) VALUES(1,7,3);
+    `);
+    const db = createDatabaseAccess(f.db);
+    const [group] = await listProductGroups(db);
+    expect(group.members[3]).toMatchObject({ supplier: "Mirai", modal_per_30d: 10000 });
+    await decideDirtyGroups(db);
+    f.sql.exec("UPDATE product_variants SET mirai_cost_usdt=0.25 WHERE id=17");
+    expect(f.sql.prepare("SELECT pending FROM product_group_dirty WHERE group_id=1").get()?.pending).toBe(1);
+    const [updated] = await listProductGroups(db);
+    expect(updated.members[3].modal_per_30d).toBe(5000);
+  });
+
   it("Manual unique tanpa kredensial atau di bawah minimum tidak mengalahkan supplier", async () => {
     const db = createDatabaseAccess(f.db);
     f.sql.exec("UPDATE product_variants SET fulfillment_mode='unique',stock=-1 WHERE id=11");

@@ -60,6 +60,33 @@ it("AIVault links freeze product FX or market fallback, with durable report prio
   expect(f.sql.prepare("SELECT fx_idr_per_usd fx FROM aivault_order_links WHERE order_code='FALLBACK'").get()?.fx).toBe(40000);
 });
 
+it("StoreBat has its own bucket and uses frozen FX instead of later projection FX",async()=>{
+  const {createStorebatOrderLinks}=await import("@/lib/storebat/orders");
+  vi.stubEnv("STOREBAT_ENABLED","true");vi.stubEnv("STOREBAT_API_KEY","fixture");
+  f.sql.exec("UPDATE products SET storebat_family='gemini'; UPDATE product_variants SET sku='SB-121',storebat_product_id=121,storebat_fx_idr_per_usd=30000,storebat_cost_usd=5");
+  paid("SB",[{product_id:1,variant_id:1,price:10000,name:"SB",qty:1,storebat_eligibility:{version:1,kind:"product",sku:"SB-121",product_id:121,family:"gemini",source_variant_id:1,quantity:1,cost_usd:0.5,fx_idr_per_usd:18000}}]);
+  expect(await createStorebatOrderLinks("SB",createDatabaseAccess(f.db))).toBe(1);
+  f.sql.exec("UPDATE storebat_order_links SET status='completed'");
+  expect(await readSelectedFinancialReport("today",now)).toMatchObject({cost:9000,estimated_orders:0,suppliers:{storebat:{cost:9000},manual:{cost:0}}});
+  // Should-Fix 3: Muse Buff processing link has refunded_usd = 0, so it remains estimated until completed/refunded
+  f.sql.exec("UPDATE storebat_order_links SET status='processing', refunded_usd=0");
+  expect(await readSelectedFinancialReport("today",now)).toMatchObject({estimated_orders:1});
+  f.sql.exec("UPDATE storebat_order_links SET status='needs_admin', refunded_usd=0.5");
+  expect(await readSelectedFinancialReport("today",now)).toMatchObject({estimated_orders:0});
+});
+
+it("Mirai has its own bucket and uses frozen link FX instead of later projection FX", async () => {
+  const { createMiraiOrderLinks } = await import("@/lib/mirai/orders");
+  vi.stubEnv("MIRAI_ENABLED", "true");
+  vi.stubEnv("MIRAI_SYNC_ENABLED", "true");
+  vi.stubEnv("MIRAI_API_KEY", "fixture");
+  f.sql.exec("UPDATE products SET mirai_family='gpt'; UPDATE product_variants SET sku='MR-GPT_10M',mirai_package_code='GPT_10M',mirai_fx_idr_per_usdt=30000,mirai_cost_usdt=5; INSERT INTO mirai_packages(package_code,group_key,name,quota_tokens,duration_seconds,reseller_price_vnd,cost_usdt,fx_idr_per_usdt) VALUES('GPT_10M','gpt','GPT 10M',10000000,86400,6650,0.25,18000)");
+  paid("MR", [{ product_id: 1, variant_id: 1, price: 10000, name: "MR", qty: 1, mirai_eligibility: { version: 1, package_code: "GPT_10M", mirai_family: "gpt", sku: "MR-GPT_10M", source_variant_id: 1, quantity: 1, cost_usdt: 0.5 } }]);
+  expect(await createMiraiOrderLinks("MR", createDatabaseAccess(f.db))).toBe(1);
+  f.sql.exec("UPDATE mirai_order_links SET status='completed'; UPDATE mirai_packages SET fx_idr_per_usdt=30000");
+  expect(await readSelectedFinancialReport("today", now)).toMatchObject({ cost: 9000, estimated_orders: 0, suppliers: { mirai: { cost: 9000 }, manual: { cost: 0 } } });
+});
+
 it("uses verified Jaspay cost during processing and keeps completed catalog prices estimated",async()=>{
   vi.stubEnv("WARUNG_REBAHAN_API_KEY","fixture");
   f.sql.exec("UPDATE product_variants SET wr_variant_id='jaspay:wink:pkg-id'");

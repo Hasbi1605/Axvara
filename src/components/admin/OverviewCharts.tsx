@@ -3,6 +3,7 @@ import { Button, Card, CardHeader } from "@/components/admin/ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import type { ReportBucket, ReportPoint } from "@/lib/dashboard-report";
+import { SupplierBadge } from "./supplier-style";
 
 const compact = (value: number) => {
   const v = Math.abs(value), sign = value < 0 ? "−" : "";
@@ -55,7 +56,7 @@ export function ProfitChart({ series, loading, label = "30 hari", profitLabel = 
   </Card>;
 }
 
-export type NamedBucket = ReportBucket & { label: string; color: string };
+export type NamedBucket = ReportBucket & { label: string; color: string; supplierBadge?: "StoreBat" | "Mirai" };
 export function RevenueDonut({ rows, loading }: { rows: NamedBucket[]; loading: boolean }) {
   const total = rows.reduce((n,r)=>n+r.revenue,0); let angle = -Math.PI/2;
   const position = (a:number) => `${(80+70*Math.cos(a)).toFixed(2)},${(80+70*Math.sin(a)).toFixed(2)}`;
@@ -75,7 +76,7 @@ export function RevenueDonut({ rows, loading }: { rows: NamedBucket[]; loading: 
 export function ProfitBars({ title, rows, loading }: { title: string; rows: NamedBucket[]; loading: boolean }) {
   const max = Math.max(1,...rows.map(r=>Math.abs(r.profit))), losses=rows.some(r=>r.profit<0);
   return <Card className="admin-surface rounded-xl p-4 sm:p-5"><CardHeader className="space-y-1 p-0"><h2 className="text-sm font-semibold text-admin-fg">{title}</h2><p className="text-xs text-admin-muted">Periode terpilih · untung produk</p></CardHeader><div className="mt-4 space-y-6">{rows.map(r=><div key={r.label}>
-    <div className="flex justify-between gap-3 text-xs"><span className="font-semibold text-admin-muted">{r.label}</span><span className="font-semibold tabular-nums text-admin-fg">{loading?'—':formatRupiah(r.profit)}</span></div>
+    <div className="flex items-center justify-between gap-3 text-xs">{r.supplierBadge ? <SupplierBadge supplier={r.supplierBadge} /> : <span className="font-semibold text-admin-muted">{r.label}</span>}<span className="font-semibold tabular-nums text-admin-fg">{loading?'—':formatRupiah(r.profit)}</span></div>
     <div className="relative mt-2 h-2 overflow-hidden rounded-md bg-admin-subtle">{losses&&<span className="absolute inset-y-0 left-1/2 w-px bg-admin-subtle"/>}<span className="absolute inset-y-0 rounded-md" style={{width:`${Math.abs(r.profit)/max*(losses?50:100)}%`,left:losses?(r.profit<0?`${50-Math.abs(r.profit)/max*50}%`:'50%'):'0%',background:r.profit<0?'rgb(var(--admin-danger))':r.color}}/></div>
     <p className="mt-1 text-xs leading-4 text-admin-muted">{r.orders} pesanan · omzet {formatRupiah(r.revenue)} · modal {formatRupiah(r.cost)} · margin {r.revenue?`${(r.profit/r.revenue*100).toFixed(1)}%`:'—'}</p>
   </div>)}</div></Card>;

@@ -44,15 +44,21 @@ async function outcome(order: Work, orderKind: string) {
           'email:sk-credential:'||f.order_code||':'||f.id, 'email:fulfillment-item:'||f.id,
           'telegram:sk-credential:'||f.order_code||':'||f.id))
       ) THEN 'delivery_pending' ELSE l.status END,request_sent_at,lease_expires_at,next_attempt_at FROM sk_order_links l WHERE order_code=?
-    UNION ALL SELECT 'tunvn',status,request_sent_at,lease_expires_at,next_attempt_at FROM tunvn_order_links WHERE order_code=?
-    UNION ALL SELECT 'aivault',status,request_sent_at,lease_expires_at,next_attempt_at FROM aivault_order_links WHERE order_code=?
+    UNION ALL SELECT * FROM (
+      SELECT 'tunvn',status,request_sent_at,lease_expires_at,next_attempt_at FROM tunvn_order_links WHERE order_code=?
+      UNION ALL SELECT 'aivault',status,request_sent_at,lease_expires_at,next_attempt_at FROM aivault_order_links WHERE order_code=?
+      UNION ALL SELECT 'storebat',status,request_sent_at,lease_expires_at,next_attempt_at FROM storebat_order_links WHERE order_code=?
+      UNION ALL SELECT 'mirai',status,request_sent_at,lease_expires_at,next_attempt_at FROM mirai_order_links WHERE order_code=?
+    )
     UNION ALL SELECT 'item',CASE WHEN f.status NOT IN ('delivered','failed','manual_required') AND (
       EXISTS(SELECT 1 FROM wr_order_links l WHERE l.order_code=f.order_code AND (l.fulfillment_item_id=f.id OR l.id=f.wr_link_id) AND l.status NOT IN ('completed','failed')) OR
       EXISTS(SELECT 1 FROM sk_order_links l WHERE l.order_code=f.order_code AND (l.fulfillment_item_id=f.id OR l.id=f.sk_link_id) AND l.status NOT IN ('completed','failed')) OR
       EXISTS(SELECT 1 FROM tunvn_order_links l WHERE l.order_code=f.order_code AND l.item_index=f.item_index AND l.status!='completed') OR
-      EXISTS(SELECT 1 FROM aivault_order_links l WHERE l.order_code=f.order_code AND l.item_index=f.item_index AND l.status!='completed')
+      EXISTS(SELECT 1 FROM aivault_order_links l WHERE l.order_code=f.order_code AND l.item_index=f.item_index AND l.status!='completed') OR
+      EXISTS(SELECT 1 FROM storebat_order_links l WHERE l.order_code=f.order_code AND l.item_index=f.item_index AND l.status!='completed') OR
+      EXISTS(SELECT 1 FROM mirai_order_links l WHERE l.order_code=f.order_code AND l.item_index=f.item_index AND l.status!='completed')
     ) THEN 'supplier_owned' ELSE f.status END,NULL,f.locked_until,f.next_attempt_at FROM fulfillment_items f WHERE f.order_code=?`,
-  code, code, code, code, code) : await queryAll(
+  code, code, code, code, code, code, code) : await queryAll(
     `SELECT '${orderKind}' AS domain,status,NULL AS sent,lease_until AS lease,NULL AS next_at FROM ${orderKind === "games" ? "games_order_items" : "pedia_order_items"} WHERE order_code=?`, code);
   // Include job + push ledger leases, even if the supplier pass lost a CAS.
   const leases = orderKind === "apps" ? await queryFirst(`SELECT

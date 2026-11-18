@@ -117,7 +117,7 @@ async function lookup(req: NextRequest) {
         (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=?)
           OR EXISTS(SELECT 1 FROM sk_order_links WHERE order_code=?)
           OR (?=0 AND EXISTS(SELECT 1 FROM json_each(?) je
-            WHERE (json_extract(je.value,'$.aivault_eligibility.version')=1 AND json_extract(je.value,'$.aivault_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.tunvn_eligibility.version')=1
+            WHERE (json_extract(je.value,'$.aivault_eligibility.version')=1 AND json_extract(je.value,'$.aivault_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.storebat_eligibility.version')=1 AND json_extract(je.value,'$.storebat_eligibility.cost_usd')>0) OR (json_extract(je.value,'$.mirai_eligibility.version')=1 AND json_extract(je.value,'$.mirai_eligibility.cost_usdt')>0) OR (json_extract(je.value,'$.tunvn_eligibility.version')=1
               AND json_extract(je.value,'$.tunvn_eligibility.kind') IN ('account','buff')
               AND json_extract(je.value,'$.tunvn_eligibility.cost_usdt')>0)))) AS supplier_owned,
         (EXISTS(SELECT 1 FROM wr_order_links WHERE order_code=? AND (status IN ('processing','submitted','ordering') OR (status='claimed' AND request_sent_at IS NOT NULL)))

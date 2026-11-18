@@ -17,6 +17,7 @@ import { Input, Label, NativeSelect } from "@/components/admin/ui";
 import { useId, useRef } from "react";
 import type { ProductForm } from "../product-types";
 import { MoneyInput } from "@/components/ui/MoneyInput";
+import { SupplierBadge } from "../supplier-style";
 import { WarrantyFields } from "./VariantWarrantyFields";
 import { DurationFields } from "./VariantDurationFields";
 import { FULFILLMENT_OPTIONS, NonWrFulfillmentPanel } from "./ProductVariantRows";
@@ -49,6 +50,8 @@ export function SingleVariantFields({
   // Harga grosir hanya untuk produk manual (keputusan owner 2026-11-08).
   const manualProduct = isBulkEligibleForm(form);
   const aivaultProduct = form.aivault_family != null || form.supplier === "AIVault";
+  const managedSupplier = form.mirai_family != null || form.supplier === "Mirai" ? "Mirai"
+    : form.storebat_family != null || form.supplier === "StoreBat" ? "StoreBat" : null;
   const bulkDraft = form.bulk ?? emptyBulkDraft();
   const bulkValidation = validateBulkDraft(bulkDraft, {
     base: Number(form.price ?? 0),
@@ -60,7 +63,8 @@ export function SingleVariantFields({
     "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none";
   return (
     <div className="mt-4 space-y-3 rounded-xl border border-admin-border bg-admin-subtle p-4">
-      <Label className="block space-y-2 text-sm font-medium">Input pembeli<NativeSelect value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></NativeSelect></Label>
+      {managedSupplier && <div className="flex flex-wrap items-center gap-2 text-xs text-admin-muted"><SupplierBadge supplier={managedSupplier} /> Atur markup dan harga manual di tab Markup supplier.</div>}
+      <Label className="block space-y-2 text-sm font-medium">Input pembeli<NativeSelect disabled={!!managedSupplier} value={form.buyer_field_key ?? ""} onChange={e => onSetForm({ ...form,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null })} className={openInput}><option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option></NativeSelect></Label>
       <Label className="block space-y-2 text-sm font-medium">Maks. beli (kosong = 100)<Input type="number" min={1} max={100} value={form.max_qty ?? ""} onChange={e => onSetForm({ ...form,max_qty:e.target.value ? Number(e.target.value) : null })} className={openInput}/></Label>
       {/* Min. beli (migrasi 0034, milik admin — bukan WR). */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -125,7 +129,7 @@ export function SingleVariantFields({
         onChange={(patch) => onSetForm({ ...form, ...patch })}
       />
 
-      {!wrLocked ? (
+      {managedSupplier ? <p className="text-xs leading-5 text-admin-muted">Diproses otomatis setelah pembayaran dikonfirmasi. Tidak perlu mengisi stok kredensial lokal.</p> : !wrLocked ? (
         <div className="pt-3">
           <Label htmlFor={fulfillmentId} className="block text-sm font-medium text-admin-fg mb-1.5">Cara pengiriman</Label>
           <NativeSelect

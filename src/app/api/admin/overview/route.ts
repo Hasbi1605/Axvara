@@ -70,6 +70,8 @@ const zero = {
     pedia: { orders: 0, revenue: 0, cost: 0, profit: 0 },
     tunvn: { orders: 0, revenue: 0, cost: 0, profit: 0 },
     aivault: { orders: 0, revenue: 0, cost: 0, profit: 0 },
+    storebat: { orders: 0, revenue: 0, cost: 0, profit: 0 },
+    mirai: { orders: 0, revenue: 0, cost: 0, profit: 0 },
   },
   top_profit_products: [] as { name: string; qty: number; revenue: number; cost: number; profit: number }[],
   profit_by_channel: {

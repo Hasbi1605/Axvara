@@ -8,7 +8,7 @@ import { pediaBalanceAlertRp } from "@/lib/pedia/ops-config";
 import { notLoserProductSql } from "@/lib/product-groups";
 import { isSkSyncEnabled } from "@/lib/sekalipay/client";
 import { skSaldoAlertThreshold } from "@/lib/sekalipay/saldo";
-import { aivaultBalanceAlertThreshold, tunvnBalanceAlertThreshold } from "@/lib/supplier-balance-alert";
+import { aivaultBalanceAlertThreshold, miraiBalanceAlertThreshold, storebatBalanceAlertThreshold, tunvnBalanceAlertThreshold } from "@/lib/supplier-balance-alert";
 import { parseStoredSyncError, sanitizeSyncError } from "@/lib/sync-status";
 import {
   formatAgeId,
@@ -22,6 +22,8 @@ import {
 import { sendMessage } from "@/lib/telegram/api";
 import { escapeHtml, formatRupiah, truncate } from "@/lib/telegram/messages/format";
 import { isAivaultConfigured, isAivaultSyncEnabled } from "@/lib/aivault/client";
+import { isStorebatConfigured, isStorebatSyncEnabled } from "@/lib/storebat/client";
+import { isMiraiConfigured, isMiraiSyncEnabled } from "@/lib/mirai/client";
 import { isGamesSkCatalogConfigured } from "@/lib/games/sk-catalog-sync";
 import { isTunvnConfigured, isTunvnSyncEnabled } from "@/lib/tunvn/client";
 import { isWrEnabled, isWrSyncEnabled } from "@/lib/warung-rebahan/client";
@@ -166,8 +168,14 @@ const SUMMARY_SETTINGS_KEYS = [
   "tunvn_balance_last_ok_at",
   "tunvn_balance_error",
   "aivault_balance_last_value",
+  "storebat_balance_last_value",
+  "mirai_balance_last_value",
   "aivault_balance_last_ok_at",
+  "storebat_balance_last_ok_at",
+  "mirai_balance_last_ok_at",
   "aivault_balance_error",
+  "storebat_balance_error",
+  "mirai_balance_error",
   "pedia_indosmm_balance_last_error",
   "jaspay_catalog_success_at",
   "jaspay_catalog_last_error",
@@ -176,7 +184,11 @@ const SUMMARY_SETTINGS_KEYS = [
   "tunvn_buff_sync_at",
   "tunvn_buff_last_error",
   "aivault_catalog_success_at",
+  "storebat_catalog_success_at",
+  "mirai_catalog_success_at",
   "aivault_catalog_last_error",
+  "storebat_catalog_last_error",
+  "mirai_catalog_last_error",
   "games_sk_catalog_success_at",
   "games_sk_catalog_last_error",
   "pedia_indosmm_diff_last_at",
@@ -186,6 +198,8 @@ const SUMMARY_SETTINGS_KEYS = [
   "sync_stale_state_tunvn",
   "sync_stale_state_tunvn_buff",
   "sync_stale_state_aivault",
+  "sync_stale_state_storebat",
+  "sync_stale_state_mirai",
   "sync_stale_state_games_sk",
   "sync_stale_state_pedia_indosmm",
   "sync_stale_state_crypto_market",
@@ -308,19 +322,35 @@ export async function collectDailyAdminSummaryData(
 
   const stuckRowsB = await db.queryAll(
     `SELECT order_code, MIN(paid_ts) AS paid_ts FROM (
-       SELECT tl.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
-       FROM tunvn_order_links tl INDEXED BY idx_tunvn_orders_due
-       CROSS JOIN orders o ON o.code = tl.order_code
-       WHERE tl.status IN ('pending','claimed','processing','needs_admin')
-         AND o.status = 'lunas' AND o.payment_status = 'paid'
-         AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
-       UNION ALL
-       SELECT al.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
-       FROM aivault_order_links al INDEXED BY idx_aivault_orders_due
-       CROSS JOIN orders o ON o.code = al.order_code
-       WHERE al.status IN ('pending','claimed','processing','needs_admin')
-         AND o.status = 'lunas' AND o.payment_status = 'paid'
-         AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+       SELECT * FROM (
+         SELECT tl.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
+         FROM tunvn_order_links tl INDEXED BY idx_tunvn_orders_due
+         CROSS JOIN orders o ON o.code = tl.order_code
+         WHERE tl.status IN ('pending','claimed','processing','needs_admin')
+           AND o.status = 'lunas' AND o.payment_status = 'paid'
+           AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+         UNION ALL
+         SELECT al.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
+         FROM aivault_order_links al INDEXED BY idx_aivault_orders_due
+         CROSS JOIN orders o ON o.code = al.order_code
+         WHERE al.status IN ('pending','claimed','processing','needs_admin')
+           AND o.status = 'lunas' AND o.payment_status = 'paid'
+           AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+         UNION ALL
+         SELECT al.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
+         FROM storebat_order_links al INDEXED BY idx_storebat_orders_due
+         CROSS JOIN orders o ON o.code = al.order_code
+         WHERE al.status IN ('pending','claimed','processing','needs_admin')
+           AND o.status = 'lunas' AND o.payment_status = 'paid'
+           AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+         UNION ALL
+         SELECT ml.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
+         FROM mirai_order_links ml INDEXED BY idx_mirai_orders_due
+         CROSS JOIN orders o ON o.code = ml.order_code
+         WHERE ml.status IN ('pending','claimed','processing','needs_admin')
+           AND o.status = 'lunas' AND o.payment_status = 'paid'
+           AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+       )
        UNION ALL
        SELECT pi.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
        FROM pedia_order_items pi INDEXED BY idx_pedia_items_status
@@ -336,6 +366,8 @@ export async function collectDailyAdminSummaryData(
          AND o.status = 'lunas' AND o.payment_status = 'paid'
          AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
      ) GROUP BY order_code`,
+    nowIso,
+    nowIso,
     nowIso,
     nowIso,
     nowIso,
@@ -534,6 +566,20 @@ export async function collectDailyAdminSummaryData(
       thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.aivault,
     },
     {
+      id: "storebat",
+      active: isStorebatSyncEnabled() && isStorebatConfigured(),
+      lastSuccessMs: parseTimestampMs(setting("storebat_catalog_success_at")),
+      lastError: parseStoredSyncError(setting("storebat_catalog_last_error"))?.error ?? null,
+      thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.storebat,
+    },
+    {
+      id: "mirai",
+      active: isMiraiSyncEnabled() && isMiraiConfigured(),
+      lastSuccessMs: parseTimestampMs(setting("mirai_catalog_success_at")),
+      lastError: parseStoredSyncError(setting("mirai_catalog_last_error"))?.error ?? null,
+      thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.mirai,
+    },
+    {
       id: "games_sk",
       active: isGamesSkCatalogConfigured(),
       lastSuccessMs: parseTimestampMs(setting("games_sk_catalog_success_at")),
@@ -648,6 +694,51 @@ export async function collectDailyAdminSummaryData(
     wib.thirtyDaysLowerBound,
     wib.thirtyDaysIso,
   );
+
+  const storebatValRaw = setting("storebat_balance_last_value");
+  const storebatErr = parseBalanceErrText(setting("storebat_balance_error"));
+  const storebatThr = storebatBalanceAlertThreshold();
+  if (storebatValRaw !== undefined && storebatValRaw !== "" && Number.isFinite(Number(storebatValRaw))) {
+    const val = Number(storebatValRaw);
+    balances.push({
+      label: "StoreBat",
+      formatted: `$${formatDecimalAmount(val)}`,
+      isLow: val < storebatThr,
+      thresholdFormatted: `$${formatDecimalAmount(storebatThr)}`,
+      error: storebatErr,
+    });
+  } else if (storebatErr) {
+    balances.push({
+      label: "StoreBat",
+      formatted: "belum terbaca",
+      isLow: false,
+      thresholdFormatted: `$${formatDecimalAmount(storebatThr)}`,
+      error: storebatErr,
+    });
+  }
+
+  const miraiValRaw = setting("mirai_balance_last_value");
+  const miraiErr = parseBalanceErrText(setting("mirai_balance_error"));
+  const miraiThr = miraiBalanceAlertThreshold();
+  if (miraiValRaw !== undefined && miraiValRaw !== "" && Number.isFinite(Number(miraiValRaw))) {
+    const val = Number(miraiValRaw);
+    balances.push({
+      label: "Mirai",
+      formatted: `${formatDecimalAmount(val)} USDT`,
+      isLow: val < miraiThr,
+      thresholdFormatted: `${formatDecimalAmount(miraiThr)} USDT`,
+      error: miraiErr,
+    });
+  } else if (miraiErr) {
+    balances.push({
+      label: "Mirai",
+      formatted: "belum terbaca",
+      isLow: false,
+      thresholdFormatted: `${formatDecimalAmount(miraiThr)} USDT`,
+      error: miraiErr,
+    });
+  }
+
 
   return {
     yesterdayWib: wib.yesterdayWib,

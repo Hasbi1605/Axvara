@@ -197,6 +197,8 @@ export async function recordManualHandoverDetailed(
          WHERE order_code=? AND item_index=? AND status IN ('manual_required','retry','queued','failed')
            AND EXISTS(SELECT 1 FROM orders o WHERE o.code=fulfillment_items.order_code AND o.status='lunas' AND o.payment_status='paid')
            AND NOT EXISTS(SELECT 1 FROM tunvn_order_links WHERE id=fulfillment_items.tunvn_link_id AND status IN ('pending','claimed','processing'))
+           AND NOT EXISTS(SELECT 1 FROM storebat_order_links WHERE order_code=fulfillment_items.order_code AND item_index=fulfillment_items.item_index AND status IN ('pending','claimed','processing'))
+           AND NOT EXISTS(SELECT 1 FROM mirai_order_links WHERE order_code=fulfillment_items.order_code AND item_index=fulfillment_items.item_index AND status IN ('pending','claimed','processing'))
            AND NOT EXISTS(SELECT 1 FROM aivault_order_links WHERE order_code=fulfillment_items.order_code AND item_index=fulfillment_items.item_index AND status IN ('pending','claimed','processing'))
            AND NOT EXISTS(SELECT 1 FROM wr_order_links l WHERE l.order_code=fulfillment_items.order_code
              AND (l.id=fulfillment_items.wr_link_id OR l.fulfillment_item_id=fulfillment_items.id OR l.wr_variant_id=(SELECT wr_variant_id FROM product_variants WHERE id=fulfillment_items.variant_id))

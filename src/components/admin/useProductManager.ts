@@ -16,7 +16,7 @@ import {
   type BulkDraft,
   type BulkValidation,
 } from "@/components/admin/BulkTierEditor";
-import type { Prod, Cat, FormVariant, ProductForm } from "@/components/admin/product-types";
+import type { Prod, Cat, FormVariant, ProductForm, SupplierFilter } from "@/components/admin/product-types";
 import { groupProductsByCategory } from "@/lib/product-order";
 
 // Hook ini memusatkan seluruh state + handler katalog produk (daftar, filter, pagination,
@@ -117,7 +117,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const [onlyLowStock, setOnlyLowStock] = useState(false);
   // Filter asal supplier (WR/SK/Manual) — pola onlyLowStock: state di hook
   // agar pagination + reorder ikut benar, UI select di ProductsSection.
-  const [supplierFilter, setSupplierFilter] = useState<"all" | "WR" | "SK" | "TUNVN" | "AIVault" | "Manual">("all");
+  const [supplierFilter, setSupplierFilter] = useState<SupplierFilter>("all");
   // Tab status toko + ukuran halaman (keputusan owner 2026-10-01).
   const [liveTab, setLiveTab] = useState<LiveTab>("live");
   const [perPageAdmin, setPerPageAdmin] = useState<PerPageAdmin>(PER_PAGE_ADMIN_DEFAULT);
@@ -220,7 +220,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       const prodRes = await fetch(`/api/products/${p.id}`);
       if (prodRes.ok) {
         const prodData = (await prodRes.json().catch(() => ({}))) as {
-          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; nameEn?: string | null; wrManaged?: boolean; requireEmail?: boolean; aivault_family?: unknown };
+          product?: { variants?: FormVariant[]; wrDescription?: string; adminDescriptionOverride?: string | null; descriptionEn?: string | null; nameEn?: string | null; wrManaged?: boolean; requireEmail?: boolean; aivault_family?: unknown; storebat_family?: unknown; mirai_family?: unknown };
         };
         if (Array.isArray(prodData.product?.variants) && prodData.product.variants.length > 0) {
           rawVars = prodData.product.variants;
@@ -236,6 +236,12 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
           nextForm.nameEn = prodData.product.nameEn ?? "";
           nextForm.wrManaged = Boolean(prodData.product.wrManaged);
           nextForm.aivault_family = typeof prodData.product.aivault_family === "string" ? prodData.product.aivault_family : null;
+          for (const field of ["storebat_family", "mirai_family"] as const) {
+            const family = prodData.product[field];
+            if (typeof family === "string") nextForm[field] = family;
+          }
+          if (nextForm.storebat_family != null) nextForm.supplier = "StoreBat";
+          if (nextForm.mirai_family != null) nextForm.supplier = "Mirai";
           // Daftar produk tidak membawa require_email; tanpa baris ini
           // centang selalu tampil mati dan Simpan menulis 0 ke database.
           if (typeof prodData.product.requireEmail === "boolean") nextForm.requireEmail = prodData.product.requireEmail;

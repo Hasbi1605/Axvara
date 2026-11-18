@@ -43,7 +43,7 @@ export type AdminOverviewData = {
   profit_month: number;
   profit_total: number;
   profit_estimated_orders: number;
-  profit_by_supplier: { wr: SupplierBucket; sk: SupplierBucket; manual: SupplierBucket; pedia?: SupplierBucket; tunvn?: SupplierBucket; aivault?: SupplierBucket; games?: SupplierBucket };
+  profit_by_supplier: { wr: SupplierBucket; sk: SupplierBucket; manual: SupplierBucket; pedia?: SupplierBucket; tunvn?: SupplierBucket; aivault?: SupplierBucket; storebat?: SupplierBucket; mirai?: SupplierBucket; games?: SupplierBucket };
   top_profit_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[];
   profit_by_channel: { web: ChannelBucket; telegram: ChannelBucket; whatsapp: ChannelBucket };
   daily_series: { date: string; orders: number; revenue: number; cost: number; profit: number }[];
@@ -76,6 +76,8 @@ export const EMPTY_ADMIN_OVERVIEW: AdminOverviewData = {
     pedia: { orders: 0, revenue: 0, cost: 0, profit: 0 },
     tunvn: { orders: 0, revenue: 0, cost: 0, profit: 0 },
     aivault: { orders: 0, revenue: 0, cost: 0, profit: 0 },
+    storebat: { orders: 0, revenue: 0, cost: 0, profit: 0 },
+    mirai: { orders: 0, revenue: 0, cost: 0, profit: 0 },
   },
   top_profit_products: [],
   profit_by_channel: {
@@ -231,6 +233,8 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
     ...(suppliers.games?.orders ? [{ label: "Games", color: "rgb(var(--admin-accent))", ...suppliers.games }] : []),
     ...(suppliers.tunvn?.orders ? [{ label: "TUNVN", color: "rgb(var(--admin-danger))", ...suppliers.tunvn }] : []),
     ...(suppliers.aivault?.orders ? [{ label: "AIVault", color: "rgb(var(--admin-info))", ...suppliers.aivault }] : []),
+    ...("storebat" in suppliers && suppliers.storebat?.orders ? [{ label: "StoreBat", supplierBadge: "StoreBat" as const, color: "rgb(var(--admin-storebat))", ...suppliers.storebat }] : []),
+    ...("mirai" in suppliers && suppliers.mirai?.orders ? [{ label: "Mirai", supplierBadge: "Mirai" as const, color: "rgb(var(--admin-mirai))", ...suppliers.mirai }] : []),
   ];
   const channelRows = Object.entries({ Web: channels.web, Telegram: channels.telegram, WhatsApp: channels.whatsapp })
     .map(([label,r])=>({ ...r, label, cost: r.revenue-r.profit, color: "rgb(var(--admin-accent))" }));

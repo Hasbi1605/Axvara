@@ -46,7 +46,7 @@ import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from
 
 export const runtime = "edge";
 
-const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "aivault_orders", "aivault_catalog", "jaspay_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
+const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "aivault_orders", "aivault_catalog", "storebat_orders", "storebat_catalog", "mirai_orders", "mirai_catalog", "jaspay_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
 const EXPIRY_PER_RUN = 10;
 const ORPHAN_LEDGER_PER_RUN = 10;
@@ -157,6 +157,46 @@ export async function POST(request: NextRequest) {
         const synced=await publishAivaultCatalog(db,Number(rate.num)/Number(rate.den),{force:false});
         Object.assign(result,synced);
         if ("ok" in synced && !synced.ok) return NextResponse.json(result,{status:503});
+        if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
+      }
+    }
+    else if (job === "storebat_orders") Object.assign(result, await runStorebatOrders(db));
+    else if (job === "storebat_catalog") {
+      const { isStorebatConfigured,isStorebatSyncEnabled }=await import("@/lib/storebat/client");
+      if (!isStorebatConfigured() || !isStorebatSyncEnabled()) result.skipped="not_configured";
+      else {
+        const { loadCurrentFxSnapshot }=await import("@/lib/payments/market-snapshot");
+        const { parseRateRational }=await import("@/lib/payments/fx");
+        const fx=await loadCurrentFxSnapshot(db.d1), rate=fx ? parseRateRational(fx.rateText) : null;
+        if (!rate) {
+          const { recordSyncError } = await import("@/lib/sync-status");
+          await recordSyncError(db, "storebat_catalog", "fx_unavailable");
+          return NextResponse.json({...result,ok:false,error:"fx_unavailable"},{status:503});
+        }
+        const { publishStorebatCatalog }=await import("@/lib/storebat/catalog");
+        const synced=await publishStorebatCatalog(db,Number(rate.num)/Number(rate.den),{force:false});
+        Object.assign(result,synced);
+        if ("ok" in synced && !synced.ok) return NextResponse.json(result,{status:503});
+        if ("ok" in synced && synced.ok && !("unchanged" in synced)) await drainDirtyGroupsIfBudget(db, result);
+      }
+    }
+    else if (job === "mirai_orders") Object.assign(result, await runMiraiOrders(db));
+    else if (job === "mirai_catalog") {
+      const { isMiraiConfigured, isMiraiSyncEnabled } = await import("@/lib/mirai/client");
+      if (!isMiraiConfigured() || !isMiraiSyncEnabled()) result.skipped = "not_configured";
+      else {
+        const { loadCurrentFxSnapshot } = await import("@/lib/payments/market-snapshot");
+        const { parseRateRational } = await import("@/lib/payments/fx");
+        const fx = await loadCurrentFxSnapshot(db.d1), rate = fx ? parseRateRational(fx.rateText) : null;
+        if (!rate) {
+          const { recordSyncError } = await import("@/lib/sync-status");
+          await recordSyncError(db, "mirai_catalog", "fx_unavailable");
+          return NextResponse.json({ ...result, ok: false, error: "fx_unavailable" }, { status: 503 });
+        }
+        const { publishMiraiCatalog } = await import("@/lib/mirai/catalog");
+        const synced = await publishMiraiCatalog(db, Number(rate.num) / Number(rate.den), { force: false });
+        Object.assign(result, synced);
+        if ("ok" in synced && !synced.ok) return NextResponse.json(result, { status: 503 });
         if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
       }
     }
@@ -493,7 +533,7 @@ async function runSkOrders(db: Db) {
 async function runSupplierBalanceCheck(
   db: Db,
   out: Record<string, unknown>,
-  prefix: "tunvn" | "aivault",
+  prefix: "tunvn" | "aivault" | "storebat" | "mirai",
   loadAndCheck: () => Promise<{ checked: boolean; balance?: number; alerted?: boolean; error?: string }>,
 ) {
   if (!db.canSpend(5)) return;
@@ -529,6 +569,30 @@ async function runAivaultOrders(db: Db) {
   await runSupplierBalanceCheck(db, out, "aivault", async () => {
     const { checkAivaultLowBalance } = await import("@/lib/supplier-balance-alert");
     return checkAivaultLowBalance(db);
+  });
+  return out;
+}
+
+async function runStorebatOrders(db: Db) {
+  const { processStorebatOrders } = await import("@/lib/storebat/orders");
+  const out: Record<string, unknown> = {
+    storebat_orders_processed: await processStorebatOrders(db),
+  };
+  await runSupplierBalanceCheck(db, out, "storebat", async () => {
+    const { checkStorebatLowBalance } = await import("@/lib/supplier-balance-alert");
+    return checkStorebatLowBalance(db);
+  });
+  return out;
+}
+
+async function runMiraiOrders(db: Db) {
+  const { processMiraiOrders } = await import("@/lib/mirai/orders");
+  const out: Record<string, unknown> = {
+    mirai_orders_processed: await processMiraiOrders(db),
+  };
+  await runSupplierBalanceCheck(db, out, "mirai", async () => {
+    const { checkMiraiLowBalance } = await import("@/lib/mirai/balance");
+    return checkMiraiLowBalance(db);
   });
   return out;
 }

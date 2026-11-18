@@ -14,7 +14,7 @@ export type PeriodReport = ReportBucket & ReportFinance & {
   merchant_paid?: number;
   credit_used?: number;
   series: ReportPoint[];
-  suppliers: Record<"wr" | "sk" | "manual" | "pedia" | "games" | "tunvn" | "aivault", ReportBucket>;
+  suppliers: Record<"wr" | "sk" | "manual" | "pedia" | "games" | "tunvn" | "aivault" | "storebat" | "mirai", ReportBucket>;
   channels: Record<"web" | "telegram" | "whatsapp", ReportBucket>;
   top_products: { name: string; qty: number; revenue: number; cost: number; profit: number }[];
 };
@@ -23,7 +23,7 @@ const pointFinance = (): ReportPointFinance => ({ expenses: 0, payment_fees: 0, 
 const finance = (): ReportFinance => ({ payment_fees: 0, unique_code_bonus: 0, refund_expenses: 0, operational_expenses: 0, net_profit: 0, expenses_by_category: emptyExpenseTotals(), estimated_order_codes: [], estimated_jaspay_order_codes: [] });
 export type SelectedReport = PeriodReport & { from: string; to: string; timezone: "Asia/Jakarta"; generated_at: string };
 const emptyReport = (): PeriodReport => ({ ...bucket(), ...finance(), estimated_orders: 0, merchant_paid: 0, credit_used: 0, series: [],
-  suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket(), games: bucket(), tunvn: bucket(), aivault: bucket() },
+  suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket(), games: bucket(), tunvn: bucket(), aivault: bucket(), storebat: bucket(), mirai: bucket() },
   channels: { web: bucket(), telegram: bucket(), whatsapp: bucket() }, top_products: [] });
 
 export function emptySelectedReport(selection: ReportSelection, now = new Date()): SelectedReport {
@@ -86,12 +86,19 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
       s.source snapshot_source, s.unit_cost snapshot_cost, s.supplier_variant_id snapshot_supplier_id,
       pv.manual_cost, pv.wr_variant_id, pv.sk_variant_id, fi.wr_link_id, fi.sk_link_id, fi.id fi_id,
       pv.sku pv_sku, pv.aivault_service_id pv_aivault_service_id,
+      pv.storebat_product_id pv_storebat_product_id,pv.storebat_cost_usd pv_storebat_cost,pv.storebat_fx_idr_per_usd pv_storebat_fx,
+      pv.mirai_package_code pv_mirai_package_code,pv.mirai_cost_usdt pv_mirai_cost,pv.mirai_fx_idr_per_usdt pv_mirai_fx,
       pv.tunvn_fx_idr_per_usdt pv_tunvn_fx, pv.tunvn_cost_usdt pv_tunvn_cost,
       json_type(j.value,'$.tunvn_eligibility') tunvn_elig,
       json_extract(j.value,'$.tunvn_eligibility.cost_usdt') tunvn_elig_cost,
       json_extract(j.value,'$.tunvn_eligibility.source_product_id') tunvn_elig_source_id,
       json_type(j.value,'$.aivault_eligibility') aivault_elig,
-      json_extract(j.value,'$.aivault_eligibility.cost_usd') aivault_elig_cost
+      json_extract(j.value,'$.aivault_eligibility.cost_usd') aivault_elig_cost,
+      json_type(j.value,'$.storebat_eligibility') storebat_elig,
+      json_extract(j.value,'$.storebat_eligibility.cost_usd') storebat_elig_cost,
+      json_extract(j.value,'$.storebat_eligibility.fx_idr_per_usd') storebat_elig_fx,
+      json_type(j.value,'$.mirai_eligibility') mirai_elig,
+      json_extract(j.value,'$.mirai_eligibility.cost_usdt') mirai_elig_cost
     FROM paid o JOIN json_each(o.report_items) j
     LEFT JOIN order_item_costs s ON s.order_code=o.code AND s.item_index=CAST(j.key AS INTEGER)
     LEFT JOIN fulfillment_items fi ON fi.order_code=o.code AND fi.item_index=CAST(j.key AS INTEGER)
@@ -116,6 +123,8 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
         WHEN s.id IS NOT NULL THEN 'sk'
         WHEN l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL THEN 'tunvn'
         WHEN l.aivault_elig IS NOT NULL OR l.pv_aivault_service_id IS NOT NULL OR al.id IS NOT NULL THEN 'aivault'
+        WHEN l.storebat_elig IS NOT NULL OR l.pv_storebat_product_id IS NOT NULL OR sb.id IS NOT NULL THEN 'storebat'
+        WHEN l.mirai_elig IS NOT NULL OR l.pv_mirai_package_code IS NOT NULL OR mr.id IS NOT NULL THEN 'mirai'
         ELSE COALESCE(l.snapshot_source,
           CASE WHEN l.wr_variant_id IS NOT NULL THEN 'wr' WHEN l.sk_variant_id IS NOT NULL THEN 'sk' ELSE 'manual' END) END source,
       CASE WHEN l.order_kind='games' THEN CASE
@@ -145,6 +154,12 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
           al.id IS NULL OR al.status!='completed'
           OR COALESCE(al.cost_usd,l.aivault_elig_cost,ap.unit_price_usd*l.qty) IS NULL
           OR COALESCE(al.fx_idr_per_usd,ap.fx_idr_per_usd,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
+        WHEN l.storebat_elig IS NOT NULL OR l.pv_storebat_product_id IS NOT NULL OR sb.id IS NOT NULL THEN
+          sb.id IS NULL OR (sb.status!='completed' AND COALESCE(sb.refunded_usd,0)<=0)
+        WHEN l.mirai_elig IS NOT NULL OR l.pv_mirai_package_code IS NOT NULL OR mr.id IS NOT NULL THEN
+          mr.id IS NULL OR mr.status!='completed'
+          OR COALESCE(mr.cost_usdt,l.mirai_elig_cost,mp.cost_usdt*l.qty,l.pv_mirai_cost*l.qty) IS NULL
+          OR COALESCE(mr.fx_idr_per_usdt,mp.fx_idr_per_usdt,l.pv_mirai_fx,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
         ELSE l.snapshot_cost IS NULL OR COALESCE(l.snapshot_source,'manual')!='manual' END estimated,
       CASE WHEN (l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL)
               AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
@@ -156,6 +171,15 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
               AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
           ROUND(COALESCE(COALESCE(al.cost_usd,l.aivault_elig_cost,ap.unit_price_usd*l.qty),0)
             * COALESCE(al.fx_idr_per_usd,ap.fx_idr_per_usd,
+              CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END,0))
+        WHEN (l.storebat_elig IS NOT NULL OR l.pv_storebat_product_id IS NOT NULL OR sb.id IS NOT NULL)
+              AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
+          ROUND(MAX(0,COALESCE(sb.cost_usd,l.storebat_elig_cost,l.pv_storebat_cost*l.qty,0)-COALESCE(sb.refunded_usd,0))
+            * COALESCE(sb.fx_idr_per_usd,l.storebat_elig_fx,l.pv_storebat_fx,0))
+        WHEN (l.mirai_elig IS NOT NULL OR l.pv_mirai_package_code IS NOT NULL OR mr.id IS NOT NULL)
+              AND COALESCE(l.order_kind,'market')!='pedia' AND w.id IS NULL AND s.id IS NULL THEN
+          ROUND(COALESCE(COALESCE(mr.cost_usdt,l.mirai_elig_cost,mp.cost_usdt*l.qty,l.pv_mirai_cost*l.qty),0)
+            * COALESCE(mr.fx_idr_per_usdt,mp.fx_idr_per_usdt,l.pv_mirai_fx,
               CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END,0))
         ELSE COALESCE(l.snapshot_cost,CASE WHEN l.wr_variant_id IS NOT NULL THEN
           (SELECT wr_price FROM wr_variants WHERE wr_variant_id=l.wr_variant_id)
@@ -169,10 +193,13 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
     LEFT JOIN games_dispatch_attempts ga ON ga.order_code=gi.order_code AND ga.attempt_no=gi.attempt_no
       AND ga.supplier=gi.supplier
     LEFT JOIN tunvn_order_links tl ON tl.order_code=l.code AND tl.item_index=l.item_index
+    LEFT JOIN storebat_order_links sb ON sb.order_code=l.code AND sb.item_index=l.item_index
+    LEFT JOIN mirai_order_links mr ON mr.order_code=l.code AND mr.item_index=l.item_index
     LEFT JOIN aivault_order_links al ON al.order_code=l.code AND al.item_index=l.item_index
     LEFT JOIN tunvn_products tp ON tp.supplier_product_id=COALESCE(CAST(tl.source_product_id AS INTEGER),
       CAST(l.tunvn_elig_source_id AS INTEGER),CASE WHEN l.pv_sku LIKE 'TUNVN-%' THEN CAST(substr(l.pv_sku,7) AS INTEGER) END)
     LEFT JOIN aivault_products ap ON ap.service_id=COALESCE(al.service_id,l.pv_aivault_service_id)
+    LEFT JOIN mirai_packages mp ON mp.package_code=COALESCE(mr.package_code,l.pv_mirai_package_code)
     LEFT JOIN crypto_market_snapshot cm ON cm.id=1
   ), shares AS (
     SELECT p.*,

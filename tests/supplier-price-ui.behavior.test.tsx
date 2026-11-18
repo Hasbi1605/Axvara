@@ -10,6 +10,8 @@ import { render as renderAdmin } from "./setup/admin-render";
 import { ToastProvider } from "@/components/ui/Toast";
 import { TunvnManager } from "@/components/admin/TunvnManager";
 import { AivaultManager } from "@/components/admin/AivaultManager";
+import { StorebatManager } from "@/components/admin/StorebatManager";
+import { MiraiManager } from "@/components/admin/MiraiManager";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin",
@@ -118,5 +120,96 @@ describe("AIVault", () => {
     expect(await screen.findByText("Adobe Express Premium")).toBeTruthy();
     expect(screen.getByText("Induk nonaktif")).toBeTruthy();
     expect((within(screen.getByRole("form", { name: "Harga 12 Bulan" })).getByRole("button", { name: "Simpan" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe.each([
+  { name: "StoreBat", route: "storebat", key: "124", Manager: StorebatManager, currency: "USD", price: { id: 124, price_usd: 0.125, fx_idr_per_usd: 18000, delivery_type: "muse_buff" } },
+  { name: "Mirai", route: "mirai", key: "GPT_10M", Manager: MiraiManager, currency: "USDT", price: { package_code: "GPT_10M", cost_usdt: 0.123456, fx_idr_per_usdt: 18000 } },
+])("$name", ({ name, route, key, Manager, currency, price }) => {
+  function setup({ failedBalance = false, empty = false, delay = 0 } = {}) {
+    let manual: number | null = 2000;
+    const requests: [string, RequestInit | undefined][] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      requests.push([url, init]);
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+      if (url.endsWith("/balance")) return failedBalance ? Response.json({ error: "balance_unavailable" }, { status: 503 }) : Response.json({ ok: true, balance: 2.5, currency });
+      if (url.endsWith(`/products/${key}`)) {
+        manual = JSON.parse(String(init?.body)).admin_price_idr;
+        return Response.json({ ok: true });
+      }
+      if (url.endsWith("/products")) return Response.json({ ok: true, configured: true, dispatch_enabled: false, sync_enabled: true, last_sync_at: "1795012740000", last_error: null,
+        items: empty ? [] : [{ ...price, name: "Paket supplier", label: "Paket A", markup_percent: 35, variant_id: 10, admin_price_idr: manual, stock: -1, variant_price: manual ?? 3100, product_active: 0, variant_active: 1, product_archived: 0, product_name: "Katalog AXVARA", family: { key: "paket", name: "Paket" } },
+          { ...price, ...(route === "mirai" ? { package_code: "ARC" } : { id: 22 }), name: "Arsip supplier", label: "Paket B", markup_percent: 35, variant_id: 11, admin_price_idr: null, stock: 0, variant_price: 3100, product_active: 0, variant_active: 0, product_archived: 1, family: { key: "arsip", name: "Paket arsip" } }],
+      });
+      if (url.endsWith("/orders") && init?.method === "POST") return Response.json({ ok: true, ...(JSON.parse(String(init.body)).action === "reveal" ? { receipt: JSON.stringify({ redeem_codes: ["fixture-code"], amount_usdt: 0.123456 }) } : { link: { status: "completed" } }) });
+      if (url.endsWith("/orders")) return Response.json({ ok: true, items: empty ? [] : [
+        { id: 1, order_code: "SAFE-01", status: "needs_admin", can_retry: 1, attempt_count: 0, quantity: 1 },
+        { id: 2, order_code: "UNSAFE-02", status: "needs_admin", can_retry: 0, has_receipt: 1, attempt_count: 3, quantity: 1, cost_usdt: 0.123456, cost_usd: 0.125 },
+        { id: 3, order_code: "OTHER-03", status: "completed", can_retry: 1, attempt_count: 1, quantity: 1 },
+      ] });
+      if (url.endsWith("/publish")) return Response.json({ ok: true });
+      throw new Error(`Unexpected ${url}`);
+    }));
+    renderAdmin(<Manager />);
+    return requests;
+  }
+
+  it("saldo gagal tetapi katalog tetap tampil; arsip terkunci dan simpan hanya field berubah", async () => {
+    const calls = setup({ failedBalance: true });
+    expect(await screen.findByText("Saldo: HTTP 503: balance_unavailable")).toBeTruthy();
+    expect(screen.getByText("Pengiriman otomatis nonaktif")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Markup" }), { button: 0 });
+    expect(await screen.findByText("Katalog AXVARA")).toBeTruthy();
+    expect(screen.getByText("Induk nonaktif")).toBeTruthy();
+    expect(screen.getByText("Arsip")).toBeTruthy();
+    expect((within(screen.getByRole("form", { name: "Harga Paket B" })).getByLabelText("Markup %") as HTMLInputElement).disabled).toBe(true);
+    const row = within(screen.getByRole("form", { name: "Harga Paket A" }));
+    expect(row.getByText(route === "mirai" ? /0,123456 USDT/ : /\$0\.125.*per 1 miliar token/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("VND");
+    const input = row.getByLabelText("Harga manual (Rp)");
+    const save = row.getByRole("button", { name: "Simpan" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.change(input, { target: { value: "0" } });
+    fireEvent.click(save);
+    expect(await row.findByRole("alert")).toBeTruthy();
+    expect(calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(0);
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(save);
+    expect(await screen.findByText("Harga Paket A disimpan.")).toBeTruthy();
+    expect(calls.filter(([, init]) => init?.method === "PATCH").map(([url, init]) => [url, JSON.parse(String(init?.body))])).toEqual([[`/api/admin/${route}/products/${key}`, { admin_price_idr: null }]]);
+  });
+
+  it("antrean hanya menawarkan retry aman, reveal lewat POST, dan publish lewat Alat", async () => {
+    const calls = setup();
+    expect(await screen.findByText(route === "mirai" ? "2,50 USDT" : "$2.50")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Antrean" }), { button: 0 });
+    expect(screen.getAllByRole("button", { name: "Coba lagi" })).toHaveLength(1);
+    expect(screen.queryByText(/fixture-code/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Coba lagi" }));
+    await screen.findByText("Pesanan diproses ulang.");
+    fireEvent.click(screen.getByRole("button", { name: "Lihat receipt" }));
+    expect(within(await screen.findByRole("dialog", { name: `Receipt ${name}` })).getByText(/fixture-code/)).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Alat" }), { button: 0 });
+    fireEvent.click(screen.getByRole("button", { name: "Sinkronkan katalog" }));
+    expect(await screen.findByText("Sinkron katalog selesai.")).toBeTruthy();
+    expect(calls.filter(([, init]) => init?.method === "POST").map(([url, init]) => [url, init?.cache, JSON.parse(String(init?.body))])).toEqual([
+      [`/api/admin/${route}/orders`, "no-store", { id: 1, action: "retry" }],
+      [`/api/admin/${route}/orders`, "no-store", { id: 2, action: "reveal" }],
+      [`/api/admin/${route}/publish`, "no-store", {}],
+    ]);
+  });
+
+  it("memisahkan loading dari katalog dan antrean kosong", async () => {
+    setup({ empty: true, delay: 50 });
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Antrean" }), { button: 0 });
+    expect(screen.getByText(`Memuat data ${name}…`)).toBeTruthy();
+    expect(screen.queryByText(`Belum ada pesanan ${name}.`)).toBeNull();
+    expect(await screen.findByText(`Belum ada pesanan ${name}.`)).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Markup" }), { button: 0 });
+    expect(screen.getByText("Sinkronkan katalog dari tab Alat untuk memulai.")).toBeTruthy();
   });
 });

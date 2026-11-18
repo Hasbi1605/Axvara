@@ -8,6 +8,7 @@ import {
 } from "@/lib/sync-staleness";
 import { sanitizeSyncError } from "@/lib/sync-status";
 import { createD1Fixture } from "./helpers/d1-fixture";
+import { stubStorebatEnv } from "./helpers/storebat-fixture";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -55,6 +56,42 @@ describe("sanitizeSyncError", () => {
 });
 
 describe("checkSyncStaleness", () => {
+  it("alerts on a stale Mirai snapshot and recovers on new success", async () => {
+    const f = createD1Fixture();
+    try {
+      const messages = stubTelegram();
+      vi.stubEnv("MIRAI_ENABLED", "true");
+      vi.stubEnv("MIRAI_SYNC_ENABLED", "true");
+      vi.stubEnv("MIRAI_API_KEY", "mr-fixture");
+      vi.stubEnv("MIRAI_BASE_URL", "https://mirai.test/api/reseller/v1");
+      const db = createDatabaseAccess(f.db), now = Date.UTC(2026, 10, 18, 12);
+      expect(SYNC_STALENESS_THRESHOLDS_MS.mirai).toBe(15 * 60_000);
+      expect((await checkSyncStaleness(db, { now })).alerted).toEqual([]);
+      const write = f.sql.prepare("INSERT INTO store_settings(key,value) VALUES('mirai_catalog_success_at',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+      write.run(String(now - 16 * 60_000));
+      expect((await checkSyncStaleness(db, { now })).alerted).toContain("mirai");
+      expect(messages[0].text).toContain("Mirai");
+      write.run(String(now));
+      expect((await checkSyncStaleness(db, { now: now + 1000 })).recovered).toContain("mirai");
+    } finally {
+      f.close();
+    }
+  });
+  it("alerts on a stale StoreBat snapshot and recovers on new success",async()=>{
+    const f=createD1Fixture();
+    try {
+      const messages=stubTelegram();stubStorebatEnv();
+      const db=createDatabaseAccess(f.db),now=Date.UTC(2026,10,18,12);
+      expect(SYNC_STALENESS_THRESHOLDS_MS.storebat).toBe(15*60_000);
+      expect((await checkSyncStaleness(db,{now})).alerted).toEqual([]);
+      const write=f.sql.prepare("INSERT INTO store_settings(key,value) VALUES('storebat_catalog_success_at',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+      write.run(String(now-16*60_000));
+      expect((await checkSyncStaleness(db,{now})).alerted).toContain("storebat");
+      expect(messages[0].text).toContain("StoreBat");
+      write.run(String(now));
+      expect((await checkSyncStaleness(db,{now:now+1000})).recovered).toContain("storebat");
+    } finally {f.close();}
+  });
   it("ignores disabled/unconfigured sources and sends no Telegram when fresh", async () => {
     const fx = createD1Fixture();
     try {

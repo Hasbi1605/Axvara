@@ -26,6 +26,8 @@ hanya file yang relevan dengan tugas, dan semuanya bila tugas lintas area.
 | Gateway WhatsApp, grup AXVARA'S, ganti nomor bot, siaran/welcome | `docs/agent-rules/whatsapp-gateway.md` + `gateway/AGENTS.md` |
 | TUNVN PREHUB (reseller Telegram, katalog mirror tersembunyi) | `docs/agent-rules/tunvn.md` |
 | AIVault Hub (katalog, harga USD, dispatch/polling, admin) | `docs/agent-rules/aivault.md` |
+| StoreBat / VenteBot (katalog USD, pemulihan order, Muse Buff, admin) | `docs/agent-rules/storebat.md` |
+| MiraiAPI (paket token, harga USDT, kode redeem, admin) | `docs/agent-rules/mirai.md` |
 | Temp mail publik, Email Worker, domain penerima dan D1 inbox terpisah | `docs/agent-rules/temp-mail.md` + `temp-mail/README.md` |
 
 Games S1 lokal (9 November 2026): host routing opsional `GAMES_HOST` default

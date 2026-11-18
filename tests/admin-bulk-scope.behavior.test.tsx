@@ -28,7 +28,7 @@ const variants = [
 
 type PutCapture = { url: string; body: { variants?: Record<string, unknown>[] } };
 
-function setup(options: { supplier?: "Manual" | "WR" | "SK" | "AIVault"; wrManaged?: boolean; aivault_family?: string } = {}) {
+function setup(options: { supplier?: "Manual" | "WR" | "SK" | "AIVault" | "StoreBat" | "Mirai"; wrManaged?: boolean; aivault_family?: string; storebat_family?: string; mirai_family?: string } = {}) {
   const product = {
     id: "7", name: "Fixture Grosir", slug: "fixture-grosir", description: "",
     price: 100000, categorySlug: "ai-chatbot", image: "", images: [],
@@ -43,7 +43,7 @@ function setup(options: { supplier?: "Manual" | "WR" | "SK" | "AIVault"; wrManag
     if (url === "/api/products") return json({ products: [product] });
     if (url.startsWith("/api/categories")) return json({ categories: [] });
     if (url === "/api/admin/overview") return json({});
-    if (url === "/api/products/7" && init?.method === undefined) return json({ product: { variants, wrManaged: Boolean(options.wrManaged), aivault_family: options.aivault_family } });
+    if (url === "/api/products/7" && init?.method === undefined) return json({ product: { variants, ...options, wrManaged: Boolean(options.wrManaged) } });
     if (url === "/api/products/7" && init?.method === "PUT") {
       puts.push({ url, body: JSON.parse(String(init.body)) });
       return json({ ok: true });
@@ -71,6 +71,20 @@ async function openEditor() {
 const save = async () => { await act(async () => { fireEvent.click(screen.getByRole("button", { name: /Simpan Produk/ })); }); };
 
 describe("editor harga grosir di modal produk", () => {
+  it.each([
+    { supplier: "StoreBat" as const, field: "storebat_family", name: "StoreBat (VenteBot)" },
+    { supplier: "Mirai" as const, field: "mirai_family", name: "MiraiAPI" },
+  ])("$supplier: atribusi, dan tolak grosir pada editor varian", async ({ supplier, field, name }) => {
+    const { puts } = setup({ supplier, [field]: "fixture" });
+    await openEditor();
+    expect(screen.getAllByLabelText(`Supplier: ${name}`).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Atur harga grosir|Tambah varian|Hapus varian/ })).toBeNull();
+    expect((screen.getByRole("switch", { name: "Variasi Produk" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getAllByText("Harga grosir hanya untuk produk manual.").length).toBeGreaterThan(0);
+    await save();
+    await waitFor(() => expect(puts).toHaveLength(1));
+    for (const variant of puts[0].body.variants!) expect(variant).not.toHaveProperty("bulk_pricing");
+  });
   it("AIVault single-variant mode also shows only the markup note", async () => {
     const { puts } = setup({ aivault_family: "gemini" });
     await openEditor();

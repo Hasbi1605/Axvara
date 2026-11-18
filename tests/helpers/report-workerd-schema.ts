@@ -5,7 +5,7 @@ export const reportRuntimeSchema = [
       "CREATE TABLE payment_proofs(order_code TEXT,reviewed_at TEXT,status TEXT)",
       "CREATE TABLE fulfillment_items(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,product_id INTEGER,variant_id INTEGER,qty INTEGER,wr_link_id INTEGER,sk_link_id INTEGER)",
       "CREATE TABLE order_item_costs(order_code TEXT,item_index INTEGER,source TEXT,unit_cost INTEGER,supplier_variant_id TEXT)",
-      "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,manual_cost INTEGER,wr_variant_id TEXT,sk_variant_id TEXT,sku TEXT,aivault_service_id TEXT,tunvn_fx_idr_per_usdt REAL,tunvn_cost_usdt REAL)",
+      "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,manual_cost INTEGER,wr_variant_id TEXT,sk_variant_id TEXT,sku TEXT,aivault_service_id TEXT,storebat_product_id INTEGER,storebat_cost_usd REAL,storebat_fx_idr_per_usd REAL,mirai_package_code TEXT,mirai_cost_usdt REAL,mirai_fx_idr_per_usdt REAL,tunvn_fx_idr_per_usdt REAL,tunvn_cost_usdt REAL)",
       "CREATE TABLE wr_variants(wr_variant_id TEXT PRIMARY KEY,axvara_variant_id INTEGER,wr_price INTEGER)",
       "CREATE TABLE sk_products(sk_variant_id TEXT PRIMARY KEY,axvara_variant_id INTEGER,sk_price INTEGER)",
       "CREATE TABLE wr_order_links(id INTEGER PRIMARY KEY,order_code TEXT,fulfillment_item_id INTEGER,wr_variant_id TEXT,wr_cost INTEGER,status TEXT,jaspay_invoice_total INTEGER,jaspay_refunded_total INTEGER)",
@@ -16,9 +16,12 @@ export const reportRuntimeSchema = [
       "CREATE TABLE games_meta(slug TEXT PRIMARY KEY,display_name TEXT)",
       "CREATE TABLE games_dispatch_attempts(id INTEGER PRIMARY KEY,order_code TEXT,attempt_no INTEGER,supplier TEXT,buyer_sku_code TEXT,status TEXT,price INTEGER,UNIQUE(order_code,attempt_no))",
       "CREATE TABLE tunvn_order_links(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,variant_id INTEGER,kind TEXT,source_product_id INTEGER,cost_usdt REAL,status TEXT,fx_idr_per_usdt REAL,UNIQUE(order_code,item_index))",
+      "CREATE TABLE storebat_order_links(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,cost_usd REAL,status TEXT,fx_idr_per_usd REAL,refunded_usd REAL)",
+      "CREATE TABLE mirai_order_links(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,package_code TEXT,cost_usdt REAL,status TEXT,fx_idr_per_usdt REAL)",
       "CREATE TABLE aivault_order_links(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,variant_id INTEGER,service_id TEXT,cost_usd REAL,status TEXT,fx_idr_per_usd REAL,UNIQUE(order_code,item_index))",
       "CREATE TABLE tunvn_products(supplier_product_id INTEGER PRIMARY KEY,price_usdt REAL,fx_idr_per_usdt REAL)",
       "CREATE TABLE aivault_products(service_id TEXT PRIMARY KEY,unit_price_usd REAL,fx_idr_per_usd REAL)",
+      "CREATE TABLE mirai_packages(package_code TEXT PRIMARY KEY,cost_usdt REAL,fx_idr_per_usdt REAL)",
       "CREATE TABLE crypto_market_snapshot(id INTEGER PRIMARY KEY,fx_rate_text TEXT)",
 
 ];

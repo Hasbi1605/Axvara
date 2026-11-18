@@ -56,6 +56,12 @@ export async function fulfillPaidOrder(orderCode: string, orderKind: unknown, de
   const { createAivaultOrderLinks, processAivaultOrders } = await import("@/lib/aivault/orders");
   if (!remaining()) return;
   await createAivaultOrderLinks(orderCode);
+  const { createStorebatOrderLinks, processStorebatOrders } = await import("@/lib/storebat/orders");
+  if (!remaining()) return;
+  await createStorebatOrderLinks(orderCode);
+  const { createMiraiOrderLinks, processMiraiOrders } = await import("@/lib/mirai/orders");
+  if (!remaining()) return;
+  await createMiraiOrderLinks(orderCode);
   // Bind supplier ownership before generic fulfillment can mark a manual-mode
   // supplier variant as requiring admin handover or send misleading notices.
   const { ensureFulfillmentItems } = await import("@/lib/fulfillment/delivery/inventory-binding");
@@ -64,9 +70,10 @@ export async function fulfillPaidOrder(orderCode: string, orderKind: unknown, de
   const work: (() => Promise<unknown>)[] = [];
   // The concurrent generic pass may run before supplier credentials arrive.
   // Attempt delivery again after either purchase settles; cron stays the backstop.
-  for (const processOrders of [processTunvnOrders, processAivaultOrders]) {
+  for (const processOrders of [processTunvnOrders, processAivaultOrders, processStorebatOrders, processMiraiOrders]) {
     work.push(async () => {
-      if (remaining() && await processOrders(undefined,{ orderCode })) {
+      const opts = processOrders === processStorebatOrders || processOrders === processMiraiOrders ? { orderCode, deadlineMs } : { orderCode };
+      if (remaining() && await processOrders(undefined, opts)) {
         const { ensureFulfillmentForPaidOrder } = await import("@/lib/fulfillment/deliver");
         if (remaining()) await (Number.isFinite(deadlineMs) ? ensureFulfillmentForPaidOrder(orderCode, deadlineMs) : ensureFulfillmentForPaidOrder(orderCode));
       }

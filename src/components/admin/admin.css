@@ -32,6 +32,9 @@
 .admin-supplier-sk { --supplier-light: 107 33 168; --supplier-dark: 216 180 254; }
 .admin-supplier-tunvn { --supplier-light: 157 23 77; --supplier-dark: 249 168 212; }
 .admin-supplier-aivault { --supplier-light: 55 48 163; --supplier-dark: 165 180 252; }
+.admin-theme { --admin-storebat: 194 65 12; --admin-mirai: 77 124 15; }
+.admin-supplier-storebat { --supplier-light: 154 52 18; --supplier-dark: 253 186 116; }
+.admin-supplier-mirai { --supplier-light: 63 98 18; --supplier-dark: 190 242 100; }
 .admin-supplier-manual { --supplier-light: 51 65 85; --supplier-dark: 203 213 225; border-style: dashed; }
 .admin-theme .admin-supplier-badge {
   --supplier-color: var(--supplier-light);

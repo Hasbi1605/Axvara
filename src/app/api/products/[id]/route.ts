@@ -1,3 +1,5 @@
+import { STOREBAT_PARENT_REFRESH } from "@/lib/storebat/catalog";
+import { MIRAI_PARENT_REFRESH } from "@/lib/mirai/catalog";
 import { ARCHIVED_MESSAGE, hardDeleteReasonSql, hardDeleteEligibleSql } from "@/lib/product-archive";
 import { readJsonBody } from "@/lib/http-body";
 import { NextRequest, NextResponse } from "next/server";
@@ -107,6 +109,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       descriptionEn: (row.description_en as string | null) ?? null,
       nameEn: (row.name_en as string | null) ?? null,
       wrManaged: isWrManaged(row),
+      storebat_family: (row.storebat_family as string | null) ?? null,
+      mirai_family: (row.mirai_family as string | null) ?? null,
       aivault_family: (row.aivault_family as string | null) ?? null,
       price: row.price,
       comparePrice: row.compare_price ?? undefined,
@@ -204,23 +208,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const data = parsed.data;
   const existing = await queryFirst(
     `SELECT id, category_id, name, slug, description, price, compare_price, stock, source, wr_product_id, wr_auto_managed,
-            sk_product_id, sk_auto_managed, aivault_family, archived_at
+            sk_product_id, sk_auto_managed, aivault_family, storebat_family, mirai_family, archived_at
        FROM products WHERE id=?`,
     id,
-  ) as { id: number; category_id: number | null; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number; aivault_family?: string | null; archived_at?: string | null } | undefined;
+  ) as { id: number; category_id: number | null; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number; aivault_family?: string | null; storebat_family?: string | null; mirai_family?: string | null; archived_at?: string | null } | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (existing.archived_at && (data.isActive === true || data.variants?.some(v => v.is_active === 1))) {
     return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
   }
-  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id,price,manual_cost,wr_variant_id,sk_variant_id,aivault_admin_price_idr,tunvn_admin_price_idr,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE product_id=?", id);
+  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id,price,manual_cost,wr_variant_id,sk_variant_id,aivault_admin_price_idr,storebat_product_id,storebat_admin_price_idr,mirai_package_code,mirai_admin_price_idr,tunvn_admin_price_idr,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE product_id=?", id);
   // Identitas TUNVN = kolom durable, bukan slug: semua family TUNVN memakai
   // jalur aktivasi/publikasi yang sama.
   const tunvnVariants = storedVariants.filter(v => v.tunvn_source_product_id != null);
   for (const incoming of data.variants ?? []) {
     const current = storedVariants.find(v => Number(v.id) === incoming.id);
+    if (existing.storebat_family && (!current?.storebat_product_id || incoming.fulfillment_mode !== "manual" || (incoming.buyer_field_key !== undefined && incoming.buyer_field_key !== (current.sku === "SB-BUFF" ? "muse_invite_code" : null)) || (current.sku === "SB-BUFF" && incoming.max_qty !== undefined && incoming.max_qty !== 30))) return NextResponse.json({error:"Identitas varian StoreBat tidak boleh diubah."},{status:409});
+    if (!existing.storebat_family && /^SB-/i.test(String(incoming.sku ?? ""))) return NextResponse.json({error:"Varian StoreBat harus dibuat melalui sinkron supplier."},{status:409});
+    if (existing.mirai_family && (!current?.mirai_package_code || (incoming.fulfillment_mode && incoming.fulfillment_mode !== "manual") || incoming.buyer_field_key)) return NextResponse.json({ error: "Identitas varian Mirai tidak boleh diubah." }, { status: 409 });
+    if (!existing.mirai_family && /^MR-/i.test(String(incoming.sku ?? ""))) return NextResponse.json({ error: "Varian Mirai harus dibuat melalui sinkron supplier." }, { status: 409 });
     if (existing.aivault_family && (!current || !String(current.sku).startsWith("AV-") || (incoming.fulfillment_mode && incoming.fulfillment_mode!=="manual") || incoming.buyer_field_key)) return NextResponse.json({error:"Produk AIVault hanya boleh memakai varian supplier asal."},{status:409});
     if (!existing.aivault_family && String(incoming.sku ?? "").startsWith("AV-")) return NextResponse.json({error:"Varian AIVault harus dibuat melalui sinkron supplier."},{status:409});
-    if (/^(TUNVN-|AV-)/.test(String(current?.sku)) && incoming.sku && incoming.sku !== current?.sku) return NextResponse.json({ error: "Identitas varian tidak boleh diubah." }, { status: 409 });
+    if (/^(TUNVN-|AV-|SB-|MR-)/.test(String(current?.sku)) && incoming.sku && incoming.sku !== current?.sku) return NextResponse.json({ error: "Identitas varian tidak boleh diubah." }, { status: 409 });
     if ((current?.sku ?? incoming.sku)?.toString().match(/^TUNVN-BUFF-(5|10|20|30)B$/) && incoming.is_active !== 0) return NextResponse.json({ error: "Paket lama sudah dipensiunkan." }, { status: 409 });
     const maxQty = incoming.max_qty === undefined ? current?.max_qty : incoming.max_qty;
     if (maxQty != null && Number(maxQty) < (incoming.min_qty ?? Number(current?.min_qty ?? 1))) return NextResponse.json({ error: "Maksimum di bawah minimum." }, { status: 400 });
@@ -230,6 +238,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     for (const incoming of data.variants) {
       const current = incoming.id ? storedVariants.find(v => Number(v.id) === incoming.id) : undefined;
       const isAivault = Boolean(existing.aivault_family) || String(current?.sku ?? incoming.sku ?? "").toUpperCase().startsWith("AV-");
+      if (existing.storebat_family && bulkConfigDiffersFromStored((incoming as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, current)) return NextResponse.json({error:"bulk_pricing_storebat_forbidden"},{status:409});
+      if (existing.mirai_family && bulkConfigDiffersFromStored((incoming as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, current)) return NextResponse.json({ error: "bulk_pricing_mirai_forbidden" }, { status: 409 });
       if (isAivault && bulkConfigDiffersFromStored((incoming as Record<string, unknown>).bulk_pricing as { enabled?: unknown; tiers?: unknown } | undefined, current as Record<string, unknown> | undefined)) {
         return NextResponse.json({ error: "bulk_pricing_aivault_managed", message: AIVAULT_BULK_MANAGED_MESSAGE }, { status: 409 });
       }
@@ -273,7 +283,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       "SELECT id FROM product_variants WHERE product_id=? AND is_active=1 LIMIT 1",
       id,
     );
-    if (!activeVariant && !data.variants?.some(v => v.is_active === 1) && !tunvnVariants.length && !existing.aivault_family) {
+    if (!activeVariant && !data.variants?.some(v => v.is_active === 1) && !tunvnVariants.length && !existing.aivault_family && !existing.storebat_family && !existing.mirai_family) {
       return NextResponse.json(
         { error: "Aktifkan minimal satu varian sebelum mengaktifkan produk." },
         { status: 409 },
@@ -283,7 +293,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const hasExplicitVariants = Array.isArray(data.variants);
   if (hasExplicitVariants && data.variants) {
     const activeVars = data.variants.filter(v => (v.is_active ?? 1) !== 0);
-    if (data.isActive !== false && activeVars.length === 0 && !tunvnVariants.length && !existing.aivault_family) {
+    if (data.isActive !== false && activeVars.length === 0 && !tunvnVariants.length && !existing.aivault_family && !existing.storebat_family && !existing.mirai_family) {
       return NextResponse.json({ error: "Minimal satu varian harus aktif." }, { status: 400 });
     }
   }
@@ -590,6 +600,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             // membekukan harga rumus supplier menjadi override manual sehingga
             // markup/kurs/modal berikutnya berhenti memengaruhi harga.
             const priceChanged = !storedRow || Number(v.price) !== Number(storedRow.price);
+            if (v.id && priceChanged && storedRow?.storebat_product_id) statements.push(d1.prepare("UPDATE product_variants SET storebat_admin_price_idr=? WHERE id=? AND product_id=?").bind(v.price,v.id,id));
+            if (v.id && priceChanged && storedRow?.mirai_package_code) statements.push(d1.prepare("UPDATE product_variants SET mirai_admin_price_idr=? WHERE id=? AND product_id=?").bind(v.price, v.id, id));
             if (v.id && priceChanged && autoSku.startsWith("AV-")) statements.push(d1.prepare("UPDATE product_variants SET aivault_admin_price_idr=? WHERE id=? AND product_id=?").bind(v.price,v.id,id));
             if (v.id && priceChanged && autoSku.startsWith("TUNVN-")) statements.push(d1.prepare("UPDATE product_variants SET tunvn_admin_price_idr=? WHERE id=? AND product_id=?").bind(v.price,v.id,id));
             if (copyWrite) statements.push(d1.prepare(copyWrite.sql).bind(...copyWrite.params));
@@ -624,7 +636,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         } else if (defaultVariant && changesLegacyCommerceFields) {
           const variantFields: string[] = [];
           const variantValues: unknown[] = [];
-          if (data.price !== undefined) { variantFields.push("price=?"); variantValues.push(data.price); }
+          if (data.price !== undefined) {
+            variantFields.push("price=?"); variantValues.push(data.price);
+            if (existing.storebat_family && Number(data.price) !== Number(storedVariants.find(v=>Number(v.id)===Number(defaultVariant))?.price)) { variantFields.push("storebat_admin_price_idr=?"); variantValues.push(data.price); }
+            if (existing.mirai_family && Number(data.price) !== Number(storedVariants.find(v => Number(v.id) === Number(defaultVariant))?.price)) { variantFields.push("mirai_admin_price_idr=?"); variantValues.push(data.price); }
+          }
           if (data.comparePrice !== undefined) { variantFields.push("compare_price=?"); variantValues.push(data.comparePrice ?? null); }
           if (data.stock !== undefined) { variantFields.push("stock=?"); variantValues.push(data.stock); }
           variantFields.push("updated_at=datetime('now')");
@@ -638,6 +654,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         // Batch ATOMIC via operation_guards precondition di statements:
         // guard gagal => CHECK => SELURUH batch rollback (D1), lalu map
         // constraint ke 409 stale (bukan 500).
+        if (existing.storebat_family && data.isActive===true && !hasExplicitVariants) {
+          statements.push(d1.prepare("UPDATE product_variants SET is_active=1 WHERE id=(SELECT MIN(id) FROM product_variants WHERE product_id=? AND storebat_product_id IS NOT NULL) AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1)").bind(id,id));
+          statements.push(d1.prepare(`UPDATE products ${STOREBAT_PARENT_REFRESH} WHERE id=?`).bind(id));
+        }
+        if (existing.mirai_family && data.isActive === true && !hasExplicitVariants) {
+          statements.push(d1.prepare("UPDATE product_variants SET is_active=1 WHERE id=(SELECT MIN(id) FROM product_variants WHERE product_id=? AND mirai_package_code IS NOT NULL) AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1)").bind(id, id));
+          statements.push(d1.prepare(`UPDATE products ${MIRAI_PARENT_REFRESH} WHERE id=?`).bind(id));
+        }
         if (existing.aivault_family && data.isActive===true && !hasExplicitVariants) {
           statements.push(d1.prepare("UPDATE product_variants SET is_active=1 WHERE product_id=? AND aivault_service_id IS NOT NULL AND sku='AV-'||aivault_service_id AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=? AND is_active=1)").bind(id,id));
           statements.push(d1.prepare("UPDATE products SET price=COALESCE((SELECT MIN(price) FROM product_variants WHERE product_id=? AND is_active=1),price),stock=COALESCE((SELECT SUM(MAX(stock,0)) FROM product_variants WHERE product_id=? AND is_active=1),0) WHERE id=?").bind(id,id,id));

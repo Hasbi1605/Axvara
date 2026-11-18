@@ -221,6 +221,8 @@ describe("sendDueDailyAdminSummary", () => {
         INSERT INTO store_settings (key, value) VALUES
           ('tunvn_balance_last_value', '3.5'),
           ('aivault_balance_last_value', '12'),
+          ('mirai_balance_last_value', '4.2'),
+          ('mirai_balance_error', '{"error":"http_503","streak":2}'),
           ('tunvn_catalog_success_at', '${nowMs - 60_000}'),
           ('tunvn_buff_sync_at', '${nowMs - 45 * 60_000}'),
           ('tunvn_buff_last_error', '{"error":"upstream_<502>&bad"}'),
@@ -254,6 +256,8 @@ describe("sendDueDailyAdminSummary", () => {
       expect(text).toContain("IndoSMM: <b>Rp80.000</b> ⚠️");
       expect(text).toContain("TUNVN: <b>3.50 USDT</b> ⚠️");
       expect(text).toContain("AIVault: <b>$12</b>");
+      expect(text).toContain("Mirai: <b>4.20 USDT</b> ⚠️");
+      expect(text).toContain("http_503 (2x)");
 
       // Section 4: stale Buff only (HTML-escaped error) + recovered in 24h (Sekalipay)
       expect(text).toContain("Basi saat ini: <b>TUNVN (Muse Buff)</b> (45 menit)");

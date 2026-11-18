@@ -19,6 +19,8 @@ import type { Row } from "./types";
 import { MAX_ATTEMPTS, RETRY_DELAYS } from "./types";
 import { findReservedForOrderVariant, inventoryMatchesItem } from "./inventory-binding";
 import { isValidBuyerEmail, sendWebDeliveryEmail, orderLineLabel } from "./buyer-email";
+import { eligibleStorebatLine } from "@/lib/storebat/orders";
+import { eligibleMiraiLine } from "@/lib/mirai/orders";
 import { eligibleAivaultLine } from "@/lib/aivault/orders";
 import { eligibleTunvnLine } from "@/lib/tunvn/orders";
 import { CredentialSendDeferred, sendFencedCredential } from "./send-fence";
@@ -261,6 +263,20 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   } else {
     try { if (eligibleAivaultLine(JSON.parse(String(order.items ?? "[]"))[Number(itemRow.item_index)] ?? {})) return false; } catch { /* manifest validation below */ }
   }
+  let storebatKind: unknown;
+  if (itemRow.storebat_link_id != null) {
+    const link=await database.queryFirst("SELECT status,kind FROM storebat_order_links WHERE id=? AND order_code=? AND item_index=?",itemRow.storebat_link_id,orderCode,itemRow.item_index);
+    if (link?.status!=="completed") return false;
+    storebatKind=link.kind;
+  } else {
+    try { if (eligibleStorebatLine(JSON.parse(String(order.items ?? "[]"))[Number(itemRow.item_index)] ?? {})) return false; } catch { /* manifest validation below */ }
+  }
+  if (itemRow.mirai_link_id != null) {
+    const link = await database.queryFirst("SELECT status FROM mirai_order_links WHERE id=? AND order_code=? AND item_index=?", itemRow.mirai_link_id, orderCode, itemRow.item_index);
+    if (link?.status !== "completed") return false;
+  } else {
+    try { if (eligibleMiraiLine(JSON.parse(String(order.items ?? "[]"))[Number(itemRow.item_index)] ?? {})) return false; } catch { /* manifest validation below */ }
+  }
   let tunvnKind: unknown;
   if (itemRow.tunvn_link_id != null) {
     const link=await database.queryFirst("SELECT status,kind FROM tunvn_order_links WHERE id=? AND order_code=? AND item_index=?",itemRow.tunvn_link_id,orderCode,itemRow.item_index);
@@ -272,12 +288,12 @@ export async function processItem(order: Row, itemRow: Row, adminChatId?: string
   const lease = await claimItemLease(itemRow, database, parent);
   if ("skip" in lease) return lease.skip;
   const { item, leaseFence } = lease;
-  if (item.tunvn_link_id != null || item.aivault_link_id != null) {
+  if (item.tunvn_link_id != null || item.aivault_link_id != null || item.storebat_link_id != null || item.mirai_link_id != null) {
     try {
       if (item.delivered_ciphertext && item.delivered_iv) {
         const plaintext=await decryptSecret(String(item.delivered_ciphertext),String(item.delivered_iv));
         await sendItem(String(item.recipient_channel),String(item.recipient_target ?? ""),orderCode,itemId,leaseFence,plaintext,Number(item.qty),database,Number(item.variant_id));
-      } else if (tunvnKind==="buff") {
+      } else if (tunvnKind==="buff" || storebatKind==="muse_buff") {
         const { notifyBuyerBuffCompleted }=await import("@/lib/notify-buyer");
         if (!await notifyBuyerBuffCompleted(orderCode,Number(item.item_index),database)) throw new Error("buff_notice_deferred");
       } else throw new Error("supplier_receipt_missing");

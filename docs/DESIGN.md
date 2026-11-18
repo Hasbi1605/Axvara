@@ -309,13 +309,15 @@ Legenda noninteraktif membungkus di layar kecil; select/filter tetap native.
 | SK | Sekalipay | Ungu | `#D8B4FE` | `#6B21A8` | 8,53:1 / 7,03:1 |
 | TUNVN | TUNVN PREHUB | Pink | `#F9A8D4` | `#9D174D` | 8,38:1 / 6,34:1 |
 | AIVault | AIVault Hub | Indigo | `#A5B4FC` | `#3730A3` | 7,66:1 / 8,00:1 |
+| StoreBat | StoreBat (VenteBot) | Oranye | `#FDBA74` | `#9A3412` | Belum diukur di QA T5 |
+| Mirai | MiraiAPI | Lime | `#BEF264` | `#3F6212` | Belum diukur di QA T5 |
 | Manual | Manual Axvara | Slate, outline putus-putus | `#CBD5E1` | `#334155` | 9,94:1 / 8,38:1 |
 
 Palet identitas di `admin.css` terpisah dari token semantik status dan mengikuti
 Terang/Gelap/Ikuti sistem. Warna bukan satu-satunya pembeda: label, titik, bentuk,
 dan nama aksesibel tetap tersedia. Status implementasi lokal; bukan bukti deploy.
 
-Verifikasi Chrome headless157, fixture lokal pada route sementara (sudah dihapus),
+Verifikasi awal (lima asal sebelum StoreBat/Mirai): Chrome headless157, fixture lokal pada route sementara (sudah dihapus),
 1440×1000 dan390×844: lima asal + Live/Nonaktif/Stok habis/S&K terlihat, filter
 kelima asal, empty pencarian dan Tab ke select dengan outline cyan2px lulus;
 tanpa overflow halaman, error console/page atau request gagal. Route dan6aset
@@ -325,6 +327,21 @@ semua ≥4,5:1 dan mode sistem mengikuti tema masing-masing. Screenshot di
 `/tmp/supplier-badges-desktop.png` dan `/tmp/supplier-badges-mobile.png`.
 Fixture menguji presentasi/filter; bukan auth, persistensi backend atau transaksi.
 
+
+## Panel supplier StoreBat dan Mirai (19 November 2026, lokal saja)
+
+Supplier → StoreBat dan Supplier → Mirai memakai panel bersama
+`src/components/admin/SupplierCatalogManager.tsx` dengan Ringkas, Antrean,
+Markup dan Alat. Ringkas membedakan saldo belum terbaca dari nol (USD untuk
+StoreBat, USDT untuk Mirai; dua desimal). Antrean menyediakan Retry aman
+pra-kirim dan dialog receipt yang dibuka eksplisit; Markup memakai
+`src/components/admin/SupplierPriceRow.tsx` (harga jual Rupiah, biaya Buff per
+miliar token); Alat punya tindakan sinkron paksa terpisah. Loading, kosong, error
+dan gagal sebagian punya tampilan berbeda. Badge identitas dipakai di Produk,
+grup dan antrean supplier; feed Pesanan umum belum memuat link kedua supplier.
+
+QA browser Paseo dengan fixture pada lebar 1440/390 tidak menemukan overflow
+atau error console; bukan bukti transaksi, persistensi produksi atau deploy.
 
 ## Baris harga supplier TUNVN/AIVault (15 November 2026, lokal saja)
 

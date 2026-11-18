@@ -1,4 +1,5 @@
 import { z } from "zod";
+export { miraiEligibility, type MiraiEligibility } from "@/lib/mirai/purchase";
 
 export const buyerFieldsSchema = z.object({ muse_invite_code: z.string().trim().regex(/^[A-Za-z0-9]{6}$/, "Kode Invite Muse harus 6 huruf/angka ASCII.").optional() }).strict();
 export type BuyerFields = z.infer<typeof buyerFieldsSchema>;
@@ -37,6 +38,8 @@ export function withoutPrivateBuyerData(items: unknown[]): unknown[] {
     delete publicItem.buyer_fields;
     delete publicItem.tunvn_eligibility;
     delete publicItem.aivault_eligibility;
+    delete publicItem.storebat_eligibility;
+    delete publicItem.mirai_eligibility;
     return publicItem;
   });
 }
@@ -68,4 +71,17 @@ export function aivaultEligibility(row: Record<string, unknown>, qty: number): A
   const cost=Number(row.aivault_source_cost_usd);
   return { version:1,service_id:service,source_variant_id:Number(row.id),quantity:qty,
     ...(Number.isFinite(cost) && cost>0 ? {cost_usd:Math.round(cost*qty*1e8)/1e8} : {}) };
+}
+
+export type StorebatEligibility = { version: 1; kind: "product" | "muse_buff"; sku: string; product_id: number; family: string; source_variant_id: number; quantity: number; cost_usd?: number; fx_idr_per_usd?: number };
+export function storebatEligibility(row: Record<string, unknown>, qty: number): StorebatEligibility | undefined {
+  const id = Number(row.storebat_product_id), variant = Number(row.id), family = row.storebat_family;
+  const buff = id === 124;
+  const sku = buff ? "SB-BUFF" : `SB-${id}`;
+  if (!Number.isSafeInteger(id) || id < 1 || id === 129 || id === 2147483000 || row.sku !== sku || typeof family !== "string" || !family
+    || (buff && (family !== "muse-buff" || row.buyer_field_key !== "muse_invite_code" || Number(row.max_qty) !== 30))
+    || !Number.isSafeInteger(variant) || variant < 1 || !Number.isSafeInteger(qty) || qty < 1 || qty > (buff ? 30 : 100)) return undefined;
+  const unit = Number(row.storebat_cost_usd), fx = Number(row.storebat_fx_idr_per_usd), cost = unit * qty;
+  return { version:1, kind:buff ? "muse_buff" : "product", sku, product_id:id, family, source_variant_id:variant, quantity:qty,
+    ...(Number.isFinite(cost) && cost > 0 ? { cost_usd:cost } : {}), ...(Number.isFinite(fx) && fx > 0 ? { fx_idr_per_usd:fx } : {}) };
 }

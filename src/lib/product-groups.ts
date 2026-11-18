@@ -23,7 +23,7 @@ import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { effectiveVariantStockSql } from "@/lib/catalog-availability";
 
 type Row = Record<string, unknown>;
-export type ProductGroupSupplier = "WR" | "SK" | "TUNVN" | "AIVault" | "Manual";
+export type ProductGroupSupplier = "WR" | "SK" | "TUNVN" | "AIVault" | "StoreBat" | "Mirai" | "Manual";
 
 export type GroupMemberStats = {
   productId: number;
@@ -93,6 +93,8 @@ const BUYABLE_VARIANT = `${wrNewSaleSql("v")} AND (${EFFECTIVE_STOCK}=-1 OR ${EF
 const VARIANT_COST = `CASE
   WHEN v.sk_variant_id IS NOT NULL THEN sk.sk_price
   WHEN v.wr_variant_id IS NOT NULL THEN wr.wr_price
+  WHEN v.storebat_product_id IS NOT NULL THEN v.storebat_cost_usd * COALESCE(NULLIF(v.storebat_fx_idr_per_usd,0), ${FX})
+  WHEN v.mirai_package_code IS NOT NULL THEN v.mirai_cost_usdt * COALESCE(NULLIF(v.mirai_fx_idr_per_usdt,0), ${FX})
   WHEN v.aivault_service_id IS NOT NULL THEN av.unit_price_usd * COALESCE(NULLIF(av.fx_idr_per_usd,0), ${FX})
   WHEN v.tunvn_buff_quantity_b IS NOT NULL OR v.sku LIKE 'TUNVN-BUFF%' THEN v.tunvn_cost_usdt * COALESCE(NULLIF(v.tunvn_fx_idr_per_usdt,0), ${FX})
   WHEN v.tunvn_source_product_id IS NOT NULL OR v.sku LIKE 'TUNVN-%' THEN tp.price_usdt * COALESCE(NULLIF(tp.fx_idr_per_usdt,0), ${FX})
@@ -116,7 +118,7 @@ const GROUP_STATS_SELECT = `SELECT g.id AS group_id, g.name AS group_name, g.pre
     p.id AS p_id, p.name AS p_name, p.slug AS p_slug, p.image_url AS p_image,
     p.is_active AS p_active, p.archived_at AS p_archived,
     p.source AS p_source, p.wr_product_id AS p_wr, p.sk_product_id AS p_sk,
-    p.tunvn_family AS p_tunvn, p.aivault_family AS p_aivault,
+    p.tunvn_family AS p_tunvn, p.aivault_family AS p_aivault, p.storebat_family AS p_storebat, p.mirai_family AS p_mirai,
     ${MEMBER_STOCK_SQL} AS st_stock,
     ${MEMBER_MODAL_SQL} AS st_modal`;
 const GROUP_STATS_FROM = `FROM product_groups g
@@ -126,6 +128,8 @@ const GROUP_STATS_FROM = `FROM product_groups g
 
 function supplierOf(row: Row): ProductGroupSupplier {
   if (row.p_tunvn != null) return "TUNVN";
+  if (row.p_storebat != null) return "StoreBat";
+  if (row.p_mirai != null) return "Mirai";
   if (row.p_aivault != null) return "AIVault";
   if (row.p_sk != null) return "SK";
   if (String(row.p_source ?? "") === "warung_rebahan" || row.p_wr != null) return "WR";

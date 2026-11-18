@@ -67,6 +67,17 @@ it("default periode Minggu: Untung Produk + margin + supplier + grafik tampil", 
   expect(screen.queryByText(/Belum termasuk biaya operasional/)).toBeNull();
 });
 
+it("Ringkasan memisahkan modal dan untung StoreBat/Mirai dari stok sendiri", () => {
+  render(<AdminOverview data={{ ...data, profit_by_supplier: { ...data.profit_by_supplier,
+    storebat: { orders: 1, revenue: 20000, cost: 11000, profit: 9000 },
+    mirai: { orders: 1, revenue: 19000, cost: 12000, profit: 7000 },
+  } }} loading={false} />);
+  expect(screen.getByText(/modal Rp\s*11\.000/).parentElement?.textContent).toContain("StoreBat");
+  expect(screen.getByText(/modal Rp\s*12\.000/).parentElement?.textContent).toContain("Mirai");
+  expect(screen.getByLabelText("Supplier: StoreBat (VenteBot)")).toBeTruthy();
+  expect(screen.getByLabelText("Supplier: MiraiAPI")).toBeTruthy();
+});
+
 it("grafik interaktif: toggle chip + tooltip harian", async () => {
   render(<AdminOverview data={data} loading={false} />);
   await act(async () => {});
@@ -109,7 +120,7 @@ it("switching period updates the chart, top products, supplier amounts and compo
     orders:1,revenue:amount,cost:10000,profit:amount-10000,estimated_orders:0,
     payment_fees:0,unique_code_bonus:0,refund_expenses:0,operational_expenses:0,net_profit:amount-10000,expenses_by_category:emptyExpenseTotals(),estimated_order_codes:[],
     series:[{date,orders:1,revenue:amount,cost:10000,profit:amount-10000,expenses:0,payment_fees:0,net_profit:amount-10000}],
-    suppliers:{wr:{orders:0,revenue:0,cost:0,profit:0},sk:{orders:0,revenue:0,cost:0,profit:0},manual:{orders:1,revenue:amount,cost:10000,profit:amount-10000},pedia:{orders:0,revenue:0,cost:0,profit:0},games:{orders:0,revenue:0,cost:0,profit:0},tunvn:{orders:0,revenue:0,cost:0,profit:0},aivault:{orders:0,revenue:0,cost:0,profit:0}},
+    suppliers:{wr:{orders:0,revenue:0,cost:0,profit:0},sk:{orders:0,revenue:0,cost:0,profit:0},manual:{orders:1,revenue:amount,cost:10000,profit:amount-10000},pedia:{orders:0,revenue:0,cost:0,profit:0},games:{orders:0,revenue:0,cost:0,profit:0},tunvn:{orders:0,revenue:0,cost:0,profit:0},aivault:{orders:0,revenue:0,cost:0,profit:0},storebat:{orders:0,revenue:0,cost:0,profit:0},mirai:{orders:0,revenue:0,cost:0,profit:0}},
     channels:{web:{orders:1,revenue:amount,cost:10000,profit:amount-10000},telegram:{orders:0,revenue:0,cost:0,profit:0},whatsapp:{orders:0,revenue:0,cost:0,profit:0}},
     top_products:[{name,qty:1,revenue:amount,cost:10000,profit:amount-10000}],
   });

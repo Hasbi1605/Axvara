@@ -15,9 +15,10 @@ import { Badge, Button, Input, Label } from "@/components/admin/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
+import { SupplierBadge } from "./supplier-style";
 
 export type SupplierLink = {
-  supplier: "wr" | "sk" | "tunvn";
+  supplier: "wr" | "sk" | "tunvn" | "storebat" | "mirai";
   id: number;
   status: string;
   attempt_count: number;
@@ -31,7 +32,7 @@ export type SupplierLink = {
   purchase_disabled?: boolean;
 };
 
-const SUPPLIER_NAME = { wr: "Warung Rebahan", sk: "Sekalipay", tunvn: "TUNVN" } as const;
+const SUPPLIER_NAME = { wr: "Warung Rebahan", sk: "Sekalipay", tunvn: "TUNVN", storebat: "StoreBat", mirai: "Mirai" } as const;
 
 export const TUNVN_ERROR_LABEL: Record<string,string> = {
   insufficient_balance: "Saldo supplier TUNVN tidak cukup. Top up saldo TUNVN, lalu tekan Retry.",
@@ -73,6 +74,7 @@ export function hasActiveSupplierLink(links: SupplierLink[] | undefined): boolea
 
 /** Cermin aturan route retry WR/SK: kuota tersisa, atau failed pra-kirim (WR). */
 export function canRetrySupplierLink(link: SupplierLink): boolean {
+  if (link.supplier === "storebat" || link.supplier === "mirai") return false; // Actions stay in the supplier's Antrean.
   if (link.supplier === "tunvn") return !link.purchase_disabled && link.can_retry === true;
   if (!["pending", "retry", "failed", "blocked_balance"].includes(link.status)) return false;
   if (link.status === "failed") {
@@ -82,11 +84,12 @@ export function canRetrySupplierLink(link: SupplierLink): boolean {
 }
 
 function canVoid(link: SupplierLink): boolean {
-  if (link.supplier === "tunvn") return false;
+  if (link.supplier !== "wr" && link.supplier !== "sk") return false;
   return ["pending", "retry", "blocked_balance"].includes(link.status);
 }
 
 function canCheck(link: SupplierLink): boolean {
+  if (link.supplier === "storebat" || link.supplier === "mirai") return false;
   if (link.supplier === "tunvn" || link.can_reconcile === true) return link.can_reconcile === true;
   // sync-now = tanya status order yang SUDAH terkirim ke supplier sekarang
   // (WR /transactions, SK /v1/trx). Kedua supplier punya route-nya sejak
@@ -143,7 +146,7 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
         : null;
       return <div key={key} className="rounded-md border border-admin-border bg-admin-subtle/40 p-3">
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Badge variant={toneOf(link)}>{link.supplier.toUpperCase()}</Badge>
+          {link.supplier === "storebat" || link.supplier === "mirai" ? <SupplierBadge supplier={SUPPLIER_NAME[link.supplier]} /> : <Badge variant={toneOf(link)}>{link.supplier.toUpperCase()}</Badge>}
           <span className="font-medium text-admin-fg">{heading}</span>
           {link.supplier_order_id && <span className="font-mono text-admin-muted">{link.supplier_order_id}</span>}
           {link.status === "completed" && link.delivery_status && link.delivery_status !== "delivered" && <span className="text-admin-muted">· kredensial: {link.delivery_status === "failed" ? "gagal kirim (dicoba ulang)" : "antre kirim"}</span>}

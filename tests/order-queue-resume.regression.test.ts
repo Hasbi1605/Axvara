@@ -10,6 +10,7 @@ const m = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/tunvn/orders", () => ({ createTunvnOrderLinks: async () => 0, processTunvnOrders: async () => 0 }));
 vi.mock("@/lib/aivault/orders", () => ({ createAivaultOrderLinks: async () => 0, processAivaultOrders: async () => 0 }));
+vi.mock("@/lib/mirai/orders", () => ({ createMiraiOrderLinks: async () => 0, processMiraiOrders: async () => 0 }));
 vi.mock("@/lib/fulfillment/delivery/inventory-binding", () => ({ ensureFulfillmentItems: async () => [] }));
 vi.mock("@/lib/fulfillment/deliver", () => ({ ensureFulfillmentForPaidOrder: async () => false }));
 vi.mock("@/lib/warung-rebahan/client", () => ({ isWrAutoOrderEnabled: () => true }));

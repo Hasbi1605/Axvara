@@ -27,11 +27,14 @@ beforeEach(() => {
   clearRateLimitBucketsForTest();
   fx.sql.exec(`INSERT INTO products(id,name,slug,price,stock,is_active) VALUES
       (1,'ChatGPT Private','chatgpt-tunvn',112400,22,1),
-      (2,'Google AI / Gemini Plus','gemini-plus-av',13500,5,1);
+      (2,'Google AI / Gemini Plus','gemini-plus-av',13500,5,1),
+      (3,'API GPT Token','api-gpt-token-mr',5600,-1,1);
     UPDATE products SET aivault_family='gemini' WHERE id=2;
-    INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,tunvn_source_product_id,aivault_service_id) VALUES
-      (1,1,'TUNVN-86','Business 1 Bulan',112400,22,1,86,NULL),
-      (2,2,'${AV_SKU}','Plus 6 Bulan',13500,5,1,NULL,'${AV_SERVICE}');
+    UPDATE products SET mirai_family='gpt' WHERE id=3;
+    INSERT INTO product_variants(id,product_id,sku,label,price,stock,is_active,tunvn_source_product_id,aivault_service_id,mirai_package_code) VALUES
+      (1,1,'TUNVN-86','Business 1 Bulan',112400,22,1,86,NULL,NULL),
+      (2,2,'${AV_SKU}','Plus 6 Bulan',13500,5,1,NULL,'${AV_SERVICE}',NULL),
+      (13,3,'MR-GPT_10M','10M Token · 1 Hari',5600,-1,1,NULL,NULL,'GPT_10M');
     INSERT INTO tunvn_products(supplier_product_id,name,price_usdt,fx_idr_per_usdt,axvara_product_id) VALUES
       (86,'Business',4.6,18086,1);`);
 });
@@ -51,6 +54,10 @@ describe("Produk save never freezes formula prices into manual overrides", () =>
     const av = await putProduct(2, [{ id: 2, sku: AV_SKU, label: "Plus 6 Bulan", price: 13500 }]);
     expect(av.status).toBe(200);
     expect(variantRow(AV_SKU)).toMatchObject({ price: 13500, aivault_admin_price_idr: null });
+
+    const mr = await putProduct(3, [{ id: 13, sku: "MR-GPT_10M", label: "10M Token · 1 Hari", price: 5600 }]);
+    expect(mr.status).toBe(200);
+    expect(variantRow("MR-GPT_10M")).toMatchObject({ price: 5600, mirai_admin_price_idr: null });
   });
 
   it("still records a manual price when the admin really edits it", async () => {
@@ -59,6 +66,9 @@ describe("Produk save never freezes formula prices into manual overrides", () =>
 
     expect((await putProduct(2, [{ id: 2, sku: AV_SKU, label: "Plus 6 Bulan", price: 14000 }])).status).toBe(200);
     expect(variantRow(AV_SKU)).toMatchObject({ price: 14000, aivault_admin_price_idr: 14000 });
+
+    expect((await putProduct(3, [{ id: 13, sku: "MR-GPT_10M", label: "10M Token · 1 Hari", price: 6500 }])).status).toBe(200);
+    expect(variantRow("MR-GPT_10M")).toMatchObject({ price: 6500, mirai_admin_price_idr: 6500 });
   });
 });
 

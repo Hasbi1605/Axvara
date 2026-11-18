@@ -5,6 +5,8 @@ export const SYNC_ERROR_MAX_LEN = 200;
 const SECRET_ENV_KEYS = [
   "TUNVN_API_KEY",
   "AIVAULT_API_KEY",
+  "STOREBAT_API_KEY",
+  "MIRAI_API_KEY",
   "SEKALIPAY_API_KEY",
   "WARUNG_REBAHAN_API_KEY",
   "WARUNG_REBAHAN_PROXY_TOKEN",
@@ -32,7 +34,7 @@ export function sanitizeSyncError(raw: unknown): string {
     .replace(/(https?:\/\/)[^/\s:@]+:[^@\s]+@/gi, "$1[redacted]@")
     .replace(/\b(bearer\s+)[a-z0-9._\-+/=]{4,}/gi, "$1[redacted]")
     .replace(/([?&](?:api_?key|token|secret|key|sign|signature|password)=)[^&\s]+/gi, "$1[redacted]")
-    .replace(/((?:x-api-key|x-proxy-token|x-supplier-sync-token|authorization)\s*[:=]\s*)\S+/gi, "$1[redacted]");
+    .replace(/((?:x-api-key|x-reseller-key|x-proxy-token|x-supplier-sync-token|authorization)\s*[:=]\s*)\S+/gi, "$1[redacted]");
 
   for (const envKey of SECRET_ENV_KEYS) {
     const val = (process.env[envKey] ?? "").trim();

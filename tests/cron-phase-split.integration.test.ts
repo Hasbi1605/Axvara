@@ -324,7 +324,7 @@ describe("Worker runOperationsTick", () => {
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
       "synth:home", "synth:catalog", "synth:quote",
-      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
+      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:storebat_orders", "lite:mirai_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:storebat_catalog", "lite:mirai_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
       "publish-scheduled",
     ]);
     expect(calls.some((u) => u.includes("/api/cron/operations"))).toBe(false);
@@ -336,7 +336,7 @@ describe("Worker runOperationsTick", () => {
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
       "synth:home", "synth:catalog", "synth:quote",
-      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup", "lite:games_catalog",
+      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:storebat_orders", "lite:mirai_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:storebat_catalog", "lite:mirai_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup", "lite:games_catalog",
       "publish-scheduled",
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",

@@ -7,6 +7,8 @@ export const SUPPLIER_STYLES = {
   SK: { label: "SK", fullName: "Sekalipay", className: "admin-supplier-sk" },
   TUNVN: { label: "TUNVN", fullName: "TUNVN PREHUB", className: "admin-supplier-tunvn" },
   AIVault: { label: "AIVault", fullName: "AIVault Hub", className: "admin-supplier-aivault" },
+  StoreBat: { label: "StoreBat", fullName: "StoreBat (VenteBot)", className: "admin-supplier-storebat" },
+  Mirai: { label: "Mirai", fullName: "MiraiAPI", className: "admin-supplier-mirai" },
   Manual: { label: "Manual", fullName: "Manual Axvara", className: "admin-supplier-manual" },
 } as const;
 

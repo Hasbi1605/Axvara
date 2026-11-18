@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { IosIcon, type IosIconName } from "@/components/admin/AdminIcon";
-import { SupplierDropdown, SUPPLIER_ITEMS } from "./SupplierDropdown";
+import { SupplierDropdown, SUPPLIER_ITEMS, type SupplierSectionId } from "./SupplierDropdown";
 import { Button, Badge, TooltipProvider, Tooltip, TooltipTrigger, TooltipContent, Sheet, SheetContent, SheetTitle } from "./ui";
 import { useToast } from "@/components/ui/Toast";
 import { AdminThemeMenu, navigateWithDraftGuard } from "./AdminWorkspace";
 
-export type AdminSection = "summary" | "expenses" | "products" | "orders" | "categories" | "payments" | "warung" | "sekalipay" | "tunvn" | "aivault" | "pairs" | "links" | "pedia" | "games" | "articles" | "banners" | "broadcasts" | "subscribers" | "bot" | "agent" | "settings";
+export type AdminSection = "summary" | "expenses" | "products" | "orders" | "categories" | "payments" | SupplierSectionId | "pedia" | "games" | "articles" | "banners" | "broadcasts" | "subscribers" | "bot" | "agent" | "settings";
 
 const navigationGroups: { label: string; items: [AdminSection, string, IosIconName][] }[] = [
   { label: "Operasional", items: [
@@ -26,8 +26,7 @@ const navigationGroups: { label: string; items: [AdminSection, string, IosIconNa
     ["payments", "Metode & Rekonsiliasi", "credit-card"],
   ] },
   // Grup Supplier dirender khusus sebagai dropdown (SupplierDropdown) agar
-  // sidebar tidak memanjang: Warung Rebahan, Sekalipay, TUNVN, WR vs SK,
-  // Link Supplier. Lihat render di bawah.
+  // sidebar tidak memanjang saat supplier bertambah.
   { label: "Supplier", items: [] },
   { label: "Konten", items: [
     ["articles", "Artikel", "news"],

@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createD1Fixture, insertTestOrder, insertTestProduct } from "./helpers/d1-fixture";
+import { product, stubStorebatEnv } from "./helpers/storebat-fixture";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -21,6 +22,52 @@ async function call(job: string | null, secret = "s") {
 }
 
 describe("/api/cron/lite", () => {
+  it("Mirai catalog gives 503 on error and drains dirty groups after a full publish", async () => {
+    const f = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("MIRAI_ENABLED", "true");
+      vi.stubEnv("MIRAI_SYNC_ENABLED", "true");
+      vi.stubEnv("MIRAI_API_KEY", "mr-fixture");
+      vi.stubEnv("MIRAI_BASE_URL", "https://mirai.test/api/reseller/v1");
+      f.sql.prepare("INSERT INTO crypto_market_snapshot(id,fx_rate_text,fx_source,fx_effective_at) VALUES(1,'16000','nowpayments-estimate',?)").run(new Date().toISOString());
+      f.sql.exec("INSERT INTO product_groups(id,name) VALUES(52,'Mirai Fixture'); INSERT INTO product_group_dirty(group_id,version,pending) VALUES(52,1,1)");
+      const mocked = vi.fn(async () => Response.json({
+        success: true,
+        data: [{
+          code: "GPT_10M", group: "gpt", name: "GPT 10M tokens · 1D", quota_tokens: 10000000, duration_seconds: 86400,
+          reseller_price_vnd: 6650, retail_price_vnd: 7000, discount_bps: 500, min_quantity: 1, max_quantity: 10000,
+          preset_quantities: [1, 2], models: ["gpt-5.6"], unlimited: true, remaining_today: 0, custom_quantity: true,
+        }],
+      }));
+      vi.stubGlobal("fetch", mocked);
+      expect(await call("mirai_catalog", "wrong")).toMatchObject({ status: 401 });
+      expect(mocked).not.toHaveBeenCalled();
+      expect(await call("mirai_catalog")).toMatchObject({ status: 200, body: { ok: true, pairs_decided: 1 } });
+      f.sql.exec("DELETE FROM store_settings WHERE key='mirai_catalog_sync_at'");
+      mocked.mockResolvedValueOnce(new Response("fixture", { status: 503 }));
+      expect(await call("mirai_catalog")).toMatchObject({ status: 503, body: { error: "packages_ambiguous" } });
+      expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='mirai_catalog_last_error'").get()?.value).toContain("packages_ambiguous");
+    } finally {
+      f.close();
+      vi.unstubAllGlobals();
+    }
+  });
+  it("StoreBat catalog gives 503 on error and drains dirty groups after a full publish",async()=>{
+    const f=createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET","s");stubStorebatEnv();
+      f.sql.prepare("INSERT INTO crypto_market_snapshot(id,fx_rate_text,fx_source,fx_effective_at) VALUES(1,'20000','nowpayments-estimate',?)").run(new Date().toISOString());
+      f.sql.exec("INSERT INTO product_groups(id,name) VALUES(51,'Fixture'); INSERT INTO product_group_dirty(group_id,version,pending) VALUES(51,1,1)");
+      const mocked=vi.fn(async()=>Response.json({success:true,products:[product()],services:[]}));vi.stubGlobal("fetch",mocked);
+      expect(await call("storebat_catalog","wrong")).toMatchObject({status:401});expect(mocked).not.toHaveBeenCalled();
+      expect(await call("storebat_catalog")).toMatchObject({status:200,body:{ok:true,pairs_decided:1}});
+      f.sql.exec("DELETE FROM store_settings WHERE key='storebat_catalog_sync_at'");
+      mocked.mockResolvedValueOnce(new Response("fixture",{status:503}));
+      expect(await call("storebat_catalog")).toMatchObject({status:503,body:{error:"products_http_503"}});
+      expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='storebat_catalog_last_error'").get()?.value).toContain("products_http_503");
+    } finally {f.close();vi.unstubAllGlobals();}
+  });
   it("tunvn_catalog is authenticated, gated, uses fresh FX and reports upstream failure without a success heartbeat",async () => {
     const fx=createD1Fixture();
     try {

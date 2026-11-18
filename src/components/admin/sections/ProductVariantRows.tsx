@@ -354,6 +354,7 @@ export function ProductVariantRows({
   // sini mencerminkan kontrak server; server tetap otoritatif.
   const manualProduct = isBulkEligibleForm(form);
   const aivaultProduct = form.aivault_family != null || form.supplier === "AIVault";
+  const managedSupplier = form.storebat_family != null || form.mirai_family != null || form.supplier === "StoreBat" || form.supplier === "Mirai";
   const bulkValidations = formVariants.map((v) => validateBulkDraft(v.bulk ?? emptyBulkDraft(), {
     base: Number(v.price),
     minQty: Math.max(1, Number(v.min_qty ?? 1) || 1),
@@ -373,6 +374,8 @@ export function ProductVariantRows({
         <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-admin-fg">Daftar pilihan paket / varian <SupplierBadge supplier={form.supplier} /></span>
         {form.wrManaged ? (
           <span className="text-xs text-admin-muted">Varian dikelola Warung Rebahan — nama varian bisa diubah dan tidak tertimpa sync. Harga jual, stok, masa aktif, dan masa garansi ikut WR. Markup diatur di tab Warung Rebahan; harga coret tetap bisa diedit.</span>
+        ) : managedSupplier ? (
+          <span className="text-xs text-admin-muted">Varian baru dibuat lewat sinkron katalog supplier. Atur markup dan harga manual di tab Markup supplier.</span>
         ) : (
         <Button variant="outline" size="sm"
           type="button"
@@ -411,7 +414,7 @@ export function ProductVariantRows({
           const wrLocked = Number(v.wr_auto_managed ?? 0) === 1 || Boolean(form.wrManaged);
           // Semua varian akun TUNVN (SKU TUNVN-{id}) dikirim otomatis setelah
           // lunas; Buff Muse tetap perilaku lama (bukan akun).
-          const tunvnAutomatic = v.sku.startsWith("AV-") || /^TUNVN-\d+$/.test(v.sku)
+          const supplierAutomatic = managedSupplier || v.sku.startsWith("AV-") || /^TUNVN-\d+$/.test(v.sku)
             || (form.slug === "muse-ai-1-miliar-token" && v.sku === "TUNVN-BUFF-1B");
           const lockedInput = "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-muted cursor-not-allowed";
           const openInput = "h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg placeholder:text-admin-muted focus:border-admin-accent/50 focus:outline-none";
@@ -448,7 +451,7 @@ export function ProductVariantRows({
                 >
                   {v.is_active ? "Aktif" : "Mati"}
                 </Button>
-                {formVariants.length > 1 && !wrLocked && (
+                {formVariants.length > 1 && !wrLocked && !managedSupplier && (
                   <Button variant="outline" size="icon"
                     type="button"
                     onClick={() => {
@@ -522,11 +525,11 @@ export function ProductVariantRows({
                 />
               </Label>
                <Label className="block min-w-0 text-sm font-medium"><span className="mb-1 block sm:min-h-[28px]">Input pembeli</span>
-                <NativeSelect value={v.buyer_field_key ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null } : item))} className={openInput}>
+                <NativeSelect disabled={managedSupplier} value={v.buyer_field_key ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,buyer_field_key:e.target.value === "muse_invite_code" ? "muse_invite_code" : null } : item))} className={openInput}>
                   <option value="">Tidak ada</option><option value="muse_invite_code">Kode Invite Muse (6 huruf/angka)</option>
                 </NativeSelect>
               </Label>
-               <Label className="block min-w-0 text-sm font-medium"><span className="mb-1 block sm:min-h-[28px]">Maks. beli (kosong = 100)</span><Input type="number" min={1} max={100} value={v.max_qty ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,max_qty:e.target.value ? Number(e.target.value) : null } : item))} className={openInput} /></Label>
+               <Label className="block min-w-0 text-sm font-medium"><span className="mb-1 block sm:min-h-[28px]">Maks. beli (kosong = 100)</span><Input disabled={v.sku === "SB-BUFF" || v.sku.startsWith("MR-")} type="number" min={1} max={100} value={v.max_qty ?? ""} onChange={e => onSetFormVariants(curr => curr.map((item,i) => i === idx ? { ...item,max_qty:e.target.value ? Number(e.target.value) : null } : item))} className={openInput} /></Label>
               {/* Modal manual per unit (migrasi 0058, milik admin): untuk
                   produk manual/stok sendiri yang modalnya tak tercatat di
                   link supplier. 0 = murni tanpa modal. */}
@@ -588,7 +591,7 @@ export function ProductVariantRows({
             {!wrLocked ? (
               <div className="pt-3">
                 <Label htmlFor={`variant-fulfillment-${v.id ?? idx}`} className="mb-2 block">Cara pengiriman</Label>
-                {tunvnAutomatic ? <p className="text-xs leading-5 text-admin-muted">Diproses otomatis setelah pembayaran dikonfirmasi. Tidak perlu mengisi stok kredensial lokal.</p> : <>
+                {supplierAutomatic ? <p className="text-xs leading-5 text-admin-muted">Diproses otomatis setelah pembayaran dikonfirmasi. Tidak perlu mengisi stok kredensial lokal.</p> : <>
                 <NativeSelect
                   id={`variant-fulfillment-${v.id ?? idx}`}
                   value={v.fulfillment_mode || "manual"}

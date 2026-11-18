@@ -1,7 +1,7 @@
 import { QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
 import { sanitizeSyncError } from "@/lib/sync-status";
 
-export type SupplierBalanceKey = "tunvn" | "aivault";
+export type SupplierBalanceKey = "tunvn" | "aivault" | "storebat" | "mirai";
 
 export interface CheckSupplierLowBalanceOptions {
   supplier: SupplierBalanceKey;
@@ -24,6 +24,8 @@ export const SUPPLIER_BALANCE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 export const SUPPLIER_BALANCE_ALERT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const TUNVN_BALANCE_ALERT_USDT_DEFAULT = 5;
 export const AIVAULT_BALANCE_ALERT_USD_DEFAULT = 5;
+export const STOREBAT_BALANCE_ALERT_USD_DEFAULT = 5;
+export const MIRAI_BALANCE_ALERT_USDT_DEFAULT = 5;
 
 export function parseBalanceThreshold(rawValue: string | undefined, fallback: number): number {
   const text = (rawValue ?? "").trim();
@@ -38,6 +40,14 @@ export function tunvnBalanceAlertThreshold(): number {
 
 export function aivaultBalanceAlertThreshold(): number {
   return parseBalanceThreshold(process.env.AIVAULT_BALANCE_ALERT_USD, AIVAULT_BALANCE_ALERT_USD_DEFAULT);
+}
+
+export function storebatBalanceAlertThreshold(): number {
+  return parseBalanceThreshold(process.env.STOREBAT_BALANCE_ALERT_USD, STOREBAT_BALANCE_ALERT_USD_DEFAULT);
+}
+
+export function miraiBalanceAlertThreshold(): number {
+  return parseBalanceThreshold(process.env.MIRAI_BALANCE_ALERT_USDT, MIRAI_BALANCE_ALERT_USDT_DEFAULT);
 }
 
 function escapeHtml(text: string): string {
@@ -253,4 +263,35 @@ export async function checkAivaultLowBalance(
     format: formatUsd,
     now,
   });
+}
+
+export async function checkStorebatLowBalance(
+  db: DatabaseAccess,
+  now?: number,
+): Promise<SupplierBalanceCheckResult> {
+  const { isStorebatConfigured, fetchStorebatBalance, parseStorebatBalance } = await import("@/lib/storebat/client");
+  if (!isStorebatConfigured()) return { checked: false };
+  return checkSupplierLowBalance(db, {
+    supplier: "storebat",
+    label: "StoreBat",
+    fetchBalance: async () => {
+      const res = await fetchStorebatBalance();
+      if (res.kind !== "ok") throw new Error(res.kind);
+      const parsed = parseStorebatBalance(res.json);
+      if (!parsed) throw new Error("balance_shape");
+      return parsed.balance;
+    },
+    threshold: storebatBalanceAlertThreshold(),
+    step: 1,
+    format: formatUsd,
+    now,
+  });
+}
+
+export async function checkMiraiLowBalance(
+  db: DatabaseAccess,
+  now?: number,
+): Promise<SupplierBalanceCheckResult> {
+  const { checkMiraiLowBalance: run } = await import("@/lib/mirai/balance");
+  return run(db, now);
 }

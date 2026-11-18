@@ -586,6 +586,9 @@ Menggantikan model pasangan WR/SK dan Opsi B pada snapshot lama di bawah.
 shim ekspor agar kontrak caller cron/VPS/Telegram existing tetap kompatibel.
 `supplier_pairs` dan histori order dipertahankan, bukan target mutasi baru.
 
+Tambahan 19 November (lokal): StoreBat/Mirai ikut ranking grup lewat stok
+proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-2026-implementasi-lokal).
+
 - Schema0129: `product_groups` (nama, prefer_product_id, prefer_margin,
   winner_product_id, reason, decided_at, timestamps), `product_group_members`
   (PK group_id/product_id, product_id UNIQUE, position), `product_group_dirty`
@@ -3992,6 +3995,22 @@ JANGAN pernah mengirim balik objek `deployment_configs`/`env_vars` hasil GET; ve
 himpunan nama kunci sebelum/sesudah. Secret tanpa salinan lokal wajib di-backup owner
 (password manager) saat dibuat.
 
+**Tambahan StoreBat/Mirai (19 November 2026, implementasi lokal):** delapan env
+Pages berikut semuanya `secret_text`, termasuk URL dan flag. Sumber lokal hanya
+berkas kredensial git-ignored mode `600` di checkout utama; jangan mengutip nilainya.
+
+| Supplier | Empat kunci Pages | Gate runtime |
+| --- | --- | --- |
+| StoreBat | `STOREBAT_API_KEY`, `STOREBAT_BASE_URL`, `STOREBAT_ENABLED`, `STOREBAT_SYNC_ENABLED` | Konfigurasi valid + `STOREBAT_ENABLED=true` untuk dispatch; konfigurasi valid + `STOREBAT_SYNC_ENABLED=true` untuk sync. |
+| Mirai | `MIRAI_API_KEY`, `MIRAI_BASE_URL`, `MIRAI_ENABLED`, `MIRAI_SYNC_ENABLED` | Konfigurasi valid + **kedua** flag `true` untuk sync maupun dispatch. |
+
+Flag default OFF. URL punya fallback HTTPS di klien masing-masing; tanpa key
+atau dengan URL tidak valid integrasi tidak fetch. PM memasang delapan env
+produksi setelah push (sync dan dispatch ON, produk tetap OFF); tidak ada klaim
+env telah dipasang/deploy. Lihat [aturan StoreBat](agent-rules/storebat.md) dan
+[Mirai](agent-rules/mirai.md). Pengubah ambang saldo opsional bukan bagian dari
+delapan env rollout.
+
 #### Cadangan & pemulihan env (10 November 2026)
 
 - `.pages-env-backup` lokal di-ignore oleh `.pages-env-backup*`, izin `600`;
@@ -6541,6 +6560,72 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
 - **Backup harian D1 → R2 (`scripts/d1-backup-r2.cjs`, `.github/workflows/d1-backup.yml`):**
   - Workflow GitHub Actions terjadwal harian `19:23 UTC` (`02:23 WIB`) + `workflow_dispatch` menggunakan Secrets CI existing (`CLOUDFLARE_API_KEY`, `CLOUDFLARE_EMAIL`, `CLOUDFLARE_ACCOUNT_ID`).
   - Mengekspor `axvara-db` (`c21453bf-68ab-4efd-8b0d-22fb360c4f33`) melalui D1 Export REST API (`output_format: "polling"`, `at_bookmark`→`current_bookmark`), memvalidasi dump (`≥10.000` byte, `CREATE TABLE` untuk `orders`, `products`, `payment_transactions`, `fulfillment_items`, serta terminasi `;` agar dump terpotong gagal tertutup), mengompresi `gzip -9` + `SHA-256`, lalu mengunggah ke bucket R2 privat terpisah `axvara-db-backups` (lifecycle 30 hari prefix `daily/`, key `daily/YYYY/MM/axvara-db-<ISO>.sql.gz`; menolak keras bucket publik `axvara-assets`). Signed URL, isi dump, dan kredensial diredaksi dari seluruh log/error; `GITHUB_STEP_SUMMARY` hanya menulis key, ukuran raw/gzip, SHA-256, dan durasi.
+
+### 16.59 StoreBat dan Mirai — 19 November 2026 (implementasi lokal)
+
+Supplier Market terpisah dengan adapter `src/lib/storebat/` dan `src/lib/mirai/`,
+tanpa failover. `source='manual'` adalah representasi internal; kolom family dan
+identitas varian menentukan supplier. Induk/varian baru OFF. Sync memperbarui
+harga/stok/modal/FX tanpa menimpa copy, gambar, kategori atau status aktivasi
+milik admin. Kurasi T6b mengisi copy ID/EN dan gambar R2 saat pembuatan pertama,
+bukan menulis ulang baris existing; paket itu masih menunggu integrasi pada
+snapshot backend/admin ini.
+
+**Schema D1** (dicerminkan dalam `drizzle/schema.sql`):
+
+| Migrasi | Mirror dan kolom identitas/harga | Pemenuhan dan histori |
+| --- | --- | --- |
+| `drizzle/migrations/0139_storebat_supplier.sql` | `storebat_products` (ID, harga/tier USD, jenis kirim, stok/disappeared/API test), `storebat_services` (Muse, harga per miliar); `products.storebat_family` dan `product_variants.storebat_product_id` unik; varian `storebat_markup_percent`, `storebat_admin_price_idr`, `storebat_cost_usd`, `storebat_fx_idr_per_usd`. SKU `SB-<id>`/`SB-BUFF` (124). | `storebat_order_links` + FK `fulfillment_items.storebat_link_id`; ID order supplier, snapshot modal/FX, refund USD, receipt dan invite terenkripsi. |
+| `drizzle/migrations/0140_mirai_supplier.sql` | `mirai_packages` (kode/grup, kuota/durasi, biaya VND internal/USDT, limit jumlah, stok dan proyeksi harga); `products.mirai_family` dan `product_variants.mirai_package_code` unik; varian `mirai_markup_percent`, `mirai_admin_price_idr`, `mirai_cost_usdt`, `mirai_fx_idr_per_usdt`. SKU `MR-<package_code>`. | `mirai_order_links` + FK `fulfillment_items.mirai_link_id`; external ID dan kode order supplier, snapshot modal/FX, receipt terenkripsi. |
+| `0141_storebat_mirai_supplier_links.sql` | `INSERT OR IGNORE` shortlink `axvara.tech/go/*` yang dipakai salinan kurasi StoreBat/Mirai ke `supplier_links` existing; data saja, tanpa DDL. Salinan ID/EN, kategori dan gambar R2 kurasi ada di `src/lib/{storebat,mirai}/copy.ts` + `families.ts` dan hanya ditulis saat produk/varian pertama kali dibuat sync (insert-only; suntingan admin tidak ditimpa). | Migrasi remote dijalankan CI; jangan anggap sudah diterapkan sebelum bukti rilis. |
+
+Link unik per `(order_code, item_index)`, key stabil per link, status
+`pending`/`claimed`/`processing`/`completed`/`needs_admin`, sent marker, lease,
+`next_attempt_at` dan penghitung POST. Checkout web/Telegram menulis eligibilitas
+server ke baris order dan membuangnya dari respons publik. Jalur paid membuat
+link sebelum fulfillment generik; settlement mengantrekan pengiriman existing
+dan jalur paid/Retry yang selesai memicu pengiriman tanpa menunggu siklus katalog.
+
+**Cron dan pemantauan:** `mcp-worker/src/cron.ts` menjadwalkan empat job setiap
+menit melalui `src/app/api/cron/lite/route.ts`, budget standar 40 statement/job:
+
+| Job | Peran |
+| --- | --- |
+| `lite:storebat_catalog` (soft) | Mirror/proyeksi dengan lease dan throttle 45 detik; ETag 304 hanya memajukan heartbeat sukses dan membersihkan error, tanpa proyeksi/drain. |
+| `lite:mirai_catalog` (soft) | Mirror/proyeksi dengan lease dan throttle 45 detik; patuhi `Retry-After`; heartbeat sukses setelah proyeksi. |
+| `lite:storebat_orders`, `lite:mirai_orders` (hard) | Buat link untuk order eligible yang belum punya link; proses antrean, polling/pemulihan, dan cek saldo terjadwal dalam budget. |
+
+Setelah proyeksi katalog sukses, job mencoba drain grup bila ada budget. Watchdog
+cleanup memantau `storebat_catalog_success_at`/`mirai_catalog_success_at` bila
+sync aktif (basi 15 menit, tenggang awal 1 jam); Ringkasan Harian juga membawa
+kesehatan, saldo dan order macet. Ambang saldo default USD 5/5 USDT, cek maksimum
+sekali per 30 menit, alert 6 jam atau turun ≥1 unit mata uang terkait.
+
+**Admin:** section `/admin?section=storebat` dan `/admin?section=mirai` (Supplier →
+StoreBat/Mirai) memakai Ringkas, Antrean, Markup, Alat. Kontrol induk/copy ada di
+Produk; ID/SKU supplier dan grosir tidak dapat diatur sebagai stok manual.
+Route di bawah berlaku untuk kedua prefiks `/api/admin/storebat` dan
+`/api/admin/mirai` (autentikasi admin, respons `private, no-store`):
+
+| Route relatif | Kontrak |
+| --- | --- |
+| `GET /balance` | Saldo StoreBat USD, Mirai USDT (internal VND ÷ 26.000; jangan tampilkan VND di admin). |
+| `GET /products` | Mirror + mapping, stok, markup, harga, status konfigurasi dan sync terakhir. |
+| `PATCH /products/[id]` | ID numerik StoreBat (124 untuk Buff), `package_code` Mirai; `markup_percent`, `admin_price_idr` (NULL = rumus), `is_active` varian. |
+| `POST /publish` | Body `{}`; sinkron/proyeksi paksa dengan FX valid, tidak menyalakan produk. |
+| `GET /orders` | 100 link terbaru dari supplier itu, tanpa plaintext kredensial. |
+| `POST /orders` | Body `id` + `action` (`retry` atau `reveal`); Retry aman hanya pra-kirim, reveal eksplisit dan diaudit; Mirai menyaring nilai VND/error mentah dari receipt yang ditampilkan. |
+
+**Laporan dan grup produk:** `src/lib/dashboard-report.ts` dan
+`src/lib/reports/export.ts` memakai bucket `storebat`/`mirai` terpisah (Ringkasan
+dan ekspor), mengutamakan biaya/kurs beku pada link; StoreBat mengurangi refund
+supplier dari biaya laporan. Produk bisa ikut grup produk lintas supplier
+(`src/lib/product-groups.ts`): stok proyeksi dan modal × kurs menjadi input ranking,
+perubahan identitas/modal/FX varian menandai grup dirty dengan token CAS baru.
+Winner mengatur tampilan katalog, bukan mengubah sumber pemenuhan order.
+
+Detail pengaman dan pemulihan: [StoreBat](agent-rules/storebat.md) / [Mirai](agent-rules/mirai.md).
+Publikasi melalui CI `main`; deployment belum dibuktikan.
 
 ### 16.58 Cache edge berbasis revisi & invalidasi katalog — 18 November 2026 (lokal, Paket B-H; belum deploy)
 

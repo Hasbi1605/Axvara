@@ -6,12 +6,14 @@ import type { WrProduct } from "@/lib/warung-rebahan/client";
 import { syncSkProducts } from "@/lib/sekalipay/sync";
 import { publishTunvnCatalog } from "@/lib/tunvn/catalog";
 import { publishAivaultCatalog } from "@/lib/aivault/catalog";
+import { publishMiraiCatalog } from "@/lib/mirai/catalog";
 import { PATCH as tunvnSwitch } from "@/app/api/admin/tunvn/products/[id]/route";
 import { PATCH as avSwitch } from "@/app/api/admin/aivault/products/[id]/route";
+import { PATCH as miraiSwitch } from "@/app/api/admin/mirai/products/[id]/route";
 import { NextRequest } from "next/server";
 vi.mock("@/lib/auth",()=>({requireAdmin:vi.fn(async()=>({sid:"fixture"}))}));
 let f:ReturnType<typeof createD1Fixture>;
-beforeEach(()=>{f=createD1Fixture();for(const supplier of ['WARUNG_REBAHAN','SEKALIPAY','TUNVN','AIVAULT']) {vi.stubEnv(`${supplier}_ENABLED`,'true');vi.stubEnv(`${supplier}_SYNC_ENABLED`,'true');vi.stubEnv(`${supplier}_API_KEY`,'fixture');}vi.stubEnv('TUNVN_BASE_URL','https://tunvn.test');vi.stubEnv('AIVAULT_BASE_URL','https://av.test');});
+beforeEach(()=>{f=createD1Fixture();for(const supplier of ['WARUNG_REBAHAN','SEKALIPAY','TUNVN','AIVAULT','MIRAI']) {vi.stubEnv(`${supplier}_ENABLED`,'true');vi.stubEnv(`${supplier}_SYNC_ENABLED`,'true');vi.stubEnv(`${supplier}_API_KEY`,'fixture');}vi.stubEnv('TUNVN_BASE_URL','https://tunvn.test');vi.stubEnv('AIVAULT_BASE_URL','https://av.test');vi.stubEnv('MIRAI_BASE_URL','https://mirai.test/api/reseller/v1');});
 afterEach(()=>{f.close();vi.unstubAllEnvs();vi.unstubAllGlobals();});
 const db=()=>createDatabaseAccess(f.db);
 function archiveAll(){f.sql.exec("UPDATE products SET archived_at='2026-11-15',is_active=0; UPDATE product_variants SET is_active=0");}
@@ -40,6 +42,25 @@ it('AIVault keeps archived family even if its slug changes; panel activation ret
   expect(await publishAivaultCatalog(db(),20000,{force:true})).toMatchObject({ok:true});archiveAll();f.sql.exec("UPDATE products SET slug='admin-changed-slug'");const before=graph();
   expect(await publishAivaultCatalog(db(),25000,{force:true})).toMatchObject({ok:true});expect(graph()).toEqual(before);
   const r=await avSwitch(new NextRequest('http://localhost/api/admin/aivault/products/service_gemini_plus_6m',{method:'PATCH',body:JSON.stringify({is_active:true})}),{params:Promise.resolve({id:'service_gemini_plus_6m'})});expect(r.status).toBe(409);expect((await r.json()).error).toBe('Pulihkan dari Arsip dulu');
+});
+it('Mirai keeps archived family even if its slug changes; panel activation returns 409', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+    success: true,
+    data: [{
+      code: 'GPT_10M', group: 'gpt', name: 'GPT 10M', quota_tokens: 10000000, duration_seconds: 86400,
+      reseller_price_vnd: 6650, retail_price_vnd: 7000, discount_bps: 500, min_quantity: 1, max_quantity: 10000,
+      preset_quantities: [1], models: ['gpt-5.6'], unlimited: true, remaining_today: 0, custom_quantity: true,
+    }],
+  })));
+  expect(await publishMiraiCatalog(db(), 16000, { force: true })).toMatchObject({ ok: true });
+  archiveAll();
+  f.sql.exec("UPDATE products SET slug='admin-changed-mirai-slug'");
+  const before = graph();
+  expect(await publishMiraiCatalog(db(), 18000, { force: true })).toMatchObject({ ok: true });
+  expect(graph()).toEqual(before);
+  const r = await miraiSwitch(new NextRequest('http://localhost/api/admin/mirai/products/GPT_10M', { method: 'PATCH', body: JSON.stringify({ is_active: true }) }), { params: Promise.resolve({ id: 'GPT_10M' }) });
+  expect(r.status).toBe(409);
+  expect((await r.json()).error).toBe('Pulihkan dari Arsip dulu');
 });
 it('Jaspay attaches to an archived legacy identity instead of publishing a replacement',async()=>{
   f.sql.exec("INSERT INTO products(name,slug,price,source,wr_product_id,is_active,archived_at) VALUES('Legacy Zoom','zoom-legacy',1000,'warung_rebahan','38eda557-044d-11f1-bf18-bc241112a182',0,'2026-11-15')");

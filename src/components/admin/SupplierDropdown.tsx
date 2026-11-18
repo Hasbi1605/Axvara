@@ -3,9 +3,16 @@ import { ChevronDown } from "lucide-react";
 import { IosIcon, type IosIconName } from "./AdminIcon";
 import type { AdminSection } from "./AdminShell";
 import { Button, Badge, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Tooltip, TooltipTrigger, TooltipContent } from "./ui";
-export type SupplierSectionId = "warung" | "sekalipay" | "tunvn" | "aivault" | "pairs" | "links";
+export type SupplierSectionId = "warung" | "sekalipay" | "tunvn" | "aivault" | "storebat" | "mirai" | "pairs" | "links";
 export const SUPPLIER_ITEMS: { id: SupplierSectionId; label: string; icon: IosIconName }[] = [
-  { id: "warung", label: "Warung Rebahan", icon: "shopping-bag" }, { id: "sekalipay", label: "Sekalipay", icon: "wallet" }, { id: "tunvn", label: "TUNVN", icon: "send" }, { id:"aivault",label:"AIVault",icon:"wallet" }, { id: "pairs", label: "Grup produk", icon: "discount" }, { id: "links", label: "Link Supplier", icon: "link" },
+  { id: "warung", label: "Warung Rebahan", icon: "shopping-bag" },
+  { id: "sekalipay", label: "Sekalipay", icon: "wallet" },
+  { id: "tunvn", label: "TUNVN", icon: "send" },
+  { id: "aivault", label: "AIVault", icon: "wallet" },
+  { id: "storebat", label: "StoreBat", icon: "box" },
+  { id: "mirai", label: "Mirai", icon: "lightning-bolt" },
+  { id: "pairs", label: "Grup produk", icon: "discount" },
+  { id: "links", label: "Link Supplier", icon: "link" },
 ];
 export function SupplierDropdown({ section, collapsed, onSection, badges = {} }: { section: AdminSection; collapsed: boolean; onSection: (section: AdminSection) => void; badges?: Partial<Record<AdminSection, number>> }) {
   const activeItem = SUPPLIER_ITEMS.find(item => item.id === section);

@@ -67,6 +67,7 @@ export function ProductEditorModal({
   // ~2600px di bawah tempat admin bekerja. Tab memotong scroll per pekerjaan;
   // footer sticky membuat Simpan selalu terjangkau.
   const [tab, setTab] = useState<"detail" | "varian" | "konten" | "media">("detail");
+  const supplierOwnsVariants = form.storebat_family != null || form.mirai_family != null || form.supplier === "StoreBat" || form.supplier === "Mirai";
   // Badan modal di-scroll bersama semua tab; ganti tab mulai dari atas.
   const bodyRef = useRef<HTMLDivElement>(null);
   // Simpan ditolak karena isian harga grosir: pindah ke tab Varian lalu
@@ -142,7 +143,7 @@ export function ProductEditorModal({
                   <h4 className="text-sm font-semibold text-admin-fg">Variasi Produk</h4>
                   <p className="mt-0.5 text-xs text-admin-muted">Aktifkan jika produk memiliki beberapa pilihan durasi, akun, atau paket harga.</p>
                 </div>
-                <Switch checked={hasMultiVariants} aria-label="Variasi Produk"
+                <Switch checked={hasMultiVariants} aria-label="Variasi Produk" disabled={supplierOwnsVariants || loadingVariants}
                   onCheckedChange={() => {
                     const next = !hasMultiVariants;
                     onSetHasMultiVariants(next);

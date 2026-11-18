@@ -9,6 +9,7 @@ import {
   tunvnBalanceAlertThreshold,
 } from "@/lib/supplier-balance-alert";
 import { createD1Fixture } from "./helpers/d1-fixture";
+import { stubStorebatEnv } from "./helpers/storebat-fixture";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -35,7 +36,7 @@ function stubTelegramFetch() {
   return { messages, fetchMock };
 }
 
-async function callCronLite(job: "tunvn_orders" | "aivault_orders") {
+async function callCronLite(job: "tunvn_orders" | "aivault_orders" | "storebat_orders" | "mirai_orders") {
   const { POST } = await import("@/app/api/cron/lite/route");
   const { NextRequest } = await import("next/server");
   const res = await POST(
@@ -46,6 +47,70 @@ async function callCronLite(job: "tunvn_orders" | "aivault_orders") {
   );
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
+
+it("Mirai cron records USDT balance (VND / 26000), throttles checks and stores a safe error streak", async () => {
+  const f = createD1Fixture();
+  try {
+    vi.stubEnv("CRON_SECRET", "s");
+    stubTelegramEnv();
+    vi.stubEnv("MIRAI_ENABLED", "true");
+    vi.stubEnv("MIRAI_API_KEY", "mr-fixture");
+    vi.stubEnv("MIRAI_BASE_URL", "https://mirai.test/api/reseller/v1");
+    const messages: string[] = [];
+    let ok = true;
+    let calls = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+      if (String(url).includes("api.telegram.org")) {
+        messages.push(JSON.parse(String(init?.body)).text);
+        return Response.json({ ok: true, result: { message_id: 1 } });
+      }
+      expect(String(url)).toBe("https://mirai.test/api/reseller/v1/balance");
+      calls++;
+      return ok
+        ? Response.json({ success: true, data: { balance_vnd: 104000, tier: "Silver", discount_bps: 500 } })
+        : new Response("private mirai body", { status: 503 });
+    }));
+    expect(await callCronLite("mirai_orders")).toMatchObject({ status: 200, body: { mirai_balance: 4, mirai_balance_alerted: true } });
+    expect(messages[0]).toContain("💰 <b>Saldo Mirai menipis</b>");
+    expect(messages[0]).toContain("4 USDT");
+    expect(messages[0]).not.toContain("VND");
+    await callCronLite("mirai_orders");
+    expect(calls).toBe(1);
+    expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='mirai_balance_last_ok_at'").get()?.value).toBeTruthy();
+    ok = false;
+    f.sql.exec("DELETE FROM store_settings WHERE key='mirai_balance_checked_at'");
+    await callCronLite("mirai_orders");
+    expect(calls).toBe(2);
+    const error = String(f.sql.prepare("SELECT value FROM store_settings WHERE key='mirai_balance_error'").get()?.value);
+    expect(JSON.parse(error).streak).toBe(1);
+    expect(error).not.toContain("private mirai body");
+    expect(messages).toHaveLength(1);
+  } finally {
+    f.close();
+  }
+});
+
+it("StoreBat cron records USD balance, throttles checks and stores a safe error streak", async () => {
+  const f=createD1Fixture();
+  try {
+    vi.stubEnv("CRON_SECRET","s");stubTelegramEnv();stubStorebatEnv();
+    const messages: string[]=[];
+    let ok=true,calls=0;
+    vi.stubGlobal("fetch",vi.fn(async(url,init)=>{
+      if(String(url).includes("api.telegram.org")) { messages.push(JSON.parse(String(init?.body)).text);return Response.json({ok:true,result:{message_id:1}}); }
+      expect(String(url)).toBe("https://storebat.test/api/reseller/me");calls++;
+      return ok ? Response.json({success:true,wallet_balance:4}) : new Response("private fixture body",{status:503});
+    }));
+    expect(await callCronLite("storebat_orders")).toMatchObject({status:200,body:{storebat_balance:4,storebat_balance_alerted:true}});
+    expect(messages[0]).toContain("💰 <b>Saldo StoreBat menipis</b>");
+    await callCronLite("storebat_orders");expect(calls).toBe(1);
+    expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='storebat_balance_last_ok_at'").get()?.value).toBeTruthy();
+    ok=false;f.sql.exec("DELETE FROM store_settings WHERE key='storebat_balance_checked_at'");
+    await callCronLite("storebat_orders");expect(calls).toBe(2);
+    const error=String(f.sql.prepare("SELECT value FROM store_settings WHERE key='storebat_balance_error'").get()?.value);
+    expect(JSON.parse(error).streak).toBe(1);expect(error).not.toContain("private fixture body");expect(messages).toHaveLength(1);
+  } finally {f.close();}
+});
 
 describe("checkSupplierLowBalance", () => {
   it("below threshold alerts once, uses <=5 D1 statements, and repeats within 6h only on drop >= step", async () => {

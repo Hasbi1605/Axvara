@@ -19,7 +19,7 @@ import { generateOrderCode } from "@/lib/security";
 import { assertOrderAccessConfigured } from "@/lib/order-access";
 import { QRIS_ORDER_WINDOW_MINUTES } from "@/lib/payments/dana-qris";
 import { markUniqueUnitLines, MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
-import { assertSameBuyerCode, buyerSnapshotMatches, aivaultEligibility, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
+import { assertSameBuyerCode, buyerSnapshotMatches, aivaultEligibility, miraiEligibility, storebatEligibility, tunvnEligibility, validateBuyerFields, type BuyerFieldSnapshot } from "@/lib/buyer-fields";
 
 export type ChannelOrderInput = {
   salesChannel: "web" | "telegram" | "whatsapp";
@@ -221,7 +221,7 @@ export async function createChannelOrderAtomic(
   const guardIds: string[] = [];
   const statements: D1Statement[] = [];
   const configIds = [...new Set(input.lines.map(line => line.variantId))];
-  const configs = (await d1.prepare(`SELECT pv.id,pv.sku,pv.max_qty,pv.buyer_field_key,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,pv.aivault_service_id,p.aivault_family,(SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) AS aivault_source_cost_usd,p.slug AS product_slug FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${configIds.map(() => "?").join(",")})`).bind(...configIds).all()).results as Record<string, unknown>[];
+  const configs = (await d1.prepare(`SELECT pv.id,pv.sku,pv.max_qty,pv.buyer_field_key,pv.tunvn_buff_quantity_b,pv.tunvn_cost_usdt,pv.tunvn_source_product_id,(SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) AS tunvn_source_cost_usdt,pv.aivault_service_id,p.aivault_family,(SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) AS aivault_source_cost_usd,pv.storebat_product_id,p.storebat_family,pv.storebat_cost_usd,pv.storebat_fx_idr_per_usd,pv.mirai_package_code,p.mirai_family,pv.mirai_cost_usdt,pv.mirai_fx_idr_per_usdt,p.slug AS product_slug FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id IN (${configIds.map(() => "?").join(",")})`).bind(...configIds).all()).results as Record<string, unknown>[];
   const configById = new Map(configs.map(row => [Number(row.id),row]));
   try {
     assertSameBuyerCode(input.items as BuyerFieldSnapshot[]);
@@ -229,23 +229,32 @@ export async function createChannelOrderAtomic(
       const line = input.lines[index];
       const row = configById.get(line.variantId);
       if (!row || (input.salesChannel === "whatsapp" && row.buyer_field_key != null)) throw new Error("unsupported_buyer_input");
-      const item = raw as BuyerFieldSnapshot & { tunvn_eligibility?: unknown; aivault_eligibility?: unknown };
+      const item = raw as BuyerFieldSnapshot & { tunvn_eligibility?: unknown; aivault_eligibility?: unknown; storebat_eligibility?: unknown; mirai_eligibility?: unknown };
       const qty = input.lines.filter(other => other.variantId === line.variantId).reduce((n,other) => n + other.qty,0);
       validateBuyerFields(row,item.buyer_fields,qty);
       if (!buyerSnapshotMatches(item,{ buyer_field_key:(row.buyer_field_key ?? null) as "muse_invite_code" | null,max_qty:row.max_qty == null ? null : Number(row.max_qty),buyer_fields:item.buyer_fields })) throw new Error("stale");
       const clean = { ...item };
       delete clean.tunvn_eligibility;
       delete clean.aivault_eligibility;
+      delete clean.storebat_eligibility;
+      delete clean.mirai_eligibility;
+      const mrEligibility = input.salesChannel === "telegram" ? miraiEligibility(row,line.qty) : undefined;
+      if ((row.mirai_package_code || row.mirai_family) && !mrEligibility?.cost_usdt) throw new Error("invalid_mirai_identity");
+      const sbEligibility = input.salesChannel === "telegram" ? storebatEligibility(row,line.qty) : undefined;
+      if ((row.storebat_product_id || row.storebat_family) && (!sbEligibility?.cost_usd || !sbEligibility.fx_idr_per_usd)) throw new Error("invalid_storebat_identity");
       const avEligibility = input.salesChannel === "telegram" ? aivaultEligibility(row,line.qty) : undefined;
       if (row.aivault_service_id && !avEligibility?.cost_usd) throw new Error("invalid_aivault_identity");
       const eligibility = tunvnEligibility(row,line.qty);
       const guardId = `${input.orderCode}:input:${index}`;
       guardIds.push(guardId);
       statements.push(d1.prepare(`INSERT INTO operation_guards(operation_id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.buyer_field_key IS ? AND pv.max_qty IS ? AND (pv.max_qty IS NULL OR pv.max_qty>=?) AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ? AND pv.tunvn_source_product_id IS ? AND pv.aivault_service_id IS ? AND p.aivault_family IS ? AND (SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) IS ?
-        ${row.aivault_service_id ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='aivault_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""} AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
+        ${row.aivault_service_id ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='aivault_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""} AND pv.storebat_product_id IS ? AND p.storebat_family IS ? AND pv.storebat_cost_usd IS ? AND pv.storebat_fx_idr_per_usd IS ?
+                 ${row.storebat_product_id ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='storebat_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""}
+                 AND pv.mirai_package_code IS ? AND p.mirai_family IS ? AND pv.mirai_cost_usdt IS ? AND pv.mirai_fx_idr_per_usdt IS ?
+                 ${row.mirai_package_code ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='mirai_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""} AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
         ${String(row.sku ?? "").startsWith("TUNVN-") ? "AND NOT EXISTS (SELECT 1 FROM store_settings WHERE key='tunvn_catalog_lease' AND json_extract(value,'$.until') > unixepoch('now')*1000)" : ""}
-        ) THEN 1 ELSE 0 END`).bind(guardId,line.variantId,row.buyer_field_key ?? null,row.max_qty ?? null,qty,row.sku ?? null,row.tunvn_buff_quantity_b ?? null,row.product_slug ?? null,row.tunvn_source_product_id ?? null,row.aivault_service_id ?? null,row.aivault_family ?? null,row.aivault_source_cost_usd ?? null,row.tunvn_cost_usdt ?? null,row.tunvn_source_cost_usdt ?? null));
-      return { ...clean,...(avEligibility ? { aivault_eligibility:avEligibility } : {}),...(eligibility ? { tunvn_eligibility:eligibility } : {}) };
+        ) THEN 1 ELSE 0 END`).bind(guardId,line.variantId,row.buyer_field_key ?? null,row.max_qty ?? null,qty,row.sku ?? null,row.tunvn_buff_quantity_b ?? null,row.product_slug ?? null,row.tunvn_source_product_id ?? null,row.aivault_service_id ?? null,row.aivault_family ?? null,row.aivault_source_cost_usd ?? null,row.storebat_product_id ?? null,row.storebat_family ?? null,row.storebat_cost_usd ?? null,row.storebat_fx_idr_per_usd ?? null,row.mirai_package_code ?? null,row.mirai_family ?? null,row.mirai_cost_usdt ?? null,row.mirai_fx_idr_per_usdt ?? null,row.tunvn_cost_usdt ?? null,row.tunvn_source_cost_usdt ?? null));
+      return { ...clean,...(mrEligibility ? { mirai_eligibility:mrEligibility } : {}),...(sbEligibility ? { storebat_eligibility:sbEligibility } : {}), ...(avEligibility ? { aivault_eligibility:avEligibility } : {}),...(eligibility ? { tunvn_eligibility:eligibility } : {}) };
     });
   } catch { throw new StockReservationError(); }
   for (const owner of owners) {

@@ -286,10 +286,35 @@ Keputusan owner 16 Nov 2026 (desain disetujui):
   100% hanya completed koheren, partial/gagal ditampilkan sebagai pemeriksaan.
 - Implementasi/test lokal; publikasi melalui CI main, deployment belum dibuktikan.
 
+## StoreBat dan Mirai — 19 November 2026 (implementasi lokal)
+
+StoreBat (VenteBot) dan MiraiAPI adalah supplier Market tambahan dengan katalog,
+saldo dan antrean terpisah. Produk serta varian baru nonaktif sampai admin
+mengaktifkannya. Keduanya mengikuti alur pembayaran dan detail pesanan yang sama
+di web/Telegram; belum siap bukan berarti barang sudah dikirim. Grup produk
+dapat memilih wakil katalog, tetapi order tidak dipindah ke supplier lain.
+
+- **StoreBat:** barang dengan pengiriman akun/link mengisi detail pesanan hanya
+  jika hasil lengkap. Bila supplier masih menyiapkan pesanan, pengiriman
+  menunggu; tipe yang meminta aktivasi supplier diteruskan untuk pemeriksaan
+  admin, bukan dijanjikan instan.
+- **Muse Buff:** masukkan kode undangan enam karakter saat checkout, bukan
+  password. Jumlah dihitung dalam miliar token. Saat penambahan token sukses,
+  pembeli mendapat konfirmasi tanpa kredensial baru; kegagalan/review masuk ke
+  admin, bukan notifikasi sukses atau refund pembeli otomatis.
+- **Mirai:** setiap paket mengirim seluruh kode redeem sesuai kuantitas, bukan
+  API key siap pakai. Pembeli mengaktifkan kode sendiri dengan panduan paket
+  (kurasi T6b); AXVARA tidak mengaktifkan kode atau membuat kunci pembeli.
+
+Status: **implementasi lokal**, publikasi melalui CI; belum ada bukti deploy.
+Owner menetapkan sync/dispatch produksi ON tetapi produk tetap OFF saat rollout.
+Hanya PM yang boleh membeli satu test product StoreBat $0.01 pascadeploy;
+Mirai diuji dengan fixture saja. Lihat [arsitektur supplier](ARCHITECTURE.md#1659-storebat-dan-mirai--19-november-2026-implementasi-lokal).
+
 ## Grup produk lintas supplier — keputusan owner16 November2026
 
 Menggantikan pasangan WR/SK/Opsi B di snapshot lama. Admin dapat mengelompokkan
-2–10 produk sejenis dari WR/SK/TUNVN/AIVault/Manual, mengganti nama1–120 karakter,
+2–10 produk sejenis dari WR/SK/TUNVN/AIVault/StoreBat/Mirai/Manual, mengganti nama1–120 karakter,
 menambah/keluarkan anggota, memilih preferensi dan margin Rp0–1.000.000,
 menghapus grup dan menghitung ulang. Satu produk satu grup; <2 anggota berarti
 grup dihapus otomatis. Identitas supplier dan histori order tetap terpisah.
@@ -2022,6 +2047,8 @@ Inspirasi fungsional dari **marketku.id** (katalog → keranjang → checkout �
 - **Varian Terpusat:** Setiap produk punya ≥1 varian (harga/stok/durasi/garansi per varian); harga kartu = varian termurah yang masih tersedia
 - **Warung Rebahan (WR):** Supplier H2H (`warungrebahan.com/api/v1`); produk WR disync ke katalog (source=`warung_rebahan`), order lunas diteruskan otomatis (exactly-once), sync satu sweep penuh per run (Opsi A). Nama publik Gemini AI Antigravity sengaja tanpa suffix `(WR)`; kepemilikan supplier tetap dibedakan lewat `source`/`wr_product_id`.
 - **Sekalipay (SK):** Supplier kedua paralel WR (`sekalipay.com/api`, 2026-09-30); produk SK disync ke katalog (nama publik bersih tanpa suffix supplier sejak 2026-09-30 — dibedakan di admin via badge asal + slug; preseden Antigravity 0045), order lunas diteruskan otomatis (exactly-once, `ref_id` idempoten sisi SK). Fase 1 hanya varian `auto` Aplikasi Premium; pasangan tampil otomatis mengikuti aktivasi manual → stok → modal → preferensi. Tanpa failover otomatis WR↔SK.
+- **StoreBat (VenteBot):** Supplier Market akun/link dan Muse Buff berbasis kode undangan; implementasi lokal, publikasi CI.
+- **MiraiAPI:** Supplier Market paket token GPT/Claude/Full/TAU, diaktifkan pembeli dengan kode redeem; implementasi lokal, publikasi CI.
 - **Proxy WR/SK:** VPS AWS `t4g.nano` Singapore (`https://wr-proxy.axvara.tech`, IP `13.228.147.90`, sejak 2026-10-02 — sebelumnya Heroku akun #2 + QuotaGuard) — satu-satunya egress yang di-whitelist WR/SK; Pages hanya pegang URL + token proxy
 - **Gateway WA:** App Heroku akun #1 (`axvara-wa-gateway`, Baileys) — bot grup WhatsApp; route `/wr/*` lama sudah dimatikan (410)
 - **Bot Telegram:** `@Axvara_bot` — katalog/keranjang/checkout/QRIS/garansi via Bot API webhook; foto welcome WebP ringan di `public/banners/tg-welcome.webp`

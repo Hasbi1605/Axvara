@@ -84,3 +84,7 @@ pdp-mobile-375.png
 
 # AIVault reseller credentials (local only)
 .aivault-credentials*
+
+# StoreBat (VenteBot) + MiraiAPI reseller credentials (local only)
+.storebat-credentials*
+.mirai-credentials*

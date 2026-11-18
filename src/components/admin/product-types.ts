@@ -3,7 +3,9 @@
 // di sini — hanya kontrak bentuk data produk, kategori, dan varian form.
 
 /** `lowStockVariants` & `copyReview` & `supplier` & `liveStatus`/`liveReason` hanya dikirim untuk admin. */
-export type Prod = { archivedAt?: string|null; canHardDelete?: boolean; hardDeleteReason?: string|null; id:string; slug:string; name:string; whatsappAlias?:string; description:string; adminDescriptionOverride?:string|null; descriptionEn?:string|null; nameEn?:string|null; wrManaged?:boolean; supplier?: "WR" | "SK" | "TUNVN" | "AIVault" | "Manual"; liveStatus?: "live" | "hidden_loser" | "hidden_soldout" | "off"; liveReason?: string; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; lowStockVariants?:number; copyReview?:number; copyReviewChanged?:number; copyReviewRaw?:number; comparePrice?:number; categorySlug:string; categoryName?:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number; requireEmail?:boolean };
+export type Supplier = keyof typeof import("./supplier-style").SUPPLIER_STYLES;
+export type SupplierFilter = "all" | Supplier;
+export type Prod = { archivedAt?: string|null; canHardDelete?: boolean; hardDeleteReason?: string|null; id:string; slug:string; name:string; whatsappAlias?:string; description:string; adminDescriptionOverride?:string|null; descriptionEn?:string|null; nameEn?:string|null; wrManaged?:boolean; supplier?: Supplier; aivault_family?: string | null; storebat_family?: string | null; mirai_family?: string | null; liveStatus?: "live" | "hidden_loser" | "hidden_soldout" | "off"; liveReason?: string; price:number; minPrice?:number; maxPrice?:number; variantCount?:number; lowStockVariants?:number; copyReview?:number; copyReviewChanged?:number; copyReviewRaw?:number; comparePrice?:number; categorySlug:string; categoryName?:string; image:string; images:string[]; badge?:string; soldCount:number; stock:number; isActive:boolean; sortOrder?:number; requireEmail?:boolean };
 
 export type Cat = { id:number; slug:string; name:string; sort_order?:number; icon?:string|null };
 
@@ -30,7 +32,7 @@ export type FormVariant = {
    */
   manual_cost?: number;
   supplier_cost?: number | null;
-  supplier_cost_source?: "WR" | "SK" | null;
+  supplier_cost_source?: Exclude<Supplier, "Manual"> | null;
   duration_value?: number | null;
   duration_unit?: string | null;
   duration_label?: string | null;
@@ -56,7 +58,6 @@ export type FormVariant = {
 };
 
 export type ProductForm = Partial<Prod> & Pick<FormVariant, "supplier_cost" | "supplier_cost_source"> & {
-  aivault_family?: string | null;
   buyer_field_key?: "muse_invite_code" | null;
   max_qty?: number | null;
   admin_terms?: string;

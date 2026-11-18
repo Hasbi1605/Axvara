@@ -45,7 +45,7 @@ describe("admin supplier identity", () => {
         expect(badge.nextElementSibling?.textContent).toBe(supplier === "WR" ? "Live" : supplier === "SK" ? "Stok habis" : "Nonaktif");
       });
     }
-    expect(container.querySelectorAll(".admin-supplier-badge")).toHaveLength(15);
+    expect(container.querySelectorAll(".admin-supplier-badge")).toHaveLength(suppliers.length * 3);
     expect(screen.getAllByText("S&K perlu ditinjau · 1 varian")).toHaveLength(2);
   });
 
