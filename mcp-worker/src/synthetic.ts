@@ -3,7 +3,6 @@ import type { CronEnv, PhaseOutcome } from "./cron";
 export const SYNTH_TIMEOUT_MS = 10_000;
 export const SYNTH_SLOW_MS = 4_000;
 export const SYNTH_BUDGET_MS = 20_000;
-export const SYNTH_TICK_WINDOW_MS = 55_000;
 type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 type Product = { id: number; slug: string; stock: number };
 type Variant = { id: number; is_active: number; stock: number; min_qty?: number; max_qty?: number | null; buyer_field_key?: string | null; fulfillment_mode?: string; inventory_available?: number | null };

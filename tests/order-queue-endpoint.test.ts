@@ -18,10 +18,46 @@ function link(status: string, lease: string | null = null, sent: string | null =
   f.sql.prepare(`INSERT INTO wr_order_links(order_code,wr_variant_id,quantity,wr_cost,idempotency_key,status,lease_expires_at,request_sent_at)
     VALUES(?,?,1,100,?,?,?,?)`).run(code, crypto.randomUUID(), crypto.randomUUID(), status, lease, sent);
 }
-beforeEach(() => { f = createD1Fixture(); vi.stubEnv("CRON_SECRET", "fixture-cron"); execute.mockReset().mockResolvedValue(undefined); });
+beforeEach(() => { f = createD1Fixture(); f.sql.exec("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')"); vi.stubEnv("CRON_SECRET", "fixture-cron"); execute.mockReset().mockResolvedValue(undefined); });
 afterEach(() => { f.close(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("queue origin contract", () => {
+  it("R1-2: rollback gates messages already enqueued active, without a stale mode memo", async () => {
+    order(); link("completed");
+    await post();
+    execute.mockClear();
+    f.sql.exec("UPDATE store_settings SET value='off' WHERE key='queue_fulfillment_mode'");
+    expect(await (await post()).json()).toEqual({ ok: true, settled: true, state: "queue_disabled" });
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it.each(["shadow", "off", "canary:games", "invalid"])("R1-2: %s does not execute a stale active apps message", async mode => {
+    order(); link("completed");
+    f.sql.prepare("UPDATE store_settings SET value=? WHERE key='queue_fulfillment_mode'").run(mode);
+    expect(await (await post()).json()).toMatchObject({ settled: true, state: "queue_disabled" });
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it("R1-4: blocked_balance stays pending with its durable next-attempt time", async () => {
+    order(); link("blocked_balance");
+    f.sql.prepare("UPDATE wr_order_links SET next_attempt_at=?").run(new Date(Date.now() + 900_000).toISOString());
+    expect(await (await post()).json()).toMatchObject({ settled: false, retrySec: 900 });
+  });
+  it.each(["unknown_state", "ordering", "claimed"])("R1-4: unfenced/unleased %s fails closed to manual review", async status => {
+    // Unknown future/legacy values are otherwise excluded by today's CHECK.
+    if (status === "unknown_state") f.sql.exec("PRAGMA ignore_check_constraints=ON");
+    order(); link(status);
+    expect(await (await post()).json()).toMatchObject({ settled: true, state: "manual_required" });
+  });
+  it("R1-4: an unknown status is manual even with a future lease", async () => {
+    f.sql.exec("PRAGMA ignore_check_constraints=ON"); order();
+    link("unknown_state", new Date(Date.now() + 900_000).toISOString());
+    expect(await (await post()).json()).toMatchObject({ settled: true, state: "manual_required" });
+  });
+  it("known generic sending with expired lease stays retryable, not unknown/manual", async () => {
+    order(); link("completed");
+    f.sql.prepare(`INSERT INTO fulfillment_items(order_code,item_index,product_id,qty,fulfillment_mode,status,locked_until)
+      VALUES(?,0,1,1,'shared','sending',?)`).run(code, new Date(Date.now() - 1000).toISOString());
+    expect(await (await post()).json()).toMatchObject({ settled: false });
+  });
   it("fails closed on missing/wrong auth before reading D1", async () => {
     expect((await post(msg, "wrong")).status).toBe(401);
     vi.stubEnv("CRON_SECRET", ""); expect((await post()).status).toBe(401);

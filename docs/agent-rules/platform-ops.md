@@ -7,7 +7,7 @@
 ### C-H consumer Queue pengiriman instan & DLQ (`axvara-mcp`) — 18 November 2026 (lokal, belum deploy)
 
 - `mcp-worker/wrangler.toml` mendefinisikan consumer `axvara-order-fulfillment` (`max_batch_size = 5`, `max_batch_timeout = 1`, `max_retries = 4`, `dead_letter_queue = "axvara-order-fulfillment-dlq"`), consumer DLQ `axvara-order-fulfillment-dlq` (`max_batch_size = 5`, `max_batch_timeout = 5`, `max_retries = 2`), dan `[vars] QUEUE_CONSUMER_MODE = "active"`. Resource Queue wajib dibuat PM sebelum push; jangan menghapus/mengubah binding tersebut tanpa memperbarui kontrak producer di paket C-S.
-- `mcp-worker/src/queue.ts` + `index.ts` (`queue(batch, env, ctx)`): validasi pesan skema v1 (`AXV|AXP|AXG`, `order_paid|supplier_settled`, `apps|pedia|games`, `shadow|active`) sebelum fetch; `QUEUE_CONSUMER_MODE = "off"` me-`ack()` tanpa memanggil origin; paralel terbatas `≤ 5` dengan timeout `45` detik; `settled: true` (`done|async_polling|manual_required|not_paid|dry_run_ok`) → `ack()`, `settled: false` → `retry({ delaySeconds: max(retrySec, backoff(attempts)) })` hingga `attempts < 5` dan `ack()` pada `attempts ≥ 5` (cron backstop, bukan DLQ), `400` → `ack()`, `401/403/5xx`/timeout/network → `retry` backoff `5, 15, 45, 120` detik.
+- `mcp-worker/src/queue.ts` + `index.ts` (`queue(batch, env, ctx)`): validasi pesan skema v1 (`AXV|AXP|AXG`, `order_paid|supplier_settled`, `apps|pedia|games`, `shadow|active`) sebelum fetch; `QUEUE_CONSUMER_MODE = "off"` me-`ack()` tanpa memanggil origin; paralel terbatas `≤ 5` dengan timeout `45` detik; `settled: true` (`done|async_polling|manual_required|not_paid|dry_run_ok|queue_disabled`) → `ack()`, `settled: false` → `retry({ delaySeconds: max(retrySec, backoff(attempts)) })` hingga `attempts < 5`; pada `attempts ≥ 5` log error `unsettled_to_dlq` + retry backoff agar `max_retries=4` existing mengirim ke DLQ (cron backstop tetap), `400` → `ack()`, `401/403/5xx`/timeout/network → `retry` backoff `5, 15, 45, 120` detik.
 - Consumer DLQ mengirim Telegram admin (`TELEGRAM_ADMIN_CHAT_ID`) dengan sanitasi error/secret/PII (`sanitizeError` dari `cron.ts` + redaksi token langsung/email); `ack()` hanya setelah kirim Telegram sukses, selain itu `retry()`. Log per pesan terstruktur tanpa PII/secret.
 
 ### C-S Queue producer/origin — 18 November 2026 (lokal, belum deploy)
@@ -23,13 +23,19 @@ executor khusus defer ke cron fulfillment (`cron_deferred`), tidak unmetered.
 Internal POST `/api/internal/queue/fulfill` Bearer CRON_SECRET constant-time,
 schema strict/body2KiB/order lunas/deadline40detik berhenti memulai sub-pass.
 Deadline absolut opsional ensure/process; default dan budget/fence C0 utuh.
-Pedia/Games scoped satu order; satu link/supplier/pass, sisa pre-send retry
+Pedia/Games scoped satu order; pembelian satu link/supplier/pass, sisa pre-send retry
 min60≥lease, termasuk push/buyer-notice600detik. Done/async/manual/not_paid/
-dry_run_ok ack, bukan janji semua multi-link selesai. Log producer per
+dry_run_ok/queue_disabled ack, bukan janji semua multi-link selesai. Retry WR/SK
+tetap menjalankan processor bila link existing; SK completed diproses semua
+sampai deadline, notice eligible belum sent pending. blocked_balance retry
+sesuai next_attempt_at; status tak dikenal/tanpa fence/lease valid manual. Log producer per
 kind/source/mode/outcome+durasi legacy, tanpa PII; ukur link terakhir juga.
 Shadow hanya transport, canary sesudah0auth-fail/0enqueue non-lunas/<1%error/
-tanpa kenaikan push ganda. Off rollback≤30detik; pesan active lama tetap aman
-oleh fence. Workerd lokal bukan bukti rollout; full suite/publication oleh PM.
+tanpa kenaikan push ganda. Origin membaca mode segar sebelum executor, sehingga
+pesan active lama off/shadow/canary tak cocok tidak berjalan (queue_disabled).
+Memo producer30detik tetap; pass sudah berjalan masih dapat memulai kerja sampai
+deadline40detik dan I/O tidak dibatalkan. Fence tetap. Workerd lokal bukan bukti
+rollout; full suite/publication oleh PM.
 
 ### B-S funnel WAE — 18 November 2026 (lokal)
 
@@ -57,11 +63,11 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
 
 ### A-S probe sintetis — 18 November 2026 (lokal)
 
-- Home/katalog/quote hanya setelah seluruh `CRON_STEPS`, outcome `synth:*`
+- Home/katalog/quote sebelum `CRON_STEPS`, outcome `synth:*`
   memakai F1/KV existing (hard2/soft6/recovery3/reminder6jam), bukan alarm kedua.
-- Timeout10detik/fase mencakup body/PDP, plafon20detik serta sisa jendela55detik
-  tick. Skip budget `alarm:none` tidak dianggap sukses/tidak mereset counter;
-  jangan mengurangi/menghentikan job order demi probe.
+- Timeout10detik/fase mencakup body/PDP, plafon20detik independen dari job berat.
+  Probe dapat menunda job order hingga20detik, bukan mengurangi/menghentikannya.
+  Skip budget internal `alarm:none` tidak dianggap sukses/tidak mereset counter.
 - Quote synthetic wajib header1+Bearer cron secret constant-time;0D1write,
  0kuota pembeli/admission/reservasi/funnel,0provider fetch (gateway excluded,
   crypto/FX snapshot-only). Guard `isSyntheticRequest` dapat dipakai B-S.
@@ -87,6 +93,14 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
 - `src/app/api/cron/lite/route.ts`: kegagalan subjob inti (`payments` pass NOWPayments/Sekalipay gateway, `pedia_orders` dispatch, `notify*` `telegram_retry`/`whatsapp_outbox`) tetap menjalankan subjob lain lalu membalas `503` `{ ok: false, failed_subjobs }` tanpa menulis `cron_lite_*_ok_at`. Yield `QueryBudgetExceeded` dan error subjob opsional tetap `200`.
 - `src/lib/sync-staleness.ts` dipanggil di akhir `runCleanup` (`job=cleanup`, guard `db.canSpend(6)`) tanpa env/migrasi baru: memantau sumber aktif (SK, Jaspay, TUNVN, AIVault, Games SK, Pedia IndoSMM diff bila ada penanda, FX `crypto_market_snapshot`; WR tetap ditangani `alertStaleWrSync` agar tidak alert ganda) dengan CAS episode di `store_settings`, grace 1 jam bila belum pernah sukses, pengingat 6 jam, dan notifikasi pulih ke `TELEGRAM_ADMIN_CHAT_ID` saat `TELEGRAM_BOT_ENABLED=true`.
 ### Alarm cron per step — 18 November 2026 (lokal, F1)
+
+- Revisi P2 lokal: baca ulang KV setelah pipeline sebelum commit, gabung hanya
+  outcome due milik tick; watermark `lastScheduledTime` per label (termasuk
+  sukses/recovery) membuat hasil :00 terlambat tidak menimpa :01–:05. Ack Telegram
+  baca ulang agar counter baru selama kirim tidak tertimpa snapshot lama.
+  KV tanpa CAS/eventual consistency masih punya race get/put pendek lintas
+  isolate yang diterima PM. Bukan lock/linearizability; tidak menambah DO/binding.
+  Watermark sukses menyebabkan write KV tiap tick sehat (~1440/hari), bukan D1.
 
 - `CRON_STATE` key `cron_alarm_v1` menyimpan counter per label step: hard setelah2
   dan soft setelah6 **eksekusi gagal beruntun step itu**. Tick non-due/step absen

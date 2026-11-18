@@ -24,6 +24,8 @@ export async function schedulePaidFulfillment(
 }
 
 export async function fulfillPaidOrder(orderCode: string, orderKind: unknown, deadlineMs = Infinity): Promise<void> {
+  // Only the Queue executor supplies a finite deadline; keep legacy waitUntil unchanged.
+  const queuePass = Number.isFinite(deadlineMs);
   const remaining = () => Date.now() < deadlineMs;
   if (!remaining()) return;
   if (orderKind === "pedia") {
@@ -73,15 +75,19 @@ export async function fulfillPaidOrder(orderCode: string, orderKind: unknown, de
   try {
     const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
     const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
-    if (remaining() && isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
-      work.push(() => processWrPendingOrders(undefined, { skipOrphanProbe: true, orderCode, limit: 1 }));
+    if (remaining() && isWrAutoOrderEnabled()) {
+      if ((await createWrOrderLinksForOrder(orderCode)) > 0 || queuePass) {
+        work.push(() => processWrPendingOrders(undefined, { skipOrphanProbe: true, orderCode, limit: 1 }));
+      }
     }
   } catch { /* Existing cron repairs and dispatches missing links. */ }
   try {
     const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
     const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
-    if (remaining() && isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
-      work.push(() => processSkPendingOrders(undefined, { skipOrphanProbe: true, orderCode, limit: 1 }));
+    if (remaining() && isSkAutoOrderEnabled()) {
+      if ((await createSkOrderLinksForOrder(orderCode)) > 0 || queuePass) {
+        work.push(() => processSkPendingOrders(undefined, { skipOrphanProbe: true, orderCode, limit: 1 }));
+      }
     }
   } catch { /* Existing cron repairs and dispatches missing links. */ }
   const { ensureFulfillmentForPaidOrder } = await import("@/lib/fulfillment/deliver");
@@ -94,13 +100,13 @@ export async function fulfillPaidOrder(orderCode: string, orderKind: unknown, de
     const { processCredentialDelivery } = await import("@/lib/warung-rebahan/deliver");
     for (const link of links) if (remaining()) await processCredentialDelivery(Number(link.id));
     if (!remaining()) return;
-    const sk = await queryAll("SELECT fulfillment_item_id FROM sk_order_links WHERE order_code=? AND status='completed' LIMIT 1", orderCode);
+    const sk = await queryAll(`SELECT fulfillment_item_id FROM sk_order_links WHERE order_code=? AND status='completed'${queuePass ? " ORDER BY id" : " LIMIT 1"}`, orderCode);
     const { deliverSkCredentialToBuyer } = await import("@/lib/sekalipay/deliver");
     for (const link of sk) if (remaining()) await deliverSkCredentialToBuyer(orderCode, Number(link.fulfillment_item_id));
   });
   // One immediate purchase per supplier, scoped to THIS order. Additional
   // links stay durable for cron instead of exceeding waitUntil's time window.
-  if (!Number.isFinite(deadlineMs)) {
+  if (!queuePass) {
     await Promise.allSettled(work.map(run => Promise.resolve().then(run)));
     return;
   }

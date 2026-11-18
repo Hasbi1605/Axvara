@@ -39,6 +39,32 @@ const fail = () => Response.json({ error: "D1_ERROR: UNIQUE constraint failed: p
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("per-step cron alarm", () => {
+  it("R2-1: a delayed :00 cannot roll back :01–:05 alarm counters", async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    let first = true;
+    const f = fixture(async job => {
+      if (job === "payments" && first) { first = false; entered(); await blocked; return fail(); }
+      return job === "tunvn_catalog" ? fail() : ok();
+    });
+    const slow = f.tick(0);
+    await started;
+    for (let minute = 1; minute <= 5; minute++) await f.tick(minute);
+    expect(f.state().steps["lite:tunvn_catalog"].failedTicks).toBe(5);
+    release(); await slow;
+    expect(f.state().steps["lite:tunvn_catalog"].failedTicks).toBe(5);
+    expect(f.state().steps["lite:payments"]).toBeUndefined();
+    expect(f.messages).toHaveLength(0);
+  });
+  it("R2-1: probes run even when the heavy pipeline exceeds its old 55s window", async () => {
+    const now = Date.now(); let current = now;
+    vi.spyOn(Date, "now").mockImplementation(() => current);
+    const f = fixture(job => { if (job === "payments") current += 300_000; return ok(); });
+    const result = await f.tick(0);
+    expect(result.outcomes.filter(o => o.step.startsWith("synth:")).every(o => o.calls > 0)).toBe(true);
+  });
   it("60 minute ticks: TUNVN fails every scheduled call and alerts at execution six", async () => {
     const f = fixture((job) => job === "tunvn_catalog" ? fail() : ok());
     const actions: string[] = [];

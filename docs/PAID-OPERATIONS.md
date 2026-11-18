@@ -3,7 +3,14 @@
 ## Consumer Queue pengiriman instan & DLQ (`axvara-mcp`, Paket C-H) — 18 November 2026 (lokal, belum deploy)
 
 - `mcp-worker/wrangler.toml` menambahkan dua consumer Queue (`axvara-order-fulfillment` dengan `max_batch_size = 5`, `max_batch_timeout = 1`, `max_retries = 4`, `dead_letter_queue = "axvara-order-fulfillment-dlq"`; serta `axvara-order-fulfillment-dlq` dengan `max_batch_size = 5`, `max_batch_timeout = 5`, `max_retries = 2`) dan variabel `QUEUE_CONSUMER_MODE = "active"`.
-- `mcp-worker/src/queue.ts` (diekspor melalui `queue()` di `mcp-worker/src/index.ts`) memproses batch paralel terbatas (`≤ 5`), timeout fetch `45` detik ke `POST /api/internal/queue/fulfill` (`Bearer AXVARA_CRON_SECRET`), backoff `5/15/45/120` detik, `ack()` pada `settled: false` di `attempts ≥ 5` (cron backstop tetap mengambil alih tanpa masuk DLQ), validasi skema ketat pra-fetch, sakelar darurat `QUEUE_CONSUMER_MODE = "off"` (`ack()` tanpa fetch), serta alert Telegram admin tersanitasi pada DLQ (`ack()` hanya setelah Telegram berhasil; gagal kirim → `retry()`). Resource Queue dibuat manual oleh PM sebelum push; producer Pages dan endpoint origin dikerjakan di paket C-S.
+- `mcp-worker/src/queue.ts` (diekspor melalui `queue()` di `mcp-worker/src/index.ts`) memproses batch paralel terbatas (`≤ 5`), timeout fetch `45` detik ke `POST /api/internal/queue/fulfill` (`Bearer AXVARA_CRON_SECRET`), backoff `5/15/45/120` detik, `settled: false` di `attempts ≥ 5` → log error `unsettled_to_dlq` dan retry agar masuk DLQ existing (`max_retries=4`, cron backstop tetap), validasi skema ketat pra-fetch, sakelar darurat `QUEUE_CONSUMER_MODE = "off"` (`ack()` tanpa fetch), serta alert Telegram admin tersanitasi pada DLQ (`ack()` hanya setelah Telegram berhasil; gagal kirim → `retry()`). Resource Queue dibuat manual oleh PM sebelum push; producer Pages dan endpoint origin dikerjakan di paket C-S.
+
+Rollback P2: endpoint non-dry-run membaca mode D1 segar, bukan memo producer30s;
+off/shadow/canary tidak cocok/absen → `queue_disabled`+ack. Pass sudah dimulai
+tetap dapat memulai sub-pekerjaan sampai deadline40s dan I/O tidak dibatalkan.
+blocked_balance retry sesuai next_attempt_at, unknown/unfenced status manual.
+Retry memproses WR/SK existing; SK delivery mencoba semua completed sampai
+deadline, notice eligible belum sent tetap pending. Tidak ada resource/env baru.
 
 ## Cache katalog berbasis revisi (Paket B-H) — 18 November 2026 (lokal, belum deploy)
 
@@ -13,12 +20,12 @@
 
 ## Probe sintetis A-S — 18 November 2026 (lokal, belum deploy)
 
-Setelah seluruh job existing: home dan produk paralel, kemudian0–3PDP dinamis
+Sebelum seluruh job existing: home dan produk paralel, kemudian0–3PDP dinamis
 dan quote. Tiga outcome masuk F1 yang sama: error/timeout/kontrak hard2;
 sukses>4000ms soft6; reminder6jam/recovery3 tetap. Timeout10detik per fase
-(termasuk body dan PDP+quote), total20detik, sisa jendela55detik sejak tick mulai.
-Tidak menunda/memotong job order; tick sudah sibuk mencatat skip `alarm:none`
-tanpa mengubah counter (bukan status sehat). Katalog kosong tetap gagal;
+(termasuk body dan PDP+quote), total20detik independen dari durasi tick berat.
+Job order dapat tertunda hingga20detik, tidak dipotong. Budget internal habis
+mencatat skip `alarm:none` tanpa mengubah counter (bukan status sehat). Katalog kosong tetap gagal;
 409 quote terstruktur sehat bila tidak ada target layak/stok berubah.
 
 Autentikasi synthetic: header1+Bearer secret cron existing constant-time,
@@ -35,6 +42,13 @@ plafon6/tick=8640/hari=259200/30hari, sebelum skip/timeout. F1 dapat menulis KV
 untuk counter/episode, bukan D1; tidak ada state alarm kedua/env/trigger baru.
 CSP publik menyiapkan dua origin Analytics saja; belum aktivasi dashboard.
 Rincian target, body contract dan batas bukti: ARCHITECTURE bagian A-S.
+
+Alarm F1 P2: watermark waktu jadwal tiap label bertahan setelah sukses/recovery;
+baca ulang KV ketika commit/ack Telegram lalu merge hanya step due yang lebih
+baru, sehingga hasil tick :00 lambat tidak menggulung :01–:05. Hard2/soft6/
+recovery3/reminder6jam tetap. KV eventual tanpa CAS masih punya race get/put
+pendek lintas isolate yang diterima PM, bukan exactly-once/linearizable. Write
+watermark tiap tick sehat ~1440/hari (KV, bukan D1); tidak ada DO/binding baru.
 
 ✅ Implementasi, publikasi melalui CI push main. Akun existing sudah Paid;
 verifikasi lokal bukan bukti deployment atau batas biaya produksi tercapai.

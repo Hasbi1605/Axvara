@@ -5,6 +5,7 @@ import { readJsonBody } from "@/lib/http-body";
 import { constantTimeEqual, isValidBuyerOrderCode } from "@/lib/security";
 import { fulfillPaidOrder } from "@/lib/payments/paid-fulfillment";
 import { expandDeliveryLines } from "@/lib/fulfillment/units";
+import { isQueueExecutionEnabled } from "@/lib/payments/order-queue";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,17 @@ async function outcome(order: Work, orderKind: string) {
     SELECT 'wr' AS domain, CASE WHEN status='completed' AND delivery_status IN ('queued','failed','sending') THEN 'delivery_pending' ELSE status END AS status,
       request_sent_at AS sent, CASE WHEN status='completed' AND delivery_status='sending' THEN delivery_next_attempt_at ELSE lease_expires_at END AS lease,
       next_attempt_at AS next_at FROM wr_order_links WHERE order_code=?
-    UNION ALL SELECT 'sk',status,request_sent_at,lease_expires_at,next_attempt_at FROM sk_order_links WHERE order_code=?
+    UNION ALL SELECT 'sk',CASE WHEN l.status='completed' AND EXISTS (
+      SELECT 1 FROM fulfillment_items f JOIN orders o ON o.code=f.order_code
+      WHERE f.id=l.fulfillment_item_id AND f.status='delivered' AND f.delivered_ciphertext IS NOT NULL
+        AND COALESCE(f.last_error,'') NOT LIKE 'manual_handover:%'
+        AND ((o.sales_channel='telegram' AND (CAST(COALESCE(o.telegram_chat_id,'0') AS INTEGER)>0 OR
+          EXISTS(SELECT 1 FROM telegram_users tu WHERE tu.user_id=o.telegram_user_id AND CAST(tu.chat_id AS INTEGER)>0)))
+          OR (COALESCE(o.sales_channel,'web')!='telegram' AND COALESCE(o.customer_email,'') LIKE '%@%'))
+        AND NOT EXISTS(SELECT 1 FROM buyer_notice_log b WHERE b.status='sent' AND b.idempotency_key IN (
+          'email:sk-credential:'||f.order_code||':'||f.id, 'email:fulfillment-item:'||f.id,
+          'telegram:sk-credential:'||f.order_code||':'||f.id))
+      ) THEN 'delivery_pending' ELSE l.status END,request_sent_at,lease_expires_at,next_attempt_at FROM sk_order_links l WHERE order_code=?
     UNION ALL SELECT 'tunvn',status,request_sent_at,lease_expires_at,next_attempt_at FROM tunvn_order_links WHERE order_code=?
     UNION ALL SELECT 'aivault',status,request_sent_at,lease_expires_at,next_attempt_at FROM aivault_order_links WHERE order_code=?
     UNION ALL SELECT 'item',CASE WHEN f.status NOT IN ('delivered','failed','manual_required') AND (
@@ -59,13 +70,18 @@ async function outcome(order: Work, orderKind: string) {
   for (const row of work) {
     const status = String(row.status);
     if (["delivered", "completed", "success", "expired", "supplier_owned"].includes(status)) continue;
-    if (["failed", "needs_admin", "needs_check", "manual_required", "blocked_balance", "partial", "canceled"].includes(status)) { manual = true; continue; }
+    if (["failed", "needs_admin", "needs_check", "manual_required", "partial", "canceled"].includes(status)) { manual = true; continue; }
     if (["submitted", "ordering", "processing", "pending", "in_progress"].includes(status)
       && (row.sent || (row.domain === "games" && status === "pending") || ["submitted", "in_progress"].includes(status))) { async = true; continue; }
+    if (!["pending", "queued", "retry", "awaiting_payment", "blocked_balance", "delivery_pending", "sending", "submitting", "claimed", "ordering", "processing"].includes(status)) {
+      manual = true; continue;
+    }
     const lease = timestamp(row.lease);
     if (lease > Date.now()) { pending = true; retryAt = Math.max(retryAt, lease); continue; }
-    pending = true;
-    retryAt = Math.max(retryAt, timestamp(row.next_at));
+    if (["pending", "queued", "retry", "awaiting_payment", "blocked_balance", "delivery_pending", "sending"].includes(status)) {
+      pending = true;
+      retryAt = Math.max(retryAt, timestamp(row.next_at));
+    } else { manual = true; }
   }
   if (pending || retryAt > Date.now()) return { ok: true, settled: false, retrySec: Math.max(60, Math.ceil((retryAt - Date.now()) / 1000)) };
   return { ok: true, settled: true, state: manual ? "manual_required" : async ? "async_polling" : "done" };
@@ -86,6 +102,7 @@ export async function POST(request: NextRequest) {
     if (String(order.order_kind ?? "apps") !== body.orderKind) return json({ error: "order_kind_mismatch" }, 400);
     // Shadow has exactly one read and cannot materialize, claim, notify or send.
     if (body.dryRun) return json({ ok: true, settled: true, state: "dry_run_ok" });
+    if (!await isQueueExecutionEnabled(body.orderKind)) return json({ ok: true, settled: true, state: "queue_disabled" });
     await fulfillPaidOrder(body.orderCode, body.orderKind, deadline);
     return json(await outcome(order, body.orderKind));
   } catch {

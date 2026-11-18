@@ -11,6 +11,12 @@ type Mode = "off" | "shadow" | "active" | `canary:${OrderKind}`;
 type QueueBinding = { send(message: OrderQueueMessage): Promise<void> };
 const modes = new WeakMap<D1, { until: number; value: Promise<Mode> }>();
 
+/** Executor safety gate: never reuse a producer's 30s memo on rollback. */
+export async function isQueueExecutionEnabled(orderKind: OrderKind): Promise<boolean> {
+  const row = await createDatabaseAccess().queryFirst("SELECT value FROM store_settings WHERE key='queue_fulfillment_mode'");
+  return row?.value === "active" || row?.value === `canary:${orderKind}`;
+}
+
 /** Missing/invalid setting or a failed read always keeps the existing path. */
 async function modeFor(db: DatabaseAccess): Promise<Mode> {
   const key = unwrapD1(db.d1);

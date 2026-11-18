@@ -8,6 +8,7 @@ import { SingleVariantFields } from "@/components/admin/sections/SingleVariantFi
 import { useProductManager } from "@/components/admin/useProductManager";
 import type { FormVariant, Prod, ProductForm } from "@/components/admin/product-types";
 import { ToastProvider } from "@/components/ui/Toast";
+import { DurationFields } from "@/components/admin/sections/VariantDurationFields";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -25,6 +26,16 @@ function Fields({ multi, locked = false }: { multi: boolean; locked?: boolean })
   </ToastProvider>;
 }
 const draft = () => JSON.parse(screen.getByTestId("draft").textContent!);
+
+it("R4-5: zero duration is cleared, switching legacy lifetime zero starts at one", () => {
+  const onChange = vi.fn();
+  const view = render(<DurationFields value={{ duration_value: 0, duration_unit: "lifetime", duration_label: "Forever" }} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText("Satuan masa aktif"), { target: { value: "month" } });
+  expect(onChange).toHaveBeenLastCalledWith({ duration_value: 1, duration_unit: "month", duration_label: null });
+  view.rerender(<DurationFields value={{ duration_value: 1, duration_unit: "month", duration_label: null }} onChange={onChange} />);
+  fireEvent.change(screen.getByLabelText("Masa aktif (opsional)"), { target: { value: "0" } });
+  expect(onChange).toHaveBeenLastCalledWith({ duration_value: null, duration_unit: null, duration_label: null });
+});
 
 it.each([false, true])("single/multi=%s: warranty edits never change duration; duration is editable and clearable", (multi) => {
   render(<Fields multi={multi} />);

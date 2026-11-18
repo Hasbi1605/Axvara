@@ -1,5 +1,36 @@
 # ARCHITECTURE.md — AXVARA
 
+## P2 hardening canary & alarm — 18 November 2026 (lokal, belum dipublikasikan)
+
+- Rollback: producer masih memo30detik, tetapi origin membaca setting D1 segar
+  sebelum setiap pesan non-dry-run. Hanya active/canary kind cocok berjalan;
+  off/shadow/invalid/absen menghasilkan `queue_disabled` dan ack (cron backstop).
+  Tidak ada memo executor; pass terlanjur berjalan tetap deadline40detik untuk
+  memulai sub-pekerjaan, I/O berjalan tidak dibatalkan. Error baca503 fail-closed.
+- `blocked_balance` pending menurut next_attempt_at; status tidak dikenal atau
+  claimed/ordering tanpa fence/lease valid manual_required. Retry di jalur Queue
+  memanggil scoped processor WR/SK walau materialisasi link mengembalikan0; CAS/send
+  fence tetap otoritatif. Delivery Queue mencoba semua completed SK sampai deadline;
+  notice eligible belum sent menghasilkan unsettled, bukan false done. Jalur
+  waitUntil di off/shadow tetap memakai perilaku sebelumnya.
+- Consumer exhausted unsettled mencatat error `unsettled_to_dlq`, lalu retry
+  kelima memanfaatkan `max_retries=4` existing untuk dead-letter. Alert Telegram
+  admin tersanitasi + retry DLQ existing, tanpa resource/env baru.
+- Alarm KV F1 membaca ulang state setelah pipeline, menyimpan watermark
+  `lastScheduledTime` per label (termasuk sukses, bertahan setelah recovery),
+  dan hanya menggabung outcome due milik tick dengan waktu jadwal lebih baru.
+  Step heavy `alarm:none` tidak menyentuh counter. Ack Telegram membaca ulang
+  state agar tidak menulis snapshot lama atas counter tick lain selama send.
+  **Batas diterima PM:** KV eventual-consistent tanpa CAS; get/put berdekatan
+  masih dapat race lintas isolate. Bukan serialisasi/linearizability atau janji
+  exactly-once alert. Ambang hard2/soft6, recovery3, reminder6jam tetap F1.
+- Probe dijalankan di awal tick dengan budget20detik independen, timeout10detik
+  per fase; bukan lagi sisa jendela55detik setelah job berat. Urutan outcome
+  diagnostik tetap cron lalu synth. Job order tertunda maksimal20detik oleh
+  probe; tidak dihapus/dipotong. Tidak ada binding/migrasi/Durable Object baru.
+- Durasi editor positif minimal1, input0 dikosongkan; legacy0 tetap saat
+  open/save tanpa edit dan menjadi1 bila pindah ke Hari/Bulan/Tahun.
+
 ## C-H: consumer Queue pengiriman instan & DLQ (`axvara-mcp`) — 18 November 2026 (lokal, belum deploy)
 
 - **Konfigurasi `mcp-worker/wrangler.toml`:**
@@ -9,7 +40,7 @@
   - Membedakan queue utama (`axvara-order-fulfillment`) vs DLQ (`axvara-order-fulfillment-dlq`) berdasarkan `batch.queue`, memproses pesan batch secara paralel terbatas (`≤ 5` konkuren) dengan timeout fetch `45.000` ms (mencakup fetch dan pembacaan body).
   - Memvalidasi skema pesan sebelum memanggil origin (`v === 1`, `kind ∈ {order_paid, supplier_settled}`, `orderCode` valid `isValidBuyerOrderCode` `AXV|AXP|AXG`, `orderKind ∈ {apps, pedia, games}`, `source` aman non-kosong `≤ 64` karakter tanpa newline/tab, `enqueuedAt` angka positif berhingga, `mode ∈ {shadow, active}`); pesan cacat di-`ack()` dan dilog sebagai error tanpa `fetch`.
   - Memanggil `POST ${AXVARA_API_ORIGIN}/api/internal/queue/fulfill` berheader `Authorization: Bearer ${AXVARA_CRON_SECRET}` dengan body `{ v: 1, kind, orderCode, orderKind, source, attempt, dryRun }` (`dryRun = (mode === "shadow")`).
-  - Pemetaan respons → aksi: `200 { ok: true, settled: true, state }` (`done` | `async_polling` | `manual_required` | `not_paid` | `dry_run_ok`) → `ack()`; `200 { ok: true, settled: false, retrySec }` → `retry({ delaySeconds: max(retrySec, backoff(attempts)) })` untuk `attempts < 5` dan `ack()` pada `attempts ≥ 5` (diserahkan ke cron backstop, bukan DLQ); `400` → `ack()` + log error; `401`/`403`/`5xx`/timeout/jaringan/respons `200` tak valid → `retry({ delaySeconds: backoff(attempts) })` dengan jadwal `5, 15, 45, 120` detik sebelum masuk DLQ.
+  - Pemetaan respons → aksi: `200 { ok: true, settled: true, state }` (`done` | `async_polling` | `manual_required` | `not_paid` | `dry_run_ok` | `queue_disabled`) → `ack()`; `200 { ok: true, settled: false, retrySec }` → `retry({ delaySeconds: max(retrySec, backoff(attempts)) })` untuk `attempts < 5`; `attempts ≥ 5` → log error + retry backoff agar masuk DLQ (cron backstop tetap); `400` → `ack()` + log error; `401`/`403`/`5xx`/timeout/jaringan/respons `200` tak valid → `retry({ delaySeconds: backoff(attempts) })` dengan jadwal `5, 15, 45, 120` detik sebelum masuk DLQ.
   - Consumer DLQ mengirim alert Telegram admin (`TELEGRAM_ADMIN_CHAT_ID`) dengan format terstruktur (`⚠️ Antrean instan gagal untuk <orderCode> (<orderKind>, sumber <source>, percobaan <n>). Cron 1-menit tetap mengambil alih.`) + error tersanitasi (memakai `sanitizeError` dari `mcp-worker/src/cron.ts` plus redaksi token/secret langsung & email PII). `ack()` hanya dipanggil sesudah Telegram sukses; kegagalan kirim memanggil `retry()` dan mencatat log error.
   - Log terstruktur per pesan mencatat `kind`, `orderKind`, `source`, `mode`, `attempt`, `outcome`, dan `latencyMs` (`now - enqueuedAt`) tanpa PII atau secret.
 ## C-S: producer Queue dan origin fulfillment — 18 November 2026 (lokal, belum dipublikasikan)
@@ -57,10 +88,11 @@
   memulai sub-pass/item baru sesudah batas; operasi jaringan yang sudah berjalan
   tidak dibatalkan paksa. `ensure/process` tanpa deadline tetap perilaku/budget
   lama. Pedia/Games scoped ke order ini; Games tidak mempercepat polling,
-  expiry/recovery global tetap cron. Supplier apps maksimal satu link/supplier/pass.
+  expiry/recovery global tetap cron. Pembelian apps maksimal satu link/supplier/pass;
+  delivery SK completed tidak dibatasi link pertama, tetap deadline/ledger.
 - Hasil200 `{ok:true,settled:true,state}`: `done`, `async_polling` (request
   supplier sudah terkirim/menunggu polling), `manual_required`, `not_paid`,
-  `dry_run_ok`. `settled` bukan semua link order selesai: sisa link pre-send,
+  `dry_run_ok`, `queue_disabled`. `settled` bukan semua link order selesai: sisa link pre-send,
   item belum materialisasi (termasuk unit unique), atau lease eksekutor sibuk
   menghasilkan `{ok:true,settled:false,retrySec}` min60 dan ≥sisa lease maksimum
   item/job/WR/SK/Pedia/Games/push ledger600detik/buyer notice600detik.
@@ -72,8 +104,9 @@
   metadata consumer latency/attempt milik C-H. Shadow tidak membuktikan
   percepatan pengiriman: ukur paid→link pertama DAN terakhir/delivered sebelum
   canary. Promosi:0 auth-fail,0 enqueue non-lunas,<1%transport error, tanpa
-  peningkatan kirim ganda. Rollback setting off≤30detik; pesan active lama tetap
-  aman melalui CAS/fence/ledger C0, bukan tabel dedupe queue tambahan.
+  peningkatan kirim ganda. Rollback setting off diperiksa segar di origin;
+  producer memo30detik dan pass yang sudah mulai mengikuti batas P2 di atas.
+  CAS/fence/ledger C0 tetap, bukan tabel dedupe queue tambahan.
 - Bukti C-S berupa fixture dan native workerd lokal (compatibility2026-08-06),
   bukan transaksi/rollout produksi. Full suite integrasi akhir dan provisioning
   milik PM; C-S tidak commit/push/deploy atau mengubah mcp-worker/cache detail.
@@ -212,17 +245,18 @@ produksi; daily-admin-summary tidak diubah. Deployment/data ingest belum terbukt
 ## A-S: probe sintetis dan CSP Analytics — 18 November 2026 (lokal)
 
 - `mcp-worker/src/synthetic.ts` menambah tiga `PhaseOutcome` (`synth:home`,
-  `synth:catalog`, `synth:quote`) setelah seluruh `CRON_STEPS`, sebelum alarm F1
+  `synth:catalog`, `synth:quote`) dijalankan sebelum `CRON_STEPS`; daftar outcome
+  diagnostik tetap cron lalu synth, sebelum alarm F1
   existing (`cron_alarm_v1`, hard2/soft6, recovery3/reminder6jam). Home+produk
   paralel, lalu PDP dinamis+quote; tidak memanggil `/api/orders`. Non-200/kontrak/
   timeout hard; sukses valid >4000ms soft. Quote409 dengan `ok:false` dan daftar
   issues bertipe dikenal/message valid sehat (stok/minimum/aktivitas berubah).
 - Timeout10detik mencakup fetch **dan body**, per fase quote termasuk PDP;
-  plafon bersama20detik serta sisa jendela55detik sejak tick mulai. Bila job
-  sebelumnya sudah menghabiskan jendela, probe yang belum dimulai dicatat
+  plafon bersama20detik independen dari pipeline cron berat. Bila budget probe
+  internal habis, probe yang belum dimulai dicatat
   `calls:0,alarm:none,tick_budget_exhausted` (bukan sukses, tidak mereset F1).
-  Tidak membatalkan/memotong job order existing dan tidak menjamin seluruh tick
-  selesai55detik bila job existing sendiri lebih lama.
+  Tidak membatalkan/memotong job order existing; urutan awal dapat menundanya
+  hingga20detik. Tidak menjamin seluruh tick selesai55detik.
 - Target diambil dari `/api/products?active=1`, kemudian maksimal3 PDP ready
   `/api/catalog?slug=…`: varian aktif tanpa buyer field wajib, stok/minimum,
   maksimum qty dan inventory unique cukup, qty≤100. Tanpa target layak, quote
@@ -2638,7 +2672,7 @@ Trigger MCP Worker existing `* * * * *` menjalankan `runOperationsTick`; `/api/c
 - **Potongan katalog dari proxy VPS (tanpa state):** mode `?phase=` memanggil `syncProducts`/`syncSkProducts` dengan `useProxySlices`. Proxy `POST /wr/products-slice` dan `GET /sk/catalog-slice` mengambil katalog penuh, mengurutkan dengan aturan yang SAMA dengan sync Pages, lalu mengembalikan potongan (WR ~13 KB vs 71 KB; SK ~26 KB vs 93 KB). SK mode potongan selalu scope penuh kategori (tanpa delta `updated_since`). Potongan terakhir membawa `meta.all_variant_ids` (seluruh id varian upstream/scope saat itu) → zero-missing kini berjalan aman di akhir sweep berpotongan (sejak 3 Okt malam sweep berpotongan tidak pernah zero-missing). Proxy lama/mode langsung (404/405) → fallback fetch penuh. Kontrak proxy: `axvara-wr-proxy/AGENTS.md`.
 - **Penanda langkah:** mode `?phase=` menulis `console.log("[cron] <fase>[:part][:cont] step=<langkah> t=<ms>")` (auth_ok, phase_state, watchdog_done, queues_counted, wr_import_*, wr_recover_done, wr_orders_done, wr_sync_done, wr_tail_done, sk_*, phases_done) tanpa D1. Request yang dibunuh: `wrangler pages deployment tail <deployment-id> --project-name axvara --format json` memperlihatkan langkah terakhir yang sempat jalan.
 - **Alarm ber-state (Workers KV `axvara-cron-state`, binding `CRON_STATE`, key `cron_alarm_v1`; revisi18November2026 lokal/F1):** counter disimpan per label step (`steps`), hard mulai setelah2 dan soft setelah6 eksekusi gagal beruntun step itu. Tick non-due/step absen tidak mengubah counter; sukses step lain dan campuran hard/soft tidak mereset step yang gagal. Satu pesan mulai per episode; reminder6jam mencakup kegagalan baru sejak pesan terakhir walau sudah pulih sebelum reminder (`pendingFailures`). Recovery setelah setiap step terdampak sukses3kali beruntun; riwayat tidak dipotong8step. Non-2xx menyertakan ringkasan field JSON `error` atau teks (maks120karakter sesudah redaksi bearer/token/key/secret dan secret Worker yang diketahui), contoh `lite:tunvn_catalog: HTTP 500 — D1_ERROR: UNIQUE constraint failed…`; error jaringan/KV juga diredaksi, body sukses hanya membaca `more`.
-- **Ketahanan state alarm (lokal/F1):** KV ditulis hanya ketika counter/episode/detail berubah. Write counter diperiksa sebelum kirim; ack pesan ditulis sesudah Telegram berhasil, sehingga start/reminder/recovery yang gagal kirim dicoba lagi. Binding hilang, payload korup, get/put gagal dicatat tersanitasi lalu memakai fallback stateless **hard dan soft** pada :00/:30. Key baru/kosong (`get` null) bukan storage error; saat KV pulih stateful dilanjutkan. Payload agregat lama tanpa `steps` memulai counter baru sekali karena atribusi lama tidak diketahui (tanpa recovery palsu); ambang2/6 tetap berlaku. Ack KV yang gagal setelah Telegram sukses dapat membuat pesan ulang pada tick berikut, bukan jaminan exactly-once lintas layanan. Kontrak HTTP Pages, cadence step/trigger dan env tetap; watchdog "Sync basi" tetap cadangan. Belum dipublikasikan/deployment belum diverifikasi.
+- **Ketahanan state alarm (lokal/F1, revisi P2):** KV ditulis ketika counter/episode/detail atau watermark per-step berubah (tick sehat ~1440 write/hari; KV bukan D1). Watermark waktu jadwal bertahan setelah sukses/recovery; baca ulang KV sebelum commit/ack Telegram menjaga state tick baru dari hasil tick lama. KV eventual tanpa CAS masih memiliki race get/put pendek yang diterima PM. Write counter diperiksa sebelum kirim; ack pesan ditulis sesudah Telegram berhasil, sehingga start/reminder/recovery yang gagal kirim dicoba lagi. Binding hilang, payload korup, get/put gagal dicatat tersanitasi lalu memakai fallback stateless **hard dan soft** pada :00/:30. Key baru/kosong (`get` null) bukan storage error; saat KV pulih stateful dilanjutkan. Payload agregat lama tanpa `steps` memulai counter baru sekali karena atribusi lama tidak diketahui (tanpa recovery palsu); ambang2/6 tetap berlaku. Ack KV yang gagal setelah Telegram sukses dapat membuat pesan ulang pada tick berikut, bukan jaminan exactly-once lintas layanan. Kontrak HTTP Pages, cadence step/trigger dan env tetap; watchdog "Sync basi" tetap cadangan. Belum dipublikasikan/deployment belum diverifikasi.
 
 **Sync katalog DIFF dari VPS (live 2026-10-04 siang).** Penanda langkah 4 Okt 10.15 WIB membuktikan potongan 10 produk tetap dibunuh `exceededCpu` saat platform ketat: `warung_rebahan:sync` mati SETELAH `phases_done` (route cron raksasa ±1 dtk hanya untuk menyala + kerja per produk), `sekalipay:sync` mati di tengah sweep. Kontrak baru:
 

@@ -16,13 +16,14 @@ function fixture(override?: (url: string, init?: RequestInit) => Response | Prom
 }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("synthetic health", () => {
-  it("runs after every scheduled CRON_STEP, selects a dynamic variant/minimum and never calls orders", async () => {
+  it("runs before scheduled CRON_STEP work, selects a dynamic variant/minimum and never calls orders", async () => {
     const fetchFn = fixture();
     const report = await runOperationsTick(env, Date.UTC(2026, 10, 18, 0, 0), fetchFn);
     expect(report.outcomes.slice(-3).map(o => o.step)).toEqual(["synth:home", "synth:catalog", "synth:quote"]);
     const urls = fetchFn.mock.calls.map(([url]) => url);
     const firstProbe = urls.indexOf(`${env.AXVARA_API_ORIGIN}/`);
-    expect(urls.slice(firstProbe).some(url => url.includes("/api/cron/"))).toBe(false);
+    expect(firstProbe).toBe(0);
+    expect(urls.indexOf(`${env.AXVARA_API_ORIGIN}/api/checkout/quote`)).toBeLessThan(urls.findIndex(url => url.includes("/api/cron/")));
     expect(urls.some(url => url.includes("/api/orders"))).toBe(false);
     const quote = fetchFn.mock.calls.find(([url]) => url.endsWith("/quote"))!;
     expect(JSON.parse(String(quote[1]?.body))).toEqual({ items: [{ product_id: 45, variant_id: 309, qty: 3 }] });
@@ -83,15 +84,15 @@ describe("synthetic health", () => {
       }
     }
   });
-  it("bounded total timeout cannot delay subsequent order work; exhausted tick skips probes without resetting alarm", async () => {
+  it("bounded independent timeout runs probes even when the subsequent cron work is slow", async () => {
     vi.useFakeTimers();
     const fetchFn = fixture(async url => {
       if (url.includes("/api/cron/")) { vi.setSystemTime(Date.now() + 4000); return Response.json({ ok: true }); }
       return undefined;
     });
     const report = await runOperationsTick(env, Date.UTC(2026, 10, 18, 0, 0), fetchFn);
-    expect(report.outcomes.slice(-3).every(o => o.calls === 0 && o.alarm === "none")).toBe(true);
-    expect(fetchFn.mock.calls.every(([url]) => url.includes("/api/cron/"))).toBe(true);
+    expect(report.outcomes.slice(-3).every(o => o.calls > 0)).toBe(true);
+    expect(fetchFn.mock.calls.some(([url]) => url.includes("/api/cron/"))).toBe(true);
     const start = Date.now();
     const probes = runSyntheticProbes(env, fixture(() => new Promise<Response>(() => {})));
     await vi.advanceTimersByTimeAsync(SYNTH_BUDGET_MS);

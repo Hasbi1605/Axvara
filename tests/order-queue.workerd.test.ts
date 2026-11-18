@@ -59,7 +59,7 @@ it("native queue producer + D1 origin: dry-run, lease, rollback with active mess
     await db.prepare("UPDATE store_settings SET value='off' WHERE key='queue_fulfillment_mode'").run();
     expect(await (await runtime.dispatchFetch("https://fixture/rollback")).json()).toEqual({ sends: 1 });
     const outcomes = await Promise.all([origin({ dryRun: false }), origin({ dryRun: false, kind: "supplier_settled" })]);
-    expect(outcomes.every(result => result.settled === false && Number(result.retrySec) >= 60)).toBe(true);
+    expect(outcomes.every(result => result.settled === true && result.state === "queue_disabled")).toBe(true);
     expect(await (await runtime.dispatchFetch("https://fixture/count")).json()).toEqual({ sends: 1 }); // Old active messages + off fallback cannot resend sent ledger.
     expect(await origin({ orderCode: "AXV-20261118-NOTPAID1" })).toMatchObject({ state: "not_paid", settled: true });
   } finally { f.close(); await runtime.dispose(); }

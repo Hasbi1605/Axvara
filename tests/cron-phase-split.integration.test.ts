@@ -323,9 +323,9 @@ describe("Worker runOperationsTick", () => {
     const report = await runOperationsTick(env, at(5), fn as never, async () => undefined);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
+      "synth:home", "synth:catalog", "synth:quote",
       "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
       "publish-scheduled",
-      "synth:home", "synth:catalog", "synth:quote",
     ]);
     expect(calls.some((u) => u.includes("/api/cron/operations"))).toBe(false);
   });
@@ -335,15 +335,16 @@ describe("Worker runOperationsTick", () => {
     const report = await runOperationsTick(env, Date.UTC(2026, 9, 3, 14, 0), fn as never, async () => undefined);
     expect(report.failures).toEqual([]);
     expect(calls.map(label)).toEqual([
+      "synth:home", "synth:catalog", "synth:quote",
       "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup", "lite:games_catalog",
       "publish-scheduled",
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
-      "synth:home", "synth:catalog", "synth:quote",
     ]);
     expect(CRON_STEPS.map(stepLabel)).toEqual(calls.map(label).filter(name => !name.startsWith("synth:")));
-    expect(fn.mock.calls[0][1]).toMatchObject({ method: "POST", headers: { authorization: "Bearer s" } });
-    expect(calls[0]).toBe("https://axvara.test/api/cron/lite?job=payments");
+    const firstCron = fn.mock.calls.find(([url]) => url.includes("/api/cron/"))!;
+    expect(firstCron[1]).toMatchObject({ method: "POST", headers: { authorization: "Bearer s" } });
+    expect(firstCron[0]).toBe("https://axvara.test/api/cron/lite?job=payments");
   });
 
   it("Paid jobs have no Free-plan sleeps; minute ticks skip housekeeping and hourly sweeps", async () => {
@@ -441,7 +442,8 @@ describe("Worker runOperationsTick", () => {
     expect(fail.telegram()).toHaveLength(1);
     expect(fail.telegram()[0]).toContain("Pesan berikutnya");
     const putsDuringOutage = mem.puts();
-    expect(putsDuringOutage).toBeLessThanOrEqual(3); // tidak menulis KV tiap tick
+    expect(putsDuringOutage).toBe(26); // 25 watermarks + successful start ack
+    expect(JSON.parse(String(mem.store.get(ALARM_KV_KEY))).lastScheduledTime["lite:sk_orders"]).toBe(at(0) + 120 * 60_000);
 
     expect((await tick(125, ok)).action).toBe("none");
     expect((await tick(130, ok)).action).toBe("none");

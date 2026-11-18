@@ -16,6 +16,7 @@ export const SETTLED_STATES = new Set([
   "manual_required",
   "not_paid",
   "dry_run_ok",
+  "queue_disabled",
 ]);
 
 export type QueueFulfillmentKind = "order_paid" | "supplier_settled";
@@ -372,11 +373,13 @@ async function processMainMessage(
 
     if (body && body.ok === true && body.settled === false) {
       if (msg.attempts >= MAX_SETTLED_FALSE_ATTEMPTS) {
-        msg.ack();
-        deps.logFn("info", {
+        // max_retries=4 sends this fifth failed delivery to the configured
+        // DLQ, whose admin alert is durable even if Telegram is unavailable.
+        msg.retry({ delaySeconds: computeBackoffSeconds(msg.attempts) });
+        deps.logFn("error", {
           ...baseLog,
           status: 200,
-          outcome: "ack_unsettled_max_attempts",
+          outcome: "unsettled_to_dlq",
         });
         return;
       }

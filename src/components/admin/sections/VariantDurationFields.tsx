@@ -20,14 +20,14 @@ export function DurationFields({ value, onChange, wrLocked = false }: {
         <Input
           id={id}
           type="number"
-          min={0}
+          min={1}
           step={1}
           value={value.duration_value ?? ""}
           readOnly={wrLocked || legacyUnit}
           placeholder="Kosong"
-          onChange={(e) => onChange(e.target.value === ""
+          onChange={(e) => onChange(!Number.isFinite(Number(e.target.value)) || Number(e.target.value) < 1
             ? { duration_value: null, duration_unit: null, duration_label: null }
-            : { duration_value: Math.max(0, Math.floor(Number(e.target.value) || 0)), duration_unit: value.duration_unit || "day", duration_label: null })}
+            : { duration_value: Math.floor(Number(e.target.value)), duration_unit: value.duration_unit || "day", duration_label: null })}
           className="h-9 w-24 rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg read-only:text-admin-muted read-only:cursor-not-allowed"
         />
         <NativeSelect
@@ -35,7 +35,7 @@ export function DurationFields({ value, onChange, wrLocked = false }: {
           value={value.duration_unit || ""}
           disabled={wrLocked}
           onChange={(e) => onChange(e.target.value
-            ? { duration_unit: e.target.value, duration_value: value.duration_value ?? 1, duration_label: null }
+            ? { duration_unit: e.target.value, duration_value: value.duration_value && value.duration_value > 0 ? value.duration_value : 1, duration_label: null }
             : { duration_unit: null, duration_value: null, duration_label: null })}
           className="h-9 rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg"
         >

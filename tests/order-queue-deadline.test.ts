@@ -11,6 +11,7 @@ let f: ReturnType<typeof createD1Fixture>;
 const code = "AXV-20261118-DEADLINE";
 beforeEach(() => {
   f = createD1Fixture(); stubFulfillmentKey(); send.mockClear();
+  f.sql.exec("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')");
   vi.stubEnv("AUTO_FULFILLMENT_ENABLED", "true"); vi.stubEnv("TELEGRAM_BOT_ENABLED", "false"); vi.stubEnv("CRON_SECRET", "fixture");
   vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("fixture forbids network"); }));
 });

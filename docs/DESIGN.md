@@ -9,6 +9,8 @@ primitive Input/Label/NativeSelect serta token admin existing, tanpa token/aset
 baru. Nilai legacy Selamanya/Kustom tetap terlihat berikut label tersimpannya;
 tidak dinormalisasi saat membuka form. Mengubah nilai/satuan secara eksplisit
 mengosongkan label lama; mengosongkan masa aktif mengirim ketiganya NULL.
+Revisi P2 18 November (lokal): input angka minimal1;0/negatif dikosongkan,
+peralihan legacy0 ke Hari/Bulan/Tahun memulai1 tanpa mengubah legacy saat dibuka.
 WR: nilai readOnly dan satuan disabled, label **Masa aktif (WR)**. Pola admin
 tetap Indonesia (tidak ada locale switch chrome admin); pilihan EN pada tab
 Deskripsi & S&K tidak mengubah bahasa field ini.

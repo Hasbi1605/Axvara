@@ -16,12 +16,26 @@ Endpoint edge internal `POST /api/internal/queue/fulfill` memerlukan Bearer
 `CRON_SECRET`, schema strict dan order lunas. Dry-run=1read tanpa efek. Pass40
 detik berhenti memulai item/sub-pass baru (bukan membatalkan I/O yang berjalan).
 Done/async/manual/not-paid di-ack; sisa pre-send/lease sibuk retry min60detik
-dan ≥lease tersisa. Satu link/supplier/pass **bukan** seluruh order selesai;
-multi-link tersisa retry/cron. C0 tetap menjaga push saat replay/rollback off
-dengan pesan active lama. Default deadline delivery langsung tidak berubah.
+dan ≥lease tersisa. Pembelian satu link/supplier/pass **bukan** seluruh order
+selesai; di jalur Queue, retry WR/SK memproses link existing dan delivery SK
+menangani semua completed hingga deadline. Notice belum sent tidak dianggap done;
+jalur waitUntil lama tidak berubah. Origin membaca
+mode segar sebelum eksekusi: off/shadow/canary tidak cocok → `queue_disabled`
+(ack, cron backstop), meskipun producer masih memo30detik. Pass sudah berjalan
+masih dapat memulai kerja sampai40detik dan I/O tidak dibatalkan; C0 tetap.
+Unsettled habis5percobaan retry ke DLQ dengan alert admin tersanitasi, bukan ack
+senyap. `blocked_balance` retry, status tak dikenal/tanpa fence/lease valid manual.
+Default deadline delivery langsung tidak berubah.
 Log producer per kind/source/outcome dan durasi legacy untuk baseline shadow;
 canary terbatas setelah0auth-fail/0enqueue non-lunas/<1%error transport/tanpa
 kenaikan duplikasi. Kontrak lengkap dan batas bukti: ARCHITECTURE bagian C-S.
+
+P2 alarm (lokal): watermark scheduledTime per-step + baca ulang KV saat commit
+dan ack Telegram mencegah tick berat lama menggulung counter tick baru. KV tanpa
+CAS/eventual masih punya race pendek yang diterima PM; F1 hard2/soft6/recovery3/
+reminder6jam tetap. Probe awal tick budget20detik independen (job bisa tertunda
+hingga20detik), tidak lagi skip karena durasi heavy; tanpa resource/env baru.
+Editor durasi minimal1,0 dikosongkan; legacy lifetime0→unit biasa menjadi1.
 
 ## Funnel WAE B-S (18 November 2026, lokal)
 
@@ -59,9 +73,9 @@ setelah takeover ambigu. Detail `docs/ARCHITECTURE.md` C0 dan aturan kredensial.
 
 ## Probe kesehatan A-S (18 November 2026, lokal)
 
-Scheduler menambah home/katalog/quote setelah seluruh job cron, memakai alarm
-F1 existing (hard2/soft6). Probe≤10detik/fase, total≤20detik dan sisa jendela
-tick55detik; tick sibuk melewati probe tanpa memulihkan alarm palsu. Target
+Scheduler menjalankan home/katalog/quote sebelum job cron, memakai alarm
+F1 existing (hard2/soft6). Probe≤10detik/fase, total≤20detik independen dari
+durasi tick berat; dapat menunda job hingga20detik, tanpa memotongnya. Target
 varian/minimum dinamis (maks3PDP); konflik quote409 terstruktur tetap sehat.
 Tidak membuat order/reservasi. Header sintetis harus disertai Bearer CRON secret
 constant-time: tidak memakai kuota pembeli/funnel,0D1write/quote, dan tidak
@@ -2227,7 +2241,7 @@ QRIS & Rekonsiliasi**.
 - Untuk file lokal, path tidak dapat dibaca oleh remote MCP. Agent yang memiliki akses terminal dapat melewati JSON/base64 dan mengunggah multipart langsung: `curl -H "Authorization: Bearer $AXVARA_AGENT_TOKEN" -F "file=@./cover.webp;type=image/webp" -F "kind=cover" https://axvara.tech/api/agent/media`. Token memerlukan scope `media:write` dan tidak boleh ditulis langsung ke prompt/log.
 - Worker cron aktif di `https://axvara-mcp.sailinnadia1.workers.dev/mcp` dan memakai `https://axvara.tech` sebagai origin API. Setelah memuat `.cf-credentials`, `npm run deploy:mcp` memakai Global API Key lokal untuk deployment Worker.
 - Jadwal artikel disimpan sebagai status `scheduled`. Cron Worker berjalan tiap 5 menit dan memanggil publisher terproteksi; `CRON_SECRET` pada Pages harus sama dengan secret Worker `AXVARA_CRON_SECRET`.
-- **Consumer Queue pengiriman instan & DLQ (`mcp-worker`, Paket C-H, lokal/belum deploy):** handler `queue()` di `mcp-worker/src/index.ts` + `mcp-worker/src/queue.ts` membedakan queue utama `axvara-order-fulfillment` (`max_batch_size 5`, `max_batch_timeout 1`, `max_retries 4`, DLQ `axvara-order-fulfillment-dlq`) vs DLQ (`max_batch_size 5`, `max_batch_timeout 5`, `max_retries 2`), mendukung sakelar `[vars] QUEUE_CONSUMER_MODE = "active"` (`"off"` → `ack()` tanpa fetch), memvalidasi pesan sebelum memanggil `POST /api/internal/queue/fulfill` (`timeout 45 detik`, `dryRun` pada mode `shadow`, backoff `5/15/45/120 detik`, `ack()` pada `settled:false` dengan `attempts ≥ 5` agar cron backstop mengambil alih), dan mengirim alert Telegram admin tersanitasi untuk pesan DLQ (`ack()` hanya sesudah kirim sukses). Resource Queue Cloudflare dibuat oleh PM sebelum push; sisi producer Pages & endpoint origin berada pada paket C-S.
+- **Consumer Queue pengiriman instan & DLQ (`mcp-worker`, Paket C-H, lokal/belum deploy):** handler `queue()` di `mcp-worker/src/index.ts` + `mcp-worker/src/queue.ts` membedakan queue utama `axvara-order-fulfillment` (`max_batch_size 5`, `max_batch_timeout 1`, `max_retries 4`, DLQ `axvara-order-fulfillment-dlq`) vs DLQ (`max_batch_size 5`, `max_batch_timeout 5`, `max_retries 2`), mendukung sakelar `[vars] QUEUE_CONSUMER_MODE = "active"` (`"off"` → `ack()` tanpa fetch), memvalidasi pesan sebelum memanggil `POST /api/internal/queue/fulfill` (`timeout 45 detik`, `dryRun` pada mode `shadow`, backoff `5/15/45/120 detik`, log error + retry pada `settled:false` dengan `attempts ≥ 5` agar masuk DLQ existing; cron backstop tetap), dan mengirim alert Telegram admin tersanitasi untuk pesan DLQ (`ack()` hanya sesudah kirim sukses). Resource Queue Cloudflare dibuat oleh PM sebelum push; sisi producer Pages & endpoint origin berada pada paket C-S.
 - **Deteksi gangguan sync/cron (18 Nov 2026, setelah insiden TUNVN beku ~5,5 jam):** alarm Worker `CRON_STATE` kini per step (hard 2 / soft 6 eksekusi gagal step itu; tick non-due tidak mereset; pesan memuat cuplikan error tersanitasi; `publish-scheduled` ikut sebagai step soft; KV rusak → fallback hard+soft :00/:30). Pages menyimpan `<sumber>_success_at`/`<sumber>_last_error` hanya setelah sync+publish penuh; subjob inti cron lite yang gagal → 503 `failed_subjobs`. Watchdog `src/lib/sync-staleness.ts` (di `job=cleanup`) mengirim Telegram admin `⚠️ Sinkronisasi <Sumber> basi` (ambang max(15 mnt, 3× interval); pengingat 6 jam; `✅ … pulih`, mempertahankan `last_stale_at`/`last_recovered_at`) untuk SK, Jaspay, TUNVN, AIVault, Games, Pedia diff, FX; WR tetap watchdog lama. Ringkasan harian admin (`src/lib/telegram/daily-admin-summary.ts`, menumpang `cron/lite?job=promo` 07.00–11.59 WIB, ≤12 statement D1, CAS `admin_daily_summary_state`) merangkum omzet/order kemarin, order macet >30 mnt, saldo tersimpan 5 supplier, status sync 24 jam, dan top 5 produk laris stok ≤2. Detail: `docs/agent-rules/platform-ops.md`.
 - **Cron operations satu fase per request (2026-10-04, Free plan):** Worker memanggil `/api/cron/operations?phase=…` berurutan (expiry → fulfillment → WR → SK → notify → cleanup); sync WR (10 produk) / SK (25 varian) dipotong dan diulang selama respons `more: true`, sehingga katalog segar ≤15 menit. Fase gagal → alarm Telegram admin tiap :00/:30 (secret Worker `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ADMIN_CHAT_ID`). Penanda run selesai `store_settings.cron_last_ok_at`. Latar: insiden 3 Okt 20:25–23:50 WIB, 41 run dibunuh `exceededResources` (batas CPU ~10 ms Free plan). Detail: `docs/ARCHITECTURE.md` §12. **Revisi 4 Okt:** fase WR/SK dibelah `part=orders` (didahulukan — order lunas tetap jalan walau sync kena limit) dan `part=sync`; potongan katalog diambil dari proxy VPS (`/wr/products-slice`, `/sk/catalog-slice`, tanpa state) sehingga Pages tidak mem-parse katalog penuh; alarm ber-state Workers KV `axvara-cron-state` (1 pesan mulai, pengingat 6 jam, 1 pesan pulih); penanda langkah `[cron] … step=` di log untuk diagnosa. **Diff VPS (4 Okt siang):** VPS proxy membandingkan katalog WR/SK tiap 3 menit dan mengirim HANYA yang berubah ke `POST /api/supplier-sync` (route ramping, secret `SUPPLIER_SYNC_TOKEN`) → katalog segar ±3–6 menit; sweep berpotongan cron turun jadi pengaman tiap 60 menit selama diff sehat. Tabel log WR/SK diberi indeks (migrasi 0057) setelah kuota D1 Free rows_read sempat 75% pada 4 Okt. **Cron lite (5 Okt):** expiry/fulfillment/order WR/SK inti + Daily Promo Digest lewat route ramping `/api/cron/lite` (jarang kena limit CPU); route besar tetap jadi pelengkap, alarm hanya untuk langkah inti + notify (≥30 mnt). Kiriman diff tidak masuk `*_sync_log`; kartu admin "Sync terakhir" memisahkan Diff VPS (cek + perubahan terakhir), Sync penuh, dan Manual. **Revisi 5 Okt malam:** notify + cleanup juga lewat lite; route besar hanya sekali per jam (tick :00 UTC) → request yang dibunuh limit CPU turun dari ±580 menjadi ≤24/hari. **Revisi 9 Okt pagi (insiden 09:50 WIB: 4 langkah lite 503 bareng, pulih ~30 mnt):** `notify` dipecah `notify_a` + `notify_b` (alias `notify` lama tetap), Worker jeda 2 dtk antar langkah lite; throttle saldo SMM = WR/SK (6 jam ATAU turun Rp5rb). **Revisi 9 Okt sore (kasus AXV-20261009-DA1ACF56 — order Drama All In One Telegram lunas tapi tidak masuk dashboard WR):** link WR tidak pernah dibuat webhook (COUNT due = 0 menutup reconciler di dalam proses) → probe yatim lunas-tanpa-link jalan TANPA gate due di lite wr/sk_orders + fase route besar (kunci respons orphan_links_healed).
 

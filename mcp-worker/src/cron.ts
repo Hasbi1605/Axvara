@@ -19,7 +19,7 @@
 //   (hard 2 / soft 6 eksekusi gagal per step), pengingat tiap 6 jam,
 //   pulih setelah tiap step terdampak sukses 3 kali. KV rusak → :00/:30.
 
-import { runSyntheticProbes, SYNTH_TICK_WINDOW_MS } from "./synthetic";
+import { runSyntheticProbes } from "./synthetic";
 
 export type KvLike = {
   get(key: string): Promise<string | null>;
@@ -125,6 +125,8 @@ export type AlarmState = {
   steps: Record<string, { failedTicks: number; okTicks: number; outcome: PhaseOutcome }>;
   /** Kegagalan sejak pesan terakhir, termasuk step baru yang sudah pulih. */
   pendingFailures: PhaseOutcome[];
+  /** Watermarks survive successful steps/episode recovery (older ticks lose). */
+  lastScheduledTime?: Record<string, number>;
 };
 export type AlarmAction = "none" | "start" | "reminder" | "recovered";
 export type TickReport = { outcomes: PhaseOutcome[]; failures: PhaseOutcome[]; alerted: boolean; action: AlarmAction };
@@ -230,6 +232,10 @@ export function nextAlarmState(
   outcomes: PhaseOutcome[],
   now: number,
 ): { state: AlarmState; action: AlarmAction; changed: boolean } {
+  const lastScheduledTime = { ...prev.lastScheduledTime };
+  outcomes = outcomes.filter(o => o.alarm !== "none" && now > (lastScheduledTime[o.step] ?? -Infinity));
+  if (!outcomes.length) return { state: prev, action: "none", changed: false };
+  for (const o of outcomes) lastScheduledTime[o.step] = now;
   const steps = { ...prev.steps };
   const pending = new Map(prev.pendingFailures.map((f) => [f.step, f]));
   for (const outcome of outcomes) {
@@ -270,6 +276,7 @@ export function nextAlarmState(
     state.alertedAt = now;
     action = "reminder";
   }
+  state = { ...state, lastScheduledTime };
   return { state, action, changed: JSON.stringify(prev) !== JSON.stringify(state) };
 }
 
@@ -286,6 +293,8 @@ async function readState(kv: KvLike): Promise<AlarmState> {
   // tanpa mengirim recovery palsu untuk episode lama.
   if (!("steps" in parsed)) return EMPTY_STATE;
   if (!parsed.steps || Array.isArray(parsed.steps) || !Array.isArray(parsed.pendingFailures) ||
+       (parsed.lastScheduledTime !== undefined && (!parsed.lastScheduledTime || typeof parsed.lastScheduledTime !== "object" ||
+         Array.isArray(parsed.lastScheduledTime) || Object.values(parsed.lastScheduledTime).some(t => !Number.isFinite(t)))) ||
       Object.entries(parsed.steps).some(([label, s]) => !s || !Number.isInteger(s.failedTicks) || s.failedTicks < 0 ||
         !Number.isInteger(s.okTicks) || s.okTicks < 0 || !s.outcome || s.outcome.step !== label || s.outcome.ok !== false) ||
       parsed.pendingFailures.some((f) => !f || typeof f.step !== "string" || f.ok !== false)) throw new Error("invalid_alarm_state");
@@ -314,7 +323,9 @@ export async function runOperationsTick(
   /** Diinjeksi test agar tidak tidur sungguhan; runtime memakai setTimeout. */
   sleepFn: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<TickReport> {
-  const startedAt = Date.now();
+  // Independent 20s probe budget, before the potentially multi-minute :00
+  // pipeline. Keep diagnostic outcome ordering stable for existing consumers.
+  const probes = await runSyntheticProbes(env, fetchFn);
   const outcomes: PhaseOutcome[] = [];
   // Langkah gagal tidak menghentikan langkah berikut: tiap langkah berdiri sendiri.
   const heavyTick = isHeavyTick(scheduledTime);
@@ -328,29 +339,43 @@ export async function runOperationsTick(
     stepped = true;
     outcomes.push({ ...(await callStep(env, step, fetchFn)), alarm: step.alarm });
   }
-  outcomes.push(...await runSyntheticProbes(env, fetchFn, SYNTH_TICK_WINDOW_MS - (Date.now() - startedAt)));
+  outcomes.push(...probes);
   // Langkah `none` tetap tercatat di outcomes (diagnosa) tapi bukan kegagalan alarm.
   const failures = outcomes.filter((o) => !o.ok && o.alarm !== "none");
 
   let alerted = false;
   try {
     if (!env.CRON_STATE) throw new Error("binding_missing");
+    // Re-read at commit time, not before the slow pipeline. Only this tick's
+    // due outcomes are merged; watermarks exclude a newer tick's step state.
+    // KV has no CAS: the short get/put + eventual-consistency race remains.
     const prev = await readState(env.CRON_STATE);
     const { state, changed, action } = nextAlarmState(prev, outcomes, scheduledTime);
+    const pending = action === "recovered" ? { ...prev, lastScheduledTime: state.lastScheduledTime } : { ...state, alertedAt: prev.alertedAt };
     if (changed) {
       // Verifikasi write SEBELUM kirim; kegagalan KV memakai fallback, bukan
       // mengulang pesan stateful setiap tick. Ack pesan ditulis setelah terkirim.
-      const pending = action === "recovered" ? prev : { ...state, alertedAt: prev.alertedAt };
       await env.CRON_STATE.put(ALARM_KV_KEY, JSON.stringify(pending));
     }
+    const acknowledge = async () => {
+      // Telegram may be slow too. Never restore the pre-send snapshot over
+      // counters/failures committed by the next tick while it was in flight.
+      const latest = await readState(env.CRON_STATE!);
+      if (JSON.stringify(latest) === JSON.stringify(pending)) {
+        await env.CRON_STATE!.put(ALARM_KV_KEY, JSON.stringify({ ...state, pendingFailures: [] }));
+      } else if (action !== "recovered" && latest.alertedAt === prev.alertedAt && latest.since === state.since) {
+        await env.CRON_STATE!.put(ALARM_KV_KEY, JSON.stringify({ ...latest, alertedAt: state.alertedAt,
+          pendingFailures: latest.pendingFailures.filter(f => !state.pendingFailures.some(sent => JSON.stringify(sent) === JSON.stringify(f))) }));
+      }
+    };
     if (action === "start" || action === "reminder") {
       const reportFailures = new Map(state.pendingFailures.map((f) => [f.step, f]));
       for (const s of Object.values(state.steps)) if (s.failedTicks > 0) reportFailures.set(s.outcome.step, s.outcome);
       alerted = await sendAlert(env, formatAlert([...reportFailures.values()], scheduledTime, action, state.since), fetchFn);
-      if (alerted) await env.CRON_STATE.put(ALARM_KV_KEY, JSON.stringify({ ...state, pendingFailures: [] }));
+      if (alerted) await acknowledge();
     } else if (action === "recovered" && prev.since != null) {
       alerted = await sendAlert(env, formatRecovery(prev.since, scheduledTime, prev.lastFailures), fetchFn);
-      if (alerted) await env.CRON_STATE.put(ALARM_KV_KEY, JSON.stringify(state));
+      if (alerted) await acknowledge();
     }
     return { outcomes, failures, alerted, action };
   } catch (error) {

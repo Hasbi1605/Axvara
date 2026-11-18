@@ -16,12 +16,20 @@ immediate dengan queue, error send fallback eksplisit. Pengecualian payment
 cron gateway: fallback tetap cron fulfillment durable, tidak memulai executor
 tanpa meter di budget40statement. Pesanan/order outbox tetap durable.
 Pass queue dibatasi40detik untuk memulai sub-pekerjaan baru, scoped satu order;
-multi-link hanya satu link/supplier/pass, sisanya retry atau cron. Async supplier
+multi-link pembelian hanya satu link/supplier/pass, sisanya retry atau cron.
+Retry Queue menjalankan processor WR/SK bila link sudah ada; delivery Queue SK
+mencoba semua link completed sampai deadline, dan notice eligible belum sent tetap
+pending. Jalur waitUntil lama tidak berubah. Async supplier
 dan kebutuhan admin bukan kegagalan transport. Lease sibuk/sisa pre-send retry
 ≥sisa lease; tidak menandai satu link selesai sebagai seluruh pesanan selesai.
 
-Rollback setting off≤30detik tanpa redeploy; pesan active lama masih dipagari
-CAS/ledger C0. Tidak menjanjikan exactly-once upstream untuk hasil ambigu,
+Rollback setting off dibaca segar tanpa memo oleh endpoint sebelum eksekusi
+pesan active lama (`queue_disabled`, ack, cron backstop); memo producer tetap30detik.
+Pass yang telanjur dimulai masih dapat memulai pekerjaan sampai deadline40detik,
+dan I/O berjalan tidak dibatalkan; CAS/ledger C0 tetap berlaku. `blocked_balance`
+retry menurut next_attempt_at; status tak dikenal/tanpa fence atau lease valid
+memerlukan pemeriksaan manual. `settled:false` habis5percobaan masuk DLQ dan alert
+admin, bukan ack senyap. Tidak menjanjikan exactly-once upstream untuk hasil ambigu,
 deadline pembatalan jaringan, atau kecepatan dari shadow saja. Resource/consumer
 serta canary/rollout diserahkan PM; belum ada transaksi/deployment produksi.
 
@@ -68,22 +76,25 @@ tanpa perubahan HTML/tampilan. Belum dipublikasikan/deploy.
 
 ## A-S: kesehatan checkout tanpa transaksi — 18 November 2026 (lokal)
 
-Tiga probe per tick menit memeriksa home/katalog/quote setelah pekerjaan order.
+Tiga probe per tick menit memeriksa home/katalog/quote sebelum pekerjaan order.
 Gagal/timeout dua eksekusi berturut-turut memakai alarm hard F1; sukses lambat
 >4detik enam kali memakai soft. Quote memilih varian/minimum dari katalog,
 tanpa order/reservasi/panggilan provider pembayaran; token+QRIS lokal tersedia
 menjadi kontrak200, konflik stok/varian409 terstruktur tetap sehat. Pemeriksaan
 tidak mewakili rail eksternal yang sengaja tidak dipanggil. Secret cron sah +
 header sintetis wajib untuk bypass kuota pembeli dan pengecualian funnel.
-Waktu terbatas (20detik total,10detik/fase, sisa jendela55detik tick); tick sibuk
-bisa melewati probe, bukan SLA pemeriksaan tepat setiap menit. CSP publik
+Waktu terbatas (20detik total,10detik/fase), terpisah dari durasi pipeline cron
+agar tick berat tidak selalu melewati probe; job order bisa tertunda maksimal
+20detik oleh probe, bukan SLA pemeriksaan tepat setiap menit. CSP publik
 menyiapkan dua origin Cloudflare Web Analytics, tanpa mengubah CSP admin.
 Implementasi/test dan QA Chrome lokal; bukan aktivasi dashboard/deployment.
 
 ## Masa aktif terpisah dari garansi — 18 November 2026 (G4, lokal)
 
 - Editor produk tunggal dan multi-varian menyediakan **Masa aktif (opsional)**:
-  nilai durasi + Hari/Bulan/Tahun, boleh dikosongkan. Garansi (nilai, satuan,
+  nilai durasi positif (minimal1) + Hari/Bulan/Tahun, boleh dikosongkan; input0
+  mengosongkan ketiga kolom, mengganti legacy lifetime/custom bernilai0 ke unit
+  biasa memulai nilai1. Garansi (nilai, satuan,
   tipe) tidak pernah mengubah masa aktif, dan sebaliknya.
 - Membuka lalu menyimpan tanpa mengubah durasi mempertahankan nilai, satuan
   dan label tersimpan, termasuk legacy lifetime/custom. Nilai historis yang

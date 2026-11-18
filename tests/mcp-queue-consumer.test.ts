@@ -68,6 +68,16 @@ afterEach(() => {
 });
 
 describe("mcp-worker queue consumer", () => {
+  it("R1-1: exhausted unsettled work retries into configured DLQ instead of silently acknowledging", async () => {
+    const m = makeMessage(makePayload(), 5);
+    const logFn = vi.fn();
+    await handleQueueBatch(makeBatch(MAIN_QUEUE_NAME, [m.message]), baseEnv, {
+      fetchFn: async () => Response.json({ ok: true, settled: false, retrySec: 60 }), logFn,
+    });
+    expect(m.ack).not.toHaveBeenCalled();
+    expect(m.retry).toHaveBeenCalledWith({ delaySeconds: 120 });
+    expect(logFn).toHaveBeenCalledWith("error", expect.objectContaining({ outcome: "unsettled_to_dlq", attempt: 5 }));
+  });
   it("computes exponential backoff 5, 15, 45, 120 seconds", () => {
     expect(computeBackoffSeconds(1)).toBe(5);
     expect(computeBackoffSeconds(2)).toBe(15);
@@ -220,14 +230,14 @@ describe("mcp-worker queue consumer", () => {
     },
   );
 
-  it("handles 200 settled:false with max(retrySec, backoff) for attempts < 5 and acks at attempts >= 5", async () => {
+  it("handles 200 settled:false with max(retrySec, backoff), then retries into DLQ at attempts >= 5", async () => {
     const cases: Array<{ attempts: number; retrySec: number; expectedDelay?: number; expectAck: boolean }> = [
       { attempts: 1, retrySec: 60, expectedDelay: 60, expectAck: false },
       { attempts: 2, retrySec: 10, expectedDelay: 15, expectAck: false },
       { attempts: 3, retrySec: 20, expectedDelay: 45, expectAck: false },
       { attempts: 4, retrySec: 30, expectedDelay: 120, expectAck: false },
-      { attempts: 5, retrySec: 60, expectAck: true },
-      { attempts: 6, retrySec: 60, expectAck: true },
+      { attempts: 5, retrySec: 60, expectedDelay: 120, expectAck: false },
+      { attempts: 6, retrySec: 60, expectedDelay: 120, expectAck: false },
     ];
 
     for (const tc of cases) {

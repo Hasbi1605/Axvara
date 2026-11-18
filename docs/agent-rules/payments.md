@@ -17,6 +17,16 @@ durable (`cron_deferred`), bukan menjalankan pohon tanpa meter; HTTP tetap
 immediate waitUntil. Tidak menambah env Pages/secret/invoice/transaksi QA.
 Detail endpoint/auth/deadline/semantik retry di ARCHITECTURE bagian C-S.
 
+Revisi P2 lokal: origin membaca mode segar (tanpa memo producer) sebelum pesan
+active dieksekusi, off/shadow/canary tak cocok/absen → queue_disabled+ack. Pass
+sudah dimulai masih dapat memulai subkerja sampai40detik; I/O tidak dibatalkan.
+Unsettled habis5percobaan masuk DLQ existing+alert admin tersanitasi, bukan ack
+senyap. blocked_balance pending sesuai next_attempt_at; status tak dikenal atau
+claimed/ordering tanpa fence/lease valid manual. Retry Queue WR/SK memproses link
+existing walau create0; SK completed mencoba semua link hingga deadline dan
+notice eligible belum sent tidak dianggap done. Jalur waitUntil lama tetap.
+Tanpa env/resource/transaksi QA.
+
 ## Pensiun tes pembayaran admin — 18 November 2026 (lokal, G1)
 
 - Fitur tes pembayaran admin dipensiunkan karena NOWPayments dan Sekalipay gateway sudah terbukti jalan di publik: `src/app/(shop)/admin/payments/test/page.tsx` dan `src/components/storefront/PaymentTestScope.tsx` dihapus; `/api/admin/payments/test/{quote,orders}` mengembalikan `410` `{ error: "Tes pembayaran admin sudah dipensiunkan." }` (`Cache-Control: no-store`).
