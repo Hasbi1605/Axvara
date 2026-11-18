@@ -196,7 +196,7 @@ it("net profit card walks omzet → modal → kotor → fees/refund/operasional,
   const report = emptySelectedReport("week");
   Object.assign(report, { orders: 3, revenue: 300000, cost: 180000, profit: 120000, estimated_orders: 2,
     payment_fees: 3000, unique_code_bonus: 412, refund_expenses: 20000, operational_expenses: 150000, net_profit: -53000,
-    estimated_order_codes: ["AXV-20261116-AAAA1111", "AXV-20261116-BBBB2222"] });
+    estimated_order_codes: ["AXV-20261116-AAAA1111", "AXV-20261116-BBBB2222"], estimated_jaspay_order_codes: ["AXV-20261116-BBBB2222"] });
   const navigate = vi.fn();
   const record = vi.fn();
   render(<AdminPortalContext.Provider value={document.body}><AdminOverview data={{ ...data, generated_at: "2026-11-16T12:05:00.000Z", selected_report: report }} selection="week" loading={false} onNavigate={navigate} onRecordExpense={record} /></AdminPortalContext.Provider>);
@@ -216,7 +216,7 @@ it("net profit card walks omzet → modal → kotor → fees/refund/operasional,
   expect(record).toHaveBeenCalledTimes(1);
   expect(screen.getByText("2 order modalnya masih estimasi")).toBeTruthy();
   await userEvent.click(screen.getByRole("button", { name: "Tinjau ›" }));
-  await userEvent.click(await screen.findByRole("button", { name: "AXV-20261116-BBBB2222" }));
+  await userEvent.click(await screen.findByRole("button", { name: "AXV-20261116-BBBB2222 Menunggu konfirmasi tagihan supplier" }));
   expect(navigate).toHaveBeenLastCalledWith("orders", { q: "AXV-20261116-BBBB2222" });
 });
 

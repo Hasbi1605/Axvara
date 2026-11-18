@@ -8,7 +8,7 @@ export const reportRuntimeSchema = [
       "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,manual_cost INTEGER,wr_variant_id TEXT,sk_variant_id TEXT,sku TEXT,aivault_service_id TEXT,tunvn_fx_idr_per_usdt REAL,tunvn_cost_usdt REAL)",
       "CREATE TABLE wr_variants(wr_variant_id TEXT PRIMARY KEY,axvara_variant_id INTEGER,wr_price INTEGER)",
       "CREATE TABLE sk_products(sk_variant_id TEXT PRIMARY KEY,axvara_variant_id INTEGER,sk_price INTEGER)",
-      "CREATE TABLE wr_order_links(id INTEGER PRIMARY KEY,order_code TEXT,fulfillment_item_id INTEGER,wr_variant_id TEXT,wr_cost INTEGER,status TEXT)",
+      "CREATE TABLE wr_order_links(id INTEGER PRIMARY KEY,order_code TEXT,fulfillment_item_id INTEGER,wr_variant_id TEXT,wr_cost INTEGER,status TEXT,jaspay_invoice_total INTEGER,jaspay_refunded_total INTEGER)",
       "CREATE TABLE sk_order_links(id INTEGER PRIMARY KEY,order_code TEXT,fulfillment_item_id INTEGER,sk_variant_id TEXT,sk_cost INTEGER,status TEXT)",
       "CREATE TABLE pedia_order_items(order_code TEXT UNIQUE,credit_used INTEGER,supplier_charge REAL,supplier_rate_snapshot REAL,quantity INTEGER)",
       "CREATE TABLE games_order_items(order_code TEXT UNIQUE,product_id INTEGER,unit_price INTEGER,cost_snapshot INTEGER,status TEXT,attempt_no INTEGER,supplier TEXT,buyer_sku_code TEXT)",

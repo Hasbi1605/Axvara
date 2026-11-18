@@ -59,3 +59,27 @@ it("AIVault links freeze product FX or market fallback, with durable report prio
   expect(await createAivaultOrderLinks("FALLBACK",createDatabaseAccess(f.db))).toBe(1);
   expect(f.sql.prepare("SELECT fx_idr_per_usd fx FROM aivault_order_links WHERE order_code='FALLBACK'").get()?.fx).toBe(40000);
 });
+
+it("uses verified Jaspay cost during processing and keeps completed catalog prices estimated",async()=>{
+  vi.stubEnv("WARUNG_REBAHAN_API_KEY","fixture");
+  f.sql.exec("UPDATE product_variants SET wr_variant_id='jaspay:wink:pkg-id'");
+  const item={product_id:1,variant_id:1,price:10000,name:"Wink",qty:1};
+  paid("JSP",[item,item]);
+  f.sql.exec(`INSERT INTO wr_order_links(id,order_code,wr_variant_id,wr_order_id,quantity,wr_cost,status)
+    VALUES(1,'JSP','jaspay:wink:pkg-id','JSP-OWN',2,12000,'completed')`);
+  expect(await readSelectedFinancialReport("today",now)).toMatchObject({cost:12000,estimated_orders:1,estimated_jaspay_order_codes:["JSP"]});
+  f.sql.exec("UPDATE wr_order_links SET status='processing'");
+  const { pollKnownJaspayInvoice }=await import("@/lib/warung-rebahan/order");
+  const attempt=vi.spyOn(globalThis,"fetch").mockImplementation(async(input,init)=>{
+    expect(String(input)).toMatch(/\/jaspay\/status$/);
+    expect(JSON.parse(String(init?.body)).invoice).toBe("JSP-OWN");
+    return Response.json({success:true,data:{invoice:"JSP-OWN",product:"wink",package:"Display Name",quantity:2,total:11000,refunded:0,status:"processing"}});
+  });
+  try {
+    await pollKnownJaspayInvoice(1,createDatabaseAccess(f.db));
+    expect(attempt).toHaveBeenCalledTimes(1);
+    const report=await readSelectedFinancialReport("today",now);
+    expect(report).toMatchObject({cost:11000,estimated_orders:0,estimated_order_codes:[],estimated_jaspay_order_codes:[],suppliers:{wr:{cost:11000}}});
+    expect(f.sql.prepare("SELECT status,wr_cost FROM wr_order_links").get()).toEqual({status:"processing",wr_cost:12000});
+  } finally {attempt.mockRestore();}
+});

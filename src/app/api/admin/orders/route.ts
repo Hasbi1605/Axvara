@@ -187,7 +187,8 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
   if (!codes.length) return out;
   const marks = codes.map(() => "?").join(",");
   const [wr, sk, tunvn] = await Promise.all([
-    queryAll(`SELECT id, order_code, status, attempt_count, max_attempts, last_error, wr_order_id AS supplier_order_id, delivery_status
+    queryAll(`SELECT id, order_code, status, attempt_count, max_attempts, last_error, wr_order_id AS supplier_order_id, delivery_status,
+      CASE WHEN wr_variant_id LIKE 'jaspay:%' AND wr_order_id IS NOT NULL AND status='completed' AND jaspay_invoice_total IS NULL THEN 1 ELSE 0 END AS can_reconcile
       FROM wr_order_links WHERE order_code IN (${marks}) ORDER BY id`, ...codes).catch(() => [] as Record<string, unknown>[]),
     queryAll(`SELECT id, order_code, status, attempt_count, max_attempts, last_error, sk_invoice AS supplier_order_id, NULL AS delivery_status
       FROM sk_order_links WHERE order_code IN (${marks}) ORDER BY id`, ...codes).catch(() => [] as Record<string, unknown>[]),
@@ -208,6 +209,7 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
         last_error: row.last_error ? String(row.last_error).slice(0, 160) : null,
         supplier_order_id: row.supplier_order_id ? String(row.supplier_order_id) : null,
         delivery_status: row.delivery_status ? String(row.delivery_status) : null,
+        ...(supplier === "wr" && Number(row.can_reconcile) === 1 ? { can_reconcile: true } : {}),
         ...(supplier==="tunvn" ? {can_retry:Number(row.can_retry)===1,can_reconcile:Number(row.can_reconcile)===1,item_index:Number(row.item_index),purchase_disabled:Number(row.purchase_disabled)===1} : {}),
       });
       out.set(code, list);

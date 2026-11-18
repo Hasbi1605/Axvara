@@ -143,7 +143,7 @@ describe("terminal Jaspay", () => {
     }
   });
 
-  it.each(["failed", "refunded"])("%s benar-benar menggagalkan link + item (tanpa refund otomatis)", async (kind) => {
+  it("failed menggagalkan link + item (tanpa refund pembeli otomatis)", async () => {
     const fx = await setupWrFixture();
     try {
       enableWr();
@@ -151,7 +151,7 @@ describe("terminal Jaspay", () => {
       seedLink(fx, { status: "processing", invoice: "JSP-3" });
       const db = createDatabaseAccess(fx.db);
       const ok = await handleJaspayTerminal("JSP-3", {
-        invoice: "JSP-3", status: kind === "failed" ? "failed" : "processing", refunded_event: kind === "refunded",
+        invoice: "JSP-3", status: "failed",
         product: "PROD", quantity: 2, success_count: 0, accounts: [],
       }, db);
       expect(ok).toBe(true);

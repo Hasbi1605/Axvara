@@ -485,6 +485,25 @@ Status: implementasi lokal; migrasi/deployment produksi belum diverifikasi.
   Kontrak ini mengganti bagian PIN web pada snapshot28Oktober; lokal/publikasi CI,
   bukan bukti deployment atau transaksi produksi.
 
+## Invoice Jaspay untuk Ringkasan & progres pembeli — 18 November 2026
+
+- Migrasi `0136` menambah total invoice dan refund kumulatif nullable pada link
+  WR. Balasan pembelian, poll invoice exact dan webhook HMAC memakai satu UPDATE
+  dengan progres internal; angka IDR utuh, invoice/link/produk/jumlah cocok,
+  total pertama tetap, refund monotonik dibatasi total. Refund saldo tidak
+  menandai produk gagal tanpa status gagal eksplisit. Trigger hanya saat nilai
+  finansial berubah menginvalidasi kedua snapshot Ringkasan. Tidak ada backfill
+  katalog, env baru, pembelian ulang, atau panggilan per cek tambahan.
+- SQL laporan mengalokasikan modal `total − refund` satu kali per link; tanpa
+  tagihan, fallback estimasi terdaftar di Tinjau. Pengecualian lama: link gagal
+  tanpa tagihan tetap Rp0. Pesanan lama yang selesai tanpa tagihan dapat dicek
+  lewat `sync-now` admin memakai invoice Jaspay exact; terminal hanya menyimpan
+  tagihan dan tidak mengirim ulang detail. Jalur WR Premium tetap terpisah.
+- `AutomaticOrderProgress` dipakai di Lacak dan Pesanan: satu akun bar tanpa
+  angka, banyak akun berdasarkan hitungan, 100% hanya siap. Lacak menandai Detail
+  siap hanya ketika agregat fulfillment terkirim; pembayaran lunas sendiri tidak
+  cukup. Verifikasi fixture; publikasi lewat CI, bukan bukti deployment.
+
 ## Pengiriman AIVault & refresh/progres Jaspay — 16 November 2026
 
 - `payments/paid-fulfillment.ts` mencoba `ensureFulfillmentForPaidOrder` lagi

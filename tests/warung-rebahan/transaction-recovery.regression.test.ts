@@ -318,3 +318,29 @@ describe("unmatched WR terminal webhooks", () => {
     } finally { fx.close(); }
   });
 });
+
+it("checks one legacy Jaspay receipt via Cek status without replaying delivery", async () => {
+  const fx = await setup("completed", true);
+  try {
+    fx.sql.prepare("UPDATE wr_order_links SET wr_variant_id='jaspay:wink:id',wr_order_id='JSP-EXACT'").run();
+    const { POST } = await import("@/app/api/admin/warung/orders/[id]/sync-now/route");
+    const call = () => POST(new NextRequest("http://localhost/api/admin/warung/orders/1/sync-now", { method: "POST" }), { params: Promise.resolve({ id: String(fx.id) }) });
+    auth.allowed = false;
+    expect((await call()).status).toBe(401);
+    expect(fx.fetcher).not.toHaveBeenCalled();
+    auth.allowed = true;
+    let invoice = "JSP-OTHER";
+    const supplier = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toMatch(/\/jaspay\/status$/);
+      expect(JSON.parse(String(init.body)).invoice).toBe("JSP-EXACT");
+      return Response.json({success:true,data:{invoice,product:"wink",quantity:1,total:5500,refunded:1000,status:"completed"}});
+    });
+    vi.stubGlobal("fetch",supplier);
+    expect((await call()).status).toBe(409);
+    expect(fx.state().jaspay_invoice_total).toBeNull();
+    invoice = "JSP-EXACT";
+    expect((await call()).status).toBe(200);
+    expect(fx.state()).toMatchObject({status:"completed",jaspay_invoice_total:5500,jaspay_refunded_total:1000,delivery_status:"not_required"});
+    expect(supplier).toHaveBeenCalledTimes(2);
+  } finally {fx.close();}
+});

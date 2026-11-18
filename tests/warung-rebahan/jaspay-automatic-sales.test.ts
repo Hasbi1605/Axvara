@@ -195,14 +195,15 @@ it("omits the default package on purchase, persists queue state and delivers the
       if (String(url).endsWith('/jaspay/order')) {
         expect(payload.product).toBe('scribd'); expect(payload).not.toHaveProperty('package');
         expect(payload.ref_id).toMatch(/^axv-[a-f0-9]{32}$/);
-        return Response.json({success:true,data:{invoice:'JSP-FIXTURE',status:'processing',product:'scribd',quantity:1,phase:'queued',queue_position:3,progress:{done:0,success:0},accounts:[]}});
+        return Response.json({success:true,data:{invoice:'JSP-FIXTURE',status:'processing',product:'scribd',quantity:1,total:5500,refunded:0,phase:'queued',queue_position:3,progress:{done:0,success:0},accounts:[]}});
       }
       if (String(url).endsWith('/jaspay/status')) return Response.json({success:true,data:{invoice:'JSP-FIXTURE',status:'completed',product:'scribd',quantity:1,success_count:1,accounts:[{email:'fixture@example.test',password:'fixture-only-password'}]}});
       throw Error('Unexpected external fixture request');
     }));
     await processWrPendingOrders(db);
     expect(await readAutomaticProgress('AXV-JSP-AUTO',db)).toMatchObject([{stage:'queued',queuePosition:3,ready:0,total:1}]);
-    const link=fx.sql.prepare("SELECT id FROM wr_order_links WHERE order_code='AXV-JSP-AUTO'").get()!;
+    const link=fx.sql.prepare("SELECT id,jaspay_invoice_total FROM wr_order_links WHERE order_code='AXV-JSP-AUTO'").get()!;
+    expect(link.jaspay_invoice_total).toBe(5500);
     await pollKnownJaspayInvoice(Number(link.id),db);
     const row=fx.sql.prepare("SELECT status,wr_account_details,wr_account_iv,jaspay_progress FROM wr_order_links WHERE id=?").get(link.id)!;
     expect(row.status).toBe('completed');

@@ -536,10 +536,18 @@ describe("WR3 webhook route: signature + family routing", () => {
       vi.stubEnv("WARUNG_REBAHAN_API_KEY", "s");
       vi.stubEnv("WARUNG_REBAHAN_WEBHOOK_SECRET", "s");
       const { POST } = await import("@/app/api/webhook/warung/route");
-      const good = JSON.stringify({ event: "jaspay.completed", data: { invoice: "JSP-WH-1", quantity: 1, success_count: 1, accounts: [{ email: "a@b.c", password: "p" }] } });
+      const good = JSON.stringify({ event: "jaspay.completed", data: { invoice: "JSP-WH-1", product: "P9", quantity: 1, total: 55, refunded: 0, success_count: 1, accounts: [{ email: "a@b.c", password: "p" }] } });
       const r1 = await POST(req(good, { "x-digitals-signature": await signedBody("s", good) }) as unknown as Parameters<typeof POST>[0]);
       expect(r1.status).toBe(200);
       expect((fx.sql.prepare("SELECT status FROM wr_order_links WHERE wr_order_id='JSP-WH-1'").get() as { status: string }).status).toBe("completed");
+      const refund = JSON.stringify({ event: "jaspay.refunded", data: { invoice: "JSP-WH-1", product: "P9", quantity: 1, total: 55, refunded: 20, status: "completed" } });
+      const signedRefund = await signedBody("s", refund);
+      for (let retry = 0; retry < 2; retry++) {
+        const res = await POST(req(refund, { "x-digitals-signature": signedRefund }) as unknown as Parameters<typeof POST>[0]);
+        expect(res.status).toBe(200);
+      }
+      expect(fx.sql.prepare("SELECT status,jaspay_invoice_total,jaspay_refunded_total FROM wr_order_links WHERE wr_order_id='JSP-WH-1'").get())
+        .toMatchObject({ status: "completed", jaspay_invoice_total: 55, jaspay_refunded_total: 20 });
       const unknown = JSON.stringify({ event: "jaspay.mystery_terminal", data: { invoice: "JSP-WH-1" } });
       const r2 = await POST(req(unknown, { "x-digitals-signature": await signedBody("s", unknown) }) as unknown as Parameters<typeof POST>[0]);
       expect(r2.status).toBe(503);

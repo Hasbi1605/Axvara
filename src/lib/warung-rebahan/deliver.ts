@@ -498,7 +498,8 @@ async function alertJaspayAdminManual(
  *   status link TETAP processing (BUKAN completed), item TIDAK di-settle
  *   delivered, TIDAK ada enqueue delivery biasa. Admin di-alert untuk
  *   tindak lanjut manual. TIDAK PERNAH beli ulang / refund buyer otomatis.
- * - failed/refunded: monotonik ke failed (seperti premium), tanpa settle.
+ * - failed: monotonik ke failed (seperti premium), tanpa settle. Refund saldo
+ *   dengan nominal tidak mengubah pengiriman kecuali supplier juga menyatakan failed.
  * - accounts malformed/kosong pada completed: simpan mentah terenkripsi +
  *   admin followup, JANGAN settle delivered.
  */
@@ -512,13 +513,16 @@ export async function handleJaspayTerminal(
   const link = await queryFirst(`SELECT * FROM wr_order_links WHERE wr_order_id=?`, invoice).catch(
     () => null,
   );
-  if (!link) return false;
+  if (!link || result.invoice !== invoice) return false;
   // No wrong-family fallback: invoice JSP milik link Jaspay saja.
   if (!isJaspayVariantId(String(link.wr_variant_id || ""))) return false;
   const identity = decodeJaspayVariantId(String(link.wr_variant_id));
   if (!identity || (result.product && result.product !== identity.product)) return false;
+  const reportedStatus = jaspayStatusOf(result);
+  const refundOnly = result.refunded_event === true && reportedStatus !== "failed";
+  if (refundOnly) return persistJaspayProgress(link, result, db, true);
   await persistJaspayProgress(link, result, db);
-  const status = result.refunded_event ? "failed" : jaspayStatusOf(result);
+  const status = reportedStatus;
   const now = new Date().toISOString();
   if (status === "processing") {
     return advanceWrLinkMonotonic(invoice, "processing", null, database);

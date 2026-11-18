@@ -75,6 +75,15 @@ native D1 lokal; belum bukti deployment.
   = `active`, `GET /health` HTTP 200 (`sekalipay:true,skg:true,dgf:true,indosmm:true`),
   `journalctl` mencatat `"diff sync started (1 min)"`.
 
+## Modal Jaspay dari tagihan exact — 18 November 2026
+
+- `0136`: total terverifikasi dipatok ke invoice/produk/jumlah yang cocok; refund
+  kumulatif tidak bisa mundur/melebihi total. `jaspay.refunded` bukan sendiri
+  bukti produk gagal. Report memakai modal nett walau link masih diproses;
+  katalog tanpa bukti tetap estimasi kecuali link gagal tanpa tagihan (Rp0).
+- Admin `Cek status` Jaspay ber-ID hanya memeriksa `/jaspay/status` exact; untuk
+  link terminal hanya memperbarui tagihan, tidak re-delivery atau re-POST order.
+
 ## Modal laporan supplier gagal — keputusan owner 16 November 2026 (lokal)
 
 Link WR/SK `failed` tanpa keberhasilan dihitung modal Rp0 dan bukan estimasi

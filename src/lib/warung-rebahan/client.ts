@@ -4,6 +4,8 @@
 // Pola mengikuti src/lib/payments/dana-qris.ts (AbortController + timeout,
 // error classification) dan src/lib/telegram/api.ts (wrapper fetch kecil).
 
+import { jaspayAmount } from "./jaspay";
+
 export type WrProduct = {
   id: string;
   name: string;
@@ -440,8 +442,8 @@ export async function createJaspayOrder(params: {
     package: data.package == null ? undefined : String(data.package),
     quantity: Number(data.quantity ?? qty) || qty,
     price: data.price == null ? undefined : Number(data.price),
-    total: data.total == null ? undefined : Number(data.total),
-    refunded: data.refunded == null ? undefined : Number(data.refunded),
+    total: jaspayAmount(data.total),
+    refunded: jaspayAmount(data.refunded),
     progress: (data.progress ?? undefined) as JaspayOrderResult["progress"],
     phase: data.phase as JaspayOrderResult["phase"],
     queue_position: data.queue_position as number | null | undefined,
@@ -472,8 +474,8 @@ export async function fetchJaspayStatus(invoice: string): Promise<JaspayOrderRes
     package: data.package == null ? undefined : String(data.package),
     quantity: Number(data.quantity ?? 0) || 0,
     price: data.price == null ? undefined : Number(data.price),
-    total: data.total == null ? undefined : Number(data.total),
-    refunded: data.refunded == null ? undefined : Number(data.refunded),
+    total: jaspayAmount(data.total),
+    refunded: jaspayAmount(data.refunded),
     progress: (data.progress ?? undefined) as JaspayOrderResult["progress"],
     phase: data.phase as JaspayOrderResult["phase"],
     queue_position: data.queue_position as number | null | undefined,

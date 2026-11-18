@@ -11,7 +11,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { queryFirst } from "@/lib/db";
-import { fetchTransactions, isWrEnabled } from "@/lib/warung-rebahan/client";
+import { fetchJaspayStatus, fetchTransactions, isWrEnabled } from "@/lib/warung-rebahan/client";
+import { decodeJaspayVariantId, isJaspayVariantId } from "@/lib/warung-rebahan/jaspay";
+import { persistJaspayProgress } from "@/lib/warung-rebahan/progress";
+import { handleJaspayTerminal } from "@/lib/warung-rebahan/deliver";
 import { reconcileFreshWrLinks } from "@/lib/warung-rebahan/order";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { readTextBody } from "@/lib/http-body";
@@ -55,6 +58,28 @@ export async function POST(
     return NextResponse.json({ error: "invoice_conflict" }, { status: 409 });
   }
   const status = String(link.status || "");
+  const jaspay = decodeJaspayVariantId(String(link.wr_variant_id));
+  if (isJaspayVariantId(String(link.wr_variant_id))) {
+    if (!jaspay) return NextResponse.json({ error: "invoice_mismatch" }, { status: 409 });
+    const invoice = String(link.wr_order_id ?? "");
+    if (!invoice) return NextResponse.json({ error: "invoice_required" }, { status: 409 });
+    try {
+      const receipt = await fetchJaspayStatus(invoice);
+      if (receipt.invoice !== invoice || receipt.product !== jaspay.product || receipt.quantity !== link.quantity) {
+        return NextResponse.json({ error: "invoice_mismatch" }, { status: 409 });
+      }
+      const terminal = status === "completed" || status === "failed";
+      if (terminal && receipt.total === undefined) {
+        return NextResponse.json({ error: "invoice_total_missing" }, { status: 409 });
+      }
+      // Legacy terminal invoices: confirm cost only, never replay delivery.
+      const db = createDatabaseAccess();
+      const applied = terminal ? await persistJaspayProgress(link, receipt, db, true) : await handleJaspayTerminal(invoice, receipt, db);
+      return NextResponse.json({ ok: applied, reconciled: Number(applied) }, { status: applied ? 200 : 409 });
+    } catch {
+      return NextResponse.json({ error: "upstream_unreachable" }, { status: 502 });
+    }
+  }
   const replay = selectedId && link.wr_order_id === selectedId;
   if (!["processing", "submitted", "ordering"].includes(status) && !(status === "claimed" && link.request_sent_at)
     && !(replay && ["completed", "failed"].includes(status))) {

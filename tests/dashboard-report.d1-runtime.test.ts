@@ -42,7 +42,7 @@ it("D1 executes all six report kinds in one query for empty and mixed carts", as
     await db.batch([
       db.prepare("INSERT INTO product_variants(id,manual_cost,wr_variant_id,sk_variant_id) VALUES(1,10000,NULL,NULL),(2,0,'w2',NULL),(3,0,NULL,'s3')"),
       db.prepare("INSERT INTO orders VALUES('MIXED',50001,'market',?,NULL,'web','2026-10-15T07:00:00Z','2026-10-15T07:00:00Z','lunas')").bind(JSON.stringify(items)),
-      db.prepare("INSERT INTO wr_order_links VALUES(1,'MIXED',NULL,'w2',8000,'completed')"),
+      db.prepare("INSERT INTO wr_order_links(id,order_code,fulfillment_item_id,wr_variant_id,wr_cost,status) VALUES(1,'MIXED',NULL,'w2',8000,'completed')"),
       db.prepare("INSERT INTO sk_order_links VALUES(1,'MIXED',NULL,'s3',12000,'completed')"),
     ]);
     const { results }: { results: Record<string, unknown>[] } = await db.prepare(sql).all();

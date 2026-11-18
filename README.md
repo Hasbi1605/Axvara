@@ -169,6 +169,11 @@ dan `docs/ARCHITECTURE.md` §16.50.
 
 Status: implementasi dan verifikasi lokal; publikasi lewat CI, bukan bukti deployment.
 
+Modal Jaspay di Ringkasan dikonfirmasi dari invoice supplier (dikurangi refund
+saldo terkonfirmasi), bukan status pengiriman. Untuk invoice lama yang belum
+terkonfirmasi, gunakan **Pesanan → Cek status**. Lacak Pesanan memisahkan
+pembayaran dan kesiapan produk; bar satu akun tidak menebak persentase.
+
 Ringkasan admin kini menampilkan Omzet → Modal → Untung kotor → Biaya pembayaran
 → Refund & replace → Operasional → **Untung bersih**. Menu baru **Pengeluaran**
 (`?section=expenses`) mencatat hosting/kuota/AI/domain/iklan/refund/replace/lainnya

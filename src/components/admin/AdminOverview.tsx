@@ -165,7 +165,7 @@ function NetProfitCard({ bucket, label, onOpenExpenses }: { bucket: FinanceView;
   </Card>;
 }
 
-function EstimatedNotice({ count, codes, onOpenOrder }: { count: number; codes: string[]; onOpenOrder?: (code: string) => void }) {
+function EstimatedNotice({ count, codes, jaspayCodes, onOpenOrder }: { count: number; codes: string[]; jaspayCodes?: string[]; onOpenOrder?: (code: string) => void }) {
   if (!count) return null;
   return <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-admin-warning/30 bg-admin-warning/[0.07] px-4 py-2.5 text-sm">
     <span className="flex items-center gap-1.5 text-admin-fg"><IosIcon name="info" size={16} className="text-admin-warning" />{count} order modalnya masih estimasi</span>
@@ -174,7 +174,10 @@ function EstimatedNotice({ count, codes, onOpenOrder }: { count: number; codes: 
       <PopoverContent align="end" className="w-72 p-2">
         <p className="px-2 pb-1.5 pt-1 text-xs text-admin-muted">Order dengan modal estimasi{count > codes.length ? ` (${codes.length} dari ${count})` : ""}</p>
         <ul className="max-h-64 overflow-y-auto">
-          {codes.map((code) => <li key={code}><Button type="button" variant="ghost" size="sm" onClick={() => onOpenOrder?.(code)} disabled={!onOpenOrder} className="h-8 w-full justify-start px-2 font-mono text-xs font-normal">{code}</Button></li>)}
+          {codes.map((code) => <li key={code}><Button type="button" variant="ghost" size="sm" onClick={() => onOpenOrder?.(code)} disabled={!onOpenOrder} className="h-auto min-h-8 w-full flex-col items-start justify-center gap-0.5 px-2 py-1.5 text-xs font-normal">
+            <span className="font-mono">{code}</span>
+            {jaspayCodes?.includes(code) && <span className="text-admin-muted">Menunggu konfirmasi tagihan supplier</span>}
+          </Button></li>)}
         </ul>
       </PopoverContent>
     </Popover>}
@@ -282,7 +285,7 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
         {metrics.map(([name, value, hint]) => <StatCard key={name} label={name} value={value} hint={hint} />)}
       </div>
     </div>
-    <EstimatedNotice count={report?.estimated_orders ?? data.profit_estimated_orders} codes={finance.estimated_order_codes ?? []} onOpenOrder={onNavigate ? code => onNavigate("orders", { q: code }) : undefined} />
+    <EstimatedNotice count={report?.estimated_orders ?? data.profit_estimated_orders} codes={finance.estimated_order_codes ?? []} jaspayCodes={finance.estimated_jaspay_order_codes} onOpenOrder={onNavigate ? code => onNavigate("orders", { q: code }) : undefined} />
     {report && <p className="text-xs leading-5 text-admin-muted">Pembayaran merchant {formatRupiah(report.merchant_paid ?? report.revenue)} · Kredit digunakan {formatRupiah(report.credit_used ?? 0)}.{hasFinance ? "" : " Untung produk belum dikurangi biaya pembayaran dan operasional."}</p>}
 
     <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">

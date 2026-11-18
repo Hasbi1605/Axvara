@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
   }
 
   const range = resolveReportRange(selection, now);
-  const key = JSON.stringify([admin.email, selection, range.from, range.to, now.toISOString().slice(0, 13),await financeCacheRevision()]);
+  const key = JSON.stringify(["jaspay-receipts", admin.email, selection, range.from, range.to, now.toISOString().slice(0, 13),await financeCacheRevision()]);
   const value = await readAdminOverviewSnapshot(key, () => readD1Overview(selection, now));
   return NextResponse.json(value, { headers: { "Cache-Control": "private, no-store" } });
 }

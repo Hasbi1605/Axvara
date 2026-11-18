@@ -19,6 +19,7 @@ import {
   handleWrOrderFailed,
   handleWrOrderProcessing,
 } from "@/lib/warung-rebahan/order";
+import { jaspayAmount } from "@/lib/warung-rebahan/jaspay";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
@@ -111,14 +112,17 @@ export async function POST(request: NextRequest) {
         case "jaspay.refunded": {
           const data = (payload as JaspayWebhookEvent).data;
           const name = String((payload as JaspayWebhookEvent).event).slice("jaspay.".length);
-          // refunded = terminal gagal di sisi supplier (saldo dikembalikan),
-          // bukan processing. Akun malformed TIDAK dikosongkan: payload data
-          // utuh ikut sebagai bukti terenkripsi untuk admin.
+          // Refund saldo dapat terjadi tanpa kegagalan produk. Kirim nominal
+          // kumulatif dan status eksplisit, bukan menebak hasil dari nama event.
           handled = await handleJaspayTerminal(invoice, {
             invoice,
-            status: name === "completed" || name === "partial" ? name : "failed",
+            status: name === "completed" || name === "partial" || name === "failed" ? name
+              : data.status === "failed" ? "failed" : "processing",
             refunded_event: name === "refunded",
             product: String(data.product ?? ""),
+            package: typeof data.package === "string" ? data.package : undefined,
+            total: jaspayAmount(data.total),
+            refunded: jaspayAmount(data.refunded),
             quantity: Number(data.quantity ?? 0) || 0,
             success_count: Number(data.success_count ?? 0) || 0,
             accounts: Array.isArray(data.accounts) ? data.accounts : [],

@@ -202,6 +202,11 @@ Keputusan owner 16 Nov 2026 (desain disetujui):
   gagal tanpa retry = modal Rp0 (saldo dikembalikan); order lama yang gagal **tidak
   dihapus**. Order dengan modal estimasi ditampilkan dengan daftar "Tinjau"
   (menggantikan keputusan 15 Okt yang menyembunyikannya).
+- Jaspay: total invoice supplier terverifikasi dikurangi refund saldo kumulatif;
+  label estimasi hilang meski produk masih diproses. Modal katalog tetap estimasi
+  tanpa invoice terverifikasi, termasuk order selesai lama. Status pembayaran,
+  progres pembeli, dan konfirmasi modal independen. Satu akun memakai bar tanpa
+  persentase selama diproses; banyak akun memakai jumlah aktual.
 - Status: implementasi lokal + test, publikasi via CI; deployment belum diverifikasi.
 - Rincian Refund & replace mencakup kedua kategori dan mengikuti rentang tanggal
   Ringkasan persis (termasuk lintas bulan); operasional terpisah dari keduanya.

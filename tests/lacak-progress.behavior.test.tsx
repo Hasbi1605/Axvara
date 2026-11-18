@@ -35,15 +35,20 @@ it('keeps polling mixed Jaspay orders and renders truthful phases, counts, queue
  fireEvent.change(contact,{target:{value:'buyer@example.test'}});
  await act(async()=>{fireEvent.submit(contact.closest('form')!)});
  expect(screen.getByText('Urutan antrean: 3')).toBeTruthy();
- expect(screen.queryByRole('progressbar')).toBeNull();
+ expect(screen.getByRole('progressbar').hasAttribute('aria-valuenow')).toBe(false);
+ expect(screen.getByText('Sedang diproses').closest('li')?.getAttribute('aria-current')).toBe('step');
+ expect(screen.getByText('Detail siap').className).toContain('text-white/40');
+ expect(screen.getByText(/Terakhir dicek .* WIB/)).toBeTruthy();
  stage='running';await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});
  expect(screen.getByText('Membuat produkmu')).toBeTruthy();
  expect(screen.queryByText(/Urutan antrean/)).toBeNull();
  stage='ready';ready=1;
- fetcher.mockImplementation(async()=>Response.json({order:{code:'AXV-20261116-ABCDEF12',status:'lunas',items:[],subtotal:1000,credentials_ready:true,supplier_running:false,
+ fetcher.mockImplementation(async()=>Response.json({order:{code:'AXV-20261116-ABCDEF12',status:'lunas',items:[],subtotal:1000,credentials_ready:true,supplier_running:false,fulfillment_status:'delivered',
   automatic_progress:[{label:'Scribd',stage,ready,total:1,queuePosition:null}]}}));
  await act(async()=>{await vi.advanceTimersByTimeAsync(5000)});
  expect(screen.getByText('Produk siap')).toBeTruthy();
+ expect(screen.getByText('Sedang diproses').closest('li')?.hasAttribute('aria-current')).toBe(false);
+ expect(screen.getByText('Detail siap').className).not.toContain('text-white/40');
  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
  const calls=fetcher.mock.calls.length;
  await act(async()=>{await vi.advanceTimersByTimeAsync(30000)});

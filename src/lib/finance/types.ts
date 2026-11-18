@@ -114,6 +114,8 @@ export type ReportFinance = {
   expenses_by_category: Record<ExpenseCategory, number>;
   /** Maks 20 kode order yang modalnya masih estimasi (untuk "Tinjau"). */
   estimated_order_codes: string[];
+  /** Kode di "Tinjau" yang belum memiliki total invoice Jaspay. */
+  estimated_jaspay_order_codes?: string[];
 };
 /** Tambahan per titik seri (harian/jam). Pengeluaran per jam dibukukan di jam 00:00. */
 export type ReportPointFinance = { expenses: number; payment_fees: number; net_profit: number };

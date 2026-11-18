@@ -149,7 +149,7 @@ export default function LacakPesananClient() {
   const [order, setOrder] = useState<TrackedOrder | null>(null);
   // Pertahanan: lookup yang mengembalikan pesanan Pedia tidak dirender sebagai Market.
   const [pediaPointer, setPediaPointer] = useState<{ code: string; status: string | null } | null>(null);
-  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentEntry[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
@@ -258,7 +258,7 @@ export default function LacakPesananClient() {
       nextPollAt.current = Date.now() + 5_000;
       const found = fromApi(body.order);
       setOrder(found);
-      setUpdatedAt(new Date());
+      setCheckedAt(new Date());
       setPollError(null);
       if (!silent) {
         setError(null);
@@ -328,7 +328,8 @@ export default function LacakPesananClient() {
   const steps = [
     { id: "created", title: ui.lacak.stepCreated, hint: ui.lacak.stepCreatedHint },
     { id: "paid", title: ui.lacak.stepPaid, hint: ui.lacak.stepPaidHint },
-    { id: "done", title: ui.lacak.stepDone, hint: ui.lacak.stepDoneHint },
+    { id: "processing", title: ui.lacak.stepProcessing, hint: null },
+    { id: "ready", title: ui.lacak.stepReady, hint: null },
   ] as const;
   const isPending = order?.status === "pending";
   // Persetujuan total gateway memakai kontak yang BARU dipakai lookup (bukan input baru, bukan PIN).
@@ -452,7 +453,14 @@ export default function LacakPesananClient() {
         : { title: ui.lacak.pendingNow, badge: ui.lacak.pendingNowBadge, badgeClass: "border-[#FFB800]/25 bg-[#FFB800]/15 text-[#FFB800]", icon: "/icons/ios11/clock-96.png", shell: "bg-[#FFB800]/15", filter: "brightness(0) saturate(100%) invert(72%) sepia(92%) saturate(1800%) hue-rotate(360deg)" };
 
   const stepState = (index: number): "done" | "current" | "upcoming" | "failed" => {
-    if (isPaid) return "done";
+    if (isPaid) {
+      if (index < 2) return "done";
+      if (isDeliveryFailed || order?.automaticProgress.some(item => item.stage === "failed" || item.stage === "needs_check")) {
+        return index === 2 ? "failed" : "upcoming";
+      }
+      if (order?.fulfillmentStatus === "delivered" && !order.automaticProgress.some(item => item.stage !== "ready")) return "done";
+      return index === 2 ? "current" : "upcoming";
+    }
     if (isCancelled || order?.status === "kadaluarsa" || isExpired) return index === 0 ? "done" : index === 1 ? "failed" : "upcoming";
     if (index === 0) return "done";
     if (index === 1) return "current";
@@ -620,9 +628,9 @@ export default function LacakPesananClient() {
               {ui.lacak.deadline(countdown(order.expiresAt, now))}
             </p>
           )}
-          {updatedAt && (
+          {checkedAt && (
             <p className="mt-2 text-[11px] text-white/35">
-              {ui.lacak.statusUpdated(updatedAt.toLocaleTimeString(order.locale === "en" ? "en-US" : "id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))} WIB
+              {ui.lacak.statusUpdated(checkedAt.toLocaleTimeString(order.locale === "en" ? "en-US" : "id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", second: "2-digit" }))} WIB
               {pollError ? ` • ${ui.lacak.lastUpdateFailed}: ${pollError}` : ""}
             </p>
           )}
@@ -651,7 +659,7 @@ export default function LacakPesananClient() {
                     ? "border-red-500/40 bg-red-500/15"
                     : "border-white/10 bg-white/[0.04]";
               return (
-                <li key={step.id} className="relative flex gap-3 pb-5 last:pb-0">
+                <li key={step.id} aria-current={state === "current" ? "step" : undefined} className="relative flex gap-3 pb-5 last:pb-0">
                   {index < steps.length - 1 && <span aria-hidden className={`absolute left-[15px] top-9 h-[calc(100%-28px)] w-px ${state === "done" ? "bg-[#22C55E]/40" : "bg-white/10"}`} />}
                   <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${dot}`}>
                     {state === "done"
@@ -664,19 +672,19 @@ export default function LacakPesananClient() {
                   </span>
                   <span className="min-w-0 pt-0.5">
                     <span className={`block text-sm font-semibold ${state === "upcoming" ? "text-white/40" : "text-white"}`}>{step.title}</span>
-                    <span className="block text-xs leading-5 text-white/45">
+                    {step.hint && <span className="block text-xs leading-5 text-white/45">
                       {step.id === "created" && order.createdAt ? `${ui.lacak.created} ${formatDateTime(order.createdAt)}.` : step.id === "paid" && pay ? ui.lacak.verifiedAuto : step.hint}
                       {step.id === "paid" && isPending && !isExpired ? ` ${ui.lacak.finishBefore}` : ""}
                       {step.id === "paid" && isPaid ? ` ${ui.lacak.paymentVerified}` : ""}
                       {step.id === "paid" && (isCancelled || isExpired) ? ` ${ui.lacak.paymentNotCompleted}` : ""}
-                    </span>
+                    </span>}
                   </span>
                 </li>
               );
             })}
           </ol>
 
-          {isPaid && (
+          {isPaid && !order.automaticProgress.length && (
             <p className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-left text-xs leading-6 text-emerald-200">
               {ui.lacak.paidBanner(order.name)}
             </p>
@@ -792,7 +800,7 @@ export default function LacakPesananClient() {
               <a href={supportTelegramLink()} target="_blank" rel="noreferrer" className="flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-white/10 px-3 text-[13px] font-medium text-white/80 transition hover:border-[#2AABEE]/40 hover:bg-white/[0.06]"><img src="/brand/telegram.svg" alt="" width={20} height={20} className="h-5 w-5 shrink-0 rounded-full object-cover" draggable={false} /><span>Telegram</span></a>
             </div>
           </div>
-          {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setUpdatedAt(null); lastQuery.current = null; }} className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/45 underline decoration-white/20 underline-offset-4 hover:text-white">{ui.lacak.another}</button>}
+          {!adminView && <button type="button" onClick={() => { focusCodeNext.current = true; setOrder(null); setCheckedAt(null); lastQuery.current = null; }} className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-xs font-semibold text-white/45 underline decoration-white/20 underline-offset-4 hover:text-white">{ui.lacak.another}</button>}
           <p className="mt-3 text-center text-[11px] leading-5 text-white/35">{ui.delivery.note}<Link prefetch={false} href="/garansi-replace" className="text-white/50 underline decoration-white/20 underline-offset-2 hover:text-white">{ui.delivery.terms}</Link>.</p>
         </div>
       )}

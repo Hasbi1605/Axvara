@@ -87,7 +87,7 @@ function canVoid(link: SupplierLink): boolean {
 }
 
 function canCheck(link: SupplierLink): boolean {
-  if (link.supplier === "tunvn") return link.can_reconcile === true;
+  if (link.supplier === "tunvn" || link.can_reconcile === true) return link.can_reconcile === true;
   // sync-now = tanya status order yang SUDAH terkirim ke supplier sekarang
   // (WR /transactions, SK /v1/trx). Kedua supplier punya route-nya sejak
   // paritas 2026-10-13 — tombol tampil untuk keduanya.

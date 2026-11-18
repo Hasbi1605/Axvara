@@ -180,6 +180,7 @@ body {
 @keyframes cartShake { 0%{transform:translateX(0) rotate(0)} 15%{transform:translateX(-4px) rotate(-6deg)} 30%{transform:translateX(4px) rotate(6deg)} 45%{transform:translateX(-3px) rotate(-4deg)} 60%{transform:translateX(2px) rotate(3deg)} 75%{transform:translateX(-1px) rotate(-1deg)} 100%{transform:translateX(0) rotate(0)} }
 @keyframes cartPop { 0%{transform:scale(0.85)} 45%{transform:scale(1.18)} 100%{transform:scale(1)} }
 @keyframes fadeInUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+@keyframes order-progress { to { transform: translateX(200%); } }
 @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
 @keyframes floatY { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
 

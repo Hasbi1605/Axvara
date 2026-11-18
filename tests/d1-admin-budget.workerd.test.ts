@@ -23,7 +23,7 @@ it("measures report, facets, pagination, reservation and active queue costs in D
         INSERT INTO orders(code,subtotal,order_kind,items,sales_channel,paid_at,updated_at,status,created_at)
         SELECT 'O'||x,50001,'market','[{"product_id":1,"variant_id":1,"name":"Own","qty":1,"price":14000},{"product_id":2,"variant_id":2,"name":"WR","qty":1,"price":16000},{"product_id":3,"variant_id":3,"name":"SK","qty":1,"price":20000}]',
           CASE WHEN x%2=0 THEN 'telegram' ELSE 'web' END,'2026-10-19T07:00:00Z','2026-10-19T07:00:00Z','lunas',datetime('2026-10-19','+'||x||' seconds') FROM n`,
-      "INSERT INTO wr_order_links SELECT rowid,code,NULL,'w2',8000,'completed' FROM orders",
+      "INSERT INTO wr_order_links(id,order_code,fulfillment_item_id,wr_variant_id,wr_cost,status) SELECT rowid,code,NULL,'w2',8000,'completed' FROM orders",
       "INSERT INTO sk_order_links SELECT rowid,code,NULL,'s3',12000,'completed' FROM orders",
       "CREATE TABLE fulfillment_inventory(id INTEGER PRIMARY KEY,order_code TEXT,status TEXT)",
       "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<5000) INSERT INTO fulfillment_inventory SELECT x,'I'||x,'delivered' FROM n",

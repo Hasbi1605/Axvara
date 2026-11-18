@@ -20,6 +20,12 @@
 //   ref_id — JANGAN dipakai untuk korelasi.
 //   webhook jaspay.completed|partial|failed|refunded, data.invoice.
 
+/** Whole rupiah only. Missing or malformed fields must never become zero. */
+export function jaspayAmount(value: unknown): number | undefined {
+  const amount = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
+  return typeof amount === "number" && Number.isSafeInteger(amount) && amount >= 0 ? amount : undefined;
+}
+
 export const JASPAY_VARIANT_PREFIX = "jaspay:";
 
 /** Batas ref_id upstream: 1..64 char [A-Za-z0-9._:/-]. */

@@ -366,14 +366,14 @@ putih90%, teks bantu putih70%, aksen Cyan #00E5FF, selesai emerald dan kendala
 Gold #FFB800. Label status selalu berupa teks, bukan warna saja. Teks status
 14px, bantu12px, label panjang dapat membungkus pada390px.
 
-Satu akun: spinner + tahap nyata Menyiapkan produkmu/Menunggu giliran/Membuat
-produkmu; posisi antrean hanya bila API memberikannya. Banyak akun: progressbar
-ARIA + hitungan akun siap; nilai maksimal99 selama belum completed. Produk
-siap menampilkan100% dan detail kredensial existing di bawah. Kendala menghentikan
-spinner, menjelaskan tindak lanjut dan tidak meminta pembelian ulang. Tidak ada
-persentase berbasis timer, klaim stok instan, merek supplier, atau janji12jam
-pada kartu ini. `aria-live=polite`, reduced motion dan salinan ID/EN tersedia.
-Polling mempertahankan batas existing dan berhenti saat tab tersembunyi.
+Satu akun: bar cyan bergerak tanpa angka + tahap nyata; posisi antrean hanya
+bila API memberikannya. Banyak akun: bar terukur + hitungan akun siap, maksimal
+99 sebelum `completed`. Produk siap menampilkan 100%; kendala menghentikan
+animasi. Lacak Pesanan memisahkan Pembayaran, Sedang diproses dan Detail siap;
+centang Detail siap hanya setelah seluruh order terkirim. Waktu "Terakhir dicek"
+adalah waktu pengecekan AXVARA (WIB), bukan perubahan progres. Hilangkan banner
+pembayaran dan helper berulang pada kartu Jaspay. `aria-live=polite`, reduced
+motion dan salinan ID/EN tetap ada. Polling existing tanpa perubahan jadwal.
 Gambar/galeri katalog Jaspay tetap identik dengan produk MBO asal; bukan aset
 pengganti generik. Publikasi CI; deployment belum diverifikasi.
 

@@ -20,7 +20,7 @@ export type PeriodReport = ReportBucket & ReportFinance & {
 };
 const bucket = (): ReportBucket => ({ orders: 0, revenue: 0, cost: 0, profit: 0 });
 const pointFinance = (): ReportPointFinance => ({ expenses: 0, payment_fees: 0, net_profit: 0 });
-const finance = (): ReportFinance => ({ payment_fees: 0, unique_code_bonus: 0, refund_expenses: 0, operational_expenses: 0, net_profit: 0, expenses_by_category: emptyExpenseTotals(), estimated_order_codes: [] });
+const finance = (): ReportFinance => ({ payment_fees: 0, unique_code_bonus: 0, refund_expenses: 0, operational_expenses: 0, net_profit: 0, expenses_by_category: emptyExpenseTotals(), estimated_order_codes: [], estimated_jaspay_order_codes: [] });
 export type SelectedReport = PeriodReport & { from: string; to: string; timezone: "Asia/Jakarta"; generated_at: string };
 const emptyReport = (): PeriodReport => ({ ...bucket(), ...finance(), estimated_orders: 0, merchant_paid: 0, credit_used: 0, series: [],
   suppliers: { wr: bucket(), sk: bucket(), manual: bucket(), pedia: bucket(), games: bucket(), tunvn: bucket(), aivault: bucket() },
@@ -124,12 +124,16 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
           WHEN gi.status='expired' OR ga.status='failed' THEN 0
           ELSE COALESCE(gi.cost_snapshot,0) END
         WHEN COALESCE(l.order_kind,'market')='pedia' THEN ROUND(COALESCE(pi.supplier_charge,pi.supplier_rate_snapshot*pi.quantity/1000.0,0))
-        WHEN w.id IS NOT NULL THEN CASE WHEN w.status='failed' THEN 0 ELSE ROUND(w.wr_cost) END
+        WHEN w.id IS NOT NULL THEN CASE
+           WHEN w.wr_variant_id LIKE 'jaspay:%' AND w.jaspay_invoice_total IS NOT NULL
+             THEN w.jaspay_invoice_total-COALESCE(w.jaspay_refunded_total,0)
+           WHEN w.status='failed' THEN 0 ELSE ROUND(w.wr_cost) END
         WHEN s.id IS NOT NULL THEN CASE WHEN s.status='failed' THEN 0 ELSE ROUND(s.sk_cost) END ELSE NULL END cost_pool,
       CASE WHEN l.order_kind='games' THEN CASE
           WHEN gi.status='success' THEN ga.id IS NULL OR ga.status!='success' OR ga.price IS NULL OR ga.price<0
           WHEN ga.price>=0 OR gi.status='expired' OR ga.status='failed' THEN 0 ELSE 1 END
         WHEN COALESCE(l.order_kind,'market')='pedia' THEN pi.supplier_charge IS NULL
+        WHEN w.wr_variant_id LIKE 'jaspay:%' THEN w.status!='failed' AND w.jaspay_invoice_total IS NULL
         WHEN w.id IS NOT NULL THEN w.status NOT IN ('completed','failed')
         WHEN s.id IS NOT NULL THEN s.status NOT IN ('completed','failed')
         WHEN l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL THEN
@@ -157,6 +161,7 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
           (SELECT wr_price FROM wr_variants WHERE wr_variant_id=l.wr_variant_id)
           WHEN l.sk_variant_id IS NOT NULL THEN (SELECT sk_price FROM sk_products WHERE sk_variant_id=l.sk_variant_id)
           ELSE l.manual_cost END,0)*l.qty END own_cost,
+      w.wr_variant_id LIKE 'jaspay:%' jaspay_link,
       COALESCE(CAST(w.id AS TEXT),CAST(s.id AS TEXT),'own:'||l.item_index) pool_key
     FROM bindings l LEFT JOIN wr_order_links w ON w.id=l.wl_id LEFT JOIN sk_order_links s ON s.id=l.sl_id
     LEFT JOIN pedia_order_items pi ON pi.order_code=l.code
@@ -197,7 +202,7 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
       CASE WHEN d.kind='hourly' THEN strftime('%H:00',paid_wib) ELSE date(paid_wib) END label,
       COUNT(DISTINCT code) orders,SUM(revenue) revenue,SUM(cost) cost,0 estimated,0 qty,0 merchant_paid,0 credit_used,
       SUM(CASE WHEN last_revenue=1 THEN payment_fee ELSE 0 END) payment_fees,
-      SUM(CASE WHEN last_revenue=1 THEN unique_bonus ELSE 0 END) unique_code_bonus,'[]' estimated_codes
+      SUM(CASE WHEN last_revenue=1 THEN unique_bonus ELSE 0 END) unique_code_bonus,'[]' estimated_codes,'[]' estimated_jaspay_codes
       FROM facts CROSS JOIN (SELECT 'daily' kind UNION ALL SELECT 'hourly') d
       WHERE CASE WHEN d.kind='hourly' THEN date(paid_wib)='${today}' ELSE
         ${range ? `date(paid_wib) BETWEEN '${range.from}' AND '${range.to}'` : `date(paid_wib)>=MIN('${month}',date('${today}','-29 days'))`} END
@@ -211,10 +216,11 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
     SUM(CASE WHEN d.kind='summary' AND last_revenue=1 THEN order_credit ELSE 0 END) credit_used,
     SUM(CASE WHEN d.kind='summary' AND last_revenue=1 THEN payment_fee ELSE 0 END) payment_fees,
     SUM(CASE WHEN d.kind='summary' AND last_revenue=1 THEN unique_bonus ELSE 0 END) unique_code_bonus,
-    json_group_array(DISTINCT code) FILTER(WHERE d.kind='summary' AND estimated AND estimate_rank<=20) estimated_codes
+    json_group_array(DISTINCT code) FILTER(WHERE d.kind='summary' AND estimated AND estimate_rank<=20) estimated_codes,
+    json_group_array(DISTINCT code) FILTER(WHERE d.kind='summary' AND estimated AND jaspay_link AND estimate_rank<=20) estimated_jaspay_codes
     FROM scoped CROSS JOIN (SELECT 'summary' kind UNION ALL SELECT 'supplier' UNION ALL SELECT 'channel') d
     GROUP BY d.kind,period,label
-  UNION ALL SELECT 'top',period,label,0,revenue,cost,0,qty,0,0,0,0,'[]' FROM top WHERE rank<=5
+  UNION ALL SELECT 'top',period,label,0,revenue,cost,0,qty,0,0,0,0,'[]','[]' FROM top WHERE rank<=5
   UNION ALL SELECT * FROM series`;
 }
 
@@ -227,7 +233,7 @@ export async function readSelectedFinancialReport(selection: ReportSelection, no
     const value = { orders: Number(row.orders || 0), revenue: Number(row.revenue || 0), cost: Number(row.cost || 0), profit: Number(row.revenue || 0) - Number(row.cost || 0) };
     const key = String(row.label);
     if (row.kind === (selection === "today" ? "hourly" : "daily")) points.set(key, { date: key, ...value, ...pointFinance(), payment_fees:Number(row.payment_fees || 0) });
-    else if (row.kind === "summary") Object.assign(report, value, { estimated_order_codes:JSON.parse(String(row.estimated_codes ?? "[]")), payment_fees:Number(row.payment_fees || 0), unique_code_bonus:Number(row.unique_code_bonus || 0), estimated_orders: Number(row.estimated || 0), merchant_paid: Number(row.merchant_paid || 0), credit_used: Number(row.credit_used || 0) });
+    else if (row.kind === "summary") Object.assign(report, value, { estimated_order_codes:JSON.parse(String(row.estimated_codes ?? "[]")), estimated_jaspay_order_codes:JSON.parse(String(row.estimated_jaspay_codes ?? "[]")), payment_fees:Number(row.payment_fees || 0), unique_code_bonus:Number(row.unique_code_bonus || 0), estimated_orders: Number(row.estimated || 0), merchant_paid: Number(row.merchant_paid || 0), credit_used: Number(row.credit_used || 0) });
     else if (row.kind === "supplier" && key in report.suppliers) report.suppliers[key as keyof typeof report.suppliers] = value;
     else if (row.kind === "channel" && key in report.channels) report.channels[key as keyof typeof report.channels] = value;
     else if (row.kind === "top") report.top_products.push({ name: key, qty: Number(row.qty || 0), ...value });
@@ -248,7 +254,7 @@ export async function readFinancialReport(now = new Date()) {
     const key = String(row.label), report = reports[row.period as keyof typeof reports];
     if (row.kind === "daily") daily.set(key, { date: key, ...value, ...pointFinance(), payment_fees:Number(row.payment_fees || 0) });
     else if (row.kind === "hourly") hourly.set(key, { date: key, ...value, ...pointFinance(), payment_fees:Number(row.payment_fees || 0) });
-    else if (report && row.kind === "summary") Object.assign(report, value, { estimated_order_codes:JSON.parse(String(row.estimated_codes ?? "[]")), payment_fees:Number(row.payment_fees || 0), unique_code_bonus:Number(row.unique_code_bonus || 0), estimated_orders: Number(row.estimated || 0), merchant_paid: Number(row.merchant_paid || 0), credit_used: Number(row.credit_used || 0) });
+    else if (report && row.kind === "summary") Object.assign(report, value, { estimated_order_codes:JSON.parse(String(row.estimated_codes ?? "[]")), estimated_jaspay_order_codes:JSON.parse(String(row.estimated_jaspay_codes ?? "[]")), payment_fees:Number(row.payment_fees || 0), unique_code_bonus:Number(row.unique_code_bonus || 0), estimated_orders: Number(row.estimated || 0), merchant_paid: Number(row.merchant_paid || 0), credit_used: Number(row.credit_used || 0) });
     else if (report && row.kind === "supplier" && key in report.suppliers) report.suppliers[key as keyof typeof report.suppliers] = value;
     else if (report && row.kind === "channel" && key in report.channels) report.channels[key as keyof typeof report.channels] = value;
     else if (report && row.kind === "top") report.top_products.push({ name: key, qty: Number(row.qty || 0), ...value });
@@ -305,7 +311,7 @@ export async function readOverviewFinancialReport(now = new Date()): Promise<Fin
   const cached = db && process.env.NODE_ENV === "production" ? overviewSnapshots.get(db) : undefined;
   if (cached && cached.key === key && cached.expiresAt > Date.now()) return cached.value;
   const load = () => readFinancialReport(now).then(report => ({ ...report, generatedAt: now.toISOString() }));
-  const value = db ? readPrivateFinancialSnapshot(`overview-finance-v4:${key}`, load) : load();
+  const value = db ? readPrivateFinancialSnapshot(`overview-finance-v5:${key}`, load) : load();
   if (db && process.env.NODE_ENV === "production") {
     overviewSnapshots.set(db, { key, expiresAt: Date.now() + FINANCIAL_SNAPSHOT_TTL_MS, value });
     void value.then(snapshot => {

@@ -1,5 +1,6 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import type { JaspayOrderResult } from "./client";
+import { decodeJaspayVariantId, jaspayAmount } from "./jaspay";
 
 export type AutomaticProgressItem = {
   label: string;
@@ -15,8 +16,8 @@ const count = (value: unknown, maximum: number) =>
 
 /** An allowlisted, credential-free snapshot; never persist raw provider JSON here. */
 export async function persistJaspayProgress(
-  link: Record<string, unknown>, result: JaspayOrderResult, db: DatabaseAccess,
-): Promise<void> {
+  link: Record<string, unknown>, result: JaspayOrderResult, db: DatabaseAccess, receiptOnly = false,
+): Promise<boolean> {
   const total = Math.max(1, Number(link.quantity) || 1);
   const phase = ["preparing", "queued", "running"].includes(String(result.phase)) ? result.phase : null;
   const snapshot = {
@@ -27,11 +28,25 @@ export async function persistJaspayProgress(
     success: count(result.progress?.success ?? result.success_count, total),
     updatedAt: new Date().toISOString(),
   };
-  await db.execRun(`UPDATE wr_order_links SET jaspay_progress=?
-    WHERE id=? AND wr_order_id=? AND wr_variant_id LIKE 'jaspay:%'
-      AND status NOT IN ('completed','failed')
-      AND (jaspay_progress IS NULL OR COALESCE(json_extract(jaspay_progress,'$.done'),0)<=?)`,
-    JSON.stringify(snapshot), Number(link.id), result.invoice, snapshot.done);
+  const identity = decodeJaspayVariantId(String(link.wr_variant_id));
+  const receiptMatches = identity && identity.product === result.product && result.quantity === total;
+  const invoiceTotal = receiptMatches ? jaspayAmount(result.total) ?? null : null;
+  const refund = receiptMatches ? jaspayAmount(result.refunded) ?? null : null;
+  // One guarded write for polling: financial evidence can also arrive after fulfillment.
+  // A conflicting charge cannot move the frozen total or its cumulative refund.
+  if (receiptOnly && invoiceTotal === null && refund === null) return false;
+  const applied = await db.execRun(`WITH incoming(snapshot,done,charge,refund) AS (VALUES (?,?,?,?))
+    UPDATE wr_order_links SET
+      jaspay_progress=CASE WHEN snapshot IS NOT NULL AND status NOT IN ('completed','failed')
+        AND COALESCE(json_extract(jaspay_progress,'$.done'),0)<=done THEN snapshot ELSE jaspay_progress END,
+      jaspay_invoice_total=COALESCE(jaspay_invoice_total,charge),
+      jaspay_refunded_total=CASE WHEN (charge IS NULL OR jaspay_invoice_total IS NULL OR charge=jaspay_invoice_total)
+        AND refund BETWEEN COALESCE(jaspay_refunded_total,0) AND COALESCE(jaspay_invoice_total,charge)
+        THEN refund ELSE jaspay_refunded_total END
+    FROM incoming WHERE id=? AND wr_order_id=? AND wr_variant_id=? AND quantity=?`,
+    receiptOnly ? null : JSON.stringify(snapshot), snapshot.done, invoiceTotal, refund,
+    Number(link.id), result.invoice, String(link.wr_variant_id), total);
+  return Number(applied.changes) > 0;
 }
 
 /** Safe for the existing authenticated/masked order status serializers. */

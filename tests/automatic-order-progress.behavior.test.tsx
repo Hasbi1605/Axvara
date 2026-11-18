@@ -10,7 +10,7 @@ it("shows actual queue state without inventing a single-account percentage or ex
   render(<AutomaticOrderProgress items={[item]} />);
   expect(screen.getByText("Menunggu giliran")).toBeTruthy();
   expect(screen.getByText("Urutan antrean: 3")).toBeTruthy();
-  expect(screen.queryByRole("progressbar")).toBeNull();
+  expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
   expect(document.body.textContent).not.toMatch(/Jaspay|Warung|12 jam|\d+%/i);
 });
 it("uses real counts for multiple accounts and reserves 100% for confirmed readiness", () => {
@@ -34,5 +34,5 @@ it("stops the loading animation on partial/error and explains follow-up without 
 it("supports English and reduced motion while preserving text feedback", () => {
   render(<AutomaticOrderProgress items={[{...item,stage:"running"}]} locale="en" />);
   expect(screen.getByText("Creating your product")).toBeTruthy();
-  expect(document.querySelector('.motion-reduce\\:animate-none')).toBeTruthy();
+  expect(screen.getByRole("progressbar").firstElementChild?.className).toContain("motion-safe:animate-");
 });
