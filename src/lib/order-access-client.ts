@@ -91,6 +91,19 @@ export function readCheckoutCredentialGrant(code: string): string {
   return "";
 }
 
+/** Ask the server to remember this browser (HttpOnly d1 cookie, 30 days). Failures are harmless. */
+export async function rememberDeviceForOrder(code: string, grant: string): Promise<void> {
+  try {
+    await fetch(`/api/orders/${encodeURIComponent(code)}/device`, { method: "POST", headers: { "x-checkout-credential-grant": grant }, cache: "no-store", keepalive: true });
+  } catch { /* The order page still opens with tab proof. */ }
+}
+
+export async function forgetDeviceForOrder(code: string): Promise<void> {
+  try {
+    await fetch(`/api/orders/${encodeURIComponent(code)}/device`, { method: "DELETE", cache: "no-store", keepalive: true });
+  } catch { /* Cookie expires on its own. */ }
+}
+
 export function rememberBuyerAccessSession(code: string, raw: unknown): boolean {
   if (typeof window === "undefined" || !validSessionShape(raw)) return false;
   tabSessions.set(code, raw);
