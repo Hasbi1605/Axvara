@@ -51,10 +51,8 @@ saja, telusuri sumber yang diperlukan untuk membuktikan isi perubahan.
 1. `docs/PRD.md` — requirement, flow dan kontrak pembayaran terkini; jangan mengambil provider aktif dari contoh pembayaran lama
 2. `docs/DESIGN.md` — token Midnight #080C1E/#070a1e + Cyan #00E5FF + Gold #FFB800, SF Pro, Liquid Glass
 3. `docs/ARCHITECTURE.md` — stack Next 15 + Pages + D1 + R2, schema, API contract, wrangler
-4. `README.md` — struktur, brand, cara jalan & deploy
+4. `README.md` — orientasi repo, cara jalan lokal, dan indeks rujukan
 5. `CHANGELOG.md` (root `axvara/`) — riwayat perubahan, baca dulu biar tidak duplikasi
-
-Jika perubahan mengubah struktur folder, route `src/app/*`, komponen `src/components/storefront/*`, `drizzle/schema.sql`, `wrangler.json`, `mcp-worker/wrangler.toml`, atau flow checkout/admin, **perbarui `docs/ARCHITECTURE.md` dan `README.md` di PR yang sama**.
 
 ## Cara bekerja
 - Perubahan sekecil mungkin yang tetap selesaikan masalah.
@@ -96,9 +94,15 @@ yang relevan dalam PR/commit yang sama — bukan cuma `CHANGELOG.md`:
 |---|---|
 | Perilaku produk / requirement / flow / payment spec | `docs/PRD.md` (status implementasi/publikasi/deployment sesuai bukti) + `CHANGELOG.md` |
 | Token warna, font, layout, komponen, animasi, aset visual | `docs/DESIGN.md` + `CHANGELOG.md` |
-| Struktur folder, route `src/app/*`, komponen storefront, `drizzle/schema.sql` atau migrasi baru, `wrangler.json`, flow checkout/admin, kontrak bot/webhook, env baru, cron, flag | `docs/ARCHITECTURE.md` + `README.md` (bagian terkait) + `CHANGELOG.md` |
-| Env Pages baru/diubah, kredensial, handoff Heroku/Cloudflare | `docs/ARCHITECTURE.md` §16 + `README.md` + AGENTS.md folder terkait |
+| Struktur folder, route `src/app/*`, komponen storefront, `drizzle/schema.sql` atau migrasi baru, `wrangler.json`, `mcp-worker/wrangler.toml`, flow checkout/admin, kontrak bot/webhook, env baru, cron, flag | `docs/ARCHITECTURE.md` + `CHANGELOG.md` |
+| Env Pages baru/diubah, kredensial, handoff Heroku/Cloudflare | `docs/ARCHITECTURE.md` §16 + AGENTS.md folder terkait |
 | Kontrak antar-repo (proxy/gateway/bot/QRIS) | AGENTS.md di SEMUA folder yang terpengaruh |
+| Orientasi repo, cara jalan lokal, atau tautan rujukan utama berubah | `README.md` + `CHANGELOG.md` |
+
+`README.md` hanya untuk orientasi repo dan langkah awal. Perbarui hanya jika
+isi panduan masuknya berubah. Jangan menambahkan catatan fitur bertanggal,
+snapshot status, atau runbook; taruh riwayat di `CHANGELOG.md` dan detail yang
+masih berlaku di dokumen topiknya.
 
 Aturan: (1) Bila kode dan docs berbeda, telusuri keputusan owner, requirement
 terkini dan test; bisa jadi bug kode, docs basi, atau perubahan yang belum
@@ -197,8 +201,7 @@ tidak relevan ditandai `N/A` dengan alasan, bukan dijalankan sebagai formalitas:
 - [ ] `CHANGELOG.md` sudah di-update bila ada perubahan file; audit baca-saja tidak memerlukan entri
 - [ ] Jika web terdampak: route dan aset relevan termuat, log dev/console tidak memuat error baru terkait perubahan
 - [ ] Jika UI/flow web berubah: desktop/mobile serta interaksi relevan diperiksa di browser nyata dan alat/hasil/batas verifikasi dicatat; Obscura opsional
-- [ ] Dokumentasi: tabel Aturan Dokumentasi di atas sudah dipenuhi (PRD/DESIGN/ARCHITECTURE/README/AGENTS folder terkait ikut di-update sesuai jenis perubahan)
-- [ ] Jika ubah struktur/flow, `docs/ARCHITECTURE.md`/`README.md` ikut di-update
+- [ ] Dokumen topik terkait sudah di-update sesuai tabel; `README.md` hanya jika panduan masuk, cara jalan lokal, atau tautan utamanya berubah
 - [ ] Kredensial tidak masuk file tracked/staged; periksa daftar file `git ls-files` dan `git diff --cached --name-only` tanpa mencetak nilainya. `git check-ignore -v .cf-credentials` hanya memeriksa aturan ignore, bukan bukti bahwa secret tidak pernah ter-commit.
 - [ ] Jangan membuat ulang `/Users/macbookair/AGENTS.md` global (dihapus atas instruksi owner 2 November 2026)
 

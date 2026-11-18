@@ -2663,6 +2663,11 @@ Jika melebihi free tier (misal 100k order/bulan): D1 $5/bulan, R2 $0.015/GB — 
 
 Artikel memakai `status` sebagai sumber kebenaran (`draft`, `review`, `scheduled`, `published`, `rejected`); `is_published` dipertahankan selama migrasi kompatibilitas. Slug dan excerpt dibuat server-side dari judul/konten dan tidak menjadi field editorial. Editor visual Tiptap menyimpan Markdown sebagai format kanonis; renderer token-based tidak mengeksekusi raw HTML dan tetap membaca JSON Tiptap lama. Konten agent hanya boleh membuat atau memperbarui Draft, wajib menyertakan sumber, idempotency key, dan audit trail.
 
+Untuk pengembangan CMS tanpa binding D1, Next dev memakai fixture Draft dari
+[`article-seeds.ts`](../src/lib/article-seeds.ts). Jika perlu fixture pada D1
+lokal, gunakan seed idempoten [`seed-articles.local.sql`](../drizzle/seed-articles.local.sql).
+Seed ini tidak dijalankan oleh CI/CD dan bukan untuk produksi.
+
 Migrasi database lama: jalankan sekali dan berurutan `drizzle/migrations/0002_editorial_agent.sql`, `0003_checkout_integrity.sql`, lalu `0004_categories_newsletter.sql`. Database baru memakai `drizzle/schema.sql`.
 
 Agent Content API berada di `/api/agent/*` dan memvalidasi Bearer token yang di-hash dalam `agent_tokens`; ia adalah satu-satunya jalur bagi agent ke D1/R2. Scope tersedia: `context:read`, `articles:read`, `articles:write`, `articles:submit`, `articles:schedule`, `articles:publish`, `media:write`, `audit:read`. `/api/agent/media` menerima file WebP multipart dari agent yang dapat membaca filesystem lokal, sedangkan `/api/agent/media/import` mengambil WebP dari URL HTTPS publik untuk agent berbasis remote URL.
