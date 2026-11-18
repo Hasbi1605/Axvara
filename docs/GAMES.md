@@ -990,3 +990,14 @@ webhook tersimpan (`dana_webhook_events` provider `sekalipay_games`).
   pesanan, email); DB, sync, kategori/ikon (tetap dari nama mentah), admin, Telegram dan laporan tidak
   berubah; tidak ada field nama mentah di JSON publik. Sweep 1.644 nominal aktif produksi (baca-saja):
   1.013 nama berubah, hasil diperiksa PM.
+
+### 15.2 Status transaksi SK `refunded`/`cancelled`/`expired` = gagal (18 November 2026, lokal → CI)
+
+Dipicu order produksi `AXG-20261118-5E9974F2` (ML Weekly Diamond Pass tipe Membership,
+akun region Indonesia): Sekalipay membalas `status: refunded` tanpa hasil H2H/alasan, tetapi
+AXVARA tetap `pending` karena parser hanya mengenali `failed`. Kini `parseSkH2hOutcome`
+memperlakukan status transaksi yang memuat `fail|cancel|refund|expire` sebagai gagal
+(sama dengan pola `src/lib/sekalipay/order.ts`) → `needs_check` + notifikasi admin,
+termasuk bila H2H tertulis `completed`. Refund pembeli tetap manual lewat admin. Alasan
+penolakan varian Membership untuk akun ID belum diketahui (ditanyakan ke Sekalipay);
+klaim deskripsi supplier "semua region kecuali MY/SG/RU" belum terbukti untuk akun ID.

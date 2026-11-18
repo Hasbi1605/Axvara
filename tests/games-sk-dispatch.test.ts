@@ -256,6 +256,10 @@ describe("SK dispatch", () => {
     ["wrong variant", { item: { variant_id: 999 } }, "needs_check"],
     ["wrong invoice", { top: { invoice: "INV-OTHER" } }, "needs_check"],
     ["completed without h2h", { top: { h2h_results: [] } }, "needs_check"],
+    ["refunded without h2h", { top: { status: "refunded", h2h_results: [] } }, "needs_check"],
+    ["refunded with completed h2h", { top: { status: "refunded" } }, "needs_check"],
+    ["cancelled without h2h", { top: { status: "cancelled", h2h_results: [] } }, "needs_check"],
+    ["expired without h2h", { top: { status: "expired", h2h_results: [] } }, "needs_check"],
   ])("never reports success for %s", async (_name, fixture, expected) => {
     seedOrder("AXG-20261112-SK000007");
     stubSk({});

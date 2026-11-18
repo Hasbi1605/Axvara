@@ -168,7 +168,10 @@ export function parseSkH2hOutcome(detail: SkTrxDetail, expected: SkParserExpecta
   const units = asArray(result?.units);
   const unitsJson = units.length > 0 ? JSON.stringify(units).slice(0, 4_000) : null;
 
-  if (txStatus === "failed" || dispatchStatus === "failed") {
+  // Terminal non-sukses transaksi (refunded/cancelled/expired) ≠ pending: SK sudah
+  // mengembalikan saldo, jadi order harus keluar dari polling ke needs_check (18 Nov 2026).
+  const txTerminalFailure = /fail|cancel|refund|expire/.test(txStatus);
+  if (txTerminalFailure || dispatchStatus === "failed") {
     return { kind: "failed", message, dispatchStatus, unitsJson };
   }
   if (dispatchStatus === "partial") {
