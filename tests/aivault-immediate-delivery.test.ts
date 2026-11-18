@@ -15,7 +15,8 @@ vi.mock("@/lib/aivault/orders", () => ({
   createAivaultOrderLinks: async () => 0, AIVAULT_RETRYABLE_SQL: "1=1",
 }));
 vi.mock("@/lib/db-access", () => ({
-  createDatabaseAccess: vi.fn(),
+  unwrapD1: () => null,
+  createDatabaseAccess: () => ({ d1: null, queryFirst: async () => null }),
   createBudgetedDatabase: () => ({ access: { queryFirst: async (sql: string) => sql.startsWith("SELECT *")
     ? { id: 7, order_code: "AXV-AV-1" } : { status: m.status, last_error: null } } }),
 }));

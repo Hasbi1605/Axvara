@@ -162,7 +162,9 @@ export async function processJobItems(
 export async function processJob(
   jobId: number, order: Row, product: Row,
   database: DatabaseAccess = createDatabaseAccess(),
+  deadlineMs?: number,
 ): Promise<boolean> {
+  if (deadlineMs !== undefined && Date.now() >= deadlineMs) return false;
   if (["pedia", "games"].includes(String(order.order_kind))) return false;
   // Dev's in-memory adapter has no per-item table; preserve its existing path.
   if (!database.d1) {
@@ -170,9 +172,9 @@ export async function processJob(
     const claimed = await claimJob(jobId, database);
     return claimed ? processLegacyJob(jobId, order, product, claimed) : false;
   }
-  const deadline = Date.now() + 40_000;
+  const deadline = deadlineMs ?? Date.now() + 40_000;
   const multiUnique = expandDeliveryLines(order.items).some(line => Number(line.unit_total) > 1);
-  const result = await processJobItems(jobId, order, product, Infinity, multiUnique ? () => Date.now() < deadline : undefined, database);
+  const result = await processJobItems(jobId, order, product, Infinity, deadlineMs !== undefined || multiUnique ? () => Date.now() < deadline : undefined, database);
   return result.done;
 }
 

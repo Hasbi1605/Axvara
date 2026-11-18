@@ -27,7 +27,8 @@ import { processJob } from "./process";
  * Used by callbacks, reconciliation, and manual proof approval so every
  * authoritative payment path reaches the same channel/variant-aware outbox.
  */
-export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<boolean> {
+export async function ensureFulfillmentForPaidOrder(orderCode: string, deadlineMs?: number): Promise<boolean> {
+  if (deadlineMs !== undefined && Date.now() >= deadlineMs) return false;
   const autoFulfillmentEnabled = process.env.AUTO_FULFILLMENT_ENABLED === "true";
 
   const order = await queryFirst(
@@ -38,6 +39,7 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
   // Pedia/Games never use the Market fulfillment outbox. Already-existing
   // false jobs/items are ignored safely elsewhere; never create new ones here.
   if (["pedia", "games"].includes(String(order.order_kind))) return false;
+  if (deadlineMs !== undefined && Date.now() >= deadlineMs) return false;
 
   // Buyer payment acknowledgement must not depend on AUTO_FULFILLMENT_ENABLED.
   // It is durable/idempotent and retried by the operations cron when Telegram
@@ -48,9 +50,11 @@ export async function ensureFulfillmentForPaidOrder(orderCode: string): Promise<
     } catch { /* Payment remains durable; notification cron retries it. */ }
   }
 
-  const result = await materializeAndDeliver(order, orderCode, autoFulfillmentEnabled);
+  if (deadlineMs !== undefined && Date.now() >= deadlineMs) return false;
+  const result = await materializeAndDeliver(order, orderCode, autoFulfillmentEnabled, deadlineMs);
+  if (deadlineMs !== undefined && Date.now() >= deadlineMs) return result;
   if (String(order.sales_channel) === "web") await followUpWebOrder(orderCode);
-  if (String(order.sales_channel) === "telegram") await followUpTelegramEmail(orderCode);
+  if (String(order.sales_channel) === "telegram" && (deadlineMs === undefined || Date.now() < deadlineMs)) await followUpTelegramEmail(orderCode);
   return result;
 }
 
@@ -115,7 +119,7 @@ async function followUpTelegramEmail(orderCode: string): Promise<void> {
   } catch { /* salinan email best-effort; DM Telegram tetap otoritatif */ }
 }
 
-async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillmentEnabled: boolean): Promise<boolean> {
+async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillmentEnabled: boolean, deadlineMs?: number): Promise<boolean> {
   let items: { product_id: number; variant_id?: number }[];
   try {
     items = JSON.parse(String(order.items ?? "[]"));
@@ -206,5 +210,5 @@ async function materializeAndDeliver(order: Row, orderCode: string, autoFulfillm
   // and recovery below never sends credentials twice (claimed exactly
   // once via claimJob, settled via markJobDelivered idempotency below).
   if (!autoFulfillmentEnabled) return false;
-  return processJob(Number(job.id), order, product);
+  return processJob(Number(job.id), order, product, undefined, deadlineMs);
 }

@@ -212,7 +212,7 @@ export async function reconcileKlikQrisPayment(orderCode: string): Promise<strin
     return "manual_review";
   }
   const { schedulePaidFulfillment } = await import("./paid-fulfillment");
-  await schedulePaidFulfillment(orderCode, tx.order_kind);
+  await schedulePaidFulfillment(orderCode, tx.order_kind, "klikqris");
   return "paid";
 }
 async function manualReview(tx: Row, eventId: number, notify: boolean, reason: string) {

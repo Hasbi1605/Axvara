@@ -3,8 +3,13 @@ import { estimateGatewayFee, gatewayDisplayName, gatewayHmac, gatewayParams, lis
 import type { DatabaseAccess } from "@/lib/db-access";
 import { createD1Fixture, insertTestOrder, insertTestProduct, stubFulfillmentKey } from "./helpers/d1-fixture";
 import { NextRequest } from "next/server";
+const queue = vi.hoisted(() => ({ enabled: false, send: vi.fn(async () => undefined) }));
+vi.mock("@cloudflare/next-on-pages", () => ({ getRequestContext: () => {
+  if (!queue.enabled) throw new Error("No fixture Pages context");
+  return { env: { ORDER_FULFILLMENT_QUEUE: { send: queue.send } }, ctx: { waitUntil: vi.fn() } };
+} }));
 
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterEach(() => { queue.enabled = false; queue.send.mockClear(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("Sekalipay merchant contract fixtures", () => {
   it("matches all published HMAC vectors and rejects changed raw body", async () => {
@@ -276,6 +281,20 @@ describe("merchant invoice and fee consent", () => {
       expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(1);
     } finally { f.fixture.close(); }
   });
+  it.each(["apps", "pedia", "games"])("active gateway %s winner enqueues once, callback/poller replay never schedules", async kind => {
+    const f = await make(`queue-${kind}`);
+    try {
+      await f.create(); f.fixture.sql.prepare("UPDATE orders SET order_kind=? WHERE code=?").run(kind, code);
+      f.fixture.sql.prepare("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')").run();
+      queue.enabled = true;
+      Object.assign(f.invoice, { status: "paid", paid_at: new Date().toISOString() }); Object.assign(f.statusInvoice, f.invoice);
+      const { reconcileSekalipayGatewayPayment } = await import("@/lib/payments/sekalipay-gateway");
+      expect(await reconcileSekalipayGatewayPayment(code)).toBe("paid");
+      expect((await callback(f.invoice)).status).toBe(200);
+      expect(await reconcileSekalipayGatewayPayment(code)).toBe("already_paid");
+      expect(queue.send).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ kind: "order_paid", orderKind: kind, orderCode: code, source: "sekalipay_gateway" }));
+    } finally { f.fixture.close(); }
+  });
 
   it("actual payments cron respects 40 statements and resumes atomic paid work next tick", async () => {
     const f = await make("cron-forty");
@@ -305,8 +324,12 @@ describe("merchant invoice and fee consent", () => {
       expect(f.fixture.control.queries - before).toBeLessThanOrEqual(40);
       expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM orders WHERE payment_status='paid'").get()!.n).toBe(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()!.n);
       expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM dana_webhook_events WHERE provider='sekalipay_gateway' AND status='received'").get()!.n).toBeGreaterThan(0);
-      const retryCode = f.fixture.sql.prepare("SELECT order_code FROM dana_webhook_events WHERE provider='sekalipay_gateway' AND status='received' AND order_code IN (SELECT order_code FROM payment_transactions WHERE last_checked_at IS NOT NULL)").get()?.order_code;
+      // A cold producer-mode read can exhaust admission before the next poll
+      // claim. Recovery must work for unclaimed AND partially checked events;
+      // the six-statement test above independently exercises partial finalize.
+      const retryCode = f.fixture.sql.prepare("SELECT e.order_code FROM dana_webhook_events e JOIN payment_transactions pt ON pt.order_code=e.order_code WHERE e.provider='sekalipay_gateway' AND e.status='received' AND pt.status='pending' ORDER BY pt.id LIMIT 1").get()?.order_code;
       expect(retryCode).toBeTruthy();
+      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code=?").get(retryCode)?.n).toBe(0);
       f.fixture.sql.exec("UPDATE payment_transactions SET last_checked_at=datetime('now','-61 seconds') WHERE provider='sekalipay_gateway' AND status='pending'");
       const secondBefore = f.fixture.control.queries; await cron();
       expect(f.fixture.control.queries - secondBefore).toBeLessThanOrEqual(40);

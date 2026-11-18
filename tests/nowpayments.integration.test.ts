@@ -22,12 +22,13 @@ const mocks = vi.hoisted(() => ({
   skCreate: vi.fn(async () => 0),
   skProcess: vi.fn(async () => ({})),
   pages: false,
+  queue: vi.fn(async () => undefined),
   tasks: [] as Promise<unknown>[],
 }));
 vi.mock("@cloudflare/next-on-pages", () => ({
   getRequestContext: () => {
     if (!mocks.pages) throw new Error("No Pages context in this fixture");
-    return { ctx: { waitUntil: (task: Promise<unknown>) => { mocks.tasks.push(task); } } };
+    return { env: { ORDER_FULFILLMENT_QUEUE: { send: mocks.queue } }, ctx: { waitUntil: (task: Promise<unknown>) => { mocks.tasks.push(task); } } };
   },
 }));
 vi.mock("@/lib/fulfillment/deliver", () => ({ ensureFulfillmentForPaidOrder: mocks.ensure }));
@@ -589,6 +590,16 @@ describe("NOWPayments rail (W1 local, flags default-off semantics)", () => {
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code=?").get(A)!.n).toBe(1);
     expect(await reconcileNowpaymentsPayment(A)).toBe("already_paid");
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code=?").get(A)!.n).toBe(1);
+  });
+  it("active shared reconcile enqueues only the durable paid winner", async () => {
+    await seed(); await createNowpaymentsInvoice(A, 89000, "usdtbsc", { payNetwork: "bsc", priceCurrency: "idr" });
+    fixture.sql.prepare("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')").run();
+    mocks.pages = true; mocks.queue.mockClear();
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(statusRow(A))));
+    expect(await reconcileNowpaymentsPayment(A)).toBe("paid");
+    expect(await reconcileNowpaymentsPayment(A)).toBe("already_paid");
+    expect(mocks.queue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ kind: "order_paid", source: "nowpayments", orderCode: A }));
+    expect(mocks.ensure).not.toHaveBeenCalled();
   });
 
   it("expired provider state is durable with a reason for W3", async () => {

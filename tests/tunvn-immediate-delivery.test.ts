@@ -20,7 +20,8 @@ vi.mock("@/lib/tunvn/orders", () => ({
   TUNVN_RETRYABLE_SQL: "1=1",
 }));
 vi.mock("@/lib/db-access", () => ({
-  createDatabaseAccess: vi.fn(),
+  unwrapD1: () => null,
+  createDatabaseAccess: () => ({ d1: null, queryFirst: async () => null }),
   createBudgetedDatabase: () => ({
     access: {
       queryFirst: vi.fn(async (sql: string) => sql.startsWith("SELECT * FROM")
@@ -73,5 +74,14 @@ describe("TUNVN immediate buyer delivery", () => {
     const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
     await schedulePaidFulfillment("AXV-T-1", "apps");
     expect(m.ensure).toHaveBeenCalledTimes(1);
+  });
+  it("legacy no-deadline pass still starts supplier work while generic delivery is pending", async () => {
+    let finish!: () => void;
+    m.ensure.mockImplementationOnce(() => new Promise<boolean>(resolve => { finish = () => resolve(true); }));
+    m.process.mockResolvedValue(0);
+    const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
+    const task = schedulePaidFulfillment("AXV-T-1", "apps");
+    try { await vi.waitFor(() => expect(m.process).toHaveBeenCalledTimes(1)); }
+    finally { finish?.(); await task; }
   });
 });

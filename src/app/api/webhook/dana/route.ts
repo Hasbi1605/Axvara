@@ -9,7 +9,7 @@ import {
   parseDanaWebhook,
   sha256Hex,
 } from "@/lib/payments/dana-qris";
-import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
+import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
 import { isFutureIso } from "@/lib/expiry";
 
 export const runtime = "edge";
@@ -167,39 +167,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
   }
 
-  try {
-    if (isPediaOrder) {
-      const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
-      await schedulePaidFulfillment(orderCode, "pedia");
-    } else if (isGamesOrder) {
-      const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
-      await schedulePaidFulfillment(orderCode, "games");
-    } else {
-      await ensureFulfillmentForPaidOrder(orderCode);
-    }
-  } catch { /* Payment is durable; fulfillment cron remains idempotent. */ }
-
-  // Produk WR: buat link auto-order segera (best-effort; cron memprosesnya).
-  // WR tidak memakai fulfillment_inventory lokal — pipeline wr_order_links
-  // yang menentukan delivery. Pedia tidak memakai jalur WR/SK.
-  if (!skipMarketFulfillment) try {
-    const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
-    const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
-    if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
-      await processWrPendingOrders().catch(() => undefined);
-    }
-  } catch { /* Link WR menyusul via cron. */ }
-
-  // Produk Sekalipay (supplier kedua paralel, 0049): pola yang sama dengan
-  // WR di atas — link SK dibuat segera, cron fase sekalipay memprosesnya.
-  // Best-effort; tidak mengganggu jalur WR/non-WR bila SK mati.
-  if (!skipMarketFulfillment) try {
-    const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
-    const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
-    if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
-      await processSkPendingOrders().catch(() => undefined);
-    }
-  } catch { /* Link SK menyusul via cron. */ }
+  await schedulePaidFulfillment(orderCode, transaction.order_kind, "dana");
 
   if (String(transaction.sales_channel) === "whatsapp" && transaction.channel_conversation_id) {
     try {

@@ -1,5 +1,30 @@
 # PRD — AXVARA
 
+## C-S: antrean pengiriman setelah lunas — 18 November 2026 (lokal, belum deploy)
+
+Semua rail/konfirmasi admin authoritative hanya menjadwalkan fulfillment dari
+pemenang transisi; pembayaran ulang/replay tidak mengantre lagi. Sekalipay
+gateway apps/Pedia diperbaiki agar ikut jalur yang sama, tidak hanya Games.
+WR/Jaspay/SK/Digiflazz dan penyelesaian admin TUNVN/AIVault dapat mengantre
+`supplier_settled`. Bukti QRIS pendukung tetap tidak melunaskan dan tidak enqueue.
+Manual proof authoritative tetap menyumbang funnel paid sekali; respons tidak
+mengklaim fulfillment background sudah dimulai (`fulfillment_started:false`).
+
+Default off mempertahankan jalur immediate HTTP+cron. Shadow menjalankan jalur
+lama dengan queue dry-run tanpa efek; active/canary kind cocok menggantikan
+immediate dengan queue, error send fallback eksplisit. Pengecualian payment
+cron gateway: fallback tetap cron fulfillment durable, tidak memulai executor
+tanpa meter di budget40statement. Pesanan/order outbox tetap durable.
+Pass queue dibatasi40detik untuk memulai sub-pekerjaan baru, scoped satu order;
+multi-link hanya satu link/supplier/pass, sisanya retry atau cron. Async supplier
+dan kebutuhan admin bukan kegagalan transport. Lease sibuk/sisa pre-send retry
+≥sisa lease; tidak menandai satu link selesai sebagai seluruh pesanan selesai.
+
+Rollback setting off≤30detik tanpa redeploy; pesan active lama masih dipagari
+CAS/ledger C0. Tidak menjanjikan exactly-once upstream untuk hasil ambigu,
+deadline pembatalan jaringan, atau kecepatan dari shadow saja. Resource/consumer
+serta canary/rollout diserahkan PM; belum ada transaksi/deployment produksi.
+
 ## B-S: funnel pembelian tanpa PII — 18 November 2026 (lokal)
 
 Workers Analytics Engine mencatat `view → quote → order → paid` Market/Pedia/Games

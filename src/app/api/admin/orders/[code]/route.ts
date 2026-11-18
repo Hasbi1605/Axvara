@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { OrderTransitionError, queryFirst, transitionPendingOrder, transitionPendingPaymentToPaid } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
-import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
+import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -88,23 +88,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
       const { execRun } = await import("@/lib/db");
       await execRun(`UPDATE orders SET admin_note=? WHERE code=?`, adminNote, code);
     } catch { /* admin_note best-effort */ }
-    try {
-      await ensureFulfillmentForPaidOrder(code);
-    } catch { /* Paid state is durable; cron retries notification/fulfillment. */ }
-    try {
-      const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
-      const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
-      if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(code)) > 0) {
-        await processWrPendingOrders().catch(() => undefined);
-      }
-    } catch { /* Link WR menyusul via cron. */ }
-    try {
-      const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
-      const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
-      if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(code)) > 0) {
-        await processSkPendingOrders().catch(() => undefined);
-      }
-    } catch { /* Link SK menyusul via cron. */ }
+    await schedulePaidFulfillment(code, "apps", "admin_paid_qris");
     // WA: kabar payment_detected + notif admin (cermin webhook dana route).
     try {
       const waRow = await queryFirst(`SELECT sales_channel, channel_conversation_id FROM orders WHERE code=?`, code);
@@ -173,25 +157,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   }
 
   if (nxt === "lunas") {
-    try {
-      await ensureFulfillmentForPaidOrder(code);
-    } catch { /* Paid state is durable; cron retries notification/fulfillment. */ }
-    // Produk WR: buat link auto-order (best-effort; cron memprosesnya).
-    try {
-      const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
-      const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
-      if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(code)) > 0) {
-        await processWrPendingOrders().catch(() => undefined);
-      }
-    } catch { /* Link WR menyusul via cron. */ }
-    // Produk SK: pola yang sama (best-effort; cron fase sekalipay memprosesnya).
-    try {
-      const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
-      const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
-      if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(code)) > 0) {
-        await processSkPendingOrders().catch(() => undefined);
-      }
-    } catch { /* Link SK menyusul via cron. */ }
+    await schedulePaidFulfillment(code, "apps", "admin_paid");
   }
 
   return NextResponse.json({ ok: true, code, status: nxt });

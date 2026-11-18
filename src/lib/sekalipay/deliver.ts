@@ -53,6 +53,7 @@ export async function advanceSkLinkMonotonic(
   fields: Record<string, unknown> | null,
   database?: DatabaseAccess,
   eventId?: string,
+  onAdvanced?: () => void,
 ): Promise<boolean> {
   const db = database ?? createDatabaseAccess();
   const { queryFirst, execRun } = db;
@@ -115,6 +116,7 @@ export async function advanceSkLinkMonotonic(
     from,
   ).catch(() => ({ changes: 0 as number | undefined }));
   const applied = Number(res.changes ?? 0) > 0;
+  if (applied) onAdvanced?.();
   await logSkWebhookEvent(
     db,
     skInvoice,
@@ -238,7 +240,8 @@ export async function handleSkOrderCompleted(
     now,
     skInvoice,
   );
-  if (!(await advanceSkLinkMonotonic(skInvoice, "completed", { completed_at: now, last_error: null }, db))) return false;
+  let advanced = false;
+  if (!(await advanceSkLinkMonotonic(skInvoice, "completed", { completed_at: now, last_error: null }, db, undefined, () => { advanced = true; }))) return false;
   // Kaitkan link ke baris itemnya (pola WR) supaya agregat + panel akurat.
   // Best-effort: reconcile/suite lama bisa mengisi fulfillment_item_id lebih
   // dulu; bindSk.. idempoten bila sudah terisi.
@@ -260,7 +263,11 @@ export async function handleSkOrderCompleted(
   // poll berikutnya. Idempoten per item via buyer_notice_log — retry webhook
   // tidak mengirim email kedua.
   try {
-    await deliverSkCredentialToBuyer(orderCode, fulfillmentItemId, db);
+    if (advanced) {
+      const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
+      await schedulePaidFulfillment(orderCode, "apps", "sk", "supplier_settled",
+        () => deliverSkCredentialToBuyer(orderCode, fulfillmentItemId, db), db);
+    } else await deliverSkCredentialToBuyer(orderCode, fulfillmentItemId, db);
   } catch { /* menyusul via reconcile berikutnya; panel tetap jalan */ }
   return true;
 }

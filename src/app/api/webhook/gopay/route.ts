@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
   }
 
-  await schedulePaidFulfillment(orderCode, transaction.order_kind);
+  await schedulePaidFulfillment(orderCode, transaction.order_kind, "gopay");
 
   if (String(transaction.sales_channel) === "whatsapp" && transaction.channel_conversation_id) {
     try {

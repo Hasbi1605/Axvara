@@ -163,11 +163,12 @@ async function pollBuff(db:DatabaseAccess,link:Row):Promise<void> {
   else await settle(db,link,"needs_admin","buff_needs_admin");
 }
 
-async function processLink(db:DatabaseAccess,id:number,reconcile=false):Promise<void> {
+async function processLink(db:DatabaseAccess,id:number,reconcile=false,onClaimed?:()=>void):Promise<void> {
   const owner=crypto.randomUUID();
   const claimed=await db.execRun(`UPDATE tunvn_order_links SET lease_owner=?,lease_expires_at=datetime('now','+90 seconds'),status=CASE WHEN status='processing' OR ?=1 THEN 'processing' ELSE 'claimed' END
     WHERE id=? AND ${reconcile ? "kind='buff' AND provider_batch_id IS NOT NULL AND status IN ('processing','needs_admin')" : `(status IN ('pending','claimed','processing') OR (${AUTO_RECOVERY_SQL})) AND datetime(next_attempt_at)<=datetime('now')`} AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))`,owner,reconcile ? 1 : 0,id);
   if (!claimed.changes) return;
+  onClaimed?.();
   const link=await db.queryFirst("SELECT * FROM tunvn_order_links WHERE id=? AND lease_owner=?",id,owner);
   if (!link) return;
   try {
@@ -267,6 +268,7 @@ export async function processTunvnOrders(db:DatabaseAccess=createDatabaseAccess(
     AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
     ${options.orderCode ? "AND order_code=?" : ""} ${options.reconcileId ? "AND id=?" : ""} ORDER BY next_attempt_at,id LIMIT 1`,...(options.orderCode ? [options.orderCode] : []),...(options.reconcileId ? [options.reconcileId] : []));
   if (!link) return 0;
-  await processLink(db,Number(link.id),Boolean(options.reconcileId));
-  return 1;
+  let claimed = false;
+  await processLink(db,Number(link.id),Boolean(options.reconcileId),()=>{ claimed=true; });
+  return claimed ? 1 : 0;
 }

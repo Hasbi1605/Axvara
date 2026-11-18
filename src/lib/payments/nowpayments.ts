@@ -751,7 +751,7 @@ export async function reconcileNowpaymentsPayment(orderCode: string): Promise<st
     return "manual_review";
   }
   const { schedulePaidFulfillment } = await import("./paid-fulfillment");
-  await schedulePaidFulfillment(orderCode, tx.order_kind);
+  await schedulePaidFulfillment(orderCode, tx.order_kind, "nowpayments");
   return "paid";
 }
 

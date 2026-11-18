@@ -1,5 +1,71 @@
 # ARCHITECTURE.md — AXVARA
 
+## C-S: producer Queue dan origin fulfillment — 18 November 2026 (lokal, belum dipublikasikan)
+
+- `wrangler.json` menambah **producer binding** Pages `ORDER_FULFILLMENT_QUEUE`
+  ke `axvara-order-fulfillment`; bukan env/secret Pages baru. Resource queue/DLQ
+  dan consumer Worker dikelola PM/paket C-H, tidak dibuat oleh C-S. Tidak ada
+  migrasi baru. C0/0135 dan seluruh fence pembelian/push tetap prasyarat.
+- `payments/order-queue.ts` membaca `store_settings.queue_fulfillment_mode`
+  sesudah pemenang transisi: absen/error/invalid=`off`; `shadow`; `active`;
+  `canary:apps|pedia|games`. Memo promise per DB asli `unwrapD1` 30 detik,
+  satu baca saat cold/TTL lewat, tidak dibaca oleh transisi kalah. Off menjalankan
+  executor lama; shadow executor lama + pesan shadow; active/canary cocok
+  **hanya** enqueue, fallback executor lama tepat sekali bila send gagal/binding
+  absen. Canary tidak cocok sama dengan off. Context diselesaikan sebelum task,
+  `ctx.waitUntil` bila tersedia, else await task yang sama.
+- Pesan: `{v:1,kind:'order_paid'|'supplier_settled',orderCode,orderKind:
+  'apps'|'pedia'|'games',source,enqueuedAt:<ms>,mode:'shadow'|'active'}`.
+  `schedulePaidFulfillment` menjadi jalur tunggal DANA/GoPay/KlikQRIS/NOWPayments/
+  Sekalipay gateway (termasuk reconcile poll/cron), paid/admin ACC/manual proof/
+  event retry/confirm. Gateway kini mencakup apps/Pedia, bukan Games saja.
+  Bukti QRIS non-otoritatif tidak enqueue. Funnel B-S dan opsi invalidasi
+  transisi B-H utuh; manual proof authoritative juga memanggil paid funnel
+  hanya setelah batch menang. Respons proof `fulfillment_started:false` tidak
+  mengklaim background telah mengirim barang.
+- `supplier_settled`: pemenang terminal WR/Jaspay/SK/Digiflazz dan retry/reconcile
+  admin TUNVN/AIVault. Replay tidak enqueue ulang; pemulihan channel ledger
+  existing tetap diperbolehkan. TUNVN menghitung pass hanya bila CAS lease menang.
+  Shadow/active supplier melakukan satu paid-order read sebelum enqueue;
+  sumber non-lunas di-skip. Tidak ada fence/claim pengiriman yang diubah.
+- **Budget cron:** gateway payments memakai DB metered pemanggil untuk baca
+  mode. Di off/shadow/send-error tanpa executor khusus, fallback mencatat
+  `cron_deferred`, lalu pekerjaan durable diambil cron fulfillment existing;
+  tidak menjalankan pohon fulfillment tanpa meter di invocation payments 40
+  statement. Active tetap enqueue. HTTP webhook/poller tetap immediate via
+  waitUntil. Ini pengecualian cron yang disetujui PM, bukan kenaikan budget.
+- Route baru edge `POST /api/internal/queue/fulfill`: Bearer `CRON_SECRET`
+  constant-time, secret kosong/salah401; JSON≤2048 byte dan Zod strict
+  `{v:1,kind,orderCode,orderKind,source,attempt:1..100,dryRun:boolean}`; malformed
+  400 tanpa efek. Source≤64 karakter `[a-z][a-z0-9_:-]*`; kode mengikuti validator
+  buyer existing. Mulai dengan satu read order `lunas/paid`; non-lunas/missing
+  200 `not_paid`, mismatch kind400. Dry-run hanya auth/schema + read itu,
+  200 `dry_run_ok`, tanpa klaim/materialisasi/notifikasi.
+- Executor yang sama memakai deadline **absolut opsional** 40 detik, berhenti
+  memulai sub-pass/item baru sesudah batas; operasi jaringan yang sudah berjalan
+  tidak dibatalkan paksa. `ensure/process` tanpa deadline tetap perilaku/budget
+  lama. Pedia/Games scoped ke order ini; Games tidak mempercepat polling,
+  expiry/recovery global tetap cron. Supplier apps maksimal satu link/supplier/pass.
+- Hasil200 `{ok:true,settled:true,state}`: `done`, `async_polling` (request
+  supplier sudah terkirim/menunggu polling), `manual_required`, `not_paid`,
+  `dry_run_ok`. `settled` bukan semua link order selesai: sisa link pre-send,
+  item belum materialisasi (termasuk unit unique), atau lease eksekutor sibuk
+  menghasilkan `{ok:true,settled:false,retrySec}` min60 dan ≥sisa lease maksimum
+  item/job/WR/SK/Pedia/Games/push ledger600detik/buyer notice600detik.
+  Cadence lease supplier yang sudah submitted/in_progress bukan alasan retry
+  queue. Exception DB/executor503 tersanitasi; consumer menangani retry/ack.
+- Log JSON producer/legacy memuat kind/orderKind/source/mode/outcome dan durasi
+  legacy (tanpa kontak/kredensial/kode order). Bandingkan enqueued dengan
+  pemenang transisi, send_error_fallback, cron_deferred dan baseline legacy;
+  metadata consumer latency/attempt milik C-H. Shadow tidak membuktikan
+  percepatan pengiriman: ukur paid→link pertama DAN terakhir/delivered sebelum
+  canary. Promosi:0 auth-fail,0 enqueue non-lunas,<1%transport error, tanpa
+  peningkatan kirim ganda. Rollback setting off≤30detik; pesan active lama tetap
+  aman melalui CAS/fence/ledger C0, bukan tabel dedupe queue tambahan.
+- Bukti C-S berupa fixture dan native workerd lokal (compatibility2026-08-06),
+  bukan transaksi/rollout produksi. Full suite integrasi akhir dan provisioning
+  milik PM; C-S tidak commit/push/deploy atau mengubah mcp-worker/cache detail.
+
 ## B-S: binding dan kontrak funnel WAE — 18 November 2026 (lokal)
 
 - `wrangler.json` menambah binding Pages `analytics_engine_datasets`:

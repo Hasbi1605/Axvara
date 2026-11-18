@@ -562,19 +562,20 @@ export async function handleJaspayTerminal(
     `UPDATE wr_order_links SET wr_account_details=?, wr_account_iv=?, status='completed',
        completed_at=?, last_event_at=?, last_error=NULL, updated_at=datetime('now')
      WHERE wr_order_id=? AND status IN ('pending','claimed','retry','blocked_balance','submitted','ordering','processing','completed')
-       AND wr_variant_id LIKE 'jaspay:%'`,
+       AND wr_variant_id LIKE 'jaspay:%' AND status=?`,
     ciphertext,
     iv,
     now,
     now,
     invoice,
+    link.status,
   );
   if (!Number(completed.changes ?? 0)) {
     const current = await queryFirst(`SELECT status FROM wr_order_links WHERE wr_order_id=?`, invoice);
     await logWebhookEvent(db, invoice, "jaspay.completed", undefined, false, `terminal_regression_blocked:${current?.status ?? "missing"}`).catch(
       () => undefined,
     );
-    return false;
+    return current?.status === "completed";
   }
   await logWebhookEvent(db, invoice, "jaspay.completed", undefined, true, `completed:${String(link.status)}:${success}/${qty}`).catch(
     () => undefined,
@@ -587,7 +588,11 @@ export async function handleJaspayTerminal(
   if (!fulfillmentItemId) fulfillmentItemId = Number(link.fulfillment_item_id || 0);
   await settleWrFulfillmentItem(String(link.order_code), fulfillmentItemId, ciphertext, iv, db);
   await refreshOrderAggregate(String(link.order_code), db);
-  await processCredentialDelivery(Number(link.id), db).catch(() => undefined);
+  if (link.status !== "completed") {
+    const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
+    await schedulePaidFulfillment(String(link.order_code), "apps", "jaspay", "supplier_settled",
+      () => processCredentialDelivery(Number(link.id), db), db);
+  } else await processCredentialDelivery(Number(link.id), db).catch(() => undefined);
   return true;
 }
 
@@ -681,18 +686,19 @@ export async function handleWrOrderCompleted(
   const completed = await execRun(
     `UPDATE wr_order_links SET wr_account_details=?, wr_account_iv=?, status='completed',
        completed_at=?, last_event_at=?, last_error=NULL, updated_at=datetime('now')
-     WHERE wr_order_id=? AND status IN ('pending','claimed','retry','blocked_balance','submitted','ordering','processing','completed')`,
+      WHERE wr_order_id=? AND status IN ('pending','claimed','retry','blocked_balance','submitted','ordering','processing','completed') AND status=?`,
     ciphertext,
     iv,
     now,
     now,
     wrOrderId,
+    link.status,
   );
   // A failed terminal won the race: acknowledge without storing/delivering accounts.
   if (!Number(completed.changes ?? 0)) {
     const current = await queryFirst(`SELECT status FROM wr_order_links WHERE wr_order_id=?`, wrOrderId);
     await logWebhookEvent(db, wrOrderId, "completed", undefined, false, `terminal_regression_blocked:${current?.status ?? "missing"}`);
-    return !options.deferDelivery && current?.status === "failed";
+    return !options.deferDelivery && ["failed", "completed"].includes(String(current?.status));
   }
   await logWebhookEvent(db, wrOrderId, "completed", undefined, true, `completed:${String(link.status)}`);
   // INSIDEN 2026-10-10 (AXV-20261010-90402478): kredensial tersimpan + link
@@ -728,7 +734,13 @@ export async function handleWrOrderCompleted(
   await refreshOrderAggregate(String(link.order_code), db);
   // Coba kirim segera; bila gagal, delivery_status tetap queued/failed dan
   // cron delivery + webhook duplikat akan retry (P0-6).
-  if (!options.deferDelivery) await processCredentialDelivery(Number(link.id), db).catch(() => undefined);
+  if (!options.deferDelivery) {
+    if (link.status !== "completed") {
+      const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
+      await schedulePaidFulfillment(String(link.order_code), "apps", "wr", "supplier_settled",
+        () => processCredentialDelivery(Number(link.id), db), db);
+    } else await processCredentialDelivery(Number(link.id), db).catch(() => undefined);
+  }
   return true;
 }
 

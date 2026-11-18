@@ -486,10 +486,8 @@ export function reconcileSekalipayGatewayPayment(orderCode?: string, db: Databas
       if (current?.payment_status === "paid") return "already_paid";
       return review("sekalipay_gateway_race_manual_review");
     }
-    if (tx.order_kind === "games") {
-      const { schedulePaidFulfillment } = await import("./paid-fulfillment");
-      await schedulePaidFulfillment(orderCode, "games");
-    }
+    const { schedulePaidFulfillment } = await import("./paid-fulfillment");
+    await schedulePaidFulfillment(orderCode, tx.order_kind, "sekalipay_gateway", "order_paid", undefined, db);
     return "paid";
   })();
 }

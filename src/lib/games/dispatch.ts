@@ -122,8 +122,11 @@ export async function applyGamesTransactionResult(db: Db, refId: string, tx: Dig
       tx.rc, message, tx.sn, tx.price, refId,
     );
     try {
-      const { notifyGamesCompleted } = await import("./notify");
-      await notifyGamesCompleted(db, orderCode);
+      const { schedulePaidFulfillment } = await import("@/lib/payments/paid-fulfillment");
+      await schedulePaidFulfillment(orderCode, "games", "digiflazz", "supplier_settled", async () => {
+        const { notifyGamesCompleted } = await import("./notify");
+        await notifyGamesCompleted(db, orderCode);
+      }, db);
     } catch { /* best-effort */ }
     return "success";
   }
@@ -557,7 +560,7 @@ async function pollOne(db: Db, row: Row, send: GamesTransactionSender, out: Coun
 /** Satu siklus: promosi, kedaluwarsa, pemulihan lease, dispatch, polling.
  * `sender` diinjeksi test (default `sendTransaction`). `sharedDb`: cron lite
  * meneruskan akses ber-budget (40 statement). */
-export async function processGamesPaidOrders(sender?: GamesTransactionSender, sharedDb?: Db): Promise<GamesRunSummary> {
+export async function processGamesPaidOrders(sender?: GamesTransactionSender, sharedDb?: Db, options: { orderCode?: string; deadlineMs?: number } = {}): Promise<GamesRunSummary> {
   const out: GamesRunSummary = { promoted: 0, expired: 0, recovered: 0, dispatched: 0, polled: 0, backup_queued: 0, needs_check: 0 };
   const dgfReady = isDigiflazzConfigured();
   // SK siap bila flag aktif + kredensial/transport. Tidak membaca GAMES_SK_ENABLED
@@ -568,6 +571,29 @@ export async function processGamesPaidOrders(sender?: GamesTransactionSender, sh
   const db = sharedDb ?? createDatabaseAccess();
   const send = sender ?? sendTransaction;
   const startedAt = Date.now();
+  if (options.orderCode) {
+    const remaining = () => Date.now() < (options.deadlineMs ?? Infinity);
+    if (!remaining()) return out;
+    const row = await db.queryFirst(`SELECT i.*, p.backup_sku_code AS p_backup_sku, p.supplier_active AS p_active,
+        p.stock AS p_stock, p.min_order AS p_min_order, p.required_fields_json AS p_fields,
+        a.ref_id AS a_ref, a.buyer_sku_code AS a_sku, a.sk_invoice AS a_invoice, a.request_sent_at AS a_sent
+      FROM games_order_items i LEFT JOIN games_products p ON p.id=i.product_id
+      LEFT JOIN games_dispatch_attempts a ON a.order_code=i.order_code AND a.attempt_no=i.attempt_no
+      JOIN orders o ON o.code=i.order_code
+      WHERE i.order_code=? AND o.status='lunas' AND o.payment_status='paid'`, options.orderCode);
+    if (!row || !remaining()) return out;
+    if (row.status === "awaiting_payment") {
+      const promoted = await db.execRun("UPDATE games_order_items SET status='queued',updated_at=datetime('now') WHERE order_code=? AND status='awaiting_payment'", options.orderCode);
+      out.promoted = Number(promoted.changes) || 0;
+      if (!out.promoted) return out;
+      row.status = "queued";
+    }
+    if (!remaining()) return out;
+    if (row.status === "queued") await dispatchOne(db, row, send, out, skReady);
+    // Poll cadence, stale-submit recovery and 24h escalation stay with cron;
+    // an instant paid message must not accelerate an in-flight supplier poll.
+    return out;
+  }
 
   // Admission: sisa budget harus cukup untuk statement tetap sebelum menyentuh
   // state. Kurang → ringkasan parsial, tick berikut melanjutkan (tidak throw).

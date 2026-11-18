@@ -164,7 +164,7 @@ describe("Callback Sekalipay untuk pesanan Pedia", () => {
     }));
   };
 
-  it("signature valid → order Pedia lunas + item tetap queued (dispatch siap)", async () => {
+  it("signature valid → order Pedia lunas + immediate dispatch; incomplete supplier fixture needs review", async () => {
     const f = createD1Fixture(); fixtures.push(f);
     const { invoice, statusInvoice } = await seedGatewayOrder(f);
     Object.assign(statusInvoice, { status: "paid", paid_at: new Date().toISOString() });
@@ -179,7 +179,7 @@ describe("Callback Sekalipay untuk pesanan Pedia", () => {
     expect(res.status).toBe(200);
     expect(f.sql.prepare("SELECT status,payment_status FROM orders WHERE code=?").get(GATEWAY_CODE))
       .toMatchObject({ status: "lunas", payment_status: "paid" });
-    expect(f.sql.prepare("SELECT status FROM pedia_order_items WHERE order_code=?").get(GATEWAY_CODE)).toMatchObject({ status: "queued" });
+    expect(f.sql.prepare("SELECT status,submit_attempts FROM pedia_order_items WHERE order_code=?").get(GATEWAY_CODE)).toMatchObject({ status: "needs_check", submit_attempts: 1 });
   });
 
   it("signature salah ditolak 401 tanpa mengubah order", async () => {

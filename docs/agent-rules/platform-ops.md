@@ -1,5 +1,26 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### C-S Queue producer/origin — 18 November 2026 (lokal, belum deploy)
+
+Binding Pages `ORDER_FULFILLMENT_QUEUE`→`axvara-order-fulfillment` bukan env
+secret. PM menyiapkan resource/consumer C-H; C-S tidak mengubah mcp-worker.
+Setting `queue_fulfillment_mode` off/shadow/active/canary:<kind> memo30detik
+default off; hanya winner paid/supplier enqueue. Shadow endpoint dry-run hanya
+1read; active XOR legacy kecuali fallback send-error ambigu (CAS/C0 tetap).
+Gateway payment cron mode read ikut DB40statement, fallback legacy tanpa
+executor khusus defer ke cron fulfillment (`cron_deferred`), tidak unmetered.
+
+Internal POST `/api/internal/queue/fulfill` Bearer CRON_SECRET constant-time,
+schema strict/body2KiB/order lunas/deadline40detik berhenti memulai sub-pass.
+Deadline absolut opsional ensure/process; default dan budget/fence C0 utuh.
+Pedia/Games scoped satu order; satu link/supplier/pass, sisa pre-send retry
+min60≥lease, termasuk push/buyer-notice600detik. Done/async/manual/not_paid/
+dry_run_ok ack, bukan janji semua multi-link selesai. Log producer per
+kind/source/mode/outcome+durasi legacy, tanpa PII; ukur link terakhir juga.
+Shadow hanya transport, canary sesudah0auth-fail/0enqueue non-lunas/<1%error/
+tanpa kenaikan push ganda. Off rollback≤30detik; pesan active lama tetap aman
+oleh fence. Workerd lokal bukan bukti rollout; full suite/publication oleh PM.
+
 ### B-S funnel WAE — 18 November 2026 (lokal)
 
 `FUNNEL_ANALYTICS`→`axvara_funnel_v1` adalah binding Analytics Engine Pages,

@@ -286,7 +286,8 @@ describe("Games B2 shared payment rails", () => {
       expect(await reconcileNowpaymentsPayment(code)).toBe("already_paid");
     }
     expect(orderRow(code)).toMatchObject({ status: "lunas", payment_status: "paid" });
-    expect(scheduled).toHaveBeenCalledExactlyOnceWith(code, "games");
+    if (method === gatewayId) expect(scheduled).toHaveBeenCalledExactlyOnceWith(code, "games", "sekalipay_gateway", "order_paid", undefined, expect.any(Object));
+    else expect(scheduled).toHaveBeenCalledExactlyOnceWith(code, "games", "nowpayments");
     expect(f.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
   });
 
@@ -298,7 +299,8 @@ describe("Games B2 shared payment rails", () => {
     } else Object.assign(invoices.get(code)!, { payment_status: "finished", actually_paid: "3.00", updated_at: iso(-0.01) });
     const view = await (await status(code)).json();
     expect(view.order).toMatchObject({ games_status: "processing", qris: null, payment_status: "paid", payment: { state: "paid" } });
-    expect(scheduled).toHaveBeenCalledExactlyOnceWith(code, "games");
+    if (method === gatewayId) expect(scheduled).toHaveBeenCalledExactlyOnceWith(code, "games", "sekalipay_gateway", "order_paid", undefined, expect.any(Object));
+    else expect(scheduled).toHaveBeenCalledExactlyOnceWith(code, "games", "nowpayments");
     expect(posts()).toHaveLength(1);
   });
 

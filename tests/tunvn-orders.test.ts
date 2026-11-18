@@ -9,6 +9,8 @@ import { processItem } from "@/lib/fulfillment/delivery/send";
 import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
 
 vi.mock("@/lib/auth",()=>({requireAdmin:vi.fn(async()=>({sid:"fixture"}))}));
+const queued = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@cloudflare/next-on-pages",()=>({getRequestContext:()=>({env:{ORDER_FULFILLMENT_QUEUE:{send:queued}},ctx:{waitUntil:vi.fn()}})}));
 vi.mock("@/lib/telegram/api",()=>({sendMessage:vi.fn(async()=>({message_id:1}))}));
 vi.mock("@/lib/notify-buyer",()=>({notifyBuyerBuffCompleted:vi.fn(async()=>true),notifyBuyerTunvnProcessing:vi.fn(async()=>true)}));
 vi.mock("@/lib/fulfillment/delivery/buyer-email",async original=>({
@@ -222,6 +224,7 @@ describe("safe admin retry",()=>{
     return POST(new NextRequest("https://axvara.test/api/admin/tunvn/orders",{method:"POST",body:JSON.stringify({id:link().id,action})}));
   };
   it("shows the balance failure in both admin lists and retries only once after top-up",async()=>{
+    queued.mockClear();fixture.sql.prepare("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')").run();
     seed();balance=0;await tick();
     expect(link()).toMatchObject({status:"needs_admin",last_error:"insufficient_balance",attempt_count:0,request_sent_at:null});
     const {GET}=await import("@/app/api/admin/tunvn/orders/route");
@@ -235,6 +238,7 @@ describe("safe admin retry",()=>{
     balance=100;const results=await Promise.all([post(),post()]);
     expect(results.map(r=>r.status).sort()).toEqual([200,409]);expect(buys()).toBe(1);expect(link().status).toBe("completed");
     expect((await post()).status).toBe(409);expect(buys()).toBe(1);
+    expect(queued).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({kind:"supplier_settled",source:"admin_tunvn"}));
   });
   it("checks Buff wallet separately from an unfundable service, never calling an unreadable wallet insufficient",async()=>{
     seed([buff()]);const original=transport.getMockImplementation()!;
@@ -374,6 +378,17 @@ describe("Buff accepted is not delivered",()=>{
     expect(result.status).toBe(200);expect(link().status).toBe("completed");expect(buys()).toBe(1);
     const listing=await GET(new NextRequest("https://axvara.test/api/admin/tunvn/orders"));
     expect(JSON.stringify(await listing.json())).not.toMatch(/Ab12Cd|receipt_ciphertext|receipt_iv|fixture-only/);
+  });
+  it("concurrent admin reconciliation emits supplier_settled only for its lease winner",async()=>{
+    seed([buff()]);await tick();(status.orders as Row[])[0].status="needs_check";due();await tick();
+    fixture.sql.prepare("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')").run();queued.mockClear();
+    (status.orders as Row[])[0].status="done";status.is_done=true;
+    const {POST}=await import("@/app/api/admin/tunvn/orders/route");
+    const call=()=>POST(new NextRequest("https://fixture/api/admin/tunvn/orders",{method:"POST",body:JSON.stringify({id:link().id,action:"reconcile"})}));
+    await Promise.all([call(),call()]);
+    expect(link().status).toBe("completed");expect(buys()).toBe(1);
+    expect(queued).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({kind:"supplier_settled",source:"admin_tunvn_reconcile"}));
+    expect((await call()).status).toBe(409);expect(queued).toHaveBeenCalledTimes(1);
   });
   it("requires admin, offers no blind purchase and reveals receipts only by POST",async()=>{
     const {GET,POST}=await import("@/app/api/admin/tunvn/orders/route");const {requireAdmin}=await import("@/lib/auth");

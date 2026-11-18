@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { execRun, isD1Mode, queryAll, queryFirst, transitionPendingPaymentToPaid } from "@/lib/db";
 import { isFutureIso } from "@/lib/expiry";
 import { activeQrisProvider, isCausallyPlausiblePayment } from "@/lib/payments/dana-qris";
-import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
+import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
 import { sendTextMessage } from "@/lib/whatsapp/gateway";
 import { paymentDetectedMessage } from "@/lib/whatsapp/messages";
 import { PAYMENT_ATTENTION_SQL, PAYMENT_ATTENTION_WHERE } from "@/lib/admin-overview-queries";
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
   // observed before the candidate invoice was issued cannot be its payment
   // (issue #2) — it stays in reconciliation instead of settling the order.
   const candidates = await queryAll(
-    `SELECT pt.order_code,pt.expires_at,COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,o.sales_channel,o.channel_conversation_id,
+    `SELECT pt.order_code,pt.expires_at,COALESCE(pt.invoice_issued_at,pt.created_at) AS invoice_created_at,o.expires_at AS order_expires_at,o.sales_channel,o.channel_conversation_id,o.order_kind,
        ${DANA_AMOUNT_REUSED_SQL} AS amount_history
      FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider=? AND pt.payable_amount=? AND pt.status='pending'
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
   }
   // Same atomic paid+job batch as the webhook (issue #3): the retry path
   // must not reintroduce the crash window either.
-  const fulfillmentRouting = await queryFirst(
+  const fulfillmentRouting = ["pedia", "games"].includes(String(matches[0].order_kind)) ? null : await queryFirst(
     `SELECT o.variant_id, o.sales_channel,
             (SELECT fi.id FROM fulfillment_inventory fi
               WHERE fi.order_code=o.code AND fi.status='reserved') AS inventory_id
@@ -138,21 +138,7 @@ export async function POST(request: NextRequest) {
     await execRun("UPDATE dana_webhook_events SET status='failed',order_code=?,last_error='payment_transition_failed',processed_at=datetime('now') WHERE id=? AND status IN ('received','ignored','failed') AND reviewed_by IS NULL", orderCode, eventId);
     return NextResponse.json({ error: "payment_transition_failed" }, { status: 409 });
   }
-  try { await ensureFulfillmentForPaidOrder(orderCode); } catch { /* Cron akan retry idempoten. */ }
-  try {
-    const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
-    const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
-    if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
-      await processWrPendingOrders().catch(() => undefined);
-    }
-  } catch { /* Link WR menyusul via cron. */ }
-  try {
-    const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
-    const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
-    if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
-      await processSkPendingOrders().catch(() => undefined);
-    }
-  } catch { /* Link SK menyusul via cron. */ }
+  await schedulePaidFulfillment(orderCode, matches[0].order_kind, manual ? "admin_confirm_match" : "admin_retry_match");
   if (String(matches[0].sales_channel) === "whatsapp" && matches[0].channel_conversation_id) {
     try {
       const orderDetail = await queryFirst(`SELECT subtotal, payment_method, variant_snapshot FROM orders WHERE code=?`, orderCode);

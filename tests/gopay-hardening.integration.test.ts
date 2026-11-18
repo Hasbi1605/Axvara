@@ -96,7 +96,7 @@ describe("GoPay signed settlement evidence", () => {
     const raw = body(inv.payableAmount, { paid_at: paidAt });
     expect(await (await hook(raw)).json()).toEqual({ ok: true, status: "paid" });
     expect(order().payment_status).toBe("paid"); expect(order().paid_at).toBe(paidAt);
-    expect(mocks.fulfill).toHaveBeenCalledWith(A, "apps");
+    expect(mocks.fulfill).toHaveBeenCalledWith(A, "apps", "gopay");
     expect(await (await hook(raw)).json()).toEqual({ ok: true, status: "duplicate" });
     expect(mocks.fulfill).toHaveBeenCalledTimes(1);
   });

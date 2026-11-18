@@ -55,13 +55,39 @@ type TierInfo = {
  * `caller` diinjeksi test (default provider router). `sharedDb` opsional:
  * cron lite meneruskan budgeted access-nya agar statement ikut budget 40;
  * bila absen (webhook/admin/test), buat koneksi sendiri seperti dulu. */
-export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db): Promise<{ dispatched: number; polled: number; needsCheck: number; emails_retried?: number }> {
+export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db, options: { orderCode?: string; deadlineMs?: number } = {}): Promise<{ dispatched: number; polled: number; needsCheck: number; emails_retried?: number }> {
   let db: Db;
   if (sharedDb) {
     db = sharedDb;
   } else {
     const { createDatabaseAccess } = await import("@/lib/db-access");
     db = createDatabaseAccess();
+  }
+  if (options.orderCode) {
+    const out = { dispatched: 0, polled: 0, needsCheck: 0 };
+    const remaining = () => Date.now() < (options.deadlineMs ?? Infinity);
+    if (!remaining()) return out;
+    const item = await db.queryFirst(`SELECT i.* FROM pedia_order_items i JOIN orders o ON o.code=i.order_code
+      WHERE i.order_code=? AND o.status='lunas' AND o.payment_status='paid'
+        AND (i.lease_until IS NULL OR datetime(i.lease_until)<=datetime('now'))`, options.orderCode) as Item | null;
+    if (!item || !remaining()) return out;
+    try {
+      const { notifyPediaPaid } = await import("./notify");
+      await notifyPediaPaid(db, options.orderCode);
+    } catch { /* Existing notice ledger and cron own recovery. */ }
+    if (!remaining()) return out;
+    let catalogChanged = false;
+    const result = item.status === "queued"
+      ? await dispatchOne(db, item, caller ?? callPediaProvider, () => { catalogChanged = true; })
+      : ["submitted", "in_progress"].includes(item.status) ? await pollOne(db, item, caller ?? callPediaProvider) : null;
+    if (result === "dispatched") out.dispatched++;
+    if (result === "polled") out.polled++;
+    if (result === "needs_check") out.needsCheck++;
+    if (catalogChanged) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("pedia", db, { metered: true });
+    }
+    return out;
   }
   const { expirePediaCheckouts } = await import("./expire");
   await expirePediaCheckouts(db);

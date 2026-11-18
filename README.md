@@ -1,5 +1,28 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Antrean fulfillment C-S (18 November 2026, lokal; belum deploy)
+
+Pages producer `ORDER_FULFILLMENT_QUEUE`→`axvara-order-fulfillment` hanya dari
+pemenang paid/supplier-settled. `store_settings.queue_fulfillment_mode` default
+`off`, memo30detik: `shadow` mengantre dry-run+jalur lama; `active`/canary kind
+cocok mengantre saja; send-error memakai fallback lama. Tidak ada env/secret
+Pages atau migrasi baru; PM menyiapkan queue/DLQ dan consumer C-H terpisah.
+Gateway Sekalipay apps/Pedia kini ikut shared scheduler seperti Games/rail lain;
+bukti QRIS pendukung tidak melunaskan/mengantre. Payment cron gateway tetap≤40
+statement: mode memakai DB metered dan fallback off/shadow/error diserahkan ke
+cron fulfillment durable (`cron_deferred`), HTTP tetap waitUntil immediate.
+
+Endpoint edge internal `POST /api/internal/queue/fulfill` memerlukan Bearer
+`CRON_SECRET`, schema strict dan order lunas. Dry-run=1read tanpa efek. Pass40
+detik berhenti memulai item/sub-pass baru (bukan membatalkan I/O yang berjalan).
+Done/async/manual/not-paid di-ack; sisa pre-send/lease sibuk retry min60detik
+dan ≥lease tersisa. Satu link/supplier/pass **bukan** seluruh order selesai;
+multi-link tersisa retry/cron. C0 tetap menjaga push saat replay/rollback off
+dengan pesan active lama. Default deadline delivery langsung tidak berubah.
+Log producer per kind/source/outcome dan durasi legacy untuk baseline shadow;
+canary terbatas setelah0auth-fail/0enqueue non-lunas/<1%error transport/tanpa
+kenaikan duplikasi. Kontrak lengkap dan batas bukti: ARCHITECTURE bagian C-S.
+
 ## Funnel WAE B-S (18 November 2026, lokal)
 
 Binding `FUNNEL_ANALYTICS` (`axvara_funnel_v1`, otomatis pada write pertama)

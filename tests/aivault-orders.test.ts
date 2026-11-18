@@ -6,6 +6,8 @@ import {processAivaultOrders,retryAivaultOrder,matchesAivaultReceiptReference} f
 import {decryptSecret} from "@/lib/fulfillment/crypto";
 import {processItem} from "@/lib/fulfillment/delivery/send";
 vi.mock("@/lib/auth",()=>({requireAdmin:vi.fn(async()=>({sid:"fixture"}))}));
+const queued=vi.hoisted(()=>vi.fn(async()=>undefined));
+vi.mock("@cloudflare/next-on-pages",()=>({getRequestContext:()=>({env:{ORDER_FULFILLMENT_QUEUE:{send:queued}},ctx:{waitUntil:vi.fn()}})}));
 vi.mock("@/lib/fulfillment/delivery/buyer-email",async original=>({...await original<object>(),sendWebDeliveryEmail:vi.fn(async()=>({ok:true}))}));
 let f:ReturnType<typeof createD1Fixture>,postStatus:number,post:Record<string,unknown>,poll:Record<string,unknown>,stock:number,fundable:boolean,timeout:boolean;
 const sid="service_gemini_plus_6m",code="AXV-20261115-AVTEST01";
@@ -55,6 +57,15 @@ it.each(["unpaid","disabled","wrong_sku","legacy","source","inactive"])("never b
 });
 it("admin can retry a pre-send balance failure without changing identity",async()=>{
   insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});fundable=false;await tick();expect(link()).toMatchObject({status:"needs_admin",attempt_count:0,request_sent_at:null});fundable=true;expect(await retryAivaultOrder(createDatabaseAccess(f.db),Number(link().id))).toBe(true);expect(link().status).toBe("completed");
+});
+it("concurrent admin retry queues only the supplier-settled winner",async()=>{
+  insertTestOrder(f.sql,code,{status:"lunas",channel:"web",items:[item()]});fundable=false;await tick();fundable=true;
+  f.sql.prepare("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')").run();queued.mockClear();
+  const {POST}=await import("@/app/api/admin/aivault/orders/route");
+  const call=()=>POST(new NextRequest("https://fixture/api/admin/aivault/orders",{method:"POST",body:JSON.stringify({id:link().id,action:"retry"})}));
+  const responses=await Promise.all([call(),call()]);expect(responses.map(r=>r.status).sort()).toEqual([200,409]);
+  expect(queued).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({kind:"supplier_settled",source:"admin_aivault"}));
+  expect((await call()).status).toBe(409);expect(queued).toHaveBeenCalledTimes(1);expect(buys()).toHaveLength(1);
 });
 it("new web orders strip forged eligibility and stamp server costs; admin test stays disabled",async()=>{
   vi.stubEnv("BUYER_ORDER_ACCESS_SECRET","fixture-buyer-key");const {createOrderWithStock}=await import("@/lib/db/orders-create");

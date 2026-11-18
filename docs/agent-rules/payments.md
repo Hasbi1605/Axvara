@@ -1,5 +1,22 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## C-S: shared paid scheduler — 18 November 2026 (lokal, belum deploy)
+
+`schedulePaidFulfillment` dipanggil hanya sesudah paid winner (bukan replay)
+di lib KlikQRIS/NOWPayments/Sekalipay gateway agar poller/cron dan callback
+tertutup bersama; DANA/GoPay/admin ACC/manual proof/events mengikuti aturan
+yang sama. Gateway semua order_kind, bukan Games saja. QRIS proof pendukung
+tidak enqueue/paid funnel; manual proof authoritative memanggil funnel hanya
+sesudah batch menang, bukan saat screenshot disetujui. Cache transition B-H utuh.
+
+`queue_fulfillment_mode` store setting off/default(error/invalid), shadow,
+active, canary kind; memo30detik. Active mengganti executor, send-error fallback
+sekali; shadow dry-run tidak mengirim. Gateway cron meneruskan DB metered:
+mode read ikut40statement, off/shadow/send-error defer ke cron fulfillment
+durable (`cron_deferred`), bukan menjalankan pohon tanpa meter; HTTP tetap
+immediate waitUntil. Tidak menambah env Pages/secret/invoice/transaksi QA.
+Detail endpoint/auth/deadline/semantik retry di ARCHITECTURE bagian C-S.
+
 ## Pensiun tes pembayaran admin — 18 November 2026 (lokal, G1)
 
 - Fitur tes pembayaran admin dipensiunkan karena NOWPayments dan Sekalipay gateway sudah terbukti jalan di publik: `src/app/(shop)/admin/payments/test/page.tsx` dan `src/components/storefront/PaymentTestScope.tsx` dihapus; `/api/admin/payments/test/{quote,orders}` mengembalikan `410` `{ error: "Tes pembayaran admin sudah dipensiunkan." }` (`Cache-Control: no-store`).

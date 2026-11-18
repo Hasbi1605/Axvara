@@ -6,6 +6,8 @@ import { queryFirst, execRun, getD1, D1Statement, incrementSoldCountForOrder } f
 import { z } from "zod";
 import { authoritativePaymentMethodForProof } from "@/lib/payment-proofs";
 import { ensureFulfillmentForPaidOrder } from "@/lib/fulfillment/deliver";
+import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
+import { trackPaidOrder } from "@/lib/analytics/funnel";
 
 export const runtime = "edge";
 
@@ -158,25 +160,8 @@ export async function POST(
       }
 
       await incrementSoldCountForOrder(orderCode);
-
-      let fulfillmentStarted = false;
-      try {
-        fulfillmentStarted = await ensureFulfillmentForPaidOrder(orderCode);
-      } catch { /* Payment is durable; fulfillment remains retryable. */ }
-      try {
-        const { createWrOrderLinksForOrder, processWrPendingOrders } = await import("@/lib/warung-rebahan/order");
-        const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
-        if (isWrAutoOrderEnabled() && (await createWrOrderLinksForOrder(orderCode)) > 0) {
-          await processWrPendingOrders().catch(() => undefined);
-        }
-      } catch { /* Link WR menyusul via cron. */ }
-      try {
-        const { createSkOrderLinksForOrder, processSkPendingOrders } = await import("@/lib/sekalipay/order");
-        const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
-        if (isSkAutoOrderEnabled() && (await createSkOrderLinksForOrder(orderCode)) > 0) {
-          await processSkPendingOrders().catch(() => undefined);
-        }
-      } catch { /* Link SK menyusul via cron. */ }
+      trackPaidOrder(orderCode, d1);
+      await schedulePaidFulfillment(orderCode, "apps", "admin_proof");
       // Bukti manual WA yang di-approve = order WA lunas → umumkan ke grup
       // Telegram admin (best-effort; cron retry via marker bila gagal).
       try {
@@ -188,7 +173,7 @@ export async function POST(
         action: "approved",
         order_code: orderCode,
         payment_updated: true,
-        fulfillment_started: fulfillmentStarted,
+        fulfillment_started: false, // Scheduled durably, not a claim of delivery.
       });
     }
 
@@ -200,7 +185,7 @@ export async function POST(
     );
     if (!res.changes) return NextResponse.json({ error: "concurrent_modification" }, { status: 409 });
 
-    await execRun(
+    const paid = await execRun(
       `UPDATE orders SET status='lunas', payment_status='paid', payment_method=?, paid_at=COALESCE(paid_at,datetime('now')), updated_at=datetime('now') WHERE code=? AND status='pending'`,
       authoritativeMethod,
       orderCode,
@@ -211,19 +196,10 @@ export async function POST(
        WHERE order_code=? AND status IN ('initializing','pending')`,
       orderCode,
     );
-    try {
-      await ensureFulfillmentForPaidOrder(orderCode);
-    } catch { /* best effort in dev */ }
-    try {
-      const { createWrOrderLinksForOrder } = await import("@/lib/warung-rebahan/order");
-      const { isWrAutoOrderEnabled } = await import("@/lib/warung-rebahan/client");
-      if (isWrAutoOrderEnabled()) await createWrOrderLinksForOrder(orderCode).catch(() => 0);
-    } catch { /* best effort in dev */ }
-    try {
-      const { createSkOrderLinksForOrder } = await import("@/lib/sekalipay/order");
-      const { isSkAutoOrderEnabled } = await import("@/lib/sekalipay/client");
-      if (isSkAutoOrderEnabled()) await createSkOrderLinksForOrder(orderCode).catch(() => 0);
-    } catch { /* best effort in dev */ }
+    if (paid.changes) {
+      trackPaidOrder(orderCode, null, await queryFirst("SELECT * FROM orders WHERE code=?", orderCode) ?? undefined);
+      await schedulePaidFulfillment(orderCode, "apps", "admin_proof");
+    }
     await incrementSoldCountForOrder(orderCode);
     return NextResponse.json({ ok: true, action: "approved", order_code: orderCode });
   }

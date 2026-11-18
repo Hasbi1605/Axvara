@@ -9,10 +9,10 @@ import { POST as callback } from "@/app/api/payments/klikqris/callback/route";
 
 const mocks=vi.hoisted(()=>({ ensure:vi.fn(async()=>true),send:vi.fn(async()=>({ok:true})),pedia:vi.fn(async()=>({})),
  wrCreate:vi.fn(async()=>0),wrProcess:vi.fn(async()=>({processed:0})),skCreate:vi.fn(async()=>0),skProcess:vi.fn(async()=>({processed:0})),
- pages:false,tasks:[] as Promise<unknown>[] }));
+ queue:vi.fn(async()=>undefined),pages:false,tasks:[] as Promise<unknown>[] }));
 vi.mock("@cloudflare/next-on-pages",()=>({getRequestContext:()=>{
  if(!mocks.pages)throw new Error("No Pages context in this fixture");
- return {ctx:{waitUntil:(task:Promise<unknown>)=>{mocks.tasks.push(task);}}};
+ return {env:{ORDER_FULFILLMENT_QUEUE:{send:mocks.queue}},ctx:{waitUntil:(task:Promise<unknown>)=>{mocks.tasks.push(task);}}};
 }}));
 vi.mock("@/lib/fulfillment/deliver",()=>({ensureFulfillmentForPaidOrder:mocks.ensure}));
 vi.mock("@/lib/telegram/api",()=>({sendMessage:mocks.send,sendPhoto:vi.fn(async()=>({ok:true})),sendChatAction:vi.fn(),showLoadingBar:vi.fn(async()=>{}),safeEditOrSend:vi.fn()}));
@@ -72,6 +72,15 @@ async function hook(overrides:Record<string,unknown>={},code=A){
 const posts=()=>fetchMock.mock.calls.filter(([url])=>String(url).endsWith("/create")).length;
 
 describe("Paid background payment recovery",()=>{
+ it("active shared reconcile enqueues only its paid winner, not callback/poller replay",async()=>{
+  await checkout();paid();mocks.pages=true;mocks.queue.mockClear();
+  fixture.sql.prepare("INSERT INTO store_settings(key,value) VALUES('queue_fulfillment_mode','active')").run();
+  expect(await reconcileKlikQrisPayment(A)).toBe("paid");
+  expect(await reconcileKlikQrisPayment(A)).toBe("already_paid");
+  await hook();
+  expect(mocks.queue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({kind:"order_paid",source:"klikqris",orderCode:A}));
+  expect(mocks.ensure).not.toHaveBeenCalled();
+ });
  it("returns paid before a slow SK purchase completes, retains it with waitUntil and replay never schedules a second purchase",async()=>{
   await checkout();paid();mocks.pages=true;mocks.skCreate.mockResolvedValue(1);
   let finish!:()=>void;

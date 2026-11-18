@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
     if (!await retryAivaultOrder(db,Number(link.id))) return json({error:"no_safe_retry"},409);
     const updated=await db.queryFirst("SELECT status,last_error FROM aivault_order_links WHERE id=?",link.id);
     if (updated?.status==="completed") {
-      const { ensureFulfillmentForPaidOrder }=await import("@/lib/fulfillment/deliver");
-      await ensureFulfillmentForPaidOrder(String(link.order_code)).catch(()=>false);
+      const { schedulePaidFulfillment }=await import("@/lib/payments/paid-fulfillment");
+      await schedulePaidFulfillment(String(link.order_code),"apps","admin_aivault","supplier_settled");
     }
     return json({ok:true,link:updated});
   } catch { return json({error:"action_deferred"},503); }

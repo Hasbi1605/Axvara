@@ -61,6 +61,17 @@ async function seedPaidItem(over: Record<string, unknown> = {}) {
 }
 
 describe("dispatch exactly-once AC-10/11/12", () => {
+  it("queue scope never dispatches another order and an expired deadline does no work", async () => {
+    const db = await seedPaidItem();
+    const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
+    const call = vi.fn(async () => ({ ok: true as const, data: { order: "SUP-SCOPE" }, status: 200 }) as never);
+    expect(await processPediaPaidOrders(call, db, { orderCode: "AXP-OTHER" })).toMatchObject({ dispatched: 0 });
+    expect(await processPediaPaidOrders(call, db, { orderCode: "AXP-T1", deadlineMs: Date.now() - 1 })).toMatchObject({ dispatched: 0 });
+    expect(call).not.toHaveBeenCalled();
+    expect(await processPediaPaidOrders(call, db, { orderCode: "AXP-T1", deadlineMs: Date.now() + 40000 })).toMatchObject({ dispatched: 1 });
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(await db.queryFirst("SELECT status FROM pedia_order_items WHERE order_code='AXP-T1'")).toMatchObject({ status: "submitted" });
+  });
   it("AC-10: queued → submitted + supplier_order_id tersimpan", async () => {
     const db = await seedPaidItem();
     const calls: string[] = [];

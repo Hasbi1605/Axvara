@@ -34,6 +34,18 @@ beforeEach(async () => {
 afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("processGamesPaidOrders", () => {
+  it("queue scope promotes/dispatches only its paid order; replay cannot accelerate polling", async () => {
+    seedGamesOrder(fx, "AXV-G-SCOPED"); seedGamesOrder(fx, "AXV-G-OTHER");
+    const f = stubFetch(txReply("AXV-G-SCOPED-1", "Pending"));
+    const scoped = () => processGamesPaidOrders(undefined, createDatabaseAccess(fx.db), { orderCode: "AXV-G-SCOPED", deadlineMs: Date.now() + 40000 });
+    expect(await scoped()).toMatchObject({ promoted: 1, dispatched: 1 });
+    expect(itemRow(fx, "AXV-G-OTHER").status).toBe("awaiting_payment");
+    expect(await scoped()).toMatchObject({ dispatched: 0, polled: 0 });
+    expect(f).toHaveBeenCalledTimes(1);
+    const before = fx.control.queries;
+    await processGamesPaidOrders(undefined, createDatabaseAccess(fx.db), { orderCode: "AXV-G-OTHER", deadlineMs: Date.now() - 1 });
+    expect(fx.control.queries).toBe(before);
+  });
   it("is a no-op without Digiflazz configuration", async () => {
     vi.stubEnv("DIGIFLAZZ_API_KEY", "");
     seedGamesOrder(fx, "AXV-G-1");
