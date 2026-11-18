@@ -22,6 +22,8 @@ import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // 2026-09-25): hanya "Lunas — Telegram" yang masuk grup.
 import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
+import { activeQrisProvider } from "@/lib/payments/dana-qris";
 import { clearCart, type CartLine } from "@/lib/telegram/cart";
 import { cartLineLabel } from "./shared";
 import { readCheckoutEmail } from "@/lib/telegram/checkout-email";
@@ -149,6 +151,8 @@ export async function createAndSendCartInvoice(
       throw reservationError;
     }
     orderInserted = true;
+    trackFunnelEvent({ stage: "order", channel: "telegram", productId: lines[0]?.productId, variantId: lines[0]?.variantId,
+      subtotal, quantity: lines.reduce((sum, line) => sum + line.qty, 0), locale: cartLocale, method: `qris:${activeQrisProvider()}` });
 
     await showLoadingBar(chatId, "💳 Memuat QRIS pembayaran").catch(() => {});
     const invoiceResult = await createActiveQrisInvoice(orderCode, subtotal);

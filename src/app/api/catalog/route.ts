@@ -7,6 +7,8 @@ import { isVariantsReadEnabled } from "@/lib/catalog";
 import { isD1Mode } from "@/lib/db";
 import { withVariantCopy } from "@/lib/product-copy/resolve";
 import { loadActiveSupplierLinkMap } from "@/lib/supplier-links";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
+import { resolveBuyerPreferences } from "@/lib/i18n/locale";
 
 export const runtime = "edge";
 
@@ -18,6 +20,7 @@ export async function GET(request: Request) {
     const detail = await getProductDetail(slug);
     if (!detail) return NextResponse.json({ error: "not_found" }, { status: 404 });
     const links = await loadActiveSupplierLinkMap();
+    trackFunnelEvent({ stage: "view", productId: detail.id, locale: resolveBuyerPreferences(request.headers.get("cookie")).locale }, request);
 
     return NextResponse.json({
       // S&K + cara aktivasi versi Axvara (fallback: teks WR dirapikan + sanitasi link/admin).

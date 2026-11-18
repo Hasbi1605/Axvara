@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import { PlatformPageClient } from "../../p/[platform]/platform-client";
 import { pediaPlatform } from "@/lib/pedia/platforms";
 import type { PediaCatalogProduct } from "@/app/api/pedia/catalog/route";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 
 export async function generateMetadata(): Promise<Metadata> {
   return pediaPageMetadata(await requestLocale(), "order");
@@ -38,5 +39,6 @@ export default async function PediaOrderPage({
     }
   } catch { /* notFound di bawah */ }
   if (!product) notFound();
+  trackFunnelEvent({ stage: "view", orderKind: "pedia", productSlug: product.slug, locale: await requestLocale() }, { headers: h });
   return <PlatformPageClient platform={product.platform} name={pediaPlatform(product.platform)?.label ?? product.platform} products={products.filter((p) => p.platform === product!.platform)} initialSlug={product.slug} initialTarget={typeof t === "string" ? t : ""} ordersEnabled={process.env.PEDIA_ORDERS_ENABLED === "true"} />;
 }

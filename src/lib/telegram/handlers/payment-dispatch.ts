@@ -6,6 +6,7 @@
 // next view re-reads saved TX (never re-POST blindly).
 import { queryFirst, execRun } from "@/lib/db";
 import { createChannelOrderAtomic } from "@/lib/commerce";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { safeEditOrSend } from "@/lib/telegram/api";
 import { otherMethodsEntryKeyboard } from "@/lib/telegram/keyboards";
 import { paymentMethodNoticeMessage } from "@/lib/telegram/messages/purchase";
@@ -195,6 +196,9 @@ export async function dispatchPayq1Creating(
       orderWindowMinutes: 15,
     });
     orderedCode = created.code;
+    if (!created.isExisting) trackFunnelEvent({ stage: "order", channel: "telegram", locale: creating.locale,
+      method: selectedId, subtotal: built.subtotal, productId: built.lines[0]?.productId, variantId: built.primaryVariantId,
+      quantity: built.lines.reduce((sum, line) => sum + line.qty, 0) });
   } catch {
     // Stock/config/pending-guard failure: fail closed, intent retained for
     // the user to requote honestly (no silent cart mutation here).

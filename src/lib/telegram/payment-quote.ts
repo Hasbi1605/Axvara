@@ -8,6 +8,7 @@ import { execRun, isD1Mode, queryFirst } from "@/lib/db";
 import { buildMethodOptions } from "@/lib/payments/method-options";
 import { isCanonicalMethodOption } from "@/lib/auth";
 import type { Locale } from "@/lib/i18n/locale";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 
 export const PAYQ1_TTL_SEC = 600;
 // Katalog crypto multi-koin (hingga 28 koin, tiap koin membawa blok kurs bertanda) membuat
@@ -248,6 +249,8 @@ export async function freezePayq1(input: FreezeInput): Promise<Payq1FreezeResult
       encoded, input.fromUserId, current,
     ).catch(() => ({ changes: 0 }));
   if ((claimed.changes ?? 0) < 1) return { ok: false, reason: "namespace_busy" };
+  trackFunnelEvent({ stage: "quote", channel: "telegram", locale: input.locale, subtotal: input.idrSubtotal,
+    ...(input.identity.kind === "single" ? { productId: input.identity.productId, variantId: input.identity.variantId, quantity: input.identity.qty } : {}) });
   return { ok: true, state, raw: encoded };
 }
 

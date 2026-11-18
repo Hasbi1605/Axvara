@@ -10,6 +10,8 @@ import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/p
 // transaksi checkout; dispatch menunggu order lunas.
 import { pediaServiceTypeFor, CUSTOM_COMMENT_MAX_LINES } from "@/lib/pedia/custom-comments";
 import { NextRequest, NextResponse } from "next/server";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
+import { activeQrisProvider } from "@/lib/payments/dana-qris";
 import { assertOrderAccessConfigured, createBuyerAccessSession } from "@/lib/order-access";
 import { z } from "zod";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
@@ -337,5 +339,9 @@ export async function POST(req: NextRequest) {
     }
   }
   await shortenToProviderDeadline(db, code);
-  return checkoutResponse(db,{ code,subtotal:freshTotal,status:payable ? "pending" : "lunas", payment_method, buyer_access_version: 1, buyer_access_format: "pin6" },false,locale);
+  const response = await checkoutResponse(db,{ code,subtotal:freshTotal,status:payable ? "pending" : "lunas", payment_method, buyer_access_version: 1, buyer_access_format: "pin6" },false,locale);
+  if (response.status === 201) trackFunnelEvent({ stage: "order", orderKind: "pedia", productId: quote.product_id,
+    variantId: quote.tier_id, subtotal: freshTotal, quantity: quote.quantity, locale: quote.locale ?? locale,
+    method: payment_method === "qris" ? `qris:${activeQrisProvider()}` : payment_method }, req);
+  return response;
 }

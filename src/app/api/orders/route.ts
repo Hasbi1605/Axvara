@@ -2,6 +2,8 @@ import { wrJaspayCoveredSql, wrNewSaleAllowed } from "@/lib/warung-rebahan/new-s
 import { readAutomaticProgress } from "@/lib/warung-rebahan/progress";
 import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 import { NextRequest, NextResponse } from "next/server";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
+import { activeQrisProvider } from "@/lib/payments/dana-qris";
 import { deriveNameFromEmail } from "@/lib/utils";
 import { z } from "zod";
 import { assertSameBuyerCode, buyerFieldsSchema, withoutPrivateBuyerData } from "@/lib/buyer-fields";
@@ -599,6 +601,9 @@ export async function POST(req: NextRequest) {
   // Tanpa notif "Order Baru" ke admin (keputusan owner 2026-09-25): order web
   // dinotif sekali saat LUNAS lewat notifyWebPaidAdmin (ensureFulfillmentForPaidOrder).
 
+  trackFunnelEvent({ stage: "order", method: payment_method === "qris" ? `qris:${activeQrisProvider()}` : payment_method,
+    subtotal: quote.subtotal, locale: quote.locale, productId: quote.items[0]?.product_id,
+    variantId: quote.items[0]?.variant_id, quantity: quote.items.reduce((sum, item) => sum + item.qty, 0) }, req);
   return NextResponse.json({
     code,
     buyer_access_session: await createBuyerAccessSession({ code, buyer_access_version: 1, buyer_access_format: "pin6" }),

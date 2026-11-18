@@ -4,6 +4,8 @@
 // lewat mesin pembayaran Pedia/Market. Tidak pernah menyentuh stok Market.
 import { isPaymentMaintenanceEnabled, paymentMaintenanceResponse } from "@/lib/payment-maintenance";
 import { NextRequest, NextResponse } from "next/server";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
+import { activeQrisProvider } from "@/lib/payments/dana-qris";
 import { isGamesNicknameProduct, sanitizeGamesNickname } from "@/lib/games/sellable";
 import { z } from "zod";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
@@ -279,5 +281,9 @@ export async function POST(req: NextRequest) {
   // Only shorten the saved deadline; provider invoices can never extend it.
   await db.execRun(`UPDATE orders SET expires_at=datetime((SELECT expires_at FROM payment_transactions WHERE order_code=?))
     WHERE code=? AND status='pending' AND julianday(expires_at)>julianday((SELECT expires_at FROM payment_transactions WHERE order_code=?))`, code, code, code);
-  return checkoutResponse(db, { code, subtotal: price, status: "pending", payment_method: paymentMethod }, false, locale);
+  const response = await checkoutResponse(db, { code, subtotal: price, status: "pending", payment_method: paymentMethod }, false, locale);
+  if (response.status === 201) trackFunnelEvent({ stage: "order", orderKind: "games", productId: quote.product_id,
+    productSlug: quote.slug, variantId: quote.sk_variant_id, subtotal: price, quantity: 1, locale: quote.locale,
+    method: paymentMethod === "qris" ? `qris:${activeQrisProvider()}` : paymentMethod }, req);
+  return response;
 }

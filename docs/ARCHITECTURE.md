@@ -1,5 +1,85 @@
 # ARCHITECTURE.md — AXVARA
 
+## B-S: binding dan kontrak funnel WAE — 18 November 2026 (lokal)
+
+- `wrangler.json` menambah binding Pages `analytics_engine_datasets`:
+  `FUNNEL_ANALYTICS` → dataset `axvara_funnel_v1`. Dataset dibuat otomatis pada
+  tulis pertama; tidak ada env/secret Pages, migrasi atau resource manual baru.
+  `src/lib/analytics/funnel.ts` membaca binding global/process env/request context
+  next-on-pages1.13 (`Symbol.for('__cloudflare-request-context__')`, env+ctx sama
+  dengan wrapper resminya; perlu dicek ulang bila adapter diganti). Binding absen
+  no-op. Native `writeDataPoint` tidak di-await; error sinkron/asinkron diisolasi,
+  task metadata paid dilindungi `ctx.waitUntil` bila tersedia, tanpa request ke
+  provider, log PII atau menahan respons saat konteks dev tidak tersedia.
+- Titik emisi: detail `/api/catalog?slug`, `/api/games/catalog/[slug]`, SSR
+  `/pedia/o/[slug]`; quote/order publik ketiga lini; Telegram katalog,
+  `freezePayq1`, invoice/cart-invoice/payment-dispatch. `order` web hanya201;
+  retry200 tidak emisi. Telegram hanya pemenang create atomik, sebelum POST
+  provider. Market quote mempunyai outcome stok/minimum/metode; Pedia minimum
+  juga tercatat, error lain sebelum quote valid tidak dihitung. Quote belum
+  memilih metode (`none`). Cart memakai produk/varian pertama+total unit;
+  quote cart Telegram belum memuat unit (0), bukan jumlah pembeli.
+- `trackPaidOrder` hanya dipanggil sesudah CAS pemenang di kedua jalur lunas
+  `orders-transition.ts`, termasuk manual admin. Satu PK read background orders
+  LEFT JOIN payment_transactions mendapatkan dimensi tersimpan, bukan membaca
+  konfigurasi provider aktif saat callback. Binding absen=0read; hadir=+1read,
+  0write. Paid retry/konkurensi tidak mengemisi ulang. Native WAE bukan transaksi
+  dengan D1: event boleh hilang pada crash/error, tanpa retry durable baru.
+- `isSyntheticRequest(req)` atau UA berawalan `axvara-synth/` mematikan emisi.
+  UA dapat dipalsukan hanya untuk menghilangkan telemetri, tidak mengubah rate
+  limit/auth/transaksi. PDP meneruskan UA+cookie ke handler katalog in-process,
+  bukan secret cron ke URL publik. Tidak menyimpan UA/cookie. Endpoint tes admin
+  yang pensiun tetap410. Tidak ada perubahan CSP/daily-admin-summary.
+- PDP membungkus `getSeoProduct` dengan React.cache RSC per request: metadata
+  dan render berbagi pasangan query SEO yang sama; tidak ada memo lintas request,
+  sehingga slug/order redirect, canonical, JSON-LD dan tampilan tetap. React18
+  non-RSC/test fallback tidak memo. `cachePublicCatalog` belum dipasang di
+  `/api/catalog` dan detail Games; menunggu integrasi B-H.
+
+### Skema tetap `axvara_funnel_v1`
+
+| Kolom | Isi |
+|---|---|
+| index1 | `apps|pedia|games` + `:` + `view|quote|order|paid` |
+| blob1 / blob2 / blob3 | stage / order_kind / `web|telegram|whatsapp` |
+| blob4 / blob5 | family (`none|qris|crypto|gateway_va|gateway_ewallet|manual`) / kode metode |
+| blob6 / blob7 / blob8 | product_id desimal atau `none` / `id|en` / `ok|out_of_stock|below_min|method_unavailable` |
+| blob9 / blob10 | variant/tier_id desimal atau `none` / slug katalog publik atau `none` |
+| double1 | 1 event (gunakan bobot `_sample_interval` saat membaca) |
+| double2 | batas bawah bucket IDR: `0,10000,50000,100000,500000,1000000`; 0 juga unknown/view |
+| double3 | unit integer, 0 bila tidak tersedia; maksimum1000000 |
+
+Metode hanya QRIS provider `dana|gopay|klikqris`, ticker katalog crypto dan kode
+gateway uppercase berpola VA/wallet yang dikenali; lainnya `none`. Slug hanya
+`[a-z][a-z0-9-]{0,79}` dari katalog publik, bukan input/target pembeli. ID hanya
+integer positif. Tidak ada email/WA/nama/IP/UA, target game/SMM, chat_id,
+order_code/hash, PIN, token atau nilai rupiah eksak. Bukan sumber omzet/ledger;
+tidak dapat menautkan cohort lintas tahap tanpa identitas dan tidak menghitung
+konversi quote per metode yang belum dipilih. Sampling/cache/bot biasa dapat
+mengubah jumlah event; bandingkan tren/order-paid, bukan klaim unique customer.
+
+### Membaca funnel: SQL API Analytics Engine (operator, bukan dijalankan QA)
+
+POST `https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/analytics_engine/sql`
+memakai Cloudflare API token dengan izin baca Analytics Engine SQL, atau global
+key/email operator existing dari `.cf-credentials` (jangan mencetak nilai). Body
+adalah SQL mentah, bukan JSON. Dataset baru dapat belum terbaca sebelum write pertama.
+Contoh agregat harian UTC per metode/channel/stage, tujuh hari terakhir:
+
+```sql
+SELECT toDate(timestamp) AS day_utc, blob2 AS order_kind, blob3 AS channel,
+       blob4 AS family, blob5 AS method, blob1 AS stage, blob8 AS outcome,
+       SUM(_sample_interval * double1) AS estimated_events
+FROM axvara_funnel_v1
+WHERE timestamp >= NOW() - INTERVAL '7' DAY
+GROUP BY day_utc, order_kind, channel, family, method, stage, outcome
+ORDER BY day_utc DESC, method, stage
+```
+
+Untuk WIB gunakan `toDate(timestamp + INTERVAL '7' HOUR)` sebagai hari; filter
+rentang UTC tetap eksplisit. Query SQL ini dokumentasi, belum dieksekusi ke
+produksi; daily-admin-summary tidak diubah. Deployment/data ingest belum terbukti.
+
 ## C0: fence kredensial push per item — 18 November 2026 (lokal)
 
 - Migrasi `0135_fulfillment_send_claims.sql` dan blok identik `schema.sql`

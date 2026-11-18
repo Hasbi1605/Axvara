@@ -1,5 +1,19 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### B-S funnel WAE — 18 November 2026 (lokal)
+
+`FUNNEL_ANALYTICS`→`axvara_funnel_v1` adalah binding Analytics Engine Pages,
+bukan secret_text/env Pages baru. Dataset tercipta pada write pertama; jangan
+membuat resource/migrasi atau mengakses produksi demi QA. Empat tahap tanpa PII,
+nilai rupiah berupa bucket, error binding no-op; paid hanya pemenang kedua
+transisi bersama, +1 PK read background bila binding ada,0D1write. Native WAE
+best-effort+sampling, bukan ledger/ingest exactly-once. Binding absen0read.
+UA probe `axvara-synth/` mengecualikan telemetri saja (boleh spoof untuk suppress),
+di samping guard authenticated `isSyntheticRequest`; tidak melemahkan rate/auth.
+PDP meneruskan UA, bukan secret cron ke katalog/PDP publik. Kontrak A-S tanpa
+cron header pada halaman publik tetap. Jangan menyimpan kontak/target/order code
+di dimensi baru. Query SQL API harian per metode ada di ARCHITECTURE B-S;
+daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
 ### B-H cache edge berbasis revisi & invalidasi — 18 November 2026 (lokal, belum deploy)
 
 - `src/lib/catalog-cache.ts` (`d1-v2/{scope}/{rev}/{key}`): tiga kunci revisi di `store_settings` (`catalog_revision_market`, `catalog_revision_pedia`, `catalog_revision_games`) dengan memoization per-isolate 5 detik (`WeakMap` lewat `unwrapD1`), coalescing pembacaan in-flight, dan restorasi header `Cache-Control` browser asli melalui `X-Axvara-Origin-Cache-Control`.

@@ -21,6 +21,7 @@ import { buildMethodCatalog } from "@/lib/payments/method-options";
 import type { Locale } from "@/lib/i18n/locale";
 import { isGamesNicknameProduct, sanitizeGamesNickname } from "@/lib/games/sellable";
 import { gamesVariantName } from "@/lib/games/display-name";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -116,6 +117,8 @@ export async function POST(req: NextRequest) {
     payment_methods: paymentMethods,
     locale: quoteLocale,
   });
+  trackFunnelEvent({ stage: "quote", orderKind: "games", productId: Number(product.id), productSlug: game.slug,
+    variantId, subtotal: unitPrice, quantity: 1, locale: quoteLocale }, req);
   return NextResponse.json({
     ok: true,
     quote_token: token,

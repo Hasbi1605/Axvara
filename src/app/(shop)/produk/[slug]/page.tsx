@@ -1,6 +1,9 @@
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 
 import type { Metadata } from "next";
+import type {} from "react/canary";
+import * as React from "react";
+import { headers } from "next/headers";
 import { NextRequest } from "next/server";
 import { notFound, redirect } from "next/navigation";
 import { queryFirst, queryAll } from "@/lib/db";
@@ -23,7 +26,8 @@ const SITE_BASE = process.env.SITE_URL || "https://axvara.tech";
 
 type SeoRow = Record<string, unknown>;
 
-async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
+// Next's RSC renderer provides React.cache; plain React 18 unit tests do not.
+const getSeoProduct = (React.cache ?? ((fn) => fn))(async (slug: string): Promise<SeoProduct | null> => {
   const product = (await queryFirst(
     `SELECT p.slug, p.name, p.name_en, p.description, p.admin_description_override, p.description_en,
             p.image_url, p.images, p.badge,
@@ -63,7 +67,7 @@ async function getSeoProduct(slug: string): Promise<SeoProduct | null> {
       min_qty: v.min_qty != null ? Number(v.min_qty) : 1,
     })),
   };
-}
+});
 
 /**
  * Data interaktif PDP diambil server lewat handler API yang sama dengan
@@ -85,7 +89,10 @@ async function loadInitialProducts(slug: string): Promise<Product[] | undefined>
 async function loadInitialCatalog(slug: string): Promise<InitialCatalog | undefined> {
   try {
     const { GET } = await import("@/app/api/catalog/route");
-    const response = await GET(new Request(`https://axvara.tech/api/catalog?slug=${encodeURIComponent(slug)}`));
+    const incoming = await headers();
+    const response = await GET(new Request(`https://axvara.tech/api/catalog?slug=${encodeURIComponent(slug)}`, {
+      headers: { "user-agent": incoming.get("user-agent") ?? "", cookie: incoming.get("cookie") ?? "" },
+    }));
     if (!response.ok) return undefined;
     const data = (await response.json()) as { product?: InitialCatalog["product"]; variantsEnabled?: boolean };
     return data.product ? { slug, product: data.product, variantsEnabled: data.variantsEnabled === true } : undefined;

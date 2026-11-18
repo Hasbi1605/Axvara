@@ -15,6 +15,7 @@ import {
   myOrdersPrompt, myOrdersMessage, searchPromptMessage, searchResultsMessage,
 } from "@/lib/telegram/messages";
 import type { Locale } from "@/lib/i18n/locale";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { tgCtxFor, tgUsdAlternate, type TgCtx } from "@/lib/telegram/render-prefs";
 import {
   catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
@@ -131,6 +132,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   }
 
   // Aggregate stock from variants for display
+  trackFunnelEvent({ stage: "view", channel: "telegram", productId, locale: ctx.locale });
   const activeVariants = detail.variants.filter(v => v.is_active).map(v => ({ ...v, stock: effectiveVariantStock(v) }));
   const purchasable = activeVariants.filter(v => v.stock === -1 || v.stock >= v.min_qty);
   const hasUnlimited = activeVariants.some(v => v.stock === -1);

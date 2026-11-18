@@ -11,6 +11,7 @@ import { displayUsdCents } from "@/lib/i18n/format";
 import { loadCurrentFxSnapshot } from "@/lib/payments/market-snapshot";
 import { isQueuedFulfillment } from "@/lib/warung-rebahan/delivery-class";
 import { checkRateLimit, isSyntheticRequest } from "@/lib/rateLimit";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { readJsonBody } from "@/lib/http-body";
 import { bulkOwnerFromProductRow, bulkUnitPrice, isManualProductForBulk, validateBulkPricing } from "@/lib/bulk-pricing";
@@ -387,6 +388,12 @@ export async function POST(req: NextRequest) {
   const preferences = resolveBuyerPreferences(req.headers.get("cookie"));
   const locale = preferences.locale;
   const displayUsd = displayUsdCents(subtotal, await loadCurrentFxSnapshot());
+
+  trackFunnelEvent({ stage: "quote", locale, subtotal, productId: quotedItems[0]?.product_id,
+    variantId: quotedItems[0]?.variant_id, quantity: quotedItems.reduce((sum, item) => sum + item.qty, 0),
+    outcome: issues.some((issue) => issue.type === "out_of_stock" || issue.type === "insufficient_stock") ? "out_of_stock"
+      : issues.some((issue) => issue.type === "below_minimum") ? "below_min"
+      : issues.length || !paymentMethods.length ? "method_unavailable" : "ok" }, req);
 
   if (issues.length > 0) {
     return NextResponse.json({ ok: false, issues, items: quotedItems, subtotal, paymentMethods }, { status: 409 });

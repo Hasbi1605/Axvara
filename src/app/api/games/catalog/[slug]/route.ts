@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getGamesDetail } from "@/lib/games/catalog";
 import { gamesOrderingOpen } from "@/lib/games/ordering";
 import { pediaApiLocale, pick } from "@/lib/pedia/api-locale";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       { status: 404, headers: { "Cache-Control": "private, no-store" } },
     );
   }
+  trackFunnelEvent({ stage: "view", orderKind: "games", productSlug: detail.game.slug, locale }, request);
   return NextResponse.json(
     { game: detail.game, ordering_open: gamesOrderingOpen(), products: detail.products },
     { headers: { "Cache-Control": "private, no-store" } },

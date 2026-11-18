@@ -11,6 +11,7 @@ import { getD1, getOrderMem, getSharedMem, execRun } from "./client";
 import { OrderTransitionError } from "./errors";
 import type { D1, D1Statement } from "./types";
 import { parseFxTimestamp } from "@/lib/payments/fx";
+import { trackPaidOrder } from "@/lib/analytics/funnel";
 
 export type CatalogRevisionTransitionOptions = {
   skipRevisionBump?: boolean;
@@ -145,6 +146,7 @@ export async function transitionPendingOrder(
     ];
     const lunasResult = await d1.batch(lunasBatch);
     if (!lunasResult[1]?.meta?.changes) throw new OrderTransitionError();
+    trackPaidOrder(code, d1);
     // Bila job yatim historis pernah terbit untuk order yang ternyata
     // dibatalkan (bug pra-perbaikan), jangan biarkan queued menunjuk order
     // non-lunas: operasi ini no-op pada jalur normal.
@@ -174,6 +176,7 @@ export async function transitionPendingOrder(
   if (status !== "lunas") order.fulfillment_status = "not_required";
   order.admin_note = adminNote;
   order.updated_at = new Date().toISOString();
+  if (status === "lunas") trackPaidOrder(code, null, order);
 }
 
 export async function transitionPendingPaymentOrder(input: {
@@ -416,6 +419,7 @@ export async function transitionPendingPaymentToPaid(
 
     try {
       await d1.batch(statements);
+      trackPaidOrder(orderCode, d1);
       await incrementSoldCountForOrder(orderCode, d1, options);
       return true;
     } catch (error) {
@@ -440,6 +444,7 @@ export async function transitionPendingPaymentToPaid(
   order.payment_method = options?.paymentMethod ?? "qris";
   if (!order.paid_at) order.paid_at = String(providerPaidAt ?? new Date().toISOString());
   order.updated_at = new Date().toISOString();
+  trackPaidOrder(orderCode, null, order);
   return true;
 }
 

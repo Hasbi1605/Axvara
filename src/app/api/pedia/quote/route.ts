@@ -3,6 +3,7 @@
 // layanan, kelipatan step produk), kredit → quote JWT 30 menit.
 import { pediaServiceTypeFor } from "@/lib/pedia/custom-comments";
 import { NextRequest, NextResponse } from "next/server";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createDatabaseAccess } from "@/lib/db-access";
@@ -98,6 +99,8 @@ export async function POST(req: NextRequest) {
   const maxQty = limits?.max ?? 0;
   const step = limits?.step ?? 1;
   if (!limits || quantity < minQty || quantity > maxQty) {
+    trackFunnelEvent({ stage: "quote", orderKind: "pedia", productId: product_id, variantId: tier_id,
+      locale, quantity, outcome: quantity < minQty ? "below_min" : "method_unavailable" }, req);
     return NextResponse.json({
       error: "quantity_out_of_range",
       message: pick(locale, `Minimal ${minQty}, maksimal ${maxQty} untuk kualitas ini.`, `Minimum ${minQty}, maximum ${maxQty} for this quality.`),
@@ -166,6 +169,8 @@ export async function POST(req: NextRequest) {
     payment_methods: serializePediaQuoteMethods(availableMethods),
     locale,
   });
+  trackFunnelEvent({ stage: "quote", orderKind: "pedia", productId: product_id, variantId: tier_id,
+    productSlug: String(product.slug), subtotal: total, quantity, locale }, req);
   return NextResponse.json({
     ok: true, quote_token: token, quote_id: quoteId,
     total, payable: total, credit_used: 0,

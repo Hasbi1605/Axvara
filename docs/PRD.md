@@ -1,5 +1,28 @@
 # PRD — AXVARA
 
+## B-S: funnel pembelian tanpa PII — 18 November 2026 (lokal)
+
+Workers Analytics Engine mencatat `view → quote → order → paid` Market/Pedia/Games
+web dan Market Telegram. `view` adalah respons detail katalog/PDP, bukan pengunjung
+unik; `quote` menghitung quote terbit (Market juga outcome stok/minimum/metode dan
+Pedia minimum). `order` web hanya respons create baru201, bukan replay200; Telegram
+mencatat pemenang INSERT order (termasuk bila penerbitan invoice berikutnya gagal).
+`paid` hanya pemenang transisi lunas bersama, termasuk webhook, poller, dan admin;
+order WhatsApp lama tetap tercakup tanpa menghidupkan checkout WA yang pensiun.
+Empat tahap memakai skema tetap tanpa kontak, target, IP, UA mentah atau kode order;
+nilai uang hanya bucket IDR, bukan nominal invoice. Probe berizin `isSyntheticRequest`
+atau UA `axvara-synth/` tidak tercatat. UA hanya pengecualian analitik, bukan bypass
+keamanan. Tes admin pembayaran sudah410, tidak diaktifkan kembali.
+
+Telemetri best-effort tidak menunggu WAE dan tidak menggagalkan pembelian. Transisi
+paid yang berulang/bersamaan hanya menginisiasi satu emisi; crash sesudah commit,
+WAE gagal, sampling atau cache HTTP dapat menghilangkan event. Ini bukan ledger
+keuangan, exactly-once delivery WAE, atau cohort per pembeli. Tidak ada D1 write baru;
+satu PK read background per pemenang paid bila binding ada. Query operator dan
+skema ada di ARCHITECTURE B-S. Cache route katalog belum dipasang (menunggu B-H);
+PDP memakai React.cache per request untuk berbagi hasil SEO metadata+render,
+tanpa perubahan HTML/tampilan. Belum dipublikasikan/deploy.
+
 ## C0: kredensial otomatis tidak dikirim ulang saat lease item pulih — 18 November 2026 (lokal)
 
 - Shared/unique dan receipt TUNVN/AIVault yang dikirim lewat Telegram/WhatsApp

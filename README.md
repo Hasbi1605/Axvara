@@ -1,5 +1,21 @@
 # AXVARA — Gerbang Semua Tools Premium
 
+## Funnel WAE B-S (18 November 2026, lokal)
+
+Binding `FUNNEL_ANALYTICS` (`axvara_funnel_v1`, otomatis pada write pertama)
+mencatat view/quote/order/paid web Market/Pedia/Games + Market Telegram, tanpa
+kontak/target/IP/UA mentah/kode order. Nominal hanya bucket IDR. Binding hilang
+atau write gagal tidak memengaruhi checkout; paid hanya pemenang CAS bersama,
++1 PK read background saat binding hadir,0write, tanpa jaminan ingest setelah
+crash. Probe authenticated atau UA `axvara-synth/` dikecualikan; UA bukan bypass
+auth/rate-limit. Order web baru201 saja, Telegram pemenang INSERT; replay tidak
+menghitung order baru. WA pensiun tetap, paid order lama tercakup.
+PDP berbagi hasil SEO metadata/render via React.cache per request, tanpa
+perubahan visual. Cache detail katalog menunggu B-H; tidak disentuh sekarang.
+Tanpa env Pages/secret/migrasi/resource manual baru dan tanpa mengubah summary
+harian. Skema dan SQL API harian per metode/channel ada di `docs/ARCHITECTURE.md`
+bagian B-S; hitungan sampling bukan unique buyer/ledger. Belum deploy.
+
 ## Fence kirim kredensial C0 (18 November 2026, lokal)
 
 Migrasi0135 menambah tabel kecil `fulfillment_send_claims` (PK item+kanal,

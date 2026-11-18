@@ -29,6 +29,8 @@ import { createFulfillmentJob } from "@/lib/fulfillment/deliver";
 // tidak membunyikan grup.
 import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
 import { createChannelOrderAtomic } from "@/lib/commerce";
+import { trackFunnelEvent } from "@/lib/analytics/funnel";
+import { activeQrisProvider } from "@/lib/payments/dana-qris";
 import { clampQty, clearPendingAction } from "./shared";
 import { handleShowQty } from "./catalog";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
@@ -324,6 +326,8 @@ export async function createAndSendVariantInvoice(
       throw reservationError;
     }
     orderInserted = true;
+    trackFunnelEvent({ stage: "order", channel: "telegram", productId, variantId: variant.id,
+      subtotal, quantity: qty, locale: tgLocale, method: `qris:${activeQrisProvider()}` });
     if (uniqueFulfillment) {
       // Inventory direservasi di dalam batch; id-nya dibaca kembali untuk
       // createFulfillmentJob (jalur cart memang sudah memakai null + pemilihan
