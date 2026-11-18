@@ -150,7 +150,7 @@ describe("provider paid routing + generic fulfillment no-op for Pedia", () => {
     expect((await res.json()).status).toBe("paid");
     expect(fx.sql.prepare(`SELECT status, payment_status FROM orders WHERE code=?`).get(PEDIA_CODE)).toMatchObject({ status: "lunas", payment_status: "paid" });
     expect(schedule).toHaveBeenCalledTimes(1);
-    expect(schedule).toHaveBeenCalledWith(PEDIA_CODE, "pedia");
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(PEDIA_CODE, "pedia", expect.anything());
     expect(extra).not.toHaveBeenCalled();
     schedule.mockRestore();
     extra.mockRestore();

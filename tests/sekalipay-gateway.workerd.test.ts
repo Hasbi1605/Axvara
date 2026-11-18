@@ -17,7 +17,7 @@ it("executes merchant callback, signed GET and atomic paid guard in workerd", as
       });
       builder.onLoad({ filter: /.*/, namespace: "fixture" }, (args) => {
         if (args.path === "next/server") return { contents: `export const NextResponse={json:(data,init)=>Response.json(data,init)};` };
-        if (args.path === "./paid-fulfillment") return { contents: `export const schedulePaidFulfillment=async(code,kind)=>{await globalThis.fixtureDb.prepare("INSERT INTO store_settings(key,value) VALUES('games_scheduled',?)").bind(code+':'+kind).run()};` };
+        if (args.path === "./paid-fulfillment") return { contents: `export const schedulePaidFulfillment=async(code,kind)=>{await globalThis.fixtureDb.prepare("INSERT INTO store_settings(key,value) VALUES('scheduled:'||?,?) ON CONFLICT(key) DO UPDATE SET value=value||'+dup'").bind(code,kind).run()};` };
         if (args.path === "./nowpayments") return { contents: `export const claimNowpaymentsPollReconcile=()=>false;export const reconcileNowpaymentsPayment=()=>null;` };
         if (args.path === "@/lib/site") return { contents: `export const SITE={webUrl:'https://axvara.tech'};` };
         if (args.path === "@/lib/payments/dana-history") return { contents: `export const DANA_AMOUNT_REUSED_SQL='0';` };
@@ -105,7 +105,9 @@ it("executes merchant callback, signed GET and atomic paid guard in workerd", as
         headers: { "content-type": "application/json", "x-signature": gameSig } })).status).toBe(200);
     }
     expect((await db.prepare("SELECT payment_status FROM orders WHERE code=?").bind(game).first())?.payment_status).toBe("paid");
-    expect((await db.prepare("SELECT value FROM store_settings WHERE key='games_scheduled'").first())?.value).toBe(`${game}:games`);
+    // Scheduled exactly once per paid order (winner only), now for every order_kind incl. apps.
+    expect((await db.prepare("SELECT value FROM store_settings WHERE key=?").bind(`scheduled:${game}`).first())?.value).toBe("games");
+    expect((await db.prepare("SELECT COUNT(*) n FROM store_settings WHERE key LIKE 'scheduled:%' AND value LIKE '%+dup%'").first())?.n).toBe(0);
     expect((await db.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code=?").bind(game).first())?.n).toBe(0);
   } finally { await runtime.dispose(); }
 });

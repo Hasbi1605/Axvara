@@ -65,8 +65,12 @@ it("runs daily admin summary on native D1/workerd within <=12 statements, low ro
         name: "mock-telegram",
         setup(b) {
           b.onResolve({ filter: /telegram\/api$/ }, () => ({ path: "sender", namespace: "fixture" }));
-          b.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({
-            contents: `export async function sendMessage(params){ globalThis.__sent.push(params); return { ok: true, result: { message_id: globalThis.__sent.length } }; }`,
+          // Shared payment modules lazily import next-on-pages (server-only); stub it like order-queue.workerd.
+          b.onResolve({ filter: /^@cloudflare\/next-on-pages$/ }, () => ({ path: "next-on-pages", namespace: "fixture" }));
+          b.onLoad({ filter: /.*/, namespace: "fixture" }, (args) => ({
+            contents: args.path === "next-on-pages"
+              ? "export const getRequestContext=()=>globalThis[Symbol.for('__cloudflare-request-context__')];"
+              : `export async function sendMessage(params){ globalThis.__sent.push(params); return { ok: true, result: { message_id: globalThis.__sent.length } }; }`,
           }));
         },
       },

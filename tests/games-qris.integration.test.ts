@@ -61,7 +61,7 @@ describe("Games paid QRIS routes dispatch only Games", () => {
     const first = await hook();
     expect(first.status).toBe(200);
     expect(await first.json()).toMatchObject({ status: "paid" });
-    expect(mocks.paid).toHaveBeenCalledExactlyOnceWith(CODE, "games");
+    expect(mocks.paid).toHaveBeenCalledExactlyOnceWith(CODE, "games", expect.anything());
     expect(fixture.sql.prepare("SELECT status,payment_status FROM orders WHERE code=?").get(CODE))
       .toEqual({ status: "lunas", payment_status: "paid" });
     expect(fixture.sql.prepare("SELECT COUNT(*) AS n FROM fulfillment_jobs").get()).toEqual({ n: 0 });
