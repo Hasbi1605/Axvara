@@ -33,8 +33,9 @@
 - PDP membungkus `getSeoProduct` dengan React.cache RSC per request: metadata
   dan render berbagi pasangan query SEO yang sama; tidak ada memo lintas request,
   sehingga slug/order redirect, canonical, JSON-LD dan tampilan tetap. React18
-  non-RSC/test fallback tidak memo. `cachePublicCatalog` belum dipasang di
-  `/api/catalog` dan detail Games; menunggu integrasi B-H.
+  non-RSC/test fallback tidak memo. `cachePublicCatalog` pada `/api/catalog` dipasang pada Paket B-C
+  (`/api/games/catalog/[slug]` tetap `private, no-store`, tidak di-cache) (emisi `view` tetap
+  berjalan di luar loader pada HIT maupun MISS untuk status 200 non-sintetis).
 
 ### Skema tetap `axvara_funnel_v1`
 
@@ -6351,11 +6352,14 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   - Menyimpan nilai `Cache-Control` origin ke header internal `X-Axvara-Origin-Cache-Control` saat `cache.put`, menuliskan `Cache-Control: public, max-age=${ttlSeconds}` untuk Cloudflare Cache API, lalu memulihkan `Cache-Control` origin (dan menghapus header internal) saat melayani `HIT` agar browser dan downstream CDN tidak pernah mewarisi TTL internal `120–600` detik.
   - `bumpCatalogRevision(scope, d1)` menjalankan satu `INSERT INTO store_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value` (best-effort melalui `unwrapD1`), segera memperbarui memo isolate (staleness `0` detik pada isolate yang memutasi), dan menghapus URL cache terlacak di `caches.default` lokal untuk scope tersebut.
 - **TTL publik & preservasi boundary:**
-  - `GET /api/products` (`scope: "market"`): edge TTL `120` detik untuk `?slug=` (`Cache-Control` browser `public, max-age=5, s-maxage=10, stale-while-revalidate=30`) dan `300` detik untuk daftar (`public, max-age=15, s-maxage=30, stale-while-revalidate=60`); query admin tetap bypass.
+  - `GET /api/products` (`scope: "market"`): edge TTL `120` detik untuk `?slug=` dan `300` detik untuk daftar (header `Cache-Control` browser tidak berubah); query admin tetap bypass.
   - `GET /api/categories` (`scope: "market"`): edge TTL `600` detik untuk daftar publik.
   - `src/lib/telegram/catalog-snapshot.ts` (`telegram:catalog`, `scope: "market"`): edge TTL `180` detik.
   - `GET /api/pedia/catalog` (`pedia:catalog`, `scope: "pedia"`): edge TTL `300` detik (mempertahankan `public, max-age=30` dan `CDN-Cache-Control: max-age=60`).
   - `GET /api/games/catalog` (`games:list:open=...`, `scope: "games"`): edge TTL `300` detik dengan key membedakan `ordering_open` dan mempertahankan `public, max-age=5, s-maxage=10, stale-while-revalidate=30`.
+  - **Paket B-C (lanjutan lokal 18 November 2026, belum deploy):**
+    - `GET /api/catalog` (`catalog:v={variants}&slug={slug||_list}`, `scope: "market"`): edge TTL `120` detik untuk `?slug=` dan `300` detik untuk daftar (header `Cache-Control` browser tidak berubah); respons tetap locale-neutral (`display-prices` invariant terjaga). Emisi funnel `view` dijalankan di luar loader `cachePublicCatalog` saat `?slug=` berstatus `200` (berlaku pada `HIT` maupun `MISS`, tetap dikecualikan untuk probe sintetis, dan 404 tidak di-cache/tidak mengemisi).
+    - `GET /api/games/catalog/[slug]` tetap `private, no-store` dan tidak di-cache (cache edge menolak respons privat).
 - **Titik invalidasi mutasi (hanya saat `changed > 0`, ≤1 tulis/eksekusi — dikoalesensi di tingkat run/loop):**
   - Checkout & order: `orders-create.ts`, `commerce.ts` (`createChannelOrderAtomic`, `createPendingChannelOrder` — skip pada idempotent/race replay), `orders-transition.ts` (restock cancel/expiry & `incrementSoldCountForOrder`, terisolasi ke order Market/legacy sehingga Pedia/Games tidak me-bump Market; pemanggil loop cron `cron/operations` `runExpiry`, `cron/lite` `runExpiry`, dan `cron/publish-scheduled` mengirim `onMarketChanged` dan memanggil `bumpCatalogRevision("market", ..., { metered: true })` paling banyak sekali di akhir fase bila budget masih cukup), `fulfillment/inventory.ts` (`import`/`release`/`revoke` ketika `>0`), dan `warung-rebahan/order.ts` (`WrOutOfStockError` di `processWrPendingOrders` dikoalesensi ke paling banyak sekali per batch dengan `{ metered: true }`).
   - Supplier sync & grup: `warung-rebahan/sync.ts` (`syncProducts`, `syncJaspayCatalog`), `sekalipay/sync.ts` (`syncSkProducts`, termasuk saat `staleParentsRefreshed > 0`), `tunvn/catalog.ts`, `aivault/catalog.ts`, `pedia/sync.ts` + `pedia/dispatch.ts` (auto-disable margin di `processPediaPaidOrders` dikoalesensi paling banyak sekali per batch `{ metered: true }`), `games/sk-catalog-sync.ts` (diinjeksikan atomik dalam `SUCCESS_MARKER_WITH_REV_SQL` tanpa statement ekstra saat `catalogChanged`), `games/catalog-sync.ts`, dan `product-groups.ts`.
