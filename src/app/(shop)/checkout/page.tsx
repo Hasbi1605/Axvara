@@ -791,7 +791,7 @@ function CheckoutInner() {
               <h2 className="text-sm font-semibold text-[#FFD66B]">{text("Diproses otomatis", "Processed automatically")}</h2>
               <p className="mt-1 text-xs leading-5 text-white/60">
                 <span className="font-semibold text-white">{automaticNames.length === 1 ? automaticNames[0] : `${automaticNames.length} ${text("produk", "products")}`}</span>
-                {". "}{text(buyerDeliveryEtaJaspay(), "Created automatically after payment is confirmed; processing time depends on the queue.")}
+                {". "}{text(buyerDeliveryEtaJaspay(), "Made by order — created automatically by our bot after payment. Estimated 15 minutes–1 hour.")}
               </p>
             </div>
           )}

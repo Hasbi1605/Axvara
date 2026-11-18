@@ -485,11 +485,11 @@ export function buyerDeliveryBadge(v: Parameters<typeof buyerDeliveryKind>[0]): 
 }
 
 /**
- * ETA Jaspay untuk pembeli (WR3): dibuat otomatis, waktu mengikuti antrean.
+ * ETA Jaspay untuk pembeli (owner 18 Nov 2026): made by order oleh bot, estimasi 15 menit–1 jam.
  * Tetap kelas queued (bukan instan) — tanpa janji stok, tanpa brand supplier.
  */
 export function buyerDeliveryEtaJaspay(): string {
-  return "Dibuat otomatis setelah pembayaran dikonfirmasi; waktu proses mengikuti antrean.";
+  return "Made by order — dibuat otomatis oleh bot setelah pembayaran. Estimasi 15 menit–1 jam.";
 }
 
 /** True bila varian unique kehabisan kredensial walau kolom stock > 0. */

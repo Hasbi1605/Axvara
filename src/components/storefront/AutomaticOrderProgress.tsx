@@ -1,5 +1,7 @@
 import type { AutomaticProgressItem } from "@/lib/warung-rebahan/progress";
 
+const IN_PROGRESS = new Set<AutomaticProgressItem["stage"]>(["preparing", "queued", "running"]);
+
 export function AutomaticOrderProgress({ items, locale = "id" }: { items: AutomaticProgressItem[]; locale?: "id" | "en" }) {
   const en = locale === "en";
   const labels = en ? {
@@ -9,6 +11,9 @@ export function AutomaticOrderProgress({ items, locale = "id" }: { items: Automa
     preparing: "Menyiapkan produkmu", queued: "Menunggu giliran", running: "Membuat produkmu",
     ready: "Produk siap", needs_check: "Produk sedang diperiksa", failed: "Produk perlu diperiksa",
   };
+  // Catatan ekspektasi (keputusan owner 18 Nov 2026): tampil selama masih ada
+  // item yang sedang dibuat; hilang begitu semua siap/perlu diperiksa.
+  const working = items.some((item) => IN_PROGRESS.has(item.stage));
   return <section className="mt-6 space-y-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left" aria-label={en ? "Product progress" : "Progres produk"} aria-live="polite">
     {items.map((item, index) => {
       const ready = item.stage === "ready";
@@ -35,5 +40,11 @@ export function AutomaticOrderProgress({ items, locale = "id" }: { items: Automa
         {attention && <p className="mt-2 text-xs text-white/70">{en ? "You don't need to order again." : "Kamu tidak perlu memesan ulang."}</p>}
       </div>;
     })}
+    {working && <div className="border-t border-white/10 pt-4 text-xs leading-5 text-white/70">
+      <p><span className="font-semibold text-white/90">Made by order</span>{en
+        ? " — being created automatically by our bot. Estimated 15 minutes–1 hour. Product details will appear here and in your email once ready."
+        : " — sedang dibuat otomatis oleh bot. Estimasi 15 menit–1 jam. Detail produk tampil di sini dan di email begitu siap."}</p>
+      <p className="mt-1">{en ? "Not done after 1 hour? " : "Lebih dari 1 jam belum selesai? "}<a href="/wa" className="font-medium text-[#00E5FF] underline-offset-2 hover:underline">{en ? "Contact admin" : "Hubungi admin"}</a></p>
+    </div>}
   </section>;
 }

@@ -47,9 +47,9 @@ export function jaspayLabelForBuyer(): string {
   return "Diproses otomatis";
 }
 
-/** ETA Jaspay untuk pembeli (WR3): dibuat otomatis, waktu ikut antrean. */
+/** ETA Jaspay untuk pembeli (keputusan owner 18 Nov 2026): made by order, dibuat otomatis oleh bot, estimasi 15 menit–1 jam. */
 export function jaspayEtaForBuyer(): string {
-  return "Dibuat otomatis setelah pembayaran dikonfirmasi; waktu proses mengikuti antrean.";
+  return "Made by order — dibuat otomatis oleh bot setelah pembayaran. Estimasi 15 menit–1 jam.";
 }
 
 /**

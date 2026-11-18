@@ -42,7 +42,7 @@ describe("checkout: antrean otomatis dan manual dibedakan dari quote server", ()
     const fetch = renderQuote([automatic]);
     const heading = await screen.findByRole("heading", { name: "Diproses otomatis" });
     expect(heading.parentElement?.textContent).toContain("Paket Otomatis");
-    expect(heading.parentElement?.textContent).toContain("waktu proses mengikuti antrean");
+    expect(heading.parentElement?.textContent).toContain("Estimasi 15 menit–1 jam");
     expect(heading.parentElement?.textContent).not.toMatch(/Made By Order|admin|12 jam|Jaspay|Warung/);
     expect(screen.queryByRole("heading", { name: "Made By Order" })).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);

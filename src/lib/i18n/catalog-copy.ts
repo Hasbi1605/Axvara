@@ -14,7 +14,7 @@ export function catalogDeliveryEta(v: Parameters<typeof buyerDeliveryBadge>[0] |
   const wrId = String(v?.wr_variant_id ?? "").trim();
   if (locale === "id") return !v ? deliveryEtaForBuyer(null) : buyerDeliveryKind(v) === "instant" ? deliveryEtaForBuyer("restock") : wrId.startsWith("jaspay:") ? buyerDeliveryEtaJaspay() : wrId ? deliveryEtaForBuyer(v.wr_delivery_class) : buyerDeliveryEtaNonWr();
   if (v && buyerDeliveryKind(v) === "instant") return "Delivered automatically once payment is confirmed";
-  if (wrId.startsWith("jaspay:")) return "Created automatically after payment is confirmed; processing time depends on the queue.";
+  if (wrId.startsWith("jaspay:")) return "Made by order — created automatically by our bot after payment. Estimated 15 minutes–1 hour.";
   return !v || wrId ? `Made By Order — processed in queue, usually sooner, within ${WR_QUEUED_MAX_HOURS} hours during service hours` : "Made By Order — prepared by admin after payment is confirmed, in queue during service hours";
 }
 

@@ -36,3 +36,15 @@ it("supports English and reduced motion while preserving text feedback", () => {
   expect(screen.getByText("Creating your product")).toBeTruthy();
   expect(screen.getByRole("progressbar").firstElementChild?.className).toContain("motion-safe:animate-");
 });
+it("explains made-by-order ETA and admin escalation while the product is still being created", () => {
+  const {rerender}=render(<AutomaticOrderProgress items={[{...item,stage:"running"}]} />);
+  expect(document.body.textContent).toContain("sedang dibuat otomatis oleh bot. Estimasi 15 menit–1 jam");
+  expect(document.body.textContent).toContain("di email begitu siap");
+  expect(screen.getByRole("link",{name:"Hubungi admin"}).getAttribute("href")).toBe("/wa");
+  rerender(<AutomaticOrderProgress items={[{...item,stage:"ready"}]} />);
+  expect(document.body.textContent).not.toContain("Estimasi 15 menit");
+  rerender(<AutomaticOrderProgress items={[{...item,stage:"needs_check"}]} />);
+  expect(screen.queryByRole("link",{name:"Hubungi admin"})).toBeNull();
+  rerender(<AutomaticOrderProgress items={[{...item,stage:"queued"}]} locale="en" />);
+  expect(screen.getByRole("link",{name:"Contact admin"})).toBeTruthy();
+});

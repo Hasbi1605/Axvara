@@ -459,9 +459,9 @@ describe("WR3 buyer copy: otomatis, queued, tanpa brand/MBO", () => {
     const v = { fulfillment_mode: "manual", wr_variant_id: "jaspay:P:K", wr_delivery_class: "made_by_order" };
     expect(buyerDeliveryKind(v)).toBe("queued");
     expect(buyerDeliveryBadge(v)).toBe("Diproses otomatis");
-    expect(buyerDeliveryEtaJaspay()).toBe("Dibuat otomatis setelah pembayaran dikonfirmasi; waktu proses mengikuti antrean.");
+    expect(buyerDeliveryEtaJaspay()).toBe("Made by order — dibuat otomatis oleh bot setelah pembayaran. Estimasi 15 menit–1 jam.");
     expect(jaspayLabelForBuyer()).toBe("Diproses otomatis");
-    expect(jaspayEtaForBuyer()).toBe("Dibuat otomatis setelah pembayaran dikonfirmasi; waktu proses mengikuti antrean.");
+    expect(jaspayEtaForBuyer()).toBe("Made by order — dibuat otomatis oleh bot setelah pembayaran. Estimasi 15 menit–1 jam.");
     const label = buyerDeliveryBadge(v);
     expect(label).not.toContain("Made By Order");
     expect(label).not.toMatch(/jaspay|warung|rebahan/i);

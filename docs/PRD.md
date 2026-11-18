@@ -259,6 +259,20 @@ Keputusan owner 16 Nov 2026 (desain disetujui):
   singkat; ID/EN mengikuti order. Implementasi/test lokal; publikasi CI main,
   deployment belum diverifikasi. Mengganti ketentuan email-only28Oktober.
 
+## Estimasi made-by-order Jaspay — keputusan owner 18 November 2026
+
+- Varian Jaspay (`jaspay:`) di PDP, beli cepat dan checkout memakai ETA:
+  "Made by order — dibuat otomatis oleh bot setelah pembayaran. Estimasi
+  15 menit–1 jam." (EN setara). Badge tetap "Diproses otomatis"; tanpa brand
+  supplier.
+- Setelah bayar, selama item Jaspay masih preparing/queued/running, panel
+  progres di Halaman Pesanan dan Lacak Pesanan menambah catatan: sedang dibuat
+  otomatis oleh bot, estimasi 15 menit–1 jam, detail tampil di halaman dan
+  email begitu siap; lebih dari 1 jam → tautan "Hubungi admin" ke `/wa`.
+  Catatan hilang saat siap/perlu diperiksa. Plafon MBO WR Premium 12 jam tidak
+  berubah.
+- Implementasi/test lokal; publikasi melalui CI main, deployment belum dibuktikan.
+
 ## Pengiriman supplier & progres pembeli — 16 November 2026
 
 - AIVault di pembayaran baru dan Retry admin yang completed langsung mencoba

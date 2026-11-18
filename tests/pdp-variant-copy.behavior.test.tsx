@@ -81,7 +81,7 @@ describe("PDP multi-varian: S&K mengikuti satu pilihan", () => {
     expect(radio.textContent).not.toContain("Made By Order");
     fireEvent.click(radio);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    const eta = screen.getByText("Dibuat otomatis setelah pembayaran dikonfirmasi; waktu proses mengikuti antrean.");
+    const eta = screen.getByText("Made by order — dibuat otomatis oleh bot setelah pembayaran. Estimasi 15 menit–1 jam.");
     expect(eta.parentElement?.textContent).toContain("Diproses otomatis");
     expect(eta.parentElement?.textContent).not.toMatch(/disiapkan admin|Kirim otomatis|12 jam/);
   });
