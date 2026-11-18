@@ -1,4 +1,5 @@
 import { isSyntheticRequest } from "@/lib/rateLimit";
+import { resolveBuyerPreferences } from "@/lib/i18n/locale";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import type { D1 } from "@/lib/db/types";
 
@@ -67,7 +68,7 @@ export function trackFunnelEvent(event: FunnelEventInput, request?: Pick<Request
     const amount = Number.isSafeInteger(event.subtotal) && event.subtotal! > 0 ? event.subtotal! : 0;
     const result = dataset.writeDataPoint({
       indexes: [`${kind}:${event.stage}`],
-      blobs: [event.stage, kind, channel, family, method, id(event.productId), event.locale === "en" ? "en" : "id", outcome, id(event.variantId),
+      blobs: [event.stage, kind, channel, family, method, id(event.productId), (event.locale ?? (request ? resolveBuyerPreferences(request.headers.get("cookie")).locale : undefined)) === "en" ? "en" : "id", outcome, id(event.variantId),
         event.productSlug && /^[a-z][a-z0-9-]{0,79}$/.test(event.productSlug) ? event.productSlug : "none"],
       // Value bucket lower bound, not the exact invoice amount. 0 also covers unknown/view.
       doubles: [1, [1_000_000, 500_000, 100_000, 50_000, 10_000].find((n) => amount >= n) ?? 0,

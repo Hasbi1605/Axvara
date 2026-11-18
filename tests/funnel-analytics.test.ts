@@ -38,6 +38,11 @@ describe("fixed private funnel schema", () => {
     trackFunnelEvent({ stage }, new Request("http://localhost", { headers: { "x-axvara-synthetic": "1", authorization: "Bearer fixture-cron" } }));
     expect(write).not.toHaveBeenCalled();
   });
+  it("derives view locale from the buyer cookie inside the helper (catalog route stays locale-neutral)", () => {
+    trackFunnelEvent({ stage: "view", productId: 7 }, new Request("http://localhost", { headers: { cookie: "axv_locale=en" } }));
+    trackFunnelEvent({ stage: "view", productId: 7 }, new Request("http://localhost"));
+    expect(write.mock.calls.map((c) => c[0].blobs[6])).toEqual(["en", "id"]);
+  });
   it("probe UA suppresses views but an unauthenticated synthetic header alone does not", () => {
     trackFunnelEvent({ stage: "view" }, new Request("http://localhost", { headers: { "user-agent": "axvara-synth/1.0" } }));
     expect(write).not.toHaveBeenCalled();
