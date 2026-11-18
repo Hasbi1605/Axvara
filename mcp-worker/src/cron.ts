@@ -131,7 +131,7 @@ export type TickReport = { outcomes: PhaseOutcome[]; failures: PhaseOutcome[]; a
 
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
-function sanitizeError(value: string, env: CronEnv): string {
+export function sanitizeError(value: string, env: CronEnv): string {
   for (const secret of [env.AXVARA_CRON_SECRET, env.TELEGRAM_BOT_TOKEN]) {
     if (!secret) continue;
     const escaped = secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

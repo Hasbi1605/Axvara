@@ -1,5 +1,10 @@
 # Operasional Workers Paid — 23 Oktober 2026
 
+## Consumer Queue pengiriman instan & DLQ (`axvara-mcp`, Paket C-H) — 18 November 2026 (lokal, belum deploy)
+
+- `mcp-worker/wrangler.toml` menambahkan dua consumer Queue (`axvara-order-fulfillment` dengan `max_batch_size = 5`, `max_batch_timeout = 1`, `max_retries = 4`, `dead_letter_queue = "axvara-order-fulfillment-dlq"`; serta `axvara-order-fulfillment-dlq` dengan `max_batch_size = 5`, `max_batch_timeout = 5`, `max_retries = 2`) dan variabel `QUEUE_CONSUMER_MODE = "active"`.
+- `mcp-worker/src/queue.ts` (diekspor melalui `queue()` di `mcp-worker/src/index.ts`) memproses batch paralel terbatas (`≤ 5`), timeout fetch `45` detik ke `POST /api/internal/queue/fulfill` (`Bearer AXVARA_CRON_SECRET`), backoff `5/15/45/120` detik, `ack()` pada `settled: false` di `attempts ≥ 5` (cron backstop tetap mengambil alih tanpa masuk DLQ), validasi skema ketat pra-fetch, sakelar darurat `QUEUE_CONSUMER_MODE = "off"` (`ack()` tanpa fetch), serta alert Telegram admin tersanitasi pada DLQ (`ack()` hanya setelah Telegram berhasil; gagal kirim → `retry()`). Resource Queue dibuat manual oleh PM sebelum push; producer Pages dan endpoint origin dikerjakan di paket C-S.
+
 ## Cache katalog berbasis revisi (Paket B-H) — 18 November 2026 (lokal, belum deploy)
 
 - `src/lib/catalog-cache.ts` memindah cache edge ke namespace `d1-v2` yang dikunci oleh `catalog_revision_market`, `catalog_revision_pedia`, dan `catalog_revision_games` (`store_settings`), dengan memoization per-isolate `REVISION_MEMO_TTL_MS = 5_000` ms (`WeakMap<D1Database, ...>` via `unwrapD1`) sehingga pembacaan revisi maksimal 1 query / `≤3` `rows_read` per 5 detik per isolate aktif (~50–150 ribu `rows_read`/hari) dan staleness maksimum lintas lokasi `≤5` detik (0 detik pada isolate yang sama).

@@ -1,5 +1,17 @@
 # ARCHITECTURE.md — AXVARA
 
+## C-H: consumer Queue pengiriman instan & DLQ (`axvara-mcp`) — 18 November 2026 (lokal, belum deploy)
+
+- **Konfigurasi `mcp-worker/wrangler.toml`:**
+  - `[vars] QUEUE_CONSUMER_MODE = "active"` (default `"active"`; bila `"off"`, consumer langsung `ack()` tanpa memanggil origin sehingga cron 1-menitan tetap menjadi backstop).
+  - `[[queues.consumers]]` utama `axvara-order-fulfillment` (`max_batch_size = 5`, `max_batch_timeout = 1`, `max_retries = 4`, `dead_letter_queue = "axvara-order-fulfillment-dlq"`) dan consumer DLQ `axvara-order-fulfillment-dlq` (`max_batch_size = 5`, `max_batch_timeout = 5`, `max_retries = 2`). Resource Queue dibuat manual oleh PM sebelum push/deploy; producer Pages (`ORDER_FULFILLMENT_QUEUE` di `wrangler.json`) dan endpoint origin `/api/internal/queue/fulfill` dikerjakan di paket C-S terpisah.
+- **Handler consumer & DLQ (`mcp-worker/src/queue.ts`, diekspor lewat `queue(batch, env, ctx)` di `mcp-worker/src/index.ts`):**
+  - Membedakan queue utama (`axvara-order-fulfillment`) vs DLQ (`axvara-order-fulfillment-dlq`) berdasarkan `batch.queue`, memproses pesan batch secara paralel terbatas (`≤ 5` konkuren) dengan timeout fetch `45.000` ms (mencakup fetch dan pembacaan body).
+  - Memvalidasi skema pesan sebelum memanggil origin (`v === 1`, `kind ∈ {order_paid, supplier_settled}`, `orderCode` valid `isValidBuyerOrderCode` `AXV|AXP|AXG`, `orderKind ∈ {apps, pedia, games}`, `source` aman non-kosong `≤ 64` karakter tanpa newline/tab, `enqueuedAt` angka positif berhingga, `mode ∈ {shadow, active}`); pesan cacat di-`ack()` dan dilog sebagai error tanpa `fetch`.
+  - Memanggil `POST ${AXVARA_API_ORIGIN}/api/internal/queue/fulfill` berheader `Authorization: Bearer ${AXVARA_CRON_SECRET}` dengan body `{ v: 1, kind, orderCode, orderKind, source, attempt, dryRun }` (`dryRun = (mode === "shadow")`).
+  - Pemetaan respons → aksi: `200 { ok: true, settled: true, state }` (`done` | `async_polling` | `manual_required` | `not_paid` | `dry_run_ok`) → `ack()`; `200 { ok: true, settled: false, retrySec }` → `retry({ delaySeconds: max(retrySec, backoff(attempts)) })` untuk `attempts < 5` dan `ack()` pada `attempts ≥ 5` (diserahkan ke cron backstop, bukan DLQ); `400` → `ack()` + log error; `401`/`403`/`5xx`/timeout/jaringan/respons `200` tak valid → `retry({ delaySeconds: backoff(attempts) })` dengan jadwal `5, 15, 45, 120` detik sebelum masuk DLQ.
+  - Consumer DLQ mengirim alert Telegram admin (`TELEGRAM_ADMIN_CHAT_ID`) dengan format terstruktur (`⚠️ Antrean instan gagal untuk <orderCode> (<orderKind>, sumber <source>, percobaan <n>). Cron 1-menit tetap mengambil alih.`) + error tersanitasi (memakai `sanitizeError` dari `mcp-worker/src/cron.ts` plus redaksi token/secret langsung & email PII). `ack()` hanya dipanggil sesudah Telegram sukses; kegagalan kirim memanggil `retry()` dan mencatat log error.
+  - Log terstruktur per pesan mencatat `kind`, `orderKind`, `source`, `mode`, `attempt`, `outcome`, dan `latencyMs` (`now - enqueuedAt`) tanpa PII atau secret.
 ## C-S: producer Queue dan origin fulfillment — 18 November 2026 (lokal, belum dipublikasikan)
 
 - `wrangler.json` menambah **producer binding** Pages `ORDER_FULFILLMENT_QUEUE`

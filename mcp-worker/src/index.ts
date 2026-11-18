@@ -1,9 +1,11 @@
 import { runOperationsTick } from "./cron";
+import { handleQueueBatch, type QueueMessageBatch } from "./queue";
 import { readBoundedText, RequestBodyError } from "../../src/lib/bounded-body";
 
 export interface Env {
   AXVARA_API_ORIGIN: string;
   AXVARA_CRON_SECRET?: string;
+  QUEUE_CONSUMER_MODE?: string;
   /** Alarm cron gagal (2026-10-04) — secret Worker, nilai sama dengan Pages. */
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_ADMIN_CHAT_ID?: string;
@@ -337,5 +339,9 @@ export default {
     context.waitUntil(runOperationsTick(env, controller.scheduledTime).then((report) => {
       if (report.failures.length) console.error("cron failures", JSON.stringify(report.failures));
     }));
+  },
+  async queue(batch: QueueMessageBatch<unknown>, env: Env, ctx: WorkerExecutionContext) {
+    void ctx;
+    await handleQueueBatch(batch, env);
   },
 };

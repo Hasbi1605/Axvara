@@ -1,5 +1,11 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### C-H consumer Queue pengiriman instan & DLQ (`axvara-mcp`) — 18 November 2026 (lokal, belum deploy)
+
+- `mcp-worker/wrangler.toml` mendefinisikan consumer `axvara-order-fulfillment` (`max_batch_size = 5`, `max_batch_timeout = 1`, `max_retries = 4`, `dead_letter_queue = "axvara-order-fulfillment-dlq"`), consumer DLQ `axvara-order-fulfillment-dlq` (`max_batch_size = 5`, `max_batch_timeout = 5`, `max_retries = 2`), dan `[vars] QUEUE_CONSUMER_MODE = "active"`. Resource Queue wajib dibuat PM sebelum push; jangan menghapus/mengubah binding tersebut tanpa memperbarui kontrak producer di paket C-S.
+- `mcp-worker/src/queue.ts` + `index.ts` (`queue(batch, env, ctx)`): validasi pesan skema v1 (`AXV|AXP|AXG`, `order_paid|supplier_settled`, `apps|pedia|games`, `shadow|active`) sebelum fetch; `QUEUE_CONSUMER_MODE = "off"` me-`ack()` tanpa memanggil origin; paralel terbatas `≤ 5` dengan timeout `45` detik; `settled: true` (`done|async_polling|manual_required|not_paid|dry_run_ok`) → `ack()`, `settled: false` → `retry({ delaySeconds: max(retrySec, backoff(attempts)) })` hingga `attempts < 5` dan `ack()` pada `attempts ≥ 5` (cron backstop, bukan DLQ), `400` → `ack()`, `401/403/5xx`/timeout/network → `retry` backoff `5, 15, 45, 120` detik.
+- Consumer DLQ mengirim Telegram admin (`TELEGRAM_ADMIN_CHAT_ID`) dengan sanitasi error/secret/PII (`sanitizeError` dari `cron.ts` + redaksi token langsung/email); `ack()` hanya setelah kirim Telegram sukses, selain itu `retry()`. Log per pesan terstruktur tanpa PII/secret.
+
 ### C-S Queue producer/origin — 18 November 2026 (lokal, belum deploy)
 
 Binding Pages `ORDER_FULFILLMENT_QUEUE`→`axvara-order-fulfillment` bukan env

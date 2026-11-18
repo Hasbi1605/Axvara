@@ -22,3 +22,18 @@ id = "039698197aba4020b2f5af46b0fffc31"
 
 [vars]
 AXVARA_API_ORIGIN = "https://axvara.tech"
+QUEUE_CONSUMER_MODE = "active"
+
+# Queue pengiriman instan (Tahap C — resource dibuat manual sebelum deploy).
+[[queues.consumers]]
+queue = "axvara-order-fulfillment"
+max_batch_size = 5
+max_batch_timeout = 1
+max_retries = 4
+dead_letter_queue = "axvara-order-fulfillment-dlq"
+
+[[queues.consumers]]
+queue = "axvara-order-fulfillment-dlq"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 2
