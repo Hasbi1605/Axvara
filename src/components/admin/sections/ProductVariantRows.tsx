@@ -372,7 +372,7 @@ export function ProductVariantRows({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-admin-fg">Daftar pilihan paket / varian <SupplierBadge supplier={form.supplier} /></span>
         {form.wrManaged ? (
-          <span className="text-xs text-admin-muted">Varian dikelola Warung Rebahan — markup diatur di tab Warung Rebahan. Harga coret tetap bisa kamu edit.</span>
+          <span className="text-xs text-admin-muted">Varian dikelola Warung Rebahan — nama varian bisa diubah dan tidak tertimpa sync. Harga jual, stok, masa aktif, dan masa garansi ikut WR. Markup diatur di tab Warung Rebahan; harga coret tetap bisa diedit.</span>
         ) : (
         <Button variant="outline" size="sm"
           type="button"
@@ -425,17 +425,16 @@ export function ProductVariantRows({
             {/* Baris 1: Nama Varian & Aksi */}
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-admin-border">
               <div className="flex-1 min-w-0">
-                <Label htmlFor={`variant-name-${v.id ?? idx}`} className="mb-2 block">Nama varian / paket *{wrLocked ? " (WR)" : ""}</Label>
+                <Label htmlFor={`variant-name-${v.id ?? idx}`} className="mb-2 block">Nama varian / paket *</Label>
                 <Input
                   id={`variant-name-${v.id ?? idx}`}
                   value={v.label}
-                  readOnly={wrLocked}
                   onChange={(e) => {
                     const val = e.target.value;
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, label: val } : item));
                   }}
                   placeholder="Contoh: 1 Bulan Private / 1 Tahun Sharing"
-                  className={wrLocked ? lockedInput : openInput}
+                  className={openInput}
                 />
               </div>
               <div className="flex items-center gap-2 pt-4">
@@ -532,15 +531,17 @@ export function ProductVariantRows({
                   produk manual/stok sendiri yang modalnya tak tercatat di
                   link supplier. 0 = murni tanpa modal. */}
               <Label className="block min-w-0">
-                <span className="block text-sm font-medium text-admin-fg mb-1 sm:min-h-[28px]">Modal (Rp) <span className="normal-case tracking-normal text-admin-muted">(0 = tanpa modal)</span></span>
-                <MoneyInput
+                <span className="block text-sm font-medium text-admin-fg mb-1 sm:min-h-[28px]">Modal (Rp) <span className="normal-case tracking-normal text-admin-muted">{v.supplier_cost_source ? `dari ${v.supplier_cost_source}` : "(0 = tanpa modal)"}</span></span>
+                {v.supplier_cost_source ? (
+                  <Input readOnly inputMode="numeric" value={v.supplier_cost?.toLocaleString("id-ID") ?? "—"} className={lockedInput} />
+                ) : <MoneyInput
                   value={v.manual_cost ?? 0}
                   onChange={(val) => {
                     onSetFormVariants((curr) => curr.map((item, i) => i === idx ? { ...item, manual_cost: Math.max(0, val ?? 0) } : item));
                   }}
                   placeholder="0"
                   className={openInput}
-                />
+                />}
               </Label>
             </div>
 

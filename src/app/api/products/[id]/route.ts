@@ -45,13 +45,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
    // /api/catalog + /api/products yang tetap hanya aktif). Bundle Buff pensiun
    // tidak ditawarkan lagi; baris arsipnya tetap ada untuk relasi order lama.
   const variants = await queryAll(
-    `SELECT id, product_id, sku, label, duration_value, duration_unit, duration_label,
-            warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, min_qty, max_qty, buyer_field_key, manual_cost, fulfillment_mode, is_active, sort_order, wr_auto_managed, admin_terms, admin_activation,
-            bulk_pricing_enabled, bulk_pricing_tiers
-     FROM product_variants
+    `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.duration_value, pv.duration_unit, pv.duration_label,
+            pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.manual_cost, pv.fulfillment_mode, pv.is_active, pv.sort_order, pv.wr_auto_managed, pv.admin_terms, pv.admin_activation,
+            pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
+            CASE WHEN pv.wr_variant_id IS NOT NULL THEN wv.wr_price
+                 WHEN pv.sk_variant_id IS NOT NULL THEN sp.sk_price
+                 ELSE NULL END AS supplier_cost,
+            CASE WHEN pv.wr_variant_id IS NOT NULL THEN 'WR'
+                 WHEN pv.sk_variant_id IS NOT NULL THEN 'SK'
+                 ELSE NULL END AS supplier_cost_source
+     FROM product_variants pv
+     LEFT JOIN wr_variants wv ON wv.wr_variant_id=pv.wr_variant_id
+     LEFT JOIN sk_products sp ON sp.sk_variant_id=pv.sk_variant_id
      WHERE product_id=? AND sku NOT IN ('TUNVN-BUFF-5B','TUNVN-BUFF-10B','TUNVN-BUFF-20B','TUNVN-BUFF-30B')
-     ORDER BY sort_order ASC, price ASC, id ASC`,
+     ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
     Number(id)
   );
 
@@ -76,7 +84,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           || !Number.isSafeInteger((t as Record<string, unknown>).unit_price));
         if (badShape) { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
       } else { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
-    return { ...row, bulk_pricing: { enabled, tiers }, ...(corrupt ? { bulk_pricing_corrupt: true } : {}) };
+    return {
+      ...row,
+      supplier_cost: row.supplier_cost != null ? Number(row.supplier_cost) : null,
+      supplier_cost_source: row.supplier_cost_source === "WR" || row.supplier_cost_source === "SK" ? row.supplier_cost_source : null,
+      bulk_pricing: { enabled, tiers },
+      ...(corrupt ? { bulk_pricing_corrupt: true } : {}),
+    };
   });
 
   return NextResponse.json({
@@ -198,7 +212,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (existing.archived_at && (data.isActive === true || data.variants?.some(v => v.is_active === 1))) {
     return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
   }
-  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id,price,aivault_admin_price_idr,tunvn_admin_price_idr,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE product_id=?", id);
+  const storedVariants = await queryAll("SELECT id,sku,is_active,min_qty,max_qty,tunvn_source_product_id,price,manual_cost,wr_variant_id,sk_variant_id,aivault_admin_price_idr,tunvn_admin_price_idr,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE product_id=?", id);
   // Identitas TUNVN = kolom durable, bukan slug: semua family TUNVN memakai
   // jalur aktivasi/publikasi yang sama.
   const tunvnVariants = storedVariants.filter(v => v.tunvn_source_product_id != null);
@@ -505,7 +519,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
                   `UPDATE product_variants SET
                      sku=?, label=?, duration_value=?, duration_unit=?, duration_label=?,
                      warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
-                     price=?, compare_price=?, stock=?, min_qty=?, manual_cost=?, fulfillment_mode=?, is_active=?,
+                     price=?, compare_price=?, stock=?, min_qty=?,
+                     manual_cost=CASE WHEN wr_variant_id IS NOT NULL OR sk_variant_id IS NOT NULL THEN manual_cost ELSE ? END,
+                     fulfillment_mode=?, is_active=?,
                      sort_order=?,
                      bulk_pricing_enabled=?, bulk_pricing_tiers=?,
                      updated_at=datetime('now')
@@ -671,13 +687,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         if (needsVariantWrite && data.variants) {
           for (const v of data.variants) {
             if (!v.id) continue;
+            const storedRow = storedVariants.find((row) => Number(row.id) === Number(v.id));
+            const isSupplierLinked = storedRow != null && (storedRow.wr_variant_id != null || storedRow.sk_variant_id != null);
             const vFields: string[] = [];
             const vVals: unknown[] = [];
+            if (v.label !== undefined) { vFields.push("label=?"); vVals.push(v.label.trim()); }
             if (v.price !== undefined) { vFields.push("price=?"); vVals.push(Number(v.price)); }
             if (v.comparePrice !== undefined) { vFields.push("compare_price=?"); vVals.push(v.comparePrice ? Number(v.comparePrice) : null); }
             if (v.stock !== undefined) { vFields.push("stock=?"); vVals.push(Number(v.stock)); }
             if (v.is_active !== undefined) { vFields.push("is_active=?"); vVals.push(Number(v.is_active)); }
-            if (v.manual_cost !== undefined) { vFields.push("manual_cost=?"); vVals.push(Math.max(0, Math.floor(Number(v.manual_cost) || 0))); }
+            if (v.manual_cost !== undefined && !isSupplierLinked) { vFields.push("manual_cost=?"); vVals.push(Math.max(0, Math.floor(Number(v.manual_cost) || 0))); }
             // Paritas single 2026-09-28: mode single kini mengirim variants
             // eksplisit juga di dev — field milik admin ini harus ikut
             // tertulis, seperti cabang D1 di atas.

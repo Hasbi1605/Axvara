@@ -50,7 +50,7 @@ it("provides neutral statistics, sentence hierarchy, spaced tables and inset sel
   expect(screen.getByRole("cell").className).toContain("last:pr-6");
 });
 
-it("WR modal omits the redundant yellow WR banner while keeping Nama/Slug readOnly and Kategori/Badge/tabs/Save working", async () => {
+it("WR modal allows Nama/Slug edits without auto-rewriting an existing slug", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ variants: [] }) })));
   const onSetForm = vi.fn();
   const noop = vi.fn();
@@ -91,8 +91,12 @@ it("WR modal omits the redundant yellow WR banner while keeping Nama/Slug readOn
   expect(screen.queryByText(/Dikelola otomatis Warung Rebahan/)).toBeNull();
   const nameInput = screen.getByRole("textbox", { name: "Nama *" }) as HTMLInputElement;
   const slugInput = screen.getByRole("textbox", { name: "Slug *" }) as HTMLInputElement;
-  expect(nameInput.readOnly).toBe(true);
-  expect(slugInput.readOnly).toBe(true);
+  expect(nameInput.readOnly).toBe(false);
+  expect(slugInput.readOnly).toBe(false);
+  fireEvent.change(nameInput, { target: { value: "Netflix Baru" } });
+  expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ name: "Netflix Baru", slug: "netflix-premium" }));
+  fireEvent.change(slugInput, { target: { value: "Netflix Baru" } });
+  expect(onSetForm).toHaveBeenCalledWith(expect.objectContaining({ slug: "netflix-baru" }));
 
   const catSelect = screen.getByRole("combobox", { name: "Kategori" }) as HTMLSelectElement;
   const badgeInput = screen.getByRole("textbox", { name: "Badge" }) as HTMLInputElement;

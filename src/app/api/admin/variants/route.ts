@@ -112,17 +112,25 @@ export async function GET(request: NextRequest) {
   if (!product) return NextResponse.json({ error: "product_not_found" }, { status: 404 });
 
   const variants = await queryAll(
-    `SELECT id, product_id, sku, label,
-            duration_value, duration_unit, duration_label,
-            warranty_type, warranty_value, warranty_unit, warranty_label,
-            price, compare_price, stock, min_qty, max_qty, buyer_field_key, manual_cost, fulfillment_mode, admin_terms, admin_activation,
-            bulk_pricing_enabled, bulk_pricing_tiers,
-            CASE WHEN shared_secret_ciphertext IS NOT NULL AND shared_secret_iv IS NOT NULL THEN 1 ELSE 0 END
+    `SELECT pv.id, pv.product_id, pv.sku, pv.label,
+            pv.duration_value, pv.duration_unit, pv.duration_label,
+            pv.warranty_type, pv.warranty_value, pv.warranty_unit, pv.warranty_label,
+            pv.price, pv.compare_price, pv.stock, pv.min_qty, pv.max_qty, pv.buyer_field_key, pv.manual_cost, pv.fulfillment_mode, pv.admin_terms, pv.admin_activation,
+            pv.bulk_pricing_enabled, pv.bulk_pricing_tiers,
+            CASE WHEN pv.wr_variant_id IS NOT NULL THEN wv.wr_price
+                 WHEN pv.sk_variant_id IS NOT NULL THEN sp.sk_price
+                 ELSE NULL END AS supplier_cost,
+            CASE WHEN pv.wr_variant_id IS NOT NULL THEN 'WR'
+                 WHEN pv.sk_variant_id IS NOT NULL THEN 'SK'
+                 ELSE NULL END AS supplier_cost_source,
+            CASE WHEN pv.shared_secret_ciphertext IS NOT NULL AND pv.shared_secret_iv IS NOT NULL THEN 1 ELSE 0 END
               AS shared_secret_configured,
-            is_active, sort_order, created_at, updated_at
-     FROM product_variants
+            pv.is_active, pv.sort_order, pv.created_at, pv.updated_at
+     FROM product_variants pv
+     LEFT JOIN wr_variants wv ON wv.wr_variant_id=pv.wr_variant_id
+     LEFT JOIN sk_products sp ON sp.sk_variant_id=pv.sk_variant_id
      WHERE product_id=? AND sku NOT IN ('TUNVN-BUFF-5B','TUNVN-BUFF-10B','TUNVN-BUFF-20B','TUNVN-BUFF-30B')
-     ORDER BY sort_order ASC, price ASC, id ASC`,
+     ORDER BY pv.sort_order ASC, pv.price ASC, pv.id ASC`,
     Number(productId),
   );
 
@@ -144,6 +152,8 @@ export async function GET(request: NextRequest) {
     } else { enabled = false; tiers = []; corrupt = Number(row.bulk_pricing_enabled ?? 0) === 1; }
     return {
       ...row,
+      supplier_cost: row.supplier_cost != null ? Number(row.supplier_cost) : null,
+      supplier_cost_source: row.supplier_cost_source === "WR" || row.supplier_cost_source === "SK" ? row.supplier_cost_source : null,
       bulk_pricing: { enabled, tiers },
       ...(corrupt ? { bulk_pricing_corrupt: true } : {}),
     };
@@ -333,7 +343,9 @@ async function POSTImpl(request: NextRequest) {
               `UPDATE product_variants SET
                  sku=?, label=?, duration_value=?, duration_unit=?, duration_label=?,
                  warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
-                 price=?, compare_price=?, stock=?, min_qty=?, manual_cost=?, fulfillment_mode=?, is_active=?,
+                 price=?, compare_price=?, stock=?, min_qty=?,
+                 manual_cost=CASE WHEN wr_variant_id IS NOT NULL OR sk_variant_id IS NOT NULL THEN manual_cost ELSE ? END,
+                 fulfillment_mode=?, is_active=?,
                  sort_order=?,
                  bulk_pricing_enabled=?, bulk_pricing_tiers=?,
                  updated_at=datetime('now')
@@ -438,7 +450,9 @@ async function POSTImpl(request: NextRequest) {
     for (const v of variants) {
       if (v.id) {
         await execRun(
-          `UPDATE product_variants SET sku=?, label=?, price=?, stock=?, min_qty=?, manual_cost=?, is_active=?, sort_order=? WHERE id=?`,
+          `UPDATE product_variants SET sku=?, label=?, price=?, stock=?, min_qty=?,
+             manual_cost=CASE WHEN wr_variant_id IS NOT NULL OR sk_variant_id IS NOT NULL THEN manual_cost ELSE ? END,
+             is_active=?, sort_order=? WHERE id=?`,
           v.sku, v.label, v.price, v.stock, v.min_qty ?? 1, v.manual_cost ?? 0, v.is_active, v.sort_order, v.id,
         );
       }
@@ -536,9 +550,13 @@ async function PUTImpl(request: NextRequest) {
     return NextResponse.json({ error: "validation_failed", details: parsed.error.flatten() }, { status: 400 });
   }
 
+  const rawBody = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
+  const filteredParsed = Object.fromEntries(
+    Object.entries(parsed.data).filter(([key]) => Object.prototype.hasOwnProperty.call(rawBody, key)),
+  ) as typeof parsed.data;
   const v = {
-    ...parsed.data,
-    ...(parsed.data.sku ? { sku: parsed.data.sku.toUpperCase() } : {}),
+    ...filteredParsed,
+    ...(filteredParsed.sku ? { sku: filteredParsed.sku.toUpperCase() } : {}),
   };
 
   // Check existing variant
@@ -563,10 +581,7 @@ async function PUTImpl(request: NextRequest) {
   // request hanya mengirim compare_price. Bandingkan HANYA key yang benar-benar
   // ada di body mentah — kalau tidak, edit coret saja selalu 409 "stock".
   if (isWrManaged(existing)) {
-    const rawBody = (body ?? {}) as Record<string, unknown>;
-    const incomingOnly: Record<string, unknown> = {};
-    for (const key of Object.keys(rawBody)) incomingOnly[key] = (v as Record<string, unknown>)[key];
-    const violation = findWrOwnedViolation(incomingOnly, existing, WR_OWNED_VARIANT_FIELDS);
+    const violation = findWrOwnedViolation(v as Record<string, unknown>, existing, WR_OWNED_VARIANT_FIELDS);
     if (violation) return NextResponse.json({ error: WR_OWNERSHIP_MESSAGE, field: violation }, { status: 409 });
   }
 
@@ -644,12 +659,13 @@ async function PUTImpl(request: NextRequest) {
     updates.push("tunvn_admin_price_idr=?");
     params.push(v.price);
   }
+  const isSupplierLinked = existing.wr_variant_id != null || existing.sk_variant_id != null;
   const fields: [string, unknown][] = [
     ["sku", v.sku], ["label", v.label],
     ["duration_value", v.duration_value], ["duration_unit", v.duration_unit], ["duration_label", v.duration_label],
     ["warranty_type", v.warranty_type], ["warranty_value", v.warranty_value], ["warranty_unit", v.warranty_unit], ["warranty_label", v.warranty_label],
     ["price", v.price], ["compare_price", v.compare_price], ["stock", v.stock],
-    ["min_qty", v.min_qty], ["manual_cost", v.manual_cost], ["max_qty",v.max_qty], ["buyer_field_key",v.buyer_field_key],
+    ["min_qty", v.min_qty], ["manual_cost", isSupplierLinked ? undefined : v.manual_cost], ["max_qty",v.max_qty], ["buyer_field_key",v.buyer_field_key],
     ["fulfillment_mode", v.fulfillment_mode], ["is_active", v.is_active], ["sort_order", v.sort_order],
   ];
   for (const [col, val] of fields) {
@@ -666,7 +682,10 @@ async function PUTImpl(request: NextRequest) {
     params.push(bulkEnabled, bulkTiersJson);
   }
 
-  if (updates.length === 0 && bulkEnabled === null) return NextResponse.json({ error: "no_fields_to_update" }, { status: 400 });
+  if (updates.length === 0 && bulkEnabled === null) {
+    if (isSupplierLinked && v.manual_cost !== undefined) return NextResponse.json({ ok: true });
+    return NextResponse.json({ error: "no_fields_to_update" }, { status: 400 });
+  }
 
   updates.push("updated_at=datetime('now')");
   const d1put = getD1();

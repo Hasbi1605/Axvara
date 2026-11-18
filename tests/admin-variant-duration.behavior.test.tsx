@@ -16,9 +16,9 @@ const duration = { duration_value: 3, duration_unit: "month", duration_label: "3
 const warranty = { warranty_type: "full", warranty_value: 7, warranty_unit: "day" };
 const variant: FormVariant = { id: 11, sku: "DEFAULT-1", label: "Default", price: 5000, stock: 5, is_active: 1, ...duration, ...warranty };
 
-function Fields({ multi, locked = false }: { multi: boolean; locked?: boolean }) {
-  const [form, setForm] = useState<ProductForm>({ ...duration, ...warranty, wrManaged: locked });
-  const [variants, setVariants] = useState<FormVariant[]>([variant]);
+function Fields({ multi, locked = false, cost = {} }: { multi: boolean; locked?: boolean; cost?: Pick<FormVariant, "supplier_cost" | "supplier_cost_source"> }) {
+  const [form, setForm] = useState<ProductForm>({ ...duration, ...warranty, ...cost, wrManaged: locked });
+  const [variants, setVariants] = useState<FormVariant[]>([{ ...variant, ...cost }]);
   return <ToastProvider>
     {multi ? <ProductVariantRows form={form} formVariants={variants} onSetFormVariants={setVariants} editing={false} />
       : <SingleVariantFields form={form} onSetForm={setForm} editing={false} />}
@@ -66,18 +66,64 @@ it.each([false, true])("single/multi=%s: WR keeps duration and warranty locked",
   expect((screen.getByLabelText("Lama garansi") as HTMLInputElement).readOnly).toBe(true);
   expect((screen.getByLabelText("Masa garansi (WR)") as HTMLSelectElement).disabled).toBe(true);
   expect(draft()).toMatchObject(duration);
+  if (multi) {
+    const label = screen.getByLabelText<HTMLInputElement>("Nama varian / paket *");
+    expect(label.readOnly).toBe(false);
+    fireEvent.change(label, { target: { value: "Paket Baru" } });
+    expect(draft().label).toBe("Paket Baru");
+    expect(screen.getByLabelText<HTMLInputElement>("Harga jual (Rp) * (WR)").readOnly).toBe(true);
+    expect(screen.getByLabelText<HTMLInputElement>(/^Stok \(WR\)/).readOnly).toBe(true);
+    expect(screen.queryByRole("button", { name: "Tambah Varian" })).toBeNull();
+  }
+});
+
+it.each([false, true])("single/multi=%s: supplier modal is read-only, manual modal remains editable", (multi) => {
+  for (const [source, cost, display] of [["WR", 12500, "12.500"], ["SK", null, "—"]] as const) {
+    const view = render(<Fields multi={multi} cost={{ supplier_cost_source: source, supplier_cost: cost }} />);
+    const input = screen.getByLabelText<HTMLInputElement>(new RegExp(`Modal \\(Rp\\) dari ${source}`));
+    expect(input.readOnly).toBe(true);
+    expect(input.value).toBe(display);
+    view.unmount();
+  }
+  render(<Fields multi={multi} />);
+  const input = screen.getByLabelText<HTMLInputElement>(/Modal \(Rp\) \(0 = tanpa modal\)/);
+  expect(input.readOnly).toBe(false);
+  fireEvent.change(input, { target: { value: "1000" } });
+  expect(draft().manual_cost).toBe(1000);
 });
 
 const product: Prod = { id: "1", name: "Test Product", slug: "test-product", description: "", price: 5000, stock: 5, categorySlug: "tools-pro", image: "", images: [], soldCount: 0, isActive: true };
-function managerApi(savedDuration: typeof duration, multi: boolean) {
+function managerApi(savedDuration: typeof duration, multi: boolean, source?: "WR" | "SK") {
   const writes: Record<string, unknown>[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "PUT" || init?.method === "POST") writes.push(JSON.parse(String(init.body)));
-    if (url === "/api/products/1" && !init?.method) return { ok: true, json: async () => ({ product: { ...product, variants: [{ ...variant, ...savedDuration, sku: multi ? "PACKAGE-1" : "DEFAULT-1" }] } }) };
+    if (url === "/api/products/1" && !init?.method) return { ok: true, json: async () => ({ product: { ...product, wrManaged: source === "WR", variants: [{ ...variant, ...savedDuration, sku: multi ? "PACKAGE-1" : "DEFAULT-1", manual_cost: 42, supplier_cost: source ? 12500 : null, supplier_cost_source: source }] } }) };
     return { ok: true, json: async () => ({ products: [product], categories: [] }) };
   }));
   return writes;
 }
+
+it.each([[true, "WR"], [false, "WR"], [false, "SK"]] as const)("multi=%s %s: editor writes admin text but not supplier modal", async (multi, source) => {
+  const writes = managerApi(duration, multi, source);
+  const { result } = renderHook(() => useProductManager({ success: vi.fn(), error: vi.fn() }, vi.fn()));
+  await act(async () => { await result.current.openEdit(product); });
+  expect(multi ? result.current.formVariants[0] : result.current.form).toMatchObject({ supplier_cost: 12500, supplier_cost_source: source });
+  act(() => {
+    result.current.setForm({ ...result.current.form, name: "Nama Baru", slug: "nama-baru", adminDescriptionOverride: "Override" });
+    result.current.setFormVariants(prev => prev.map(v => ({ ...v, label: "Paket Baru" })));
+  });
+  await act(async () => { await result.current.save(); });
+  expect(writes[0]).toMatchObject({ name: "Nama Baru", slug: "nama-baru" });
+  expect(writes[0]).not.toHaveProperty("supplier_cost_source");
+  if (source === "WR") {
+    expect(writes[0]).toHaveProperty("adminDescriptionOverride", "Override");
+    expect(writes[0]).not.toHaveProperty("description");
+  }
+  const savedVariant = (writes[0].variants as FormVariant[])[0];
+  expect(savedVariant.label).toBe("Paket Baru");
+  expect(savedVariant).not.toHaveProperty("manual_cost");
+  expect(savedVariant).not.toHaveProperty("supplier_cost");
+});
 
 it.each([false, true])("single/multi=%s: open/save without edits preserves every stored duration field", async (multi) => {
   const writes = managerApi(duration, multi);

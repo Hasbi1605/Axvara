@@ -69,7 +69,7 @@ describe("PUT /api/products/[id] descriptionEn", () => {
     expect(detail.product.descriptionEn).toBe("English WR description.");
     expect(detail.product.wrDescription).toBe("Deskripsi WR.");
 
-    const blocked = await PUT(req("/api/products/3", "PUT", { name: "Nama Baru" }), ctx);
+    const blocked = await PUT(req("/api/products/3", "PUT", { price: 2000 }), ctx);
     expect(blocked.status).toBe(409);
 
     const cleared = await PUT(req("/api/products/3", "PUT", { descriptionEn: "" }), ctx);

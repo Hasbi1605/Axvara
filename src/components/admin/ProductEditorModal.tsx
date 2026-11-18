@@ -123,8 +123,8 @@ export function ProductEditorModal({
             <div ref={bodyRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-6 pb-2">
             <TabsContent value="detail" forceMount hidden={tab !== "detail"} className="mt-0">
             <div className="mt-5 grid sm:grid-cols-2 gap-4">
-              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-sm font-medium text-admin-fg">Nama *</span><Input value={form.name??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className={`w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></Label>
-              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-sm font-medium text-admin-fg">Slug *</span><Input value={form.slug??""} readOnly={form.wrManaged} onChange={e=>onSetForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className={`w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted font-mono focus:outline-none ${form.wrManaged ? "bg-admin-subtle border-admin-border text-admin-muted cursor-not-allowed" : "bg-admin-subtle border-admin-border focus:border-admin-accent/30"}`} /></Label>
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-sm font-medium text-admin-fg">Nama *</span><Input value={form.name??""} onChange={e=>onSetForm({...form,name:e.target.value, slug: !editing? e.target.value.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""): form.slug})} placeholder="ChatGPT Plus 1 Bulan" className="w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted focus:outline-none bg-admin-subtle border-admin-border focus:border-admin-accent/30" /></Label>
+              <Label className="space-y-2"><span className="flex items-center gap-1.5 text-sm font-medium text-admin-fg">Slug *</span><Input value={form.slug??""} onChange={e=>onSetForm({...form,slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g,"-")})} placeholder="chatgpt-plus-1-bulan" className="w-full h-9 px-3 rounded-xl border text-sm text-admin-fg placeholder:text-admin-muted font-mono focus:outline-none bg-admin-subtle border-admin-border focus:border-admin-accent/30" /></Label>
               <Label className="space-y-2"><span className="flex items-center gap-1.5 text-sm font-medium text-admin-fg">Kategori</span><NativeSelect value={form.categorySlug??cats[0]?.slug??""} onChange={e=>onSetForm({...form,categorySlug:e.target.value})} className="w-full h-9 px-3 rounded-xl bg-admin-subtle border border-admin-border text-sm text-admin-fg focus:outline-none focus:border-admin-accent/30">
                 {cats.map((category) => <option key={category.id} value={category.slug} className="bg-admin-card">{category.name}</option>)}
               </NativeSelect></Label>
@@ -206,6 +206,8 @@ export function ProductEditorModal({
                         buyer_field_key: v0.buyer_field_key,
                         max_qty: v0.max_qty,
                         manual_cost: v0.manual_cost ?? 0,
+                        supplier_cost: v0.supplier_cost,
+                        supplier_cost_source: v0.supplier_cost_source,
                         warranty_type: v0.warranty_type || "none",
                         warranty_value: v0.warranty_value ?? null,
                         warranty_unit: v0.warranty_unit || null,
@@ -224,6 +226,14 @@ export function ProductEditorModal({
                 <ProductVariantRows form={form} formVariants={formVariants} onSetFormVariants={onSetFormVariants} productId={editingId} editing={editing} />
               ) : (
                 <>
+                {form.wrManaged && formVariants.length === 1 && formVariants[0].sku.startsWith("DEFAULT-") && (
+                  <Label className="mt-4 block space-y-2 text-sm font-medium">Nama varian / paket *
+                    <Input value={formVariants[0].label} onChange={e => {
+                      const label = e.target.value;
+                      onSetFormVariants(curr => curr.map(v => ({ ...v, label })));
+                    }} className="h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none" />
+                  </Label>
+                )}
                 <div className="mt-4 grid sm:grid-cols-3 gap-3">
                   <Label className="block min-w-0">
                     <span className="text-sm font-medium text-admin-fg">Harga jual *{form.wrManaged ? " (WR)" : ""}</span>

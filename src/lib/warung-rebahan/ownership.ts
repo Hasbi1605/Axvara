@@ -1,19 +1,25 @@
 // Kepemilikan field produk/varian Warung Rebahan.
 //
-// Sinkronisasi WR menimpa label, harga, stok, durasi, dan garansi setiap
-// sweep. Sebelum ini, admin masih bisa mengedit field-field tersebut dari
-// panel; hasilnya tampak tersimpan lalu hilang diam-diam pada sync berikutnya.
+// Sinkronisasi WR menimpa harga, stok, durasi, dan garansi setiap sweep.
 // Validasi harus ada di API — mendisable input di UI tidak mengikat klien lain
 // (agent CMS, curl, tab lama yang masih terbuka).
 //
+// Revisi 2026-11-18 (keputusan owner):
+//   - `name` dan `slug` produk WR dibuka untuk admin (sync hanya mengisi saat INSERT).
+//   - `label` varian WR dibuka untuk admin; sync WR/SK hanya menimpa `label`
+//     bila belum dikustomisasi admin (masih sama dengan nama supplier
+//     sebelumnya atau NULL/kosong).
+//
 // Kontrak:
-//   WR-owned    : label varian, harga jual, stok, durasi, garansi, deskripsi,
+//   WR-owned    : harga jual, stok, durasi, garansi, deskripsi bawaan,
 //                 S&K varian (terms) + cara aktivasi (delivery_terms, read-only
 //                 dari wr_variants, tak bisa diedit admin). PDP menampilkan
 //                 versi Axvara dari src/lib/product-copy/curated.ts selama
 //                 teks WR masih sama dengan saat dikurasi (sidik jari);
 //                 bila WR mengubahnya, teks WR yang dirapikan yang tampil.
-//   Admin-owned : foto, badge, sort_order, is_active, admin_description_override,
+//   Admin-owned : nama, slug, label varian (dipertahankan lintas sync bila
+//                 berbeda dari nama supplier sebelumnya), foto, badge,
+//                 sort_order, is_active, admin_description_override,
 //                 (sejak migrasi 0040 berisi deskripsi versi Axvara untuk
 //                 produk WR — tetap milik admin, bebas diubah/dikosongkan),
 //                 S&K + cara aktivasi per varian (product_variants.admin_terms,
@@ -34,13 +40,14 @@
 //                 per varian (GSuite = 50). Sync tidak pernah menyentuh kolom
 //                 ini, jadi sengaja TIDAK masuk WR_OWNED_VARIANT_FIELDS.
 //                 MODAL MANUAL (manual_cost, migrasi 0058) — milik admin per
-//                 varian untuk produk manual. Sync tidak pernah menyentuh kolom
-//                 ini, jadi sengaja TIDAK masuk WR_OWNED_VARIANT_FIELDS.
+//                 varian untuk produk manual (varian WR/SK memakai modal
+//                 supplier dari wr_variants/sk_products dan mengabaikan
+//                 manual_cost masuk). Sync tidak pernah menyentuh kolom ini,
+//                 jadi sengaja TIDAK masuk WR_OWNED_VARIANT_FIELDS.
 //   Markup      : hanya lewat panel WR (wr_variants.markup_percent/fixed).
 
 /** Field varian yang hanya boleh ditulis oleh sync WR. */
 export const WR_OWNED_VARIANT_FIELDS = [
-  "label",
   "price",
   "stock",
   "duration_value",
@@ -53,14 +60,10 @@ export const WR_OWNED_VARIANT_FIELDS = [
 ] as const;
 
 /** Field produk yang hanya boleh ditulis oleh sync WR. */
-export const WR_OWNED_PRODUCT_FIELDS = ["name", "slug", "description", "price", "stock"] as const;
+export const WR_OWNED_PRODUCT_FIELDS = ["description", "price", "stock"] as const;
 
 export const WR_OWNERSHIP_MESSAGE =
-  // Sebut juga nama/slug (ikut WR_OWNED_PRODUCT_FIELDS) dan TEGASKAN apa yang
-  // masih milik admin — tanpa itu admin menyimpulkan produk WR sama sekali
-  // tidak bisa disesuaikan, padahal harga coret, min. beli, foto, dan badge
-  // aman lintas sweep.
-  "Produk ini dikelola otomatis oleh Warung Rebahan. Nama, slug, deskripsi, harga, stok, label varian, durasi, dan garansi ikut katalog WR — ubah markup di tab Warung Rebahan. Yang tetap milik Anda: foto, badge, kategori, urutan, aktif/nonaktif, harga coret, min. beli, 'Deskripsi khusus (override)', dan S&K + cara aktivasi per varian.";
+  "Produk ini dikelola otomatis oleh Warung Rebahan. Deskripsi bawaan, harga, stok, durasi, dan garansi ikut katalog WR — ubah markup di tab Warung Rebahan. Yang tetap milik Anda: nama, slug, nama varian, foto, badge, kategori, urutan, aktif/nonaktif, harga coret, min. beli, 'Deskripsi khusus (override)', dan S&K + cara aktivasi per varian.";
 
 type Row = Record<string, unknown> | undefined | null;
 

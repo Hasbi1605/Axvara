@@ -857,3 +857,70 @@ describe("sekalipay license formatting", () => {
     expect(withLic).toContain("user@mail.com");
   });
 });
+
+describe("sekalipay label varian kustom admin bertahan lintas sync (2026-11-18)", () => {
+  function skCatalog(v1Name: string, v2Name: string, stock = 5) {
+    return {
+      server_time: "2026-11-18T10:00:00+07:00",
+      data: [
+        {
+          id: 1, name: "Aplikasi Premium", icon: null,
+          products: [
+            {
+              id: 9, name: "Netflix", image: null,
+              variants: [
+                { id: 101, sku: "N-1", name: v1Name, price: 10000, stock, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+                { id: 102, sku: "N-2", name: v2Name, price: 18000, stock, order_process: "auto" as const, h2h_provider: null, provider_meta: null, required_fields: null, validation: null, updated_at: null },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("label kustom bertahan saat nama supplier sama dan saat supplier rename; label non-kustom ikut rename", async () => {
+    const fx = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      vi.stubEnv("SEKALIPAY_ENABLED", "true");
+      await syncSkProducts(createDatabaseAccess(fx.db), async () => skCatalog("1 Bulan", "2 Bulan"), { trigger: "manual" });
+
+      // Admin mengkustomisasi label varian 101 saja; varian 102 dibiarkan default.
+      fx.sql.prepare("UPDATE product_variants SET label='Netflix 1 Bulan Private' WHERE sk_variant_id='101'").run();
+
+      // Sweep kedua dengan nama supplier unchanged: label kustom bertahan dan tidak memicu UPDATE product_variants.
+      const origPrepare = fx.db.prepare.bind(fx.db);
+      let pvUpdates = 0;
+      (fx.db as unknown as { prepare: unknown }).prepare = ((query: string) => {
+        const stmt = origPrepare(query);
+        if (!query.trim().toUpperCase().startsWith("UPDATE PRODUCT_VARIANTS")) return stmt;
+        const wrap = (s: typeof stmt): typeof stmt => ({
+          ...s,
+          bind: (...vals: unknown[]) => wrap(s.bind(...vals)),
+          run: async () => {
+            const r = await s.run();
+            pvUpdates += Number(r?.meta?.changes ?? 0);
+            return r;
+          },
+        });
+        return wrap(stmt);
+      }) as typeof fx.db.prepare;
+
+      await syncSkProducts(createDatabaseAccess(fx.db), async () => skCatalog("1 Bulan", "2 Bulan"), { trigger: "cron" });
+      expect(pvUpdates).toBe(0);
+      expect((fx.sql.prepare("SELECT label FROM product_variants WHERE sk_variant_id='101'").get() as { label: string }).label).toBe("Netflix 1 Bulan Private");
+
+      // Sweep ketiga saat supplier rename kedua varian: 101 tetap label kustom, 102 ikut nama supplier baru.
+      await syncSkProducts(createDatabaseAccess(fx.db), async () => skCatalog("1 Bulan UHD", "2 Bulan UHD", 8), { trigger: "cron" });
+      expect((fx.sql.prepare("SELECT label, stock FROM product_variants WHERE sk_variant_id='101'").get() as { label: string; stock: number })).toEqual({
+        label: "Netflix 1 Bulan Private",
+        stock: 8,
+      });
+      expect((fx.sql.prepare("SELECT label FROM product_variants WHERE sk_variant_id='102'").get() as { label: string }).label).toBe("2 Bulan UHD");
+      expect((fx.sql.prepare("SELECT sk_variant_name FROM sk_products WHERE sk_variant_id='101'").get() as { sk_variant_name: string }).sk_variant_name).toBe("1 Bulan UHD");
+    } finally {
+      fx.close();
+    }
+  });
+});

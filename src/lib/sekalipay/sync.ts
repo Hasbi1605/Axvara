@@ -4,9 +4,12 @@
 // otomatis. Produk yang tampil dipilih manual (Netflix WR vs Netflix SK =
 // dua baris katalog berbeda, admin yang mengaktifkan salah satu).
 //
-// Kontrak kepemilikan (cermin migrasi WR 0030):
-//   SK    : stok, harga modal, label varian, seller_note, order_process.
-//   Admin : foto, badge, sort_order, is_active, markup, tampil/tidak.
+// Kontrak kepemilikan (cermin migrasi WR 0030 + revisi 2026-11-18):
+//   SK    : stok, harga modal, label varian (hanya bila belum dikustomisasi
+//           admin — masih NULL/kosong atau sama dengan sk_variant_name lama),
+//           seller_note, order_process.
+//   Admin : nama produk, slug, label varian kustom, foto, badge, sort_order,
+//           is_active, markup, tampil/tidak.
 // Sync TIDAK PERNAH menulis: sold_count, admin_* copy, require_email,
 // min_qty, fulfillment_mode non-SK.
 //
@@ -265,6 +268,7 @@ function planSkCatalogRefreshWrite(
   sellPrice: number,
   stock: number,
   label: string,
+  previousSupplierName: string | null = null,
 ): SkSqlWrite[] {
   return [
     {
@@ -273,9 +277,32 @@ function planSkCatalogRefreshWrite(
       // (compare_price > price) sehingga rollback SELURUH batch produk
       // (insiden Alight/Viu 2026-10-06). NULL-kan coret basi agar harga jual
       // otoritatif selalu tembus — katalog menimpa sync yang menimpa admin.
-      sql: `UPDATE product_variants SET price=?, stock=?, label=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now')
-            WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=? AND (price IS NOT ? OR stock IS NOT ? OR label IS NOT ? OR (compare_price IS NOT NULL AND compare_price <= ?))`,
-      params: [sellPrice, stock, label, sellPrice, axvaraVariantId, sellPrice, stock, label, sellPrice],
+      // label varian milik admin bila sudah dikustomisasi: hanya timpa
+      // saat NULL/kosong atau masih sama dengan sk_variant_name lama.
+      sql: `UPDATE product_variants
+            SET price=?,
+                stock=?,
+                label=CASE WHEN label IS NULL OR label='' OR label IS ? THEN ? ELSE label END,
+                compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END,
+                updated_at=datetime('now')
+            WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL)
+              AND id=?
+              AND (price IS NOT ? OR stock IS NOT ?
+                   OR ((label IS NULL OR label='' OR label IS ?) AND label IS NOT ?)
+                   OR (compare_price IS NOT NULL AND compare_price <= ?))`,
+      params: [
+        sellPrice,
+        stock,
+        previousSupplierName,
+        label,
+        sellPrice,
+        axvaraVariantId,
+        sellPrice,
+        stock,
+        previousSupplierName,
+        label,
+        sellPrice,
+      ],
       catalogDisplay: true,
     },
     planSkParentAggregateWrite(axvaraProductId),
@@ -813,7 +840,7 @@ export async function syncSkProducts(
       // NOL round-trip baca. Hanya registry BARU yang butuh 1 SELECT pastian
       // (balapan insert ganda antar run).
       const regExisting = skRegistryRows.get(skVariantId) ?? (await db
-        .queryFirst(`SELECT id, axvara_product_id, axvara_variant_id FROM sk_products WHERE sk_variant_id=?`, skVariantId)
+        .queryFirst(`SELECT id, sk_variant_name, axvara_product_id, axvara_variant_id FROM sk_products WHERE sk_variant_id=?`, skVariantId)
         .catch(() => null));
       let axvaraProductId = regExisting?.axvara_product_id != null ? Number(regExisting.axvara_product_id) : 0;
       let axvaraVariantId = regExisting?.axvara_variant_id != null ? Number(regExisting.axvara_variant_id) : 0;
@@ -928,9 +955,11 @@ export async function syncSkProducts(
       // harga/stok registry lama vs API saat ini. Level loop (bukan dalam
       // if katalog) agar terbaca hook selip di bawah.
       if (catalogAllowed && axvaraVariantId > 0) {
+        const previousSupplierName =
+          regExisting?.sk_variant_name != null ? String(regExisting.sk_variant_name) : null;
         pendingSkWrites.push(...planSkCatalogRefreshWrite(
           axvaraVariantId, axvaraProductId, effectiveSellPrice,
-          Number(variant.stock), variant.name,
+          Number(variant.stock), variant.name, previousSupplierName,
         ));
         if (regExisting) {
           if (Number(regExisting.sk_price ?? -1) !== Number(variant.price) ||

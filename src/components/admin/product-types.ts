@@ -29,6 +29,8 @@ export type FormVariant = {
    * supplier. Default 0 = murni tanpa modal. Sync WR/SK tak pernah menulis.
    */
   manual_cost?: number;
+  supplier_cost?: number | null;
+  supplier_cost_source?: "WR" | "SK" | null;
   duration_value?: number | null;
   duration_unit?: string | null;
   duration_label?: string | null;
@@ -53,7 +55,7 @@ export type FormVariant = {
   bulk?: BulkDraft;
 };
 
-export type ProductForm = Partial<Prod> & {
+export type ProductForm = Partial<Prod> & Pick<FormVariant, "supplier_cost" | "supplier_cost_source"> & {
   aivault_family?: string | null;
   buyer_field_key?: "muse_invite_code" | null;
   max_qty?: number | null;

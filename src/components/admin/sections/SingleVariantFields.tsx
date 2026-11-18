@@ -82,15 +82,17 @@ export function SingleVariantFields({
         </Label>
         <Label className="block min-w-0">
           <span className="block text-sm font-medium text-admin-fg mb-1">
-            Modal (Rp) <span className="normal-case tracking-normal text-admin-muted">(0 = tanpa modal)</span>
+            Modal (Rp) <span className="normal-case tracking-normal text-admin-muted">{form.supplier_cost_source ? `dari ${form.supplier_cost_source}` : "(0 = tanpa modal)"}</span>
           </span>
-          <MoneyInput
+          {form.supplier_cost_source ? (
+            <Input readOnly inputMode="numeric" value={form.supplier_cost?.toLocaleString("id-ID") ?? "—"} className="h-9 w-full rounded-xl bg-admin-subtle border border-admin-border px-3 text-xs text-admin-muted cursor-not-allowed" />
+          ) : <><MoneyInput
             value={form.manual_cost ?? 0}
             onChange={(val) => onSetForm({ ...form, manual_cost: Math.max(0, val ?? 0) })}
             placeholder="0"
             className={openInput}
           />
-          <span className="mt-1 block text-xs leading-4 text-admin-muted">Modal per unit produk manual/stok sendiri (milik admin, ikut hitung untung).</span>
+          <span className="mt-1 block text-xs leading-4 text-admin-muted">Modal per unit produk manual/stok sendiri (milik admin, ikut hitung untung).</span></>}
         </Label>
       </div>
 

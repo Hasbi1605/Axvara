@@ -272,6 +272,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         buyer_field_key: v.buyer_field_key === "muse_invite_code" ? "muse_invite_code" as const : null,
         max_qty: v.max_qty == null ? null : Number(v.max_qty),
         manual_cost: Math.max(0, Math.floor(Number((v as Record<string, unknown>).manual_cost ?? 0) || 0)),
+        supplier_cost: v.supplier_cost,
+        supplier_cost_source: v.supplier_cost_source,
         admin_terms: v.admin_terms ?? undefined,
         admin_activation: v.admin_activation ?? undefined,
         duration_value: v.duration_value,
@@ -300,6 +302,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         nextForm.buyer_field_key = v0.buyer_field_key;
         nextForm.max_qty = v0.max_qty;
         nextForm.manual_cost = v0.manual_cost ?? 0;
+        nextForm.supplier_cost = v0.supplier_cost;
+        nextForm.supplier_cost_source = v0.supplier_cost_source;
         nextForm.admin_terms = v0.admin_terms;
         nextForm.admin_activation = v0.admin_activation;
         nextForm.duration_value = v0.duration_value ?? null;
@@ -431,6 +435,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
         }
       }
     } else {
+      if (form.wrManaged && formVariants.length === 1 && formVariants[0].sku.startsWith("DEFAULT-") && !formVariants[0].label.trim()) return "Nama varian wajib diisi.";
       if (form.price == null || Number.isNaN(Number(form.price))) return "Harga wajib diisi.";
       if (Number(form.price) < 1000) return "Harga minimal Rp 1.000.";
       if (form.comparePrice != null && Number(form.comparePrice) !== 0 && Number(form.comparePrice) <= Number(form.price)) return "Harga coret harus lebih besar dari harga jual.";
@@ -502,14 +507,14 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       // (openEdit: 1 varian + sku DEFAULT-* = single; sku lain = multi).
       // Slug sudah tervalidasi non-kosong sebelum save, jadi selalu ada.
       sku: existingDefault?.sku || `DEFAULT-${form.slug!.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 30)}`,
-      label: existingDefault?.label || "Default",
+      label: (form.wrManaged ? existingDefault?.label.trim() : existingDefault?.label) || "Default",
       price: Number(form.price || 0),
       comparePrice: form.comparePrice ? Number(form.comparePrice) : null,
       stock: form.stock != null ? Number(form.stock) : -1,
       min_qty: Math.max(1, Math.min(100, Number(form.min_qty ?? 1) || 1)),
       buyer_field_key: form.buyer_field_key,
       max_qty: form.max_qty,
-      manual_cost: Math.max(0, Math.floor(Number(form.manual_cost ?? 0) || 0)),
+      manual_cost: form.supplier_cost_source != null ? undefined : Math.max(0, Math.floor(Number(form.manual_cost ?? 0) || 0)),
       duration_value: form.duration_value ?? null,
       duration_unit: form.duration_unit ?? null,
       duration_label: form.duration_label ?? null,
@@ -527,11 +532,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     const payload = {
       ...form,
       whatsappAlias: undefined,
-      // Produk WR: nama/slug/deskripsi milik sync — jangan dikirim ulang.
-      // Teks WR sering berspasi di ujung; versi ter-trim dibaca server sebagai
-      // "diubah" (409) sehingga ganti kategori/badge pun gagal disimpan.
-      name: form.wrManaged ? undefined : form.name!.trim(),
-      slug: form.wrManaged ? undefined : form.slug!.trim().toLowerCase(),
+      name: form.name!.trim(),
+      slug: form.slug!.trim().toLowerCase(),
       description: form.wrManaged ? undefined : (form.description ?? "").trim(),
       adminDescriptionOverride: form.wrManaged ? (form.adminDescriptionOverride ?? "").trim() : undefined,
       // EN dimiliki admin untuk semua produk (WR maupun manual).
@@ -553,6 +555,8 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
       warranty_label: undefined,
       fulfillment_mode: undefined,
       manual_cost: undefined,
+      supplier_cost: undefined,
+      supplier_cost_source: undefined,
       admin_terms: undefined,
       admin_activation: undefined,
       // Hanya state presentasi modal, bukan kontrak API/kolom DB.
@@ -592,7 +596,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
             min_qty: Math.max(1, Math.min(100, Number(vr.min_qty ?? 1) || 1)),
             buyer_field_key: vr.buyer_field_key,
             max_qty: vr.max_qty,
-            manual_cost: Math.max(0, Math.floor(Number(vr.manual_cost ?? 0) || 0)),
+            manual_cost: vr.supplier_cost_source != null ? undefined : Math.max(0, Math.floor(Number(vr.manual_cost ?? 0) || 0)),
             duration_value: vr.duration_value,
             duration_unit: vr.duration_unit,
             duration_label: vr.duration_label,

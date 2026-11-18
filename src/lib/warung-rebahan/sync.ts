@@ -621,25 +621,35 @@ function planExistingVariantWrites(
     if (axvaraVariantId > 0) {
       const duration = parseWrDuration(wrVariant.duration);
       const warranty = parseWrWarranty(wrVariant.warranty);
+      const previousSupplierName =
+        existing.wr_variant_name != null ? String(existing.wr_variant_name) : null;
       // compare_price milik admin (ownership.ts): jangan tulis — tapi harga
       // jual baru yang menyamai/melampaui coret lama DITOLAK CHECK
       // (compare_price > price) sehingga rollback SELURUH batch produk
       // (insiden Alight/Viu 2026-10-06, terbukti di jalur SK). NULL-kan coret
       // basi agar harga jual otoritatif selalu tembus.
+      //
+      // label varian milik admin bila sudah dikustomisasi: hanya timpa
+      // saat masih NULL/kosong atau masih sama dengan nama supplier lama
+      // (sebelum wr_variants.wr_variant_name di-update batch ini).
       writes.push({
-        sql: `UPDATE product_variants SET label=?, price=?, stock=?,
+        sql: `UPDATE product_variants SET
+          label=CASE WHEN label IS NULL OR label='' OR label IS ? THEN ? ELSE label END,
+          price=?, stock=?,
           compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END,
           duration_value=?, duration_unit=?, duration_label=?,
           warranty_type=?, warranty_value=?, warranty_unit=?, warranty_label=?,
           updated_at=datetime('now')
          WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?
-           AND (label IS NOT ? OR price IS NOT ? OR stock IS NOT ?
+           AND (((label IS NULL OR label='' OR label IS ?) AND label IS NOT ?)
+                OR price IS NOT ? OR stock IS NOT ?
                 OR (compare_price IS NOT NULL AND compare_price <= ?)
                 OR duration_value IS NOT ? OR duration_unit IS NOT ?
                 OR duration_label IS NOT ? OR warranty_type IS NOT ?
                 OR warranty_value IS NOT ? OR warranty_unit IS NOT ?
                 OR warranty_label IS NOT ?)`,
         params: [
+          previousSupplierName,
           wrVariant.name,
           sellPrice,
           Number(wrVariant.stock),
@@ -652,6 +662,7 @@ function planExistingVariantWrites(
           warranty.unit,
           warranty.label || null,
           axvaraVariantId,
+          previousSupplierName,
           wrVariant.name,
           sellPrice,
           Number(wrVariant.stock),
@@ -680,7 +691,7 @@ export async function upsertWrVariant(
   const { queryFirst } = db;
   const now = new Date().toISOString();
   const existing = await queryFirst(
-    `SELECT id, wr_price, wr_stock, markup_percent, markup_fixed,
+    `SELECT id, wr_variant_name, wr_price, wr_stock, markup_percent, markup_fixed,
             axvara_variant_id, axvara_sell_price
      FROM wr_variants WHERE wr_variant_id=?`,
     wrVariant.id,
@@ -900,7 +911,7 @@ async function prefetchVariantRows(
         // Kolom PERSIS sama dengan SELECT per-varian yang digantikan — jangan
         // tambah kolom. `wr_product_name` sengaja TIDAK diambil (tidak ada
         // pemakai di planner; kelas kini murni dari delivery_mode API).
-        `SELECT id, wr_variant_id, wr_price, wr_stock, markup_percent,
+        `SELECT id, wr_variant_id, wr_variant_name, wr_price, wr_stock, markup_percent,
                 markup_fixed, axvara_variant_id, axvara_sell_price
          FROM wr_variants WHERE wr_variant_id IN (${placeholders(chunk.length)})`,
         ...chunk,
@@ -1654,7 +1665,7 @@ export async function syncJaspayCatalog(
         if (!capValid) result.rejected++;
         const stock = capValid ? jaspayMirrorStock(product.available, pkg.available) : 0;
         const existing = await db.queryFirst(
-          `SELECT id, wr_price, wr_stock, markup_percent, markup_fixed,
+          `SELECT id, wr_variant_name, wr_price, wr_stock, markup_percent, markup_fixed,
                   axvara_variant_id, axvara_sell_price, wr_max_quantity
            FROM wr_variants WHERE wr_variant_id=?`,
           variantId,
@@ -1779,6 +1790,8 @@ export async function syncJaspayCatalog(
           result.priceChanges++;
           catalogChanged = true;
         } else {
+          const previousSupplierName =
+            existing.wr_variant_name != null ? String(existing.wr_variant_name) : null;
           const stockChanged = Number(existing.wr_stock ?? -1) !== stock;
           const priceChanged = Number(existing.wr_price ?? -1) !== pkg.price
             || Number(existing.axvara_sell_price ?? -1) !== sellPrice;
@@ -1814,13 +1827,18 @@ export async function syncJaspayCatalog(
           const axId = existing.axvara_variant_id != null ? Number(existing.axvara_variant_id) : 0;
           if (axId > 0) {
             const updateRes = await db.execRun(
-              `UPDATE product_variants SET price=?, stock=?,
+              `UPDATE product_variants SET
+                 label=CASE WHEN label IS NULL OR label='' OR label IS ? THEN ? ELSE label END,
+                 price=?, stock=?,
                  compare_price=CASE WHEN compare_price <= ? THEN NULL ELSE compare_price END,
                  duration_value=?, duration_unit=?, duration_label=?,
                  updated_at=datetime('now')
                WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=?
-                 AND (price IS NOT ? OR stock IS NOT ? OR duration_value IS NOT ?
+                 AND (((label IS NULL OR label='' OR label IS ?) AND label IS NOT ?)
+                      OR price IS NOT ? OR stock IS NOT ? OR duration_value IS NOT ?
                       OR duration_unit IS NOT ? OR duration_label IS NOT ?)`,
+              previousSupplierName,
+              pkg.packageName,
               sellPrice,
               stock,
               sellPrice,
@@ -1828,6 +1846,8 @@ export async function syncJaspayCatalog(
               duration.unit,
               duration.label || null,
               axId,
+              previousSupplierName,
+              pkg.packageName,
               sellPrice,
               stock,
               duration.value,
