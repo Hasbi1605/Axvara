@@ -260,8 +260,12 @@ produksi; daily-admin-summary tidak diubah. Deployment/data ingest belum terbukt
 - Target diambil dari `/api/products?active=1`, kemudian maksimal3 PDP ready
   `/api/catalog?slug=…`: varian aktif tanpa buyer field wajib, stok/minimum,
   maksimum qty dan inventory unique cukup, qty≤100. Tanpa target layak, quote
-  produk pertama tanpa variant memeriksa konflik terstruktur. Katalog kosong/
-  rusak tetap hard, bukan sehat palsu. Tidak ada ID hardcode/cache target basi;
+  produk pertama tanpa variant memeriksa konflik terstruktur. Daftar publik
+  memakai ID string desimal kanonik; monitor menormalkannya ke bilangan bulat
+  positif aman untuk mencocokkan PDP dan membentuk quote. Katalog kosong/rusak
+  tetap hard; quote tergantung katalog dilaporkan `catalog_unavailable`,
+  `calls:0,alarm:none`, bukan kegagalan checkout kedua atau tanda pulih.
+  Tidak ada ID hardcode/cache target basi;
   batas3PDP berarti tidak membuktikan seluruh toko tidak punya varian layak.
 - `isSyntheticRequest` di `rateLimit.ts` memerlukan header
   `x-axvara-synthetic:1` **dan** `Authorization: Bearer CRON_SECRET` constant-time,

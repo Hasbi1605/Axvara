@@ -77,7 +77,8 @@ Scheduler menjalankan home/katalog/quote sebelum job cron, memakai alarm
 F1 existing (hard2/soft6). Probe≤10detik/fase, total≤20detik independen dari
 durasi tick berat; dapat menunda job hingga20detik, tanpa memotongnya. Target
 varian/minimum dinamis (maks3PDP); konflik quote409 terstruktur tetap sehat.
-Tidak membuat order/reservasi. Header sintetis harus disertai Bearer CRON secret
+ID teks dari daftar katalog dinormalisasi ke angka. Bila katalog gagal, quote
+ditandai belum diperiksa, bukan alarm checkout kedua. Tidak membuat order/reservasi. Header sintetis harus disertai Bearer CRON secret
 constant-time: tidak memakai kuota pembeli/funnel,0D1write/quote, dan tidak
 refresh/call provider pembayaran (QRIS lokal+snapshot crypto/FX saja).
 Guard `isSyntheticRequest` tersedia untuk funnel B-S. Tambahan request3–6/tick

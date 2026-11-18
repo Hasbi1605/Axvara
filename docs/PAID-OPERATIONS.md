@@ -25,8 +25,10 @@ dan quote. Tiga outcome masuk F1 yang sama: error/timeout/kontrak hard2;
 sukses>4000ms soft6; reminder6jam/recovery3 tetap. Timeout10detik per fase
 (termasuk body dan PDP+quote), total20detik independen dari durasi tick berat.
 Job order dapat tertunda hingga20detik, tidak dipotong. Budget internal habis
-mencatat skip `alarm:none` tanpa mengubah counter (bukan status sehat). Katalog kosong tetap gagal;
-409 quote terstruktur sehat bila tidak ada target layak/stok berubah.
+mencatat skip `alarm:none` tanpa mengubah counter (bukan status sehat). ID
+daftar katalog boleh angka atau string desimal kanonik. Katalog kosong/rusak
+tetap gagal; quote yang bergantung padanya dilewati (`catalog_unavailable`,
+`alarm:none`). 409 quote terstruktur sehat bila tidak ada target layak/stok berubah.
 
 Autentikasi synthetic: header1+Bearer secret cron existing constant-time,
 tanpa secret valid tetap rate limit pembeli. Quote memakai metode lokal dan

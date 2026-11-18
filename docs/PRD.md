@@ -80,8 +80,9 @@ Tiga probe per tick menit memeriksa home/katalog/quote sebelum pekerjaan order.
 Gagal/timeout dua eksekusi berturut-turut memakai alarm hard F1; sukses lambat
 >4detik enam kali memakai soft. Quote memilih varian/minimum dari katalog,
 tanpa order/reservasi/panggilan provider pembayaran; token+QRIS lokal tersedia
-menjadi kontrak200, konflik stok/varian409 terstruktur tetap sehat. Pemeriksaan
-tidak mewakili rail eksternal yang sengaja tidak dipanggil. Secret cron sah +
+menjadi kontrak200, konflik stok/varian409 terstruktur tetap sehat. Katalog
+gagal tetap alarm; quote yang belum dijalankan karena katalog gagal bukan
+alarm checkout. Pemeriksaan tidak mewakili rail eksternal yang sengaja tidak dipanggil. Secret cron sah +
 header sintetis wajib untuk bypass kuota pembeli dan pengecualian funnel.
 Waktu terbatas (20detik total,10detik/fase), terpisah dari durasi pipeline cron
 agar tick berat tidak selalu melewati probe; job order bisa tertunda maksimal

@@ -71,8 +71,10 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
 - Quote synthetic wajib header1+Bearer cron secret constant-time;0D1write,
  0kuota pembeli/admission/reservasi/funnel,0provider fetch (gateway excluded,
   crypto/FX snapshot-only). Guard `isSyntheticRequest` dapat dipakai B-S.
- 200 memerlukan token+QRIS lokal available;409 issues valid sehat; katalog
-  kosong/rusak bukan sehat. Maks3PDP dinamis, tidak ada ID hardcode.
+ 200 memerlukan token+QRIS lokal available;409 issues valid sehat. Katalog
+  menerima ID integer positif aman atau string desimal kanonik; jika kosong/rusak
+  tetap hard dan quote dilewati (`catalog_unavailable`, `alarm:none`).
+  Maks3PDP dinamis, tidak ada ID hardcode.
 - Tambahan3–6request/tick (umumnya4=5760/hari), bukan0read atau +3pasti.
   Tidak ada env/secret/binding/trigger/migrasi baru, tanpa transaksi produksi.
   Rincian/batas target: ARCHITECTURE A-S dan PAID-OPERATIONS. Belum deploy.

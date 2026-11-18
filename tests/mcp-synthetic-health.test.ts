@@ -31,6 +31,34 @@ describe("synthetic health", () => {
     expect(fetchFn.mock.calls.filter(([url]) => !url.endsWith("/quote")).every(([, init]) => !(init?.headers as Record<string, string>)?.["x-axvara-synthetic"])).toBe(true);
     expect(report.failures).toEqual([]);
   });
+  it("accepts public string IDs, matches the numeric PDP, and sends a numeric quote target", async () => {
+    const fetchFn = fixture(url => url.includes("/api/products")
+      ? Response.json({ products: [{ id: "45", slug: "dynamic-sku", stock: 8 }] }) : undefined);
+    const [, catalog, quote] = await runSyntheticProbes(env, fetchFn);
+    expect(catalog).toMatchObject({ ok: true, status: 200 });
+    expect(quote).toMatchObject({ ok: true, status: 200, calls: 2 });
+    const request = fetchFn.mock.calls.find(([url]) => url.endsWith("/api/checkout/quote"));
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({ items: [{ product_id: 45, variant_id: 309, qty: 3 }] });
+  });
+  it.each(["0", "-1", "01", " 45", "45\n", "1e2", "45.0", "9007199254740992", 1.5, true, null])("rejects invalid product ID %j without a duplicate quote alarm", async id => {
+    const fetchFn = fixture(url => url.includes("/api/products")
+      ? Response.json({ products: [{ id, slug: "dynamic-sku", stock: 8 }] }) : undefined);
+    const [, catalog, quote] = await runSyntheticProbes(env, fetchFn);
+    expect(catalog).toMatchObject({ ok: false, alarm: "hard", status: 200 });
+    expect(quote).toMatchObject({ ok: false, alarm: "none", calls: 0, status: 0, error: "catalog_unavailable" });
+    expect(fetchFn.mock.calls.some(([url]) => /\/api\/(?:catalog\?|checkout\/quote)/.test(url))).toBe(false);
+  });
+  it("reports only the catalog root failure to the cron alarm when the list is empty", async () => {
+    const fetchFn = fixture(url => url.includes("/api/products") ? Response.json({ products: [] }) : undefined);
+    const report = await runOperationsTick(env, Date.UTC(2026, 10, 18, 0, 0), fetchFn);
+    expect(report.failures.map(o => o.step)).toEqual(["synth:catalog"]);
+    expect(report.outcomes.at(-1)).toMatchObject({ step: "synth:quote", error: "catalog_unavailable", calls: 0, alarm: "none" });
+  });
+  it("still alarms on missing quote configuration with a healthy catalog", async () => {
+    const [, catalog, quote] = await runSyntheticProbes({ ...env, AXVARA_CRON_SECRET: "" }, fixture());
+    expect(catalog).toMatchObject({ ok: true });
+    expect(quote).toMatchObject({ ok: false, alarm: "hard", calls: 0 });
+  });
   it("no buyable variant sends a real quote and accepts structured 409", async () => {
     const fetchFn = fixture(url => url.includes("/api/catalog?") ? Response.json({ product: { id: 45, variants: [{ ...variant, buyer_field_key: "muse_invite_code" }] } }) : url.endsWith("/quote") ? syntheticResponse(url)! : undefined);
     expect((await runSyntheticProbes(env, fetchFn))[2]).toMatchObject({ ok: true, status: 409 });

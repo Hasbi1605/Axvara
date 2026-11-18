@@ -55,14 +55,25 @@ export async function runSyntheticProbes(env: CronEnv, fetchFn: FetchFn = fetch,
     probe("synth:catalog", async (signal, request) => {
       const res = await request(`${origin}/api/products?active=1`, { headers: { ...headers, accept: "application/json" }, redirect: "manual", signal });
       if (res.status !== 200) throw new Error("contract");
-      const body = await res.json() as { products?: Product[] };
-      if (!Array.isArray(body?.products) || !body.products.length || body.products.some(p => !Number.isSafeInteger(p?.id) || p.id < 1 || typeof p.slug !== "string" || !p.slug)) throw new Error("contract");
-      products = body.products;
+      const body = await res.json() as { products?: (Omit<Product, "id"> & { id: number | string })[] };
+      if (!Array.isArray(body?.products) || !body.products.length) throw new Error("contract");
+      // The public list uses string IDs; PDPs and the quote target use numbers.
+      products = body.products.map(p => {
+        const id = typeof p?.id === "string" ? Number(p.id) : p?.id;
+        if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 1
+          || (typeof p.id === "string" && String(id) !== p.id)
+          || typeof p.slug !== "string" || !p.slug) throw new Error("contract");
+        return { id, slug: p.slug, stock: p.stock };
+      });
       return res.status;
     }),
   ]);
+  // Failed catalog means the quote was not assessed, not that checkout failed.
+  if (!products.length) return [home, catalog, {
+    step: "synth:quote", calls: 0, ok: false, status: 0, error: "catalog_unavailable", alarm: "none",
+  }];
   const quote = await probe("synth:quote", async (signal, request) => {
-    if (!products.length || !env.AXVARA_CRON_SECRET) throw new Error("contract");
+    if (!env.AXVARA_CRON_SECRET) throw new Error("contract");
     // ponytail: inspect at most three ready PDPs; widen only if skipped buyer-field products dominate.
     let target: { product_id: number; variant_id?: number; qty: number } = { product_id: products[0].id, qty: 1 };
     for (const product of products.filter(p => p.stock === -1 || p.stock > 0).slice(0, 3)) {
