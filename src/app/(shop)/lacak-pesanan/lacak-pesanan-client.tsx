@@ -538,13 +538,16 @@ export default function LacakPesananClient() {
               value={pin}
               onChange={(event) => setPin(event.target.value)}
               placeholder={ui.lacak.pinPlaceholder}
-              type="password"
+              name="order-pin"
+              type="text"
               inputMode="text"
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
-              autoComplete="off"
-              maxLength={32}
+              autoComplete="one-time-code"
+              data-1p-ignore
+              data-lpignore="true"
+              maxLength={26}
               aria-invalid={Boolean(pinError)}
               aria-describedby={pinError ? "track-pin-error" : undefined}
               className={`h-12 w-full rounded-xl border bg-white/[0.06] px-4 text-sm text-white placeholder:text-white/55 focus:outline-none ${pinError ? "border-red-500/50 focus:border-red-400/60" : "border-white/10 focus:border-[#00E5FF]/40"}`}

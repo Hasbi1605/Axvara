@@ -1,5 +1,6 @@
 // GET/POST /api/orders/[code]/credentials — Retrieval kredensial WR untuk pembeli web.
-// POST: original-checkout c1 proof, or contact+PIN for new orders; legacy
+// POST: original-checkout c1 proof, the 30-day HttpOnly device cookie d1
+// (body {device:true}), or contact+PIN for new orders; legacy
 // contact/code26 compatibility remains. GET reuses the resulting capability.
 // Rate-limit ketat (orders:lookup). Tidak pernah mengembalikan data selain
 // detail akun milik order itu: detail WR + isi produk non-WR yang terkirim
@@ -17,7 +18,8 @@ import {
   verifyCredentialToken,
 } from "@/lib/warung-rebahan/deliver";
 import { readDeliveredSnapshots } from "@/lib/fulfillment/delivery/buyer-email";
-import { buyerOrderAccessMatches, isBuyerPinOrder, newOrderAccessFailure, requiresOrderAccessCode, verifyCheckoutCredentialGrant } from "@/lib/order-access";
+import { buyerOrderAccessMatches, createDeviceCredentialGrant, isBuyerPinOrder, newOrderAccessFailure, requiresOrderAccessCode, verifyCheckoutCredentialGrant, verifyDeviceCredentialGrant } from "@/lib/order-access";
+import { clearDeviceCookie, readDeviceCookie, setDeviceCookie } from "@/lib/order-device-cookie";
 import { resolveCredentialTermsByItem } from "@/lib/orders/credential-terms";
 import { requireAdmin } from "@/lib/auth";
 import type { VariantCopy } from "@/lib/product-copy/format";
@@ -121,7 +123,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
   const bounded = await readJsonBody(request, 8_000);
   if (!bounded.ok) return bounded.response;
-  const body = bounded.data as { adminView?: unknown; contact?: unknown; wa?: unknown; access_code?: unknown } | null;
+  const body = bounded.data as { adminView?: unknown; contact?: unknown; wa?: unknown; access_code?: unknown; device?: unknown } | null;
   if (body?.adminView === true) {
     if (!(await requireAdmin(request))) return privateJson({ error: "admin_session_required" }, { status: 401 });
     const ready = await orderReady(code);
@@ -136,14 +138,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if ("error" in ready) return privateJson({ error: ready.error }, { status: ready.status });
   const { order, db } = ready;
   if (order.buyer_access_version !== authorityOrder.buyer_access_version || order.buyer_access_format !== authorityOrder.buyer_access_format) return privateJson({ error: "verification_failed" }, { status: 409 });
-  let checkoutAuthorized = false;
+  let checkoutAuthorized = false, deviceAuthorized = false;
   const checkoutGrant = request.headers.get("x-checkout-credential-grant") || "";
   if (checkoutGrant) {
     try { checkoutAuthorized = await verifyCheckoutCredentialGrant(checkoutGrant, order); }
     catch { return privateJson({ error: "verification_unavailable" }, { status: 503 }); }
     if (!checkoutAuthorized) return privateJson({ error: "verification_failed" }, { status: 404 });
+  } else if (body?.device === true) {
+    // Device proof: no PIN admission or contact counters, a stale cookie is just dropped.
+    const cookie = readDeviceCookie(request);
+    try { deviceAuthorized = Boolean(cookie) && await verifyDeviceCredentialGrant(cookie, order); }
+    catch { return privateJson({ error: "verification_unavailable" }, { status: 503 }); }
+    if (!deviceAuthorized) {
+      const denied = privateJson({ error: "device_unrecognized" }, { status: 404 });
+      if (cookie) clearDeviceCookie(denied, code, request);
+      return denied;
+    }
   }
-  const accessFailure = checkoutAuthorized ? null : await newOrderAccessFailure(request, order, raw, { allowAdmin: false, purpose: "credentials", contact });
+  const accessFailure = checkoutAuthorized || deviceAuthorized ? null : await newOrderAccessFailure(request, order, raw, { allowAdmin: false, purpose: "credentials", contact });
   if (accessFailure) return accessFailure;
   const { contactAttemptLimited, recordContactFailure } = await import("@/lib/orders/contact-attempts");
   if (!requiresOrderAccessCode(order) && await contactAttemptLimited(db, code, clientIp(request))) return privateJson({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": "900", "Cache-Control": "private, no-store" } });
@@ -158,7 +170,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const current = await db.queryFirst("SELECT buyer_access_version,buyer_access_format FROM orders WHERE code=?", code);
   if (!current || current.buyer_access_version !== order.buyer_access_version || current.buyer_access_format !== order.buyer_access_format) return privateJson({ error: "verification_failed" }, { status: 409 });
   const credentials = await readVerifiedDetails(code, db);
-  return privateJson({ ok: true, credentials, capability_token: freshToken }, { headers: { "Cache-Control": "private, no-store" } });
+  const response = privateJson({ ok: true, credentials, capability_token: freshToken }, { headers: { "Cache-Control": "private, no-store" } });
+  // c1 or contact+PIN success remembers this browser for 30 days; a device-cookie
+  // success keeps its original fixed window.
+  if (!deviceAuthorized && isBuyerPinOrder(order)) {
+    try {
+      const device = await createDeviceCredentialGrant(order);
+      if (device) setDeviceCookie(response, code, device, request);
+    } catch { /* Credentials are already authorized; skip the cookie. */ }
+  }
+  return response;
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ code: string }> }) {

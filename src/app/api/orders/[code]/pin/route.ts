@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createDatabaseAccess } from "@/lib/db-access";
-import { deriveOrderAccessCode, isBuyerPinOrder, verifyCheckoutCredentialGrant } from "@/lib/order-access";
+import { deriveOrderAccessCode, isBuyerPinOrder, verifyCheckoutCredentialGrant, verifyDeviceCredentialGrant } from "@/lib/order-access";
+import { readDeviceCookie } from "@/lib/order-device-cookie";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { verifyCredentialToken } from "@/lib/warung-rebahan/deliver";
 
@@ -20,14 +21,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const grant = request.headers.get("x-checkout-credential-grant") || "";
     const token = request.headers.get("x-credential-token") || "";
     const checkout = Boolean(grant) && await verifyCheckoutCredentialGrant(grant, order);
-    if (!checkout && (!token || !await verifyCredentialToken(code, token, db))) return json({ error: "verification_failed" }, 404);
+    const cookie = readDeviceCookie(request);
+    const device = !checkout && !token && Boolean(cookie) && await verifyDeviceCredentialGrant(cookie, order);
+    if (!checkout && !device && (!token || !await verifyCredentialToken(code, token, db))) return json({ error: "verification_failed" }, 404);
     if (order.status !== "lunas" || order.payment_status !== "paid") return json({ error: "not_paid" }, 403);
     const pin = await deriveOrderAccessCode(order);
     // Rotation/payment changes during HMAC work must not disclose stale access.
     const current = await db.queryFirst("SELECT quote_id,buyer_access_version,buyer_access_format,status,payment_status FROM orders WHERE code=?", code);
     if (!current || current.buyer_access_version !== order.buyer_access_version || current.buyer_access_format !== order.buyer_access_format
       || (checkout && current.quote_id !== order.quote_id) || current.status !== "lunas" || current.payment_status !== "paid"
-      || (!checkout && !await verifyCredentialToken(code, token, db))) return json({ error: "verification_failed" }, 409);
+      || (device && !await verifyDeviceCredentialGrant(cookie, { ...current, code }))
+      || (!checkout && !device && !await verifyCredentialToken(code, token, db))) return json({ error: "verification_failed" }, 409);
     return json({ pin });
   } catch {
     return json({ error: "verification_unavailable" }, 503);

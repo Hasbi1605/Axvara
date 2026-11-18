@@ -472,6 +472,33 @@ Status: implementasi lokal; migrasi/deployment produksi belum diverifikasi.
   memilihnya); flag hilang atau kelas selain `made_by_order` = fail-closed.
 - Tanpa migrasi/env/cron baru; fulfillment historis tidak memakai predikat ini.
 
+## Cookie perangkat d1 + PIN anti-autofill — 18 November 2026
+
+- Proof baru `d1.<expiry10>.<sig43>` (`src/lib/order-access.ts`): HMAC
+  `BUYER_ORDER_ACCESS_SECRET` domain `axvara:buyer-device-credentials:v1:<code>:<versi>:<expiry>`,
+  30 hari tetap, hanya order pin6, terikat versi akses (rotasi mencabut), tidak
+  terikat quote. Dikirim HANYA sebagai cookie `axv_d1` HttpOnly, SameSite=Lax,
+  Secure (https), `Path=/api/orders/<CODE>` (satu cookie per order, tidak ikut
+  request lain). Helper `src/lib/order-device-cookie.ts`.
+- Route Edge baru `/api/orders/[code]/device` (privat/no-store, bucket
+  `orders:lookup`): POST wajib header c1 valid → set cookie; DELETE menghapus
+  cookie browser itu tanpa proof. Checkout memanggil POST sesudah menyimpan c1;
+  ✕ di "Pesanan di perangkat ini" memanggil DELETE.
+- POST `/credentials` body `{device:true}` tanpa c1: cookie valid = setara c1
+  (tanpa admission PIN/penghitung kontak); tidak ada/invalid → 404
+  `device_unrecognized` (cookie invalid dihapus), key/DB gagal 503. Sukses lewat
+  c1 atau kontak+PIN menerbitkan cookie baru; sukses lewat cookie tidak
+  memperpanjang. POST `/pin` menerima cookie d1 sebagai proof ketiga dengan
+  recheck terhadap baris terkini. GET `/credentials` tetap capability saja.
+- Klien: `WrCredentialsPanel` mencoba jalur cookie sekali sebelum menampilkan
+  form; 4xx → form, 429/5xx/jaringan → retry. `BuyerOrderPin` selalu mencoba
+  `/pin` sekali (404 = tidak tampil). Input PIN panel dan `/lacak-pesanan`
+  `type=text` + `autocomplete=one-time-code` agar password manager tidak
+  mengisi; tombol tidak lagi diam-diam disabled, PIN salah format diberi pesan.
+- Tanpa migrasi/env/cron baru. Order sebelum rilis belum punya cookie sampai
+  checkout baru atau verifikasi kontak+PIN sekali. Implementasi lokal + test;
+  publikasi CI, deployment belum diverifikasi.
+
 ## PIN setelah pembayaran — 16 November 2026
 
 - Route Edge baru POST `/api/orders/[code]/pin`, privat/no-store dan rate bucket

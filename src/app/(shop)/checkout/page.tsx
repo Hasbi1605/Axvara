@@ -5,7 +5,7 @@ import { isPaymentMaintenanceEnabled } from "@/lib/payment-maintenance";
 import { ManualOrderPanel } from "@/components/shared/PaymentMaintenanceNotice";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { checkoutContactKey } from "@/components/storefront/WrCredentialsPanel";
-import { orderCheckoutPath, rememberCheckoutCredentialGrant } from "@/lib/order-access-client";
+import { orderCheckoutPath, rememberCheckoutCredentialGrant, rememberDeviceForOrder } from "@/lib/order-access-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { estimatedUnitPrice, useCart } from "@/stores/cart";
@@ -588,6 +588,7 @@ function CheckoutInner() {
       if (!isDirect) clear();
       const target = orderCheckoutPath(`/pesanan/${code}`, code, j.buyer_access_session);
       rememberCheckoutCredentialGrant(code, j.checkout_credential_grant);
+      if (typeof j.checkout_credential_grant === "string" && j.checkout_credential_grant) void rememberDeviceForOrder(code, j.checkout_credential_grant);
       startNavigation(target, { overlay: false });
       router.push(target);
     } catch (e) {

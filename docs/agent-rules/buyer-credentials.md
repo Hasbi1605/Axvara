@@ -1,5 +1,24 @@
 # Aturan agent — Kredensial pembeli (invoice + kontak + PIN)
 
+## Cookie perangkat d1 (30 hari) — keputusan owner 18 November 2026
+
+- Menggantikan sebagian aturan28Oktober "proof hanya sessionStorage/tab": owner
+  menyetujui proof perangkat `d1` agar browser yang sama membuka pesanan
+  otomatis (tab baru, daftar perangkat, link email). Hanya pin6.
+- `d1` HANYA diterbitkan dari c1 valid (POST `/api/orders/[code]/device` atau
+  sukses `/credentials` via c1) atau sukses kontak+PIN. Lookup kontak saja,
+  p1/status, admin, Telegram, link email/share tidak pernah menerbitkannya.
+- Hanya cookie HttpOnly/SameSite=Lax/Secure, Path `/api/orders/<CODE>`, umur
+  tetap 30 hari (tidak diperpanjang saat dipakai), terikat versi akses. Jangan
+  memindahkannya ke URL, localStorage, body respons, log atau email.
+- d1 setara c1 untuk `/credentials` (body `{device:true}`) dan `/pin`; tidak
+  untuk status/cancel/reissue/refill. Jalur d1 tidak memakai jatah PIN.
+- Risiko diterima owner: siapa pun di browser yang sama dapat membuka pesanan
+  itu selama 30 hari; ✕ di daftar perangkat menghapus cookie.
+- Input PIN `type=text` + `autocomplete=one-time-code` (bukan password) agar
+  password manager tidak mengisi PIN. PIN tetap state/DOM saja.
+- Status: implementasi lokal + test; publikasi CI, deployment belum diverifikasi.
+
 ## Estimasi refund Market — 18 November 2026
 
 - Accordion garansi tetap satu dan terlipat per pesanan lunas. Keputusan lanjutan owner: `POST /api/refund` boleh mengembalikan proyeksi estimasi hanya dengan invoice AXV, tanpa kontak/p1/c1. Pengecualian hanya untuk estimasi, bukan status order, data kontak, PIN, detail akun atau kredensial. Tautan accordion hanya membawa invoice; tidak ada perubahan issuance/persistensi proof atau pengiriman produk.

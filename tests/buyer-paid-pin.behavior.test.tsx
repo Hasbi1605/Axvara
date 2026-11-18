@@ -55,12 +55,17 @@ it("reuses valid capability automatically and follows the order locale, not disp
   expect(credentialCall[1]?.method).toBeUndefined();
   hasNoPinPersistence();
 });
-it("contact or status session alone never asks the PIN endpoint and still needs manual proof when ready", async () => {
+it("contact or status session alone never discloses a PIN or consumes one, and still needs manual proof when ready", async () => {
   sessionStorage.setItem(`axvara-buyer-session:${CODE}`, `p1.${Math.floor(Date.now()/1000)+86400}.${"a".repeat(43)}`);
-  const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+  const fetcher = vi.fn(async () => Response.json({ error: "verification_failed" }, { status: 404 })); vi.stubGlobal("fetch", fetcher);
   render(<WrCredentialsPanel code={CODE} prefillContact="buyer@example.test" />);
   await screen.findByLabelText("Email atau No. WA checkout");
-  expect(fetcher).not.toHaveBeenCalled(); expect(screen.queryByText(PIN)).toBeNull();
+  expect(screen.queryByText(PIN)).toBeNull();
+  // Only the header-less device probes run: no contact, PIN or session header leaves the tab.
+  for (const [, init] of fetcher.mock.calls as unknown as [string, RequestInit][]) {
+    expect(JSON.stringify(init.headers ?? {})).not.toMatch(/x-order-contact|x-buyer-access-session|x-checkout/);
+    expect(String(init.body ?? "")).not.toContain("buyer@example.test");
+  }
 });
 it("a rejected automatic credential proof falls back to contact + PIN without disclosing a PIN", async () => {
   sessionStorage.setItem(`wr-cred-token:${CODE}`, TOKEN);
@@ -70,14 +75,15 @@ it("a rejected automatic credential proof falls back to contact + PIN without di
   expect(screen.queryByText(PIN)).toBeNull();
 });
 it.each([TOKEN, null])("manual verification displays the verified PIN immediately, including when issuance returns %s", async capability_token => {
-  const fetcher = vi.fn(async () => Response.json({ credentials, capability_token })); vi.stubGlobal("fetch", fetcher);
+  const fetcher = vi.fn(async (_url: string, init?: RequestInit) => String(init?.body ?? "").includes('"device"')
+    ? Response.json({ error: "device_unrecognized" }, { status: 404 }) : Response.json({ credentials, capability_token })); vi.stubGlobal("fetch", fetcher);
   render(<WrCredentialsPanel code={CODE} />);
   fireEvent.change(await screen.findByLabelText("Email atau No. WA checkout"), { target: { value: "buyer@example.test" } });
   fireEvent.change(screen.getByLabelText("PIN akses"), { target: { value: PIN } });
   fireEvent.click(screen.getByRole("button", { name: "Tampilkan" }));
   await screen.findByText(PIN); await screen.findByText(/fixture-password/);
   hasNoPinPersistence();
-  const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+  const [, init] = fetcher.mock.calls.find(([, call]) => String(call?.body ?? "").includes("access_code")) as unknown as [string, RequestInit];
   expect(JSON.parse(String(init.body))).toEqual({ contact: "buyer@example.test", access_code: PIN });
 });
 it("PIN copy works, blocked clipboard leaves selectable text and a manual-copy message", async () => {

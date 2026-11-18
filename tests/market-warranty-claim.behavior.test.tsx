@@ -31,7 +31,9 @@ function stubOrder(overrides: Record<string, unknown> = {}) {
     items, subtotal: 25000, payment_method: "qris", status: "lunas", buyer_pin_required: false, credentials_ready: true,
     fulfillment_status: "delivered", ...overrides,
   };
-  vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => String(init?.body ?? "").includes('"device"') ? ({
+    ok: false, status: 404, json: async () => ({ error: "device_unrecognized" }),
+  }) : ({
     ok: true, status: 200, json: async () => String(url).includes("/credentials")
       ? { credentials: items.map(item => ({
         label: item.name, details: "Email: akun@example.test", completed_at: null,

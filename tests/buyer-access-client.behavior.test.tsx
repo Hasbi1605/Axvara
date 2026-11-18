@@ -41,14 +41,14 @@ it("tracking fields omit helper text but retain validation and the email PIN lab
 });
 
 it("new credential unlock requires separate contact and PIN inputs without storing the typed PIN",async()=>{
- const fetcher=vi.fn(async(_url:RequestInfo|URL,_init?:RequestInit)=>Response.json({credentials:[{details:"PRIVATE-ACCOUNT-FIXTURE",completed_at:null}],capability_token:"z".repeat(64)}));vi.stubGlobal("fetch",fetcher);
+ const fetcher=vi.fn(async(_url:RequestInfo|URL,init?:RequestInit)=>String(init?.body??"").includes('"device"')?Response.json({error:"device_unrecognized"},{status:404}):Response.json({credentials:[{details:"PRIVATE-ACCOUNT-FIXTURE",completed_at:null}],capability_token:"z".repeat(64)}));vi.stubGlobal("fetch",fetcher);
  render(<WrCredentialsPanel code={CODE} buyerPinRequired/>);
- const button=screen.getByRole("button",{name:"Tampilkan"});
- fireEvent.change(screen.getByLabelText("PIN akses"),{target:{value:PIN}});expect((button as HTMLButtonElement).disabled).toBe(true);expect(fetcher).not.toHaveBeenCalled();
+ const button=await screen.findByRole("button",{name:"Tampilkan"});
+ fireEvent.change(screen.getByLabelText("PIN akses"),{target:{value:PIN}});expect((button as HTMLButtonElement).disabled).toBe(true);expect(fetcher.mock.calls.filter(([url])=>String(url).endsWith("/credentials")).every(([,init])=>String(init?.body??"").includes('"device"'))).toBe(true);
  fireEvent.change(screen.getByLabelText("Email atau No. WA checkout"),{target:{value:CONTACT}});
- expect(screen.getByLabelText("PIN akses").getAttribute("type")).toBe("password");fireEvent.click(button);
+ expect(screen.getByLabelText("PIN akses").getAttribute("type")).toBe("text");expect(screen.getByLabelText("PIN akses").getAttribute("autocomplete")).toBe("one-time-code");fireEvent.click(button);
  await screen.findByText("PRIVATE-ACCOUNT-FIXTURE");
- expect(JSON.parse(fetcher.mock.calls[0][1]?.body as string)).toEqual({contact:CONTACT,access_code:PIN});
+ expect(JSON.parse(fetcher.mock.calls.find(([url,init])=>String(url).endsWith("/credentials")&&!String(init?.body??"").includes('"device"'))![1]?.body as string)).toEqual({contact:CONTACT,access_code:PIN});
  expect(JSON.stringify(sessionStorage)).not.toContain(PIN);expect(JSON.stringify(localStorage)).not.toContain(PIN);
 });
 

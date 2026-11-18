@@ -16,7 +16,7 @@ export function BuyerOrderPin({ code, credentialToken, locale }: { code: string;
     let token = credentialToken || "";
     try { token ||= sessionStorage.getItem(`wr-cred-token:${code}`) || ""; } catch { /* Tab storage is optional. */ }
     setPin(""); setState("idle");
-    if (!grant && !token) return;
+    // No tab proof: still try once; the HttpOnly device cookie (same-origin) may prove it, else 404 renders nothing.
     const controller = new AbortController();
     setState("loading");
     void fetch(`/api/orders/${encodeURIComponent(code)}/pin`, {

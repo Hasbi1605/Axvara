@@ -93,6 +93,33 @@ export async function verifyCheckoutCredentialGrant(raw: string, order: BuyerAcc
   return Boolean(expected) && constantTimeEqual(raw, expected!);
 }
 
+// Device proof d1: minted after a verified checkout (c1) or contact+PIN so the
+// same browser reopens this order for 30 days. Delivered only as an HttpOnly
+// cookie scoped to /api/orders/<code>; bound to the access version, not the quote.
+export const DEVICE_COOKIE_NAME = "axv_d1";
+export const DEVICE_COOKIE_MAX_AGE = 30 * 86400;
+export const deviceCookiePath = (code: string) => `/api/orders/${code}`;
+
+export async function createDeviceCredentialGrant(order: BuyerAccessOrder, now = Date.now()): Promise<string | undefined> {
+  if (!isBuyerPinOrder(order)) return undefined;
+  const identity = accessIdentity(order);
+  if (!identity) return undefined;
+  const expires = Math.floor(now / 1000) + DEVICE_COOKIE_MAX_AGE;
+  const mac = await buyerAccessMac(`axvara:buyer-device-credentials:v1:${identity.code}:${identity.version}:${expires}`);
+  const signature = btoa(String.fromCharCode(...mac)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `d1.${expires}.${signature}`;
+}
+
+export async function verifyDeviceCredentialGrant(raw: string, order: BuyerAccessOrder, now = Date.now()): Promise<boolean> {
+  if (!isBuyerPinOrder(order)) return false;
+  const match = /^d1\.(\d{10})\.([A-Za-z0-9_-]{43})$/.exec(raw);
+  if (!match) return false;
+  const expires = Number(match[1]), seconds = Math.floor(now / 1000);
+  if (expires <= seconds || expires > seconds + DEVICE_COOKIE_MAX_AGE + 60) return false;
+  const expected = await createDeviceCredentialGrant(order, (expires - DEVICE_COOKIE_MAX_AGE) * 1000);
+  return Boolean(expected) && constantTimeEqual(raw, expected!);
+}
+
 export async function buyerOrderAccessMatches(raw: unknown, order: BuyerAccessOrder): Promise<boolean> {
   if (!requiresOrderAccessCode(order)) return buyerContactMatches(raw, order);
   const provided = normalizeOrderAccessCode(raw);

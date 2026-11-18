@@ -90,6 +90,8 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
   // keduanya sudah ada. Legacy tetap menerima kontak saja. Verifikasi
   // TETAP di server via endpoint credentials; PIN tidak pernah disimpan.
   const triedPrefill = useRef(false);
+  // Code for which the device-cookie attempt already ran (reset on cancel/retry).
+  const triedDevice = useRef("");
   const loadedForReady = useRef(-1);
   useEffect(() => {
     let cancelled = false;
@@ -118,19 +120,48 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
     const autoContact = prefillContact.trim() || savedCheckoutContact.trim() || savedStatusContact.trim();
     const autoPin = normalizePin(prefillPin);
     const checkoutGrant = readCheckoutCredentialGrant(code);
+    const requestedReady = deliveryProgress?.ready ?? 0;
+    const applyCapability = (capability?: string | null) => {
+      if (!capability) return;
+      try { sessionStorage.setItem(tokenKey, capability); } catch { /* Credentials remain available in this response. */ }
+      setToken(capability);
+    };
+    // Same browser that checked out or verified contact+PIN holds the HttpOnly
+    // d1 cookie; no contact or PIN is sent, so no PIN attempt is consumed.
+    const tryDevice = async () => {
+      triedDevice.current = code;
+      setAutomaticPending(true);
+      try {
+        const r = await fetch(`/api/orders/${encodeURIComponent(code)}/credentials`, {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ device: true }), cache: "no-store",
+        });
+        const body = (await r.json().catch(() => ({}))) as { credentials?: Credential[]; capability_token?: string | null };
+        if (cancelled) { triedDevice.current = ""; return; }
+        if (r.ok) {
+          loadedForReady.current = requestedReady;
+          setCreds(body.credentials ?? []);
+          applyCapability(body.capability_token);
+        } else if (![400, 403, 404, 409].includes(r.status)) setAutomaticError(true);
+      } catch {
+        if (cancelled) { triedDevice.current = ""; return; }
+        setAutomaticError(true);
+      }
+      setAutomaticPending(false);
+    };
     const verifyFromContact = () => {
       setAutomaticPending(false);
       if (triedPrefill.current) return;
-      if (!checkoutGrant && !isContactValue(autoContact)) return;
-      // Outside checkout, contact + PIN are still required.
-      if (buyerPinRequired && !autoPin && !checkoutGrant) return;
+      // Outside checkout, contact + PIN are still required; otherwise try this device's cookie once.
+      if (!checkoutGrant && !(isContactValue(autoContact) && (!buyerPinRequired || autoPin))) {
+        if (buyerPinRequired && triedDevice.current !== code) void tryDevice();
+        return;
+      }
       triedPrefill.current = true;
       setAutomaticPending(true);
       if (!contactEdited.current) setContact(autoContact);
       if (autoPin && !pinEdited.current) setPin(autoPin);
       void verifyWith(autoContact, buyerPinRequired ? autoPin : "", checkoutGrant);
     };
-    const requestedReady = deliveryProgress?.ready ?? 0;
     const retryAccess = () => {
       if (checkoutGrant || (!buyerPinRequired && isContactValue(autoContact))) verifyFromContact();
       else { setAutomaticError(true); setAutomaticPending(false); }
@@ -277,7 +308,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
   if (automaticPending) return <p role="status" className="mt-4 text-xs text-white/65">{text.checking}</p>;
   if (automaticError) return <section className="mt-4 text-left text-xs text-white/65">
     <p role="alert">{text.networkRetry}</p>
-    <button type="button" onClick={() => { triedPrefill.current = false; setRetry(n => n + 1); }} className="min-h-11 px-3 font-semibold text-[#00E5FF] underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">{orderCopy(locale).common.retry}</button>
+    <button type="button" onClick={() => { triedPrefill.current = false; triedDevice.current = ""; setRetry(n => n + 1); }} className="min-h-11 px-3 font-semibold text-[#00E5FF] underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#00E5FF]">{orderCopy(locale).common.retry}</button>
   </section>;
 
   const pinRequired = buyerPinRequired;
@@ -312,13 +343,16 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
             id={`wr-cred-pin-${code}`}
             value={pin}
             onChange={(e) => { pinEdited.current = true; setPin(e.target.value); }}
-            type="password"
+            name="order-pin"
+            type="text"
             inputMode="text"
-            autoComplete="off"
+            autoComplete="one-time-code"
+            data-1p-ignore
+            data-lpignore="true"
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            maxLength={32}
+            maxLength={26}
             placeholder={text.pinPlaceholder}
             aria-label={text.pinAria}
             required={pinRequired}
@@ -327,7 +361,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
         </div>}
         <button
           type="submit"
-          disabled={loading || !isContactValue(contact) || (pinRequired && !normalizePin(pin))}
+          disabled={loading || !isContactValue(contact) || (pinRequired && !pin.trim())}
           className="h-11 w-full shrink-0 rounded-xl bg-[#00E5FF] px-4 text-sm font-bold text-[#080C1E] transition hover:bg-[#00D0E8] disabled:opacity-50"
         >
           {loading ? text.checking : text.submit}

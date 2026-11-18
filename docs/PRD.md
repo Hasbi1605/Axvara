@@ -233,6 +233,18 @@ Keputusan owner 16 Nov 2026 (desain disetujui):
   12 jam dan auto-forward FR-S22 tetap. Aturan14November untuk produk tergantikan
   tetap berlaku. Status: implementasi lokal + test, publikasi CI; deployment belum diverifikasi.
 
+## Buka otomatis di browser yang sama — 18 November 2026
+
+- Keputusan owner: browser yang dipakai checkout, atau yang sudah sekali
+  memverifikasi email/WA + PIN, membuka detail akun dan PIN pesanan itu
+  otomatis selama 30 hari — termasuk dari tab baru, "Pesanan di perangkat ini"
+  dan tombol **Lihat Pesanan** di email bila dibuka di browser yang sama.
+  Perangkat lain tetap memakai email/WA checkout + PIN. Tombol ✕ di daftar
+  perangkat juga melupakan akses otomatis browser itu. Rotasi akses mencabutnya.
+- Kolom PIN tidak lagi diisi otomatis oleh password manager; PIN salah format
+  diberi pesan jelas. Teks bantuan form dipersingkat.
+- Status: implementasi lokal + test; publikasi CI, deployment belum diverifikasi.
+
 ## PIN pascabayar dan akses otomatis — 16 November 2026
 
 - Pembeli dengan bukti checkout asli/capability akun yang sah memperoleh PIN6

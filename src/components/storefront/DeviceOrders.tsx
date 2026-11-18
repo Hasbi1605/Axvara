@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { formatRupiah, formatWibDateTime } from "@/lib/utils";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { IosIcon } from "@/components/ui/IosIcon";
+import { forgetDeviceForOrder } from "@/lib/order-access-client";
 import { readLocalOrders, removeLocalOrder, settleLocalOrder, type LocalOrder } from "@/lib/local-orders";
 import { asPayLocale, normalizePaymentView, resumeAmount, resumeInfo, type PayLocale, type PaymentView } from "@/lib/payment-ui";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
@@ -149,7 +150,7 @@ export function DeviceOrders() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { removeLocalOrder(local.code); setRows((current) => current.filter((row) => row.local.code !== local.code)); }}
+                  onClick={() => { removeLocalOrder(local.code); void forgetDeviceForOrder(local.code); setRows((current) => current.filter((row) => row.local.code !== local.code)); }}
                   aria-label={t.hide(local.code)}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/10 hover:text-white"
                 >
