@@ -1,3 +1,4 @@
+import { marketRefundNotice } from "@/lib/warranty-policy";
 import { QRIS_PAYMENT_DEADLINE_NOTICE } from "@/lib/payment-maintenance";
 import { escapeHtml, escapeItemSummary, formatRupiah, truncate } from "./format";
 import type { Locale } from "@/lib/i18n/locale";
@@ -142,6 +143,7 @@ export function confirmBuyMessage(productName: string, price: number, qty = 1, o
     en ? "Final payable total is on the invoice, including the payment unique code." : "Total bayar final tercantum pada invoice, termasuk kode unik pembayaran.",
     "",
     en ? "Third-party, not official. Warranty follows the chosen variant. By continuing you agree to /garansi terms." : "Third-party, bukan official. Garansi mengikuti varian yang dipilih. Dengan melanjutkan pembayaran, kamu setuju ketentuan /garansi.",
+    marketRefundNotice[en ? "en" : "id"],
   );
   return lines.join("\n");
 }
@@ -301,7 +303,7 @@ export function cartCheckoutSummaryMessage(lines: TelegramCartLine[], subtotal: 
   if (opts?.usdEquivalentText) out.push(`≈ ${opts.usdEquivalentText}`);
   if (opts?.usdUnavailable) out.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
   out.push("");
-  out.push(en ? "One QRIS payment for all items. Final total is on the invoice." : "Satu pembayaran QRIS untuk semua item. Total bayar final tercantum pada invoice.");
+  out.push(en ? "One QRIS payment for all items. Final total is on the invoice." : "Satu pembayaran QRIS untuk semua item. Total bayar final tercantum pada invoice.", marketRefundNotice[en ? "en" : "id"]);
   return out.join("\n");
 }
 

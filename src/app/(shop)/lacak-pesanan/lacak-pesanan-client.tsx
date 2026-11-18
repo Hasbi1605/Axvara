@@ -710,7 +710,7 @@ export default function LacakPesananClient() {
               {ui.lacak.supplierRunning}
             </p>
           )}
-          {isPaid && !order.credentialsReady && <WarrantyClaimAccordion locale={order.locale} />}
+          {isPaid && !order.credentialsReady && <WarrantyClaimAccordion code={order.code} contact={wa} adminView={adminView} locale={order.locale} />}
           {isCancelled && (
             <p className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4 text-left text-xs leading-6 text-red-200">
               {ui.lacak.cancelledBanner}

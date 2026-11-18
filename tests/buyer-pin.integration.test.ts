@@ -109,7 +109,10 @@ it("rotation creates a fresh PIN admission bucket and invalidates prior browsing
 it.each(["status", "lookup", "cancel", "credentials", "reissue", "pedia-status", "pedia-lookup", "pedia-refill"])("%s fails closed if its order projection loses the stored format", async (surface) => {
   const pedia = surface.startsWith("pedia-");
   const code = pedia ? CODE.replace("AXV-", "AXP-") : CODE;
-  if (pedia) fx.sql.prepare("UPDATE orders SET code=?,order_kind='pedia' WHERE code=?").run(code, CODE);
+  if (pedia) {
+    insertTestOrder(fx.sql, code, { channel: "web" });
+    fx.sql.prepare("UPDATE orders SET order_kind='pedia',buyer_access_version=1,buyer_access_format='pin6' WHERE code=?").run(code);
+  }
   const order = fx.sql.prepare("SELECT * FROM orders WHERE code=?").get(code)!;
   const pin = await deriveOrderAccessCode(order);
   const prepare = fx.db.prepare.bind(fx.db);

@@ -1,5 +1,12 @@
 # PRD — AXVARA
 
+## Estimasi refund garansi Market — 18 November 2026
+
+- Refund untuk laporan garansi yang memenuhi syarat dan tidak tertangani setelah maksimal 3 hari = 100% dari nilai masa aktif yang belum terpakai, bukan 100% dari tagihan. Dasar harga per item sesudah diskon, tidak termasuk biaya pembayaran/kode unik. Waktu laporan WIB menentukan sisa; admin dapat mencatatnya per item tanpa mengubah status pembayaran. Tidak menghitung pembatalan sukarela, tidak menyetujui atau mencairkan dana.
+- Masa garansi menentukan kelayakan; durasi paket menentukan prorata. Nilai sebelum laporan adalah estimasi saat ini. Lunas belum diserahkan = belum dikirim. Data lama/durasi tidak lengkap perlu tinjauan admin; pesanan lama tidak diubah atau ditebak. Pedia/Games di luar scope.
+- `Axvara_Notif` menambahkan **Hitung Refund** pada notifikasi **Lunas** Market berikutnya; tidak kirim ulang notifikasi lama. Admin bisa mengetik invoice AXV, memilih item dan membagikan ringkasan tetap ke WhatsApp/Telegram. Satu link hanya-baca berlaku 7 hari, dapat diganti/dicabut. Pembeli bisa cek sendiri dalam accordion garansi setelah verifikasi yang sudah ada. Satu kalimat kebijakan muncul sebelum bayar di web/Telegram. Kalkulator manual tidak membaca invoice.
+- Implementasi dan verifikasi lokal; publikasi melalui CI. Deployment belum diverifikasi.
+
 ## C-S: antrean pengiriman setelah lunas — 18 November 2026 (lokal, belum deploy)
 
 Semua rail/konfirmasi admin authoritative hanya menjadwalkan fulfillment dari

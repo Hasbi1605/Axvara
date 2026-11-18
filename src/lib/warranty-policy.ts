@@ -10,6 +10,11 @@ export const warrantyTerms = {
   consent: "Lanjut membeli = kamu PAHAM & SETUJU ketentuan ini. Terima kasih 🙏",
 };
 
+export const marketRefundNotice = {
+  id: "Refund garansi dihitung dari nilai masa aktif yang belum terpakai saat laporan yang memenuhi syarat diterima.",
+  en: "Warranty refunds are based on the unused time when an eligible report is received.",
+} as const;
+
 export const marketWarrantyClaim = {
   eligibility: "pengajuan garansi hanya untuk produk bergaransi",
   requirements: [
@@ -19,6 +24,7 @@ export const marketWarrantyClaim = {
   notes: [
     "Proses garansi 1–3 hari tergantung antrean, stok akun pengganti, atau gangguan dari pihak terkait.",
     "Jika setelah maksimal 3 hari gangguan masih terjadi, kami akan memberikan solusi refund uang.",
+    marketRefundNotice.id,
   ],
   closing: "Terima kasih atas kesabarannya!",
 } as const;
@@ -33,6 +39,7 @@ export const marketWarrantyClaimEn = {
   notes: [
     "Warranty processing takes 1–3 days depending on the queue, replacement account stock, or issues from the provider.",
     "If the issue persists after a maximum of 3 days, we will offer a refund.",
+    marketRefundNotice.en,
   ],
   closing: "Thank you for your patience!",
 } as const;
@@ -40,7 +47,7 @@ export const marketWarrantyClaimEn = {
 export const warrantyClaimRules = [
   {
     title: "Garansi berupa penggantian / perbaikan.",
-    detail: marketWarrantyClaim.notes[1],
+    detail: `${marketWarrantyClaim.notes[1]} ${marketRefundNotice.id}`,
   },
   {
     title: "Wajib sertakan invoice atau bukti pemesanan dan screenshot kendala.",

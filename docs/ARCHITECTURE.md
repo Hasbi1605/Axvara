@@ -1,5 +1,11 @@
 # ARCHITECTURE.md — AXVARA
 
+## Snapshot refund Market — 18 November 2026
+
+Migrasi D1 `0137_market_refund_estimates.sql`: trigger insert `orders` Market menyimpan harga, durasi dan garansi per baris (`expandDeliveryLines` untuk indeks unit unik), tanpa mengubah payload order atau menambah round-trip checkout. Trigger insert/update `fulfillment_items` menulis awal masa aktif sekali saat penyerahan `delivered`, bukan `paid_at` atau `updated_at`. Tidak ada backfill/cron/secret baru. Hitung detik sampai tanggal akhir (bulan/tahun kalender WIB, akhir bulan dibatasi) dan bulatkan rupiah pada akhir per item. Durasi/warranty tak terstruktur tidak ditebak; data lama belum punya snapshot. Tidak mengubah provider, saldo, pemicu pembayaran, atau jalur pengiriman yang ada.
+
+`POST /api/admin/refund` dijaga `requireAdmin`: lookup, kunci waktu laporan yang valid per item, buat/ganti/revoke link. `POST /api/refund` memakai pembuktian status order yang sudah ada (kontak/p1 atau c1 checkout asli); tidak menyingkap PIN/kredensial dan tidak memberi akses status baru. Semua respons privat/no-store. Link `/kalkulator-refund/bagikan#s=…` menggunakan token acak 192 bit; hanya hash SHA-256 disimpan, token dipertukarkan via body POST. Snapshot dibatasi pada item pilihan dan tidak membawa invoice, identitas atau data login. Link aktif maksimal 7 hari, gugur bila dicabut/diganti atau pesanan tidak lagi lunas. Satu baris link per invoice, tanpa cleanup cron. Invoice di deep link Telegram hanya membuka lookup admin, bukan pemberi akses.
+
 ## P2 hardening canary & alarm — 18 November 2026 (lokal, belum dipublikasikan)
 
 - Rollback: producer masih memo30detik, tetapi origin membaca setting D1 segar

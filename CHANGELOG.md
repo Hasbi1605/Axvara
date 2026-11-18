@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-18 — Tambah kalkulator refund Market 100% prorata per item, estimasi mandiri di accordion garansi, dan tombol Hitung Refund pada notifikasi Lunas `Axvara_Notif`. Admin dapat mengunci waktu laporan dan berbagi link Telegram/WhatsApp 7 hari yang bisa dicabut; tidak ada payout atau backfill — `drizzle/migrations/0137_market_refund_estimates.sql`, `src/lib/refund`, storefront/admin/Telegram, dokumen — (verifikasi: 532 file/7.292 tes, TypeScript, build Pages dan smoke workerd lokal; Chrome fixture 1440/390 menilai kalkulasi, prefill, share/revoke, fokus dan reduced motion; deployment belum diverifikasi)
+
 - 2026-11-18 — Ringkas README menjadi panduan masuk; hapus catatan usang dan duplikat, batasi update README ke panduan yang berubah — `README.md`, `AGENTS.md`, `docs/ARCHITECTURE.md` (fixture CMS lokal) — (verifikasi: tautan lokal, rujukan quick start, dan `git diff --check`; dokumen saja)
 
 - 2026-11-18 — Betulkan alarm sintetis katalog/quote: normalisasi ID desimal string dari `/api/products?active=1` ke integer sebelum mencocokkan PDP dan menguji quote. Katalog rusak tetap alarm; quote yang belum dijalankan ditandai `catalog_unavailable`, bukan kegagalan terpisah. API toko tidak berubah — `mcp-worker/src/synthetic.ts`, `tests/mcp-synthetic-health.test.ts`, dokumen A-S — (verifikasi: GET produksi 69/69 ID string, tes fokus 3 file/88 tes, fixture workerd 2 kasus, full 531 file/7287 tes, Pages build, TypeScript; deployment belum diverifikasi)

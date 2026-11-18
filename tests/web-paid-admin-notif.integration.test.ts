@@ -84,7 +84,7 @@ describe("notif Pembayaran diterima — Web ke grup admin", () => {
     expect(msgs[0].text).toContain(CODE);
     expect(msgs[0].text).toContain("rani@contoh.test");
     const urls = msgs[0].reply_markup!.inline_keyboard.flat().map((b) => b.url);
-    expect(urls).toEqual(["https://wa.me/628123456789", `https://axvara.tech/lacak-pesanan?code=${CODE}&admin=1`, `https://axvara.tech/admin?section=orders&q=${CODE}`]);
+    expect(urls).toEqual(["https://wa.me/628123456789", `https://axvara.tech/lacak-pesanan?code=${CODE}&admin=1`, `https://axvara.tech/admin?section=orders&q=${CODE}`, `https://axvara.tech/admin/refund?code=${CODE}`]);
     expect(ledger()).toMatchObject({ status: "sent", error: null });
 
     await ensureFulfillmentForPaidOrder(CODE);

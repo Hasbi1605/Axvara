@@ -263,7 +263,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
             </div>
           ))}
         </div>
-        <WarrantyClaimAccordion className="mt-3" locale={locale} />
+        <WarrantyClaimAccordion className="mt-3" locale={locale} code={code} contact={prefillContact} adminView={adminView} />
         <p className="mt-3 text-[11px] leading-5 text-white/40">{text.keep} {token ? text.remembered : text.doNotShare}</p>
       </section>
     );
@@ -334,7 +334,7 @@ export function WrCredentialsPanel({ code, prefillContact = "", prefillPin = "",
         </button>
       </form>
       {error && <p role="alert" className="mt-2 text-xs text-amber-200">{error}</p>}
-      <WarrantyClaimAccordion className="mt-3" locale={locale} />
+      <WarrantyClaimAccordion className="mt-3" locale={locale} code={code} contact={prefillContact} adminView={adminView} />
     </section>
   );
   }

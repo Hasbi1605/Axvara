@@ -359,6 +359,7 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
       customerName: String(order.customer_name || "Pembeli WhatsApp"),
       orderCode: String(order.code),
       siteUrl,
+      paidMarket: order.order_kind === "apps",
     }),
   });
   if (!sent.ok) return false;
@@ -409,6 +410,7 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
       username: username || undefined,
       orderCode: String(order.code),
       siteUrl,
+      paidMarket: order.order_kind === "apps",
     }),
   });
   if (!sent.ok) return false;

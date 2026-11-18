@@ -1,5 +1,9 @@
 # DESIGN.md — AXVARA Design System
 
+## Kalkulator refund Market — 18 November 2026
+
+Latar Midnight, kartu `ax-glass-card`, aksen cyan, dan nominal tabular. Mode manual menempatkan hasil di samping form di desktop dan menumpuknya di mobile; mode invoice menampilkan sisa masa aktif dan nominal lebih dulu, tanggal/rate di rincian lipat. Fade/slide masuk 200 ms, transisi bar 300 ms, menghormati `prefers-reduced-motion`. Navigasi melalui keyboard, outline fokus cyan, target tombol utama 44px. Halaman pesanan/lacak setelah bayar hanya mengubah isi accordion garansi (tiga teks pendek + satu aksi, tanpa kartu atau tombol refund di luar accordion).
+
 ## Editor masa aktif & garansi — 18 November 2026 (G4, lokal)
 
 `VariantDurationFields.tsx` dipakai bersama pada mode tunggal dan multi-varian,

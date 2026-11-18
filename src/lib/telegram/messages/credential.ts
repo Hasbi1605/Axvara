@@ -1,5 +1,5 @@
 import { COPY_SECTION_TITLES, type VariantCopy } from "@/lib/product-copy/format";
-import { marketWarrantyClaim } from "@/lib/warranty-policy";
+import { marketWarrantyClaim, marketWarrantyClaimEn } from "@/lib/warranty-policy";
 import type { Locale } from "@/lib/i18n/locale";
 import { escapeHtml, truncate } from "./format";
 
@@ -75,10 +75,11 @@ export function credentialMessages({
   }
 
   append(en ? "<b>Warranty claim terms</b>" : "<b>Syarat klaim garansi</b>");
-  text(`${marketWarrantyClaim.eligibility}. ${en ? "Warranty length and coverage follow the product terms." : "Masa dan cakupan garansi mengikuti ketentuan produk."}`);
-  marketWarrantyClaim.requirements.forEach((requirement, index) => text(`${index + 1}. ${requirement}`));
-  marketWarrantyClaim.notes.forEach(textLine => text(textLine));
-  text(marketWarrantyClaim.closing);
+  const claimPolicy = en ? marketWarrantyClaimEn : marketWarrantyClaim;
+  text(`${claimPolicy.eligibility}. ${en ? "Warranty length and coverage follow the product terms." : "Masa dan cakupan garansi mengikuti ketentuan produk."}`);
+  claimPolicy.requirements.forEach((requirement, index) => text(`${index + 1}. ${requirement}`));
+  claimPolicy.notes.forEach(textLine => text(textLine));
+  text(claimPolicy.closing);
   append(en ? "Keep these access details private, do not share them. Keep the invoice for claims.\nHelp: /bantuan. Full terms: /garansi" : "Simpan detail akses ini, jangan dibagikan. Simpan invoice untuk klaim.\nBantuan: /bantuan. Ketentuan lengkap: /garansi");
   messages.push(current);
   return messages;

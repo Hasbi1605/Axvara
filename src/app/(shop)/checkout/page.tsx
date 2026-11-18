@@ -1,4 +1,6 @@
 "use client";
+
+import { marketRefundNotice } from "@/lib/warranty-policy";
 import { isPaymentMaintenanceEnabled } from "@/lib/payment-maintenance";
 import { ManualOrderPanel } from "@/components/shared/PaymentMaintenanceNotice";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
@@ -673,6 +675,7 @@ function CheckoutInner() {
         {text("Saya paham AXVARA adalah", "I understand AXVARA is an")} <span className="font-semibold text-white">{text("third-party independen, bukan official store", "independent third party, not an official store")}</span>{text(", dan saya setuju dengan", ", and I agree to the")}{" "}
         <Link prefetch={false} href="/garansi-replace" target="_blank" rel="noreferrer" className="font-semibold text-[#00E5FF] hover:underline">{text("ketentuan layanan & garansi", "service and warranty terms")}</Link>{" "}
         {text("serta ketentuan di deskripsi tiap produk.", "and the terms in each product description.")}
+        <span className="mt-1 block">{marketRefundNotice[uiLocale]}</span>
       </span>
     </label>
   );

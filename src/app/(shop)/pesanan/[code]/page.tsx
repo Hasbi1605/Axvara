@@ -841,7 +841,7 @@ export default function OrderSuccessPage() {
           </section>
         )}
 
-        {isPaid && !order.credentialsReady && <WarrantyClaimAccordion locale={order.locale} />}
+        {isPaid && !order.credentialsReady && <WarrantyClaimAccordion code={code} locale={order.locale} />}
 
         {!compactPayment && <div className="mt-6 grid grid-cols-2 gap-2.5">
           <Link prefetch={false} href="/lacak-pesanan" className="ax-glass-card flex h-11 items-center justify-center whitespace-nowrap rounded-xl px-3 text-sm font-semibold text-white hover:bg-white/10">{oc.track}</Link>

@@ -40,9 +40,18 @@ function stubOrder(overrides: Record<string, unknown> = {}) {
 
 function expectPolicy(container: HTMLElement, size: "sm" | "xs" = "xs") {
   const ui = within(container);
+  if (size === "xs") {
+    const intro = ui.getByText("Selama garansi berlaku, kirim invoice dan screenshot kendala.");
+    expect(intro.parentElement!.classList.contains("text-xs")).toBe(true);
+    expect(intro.parentElement!.classList.contains("leading-relaxed")).toBe(true);
+    expect(intro.parentElement!.querySelectorAll("p")).toHaveLength(3);
+    expect(ui.getByText(/dalam 3 hari.*sisa masa aktif.*laporan/)).toBeTruthy();
+    expect(ui.getByText(/30 hari, sisa 20 hari → Rp20.000/)).toBeTruthy();
+    return;
+  }
   const eligibility = ui.getByText("pengajuan garansi hanya untuk produk bergaransi");
-  expect(eligibility.parentElement!.classList.contains(size === "xs" ? "text-xs" : "text-sm")).toBe(true);
-  expect(eligibility.parentElement!.classList.contains(size === "xs" ? "leading-relaxed" : "leading-6")).toBe(true);
+  expect(eligibility.parentElement!.classList.contains("text-sm")).toBe(true);
+  expect(eligibility.parentElement!.classList.contains("leading-6")).toBe(true);
   for (const text of [...marketWarrantyClaim.requirements, ...marketWarrantyClaim.notes, marketWarrantyClaim.closing]) {
     expect(ui.getByText(text)).toBeTruthy();
   }
@@ -116,6 +125,19 @@ describe("Market warranty claim guidance", () => {
     expect(screen.getAllByRole("button", { name: "Syarat klaim garansi" })).toHaveLength(1);
     fireEvent.click(button);
     expectPolicy(within(account).getByRole("region", { name: "Syarat klaim garansi" }));
+  });
+
+  it("keeps the refund action inside the accordion and requests no data until clicked", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ estimate: { state: "review", asOf: 1794864000, lines: [] } }), { headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetch);
+    render(<WarrantyClaimAccordion code={CODE} contact="buyer@example.test" />);
+    expect(screen.queryByRole("button", { name: "Cek Estimasi Refund" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Syarat klaim garansi" }));
+    const panel = within(screen.getByRole("region", { name: "Syarat klaim garansi" }));
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.click(panel.getByRole("button", { name: "Cek Estimasi Refund" }));
+    expect(await panel.findByText("Perlu pengecekan admin.")).toBeTruthy();
+    expect(fetch).toHaveBeenCalledWith("/api/refund", expect.objectContaining({ headers: expect.objectContaining({ "x-order-contact": "buyer@example.test" }) }));
   });
 
   it("can be expanded and collapsed with the keyboard", async () => {

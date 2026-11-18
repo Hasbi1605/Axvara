@@ -289,7 +289,7 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   const channelTotal = (counts.web || 0) + (counts.telegram || 0) + (counts.whatsapp || 0);
 
   return <div className="mt-4 space-y-6">
-    <PageHeader title="Pesanan" description="Cari, periksa pembayaran, dan proses pesanan dari semua kanal." actions={<Button asChild variant="outline" size="sm"><a href={exportHref}><Download size={14} /> Ekspor CSV</a></Button>} />
+    <PageHeader title="Pesanan" description="Cari, periksa pembayaran, dan proses pesanan dari semua kanal." actions={<><Button asChild variant="outline" size="sm"><a href="/admin/refund">Hitung Refund</a></Button><Button asChild variant="outline" size="sm"><a href={exportHref}><Download size={14} /> Ekspor CSV</a></Button></>} />
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {[["Total pesanan", stats.total], ["Pending", stats.pending], ["Lunas", stats.paid], ["Omzet", formatRupiah(stats.revenue)]].map(([label, value]) => <StatCard key={label} label={label} value={loading || error ? <Skeleton className="h-8 w-24" /> : value} hint={hasActiveFilters ? "Hasil filter" : undefined} />)}
     </div>

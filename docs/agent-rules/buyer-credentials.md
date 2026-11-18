@@ -1,5 +1,10 @@
 # Aturan agent — Kredensial pembeli (invoice + kontak + PIN)
 
+## Estimasi refund Market — 18 November 2026
+
+- Accordion garansi tetap satu dan terlipat per pesanan lunas. Pembeli memakai status terverifikasi yang sudah ada (kontak/p1/c1). Nomor invoice, admin query, dan link share bukan proof untuk PIN atau kredensial. Tidak ada issuance/persistensi proof baru dan perubahan pengiriman produk di luar copy ketentuan.
+- Share dibuat admin hanya untuk ringkasan estimasi item terpilih, kadaluwarsa 7 hari dan dapat dicabut. Jangan menaruh proof akses order, PIN, kontak atau detail akun di link/payload ini.
+
 ## C0 fence kirim otomatis per item/kanal — 18 November 2026 (lokal)
 
 - Migrasi `0135_fulfillment_send_claims.sql` menambah ledger khusus D1 dengan

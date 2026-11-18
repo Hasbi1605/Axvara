@@ -35,6 +35,8 @@ export const RATE_LIMITS = {
   // Longgar (debounce qty + chunk listing); bukan otoritas harga.
   "display:prices": 120,
   "orders:lookup": 20,
+  "orders:refund": 20,
+  "admin:refund": 30,
   // Reissue mengubah state dan tidak butuh login (pembeli hanya memegang kode
   // order), jadi batasnya ketat. Perlindungan utamanya tetap syarat "invoice
   // lama HARUS sudah kedaluwarsa" di reissueDanaQrisInvoice, yang membuat

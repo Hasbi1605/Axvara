@@ -1,3 +1,4 @@
+import { MARKET_INVOICE } from "@/lib/refund/calculate";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // src/lib/telegram/keyboards.ts — Premium UX inline keyboards
 // Patterns: ≤3 buttons per row, verbs on buttons, consistent back/home placement,
@@ -660,6 +661,7 @@ export function telegramOrderAdminKeyboard(params: {
   username?: string;
   orderCode: string;
   siteUrl: string;
+  paidMarket?: boolean;
 }): InlineKeyboardMarkup {
   const rows: InlineKeyboardButton[][] = [];
   if (params.username) {
@@ -667,6 +669,7 @@ export function telegramOrderAdminKeyboard(params: {
   }
   rows.push([{ text: "👁 Lihat pesanan pembeli", url: `${params.siteUrl}/lacak-pesanan?code=${encodeURIComponent(params.orderCode)}&admin=1` }]);
   rows.push([{ text: "🔧 Buka Pesanan", url: `${params.siteUrl}/admin?section=orders&q=${encodeURIComponent(params.orderCode)}` }]);
+  if (params.paidMarket) rows.push(...refundAdminButton(params.siteUrl, params.orderCode));
   return { inline_keyboard: rows };
 }
 
@@ -684,6 +687,7 @@ export function webOrderAdminKeyboard(params: {
   customerName: string;
   orderCode: string;
   siteUrl: string;
+  paidMarket?: boolean;
 }): InlineKeyboardMarkup {
   const { customerWa, customerName, orderCode, siteUrl } = params;
   const waMsg = encodeURIComponent(`Halo ${customerName}, pesanan ${orderCode} kamu sudah kami terima. Admin akan segera memproses.`);
@@ -694,6 +698,7 @@ export function webOrderAdminKeyboard(params: {
         { text: "👁 Lihat pesanan pembeli", url: `${siteUrl}/lacak-pesanan?code=${encodeURIComponent(orderCode)}&admin=1` },
         { text: "🔧 Panel Admin", url: `${siteUrl}/admin?section=orders` },
       ],
+      ...(params.paidMarket ? refundAdminButton(siteUrl, orderCode) : []),
     ],
   };
 }
@@ -710,7 +715,12 @@ export function webPaidAdminKeyboard(params: { customerWa: string; orderCode: st
     ? `${SITE.gamesUrl}/pesanan/${encodeURIComponent(params.orderCode)}`
     : `${params.siteUrl}/lacak-pesanan?code=${encodeURIComponent(params.orderCode)}&admin=1` }]);
   rows.push([{ text: "🔧 Buka Pesanan", url: `${params.siteUrl}/admin?section=orders&q=${encodeURIComponent(params.orderCode)}` }]);
+  if (params.orderKind === "apps") rows.push(...refundAdminButton(params.siteUrl, params.orderCode));
   return { inline_keyboard: rows };
+}
+
+function refundAdminButton(siteUrl: string, code: string): InlineKeyboardButton[][] {
+  return MARKET_INVOICE.test(code) ? [[{ text: "Hitung Refund", url: `${siteUrl}/admin/refund?code=${encodeURIComponent(code)}` }]] : [];
 }
 
 /** Hanya ditampilkan bersama pesan QR pertama yang sudah kedaluwarsa. */
