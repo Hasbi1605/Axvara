@@ -81,15 +81,21 @@ it("Telegram catalog/category/bestseller share one cached read; stock refreshes 
   } });
   fx.sql.exec(`INSERT INTO products(id,name,slug,price,stock,telegram_enabled,sold_count) VALUES(1,'Alpha Ready','alpha',5000,10,1,10),(2,'Bravo Habis','bravo',3000,0,1,100);
     INSERT INTO product_variants(id,product_id,sku,label,price,stock,fulfillment_mode) VALUES(1,1,'A','A',5000,10,'manual'),(2,2,'B','B',3000,0,'manual')`);
+  const recorded: string[] = [];
+  fx.control.fail = (query) => { recorded.push(query); return false; };
   const before=fx.control.queries;
   expect((await listTelegramProducts()).map(row=>row.name)).toEqual(["Alpha Ready"]);
   fx.sql.exec("UPDATE product_variants SET stock=0 WHERE id=1");
   expect((await getBestsellers()).map(row=>row.productId)).toEqual([1]);
   expect(await readTelegramCatalog()).toEqual(expect.arrayContaining([expect.objectContaining({ id:2,price:null })]));
-  expect(fx.control.queries-before).toBe(1);
+  // 2 queries = 1 shared 5s-memoized catalog_revision_* lookup + 1 telegram catalog SELECT (0 extra queries on getBestsellers/readTelegramCatalog).
+  expect(recorded.filter((q) => /FROM store_settings/i.test(q))).toHaveLength(1);
+  expect(fx.control.queries-before).toBe(2);
   vi.advanceTimersByTime(31_000);
   expect(await listTelegramProducts()).toEqual([]);
-  expect(fx.control.queries-before).toBe(2);
+  // After 31s (>5s memo TTL & >30s mock caches.default TTL): +1 revision lookup + +1 refreshed catalog SELECT = 4 total.
+  expect(recorded.filter((q) => /FROM store_settings/i.test(q))).toHaveLength(2);
+  expect(fx.control.queries-before).toBe(4);
 });
 
 it.each([["Netflix Premium","netflix",true],["Netflix Premium","n_t%premium",true],["Netflix Premium","canva",false],[null,"",true]] as const)("search preserves SQL LIKE semantics for %s / %s",(value,keyword,expected)=>{

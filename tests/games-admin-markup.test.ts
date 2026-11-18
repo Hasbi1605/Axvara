@@ -299,13 +299,17 @@ describe("POST /api/admin/games/products/bulk-markup", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toMatchObject({ ok: true, updated: 30 });
-    // `security_events` adalah audit requireAdmin, bukan bagian recompute.
+    // `security_events` adalah audit requireAdmin, bukan bagian recompute;
+    // `store_settings` adalah tepat 1 bump revisi katalog Games.
     const writes = statements
       .filter((q) => /^(INSERT|UPDATE|DELETE)/i.test(q.trim()))
       .filter((q) => !/security_events/.test(q));
+    const revisionBumps = writes.filter((q) => /INTO store_settings/i.test(q));
+    const markupWrites = writes.filter((q) => !/INTO store_settings/i.test(q));
+    expect(revisionBumps).toHaveLength(1);
     // 1 insert override (semua SKU via json_each) + 1 update harga = 2 tulis.
-    expect(writes).toHaveLength(2);
-    expect(writes.filter((q) => /UPDATE games_products SET sell_price/.test(q))).toHaveLength(1);
+    expect(markupWrites).toHaveLength(2);
+    expect(markupWrites.filter((q) => /UPDATE games_products SET sell_price/.test(q))).toHaveLength(1);
     // Baca setting harga global: satu query.
     expect(statements.filter((q) => /FROM store_settings/.test(q)).length).toBeLessThanOrEqual(1);
     expect(Number(product("sk:1").sell_price)).toBe(12000);

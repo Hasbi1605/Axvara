@@ -12,12 +12,31 @@ import { OrderTransitionError } from "./errors";
 import type { D1, D1Statement } from "./types";
 import { parseFxTimestamp } from "@/lib/payments/fx";
 
+export type CatalogRevisionTransitionOptions = {
+  skipRevisionBump?: boolean;
+  onMarketChanged?: () => void;
+};
+
+async function finishMarketMutationRevision(
+  d1: D1,
+  options?: CatalogRevisionTransitionOptions,
+): Promise<void> {
+  if (options?.onMarketChanged) {
+    options.onMarketChanged();
+    return;
+  }
+  if (options?.skipRevisionBump) return;
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market", d1);
+}
+
 export async function transitionPendingOrder(
   code: string,
   status: "lunas" | "dibatalkan" | "kadaluarsa",
   adminNote: string | null,
   rawItems: { product_id: number; variant_id?: number; qty: number }[],
   database?: D1 | null,
+  options?: CatalogRevisionTransitionOptions,
 ): Promise<void> {
   const productQuantities = new Map<number, number>();
   const variantQuantities = new Map<number, number>();
@@ -78,10 +97,7 @@ export async function transitionPendingOrder(
       try {
         const batchResults = await d1.batch(statements);
         const restocked = batchResults.slice(1, -2).some((res) => Number(res?.meta?.changes ?? 0) > 0);
-        if (restocked) {
-          const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-          await bumpCatalogRevision("market", d1);
-        }
+        if (restocked) await finishMarketMutationRevision(d1, options);
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -139,7 +155,7 @@ export async function transitionPendingOrder(
            AND NOT EXISTS(SELECT 1 FROM orders WHERE code=? AND status='lunas' AND payment_status='paid')`,
       ).bind(code, code),
     ]).catch(() => undefined);
-    await incrementSoldCountForOrder(code, d1);
+    await incrementSoldCountForOrder(code, d1, options);
     return;
   }
 
@@ -170,7 +186,7 @@ export async function transitionPendingPaymentOrder(input: {
   lastError?: string | null;
   /** Cron rechecks the deadline inside the same transaction as stock release. */
   expiredOnly?: boolean;
-}, database?: D1 | null): Promise<boolean> {
+}, database?: D1 | null, options?: CatalogRevisionTransitionOptions): Promise<boolean> {
   const productQuantities = new Map<number, number>();
   const variantQuantities = new Map<number, number>();
   input.items.forEach((item) => {
@@ -246,10 +262,7 @@ export async function transitionPendingPaymentOrder(input: {
     try {
       const batchResults = await d1.batch(statements);
       const restocked = batchResults.slice(1, -3).some((res) => Number(res?.meta?.changes ?? 0) > 0);
-      if (restocked) {
-        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-        await bumpCatalogRevision("market", d1);
-      }
+      if (restocked) await finishMarketMutationRevision(d1, options);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -277,7 +290,7 @@ export async function transitionPendingPaymentToPaid(
     salesChannel: string;
   } | null,
   event?: { id: number; reviewedBy?: string; reviewNote?: string },
-  options?: { paymentMethod?: PaidPaymentMethod; eventMode?: "payable" | "received_text" | "gateway" },
+  options?: { paymentMethod?: PaidPaymentMethod; eventMode?: "payable" | "received_text" | "gateway" } & CatalogRevisionTransitionOptions,
   database?: D1 | null,
 ): Promise<boolean> {
   if ((options?.paymentMethod === "sekalipay_gateway" || options?.eventMode === "gateway")
@@ -403,7 +416,7 @@ export async function transitionPendingPaymentToPaid(
 
     try {
       await d1.batch(statements);
-      await incrementSoldCountForOrder(orderCode, d1);
+      await incrementSoldCountForOrder(orderCode, d1, options);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -434,7 +447,11 @@ export async function transitionPendingPaymentToPaid(
  * Increment sold_count on products for a paid order.
  * Best-effort: failures are logged but don't block the payment flow.
  */
-export async function incrementSoldCountForOrder(orderCode: string, database?: D1 | null): Promise<void> {
+export async function incrementSoldCountForOrder(
+  orderCode: string,
+  database?: D1 | null,
+  options?: CatalogRevisionTransitionOptions,
+): Promise<void> {
   const d1 = database === undefined ? getD1() : database;
   if (d1) {
     try {
@@ -450,8 +467,7 @@ export async function incrementSoldCountForOrder(orderCode: string, database?: D
       });
       const batchResults = await d1.batch(stmts);
       if (batchResults.some((res) => Number(res?.meta?.changes ?? 0) > 0)) {
-        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-        await bumpCatalogRevision("market", d1);
+        await finishMarketMutationRevision(d1, options);
       }
     } catch { /* best-effort */ }
     return;

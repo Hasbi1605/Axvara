@@ -285,8 +285,6 @@ export async function POST(request: NextRequest) {
     const budget = createBudgetedDatabase(QUERY_BUDGET, RESERVE_TAIL);
     const database = budget.access;
     const { queryAll, queryFirst, execRun } = database;
-    const transitionPendingPaymentOrder = (input: Parameters<typeof rawTransitionPendingPaymentOrder>[0]) => rawTransitionPendingPaymentOrder(input, database.d1);
-    const transitionPendingOrder = (code: string, status: "kadaluarsa", note: null, items: { product_id: number; variant_id?: number; qty: number }[]) => rawTransitionPendingOrder(code, status, note, items, database.d1);
     const deferredOut: CronPhase[] = [];
     const { phase: storedPhase, deferred: storedDeferred } = forcedPhase
       ? { phase: forcedPhase, deferred: [] as CronPhase[] }
@@ -578,6 +576,9 @@ export async function POST(request: NextRequest) {
     step("queues_counted");
     let waWorkPending = pendingWa + pendingStaleWa;
     const runExpiry = async () => {
+      let marketRestocked = false;
+      const onMarketChanged = () => { marketRestocked = true; };
+      const expiryOpts = { onMarketChanged };
       // === FASE EXPIRY: stale-init + expired + stranded + manual-WA ===
       // Daftar expiry HANYA dibaca bila fase expiry aktif — pembacaan murah
       // pun (4 query) berarti satu job 2-item (16+ query) tak muat pada run
@@ -631,7 +632,7 @@ export async function POST(request: NextRequest) {
           try {
             const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
 
-            const changed = await transitionPendingPaymentOrder({
+            const changed = await rawTransitionPendingPaymentOrder({
               orderCode: String(tx.order_code),
               expectedTransactionStatus: "initializing",
               transactionStatus: "failed",
@@ -639,7 +640,7 @@ export async function POST(request: NextRequest) {
               paymentStatus: "failed",
               items,
               lastError: "stale_initializing",
-            });
+            }, database.d1, expiryOpts);
             if (changed) staleTransitions++;
           } catch { /* ok */ }
         }
@@ -669,7 +670,7 @@ export async function POST(request: NextRequest) {
           try {
             const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
 
-            const changed = await transitionPendingPaymentOrder({
+            const changed = await rawTransitionPendingPaymentOrder({
               orderCode: String(tx.order_code),
               expectedTransactionStatus: "pending",
               transactionStatus: "expired",
@@ -677,7 +678,7 @@ export async function POST(request: NextRequest) {
               orderStatus: "kadaluarsa",
               paymentStatus: "expired",
               items,
-            });
+            }, database.d1, expiryOpts);
             if (!changed) continue;
             expiredTransitions++;
             if (tx.provider !== "dana" && order.telegram_chat_id) {
@@ -715,7 +716,7 @@ export async function POST(request: NextRequest) {
         try {
           const items = JSON.parse(String(row.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
 
-          const changed = await transitionPendingPaymentOrder({
+          const changed = await rawTransitionPendingPaymentOrder({
             orderCode: String(row.order_code),
             expectedTransactionStatus: String(row.tx_status) === "initializing" ? "initializing" : "pending",
             transactionStatus: String(row.tx_status) === "initializing" ? "failed" : "expired",
@@ -723,7 +724,7 @@ export async function POST(request: NextRequest) {
             paymentStatus: "expired",
             items,
             lastError: "legacy_expiry_repair",
-          });
+          }, database.d1, expiryOpts);
           // transitionPendingPaymentOrder guards on a pending order, so for
           // already-terminal orders close just the stranded ledger row: its
           // status is still non-terminal, therefore still pinning the amount.
@@ -773,11 +774,16 @@ export async function POST(request: NextRequest) {
         try {
           const items = JSON.parse(String(order.items ?? "[]")) as { product_id: number; variant_id?: number; qty: number }[];
 
-          await transitionPendingOrder(String(order.code), "kadaluarsa", null, items);
+          await rawTransitionPendingOrder(String(order.code), "kadaluarsa", null, items, database.d1, expiryOpts);
           expiredStaticCount++;
         } catch { /* another worker may have transitioned it */ }
       }
       results.expired_manual_whatsapp_orders = expiredStaticCount;
+
+      if (marketRestocked && budget.fits(1)) {
+        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+        await bumpCatalogRevision("market", database, { metered: true });
+      }
 
       // Sinyal deferred expiry jujur: masih ada sisa antrean setelah batas
       // (semua jenis: pending + init-basi + manual-WA — RR4-06).

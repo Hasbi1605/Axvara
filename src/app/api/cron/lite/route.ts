@@ -251,6 +251,8 @@ async function runExpiry(db: Db) {
   const { isExpiredIso } = await import("@/lib/expiry");
   let staleInitializing = 0;
   let expired = 0;
+  let marketRestocked = false;
+  const expiryOpts = { onMarketChanged: () => { marketRestocked = true; } };
   // Ledger yatim (insiden AXV-20261018-AB4D407F): order sudah dibatalkan
   // mandiri/admin tetapi payment_transactions tertinggal 'pending' (jalur
   // batal tidak menutup ledger dinamis). Guard transisi expiry mensyaratkan
@@ -288,7 +290,7 @@ async function runExpiry(db: Db) {
       orderCode: String(tx.order_code), expectedTransactionStatus: "initializing",
       transactionStatus: "failed", orderStatus: "dibatalkan", paymentStatus: "failed",
       items: parseItems(tx.items), lastError: "stale_initializing",
-    }, db.d1).catch(() => false);
+    }, db.d1, expiryOpts).catch(() => false);
     if (changed) staleInitializing++;
   }
   // QRIS dinamis + nowpayments: cabang provider lain mengirim pesan
@@ -312,7 +314,7 @@ async function runExpiry(db: Db) {
       orderCode: String(tx.order_code), expectedTransactionStatus: "pending",
       transactionStatus: "expired", expiredOnly: true, orderStatus: "kadaluarsa",
       paymentStatus: "expired", items: parseItems(tx.items),
-    }, db.d1).catch(() => false);
+    }, db.d1, expiryOpts).catch(() => false);
     if (changed) expired++;
   }
   const gatewayExpired = await db.queryAll(
@@ -337,10 +339,10 @@ async function runExpiry(db: Db) {
           paymentStatus: "expired",
           items: parseItems(tx.items),
           lastError: tx.last_error ? String(tx.last_error) : "gateway_expired",
-        }, db.d1);
+        }, db.d1, expiryOpts);
         if (changed) expired++;
       } else {
-        await transitionPendingOrder(String(tx.order_code), "kadaluarsa", "gateway_expired", parseItems(tx.items), db.d1);
+        await transitionPendingOrder(String(tx.order_code), "kadaluarsa", "gateway_expired", parseItems(tx.items), db.d1, expiryOpts);
         expired++;
       }
     } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; }
@@ -352,6 +354,10 @@ async function runExpiry(db: Db) {
     const { expireGamesCheckouts } = await import("@/lib/games/expire");
     gamesItemsExpired = await expireGamesCheckouts(db);
   } catch (error) { if (error instanceof QueryBudgetExceeded) throw error; }
+  if (marketRestocked && db.canSpend(1)) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db, { metered: true });
+  }
   return { stale_initializing: staleInitializing, expired_payments: expired, orphan_ledgers_swept: orphanSwept, games_items_expired: gamesItemsExpired };
 }
 

@@ -395,14 +395,20 @@ export async function processWrPendingOrders(
     });
   let transactions: Promise<WrTransaction[]> | undefined;
   const getTransactions = () => transactions ??= fetchTransactions();
+  let marketZeroed = false;
+  const onMarketZeroed = () => { marketZeroed = true; };
   for (const link of due) {
     if (!db.canSpend(6)) break;
     result.processed++;
-    const outcome = await processOneLink(link, db, getTransactions);
+    const outcome = await processOneLink(link, db, getTransactions, onMarketZeroed);
     if (outcome === "succeeded") result.succeeded++;
     else if (outcome === "retried") result.retried++;
     else if (outcome === "blocked") result.blocked++;
     else result.failed++;
+  }
+  if (marketZeroed && db.canSpend(1)) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market", db, { metered: true }).catch(() => undefined);
   }
   return result;
 }
@@ -527,7 +533,7 @@ async function claimLink(
   return { outcome: "lost" };
 }
 
-async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: () => Promise<WrTransaction[]>): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
+async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: () => Promise<WrTransaction[]>, onMarketZeroed?: () => void): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
   const { execRun } = db;
   const id = Number(link.id);
   const attempt = Number(link.attempt_count || 0) + 1;
@@ -554,7 +560,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
   // WR3 Jaspay: keluarga `jaspay:` TIDAK PERNAH lewat POST premium.
   // Salah famili = order salah produk + invoice tak terkorelasi.
   if (isJaspayVariantId(String(link.wr_variant_id || ""))) {
-    return processOneJaspayLink(id, link, db);
+    return processOneJaspayLink(id, link, db, onMarketZeroed);
   }
   let receivedOrder = false;
   try {
@@ -622,7 +628,7 @@ async function processOneLink(link: Row, db: DatabaseAccess, getTransactions: ()
       .catch(() => undefined);
     return "succeeded";
   } catch (error) {
-    return handleOrderError(id, link, receivedOrder ? new Error("network_receipt_persist_failed") : error, attempt, db);
+    return handleOrderError(id, link, receivedOrder ? new Error("network_receipt_persist_failed") : error, attempt, db, onMarketZeroed);
   }
 }
 
@@ -641,6 +647,7 @@ async function processOneJaspayLink(
   id: number,
   link: Row,
   db: DatabaseAccess,
+  onMarketZeroed?: () => void,
 ): Promise<"succeeded" | "retried" | "failed" | "blocked"> {
   const { execRun } = db;
   const attempt = Number(link.attempt_count || 0);
@@ -746,7 +753,7 @@ async function processOneJaspayLink(
     }
     return "succeeded";
   } catch (error) {
-    return handleJaspayOrderError(id, link, receivedJsp ? new Error("network_receipt_persist_failed") : error, attempt + 1, db);
+    return handleJaspayOrderError(id, link, receivedJsp ? new Error("network_receipt_persist_failed") : error, attempt + 1, db, onMarketZeroed);
   }
 }
 
@@ -882,6 +889,7 @@ async function handleJaspayOrderError(
   error: unknown,
   attempt: number,
   db: DatabaseAccess,
+  onMarketZeroed?: () => void,
 ): Promise<"retried" | "failed" | "blocked"> {
   const { execRun } = db;
   const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
@@ -918,8 +926,12 @@ async function handleJaspayOrderError(
       String(link.wr_variant_id),
     ).catch(() => undefined);
     if (Number(zeroRes?.changes ?? 0) > 0) {
-      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-      await bumpCatalogRevision("market", db).catch(() => undefined);
+      if (onMarketZeroed) {
+        onMarketZeroed();
+      } else {
+        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+        await bumpCatalogRevision("market", db).catch(() => undefined);
+      }
     }
   }
   if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {
@@ -959,6 +971,7 @@ async function handleOrderError(
   error: unknown,
   attempt: number,
   db: DatabaseAccess,
+  onMarketZeroed?: () => void,
 ): Promise<"retried" | "failed" | "blocked"> {
   const { execRun } = db;
   const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
@@ -994,8 +1007,12 @@ async function handleOrderError(
       String(link.wr_variant_id),
     ).catch(() => undefined);
     if (Number(zeroRes?.changes ?? 0) > 0) {
-      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-      await bumpCatalogRevision("market", db).catch(() => undefined);
+      if (onMarketZeroed) {
+        onMarketZeroed();
+      } else {
+        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+        await bumpCatalogRevision("market", db).catch(() => undefined);
+      }
     }
   }
   if (attempt >= Number(link.max_attempts || WR_MAX_ATTEMPTS)) {

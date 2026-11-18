@@ -301,6 +301,36 @@ describe("checkout, restock, expiry, and inventory invalidation", () => {
     expect(revAfterRevoke1).not.toBe(revAfterImp);
     expect(await revokeInventoryBatch(1, 1, [invIds[1].id])).toBe(1);
     expect(readRevisionRow("market")).not.toBe(revAfterRevoke1);
+
+    // 7. Cron expiry coalesces multiple expired orders into at most ONE revision bump per run
+    vi.stubEnv("CRON_SECRET", "cron-secret");
+    for (let i = 1; i <= 3; i++) {
+      const code = `EXP-COALESCE-${i}`;
+      fixture.sql.prepare(`
+        INSERT INTO orders(code, customer_name, customer_wa, items, subtotal, payment_method, status, payment_status, sales_channel, order_kind, expires_at)
+        VALUES(?, 'Buyer', '628123', ?, 25000, 'qris', 'pending', 'pending', 'web', 'apps', datetime('now','-10 minutes'))
+      `).run(code, JSON.stringify([{ product_id: 1, variant_id: 1, qty: 1 }]));
+      fixture.sql.prepare(`
+        INSERT INTO payment_transactions(order_code, provider, provider_mode, provider_order_id, merchant_id, requested_amount, status, expires_at)
+        VALUES(?, 'dana', 'static', ?, 'm1', 25001, 'pending', datetime('now','-10 minutes'))
+      `).run(code, `TX-${i}`);
+    }
+    const revBeforeCoalescedExpiry = readRevisionRow("market");
+    const expiryWrites: string[] = [];
+    fixture.control.fail = (query, params) => {
+      if (/INTO store_settings/i.test(query) && params.includes("catalog_revision_market")) expiryWrites.push(query);
+      return false;
+    };
+    const { POST: cronLitePost } = await import("@/app/api/cron/lite/route");
+    const expRes = await cronLitePost(new NextRequest("https://axvara.tech/api/cron/lite?job=expiry", {
+      method: "POST",
+      headers: { authorization: "Bearer cron-secret" },
+    }));
+    fixture.control.fail = null;
+    expect(expRes.status).toBe(200);
+    expect((await expRes.json()).expired_payments).toBe(3);
+    expect(expiryWrites).toHaveLength(1);
+    expect(readRevisionRow("market")).not.toBe(revBeforeCoalescedExpiry);
   });
 });
 

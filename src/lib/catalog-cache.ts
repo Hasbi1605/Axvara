@@ -190,6 +190,7 @@ export async function getCatalogRevision(
 export async function bumpCatalogRevision(
   scope: CatalogScope,
   database?: D1 | DatabaseAccess | null,
+  options?: { metered?: boolean },
 ): Promise<string | null> {
   const d1 = resolveD1(database);
   const nextRev = generateCatalogRevision(d1);
@@ -197,11 +198,14 @@ export async function bumpCatalogRevision(
     evictLocalCacheForScope(scope);
     return null;
   }
+  const sql = `INSERT INTO store_settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value`;
   try {
-    await d1.prepare(
-      `INSERT INTO store_settings (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-    ).bind(CATALOG_REVISION_KEYS[scope], nextRev).run();
+    if (options?.metered && database && typeof (database as DatabaseAccess).execRun === "function") {
+      await (database as DatabaseAccess).execRun(sql, CATALOG_REVISION_KEYS[scope], nextRev);
+    } else {
+      await d1.prepare(sql).bind(CATALOG_REVISION_KEYS[scope], nextRev).run();
+    }
     noteCatalogRevisionUpdated(scope, nextRev, d1);
     return nextRev;
   } catch {

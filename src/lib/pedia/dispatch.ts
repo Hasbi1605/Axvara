@@ -106,13 +106,18 @@ export async function processPediaPaidOrders(caller?: ProxyCaller, sharedDb?: Db
         AND EXISTS (SELECT 1 FROM orders o WHERE o.code=pedia_order_items.order_code AND o.status='lunas')
       LIMIT 20`,
   ).catch(() => []) as unknown as Item[];
+  let pediaCatalogChanged = false;
   for (const item of items) {
     try {
-      const r = await dispatchOne(db, item, call);
+      const r = await dispatchOne(db, item, call, () => { pediaCatalogChanged = true; });
       if (r === "dispatched") out.dispatched++;
       else if (r === "polled") out.polled++;
       else if (r === "needs_check") out.needsCheck++;
     } catch { /* satu item gagal tidak menghentikan sisanya */ }
+  }
+  if (pediaCatalogChanged && db.canSpend(1)) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("pedia", db, { metered: true });
   }
   // Poll item submitted/in_progress yang lease-nya kedaluwarsa.
   // Prioritas: active poll dulu (batas 20). Recount terminal TIDAK di cron
@@ -182,7 +187,7 @@ async function tierInfo(db: Db, tierId: number): Promise<TierInfo | null> {
 
 /** Dispatch satu item: guard margin → submit → poll awal60 detik. */
 async function dispatchOne(
-  db: Db, item: Item, call: ProxyCaller,
+  db: Db, item: Item, call: ProxyCaller, onPediaCatalogChanged?: () => void,
 ): Promise<"dispatched" | "polled" | "needs_check" | "skipped"> {
   if (!isPediaProvider(item.supplier)) {
     await toNeedsCheck(db, item.order_code, "invalid_provider");
@@ -208,8 +213,12 @@ async function dispatchOne(
       item.tier_id,
     ).catch(() => ({ changes: 0 }));
     if (Number(disabled?.changes ?? 0) > 0) {
-      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-      await bumpCatalogRevision("pedia", db);
+      if (onPediaCatalogChanged) {
+        onPediaCatalogChanged();
+      } else {
+        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+        await bumpCatalogRevision("pedia", db);
+      }
     }
     await toNeedsCheck(db, item.order_code, "margin di bawah minimum (rate naik)");
     return "needs_check";

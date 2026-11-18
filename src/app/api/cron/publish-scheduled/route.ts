@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
     order.status === undefined || order.status === "pending"
   ) && isExpiredIso(order.expires_at));
   const expiredIds: string[] = [];
+  let marketRestocked = false;
   for (const order of expiredOrders) {
     // Skip orders owned by the QRIS ledger path: the operations cron
     // expires their transaction row in the same guarded batch, which also
@@ -46,13 +47,24 @@ export async function POST(request: NextRequest) {
     if (activeLedger) continue;
     try {
       const items = JSON.parse(String(order.items || "[]")) as { product_id: number; qty: number }[];
-      await transitionPendingOrder(String(order.code), "kadaluarsa", "Kedaluwarsa otomatis setelah 24 jam.", items);
+      await transitionPendingOrder(
+        String(order.code),
+        "kadaluarsa",
+        "Kedaluwarsa otomatis setelah 24 jam.",
+        items,
+        undefined,
+        { onMarketChanged: () => { marketRestocked = true; } },
+      );
       expiredIds.push(String(order.code));
     } catch (error) {
       if (!(error instanceof OrderTransitionError)) {
         console.error("Auto-expire order failed:", order.code, error);
       }
     }
+  }
+  if (marketRestocked) {
+    const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+    await bumpCatalogRevision("market");
   }
 
   const due = (await queryAll(
