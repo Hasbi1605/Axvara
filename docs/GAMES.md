@@ -1001,3 +1001,19 @@ memperlakukan status transaksi yang memuat `fail|cancel|refund|expire` sebagai g
 termasuk bila H2H tertulis `completed`. Refund pembeli tetap manual lewat admin. Alasan
 penolakan varian Membership untuk akun ID belum diketahui (ditanyakan ke Sekalipay);
 klaim deskripsi supplier "semua region kecuali MY/SG/RU" belum terbukti untuk akun ID.
+
+### 15.3 GET transaksi SK: `h2h_results` sejajar `data` (18 November 2026, lokal → CI)
+
+Dipicu order produksi `AXG-20261118-903C42A2` (ML 20 Diamond, tipe Lainnya, akun region
+Indonesia): top up **sukses di Sekalipay** (SN `MLBB1811263256433`) tetapi AXVARA menandai
+`needs_check` "completed tanpa hasil H2H", sehingga email "Top up berhasil" tidak terkirim.
+Akar masalah: respons GET `v1/trx/{ref}` produksi membawa `h2h_results`/`smm_results`
+**di level amplop, sejajar `data`** (diverifikasi baca-saja lewat proxy), sedangkan
+`fetchSkTransaction` hanya mengembalikan `data`. Webhook memang membawa hasil per item,
+tetapi status otoritatif diambil dari GET. Kini `fetchSkTransaction`
+(`src/lib/sekalipay/client.ts`) menggabungkan kedua field amplop ke `data` bila `data`
+belum membawanya; parser dan guard lain tidak berubah. Bug yang sama kemungkinan membuat
+pemulihan admin §15 untuk `AXG-20261116-4206447D` tidak berhasil (masih `needs_check` per
+cek D1 18 Nov). Setelah deploy, kedua order dipulihkan lewat tombol admin "Cek ulang Sekalipay".
+Bukti region: WDP Membership (varian 1031) ditolak untuk akun ID (dikonfirmasi admin
+Sekalipay), sedangkan Diamond tipe Lainnya berhasil untuk akun ID.

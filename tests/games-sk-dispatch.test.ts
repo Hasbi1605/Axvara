@@ -289,6 +289,19 @@ describe("SK dispatch", () => {
     expect(item("AXG-20261112-SK000008")).toMatchObject({ status: "success", sn: "SN-OK" });
   });
 
+  it("reads production GET shape where h2h_results is a sibling of data (AXG-20261118-903C42A2)", async () => {
+    seedOrder("AXG-20261112-SKENV001");
+    stubSk({});
+    await processGamesPaidOrders(undefined, db());
+    makePollDue("AXG-20261112-SKENV001");
+    stubSk({ transaction: (ref) => {
+      const { h2h_results, ...data } = detail(ref, {}, { note: null });
+      return { status: 200, body: { message: "OK", data: { ...data, h2h_results: undefined }, h2h_results, smm_results: [] } };
+    } });
+    await processGamesPaidOrders(undefined, db());
+    expect(item("AXG-20261112-SKENV001")).toMatchObject({ status: "success", sn: "SN-OK" });
+  });
+
   it("dispatches exactly once under concurrent runs", async () => {
     seedOrder("AXG-20261112-SK000009");
     stubSk({});

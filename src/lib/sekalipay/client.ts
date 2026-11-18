@@ -539,10 +539,17 @@ export async function createSkTransaction(params: {
 }
 
 export async function fetchSkTransaction(refIdOrInvoice: string): Promise<SkTrxDetail> {
-  const res = await skFetch<{ message: string; data: SkTrxDetail }>(
+  const res = await skFetch<{ message: string; data: SkTrxDetail; h2h_results?: unknown; smm_results?: unknown }>(
     `v1/trx/${encodeURIComponent(refIdOrInvoice)}`,
   );
-  return res.data;
+  // GET produksi (18 Nov 2026) menaruh h2h_results/smm_results SEJAJAR `data`,
+  // bukan di dalamnya. Gabungkan hanya bila `data` belum membawanya sendiri.
+  const data = res.data;
+  if (!data || typeof data !== "object") return data;
+  const merged = { ...data } as SkTrxDetail;
+  if (merged.h2h_results === undefined && res.h2h_results !== undefined) merged.h2h_results = res.h2h_results as unknown[];
+  if (merged.smm_results === undefined && res.smm_results !== undefined) merged.smm_results = res.smm_results as unknown[];
+  return merged;
 }
 
 export async function createSkSandboxOrder(params: {
