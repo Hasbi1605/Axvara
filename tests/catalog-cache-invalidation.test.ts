@@ -156,22 +156,16 @@ describe("revisioned catalog cache & memoization", () => {
     expect(await r3.json()).toEqual({ loads: 2 });
   });
 
-  it("caches /api/games/catalog per ordering_open and keeps private routes uncached", async () => {
+  it("keeps /api/games/catalog private and uncached (Games is preview; edge cache never stores private responses)", async () => {
     seedGamesCatalog();
     const { GET: getGames } = await import("@/app/api/games/catalog/route");
-    const first = await getGames();
-    expect(first.headers.get("X-Axvara-Cache")).toBe("MISS");
+    const req = () => new NextRequest("https://axvara.tech/api/games/catalog");
+    const first = await getGames(req());
+    expect(first.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(first.headers.get("X-Axvara-Cache")).toBeNull();
     expect((await first.json()).ordering_open).toBe(true);
-    const q = fixture.control.queries;
-    const second = await getGames();
-    expect(second.headers.get("X-Axvara-Cache")).toBe("HIT");
-    expect(fixture.control.queries).toBe(q);
-
-    // Separate key when ordering_open flips
     vi.stubEnv("GAMES_SK_ENABLED", "false");
-    const closed = await getGames();
-    expect(closed.headers.get("X-Axvara-Cache")).toBe("MISS");
-    expect((await closed.json()).ordering_open).toBe(false);
+    expect((await (await getGames(req())).json()).ordering_open).toBe(false);
   });
 });
 
