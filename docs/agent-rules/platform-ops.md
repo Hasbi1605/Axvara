@@ -1,5 +1,14 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Prioritas Workers Paid dan kuota D1 — 19 November 2026 (keputusan owner)
+
+- Utamakan kelancaran dan operasi real-time. Tambahan read/write D1 dapat diterima selama proyeksi tetap dalam jatah bulanan Workers Paid (**25 miliar baca / 50 juta tulis**), dipantau lewat `.github/workflows/d1-usage.yml`. Optimalkan hanya bila proyeksi mendekati jatah atau latensi memburuk.
+- Biaya scan orphan StoreBat, Mirai, AIVault dan TUNVN diterima: audit produksi mengukur 3.088/3.088/3.098/3.118 baris dibaca per probe idle (~3 ms/query). Empat job tiap menit memproyeksikan ~17,8 juta baca/hari atau ~534 juta/30 hari (~2% jatah baca bulanan), bukan hasil pengukuran pemakaian bulanan. Jalur dispatch tetap.
+
+### Anggaran watchdog — 19 November 2026 (lokal)
+
+- `cleanup` menjalankan watchdog sesudah maintenance maksimal 10 statement, sebelum materialisasi pengeluaran dan drain grup/copy/FX. Cadangan invalidasi revisi katalog dipertahankan saat drain. Budget request tetap 40 (2 statement tail); urutan job Worker tidak berubah.
+
 ### Cache edge Games ditunda — 18 November 2026
 
 - Keputusan owner+PM: `/api/games/catalog` dan `/api/games/catalog/[slug]` tetap `private, no-store` tanpa `cachePublicCatalog`. Data 7 hari: ±2 + 5 request (vs 576 `/api/catalog`), 1 order Games sepanjang masa — manfaat cache ≈0, risiko harga basi tetap ada. Pertimbangkan lagi bila trafik Games ratusan–ribuan request/hari; scope revisi `games` + bump di sync Games sudah tersedia. Wajib `npm run build:pages` sebelum push perubahan route (insiden `15d275e8`).
@@ -239,5 +248,5 @@ deployment produksi. Lihat ARCHITECTURE “Grup produk lintas supplier”.
   pada menit 17/manual; tidak query SQL/deploy. Memakai Secrets CI existing,
   laporan agregat dan warning/job gagal untuk risk/exhausted/unknown. Notifikasi
   mengikuti pengaturan GitHub owner; tidak ada pesan Telegram monitoring baru.
-- Target ≤3 juta reads/hari harus diukur satu siklus 07.00–07.00 produksi,
+- **Historis (era Free):** target ≤3 juta reads/hari harus diukur satu siklus 07.00–07.00 produksi,
   jangan menyamakan hasil benchmark fixture atau push dengan bukti tercapai.

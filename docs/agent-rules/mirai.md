@@ -1,5 +1,9 @@
 # Aturan agent — MiraiAPI (18–19 November 2026)
 
+## Retry katalog pasca-audit — 19 November 2026 (lokal)
+
+- Lease dan throttle sukses tetap 45 detik; kegagalan memperpendek klaim miliknya menjadi backoff 10 detik setelah kegagalan. Cron tetap menghormati `Retry-After` pada HTTP 429, termasuk saat lebih lama dari backoff lokal. Error durable menyimpan alasan upstream aman (mis. `packages_ambiguous:http_502`) atau kelas D1 `catalog_write_failed:<kode>`, bukan body/secret.
+
 ## Review dan batas rollout — 19 November 2026 (lokal)
 
 - Temuan T8a ditutup: preflight membandingkan biaya live terhadap snapshot sebelum cek saldo/POST; POST ambigu ketiga tetap mendapat GET pemulihan. Trigger grup merotasi token CAS saat identitas/modal/FX berubah; guard proyeksi/fulfillment memisahkan StoreBat dan Mirai. Pembuatan link dibatch dengan `json_each`; uji schema workerd memeriksa keberadaan DDL tanpa mengasumsikan posisi akhir berkas.

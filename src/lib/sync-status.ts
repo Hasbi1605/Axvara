@@ -87,6 +87,54 @@ export async function recordSyncError(
   }
 }
 
+/** Keep the in-flight 45s claim, but allow retry 10s after failure.
+ * Store the error and shorten only this attempt's claim in one statement. */
+export function catalogFailureRecorder(
+  db: DatabaseAccess,
+  prefix: string,
+  now: number,
+  minInterval: number,
+  lease?: { key: string; value: string },
+) {
+  const started = Date.now();
+  const syncKey = `${prefix}_sync_at`;
+  return async (error: string, responseError = error) => {
+    if (db.canSpend(lease ? 2 : 1)) {
+      const at = now + Math.max(0, Date.now() - started);
+      // Keep the checkpoint numeric for existing readers, including older code.
+      const retryCheckpoint = at + 10_000 - minInterval;
+      await db.execRun(
+        `INSERT INTO store_settings(key,value,updated_at)
+         SELECT j.value->>0,j.value->>1,datetime('now') FROM json_each(?) j
+         WHERE (? IS NULL OR EXISTS(SELECT 1 FROM store_settings WHERE key=? AND value=?))
+           AND (j.key=0 OR EXISTS(SELECT 1 FROM store_settings WHERE key=? AND value=?))
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`,
+        JSON.stringify([
+          [`${prefix}_last_error`, JSON.stringify({ at: new Date(at).toISOString(), error: sanitizeSyncError(error) })],
+          [syncKey, String(retryCheckpoint)],
+        ]),
+        lease?.key ?? null, lease?.key ?? null, lease?.value ?? null, syncKey, String(now),
+      ).catch(() => undefined);
+    }
+    return { ok: false, error: sanitizeSyncError(responseError) } as const;
+  };
+}
+
+/** Report useful D1 failure classes without persisting SQL, bound values or response text. */
+export function catalogWriteFailure(error: unknown): string {
+  const text = sanitizeSyncError(error);
+  const reasons = [
+    [/Local query budget exhausted/i, "query_budget"],
+    [/CHECK constraint failed:\s*valid\s*=\s*1/i, "operation_guard"],
+    [/(?:UNIQUE|NOT NULL|CHECK|FOREIGN KEY) constraint failed/i, "constraint"],
+    [/SQLITE_BUSY|database is locked|\boverloaded\b/i, "database_busy"],
+    [/no such (?:table|column|index)/i, "schema_mismatch"],
+    [/time[ -]?out|deadline exceeded/i, "timeout"],
+    [/network|transport|connection/i, "transport"],
+  ] as const;
+  return `catalog_write_failed:${reasons.find(([pattern]) => pattern.test(text))?.[1] ?? "unexpected"}`;
+}
+
 /** Parse a stored error JSON `{ at, error }` or plain error string safely. */
 export function parseStoredSyncError(raw: unknown): { at: string | null; error: string } | null {
   if (typeof raw !== "string") return null;

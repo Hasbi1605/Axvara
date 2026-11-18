@@ -1,5 +1,5 @@
 import type { DatabaseAccess } from "@/lib/db-access";
-import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
+import { catalogFailureRecorder, catalogWriteFailure, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { fetchMiraiPackages, isMiraiConfigured, isMiraiSyncEnabled } from "./client";
 import { miraiCostUsdtFromVnd } from "./pricing";
 
@@ -9,17 +9,17 @@ export const MIRAI_CATALOG_MIN_INTERVAL_MS = 45_000;
 
 export async function syncMiraiCatalog(
   db: DatabaseAccess,
-  opts: { force?: boolean; now?: number; skipSuccessMark?: boolean } = {},
+  opts: { force?: boolean; now?: number; onFailure?: ReturnType<typeof catalogFailureRecorder> } = {},
 ) {
   if (!db.d1 || !isMiraiConfigured() || !isMiraiSyncEnabled()) {
     return { skipped: "not_configured" } as const;
   }
   const now = opts.now ?? Date.now();
-  const fail = async <T extends string>(error: T) => {
-    await recordSyncError(db, "mirai_catalog", error, now);
-    return { ok: false, error } as const;
-  };
-  if (!db.canSpend(16)) return fail("catalog_budget_exceeded");
+  const fail = opts.onFailure ?? catalogFailureRecorder(db, "mirai_catalog", now, MIRAI_CATALOG_MIN_INTERVAL_MS);
+  if (!db.canSpend(16)) {
+    await recordSyncError(db, "mirai_catalog", "catalog_budget_exceeded", now);
+    return { ok: false, error: "catalog_budget_exceeded" } as const;
+  }
 
   const settings = await db.queryAll(
     "SELECT key, value FROM store_settings WHERE key IN (?, ?)",
@@ -64,12 +64,13 @@ export async function syncMiraiCatalog(
         String(now + response.retryAfterSeconds * 1000),
       ).catch(() => undefined);
     }
-    return fail(`packages_${response.kind}`);
+    const reason = response.kind === "http_error" ? `http_${response.status}` : response.reason;
+    return fail(`packages_${response.kind}:${reason}`, `packages_${response.kind}`);
   }
 
   const items = response.data;
   if (!items.length) return fail("invalid_or_empty_catalog");
-  if (!db.canSpend(Math.ceil(items.length / 50) + (opts.skipSuccessMark ? 10 : 11))) {
+  if (!db.canSpend(Math.ceil(items.length / 50) + (opts.onFailure ? 10 : 11))) {
     return fail("catalog_budget_exceeded");
   }
 
@@ -143,10 +144,9 @@ export async function syncMiraiCatalog(
       at,
     );
 
-    if (!opts.skipSuccessMark) await recordSyncSuccess(db, "mirai_catalog", now);
+    if (!opts.onFailure) await recordSyncSuccess(db, "mirai_catalog", now);
     return { ok: true, fetched: items.length } as const;
   } catch (error) {
-    await recordSyncError(db, "mirai_catalog", error, now);
-    throw error;
+    return await fail(catalogWriteFailure(error));
   }
 }

@@ -25,6 +25,17 @@ it("uses a constant statement count for many families",async()=>{
   }
   expect(used[1]).toBe(used[0]);
 });
+it("allows a jittered next minute after a failed feed but not an immediate retry", async () => {
+  const now = Date.now();
+  const run = (offset: number) => publishAivaultCatalog(createBudgetedDatabase(40, 2, f.db).access, 20_000, { now: now + offset });
+  vi.mocked(fetch).mockResolvedValueOnce(new Response("private upstream response", { status: 502 }));
+  expect(await run(0)).toEqual({ ok: false, error: "products_ambiguous" });
+  const err = f.sql.prepare("SELECT value FROM store_settings WHERE key='aivault_catalog_last_error'").get()?.value;
+  expect(JSON.parse(String(err)).error).toBe("products_ambiguous:http_502");
+  expect(await run(1_000)).toEqual({ skipped: "throttled" });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(await run(44_000)).toMatchObject({ ok: true });
+});
 it.each(["manual","markup","bulk_markup"])("does not overwrite concurrent %s edits",async field=>{
   const db=createDatabaseAccess(f.db);await publishAivaultCatalog(db,20000,{force:true});
   let raced=false;

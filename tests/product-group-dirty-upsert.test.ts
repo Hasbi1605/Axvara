@@ -79,7 +79,8 @@ describe("0132 trigger pg_dirty_* aman di bawah UPSERT luar", () => {
     for (const m of m0129.matchAll(/CREATE TRIGGER IF NOT EXISTS pg_dirty_\w+[\s\S]*?\nEND;/g)) f.sql.exec(m[0]);
     seedGroup();
     expect(await syncAt(T0, [product(83, 4.19, 0)])).toMatchObject({ ok: true });
-    await expect(syncAt(T0 + 5 * 60_000, [product(83, 5.3, 14)])).rejects.toThrow(/UNIQUE constraint failed: product_group_dirty\.group_id/);
+    expect(await syncAt(T0 + 5 * 60_000, [product(83, 5.3, 14)])).toEqual({ ok: false, error: "catalog_write_failed:constraint" });
+    expect(f.sql.prepare("SELECT stock FROM tunvn_products WHERE supplier_product_id=83").get()?.stock).toBe(0);
 
     f.sql.exec(m0132);
     f.sql.exec(m0132); // idempoten (DROP IF EXISTS + CREATE)

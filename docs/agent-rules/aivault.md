@@ -1,5 +1,9 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Retry katalog pasca-audit — 19 November 2026 (lokal)
+
+- Lease dan throttle sukses tetap 45 detik; kegagalan katalog memperpendek klaim miliknya menjadi 10 detik setelah gagal. Error durable memuat kode upstream/D1 yang aman, bukan body/secret.
+
 ## Penanda sukses katalog, error saldo beruntun, & watchdog basi — 18 November 2026 (lokal)
 
 - `publishAivaultCatalog` (`src/lib/aivault/catalog.ts`) menulis `store_settings.aivault_catalog_success_at` (ms epoch) dan mengosongkan `aivault_catalog_last_error` HANYA setelah `syncAivaultCatalog` + `projectAivaultCatalog` selesai tanpa error; `aivault_catalog_sync_at` tetap menjadi klaim throttle (kini memperbarui `updated_at=datetime('now')`). `/api/admin/aivault/products` mengutamakan `aivault_catalog_success_at`.

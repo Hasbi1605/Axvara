@@ -265,6 +265,30 @@ it("fails closed without FX, honors 45s throttle/lease, and records success/erro
   expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='mirai_catalog_last_error'").get()).toEqual({ value: "" });
 });
 
+it("backs off briefly on projection failures and honors longer upstream Retry-After", async () => {
+  const now = Date.now();
+  const run = (offset: number) => publishMiraiCatalog(createBudgetedDatabase(40, 2, f.db).access, 16_000, { now: now + offset });
+  const setting = (key: string) => f.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(key)?.value;
+  f.control.beforeRun = async sql => {
+    if (sql.includes("INSERT OR IGNORE INTO products")) throw new Error("D1_ERROR: transport failed with private body");
+  };
+  expect(await run(0)).toEqual({ ok: false, error: "catalog_write_failed:transport" });
+  expect(JSON.parse(String(setting("mirai_catalog_last_error"))).error).toBe("catalog_write_failed:transport");
+  expect(setting("mirai_catalog_success_at")).toBeUndefined();
+  expect(await run(1_000)).toEqual({ skipped: "throttled" });
+  expect(fetch).toHaveBeenCalledTimes(1);
+
+  f.control.beforeRun = null;
+  vi.mocked(fetch).mockResolvedValueOnce(new Response("private response payload", { status: 429, headers: { "Retry-After": "120" } }));
+  expect(await run(44_000)).toEqual({ ok: false, error: "packages_ambiguous" });
+  expect(JSON.parse(String(setting("mirai_catalog_last_error"))).error).toBe("packages_ambiguous:http_429");
+  expect(setting("mirai_catalog_retry_until")).toBe(String(now + 164_000));
+  expect(await run(104_000)).toEqual({ skipped: "throttled" });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(await run(164_000)).toMatchObject({ ok: true });
+  expect(setting("mirai_catalog_last_error")).toBe("");
+});
+
 it("does not appropriate an unrelated slug owned by another product", async () => {
   f.sql.exec("INSERT INTO products(name,slug,price) VALUES('Owner Manual','api-gpt-token-mr',5000)");
   const db = createDatabaseAccess(f.db);

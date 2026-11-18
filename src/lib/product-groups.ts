@@ -328,7 +328,8 @@ export async function decideDirtyGroups(database?: DatabaseAccess, productId?: n
   let decided = 0;
   let changed = 0;
   for (const group of groups) {
-    if (!db.canSpend(2)) break;
+    // A changed decision must still be able to invalidate the catalog rev.
+    if (!db.canSpend(3)) break;
     if (await updateGroupDecision(db, group, dirty.get(group.id) ?? null, true)) changed++;
     decided++;
   }

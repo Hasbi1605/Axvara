@@ -1,5 +1,5 @@
 import type { DatabaseAccess } from "@/lib/db-access";
-import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
+import { catalogFailureRecorder, catalogWriteFailure, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { isMiraiConfigured, isMiraiSyncEnabled } from "./client";
 import { MIRAI_COPY } from "./copy";
 import {
@@ -9,7 +9,7 @@ import {
   miraiVariantSortOrder,
   sortMiraiPackagesByQuota,
 } from "./families";
-import { syncMiraiCatalog } from "./sync";
+import { MIRAI_CATALOG_MIN_INTERVAL_MS, syncMiraiCatalog } from "./sync";
 
 export const MIRAI_LEASE_KEY = "mirai_catalog_lease";
 export const MIRAI_LEASE_MS = 45_000;
@@ -240,21 +240,20 @@ export async function publishMiraiCatalog(
     now,
   );
   if (claim.changes !== 1) return { skipped: "claimed_elsewhere" } as const;
+  const fail = catalogFailureRecorder(db, "mirai_catalog", now, MIRAI_CATALOG_MIN_INTERVAL_MS, { key: MIRAI_LEASE_KEY, value: lease });
 
   try {
-    const result = await syncMiraiCatalog(db, { ...opts, skipSuccessMark: true });
+    const result = await syncMiraiCatalog(db, { ...opts, now, onFailure: fail });
     if (!("ok" in result) || !result.ok) return result;
     const projected = await projectMiraiCatalog(db, fx);
     if (!projected.ok) {
-      await recordSyncError(db, "mirai_catalog", projected.error, now);
-      return projected;
+      return await fail(projected.error);
     }
     await recordSyncSuccess(db, "mirai_catalog", now);
     return projected;
   } catch (error) {
-    await recordSyncError(db, "mirai_catalog", error, now);
-    throw error;
+    return await fail(catalogWriteFailure(error));
   } finally {
-    await db.execRun("DELETE FROM store_settings WHERE key=? AND value=?", MIRAI_LEASE_KEY, lease);
+    await db.execRun("DELETE FROM store_settings WHERE key=? AND value=?", MIRAI_LEASE_KEY, lease).catch(() => undefined);
   }
 }

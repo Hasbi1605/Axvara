@@ -784,11 +784,20 @@ async function runNotify(db: Db, deadline: number, failedCore: string[]) {
 async function runCleanup(db: Db) {
   const { runMaintenanceCleanup } = await import("@/lib/maintenance-cleanup");
   const cleanup = await runMaintenanceCleanup(db);
+  // Hourly maintenance uses at most 10 statements. Give the watchdog first
+  // access to the remaining budget before the optional recurring/group work.
+  let staleness: Record<string, unknown>;
+  try {
+    const { checkSyncStaleness } = await import("@/lib/sync-staleness");
+    staleness = { staleness: await checkSyncStaleness(db) };
+  } catch {
+    staleness = { staleness: { checked: false, error: "check_failed" } };
+  }
   if (db.canSpend(3)) {
     const { materializeRecurring } = await import("@/lib/finance/expenses");
     await materializeRecurring(db);
   }
-  if (!db.canSpend(3)) return cleanup;
+  if (!db.canSpend(3)) return { ...cleanup, ...staleness };
   // Drain WR-only changes and failed VPS pair requests on the existing cron.
   // Critical order work has its own jobs; this drain is bounded and resumable.
   const { decideDirtyWinners } = await import("@/lib/supplier-pairs");
@@ -802,15 +811,6 @@ async function runCleanup(db: Db) {
     } catch { copy.copy_review = { checked: false, error: "check_failed" }; }
   }
   const market = await runCryptoMarketRefresh(db);
-  let staleness: Record<string, unknown> = {};
-  if (db.canSpend(6)) {
-    try {
-      const { checkSyncStaleness } = await import("@/lib/sync-staleness");
-      staleness = { staleness: await checkSyncStaleness(db) };
-    } catch {
-      staleness = { staleness: { checked: false, error: "check_failed" } };
-    }
-  }
   return { ...cleanup, pairs_decided: pairs.decided, pairs_changed: pairs.changed, ...copy, ...market, ...staleness };
 }
 

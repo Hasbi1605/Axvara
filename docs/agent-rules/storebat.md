@@ -1,5 +1,9 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Retry katalog pasca-audit — 19 November 2026 (lokal)
+
+- Lease dan klaim sukses tetap 45 detik. Kegagalan memperpendek klaim miliknya menjadi backoff 10 detik setelah kegagalan (bukan retry dalam request), cukup untuk tick berikut dengan jitter biasa. Hanya proyeksi sukses memajukan ETag, dan heartbeat 200/304 dipagari lease. `catalog_write_failed:<kode>` mencatat kelas kegagalan aman (mis. `operation_guard` atau `database_busy`), tanpa SQL, body, atau secret.
+
 ## Env produksi + bukti kontrak live — 19 November 2026
 
 - Commit `6bf30ee6` dipush ke main (publikasi via CI; deployment belum diverifikasi PM). PM lalu memasang delapan env Pages production (`STOREBAT_*` + `MIRAI_*`, semuanya `secret_text`, flag sync+dispatch `true`) dengan PATCH berisi hanya kunci baru: nama production 84→92, preview tidak berubah. `.pages-env-backup` lokal diperbarui; salinan password manager owner belum. Env berlaku pada deployment berikutnya/yang sedang berjalan; produk tetap OFF.

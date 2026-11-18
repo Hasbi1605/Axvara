@@ -6579,6 +6579,11 @@ snapshot backend/admin ini.
 | `drizzle/migrations/0140_mirai_supplier.sql` | `mirai_packages` (kode/grup, kuota/durasi, biaya VND internal/USDT, limit jumlah, stok dan proyeksi harga); `products.mirai_family` dan `product_variants.mirai_package_code` unik; varian `mirai_markup_percent`, `mirai_admin_price_idr`, `mirai_cost_usdt`, `mirai_fx_idr_per_usdt`. SKU `MR-<package_code>`. | `mirai_order_links` + FK `fulfillment_items.mirai_link_id`; external ID dan kode order supplier, snapshot modal/FX, receipt terenkripsi. |
 | `0141_storebat_mirai_supplier_links.sql` | `INSERT OR IGNORE` shortlink `axvara.tech/go/*` yang dipakai salinan kurasi StoreBat/Mirai ke `supplier_links` existing; data saja, tanpa DDL. Salinan ID/EN, kategori dan gambar R2 kurasi ada di `src/lib/{storebat,mirai}/copy.ts` + `families.ts` dan hanya ditulis saat produk/varian pertama kali dibuat sync (insert-only; suntingan admin tidak ditimpa). | Migrasi remote dijalankan CI; jangan anggap sudah diterapkan sebelum bukti rilis. |
 
+**Tindak lanjut audit 19 November 2026 (lokal):** kegagalan katalog empat supplier
+memperpendek klaim throttle dengan CAS lease dan backoff 10 detik; Mirai tetap
+menghormati `Retry-After`. `cleanup` mendahulukan watchdog setelah maintenance
+agar drain grup, copy review, dan FX tidak menghabiskan budget watchdog.
+
 Link unik per `(order_code, item_index)`, key stabil per link, status
 `pending`/`claimed`/`processing`/`completed`/`needs_admin`, sent marker, lease,
 `next_attempt_at` dan penghitung POST. Checkout web/Telegram menulis eligibilitas

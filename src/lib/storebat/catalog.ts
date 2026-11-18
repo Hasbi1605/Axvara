@@ -1,5 +1,5 @@
 import type { DatabaseAccess } from "@/lib/db-access";
-import { recordSyncError } from "@/lib/sync-status";
+import { catalogFailureRecorder, catalogWriteFailure, recordSyncError } from "@/lib/sync-status";
 import { bumpCatalogRevision } from "@/lib/catalog-cache";
 import { mapSkCategory } from "@/lib/sekalipay/sync";
 import { isStorebatConfigured, isStorebatSyncEnabled, STOREBAT_BUFF_ID } from "./client";
@@ -78,15 +78,18 @@ export async function projectStorebatCatalog(db: DatabaseAccess, fx: number, lea
 export async function publishStorebatCatalog(db: DatabaseAccess, fx: number, opts: { force?: boolean; now?: number } = {}) {
   if (!db.d1 || !isStorebatConfigured() || !isStorebatSyncEnabled()) return { skipped:"not_configured" } as const;
   const now = opts.now ?? Date.now();
-  const fail = async (error: string) => { await recordSyncError(db,"storebat_catalog",error,now); return { ok:false,error } as const; };
-  if (!Number.isFinite(fx) || fx <= 0) return fail("fx_unavailable");
-  if (!db.canSpend(24)) return fail("catalog_budget_exceeded");
+  if (!Number.isFinite(fx) || fx <= 0 || !db.canSpend(24)) {
+    const error = !Number.isFinite(fx) || fx <= 0 ? "fx_unavailable" : "catalog_budget_exceeded";
+    await recordSyncError(db,"storebat_catalog",error,now);
+    return { ok:false,error } as const;
+  }
   const settings = await db.queryAll("SELECT key,value FROM store_settings WHERE key IN (?,?)",STOREBAT_SYNC_KEY,STOREBAT_ETAG_KEY);
   const last = Number(settings.find(r=>r.key===STOREBAT_SYNC_KEY)?.value);
   if (!opts.force && now-last >= 0 && now-last < STOREBAT_CATALOG_MIN_INTERVAL_MS) return { skipped:"throttled" } as const;
   const lease = JSON.stringify({ owner:crypto.randomUUID(), until:now+45_000 });
   const claim = await db.execRun(`INSERT INTO store_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(store_settings.value,'$.until')<=?`,STOREBAT_LEASE_KEY,lease,now);
   if (claim.changes !== 1) return { skipped:"claimed_elsewhere" } as const;
+  const fail = catalogFailureRecorder(db,"storebat_catalog",now,STOREBAT_CATALOG_MIN_INTERVAL_MS,{key:STOREBAT_LEASE_KEY,value:lease});
   try {
     const throttle = await db.execRun(`INSERT INTO store_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value
       WHERE ?=1 OR CAST(store_settings.value AS INTEGER)<=?`,STOREBAT_SYNC_KEY,String(now),Number(!!opts.force),now-STOREBAT_CATALOG_MIN_INTERVAL_MS);
@@ -95,13 +98,15 @@ export async function publishStorebatCatalog(db: DatabaseAccess, fx: number, opt
     const result = await syncStorebatCatalog(db,lease,now,!opts.force && typeof etag === "string" ? etag : null);
     if ("error" in result) return await fail(result.error ?? "catalog_sync_failed");
     if ("unchanged" in result) {
-      await db.execRun(
+      const committed = await db.execRun(
         `INSERT INTO store_settings(key,value,updated_at)
-         SELECT j.value->>0,j.value->>1,datetime('now') FROM json_each(?) j WHERE true
-         ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at
-         WHERE store_settings.key='storebat_catalog_last_error' OR CAST(store_settings.value AS INTEGER)<CAST(excluded.value AS INTEGER)`,
+         SELECT j.value->>0,j.value->>1,datetime('now') FROM json_each(?) j
+         WHERE EXISTS(SELECT 1 FROM store_settings WHERE key=? AND value=? AND json_extract(value,'$.until')>unixepoch('now')*1000)
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`,
         JSON.stringify([["storebat_catalog_success_at",String(now)],["storebat_catalog_last_error",""]]),
+        STOREBAT_LEASE_KEY,lease,
       );
+      if (committed.changes !== 2) return await fail("catalog_lease_lost");
       return { ok:true, unchanged:true, changed:0 } as const;
     }
     const projected = await projectStorebatCatalog(db,fx,lease);
@@ -113,6 +118,6 @@ export async function publishStorebatCatalog(db: DatabaseAccess, fx: number, opt
       ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`,JSON.stringify([[STOREBAT_ETAG_KEY,result.etag],["storebat_catalog_success_at",String(now)],["storebat_catalog_last_error",""]]),STOREBAT_LEASE_KEY,lease);
     if (committed.changes !== 3) return await fail("catalog_lease_lost");
     return projected;
-  } catch { return await fail("catalog_write_failed"); }
-  finally { await db.execRun("DELETE FROM store_settings WHERE key=? AND value=?",STOREBAT_LEASE_KEY,lease); }
+  } catch (error) { return await fail(catalogWriteFailure(error)); }
+  finally { await db.execRun("DELETE FROM store_settings WHERE key=? AND value=?",STOREBAT_LEASE_KEY,lease).catch(() => undefined); }
 }

@@ -10,9 +10,9 @@
 // menerbitkan bersamaan; guard order TUNVN menolak saat lease aktif.
 
 import type { DatabaseAccess } from "@/lib/db-access";
-import { parseStoredSyncError, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
+import { catalogFailureRecorder, catalogWriteFailure, parseStoredSyncError, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { checkTunvnBuff, isTunvnSyncEnabled } from "./client";
-import { syncTunvnCatalog } from "./sync";
+import { syncTunvnCatalog, TUNVN_CATALOG_MIN_INTERVAL_MS } from "./sync";
 import { TUNVN_BUFF_VARIANT_B, tunvnBuffSellPriceIdr, tunvnSellPriceIdr } from "./pricing";
 import {
   tunvnDefaultDescription, TUNVN_CHATGPT_IMAGE_URL, TUNVN_MUSE_SLUG,
@@ -64,8 +64,9 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
   const claimed = await db.execRun(`INSERT INTO store_settings(key,value) VALUES('tunvn_catalog_lease',?)
     ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(store_settings.value,'$.until')<=?`, lease, now);
   if (claimed.changes !== 1) return { skipped: "claimed_elsewhere" };
+  const fail = catalogFailureRecorder(db, "tunvn_catalog", now, TUNVN_CATALOG_MIN_INTERVAL_MS, { key: "tunvn_catalog_lease", value: lease });
   try {
-    const synced = await syncTunvnCatalog(db, { ...opts, reserveStatements: 28, skipSuccessMark: true });
+    const synced = await syncTunvnCatalog(db, { ...opts, now, reserveStatements: 28, onFailure: fail });
     if ("ok" in synced && synced.ok === false) return { ok: false, error: synced.error };
     if ("skipped" in synced) return synced;
 
@@ -115,8 +116,7 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
     }).filter((plan): plan is NonNullable<typeof plan> => Boolean(plan));
 
     if (!plans.length) {
-      await recordSyncError(db, "tunvn_catalog", "category_missing", now);
-      return { ok: false, error: "category_missing" };
+      return await fail("category_missing");
     }
 
     let catalogChanged = false;
@@ -284,10 +284,9 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
     }).length, 0);
     return { ok: true, families: plans.length, variants: inserts.length + updates.filter(row => Number(row.cas) === 1).length, buff_variants: buff, idr_per_usdt: idrPerUsdt, activated, ...(buffError ? { buff_error: buffError } : {}) };
   } catch (error) {
-    await recordSyncError(db, "tunvn_catalog", error, now);
-    throw error;
+    return await fail(catalogWriteFailure(error));
   } finally {
-    await db.execRun("DELETE FROM store_settings WHERE key='tunvn_catalog_lease' AND value=?", lease);
+    await db.execRun("DELETE FROM store_settings WHERE key='tunvn_catalog_lease' AND value=?", lease).catch(() => undefined);
   }
 }
 

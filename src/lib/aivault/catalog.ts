@@ -1,8 +1,8 @@
 import type { DatabaseAccess } from "@/lib/db-access";
-import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
+import { catalogFailureRecorder, catalogWriteFailure, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { mapSkCategory } from "@/lib/sekalipay/sync";
 import { isAivaultConfigured, isAivaultSyncEnabled } from "./client";
-import { syncAivaultCatalog } from "./sync";
+import { AIVAULT_CATALOG_MIN_INTERVAL_MS, syncAivaultCatalog } from "./sync";
 import { aivaultFamily, aivaultSellPrice, aivaultDefaultDescription } from "./families";
 import { deriveAivaultBulkTiers, parseAivaultBulkMarkup } from "./bulk";
 
@@ -91,18 +91,17 @@ export async function publishAivaultCatalog(db: DatabaseAccess, fx: number, opts
   const lease = JSON.stringify({ owner:crypto.randomUUID(), until:now+45_000 });
   const claim = await db.execRun(`INSERT INTO store_settings(key,value) VALUES('aivault_catalog_lease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(store_settings.value,'$.until')<=?`,lease,now);
   if (claim.changes !== 1) return { skipped:"claimed_elsewhere" } as const;
+  const fail = catalogFailureRecorder(db,"aivault_catalog",now,AIVAULT_CATALOG_MIN_INTERVAL_MS,{key:"aivault_catalog_lease",value:lease});
   try {
-    const result = await syncAivaultCatalog(db,{...opts, skipSuccessMark: true});
+    const result = await syncAivaultCatalog(db,{...opts, now, onFailure: fail});
     if (!("ok" in result) || !result.ok) return result;
     const projected = await projectAivaultCatalog(db,fx);
     if (!projected.ok) {
-      await recordSyncError(db, "aivault_catalog", projected.error, now);
-      return projected;
+      return await fail(projected.error);
     }
     await recordSyncSuccess(db, "aivault_catalog", now);
     return projected;
   } catch (error) {
-    await recordSyncError(db, "aivault_catalog", error, now);
-    throw error;
-  } finally { await db.execRun("DELETE FROM store_settings WHERE key='aivault_catalog_lease' AND value=?",lease); }
+    return await fail(catalogWriteFailure(error));
+  } finally { await db.execRun("DELETE FROM store_settings WHERE key='aivault_catalog_lease' AND value=?",lease).catch(() => undefined); }
 }

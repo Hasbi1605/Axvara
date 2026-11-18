@@ -1,5 +1,9 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Retry katalog akun pasca-audit — 19 November 2026 (lokal)
+
+- Lease dan throttle akun yang sukses tetap 45 detik; kegagalan akun memperpendek klaim miliknya menjadi 10 detik setelah gagal. Error D1 menyimpan kelas kegagalan, bukan body/secret. Backoff probe Buff tetap tiga menit dan terpisah dari heartbeat akun.
+
 ## Probe orphan eligible F5a — 18 November 2026 (lokal)
 
 `processTunvnOrders` menyeleksi hanya apps lunas/paid non-disable dari

@@ -201,6 +201,34 @@ describe("/api/cron/lite A3-6 core vs optional subjobs and budget yield", () => 
     }
   });
 
+  it("cleanup: hourly maintenance and a full group drain cannot starve the watchdog", async () => {
+    const fx = createD1Fixture();
+    try {
+      vi.stubEnv("CRON_SECRET", "s");
+      vi.stubEnv("STOREBAT_SYNC_ENABLED", "true");
+      vi.stubEnv("STOREBAT_API_KEY", "fixture-only");
+      vi.stubEnv("STOREBAT_BASE_URL", "https://supplier.test");
+      vi.stubEnv("TELEGRAM_BOT_ENABLED", "false");
+      const copyReview = vi.fn(async (db: { queryFirst: (sql: string) => Promise<unknown> }) => {
+        for (let i = 0; i < 4; i++) await db.queryFirst("SELECT 1");
+        return { checked: true };
+      });
+      vi.doMock("@/lib/product-copy/review-alert", () => ({ checkCopyReviewChanges: copyReview }));
+      for (let id = 1; id <= 10; id++) {
+        fx.sql.prepare("INSERT INTO product_groups(id,name) VALUES(?,?)").run(id, `group ${id}`);
+        fx.sql.prepare("INSERT INTO product_group_dirty(group_id,version,pending) VALUES(?,1,1)").run(id);
+      }
+      const res = await callLite("cleanup");
+      expect(res).toMatchObject({ status: 200, body: {
+        pairs_decided: 10, copy_review: { checked: true }, staleness: { checked: true, sources: expect.arrayContaining(["storebat"]) },
+      } });
+      const keys = fx.sql.prepare("SELECT key FROM store_settings WHERE key IN ('maintenance_cleanup_at','sync_stale_state_storebat') ORDER BY key").all();
+      expect(keys).toEqual([{ key: "maintenance_cleanup_at" }, { key: "sync_stale_state_storebat" }]);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("QueryBudgetExceeded inside a core subjob returns 200 budget_exhausted (yield is not a failure)", async () => {
     const fx = createD1Fixture();
     try {

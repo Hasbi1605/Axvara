@@ -43,6 +43,30 @@ it("fails closed on missing FX or invalid feed without advancing ETag",async()=>
   expect(await publishStorebatCatalog(db,20000,{force:true})).toMatchObject({ok:false,error:"invalid_or_empty_catalog"});
   expect(f.sql.prepare("SELECT value FROM store_settings WHERE key='storebat_catalog_etag'").get()?.value).toBe('"a"');
 });
+it("shortens a failed projection's claim, retains the ETag fence and records no exception text", async () => {
+  const { access: db } = createBudgetedDatabase(40, 2, f.db);
+  const now = Date.now();
+  expect(await publishStorebatCatalog(db, 20_000, { now })).toMatchObject({ ok: true });
+  vi.mocked(fetch).mockResolvedValueOnce(response([product()], '"b"'));
+  f.control.afterBatch = async queries => {
+    if (queries.some(q => q.includes(":inputs") || q.includes("storebat_admin_price_idr IS NOT"))) {
+      throw new Error("D1_ERROR: SQLITE_BUSY; Bearer fixture-secret; body=private-response");
+    }
+  };
+  const setting = (key: string) => f.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(key)?.value;
+  const run = (offset: number) => publishStorebatCatalog(createBudgetedDatabase(40, 2, f.db).access, 20_000, { now: now + offset });
+  expect(await run(60_000)).toEqual({ ok: false, error: "catalog_write_failed:database_busy" });
+  expect(JSON.parse(String(setting("storebat_catalog_last_error"))).error).toBe("catalog_write_failed:database_busy");
+  expect(setting("storebat_catalog_success_at")).toBe(String(now));
+  expect(setting("storebat_catalog_etag")).toBe('"a"');
+  expect(await run(61_000)).toEqual({ skipped: "throttled" });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  f.control.afterBatch = null;
+  vi.mocked(fetch).mockResolvedValueOnce(response([product()], '"b"'));
+  expect(await run(104_000)).toMatchObject({ ok: true });
+  expect(setting("storebat_catalog_last_error")).toBe("");
+  expect(setting("storebat_catalog_etag")).toBe('"b"');
+});
 it("writes curated copy, category, and image once on insert and never overwrites admin edits on resync",async()=>{
   f.sql.exec("INSERT INTO products(name,slug,price,image_url,is_active) VALUES('Ref GPT','chatgpt-plus-1-bulan',100,'/r2/chatgpt-existing.webp',0)");
   const db=createDatabaseAccess(f.db);

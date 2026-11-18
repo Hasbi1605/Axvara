@@ -7,7 +7,7 @@
 // dan klaim throttle CAS di store_settings mencegah dua isolate menumpuk.
 
 import type { DatabaseAccess } from "@/lib/db-access";
-import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
+import { catalogFailureRecorder, catalogWriteFailure, recordSyncSuccess } from "@/lib/sync-status";
 import { fetchTunvnProducts, isTunvnSyncEnabled, type TunvnProduct } from "./client";
 
 export const TUNVN_CATALOG_SETTING_KEY = "tunvn_catalog_sync_at";
@@ -24,7 +24,7 @@ export type TunvnCatalogSyncResult =
 
 export async function syncTunvnCatalog(
   db: DatabaseAccess,
-  opts: { now?: number; force?: boolean; reserveStatements?: number; skipSuccessMark?: boolean } = {},
+  opts: { now?: number; force?: boolean; reserveStatements?: number; onFailure?: ReturnType<typeof catalogFailureRecorder> } = {},
 ): Promise<TunvnCatalogSyncResult> {
   if (!isTunvnSyncEnabled()) return { skipped: "not_configured" };
   const now = opts.now ?? Date.now();
@@ -40,24 +40,22 @@ export async function syncTunvnCatalog(
     : await db.execRun("UPDATE store_settings SET value=?, updated_at=datetime('now') WHERE key=? AND value=?", String(now), TUNVN_CATALOG_SETTING_KEY, prevValue);
   if (claim.changes !== 1) return { skipped: "claimed_elsewhere" };
 
-  const fail = async (error: string, detail?: string): Promise<TunvnCatalogSyncResult> => {
-    await recordSyncError(db, "tunvn_catalog", detail ? `${error}:${detail}` : error, now);
-    return detail ? { ok: false, error, detail } : { ok: false, error };
-  };
+  const recordFailure = opts.onFailure ?? catalogFailureRecorder(db, "tunvn_catalog", now, TUNVN_CATALOG_MIN_INTERVAL_MS);
 
   const listed = await fetchTunvnProducts();
   if (listed.kind !== "ok") {
     const detail = listed.kind === "api_error" ? listed.detail
       : listed.kind === "http_error" ? `http_${listed.status}` : listed.reason;
-    return fail(`products_${listed.kind}`, detail.slice(0, 200));
+    const failed = await recordFailure(`products_${listed.kind}:${detail}`, `products_${listed.kind}`);
+    return { ...failed, detail: detail.slice(0, 200) };
   }
   // Daftar kosong = kemungkinan salah akun/gangguan, bukan "semua hilang".
-  if (listed.items.length === 0) return fail("empty_tunvn_catalog");
-  if (listed.invalid > 0) return fail("invalid_tunvn_catalog");
+  if (listed.items.length === 0) return recordFailure("empty_tunvn_catalog");
+  if (listed.invalid > 0) return recordFailure("invalid_tunvn_catalog");
   // ponytail: full mirror must fit40 statements; add chunk continuation if it grows.
-  const successReserve = opts.skipSuccessMark ? 0 : 1;
+  const successReserve = opts.onFailure ? 0 : 1;
   if (!db.canSpend(Math.ceil(listed.items.length / CHUNK) + 1 + successReserve + (opts.reserveStatements ?? 0))) {
-    return fail("catalog_budget_exceeded");
+    return recordFailure("catalog_budget_exceeded");
   }
 
   const syncedAt = new Date(now).toISOString();
@@ -91,7 +89,7 @@ export async function syncTunvnCatalog(
       syncedAt,
     );
 
-    if (!opts.skipSuccessMark) {
+    if (!opts.onFailure) {
       await recordSyncSuccess(db, "tunvn_catalog", now);
     }
 
@@ -104,8 +102,7 @@ export async function syncTunvnCatalog(
       usdt_vnd: listed.usdt_vnd,
     };
   } catch (error) {
-    await recordSyncError(db, "tunvn_catalog", error, now);
-    throw error;
+    return await recordFailure(catalogWriteFailure(error));
   }
 }
 

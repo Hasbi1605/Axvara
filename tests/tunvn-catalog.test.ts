@@ -167,20 +167,20 @@ describe("publishTunvnCatalog", () => {
   it("tracks account projection and Buff independently, throttles failed probes, and clears errors on recovery", async () => {
     const t0 = 1_800_000_000_000;
     const realFetch = fetch;
-    // 1) Failure during fetch advances throttle claim, leaves success_at unset, and stores sanitized error
+    // 1) Failure during fetch shortens the claim and records only a safe reason.
     vi.stubGlobal("fetch", vi.fn(async () => new Response("token=test-key-not-real", { status: 502 })));
     const fail1 = await publishTunvnCatalog(db(), RATE, { force: false, now: t0 });
     expect(fail1).toEqual({ ok: false, error: "products_ambiguous" });
-    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_sync_at'").get()).toEqual({ value: String(t0) });
     expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toBeUndefined();
     const err1 = fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_last_error'").get() as { value: string };
-    expect(JSON.parse(err1.value)).toMatchObject({ at: new Date(t0).toISOString(), error: "products_ambiguous:http_502" });
+    expect(JSON.parse(err1.value)).toMatchObject({ error: "products_ambiguous:http_502" });
+    expect(await publishTunvnCatalog(db(), RATE, { force: false, now: t0 + 1_000 })).toEqual({ skipped: "throttled" });
 
     // 2) Full success writes tunvn_catalog_success_at and clears tunvn_catalog_last_error
     vi.stubGlobal("fetch", realFetch);
-    const ok1 = await publishTunvnCatalog(db(), RATE, { force: false, now: t0 + 60_000 });
+    const ok1 = await publishTunvnCatalog(db(), RATE, { force: false, now: t0 + 44_000 });
     expect(ok1).toMatchObject({ ok: true });
-    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toEqual({ value: String(t0 + 60_000) });
+    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toEqual({ value: String(t0 + 44_000) });
     expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_last_error'").get()).toEqual({ value: "" });
 
     // 3) Buff failure keeps its last good data, without hiding fresh account stock.
@@ -197,7 +197,7 @@ describe("publishTunvnCatalog", () => {
     expect(budget.used).toBeLessThanOrEqual(38);
     expect(setting("tunvn_catalog_success_at")).toBe(String(t0 + 240_000));
     expect(setting("tunvn_catalog_last_error")).toBe("");
-    expect(setting("tunvn_buff_sync_at")).toBe(String(t0 + 60_000));
+    expect(setting("tunvn_buff_sync_at")).toBe(String(t0 + 44_000));
     expect(JSON.parse(setting("tunvn_buff_last_error")!)).toMatchObject({ error: "buff_ambiguous:http_502" });
     expect(buffRow()).toEqual(before);
     expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({ stock: 3 });
