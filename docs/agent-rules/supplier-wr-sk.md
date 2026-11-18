@@ -1,5 +1,9 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Sekalipay juga supplier AXVARA Games — 18 November 2026
+
+- Supplier order Games = Sekalipay H2H (sejak P3 12 Nov 2026; produksi 18 Nov: `games_products` 1.644 baris `sekalipay` + 601 baris `digiflazz` legacy yang tidak dijual). Gerbang order (`src/lib/games/ordering.ts`): `GAMES_SK_ENABLED=true` + `SEKALIPAY_ENABLED=true` + transport/kredensial SK + bukan `SEKALIPAY_SANDBOX`; kredensial/`DIGIFLAZZ_TESTING` bukan gerbang lagi. Kontrak transaksi/webhook `sekalipay_games` dan pemulihan admin GET-only di GAMES §13–15.
+
 ## Gate seragam supplier_purchase_disabled & bersih-bersih supplier_pair_dirty — 18 November 2026 (lokal, G1)
 
 - WR (`src/lib/warung-rebahan/order.ts`: `createWrOrderLink`, `createWrOrderLinksForOrder`, `reconcileMissingWrLinks`, `processWrPendingOrders`, `claimLink`, `processOneLink`, `recoverJaspayByExactRef`, `reconcileBlockedBalance`, `retryFailedWrOrders`) dan SK (`src/lib/sekalipay/order.ts`: `createSkOrderLink`, `createSkOrderLinksForOrder`, `reconcileMissingSkLinks`, `processSkPendingOrders`, `claimSkLink`, `processOneSkLink`, `reconcileBlockedSkBalance`, `retryFailedSkOrders`) wajib menyaring `orders.status='lunas' AND orders.payment_status='paid' AND supplier_purchase_disabled=0` (seragam dengan `src/lib/tunvn/orders.ts` dan `src/lib/aivault/orders.ts`). Order bertanda `supplier_purchase_disabled=1` tidak dibuatkan link baru maupun mengirim POST pembelian; link/riwayat yang sudah ada tidak dimutasi.

@@ -401,7 +401,7 @@ OD1, bukan `games_reference_prices`.] `sell_price` dihitung ulang dari
 - §7.3: **terbuka**, belum deposit atau mode Production. Pages produksi menyimpan
   Development Key + testing=true; sesudah deployment CI berikutnya cron katalog
   mulai memakai Development Key, (snapshot 9 Nov) ordering tetap preview P9 dan nickname unavailable.
-  Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview.
+  Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview; supplier Sekalipay H2H (§13–15).
 - §7.4: **terbuka**, belum transaksi nyata yang membuktikan go-live.
 - PM memasang75env (79/128 termasuk4sistem), empat env Digiflazz `secret_text`.
   CNAME/custom domain telah ditambahkan dengan status awal initializing; aktif
@@ -567,9 +567,12 @@ consent, status/recovery, callback/IPN replay, review tanpa dispatch, route Mark
 dan regresi workerd gateway AXG. Fokus akhir 67 file/1016 tes hijau; UI/nickname dan akses
 produksi tetap di luar B2, full suite/build milik PM.
 
-## 13. Katalog & transaksi Sekalipay Games — P3 (12 November 2026, lokal, belum deploy)
+## 13. Katalog & transaksi Sekalipay Games — P3 (12 November 2026; LIVE, lihat status 18 Nov)
 
-> Status bagian ini: implementasi + tes fixture lokal pada worktree
+> **Status 18 November 2026:** live di produksi — `ordering_open:true`, order nyata pertama
+> `AXG-20261116-4206447D` sukses di Sekalipay (§15). Supplier order Games = Sekalipay H2H (sejak P3 12 Nov 2026; produksi 18 Nov: `games_products` 1.644 baris `sekalipay` + 601 baris `digiflazz` legacy yang tidak dijual). Gerbang order (`src/lib/games/ordering.ts`): `GAMES_SK_ENABLED=true` + `SEKALIPAY_ENABLED=true` + transport/kredensial SK + bukan `SEKALIPAY_SANDBOX`; kredensial/`DIGIFLAZZ_TESTING` bukan gerbang lagi.
+>
+> Snapshot 12 Nov: implementasi + tes fixture lokal pada worktree
 > `feat/games-sekalipay-only`. Tidak ada deployment, panggilan supplier nyata,
 > transaksi berbayar, atau perubahan env/secret. Gate pembelian produksi tetap
 > **tidak diset**. Bagian §1–§12 adalah histori keputusan Digiflazz; untuk

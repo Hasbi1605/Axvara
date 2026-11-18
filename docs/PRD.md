@@ -753,7 +753,7 @@ dijalankan — bukan status live.
   serta empat env Digiflazz secret_text (Development Key/testing=true),75env/79dari128
   termasuk sistem; berlaku deployment CI berikutnya. Cron katalog mulai memakai
   Development Key setelah itu; (snapshot 9 Nov) ordering tetap preview P9/nickname unavailable.
-  Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview.
+  Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview. Supplier order Games = Sekalipay H2H (sejak P3 12 Nov 2026; produksi 18 Nov: `games_products` 1.644 baris `sekalipay` + 601 baris `digiflazz` legacy yang tidak dijual). Gerbang order (`src/lib/games/ordering.ts`): `GAMES_SK_ENABLED=true` + `SEKALIPAY_ENABLED=true` + transport/kredensial SK + bukan `SEKALIPAY_SANDBOX`; kredensial/`DIGIFLAZZ_TESTING` bukan gerbang lagi.
   Owner menutup gerbang7.1 tanpa rotasi9Nov malam, dashboard webhook tetap non-aktif
   (7.2), belum deposit/Production (7.3)/transaksi nyata (7.4). Access Games belum tercakup:
   admin dialihkan apex/API admin fail-closed. Metadata UI/QA browser/runtime belum dibuktikan;

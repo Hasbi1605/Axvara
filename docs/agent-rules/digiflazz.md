@@ -2,7 +2,7 @@
 
 ## Status Games — 18 November 2026
 
-- Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview. Catatan "ordering tetap preview P9" di bawah adalah snapshot 9 November. Mekanisme gerbang P9 di kode (`games/ordering.ts`: tutup bila `DIGIFLAZZ_TESTING==='true'` atau kredensial kosong) tetap berlaku sebagai pengaman.
+- Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview. Catatan "ordering tetap preview P9" di bawah adalah snapshot 9 November. Supplier order Games = Sekalipay H2H (sejak P3 12 Nov 2026; produksi 18 Nov: `games_products` 1.644 baris `sekalipay` + 601 baris `digiflazz` legacy yang tidak dijual). Gerbang order (`src/lib/games/ordering.ts`): `GAMES_SK_ENABLED=true` + `SEKALIPAY_ENABLED=true` + transport/kredensial SK + bukan `SEKALIPAY_SANDBOX`; kredensial/`DIGIFLAZZ_TESTING` bukan gerbang lagi. Aturan Digiflazz di file ini = histori/legacy (pemulihan order lama), bukan jalur penjualan baru; kontrak Sekalipay Games di GAMES §13–15.
 
 - Operasi PM sekitar21.40–22.05WIB: Pages produksi menerima empat `secret_text`:
   `DIGIFLAZZ_USERNAME`, `DIGIFLAZZ_API_KEY` (Development Key), `DIGIFLAZZ_WEBHOOK_SECRET`,

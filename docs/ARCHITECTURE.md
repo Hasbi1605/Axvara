@@ -5865,7 +5865,7 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - **Registry tunggal** `games/registry.ts`: FF/FF MAX playerId 6–14 digit, ML userId
   1–12 + zoneId 1–6 (concat tanpa pemisah), PUBG playerId 6–15; rentang konservatif
   agar tidak menganggap rentang observasi R1 sebagai batas universal.
-- **P9:** `games/ordering.ts` menutup quote/order 503 `games_preview` bila testing
+- **P9 (snapshot 9 Nov; diganti P3 12 Nov — gerbang kini `GAMES_SK_ENABLED` + Sekalipay, lihat GAMES §13):** `games/ordering.ts` menutup quote/order 503 `games_preview` bila testing
   `true` atau username/key kosong; katalog tetap terbaca dengan `ordering_open=false`.
   Tidak ada env/migrasi baru atau perubahan guard kode shared gateway/crypto.
 - **Quote/order:** JWE A256GCM 30 menit (`games/quote.ts`, key diturunkan dari

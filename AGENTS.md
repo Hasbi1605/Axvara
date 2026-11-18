@@ -22,7 +22,7 @@ hanya file yang relevan dengan tugas, dan semuanya bila tugas lintas area.
 | QRIS GoPay/KlikQRIS/DANA, persiapan NOWPayments/Sekalipay gateway, poller VPS GoPay, callback pembayaran, maintenance pembayaran | `docs/agent-rules/payments.md` |
 | Pedia/SMM (IndoSMM), katalog/refill/kurasi, white label | `docs/agent-rules/pedia.md` + `docs/agents-history.md` untuk order lama |
 | Workers Paid, cron, budget statement fulfillment, unit unik, kuota/monitor D1 | `docs/agent-rules/platform-ops.md` |
-| AXVARA Games (route `/games`, katalog/harga/pesanan top up game) | `docs/GAMES.md` + `docs/agent-rules/digiflazz.md` |
+| AXVARA Games (route `/games`, katalog/harga/pesanan top up game; supplier Sekalipay H2H, Digiflazz legacy) | `docs/GAMES.md` (§13–15 terkini) + `docs/agent-rules/supplier-wr-sk.md` (Sekalipay) + `docs/agent-rules/digiflazz.md` (histori/legacy) |
 | Gateway WhatsApp, grup AXVARA'S, ganti nomor bot, siaran/welcome | `docs/agent-rules/whatsapp-gateway.md` + `gateway/AGENTS.md` |
 | TUNVN PREHUB (reseller Telegram, katalog mirror tersembunyi) | `docs/agent-rules/tunvn.md` |
 | AIVault Hub (katalog, harga USD, dispatch/polling, admin) | `docs/agent-rules/aivault.md` |
@@ -34,7 +34,7 @@ dan nickname berbiaya mengikuti GAMES §3/§5.2 + ARCHITECTURE §16.29; bukan iz
 Update PM9Nov malam: CNAME/custom domain Games ditambahkan (awal initializing, aktif
 belum diverifikasi); empat env Digiflazz Pages `secret_text` memakai Development Key
 + testing=true, berlaku CI berikutnya (75env/79dari128termasuk sistem). Snapshot 9Nov: P9 preview;
-nickname unavailable. Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview. Status gerbang 7.2–7.4 di bawah adalah snapshot 9Nov. Owner menutup gerbang key7.1 tanpa rotasi; webhook/deposit/
+nickname unavailable. Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview. Supplier order Games = Sekalipay H2H (sejak P3 12 Nov 2026; produksi 18 Nov: `games_products` 1.644 baris `sekalipay` + 601 baris `digiflazz` legacy yang tidak dijual). Gerbang order (`src/lib/games/ordering.ts`): `GAMES_SK_ENABLED=true` + `SEKALIPAY_ENABLED=true` + transport/kredensial SK + bukan `SEKALIPAY_SANDBOX`; kredensial/`DIGIFLAZZ_TESTING` bukan gerbang lagi. Status gerbang 7.2–7.4 di bawah adalah snapshot 9Nov. Owner menutup gerbang key7.1 tanpa rotasi; webhook/deposit/
 Production/transaksi nyata7.2–7.4 tetap terbuka. Access Games belum tercakup: admin
 ke apex/API admin fail-closed. Detail dan batas bukti di aturan Digiflazz + GAMES12.6.
 
