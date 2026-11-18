@@ -2,7 +2,7 @@
 
 ## Kalkulator refund Market — 18 November 2026
 
-Latar Midnight, kartu `ax-glass-card`, aksen cyan, dan nominal tabular. Mode manual menempatkan hasil di samping form di desktop dan menumpuknya di mobile; mode invoice menampilkan sisa masa aktif dan nominal lebih dulu, tanggal/rate di rincian lipat. Fade/slide masuk 200 ms, transisi bar 300 ms, menghormati `prefers-reduced-motion`. Navigasi melalui keyboard, outline fokus cyan, target tombol utama 44px. Halaman pesanan/lacak setelah bayar hanya mengubah isi accordion garansi (tiga teks pendek + satu aksi, tanpa kartu atau tombol refund di luar accordion).
+Latar Midnight, kartu `ax-glass-card`, aksen cyan, dan nominal tabular. Mode manual menempatkan hasil di samping form di desktop dan menumpuknya di mobile; mode invoice menampilkan sisa masa aktif dan nominal lebih dulu, tanggal/rate di rincian lipat. Fade/slide masuk 200 ms, transisi bar 300 ms, menghormati `prefers-reduced-motion`. Navigasi melalui keyboard, outline fokus cyan, target tombol utama 44px. Pada halaman pesanan/lacak setelah bayar, satu accordion garansi tetap terlipat. Isinya berurutan: syarat klaim, dua poin proses dan refund, contoh, lalu **Cek Estimasi Refund**. Aksi membuka mode **Dari Pesanan** pada kalkulator tanpa menambahkan hasil di tempat. Saat akses tidak tersedia, tampilkan tautan **Lacak Pesanan**; untuk gangguan sementara, tampilkan **Coba lagi**.
 
 ## Editor masa aktif & garansi — 18 November 2026 (G4, lokal)
 
