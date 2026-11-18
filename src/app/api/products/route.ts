@@ -13,6 +13,7 @@ import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
 import { notLoserProductSql } from "@/lib/product-groups";
+import { computeProductLiveStatusMap, type ProductLiveStatusInfo } from "@/lib/product-live-status";
 
 export const runtime = "edge";
 
@@ -161,57 +162,9 @@ async function readProducts(req: NextRequest) {
   // publik: nonaktif manual > kalah pasangan > habis > live.
   // Dikirim sebagai `live_status` + `live_reason` per produk; storefront
   // tidak menerimanya (tidak bocor ke pembeli).
-  const liveStatusByProduct = new Map<string, { status: "live" | "hidden_loser" | "hidden_soldout" | "off"; reason: string }>();
-  if (isAdminRequest) {
-    // Anggota grup yang bukan winner = pecundang. Alasan admin memakai nama
-    // produk winner (grup lintas supplier, bukan lagi label WR/SK).
-    const pairRows = await queryAll(
-      `SELECT gm.product_id AS loser, g.winner_product_id AS winner_id, wp.name AS winner_name
-       FROM product_group_members gm
-       JOIN product_groups g ON g.id=gm.group_id
-       LEFT JOIN products wp ON wp.id=g.winner_product_id
-       WHERE g.winner_product_id IS NOT NULL AND gm.product_id<>g.winner_product_id`,
-    ).catch(() => [] as Record<string, unknown>[]);
-    const loserToWinner = new Map<number, { winnerId: number; winner: string }>();
-    for (const r of pairRows) {
-      const loser = Number(r.loser ?? 0);
-      const winnerId = Number(r.winner_id ?? 0);
-      if (Number.isInteger(loser) && loser > 0 && Number.isInteger(winnerId) && winnerId > 0) {
-        loserToWinner.set(loser, { winnerId, winner: String(r.winner_name ?? `produk #${winnerId}`) });
-      }
-    }
-    const buyableSql = purchasableStockSql("pvx");
-    const buyableRows = await queryAll(
-      `SELECT DISTINCT product_id FROM product_variants pvx WHERE pvx.is_active=1 AND ${buyableSql}`,
-    ).catch(() => [] as Record<string, unknown>[]);
-    const hasBuyable = new Set<number>();
-    for (const r of buyableRows) {
-      const pid = Number(r.product_id ?? 0);
-      if (Number.isInteger(pid) && pid > 0) hasBuyable.add(pid);
-    }
-    for (const r of rows) {
-      const pid = Number(r.id ?? 0);
-      const key = String(r.id);
-      const isActive = (r.is_active as number) !== 0;
-      if (!isActive) {
-        liveStatusByProduct.set(key, { status: "off", reason: "Nonaktif manual" });
-        continue;
-      }
-      const loseInfo = loserToWinner.get(pid);
-      if (loseInfo) {
-        liveStatusByProduct.set(key, {
-          status: "hidden_loser",
-          reason: `Kalah vs ${loseInfo.winner} #${loseInfo.winnerId}`,
-        });
-        continue;
-      }
-      if (!hasBuyable.has(pid)) {
-        liveStatusByProduct.set(key, { status: "hidden_soldout", reason: "Stok habis · restok otomatis tampil" });
-        continue;
-      }
-      liveStatusByProduct.set(key, { status: "live", reason: "Tampil di storefront" });
-    }
-  }
+  const liveStatusByProduct: Map<string, ProductLiveStatusInfo> = isAdminRequest
+    ? await computeProductLiveStatusMap(rows)
+    : new Map();
   // Varian aktif yang S&K-nya perlu ditinjau admin (teks WR belum punya versi
   // Axvara, atau suntingan admin dijeda karena WR mengubah teks). Hanya admin.
   const copyReviewByProduct = new Map<string, number>();

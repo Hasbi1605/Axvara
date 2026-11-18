@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adjacentReorderProduct, groupProductsByCategory, productOrderBucket, sortProductsForDisplay } from "@/lib/product-order";
+import { groupProductsByCategory, sortProductsForDisplay } from "@/lib/product-order";
 
 const categories = [
   { id: 1, slug: "a", name: "A", sort_order: 20 },
@@ -29,12 +29,5 @@ describe("category-first canonical display order", () => {
   it("breaks category ties by name then id; snake_case category IDs also work", () => {
     const cats = [{ id: 2, slug: "b", name: "A", sort_order: 0 }, { id: 1, slug: "a", name: "A", sort_order: 0 }, { id: 3, slug: "c", name: "B", sort_order: 0 }];
     expect(groupProductsByCategory([{ id: 1, category_id: 2 }, { id: 2, category_id: 3 }, { id: 3, category_id: 1 }, { id: 4 }], cats).map(group => group.category?.id)).toEqual([1, 2, 3, undefined]);
-  });
-
-  it("arrows ignore interleaved other categories, but never cross category or status boundary", () => {
-    expect(adjacentReorderProduct(products, 3, 1)?.id).toBe(7);
-    expect(adjacentReorderProduct(products, 7, 1)).toBeNull();
-    expect(adjacentReorderProduct(products, 4, -1)).toBeNull();
-    expect(productOrderBucket(products[2])).not.toBe(productOrderBucket(products[3]));
   });
 });

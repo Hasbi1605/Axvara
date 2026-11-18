@@ -575,13 +575,13 @@ describe("sekalipay sync helpers", () => {
     }
   });
 
-  it("F5b/A1-4/A4-8: zeroSkVariantsByIds & zeroMissingSkVariants menyegarkan products.stock (0, sum, -1), tidak menelan error, dan memulihkan restock-reinsert", async () => {
+  it("F5b/A1-4/A4-8: zeroSkVariantsByIds & zeroMissingSkVariants menyegarkan products.stock (0, sum, -1), tidak menelan error, dan mempertahankan sort_order saat restok", async () => {
     const fx = createD1Fixture();
     try {
       stubFulfillmentKey();
       vi.stubEnv("SEKALIPAY_ENABLED", "true");
       fx.sql.exec("INSERT INTO categories(id,name,slug) VALUES(1,'AI','ai') ON CONFLICT(id) DO NOTHING");
-      // Produk SK utama di sort_order=30 dan kompetitor aktif di sort_order=30 (kategori sama) agar reinsertion terlihat.
+      // Produk SK utama di sort_order=30: restok tidak boleh mengubah sort_order.
       fx.sql.exec(`
         INSERT INTO products(id,category_id,name,slug,price,stock,is_active,sort_order,source,sk_product_id,sk_auto_managed)
         VALUES (1,1,'Google AI Pro','google-ai-pro-sk',15000,8,1,30,'manual','9',1),
@@ -612,7 +612,7 @@ describe("sekalipay sync helpers", () => {
       expect(zeroDiff.errors).toEqual([]);
       expect((fx.sql.prepare("SELECT stock FROM products WHERE id=1").get() as { stock: number }).stock).toBe(0);
 
-      // 3. Restock via diff => parentStockBefore===0 akurat, induk naik dan maybeReinsertRestockedProduct terpicu (30 -> 31).
+      // 3. Restock via diff => induk naik tetapi sort_order tetap dipertahankan (30).
       const restockDiff = await syncSkProducts(db, undefined, {
         trigger: "cron",
         applyOnly: {
@@ -631,12 +631,11 @@ describe("sekalipay sync helpers", () => {
         },
       });
       expect(restockDiff.errors).toEqual([]);
-      expect(restockDiff.restokReinserted).toBe(1);
       const pAfterDiff = fx.sql.prepare("SELECT stock, sort_order FROM products WHERE id=1").get() as { stock: number; sort_order: number };
       expect(pAfterDiff.stock).toBe(4);
-      expect(pAfterDiff.sort_order).toBe(31);
+      expect(pAfterDiff.sort_order).toBe(30);
 
-      // 4. Jalur zeroMissingSkVariants / sweep penuh => induk kembali 0, lalu restock via diff memicu reinsert lagi (30 -> 31).
+      // 4. Jalur zeroMissingSkVariants / sweep penuh => induk kembali 0, lalu restock via diff tetap mempertahankan sort_order=30.
       fx.sql.prepare("UPDATE products SET sort_order=30 WHERE id=1").run();
       fx.sql.prepare("UPDATE products SET sort_order=30 WHERE id=2").run();
       const missingCount = await zeroMissingSkVariants(new Set(["unrelated"]), db);
@@ -681,8 +680,7 @@ describe("sekalipay sync helpers", () => {
         },
       });
       expect(restockAfterSweep.errors).toEqual([]);
-      expect(restockAfterSweep.restokReinserted).toBe(1);
-      expect((fx.sql.prepare("SELECT stock, sort_order FROM products WHERE id=1").get() as { stock: number; sort_order: number })).toEqual({ stock: 6, sort_order: 31 });
+      expect((fx.sql.prepare("SELECT stock, sort_order FROM products WHERE id=1").get() as { stock: number; sort_order: number })).toEqual({ stock: 6, sort_order: 30 });
     } finally {
       fx.close();
     }

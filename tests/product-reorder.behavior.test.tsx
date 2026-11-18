@@ -621,10 +621,13 @@ describe("endpoint POST /api/products/reorder (server, D1 fixture)", () => {
     fixture.sql.prepare(
       "INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order) VALUES (1,1,'A','a','d',1000,-1,1,0),(2,1,'B','b','d',1000,-1,1,0),(3,1,'C','c','d',1000,-1,1,0),(4,1,'D','d','d',1000,0,1,0),(5,1,'E','e','d',1000,-1,0,0)",
     ).run();
+    fixture.sql.prepare(
+      "INSERT INTO product_variants (id, product_id, sku, label, price, stock, is_active) VALUES (1,1,'SKU-1','1B',1000,-1,1),(2,2,'SKU-2','1B',1000,-1,1),(3,3,'SKU-3','1B',1000,-1,1),(4,4,'SKU-4','1B',1000,0,1),(5,5,'SKU-5','1B',1000,-1,1)",
+    ).run();
   });
   afterEach(() => { fixture.close(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-  it("menukar tepat satu tetangga lalu menormalisasi 10,20,30…", async () => {
+  it("menukar tepat satu tetangga live lalu menormalisasi 10,20,30…", async () => {
     const res = await post({ productId: 2, direction: 1 });
     expect(res.status).toBe(200);
     const body = await res.json() as { products: { id: number; sortOrder: number }[] };
@@ -633,27 +636,37 @@ describe("endpoint POST /api/products/reorder (server, D1 fixture)", () => {
     expect(orderOf()).toBe("1:10 3:20 2:30 4:40 5:50");
   });
 
-  it("klik berurutan tidak pernah skip: 1× ↓ lalu kandas di batas kelompok", async () => {
-    // Fixture: ready = id 1,2,3 · habis = id 4 · nonaktif = id 5. id 2 turun
-    // sekali (2→3): langkah kedua 409 karena tetangga berikutnya (id 4)
-    // beda bucket — bukan skip ke habis/nonaktif.
+  it("klik berurutan tidak pernah skip: 1× ↓ lalu kandas di batas live", async () => {
+    // Fixture: live = id 1,2,3 · habis = id 4 · nonaktif = id 5. id 2 turun
+    // sekali (2→3): langkah kedua 409 karena tidak ada unit live berikutnya
+    // — tidak melompat atau menyentuh habis/nonaktif.
     expect((await post({ productId: 2, direction: 1 })).status).toBe(200);
     expect(orderOf()).toBe("1:10 3:20 2:30 4:40 5:50");
     expect((await post({ productId: 2, direction: 1 })).status).toBe(409);
     expect(orderOf()).toBe("1:10 3:20 2:30 4:40 5:50");
   });
 
-  it("batas kelompok: ready tidak turun ke habis; nonaktif tidak naik (409)", async () => {
-    // id 3 = ready terakhir; id 4 = habis; id 5 = nonaktif.
+  it("batas live & target non-live: live terakhir tak turun; habis/nonaktif/pecundang ditolak 409", async () => {
+    // id 3 = live terakhir; id 4 = habis; id 5 = nonaktif; id 6 = pecundang grup.
+    fixture.sql.exec(`
+      INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order)
+      VALUES (6,1,'F-Loser','f-loser','d',1000,-1,1,0);
+      INSERT INTO product_variants (id, product_id, sku, label, price, stock, is_active)
+      VALUES (6,6,'SKU-6','1B',1000,-1,1);
+      INSERT INTO product_groups (id, name, winner_product_id) VALUES (1, 'Grup A', 1);
+      INSERT INTO product_group_members (group_id, product_id, position) VALUES (1, 1, 0), (1, 6, 1);
+    `);
     expect((await post({ productId: 3, direction: 1 })).status).toBe(409);
+    expect((await post({ productId: 4, direction: -1 })).status).toBe(409);
     expect((await post({ productId: 5, direction: -1 })).status).toBe(409);
+    expect((await post({ productId: 6, direction: 1 })).status).toBe(409);
     // DB tidak berubah.
-    expect(orderOf()).toBe("1:0 2:0 3:0 4:0 5:0");
+    expect(orderOf()).toBe("1:0 2:0 3:0 4:0 5:0 6:0");
   });
 
-  it("batas katalog: puncak ↑ dan dasar ↓ ditolak 409", async () => {
+  it("batas katalog: puncak ↑ dan dasar live ↓ ditolak 409", async () => {
     expect((await post({ productId: 1, direction: -1 })).status).toBe(409);
-    expect((await post({ productId: 5, direction: 1 })).status).toBe(409);
+    expect((await post({ productId: 3, direction: 1 })).status).toBe(409);
   });
 
   it("validasi + auth: body salah 400, tanpa admin 401", async () => {
@@ -673,38 +686,76 @@ describe("endpoint POST /api/products/reorder (server, D1 fixture)", () => {
     expect(orderOf()).toBe("2:10 1:20 3:30 4:40 5:50");
   });
 
-  it("jump keluar bucket dijepit + flag clamped jujur", async () => {
-    // id 3 (ready) diminta ke posisi 99 → dijepit ke ujung bucket ready.
-    const res = await post({ productId: 3, targetPosition: 99 });
+  it("jump keluar rentang live dijepit + flag clamped jujur", async () => {
+    // id 1 (live) diminta ke posisi 99 → dijepit ke akhir unit live (posisi 3, sesudah id 3);
+    // produk habis (4) dan nonaktif (5) tetap mempertahankan slotnya di belakang.
+    const res = await post({ productId: 1, targetPosition: 99 });
     expect(res.status).toBe(200);
-    const body = await res.json() as { clamped: boolean; products: { id: number }[] };
+    const body = await res.json() as { clamped: boolean; products: { id: number; sortOrder: number }[] };
     expect(body.clamped).toBe(true);
-    expect(body.products.map((p) => p.id).slice(0, 3)).toEqual([1, 2, 3]);
+    expect(body.products.map((p) => p.id)).toEqual([2, 3, 1, 4, 5]);
   });
 
   it("jump hanya menulis baris yang berubah (hemat write D1)", async () => {
     // Normalisasi dulu agar key sudah 10,20,30…
     await post({ productId: 2, direction: 1 });
+    const batched: string[][] = [];
+    fixture.control.afterBatch = async (queries) => { batched.push(queries); };
     const before = fixture.control.queries;
-    // id 1 (10) ↔ id 3 (20): hanya 2 baris berubah + 1 SELECT baca.
+    // id 1 (10) ↔ id 3 (20): hanya 2 baris berubah + 3 SELECT (produk, grup, varian) + 1 bump revisi.
     const res = await post({ productId: 1, direction: 1 });
     expect(res.status).toBe(200);
-    expect(fixture.control.queries - before).toBeLessThanOrEqual(4);
+    expect(batched).toHaveLength(1);
+    expect(batched[0]).toHaveLength(2);
+    expect(fixture.control.queries - before).toBeLessThanOrEqual(6);
   });
 
-  it("category-first: batas panah dan posisi lompat lokal kategori, status bucket dijepit jujur", async () => {
-    fixture.sql.exec("UPDATE categories SET sort_order=20 WHERE id=1; UPDATE categories SET sort_order=10 WHERE id=2; UPDATE products SET category_id=2 WHERE id IN (2,4)");
-    // Kategori 2: ready2, sold4. Kategori1: ready1,ready3,inactive5.
-    expect((await post({ productId: 2, direction: 1 })).status).toBe(409);
-    const response = await post({ productId: 4, targetPosition: 2 });
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.clamped).toBe(false); // sold4 posisi2, bukan posisi1 dalam bucket.
-    expect(body.products.map((product: { id: number }) => product.id)).toEqual([2, 4, 1, 3, 5]);
-    const move = await post({ productId: 3, targetPosition: 1 });
-    expect((await move.json()).products.map((product: { id: number }) => product.id)).toEqual([2, 4, 3, 1, 5]);
-    const clamp = await post({ productId: 5, targetPosition: 1 });
-    expect((await clamp.json()).clamped).toBe(true);
+  it("category-first + grup + slot non-live: posisi lompat lokal kategori, non-live pertahankan slot relatif, grup berbagi key", async () => {
+    fixture.sql.exec(`
+      INSERT INTO products (id, category_id, name, slug, description, price, stock, is_active, sort_order)
+      VALUES (6,2,'F-Live','f-live','d',1000,-1,1,30),
+             (7,1,'G-Loser','g-loser','d',1000,-1,1,40);
+      INSERT INTO product_variants (id, product_id, sku, label, price, stock, is_active)
+      VALUES (6,6,'SKU-6','1B',1000,-1,1),(7,7,'SKU-7','1B',1000,-1,1);
+      INSERT INTO product_groups (id, name, winner_product_id) VALUES (1, 'Grup 1', 1);
+      INSERT INTO product_group_members (group_id, product_id, position) VALUES (1, 1, 0), (1, 7, 1);
+      UPDATE categories SET sort_order=20 WHERE id=1;
+      UPDATE categories SET sort_order=10 WHERE id=2;
+      UPDATE products SET category_id=2, sort_order=10 WHERE id=2;
+      UPDATE products SET category_id=2, sort_order=20 WHERE id=4;
+      UPDATE products SET sort_order=40 WHERE id=1;
+      UPDATE products SET sort_order=50 WHERE id=3;
+      UPDATE products SET sort_order=60 WHERE id=5;
+    `);
+    // Kategori 2 (terdepan): live2(10), sold4(20), live6(30).
+    // Kategori 1: grup(1,7)(40), live3(50), off5(60).
+    expect((await post({ productId: 2, direction: -1 })).status).toBe(409);
+    expect((await post({ productId: 4, targetPosition: 1 })).status).toBe(409);
+
+    // Lompat live6 ke posisi 1 kategori 2 → sebelum live2, sold4 tetap setelah live2.
+    const rCat2 = await post({ productId: 6, targetPosition: 1 });
+    expect(rCat2.status).toBe(200);
+    const bCat2 = await rCat2.json() as { clamped: boolean; products: { id: number; sortOrder: number }[] };
+    expect(bCat2.clamped).toBe(false);
+    expect(bCat2.products.map((p) => p.id)).toEqual([6, 2, 4, 1, 7, 3, 5]);
+    // Kedua anggota grup (1 & 7) mendapat sortOrder sama.
+    expect(bCat2.products.find((p) => p.id === 1)?.sortOrder).toBe(bCat2.products.find((p) => p.id === 7)?.sortOrder);
+
+    // Lompat live3 ke posisi 1 kategori 1 → sebelum grup(1,7); grup(1,7) tetap berbagi satu key.
+    const rCat1 = await post({ productId: 3, targetPosition: 1 });
+    expect(rCat1.status).toBe(200);
+    const bCat1 = await rCat1.json() as { clamped: boolean; products: { id: number; sortOrder: number }[] };
+    expect(bCat1.clamped).toBe(false);
+    expect(bCat1.products.map((p) => p.id)).toEqual([6, 2, 4, 3, 1, 7, 5]);
+    expect(bCat1.products.find((p) => p.id === 1)?.sortOrder).toBe(bCat1.products.find((p) => p.id === 7)?.sortOrder);
+
+    // Clamp pada kategori 1: live3 diminta posisi 99 → dijepit ke akhir unit live kategori 1 (posisi 2),
+    // berada sesudah grup(1,7) namun tetap di depan off5.
+    const rClamp = await post({ productId: 3, targetPosition: 99 });
+    expect(rClamp.status).toBe(200);
+    const bClamp = await rClamp.json() as { clamped: boolean; products: { id: number; sortOrder: number }[] };
+    expect(bClamp.clamped).toBe(true);
+    expect(bClamp.products.map((p) => p.id)).toEqual([6, 2, 4, 1, 7, 3, 5]);
   });
 });
 
@@ -817,7 +868,7 @@ describe("kontrak API urutan tetap", () => {
     // padahal posisi di toko benar — yang dipajang harus nomor posisi 1..N
     // dalam input ketik (lompat 30→1 dalam satu request, bukan 29× klik).
     const src = read("src/components/admin/sections/ProductsSection.tsx");
-    expect(src).toContain("(orderIndex.get(p.id) ?? 0) + 1");
+    expect(src).toContain("String(position)");
     expect(src).toContain("onJump(p, target)");
     expect(src).not.toContain(">{p.sortOrder ?? 0}<");
   });
@@ -842,6 +893,37 @@ describe("kolom Urutan = nomor posisi 1..N walau raw kembar/lompat", () => {
       reordering: null, onMove: noop, onJump: noop, onSoldCount: noop,
     };
   }
+
+  it("hanya menghitung produk Live dan mengirim posisi storefront", async () => {
+    const list = [prod(1, 10), prod(2, 20, { liveStatus: "hidden_loser" }),
+      prod(3, 30, { liveStatus: "hidden_soldout", stock: 0 }),
+      prod(4, 40, { liveStatus: "off", isActive: false }), prod(5, 50)];
+    const { calls } = stubApi(list);
+    const { result } = renderManager();
+    await act(async () => { await result.current.load(); });
+    const { container } = render(<ProductsSection {...sectionProps(list)}
+      onJump={result.current.jumpProduct} onMove={result.current.moveProduct} />);
+    const badges = Array.from(container.querySelectorAll<HTMLInputElement>('td input[aria-label^="Pindah"]'));
+    expect(badges.map(input => input.value)).toEqual(["1", "2"]);
+    expect(container.textContent).toContain("#2 dari 2");
+    const button = (label: string) => container.querySelector<HTMLButtonElement>(`td button[aria-label="${label}"]`)!;
+    for (const id of [2, 3, 4]) {
+      const badge = container.querySelector<HTMLInputElement>(`td input[aria-label^="Produk ${id}: Tidak tampil"]`)!;
+      expect(badge.value).toBe("—");
+      expect(badge.disabled).toBe(true);
+      expect(button(`Naikkan Produk ${id}`).disabled).toBe(true);
+      expect(button(`Turunkan Produk ${id}`).disabled).toBe(true);
+    }
+    expect(button("Turunkan Produk 1").disabled).toBe(false);
+    expect(button("Naikkan Produk 5").disabled).toBe(false);
+    expect(button("Turunkan Produk 5").disabled).toBe(true);
+    const { fireEvent } = await import("@testing-library/react");
+    badges[0].focus();
+    fireEvent.change(badges[0], { target: { value: "2" } });
+    await act(async () => { fireEvent.keyDown(badges[0], { key: "Enter" }); });
+    expect(calls.filter(c => c.url === "/api/products/reorder").map(c => c.body))
+      .toEqual([{ productId: 1, targetPosition: 2 }]);
+  });
 
   it("raw 2,2,3,3,7,17,18,19 (kasus screenshot owner) tampil 1..8", () => {
     // Daftar `filtered` sudah terurut tampil (posisi benar, angka raw acak).

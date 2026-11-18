@@ -17,7 +17,7 @@ import {
   type BulkValidation,
 } from "@/components/admin/BulkTierEditor";
 import type { Prod, Cat, FormVariant, ProductForm } from "@/components/admin/product-types";
-import { adjacentReorderProduct, groupProductsByCategory } from "@/lib/product-order";
+import { groupProductsByCategory } from "@/lib/product-order";
 
 // Hook ini memusatkan seluruh state + handler katalog produk (daftar, filter, pagination,
 // editor form, varian, upload, simpan, hapus, toggle aktif). Dipisah dari page.tsx BUKAN
@@ -104,6 +104,10 @@ export function normalizeSortOrder(value: unknown): number | null {
  */
 export function globalProductOrder(list: Prod[], categories: Cat[] = []): Prod[] {
   return groupProductsByCategory(list.filter(p => !p.archivedAt), categories).flatMap(group => group.products);
+}
+
+export function liveProductOrder(list: Prod[], categories: Cat[]): Prod[] {
+  return globalProductOrder(list, categories).filter(p => productStatus(p) === "live");
 }
 
 export function useProductManager(toast: AdminToast, onUnauthorized: () => void) {
@@ -193,7 +197,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   },[onUnauthorized]);
 
   const openEdit = async (p: Prod) => {
-    const position = globalProductOrder(prods, cats).filter(item => item.categorySlug === p.categorySlug).findIndex((item) => item.id === p.id) + 1;
+    const position = liveProductOrder(prods.length ? prods : [p], cats).filter(item => item.categorySlug === p.categorySlug).findIndex(item => item.id === p.id) + 1;
     // Modal dan tabel berbicara bahasa yang sama: posisi 1..N. Raw sort_order
     // tidak lagi diedit dari modal karena ia hanya kunci teknis server.
     // sortOrder produk existing sengaja dikosongkan dari form: payload edit
@@ -201,7 +205,7 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
     // diam-diam (inkonsistensi modal-vs-tabel 2026-09-29).
     const { sortOrder: _ignoredSortOrder, ...positionless } = p;
     void _ignoredSortOrder;
-    const nextForm: ProductForm = { ...positionless, sortOrder: undefined, categorySlug: p.categorySlug, displayPosition: Math.max(1, position) };
+    const nextForm: ProductForm = { ...positionless, sortOrder: undefined, categorySlug: p.categorySlug, displayPosition: position || undefined };
     const nextImages = p.images?.length ? p.images : p.image ? [p.image] : [];
     setEditing(p);
     setShowNew(false);
@@ -704,13 +708,18 @@ export function useProductManager(toast: AdminToast, onUnauthorized: () => void)
   const moveProduct = (p: Prod, direction: -1 | 1) => {
     // Guard lokal cepat: tombol mati tidak mengirim request sama sekali.
     if (reordering || toggling) return;
-    if (!adjacentReorderProduct(prods, p.id, direction)) return;
+    const ordered = liveProductOrder(prods, cats).filter(item => item.categorySlug === p.categorySlug);
+    const index = ordered.findIndex(item => item.id === p.id);
+    if (index < 0 || !ordered[index + direction]) return;
     void runReorder(p, { productId: Number(p.id), direction },
       direction < 0 ? `“${p.name}” naik satu posisi.` : `“${p.name}” turun satu posisi.`);
   };
   const jumpProduct = (p: Prod, targetPosition: number) => {
     if (reordering || toggling) return;
-    const current = globalProductOrder(prods, cats).filter(item => item.categorySlug === p.categorySlug).findIndex((x) => x.id === p.id) + 1;
+    const ordered = liveProductOrder(prods, cats).filter(item => item.categorySlug === p.categorySlug);
+    const current = ordered.findIndex(item => item.id === p.id) + 1;
+    if (!Number.isFinite(targetPosition)) return;
+    targetPosition = Math.max(1, Math.min(ordered.length, Math.floor(targetPosition)));
     if (current < 1 || current === targetPosition) return;
     void runReorder(p, { productId: Number(p.id), targetPosition }, `“${p.name}” pindah ke posisi ${targetPosition}.`);
   };

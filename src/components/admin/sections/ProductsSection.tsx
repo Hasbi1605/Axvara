@@ -4,8 +4,7 @@ import { Badge, Button, Card, Input, NativeSelect, PageHeader, StatCard, Table, 
 import { Fragment, useState } from "react";
 import { formatRupiah } from "@/lib/utils";
 import type { Prod, Cat } from "../product-types";
-import { globalProductOrder } from "../useProductManager";
-import { adjacentReorderProduct } from "@/lib/product-order";
+import { liveProductOrder } from "../useProductManager";
 import { SupplierBadge, SUPPLIER_STYLES } from "../supplier-style";
 
 // Section "Produk" dipisah karena inilah bagian terbesar page.tsx: kartu statistik,
@@ -136,22 +135,17 @@ export function ProductsSection({
   const safePage = Math.min(baseSafePage, totalPages);
   const paged = copyFiltered ? filtered.slice((safePage - 1) * perPage, safePage * perPage) : basePaged;
   const copyCount = (kind: string) => prods.filter(p => !p.archivedAt && matchesCopy(p, kind)).length;
-  // Posisi tampil produk di daftar penuh (tanpa potong halaman): dipakai
-  // untuk menonaktifkan tombol naik di puncak dan turun di dasar, SEKALIGUS
-  // sebagai angka yang TAMPIL di kolom Urutan (pos + 1, selalu 1..N rapi).
-  // Yang tampil BUKAN raw sort_order — raw adalah kunci teknis yang boleh
-  // kembar/lompat (hasil geser delta, backfill parsial, edit manual) dan
-  // memang membingungkan bila dipajang (laporan owner 2026-09-29: 2,2,3,3,
-  // 7,17,18,19 padahal posisi di toko sudah benar). Raw tetap dikirim ke
-  // server dan terlihat di tooltip untuk diagnosis.
-  // Tombol naikturun hanya aktif bila tetangga se-bucket status ada
-  // (adjacentReorderProduct): sort_order tidak dapat melewati batas
-  // ready/habis/nonaktif, jadi tombol di batas kelompok mati — menekan yang
-  // mati tidak mengirim request dan tidak mengubah apa pun.
-  const fullOrder = globalProductOrder(prods, cats);
-  const categoryProducts = (p: Prod) => fullOrder.filter(item => item.categorySlug === p.categorySlug);
-  const orderIndex = new Map(fullOrder.map(p => [p.id, categoryProducts(p).findIndex(item => item.id === p.id)]));
-  const categorySize = (p: Prod) => categoryProducts(p).length;
+  // Posisi storefront dihitung dari seluruh kategori, bukan hasil filter/halaman.
+  const orderPosition = new Map<string, number>();
+  const liveCounts = new Map<string, number>();
+  for (const p of liveProductOrder(prods, cats)) {
+    const position = (liveCounts.get(p.categorySlug) ?? 0) + 1;
+    liveCounts.set(p.categorySlug, position);
+    orderPosition.set(p.id, position);
+  }
+  const categorySize = (p: Prod) => liveCounts.get(p.categorySlug) ?? 0;
+  const notLive = "Tidak tampil di toko — posisinya mengikuti slot yang sama saat tampil lagi";
+  const copyFilterHint = "Reset tinjauan S&K untuk mengatur urutan katalog";
   const categoryHeader = (p: Prod) => `${p.categoryName || cats.find(cat => cat.slug === p.categorySlug)?.name || "Tanpa kategori"} · ${paged.filter(item => item.categorySlug === p.categorySlug).length} produk di halaman ini`;
   // Badge posisi yang bisa diketik: ketik "1" + Enter untuk lompat ke puncak
   // dalam SATU request (bukan 29x klik naik). Nilai dikunci 1..N saat commit.
@@ -163,11 +157,11 @@ export function ProductsSection({
       delete next[p.id];
       return next;
     });
-    if (!raw) return;
+    const current = orderPosition.get(p.id);
+    if (!raw || current === undefined || copyFiltered || reordering === p.id) return;
     const n = Math.floor(Number(raw));
     if (!Number.isFinite(n)) return;
     const target = Math.max(1, Math.min(categorySize(p), n));
-    const current = (orderIndex.get(p.id) ?? 0) + 1;
     if (target === current) return;
     onJump(p, target);
   };
@@ -272,18 +266,18 @@ export function ProductsSection({
             </div> : (<>
 
             <div className="divide-y divide-admin-border md:hidden">
-              {paged.map((p, index)=>{ const inHiddenTab = liveTab === "hidden" || copyFiltered; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(fullOrder, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(fullOrder, p.id, 1)); const busy = reordering === p.id; return (<Fragment key={p.id}>
+              {paged.map((p, index)=>{ const position = orderPosition.get(p.id); const canMoveUp = !copyFiltered && position !== undefined && position > 1; const canMoveDown = !copyFiltered && position !== undefined && position < categorySize(p); const busy = reordering === p.id; return (<Fragment key={p.id}>
                 {(index === 0 || paged[index - 1].categorySlug !== p.categorySlug) && <h3 className="bg-admin-subtle px-4 py-3 text-xs font-semibold text-admin-muted">{categoryHeader(p)}</h3>}
                 <Card className="border-0 p-4 shadow-none">
                 <div className="flex items-start gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.image || "/brand/axvara-mark.svg"} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-admin-subtle object-cover" />
-                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-admin-fg">{p.name}</p><div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div><p className="mt-0.5 truncate text-xs text-admin-muted">{p.categoryName || "Tanpa kategori"} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · #{(orderIndex.get(p.id) ?? 0) + 1} dari {categorySize(p)}</p>{p.liveStatus !== "live" && p.liveReason ? <p className="mt-0.5 truncate text-xs text-admin-muted">{p.liveReason}</p> : null}<CopyReviewBadge count={p.copyReview} changed={p.copyReviewChanged} raw={p.copyReviewRaw} /></div><Switch checked={p.isActive} onCheckedChange={() => onToggleActive(p)} disabled={toggling === p.id} aria-label={`Toggle aktif ${p.name}`} title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"} /></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-admin-fg">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Stok {p.stock === -1 ? "∞" : p.stock}</Badge><span className="text-admin-muted">{p.soldCount} terjual</span></div></div>
+                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-sm font-semibold text-admin-fg">{p.name}</p><div className="mt-1 flex flex-wrap gap-1"><SupplierBadge supplier={p.supplier} slug={p.slug} /><LiveStatusBadge status={p.liveStatus} reason={p.liveReason} /></div><p className="mt-0.5 truncate text-xs text-admin-muted">{p.categoryName || "Tanpa kategori"} · {p.variantCount ? `${p.variantCount} varian` : "produk"} · <span title={position === undefined ? notLive : undefined}>{position === undefined ? "Tidak tampil" : `#${position} dari ${categorySize(p)}`}</span></p>{p.liveStatus !== "live" && p.liveReason ? <p className="mt-0.5 truncate text-xs text-admin-muted">{p.liveReason}</p> : null}<CopyReviewBadge count={p.copyReview} changed={p.copyReviewChanged} raw={p.copyReviewRaw} /></div><Switch checked={p.isActive} onCheckedChange={() => onToggleActive(p)} disabled={toggling === p.id} aria-label={`Toggle aktif ${p.name}`} title={p.isActive ? "Aktif — klik untuk nonaktifkan" : "Nonaktif — klik untuk aktifkan"} /></div><div className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-admin-fg">{p.minPrice != null && p.maxPrice != null && p.minPrice !== p.maxPrice ? `${formatRupiah(p.minPrice)}–${formatRupiah(p.maxPrice)}` : formatRupiah(p.price)}</span><Badge variant="outline" className="rounded-md bg-admin-subtle px-2 py-1 text-admin-muted">Stok {p.stock === -1 ? "∞" : p.stock}</Badge><span className="text-admin-muted">{p.soldCount} terjual</span></div></div>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
-                    <Button variant="outline" type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon"><ArrowUp size={16} aria-hidden="true" /></Button>
-                    <Button variant="outline" type="button" onClick={()=>onMove(p, 1)} disabled={busy || !canMoveDown} aria-label={`Turunkan ${p.name}`} title={canMoveDown ? "Turun satu posisi" : "Sudah di dasar kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon"><ArrowDown size={16} aria-hidden="true" /></Button>
+                    <Button variant="outline" type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={position === undefined ? notLive : copyFiltered ? copyFilterHint : canMoveUp ? "Naik satu posisi" : "Sudah paling atas di kategori ini"} size="icon"><ArrowUp size={16} aria-hidden="true" /></Button>
+                    <Button variant="outline" type="button" onClick={()=>onMove(p, 1)} disabled={busy || !canMoveDown} aria-label={`Turunkan ${p.name}`} title={position === undefined ? notLive : copyFiltered ? copyFilterHint : canMoveDown ? "Turun satu posisi" : "Sudah paling bawah di kategori ini"} size="icon"><ArrowDown size={16} aria-hidden="true" /></Button>
                   </div>
                   <Button variant="outline" size="sm" type="button" onClick={()=>onEdit(p)}><Pencil aria-hidden="true" /> Edit Produk & Varian</Button><Button variant="outline" size="icon" type="button" onClick={()=>onDelete(p)} className="size-8 text-admin-danger hover:bg-admin-danger/10 hover:text-admin-danger" aria-label={`Arsipkan ${p.name}`} title="Arsipkan produk"><Trash2 aria-hidden="true" /></Button>
                 </div>
@@ -295,7 +289,7 @@ export function ProductsSection({
                   <TableRow><TableHead className="">Produk</TableHead><TableHead className="hidden px-2 xl:table-cell">Kategori</TableHead><TableHead className="px-2 text-right">Harga</TableHead><TableHead className="px-2 text-center">Stok</TableHead><TableHead className="px-2 text-center">Terjual</TableHead><TableHead className="px-2 text-center">Urutan</TableHead><TableHead className="px-2 text-center">Aktif</TableHead><TableHead className=" text-right">Aksi</TableHead></TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paged.map((p, index)=>{ const inHiddenTab = liveTab === "hidden" || copyFiltered; const canMoveUp = !inHiddenTab && Boolean(adjacentReorderProduct(fullOrder, p.id, -1)); const canMoveDown = !inHiddenTab && Boolean(adjacentReorderProduct(fullOrder, p.id, 1)); const busy = reordering === p.id; return (
+                  {paged.map((p, index)=>{ const position = orderPosition.get(p.id); const canMoveUp = !copyFiltered && position !== undefined && position > 1; const canMoveDown = !copyFiltered && position !== undefined && position < categorySize(p); const busy = reordering === p.id; return (
                     <Fragment key={p.id}>
                     {(index === 0 || paged[index - 1].categorySlug !== p.categorySlug) && <TableRow className="bg-admin-subtle"><TableCell colSpan={8} className="py-2 text-xs font-semibold text-admin-muted">{categoryHeader(p)}</TableCell></TableRow>}
                     <TableRow>
@@ -330,18 +324,18 @@ export function ProductsSection({
                       <TableCell className="px-2 py-3 text-center">
                         <div className="inline-flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>
                           <Input
-                            value={jumpDraft[p.id] ?? String((orderIndex.get(p.id) ?? 0) + 1)}
+                            value={position === undefined ? "—" : jumpDraft[p.id] ?? String(position)}
                             onChange={(e) => setJumpDraft((prev) => ({ ...prev, [p.id]: e.target.value.replace(/[^0-9]/g, "").slice(0, 4) }))}
                             onBlur={() => commitJump(p)}
                             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setJumpDraft((prev) => { const next = { ...prev }; delete next[p.id]; return next; }); }}
                             inputMode="numeric"
-                            disabled={liveTab === "hidden" || copyFiltered}
-                            aria-label={`Pindah ${p.name} ke posisi 1 sampai ${categorySize(p)}`}
-                            title={copyFiltered ? "Reset tinjauan S&K untuk mengatur urutan katalog" : liveTab === "hidden" ? "Urutan di tab Hidden tidak berpengaruh ke storefront — atur di tab Live" : `Posisi ${(orderIndex.get(p.id) ?? 0) + 1} dari ${categorySize(p)} — Ketik lalu Enter untuk lompat dalam kategori (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
+                            disabled={position === undefined || copyFiltered}
+                            aria-label={position === undefined ? `${p.name}: ${notLive}` : `Pindah ${p.name} ke posisi 1 sampai ${categorySize(p)}`}
+                            title={position === undefined ? notLive : copyFiltered ? copyFilterHint : `Posisi ${position} dari ${categorySize(p)} — Ketik lalu Enter untuk lompat dalam kategori (kunci teknis sort_order: ${p.sortOrder ?? 0})`}
                             className="mr-1 h-8 min-h-0 w-16 border-admin-input bg-admin-card px-1 text-center tabular-nums text-admin-fg shadow-none hover:border-admin-input focus-visible:border-admin-input md:text-sm"
                           />
-                          <Button variant="outline" type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={canMoveUp ? "Naik satu posisi" : "Sudah di puncak kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon" className="size-8"><ArrowUp size={16} aria-hidden="true" /></Button>
-                          <Button variant="outline" type="button" onClick={()=>onMove(p, 1)} disabled={busy || !canMoveDown} aria-label={`Turunkan ${p.name}`} title={canMoveDown ? "Turun satu posisi" : "Sudah di dasar kelompoknya (aktif/habis/nonaktif tidak bisa saling melewati)"} size="icon" className="size-8"><ArrowDown size={16} aria-hidden="true" /></Button>
+                          <Button variant="outline" type="button" onClick={()=>onMove(p, -1)} disabled={busy || !canMoveUp} aria-label={`Naikkan ${p.name}`} title={position === undefined ? notLive : copyFiltered ? copyFilterHint : canMoveUp ? "Naik satu posisi" : "Sudah paling atas di kategori ini"} size="icon" className="size-8"><ArrowUp size={16} aria-hidden="true" /></Button>
+                          <Button variant="outline" type="button" onClick={()=>onMove(p, 1)} disabled={busy || !canMoveDown} aria-label={`Turunkan ${p.name}`} title={position === undefined ? notLive : copyFiltered ? copyFilterHint : canMoveDown ? "Turun satu posisi" : "Sudah paling bawah di kategori ini"} size="icon" className="size-8"><ArrowDown size={16} aria-hidden="true" /></Button>
                         </div>
                       </TableCell>
                       <TableCell className="px-2 py-3 text-center">

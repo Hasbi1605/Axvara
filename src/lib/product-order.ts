@@ -1,11 +1,9 @@
 /**
- * Urutan kanonis produk yang dipakai storefront + admin reorder.
+ * Urutan kanonis produk yang dipakai storefront + admin.
  *
- * `sort_order` hanyalah KUNCI urut; posisi yang dilihat manusia adalah index
- * setelah kategori dan aturan status diterapkan. Di setiap kategori, produk aktif+ready di depan,
- * aktif+habis sesudahnya, nonaktif paling belakang. Reorder hanya boleh
- * bertukar di bucket yang sama karena nilai sort_order tidak dapat melewati
- * aturan status tersebut.
+ * `sort_order` adalah KUNCI slot yang diatur admin (independen dari stok/status);
+ * posisi tampil pada daftar menerapkan kategori lalu status (aktif+ready di depan,
+ * aktif+habis sesudahnya, nonaktif paling belakang), lalu `sort_order`, lalu `id`.
  */
 export type OrderableProduct = {
   id: string | number;
@@ -78,10 +76,6 @@ export function productSortOrder(product: OrderableProduct): number {
   return Number.isFinite(Number(value)) ? Number(value) : 0;
 }
 
-export function productOrderBucket(product: OrderableProduct): string {
-  return `${productCategoryKey(product)}:${active(product) ? "active" : "inactive"}:${productIsSoldOut(product) ? "sold" : "ready"}`;
-}
-
 export function sortProductsForDisplay<T extends OrderableProduct>(products: T[]): T[] {
   return products.slice().sort((a, b) => {
     const byActive = Number(!active(a)) - Number(!active(b));
@@ -92,65 +86,4 @@ export function sortProductsForDisplay<T extends OrderableProduct>(products: T[]
     if (byOrder !== 0) return byOrder;
     return Number(a.id) - Number(b.id);
   });
-}
-
-/** Tetangga satu langkah yang benar-benar dapat dilewati oleh sort_order. */
-export function adjacentReorderProduct<T extends OrderableProduct>(
-  products: T[],
-  productId: string | number,
-  direction: -1 | 1,
-): T | null {
-  const target = products.find(product => String(product.id) === String(productId));
-  if (!target) return null;
-  const ordered = sortProductsForDisplay(products.filter(product => productCategoryKey(product) === productCategoryKey(target)));
-  const index = ordered.findIndex((product) => Number(product.id) === Number(productId));
-  if (!Number.isInteger(index) || index < 0) return null;
-  const current = ordered[index];
-  const neighbor = ordered[index + direction];
-  if (!neighbor) return null;
-  if (productOrderBucket(current) !== productOrderBucket(neighbor)) return null;
-  return neighbor;
-}
-
-/**
- * Kunci selipan saat produk kembali ready setelah habis (2026-10-02,
- * keputusan owner: restok kembali ke sekitar posisi semula, bukan ekor).
- *
- * `restockerKey` = sort_order lama yang TIDAK PERNAH diubah siapa pun
- * (sync/cron tidak menulis kolom itu — hanya reorder + edit produk).
- * `takenKeys` = sort_order produk lain dalam KATEGORI SAMA yang menempati kunci (aktif saja;
- * ready maupun habis — yang habis tidak tampil tapi key-nya tetap ditempati,
- * jadi slot tidak boleh menimpanya).
- *
- * Aturan: selipkan TEPAT DI BELAKANG jangkar = kunci terbesar yang <= kunci
- * lama. Bila tidak ada jangkar di bawah (kunci lama paling kecil) → depan
- * (kunci terkecil - 10, min 0). Tanpa kunci sama sekali → kunci lama
- * dipertahankan.
- *
- * Ini fungsi MURNI (tanpa I/O) — pemanggil (sync) yang membaca kunci lama +
- * daftar kunci, lalu menulis 1 UPDATE hanya bila hasilnya berbeda.
- */
-export function reinsertionKey(restockerKey: number, takenKeys: number[]): number {
-  const oldKey = Number.isFinite(Number(restockerKey)) ? Number(restockerKey) : 0;
-  const keys = takenKeys
-    .map(Number)
-    .filter((key) => Number.isFinite(key));
-  if (keys.length === 0) return oldKey;
-  const below = keys.filter((key) => key <= oldKey);
-  if (below.length === 0) {
-    const min = Math.min(...keys);
-    return Math.max(0, min - 10);
-  }
-  const anchor = Math.max(...below);
-  // Bila tidak ada tetangga di antara jangkar dan key lama (slot lama masih
-  // kosong — tidak ada produk baru yang menyerobot), pertahankan key lama:
-  // pemanggil tidak perlu write sama sekali.
-  const intruder = keys.some((key) => key > anchor && key < oldKey) || keys.includes(oldKey);
-  if (!intruder && anchor < oldKey) return oldKey;
-  // Ada penyerobot (atau slot lama ditempati): maju dari jangkar sampai slot
-  // longgar — tidak pernah menimpa key tetangga yang sudah ada.
-  const taken = new Set(keys);
-  let slot = anchor + 1;
-  while (taken.has(slot)) slot += 1;
-  return slot;
 }

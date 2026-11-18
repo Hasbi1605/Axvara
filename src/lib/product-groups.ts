@@ -445,7 +445,36 @@ export async function createProductGroup(input: { name: string; productIds: numb
   });
   const groupId = Number(inserted[0].meta.last_row_id ?? 0);
   if (!groupId) throw new ProductGroupError("create_failed", "Grup gagal dibuat", 500);
-  await decideGroup(groupId, db);
+  const decision = await decideGroup(groupId, db);
+  // Satu grup = satu slot: seluruh anggota berbagi category_id + sort_order milik anchor.
+  const anchorId = decision.winnerProductId ?? ids[0];
+  const placeholders = ids.map(() => "?").join(",");
+  const slotRows = await db.queryAll(
+    `SELECT id, category_id, sort_order FROM products WHERE id IN (${placeholders})`,
+    ...ids,
+  );
+  const anchorRow = slotRows.find((r) => Number(r.id) === anchorId);
+  if (anchorRow) {
+    const targetCategoryId = anchorRow.category_id == null ? null : Number(anchorRow.category_id);
+    const targetSortOrder = anchorRow.sort_order == null ? 0 : Number(anchorRow.sort_order);
+    const toSync = slotRows.filter((r) => {
+      const catId = r.category_id == null ? null : Number(r.category_id);
+      const sortOrder = r.sort_order == null ? 0 : Number(r.sort_order);
+      return Number(r.id) !== anchorId && (catId !== targetCategoryId || sortOrder !== targetSortOrder);
+    });
+    if (toSync.length > 0) {
+      await d1.batch(
+        toSync.map((r) =>
+          d1.prepare("UPDATE products SET category_id=?, sort_order=?, updated_at=datetime('now') WHERE id=?")
+            .bind(targetCategoryId, targetSortOrder, Number(r.id)),
+        ),
+      );
+      if (decision.winnerProductId == null) {
+        const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+        await bumpCatalogRevision("market", db);
+      }
+    }
+  }
   return (await listProductGroups(db, groupId))[0];
 }
 
@@ -499,11 +528,41 @@ export async function addGroupMember(id: number, productId: number, database?: D
   if (group.members.some((m) => m.product_id === productId)) throw new ProductGroupError("already_member", "Produk sudah anggota grup ini", 409);
   await assertProducts(db, [productId]);
   const nextPosition = Math.max(-1, ...group.members.map((m) => m.position)) + 1;
-  await db.execRun("INSERT INTO product_group_members(group_id,product_id,position) VALUES(?,?,?)", id, productId, nextPosition).catch(async error => {
-    await assertProducts(db, [productId]);
-    if (String(error).includes("group_full")) throw new ProductGroupError("too_many_members", "Maksimal 10 anggota", 400);
-    throw error;
-  });
+  // Anchor sebelum penambahan: winner aktif saat ini, atau anggota ber-position terkecil.
+  const anchorId = group.winner_product_id ?? group.members[0]?.product_id;
+  const slotRows = anchorId != null
+    ? await db.queryAll("SELECT id, category_id, sort_order FROM products WHERE id IN (?, ?)", anchorId, productId)
+    : [];
+  const anchorRow = anchorId != null ? slotRows.find((r) => Number(r.id) === anchorId) : undefined;
+  const newRow = slotRows.find((r) => Number(r.id) === productId);
+  const targetCategoryId = anchorRow?.category_id == null ? null : Number(anchorRow.category_id);
+  const targetSortOrder = anchorRow?.sort_order == null ? 0 : Number(anchorRow.sort_order);
+  const needsSlotSync = Boolean(
+    anchorRow && newRow && (
+      (newRow.category_id == null ? null : Number(newRow.category_id)) !== targetCategoryId
+      || (newRow.sort_order == null ? 0 : Number(newRow.sort_order)) !== targetSortOrder
+    ),
+  );
+  const d1 = db.getD1();
+  if (d1 && needsSlotSync) {
+    await d1.batch([
+      d1.prepare("INSERT INTO product_group_members(group_id,product_id,position) VALUES(?,?,?)").bind(id, productId, nextPosition),
+      d1.prepare("UPDATE products SET category_id=?, sort_order=?, updated_at=datetime('now') WHERE id=?").bind(targetCategoryId, targetSortOrder, productId),
+    ]).catch(async error => {
+      await assertProducts(db, [productId]);
+      if (String(error).includes("group_full")) throw new ProductGroupError("too_many_members", "Maksimal 10 anggota", 400);
+      throw error;
+    });
+  } else {
+    await db.execRun("INSERT INTO product_group_members(group_id,product_id,position) VALUES(?,?,?)", id, productId, nextPosition).catch(async error => {
+      await assertProducts(db, [productId]);
+      if (String(error).includes("group_full")) throw new ProductGroupError("too_many_members", "Maksimal 10 anggota", 400);
+      throw error;
+    });
+    if (needsSlotSync) {
+      await db.execRun("UPDATE products SET category_id=?, sort_order=?, updated_at=datetime('now') WHERE id=?", targetCategoryId, targetSortOrder, productId);
+    }
+  }
   await decideGroup(id, db);
   // Even if winner_product_id stayed the same, the newly added member may now be hidden as a loser.
   const { bumpCatalogRevision } = await import("@/lib/catalog-cache");

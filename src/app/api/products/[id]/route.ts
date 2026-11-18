@@ -189,11 +189,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   const data = parsed.data;
   const existing = await queryFirst(
-    `SELECT id, name, slug, description, price, compare_price, stock, source, wr_product_id, wr_auto_managed,
+    `SELECT id, category_id, name, slug, description, price, compare_price, stock, source, wr_product_id, wr_auto_managed,
             sk_product_id, sk_auto_managed, aivault_family, archived_at
        FROM products WHERE id=?`,
     id,
-  ) as { id: number; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number; aivault_family?: string | null; archived_at?: string | null } | undefined;
+  ) as { id: number; category_id: number | null; name: string; slug: string; description: string | null; price: number; compare_price: number | null; stock: number; source?: string; wr_product_id?: string | null; wr_auto_managed?: number; sk_product_id?: string | null; sk_auto_managed?: number; aivault_family?: string | null; archived_at?: string | null } | undefined;
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (existing.archived_at && (data.isActive === true || data.variants?.some(v => v.is_active === 1))) {
     return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
@@ -327,16 +327,49 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const fields: string[] = [];
   const vals: unknown[] = [];
   const map: Record<string,string> = { name:"name", slug:"slug", description:"description", adminDescriptionOverride:"admin_description_override", descriptionEn:"description_en", nameEn:"name_en", whatsappAlias:"whatsapp_alias", price:"price", comparePrice:"compare_price", imageUrl:"image_url", badge:"badge", soldCount:"sold_count", stock:"stock", isActive:"is_active", sortOrder:"sort_order", requireEmail:"require_email" };
+  let categoryChanged = false;
+  let nextCategoryId: number | null = null;
+  let nextCategorySortOrder: number | null = null;
+  let groupMemberIds: number[] = [];
   if (data.categorySlug) {
     const cat = await queryFirst("SELECT id FROM categories WHERE slug=?", resolveCategorySlug(data.categorySlug)) as { id:number }|undefined;
-    if (cat) { fields.push("category_id=?"); vals.push(cat.id); }
-    else return NextResponse.json({ error: "Kategori tidak dikenal" }, { status: 400 });
+    if (!cat) return NextResponse.json({ error: "Kategori tidak dikenal" }, { status: 400 });
+    if (Number(cat.id) !== Number(existing.category_id ?? 0)) {
+      categoryChanged = true;
+      nextCategoryId = Number(cat.id);
+      if (isD1Mode()) {
+        const groupRow = await queryFirst("SELECT group_id FROM product_group_members WHERE product_id=?", id) as { group_id: number } | undefined;
+        if (groupRow?.group_id != null) {
+          const memberRows = await queryAll(
+            "SELECT product_id FROM product_group_members WHERE group_id=?",
+            Number(groupRow.group_id),
+          );
+          groupMemberIds = memberRows.map((r) => Number(r.product_id)).filter((pid) => Number.isInteger(pid) && pid > 0);
+        }
+        const excludeIds = [...new Set([Number(id), ...groupMemberIds])];
+        const maxRow = await queryFirst(
+          `SELECT MAX(sort_order) AS max_order FROM products WHERE archived_at IS NULL AND category_id=? AND id NOT IN (${excludeIds.map(() => "?").join(",")})`,
+          nextCategoryId,
+          ...excludeIds,
+        ) as { max_order?: number | null } | undefined;
+        const rawMax = maxRow?.max_order;
+        nextCategorySortOrder = rawMax != null && Number.isFinite(Number(rawMax)) ? Number(rawMax) + 10 : 10;
+      } else {
+        const catProds = await queryAll("SELECT id, category_id, sort_order FROM products");
+        const inCat = catProds.filter((r) => Number(r.category_id) === nextCategoryId && Number(r.id) !== Number(id));
+        const rawMax = inCat.length > 0 ? Math.max(...inCat.map((r) => Number(r.sort_order ?? 0))) : null;
+        nextCategorySortOrder = rawMax != null && Number.isFinite(rawMax) ? rawMax + 10 : 10;
+      }
+      fields.push("category_id=?", "sort_order=?");
+      vals.push(nextCategoryId, nextCategorySortOrder);
+    }
   }
   // Bila varian dikirim, master price/stock/compare dihitung ulang oleh sync
   // query di bawah — jangan tulis nilai legacy pendamping dari client.
   const skipLegacyCommerceWrite = hasExplicitVariants && Array.isArray(data.variants) && data.variants.length > 0;
   const wrManagedProduct = isWrManaged(existing);
   for (const [k,col] of Object.entries(map)) {
+    if (categoryChanged && k === "sortOrder") continue;
     if (skipLegacyCommerceWrite && (k === "price" || k === "comparePrice" || k === "stock")) continue;
     // Lolos guard = nilainya sama dengan DB; jangan menulis ulang kolom milik sync WR.
     if (wrManagedProduct && (WR_OWNED_PRODUCT_FIELDS as readonly string[]).includes(k)) continue;
@@ -371,6 +404,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         const statements = needsProductUpdate
           ? [d1.prepare(`UPDATE products SET ${fields.join(",")} WHERE id=?`).bind(...vals, id)]
           : [];
+        if (categoryChanged && nextCategoryId != null && nextCategorySortOrder != null) {
+          const otherMemberIds = groupMemberIds.filter((pid) => pid !== Number(id));
+          if (otherMemberIds.length > 0) {
+            statements.push(
+              d1.prepare(
+                `UPDATE products SET category_id=?, sort_order=?, updated_at=datetime('now') WHERE archived_at IS NULL AND id IN (${otherMemberIds.map(() => "?").join(",")})`,
+              ).bind(nextCategoryId, nextCategorySortOrder, ...otherMemberIds),
+            );
+          }
+        }
 
         if (hasExplicitVariants && data.variants) {
           // If variants are provided, update existing or insert new, and deactivate removed ones

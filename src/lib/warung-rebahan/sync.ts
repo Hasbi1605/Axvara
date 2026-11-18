@@ -38,8 +38,6 @@ export type SyncResult = {
   budgetYielded: boolean;
   /** True bila sweep penuh selesai tervalidasi (zero-missing diizinkan). */
   snapshotComplete: boolean;
-  /** Jumlah produk yang diselipkan kembali (restok habis→ready, 2026-10-02). */
-  restokReinserted?: number;
 };
 
 // Biaya query konservatif per entitas (lihat plan §6).
@@ -1255,7 +1253,6 @@ export async function syncProducts(
       // seluruh varian + agregat induk = 1 round-trip, bukan 4 per varian + 1.
       const pendingWrites: SqlWrite[] = [];
       const now = new Date().toISOString();
-      let variantStockChanged = false;
       // Jalur terpanas: produk sudah terdaftar dengan pasangan katalog hidup
       // (48/48 pada sweep normal). Tulisnya ikut batch produk, jadi tidak ada
       // round-trip sebelum batch. Sisanya (baru/yatim/excluded) tetap lewat
@@ -1291,34 +1288,11 @@ export async function syncProducts(
         }
         result.variantsSynced++;
         if (outcome.isNew) result.newVariants++;
-        if (outcome.stockChanged) {
-          result.stockChanges++;
-          variantStockChanged = true;
-        }
+        if (outcome.stockChanged) result.stockChanges++;
         if (outcome.priceChanged) result.priceChanges++;
-      }
-      // Snapshot stok parent SEBELUM batch (hanya bila ada varian yang stoknya
-      // berubah — 1 SELECT, bukan tiap produk). Dibutuhkan untuk deteksi
-      // transisi habis→ready (selip posisi restok, 2026-10-02).
-      let parentStockBefore = -2;
-      if (axvaraProductId > 0 && variantStockChanged && db.canSpend(4)) {
-        const beforeRow = await db
-          .queryFirst(`SELECT stock FROM products WHERE id=?`, axvaraProductId)
-          .catch(() => null);
-        parentStockBefore = beforeRow ? Number(beforeRow.stock ?? 0) : -2;
       }
       if (axvaraProductId) pendingWrites.push(planParentAggregateWrite(axvaraProductId));
       if (await runWrites(pendingWrites, db)) metaChanged = true;
-      // Selip restok (2026-10-02): parent 0→ready → kembali ke sekitar posisi
-      // semula. Hanya saat transisi (before==0) + budget cukup. 2 query + 1
-      // write hanya untuk produk yang restok — produk lain nol tambahan.
-      if (axvaraProductId > 0 && parentStockBefore === 0 && db.canSpend(3)) {
-        try {
-          const { maybeReinsertRestockedProduct } = await import("@/lib/restock-reinsert");
-          const r = await maybeReinsertRestockedProduct(db, axvaraProductId, true);
-          if (r.reinserted) result.restokReinserted = (result.restokReinserted ?? 0) + 1;
-        } catch { /* best-effort: posisi tidak boleh menggagalkan sync */ }
-      }
     } catch (error) {
       result.errors.push(
         `${String(product?.name || product?.id).slice(0, 80)}: ${
@@ -1371,7 +1345,7 @@ export async function syncProducts(
     } else {
       await writeSyncState(db, "diff_last_error", "");
     }
-    if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0 || metaChanged) {
+    if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || metaChanged) {
       const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
       await bumpCatalogRevision("market", db);
     }
@@ -1432,7 +1406,7 @@ export async function syncProducts(
   result.durationMs = Date.now() - started;
   const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
   await logSync({ ...result, status }, db, trigger).catch(() => undefined);
-  if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0 || metaChanged) {
+  if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || metaChanged) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
     await bumpCatalogRevision("market", db);
   }
