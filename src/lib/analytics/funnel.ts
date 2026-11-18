@@ -85,19 +85,31 @@ export function trackPaidOrder(orderCode: string, database: D1 | null, memoryOrd
     background((async () => {
       const order = (database ? await database.prepare(
         `SELECT o.order_kind,o.sales_channel,o.locale,o.subtotal,o.items,o.payment_method,
-                pt.provider,pt.gateway_channel,pt.pay_currency
-         FROM orders o LEFT JOIN payment_transactions pt ON pt.order_code=o.code WHERE o.code=?`,
+                pt.provider,pt.gateway_channel,pt.pay_currency,
+                gi.product_id AS games_product_id,gi.sk_variant_id AS games_variant_id,gi.quantity AS games_quantity
+         FROM orders o
+         LEFT JOIN payment_transactions pt ON pt.order_code=o.code
+         LEFT JOIN games_order_items gi ON o.order_kind='games' AND gi.order_code=o.code
+         WHERE o.code=?`,
       ).bind(orderCode).first() : memoryOrder) as Record<string, unknown> | undefined;
       if (!order) return;
       let items: { product_id?: number; variant_id?: number; qty?: number }[] = [];
       try { items = typeof order.items === "string" ? JSON.parse(order.items) : []; } catch { /* No item dimension. */ }
       if (!Array.isArray(items)) items = [];
+      const isGamesItem = order.order_kind === "games" && order.games_product_id != null;
+      const productId = isGamesItem ? Number(order.games_product_id) : items[0]?.product_id;
+      const variantId = isGamesItem
+        ? (order.games_variant_id != null ? Number(order.games_variant_id) : undefined)
+        : items[0]?.variant_id;
+      const quantity = isGamesItem
+        ? Number(order.games_quantity ?? 0)
+        : items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
       const method = order.provider === "nowpayments" ? `nowpayments:${order.pay_currency}`
         : order.provider === "sekalipay_gateway" ? `sekalipay_gateway:${order.gateway_channel}`
         : ["dana", "gopay", "klikqris"].includes(String(order.provider)) ? `qris:${order.provider}` : String(order.payment_method ?? "manual");
       trackFunnelEvent({ stage: "paid", orderKind: order.order_kind as Kind, channel: order.sales_channel as Channel,
-        locale: String(order.locale), method, subtotal: Number(order.subtotal), productId: items[0]?.product_id,
-        variantId: items[0]?.variant_id, quantity: items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0) });
+        locale: String(order.locale), method, subtotal: Number(order.subtotal), productId,
+        variantId, quantity });
     })());
   } catch { /* Best-effort even when an execution context is unavailable. */ }
 }

@@ -655,4 +655,65 @@ describe("admin product, variant, category, markup, pedia, and games mutations",
     await expectGamesBump(() => gamesProductsRoute.PATCH(jsonReq("https://axvara.tech/api/admin/games/products", "PATCH", { buyer_sku_code: "sk:101", display_group: "bestseller" })));
     await expectGamesBump(() => gamesBulkRoute.POST(jsonReq("https://axvara.tech/api/admin/games/products/bulk-markup", "POST", { skus: ["sk:101"], markup_percent: 12 })));
   });
+
+  it("R4-1: clears 60s supplier_links memo on admin POST/PUT/DELETE so /api/catalog?slug= does not cache stale links under new revision", async () => {
+    seedBaseMarketCatalog();
+    fixture.sql.exec(`
+      INSERT INTO wr_products(wr_product_id, wr_product_name, axvara_product_id) VALUES('wrp-link', 'ChatGPT Plus', 1);
+      INSERT INTO wr_variants(wr_variant_id, wr_product_id, wr_variant_name, wr_price, wr_stock, wr_terms, wr_delivery_class, axvara_variant_id, markup_percent, markup_fixed, axvara_sell_price)
+      VALUES('wrv-link', 'wrp-link', '1 Bulan', 15000, 5, 'Baca panduan https://example.com/guide-v2 sebelum order', 'restock', 1, 50, 0, 25000);
+      UPDATE product_variants SET wr_variant_id='wrv-link', wr_auto_managed=1 WHERE id=1;
+    `);
+    const { clearSupplierLinksMemo } = await import("@/lib/supplier-links");
+    clearSupplierLinksMemo();
+    const supplierLinksRoute = await import("@/app/api/admin/supplier-links/route");
+    const catalogRoute = await import("@/app/api/catalog/route");
+    const jsonReq = (url: string, method: string, body?: unknown) =>
+      new NextRequest(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+
+    // Warm 60s memo + edge cache before shortlink matches guide-v2
+    const postRes = await supplierLinksRoute.POST(jsonReq("https://axvara.tech/api/admin/supplier-links", "POST", {
+      slug: "panduan",
+      destination: "https://example.com/guide-v1",
+      title: "Panduan",
+    }));
+    const { id: linkId } = await postRes.json() as { id: number };
+    const res1 = await catalogRoute.GET(new NextRequest("https://axvara.tech/api/catalog?slug=chatgpt-plus"));
+    expect(res1.headers.get("X-Axvara-Cache")).toBe("MISS");
+    const j1 = await res1.json() as { product: { variants: { copy?: unknown }[] } };
+    expect(JSON.stringify(j1.product.variants[0]?.copy)).toContain("https://example.com/guide-v2");
+    expect(JSON.stringify(j1.product.variants[0]?.copy)).not.toContain("axvara.tech/go/panduan");
+
+    // Admin updates destination to guide-v2 -> memo MUST clear before revision bump
+    const putRes = await supplierLinksRoute.PUT(jsonReq("https://axvara.tech/api/admin/supplier-links", "PUT", {
+      id: linkId,
+      destination: "https://example.com/guide-v2",
+      title: "Panduan v2",
+    }));
+    expect(putRes.status).toBe(200);
+    const res2 = await catalogRoute.GET(new NextRequest("https://axvara.tech/api/catalog?slug=chatgpt-plus"));
+    expect(res2.headers.get("X-Axvara-Cache")).toBe("MISS");
+    const j2 = await res2.json() as { product: { variants: { copy?: unknown }[] } };
+    expect(JSON.stringify(j2.product.variants[0]?.copy)).toContain("axvara.tech/go/panduan");
+    expect(JSON.stringify(j2.product.variants[0]?.copy)).not.toContain("https://example.com/guide-v2");
+
+    // Second hit under same revision also serves rewritten shortlink
+    const res2Hit = await catalogRoute.GET(new NextRequest("https://axvara.tech/api/catalog?slug=chatgpt-plus"));
+    expect(res2Hit.headers.get("X-Axvara-Cache")).toBe("HIT");
+    const j2Hit = await res2Hit.json() as { product: { variants: { copy?: unknown }[] } };
+    expect(JSON.stringify(j2Hit.product.variants[0]?.copy)).toContain("axvara.tech/go/panduan");
+
+    // Admin deletes shortlink -> memo MUST clear before revision bump
+    const delRes = await supplierLinksRoute.DELETE(jsonReq(`https://axvara.tech/api/admin/supplier-links?id=${linkId}`, "DELETE"));
+    expect(delRes.status).toBe(200);
+    const res3 = await catalogRoute.GET(new NextRequest("https://axvara.tech/api/catalog?slug=chatgpt-plus"));
+    expect(res3.headers.get("X-Axvara-Cache")).toBe("MISS");
+    const j3 = await res3.json() as { product: { variants: { copy?: unknown }[] } };
+    expect(JSON.stringify(j3.product.variants[0]?.copy)).toContain("https://example.com/guide-v2");
+    expect(JSON.stringify(j3.product.variants[0]?.copy)).not.toContain("axvara.tech/go/panduan");
+  });
 });

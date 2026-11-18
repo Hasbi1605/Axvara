@@ -89,6 +89,8 @@ type SqlWrite = {
   params: unknown[];
   /** Tulis yang boleh gagal diam-diam (dulu `.catch()` di jalur berurutan). */
   optional?: boolean;
+  /** True bila tulis mengubah kolom yang tampil di katalog publik. */
+  catalogDisplay?: boolean;
   /**
    * Versi pra-migrasi bila kolom `wr_delivery_mode` (0060) BELUM ada di D1
    * prod: statement yang sama TANPA kolom baru. Dipakai fallback per
@@ -111,35 +113,39 @@ type SqlWrite = {
  * statement gagal me-rollback semuanya, termasuk tulis wajib yang tadinya
  * sukses.
  */
-async function runWrites(writes: SqlWrite[], db: DatabaseAccess): Promise<void> {
-  if (!writes.length) return;
+async function runWrites(writes: SqlWrite[], db: DatabaseAccess): Promise<boolean> {
+  if (!writes.length) return false;
   const d1 = db.d1;
   if (d1 && writes.length > 1) {
     try {
-      await d1.batch(writes.map((write) => d1.prepare(write.sql).bind(...write.params)));
-      return;
+      const results = await d1.batch(writes.map((write) => d1.prepare(write.sql).bind(...write.params)));
+      return writes.some((write, idx) => write.catalogDisplay && Number(results?.[idx]?.meta?.changes ?? 0) > 0);
     } catch {
       /* turun ke jalur berurutan di bawah */
     }
   }
+  let catalogChanged = false;
   for (const write of writes) {
     // Pra-migrasi 0060 (kolom wr_delivery_mode BELUM ada di D1 prod) TIDAK
     // BOLEH meruntuhkan seluruh produk: statement yang menyentuh kolom baru
     // memakai fallback tanpa kolom itu. Statement lain tanpa fallback tetap
     // naik bila gagal agar sync tercatat failed, bukan hilang diam-diam.
+    let res: { changes?: number } = { changes: 0 };
     if (write.optional) {
-      await db.execRun(write.sql, ...write.params).catch(() => ({ changes: 0 }));
+      res = await db.execRun(write.sql, ...write.params).catch(() => ({ changes: 0 }));
     } else if (write.preMigrationFallback) {
       try {
-        await db.execRun(write.sql, ...write.params);
+        res = await db.execRun(write.sql, ...write.params);
       } catch {
         const fb = write.preMigrationFallback;
-        await db.execRun(fb.sql, ...fb.params);
+        res = await db.execRun(fb.sql, ...fb.params);
       }
     } else {
-      await db.execRun(write.sql, ...write.params);
+      res = await db.execRun(write.sql, ...write.params);
     }
+    if (write.catalogDisplay && Number(res?.changes ?? 0) > 0) catalogChanged = true;
   }
+  return catalogChanged;
 }
 
 /** `?,?,?` sebanyak n. */
@@ -353,6 +359,7 @@ function planLinkedProductWrites(wrProduct: WrProduct, linked: number, now: stri
            WHERE products.archived_at IS NULL AND id=? AND description IS NOT ?`,
       params: [description, linked, description],
       optional: true,
+      catalogDisplay: true,
     },
   ];
 }
@@ -361,7 +368,7 @@ export async function upsertWrProduct(
   wrProduct: WrProduct,
   exclude: { excluded: boolean; reason: string | null },
   db: DatabaseAccess,
-): Promise<{ axvaraProductId: number; isNew: boolean }> {
+): Promise<{ axvaraProductId: number; isNew: boolean; descriptionChanged?: boolean }> {
   const { queryFirst, execRun } = db;
   const now = new Date().toISOString();
   const existing = await queryFirst(
@@ -408,8 +415,8 @@ export async function upsertWrProduct(
         wrProduct.id,
       );
       if (target) {
-        await runWrites(planLinkedProductWrites(wrProduct, linked, now), db);
-        return { axvaraProductId: linked, isNew: false };
+        const descriptionChanged = await runWrites(planLinkedProductWrites(wrProduct, linked, now), db);
+        return { axvaraProductId: linked, isNew: false, descriptionChanged };
       }
     }
     // linked <= 0 ATAU menunjuk produk yang sudah hilang → buat pasangan
@@ -660,6 +667,7 @@ function planExistingVariantWrites(
           warranty.label || null,
         ],
         optional: true,
+        catalogDisplay: true,
       });
     }
   return { writes, outcome: { stockChanged, priceChanged, isNew: false } };
@@ -1201,6 +1209,7 @@ export async function syncProducts(
   );
   let cursor = startAt;
   let processedInRun = 0;
+  let metaChanged = false;
   for (let i = startAt; i < ordered.length; i++) {
     const product = ordered[i];
     // Mode potongan: di luar potongan yang diambil = belum diunduh → yield.
@@ -1261,6 +1270,7 @@ export async function syncProducts(
         const upserted = await upsertWrProduct(product, { excluded: false, reason: null }, db);
         axvaraProductId = upserted.axvaraProductId;
         if (upserted.isNew) result.newProducts++;
+        if (upserted.descriptionChanged) metaChanged = true;
         result.synced++;
       }
       for (const variant of product.variants || []) {
@@ -1276,7 +1286,7 @@ export async function syncProducts(
           // Varian baru butuh lastInsertRowid untuk menautkan barisnya, jadi
           // ia tetap berurutan. Tulis yang sudah terkumpul dikirim DULU agar
           // urutan efek ke DB tidak bergeser dari jalur lama.
-          await runWrites(pendingWrites.splice(0), db);
+          if (await runWrites(pendingWrites.splice(0), db)) metaChanged = true;
           outcome = await insertNewVariant(variant, product.id, axvaraProductId, db, now);
         }
         result.variantsSynced++;
@@ -1298,7 +1308,7 @@ export async function syncProducts(
         parentStockBefore = beforeRow ? Number(beforeRow.stock ?? 0) : -2;
       }
       if (axvaraProductId) pendingWrites.push(planParentAggregateWrite(axvaraProductId));
-      await runWrites(pendingWrites, db);
+      if (await runWrites(pendingWrites, db)) metaChanged = true;
       // Selip restok (2026-10-02): parent 0→ready → kembali ke sekitar posisi
       // semula. Hanya saat transisi (before==0) + budget cukup. 2 query + 1
       // write hanya untuk produk yang restok — produk lain nol tambahan.
@@ -1361,7 +1371,7 @@ export async function syncProducts(
     } else {
       await writeSyncState(db, "diff_last_error", "");
     }
-    if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0) {
+    if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0 || metaChanged) {
       const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
       await bumpCatalogRevision("market", db);
     }
@@ -1422,7 +1432,7 @@ export async function syncProducts(
   result.durationMs = Date.now() - started;
   const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
   await logSync({ ...result, status }, db, trigger).catch(() => undefined);
-  if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0) {
+  if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0 || metaChanged) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
     await bumpCatalogRevision("market", db);
   }
@@ -1636,7 +1646,10 @@ export async function syncJaspayCatalog(
     if (bounded && result.synced > 0 && !db.canSpend(cost + ZERO_MISSING_RESERVE)) break;
     if (!db.canSpend(cost)) {
       complete = false;
-      break;
+      result.errors.push(`catalog_budget_exceeded:${product.productId}`);
+      if (bounded && db.canSpend(1)) await checkpoint(product.productId);
+      if (!db.canSpend(12)) break;
+      continue;
     }
     try {
       const exclude = await isExcluded(product.name, db, cachedRules);
@@ -1867,9 +1880,10 @@ export async function syncJaspayCatalog(
     }
   }
   if (!complete) {
-    if (result.errors.length) {
-      await recordSyncError(db, "jaspay_catalog", result.errors[0]);
+    if (result.errors.length === 0) {
+      result.errors.push("catalog_budget_exceeded");
     }
+    await recordSyncError(db, "jaspay_catalog", result.errors[0]);
     if (catalogChanged) {
       const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
       await bumpCatalogRevision("market", db);

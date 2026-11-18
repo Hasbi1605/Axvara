@@ -78,6 +78,8 @@ type SkSqlWrite = {
   params: unknown[];
   /** Tulis yang boleh gagal diam-diam (dulu `.catch()` di jalur berurutan). */
   optional?: boolean;
+  /** True bila tulis mengubah kolom yang tampil di katalog publik. */
+  catalogDisplay?: boolean;
 };
 
 /**
@@ -85,13 +87,13 @@ type SkSqlWrite = {
  * `batch()` adalah transaksi — satu produk bermasalah tidak boleh
  * membatalkan produk lain (cermin WR runWrites).
  */
-async function runSkWrites(writes: SkSqlWrite[], db: DatabaseAccess): Promise<void> {
-  if (!writes.length) return;
+async function runSkWrites(writes: SkSqlWrite[], db: DatabaseAccess): Promise<boolean> {
+  if (!writes.length) return false;
   const d1 = db.d1;
   if (d1 && writes.length > 1) {
     try {
-      await d1.batch(writes.map((write) => d1.prepare(write.sql).bind(...write.params)));
-      return;
+      const results = await d1.batch(writes.map((write) => d1.prepare(write.sql).bind(...write.params)));
+      return writes.some((write, idx) => write.catalogDisplay && Number(results?.[idx]?.meta?.changes ?? 0) > 0);
     } catch (error) {
       if (error instanceof QueryBudgetExceeded || !writes.some((w) => w.optional)) {
         throw error;
@@ -99,13 +101,17 @@ async function runSkWrites(writes: SkSqlWrite[], db: DatabaseAccess): Promise<vo
       /* turun ke jalur berurutan di bawah hanya untuk mengisolasi tulis optional */
     }
   }
+  let catalogChanged = false;
   for (const write of writes) {
+    let res: { changes?: number } = { changes: 0 };
     if (write.optional) {
-      await db.execRun(write.sql, ...write.params).catch(() => ({ changes: 0 }));
+      res = await db.execRun(write.sql, ...write.params).catch(() => ({ changes: 0 }));
     } else {
-      await db.execRun(write.sql, ...write.params);
+      res = await db.execRun(write.sql, ...write.params);
     }
+    if (write.catalogDisplay && Number(res?.changes ?? 0) > 0) catalogChanged = true;
   }
+  return catalogChanged;
 }
 
 /** `?,?,?` sebanyak n. */
@@ -272,6 +278,7 @@ function planSkCatalogRefreshWrite(
       sql: `UPDATE product_variants SET price=?, stock=?, label=?, compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= ? THEN NULL ELSE compare_price END, updated_at=datetime('now')
             WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL) AND id=? AND (price IS NOT ? OR stock IS NOT ? OR label IS NOT ? OR (compare_price IS NOT NULL AND compare_price <= ?))`,
       params: [sellPrice, stock, label, sellPrice, axvaraVariantId, sellPrice, stock, label, sellPrice],
+      catalogDisplay: true,
     },
     planSkParentAggregateWrite(axvaraProductId),
   ];
@@ -770,6 +777,7 @@ export async function syncSkProducts(
       if (crow.id != null) skCatalogAlive.set(String(crow.id), true);
     }
   }
+  let metaChanged = false;
   for (let i = startAt; i < scoped.length; i++) {
     const row = scoped[i];
     if (!row) {
@@ -951,7 +959,7 @@ export async function syncSkProducts(
         }
         result.variantsSynced++;
       }
-      await runSkWrites(pendingSkWrites, db);
+      if (await runSkWrites(pendingSkWrites, db)) metaChanged = true;
       // Selip restok: parent 0→ready → kembali ke sekitar posisi semula.
       // 2 query + 1 write hanya saat transisi; best-effort.
       if (catalogAllowed && axvaraProductId > 0 && parentStockBefore === 0 && db.canSpend(3)) {
@@ -1010,7 +1018,7 @@ export async function syncSkProducts(
     } else {
       await writeSyncState(db, "diff_last_error", "");
     }
-    if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0) {
+    if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0 || metaChanged) {
       const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
       await bumpCatalogRevision("market", db);
     }
@@ -1057,7 +1065,7 @@ export async function syncSkProducts(
   result.durationMs = Date.now() - started;
   const status = result.errors.length === 0 ? "success" : result.synced > 0 ? "partial" : "failed";
   await logSkSync({ ...result, status }, db, trigger).catch(() => undefined);
-  if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0 || staleParentsRefreshed > 0) {
+  if (result.newProducts > 0 || result.newVariants > 0 || result.stockChanges > 0 || result.priceChanges > 0 || (result.restokReinserted ?? 0) > 0 || staleParentsRefreshed > 0 || metaChanged) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
     await bumpCatalogRevision("market", db);
   }

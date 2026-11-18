@@ -126,6 +126,47 @@ describe("canonical paid winner", () => {
       expect(write).toHaveBeenCalledTimes(failure === "metadata" ? 0 : 1);
     } finally { f.close(); }
   });
+  it("R3-3: real Games paid order reads productId and quantity from games_order_items (single PK query, zero PII)", async () => {
+    const f = createD1Fixture();
+    try {
+      stubFulfillmentKey();
+      f.sql.exec(`
+        INSERT INTO games_products(
+          id, buyer_sku_code, supplier, supplier_active, sk_variant_id, sk_sku, sk_product_id, sk_product_name,
+          game_slug, game_brand, product_type, product_type_name, product_name, cost, sell_price, stock,
+          min_order, unlimited_stock, description, enabled
+        ) VALUES (
+          7, 'sk:701', 'sekalipay', 1, '701', 'ML86', '33', 'Mobile Legends',
+          'mobile-legends', 'Mobile Legends', 'Top Up', 'Top Up', '86 Diamond', 10000, 12000, 10,
+          1, 0, 'Instan', 1
+        );
+        INSERT INTO orders(code, customer_name, customer_wa, items, subtotal, payment_method, status, payment_status, sales_channel, order_kind, locale)
+        VALUES ('AXG-20261118-GAME0001', 'Secret Buyer', '628123456789', '[]', 12000, 'qris', 'pending', 'pending', 'web', 'games', 'id');
+        INSERT INTO games_order_items(
+          order_code, product_id, buyer_sku_code, customer_no, customer_nickname, quantity,
+          unit_price, total, cost_snapshot, max_price, status, supplier, sk_variant_id
+        ) VALUES ('AXG-20261118-GAME0001', 7, 'sk:701', '99887766(1234)', 'SecretNick', 1, 12000, 12000, 10000, 11000, 'awaiting_payment', 'sekalipay', 701);
+        INSERT INTO payment_transactions(order_code, provider, provider_mode, merchant_id, provider_order_id, requested_amount, currency, status, expires_at)
+        VALUES ('AXG-20261118-GAME0001', 'dana', 'static_qris', 'fixture', 'AXG-20261118-GAME0001', 12000, 'IDR', 'pending', datetime('now','+15 minutes'));
+      `);
+      const selectQueries: string[] = [];
+      f.control.fail = (query) => {
+        if (/SELECT o\.order_kind/i.test(query)) selectQueries.push(query);
+        return false;
+      };
+      const won = await transitionPendingPaymentToPaid("AXG-20261118-GAME0001", null, null, undefined, undefined, f.db);
+      await Promise.resolve();
+      expect(won).toBe(true);
+      expect(selectQueries).toHaveLength(1);
+      expect(write).toHaveBeenCalledOnce();
+      expect(write.mock.calls[0][0]).toEqual({
+        indexes: ["games:paid"],
+        blobs: ["paid", "games", "web", "qris", "qris:dana", "7", "id", "ok", "701", "none"],
+        doubles: [1, 10_000, 1],
+      });
+      expect(JSON.stringify(write.mock.calls)).not.toMatch(/99887766|SecretNick|Secret Buyer|6281234|AXG-/);
+    } finally { f.close(); }
+  });
 });
 
 describe("real commerce routes with a broken/working analytics binding", () => {

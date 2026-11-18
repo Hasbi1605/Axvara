@@ -259,15 +259,15 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
     }
     await db.execRun(RECOMPUTE_PRODUCTS_SQL);
 
+    if (catalogChanged) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market", db);
+    }
     if (buffError) {
       await recordSyncError(db, "tunvn_catalog", buffError, now);
       return { ok: false, error: buffError };
     }
     await recordSyncSuccess(db, "tunvn_catalog", now);
-    if (catalogChanged) {
-      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
-      await bumpCatalogRevision("market", db);
-    }
     const productActiveBySlug = new Map(plans.map(plan => [plan.slug, plan.existing ? Number(plan.existing.is_active ?? 0) === 1 : false]));
     const activated = plans.reduce((count, plan) => count + plan.members.filter(member => {
       const id = Number(member.mirror.supplier_product_id);

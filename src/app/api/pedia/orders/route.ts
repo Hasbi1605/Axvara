@@ -181,11 +181,15 @@ export async function POST(req: NextRequest) {
     quantity: qty, sellPrice: freshTotal,
   });
   if (margin < Number(tier.min_profit_rp)) {
-    await db.execRun(
+    const disabled = await db.execRun(
       `UPDATE pedia_tiers SET is_active=0, auto_disabled_reason='margin', updated_at=datetime('now')
         WHERE id=? AND is_active=1`,
       Number(tier.id),
-    ).catch(() => null);
+    ).catch(() => ({ changes: 0 }));
+    if (Number(disabled?.changes ?? 0) > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("pedia", db);
+    }
     return NextResponse.json({ error: "pedia_guard_margin", message: pick(locale, "Kualitas ini baru saja dinonaktifkan otomatis (margin). Pilih kualitas lain.", "This quality was just disabled automatically (margin). Choose another quality.") }, { status: 410 });
   }
   if (freshTotal !== quote.total) {

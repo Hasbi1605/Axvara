@@ -98,9 +98,11 @@
   memilih metode (`none`). Cart memakai produk/varian pertama+total unit;
   quote cart Telegram belum memuat unit (0), bukan jumlah pembeli.
 - `trackPaidOrder` hanya dipanggil sesudah CAS pemenang di kedua jalur lunas
-  `orders-transition.ts`, termasuk manual admin. Satu PK read background orders
-  LEFT JOIN payment_transactions mendapatkan dimensi tersimpan, bukan membaca
-  konfigurasi provider aktif saat callback. Binding absen=0read; hadir=+1read,
+  `orders-transition.ts`, termasuk manual admin. Satu PK read background `orders`
+  `LEFT JOIN payment_transactions` dan `LEFT JOIN games_order_items` (khusus
+  `order_kind='games'`) mendapatkan dimensi tersimpan termasuk `productId`,
+  `variantId`, dan `quantity` Games tanpa PII serta tanpa membaca konfigurasi
+  provider aktif saat callback. Binding absen=0read; hadir=+1read,
   0write. Paid retry/konkurensi tidak mengemisi ulang. Native WAE bukan transaksi
   dengan D1: event boleh hilang pada crash/error, tanpa retry durable baru.
 - `isSyntheticRequest(req)` atau UA berawalan `axvara-synth/` mematikan emisi.
@@ -407,7 +409,11 @@ Status: implementasi lokal; migrasi/deployment produksi belum diverifikasi.
 - `syncJaspayCatalog` (bounded): urutan produk dirotasi wrap-around dari cursor;
   produk berikutnya hanya diambil bila budget cukup + cadangan 4 statement untuk
   zero-missing; berhenti karena budget setelah >=1 produk tidak membatalkan
-  zero-missing. Cursor menulis `updated_at`. Siklus penuh ±3 menit (dulu ±11).
+  zero-missing. Jika produk pertama pada sisa budget melampaui budget (`!db.canSpend(cost)`),
+  sync mencatat error `catalog_budget_exceeded:<productId>` ke `jaspay_catalog_last_error`
+  (memicu HTTP 503 pada `cron/lite`), memajukan cursor melewati produk tersebut bila
+  budget cukup agar tidak macet diam-diam, dan tidak melanggar batas statement.
+  Cursor menulis `updated_at`. Siklus penuh ±3 menit (dulu ±11).
 - Tanpa migrasi/env/trigger baru. Catatan "satu produk/tick" di bawah = histori.
 
 ## Gate penjualan WR MBO per cakupan Jaspay — 16 November 2026
@@ -6439,7 +6445,7 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
     - `GET /api/catalog` (`catalog:v={variants}&slug={slug||_list}`, `scope: "market"`): edge TTL `120` detik untuk `?slug=` dan `300` detik untuk daftar (header `Cache-Control` browser tidak berubah); respons tetap locale-neutral (`display-prices` invariant terjaga). Emisi funnel `view` dijalankan di luar loader `cachePublicCatalog` saat `?slug=` berstatus `200` (berlaku pada `HIT` maupun `MISS`, tetap dikecualikan untuk probe sintetis, dan 404 tidak di-cache/tidak mengemisi).
     - `GET /api/games/catalog/[slug]` tetap `private, no-store` dan tidak di-cache (cache edge menolak respons privat).
 - **Titik invalidasi mutasi (hanya saat `changed > 0`, ≤1 tulis/eksekusi — dikoalesensi di tingkat run/loop):**
-  - Checkout & order: `orders-create.ts`, `commerce.ts` (`createChannelOrderAtomic`, `createPendingChannelOrder` — skip pada idempotent/race replay), `orders-transition.ts` (restock cancel/expiry & `incrementSoldCountForOrder`, terisolasi ke order Market/legacy sehingga Pedia/Games tidak me-bump Market; pemanggil loop cron `cron/operations` `runExpiry`, `cron/lite` `runExpiry`, dan `cron/publish-scheduled` mengirim `onMarketChanged` dan memanggil `bumpCatalogRevision("market", ..., { metered: true })` paling banyak sekali di akhir fase bila budget masih cukup), `fulfillment/inventory.ts` (`import`/`release`/`revoke` ketika `>0`), dan `warung-rebahan/order.ts` (`WrOutOfStockError` di `processWrPendingOrders` dikoalesensi ke paling banyak sekali per batch dengan `{ metered: true }`).
-  - Supplier sync & grup: `warung-rebahan/sync.ts` (`syncProducts`, `syncJaspayCatalog`), `sekalipay/sync.ts` (`syncSkProducts`, termasuk saat `staleParentsRefreshed > 0`), `tunvn/catalog.ts`, `aivault/catalog.ts`, `pedia/sync.ts` + `pedia/dispatch.ts` (auto-disable margin di `processPediaPaidOrders` dikoalesensi paling banyak sekali per batch `{ metered: true }`), `games/sk-catalog-sync.ts` (diinjeksikan atomik dalam `SUCCESS_MARKER_WITH_REV_SQL` tanpa statement ekstra saat `catalogChanged`), `games/catalog-sync.ts`, dan `product-groups.ts`.
-  - Admin mutations: `products/{route,[id],reorder,[id]/sold-count}`, `categories/{route,[id],reorder}`, `admin/{variants,variant-copy,variant-copy/bulk,fulfillment,supplier-links}`, `admin/{warung,sekalipay}/markup/{route,bulk}`, `admin/tunvn/{products/[id],buff/[sku]}`, `admin/aivault/products/[id]`, `admin/pedia/{products,settings}`, dan `admin/games/{games,pricing,products,products/bulk-markup}`.
+  - Checkout & order: `orders-create.ts`, `commerce.ts` (`createChannelOrderAtomic`, `createPendingChannelOrder` — skip pada idempotent/race replay), `orders-transition.ts` (restock cancel/expiry & `incrementSoldCountForOrder`, terisolasi ke order Market/legacy sehingga Pedia/Games tidak me-bump Market; pemanggil loop cron `cron/operations` `runExpiry`, `cron/lite` `runExpiry`, dan `cron/publish-scheduled` mengirim `onMarketChanged` dan memanggil `bumpCatalogRevision("market", ..., { metered: true })` paling banyak sekali di akhir fase bila budget masih cukup), `fulfillment/inventory.ts` + `api/admin/fulfillment/route.ts` (`import`/`release`/`revoke` ketika `>0`; pada route admin `import`/`DELETE`, bump `market` dijalankan **setelah** `syncUniqueVariantStock` menyinkronkan `product_variants.stock` dengan `{ bumpRevision: false }` di helper), `api/pedia/orders/route.ts` (saat guard margin `410` menonaktifkan tier `pedia_tiers`, mem-bump `pedia`), dan `warung-rebahan/order.ts` (`WrOutOfStockError` di `processWrPendingOrders` dikoalesensi ke paling banyak sekali per batch dengan `{ metered: true }`).
+  - Supplier sync & grup: `warung-rebahan/sync.ts` (`syncProducts` termasuk perubahan metadata tampilan `description`/`label`/`duration_*`/`warranty_*`/`compare_price` maks 1×/run, `syncJaspayCatalog`), `sekalipay/sync.ts` (`syncSkProducts`, termasuk perubahan `label`/`compare_price` maupun saat `staleParentsRefreshed > 0`), `tunvn/catalog.ts` (tetap mem-bump `market` bila `catalogChanged` sudah terkomit sebelum `buffError`), `aivault/catalog.ts`, `pedia/sync.ts` + `pedia/dispatch.ts` (auto-disable margin di `processPediaPaidOrders` dikoalesensi paling banyak sekali per batch `{ metered: true }`), `games/sk-catalog-sync.ts` (diinjeksikan atomik dalam `SUCCESS_MARKER_WITH_REV_SQL` tanpa statement ekstra saat `catalogChanged`), `games/catalog-sync.ts`, dan `product-groups.ts`.
+  - Admin mutations: `products/{route,[id],reorder,[id]/sold-count}`, `categories/{route,[id],reorder}`, `admin/{variants,variant-copy,variant-copy/bulk,fulfillment,supplier-links}` (`supplier-links` `POST/PUT/DELETE` memanggil `clearSupplierLinksMemo()` sebelum bump `market`), `admin/{warung,sekalipay}/markup/{route,bulk}`, `admin/tunvn/{products/[id],buff/[sku]}`, `admin/aivault/products/[id]`, `admin/pedia/{products,settings}`, dan `admin/games/{games,pricing,products,products/bulk-markup}`.
   - Catatan batas scope & dampak kuota: `/api/catalog`, `/api/games/catalog/[slug]`, PDP `/produk/[slug]`, `wrangler.json`, `src/lib/fulfillment/delivery/**`, dan `mcp-worker/` sengaja tidak disentuh oleh B-H (ranah B-S/C0). Estimasi dampak setelah rilis B-H+B-S: baca revisi `≤3` rows/5 dtk per isolate (~50–150 ribu `rows_read`/hari), tulis revisi ~200–500 baris/hari (<0,03% kuota 50 juta/30 hari), dengan penghematan baca katalog ~65–80% (~400–550 juta `rows_read`/30 hari; menunggu pengukuran produksi pasca-CI).

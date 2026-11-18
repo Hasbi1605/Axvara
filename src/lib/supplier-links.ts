@@ -96,10 +96,15 @@ type MemoEntry = {
 let d1Memo = new WeakMap<object, MemoEntry>();
 let fallbackMemo: MemoEntry | null = null;
 
-/** Hanya untuk test yang memutasi supplier_links di fixture DB yang sama. */
-export function clearSupplierLinksMemoForTest(): void {
+/** Kosongkan memo shortlink aktif per-isolate setelah mutasi admin. */
+export function clearSupplierLinksMemo(): void {
   d1Memo = new WeakMap<object, MemoEntry>();
   fallbackMemo = null;
+}
+
+/** Hanya untuk test yang memutasi supplier_links di fixture DB yang sama. */
+export function clearSupplierLinksMemoForTest(): void {
+  clearSupplierLinksMemo();
 }
 
 /**

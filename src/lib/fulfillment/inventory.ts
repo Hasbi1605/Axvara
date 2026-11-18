@@ -72,6 +72,7 @@ export async function importInventory(
   productId: number,
   secrets: string[],
   variantId: number | null = null,
+  options?: { bumpRevision?: boolean },
 ): Promise<ImportResult> {
   const result: ImportResult = { inserted: 0, duplicate: 0, invalid: 0 };
   const batch = secrets.slice(0, 100); // hard cap
@@ -119,7 +120,7 @@ export async function importInventory(
     }
   }
 
-  if (result.inserted > 0) {
+  if (result.inserted > 0 && options?.bumpRevision !== false) {
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
     await bumpCatalogRevision("market");
   }
@@ -298,13 +299,16 @@ export async function markDelivered(inventoryId: number, database: DatabaseAcces
 /**
  * Revoke an available inventory item (admin action).
  */
-export async function revokeInventory(inventoryId: number): Promise<boolean> {
+export async function revokeInventory(
+  inventoryId: number,
+  options?: { bumpRevision?: boolean },
+): Promise<boolean> {
   if (isD1Mode()) {
     const result = await execRun(
       `UPDATE fulfillment_inventory SET status='revoked' WHERE id=? AND status='available'`,
       inventoryId,
     );
-    if (result.changes) {
+    if (result.changes && options?.bumpRevision !== false) {
       const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
       await bumpCatalogRevision("market");
     }
@@ -323,7 +327,12 @@ export async function revokeInventory(inventoryId: number): Promise<boolean> {
  * reserved/delivered by checkout) are skipped, never touched. Returns how many
  * rows were actually revoked.
  */
-export async function revokeInventoryBatch(productId: number, variantId: number | null, inventoryIds: number[]): Promise<number> {
+export async function revokeInventoryBatch(
+  productId: number,
+  variantId: number | null,
+  inventoryIds: number[],
+  options?: { bumpRevision?: boolean },
+): Promise<number> {
   const ids = [...new Set(inventoryIds)].filter(id => Number.isSafeInteger(id) && id > 0);
   if (!ids.length) return 0;
   if (isD1Mode()) {
@@ -337,7 +346,7 @@ export async function revokeInventoryBatch(productId: number, variantId: number 
       );
       revoked += Number(result.changes ?? 0);
     }
-    if (revoked > 0) {
+    if (revoked > 0 && options?.bumpRevision !== false) {
       const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
       await bumpCatalogRevision("market");
     }

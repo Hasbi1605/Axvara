@@ -37,7 +37,10 @@ oleh fence. Workerd lokal bukan bukti rollout; full suite/publication oleh PM.
 bukan secret_text/env Pages baru. Dataset tercipta pada write pertama; jangan
 membuat resource/migrasi atau mengakses produksi demi QA. Empat tahap tanpa PII,
 nilai rupiah berupa bucket, error binding no-op; paid hanya pemenang kedua
-transisi bersama, +1 PK read background bila binding ada,0D1write. Native WAE
+transisi bersama (`trackPaidOrder` kini membaca `games_order_items` via
+`LEFT JOIN` di query PK tunggal yang sama untuk dimensi `productId`/`variantId`/
+`quantity` order `games` tanpa PII), +1 PK read background bila binding ada,
+0 D1 write. Native WAE
 best-effort+sampling, bukan ledger/ingest exactly-once. Binding absen0read.
 UA probe `axvara-synth/` mengecualikan telemetri saja (boleh spoof untuk suppress),
 di samping guard authenticated `isSyntheticRequest`; tidak melemahkan rate/auth.
@@ -49,7 +52,7 @@ daily-admin-summary tidak diubah. Cache katalog bersama masih menunggu B-H.
 
 - `src/lib/catalog-cache.ts` (`d1-v2/{scope}/{rev}/{key}`): tiga kunci revisi di `store_settings` (`catalog_revision_market`, `catalog_revision_pedia`, `catalog_revision_games`) dengan memoization per-isolate 5 detik (`WeakMap` lewat `unwrapD1`), coalescing pembacaan in-flight, dan restorasi header `Cache-Control` browser asli melalui `X-Axvara-Origin-Cache-Control`.
 - **Aturan `bumpCatalogRevision(scope)`:** maksimal 1 statement tulis `UPSERT` (`store_settings`) per eksekusi bermutasi (`changed > 0`); dilarang memanggil pada tick/sync no-op (`changed === 0`), replay idempoten, atau kegagalan. Pada `games/sk-catalog-sync.ts`, pembaruan `catalog_revision_games` saat berubah digabung dalam batch atomik penanda sukses yang sama (0 statement ekstra).
-- Setiap jalur tulis baru yang mengubah tampilan katalog (`products`, `product_variants`, `categories`, `fulfillment_items`, `supplier_pairs`/`product_groups`, `wr_*`/`sk_*`/`tunvn_*`/`aivault_*`/`pedia_*`/`games_*` aktif) wajib memanggil `bumpCatalogRevision` dengan scope yang sesuai (`market` / `pedia` / `games`). Scope B-H tidak mengubah `/api/catalog`, `/api/games/catalog/[slug]`, PDP, `wrangler.json`, `fulfillment/delivery/**`, maupun `mcp-worker/`.
+- Setiap jalur tulis baru yang mengubah tampilan katalog (`products`, `product_variants`, `categories`, `fulfillment_items`, `supplier_pairs`/`product_groups`, `wr_*`/`sk_*`/`tunvn_*`/`aivault_*`/`pedia_*`/`games_*` aktif) wajib memanggil `bumpCatalogRevision` dengan scope yang sesuai (`market` / `pedia` / `games`). Perbaikan konsistensi invalidasi (18 Nov): (1) `/api/admin/fulfillment` (`import`/`DELETE`) mem-bump `market` **setelah** `syncUniqueVariantStock` menyinkronkan `product_variants.stock`; (2) `publishTunvnCatalog` tetap mem-bump `market` bila mutasi katalog sudah commit sebelum `buffError`; (3) `syncProducts` (WR) & `syncSkProducts` (SK) ikut memicu `bumpCatalogRevision("market")` maks 1×/run saat metadata katalog berubah (`description`, `label`, `duration_*`, `warranty_*`, `compare_price`); (4) `POST/PUT/DELETE /api/admin/supplier-links` mengosongkan memo `supplier_links` (`clearSupplierLinksMemo()`) sebelum bump `market`; (5) `POST /api/pedia/orders` guard margin (`410`) ikut mem-bump `pedia`. Scope B-H tidak mengubah `/api/catalog`, `/api/games/catalog/[slug]`, PDP, `wrangler.json`, `fulfillment/delivery/**`, maupun `mcp-worker/`.
 - **Lanjutan B-C (18 November 2026, lokal):** `GET /api/catalog` (scope `market`, TTL `120` dtk `?slug=` / `300` dtk daftar, tetap locale-neutral) kini memakai `cachePublicCatalog` (`GET /api/games/catalog/[slug]` tetap `private, no-store`, tidak di-cache); emisi funnel `view` berjalan di luar loader pada status `200` baik `HIT` maupun `MISS` (tetap skip probe sintetis; 404 tidak di-cache).
 
 ### A-S probe sintetis — 18 November 2026 (lokal)

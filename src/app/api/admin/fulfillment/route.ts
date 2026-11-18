@@ -213,11 +213,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "max_100_per_request" }, { status: 400 });
     }
 
-    const result = await importInventory(productId, body.secrets, variantId);
+    const result = await importInventory(productId, body.secrets, variantId, { bumpRevision: false });
     // Selaraskan kolom stock unique → available (2026-10-02): tanpa ini
     // angka "Sisa" PDP + agregat induk selisih permanen dari kredensial.
     const { syncUniqueVariantStock } = await import("@/lib/fulfillment/inventory");
     const syncedStock = await syncUniqueVariantStock(productId, variantId);
+    if (result.inserted > 0) {
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market");
+    }
     return NextResponse.json({ ok: true, ...result, synced_stock: syncedStock });
   }
 
@@ -242,9 +246,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "invalid_inventory_ids" }, { status: 400 });
     }
     const { revokeInventoryBatch, syncUniqueVariantStock } = await import("@/lib/fulfillment/inventory");
-    const revoked = await revokeInventoryBatch(productId, variantId, ids as number[]);
+    const revoked = await revokeInventoryBatch(productId, variantId, ids as number[], { bumpRevision: false });
     if (revoked) {
       try { await syncUniqueVariantStock(productId, variantId); } catch { /* sync best-effort — revoke sudah sukses */ }
+      const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+      await bumpCatalogRevision("market");
     }
     return NextResponse.json({ ok: true, revoked, skipped: ids.length - revoked });
   }
@@ -252,7 +258,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "inventory_id required" }, { status: 400 });
   }
 
-  const revoked = await revokeInventory(body.inventory_id);
+  const revoked = await revokeInventory(body.inventory_id, { bumpRevision: false });
   if (!revoked) {
     return NextResponse.json({ error: "cannot_revoke" }, { status: 409 });
   }
@@ -266,6 +272,8 @@ export async function DELETE(request: NextRequest) {
     );
     if (row) await syncUniqueVariantStock(Number(row.product_id), row.variant_id != null ? Number(row.variant_id) : null);
   } catch { /* sync best-effort — revoke sudah sukses */ }
+  const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
+  await bumpCatalogRevision("market");
 
   return NextResponse.json({ ok: true });
 }
