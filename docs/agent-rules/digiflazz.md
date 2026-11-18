@@ -1,5 +1,9 @@
 # Digiflazz buyer - status env/domain dan keputusan owner (9 November 2026 malam)
 
+## Status Games — 18 November 2026
+
+- Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview. Catatan "ordering tetap preview P9" di bawah adalah snapshot 9 November. Mekanisme gerbang P9 di kode (`games/ordering.ts`: tutup bila `DIGIFLAZZ_TESTING==='true'` atau kredensial kosong) tetap berlaku sebagai pengaman.
+
 - Operasi PM sekitar21.40–22.05WIB: Pages produksi menerima empat `secret_text`:
   `DIGIFLAZZ_USERNAME`, `DIGIFLAZZ_API_KEY` (Development Key), `DIGIFLAZZ_WEBHOOK_SECRET`,
   `DIGIFLAZZ_TESTING=true`;75env dikonfigurasi,79/128 termasuk4sistem. Berlaku deployment

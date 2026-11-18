@@ -1,5 +1,9 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Cache edge Games ditunda — 18 November 2026
+
+- Keputusan owner+PM: `/api/games/catalog` dan `/api/games/catalog/[slug]` tetap `private, no-store` tanpa `cachePublicCatalog`. Data 7 hari: ±2 + 5 request (vs 576 `/api/catalog`), 1 order Games sepanjang masa — manfaat cache ≈0, risiko harga basi tetap ada. Pertimbangkan lagi bila trafik Games ratusan–ribuan request/hari; scope revisi `games` + bump di sync Games sudah tersedia. Wajib `npm run build:pages` sebelum push perubahan route (insiden `15d275e8`).
+
 ### C-H consumer Queue pengiriman instan & DLQ (`axvara-mcp`) — 18 November 2026 (lokal, belum deploy)
 
 - `mcp-worker/wrangler.toml` mendefinisikan consumer `axvara-order-fulfillment` (`max_batch_size = 5`, `max_batch_timeout = 1`, `max_retries = 4`, `dead_letter_queue = "axvara-order-fulfillment-dlq"`), consumer DLQ `axvara-order-fulfillment-dlq` (`max_batch_size = 5`, `max_batch_timeout = 5`, `max_retries = 2`), dan `[vars] QUEUE_CONSUMER_MODE = "active"`. Resource Queue wajib dibuat PM sebelum push; jangan menghapus/mengubah binding tersebut tanpa memperbarui kontrak producer di paket C-S.

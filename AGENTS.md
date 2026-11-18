@@ -33,8 +33,8 @@ Games S1 lokal (9 November 2026): host routing opsional `GAMES_HOST` default
 dan nickname berbiaya mengikuti GAMES §3/§5.2 + ARCHITECTURE §16.29; bukan izin rollout.
 Update PM9Nov malam: CNAME/custom domain Games ditambahkan (awal initializing, aktif
 belum diverifikasi); empat env Digiflazz Pages `secret_text` memakai Development Key
-+ testing=true, berlaku CI berikutnya (75env/79dari128termasuk sistem). P9 tetap preview;
-nickname unavailable. Owner menutup gerbang key7.1 tanpa rotasi; webhook/deposit/
++ testing=true, berlaku CI berikutnya (75env/79dari128termasuk sistem). Snapshot 9Nov: P9 preview;
+nickname unavailable. Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview. Status gerbang 7.2–7.4 di bawah adalah snapshot 9Nov. Owner menutup gerbang key7.1 tanpa rotasi; webhook/deposit/
 Production/transaksi nyata7.2–7.4 tetap terbuka. Access Games belum tercakup: admin
 ke apex/API admin fail-closed. Detail dan batas bukti di aturan Digiflazz + GAMES12.6.
 

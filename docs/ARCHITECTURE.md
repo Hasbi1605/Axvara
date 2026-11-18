@@ -6434,7 +6434,7 @@ migrasi remote atau deploy;0123 tetap migrasi TUNVN, AIVault memakai0124.
   - `GET /api/categories` (`scope: "market"`): edge TTL `600` detik untuk daftar publik.
   - `src/lib/telegram/catalog-snapshot.ts` (`telegram:catalog`, `scope: "market"`): edge TTL `180` detik.
   - `GET /api/pedia/catalog` (`pedia:catalog`, `scope: "pedia"`): edge TTL `300` detik (mempertahankan `public, max-age=30` dan `CDN-Cache-Control: max-age=60`).
-  - `GET /api/games/catalog` tetap `private, no-store` dan TIDAK di-cache (hotfix 18 Nov 2026: signature handler B-H tidak valid untuk Next 15 dan Games masih preview; dikembalikan ke versi semula).
+  - `GET /api/games/catalog` tetap `private, no-store` dan TIDAK di-cache (hotfix 18 Nov 2026: signature handler B-H tidak valid untuk Next 15; dikembalikan ke desain semula sejak 9 Nov. Bukan karena preview — Games sudah live; cache Games ditunda karena trafik ±1 request/hari, lihat platform-ops).
   - **Paket B-C (lanjutan lokal 18 November 2026, belum deploy):**
     - `GET /api/catalog` (`catalog:v={variants}&slug={slug||_list}`, `scope: "market"`): edge TTL `120` detik untuk `?slug=` dan `300` detik untuk daftar (header `Cache-Control` browser tidak berubah); respons tetap locale-neutral (`display-prices` invariant terjaga). Emisi funnel `view` dijalankan di luar loader `cachePublicCatalog` saat `?slug=` berstatus `200` (berlaku pada `HIT` maupun `MISS`, tetap dikecualikan untuk probe sintetis, dan 404 tidak di-cache/tidak mengemisi).
     - `GET /api/games/catalog/[slug]` tetap `private, no-store` dan tidak di-cache (cache edge menolak respons privat).

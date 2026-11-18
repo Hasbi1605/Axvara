@@ -400,7 +400,8 @@ OD1, bukan `games_reference_prices`.] `sell_price` dihitung ulang dari
 - §7.2: **terbuka**, webhook dashboard Digiflazz tetap non-aktif.
 - §7.3: **terbuka**, belum deposit atau mode Production. Pages produksi menyimpan
   Development Key + testing=true; sesudah deployment CI berikutnya cron katalog
-  mulai memakai Development Key, ordering tetap preview P9 dan nickname unavailable.
+  mulai memakai Development Key, (snapshot 9 Nov) ordering tetap preview P9 dan nickname unavailable.
+  Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview.
 - §7.4: **terbuka**, belum transaksi nyata yang membuktikan go-live.
 - PM memasang75env (79/128 termasuk4sistem), empat env Digiflazz `secret_text`.
   CNAME/custom domain telah ditambahkan dengan status awal initializing; aktif

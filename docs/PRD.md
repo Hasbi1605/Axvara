@@ -752,7 +752,8 @@ dijalankan — bukan status live.
   ke axvara.pages.dev/custom domain Pages (awal initializing, aktif belum diverifikasi)
   serta empat env Digiflazz secret_text (Development Key/testing=true),75env/79dari128
   termasuk sistem; berlaku deployment CI berikutnya. Cron katalog mulai memakai
-  Development Key setelah itu; ordering tetap preview P9/nickname unavailable.
+  Development Key setelah itu; (snapshot 9 Nov) ordering tetap preview P9/nickname unavailable.
+  Status 18 November 2026 (konfirmasi owner + cek produksi `/api/games/catalog` → `ordering_open:true`, 48 game): Games sudah live, bukan preview.
   Owner menutup gerbang7.1 tanpa rotasi9Nov malam, dashboard webhook tetap non-aktif
   (7.2), belum deposit/Production (7.3)/transaksi nyata (7.4). Access Games belum tercakup:
   admin dialihkan apex/API admin fail-closed. Metadata UI/QA browser/runtime belum dibuktikan;
