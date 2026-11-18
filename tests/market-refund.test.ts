@@ -34,15 +34,15 @@ it("uses warranty to gate eligibility, never as the denominator", () => {
 
 it("adds only a protected deeplink in the paid Market keyboard", () => {
   const siteUrl = "https://axvara.tech", orderCode = "AXV-20261118-ABCD1234";
-  const result = [{ text: "Hitung Refund", url: `${siteUrl}/admin/refund?code=${orderCode}` }];
-  expect(telegramOrderAdminKeyboard({ siteUrl, orderCode }).inline_keyboard.flat().some(button => button.text === "Hitung Refund")).toBe(false);
+  const result = [{ text: "🧮 Hitung Refund", url: `${siteUrl}/admin/refund?code=${orderCode}` }];
+  expect(telegramOrderAdminKeyboard({ siteUrl, orderCode }).inline_keyboard.flat().some(button => button.text === "🧮 Hitung Refund")).toBe(false);
   expect(telegramOrderAdminKeyboard({ siteUrl, orderCode, paidMarket: true }).inline_keyboard.at(-1)).toEqual(result);
   expect(webPaidAdminKeyboard({ siteUrl, orderCode, customerWa: "", orderKind: "apps" }).inline_keyboard.at(-1)).toEqual(result);
   expect(webPaidAdminKeyboard({ siteUrl, orderCode, customerWa: "", orderKind: "pedia" }).inline_keyboard.flat()).not.toContainEqual(result[0]);
   expect(webOrderAdminKeyboard({ siteUrl, orderCode, customerWa: "6281234567890", customerName: "Buyer", paidMarket: true }).inline_keyboard.at(-1)).toEqual(result);
 });
 
-it("uses real D1 for snapshots, handover, scoped reads, report lock, share rotation and revocation", async () => {
+it("uses real D1 for invoice-only estimates, snapshot handover, admin access, claim lock, and share revocation", async () => {
   const runtime = new Miniflare({ modules: true, compatibilityDate: "2026-08-06", script: 'export default {fetch(){return new Response("ok")}}', d1Databases: ["DB"] });
   const globals = globalThis as { DB?: D1 };
   try {
@@ -72,24 +72,21 @@ it("uses real D1 for snapshots, handover, scoped reads, report lock, share rotat
     expect(stored.map(row => row.started_at != null)).toEqual([true,true,false]);
     const { POST: buyer } = await import("@/app/api/refund/route");
     const { POST: admin } = await import("@/app/api/admin/refund/route");
-    const { createBuyerAccessSession, createCheckoutCredentialGrant } = await import("@/lib/order-access");
-    const purchasedOrder = (await db.prepare("SELECT * FROM orders WHERE code=?").bind(code).first())!;
-    const p1 = await createBuyerAccessSession(purchasedOrder);
-    const c1 = await createCheckoutCredentialGrant(purchasedOrder);
     const post = (data: object, head: Record<string, string> = {}) => new NextRequest("http://localhost/api/refund", { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json", ...head } });
     const adminPost = (action: string, extra: object = {}, invoice = code) => admin(post({ code: invoice, action, ...extra }, { "x-fixture-admin": "yes" }));
-    const unverified = await buyer(post({ code }));
-    expect(unverified.status).toBe(404);
-    expect(await unverified.json()).toEqual({ error: "access" });
-    expect((await buyer(post({ code }, { "x-order-contact": "private@example.org" }))).status).toBe(200);
-    expect((await buyer(post({ code }, { "x-checkout-credential-grant": c1! }))).status).toBe(200);
-    expect((await buyer(post({ code: old }, { "x-checkout-credential-grant": c1! }))).status).toBe(404);
     expect((await admin(post({ code, action: "lookup" }))).status).toBe(401);
-    expect((await buyer(post({ code: old }, { "x-buyer-access-session": p1! }))).status).toBe(404);
-    const valid = await buyer(post({ code }, { "x-buyer-access-session": p1! }));
+    for (const invalid of ["AXV-20261118-UNKNOWN1", "AXP-20261118-PEDIA123", "invalid", [code]]) {
+      const missing = await buyer(post({ code: invalid }));
+      expect(missing.status).toBe(404);
+      expect(await missing.json()).toEqual({ error: "not_found" });
+    }
+    expect((await buyer(post({ code }, { "sec-fetch-site": "cross-site" }))).status).toBe(400);
+    const valid = await buyer(post({ code: code.toLowerCase() }));
     expect(valid.status).toBe(200);
     expect(valid.headers.get("Cache-Control")).toBe("private, no-store");
-    expect(await valid.json()).toMatchObject({ estimate: { lines: [{ status: "ready" }, { status: "no_warranty" }, { status: "waiting" }] } });
+    const publicPayload = await valid.text();
+    expect(publicPayload).not.toMatch(/private@example|081234|fixture-quote|AXV-|customer_|buyer_access|credential|quote_id/);
+    expect(JSON.parse(publicPayload)).toMatchObject({ estimate: { lines: [{ name: "Paket A", status: "ready" }, { name: "Paket B", status: "no_warranty" }, { name: "Paket A", status: "waiting" }] } });
     expect(await (await adminPost("lookup", {}, old)).json()).toMatchObject({ estimate: { state: "review" } });
     expect((await adminPost("share")).status).toBe(422);
     expect((await adminPost("share", { items: [1] })).status).toBe(422);
@@ -115,5 +112,6 @@ it("uses real D1 for snapshots, handover, scoped reads, report lock, share rotat
     await db.batch([db.prepare("UPDATE fulfillment_items SET status='delivered' WHERE order_code=?").bind(code), db.prepare("UPDATE orders SET payment_status='refunded' WHERE code=?").bind(code)]);
     expect((await db.prepare("SELECT started_at FROM market_refund_items WHERE order_code=? AND item_index=0").bind(code).first())?.started_at).toBe(start);
     expect(await (await adminPost("lookup")).json()).toMatchObject({ estimate: { state: "refunded", lines: [] } });
+    expect(await (await buyer(post({ code }))).json()).toMatchObject({ estimate: { state: "refunded", lines: [] } });
   } finally { delete globals.DB; await runtime.dispose(); }
 }, 30_000);

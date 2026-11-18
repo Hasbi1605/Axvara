@@ -5,13 +5,13 @@ import { Calculator, CalendarDays, Link2, Search } from "lucide-react";
 import Link from "next/link";
 import { useDisplayLocale } from "@/hooks/useDisplayPrices";
 import { MARKET_INVOICE, prorata, termEnd, wibInputSeconds, type Estimate } from "@/lib/refund/calculate";
-import { orderAccessHeaders, readCheckoutCredentialGrant } from "@/lib/order-access-client";
 import { requestRefund } from "@/lib/refund/client";
+import { BuyerRefundLookup } from "./BuyerRefundLookup";
 import { idr, refundButton, refundInput, RefundResult, remainingTime } from "./RefundResult";
 
 export function RefundCalculator({ admin = false, initialCode = "", shared = false, buyerCode = "" }: { admin?: boolean; initialCode?: string; shared?: boolean; buyerCode?: string }) {
   const browserLocale = useDisplayLocale();
-  const [mode, setMode] = useState(admin ? "invoice" : shared ? "share" : buyerCode ? "order" : "days");
+  const [mode, setMode] = useState(admin ? "invoice" : shared ? "share" : "order");
   const [shareToken, setShareToken] = useState("");
   const [readAttempt, setReadAttempt] = useState(0);
   const [estimateLocale, setEstimateLocale] = useState<"id" | "en">();
@@ -21,7 +21,7 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
   const [estimate, setEstimate] = useState<Estimate>();
   const [activeShare, setActiveShare] = useState(false);
   const [share, setShare] = useState("");
-  const [busy, setBusy] = useState(Boolean(buyerCode));
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const locale = admin ? "id" : estimateLocale ?? browserLocale;
@@ -59,17 +59,14 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
     return () => window.removeEventListener("hashchange", loadHash);
   }, [admin, initialCode, adminRequest, shared]);
   useEffect(() => {
-    if (!shared && !buyerCode) return;
+    if (!shared) return;
     setEstimate(undefined);
     setEstimateLocale(undefined);
     setError("");
-    if (shared && !shareToken) { setBusy(false); setError("share_expired"); return; }
+    if (!shareToken) { setBusy(false); setError("share_expired"); return; }
     const controller = new AbortController();
-    const headers = buyerCode ? orderAccessHeaders(buyerCode) : undefined;
-    const grant = buyerCode ? readCheckoutCredentialGrant(buyerCode) : "";
-    if (headers && grant) headers["x-checkout-credential-grant"] = grant;
     setBusy(true);
-    void requestRefund("/api/refund", shared ? { token: shareToken } : { code: buyerCode }, headers, controller.signal).then(result => {
+    void requestRefund("/api/refund", { token: shareToken }, controller.signal).then(result => {
       if (controller.signal.aborted) return;
       if (!result.estimate) throw new Error("unavailable");
       setEstimate(result.estimate); setEstimateLocale(result.locale);
@@ -77,7 +74,7 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
       if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "unavailable");
     }).finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
-  }, [buyerCode, shared, shareToken, readAttempt]);
+  }, [shared, shareToken, readAttempt]);
 
   const lookup = (event: FormEvent) => {
     event.preventDefault();
@@ -90,9 +87,7 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
     try { await navigator.clipboard.writeText(share); setNotice("Link disalin."); }
     catch { setNotice("Pilih dan salin link di atas."); }
   };
-  const trackingHref = buyerCode ? `/lacak-pesanan?code=${encodeURIComponent(buyerCode)}` : "/lacak-pesanan";
   const errors: Record<string, string> = {
-    access: t("Verifikasi pesanan untuk melihat estimasi.", "Verify your order to see the estimate."),
     admin: "Masuk ke panel admin, lalu buka kembali link ini.", not_found: "Invoice Market tidak ditemukan.",
     format: "Masukkan nomor invoice AXV yang valid.", claim_invalid: "Waktu laporan harus dalam masa aktif dan garansi.",
     claim_saved: "Laporan sudah dicatat. Cek ulang invoice.", select_items: "Pilih item yang memiliki estimasi.",
@@ -107,10 +102,11 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
       <p className="mt-2 text-sm text-white/65">{mode === "share" ? t("Ringkasan estimasi dari AXVARA.", "Estimate shared by AXVARA.") : t("Cek sisa masa aktif dan estimasi refund.", "Check the remaining time and estimated refund.")}</p>
     </header>
     {mode !== "share" && <div className="mb-4 flex w-fit max-w-full flex-wrap gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
-      {[...(admin ? [{ id: "invoice", label: "Dari invoice" }] : buyerCode ? [{ id: "order", label: t("Dari Pesanan", "From Order") }] : []), { id: "days", label: t("Hitung Sisa Hari", "Days Remaining") }, { id: "manual", label: t("Simulasi Refund", "Refund Simulation") }].map(tab =>
+      {[...(admin ? [{ id: "invoice", label: "Dari invoice" }] : [{ id: "order", label: t("Dari Pesanan", "From Order") }]), { id: "days", label: t("Hitung Sisa Hari", "Days Remaining") }, { id: "manual", label: t("Simulasi Refund", "Refund Simulation") }].map(tab =>
         <button key={tab.id} type="button" aria-pressed={mode === tab.id} onClick={() => setMode(tab.id)} className={`min-h-11 rounded-xl px-3 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 motion-reduce:transition-none sm:px-4 sm:text-sm ${mode === tab.id ? "bg-cyan-300/15 text-cyan-100" : "text-white/65 hover:bg-white/10 hover:text-white"}`}>{tab.label}</button>)}
     </div>}
-    <div key={mode} className="ax-glass-card rounded-[24px] p-5 shadow-[0_24px_80px_-50px_#00e5ff] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 sm:p-7">
+    <div className="ax-glass-card rounded-[24px] p-5 shadow-[0_24px_80px_-50px_#00e5ff] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 sm:p-7">
+      {!admin && !shared && <div hidden={mode !== "order"}><BuyerRefundLookup initialCode={buyerCode} locale={locale} /></div>}
       {mode === "invoice" && <>
         <form onSubmit={lookup} className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
           <label className="min-w-0 flex-1 space-y-2 text-xs font-semibold text-white/80">Nomor invoice AXVARA
@@ -139,19 +135,17 @@ export function RefundCalculator({ admin = false, initialCode = "", shared = fal
           </div>}
         </div>}
       </>}
-      {(mode === "share" || mode === "order") && estimate && <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"><RefundResult estimate={estimate} locale={locale} shared={mode === "share"} /></div>}
+      {mode === "share" && estimate && <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"><RefundResult estimate={estimate} locale={locale} shared /></div>}
       {(mode === "days" || mode === "manual") && <ManualCalculator key={mode} refund={mode === "manual"} en={en} />}
-      {(mode === "invoice" || mode === "share" || mode === "order") && <>
+      {(mode === "invoice" || mode === "share") && <>
         {busy && <p role="status" className="mt-3 text-sm text-white/65">{t("Memuat…", "Loading…")}</p>}
         {error && <div className="mt-3"><p role="alert" className="text-sm text-rose-200">{errors[error] ?? t("Belum bisa dimuat. Coba lagi.", "Couldn’t load. Try again.")}</p>
           {error === "admin" && <Link prefetch={false} href="/admin" className={`${refundButton} mt-2`}>Masuk Admin</Link>}
-          {mode === "order" && error === "access" && <Link prefetch={false} href={trackingHref} className={`${refundButton} mt-2`}>{t("Lacak Pesanan", "Track Order")}</Link>}
-          {((mode === "order" && error !== "access") || (mode === "share" && error !== "share_expired")) && <button className={`${refundButton} mt-2`} type="button" onClick={() => setReadAttempt(value => value + 1)}>{t("Coba lagi", "Try again")}</button>}
+          {mode === "share" && error !== "share_expired" && <button className={`${refundButton} mt-2`} type="button" onClick={() => setReadAttempt(value => value + 1)}>{t("Coba lagi", "Try again")}</button>}
         </div>}
         {notice && <p role="status" className="mt-3 text-sm text-white/75">{notice}</p>}
       </>}
     </div>
-    {!admin && mode !== "share" && mode !== "order" && <Link prefetch={false} href={trackingHref} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-cyan-200 underline decoration-white/25 underline-offset-4 focus-visible:outline-cyan-300">{t("Cek estimasi dari pesanan saya", "Check my order estimate")}</Link>}
   </section>;
 }
 

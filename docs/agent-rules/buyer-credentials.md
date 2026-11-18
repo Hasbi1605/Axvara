@@ -2,7 +2,7 @@
 
 ## Estimasi refund Market — 18 November 2026
 
-- Accordion garansi tetap satu dan terlipat per pesanan lunas. Pembeli memakai status terverifikasi yang sudah ada (kontak/p1/c1). Tautan accordion hanya membawa invoice AXV; halaman kalkulator memakai proof privat dari tab yang sama, tidak dari query atau fragmen. Nomor invoice, admin query, dan link share bukan proof untuk PIN atau kredensial. Tidak ada issuance/persistensi proof baru dan perubahan pengiriman produk di luar copy ketentuan.
+- Accordion garansi tetap satu dan terlipat per pesanan lunas. Keputusan lanjutan owner: `POST /api/refund` boleh mengembalikan proyeksi estimasi hanya dengan invoice AXV, tanpa kontak/p1/c1. Pengecualian hanya untuk estimasi, bukan status order, data kontak, PIN, detail akun atau kredensial. Tautan accordion hanya membawa invoice; tidak ada perubahan issuance/persistensi proof atau pengiriman produk.
 - Share dibuat admin hanya untuk ringkasan estimasi item terpilih, kadaluwarsa 7 hari dan dapat dicabut. Jangan menaruh proof akses order, PIN, kontak atau detail akun di link/payload ini.
 
 ## C0 fence kirim otomatis per item/kanal — 18 November 2026 (lokal)

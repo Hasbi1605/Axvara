@@ -34,34 +34,37 @@ export function RefundResult({ estimate, locale = "id", shared = false, actions 
       <p className="text-xs font-medium text-white/65">{claimTotal ? (en ? "Claim estimate" : "Estimasi klaim") : (en ? "Estimated refund" : "Estimasi refund")}</p>
       <p className="mt-1 font-display text-3xl font-bold tracking-tight text-cyan-200 tabular-nums sm:text-4xl">{idr(total)}</p>
     </div>}
-    <ul className="divide-y divide-white/10 border-y border-white/10">
-      {estimate.lines.map(line => <li key={line.id} className="space-y-2 py-3.5">
+    <ul className="space-y-3">
+      {estimate.lines.map(line => <li key={line.id} className="min-w-0 space-y-3 rounded-2xl border border-white/10 bg-black/15 p-3 sm:p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <p className="min-w-0 break-words text-sm font-semibold text-white">{line.name}{line.unitTotal && line.unitTotal > 1 ? ` · Unit ${line.unit}/${line.unitTotal}` : line.qty > 1 ? ` ×${line.qty}` : ""}</p>
+          <p className="min-w-0 [overflow-wrap:anywhere] text-sm font-semibold text-white">{line.name}{line.unitTotal && line.unitTotal > 1 ? ` · Unit ${line.unit}/${line.unitTotal}` : line.qty > 1 ? ` ×${line.qty}` : ""}</p>
           {line.amount != null && <span className="text-sm font-semibold tabular-nums text-cyan-200">{idr(line.amount)}</span>}
         </div>
-        {line.duration != null && line.remaining != null && <>
-          <p className="text-xs text-white/75">{remainingTime(line.remaining, locale)} <span className="text-white/55">/ {remainingTime(line.duration, locale)} {en ? "· remaining" : "· sisa masa aktif"}</span></p>
-          <div aria-hidden className="h-1 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-sky-400 transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${line.remaining / line.duration * 100}%` }} /></div>
-        </>}
         {line.status !== "ready" && <p className="text-xs text-white/65">{{
           waiting: en ? "Awaiting delivery." : "Belum dikirim.", review: en ? "Needs admin review." : "Perlu pengecekan admin.",
           no_warranty: en ? "No structured warranty on this invoice." : "Garansi tidak tercatat untuk estimasi.", warranty_ended: en ? "Warranty ended." : "Masa garansi berakhir.", ended: en ? "Plan ended." : "Masa aktif berakhir.",
         }[line.status]}</p>}
-        <details className="text-xs leading-relaxed text-white/65">
-          <summary className="flex min-h-9 w-fit cursor-pointer items-center font-medium text-white/80 underline decoration-white/30 underline-offset-4 focus-visible:outline-cyan-300">{en ? "Details" : "Rincian"}</summary>
-          <div className="flex flex-col gap-0.5">
-            <div>{en ? "Product price" : "Harga produk"}: {idr(line.price)}</div>
-            {line.start != null && <div>{en ? "Start" : "Mulai"}: {formatWib(line.start, locale)}</div>}
-            {line.end != null && <div>{en ? "End" : "Berakhir"}: {formatWib(line.end, locale)}</div>}
-            {line.warrantyEnd != null && <div>{en ? "Warranty until" : "Garansi hingga"}: {formatWib(line.warrantyEnd, locale)}</div>}
-            {line.amount != null && <div>{en ? "Rate" : "Rate refund"}: {line.rate / 100}%</div>}
-            {line.claim != null && <div>{en ? "Claim received" : "Laporan diterima"}: {formatWib(line.claim, locale)}</div>}
-          </div>
-        </details>
+        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-white/10 bg-white/10 sm:grid-cols-3">
+          <ResultField label={en ? "Product price" : "Harga produk"}>{idr(line.price)}</ResultField>
+          {line.duration != null && <ResultField label={en ? "Plan duration" : "Durasi paket"}>{remainingTime(line.duration, locale)}</ResultField>}
+          {line.remaining != null && <ResultField label={en ? "Remaining time" : "Sisa masa aktif"}>{remainingTime(line.remaining, locale)}</ResultField>}
+          {line.start != null && <ResultField label={en ? "Start" : "Mulai"}>{formatWib(line.start, locale)}</ResultField>}
+          {line.end != null && <ResultField label={en ? "End" : "Berakhir"}>{formatWib(line.end, locale)}</ResultField>}
+          {line.warrantyEnd != null && <ResultField label={en ? "Warranty until" : "Garansi hingga"}>{formatWib(line.warrantyEnd, locale)}</ResultField>}
+          {line.amount != null && <ResultField label={en ? "Refund rate" : "Rate refund"}>{line.rate / 100}%</ResultField>}
+          {line.claim != null && <ResultField label={en ? "Claim received" : "Laporan diterima"}>{formatWib(line.claim, locale)}</ResultField>}
+        </dl>
+        {line.duration != null && line.remaining != null && <div aria-hidden className="h-1 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-sky-400 transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${line.remaining / line.duration * 100}%` }} /></div>}
         {actions?.(line)}
       </li>)}
     </ul>
     <p className="text-xs text-white/65">{shared ? (en ? "Shared on" : "Dibagikan") : (en ? "Calculated on" : "Dihitung")} {formatWib(estimate.asOf, locale)}. {en ? "Estimate only." : "Bukan persetujuan refund."}</p>
+  </div>;
+}
+
+function ResultField({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="min-w-0 bg-[#10152A] px-3 py-2.5">
+    <dt className="text-xs text-white/65">{label}</dt>
+    <dd className="mt-0.5 break-words text-xs font-semibold leading-relaxed text-white tabular-nums sm:text-sm">{children}</dd>
   </div>;
 }

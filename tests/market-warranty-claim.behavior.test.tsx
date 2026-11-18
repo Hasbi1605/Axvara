@@ -5,7 +5,6 @@ import userEvent from "@testing-library/user-event";
 import OrderStatusPage from "@/app/(shop)/pesanan/[code]/page";
 import LacakPesananClient from "@/app/(shop)/lacak-pesanan/lacak-pesanan-client";
 import RefundPage from "@/app/(shop)/kalkulator-refund/page";
-import { forgetBuyerAccessSession, forgetCheckoutCredentialGrant, forgetOrderContact, rememberBuyerAccessSession, rememberCheckoutCredentialGrant, rememberOrderContact } from "@/lib/order-access-client";
 import GaransiReplacePage from "@/app/(shop)/garansi-replace/page";
 import { WarrantyClaimAccordion } from "@/components/storefront/WarrantyClaim";
 import { DEFAULT_STORE_SETTINGS } from "@/lib/site";
@@ -23,7 +22,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup(); vi.unstubAllGlobals(); Reflect.deleteProperty(Element.prototype, "scrollIntoView");
-  forgetBuyerAccessSession(CODE); forgetCheckoutCredentialGrant(CODE); forgetOrderContact(CODE);
 });
 
 const items = [{ name: "Produk Market A", price: 10000, qty: 1 }, { name: "Produk Market B", price: 15000, qty: 1 }];
@@ -174,47 +172,73 @@ describe("Market warranty claim guidance", () => {
 
 const estimate = {
   state: "ready", asOf: 1794864000,
-  lines: [{ id: 0, name: "Paket Demo 30 Hari", qty: 1, status: "ready", duration: 2592000, remaining: 1728000, amount: 20000, price: 30000, rate: 10000 }],
+  lines: [{ id: 0, name: "Paket Demo 30 Hari", qty: 1, status: "ready", duration: 2592000, remaining: 1728000, amount: 20000, price: 30000, rate: 10000,
+    start: 1794000000, end: 1796592000, warrantyEnd: 1796592000, claim: 1794864000 }],
 };
 const refundPage = (code?: string | string[]) => RefundPage({ searchParams: Promise.resolve({ code }) });
 
-describe("Buyer calculator deep link", () => {
-  it.each(["status", "checkout"])("automatically loads the products using the existing %s proof", async (proof) => {
-    const expiry = Math.floor(Date.now() / 1000) + 3600;
-    const sig = "a".repeat(43);
-    const headers = proof === "status"
-      ? { "x-order-contact": "buyer@example.test", "x-buyer-access-session": `p1.${expiry}.${sig}` }
-      : { "x-checkout-credential-grant": `c1.${expiry}.${sig}` };
-    if (proof === "status") {
-      rememberOrderContact(CODE, headers["x-order-contact"]);
-      rememberBuyerAccessSession(CODE, headers["x-buyer-access-session"]);
-    } else rememberCheckoutCredentialGrant(CODE, headers["x-checkout-credential-grant"]);
+function expectVisibleEstimate(container: HTMLElement) {
+  const card = within(screen.getByText("Paket Demo 30 Hari").closest("li")!);
+  for (const [label, value] of [["Harga produk", "Rp30.000"], ["Durasi paket", "30 hari"], ["Sisa masa aktif", "20 hari"], ["Rate refund", "100%"]]) {
+    expect(card.getByText(label, { selector: "dt" }).nextElementSibling?.textContent).toBe(value);
+  }
+  for (const label of ["Mulai", "Berakhir", "Garansi hingga", "Laporan diterima"]) {
+    expect(card.getByText(label, { selector: "dt" }).nextElementSibling?.textContent).toContain("WIB");
+  }
+  expect(card.getByText("Rp20.000")).toBeTruthy();
+  expect(container.querySelector("details")).toBeNull();
+}
+
+const publicRequest = (invoice = CODE) => expect.objectContaining({
+  method: "POST", cache: "no-store", credentials: "omit", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: invoice }),
+});
+
+describe("Buyer refund invoice lookup", () => {
+  it("loads a deep-linked invoice automatically without buyer proof", async () => {
     const fetch = vi.fn(async () => Response.json({ estimate, locale: "id" }));
     vi.stubGlobal("fetch", fetch);
-    render(await refundPage(CODE.toLowerCase()));
+    const { container } = render(await refundPage(CODE.toLowerCase()));
     expect(screen.getByRole("button", { name: "Dari Pesanan", pressed: true })).toBeTruthy();
     expect(screen.getByRole("status").textContent).toBe("Memuat…");
-    expect(await screen.findByText("Paket Demo 30 Hari")).toBeTruthy();
-    expect(screen.getByText("20 hari", { selector: "p" })).toBeTruthy();
-    expect(screen.getAllByText("Rp20.000").length).toBeGreaterThan(0);
-    expect(fetch).toHaveBeenCalledExactlyOnceWith("/api/refund", expect.objectContaining({
-      method: "POST", cache: "no-store", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify({ code: CODE }),
-    }));
+    await screen.findByText("Paket Demo 30 Hari");
+    expectVisibleEstimate(container);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith("/api/refund", publicRequest());
   });
 
-  it("offers tracking with the invoice prefilled when access is denied", async () => {
-    const fetch = vi.fn(async () => Response.json({ error: "access" }, { status: 404 }));
+  it("accepts a typed invoice as the only input, with no verification step", async () => {
+    const fetch = vi.fn(async () => Response.json({ estimate }));
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    const { container } = render(await refundPage());
+    expect(fetch).not.toHaveBeenCalled();
+    const code = screen.getByRole("textbox", { name: "Nomor invoice AXVARA" });
+    await user.type(code, ` ${CODE.toLowerCase()} {Enter}`);
+    await screen.findByText("Paket Demo 30 Hari");
+    expect(screen.getAllByRole("textbox")).toEqual([code]);
+    expectVisibleEstimate(container);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith("/api/refund", publicRequest());
+    await user.click(screen.getByRole("button", { name: "Simulasi Refund" }));
+    expect(screen.getByLabelText("Harga produk (Rp)")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Dari Pesanan" }));
+    expect(screen.getByText("Paket Demo 30 Hari")).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles missing invoices and clears the previous result when editing", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(Response.json({ estimate }))
+      .mockResolvedValueOnce(Response.json({ error: "not_found" }, { status: 404 }));
     vi.stubGlobal("fetch", fetch);
     render(await refundPage(CODE));
-    expect((await screen.findByRole("alert")).textContent).toBe("Verifikasi pesanan untuk melihat estimasi.");
-    expect(screen.getByRole("link", { name: "Lacak Pesanan" }).getAttribute("href")).toBe(`/lacak-pesanan?code=${CODE}`);
+    await screen.findByText("Paket Demo 30 Hari");
+    const unknown = "AXV-20261015-UNKNOWN1";
+    fireEvent.change(screen.getByLabelText("Nomor invoice AXVARA"), { target: { value: unknown } });
     expect(screen.queryByText("Paket Demo 30 Hari")).toBeNull();
-    expect(fetch).toHaveBeenCalledExactlyOnceWith("/api/refund", expect.objectContaining({
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: CODE }),
-    }));
+    fireEvent.click(screen.getByRole("button", { name: "Cek Invoice" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Invoice Market tidak ditemukan. Cek lagi nomornya.");
+    expect(fetch).toHaveBeenLastCalledWith("/api/refund", publicRequest(unknown));
   });
 
-  it("can retry a temporary error and still access the manual modes", async () => {
+  it("can retry a temporary error without reentering the invoice", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(Response.json({ error: "unavailable" }, { status: 503 }))
       .mockResolvedValueOnce(Response.json({ estimate }));
     vi.stubGlobal("fetch", fetch);
@@ -222,16 +246,18 @@ describe("Buyer calculator deep link", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Coba lagi" }));
     expect(await screen.findByText("Paket Demo 30 Hari")).toBeTruthy();
     expect(fetch).toHaveBeenCalledTimes(2);
-    fireEvent.click(screen.getByRole("button", { name: "Simulasi Refund" }));
-    expect(screen.getByLabelText("Harga produk (Rp)")).toBeTruthy();
   });
 
-  it.each([[undefined], ["AXP-20261015-CLAIM001"], [[CODE, CODE]]])("defaults to the manual calculator without a single valid Market invoice (%s)", async (code) => {
+  it.each([[undefined], ["AXP-20261015-CLAIM001"], [[CODE, CODE]]])("renders an empty invoice lookup without a single valid Market invoice (%s)", async (code) => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
     render(await refundPage(code));
-    expect(screen.getByRole("button", { name: "Hitung Sisa Hari", pressed: true })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Dari Pesanan" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Dari Pesanan", pressed: true })).toBeTruthy();
+    const input = screen.getByRole("textbox", { name: "Nomor invoice AXVARA" });
+    expect(input.getAttribute("value")).toBe("");
+    fireEvent.change(input, { target: { value: "not an invoice" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cek Invoice" }));
+    expect(screen.getByRole("alert").textContent).toBe("Masukkan nomor invoice AXV yang valid.");
     expect(fetch).not.toHaveBeenCalled();
   });
 });

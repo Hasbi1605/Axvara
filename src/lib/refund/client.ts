@@ -1,9 +1,9 @@
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import type { Estimate } from "./calculate";
 
-export async function requestRefund(path: string, data: object, headers?: Record<string, string>, signal?: AbortSignal) {
+export async function requestRefund(path: "/api/refund" | "/api/admin/refund", data: object, signal?: AbortSignal) {
   const res = await fetchWithTimeout(path, {
-    method: "POST", cache: "no-store", signal, headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(data),
+    method: "POST", cache: "no-store", credentials: path === "/api/refund" ? "omit" : "same-origin", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
   }, 12000);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || "unavailable");

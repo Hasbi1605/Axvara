@@ -720,7 +720,7 @@ export function webPaidAdminKeyboard(params: { customerWa: string; orderCode: st
 }
 
 function refundAdminButton(siteUrl: string, code: string): InlineKeyboardButton[][] {
-  return MARKET_INVOICE.test(code) ? [[{ text: "Hitung Refund", url: `${siteUrl}/admin/refund?code=${encodeURIComponent(code)}` }]] : [];
+  return MARKET_INVOICE.test(code) ? [[{ text: "🧮 Hitung Refund", url: `${siteUrl}/admin/refund?code=${encodeURIComponent(code)}` }]] : [];
 }
 
 /** Hanya ditampilkan bersama pesan QR pertama yang sudah kedaluwarsa. */

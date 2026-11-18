@@ -26,14 +26,15 @@ export async function refundBody(req: NextRequest, bucket: "orders:refund" | "ad
 export async function refundOrder(db: DatabaseAccess, input: unknown) {
   const code = typeof input === "string" ? input.trim().toUpperCase() : "";
   if (!MARKET_INVOICE.test(code)) return null;
-  return db.queryFirst(`SELECT code, status, payment_status, locale, subtotal, buyer_access_version,
-    buyer_access_format, quote_id, customer_wa, customer_email FROM orders WHERE code=? AND order_kind='apps'`, code);
+  return db.queryFirst(`SELECT code, status, payment_status, locale, subtotal FROM orders WHERE code=? AND order_kind='apps'`, code);
 }
 
 export async function readEstimate(db: DatabaseAccess, order: Record<string, unknown>, now = refundNow()): Promise<Estimate> {
   if (order.payment_status === "refunded") return { state: "refunded", asOf: now, lines: [] };
   if (order.status !== "lunas" || order.payment_status !== "paid") return { state: "unpaid", asOf: now, lines: [] };
-  const rows = await db.queryAll("SELECT * FROM market_refund_items WHERE order_code=? ORDER BY item_index", order.code);
+  const rows = await db.queryAll(`SELECT item_index, unit_number, unit_total, name, price, qty, duration_value, duration_unit,
+    warranty_type, warranty_value, warranty_unit, rate_bps, started_at, claimed_at
+    FROM market_refund_items WHERE order_code=? ORDER BY item_index`, order.code);
   if (!rows.length || rows.reduce((total, row) => total + Number(row.price) * Number(row.qty), 0) !== Number(order.subtotal)) {
     return { state: "review", asOf: now, lines: [] };
   }
