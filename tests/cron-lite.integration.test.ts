@@ -82,22 +82,21 @@ describe("/api/cron/lite", () => {
       expect(avSkipped.body.pairs_decided).toBeUndefined();
       expect(fx.sql.prepare("SELECT pending FROM product_group_dirty WHERE group_id=50").get()?.pending).toBe(1);
 
-      // 2) tunvn_catalog success drains dirty group 50
+      // 2) tunvn_catalog partial health still drains dirty group 50
       fx.sql.exec("UPDATE wr_variants SET wr_stock=0 WHERE wr_variant_id='wrv-1'; UPDATE product_variants SET stock=0 WHERE id=1; UPDATE sk_products SET sk_stock=5 WHERE sk_variant_id='skv-1'; UPDATE product_variants SET stock=5 WHERE id=2");
+      fx.sql.exec("INSERT INTO products(name,slug,price) VALUES('Muse','muse-ai-1-miliar-token',16000)");
       vi.stubEnv("TUNVN_ENABLED", "true");
       vi.stubEnv("TUNVN_SYNC_ENABLED", "true");
       vi.stubEnv("TUNVN_API_KEY", "fixture");
       vi.stubEnv("TUNVN_BASE_URL", "https://tunvn.test");
-      vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(String(url).endsWith("/buff/check") ? {
-        success: true, gross_cost_vnd: 390, sell_price_vnd: 390, sell_price_usdt: 0.0588, fundable: true,
-        orders_breakdown: [{ invite_code: "AXVARA", quantity_b: 1, valid: true }],
-      } : {
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => String(url).endsWith("/buff/check") ? new Response(null, { status: 502 }) : Response.json({
         success: true,
         products: [{ id: 86, name: "ACC CHAT GPT BUSINESS 1M(W1D)", price_vnd: 119_000, price_usdt: 4.6, discount_threshold: 0, discount_price_vnd: 0, discount_threshold_usdt: 0, discount_price_usdt: 0, stock: 5, description: "d" }],
       })));
       const tv1 = await call("tunvn_catalog");
       expect(tv1.status).toBe(200);
-      expect(tv1.body).toMatchObject({ ok: true, pairs_decided: 1, pairs_changed: 1 });
+      expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='cron_lite_tunvn_catalog_ok_at'").get()?.value).toBeTruthy();
+      expect(tv1.body).toMatchObject({ ok: true, buff_error: "buff_ambiguous:http_502", pairs_decided: 1, pairs_changed: 1 });
       expect(fx.sql.prepare("SELECT winner_product_id AS w FROM product_groups WHERE id=50").get()?.w).toBe(2);
 
       // 3) jaspay_catalog: disabled skips drain; successful sync drains dirty group 50

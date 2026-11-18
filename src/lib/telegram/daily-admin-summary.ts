@@ -173,6 +173,8 @@ const SUMMARY_SETTINGS_KEYS = [
   "jaspay_catalog_last_error",
   "tunvn_catalog_success_at",
   "tunvn_catalog_last_error",
+  "tunvn_buff_sync_at",
+  "tunvn_buff_last_error",
   "aivault_catalog_success_at",
   "aivault_catalog_last_error",
   "games_sk_catalog_success_at",
@@ -182,6 +184,7 @@ const SUMMARY_SETTINGS_KEYS = [
   "sync_stale_state_sk",
   "sync_stale_state_jaspay",
   "sync_stale_state_tunvn",
+  "sync_stale_state_tunvn_buff",
   "sync_stale_state_aivault",
   "sync_stale_state_games_sk",
   "sync_stale_state_pedia_indosmm",
@@ -484,6 +487,10 @@ export async function collectDailyAdminSummaryData(
   const skLogMs = parseTimestampMs(opsRow?.sk_log_at);
   const pediaDiffMs = parseTimestampMs(setting("pedia_indosmm_diff_last_at"));
 
+  const tunvnActive = isTunvnSyncEnabled() && isTunvnConfigured();
+  const tunvnBuffSuccessMs = parseTimestampMs(setting("tunvn_buff_sync_at"));
+  const tunvnBuffError = parseStoredSyncError(setting("tunvn_buff_last_error"))?.error ?? null;
+
   const syncCandidates: {
     id: SyncSourceId;
     active: boolean;
@@ -507,10 +514,17 @@ export async function collectDailyAdminSummaryData(
     },
     {
       id: "tunvn",
-      active: isTunvnSyncEnabled() && isTunvnConfigured(),
+      active: tunvnActive,
       lastSuccessMs: parseTimestampMs(setting("tunvn_catalog_success_at")),
       lastError: parseStoredSyncError(setting("tunvn_catalog_last_error"))?.error ?? null,
       thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.tunvn,
+    },
+    {
+      id: "tunvn_buff",
+      active: tunvnActive && (tunvnBuffSuccessMs !== null || tunvnBuffError !== null),
+      lastSuccessMs: tunvnBuffSuccessMs,
+      lastError: tunvnBuffError,
+      thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.tunvn_buff,
     },
     {
       id: "aivault",

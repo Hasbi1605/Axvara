@@ -34,18 +34,20 @@ export const SYNC_STALENESS_THRESHOLDS_MS = {
   sk_sweep: 90 * 60_000,
   jaspay: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
   tunvn: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
+  tunvn_buff: STALE_MIN_THRESHOLD_MS,
   aivault: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 60_000),
   games_sk: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 10 * 60_000),
   pedia_indosmm: Math.max(STALE_MIN_THRESHOLD_MS, 3 * 10 * 60_000),
   crypto_market: Math.max(STALE_MIN_THRESHOLD_MS, 3 * CRYPTO_REFRESH_AFTER_MS),
 } as const;
 
-export type SyncSourceId = "sk" | "jaspay" | "tunvn" | "aivault" | "games_sk" | "pedia_indosmm" | "crypto_market";
+export type SyncSourceId = "sk" | "jaspay" | "tunvn" | "tunvn_buff" | "aivault" | "games_sk" | "pedia_indosmm" | "crypto_market";
 
 export const SYNC_SOURCE_LABELS: Record<SyncSourceId, string> = {
   sk: "Sekalipay",
   jaspay: "Jaspay",
   tunvn: "TUNVN",
+  tunvn_buff: "TUNVN (Muse Buff)",
   aivault: "AIVault",
   games_sk: "Games",
   pedia_indosmm: "Pedia (IndoSMM)",
@@ -172,6 +174,8 @@ const SETTINGS_KEYS = [
   "jaspay_catalog_last_error",
   "tunvn_catalog_success_at",
   "tunvn_catalog_last_error",
+  "tunvn_buff_sync_at",
+  "tunvn_buff_last_error",
   "aivault_catalog_success_at",
   "aivault_catalog_last_error",
   "games_sk_catalog_success_at",
@@ -181,6 +185,7 @@ const SETTINGS_KEYS = [
   "sync_stale_state_sk",
   "sync_stale_state_jaspay",
   "sync_stale_state_tunvn",
+  "sync_stale_state_tunvn_buff",
   "sync_stale_state_aivault",
   "sync_stale_state_games_sk",
   "sync_stale_state_pedia_indosmm",
@@ -269,6 +274,18 @@ export async function checkSyncStaleness(
         lastSuccessMs: parseTimestampMs(rawSetting("tunvn_catalog_success_at")),
         lastError: parseStoredSyncError(rawSetting("tunvn_catalog_last_error"))?.error ?? null,
         thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.tunvn,
+      });
+    }
+
+    const buffSuccessMs = parseTimestampMs(rawSetting("tunvn_buff_sync_at"));
+    const buffError = parseStoredSyncError(rawSetting("tunvn_buff_last_error"))?.error ?? null;
+    if (tunvnOn && (buffSuccessMs !== null || buffError !== null)) {
+      probes.push({
+        id: "tunvn_buff",
+        label: SYNC_SOURCE_LABELS.tunvn_buff,
+        lastSuccessMs: buffSuccessMs,
+        lastError: buffError,
+        thresholdMs: SYNC_STALENESS_THRESHOLDS_MS.tunvn_buff,
       });
     }
 

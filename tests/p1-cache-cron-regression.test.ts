@@ -161,7 +161,7 @@ describe("R2-3: publishTunvnCatalog bumps revision even when buffError occurs af
     const { publishTunvnCatalog } = await import("@/lib/tunvn/catalog");
     const db = createDatabaseAccess(fixture.db);
     const first = await publishTunvnCatalog(db, 16000, { force: true, now: 1_700_000_000_000 });
-    expect(first).toEqual({ ok: false, error: "buff_ambiguous" });
+    expect(first).toEqual({ ok: false, error: "buff_ambiguous:http_500" });
     const revAfterCommit = readRevisionRow("market");
     expect(revAfterCommit).toBeTruthy();
 

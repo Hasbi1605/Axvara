@@ -221,8 +221,9 @@ describe("sendDueDailyAdminSummary", () => {
         INSERT INTO store_settings (key, value) VALUES
           ('tunvn_balance_last_value', '3.5'),
           ('aivault_balance_last_value', '12'),
-          ('tunvn_catalog_success_at', '${nowMs - 45 * 60_000}'),
-          ('tunvn_catalog_last_error', '{"error":"upstream_<502>&bad"}'),
+          ('tunvn_catalog_success_at', '${nowMs - 60_000}'),
+          ('tunvn_buff_sync_at', '${nowMs - 45 * 60_000}'),
+          ('tunvn_buff_last_error', '{"error":"upstream_<502>&bad"}'),
           ('sync_stale_state_sk', '{"last_stale_at":${nowMs - 4 * 3_600_000},"last_recovered_at":${nowMs - 3 * 3_600_000}}');
         INSERT INTO sk_sync_state (key, value) VALUES ('diff_last_at', '${new Date(nowMs - 2 * 60_000).toISOString()}');
       `);
@@ -254,8 +255,9 @@ describe("sendDueDailyAdminSummary", () => {
       expect(text).toContain("TUNVN: <b>3.50 USDT</b> ⚠️");
       expect(text).toContain("AIVault: <b>$12</b>");
 
-      // Section 4: sync currently stale (TUNVN + HTML-escaped error) + recovered in 24h (Sekalipay)
-      expect(text).toContain("Basi saat ini: <b>TUNVN</b> (45 menit)");
+      // Section 4: stale Buff only (HTML-escaped error) + recovered in 24h (Sekalipay)
+      expect(text).toContain("Basi saat ini: <b>TUNVN (Muse Buff)</b> (45 menit)");
+      expect(text).not.toContain("<b>TUNVN</b> (");
       expect(text).toContain("upstream_&lt;502&gt;&amp;bad");
       expect(text).toContain("Sempat basi 24j terakhir (pulih): Sekalipay");
 

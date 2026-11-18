@@ -150,7 +150,7 @@ describe("publishTunvnCatalog", () => {
     const before=fx.sql.prepare("SELECT * FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get();
     const real=fetch;
     vi.stubGlobal("fetch",vi.fn(async (url:string) => String(url).endsWith("/buff/check") ? Response.json({success:true,gross_cost_vnd:1,sell_price_vnd:1,sell_price_usdt:99,fundable:true,orders_breakdown:[]}) : real(url)));
-    expect(await publishTunvnCatalog(db(),20000)).toEqual({ok:false,error:"buff_api_error"});
+    expect(await publishTunvnCatalog(db(),20000)).toEqual({ok:false,error:"buff_api_error:buff_identity"});
     expect(fx.sql.prepare("SELECT * FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get()).toEqual(before);
   });
   it("refuses an oversized mirror before partial writes consume the reserved publication budget",async () => {
@@ -164,7 +164,7 @@ describe("publishTunvnCatalog", () => {
     expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toBeUndefined();
   });
 
-  it("writes tunvn_catalog_success_at only after full projection succeeds, records sanitized errors on failure, and clears errors on recovery", async () => {
+  it("tracks account projection and Buff independently, throttles failed probes, and clears errors on recovery", async () => {
     const t0 = 1_800_000_000_000;
     const realFetch = fetch;
     // 1) Failure during fetch advances throttle claim, leaves success_at unset, and stores sanitized error
@@ -183,15 +183,38 @@ describe("publishTunvnCatalog", () => {
     expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toEqual({ value: String(t0 + 60_000) });
     expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_last_error'").get()).toEqual({ value: "" });
 
-    // 3) Buff failure after mirror succeeds does NOT advance tunvn_catalog_success_at
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => String(url).endsWith("/buff/check")
-      ? new Response("", { status: 502 })
-      : realFetch(url)));
-    const failBuff = await publishTunvnCatalog(db(), RATE, { force: false, now: t0 + 240_000 });
-    expect(failBuff).toEqual({ ok: false, error: "buff_ambiguous" });
-    expect(fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").get()).toEqual({ value: String(t0 + 60_000) });
-    const errBuff = fx.sql.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_last_error'").get() as { value: string };
-    expect(JSON.parse(errBuff.value).error).toBe("buff_ambiguous");
+    // 3) Buff failure keeps its last good data, without hiding fresh account stock.
+    const buffRow = () => fx.sql.prepare("SELECT price,stock,tunvn_cost_usdt,is_active FROM product_variants WHERE sku='TUNVN-BUFF-1B'").get();
+    const setting = (key: string) => (fx.sql.prepare("SELECT value FROM store_settings WHERE key=?").get(key) as { value: string } | undefined)?.value;
+    const before = buffRow();
+    const outage = vi.fn(async (url: string) => String(url).endsWith("/buff/check")
+      ? new Response("untrusted supplier response", { status: 502 })
+      : Response.json({ success: true, products: [upstreamProduct(86, { stock: 3 }), upstreamProduct(83)] }));
+    vi.stubGlobal("fetch", outage);
+    const budget = createBudgetedDatabase(40, 2, fx.db);
+    expect(await publishTunvnCatalog(budget.access, 20_000, { force: false, now: t0 + 240_000 }))
+      .toMatchObject({ ok: true, buff_variants: 0, buff_error: "buff_ambiguous:http_502" });
+    expect(budget.used).toBeLessThanOrEqual(38);
+    expect(setting("tunvn_catalog_success_at")).toBe(String(t0 + 240_000));
+    expect(setting("tunvn_catalog_last_error")).toBe("");
+    expect(setting("tunvn_buff_sync_at")).toBe(String(t0 + 60_000));
+    expect(JSON.parse(setting("tunvn_buff_last_error")!)).toMatchObject({ error: "buff_ambiguous:http_502" });
+    expect(buffRow()).toEqual(before);
+    expect(fx.sql.prepare("SELECT stock FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({ stock: 3 });
+
+    expect(await publishTunvnCatalog(db(), 21_000, { force: false, now: t0 + 300_000 }))
+      .toMatchObject({ ok: true, buff_error: "buff_ambiguous:http_502" });
+    expect(outage.mock.calls.filter(([url]) => url.endsWith("/buff/check"))).toHaveLength(1);
+    expect(setting("tunvn_catalog_success_at")).toBe(String(t0 + 300_000));
+    expect(buffRow()).toEqual(before);
+
+    supplier(undefined, 0.1);
+    expect(await publishTunvnCatalog(db(), 20_000, { force: false, now: t0 + 420_000 }))
+      .toMatchObject({ ok: true, buff_variants: 1 });
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith("/buff/check"))).toHaveLength(1);
+    expect(setting("tunvn_buff_sync_at")).toBe(String(t0 + 420_000));
+    expect(setting("tunvn_buff_last_error")).toBe("");
+    expect(buffRow()).toMatchObject({ price: 2800, stock: -1, tunvn_cost_usdt: 0.1 });
   });
   it("a forced admin refresh cannot overtake a running catalog projection",async () => {
     const real=fetch;

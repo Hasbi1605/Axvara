@@ -89,6 +89,29 @@ describe("checkSyncStaleness", () => {
     }
   });
 
+  it("alerts and recovers Muse Buff independently of the fresh TUNVN account catalog", async () => {
+    const fx = createD1Fixture();
+    try {
+      const messages = stubTelegram();
+      enableTunvn();
+      const db = createDatabaseAccess(fx.db);
+      const now = Date.UTC(2026, 10, 18, 5, 20);
+      const write = fx.sql.prepare("INSERT INTO store_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+      write.run("tunvn_catalog_success_at", String(now - 60_000));
+      write.run("tunvn_buff_sync_at", String(now - 20 * 60_000));
+      write.run("tunvn_buff_last_error", JSON.stringify({ error: "buff_ambiguous:http_502" }));
+      expect(await checkSyncStaleness(db, { now })).toMatchObject({ sources: ["tunvn", "tunvn_buff"], alerted: ["tunvn_buff"] });
+      expect(messages[0].text).toContain("Sinkronisasi TUNVN (Muse Buff) basi");
+      expect(messages[0].text).toContain("buff_ambiguous:http_502");
+      expect(await checkSyncStaleness(db, { now: now + 60_000 })).toMatchObject({ alerted: [], reminded: [] });
+      expect(messages).toHaveLength(1);
+      write.run("tunvn_buff_sync_at", String(now + 120_000));
+      write.run("tunvn_buff_last_error", "");
+      expect(await checkSyncStaleness(db, { now: now + 120_000 })).toMatchObject({ recovered: ["tunvn_buff"] });
+      expect(messages[1].text).toContain("Sinkronisasi TUNVN (Muse Buff) pulih");
+    } finally { fx.close(); }
+  });
+
   it("alerts once when stale, stays silent < 6h, reminds >= 6h, and sends recovery once", async () => {
     const fx = createD1Fixture();
     try {

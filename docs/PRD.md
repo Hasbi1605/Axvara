@@ -665,7 +665,9 @@ dijalankan — bukan status live.
 - Saklar aktif, nama/copy, harga manual dan Muse account asli tidak ditimpa.
   Produk/bundle lain tidak diaktifkan. Produk supplier hilang pada katalog penuh
   valid menjadi stok0; API kosong/rusak/timeout bukan bukti stok habis. Kegagalan
-  menyisakan snapshot terakhir dan health503, bukan sukses palsu atau harga statis.
+  katalog akun tetap health503. Revisi 18 Nov: jika hanya probe Buff gagal,
+  snapshot Buff terakhir dipertahankan dan dimonitor terpisah; kesehatan katalog
+  akun mengikuti proyeksi akun yang benar-benar selesai. Tidak ada harga statis.
 - Lease90detik mencegah dua publikasi bersamaan; order TUNVN baru web/Telegram
   ditolak sementara saat publikasi berjalan agar modal/harga tidak tersnapshot
   separuh. Tidak mengubah order lama/pembayaran/dispatch. Preflight paid tetap.

@@ -475,8 +475,10 @@ TUNVN auto-sync10November2026 (lokal, publikasi CI): job `tunvn_catalog`
 memakai Worker cron existing (revisi lokal 17 Nov 2026: setiap 1 menit dari sebelumnya 3 menit, throttle/lease 45 detik, probe Buff `/api/buff/check` tetap 3 menit di cron sambil menghitung ulang harga FX tiap 1 menit + drain grup segera; belum deploy), terpisah dari `tunvn_orders`.
 Stok/modal ChatGPT dari API, harga Buff dari probe tanpa charge `AXVARA 1`,
 FX segar dan markup tersimpan; harga manual/copy/saklar admin tetap. Buff fundable
-false menjadi stok0, true stok-1 (layanan, bukan stok akun). Error mempertahankan
-snapshot terakhir dan memberi503, tanpa fallback modal statis. Lease90detik
+false menjadi stok0, true stok-1 (layanan, bukan stok akun). Kegagalan katalog
+akun tetap 503. Jika hanya probe Buff gagal, stok/harga Buff terakhir tetap,
+cron melapor `buff_error` tanpa memblokir akun, dan alert `TUNVN (Muse Buff)`
+terpisah. Probe cron dibatasi 3 menit juga setelah gagal. Lease 45 detik
 mencegah sync tumpang tindih dan factory order TUNVN menolak snapshot parsial.
 Budget40 tetap; tidak menambah trigger/env/VPS atau membeli untuk QA. Berkala,
 bukan realtime instan; deployment belum diverifikasi. Detail ARCHITECTURE16.34.

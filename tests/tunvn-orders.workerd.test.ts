@@ -13,7 +13,7 @@ it("workerd catalog cron uses native D1 upserts/lease under40 statements and nev
       globalThis.fetch=async(url,init)=>{
         reads++; const path=new URL(url).pathname;
         if(path==='/api/products')return Response.json({success:true,products:[{id:86,name:'Business',price_vnd:50000,price_usdt:2,stock:7},{id:83,name:'GPay',price_vnd:50000,price_usdt:3,stock:4}]});
-        if(path==='/api/buff/check' && JSON.parse(init.body).orders_text==='AXVARA 1')return Response.json({success:true,fundable:body.fundable,gross_cost_vnd:390,sell_price_vnd:390,sell_price_usdt:0.1,orders_breakdown:[{invite_code:'AXVARA',quantity_b:1,valid:true}]});
+        if(path==='/api/buff/check' && JSON.parse(init.body).orders_text==='AXVARA 1')return body.failBuff ? new Response(null,{status:502}) : Response.json({success:true,fundable:body.fundable,gross_cost_vnd:390,sell_price_vnd:390,sell_price_usdt:0.1,orders_breakdown:[{invite_code:'AXVARA',quantity_b:1,valid:true}]});
         throw new Error('unexpected supplier mutation');
       };
       const budgets=[];
@@ -34,8 +34,8 @@ it("workerd catalog cron uses native D1 upserts/lease under40 statements and nev
       db.prepare("INSERT INTO categories(id,name,slug) VALUES(1,'AI','ai-chatbot')"),
       db.prepare("INSERT INTO products(id,name,slug,price) VALUES(1,'Muse','muse-ai-1-miliar-token',16000)"),
     ]);
-    const call=async(now:number,fundable=true)=>{
-      const response=await runtime.dispatchFetch("https://fixture.test/catalog",{method:"POST",body:JSON.stringify({now,fundable})});
+    const call=async(now:number,fundable=true,failBuff=false)=>{
+      const response=await runtime.dispatchFetch("https://fixture.test/catalog",{method:"POST",body:JSON.stringify({now,fundable,failBuff})});
       const result=await response.json() as {reads:number;results:Record<string,unknown>[];used:number[]};
       expect(result.used.every(n=>n<=38)).toBe(true); return result;
     };
@@ -46,6 +46,13 @@ it("workerd catalog cron uses native D1 upserts/lease under40 statements and nev
     expect((await call(1_800_000_001_000)).reads).toBe(0);
     expect((await call(1_800_000_180_000,false)).reads).toBe(2);
     expect(await db.prepare("SELECT stock,is_active FROM product_variants WHERE sku='TUNVN-BUFF-1B'").first()).toMatchObject({stock:0,is_active:0});
+    const outage=await call(1_800_000_360_000,true,true);
+    expect(outage.reads).toBe(2);
+    expect(outage.results).toContainEqual(expect.objectContaining({ok:true,buff_error:"buff_ambiguous:http_502"}));
+    expect((await call(1_800_000_420_000,true,true)).reads).toBe(1);
+    expect(await db.prepare("SELECT stock,is_active FROM product_variants WHERE sku='TUNVN-BUFF-1B'").first()).toMatchObject({stock:0,is_active:0});
+    expect(await db.prepare("SELECT value FROM store_settings WHERE key='tunvn_catalog_success_at'").first()).toMatchObject({value:"1800000420000"});
+    expect(await db.prepare("SELECT value FROM store_settings WHERE key='tunvn_buff_sync_at'").first()).toMatchObject({value:"1800000180000"});
   } finally {fixture.close();await runtime.dispose();}
 },30000);
 

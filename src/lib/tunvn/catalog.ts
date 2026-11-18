@@ -10,7 +10,7 @@
 // menerbitkan bersamaan; guard order TUNVN menolak saat lease aktif.
 
 import type { DatabaseAccess } from "@/lib/db-access";
-import { recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
+import { parseStoredSyncError, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { checkTunvnBuff, isTunvnSyncEnabled } from "./client";
 import { syncTunvnCatalog } from "./sync";
 import { TUNVN_BUFF_VARIANT_B, tunvnBuffSellPriceIdr, tunvnSellPriceIdr } from "./pricing";
@@ -23,12 +23,13 @@ import { mapSkCategory } from "@/lib/sekalipay/sync";
 export { TUNVN_CHATGPT_IMAGE_URL, TUNVN_MUSE_SLUG, tunvnDefaultDescription };
 
 export const TUNVN_BUFF_SYNC_SETTING_KEY = "tunvn_buff_sync_at";
+const TUNVN_BUFF_ERROR_KEY = "tunvn_buff_last_error";
 export const TUNVN_BUFF_MIN_INTERVAL_MS = 3 * 60_000;
 
 export type TunvnPublishResult =
   | { skipped: "not_configured" | "throttled" | "claimed_elsewhere" }
   | { ok: false; error: string }
-  | { ok: true; families: number; variants: number; buff_variants: number; idr_per_usdt: number; activated: number };
+  | { ok: true; families: number; variants: number; buff_variants: number; idr_per_usdt: number; activated: number; buff_error?: string };
 
 type Row = Record<string, unknown>;
 
@@ -187,6 +188,7 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       || Number((await db.queryFirst("SELECT id FROM products WHERE slug=?", TUNVN_MUSE_SLUG))?.id ?? 0);
     let buff = 0;
     let buffError: string | null = null;
+    let buffChecked = false;
     if (museId > 0) {
       const existingRows = new Map<number, Row | null>();
       for (const quantityB of TUNVN_BUFF_VARIANT_B) {
@@ -202,26 +204,27 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
         const row = existingRows.get(quantityB);
         return !row || !(Number(row.tunvn_cost_usdt) > 0);
       });
-      let shouldProbeBuff = opts.force === true || missingBuffVariant;
-      if (!shouldProbeBuff) {
-        const buffSync = await db.queryFirst("SELECT value FROM store_settings WHERE key=?", TUNVN_BUFF_SYNC_SETTING_KEY);
-        const lastBuffSync = buffSync ? Number(buffSync.value) : NaN;
-        if (!Number.isFinite(lastBuffSync) || now - lastBuffSync < 0 || now - lastBuffSync >= TUNVN_BUFF_MIN_INTERVAL_MS) {
-          shouldProbeBuff = true;
-        }
-      }
       let checked: Awaited<ReturnType<typeof checkTunvnBuff>> | null = null;
-      if (shouldProbeBuff) {
+      const status = opts.force ? [] : await db.queryAll(
+        "SELECT key,value FROM store_settings WHERE key IN (?,?)", TUNVN_BUFF_SYNC_SETTING_KEY, TUNVN_BUFF_ERROR_KEY,
+      );
+      const lastSuccess = Number(status.find(row => row.key === TUNVN_BUFF_SYNC_SETTING_KEY)?.value ?? NaN);
+      const previousError = parseStoredSyncError(status.find(row => row.key === TUNVN_BUFF_ERROR_KEY)?.value);
+      const lastFailure = Date.parse(previousError?.at ?? "");
+      const recent = (at: number) => Number.isFinite(at) && now >= at && now - at < TUNVN_BUFF_MIN_INTERVAL_MS;
+      if (opts.force || (!recent(lastFailure) && (missingBuffVariant || !recent(lastSuccess)))) {
         checked = await checkTunvnBuff(1);
-        if (checked.kind !== "ok") buffError = `buff_${checked.kind}`;
-        else {
-          await db.execRun(
-            `INSERT INTO store_settings(key,value,updated_at) VALUES(?,?,datetime('now'))
-             ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
-            TUNVN_BUFF_SYNC_SETTING_KEY,
-            String(now),
-          );
+        if (checked.kind === "ok") {
+          buffChecked = true;
+        } else {
+          const detail = checked.kind === "http_error" ? `http_${checked.status}`
+            : checked.kind === "api_error" ? checked.detail : checked.reason;
+          buffError = `buff_${checked.kind}:${detail}`;
+          await recordSyncError(db, "tunvn_buff", buffError, now);
         }
+      } else {
+        // A throttled tick after failure must not refresh stale Buff assumptions.
+        buffError = previousError?.error ?? null;
       }
       if (!buffError) {
         for (const quantityB of TUNVN_BUFF_VARIANT_B) {
@@ -263,18 +266,23 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
       const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
       await bumpCatalogRevision("market", db);
     }
-    if (buffError) {
-      await recordSyncError(db, "tunvn_catalog", buffError, now);
-      return { ok: false, error: buffError };
+    if (buffChecked) {
+      await db.execRun(
+        `INSERT INTO store_settings(key,value,updated_at) VALUES(?,?,datetime('now')), (?, '', datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+        TUNVN_BUFF_SYNC_SETTING_KEY, String(now), TUNVN_BUFF_ERROR_KEY,
+      );
     }
     await recordSyncSuccess(db, "tunvn_catalog", now);
+    // Keep the existing manual publish failure response; cron reports partial health.
+    if (buffError && opts.force) return { ok: false, error: buffError };
     const productActiveBySlug = new Map(plans.map(plan => [plan.slug, plan.existing ? Number(plan.existing.is_active ?? 0) === 1 : false]));
     const activated = plans.reduce((count, plan) => count + plan.members.filter(member => {
       const id = Number(member.mirror.supplier_product_id);
       const variant = variantBySource.get(id);
       return Boolean(variant) && Number(variant!.is_active) === 1 && productActiveBySlug.get(plan.slug) === true;
     }).length, 0);
-    return { ok: true, families: plans.length, variants: inserts.length + updates.filter(row => Number(row.cas) === 1).length, buff_variants: buff, idr_per_usdt: idrPerUsdt, activated };
+    return { ok: true, families: plans.length, variants: inserts.length + updates.filter(row => Number(row.cas) === 1).length, buff_variants: buff, idr_per_usdt: idrPerUsdt, activated, ...(buffError ? { buff_error: buffError } : {}) };
   } catch (error) {
     await recordSyncError(db, "tunvn_catalog", error, now);
     throw error;
