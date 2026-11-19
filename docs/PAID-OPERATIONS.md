@@ -1,6 +1,10 @@
 # Operasional Workers Paid — 23 Oktober 2026
 
-## Wave 1: Penghapusan batas hemat era Free (`W1`) — 19 November 2026 (lokal, belum deploy)
+## B3 Aktivasi Queue pengiriman pesanan instan (`queue_fulfillment_mode = 'active'`) — 19 November 2026 (live di D1 produksi)
+
+- Diaktifkan atas keputusan owner pada `2026-11-19 14:04:40 UTC` (`21:04:40 WIB`) di `store_settings` D1 produksi (`axvara-db`) untuk seluruh `order_kind` (`apps`, `pedia`, `games`), setelah ~34 jam mode `shadow` bersih (`43/43` Write=Read=Delete, `0` DLQ, `43/43` HTTP 200 di `/api/internal/queue/fulfill`, `0` worker error, `0` duplikasi `buyer_notice_log`/`fulfillment_send_claims`). Rollback: ubah `queue_fulfillment_mode` kembali ke `'off'`.
+
+## Wave 1: Penghapusan batas hemat era Free (`W1`) — 19 November 2026 (publikasi via CI `47dbe565`)
 
 Aturan utama Workers Paid (keputusan owner 19 Nov 2026): hilangkan batas hemat era Free (budget 40 statement, cap 4/tick, cooldown 60 dtk, probe kuota harian D1 di middleware) selama tetap berada dalam kuota Paid (25 miliar baca / 50 juta tulis per bulan) dan batas rate limit eksternal:
 
