@@ -110,14 +110,18 @@ export async function createOrderWithStock(input: AtomicOrderInput): Promise<voi
                 AND ? >= COALESCE(pv.min_qty,1)
                 AND pv.buyer_field_key IS ? AND pv.max_qty IS ?
                 AND (pv.max_qty IS NULL OR ? <= pv.max_qty)
-                 AND pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ? AND pv.tunvn_source_product_id IS ?
-                 AND pv.aivault_service_id IS ? AND p.aivault_family IS ? AND (SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) IS ?
-                 ${bulkById.get(item.variant_id)?.aivault_service_id ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='aivault_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""} AND pv.storebat_product_id IS ? AND p.storebat_family IS ? AND pv.storebat_cost_usd IS ? AND pv.storebat_fx_idr_per_usd IS ?
+                 -- Supplier identity snapshot grouped in parentheses: identical AND
+                 -- semantics, but a shallow tree for the D1 expression-depth limit of 100
+                 -- (incident 19 Nov 2026: one long AND chain broke every checkout).
+                 AND ((pv.sku IS ? AND pv.tunvn_buff_quantity_b IS ? AND p.slug IS ? AND pv.tunvn_source_product_id IS ?)
+                   AND (pv.aivault_service_id IS ? AND p.aivault_family IS ? AND (SELECT unit_price_usd FROM aivault_products WHERE service_id=pv.aivault_service_id) IS ?)
+                   AND (pv.storebat_product_id IS ? AND p.storebat_family IS ? AND pv.storebat_cost_usd IS ? AND pv.storebat_fx_idr_per_usd IS ?)
+                   AND (pv.mirai_package_code IS ? AND p.mirai_family IS ? AND pv.mirai_cost_usdt IS ? AND pv.mirai_fx_idr_per_usdt IS ?)
+                   AND (pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?))
+                 ${bulkById.get(item.variant_id)?.aivault_service_id ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='aivault_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""}
                  ${bulkById.get(item.variant_id)?.storebat_product_id ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='storebat_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""}
-                 AND pv.mirai_package_code IS ? AND p.mirai_family IS ? AND pv.mirai_cost_usdt IS ? AND pv.mirai_fx_idr_per_usdt IS ?
                  ${bulkById.get(item.variant_id)?.mirai_package_code ? "AND NOT EXISTS(SELECT 1 FROM store_settings WHERE key='mirai_catalog_lease' AND json_extract(value,'$.until')>unixepoch('now')*1000)" : ""}
-                  AND pv.tunvn_cost_usdt IS ? AND (SELECT price_usdt FROM tunvn_products WHERE supplier_product_id=CAST(substr(pv.sku,7) AS INTEGER)) IS ?
-                  ${String(bulkById.get(item.variant_id)?.sku ?? "").startsWith("TUNVN-") ? "AND NOT EXISTS (SELECT 1 FROM store_settings WHERE key='tunvn_catalog_lease' AND json_extract(value,'$.until') > unixepoch('now')*1000)" : ""}
+                 ${String(bulkById.get(item.variant_id)?.sku ?? "").startsWith("TUNVN-") ? "AND NOT EXISTS (SELECT 1 FROM store_settings WHERE key='tunvn_catalog_lease' AND json_extract(value,'$.until') > unixepoch('now')*1000)" : ""}
                 -- WR3 Jaspay: cap wajib ada dan >= qty agregat varian ini;
                 -- cap hilang/invalid = tolak (fail-closed), dicek atomik di
                 -- batch yang sama dengan reservasi (tahan race perubahan cap).

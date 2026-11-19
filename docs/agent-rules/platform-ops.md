@@ -1,5 +1,10 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Batas kedalaman ekspresi D1 — 19 November 2026
+
+- Tiap sambungan `AND` pada rantai datar menambah kedalaman ekspresi. Setelah penambahan kondisi StoreBat/Mirai, guard `createOrderWithStock` melebihi batas D1 100 tingkat dan `POST /api/orders` gagal 500. Kelompokkan kondisi berdasarkan snapshot supplier saat menambah syarat.
+- `tests/market-order-reservation.workerd.test.ts` menjalankan reservasi aktual di D1 lokal melalui Miniflare. Runtime ini menerapkan batas 100 tingkat, sementara fixture `node:sqlite` standar menerima ekspresi yang lebih dalam.
+
 ### Prioritas Workers Paid dan kuota D1 — 19 November 2026 (keputusan owner)
 
 - Utamakan kelancaran dan operasi real-time. Tambahan read/write D1 dapat diterima selama proyeksi tetap dalam jatah bulanan Workers Paid (**25 miliar baca / 50 juta tulis**), dipantau lewat `.github/workflows/d1-usage.yml`. Optimalkan hanya bila proyeksi mendekati jatah atau latensi memburuk.

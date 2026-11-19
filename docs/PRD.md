@@ -81,6 +81,12 @@ tanpa perubahan HTML/tampilan. Belum dipublikasikan/deploy.
   pertama meski secret varian dirotasi saat settlement belum selesai.
 - Implementasi dan fixture/native D1 lokal, bukan bukti deployment/pengiriman nyata.
 
+## Pemulihan checkout Market web — 19 November 2026 (lokal)
+
+Perbaikan reservasi stok mengatasi HTTP 500 saat pembeli menekan **Bayar**
+karena query melebihi batas kedalaman ekspresi D1. Quote yang sama tetap dapat
+dipakai untuk melanjutkan pesanan yang sudah tersimpan.
+
 ## A-S: kesehatan checkout tanpa transaksi — 18 November 2026 (lokal)
 
 Tiga probe per tick menit memeriksa home/katalog/quote sebelum pekerjaan order.

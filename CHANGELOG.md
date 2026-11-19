@@ -1,5 +1,7 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-19 — Pulihkan pembuatan order Market web yang gagal HTTP 500 dengan mengelompokkan kondisi identitas supplier pada guard reservasi stok D1 — `src/lib/db/orders-create.ts`, `tests/market-order-reservation.workerd.test.ts`, PRD dan arsitektur — (verifikasi lokal: workerd mereproduksi batas 100 sebelum patch dan membuat order dengan stok berkurang sesudahnya, fokus 6 file/222 tes, `npx vitest run --run --maxWorkers=6 --testTimeout=30000 --retry=2` pada Node 22 lulus 551 file/7.547 tes, TypeScript, ESLint terarah dan diff check lulus)
+
 - 2026-11-19 — Aktivasi produk AIVault dari menu Produk tanpa varian eksplisit hanya menghidupkan varian AV pertama (setara TUNVN/StoreBat/Mirai); hapus kalimat rumus harga di tab Markup; modal USD tampil hingga 4 desimal — `src/app/api/products/[id]/route.ts`, `src/components/admin/{SupplierAdminPanel,supplier-admin-data}.ts(x)`, `docs/agent-rules/aivault.md`, `docs/DESIGN.md` — (verifikasi: test aktivasi AV baru + 57 tes AIVault/arsip lulus; suite penuh final dicatat di commit rilis)
 
 - 2026-11-19 — Satukan AIVault, TUNVN, StoreBat, dan Mirai dalam Ringkas/Antrean/Markup/Alat; hapus Katalog dan saklar lama TUNVN, pertahankan Buff/rekonsiliasi serta Grosir AIVault — `src/components/admin/SupplierAdminPanel.tsx`, `docs/DESIGN.md` — (verifikasi lokal: 6 file/129 tes fokus, 550 file/7.545 tes suite penuh, TypeScript, lint terarah, diff check, dan 32 tangkapan fixture 1440/390 tanpa overflow atau error console)
