@@ -14,7 +14,7 @@ export async function requestBuyerInput(chatId:number,from:{ id:number },product
     await sendMessage({ chat_id:chatId,text:"Jumlah tidak valid. Pilih 1–30 untuk Buff Muse.",reply_markup:minimalMenuKeyboard() }); return true;
   }
   if (!await setPendingActionUnlessCreating(String(from.id),chatId,`buyerinput:${productId}:${variantId}:${qty}`)) return true;
-  await sendMessage({ chat_id:chatId,text:"Kode Invite Muse: kirim 6 huruf/angka dari Invite friends di Muse. Huruf besar/kecil dipertahankan. Satu kode per checkout; jumlah 1–30 = 1–30B token. /batal untuk kembali.",reply_markup:{ force_reply:true,input_field_placeholder:"6 huruf/angka" } });
+  await sendMessage({ chat_id:chatId,text:"Kirim Kode Invite Muse (6 huruf/angka, case-sensitive; 1–30 = 1–30B token). /batal untuk batal.",reply_markup:{ force_reply:true,input_field_placeholder:"6 huruf/angka" } });
   return true;
 }
 

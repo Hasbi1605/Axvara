@@ -184,7 +184,7 @@ describe("Pesan lunas Telegram mengikuti kelas kirim (instan / MBO / manual)", (
   it("WR Made By Order → pesan tunggu + janji kirim otomatis ke chat ini", async () => {
     const text = await paidText("AXV-20261004-PAID0002", 21, 2);
     expect(text).toContain("Made By Order");
-    expect(text).toContain("maksimal 12 jam");
+    expect(text).toContain("maks 12 jam");
     expect(text).toContain("otomatis ke chat ini");
     expect(text).not.toContain("nomor WhatsApp");
   });

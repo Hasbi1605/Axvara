@@ -32,20 +32,15 @@ export type TelegramBestseller = {
 
 export function welcomeMessage(firstName: string, bestsellers: TelegramBestseller[] = []): string {
   const name = escapeHtml(truncate(firstName, 50));
-  const lines = [
-    `<b>Halo, ${name}.</b>`,
-    "Selamat datang di AXVARA.",
-    "",
-  ];
+  const lines = [`<b>AXVARA</b> · Halo, ${name}.`];
   const top = bestsellers.filter((b) => b.productId > 0).slice(0, 3);
   if (top.length > 0) {
-    lines.push("<b>Paling laris</b>");
+    lines.push("", "<b>Paling laris</b>");
     top.forEach((item, i) => {
       lines.push(`${i + 1}. ${escapeHtml(truncate(item.name, 50))}: ${formatRupiah(item.price)}, ${formatSoldCountLabel(item.soldCount)}`);
     });
-    lines.push("");
   }
-  lines.push("Lihat produk di /katalog atau cari lewat /cari.");
+  lines.push("", "Lihat /katalog atau ketik nama produk.");
   return lines.join("\n");
 }
 
@@ -53,7 +48,6 @@ export function catalogFlatMessage(total: number, opts?: { locale?: Locale }): s
   const en = opts?.locale === "en";
   return [
     en ? "<b>🛍 AXVARA Catalog</b>" : "<b>🛍 Katalog AXVARA</b>",
-    "",
     total > 0
       ? en ? `${total} products available.` : `${total} produk tersedia.`
       : en ? "No products available." : "Belum ada produk tersedia.",
@@ -61,14 +55,7 @@ export function catalogFlatMessage(total: number, opts?: { locale?: Locale }): s
 }
 
 export function categoriesMessage(opts?: { locale?: Locale }): string {
-  const en = opts?.locale === "en";
-  return en
-    ? ["<b>Product categories</b>", "", "Choose a category:"].join("\n")
-    : [
-        "<b>Kategori produk</b>",
-        "",
-        "Pilih kategori untuk melihat produk:",
-      ].join("\n");
+  return opts?.locale === "en" ? "<b>Product categories</b>" : "<b>Kategori produk</b>";
 }
 
 export function categoryProductsMessage(categoryName: string, total: number, opts?: { locale?: Locale }): string {
@@ -76,8 +63,7 @@ export function categoryProductsMessage(categoryName: string, total: number, opt
   const en = opts?.locale === "en";
   return [
     `<b>${name}</b>`,
-    "",
-    total > 0 ? (en ? `${total} products available.` : `${total} produk tersedia.`) : (en ? "No products available in this category." : "Belum ada produk tersedia di kategori ini."),
+    total > 0 ? (en ? `${total} products available.` : `${total} produk tersedia.`) : (en ? "No products in this category." : "Kategori ini belum ada produk."),
   ].join("\n");
 }
 
@@ -156,8 +142,11 @@ export function productDetailMessage(product: {
     else if (stock === 0) lines.push(en ? "Out of stock" : "Stok habis");
   }
 
-  // Highlight: one-line blockquote from supplied description.
-  const rawDesc = String(product.description ?? "").trim();
+  // Highlight: one-line blockquote from supplied description (strip redundant variant-detail boilerplate).
+  const rawDesc = String(product.description ?? "")
+    .replace(/Detail benefit,\s*syarat,\s*dan cara aktivasi mengikuti varian yang dipilih\.?/gi, "")
+    .replace(/Benefit details,\s*terms,\s*and activation steps follow the chosen variant\.?/gi, "")
+    .trim();
   let highlight = "";
   let fullDescription = "";
   if (rawDesc) {
@@ -209,7 +198,7 @@ export function productDetailMessage(product: {
     const allInstant = deliveryLines.length === purchasable.length
       && purchasable.every((v) => v.wr_delivery_class === "restock" || /^⚡/.test(String(v.delivery_badge ?? "").trim()));
     if (allInstant) {
-      lines.push(en ? "⚡ Instant delivery after payment" : "⚡ Kirim otomatis setelah bayar");
+      lines.push(en ? "⚡ Instant delivery" : "⚡ Kirim otomatis");
     } else {
       lines.push("", en ? "<b>Delivery</b>" : "<b>Pengiriman</b>");
       const deliverySummary = deliveryLines.slice(0, 10).map((v) => {
@@ -236,19 +225,9 @@ export function productDetailMessage(product: {
 
 export function myOrdersPrompt(opts?: { locale?: Locale }): string {
   if (opts?.locale === "en") {
-    return [
-      "<b>Check order</b>",
-      "",
-      "Type /pesanan followed by the order code:",
-      "<code>/pesanan AXV-XXXXXXXX-XXXXXXXX</code>",
-    ].join("\n");
+    return "<b>Check order</b>\nType <code>/pesanan AXV-XXXXXXXX-XXXXXXXX</code>";
   }
-  return [
-    "<b>Cek pesanan</b>",
-    "",
-    "Ketik /pesanan diikuti kode pesanan:",
-    "<code>/pesanan AXV-XXXXXXXX-XXXXXXXX</code>",
-  ].join("\n");
+  return "<b>Cek pesanan</b>\nKetik <code>/pesanan AXV-XXXXXXXX-XXXXXXXX</code>";
 }
 
 export type TelegramOrderRow = {
@@ -264,13 +243,9 @@ export type TelegramOrderRow = {
 export function myOrdersMessage(orders: TelegramOrderRow[], opts?: { locale?: Locale }): string {
   const en = opts?.locale === "en";
   if (orders.length === 0) {
-    return [
-      en ? "<b>My orders</b>" : "<b>Pesanan saya</b>",
-      "",
-      en ? "No orders from this Telegram account yet." : "Belum ada pesanan dari akun Telegram ini.",
-      "",
-      en ? "Browse products in /katalog." : "Lihat produk di /katalog.",
-    ].join("\n");
+    return en
+      ? "<b>My orders</b>\nNo orders yet. Browse /katalog."
+      : "<b>Pesanan saya</b>\nBelum ada pesanan. Lihat /katalog.";
   }
   const lines = [
     en ? "<b>My orders</b>" : "<b>Pesanan saya</b>",
@@ -295,37 +270,23 @@ export function myOrdersMessage(orders: TelegramOrderRow[], opts?: { locale?: Lo
 
 export function searchPromptMessage(opts?: { locale?: Locale }): string {
   if (opts?.locale === "en") {
-    return [
-      "<b>Search products</b>",
-      "",
-      "Type the product name you are looking for.",
-      "",
-      "Example: <code>canva</code>, <code>chatgpt</code>, <code>netflix</code>",
-      "",
-      "/batal to go back.",
-    ].join("\n");
+    return "<b>🔎 Search products</b>\nType a product name (e.g. <code>canva</code>, <code>netflix</code>). /batal to cancel.";
   }
-  return [
-    "<b>Cari produk</b>",
-    "",
-    "Ketik nama produk yang kamu cari.",
-    "",
-    "Contoh: <code>canva</code>, <code>chatgpt</code>, <code>netflix</code>",
-    "",
-    "/batal untuk kembali.",
-  ].join("\n");
+  return "<b>🔎 Cari produk</b>\nKetik nama produk (mis. <code>canva</code>, <code>netflix</code>). /batal untuk batal.";
 }
 
-export function searchResultsMessage(keyword: string, total: number, soldOut = 0, showing?: number, opts?: { locale?: Locale }): string {
+export function searchResultsMessage(keyword: string, total: number, soldOut = 0, _showing?: number, opts?: { locale?: Locale }): string {
   const kw = escapeHtml(truncate(keyword, 60));
   const en = opts?.locale === "en";
-  return [
-    en ? `<b>Search results: ${kw}</b>` : `<b>Hasil pencarian: ${kw}</b>`,
-    "",
-    total > 0
-      ? (en ? `${total} matching products.${showing != null ? ` Showing ${Math.max(0, Math.min(total, Math.floor(showing)))} products.` : ""}` : `${total} produk cocok.${showing != null ? ` Menampilkan ${Math.max(0, Math.min(total, Math.floor(showing)))} produk.` : ""}`)
-      : soldOut > 0
-        ? (en ? "Matching products are sold out. Browse other products in /katalog." : "Produk yang cocok sedang habis. Lihat produk lain di /katalog.")
-        : (en ? "No matching products. Try another keyword or browse /katalog." : "Tidak ada produk yang cocok. Coba kata lain atau lihat /katalog."),
-  ].join("\n");
+  if (total > 0) {
+    return en ? `🔎 <b>Results for “${kw}”</b>` : `🔎 <b>Hasil untuk “${kw}”</b>`;
+  }
+  if (soldOut > 0) {
+    return en
+      ? `🔎 <b>Results for “${kw}”</b>\n\nSold out. Browse /katalog.`
+      : `🔎 <b>Hasil untuk “${kw}”</b>\n\nSedang habis. Cek /katalog.`;
+  }
+  return en
+    ? `🔎 <b>Results for “${kw}”</b>\n\nNo matches. Try another keyword.`
+    : `🔎 <b>Hasil untuk “${kw}”</b>\n\nTidak ketemu. Coba kata lain.`;
 }

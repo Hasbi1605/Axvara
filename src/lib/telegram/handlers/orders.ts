@@ -703,8 +703,8 @@ export async function handleWarrantyClaim(chatId: number, messageId: number, ord
     ...rules.map(line => escapeHtml(line)),
     "",
     warranty.claimEligible
-      ? (en ? "Tap <b>Submit Claim Here</b>, then send your issue text and a screenshot." : "Tekan <b>Ajukan Klaim di Sini</b>, lalu kirim teks kendala dan screenshot.")
-      : (en ? "Claim may be rejected because the warranty is not active. Contact admin via WhatsApp." : "Klaim bisa ditolak karena garansi tidak aktif. Hubungi admin lewat WhatsApp."),
+      ? (en ? "Tap <b>Submit Claim Here</b>, then send issue & screenshot." : "Tekan <b>Ajukan Klaim di Sini</b>, lalu kirim kendala & screenshot.")
+      : (en ? "Warranty inactive — contact admin via WhatsApp." : "Garansi tidak aktif — hubungi admin via WhatsApp."),
   ];
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
@@ -747,8 +747,8 @@ export async function handleWarrantyClaimStart(chatId: number, messageId: number
       `<code>${escapeHtml(code)}</code>`,
       "",
       locale === "en"
-        ? "Send your issue description now (you may also attach ONE screenshot). Type /batal to cancel."
-        : "Kirim deskripsi kendala sekarang (boleh lampirkan SATU screenshot). Ketik /batal untuk membatalkan.",
+        ? "Send issue description (optional: 1 screenshot). /batal to cancel."
+        : "Kirim kendala (opsional: 1 screenshot). /batal untuk batal.",
     ].join("\n"),
     parse_mode: "HTML",
     reply_markup: { force_reply: true, selective: true, input_field_placeholder: locale === "en" ? "Describe the issue…" : "Jelaskan kendalanya…" },
@@ -854,7 +854,7 @@ export async function handlePendingWarrantyClaimInput(
       locale === "en" ? "<b>✅ Claim submitted</b>" : "<b>✅ Klaim terkirim</b>",
       `<code>${escapeHtml(ref)}</code>`,
       "",
-      locale === "en" ? "Admin will process your claim (1–3 days). Keep this reference." : "Admin akan memproses klaimmu (1–3 hari). Simpan referensi ini.",
+      locale === "en" ? "Admin processes claims in 1–3 days. Keep this reference." : "Admin memproses klaim 1–3 hari. Simpan referensi ini.",
     ].join("\n"),
     parse_mode: "HTML",
     reply_markup: {

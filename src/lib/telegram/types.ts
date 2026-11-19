@@ -71,6 +71,7 @@ export interface InlineKeyboardMarkup {
 
 export interface ReplyKeyboardButton {
   text: string;
+  style?: "primary" | "success" | "danger";
 }
 
 export interface ReplyKeyboardMarkup {
@@ -81,13 +82,18 @@ export interface ReplyKeyboardMarkup {
   input_field_placeholder?: string;
 }
 
+export interface ReplyKeyboardRemove {
+  remove_keyboard: true;
+  selective?: boolean;
+}
+
 export interface ForceReply {
   force_reply: true;
   input_field_placeholder?: string;
   selective?: boolean;
 }
 
-export type AnyReplyMarkup = InlineKeyboardMarkup | ReplyKeyboardMarkup | ForceReply;
+export type AnyReplyMarkup = InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply;
 
 export interface SendMessageParams {
   chat_id: number | string;

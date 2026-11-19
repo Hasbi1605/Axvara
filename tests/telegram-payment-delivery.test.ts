@@ -177,7 +177,7 @@ describe("TG R3 provider invoice delivery fence + text retry", () => {
     const text = withAddress()[0].text;
     expect(text).toContain("Send exactly <b>1.25 USDT</b> on the <b>BNB Smart Chain</b> network only.");
     expect(text).toContain("incl. crypto service fee US$0.11");
-    expect(text).toContain("Sending another coin or network may lose your funds");
+    expect(text).toContain("Wrong coin/network may lose funds. Gas paid by sender.");
     expect(text).not.toMatch(/QRIS/i);
     expect(vi.mocked(sendPhoto)).not.toHaveBeenCalled();
     expect(orderRow(code).sent).not.toBeNull();
@@ -206,7 +206,7 @@ describe("TG R3 provider invoice delivery fence + text retry", () => {
   it("ambiguous send at dispatch: no blind resend — marker set + ONE same-order nudge without amount/address", async () => {
     const { code } = await createWithSendFailure(AMBIGUOUS);
     expect(orderRow(code).sent).not.toBeNull();
-    const nudges = allSends().filter((m) => m.text.includes("Telegram connection is slow"));
+    const nudges = allSends().filter((m) => m.text.includes("Slow connection"));
     expect(nudges).toHaveLength(1);
     expect(nudges[0].text).toContain(code);
     expect(nudges[0].text).not.toContain(PAY_ADDR);
@@ -227,7 +227,7 @@ describe("TG R3 provider invoice delivery fence + text retry", () => {
     expect(await retryTelegramInvoiceDelivery(code)).toBe(true);
     expect(orderRow(code).sent).not.toBeNull();
     expect(withAddress()).toHaveLength(1); // the single (ambiguous) attempt; never repeated
-    expect(allSends().filter((m) => m.text.includes("Telegram connection is slow"))).toHaveLength(1);
+    expect(allSends().filter((m) => m.text.includes("Slow connection"))).toHaveLength(1);
     clearTg();
     expect(await retryTelegramInvoiceDelivery(code)).toBe(true);
     expect(allSends()).toHaveLength(0);

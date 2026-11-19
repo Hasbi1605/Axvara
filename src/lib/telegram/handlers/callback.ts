@@ -564,7 +564,7 @@ export async function handleCallback(
       if (isD1Mode() && !(await setPendingActionUnlessCreating(String(from.id), chatId, `email_for:${productId}:${variantId}:${qty}`))) break;
       await sendMessage({
         chat_id: chatId,
-        text: enEmail ? "Send an active email to receive the product. Type /batal to go back." : "Kirim email aktif untuk menerima produk. Ketik /batal untuk kembali.",
+        text: enEmail ? "Send an active email. /batal to cancel." : "Kirim email aktif. /batal untuk batal.",
         parse_mode: "HTML",
         reply_markup: { force_reply: true, selective: true, input_field_placeholder: "nama@email.com" },
       });
@@ -573,7 +573,7 @@ export async function handleCallback(
 
     case "ceedit":
       if (!(await setPendingActionUnlessCreating(String(from.id), chatId, "emailcart:"))) break;
-      await sendMessage({ chat_id: chatId, text: "Kirim email aktif untuk menerima produk. Ketik /batal untuk kembali.", reply_markup: { force_reply: true, input_field_placeholder: "nama@email.com" } });
+      await sendMessage({ chat_id: chatId, text: "Kirim email aktif. /batal untuk batal.", reply_markup: { force_reply: true, input_field_placeholder: "nama@email.com" } });
       break;
 
     case "wainput":
@@ -605,7 +605,7 @@ export async function handleCallback(
       break;
 
     case "cancel":
-      await sendMessage({ chat_id: chatId, text: `Batalkan pesanan ${String(params[0]).toUpperCase()}? Jika sudah membayar, cek pembayaran atau hubungi admin.`, reply_markup: cancelConfirmationKeyboard(params[0]) });
+      await sendMessage({ chat_id: chatId, text: `Batalkan pesanan ${String(params[0]).toUpperCase()}?`, reply_markup: cancelConfirmationKeyboard(params[0]) });
       break;
 
     case "cancelok":

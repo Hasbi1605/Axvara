@@ -187,7 +187,7 @@ describe("TG R2 gateway create + consent (local only)", () => {
     };
     fx.sql.prepare("UPDATE telegram_users SET pending_action=? WHERE user_id=?").run(`payq1:${JSON.stringify(state)}`, String(buyer.id));
     await click(`pgo:${state.nonce}`);
-    expect(lastText()).toMatch(/can't be used right now|belum bisa dipakai/i);
+    expect(lastText()).toMatch(/Method unavailable|Metode belum tersedia/i);
     expect(lastCallbacks()).toContain("pmentry");
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM payment_transactions").get()?.n).toBe(0);
@@ -214,7 +214,7 @@ describe("TG R2 gateway create + consent (local only)", () => {
     expect(index).toBeGreaterThanOrEqual(0);
     await click(`pm:${frozen.nonce}:${index}`);
     await click(`pgo:${frozen.nonce}`);
-    expect(lastText()).toContain("This payment method is having problems. Please try another payment method.");
+    expect(lastText()).toContain("Payment method error. Try another method.");
     expect(lastCallbacks()).toContain("pmentry");
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM orders").get()?.n).toBe(0);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM payment_transactions").get()?.n).toBe(0);

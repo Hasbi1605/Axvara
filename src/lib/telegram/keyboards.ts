@@ -166,7 +166,10 @@ export function mainReplyMenu(locale: "id" | "en" = "id"): ReplyKeyboardMarkup {
         [{ text: MENU_LABEL_EN.warranty }, { text: MENU_LABEL_EN.help }],
       ],
       resize_keyboard: true,
-      is_persistent: true,
+      // false: Telegram shows the keyboard toggle icon in the input field so
+      // buyers can collapse/expand the menu (owner request 2026-11-20).
+      is_persistent: false,
+      one_time_keyboard: false,
       input_field_placeholder: "Search product or pick a menu…",
     };
   }
@@ -177,7 +180,8 @@ export function mainReplyMenu(locale: "id" | "en" = "id"): ReplyKeyboardMarkup {
       [{ text: MENU_LABEL_WARRANTY }, { text: MENU_LABEL_HELP }],
     ],
     resize_keyboard: true,
-    is_persistent: true,
+    is_persistent: false,
+    one_time_keyboard: false,
     input_field_placeholder: "Cari produk atau ketik nama produk…",
   };
 }
@@ -1006,6 +1010,6 @@ export function cryptoCoinKeyboard(
     const buttons = coins.filter((coin) => coin.asset.group === group).sort((a, b) => a.asset.order - b.asset.order).map(button);
     for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
   }
-  rows.push([{ text: ctx?.locale === "en" ? "⬅ Back" : "⬅ Kembali", callback_data: `pmb:${state.nonce}` }]);
+  rows.push([{ text: ctx?.locale === "en" ? "⬅ Back" : "⬅ Kembali", callback_data: `pmb:${state.nonce}`, style: "primary" }]);
   return { inline_keyboard: rows };
 }

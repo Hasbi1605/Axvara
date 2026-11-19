@@ -233,8 +233,8 @@ describe("TG R1 frozen method selection (local only)", () => {
       expect(cryptoRows[0][0].text).toBe("Crypto (USD) · 2.73 USD");
       expect(cryptoRows[0][0].callback_data).toMatch(/^pmc:[0-9a-f]{16}$/);
       expect(rows.flat().some((b) => /^BTC|USDT/.test(b.text))).toBe(false);
-      expect((message.text.match(/Crypto \(USD\)/g) ?? []).length).toBe(1);
-      expect(message.text).toContain("incl. crypto service fee");
+      expect((message.text.match(/Crypto —/g) ?? []).length).toBe(1);
+      expect(message.text).toContain("service fee included");
       expect(message.text).not.toMatch(/fee unknown|Provider fee/i);
       const frozen = parsePayq1State(String(userState().pending_action))!;
       expect(frozen.methods.filter((m) => m.kind === "crypto").map((m) => m.id)).toEqual([

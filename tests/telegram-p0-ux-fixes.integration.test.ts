@@ -292,7 +292,7 @@ describe("P0-3: Bantuan, payment offer, and order status keyboards", () => {
     for (const cmd of ["/bantuan", MENU_LABEL_HELP]) {
       resetLog();
       await handleCommand(cmd, buyer.id, "private", buyer);
-      expect(String(lastMsg().text)).toContain("QRIS atau metode lain");
+      expect(String(lastMsg().text)).toContain("Bantuan AXVARA");
       expect(callbacksOf(lastMsg())).toEqual(expect.arrayContaining(["catalog:0", "myorders", "home"]));
       expect(urlsOf(lastMsg()).some((u) => u.includes("/wa"))).toBe(true);
       expect(urlsOf(lastMsg()).some((u) => u.includes("t.me/axvara_support"))).toBe(true);
@@ -302,7 +302,7 @@ describe("P0-3: Bantuan, payment offer, and order status keyboards", () => {
     for (const trigger of ["/help", MENU_LABEL_EN.help]) {
       resetLog();
       await handleCommand(trigger, buyer.id, "private", buyer);
-      expect(String(lastMsg().text)).toContain("QRIS or other methods (e.g. crypto)");
+      expect(String(lastMsg().text)).toContain("AXVARA Help");
       expect(callbacksOf(lastMsg())).toEqual(expect.arrayContaining(["catalog:0", "myorders", "home"]));
     }
 

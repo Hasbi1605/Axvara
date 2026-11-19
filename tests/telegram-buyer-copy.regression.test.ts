@@ -7,7 +7,7 @@ import {
 import {
   chooseQtyMessage, confirmVariantBuyMessage, confirmBuyMessage, chooseVariantMessage,
   emailConfirmationMessage, cartMessage, cartAddedMessage, cartCheckoutSummaryMessage,
-  invoiceMessage, orderReminderMessage,
+  invoiceMessage, orderReminderMessage, TELEGRAM_QRIS_DEADLINE_NOTICE,
 } from "@/lib/telegram/messages/purchase";
 import {
   orderStatusMessage, orderPaidMessage, qrisRenewRejectedMessage,
@@ -15,7 +15,6 @@ import {
 } from "@/lib/telegram/messages/status";
 import { helpMessage } from "@/lib/telegram/messages/help";
 import { credentialMessages } from "@/lib/telegram/messages/credential";
-import { QRIS_PAYMENT_DEADLINE_NOTICE } from "@/lib/payment-maintenance";
 
 const item = { productName: "Produk A", variantLabel: "Bulanan", price: 5000, qty: 2 };
 const orderCode = "AXV-20261029-12345678";
@@ -53,7 +52,7 @@ describe("plain Indonesian Telegram buyer copy", () => {
       ...credentialMessages({ plaintext: "account:password" }),
     ];
     for (const message of transactionalMessages) {
-      expect(message).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇|—/u);
+      expect(message).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇/u);
       expect((message.match(/\p{Extended_Pictographic}/gu) ?? []).length).toBeLessThanOrEqual(1);
       parsed(message);
     }
@@ -88,19 +87,19 @@ describe("plain Indonesian Telegram buyer copy", () => {
 
   it("uses the real quantity cap without claiming a single remaining item is unique", () => {
     const single = chooseQtyMessage({ ...item, stock: 1, qty: 1 });
-    expect(single).toContain("Stok: 1");
-    expect(single).toContain("Maksimal 1 per pesanan");
+    expect(single).toContain("Stok 1");
+    expect(single).not.toContain("Maks ");
     expect(single).not.toMatch(/unik|bulk/i);
     const limited = chooseQtyMessage({ ...item, stock: 50, qty: 2, minQty: 2, maxQty: 4 });
-    expect(limited).toContain("Minimal pembelian: 2");
-    expect(limited).toContain("Maksimal 4 per pesanan");
-    expect(limited).not.toContain("Maksimal 50");
+    expect(limited).toContain("Minimal pembelian 2");
+    expect(limited).toContain("Maks 4/pesanan");
+    expect(limited).not.toContain("Maks 50");
     expect(parsed(limited).body.textContent ?? "").toMatch(/Jumlah 2 × Rp\s?5\.000 = Rp\s?10\.000/);
   });
 
   it("does not describe every email-based product as an invitation or subtotal as final payment", () => {
     const html = emailConfirmationMessage({ ...item, total: 10000, maskedEmail: "n***@example.test" });
-    expect(html).toContain("Periksa email sebelum membayar.");
+    expect(html).toContain("Pastikan email benar.");
     expect(html).toMatch(/Subtotal: Rp\s?10\.000/);
     expect(html).not.toMatch(/undangan|invite|Total bayar/i);
   });
@@ -129,7 +128,7 @@ describe("plain Indonesian Telegram buyer copy", () => {
       expect(invoiceText).toContain(`Item-${i}:`);
       expect(invoiceText).toMatch(new RegExp(`Item-${i}:[^\\n]* x${i}(?:\\n|$)`));
     }
-    expect(invoiceText).toContain(QRIS_PAYMENT_DEADLINE_NOTICE);
+    expect(invoiceText).toContain(TELEGRAM_QRIS_DEADLINE_NOTICE.id);
   });
 
   it("keeps all invoice item summaries and the final amount, deadline and late-payment notice", () => {
@@ -138,10 +137,10 @@ describe("plain Indonesian Telegram buyer copy", () => {
     const text = parsed(html, 1024).body.textContent ?? "";
     for (const summary of summaries) expect(text).toContain(summary);
     expect(text).toContain("Total bayar: Rp10.123");
-    expect(text).toContain("Batas bayar:");
+    expect(text).toContain("Bayar sebelum:");
     expect(text).toContain("29/10/2026");
     expect(text).toContain("19.00.00 WIB");
-    expect(text).toContain(QRIS_PAYMENT_DEADLINE_NOTICE);
+    expect(text).toContain(TELEGRAM_QRIS_DEADLINE_NOTICE.id);
     expect(text).not.toContain("Subtotal");
   });
 
@@ -171,10 +170,10 @@ describe("plain Indonesian Telegram buyer copy", () => {
     }
   });
 
-  it("preserves the original search signature while reporting full and visible counts", () => {
-    expect(searchResultsMessage("Produk", 26)).toContain("26 produk cocok");
-    expect(searchResultsMessage("Produk", 0, 3)).toContain("sedang habis");
-    expect(searchResultsMessage("Produk", 26, 3, 8)).toContain("26 produk cocok. Menampilkan 8 produk.");
+  it("preserves the original search signature while keeping concise output", () => {
+    expect(searchResultsMessage("Produk", 26)).toContain("Hasil untuk “Produk”");
+    expect(searchResultsMessage("Produk", 0, 3)).toContain("Sedang habis");
+    expect(searchResultsMessage("Produk", 26, 3, 8)).toContain("Hasil untuk “Produk”");
     expect(searchResultsMessage("<b>&", 1, 0, 1)).toContain("&lt;b&gt;&amp;");
   });
 });

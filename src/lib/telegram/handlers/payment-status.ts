@@ -23,21 +23,21 @@ function copyableAddr(address: string): string {
 
 function expiredView(code: string, locale: Locale): string {
   return locale === "en"
-    ? `<b>⌛ Invoice expired</b>\n\n<code>${escapeHtml(code)}</code>\n\nThe payment deadline has passed. Create a new order from /katalog`
-    : `<b>⌛ Invoice kedaluwarsa</b>\n\n<code>${escapeHtml(code)}</code>\n\nBatas waktu pembayaran sudah habis. Buat pesanan baru dari /katalog`;
+    ? `<b>⌛ Invoice expired</b>\n<code>${escapeHtml(code)}</code>\nReorder via /katalog.`
+    : `<b>⌛ Invoice kedaluwarsa</b>\n<code>${escapeHtml(code)}</code>\nOrder ulang di /katalog.`;
 }
 
 function failedView(code: string, locale: Locale): string {
   return locale === "en"
-    ? `<b>Payment failed</b>\n\n<code>${escapeHtml(code)}</code>\n\nCreate a new order from /katalog`
-    : `<b>Pembayaran gagal</b>\n\n<code>${escapeHtml(code)}</code>\n\nBuat pesanan baru dari /katalog`;
+    ? `<b>Payment failed</b>\n<code>${escapeHtml(code)}</code>\nReorder via /katalog.`
+    : `<b>Pembayaran gagal</b>\n<code>${escapeHtml(code)}</code>\nOrder ulang di /katalog.`;
 }
 
 function reviewView(code: string, locale: Locale): string {
   // Review-sticky: NO payment details, NO consent, NO re-POST entry.
   return locale === "en"
-    ? `<b>Under manual review</b>\n\n<code>${escapeHtml(code)}</code>\n\nOur team is checking this payment. Do not pay again — contact support if needed.`
-    : `<b>Dalam pemeriksaan manual</b>\n\n<code>${escapeHtml(code)}</code>\n\nTim kami memeriksa pembayaran ini. Jangan bayar lagi — hubungi bantuan bila perlu.`;
+    ? `<b>Under manual review</b>\n<code>${escapeHtml(code)}</code>\nChecking payment — do not pay again.`
+    : `<b>Dalam pemeriksaan manual</b>\n<code>${escapeHtml(code)}</code>\nPembayaran dicek — jangan bayar ulang.`;
 }
 
 /** R3 delivery outcome of the LAST view message. `live` = an actionable invoice
@@ -172,8 +172,8 @@ async function renderProviderInvoiceStatus(
       : `Kirim tepat <b>${payAmount} ${symbol}</b> lewat jaringan <b>${networkLabel}</b> saja.\n${feeLine}`;
     const address = String(order.pay_address ?? "");
     const warning = savedLocale === "en"
-      ? "Sending another coin or network may lose your funds. Network gas is paid by the sender."
-      : "Mengirim koin atau jaringan lain dapat membuat dana hilang. Gas jaringan ditanggung pengirim.";
+      ? "Wrong coin/network may lose funds. Gas paid by sender."
+      : "Koin/jaringan salah berisiko dana hilang. Gas ditanggung pengirim.";
     const text = savedLocale === "en"
       ? `<b>⏳ Awaiting crypto payment</b>\n\n<code>${escapeHtml(code)}</code>\n\n${amountLine}\nTo: ${address ? copyableAddr(address) : "(preparing — refresh in a moment)"}\n\n${warning} Pay before: ${escapeHtml(String(order.expires_at ?? ""))}`
       : `<b>⏳ Menunggu pembayaran crypto</b>\n\n<code>${escapeHtml(code)}</code>\n\n${amountLine}\nKe: ${address ? copyableAddr(address) : "(disiapkan — refresh sebentar lagi)"}\n\n${warning} Batas bayar: ${escapeHtml(String(order.expires_at ?? ""))}`;
@@ -220,8 +220,8 @@ async function renderProviderInvoiceStatus(
       const tag = await payq1ConsentTag(code, String(from.id), invoiceId, total);
       const label = escapeHtml(truncate(String(view.label ?? "Gateway"), 80));
       const text = savedLocale === "en"
-        ? `<b>Confirm gateway fee</b>\n\n<code>${escapeHtml(code)}</code>\n\n${label}\nSubtotal: ${formatIdr(Number(view.subtotal ?? 0), savedLocale)}\nEstimated fee: ${formatIdr(Number(view.estimated_fee ?? fee), savedLocale)}\nActual fee: ${formatIdr(fee, savedLocale)}\n<b>Total: ${formatIdr(total, savedLocale)}</b>\n\nPress confirm to reveal the payment details.`
-        : `<b>Konfirmasi biaya gateway</b>\n\n<code>${escapeHtml(code)}</code>\n\n${label}\nSubtotal: ${formatIdr(Number(view.subtotal ?? 0), savedLocale)}\nEstimasi biaya: ${formatIdr(Number(view.estimated_fee ?? fee), savedLocale)}\nBiaya aktual: ${formatIdr(fee, savedLocale)}\n<b>Total: ${formatIdr(total, savedLocale)}</b>\n\nTekan konfirmasi untuk membuka detail pembayaran.`;
+        ? `<b>Confirm gateway fee</b>\n\n<code>${escapeHtml(code)}</code>\n\n${label}\nSubtotal: ${formatIdr(Number(view.subtotal ?? 0), savedLocale)}\nEstimated fee: ${formatIdr(Number(view.estimated_fee ?? fee), savedLocale)}\nActual fee: ${formatIdr(fee, savedLocale)}\n<b>Total: ${formatIdr(total, savedLocale)}</b>`
+        : `<b>Konfirmasi biaya gateway</b>\n\n<code>${escapeHtml(code)}</code>\n\n${label}\nSubtotal: ${formatIdr(Number(view.subtotal ?? 0), savedLocale)}\nEstimasi biaya: ${formatIdr(Number(view.estimated_fee ?? fee), savedLocale)}\nBiaya aktual: ${formatIdr(fee, savedLocale)}\n<b>Total: ${formatIdr(total, savedLocale)}</b>`;
       if (!tag || !invoiceId || !Number.isSafeInteger(total) || total <= 0) {
         await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
         return;

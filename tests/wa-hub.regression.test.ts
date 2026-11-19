@@ -50,12 +50,13 @@ describe("Hub WA /wa — satu pintu semua tombol admin", () => {
   });
 
   it("copy Telegram teks: kontak WA = hub /wa (help + lunas + input-WA)", () => {
-    for (const f of [
-      "src/lib/telegram/messages/help.ts",
-      "src/lib/telegram/messages/status.ts",
-    ]) {
-      // Template memakai `${SITE.webUrl}/wa` (render = https://axvara.tech/wa).
-      expect(read(f)).toContain("}/wa");
+    // 2026-11-20: kontak WA di bantuan & notifikasi lunas dipindah dari teks ke
+    // tombol (copy ringkas). Kontrak tetap: semua tombol WA lewat hub /wa.
+    const kb = read("src/lib/telegram/keyboards.ts");
+    expect(kb).toMatch(/export function helpKeyboard[\s\S]*?url: `\$\{SITE\.webUrl\}\/wa`/);
+    expect(kb).toMatch(/export function orderPaidKeyboard[\s\S]*?\$\{SITE\.webUrl\}\/wa\?pesan=/);
+    for (const f of ["src/lib/telegram/messages/help.ts", "src/lib/telegram/messages/status.ts"]) {
+      expect(read(f)).not.toContain("wa.me/");
     }
     expect(read("src/lib/telegram/messages/help.ts")).not.toContain("wa.me/6289519388264");
   });

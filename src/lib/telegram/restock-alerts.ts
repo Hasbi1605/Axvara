@@ -90,8 +90,8 @@ export async function subscribeRestockAlert(
 function restockMessage(name: string, locale: "id" | "en"): string {
   const safe = escapeHtml(String(name).slice(0, 120));
   return locale === "en"
-    ? `<b>✅ Back in stock</b>\n\n${safe} is available again.\n\nGrab it before it sells out.`
-    : `<b>✅ Stok tersedia lagi</b>\n\n${safe} sudah tersedia kembali.\n\nAmbil sebelum habis.`;
+    ? `<b>✅ Back in stock</b>\n\n${safe} is available again.`
+    : `<b>✅ Stok tersedia lagi</b>\n\n${safe} sudah tersedia.`;
 }
 
 /**

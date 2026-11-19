@@ -105,7 +105,7 @@ describe("Telegram language menu", () => {
     const groupOutput = sentTexts().join("\n");
     expect(groupOutput).not.toContain(String(groupChatId));
     expect(groupOutput).not.toMatch(/ID Grup Notifikasi/);
-    expect(groupOutput).toMatch(/Selamat datang di AXVARA/);
+    expect(groupOutput).toMatch(/AXVARA.*Halo, A/);
     vi.clearAllMocks();
     await handleCommand("/chatid", userA.id, "private", userA);
     const privateOutput = sentTexts().join("\n");

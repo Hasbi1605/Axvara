@@ -397,7 +397,7 @@ describe("R3 correction 2: dispatch-vs-retry send fence", () => {
     const code = String(fx.sql.prepare("SELECT code FROM orders").get()?.code);
     expect(orderRow(code)).toMatchObject({ attempts: 1 });
     expect(orderRow(code).sent).not.toBeNull();
-    expect(allSends().filter((m) => m.text.includes("Telegram connection is slow"))).toHaveLength(1);
+    expect(allSends().filter((m) => m.text.includes("Slow connection"))).toHaveLength(1);
     clearTg(); okTg(); age(code);
     const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
     expect(await retryTelegramInvoiceDelivery(code)).toBe(true);

@@ -101,14 +101,14 @@ describe("katalog Telegram = produk yang bisa dibeli saja", () => {
 describe("pencarian Telegram", () => {
   it("hanya produk tersedia yang muncul", async () => {
     await handleSearchResults(42, "alpha");
-    expect(vi.mocked(sendMessage).mock.calls[0][0].text).toContain("1 produk cocok");
+    expect(vi.mocked(sendMessage).mock.calls[0][0].text).toContain("Hasil untuk “alpha”");
   });
 
-  it("kata kunci yang hanya cocok dengan produk habis: dijawab 'sedang habis', bukan 'tidak ada'", async () => {
+  it("kata kunci yang hanya cocok dengan produk habis: dijawab 'Sedang habis', bukan 'Tidak ketemu'", async () => {
     await handleSearchResults(42, "bravo");
     const text = String(vi.mocked(sendMessage).mock.calls[0][0].text);
-    expect(text).toContain("sedang habis");
-    expect(text).not.toContain("Tidak ada produk");
+    expect(text).toContain("Sedang habis");
+    expect(text).not.toContain("Tidak ketemu");
   });
 });
 

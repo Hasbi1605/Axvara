@@ -59,7 +59,7 @@ export async function handlePendingEmailInput(
         `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
         String(from.id),
       ).catch(() => {});
-      await sendMessage({ chat_id: chatId, text: enCart ? "Cancelled. Type /start to begin again." : "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: enCart ? "en" : "id" }) });
+      await sendMessage({ chat_id: chatId, text: enCart ? "Cancelled." : "Dibatalkan.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: enCart ? "en" : "id" }) });
       return true;
     }
     const cartEmail = text.trim();
@@ -92,7 +92,7 @@ export async function handlePendingEmailInput(
       `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
       String(from.id),
    );
-    await sendMessage({ chat_id: chatId, text: enMail ? "Cancelled. Type /start to begin again." : "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: enMail ? "en" : "id" }) });
+    await sendMessage({ chat_id: chatId, text: enMail ? "Cancelled." : "Dibatalkan.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: enMail ? "en" : "id" }) });
     return true;
   }
   const email = text.trim();
@@ -171,7 +171,7 @@ export async function showCartEmailConfirmation(chatId: number, from: { id: numb
   const stored = await execRun("UPDATE telegram_users SET pending_action=?, updated_at=datetime('now') WHERE user_id=? AND buyer_email=? AND (pending_action IS ? OR (pending_action LIKE 'payq1:%' AND pending_action LIKE '%\"st\":\"quoted\"%'))", `cart_confirm:${tag}:${nonce}:${await checkoutEmailFingerprint(checked.email)}`, String(from.id), checked.email, expectedAction);
   if (!stored.changes) return;
   const en = ctx.locale === "en";
-  await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: cartCheckoutSummaryMessage(summary.lines.map((line) => ({ productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty, basePrice: line.basePrice, appliedTierMinQty: line.appliedTierMinQty })), summary.subtotal, { locale: ctx.locale, ...tgUsdAlternate(summary.subtotal, ctx) }) + `\n\n<b>Email</b>\n${escapeHtml(maskEmail(checked.email))}\n${en ? "Double-check your email before paying." : "Periksa email sebelum membayar."}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [
+  await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: cartCheckoutSummaryMessage(summary.lines.map((line) => ({ productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty, basePrice: line.basePrice, appliedTierMinQty: line.appliedTierMinQty })), summary.subtotal, { locale: ctx.locale, ...tgUsdAlternate(summary.subtotal, ctx) }) + `\n\nEmail: ${escapeHtml(maskEmail(checked.email))}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [
     [{ text: en ? "💳 Pay QRIS" : "💳 Bayar QRIS", callback_data: `cconfirm:${tag}:${nonce}`, style: "success" }],
     [{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: "pmentry" }],
     [{ text: en ? "Change Email" : "Ubah Email", callback_data: "ceedit" }, { text: en ? "Edit Cart" : "Ubah Keranjang", callback_data: "cart" }],
@@ -286,7 +286,7 @@ export async function handlePendingSearchInput(
   if (keyword.length < 2) {
     await sendMessage({
       chat_id: chatId,
-      text: en ? "❌ Minimum 2 characters. Example: <code>canva</code>" : "❌ Minimal 2 huruf. Contoh: <code>canva</code>",
+      text: en ? "❌ Min 2 chars (e.g. <code>canva</code>)." : "❌ Minimal 2 huruf (mis. <code>canva</code>).",
       parse_mode: "HTML",
     });
     return true;

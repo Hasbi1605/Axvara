@@ -56,7 +56,7 @@ export async function handleCommand(
   if ((cmd === '/stop' || cmd === '/siaran_on') && from && chatType === 'private' && chatId === from.id) {
     const { execRun } = await import('@/lib/db');
     await execRun("UPDATE telegram_users SET broadcast_opt_out=? WHERE user_id=? AND chat_id=?", cmd === '/stop' ? 1 : 0, String(from.id), String(chatId));
-    await sendMessage({ chat_id: chatId, text: cmd === '/stop' ? 'Siaran Telegram dihentikan. Notifikasi pesanan tetap berjalan. Kirim /siaran_on untuk berlangganan kembali.' : 'Siaran Telegram diaktifkan kembali. Kirim /stop untuk berhenti.' });
+    await sendMessage({ chat_id: chatId, text: cmd === '/stop' ? 'Promo dihentikan (notif pesanan tetap aktif). Aktifkan: /siaran_on' : 'Promo diaktifkan kembali. Berhenti: /stop' });
     return;
   }
 
@@ -74,7 +74,7 @@ export async function handleCommand(
     }
     await sendMessage({
       chat_id: chatId,
-      text: locale === "en" ? "Input cancelled. Choose a menu below to continue." : "Input dibatalkan. Pilih menu di bawah untuk melanjutkan.",
+      text: locale === "en" ? "Cancelled." : "Dibatalkan.",
       reply_markup: mainReplyMenu(locale),
     });
     return;

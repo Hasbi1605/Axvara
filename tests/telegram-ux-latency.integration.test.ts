@@ -255,7 +255,7 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
       ["🛒 Keranjang", "📦 Pesanan"],
       ["🛡 Garansi", "💬 Bantuan"],
     ]);
-    expect(idMenu.is_persistent).toBe(true);
+    expect(idMenu.is_persistent).toBe(false);
     expect(idMenu.resize_keyboard).toBe(true);
 
     const enMenu = mainReplyMenu("en");
@@ -301,7 +301,7 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
 
     // Free text search directly without pending state, and /cari with keyword directly
     await handleCommand("netflik", buyer.id, "private", buyer);
-    expect(tg.sendMessage.mock.calls.at(-1)?.[0]?.text).toContain("1 produk cocok");
+    expect(tg.sendMessage.mock.calls.at(-1)?.[0]?.text).toContain("Hasil untuk “netflik”");
 
     await handleCommand("/cari doesnotexistxyz", buyer.id, "private", buyer);
     expect(tg.sendMessage.mock.calls.at(-1)?.[0]?.reply_markup).toEqual(searchNoResultsKeyboard({ locale: "id" }));
@@ -311,7 +311,7 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
     expect(tg.sendPhoto.mock.calls.at(-1)?.[0]?.caption).toContain("Netflix Private");
     await handleCallback("rst:1", buyer.id, 1, buyer);
     await handleShowProduct(buyer.id, 0, 1, buyer);
-    expect(helpMessage({ locale: "id" })).toContain("ketik nama produk untuk mencari");
+    expect(helpMessage({ locale: "id" })).toContain("Ketik nama produk untuk mencari.");
   });
 
   it("renders dot-thousands prices, qty presets, styles, OOS collapse, and QRIS display copy", () => {
@@ -351,6 +351,6 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
     expect(vk.inline_keyboard.flat().some((b) => b.callback_data === "soldout")).toBe(false);
 
     const methodDetails = paymentMethodOfferDetails([{ kind: "qris", label: "QRIS Dinamis" }]);
-    expect(methodDetails).toEqual(["• QRIS"]);
+    expect(methodDetails).toEqual(["• QRIS (tercepat)"]);
   });
 });

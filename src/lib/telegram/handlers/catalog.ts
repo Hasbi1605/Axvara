@@ -201,7 +201,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
     await replaceWithText({
       chat_id: chatId,
       message_id: messageId,
-      text: ctx.locale === "en" ? "This product is currently unavailable. Browse /katalog for ready products 🙏" : "Produk ini sedang tidak tersedia. Buka /katalog untuk produk yang ready 🙏",
+      text: ctx.locale === "en" ? "Product unavailable. Browse /katalog." : "Produk tidak tersedia. Cek /katalog.",
       parse_mode: "HTML",
       reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     }, sourceMeta);
@@ -432,7 +432,9 @@ export async function handleShowQty(
       maxQty,
       minQty,
       requiresEmail,
-    }, { locale: ctx.locale, ...tgUsdAlternate(effectiveQtyPrice * qty, ctx) }) + `\n\n${ctx.locale === "en" ? "Delivery" : "Pengiriman"}: ${buyerDeliveryKind(variant) === "instant" ? (ctx.locale === "en" ? "automatic after payment" : "otomatis setelah pembayaran") : (ctx.locale === "en" ? "processed after payment" : "diproses setelah pembayaran")}.` + (buyerWarrantyLabel(variant) ? `\n${ctx.locale === "en" ? "Warranty" : "Garansi"}: ${escapeHtml(buyerWarrantyLabel(variant))}.` : "") + (ctx.locale === "en" ? "\nRead the product terms before paying." : "\nBaca ketentuan produk sebelum membayar."),
+      deliveryKind: buyerDeliveryKind(variant),
+      warrantyLabel: buyerWarrantyLabel(variant) || null,
+    }, { locale: ctx.locale, ...tgUsdAlternate(effectiveQtyPrice * qty, ctx) }),
     parse_mode: "HTML",
     reply_markup: qtyKeyboard({ productId, variantId, stock: variant.stock, qty, price: effectiveQtyPrice, maxQty, minQty, requiresEmail, approvalTag: await checkoutApprovalTag([{ productId, variantId, qty, price: effectiveQtyPrice }]) }, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
   }, sourceMeta);

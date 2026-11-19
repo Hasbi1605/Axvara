@@ -71,7 +71,7 @@ export async function showPaymentMethodOffer(
     return;
   }
   const title = target.mode === "single" ? target.productName : target.cartName;
-  const details = paymentMethodOfferDetails(frozen.state.methods, { locale: ctx.locale });
+  const details = paymentMethodOfferDetails(frozen.state.methods, { locale: ctx.locale, subtotal: target.subtotal });
   await safeEditOrSend({
     chat_id: chatId,
     message_id: messageId,
@@ -246,7 +246,7 @@ export async function handlePayCryptoMenu(
     });
     return;
   }
-  const details = paymentMethodOfferDetails(state.methods, { locale: ctx.locale });
+  const details = paymentMethodOfferDetails(state.methods, { locale: ctx.locale, subtotal: state.idrSubtotal });
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
     text: `${paymentMethodOfferMessage({ productName: ctx.locale === "en" ? "Your order" : "Pesananmu", subtotal: state.idrSubtotal }, { locale: ctx.locale })}\n\n${details.join("\n")}`,

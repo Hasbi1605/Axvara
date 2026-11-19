@@ -74,7 +74,7 @@ describe("TG1 onboarding chooser + independent preferences", () => {
     await handleCommand("/start", userA.id, "private", userA);
     expect(api.send.mock.calls.filter((c) => /Pilih bahasa/.test(String(c[0]?.text ?? "")))).toHaveLength(0);
     const homeCaption = String(api.photo.mock.calls.at(-1)?.[0]?.caption ?? "");
-    expect(homeCaption).toMatch(/Hello|Welcome/);
+    expect(homeCaption).toMatch(/AXVARA|Type a product name/);
   });
 
   it("/language changes locale only, currency stays USD", async () => {

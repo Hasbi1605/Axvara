@@ -38,8 +38,8 @@ export async function requestPayq1Contact(
   await sendMessage({
     chat_id: chatId,
     text: locale === "en"
-      ? `This payment method needs a WhatsApp number for provider delivery.\n\nReply here with an active number (8-20 digits, e.g. <code>081234567890</code>). Your email <code>${email.replace(/</g, "&lt;")}</code> is already saved.`
-      : `Metode pembayaran ini membutuhkan nomor WhatsApp untuk pengiriman provider.\n\nBalas di sini dengan nomor aktif (8-20 digit, mis. <code>081234567890</code>). Email <code>${email.replace(/</g, "&lt;")}</code> sudah tersimpan.`,
+      ? `Reply with an active WhatsApp number (8–20 digits, e.g. <code>081234567890</code>). Email: <code>${email.replace(/</g, "&lt;")}</code>.`
+      : `Balas nomor WhatsApp aktif (8–20 digit, mis. <code>081234567890</code>). Email: <code>${email.replace(/</g, "&lt;")}</code>.`,
     parse_mode: "HTML",
   });
   void messageId;
@@ -87,8 +87,8 @@ export async function handlePayq1PhoneInput(
   await sendMessage({
     chat_id: chatId,
     text: ctx.locale === "en"
-      ? `Number saved. Press the Continue button again to create the payment.`
-      : `Nomor tersimpan. Tekan tombol Lanjut lagi untuk membuat pembayaran.`,
+      ? "Number saved. Tap Continue to pay."
+      : "Nomor tersimpan. Tekan Lanjut untuk bayar.",
     parse_mode: "HTML",
   });
   return true;

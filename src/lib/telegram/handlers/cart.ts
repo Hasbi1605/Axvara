@@ -86,10 +86,10 @@ export async function handleCartAdd(
     await sendMessage({
       chat_id: chatId,
       text: result.reason === "out_of_stock" ? outOfStockMessage({ locale: ctx.locale })
-        : result.reason === "cart_full" ? (ctx.locale === "en" ? "Cart holds at most 20 variants. Remove a variant before adding another." : "Keranjang berisi maksimal 20 varian. Hapus varian sebelum menambahkan yang lain.")
-        : result.reason === "unique_limit" ? (ctx.locale === "en" ? "At most 10 unique-stock accounts per order, across all variants. Reduce quantity or order separately." : "Maksimal 10 akun stok unik per pesanan, termasuk semua varian. Kurangi jumlah atau pesan terpisah.")
-        : result.reason === "cart_changed" ? (ctx.locale === "en" ? "Cart or stock changed. Check quantities and stock in the cart, then try again." : "Keranjang atau stok berubah. Periksa jumlah dan stok di keranjang, lalu coba lagi.")
-        : result.reason === "invalid_quantity" ? (ctx.locale === "en" ? "Quantity must be a whole number from 1 to 100 per variant. Adjust it in the cart." : "Jumlah harus berupa bilangan bulat 1 sampai 100 per varian. Ubah jumlah di keranjang.")
+        : result.reason === "cart_full" ? (ctx.locale === "en" ? "Cart max 20 variants." : "Keranjang maks 20 varian.")
+        : result.reason === "unique_limit" ? (ctx.locale === "en" ? "Max 10 unique-stock units per order." : "Maks 10 unit stok unik per pesanan.")
+        : result.reason === "cart_changed" ? (ctx.locale === "en" ? "Cart or stock changed. Recheck cart." : "Keranjang/stok berubah. Cek ulang keranjang.")
+        : result.reason === "invalid_quantity" ? (ctx.locale === "en" ? "Quantity must be 1–100." : "Jumlah harus 1–100.")
         : belowMinText ?? errorMessage({ locale: ctx.locale }),
       parse_mode: "HTML",
       reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
@@ -131,7 +131,7 @@ export async function handleCartAdjust(
   } else {
     const ok = await setCartLineQty(userId, variantId, delta, true);
     if (!ok) {
-      await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Quantity can't be changed. Check minimums, limits, and stock in the cart." : "Jumlah tidak bisa diubah. Periksa minimum pembelian, batas jumlah, dan stok di keranjang.", parse_mode: "HTML" });
+      await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Cannot update quantity. Check min/max and stock." : "Jumlah tidak bisa diubah. Cek batas & stok.", parse_mode: "HTML" });
       await handleShowCart(chatId, messageId, from, sourceMeta);
       return;
     }

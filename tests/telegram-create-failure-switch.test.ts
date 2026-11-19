@@ -152,7 +152,7 @@ describe("TG crypto create failure: definitive vs ambiguous", () => {
     expect(orderRow()).toMatchObject({ status: "dibatalkan", payment_status: "failed" });
     expect(stock()).toBe(100); // 100 -> 98 saat order, kembali 100 SEKALI
     expect(count("payment_transactions")).toBe(0);
-    expect(lastText()).toContain("This payment method is having problems. Please try another payment method.");
+    expect(lastText()).toContain("Payment method error. Try another method.");
     expect(lastKeyboard()).toContain("pmentry");
     expect(userRaw()).toBe(""); // anchor dilepas: quote/nonce baru boleh
 

@@ -195,7 +195,7 @@ describe("RR3-05 failed invoice photo is durably retried without a second order"
     expect(PHOTO).toHaveBeenCalledTimes(1);
     // Satu teks cadangan berisi link QRIS yang sama, tanpa pesan error generik.
     const texts = SEND.mock.calls.map((c) => String((c as unknown as [{ text: string }])[0]?.text ?? ""));
-    const fallback = texts.filter((t) => t.includes("Koneksi Telegram sedang lambat"));
+    const fallback = texts.filter((t) => t.includes("Koneksi lambat"));
     expect(fallback).toHaveLength(1);
     expect(fallback[0]).toContain(`/api/payments/qris/${code}/image`);
     expect(texts.some((t) => t.includes("Tagihan belum bisa dikonfirmasi"))).toBe(false);

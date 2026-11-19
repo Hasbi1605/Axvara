@@ -2,6 +2,7 @@
 // No framework dependencies. Edge-compatible. Timeout-aware.
 
 import type {
+  AnyReplyMarkup,
   TelegramApiResponse,
   SendMessageParams,
   SendPhotoParams,
@@ -10,6 +11,7 @@ import type {
   TelegramMessage,
   WebhookInfo,
 } from "./types";
+import { applyButtonStyles } from "./button-style";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -32,11 +34,15 @@ async function callApi<T>(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+  const payload = body && "reply_markup" in body && body.reply_markup != null
+    ? { ...body, reply_markup: applyButtonStyles(body.reply_markup as AnyReplyMarkup) }
+    : body;
+
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: body ? JSON.stringify(body) : undefined,
+      body: payload ? JSON.stringify(payload) : undefined,
       signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
     });
     const json = (await res.json()) as TelegramApiResponse<T>;

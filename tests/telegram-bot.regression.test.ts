@@ -326,27 +326,20 @@ describe("Telegram buyer messages", () => {
     expect(msg).toContain("AXV-20260903-AB12CD34");
     expect(msg).toContain("89.123");
     expect(msg).toContain("ChatGPT Plus");
-    expect(msg).toContain("Batas bayar:");
+    expect(msg).toContain("Bayar sebelum:");
     expect(msg).not.toContain("━━━");
-    expect(msg).toContain("otomatis mengabari");
-    // Copy jujur — tombol Cek Pembayaran ada di keyboard, mengarahkan ke tombol tersebut.
-    expect(msg).toContain("Tekan <b>Cek Pembayaran</b>");
+    expect(msg).toContain("Lewat batas? Jangan bayar QR lama; hubungi admin untuk pemeriksaan manual.");
   });
 
-  it("help message lists all commands with structure", () => {
+  it("help message stays concise within 6 lines and keeps search, /garansi, and disclaimer", () => {
     const msg = helpMessage();
-    expect(msg).toContain("/start");
-    expect(msg).toContain("/katalog");
-    expect(msg).toContain("/pesanan");
+    expect(msg.split("\n").length).toBeLessThanOrEqual(6);
+    expect(msg).toContain("Ketik nama produk untuk mencari");
     expect(msg).toContain("/garansi");
-    expect(msg).toContain("/bantuan");
-    expect(msg).toContain("axvara.tech");
+    expect(msg).toContain("pihak ketiga, bukan official");
     expect(msg).not.toContain("1️⃣");
-    expect(msg).toContain("bayar dengan QRIS atau metode lain (mis. crypto) yang tampil saat checkout sesuai total pada invoice");
     expect(msg).not.toContain("SeaBank");
     expect(msg).not.toContain("E-Wallet");
-    // 2026-10-10: kontak WA teks lewat hub /wa — bukan wa.me nomor langsung.
-    expect(msg).toContain("axvara.tech/wa");
     expect(msg).not.toContain("wa.me/6289519388264");
   });
 
@@ -427,7 +420,7 @@ describe("Telegram buyer messages", () => {
       price: 5000,
     });
     expect(msg).toContain("Harga satuan: Rp5.000");
-    expect(msg).toContain("mengatur jumlah pesanan");
+    expect(msg).toContain("Canva Pro");
     expect(msg).not.toContain("Qty:");
     expect(msg).not.toContain("Total:");
   });
@@ -442,7 +435,8 @@ describe("Telegram buyer messages", () => {
     });
     expect(msg).toContain("<b>🛒 Ringkasan</b>");
     expect(msg).toMatch(/Jumlah 3 × Rp\s?5\.000 = <b>Rp\s?15\.000<\/b>/);
-    expect(msg).toContain("Maksimal 100 per pesanan");
+    expect(msg).toContain("Stok ∞");
+    expect(msg).not.toContain("Maks ");
     expect(msg).not.toContain("Masukkan Jumlah");
   });
 
@@ -471,7 +465,7 @@ describe("Telegram buyer messages", () => {
       qty: 100,
       maxQty: 100,
     });
-    expect(finiteMsg).toContain("Maksimal 100 per pesanan");
+    expect(finiteMsg).toContain("Stok 150 · Maks 100/pesanan");
     expect(finiteMsg).toMatch(/Jumlah 100 × Rp\s?5\.000 = <b>Rp\s?500\.000<\/b>/);
   });
 
@@ -479,7 +473,7 @@ describe("Telegram buyer messages", () => {
     const msg = waSavedAfterPaymentMessage("AXV-20260906-TEST1234");
     expect(msg).toContain("AXV-20260906-TEST1234");
     expect(msg).toContain("tersimpan");
-    expect(msg).toContain("Pembayaran sudah lunas");
+    expect(msg).toContain("Lunas.");
   });
 
   it("delivery message has tap-to-copy hint", () => {
@@ -490,17 +484,14 @@ describe("Telegram buyer messages", () => {
 
   it("paid message confirms automatic detection, then asks WA only for manual delivery", () => {
     const msg = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", true);
-    expect(msg).toContain("Pembayaran sudah terverifikasi");
+    expect(msg).toContain("Pembayaran lunas");
     expect(msg).toContain("Produk akan dikirim admin ke chat pribadi ini");
-    expect(msg).toContain("jalur pengiriman cadangan");
-    expect(msg).toContain("Nomor WhatsApp aktif");
+    expect(msg).toContain("cadangan");
+    expect(msg).toContain("nomor WhatsApp aktif");
     expect(msg).not.toContain("Tetap standby");
-    expect(msg).toContain("@axvara_support");
-    // 2026-10-10: kontak WA teks lewat hub /wa — bukan wa.me nomor langsung.
-    expect(msg).toContain("axvara.tech/wa");
     const auto = orderPaidMessage("AXV-20260904-AB12CD34", "Produk", false);
     expect(auto).toContain("Produk akan dikirim admin ke chat pribadi ini");
-    expect(auto).not.toContain("Nomor WhatsApp aktif");
+    expect(auto).not.toContain("nomor WhatsApp aktif");
   });
 
   it("admin group notification identifies Telegram order creation", () => {
@@ -629,7 +620,7 @@ describe("Telegram warranty anti-refund copy", () => {
     const msg = confirmBuyMessage("ChatGPT Plus 1 Bulan", 89000);
     expect(msg).toContain("Third-party");
     expect(msg).toContain("/garansi");
-    expect(msg).toContain("setuju");
+    expect(msg).toContain("Total final");
   });
 
   it("product detail defers variant terms without duplicating warranty copy", () => {
@@ -672,7 +663,7 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
     expect(labels).toContain(MENU_LABEL_ORDERS);
     expect(labels).toContain("🛡 Garansi");
     expect(labels).toContain(MENU_LABEL_HELP);
-    expect(menu.is_persistent).toBe(true);
+    expect(menu.is_persistent).toBe(false);
     expect(menu.resize_keyboard).toBe(true);
   });
 
@@ -771,8 +762,8 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
 
   it("search prompt, results, and keyboard guide discovery", () => {
     expect(searchPromptMessage()).toContain("Ketik nama produk");
-    expect(searchResultsMessage("canva", 2)).toContain("2 produk cocok");
-    expect(searchResultsMessage("zzz", 0)).toContain("Tidak ada produk yang cocok");
+    expect(searchResultsMessage("canva", 2)).toContain("Hasil untuk “canva”");
+    expect(searchResultsMessage("zzz", 0)).toContain("Tidak ketemu");
     const kb = searchResultsKeyboard([{ id: 5, name: "Canva Pro", price: 45000 }]);
     const datas = kb.inline_keyboard.flat().map((b) => b.callback_data ?? "");
     expect(datas.some((d) => d === "prd:5")).toBe(true);
@@ -845,7 +836,7 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     const added = cartAddedMessage("Canva Pro", "Pro Head 1 Bulan", 2, 3);
     expect(added).toContain("Ditambahkan ke keranjang");
     const summary = cartCheckoutSummaryMessage(lines, 99000);
-    expect(summary).toContain("Satu pembayaran untuk semua item.");
+    expect(summary).toContain("Total final ada di invoice.");
     expect(summary).not.toContain("Langkah");
   });
 
@@ -904,7 +895,7 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(first).toContain("5.123");
     const second = orderReminderMessage({ orderCode: "AXV-1", productName: "Canva", payableAmount: 5123, attempt: 2 });
     expect(second).toContain("Pengingat pembayaran terakhir");
-    expect(second).toContain("Abaikan pesan ini jika sudah bayar");
+    expect(second).toContain("Abaikan jika sudah bayar");
   });
 
   it("cart callback data stays within 64 bytes", () => {

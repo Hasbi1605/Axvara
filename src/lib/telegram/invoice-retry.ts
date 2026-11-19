@@ -112,8 +112,8 @@ export async function settleAmbiguousInvoiceSend(
   await sendMessage({
     chat_id: chatId,
     text: locale === "en"
-      ? `Telegram connection is slow. The QRIS photo for order <code>${orderCode}</code> may appear shortly; the invoice is the same.${link}\n\nDo not create a new order. Press Check Payment after paying.`
-      : `Koneksi Telegram sedang lambat. Foto QRIS pesanan <code>${orderCode}</code> mungkin muncul sebentar lagi; tagihannya tetap sama.${link}\n\nJangan buat pesanan baru. Tekan Cek Pembayaran setelah membayar.`,
+      ? `Slow connection — QRIS for <code>${orderCode}</code> may arrive shortly.${link}\nDo not reorder; tap Check Payment.`
+      : `Koneksi lambat — QRIS <code>${orderCode}</code> mungkin menyusul.${link}\nJangan order ulang; tekan Cek Pembayaran.`,
     parse_mode: "HTML",
     disable_web_page_preview: true,
     reply_markup: qrisInvoiceKeyboard(orderCode, { locale }),
@@ -175,8 +175,8 @@ export async function settleAmbiguousProviderInvoice(
   await sendMessage({
     chat_id: chatId,
     text: locale === "en"
-      ? `Telegram connection is slow. The payment details for order <code>${orderCode}</code> may appear shortly; it is the same order.\n\nDo not create a new order. Tap Refresh status to see the details.`
-      : `Koneksi Telegram sedang lambat. Detail pembayaran pesanan <code>${orderCode}</code> mungkin muncul sebentar lagi; pesanannya tetap sama.\n\nJangan buat pesanan baru. Tekan Refresh status untuk melihat detailnya.`,
+      ? `Slow connection — details for <code>${orderCode}</code> may arrive shortly.\nDo not reorder; tap Refresh status.`
+      : `Koneksi lambat — detail <code>${orderCode}</code> mungkin menyusul.\nJangan order ulang; tekan Refresh status.`,
     parse_mode: "HTML",
     reply_markup: { inline_keyboard: [[{ text: locale === "en" ? "🔄 Refresh status" : "🔄 Refresh status", callback_data: `refresh:${orderCode}` }]] },
   }).catch(() => {});
