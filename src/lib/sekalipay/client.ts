@@ -234,6 +234,28 @@ export function isSkSandbox(): boolean {
   return process.env.SEKALIPAY_SANDBOX === "true";
 }
 
+/** Whether SK transport credentials and URL are configured while enabled. */
+export function isSkConfigured(): boolean {
+  if (!isSkEnabled()) return false;
+  const proxyUrl = getSkProxyUrl();
+  if (proxyUrl) {
+    if (!process.env.SEKALIPAY_PROXY_TOKEN?.trim()) return false;
+    try {
+      assertAllowedUrl(proxyUrl, "config");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (!process.env.SEKALIPAY_API_KEY?.trim()) return false;
+  try {
+    assertAllowedUrl(getSkBaseUrl(), "config");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Mode proxy (produksi): seluruh panggilan SK lewat proxy Heroku yang IP-nya
  * di-whitelist di dashboard SK. Kosong = mode langsung ke sekalipay.com

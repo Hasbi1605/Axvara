@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { readJsonBody } from "@/lib/http-body";
+import { serializeAdminOrderBuyer } from "@/lib/orders/admin-buyer";
 import { formatSafeMiraiRevealReceipt, sanitizeMiraiReceiptSummary } from "@/lib/mirai/admin";
 import { MIRAI_RETRYABLE_SQL, retryMiraiOrder } from "@/lib/mirai/orders";
 
@@ -17,18 +18,26 @@ export async function GET(request: NextRequest) {
   if (!(await requireAdmin(request))) return json({ error: "unauthorized" }, 401);
   try {
     const rows = await createDatabaseAccess().queryAll(
-      `SELECT id, order_code, item_index, package_code, quantity, cost_usdt, fx_idr_per_usdt,
-         external_order_id, idempotency_key, provider_order_code, status, attempt_count,
-         request_sent_at, last_error, completed_at, created_at, updated_at, receipt_json,
-         CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt,
-         CASE WHEN ${MIRAI_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry
-       FROM mirai_order_links
-       ORDER BY id DESC
-       LIMIT 100`,
+      `WITH links AS (
+         SELECT id, order_code, item_index, package_code, quantity, cost_usdt, fx_idr_per_usdt,
+           external_order_id, idempotency_key, provider_order_code, status, attempt_count,
+           request_sent_at, last_error, completed_at, created_at, updated_at, receipt_json,
+           CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt,
+           CASE WHEN ${MIRAI_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry
+         FROM mirai_order_links
+         ORDER BY id DESC
+         LIMIT 100
+       )
+       SELECT links.*, o.customer_name, o.customer_wa, o.customer_email, o.sales_channel,
+         COALESCE(o.supplier_purchase_disabled, 0) AS purchase_disabled
+       FROM links
+       LEFT JOIN orders o ON o.code = links.order_code
+       ORDER BY links.id DESC`,
     );
     const items = rows.map((row) => ({
       ...row,
       receipt_json: sanitizeMiraiReceiptSummary(row.receipt_json),
+      ...serializeAdminOrderBuyer(row),
     }));
     return json({ ok: true, items });
   } catch {

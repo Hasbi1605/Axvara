@@ -21,12 +21,16 @@ export function BulkMarkupToolbar({
   visibleIds,
   totalCount,
   selected,
-  onToggleOne,
   onToggleAllVisible,
   onClear,
   onApply,
   presets,
   maxPercent = 500,
+  allowDecimal,
+  percentStep,
+  resetLabel = "reset Rp ke 0",
+  resetTitle = "Bila dicentang, Rp per varian ikut direset ke 0. Bila mati, Rp dipertahankan.",
+  resetConfirmText = " + reset Rp ke 0",
   confirmApply,
   onError,
   disabled = false,
@@ -41,9 +45,14 @@ export function BulkMarkupToolbar({
   onClear: () => void;
   /** Eksekusi bulk (konfirmasi sudah disetujui di dalam). */
   onApply: (args: { variantIds: string[]; percent: number; resetFixed: boolean }) => Promise<void>;
-  /** Optional Games controls; omitted props preserve Market/WR/SK/TUNVN behavior. */
+  /** Optional Games/shared-panel controls; omitted props preserve Market/WR/SK defaults. */
   presets?: readonly number[];
   maxPercent?: number;
+  allowDecimal?: boolean;
+  percentStep?: number;
+  resetLabel?: string;
+  resetTitle?: string;
+  resetConfirmText?: string;
   confirmApply?: (message: string) => Promise<boolean>;
   onError?: (error: unknown) => void;
   disabled?: boolean;
@@ -53,16 +62,22 @@ export function BulkMarkupToolbar({
   const [useAllVisible, setUseAllVisible] = useState(false);
   const [applying, setApplying] = useState(false);
 
+  const decimalAllowed = allowDecimal ?? Boolean(presets);
   const effectiveIds = useAllVisible ? visibleIds : visibleIds.filter((id) => selected.has(id));
-  const pct = presets ? Number(percent) : Math.floor(Number(percent));
-  const pctValid = (!presets || percent !== "") && Number.isFinite(pct) && pct >= 0 && pct <= maxPercent && (presets ? Math.abs(pct * 100 - Math.round(pct * 100)) < 1e-6 : Number.isInteger(pct));
+  const pct = decimalAllowed ? Number(percent) : Math.floor(Number(percent));
+  const stepValid = percentStep === 0.5
+    ? Math.abs(pct * 2 - Math.round(pct * 2)) < 1e-6
+    : decimalAllowed
+      ? Math.abs(pct * 100 - Math.round(pct * 100)) < 1e-6
+      : Number.isInteger(pct);
+  const pctValid = percent.trim() !== "" && Number.isFinite(pct) && pct >= 0 && pct <= maxPercent && stepValid;
   const allChecked = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
   const someChecked = visibleIds.some((id) => selected.has(id));
 
   const apply = async () => {
     if (!pctValid || !effectiveIds.length || applying || disabled) return;
     const scope = useAllVisible ? "semua yang tampil" : `${effectiveIds.length} dipilih`;
-    const msg = `Terapkan markup ${pct}% ke ${scope}${totalCount != null && useAllVisible ? ` (total hasil ${totalCount})` : ""}${resetFixed ? " + reset Rp ke 0" : ""}? Harga katalog ikut berubah.`;
+    const msg = `Terapkan markup ${pct}% ke ${scope}${totalCount != null && useAllVisible ? ` (total hasil ${totalCount})` : ""}${resetFixed ? resetConfirmText : ""}? Harga katalog ikut berubah.`;
     if (!(confirmApply ? await confirmApply(msg) : window.confirm(msg))) return;
     setApplying(true);
     try {
@@ -77,7 +92,7 @@ export function BulkMarkupToolbar({
   };
 
   return (
-    <fieldset disabled={presets ? disabled || applying : false} className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-admin-border bg-admin-subtle/15 px-3 py-2">
+    <fieldset disabled={disabled || applying} className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-admin-border bg-admin-subtle/15 px-3 py-2">
       <Label className="flex items-center gap-1.5 text-xs text-admin-muted" title="Pilih baris satu per satu">
         <Checkbox
           checked={someChecked && !allChecked ? "indeterminate" : allChecked}
@@ -112,15 +127,15 @@ export function BulkMarkupToolbar({
         %
         <Input
           value={percent}
-          onChange={(e) => setPercent(presets ? e.target.value : e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
-          inputMode={presets ? "decimal" : "numeric"}
+          onChange={(e) => setPercent(decimalAllowed ? e.target.value : e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+          inputMode={decimalAllowed ? "decimal" : "numeric"}
           aria-label="Markup persen bulk"
           className="h-8 w-16 rounded-lg border border-admin-border bg-admin-subtle/20 px-2 text-right text-xs text-admin-fg focus:border-admin-accent/50 focus:outline-none"
         />
       </Label>
-      <Label className="flex items-center gap-1.5 text-xs text-admin-muted" title="Bila dicentang, Rp per varian ikut direset ke 0. Bila mati, Rp dipertahankan.">
-        <Checkbox  checked={resetFixed} onCheckedChange={(checked) => setResetFixed((checked === true))} className="h-4 w-4 accent-admin-accent" />
-        reset Rp ke 0
+      <Label className="flex items-center gap-1.5 text-xs text-admin-muted" title={resetTitle}>
+        <Checkbox checked={resetFixed} onCheckedChange={(checked) => setResetFixed((checked === true))} className="h-4 w-4 accent-admin-accent" />
+        {resetLabel}
       </Label>
       <Button variant="default" size="sm"
         type="button"

@@ -1,5 +1,43 @@
 # DESIGN.md — AXVARA Design System
 
+## Panel supplier admin terpadu (6 supplier) — 19 November 2026 (V3, lokal)
+
+Warung Rebahan (`warung`) dan Sekalipay (`sekalipay`) disatukan ke panel bersama
+`SupplierAdminPanel` (bersama `AIVault`, `TUNVN`, `StoreBat`, `Mirai`) dengan
+enam menu/bookmark sidebar tetap dan primitive/token `admin-*` existing:
+
+- **Tab seragam (`Ringkas · Antrean · Markup · Alat`):** WR/SK tetap lazy per tab
+  (mount Ringkas hanya memuat `/saldo` + `/sync-log`, cache saat berpindah tab,
+  serta mempertahankan Skeleton D6 `"Memuat kapasitas…"` / `"Memuat status sinkron…"`).
+  Ringkas menampilkan 4 `StatCard` (`Saldo wallet`, `Varian aktif`, `Keluarga produk`,
+  `Sinkron terakhir`), pill konfigurasi/dispatch/sync, dan kartu `SupplierSyncStatus`
+  khusus WR/SK dengan penanganan jujur `stale`, `partial`, dan `failed`.
+- **Antrean 7 kolom (`Pesanan · Unit · Biaya · Status · Pembeli · Umur antrean · Aksi`):**
+  Tabel desktop + kartu mobile responsif (`md:hidden`) untuk semua 6 supplier.
+  WR/SK mempertahankan pencarian `q` (debounce 400ms), filter status, pagination
+  server 20/hal, `Retry`, konfirmasi `ConfirmDialog` `Batal`, serta penjelas
+  `Tak bisa retry` / `Percobaan habis` (termasuk pagar `sk_invoice` / `request_sent_at`
+  / `order_status` SK); empat supplier lain tetap 100 terbaru dengan `Pembeli`
+  termask, lencana `Umur antrean`, `Coba lagi`, `Periksa status` (Buff), dan
+  dialog `Lihat receipt` dengan pemulihan fokus.
+- **Markup (`FamilyCard` + sub-tab status + 20/50/100 + `BulkMarkupToolbar`):**
+  Sub-tab `Live · Disembunyikan otomatis · Nonaktif manual · Semua` (default `Live`
+  untuk WR/SK; pada empat lainnya `Live` bila ada varian live, else `Semua`),
+  pagination klien `20/50/100`, `BulkMarkupToolbar` hanya menyasar baris yang
+  dicentang/tampil di halaman aktif dengan copy terpisah (`reset Rp ke 0` untuk
+  WR/SK vs `reset harga manual ke rumus` untuk empat lainnya) dan konfirmasi
+  `ConfirmDialog`. Baris WR/SK memakai `%` bulat (`0–500`) + nominal `Rp` tanpa
+  saklar aktivasi; empat lainnya mempertahankan `%` (`0–1000` step `0.5`),
+  `Harga manual (Rp)`, saklar aktif, `Grosir` (AIVault), dan lipatan deskripsi
+  (TUNVN). Bila katalog WR/SK dimuat sebagian (`total > loaded`), panel
+  menampilkan penanda cakupan jujur.
+- **Alat:** kartu `Sinkron katalog` untuk seluruh 6 supplier, `Aturan exclusion`
+  (CRUD pola) untuk WR/SK, dan `Uji sandbox order` khusus SK.
+
+Verifikasi lokal: `tsc --noEmit` + suite Vitest terfokus dan Chromium Playwright
+(1440×900 & 390×844, fixture `/api/**` ter-mock — bukan D1/auth/produksi) lulus
+tanpa overflow horizontal, error console, atau kegagalan aset statis.
+
 ## Kalkulator refund Market — 18 November 2026
 
 Latar Midnight, kartu `ax-glass-card`, aksen cyan, dan nominal tabular. Mode manual menempatkan hasil di samping form di desktop dan menumpuknya di mobile; mode **Dari Pesanan** membuka form satu field invoice. Hasil menampilkan nominal total dan kartu per produk dengan kisi 2 kolom di mobile / 3 di desktop. Harga, durasi, sisa aktif, tanggal, garansi dan rate yang tersedia langsung terlihat tanpa accordion. Fade/slide masuk 200 ms, transisi bar 300 ms, menghormati `prefers-reduced-motion`. Navigasi melalui keyboard, outline fokus cyan, target tombol utama 44px. Pada halaman pesanan/lacak setelah bayar, satu accordion garansi tetap terlipat. Isinya berurutan: syarat klaim, dua poin proses dan refund, contoh, lalu **Cek Estimasi Refund**. Aksi membuka mode **Dari Pesanan** pada kalkulator tanpa menambahkan hasil di tempat. Invoice tidak ditemukan menampilkan pesan di bawah form; gangguan sementara menawarkan **Coba lagi**. Ikon 🧮 pada tombol Telegram konsisten dengan tombol notifikasi admin lain.

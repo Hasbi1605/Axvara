@@ -187,6 +187,28 @@ export function isWrSandbox(): boolean {
   return process.env.WARUNG_REBAHAN_SANDBOX === "true";
 }
 
+/** Whether WR transport credentials and URL are configured while enabled. */
+export function isWrConfigured(): boolean {
+  if (!isWrEnabled()) return false;
+  const proxyUrl = getWrProxyUrl();
+  if (proxyUrl) {
+    if (!process.env.WARUNG_REBAHAN_PROXY_TOKEN?.trim()) return false;
+    try {
+      assertAllowedUrl(proxyUrl, "config");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (!process.env.WARUNG_REBAHAN_API_KEY?.trim()) return false;
+  try {
+    assertAllowedUrl(getWrBaseUrl(), "config");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function getWrApiKey(): string {
   // Mode proxy (Opsi A): key WR asli dipegang proxy Heroku (WR_API_KEY di
   // dyno), Pages tidak menyimpan/mengirim key asli sama sekali.

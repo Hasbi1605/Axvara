@@ -5,6 +5,7 @@ import { parseStoredSyncError } from "@/lib/sync-status";
 import { isStorebatConfigured, isStorebatEnabled, isStorebatSyncEnabled } from "@/lib/storebat/client";
 import { STOREBAT_SKU_SQL } from "@/lib/storebat/catalog";
 import { storebatFamily } from "@/lib/storebat/families";
+import { computeVariantLiveStatus, loadProductGroupLosers } from "@/lib/product-live-status";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -20,14 +21,42 @@ export async function GET(request: NextRequest) {
       UNION ALL SELECT 124,'Muse AI Buff Token',price_per_billion,CASE WHEN available=1 THEN -1 ELSE 0 END,'muse_buff',1-available,'[]',0,'standard',NULL,updated_at
       FROM storebat_services WHERE service='muse_buff'
     ) SELECT f.*,v.id AS variant_id,v.sku,v.label,v.price AS variant_price,v.is_active AS variant_active,
+      v.stock AS pv_stock,v.min_qty AS pv_min_qty,v.fulfillment_mode AS pv_fulfillment_mode,
+      CASE WHEN v.fulfillment_mode='unique' THEN (
+        SELECT COUNT(*) FROM fulfillment_inventory fi WHERE fi.product_id=v.product_id AND fi.variant_id=v.id AND fi.status='available'
+      ) ELSE NULL END AS inventory_available,
       v.storebat_admin_price_idr AS admin_price_idr,v.storebat_fx_idr_per_usd AS fx_idr_per_usd,
       COALESCE(v.storebat_markup_percent,CASE WHEN f.id=124 THEN 40 ELSE 35 END) AS markup_percent,
       p.id AS axvara_product_id,p.name AS product_name,p.slug AS product_slug,p.is_active AS product_active,p.archived_at AS product_archived_at
       FROM feed f LEFT JOIN product_variants v ON v.storebat_product_id=f.id AND v.sku=${STOREBAT_SKU_SQL("f.id")}
       LEFT JOIN products p ON p.id=v.product_id ORDER BY f.id`);
     const settings = await db.queryAll(`SELECT key,value FROM store_settings WHERE key IN ('storebat_catalog_success_at','storebat_catalog_last_error')`);
+    const loserToWinner = await loadProductGroupLosers(db.queryAll);
     return json({ ok:true, configured:isStorebatConfigured(), dispatch_enabled:isStorebatEnabled(), sync_enabled:isStorebatSyncEnabled(),
-      items:items.map(row=>({ ...row,family:storebatFamily(Number(row.id),String(row.name)),product_archived:row.product_archived_at != null ? 1 : 0 })),
+      items:items.map(row=>{
+        const productArchived = row.product_archived_at != null ? 1 : 0;
+        const live = computeVariantLiveStatus(
+          {
+            axvara_product_id: row.axvara_product_id,
+            variant_id: row.variant_id,
+            variant_active: row.variant_active,
+            product_active: row.product_active,
+            product_archived: productArchived,
+            stock: row.pv_stock ?? row.stock,
+            min_qty: row.pv_min_qty ?? 1,
+            fulfillment_mode: row.pv_fulfillment_mode ?? "manual",
+            inventory_available: row.inventory_available,
+          },
+          loserToWinner,
+        );
+        return {
+          ...row,
+          family:storebatFamily(Number(row.id),String(row.name)),
+          product_archived:productArchived,
+          variant_status:live.status,
+          variant_reason:live.reason,
+        };
+      }),
       last_sync_at:settings.find(r=>r.key==="storebat_catalog_success_at")?.value ?? null,
       last_error:parseStoredSyncError(settings.find(r=>r.key==="storebat_catalog_last_error")?.value) });
   } catch { return json({error:"load_failed"},503); }

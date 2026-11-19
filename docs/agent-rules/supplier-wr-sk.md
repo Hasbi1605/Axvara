@@ -1,5 +1,17 @@
 # Aturan agent — Supplier WR/SK, proxy VPS, dispatch
 
+## Panel admin bersama — 19 November 2026 (keputusan owner, lokal)
+
+- Ringkas/Antrean/Markup/Alat memakai `SupplierAdminPanel` dengan saldo IDR,
+  kapasitas, riwayat sync, aturan exclusion, dan sandbox SK. Ringkas membaca
+  saldo dan sync-log. Antrean, markup, dan exclusion dimuat saat tab dibuka.
+- Produk WR/SK baru tetap auto-aktif dengan auto-hide saat stok habis. Harga
+  tetap memakai markup persen dan nominal dibulatkan ke kelipatan Rp500.
+  Badge AUTO/MANUAL, kontrak sync, Retry, dan Batal memakai aturan WR/SK.
+- Retry SK menghormati status pembayaran, permintaan terkirim, dan invoice.
+  Batal antrean nonterminal tetap memakai endpoint void dan konfirmasi admin.
+  Pengujian admin memakai fixture tanpa transaksi supplier.
+
 ## Kepemilikan nama, slug, label varian & modal WR/SK — 18 November 2026 (keputusan owner, lokal)
 
 - **Buka kunci WR (`src/lib/warung-rebahan/ownership.ts`):** `name` dan `slug` produk WR serta `label` varian WR dihapus dari `WR_OWNED_PRODUCT_FIELDS` / `WR_OWNED_VARIANT_FIELDS` (`PUT /api/products/[id]` dan `/api/admin/variants` mengizinkan edit dengan validasi format + keunikan slug `409` yang sama; sync WR hanya mengisi `name`/`slug` saat `INSERT` dan tidak pernah menimpa baris yang sudah ada). `WR_OWNERSHIP_MESSAGE` menegaskan `nama, slug, nama varian` milik admin; harga jual, stok, durasi, garansi, dan deskripsi bawaan WR tetap `409`.

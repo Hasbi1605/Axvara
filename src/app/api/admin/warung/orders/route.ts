@@ -45,10 +45,13 @@ export async function GET(request: NextRequest) {
   ).catch(() => []);
   const total = Number((totalRow[0] as Record<string, unknown> | undefined)?.total ?? 0);
   const rows = await queryAll(
-    `SELECT l.*, o.status AS order_status, o.sales_channel,
-      o.customer_name, o.customer_wa, o.customer_email
+    `SELECT l.*, o.status AS order_status, o.supplier_purchase_disabled AS purchase_disabled, o.sales_channel,
+      o.customer_name, o.customer_wa, o.customer_email,
+      wv.wr_variant_name, wp.wr_product_name
      FROM wr_order_links l
      LEFT JOIN orders o ON o.code=l.order_code
+     LEFT JOIN wr_variants wv ON wv.wr_variant_id=l.wr_variant_id
+     LEFT JOIN wr_products wp ON wp.wr_product_id=wv.wr_product_id
      ${where} ORDER BY l.id DESC LIMIT ? OFFSET ?`,
     ...params, perPage, offset,
   ).catch(() => []);

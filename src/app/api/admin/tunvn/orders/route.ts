@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
+import { serializeAdminOrderBuyer } from "@/lib/orders/admin-buyer";
 import { schedulePaidFulfillment } from "@/lib/payments/paid-fulfillment";
 import { processTunvnOrders, retryTunvnOrder, TUNVN_RETRYABLE_SQL } from "@/lib/tunvn/orders";
 
@@ -13,12 +14,19 @@ const json = (body: unknown, status = 200) => NextResponse.json(body, { status, 
 export async function GET(request: NextRequest) {
   if (!await requireAdmin(request)) return json({ error: "unauthorized" }, 401);
   try {
-    const items = await createDatabaseAccess().queryAll(`SELECT id,order_code,item_index,kind,source_product_id,quantity,cost_usdt,currency,status,attempt_count,request_sent_at,
-      provider_order_group,provider_batch_id,provider_order_code,receipt_json,last_error,completed_at,created_at,updated_at,
-      CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt,
-      (SELECT supplier_purchase_disabled FROM orders WHERE code=tunvn_order_links.order_code) AS purchase_disabled,
-      CASE WHEN ${TUNVN_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry
-      FROM tunvn_order_links ORDER BY id DESC LIMIT 100`);
+    const rows = await createDatabaseAccess().queryAll(`WITH links AS (
+      SELECT id,order_code,item_index,kind,source_product_id,quantity,cost_usdt,currency,status,attempt_count,request_sent_at,
+        provider_order_group,provider_batch_id,provider_order_code,receipt_json,last_error,completed_at,created_at,updated_at,
+        CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt,
+        CASE WHEN ${TUNVN_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry
+      FROM tunvn_order_links ORDER BY id DESC LIMIT 100
+    )
+    SELECT links.*, o.customer_name, o.customer_wa, o.customer_email, o.sales_channel,
+      COALESCE(o.supplier_purchase_disabled, 0) AS purchase_disabled
+    FROM links
+    LEFT JOIN orders o ON o.code=links.order_code
+    ORDER BY links.id DESC`);
+    const items = rows.map((row) => ({ ...row, ...serializeAdminOrderBuyer(row) }));
     return json({ ok: true, items });
   } catch { return json({ error: "load_failed" }, 503); }
 }

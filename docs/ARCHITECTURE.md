@@ -6639,6 +6639,21 @@ Winner mengatur tampilan katalog, bukan mengubah sumber pemenuhan order.
 Detail pengaman dan pemulihan: [StoreBat](agent-rules/storebat.md) / [Mirai](agent-rules/mirai.md).
 Publikasi melalui CI `main`; deployment belum dibuktikan.
 
+### 16.61 Paritas panel admin enam supplier — 19 November 2026 (lokal)
+
+`SupplierAdminPanel` melayani enam menu supplier. Perubahan kontrak `/api/admin/{warung,sekalipay,aivault,tunvn,storebat,mirai}/*` bersifat aditif.
+
+| Route | Perubahan kontrak (aditif, tanpa memutus field lama) |
+| --- | --- |
+| `GET {warung,sekalipay}/sync-log` | Mempertahankan `logs` + `diff`; menambah `configured`, `dispatch_enabled`, `sync_enabled` (helper env aktual `isWrConfigured`/`isWrAutoOrderEnabled`/`isWrSyncEnabled` dan `isSkConfigured`/`isSkAutoOrderEnabled`/`isSkSyncEnabled`) serta agregat terikat `counts: { active_variants, mapped_variants, total_variants, families }` tanpa fetch markup atau provider. |
+| `GET {warung,sekalipay}/markup` | Mempertahankan `variants`, `total`, `variant_status`, `variant_reason`; menambah `axvara_product_id`, `supplier_product_id`, `product_name`, `product_slug`, `variant_label`, `product_archived` (`0\|1`). Mendukung `limit` eksplisit `<=500` (default tetap `200`) + `offset` aditif (default `0`) dengan urutan deterministik beserta ID supplier. |
+| `GET {warung,sekalipay}/orders` | Menambah `wr_variant_name`/`wr_product_name` (WR), `sk_variant_name`/`sk_product_name` (SK), `purchase_disabled`, dan `order_payment_status` (SK). Filter `per_page`/`page`/`status`/`q`, penyamaran ciphertext, serta kontak admin lama dipertahankan. |
+| `GET {aivault,tunvn,storebat,mirai}/orders` | Menambah `customer_name` (`null` bila kosong, tidak pernah diturunkan dari email mentah), `customer_wa` tersamar, `customer_email` tersamar (aman untuk kasus pendek/invalid), `sales_channel`, dan `purchase_disabled` (`0\|1`) lewat `LEFT JOIN orders` + `serializeAdminOrderBuyer()` tanpa membocorkan kredensial/ciphertext. |
+| `GET {aivault,tunvn,storebat,mirai}/products` & `GET tunvn/buff` | Menambah `variant_status` dan `variant_reason` per baris jual (termasuk varian Buff bersarang) via `computeVariantLiveStatus()` + `loadProductGroupLosers()` di `src/lib/product-live-status.ts` dengan hierarki: `off` (arsip / nonaktif manual) > `hidden_loser` (`Kalah vs <winner> #<id>`) > `hidden_nocatalog` > `hidden_soldout` (stok efektif via `effectiveVariantStock`/`isPurchasableStock` dan `min_qty`) > `live`. |
+| `POST {aivault,tunvn,storebat,mirai}/markup/bulk` | Route baru (`requireAdmin` 401, rate-limit `products:write` 429, body limit `16 KiB` 413, `zod.strict()`, `variant_ids` string `1..200` dedup, `markup_percent` `0..1000` langkah `0.5`, opsional `reset_manual?: boolean`) berbagi helper mutasi dengan PATCH per varian. Prefetch bertahap `<=50` ID. Batch `operation_guards` memeriksa kembali kepemilikan, arsip, dan snapshot harga. Grosir AIVault dan akun/Buff 1B TUNVN mempertahankan aturan harga masing-masing. Respons `{ ok: true, updated, failed: [{ id, error }] }` dapat memuat hasil parsial. Revisi katalog `market` dinaikkan sekali bila ada tulis berhasil. |
+
+Di WR/SK, UI membedakan kelayakan Retry dan Batal. Batal tetap tersedia untuk antrean nonterminal yang sebelumnya menawarkannya meski Retry SK sekarang menampilkan alasan rekonsiliasi. Hasil antrean dan markup memakai urutan request terbaru. Bulk markup mengunci aksi panel sampai respons dan refresh selesai.
+
 ### 16.60 Aktivasi satu saklar varian TUNVN dan kontrak panel supplier — 19 November 2026 (backend lokal)
 
 Keputusan owner opsi B: `product_variants.is_active` adalah satu-satunya saklar

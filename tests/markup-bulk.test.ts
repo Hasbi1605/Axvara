@@ -157,19 +157,22 @@ describe("kontrak bulk markup (skema + hitung harga)", () => {
     }
   });
 
-  it("toolbar bulk terpasang di kedua manager (preset + checkbox + konfirmasi)", async () => {
+  it("toolbar bulk terpasang di panel bersama & wrapper WR/SK (preset + checkbox + konfirmasi)", async () => {
     const { readFileSync } = await import("node:fs");
     const toolbar = readFileSync("src/components/admin/BulkMarkupToolbar.tsx", "utf8");
     // Preset 20/30/50 + reset Rp + konfirmasi hitungan eksplisit.
     expect(toolbar).toContain("PRESETS");
     expect(toolbar).toContain("reset Rp ke 0");
     expect(toolbar).toContain("Harga katalog ikut berubah");
-    for (const mgr of ["WarungRebahanManager.tsx", "SekalipayManager.tsx"]) {
+    for (const [mgr, supplier] of [["WarungRebahanManager.tsx", "warung"], ["SekalipayManager.tsx", "sekalipay"]] as const) {
       const src = readFileSync(`src/components/admin/${mgr}`, "utf8");
-      expect(src, `${mgr} memakai toolbar bersama`).toContain("BulkMarkupToolbar");
-      expect(src, `${mgr} ada checkbox per baris`).toContain('aria-label={`Pilih');
-      expect(src, `${mgr} ada endpoint bulk`).toContain("/markup/bulk");
+      expect(src, `${mgr} mendelegasikan ke SupplierAdminPanel`).toContain(`<SupplierAdminPanel supplier="${supplier}"`);
     }
+    const panel = readFileSync("src/components/admin/SupplierAdminPanel.tsx", "utf8");
+    const row = readFileSync("src/components/admin/SupplierPriceRow.tsx", "utf8");
+    expect(panel, "panel bersama memakai BulkMarkupToolbar").toContain("BulkMarkupToolbar");
+    expect(panel, "panel bersama memanggil /markup/bulk").toContain("/markup/bulk");
+    expect(row, "baris harga bersama punya checkbox per baris").toContain("aria-label={`Pilih");
   });
 });
 

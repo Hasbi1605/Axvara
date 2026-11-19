@@ -7,6 +7,7 @@ import { createDatabaseAccess } from "@/lib/db-access";
 import { readSyncStatusSettings } from "@/lib/sync-status";
 import { isTunvnConfigured, isTunvnEnabled, isTunvnSyncEnabled } from "@/lib/tunvn/client";
 import { isTunvnExcludedProduct, tunvnFallbackFamily, tunvnFamilyForSupplierId } from "@/lib/tunvn/families";
+import { computeVariantLiveStatus, loadProductGroupLosers } from "@/lib/product-live-status";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -20,10 +21,15 @@ export async function GET(request: NextRequest) {
       `SELECT t.supplier_product_id, t.name, t.price_vnd, t.price_usdt, t.stock, t.visible,
               t.axvara_product_id, t.markup_percent, t.sell_price_idr, t.fx_idr_per_usdt, t.synced_at,
               t.admin_name, t.admin_description, t.description AS supplier_description,
+              COALESCE(v.product_id, t.axvara_product_id) AS resolved_axvara_product_id,
               p.name AS axvara_name, p.description AS axvara_description, p.is_active AS axvara_is_active,
               p.slug AS axvara_slug, p.tunvn_family, p.archived_at AS axvara_archived_at,
               v.id AS variant_id, v.sku AS variant_sku, v.label AS variant_label,
-              v.price AS variant_price, v.is_active AS variant_is_active, v.tunvn_admin_price_idr
+              v.price AS variant_price, v.is_active AS variant_is_active, v.tunvn_admin_price_idr,
+              v.stock AS pv_stock, v.min_qty AS pv_min_qty, v.fulfillment_mode AS pv_fulfillment_mode,
+              CASE WHEN v.fulfillment_mode='unique' THEN (
+                SELECT COUNT(*) FROM fulfillment_inventory fi WHERE fi.product_id=v.product_id AND fi.variant_id=v.id AND fi.status='available'
+              ) ELSE NULL END AS inventory_available
          FROM tunvn_products t
          LEFT JOIN product_variants v ON v.tunvn_source_product_id = t.supplier_product_id
          LEFT JOIN products p ON p.id = COALESCE(v.product_id, t.axvara_product_id)
@@ -35,6 +41,7 @@ export async function GET(request: NextRequest) {
     const mapped = items.filter(item => item.variant_id != null);
     const activeVariants = mapped.filter(item => Number(item.variant_is_active ?? 0) === 1).length;
     const { lastSyncAt, lastError } = await readSyncStatusSettings(db, "tunvn_catalog", "tunvn_catalog_sync_at");
+    const loserToWinner = await loadProductGroupLosers(db.queryAll);
     const lastMs = lastSyncAt ? Number(lastSyncAt) : NaN;
     return NextResponse.json({
       ok: true,
@@ -45,6 +52,23 @@ export async function GET(request: NextRequest) {
         const id = Number(item.supplier_product_id);
         const mappedFamily = tunvnFamilyForSupplierId(id);
         const { key, name, slug, members } = mappedFamily?.family ?? tunvnFallbackFamily(id, String(item.name));
+        const excluded = isTunvnExcludedProduct(id) ? 1 : 0;
+        const productArchived = item.axvara_archived_at != null ? 1 : 0;
+        const live = computeVariantLiveStatus(
+          {
+            supplier_active: excluded ? 0 : 1,
+            axvara_product_id: item.resolved_axvara_product_id,
+            variant_id: item.variant_id,
+            variant_active: item.variant_is_active,
+            product_active: item.axvara_is_active,
+            product_archived: productArchived,
+            stock: item.pv_stock ?? item.stock,
+            min_qty: item.pv_min_qty ?? 1,
+            fulfillment_mode: item.pv_fulfillment_mode ?? "manual",
+            inventory_available: item.inventory_available,
+          },
+          loserToWinner,
+        );
         return {
           ...item,
           id,
@@ -57,8 +81,10 @@ export async function GET(request: NextRequest) {
           admin_price_idr: item.tunvn_admin_price_idr ?? null,
           family_key: key,
           family: { key, name, slug, label: mappedFamily?.member.label ?? members[0].label },
-          excluded: isTunvnExcludedProduct(id) ? 1 : 0,
-          product_archived: item.axvara_archived_at != null ? 1 : 0,
+          excluded,
+          product_archived: productArchived,
+          variant_status: live.status,
+          variant_reason: live.reason,
         };
       }),
       counts: {

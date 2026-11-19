@@ -6,6 +6,7 @@
 // disimpan, dan AIVault memakai nama produk AXVARA + tab selebar isi.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { render as renderAdmin } from "./setup/admin-render";
 import { ToastProvider } from "@/components/ui/Toast";
 import { TunvnManager } from "@/components/admin/TunvnManager";
@@ -245,6 +246,7 @@ it.each([
     if (url.endsWith("/publish")) return Response.json({ skipped: "claimed_elsewhere" }, { status: 503 });
     return Response.json({ items: [
       ...states.map(([state], i) => ({ id: i, order_code: `FIXTURE-${i}`, item_index: 1, quantity: 2, cost_usd: 0.1, cost_usdt: 0.274,
+        customer_name: i === 0 ? "Pembeli Uji" : null, customer_wa: i === 0 ? "62812****0000" : null, customer_email: null, sales_channel: i === 0 ? "telegram" : null,
         created_at: "2026-11-18 01:00:00", updated_at: "2026-11-18 05:28:00", ...state })),
       ...(name === "TUNVN" ? [{ id: 60, order_code: "EXCLUDED-60", source_product_id: 60, quantity: 1 }] : []),
     ] });
@@ -257,10 +259,11 @@ it.each([
   expect(screen.getByRole("alert").textContent).toContain("Sinkron gagal (19 Nov 2026, 07.00)");
   fireEvent.mouseDown(screen.getByRole("tab", { name: "Antrean" }), { button: 0 });
   const table = within(screen.getByRole("table"));
-  expect(table.getAllByRole("columnheader").map(cell => cell.textContent)).toEqual(["Pesanan", "Unit", "Biaya", "Status", "Waktu", "Aksi"]);
+  expect(table.getAllByRole("columnheader").map(cell => cell.textContent)).toEqual(["Pesanan", "Unit", "Biaya", "Status", "Pembeli", "Umur antrean", "Aksi"]);
   for (const scope of [table, within(screen.getByLabelText(`Kartu pengiriman ${name}`))]) {
     for (const [, label] of states) expect(scope.getByText(label)).toBeTruthy();
     expect(scope.getAllByText("18 Nov 2026, 12.28")).toHaveLength(states.length);
+    expect(scope.getByText(/Pembeli Uji · 62812\*\*\*\*0000 · telegram/)).toBeTruthy();
     expect(scope.getAllByText(currency === "USD" ? "$0.10" : "0,2740 USDT")).toHaveLength(states.length);
     expect(scope.queryByText(/opaque_code|EXCLUDED-60|Siap dikirim/)).toBeNull();
     expect(scope.queryByRole("button", { name: "Coba lagi" })).toBeNull();
@@ -268,4 +271,90 @@ it.each([
   fireEvent.mouseDown(screen.getByRole("tab", { name: "Alat" }), { button: 0 });
   fireEvent.click(screen.getByRole("button", { name: "Sinkronkan katalog" }));
   expect(await screen.findByText("Sinkron: HTTP 503: Sinkron sedang berjalan di proses lain.")).toBeTruthy();
+});
+
+describe("V3 parity: sub-tabs, 20/50/100 pagination, and bulk markup on the 4 suppliers", () => {
+  it("defaults to Live when live variants exist, filters status sub-tabs, paginates 20/50/100, and applies bulk with reset_manual copy + decimal .5", async () => {
+    const bulkCalls: { url: string; body: unknown }[] = [];
+    let resolveBulk: (response: Response) => void = () => {};
+    const pendingBulk = new Promise<Response>(resolve => { resolveBulk = resolve; });
+    const manyItems = Array.from({ length: 22 }, (_, i) => tunvnItem(i + 1, {
+      variant_id: i + 1,
+      axvara_is_active: 1,
+      variant_is_active: 1,
+      variant_label: `Akun ${String(i + 1).padStart(2, "0")}`,
+      variant_status: i === 20 ? "hidden_loser" : i === 21 ? "off" : "live",
+      variant_reason: i === 20 ? "Kalah vs WR #1" : i === 21 ? "Nonaktif manual" : "Tampil di storefront",
+    }));
+    // Include one extra live item so Live has 21 rows (> default 20/page).
+    manyItems.push(tunvnItem(23, {
+      variant_id: 23, axvara_is_active: 1, variant_is_active: 1,
+      variant_label: "Akun 23", variant_status: "live", variant_reason: "Tampil di storefront",
+    }));
+
+    vi.stubGlobal("fetch", vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/tunvn/balance")) return Response.json({ ok: true, configured: true, balance_usdt: 10 });
+      if (url.endsWith("/tunvn/orders")) return Response.json({ ok: true, items: [] });
+      if (url.endsWith("/tunvn/buff")) return Response.json({
+        ok: true,
+        variants: [{ sku: "TUNVN-BUFF-1B", label: "1B Token", price: 25000, is_active: 1, tunvn_buff_quantity_b: 1, tunvn_cost_usdt: 1, tunvn_markup_percent: 40, tunvn_fx_idr_per_usdt: 18000, tunvn_admin_price_idr: null, variant_status: "live", variant_reason: "Tampil di storefront" }],
+        probe: { cost_per_b_usdt: 1, fundable: true },
+        muse_product: { is_active: 1, archived: 0 },
+      });
+      if (url.endsWith("/tunvn/markup/bulk") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        bulkCalls.push({ url, body });
+        return pendingBulk;
+      }
+      return Response.json({ ok: true, configured: true, items: manyItems });
+    }));
+
+    renderAdmin(<ToastProvider><TunvnManager /></ToastProvider>);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Markup" }), { button: 0 });
+    expect(await screen.findByRole("tab", { name: "Live (22)" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Disembunyikan otomatis (1)" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Nonaktif manual (1)" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Semua (24)" })).toBeTruthy();
+
+    // Distinct copy for manual-override suppliers
+    expect(screen.getByText("reset harga manual ke rumus")).toBeTruthy();
+    expect(screen.queryByText("reset Rp ke 0")).toBeNull();
+
+    // Page 1 shows 20 rows out of 22 live; Akun 01 visible, Buff on page 2
+    expect(screen.getByRole("form", { name: "Harga Akun 01" })).toBeTruthy();
+    expect(screen.queryByRole("form", { name: "Harga 1B Token" })).toBeNull();
+    expect(screen.getByText("Hal 1 dari 2 · 22 varian")).toBeTruthy();
+
+    // Switch to 50 / hal -> Buff appears on page 1 alongside Akun 01..23
+    fireEvent.change(screen.getByLabelText("Jumlah per halaman"), { target: { value: "50" } });
+    expect(await screen.findByRole("form", { name: "Harga 1B Token" })).toBeTruthy();
+
+    // Select Akun 01 + Buff (TUNVN-BUFF-1B), enter 42.5%, toggle reset_manual, confirm
+    await userEvent.click(screen.getByRole("checkbox", { name: "Pilih Akun 01 untuk bulk markup" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Pilih 1B Token untuk bulk markup" }));
+    fireEvent.change(screen.getByLabelText("Markup persen bulk"), { target: { value: "42.5" } });
+    await userEvent.click(screen.getByText("reset harga manual ke rumus"));
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan ke 2 varian" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("reset harga manual ke rumus");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Terapkan markup" }));
+
+    await waitFor(() => expect(bulkCalls).toHaveLength(1));
+    expect(bulkCalls[0]).toEqual({
+      url: "/api/admin/tunvn/markup/bulk",
+      body: { variant_ids: ["1", "TUNVN-BUFF-1B"], markup_percent: 42.5, reset_manual: true },
+    });
+    const row = within(screen.getByRole("form", { name: "Harga Akun 01" }));
+    expect((row.getByLabelText("Markup %") as HTMLInputElement).disabled).toBe(true);
+    resolveBulk(Response.json({ ok: true, updated: 1, failed: [{ id: "TUNVN-BUFF-1B", error: "fx_missing" }] }));
+    // Honest partial failure banner
+    expect(await screen.findByText(/Bulk: 1 berubah, 1 gagal/)).toBeTruthy();
+
+    // Status sub-tab filters hidden_loser and off
+    await userEvent.click(screen.getByRole("tab", { name: "Disembunyikan otomatis (1)" }));
+    expect(screen.getByText("Hidden: kalah")).toBeTruthy();
+    expect(screen.getByText(/Kalah vs WR #1/)).toBeTruthy();
+  });
 });
