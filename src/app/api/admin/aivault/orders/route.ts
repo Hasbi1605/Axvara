@@ -5,6 +5,7 @@ import { createDatabaseAccess,createBudgetedDatabase } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { serializeAdminOrderBuyer } from "@/lib/orders/admin-buyer";
+import { isResolvedManuallyFlag, resolvedManuallySql } from "@/lib/supplier/resolved-manually";
 import { retryAivaultOrder,AIVAULT_RETRYABLE_SQL } from "@/lib/aivault/orders";
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -19,11 +20,12 @@ export async function GET(request: NextRequest) {
       FROM aivault_order_links ORDER BY id DESC LIMIT 100
     )
     SELECT links.*, o.customer_name, o.customer_wa, o.customer_email, o.sales_channel,
-      COALESCE(o.supplier_purchase_disabled, 0) AS purchase_disabled
+      COALESCE(o.supplier_purchase_disabled, 0) AS purchase_disabled,
+      ${resolvedManuallySql("links")} AS resolved_manually
     FROM links
     LEFT JOIN orders o ON o.code=links.order_code
     ORDER BY links.id DESC`);
-    const items = rows.map((row) => ({ ...row, ...serializeAdminOrderBuyer(row) }));
+    const items = rows.map((row) => ({ ...row, ...serializeAdminOrderBuyer(row), resolved_manually: isResolvedManuallyFlag(row.resolved_manually) }));
     return json({ok:true,items});
   } catch { return json({error:"load_failed"},503); }
 }

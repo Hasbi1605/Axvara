@@ -4457,7 +4457,10 @@ benar, dan `AdminShell` menyimpan judul fallback untuk header mobile.
 yang sama dengan daftar, sedangkan `counts.channels` sengaja TETAP global
 karena menjadi sumber angka tab kanal (pemilih). Mengubah `counts` menjadi
 ikut filter akan membuat tab kanal menampilkan 0 dan tidak bisa dipakai
-kembali.
+kembali. Revisi paginasi (19 Nov 2026, lokal): `clampNumber` mengembalikan
+fallback (`page=1`, `limit=10`) saat parameter absen, kosong, atau hanya spasi
+(bukan `Number(null)=0` → ter-clamp ke `1`); nilai integer nyata tetap di-clamp
+(`limit` `1..100`, `page` `1..100000`).
 
 Aturan turunan:
 1. `navigateAdmin()` memakai `pushState`, yang **tidak** memicu `popstate`.
@@ -5793,9 +5796,15 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
   Revisi resolusi manual 19 Nov 2026 (lokal, aturan turunan tanpa mutasi/migrasi):
   link TUNVN/StoreBat/Mirai/AIVault dengan `status != 'completed'` dan baris
   `fulfillment_items(order_code, item_index)` berstatus `delivered` membawa
-  `resolved_manually: true`; UI Pesanan merender kotak netral "Diselesaikan manual
-  · sudah dikirim ke pembeli" tanpa `last_error`, tombol Retry/Cek status, maupun
-  petunjuk Antrean (`hasActiveSupplierLink` & `supplierHoldsItem` false), dan
+  `resolved_manually: true` (predikat bersama `resolvedManuallySql` di
+  `src/lib/supplier/resolved-manually.ts`) pada `GET /api/admin/orders` dan
+  keempat route Antrean `GET /api/admin/{tunvn,storebat,mirai,aivault}/orders`;
+  UI Pesanan merender kotak netral "Diselesaikan manual · sudah dikirim ke pembeli"
+  tanpa `last_error`, tombol Retry/Cek status, maupun petunjuk Antrean
+  (`hasActiveSupplierLink` & `supplierHoldsItem` false), UI Antrean
+  (`SupplierOrderQueue`) merender badge netral `secondary` "Diselesaikan manual"
+  tanpa `last_error`, tanpa badge umur `· lewat batas`, dan tanpa tombol "Coba lagi"
+  / "Periksa status" (tombol "Lihat receipt" tetap bila `has_receipt=1`), dan
   Ringkasan Harian Telegram (`daily-admin-summary.ts`) mengecualikannya dari
   peringatan order macet >30 menit.
 - Operasi produksi atas instruksi owner: dua order Muse `AXV-20261110-81C2FADA` /
@@ -6678,7 +6687,7 @@ Publikasi melalui CI `main`; deployment belum dibuktikan.
 | `GET {warung,sekalipay}/sync-log` | Mempertahankan `logs` + `diff`; menambah `configured`, `dispatch_enabled`, `sync_enabled` (helper env aktual `isWrConfigured`/`isWrAutoOrderEnabled`/`isWrSyncEnabled` dan `isSkConfigured`/`isSkAutoOrderEnabled`/`isSkSyncEnabled`) serta agregat terikat `counts: { active_variants, mapped_variants, total_variants, families }` tanpa fetch markup atau provider. |
 | `GET {warung,sekalipay}/markup` | Mempertahankan `variants`, `total`, `variant_status`, `variant_reason`; menambah `axvara_product_id`, `supplier_product_id`, `product_name`, `product_slug`, `variant_label`, `product_archived` (`0\|1`). Mendukung `limit` eksplisit `<=500` (default tetap `200`) + `offset` aditif (default `0`) dengan urutan deterministik beserta ID supplier. |
 | `GET {warung,sekalipay}/orders` | Menambah `wr_variant_name`/`wr_product_name` (WR), `sk_variant_name`/`sk_product_name` (SK), `purchase_disabled`, dan `order_payment_status` (SK). Filter `per_page`/`page`/`status`/`q`, penyamaran ciphertext, serta kontak admin lama dipertahankan. |
-| `GET {aivault,tunvn,storebat,mirai}/orders` | Menambah `customer_name` (`null` bila kosong, tidak pernah diturunkan dari email mentah), `customer_wa` tersamar, `customer_email` tersamar (aman untuk kasus pendek/invalid), `sales_channel`, dan `purchase_disabled` (`0\|1`) lewat `LEFT JOIN orders` + `serializeAdminOrderBuyer()` tanpa membocorkan kredensial/ciphertext. |
+| `GET {aivault,tunvn,storebat,mirai}/orders` | Menambah `customer_name` (`null` bila kosong, tidak pernah diturunkan dari email mentah), `customer_wa` tersamar, `customer_email` tersamar (aman untuk kasus pendek/invalid), `sales_channel`, `purchase_disabled` (`0\|1`), dan `resolved_manually` (`boolean`, predikat `resolvedManuallySql` terhadap `fulfillment_items` `delivered` untuk link belum `completed`) lewat `LEFT JOIN orders` + `serializeAdminOrderBuyer()` tanpa membocorkan kredensial/ciphertext/invite. |
 | `GET {aivault,tunvn,storebat,mirai}/products` & `GET tunvn/buff` | Menambah `variant_status` dan `variant_reason` per baris jual (termasuk varian Buff bersarang) via `computeVariantLiveStatus()` + `loadProductGroupLosers()` di `src/lib/product-live-status.ts` dengan hierarki: `off` (arsip / nonaktif manual) > `hidden_loser` (`Kalah vs <winner> #<id>`) > `hidden_nocatalog` > `hidden_soldout` (stok efektif via `effectiveVariantStock`/`isPurchasableStock` dan `min_qty`) > `live`. |
 | `POST {aivault,tunvn,storebat,mirai}/markup/bulk` | Route baru (`requireAdmin` 401, rate-limit `products:write` 429, body limit `16 KiB` 413, `zod.strict()`, `variant_ids` string `1..200` dedup, `markup_percent` `0..1000` langkah `0.5`, opsional `reset_manual?: boolean`) berbagi helper mutasi dengan PATCH per varian. Prefetch bertahap `<=50` ID. Batch `operation_guards` memeriksa kembali kepemilikan, arsip, dan snapshot harga. Grosir AIVault dan akun/Buff 1B TUNVN mempertahankan aturan harga masing-masing. Respons `{ ok: true, updated, failed: [{ id, error }] }` dapat memuat hasil parsial. Revisi katalog `market` dinaikkan sekali bila ada tulis berhasil. |
 

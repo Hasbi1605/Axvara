@@ -8,6 +8,7 @@ import { deriveNameFromEmail } from "@/lib/utils";
 import { withoutPrivateBuyerData } from "@/lib/buyer-fields";
 import { TUNVN_RETRYABLE_SQL } from "@/lib/tunvn/orders";
 import { GAMES_ORDER_LABEL_SQL } from "@/lib/games/order-display";
+import { resolvedManuallySql } from "@/lib/supplier/resolved-manually";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -198,17 +199,17 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
       CASE WHEN ${TUNVN_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry,
       (SELECT supplier_purchase_disabled FROM orders WHERE code=tunvn_order_links.order_code) AS purchase_disabled,
       CASE WHEN kind='buff' AND provider_batch_id IS NOT NULL AND status IN ('processing','needs_admin') THEN 1 ELSE 0 END AS can_reconcile,
-      CASE WHEN status!='completed' AND EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=tunvn_order_links.order_code AND fi.item_index=tunvn_order_links.item_index AND fi.status='delivered') THEN 1 ELSE 0 END AS resolved_manually
+      ${resolvedManuallySql("tunvn_order_links")} AS resolved_manually
       FROM tunvn_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes),
     // Status saja (tanpa receipt/invite/ciphertext); aksi tetap di Antrean panel supplier.
     queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id,
-      CASE WHEN status!='completed' AND EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=storebat_order_links.order_code AND fi.item_index=storebat_order_links.item_index AND fi.status='delivered') THEN 1 ELSE 0 END AS resolved_manually
+      ${resolvedManuallySql("storebat_order_links")} AS resolved_manually
       FROM storebat_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
     queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_code AS supplier_order_id,
-      CASE WHEN status!='completed' AND EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=mirai_order_links.order_code AND fi.item_index=mirai_order_links.item_index AND fi.status='delivered') THEN 1 ELSE 0 END AS resolved_manually
+      ${resolvedManuallySql("mirai_order_links")} AS resolved_manually
       FROM mirai_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
     queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id,
-      CASE WHEN status!='completed' AND EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=aivault_order_links.order_code AND fi.item_index=aivault_order_links.item_index AND fi.status='delivered') THEN 1 ELSE 0 END AS resolved_manually
+      ${resolvedManuallySql("aivault_order_links")} AS resolved_manually
       FROM aivault_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
   ]);
   for (const [supplier, rows] of [["wr", wr], ["sk", sk], ["tunvn",tunvn], ["storebat",storebat], ["mirai",mirai], ["aivault",aivault]] as const) {
@@ -268,6 +269,7 @@ function addOneDay(date: string) {
 }
 
 function clampNumber(value: string | null, min: number, max: number, fallback: number) {
+  if (value === null || value.trim() === "") return fallback;
   const parsed = Number(value);
   return Number.isInteger(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
 }

@@ -52,6 +52,9 @@ function OrderStatus({ link, supplier, tunvn }: { link: OrderLink; supplier: Sup
       {link.purchase_disabled === 1 && <p className="mt-1 break-words text-xs text-admin-muted">Pembelian otomatis dinonaktifkan.</p>}
     </>;
   }
+  if (link.resolved_manually === true) {
+    return <Badge variant="secondary">Diselesaikan manual</Badge>;
+  }
   const code = link.purchase_disabled === 1 ? "manual"
     : status === "needs_admin" && ["insufficient_balance", "blocked_balance"].includes(link.last_error ?? "") ? "blocked_balance"
     : ["submitted", "ordering"].includes(status) ? "processing"
@@ -141,7 +144,8 @@ export function SupplierOrderQueue({
 
     const buyer = [link.customer_name, link.customer_wa, link.customer_email].filter(Boolean).join(" · ") || "—";
     const buyerText = link.sales_channel ? `${buyer} · ${link.sales_channel}` : buyer;
-    const terminal = ["completed", "failed", "canceled"].includes(link.status);
+    const resolved = !isWrSk && link.resolved_manually === true;
+    const terminal = resolved || ["completed", "failed", "canceled"].includes(link.status);
     const age = terminal ? null : ageLabel(link);
     const time = supplierTime(link.completed_at ?? link.request_sent_at ?? link.updated_at ?? link.created_at) ?? "—";
     const refId = isWrSk ? (link.wr_order_id ?? link.sk_invoice ?? null) : null;
@@ -169,8 +173,8 @@ export function SupplierOrderQueue({
       const button = (action: Action, label: string) => <Button key={action} variant={action === "reveal" ? "ghost" : "outline"}
         size="sm" className="min-h-11 whitespace-nowrap md:min-h-0" disabled={locked} onClick={event => onAction(link, action, event.currentTarget)}>{label}</Button>;
       const buttons = [
-        link.can_retry === 1 && link.purchase_disabled !== 1 && link.status === "needs_admin" && button("retry", "Coba lagi"),
-        buff && link.kind === "buff" && link.provider_batch_id && ["processing", "needs_admin"].includes(link.status) && button("reconcile", "Periksa status"),
+        !resolved && link.can_retry === 1 && link.purchase_disabled !== 1 && link.status === "needs_admin" && button("retry", "Coba lagi"),
+        !resolved && buff && link.kind === "buff" && link.provider_batch_id && ["processing", "needs_admin"].includes(link.status) && button("reconcile", "Periksa status"),
         link.has_receipt === 1 && button("reveal", "Lihat receipt"),
       ].filter(Boolean);
       if (buttons.length) actionsNode = buttons;

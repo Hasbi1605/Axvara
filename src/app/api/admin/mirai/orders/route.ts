@@ -5,6 +5,7 @@ import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { readJsonBody } from "@/lib/http-body";
 import { serializeAdminOrderBuyer } from "@/lib/orders/admin-buyer";
+import { isResolvedManuallyFlag, resolvedManuallySql } from "@/lib/supplier/resolved-manually";
 import { formatSafeMiraiRevealReceipt, sanitizeMiraiReceiptSummary } from "@/lib/mirai/admin";
 import { MIRAI_RETRYABLE_SQL, retryMiraiOrder } from "@/lib/mirai/orders";
 
@@ -29,7 +30,8 @@ export async function GET(request: NextRequest) {
          LIMIT 100
        )
        SELECT links.*, o.customer_name, o.customer_wa, o.customer_email, o.sales_channel,
-         COALESCE(o.supplier_purchase_disabled, 0) AS purchase_disabled
+         COALESCE(o.supplier_purchase_disabled, 0) AS purchase_disabled,
+         ${resolvedManuallySql("links")} AS resolved_manually
        FROM links
        LEFT JOIN orders o ON o.code = links.order_code
        ORDER BY links.id DESC`,
@@ -38,6 +40,7 @@ export async function GET(request: NextRequest) {
       ...row,
       receipt_json: sanitizeMiraiReceiptSummary(row.receipt_json),
       ...serializeAdminOrderBuyer(row),
+      resolved_manually: isResolvedManuallyFlag(row.resolved_manually),
     }));
     return json({ ok: true, items });
   } catch {

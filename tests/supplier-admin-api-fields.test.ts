@@ -468,3 +468,60 @@ it("Other 4 catalog /products and TUNVN /buff compute variant_status hierarchy a
   buffBody = await (await tunvnBuff(get("tunvn/buff"))).json();
   expect(buffBody.variants[0]).toMatchObject({ sku: "TUNVN-BUFF-1B", variant_status: "off", variant_reason: "Produk diarsipkan" });
 });
+
+it.each([
+  {
+    supplier: "tunvn",
+    route: tunvnOrders,
+    cols: "kind,source_product_id,cost_usdt,invite_code",
+    vals: (idx: number) => `'buff',86,0.583,'INVITE-SECRET-${idx}'`,
+  },
+  {
+    supplier: "storebat",
+    route: storebatOrders,
+    cols: "kind,storebat_product_id,cost_usd,fx_idr_per_usd,idempotency_key",
+    vals: (idx: number) => `'product',12,0.6,18000,'sb-rm-${idx}'`,
+  },
+  {
+    supplier: "mirai",
+    route: miraiOrders,
+    cols: "package_code,cost_usdt,external_order_id,idempotency_key",
+    vals: (idx: number) => `'GPT_10M',0.5,'mr-rm-${idx}','mr-rm-${idx}'`,
+  },
+  {
+    supplier: "aivault",
+    route: aivaultOrders,
+    cols: "service_id,cost_usd,external_order_id",
+    vals: (idx: number) => `'gemini',0.5,'av-rm-${idx}'`,
+  },
+])("$supplier orders marks non-completed links as resolved_manually only when matching fulfillment_items row is delivered (status-only metadata)", async ({ supplier, route, cols, vals }) => {
+  fixture.sql.exec(`
+    INSERT INTO products(id,name,slug,price) VALUES(1,'Product','fixture',12345);
+    INSERT INTO product_variants(id,product_id,sku,label,price) VALUES(1,1,'FIXTURE','Fixture',12345);
+    INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status)
+      VALUES('ORD-RM','Buyer','6281234567890','[]',12345,'qris','lunas');
+    INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,status,delivered_message_id,delivered_ciphertext,delivered_iv,last_error) VALUES
+      ('ORD-RM',0,1,1,1,'manual','delivered','manual','DELIVERED-CIPHER-0','iv-0','manual_handover:admin'),
+      ('ORD-RM',1,1,1,1,'manual','delivered','manual','DELIVERED-CIPHER-1','iv-1','manual_handover:admin'),
+      ('ORD-RM',2,1,1,1,'manual','manual_required',NULL,NULL,NULL,'supplier_needs_admin');
+    INSERT INTO ${supplier}_order_links(order_code,item_index,product_id,variant_id,quantity,status,last_error,receipt_ciphertext,${cols}) VALUES
+      ('ORD-RM',0,1,1,1,'needs_admin','unconfirmed_buff_receipt','RECEIPT-CIPHER-0',${vals(0)}),
+      ('ORD-RM',1,1,1,1,'completed',NULL,'RECEIPT-CIPHER-1',${vals(1)}),
+      ('ORD-RM',2,1,1,1,'needs_admin','attempts_exhausted',NULL,${vals(2)}),
+      ('ORD-RM',3,1,1,1,'needs_admin','attempts_exhausted',NULL,${vals(3)});
+  `);
+
+  const response = await route(get(`${supplier}/orders`));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  const body = await response.json() as { ok: boolean; items: Record<string, unknown>[] };
+  expect(body.ok).toBe(true);
+  const byIdx = Object.fromEntries(body.items.map((item) => [Number(item.item_index), item]));
+  expect(byIdx[0].resolved_manually).toBe(true);
+  expect(byIdx[1].resolved_manually).toBe(false);
+  expect(byIdx[2].resolved_manually).toBe(false);
+  expect(byIdx[3].resolved_manually).toBe(false);
+
+  const serialized = JSON.stringify(body.items);
+  expect(serialized).not.toMatch(/RECEIPT-CIPHER|DELIVERED-CIPHER|INVITE-SECRET/);
+});
