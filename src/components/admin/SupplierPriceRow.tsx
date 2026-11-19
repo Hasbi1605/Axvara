@@ -134,9 +134,7 @@ export function SupplierPriceRow({
     <div className="flex items-center gap-3 md:contents">
       <div className="mr-auto md:mr-0 md:text-right">
         <p className="font-semibold tabular-nums text-admin-fg"><span className="sr-only">Harga jual </span>{price != null ? formatRupiah(price) : "—"}</p>
-        {price != null && <p className="text-[11px] text-admin-muted">
-          {isFixed ? (fixed > 0 ? `+${formatRupiah(fixed)}` : "kelipatan Rp500") : (manual != null ? "manual" : "rumus")}
-        </p>}
+        {!isFixed && manual != null && price != null && <p className="text-[11px] text-admin-muted">Manual</p>}
       </div>
       <Button type="submit" size="sm" className="min-h-11 md:min-h-0" variant={dirty ? "default" : "outline"} disabled={!dirty || inputDisabled}>{busy ? "Menyimpan…" : "Simpan"}</Button>
       {!isFixed && onToggle && <div className="flex justify-end"><AdminStatusSwitch checked={active} label={`Aktif ${titleText}`} disabled={!canEdit || locked} busy={busy} onChange={onToggle} /></div>}

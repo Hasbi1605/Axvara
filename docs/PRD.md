@@ -2398,7 +2398,8 @@ MVP seed: 8–12 produk dummy dengan foto placeholder premium + harga realistis 
 WR, SK, AIVault, TUNVN, StoreBat, dan Mirai memakai tab Ringkas, Antrean, Markup,
 dan Alat. Antrean menampilkan pembeli dan umur antrean. Markup memakai kartu
 keluarga, filter status, halaman 20/50/100, serta bulk untuk pilihan di halaman
-aktif. WR/SK tetap memakai auto-aktif, auto-hide saat stok habis dan harga Rp500
+aktif. Kontrol harga bulk muncul setelah admin memilih varian di halaman tersebut.
+WR/SK tetap memakai auto-aktif, auto-hide saat stok habis dan harga Rp500
 dengan markup persentase dan nominal. Exclusion WR/SK dan sandbox SK tersedia di Alat.
 
 - **Ringkas & katalog WR/SK (`GET /api/admin/{warung,sekalipay}/{sync-log,markup,orders}`):** `/sync-log` menambah status konfigurasi/gate (`configured`, `dispatch_enabled`, `sync_enabled`) serta ringkasan varian & keluarga produk tanpa panggilan provider; `/markup` menambah metadata pengelompokan produk/varian, batas `limit <= 500` (default `200`) dan `offset` berurut stabil; `/orders` menambah nama produk & varian pemasok untuk kolom Unit tanpa mengubah filter/aksi/visibilitas kontak WR/SK.

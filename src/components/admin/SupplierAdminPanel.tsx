@@ -31,17 +31,17 @@ type MarkupSubTab = "live" | "hidden" | "off" | "all";
 const WR_SK_ORDER_PER_PAGE = 20;
 
 function DeliveryBadge({ wrClass }: { wrClass?: string | null }) {
-  if (wrClass === "restock") return <Badge variant="success" title="AUTO · kirim otomatis">AUTO</Badge>;
+  if (wrClass === "restock") return <Badge variant="secondary" title="Kirim otomatis">AUTO</Badge>;
   if (wrClass === "made_by_order") return <Badge variant="warning" title="MANUAL · diproses sesuai antrean">MANUAL</Badge>;
-  return <Badge variant="secondary" title="Kelas pengiriman belum diketahui">?</Badge>;
+  return null;
 }
 
 function ProcessBadge({ process }: { process?: string | null }) {
   const p = String(process || "").toLowerCase();
-  if (p === "auto") return <Badge variant="success" title="AUTO · lisensi langsung">AUTO</Badge>;
+  if (p === "auto") return <Badge variant="secondary" title="Lisensi langsung">AUTO</Badge>;
   if (p === "manual") return <Badge variant="warning" title="MANUAL · diproses admin SK">MANUAL</Badge>;
   if (p === "h2h" || p === "smm" || p === "vip") return <Badge variant="secondary" title={`${p.toUpperCase()} · belum didukung fase 1`}>{p.toUpperCase()}</Badge>;
-  return <Badge variant="secondary">{process || "?"}</Badge>;
+  return process ? <Badge variant="secondary">{process}</Badge> : null;
 }
 
 function FamilyCard({ title, description, archived, parentInactive, mode = "manual", selectable = false, children }: {
@@ -63,7 +63,7 @@ function FamilyCard({ title, description, archived, parentInactive, mode = "manu
 
 function SupplierDescription({ text }: { text: string }) {
   return <details className="text-xs">
-    <summary className="min-h-11 cursor-pointer py-2 text-admin-muted hover:text-admin-fg md:min-h-0 md:py-0">Deskripsi supplier (rujukan admin, bukan untuk pembeli)</summary>
+    <summary className="min-h-11 cursor-pointer py-2 text-admin-muted hover:text-admin-fg md:min-h-0 md:py-0">Deskripsi supplier</summary>
     <p className="mt-1.5 max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-admin-border bg-admin-subtle/60 p-2.5 leading-5 text-admin-muted">{text}</p>
   </details>;
 }
@@ -595,7 +595,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
   const needle = query.trim().toLowerCase();
 
   type UnifiedEntry =
-    | { kind: "item"; bulkId: string; familyKey: string; familyName: string; familySlug?: string; status: string; reason: string; item: CatalogItem }
+    | { kind: "item"; bulkId: string; familyKey: string; familyName: string; status: string; item: CatalogItem }
     | { kind: "buff"; bulkId: string; familyKey: string; familyName: string; status: string; reason: string; variant: BuffData["variants"][number] };
 
   const searchMatchedEntries = useMemo<UnifiedEntry[]>(() => {
@@ -609,9 +609,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
         bulkId: item.bulkId,
         familyKey: item.family.key,
         familyName: item.productName || item.family.name,
-        familySlug: item.productSlug || item.family.slug,
         status: item.variantStatus,
-        reason: item.variantReason,
         item,
       });
     }
@@ -676,7 +674,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
   const markupPagedIds = useMemo(() => markupPaged.map(e => e.bulkId), [markupPaged]);
 
   const pagedGroups = useMemo(() => {
-    const groups: { key: string; name: string; slug?: string; archived: boolean; inactive: boolean; items: CatalogItem[] }[] = [];
+    const groups: { key: string; name: string; archived: boolean; inactive: boolean; items: CatalogItem[] }[] = [];
     const byKey = new Map<string, (typeof groups)[number]>();
     const buffRows: (Extract<UnifiedEntry, { kind: "buff" }>)[] = [];
     for (const entry of markupPaged) {
@@ -690,7 +688,6 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
         g = {
           key: entry.familyKey,
           name: entry.familyName,
-          slug: entry.familySlug,
           archived: familyRows.some(r => r.product_archived === 1),
           inactive: !familyRows.some(r => r.productActive),
           items: [],
@@ -764,10 +761,10 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
     />;
   }
 
-  return <div className="min-w-0 space-y-6 [&_[role=tab]]:min-h-11 md:[&_[role=tab]]:min-h-9">
+  return <div className="min-w-0 space-y-4 [&_[role=tab]]:min-h-11 md:[&_[role=tab]]:min-h-9">
     <PageHeader
-      title={config.headerTitle}
-      description={config.headerDescription}
+      title={name}
+      className="min-h-0 flex-row items-center justify-between md:min-h-0"
       actions={<Button variant="outline" className="min-h-11 md:min-h-0" disabled={locked || (isWrSk && saldoLoading)} onClick={refreshActive}>
         {isWrSk && saldoLoading ? <Spinner size={13} /> : <RefreshCw />} Muat ulang
       </Button>}
@@ -783,49 +780,51 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
       </div>
 
       <TabsContent value="ringkas" className="mt-4 space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4 [&>div]:p-3 sm:[&>div]:p-4 [&>div>div]:break-words [&>div>div]:text-lg sm:[&>div>div]:text-2xl">
           {isWrSk ? (
             <>
               <StatCard
-                label="Saldo wallet"
-                value={saldoLoading ? <Skeleton className="h-8 w-32" /> : wrSkBalance != null ? formatRupiah(wrSkBalance) : "—"}
+                label="Saldo"
+                value={saldoLoading ? <Skeleton className="h-7 w-28 max-w-full" /> : wrSkBalance != null ? formatRupiah(wrSkBalance) : "—"}
                 hint={saldoLoading
                   ? "Memuat kapasitas…"
                   : wrSkBalance == null
-                    ? "Saldo belum diketahui — muat ulang untuk memeriksa."
-                    : <><span>~{balance?.capacity?.estimatedOrders ?? 0} order</span> · Rata-rata modal {formatRupiah(balance?.capacity?.avgOrderCost ?? 0)}/order.{balance?.current?.isLow ? ` Di bawah batas ${formatRupiah(balance.current.threshold)} — segera top up.` : " Di atas batas aman operasional."}</>}
+                    ? "Muat ulang untuk cek saldo."
+                    : <>
+                        {balance?.capacity && <><span>~{balance.capacity.estimatedOrders} order</span> · {formatRupiah(balance.capacity.avgOrderCost)}/order</>}
+                        {balance?.current?.isLow && <span className="block">Di bawah batas {formatRupiah(balance.current.threshold)}</span>}
+                      </>}
                 tone={balance?.current?.isLow ? "warning" : "secondary"}
               />
               <StatCard
                 label="Varian aktif"
                 value={logsLoading ? <Skeleton className="h-8 w-20" /> : (wrSkCounts ? wrSkCounts.active_variants : "—")}
-                hint={logsLoading ? "Memuat katalog…" : (wrSkCounts ? `${wrSkCounts.mapped_variants} dipetakan · ${wrSkCounts.total_variants} di katalog` : "Buka tab Markup untuk detail")}
+                hint={wrSkCounts ? `${wrSkCounts.mapped_variants} dipetakan · ${wrSkCounts.total_variants} di katalog` : undefined}
               />
               <StatCard
                 label="Keluarga produk"
                 value={logsLoading ? <Skeleton className="h-8 w-20" /> : (wrSkCounts ? wrSkCounts.families : "—")}
-                hint="Produk terpisah dari supplier lain"
               />
               <StatCard
                 label="Sinkron terakhir"
-                value={logsLoading ? <Skeleton className="h-8 w-28" /> : syncCompactValue(logs, diffStatus)}
-                hint={logsLoading ? "Memuat status sinkron…" : "Detail di bawah"}
+                value={logsLoading ? <Skeleton className="h-7 w-28 max-w-full" /> : syncCompactValue(logs, diffStatus)}
+                hint={logsLoading ? "Memuat status sinkron…" : undefined}
               />
             </>
           ) : (
             <>
-              <StatCard label="Saldo wallet" value={<span className="break-words">{supplierMoney(currency, balance?.balance ?? balance?.balance_usdt, true)}</span>} hint={balance?.username ? `akun ${balance.username}` : `Saldo ${currency}`} />
+              <StatCard label="Saldo" value={supplierMoney(currency, balance?.balance ?? balance?.balance_usdt, true)} hint={balance?.username ? `akun ${balance.username}` : undefined} />
               <StatCard label="Varian aktif" value={catalog ? active : "—"} hint={catalog ? `${mapped} dipetakan · ${items.length} di katalog` : undefined} />
-              <StatCard label="Keluarga produk" value={catalog ? allFamilies.size : "—"} hint="Produk terpisah dari supplier lain" />
-              <StatCard label="Sinkron terakhir" value={supplierTime(catalog?.last_sync_at) ?? (catalog ? "Belum pernah" : "—")} hint="Sinkron katalog yang berhasil" />
+              <StatCard label="Keluarga produk" value={catalog ? allFamilies.size : "—"} />
+              <StatCard label="Sinkron terakhir" value={supplierTime(catalog?.last_sync_at) ?? (catalog ? "Belum pernah" : "—")} />
             </>
           )}
         </div>
         {(isWrSk ? syncMeta?.configured !== undefined : catalog != null) && (
           <div className="flex flex-wrap gap-2" aria-label={`Status ${name}`}>
-            <Badge variant={configured ? "success" : "secondary"}>{configured ? "Konfigurasi tersedia" : "Belum dikonfigurasi"}</Badge>
-            <Badge variant={dispatchEnabled ? "success" : "secondary"}>Pengiriman otomatis {dispatchEnabled ? "aktif" : "nonaktif"}</Badge>
-            <Badge variant={syncEnabled ? "success" : "secondary"}>Sinkron otomatis {syncEnabled ? "aktif" : "nonaktif"}</Badge>
+            {!configured && <Badge variant="warning">Belum dikonfigurasi</Badge>}
+            <Badge variant={dispatchEnabled ? "secondary" : "warning"}>Pengiriman otomatis {dispatchEnabled ? "aktif" : "nonaktif"}</Badge>
+            <Badge variant={syncEnabled ? "secondary" : "warning"}>Sinkron otomatis {syncEnabled ? "aktif" : "nonaktif"}</Badge>
           </div>
         )}
         {isWrSk ? (
@@ -879,9 +878,9 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
       </TabsContent>
 
       <TabsContent value="markup" className="mt-4 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Input className="w-full max-w-sm" value={query} onChange={event => { setQuery(event.target.value); setMarkupPage(1); }} placeholder="Cari varian…" aria-label="Cari varian" />
-          <NativeSelect value={markupPerPage} onChange={event => { setMarkupPerPage(Number(event.target.value) as 20 | 50 | 100); setMarkupPage(1); }} aria-label="Jumlah per halaman" className="w-[110px]">
+        <div className="flex items-center justify-between gap-2">
+          <Input className="min-h-11 min-w-0 flex-1 sm:max-w-sm md:min-h-0" value={query} onChange={event => { setQuery(event.target.value); setMarkupPage(1); }} placeholder="Cari varian…" aria-label="Cari varian" />
+          <NativeSelect value={markupPerPage} onChange={event => { setMarkupPerPage(Number(event.target.value) as 20 | 50 | 100); setMarkupPage(1); }} aria-label="Jumlah per halaman" className="min-h-11 w-[110px] shrink-0 md:min-h-0">
             <option value={20}>20 / hal</option>
             <option value={50}>50 / hal</option>
             <option value={100}>100 / hal</option>
@@ -905,7 +904,8 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
           </p>
         )}
 
-        <BulkMarkupToolbar
+        {markupPagedIds.length > 0 && <BulkMarkupToolbar
+          selectionOnly
           visibleIds={markupPagedIds}
           totalCount={markupFiltered.length}
           selected={bulkSelected}
@@ -913,9 +913,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
           allowDecimal={mode === "manual"}
           percentStep={config.percentStep}
           resetLabel={mode === "fixed" ? "reset Rp ke 0" : "reset harga manual ke rumus"}
-          resetTitle={mode === "fixed"
-            ? "Bila dicentang, Rp per varian ikut direset ke 0. Bila mati, Rp dipertahankan."
-            : "Bila dicentang, harga manual per varian dihapus agar mengikuti rumus. Bila mati, harga manual dipertahankan."}
+          resetTitle={mode === "fixed" ? "Nolkan markup nominal." : "Hapus harga manual dari varian terpilih."}
           resetConfirmText={mode === "fixed" ? " + reset Rp ke 0" : " + reset harga manual ke rumus"}
           disabled={locked || wrSkMarkupLoading}
           confirmApply={message => new Promise<boolean>(resolve => setBulkConfirm({ message, resolve }))}
@@ -928,7 +926,8 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
           onToggleAllVisible={checked => setBulkSelected(checked ? new Set(markupPagedIds) : new Set())}
           onClear={() => setBulkSelected(new Set())}
           onApply={applyBulkMarkup}
-        />
+          onError={error => setActionError(error instanceof Error ? error.message : "Bulk markup gagal.")}
+        />}
 
         {isWrSk && wrSkMarkupLoading && wrSkMarkups.length === 0 && (
           <p role="status" className="text-sm text-admin-muted">Memuat varian {name}…</p>
@@ -941,13 +940,13 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
         )}
 
         {pagedGroups.groups.map(group => <FamilyCard key={group.key} title={group.name}
-          description={`${group.slug ?? "Belum dipetakan"} · ${group.items.length} varian`}
+          description={`${group.items.length} varian`}
           archived={group.archived} parentInactive={group.inactive} mode={mode} selectable>
           {group.items.map(item => {
             if (isWrSk) {
               const canEdit = item.product_archived !== 1;
               const stockText = item.stock === -1 ? "∞" : String(item.stock);
-              const extraReason = item.variantStatus !== "live" && item.variantReason ? ` · ${item.variantReason}` : "";
+              const extraReason = item.variantStatus === "hidden_loser" && item.variantReason ? ` · ${item.variantReason}` : "";
               return priceRow({
                 key: `${supplier}-${item.id}`,
                 id: `${supplier}-${item.id}`,
@@ -984,13 +983,13 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
               bulkId: item.bulkId,
               path: `products/${encodeURIComponent(String(item.id))}`,
               title: label,
-              meta: <>{item.name} · modal {costWithIdr(supplierMoney(currency, cost), cost, fx)}{item.delivery_type === "muse_buff" ? " per 1 miliar token" : ""} · stok {item.stock === -1 ? "∞" : item.stock}
+              meta: <>{item.name && item.name !== label ? `${item.name} · ` : ""}Modal {costWithIdr(supplierMoney(currency, cost), cost, fx)}{item.delivery_type === "muse_buff" ? " per 1 miliar token" : ""} · stok {item.stock === -1 ? "∞" : item.stock}
                 {config.bulk && !!item.bulk_tiers_preview?.length && <span className="mt-1 block">Grosir: {item.bulk_tiers_preview.map(t => `${t.min_qty}+ ${formatRupiah(t.unit_price)}`).join(" · ")}</span>}
-                {item.variantStatus !== "live" && item.variantReason ? ` · ${item.variantReason}` : ""}
+                {item.variantStatus === "hidden_loser" && item.variantReason ? ` · ${item.variantReason}` : ""}
               </>,
               badges: <>
                 <VariantStatusBadge status={item.variantStatus} reason={item.variantReason} />
-                {item.variant_id == null ? <Badge variant="warning">Belum dipetakan</Badge> : config.bulk && canEdit
+                {item.variant_id == null && item.variantStatus !== "hidden_nocatalog" ? <Badge variant="warning">Belum dipetakan</Badge> : config.bulk && canEdit
                   ? <Button type="button" variant="outline" size="sm" className="min-h-11 md:min-h-0" disabled={locked} onClick={event => { setBulkError(""); setBulk({ item, trigger: event.currentTarget }); }}>Grosir</Button> : null}
               </>,
               details: config.disclosure && item.supplier_description?.trim() ? <SupplierDescription text={item.supplier_description} /> : undefined,
@@ -1014,7 +1013,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
             bulkId: variant.sku,
             path: `buff/${encodeURIComponent(variant.sku)}`,
             title: variant.label,
-            meta: <>Per {variant.tunvn_buff_quantity_b} miliar token · modal {costWithIdr(supplierMoney("USDT", variant.tunvn_cost_usdt), variant.tunvn_cost_usdt, variant.tunvn_fx_idr_per_usdt)}{status !== "live" && reason ? ` · ${reason}` : ""}</>,
+            meta: <>Per {variant.tunvn_buff_quantity_b} miliar token · modal {costWithIdr(supplierMoney("USDT", variant.tunvn_cost_usdt), variant.tunvn_cost_usdt, variant.tunvn_fx_idr_per_usdt)}{status === "hidden_loser" && reason ? ` · ${reason}` : ""}</>,
             badges: <VariantStatusBadge status={status} reason={reason} />,
             markup: Number(variant.tunvn_markup_percent ?? TUNVN_BUFF_MARKUP_PERCENT),
             manual: variant.tunvn_admin_price_idr,
@@ -1030,7 +1029,6 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
             <p className="text-xs text-admin-muted">Hal {markupSafePage} dari {markupTotalPages} · {markupFiltered.length} varian</p>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="min-h-11 md:min-h-0" disabled={markupSafePage <= 1} onClick={() => setMarkupPage(p => Math.max(1, p - 1))}><ChevronLeft /> Sebelumnya</Button>
-              <span className="text-xs tabular-nums text-admin-muted">{markupSafePage} / {markupTotalPages}</span>
               <Button variant="outline" size="sm" className="min-h-11 md:min-h-0" disabled={markupSafePage >= markupTotalPages} onClick={() => setMarkupPage(p => Math.min(markupTotalPages, p + 1))}>Berikutnya <ChevronRight /></Button>
             </div>
           </div>
@@ -1043,10 +1041,10 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
           <CardContent className="space-y-3 p-4 pt-0">
             <p className="text-sm leading-5 text-admin-muted">
               {supplier === "warung"
-                ? "Tarik katalog terbaru dari Warung Rebahan dan hitung ulang harga jual kelipatan Rp500. Produk baru aktif otomatis sesuai aturan WR; status produk dikelola dari Produk."
+                ? "Perbarui katalog dan harga jual. Produk baru aktif otomatis."
                 : supplier === "sekalipay"
-                  ? "Tarik katalog Aplikasi Premium terbaru dari Sekalipay dan hitung ulang harga jual kelipatan Rp500. Varian AUTO aktif otomatis sesuai aturan SK; status produk dikelola dari Produk."
-                  : `Tarik katalog terbaru dan hitung ulang harga dengan kurs ${currency} dari snapshot AXVARA. Produk dan varian baru selalu nonaktif. Nama, gambar, label, dan status produk dikelola dari Produk.`}
+                  ? "Perbarui katalog Aplikasi Premium dan harga jual. Varian AUTO baru aktif otomatis."
+                  : "Perbarui katalog dan harga jual. Produk dan varian baru tetap nonaktif."}
             </p>
             <Button className="min-h-11 md:min-h-0" disabled={locked || syncDisabled}
               onClick={() => isWrSk ? void runWrSkSync() : void mutateStandard("Sinkron", "publish", {}, "Sinkron katalog selesai.")}>
@@ -1059,11 +1057,11 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
         {config.exclusions && (
           <Card className="overflow-hidden">
             <CardHeader className="p-4 pb-3">
-              <CardTitle className="text-base">Aturan exclusion</CardTitle>
-              <CardDescription className="mt-1 text-xs">{config.exclusionsDescription}</CardDescription>
+              <CardTitle className="text-base">Pengecualian katalog</CardTitle>
+              <CardDescription className="mt-1 text-xs">Produk yang cocok dengan pola dilewati saat sinkronisasi.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 p-4 pt-0">
-              {exclusions.length === 0 ? <p className="text-sm text-admin-muted">Belum ada aturan exclusion.</p> : (
+              {exclusions.length === 0 ? <p className="text-sm text-admin-muted">Belum ada pengecualian.</p> : (
                 <div className="rounded-md border border-admin-border">
                   <Table>
                     <TableHeader><TableRow><TableHead>Pola</TableHead><TableHead>Alasan</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader>
@@ -1073,7 +1071,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
                         <TableCell className="text-xs text-admin-muted">{rule.reason ?? "—"}</TableCell>
                         <TableCell>
                           <div className="flex justify-end">
-                            <Button variant="ghost" size="icon" className="text-admin-danger" disabled={locked}
+                            <Button variant="ghost" size="icon" className="min-h-11 min-w-11 text-admin-danger md:min-h-0 md:min-w-0" disabled={locked}
                               title="Hapus exclusion" onClick={() => void deleteExclusion(rule.id)} aria-label={`Hapus exclusion ${rule.pattern}`}><Trash2 /></Button>
                           </div>
                         </TableCell>
@@ -1094,8 +1092,8 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
         {config.sandbox && (
           <Card>
             <CardHeader className="p-4 pb-3">
-              <CardTitle className="text-base">Uji sandbox order</CardTitle>
-              <CardDescription className="mt-1 text-xs">Tanpa potong saldo. Isi product_id + variant_id SK (lihat respons sync / daftar item).</CardDescription>
+              <CardTitle className="text-base">Uji pesanan sandbox</CardTitle>
+              <CardDescription className="mt-1 text-xs">Gunakan ID produk dan varian dari SK. Saldo tidak terpotong.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 p-4 pt-0">
               <div className="flex flex-wrap items-center gap-2">

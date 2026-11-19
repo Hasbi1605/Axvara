@@ -189,25 +189,19 @@ export function SupplierOrderQueue({
     };
   });
 
-  const description = supplier === "warung"
-    ? "Order lunas yang diteruskan ke Warung Rebahan. Cari by invoice WR (#RBHN-…) atau kode Axvara untuk forward manual email WR ke buyer."
-    : supplier === "sekalipay"
-    ? "Order lunas yang diteruskan ke Sekalipay. Cari by invoice SK atau kode Axvara."
-    : `100 pesanan terbaru.${buff ? " Rekonsiliasi hanya membaca batch yang diketahui; tidak membeli ulang." : ""}`;
-
   return <>
     <Card className="overflow-hidden">
       <CardHeader className="gap-3 p-4 pb-3">
         <div className="min-w-0">
-          <CardTitle className="text-base">Pengiriman otomatis</CardTitle>
-          <CardDescription className="mt-1 text-xs">{description}</CardDescription>
+          <CardTitle className="text-base">Antrean pengiriman</CardTitle>
+          {!isWrSk && list.length >= 100 && <CardDescription className="mt-1 text-xs">100 pesanan terbaru</CardDescription>}
         </div>
         {isWrSk && (
           <div className="flex flex-wrap items-center gap-2">
             <Input value={orderQuery} onChange={e => onOrderQueryChange?.(e.target.value)}
-              placeholder={config.searchPlaceholder} aria-label={config.searchLabel} className="w-full max-w-[260px]" />
+              placeholder={config.searchPlaceholder} aria-label={config.searchLabel} className="min-h-11 w-full sm:max-w-[260px] md:min-h-0" />
             <NativeSelect value={orderStatus} onChange={e => onOrderStatusChange?.(e.target.value)}
-              aria-label={config.statusFilterLabel} className="w-[180px]">
+              aria-label={config.statusFilterLabel} className="min-h-11 w-[180px] md:min-h-0">
               {ORDER_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </NativeSelect>
           </div>

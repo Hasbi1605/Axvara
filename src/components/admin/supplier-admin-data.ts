@@ -72,44 +72,38 @@ export type ExclusionRow = { id: number; pattern: string; reason: string | null;
 
 const configs = {
   warung: {
-    name: "Warung Rebahan", headerTitle: "Saldo Warung Rebahan",
-    headerDescription: "Saldo, kapasitas, dan sinkronisasi katalog supplier.",
+    name: "Warung Rebahan",
     currency: "IDR" as const, mode: "fixed" as const, itemId: "wr_variant_id" as const, orderId: "wr_order_id" as const,
     lazy: true, syncPath: "sync", excludedLabel: "excluded", exclusions: true,
-    exclusionsPlaceholder: "cth: canva", exclusionsDescription: "Produk yang cocok pola tidak masuk katalog (mis. Canva & Gemini).",
+    exclusionsPlaceholder: "Mis. canva",
     searchPlaceholder: "Cari invoice WR / kode Axvara…", searchLabel: "Cari invoice WR atau kode Axvara",
     statusFilterLabel: "Filter status order WR", maxMarkup: 500, percentStep: 1,
   },
   sekalipay: {
-    name: "Sekalipay", headerTitle: "Saldo Sekalipay",
-    headerDescription: "Saldo, kapasitas, dan sinkronisasi katalog supplier.",
+    name: "Sekalipay",
     currency: "IDR" as const, mode: "fixed" as const, itemId: "sk_variant_id" as const, orderId: "sk_invoice" as const,
     lazy: true, syncPath: "sync", excludedLabel: "non-auto", exclusions: true, sandbox: true,
-    exclusionsPlaceholder: "cth: pulsa", exclusionsDescription: "Produk yang cocok pola tidak dibuatkan katalog (registry tetap dicatat).",
+    exclusionsPlaceholder: "Mis. pulsa",
     searchPlaceholder: "Cari invoice SK / kode Axvara…", searchLabel: "Cari invoice SK atau kode Axvara",
     statusFilterLabel: "Filter status order SK", maxMarkup: 500, percentStep: 1,
   },
   aivault: {
-    name: "AIVault", headerTitle: "AIVault",
-    headerDescription: "Katalog, harga, dan pengiriman otomatis AIVault.",
+    name: "AIVault",
     currency: "USD" as const, mode: "manual" as const, itemId: "service_id" as const, orderId: "service_id" as const,
     bulk: true, syncPath: "publish", maxMarkup: 1000, percentStep: 0.5,
   },
   tunvn: {
-    name: "TUNVN", headerTitle: "TUNVN",
-    headerDescription: "Katalog, harga, dan pengiriman otomatis TUNVN.",
+    name: "TUNVN",
     currency: "USDT" as const, mode: "manual" as const, itemId: "supplier_product_id" as const, orderId: "source_product_id" as const,
     buff: true, disclosure: true, syncPath: "publish", maxMarkup: 1000, percentStep: 0.5,
   },
   storebat: {
-    name: "StoreBat", headerTitle: "StoreBat",
-    headerDescription: "Katalog, harga, dan pengiriman otomatis StoreBat.",
+    name: "StoreBat",
     currency: "USD" as const, mode: "manual" as const, itemId: "id" as const, orderId: "storebat_product_id" as const,
     syncPath: "publish", maxMarkup: 1000, percentStep: 0.5,
   },
   mirai: {
-    name: "Mirai", headerTitle: "Mirai",
-    headerDescription: "Katalog, harga, dan pengiriman otomatis Mirai.",
+    name: "Mirai",
     currency: "USDT" as const, mode: "manual" as const, itemId: "package_code" as const, orderId: "package_code" as const,
     syncPath: "publish", maxMarkup: 1000, percentStep: 0.5,
   },
@@ -117,12 +111,12 @@ const configs = {
 
 export type Supplier = keyof typeof configs;
 export type SupplierConfig = {
-  name: string; headerTitle: string; headerDescription: string;
+  name: string;
   currency: Currency; mode: "fixed" | "manual";
   itemId: "id" | "supplier_product_id" | "service_id" | "package_code" | "wr_variant_id" | "sk_variant_id";
   orderId: "source_product_id" | "service_id" | "storebat_product_id" | "package_code" | "wr_order_id" | "sk_invoice";
   lazy?: boolean; syncPath: string; excludedLabel?: string; exclusions?: boolean; sandbox?: boolean;
-  exclusionsPlaceholder?: string; exclusionsDescription?: string;
+  exclusionsPlaceholder?: string;
   searchPlaceholder?: string; searchLabel?: string; statusFilterLabel?: string;
   maxMarkup: number; percentStep: number;
   bulk?: boolean; buff?: boolean; disclosure?: boolean;

@@ -85,13 +85,13 @@ describe("tab dalam-halaman WR", () => {
   it("default Ringkas (4 kartu + status pills); Antrean/Markup/Alat lazy + cache", async () => {
     const calls = stubSupplierApi();
     renderAdmin(<ToastProvider><WarungRebahanManager /></ToastProvider>);
-    expect(await screen.findByText("Saldo Warung Rebahan")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Warung Rebahan" })).toBeTruthy();
     expect(await screen.findByText("~10 order")).toBeTruthy();
     expect(screen.getByText("Varian aktif")).toBeTruthy();
     expect(screen.getByText("Keluarga produk")).toBeTruthy();
     expect(screen.getByText("2 dipetakan · 3 di katalog")).toBeTruthy();
     expect(screen.getByText("2")).toBeTruthy();
-    expect(screen.getByText("Konfigurasi tersedia")).toBeTruthy();
+    expect(screen.queryByText("Konfigurasi tersedia")).toBeNull();
     expect(screen.getByText("Pengiriman otomatis aktif")).toBeTruthy();
     expect(screen.getByText("Sinkron otomatis aktif")).toBeTruthy();
 
@@ -166,9 +166,9 @@ describe("tab dalam-halaman WR", () => {
     // Honesty banner when total > loaded rows
     expect(screen.getByText(/Menampilkan 3 dari 520 varian/)).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Semua (3 / 520)" })).toBeTruthy();
-    // No activation switch for WR/SK, and bulk reset copy is "reset Rp ke 0"
+    // No activation switch for WR/SK; bulk reset stays hidden until selecting a row.
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.getByText("reset Rp ke 0")).toBeTruthy();
+    expect(screen.queryByText("reset Rp ke 0")).toBeNull();
 
     // Default Live: only 1 Bulan (WR-LIVE) visible
     expect(screen.getByRole("form", { name: "Harga 1 Bulan" })).toBeTruthy();
@@ -186,6 +186,7 @@ describe("tab dalam-halaman WR", () => {
 
     // Bulk markup checks only checked/visible row and confirms via ConfirmDialog
     await userEvent.click(screen.getByRole("checkbox", { name: "Pilih V Live untuk bulk markup" }));
+    expect(screen.getByText("reset Rp ke 0")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Terapkan ke 1 varian" }));
     const dialog = await screen.findByRole("alertdialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Terapkan markup" }));
@@ -262,7 +263,7 @@ describe("tab dalam-halaman SK", () => {
       },
     });
     renderAdmin(<ToastProvider><SekalipayManager /></ToastProvider>);
-    await screen.findByText("Saldo Sekalipay");
+    await screen.findByRole("heading", { name: "Sekalipay" });
 
     expect(screen.getAllByRole("tab").map(t => t.textContent)).toEqual(["Ringkas", "Antrean", "Markup", "Alat"]);
     expect(screen.queryByRole("tab", { name: /Audit SK/ })).toBeNull();

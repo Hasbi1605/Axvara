@@ -21,7 +21,7 @@ async function setup(options:{off?:boolean;manual?:number;error?:string;archived
     return {ok:!(init?.method==="PATCH" && options.error),status:options.error && init?.method==="PATCH"?400:200,json:async()=>body};
   }));
   render(<AivaultManager/>);
-  await screen.findByText("Saldo wallet");
+  await screen.findByText("Saldo");
   await userEvent.click(screen.getByRole("tab",{name:"Markup"}));
   await screen.findByText("Gemini Plus 6 Bulan");
   return {patches};

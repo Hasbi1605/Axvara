@@ -253,7 +253,7 @@ it.each([
   }));
   renderAdmin(<Manager />);
   expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Ringkas", "Antrean", "Markup", "Alat"]);
-  expect(screen.getByText(`Katalog, harga, dan pengiriman otomatis ${name}.`)).toBeTruthy();
+  expect(screen.getByRole("heading", { name })).toBeTruthy();
   expect(await screen.findByText("19 Nov 2026, 06.58")).toBeTruthy();
   expect(screen.getByText(currency === "USD" ? "$0.00" : "0,00 USDT")).toBeTruthy();
   expect(screen.getByRole("alert").textContent).toContain("Sinkron gagal (19 Nov 2026, 07.00)");
@@ -305,7 +305,7 @@ describe("V3 parity: sub-tabs, 20/50/100 pagination, and bulk markup on the 4 su
       if (url.endsWith("/tunvn/markup/bulk") && init?.method === "POST") {
         const body = JSON.parse(String(init.body));
         bulkCalls.push({ url, body });
-        return pendingBulk;
+        return bulkCalls.length === 1 ? Response.json({}, { status: 503 }) : pendingBulk;
       }
       return Response.json({ ok: true, configured: true, items: manyItems });
     }));
@@ -317,8 +317,10 @@ describe("V3 parity: sub-tabs, 20/50/100 pagination, and bulk markup on the 4 su
     expect(screen.getByRole("tab", { name: "Nonaktif manual (1)" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Semua (24)" })).toBeTruthy();
 
-    // Distinct copy for manual-override suppliers
-    expect(screen.getByText("reset harga manual ke rumus")).toBeTruthy();
+    // The editor appears only after a selection on this page.
+    expect(screen.getByRole("checkbox", { name: "Pilih halaman ini" })).toBeTruthy();
+    expect(screen.queryByLabelText("Markup persen bulk")).toBeNull();
+    expect(screen.queryByText("reset harga manual ke rumus")).toBeNull();
     expect(screen.queryByText("reset Rp ke 0")).toBeNull();
 
     // Page 1 shows 20 rows out of 22 live; Akun 01 visible, Buff on page 2
@@ -332,6 +334,7 @@ describe("V3 parity: sub-tabs, 20/50/100 pagination, and bulk markup on the 4 su
 
     // Select Akun 01 + Buff (TUNVN-BUFF-1B), enter 42.5%, toggle reset_manual, confirm
     await userEvent.click(screen.getByRole("checkbox", { name: "Pilih Akun 01 untuk bulk markup" }));
+    expect(screen.getByText("reset harga manual ke rumus")).toBeTruthy();
     await userEvent.click(screen.getByRole("checkbox", { name: "Pilih 1B Token untuk bulk markup" }));
     fireEvent.change(screen.getByLabelText("Markup persen bulk"), { target: { value: "42.5" } });
     await userEvent.click(screen.getByText("reset harga manual ke rumus"));
@@ -341,8 +344,14 @@ describe("V3 parity: sub-tabs, 20/50/100 pagination, and bulk markup on the 4 su
     expect(dialog.textContent).toContain("reset harga manual ke rumus");
     await userEvent.click(within(dialog).getByRole("button", { name: "Terapkan markup" }));
 
-    await waitFor(() => expect(bulkCalls).toHaveLength(1));
-    expect(bulkCalls[0]).toEqual({
+    expect(await screen.findByText("Bulk markup gagal")).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Pilih Akun 01 untuk bulk markup" }).getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan ke 2 varian" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Terapkan markup" }));
+
+    await waitFor(() => expect(bulkCalls).toHaveLength(2));
+    expect(bulkCalls[0]).toEqual(bulkCalls[1]);
+    expect(bulkCalls[1]).toEqual({
       url: "/api/admin/tunvn/markup/bulk",
       body: { variant_ids: ["1", "TUNVN-BUFF-1B"], markup_percent: 42.5, reset_manual: true },
     });
@@ -354,7 +363,7 @@ describe("V3 parity: sub-tabs, 20/50/100 pagination, and bulk markup on the 4 su
 
     // Status sub-tab filters hidden_loser and off
     await userEvent.click(screen.getByRole("tab", { name: "Disembunyikan otomatis (1)" }));
-    expect(screen.getByText("Hidden: kalah")).toBeTruthy();
+    expect(screen.getByText("Kalah grup")).toBeTruthy();
     expect(screen.getByText(/Kalah vs WR #1/)).toBeTruthy();
   });
 });

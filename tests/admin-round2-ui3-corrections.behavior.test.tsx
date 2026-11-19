@@ -170,7 +170,7 @@ describe("D6: angka tidak menyesatkan saat memuat", () => {
       return Response.json({ orders: [], total: 0, page: 1, per_page: 20 });
     }));
     renderAdmin(<ToastProvider><WarungRebahanManager /></ToastProvider>);
-    await screen.findByText("Saldo Warung Rebahan");
+    await screen.findByRole("heading", { name: "Warung Rebahan" });
     expect(screen.queryByText(/~0 order/)).toBeNull();
     expect(screen.queryByText("Belum pernah")).toBeNull();
     expect(screen.getByText("Memuat kapasitas…")).toBeTruthy();

@@ -9,9 +9,11 @@ enam menu/bookmark sidebar tetap dan primitive/token `admin-*` existing:
 - **Tab seragam (`Ringkas · Antrean · Markup · Alat`):** WR/SK tetap lazy per tab
   (mount Ringkas hanya memuat `/saldo` + `/sync-log`, cache saat berpindah tab,
   serta mempertahankan Skeleton D6 `"Memuat kapasitas…"` / `"Memuat status sinkron…"`).
-  Ringkas menampilkan 4 `StatCard` (`Saldo wallet`, `Varian aktif`, `Keluarga produk`,
-  `Sinkron terakhir`), pill konfigurasi/dispatch/sync, dan kartu `SupplierSyncStatus`
-  khusus WR/SK dengan penanganan jujur `stale`, `partial`, dan `failed`.
+  Nama supplier dan Muat ulang ada dalam satu baris. Ringkas menampilkan `Saldo`,
+  `Varian aktif`, `Keluarga produk`, dan `Sinkron terakhir` dalam dua kolom di HP
+  dan empat di layar lebar. Status aktif memakai warna netral. Peringatan saldo,
+  konfigurasi, pengiriman, dan sinkronisasi tetap terlihat saat perlu tindakan.
+  Kartu `SupplierSyncStatus` WR/SK tetap menampilkan status `stale`, `partial`, dan `failed`.
 - **Antrean 7 kolom (`Pesanan · Unit · Biaya · Status · Pembeli · Umur antrean · Aksi`):**
   Tabel desktop + kartu mobile responsif (`md:hidden`) untuk semua 6 supplier.
   WR/SK mempertahankan pencarian `q` (debounce 400ms), filter status, pagination
@@ -23,16 +25,18 @@ enam menu/bookmark sidebar tetap dan primitive/token `admin-*` existing:
 - **Markup (`FamilyCard` + sub-tab status + 20/50/100 + `BulkMarkupToolbar`):**
   Sub-tab `Live · Disembunyikan otomatis · Nonaktif manual · Semua` (default `Live`
   untuk WR/SK; pada empat lainnya `Live` bila ada varian live, else `Semua`),
-  pagination klien `20/50/100`, `BulkMarkupToolbar` hanya menyasar baris yang
-  dicentang/tampil di halaman aktif dengan copy terpisah (`reset Rp ke 0` untuk
+  pagination klien `20/50/100`. Gunakan checkbox per baris atau `Pilih halaman ini`.
+  Pengaturan `BulkMarkupToolbar` muncul setelah ada pilihan dan hanya menyasar
+  baris yang dicentang di halaman aktif. Opsi reset terpisah (`reset Rp ke 0` untuk
   WR/SK vs `reset harga manual ke rumus` untuk empat lainnya) dan konfirmasi
-  `ConfirmDialog`. Baris WR/SK memakai `%` bulat (`0–500`) + nominal `Rp` tanpa
+  `ConfirmDialog` tetap tersedia. Baris WR/SK memakai `%` bulat (`0–500`) + nominal `Rp` tanpa
   saklar aktivasi; empat lainnya mempertahankan `%` (`0–1000` step `0.5`),
   `Harga manual (Rp)`, saklar aktif, `Grosir` (AIVault), dan lipatan deskripsi
   (TUNVN). Bila katalog WR/SK dimuat sebagian (`total > loaded`), panel
   menampilkan penanda cakupan jujur.
-- **Alat:** kartu `Sinkron katalog` untuk seluruh 6 supplier, `Aturan exclusion`
-  (CRUD pola) untuk WR/SK, dan `Uji sandbox order` khusus SK.
+- **Alat:** `Sinkron katalog` menjelaskan apakah produk dan varian baru aktif,
+  `Pengecualian katalog` mengelola pola WR/SK, dan `Uji pesanan sandbox` SK
+  menjelaskan bahwa saldo tidak terpotong.
 
 Verifikasi lokal: `tsc --noEmit` + suite Vitest terfokus dan Chromium Playwright
 (1440×900 & 390×844, fixture `/api/**` ter-mock — bukan D1/auth/produksi) lulus

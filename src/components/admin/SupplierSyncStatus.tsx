@@ -6,12 +6,17 @@
 // tercatat di *_sync_log per potongan). Kartu menampilkan keduanya terpisah
 // agar delta 1 varian / heartbeat 0/0 tidak terbaca sebagai sync penuh.
 
-import { CircleDot, History } from "lucide-react";
 import { formatWibDateTime } from "@/lib/utils";
+
+const syncStatusLabel = {
+  success: "Berhasil",
+  partial: "Sebagian berhasil",
+  failed: "Gagal",
+};
 
 export type SupplierSyncLogRow = {
   sync_type: string;
-  status: string;
+  status: keyof typeof syncStatusLabel;
   products_total: number | null;
   products_synced: number | null;
   variants_synced: number | null;
@@ -77,44 +82,30 @@ export function SupplierSyncStatus({
       {diffKnown ? (
         <>
           <p className={`mt-1 text-sm font-semibold tabular-nums ${diff?.healthy ? "text-admin-fg" : "text-admin-warning"}`}>
-            {diff?.healthy ? "Diff VPS aktif" : "Diff VPS berhenti"} · cek {fmt(diff?.last_at)}
+            {diff?.healthy ? "Diff VPS aktif" : "Diff VPS berhenti"}
           </p>
-          <p className="mt-1 text-xs text-admin-muted">
-            {diff?.last_change_at
-              ? `Perubahan terakhir ${fmt(diff.last_change_at)} · ${describeDiffChange(diff.last_change)}`
-              : "Belum ada perubahan sejak diff aktif."}
-          </p>
+          {diff?.last_change_at && <p className="mt-1 text-xs text-admin-muted">
+            Perubahan terakhir {fmt(diff.last_change_at)} · {describeDiffChange(diff.last_change)}
+          </p>}
           {!diff?.healthy && (
-            <p className="mt-1 text-xs text-admin-warning">Sync penuh otomatis kembali tiap 15 menit.</p>
+            <p className="mt-1 text-xs text-admin-warning">Sinkron penuh berjalan tiap 15 menit.</p>
           )}
           {errorRecent && <p className="mt-1 text-xs text-admin-danger">Error diff: {diff?.last_error?.error}</p>}
         </>
-      ) : lastSweep || lastManual ? (
-        <>
-          <p className="mt-1 text-sm font-semibold text-admin-fg">{(lastSweep ?? lastManual)!.status} · {fmt((lastSweep ?? lastManual)!.created_at)}</p>
-          <p className="mt-1 text-xs text-admin-muted">Diff VPS belum aktif — sync penuh tiap 15 menit.</p>
-        </>
       ) : (
         <>
-          <p className="mt-1 text-sm font-semibold text-admin-fg">Belum pernah</p>
-          <p className="mt-1 text-xs text-admin-muted">Tekan Sinkron sekarang untuk sync pertama.</p>
+          <p className="mt-1 text-sm font-semibold text-admin-fg">Sinkron katalog</p>
+          {(lastSweep || lastManual) && <p className="mt-1 text-xs text-admin-muted">Diff VPS belum aktif. Sinkron penuh tiap 15 menit.</p>}
         </>
       )}
       {(lastManual || lastSweep) && (
         <div className="mt-2 space-y-1 border-t border-admin-border pt-2 text-xs text-admin-muted">
-          <p className="flex items-start gap-1.5">
-            <CircleDot className="mt-0.5 size-3 shrink-0 text-admin-success" aria-hidden />
-            <span>Sync penuh: {lastSweep
-              ? `${lastSweep.status} · ${fmt(lastSweep.created_at)} · ${lastSweep.products_total ?? lastSweep.products_synced ?? 0} produk`
-              : "—"}
-            {diff?.healthy ? " (cadangan tiap 60 mnt)" : ""}</span>
-          </p>
-          <p className="flex items-start gap-1.5">
-            <History className="mt-0.5 size-3 shrink-0 text-admin-accent" aria-hidden />
-            <span>Manual: {lastManual
-              ? `${lastManual.status} · ${fmt(lastManual.created_at)} · ${lastManual.products_synced ?? 0}p/${lastManual.variants_synced ?? 0}v · ${lastManual.products_excluded ?? 0} ${excludedLabel}`
-              : "—"}</span>
-          </p>
+          {lastSweep && <p>
+            Sinkron penuh · {syncStatusLabel[lastSweep.status] ?? lastSweep.status} · {fmt(lastSweep.created_at)} · {lastSweep.products_total ?? lastSweep.products_synced ?? 0} produk
+          </p>}
+          {lastManual && <p>
+            Manual · {syncStatusLabel[lastManual.status] ?? lastManual.status} · {fmt(lastManual.created_at)} · {lastManual.products_synced ?? 0} produk / {lastManual.variants_synced ?? 0} varian · {lastManual.products_excluded ?? 0} {excludedLabel}
+          </p>}
         </div>
       )}
     </>
