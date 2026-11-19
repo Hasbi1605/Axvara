@@ -238,3 +238,8 @@ it("hides the estimate notice when every cost is final", () => {
   expect(screen.queryByText(/modalnya masih estimasi/)).toBeNull();
   expect(screen.getByText("Omzet vs Untung bersih — Minggu ini")).toBeTruthy();
 });
+
+it("does not render the merchant payment / credit helper line on Ringkasan", async () => {
+  const source = (await import("node:fs")).readFileSync("src/components/admin/AdminOverview.tsx", "utf8");
+  expect(source).not.toMatch(/Pembayaran merchant|Kredit digunakan/);
+});

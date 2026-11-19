@@ -290,7 +290,7 @@ export function AdminOverview({ data, loading, error, onRetry, selection, onSele
       </div>
     </div>
     <EstimatedNotice count={report?.estimated_orders ?? data.profit_estimated_orders} codes={finance.estimated_order_codes ?? []} jaspayCodes={finance.estimated_jaspay_order_codes} onOpenOrder={onNavigate ? code => onNavigate("orders", { q: code }) : undefined} />
-    {report && <p className="text-xs leading-5 text-admin-muted">Pembayaran merchant {formatRupiah(report.merchant_paid ?? report.revenue)} · Kredit digunakan {formatRupiah(report.credit_used ?? 0)}.{hasFinance ? "" : " Untung produk belum dikurangi biaya pembayaran dan operasional."}</p>}
+    {report && !hasFinance && <p className="text-xs leading-5 text-admin-muted">Untung produk belum dikurangi biaya pembayaran dan operasional.</p>}
 
     <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
       <ProfitChart series={series} loading={loading} label={label} profitLabel={hasFinance ? "Untung bersih" : "Untung"} />
