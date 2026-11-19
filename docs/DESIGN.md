@@ -34,6 +34,9 @@ enam menu/bookmark sidebar tetap dan primitive/token `admin-*` existing:
   `Harga manual (Rp)`, saklar aktif, `Grosir` (AIVault), dan lipatan deskripsi
   (TUNVN). Bila katalog WR/SK dimuat sebagian (`total > loaded`), panel
   menampilkan penanda cakupan jujur.
+  Pada baris AIVault, draf markup rumus yang berubah menampilkan ringkasan
+  `Grosir ikut disesuaikan` di bawah kontrol baris (`text-xs text-admin-muted`),
+  bukan di dialog Grosir dan tanpa token baru.
 - **Alat:** `Sinkron katalog` menjelaskan apakah produk dan varian baru aktif,
   `Pengecualian katalog` mengelola pola WR/SK, dan `Uji pesanan sandbox` SK
   menjelaskan bahwa saldo tidak terpotong.

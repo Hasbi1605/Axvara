@@ -5,6 +5,7 @@ import { createD1Fixture } from "./helpers/d1-fixture";
 import {
   deriveAivaultBulkTiers,
   parseAivaultBulkMarkup,
+  scaleAivaultBulkMarkup,
   validateAivaultBulkAgainstBase,
 } from "@/lib/aivault/bulk";
 import { validateBulkPricing } from "@/lib/bulk-pricing";
@@ -128,11 +129,32 @@ describe("src/lib/aivault/bulk.ts", () => {
     expect(validateAivaultBulkAgainstBase(tiers, 50, null)).toBe("bulk_markup_not_below_base");
     expect(validateAivaultBulkAgainstBase(tiers, 50, 14000)).toBe("ok");
   });
+
+  it("separates rounding collisions by 0.01, keeps tiers below base, and drops those that cannot fit", () => {
+    const tiers = [99.99, 99.98, 99.97].map((markup_percent, index) => ({ min_qty: index + 2, markup_percent }));
+    expect(scaleAivaultBulkMarkup(tiers, 100, 0.07).map(t => t.markup_percent)).toEqual([0.06, 0.05, 0.04]);
+    expect(scaleAivaultBulkMarkup(tiers, 100, 0.02).map(t => t.markup_percent)).toEqual([0.01, 0]);
+    expect(scaleAivaultBulkMarkup(tiers, 100, 0)).toEqual([]);
+  });
+
+  it("keeps units at or above the rounded modal floor under a manual base", () => {
+    const tiers = [{ min_qty: 5, markup_percent: 1 }, { min_qty: 10, markup_percent: 0 }];
+    const fx = 18272.9; // Modal 9136.45, rounded up to 9200.
+    expect(deriveAivaultBulkTiers(0.5, fx, 9100, tiers)).toEqual([]);
+    expect(deriveAivaultBulkTiers(0.5, fx, 9200, tiers)).toEqual([]);
+    expect(deriveAivaultBulkTiers(0.5, fx, 9201, tiers)).toEqual([{ min_qty: 10, unit_price: 9200 }]);
+  });
 });
 
 describe("AIVault admin GET/PATCH bulk markup routes", () => {
   let fx: ReturnType<typeof createD1Fixture>;
   const sid = "service_gemini_plus_6m";
+  const tiers = [
+    { min_qty: 5, markup_percent: 58 },
+    { min_qty: 10, markup_percent: 47 },
+    { min_qty: 50, markup_percent: 36 },
+  ];
+  const stored = () => fx.sql.prepare("SELECT markup_percent, bulk_markup_tiers_json FROM aivault_products WHERE service_id=?").get(sid);
 
   const patch = async (body: unknown, id = sid) => {
     const { PATCH } = await import("@/app/api/admin/aivault/products/[id]/route");
@@ -169,11 +191,6 @@ describe("AIVault admin GET/PATCH bulk markup routes", () => {
   });
 
   it("PATCH saves valid bulk_markup_tiers, derives variant bulk + max_qty=100, and exposes GET preview", async () => {
-    const tiers = [
-      { min_qty: 5, markup_percent: 58 },
-      { min_qty: 10, markup_percent: 47 },
-      { min_qty: 50, markup_percent: 36 },
-    ];
     const res = await patch({ bulk_markup_tiers: tiers });
     expect(res.status, await res.clone().text()).toBe(200);
 
@@ -230,7 +247,7 @@ describe("AIVault admin GET/PATCH bulk markup routes", () => {
     expect(bad2.status).toBe(400);
     expect(await bad2.json()).toEqual({ error: "invalid_bulk_markup" });
 
-    const bad3 = await patch({ bulk_markup_tiers: [{ min_qty: 5, markup_percent: 80 }] });
+    const bad3 = await patch({ markup_percent: 35, bulk_markup_tiers: tiers });
     expect(bad3.status).toBe(400);
     expect(await bad3.json()).toEqual({ error: "bulk_markup_not_below_base" });
 
@@ -243,36 +260,67 @@ describe("AIVault admin GET/PATCH bulk markup routes", () => {
     });
   });
 
-  it("PATCH re-derives when markup_percent or admin_price_idr changes, and rejects lowering base markup below stored tiers", async () => {
-    const tiers = [
-      { min_qty: 5, markup_percent: 58 },
-      { min_qty: 10, markup_percent: 47 },
-      { min_qty: 50, markup_percent: 36 },
-    ];
+  it("PATCH scales tiers and re-derives prices 80→35, then approximately restores tiers on 35→80", async () => {
     expect((await patch({ bulk_markup_tiers: tiers })).status).toBe(200);
-
-    // Lowering base markup to 55 (< stored tier 58) without adjusting tiers -> 400 bulk_markup_not_below_base
-    const lowerBase = await patch({ markup_percent: 55 });
-    expect(lowerBase.status).toBe(400);
-    expect(await lowerBase.json()).toEqual({ error: "bulk_markup_not_below_base" });
-    expect(fx.sql.prepare("SELECT markup_percent FROM aivault_products WHERE service_id=?").get(sid)).toEqual({
-      markup_percent: 80,
+    expect((await patch({ markup_percent: 35 })).status).toBe(200);
+    expect(stored()).toEqual({
+      markup_percent: 35,
+      bulk_markup_tiers_json: JSON.stringify(tiers.map((tier, i) => ({ ...tier, markup_percent: [25.38, 20.56, 15.75][i] }))),
     });
-
-    // Raising base markup to 100 re-derives with basePrice 18300 while keeping stored tiers intact
-    expect((await patch({ markup_percent: 100 })).status).toBe(200);
     expect(fx.sql.prepare("SELECT price, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE id=1").get()).toEqual({
-      price: 18300,
+      price: 12400,
       bulk_pricing_enabled: 1,
       bulk_pricing_tiers: JSON.stringify([
-        { min_qty: 5, unit_price: 14500 },
-        { min_qty: 10, unit_price: 13500 },
-        { min_qty: 50, unit_price: 12500 },
+        { min_qty: 5, unit_price: 11500 },
+        { min_qty: 10, unit_price: 11100 },
+        { min_qty: 50, unit_price: 10600 },
       ]),
     });
+    expect((await patch({ markup_percent: 80 })).status).toBe(200);
+    expect(stored()).toEqual({
+      markup_percent: 80,
+      bulk_markup_tiers_json: JSON.stringify(tiers.map((tier, i) => ({ ...tier, markup_percent: [58.01, 46.99, 36][i] }))),
+    });
+  });
 
-    // Setting manual admin_price_idr = 14000 drops 5+ (14500 >= 14000) and keeps 10+, 50+
+  it("PATCH does not scale with explicit tier input and keeps the exact submitted markups", async () => {
+    const submitted = [{ min_qty: 15, markup_percent: 29.123 }];
+    expect((await patch({ bulk_markup_tiers: tiers })).status).toBe(200);
+    expect((await patch({ markup_percent: 35, bulk_markup_tiers: submitted })).status).toBe(200);
+    expect(stored()).toEqual({ markup_percent: 35, bulk_markup_tiers_json: JSON.stringify(submitted) });
+  });
+
+  it("PATCH handles absent tiers and old base zero without scaling", async () => {
+    expect((await patch({ markup_percent: 0 })).status).toBe(200);
+    expect(stored()).toEqual({ markup_percent: 0, bulk_markup_tiers_json: null });
+    expect((await patch({ markup_percent: 35 })).status).toBe(200);
+    expect(stored()).toEqual({ markup_percent: 35, bulk_markup_tiers_json: null });
+
+    // An old zero base with stored tiers is invalid under formula pricing; retain normal validation.
+    fx.sql.prepare("UPDATE aivault_products SET markup_percent=0, bulk_markup_tiers_json=? WHERE service_id=?").run(JSON.stringify(tiers), sid);
+    const bad = await patch({ markup_percent: 35 });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "bulk_markup_not_below_base" });
+    expect((await patch({ markup_percent: 80 })).status).toBe(200);
+    expect(stored()).toEqual({ markup_percent: 80, bulk_markup_tiers_json: JSON.stringify(tiers) });
+  });
+
+  it("PATCH at new formula base zero clears tiers that cannot be below zero", async () => {
+    expect((await patch({ bulk_markup_tiers: tiers })).status).toBe(200);
+    expect((await patch({ markup_percent: 0 })).status).toBe(200);
+    expect(stored()).toEqual({ markup_percent: 0, bulk_markup_tiers_json: null });
+    expect(fx.sql.prepare("SELECT price, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE id=1").get()).toEqual({
+      price: 9200,
+      bulk_pricing_enabled: 0,
+      bulk_pricing_tiers: "[]",
+    });
+  });
+
+  it("PATCH preserves stored markups under manual pricing, re-derives safely, and allows explicit disable", async () => {
+    expect((await patch({ bulk_markup_tiers: tiers })).status).toBe(200);
     expect((await patch({ admin_price_idr: 14000 })).status).toBe(200);
+    expect((await patch({ markup_percent: 35 })).status).toBe(200);
+    expect(stored()).toEqual({ markup_percent: 35, bulk_markup_tiers_json: JSON.stringify(tiers) });
     expect(fx.sql.prepare("SELECT price, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE id=1").get()).toEqual({
       price: 14000,
       bulk_pricing_enabled: 1,
@@ -282,10 +330,10 @@ describe("AIVault admin GET/PATCH bulk markup routes", () => {
       ]),
     });
 
-    // Setting manual admin_price_idr = 12000 drops all derived tiers -> bulk_pricing_enabled=0, bulk_pricing_tiers='[]'
-    expect((await patch({ admin_price_idr: 12000 })).status).toBe(200);
+    // The manual base is below modal; no tier may be enabled even at 0% markup.
+    expect((await patch({ admin_price_idr: 9100, bulk_markup_tiers: [{ min_qty: 5, markup_percent: 0 }] })).status).toBe(200);
     expect(fx.sql.prepare("SELECT price, bulk_pricing_enabled, bulk_pricing_tiers FROM product_variants WHERE id=1").get()).toEqual({
-      price: 12000,
+      price: 9100,
       bulk_pricing_enabled: 0,
       bulk_pricing_tiers: "[]",
     });

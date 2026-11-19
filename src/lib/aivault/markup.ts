@@ -3,6 +3,7 @@ import { ARCHIVED_MESSAGE } from "@/lib/product-archive";
 import {
   deriveAivaultBulkTiers,
   parseAivaultBulkMarkup,
+  scaleAivaultBulkMarkup,
   validateAivaultBulkAgainstBase,
   type AivaultBulkMarkupTier,
 } from "./bulk";
@@ -55,7 +56,8 @@ export async function applyAivaultMarkupUpdate(
     return { ok: false, status: 409, error: ARCHIVED_MESSAGE };
   }
 
-  const markup = input.markup_percent ?? Number(row.markup_percent);
+  const oldMarkup = Number(row.markup_percent);
+  const markup = input.markup_percent ?? oldMarkup;
   const manual =
     input.admin_price_idr === undefined ? row.aivault_admin_price_idr : input.admin_price_idr;
   const fx = Number(row.fx_idr_per_usd);
@@ -65,11 +67,11 @@ export async function applyAivaultMarkupUpdate(
   if (!(unitPriceUsd > 0)) return { ok: false, status: 409, error: "fx_unavailable" };
 
   const price = manual == null ? aivaultSellPrice(unitPriceUsd, fx, markup) : Number(manual);
-  const effectiveBulkTiers = input.has_bulk_input
-    ? input.bulk_markup_tiers ?? null
-    : row.bulk_markup_tiers_json == null
-      ? null
-      : parseAivaultBulkMarkup(row.bulk_markup_tiers_json);
+  const storedBulkTiers = parseAivaultBulkMarkup(row.bulk_markup_tiers_json);
+  const scaledBulkTiers = !input.has_bulk_input && manual == null && storedBulkTiers
+    ? scaleAivaultBulkMarkup(storedBulkTiers, oldMarkup, markup)
+    : storedBulkTiers;
+  const effectiveBulkTiers = input.has_bulk_input ? input.bulk_markup_tiers ?? null : scaledBulkTiers;
 
   if (effectiveBulkTiers) {
     const baseCheck = validateAivaultBulkAgainstBase(
@@ -82,10 +84,8 @@ export async function applyAivaultMarkupUpdate(
     }
   }
 
-  const nextBulkMarkupJson = input.has_bulk_input
-    ? input.bulk_markup_tiers === null
-      ? null
-      : JSON.stringify(input.bulk_markup_tiers)
+  const nextBulkMarkupJson = input.has_bulk_input || scaledBulkTiers !== storedBulkTiers
+    ? effectiveBulkTiers?.length ? JSON.stringify(effectiveBulkTiers) : null
     : row.bulk_markup_tiers_json == null
       ? null
       : String(row.bulk_markup_tiers_json);

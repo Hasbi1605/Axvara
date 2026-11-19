@@ -72,10 +72,30 @@ export function parseAivaultBulkMarkup(input: unknown): AivaultBulkMarkupTier[] 
   return parsed;
 }
 
+/** Scale stored markups on a formula base change, keeping the 0.01% grid strictly ordered. */
+export function scaleAivaultBulkMarkup(
+  tiers: readonly AivaultBulkMarkupTier[],
+  oldBase: number,
+  newBase: number,
+): readonly AivaultBulkMarkupTier[] {
+  if (oldBase <= 0 || oldBase === newBase) return tiers;
+
+  let max = Math.ceil(newBase * 100) - 1;
+  if (max / 100 >= newBase) max--; // Float multiplication can land just above an integer.
+  const scaled: AivaultBulkMarkupTier[] = [];
+  for (const tier of tiers) {
+    if (max < 0) break; // No non-negative markup remains below the previous tier/base.
+    const hundredths = Math.min(Math.round((tier.markup_percent / oldBase) * newBase * 100), max);
+    scaled.push({ min_qty: tier.min_qty, markup_percent: hundredths / 100 });
+    max = hundredths - 1;
+  }
+  return scaled;
+}
+
 /**
  * Turunkan harga grosir rupiah dari tier markup dan biaya supplier terkini.
- * Tier dengan harga >= basePrice dibuang, sisanya diklem agar non-increasing,
- * lalu diverifikasi terhadap kontrak `validateBulkPricing`.
+ * Tier dengan harga >= basePrice dibuang, sisanya diklem agar non-increasing
+ * tanpa turun di bawah modal, lalu diverifikasi lewat `validateBulkPricing`.
  */
 export function deriveAivaultBulkTiers(
   costUsd: number,
@@ -96,6 +116,14 @@ export function deriveAivaultBulkTiers(
     return [];
   }
 
+  let modalFloor: number;
+  try {
+    modalFloor = aivaultSellPrice(costUsd, fx, 0);
+  } catch {
+    return [];
+  }
+  if (basePrice <= modalFloor) return [];
+
   const derived: BulkTier[] = [];
   let maxAllowed = basePrice - 1;
 
@@ -108,7 +136,7 @@ export function deriveAivaultBulkTiers(
     }
     if (unit >= basePrice) continue;
     const clamped = Math.min(unit, maxAllowed);
-    if (!Number.isSafeInteger(clamped) || clamped <= 0) return [];
+    if (!Number.isSafeInteger(clamped) || clamped < modalFloor) continue;
     maxAllowed = clamped;
     derived.push({ min_qty: tier.min_qty, unit_price: clamped });
   }

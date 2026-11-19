@@ -28,6 +28,32 @@ async function setup(options:{off?:boolean;manual?:number;error?:string;archived
 }
 async function open(){await userEvent.click(screen.getByRole("button",{name:"Grosir"}));return within(screen.getByRole("dialog"));}
 describe("grosir markup AIVault",()=>{
+  it("shows derived prices for a changed formula markup and saves without tier input", async () => {
+    const { patches } = await setup();
+    const row = within(screen.getByRole("form", { name: "Harga Gemini Plus 6 Bulan" }));
+    const markup = row.getByRole("spinbutton", { name: "Markup %" });
+    expect(row.queryByText(/^Grosir ikut disesuaikan:/)).toBeNull();
+    fireEvent.change(markup, { target: { value: "0" } });
+    expect(row.getByText("Grosir ikut disesuaikan: tidak ada tier aktif pada markup ini.")).toBeTruthy();
+    fireEvent.change(markup, { target: { value: "35" } });
+    const summary = [11500, 11100, 10600].map((price, i) => `${tiers[i].min_qty}+ ${formatRupiah(price)}`).join(" · ");
+    const preview = row.getByText(/^Grosir ikut disesuaikan:/);
+    expect(preview.textContent).toBe(`Grosir ikut disesuaikan: ${summary}`);
+    expect(preview.classList.contains("text-admin-muted")).toBe(true);
+    const manual = row.getByRole("spinbutton", { name: "Harga manual (Rp)" });
+    fireEvent.change(manual, { target: { value: "15000" } });
+    expect(row.queryByText(/^Grosir ikut disesuaikan:/)).toBeNull();
+    fireEvent.change(manual, { target: { value: "" } });
+    await userEvent.click(row.getByRole("button", { name: "Simpan" }));
+    await waitFor(() => expect(patches).toEqual([{ url: "/api/admin/aivault/products/gemini", body: { markup_percent: 35 } }]));
+  });
+
+  it.each([{ manual: 20000 }, { off: true }])("does not preview scaling for %j", async (options) => {
+    await setup(options);
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Markup %" }), { target: { value: "35" } });
+    expect(screen.queryByText(/^Grosir ikut disesuaikan:/)).toBeNull();
+  });
+
   it("shows Gemini preview and summary, then PATCHes markup tiers",async()=>{
     const {patches}=await setup();
     expect(screen.getByText(/Grosir: 5\+/).textContent).toContain(formatRupiah(14500));

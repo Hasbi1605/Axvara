@@ -104,7 +104,7 @@ describe("AIVault POST /api/admin/aivault/markup/bulk", () => {
     `);
   });
 
-  it("handles dedup, 0.5% pricing, compare_price clearing, manual preservation, wholesale guard, archived, wrong supplier, group refs, and revision bump", async () => {
+  it("handles dedup, 0.5% pricing, compare_price clearing, manual preservation, wholesale scaling, partial failures, and revision bump", async () => {
     const rev0 = marketRevision();
     const res = await aivaultBulk(
       post("aivault", {
@@ -112,7 +112,7 @@ describe("AIVault POST /api/admin/aivault/markup/bulk", () => {
           "svc_formula",
           "svc_formula", // duplicate -> deduped
           "svc_manual",
-          "svc_wholesale", // fails wholesale (50% vs tier 45% ok, wait let's use 40% below!)
+          "svc_wholesale", // scales the stored 45% tier below the new base
           "svc_arch",
           "svc_nofx",
           "svc_wr",
@@ -125,9 +125,8 @@ describe("AIVault POST /api/admin/aivault/markup/bulk", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(body.updated).toBe(2);
+    expect(body.updated).toBe(3);
     expect(body.failed).toEqual([
-      { id: "svc_wholesale", error: "bulk_markup_not_below_base" },
       { id: "svc_arch", error: ARCHIVED_MESSAGE },
       { id: "svc_nofx", error: "fx_unavailable" },
       { id: "svc_wr", error: "not_mapped" },
@@ -143,6 +142,15 @@ describe("AIVault POST /api/admin/aivault/markup/bulk", () => {
     const vManual = fx.sql.prepare("SELECT price,aivault_admin_price_idr,stock,is_active FROM product_variants WHERE id=12").get() as Record<string, unknown>;
     expect(vManual).toEqual({ price: 99000, aivault_admin_price_idr: 99000, stock: 10, is_active: 0 });
     expect(fx.sql.prepare("SELECT markup_percent FROM aivault_products WHERE service_id='svc_manual'").get()).toEqual({ markup_percent: 40.5 });
+
+    expect(fx.sql.prepare("SELECT bulk_markup_tiers_json FROM aivault_products WHERE service_id='svc_wholesale'").get()).toEqual({
+      bulk_markup_tiers_json: JSON.stringify([{ min_qty: 5, markup_percent: 30.38 }, { min_qty: 10, markup_percent: 23.63 }]),
+    });
+    expect(fx.sql.prepare("SELECT price,bulk_pricing_enabled,bulk_pricing_tiers FROM product_variants WHERE id=13").get()).toEqual({
+      price: 22500,
+      bulk_pricing_enabled: 1,
+      bulk_pricing_tiers: JSON.stringify([{ min_qty: 5, unit_price: 20900 }, { min_qty: 10, unit_price: 19800 }]),
+    });
 
     // Group winner untouched
     expect(fx.sql.prepare("SELECT winner_product_id FROM product_groups WHERE id=1").get()).toEqual({ winner_product_id: 1 });
@@ -172,14 +180,14 @@ describe("AIVault POST /api/admin/aivault/markup/bulk", () => {
       aivault_admin_price_idr: null,
       is_active: 0,
     });
-    // Wholesale tiers recomputed: 45% -> 23200, 35% -> 21600
+    // Wholesale tiers scale up again from the rounded 40.5% base.
     const vWholesale = fx.sql.prepare("SELECT price,bulk_pricing_enabled,bulk_pricing_tiers,is_active FROM product_variants WHERE id=13").get() as Record<string, unknown>;
     expect(vWholesale.price).toBe(24000);
     expect(vWholesale.bulk_pricing_enabled).toBe(1);
     expect(vWholesale.is_active).toBe(0);
     expect(JSON.parse(String(vWholesale.bulk_pricing_tiers))).toEqual([
-      { min_qty: 5, unit_price: 23200 },
-      { min_qty: 10, unit_price: 21600 },
+      { min_qty: 5, unit_price: 22100 },
+      { min_qty: 10, unit_price: 20700 },
     ]);
     expect(marketRevision()).not.toBe(rev1);
   });

@@ -1,5 +1,11 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Penyesuaian markup grosir proporsional — 19 November 2026 (lokal)
+
+- Simpan markup dasar (per varian atau bulk) tanpa input tier menskalakan tier tersimpan dengan `markup_lama_tier × markup_dasar_baru / markup_dasar_lama` bila harga efektif memakai rumus dan markup lama > 0. Pembulatan 2 desimal menjaga tier turun ketat dan di bawah dasar; tier yang tidak muat dibuang (semua pada dasar 0%). Input tier eksplisit tetap divalidasi seperti sebelumnya; harga manual yang tetap berlaku tidak mengubah markup tier.
+- Harga unit tier tetap di bawah harga dasar efektif dan tidak pernah di bawah `aivaultSellPrice(modal_usd, kurs, 0)` (ceil Rp100). Harga manual setara atau di bawah batas tersebut tidak menghasilkan tier aktif.
+- Baris Markup AIVault menampilkan pratinjau harga tier untuk draf markup rumus, memakai helper yang sama dengan penyimpanan; validasi dialog **Grosir** tidak berubah.
+
 ## Status supplier di Admin Pesanan — 19 November 2026 (lokal)
 
 - Admin Pesanan kini memuat link AIVault sebagai kotak status saja (label status, `last_error`, ID provider, petunjuk Supplier → AIVault → Antrean). Tidak ada Retry/Cek status di Pesanan; aksi tetap di Antrean. "Kirim ke pembeli" disembunyikan selama link pending/claimed/processing (cermin CAS `handover.ts`) dan tampil saat needs_admin.

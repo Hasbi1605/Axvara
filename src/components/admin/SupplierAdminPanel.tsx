@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, Zap } from "lucide-react";
+import { deriveAivaultBulkTiers, scaleAivaultBulkMarkup } from "@/lib/aivault/bulk";
+import { aivaultSellPrice } from "@/lib/aivault/families";
 import { formatRupiah } from "@/lib/utils";
 import { TUNVN_BUFF_MARKUP_PERCENT } from "@/lib/tunvn/pricing";
 import { isTunvnExcludedProduct } from "@/lib/tunvn/families";
@@ -29,6 +31,18 @@ const PANEL_TABS: { id: SupplierTabId; label: string }[] = [
 
 type MarkupSubTab = "live" | "hidden" | "off" | "all";
 const WR_SK_ORDER_PER_PAGE = 20;
+
+function aivaultBulkMarkupPreview(item: CatalogItem, nextMarkup: number) {
+  const { bulk_markup_tiers: tiers, markup_percent: oldMarkup, cost, fx } = item;
+  if (!tiers?.length || oldMarkup <= 0 || cost == null || fx == null) return;
+  let price: number;
+  try { price = aivaultSellPrice(cost, fx, nextMarkup); }
+  catch { return; }
+  const preview = deriveAivaultBulkTiers(cost, fx, price, scaleAivaultBulkMarkup(tiers, oldMarkup, nextMarkup));
+  return preview.length
+    ? `Grosir ikut disesuaikan: ${preview.map(t => `${t.min_qty}+ ${formatRupiah(t.unit_price)}`).join(" · ")}`
+    : "Grosir ikut disesuaikan: tidak ada tier aktif pada markup ini.";
+}
 
 function DeliveryBadge({ wrClass }: { wrClass?: string | null }) {
   if (wrClass === "restock") return <Badge variant="secondary" title="Kirim otomatis">AUTO</Badge>;
@@ -725,6 +739,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
   function priceRow(row: {
     key: string; id: string; bulkId: string; path: string; title: string; selectLabel?: string;
     meta: ReactNode; badges?: ReactNode; details?: ReactNode;
+    markupPreview?: (value: number) => string | undefined;
     active: boolean; canEdit: boolean; manual: number | null; fixed: number; price: number | null; markup: number;
     item?: CatalogItem;
   }) {
@@ -736,6 +751,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
       meta={row.meta}
       badges={row.badges}
       details={row.details}
+      markupPreview={row.markupPreview}
       mode={mode}
       markup={row.markup}
       manual={row.manual}
@@ -993,6 +1009,7 @@ export function SupplierAdminPanel({ supplier }: { supplier: Supplier }) {
                   ? <Button type="button" variant="outline" size="sm" className="min-h-11 md:min-h-0" disabled={locked} onClick={event => { setBulkError(""); setBulk({ item, trigger: event.currentTarget }); }}>Grosir</Button> : null}
               </>,
               details: config.disclosure && item.supplier_description?.trim() ? <SupplierDescription text={item.supplier_description} /> : undefined,
+              markupPreview: config.bulk && item.bulk_markup_tiers?.length ? value => aivaultBulkMarkupPreview(item, value) : undefined,
               markup: Number(item.markup_percent),
               manual: item.manual,
               fixed: 0,

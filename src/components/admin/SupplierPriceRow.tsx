@@ -35,12 +35,13 @@ export function SupplierPriceHeader({ mode = "manual", selectable = false }: { m
 
 export function SupplierPriceRow({
   id, title, meta, badges, markup, manual = null, fixed = 0, price, active = true,
-  canEdit, locked, busy, notice, details, mode = "manual",
+  canEdit, locked, busy, notice, details, markupPreview, mode = "manual",
   selectable = false, selected = false, selectLabel, onSelectChange, onToggle, onSave,
 }: {
   id: string; title: ReactNode; meta: ReactNode; badges?: ReactNode;
   markup: number; manual?: number | null; fixed?: number; price: number | null; active?: boolean;
   canEdit: boolean; locked: boolean; busy: boolean; notice?: ReactNode; details?: ReactNode;
+  markupPreview?: (value: number) => string | undefined;
   mode?: "manual" | "fixed";
   selectable?: boolean; selected?: boolean; selectLabel?: string; onSelectChange?: (checked: boolean) => void;
   onToggle?: () => void; onSave: (body: SupplierPriceSave) => Promise<void>;
@@ -57,6 +58,11 @@ export function SupplierPriceRow({
   const markupChanged = markupDraft.trim() !== String(markup);
   const secondaryChanged = secondaryDraft.trim() !== (isFixed ? String(fixed) : (manual == null ? "" : String(manual)));
   const dirty = markupChanged || secondaryChanged;
+  const nextMarkup = Number(markupDraft);
+  const preview = canEdit && !isFixed && !secondaryDraft.trim() && markupDraft.trim() &&
+    nextMarkup !== markup && nextMarkup >= 0 && nextMarkup <= 1000
+    ? markupPreview?.(nextMarkup)
+    : undefined;
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -78,9 +84,8 @@ export function SupplierPriceRow({
     }
     const body: SupplierPriceSave = {};
     if (markupChanged) {
-      const value = Number(markupDraft);
-      if (markupDraft.trim() === "" || !Number.isFinite(value) || value < 0 || value > 1000) { setError("Markup harus 0–1000%."); return; }
-      body.markup_percent = value;
+      if (markupDraft.trim() === "" || !Number.isFinite(nextMarkup) || nextMarkup < 0 || nextMarkup > 1000) { setError("Markup harus 0–1000%."); return; }
+      body.markup_percent = nextMarkup;
     }
     if (secondaryChanged) {
       const raw = secondaryDraft.trim();
@@ -140,8 +145,9 @@ export function SupplierPriceRow({
       {!isFixed && onToggle && <div className="flex justify-end"><AdminStatusSwitch checked={active} label={`Aktif ${titleText}`} disabled={!canEdit || locked} busy={busy} onChange={onToggle} /></div>}
     </div>
     {details && <div className="min-w-0 md:col-span-full">{details}</div>}
-    {(notice || error || dirty) && <div className="space-y-1 text-xs md:col-span-full" aria-live="polite">
+    {(notice || preview || error || dirty) && <div className="space-y-1 text-xs md:col-span-full" aria-live="polite">
       {notice && <p className="text-admin-muted">{notice}</p>}
+      {preview && <p className="break-words text-xs text-admin-muted">{preview}</p>}
       {error && <p role="alert" className="text-admin-danger">{error}</p>}
       {dirty && !error && <p className="text-admin-warning">Belum disimpan.</p>}
     </div>}
