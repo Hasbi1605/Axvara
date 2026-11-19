@@ -511,7 +511,11 @@ function orderRowButtonLabel(row: OrdersListRow, locale: Locale): string {
   const en = locale === "en";
   const name = orderItemsSummary(row.items).split("\n")[0] ?? (en ? "Product" : "Produk");
   const date = wibDateTimeText(row.created_at, locale)?.split(" • ")[0] ?? "";
-  return `${name.slice(0, 22)} · ${date}`.trim();
+  // Potong rapi: jangan biarkan pemisah ("—", "/", "·") menggantung di ujung.
+  const short = name.length > 26
+    ? `${name.slice(0, 25).replace(/[\s—–\-/·|,]+$/u, "")}…`
+    : name;
+  return `${short} · ${date}`.trim();
 }
 
 export function myOrdersPagedKeyboard(params: {

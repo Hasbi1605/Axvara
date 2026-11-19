@@ -82,6 +82,22 @@ describe("handleMyOrdersPaged — tabs, counts, paging", () => {
     expect(api.edit.mock.calls.at(-1)?.[0].text).toContain("Selesai");
   });
 
+  it("truncates long order labels without a dangling separator", async () => {
+    const { handleMyOrdersPaged } = await import("@/lib/telegram/handlers/orders");
+    insertOrder("AXV-20261118-LONG0001", {
+      status: "lunas", payment: "paid", fulfillment: "delivered",
+      items: [{ product_id: 1, variant_id: 1, name: "Canva Pro / Premium — Invite 1 Tahun", price: 5000, qty: 1 }],
+    });
+    await handleMyOrdersPaged(buyer, 0, "s", 0, { id: buyer, first_name: "B" });
+    const labels = api.edit.mock.calls.at(-1)?.[0].reply_markup.inline_keyboard.flat()
+      .filter((b: { callback_data?: string }) => String(b.callback_data).startsWith("order:"))
+      .map((b: { text: string }) => b.text) as string[];
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).not.toMatch(/[—/·]\s*·/u);
+    expect(labels[0].startsWith("📋 Canva Pro / Premium")).toBe(true);
+    expect(labels[0]).toContain("… · ");
+  });
+
   it("never lists another buyer's orders", async () => {
     const { handleMyOrdersPaged } = await import("@/lib/telegram/handlers/orders");
     insertOrder("AXV-20261118-OTHER001", { status: "lunas", payment: "paid", fulfillment: "delivered" });
