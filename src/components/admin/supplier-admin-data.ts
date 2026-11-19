@@ -65,7 +65,7 @@ export type OrderLink = {
   attempt_count?: number; max_attempts?: number;
   status: string; last_error?: string | null; order_status?: string | null; order_payment_status?: string | null;
   customer_name?: string | null; customer_wa?: string | null; customer_email?: string | null; sales_channel?: string | null;
-  purchase_disabled?: number; can_retry?: number; has_receipt?: number;
+  purchase_disabled?: number; can_retry?: number; has_receipt?: number; resolved_manually?: boolean;
   completed_at?: string | null; request_sent_at?: string | null; updated_at?: string | null; created_at?: string | null;
 };
 export type ExclusionRow = { id: number; pattern: string; reason: string | null; created_at?: string };

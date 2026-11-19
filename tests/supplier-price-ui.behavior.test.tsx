@@ -367,3 +367,128 @@ describe("V3 parity: sub-tabs, 20/50/100 pagination, and bulk markup on the 4 su
     expect(screen.getByText(/Kalah vs WR #1/)).toBeTruthy();
   });
 });
+
+describe("Antrean: resolved_manually rows stay neutral without overdue badge or retry/reconcile actions", () => {
+  it.each([
+    { name: "TUNVN", Manager: TunvnManager, currency: "USDT", buff: true },
+    { name: "StoreBat", Manager: StorebatManager, currency: "USD", buff: false },
+    { name: "Mirai", Manager: MiraiManager, currency: "USDT", buff: false },
+    { name: "AIVault", Manager: AivaultManager, currency: "USD", buff: false },
+  ] as const)("$name renders Diselesaikan manual without lewat batas or Coba lagi/Periksa status, keeps reveal, and preserves unresolved rows", async ({ name, Manager, currency, buff }) => {
+    const oldSent = "2026-11-17 00:00:00";
+    const postCalls: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/balance")) return Response.json({ ok: true, balance: 5, currency });
+      if (url.endsWith("/products")) return Response.json({ ok: true, configured: true, items: [] });
+      if (url.endsWith("/buff")) return Response.json({ ok: true, variants: [], probe: null, muse_product: null });
+      if (url.endsWith("/orders") && init?.method === "POST") {
+        postCalls.push(JSON.parse(String(init.body)));
+        return Response.json({ ok: true, receipt: '{"info":"safe-audit"}' });
+      }
+      if (url.endsWith("/orders")) {
+        return Response.json({
+          ok: true,
+          items: [
+            {
+              id: 101,
+              order_code: "AXV-RESOLVED-WITH-RECEIPT",
+              item_index: 0,
+              kind: buff ? "buff" : "product",
+              quantity: 10,
+              cost_usdt: 0.583,
+              cost_usd: 0.5,
+              status: "needs_admin",
+              last_error: buff ? "unconfirmed_buff_receipt" : "attempts_exhausted",
+              can_retry: 1,
+              provider_batch_id: buff ? "BUFF-BATCH-1" : null,
+              has_receipt: 1,
+              purchase_disabled: 0,
+              resolved_manually: true,
+              request_sent_at: oldSent,
+              created_at: oldSent,
+              updated_at: oldSent,
+            },
+            {
+              id: 102,
+              order_code: "AXV-RESOLVED-NO-RECEIPT",
+              item_index: 1,
+              kind: buff ? "buff" : "product",
+              quantity: 1,
+              cost_usdt: 0.5,
+              cost_usd: 0.5,
+              status: "needs_admin",
+              last_error: "dispatch_unconfirmed",
+              can_retry: 1,
+              provider_batch_id: buff ? "BUFF-BATCH-2" : null,
+              has_receipt: 0,
+              purchase_disabled: 0,
+              resolved_manually: true,
+              request_sent_at: oldSent,
+              created_at: oldSent,
+              updated_at: oldSent,
+            },
+            {
+              id: 103,
+              order_code: "AXV-UNRESOLVED-STALE",
+              item_index: 2,
+              kind: buff ? "buff" : "product",
+              quantity: 1,
+              cost_usdt: 0.5,
+              cost_usd: 0.5,
+              status: "needs_admin",
+              last_error: "dispatch_unconfirmed",
+              can_retry: 1,
+              provider_batch_id: buff ? "BUFF-BATCH-3" : null,
+              has_receipt: 0,
+              purchase_disabled: 0,
+              resolved_manually: false,
+              request_sent_at: oldSent,
+              created_at: oldSent,
+              updated_at: oldSent,
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected ${url}`);
+    }));
+
+    renderAdmin(<ToastProvider><Manager /></ToastProvider>);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Antrean" }), { button: 0 });
+    const table = await screen.findByRole("table");
+    const cards = screen.getByLabelText(`Kartu pengiriman ${name}`);
+
+    const desktopRows = within(table).getAllByRole("row").slice(1);
+    const mobileCards = within(cards).getAllByRole("article");
+
+    for (const [resolvedWithReceipt, resolvedNoReceipt, unresolved] of [desktopRows, mobileCards]) {
+      // Resolved row with receipt: neutral secondary badge, no warning/overdue/retry/reconcile, keeps reveal.
+      const badge = within(resolvedWithReceipt).getByText("Diselesaikan manual");
+      expect(badge.className).toContain("bg-admin-subtle");
+      expect(badge.className).not.toMatch(/admin-warning|admin-danger/);
+      expect(within(resolvedWithReceipt).queryByText("Perlu diperiksa")).toBeNull();
+      expect(within(resolvedWithReceipt).queryByText(/lewat batas/)).toBeNull();
+      expect(within(resolvedWithReceipt).queryByText(/History bot TUNVN|Batas percobaan/)).toBeNull();
+      expect(within(resolvedWithReceipt).queryByRole("button", { name: "Coba lagi" })).toBeNull();
+      expect(within(resolvedWithReceipt).queryByRole("button", { name: "Periksa status" })).toBeNull();
+      expect(within(resolvedWithReceipt).getByRole("button", { name: "Lihat receipt" })).toBeTruthy();
+
+      // Resolved row without receipt: no action buttons at all.
+      expect(within(resolvedNoReceipt).getByText("Diselesaikan manual")).toBeTruthy();
+      expect(within(resolvedNoReceipt).queryByText(/lewat batas/)).toBeNull();
+      expect(within(resolvedNoReceipt).queryAllByRole("button")).toHaveLength(0);
+
+      // Unresolved row: preserves existing warning status, destructive overdue age badge, and actions.
+      expect(within(unresolved).getByText("Perlu diperiksa")).toBeTruthy();
+      const overdue = within(unresolved).getByText(/· lewat batas/);
+      expect(overdue.className).toContain("text-admin-danger");
+      expect(within(unresolved).getByRole("button", { name: "Coba lagi" })).toBeTruthy();
+      if (buff) expect(within(unresolved).getByRole("button", { name: "Periksa status" })).toBeTruthy();
+    }
+
+    // Reveal button remains functional on a resolved_manually row with a stored receipt.
+    fireEvent.click(within(desktopRows[0]).getByRole("button", { name: "Lihat receipt" }));
+    expect(within(await screen.findByRole("dialog", { name: `Receipt ${name}` })).getByText(/safe-audit/)).toBeTruthy();
+    expect(postCalls).toEqual([{ id: 101, action: "reveal" }]);
+  });
+});

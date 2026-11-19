@@ -36,7 +36,7 @@ async function fetchOrders(query: string) {
     orders: unknown[];
     stats: { total: number; pending: number; paid: number; revenue: number };
     counts: { channels: Record<string, number>; statuses: Record<string, number> };
-    methods: string[]; pagination: { total: number; pages: number };
+    methods: string[]; pagination: { page: number; limit: number; total: number; pages: number };
   };
 }
 
@@ -110,4 +110,22 @@ it("manual excludes modern rails and Games has an independent kind filter", asyn
   expect((await fetchOrders("method=manual")).stats.total).toBe(1);
   expect((await fetchOrders("kind=games")).orders).toHaveLength(1);
   expect((await fetchOrders("kind=apps")).stats.total).toBe(2);
+});
+
+describe("pagination clampNumber on GET /api/admin/orders", () => {
+  it("falls back to limit=10 when omitted, empty, whitespace, or non-integer, and clamps real values", async () => {
+    const omitted = await fetchOrders("");
+    expect(omitted.pagination).toMatchObject({ page: 1, limit: 10, total: 3, pages: 1 });
+    expect(omitted.orders).toHaveLength(3);
+
+    expect((await fetchOrders("limit=")).pagination.limit).toBe(10);
+    expect((await fetchOrders("limit=%20%20")).pagination.limit).toBe(10);
+    expect((await fetchOrders("limit=abc")).pagination.limit).toBe(10);
+
+    const zero = await fetchOrders("limit=0");
+    expect(zero.pagination.limit).toBe(1);
+    expect(zero.orders).toHaveLength(1);
+
+    expect((await fetchOrders("limit=500")).pagination.limit).toBe(100);
+  });
 });
