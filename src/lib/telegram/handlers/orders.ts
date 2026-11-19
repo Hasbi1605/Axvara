@@ -1,7 +1,7 @@
 import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 import { queryFirst, getD1, transitionPendingOrder, OrderTransitionError } from "@/lib/db";
 import { sendMessage, safeEditOrSend, sendPhoto } from "@/lib/telegram/api";
-import { orderStatusKeyboard, paidOrderStatusKeyboard, qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
+import { orderStatusKeyboard, paidOrderStatusKeyboard, qrisInvoiceKeyboard, orderTerminalKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import {
   errorMessage, orderStatusMessage, invoiceMessage,
   orderCancelledMessage, qrisRenewRejectedMessage,
@@ -46,7 +46,7 @@ export async function handleOrderStatus(chatId: number, orderCode: string, fromU
   try {
     order = await ownedOrder(chatId, orderCode, fromUserId);
   } catch {
-    await sendMessage({ chat_id: chatId, text: "Status pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: "Status pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
 
@@ -55,6 +55,7 @@ export async function handleOrderStatus(chatId: number, orderCode: string, fromU
       chat_id: chatId,
       text: "❌ Pesanan tidak ditemukan. Pastikan kode pesanan benar.",
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard(),
     });
     return;
   }
@@ -91,7 +92,7 @@ export async function handleOrderStatus(chatId: number, orderCode: string, fromU
       ? orderStatusKeyboard(String(order.code), { locale })
       : String(order.payment_status) === "paid"
         ? paidOrderStatusKeyboard(String(order.code), { locale })
-        : undefined,
+        : orderTerminalKeyboard({ locale }),
   });
 }
 
@@ -102,11 +103,11 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
   try {
     order = await ownedOrder(chatId, orderCode, fromUserId);
   } catch {
-    await sendMessage({ chat_id: chatId, text: "Status pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: "Status pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
   if (!order) {
-    await sendMessage({ chat_id: chatId, text: "Pesanan tidak ditemukan. Pastikan kode pesanan benar.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: "Pesanan tidak ditemukan. Pastikan kode pesanan benar.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
   // R2 status/cancel for new rails uses the SAME native guards as QRIS:
@@ -159,7 +160,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
     if (!refreshed) throw new Error("order_missing");
     order = refreshed;
   } catch {
-    await sendMessage({ chat_id: chatId, text: "Status terbaru gagal dibaca. Coba lagi.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: "Status terbaru gagal dibaca. Coba lagi.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
 
@@ -206,7 +207,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
       ? orderStatusKeyboard(orderCode, { locale })
       : String(order.payment_status) === "paid"
         ? paidOrderStatusKeyboard(orderCode, { locale })
-        : undefined,
+        : orderTerminalKeyboard({ locale }),
   });
 }
 
@@ -229,18 +230,20 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
     orderCode,
   ).catch(() => null);
   if (!order) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
   // DIRECT forged qrenew on a crypto/gateway order MUST NOT issue QRIS or a
   // new TX: reject honestly (no renewal for non-QRIS rails).
   const rail = String(order.payment_method ?? "");
   if (rail.startsWith("sekalipay_gateway:") || rail.startsWith("nowpayments:")) {
+    const railLocale = orderLocaleOf(order);
     await sendMessage({
-      chat_id: chatId, text: orderLocaleOf(order) === "en"
+      chat_id: chatId, text: railLocale === "en"
         ? "This order does not use QRIS — check its status for the correct payment details."
         : "Pesanan ini tidak memakai QRIS — cek statusnya untuk detail pembayaran yang benar.",
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: railLocale }),
     });
     return;
   }
@@ -251,7 +254,7 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
     result = await reissueDanaQrisInvoice(orderCode);
   } catch (error) {
     console.error("Telegram QRIS renew failed:", error instanceof Error ? error.message : "unknown");
-    await sendMessage({ chat_id: chatId, text: errorMessage({ locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale }) });
     return;
   }
 
@@ -260,6 +263,7 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
       chat_id: chatId,
       text: qrisRenewRejectedMessage(result.reason, { locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale }),
     });
     return;
   }
@@ -315,11 +319,11 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
       orderCode,
     );
   } catch {
-    await sendMessage({ chat_id: chatId, text: "Pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: "Pesanan gagal dibaca. Coba lagi.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
   if (!order) {
-    await sendMessage({ chat_id: chatId, text: "❌ Pesanan tidak dapat dibatalkan.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: "❌ Pesanan tidak dapat dibatalkan.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
 
@@ -369,9 +373,11 @@ export async function handleOrderCancel(chatId: number, messageId: number, order
     return;
   }
 
+  const cancelLocale = orderLocaleOf(order);
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
-    text: orderCancelledMessage(orderCode, { locale: orderLocaleOf(order) }),
+    text: orderCancelledMessage(orderCode, { locale: cancelLocale }),
     parse_mode: "HTML",
+    reply_markup: orderTerminalKeyboard({ locale: cancelLocale }),
   });
 }

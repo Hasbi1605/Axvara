@@ -20,7 +20,7 @@ import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { tgCtxFor, tgUsdAlternate, type TgCtx } from "@/lib/telegram/render-prefs";
 import {
   catalogFlatKeyboard, categoriesKeyboard, productsKeyboard,
-  variantsKeyboard, cb, homeKeyboard,
+  variantsKeyboard, cb, homeKeyboard, minimalMenuKeyboard,
   qtyKeyboard, TELEGRAM_MAX_QTY,
 } from "@/lib/telegram/keyboards";
 import { getProductDetail, getActiveVariant, formatVariantLabel, buyerWarrantyLabel, buyerDeliveryKind, effectiveVariantStock } from "@/lib/catalog";
@@ -128,7 +128,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   // jawab, jangan diam (spinner berhenti tanpa penjelasan).
   if (!detail || !meta || Number(meta.telegram_enabled) !== 1) {
     await beforeResult();
-    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "This product is currently unavailable. Browse /katalog for ready products 🙏" : "Produk ini sedang tidak tersedia. Buka /katalog untuk produk yang ready 🙏", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "This product is currently unavailable. Browse /katalog for ready products 🙏" : "Produk ini sedang tidak tersedia. Buka /katalog untuk produk yang ready 🙏", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
 
@@ -207,12 +207,12 @@ export async function handleVariantConfirm(chatId: number, messageId: number, va
   const ctx = await tgCtx(from?.id ?? chatId);
   const variant = await getActiveVariant(variantId);
   if (!variant) {
-    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
 
   if (effectiveVariantStock(variant) !== -1 && effectiveVariantStock(variant) < variant.min_qty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
 
@@ -261,12 +261,12 @@ export async function handleShowQty(
   const ctx = await tgCtx(from?.id ?? chatId);
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) {
-    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
   variant.stock = effectiveVariantStock(variant);
   if (variant.stock !== -1 && variant.stock < variant.min_qty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
   const product = await queryFirst(`SELECT id, name, name_en FROM products WHERE id=?`, productId);
@@ -283,7 +283,7 @@ export async function handleShowQty(
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
   const maxQty = Math.min(variant.max_qty ?? TELEGRAM_MAX_QTY,uniqueMax);
   if (minQty > maxQty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
   const qty = Math.min(Math.max(clampQty(requestedQty), minQty), maxQty);
@@ -301,7 +301,7 @@ export async function handleShowQty(
     effectiveQtyPrice = resolvedQty.price;
     effectiveQtyTier = resolvedQty.tier ?? null;
   } catch {
-    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
 
@@ -335,7 +335,7 @@ export async function handleQtyInputPrompt(chatId: number, productId: number, va
   const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
   const maxQty = Math.min(variant.max_qty ?? TELEGRAM_MAX_QTY,variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, variant.stock === -1 ? MAX_UNIQUE_UNITS_PER_ORDER : variant.stock) : variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.min(variant.stock, TELEGRAM_MAX_QTY));
   if (minQty > maxQty) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
   if (isD1Mode() && !(await setPendingActionUnlessCreating(String(from.id), chatId, `qty_for:${productId}:${variantId}`))) return;

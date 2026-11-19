@@ -10,7 +10,7 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 import { sendMessage, sendPhoto, withLoadingIndicator } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard, languageChooserKeyboard, currencyKeyboard, settingsKeyboard,
-  MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
+  helpKeyboard, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
   MENU_LABEL_CART, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import { welcomeMessage, helpMessage, warrantyFullMessage } from "@/lib/telegram/messages";
@@ -315,7 +315,7 @@ export async function handleCommand(
       await clearPendingAction(from);
     }
     const locale = from ? (await readTgPreferences(String(from.id)).catch(() => ({ locale: null as null }))).locale ?? "id" : "id";
-    await sendMessage({ chat_id: chatId, text: helpMessage({ locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: helpMessage({ locale }), parse_mode: "HTML", reply_markup: helpKeyboard({ locale }) });
     return;
   }
 

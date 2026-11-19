@@ -4,6 +4,7 @@
 // reaches here (email-only rules). Phone bounded + validated.
 import { execRun } from "@/lib/db";
 import { sendMessage } from "@/lib/telegram/api";
+import { minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
 import { paymentMethodNoticeMessage } from "@/lib/telegram/messages/purchase";
 import type { Payq1State } from "@/lib/telegram/payment-quote";
@@ -79,6 +80,7 @@ export async function handlePayq1PhoneInput(
       chat_id: chatId,
       text: paymentMethodNoticeMessage("not_ready", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     });
     return true;
   }

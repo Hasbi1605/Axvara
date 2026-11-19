@@ -16,6 +16,8 @@ import {
   productsKeyboard, catalogFlatKeyboard, qtyKeyboard, qrisInvoiceKeyboard,
   orderPaidKeyboard, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard,
   cartKeyboard, productDetailKeyboard, variantsKeyboard, emailConfirmationKeyboard,
+  helpKeyboard, orderStatusKeyboard, paidOrderStatusKeyboard, orderTerminalKeyboard,
+  paymentMethodOfferKeyboard, credentialResendOutcomeKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
   MENU_LABEL_CART,
 } from "@/lib/telegram/keyboards";
@@ -341,7 +343,7 @@ describe("Telegram buyer messages", () => {
     expect(msg).toContain("/bantuan");
     expect(msg).toContain("axvara.tech");
     expect(msg).not.toContain("1️⃣");
-    expect(msg).toContain("bayar QRIS sesuai total pada invoice");
+    expect(msg).toContain("bayar dengan QRIS atau metode lain (mis. crypto) yang tampil saat checkout sesuai total pada invoice");
     expect(msg).not.toContain("SeaBank");
     expect(msg).not.toContain("E-Wallet");
     // 2026-10-10: kontak WA teks lewat hub /wa — bukan wa.me nomor langsung.
@@ -909,5 +911,54 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     for (const d of [cb.cartAdd(99999, 88888, 100), cb.cartDec(88888), cb.cartInc(88888), cb.cartRemove(88888), cb.cartCheckout(), cb.cartClear(), cb.cart()]) {
       expect(new TextEncoder().encode(d).length).toBeLessThanOrEqual(64);
     }
+  });
+
+  it("P0-1/3 keyboards stay within 64 bytes and expose expected navigation", () => {
+    const maxSingle = cb.payMethodsEntry(9007199254740991, 9007199254740990, 100, "abcdef12");
+    expect(new TextEncoder().encode(maxSingle).length).toBeLessThanOrEqual(64);
+    expect(maxSingle).toBe("pmentry:9007199254740991:9007199254740990:100:abcdef12");
+
+    const qtyKb = qtyKeyboard({ productId: 12, variantId: 34, stock: 10, qty: 2, price: 5000, approvalTag: "deadbeef" });
+    const qtyCbs = qtyKb.inline_keyboard.flat().map((b) => b.callback_data);
+    expect(qtyCbs).toContain("pmentry:12:34:2:deadbeef");
+
+    const emailKb = emailConfirmationKeyboard(12, 34, 2, 10000, "deadbeef", "1234abcd");
+    const emailCbs = emailKb.inline_keyboard.flat().map((b) => b.callback_data);
+    expect(emailCbs).toContain("pmentry:12:34:2:deadbeef");
+
+    const hKb = helpKeyboard({ locale: "id" });
+    const hCbs = hKb.inline_keyboard.flat().map((b) => b.callback_data ?? b.url);
+    expect(hCbs).toContain("catalog:0");
+    expect(hCbs).toContain("myorders");
+    expect(hCbs).toContain("home");
+    expect(hCbs.some((v) => String(v).includes("/wa"))).toBe(true);
+    expect(hCbs.some((v) => String(v).includes("t.me/axvara_support"))).toBe(true);
+
+    const singleOffer = paymentMethodOfferKeyboard({
+      nonce: "abcd1234",
+      methods: [{ id: "qris", kind: "qris", label: "QRIS" }],
+      source: { kind: "single", productId: 12, variantId: 34, qty: 2 },
+    });
+    expect(singleOffer.inline_keyboard.at(-1)?.map((b) => b.callback_data)).toEqual(["q:12:34:2", "home"]);
+
+    const cartOffer = paymentMethodOfferKeyboard({
+      nonce: "abcd1234",
+      methods: [{ id: "qris", kind: "qris", label: "QRIS" }],
+      source: { kind: "cart" },
+    });
+    expect(cartOffer.inline_keyboard.at(-1)?.map((b) => b.callback_data)).toEqual(["ccheckout", "home"]);
+
+    expect(orderStatusKeyboard("AXV-1").inline_keyboard.flat().map((b) => b.callback_data)).toContain("myorders");
+    expect(paidOrderStatusKeyboard("AXV-1").inline_keyboard.flat().map((b) => b.callback_data)).toContain("myorders");
+    expect(orderTerminalKeyboard().inline_keyboard.flat().map((b) => b.callback_data)).toContain("myorders");
+
+    const perm = credentialResendOutcomeKeyboard("AXV-20261004-4CC0526E", "permanent");
+    expect(perm.inline_keyboard.flat().map((b) => b.callback_data)).not.toContain("cred:AXV-20261004-4CC0526E");
+    expect(perm.inline_keyboard.flat().map((b) => b.callback_data)).toContain("order:AXV-20261004-4CC0526E");
+    expect(perm.inline_keyboard.flat().map((b) => b.url).some((u) => u?.includes("/wa?pesan=Pesanan%20AXV-20261004-4CC0526E"))).toBe(true);
+
+    const trans = credentialResendOutcomeKeyboard("AXV-20261004-4CC0526E", "transient");
+    expect(trans.inline_keyboard.flat().map((b) => b.callback_data)).toContain("cred:AXV-20261004-4CC0526E");
+    expect(trans.inline_keyboard.flat().map((b) => b.callback_data)).toContain("order:AXV-20261004-4CC0526E");
   });
 });

@@ -259,14 +259,21 @@ describe("Telegram explicit credential resend outcomes", () => {
     expect(messages.find(text => text.includes("secret-2"))).toContain("Akun 2 dari 2");
   });
 
-  it("reports missing ready credentials as failure and pending units as partial", async () => {
+  it("reports missing stored delivered credentials permanently without retry button, and pending units as partial", async () => {
     fx.sql.exec("UPDATE orders SET fulfillment_status='delivered'");
     expect(await resend()).toBe(0);
-    expect(lastText()).toContain("gagal dibaca atau dikirim");
+    expect(lastText()).toContain("tidak tersimpan di bot");
+    const lastMarkup = (api.send.mock.calls.at(-1)?.[0] as { reply_markup?: { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] } })?.reply_markup;
+    const permFlat = lastMarkup?.inline_keyboard.flat() ?? [];
+    expect(permFlat.map((b) => b.callback_data)).not.toContain(`cred:${code}`);
+    expect(permFlat.map((b) => b.callback_data)).toContain(`order:${code}`);
+    expect(permFlat.some((b) => String(b.url ?? "").includes(`/wa?pesan=Pesanan%20${code}`))).toBe(true);
     fx.sql.exec("UPDATE orders SET fulfillment_status='queued'");
     await delivered(0);
     expect(await resend()).toBe(1);
     expect(lastText()).toContain("Detail lainnya belum siap");
+    const partialMarkup = (api.send.mock.calls.at(-1)?.[0] as { reply_markup?: { inline_keyboard: { callback_data?: string }[][] } })?.reply_markup;
+    expect(partialMarkup?.inline_keyboard.flat().map((b) => b.callback_data)).toContain("myorders");
   });
 
   it("resends only to the owner despite mismatched positive saved and order chats", async () => {

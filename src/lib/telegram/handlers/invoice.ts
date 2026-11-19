@@ -14,7 +14,7 @@ import {
   queryFirst, execRun, getD1, isD1Mode, transitionPendingOrder, StockReservationError,
 } from "@/lib/db";
 import { sendMessage, sendPhoto, sendChatAction, showLoadingBar } from "@/lib/telegram/api";
-import { orderStatusKeyboard, qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
+import { orderStatusKeyboard, qrisInvoiceKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import {
   outOfStockMessage, alreadyPendingMessage, errorMessage, invoiceMessage,
 } from "@/lib/telegram/messages";
@@ -83,13 +83,14 @@ export async function handlePayWithQris(
       chat_id: chatId,
       text: "Pembayaran QRIS belum tersedia. Coba lagi atau hubungi admin.",
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard(),
     });
     return;
   }
 
   const variant = await getActiveVariant(variantId);
   if (!variant || variant.product_id !== productId) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
   variant.stock = effectiveVariantStock(variant);
@@ -121,7 +122,7 @@ export async function handlePayWithQris(
     effectivePrice = resolved.price;
     appliedTier = resolved.tier ?? null;
   } catch {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
   const currentTag = await checkoutApprovalTag([{ productId, variantId, qty, price: effectivePrice }]);
@@ -161,17 +162,17 @@ export async function handlePayWithQris(
       }
     }
   } catch {
-    await sendMessage({ chat_id: chatId, text: "Email belum bisa diperiksa. Coba lagi sebelum membayar.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: "Email belum bisa diperiksa. Coba lagi sebelum membayar.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
   if (variant.stock === 0 || (variant.stock !== -1 && variant.stock < qty)) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
 
   const product = await queryFirst(`SELECT id, name FROM products WHERE id=?`, productId);
   if (!product) {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
 
@@ -202,7 +203,7 @@ export async function createAndSendVariantInvoice(
   let appliedSingleTier: number | null;
   if (effectivePrice !== undefined) {
     if (!Number.isSafeInteger(effectivePrice) || effectivePrice < 0) {
-      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
       return;
     }
     price = effectivePrice;
@@ -214,7 +215,7 @@ export async function createAndSendVariantInvoice(
       price = resolvedInvoice.price;
       appliedSingleTier = resolvedInvoice.tier ?? null;
     } catch {
-      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+      await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
       return;
     }
   }
@@ -265,7 +266,7 @@ export async function createAndSendVariantInvoice(
         productId,
       );
       if (!configured) {
-        await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+        await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
         return;
       }
     }
@@ -284,7 +285,7 @@ export async function createAndSendVariantInvoice(
     try {
       const { required, email: buyerEmail } = await readCheckoutEmail(String(from.id), [{ productId, variantId: variant.id }], emailSnapshot);
       if (required && !buyerEmail) {
-        await sendMessage({ chat_id: chatId, text: "Email aktif dibutuhkan sebelum membuat tagihan.", parse_mode: "HTML" });
+        await sendMessage({ chat_id: chatId, text: "Email aktif dibutuhkan sebelum membuat tagihan.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
         return;
       }
       const created = await createChannelOrderAtomic({
@@ -320,7 +321,7 @@ export async function createAndSendVariantInvoice(
       // Guard gagal = stok/inventory habis saat commit. Batch dibatalkan
       // seluruhnya, jadi tidak ada yang perlu di-rollback manual.
       if (reservationError instanceof StockReservationError) {
-        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
         return;
       }
       throw reservationError;
@@ -423,7 +424,9 @@ export async function createAndSendVariantInvoice(
           : `Tagihan belum bisa dikonfirmasi. Kode pesanan: ${orderCode}. Gunakan Cek status untuk memeriksa tagihan yang sama, jangan buat pesanan baru.`)
         : errorMessage({ locale: invoiceLocale }),
       parse_mode: "HTML",
-      ...(orderInserted && preserveReservation ? { reply_markup: qrisInvoiceKeyboard(orderCode, { locale: invoiceLocale }) } : {}),
+      ...(orderInserted && preserveReservation
+        ? { reply_markup: qrisInvoiceKeyboard(orderCode, { locale: invoiceLocale }) }
+        : { reply_markup: minimalMenuKeyboard({ locale: invoiceLocale }) }),
     }).catch(() => {});
     // RR3-05: lempar ulang kegagalan foto invoice (lihat jalur cart).
     if (variantInvoiceFailed || invoiceCreated) throw error;

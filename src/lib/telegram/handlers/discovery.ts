@@ -11,7 +11,7 @@ import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
 import { sendMessage, sendChatAction, safeEditOrSend } from "@/lib/telegram/api";
 import {
   homeKeyboard, orderStatusKeyboard, myOrdersKeyboard, searchResultsKeyboard,
-  orderPaidKeyboard, TELEGRAM_MAX_QTY, emailConfirmationKeyboard,
+  orderPaidKeyboard, TELEGRAM_MAX_QTY, emailConfirmationKeyboard, minimalMenuKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
   outOfStockMessage, alreadyPendingMessage, errorMessage,
@@ -58,7 +58,7 @@ export async function handlePendingEmailInput(
         `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
         String(from.id),
       ).catch(() => {});
-      await sendMessage({ chat_id: chatId, text: enCart ? "Cancelled. Type /start to begin again." : "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML" });
+      await sendMessage({ chat_id: chatId, text: enCart ? "Cancelled. Type /start to begin again." : "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: enCart ? "en" : "id" }) });
       return true;
     }
     const cartEmail = text.trim();
@@ -91,7 +91,7 @@ export async function handlePendingEmailInput(
       `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=?`,
       String(from.id),
    );
-    await sendMessage({ chat_id: chatId, text: enMail ? "Cancelled. Type /start to begin again." : "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: enMail ? "Cancelled. Type /start to begin again." : "Dibatalkan. Ketik /start untuk mulai lagi.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: enMail ? "en" : "id" }) });
     return true;
   }
   const email = text.trim();
@@ -136,7 +136,7 @@ export async function showEmailConfirmation(chatId: number, productId: number, v
     confirmationUnit = resolvedConfirm.price;
     confirmationTier = resolvedConfirm.tier ?? null;
   } catch {
-    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
     return;
   }
   const tag = await checkoutApprovalTag([{ productId, variantId, qty, price: confirmationUnit }]);
@@ -155,7 +155,7 @@ export async function showCartEmailConfirmation(chatId: number, from: { id: numb
   const summary = await getCartSummary(String(from.id));
   if (!summary.lines.length) return;
   if (summary.issues.length) {
-    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Cart changed. Open the cart and check quantities and stock before paying." : "Keranjang berubah. Buka keranjang dan periksa jumlah serta stok sebelum membayar." });
+    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Cart changed. Open the cart and check quantities and stock before paying." : "Keranjang berubah. Buka keranjang dan periksa jumlah serta stok sebelum membayar.", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
   const checked = await readCheckoutEmail(String(from.id), summary.lines, email);
@@ -186,7 +186,7 @@ export async function handleMyOrders(
 ) {
   const ctx: TgCtx = await tgCtxFor(from?.id ?? chatId);
   if (!from || !isD1Mode()) {
-    await sendMessage({ chat_id: chatId, text: myOrdersPrompt({ locale: ctx.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: myOrdersPrompt({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
   const rows = await queryAll(
@@ -365,7 +365,7 @@ export async function handleBuyConfirm(chatId: number, messageId: number, produc
   const allOutOfStock = activeVariants.every(v => v.stock === 0);
 
   if (allOutOfStock) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx?.locale }) });
     return;
   }
 
@@ -374,7 +374,7 @@ export async function handleBuyConfirm(chatId: number, messageId: number, produc
   if (firstVariant && firstVariant.fulfillment_mode === "unique") {
     const counts = await countInventory(productId, firstVariant.id);
     if (counts.available < 1) {
-      await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML" });
+      await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx?.locale }) });
       return;
     }
   }
@@ -424,13 +424,13 @@ export async function handleConfirmPurchase(
 
   const detail = await getProductDetail(productId);
   if (!detail || detail.variants.length === 0) {
-    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx?.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx?.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx?.locale }) });
     return;
   }
 
   const activeVariants = detail.variants.filter(v => v.is_active && v.stock !== 0);
   if (activeVariants.length === 0) {
-    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx?.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx?.locale }) });
     return;
   }
 
@@ -492,7 +492,7 @@ export async function handlePendingWaInput(
     if (savedOrder && (String(savedOrder.locale ?? "") === "en" || String(savedOrder.locale ?? "") === "id")) orderLocale = String(savedOrder.locale) as "id" | "en";
   } catch { /* current prefs fallback */ }
   if (!saved.changes) {
-    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: orderLocale }), parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: errorMessage({ locale: orderLocale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: orderLocale }) });
     return true;
   }
   await execRun(
@@ -525,7 +525,7 @@ export async function handleWaInput(
     String(from.id),
   );
   if (!order) {
-    await sendMessage({ chat_id: chatId, text: waCtx.locale === "en" ? "❌ Paid order not found." : "❌ Pesanan lunas tidak ditemukan.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: waCtx.locale === "en" ? "❌ Paid order not found." : "❌ Pesanan lunas tidak ditemukan.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: waCtx.locale }) });
     return;
   }
   const orderLocale = String(order.locale ?? "") === "en" ? "en" as const : "id" as const;

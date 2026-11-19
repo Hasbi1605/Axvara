@@ -53,6 +53,8 @@ export type FreezeInput = {
   identity: Payq1LineIdentity;
   idrSubtotal: number;
   contactEmail: string | null;
+  /** Exact pending_action value allowed for single-product CAS transition (e.g. qty_for/email_confirm). */
+  allowPendingAction?: string;
 };
 
 export type Payq1FreezeResult =
@@ -237,7 +239,8 @@ export async function freezePayq1(input: FreezeInput): Promise<Payq1FreezeResult
     // protected — render must defer, never mutate. Own quoted-invalid rows
     // (unparseable) are NOT overwritten here either: they requote only after
     // an explicit cancel clears them (fail-closed, no silent repair).
-    if (!existing || existing.st !== "quoted") return { ok: false, reason: "namespace_busy" };
+    const allowedMatch = Boolean(input.allowPendingAction && current === input.allowPendingAction);
+    if ((!existing || existing.st !== "quoted") && !allowedMatch) return { ok: false, reason: "namespace_busy" };
   }
   const claimed = current === null
     ? await execRun(

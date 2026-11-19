@@ -9,6 +9,7 @@ import {
   paymentMethodOfferKeyboard,
   cryptoCoinKeyboard,
   otherMethodsEntryKeyboard,
+  minimalMenuKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
   paymentMethodOfferMessage,
@@ -26,8 +27,8 @@ import {
 } from "@/lib/telegram/payment-quote";
 
 export type OfferRenderTarget =
-  | { mode: "single"; productId: number; variantId: number; qty: number; tag: string; productName: string; subtotal: number; identity: Payq1LineIdentity; contactEmail: string | null }
-  | { mode: "cart"; tag: string; cartName: string; subtotal: number; identity: Payq1LineIdentity; contactEmail: string | null };
+  | { mode: "single"; productId: number; variantId: number; qty: number; tag: string; productName: string; subtotal: number; identity: Payq1LineIdentity; contactEmail: string | null; allowPendingAction?: string }
+  | { mode: "cart"; tag: string; cartName: string; subtotal: number; identity: Payq1LineIdentity; contactEmail: string | null; allowPendingAction?: string };
 
 /** Canonical 12-hex line identity: SHA-256 over canonical product/variant/qty/effective-price lines. */
 export async function approvalLinesHash(lines: import("@/lib/telegram/checkout-approval").CheckoutApprovalLine[]): Promise<string> {
@@ -53,6 +54,7 @@ export async function showPaymentMethodOffer(
     identity: target.identity,
     idrSubtotal: target.subtotal,
     contactEmail: target.contactEmail,
+    ...(target.allowPendingAction ? { allowPendingAction: target.allowPendingAction } : {}),
   });
   if (!frozen.ok) {
     // Namespace busy => another flow owns pending_action (including own
@@ -64,6 +66,7 @@ export async function showPaymentMethodOffer(
         ? paymentMethodNoticeMessage("deferred", { locale: ctx.locale })
         : paymentMethodNoticeMessage("unavailable", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -74,7 +77,7 @@ export async function showPaymentMethodOffer(
     message_id: messageId,
     text: `${paymentMethodOfferMessage({ productName: title, subtotal: target.subtotal }, { locale: ctx.locale })}\n\n${details.join("\n")}`,
     parse_mode: "HTML",
-    reply_markup: paymentMethodOfferKeyboard({ nonce: frozen.state.nonce, methods: frozen.state.methods }, { locale: ctx.locale }),
+    reply_markup: paymentMethodOfferKeyboard({ nonce: frozen.state.nonce, methods: frozen.state.methods, source: frozen.state.source }, { locale: ctx.locale }),
   });
 }
 
@@ -89,11 +92,17 @@ async function startLegacyQrisFromOffer(
   chatId: number,
   messageId: number,
   from: { id: number; first_name: string; username?: string },
-  source: Payq1LineIdentity,
+  state: Pick<import("@/lib/telegram/payment-quote").Payq1State, "source" | "tag" | "contact">,
 ): Promise<void> {
-  if (source.kind === "single") {
+  if (state.source.kind === "single") {
     const { handlePayWithQris } = await import("./invoice");
-    await handlePayWithQris(chatId, messageId, source.productId, source.variantId, source.qty, from, true);
+    const { readCheckoutEmail } = await import("@/lib/telegram/checkout-email");
+    const checked = await readCheckoutEmail(String(from.id), [{ productId: state.source.productId, variantId: state.source.variantId }]).catch(() => null);
+    const emailReady = Boolean(checked?.required && state.contact?.email && checked.email === state.contact.email);
+    await handlePayWithQris(
+      chatId, messageId, state.source.productId, state.source.variantId, state.source.qty, from,
+      emailReady, state.tag, emailReady ? state.contact.email! : undefined,
+    );
   } else {
     const { handleCartCheckout } = await import("./cart");
     await handleCartCheckout(chatId, messageId, from);
@@ -135,6 +144,7 @@ export async function handlePayMethodSelect(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("expired", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -147,6 +157,7 @@ export async function handlePayMethodSelect(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("expired", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -170,7 +181,7 @@ export async function handlePayMethodSelect(
     ).catch(() => ({ changes: 0 }));
     await answer();
     if ((released.changes ?? 0) < 1) return;
-    await startLegacyQrisFromOffer(chatId, messageId, from, state.source);
+    await startLegacyQrisFromOffer(chatId, messageId, from, state);
     return;
   }
   const next = { ...state, sel: chosen.id };
@@ -192,7 +203,7 @@ export async function handlePayMethodSelect(
     chat_id: chatId, message_id: messageId,
     text: paymentMethodNoticeMessage("selected_other", { locale: ctx.locale }),
     parse_mode: "HTML",
-    reply_markup: { inline_keyboard: [[{ text: ctx.locale === "en" ? "▶ Continue" : "▶ Lanjut", callback_data: `pgo:${next.nonce}` }], ...paymentMethodOfferKeyboard({ nonce: next.nonce, methods: next.methods }, { locale: ctx.locale }).inline_keyboard] },
+    reply_markup: { inline_keyboard: [[{ text: ctx.locale === "en" ? "▶ Continue" : "▶ Lanjut", callback_data: `pgo:${next.nonce}` }], ...paymentMethodOfferKeyboard({ nonce: next.nonce, methods: next.methods, source: next.source }, { locale: ctx.locale }).inline_keyboard] },
   });
 }
 
@@ -219,6 +230,7 @@ export async function handlePayCryptoMenu(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("expired", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -239,7 +251,7 @@ export async function handlePayCryptoMenu(
     chat_id: chatId, message_id: messageId,
     text: `${paymentMethodOfferMessage({ productName: ctx.locale === "en" ? "Your order" : "Pesananmu", subtotal: state.idrSubtotal }, { locale: ctx.locale })}\n\n${details.join("\n")}`,
     parse_mode: "HTML",
-    reply_markup: paymentMethodOfferKeyboard({ nonce: state.nonce, methods: state.methods }, { locale: ctx.locale }),
+    reply_markup: paymentMethodOfferKeyboard({ nonce: state.nonce, methods: state.methods, source: state.source }, { locale: ctx.locale }),
   });
 }
 
@@ -363,7 +375,7 @@ export async function handlePayMethodConfirm(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("create_failed", { locale: ctx.locale }),
       parse_mode: "HTML",
-      reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale }),
+      reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale, source: current.source, tag: current.tag }),
     });
     return;
   }
@@ -376,6 +388,7 @@ export async function handlePayMethodConfirm(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("expired", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -386,7 +399,7 @@ export async function handlePayMethodConfirm(
       `UPDATE telegram_users SET pending_action=NULL, updated_at=datetime('now') WHERE user_id=? AND pending_action=?`,
       String(from.id), currentRaw,
     ).catch(() => ({ changes: 0 }));
-    await startLegacyQrisFromOffer(chatId, messageId, from, current.source);
+    await startLegacyQrisFromOffer(chatId, messageId, from, current);
     return;
   }
   // Quoted/contact: validate the frozen selection is still live-supported
@@ -403,7 +416,7 @@ export async function handlePayMethodConfirm(
           ? paymentMethodNoticeMessage("method_unavailable", { locale: ctx.locale })
           : paymentMethodNoticeMessage("create_failed", { locale: ctx.locale }),
       parse_mode: "HTML",
-      reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale }),
+      reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale, source: current.source, tag: current.tag }),
     });
     return;
   }
@@ -413,6 +426,7 @@ export async function handlePayMethodConfirm(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("refreshed", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -425,6 +439,7 @@ export async function handlePayMethodConfirm(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("expired", { locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -539,7 +554,7 @@ export async function handlePayMethodConfirm(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage(claim.reason === "method_unavailable" ? "method_unavailable" : "create_failed", { locale: ctx.locale }),
       parse_mode: "HTML",
-      reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale }),
+      reply_markup: otherMethodsEntryKeyboard({ locale: ctx.locale, source: activeState.source, tag: activeState.tag }),
     });
     return;
   }

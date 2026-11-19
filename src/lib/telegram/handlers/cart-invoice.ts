@@ -12,7 +12,7 @@ import {
   queryFirst, getD1, isD1Mode, transitionPendingOrder, StockReservationError,
 } from "@/lib/db";
 import { sendMessage, sendPhoto, showLoadingBar } from "@/lib/telegram/api";
-import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
+import { qrisInvoiceKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import { outOfStockMessage, errorMessage, invoiceMessage } from "@/lib/telegram/messages";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
@@ -91,7 +91,7 @@ export async function createAndSendCartInvoice(
           line.variantId, line.productId,
         );
         if (!configured) {
-          await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML" });
+          await sendMessage({ chat_id: chatId, text: errorMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
           return;
         }
       }
@@ -106,7 +106,7 @@ export async function createAndSendCartInvoice(
     // TG2c1: dipakai ulang untuk caption/keyboard di catch.
     const { required, email: cartBuyerEmail } = await readCheckoutEmail(String(from.id), lines, emailSnapshot);
     if (required && !cartBuyerEmail) {
-      await sendMessage({ chat_id: chatId, text: "Email aktif dibutuhkan sebelum membuat tagihan.", parse_mode: "HTML" });
+      await sendMessage({ chat_id: chatId, text: "Email aktif dibutuhkan sebelum membuat tagihan.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
       return;
     }
     const { readTgPreferences: readCartLocale } = await import("@/lib/telegram/preferences");
@@ -145,7 +145,7 @@ export async function createAndSendCartInvoice(
       }
     } catch (reservationError) {
       if (reservationError instanceof StockReservationError) {
-        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML" });
+        await sendMessage({ chat_id: chatId, text: outOfStockMessage(), parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
         return;
       }
       throw reservationError;
@@ -259,7 +259,9 @@ export async function createAndSendCartInvoice(
           : `Tagihan belum bisa dikonfirmasi. Kode pesanan: ${orderCode}. Gunakan Cek status untuk memeriksa tagihan yang sama, jangan buat pesanan baru.`)
         : errorMessage({ locale: cartLocale }),
       parse_mode: "HTML",
-      ...(orderInserted && preserveReservation ? { reply_markup: qrisInvoiceKeyboard(orderCode, { locale: cartLocale }) } : {}),
+      ...(orderInserted && preserveReservation
+        ? { reply_markup: qrisInvoiceKeyboard(orderCode, { locale: cartLocale }) }
+        : { reply_markup: minimalMenuKeyboard({ locale: cartLocale }) }),
     }).catch(() => {});
     // RR3-05: lempar ulang kegagalan foto invoice agar lapis POST menjawab
     // 500 + failed (retry Telegram nyata + sapuan cron). BUKAN dari awal:

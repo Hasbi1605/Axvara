@@ -14,7 +14,7 @@ import { queryFirst, execRun } from "@/lib/db";
 import { sendMessage, safeEditOrSend, answerCallbackQuery } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard, orderStatusKeyboard, parseCallback, cancelConfirmationKeyboard,
-  languageChooserKeyboard, currencyKeyboard, settingsKeyboard,
+  languageChooserKeyboard, currencyKeyboard, settingsKeyboard, helpKeyboard, minimalMenuKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
   helpMessage, warrantyFullMessage, alreadyPendingMessage,
@@ -325,7 +325,156 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
     }
 
     case "pmentry": {
-      // R1: render the frozen offer bound to the approved current cart/single
+      if (params.length > 0) {
+        if (await notifyPaymentMaintenance(chatId)) return;
+        const { tgCtxFor } = await import("@/lib/telegram/render-prefs");
+        const ctx = await tgCtxFor(from.id);
+        const en = ctx.locale === "en";
+        const productId = Number(params[0]);
+        const variantId = Number(params[1]);
+        const rawQty = Number(params[2]);
+        const approvalTag = params[3] ? String(params[3]) : undefined;
+        if (
+          params.length > 4 ||
+          !Number.isSafeInteger(productId) || productId <= 0 ||
+          !Number.isSafeInteger(variantId) || variantId <= 0 ||
+          !Number.isSafeInteger(rawQty) || rawQty <= 0
+        ) {
+          const { errorMessage } = await import("@/lib/telegram/messages");
+          await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+          break;
+        }
+        const { getActiveVariant, effectiveVariantStock, formatVariantLabel } = await import("@/lib/catalog");
+        const { TELEGRAM_MAX_QTY } = await import("@/lib/telegram/keyboards");
+        const { MAX_UNIQUE_UNITS_PER_ORDER } = await import("@/lib/fulfillment/units");
+        const { errorMessage, outOfStockMessage } = await import("@/lib/telegram/messages");
+        const variant = await getActiveVariant(variantId);
+        const product = variant && variant.product_id === productId
+          ? await queryFirst(`SELECT id, name, name_en, telegram_enabled FROM products WHERE id=? AND is_active=1`, productId)
+          : null;
+        if (!variant || variant.product_id !== productId || !product || Number(product.telegram_enabled) !== 1) {
+          await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+          break;
+        }
+        variant.stock = effectiveVariantStock(variant);
+        const stockMax = variant.stock === -1 ? TELEGRAM_MAX_QTY : Math.max(1, Math.min(variant.stock, TELEGRAM_MAX_QTY));
+        const uniqueMax = variant.fulfillment_mode === "unique" ? Math.min(MAX_UNIQUE_UNITS_PER_ORDER, stockMax) : stockMax;
+        const minQty = Math.max(1, Number(variant.min_qty ?? 1) || 1);
+        const maxQty = Math.min(variant.max_qty ?? TELEGRAM_MAX_QTY, uniqueMax);
+        if (variant.stock === 0 || minQty > maxQty) {
+          await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+          break;
+        }
+        if (rawQty < minQty) {
+          await sendMessage({
+            chat_id: chatId,
+            text: en
+              ? `Minimum purchase is ${minQty}. Adjust quantity to at least ${minQty} before paying.`
+              : `Minimal pembelian ${minQty}. Ubah jumlah ke minimal ${minQty} sebelum membayar.`,
+            parse_mode: "HTML",
+            reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+          });
+          await handleShowQty(chatId, messageId, productId, variantId, minQty, from);
+          break;
+        }
+        if (variant.stock !== -1 && rawQty > variant.stock) {
+          await sendMessage({ chat_id: chatId, text: outOfStockMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+          break;
+        }
+        if (rawQty > maxQty || rawQty > TELEGRAM_MAX_QTY) {
+          await handleShowQty(chatId, messageId, productId, variantId, maxQty, from);
+          break;
+        }
+        let effectivePrice = Number(variant.price);
+        try {
+          const { resolveBulkPrice } = await import("@/lib/bulk-pricing");
+          effectivePrice = resolveBulkPrice(Number(variant.price), rawQty, variant.bulk_pricing_enabled ? 1 : 0, JSON.stringify(variant.bulk_pricing_tiers ?? [])).price;
+        } catch {
+          await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+          break;
+        }
+        const currentTag = await checkoutApprovalTag([{ productId, variantId, qty: rawQty, price: effectivePrice }]);
+        if (!approvalTag || approvalTag !== currentTag) {
+          await handleShowQty(chatId, messageId, productId, variantId, rawQty, from);
+          break;
+        }
+        const { requestBuyerInput } = await import("./buyer-input");
+        if (await requestBuyerInput(chatId, from, productId, variantId, rawQty)) break;
+        let checked: { required: boolean; email: string | null };
+        try {
+          checked = await readCheckoutEmail(String(from.id), [{ productId, variantId }]);
+        } catch {
+          await sendMessage({
+            chat_id: chatId,
+            text: en ? "Email could not be verified. Try again before choosing a method." : "Email belum bisa diperiksa. Coba lagi sebelum memilih metode.",
+            parse_mode: "HTML",
+            reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+          });
+          break;
+        }
+        const buyer = await queryFirst("SELECT pending_action FROM telegram_users WHERE user_id=?", String(from.id)).catch(() => null);
+        const currentPending = buyer?.pending_action == null ? null : String(buyer.pending_action);
+        const { parsePayq1State } = await import("@/lib/telegram/payment-quote");
+        const { paymentMethodNoticeMessage } = await import("@/lib/telegram/messages/purchase");
+        const fp = checked.email ? await checkoutEmailFingerprint(checked.email) : "";
+        const isConfirmedEmail = Boolean(
+          checked.required && checked.email && currentPending &&
+          new RegExp(`^email_confirm:${productId}:${variantId}:${rawQty}:[a-f0-9]{8}:${fp}$`).test(currentPending),
+        );
+        if (checked.required && !isConfirmedEmail) {
+          const canTransition = currentPending == null
+            || currentPending === `qty_for:${productId}:${variantId}`
+            || currentPending.startsWith(`email_confirm:${productId}:${variantId}:`)
+            || parsePayq1State(currentPending)?.st === "quoted";
+          if (!canTransition) {
+            await sendMessage({
+              chat_id: chatId,
+              text: paymentMethodNoticeMessage("deferred", { locale: ctx.locale }),
+              parse_mode: "HTML",
+              reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+            });
+            break;
+          }
+          if (!checked.email) {
+            if (!(await setPendingActionUnlessCreating(String(from.id), chatId, `email_for:${productId}:${variantId}:${rawQty}`))) break;
+            await sendMessage({
+              chat_id: chatId,
+              text: en
+                ? "An active email is required to receive this product.\nReply with an active email, e.g. <code>name@email.com</code>.\nType /batal to cancel."
+                : "Email dibutuhkan untuk mengirim produk ini.\nBalas dengan email aktif, contoh: <code>nama@email.com</code>.\nKetik /batal untuk membatalkan.",
+              parse_mode: "HTML",
+              reply_markup: { force_reply: true, selective: true, input_field_placeholder: "nama@email.com" },
+            });
+            break;
+          }
+          const { showEmailConfirmation } = await import("./discovery");
+          await showEmailConfirmation(chatId, productId, variantId, rawQty, checked.email, currentPending, messageId, from);
+          break;
+        }
+        const allowPendingAction = currentPending === `qty_for:${productId}:${variantId}` || isConfirmedEmail
+          ? currentPending ?? undefined
+          : undefined;
+        const { productDisplayName } = await import("@/lib/i18n/product-name");
+        const productName = productDisplayName({ name: String(product.name), nameEn: product.name_en == null ? null : String(product.name_en) }, ctx.locale);
+        const label = formatVariantLabel(variant, ctx.locale);
+        const displayName = rawQty > 1 ? `${productName} · ${label} ×${rawQty}` : `${productName} · ${label}`;
+        const { showPaymentMethodOffer } = await import("./payment-methods");
+        await showPaymentMethodOffer(chatId, messageId, from, {
+          mode: "single",
+          productId,
+          variantId,
+          qty: rawQty,
+          tag: currentTag,
+          productName: displayName,
+          subtotal: effectivePrice * rawQty,
+          identity: { kind: "single", productId, variantId, qty: rawQty },
+          contactEmail: checked.email,
+          allowPendingAction,
+        });
+        break;
+      }
+
+      // R1: render the frozen offer bound to the approved current cart
       // identity. Client sends no price/method — state binds everything.
       const { showPaymentMethodOffer } = await import("./payment-methods");
       const { getCartSummary } = await import("@/lib/telegram/cart");
@@ -352,7 +501,7 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
           break;
         }
       } catch {
-        await sendMessage({ chat_id: chatId, text: "Email belum bisa diperiksa. Coba lagi sebelum memilih metode.", parse_mode: "HTML" });
+        await sendMessage({ chat_id: chatId, text: "Email belum bisa diperiksa. Coba lagi sebelum memilih metode.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard() });
         break;
       }
       await showPaymentMethodOffer(chatId, messageId, from, {
@@ -524,7 +673,7 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       try {
         checked = await readCheckoutEmail(String(from.id), cartSummary.lines);
       } catch {
-        await sendMessage({ chat_id: chatId, text: "Email belum bisa diperiksa. Coba lagi sebelum membayar." });
+        await sendMessage({ chat_id: chatId, text: "Email belum bisa diperiksa. Coba lagi sebelum membayar.", reply_markup: minimalMenuKeyboard() });
         break;
       }
       if (checked.required || params[1]) {
@@ -554,7 +703,8 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
     case "help": {
       const { readTgPreferences: readHelpPrefs } = await import("@/lib/telegram/preferences");
       const helpPrefs = await readHelpPrefs(String(from.id)).catch(() => ({ locale: null }));
-      await sendMessage({ chat_id: chatId, text: helpMessage({ locale: helpPrefs.locale ?? "id" }), parse_mode: "HTML" });
+      const helpLocale = helpPrefs.locale ?? "id";
+      await sendMessage({ chat_id: chatId, text: helpMessage({ locale: helpLocale }), parse_mode: "HTML", reply_markup: helpKeyboard({ locale: helpLocale }) });
       break;
     }
 

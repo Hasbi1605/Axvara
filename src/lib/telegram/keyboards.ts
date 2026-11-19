@@ -105,8 +105,11 @@ export const cb = {
   cartClear: () => "cclear",
   cartCheckout: () => "ccheckout",
   waInput: (orderCode: string) => `wainput:${orderCode}`,
-  /** R1 frozen offer entry (nonce flows via frozen state, not callbacks). */
-  payMethodsEntry: () => "pmentry",
+  /** R1 frozen offer entry; single-product entry binds product/variant/qty/tag. */
+  payMethodsEntry: (productId?: number, variantId?: number, qty?: number, tag?: string) =>
+    productId != null && variantId != null && qty != null
+      ? `pmentry:${productId}:${variantId}:${qty}${tag ? `:${tag}` : ""}`
+      : "pmentry",
   /** R1 frozen offer selection: index into FROZEN payq1 array (nonce-bound). */
   payMethod: (nonce: string, index: number) => `pm:${nonce}:${index}`,
   /** Sub-menu koin crypto (nonce-bound) dan kembali. */
@@ -499,7 +502,7 @@ export function qtyKeyboard(params: {
       ],
       ...(max > 1 ? [[{ text: en ? "✍️ Enter Quantity" : "✍️ Masukkan Jumlah", callback_data: cb.qtyInput(productId, variantId) }]] : []),
       [{ text: params.requiresEmail ? (en ? `📧 Continue to Email · ${total}` : `📧 Lanjut ke Email · ${total}`) : (en ? `💳 Pay QRIS · ${total}` : `💳 Bayar QRIS · ${total}`), callback_data: cb.pay(productId, variantId, qty, params.approvalTag) }],
-      ...(!params.requiresEmail ? [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry() }]] : []),
+      ...(!params.requiresEmail ? [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry(productId, variantId, qty, params.approvalTag) }]] : []),
       [{ text: en ? "📋 Terms" : "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }, { text: en ? "🛒 Add to Cart" : "🛒 Tambah ke Keranjang", callback_data: cb.cartAdd(productId, variantId, qty) }],
       [
         { text: en ? "Change Variant" : "Ganti Varian", callback_data: cb.variants(productId) },
@@ -513,7 +516,7 @@ export function emailConfirmationKeyboard(productId: number, variantId: number, 
   const en = ctx?.locale === "en";
   return { inline_keyboard: [
     [{ text: `💳 ${en ? "Pay QRIS" : "Bayar QRIS"} · ${priceButtonText(total, ctx)}`, callback_data: cb.emailPay(productId, variantId, qty, tag, nonce) }],
-    [{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry() }],
+    [{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry(productId, variantId, qty, tag) }],
     [{ text: en ? "📧 Change Email" : "📧 Ubah Email", callback_data: cb.emailEdit(productId, variantId, qty) }, { text: en ? "📋 Terms" : "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }],
     [
       { text: en ? "◀️ Change Quantity" : "◀️ Ubah Jumlah", callback_data: cb.qty(productId, variantId) },
@@ -593,6 +596,62 @@ export function warrantyKeyboard(): InlineKeyboardMarkup {
   };
 }
 
+export function minimalMenuKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  return {
+    inline_keyboard: [[{ text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() }]],
+  };
+}
+
+export function helpKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  return {
+    inline_keyboard: [
+      [
+        { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+        { text: en ? "📦 My Orders" : "📦 Pesanan Saya", callback_data: cb.myOrders() },
+      ],
+      [
+        { text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa` },
+        { text: `✈️ @${SITE.supportTelegram}`, url: supportTelegramLink() },
+      ],
+      [
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+      ],
+    ],
+  };
+}
+
+export function orderTerminalKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  return {
+    inline_keyboard: [
+      [{ text: en ? "◀️ Order List" : "◀️ Daftar Pesanan", callback_data: cb.myOrders() }],
+      [
+        { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+      ],
+    ],
+  };
+}
+
+export function credentialResendOutcomeKeyboard(
+  orderCode: string,
+  kind: "transient" | "permanent",
+  ctx?: TgLocaleCtx,
+): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  const rows: InlineKeyboardButton[][] = [];
+  if (kind === "transient") {
+    rows.push([{ text: en ? "🔁 Try Again" : "🔁 Coba lagi", callback_data: cb.credentials(orderCode) }]);
+  }
+  rows.push([
+    { text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` },
+    { text: en ? "◀️ Order Details" : "◀️ Detail Pesanan", callback_data: cb.order(orderCode) },
+  ]);
+  return { inline_keyboard: rows };
+}
+
 export function orderStatusKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
   return {
@@ -601,6 +660,7 @@ export function orderStatusKeyboard(orderCode: string, ctx?: TgLocaleCtx): Inlin
         { text: en ? "🔄 Check Status" : "🔄 Cek Status", callback_data: cb.refresh(orderCode) },
         { text: en ? "❌ Cancel" : "❌ Batalkan", callback_data: cb.cancel(orderCode) },
       ],
+      [{ text: en ? "◀️ Order List" : "◀️ Daftar Pesanan", callback_data: cb.myOrders() }],
       [
         { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
         { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
@@ -641,6 +701,7 @@ export function paidOrderStatusKeyboard(orderCode: string, ctx?: TgLocaleCtx): I
       [{ text: en ? "📦 Fetch Product Again" : "📦 Ambil Ulang Produk", callback_data: cb.credentials(orderCode) }],
       [{ text: en ? "🔄 Check Order" : "🔄 Cek Pesanan", callback_data: cb.refresh(orderCode) }],
       orderPaidKeyboard(orderCode, ctx).inline_keyboard[0],
+      [{ text: en ? "◀️ Order List" : "◀️ Daftar Pesanan", callback_data: cb.myOrders() }],
       [
         { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
         { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
@@ -731,12 +792,18 @@ export function qrisExpiredKeyboard(orderCode: string, ctx?: TgLocaleCtx): Inlin
   ] };
 }
 
+export type Payq1OfferSource =
+  | { kind: "single"; productId: number; variantId: number; qty: number }
+  | { kind: "cart" };
+
 /** R1: localized "other payment methods" entry (after qty/email/cart approval).
- * The entry callback carries no price/user/method — the frozen payq1 state
- * already binds the approved current cart/single identity. */
-export function otherMethodsEntryKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+ * Routes single-product contexts back to single pmentry and cart contexts to "pmentry". */
+export function otherMethodsEntryKeyboard(ctx?: TgLocaleCtx & { source?: Payq1OfferSource; tag?: string }): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
-  return { inline_keyboard: [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: "pmentry" }]] };
+  const callbackData = ctx?.source?.kind === "single"
+    ? cb.payMethodsEntry(ctx.source.productId, ctx.source.variantId, ctx.source.qty, ctx.tag)
+    : cb.payMethodsEntry();
+  return { inline_keyboard: [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: callbackData }]] };
 }
 
 /** R1 frozen offer keyboard: QRIS first + Paling cepat/Fastest badge, gateway
@@ -747,7 +814,7 @@ export function otherMethodsEntryKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMark
  * currency display honors the independence rule (USD shown only as the
  * frozen provider USD amount, never relabeled IDR). */
 export function paymentMethodOfferKeyboard(
-  state: { nonce: string; methods: OfferMethodView[] },
+  state: { nonce: string; methods: OfferMethodView[]; source?: Payq1OfferSource },
   ctx?: TgLocaleCtx,
 ): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
@@ -774,6 +841,13 @@ export function paymentMethodOfferKeyboard(
       rows.push([{ text: `Crypto (USD) · ${method.amount_text} USD`, callback_data: `pmc:${state.nonce}` }]);
     }
   });
+  const backCallback = state.source?.kind === "single"
+    ? cb.setQty(state.source.productId, state.source.variantId, state.source.qty)
+    : cb.cartCheckout();
+  rows.push([
+    { text: en ? "◀️ Back" : "◀️ Kembali", callback_data: backCallback },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+  ]);
   return { inline_keyboard: rows };
 }
 

@@ -10,6 +10,7 @@ import { queryFirst } from "@/lib/db";
 import type { DatabaseAccess } from "@/lib/db-access";
 import { isFutureIso } from "@/lib/expiry";
 import { sendMessage, safeEditOrSend as rawSafeEditOrSend } from "@/lib/telegram/api";
+import { minimalMenuKeyboard, orderTerminalKeyboard, paidOrderStatusKeyboard } from "@/lib/telegram/keyboards";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
 import { escapeHtml, truncate } from "@/lib/telegram/messages/format";
 import { formatIdr } from "@/lib/i18n/format";
@@ -97,7 +98,7 @@ async function renderProviderInvoiceStatus(
     orderCode.toUpperCase(), String(from.id),
   ).catch(() => null);
   if (!order) {
-    await sendMessage({ chat_id: chatId, text: "❌ Pesanan tidak ditemukan.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: "❌ Pesanan tidak ditemukan.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale }) });
     return;
   }
   const savedLocale: Locale = order.locale === "en" ? "en" : order.locale === "id" ? "id" : locale;
@@ -109,17 +110,18 @@ async function renderProviderInvoiceStatus(
       chat_id: chatId, message_id: messageId,
       text: orderPaidMessage(code, "", false, "manual", { locale: savedLocale }),
       parse_mode: "HTML",
+      reply_markup: paidOrderStatusKeyboard(code, { locale: savedLocale }),
     });
     return;
   }
   if (order.status === "dibatalkan") {
-    await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML" });
+    await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
     return;
   }
   const liveOrder = order.status === "pending" && ["pending", "unpaid"].includes(String(order.payment_status));
   const reviewSticky = /manual_review/i.test(String(order.last_error ?? ""));
   if (!liveOrder || reviewSticky) {
-    await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewSticky ? reviewView(code, savedLocale) : expiredView(code, savedLocale), parse_mode: "HTML" });
+    await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewSticky ? reviewView(code, savedLocale) : expiredView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
     return;
   }
 
@@ -127,7 +129,7 @@ async function renderProviderInvoiceStatus(
     // Saved flag-off / missing FX: GET recovery still renders from the SAVED
     // invoice row (never newly created here). Missing saved TX => fail-closed.
     if (!order.transaction_status) {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML" });
+      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
       return;
     }
     // Refresh: claim CAS + reconcile, then fresh re-read (single claimer).
@@ -139,19 +141,19 @@ async function renderProviderInvoiceStatus(
     }
     const view = await buildNowpaymentsPaymentView(code, opts?.database);
     if (!view) {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML" });
+      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
       return;
     }
     if (view.state === "expired") {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: expiredView(code, savedLocale), parse_mode: "HTML" });
+      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: expiredView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
       return;
     }
     if (view.state === "failed") {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML" });
+      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
       return;
     }
     if (view.state === "manual_review") {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML" });
+      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
       return;
     }
     // Label dari katalog kurasi (simbol + jaringan); instruksi: kirim tepat nominal koin di jaringan itu SAJA.
@@ -186,7 +188,7 @@ async function renderProviderInvoiceStatus(
 
   if (provider === "sekalipay_gateway") {
     if (!order.transaction_status) {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML" });
+      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
       return;
     }
     const { buildSekalipayGatewayPaymentView, claimSekalipayGatewayPoll } = await import("@/lib/payments/payment-view");
@@ -197,15 +199,15 @@ async function renderProviderInvoiceStatus(
     }
     const view = await buildSekalipayGatewayPaymentView(code, opts?.database);
     if (!view) {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML" });
+      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: failedView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
       return;
     }
     if (view.state === "expired") {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: expiredView(code, savedLocale), parse_mode: "HTML" });
+      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: expiredView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
       return;
     }
     if (view.state === "manual_review" || view.state === "initializing") {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML" });
+      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
       return;
     }
     if (view.state === "fee_consent_required" || !view.payment_link && !view.virtual_account) {
@@ -221,7 +223,7 @@ async function renderProviderInvoiceStatus(
         ? `<b>Confirm gateway fee</b>\n\n<code>${escapeHtml(code)}</code>\n\n${label}\nSubtotal: ${formatIdr(Number(view.subtotal ?? 0), savedLocale)}\nEstimated fee: ${formatIdr(Number(view.estimated_fee ?? fee), savedLocale)}\nActual fee: ${formatIdr(fee, savedLocale)}\n<b>Total: ${formatIdr(total, savedLocale)}</b>\n\nPress confirm to reveal the payment details.`
         : `<b>Konfirmasi biaya gateway</b>\n\n<code>${escapeHtml(code)}</code>\n\n${label}\nSubtotal: ${formatIdr(Number(view.subtotal ?? 0), savedLocale)}\nEstimasi biaya: ${formatIdr(Number(view.estimated_fee ?? fee), savedLocale)}\nBiaya aktual: ${formatIdr(fee, savedLocale)}\n<b>Total: ${formatIdr(total, savedLocale)}</b>\n\nTekan konfirmasi untuk membuka detail pembayaran.`;
       if (!tag || !invoiceId || !Number.isSafeInteger(total) || total <= 0) {
-        await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML" });
+        await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
         return;
       }
       await safeEditOrSend({
@@ -249,7 +251,7 @@ async function renderProviderInvoiceStatus(
   }
 
   // Unknown provider => fail closed, never QRIS fallback.
-  await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML" });
+  await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
 }
 
 export async function handleRefreshProviderStatus(

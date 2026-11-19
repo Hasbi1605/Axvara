@@ -8,7 +8,7 @@ import { queryFirst, execRun } from "@/lib/db";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { safeEditOrSend } from "@/lib/telegram/api";
-import { otherMethodsEntryKeyboard } from "@/lib/telegram/keyboards";
+import { otherMethodsEntryKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import { paymentMethodNoticeMessage } from "@/lib/telegram/messages/purchase";
 import type { Payq1State } from "@/lib/telegram/payment-quote";
 import type { Locale } from "@/lib/i18n/locale";
@@ -65,7 +65,7 @@ export async function dispatchPayq1Creating(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("method_unavailable", { locale }),
       parse_mode: "HTML",
-      reply_markup: otherMethodsEntryKeyboard({ locale }),
+      reply_markup: otherMethodsEntryKeyboard({ locale, source: creating.source, tag: creating.tag }),
     });
     return;
   }
@@ -82,7 +82,7 @@ export async function dispatchPayq1Creating(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage(notice, { locale }),
       parse_mode: "HTML",
-      reply_markup: otherMethodsEntryKeyboard({ locale }),
+      reply_markup: otherMethodsEntryKeyboard({ locale, source: creating.source, tag: creating.tag }),
     });
   };
   if (creating.st !== "creating" || !selectedId || (kind !== "gateway" && kind !== "crypto")) {
@@ -132,6 +132,7 @@ export async function dispatchPayq1Creating(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("expired", { locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale }),
     });
     return;
   }
@@ -280,7 +281,7 @@ export async function dispatchPayq1Creating(
         parse_mode: "HTML",
         // TX terminal + order batal = tidak ada charge tersisa; pembeli boleh
         // langsung memilih metode lain (quote/nonce baru).
-        reply_markup: otherMethodsEntryKeyboard({ locale }),
+        reply_markup: otherMethodsEntryKeyboard({ locale, source: creating.source, tag: creating.tag }),
       });
       return;
     }
@@ -316,22 +317,23 @@ export async function dispatchPayq1Creating(
       chat_id: chatId, message_id: messageId,
       text: paymentMethodNoticeMessage("create_failed", { locale }),
       parse_mode: "HTML",
-      reply_markup: otherMethodsEntryKeyboard({ locale }),
+      reply_markup: otherMethodsEntryKeyboard({ locale, source: creating.source, tag: creating.tag }),
     });
     return;
   }
 
-  // Clear cart ONLY on success (purchased snapshot CAS) — matches legacy
-  // QRIS behavior; then show the provider-aware view.
-  try {
-    // Resume from a saved order: the cart may have been edited since the
-    // purchase was frozen — only clear it when it still IS the purchased cart.
-    const stillPurchased = !savedOrder || (await resolveCurrentPayq1Lines(ownerId, creating).catch(() => null))?.ok === true;
-    if (stillPurchased) {
-      const { clearCart } = await import("@/lib/telegram/cart");
-      await clearCart(ownerId);
-    }
-  } catch { /* cart cleanup best-effort; order/TX already durable */ }
+  // Clear cart ONLY on cart checkout success (never touch cart on single-item checkout).
+  if (creating.source.kind === "cart") {
+    try {
+      // Resume from a saved order: the cart may have been edited since the
+      // purchase was frozen — only clear it when it still IS the purchased cart.
+      const stillPurchased = !savedOrder || (await resolveCurrentPayq1Lines(ownerId, creating).catch(() => null))?.ok === true;
+      if (stillPurchased) {
+        const { clearCart } = await import("@/lib/telegram/cart");
+        await clearCart(ownerId);
+      }
+    } catch { /* cart cleanup best-effort; order/TX already durable */ }
+  }
   await refreshResumeView(chatId, messageId, orderedCode, from, locale, creatingRaw);
   void execRun;
 }

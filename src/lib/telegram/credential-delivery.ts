@@ -89,6 +89,8 @@ export async function resendTelegramCredentials(
   if (!Number.isSafeInteger(chatId) || chatId <= 0) return 0;
   const code = String(orderCode || "").toUpperCase();
   const { sendMessage } = await import("@/lib/telegram/api");
+  const { credentialResendOutcomeKeyboard, minimalMenuKeyboard, orderTerminalKeyboard } = await import("@/lib/telegram/keyboards");
+  const { escapeHtml } = await import("@/lib/telegram/messages/format");
   let order;
   let rows: Row[];
   try {
@@ -103,16 +105,34 @@ export async function resendTelegramCredentials(
         code,
       ) : [];
   } catch {
-    await sendMessage({ chat_id: chatId, text: "Detail produk gagal dibaca. Coba lagi atau hubungi admin.", parse_mode: "HTML" });
+    await sendMessage({
+      chat_id: chatId,
+      text: "Detail produk gagal dibaca. Coba lagi atau hubungi admin.",
+      parse_mode: "HTML",
+      reply_markup: credentialResendOutcomeKeyboard(code, "transient"),
+    });
     return 0;
   }
   if (!order) {
-    await sendMessage({ chat_id: chatId, text: "Pesanan tidak ditemukan.", parse_mode: "HTML" });
+    await sendMessage({
+      chat_id: chatId,
+      text: "Pesanan tidak ditemukan.",
+      parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard(),
+    });
     return 0;
   }
+  const locale = String(order.locale ?? "") === "en" ? "en" as const : "id" as const;
   const paid = String(order.status) === "lunas" && String(order.payment_status) === "paid";
   if (!paid) {
-    await sendMessage({ chat_id: chatId, text: "Pesanan belum lunas. Detail produk tersedia setelah pembayaran diterima.", parse_mode: "HTML" });
+    await sendMessage({
+      chat_id: chatId,
+      text: locale === "en"
+        ? "Order is not paid yet. Product details are available after payment is received."
+        : "Pesanan belum lunas. Detail produk tersedia setelah pembayaran diterima.",
+      parse_mode: "HTML",
+      reply_markup: orderTerminalKeyboard({ locale }),
+    });
     return 0;
   }
   const ready = rows.filter(row => row.status === "delivered");
@@ -124,47 +144,73 @@ export async function resendTelegramCredentials(
   try {
     copies = await resolveCredentialTermsForVariants(ready.map(row => Number(row.variant_id)), database);
   } catch {
-    await sendMessage({ chat_id: chatId, text: "Detail produk gagal dibaca. Coba lagi atau hubungi admin.", parse_mode: "HTML" });
+    await sendMessage({
+      chat_id: chatId,
+      text: locale === "en" ? "Product details failed to read. Try again or contact admin." : "Detail produk gagal dibaca. Coba lagi atau hubungi admin.",
+      parse_mode: "HTML",
+      reply_markup: credentialResendOutcomeKeyboard(code, "transient", { locale }),
+    });
     return 0;
   }
   const { normalizeAccountDetailsForDisplay } = await import("@/lib/warung-rebahan/deliver");
   let sent = 0;
-  let failed = 0;
+  let transientFailed = 0;
+  let missingStored = 0;
   for (const row of ready) {
+    if (!row.delivered_ciphertext || !row.delivered_iv) {
+      missingStored++;
+      continue;
+    }
     try {
-      if (!row.delivered_ciphertext || !row.delivered_iv) throw new Error("credential_missing");
       let plaintext = await decryptSecret(String(row.delivered_ciphertext), String(row.delivered_iv));
       if (String(row.delivered_message_id ?? "").startsWith("wr:")) {
         plaintext = normalizeAccountDetailsForDisplay(plaintext);
       }
-      if (!plaintext.trim()) throw new Error("credential_empty");
+      if (!plaintext.trim()) {
+        missingStored++;
+        continue;
+      }
       await sendTelegramCredentialParts(chatId, credentialMessages({
         orderCode: code,
         productName: orderLineLabel(order.items, Number(row.item_index ?? 0)),
         plaintext,
         copy: copies.get(Number(row.variant_id)),
-        locale: String(order.locale ?? "") === "en" ? "en" : "id",
+        locale,
       }));
       sent++;
     } catch {
-      failed++;
+      transientFailed++;
     }
   }
   const expected = Math.max(rows.length, expandDeliveryLines(order.items).length);
-  const locale = String(order.locale ?? "") === "en" ? "en" as const : "id" as const;
-  const needsHelp = rows.some(row => ["failed", "manual_required"].includes(String(row.status)))
-    || order.fulfillment_status === "delivered" && (!ready.length || ready.length < expected)
+  const hasFailedOrManual = rows.some(row => ["failed", "manual_required"].includes(String(row.status)))
     || ["failed", "manual_required"].includes(String(order.fulfillment_status));
+  const missingDeliveredRows = String(order.fulfillment_status) === "delivered" && (!ready.length || ready.length < expected);
+  const permanentMissing = (missingStored > 0 || missingDeliveredRows) && transientFailed === 0;
   const waiting = expected - ready.length;
-  const text = failed || needsHelp
-    ? locale === "en"
+  let text = "";
+  let replyMarkup: import("@/lib/telegram/types").InlineKeyboardMarkup | undefined;
+  if (transientFailed > 0 || (hasFailedOrManual && !permanentMissing)) {
+    text = locale === "en"
       ? `${sent ? `${sent} product details sent. ` : ""}Product details failed to read or send. Fetch details again or contact admin.`
-      : `${sent ? `${sent} detail produk berhasil dikirim. ` : ""}Detail produk gagal dibaca atau dikirim. Coba ambil detail lagi atau hubungi admin.`
-    : !sent
-      ? (locale === "en" ? "Product details are not ready yet. The order is still being prepared. Check status again later." : "Detail produk belum siap. Pesanan masih disiapkan. Cek status lagi nanti.")
-      : waiting
-        ? (locale === "en" ? `${sent} product details sent. The rest are not ready yet. Check status again later.` : `${sent} detail produk berhasil dikirim. Detail lainnya belum siap. Cek status lagi nanti.`)
-        : "";
-  if (text) await sendMessage({ chat_id: chatId, text, parse_mode: "HTML" });
+      : `${sent ? `${sent} detail produk berhasil dikirim. ` : ""}Detail produk gagal dibaca atau dikirim. Coba ambil detail lagi atau hubungi admin.`;
+    replyMarkup = credentialResendOutcomeKeyboard(code, "transient", { locale });
+  } else if (permanentMissing) {
+    text = locale === "en"
+      ? `${sent ? `${sent} product details sent. ` : ""}Details for this order are not stored in the bot. Contact admin with order code <code>${escapeHtml(code)}</code>.`
+      : `${sent ? `${sent} detail produk berhasil dikirim. ` : ""}Detail untuk pesanan ini tidak tersimpan di bot. Hubungi admin dengan kode pesanan <code>${escapeHtml(code)}</code>.`;
+    replyMarkup = credentialResendOutcomeKeyboard(code, "permanent", { locale });
+  } else if (!sent) {
+    text = locale === "en"
+      ? "Product details are not ready yet. The order is still being prepared. Check status again later."
+      : "Detail produk belum siap. Pesanan masih disiapkan. Cek status lagi nanti.";
+    replyMarkup = orderTerminalKeyboard({ locale });
+  } else if (waiting) {
+    text = locale === "en"
+      ? `${sent} product details sent. The rest are not ready yet. Check status again later.`
+      : `${sent} detail produk berhasil dikirim. Detail lainnya belum siap. Cek status lagi nanti.`;
+    replyMarkup = orderTerminalKeyboard({ locale });
+  }
+  if (text) await sendMessage({ chat_id: chatId, text, parse_mode: "HTML", ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
   return sent;
 }

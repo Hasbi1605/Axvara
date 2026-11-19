@@ -9,7 +9,7 @@
 
 import { queryFirst } from "@/lib/db";
 import { sendMessage, sendChatAction, safeEditOrSend } from "@/lib/telegram/api";
-import { orderStatusKeyboard, cartKeyboard } from "@/lib/telegram/keyboards";
+import { orderStatusKeyboard, cartKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import {
   outOfStockMessage, alreadyPendingMessage, errorMessage,
   cartMessage, cartAddedMessage, cartCheckoutSummaryMessage,
@@ -33,7 +33,7 @@ export async function handleShowCart(
 ) {
   const ctx = await tgCtxFor(from?.id ?? chatId);
   if (!from) {
-    const missing = await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML" });
+    const missing = await sendMessage({ chat_id: chatId, text: errorMessage({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     if (isCriticalSendResult(missing, "transactional")) throw new Error(`telegram_send_failed:${missing.description || "unknown"}`);
     return;
   }
@@ -90,6 +90,7 @@ export async function handleCartAdd(
         : result.reason === "invalid_quantity" ? (ctx.locale === "en" ? "Quantity must be a whole number from 1 to 100 per variant. Adjust it in the cart." : "Jumlah harus berupa bilangan bulat 1 sampai 100 per varian. Ubah jumlah di keranjang.")
         : belowMinText ?? errorMessage({ locale: ctx.locale }),
       parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
     });
     return;
   }
@@ -175,7 +176,7 @@ export async function handleCartCheckout(
   }
 
   if (!isActiveQrisConfigured()) {
-    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "QRIS payment is not available yet. Try again or contact admin." : "Pembayaran QRIS belum tersedia. Coba lagi atau hubungi admin.", parse_mode: "HTML" });
+    await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "QRIS payment is not available yet. Try again or contact admin." : "Pembayaran QRIS belum tersedia. Coba lagi atau hubungi admin.", parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
     return;
   }
   const summary = await getCartSummary(String(from.id));
