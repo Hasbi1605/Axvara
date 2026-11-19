@@ -1,5 +1,7 @@
 # Aturan agent — WhatsApp gateway, grup, siaran
 
+Urutan kategori digest 19 November 2026 (lokal): `loadPromoProducts` (`src/lib/telegram/promo-digest.ts`, dipakai bersama `promo-digest.ts` dan `promo-bot.ts` WA serta digest Telegram) kini mengurutkan kategori lebih dulu sesuai urutan web (`categories.sort_order`, tie-break nama/id, tanpa kategori terakhir), baru `p.sort_order` dan `p.id`, sehingga produk baru/ber-`sort_order` kecil di kategori akhir tidak lagi menggeser kategori tersebut ke baris paling atas.
+
 Revisi17November2026 (keputusan owner; implementasi lokal, publikasi via CI):
 tambahkan nomor kedua **Bot Promo**, nomor pribadi owner yang sudah lama digunakan,
 untuk maksimal20grup pilihan manual admin (perkiraan8). Gambar dan caption

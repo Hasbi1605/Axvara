@@ -1,5 +1,6 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import { catalogFailureRecorder, catalogWriteFailure, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
+import { buildSupplierProductInsertSql } from "@/lib/supplier/product-insert";
 import { isMiraiConfigured, isMiraiSyncEnabled } from "./client";
 import { MIRAI_COPY } from "./copy";
 import {
@@ -113,14 +114,13 @@ export async function projectMiraiCatalog(db: DatabaseAccess, fx: number) {
   const json = JSON.stringify(rows);
 
   const newProdRes = await db.execRun(
-    `INSERT OR IGNORE INTO products(category_id,name,slug,description,description_en,price,image_url,stock,is_active,source,fulfillment_mode,telegram_enabled,mirai_family)
-     SELECT COALESCE((SELECT id FROM categories WHERE id=json_extract(j.value,'$.category')),(SELECT id FROM categories ORDER BY id LIMIT 1)),
-       json_extract(j.value,'$.name'),json_extract(j.value,'$.slug'),json_extract(j.value,'$.description'),json_extract(j.value,'$.description_en'),MIN(json_extract(j.value,'$.price')),
-       COALESCE((SELECT p.image_url FROM json_each(json_extract(j.value,'$.images')) i JOIN products p ON p.slug=i.value WHERE NULLIF(p.image_url,'') IS NOT NULL ORDER BY CAST(i.key AS INTEGER) LIMIT 1),json_extract(j.value,'$.imageUrl')),
-       0,0,'manual','manual',1,json_extract(j.value,'$.key')
-     FROM json_each(?) j
-     WHERE NOT EXISTS(SELECT 1 FROM products p WHERE p.mirai_family=json_extract(j.value,'$.key'))
-     GROUP BY json_extract(j.value,'$.key')`,
+    buildSupplierProductInsertSql({
+      familyColumn: "mirai_family",
+      hasDescriptionEn: true,
+      imageExpr:
+        "COALESCE((SELECT p.image_url FROM json_each(json_extract(j.value,'$.images')) i JOIN products p ON p.slug=i.value WHERE NULLIF(p.image_url,'') IS NOT NULL ORDER BY CAST(i.key AS INTEGER) LIMIT 1),json_extract(j.value,'$.imageUrl'))",
+      conflictMode: "insert_or_ignore",
+    }),
     json,
   );
 

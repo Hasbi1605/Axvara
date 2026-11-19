@@ -397,3 +397,52 @@ it("writes curated copy, category, and candidate/R2 image once on insert, preser
     f.sql.prepare("SELECT admin_terms,admin_terms_en,admin_activation,admin_activation_en FROM product_variants WHERE sku='MR-GPT_50M'").get(),
   ).toEqual(MIRAI_COPY.gpt.variants["MR-GPT_50M"]);
 });
+
+it("allocates distinct category-tail sort_order (+10 each after non-archived max) on new inserts and keeps existing sort_order on re-sync", async () => {
+  f.sql.exec(`
+    INSERT INTO products(category_id,name,slug,price,is_active,sort_order) VALUES
+      (1,'Existing Cap','existing-cap',1000,1,500),
+      (1,'Archived Higher','archived-higher',1000,0,900);
+    UPDATE products SET archived_at=datetime('now') WHERE slug='archived-higher';
+    INSERT INTO products(category_id,name,slug,price,is_active,sort_order,source,fulfillment_mode,mirai_family) VALUES
+      (1,'Existing Mirai','api-gpt-token-mr',1000,1,42,'manual','manual','gpt');
+  `);
+  const db = createDatabaseAccess(f.db);
+  vi.mocked(fetch).mockResolvedValueOnce(
+    Response.json({
+      success: true,
+      data: [
+        pkg({ code: "GPT_10M", group: "gpt" }),
+        pkg({ code: "CLAUDE_10M", group: "claude", name: "Claude 10M" }),
+        pkg({ code: "FULL_10M", group: "full", name: "Full 10M" }),
+      ],
+    }),
+  );
+  expect(await publishMiraiCatalog(db, 16000, { force: true })).toMatchObject({ ok: true });
+  expect(
+    f.sql.prepare("SELECT mirai_family, sort_order FROM products WHERE mirai_family IS NOT NULL ORDER BY sort_order ASC").all(),
+  ).toEqual([
+    { mirai_family: "gpt", sort_order: 42 },
+    { mirai_family: "claude", sort_order: 510 },
+    { mirai_family: "full", sort_order: 520 },
+  ]);
+
+  vi.mocked(fetch).mockResolvedValueOnce(
+    Response.json({
+      success: true,
+      data: [
+        pkg({ code: "GPT_10M", group: "gpt" }),
+        pkg({ code: "CLAUDE_10M", group: "claude", name: "Claude 10M" }),
+        pkg({ code: "FULL_10M", group: "full", name: "Full 10M" }),
+      ],
+    }),
+  );
+  expect(await publishMiraiCatalog(db, 18000, { force: true })).toMatchObject({ ok: true });
+  expect(
+    f.sql.prepare("SELECT mirai_family, sort_order FROM products WHERE mirai_family IS NOT NULL ORDER BY sort_order ASC").all(),
+  ).toEqual([
+    { mirai_family: "gpt", sort_order: 42 },
+    { mirai_family: "claude", sort_order: 510 },
+    { mirai_family: "full", sort_order: 520 },
+  ]);
+});

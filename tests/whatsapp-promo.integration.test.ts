@@ -115,4 +115,24 @@ describe("WhatsApp ready catalog", () => {
     expect(await actual.sendTextMessage(payload)).toMatchObject({ ok: true, messageId: "WA-IMAGE" });
     expect(fetcher).toHaveBeenCalledWith("https://fixture-gateway.test/send-promo", expect.objectContaining({ body: JSON.stringify({ target: payload.target, message: payload.message, idempotencyKey: payload.idempotencyKey, botNumber: payload.botNumber, botRevision: payload.botRevision }) }));
   });
+
+  it("orders WA promo categories by categories.sort_order even when a later category has sort_order 0", async () => {
+    fixture.sql.exec(`
+      DELETE FROM product_variants;
+      DELETE FROM products;
+      INSERT INTO products(id,slug,name,price,category_id,sort_order) VALUES
+        (10,'jetbrains-edu','JetBrains Edu',25000,6,0),
+        (11,'chatgpt-plus','ChatGPT Plus',89000,1,10),
+        (12,'claude-pro','Claude Pro',95000,1,20);
+      INSERT INTO product_variants(id,product_id,sku,label,price,stock,min_qty) VALUES
+        (10,10,'JB-1','1Y',25000,-1,1),
+        (11,11,'CG-1','1M',89000,5,1),
+        (12,12,'CL-1','1M',95000,5,1);
+    `);
+    expect(await enqueueWhatsAppPromo(createDatabaseAccess())).toBe(1);
+    const message = String(JSON.parse(String(row().payload)).message);
+    expect(message.indexOf("AI & CHATBOT")).toBeGreaterThan(-1);
+    expect(message.indexOf("AI & CHATBOT")).toBeLessThan(message.indexOf("DEVELOPER & TOOLS"));
+    expect(message.indexOf("ChatGPT Plus")).toBeLessThan(message.indexOf("Claude Pro"));
+  });
 });

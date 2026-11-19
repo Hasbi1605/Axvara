@@ -1,5 +1,9 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Urutan `sort_order` saat insert pertama — 19 November 2026 (lokal)
+
+- Insert produk baru di `projectStorebatCatalog` memakai `buildSupplierProductInsertSql` (`src/lib/supplier/product-insert.ts`) untuk mengalokasikan `sort_order` ekor kategori (`MAX(sort_order)` produk non-arsip kategori yang sama, default `0`, `+ 10 × rank`). Baris existing tidak pernah diubah `sort_order`-nya saat re-sync; migrasi data `0143_supplier_products_category_tail.sql` memindahkan baris lama `<= 0` ke ekor kategori (sambil menjaga satu slot per `product_group`).
+
 ## Status supplier di Admin Pesanan — 19 November 2026 (lokal)
 
 - Admin Pesanan kini memuat link StoreBat sebagai kotak status saja (label status, `last_error`, ID provider, petunjuk Supplier → StoreBat → Antrean). Tidak ada Retry/Cek status di Pesanan; aksi tetap di Antrean. "Kirim ke pembeli" disembunyikan selama link pending/claimed/processing (cermin CAS `handover.ts`) dan tampil saat needs_admin.

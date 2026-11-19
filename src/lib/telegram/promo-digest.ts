@@ -93,8 +93,8 @@ export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full
     if (/(^|[^a-z])ai([^a-z]|$)/.test(lowered) || lowered.includes("chatbot")) return "🤖";
     return "✨";
   };
-  // Kelompok per kategori sesuai urutan kemunculan pertama (= hierarki
-  // katalog, karena query sudah sort_order ASC). Baris produk memakai ✅
+  // Kelompok per kategori sesuai urutan kemunculan pertama (= urutan kategori
+  // web `categories.sort_order`, lalu `p.sort_order` dan `p.id`). Baris produk memakai ✅
   // (keputusan owner 2026-10-01 — contoh format ceklis WR/SEKUDIL).
   // Format 2026-10-03 (contoh manual owner, berlaku untuk full Telegram DAN
   // short WA): garis pemisah + intro dua baris + header kategori
@@ -138,7 +138,12 @@ export async function loadPromoProducts(database: DatabaseAccess): Promise<Promo
         AND ${notLoserProductSql("p")}
       GROUP BY p.id
      HAVING promo_price IS NOT NULL
-      ORDER BY p.sort_order ASC, p.id ASC`,
+      ORDER BY CASE WHEN c.id IS NULL THEN 1 ELSE 0 END ASC,
+               COALESCE(c.sort_order, 0) ASC,
+               COALESCE(c.name, '') ASC,
+               COALESCE(c.id, 0) ASC,
+               COALESCE(p.sort_order, 0) ASC,
+               p.id ASC`,
   )).map((row) => ({
     id: Number(row.id), name: String(row.name), category: String(row.category), price: Number(row.promo_price),
   }));

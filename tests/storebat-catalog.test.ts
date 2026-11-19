@@ -123,3 +123,61 @@ it("writes curated copy, category, and image once on insert and never overwrites
     STOREBAT_COPY["chatgpt-plus"].variants["SB-60"],
   );
 });
+
+it("allocates distinct category-tail sort_order (+10 each after non-archived max) on new inserts and keeps existing sort_order on re-sync", async () => {
+  f.sql.exec(`
+    INSERT INTO products(category_id,name,slug,price,is_active,sort_order) VALUES
+      (1,'Existing Cap','existing-cap',1000,1,500),
+      (1,'Archived Higher','archived-higher',1000,0,900);
+    UPDATE products SET archived_at=datetime('now') WHERE slug='archived-higher';
+    INSERT INTO products(category_id,name,slug,price,is_active,sort_order,source,fulfillment_mode,storebat_family) VALUES
+      (1,'Existing StoreBat','gemini-plus-sb',1000,1,42,'manual','manual','gemini');
+  `);
+  const db = createDatabaseAccess(f.db);
+  vi.mocked(fetch).mockResolvedValueOnce(
+    Response.json(
+      {
+        success: true,
+        products: [
+          product(121),
+          { ...product(78), name: "ChatGPT Plus" },
+          { ...product(116), name: "ChatGPT Go" },
+        ],
+        services: [],
+      },
+      { headers: { ETag: '"tail-1"' } },
+    ),
+  );
+  expect(await publishStorebatCatalog(db, 20000, { force: true })).toMatchObject({ ok: true });
+  expect(
+    f.sql.prepare("SELECT storebat_family, sort_order FROM products WHERE storebat_family IS NOT NULL ORDER BY sort_order ASC").all(),
+  ).toEqual([
+    { storebat_family: "gemini", sort_order: 42 },
+    { storebat_family: "chatgpt-plus", sort_order: 510 },
+    { storebat_family: "chatgpt-go", sort_order: 520 },
+  ]);
+
+  // Re-sync with changed FX must not touch sort_order of existing rows.
+  vi.mocked(fetch).mockResolvedValueOnce(
+    Response.json(
+      {
+        success: true,
+        products: [
+          product(121),
+          { ...product(78), name: "ChatGPT Plus" },
+          { ...product(116), name: "ChatGPT Go" },
+        ],
+        services: [],
+      },
+      { headers: { ETag: '"tail-2"' } },
+    ),
+  );
+  expect(await publishStorebatCatalog(db, 22000, { force: true })).toMatchObject({ ok: true });
+  expect(
+    f.sql.prepare("SELECT storebat_family, sort_order FROM products WHERE storebat_family IS NOT NULL ORDER BY sort_order ASC").all(),
+  ).toEqual([
+    { storebat_family: "gemini", sort_order: 42 },
+    { storebat_family: "chatgpt-plus", sort_order: 510 },
+    { storebat_family: "chatgpt-go", sort_order: 520 },
+  ]);
+});
