@@ -58,7 +58,7 @@ const current = (code = CODE) => ({
   items: fixture.sql.prepare("SELECT * FROM fulfillment_items WHERE order_code=? ORDER BY item_index").all(code),
 });
 async function cron() {
-  fixture.control.queries = 0; fixture.control.limit = 50;
+  fixture.control.queries = 0; fixture.control.limit = 300;
   const { POST } = await import("@/app/api/cron/operations/route");
   const response = await POST(new NextRequest("http://localhost/api/cron/operations", { method: "POST", headers: { authorization: "Bearer rr5-cron" } }));
   const queries = fixture.control.queries; fixture.control.limit = Infinity;
@@ -160,7 +160,7 @@ describe("RR5 bounded recovery and delivery", () => {
     const codes = Array.from({ length: 6 }, (_, i) => `AXV-20260909-AUTOOFF${i}`);
     for (const code of codes) await seed({ n: 4, orphan: true, code });
     for (let i = 0; i < 24; i++) {
-      const r = await cron(); expect(r.queries).toBeLessThanOrEqual(40);
+      const r = await cron(); expect(r.queries).toBeLessThanOrEqual(300);
       if (codes.every((c) => current(c).items.length === 4)) break;
     }
     expect(codes.map((c) => current(c).items.length)).toEqual([4, 4, 4, 4, 4, 4]);
@@ -174,7 +174,7 @@ describe("RR5 bounded recovery and delivery", () => {
         VALUES(1,?,?,?,?, 'reserved',?)`).run(i, secret.ciphertext, secret.iv, `unique-${i}`, CODE);
     }
     for (let i = 0; i < 40; i++) {
-      const r = await cron(); expect(r.status).toBe(200); expect(r.queries).toBeLessThanOrEqual(40);
+      const r = await cron(); expect(r.status).toBe(200); expect(r.queries).toBeLessThanOrEqual(300);
       expect(r.body.query_budget_used).toBe(r.queries);
       if (current().order.fulfillment_status === "delivered") break;
     }
@@ -213,7 +213,7 @@ describe("RR5 bounded recovery and delivery", () => {
         fixture.sql.prepare(`INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,status,expires_at)
           VALUES(?,'dana','static',?,'dummy',10000,'pending',datetime('now','-1 minute'))`).run(code, code);
       }
-      const r = await cron(); expect(r.status).toBe(200); expect(r.queries).toBeLessThanOrEqual(40);
+      const r = await cron(); expect(r.status).toBe(200); expect(r.queries).toBeLessThanOrEqual(300);
       if (current().order.fulfillment_status === "delivered" && fixture.sql.prepare("SELECT status FROM whatsapp_outbox").get()?.status === "sent") break;
     }
     expect(current().order.fulfillment_status).toBe("delivered");
@@ -226,7 +226,7 @@ describe("RR5 bounded recovery and delivery", () => {
       expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
       let done = false;
       for (let i = 0; i < 60; i++) {
-        const r = await cron(); expect(r.status).toBe(200); expect(r.queries).toBeLessThanOrEqual(40);
+        const r = await cron(); expect(r.status).toBe(200); expect(r.queries).toBeLessThanOrEqual(300);
         expect(r.body.query_budget_used).toBe(r.queries);
         done = [CODE, "AXV-20260908-ROUND502"].every((c) => current(c).order.fulfillment_status === (mode === "manual" ? "manual_required" : "delivered"));
         if (done) break;

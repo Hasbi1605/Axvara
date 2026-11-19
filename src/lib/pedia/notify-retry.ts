@@ -19,7 +19,8 @@ type Db = ReturnType<typeof createDatabaseAccess>;
 const PHASES = ["paid", "processing", "completed"] as const;
 type Phase = (typeof PHASES)[number];
 
-const RETRY_LIMIT = 2;
+export const RETRY_LIMIT = 6;
+const EMAIL_PACE_MS = 1_000;
 
 /** Recent eligibility window for missing-phase discovery (avoid historic spam). */
 const DISCOVERY_WINDOW = "-24 hours";
@@ -44,8 +45,14 @@ function phaseImplied(phase: Phase): string {
   return `('completed')`;
 }
 
-export async function retryPendingPediaEmails(db: Db): Promise<number> {
+export async function retryPendingPediaEmails(
+  db: Db,
+  options: { paceMs?: number; sleepImpl?: (ms: number) => Promise<void> } = {},
+): Promise<number> {
   let retried = 0;
+  let emailCalls = 0;
+  const paceMs = options.paceMs ?? (process.env.NODE_ENV === "test" ? 0 : EMAIL_PACE_MS);
+  const sleep = options.sleepImpl ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const { notifyPediaPaid, notifyPediaProcessing, notifyPediaCompleted } = await import("@/lib/pedia/notify");
   for (const phase of PHASES) {
     // Deterministic affordable budget BEFORE each phase scan: scan read +
@@ -68,6 +75,8 @@ export async function retryPendingPediaEmails(db: Db): Promise<number> {
     ).catch(() => []);
     for (const row of rows) {
       if (!db.canSpend(5)) break;
+      if (emailCalls > 0 && paceMs > 0) await sleep(paceMs);
+      emailCalls++;
       const code = String(row.order_code);
       try {
         const ok = phase === "paid"
@@ -93,6 +102,8 @@ export async function retryPendingPediaEmails(db: Db): Promise<number> {
     ).catch(() => []);
     for (const row of missing) {
       if (!db.canSpend(5)) break;
+      if (emailCalls > 0 && paceMs > 0) await sleep(paceMs);
+      emailCalls++;
       const code = String(row.order_code);
       try {
         const ok = phase === "paid"

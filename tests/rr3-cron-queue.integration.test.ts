@@ -84,7 +84,7 @@ describe("RR3-01 queue makes progress job by job", () => {
     for (; runs < BOUND; runs++) {
       const r = await cronRun();
       expect(r.status).toBe(200);
-      expect(r.queries).toBeLessThan(50);
+      expect(r.queries).toBeLessThanOrEqual(300);
       const left = Number(fixture.sql.prepare(
         "SELECT COUNT(*) n FROM fulfillment_jobs WHERE status IN ('queued','retry')").get()?.n ?? 0);
       if (left === 0) break;
@@ -194,19 +194,19 @@ describe("RR3-09 paid notifications are scheduled even when order-created alread
   });
 });
 
-// ─── RR3-03: budget cron jujur di bawah 50 dengan margin ───
-describe("RR3-03 cron stays under the platform query limit with measured accounting", () => {
-  it("four-item unmaterialized order converges under the 50-query adapter without partial_failure", async () => {
+// ─── RR3-03: budget cron jujur di bawah 300 (Paid) dengan margin ───
+describe("RR3-03 cron stays under the Paid query budget with measured accounting", () => {
+  it("four-item unmaterialized order converges under the 300-query adapter without partial_failure", async () => {
     await paidSharedOrder("RR303-4ITEM", 4);
     // Hapus materialisasi agar cron harus materialisasi + kirim sendiri.
     fixture.sql.prepare("DELETE FROM fulfillment_items WHERE order_code='RR303-4ITEM'").run();
     const BOUND = 6;
     let ok = false;
     for (let i = 0; i < BOUND; i++) {
-      const r = await cronRun(50);
+      const r = await cronRun(300);
       expect(r.body.error).toBeUndefined();
       expect(r.status).toBe(200);
-      expect(r.queries).toBeLessThan(50);
+      expect(r.queries).toBeLessThanOrEqual(300);
       const o = String(fixture.sql.prepare("SELECT fulfillment_status FROM orders WHERE code='RR303-4ITEM'").get()?.fulfillment_status);
       const j = String(fixture.sql.prepare("SELECT status FROM fulfillment_jobs WHERE order_code='RR303-4ITEM'").get()?.status);
       if (o === "delivered" && j === "delivered") { ok = true; break; }
@@ -234,10 +234,10 @@ describe("RR3-03 cron stays under the platform query limit with measured account
     await enqueueWhatsAppMessage("rr303-wa", "628000000000", "DUMMY");
     const BOUND = 8;
     for (let i = 0; i < BOUND; i++) {
-      const r = await cronRun(50);
+      const r = await cronRun(300);
       expect(r.status).toBe(200);
       expect(r.body.error).toBeUndefined();
-      expect(r.queries).toBeLessThan(50);
+      expect(r.queries).toBeLessThanOrEqual(300);
     }
     expect(Number(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='pending'").get()?.n ?? 0)).toBe(0);
     expect(String(fixture.sql.prepare("SELECT status FROM fulfillment_jobs WHERE order_code='RR303-F'").get()?.status)).toBe("delivered");

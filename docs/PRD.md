@@ -1945,7 +1945,7 @@ di menu Produk.
 Halaman pesanan Market menunda polling pembayaran dan pengiriman ketika tab
 tersembunyi. Saat kembali terlihat, cek status segera memakai GET biasa selama
 polling masih aktif, tanpa `wake=1` atau penerbitan QR baru. Interval terlihat
-5 detik untuk QR dinamis/30 detik lainnya tetap; polling pengiriman mempertahankan
+5 detik untuk QR dinamis / 8 detik untuk pembayaran non-QRIS (revisi Workers Paid 19 Nov 2026, sebelumnya 30 detik); polling pengiriman mempertahankan
 urutan cepat/lambat dan jatah percobaan existing. Waktu tersembunyi tidak memakai
 atau mengulang jatah tersebut. Request yang sudah berjalan boleh selesai;
 webhook/cron/expiry/email tetap bekerja tanpa halaman terbuka.

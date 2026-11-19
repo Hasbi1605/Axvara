@@ -648,7 +648,8 @@ export async function sendSkCredentialEmail(
  *  tidak menyumbat slot LIMIT untuk baris lain. */
 export async function reconcilePendingSkCredentialEmails(
   database?: DatabaseAccess,
-  limit = 4,
+  limit = 15,
+  options: { paceMs?: number; sleepImpl?: (ms: number) => Promise<void> } = {},
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
   const rows = await db
@@ -681,11 +682,16 @@ export async function reconcilePendingSkCredentialEmails(
                                        'telegram:sk-credential:' || fi.order_code || ':' || fi.id)
              AND b.status='sent')
        ORDER BY fi.id ASC LIMIT ?`,
-      Math.max(1, Math.min(limit, 8)),
+      Math.max(1, Math.min(limit, 20)),
     )
     .catch(() => [] as Record<string, unknown>[]);
+  const paceMs = options.paceMs ?? (process.env.NODE_ENV === "test" ? 0 : 1_000);
+  const sleep = options.sleepImpl ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   let sent = 0;
+  let attempted = 0;
   for (const row of rows) {
+    if (attempted > 0 && paceMs > 0) await sleep(paceMs);
+    attempted++;
     try {
       if (await deliverSkCredentialToBuyer(String(row.order_code || ""), Number(row.item_id || 0), db)) sent++;
     } catch { /* run berikutnya mencoba lagi */ }

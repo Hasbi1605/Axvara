@@ -55,29 +55,28 @@ async function run() {
   return { queries: fixture.control.queries - before, status: res.status, body: await res.json() };
 }
 
-// R12: satu invocation D1 Free hanya 50 query. Cron harus membagi kerja
-// antar run (tiap run < 50 dengan margin), menunda sisanya secara jujur
-// (deferred), dan menguras antrean dalam beberapa run tanpa kehilangan
-// pekerjaan atau status salah.
+// Paid plan: per-invocation runaway guard is 300 statements with EXPIRY_PER_RUN=30.
+// Cron still bounds work across runs, marks deferred honestly when queue > cap,
+// and drains without losing work or leaving wrong status.
 describe("R12 cron fits the per-invocation query budget", () => {
-  it("eight expired orders drain in two runs, each under budget", async () => {
-    await seedExpired(8, "EXP");
+  it("thirty-five expired orders drain in two runs (30 + 5), each under Paid budget", async () => {
+    await seedExpired(35, "EXP");
     const r1 = await run();
     expect(r1.status).toBe(200);
-    expect(r1.queries).toBeLessThan(50);
-    expect(r1.body.expired_payments).toBe(4);
+    expect(r1.queries).toBeLessThanOrEqual(300);
+    expect(r1.body.expired_payments).toBe(30);
     expect(r1.body.deferred).toContain("expiry");
     const r2 = await run();
     expect(r2.status).toBe(200);
-    expect(r2.queries).toBeLessThan(50);
-    expect(r2.body.expired_payments).toBe(4);
+    expect(r2.queries).toBeLessThanOrEqual(300);
+    expect(r2.body.expired_payments).toBe(5);
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='pending'").get()?.n).toBe(0);
-    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders WHERE status='kadaluarsa'").get()?.n).toBe(8);
+    expect(fixture.sql.prepare("SELECT COUNT(*) n FROM orders WHERE status='kadaluarsa'").get()?.n).toBe(35);
   });
 
-  it("a 50-query platform limit no longer aborts the run", async () => {
-    await seedExpired(8, "LIM");
-    fixture.control.limit = 50;
+  it("a 300-query Paid budget ceiling does not abort the run", async () => {
+    await seedExpired(35, "LIM");
+    fixture.control.limit = 300;
     const r1 = await run();
     expect(r1.status).toBe(200);
     expect(r1.body.error).toBeUndefined();
@@ -111,7 +110,7 @@ describe("R12 cron fits the per-invocation query budget", () => {
       runs++;
       last = await run();
       expect(last.status).toBe(200);
-      expect(last.queries).toBeLessThan(50);
+      expect(last.queries).toBeLessThanOrEqual(300);
       expect(last.body.error).toBeUndefined();
       const pendingExpiry = Number(fixture.sql.prepare("SELECT COUNT(*) n FROM payment_transactions WHERE status='pending'").get()?.n ?? 0);
       const pendingWa = Number(fixture.sql.prepare("SELECT COUNT(*) n FROM whatsapp_outbox WHERE status IN ('pending','failed')").get()?.n ?? 0);
@@ -126,7 +125,7 @@ describe("R12 cron fits the per-invocation query budget", () => {
     const jobStatus = String(fixture.sql.prepare("SELECT status FROM fulfillment_jobs WHERE order_code='MIXF'").get()?.status ?? "");
     expect(["delivered", "manual_required"]).toContain(jobStatus);
     expect(runs).toBeLessThanOrEqual(8);
-    expect(Number(last?.body.query_budget_used ?? 999)).toBeLessThanOrEqual(40);
+    expect(Number(last?.body.query_budget_used ?? 999)).toBeLessThanOrEqual(300);
   });
 
   it("continuous expiry stream still gives other channels their turn (no starvation)", async () => {
@@ -142,7 +141,7 @@ describe("R12 cron fits the per-invocation query budget", () => {
     for (let i = 0; i < 6; i++) {
       const r = await run();
       expect(r.status).toBe(200);
-      expect(r.queries).toBeLessThan(50);
+      expect(r.queries).toBeLessThanOrEqual(300);
       if (Array.isArray(r.body.deferred)) {
         for (const d of r.body.deferred) seenPhases.add(String(d));
       }

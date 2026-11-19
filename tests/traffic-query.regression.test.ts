@@ -86,20 +86,20 @@ describe("Issue #14 — proteksi trafik aktual, bukan klaim", () => {
 });
 
 describe("Issue #14 — efisiensi query sesuai batas D1 aktual", () => {
-  it("cron operations: batch 8 agar satu run < 50 query/invocation (D1 Free)", () => {
+  it("cron operations: bounded batch sesuai plafon Workers Paid (tanpa multiplier lama)", () => {
     const cron = read("src/app/api/cron/operations/route.ts");
-    expect(cron).toContain("const EXPIRY_PER_RUN = 4");
+    expect(cron).toContain("const EXPIRY_PER_RUN = 30");
     expect(cron).not.toContain("BATCH_LIMIT * 4");
   });
 
-  it("helper cron selaras ke batch kecil yang sama", () => {
+  it("helper cron tetap bounded (Telegram Paid 20, delivery/WA anti-ban tetap 8)", () => {
     expect(readDelivery()).toContain("reconcileMissingFulfillmentJobs(limit = 8)");
     expect(readDelivery()).toContain("backfillMissingFulfillmentItems(limit = 8)");
     expect(readDelivery()).toContain("getDueJobs(limit = 8, database: DatabaseAccess");
     // RR3-09: retry notifikasi mendukung filter per jenis agar cron hanya
     // membayar daftar yang antreannya > 0 (hemat query baca kosong).
-    expect(read("src/lib/telegram/order-notifications.ts")).toContain("retryPendingTelegramNotifications(limit = 8");
-    expect(read("src/lib/telegram/order-notifications.ts")).toContain("sendPendingOrderReminders(limit = 8, database: DatabaseAccess");
+    expect(read("src/lib/telegram/order-notifications.ts")).toContain("retryPendingTelegramNotifications(limit = 20");
+    expect(read("src/lib/telegram/order-notifications.ts")).toContain("sendPendingOrderReminders(limit = 20, database: DatabaseAccess");
     expect(read("src/lib/whatsapp/outbox.ts")).toContain("getDueWhatsAppOutbox(limit = 8, database: DatabaseAccess");
     expect(read("src/lib/whatsapp/outbox.ts")).toContain("processDueWhatsAppOutbox(limit = 8, database: DatabaseAccess");
   });

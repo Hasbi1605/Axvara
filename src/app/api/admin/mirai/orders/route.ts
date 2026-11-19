@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess } from "@/lib/db-access";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { readJsonBody } from "@/lib/http-body";
 import { serializeAdminOrderBuyer } from "@/lib/orders/admin-buyer";
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     .safeParse(raw.data);
   if (!parsed.success) return json({ error: "invalid_request" }, 400);
   try {
-    const db = createBudgetedDatabase(40, 0).access;
+    const db = createDatabaseAccess();
     const link = await db.queryFirst("SELECT * FROM mirai_order_links WHERE id=?", parsed.data.id);
     if (!link) return json({ error: "not_found" }, 404);
     if (parsed.data.action === "reveal") {

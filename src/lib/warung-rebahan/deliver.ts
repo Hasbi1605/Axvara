@@ -1237,7 +1237,7 @@ async function wrItemHandedOverManually(link: Record<string, unknown>, db: Datab
  */
 export async function requeueOrphanCredentialDeliveries(
   database?: DatabaseAccess,
-  limit = 4,
+  limit = 20,
 ): Promise<number> {
   const db = database ?? createDatabaseAccess();
   if (!db.canSpend(2)) return 0;
@@ -1256,7 +1256,7 @@ export async function requeueOrphanCredentialDeliveries(
                     WHERE fi2.order_code = l.order_code AND pv.wr_variant_id = l.wr_variant_id)))
              AND fi.status='delivered' AND fi.delivered_message_id IS NOT NULL)
        ORDER BY l.id ASC LIMIT ?`,
-      Math.max(1, Math.min(limit, 8)),
+      Math.max(1, Math.min(limit, 20)),
     )
     .catch(() => [] as Record<string, unknown>[]);
   let queued = 0;
@@ -1267,10 +1267,11 @@ export async function requeueOrphanCredentialDeliveries(
   return queued;
 }
 
-/** Cron delivery: proses antrean kredensial due (bounded). */
+/** Cron delivery: proses antrean kredensial due (bounded, paced <=1/s for Resend). */
 export async function processDueCredentialDeliveries(
   database?: DatabaseAccess,
-  limit = 4,
+  limit = 15,
+  options: { paceMs?: number; sleepImpl?: (ms: number) => Promise<void> } = {},
 ): Promise<{ processed: number; delivered: number; recovered: number }> {
   const db = database ?? createDatabaseAccess();
   const out = { processed: 0, delivered: 0, recovered: 0 };
@@ -1284,13 +1285,16 @@ export async function processDueCredentialDeliveries(
        WHERE delivery_status IN ('queued','failed')
          AND (delivery_next_attempt_at IS NULL OR datetime(delivery_next_attempt_at) <= datetime('now'))
        ORDER BY delivery_next_attempt_at ASC, id ASC LIMIT ?`,
-      Math.max(1, Math.min(limit, 8)),
+      Math.max(1, Math.min(limit, 20)),
     )
     .catch(() => [] as Record<string, unknown>[]);
+  const paceMs = options.paceMs ?? (process.env.NODE_ENV === "test" ? 0 : 1_000);
+  const sleep = options.sleepImpl ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   for (const row of due) {
     // ±11 statement per baris: klaim, baca, cek handover manual, bind/settle/
     // agregat (bila completion terputus), kirim, tandai delivered.
     if (!db.canSpend(11)) break;
+    if (out.processed > 0 && paceMs > 0) await sleep(paceMs);
     out.processed++;
     try {
       if (await processCredentialDelivery(Number(row.id), db)) out.delivered++;

@@ -384,7 +384,7 @@ export async function processWrPendingOrders(
          ${isWrAutoOrderQueuedEnabled() ? "" : "AND (l.wr_variant_id LIKE 'jaspay:%' OR COALESCE(wv.wr_delivery_class, 'made_by_order') = 'restock')"}
        ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT ?`,
       ...(options.orderCode ? [options.orderCode] : []),
-      Math.max(1, Math.min(4, Math.floor(options.limit ?? 4))),
+      Math.max(1, Math.min(20, Math.floor(options.limit ?? 20))),
     )
     // Budget habis WAJIB naik ke pemanggil (insiden 2026-10-10): dulu
     // `.catch(() => [])` membuatnya terbaca "antrean kosong" — link due diam
@@ -422,7 +422,7 @@ export async function processWrPendingOrders(
  */
 export async function reconcileJaspayAmbiguous(
   database?: DatabaseAccess,
-  limit = 4,
+  limit = 12,
 ): Promise<{ exactRef: number; polled: number }> {
   const db = database ?? createDatabaseAccess();
   const out = { exactRef: 0, polled: 0 };

@@ -338,7 +338,7 @@ export async function processSkPendingOrders(
           ${options.orderCode ? "AND l.order_code=?" : ""}
        ORDER BY l.next_attempt_at ASC, l.id ASC LIMIT ?`,
       ...(options.orderCode ? [options.orderCode] : []),
-      Math.max(1, Math.min(4, Math.floor(options.limit ?? 4))),
+      Math.max(1, Math.min(20, Math.floor(options.limit ?? 20))),
     )
     .catch((error) => {
       if (error instanceof QueryBudgetExceeded) throw error;
@@ -800,7 +800,7 @@ export async function recoverStaleSkClaims(database?: DatabaseAccess): Promise<n
        AND (lease_expires_at IS NULL OR datetime(lease_expires_at) <= datetime('now')))
        OR status IN ('submitted','ordering'))
        AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime('now'))
-     ORDER BY COALESCE(next_attempt_at, request_sent_at, created_at) ASC, id ASC LIMIT 3`,
+     ORDER BY COALESCE(next_attempt_at, request_sent_at, created_at) ASC, id ASC LIMIT 12`,
   );
   let recovered = Number(res.changes ?? 0);
   for (const row of ambiguous) {

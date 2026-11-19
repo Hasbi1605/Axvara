@@ -1,5 +1,14 @@
 # ARCHITECTURE.md — AXVARA
 
+## Wave 1 penghapusan batas hemat Free (Workers Paid) — 19 November 2026 (lokal, belum deploy)
+
+- **Budget cron (A1):** `src/app/api/cron/lite/route.ts` menggunakan `createBudgetedDatabase(job === "fulfillment" || job === "jaspay_catalog" ? 400 : 300)` (sebelumnya `96`/`40`); `src/app/api/cron/operations/route.ts` menaikkan `QUERY_BUDGET` `40 → 300` (runaway guard tetap aktif bersama deadline `45_000` ms; `runPromo` broadcast budget terpisah `400` tidak diubah).
+- **Rekonsiliasi & polling pembayaran (A2/A3):** `KLIKQRIS_BACKGROUND_LIMIT = 20`, `NOWPAYMENTS_BACKGROUND_LIMIT = 20`, `NOWPAYMENTS_LATE_LIMIT = 20`; `SEKALIPAY_GATEWAY_BACKGROUND_LIMIT = 12` & `SEKALIPAY_GATEWAY_LATE_LIMIT = 4` (ditahan di bawah admission global `sekalipay_gateway_status_budget` 20 GET/menit, `SEKALIPAY_GATEWAY_STALE_LIMIT = 5` tetap). `/pesanan/[code]` non-QRIS dinamis polling `8_000` ms (sebelumnya `30_000` ms); cooldown server live `SEKALIPAY_GATEWAY_POLL_COOLDOWN_SECONDS = 20` dan `NOWPAYMENTS_POLL_RECONCILE_MS = 20_000` (late recheck 6 jam `-21600 seconds` tetap).
+- **Plafon per tick & Resend pacing (A4):** `EXPIRY_PER_RUN = 30`, `ORPHAN_LEDGER_PER_RUN = 30`, `FULFILLMENT_PER_RUN = 20` (`FULFILLMENT_ITEMS_PER_JOB = 10` di lite), WR/SK order `20`, Jaspay ambiguous `12`, `refreshDueSupplierOrders` `12` (max `20`, throttle 20 dtk tetap), SK stale `LIMIT 12`, WR orphan delivery `20`, Telegram retry/reminder `20`, invoice retry `12`; loop email (`processCredentialAccessEmails` `15`/max `20`, `sendQrisExpiryNotifications` `15`, WR/SK credential email `15`/max `20`, `pedia/notify-retry` `RETRY_LIMIT = 6`) dipacing `1.000 ms` antaremail di produksi (≤1 req/dtk untuk batas default Resend 2 req/dtk/tim). `processDueWhatsAppOutbox` tetap `4`/tick (anti-ban WA).
+- **Admin interaktif unbudgeted (A5):** 7 route POST admin (`aivault/{orders,publish}`, `mirai/{orders,publish}`, `storebat/{orders,publish}`, `tunvn/orders`) memakai `createDatabaseAccess()`.
+- **Interval pasar & saldo (A7/A8):** `CRYPTO_REFRESH_AFTER_MS = 10 * 60_000`, `CRYPTO_MARKET_MEMO_MS = 15_000` (pacing G2 tetap); `SUPPLIER_BALANCE_CHECK_INTERVAL_MS = 5 * 60 * 1000` & IndoSMM `5 * 60 * 1000`; WR/SK saldo `10 * 60 * 1000` (juga dicek di `cron/lite` `wr_orders`/`sk_orders`).
+- **Middleware bebas probe kuota Free D1 (A11):** `src/middleware.ts` tidak lagi memanggil `isD1InMaintenance` (modul `src/lib/d1-maintenance.ts` + rute `/maintenance` tetap dipertahankan).
+
 ## Queue pengiriman siaran/promo (`axvara-broadcast`) — 19 November 2026 (lokal, belum deploy)
 
 - **Resource Queue & binding (Workers Paid; tanpa env/secret baru):**
@@ -5193,8 +5202,8 @@ tiba sesudah pindah menu tidak mengganggu layar lain. CategoryManager mandiri
 mempertahankan kebutuhan API kategorinya sendiri.
 
 `src/app/(shop)/pesanan/[code]/page.tsx` memasang `visibilitychange` untuk dua
-siklus polling. Pending menjalankan interval 5 detik QR dinamis/30 detik lainnya
-hanya ketika terlihat. Hidden membersihkan interval; visible memicu GET biasa
+siklus polling. Pending menjalankan interval 5 detik QR dinamis/8 detik lainnya
+(revisi Paid 19 Nov 2026, sebelumnya 30 detik) hanya ketika terlihat. Hidden membersihkan interval; visible memicu GET biasa
 segera lalu melanjutkan interval, tanpa `wake=1`, POST invoice atau reissue.
 Load awal tetap membaca status sekali, termasuk jika halaman awalnya hidden.
 
@@ -5211,9 +5220,9 @@ webhook/cron/fulfillment/expiry/email tidak berubah.
 Tanpa route/komponen/env/migrasi/cron baru. Penghematan dibuktikan melalui jumlah
 request fixture; total rows_read/hari tetap perlu satu siklus produksi 07.00–07.00.
 
-## 18. Halaman maintenance kuota D1 — 2026-10-17
+## 18. Halaman maintenance kuota D1 — 2026-10-17 (probe middleware dilepas 2026-11-19 pada Workers Paid)
 
-✅ Implementasi dan verifikasi lokal; publikasi melalui CI. `src/middleware.ts`
+✅ Implementasi dan verifikasi lokal; publikasi melalui CI. **Revisi 19 Nov 2026 (W1 Workers Paid):** pemanggilan `isD1InMaintenance` dihapus dari `src/middleware.ts` karena batas harian D1 Free tidak berlaku di Paid (menghilangkan round-trip D1 per jendela 60 dtk di halaman SSR). Modul `src/lib/d1-maintenance.ts` dan rute mandiri `/maintenance` (`src/lib/maintenance-page.ts`, tetap dikecualikan dari rewrite Pedia/Games) dipertahankan. *(Catatan historis era Free di bawah:)* `src/middleware.ts`
 memeriksa ketersediaan D1 sebelum render halaman GET/HEAD dan rewrite Pedia.
 `src/lib/d1-maintenance.ts` memakai binding DB seperti client existing, tanpa
 mengimpor seed/helper order. Probe `SELECT key FROM store_settings LIMIT 1`
@@ -5618,7 +5627,7 @@ bukan memulai integrasi. Detail: `docs/agent-rules/payments.md`.
 - **Katalog koin kurasi** `src/lib/payments/crypto-assets.ts`: 28 koin (6 populer + 22 stable) dengan `ticker`, `symbol`, `name`, `network`, `networkLabel`, `group`, `order`, `logo` (`/payments/coins/<ticker>.svg`, berkas SVG menyusul tugas UI). Dikecualikan: `btclightning`, `usddtrc20`, `tusdtrc20`, dan aset yang butuh memo/extra id. Koin di luar peta ini tidak pernah ditawarkan.
 - **Refresh** (`market-snapshot-refresh.ts`): hanya butuh `NOWPAYMENTS_API_KEY` (tidak bergantung `NOWPAYMENTS_ENABLED`; tanpa key = no-op). Kurs = dua GET `/estimate` berurutan ke `usdtbsc` (1.000.000 IDR dan 100 USD) → `IDR/USD = 10000 × est_usd / est_idr` dengan bigint, dibulatkan half-up 2 desimal, `fx_source="nowpayments-estimate"`; dijalankan lebih dulu dan tidak paralel dengan panggilan koin, dengan satu retry pada HTTP 429 (hormati `Retry-After` ≤5 dtk, else 2 dtk) selama dalam deadline klien. Ditolak bila di luar 5000–50000 atau berubah >10% dari kurs tersimpan ≤24 jam (nilai lama dipertahankan + `last_error`). Koin = `/merchant/coins` ∩ kurasi → `/min-amount?currency_from=<t>&currency_to=<outcome>&fiat_equivalent=usd` (bentuk floating/merchant-fee, tanpa `is_fixed_rate`/`is_fee_paid_by_user`), concurrency ≤2 (berhenti dini pada HTTP 429), timeout 8 dtk/request, total 30 dtk; `currency_to` = `NOWPAYMENTS_OUTCOME_CURRENCY` valid, fallback `usdtbsc`. Koin yang min-nya gagal dihilangkan; bila `/merchant/coins` gagal, rate-limited (`coins_http_429`/`coins_merchant_http_429`), semua min gagal, atau deadline total lewat, daftar sebelumnya dipertahankan tanpa menggagalkan pembaruan FX yang sukses. Biaya 3–4 statement D1 (baca, lease, tulis).
 - **Cron**: dipanggil di akhir `runCleanup` pada `POST /api/cron/lite?job=cleanup` (tick 5 menit existing). Dipilih karena job ini ringan, berjalan di request sendiri sehingga jaringan refresh tidak menyentuh payments/expiry/fulfillment, dan tidak menambah trigger. Semua error/timeout/budget habis ditelan di hook (hasil cleanup tetap dikembalikan; kunci tambahan `crypto_market` hanya muncul bila ada pekerjaan).
-- **Pembaca** `src/lib/payments/market-snapshot.ts`: `getCryptoMarketSnapshot(db)` dan `loadCurrentFxSnapshot()` dengan memo per-isolate 60 dtk. Urutan kurs: D1 segar (≤24 jam, `USD_FX_MAX_AGE_MS`) → pasangan env darurat `USD_IDR_RATE`/`USD_FX_EFFECTIVE_AT` (`source="operator-fixed"`, override manual) → null (fail closed: IDR saja, crypto tersembunyi). Koin lebih tua dari 2 jam dikembalikan KOSONG dengan `coinsStale:true`. `loadFxSnapshot()` di `fx.ts` kini hanya pembaca env darurat; `buildCryptoOffer`/`buildCryptoCatalog` (lihat §16.19) dan `displayUsdCents(idr, fx)` menerima kurs eksplisit; konsumen: `/api/display-prices`, `/api/checkout/quote`, `/api/orders`, `buildMethodOptions/Catalog` (web + Telegram freeze), `tgCtxFor`.
+- **Pembaca** `src/lib/payments/market-snapshot.ts`: `getCryptoMarketSnapshot(db)` dan `loadCurrentFxSnapshot()` dengan memo per-isolate 15 dtk (`CRYPTO_MARKET_MEMO_MS`, revisi W1 19 Nov 2026; sebelumnya 60 dtk) dan interval refresh 10 mnt (`CRYPTO_REFRESH_AFTER_MS`, sebelumnya 30 mnt). Urutan kurs: D1 segar (≤24 jam, `USD_FX_MAX_AGE_MS`) → pasangan env darurat `USD_IDR_RATE`/`USD_FX_EFFECTIVE_AT` (`source="operator-fixed"`, override manual) → null (fail closed: IDR saja, crypto tersembunyi). Koin lebih tua dari 2 jam dikembalikan KOSONG dengan `coinsStale:true`. `loadFxSnapshot()` di `fx.ts` kini hanya pembaca env darurat; `buildCryptoOffer`/`buildCryptoCatalog` (lihat §16.19) dan `displayUsdCents(idr, fx)` menerima kurs eksplisit; konsumen: `/api/display-prices`, `/api/checkout/quote`, `/api/orders`, `buildMethodOptions/Catalog` (web + Telegram freeze), `tgCtxFor`.
 - **Cek kurs saat create** (`isFxSnapshotAcceptable`, `crypto-preflight.ts`): token quote valid diterima bila snapshot saat ini ada, `effective_at` bertanda ≤24 jam, dan selisih relatif ≤2% terhadap kurs bertanda; selain itu `409 quote_stale` (tanpa snapshot saat ini tetap 503). Harga USD yang ditagih tetap angka bertanda. Validator token (`src/lib/auth.ts`) menerima `source` `operator-fixed` dan `nowpayments-estimate`. Jalur create Telegram tidak membandingkan kurs saat ini sama sekali (snapshot beku di payq1 + TTL 10 menit adalah otoritas); perilaku itu dipertahankan dan tidak diubah.
 - **Env**: tidak ada env baru. `USD_IDR_RATE`/`USD_FX_EFFECTIVE_AT` menjadi cadangan darurat. Migrasi 0101 harus diterapkan CI sebelum fitur dipakai; sebelum itu pembaca gagal-baca → env darurat.
 

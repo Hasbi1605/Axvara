@@ -16,9 +16,13 @@ vi.mock("@/lib/aivault/orders", () => ({
 }));
 vi.mock("@/lib/db-access", () => ({
   unwrapD1: () => null,
-  createDatabaseAccess: () => ({ d1: null, queryFirst: async () => null }),
-  createBudgetedDatabase: () => ({ access: { queryFirst: async (sql: string) => sql.startsWith("SELECT *")
-    ? { id: 7, order_code: "AXV-AV-1" } : { status: m.status, last_error: null } } }),
+  createDatabaseAccess: () => ({
+    d1: null,
+    queryFirst: async (sql: string) => {
+      if (!sql.includes("aivault_order_links")) return null;
+      return sql.startsWith("SELECT *") ? { id: 7, order_code: "AXV-AV-1" } : { status: m.status, last_error: null };
+    },
+  }),
 }));
 vi.mock("@/lib/db", () => ({ queryFirst: async () => ({ code: "AXV-AV-1", status: "lunas", payment_status: "paid", items: "[]" }) }));
 vi.mock("@/lib/tunvn/orders", () => ({ createTunvnOrderLinks: async () => 0, processTunvnOrders: async () => 0 }));

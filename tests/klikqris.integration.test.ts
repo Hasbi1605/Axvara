@@ -131,10 +131,10 @@ describe("Paid background payment recovery",()=>{
   fixture.sql.prepare("UPDATE orders SET status='dibatalkan' WHERE code=?").run(B);
   expect(await (await run()).json()).toMatchObject({payments_checked:0});expect(fetchMock).not.toHaveBeenCalled();
  });
- it("caps background checks at four pending invoices per invocation",async()=>{
-  for(let n=1;n<=6;n++)await checkout(`AXV-20261023-CAP0000${n}`);
-  fetchMock.mockClear();expect(await (await run()).json()).toMatchObject({payments_checked:4});
-  expect(fetchMock).toHaveBeenCalledTimes(4);
+ it("caps background checks at twenty pending invoices per invocation",async()=>{
+  for(let n=1;n<=22;n++)await checkout(`AXV-20261023-CAP${String(n).padStart(5,"0")}`);
+  fetchMock.mockClear();expect(await (await run()).json()).toMatchObject({payments_checked:20});
+  expect(fetchMock).toHaveBeenCalledTimes(20);
   expect(await (await run()).json()).toMatchObject({payments_checked:2});
   expect(posts()).toBe(0);
  });

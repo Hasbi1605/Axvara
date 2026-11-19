@@ -49,14 +49,14 @@ it("does not schedule background polls when initially hidden, and stops when ter
   expect(reads()).toBe(2);
 });
 
-it("retains the non-dynamic 30s interval after returning", async () => {
+it("retains the non-dynamic 8s interval after returning", async () => {
   current = { ...current, qris: null };
   render(<OrderSuccessPage />); await act(async () => {});
-  await advance(29000); expect(reads()).toBe(1);
+  await advance(7000); expect(reads()).toBe(1);
   await advance(1000); expect(reads()).toBe(2);
   await visibility(true); await advance(60000); expect(reads()).toBe(2);
   await visibility(false); expect(reads()).toBe(3);
-  await advance(30000); expect(reads()).toBe(4);
+  await advance(8000); expect(reads()).toBe(4);
 });
 
 it("hidden time does not consume the fast fulfillment attempts, and ready credentials stop polling", async () => {

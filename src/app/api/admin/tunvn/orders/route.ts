@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { createBudgetedDatabase, createDatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { serializeAdminOrderBuyer } from "@/lib/orders/admin-buyer";
@@ -40,13 +40,13 @@ export async function POST(request: NextRequest) {
   if (!bounded.ok) return bounded.response;
   const body = bounded.data as { id?: unknown; action?: unknown } | null;
   if (!body || !Number.isSafeInteger(body.id) || Number(body.id) < 1 || !["retry", "reconcile", "reveal"].includes(String(body.action))) return json({ error: "invalid_request" }, 400);
-  const budget = createBudgetedDatabase(40, 0);
+  const db = createDatabaseAccess();
   try {
-    const link = await budget.access.queryFirst("SELECT * FROM tunvn_order_links WHERE id=?", body.id);
+    const link = await db.queryFirst("SELECT * FROM tunvn_order_links WHERE id=?", body.id);
     if (!link) return json({ error: "not_found" }, 404);
     if (body.action === "retry") {
-      if (!await retryTunvnOrder(budget.access,Number(link.id))) return json({ error: "no_safe_retry", message: "Retry hanya untuk kegagalan sebelum pembelian, tanpa receipt atau pengiriman aktif." },409);
-      const updated=await budget.access.queryFirst("SELECT status,last_error FROM tunvn_order_links WHERE id=?",link.id);
+      if (!await retryTunvnOrder(db,Number(link.id))) return json({ error: "no_safe_retry", message: "Retry hanya untuk kegagalan sebelum pembelian, tanpa receipt atau pengiriman aktif." },409);
+      const updated=await db.queryFirst("SELECT status,last_error FROM tunvn_order_links WHERE id=?",link.id);
       if (updated?.status==="completed") await schedulePaidFulfillment(String(link.order_code),"apps","admin_tunvn","supplier_settled");
       return json({ ok:true,link:updated });
     }
@@ -55,8 +55,8 @@ export async function POST(request: NextRequest) {
       return json({ ok: true, receipt: await decryptSecret(String(link.receipt_ciphertext), String(link.receipt_iv)) });
     }
     if (link.kind !== "buff" || !link.provider_batch_id || !["processing", "needs_admin"].includes(String(link.status))) return json({ error: "no_safe_reconcile" }, 409);
-    const processed = await processTunvnOrders(budget.access, { reconcileId: Number(link.id) });
-    const updated = await budget.access.queryFirst("SELECT status FROM tunvn_order_links WHERE id=?", link.id);
+    const processed = await processTunvnOrders(db, { reconcileId: Number(link.id) });
+    const updated = await db.queryFirst("SELECT status FROM tunvn_order_links WHERE id=?", link.id);
     if (processed && updated?.status === "completed") await schedulePaidFulfillment(String(link.order_code), "apps", "admin_tunvn_reconcile", "supplier_settled");
     return json({ ok: true });
   } catch { return json({ error: "reconcile_deferred" }, 503); }

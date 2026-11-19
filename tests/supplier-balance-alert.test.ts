@@ -222,7 +222,7 @@ describe("checkSupplierLowBalance", () => {
     }
   });
 
-  it("checkpoint prevents API call within 30 minutes and runs again after 30 minutes", async () => {
+  it("checkpoint prevents API call within 5 minutes and runs again after 5 minutes", async () => {
     const fx = createD1Fixture();
     try {
       const db = createDatabaseAccess(fx.db);
@@ -250,7 +250,7 @@ describe("checkSupplierLowBalance", () => {
           threshold: 5,
           step: 1,
           format: (n) => `${n} USDT`,
-          now: t0 + 29 * 60 * 1000,
+          now: t0 + 4 * 60 * 1000,
         }),
       ).toEqual({ checked: false });
       expect(fetchBalance).toHaveBeenCalledTimes(1);
@@ -263,7 +263,7 @@ describe("checkSupplierLowBalance", () => {
           threshold: 5,
           step: 1,
           format: (n) => `${n} USDT`,
-          now: t0 + 30 * 60 * 1000,
+          now: t0 + 5 * 60 * 1000,
         }),
       ).toEqual({ checked: true, balance: 10, alerted: false });
       expect(fetchBalance).toHaveBeenCalledTimes(2);

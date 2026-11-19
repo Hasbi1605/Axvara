@@ -292,7 +292,7 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
  * Batasan per panggilan agar tunduk pada budget cron. Mengembalikan jumlah
  * foto yang akhirnya terkirim pada panggilan ini.
  */
-export async function retryInvoicePendingTelegramInvoices(limit = 4, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+export async function retryInvoicePendingTelegramInvoices(limit = 12, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
   const { queryAll } = database;
   if (process.env.TELEGRAM_BOT_ENABLED !== "true") return 0;
   if (!database.canSpend(1)) return 0;

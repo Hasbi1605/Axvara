@@ -103,10 +103,10 @@ describe("RR4-01 large orders advance item by item with DB checkpoints", () => {
       let runs = 0;
       let progress: number[] = [];
       for (; runs < BOUND; runs++) {
-        const r = await cronRun(50);
+        const r = await cronRun(300);
         expect(r.status).toBe(200);
         expect(r.body.error).toBeUndefined();
-        expect(r.attempted).toBeLessThanOrEqual(50);
+        expect(r.attempted).toBeLessThanOrEqual(300);
         progress.push(deliveredCount(code));
         if (jobStatus(code) === "delivered") break;
       }
@@ -132,7 +132,7 @@ describe("RR4-01 large orders advance item by item with DB checkpoints", () => {
     });
     const BOUND = 8 + 1 + 6;
     for (let i = 0; i < BOUND; i++) {
-      await cronRun(50);
+      await cronRun(300);
       if (jobStatus("RR401-BIG") === "delivered" && jobStatus("RR401-SMALL") === "delivered") break;
     }
     expect(jobStatus("RR401-SMALL")).toBe("delivered");
@@ -144,14 +144,14 @@ describe("RR4-01 large orders advance item by item with DB checkpoints", () => {
     const d1 = await import("@/lib/fulfillment/deliver");
     await d1.createFulfillmentJob("RR401-RELOAD", null, "shared", 1, "telegram");
     await d1.ensureFulfillmentItems(row);
-    await cronRun(50);
+    await cronRun(300);
     const mid = deliveredCount("RR401-RELOAD");
     expect(mid).toBeGreaterThan(0);
     // Simulasi restart worker: modul segar tanpa memori proses lama.
     vi.resetModules();
     const BOUND = 8 + 6;
     for (let i = 0; i < BOUND; i++) {
-      await cronRun(50);
+      await cronRun(300);
       if (jobStatus("RR401-RELOAD") === "delivered") break;
     }
     expect(jobStatus("RR401-RELOAD")).toBe("delivered");
@@ -165,7 +165,7 @@ describe("RR4-01 large orders advance item by item with DB checkpoints", () => {
     await ensureFulfillmentItems(row);
     const BOUND = 20 + 6;
     for (let i = 0; i < BOUND; i++) {
-      await cronRun(50);
+      await cronRun(300);
       if (jobStatus("RR401-YIELD") === "delivered") break;
     }
     expect(jobStatus("RR401-YIELD")).toBe("delivered");
@@ -176,39 +176,39 @@ describe("RR4-01 large orders advance item by item with DB checkpoints", () => {
 
 // ─── RR4-02: orphan tunduk pada budget yang sama ───
 describe("RR4-02 orphan recovery stays under the same per-invocation budget", () => {
-  it("satu orphan shared 4 item: aktual < 50 dengan margin finalisasi", async () => {
+  it("satu orphan shared 4 item: aktual <= 300 dengan margin finalisasi", async () => {
     await paidOrder("RR402-1", 4);
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code='RR402-1'").get()?.n).toBe(0);
-    const r = await cronRun(50);
+    const r = await cronRun(300);
     expect(r.status).toBe(200);
     expect(r.body.error).toBeUndefined();
-    expect(r.attempted).toBeLessThanOrEqual(50);
+    expect(r.attempted).toBeLessThanOrEqual(300);
     // Lintas invocation tuntas penuh.
-    for (let i = 0; i < 8 && jobStatus("RR402-1") !== "delivered"; i++) await cronRun(50);
+    for (let i = 0; i < 8 && jobStatus("RR402-1") !== "delivered"; i++) await cronRun(300);
     expect(jobStatus("RR402-1")).toBe("delivered");
     expect(deliveredCount("RR402-1")).toBe(4);
   }, 60000);
 
-  it("dua orphan shared 4 item: tiap invocation < 50, tuntas lintas run", async () => {
+  it("dua orphan shared 4 item: tiap invocation <= 300, tuntas lintas run", async () => {
     await paidOrder("RR402-A", 4);
     await paidOrder("RR402-B", 4);
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
     const BOUND = 12;
     let maxAttempted = 0;
     for (let i = 0; i < BOUND; i++) {
-      const r = await cronRun(50);
+      const r = await cronRun(300);
       expect(r.status).toBe(200);
       expect(r.body.error).toBeUndefined();
       maxAttempted = Math.max(maxAttempted, r.attempted);
-      expect(r.attempted).toBeLessThanOrEqual(50);
+      expect(r.attempted).toBeLessThanOrEqual(300);
       if (jobStatus("RR402-A") === "delivered" && jobStatus("RR402-B") === "delivered") break;
     }
     expect(jobStatus("RR402-A")).toBe("delivered");
     expect(jobStatus("RR402-B")).toBe("delivered");
-    expect(maxAttempted).toBeLessThanOrEqual(50);
+    expect(maxAttempted).toBeLessThanOrEqual(300);
   }, 90000);
 
-  it("dua orphan manual 3 item: tiap invocation < 50, agregat manual_required", async () => {
+  it("dua orphan manual 3 item: tiap invocation <= 300, agregat manual_required", async () => {
     await paidOrder("RR402-M1", 3, "manual");
     await paidOrder("RR402-M2", 3, "manual");
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
@@ -216,10 +216,10 @@ describe("RR4-02 orphan recovery stays under the same per-invocation budget", ()
     // hanya tiap run genap pada DB kosong) + 2 run kirim + sla.
     const BOUND = 12;
     for (let i = 0; i < BOUND; i++) {
-      const r = await cronRun(50);
+      const r = await cronRun(300);
       expect(r.status).toBe(200);
       expect(r.body.error).toBeUndefined();
-      expect(r.attempted).toBeLessThanOrEqual(50);
+      expect(r.attempted).toBeLessThanOrEqual(300);
       const done = fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code IN ('RR402-M1','RR402-M2')").get()?.n;
       if (Number(done) === 2
         && orderStatus("RR402-M1") === "manual_required"
@@ -250,9 +250,9 @@ describe("RR4-06 stale initializing recovers without depending on other pending 
     const BOUND = 6;
     let recovered = false;
     for (let i = 0; i < BOUND; i++) {
-      const r = await cronRun(50);
+      const r = await cronRun(300);
       expect(r.status).toBe(200);
-      expect(r.attempted).toBeLessThanOrEqual(50);
+      expect(r.attempted).toBeLessThanOrEqual(300);
       const st = String(fixture.sql.prepare("SELECT status FROM payment_transactions WHERE order_code='RR406-1'").get()?.status ?? "");
       if (st !== "initializing") { recovered = true; break; }
     }
@@ -269,8 +269,8 @@ describe("RR4-06 stale initializing recovers without depending on other pending 
     const { createDanaQrisInvoice } = await import("@/lib/payments/dana-qris");
     await createDanaQrisInvoice("RR406-FRESH", 10000);
     fixture.sql.prepare("UPDATE payment_transactions SET status='initializing', created_at=datetime('now') WHERE order_code='RR406-FRESH'").run();
-    await cronRun(50);
-    await cronRun(50);
+    await cronRun(300);
+    await cronRun(300);
     expect(String(fixture.sql.prepare("SELECT status FROM payment_transactions WHERE order_code='RR406-FRESH'").get()?.status ?? "")).toBe("initializing");
     expect(String(fixture.sql.prepare("SELECT status FROM orders WHERE code='RR406-FRESH'").get()?.status ?? "")).toBe("pending");
   });

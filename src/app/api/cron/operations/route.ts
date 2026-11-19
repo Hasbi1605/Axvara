@@ -25,8 +25,8 @@ import { processDueWhatsAppOutbox } from "@/lib/whatsapp/outbox";
 export const runtime = "edge";
 
 // A request-scoped D1 wrapper counts all nested queries, including batch members.
-// Budget 40 leaves ten queries of platform margin; two are reserved for phase state.
-const QUERY_BUDGET = 40;
+// Paid plan: runaway guard 300 statements (no longer capped at Free-plan 50); two are reserved for phase state.
+const QUERY_BUDGET = 300;
 // Deadline wall-clock per invocation (2026-09-18). D1 punya budget statement,
 // tetapi TIDAK ada yang membatasi waktu tunggu jaringan: notify bisa
 // merangkai 14 panggilan Telegram/WA @10 s dan fase WR 3 panggilan @12 s
@@ -57,8 +57,10 @@ const TIME_SK_LIGHT = 8_000;
  */
 const TIME_WR_SWEEP_RESERVE = 8_000;
 const TIME_SINGLE_MESSAGE = 3_000;
-const EXPIRY_PER_RUN = 4;
-const FULFILLMENT_PER_RUN = 4;
+const EXPIRY_PER_RUN = 30;
+const FULFILLMENT_PER_RUN = 20;
+const WA_OUTBOX_PER_RUN = 4;
+const WR_SK_BALANCE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 const COST_PER_NOTIFICATION = 4;
 const COST_PER_WA_ROW = 5;
 const COST_PER_WA_RECOVERY = 2;
@@ -777,7 +779,7 @@ export async function POST(request: NextRequest) {
       // Invoice-expired notice and terminal notice survive delivery failures.
       const noticeCount = pendingQrisNotice + Number(results.expired_payments);
       if (activePhases.has("notify") && noticeCount > 0 && budget.fits(5) && hasTime(TIME_TELEGRAM_BATCH)) {
-        const notices = await sendQrisExpiryNotifications(2, database, { hasTime: () => hasTime(TIME_EXPIRY_NOTICE) });
+        const notices = await sendQrisExpiryNotifications(15, database, { hasTime: () => hasTime(TIME_EXPIRY_NOTICE) });
         results.qris_expiry_notifications = notices.sent;
         pendingWa += notices.whatsappQueued;
         waWorkPending += notices.whatsappQueued;
@@ -812,9 +814,9 @@ export async function POST(request: NextRequest) {
       // per order, tanpa order/invoice/reservasi/stok kedua. Tunduk pada
       // budget yang sama (1 list + 4/order konservatif).
       if (activePhases.has("notify")) {
-        if (budget.fits(1 + COST_PER_NOTIFICATION * 2) && hasTime(TIME_TELEGRAM_BATCH)) {
+        if (budget.fits(1 + COST_PER_NOTIFICATION * 12) && hasTime(TIME_TELEGRAM_BATCH)) {
           try {
-            const invoiceSent = await retryInvoicePendingTelegramInvoices(2, database);
+            const invoiceSent = await retryInvoicePendingTelegramInvoices(12, database);
 
             results.telegram_invoice_retried = invoiceSent;
           } catch { /* cron berikutnya retry */ }
@@ -840,10 +842,10 @@ export async function POST(request: NextRequest) {
       // antrean yang seluruhnya sending basi tetap dipulihkan via entrypoint
       // cron (bukan hanya bila ada pesan pending/failed baru).
       if (activePhases.has("notify") && waWorkPending > 0) {
-        const waUnits = Math.min(FULFILLMENT_PER_RUN, Math.max(pendingWa, pendingStaleWa > 0 ? 1 : 0));
+        const waUnits = Math.min(WA_OUTBOX_PER_RUN, Math.max(pendingWa, pendingStaleWa > 0 ? 1 : 0));
         if (budget.fits(COST_PER_WA_RECOVERY + waUnits * COST_PER_WA_ROW) && hasTime(TIME_WA_BATCH)) {
           try {
-            const waOutbox = await processDueWhatsAppOutbox(FULFILLMENT_PER_RUN, database);
+            const waOutbox = await processDueWhatsAppOutbox(WA_OUTBOX_PER_RUN, database);
 
             results.whatsapp_outbox_sent = waOutbox.sent;
             results.whatsapp_outbox_dead = waOutbox.dead;
@@ -860,12 +862,12 @@ export async function POST(request: NextRequest) {
         deferredOut.push("notify");
       }
 
-      // Sapu bounded antrean PIN checkout (maks 2) bila fase notify
+      // Sapu bounded antrean PIN checkout (maks 15, jeda 1 dtk antaremail) bila fase notify
       // aktif dan budget/waktu tersisa; tanpa job/trigger/budget baru.
       if (pendingPinEmail > 0 && activePhases.has("notify") && budget.fits(10) && hasTime(9_000)) {
         try {
           const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
-          const pin = await processCredentialAccessEmails(database, 2, undefined, { hasTime });
+          const pin = await processCredentialAccessEmails(database, 15, undefined, { hasTime });
           results.checkout_pin_emails_sent = pin.sent;
           results.checkout_pin_emails_failed = pin.failed;
         } catch { if (!deferredOut.includes("notify")) deferredOut.push("notify"); }
@@ -1257,7 +1259,7 @@ export async function POST(request: NextRequest) {
           } catch { /* best-effort */ }
         }
 
-        // 4. Saldo check — tiap 1 jam.
+        // 4. Saldo check — tiap 10 menit (Paid plan).
         if (budget.fits(3) && hasTime(TIME_WR_LIGHT)) {
           const lastCheck = await queryFirst(
             `SELECT created_at FROM wr_saldo_log WHERE source='api_check'
@@ -1265,8 +1267,7 @@ export async function POST(request: NextRequest) {
           ).catch(() => null);
           const { parseExpiry } = await import("@/lib/expiry");
           const lastTs = parseExpiry(lastCheck?.created_at);
-          const oneHourAgo = Date.now() - 60 * 60 * 1000;
-          if (lastTs == null || lastTs < oneHourAgo) {
+          if (lastTs == null || lastTs < Date.now() - WR_SK_BALANCE_CHECK_INTERVAL_MS) {
             try {
               const saldo = await checkAndLogSaldo(database);
               results.wr_saldo_balance = saldo.balance;
@@ -1453,7 +1454,7 @@ export async function POST(request: NextRequest) {
           } catch { /* run berikutnya mencoba lagi */ }
         }
 
-        // 4. Saldo check — tiap 1 jam.
+        // 4. Saldo check — tiap 10 menit (Paid plan).
         if (budget.fits(3) && hasTime(TIME_SK_LIGHT)) {
           const lastCheck = await queryFirst(
             `SELECT created_at FROM sk_saldo_log WHERE source='api_check'
@@ -1461,8 +1462,7 @@ export async function POST(request: NextRequest) {
           ).catch(() => null);
           const { parseExpiry } = await import("@/lib/expiry");
           const lastTs = parseExpiry(lastCheck?.created_at);
-          const oneHourAgo = Date.now() - 60 * 60 * 1000;
-          if (lastTs == null || lastTs < oneHourAgo) {
+          if (lastTs == null || lastTs < Date.now() - WR_SK_BALANCE_CHECK_INTERVAL_MS) {
             try {
               const saldo = await checkAndLogSkSaldo(database);
               results.sk_saldo_balance = saldo.balance;

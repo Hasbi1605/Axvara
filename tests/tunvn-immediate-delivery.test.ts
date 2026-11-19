@@ -21,13 +21,14 @@ vi.mock("@/lib/tunvn/orders", () => ({
 }));
 vi.mock("@/lib/db-access", () => ({
   unwrapD1: () => null,
-  createDatabaseAccess: () => ({ d1: null, queryFirst: async () => null }),
-  createBudgetedDatabase: () => ({
-    access: {
-      queryFirst: vi.fn(async (sql: string) => sql.startsWith("SELECT * FROM")
+  createDatabaseAccess: () => ({
+    d1: null,
+    queryFirst: vi.fn(async (sql: string) => {
+      if (!sql.includes("tunvn_order_links")) return null;
+      return sql.startsWith("SELECT * FROM")
         ? { id: 7, order_code: "AXV-T-1", status: "needs_admin" }
-        : { status: m.linkStatus, last_error: null }),
-    },
+        : { status: m.linkStatus, last_error: null };
+    }),
   }),
 }));
 vi.mock("@/lib/db", () => ({ queryFirst: vi.fn(async () => m.order) }));

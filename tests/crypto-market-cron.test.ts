@@ -30,7 +30,7 @@ const provider = () => vi.stubGlobal("fetch", vi.fn(async (input: string | URL |
 }));
 
 describe("cron lite cleanup -> crypto market refresh", () => {
-  it("refreshes when due, then is a quiet no-op until 30 minutes pass", async () => {
+  it("refreshes when due, then is a quiet no-op until 10 minutes pass", async () => {
     provider();
     const first = await cleanup();
     expect(first.status).toBe(200);

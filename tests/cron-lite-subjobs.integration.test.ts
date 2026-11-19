@@ -235,7 +235,7 @@ describe("/api/cron/lite A3-6 core vs optional subjobs and budget yield", () => 
       vi.stubEnv("CRON_SECRET", "s");
       vi.doMock("@/lib/telegram/order-notifications", () => ({
         retryPendingTelegramNotifications: vi.fn(async (_limit: number, _only: unknown, db: { queryFirst: (q: string) => Promise<unknown> }) => {
-          for (let i = 0; i < 45; i++) await db.queryFirst("SELECT 1");
+          for (let i = 0; i < 305; i++) await db.queryFirst("SELECT 1");
           return {};
         }),
         sendPendingOrderReminders: vi.fn(async () => ({})),

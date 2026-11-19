@@ -39,11 +39,19 @@ export async function buildSekalipayGatewayPaymentView(orderCode: string, databa
 
 const gatewayPollEligible = "(last_error IS NULL OR last_error IN ('sekalipay_gateway_finalize_probe','sekalipay_gateway_finalize_manual_review'))";
 
+/** Paid plan: faster live poll cooldown (20s -> <=3 GET/min per open order),
+ * while preserving the 6h late-recheck window and 20/min global status admission budget. */
+export const SEKALIPAY_GATEWAY_POLL_COOLDOWN_SECONDS = 20;
+/** Bounded below the 20/min global `sekalipay_gateway_status_budget` so background
+ * ticks leave headroom for buyer polls, callbacks, late/stale checks, and absence probes. */
+export const SEKALIPAY_GATEWAY_BACKGROUND_LIMIT = 12;
+export const SEKALIPAY_GATEWAY_LATE_LIMIT = 4;
+
 export async function claimSekalipayGatewayPoll(orderCode: string, late = false, db: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
   if (!process.env.SEKALIPAY_GATEWAY_API_KEY?.trim() || !process.env.SEKALIPAY_GATEWAY_SECRET_KEY?.trim()) return false;
   const result = await db.execRun(`UPDATE payment_transactions SET last_checked_at=datetime('now') WHERE order_code=? AND provider='sekalipay_gateway'
     AND status IN ('initializing','pending') AND ${gatewayPollEligible}
-    AND (last_checked_at IS NULL OR julianday(last_checked_at)<=julianday('now',?))`, orderCode, late ? "-21600 seconds" : "-60 seconds");
+    AND (last_checked_at IS NULL OR julianday(last_checked_at)<=julianday('now',?))`, orderCode, late ? "-21600 seconds" : `-${SEKALIPAY_GATEWAY_POLL_COOLDOWN_SECONDS} seconds`);
   return Number(result.changes) === 1;
 }
 
@@ -58,10 +66,11 @@ export async function reconcileDueSekalipayGatewayPayments(db: DatabaseAccess) {
          AND ((pt.expires_at IS NULL AND o.expires_at IS NULL)
               OR MIN(COALESCE(julianday(pt.expires_at), 1e18), COALESCE(julianday(o.expires_at), 1e18)) > julianday('now', '-30 minutes'))`
       : "o.status='pending' AND julianday(o.expires_at)>julianday('now')";
+    const limit = late ? SEKALIPAY_GATEWAY_LATE_LIMIT : SEKALIPAY_GATEWAY_BACKGROUND_LIMIT;
     const rows = await db.queryAll(`SELECT pt.order_code FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
       WHERE pt.provider='sekalipay_gateway' AND pt.status IN ('initializing','pending') AND ${gatewayPollEligible.replaceAll("last_error", "pt.last_error")}
       AND ${lateScope}
-      AND (pt.last_checked_at IS NULL OR julianday(pt.last_checked_at)<=julianday('now',?)) ORDER BY COALESCE(pt.last_checked_at,pt.created_at),pt.id LIMIT 4`, late ? "-21600 seconds" : "-60 seconds");
+      AND (pt.last_checked_at IS NULL OR julianday(pt.last_checked_at)<=julianday('now',?)) ORDER BY COALESCE(pt.last_checked_at,pt.created_at),pt.id LIMIT ?`, late ? "-21600 seconds" : `-${SEKALIPAY_GATEWAY_POLL_COOLDOWN_SECONDS} seconds`, limit);
     for (const row of rows) {
       if (!await claimSekalipayGatewayPoll(String(row.order_code), late, db)) continue;
       if (late) result.gateway_late_checked++; else result.gateway_checked++;
@@ -219,12 +228,12 @@ export function cancelGuardForNowpaymentsRow(row: {
 /** Bounded job=payments NOWPayments pass: shared budget/CAS, incl. known-id
  * initializing. Runs flag-off (key only). Late/manual expired-order recovery
  * lives in reconcileLateKnownPayments below, same limits/guard. */
-export const NOWPAYMENTS_BACKGROUND_LIMIT = 4;
+export const NOWPAYMENTS_BACKGROUND_LIMIT = 20;
 /** Late known-id recovery: expired order + saved tx WITH provider id, checked
  * at most once per 6h (bounded, anti endless-scan). Recovery NEVER revives:
  * no stock touch, no fulfillment (reconcile returns manual_review for late).
  * Even NOWPAYMENTS_ENABLED=false stays safe: claim key-only readable. */
-export const NOWPAYMENTS_LATE_LIMIT = 4;
+export const NOWPAYMENTS_LATE_LIMIT = 20;
 export const NOWPAYMENTS_LATE_RECHECK_MS = 6 * 60 * 60_000;
 export async function reconcileLateKnownNowpaymentsPayments(db: DatabaseAccess) {
   const out = { late_checked: 0, late_manual_review: 0 };
@@ -257,16 +266,17 @@ export async function reconcileLateKnownNowpaymentsPayments(db: DatabaseAccess) 
 }
 export async function reconcileDueNowpaymentsPayments(db: DatabaseAccess) {
   const out = { payments_checked: 0, payments_confirmed: 0, payments_failed: 0, manual_review: 0 };
+  const { claimNowpaymentsPollReconcile, NOWPAYMENTS_POLL_RECONCILE_MS, reconcileNowpaymentsPayment } = await import("./nowpayments");
   const due = await db.queryAll(
     `SELECT pt.order_code FROM payment_transactions pt JOIN orders o ON o.code=pt.order_code
      WHERE pt.provider='nowpayments' AND pt.status IN ('initializing','pending') AND o.status='pending'
        AND o.payment_status IN ('pending','unpaid') AND pt.provider_payment_id IS NOT NULL
        AND (o.expires_at IS NULL OR julianday(o.expires_at)>julianday('now'))
-       AND (pt.last_checked_at IS NULL OR julianday(pt.last_checked_at)<=julianday('now','-60 seconds'))
+       AND (pt.last_checked_at IS NULL OR julianday(pt.last_checked_at)<=julianday('now',?))
      ORDER BY COALESCE(pt.last_checked_at,pt.created_at) ASC,pt.id ASC LIMIT ?`,
+    `-${NOWPAYMENTS_POLL_RECONCILE_MS / 1000} seconds`,
     NOWPAYMENTS_BACKGROUND_LIMIT,
   );
-  const { claimNowpaymentsPollReconcile, reconcileNowpaymentsPayment } = await import("./nowpayments");
   for (const row of due) {
     const code = String(row.order_code);
     if (!await claimNowpaymentsPollReconcile(code)) continue;

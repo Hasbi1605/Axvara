@@ -178,12 +178,12 @@ describe("refreshCryptoMarketSnapshot", () => {
     expect(row()).toBeUndefined();
   });
 
-  it("not due when both FX and coins are younger than 30 minutes; due when either is older", async () => {
-    seed({ fx_rate_text: "18000.00", fx_source: "nowpayments-estimate", fx_effective_at: iso(-10 * MIN), coins_json: "[]", coins_refreshed_at: iso(-10 * MIN) });
+  it("not due when both FX and coins are younger than 10 minutes; due when either is older", async () => {
+    seed({ fx_rate_text: "18000.00", fx_source: "nowpayments-estimate", fx_effective_at: iso(-5 * MIN), coins_json: "[]", coins_refreshed_at: iso(-5 * MIN) });
     const mock = mockProvider();
     expect(await refreshCryptoMarketSnapshot(access())).toEqual({ status: "not_due" });
     expect(mock.urls).toHaveLength(0);
-    fx.sql.prepare("UPDATE crypto_market_snapshot SET coins_refreshed_at=?").run(iso(-31 * MIN));
+    fx.sql.prepare("UPDATE crypto_market_snapshot SET coins_refreshed_at=?").run(iso(-11 * MIN));
     expect(isMarketRefreshDue(row() as never, Date.now())).toBe(true);
     expect((await refreshCryptoMarketSnapshot(access())).status).toBe("refreshed");
   });
@@ -493,7 +493,7 @@ describe("getCryptoMarketSnapshot reader (D1 fresh -> env -> null)", () => {
     expect(snap.fx?.source).toBe("nowpayments-estimate"); // FX independent of coin staleness
   });
 
-  it("per-isolate memo saves D1 reads for ~60s; reset forces a re-read; read errors fall back to env", async () => {
+  it("per-isolate memo saves D1 reads for ~15s; reset forces a re-read; read errors fall back to env", async () => {
     d1Row();
     const q0 = fx.control.queries;
     await getCryptoMarketSnapshot(fx.db); await getCryptoMarketSnapshot(fx.db); await loadCurrentFxSnapshot(fx.db);

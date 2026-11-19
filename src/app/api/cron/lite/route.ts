@@ -49,10 +49,13 @@ export const runtime = "edge";
 
 const LITE_JOBS = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "tunvn_catalog", "aivault_orders", "aivault_catalog", "storebat_orders", "storebat_catalog", "mirai_orders", "mirai_catalog", "jaspay_catalog", "pedia_orders", "promo", "notify", "notify_a", "notify_b", "cleanup", "games_catalog", "games_orders"] as const;
 type LiteJob = (typeof LITE_JOBS)[number];
-const EXPIRY_PER_RUN = 10;
-const ORPHAN_LEDGER_PER_RUN = 10;
-const FULFILLMENT_PER_RUN = 4;
-/** Plafon produk Jaspay per tick; budget 96 yang benar-benar membatasi. */
+const EXPIRY_PER_RUN = 30;
+const ORPHAN_LEDGER_PER_RUN = 30;
+const FULFILLMENT_PER_RUN = 20;
+const FULFILLMENT_ITEMS_PER_JOB = 10;
+const WR_SK_BALANCE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
+const INDOSMM_BALANCE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+/** Plafon produk Jaspay per tick; budget 400 menjadi batas pengaman. */
 const JASPAY_PRODUCTS_PER_TICK = 10;
 
 type Items = { product_id: number; variant_id?: number; qty: number }[];
@@ -74,16 +77,16 @@ export async function POST(request: NextRequest) {
   const job = request.nextUrl.searchParams.get("job") as LiteJob | null;
   if (!job || !LITE_JOBS.includes(job)) return NextResponse.json({ error: "invalid_job" }, { status: 400 });
 
-  // Paid: fulfillment mendapat96 statement untuk beberapa unit; Jaspay96
-  // (owner 16 Nov 2026: beberapa produk/tick, siklus penuh ±3 menit); job lain40.
-  const db = createBudgetedDatabase(job === "fulfillment" || job === "jaspay_catalog" ? 96 : 40).access;
+  // Paid plan: runaway guard 300 statement untuk job lite umum, 400 untuk
+  // fulfillment & jaspay_catalog (tidak lagi dibatasi plafon Free 50 statement).
+  const db = createBudgetedDatabase(job === "fulfillment" || job === "jaspay_catalog" ? 400 : 300).access;
   const result: Record<string, unknown> = { ok: true, job };
   const failedCore: string[] = [];
   try {
     if (job === "payments") {
-      // Bounded: KlikQRIS (limit 4, shared 40-budget) + NOWPayments (limit 4,
+      // Bounded (Paid 300-budget): KlikQRIS (limit 20) + NOWPayments (limit 20,
       // shared budget/CAS, incl. known-id initializing for manual review)
-      // + late known-id (limit 4, 6h recheck, no revive/fulfill).
+      // + late known-id (limit 20, 6h recheck, no revive/fulfill) + Sekalipay gateway (12/4/5).
       // NOWPayments passes read key only => run saved-invoice flag-off (key
       // present => readable; key absent => passes quietly return zeros).
       const { reconcileDueKlikQrisPayments } = await import("@/lib/payments/klikqris-reconcile");
@@ -138,7 +141,7 @@ export async function POST(request: NextRequest) {
       }
     }
     else if (job === "expiry") Object.assign(result, await runExpiry(db));
-    else if (job === "fulfillment") Object.assign(result, await runFulfillment(db));
+    else if (job === "fulfillment") Object.assign(result, await runFulfillment(db, deadline));
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
     else if (job === "aivault_orders") Object.assign(result, await runAivaultOrders(db));
@@ -402,17 +405,18 @@ async function runExpiry(db: Db) {
   return { stale_initializing: staleInitializing, expired_payments: expired, orphan_ledgers_swept: orphanSwept, games_items_expired: gamesItemsExpired };
 }
 
-async function runFulfillment(db: Db) {
+async function runFulfillment(db: Db, deadline: number) {
   if (process.env.AUTO_FULFILLMENT_ENABLED !== "true") return { skipped: "auto_fulfillment_disabled" };
   const { getDueJobs, processJobItems, releaseStaleJobs } = await import("@/lib/fulfillment/deliver");
   const released = await releaseStaleJobs(db).catch(() => 0);
   const jobs = await getDueJobs(FULFILLMENT_PER_RUN, db);
   let processed = 0;
   for (const job of jobs) {
+    if (Date.now() >= deadline) break;
     const order = await db.queryFirst(`SELECT * FROM orders WHERE code=?`, String(job.order_code));
     if (!order) continue;
     try {
-      const unit = await processJobItems(Number(job.id), order, {}, 4, undefined, db);
+      const unit = await processJobItems(Number(job.id), order, {}, FULFILLMENT_ITEMS_PER_JOB, () => Date.now() < deadline, db);
       if (unit.done || unit.attempted > 0) processed++;
     } catch (error) {
       if (error instanceof QueryBudgetExceeded) throw error;
@@ -461,7 +465,7 @@ async function runWrOrders(db: Db) {
     // sekali per tarikan.
     try {
       const { refreshDueSupplierOrders } = await import("@/lib/orders/supplier-refresh");
-      const fresh = await refreshDueSupplierOrders(db, { limit: 4 });
+      const fresh = await refreshDueSupplierOrders(db, { limit: 12 });
       if (fresh.refreshed > 0) out.supplier_refreshed = fresh.refreshed;
     } catch (error) {
       if (error instanceof QueryBudgetExceeded) throw error;
@@ -474,9 +478,9 @@ async function runWrOrders(db: Db) {
     });
     // WR3 Jaspay (bounded, di job wr_orders yang sama — bukan cron baru):
     // link Jaspay ambigu => exact-ref identik / poll invoice dikenal.
-    // Premium tak tersentuh; budget40/lease existing tetap.
+    // Premium tak tersentuh; lease existing tetap.
     try {
-      const healed = await order.reconcileJaspayAmbiguous(db, 4);
+      const healed = await order.reconcileJaspayAmbiguous(db, 12);
       if (healed.exactRef > 0) out.jaspay_exact_ref = healed.exactRef;
       if (healed.polled > 0) out.jaspay_polled = healed.polled;
     } catch (error) {
@@ -489,6 +493,24 @@ async function runWrOrders(db: Db) {
   if (requeued > 0) out.credentials_requeued = requeued;
   const delivery = await processDueCredentialDeliveries(db);
   out.credentials_delivered = delivery.delivered;
+  // Paid plan: cek saldo WR maks tiap 10 menit (sebelumnya 60 menit hanya di cron/operations :00).
+  if (db.canSpend(5)) {
+    try {
+      const lastCheck = await db.queryFirst(
+        `SELECT created_at FROM wr_saldo_log WHERE source='api_check' ORDER BY created_at DESC LIMIT 1`,
+      ).catch(() => null);
+      const { parseExpiry } = await import("@/lib/expiry");
+      const lastTs = parseExpiry(lastCheck?.created_at);
+      if (lastTs == null || lastTs < Date.now() - WR_SK_BALANCE_CHECK_INTERVAL_MS) {
+        const { checkAndLogSaldo } = await import("@/lib/warung-rebahan/saldo");
+        const saldo = await checkAndLogSaldo(db);
+        out.wr_saldo_balance = saldo.balance;
+        out.wr_saldo_low = saldo.isLow;
+      }
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+    }
+  }
   return out;
 }
 
@@ -502,8 +524,7 @@ async function runSkOrders(db: Db) {
   if (process.env.SEKALIPAY_AUTO_ORDER_ENABLED === "true") {
     // Existing due purchases get first use of the budget. Probe orphans once,
     // independently of queue size. If no buys ran, dispatch healed links now;
-    // otherwise leave them due for the next tick (at most four buys per run).
-    // 2026-10-19: the old double probe used 35/38 statements before buying SK.
+    // otherwise leave them due for the next tick.
     const processed = await order.processSkPendingOrders(db, { skipOrphanProbe: true });
     out.processed = processed.processed;
     out.succeeded = processed.succeeded;
@@ -521,12 +542,30 @@ async function runSkOrders(db: Db) {
     // terlambat ikut tertarik di sini, bukan hanya di route besar.
     try {
       const { refreshDueSupplierOrders } = await import("@/lib/orders/supplier-refresh");
-      const fresh = await refreshDueSupplierOrders(db, { limit: 4 });
+      const fresh = await refreshDueSupplierOrders(db, { limit: 12 });
       if (fresh.refreshed > 0) out.supplier_refreshed = fresh.refreshed;
     } catch (error) {
       if (error instanceof QueryBudgetExceeded) throw error;
     }
     out.reconciled = await order.reconcileStuckSkOrders(db).catch(() => 0);
+  }
+  // Paid plan: cek saldo SK maks tiap 10 menit (sebelumnya 60 menit hanya di cron/operations :00).
+  if (db.canSpend(5)) {
+    try {
+      const lastCheck = await db.queryFirst(
+        `SELECT created_at FROM sk_saldo_log WHERE source='api_check' ORDER BY created_at DESC LIMIT 1`,
+      ).catch(() => null);
+      const { parseExpiry } = await import("@/lib/expiry");
+      const lastTs = parseExpiry(lastCheck?.created_at);
+      if (lastTs == null || lastTs < Date.now() - WR_SK_BALANCE_CHECK_INTERVAL_MS) {
+        const { checkAndLogSkSaldo } = await import("@/lib/sekalipay/saldo");
+        const saldo = await checkAndLogSkSaldo(db);
+        out.sk_saldo_balance = saldo.balance;
+        out.sk_saldo_low = saldo.isLow;
+      }
+    } catch (error) {
+      if (error instanceof QueryBudgetExceeded) throw error;
+    }
   }
   return out;
 }
@@ -625,7 +664,7 @@ async function runPediaOrders(db: Db, failedCore: string[]) {
       const last = await db.queryFirst(`SELECT value FROM store_settings WHERE key=?`, key);
       const { parseExpiry } = await import("@/lib/expiry");
       const ms = parseExpiry(String(last?.value ?? ""));
-      if (ms === null || Date.now() - ms > 30 * 60 * 1000) {
+      if (ms === null || Date.now() - ms > INDOSMM_BALANCE_CHECK_INTERVAL_MS) {
         const nowMs = Date.now();
         await db.execRun(`INSERT INTO store_settings (key,value,updated_at) VALUES (?,datetime('now'),datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, key);
         const { callPediaProxy } = await import("@/lib/pedia/proxy");
@@ -734,11 +773,11 @@ async function runNotifyA(db: Db, failedCore: string[]) {
   };
   await guard("telegram_retry", async () => {
     const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
-    return retryPendingTelegramNotifications(4, undefined, db);
+    return retryPendingTelegramNotifications(20, undefined, db);
   }, true);
   await guard("invoice_retry", async () => {
     const { retryInvoicePendingTelegramInvoices } = await import("@/lib/telegram/invoice-retry");
-    return retryInvoicePendingTelegramInvoices(2, db);
+    return retryInvoicePendingTelegramInvoices(12, db);
   });
   return out;
 }
@@ -762,22 +801,22 @@ async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
   });
   await guard("qris_expiry_notices", async () => {
     const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
-    return sendQrisExpiryNotifications(2, db);
+    return sendQrisExpiryNotifications(15, db, { hasTime: () => Date.now() + 9_000 <= deadline });
   });
   await guard("pending_reminders", async () => {
     const { sendPendingOrderReminders } = await import("@/lib/telegram/order-notifications");
-    return sendPendingOrderReminders(4, db);
+    return sendPendingOrderReminders(20, db);
   });
   await guard("whatsapp_outbox", async () => {
     const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
     return processDueWhatsAppOutbox(4, db);
   }, true);
-  // Sapu bounded antrean PIN checkout (maks 2/tick) bila budget/waktu
-  // tersisa; tanpa job/cron/env/budget baru.
+  // Sapu bounded antrean PIN checkout (maks 15/tick, jeda 1 dtk antaremail
+  // untuk batas Resend <=1 req/dtk) bila budget/waktu tersisa.
   await guard("checkout_pin_emails", async () => {
     if (!db.canSpend(10)) return { skipped: "query_budget" };
     const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
-    return processCredentialAccessEmails(db, 2, undefined, { hasTime: (needMs) => Date.now() + needMs <= deadline });
+    return processCredentialAccessEmails(db, 15, undefined, { hasTime: (needMs) => Date.now() + needMs <= deadline });
   });
   return out;
 }

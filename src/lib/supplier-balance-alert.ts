@@ -20,7 +20,7 @@ export interface SupplierBalanceCheckResult {
   error?: string;
 }
 
-export const SUPPLIER_BALANCE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+export const SUPPLIER_BALANCE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 export const SUPPLIER_BALANCE_ALERT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const TUNVN_BALANCE_ALERT_USDT_DEFAULT = 5;
 export const AIVAULT_BALANCE_ALERT_USD_DEFAULT = 5;

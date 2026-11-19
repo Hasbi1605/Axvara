@@ -641,8 +641,8 @@ describe("W3 saved retry + cron late pass", () => {
     vi.stubEnv("TELEGRAM_ADMIN_CHAT_ID", "12345");
     const { sendMessage } = await import("@/lib/telegram/api");
     vi.mocked(sendMessage).mockClear();
-    for (let i = 1; i <= 5; i++) {
-      const code = `AXV-20261103-LLLLLLL${i}`;
+    for (let i = 1; i <= 22; i++) {
+      const code = `AXV-20261103-LLLLLL${String(i).padStart(2, "0")}`;
       await seedOrder(code);
       const id = `np-late-${i}`;
       saveUsdTx(code, 250000, id);
@@ -653,15 +653,15 @@ describe("W3 saved retry + cron late pass", () => {
     const { POST } = await import("@/app/api/cron/lite/route");
     const run = () => POST(new NextRequest("http://localhost/api/cron/lite?job=payments", { method: "POST", headers: { authorization: "Bearer cron-fixture" } }));
     const first = await (await run()).json();
-    expect(first.nowpayments_late_checked).toBe(4);
-    expect(first.nowpayments_late_manual_review).toBe(4);
-    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(4);
+    expect(first.nowpayments_late_checked).toBe(20);
+    expect(first.nowpayments_late_manual_review).toBe(20);
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(20);
     const second = await (await run()).json();
-    expect(second.nowpayments_late_checked).toBe(1);
-    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(5);
+    expect(second.nowpayments_late_checked).toBe(2);
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(22);
     expect((await (await run()).json()).nowpayments_late_checked).toBe(0);
-    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(5);
-    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/v1/payment/"))).toHaveLength(5);
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(22);
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/v1/payment/"))).toHaveLength(22);
     expect(fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()!.n).toBe(0);
   });
   it("saved retry resolves via quote_id binding: same code/locale/payment, one POST, no extra reserve", async () => {

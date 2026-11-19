@@ -1,5 +1,11 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## W1 percepatan rekonsiliasi & polling non-QRIS (Workers Paid) — 19 November 2026 (lokal, belum deploy)
+
+- **Rekonsiliasi latar (A2):** `KLIKQRIS_BACKGROUND_LIMIT` `4 → 20` (`src/lib/payments/klikqris-reconcile.ts`), `NOWPAYMENTS_BACKGROUND_LIMIT` `4 → 20` dan `NOWPAYMENTS_LATE_LIMIT` `4 → 20` (`src/lib/payments/payment-view.ts`). Untuk Sekalipay gateway, live naik `4 → 12` (`SEKALIPAY_GATEWAY_BACKGROUND_LIMIT = 12`), late tetap `4` (`SEKALIPAY_GATEWAY_LATE_LIMIT = 4`), dan stale tetap `5` (`SEKALIPAY_GATEWAY_STALE_LIMIT = 5`, kontrak G2) agar tetap memberi ruang di bawah admission global `sekalipay_gateway_status_budget` **20 GET/menit** (`src/lib/payments/sekalipay-gateway.ts:207`) untuk poll pembeli, callback, dan `confirmGatewayInvoiceAbsent`.
+- **Polling pembeli & cooldown server (A3):** halaman `/pesanan/[code]` (`src/app/(shop)/pesanan/[code]/page.tsx`) mempercepat interval non-QRIS dinamis dari `30 dtk → 8 dtk` (7,5 req/mnt/tab, di bawah `orders:lookup` 20/mnt; berhenti saat tab hidden). Cooldown server per-order `SEKALIPAY_GATEWAY_POLL_COOLDOWN_SECONDS` (`claimSekalipayGatewayPoll` + `reconcileDueSekalipayGatewayPayments` live) dan `NOWPAYMENTS_POLL_RECONCILE_MS` (`claimNowpaymentsPollReconcile` + `reconcileDueNowpaymentsPayments`) turun `60 dtk → 20 dtk` (≤3 GET/mnt per order terbuka). Aturan late recheck **6 jam** (`-21600 seconds` / `NOWPAYMENTS_LATE_RECHECK_MS`) dan CAS `last_checked_at` tetap utuh.
+- **Snapshot FX/crypto (A7):** `CRYPTO_REFRESH_AFTER_MS` `30 mnt → 10 mnt`, `CRYPTO_MARKET_MEMO_MS` `60 dtk → 15 dtk` (`src/lib/payments/market-snapshot.ts`). Pacing G2 (dua `GET /estimate` berurutan, retry-once 429, `CONCURRENCY = 2`, jump guard 10%, lease 90 dtk) tetap utuh.
+
 ## C-S: shared paid scheduler — 18 November 2026 (lokal, belum deploy)
 
 `schedulePaidFulfillment` dipanggil hanya sesudah paid winner (bukan replay)

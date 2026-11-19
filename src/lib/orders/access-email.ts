@@ -124,19 +124,27 @@ async function settleDeferred(db: DatabaseAccess, key: string, lease: string): P
   ).catch(() => undefined);
 }
 
+export const ACCESS_PIN_BATCH_DEFAULT = 15;
+export const ACCESS_PIN_BATCH_MAX = 20;
+/** Resend default 2 req/s per team: pace consecutive email sends at 1s (<=1 req/s sustained). */
+export const ACCESS_PIN_PACE_MS = 1_000;
+
 /**
- * Sapu bounded antrean resend kredensial: hanya prefix credential_access, maks 2/tick,
+ * Sapu bounded antrean resend kredensial: hanya prefix credential_access, maks 20/tick
+ * (default 15, jeda 1 dtk antaremail untuk Resend <=1 req/dtk),
  * hormati db.canSpend, deadline jaringan 8 dtk/email, tanpa override
  * budget/tail. CAS lease sebelum fetch; reclaim basi 10 menit tepat satu;
  * attempts dibatasi 5 dengan retry 1/5/15/60 mnt; settle akhir hanya bila
  * lease sama (fenced).
  */
 export async function processCredentialAccessEmails(
-  db: DatabaseAccess, limit = 2, orderCode?: string,
-  options: { hasTime?: (needMs: number) => boolean } = {},
+  db: DatabaseAccess, limit = ACCESS_PIN_BATCH_DEFAULT, orderCode?: string,
+  options: { hasTime?: (needMs: number) => boolean; paceMs?: number; sleepImpl?: (ms: number) => Promise<void> } = {},
 ): Promise<{ sent: number; failed: number }> {
   const empty = { sent: 0, failed: 0 };
-  const max = Math.min(2, Math.max(1, Math.floor(Number(limit) || 2)));
+  const max = Math.min(ACCESS_PIN_BATCH_MAX, Math.max(1, Math.floor(Number(limit) || ACCESS_PIN_BATCH_DEFAULT)));
+  const paceMs = options.paceMs ?? (process.env.NODE_ENV === "test" ? 0 : ACCESS_PIN_PACE_MS);
+  const sleep = options.sleepImpl ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const onlyCode = typeof orderCode === "string" && orderCode ? orderCode : null;
   if (!db.canSpend(4)) return empty;
 
@@ -192,9 +200,10 @@ export async function processCredentialAccessEmails(
     return empty;
   }
 
-  let sent = 0, failed = 0;
+  let sent = 0, failed = 0, emailCalls = 0;
   for (const row of due.slice(0, max)) {
-    if (!db.canSpend(8) || (options.hasTime && !options.hasTime(ACCESS_PIN_SEND_TIMEOUT_MS + 1_000))) break;
+    const needMs = ACCESS_PIN_SEND_TIMEOUT_MS + 1_000 + (emailCalls > 0 ? paceMs : 0);
+    if (!db.canSpend(8) || (options.hasTime && !options.hasTime(needMs))) break;
     const key = String(row.idempotency_key ?? "");
     const code = String(row.order_code ?? "");
     const keyVersion = parseKeyVersion(key);
@@ -305,7 +314,7 @@ export async function processCredentialAccessEmails(
     });
     const subject = rendered.subject;
     const idempotencyKey = await credentialEmailKey(code, version, to, rendered.subject + "\n" + rendered.html + "\n" + rendered.text);
-    if (options.hasTime && !options.hasTime(ACCESS_PIN_SEND_TIMEOUT_MS + 1_000)) {
+    if (options.hasTime && !options.hasTime(ACCESS_PIN_SEND_TIMEOUT_MS + 1_000 + (emailCalls > 0 ? paceMs : 0))) {
       await settleDeferred(db, key, lease);
       break;
     }
@@ -317,6 +326,8 @@ export async function processCredentialAccessEmails(
         key, lease, ACCESS_PIN_MAX_ATTEMPTS);
       if (admitted.changes !== 1) continue;
     } catch { break; }
+    if (emailCalls > 0 && paceMs > 0) await sleep(paceMs);
+    emailCalls++;
     let result: { ok: boolean; providerId?: string; error?: string };
     try {
       result = await sendForwardEmail({

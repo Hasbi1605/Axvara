@@ -1,5 +1,17 @@
 # Operasional Workers Paid — 23 Oktober 2026
 
+## Wave 1: Penghapusan batas hemat era Free (`W1`) — 19 November 2026 (lokal, belum deploy)
+
+Aturan utama Workers Paid (keputusan owner 19 Nov 2026): hilangkan batas hemat era Free (budget 40 statement, cap 4/tick, cooldown 60 dtk, probe kuota harian D1 di middleware) selama tetap berada dalam kuota Paid (25 miliar baca / 50 juta tulis per bulan) dan batas rate limit eksternal:
+
+- **A1 Budget cron:** `cron/lite` naik `40 → 300` statement (umum) dan `96 → 400` (`fulfillment`, `jaspay_catalog`); `cron/operations` `QUERY_BUDGET` naik `40 → 300` (runaway guard tetap aktif + deadline 45 dtk; budget terpisah `runPromo` broadcast `400` tidak diubah).
+- **A2 Rekonsiliasi pembayaran latar:** `KLIKQRIS_BACKGROUND_LIMIT` `4 → 20`, `NOWPAYMENTS_BACKGROUND_LIMIT` `4 → 20`, `NOWPAYMENTS_LATE_LIMIT` `4 → 20` (jendela 6 jam tetap); Sekalipay gateway live `4 → 12` (`SEKALIPAY_GATEWAY_BACKGROUND_LIMIT = 12`), late tetap `4` (`SEKALIPAY_GATEWAY_LATE_LIMIT = 4`), stale tetap `5` (`SEKALIPAY_GATEWAY_STALE_LIMIT = 5`) agar tidak menghabiskan admission global `sekalipay_gateway_status_budget` 20 GET/menit.
+- **A3 Polling & cooldown non-QRIS:** `/pesanan/[code]` non-QRIS dinamis `30 dtk → 8 dtk` (7,5 req/mnt/tab, di bawah `orders:lookup` 20/mnt); cooldown server `claimSekalipayGatewayPoll` & `NOWPAYMENTS_POLL_RECONCILE_MS` `60 dtk → 20 dtk` (≤3 GET/mnt/order; aturan late 6 jam `-21600` dtk tetap).
+- **A4 Plafon per tick & email Resend:** `EXPIRY_PER_RUN` `10/4 → 30`, `ORPHAN_LEDGER_PER_RUN` `10 → 30`, `FULFILLMENT_PER_RUN` `4 → 20` (`processJobItems` lite `4 → 10` unit/job + cek deadline), WR/SK order `4 → 20`, Jaspay ambiguous `4 → 12`, `refreshDueSupplierOrders` `4 (max 8) → 12 (max 20)`, SK stale `3 → 12`, WR orphan delivery `4 (max 8) → 20`, Telegram retry/reminder `4 → 20`, invoice retry `2 → 12`. Loop email (`processCredentialAccessEmails` `2 → 15`/max `20`, `sendQrisExpiryNotifications` `2 → 15`, WR/SK credential email `4 → 15`/max `20`, `pedia/notify-retry` `RETRY_LIMIT` `2 → 6`) diberi jeda `1.000 ms` antaremail di produksi agar tetap ≤1 req/dtk di bawah batas default Resend (2 req/dtk/tim). `processDueWhatsAppOutbox` tetap `4`/tick (pacing anti-ban WA 6–9 dtk).
+- **A5 Route admin interaktif:** 7 endpoint POST admin (`aivault/{orders,publish}`, `mirai/{orders,publish}`, `storebat/{orders,publish}`, `tunvn/orders`) beralih dari `createBudgetedDatabase(40, 0)` ke `createDatabaseAccess()` unbudgeted.
+- **A7 & A8 Interval ringan:** `CRYPTO_REFRESH_AFTER_MS` `30 mnt → 10 mnt` (tetap serial FX + concurrency ≤2 sesuai G2), `CRYPTO_MARKET_MEMO_MS` `60 dtk → 15 dtk`; cek saldo TUNVN/AIVault/StoreBat/Mirai/IndoSMM `30 mnt → 5 mnt`; cek saldo WR/SK `60 mnt → 10 mnt` (juga dijalankan di `cron/lite` `wr_orders`/`sk_orders`, throttle alert 6 jam/drop-step tetap).
+- **A11 Probe kuota harian D1:** `isD1InMaintenance` dihapus dari hot path `src/middleware.ts` (tidak ada lagi round-trip D1 per jendela 60 dtk di setiap halaman SSR; modul `d1-maintenance.ts` + rute `/maintenance` tetap untuk kompatibilitas).
+
 ## Queue pengiriman siaran/promo (`axvara-broadcast`, BQ1) — 19 November 2026 (lokal, belum deploy)
 
 - `wrangler.json` menambah producer binding Pages `BROADCAST_QUEUE` → `axvara-broadcast`; `mcp-worker/wrangler.toml` menambah consumer `axvara-broadcast` (`max_batch_size = 10`, `max_batch_timeout = 1`, `max_concurrency = 1`, `max_retries = 3`, `dead_letter_queue = "axvara-broadcast-dlq"`) dan DLQ `axvara-broadcast-dlq` (`max_batch_size = 10`, `max_batch_timeout = 5`, `max_retries = 2`, log+ack saja). Resource Queue wajib dibuat PM sebelum deploy.
@@ -67,10 +79,10 @@ perubahan rail invoice lama, atau perpanjangan batas bayar 15 menit.
 | Pekerjaan | Jadwal/batas |
 |---|---|
 | MCP scheduler | Setiap menit, CPU maksimal1000ms/invocation |
-| KlikQRIS cadangan tanpa browser | `lite?job=payments`, empat invoice pending/aktif terlama sejak pemeriksaan, GET saja; jendela60 detik, CAS existing10 detik |
-| Expiry, fulfillment, WR/SK, Pedia, notify A/B, promo, Jaspay/TUNVN/AIVault catalog | Setiap menit; tanpa jeda2 detik peninggalan Free (revisi lokal 17 Nov 2026 untuk TUNVN/AIVault dari 3 menit ke 1 menit, probe Buff TUNVN tetap 3 menit di cron; belum deploy) |
-| Fulfillment cadangan | Budget96 statement/invocation, empat job dan maksimal empat unit/job, lease/retry existing |
-| Lite lain | Budget40 statement; konfirmasi payment/fulfillment langsung memakai transaksi/outbox existing yang dibatasi jumlah kandidat, bukan klaim seluruh pohon panggilan tercakup budget40 |
+| KlikQRIS cadangan tanpa browser | `lite?job=payments`, maks 20 invoice pending/aktif terlama sejak pemeriksaan (W1, sebelumnya 4), GET saja; jendela 60 detik, CAS existing 10 detik |
+| Expiry, fulfillment, WR/SK, Pedia, notify A/B, promo, Jaspay/TUNVN/AIVault catalog | Setiap menit; tanpa jeda 2 detik peninggalan Free (revisi lokal 17 Nov 2026 untuk TUNVN/AIVault dari 3 menit ke 1 menit, probe Buff TUNVN tetap 3 menit di cron; belum deploy) |
+| Fulfillment cadangan | Budget 400 statement/invocation (W1, sebelumnya 96), maks 20 job dan maks 10 unit/job (+ deadline 45 dtk), lease/retry existing |
+| Lite lain | Budget 300 statement (W1, sebelumnya 40; `jaspay_catalog` 400); runaway guard tetap aktif bersama deadline 45 dtk |
 | Cleanup dan publish artikel | Lima menit |
 | Ringkasan harian admin (`job=promo` existing) | Sekali/hari 07:00 WIB (catch-up s.d. 11:59 WIB, ≤12 statement D1, CAS `store_settings.admin_daily_summary_state`) |
 | Backup harian D1 → R2 (`.github/workflows/d1-backup.yml`) | Sekali/hari `19:23 UTC` (`02:23 WIB`) + `workflow_dispatch` ke bucket privat `axvara-db-backups` (retensi 30 hari `daily/`) |

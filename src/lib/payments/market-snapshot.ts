@@ -19,9 +19,9 @@ import { isCuratedCryptoTicker } from "./crypto-assets";
 import { loadFxSnapshot, parseFxTimestamp, parseRateRational, USD_FX_MAX_AGE_MS, type FxSnapshot } from "./fx";
 
 export const CRYPTO_FX_SOURCE = "nowpayments-estimate" as const;
-export const CRYPTO_REFRESH_AFTER_MS = 30 * 60_000;
+export const CRYPTO_REFRESH_AFTER_MS = 10 * 60_000;
 export const CRYPTO_COINS_MAX_AGE_MS = 2 * 60 * 60_000;
-export const CRYPTO_MARKET_MEMO_MS = 60_000;
+export const CRYPTO_MARKET_MEMO_MS = 15_000;
 
 export type CryptoMarketRow = {
   fx_rate_text: string | null;

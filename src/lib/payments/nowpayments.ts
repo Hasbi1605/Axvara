@@ -536,7 +536,7 @@ async function fetchKnownPayment(orderCode: string, providerPaymentId: string): 
   });
 }
 
-export const NOWPAYMENTS_POLL_RECONCILE_MS = 60_000;
+export const NOWPAYMENTS_POLL_RECONCILE_MS = 20_000;
 
 /** Known-charge latch: initializing WITH a known payment id is a real
  * provider charge interrupted mid-finalize — reconcile it, don't strand.

@@ -367,7 +367,7 @@ export default function OrderSuccessPage() {
     const start = (resume: boolean) => {
       if (document.hidden || interval !== undefined) return;
       if (resume) poll(); // Catch up immediately, without waking/reissuing the QR.
-      interval = setInterval(poll, isDynamicQris ? 5_000 : 30_000);
+      interval = setInterval(poll, isDynamicQris ? 5_000 : 8_000);
     };
     const onVisibility = () => { if (document.hidden) stop(); else start(true); };
     start(false); // The initial page load already fetches the order.

@@ -123,41 +123,36 @@ describe("maintenance documents and middleware", () => {
     expect(html.split("<body>")[1]).not.toContain("Maintenance sementara");
   });
 
-  it.each(["/", "/produk/chatgpt", "/checkout", "/pesanan/AXV-123", "/admin", "/pedia", "/pedia/o/instagram"])("protects page %s before it renders", async path => {
-    vi.stubGlobal("DB", database(vi.fn().mockRejectedValue(quota())).db);
+  it.each(["/", "/produk/chatgpt", "/checkout", "/pesanan/AXV-123", "/admin", "/pedia", "/pedia/o/instagram"])("does not run Free-tier D1 quota probe in middleware for page %s on Paid plan", async path => {
+    const fixture = database(vi.fn().mockRejectedValue(quota()));
+    vi.stubGlobal("DB", fixture.db);
     const response = await middleware(request(path));
-    expect(response.status).toBe(503);
-    expect(await response.text()).toContain("Kami sedang maintenance");
+    expect(fixture.first).not.toHaveBeenCalled();
+    expect(response.status).not.toBe(503);
   });
 
-  it("protects the Pedia host before the rewrite and keeps /maintenance outside Pedia rewriting", async () => {
+  it("keeps /maintenance outside Pedia rewriting and does not probe D1 on Pedia host", async () => {
     vi.stubEnv("PEDIA_ENABLED", "true");
-    vi.stubGlobal("DB", database(vi.fn().mockRejectedValue(quota())).db);
+    const fixture = database(vi.fn().mockRejectedValue(quota()));
+    vi.stubGlobal("DB", fixture.db);
     const response = await middleware(new NextRequest("https://pedia.axvara.tech/", { headers: { host: "pedia.axvara.tech" } }));
-    expect(response.status).toBe(503);
+    expect(fixture.first).not.toHaveBeenCalled();
+    expect(response.headers.get("x-middleware-rewrite")).toBe("https://pedia.axvara.tech/pedia");
     const standalone = await middleware(new NextRequest("https://pedia.axvara.tech/maintenance", { headers: { host: "pedia.axvara.tech" } }));
     expect(standalone.headers.get("x-middleware-next")).toBe("1");
     expect(standalone.headers.has("x-middleware-rewrite")).toBe(false);
   });
 
-  it("keeps WA hub usable on both hosts with preserved buyer message", async () => {
-    vi.stubGlobal("DB", database(vi.fn().mockRejectedValue(quota())).db);
-    const response = await middleware(request("/wa?pesan=Saya%20mau%20Canva"));
-    expect(response.status).toBe(503);
-    const html = await response.text();
-    expect(html).toContain("Tetap bisa order manual");
-    expect(html).toContain("text=Saya%20mau%20Canva");
-    expect(html).toContain("6283177738496");
-  });
-
-  it("redirects React navigation to the independent document and supports HEAD", async () => {
-    vi.stubGlobal("DB", database(vi.fn().mockRejectedValue(quota())).db);
-    const response = await middleware(request("/checkout", { rsc: "1" }));
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("https://axvara.tech/maintenance");
+  it("does not probe D1 for /wa, RSC navigation, or HEAD requests", async () => {
+    const fixture = database(vi.fn().mockRejectedValue(quota()));
+    vi.stubGlobal("DB", fixture.db);
+    const wa = await middleware(request("/wa?pesan=Saya%20mau%20Canva"));
+    expect(wa.headers.get("x-middleware-next")).toBe("1");
+    const rsc = await middleware(request("/checkout", { rsc: "1" }));
+    expect(rsc.headers.get("x-middleware-next")).toBe("1");
     const head = await middleware(new NextRequest("https://axvara.tech/", { method: "HEAD", headers: { host: "axvara.tech" } }));
-    expect(head.status).toBe(503);
-    expect(await head.text()).toBe("");
+    expect(head.headers.get("x-middleware-next")).toBe("1");
+    expect(fixture.first).not.toHaveBeenCalled();
   });
 
   it.each(["/api/orders", "/api/webhook/gopay", "/api/cron/lite", "/api/supplier-sync", "/r2/products/1", "/mcp", "/icons/chatgpt.svg", "/fonts/inter.woff2", "/robots.txt", "/sitemap.xml"])("does not probe or replace protocol/asset %s", async path => {

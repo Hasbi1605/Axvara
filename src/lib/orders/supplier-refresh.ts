@@ -214,7 +214,7 @@ export async function refreshDueSupplierOrders(
   db: DatabaseAccess,
   options: { limit?: number; throttleSeconds?: number } = {},
 ): Promise<SupplierBatchResult> {
-  const limit = Math.max(1, Math.min(options.limit ?? 4, 8));
+  const limit = Math.max(1, Math.min(options.limit ?? 12, 20));
   const throttleSeconds = options.throttleSeconds ?? SUPPLIER_REFRESH_THROTTLE_SECONDS;
   const out: SupplierBatchResult = { examined: 0, refreshed: 0, cooledDown: 0 };
   const candidates: { orderCode: string; since: string }[] = [];

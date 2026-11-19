@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { createBudgetedDatabase } from "@/lib/db-access";
+import { createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { publishAivaultCatalog } from "@/lib/aivault/catalog";
 import { loadCurrentFxSnapshot } from "@/lib/payments/market-snapshot";
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   if (!raw.ok) return raw.response;
   if (!z.object({}).strict().safeParse(raw.data).success) return NextResponse.json({error:"invalid_body"},{status:400});
   try {
-    const db=createBudgetedDatabase(40,0).access;
+    const db=createDatabaseAccess();
     const fx=await loadCurrentFxSnapshot(db.d1),rate=fx ? parseRateRational(fx.rateText) : null;
     if (!rate) return NextResponse.json({error:"fx_unavailable"},{status:503});
     const result=await publishAivaultCatalog(db,Number(rate.num)/Number(rate.den),{force:true});

@@ -296,8 +296,8 @@ describe("merchant invoice and fee consent", () => {
     } finally { f.fixture.close(); }
   });
 
-  it("actual payments cron respects 40 statements and resumes atomic paid work next tick", async () => {
-    const f = await make("cron-forty");
+  it("actual payments cron respects 300-statement Paid budget and settles multiple paid orders atomically in one tick", async () => {
+    const f = await make("cron-paid-budget");
     try {
       await f.create(); vi.stubEnv("CRON_SECRET", "fixture-cron"); vi.stubEnv("SEKALIPAY_GATEWAY_ENABLED", "false");
       for (let i = 0; i < 4; i++) {
@@ -320,33 +320,24 @@ describe("merchant invoice and fee consent", () => {
       const cron = () => POST(new NextRequest("http://localhost/api/cron/lite?job=payments", { method: "POST", headers: { authorization: "Bearer fixture-cron" } }));
       const before = f.fixture.control.queries;
       const first = await cron(); const body = await first.json();
-      expect(body.budget_exhausted).toBe(true);
-      expect(f.fixture.control.queries - before).toBeLessThanOrEqual(40);
-      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM orders WHERE payment_status='paid'").get()!.n).toBe(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()!.n);
-      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM dana_webhook_events WHERE provider='sekalipay_gateway' AND status='received'").get()!.n).toBeGreaterThan(0);
-      // A cold producer-mode read can exhaust admission before the next poll
-      // claim. Recovery must work for unclaimed AND partially checked events;
-      // the six-statement test above independently exercises partial finalize.
-      const retryCode = f.fixture.sql.prepare("SELECT e.order_code FROM dana_webhook_events e JOIN payment_transactions pt ON pt.order_code=e.order_code WHERE e.provider='sekalipay_gateway' AND e.status='received' AND pt.status='pending' ORDER BY pt.id LIMIT 1").get()?.order_code;
-      expect(retryCode).toBeTruthy();
-      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code=?").get(retryCode)?.n).toBe(0);
-      f.fixture.sql.exec("UPDATE payment_transactions SET last_checked_at=datetime('now','-61 seconds') WHERE provider='sekalipay_gateway' AND status='pending'");
-      const secondBefore = f.fixture.control.queries; await cron();
-      expect(f.fixture.control.queries - secondBefore).toBeLessThanOrEqual(40);
-      expect(f.fixture.sql.prepare("SELECT payment_status FROM orders WHERE code=?").get(retryCode)?.payment_status).toBe("paid");
-      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs WHERE order_code=?").get(retryCode)?.n).toBe(1);
-      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM orders WHERE payment_status='paid'").get()!.n).toBe(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()!.n);
+      expect(body.ok).toBe(true);
+      expect(body.budget_exhausted).toBeUndefined();
+      expect(f.fixture.control.queries - before).toBeLessThanOrEqual(300);
+      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM orders WHERE payment_status='paid'").get()!.n).toBe(5);
+      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()!.n).toBe(5);
+      expect(f.fixture.sql.prepare("SELECT COUNT(*) n FROM dana_webhook_events WHERE provider='sekalipay_gateway' AND status='received'").get()!.n).toBe(0);
     } finally { f.fixture.close(); }
   });
 
-  it("selects at most four live and four late references and observes cooldown with flag off", async () => {
+  it("selects at most 12 live and 4 late references (within 20/min admission) and observes 20s cooldown with flag off", async () => {
     const f = await make("bounded-pass");
     try {
-      for (let i = 0; i < 10; i++) {
-        const id = `AXV-20261104-PASS000${i}`;
+      for (let i = 0; i < 18; i++) {
+        const id = `AXV-20261104-PASS${String(i).padStart(4, "0")}`;
+        const isLive = i < 13;
         insertTestOrder(f.fixture.sql, id, { channel: "web" });
         f.fixture.sql.prepare("UPDATE orders SET payment_method='sekalipay_gateway:TESTVA',expires_at=?,status=?,payment_status=? WHERE code=?")
-          .run(i < 5 ? new Date(Date.now() + 600000).toISOString() : new Date(Date.now() - 60000).toISOString(), i < 5 ? "pending" : "kadaluarsa", i < 5 ? "pending" : "expired", id);
+          .run(isLive ? new Date(Date.now() + 600000).toISOString() : new Date(Date.now() - 60000).toISOString(), isLive ? "pending" : "kadaluarsa", isLive ? "pending" : "expired", id);
         f.fixture.sql.prepare(`INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,status,gateway_channel,gateway_estimated_fee,expires_at)
           VALUES(?,'sekalipay_gateway','merchant',?,'fixture',10000,'initializing','TESTVA',500,?)`).run(id, id, new Date(Date.now() + 600000).toISOString());
       }
@@ -357,9 +348,9 @@ describe("merchant invoice and fee consent", () => {
       }));
       const { createBudgetedDatabase } = await import("@/lib/db-access");
       const { reconcileDueSekalipayGatewayPayments } = await import("@/lib/payments/payment-view");
-      expect(await reconcileDueSekalipayGatewayPayments(createBudgetedDatabase(100, 0, f.fixture.db).access)).toEqual({ gateway_checked: 4, gateway_late_checked: 4 });
-      expect(await reconcileDueSekalipayGatewayPayments(createBudgetedDatabase(100, 0, f.fixture.db).access)).toEqual({ gateway_checked: 1, gateway_late_checked: 1 });
-      expect(await reconcileDueSekalipayGatewayPayments(createBudgetedDatabase(100, 0, f.fixture.db).access)).toEqual({ gateway_checked: 0, gateway_late_checked: 0 });
+      expect(await reconcileDueSekalipayGatewayPayments(createBudgetedDatabase(300, 0, f.fixture.db).access)).toEqual({ gateway_checked: 12, gateway_late_checked: 4 });
+      expect(await reconcileDueSekalipayGatewayPayments(createBudgetedDatabase(300, 0, f.fixture.db).access)).toEqual({ gateway_checked: 1, gateway_late_checked: 1 });
+      expect(await reconcileDueSekalipayGatewayPayments(createBudgetedDatabase(300, 0, f.fixture.db).access)).toEqual({ gateway_checked: 0, gateway_late_checked: 0 });
       expect(f.posts()).toBe(0);
     } finally { f.fixture.close(); }
   });

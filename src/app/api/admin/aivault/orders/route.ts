@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { createDatabaseAccess,createBudgetedDatabase } from "@/lib/db-access";
+import { createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { decryptSecret } from "@/lib/fulfillment/crypto";
 import { serializeAdminOrderBuyer } from "@/lib/orders/admin-buyer";
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   const parsed=z.object({id:z.number().int().positive(),action:z.enum(["retry","reveal"])}).strict().safeParse(raw.data);
   if (!parsed.success) return json({error:"invalid_request"},400);
   try {
-    const db=createBudgetedDatabase(40,0).access;
+    const db=createDatabaseAccess();
     const link=await db.queryFirst("SELECT * FROM aivault_order_links WHERE id=?",parsed.data.id);
     if (!link) return json({error:"not_found"},404);
     if (parsed.data.action==="reveal") {

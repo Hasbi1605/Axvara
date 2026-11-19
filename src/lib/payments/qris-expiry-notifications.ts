@@ -166,15 +166,13 @@ async function sendWebQrisExpiryEmail(
 }
 
 export async function sendQrisExpiryNotifications(
-  limit = 2,
+  limit = 15,
   database: DatabaseAccess = createDatabaseAccess(),
-  options: { hasTime?: () => boolean } = {},
+  options: { hasTime?: () => boolean; paceMs?: number; sleepImpl?: (ms: number) => Promise<void> } = {},
 ) {
   // Satu jalur per jenis kabar: peringkat dihitung per cabang (renewable /
-  // terminal), lalu diambil bergiliran, jadi dengan LIMIT 2 masing-masing
-  // dapat satu slot bila keduanya ada. Dulu renewable-selalu-dulu membuat
-  // renewable yang gagal terus (bot diblokir) menahan kabar terminal sampai
-  // ±45 menit. Di dalam jalur, yang TERBARU dulu agar baris gagal tenggelam.
+  // terminal), lalu diambil bergiliran, jadi masing-masing jalur tetap mendapat
+  // giliran adil. Di dalam jalur, yang TERBARU dulu agar baris gagal tenggelam.
   const rows = await database.queryAll(`SELECT * FROM (
       SELECT o.code, o.status, o.sales_channel, o.telegram_chat_id,
         o.channel_conversation_id, o.customer_email, pt.expires_at, pt.provider, o.payment_method, o.locale,
@@ -184,9 +182,12 @@ export async function sendQrisExpiryNotifications(
       WHERE ${QRIS_EXPIRY_NOTICE_WHERE})
     ORDER BY lane_rank, CASE WHEN status='pending' THEN 0 ELSE 1 END, code
     LIMIT ?`, limit);
+  const paceMs = options.paceMs ?? (process.env.NODE_ENV === "test" ? 0 : 1_000);
+  const sleep = options.sleepImpl ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   let sent = 0;
   let whatsappQueued = 0;
   let emailSent = 0;
+  let emailCalls = 0;
   for (const row of rows) {
     if (!database.canSpend(2)) break;
     // Gerbang fase hanya dicek sekali di depan; tiap kiriman bisa menunggu
@@ -208,6 +209,8 @@ export async function sendQrisExpiryNotifications(
         // Baris tanpa email sudah disaring WHERE; guard ini hanya pengaman.
         const to = String(row.customer_email || "").trim();
         if (!to) continue;
+        if (emailCalls > 0 && paceMs > 0) await sleep(paceMs);
+        emailCalls++;
         const result = await sendWebQrisExpiryEmail(to, code, terminal, String(row.locale ?? "") === "en" ? "en" : "id");
         if (!result.ok) continue;
         emailSent++;

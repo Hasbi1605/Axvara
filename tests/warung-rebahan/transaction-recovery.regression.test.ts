@@ -206,7 +206,7 @@ describe("read-only reconciliation and cron budget", () => {
     } finally { fx.close(); }
   });
 
-  it.each([false, true])("actual 40-statement cron handles known-ID=%s without the 29-statement starvation", async (known) => {
+  it.each([false, true])("actual Paid-budget cron handles known-ID=%s without starvation", async (known) => {
     const fx = await setup("submitted", known);
     try {
       const { POST } = await import("@/app/api/cron/lite/route");
@@ -216,9 +216,10 @@ describe("read-only reconciliation and cron budget", () => {
       expect(result.ok).toBe(true);
       expect(result.budget_exhausted).toBeUndefined();
       expect(fx.state()).toMatchObject({ status: known ? "completed" : "submitted", wr_order_id: known ? "ORD-SELECTED" : null });
-      expect(fx.fetcher.mock.calls.length).toBeLessThanOrEqual(2);
-      if (!known) expect(fx.fetcher).not.toHaveBeenCalled();
-      expect(fx.control.queries).toBeLessThanOrEqual(38);
+      const nonBalanceCalls = fx.fetcher.mock.calls.filter((call) => !String((call as unknown[])[0] ?? "").includes("/balance"));
+      expect(nonBalanceCalls.length).toBeLessThanOrEqual(2);
+      if (!known) expect(nonBalanceCalls).toHaveLength(0);
+      expect(fx.control.queries).toBeLessThanOrEqual(300);
     } finally { fx.close(); }
   });
 

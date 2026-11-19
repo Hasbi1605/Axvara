@@ -3,7 +3,7 @@ import { claimKlikQrisPollReconcile, isKlikQrisConfigured, reconcileKlikQrisPaym
 
 // Callback remains primary. This bounded GET-only fallback also runs when the
 // buyer closes the page. Visible-page polls share last_checked_at and the CAS.
-export const KLIKQRIS_BACKGROUND_LIMIT = 4;
+export const KLIKQRIS_BACKGROUND_LIMIT = 20;
 export async function reconcileDueKlikQrisPayments(db: DatabaseAccess) {
   const out = { payments_checked: 0, payments_confirmed: 0, payments_failed: 0 };
   if (!isKlikQrisConfigured()) return out;

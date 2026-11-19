@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { createBudgetedDatabase } from "@/lib/db-access";
+import { createDatabaseAccess } from "@/lib/db-access";
 import { readJsonBody } from "@/lib/http-body";
 import { publishMiraiCatalog } from "@/lib/mirai/catalog";
 import { parseRateRational } from "@/lib/payments/fx";
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   }
   if (!z.object({}).strict().safeParse(raw.data).success) return json({ error: "invalid_body" }, 400);
   try {
-    const db = createBudgetedDatabase(40, 0).access;
+    const db = createDatabaseAccess();
     const fx = await loadCurrentFxSnapshot(db.d1);
     const rate = fx ? parseRateRational(fx.rateText) : null;
     if (!rate) return json({ error: "fx_unavailable" }, 503);

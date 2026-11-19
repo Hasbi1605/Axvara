@@ -1,5 +1,13 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Wave 1 penghapusan batas hemat Free (Workers Paid) — 19 November 2026 (lokal, belum deploy)
+
+- **Budget cron (A1):** `src/app/api/cron/lite/route.ts` memakai `createBudgetedDatabase(job === "fulfillment" || job === "jaspay_catalog" ? 400 : 300)` (sebelumnya `96`/`40`); `src/app/api/cron/operations/route.ts` `QUERY_BUDGET = 300` (sebelumnya `40`). Budget tetap dipertahankan sebagai runaway guard berbatas bersama deadline 45 dtk; budget terpisah `runPromo` broadcast (`400`) tidak berubah.
+- **Plafon per tick & Resend pacing (A4):** `EXPIRY_PER_RUN = 30`, `ORPHAN_LEDGER_PER_RUN = 30`, `FULFILLMENT_PER_RUN = 20` (`FULFILLMENT_ITEMS_PER_JOB = 10` di lite), WR/SK `process*PendingOrders` max `20`, `reconcileJaspayAmbiguous` `12`, `refreshDueSupplierOrders` `12` (max `20`, throttle 20 dtk tetap), SK `recoverStaleSkClaims` `LIMIT 12`, WR orphan delivery `20`, Telegram retry/reminder `20`, invoice retry `12`. Loop email (`processCredentialAccessEmails` `15`/max `20`, `sendQrisExpiryNotifications` `15`, WR `processDueCredentialDeliveries` & SK `reconcilePendingSkCredentialEmails` `15`/max `20`, `pedia/notify-retry` `RETRY_LIMIT = 6`) mem-pace `1.000 ms` antaremail di produksi agar tetap ≤1 req/dtk (batas default Resend 2 req/dtk/tim). `processDueWhatsAppOutbox` **tetap 4/tick** di lite & operations (anti-ban WA 6–9 dtk).
+- **Admin interaktif unbudgeted (A5):** 7 route POST admin (`aivault/{orders,publish}`, `mirai/{orders,publish}`, `storebat/{orders,publish}`, `tunvn/orders`) memakai `createDatabaseAccess()` unbudgeted agar Publish/Retry tidak pernah 503 karena budget 40 statement.
+- **Interval saldo & pasar (A7/A8):** `CRYPTO_REFRESH_AFTER_MS = 10 * 60_000` (sebelumnya 30 mnt, pacing G2 tetap), `CRYPTO_MARKET_MEMO_MS = 15_000` (sebelumnya 60 dtk); `SUPPLIER_BALANCE_CHECK_INTERVAL_MS = 5 * 60 * 1000` dan IndoSMM `5 * 60 * 1000` (sebelumnya 30 mnt); WR/SK saldo `10 * 60 * 1000` (sebelumnya 60 mnt, kini juga dicek di `cron/lite` `wr_orders`/`sk_orders`; throttle alert Telegram 6 jam/drop-step tetap).
+- **Hapus probe kuota harian D1 dari middleware (A11):** `src/middleware.ts` tidak lagi memanggil `isD1InMaintenance` pada halaman SSR (Free-tier daily row limit tidak berlaku di Workers Paid). Modul `src/lib/d1-maintenance.ts` dan rute `/maintenance` tetap dipertahankan.
+
 ### Queue pengiriman siaran/promo (`axvara-broadcast`) & penghapusan batas hemat Free — 19 November 2026 (lokal, belum deploy)
 
 - **Workers Paid:** batas hemat era Free (`Math.min(8, limit)`, cadangan 11 detik Telegram, batas 20 detik, budget bersama 40 statement untuk dispatch) **dihapus** dari jalur pengiriman siaran/promo.
