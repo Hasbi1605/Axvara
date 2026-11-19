@@ -42,7 +42,12 @@ export type CronEnv = {
  *   dikerjakan langkah lite, kesegaran katalog dijaga diff VPS).
  */
 export type AlarmTier = "hard" | "soft" | "none";
-export type CronStep = { phase: string; part?: "orders" | "sync"; chunked?: boolean; lite?: string; alarm: AlarmTier; heavy?: boolean; everyMinutes?: number };
+export type CronPhaseGroup = "core" | "orders" | "catalog" | "notify" | "heavy";
+export type CronStep = { phase: string; part?: "orders" | "sync"; chunked?: boolean; lite?: string; alarm: AlarmTier; heavy?: boolean; everyMinutes?: number; group?: CronPhaseGroup };
+export const CRON_PHASE_ORDER: readonly CronPhaseGroup[] = ["core", "orders", "catalog", "notify", "heavy"] as const;
+/** Paid plan: bounded per-phase parallelism (<=4 concurrent fetches stays safely
+ * below Cloudflare Workers' 6-connection simultaneous outbound limit). */
+export const CRON_PHASE_CONCURRENCY = 4;
 /**
  * Route besar `/api/cron/operations` hanya dipanggil di tick menit :00 UTC
  * (sekali per jam) sejak 5 Okt malam: email Cloudflare "Workers CPU limit
@@ -63,43 +68,42 @@ export function isHeavyTick(scheduledTime: number): boolean {
  * aman ganda karena klaim/transisi idempoten.
  */
 export const CRON_STEPS: CronStep[] = [
-  { phase: "lite", lite: "payments", alarm: "hard" },
-  { phase: "lite", lite: "expiry", alarm: "hard" },
-  { phase: "lite", lite: "fulfillment", alarm: "hard" },
-  { phase: "lite", lite: "wr_orders", alarm: "hard" },
-  { phase: "lite", lite: "sk_orders", alarm: "hard" },
-  { phase: "lite", lite: "tunvn_orders", alarm: "hard" },
-  { phase: "lite", lite: "aivault_orders", alarm: "hard" },
-  { phase: "lite", lite: "storebat_orders", alarm: "hard" },
-  { phase: "lite", lite: "mirai_orders", alarm: "hard" },
-  { phase: "lite", lite: "pedia_orders", alarm: "hard" },
-  // AXVARA Games (docs/GAMES.md §12.3): dispatch + polling Digiflazz; no-op tanpa kredensial.
-  { phase: "lite", lite: "games_orders", alarm: "hard" },
-  { phase: "lite", lite: "jaspay_catalog", alarm: "soft" },
-  { phase: "lite", lite: "tunvn_catalog", alarm: "soft" },
-  { phase: "lite", lite: "aivault_catalog", alarm: "soft" },
-  { phase: "lite", lite: "storebat_catalog", alarm: "soft" },
-  { phase: "lite", lite: "mirai_catalog", alarm: "soft" },
-  // notify dipecah dua (2026-10-09): tiap request hanya memikul 2–3
-  // sub-kerjaan + dynamic import, bukan 5 sekaligus.
-  { phase: "lite", lite: "notify_a", alarm: "soft" },
-  { phase: "lite", lite: "notify_b", alarm: "soft" },
-  { phase: "lite", lite: "promo", alarm: "soft" },
-  { phase: "lite", lite: "cleanup", alarm: "none", everyMinutes: 5 },
-  // AXVARA Games (docs/GAMES.md §12.5): sinkron katalog Digiflazz tiap 10 mnt;
+  { phase: "lite", lite: "payments", alarm: "hard", group: "core" },
+  { phase: "lite", lite: "expiry", alarm: "hard", group: "core" },
+  { phase: "lite", lite: "fulfillment", alarm: "hard", group: "core" },
+  { phase: "lite", lite: "wr_orders", alarm: "hard", group: "orders" },
+  { phase: "lite", lite: "sk_orders", alarm: "hard", group: "orders" },
+  { phase: "lite", lite: "tunvn_orders", alarm: "hard", group: "orders" },
+  { phase: "lite", lite: "aivault_orders", alarm: "hard", group: "orders" },
+  { phase: "lite", lite: "storebat_orders", alarm: "hard", group: "orders" },
+  { phase: "lite", lite: "mirai_orders", alarm: "hard", group: "orders" },
+  { phase: "lite", lite: "pedia_orders", alarm: "hard", group: "orders" },
+  // AXVARA Games (docs/GAMES.md §12.3): dispatch + polling; no-op tanpa kredensial.
+  { phase: "lite", lite: "games_orders", alarm: "hard", group: "orders" },
+  { phase: "lite", lite: "jaspay_catalog", alarm: "soft", group: "catalog" },
+  { phase: "lite", lite: "tunvn_catalog", alarm: "soft", group: "catalog" },
+  { phase: "lite", lite: "aivault_catalog", alarm: "soft", group: "catalog" },
+  { phase: "lite", lite: "storebat_catalog", alarm: "soft", group: "catalog" },
+  { phase: "lite", lite: "mirai_catalog", alarm: "soft", group: "catalog" },
+  // notify dipecah dua (2026-10-09): tiap request hanya memikul sub-kerjaan ramping.
+  { phase: "lite", lite: "notify_a", alarm: "soft", group: "notify" },
+  { phase: "lite", lite: "notify_b", alarm: "soft", group: "notify" },
+  { phase: "lite", lite: "promo", alarm: "soft", group: "notify" },
+  { phase: "lite", lite: "cleanup", alarm: "none", everyMinutes: 5, group: "notify" },
+  // AXVARA Games (docs/GAMES.md §12.5): sinkron katalog tiap 10 mnt;
   // throttle & no-op tanpa kredensial dijaga di dalam job.
-  { phase: "lite", lite: "games_catalog", alarm: "soft", everyMinutes: 10 },
-  { phase: "publish-scheduled", alarm: "soft", everyMinutes: 5 },
+  { phase: "lite", lite: "games_catalog", alarm: "soft", everyMinutes: 10, group: "catalog" },
+  { phase: "publish-scheduled", alarm: "soft", everyMinutes: 5, group: "notify" },
   // Pelengkap per jam (stranded ledger, manual-WA, reconcile tambahan, saldo,
   // watchdog, sync cadangan). Tidak dialarmkan: inti sudah di lite.
-  { phase: "expiry", alarm: "none", heavy: true },
-  { phase: "fulfillment", alarm: "none", heavy: true },
-  { phase: "warung_rebahan", part: "orders", alarm: "none", heavy: true },
-  { phase: "sekalipay", part: "orders", alarm: "none", heavy: true },
-  { phase: "notify", alarm: "none", heavy: true },
-  { phase: "warung_rebahan", part: "sync", chunked: true, alarm: "none", heavy: true },
-  { phase: "sekalipay", part: "sync", chunked: true, alarm: "none", heavy: true },
-  { phase: "cleanup", alarm: "none", heavy: true },
+  { phase: "expiry", alarm: "none", heavy: true, group: "heavy" },
+  { phase: "fulfillment", alarm: "none", heavy: true, group: "heavy" },
+  { phase: "warung_rebahan", part: "orders", alarm: "none", heavy: true, group: "heavy" },
+  { phase: "sekalipay", part: "orders", alarm: "none", heavy: true, group: "heavy" },
+  { phase: "notify", alarm: "none", heavy: true, group: "heavy" },
+  { phase: "warung_rebahan", part: "sync", chunked: true, alarm: "none", heavy: true, group: "heavy" },
+  { phase: "sekalipay", part: "sync", chunked: true, alarm: "none", heavy: true, group: "heavy" },
+  { phase: "cleanup", alarm: "none", heavy: true, group: "heavy" },
 ];
 /** Plafon potongan per langkah sync per tick (WR 49/10 = 5; SK ~100/25 = 4). */
 export const MAX_CHUNKS_PER_PHASE = 10;
@@ -319,7 +323,27 @@ async function sendAlert(env: CronEnv, text: string, fetchFn: FetchFn): Promise<
   }
 }
 
-/** Satu tick cron: semua langkah berurutan + alarm bila ada yang gagal. */
+function stepPhaseGroup(step: CronStep): CronPhaseGroup {
+  if (step.group) return step.group;
+  return step.heavy ? "heavy" : "notify";
+}
+
+async function runPool<T>(items: readonly T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {
+  const limit = Math.max(1, Math.min(concurrency, items.length));
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < items.length) {
+      const next = items[cursor++];
+      await fn(next);
+    }
+  };
+  await Promise.all(Array.from({ length: limit }, () => worker()));
+}
+
+/** Satu tick cron (Workers Paid B2): fase lite core berurutan, lalu orders ->
+ * catalog -> notify paralel terbatas, diikuti probe sintetis (sebelum pipeline :00 heavy agar
+ * probe tak pernah menunda pembayaran/order dan tetap punya budget 20 dtk utuh),
+ * lalu langkah :00 heavy berurutan (state fase operations bersama) + alarm KV. */
 export async function runOperationsTick(
   env: CronEnv,
   scheduledTime: number,
@@ -327,22 +351,38 @@ export async function runOperationsTick(
   /** Diinjeksi test agar tidak tidur sungguhan; runtime memakai setTimeout. */
   sleepFn: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<TickReport> {
-  // Independent 20s probe budget, before the potentially multi-minute :00
-  // pipeline. Keep diagnostic outcome ordering stable for existing consumers.
-  const probes = await runSyntheticProbes(env, fetchFn);
-  const outcomes: PhaseOutcome[] = [];
   // Langkah gagal tidak menghentikan langkah berikut: tiap langkah berdiri sendiri.
   const heavyTick = isHeavyTick(scheduledTime);
-  let stepped = false;
-  for (const step of CRON_STEPS) {
+  const dueSteps: { index: number; step: CronStep }[] = [];
+  for (let index = 0; index < CRON_STEPS.length; index++) {
+    const step = CRON_STEPS[index];
     if (step.heavy && !heavyTick) continue;
     if (step.everyMinutes && new Date(scheduledTime).getUTCMinutes() % step.everyMinutes !== 0) continue;
-    // Jeda antar langkah lite (bukan sebelum langkah pertama, bukan untuk
-    // langkah heavy pelengkap per jam yang memang jarang + sudah ringan).
-    if (stepped && step.lite && STEP_DELAY_MS > 0) await sleepFn(STEP_DELAY_MS).catch(() => undefined);
-    stepped = true;
-    outcomes.push({ ...(await callStep(env, step, fetchFn)), alarm: step.alarm });
+    dueSteps.push({ index, step });
   }
+  const byIndex = new Map<number, PhaseOutcome>();
+  let probes: PhaseOutcome[] = [];
+  let stepped = false;
+  for (const group of CRON_PHASE_ORDER) {
+    if (group === "heavy") {
+      // Run synthetic probes after fast lite phases and BEFORE the potentially
+      // multi-minute :00 heavy pipeline so probes neither delay payments/orders
+      // nor get starved by heavy sweeps.
+      probes = await runSyntheticProbes(env, fetchFn);
+    }
+    const batch = dueSteps.filter((entry) => stepPhaseGroup(entry.step) === group);
+    if (!batch.length) continue;
+    // core tetap berurutan: payments harus me-reconcile pembayaran sebelum
+    // expiry mengedarkan order pending (paralel = order yang dibayar mepet
+    // deadline bisa ke-expire dulu), lalu fulfillment memakai hasil keduanya.
+    const concurrency = group === "heavy" || group === "core" ? 1 : CRON_PHASE_CONCURRENCY;
+    await runPool(batch, concurrency, async ({ index, step }) => {
+      if (stepped && step.lite && STEP_DELAY_MS > 0) await sleepFn(STEP_DELAY_MS).catch(() => undefined);
+      stepped = true;
+      byIndex.set(index, { ...(await callStep(env, step, fetchFn)), alarm: step.alarm });
+    });
+  }
+  const outcomes: PhaseOutcome[] = dueSteps.map(({ index }) => byIndex.get(index)!);
   outcomes.push(...probes);
   // Langkah `none` tetap tercatat di outcomes (diagnosa) tapi bukan kegagalan alarm.
   const failures = outcomes.filter((o) => !o.ok && o.alarm !== "none");

@@ -47,7 +47,7 @@ it("runs buyer delivery again after the paid AIVault purchase settles, not just 
     return 1;
   });
   await (await import("@/lib/payments/paid-fulfillment")).schedulePaidFulfillment("AXV-AV-1", "apps");
-  expect(m.process).toHaveBeenCalledWith(undefined, { orderCode: "AXV-AV-1" });
+  expect(m.process).toHaveBeenCalledWith(undefined, { orderCode: "AXV-AV-1", deadlineMs: Infinity });
   expect(m.ensure).toHaveBeenCalledTimes(2);
 });
 it("keeps one generic delivery pass when there is no AIVault work", async () => {

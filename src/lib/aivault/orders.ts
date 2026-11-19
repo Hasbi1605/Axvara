@@ -4,6 +4,8 @@ import { ensureFulfillmentItems } from "@/lib/fulfillment/delivery/inventory-bin
 import { isAivaultConfigured, isAivaultSyncEnabled, fetchAivaultQuote, fetchAivaultOrder, parseAivaultQuote, validServiceId, validProviderId, numeric, record } from "./client";
 import { buyAivaultProduct } from "./purchase";
 type Row = Record<string, unknown>;
+export const AIVAULT_ORDERS_PER_RUN = 8;
+export const AIVAULT_ORPHANS_PER_RUN = 8;
 const paid = (o: Row) => o.status === "lunas" && o.payment_status === "paid" && (o.order_kind ?? "apps") === "apps" && !Number(o.supplier_purchase_disabled) && ["web","telegram"].includes(String(o.sales_channel));
 function lines(o: Row): Row[] { try { const v: unknown = JSON.parse(String(o.items)); return Array.isArray(v) ? v.map(x => record(x) ? x : {}) : []; } catch { return []; } }
 export function eligibleAivaultLine(value: unknown): Row | null {
@@ -26,18 +28,20 @@ export async function createAivaultOrderLinks(code: string, db: DatabaseAccess =
   if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled() || !db.canSpend(5)) return 0;
   const order = await db.queryFirst("SELECT * FROM orders WHERE code=?",code);
   if (!order || !paid(order)) return 0;
-  const existing = await db.queryAll("SELECT item_index FROM aivault_order_links WHERE order_code=?",code);
-  const items = lines(order);
-  for (let index=0; index<items.length; index++) {
-    const item=items[index], e=eligibleAivaultLine(item);
-    if (!e || existing.some(l => l.item_index === index)) continue;
-    const r = await db.execRun(`INSERT OR IGNORE INTO aivault_order_links(order_code,item_index,variant_id,product_id,service_id,quantity,cost_usd,external_order_id,fx_idr_per_usd)
-      SELECT code,?,?,?,?,?,?,?,COALESCE((SELECT fx_idr_per_usd FROM aivault_products WHERE service_id=?),
+  const rows = lines(order).flatMap((item, index) => {
+    const e = eligibleAivaultLine(item);
+    return e
+      ? [{ index, variant: item.variant_id, product: item.product_id, service: e.service_id, qty: item.qty, cost: e.cost_usd, key: `${code}-${index}` }]
+      : [];
+  });
+  if (!rows.length) return 0;
+  const r = await db.execRun(`INSERT OR IGNORE INTO aivault_order_links(order_code,item_index,variant_id,product_id,service_id,quantity,cost_usd,external_order_id,fx_idr_per_usd)
+    SELECT o.code,j.value->>'index',j.value->>'variant',j.value->>'product',j.value->>'service',j.value->>'qty',j.value->>'cost',j.value->>'key',
+      COALESCE((SELECT fx_idr_per_usd FROM aivault_products WHERE service_id=(j.value->>'service')),
         (SELECT CASE WHEN CAST(fx_rate_text AS REAL)>0 THEN CAST(fx_rate_text AS REAL) END FROM crypto_market_snapshot WHERE id=1))
-      FROM orders WHERE code=? AND items=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0 AND COALESCE(order_kind,'apps')='apps' AND sales_channel IN ('web','telegram')`,index,item.variant_id,item.product_id,e.service_id,item.qty,e.cost_usd,`${code}-${index}`,e.service_id,code,order.items);
-    return Number(r.changes ?? 0);
-  }
-  return 0;
+    FROM orders o JOIN json_each(?) j
+    WHERE o.code=? AND o.items=? AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram')`,JSON.stringify(rows),code,order.items);
+  return Number(r.changes ?? 0);
 }
 async function settle(db: DatabaseAccess, link: Row, status: string, error: string | null) {
   const result=await db.execRun(`UPDATE aivault_order_links SET status=?,last_error=?,lease_owner=NULL,lease_expires_at=NULL,
@@ -96,59 +100,66 @@ async function interpret(db: DatabaseAccess, link: Row, r: { status: number; tex
   await settle(db,link,"completed",null);
   return true;
 }
-async function processLink(db: DatabaseAccess, id: number) {
+async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity): Promise<{ claimed: boolean; rateLimited: boolean }> {
   const owner=crypto.randomUUID();
   const claimed=await db.execRun(`UPDATE aivault_order_links SET lease_owner=?,lease_expires_at=datetime('now','+90 seconds'),status='claimed'
     WHERE id=? AND status IN ('pending','claimed','processing') AND datetime(next_attempt_at)<=datetime('now') AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))`,owner,id);
-  if (!claimed.changes) return;
+  if (!claimed.changes) return { claimed: false, rateLimited: false };
   const link=await db.queryFirst("SELECT * FROM aivault_order_links WHERE id=? AND lease_owner=?",id,owner);
-  if (!link) return;
+  if (!link) return { claimed: true, rateLimited: false };
   let sent=false;
+  let rateLimited=false;
   try {
     const order=await db.queryFirst("SELECT * FROM orders WHERE code=?",link.order_code);
     const item=order ? lines(order)[Number(link.item_index)] : null, e=eligibleAivaultLine(item);
-    if (!order || !paid(order) || !item || !e || e.service_id!==link.service_id || e.cost_usd!==link.cost_usd || item.variant_id!==link.variant_id || item.product_id!==link.product_id || item.qty!==link.quantity || link.external_order_id!==`${link.order_code}-${link.item_index}`) { await settle(db,link,"needs_admin","snapshot_mismatch"); return; }
+    if (!order || !paid(order) || !item || !e || e.service_id!==link.service_id || e.cost_usd!==link.cost_usd || item.variant_id!==link.variant_id || item.product_id!==link.product_id || item.qty!==link.quantity || link.external_order_id!==`${link.order_code}-${link.item_index}`) { await settle(db,link,"needs_admin","snapshot_mismatch"); return { claimed: true, rateLimited: false }; }
     let fulfillment=await db.queryFirst("SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",link.order_code,link.item_index);
-    if (!fulfillment) { await ensureFulfillmentItems(order,db,1); fulfillment=await db.queryFirst("SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",link.order_code,link.item_index); }
-    if (!fulfillment) { await settle(db,link,"pending","fulfillment_missing"); return; }
-    if (fulfillment.product_id!==link.product_id || fulfillment.variant_id!==link.variant_id || fulfillment.qty!==link.quantity || fulfillment.fulfillment_mode!=="manual" || ["delivered","sending"].includes(String(fulfillment.status)) || fulfillment.inventory_id || fulfillment.wr_link_id || fulfillment.sk_link_id || fulfillment.tunvn_link_id || (fulfillment.aivault_link_id && fulfillment.aivault_link_id!==id)) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return; }
+    if (!fulfillment) { await ensureFulfillmentItems(order,db); fulfillment=await db.queryFirst("SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",link.order_code,link.item_index); }
+    if (!fulfillment) { await settle(db,link,"pending","fulfillment_missing"); return { claimed: true, rateLimited: false }; }
+    if (fulfillment.product_id!==link.product_id || fulfillment.variant_id!==link.variant_id || fulfillment.qty!==link.quantity || fulfillment.fulfillment_mode!=="manual" || ["delivered","sending"].includes(String(fulfillment.status)) || fulfillment.inventory_id || fulfillment.wr_link_id || fulfillment.sk_link_id || fulfillment.tunvn_link_id || (fulfillment.aivault_link_id && fulfillment.aivault_link_id!==id)) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return { claimed: true, rateLimited: false }; }
     const bound=await db.execRun(`UPDATE fulfillment_items SET aivault_link_id=? WHERE id=? AND (aivault_link_id IS NULL OR aivault_link_id=?) AND wr_link_id IS NULL AND sk_link_id IS NULL AND tunvn_link_id IS NULL AND inventory_id IS NULL AND status NOT IN ('delivered','sending')`,id,fulfillment.id,id);
-    if (!bound.changes) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return; }
+    if (!bound.changes) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return { claimed: true, rateLimited: false }; }
     if (link.provider_order_id) {
+      if (Date.now()>=deadlineMs) { await settle(db,link,"processing","poll_deferred"); return { claimed: true, rateLimited: false }; }
       // One GET per invocation. next_attempt_at enforces a >=1 minute poll gap.
       const response=await fetchAivaultOrder(String(link.provider_order_id));
-      if (!await saveReceipt(db,link,response)) return;
+      if (response.status===429) rateLimited=true;
+      if (!await saveReceipt(db,link,response)) return { claimed: true, rateLimited };
       if (!await interpret(db,link,response,true)) await settle(db,link,"processing","poll_unavailable");
-      return;
+      return { claimed: true, rateLimited };
     }
     if (link.receipt_ciphertext && link.receipt_iv && link.receipt_http_status) {
       const response={ status:Number(link.receipt_http_status),text:await decryptSecret(String(link.receipt_ciphertext),String(link.receipt_iv)) };
-      if (await interpret(db,link,response)) return;
+      if (await interpret(db,link,response)) return { claimed: true, rateLimited: false };
     }
-    if (Number(link.attempt_count)>=3) { await settle(db,link,"needs_admin","attempts_exhausted"); return; }
+    if (Number(link.attempt_count)>=3) { await settle(db,link,"needs_admin","attempts_exhausted"); return { claimed: true, rateLimited: false }; }
+    if (Date.now()>=deadlineMs) { await settle(db,link,"pending","dispatch_deferred"); return { claimed: true, rateLimited: false }; }
     await encryptSecret("aivault-encryption-preflight");
     const variant=await db.queryFirst(`SELECT pv.*,p.source,p.is_active AS product_active,p.aivault_family,p.wr_product_id,p.sk_product_id,p.wr_auto_managed,p.sk_auto_managed
       FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=?`,link.variant_id,link.product_id);
-    if (!variant || variant.sku!==`AV-${link.service_id}` || variant.aivault_service_id!==link.service_id || !variant.aivault_family || variant.fulfillment_mode!=="manual" || variant.source!=="manual" || variant.is_active!==1 || variant.product_active!==1 || variant.wr_variant_id || variant.sk_variant_id || variant.tunvn_buff_quantity_b || variant.wr_product_id || variant.sk_product_id || Number(variant.wr_auto_managed) || Number(variant.sk_auto_managed)) { await settle(db,link,"needs_admin","source_changed"); return; }
+    if (!variant || variant.sku!==`AV-${link.service_id}` || variant.aivault_service_id!==link.service_id || !variant.aivault_family || variant.fulfillment_mode!=="manual" || variant.source!=="manual" || variant.is_active!==1 || variant.product_active!==1 || variant.wr_variant_id || variant.sk_variant_id || variant.tunvn_buff_quantity_b || variant.wr_product_id || variant.sk_product_id || Number(variant.wr_auto_managed) || Number(variant.sk_auto_managed)) { await settle(db,link,"needs_admin","source_changed"); return { claimed: true, rateLimited: false }; }
     if (!link.request_sent_at) {
     const quote=await fetchAivaultQuote(String(link.service_id),Number(link.quantity));
+    if (quote.kind!=="ok" && "status" in quote && quote.status===429) rateLimited=true;
     const q=quote.kind==="ok" ? parseAivaultQuote(quote.json) : null;
     let error: string | null=null;
     if (!q || q.service_id!==link.service_id || q.quantity!==link.quantity) error="quote_unavailable";
     else if (q.stock<Number(link.quantity)) error="stock_unavailable";
     else if (!q.sufficient_balance) error="insufficient_balance";
     else if (q.price_conflict) error="price_conflict";
-    if (error) { await settle(db,link,"needs_admin",error); return; }
+    if (error) { await settle(db,link,"needs_admin",error); return { claimed: true, rateLimited }; }
     }
+    if (Date.now()>=deadlineMs) { await settle(db,link,"pending","dispatch_deferred"); return { claimed: true, rateLimited: false }; }
     const fenced=await db.execRun(`UPDATE aivault_order_links SET request_sent_at=COALESCE(request_sent_at,?),attempt_count=attempt_count+1,receipt_ciphertext=NULL,receipt_iv=NULL,receipt_http_status=NULL
       WHERE id=? AND lease_owner=? AND status='claimed' AND attempt_count=? AND attempt_count<3 AND datetime(lease_expires_at)>datetime('now')
       AND EXISTS(SELECT 1 FROM orders WHERE code=? AND items=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0)
       AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.id=? AND f.aivault_link_id=? AND f.status NOT IN ('delivered','sending') AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.tunvn_link_id IS NULL AND f.inventory_id IS NULL AND f.fulfillment_mode='manual' AND f.product_id=aivault_order_links.product_id AND f.variant_id=aivault_order_links.variant_id AND f.qty=aivault_order_links.quantity)
       AND EXISTS(SELECT 1 FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=? AND v.product_id=? AND v.aivault_service_id=? AND v.sku=? AND v.is_active=1 AND p.is_active=1 AND v.fulfillment_mode='manual' AND p.source='manual' AND p.aivault_family IS ? AND v.wr_variant_id IS NULL AND v.sk_variant_id IS NULL AND v.tunvn_buff_quantity_b IS NULL AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0)`,new Date().toISOString(),id,owner,link.attempt_count,link.order_code,order.items,fulfillment.id,id,link.variant_id,link.product_id,link.service_id,variant.sku,variant.aivault_family);
-    if (!fenced.changes) { await settle(db,link,"needs_admin","send_guard_changed"); return; }
+    if (!fenced.changes) { await settle(db,link,"needs_admin","send_guard_changed"); return { claimed: true, rateLimited: false }; }
     link.attempt_count=Number(link.attempt_count)+1; sent=true;
     const response=await buyAivaultProduct(String(link.service_id),Number(link.quantity),String(link.external_order_id));
-    if (!await saveReceipt(db,link,response)) return;
+    if (response.status===429) rateLimited=true;
+    if (!await saveReceipt(db,link,response)) return { claimed: true, rateLimited };
     if (!await interpret(db,link,response)) await deferRetry(db,link);
   } catch {
     // Fixed metadata only; provider bodies/credentials never enter logs/errors.
@@ -156,6 +167,7 @@ async function processLink(db: DatabaseAccess, id: number) {
     else if (sent || link.request_sent_at) await deferRetry(db,link).catch(()=>{});
     else await settle(db,link,"needs_admin","preflight_unavailable").catch(()=>{});
   }
+  return { claimed: true, rateLimited };
 }
 export async function retryAivaultOrder(db: DatabaseAccess, id: number): Promise<boolean> {
   if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled() || !db.canSpend(30)) return false;
@@ -163,15 +175,26 @@ export async function retryAivaultOrder(db: DatabaseAccess, id: number): Promise
   if (!r.changes) return false;
   await processLink(db,id); return true;
 }
-export async function processAivaultOrders(db: DatabaseAccess = createDatabaseAccess(), options: { orderCode?: string } = {}): Promise<number> {
-  if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled() || !db.canSpend(35)) return 0;
-  const orphan=options.orderCode ? { code:options.orderCode } : await db.queryFirst(`SELECT o.code FROM orders o WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram')
+export async function processAivaultOrders(db: DatabaseAccess = createDatabaseAccess(), options: { orderCode?: string; deadlineMs?: number; limit?: number } = {}): Promise<number> {
+  const deadlineMs = options.deadlineMs ?? Infinity;
+  if (!db.d1 || !isAivaultConfigured() || !isAivaultSyncEnabled() || !db.canSpend(35) || Date.now() >= deadlineMs) return 0;
+  const orphans = options.orderCode ? [{ code: options.orderCode }] : await db.queryAll(`SELECT o.code FROM orders o WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram')
     AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(o.items) THEN o.items ELSE '[]' END) j WHERE json_extract(j.value,'$.aivault_eligibility.version')=1 AND json_extract(j.value,'$.aivault_eligibility.cost_usd')>0
-      AND NOT EXISTS(SELECT 1 FROM aivault_order_links l WHERE l.order_code=o.code AND l.item_index=CAST(j.key AS INTEGER))) ORDER BY o.id LIMIT 1`);
-  if (orphan) await createAivaultOrderLinks(String(orphan.code),db);
-  if (!db.canSpend(25)) return 0;
-  const link=await db.queryFirst(`SELECT id FROM aivault_order_links WHERE status IN ('pending','claimed','processing') AND datetime(next_attempt_at)<=datetime('now')
-    AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now')) ${options.orderCode ? "AND order_code=?" : ""} ORDER BY next_attempt_at,id LIMIT 1`,...(options.orderCode ? [options.orderCode] : []));
-  if (!link) return 0;
-  await processLink(db,Number(link.id)); return 1;
+      AND NOT EXISTS(SELECT 1 FROM aivault_order_links l WHERE l.order_code=o.code AND l.item_index=CAST(j.key AS INTEGER))) ORDER BY o.id LIMIT ?`, AIVAULT_ORPHANS_PER_RUN);
+  for (const orphan of orphans) {
+    if (Date.now() >= deadlineMs || !db.canSpend(30)) break;
+    await createAivaultOrderLinks(String(orphan.code), db);
+  }
+  if (!db.canSpend(25) || Date.now() >= deadlineMs) return 0;
+  const maxLinks = Math.max(1, Math.min(AIVAULT_ORDERS_PER_RUN, Math.floor(options.limit ?? AIVAULT_ORDERS_PER_RUN)));
+  const due = await db.queryAll(`SELECT id FROM aivault_order_links WHERE status IN ('pending','claimed','processing') AND datetime(next_attempt_at)<=datetime('now')
+    AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now')) ${options.orderCode ? "AND order_code=?" : ""} ORDER BY next_attempt_at,id LIMIT ?`, ...(options.orderCode ? [options.orderCode] : []), maxLinks);
+  let processed = 0;
+  for (const link of due) {
+    if (processed > 0 && (Date.now() >= deadlineMs || !db.canSpend(25))) break;
+    const res = await processLink(db, Number(link.id), deadlineMs);
+    if (res.claimed) processed++;
+    if (res.rateLimited) break;
+  }
+  return processed;
 }

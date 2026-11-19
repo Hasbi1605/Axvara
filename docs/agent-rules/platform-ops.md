@@ -1,5 +1,10 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Wave 2 (B1/B2) supplier multi-link & cron fase paralel — 19 November 2026 (lokal, belum deploy)
+
+- Supplier TUNVN/AIVault/StoreBat/Mirai memproses hingga 8 link + 8 order yatim per panggilan dengan stop pada deadline, budget D1 dan HTTP `429`; fence kirim tidak berubah. Detail di ARCHITECTURE bagian Wave 2.
+- Cron Worker: fase `core` (`payments → expiry → fulfillment`) dan `heavy` **wajib tetap berurutan**; jangan paralelkan `payments` dengan `expiry` (order yang dibayar mepet deadline bisa ke-expire). Fase `orders`/`catalog`/`notify` paralel maks 4. Probe sintetis berjalan setelah fase lite, sebelum heavy.
+
 ### B3 Aktivasi produksi `queue_fulfillment_mode = 'active'` — 19 November 2026 (live di D1 produksi)
 
 - **Keputusan owner (`2026-11-19 14:04:40 UTC` / `21:04:40 WIB`):** `store_settings.queue_fulfillment_mode` dinaikkan dari `shadow` ke **`active`** di D1 produksi (`axvara-db`) untuk seluruh `order_kind` (`apps`, `pedia`, `games`).

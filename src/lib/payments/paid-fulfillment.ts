@@ -69,11 +69,10 @@ export async function fulfillPaidOrder(orderCode: string, orderKind: unknown, de
   await ensureFulfillmentItems(order);
   const work: (() => Promise<unknown>)[] = [];
   // The concurrent generic pass may run before supplier credentials arrive.
-  // Attempt delivery again after either purchase settles; cron stays the backstop.
+  // Attempt delivery again after supplier purchases settle; cron stays the backstop.
   for (const processOrders of [processTunvnOrders, processAivaultOrders, processStorebatOrders, processMiraiOrders]) {
     work.push(async () => {
-      const opts = processOrders === processStorebatOrders || processOrders === processMiraiOrders ? { orderCode, deadlineMs } : { orderCode };
-      if (remaining() && await processOrders(undefined, opts)) {
+      if (remaining() && await processOrders(undefined, { orderCode, deadlineMs })) {
         const { ensureFulfillmentForPaidOrder } = await import("@/lib/fulfillment/deliver");
         if (remaining()) await (Number.isFinite(deadlineMs) ? ensureFulfillmentForPaidOrder(orderCode, deadlineMs) : ensureFulfillmentForPaidOrder(orderCode));
       }

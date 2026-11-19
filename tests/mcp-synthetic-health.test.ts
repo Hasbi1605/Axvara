@@ -16,14 +16,17 @@ function fixture(override?: (url: string, init?: RequestInit) => Response | Prom
 }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("synthetic health", () => {
-  it("runs before scheduled CRON_STEP work, selects a dynamic variant/minimum and never calls orders", async () => {
+  it("runs after fast lite phases and before :00 heavy operations, selects a dynamic variant/minimum and never calls orders", async () => {
     const fetchFn = fixture();
     const report = await runOperationsTick(env, Date.UTC(2026, 10, 18, 0, 0), fetchFn);
     expect(report.outcomes.slice(-3).map(o => o.step)).toEqual(["synth:home", "synth:catalog", "synth:quote"]);
     const urls = fetchFn.mock.calls.map(([url]) => url);
+    const firstLite = urls.findIndex(url => url.includes("/api/cron/lite"));
     const firstProbe = urls.indexOf(`${env.AXVARA_API_ORIGIN}/`);
-    expect(firstProbe).toBe(0);
-    expect(urls.indexOf(`${env.AXVARA_API_ORIGIN}/api/checkout/quote`)).toBeLessThan(urls.findIndex(url => url.includes("/api/cron/")));
+    const firstHeavy = urls.findIndex(url => url.includes("/api/cron/operations"));
+    expect(firstLite).toBe(0);
+    expect(firstProbe).toBeGreaterThan(firstLite);
+    expect(urls.indexOf(`${env.AXVARA_API_ORIGIN}/api/checkout/quote`)).toBeLessThan(firstHeavy);
     expect(urls.some(url => url.includes("/api/orders"))).toBe(false);
     const quote = fetchFn.mock.calls.find(([url]) => url.endsWith("/quote"))!;
     expect(JSON.parse(String(quote[1]?.body))).toEqual({ items: [{ product_id: 45, variant_id: 309, qty: 3 }] });

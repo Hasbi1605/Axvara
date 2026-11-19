@@ -317,31 +317,42 @@ describe("Worker runOperationsTick", () => {
     };
   }
 
-  it("tick biasa (:05) hanya langkah lite + publish; route besar tidak dipanggil", async () => {
+  it("tick biasa (:05) hanya langkah lite + publish lalu probe sintetis; route besar tidak dipanggil", async () => {
     const { fn, calls } = mockFetch(() => ({ status: 200 }));
     // sleepFn no-op: jeda Worker tidak memperlambat test.
     const report = await runOperationsTick(env, at(5), fn as never, async () => undefined);
     expect(report.failures).toEqual([]);
-    expect(calls.map(label)).toEqual([
-      "synth:home", "synth:catalog", "synth:quote",
+    const labels = calls.map(label);
+    expect(labels.slice(0, 3)).toEqual(["lite:payments", "lite:expiry", "lite:fulfillment"]);
+    expect(labels.slice(-3)).toEqual(["synth:home", "synth:catalog", "synth:quote"]);
+    expect(report.outcomes.map((o) => o.step)).toEqual([
       "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:storebat_orders", "lite:mirai_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:storebat_catalog", "lite:mirai_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup",
       "publish-scheduled",
+      "synth:home", "synth:catalog", "synth:quote",
     ]);
     expect(calls.some((u) => u.includes("/api/cron/operations"))).toBe(false);
   });
 
-  it("tick :00 UTC: lite dulu, lalu route besar sebagai pelengkap per jam", async () => {
+  it("tick :00 UTC: fase lite dulu, lalu probe sintetis, lalu route besar berurutan sebagai pelengkap per jam", async () => {
     const { fn, calls } = mockFetch(() => ({ status: 200 }));
     const report = await runOperationsTick(env, Date.UTC(2026, 9, 3, 14, 0), fn as never, async () => undefined);
     expect(report.failures).toEqual([]);
-    expect(calls.map(label)).toEqual([
-      "synth:home", "synth:catalog", "synth:quote",
-      "lite:payments", "lite:expiry", "lite:fulfillment", "lite:wr_orders", "lite:sk_orders", "lite:tunvn_orders", "lite:aivault_orders", "lite:storebat_orders", "lite:mirai_orders", "lite:pedia_orders", "lite:games_orders", "lite:jaspay_catalog", "lite:tunvn_catalog", "lite:aivault_catalog", "lite:storebat_catalog", "lite:mirai_catalog", "lite:notify_a", "lite:notify_b", "lite:promo", "lite:cleanup", "lite:games_catalog",
-      "publish-scheduled",
+    const labels = calls.map(label);
+    expect(labels.slice(0, 3)).toEqual(["lite:payments", "lite:expiry", "lite:fulfillment"]);
+    const probeStart = labels.indexOf("synth:home");
+    const heavyStart = labels.indexOf("expiry");
+    expect(probeStart).toBeGreaterThan(0);
+    expect(labels.slice(probeStart, probeStart + 3)).toEqual(["synth:home", "synth:catalog", "synth:quote"]);
+    expect(heavyStart).toBe(probeStart + 3);
+    expect(labels.slice(heavyStart)).toEqual([
       "expiry", "fulfillment", "warung_rebahan:orders", "sekalipay:orders",
       "notify", "warung_rebahan:sync", "sekalipay:sync", "cleanup",
     ]);
-    expect(CRON_STEPS.map(stepLabel)).toEqual(calls.map(label).filter(name => !name.startsWith("synth:")));
+    // Outcomes preserve deterministic CRON_STEPS order + synth:* tail.
+    expect(report.outcomes.map((o) => o.step)).toEqual([
+      ...CRON_STEPS.map(stepLabel),
+      "synth:home", "synth:catalog", "synth:quote",
+    ]);
     const firstCron = fn.mock.calls.find(([url]) => url.includes("/api/cron/"))!;
     expect(firstCron[1]).toMatchObject({ method: "POST", headers: { authorization: "Bearer s" } });
     expect(firstCron[0]).toBe("https://axvara.test/api/cron/lite?job=payments");

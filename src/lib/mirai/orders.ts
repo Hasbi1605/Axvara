@@ -19,6 +19,8 @@ import { miraiCostUsdtFromVnd } from "./pricing";
 export { miraiEligibility, type MiraiEligibility };
 
 type Row = Record<string, unknown>;
+export const MIRAI_ORDERS_PER_RUN = 8;
+export const MIRAI_ORPHANS_PER_RUN = 8;
 
 const paid = (o: Row) =>
   o.status === "lunas" &&
@@ -330,7 +332,7 @@ async function interpret(
   return true;
 }
 
-async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity) {
+async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity): Promise<{ claimed: boolean; rateLimited: boolean }> {
   const owner = crypto.randomUUID();
   const claimed = await db.execRun(
     `UPDATE mirai_order_links
@@ -341,15 +343,16 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     owner,
     id,
   );
-  if (!claimed.changes) return;
+  if (!claimed.changes) return { claimed: false, rateLimited: false };
   const link = await db.queryFirst("SELECT * FROM mirai_order_links WHERE id=? AND lease_owner=?", id, owner);
-  if (!link) return;
+  if (!link) return { claimed: true, rateLimited: false };
   if (Date.now() >= deadlineMs) {
     await settle(db, link, link.request_sent_at ? "processing" : "pending", "dispatch_deferred");
-    return;
+    return { claimed: true, rateLimited: false };
   }
 
   let sent = false;
+  let rateLimited = false;
   try {
     const order = await db.queryFirst("SELECT * FROM orders WHERE code=?", link.order_code);
     const item = order ? lines(order)[Number(link.item_index)] : null;
@@ -368,7 +371,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
       link.idempotency_key !== link.external_order_id
     ) {
       await settle(db, link, "needs_admin", "snapshot_mismatch");
-      return;
+      return { claimed: true, rateLimited: false };
     }
 
     let fulfillment = await db.queryFirst(
@@ -377,7 +380,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
       link.item_index,
     );
     if (!fulfillment) {
-      await ensureFulfillmentItems(order, db, 1);
+      await ensureFulfillmentItems(order, db);
       fulfillment = await db.queryFirst(
         "SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",
         link.order_code,
@@ -386,7 +389,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     }
     if (!fulfillment) {
       await settle(db, link, "pending", "fulfillment_missing");
-      return;
+      return { claimed: true, rateLimited: false };
     }
     if (
       fulfillment.product_id !== link.product_id ||
@@ -403,7 +406,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
       (fulfillment.mirai_link_id && fulfillment.mirai_link_id !== id)
     ) {
       await settle(db, link, "needs_admin", "fulfillment_owned_elsewhere");
-      return;
+      return { claimed: true, rateLimited: false };
     }
 
     const bound = await db.execRun(
@@ -417,7 +420,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     );
     if (!bound.changes) {
       await settle(db, link, "needs_admin", "fulfillment_owned_elsewhere");
-      return;
+      return { claimed: true, rateLimited: false };
     }
 
     if (link.receipt_ciphertext && link.receipt_iv && link.receipt_http_status) {
@@ -425,7 +428,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
         status: Number(link.receipt_http_status),
         text: await decryptSecret(String(link.receipt_ciphertext), String(link.receipt_iv)),
       };
-      if (await interpret(db, link, storedResponse)) return;
+      if (await interpret(db, link, storedResponse)) return { claimed: true, rateLimited: false };
     }
 
     await encryptSecret("mirai-encryption-preflight");
@@ -463,74 +466,91 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
       variant.storebat_family
     ) {
       await settle(db, link, "needs_admin", "source_changed");
-      return;
+      return { claimed: true, rateLimited: false };
     }
 
     // Recovery after a previous POST attempt: always GET /orders/{external_order_id} first.
     if (link.request_sent_at) {
+      if (Date.now() >= deadlineMs) {
+        await settle(db, link, "processing", "lookup_deferred");
+        return { claimed: true, rateLimited: false };
+      }
       const lookup = await getMiraiOrder(String(link.external_order_id));
+      if (lookup.status === 429) rateLimited = true;
       if (lookup.status === 200) {
-        if (!(await saveReceipt(db, link, lookup))) return;
+        if (!(await saveReceipt(db, link, lookup))) return { claimed: true, rateLimited };
         if (!(await interpret(db, link, lookup))) await deferRetry(db, link, lookup.retryAfterSeconds);
-        return;
+        return { claimed: true, rateLimited };
       }
       if (lookup.status === 429 || lookup.status >= 500) {
         await deferRetry(db, link, lookup.retryAfterSeconds);
-        return;
+        return { claimed: true, rateLimited };
       }
       if (lookup.status !== 404) {
         await settle(db, link, "needs_admin", `http_${lookup.status}`);
-        return;
+        return { claimed: true, rateLimited };
       }
     }
 
     if (Number(link.attempt_count) >= 3) {
       await settle(db, link, "needs_admin", "attempts_exhausted");
-      return;
+      return { claimed: true, rateLimited: false };
+    }
+
+    if (Date.now() >= deadlineMs) {
+      await settle(db, link, "pending", "dispatch_deferred");
+      return { claimed: true, rateLimited: false };
     }
 
     if (!link.request_sent_at) {
       const pkgsRes = await fetchMiraiPackages();
       if (pkgsRes.kind !== "ok") {
+        if (pkgsRes.kind === "ambiguous" && pkgsRes.reason === "http_429") rateLimited = true;
         await settle(db, link, "needs_admin", "package_unavailable");
-        return;
+        return { claimed: true, rateLimited };
       }
       const pkg = pkgsRes.data.find((p) => p.code === link.package_code);
       if (!pkg) {
         await settle(db, link, "needs_admin", "package_unavailable");
-        return;
+        return { claimed: true, rateLimited: false };
       }
       const qty = Number(link.quantity);
       if (qty < pkg.min_quantity || qty > pkg.max_quantity) {
         await settle(db, link, "needs_admin", "package_quantity_invalid");
-        return;
+        return { claimed: true, rateLimited: false };
       }
       if (!pkg.unlimited && pkg.remaining_today < qty) {
         await settle(db, link, "needs_admin", "stock_unavailable");
-        return;
+        return { claimed: true, rateLimited: false };
       }
       if (!Number.isFinite(pkg.reseller_price_vnd) || pkg.reseller_price_vnd <= 0) {
         await settle(db, link, "needs_admin", "package_unavailable");
-        return;
+        return { claimed: true, rateLimited: false };
       }
       const liveUnitUsdt = miraiCostUsdtFromVnd(pkg.reseller_price_vnd);
       const liveTotalUsdt = Math.round(liveUnitUsdt * qty * 1_000_000) / 1_000_000;
       const snapshotUsdt = Number(link.cost_usdt);
       if (liveUnitUsdt * qty > snapshotUsdt + 1e-9 || liveTotalUsdt > snapshotUsdt + 1e-9) {
         await settle(db, link, "needs_admin", "price_increased");
-        return;
+        return { claimed: true, rateLimited: false };
       }
 
       const balRes = await fetchMiraiBalance();
       if (balRes.kind !== "ok") {
+        if (balRes.kind === "ambiguous" && balRes.reason === "http_429") rateLimited = true;
         await settle(db, link, "needs_admin", "balance_unavailable");
-        return;
+        return { claimed: true, rateLimited };
       }
       const requiredVnd = pkg.reseller_price_vnd * qty;
       if (balRes.balance_vnd < requiredVnd) {
         await settle(db, link, "needs_admin", "insufficient_balance");
-        return;
+        return { claimed: true, rateLimited: false };
       }
+    }
+
+    if (Date.now() >= deadlineMs || !isMiraiDispatchEnabled()) {
+      await settle(db, link, "pending", "dispatch_deferred");
+      return { claimed: true, rateLimited: false };
     }
 
     const fenced = await db.execRun(
@@ -569,7 +589,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
     );
     if (!fenced.changes) {
       await settle(db, link, "needs_admin", "send_guard_changed");
-      return;
+      return { claimed: true, rateLimited: false };
     }
     link.attempt_count = Number(link.attempt_count) + 1;
     sent = true;
@@ -580,7 +600,8 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
       String(link.external_order_id),
       String(link.idempotency_key),
     );
-    if (!(await saveReceipt(db, link, response))) return;
+    if (response.status === 429) rateLimited = true;
+    if (!(await saveReceipt(db, link, response))) return { claimed: true, rateLimited };
     if (!(await interpret(db, link, response))) {
       await deferRetry(db, link, response.retryAfterSeconds, true);
     }
@@ -592,6 +613,7 @@ async function processLink(db: DatabaseAccess, id: number, deadlineMs = Infinity
       await settle(db, link, "needs_admin", "preflight_unavailable").catch(() => {});
     }
   }
+  return { claimed: true, rateLimited };
 }
 
 export async function retryMiraiOrder(db: DatabaseAccess, id: number): Promise<boolean> {
@@ -609,12 +631,13 @@ export async function retryMiraiOrder(db: DatabaseAccess, id: number): Promise<b
 
 export async function processMiraiOrders(
   db: DatabaseAccess = createDatabaseAccess(),
-  options: { orderCode?: string; deadlineMs?: number } = {},
+  options: { orderCode?: string; deadlineMs?: number; limit?: number } = {},
 ): Promise<number> {
-  if (!db.d1 || !isMiraiDispatchEnabled() || !db.canSpend(35) || Date.now() >= (options.deadlineMs ?? Infinity)) return 0;
-  const orphan = options.orderCode
-    ? { code: options.orderCode }
-    : await db.queryFirst(
+  const deadlineMs = options.deadlineMs ?? Infinity;
+  if (!db.d1 || !isMiraiDispatchEnabled() || !db.canSpend(35) || Date.now() >= deadlineMs) return 0;
+  const orphans = options.orderCode
+    ? [{ code: options.orderCode }]
+    : await db.queryAll(
         `SELECT o.code FROM orders o
          WHERE o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0
            AND COALESCE(o.order_kind,'apps')='apps' AND o.sales_channel IN ('web','telegram')
@@ -627,20 +650,31 @@ export async function processMiraiOrders(
                  WHERE l.order_code=o.code AND l.item_index=CAST(j.key AS INTEGER)
                )
            )
-         ORDER BY o.id LIMIT 1`,
+         ORDER BY o.id LIMIT ?`,
+        MIRAI_ORPHANS_PER_RUN,
       );
-  if (orphan) await createMiraiOrderLinks(String(orphan.code), db);
-  if (!db.canSpend(25) || Date.now() >= (options.deadlineMs ?? Infinity)) return 0;
-  const link = await db.queryFirst(
+  for (const orphan of orphans) {
+    if (Date.now() >= deadlineMs || !db.canSpend(30)) break;
+    await createMiraiOrderLinks(String(orphan.code), db);
+  }
+  if (!db.canSpend(25) || Date.now() >= deadlineMs) return 0;
+  const maxLinks = Math.max(1, Math.min(MIRAI_ORDERS_PER_RUN, Math.floor(options.limit ?? MIRAI_ORDERS_PER_RUN)));
+  const due = await db.queryAll(
     `SELECT id FROM mirai_order_links
      WHERE status IN ('pending','claimed','processing')
        AND datetime(next_attempt_at)<=datetime('now')
        AND (lease_expires_at IS NULL OR datetime(lease_expires_at)<datetime('now'))
        ${options.orderCode ? "AND order_code=?" : ""}
-     ORDER BY next_attempt_at, id LIMIT 1`,
+     ORDER BY next_attempt_at, id LIMIT ?`,
     ...(options.orderCode ? [options.orderCode] : []),
+    maxLinks,
   );
-  if (!link) return 0;
-  await processLink(db, Number(link.id), options.deadlineMs);
-  return 1;
+  let processed = 0;
+  for (const link of due) {
+    if (processed > 0 && (Date.now() >= deadlineMs || !db.canSpend(25))) break;
+    const res = await processLink(db, Number(link.id), deadlineMs);
+    if (res.claimed) processed++;
+    if (res.rateLimited) break;
+  }
+  return processed;
 }

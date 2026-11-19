@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     else if (job === "fulfillment") Object.assign(result, await runFulfillment(db, deadline));
     else if (job === "wr_orders") Object.assign(result, await runWrOrders(db));
     else if (job === "sk_orders") Object.assign(result, await runSkOrders(db));
-    else if (job === "aivault_orders") Object.assign(result, await runAivaultOrders(db));
+    else if (job === "aivault_orders") Object.assign(result, await runAivaultOrders(db, deadline));
     else if (job === "aivault_catalog") {
       const { isAivaultConfigured,isAivaultSyncEnabled }=await import("@/lib/aivault/client");
       if (!isAivaultConfigured() || !isAivaultSyncEnabled()) result.skipped="not_configured";
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
         if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
       }
     }
-    else if (job === "storebat_orders") Object.assign(result, await runStorebatOrders(db));
+    else if (job === "storebat_orders") Object.assign(result, await runStorebatOrders(db, deadline));
     else if (job === "storebat_catalog") {
       const { isStorebatConfigured,isStorebatSyncEnabled }=await import("@/lib/storebat/client");
       if (!isStorebatConfigured() || !isStorebatSyncEnabled()) result.skipped="not_configured";
@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
         if ("ok" in synced && synced.ok && !("unchanged" in synced)) await drainDirtyGroupsIfBudget(db, result);
       }
     }
-    else if (job === "mirai_orders") Object.assign(result, await runMiraiOrders(db));
+    else if (job === "mirai_orders") Object.assign(result, await runMiraiOrders(db, deadline));
     else if (job === "mirai_catalog") {
       const { isMiraiConfigured, isMiraiSyncEnabled } = await import("@/lib/mirai/client");
       if (!isMiraiConfigured() || !isMiraiSyncEnabled()) result.skipped = "not_configured";
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
         if ("ok" in synced && synced.ok) await drainDirtyGroupsIfBudget(db, result);
       }
     }
-    else if (job === "tunvn_orders") Object.assign(result, await runTunvnOrders(db));
+    else if (job === "tunvn_orders") Object.assign(result, await runTunvnOrders(db, deadline));
     else if (job === "tunvn_catalog") {
       const { isTunvnSyncEnabled, isTunvnConfigured } = await import("@/lib/tunvn/client");
       if (!isTunvnSyncEnabled() || !isTunvnConfigured()) result.skipped = "not_configured";
@@ -589,10 +589,10 @@ async function runSupplierBalanceCheck(
   }
 }
 
-async function runTunvnOrders(db: Db) {
+async function runTunvnOrders(db: Db, deadline: number) {
   const { processTunvnOrders } = await import("@/lib/tunvn/orders");
   const out: Record<string, unknown> = {
-    tunvn_orders_processed: await processTunvnOrders(db),
+    tunvn_orders_processed: await processTunvnOrders(db, { deadlineMs: deadline - 5_000 }),
   };
   await runSupplierBalanceCheck(db, out, "tunvn", async () => {
     const { checkTunvnLowBalance } = await import("@/lib/supplier-balance-alert");
@@ -601,10 +601,10 @@ async function runTunvnOrders(db: Db) {
   return out;
 }
 
-async function runAivaultOrders(db: Db) {
+async function runAivaultOrders(db: Db, deadline: number) {
   const { processAivaultOrders } = await import("@/lib/aivault/orders");
   const out: Record<string, unknown> = {
-    aivault_orders_processed: await processAivaultOrders(db),
+    aivault_orders_processed: await processAivaultOrders(db, { deadlineMs: deadline - 5_000 }),
   };
   await runSupplierBalanceCheck(db, out, "aivault", async () => {
     const { checkAivaultLowBalance } = await import("@/lib/supplier-balance-alert");
@@ -613,10 +613,10 @@ async function runAivaultOrders(db: Db) {
   return out;
 }
 
-async function runStorebatOrders(db: Db) {
+async function runStorebatOrders(db: Db, deadline: number) {
   const { processStorebatOrders } = await import("@/lib/storebat/orders");
   const out: Record<string, unknown> = {
-    storebat_orders_processed: await processStorebatOrders(db),
+    storebat_orders_processed: await processStorebatOrders(db, { deadlineMs: deadline - 5_000 }),
   };
   await runSupplierBalanceCheck(db, out, "storebat", async () => {
     const { checkStorebatLowBalance } = await import("@/lib/supplier-balance-alert");
@@ -625,10 +625,10 @@ async function runStorebatOrders(db: Db) {
   return out;
 }
 
-async function runMiraiOrders(db: Db) {
+async function runMiraiOrders(db: Db, deadline: number) {
   const { processMiraiOrders } = await import("@/lib/mirai/orders");
   const out: Record<string, unknown> = {
-    mirai_orders_processed: await processMiraiOrders(db),
+    mirai_orders_processed: await processMiraiOrders(db, { deadlineMs: deadline - 5_000 }),
   };
   await runSupplierBalanceCheck(db, out, "mirai", async () => {
     const { checkMiraiLowBalance } = await import("@/lib/mirai/balance");
@@ -807,17 +807,17 @@ async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
     const { sendPendingOrderReminders } = await import("@/lib/telegram/order-notifications");
     return sendPendingOrderReminders(20, db);
   });
-  await guard("whatsapp_outbox", async () => {
-    const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
-    return processDueWhatsAppOutbox(4, db);
-  }, true);
-  // Sapu bounded antrean PIN checkout (maks 15/tick, jeda 1 dtk antaremail
-  // untuk batas Resend <=1 req/dtk) bila budget/waktu tersisa.
+  // B2: jalankan PIN checkout SEBELUM whatsapp_outbox agar jeda anti-ban WA
+  // (6-9 dtk x 4 pesan) tidak pernah membuat email PIN kehabisan deadline.
   await guard("checkout_pin_emails", async () => {
     if (!db.canSpend(10)) return { skipped: "query_budget" };
     const { processCredentialAccessEmails } = await import("@/lib/orders/access-email");
     return processCredentialAccessEmails(db, 15, undefined, { hasTime: (needMs) => Date.now() + needMs <= deadline });
   });
+  await guard("whatsapp_outbox", async () => {
+    const { processDueWhatsAppOutbox } = await import("@/lib/whatsapp/outbox");
+    return processDueWhatsAppOutbox(4, db);
+  }, true);
   return out;
 }
 

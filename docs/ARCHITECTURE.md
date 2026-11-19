@@ -1,5 +1,12 @@
 # ARCHITECTURE.md — AXVARA
 
+## Wave 2 (B1/B2) supplier multi-link & cron fase paralel — 19 November 2026 (lokal, belum deploy)
+
+- **B1 supplier order (`src/lib/{tunvn,aivault,storebat,mirai}/orders.ts`):** `create*OrderLinks` menyisipkan semua baris eligible satu order dalam satu `INSERT OR IGNORE … SELECT … JOIN json_each(?)` (TUNVN/AIVault kini selaras StoreBat/Mirai; tautan `fulfillment_items.tunvn_link_id` di-backfill sekali per order dan hanya untuk baris tanpa `inventory_id`/WR/SK). `process*Orders` memperbaiki hingga `*_ORPHANS_PER_RUN = 8` order yatim lalu memproses hingga `*_ORDERS_PER_RUN = 8` link per panggilan (`options.limit` hanya menurunkan), berhenti saat `deadlineMs` habis, `db.canSpend` gagal, atau supplier membalas HTTP `429` (`processLink` mengembalikan `{claimed, rateLimited}`); `reconcileId` TUNVN tetap tepat 1 link. Deadline dicek sebelum poll dan tepat sebelum fence kirim: link pra-kirim kembali `pending` (`dispatch_deferred`), link terkirim tetap `processing` (`poll_deferred`/`lookup_deferred`); tidak ada pembelian ganda karena fence `request_sent_at`/`attempt_count` tidak berubah. `cron/lite` meneruskan `deadlineMs = deadline − 5 dtk`; `fulfillPaidOrder` (Queue) meneruskan `deadlineMs` ke keempat supplier. Perbaikan: `ensureFulfillmentItems(order, db)` tanpa plafon `1`, sehingga item index > 0 pada order multi-baris tidak lagi tersumbat `fulfillment_missing`.
+- **B2 cron (`mcp-worker/src/cron.ts`):** `CronStep.group` (`core|orders|catalog|notify|heavy`) dijalankan per fase urut `CRON_PHASE_ORDER`. `core` (`payments → expiry → fulfillment`) dan `heavy` (`/api/cron/operations` :00) tetap **berurutan** (konkurensi 1: reconcile pembayaran wajib selesai sebelum expiry mengedarkan order pending yang dibayar mepet deadline); `orders`, `catalog`, `notify` paralel terbatas `CRON_PHASE_CONCURRENCY = 4` (di bawah batas 6 koneksi keluar simultan Workers), sehingga supplier lambat tidak menahan supplier lain. Probe sintetis pindah ke **setelah fase lite dan sebelum langkah heavy** (tidak lagi menunda pembayaran/order hingga 20 dtk di awal tick); urutan `TickReport.outcomes` tetap deterministik `CRON_STEPS` lalu `synth:*`.
+- **`notify_b` (`src/app/api/cron/lite/route.ts`):** `checkout_pin_emails` kini berjalan sebelum `whatsapp_outbox` agar jeda anti-ban WA (6–9 dtk × 4) tidak menghabiskan deadline email PIN.
+- Tanpa env/secret/binding/migrasi baru. Test: `tests/paid-plan-wave2-b1-b2.integration.test.ts`, `tests/cron-phase-split.integration.test.ts`, `tests/mcp-synthetic-health.test.ts`.
+
 ## Wave 1 penghapusan batas hemat Free (Workers Paid) — 19 November 2026 (lokal, belum deploy)
 
 - **Budget cron (A1):** `src/app/api/cron/lite/route.ts` menggunakan `createBudgetedDatabase(job === "fulfillment" || job === "jaspay_catalog" ? 400 : 300)` (sebelumnya `96`/`40`); `src/app/api/cron/operations/route.ts` menaikkan `QUERY_BUDGET` `40 → 300` (runaway guard tetap aktif bersama deadline `45_000` ms; `runPromo` broadcast budget terpisah `400` tidak diubah).
@@ -283,7 +290,9 @@ produksi; daily-admin-summary tidak diubah. Deployment/data ingest belum terbukt
 ## A-S: probe sintetis dan CSP Analytics — 18 November 2026 (lokal)
 
 - `mcp-worker/src/synthetic.ts` menambah tiga `PhaseOutcome` (`synth:home`,
-  `synth:catalog`, `synth:quote`) dijalankan sebelum `CRON_STEPS`; daftar outcome
+  `synth:catalog`, `synth:quote`) dijalankan sebelum `CRON_STEPS` (snapshot 18 Nov;
+  revisi Wave 2 B2 19 Nov lokal: kini setelah fase lite dan sebelum langkah heavy,
+  lihat bagian Wave 2 di atas); daftar outcome
   diagnostik tetap cron lalu synth, sebelum alarm F1
   existing (`cron_alarm_v1`, hard2/soft6, recovery3/reminder6jam). Home+produk
   paralel, lalu PDP dinamis+quote; tidak memanggil `/api/orders`. Non-200/kontrak/
