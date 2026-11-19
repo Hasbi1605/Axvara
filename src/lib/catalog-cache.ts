@@ -4,6 +4,8 @@ import { unwrapD1, type DatabaseAccess } from "@/lib/db-access";
 export type CatalogScope = "market" | "pedia" | "games";
 
 export const REVISION_MEMO_TTL_MS = 5_000;
+export const PUBLIC_CATALOG_BROWSER_CACHE_CONTROL = "no-cache";
+export const CATALOG_REVISION_HEADER = "X-Axvara-Catalog-Revision";
 export const CATALOG_REVISION_KEYS: Record<CatalogScope, string> = {
   market: "catalog_revision_market",
   pedia: "catalog_revision_pedia",
@@ -33,7 +35,6 @@ const recentUrlsByScope = new Map<CatalogScope, Set<string>>();
 
 const NO_D1_KEY = {};
 const STORED_AT = "X-Axvara-Cache-Stored-At";
-const ORIGIN_CACHE_CONTROL = "X-Axvara-Origin-Cache-Control";
 const MAX_RECENT_URLS_PER_SCOPE = 32;
 
 function inferScope(key: string): CatalogScope {
@@ -214,17 +215,21 @@ export async function bumpCatalogRevision(
   }
 }
 
-function result(response: Response, status: "HIT" | "MISS" | "BYPASS"): Response {
+function result(response: Response, status: "HIT" | "MISS" | "BYPASS", revision?: string): Response {
   const copy = response.clone();
   const headers = new Headers(copy.headers);
   const stored = Number(headers.get(STORED_AT));
   if (stored > 0) headers.set("Age", String(Math.max(0, Math.floor((Date.now() - stored) / 1000))));
   headers.delete(STORED_AT);
-  const originCacheControl = headers.get(ORIGIN_CACHE_CONTROL);
-  if (status === "HIT" && originCacheControl) {
-    headers.set("Cache-Control", originCacheControl);
+  const cacheControl = headers.get("cache-control") ?? "";
+  if (!/private|no-store/i.test(cacheControl)) {
+    headers.set("Cache-Control", PUBLIC_CATALOG_BROWSER_CACHE_CONTROL);
   }
-  headers.delete(ORIGIN_CACHE_CONTROL);
+  if (status !== "BYPASS" && revision !== undefined) {
+    headers.set(CATALOG_REVISION_HEADER, revision);
+  } else {
+    headers.delete(CATALOG_REVISION_HEADER);
+  }
   headers.set("X-Axvara-Cache", status);
   return new Response(copy.body, { status: copy.status, statusText: copy.statusText, headers });
 }
@@ -240,9 +245,9 @@ export async function cachePublicCatalog(
 ): Promise<Response> {
   const resolvedScope = scope ?? inferScope(key);
   const logScope = logScopeFor(key, resolvedScope);
-  const report = (response: Response, status: "HIT" | "MISS" | "BYPASS") => {
+  const report = (response: Response, status: "HIT" | "MISS" | "BYPASS", revision?: string) => {
     try { console.info("[catalog-cache]", JSON.stringify({ scope: logScope, status })); } catch { /* telemetry is best-effort */ }
-    return result(response, status);
+    return result(response, status, revision);
   };
   const cache = (globalThis as unknown as { caches?: { default?: EdgeCache } }).caches?.default;
   if (!cache || !getD1()) return report(await load(), "BYPASS");
@@ -250,13 +255,13 @@ export async function cachePublicCatalog(
   const request = new Request(`https://axvara.tech/__catalog-cache/d1-v2/${resolvedScope}/${encodeURIComponent(revision)}/${key}`);
   try {
     const hit = await cache.match(request);
-    if (hit) return report(hit, "HIT");
+    if (hit) return report(hit, "HIT", revision);
   } catch { return report(await load(), "BYPASS"); }
 
   let flights = pending.get(cache);
   if (!flights) { flights = new Map(); pending.set(cache, flights); }
   const existing = flights.get(request.url);
-  if (existing) return report(await existing, "MISS");
+  if (existing) return report(await existing, "MISS", revision);
   const fill = (async () => {
     const response = await load();
     // Never preserve a failed/degraded load, a cookie or a private response.
@@ -264,10 +269,9 @@ export async function cachePublicCatalog(
         && !/private|no-store/i.test(response.headers.get("cache-control") ?? "")) {
       const stored = response.clone();
       const headers = new Headers(stored.headers);
-      const originCacheControl = headers.get("cache-control");
-      if (originCacheControl) headers.set(ORIGIN_CACHE_CONTROL, originCacheControl);
       headers.set("Cache-Control", `public, max-age=${ttl}`);
       headers.set(STORED_AT, String(Date.now()));
+      headers.set(CATALOG_REVISION_HEADER, revision);
       try {
         await cache.put(request, new Response(stored.body, { status: 200, headers }));
         recordRecentUrl(resolvedScope, request.url);
@@ -277,6 +281,6 @@ export async function cachePublicCatalog(
   })();
   // Bound pending keys during bursts with many distinct searches.
   if (flights.size < 128) flights.set(request.url, fill);
-  try { return report(await fill, "MISS"); }
+  try { return report(await fill, "MISS", revision); }
   finally { if (flights.get(request.url) === fill) flights.delete(request.url); }
 }

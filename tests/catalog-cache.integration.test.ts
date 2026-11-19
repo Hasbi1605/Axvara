@@ -40,7 +40,7 @@ it("shares a public Market response across direct handler calls, expires and kee
   fixture.sql.exec("UPDATE product_variants SET price=20000; UPDATE products SET price=20000");
   const hit = await market(req());
   expect(hit.headers.get("X-Axvara-Cache")).toBe("HIT");
-  expect(hit.headers.get("Cache-Control")).toBe("public, max-age=15, s-maxage=30, stale-while-revalidate=60");
+  expect(hit.headers.get("Cache-Control")).toBe("no-cache");
   expect((await hit.json()).products[0].price).toBe(10000);
   expect(fixture.control.queries).toBe(reads);
   expect((await (await market(req("active=1&q=missing"))).json()).products).toEqual([]);

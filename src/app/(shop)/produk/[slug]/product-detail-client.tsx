@@ -1,7 +1,7 @@
 "use client";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import type { Product } from "@/lib/products";
 import { productIsBuyable } from "@/lib/product-order";
@@ -15,6 +15,7 @@ import { ActivationBody, DescriptionBody, MobileCollapsible, TermsBody, VariantI
 import { isLongDescription, mergeProductCopy, parseProductDescription, type VariantCopy } from "@/lib/product-copy/format";
 import { Bone, InlineSpinner, ProductDetailSkeleton } from "@/components/storefront/Skeletons";
 import { usePendingNavigation } from "@/hooks/usePendingNavigation";
+import { useCatalogRevisionWatcher } from "@/hooks/useCatalogRevision";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { BulkPriceTiers } from "@/components/storefront/BulkPriceTiers";
 import { bulkCopy, bulkUnitEstimate, usableBulkTiers, type BulkVariantFields } from "@/lib/bulk-display";
@@ -78,7 +79,7 @@ function soleBuyableVariantId(detail: CatalogDetail | null | undefined): number 
 // `initialProducts`/`initialCatalog` diisi page.tsx dari handler API yang
 // sama: PDP tampil lengkap dari respons navigasi, tanpa dua round-trip
 // tambahan (skeleton kedua) di jaringan lambat. Tanpa prop = fetch di klien.
-export default function ProductDetailClient({ slug: slugProp, initialProducts, initialCatalog }: { slug?: string; initialProducts?: Product[]; initialCatalog?: InitialCatalog | null }) {
+export default function ProductDetailClient({ slug: slugProp, initialProducts, initialCatalog, initialRevision }: { slug?: string; initialProducts?: Product[]; initialCatalog?: InitialCatalog | null; initialRevision?: string | null }) {
   const params = useParams<{ slug: string }>();
   const slug = slugProp ?? params.slug;
   const router = useRouter();
@@ -167,12 +168,55 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
   }, [slug, initialCatalog, variantAttempt]);
 
   const product = catalogProducts.find((p) => p.slug === slug);
+  const currentCategorySlug = product?.categorySlug;
+  const slugRef = useRef(slug);
+  slugRef.current = slug;
+
+  useCatalogRevisionWatcher({
+    scope: "market",
+    initialRevision,
+    enabled: !detailLoading && !detailError && !variantLoading && !variantError && Boolean(product),
+    onChange: async () => {
+      const targetSlug = slug;
+      const [productsRes, catalogRes] = await Promise.all([
+        fetchWithTimeout(`/api/products?active=1&slug=${encodeURIComponent(targetSlug)}`, { cache: "no-cache" }, 25_000),
+        fetchWithTimeout(`/api/catalog?slug=${encodeURIComponent(targetSlug)}`, { cache: "no-cache" }, 25_000),
+      ]);
+      if (slugRef.current !== targetSlug) return;
+      if (!productsRes.ok || !catalogRes.ok) {
+        throw new Error(`HTTP ${!productsRes.ok ? productsRes.status : catalogRes.status}`);
+      }
+      const [productsData, catalogData] = await Promise.all([
+        productsRes.json() as Promise<{ products?: Product[] }>,
+        catalogRes.json() as Promise<{ product?: CatalogDetail; variantsEnabled?: boolean }>,
+      ]);
+      if (slugRef.current !== targetSlug) return;
+      const list: Product[] = Array.isArray(productsData.products) ? productsData.products : [];
+      const matched = list.find((p) => p.slug === targetSlug);
+      if (!matched || !catalogData?.product) {
+        throw new Error("catalog_refresh_incomplete");
+      }
+      const nextDetail = catalogData.product;
+      const imgs = galleryOf(list, targetSlug);
+      setCatalogProducts(list);
+      setGalleryImages(imgs);
+      setActiveImg((prev) => (imgs.length === 0 ? 0 : Math.min(prev, imgs.length - 1)));
+      setCatalogDetail(nextDetail);
+      setVariantsEnabled(catalogData.variantsEnabled === true);
+      setSelectedVariantId((prev) => {
+        if (prev !== null && nextDetail.variants.some((v) => v.is_active && v.id === prev)) {
+          return prev;
+        }
+        return soleBuyableVariantId(nextDetail);
+      });
+    },
+  });
+
   const [related, setRelated] = useState<Product[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(true);
 
   useEffect(() => {
-    const current = catalogProducts.find((p) => p.slug === slug);
-    if (!current) { setRelated([]); setRelatedLoading(false); return; }
+    if (!currentCategorySlug) { setRelated([]); setRelatedLoading(false); return; }
     // Produk Serupa (kontrak 2026-10-01, keputusan owner):
     // 1. Stok habis TIDAK PERNAH tampil — Serupa = ajakan beli, bukan arsip.
     //    Kartu habis tetap ada di katalog utama (trust), tapi tidak di sini.
@@ -182,7 +226,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
     const controller = new AbortController();
     setRelatedLoading(true);
     const buyable = (p: Product) => p.slug !== slug && productIsBuyable(p);
-    fetchWithTimeout(`/api/products?active=1&cat=${encodeURIComponent(current.categorySlug)}`, { signal: controller.signal }, 25_000)
+    fetchWithTimeout(`/api/products?active=1&cat=${encodeURIComponent(currentCategorySlug)}`, { signal: controller.signal }, 25_000)
       .then(async (r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(async (data) => {
         const same = ((Array.isArray(data.products) ? data.products : []) as Product[]).filter(buyable);
@@ -204,7 +248,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       .catch(() => setRelated([]))
       .finally(() => { if (!controller.signal.aborted) setRelatedLoading(false); });
     return () => controller.abort();
-  }, [catalogProducts, slug]);
+  }, [currentCategorySlug, slug]);
 
   const goPrev = useCallback(() => {
     setActiveImg((prev) => (prev - 1 + galleryImages.length) % galleryImages.length);

@@ -78,13 +78,15 @@ describe("/api/catalog revision cache & view funnel", () => {
     const list1 = await GET(new Request("https://axvara.tech/api/catalog"));
     expect(list1.status).toBe(200);
     expect(list1.headers.get("X-Axvara-Cache")).toBe("MISS");
-    expect(list1.headers.get("Cache-Control")).toBe("public, s-maxage=30, stale-while-revalidate=60");
+    expect(list1.headers.get("Cache-Control")).toBe("no-cache");
+    expect(list1.headers.get("X-Axvara-Catalog-Revision")).toBe("0");
     expect(funnelWrite).not.toHaveBeenCalled();
 
     const qAfterListMiss = fixture.control.queries;
     const list2 = await GET(new Request("https://axvara.tech/api/catalog"));
     expect(list2.headers.get("X-Axvara-Cache")).toBe("HIT");
-    expect(list2.headers.get("Cache-Control")).toBe("public, s-maxage=30, stale-while-revalidate=60");
+    expect(list2.headers.get("Cache-Control")).toBe("no-cache");
+    expect(list2.headers.get("X-Axvara-Catalog-Revision")).toBe("0");
     expect(fixture.control.queries).toBe(qAfterListMiss);
     expect(funnelWrite).not.toHaveBeenCalled();
 
@@ -92,7 +94,7 @@ describe("/api/catalog revision cache & view funnel", () => {
     const detailMiss = await GET(new Request("https://axvara.tech/api/catalog?slug=chatgpt-plus"));
     expect(detailMiss.status).toBe(200);
     expect(detailMiss.headers.get("X-Axvara-Cache")).toBe("MISS");
-    expect(detailMiss.headers.get("Cache-Control")).toBe("public, s-maxage=10, stale-while-revalidate=30");
+    expect(detailMiss.headers.get("Cache-Control")).toBe("no-cache");
     expect((await detailMiss.json()).product.variants[0].price).toBe(25000);
     expect(funnelWrite).toHaveBeenCalledTimes(1);
     expect(funnelWrite.mock.calls[0][0].blobs.slice(0, 7)).toEqual(["view", "apps", "web", "none", "none", "1", "id"]);
@@ -103,7 +105,7 @@ describe("/api/catalog revision cache & view funnel", () => {
     }));
     expect(detailHit.status).toBe(200);
     expect(detailHit.headers.get("X-Axvara-Cache")).toBe("HIT");
-    expect(detailHit.headers.get("Cache-Control")).toBe("public, s-maxage=10, stale-while-revalidate=30");
+    expect(detailHit.headers.get("Cache-Control")).toBe("no-cache");
     expect(fixture.control.queries).toBe(qAfterDetailMiss);
     expect(funnelWrite).toHaveBeenCalledTimes(2);
     expect(funnelWrite.mock.calls[1][0].blobs.slice(0, 7)).toEqual(["view", "apps", "web", "none", "none", "1", "en"]);

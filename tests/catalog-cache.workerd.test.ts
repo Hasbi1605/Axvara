@@ -138,7 +138,8 @@ it("revisioned catalog cache works on native Cloudflare Cache API + D1 including
     expect(await basic1.json()).toEqual({ loads: 1 });
     const basic2 = await runtime.dispatchFetch("https://axvara.tech/basic");
     expect(basic2.headers.get("X-Axvara-Cache")).toBe("HIT");
-    expect(basic2.headers.get("Cache-Control")).toBe("public, max-age=15, s-maxage=30");
+    expect(basic2.headers.get("Cache-Control")).toBe("no-cache");
+    expect(basic2.headers.get("X-Axvara-Catalog-Revision")).toBe("0");
     expect(await basic2.json()).toEqual({ loads: 1 });
     expect(basic2.headers.has("X-Axvara-Cache-Stored-At")).toBe(false);
     expect(basic2.headers.has("X-Axvara-Origin-Cache-Control")).toBe(false);

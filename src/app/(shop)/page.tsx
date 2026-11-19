@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { NextRequest } from "next/server";
 import type { Product } from "@/lib/products";
 import type { OrderableCategory } from "@/lib/product-order";
+import { CATALOG_REVISION_HEADER } from "@/lib/catalog-cache";
 import { homeJsonLd, safeJsonLd } from "@/lib/site-seo";
 import { HomeClient } from "./home-client";
 
@@ -19,24 +20,28 @@ export const metadata: Metadata = {
  * Memanggil handler `/api/products` yang sama dengan klien — satu sumber
  * query + mapper, tanpa self-fetch HTTP (gagal di edge untuk URL relatif).
  */
-async function loadCatalog(): Promise<Product[] | undefined> {
+async function loadCatalog(): Promise<{ products: Product[] | undefined; revision: string | null }> {
   try {
     const { GET } = await import("@/app/api/products/route");
     const response = await GET(new NextRequest("https://axvara.tech/api/products?active=1"));
-    if (!response.ok) return undefined;
+    if (!response.ok) return { products: undefined, revision: null };
+    const revision = response.headers.get(CATALOG_REVISION_HEADER);
     const data = (await response.json()) as { products?: Product[] };
-    return Array.isArray(data.products) ? data.products : undefined;
+    return {
+      products: Array.isArray(data.products) ? data.products : undefined,
+      revision,
+    };
   } catch {
-    return undefined;
+    return { products: undefined, revision: null };
   }
 }
 
 export default async function HomePage() {
-  const [products, categories] = await Promise.all([loadCatalog(), loadCategories()]);
+  const [{ products, revision }, categories] = await Promise.all([loadCatalog(), loadCategories()]);
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(homeJsonLd(products ?? [])) }} />
-      <HomeClient initialProducts={products} initialCategories={categories} />
+      <HomeClient initialProducts={products} initialCategories={categories} initialRevision={revision} />
     </>
   );
 }

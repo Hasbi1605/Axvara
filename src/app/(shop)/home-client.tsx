@@ -6,6 +6,7 @@ import { CategoryPills } from "@/components/storefront/CategoryPills";
 import { ProductCard, productCardAmounts } from "@/components/storefront/ProductCard";
 import { PriceNote } from "@/components/storefront/Price";
 import { useDisplayPrices } from "@/hooks/useDisplayPrices";
+import { useCatalogRevisionWatcher } from "@/hooks/useCatalogRevision";
 import { catalogCopy } from "@/lib/i18n/catalog-copy";
 import { CommunityBar } from "@/components/storefront/CommunityBar";
 import type { Product } from "@/lib/products";
@@ -27,7 +28,7 @@ const PER_PAGE = 16;
  * tanpa JavaScript (termasuk crawler AI) melihat toko kosong. Bila server
  * gagal memuat, klien jatuh kembali ke fetch seperti sebelumnya.
  */
-export function HomeClient({ initialProducts, initialCategories }: { initialProducts?: Product[]; initialCategories?: OrderableCategory[] }) {
+export function HomeClient({ initialProducts, initialCategories, initialRevision }: { initialProducts?: Product[]; initialCategories?: OrderableCategory[]; initialRevision?: string | null }) {
   const hasInitial = Array.isArray(initialProducts);
   const [activeCat, setActiveCat] = useState("semua");
   // Pagination 2 tahap (keputusan owner 2026-10-01): 16 awal (grid pas —
@@ -148,6 +149,27 @@ export function HomeClient({ initialProducts, initialCategories }: { initialProd
         .finally(() => setCatalogLoading(false));
     return () => controller.abort();
   }, [hasInitial]);
+
+  useCatalogRevisionWatcher({
+    scope: "market",
+    initialRevision,
+    enabled: !catalogLoading && !catalogError,
+    onChange: async () => {
+      const [productsRes, categoriesRes] = await Promise.allSettled([
+        fetch("/api/products?active=1", { cache: "no-cache" }),
+        fetch("/api/categories", { cache: "no-cache" }),
+      ]);
+      if (productsRes.status !== "fulfilled") throw productsRes.reason;
+      if (!productsRes.value.ok) throw new Error(`HTTP ${productsRes.value.status}`);
+      const productsData = (await productsRes.value.json()) as { products?: Product[] };
+      if (!Array.isArray(productsData.products)) throw new Error("invalid_products");
+      setCatalogProducts(productsData.products);
+      if (categoriesRes.status === "fulfilled" && categoriesRes.value.ok) {
+        const categoriesData = (await categoriesRes.value.json()) as { categories?: OrderableCategory[] };
+        if (Array.isArray(categoriesData.categories)) setCategories(categoriesData.categories);
+      }
+    },
+  });
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();

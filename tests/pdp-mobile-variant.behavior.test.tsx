@@ -41,7 +41,7 @@ let catalogFetches = 0;
 function renderPdp(variants = differing) {
   vi.stubGlobal("fetch", vi.fn(async (input: string) => {
     const url = String(input);
-    if (url.startsWith("/api/catalog")) catalogFetches++;
+    if (url.startsWith("/api/catalog") && !url.startsWith("/api/catalog/revision")) catalogFetches++;
     return { ok: true, status: 200, json: async () => ({ products: [] }) };
   }));
   const catalog = { slug: "claude-pro", product: { id: 1, slug: "claude-pro", name: "Claude Pro", variants }, variantsEnabled: true };

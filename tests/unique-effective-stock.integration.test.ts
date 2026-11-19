@@ -112,18 +112,18 @@ describe("/api/catalog?slug= membawa inventory_available", () => {
     expect(effectiveVariantStock({ ...invite })).toBe(20);
   });
 
-  it("cache slug PDP 10 detik (bukan 30)", async () => {
+  it("cache slug PDP tidak disimpan browser (no-cache, invalidasi edge via revisi)", async () => {
     const { GET } = await import("@/app/api/catalog/route");
     const res = await GET(new Request("http://localhost/api/catalog?slug=google-ai-pro-antigravity"));
-    expect(res.headers.get("Cache-Control")).toBe("public, s-maxage=10, stale-while-revalidate=30");
+    expect(res.headers.get("Cache-Control")).toBe("no-cache");
   });
 
-  it("cache ?slug= products max-age 5 detik, daftar max-age 15 detik (edge revisi 120/300 dtk)", async () => {
+  it("cache ?slug= dan daftar products memakai no-cache untuk browser (edge revisi 120/300 dtk)", async () => {
     const { GET } = await import("@/app/api/products/route");
     const bySlug = await GET(new NextRequest("http://localhost/api/products?active=1&slug=google-ai-pro-antigravity"));
-    expect(bySlug.headers.get("Cache-Control")).toBe("public, max-age=5, s-maxage=10, stale-while-revalidate=30");
+    expect(bySlug.headers.get("Cache-Control")).toBe("no-cache");
     const list = await GET(new NextRequest("http://localhost/api/products?active=1"));
-    expect(list.headers.get("Cache-Control")).toBe("public, max-age=15, s-maxage=30, stale-while-revalidate=60");
+    expect(list.headers.get("Cache-Control")).toBe("no-cache");
   });
 });
 

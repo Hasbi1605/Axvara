@@ -8,6 +8,7 @@ import { NextRequest } from "next/server";
 import { notFound, redirect } from "next/navigation";
 import { queryFirst, queryAll } from "@/lib/db";
 import { displayDescription } from "@/lib/catalog";
+import { CATALOG_REVISION_HEADER } from "@/lib/catalog-cache";
 import type { Product } from "@/lib/products";
 import {
   seoDescription,
@@ -74,19 +75,20 @@ const getSeoProduct = (React.cache ?? ((fn) => fn))(async (slug: string): Promis
  * klien (pola beranda): halaman tampil lengkap dari satu respons navigasi,
  * bukan skeleton lalu dua fetch klien lagi. Gagal = undefined → klien fetch.
  */
-async function loadInitialProducts(slug: string): Promise<Product[] | undefined> {
+async function loadInitialProducts(slug: string): Promise<{ products: Product[]; revision: string | null } | undefined> {
   try {
     const { GET } = await import("@/app/api/products/route");
     const response = await GET(new NextRequest(`https://axvara.tech/api/products?active=1&slug=${encodeURIComponent(slug)}`));
     if (!response.ok) return undefined;
+    const revision = response.headers.get(CATALOG_REVISION_HEADER);
     const data = (await response.json()) as { products?: Product[] };
-    return Array.isArray(data.products) ? data.products : undefined;
+    return Array.isArray(data.products) ? { products: data.products, revision } : undefined;
   } catch {
     return undefined;
   }
 }
 
-async function loadInitialCatalog(slug: string): Promise<InitialCatalog | undefined> {
+async function loadInitialCatalog(slug: string): Promise<{ catalog: InitialCatalog; revision: string | null } | undefined> {
   try {
     const { GET } = await import("@/app/api/catalog/route");
     const incoming = await headers();
@@ -94,8 +96,11 @@ async function loadInitialCatalog(slug: string): Promise<InitialCatalog | undefi
       headers: { "user-agent": incoming.get("user-agent") ?? "", cookie: incoming.get("cookie") ?? "" },
     }));
     if (!response.ok) return undefined;
+    const revision = response.headers.get(CATALOG_REVISION_HEADER);
     const data = (await response.json()) as { product?: InitialCatalog["product"]; variantsEnabled?: boolean };
-    return data.product ? { slug, product: data.product, variantsEnabled: data.variantsEnabled === true } : undefined;
+    return data.product
+      ? { catalog: { slug, product: data.product, variantsEnabled: data.variantsEnabled === true }, revision }
+      : undefined;
   } catch {
     return undefined;
   }
@@ -164,12 +169,15 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     }
   } catch { /* abaikan — lanjut render normal */ }
   if (winnerSlug) redirect(`/produk/${winnerSlug}`);
-  const [product, initialProducts, initialCatalog] = await Promise.all([
+  const [product, initialProductsResult, initialCatalogResult] = await Promise.all([
     getSeoProduct(slug).catch(() => null),
     loadInitialProducts(slug),
     loadInitialCatalog(slug),
   ]);
   if (!product) return notFound();
+  const initialProducts = initialProductsResult?.products;
+  const initialCatalog = initialCatalogResult?.catalog;
+  const initialRevision = initialCatalogResult?.revision ?? initialProductsResult?.revision ?? null;
   const locale = await requestLocale();
   const canonical = `${SITE_BASE}/produk/${slug}`;
   const seoProduct = { ...product, name: productDisplayName({ name: product.name, nameEn: product.nameEn }, locale), ...(locale === "en" && product.descriptionEn?.trim() ? { description: product.descriptionEn } : {}) };
@@ -191,7 +199,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           sr-only hanya cadangan bila seed gagal (klien mulai dari skeleton). */}
       {!initialProducts && <h1 className="sr-only">{product.name}</h1>}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd }} />
-      <ProductDetailClient slug={slug} initialProducts={initialProducts} initialCatalog={initialCatalog} />
+      <ProductDetailClient slug={slug} initialProducts={initialProducts} initialCatalog={initialCatalog} initialRevision={initialRevision} />
     </>
   );
 }

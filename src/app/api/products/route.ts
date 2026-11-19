@@ -263,14 +263,11 @@ async function readProducts(req: NextRequest) {
       sortOrder: r.sort_order == null ? 0 : Number(r.sort_order),
     };
   });
-  // PDP by-slug dibaca tepat setelah ada yang beli (2026-10-02): cache
-  // 30 detik terlalu basi untuk angka stok (insiden Head 18 Bulan).
-  // Daftar katalog tetap 30 detik; hanya ?slug= yang 10 detik.
+  // Edge cache (120 dtk slug / 300 dtk daftar) diinvalidasi via catalog_revision_market;
+  // respons publik ke browser diset no-cache oleh cachePublicCatalog. Jalur admin tetap private, no-store.
   const cacheControl = !isPublicCatalog
     ? "private, no-store, max-age=0"
-    : slug
-      ? "public, max-age=5, s-maxage=10, stale-while-revalidate=30"
-      : "public, max-age=15, s-maxage=30, stale-while-revalidate=60";
+    : "public, no-cache";
   return NextResponse.json(
     { products: data, ...(isAdminRequest ? { counts: productTabCounts(data) } : {}) },
     {

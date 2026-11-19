@@ -1,4 +1,6 @@
-# HTML pages — short cache with revalidation so new deploys are picked up
+# Catatan Cloudflare Pages: aturan _headers HANYA berlaku untuk aset statis CDN;
+# respons Pages Functions (halaman SSR dan /api/*) memakai header langsung dari handler.
+# HTML pages (static fallback only)
 /
   Cache-Control: no-cache, must-revalidate
 /admin
@@ -32,7 +34,6 @@
   X-Content-Type-Options: nosniff
   Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'
 
-# Safe fallback. Dynamic Edge handlers set their own Cache-Control headers;
-# public caching must not be applied here because /api/products also serves admin.
+# Static fallback only (Pages Functions /api/* sets Cache-Control in each route handler).
 /api/*
   Cache-Control: no-store

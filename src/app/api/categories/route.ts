@@ -20,7 +20,7 @@ async function readCategories(req: NextRequest) {
   const rows = await queryAll("SELECT c.*, COUNT(p.id) AS product_count FROM categories c LEFT JOIN products p ON p.category_id=c.id GROUP BY c.id ORDER BY c.sort_order, c.name, c.id");
   return NextResponse.json(
     { categories: rows },
-    { headers: { "Cache-Control": wantAll ? "private, no-store" : "public, max-age=60, s-maxage=60, stale-while-revalidate=120" } }
+    { headers: { "Cache-Control": wantAll ? "private, no-store" : "public, no-cache" } }
   );
 }
 const input=z.object({

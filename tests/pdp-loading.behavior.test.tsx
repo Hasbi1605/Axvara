@@ -66,14 +66,14 @@ describe("PDP loading", () => {
     render(<ProductDetailClient slug="netflix-premium" initialProducts={[product]} initialCatalog={catalog as never} />);
     expect(screen.getAllByText("Netflix Premium").length).toBeGreaterThan(0);
     expect(screen.queryByText("Memuat detail produk…")).toBeNull();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() => expect(fetchMock.mock.calls.some((call) => String((call as unknown[])[0]).includes("cat=streaming"))).toBe(true));
     const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
-    expect(urls.some((u) => u.startsWith("/api/catalog"))).toBe(false);
+    expect(urls.some((u) => u.startsWith("/api/catalog?") || u === "/api/catalog")).toBe(false);
     expect(urls.some((u) => u.includes("slug="))).toBe(false);
-    // Hanya "Produk Serupa" yang masih diambil klien: 1 request kategori
-    // sama, tanpa fetch katalog penuh (4 ready ≥ ambang 4).
-    expect(urls).toHaveLength(1);
-    expect(urls[0]).toContain("cat=streaming");
+    // Hanya "Produk Serupa" (+ cek revisi ringan saat mount), tanpa fetch detail/varian produk.
+    const nonRevision = urls.filter((u) => !u.startsWith("/api/catalog/revision"));
+    expect(nonRevision).toHaveLength(1);
+    expect(nonRevision[0]).toContain("cat=streaming");
   });
 
   it("Produk Serupa: stok habis tidak tampil; fallback katalog lain bila < 4", async () => {

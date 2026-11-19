@@ -119,13 +119,13 @@ describe("revisioned catalog cache & memoization", () => {
       Response.json({ loads: ++loads }, { headers: { "Cache-Control": "public, max-age=15, s-maxage=30" } }),
     "market");
     expect(r1.headers.get("X-Axvara-Cache")).toBe("MISS");
-    expect(r1.headers.get("Cache-Control")).toBe("public, max-age=15, s-maxage=30");
+    expect(r1.headers.get("Cache-Control")).toBe("no-cache");
     expect([...cache.entries.keys()][0]).toMatch(/^https:\/\/axvara\.tech\/__catalog-cache\/d1-v2\/market\/0\/products:list$/);
 
     const qAfterMiss = fixture.control.queries;
     const r2 = await cachePublicCatalog("products:list", 300, async () => Response.json({ loads: ++loads }), "market");
     expect(r2.headers.get("X-Axvara-Cache")).toBe("HIT");
-    expect(r2.headers.get("Cache-Control")).toBe("public, max-age=15, s-maxage=30");
+    expect(r2.headers.get("Cache-Control")).toBe("no-cache");
     expect(fixture.control.queries).toBe(qAfterMiss);
 
     // Concurrent reads after 5s memo expiry coalesce into 1 D1 query

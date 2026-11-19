@@ -35,10 +35,8 @@ export async function GET(request: Request) {
           variantsEnabled: isD1Mode() && isVariantsReadEnabled(),
         }, {
           headers: {
-            // Slug PDP dibaca pembeli tepat setelah ada yang beli (2026-10-02):
-            // 30 detik terlalu basi untuk angka stok (insiden Head 18 Bulan).
-            // Edge cache 120 dtk diinvalidasi via catalog_revision_market; browser 5/10 dtk + SWR 30.
-            "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
+            // Edge cache 120 dtk diinvalidasi via catalog_revision_market; browser no-cache (diatur cachePublicCatalog).
+            "Cache-Control": "public, no-cache",
           },
         });
       }
@@ -49,7 +47,7 @@ export async function GET(request: Request) {
         variantsEnabled: isD1Mode() && isVariantsReadEnabled(),
       }, {
         headers: {
-          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+          "Cache-Control": "public, no-cache",
         },
       });
     },

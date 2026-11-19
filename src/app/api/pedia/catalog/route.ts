@@ -1,5 +1,6 @@
 // GET /api/pedia/catalog — Katalog publik (PD-01/03, §9.7).
-// Publik, cache CDN 60 dtk. HANYA produk + tingkat AKTIF.
+// Publik, edge cache 300 dtk (invalidasi via catalog_revision_pedia), browser no-cache.
+// HANYA produk + tingkat AKTIF.
 // TIDAK PERNAH memuat supplier_service_id, nama layanan supplier, rate,
 // atau supplier_order_id (AC-16 — dikunci test snapshot).
 import { NextResponse } from "next/server";
@@ -258,6 +259,6 @@ async function readCatalog() {
   return NextResponse.json({ ok: true, products: out }, {
     headers: failed
       ? { "Cache-Control": "no-store" }
-      : { "CDN-Cache-Control": "max-age=60", "Cache-Control": "public, max-age=30" },
+      : { "Cache-Control": "public, no-cache" },
   });
 }
