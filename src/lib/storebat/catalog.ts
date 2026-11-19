@@ -2,6 +2,7 @@ import type { DatabaseAccess } from "@/lib/db-access";
 import { catalogFailureRecorder, catalogWriteFailure, recordSyncError } from "@/lib/sync-status";
 import { bumpCatalogRevision } from "@/lib/catalog-cache";
 import { mapSkCategory } from "@/lib/sekalipay/sync";
+import { buildSupplierProductInsertSql } from "@/lib/supplier/product-insert";
 import { isStorebatConfigured, isStorebatSyncEnabled, STOREBAT_BUFF_ID } from "./client";
 import { STOREBAT_COPY } from "./copy";
 import { storebatDefaultDescription, storebatFamily, storebatSellPrice } from "./families";
@@ -48,12 +49,16 @@ export async function projectStorebatCatalog(db: DatabaseAccess, fx: number, lea
     d1.prepare(`INSERT INTO operation_guards(operation_id,valid) SELECT ?,NOT EXISTS(
       SELECT 1 FROM json_each(?) j JOIN product_variants v ON v.id=j.value->>'variant_id'
       WHERE v.storebat_admin_price_idr IS NOT (j.value->>'manual_price') OR v.storebat_markup_percent IS NOT (j.value->>'markup_cas'))`).bind(`${guard}:inputs`,json),
-    d1.prepare(`INSERT INTO products(category_id,name,slug,description,description_en,price,image_url,stock,is_active,source,fulfillment_mode,telegram_enabled,storebat_family)
-      SELECT COALESCE((SELECT id FROM categories WHERE id=j.value->>'category'),(SELECT id FROM categories ORDER BY id LIMIT 1)),
-      j.value->>'name',j.value->>'slug',j.value->>'description',j.value->>'description_en',MIN(j.value->>'price'),
-      COALESCE((SELECT p.image_url FROM json_each(j.value->'images') i JOIN products p ON p.slug=i.value WHERE NULLIF(p.image_url,'') IS NOT NULL ORDER BY CAST(i.key AS INTEGER) LIMIT 1),j.value->>'imageUrl'),
-      0,0,'manual','manual',1,j.value->>'key' FROM json_each(?) j WHERE j.value->>'create'=1 GROUP BY j.value->>'key'
-      ON CONFLICT DO NOTHING`).bind(json),
+    d1.prepare(
+      buildSupplierProductInsertSql({
+        familyColumn: "storebat_family",
+        hasDescriptionEn: true,
+        whereFilter: "WHERE j.value->>'create'=1",
+        imageExpr:
+          "COALESCE((SELECT p.image_url FROM json_each(j.value->'images') i JOIN products p ON p.slug=i.value WHERE NULLIF(p.image_url,'') IS NOT NULL ORDER BY CAST(i.key AS INTEGER) LIMIT 1),j.value->>'imageUrl')",
+        conflictMode: "on_conflict_do_nothing",
+      }),
+    ).bind(json),
     d1.prepare(`INSERT INTO product_variants(product_id,sku,label,price,stock,fulfillment_mode,is_active,storebat_product_id,storebat_markup_percent,storebat_cost_usd,storebat_fx_idr_per_usd,max_qty,buyer_field_key,admin_terms,admin_terms_en,admin_activation,admin_activation_en)
       SELECT p.id,${STOREBAT_SKU_SQL("j.value->>'id'")},j.value->>'label',j.value->>'price',j.value->>'stock','manual',0,j.value->>'id',j.value->>'markup',j.value->>'cost',j.value->>'fx',j.value->>'max_qty',j.value->>'buyer_field',j.value->>'admin_terms',j.value->>'admin_terms_en',j.value->>'admin_activation',j.value->>'admin_activation_en'
       FROM json_each(?) j JOIN products p ON p.storebat_family=j.value->>'key' WHERE j.value->>'create'=1 AND p.archived_at IS NULL AND ${owned}

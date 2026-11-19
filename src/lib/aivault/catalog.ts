@@ -1,6 +1,7 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import { catalogFailureRecorder, catalogWriteFailure, recordSyncError, recordSyncSuccess } from "@/lib/sync-status";
 import { mapSkCategory } from "@/lib/sekalipay/sync";
+import { buildSupplierProductInsertSql } from "@/lib/supplier/product-insert";
 import { isAivaultConfigured, isAivaultSyncEnabled } from "./client";
 import { AIVAULT_CATALOG_MIN_INTERVAL_MS, syncAivaultCatalog } from "./sync";
 import { aivaultFamily, aivaultSellPrice, aivaultDefaultDescription } from "./families";
@@ -42,11 +43,16 @@ export async function projectAivaultCatalog(db: DatabaseAccess, fx: number) {
       bulk_markup:bulkMarkupRaw, bulk_enabled:bulkEnabled, bulk_tiers:bulkTiersJson };
   });
   const json = JSON.stringify(rows);
-  const newProdRes = await db.execRun(`INSERT OR IGNORE INTO products(category_id,name,slug,description,price,image_url,stock,is_active,source,fulfillment_mode,telegram_enabled,aivault_family)
-    SELECT COALESCE((SELECT id FROM categories WHERE id=json_extract(j.value,'$.category')),(SELECT id FROM categories ORDER BY id LIMIT 1)),
-      json_extract(j.value,'$.name'),json_extract(j.value,'$.slug'),json_extract(j.value,'$.description'),MIN(json_extract(j.value,'$.price')),
-      (SELECT p.image_url FROM json_each(json_extract(j.value,'$.images')) i JOIN products p ON p.slug=i.value WHERE p.image_url IS NOT NULL AND p.image_url<>'' ORDER BY CAST(i.key AS INTEGER) LIMIT 1),
-      0,0,'manual','manual',1,json_extract(j.value,'$.key') FROM json_each(?) j WHERE NOT EXISTS(SELECT 1 FROM products p WHERE p.aivault_family=json_extract(j.value,'$.key')) GROUP BY json_extract(j.value,'$.key')`, json);
+  const newProdRes = await db.execRun(
+    buildSupplierProductInsertSql({
+      familyColumn: "aivault_family",
+      hasDescriptionEn: false,
+      imageExpr:
+        "(SELECT p.image_url FROM json_each(json_extract(j.value,'$.images')) i JOIN products p ON p.slug=i.value WHERE p.image_url IS NOT NULL AND p.image_url<>'' ORDER BY CAST(i.key AS INTEGER) LIMIT 1)",
+      conflictMode: "insert_or_ignore",
+    }),
+    json,
+  );
   // Match explicit family ownership, never appropriate an existing WR/SK/TUNVN product by name/slug.
   await db.execRun(`UPDATE aivault_products SET axvara_product_id=(SELECT p.id FROM products p JOIN json_each(?) j ON p.aivault_family=json_extract(j.value,'$.key')
     WHERE json_extract(j.value,'$.service_id')=aivault_products.service_id AND p.source='manual' AND p.fulfillment_mode='manual' AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0)

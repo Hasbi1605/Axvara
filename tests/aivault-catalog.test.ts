@@ -142,3 +142,48 @@ it("publishes derived bulk pricing tiers and caps max_qty at 100 without adding 
     bulk_pricing_tiers:"[]",
   });
 });
+
+it("allocates distinct category-tail sort_order (+10 each after non-archived max) on new inserts and keeps existing sort_order on re-sync",async()=>{
+  f.sql.exec(`
+    INSERT INTO products(category_id,name,slug,price,is_active,sort_order) VALUES
+      (1,'Existing Cap','existing-cap',1000,1,500),
+      (1,'Archived Higher','archived-higher',1000,0,900);
+    UPDATE products SET archived_at=datetime('now') WHERE slug='archived-higher';
+    INSERT INTO products(category_id,name,slug,price,is_active,sort_order,source,fulfillment_mode,aivault_family) VALUES
+      (1,'Existing AIVault','gemini-plus-av',1000,1,42,'manual','manual','gemini');
+  `);
+  const db=createDatabaseAccess(f.db);
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({
+    currency:"USD",
+    products:[
+      upstream("service_gemini_plus_6m"),
+      {...upstream("service_chatgpt_plus_1m"),name:"ChatGPT Plus 1 Month"},
+      {...upstream("service_claude_extra"),name:"Claude Pro Extra"},
+    ],
+  }));
+  expect(await publishAivaultCatalog(db,20000,{force:true})).toMatchObject({ok:true});
+  expect(
+    f.sql.prepare("SELECT aivault_family, sort_order FROM products WHERE aivault_family IS NOT NULL ORDER BY sort_order ASC").all(),
+  ).toEqual([
+    {aivault_family:"gemini",sort_order:42},
+    {aivault_family:"chatgpt-plus",sort_order:510},
+    {aivault_family:"service:service_claude_extra",sort_order:520},
+  ]);
+
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({
+    currency:"USD",
+    products:[
+      upstream("service_gemini_plus_6m"),
+      {...upstream("service_chatgpt_plus_1m"),name:"ChatGPT Plus 1 Month"},
+      {...upstream("service_claude_extra"),name:"Claude Pro Extra"},
+    ],
+  }));
+  expect(await publishAivaultCatalog(db,22000,{force:true})).toMatchObject({ok:true});
+  expect(
+    f.sql.prepare("SELECT aivault_family, sort_order FROM products WHERE aivault_family IS NOT NULL ORDER BY sort_order ASC").all(),
+  ).toEqual([
+    {aivault_family:"gemini",sort_order:42},
+    {aivault_family:"chatgpt-plus",sort_order:510},
+    {aivault_family:"service:service_claude_extra",sort_order:520},
+  ]);
+});

@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { promoMessages, promoSlotAt, selectPromoProducts, sendDueAdminPromoDigest } from "@/lib/telegram/promo-digest";
+import { loadPromoProducts, promoMessages, promoSlotAt, selectPromoProducts, sendDueAdminPromoDigest } from "@/lib/telegram/promo-digest";
+import { createDatabaseAccess } from "@/lib/db-access";
+import { createD1Fixture } from "./helpers/d1-fixture";
+
 import type { DatabaseAccess } from "@/lib/db-access";
 
 vi.mock("@/lib/telegram/api", () => ({ sendMessage: vi.fn() }));
@@ -189,5 +192,60 @@ describe("Telegram promo digest", () => {
     expect(sendMessage).toHaveBeenCalledTimes(2);
     expect(vi.mocked(sendMessage).mock.calls[0][0].parse_mode).toBe("HTML");
     expect(vi.mocked(sendMessage).mock.calls[1][0].parse_mode).toBeUndefined();
+  });
+
+  it("loadPromoProducts mengurutkan kategori sesuai categories.sort_order (lalu nama/id), produk urut sort_order lalu id, tanpa kategori terakhir", async () => {
+    const f = createD1Fixture();
+    try {
+      f.sql.exec(`
+        DELETE FROM categories;
+        INSERT INTO categories(id,name,slug,sort_order) VALUES
+          (1,'AI & Chatbot','ai-chatbot',1),
+          (5,'Desain & Video','desain-video',4),
+          (6,'Developer & Tools','developer-tools',5),
+          (9,'Zeta SameOrder','zeta',2),
+          (8,'Alpha SameOrder','alpha',2);
+        INSERT INTO products(id,category_id,name,slug,price,is_active,sort_order) VALUES
+          (416,6,'JetBrains Edu','jetbrains-edu',25000,1,0),
+          (102,1,'Claude Pro','claude-pro',95000,1,20),
+          (103,1,'ChatGPT Plus','chatgpt-plus',89000,1,10),
+          (101,1,'AI TieBreak','ai-tiebreak',75000,1,10),
+          (200,5,'Canva Pro','canva-pro',45000,1,5),
+          (301,9,'Zeta Tool','zeta-tool',15000,1,1),
+          (302,8,'Alpha Tool','alpha-tool',12000,1,2),
+          (999,NULL,'Uncategorized Tool','uncat',5000,1,0);
+        INSERT INTO product_variants(product_id,sku,label,price,stock,is_active) VALUES
+          (416,'JB','1Y',25000,-1,1),
+          (102,'CL','1M',95000,5,1),
+          (103,'CG','1M',89000,5,1),
+          (101,'AT','1M',75000,5,1),
+          (200,'CV','1Y',45000,5,1),
+          (301,'ZT','1M',15000,5,1),
+          (302,'AL','1M',12000,5,1),
+          (999,'UC','1M',5000,5,1);
+      `);
+      const loaded = await loadPromoProducts(createDatabaseAccess(f.db));
+      expect(loaded.map((p) => p.id)).toEqual([101, 103, 102, 302, 301, 200, 416, 999]);
+      const { full, short } = promoMessages("evening", loaded);
+      for (const body of [full, short]) {
+        const aiPos = body.indexOf("AI");
+        const alphaPos = body.indexOf("ALPHA SAMEORDER");
+        const zetaPos = body.indexOf("ZETA SAMEORDER");
+        const desainPos = body.indexOf("DESAIN");
+        const devPos = body.indexOf("DEVELOPER");
+        const uncatPos = body.indexOf("PRODUK PREMIUM");
+        expect(aiPos).toBeGreaterThan(-1);
+        expect(aiPos).toBeLessThan(alphaPos);
+        expect(alphaPos).toBeLessThan(zetaPos);
+        expect(zetaPos).toBeLessThan(desainPos);
+        expect(desainPos).toBeLessThan(devPos);
+        expect(devPos).toBeLessThan(uncatPos);
+        // Inside AI & Chatbot: sort_order 10 (id 101 then id 103), then sort_order 20 (id 102)
+        expect(body.indexOf("AI TieBreak")).toBeLessThan(body.indexOf("ChatGPT Plus"));
+        expect(body.indexOf("ChatGPT Plus")).toBeLessThan(body.indexOf("Claude Pro"));
+      }
+    } finally {
+      f.close();
+    }
   });
 });

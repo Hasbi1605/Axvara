@@ -1,5 +1,9 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Urutan `sort_order` saat insert pertama — 19 November 2026 (lokal)
+
+- Insert produk baru di `projectAivaultCatalog` memakai `buildSupplierProductInsertSql` (`src/lib/supplier/product-insert.ts`) untuk mengalokasikan `sort_order` ekor kategori (`MAX(sort_order)` produk non-arsip kategori yang sama, default `0`, `+ 10 × rank`). Baris existing tidak pernah diubah `sort_order`-nya saat re-sync; migrasi data `0143_supplier_products_category_tail.sql` memindahkan baris lama `<= 0` ke ekor kategori (menjaga satu slot per `product_group`).
+
 ## Penyesuaian markup grosir proporsional — 19 November 2026 (lokal)
 
 - Simpan markup dasar (per varian atau bulk) tanpa input tier menskalakan tier tersimpan dengan `markup_lama_tier × markup_dasar_baru / markup_dasar_lama` bila harga efektif memakai rumus dan markup lama > 0. Pembulatan 2 desimal menjaga tier turun ketat dan di bawah dasar; tier yang tidak muat dibuang (semua pada dasar 0%). Input tier eksplisit tetap divalidasi seperti sebelumnya; harga manual yang tetap berlaku tidak mengubah markup tier.
