@@ -7,140 +7,122 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 // mempertahankan URUTAN pengecekan asli (pending WA → /start → label menu →
 // qty → search → /garansi → /pesanan → fallback). Pemindahan murni.
 
-import { sendMessage, sendPhoto, withLoadingIndicator } from "@/lib/telegram/api";
+import * as tgApi from "@/lib/telegram/api";
+import { sendMessage } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard, languageChooserKeyboard, currencyKeyboard, settingsKeyboard,
-  helpKeyboard, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
-  MENU_LABEL_CART, MENU_LABEL_EN,
+  helpKeyboard, mainReplyMenu, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS,
+  MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY, MENU_LABEL_CART, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import { welcomeMessage, helpMessage, warrantyFullMessage } from "@/lib/telegram/messages";
 import {
-  languageChooserMessage, welcomeMessageLocalized, settingsMessage,
+  languageChooserMessage, welcomeCaption, welcomeMessageLocalized, settingsMessage,
   currencyChooserMessage, resumePayloadMessage,
 } from "@/lib/telegram/messages/preferences";
 import { readTgPreferences, isValidTgLocale } from "@/lib/telegram/preferences";
+import { tgCtxFor } from "@/lib/telegram/render-prefs";
 import type { Locale } from "@/lib/i18n/locale";
-import { clearPayq1DraftForCancel, clearPendingAction, getBestsellers } from "./shared";
-import { handleShowCatalog } from "./catalog";
+import { clearPayq1DraftForCancel, clearPendingAction, getBestsellers, runInBackground, sendCachedPhoto } from "./shared";
+import { handleShowCatalog, handleShowProduct } from "./catalog";
 import {
-  handleSearchPrompt, handleMyOrders, handlePendingSearchInput,
+  handleSearchPrompt, handleSearchResults, handleMyOrders, handlePendingSearchInput,
   handlePendingQtyInput, handlePendingWaInput, handlePendingEmailInput,
 } from "./discovery";
 import { handleOrderStatus } from "./orders";
 import { handleShowCart } from "./cart";
+
+async function clearPendingUnlessCreating(from?: { id: number }) {
+  if (from) {
+    const { readPayq1State } = await import("@/lib/telegram/payment-quote");
+    const stored = await readPayq1State(String(from.id)).catch(() => null);
+    if (!stored?.state || stored.state.st !== "creating") {
+      await clearPendingAction(from);
+    }
+  } else {
+    await clearPendingAction(from);
+  }
+}
 
 export async function handleCommand(
   text: string,
   chatId: number,
   chatType: string,
   from?: { id: number; first_name: string; username?: string },
+  photoFileId?: string,
 ) {
-  const cmd = text.toLowerCase().split(/\s+/)[0].split("@")[0];
+  const trimmed = text.trim();
+  const cmd = trimmed.toLowerCase().split(/\s+/)[0]?.split("@")[0] ?? "";
 
   if ((cmd === '/stop' || cmd === '/siaran_on') && from && chatType === 'private' && chatId === from.id) {
     const { execRun } = await import('@/lib/db');
-    await execRun("UPDATE telegram_users SET broadcast_opt_out=? WHERE user_id=? AND chat_id=?",cmd==='/stop'?1:0,String(from.id),String(chatId));
-    await sendMessage({chat_id:chatId,text:cmd==='/stop'?'Siaran Telegram dihentikan. Notifikasi pesanan tetap berjalan. Kirim /siaran_on untuk berlangganan kembali.':'Siaran Telegram diaktifkan kembali. Kirim /stop untuk berhenti.'});
+    await execRun("UPDATE telegram_users SET broadcast_opt_out=? WHERE user_id=? AND chat_id=?", cmd === '/stop' ? 1 : 0, String(from.id), String(chatId));
+    await sendMessage({ chat_id: chatId, text: cmd === '/stop' ? 'Siaran Telegram dihentikan. Notifikasi pesanan tetap berjalan. Kirim /siaran_on untuk berlangganan kembali.' : 'Siaran Telegram diaktifkan kembali. Kirim /stop untuk berhenti.' });
     return;
   }
 
   // Cancel conversational input explicitly, before leaf slash-command filters.
-  // This clears own quoted/contact frozen offers too (explicit cancel only,
-  // exact-CAS). Durable `creating` intents are NEVER cleared here — R2 clears
-  // them only after a recoverable TX exists or the order is terminal.
-  // It does not cancel or mutate an order.
-  // COMMON clear/setPendingAction guard: every other flow that would blanket
-  // clear (language/settings/catalog/cart/search/help) preserves a durable
-  // creating intent the same way (quoted stays cancellable as before).
+  // Durable `creating` intents are NEVER cleared here — R2 clears them only
+  // after a recoverable TX exists or the order is terminal.
   if (cmd === "/batal") {
     const prefs = from ? await readTgPreferences(String(from.id)) : { locale: null };
     const locale = prefs.locale ?? "id";
     if (from) {
-      // Explicit cancel only: clear own payq1 when st is quoted/contact
-      // (exact-state CAS). Creating intent is retained here — /batal never
-      // silently discards a durable creating anchor (R2 clears it only after
-      // a recoverable TX exists or the order is terminal).
       await clearPayq1DraftForCancel(from);
       await clearPendingAction(from);
     } else {
       await clearPendingAction(from);
     }
-    await sendMessage({ chat_id: chatId, text: locale === "en" ? "Input cancelled. Choose a menu to continue." : "Input dibatalkan. Pilih menu untuk melanjutkan.", reply_markup: homeKeyboard(locale) });
+    await sendMessage({
+      chat_id: chatId,
+      text: locale === "en" ? "Input cancelled. Choose a menu below to continue." : "Input dibatalkan. Pilih menu di bawah untuk melanjutkan.",
+      reply_markup: mainReplyMenu(locale),
+    });
     return;
   }
 
-  // Check for pending WA input before processing commands
-  if (from && (!cmd.startsWith("/") || cmd === "/batal")) {
-    const handled = await handlePendingWaInput(text, chatId, from);
-    if (handled) return;
-  }
-
-  // TG1 /start gate: no saved valid locale => explicit chooser.
   async function sendTgHome(
-    chatId: number,
+    targetChatId: number,
     firstName: string,
     locale: Locale,
   ): Promise<void> {
-    const bestsellers = await getBestsellers(3);
-    const caption = welcomeMessageLocalized(locale, firstName, bestsellers);
+    const [bestsellers, ctx] = await Promise.all([
+      getBestsellers(3),
+      tgCtxFor(from?.id ?? targetChatId),
+    ]);
     const rawSite = (process.env.SITE_URL ?? "").trim().replace(/\/$/, "");
     const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
-    const photoUrl = `${siteUrl}/banners/tg-welcome.webp?v=20260928b`;
-    await sendPhotoSafe(chatId, photoUrl, caption);
-  }
+    const photoUrl = `${siteUrl}/banners/tg-welcome.jpg?v=20261119`;
 
-  async function sendPhotoSafe(chatId: number, photoUrl: string, caption: string): Promise<void> {
-    const prefs = from ? await readTgPreferences(String(from.id)).catch(() => ({ locale: null })) : { locale: null };
-    const locale = prefs.locale ?? "id";
-    let photoRes = await sendPhoto({
-      chat_id: chatId,
+    // Install persistent 3x2 reply keyboard on the welcome banner photo (never a junk bubble),
+    // followed by the welcome card message carrying inline bestsellers + action buttons.
+    await sendCachedPhoto({
+      chat_id: targetChatId,
       photo: photoUrl,
-      caption,
+      caption: welcomeCaption(locale),
       parse_mode: "HTML",
-      reply_markup: homeKeyboard(locale),
+      reply_markup: mainReplyMenu(locale),
+    }).catch(() => {});
+
+    await sendMessage({
+      chat_id: targetChatId,
+      text: welcomeMessageLocalized(locale, firstName, bestsellers),
+      parse_mode: "HTML",
+      reply_markup: homeKeyboard(locale, bestsellers, ctx),
     });
-    if (!photoRes.ok) {
-      photoRes = await sendPhoto({
-        chat_id: chatId,
-        photo: photoUrl,
-        caption,
-        parse_mode: "HTML",
-        reply_markup: homeKeyboard(locale),
-      });
-    }
-    if (!photoRes.ok) {
-      await sendMessage({
-        chat_id: chatId,
-        text: caption,
-        parse_mode: "HTML",
-        reply_markup: homeKeyboard(locale),
-      });
-    }
   }
 
   if (cmd === "/start") {
     if (await notifyPaymentMaintenance(chatId)) return;
-    return withLoadingIndicator(chatId, "🚀 Menyiapkan AXVARA", async (beforeResult) => {
-    // /start + /language ordinary clear paths MUST NOT erase a durable
-    // creating intent blindly: preserve quoted-invalid-vs-creating semantics
-    // with the minimal guard — clear only when NOT a creating anchor (no
-    // onboarding refactor, no generic state framework).
-    if (from) {
-      const { readPayq1State } = await import("@/lib/telegram/payment-quote");
-      const stored = await readPayq1State(String(from.id)).catch(() => null);
-      if (!stored?.state || stored.state.st !== "creating") {
-        await clearPendingAction(from);
-      }
-    } else {
-      await clearPendingAction(from);
+    if (typeof tgApi.sendChatAction === "function") {
+      runInBackground(tgApi.sendChatAction(chatId, "typing"));
     }
-    const rawPayload = text.split(/\s+/).slice(1).join(" ").trim();
+    await clearPendingUnlessCreating(from);
+    const rawPayload = trimmed.split(/\s+/).slice(1).join(" ").trim();
     const { normalizeStartPayload, saveOnboardingPayload } = await import("@/lib/telegram/preferences");
     const payload = normalizeStartPayload(rawPayload);
     const prefs = from ? await readTgPreferences(String(from.id)) : { locale: null, currency: null };
     if (!prefs.locale) {
       if (from) await saveOnboardingPayload(String(from.id), payload);
-      await beforeResult();
       await sendMessage({
         chat_id: chatId,
         text: languageChooserMessage(),
@@ -149,8 +131,18 @@ export async function handleCommand(
       });
       return;
     }
+    if (payload) {
+      const prdMatch = /^prd_(\d+)$/i.exec(payload);
+      if (prdMatch) {
+        await handleShowProduct(chatId, 0, Number(prdMatch[1]), from);
+        return;
+      }
+      if (from) {
+        const { handleExtraStartPayload } = await import("./extras");
+        if (await handleExtraStartPayload(payload, chatId, from)) return;
+      }
+    }
     const firstName = from?.first_name ?? "Pengguna";
-    await beforeResult();
     await sendTgHome(chatId, firstName, prefs.locale);
     if (payload) {
       await sendMessage({
@@ -159,13 +151,11 @@ export async function handleCommand(
         parse_mode: "HTML",
       });
     }
-    });
+    return;
   }
 
   // TG1: /language changes locale ONLY (currency untouched); /currency
   // changes currency ONLY (locale untouched); /settings shows both.
-  // COMMON guard: the language/settings surface preserves creating (quoted
-  // choices still re-render after save — creating anchor never cleared).
   if ((cmd === "/language" || cmd === "/bahasa" || cmd === "/settings") && from && chatType === "private" && chatId === from.id) {
     const prefs = await readTgPreferences(String(from.id));
     if (!prefs.locale) {
@@ -178,15 +168,21 @@ export async function handleCommand(
       return;
     }
     if (cmd === "/language") {
-        const parts = text.split(/\s+/).slice(1);
-        const want = parts[0]?.toLowerCase();
-        if (want && isValidTgLocale(want)) {
-          const { saveTgLocaleOnly } = await import("@/lib/telegram/preferences");
-          await saveTgLocaleOnly(String(from.id), want);
-          const { tgPrefText } = await import("@/lib/telegram/messages/preferences");
-          await sendMessage({ chat_id: chatId, text: tgPrefText(want, "language_saved"), parse_mode: "HTML", reply_markup: homeKeyboard(want) });
-          return;
-        }
+      const parts = trimmed.split(/\s+/).slice(1);
+      const want = parts[0]?.toLowerCase();
+      if (want && isValidTgLocale(want)) {
+        const { saveTgLocaleOnly } = await import("@/lib/telegram/preferences");
+        await saveTgLocaleOnly(String(from.id), want);
+        const { tgPrefText } = await import("@/lib/telegram/messages/preferences");
+        const [bestsellers, ctx] = await Promise.all([getBestsellers(3), tgCtxFor(from.id)]);
+        await sendMessage({
+          chat_id: chatId,
+          text: tgPrefText(want, "language_saved"),
+          parse_mode: "HTML",
+          reply_markup: homeKeyboard(want, bestsellers, ctx),
+        });
+        return;
+      }
       await sendMessage({
         chat_id: chatId,
         text: languageChooserMessage(),
@@ -224,7 +220,7 @@ export async function handleCommand(
       });
       return;
     }
-    const parts = text.split(/\s+/).slice(1);
+    const parts = trimmed.split(/\s+/).slice(1);
     const want = parts[0]?.toUpperCase();
     const { isValidTgCurrency, saveTgCurrencyChoice } = await import("@/lib/telegram/preferences");
     const { tgPrefText } = await import("@/lib/telegram/messages/preferences");
@@ -233,7 +229,6 @@ export async function handleCommand(
       await sendMessage({ chat_id: chatId, text: tgPrefText(prefs.locale, "currency_saved"), parse_mode: "HTML" });
       return;
     }
-    // No/invalid argument: open the dedicated picker with the saved value.
     await sendMessage({
       chat_id: chatId,
       text: currencyChooserMessage(prefs.locale, prefs.currency),
@@ -243,114 +238,38 @@ export async function handleCommand(
     return;
   }
 
-  // Persistent reply-menu taps arrive as plain text — route them like commands.
-  // Old ID keyboards keep routing; new EN labels route to the same targets.
-  // TG2a: help answers in the saved locale.
-  // COMMON guard (creating-preserve) applies to catalog/search/orders/cart/help
-  // menu taps below: quoted stays clearable, creating never blanket-cleared.
-  if (text === MENU_LABEL_CATALOG || text === MENU_LABEL_EN.catalog || cmd === "/katalog") {
-    if (from) {
-      const { readPayq1State } = await import("@/lib/telegram/payment-quote");
-      const storedMenu = await readPayq1State(String(from.id)).catch(() => null);
-      if (!storedMenu?.state || storedMenu.state.st !== "creating") {
-        await clearPendingAction(from);
-      }
-    } else {
-      await clearPendingAction(from);
-    }
+  // Slash commands first (before pending input & free-text search).
+  if (cmd === "/katalog") {
+    await clearPendingUnlessCreating(from);
     await handleShowCatalog(chatId, from);
     return;
   }
 
-  if (text === MENU_LABEL_SEARCH || text === MENU_LABEL_EN.search || cmd === "/cari" || cmd === "/search") {
-    if (from) {
-      const { readPayq1State } = await import("@/lib/telegram/payment-quote");
-      const storedMenu = await readPayq1State(String(from.id)).catch(() => null);
-      if (!storedMenu?.state || storedMenu.state.st !== "creating") {
-        await clearPendingAction(from);
-      }
+  if (cmd === "/cari" || cmd === "/search") {
+    await clearPendingUnlessCreating(from);
+    const searchArg = trimmed.replace(/^\/(?:cari|search)(?:@\S+)?/i, "").trim();
+    if (searchArg.length >= 2) {
+      await handleSearchResults(chatId, searchArg, from);
     } else {
-      await clearPendingAction(from);
+      await handleSearchPrompt(chatId, from);
     }
-    await handleSearchPrompt(chatId, from);
     return;
   }
 
-  if (text === MENU_LABEL_ORDERS || text === MENU_LABEL_EN.orders || cmd === "/orders" || cmd === "/riwayat") {
-    if (from) {
-      const { readPayq1State } = await import("@/lib/telegram/payment-quote");
-      const storedMenu = await readPayq1State(String(from.id)).catch(() => null);
-      if (!storedMenu?.state || storedMenu.state.st !== "creating") {
-        await clearPendingAction(from);
-      }
-    } else {
-      await clearPendingAction(from);
-    }
+  if (cmd === "/orders" || cmd === "/riwayat") {
+    await clearPendingUnlessCreating(from);
     await handleMyOrders(chatId, from);
     return;
   }
 
-  if (text === MENU_LABEL_CART || text === MENU_LABEL_EN.cart || cmd === "/cart" || cmd === "/keranjang") {
-    if (from) {
-      const { readPayq1State } = await import("@/lib/telegram/payment-quote");
-      const storedMenu = await readPayq1State(String(from.id)).catch(() => null);
-      if (!storedMenu?.state || storedMenu.state.st !== "creating") {
-        await clearPendingAction(from);
-      }
-    } else {
-      await clearPendingAction(from);
-    }
+  if (cmd === "/cart" || cmd === "/keranjang") {
+    await clearPendingUnlessCreating(from);
     await handleShowCart(chatId, 0, from);
     return;
   }
 
-  if (text === MENU_LABEL_HELP || text === MENU_LABEL_EN.help || cmd === "/bantuan" || cmd === "/help") {
-    if (from) {
-      const { readPayq1State } = await import("@/lib/telegram/payment-quote");
-      const storedMenu = await readPayq1State(String(from.id)).catch(() => null);
-      if (!storedMenu?.state || storedMenu.state.st !== "creating") {
-        await clearPendingAction(from);
-      }
-    } else {
-      await clearPendingAction(from);
-    }
-    const locale = from ? (await readTgPreferences(String(from.id)).catch(() => ({ locale: null as null }))).locale ?? "id" : "id";
-    await sendMessage({ chat_id: chatId, text: helpMessage({ locale }), parse_mode: "HTML", reply_markup: helpKeyboard({ locale }) });
-    return;
-  }
-
-  if (from && !cmd.startsWith("/")) {
-    const { handleBuyerInput } = await import("./buyer-input");
-    if (await handleBuyerInput(text,chatId,from)) return;
-  }
-  // Qty manual input: user typed a number while choosing qty (up to 100 for bulk)
-  if (from && /^\d{1,3}$/.test(cmd)) {
-    const handled = await handlePendingQtyInput(text, chatId, from);
-    if (handled) return;
-  }
-
-  // Email input: user menjawab prompt email_for: (produk Invite/Link WR atau
-  // require_email). Dicek SEBELUM search agar alamat email tidak dianggap
-  // kata kunci pencarian. R2: payq1 contact.phone input checked FIRST —
-  // phone digits must never be mistaken for qty/search/email flows.
-  if (from && !cmd.startsWith("/")) {
-    const { handlePayq1PhoneInput } = await import("./payment-contact");
-    const handledPhone = await handlePayq1PhoneInput(text, chatId, from).catch(() => false);
-    if (handledPhone) return;
-  }
-  if (from && !cmd.startsWith("/")) {
-    const handledEmail = await handlePendingEmailInput(text, chatId, from);
-    if (handledEmail) return;
-  }
-
-  // Search text: user is answering the 🔎 Cari prompt (pending_action=search:).
-  if (from && !cmd.startsWith("/")) {
-    const handled = await handlePendingSearchInput(text, chatId, from);
-    if (handled) return;
-  }
-
   if (cmd === "/garansi") {
-    await clearPendingAction(from);
+    await clearPendingUnlessCreating(from);
     await sendMessage({
       chat_id: chatId,
       text: warrantyFullMessage(),
@@ -361,7 +280,7 @@ export async function handleCommand(
   }
 
   if (cmd === "/pesanan") {
-    const parts = text.split(/\s+/);
+    const parts = trimmed.split(/\s+/);
     if (parts.length >= 2) {
       await handleOrderStatus(chatId, parts[1], from?.id);
     } else {
@@ -370,15 +289,105 @@ export async function handleCommand(
     return;
   }
 
-  // Unknown command: show welcome in saved locale
-  const fallbackPrefs = from ? await readTgPreferences(String(from.id)).catch(() => ({ locale: null as null })) : { locale: null as null };
-  const fallbackLocale = fallbackPrefs.locale ?? "id";
+  if (cmd === "/bantuan" || cmd === "/help") {
+    await clearPendingUnlessCreating(from);
+    const locale = from ? (await readTgPreferences(String(from.id)).catch(() => ({ locale: null as null }))).locale ?? "id" : "id";
+    await sendMessage({ chat_id: chatId, text: helpMessage({ locale }), parse_mode: "HTML", reply_markup: helpKeyboard({ locale }) });
+    return;
+  }
+
+  // Persistent reply-menu labels routed BEFORE pending-input handlers so buyers are never trapped.
+  if (trimmed === MENU_LABEL_CATALOG || trimmed === MENU_LABEL_EN.catalog) {
+    await clearPendingUnlessCreating(from);
+    await handleShowCatalog(chatId, from);
+    return;
+  }
+
+  if (trimmed === MENU_LABEL_SEARCH || trimmed === MENU_LABEL_EN.search) {
+    await clearPendingUnlessCreating(from);
+    await handleSearchPrompt(chatId, from);
+    return;
+  }
+
+  if (
+    trimmed === MENU_LABEL_ORDERS ||
+    trimmed === MENU_LABEL_EN.orders ||
+    trimmed === "📦 Pesanan Saya" ||
+    trimmed === "📦 My Orders"
+  ) {
+    await clearPendingUnlessCreating(from);
+    await handleMyOrders(chatId, from);
+    return;
+  }
+
+  if (trimmed === MENU_LABEL_CART || trimmed === MENU_LABEL_EN.cart) {
+    await clearPendingUnlessCreating(from);
+    await handleShowCart(chatId, 0, from);
+    return;
+  }
+
+  if (trimmed === MENU_LABEL_WARRANTY || trimmed === MENU_LABEL_EN.warranty) {
+    await clearPendingUnlessCreating(from);
+    await sendMessage({
+      chat_id: chatId,
+      text: warrantyFullMessage(),
+      parse_mode: "HTML",
+      reply_markup: warrantyKeyboard(),
+    });
+    return;
+  }
+
+  if (
+    trimmed === MENU_LABEL_HELP ||
+    trimmed === MENU_LABEL_HELP_LEGACY ||
+    trimmed === MENU_LABEL_EN.help ||
+    trimmed === MENU_LABEL_EN.helpLegacy
+  ) {
+    await clearPendingUnlessCreating(from);
+    const locale = from ? (await readTgPreferences(String(from.id)).catch(() => ({ locale: null as null }))).locale ?? "id" : "id";
+    await sendMessage({ chat_id: chatId, text: helpMessage({ locale }), parse_mode: "HTML", reply_markup: helpKeyboard({ locale }) });
+    return;
+  }
+
+  // Existing pending-input handlers (only when non-empty non-slash text).
+  if (from && trimmed && !cmd.startsWith("/")) {
+    if (await handlePendingWaInput(trimmed, chatId, from)) return;
+    const { handleBuyerInput } = await import("./buyer-input");
+    if (await handleBuyerInput(trimmed, chatId, from)) return;
+    if (/^\d{1,3}$/.test(cmd)) {
+      if (await handlePendingQtyInput(trimmed, chatId, from)) return;
+    }
+    const { handlePayq1PhoneInput } = await import("./payment-contact");
+    if (await handlePayq1PhoneInput(trimmed, chatId, from).catch(() => false)) return;
+    if (await handlePendingEmailInput(trimmed, chatId, from)) return;
+    if (await handlePendingSearchInput(trimmed, chatId, from)) return;
+  }
+
+  // Extras text / photo handler (e.g. claim proof upload).
+  if (from) {
+    const { handleExtraText } = await import("./extras");
+    if (await handleExtraText(trimmed, chatId, from, photoFileId)) return;
+  }
+
+  // Free-text search: plain text >= 2 chars directly searches catalog instead of dumping home.
+  if (!cmd.startsWith("/") && trimmed.length >= 2) {
+    await handleSearchResults(chatId, trimmed, from);
+    return;
+  }
+
+  if (photoFileId && !trimmed) return;
+
+  // Unknown command or single-character message: show welcome in saved locale.
+  const [fallbackCtx, bestsellers] = await Promise.all([
+    tgCtxFor(from?.id ?? chatId).catch(() => ({ locale: "id" as const, displayCurrency: null, fx: null })),
+    getBestsellers(3),
+  ]);
   await sendMessage({
     chat_id: chatId,
-    text: fallbackLocale === "en"
-      ? welcomeMessageLocalized(fallbackLocale, from?.first_name ?? "Pengguna", await getBestsellers(3))
-      : welcomeMessage(from?.first_name ?? "Pengguna", await getBestsellers(3)),
+    text: fallbackCtx.locale === "en"
+      ? welcomeMessageLocalized(fallbackCtx.locale, from?.first_name ?? "Pengguna", bestsellers)
+      : welcomeMessage(from?.first_name ?? "Pengguna", bestsellers),
     parse_mode: "HTML",
-    reply_markup: homeKeyboard(fallbackLocale),
+    reply_markup: homeKeyboard(fallbackCtx.locale, bestsellers, fallbackCtx),
   });
 }

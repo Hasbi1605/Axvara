@@ -18,12 +18,22 @@ export interface TelegramChat {
   username?: string;
 }
 
+export interface TelegramPhotoSize {
+  file_id: string;
+  file_unique_id?: string;
+  width?: number;
+  height?: number;
+  file_size?: number;
+}
+
 export interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
   chat: TelegramChat;
   date: number;
   text?: string;
+  caption?: string;
+  photo?: TelegramPhotoSize[];
   entities?: TelegramMessageEntity[];
 }
 
@@ -50,6 +60,7 @@ export interface InlineKeyboardButton {
   text: string;
   callback_data?: string;
   url?: string;
+  style?: "primary" | "success" | "danger";
 }
 
 export interface InlineKeyboardMarkup {
@@ -101,6 +112,20 @@ export interface EditMessageTextParams {
   parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
   reply_markup?: InlineKeyboardMarkup;
   disable_web_page_preview?: boolean;
+}
+
+export interface InputMediaPhoto {
+  type: "photo";
+  media: string;
+  caption?: string;
+  parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
+}
+
+export interface EditMessageMediaParams {
+  chat_id: number | string;
+  message_id: number;
+  media: InputMediaPhoto;
+  reply_markup?: InlineKeyboardMarkup;
 }
 
 export interface TelegramApiResponse<T = unknown> {

@@ -19,12 +19,12 @@ vi.mock("@/lib/telegram/api", () => ({
 
 import { sendMessage } from "@/lib/telegram/api";
 import { handleCommand } from "@/lib/telegram/handlers/command";
-import { buttonPrice, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH } from "@/lib/telegram/keyboards";
+import { buttonPrice, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_WARRANTY, MENU_LABEL_HELP } from "@/lib/telegram/keyboards";
 import { invalidWhatsAppMessage } from "@/lib/telegram/messages";
 
-describe("T-M3: label harga tombol tidak lagi membulatkan", () => {
-  it("ribuan tepat tetap ringkas, selain itu nominal utuh", () => {
-    expect(buttonPrice(89_000)).toBe("Rp89rb");
+describe("T-M3: label harga tombol memakai format titik penuh", () => {
+  it("nominal utuh dengan pemisah titik tanpa singkatan rb", () => {
+    expect(buttonPrice(89_000)).toBe("Rp89.000");
     expect(buttonPrice(7_500)).toBe("Rp7.500");
     expect(buttonPrice(1_500)).toBe("Rp1.500");
     expect(buttonPrice(14_999)).toBe("Rp14.999");
@@ -54,7 +54,7 @@ describe("T-M4: pending wa_after_paid tidak menelan tombol menu", () => {
   const repliedInvalidWa = () =>
     vi.mocked(sendMessage).mock.calls.some(([params]) => params.text === invalidWhatsAppMessage());
 
-  it.each([MENU_LABEL_CATALOG, MENU_LABEL_SEARCH])("tombol menu %s dijalankan, bukan dibalas 'Nomor WA tidak valid'", async (label) => {
+  it.each([MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_WARRANTY, MENU_LABEL_HELP])("tombol menu %s dijalankan, bukan dibalas 'Nomor WA tidak valid'", async (label) => {
     await handleCommand(label, 4242, "private", from);
     expect(repliedInvalidWa()).toBe(false);
     expect(vi.mocked(sendMessage)).toHaveBeenCalled();

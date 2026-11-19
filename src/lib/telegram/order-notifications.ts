@@ -621,7 +621,7 @@ export const WEB_PAID_ADMIN_PENDING_WHERE = `o.sales_channel='web' AND o.status=
  * satu gerbang "created IS NULL". `only` memungkinkan cron memanggil tiap
  * jenis hanya bila antreannya > 0 (hemat query baca kosong, RR3-01).
  */
-export async function retryPendingTelegramNotifications(limit = 20, only?: {
+export async function retryPendingTelegramNotifications(limit = 50, only?: {
   created?: boolean; paid?: boolean; paidAdmin?: boolean; paidAdminWeb?: boolean;
 }, database: DatabaseAccess = createDatabaseAccess()): Promise<{
   created: number;
@@ -630,7 +630,8 @@ export async function retryPendingTelegramNotifications(limit = 20, only?: {
   paidAdminWeb: number;
 }> {
   const { queryAll } = database;
-  const max = Math.min(20, Math.max(0, Math.floor(Number(limit) || 0)));
+  // Workers Paid: cap per tick raised 20 -> 50 (still bounded as a runaway guard).
+  const max = Math.min(50, Math.max(0, Math.floor(Number(limit) || 0)));
   if (!max) return { created: 0, paid: 0, paidAdmin: 0, paidAdminWeb: 0 };
   const want = {
     created: only?.created ?? true,
@@ -718,7 +719,7 @@ export async function retryPendingTelegramNotifications(limit = 20, only?: {
 export const TELEGRAM_REMINDER_MAX = 2;
 export const TELEGRAM_REMINDER_INTERVAL_MINUTES = 60;
 
-export async function sendPendingOrderReminders(limit = 20, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
+export async function sendPendingOrderReminders(limit = 50, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
   const { queryAll, execRun } = database;
   if (!telegramNotificationsConfigured()) return 0;
   // Same canonical JS expiry check as webhook/crons: only invoices whose

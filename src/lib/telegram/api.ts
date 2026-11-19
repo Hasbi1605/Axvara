@@ -6,6 +6,7 @@ import type {
   SendMessageParams,
   SendPhotoParams,
   EditMessageTextParams,
+  EditMessageMediaParams,
   TelegramMessage,
   WebhookInfo,
 } from "./types";
@@ -65,6 +66,14 @@ export async function sendPhoto(params: SendPhotoParams): Promise<TelegramApiRes
 
 export async function editMessageText(params: EditMessageTextParams): Promise<TelegramApiResponse> {
   return callApi("editMessageText", params as unknown as Record<string, unknown>);
+}
+
+export async function editMessageMedia(params: EditMessageMediaParams): Promise<TelegramApiResponse<TelegramMessage>> {
+  return callApi<TelegramMessage>("editMessageMedia", params as unknown as Record<string, unknown>);
+}
+
+export async function deleteMessage(chatId: number | string, messageId: number): Promise<TelegramApiResponse> {
+  return callApi("deleteMessage", { chat_id: chatId, message_id: messageId });
 }
 
 /**

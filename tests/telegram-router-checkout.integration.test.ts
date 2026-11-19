@@ -8,7 +8,7 @@ import { getCartSummary } from "@/lib/telegram/cart";
 import { createChannelOrderAtomic } from "@/lib/commerce";
 import { transitionPendingOrder } from "@/lib/db";
 import { createActiveQrisInvoice } from "@/lib/payments/dana-qris";
-import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend, withLoadingIndicator, showLoadingBar } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto, sendChatAction, safeEditOrSend, withLoadingIndicator } from "@/lib/telegram/api";
 import type { SendMessageParams } from "@/lib/telegram/types";
 
 vi.mock("@/lib/telegram/api", () => ({
@@ -103,7 +103,8 @@ beforeEach(async () => {
   vi.mocked(sendPhoto).mockResolvedValue({ ok: true });
   vi.mocked(sendChatAction).mockResolvedValue({ ok: true });
   provider.mockImplementation(async (code, amount) => {
-    expect(showLoadingBar).toHaveBeenCalledWith(buyer.id, "💳 Memuat QRIS pembayaran");
+    // Item 6 (W-B): the invoice path no longer shows a loading bar, so this
+    // assertion was intentionally removed (no artificial UI latency).
     const expiresAt = new Date(Date.now() + 600_000).toISOString();
     const qrisUrl = `https://example.test/${code}.png`;
     fx.sql.prepare(`INSERT INTO payment_transactions
@@ -490,7 +491,7 @@ describe("Telegram callback ownership and cancellation", () => {
 describe("Telegram actual catalog labels, inventory and callback budgets", () => {
   it("uses the canonical Google Head 18Bulan label in product, quantity and cart without appending 1 month", async () => {
     await click("prd:1");
-    expect(withLoadingIndicator).toHaveBeenCalledWith(buyer.id, "📦 Memuat produk", expect.any(Function));
+    expect(withLoadingIndicator).not.toHaveBeenCalled();
     const product = edited();
     expect(product.text).toContain("Google Head 18Bulan");
     expect(product.text).not.toMatch(/1\s*(month|bulan)\b/i);
@@ -554,9 +555,10 @@ describe("Telegram terms pagination through callbacks", () => {
     for (let page = 0; page < 20; page++) {
       expect(visited.has(callback)).toBe(false);
       visited.add(callback);
+      edit.mockClear();
       send.mockClear();
       await click(callback);
-      expect(send).toHaveBeenCalledTimes(1);
+      expect(edit).toHaveBeenCalledTimes(1);
       const message = sent();
       expect(message.parse_mode).toBe("HTML");
       expect(message.text.length).toBeLessThanOrEqual(3900);
@@ -578,8 +580,8 @@ describe("Telegram terms pagination through callbacks", () => {
   });
 
   it("propagates failed terms sends instead of acknowledging an unread page", async () => {
-    send.mockResolvedValueOnce({ ok: false, description: "fixture send failed" });
+    edit.mockResolvedValueOnce({ ok: false, description: "fixture send failed" });
     await expect(click("terms:1:1")).rejects.toThrow("telegram_terms_send_failed");
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(edit).toHaveBeenCalledTimes(1);
   });
 });

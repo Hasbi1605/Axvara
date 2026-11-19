@@ -153,8 +153,10 @@ export async function resendTelegramCredentials(
     return 0;
   }
   const { normalizeAccountDetailsForDisplay } = await import("@/lib/warung-rebahan/deliver");
-  let sent = 0;
-  let transientFailed = 0;
+  // Decrypt every ready unit first so the multi-unit / long path can decide
+  // between ONE .txt file and the existing per-unit messages.
+  type PreparedUnit = { plaintext: string; productName: string; copy: ReturnType<typeof copies.get> };
+  const prepared: PreparedUnit[] = [];
   let missingStored = 0;
   for (const row of ready) {
     if (!row.delivered_ciphertext || !row.delivered_iv) {
@@ -170,16 +172,65 @@ export async function resendTelegramCredentials(
         missingStored++;
         continue;
       }
-      await sendTelegramCredentialParts(chatId, credentialMessages({
-        orderCode: code,
-        productName: orderLineLabel(order.items, Number(row.item_index ?? 0)),
-        plaintext,
-        copy: copies.get(Number(row.variant_id)),
-        locale,
-      }));
-      sent++;
+      prepared.push({ plaintext, productName: orderLineLabel(order.items, Number(row.item_index ?? 0)), copy: copies.get(Number(row.variant_id)) });
     } catch {
-      transientFailed++;
+      // Decryption failure is a transient item; handled below via transientFailed.
+      prepared.push({ plaintext: "", productName: orderLineLabel(order.items, Number(row.item_index ?? 0)), copy: copies.get(Number(row.variant_id)) });
+    }
+  }
+  let sent = 0;
+  let transientFailed = 0;
+  const renderable = prepared.filter(unit => unit.plaintext.trim());
+  transientFailed += prepared.length - renderable.length;
+  // Item 14: one .txt for multi-unit or long credentials. Fall back to the
+  // existing per-unit messages if the document upload fails.
+  const combinedLength = renderable.reduce((sum, unit) => sum + unit.plaintext.length, 0);
+  const useTxt = renderable.length > 1 || combinedLength > 1500;
+  let txtFellBack = false;
+  let txtDelivered = false;
+  if (useTxt && renderable.length) {
+    try {
+      const { sendDocument } = await import("@/lib/telegram/send-document");
+      const { buildCredentialsTxtFile, credentialsTxtFilename } = await import("@/lib/telegram/messages/credential");
+      const file = buildCredentialsTxtFile({
+        orderCode: code,
+        units: renderable.map(unit => ({ plaintext: unit.plaintext, productName: unit.productName, copy: unit.copy })),
+        locale,
+      });
+      const doc = await sendDocument({
+        chat_id: chatId,
+        content: file,
+        filename: credentialsTxtFilename(code),
+        caption: locale === "en"
+          ? `<b>📦 Product details</b>\n<code>${escapeHtml(code)}</code>\n${renderable.length} file(s) of credentials in the attached .txt.`
+          : `<b>📦 Detail produk</b>\n<code>${escapeHtml(code)}</code>\n${renderable.length} kredensial ada di file .txt terlampir.`,
+        parse_mode: "HTML",
+        reply_markup: orderTerminalKeyboard({ locale }),
+      });
+      if (doc.ok) {
+        sent = renderable.length;
+        txtDelivered = true;
+      } else {
+        txtFellBack = true;
+      }
+    } catch {
+      txtFellBack = true;
+    }
+  }
+  if (!useTxt || txtFellBack) {
+    for (const unit of renderable) {
+      try {
+        await sendTelegramCredentialParts(chatId, credentialMessages({
+          orderCode: code,
+          productName: unit.productName,
+          plaintext: unit.plaintext,
+          copy: unit.copy,
+          locale,
+        }));
+        sent++;
+      } catch {
+        transientFailed++;
+      }
     }
   }
   const expected = Math.max(rows.length, expandDeliveryLines(order.items).length);
@@ -211,6 +262,8 @@ export async function resendTelegramCredentials(
       : `${sent} detail produk berhasil dikirim. Detail lainnya belum siap. Cek status lagi nanti.`;
     replyMarkup = orderTerminalKeyboard({ locale });
   }
-  if (text) await sendMessage({ chat_id: chatId, text, parse_mode: "HTML", ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
+  // The .txt caption already confirms the delivery; only add a separate
+  // summary bubble when something still needs the buyer's attention.
+  if (text && !(txtDelivered && !waiting)) await sendMessage({ chat_id: chatId, text, parse_mode: "HTML", ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
   return sent;
 }

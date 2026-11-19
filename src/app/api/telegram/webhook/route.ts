@@ -16,7 +16,7 @@ import { sendMessage, answerCallbackQuery } from "@/lib/telegram/api";
 import { errorMessage } from "@/lib/telegram/messages";
 import { isTransientWebhookError } from "@/lib/telegram/webhook-errors";
 import { constantTimeEqual } from "@/lib/security";
-import { markDone } from "@/lib/telegram/handlers/shared";
+import { markDone, runInBackground } from "@/lib/telegram/handlers/shared";
 import { handleCommand } from "@/lib/telegram/handlers/command";
 import { handleCallback } from "@/lib/telegram/handlers/callback";
 
@@ -32,15 +32,51 @@ const TelegramUpdateSchema = z.object({
     from: z.object({ id: z.number(), first_name: z.string(), last_name: z.string().optional(), username: z.string().optional() }).optional(),
     chat: z.object({ id: z.number(), type: z.string() }),
     text: z.string().optional(),
+    caption: z.string().optional(),
+    photo: z.array(z.object({
+      file_id: z.string(),
+      file_unique_id: z.string().optional(),
+      width: z.number().optional(),
+      height: z.number().optional(),
+      file_size: z.number().optional(),
+    }).passthrough()).optional(),
     date: z.number(),
-  }).optional(),
+  }).passthrough().optional(),
   callback_query: z.object({
     id: z.string(),
     from: z.object({ id: z.number(), first_name: z.string(), last_name: z.string().optional(), username: z.string().optional() }),
-    message: z.object({ message_id: z.number(), chat: z.object({ id: z.number() }) }).optional(),
+    message: z.object({
+      message_id: z.number(),
+      chat: z.object({ id: z.number() }),
+      text: z.string().optional(),
+      caption: z.string().optional(),
+      photo: z.array(z.object({ file_id: z.string() }).passthrough()).optional(),
+    }).passthrough().optional(),
     data: z.string().optional(),
   }).optional(),
 }).passthrough();
+
+function isProtectedCallbackMessage(msg: Record<string, unknown> | undefined): boolean {
+  if (!msg) return false;
+  const content = `${String(msg.caption ?? "")}\n${String(msg.text ?? "")}`;
+  if (/Menunggu pembayaran|Awaiting payment|Total bayar|Total to pay|PEMBAYARAN LUNAS|Pembayaran sudah terverifikasi|Payment confirmed|Ketuk untuk menyalin|Tap to copy/i.test(content)) {
+    return true;
+  }
+  const markup = msg.reply_markup as { inline_keyboard?: { callback_data?: string }[][] } | undefined;
+  const rows = markup?.inline_keyboard;
+  if (Array.isArray(rows)) {
+    for (const row of rows) {
+      if (!Array.isArray(row)) continue;
+      for (const btn of row) {
+        const d = String(btn?.callback_data ?? "");
+        if (/^(?:refresh|qrenew|cancel|cancelok|cred|paycheck|ccancel|claim|claimstart|moredeliv):/.test(d)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 export async function POST(request: NextRequest) {
   // 1. Only POST + JSON
@@ -94,42 +130,49 @@ export async function POST(request: NextRequest) {
   const MAX_UPDATE_ATTEMPTS = 5;
   try {
     if (isD1Mode()) {
-      const existing = await queryFirst(
-        `SELECT status, attempt_count, lease_until FROM telegram_updates WHERE update_id=?`, updateId,
+      // Optimistic single-statement claim for new updates; fall back to SELECT + atomic reclaim on conflict.
+      const inserted = await execRun(
+        `INSERT INTO telegram_updates (update_id, status, lease_until) VALUES (?, 'processing', ?) ON CONFLICT(update_id) DO NOTHING`,
+        updateId, leaseUntil,
       );
-      if (existing) {
-        const status = String(existing.status);
-        const leaseUntilExisting = String(existing.lease_until || "");
-        const leaseActive = leaseUntilExisting
-          && Number.isFinite(Date.parse(leaseUntilExisting))
-          && Date.parse(leaseUntilExisting) > Date.now();
-        if (status === "done") {
-          return NextResponse.json({ ok: true, status: "already_processed" });
-        }
-        if (status === "processing" && leaseActive) {
-          return NextResponse.json({ ok: true, status: "already_processing" });
-        }
-        const attempts = Number(existing.attempt_count || 0);
-        if (attempts >= MAX_UPDATE_ATTEMPTS) {
-          return NextResponse.json({ ok: true, status: "already_processed" });
-        }
-        // Reclaim atomik: hanya menang bila baris masih failed / lease
-        // kedaluwarsa — kalah berarti worker lain baru saja claim.
-        const reclaimed = await execRun(
-          `UPDATE telegram_updates
-           SET status='processing', lease_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
-           WHERE update_id=? AND status IN ('failed','processing')
-             AND (status='failed' OR lease_until IS NULL OR datetime(lease_until) <= datetime('now'))`,
-          leaseUntil, updateId,
+      if ((inserted.changes ?? 0) === 0) {
+        const existing = await queryFirst(
+          `SELECT status, attempt_count, lease_until FROM telegram_updates WHERE update_id=?`, updateId,
         );
-        if (!reclaimed.changes) {
-          return NextResponse.json({ ok: true, status: "already_processing" });
+        if (existing) {
+          const status = String(existing.status);
+          const leaseUntilExisting = String(existing.lease_until || "");
+          const leaseActive = leaseUntilExisting
+            && Number.isFinite(Date.parse(leaseUntilExisting))
+            && Date.parse(leaseUntilExisting) > Date.now();
+          if (status === "done") {
+            return NextResponse.json({ ok: true, status: "already_processed" });
+          }
+          if (status === "processing" && leaseActive) {
+            return NextResponse.json({ ok: true, status: "already_processing" });
+          }
+          const attempts = Number(existing.attempt_count || 0);
+          if (attempts >= MAX_UPDATE_ATTEMPTS) {
+            return NextResponse.json({ ok: true, status: "already_processed" });
+          }
+          // Reclaim atomik: hanya menang bila baris masih failed / lease
+          // kedaluwarsa — kalah berarti worker lain baru saja claim.
+          const reclaimed = await execRun(
+            `UPDATE telegram_updates
+             SET status='processing', lease_until=?, attempt_count=attempt_count+1, updated_at=datetime('now')
+             WHERE update_id=? AND status IN ('failed','processing')
+               AND (status='failed' OR lease_until IS NULL OR datetime(lease_until) <= datetime('now'))`,
+            leaseUntil, updateId,
+          );
+          if (!reclaimed.changes) {
+            return NextResponse.json({ ok: true, status: "already_processing" });
+          }
+        } else {
+          await execRun(
+            `INSERT INTO telegram_updates (update_id, status, lease_until) VALUES (?, 'processing', ?)`,
+            updateId, leaseUntil,
+          );
         }
-      } else {
-        await execRun(
-          `INSERT INTO telegram_updates (update_id, status, lease_until) VALUES (?, 'processing', ?)`,
-          updateId, leaseUntil,
-        );
       }
     }
   } catch (error) {
@@ -153,6 +196,20 @@ export async function POST(request: NextRequest) {
   // there is no message.chat.type field to read.
   const chatType = update.message?.chat.type ?? (typeof chatId === "number" && chatId < 0 ? "supergroup" : "private");
   const isPrivateChat = chatType === "private";
+
+  // Early non-alert callback ack immediately after dedup claim succeeds (before D1 user upsert/handlers).
+  const cqEarly = update.callback_query;
+  const cqEarlyData = typeof cqEarly?.data === "string" ? cqEarly.data : "";
+  const isPrefOrAlertCallback = cqEarlyData === "soldout" || cqEarlyData.startsWith("lang:") || cqEarlyData.startsWith("cur:");
+  let callbackAnsweredUpfront = false;
+  if (cqEarly && isPrivateChat && cqEarlyData && !isPrefOrAlertCallback) {
+    callbackAnsweredUpfront = true;
+    runInBackground(answerCallbackQuery(cqEarly.id));
+  }
+
+  const msgTextRaw = (update.message?.text ?? update.message?.caption ?? "").trim();
+  const isStartCmd = msgTextRaw.toLowerCase().split(/\s+/)[0]?.split("@")[0] === "/start";
+
   if (from && chatId) {
     try {
       if (isD1Mode()) {
@@ -164,8 +221,9 @@ export async function POST(request: NextRequest) {
             String(from.id), String(chatId), from.username ?? null, from.first_name, from.last_name ?? null,
             String(chatId), from.username ?? null, from.first_name, from.last_name ?? null,
           );
-          const { ensurePrivateRecipient } = await import("@/lib/fulfillment/deliver");
-          await ensurePrivateRecipient(String(from.id), String(chatId)).catch(() => {});
+          // Background ensurePrivateRecipient (skip within 10 min per isolate; /start always forces).
+          const { ensurePrivateRecipientDebounced } = await import("@/lib/fulfillment/delivery/manifest");
+          runInBackground(ensurePrivateRecipientDebounced(String(from.id), String(chatId), { force: isStartCmd }));
         } else {
           await execRun(
             `INSERT INTO telegram_users (user_id, chat_id, username, first_name, last_name)
@@ -225,27 +283,33 @@ export async function POST(request: NextRequest) {
       const messageId = cq.message?.message_id;
 
       if (!cqChatId || !messageId || !cq.data) {
-        await answerCallbackQuery(cq.id);
+        if (!callbackAnsweredUpfront) await answerCallbackQuery(cq.id);
         await markDone(updateId);
         return NextResponse.json({ ok: true });
       }
 
+      const sourceMeta = {
+        isPhoto: Boolean(cq.message?.photo && cq.message.photo.length > 0),
+        isProtected: isProtectedCallbackMessage(cq.message as Record<string, unknown> | undefined),
+      };
+
       if (cq.data === "soldout") {
         await answerCallbackQuery(cq.id, "Varian produk habis. Silakan pilih produk lain.", true);
       } else if (typeof cq.data === "string" && (cq.data === "lang:id" || cq.data === "lang:en" || cq.data.startsWith("lang:") || cq.data.startsWith("cur:"))) {
-        await handleCallback(cq.data, cqChatId, messageId, cq.from, cq.id);
+        await handleCallback(cq.data, cqChatId, messageId, cq.from, cq.id, sourceMeta);
       } else {
-        await answerCallbackQuery(cq.id);
-        await handleCallback(cq.data, cqChatId, messageId, cq.from, cq.id);
+        if (!callbackAnsweredUpfront) runInBackground(answerCallbackQuery(cq.id));
+        await handleCallback(cq.data, cqChatId, messageId, cq.from, undefined, sourceMeta);
       }
       await markDone(updateId);
       return NextResponse.json({ ok: true });
     }
 
-    // 8. Route: text command
-    if (update.message?.text && chatId) {
-      const text = update.message.text.trim();
-      await handleCommand(text, chatId, update.message.chat?.type ?? "private", from);
+    // 8. Route: text command / photo message
+    const photos = update.message?.photo;
+    const photoFileId = Array.isArray(photos) && photos.length > 0 ? photos[photos.length - 1]?.file_id : undefined;
+    if ((msgTextRaw || photoFileId) && chatId) {
+      await handleCommand(msgTextRaw, chatId, update.message?.chat?.type ?? "private", from, photoFileId);
       await markDone(updateId);
       return NextResponse.json({ ok: true });
     }

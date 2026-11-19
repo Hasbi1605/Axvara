@@ -26,7 +26,8 @@ export type TgCtx = { locale: Locale; displayCurrency: DisplayCurrency | null; f
 
 export async function tgCtxFor(userId: number | null | undefined): Promise<TgCtx> {
   const prefs = await tgRenderPrefs(userId == null ? null : { id: userId });
-  return { locale: prefs.locale, displayCurrency: prefs.displayCurrency, fx: await loadCurrentFxSnapshot() };
+  const fx = prefs.displayCurrency === "USD" ? await loadCurrentFxSnapshot() : null;
+  return { locale: prefs.locale, displayCurrency: prefs.displayCurrency, fx };
 }
 
 /** ONE primary display-currency price for buttons/lines. USD only when the

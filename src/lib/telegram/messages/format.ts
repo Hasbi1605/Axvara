@@ -101,7 +101,14 @@ export function formatWIBTime(): { greeting: string; tanggal: string; jam: strin
   };
 }
 
-export function formatSoldCount(sold: number): string {
+export function formatSoldCount(sold: number, locale: "id" | "en" = "id"): string {
+  if (locale === "en") {
+    if (sold >= 1000) {
+      const k = sold / 1000;
+      return `Sold ${Number(k.toFixed(1))}k+`;
+    }
+    return `Sold ${sold}+`;
+  }
   if (sold >= 1000) {
     const k = sold / 1000;
     return `Terjual ${Number(k.toFixed(1))}rb+`;
@@ -109,8 +116,8 @@ export function formatSoldCount(sold: number): string {
   return `Terjual ${sold}+`;
 }
 
-export function formatSoldCountLabel(sold: number): string {
-  return formatSoldCount(Math.max(0, Math.floor(sold)));
+export function formatSoldCountLabel(sold: number, locale: "id" | "en" = "id"): string {
+  return formatSoldCount(Math.max(0, Math.floor(sold)), locale);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -3,7 +3,9 @@ import { BROADCAST_QUEUE_MODE_KEY, isBroadcastQueueModeOff } from './queue';
 import { sendBroadcast, type SendOutcome } from './sender';
 import type { BroadcastChannel, BroadcastSnapshot } from './model';
 
-export const TELEGRAM_RECIPIENT_PACE_MS = 250;
+// Workers Paid: inter-recipient 250ms (4/s) -> 100ms (10/s), still well under
+// Telegram's ~30 msg/s global limit. Same-chat pacing (sender.ts) stays 300ms.
+export const TELEGRAM_RECIPIENT_PACE_MS = 100;
 export const EMAIL_RECIPIENT_PACE_MS = 650;
 
 const GLOBAL_LEASE_MS = 60_000;

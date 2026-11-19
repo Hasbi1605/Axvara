@@ -5,10 +5,11 @@ import { encryptSecret } from "@/lib/fulfillment/crypto";
 import { handleOrderCancel, handleOrderRefresh, handleOrderStatus } from "@/lib/telegram/handlers/orders";
 import { resendTelegramCredentials } from "@/lib/telegram/credential-delivery";
 
-const api = vi.hoisted(() => ({ send: vi.fn(), edit: vi.fn(), photo: vi.fn() }));
+const api = vi.hoisted(() => ({ send: vi.fn(), edit: vi.fn(), photo: vi.fn(), document: vi.fn() }));
 vi.mock("@/lib/telegram/api", () => ({
   sendMessage: api.send, safeEditOrSend: api.edit, sendPhoto: api.photo,
 }));
+vi.mock("@/lib/telegram/send-document", () => ({ sendDocument: api.document }));
 vi.mock("@/lib/payments/paid-fulfillment", () => ({ schedulePaidFulfillment: vi.fn() }));
 
 const code = "AXV-20261029-ABCDEF12";
@@ -23,6 +24,7 @@ beforeEach(async () => {
   api.send.mockResolvedValue({ ok: true, result: { message_id: 1 } });
   api.edit.mockResolvedValue({ ok: true });
   api.photo.mockResolvedValue({ ok: true });
+  api.document.mockResolvedValue({ ok: true, result: { message_id: 1 } });
   vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "false");
   stubFulfillmentKey();
   fx = createD1Fixture();
@@ -227,6 +229,9 @@ describe("Telegram explicit credential resend outcomes", () => {
   });
 
   it("reports delivery failure and partial success while continuing with other items", async () => {
+    // Force the per-unit fallback so we exercise partial-failure accounting
+    // (the .txt path is covered separately above).
+    api.document.mockResolvedValue({ ok: false, error_code: 400, description: "Bad Request" });
     await delivered(0);
     await delivered(1);
     api.send.mockImplementation(async ({ text }: { text: string }) => ({ ok: !text.includes("secret-0") }));
@@ -237,6 +242,7 @@ describe("Telegram explicit credential resend outcomes", () => {
   });
 
   it("counts a multi-part item only when every part succeeds", async () => {
+    api.document.mockResolvedValue({ ok: false, error_code: 400, description: "Bad Request" });
     await delivered(0, "a".repeat(8000));
     await delivered(1);
     api.send.mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ ok: false });
@@ -246,17 +252,38 @@ describe("Telegram explicit credential resend outcomes", () => {
     expect(api.send.mock.calls.some(([params]) => params.text.includes("secret-1"))).toBe(true);
   });
 
-  it("labels unique units and other items without losing their original indexes", async () => {
+  it("bundles multi-unit credentials into one .txt document (Item 14)", async () => {
     fx.sql.prepare("UPDATE orders SET items=?").run(JSON.stringify([
       { name: "Canva", qty: 2, fulfillment_mode: "unique", unique_units: true },
       { name: "Gemini", qty: 3 },
     ]));
     await delivered(0); await delivered(1); await delivered(2);
     expect(await resend()).toBe(3);
+    // One document, not N bubbles.
+    expect(api.document).toHaveBeenCalledTimes(1);
+    const doc = api.document.mock.calls[0][0];
+    expect(doc.chat_id).toBe(buyer);
+    expect(doc.filename).toBe(`AXVARA-${code}.txt`);
+    expect(doc.content).toContain("secret-0");
+    expect(doc.content).toContain("secret-1");
+    expect(doc.content).toContain("secret-2");
+    expect(api.send.mock.calls.some(([params]) => String(params.text).includes("secret-0"))).toBe(false);
+  });
+
+  it("falls back to per-unit messages when the document upload fails", async () => {
+    await delivered(0); await delivered(1);
+    api.document.mockResolvedValueOnce({ ok: false, error_code: 400, description: "Bad Request" });
+    expect(await resend()).toBe(2);
     const messages = api.send.mock.calls.map(([params]) => String(params.text));
-    expect(messages.find(text => text.includes("secret-0"))).toContain("Akun 1 dari 2");
-    expect(messages.find(text => text.includes("secret-1"))).toContain("Gemini");
-    expect(messages.find(text => text.includes("secret-2"))).toContain("Akun 2 dari 2");
+    expect(messages.find(text => text.includes("secret-0"))).toBeTruthy();
+    expect(messages.find(text => text.includes("secret-1"))).toBeTruthy();
+  });
+
+  it("keeps the single-unit message path (no document) for short single credentials", async () => {
+    await delivered(0);
+    expect(await resend()).toBe(1);
+    expect(api.document).not.toHaveBeenCalled();
+    expect(api.send.mock.calls.some(([params]) => String(params.text).includes("secret-0"))).toBe(true);
   });
 
   it("reports missing stored delivered credentials permanently without retry button, and pending units as partial", async () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { credentialMessages } from "@/lib/telegram/messages/credential";
+import { buildCredentialsTxtFile, credentialMessages, credentialsTxtFilename } from "@/lib/telegram/messages/credential";
 import { deliveryMessage } from "@/lib/telegram/messages";
 import { marketWarrantyClaim } from "@/lib/warranty-policy";
 import type { VariantCopy } from "@/lib/product-copy/format";
@@ -76,5 +76,38 @@ describe("pesan kredensial Telegram dengan panduan pasca-bayar", () => {
     expect(html).toContain("Ketuk untuk menyalin");
     expect(html).toContain(marketWarrantyClaim.notes[1]);
     expect(html).not.toContain("Refund tidak berlaku");
+  });
+});
+
+describe("Item 14 — multi-unit credentials as a .txt file", () => {
+  it("lists each unit verbatim with a numbered header, terms, and claim rules", () => {
+    const txt = buildCredentialsTxtFile({
+      orderCode: "AXV-20261119-ABCDEF12",
+      units: [
+        { plaintext: "user1@mail.test|pass1", productName: "Canva Pro", copy },
+        { plaintext: "user2@mail.test|pass2", productName: "Canva Pro" },
+      ],
+    });
+    expect(txt).toContain("AXVARA - Pesanan AXV-20261119-ABCDEF12");
+    expect(txt).toContain("--- Unit 1/2: Canva Pro ---");
+    expect(txt).toContain("--- Unit 2/2: Canva Pro ---");
+    // Credentials stay verbatim (no HTML escaping) for lossless copy-paste.
+    expect(txt).toContain("user1@mail.test|pass1");
+    expect(txt).toContain("user2@mail.test|pass2");
+    expect(txt).not.toContain("&amp;");
+    expect(txt).toContain("Syarat klaim garansi");
+    expect(txt).toContain(marketWarrantyClaim.eligibility);
+  });
+
+  it("uses an EN body when locale is en and sanitizes the filename", () => {
+    const txt = buildCredentialsTxtFile({
+      orderCode: "AXV-20261119-ABCDEF12",
+      units: [{ plaintext: "secret" }],
+      locale: "en",
+    });
+    expect(txt).toContain("AXVARA - Order AXV-20261119-ABCDEF12");
+    expect(txt).toContain("Warranty claim terms");
+    expect(credentialsTxtFilename("AXV-20261119-ABCDEF12")).toBe("AXVARA-AXV-20261119-ABCDEF12.txt");
+    expect(credentialsTxtFilename("../evil code")).toBe("AXVARA-evilcode.txt");
   });
 });

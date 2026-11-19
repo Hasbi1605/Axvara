@@ -647,7 +647,7 @@ async function runPediaOrders(db: Db, failedCore: string[]) {
   const { processPediaPaidOrders } = await import("@/lib/pedia/dispatch");
   const out: Record<string, unknown> = {};
   try {
-    // Teruskan budgeted access: statement dispatch+poll ikut budget 40
+    // Teruskan budgeted access: statement dispatch+poll ikut budget lite job
     // (dulu koneksi sendiri → tak terhitung, rawan jebol diam-diam).
     const r = await processPediaPaidOrders(undefined, db);
     Object.assign(out, r);
@@ -730,7 +730,7 @@ async function runPromo(db: Db) {
     }
   }
   // Paid: broadcast backstop gets its own generous 400-statement budget and ~40s
-  // wall-time envelope separate from the 40-statement promo/summary DB.
+  // wall-time envelope separate from the 300-statement promo/summary DB.
   const broadcastDb = createBudgetedDatabase(400, 4, unwrapD1(db.getD1())).access;
   const { BROADCAST_BACKSTOP_GRACE_MS, isBroadcastQueueActive } = await import("@/lib/broadcasts/queue");
   const queueActive = await isBroadcastQueueActive(broadcastDb);
@@ -773,11 +773,11 @@ async function runNotifyA(db: Db, failedCore: string[]) {
   };
   await guard("telegram_retry", async () => {
     const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
-    return retryPendingTelegramNotifications(20, undefined, db);
+    return retryPendingTelegramNotifications(50, undefined, db);
   }, true);
   await guard("invoice_retry", async () => {
     const { retryInvoicePendingTelegramInvoices } = await import("@/lib/telegram/invoice-retry");
-    return retryInvoicePendingTelegramInvoices(12, db);
+    return retryInvoicePendingTelegramInvoices(25, db);
   });
   return out;
 }
@@ -805,7 +805,12 @@ async function runNotifyB(db: Db, deadline: number, failedCore: string[]) {
   });
   await guard("pending_reminders", async () => {
     const { sendPendingOrderReminders } = await import("@/lib/telegram/order-notifications");
-    return sendPendingOrderReminders(20, db);
+    return sendPendingOrderReminders(50, db);
+  });
+  // Item 13: kirim alert restok per produk (langganan pembeli, bukan broadcast).
+  await guard("restock_alerts", async () => {
+    const { processDueRestockAlerts } = await import("@/lib/telegram/restock-alerts");
+    return processDueRestockAlerts(db, 50);
   });
   // B2: jalankan PIN checkout SEBELUM whatsapp_outbox agar jeda anti-ban WA
   // (6-9 dtk x 4 pesan) tidak pernah membuat email PIN kehabisan deadline.

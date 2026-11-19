@@ -11,6 +11,54 @@ type CredentialMessageOptions = {
   secretTag?: "code" | "pre";
 };
 
+type CredentialTxtUnit = {
+  plaintext: string;
+  productName?: string;
+  copy?: VariantCopy | null;
+};
+
+/**
+ * Plain UTF-8 text file for multi-unit / long credentials (Item 14). One file
+ * per "Ambil Ulang Produk" instead of N HTML bubbles. Contains NO HTML tags —
+ * the buyer's credentials stay verbatim so copy-paste is lossless.
+ */
+export function buildCredentialsTxtFile(params: {
+  orderCode: string;
+  units: CredentialTxtUnit[];
+  locale?: Locale;
+}): string {
+  const en = params.locale === "en";
+  const total = params.units.length;
+  const lines: string[] = [
+    `AXVARA - ${en ? "Order" : "Pesanan"} ${params.orderCode}`,
+    en ? "Access/license details. Keep private, do not share." : "Detail akses/lisensi. Jangan dibagikan ke siapa pun.",
+    "",
+  ];
+  params.units.forEach((unit, index) => {
+    lines.push(`--- Unit ${index + 1}/${total}${unit.productName ? `: ${unit.productName}` : ""} ---`);
+    lines.push(unit.plaintext);
+    const sections = unit.copy?.sections ?? [];
+    if (sections.length || (unit.copy?.notes ?? []).length) {
+      lines.push("", en ? "Terms & Conditions:" : "Syarat & Ketentuan:");
+      for (const section of sections) for (const item of section.items) lines.push(`- ${item}`);
+      for (const note of unit.copy?.notes ?? []) lines.push(`- ${note}`);
+    }
+    lines.push("");
+  });
+  const claim = en ? marketWarrantyClaimEn : marketWarrantyClaim;
+  lines.push(en ? "Warranty claim terms:" : "Syarat klaim garansi:");
+  lines.push(`- ${claim.eligibility}`);
+  claim.requirements.forEach((req) => lines.push(`- ${req}`));
+  claim.notes.forEach((note) => lines.push(`- ${note}`));
+  lines.push("", en ? "Help: /bantuan. Full terms: /garansi" : "Bantuan: /bantuan. Ketentuan lengkap: /garansi");
+  return lines.join("\n");
+}
+
+export function credentialsTxtFilename(orderCode: string): string {
+  const safe = String(orderCode || "ORDER").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40) || "ORDER";
+  return `AXVARA-${safe}.txt`;
+}
+
 /** Escaping happens before counting; every part has complete tags/entities.
  * The 4096 limit is enforced on HTML too (stricter than Telegram's parsed text).
  * Split at Unicode code points and preserve every character of the credential.

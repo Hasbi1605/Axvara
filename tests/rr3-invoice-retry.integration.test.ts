@@ -57,10 +57,11 @@ async function cron() {
 }
 
 // ─── RR3-05: foto invoice gagal → satu order, retry kirim foto yang sama ───
-it("sold-out variant uses a red cross and one modal alert without starting a purchase", async () => {
+it("sold-out variants collapse into one restock button; legacy soldout callback still alerts without a purchase", async () => {
   const { variantsKeyboard } = await import("@/lib/telegram/keyboards");
   const keyboard = variantsKeyboard(1, [{ id: 1, label: "1 Bulan Private", price: 10000, stock: 0 }]);
-  expect(keyboard.inline_keyboard[0][0]).toEqual({ text: "❌ 1 Bulan Private", callback_data: "soldout" });
+  expect(keyboard.inline_keyboard[0][0]).toMatchObject({ text: "🔔 Kabari saat restok (1 habis)", callback_data: "rst:1" });
+  // Old keyboards already in buyers' chats still carry callback "soldout".
   const { answerCallbackQuery } = await import("@/lib/telegram/api");
   vi.mocked(answerCallbackQuery).mockClear();
   const { POST } = await import("@/app/api/telegram/webhook/route");

@@ -8,9 +8,9 @@
 // kontrak manifest (satu baris fulfillment per unit unik baru) mudah ditinjau
 // tanpa terdistraksi mesin pengiriman. Legacy tetap satu baris per item.
 
-import { execRun } from "@/lib/db";
+import { execRun, getD1 } from "@/lib/db";
 import { expandDeliveryLines } from "../units";
-import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
+import { createDatabaseAccess, unwrapD1, type DatabaseAccess } from "@/lib/db-access";
 import type {
   FulfillmentOrderItem,
   FulfillmentRecipient,
@@ -114,6 +114,54 @@ export async function ensurePrivateRecipient(
        )`,
     telegramUserId,
   ).catch(() => {});
+}
+
+const ENSURE_RECIPIENT_TTL_MS = 10 * 60 * 1000;
+const NO_D1_ENSURE_KEY = {};
+const ensureCacheByD1 = new WeakMap<object, Map<string, number>>();
+
+function getEnsureBucket(): Map<string, number> {
+  let key: object = NO_D1_ENSURE_KEY;
+  try {
+    const raw = typeof getD1 === "function" ? getD1() : null;
+    if (raw) key = unwrapD1(raw) as object;
+  } catch { /* fallback */ }
+  let bucket = ensureCacheByD1.get(key);
+  if (!bucket) {
+    bucket = new Map<string, number>();
+    if (key !== NO_D1_ENSURE_KEY) ensureCacheByD1.set(key, bucket);
+  }
+  return bucket;
+}
+
+/**
+ * Per-isolate debounced wrapper for `ensurePrivateRecipient`: skips repeat D1
+ * updates for the same `(userId, chatId)` within 10 minutes unless `force`
+ * is true (always forced on `/start`).
+ */
+export async function ensurePrivateRecipientDebounced(
+  telegramUserId: string,
+  privateChatId: string,
+  options?: { force?: boolean },
+): Promise<boolean> {
+  if (!telegramUserId || !privateChatId) return false;
+  if (Number(privateChatId) < 0) return false;
+  const bucket = getEnsureBucket();
+  const key = `${telegramUserId}:${privateChatId}`;
+  const now = Date.now();
+  if (!options?.force) {
+    const last = bucket.get(key);
+    if (last !== undefined && now - last < ENSURE_RECIPIENT_TTL_MS) return false;
+  }
+  if (bucket.size > 500) bucket.clear();
+  bucket.set(key, now);
+  try {
+    await ensurePrivateRecipient(telegramUserId, privateChatId);
+    return true;
+  } catch (err) {
+    bucket.delete(key);
+    throw err;
+  }
 }
 
 /** Parse order.items into a normalized per-item list. */

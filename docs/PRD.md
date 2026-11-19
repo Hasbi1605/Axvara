@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## Overhaul UX & Latensi Bot Telegram (`@Axvara_bot`) — 19 November 2026 (W-A, lokal)
+
+- **Katalog, terlaris & pencarian langsung:** tombol terlaris di `/start` (maks 3 item `🔥` yang dapat langsung diketuk), perintah langsung `/cari <kata>` / `/search <kata>`, serta pencarian teks bebas (minimal 2 karakter non-perintah tanpa state pending) dengan peringkat toleran typo (`exact > prefix > substring > Damerau-Levenshtein` ≤1 edit untuk 3–5 huruf dan ≤2 untuk ≥6 huruf pada nama, `name_en`, `whatsapp_alias`, `aliases[]`). Layar hasil kosong menawarkan `[📂 Kategori | 🛍 Katalog]` dan `[💬 Bantuan | 🏠 Menu]`.
+- **Navigasi persisten & alur cepat tanpa loading bar buatan:** menghapus `showLoadingBar`/`withLoadingIndicator` pada `/start` dan pembukaan produk (opsional `sendChatAction "typing"` non-blocking via `waitUntil`), menempatkan routing menu persisten 3×2 (termasuk `🛡 Garansi` dan label lama `❓ Bantuan`) sebelum handler pending-input sambil mempertahankan anchor `creating` payq1, mendukung deep-link `/start prd_<id>`, serta merapikan layar kartu produk, varian (preset `1/5/10/50`, ringkas habis ke `rst:<productId>`), keranjang, dan layar teks bantuan (mencantumkan menu cepat + tip ketik nama produk).
+- **Lapis performa Workers Paid (kontrak order/bayar/settlement tetap):** tanpa mengubah logika pembuatan invoice, reservasi stok, settlement, atau pengiriman kredensial; navigasi mempertahankan satu layar aktif (pesan transaksi/kredensial tidak tersentuh) dan callback lama di riwayat chat pembeli (`soldout`, `cfv`, `confirm`, dll.) tetap berjalan. Implementasi dan verifikasi lokal; belum dirilis ke produksi.
+
 ## Pengiriman cepat promo & siaran lewat Cloudflare Queues — 19 November 2026 (lokal, belum deploy)
 
 - Karena AXVARA beroperasi di Cloudflare Workers Paid, batas hemat era Free (maks 8 penerima/tick, cadangan 11 detik, budget 40 statement bersama) dihapus dan pengiriman promo otomatis Telegram serta Siaran manual (`telegram`/`email`) dipindah ke Cloudflare Queue `axvara-broadcast` (DLQ `axvara-broadcast-dlq`, consumer `axvara-mcp` konkurensi 1) menuju `POST /api/internal/queue/broadcast`.

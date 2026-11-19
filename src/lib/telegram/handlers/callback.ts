@@ -14,7 +14,7 @@ import { queryFirst, execRun } from "@/lib/db";
 import { sendMessage, safeEditOrSend, answerCallbackQuery } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard, orderStatusKeyboard, parseCallback, cancelConfirmationKeyboard,
-  languageChooserKeyboard, currencyKeyboard, settingsKeyboard, helpKeyboard, minimalMenuKeyboard,
+  languageChooserKeyboard, currencyKeyboard, settingsKeyboard, helpKeyboard, minimalMenuKeyboard, mainReplyMenu,
 } from "@/lib/telegram/keyboards";
 import {
   helpMessage, warrantyFullMessage, alreadyPendingMessage,
@@ -24,8 +24,9 @@ import {
   readTgPreferences, saveTgLocaleChoice, saveTgLocaleOnly, saveTgCurrencyChoice,
   isValidTgLocale, isValidTgCurrency,
 } from "@/lib/telegram/preferences";
+import { tgCtxFor } from "@/lib/telegram/render-prefs";
 import { getCartSummary, clearCart } from "@/lib/telegram/cart";
-import { clearPendingAction, getBestsellers, setPendingActionUnlessCreating } from "./shared";
+import { clearPendingAction, getBestsellers, replaceWithText, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
 import {
   handleShowCatalogEdit, handleShowCategoriesEdit, handleShowProducts,
   handleShowProduct, handleShowVariants, handleVariantConfirm, handleShowQty,
@@ -47,7 +48,14 @@ import {
   createAndSendCartInvoice,
 } from "./cart";
 
-export async function handleCallback(data: string, chatId: number, messageId: number, from: { id: number; first_name: string; username?: string }, callbackId?: string) {
+export async function handleCallback(
+  data: string,
+  chatId: number,
+  messageId: number,
+  from: { id: number; first_name: string; username?: string },
+  callbackId?: string,
+  sourceMeta?: ScreenSourceMeta,
+) {
   const { action, params } = parseCallback(data);
   const answer = async (text?: string, alert = false) => {
     if (callbackId) await answerCallbackQuery(callbackId, text, alert);
@@ -83,6 +91,12 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       await sendMessage({ chat_id: chatId, text: groupCheckoutRedirectMessage(SITE.adminTelegram), parse_mode: "HTML" });
       return;
     }
+  }
+
+  // Extras router (orders tabs, warranty claim, restock alerts) — CONTRACT.md.
+  if (["mo", "claim", "claimstart", "rst"].includes(action)) {
+    const { handleExtraCallback } = await import("./extras");
+    if (await handleExtraCallback(action, params, chatId, messageId, from)) return;
   }
   // Dedicated currency picker from the main menu: render only. The route
   // pre-answers non lang:/cur: callbacks, so this handler must not answer.
@@ -134,22 +148,35 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       await answer();
       const payload = before.locale == null ? await consumeOnboardingPayload(String(from.id)) : null;
       const after = await readTgPreferences(String(from.id));
+      const savedLocale = after.locale ?? want;
       const { welcomeMessageLocalized } = await import("@/lib/telegram/messages/preferences");
-      const { getBestsellers } = await import("./shared");
-      const bestsellers = await getBestsellers(3);
+      const [bestsellers, langCtx] = await Promise.all([getBestsellers(3), tgCtxFor(from.id)]);
       await safeEditOrSend({
         chat_id: chatId, message_id: messageId,
-        text: welcomeMessageLocalized(after.locale ?? want, from.first_name, bestsellers),
+        text: welcomeMessageLocalized(savedLocale, from.first_name, bestsellers),
         parse_mode: "HTML",
-        reply_markup: homeKeyboard(after.locale ?? want),
+        reply_markup: homeKeyboard(savedLocale, bestsellers, langCtx),
       });
-      await sendMessage({ chat_id: chatId, text: tgPrefText(want, "language_saved"), parse_mode: "HTML" });
+      await sendMessage({
+        chat_id: chatId,
+        text: tgPrefText(want, "language_saved"),
+        parse_mode: "HTML",
+        reply_markup: mainReplyMenu(savedLocale),
+      });
       if (payload) {
-        await sendMessage({
-          chat_id: chatId,
-          text: resumePayloadMessage(want, payload),
-          parse_mode: "HTML",
-        });
+        const prdMatch = /^prd_(\d+)$/i.exec(payload);
+        if (prdMatch) {
+          await handleShowProduct(chatId, 0, Number(prdMatch[1]), from);
+        } else {
+          const { handleExtraStartPayload } = await import("./extras");
+          if (!(await handleExtraStartPayload(payload, chatId, from))) {
+            await sendMessage({
+              chat_id: chatId,
+              text: resumePayloadMessage(want, payload),
+              parse_mode: "HTML",
+            });
+          }
+        }
       }
       return;
     }
@@ -222,16 +249,14 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
           await clearPendingAction(from);
         }
       }
-      const { readTgPreferences: readHomePrefs } = await import("@/lib/telegram/preferences");
-      const homePrefs = await readHomePrefs(String(from.id)).catch(() => ({ locale: null }));
-      const homeLocale = homePrefs.locale ?? "id";
       const { welcomeMessageLocalized: homeWelcome } = await import("@/lib/telegram/messages/preferences");
-      await safeEditOrSend({
+      const [homeCtx, bestsellers] = await Promise.all([tgCtxFor(from.id), getBestsellers(3)]);
+      await replaceWithText({
         chat_id: chatId, message_id: messageId,
-        text: homeWelcome(homeLocale, from.first_name, await getBestsellers(3)),
+        text: homeWelcome(homeCtx.locale, from.first_name, bestsellers),
         parse_mode: "HTML",
-        reply_markup: homeKeyboard(homeLocale),
-      });
+        reply_markup: homeKeyboard(homeCtx.locale, bestsellers, homeCtx),
+      }, sourceMeta);
       break;
     }
 
@@ -244,44 +269,44 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
           await clearPendingAction(from);
         }
       }
-      await handleShowCatalogEdit(chatId, messageId, Number(params[0] || 0), from);
+      await handleShowCatalogEdit(chatId, messageId, Number(params[0] || 0), from, sourceMeta);
       break;
 
     case "cats":
-      await handleShowCategoriesEdit(chatId, messageId, Number(params[0] || 0), from);
+      await handleShowCategoriesEdit(chatId, messageId, Number(params[0] || 0), from, sourceMeta);
       break;
 
     case "cat":
-      await handleShowProducts(chatId, messageId, Number(params[0]), Number(params[1] || 0), from);
+      await handleShowProducts(chatId, messageId, Number(params[0]), Number(params[1] || 0), from, sourceMeta);
       break;
 
     case "prd":
-      await handleShowProduct(chatId, messageId, Number(params[0]), from);
+      await handleShowProduct(chatId, messageId, Number(params[0]), from, sourceMeta);
       break;
 
     case "buy":
       // Always use variant flow — stock synced with web/WA via product_variants
-      await handleShowVariants(chatId, messageId, Number(params[0]), from);
+      await handleShowVariants(chatId, messageId, Number(params[0]), from, sourceMeta);
       break;
 
     case "vars":
-      await handleShowVariants(chatId, messageId, Number(params[0]), from);
+      await handleShowVariants(chatId, messageId, Number(params[0]), from, sourceMeta);
       break;
 
     case "var":
-      await handleVariantConfirm(chatId, messageId, Number(params[0]), from);
+      await handleVariantConfirm(chatId, messageId, Number(params[0]), from, sourceMeta);
       break;
 
     case "terms":
-      await handleProductTerms(chatId, Number(params[0]), Number(params[1] || 0), Number(params[2] || 0), from);
+      await handleProductTerms(chatId, Number(params[0]), Number(params[1] || 0), Number(params[2] || 0), from, messageId, sourceMeta);
       break;
 
     case "qty":
-      await handleShowQty(chatId, messageId, Number(params[0]), Number(params[1]), 1, from);
+      await handleShowQty(chatId, messageId, Number(params[0]), Number(params[1]), 1, from, sourceMeta);
       break;
 
     case "q":
-      await handleShowQty(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from);
+      await handleShowQty(chatId, messageId, Number(params[0]), Number(params[1]), Number(params[2]), from, sourceMeta);
       break;
 
     case "qinput":
@@ -592,7 +617,7 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
       break;
 
     case "myorders":
-      await handleMyOrders(chatId, from);
+      await handleMyOrders(chatId, from, messageId, sourceMeta);
       break;
 
     case "search":
@@ -608,32 +633,32 @@ export async function handleCallback(data: string, chatId: number, messageId: nu
     }
 
     case "cart":
-      await handleShowCart(chatId, messageId, from);
+      await handleShowCart(chatId, messageId, from, sourceMeta);
       break;
 
     case "cadd":
-      await handleCartAdd(chatId, messageId, Number(params[0] || 0), Number(params[1] || 0), Number(params[2] || 1), from);
+      await handleCartAdd(chatId, messageId, Number(params[0] || 0), Number(params[1] || 0), Number(params[2] || 1), from, sourceMeta);
       break;
 
     case "cinc":
-      await handleCartAdjust(chatId, messageId, from, Number(params[0] || 0), +1);
+      await handleCartAdjust(chatId, messageId, from, Number(params[0] || 0), +1, sourceMeta);
       break;
 
     case "cdec":
-      await handleCartAdjust(chatId, messageId, from, Number(params[0] || 0), -1);
+      await handleCartAdjust(chatId, messageId, from, Number(params[0] || 0), -1, sourceMeta);
       break;
 
     case "crm":
-      await handleCartAdjust(chatId, messageId, from, Number(params[0] || 0), 0);
+      await handleCartAdjust(chatId, messageId, from, Number(params[0] || 0), 0, sourceMeta);
       break;
 
     case "cclear":
       await clearCart(String(from.id));
-      await handleShowCart(chatId, messageId, from);
+      await handleShowCart(chatId, messageId, from, sourceMeta);
       break;
 
     case "ccheckout":
-      await handleCartCheckout(chatId, messageId, from);
+      await handleCartCheckout(chatId, messageId, from, sourceMeta);
       break;
 
     case "cconfirm": {

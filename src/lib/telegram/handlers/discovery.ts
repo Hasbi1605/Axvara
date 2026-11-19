@@ -10,7 +10,7 @@ import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 import { queryFirst, queryAll, execRun, isD1Mode } from "@/lib/db";
 import { sendMessage, sendChatAction, safeEditOrSend } from "@/lib/telegram/api";
 import {
-  homeKeyboard, orderStatusKeyboard, myOrdersKeyboard, searchResultsKeyboard,
+  homeKeyboard, orderStatusKeyboard, myOrdersKeyboard, searchResultsKeyboard, searchNoResultsKeyboard,
   orderPaidKeyboard, TELEGRAM_MAX_QTY, emailConfirmationKeyboard, minimalMenuKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
@@ -26,8 +26,9 @@ import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { getCartSummary } from "@/lib/telegram/cart";
 import { readCheckoutEmail, checkoutEmailFingerprint } from "@/lib/telegram/checkout-email";
 import { cartCheckoutSummaryMessage, escapeHtml } from "@/lib/telegram/messages";
+import { productDisplayName } from "@/lib/i18n/product-name";
 import { countInventory } from "@/lib/fulfillment/inventory";
-import { clampQty, setPendingActionUnlessCreating } from "./shared";
+import { clampQty, getBestsellers, replaceWithText, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
 import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog";
 
 /**
@@ -41,7 +42,7 @@ export async function handlePendingEmailInput(
   chatId: number,
   from: { id: number; first_name: string; username?: string },
 ): Promise<boolean> {
-  if (!isD1Mode()) return false;
+  if (!text.trim() || !isD1Mode()) return false;
   const user = await queryFirst(
     `SELECT pending_action FROM telegram_users WHERE user_id=?`,
     String(from.id),
@@ -171,7 +172,7 @@ export async function showCartEmailConfirmation(chatId: number, from: { id: numb
   if (!stored.changes) return;
   const en = ctx.locale === "en";
   await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: cartCheckoutSummaryMessage(summary.lines.map((line) => ({ productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty, basePrice: line.basePrice, appliedTierMinQty: line.appliedTierMinQty })), summary.subtotal, { locale: ctx.locale, ...tgUsdAlternate(summary.subtotal, ctx) }) + `\n\n<b>Email</b>\n${escapeHtml(maskEmail(checked.email))}\n${en ? "Double-check your email before paying." : "Periksa email sebelum membayar."}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [
-    [{ text: en ? "💳 Pay QRIS" : "💳 Bayar QRIS", callback_data: `cconfirm:${tag}:${nonce}` }],
+    [{ text: en ? "💳 Pay QRIS" : "💳 Bayar QRIS", callback_data: `cconfirm:${tag}:${nonce}`, style: "success" }],
     [{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: "pmentry" }],
     [{ text: en ? "Change Email" : "Ubah Email", callback_data: "ceedit" }, { text: en ? "Edit Cart" : "Ubah Keranjang", callback_data: "cart" }],
     ...summary.lines.map(line => [{ text: `📋 ${en ? "Terms" : "Ketentuan"} ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
@@ -183,10 +184,25 @@ export async function showCartEmailConfirmation(chatId: number, from: { id: numb
 export async function handleMyOrders(
   chatId: number,
   from?: { id: number; first_name: string; username?: string },
+  messageId = 0,
+  sourceMeta?: ScreenSourceMeta,
 ) {
-  const ctx: TgCtx = await tgCtxFor(from?.id ?? chatId);
+  if (from) {
+    const { handleExtraCallback } = await import("./extras");
+    if (await handleExtraCallback("mo", [], chatId, messageId ?? 0, from)) return;
+  }
+  const [ctx, bestsellers] = await Promise.all([
+    tgCtxFor(from?.id ?? chatId),
+    getBestsellers(3),
+  ]);
   if (!from || !isD1Mode()) {
-    await sendMessage({ chat_id: chatId, text: myOrdersPrompt({ locale: ctx.locale }), parse_mode: "HTML", reply_markup: minimalMenuKeyboard({ locale: ctx.locale }) });
+    await replaceWithText({
+      chat_id: chatId,
+      message_id: messageId,
+      text: myOrdersPrompt({ locale: ctx.locale }),
+      parse_mode: "HTML",
+      reply_markup: minimalMenuKeyboard({ locale: ctx.locale }),
+    }, sourceMeta);
     return;
   }
   const rows = await queryAll(
@@ -219,16 +235,17 @@ export async function handleMyOrders(
       createdAt: row.created_at,
     };
   });
-  await sendMessage({
+  await replaceWithText({
     chat_id: chatId,
+    message_id: messageId,
     text: myOrdersMessage(orders.map(({ code, productName, payableAmount, paymentStatus, fulfillmentStatus, createdAt }) => ({
       code, productName, payableAmount, paymentStatus, fulfillmentStatus, createdAt,
     })), { locale: ctx.locale }),
     parse_mode: "HTML",
     reply_markup: orders.length > 0
       ? myOrdersKeyboard(orders.map((order) => ({ code: order.code, productId: order.productId ?? null })), { locale: ctx.locale })
-      : homeKeyboard(ctx.locale),
-  });
+      : homeKeyboard(ctx.locale, bestsellers, ctx),
+  }, sourceMeta);
 }
 
 // --- /cari: product search by name/alias ---
@@ -247,7 +264,7 @@ export async function handlePendingSearchInput(
   chatId: number,
   from: { id: number },
 ): Promise<boolean> {
-  if (!isD1Mode()) return false;
+  if (!text.trim() || !isD1Mode()) return false;
   const user = await queryFirst(
     `SELECT pending_action FROM telegram_users WHERE user_id=?`,
     String(from.id),
@@ -283,14 +300,18 @@ export async function handlePendingSearchInput(
 }
 
 export async function handleSearchResults(chatId: number, keyword: string, from?: { id: number }) {
-  const ctx = await tgCtxFor(from?.id ?? chatId);
-  const { readTelegramCatalog, telegramSearchMatch } = await import("@/lib/telegram/catalog-snapshot");
-  const matching = (await readTelegramCatalog()).filter(row =>
-    [row.name,row.whatsapp_alias,row.aliases ?? "[]"].some(value => telegramSearchMatch(value, keyword)));
-  const available = matching.filter(row => row.price !== null)
-    .sort((a,b) => b.sold_count-a.sold_count || a.sort_order-b.sort_order);
-  const products = available.slice(0,10)
-    .map(row => ({ id: row.id, name: row.name, price: row.price! }));
+  const [{ readTelegramCatalog, searchTelegramCatalog }, ctx] = await Promise.all([
+    import("@/lib/telegram/catalog-snapshot"),
+    tgCtxFor(from?.id ?? chatId),
+  ]);
+  const matching = searchTelegramCatalog(await readTelegramCatalog(), keyword);
+  const available = matching.filter(row => row.price !== null);
+  const products = available.slice(0, 10).map(row => ({
+    id: row.id,
+    name: productDisplayName({ name: row.name, nameEn: row.name_en }, ctx.locale),
+    price: row.price!,
+    stock: row.stock,
+  }));
   const soldOut = products.length ? 0 : matching.length;
   await sendMessage({
     chat_id: chatId,
@@ -298,7 +319,7 @@ export async function handleSearchResults(chatId: number, keyword: string, from?
     parse_mode: "HTML",
     reply_markup: products.length > 0
       ? searchResultsKeyboard(products, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx })
-      : homeKeyboard(ctx.locale),
+      : searchNoResultsKeyboard({ locale: ctx.locale }),
   });
 }
 

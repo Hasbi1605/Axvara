@@ -341,6 +341,21 @@ CREATE TABLE IF NOT EXISTS telegram_carts (
 );
 CREATE INDEX IF NOT EXISTS idx_telegram_carts_user
   ON telegram_carts(user_id, updated_at);
+-- Migrasi 0144: langganan notifikasi restok per produk (Item 13).
+-- UNIQUE(user_id, product_id) membuat tap ulang idempoten.
+CREATE TABLE IF NOT EXISTS telegram_restock_alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  product_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','cancelled')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  notified_at TEXT,
+  UNIQUE(user_id, product_id)
+);
+CREATE INDEX IF NOT EXISTS idx_telegram_restock_alerts_status
+  ON telegram_restock_alerts(status, product_id);
+CREATE INDEX IF NOT EXISTS idx_telegram_restock_alerts_user
+  ON telegram_restock_alerts(user_id, status);
 CREATE TABLE IF NOT EXISTS payment_transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_code TEXT NOT NULL REFERENCES orders(code),

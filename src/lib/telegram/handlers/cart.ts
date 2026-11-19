@@ -18,7 +18,7 @@ import { tgCtxFor, tgUsdAlternate } from "@/lib/telegram/render-prefs";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { isActiveQrisConfigured } from "@/lib/payments/dana-qris";
 import { addToCart, setCartLineQty, removeFromCart, getCartSummary } from "@/lib/telegram/cart";
-import { clearPendingAction } from "./shared";
+import { clearPendingAction, replaceWithText, type ScreenSourceMeta } from "./shared";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import { escapeHtml } from "@/lib/telegram/messages";
 
@@ -30,6 +30,7 @@ export async function handleShowCart(
   chatId: number,
   messageId: number,
   from?: { id: number; first_name: string; username?: string },
+  sourceMeta?: ScreenSourceMeta,
 ) {
   const ctx = await tgCtxFor(from?.id ?? chatId);
   if (!from) {
@@ -52,7 +53,7 @@ export async function handleShowCart(
   // lempar agar update menjadi failed + 500 sehingga Telegram redelivery.
   // safeEditOrSend sudah fallback edit→send; yang dicek adalah hasil akhir.
   const sent = messageId > 0
-    ? await safeEditOrSend({ chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: keyboard })
+    ? await replaceWithText({ chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: keyboard }, sourceMeta)
     : await sendMessage({ chat_id: chatId, text, parse_mode: "HTML", reply_markup: keyboard });
   if (isCriticalSendResult(sent, "transactional")) throw new Error(`telegram_send_failed:${sent.description || "unknown"}`);
 }
@@ -64,6 +65,7 @@ export async function handleCartAdd(
   variantId: number,
   qty: number,
   from: { id: number; first_name: string; username?: string },
+  sourceMeta?: ScreenSourceMeta,
 ) {
   await sendChatAction(chatId, "typing");
   const ctx = await tgCtxFor(from.id);
@@ -96,7 +98,7 @@ export async function handleCartAdd(
   }
   const summary = await getCartSummary(String(from.id));
   const added = summary.lines.find((line) => line.variantId === variantId);
-  await safeEditOrSend({
+  await replaceWithText({
     chat_id: chatId, message_id: messageId,
     text: cartAddedMessage(
       added?.productName ?? "Produk", added?.variantLabel ?? "", added?.qty ?? qty, summary.totalQty, { locale: ctx.locale },
@@ -111,7 +113,7 @@ export async function handleCartAdd(
         ],
       ],
     },
-  });
+  }, sourceMeta);
 }
 
 export async function handleCartAdjust(
@@ -120,6 +122,7 @@ export async function handleCartAdjust(
   from: { id: number; first_name: string; username?: string },
   variantId: number,
   delta: number,
+  sourceMeta?: ScreenSourceMeta,
 ) {
   const userId = String(from.id);
   const ctx = await tgCtxFor(from.id);
@@ -129,17 +132,18 @@ export async function handleCartAdjust(
     const ok = await setCartLineQty(userId, variantId, delta, true);
     if (!ok) {
       await sendMessage({ chat_id: chatId, text: ctx.locale === "en" ? "Quantity can't be changed. Check minimums, limits, and stock in the cart." : "Jumlah tidak bisa diubah. Periksa minimum pembelian, batas jumlah, dan stok di keranjang.", parse_mode: "HTML" });
-      await handleShowCart(chatId, messageId, from);
+      await handleShowCart(chatId, messageId, from, sourceMeta);
       return;
     }
   }
-  await handleShowCart(chatId, messageId, from);
+  await handleShowCart(chatId, messageId, from, sourceMeta);
 }
 
 export async function handleCartCheckout(
   chatId: number,
   messageId: number,
   from: { id: number; first_name: string; username?: string },
+  sourceMeta?: ScreenSourceMeta,
 ) {
   await sendChatAction(chatId, "typing");
   const ctx = await tgCtxFor(from.id);
@@ -191,17 +195,17 @@ export async function handleCartCheckout(
   }
   const approvalTag = await checkoutApprovalTag(summary.lines);
 
-  await safeEditOrSend({
+  await replaceWithText({
     chat_id: chatId, message_id: messageId,
     text: cartCheckoutSummaryMessage(summary.lines.map((line) => ({
       productName: line.productName, variantLabel: line.variantLabel, price: line.price, qty: line.qty,
       basePrice: line.basePrice, appliedTierMinQty: line.appliedTierMinQty,
     })), summary.subtotal, { locale: ctx.locale, ...tgUsdAlternate(summary.subtotal, ctx) }),
     parse_mode: "HTML",
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: ctx.locale === "en" ? "💳 Continue to QRIS payment" : "💳 Lanjut ke pembayaran QRIS", callback_data: `cconfirm:${approvalTag}` }],
-          [{ text: ctx.locale === "en" ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: "pmentry" }],
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: ctx.locale === "en" ? "💳 Continue to payment" : "💳 Lanjut ke pembayaran", callback_data: `cconfirm:${approvalTag}`, style: "success" }],
+        [{ text: ctx.locale === "en" ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: "pmentry" }],
         ...summary.lines.map(line => [{ text: `📋 ${ctx.locale === "en" ? "Terms" : "Ketentuan"} ${line.variantLabel.slice(0, 24)}`, callback_data: `terms:${line.productId}:${line.variantId}` }]),
         [
           { text: ctx.locale === "en" ? "Edit cart" : "Ubah keranjang", callback_data: "cart" },
@@ -209,5 +213,5 @@ export async function handleCartCheckout(
         ],
       ],
     },
-  });
+  }, sourceMeta);
 }

@@ -45,33 +45,33 @@ export function languageChooserMessage(): string {
   ].join("\n");
 }
 
+export function welcomeCaption(locale: Locale): string {
+  return locale === "en"
+    ? "<b>AXVARA</b>\nWelcome! Use the menu below or type a product name to search."
+    : "<b>AXVARA</b>\nSelamat datang! Gunakan menu di bawah atau ketik nama produk untuk mencari.";
+}
+
 export function welcomeMessageLocalized(
   locale: Locale,
   firstName: string,
-  bestsellers: { name: string; price: number }[] = [],
+  bestsellers: { name: string; price?: number }[] = [],
 ): string {
   const name = escapeHtml(truncate(firstName, 50));
   if (locale === "en") {
     const lines = [`<b>Hello, ${name}.</b>`, "Welcome to AXVARA.", ""];
     if (bestsellers.length > 0) {
-      lines.push("<b>Best sellers</b>");
-      bestsellers.slice(0, 3).forEach((item, i) => {
-        lines.push(`${i + 1}. ${escapeHtml(truncate(item.name, 50))}`);
-      });
+      lines.push("<b>🔥 Best sellers</b> — tap a product below to open:");
       lines.push("");
     }
-    lines.push("Browse products with /katalog or search via /cari.");
+    lines.push("Browse /katalog, or type a product name directly to search.");
     return lines.join("\n");
   }
   const lines = [`<b>Halo, ${name}.</b>`, "Selamat datang di AXVARA.", ""];
   if (bestsellers.length > 0) {
-    lines.push("<b>Paling laris</b>");
-    bestsellers.slice(0, 3).forEach((item, i) => {
-      lines.push(`${i + 1}. ${escapeHtml(truncate(item.name, 50))}`);
-    });
+    lines.push("<b>🔥 Paling laris</b> — ketuk produk di bawah untuk membuka:");
     lines.push("");
   }
-  lines.push("Lihat produk di /katalog atau cari lewat /cari.");
+  lines.push("Lihat produk di /katalog, atau langsung ketik nama produk untuk mencari.");
   return lines.join("\n");
 }
 

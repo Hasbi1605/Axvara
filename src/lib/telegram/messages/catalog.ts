@@ -27,6 +27,7 @@ export type TelegramBestseller = {
   price: number;
   soldCount: number;
   productId: number;
+  stock?: number;
 };
 
 export function welcomeMessage(firstName: string, bestsellers: TelegramBestseller[] = []): string {
@@ -87,6 +88,7 @@ export function categoryProductsMessage(categoryName: string, total: number, opt
 export type TelegramVariantLine = {
   label: string;
   price: number;
+  price_text?: string | null;
   warranty?: string | null;
   duration?: string | null;
   stock?: number | null;
@@ -98,7 +100,6 @@ export type TelegramVariantLine = {
 
 export function productDetailMessage(product: {
   name: string;
-  /** Only the first paragraph is shown; selected-variant terms come from the handler. */
   description?: string | null;
   price: number;
   compare_price?: number | null;
@@ -106,63 +107,127 @@ export function productDetailMessage(product: {
   badge?: string | null;
   sold_count?: number | null;
   variants?: TelegramVariantLine[] | null;
-}, opts?: { locale?: Locale; usdEquivalentText?: string | null; usdUnavailable?: boolean }): string {
+  warrantySummary?: string | null;
+  outOfStockCount?: number | null;
+}, opts?: {
+  locale?: Locale;
+  usdEquivalentText?: string | null;
+  usdUnavailable?: boolean;
+  hasImage?: boolean;
+  maxLength?: number;
+  formatPrice?: (idr: number) => string;
+}): string {
+  const locale = opts?.locale ?? "id";
+  const en = locale === "en";
   const name = escapeHtml(truncate(product.name, 100));
-  const price = formatIdr(product.price, opts?.locale ?? "id");
-  const en = opts?.locale === "en";
+  const formatPrimary = (idr: number) => (opts?.formatPrice ? opts.formatPrice(idr) : formatIdr(idr, locale));
+  const priceStr = formatPrimary(product.price);
 
   const lines: string[] = [];
+  const sold = Math.max(0, Math.floor(product.sold_count ?? 0));
+  lines.push(sold > 0 ? `<b>${name}</b> · ${formatSoldCountLabel(sold, locale)}` : `<b>${name}</b>`);
 
-  lines.push(`<b>${name}</b>`);
-  const description = product.description?.trim().split(/\r?\n\s*\r?\n/)[0];
-  if (description) {
-    lines.push("", escapeItemSummary(truncate(description, 300), 900));
-  }
-  lines.push("");
+  const rawVariants = product.variants ?? [];
+  const purchasable = rawVariants.filter((v) => v.stock !== 0);
+  const oosCount = product.outOfStockCount != null
+    ? Math.max(0, Math.floor(product.outOfStockCount))
+    : rawVariants.filter((v) => v.stock === 0).length;
+
   if (product.compare_price && product.compare_price > product.price) {
     const discount = Math.round((1 - product.price / product.compare_price) * 100);
     lines.push(en
-      ? `Price: <b>${price}</b> (was <s>${formatIdr(product.compare_price, opts?.locale ?? "id")}</s>, save ${discount}%)`
-      : `Harga: <b>${price}</b> (sebelumnya <s>${formatIdr(product.compare_price, opts?.locale ?? "id")}</s>, hemat ${discount}%)`);
-    lines.push(...moneyLine("", opts).slice(1));
-  } else if (product.variants && product.variants.length > 1) {
-    lines.push(en ? `From <b>${price}</b>` : `Harga mulai <b>${price}</b>`);
-    lines.push(...moneyLine("", opts).slice(1));
+      ? `Price: <b>${escapeHtml(priceStr)}</b> (was <s>${escapeHtml(formatPrimary(product.compare_price))}</s>, save ${discount}%)`
+      : `Harga: <b>${escapeHtml(priceStr)}</b> (sebelumnya <s>${escapeHtml(formatPrimary(product.compare_price))}</s>, hemat ${discount}%)`);
+  } else if (purchasable.length > 1 || rawVariants.length > 1) {
+    lines.push(en ? `From <b>${escapeHtml(priceStr)}</b>` : `Harga mulai <b>${escapeHtml(priceStr)}</b>`);
   } else {
-    lines.push(en ? `Price: <b>${price}</b>` : `Harga: <b>${price}</b>`);
-    lines.push(...moneyLine("", opts).slice(1));
+    lines.push(en ? `Price: <b>${escapeHtml(priceStr)}</b>` : `Harga: <b>${escapeHtml(priceStr)}</b>`);
   }
+  lines.push(...moneyLine("", opts).slice(1));
   if (opts?.usdUnavailable) {
     lines.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
   }
 
-  const sold = Math.max(0, Math.floor(product.sold_count ?? 0));
-  if (sold > 0) lines.push(formatSoldCountLabel(sold));
-
-  const stock = product.stock;
-  if (stock === -1) {
-    lines.push(en ? "In stock" : "Stok tersedia");
-  } else if (stock != null && stock > 0) {
-    lines.push(en ? `Stock: ${stock}` : `Stok: ${stock}`);
-  } else if (stock === 0) {
-    lines.push(en ? "Out of stock" : "Stok habis");
+  const showTopStock = purchasable.length === 0 || !purchasable.some((v) => v.stock != null);
+  if (showTopStock) {
+    const stock = product.stock;
+    if (stock === -1) lines.push(en ? "In stock" : "Stok tersedia");
+    else if (stock != null && stock > 0) lines.push(en ? `Stock: ${stock}` : `Stok: ${stock}`);
+    else if (stock === 0) lines.push(en ? "Out of stock" : "Stok habis");
   }
 
-  lines.push("");
-  // Delivery labels come from catalog metadata, never the product name.
-  const deliveryLines = (product.variants ?? []).filter((v) => (v.delivery_badge ?? "").trim() !== "");
+  // Highlight: one-line blockquote from supplied description.
+  const rawDesc = String(product.description ?? "").trim();
+  let highlight = "";
+  let fullDescription = "";
+  if (rawDesc) {
+    const descLines = rawDesc.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const firstLine = descLines[0] ?? "";
+    highlight = truncate(firstLine, 160);
+    if (rawDesc.length > highlight.length || descLines.length > 1) {
+      fullDescription = descLines.slice(1).join("\n") || rawDesc;
+      if (descLines.length <= 1 && firstLine.length > 160) {
+        fullDescription = rawDesc;
+      }
+    }
+    lines.push(`<blockquote>${escapeItemSummary(highlight, 280)}</blockquote>`);
+  }
+
+  if (purchasable.length > 0) {
+    lines.push("", en ? "<b>Available variants</b>" : "<b>Varian tersedia</b>");
+    const visible = purchasable.slice(0, 10);
+    const bulletLines = visible.map((v) => {
+      const vPrice = v.price_text?.trim() || formatPrimary(v.price);
+      const dur = v.duration?.trim() ? ` — ${truncate(v.duration.trim(), 24)}` : "";
+      const stockTxt = v.stock == null
+        ? ""
+        : v.stock === -1
+          ? ` · ${en ? "Ready" : "stok ∞"}`
+          : ` · ${en ? `stock ${v.stock}` : `stok ${v.stock}`}`;
+      return `• ${truncate(v.label, 48)}${dur} · ${vPrice}${stockTxt}`;
+    });
+    lines.push(escapeItemSummary(bulletLines.join("\n"), opts?.hasImage ? 450 : 1400));
+    if (purchasable.length > visible.length) {
+      lines.push(en ? `• +${purchasable.length - visible.length} more variants` : `• +${purchasable.length - visible.length} varian lainnya`);
+    }
+  }
+  if (oosCount > 0) {
+    lines.push(en ? `🔔 ${oosCount} other variant(s) currently out of stock` : `🔔 ${oosCount} varian lain sedang habis`);
+  }
+
+  // Warranty summary line (factual, from variant metadata only).
+  const warrantyList = product.warrantySummary?.trim()
+    ? [product.warrantySummary.trim()]
+    : Array.from(new Set(purchasable.map((v) => String(v.warranty ?? "").trim()).filter(Boolean)));
+  if (warrantyList.length > 0) {
+    lines.push(`${en ? "🛡 Warranty" : "🛡 Garansi"}: ${escapeHtml(truncate(warrantyList.join(" / "), 140))}`);
+  }
+
+  // Delivery / instant status (only for purchasable variants).
+  const deliveryLines = purchasable.filter((v) => (v.delivery_badge ?? "").trim() !== "");
   if (deliveryLines.length > 0) {
-    lines.push(en ? "<b>Delivery</b>" : "<b>Pengiriman</b>");
-    const deliverySummary = deliveryLines.slice(0, 10).map(v => {
-      const delivery = String(v.delivery_badge).replace(/^[⚡⏳]\s*/, "");
-      return `• ${truncate(v.label, 40)}: ${truncate(delivery, 80)}`;
-    }).join("\n");
-    lines.push(escapeItemSummary(deliverySummary, 1800));
-    lines.push("");
+    const allInstant = deliveryLines.length === purchasable.length
+      && purchasable.every((v) => v.wr_delivery_class === "restock" || /^⚡/.test(String(v.delivery_badge ?? "").trim()));
+    if (allInstant) {
+      lines.push(en ? "⚡ Instant delivery after payment" : "⚡ Kirim otomatis setelah bayar");
+    } else {
+      lines.push("", en ? "<b>Delivery</b>" : "<b>Pengiriman</b>");
+      const deliverySummary = deliveryLines.slice(0, 10).map((v) => {
+        const delivery = String(v.delivery_badge).replace(/^[⚡⏳]\s*/, "");
+        return `• ${truncate(v.label, 40)}: ${truncate(delivery, 80)}`;
+      }).join("\n");
+      lines.push(escapeItemSummary(deliverySummary, 900));
+    }
   }
-  if (product.variants && product.variants.length > 1) lines.push(en ? `${product.variants.length} variants.` : `${product.variants.length} varian.`);
 
-  return lines.join("\n");
+  const core = lines.join("\n");
+  if (!fullDescription) return core;
+
+  // Respect 1024 caption limit on photo messages by truncating ONLY full description.
+  const maxTotal = opts?.maxLength ?? (opts?.hasImage ? 1024 : 3600);
+  const descBudget = maxTotal - core.length - 2;
+  if (descBudget < 24) return core;
+  return `${core}\n\n${escapeItemSummary(fullDescription, descBudget)}`;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━

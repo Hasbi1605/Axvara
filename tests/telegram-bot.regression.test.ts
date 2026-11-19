@@ -188,7 +188,7 @@ describe("Telegram keyboards", () => {
     const kb = catalogFlatKeyboard(products, 0);
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
     expect(allTexts.some(t => t.includes("Canva Pro"))).toBe(true);
-    expect(allTexts.some(t => t.includes("ChatGPT") && t.includes("89rb"))).toBe(true);
+    expect(allTexts.some(t => t.includes("ChatGPT") && t.includes("89.000"))).toBe(true);
     // Categories only as optional filter
     expect(allTexts.some(t => t.includes("Kategori"))).toBe(true);
   });
@@ -210,7 +210,7 @@ describe("Telegram keyboards", () => {
     ];
     const kb = productsKeyboard(products, 1);
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
-    expect(allTexts.some(t => t.includes("ChatGPT") && t.includes("89rb"))).toBe(true);
+    expect(allTexts.some(t => t.includes("ChatGPT") && t.includes("89.000"))).toBe(true);
   });
 
   it("products keyboard has page indicator", () => {
@@ -235,10 +235,10 @@ describe("Telegram keyboards", () => {
       { id: 2, label: "Anti Limit", price: 26000, stock: 4, duration_label: "28 Hari", warranty_label: "Garansi 20 Hari" },
     ]);
     const buttons = kb.inline_keyboard.flat();
-    expect(buttons[0].text).toBe("Anti Limit · Rp26rb");
+    expect(buttons[0].text).toBe("Anti Limit · 28 Hari · Rp26.000 · stok 4");
     expect(buttons[0].callback_data).toBe("var:2");
-    expect(buttons[1].text).toBe("❌ Legal");
-    expect(buttons[1].callback_data).toBe("soldout");
+    expect(buttons[1].text).toBe("🔔 Kabari saat restok (1 habis)");
+    expect(buttons[1].callback_data).toBe("rst:7");
     expect(buttons).toContainEqual({ text: "📋 Detail & Ketentuan", callback_data: "terms:7:0" });
   });
 
@@ -278,7 +278,7 @@ describe("Telegram keyboards", () => {
     // Tombol cek manual memakai callback refresh:* yang sudah ada (ownerBound
     // + handleOrderRefresh idempoten) — pembeli tidak menunggu buta bila hook telat.
     expect(datas.some(d => d === "refresh:AXV-20260906-TEST1234")).toBe(true);
-    expect(buttons).toContainEqual({ text: "🔄 Cek Pembayaran", callback_data: "refresh:AXV-20260906-TEST1234" });
+    expect(buttons).toContainEqual(expect.objectContaining({ text: "🔄 Cek Pembayaran", callback_data: "refresh:AXV-20260906-TEST1234", style: "primary" }));
     expect(datas.some(d => d.startsWith("cancel:"))).toBe(true);
   });
 
@@ -329,9 +329,8 @@ describe("Telegram buyer messages", () => {
     expect(msg).toContain("Batas bayar:");
     expect(msg).not.toContain("━━━");
     expect(msg).toContain("otomatis mengabari");
-    // 2026-10-10: copy jujur — tombol Periksa Pembayaran ada di keyboard,
-    // jadi pesan mengarahkan ke sana (bukan "tidak perlu cek manual").
-    expect(msg).toContain("Periksa Pembayaran");
+    // Copy jujur — tombol Cek Pembayaran ada di keyboard, mengarahkan ke tombol tersebut.
+    expect(msg).toContain("Tekan <b>Cek Pembayaran</b>");
   });
 
   it("help message lists all commands with structure", () => {
@@ -363,7 +362,7 @@ describe("Telegram buyer messages", () => {
     expect(msg).toContain("Canva Pro");
   });
 
-  it("product detail stays compact and leaves variant terms to the detail view", () => {
+  it("product detail lists available variants concisely and collapses sold-out count", () => {
     const msg = productDetailMessage({
       name: "Canva Pro",
       price: 5000,
@@ -373,11 +372,13 @@ describe("Telegram buyer messages", () => {
         { label: "Pro Invite 1 Bulan", price: 10000, warranty: "Garansi Terbatas 7 Hari", duration: "1 Bulan", stock: 0 },
       ],
     });
-    expect(msg).toContain("2 varian");
-    expect(msg).not.toContain("Full Garansi 1 Bulan");
+    expect(msg).toContain("<b>Varian tersedia</b>");
+    expect(msg).toMatch(/Pro Head 1 Bulan — 1 Bulan · Rp\s?5\.000 · stok ∞/);
+    expect(msg).toContain("🔔 1 varian lain sedang habis");
+    expect(msg).toContain("Full Garansi 1 Bulan");
+    expect(msg).not.toContain("Pro Invite 1 Bulan");
     expect(msg).not.toContain("Garansi Terbatas 7 Hari");
-    expect(msg).not.toContain("HABIS");
-    expect(msg.length).toBeLessThan(300);
+    expect(msg.length).toBeLessThan(350);
   });
 
   it("product detail shows factual low stock without urgency", () => {
@@ -439,9 +440,8 @@ describe("Telegram buyer messages", () => {
       stock: -1,
       qty: 3,
     });
-    expect(msg).toContain("Jumlah: 3");
-    // TG2a: shared formatIdr (id-ID grouping) — Rp with non-breaking space.
-    expect(msg).toMatch(/Subtotal: Rp\s?15\.000/);
+    expect(msg).toContain("<b>🛒 Ringkasan</b>");
+    expect(msg).toMatch(/Jumlah 3 × Rp\s?5\.000 = <b>Rp\s?15\.000<\/b>/);
     expect(msg).toContain("Maksimal 100 per pesanan");
     expect(msg).not.toContain("Masukkan Jumlah");
   });
@@ -472,7 +472,7 @@ describe("Telegram buyer messages", () => {
       maxQty: 100,
     });
     expect(finiteMsg).toContain("Maksimal 100 per pesanan");
-    expect(finiteMsg).toContain("Jumlah: 100");
+    expect(finiteMsg).toMatch(/Jumlah 100 × Rp\s?5\.000 = <b>Rp\s?500\.000<\/b>/);
   });
 
   it("WA saved message confirms post-payment capture", () => {
@@ -670,6 +670,7 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
     expect(labels).toContain(MENU_LABEL_CATALOG);
     expect(labels).toContain(MENU_LABEL_SEARCH);
     expect(labels).toContain(MENU_LABEL_ORDERS);
+    expect(labels).toContain("🛡 Garansi");
     expect(labels).toContain(MENU_LABEL_HELP);
     expect(menu.is_persistent).toBe(true);
     expect(menu.resize_keyboard).toBe(true);
@@ -797,11 +798,10 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(route).toContain("handleCartCheckout");
     expect(route).toContain("createAndSendCartInvoice");
     expect(route).toContain('"cconfirm"');
-    // /start TIDAK mengirim pesan keyboard terpisah apa pun: reply keyboard
-    // (is_persistent) sudah diinstal sejak /start pertama user. Satu pesan
-    // tambahan ("Menu Cepat", "—", dsb) hanya jadi bubble sampah.
-    // Foto welcome + inline keyboard dikirim via sendPhoto di command.ts.
-    expect(route).not.toContain("mainReplyMenu()");
+    // /start memasang persistent reply keyboard langsung pada banner foto welcome
+    // tanpa pesan bubble sampah terpisah ("Menu Cepat", "—", dsb).
+    expect(route).toContain("mainReplyMenu(locale)");
+    expect(route).not.toContain('"Menu Cepat"');
     const api = read("src/lib/telegram/api.ts");
     expect(api).toContain('command: "cart"');
   });
@@ -840,12 +840,12 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(msg).toContain("<b>🛒 Keranjang</b>");
     expect(msg).toContain("Canva Pro");
     expect(msg).toMatch(/Subtotal: Rp\s?99\.000/);
-    expect(msg).toContain("Satu pembayaran QRIS");
+    expect(msg).toContain("Satu pembayaran untuk semua item.");
     expect(cartMessage([])).toContain("Keranjang kosong");
     const added = cartAddedMessage("Canva Pro", "Pro Head 1 Bulan", 2, 3);
     expect(added).toContain("Ditambahkan ke keranjang");
     const summary = cartCheckoutSummaryMessage(lines, 99000);
-    expect(summary).toContain("Satu pembayaran QRIS untuk semua item");
+    expect(summary).toContain("Satu pembayaran untuk semua item.");
     expect(summary).not.toContain("Langkah");
   });
 

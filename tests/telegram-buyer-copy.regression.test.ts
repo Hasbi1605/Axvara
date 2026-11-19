@@ -27,7 +27,7 @@ function parsed(html: string, limit = 4096): Document {
   expect(html).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
   const document = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   expect(document.querySelectorAll("script, img, a")).toHaveLength(0);
-  for (const tag of ["b", "code", "pre", "i", "s"]) {
+  for (const tag of ["b", "code", "pre", "i", "s", "blockquote"]) {
     expect((html.match(new RegExp(`<${tag}>`, "g")) ?? []).length)
       .toBe((html.match(new RegExp(`</${tag}>`, "g")) ?? []).length);
   }
@@ -35,11 +35,11 @@ function parsed(html: string, limit = 4096): Document {
 }
 
 describe("plain Indonesian Telegram buyer copy", () => {
-  it("keeps copy concise with at most one semantic heading emoji, without slogans or speed claims", () => {
-    const messages = [
+  it("keeps copy concise with semantic heading emojis, without slogans or speed claims", () => {
+    const transactionalMessages = [
       welcomeMessage("Nadia"), catalogFlatMessage(12), categoriesMessage(), categoryProductsMessage("AI", 2),
-      productDetailMessage({ name: "Produk A", price: 5000 }), searchPromptMessage(), searchResultsMessage("Produk", 4),
-      myOrdersMessage([]), helpMessage(), chooseVariantMessage("Produk A"),
+      searchPromptMessage(), searchResultsMessage("Produk", 4),
+      myOrdersMessage([]), chooseVariantMessage("Produk A"),
       confirmVariantBuyMessage(item), confirmBuyMessage("Produk A", 5000),
       chooseQtyMessage({ ...item, stock: 1, qty: 1 }),
       emailConfirmationMessage({ ...item, total: 10000, maskedEmail: "n***@example.test" }),
@@ -52,22 +52,32 @@ describe("plain Indonesian Telegram buyer copy", () => {
       outOfStockMessage(), errorMessage(), qrisRenewRejectedMessage("amount_unavailable"),
       ...credentialMessages({ plaintext: "account:password" }),
     ];
-    for (const message of messages) {
+    for (const message of transactionalMessages) {
       expect(message).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇|—/u);
       expect((message.match(/\p{Extended_Pictographic}/gu) ?? []).length).toBeLessThanOrEqual(1);
       parsed(message);
     }
+    const cardAndHelp = [
+      productDetailMessage({ name: "Produk A", price: 5000 }),
+      helpMessage(),
+    ];
+    for (const message of cardAndHelp) {
+      expect(message).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇/u);
+      parsed(message);
+    }
   });
 
-  it("uses only a short supplied first paragraph, never infers product policy or stock", () => {
+  it("renders blockquote highlight + full description after core lines and keeps photo captions <= 1024", () => {
     const html = productDetailMessage({
       name: "Google Family", description: "Akses <produk> & panduan.\n\nParagraf panjang berikutnya.", price: 5000,
     });
-    expect(html).toContain("Akses &lt;produk&gt; &amp; panduan.");
-    expect(html).not.toContain("Paragraf panjang");
+    expect(html).toContain("<blockquote>Akses &lt;produk&gt; &amp; panduan.</blockquote>");
+    expect(html).toContain("Paragraf panjang berikutnya.");
+    expect(html.indexOf("Paragraf panjang berikutnya.")).toBeGreaterThan(html.indexOf("Harga:"));
     expect(html).not.toMatch(/Stok|keluarga|12 bulan|garansi/i);
-    const long = productDetailMessage({ name: "Produk", price: 5000, description: "x".repeat(1000) });
-    expect(long.length).toBeLessThan(400);
+    const longPhoto = productDetailMessage({ name: "Produk", price: 5000, description: "x".repeat(1500) }, { hasImage: true });
+    expect(longPhoto.length).toBeLessThanOrEqual(1024);
+    expect(longPhoto).toMatch(/Harga: <b>Rp\s?5\.000<\/b>/);
     const bounded = productDetailMessage({
       name: '"'.repeat(100), description: '"'.repeat(1000), price: 5000, stock: 3,
       variants: Array.from({ length: 10 }, () => ({ label: '"'.repeat(100), delivery_badge: '<&>"'.repeat(100), price: 5000 })),
@@ -85,7 +95,7 @@ describe("plain Indonesian Telegram buyer copy", () => {
     expect(limited).toContain("Minimal pembelian: 2");
     expect(limited).toContain("Maksimal 4 per pesanan");
     expect(limited).not.toContain("Maksimal 50");
-    expect(limited).toMatch(/Subtotal: Rp\s?10\.000/);
+    expect(parsed(limited).body.textContent ?? "").toMatch(/Jumlah 2 × Rp\s?5\.000 = Rp\s?10\.000/);
   });
 
   it("does not describe every email-based product as an invitation or subtotal as final payment", () => {

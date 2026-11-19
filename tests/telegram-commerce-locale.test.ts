@@ -56,7 +56,9 @@ describe("TG2a read commerce follows saved locale/currency", () => {
     vi.clearAllMocks();
     await handleCommand("/katalog", user.id, "private", user);
     expect(sentTexts().join("\n")).toMatch(/AXVARA Catalog/);
-    expect(lastMarkup()).toContain("From");
+    expect(lastMarkup()).toContain("Canva Pro");
+    expect(lastMarkup()).toContain("$10.00");
+    expect(lastMarkup()).toContain("Ready");
     vi.clearAllMocks();
     await handleCallback("prd:1", user.id, 8, user, "cb-prd");
     expect(allTexts().join("\n")).toMatch(/From|Price/);

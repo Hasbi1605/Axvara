@@ -26,15 +26,13 @@ export type TgPriceCtx = { locale?: Locale; displayCurrency?: DisplayCurrency | 
 export type TgLocaleCtx = { locale?: Locale };
 
 /** ONE primary display price for buttons. Buttons never show two
- * currencies. USD only with fresh FX; otherwise honest IDR. */
+ * currencies. USD only with fresh FX; otherwise honest IDR (dot-thousands). */
 function priceButtonText(price: number, ctx?: TgPriceCtx): string {
   const amount = Math.max(0, Math.round(Number(price) || 0));
   if (ctx?.displayCurrency === "USD" && ctx?.fx) {
     return tgDisplayPrice(amount, { locale: ctx.locale ?? "id", displayCurrency: "USD", fx: ctx.fx });
   }
-  if (ctx?.displayCurrency === "USD") return buttonPrice(amount);
-  if (amount >= 1000 && amount % 1000 === 0) return `Rp${amount / 1000}rb`;
-  return `Rp${amount.toLocaleString(ctx?.locale === "en" ? "en-US" : "id-ID")}`;
+  return buttonPrice(amount);
 }
 
 const PER_PAGE = 6;
@@ -43,18 +41,36 @@ const PER_PAGE = 6;
 export const MENU_LABEL_CATALOG = "🛍 Katalog";
 export const MENU_LABEL_SEARCH = "🔎 Cari";
 export const MENU_LABEL_ORDERS = "📦 Pesanan";
-export const MENU_LABEL_HELP = "❓ Bantuan";
+export const MENU_LABEL_WARRANTY = "🛡 Garansi";
+export const MENU_LABEL_HELP = "💬 Bantuan";
+export const MENU_LABEL_HELP_LEGACY = "❓ Bantuan";
 export const MENU_LABEL_CART = "🛒 Keranjang";
 
 /**
- * Harga untuk label tombol. "Rp89rb" hanya bila tepat ribuan; selain itu
- * nominal utuh. Dulu `(harga/1000).toFixed(0)` membulatkan: Rp7.500 tampil
- * "Rp8rb" dan Rp1.500 "Rp2rb", jadi keputusan klik diambil dari angka salah.
+ * Harga untuk label tombol dalam format penuh pemisah titik (`Rp19.500`),
+ * tidak pernah memakai singkatan "rb".
  */
 export function buttonPrice(price: number): string {
   const amount = Math.max(0, Math.round(Number(price) || 0));
-  if (amount >= 1000 && amount % 1000 === 0) return `Rp${amount / 1000}rb`;
   return `Rp${amount.toLocaleString("id-ID")}`;
+}
+
+export function stockBadgeText(stock: number | undefined | null, locale: Locale = "id"): string {
+  if (stock === undefined || stock === null) return "";
+  if (stock === -1) return locale === "en" ? "Ready" : "stok ∞";
+  if (stock > 0) return locale === "en" ? `stock ${stock}` : `stok ${stock}`;
+  return locale === "en" ? "Sold out" : "Habis";
+}
+
+function productButtonText(
+  product: { name: string; price: number; stock?: number | null },
+  ctx?: TgPriceCtx & TgLocaleCtx,
+  maxNameLen = 28,
+): string {
+  const label = truncateLabel(product.name, maxNameLen);
+  const priceStr = priceButtonText(product.price, ctx);
+  const stockStr = stockBadgeText(product.stock, ctx?.locale ?? "id");
+  return stockStr ? `${label} · ${priceStr} · ${stockStr}` : `${label} · ${priceStr}`;
 }
 
 /**
@@ -93,6 +109,7 @@ export const cb = {
   cancel: (orderCode: string) => `cancel:${orderCode}`,
   cancelConfirm: (orderCode: string) => `cancelok:${orderCode}`,
   terms: (productId: number, variantId = 0) => `terms:${productId}:${variantId}`,
+  restockNotify: (productId: number) => `rst:${productId}`,
   refresh: (orderCode: string) => `refresh:${orderCode}`,
   reorder: (productId: number) => `reorder:${productId}`,
   search: () => "search",
@@ -146,22 +163,22 @@ export function mainReplyMenu(locale: "id" | "en" = "id"): ReplyKeyboardMarkup {
       keyboard: [
         [{ text: MENU_LABEL_EN.catalog }, { text: MENU_LABEL_EN.search }],
         [{ text: MENU_LABEL_EN.cart }, { text: MENU_LABEL_EN.orders }],
-        [{ text: MENU_LABEL_EN.help }],
+        [{ text: MENU_LABEL_EN.warranty }, { text: MENU_LABEL_EN.help }],
       ],
       resize_keyboard: true,
       is_persistent: true,
-      input_field_placeholder: "Choose a menu or type /bantuan…",
+      input_field_placeholder: "Search product or pick a menu…",
     };
   }
   return {
     keyboard: [
       [{ text: MENU_LABEL_CATALOG }, { text: MENU_LABEL_SEARCH }],
       [{ text: MENU_LABEL_CART }, { text: MENU_LABEL_ORDERS }],
-      [{ text: MENU_LABEL_HELP }],
+      [{ text: MENU_LABEL_WARRANTY }, { text: MENU_LABEL_HELP }],
     ],
     resize_keyboard: true,
     is_persistent: true,
-    input_field_placeholder: "Pilih menu atau ketik /bantuan…",
+    input_field_placeholder: "Cari produk atau ketik nama produk…",
   };
 }
 
@@ -220,16 +237,31 @@ export const MENU_LABEL_EN = {
   catalog: "🛍 Catalog",
   search: "🔎 Search",
   orders: "📦 Orders",
-  help: "❓ Help",
+  warranty: "🛡 Warranty",
+  help: "💬 Help",
+  helpLegacy: "❓ Help",
   cart: "🛒 Cart",
 } as const;
 
-export function homeKeyboard(locale: "id" | "en" = "id"): InlineKeyboardMarkup {
+export function homeKeyboard(
+  locale: "id" | "en" = "id",
+  bestsellers: { productId: number; name: string; price: number; stock?: number }[] = [],
+  ctx?: TgPriceCtx,
+): InlineKeyboardMarkup {
   const en = locale === "en";
+  const topRows: InlineKeyboardButton[][] = bestsellers
+    .filter((item) => item.productId > 0)
+    .slice(0, 3)
+    .map((item) => [{
+      text: `🔥 ${productButtonText({ name: item.name, price: item.price, stock: item.stock }, { ...ctx, locale }, 24)}`,
+      callback_data: cb.product(item.productId),
+      style: "primary" as const,
+    }]);
   return {
     inline_keyboard: [
+      ...topRows,
       [
-        { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+        { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog(), style: "primary" },
         { text: en ? "🛒 Cart" : "🛒 Keranjang", callback_data: cb.cart() },
       ],
       [
@@ -238,7 +270,7 @@ export function homeKeyboard(locale: "id" | "en" = "id"): InlineKeyboardMarkup {
       ],
       [
         { text: en ? "🛡 Warranty & Terms" : "🛡 Garansi & Ketentuan", callback_data: "warranty" },
-        { text: en ? "❓ Help" : "❓ Bantuan", callback_data: "help" },
+        { text: en ? "💬 Help" : "💬 Bantuan", callback_data: "help" },
       ],
       [
         { text: en ? "🌐 Language" : "🌐 Bahasa", callback_data: cb.langMenu() },
@@ -250,7 +282,7 @@ export function homeKeyboard(locale: "id" | "en" = "id"): InlineKeyboardMarkup {
 }
 
 export function catalogFlatKeyboard(
-  products: { id: number; name: string; price: number }[],
+  products: { id: number; name: string; price: number; stock?: number }[],
   requestedPage = 0,
   perPage = 8,
   ctx?: TgPriceCtx & TgLocaleCtx,
@@ -262,9 +294,7 @@ export function catalogFlatKeyboard(
   const en = ctx?.locale === "en";
 
   const rows: InlineKeyboardButton[][] = pageItems.map((p) => {
-    const priceStr = priceButtonText(p.price, ctx);
-    const label = truncateLabel(p.name, 28);
-    return [{ text: `${label} · ${en ? "From" : "Mulai"} ${priceStr}`, callback_data: cb.product(p.id) }];
+    return [{ text: productButtonText(p, ctx, 28), callback_data: cb.product(p.id) }];
   });
 
   // Pagination (prev | 1/3 | next)
@@ -337,7 +367,7 @@ export function categoriesKeyboard(
 }
 
 export function productsKeyboard(
-  products: { id: number; name: string; price: number }[],
+  products: { id: number; name: string; price: number; stock?: number }[],
   categoryId: number,
   requestedPage = 0,
   ctx?: TgPriceCtx & TgLocaleCtx,
@@ -347,11 +377,9 @@ export function productsKeyboard(
   const start = page * PER_PAGE;
   const pageItems = products.slice(start, start + PER_PAGE);
 
-  // Single-column for products (longer labels with price)
+  // Single-column for products (longer labels with price + stock)
   const rows: InlineKeyboardButton[][] = pageItems.map((p) => {
-    const priceStr = priceButtonText(p.price, ctx);
-    const label = truncateLabel(p.name, 25);
-    return [{ text: `${label} • ${priceStr}`, callback_data: cb.product(p.id) }];
+    return [{ text: productButtonText(p, ctx, 25), callback_data: cb.product(p.id) }];
   });
 
   // Pagination
@@ -393,14 +421,12 @@ export function myOrdersKeyboard(
 }
 
 export function searchResultsKeyboard(
-  products: { id: number; name: string; price: number }[],
+  products: { id: number; name: string; price: number; stock?: number }[],
   ctx?: TgPriceCtx & TgLocaleCtx,
 ): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
   const rows: InlineKeyboardButton[][] = products.slice(0, 10).map((p) => {
-    const priceStr = priceButtonText(p.price, ctx);
-    const label = truncateLabel(p.name, 28);
-    return [{ text: `${label} • ${priceStr}`, callback_data: cb.product(p.id) }];
+    return [{ text: productButtonText(p, ctx, 28), callback_data: cb.product(p.id) }];
   });
   rows.push([
     { text: en ? "🔎 Search Again" : "🔎 Cari Lagi", callback_data: cb.search() },
@@ -408,6 +434,22 @@ export function searchResultsKeyboard(
   ]);
   rows.push([{ text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() }]);
   return { inline_keyboard: rows };
+}
+
+export function searchNoResultsKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  return {
+    inline_keyboard: [
+      [
+        { text: en ? "📂 Categories" : "📂 Kategori", callback_data: cb.categories() },
+        { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog(), style: "primary" },
+      ],
+      [
+        { text: en ? "💬 Help" : "💬 Bantuan", callback_data: "help" },
+        { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+      ],
+    ],
+  };
 }
 
 export function productDetailKeyboard(productId: number, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
@@ -423,26 +465,102 @@ export function productDetailKeyboard(productId: number, ctx?: TgLocaleCtx): Inl
   };
 }
 
+function formatDurationForButton(value: number | null | undefined, unit: string | null | undefined, locale: Locale): string | null {
+  if (!unit) return null;
+  const u = unit.trim().toLowerCase();
+  if (u === "lifetime" || u === "selamanya") return locale === "en" ? "Lifetime" : "Selamanya";
+  if (value == null || !Number.isFinite(value) || value <= 0) return null;
+  const n = Math.floor(value);
+  if (locale === "en") {
+    const word = u.startsWith("day") || u === "hari" ? "Day"
+      : u.startsWith("week") || u === "minggu" ? "Week"
+        : u.startsWith("month") || u === "bulan" ? "Month"
+          : u.startsWith("year") || u === "tahun" ? "Year"
+            : unit.trim();
+    return `${n} ${n === 1 ? word : `${word}s`}`;
+  }
+  const word = u.startsWith("day") || u === "hari" ? "Hari"
+    : u.startsWith("week") || u === "minggu" ? "Minggu"
+      : u.startsWith("month") || u === "bulan" ? "Bulan"
+        : u.startsWith("year") || u === "tahun" ? "Tahun"
+          : unit.trim();
+  return `${n} ${word}`;
+}
+
+export function variantButtonDuration(
+  v: {
+    label: string;
+    duration_label?: string | null;
+    duration_value?: number | null;
+    duration_unit?: string | null;
+    warranty_label?: string | null;
+    warranty_value?: number | null;
+    warranty_unit?: string | null;
+    wr_variant_id?: string | number | null;
+  },
+  locale: Locale,
+): string | null {
+  // Never append duplicate or legacy 1-month mirror duration to labels like "Google Head 18Bulan".
+  if (/\d+\s*(?:hari|bulan|tahun|minggu|hr|bln|thn|day|days|month|months|year|years|week|weeks)|\b(?:lifetime|selamanya|permanen)\b/i.test(v.label)) {
+    return null;
+  }
+  const dl = v.duration_label?.trim();
+  if (dl) {
+    return dl === v.warranty_label?.trim() ? null : dl;
+  }
+  const isWr = v.wr_variant_id != null && String(v.wr_variant_id).trim() !== "";
+  if (isWr) return formatDurationForButton(v.duration_value, v.duration_unit, locale);
+  if (
+    v.warranty_value != null &&
+    v.warranty_unit != null &&
+    (v.duration_value !== v.warranty_value || v.duration_unit !== v.warranty_unit)
+  ) {
+    return formatDurationForButton(v.duration_value, v.duration_unit, locale);
+  }
+  return null;
+}
+
 export function variantsKeyboard(
   productId: number,
-  variants: { id: number; label: string; price: number; stock: number; min_qty?: number; duration_label?: string | null; warranty_label?: string | null }[],
+  variants: {
+    id: number;
+    label: string;
+    price: number;
+    stock: number;
+    min_qty?: number;
+    duration_label?: string | null;
+    duration_value?: number | null;
+    duration_unit?: string | null;
+    warranty_label?: string | null;
+    warranty_value?: number | null;
+    warranty_unit?: string | null;
+    wr_variant_id?: string | number | null;
+  }[],
   ctx?: TgPriceCtx & TgLocaleCtx,
 ): InlineKeyboardMarkup {
-  const en = ctx?.locale === "en";
+  const locale = ctx?.locale ?? "id";
+  const en = locale === "en";
   const canBuy = (v: typeof variants[number]) => v.stock === -1 || v.stock >= Math.max(1, v.min_qty ?? 1);
   const available = variants.filter(canBuy);
   const unavailable = variants.filter((v) => !canBuy(v));
-  const rows: InlineKeyboardButton[][] = [...available, ...unavailable].map((v) => {
+  const rows: InlineKeyboardButton[][] = available.map((v) => {
+    const dur = variantButtonDuration(v, locale);
     const priceStr = priceButtonText(v.price, ctx);
-    const isOutOfStock = !canBuy(v);
-    const text = isOutOfStock
-      ? `❌ ${v.label}`
-      : `${v.label} · ${priceStr}`;
+    const stockStr = stockBadgeText(v.stock, locale);
+    const text = `${v.label}${dur ? ` · ${dur}` : ""} · ${priceStr} · ${stockStr}`;
     return [{
       text,
-      callback_data: isOutOfStock ? "soldout" : cb.variant(v.id),
+      callback_data: cb.variant(v.id),
     }];
   });
+  if (unavailable.length > 0) {
+    rows.push([{
+      text: en
+        ? `🔔 Notify when restocked (${unavailable.length} sold out)`
+        : `🔔 Kabari saat restok (${unavailable.length} habis)`,
+      callback_data: cb.restockNotify(productId),
+    }]);
+  }
 
   rows.push([{ text: en ? "📋 Details & Terms" : "📋 Detail & Ketentuan", callback_data: cb.terms(productId) }]);
   rows.push([{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() }, { text: en ? "🛒 Cart" : "🛒 Keranjang", callback_data: cb.cart() }]);
@@ -493,6 +611,13 @@ export function qtyKeyboard(params: {
   const total = tgDisplayPrice(price * qty, { locale: ctx?.locale ?? "id", displayCurrency: ctx?.displayCurrency ?? null, fx: ctx?.fx ?? null });
   const minusCb = qty > minQty ? cb.setQty(productId, variantId, minusQty) : "noop";
   const minusLabel = qty > minQty ? (en ? "➖ Decrease" : "➖ Kurangi") : "➖";
+  const presets = [1, 5, 10, 50]
+    .filter((n) => n >= minQty && n <= max)
+    .map((n): InlineKeyboardButton => (
+      n === qty
+        ? { text: `✅ ${n}`, callback_data: "noop" }
+        : { text: String(n), callback_data: cb.setQty(productId, variantId, n) }
+    ));
   return {
     inline_keyboard: [
       [
@@ -500,10 +625,18 @@ export function qtyKeyboard(params: {
         { text: en ? `Quantity: ${qty}` : `Jumlah: ${qty}`, callback_data: "noop" },
         { text: qty < max ? (en ? "Add ➕" : "Tambah ➕") : "➕", callback_data: qty < max ? cb.setQty(productId, variantId, plusQty) : "noop" },
       ],
+      ...(presets.length > 0 ? [presets] : []),
       ...(max > 1 ? [[{ text: en ? "✍️ Enter Quantity" : "✍️ Masukkan Jumlah", callback_data: cb.qtyInput(productId, variantId) }]] : []),
-      [{ text: params.requiresEmail ? (en ? `📧 Continue to Email · ${total}` : `📧 Lanjut ke Email · ${total}`) : (en ? `💳 Pay QRIS · ${total}` : `💳 Bayar QRIS · ${total}`), callback_data: cb.pay(productId, variantId, qty, params.approvalTag) }],
+      [{
+        text: params.requiresEmail ? (en ? `📧 Continue to Email · ${total}` : `📧 Lanjut ke Email · ${total}`) : (en ? `💳 Pay QRIS · ${total}` : `💳 Bayar QRIS · ${total}`),
+        callback_data: cb.pay(productId, variantId, qty, params.approvalTag),
+        style: "success",
+      }],
       ...(!params.requiresEmail ? [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry(productId, variantId, qty, params.approvalTag) }]] : []),
-      [{ text: en ? "📋 Terms" : "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }, { text: en ? "🛒 Add to Cart" : "🛒 Tambah ke Keranjang", callback_data: cb.cartAdd(productId, variantId, qty) }],
+      [
+        { text: en ? "📋 Terms" : "📋 Ketentuan", callback_data: cb.terms(productId, variantId) },
+        { text: en ? "🛒 Add to Cart" : "🛒 Tambah ke Keranjang", callback_data: cb.cartAdd(productId, variantId, qty), style: "primary" },
+      ],
       [
         { text: en ? "Change Variant" : "Ganti Varian", callback_data: cb.variants(productId) },
         { text: en ? "Home" : "Menu", callback_data: cb.home() },
@@ -515,7 +648,7 @@ export function qtyKeyboard(params: {
 export function emailConfirmationKeyboard(productId: number, variantId: number, qty: number, total: number, tag?: string, nonce?: string, ctx?: TgPriceCtx & TgLocaleCtx): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
   return { inline_keyboard: [
-    [{ text: `💳 ${en ? "Pay QRIS" : "Bayar QRIS"} · ${priceButtonText(total, ctx)}`, callback_data: cb.emailPay(productId, variantId, qty, tag, nonce) }],
+    [{ text: `💳 ${en ? "Pay QRIS" : "Bayar QRIS"} · ${priceButtonText(total, ctx)}`, callback_data: cb.emailPay(productId, variantId, qty, tag, nonce), style: "success" }],
     [{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry(productId, variantId, qty, tag) }],
     [{ text: en ? "📧 Change Email" : "📧 Ubah Email", callback_data: cb.emailEdit(productId, variantId, qty) }, { text: en ? "📋 Terms" : "📋 Ketentuan", callback_data: cb.terms(productId, variantId) }],
     [
@@ -543,10 +676,10 @@ export function cartKeyboard(params: {
       : { text: "➕", callback_data: "noop" });
     return row;
   });
-  params.lines.slice(0, 20).forEach(line => rows.push([{ text: `${en ? "Remove" : "Hapus"} ${truncateLabel(line.label ?? String(line.variantId), 24)}`, callback_data: cb.cartRemove(line.variantId) }]));
+  params.lines.slice(0, 20).forEach(line => rows.push([{ text: `${en ? "Remove" : "Hapus"} ${truncateLabel(line.label ?? String(line.variantId), 24)}`, callback_data: cb.cartRemove(line.variantId), style: "danger" }]));
   if (params.lines.length > 0) {
-    rows.push([{ text: en ? "💳 Checkout with 1 QRIS" : "💳 Checkout 1 QRIS", callback_data: cb.cartCheckout() }]);
-    rows.push([{ text: en ? "🧹 Clear" : "🧹 Kosongkan", callback_data: cb.cartClear() }]);
+    rows.push([{ text: "💳 Checkout", callback_data: cb.cartCheckout(), style: "success" }]);
+    rows.push([{ text: en ? "🧹 Clear" : "🧹 Kosongkan", callback_data: cb.cartClear(), style: "danger" }]);
   }
   rows.push([
     { text: en ? "🛍 Continue Shopping" : "🛍 Lanjut Belanja", callback_data: cb.catalog() },
@@ -564,9 +697,9 @@ export function qrisInvoiceKeyboard(orderCode: string, ctx?: TgLocaleCtx): Inlin
       // handleOrderRefresh idempoten. Tanpa ini pembeli menunggu buta bila
       // hook telat; copy "tidak perlu cek manual" di invoiceMessage ikut
       // direvisi agar tidak berbohong.
-      [{ text: en ? "🔄 Check Payment" : "🔄 Cek Pembayaran", callback_data: cb.refresh(orderCode) }],
-      [{ text: en ? "📋 Order Details" : "📋 Detail Pesanan", callback_data: cb.order(orderCode) }, { text: en ? "❓ Help" : "❓ Bantuan", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` }],
-      [{ text: en ? "Cancel Order" : "Batalkan Pesanan", callback_data: cb.cancel(orderCode) }],
+      [{ text: en ? "🔄 Check Payment" : "🔄 Cek Pembayaran", callback_data: cb.refresh(orderCode), style: "primary" }],
+      [{ text: en ? "📋 Order Details" : "📋 Detail Pesanan", callback_data: cb.order(orderCode) }, { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa?pesan=${encodeURIComponent(`Pesanan ${orderCode}`)}` }],
+      [{ text: en ? "Cancel Order" : "Batalkan Pesanan", callback_data: cb.cancel(orderCode), style: "danger" }],
     ],
   };
 }
@@ -579,7 +712,7 @@ export function confirmPurchaseKeyboard(productId: number): InlineKeyboardMarkup
       ],
       [
         { text: "📜 Syarat Garansi", callback_data: "warranty" },
-        { text: "❌ Batal", callback_data: cb.product(productId) },
+        { text: "❌ Batal", callback_data: cb.product(productId), style: "danger" },
       ],
     ],
   };
@@ -658,7 +791,7 @@ export function orderStatusKeyboard(orderCode: string, ctx?: TgLocaleCtx): Inlin
     inline_keyboard: [
       [
         { text: en ? "🔄 Check Status" : "🔄 Cek Status", callback_data: cb.refresh(orderCode) },
-        { text: en ? "❌ Cancel" : "❌ Batalkan", callback_data: cb.cancel(orderCode) },
+        { text: en ? "❌ Cancel" : "❌ Batalkan", callback_data: cb.cancel(orderCode), style: "danger" },
       ],
       [{ text: en ? "◀️ Order List" : "◀️ Daftar Pesanan", callback_data: cb.myOrders() }],
       [
@@ -713,7 +846,7 @@ export function paidOrderStatusKeyboard(orderCode: string, ctx?: TgLocaleCtx): I
 export function cancelConfirmationKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
   return { inline_keyboard: [
-    [{ text: en ? "Yes, Cancel" : "Ya, Batalkan", callback_data: cb.cancelConfirm(orderCode) }],
+    [{ text: en ? "Yes, Cancel" : "Ya, Batalkan", callback_data: cb.cancelConfirm(orderCode), style: "danger" }],
     [{ text: en ? "Back to Order" : "Kembali ke Pesanan", callback_data: cb.order(orderCode) }],
   ] };
 }

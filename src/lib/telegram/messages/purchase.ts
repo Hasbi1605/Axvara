@@ -151,6 +151,7 @@ export function confirmBuyMessage(productName: string, price: number, qty = 1, o
 export function chooseQtyMessage(params: {
   productName: string;
   variantLabel: string;
+  duration?: string | null;
   price: number;
   stock: number;
   qty: number;
@@ -164,37 +165,41 @@ export function chooseQtyMessage(params: {
   bulkEnabled?: boolean;
 }, opts?: TgMoneyOpts): string {
   const { productName, variantLabel, price, stock } = params;
-  const en = opts?.locale === "en";
+  const locale = opts?.locale ?? "id";
+  const en = locale === "en";
   // Telegram bulk cap is 100/order.
   const minQty = Math.max(1, Math.floor(Number(params.minQty ?? 1) || 1));
   const maxQty = Math.max(1, Math.min(100, stock === -1 ? 100 : Math.max(1, stock), Math.floor(params.maxQty ?? 100)));
   const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), maxQty);
   const stockLine = stock === -1 ? (en ? "In stock" : "Stok tersedia") : stock > 0 ? (en ? `Stock: ${stock}` : `Stok: ${stock}`) : (en ? "Out of stock" : "Stok habis");
-  const bulkExtra = [
-    ...tgTierPreview({ basePrice: Number(params.basePrice ?? price), bulkTiers: params.bulkTiers, bulkEnabled: params.bulkEnabled, stock, maxQty, qty, locale: opts?.locale ?? "id" }),
-    ...tgTierAppliedLine({ price, basePrice: params.basePrice, appliedTierMinQty: params.appliedTierMinQty, qty, bulkTiers: params.bulkTiers, stock, maxQty, locale: opts?.locale ?? "id" }),
-  ];
-  const hasBulkSavings = Number(params.basePrice ?? NaN) > price;
+  const tierPreview = tgTierPreview({ basePrice: Number(params.basePrice ?? price), bulkTiers: params.bulkTiers, bulkEnabled: params.bulkEnabled, stock, maxQty, qty, locale });
+  const tierApplied = tgTierAppliedLine({ price, basePrice: params.basePrice, appliedTierMinQty: params.appliedTierMinQty, qty, bulkTiers: params.bulkTiers, stock, maxQty, locale });
+  const nextTierHint = tierApplied.find((line) => /^(Tambah|Add) /.test(line));
+  const base = Number(params.basePrice ?? NaN);
+  const discounted = Number.isSafeInteger(base) && base > price;
+  const saved = discounted ? (base - price) * qty : 0;
+  const unitText = formatIdr(price, locale);
+  const totalText = formatIdr(price * qty, locale);
+  const durSuffix = params.duration?.trim() ? ` (${escapeHtml(truncate(params.duration.trim(), 24))})` : "";
+
   const lines = [
-    en ? "<b>🛒 Order quantity</b>" : "<b>🛒 Jumlah pesanan</b>",
+    en ? "<b>🛒 Summary</b>" : "<b>🛒 Ringkasan</b>",
     "",
-    `<b>${escapeHtml(truncate(productName, 80))}</b>`,
-    en ? `Variant: ${escapeHtml(truncate(variantLabel, 80))}` : `Varian: ${escapeHtml(truncate(variantLabel, 80))}`,
-    "",
-    ...(bulkExtra.length ? [...bulkExtra, ""] : []),
-    ...(hasBulkSavings
-      ? [en ? `Unit price: ${formatIdr(price, opts?.locale ?? "id")}` : `Harga satuan: ${formatIdr(price, opts?.locale ?? "id")}`, en ? `<b>Quantity: ${qty}</b>` : `<b>Jumlah: ${qty}</b>`]
-      : [en ? `Unit price: ${formatIdr(price, opts?.locale ?? "id")}` : `Harga satuan: ${formatIdr(price, opts?.locale ?? "id")}`, en ? `<b>Quantity: ${qty}</b>` : `<b>Jumlah: ${qty}</b>`, en ? `<b>Subtotal: ${formatIdr(price * qty, opts?.locale ?? "id")}</b>` : `<b>Subtotal: ${formatIdr(price * qty, opts?.locale ?? "id")}</b>`]),
+    `<b>${escapeHtml(truncate(productName, 80))}</b> · ${escapeHtml(truncate(variantLabel, 80))}${durSuffix}`,
+    `${en ? "Quantity" : "Jumlah"} ${qty} × ${unitText} = <b>${totalText}</b>${discounted ? (en ? ` (bulk ${params.appliedTierMinQty ?? ""}+, save ${formatIdr(saved, locale)})` : ` (grosir ${params.appliedTierMinQty ?? ""}+, hemat ${formatIdr(saved, locale)})`) : ""}`,
   ];
   if (opts?.usdEquivalentText) lines.push(`≈ ${opts.usdEquivalentText}`);
   if (opts?.usdUnavailable) lines.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
+  if (tierPreview.length > 0) {
+    lines.push("", `<blockquote>${tierPreview.join("\n")}</blockquote>`);
+  }
+  if (nextTierHint) lines.push(nextTierHint);
   lines.push(
     "",
     stockLine,
     ...(minQty > 1 ? [en ? `Minimum purchase: ${minQty}` : `Minimal pembelian: ${minQty}`] : []),
     en ? `Maximum ${maxQty} per order.` : `Maksimal ${maxQty} per pesanan.`,
-    "",
-    ...(params.requiresEmail ? [en ? "An active email is required before paying." : "Email aktif diperlukan sebelum membayar."] : []),
+    ...(params.requiresEmail ? ["", en ? "An active email is required before paying." : "Email aktif diperlukan sebelum membayar."] : []),
   );
   return lines.join("\n");
 }
@@ -266,7 +271,7 @@ export function cartMessage(lines: TelegramCartLine[], opts?: TgMoneyOpts): stri
   if (opts?.usdEquivalentText) out.push(`≈ ${opts.usdEquivalentText}`);
   if (opts?.usdUnavailable) out.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
   out.push("");
-  out.push(en ? "One QRIS payment for all items." : "Satu pembayaran QRIS untuk semua item.");
+  out.push(en ? "One payment for all items." : "Satu pembayaran untuk semua item.");
   return out.join("\n");
 }
 
@@ -303,7 +308,7 @@ export function cartCheckoutSummaryMessage(lines: TelegramCartLine[], subtotal: 
   if (opts?.usdEquivalentText) out.push(`≈ ${opts.usdEquivalentText}`);
   if (opts?.usdUnavailable) out.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
   out.push("");
-  out.push(en ? "One QRIS payment for all items. Final total is on the invoice." : "Satu pembayaran QRIS untuk semua item. Total bayar final tercantum pada invoice.", marketRefundNotice[en ? "en" : "id"]);
+  out.push(en ? "One payment for all items. Final total is on the invoice." : "Satu pembayaran untuk semua item. Total bayar final tercantum pada invoice.", marketRefundNotice[en ? "en" : "id"]);
   return out.join("\n");
 }
 
@@ -389,7 +394,9 @@ export function paymentMethodOfferDetails(
         ? `• Crypto (USD): ${amount} USD, incl. crypto service fee. Pick a coin next; network gas is paid by the sender.`
         : `• Crypto (USD): ${amount} USD, termasuk biaya layanan crypto. Pilih koin berikutnya; gas jaringan ditanggung pengirim.`];
     }
-    const label = escapeHtml(String(method.label ?? "").slice(0, 80) || "—");
+    const rawLabel = String(method.label ?? "").trim();
+    const displayLabel = /^qris\s+dinamis$/i.test(rawLabel) ? "QRIS" : rawLabel;
+    const label = escapeHtml(displayLabel.slice(0, 80) || "—");
     if (method.kind === "gateway" && method.gateway) {
       return [en
         ? `• ${label}: est. fee ${formatIdr(method.gateway.estimated_fee, locale)}, estimated total ${formatIdr(method.gateway.estimated_total, locale)}. Contact info is required before paying with this method.`
@@ -489,7 +496,7 @@ export function invoiceMessage(params: {
     en ? `Pay before: ${escapeItemSummary(expiryText, 80)}` : `Batas bayar: ${escapeItemSummary(expiryText, 80)}`,
     ...(isQris ? [QRIS_PAYMENT_DEADLINE_NOTICE] : []),
     "",
-    en ? "Use Check Payment for status. The bot notifies you automatically after payment is confirmed." : "Periksa Pembayaran untuk cek status. Bot otomatis mengabari setelah pembayaran terkonfirmasi.",
+    en ? "Tap <b>Check Payment</b> for status. The bot notifies you automatically after payment is confirmed." : "Tekan <b>Cek Pembayaran</b> untuk cek status. Bot otomatis mengabari setelah pembayaran terkonfirmasi.",
   ].join("\n");
   // Invoices are also photo captions, whose HTML budget is 1024 characters.
   return [header, escapeItemSummary(productName, 1023 - header.length - footer.length - 4), footer].join("\n\n");

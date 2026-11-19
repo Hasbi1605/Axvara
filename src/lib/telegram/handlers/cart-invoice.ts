@@ -11,7 +11,7 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 import {
   queryFirst, getD1, isD1Mode, transitionPendingOrder, StockReservationError,
 } from "@/lib/db";
-import { sendMessage, sendPhoto, showLoadingBar } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto } from "@/lib/telegram/api";
 import { qrisInvoiceKeyboard, minimalMenuKeyboard } from "@/lib/telegram/keyboards";
 import { outOfStockMessage, errorMessage, invoiceMessage } from "@/lib/telegram/messages";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
@@ -154,7 +154,6 @@ export async function createAndSendCartInvoice(
     trackFunnelEvent({ stage: "order", channel: "telegram", productId: lines[0]?.productId, variantId: lines[0]?.variantId,
       subtotal, quantity: lines.reduce((sum, line) => sum + line.qty, 0), locale: cartLocale, method: `qris:${activeQrisProvider()}` });
 
-    await showLoadingBar(chatId, "💳 Memuat QRIS pembayaran").catch(() => {});
     const invoiceResult = await createActiveQrisInvoice(orderCode, subtotal);
     invoiceCreated = true;
 

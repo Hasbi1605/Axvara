@@ -44,6 +44,7 @@ beforeEach(() => {
   fx = createD1Fixture();
   vi.clearAllMocks();
   vi.stubEnv("TELEGRAM_BOT_ENABLED", "true");
+  vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
   product(1, "Alpha Ready", { soldCount: 5 });
   variant(1, 3000, 0); // varian habis yang lebih murah: harga tampil tidak boleh memakainya
   variant(1, 7500, 4);
@@ -122,7 +123,12 @@ describe("tombol dari pesan katalog lama", () => {
 
   it("produk yang sudah nonaktif dijawab, bukan diam", async () => {
     await handleShowProduct(42, 7, 5 + 1000);
-    expect(String(vi.mocked(sendMessage).mock.calls.at(-1)?.[0].text)).toContain("tidak tersedia");
+    const { safeEditOrSend } = await import("@/lib/telegram/api");
+    const texts = [
+      ...vi.mocked(sendMessage).mock.calls.map((c) => String((c[0] as { text?: unknown }).text ?? "")),
+      ...vi.mocked(safeEditOrSend).mock.calls.map((c) => String((c[0] as { text?: unknown }).text ?? "")),
+    ];
+    expect(texts.at(-1) ?? "").toContain("tidak tersedia");
   });
 
   it("detail produk menampilkan kelas pengiriman per varian (owner 2026-10-10)", async () => {
