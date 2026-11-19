@@ -3,7 +3,7 @@ import { salesGatewayControl } from '@/lib/whatsapp/gateway';
 import { DEFAULT_SALES_BOT_NUMBER, normalizeBotNumber, validBotRevision } from '@/lib/whatsapp/bot-number';
 import { SALES_GROUP_NAME } from '@/lib/whatsapp/sales-notifications';
 import { isForwardEmailConfigured } from '@/lib/warung-rebahan/forward-sender';
-import { broadcastText, type BroadcastChannel, type BroadcastSnapshot, type BroadcastTemplate } from './model';
+import { broadcastText, TELEGRAM_PROMO_TEMPLATE_ID, type BroadcastChannel, type BroadcastSnapshot, type BroadcastTemplate } from './model';
 
 export class BroadcastError extends Error {}
 
@@ -59,7 +59,7 @@ export async function launchBroadcast(args:{id:string;templateId:string;revision
   return {id:args.id,replayed:false};
 }
 export async function listBroadcasts(db:DatabaseAccess=createDatabaseAccess()) {
-  const templates=await db.queryAll('SELECT * FROM broadcast_templates ORDER BY archived,name LIMIT 200');
+  const templates=await db.queryAll('SELECT * FROM broadcast_templates WHERE id != ? ORDER BY archived,name LIMIT 200', TELEGRAM_PROMO_TEMPLATE_ID);
   const campaigns=await db.queryAll(`SELECT id,template_id,template_revision,snapshot_json,channels_json,status,created_at FROM broadcast_campaigns ORDER BY created_at DESC,id DESC LIMIT 30`);
   // One bounded aggregate for the visible history, never one query per campaign.
   const progress=await db.queryAll(`SELECT d.campaign_id,d.channel,d.status,count(*) AS n,MAX(d.last_error) AS last_error FROM broadcast_deliveries d

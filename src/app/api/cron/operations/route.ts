@@ -245,8 +245,6 @@ export async function POST(request: NextRequest) {
     telegram_paid_admin_notifications_retried: 0,
     telegram_invoice_retried: 0,
     telegram_pending_reminders_sent: 0,
-    telegram_promo_full_sent: 0,
-    telegram_promo_short_sent: 0,
     whatsapp_outbox_sent: 0,
     whatsapp_outbox_dead: 0,
     whatsapp_outbox_recovered: 0,
@@ -430,12 +428,6 @@ export async function POST(request: NextRequest) {
     const pendingPaidAdminWeb = Number(queueRow?.paid_admin_web ?? 0);
     const pendingPinEmail = Number(queueRow?.pin_due ?? 0);
     const pendingStale = Number(queueRow?.stale ?? 0);
-    const promoDue = process.env.TELEGRAM_PROMO_DIGEST_ENABLED === "true" && (() => {
-      const hour = Number(new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Asia/Jakarta", hour: "2-digit", hourCycle: "h23",
-      }).format(new Date()));
-      return (hour >= 9 && hour < 12) || (hour >= 17 && hour < 20);
-    })();
     // pendingNotify = seluruh jenis pekerjaan notifikasi (RR3-09).
     const pendingNotify = pendingCreated + pendingPaid + pendingPaidAdmin + pendingPaidAdminWeb;
     const pendingWrDue = wrTablesReady ? Number(wrDueRow?.wr_due ?? 0) : 0;
@@ -481,17 +473,6 @@ export async function POST(request: NextRequest) {
         activePhases.delete(victim);
         activePhases.add("fulfillment");
         const idx = deferredOut.indexOf("fulfillment");
-        if (idx >= 0) deferredOut.splice(idx, 1);
-        if (!deferredOut.includes(victim)) deferredOut.push(victim);
-      }
-    }
-    if (!forcedPhase && promoDue && !activePhases.has("notify")) {
-      const actives = ordered.filter((p) => activePhases.has(p));
-      const victim = [...actives].reverse().find((p) => p !== "fulfillment" && p !== "notify");
-      if (victim) {
-        activePhases.delete(victim);
-        activePhases.add("notify");
-        const idx = deferredOut.indexOf("notify");
         if (idx >= 0) deferredOut.splice(idx, 1);
         if (!deferredOut.includes(victim)) deferredOut.push(victim);
       }
@@ -849,22 +830,6 @@ export async function POST(request: NextRequest) {
           results.telegram_pending_reminders_sent = reminders;
         } else if (!deferredOut.includes("notify")) {
           deferredOut.push("notify");
-        }
-      }
-
-      // Materi promo internal dua kali sehari. Diletakkan sesudah notifikasi
-      // transaksi supaya promosi tidak pernah mengusir pesan order pembeli.
-      // Maksimum 8 statement: kandidat, histori, claim, read, dan marker dua bubble.
-      if (activePhases.has("notify") && budget.fits(8) && hasTime(TIME_TELEGRAM_BATCH * 2)) {
-        try {
-          const { sendDueAdminPromoDigest } = await import("@/lib/telegram/promo-digest");
-          const promo = await sendDueAdminPromoDigest(database);
-          results.telegram_promo_full_sent = promo.fullSent ? 1 : 0;
-          results.telegram_promo_short_sent = promo.shortSent ? 1 : 0;
-          if (promo.due && !promo.complete && !promo.skipped && !deferredOut.includes("notify")) deferredOut.push("notify");
-          if (promo.skipped) results.telegram_promo_skipped = promo.skipped;
-        } catch {
-          if (!deferredOut.includes("notify")) deferredOut.push("notify");
         }
       }
 

@@ -20,6 +20,14 @@ export async function processBroadcasts(db:DatabaseAccess=createDatabaseAccess()
   // inside Resend's 24-hour dedupe window, with an extra hour of margin.
   await db.execRun(`UPDATE broadcast_deliveries SET status=CASE WHEN channel='email' AND julianday(first_attempt_at)>julianday(?,'-23 hours') THEN 'pending' ELSE 'unknown' END,
     last_error='delivery_interrupted',lease_until=NULL,next_attempt_at=?,updated_at=? WHERE status='sending' AND julianday(lease_until)<=julianday(?)`,now(),now(),now(),now());
+  const currentIso=now();
+  const expiredPromo=await db.execRun(`UPDATE broadcast_deliveries SET status='skipped',last_error='promo_slot_expired',lease_until=NULL,updated_at=?
+    WHERE status='pending' AND campaign_id IN (
+      SELECT id FROM broadcast_campaigns WHERE status='queued'
+        AND json_extract(snapshot_json,'$.promo.expiresAt') IS NOT NULL
+        AND julianday(json_extract(snapshot_json,'$.promo.expiresAt'))<=julianday(?)
+    )`,currentIso,currentIso);
+  out.skipped+=Number(expiredPromo.changes??0);
   const rows=await db.queryAll(`SELECT d.*,c.snapshot_json FROM broadcast_deliveries d JOIN broadcast_campaigns c ON c.id=d.campaign_id
     WHERE d.status='pending' AND c.status='queued' AND julianday(d.next_attempt_at)<=julianday(?)
       AND (d.channel!='email' OR ? IS NULL OR julianday(?)<=julianday(?,'+1 second'))
@@ -33,6 +41,10 @@ export async function processBroadcasts(db:DatabaseAccess=createDatabaseAccess()
    const delay=after?Date.parse(String(after))-Date.now():0;
    if(delay>1000)continue;
    if(delay>0)await new Promise(resolve=>setTimeout(resolve,delay));
+   const snapshot=JSON.parse(String(row.snapshot_json)) as BroadcastSnapshot;
+   if(snapshot.promo?.expiresAt&&Date.now()>=Date.parse(snapshot.promo.expiresAt)){
+    await db.execRun("UPDATE broadcast_deliveries SET status='skipped',last_error='promo_slot_expired',updated_at=? WHERE id=? AND status='pending'",now(),row.id);out.skipped++;continue;
+   }
    // A late retry must not outlive the provider's idempotency protection.
    if(channel==='email'&&row.first_attempt_at&&Date.now()-Date.parse(String(row.first_attempt_at))>=23*3600000){
     await db.execRun("UPDATE broadcast_deliveries SET status='unknown',last_error='email_retry_window_elapsed' WHERE id=? AND status='pending'",row.id);out.unknown++;continue;
@@ -47,7 +59,7 @@ export async function processBroadcasts(db:DatabaseAccess=createDatabaseAccess()
     await db.execRun(`UPDATE broadcast_dispatch_control SET ${channel==='email'?'email_after':'telegram_after'}=? WHERE id=1 AND worker_token=?`,next,token);
    }
    let result:SendOutcome;
-   try{result=await sendBroadcast(channel,{campaign_id:String(row.campaign_id),recipient_id:String(row.recipient_id),destination:String(row.destination),unsubscribe_token:String(row.unsubscribe_token||'')},JSON.parse(String(row.snapshot_json)) as BroadcastSnapshot);}
+   try{result=await sendBroadcast(channel,{campaign_id:String(row.campaign_id),recipient_id:String(row.recipient_id),destination:String(row.destination),unsubscribe_token:String(row.unsubscribe_token||''),provider_id:row.provider_id?String(row.provider_id):null},snapshot);}
    catch{result={state:'unknown',error:'delivery_unknown'};}
    if(result.blocked&&db.canSpend(1))await db.execRun('UPDATE telegram_users SET is_blocked=1 WHERE user_id=? AND chat_id=?',row.recipient_id,row.destination);
    if(result.state==='retry'&&(channel==='email'||channel==='telegram')){

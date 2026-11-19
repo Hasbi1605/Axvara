@@ -2,7 +2,20 @@ export const CHANNELS = ['whatsapp','email','telegram'] as const;
 export type BroadcastChannel = typeof CHANNELS[number];
 export type BroadcastContent = { name: string; title: string; body: string; cta_label: string; cta_url: string };
 export type BroadcastTemplate = BroadcastContent & { id: string; revision: number; archived: number };
-export type BroadcastSnapshot = BroadcastContent & { wa?: { destination: string; botNumber: string; botRevision: string } };
+export const TELEGRAM_PROMO_TEMPLATE_ID = '00000000-0000-4000-8000-000000000000';
+export type BroadcastPromoPayload = {
+  kind: 'telegram_promo';
+  businessDate: string;
+  slot: 'morning' | 'evening';
+  bannerUrl: string;
+  captionHtml: string;
+  messagesHtml: string[];
+  expiresAt: string;
+};
+export type BroadcastSnapshot = BroadcastContent & {
+  wa?: { destination: string; botNumber: string; botRevision: string };
+  promo?: BroadcastPromoPayload;
+};
 export const CHANNEL_LABELS = { whatsapp: 'Grup WhatsApp', email: 'Subscriber email', telegram: 'Pengguna Telegram' };
 export const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 export function broadcastText(content: BroadcastContent) {

@@ -1,8 +1,8 @@
 import {afterEach,it,expect,vi} from 'vitest';
 import {sendBroadcast} from '@/lib/broadcasts/sender';
-import {sendMessage} from '@/lib/telegram/api';
+import {sendMessage,sendPhoto} from '@/lib/telegram/api';
 import {sendTextMessage} from '@/lib/whatsapp/gateway';
-vi.mock('@/lib/telegram/api',()=>({sendMessage:vi.fn()}));vi.mock('@/lib/whatsapp/gateway',()=>({sendTextMessage:vi.fn()}));
+vi.mock('@/lib/telegram/api',()=>({sendMessage:vi.fn(),sendPhoto:vi.fn()}));vi.mock('@/lib/whatsapp/gateway',()=>({sendTextMessage:vi.fn()}));
 const snapshot={name:'Template',title:'<Promo>',body:'<script>alert(1)</script>\nBaris 2',cta_label:'Buka & lihat',cta_url:'https://axvara.tech/?a=1&b=2'};
 const row={campaign_id:'22222222-2222-4222-8222-222222222222',recipient_id:'1',destination:'buyer@example.test',unsubscribe_token:'a'.repeat(64)};
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();vi.clearAllMocks();});
@@ -29,4 +29,44 @@ it('binds WhatsApp broadcasts to the reviewed group, phone/revision and durable 
  expect(await sendBroadcast('whatsapp',{...row,destination:wa.destination},{...snapshot,wa})).toMatchObject({state:'unknown'});
  expect(sendTextMessage).toHaveBeenCalledWith(expect.objectContaining({target:wa.destination,broadcastNotification:true,idempotencyKey:'wa:broadcast:'+row.campaign_id,botNumber:wa.botNumber,botRevision:wa.botRevision}));
  expect(await sendBroadcast('whatsapp',row,{...snapshot,wa})).toMatchObject({state:'failed'});
+});
+it('sends Telegram promo photo first then HTML chunks and never resends photo on retry',async()=>{
+ vi.stubEnv('TELEGRAM_BOT_ENABLED','true');vi.stubEnv('TELEGRAM_BOT_TOKEN','fixture');
+ const promoSnapshot={
+  name:'Promo otomatis pagi 2026-11-19',title:'Promo otomatis pagi 2026-11-19',body:'',cta_label:'',cta_url:'',
+  promo:{
+   kind:'telegram_promo' as const,businessDate:'2026-11-19',slot:'morning' as const,
+   bannerUrl:'https://axvara.tech/banners/ready-promo.jpg',
+   captionHtml:'🔥 <b>PRODUK AXVARA READY PAGI INI</b>',
+   messagesHtml:['<b>Part 1</b>','<b>Part 2</b>\n\nKetik /stop untuk berhenti menerima promo.'],
+   expiresAt:'2099-11-19T12:00:00+07:00',
+  },
+ };
+ // Photo succeeds (message_id 10), chunk 0 succeeds (11), chunk 1 rate-limited (429)
+ vi.mocked(sendPhoto).mockResolvedValueOnce({ok:true,result:{message_id:10} as never});
+ vi.mocked(sendMessage)
+  .mockResolvedValueOnce({ok:true,result:{message_id:11} as never})
+  .mockResolvedValueOnce({ok:false,error_code:429,parameters:{retry_after:25}});
+ const first=await sendBroadcast('telegram',{...row,destination:'11'},promoSnapshot);
+ expect(first).toMatchObject({state:'retry',retryAfter:25,consumeAttempt:false});
+ expect(first.providerId).toBe(JSON.stringify({photoId:'10',sentChunks:1,lastMessageId:'11'}));
+ expect(sendPhoto).toHaveBeenCalledWith({chat_id:'11',photo:'https://axvara.tech/banners/ready-promo.jpg',caption:'🔥 <b>PRODUK AXVARA READY PAGI INI</b>',parse_mode:'HTML'});
+ expect(sendMessage).toHaveBeenCalledTimes(2);
+ expect(vi.mocked(sendMessage).mock.calls[0][0]).toMatchObject({chat_id:'11',text:'<b>Part 1</b>',parse_mode:'HTML',disable_web_page_preview:true});
+
+ // Retry using persisted provider_id: skips photo AND chunk 0, sends only chunk 1
+ vi.mocked(sendPhoto).mockClear();vi.mocked(sendMessage).mockClear();
+ vi.mocked(sendMessage).mockResolvedValueOnce({ok:true,result:{message_id:12} as never});
+ const second=await sendBroadcast('telegram',{...row,destination:'11',provider_id:first.providerId},promoSnapshot);
+ expect(second).toEqual({state:'sent',providerId:JSON.stringify({photoId:'10',sentChunks:2,lastMessageId:'12'})});
+ expect(sendPhoto).not.toHaveBeenCalled();
+ expect(sendMessage).toHaveBeenCalledTimes(1);
+ expect(vi.mocked(sendMessage).mock.calls[0][0].text).toContain('Part 2');
+
+ // Ambiguous error after photo succeeds marks unknown (never blindly repeated) and retains photoId
+ vi.mocked(sendPhoto).mockClear();vi.mocked(sendMessage).mockClear();
+ vi.mocked(sendPhoto).mockResolvedValueOnce({ok:true,result:{message_id:20} as never});
+ vi.mocked(sendMessage).mockResolvedValueOnce({ok:false,description:'Request timeout'});
+ const third=await sendBroadcast('telegram',{...row,destination:'22'},promoSnapshot);
+ expect(third).toEqual({state:'unknown',error:'telegram_delivery_unknown',providerId:JSON.stringify({photoId:'20',sentChunks:0})});
 });

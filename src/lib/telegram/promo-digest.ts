@@ -1,32 +1,20 @@
 import type { DatabaseAccess } from "@/lib/db-access";
 import { SITE } from "@/lib/site";
 import { siteOrigin } from "@/lib/site-url";
-import { sendMessage } from "@/lib/telegram/api";
 import { escapeHtml, formatRupiah } from "@/lib/telegram/messages/format";
 import { notLoserProductSql } from "@/lib/product-groups";
 
 export type PromoSlot = "morning" | "evening";
 
-type PromoProduct = {
+export type PromoProduct = {
   id: number;
   name: string;
   category: string;
   price: number;
 };
 
-type DigestRow = {
-  product_ids: string;
-  full_message_id?: string | null;
-  short_message_id?: string | null;
-};
-
-export type PromoDigestResult = {
-  due: boolean;
-  fullSent: boolean;
-  shortSent: boolean;
-  complete: boolean;
-  skipped?: "disabled" | "insufficient_products" | "already_sent";
-};
+export const TELEGRAM_PROMO_FOOTER = "Ketik /stop untuk berhenti menerima promo.";
+export const TELEGRAM_MESSAGE_MAX_CHARS = 4096;
 
 export function promoSlotAt(now = new Date()): { businessDate: string; slot: PromoSlot } | null {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -43,34 +31,13 @@ export function promoSlotAt(now = new Date()): { businessDate: string; slot: Pro
   return slot ? { businessDate: `${value("year")}-${value("month")}-${value("day")}`, slot } : null;
 }
 
-function parseIds(raw: unknown): number[] {
-  try {
-    const ids = JSON.parse(String(raw ?? "[]"));
-    return Array.isArray(ids) ? ids.map(Number).filter(Number.isInteger) : [];
-  } catch {
-    return [];
-  }
+export function promoBannerCaption(slot: PromoSlot): string {
+  const slotLabel = slot === "morning" ? "PRODUK AXVARA READY PAGI INI" : "PRODUK AXVARA READY SORE INI";
+  return `🔥 <b>${slotLabel}</b>`;
 }
 
-export function selectPromoProducts(
-  products: PromoProduct[],
-  usedToday: Set<number>,
-  recentlyUsed: Set<number>,
-  seed: number,
-): PromoProduct[] {
-  // SEMUA produk ready masuk pesan (keputusan owner 2026-10-01 — format
-  // ala WR/SEKUDIL: daftar ceklis penuh, bukan 12+12 paruh). Parameter
-  // histori/seed dipertahankan untuk kompatibilitas pemanggil + test, tapi
-  // tidak lagi memotong daftar: promosi = seluruh katalog ready saat itu.
-  void usedToday;
-  void recentlyUsed;
-  void seed;
-  return products;
-}
-
-export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full: string; short: string } {
-  const morning = slot === "morning";
-  const slotLabel = morning ? "PRODUK AXVARA READY PAGI INI" : "PRODUK AXVARA READY SORE INI";
+function buildPromoParts(slot: PromoSlot, products: PromoProduct[]) {
+  const slotLabel = slot === "morning" ? "PRODUK AXVARA READY PAGI INI" : "PRODUK AXVARA READY SORE INI";
   const titleFull = `🔥 <b>${slotLabel}</b>`;
   // Varian WA: sama persis, bold pakai * agar tinggal copy-paste ke WA.
   const titleWa = `🔥 *${slotLabel}*`;
@@ -121,10 +88,73 @@ export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full
   const pediaWa = pediaLine ? `\n\n🚀 *Axvara Pedia* — naikkan followers, likes & views: https://pedia.axvara.tech?utm_source=digest&utm_medium=telegram` : "";
   const ctaFull = `🌐 <b>Order melalui Website:</b> ${webUrl}\n\n🤖 <b>Order melalui Bot Telegram:</b> ${botUrl}${pediaFull}`;
   const ctaWa = `🌐 *Order melalui Website:* ${webUrl}\n\n🤖 *Order melalui Bot Telegram:* ${botUrl}${pediaWa}`;
+  const headerFull = `${titleFull}\n${separator}\n${introFull}\n${separator}`;
+  return { headerFull, linesFull, ctaFull, titleWa, introWa, linesWa, ctaWa };
+}
+
+export function promoMessages(slot: PromoSlot, products: PromoProduct[]): { full: string; short: string } {
+  const { headerFull, linesFull, ctaFull, titleWa, introWa, linesWa, ctaWa } = buildPromoParts(slot, products);
   return {
-    full: `${titleFull}\n${separator}\n${introFull}\n${separator}\n${linesFull.join("\n\n")}\n\n${ctaFull}`,
+    full: `${headerFull}\n${linesFull.join("\n\n")}\n\n${ctaFull}`,
     short: `${titleWa}\n${"-".repeat(52)}\n${introWa}\n${"-".repeat(52)}\n${linesWa.join("\n\n")}\n\n${ctaWa}`,
   };
+}
+
+/**
+ * Split Telegram HTML promo message into chunks <= maxLen chars, preferring
+ * category boundaries and falling back to line boundaries only if a single
+ * category exceeds maxLen (never mid-line or breaking HTML tags).
+ */
+export function promoTelegramMessages(
+  slot: PromoSlot,
+  products: PromoProduct[],
+  maxLen = TELEGRAM_MESSAGE_MAX_CHARS,
+): string[] {
+  const { headerFull, linesFull, ctaFull } = buildPromoParts(slot, products);
+  const tail = `${ctaFull}\n\n${TELEGRAM_PROMO_FOOTER}`;
+  const single = `${headerFull}\n${linesFull.join("\n\n")}\n\n${tail}`;
+  if (single.length <= maxLen) return [single];
+
+  const messages: string[] = [];
+  let current = headerFull;
+
+  for (const block of linesFull) {
+    const sep = current === headerFull ? "\n" : current ? "\n\n" : "";
+    const candidate = current ? `${current}${sep}${block}` : block;
+    if (candidate.length <= maxLen) {
+      current = candidate;
+      continue;
+    }
+    if (block.length <= maxLen) {
+      if (current) messages.push(current);
+      current = block;
+      continue;
+    }
+    // Single category block exceeds maxLen: split only on line boundaries so
+    // no product line or <b>...</b> tag is ever broken mid-line.
+    for (const line of block.split("\n")) {
+      const lineSep = current ? "\n" : "";
+      const next = current ? `${current}${lineSep}${line}` : line;
+      if (next.length <= maxLen) {
+        current = next;
+      } else {
+        if (current) messages.push(current);
+        current = line;
+      }
+    }
+  }
+
+  if (current) {
+    if (current.length + 2 + tail.length <= maxLen) {
+      messages.push(`${current}\n\n${tail}`);
+    } else {
+      messages.push(current);
+      messages.push(tail);
+    }
+  } else {
+    messages.push(tail);
+  }
+  return messages;
 }
 
 export async function loadPromoProducts(database: DatabaseAccess): Promise<PromoProduct[]> {
@@ -147,112 +177,4 @@ export async function loadPromoProducts(database: DatabaseAccess): Promise<Promo
   )).map((row) => ({
     id: Number(row.id), name: String(row.name), category: String(row.category), price: Number(row.promo_price),
   }));
-}
-
-export async function sendDueAdminPromoDigest(
-  database: DatabaseAccess,
-  now = new Date(),
-): Promise<PromoDigestResult> {
-  const due = promoSlotAt(now);
-  if (!due) return { due: false, fullSent: false, shortSent: false, complete: false };
-  if (
-    process.env.TELEGRAM_PROMO_DIGEST_ENABLED !== "true" ||
-    process.env.TELEGRAM_BOT_ENABLED !== "true" ||
-    !process.env.TELEGRAM_BOT_TOKEN ||
-    !process.env.TELEGRAM_ADMIN_CHAT_ID
-  ) return { due: true, fullSent: false, shortSent: false, complete: false, skipped: "disabled" };
-
-  // Cek murah DULU (2026-10-04, darurat kuota D1): jendela slot 3 jam × tick
-  // 5 mnt = ±36 run; tanpa ini query katalog berat (±3.100 rows_read)
-  // dijalankan tiap tick walau digest slot ini sudah terkirim lengkap.
-  const sent = await database.queryFirst(
-    `SELECT full_message_id, short_message_id FROM telegram_promo_digests
-      WHERE business_date=? AND slot=?`,
-    due.businessDate, due.slot,
-  ).catch(() => null);
-  if (sent?.full_message_id && sent?.short_message_id) {
-    return { due: true, fullSent: false, shortSent: false, complete: true, skipped: "already_sent" };
-  }
-
-  // Kandidat = SEMUA produk ready (ada ≥1 varian bisa dibeli). Pecundang
-  // supplier-pair + produk telegram_enabled=0 dikecualikan agar promo tidak
-  // menjual barang yang disembunyikan di katalog. Opsi B (2026-10-02):
-  // winner None → sisi SK = pecundang (wakil = WR).
-  const products = await loadPromoProducts(database);
-  if (products.length < 3) {
-    return { due: true, fullSent: false, shortSent: false, complete: false, skipped: "insufficient_products" };
-  }
-
-  const history = await database.queryAll(
-    `SELECT business_date, slot, product_ids FROM telegram_promo_digests
-      WHERE business_date BETWEEN date(?, '-2 days') AND ?`,
-    due.businessDate, due.businessDate,
-  );
-  const usedToday = new Set(history.filter((row) => row.business_date === due.businessDate).flatMap((row) => parseIds(row.product_ids)));
-  const recentlyUsed = new Set(history.filter((row) => row.business_date !== due.businessDate).flatMap((row) => parseIds(row.product_ids)));
-  // Seed genap = pagi (paruh pertama), ganjil = sore (paruh kedua).
-  // businessDate YYYYMMDD selalu genap/ganjil konsisten per tanggal,
-  // +1 untuk sore agar dua slot sehari tidak satu paruh.
-  const seed = Number(due.businessDate.replaceAll("-", "")) * 2 + (due.slot === "evening" ? 1 : 0);
-  const selected = selectPromoProducts(products, usedToday, recentlyUsed, seed);
-  await database.execRun(
-    `INSERT OR IGNORE INTO telegram_promo_digests (business_date, slot, product_ids)
-     VALUES (?, ?, ?)`,
-    due.businessDate, due.slot, JSON.stringify(selected.map((product) => product.id)),
-  );
-  const row = await database.queryFirst(
-    `SELECT product_ids, full_message_id, short_message_id FROM telegram_promo_digests
-      WHERE business_date=? AND slot=?`,
-    due.businessDate, due.slot,
-  ) as DigestRow | null;
-  if (!row) return { due: true, fullSent: false, shortSent: false, complete: false };
-  if (row.full_message_id && row.short_message_id) {
-    return { due: true, fullSent: false, shortSent: false, complete: true, skipped: "already_sent" };
-  }
-
-  const fixedProducts = parseIds(row.product_ids).map((id) => products.find((product) => product.id === id)).filter((product): product is PromoProduct => Boolean(product));
-  if (fixedProducts.length < 3) return { due: true, fullSent: false, shortSent: false, complete: false, skipped: "insufficient_products" };
-  const messages = promoMessages(due.slot, fixedProducts);
-  const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
-  let fullSent = false;
-  let shortSent = false;
-
-  if (!row.full_message_id) {
-    const sent = await sendMessage({ chat_id: chatId, text: messages.full, parse_mode: "HTML", disable_web_page_preview: true });
-    if (!sent.ok || !sent.result?.message_id) {
-      await database.execRun(
-        `UPDATE telegram_promo_digests SET full_attempts=full_attempts+1, full_error=?, updated_at=datetime('now') WHERE business_date=? AND slot=?`,
-        String(sent.description ?? "Telegram send failed").slice(0, 500), due.businessDate, due.slot,
-      );
-      return { due: true, fullSent, shortSent, complete: false };
-    }
-    fullSent = true;
-    row.full_message_id = String(sent.result.message_id);
-    await database.execRun(
-      `UPDATE telegram_promo_digests SET full_message_id=?, full_attempts=full_attempts+1, full_error=NULL, updated_at=datetime('now') WHERE business_date=? AND slot=?`,
-      row.full_message_id, due.businessDate, due.slot,
-    );
-  }
-
-  if (!row.short_message_id) {
-    // Bubble kedua = versi WA siap copy-paste: bold pakai * literal, jadi
-    // dikirim TANPA parse_mode HTML (kalau pakai HTML, & mentah + < > di
-    // nama produk bisa bikin Telegram tolak seluruh pesan).
-    const sent = await sendMessage({ chat_id: chatId, text: messages.short, disable_web_page_preview: true });
-    if (!sent.ok || !sent.result?.message_id) {
-      await database.execRun(
-        `UPDATE telegram_promo_digests SET short_attempts=short_attempts+1, short_error=?, updated_at=datetime('now') WHERE business_date=? AND slot=?`,
-        String(sent.description ?? "Telegram send failed").slice(0, 500), due.businessDate, due.slot,
-      );
-      return { due: true, fullSent, shortSent, complete: false };
-    }
-    shortSent = true;
-    row.short_message_id = String(sent.result.message_id);
-    await database.execRun(
-      `UPDATE telegram_promo_digests SET short_message_id=?, short_attempts=short_attempts+1, short_error=NULL, updated_at=datetime('now') WHERE business_date=? AND slot=?`,
-      row.short_message_id, due.businessDate, due.slot,
-    );
-  }
-
-  return { due: true, fullSent, shortSent, complete: Boolean(row.full_message_id && row.short_message_id) };
 }

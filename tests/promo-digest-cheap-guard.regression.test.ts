@@ -1,17 +1,30 @@
-// 2026-10-04 darurat kuota D1: digest yang sudah terkirim lengkap tidak boleh
-// menjalankan query katalog berat lagi di sisa jendela slot (±36 tick).
+// Darurat kuota D1: slot promo yang sudah di-enqueue tidak boleh
+// menjalankan query katalog berat lagi di sisa jendela slot (±180 tick).
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sendDueAdminPromoDigest } from "@/lib/telegram/promo-digest";
+import { enqueueDueTelegramPromo, promoCampaignId } from "@/lib/telegram/promo-broadcast";
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("promo digest — guard murah", () => {
-  it("slot sudah terkirim → tanpa queryAll katalog", async () => {
-    for (const [k, v] of [["TELEGRAM_PROMO_DIGEST_ENABLED", "true"], ["TELEGRAM_BOT_ENABLED", "true"], ["TELEGRAM_BOT_TOKEN", "t"], ["TELEGRAM_ADMIN_CHAT_ID", "-1"]]) vi.stubEnv(k, v);
+describe("telegram promo broadcast — guard murah", () => {
+  it("slot sudah di-enqueue → tanpa queryAll katalog", async () => {
+    for (const [k, v] of [["TELEGRAM_BOT_ENABLED", "true"], ["TELEGRAM_BOT_TOKEN", "t"]]) vi.stubEnv(k, v);
     const queryAll = vi.fn(async () => []);
-    const db = { queryAll, queryFirst: vi.fn(async () => ({ full_message_id: "1", short_message_id: "2" })), execRun: vi.fn() };
-    const res = await sendDueAdminPromoDigest(db as never, new Date("2026-10-04T11:00:00Z")); // 18.00 WIB
-    expect(res).toMatchObject({ due: true, complete: true, skipped: "already_sent" });
+    const db = {
+      d1: {} as never,
+      getD1: () => ({}) as never,
+      isD1Mode: () => true,
+      canSpend: () => true,
+      queryAll,
+      queryFirst: vi.fn(async () => ({ enabled: null, campaign_status: "queued" })),
+      execRun: vi.fn(),
+    };
+    const res = await enqueueDueTelegramPromo(db as never, new Date("2026-10-04T11:00:00Z")); // 18.00 WIB
+    expect(res).toMatchObject({
+      due: true,
+      enqueued: 0,
+      campaignId: promoCampaignId("2026-10-04", "evening"),
+      skipped: "already_enqueued",
+    });
     expect(queryAll).not.toHaveBeenCalled();
   });
 });

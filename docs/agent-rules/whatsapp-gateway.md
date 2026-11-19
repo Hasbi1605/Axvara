@@ -1,5 +1,7 @@
 # Aturan agent — WhatsApp gateway, grup, siaran
 
+Promo otomatis Telegram 19 November 2026 (lokal): promo pagi/sore 09.00 dan 17.00 WIB yang selama ini ke grup WA kini juga dikirim ke seluruh pengguna bot Telegram yang eligible (`is_blocked=0`, `broadcast_opt_out=0`, chat pribadi) lewat `broadcast_campaigns`/`broadcast_deliveries` (`src/lib/telegram/promo-broadcast.ts`) menggunakan banner JPEG `public/banners/ready-promo.jpg` + caption HTML + daftar HTML bold (`promoMessages(slot, products).full`) + footer `/stop` + expiry di 12.00/20.00 WIB. Promo digest admin lama ke `TELEGRAM_ADMIN_CHAT_ID` (`sendDueAdminPromoDigest`, dua bubble salin-tempel) dihapus; `TELEGRAM_PROMO_DIGEST_ENABLED` tidak lagi dibaca. Perilaku promo WA (`promo-digest.ts`, `promo-bot.ts`, `ready-promo.webp`) tidak berubah.
+
 Urutan kategori digest 19 November 2026 (lokal): `loadPromoProducts` (`src/lib/telegram/promo-digest.ts`, dipakai bersama `promo-digest.ts` dan `promo-bot.ts` WA serta digest Telegram) kini mengurutkan kategori lebih dulu sesuai urutan web (`categories.sort_order`, tie-break nama/id, tanpa kategori terakhir), baru `p.sort_order` dan `p.id`, sehingga produk baru/ber-`sort_order` kecil di kategori akhir tidak lagi menggeser kategori tersebut ke baris paling atas.
 
 Revisi17November2026 (keputusan owner; implementasi lokal, publikasi via CI):

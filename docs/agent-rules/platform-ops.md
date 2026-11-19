@@ -1,5 +1,9 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Anggaran cron promo Telegram — 19 November 2026 (lokal)
+
+- `POST /api/cron/lite?job=promo` tetap memakai budget **40 statement** (cadangan tail 2, batas efektif 38): `enqueueDueTelegramPromo` memakai 1 statement guard (`store_settings.telegram_promo_broadcast_enabled` + status kampanye) saat sudah di-enqueue/nonaktif/tidak due (0 statement di luar jendela 09.00–11.59 dan 17.00–19.59 WIB), dan total 6 statement saat enqueue awal (1 guard + 1 `loadPromoProducts` + 1 batch D1 4 statement), menyisakan ruang untuk `sendDueDailyAdminSummary` dan `processBroadcasts` (termasuk 1 statement sweep expiry `promo_slot_expired`, maks 8 baris/tick).
+
 ### Katalog live di browser pembeli — 19 November 2026
 
 - Respons `cachePublicCatalog` ke browser selalu `Cache-Control: no-cache`; jangan menambah `max-age`/`stale-while-revalidate` browser untuk katalog publik. Freshness berasal dari cache edge berbasis revisi + `bumpCatalogRevision`, bukan TTL browser.

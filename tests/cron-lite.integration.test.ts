@@ -389,19 +389,24 @@ describe("/api/cron/lite", () => {
     } finally { vi.unstubAllGlobals(); fx.close(); }
   });
 
-  // 2026-10-05: digest promo ikut lite agar slot 09.00/17.00 tidak bergantung
-  // pada route besar yang sering dibunuh limit CPU. Ledger dipakai bersama
-  // fase notify → tidak pernah terkirim ganda.
-  it("promo: slot sudah terkirim lengkap → skip tanpa kirim ulang", async () => {
+  // Promo otomatis Telegram ikut lite agar slot 09.00/17.00 WIB ter-enqueue
+  // sekali per slot ke broadcast_campaigns/broadcast_deliveries dan tidak mengirim ulang.
+  it("promo: slot sudah di-enqueue → skip tanpa enqueue/kirim ulang", async () => {
     const fx = createD1Fixture();
     try {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-10-05T02:10:00Z")); // 09.10 WIB, slot pagi
-      for (const [k, v] of [["CRON_SECRET", "s"], ["TELEGRAM_PROMO_DIGEST_ENABLED", "true"], ["TELEGRAM_BOT_ENABLED", "true"], ["TELEGRAM_BOT_TOKEN", "t"], ["TELEGRAM_ADMIN_CHAT_ID", "-1"]]) vi.stubEnv(k, v);
+      for (const [k, v] of [["CRON_SECRET", "s"], ["TELEGRAM_BOT_ENABLED", "true"], ["TELEGRAM_BOT_TOKEN", "t"]]) vi.stubEnv(k, v);
+      const { promoCampaignId } = await import("@/lib/telegram/promo-broadcast");
+      const { TELEGRAM_PROMO_TEMPLATE_ID } = await import("@/lib/broadcasts/model");
+      const campaignId = promoCampaignId("2026-10-05", "morning");
       fx.sql.prepare(
-        `INSERT INTO telegram_promo_digests (business_date, slot, product_ids, full_message_id, short_message_id)
-         VALUES ('2026-10-05','morning','[]','330','331')`,
-      ).run();
+        `INSERT INTO broadcast_templates(id,name,title,body,archived) VALUES (?,'Promo','Promo','Body',1)`,
+      ).run(TELEGRAM_PROMO_TEMPLATE_ID);
+      fx.sql.prepare(
+        `INSERT INTO broadcast_campaigns(id,fingerprint,template_id,template_revision,snapshot_json,channels_json,status,created_by)
+         VALUES (?,'fp',?,1,'{}','["telegram"]','completed','cron:promo')`,
+      ).run(campaignId, TELEGRAM_PROMO_TEMPLATE_ID);
       // 09:10 WIB berada di jendela catch-up ringkasan harian (07:00-11:59 WIB);
       // tandai sudah terkirim pagi agar test ini mengisolasi perilaku skip promo.
       fx.sql.prepare(
@@ -409,7 +414,7 @@ describe("/api/cron/lite", () => {
       ).run(JSON.stringify({ sent_date: "2026-10-05", sent_at: "2026-10-05T00:00:00.000Z" }));
       const fetchSpy = vi.spyOn(globalThis, "fetch");
       const { body } = await call("promo");
-      expect(body).toMatchObject({ ok: true, job: "promo", promo_due: true, promo_skipped: "already_sent" });
+      expect(body).toMatchObject({ ok: true, job: "promo", promo_due: true, promo_enqueued: 0, promo_skipped: "already_enqueued" });
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
