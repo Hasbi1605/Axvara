@@ -222,9 +222,13 @@ describe("Telegram explicit credential resend outcomes", () => {
     expect(lastText()).not.toContain("disiapkan");
     fx.control.fail = null;
     await delivered(0);
+    // AES-GCM is authenticated: an undecryptable row can never succeed on retry
+    // (e.g. the 2026-11-10 FULFILLMENT_ENCRYPTION_KEY replacement), so it is
+    // reported as permanently missing instead of an endless "coba lagi".
     fx.sql.exec("UPDATE fulfillment_items SET delivered_ciphertext='corrupt'");
     expect(await resend()).toBe(0);
-    expect(lastText()).toContain("gagal dibaca atau dikirim");
+    expect(lastText()).toContain("tidak tersimpan di bot");
+    expect(lastText()).not.toContain("gagal dibaca atau dikirim");
     expect(lastText()).not.toContain("belum siap");
   });
 

@@ -1,5 +1,31 @@
 # Aturan agent — Kredensial pembeli (invoice + kontak + PIN)
 
+## Ambil Ulang: dekripsi gagal = permanen — 20 November 2026
+
+- `resendTelegramCredentials` membedakan tiga kelas kegagalan. (a) Baris
+  `delivered_ciphertext`/`delivered_iv` NULL atau `orders.fulfillment_status='delivered'`
+  tanpa baris = **permanen tidak tersimpan** ("tidak tersimpan di bot", tanpa `🔁`).
+  (b) Baris yang **tidak bisa didekripsi** (atau plaintext kosong) = juga
+  **permanen**: AES-256-GCM terauntentikasi, jadi auth-tag mismatch hanya berarti
+  kunci lain/tamper dan retry tidak akan pernah berhasil. Ini yang membuat order
+  `sk:` Oktober 2026 (kunci `FULFILLMENT_ENCRYPTION_KEY` diganti 10 Nov 2026,
+  ARCHITECTURE §16.2) berputar di "coba ambil detail lagi" selamanya. (c) Hanya
+  kegagalan kirim/DB yang tetap **transient** dengan `🔁 Coba lagi`.
+- Jangan mengembalikan (b) ke transient "karena mungkin kunci sementara salah";
+  itu menciptakan loop tanpa akhir bagi pembeli. Pemulihan hanya lewat admin
+  (kirim ulang manual/serah terima), bukan tombol pembeli.
+- `sendTelegramCredentialParts` mengirim HTML sekali, lalu **satu** percobaan
+  plain text bila Telegram menolak entitas (`400 can't parse entities`) atau
+  panjang; bagian >4096 dipecah, bukan menggagalkan unit. Penolakan 400 lain
+  (chat not found/blocked) TIDAK memakai fallback plain text agar kegagalan
+  nyata tidak tersamar sebagai masalah format.
+- Diagnostik: satu baris `[tg-resend] failed` per unit dengan
+  `{ order, item, stage: decrypt|empty|render|send, tg }` (`tg` = `error_code` +
+  `description` ≤120). JANGAN pernah menulis plaintext/ciphertext ke log.
+- Berlaku global untuk kanal Telegram (`sendTelegramCredential`,
+  `sendTelegramCredentialParts`) termasuk pengiriman awal; status: implementasi
+  lokal + test, publikasi CI/deployment belum diverifikasi.
+
 ## Cookie perangkat d1 (30 hari) — keputusan owner 18 November 2026
 
 - Menggantikan sebagian aturan28Oktober "proof hanya sessionStorage/tab": owner

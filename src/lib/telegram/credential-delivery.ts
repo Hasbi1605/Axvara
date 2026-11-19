@@ -20,6 +20,96 @@ import { expandDeliveryLines } from "@/lib/fulfillment/units";
 
 type Row = Record<string, unknown>;
 
+/** Telegram's hard cap on `text`; the same limit applies to captions. */
+const TELEGRAM_MAX_TEXT = 4096;
+
+/** `error_code` + `description` (or error name/message), never message content. */
+function tgErrorDetail(detail: unknown): string {
+  if (!detail) return "";
+  if (typeof detail === "string") return detail.slice(0, 120);
+  const record = detail as { error_code?: unknown; description?: unknown; message?: unknown; name?: unknown };
+  const code = Number(record.error_code);
+  const description = String(record.description ?? record.message ?? record.name ?? "");
+  const text = Number.isFinite(code) && code > 0 ? `${code} ${description}`.trim() : description;
+  return text.slice(0, 120);
+}
+
+/** Error message that keeps the caller's contract and appends a safe diagnostic. */
+function sendRejection(error: string, detail: unknown): string {
+  const suffix = tgErrorDetail(detail);
+  return suffix ? `${error}:${suffix}` : error;
+}
+
+/**
+ * Rejections a plain-text resend can actually fix: entity parse errors (buyer
+ * text broke our tags) and messages over the 4096 cap. A 400 for "chat not
+ * found"/"blocked" must NOT take this path — we would ship an unformatted wall
+ * of tags and mask a real delivery failure as formatting.
+ */
+function shouldFallbackToPlainText(detail: unknown): boolean {
+  const record = detail as { error_code?: unknown; description?: unknown } | null;
+  if (Number(record?.error_code) !== 400) return false;
+  return /parse entities|unsupported start tag|can't find end tag|message is too long/i.test(String(record?.description ?? ""));
+}
+
+/**
+ * Rendered credential HTML → readable plain text. Only used when Telegram
+ * rejects our entities; the credential itself is preserved verbatim.
+ */
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:pre|code|blockquote)>/gi, "\n")
+    .replace(/<(?:pre|code|blockquote)>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Split on code points so a too-long part never breaks a surrogate pair. */
+function splitPlainText(text: string, limit = TELEGRAM_MAX_TEXT): string[] {
+  const chunks: string[] = [];
+  let current = "";
+  for (const char of text) {
+    if (current.length + char.length > limit) {
+      chunks.push(current);
+      current = "";
+    }
+    current += char;
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+/**
+ * One HTML attempt, then plain text when Telegram rejects the entities or the
+ * part already exceeds the 4096 cap (splitting is always on the plain
+ * rendering, so a tag is never cut in half).
+ */
+async function sendCredentialText(target: string, text: string): Promise<string> {
+  const { sendMessage } = await import("@/lib/telegram/api");
+  const sendPlain = async (html: string): Promise<string> => {
+    const plainText = htmlToPlainText(html) || html.replace(/<[^>]*>/g, "").trim();
+    let messageId = "";
+    for (const chunk of splitPlainText(plainText)) {
+      const plain = await sendMessage({ chat_id: target, text: chunk, disable_web_page_preview: true });
+      if (!plain?.ok) throw new Error(sendRejection("telegram_credential_part_failed", plain));
+      messageId = String((plain as { result?: { message_id?: unknown } }).result?.message_id ?? "");
+    }
+    return messageId;
+  };
+  if (text.length > TELEGRAM_MAX_TEXT) return sendPlain(text);
+  const sent = await sendMessage({ chat_id: target, text, parse_mode: "HTML", disable_web_page_preview: true });
+  if (sent?.ok) return String((sent as { result?: { message_id?: unknown } }).result?.message_id ?? "");
+  if (!shouldFallbackToPlainText(sent)) throw new Error(sendRejection("telegram_credential_part_failed", sent));
+  return sendPlain(text);
+}
+
 /** All parts must succeed before callers settle delivery. Never send to a group. */
 export async function sendTelegramCredentialParts(
   chatId: string | number,
@@ -28,13 +118,8 @@ export async function sendTelegramCredentialParts(
   const target = positiveId(chatId);
   if (!target) throw new Error("no_private_telegram_chat");
   if (!messages.length) throw new Error("telegram_credential_empty");
-  const { sendMessage } = await import("@/lib/telegram/api");
   let messageId = "";
-  for (const text of messages) {
-    const sent = await sendMessage({ chat_id: target, text, parse_mode: "HTML", disable_web_page_preview: true });
-    if (!sent?.ok) throw new Error("telegram_credential_part_failed");
-    messageId = String((sent as { result?: { message_id?: unknown } }).result?.message_id ?? "");
-  }
+  for (const text of messages) messageId = await sendCredentialText(target, text);
   return { chatId: target, messageId };
 }
 
@@ -153,12 +238,18 @@ export async function resendTelegramCredentials(
     return 0;
   }
   const { normalizeAccountDetailsForDisplay } = await import("@/lib/warung-rebahan/deliver");
+  // One structured diagnostic per failed unit; never the plaintext/ciphertext.
+  const warnFailed = (item: unknown, stage: "decrypt" | "empty" | "render" | "send", detail?: unknown) => {
+    console.warn("[tg-resend] failed", { order: code, item: Number(item ?? 0), stage, tg: tgErrorDetail(detail) || undefined });
+  };
   // Decrypt every ready unit first so the multi-unit / long path can decide
   // between ONE .txt file and the existing per-unit messages.
-  type PreparedUnit = { plaintext: string; productName: string; copy: ReturnType<typeof copies.get> };
+  type PreparedUnit = { plaintext: string; productName: string; itemIndex: number; copy: ReturnType<typeof copies.get> };
   const prepared: PreparedUnit[] = [];
   let missingStored = 0;
   for (const row of ready) {
+    const productName = orderLineLabel(order.items, Number(row.item_index ?? 0));
+    const itemIndex = Number(row.item_index ?? 0);
     if (!row.delivered_ciphertext || !row.delivered_iv) {
       missingStored++;
       continue;
@@ -169,19 +260,24 @@ export async function resendTelegramCredentials(
         plaintext = normalizeAccountDetailsForDisplay(plaintext);
       }
       if (!plaintext.trim()) {
+        // Stored but blank: the text is not recoverable from the bot either.
         missingStored++;
+        warnFailed(itemIndex, "empty");
         continue;
       }
-      prepared.push({ plaintext, productName: orderLineLabel(order.items, Number(row.item_index ?? 0)), copy: copies.get(Number(row.variant_id)) });
-    } catch {
-      // Decryption failure is a transient item; handled below via transientFailed.
-      prepared.push({ plaintext: "", productName: orderLineLabel(order.items, Number(row.item_index ?? 0)), copy: copies.get(Number(row.variant_id)) });
+      prepared.push({ plaintext, productName, itemIndex, copy: copies.get(Number(row.variant_id)) });
+    } catch (error) {
+      // Undecryptable is PERMANENT, not transient: AES-GCM is authenticated, so
+      // an auth-tag mismatch means a different key (the 2026-11-10
+      // FULFILLMENT_ENCRYPTION_KEY replacement) or tampered data. Retrying can
+      // never succeed; this is what made "Ambil Ulang" loop forever on old sk: rows.
+      missingStored++;
+      warnFailed(itemIndex, "decrypt", error);
     }
   }
   let sent = 0;
   let transientFailed = 0;
   const renderable = prepared.filter(unit => unit.plaintext.trim());
-  transientFailed += prepared.length - renderable.length;
   // Item 14: one .txt for multi-unit or long credentials. Fall back to the
   // existing per-unit messages if the document upload fails.
   const combinedLength = renderable.reduce((sum, unit) => sum + unit.plaintext.length, 0);
@@ -212,24 +308,35 @@ export async function resendTelegramCredentials(
         txtDelivered = true;
       } else {
         txtFellBack = true;
+        warnFailed(renderable[0].itemIndex, "send", doc);
       }
-    } catch {
+    } catch (error) {
       txtFellBack = true;
+      warnFailed(renderable[0].itemIndex, "send", error);
     }
   }
   if (!useTxt || txtFellBack) {
     for (const unit of renderable) {
+      let messages: string[];
       try {
-        await sendTelegramCredentialParts(chatId, credentialMessages({
+        messages = credentialMessages({
           orderCode: code,
           productName: unit.productName,
           plaintext: unit.plaintext,
           copy: unit.copy,
           locale,
-        }));
-        sent++;
-      } catch {
+        });
+      } catch (error) {
         transientFailed++;
+        warnFailed(unit.itemIndex, "render", error);
+        continue;
+      }
+      try {
+        await sendTelegramCredentialParts(chatId, messages);
+        sent++;
+      } catch (error) {
+        transientFailed++;
+        warnFailed(unit.itemIndex, "send", error);
       }
     }
   }
