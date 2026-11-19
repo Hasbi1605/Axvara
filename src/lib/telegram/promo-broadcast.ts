@@ -4,6 +4,10 @@ import {
   TELEGRAM_PROMO_TEMPLATE_ID,
   type BroadcastSnapshot,
 } from "@/lib/broadcasts/model";
+import {
+  BROADCAST_QUEUE_MODE_KEY,
+  enqueueCampaignDeliveriesToQueue,
+} from "@/lib/broadcasts/queue";
 import { TELEGRAM_ELIGIBLE, contentFingerprint } from "@/lib/broadcasts/store";
 import {
   loadPromoProducts,
@@ -20,6 +24,7 @@ export type TelegramPromoEnqueueResult = {
   due: boolean;
   enqueued: number;
   campaignId?: string;
+  queuedMessages?: number;
   skipped?: "disabled" | "already_enqueued" | "insufficient_products" | "query_budget" | "no_d1";
 };
 
@@ -54,9 +59,11 @@ export async function enqueueDueTelegramPromo(
   const guard = await database.queryFirst(
     `SELECT
        (SELECT value FROM store_settings WHERE key=?) AS enabled,
-       (SELECT status FROM broadcast_campaigns WHERE id=?) AS campaign_status`,
+       (SELECT status FROM broadcast_campaigns WHERE id=?) AS campaign_status,
+       (SELECT value FROM store_settings WHERE key=?) AS queue_mode`,
     TELEGRAM_PROMO_SETTINGS_KEY,
     campaignId,
+    BROADCAST_QUEUE_MODE_KEY,
   );
   if (String(guard?.enabled ?? "").trim().toLowerCase() === "false") {
     return { due: true, enqueued: 0, skipped: "disabled" };
@@ -124,5 +131,12 @@ export async function enqueueDueTelegramPromo(
     return { due: true, enqueued: 0, campaignId, skipped: "already_enqueued" };
   }
   const enqueued = Number(batchResults[2]?.meta?.changes ?? 0);
-  return { due: true, enqueued, campaignId };
+  let queuedMessages = 0;
+  if (enqueued > 0) {
+    const queueRes = await enqueueCampaignDeliveriesToQueue(campaignId, database, {
+      modeValue: guard?.queue_mode ?? null,
+    });
+    queuedMessages = queueRes.enqueuedMessages;
+  }
+  return { due: true, enqueued, campaignId, ...(queuedMessages > 0 ? { queuedMessages } : {}) };
 }

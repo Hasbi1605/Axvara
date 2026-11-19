@@ -43,7 +43,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { constantTimeEqual } from "@/lib/security";
-import { createBudgetedDatabase, QueryBudgetExceeded, type DatabaseAccess } from "@/lib/db-access";
+import { createBudgetedDatabase, QueryBudgetExceeded, unwrapD1, type DatabaseAccess } from "@/lib/db-access";
 
 export const runtime = "edge";
 
@@ -690,9 +690,27 @@ async function runPromo(db: Db) {
       daily_summary = { due: false, sent: false, error: "summary_failed" };
     }
   }
+  // Paid: broadcast backstop gets its own generous 400-statement budget and ~40s
+  // wall-time envelope separate from the 40-statement promo/summary DB.
+  const broadcastDb = createBudgetedDatabase(400, 4, unwrapD1(db.getD1())).access;
+  const { BROADCAST_BACKSTOP_GRACE_MS, isBroadcastQueueActive } = await import("@/lib/broadcasts/queue");
+  const queueActive = await isBroadcastQueueActive(broadcastDb);
+  const remainingMs = Math.max(0, 40_000 - (Date.now() - started));
   const { processBroadcasts } = await import("@/lib/broadcasts/worker");
-  const broadcasts = db.canSpend(8) ? await processBroadcasts(db, 8, Math.min(20000, Math.max(0, 40000 - (Date.now() - started)))) : null;
-  return { broadcasts, promo_due: promo.due, promo_enqueued: promo.enqueued, promo_skipped: promo.skipped ?? null, daily_summary };
+  const broadcasts =
+    remainingMs > 0
+      ? await processBroadcasts(broadcastDb, 150, remainingMs, {
+          queueGraceMs: queueActive ? BROADCAST_BACKSTOP_GRACE_MS : 0,
+        })
+      : null;
+  return {
+    broadcasts,
+    promo_due: promo.due,
+    promo_enqueued: promo.enqueued,
+    promo_skipped: promo.skipped ?? null,
+    ...(promo.queuedMessages ? { promo_queued_messages: promo.queuedMessages } : {}),
+    daily_summary,
+  };
 }
 
 // notify (2026-10-05 malam, dipecah 2026-10-09): retry kabar order Telegram,

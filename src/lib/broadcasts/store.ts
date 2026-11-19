@@ -4,6 +4,7 @@ import { DEFAULT_SALES_BOT_NUMBER, normalizeBotNumber, validBotRevision } from '
 import { SALES_GROUP_NAME } from '@/lib/whatsapp/sales-notifications';
 import { isForwardEmailConfigured } from '@/lib/warung-rebahan/forward-sender';
 import { broadcastText, TELEGRAM_PROMO_TEMPLATE_ID, type BroadcastChannel, type BroadcastSnapshot, type BroadcastTemplate } from './model';
+import { enqueueCampaignDeliveriesToQueue } from './queue';
 
 export class BroadcastError extends Error {}
 
@@ -42,20 +43,25 @@ export async function launchBroadcast(args:{id:string;templateId:string;revision
   if(existing){if(existing.fingerprint!==fingerprint)throw new BroadcastError('Kunci pengiriman sudah dipakai untuk siaran lain.');return {id:args.id,replayed:true};}
   const review=await reviewBroadcast(args.templateId,args.revision,args.channels,db);
   if(review.snapshot.wa && (args.waIdentity?.botNumber!==review.snapshot.wa.botNumber||args.waIdentity.botRevision!==review.snapshot.wa.botRevision||args.waIdentity.groupId!==review.snapshot.wa.destination))throw new BroadcastError('Nomor bot atau grup berubah. Tinjau ulang siaran sebelum mengirim.');
-  const prepared=d1.prepare(`INSERT OR IGNORE INTO broadcast_campaigns(id,fingerprint,template_id,template_revision,snapshot_json,channels_json,status,created_by)
-    SELECT ?,?,id,revision,?,?,'preparing',? FROM broadcast_templates WHERE id=? AND revision=? AND archived=0`).bind(args.id,fingerprint,JSON.stringify(review.snapshot),JSON.stringify(channels),admin,args.templateId,args.revision);
+  const nowIso=new Date().toISOString();
+  const prepared=d1.prepare(`INSERT OR IGNORE INTO broadcast_campaigns(id,fingerprint,template_id,template_revision,snapshot_json,channels_json,status,created_by,created_at)
+    SELECT ?,?,id,revision,?,?,'preparing',?,? FROM broadcast_templates WHERE id=? AND revision=? AND archived=0`).bind(args.id,fingerprint,JSON.stringify(review.snapshot),JSON.stringify(channels),admin,nowIso,args.templateId,args.revision);
   const statements=[prepared];
-  if(channels.includes('email'))statements.push(d1.prepare(`INSERT OR IGNORE INTO broadcast_deliveries(campaign_id,channel,recipient_id,destination,unsubscribe_token)
-    SELECT c.id,'email',CAST(s.id AS TEXT),lower(s.email),s.unsubscribe_token FROM broadcast_campaigns c,newsletter_subscribers s
-    WHERE c.id=? AND c.status='preparing' AND s.status='active' AND s.unsubscribe_token IS NOT NULL`).bind(args.id));
-  if(channels.includes('telegram'))statements.push(d1.prepare(`INSERT OR IGNORE INTO broadcast_deliveries(campaign_id,channel,recipient_id,destination)
-    SELECT c.id,'telegram',t.user_id,t.chat_id FROM broadcast_campaigns c,telegram_users t WHERE c.id=? AND c.status='preparing' AND ${TELEGRAM_ELIGIBLE}`).bind(args.id));
-  if(review.snapshot.wa)statements.push(d1.prepare(`INSERT OR IGNORE INTO broadcast_deliveries(campaign_id,channel,recipient_id,destination)
-    SELECT id,'whatsapp','group',? FROM broadcast_campaigns WHERE id=? AND status='preparing'`).bind(review.snapshot.wa.destination,args.id));
+  if(channels.includes('email'))statements.push(d1.prepare(`INSERT OR IGNORE INTO broadcast_deliveries(campaign_id,channel,recipient_id,destination,unsubscribe_token,next_attempt_at,updated_at)
+    SELECT c.id,'email',CAST(s.id AS TEXT),lower(s.email),s.unsubscribe_token,?,? FROM broadcast_campaigns c,newsletter_subscribers s
+    WHERE c.id=? AND c.status='preparing' AND s.status='active' AND s.unsubscribe_token IS NOT NULL`).bind(nowIso,nowIso,args.id));
+  if(channels.includes('telegram'))statements.push(d1.prepare(`INSERT OR IGNORE INTO broadcast_deliveries(campaign_id,channel,recipient_id,destination,next_attempt_at,updated_at)
+    SELECT c.id,'telegram',t.user_id,t.chat_id,?,? FROM broadcast_campaigns c,telegram_users t WHERE c.id=? AND c.status='preparing' AND ${TELEGRAM_ELIGIBLE}`).bind(nowIso,nowIso,args.id));
+  if(review.snapshot.wa)statements.push(d1.prepare(`INSERT OR IGNORE INTO broadcast_deliveries(campaign_id,channel,recipient_id,destination,next_attempt_at,updated_at)
+    SELECT id,'whatsapp','group',?,?,? FROM broadcast_campaigns WHERE id=? AND status='preparing'`).bind(review.snapshot.wa.destination,nowIso,nowIso,args.id));
   statements.push(d1.prepare("UPDATE broadcast_campaigns SET status='queued' WHERE id=? AND status='preparing'").bind(args.id));
-  await d1.batch(statements);
+  const batchResults=await d1.batch(statements);
   const saved=await db.queryFirst('SELECT fingerprint FROM broadcast_campaigns WHERE id=?',args.id);
   if(!saved||saved.fingerprint!==fingerprint)throw new BroadcastError('Template atau siaran berubah. Muat ulang lalu tinjau kembali.');
+  const insertedCampaign=Number(batchResults[0]?.meta?.changes??0);
+  if(insertedCampaign>0&&(channels.includes('telegram')||channels.includes('email'))){
+    await enqueueCampaignDeliveriesToQueue(args.id,db);
+  }
   return {id:args.id,replayed:false};
 }
 export async function listBroadcasts(db:DatabaseAccess=createDatabaseAccess()) {

@@ -6,5 +6,10 @@
   "d1_databases": [{ "binding": "DB", "database_name": "axvara-db", "database_id": "c21453bf-68ab-4efd-8b0d-22fb360c4f33", "migrations_dir": "drizzle/migrations" }],
   "r2_buckets": [{ "binding": "R2_ASSETS", "bucket_name": "axvara-assets" }],
   "analytics_engine_datasets": [{ "binding": "FUNNEL_ANALYTICS", "dataset": "axvara_funnel_v1" }],
-  "queues": { "producers": [{ "binding": "ORDER_FULFILLMENT_QUEUE", "queue": "axvara-order-fulfillment" }] }
+  "queues": {
+    "producers": [
+      { "binding": "ORDER_FULFILLMENT_QUEUE", "queue": "axvara-order-fulfillment" },
+      { "binding": "BROADCAST_QUEUE", "queue": "axvara-broadcast" }
+    ]
+  }
 }

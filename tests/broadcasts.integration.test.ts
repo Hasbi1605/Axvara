@@ -116,12 +116,18 @@ describe('bounded broadcast delivery',()=>{
   due();vi.mocked(sendBroadcast).mockResolvedValueOnce({state:'skipped',error:'telegram_blocked',blocked:true});await processBroadcasts();
   expect(f.sql.prepare("SELECT is_blocked FROM telegram_users WHERE user_id='11'").get()?.is_blocked).toBe(1);
  });
- it('stays within the existing 40-statement cron budget',async()=>{
-  for(let i=100;i<115;i++)f.sql.prepare('INSERT INTO telegram_users(user_id,chat_id) VALUES(?,?)').run(String(i),String(i));
-  await launch(CAMPAIGN,['telegram']);due();f.control.queries=0;f.control.limit=40;
-  const {access}=createBudgetedDatabase(40,2,f.db);const result=await processBroadcasts(access);
-  expect(result.sent).toBeGreaterThan(0);expect(result.sent).toBeLessThanOrEqual(8);expect(f.control.queries).toBeLessThanOrEqual(38);
-  expect(f.sql.prepare('SELECT worker_token FROM broadcast_dispatch_control').get()?.worker_token).toBeNull();
+ it('respects caller SQL budget while allowing uncapped Paid backstop throughput (>8 rows)',async()=>{
+  vi.useFakeTimers();
+  try{
+   for(let i=100;i<115;i++)f.sql.prepare('INSERT INTO telegram_users(user_id,chat_id) VALUES(?,?)').run(String(i),String(i));
+   await launch(CAMPAIGN,['telegram']);due();f.control.queries=0;f.control.limit=40;
+   const {access}=createBudgetedDatabase(40,2,f.db);
+   const run=processBroadcasts(access);
+   await vi.runAllTimersAsync();
+   const result=await run;
+   expect(result.sent).toBeGreaterThan(8);expect(f.control.queries).toBeLessThanOrEqual(38);
+   expect(f.sql.prepare('SELECT worker_token FROM broadcast_dispatch_control').get()?.worker_token).toBeNull();
+  }finally{vi.useRealTimers();}
  });
 });
 describe('subscriber control',()=>{

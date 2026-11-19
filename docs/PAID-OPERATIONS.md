@@ -1,5 +1,10 @@
 # Operasional Workers Paid — 23 Oktober 2026
 
+## Queue pengiriman siaran/promo (`axvara-broadcast`, BQ1) — 19 November 2026 (lokal, belum deploy)
+
+- `wrangler.json` menambah producer binding Pages `BROADCAST_QUEUE` → `axvara-broadcast`; `mcp-worker/wrangler.toml` menambah consumer `axvara-broadcast` (`max_batch_size = 10`, `max_batch_timeout = 1`, `max_concurrency = 1`, `max_retries = 3`, `dead_letter_queue = "axvara-broadcast-dlq"`) dan DLQ `axvara-broadcast-dlq` (`max_batch_size = 10`, `max_batch_timeout = 5`, `max_retries = 2`, log+ack saja). Resource Queue wajib dibuat PM sebelum deploy.
+- Origin `POST /api/internal/queue/broadcast` (DB unbudgeted Paid, 2 statement/penerima hot path, lease global + CAS per delivery, pacing TG 300 ms chat sama / 250 ms antarpenerima, Email 650 ms) memproses ~388 penerima Telegram dalam ≤ ~5 menit. Batas Free pada `processBroadcasts` dihapus; `cron/lite?job=promo` menyediakan backstop dengan budget terpisah 400 statement + ~40 detik/tick (grace 2 menit saat queue aktif; WA tetap segera). Saklar `store_settings.broadcast_queue_mode = 'off'` mengembalikan ke cron-only.
+
 ## Consumer Queue pengiriman instan & DLQ (`axvara-mcp`, Paket C-H) — 18 November 2026 (lokal, belum deploy)
 
 - `mcp-worker/wrangler.toml` menambahkan dua consumer Queue (`axvara-order-fulfillment` dengan `max_batch_size = 5`, `max_batch_timeout = 1`, `max_retries = 4`, `dead_letter_queue = "axvara-order-fulfillment-dlq"`; serta `axvara-order-fulfillment-dlq` dengan `max_batch_size = 5`, `max_batch_timeout = 5`, `max_retries = 2`) dan variabel `QUEUE_CONSUMER_MODE = "active"`.

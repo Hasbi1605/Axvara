@@ -84,6 +84,8 @@ function classifyTelegramError(result: TelegramApiResponse<TelegramMessage>, pro
   };
 }
 
+export const TELEGRAM_SAME_CHAT_PACE_MS = 300;
+
 async function sendTelegramPromo(
   destination: string,
   promo: BroadcastPromoPayload,
@@ -93,6 +95,7 @@ async function sendTelegramPromo(
   if (Date.now() >= Date.parse(promo.expiresAt)) {
     return { state: 'skipped', error: 'promo_slot_expired', providerId: serializePromoProgress(progress) };
   }
+  let sentInCall = false;
   if (!progress.photoId) {
     try {
       const photoRes = await sendPhoto({
@@ -105,11 +108,15 @@ async function sendTelegramPromo(
         return classifyTelegramError(photoRes, serializePromoProgress(progress));
       }
       progress.photoId = String(photoRes.result.message_id);
+      sentInCall = true;
     } catch {
       return { state: 'unknown', error: 'telegram_delivery_unknown', providerId: serializePromoProgress(progress) };
     }
   }
   for (let i = progress.sentChunks; i < promo.messagesHtml.length; i++) {
+    if (sentInCall) {
+      await new Promise<void>((resolve) => setTimeout(resolve, TELEGRAM_SAME_CHAT_PACE_MS));
+    }
     try {
       const msgRes = await sendMessage({
         chat_id: destination,
@@ -122,6 +129,7 @@ async function sendTelegramPromo(
       }
       progress.sentChunks = i + 1;
       progress.lastMessageId = String(msgRes.result.message_id);
+      sentInCall = true;
     } catch {
       return { state: 'unknown', error: 'telegram_delivery_unknown', providerId: serializePromoProgress(progress) };
     }

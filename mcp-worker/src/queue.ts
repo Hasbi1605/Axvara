@@ -1,13 +1,18 @@
+import { UUID } from "../../src/lib/broadcasts/model";
 import { isValidBuyerOrderCode } from "../../src/lib/security";
 import { sanitizeError, type CronEnv } from "./cron";
 
 export const MAIN_QUEUE_NAME = "axvara-order-fulfillment";
 export const DLQ_QUEUE_NAME = "axvara-order-fulfillment-dlq";
+export const BROADCAST_QUEUE_NAME = "axvara-broadcast";
+export const BROADCAST_DLQ_QUEUE_NAME = "axvara-broadcast-dlq";
 export const QUEUE_FETCH_TIMEOUT_MS = 45_000;
 export const QUEUE_TELEGRAM_TIMEOUT_MS = 10_000;
 export const QUEUE_MAX_CONCURRENCY = 5;
 export const BACKOFF_SECONDS = [5, 15, 45, 120] as const;
 export const MAX_SETTLED_FALSE_ATTEMPTS = 5;
+export const BROADCAST_MAX_SETTLED_FALSE_ATTEMPTS = 4;
+export const BROADCAST_MAX_DELIVERY_IDS = 50;
 export const MAX_DELAY_SECONDS = 43_200;
 
 export const SETTLED_STATES = new Set([
@@ -16,6 +21,16 @@ export const SETTLED_STATES = new Set([
   "manual_required",
   "not_paid",
   "dry_run_ok",
+  "queue_disabled",
+]);
+
+export const BROADCAST_SETTLED_STATES = new Set([
+  "done",
+  "already_claimed",
+  "campaign_not_found",
+  "campaign_completed",
+  "campaign_canceled",
+  "promo_expired",
   "queue_disabled",
 ]);
 
@@ -31,6 +46,14 @@ export type QueueFulfillmentMessage = {
   source: string;
   enqueuedAt: number;
   mode: QueueMessageMode;
+};
+
+export type QueueBroadcastMessage = {
+  v: 1;
+  kind: "broadcast_deliveries";
+  campaignId: string;
+  deliveryIds: number[];
+  enqueuedAt: number;
 };
 
 export type QueueMessage<T = unknown> = {
@@ -56,9 +79,11 @@ export type QueueEnv = CronEnv & {
 export type QueueLogEntry = {
   event: "queue_message" | "queue_dlq";
   queue: string;
-  kind?: QueueFulfillmentKind;
+  kind?: QueueFulfillmentKind | "broadcast_deliveries";
   orderCode?: string;
   orderKind?: QueueOrderKind | "unknown";
+  campaignId?: string;
+  deliveryCount?: number;
   source?: string;
   mode?: QueueMessageMode;
   attempt: number;
@@ -119,6 +144,38 @@ export function parseQueueMessage(raw: unknown): QueueFulfillmentMessage | null 
     source: msg.source.trim(),
     enqueuedAt: msg.enqueuedAt,
     mode: msg.mode,
+  };
+}
+
+export function parseBroadcastQueueMessage(raw: unknown): QueueBroadcastMessage | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const msg = raw as Record<string, unknown>;
+  const keys = Object.keys(msg);
+  if (keys.length !== 5) return null;
+  if (msg.v !== 1) return null;
+  if (msg.kind !== "broadcast_deliveries") return null;
+  if (typeof msg.campaignId !== "string" || !UUID.test(msg.campaignId)) return null;
+  if (
+    !Array.isArray(msg.deliveryIds) ||
+    msg.deliveryIds.length < 1 ||
+    msg.deliveryIds.length > BROADCAST_MAX_DELIVERY_IDS
+  ) {
+    return null;
+  }
+  const deliveryIds: number[] = [];
+  for (const id of msg.deliveryIds) {
+    if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) return null;
+    deliveryIds.push(id);
+  }
+  if (typeof msg.enqueuedAt !== "number" || !Number.isFinite(msg.enqueuedAt) || msg.enqueuedAt <= 0) {
+    return null;
+  }
+  return {
+    v: 1,
+    kind: "broadcast_deliveries",
+    campaignId: msg.campaignId,
+    deliveryIds,
+    enqueuedAt: msg.enqueuedAt,
   };
 }
 
@@ -538,6 +595,223 @@ async function processDlqMessage(
   }
 }
 
+function safeBroadcastLogFields(raw: unknown, nowMs: number): Partial<QueueLogEntry> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const obj = raw as Record<string, unknown>;
+  const latencyMs = computeLatencyMs(obj.enqueuedAt, nowMs);
+  return {
+    ...(obj.kind === "broadcast_deliveries" ? { kind: "broadcast_deliveries" as const } : {}),
+    ...(typeof obj.campaignId === "string" && UUID.test(obj.campaignId)
+      ? { campaignId: obj.campaignId }
+      : {}),
+    ...(Array.isArray(obj.deliveryIds) ? { deliveryCount: obj.deliveryIds.length } : {}),
+    ...(latencyMs !== undefined ? { latencyMs } : {}),
+  };
+}
+
+async function processBroadcastMessage(
+  queueName: string,
+  msg: QueueMessage<unknown>,
+  env: QueueEnv,
+  deps: Required<QueueDeps>,
+): Promise<void> {
+  const nowMs = deps.nowFn();
+
+  if (isConsumerOff(env)) {
+    msg.ack();
+    deps.logFn("info", {
+      event: "queue_message",
+      queue: queueName,
+      ...safeBroadcastLogFields(msg.body, nowMs),
+      attempt: msg.attempts,
+      outcome: "consumer_off",
+    });
+    return;
+  }
+
+  const parsed = parseBroadcastQueueMessage(msg.body);
+  if (!parsed) {
+    msg.ack();
+    deps.logFn("error", {
+      event: "queue_message",
+      queue: queueName,
+      attempt: msg.attempts,
+      outcome: "invalid_message",
+    });
+    return;
+  }
+
+  const baseLog: Omit<QueueLogEntry, "outcome"> = {
+    event: "queue_message",
+    queue: queueName,
+    kind: parsed.kind,
+    campaignId: parsed.campaignId,
+    deliveryCount: parsed.deliveryIds.length,
+    attempt: msg.attempts,
+    latencyMs: computeLatencyMs(parsed.enqueuedAt, nowMs),
+  };
+
+  if (!env.AXVARA_CRON_SECRET) {
+    const delaySeconds = computeBackoffSeconds(msg.attempts);
+    msg.retry({ delaySeconds });
+    deps.logFn("error", {
+      ...baseLog,
+      outcome: "missing_cron_secret",
+      delaySeconds,
+      error: "missing_cron_secret",
+    });
+    return;
+  }
+
+  const origin = env.AXVARA_API_ORIGIN.replace(/\/$/, "");
+  let status: number;
+  let text: string;
+  try {
+    const res = await fetchTextWithTimeout(
+      deps.fetchFn,
+      `${origin}/api/internal/queue/broadcast`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${env.AXVARA_CRON_SECRET}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          v: 1,
+          kind: parsed.kind,
+          campaignId: parsed.campaignId,
+          deliveryIds: parsed.deliveryIds,
+          attempt: msg.attempts,
+        }),
+      },
+      deps.timeoutMs,
+      "queue_fetch_timeout",
+    );
+    status = res.status;
+    text = res.text;
+  } catch (error) {
+    const rawMsg = error instanceof Error ? error.message : "network_error";
+    const delaySeconds = computeBackoffSeconds(msg.attempts);
+    msg.retry({ delaySeconds });
+    deps.logFn("error", {
+      ...baseLog,
+      outcome: rawMsg === "queue_fetch_timeout" ? "fetch_timeout" : "network_error",
+      delaySeconds,
+      error: sanitizeQueueText(rawMsg, env),
+    });
+    return;
+  }
+
+  if (status === 400) {
+    msg.ack();
+    deps.logFn("error", {
+      ...baseLog,
+      status: 400,
+      outcome: "http_400_ack",
+      error: sanitizeQueueText(extractErrorDetail(text, 400), env),
+    });
+    return;
+  }
+
+  if (status === 200) {
+    let body: { ok?: unknown; settled?: unknown; state?: unknown; retrySec?: unknown } | null = null;
+    try {
+      body = JSON.parse(text) as { ok?: unknown; settled?: unknown; state?: unknown; retrySec?: unknown } | null;
+    } catch {
+      body = null;
+    }
+
+    if (
+      body &&
+      body.ok === true &&
+      body.settled === true &&
+      typeof body.state === "string" &&
+      BROADCAST_SETTLED_STATES.has(body.state)
+    ) {
+      msg.ack();
+      deps.logFn("info", {
+        ...baseLog,
+        status: 200,
+        state: body.state,
+        outcome: "ack_settled",
+      });
+      return;
+    }
+
+    if (body && body.ok === true && body.settled === false) {
+      if (msg.attempts >= BROADCAST_MAX_SETTLED_FALSE_ATTEMPTS) {
+        // max_retries=3 sends this fourth failed delivery to axvara-broadcast-dlq;
+        // DLQ logs & acks while the cron backstop finishes any remaining rows.
+        const delaySeconds = computeBackoffSeconds(msg.attempts);
+        msg.retry({ delaySeconds });
+        deps.logFn("error", {
+          ...baseLog,
+          status: 200,
+          outcome: "unsettled_to_dlq",
+          delaySeconds,
+        });
+        return;
+      }
+
+      const requestedRetry =
+        typeof body.retrySec === "number" && Number.isFinite(body.retrySec) && body.retrySec > 0
+          ? Math.min(MAX_DELAY_SECONDS, Math.ceil(body.retrySec))
+          : 0;
+      const delaySeconds = Math.max(requestedRetry, computeBackoffSeconds(msg.attempts));
+      msg.retry({ delaySeconds });
+      deps.logFn("info", {
+        ...baseLog,
+        status: 200,
+        ...(typeof body.state === "string" ? { state: body.state } : {}),
+        outcome: "retry_unsettled",
+        delaySeconds,
+      });
+      return;
+    }
+
+    const delaySeconds = computeBackoffSeconds(msg.attempts);
+    msg.retry({ delaySeconds });
+    deps.logFn("error", {
+      ...baseLog,
+      status: 200,
+      outcome: "invalid_origin_response",
+      delaySeconds,
+      error: sanitizeQueueText(extractErrorDetail(text, 200), env),
+    });
+    return;
+  }
+
+  const delaySeconds = computeBackoffSeconds(msg.attempts);
+  msg.retry({ delaySeconds });
+  deps.logFn("error", {
+    ...baseLog,
+    status,
+    outcome: "retry_http_error",
+    delaySeconds,
+    error: sanitizeQueueText(extractErrorDetail(text, status), env),
+  });
+}
+
+function processBroadcastDlqMessage(
+  queueName: string,
+  msg: QueueMessage<unknown>,
+  deps: Required<QueueDeps>,
+): void {
+  const nowMs = deps.nowFn();
+  const fields = safeBroadcastLogFields(msg.body, nowMs);
+  msg.ack();
+  deps.logFn("error", {
+    event: "queue_dlq",
+    queue: queueName,
+    kind: "broadcast_deliveries",
+    campaignId: fields.campaignId ?? "[invalid-campaign]",
+    ...(fields.deliveryCount !== undefined ? { deliveryCount: fields.deliveryCount } : {}),
+    attempt: msg.attempts,
+    ...(fields.latencyMs !== undefined ? { latencyMs: fields.latencyMs } : {}),
+    outcome: "broadcast_dlq_acked",
+  });
+}
+
 export async function handleQueueBatch(
   batch: QueueMessageBatch<unknown>,
   env: QueueEnv,
@@ -567,6 +841,36 @@ export async function handleQueueBatch(
         });
       }
     });
+    return;
+  }
+
+  if (batch.queue === BROADCAST_DLQ_QUEUE_NAME) {
+    for (const msg of batch.messages) {
+      processBroadcastDlqMessage(batch.queue, msg, resolved);
+    }
+    return;
+  }
+
+  if (batch.queue === BROADCAST_QUEUE_NAME) {
+    // Process sequentially (matching max_concurrency = 1) to keep Telegram pacing global.
+    for (const msg of batch.messages) {
+      try {
+        await processBroadcastMessage(batch.queue, msg, env, resolved);
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : "unexpected_broadcast_queue_error";
+        const delaySeconds = computeBackoffSeconds(msg.attempts);
+        msg.retry({ delaySeconds });
+        resolved.logFn("error", {
+          event: "queue_message",
+          queue: batch.queue,
+          ...safeBroadcastLogFields(msg.body, resolved.nowFn()),
+          attempt: msg.attempts,
+          outcome: "unexpected_error",
+          delaySeconds,
+          error: sanitizeQueueText(errMsg, env),
+        });
+      }
+    }
     return;
   }
 

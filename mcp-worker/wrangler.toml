@@ -37,3 +37,18 @@ queue = "axvara-order-fulfillment-dlq"
 max_batch_size = 5
 max_batch_timeout = 5
 max_retries = 2
+
+# Queue pengiriman siaran/promo (resource dibuat manual sebelum deploy).
+[[queues.consumers]]
+queue = "axvara-broadcast"
+max_batch_size = 10
+max_batch_timeout = 1
+max_concurrency = 1
+max_retries = 3
+dead_letter_queue = "axvara-broadcast-dlq"
+
+[[queues.consumers]]
+queue = "axvara-broadcast-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 2
