@@ -1,3 +1,4 @@
+import { displaySoldCountSql } from "@/lib/product-groups";
 import { MAX_UNIQUE_UNITS_PER_ORDER } from "@/lib/fulfillment/units";
 // src/lib/telegram/handlers/catalog.ts — Handler penjelajahan katalog & varian.
 //
@@ -141,7 +142,7 @@ export async function handleShowProduct(chatId: number, messageId: number, reque
   const maxPrice = purchasable.length > 0 ? Math.max(...purchasable.map(v => v.price)) : 0;
 
   // Find compare_price from DB for discount display
-  const priceRow = await queryFirst(`SELECT compare_price, badge, sold_count FROM products WHERE id=?`, productId);
+  const priceRow = await queryFirst(`SELECT compare_price, badge, ${displaySoldCountSql("products")} AS sold_count FROM products WHERE id=?`, productId);
   const comparePrice = priceRow?.compare_price ? Number(priceRow.compare_price) : null;
   const badge = priceRow?.badge ? String(priceRow.badge) : null;
   const soldCount = priceRow?.sold_count ? Number(priceRow.sold_count) : 0;

@@ -1,3 +1,4 @@
+import { displaySoldCountSql } from "@/lib/product-groups";
 import { wrNewSaleSql } from "@/lib/warung-rebahan/new-sales";
 
 import type { Metadata } from "next";
@@ -32,7 +33,7 @@ const getSeoProduct = (React.cache ?? ((fn) => fn))(async (slug: string): Promis
   const product = (await queryFirst(
     `SELECT p.slug, p.name, p.name_en, p.description, p.admin_description_override, p.description_en,
             p.image_url, p.images, p.badge,
-            p.sold_count, p.updated_at
+            ${displaySoldCountSql("p")} AS sold_count, p.updated_at
      FROM products p
      WHERE p.slug=? AND p.is_active=1`,
     slug,

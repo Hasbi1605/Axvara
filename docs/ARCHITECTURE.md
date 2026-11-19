@@ -589,6 +589,13 @@ shim ekspor agar kontrak caller cron/VPS/Telegram existing tetap kompatibel.
 Tambahan 19 November (lokal): StoreBat/Mirai ikut ranking grup lewat stok
 proyeksi dan modal × FX; lihat [§16.59](#1659-storebat-dan-mirai--19-november-2026-implementasi-lokal).
 
+- Terjual tampilan grup (19 Nov 2026, lokal): `displaySoldCountSql(alias)` di
+  `src/lib/product-groups.ts` = satu subquery berkorelasi `SUM(sold_count)` seluruh
+  anggota grup (termasuk nonaktif/arsip), fallback `sold_count` sendiri. Dipakai
+  `GET /api/products` publik (`soldCount`), `getProductDetail`, SEO PDP,
+  `readTelegramCatalog` dan detail produk Telegram. Admin `GET /api/products`
+  tetap `soldCount` sendiri + `groupSoldCount` bila anggota grup. Tanpa write/
+  migrasi; increment order dan PATCH sold-count sudah memicu revisi `market`.
 - Schema0129: `product_groups` (nama, prefer_product_id, prefer_margin,
   winner_product_id, reason, decided_at, timestamps), `product_group_members`
   (PK group_id/product_id, product_id UNIQUE, position), `product_group_dirty`

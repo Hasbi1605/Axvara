@@ -8,7 +8,7 @@ import { bulkOwnerFromJoinedRow, isManualProductForBulk, validateBulkPricing, ty
 import type { Locale } from "@/lib/i18n/locale";
 import { translateVariantLabel } from "@/lib/i18n/variant-copy";
 import { aivaultEligibility, miraiEligibility, storebatEligibility, tunvnEligibility } from "@/lib/buyer-fields";
-import { notLoserProductSql } from "@/lib/product-groups";
+import { displaySoldCountSql, notLoserProductSql } from "@/lib/product-groups";
 import { purchasableStockSql } from "@/lib/catalog-availability";
 export { effectiveVariantStock } from "@/lib/catalog-availability";
 
@@ -219,8 +219,8 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
 
   const isNumeric = typeof slugOrId === "number" || /^\d+$/.test(String(slugOrId));
   const product = isNumeric
-    ? await queryFirst(`SELECT * FROM products WHERE id=? AND is_active=1`, Number(slugOrId))
-    : await queryFirst(`SELECT * FROM products WHERE slug=? AND is_active=1`, String(slugOrId));
+    ? await queryFirst(`SELECT p.*, ${displaySoldCountSql("p")} AS display_sold_count FROM products p WHERE p.id=? AND p.is_active=1`, Number(slugOrId))
+    : await queryFirst(`SELECT p.*, ${displaySoldCountSql("p")} AS display_sold_count FROM products p WHERE p.slug=? AND p.is_active=1`, String(slugOrId));
 
   if (!product) return null;
 
@@ -269,7 +269,7 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
     image: product.image_url ? String(product.image_url) : null,
     images: product.images ? String(product.images) : null,
     badge: product.badge ? String(product.badge) : null,
-    sold_count: product.sold_count ? Number(product.sold_count) : null,
+    sold_count: (product.display_sold_count ?? product.sold_count) ? Number(product.display_sold_count ?? product.sold_count) : null,
     category_id: product.category_id ? Number(product.category_id) : null,
     is_active: Number(product.is_active ?? 1),
     variants: variants.map(mapVariant),
@@ -279,8 +279,8 @@ export async function getProductDetail(slugOrId: string | number): Promise<Produ
 async function getProductDetailLegacy(slugOrId: string | number): Promise<ProductDetail | null> {
   const isNumeric = typeof slugOrId === "number" || /^\d+$/.test(String(slugOrId));
   const product = isNumeric
-    ? await queryFirst(`SELECT * FROM products WHERE id=? AND is_active=1`, Number(slugOrId))
-    : await queryFirst(`SELECT * FROM products WHERE slug=? AND is_active=1`, String(slugOrId));
+    ? await queryFirst(`SELECT p.*, ${displaySoldCountSql("p")} AS display_sold_count FROM products p WHERE p.id=? AND p.is_active=1`, Number(slugOrId))
+    : await queryFirst(`SELECT p.*, ${displaySoldCountSql("p")} AS display_sold_count FROM products p WHERE p.slug=? AND p.is_active=1`, String(slugOrId));
 
   if (!product) return null;
 
@@ -326,7 +326,7 @@ async function getProductDetailLegacy(slugOrId: string | number): Promise<Produc
     image: product.image_url ? String(product.image_url) : null,
     images: product.images ? String(product.images) : null,
     badge: product.badge ? String(product.badge) : null,
-    sold_count: product.sold_count ? Number(product.sold_count) : null,
+    sold_count: (product.display_sold_count ?? product.sold_count) ? Number(product.display_sold_count ?? product.sold_count) : null,
     category_id: product.category_id ? Number(product.category_id) : null,
     is_active: Number(product.is_active ?? 1),
     variants: [defaultVariant],

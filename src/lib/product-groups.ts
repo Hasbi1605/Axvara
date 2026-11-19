@@ -596,3 +596,14 @@ export async function removeGroupMember(id: number, productId: number, database?
   await bumpCatalogRevision("market", db);
   return { group: (await listProductGroups(db, id))[0], deleted: false };
 }
+
+/**
+ * SQL scalar: angka "terjual" yang tampil ke pembeli. Produk anggota grup
+ * menampilkan JUMLAH sold_count semua anggota grup (termasuk nonaktif/arsip);
+ * produk tanpa grup memakai sold_count sendiri. Tidak mengubah products.sold_count.
+ * Satu subquery berkorelasi (batas kedalaman ekspresi D1).
+ */
+export function displaySoldCountSql(alias = "p"): string {
+  if (!/^[a-z_][a-z0-9_]*$/i.test(alias)) throw new Error("invalid_sql_alias");
+  return `COALESCE((SELECT SUM(COALESCE(x.sold_count,0)) FROM product_group_members gm JOIN product_group_members om ON om.group_id=gm.group_id JOIN products x ON x.id=om.product_id WHERE gm.product_id=${alias}.id), ${alias}.sold_count)`;
+}

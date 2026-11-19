@@ -320,6 +320,7 @@ export function ProductsSection({
                           title="Ketik lalu Enter — angka Terjual — pembelian asli tetap menambah di atas angka ini"
                           className="mx-auto h-8 min-h-0 w-16 border-admin-input bg-admin-card px-1 text-center tabular-nums text-admin-fg shadow-none hover:border-admin-input focus-visible:border-admin-input md:text-sm"
                         />
+                        {p.groupSoldCount !== undefined && p.groupSoldCount !== (p.soldCount ?? 0) ? <span className="mt-1 block text-xs text-admin-muted">Tampil di toko: {p.groupSoldCount} (total grup)</span> : null}
                       </TableCell>
                       <TableCell className="px-2 py-3 text-center">
                         <div className="inline-flex items-center gap-1" role="group" aria-label={`Ubah urutan ${p.name}`}>

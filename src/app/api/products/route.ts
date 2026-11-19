@@ -12,7 +12,7 @@ import { needsCopyReview, resolveVariantCopyDetailed } from "@/lib/product-copy/
 import { requireAdmin } from "@/lib/auth";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 import { resolveCategorySlug } from "@/lib/products";
-import { notLoserProductSql } from "@/lib/product-groups";
+import { displaySoldCountSql, notLoserProductSql } from "@/lib/product-groups";
 import { computeProductLiveStatusMap, type ProductLiveStatusInfo } from "@/lib/product-live-status";
 
 export const runtime = "edge";
@@ -90,6 +90,7 @@ async function readProducts(req: NextRequest) {
        WHERE 1=1`
     : `SELECT p.*, c.slug as cat_slug FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE 1=1`;
   if (isAdminRequest && isD1Mode()) sql = sql.replace("SELECT p.*", `SELECT CASE WHEN p.archived_at IS NOT NULL THEN (${hardDeleteReasonSql}) ELSE 'Arsipkan produk dulu.' END AS hard_delete_reason, p.*`);
+  sql = sql.replace("p.*,", `p.*, ${displaySoldCountSql("p")} AS display_sold_count,${isAdminRequest ? " (SELECT 1 FROM product_group_members g0 WHERE g0.product_id=p.id) AS in_group," : ""}`);
   const params: unknown[] = [];
   // F08: public always is_active=1, admin can see all
   if (!isAdminRequest || active === "1") sql += ` AND p.is_active=1 AND p.archived_at IS NULL`;
@@ -238,7 +239,8 @@ async function readProducts(req: NextRequest) {
       image: primary,
       images: images.slice(0,8),
       badge: (r.badge as string) ?? undefined,
-      soldCount: (r.sold_count as number) ?? 0,
+      soldCount: isAdminRequest ? ((r.sold_count as number) ?? 0) : Number(r.display_sold_count ?? r.sold_count ?? 0),
+      ...(isAdminRequest && r.in_group != null ? { groupSoldCount: Number(r.display_sold_count ?? 0) } : {}),
       stock: variantCatalog ? Number(r.variant_stock ?? 0) : (r.stock as number) ?? -1,
       // Hanya dikirim bila benar-benar dihitung (mode D1). Mengirim 0 di mode
       // dev tanpa D1 akan menindih fallback per-produk di admin dan membuat

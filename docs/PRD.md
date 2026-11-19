@@ -347,6 +347,12 @@ katalog/promo dan pengalihan PDP memakai winner grup; tanpa failover transaksi.
 Status implementasi/QA lokal; publikasi CI main, migrasi/deployment belum
 terverifikasi. Detail schema, biaya dan API: ARCHITECTURE bagian Grup produk.
 
+Revisi owner 19 November 2026 (lokal): angka "terjual" yang dilihat pembeli untuk
+produk anggota grup (kartu katalog, PDP/SEO, katalog dan detail Telegram) adalah
+JUMLAH `sold_count` seluruh anggota grup, termasuk anggota nonaktif/Arsip, sehingga
+tidak berubah saat winner berganti. `products.sold_count` per anggota tidak
+diubah; admin tetap menyunting angka per anggota dan melihat total grup sebagai info.
+
 ## Harga supplier & salinan TUNVN (15 November 2026, implementasi lokal)
 
 - Admin mengatur markup/harga manual varian TUNVN/AIVault per baris dengan
