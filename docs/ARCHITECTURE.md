@@ -5777,8 +5777,10 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
 - GET admin Pesanan memuat link TUNVN beserta item_index/can_retry/can_reconcile/
   purchase_disabled tanpa invite/ciphertext. GET panel TUNVN juga mengirim capability
   dan disable. UI Retry/Cek status memakai endpoint existing; tidak ada void/buy.
-  Order TUNVN tanpa disable tidak memakai handover generik; order disable/mixed
-  tetap dapat mencatat handover. CAS handover menolak link pending/claimed/processing
+  Order TUNVN tanpa disable tidak memakai handover generik selama link
+  pending/claimed/processing atau can_retry; revisi 19 Nov 2026: needs_admin tanpa
+  Retry (mis. `unconfirmed_buff_receipt`, HTTP500 tanpa batch) menampilkan
+  "Kirim ke pembeli" agar tidak buntu. Order disable/mixed tetap dapat mencatat handover. CAS handover menolak link pending/claimed/processing
   sehingga handover yang menang mencegah retry, retry yang menang mencegah handover.
 - Operasi produksi atas instruksi owner: dua order Muse `AXV-20261110-81C2FADA` /
   `AXV-20261110-9C9B8FF4` diberi supplier_purchase_disabled=1 untuk penanganan manual

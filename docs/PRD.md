@@ -689,6 +689,9 @@ dijalankan — bukan status live.
 ## Retry TUNVN 10 November 2026 (lokal; dua order dikecualikan di produksi)
 
 - Admin Pesanan dan TUNVN menampilkan kegagalan supplier, bukan hanya handover.
+  Revisi 19 Nov 2026: link TUNVN needs_admin tanpa Retry aman (mis. supplier
+  membalas error tanpa batch, order mungkin tetap terbuat) membuka "Kirim ke pembeli"
+  setelah admin mencocokkan History bot TUNVN; tidak ada pembelian ulang.
   Saldo kurang terkonfirmasi memberi instruksi top-up + Retry; saldo tidak dapat
   dibaca diberi alasan berbeda, tidak menyimpulkan saldo0 atau penyebab historis.
 - Retry hanya admin untuk kegagalan pra-pembelian yang terbukti: attempt0, tidak

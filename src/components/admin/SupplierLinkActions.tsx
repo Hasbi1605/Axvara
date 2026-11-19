@@ -43,6 +43,7 @@ export const TUNVN_ERROR_LABEL: Record<string,string> = {
   cost_changed: "Order tertahan pemeriksaan modal versi lama. Retry memakai harga supplier terkini tanpa batas modal snapshot.",
   dispatch_unconfirmed: "Proses TUNVN belum terkonfirmasi. Retry hanya tersedia bila belum ada penanda pembelian.",
   buff_status_unavailable: "Status Buff belum dapat dibaca. Sistem memeriksa ulang otomatis tanpa membeli lagi.",
+  unconfirmed_buff_receipt: "TUNVN membalas tanpa konfirmasi batch, padahal order mungkin tetap terbuat. Jangan beli ulang; cek History bot TUNVN, lalu Kirim ke pembeli bila Buff sudah masuk.",
 };
 const SK_ERROR_LABEL: Record<string,string> = {
   preflight_item_unavailable: "Stok atau varian supplier belum tersedia. Sistem memeriksa ulang otomatis sebelum membeli.",

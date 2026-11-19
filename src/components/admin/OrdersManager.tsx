@@ -354,8 +354,15 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
   </div>;
 }
 
+// TUNVN menahan serah terima hanya selama supplier masih memegang item
+// (pending/claimed/processing — sama dengan guard backend handover.ts) atau
+// Retry pra-beli aman tersedia. needs_admin tanpa Retry (mis. balasan 500
+// tanpa batch_id) adalah jalan buntu: admin wajib bisa serah terima manual.
+function tunvnHoldsItem(link:SupplierLink):boolean {
+  return link.supplier==="tunvn" && !link.purchase_disabled && (["pending","claimed","processing"].includes(link.status) || Boolean(link.can_retry));
+}
 function hasHandoverItems(order:Order):boolean {
-  return order.items.some((_,index)=>!order.supplierLinks?.some(link=>link.supplier==="tunvn" && !link.purchase_disabled && link.item_index===index));
+  return order.items.some((_,index)=>!order.supplierLinks?.some(link=>tunvnHoldsItem(link) && link.item_index===index));
 }
 
 function OrderRow({ order, onDetail, onAction, onChanged }: { order: Order; onDetail: () => void; onAction: (kind: NonNullable<ActionState>["kind"]) => void; onChanged: () => void }) {

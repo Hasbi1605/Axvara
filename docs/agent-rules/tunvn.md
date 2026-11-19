@@ -1,5 +1,10 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Handover manual untuk needs_admin tanpa Retry — 19 November 2026 (lokal)
+
+- Kasus produksi `AXV-20261119-0FC3511A` (link39, Buff 10B): `/api/buff/order` membalas HTTP500 tanpa `batch_id`, tetapi History bot TUNVN memuat #B50582 (0,5831 USDT). Fence benar: tanpa Retry/Cek status, sehingga admin buntu karena UI menyembunyikan "Kirim ke pembeli" untuk semua link TUNVN aktif.
+- UI kini menahan handover hanya bila link pending/claimed/processing (sama dengan CAS `handover.ts`) atau `can_retry`. needs_admin tanpa Retry membuka "Kirim ke pembeli"; label `unconfirmed_buff_receipt` meminta cek History bot dan melarang beli ulang. Respons error tetap tidak pernah dianggap sukses; #B50582 adalah ID tampilan bot, bukan `batch_id` API (`BUFF8264…`).
+
 ## Aktivasi satu saklar varian — keputusan owner opsi B, 19 November 2026 (lokal)
 
 - TUNVN mengikuti AIVault, StoreBat, dan Mirai: panel supplier memakai `product_variants.is_active` saja sebagai saklar varian; status induk dikelola dari menu Produk. Varian hanya terlihat bila aktif, induk aktif, dan induk tidak diarsipkan. `tunvn_products.visible` mencerminkan status ini, bukan gerbang terpisah. Produk/varian baru tetap nonaktif; sinkronisasi tidak mengaktifkan apa pun.

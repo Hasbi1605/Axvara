@@ -100,3 +100,18 @@ it("replaces handover in both the TUNVN order row and its detail, retaining manu
   expect(screen.queryByRole("button",{name:"Retry"})).toBeNull();manual.unmount();
   order.supplier_links=[];render(<OrdersManager/>);await userEvent.click(await screen.findByRole("button",{name:/Tindakan lain/}));expect(screen.getByRole("menuitem",{name:"Kirim ke pembeli"})).toBeTruthy();
 });
+it("offers manual handover for a TUNVN dead end (needs_admin, no Retry) but not while TUNVN still processes",async()=>{
+  const {OrdersManager}=await import("@/components/admin/OrdersManager");
+  const deadEnd:SupplierLink={...tunvn,id:39,status:"needs_admin",attempt_count:1,last_error:"unconfirmed_buff_receipt",can_retry:false,can_reconcile:false};
+  const order={code:"AXV-20261119-FIXTURE2",status:"lunas",payment_status:"paid",fulfillment_status:"manual_required",sales_channel:"web",payment_method:"qris",customer_name:"Fixture",subtotal:5830,items:[{name:"Buff",price:583,qty:10}],supplier_links:[deadEnd]};
+  vi.stubGlobal("fetch",vi.fn(async(url:string)=>Response.json(url.includes("/api/admin/orders?")?{orders:[order]}:{buyerInputs:[]})));
+  const first=render(<OrdersManager/>);
+  expect(await screen.findByText(/Jangan beli ulang; cek History bot TUNVN/)).toBeTruthy();
+  expect(screen.queryByRole("button",{name:"Retry"})).toBeNull();
+  await userEvent.click(await screen.findByRole("button",{name:/Tindakan lain/}));expect(screen.getByRole("menuitem",{name:"Kirim ke pembeli"})).toBeTruthy();first.unmount();
+  for (const status of ["pending","claimed","processing"]) {
+    order.supplier_links=[{...deadEnd,status,last_error:null}];
+    const view=render(<OrdersManager/>);await screen.findByRole("button",{name:"Detail"});
+    expect(screen.queryByRole("button",{name:/Tindakan lain/})).toBeNull();view.unmount();
+  }
+});
