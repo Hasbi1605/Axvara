@@ -115,3 +115,19 @@ it("offers manual handover for a TUNVN dead end (needs_admin, no Retry) but not 
     expect(screen.queryByRole("button",{name:/Tindakan lain/})).toBeNull();view.unmount();
   }
 });
+it.each(["storebat","mirai","aivault"] as const)("shows %s link status in Pesanan with actions left to its Antrean",async supplier=>{
+  const {OrdersManager}=await import("@/components/admin/OrdersManager");
+  const panel:SupplierLink={supplier,id:7,item_index:0,status:"needs_admin",attempt_count:1,max_attempts:3,last_error:"attempts_exhausted",supplier_order_id:"SUP-7",delivery_status:null};
+  const order={code:"AXV-20261119-FIXTURE3",status:"lunas",payment_status:"paid",fulfillment_status:"manual_required",sales_channel:"web",payment_method:"qris",customer_name:"Fixture",subtotal:1500,items:[{name:"Item",price:1500,qty:1}],supplier_links:[panel]};
+  vi.stubGlobal("fetch",vi.fn(async(url:string)=>Response.json(url.includes("/api/admin/orders?")?{orders:[order]}:{buyerInputs:[]})));
+  const name={storebat:"StoreBat",mirai:"Mirai",aivault:"AIVault"}[supplier];
+  const first=render(<OrdersManager/>);
+  expect(await screen.findByText("Perlu pemeriksaan supplier")).toBeTruthy();
+  expect(screen.getByText(`Retry/Cek status: Supplier → ${name} → Antrean.`)).toBeTruthy();
+  expect(screen.getByText("Perlu tindakan")).toBeTruthy();
+  expect(screen.queryByRole("button",{name:"Retry"})).toBeNull();expect(screen.queryByRole("button",{name:"Cek status"})).toBeNull();
+  await userEvent.click(screen.getByRole("button",{name:/Tindakan lain/}));expect(screen.getByRole("menuitem",{name:"Kirim ke pembeli"})).toBeTruthy();first.unmount();
+  order.supplier_links=[{...panel,status:"processing",last_error:null}];
+  render(<OrdersManager/>);expect(await screen.findByText("Diproses supplier")).toBeTruthy();expect(screen.getByText("Via supplier")).toBeTruthy();
+  expect(screen.queryByRole("button",{name:/Tindakan lain/})).toBeNull();
+});

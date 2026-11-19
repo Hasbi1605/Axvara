@@ -5780,8 +5780,14 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
   Order TUNVN tanpa disable tidak memakai handover generik selama link
   pending/claimed/processing atau can_retry; revisi 19 Nov 2026: needs_admin tanpa
   Retry (mis. `unconfirmed_buff_receipt`, HTTP500 tanpa batch) menampilkan
-  "Kirim ke pembeli" agar tidak buntu. Order disable/mixed tetap dapat mencatat handover. CAS handover menolak link pending/claimed/processing
+  "Kirim ke pembeli" agar tidak buntu. Order disable/mixed tetap dapat mencatat
+  handover. CAS handover menolak link pending/claimed/processing
   sehingga handover yang menang mencegah retry, retry yang menang mencegah handover.
+  Revisi 19 Nov 2026 (lokal): GET admin Pesanan `supplier_links` juga memuat
+  StoreBat/Mirai/AIVault (status, attempt, last_error, item_index, ID provider;
+  tanpa receipt/invite/idempotency) sebagai kotak status saja — aksi tetap di
+  Antrean panel. Handover ditahan untuk link mereka saat pending/claimed/processing
+  (cermin CAS); needs_admin tanpa Retry tidak lagi berlabel "Via supplier".
 - Operasi produksi atas instruksi owner: dua order Muse `AXV-20261110-81C2FADA` /
   `AXV-20261110-9C9B8FF4` diberi supplier_purchase_disabled=1 untuk penanganan manual
   owner via Telegram supplier; readback attempt0/sendNULL. Tidak mengubah status,

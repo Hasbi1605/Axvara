@@ -358,11 +358,14 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
 // (pending/claimed/processing — sama dengan guard backend handover.ts) atau
 // Retry pra-beli aman tersedia. needs_admin tanpa Retry (mis. balasan 500
 // tanpa batch_id) adalah jalan buntu: admin wajib bisa serah terima manual.
-function tunvnHoldsItem(link:SupplierLink):boolean {
-  return link.supplier==="tunvn" && !link.purchase_disabled && (["pending","claimed","processing"].includes(link.status) || Boolean(link.can_retry));
+// StoreBat/Mirai/AIVault memakai guard backend yang sama (pending/claimed/processing).
+function supplierHoldsItem(link:SupplierLink):boolean {
+  const owned=["pending","claimed","processing"].includes(link.status);
+  if (link.supplier==="tunvn") return !link.purchase_disabled && (owned || Boolean(link.can_retry));
+  return ["storebat","mirai","aivault"].includes(link.supplier) && owned;
 }
 function hasHandoverItems(order:Order):boolean {
-  return order.items.some((_,index)=>!order.supplierLinks?.some(link=>tunvnHoldsItem(link) && link.item_index===index));
+  return order.items.some((_,index)=>!order.supplierLinks?.some(link=>supplierHoldsItem(link) && link.item_index===index));
 }
 
 function OrderRow({ order, onDetail, onAction, onChanged }: { order: Order; onDetail: () => void; onAction: (kind: NonNullable<ActionState>["kind"]) => void; onChanged: () => void }) {

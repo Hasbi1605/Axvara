@@ -1,5 +1,9 @@
 # Aturan agent — MiraiAPI (18–19 November 2026)
 
+## Status supplier di Admin Pesanan — 19 November 2026 (lokal)
+
+- Admin Pesanan kini memuat link Mirai sebagai kotak status saja (label status, `last_error`, ID provider, petunjuk Supplier → Mirai → Antrean). Tidak ada Retry/Cek status di Pesanan; aksi tetap di Antrean. "Kirim ke pembeli" disembunyikan selama link pending/claimed/processing (cermin CAS `handover.ts`) dan tampil saat needs_admin.
+
 ## Retry katalog pasca-audit — 19 November 2026 (lokal)
 
 - Lease dan throttle sukses tetap 45 detik; kegagalan memperpendek klaim miliknya menjadi backoff 10 detik setelah kegagalan. Cron tetap menghormati `Retry-After` pada HTTP 429, termasuk saat lebih lama dari backoff lokal. Error durable menyimpan alasan upstream aman (mis. `packages_ambiguous:http_502`) atau kelas D1 `catalog_write_failed:<kode>`, bukan body/secret.

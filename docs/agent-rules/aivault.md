@@ -1,5 +1,9 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Status supplier di Admin Pesanan — 19 November 2026 (lokal)
+
+- Admin Pesanan kini memuat link AIVault sebagai kotak status saja (label status, `last_error`, ID provider, petunjuk Supplier → AIVault → Antrean). Tidak ada Retry/Cek status di Pesanan; aksi tetap di Antrean. "Kirim ke pembeli" disembunyikan selama link pending/claimed/processing (cermin CAS `handover.ts`) dan tampil saat needs_admin.
+
 ## Aktivasi dari menu Produk — 19 November 2026 (keputusan owner)
 
 - `PUT /api/products/[id]` dengan `isActive:true` tanpa varian eksplisit kini hanya mengaktifkan **satu** varian AV (ID terkecil, SKU `AV-<service_id>`) bila belum ada varian aktif, sama seperti TUNVN, StoreBat, dan Mirai. Sebelumnya semua varian AV ikut aktif. Varian lain diaktifkan admin dari Markup/Produk.

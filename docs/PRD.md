@@ -692,6 +692,9 @@ dijalankan — bukan status live.
   Revisi 19 Nov 2026: link TUNVN needs_admin tanpa Retry aman (mis. supplier
   membalas error tanpa batch, order mungkin tetap terbuat) membuka "Kirim ke pembeli"
   setelah admin mencocokkan History bot TUNVN; tidak ada pembelian ulang.
+  Revisi 19 Nov 2026 (lokal): Pesanan juga menampilkan status supplier StoreBat,
+  Mirai dan AIVault (label + alasan + petunjuk Antrean); Retry/Cek status tetap di
+  panel masing-masing.
   Saldo kurang terkonfirmasi memberi instruksi top-up + Retry; saldo tidak dapat
   dibaca diberi alasan berbeda, tidak menyimpulkan saldo0 atau penyebab historis.
 - Retry hanya admin untuk kegagalan pra-pembelian yang terbukti: attempt0, tidak

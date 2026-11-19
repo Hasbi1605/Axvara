@@ -1,5 +1,9 @@
 # Aturan agent — StoreBat / VenteBot (18–19 November 2026)
 
+## Status supplier di Admin Pesanan — 19 November 2026 (lokal)
+
+- Admin Pesanan kini memuat link StoreBat sebagai kotak status saja (label status, `last_error`, ID provider, petunjuk Supplier → StoreBat → Antrean). Tidak ada Retry/Cek status di Pesanan; aksi tetap di Antrean. "Kirim ke pembeli" disembunyikan selama link pending/claimed/processing (cermin CAS `handover.ts`) dan tampil saat needs_admin.
+
 ## Retry katalog pasca-audit — 19 November 2026 (lokal)
 
 - Lease dan klaim sukses tetap 45 detik. Kegagalan memperpendek klaim miliknya menjadi backoff 10 detik setelah kegagalan (bukan retry dalam request), cukup untuk tick berikut dengan jitter biasa. Hanya proyeksi sukses memajukan ETag, dan heartbeat 200/304 dipagari lease. `catalog_write_failed:<kode>` mencatat kelas kegagalan aman (mis. `operation_guard` atau `database_busy`), tanpa SQL, body, atau secret.

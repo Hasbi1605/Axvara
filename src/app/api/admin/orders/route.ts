@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
 }
 
 type SupplierLink = {
-  supplier: "wr" | "sk" | "tunvn"; id: number; status: string; attempt_count: number;
+  supplier: "wr" | "sk" | "tunvn" | "storebat" | "mirai" | "aivault"; id: number; status: string; attempt_count: number;
   max_attempts: number; last_error: string | null; supplier_order_id: string | null;
   delivery_status: string | null;
   can_retry?: boolean; can_reconcile?: boolean; item_index?: number; purchase_disabled?: boolean;
@@ -186,7 +186,7 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
   const out = new Map<string, SupplierLink[]>();
   if (!codes.length) return out;
   const marks = codes.map(() => "?").join(",");
-  const [wr, sk, tunvn] = await Promise.all([
+  const [wr, sk, tunvn, storebat, mirai, aivault] = await Promise.all([
     queryAll(`SELECT id, order_code, status, attempt_count, max_attempts, last_error, wr_order_id AS supplier_order_id, delivery_status,
       CASE WHEN wr_variant_id LIKE 'jaspay:%' AND wr_order_id IS NOT NULL AND status='completed' AND jaspay_invoice_total IS NULL THEN 1 ELSE 0 END AS can_reconcile
       FROM wr_order_links WHERE order_code IN (${marks}) ORDER BY id`, ...codes).catch(() => [] as Record<string, unknown>[]),
@@ -198,8 +198,15 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
       (SELECT supplier_purchase_disabled FROM orders WHERE code=tunvn_order_links.order_code) AS purchase_disabled,
       CASE WHEN kind='buff' AND provider_batch_id IS NOT NULL AND status IN ('processing','needs_admin') THEN 1 ELSE 0 END AS can_reconcile
       FROM tunvn_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes),
+    // Status saja (tanpa receipt/invite/ciphertext); aksi tetap di Antrean panel supplier.
+    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id
+      FROM storebat_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
+    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_code AS supplier_order_id
+      FROM mirai_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
+    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id
+      FROM aivault_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
   ]);
-  for (const [supplier, rows] of [["wr", wr], ["sk", sk], ["tunvn",tunvn]] as const) {
+  for (const [supplier, rows] of [["wr", wr], ["sk", sk], ["tunvn",tunvn], ["storebat",storebat], ["mirai",mirai], ["aivault",aivault]] as const) {
     for (const row of rows) {
       const code = String(row.order_code || "");
       const list = out.get(code) ?? [];
@@ -210,6 +217,7 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
         supplier_order_id: row.supplier_order_id ? String(row.supplier_order_id) : null,
         delivery_status: row.delivery_status ? String(row.delivery_status) : null,
         ...(supplier === "wr" && Number(row.can_reconcile) === 1 ? { can_reconcile: true } : {}),
+        ...(["storebat","mirai","aivault"].includes(supplier) ? { item_index:Number(row.item_index) } : {}),
         ...(supplier==="tunvn" ? {can_retry:Number(row.can_retry)===1,can_reconcile:Number(row.can_reconcile)===1,item_index:Number(row.item_index),purchase_disabled:Number(row.purchase_disabled)===1} : {}),
       });
       out.set(code, list);
