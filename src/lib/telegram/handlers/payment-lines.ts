@@ -4,7 +4,7 @@
 // No order/provider writes; no UI.
 import { queryFirst } from "@/lib/db";
 import { getCartSummary } from "@/lib/telegram/cart";
-import { getActiveVariant } from "@/lib/catalog";
+import { getActiveVariant, formatVariantLabel } from "@/lib/catalog";
 import { resolveBulkPrice } from "@/lib/bulk-pricing";
 import { checkoutApprovalTag } from "@/lib/telegram/checkout-approval";
 import type { Payq1State, Payq1CartSource } from "@/lib/telegram/payment-quote";
@@ -54,7 +54,7 @@ export async function resolveCurrentPayq1Lines(ownerUserId: string, state: Payq1
     cartLines: [{
       productId: source.productId, variantId: source.variantId, qty: source.qty,
       productName: String(product?.name ?? "Produk"),
-      variantLabel: String(variant.label ?? ""),
+      variantLabel: formatVariantLabel(variant),
       price: effective, basePrice: Number(variant.price), appliedTierMinQty: null,
       stock: Number(variant.stock), fulfillmentMode: String(variant.fulfillment_mode || "manual"),
     }],

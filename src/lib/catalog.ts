@@ -10,7 +10,9 @@ import { translateVariantLabel } from "@/lib/i18n/variant-copy";
 import { aivaultEligibility, miraiEligibility, storebatEligibility, tunvnEligibility } from "@/lib/buyer-fields";
 import { displaySoldCountSql, notLoserProductSql } from "@/lib/product-groups";
 import { purchasableStockSql } from "@/lib/catalog-availability";
+import { deriveSkDuration, durationFromSupplierText, labelContainsDuration } from "@/lib/catalog-duration";
 export { effectiveVariantStock } from "@/lib/catalog-availability";
+export { durationFromSupplierText } from "@/lib/catalog-duration";
 
 // ---- Types ----
 
@@ -60,6 +62,10 @@ export type VariantSummary = {
   sk_auto_managed?: number;
   /** order_process SK mentah (auto/manual/h2h/smm/vip) — dari sk_products. */
   sk_order_process?: string | null;
+  /** Deskripsi mentah SK dari sk_products (server-only; dihapus oleh withVariantCopy). */
+  sk_description?: string | null;
+  /** Durasi SK turunan render-time saat kolom duration_* kosong (aman dikirim ke browser). */
+  sk_duration?: string | null;
   /** Toggle email wajib per produk (migrasi 0033, untuk non-WR). */
   require_email: number;
   price: number;
@@ -421,13 +427,17 @@ export function formatDuration(v: VariantSummary): string {
 }
 
 /**
- * Label varian untuk pembeli (2026-09-19, direvisi malam hari).
+ * Label varian untuk pembeli (2026-09-19, direvisi malam hari; diperluas SK 2026-11-20).
  *
- * Aturan final — HANYA varian WR yang digabung label + durasi:
+ * Aturan final — HANYA varian WR dan SK yang digabung label + durasi:
  * - WR: sync menulis label = nama API verbatim ("Meitu VIP") dan durasi di
  *   kolom `duration_*` ("7 Hari"); web WR menggabung ("Meitu VIP - 7 Hari").
  *   Guard includes mencegah duplikasi bila nama sudah mengandung durasi.
- * - Non-WR: label diketik manual oleh admin di modal ("Invite Lifetime",
+ * - SK: bila seluruh kolom `duration_label/value/unit` kosong, durasi diturunkan
+ *   dari `sk_description` ("DURASI 1 BULAN" -> "1 Bulan") dan digabung
+ *   "label - dur" kecuali label sudah memuat token durasi; `duration_*` yang
+ *   diisi admin selalu menang.
+ * - Non-WR/non-SK: label diketik manual oleh admin di modal ("Invite Lifetime",
  *   "Head 1 Bulan", "GSuite 1 Hari") — SUDAH final, JANGAN di-append apa pun.
  *   Kolom duration_* non-WR ganda dengan garansi (warranty_value/unit SAMA
  *   PERSIS: 6/6, 14/14) dan bukan sumber kebenaran display (DB Canva:
@@ -436,15 +446,36 @@ export function formatDuration(v: VariantSummary): string {
  *   semua produk → "Invite Lifetime - 6 Bulan", "Head 1 Bulan - 14 Hari".
  */
 export function formatVariantLabel(
-  v: Pick<VariantSummary, "label"> & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit">> & { wr_variant_id?: unknown },
+  v: Pick<VariantSummary, "label">
+    & Partial<Pick<VariantSummary, "duration_label" | "duration_value" | "duration_unit" | "terms" | "sk_description" | "sk_duration">>
+    & { wr_variant_id?: unknown; sk_variant_id?: unknown },
   locale: Locale = "id",
 ): string {
   const label = String(v.label || "").trim();
   const wrId = (v as { wr_variant_id?: unknown }).wr_variant_id;
-  if (wrId == null || String(wrId).trim() === "") return translateVariantLabel(label, locale);
-  const dur = formatDuration(v as VariantSummary).trim();
-  const composed = !dur || label.toLowerCase().includes(dur.toLowerCase()) ? label : `${label} - ${dur}`;
-  return translateVariantLabel(composed, locale);
+  if (wrId != null && String(wrId).trim() !== "") {
+    const dur = formatDuration(v as VariantSummary).trim();
+    const composed = !dur || label.toLowerCase().includes(dur.toLowerCase()) ? label : `${label} - ${dur}`;
+    return translateVariantLabel(composed, locale);
+  }
+  const skId = (v as { sk_variant_id?: unknown }).sk_variant_id;
+  if (skId != null && String(skId).trim() !== "") {
+    const hasAdminDuration =
+      (v.duration_label != null && String(v.duration_label).trim() !== "")
+      || (v.duration_value != null && Number(v.duration_value) > 0)
+      || (v.duration_unit != null && String(v.duration_unit).trim() !== "");
+    const dur = hasAdminDuration
+      ? formatDuration(v as VariantSummary).trim()
+      : (
+          durationFromSupplierText(v.sk_description ?? v.terms ?? null)
+          ?? (v.sk_duration != null ? String(v.sk_duration).trim() : "")
+        );
+    const composed = !dur || labelContainsDuration(label) || label.toLowerCase().includes(dur.toLowerCase())
+      ? label
+      : `${label} - ${dur}`;
+    return translateVariantLabel(composed, locale);
+  }
+  return translateVariantLabel(label, locale);
 }
 
 /**
@@ -629,6 +660,14 @@ function mapVariant(row: Record<string, unknown>): VariantSummary {
     sk_variant_id: row.sk_variant_id != null ? String(row.sk_variant_id) : null,
     sk_auto_managed: row.sk_auto_managed != null ? Number(row.sk_auto_managed) : 0,
     sk_order_process: row.sk_order_process ? String(row.sk_order_process) : null,
+    sk_description: nullableText(row.sk_description),
+    sk_duration: deriveSkDuration({
+      sk_variant_id: row.sk_variant_id,
+      duration_label: row.duration_label ? String(row.duration_label) : null,
+      duration_value: row.duration_value != null ? Number(row.duration_value) : null,
+      duration_unit: row.duration_unit ? String(row.duration_unit) : null,
+      sk_description: nullableText(row.sk_description),
+    }),
     inventory_available: row.inventory_available != null ? Number(row.inventory_available) : null,
     require_email: Number(row.require_email ?? 0),
     price: Number(row.price),

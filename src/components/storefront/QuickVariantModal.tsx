@@ -210,7 +210,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
         // yang unitnya habis — guard cart.ts (max<=0 / below-min) jadi benar.
         stock: effOf(selected) === -1 ? -1 : effOf(selected),
         variantId: selected.id,
-        variantLabel: selected.label,
+        variantLabel: formatVariantLabel(selected),
         minQty: selectedMinQty,
         maxQty: selected.max_qty,
         buyerFieldKey: selected.buyer_field_key,
@@ -337,7 +337,7 @@ export function QuickVariantModal({ product, mode, onClose, variants: preloadedV
                 const eff = effOf(v);
                 const outStock = eff === 0 || isBelowMinimum(v);
                 const belowMin = !!(eff !== 0 && isBelowMinimum(v));
-                const ariaLabel = t.variantAria(v.label, prices.text(v.price), outStock ? (belowMin ? "below" : "out") : "ok", Number(v.min_qty ?? 1));
+                const ariaLabel = t.variantAria(formatVariantLabel(v, displayLocale), prices.text(v.price), outStock ? (belowMin ? "below" : "out") : "ok", Number(v.min_qty ?? 1));
                 const instant = buyerDeliveryKind(v) === "instant";
                 if (compact) {
                   // Baris ringkas satu kolom (>6 varian, mis. GSuite): tinggi

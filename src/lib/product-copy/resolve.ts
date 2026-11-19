@@ -14,6 +14,7 @@ import type { Locale } from "@/lib/i18n/locale";
 import { buildSections, parseAdminVariantCopy, supplierVariantCopy, type ActivationGroup, type VariantCopy } from "./format";
 import { sanitizeSupplierCopy, type SupplierLinkMap } from "./sanitize";
 import { supplierFingerprint } from "./text";
+import { deriveSkDuration } from "@/lib/catalog-duration";
 
 const CURATED = new Map(CURATED_VARIANT_COPY.map((entry) => [entry.key, entry]));
 
@@ -147,10 +148,13 @@ export function withVariantCopy(detail: ProductDetail, links?: SupplierLinkMap):
       const admin = adminCopyOf(variant);
       const copy = resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "id");
       const copyEn = resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "en");
+      const skDuration = variant.sk_duration ?? deriveSkDuration(variant);
       return {
         ...variant,
         terms: null,
         delivery_terms: null,
+        sk_description: undefined,
+        sk_duration: skDuration ?? null,
         admin_terms: undefined,
         admin_activation: undefined,
         admin_terms_en: undefined,

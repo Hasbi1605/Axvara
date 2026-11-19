@@ -19,7 +19,7 @@ import { fetchWithTimeout, FetchTimeoutError } from "@/lib/fetch-timeout";
 import { SLOW_MS, useLoadingStage } from "@/hooks/useLoadingStage";
 import { startNavigation } from "@/stores/navigation";
 import { CheckoutSkeleton, InlineSpinner } from "@/components/storefront/Skeletons";
-import { buyerDeliveryEtaJaspay } from "@/lib/catalog";
+import { buyerDeliveryEtaJaspay, formatVariantLabel } from "@/lib/catalog";
 import { usePreferences } from "@/hooks/usePreferences";
 import { useDisplayContext } from "@/hooks/useDisplayPrices";
 import { translateProductName } from "@/lib/i18n/product-name";
@@ -43,6 +43,12 @@ type DirectProduct = Product & {
 type CatalogVariant = BulkVariantFields & {
   id: number;
   label: string;
+  duration_value?: number | null;
+  duration_unit?: string | null;
+  duration_label?: string | null;
+  wr_variant_id?: string | null;
+  sk_variant_id?: string | null;
+  sk_duration?: string | null;
   price: number;
   stock: number;
   min_qty?: number;
@@ -133,7 +139,7 @@ function CheckoutInner() {
             price: variant.price,
             stock: variantEff === -1 ? undefined : variantEff,
             variantId: variant.id,
-            variantLabel: variant.label,
+            variantLabel: formatVariantLabel(variant),
             minQty: Math.max(1, Number(variant.min_qty ?? 1) || 1),
             maxQty: variant.max_qty,
             buyerFieldKey: variant.buyer_field_key,

@@ -16,7 +16,7 @@
 
 - **Menu persisten 3×2 (`mainReplyMenu`):** diinstal pada foto banner `/start` (`public/banners/tg-welcome.jpg` bersama fallback `.webp` tetap utuh) serta `/batal` tanpa bubble sampah `"Menu Cepat"`; tombol ID `[[🛍 Katalog | 🔎 Cari], [🛒 Keranjang | 📦 Pesanan], [🛡 Garansi | 💬 Bantuan]]` dan padanan EN (`resize_keyboard: true`, `is_persistent: false` sejak 2026-11-20 agar ikon buka/tutup keyboard tampil di kolom input dan pembeli bisa menyembunyikan menu; menu tetap terpasang sampai diganti).
 - **Format tombol & warna (`style`):** seluruh daftar produk (terlaris di beranda `🔥`, katalog datar, kategori, pencarian) dan varian memakai pemisah seragam ` · `, harga titik ribuan penuh (`Rp19.500`, tanpa `rb`; USD saat aktif), dan badge stok (`stok ∞`/`Ready`, `stok N`/`stock N`). Warna tombol inline memakai `style`: `success` untuk aksi bayar/checkout/konfirmasi bayar, `primary` untuk `🛍 Katalog`, terlaris beranda, tambah keranjang, dan `🔄 Cek Pembayaran`, serta `danger` untuk batal/hapus/kosongkan. Varian habis dihilangkan dari daftar tombol individu dan diringkas ke satu tombol `🔔 Kabari saat restok (N habis)` (`rst:<productId>`).
-- **Template kartu produk & ringkasan jumlah:** HTML Telegram murni (`<b>`, `<blockquote>`, `<code>`, tanpa homoglyph/frame ASCII): `<b>Nama</b> · Terjual N+`, ringkasan deskripsi satu baris di `<blockquote>`, daftar `<b>Varian tersedia</b>` (`• Label — durasi · Rp · stok`), jumlah varian habis bila ada, garansi, pengiriman (`⚡ Kirim otomatis setelah bayar` atau blok `Pengiriman` khusus varian tersedia), diikuti deskripsi lengkap (caption foto dibatasi `≤1024` karakter dengan memotong deskripsi saja, tidak pernah memotong harga/stok). Layar jumlah menampilkan `<b>🛒 Ringkasan</b>`, `Jumlah Q × Rp = <b>Total</b>`, tabel grosir dalam `<blockquote>`, serta baris preset cepat `[1, 5, 10, 50]` terfilter `min..max` (aktif bertanda `✅ N`).
+- **Template kartu produk & ringkasan jumlah:** HTML Telegram murni (`<b>`, `<blockquote>`, `<code>`, tanpa homoglyph/frame ASCII): `<b>Nama</b> · Terjual N+`, ringkasan deskripsi satu baris di `<blockquote>`, daftar `<b>Varian tersedia</b>` (`• Label [— durasi] · Rp · stok`; untuk WR dan SK yang memakai `formatVariantLabel()`, durasi sudah tergabung sebagai `Label - Durasi` di dalam label tombol dan peluru tanpa pengulangan), jumlah varian habis bila ada, garansi, pengiriman (`⚡ Kirim otomatis setelah bayar` atau blok `Pengiriman` khusus varian tersedia), diikuti deskripsi lengkap (caption foto dibatasi `≤1024` karakter dengan memotong deskripsi saja, tidak pernah memotong harga/stok). Layar jumlah menampilkan `<b>🛒 Ringkasan</b>`, `Jumlah Q × Rp = <b>Total</b>`, tabel grosir dalam `<blockquote>`, serta baris preset cepat `[1, 5, 10, 50]` terfilter `min..max` (aktif bertanda `✅ N`).
 - **Aturan satu layar aktif (`single active screen`):** `text↔text` memakai edit di tempat, `photo↔photo` memakai `editMessageMedia`, dan transisi lintas tipe (`text↔photo`) mengirim layar baru terlebih dahulu lalu menghapus pesan lama via `waitUntil`; pesan invoice, menunggu pembayaran, bukti lunas, dan kredensial dilindungi agar tidak pernah diedit atau dihapus.
 - **Copy pembayaran:** `"💳 Checkout"` (menggantikan `"💳 Checkout 1 QRIS"`), `"Satu pembayaran untuk semua item."`, `"QRIS"` untuk label tampilan `QRIS Dinamis`, dan `"Tekan <b>Cek Pembayaran</b>"`.
 
@@ -1673,17 +1673,20 @@ Katalog terkurasi berisi 38 jenis/131 mapping pada 16 platform, dengan 3 pilihan
   kartu; kalimat ETA di atas CTA modal dihapus 2026-09-19). Opsi admin "Cara Pengiriman" di ProductVariantRows sinkron 1:1
   dengan `fulfillment_mode` + preview badge; panel konten fulfillment
   (shared/unique) hidup di jalur resmi — bukan hanya VariantEditor mati.
-- Nama varian pembeli `formatVariantLabel()` (2026-09-19, revisi malam: HANYA
-  WR digabung): varian WR = label + " - durasi" bila belum terkandung
-  (case-insensitive); non-WR = label admin apa adanya (kolom duration_*
-  non-WR duplikat garansi — ditempel malah jadi "Invite Lifetime - 6 Bulan").
+- Nama varian pembeli `formatVariantLabel()` (2026-09-19, diperluas SK 2026-11-20:
+  HANYA WR dan SK yang digabung): varian WR = label + " - durasi" bila belum
+  terkandung (case-insensitive); varian SK = bila kolom `duration_label/value/unit`
+  semuanya kosong, durasi diturunkan render-time dari `sk_description`
+  (`durationFromSupplierText` di `src/lib/catalog-duration.ts`, mis.
+  "DURASI 1 BULAN" → "1 Bulan") dan digabung "label - durasi" kecuali label
+  sudah memuat token durasi (`<N> Hari/Bulan/Tahun/Minggu/Day/Month/Year`),
+  sedangkan `duration_*` yang diisi admin selalu menang; non-WR/non-SK =
+  label admin apa adanya (kolom `duration_*` non-WR duplikat garansi —
+  ditempel malah jadi "Invite Lifetime - 6 Bulan").
   Latar: sync WR menulis label = nama API verbatim ("Meitu VIP") dan durasi di
-  kolom `duration_*` ("7 Hari"); PDP web yang hanya render label kehilangan
-  durasi di 88/97 varian aktif, padahal web WR menggabung ("Meitu VIP - 7
-  Hari"). Berlaku di kartu varian PDP + QuickVariantModal + displayName quote
-  checkout (ringkasan + blok Made By Order). Label yang sudah mengandung durasi
-  ("GSuite 1 Hari", "Invite 1 Bulan") tidak digandakan. DB tak tersentuh agar
-  sync tetap aman menimpa.
+  kolom `duration_*` ("7 Hari"); sync SK hanya menulis durasi di teks
+  `sk_description`; PDP web, QuickVariantModal, bot Telegram, serta nama item
+  checkout kini menampilkan gabungan durasi yang sama tanpa mengubah label di DB.
 - Label garansi varian SELALU kanonis `Garansi N Unit` ("Garansi 12 Hari") +
   ikon shield — di baris sendiri di BAWAH nama varian (block, bukan inline),
   JANGAN render label mentah ("12 Hari" ambigu dengan durasi).

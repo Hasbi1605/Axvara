@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
       `SELECT pv.*, wv.wr_type AS wr_type, wv.wr_delivery_class AS wr_delivery_class,
               ${wrJaspayCoveredSql("pv.product_id")} AS wr_jaspay_covered,
               wv.wr_max_quantity AS wr_max_quantity,
-              sp.sk_order_process AS sk_order_process, p.require_email AS require_email,
+              sp.sk_order_process AS sk_order_process, sp.sk_description AS sk_description, p.require_email AS require_email,
               -- Unit kredensial tersisa khusus unique (2026-10-02, insiden Head
               -- 18 Bulan): tanpa ini varian stock=2 + available=1 lolos quote
               -- lalu gagal di guard atomik. Subquery per varian (quote ≤20
@@ -244,6 +244,8 @@ export async function POST(req: NextRequest) {
           duration_label: variantRow.duration_label != null ? String(variantRow.duration_label) : null,
           duration_value: variantRow.duration_value != null ? Number(variantRow.duration_value) : null,
           duration_unit: variantRow.duration_unit != null ? String(variantRow.duration_unit) : null,
+          sk_variant_id: variantRow.sk_variant_id,
+          sk_description: variantRow.sk_description != null ? String(variantRow.sk_description) : null,
         })}`;
       } catch {
         displayName = `${row.name} — ${variantRow.label}`;

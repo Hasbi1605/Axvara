@@ -402,7 +402,7 @@ export default function ProductDetailClient({ slug: slugProp, initialProducts, i
       price: variant.price,
       stock: effectiveStockSnapshotOf(variant),
       variantId: variant.id,
-      variantLabel: variant.label,
+      variantLabel: formatVariantLabel(variant),
       minQty: variantMinQtyOf(variant),
       maxQty: variant.max_qty,
       buyerFieldKey: variant.buyer_field_key,

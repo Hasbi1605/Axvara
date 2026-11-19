@@ -18,7 +18,7 @@ import { orderStatusKeyboard, qrisInvoiceKeyboard, minimalMenuKeyboard } from "@
 import {
   outOfStockMessage, alreadyPendingMessage, errorMessage, invoiceMessage,
 } from "@/lib/telegram/messages";
-import { getActiveVariant, formatDuration, buyerWarrantyLabel, effectiveVariantStock, type VariantSummary } from "@/lib/catalog";
+import { getActiveVariant, formatDuration, formatVariantLabel, buyerWarrantyLabel, effectiveVariantStock, type VariantSummary } from "@/lib/catalog";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
 import { createActiveQrisInvoice, isActiveQrisConfigured, qrisPaymentAccountLabel } from "@/lib/payments/dana-qris";
@@ -223,10 +223,11 @@ export async function createAndSendVariantInvoice(
   const fulfillmentMode = String(variant.fulfillment_mode || "manual");
   const uniqueFulfillment = fulfillmentMode === "unique";
   const orderCode = generateOrderCode();
+  const itemVariantLabel = formatVariantLabel(variant);
   const items = [{
     product_id: productId,
     variant_id: variant.id,
-    name: `${productName} — ${variant.label}`,
+    name: `${productName} — ${itemVariantLabel}`,
     price,
     base_price: Number(variant.price),
     ...(appliedSingleTier != null ? { applied_tier_min_qty: appliedSingleTier } : {}),
@@ -353,7 +354,8 @@ export async function createAndSendVariantInvoice(
     // {ok:false}, tandai pending/sent, lempar agar retry nyata + cron retry.
     // TG2c1: caption + keyboard mengikuti locale order yang baru dibuat.
     await markInvoicePending(orderCode);
-    const displayName = qty > 1 ? `${productName} — ${variant.label} ×${qty}` : `${productName} — ${variant.label}`;
+    const tgVariantLabel = formatVariantLabel(variant, tgLocale);
+    const displayName = qty > 1 ? `${productName} — ${tgVariantLabel} ×${qty}` : `${productName} — ${tgVariantLabel}`;
     const variantPhoto = await sendPhoto({
       chat_id: chatId,
       photo: invoiceResult.qrisUrl,

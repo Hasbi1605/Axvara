@@ -203,12 +203,14 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
             p.source AS p_source, p.wr_product_id AS p_wr_product_id, p.wr_auto_managed AS p_wr_auto_managed,
             p.sk_product_id AS p_sk_product_id, p.sk_auto_managed AS p_sk_auto_managed,
             pv.stock AS v_stock, pv.fulfillment_mode AS v_mode, pv.is_active AS v_active,
-            pv.min_qty AS v_min_qty, pv.wr_variant_id, pv.duration_label, pv.duration_value, pv.duration_unit,
+            pv.min_qty AS v_min_qty, pv.wr_variant_id, pv.sk_variant_id, sp.sk_description AS sk_description,
+            pv.duration_label, pv.duration_value, pv.duration_unit,
             (SELECT COUNT(*) FROM fulfillment_inventory fi
              WHERE fi.product_id=pv.product_id AND fi.variant_id=pv.id AND fi.status='available') AS inventory_available
      FROM telegram_carts c
      LEFT JOIN products p ON p.id=c.product_id
      LEFT JOIN product_variants pv ON pv.id=c.variant_id AND pv.is_active=1 AND ${wrNewSaleSql("pv")}
+     LEFT JOIN sk_products sp ON sp.sk_variant_id = pv.sk_variant_id
      WHERE c.user_id=?
      ORDER BY c.updated_at ASC, c.id ASC
      LIMIT ?`,
@@ -234,6 +236,8 @@ export async function getCartSummary(userId: string): Promise<CartSummary> {
     const productName = String(row.product_name || "Produk");
     const variantLabel = formatVariantLabel({
       label: String(row.v_label || ""), wr_variant_id: row.wr_variant_id,
+      sk_variant_id: row.sk_variant_id,
+      sk_description: row.sk_description == null ? null : String(row.sk_description),
       duration_label: row.duration_label == null ? null : String(row.duration_label),
       duration_value: row.duration_value == null ? null : Number(row.duration_value),
       duration_unit: row.duration_unit as VariantSummary["duration_unit"],

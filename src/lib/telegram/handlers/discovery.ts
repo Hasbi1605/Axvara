@@ -145,7 +145,7 @@ export async function showEmailConfirmation(chatId: number, productId: number, v
   if (!stored.changes) return;
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
-    text: emailConfirmationMessage({ productName: String(product?.name ?? "Produk"), variantLabel: formatVariantLabel(variant), qty, total: confirmationUnit * qty, basePrice: Number(variant.price), appliedTierMinQty: confirmationTier, maskedEmail: maskEmail(saved) }, { locale: ctx.locale, ...tgUsdAlternate(confirmationUnit * qty, ctx) }),
+    text: emailConfirmationMessage({ productName: String(product?.name ?? "Produk"), variantLabel: formatVariantLabel(variant, ctx.locale), qty, total: confirmationUnit * qty, basePrice: Number(variant.price), appliedTierMinQty: confirmationTier, maskedEmail: maskEmail(saved) }, { locale: ctx.locale, ...tgUsdAlternate(confirmationUnit * qty, ctx) }),
     parse_mode: "HTML",
     reply_markup: emailConfirmationKeyboard(productId, variantId, qty, confirmationUnit * qty, tag, nonce, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
   });
