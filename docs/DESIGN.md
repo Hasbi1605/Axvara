@@ -328,20 +328,27 @@ semua ≥4,5:1 dan mode sistem mengikuti tema masing-masing. Screenshot di
 Fixture menguji presentasi/filter; bukan auth, persistensi backend atau transaksi.
 
 
-## Panel supplier StoreBat dan Mirai (19 November 2026, lokal saja)
+## Panel bersama AIVault, TUNVN, StoreBat, dan Mirai (19 November 2026, lokal)
 
-Supplier → StoreBat dan Supplier → Mirai memakai panel bersama
-`src/components/admin/SupplierCatalogManager.tsx` dengan Ringkas, Antrean,
-Markup dan Alat. Ringkas membedakan saldo belum terbaca dari nol (USD untuk
-StoreBat, USDT untuk Mirai; dua desimal). Antrean menyediakan Retry aman
-pra-kirim dan dialog receipt yang dibuka eksplisit; Markup memakai
-`src/components/admin/SupplierPriceRow.tsx` (harga jual Rupiah, biaya Buff per
-miliar token); Alat punya tindakan sinkron paksa terpisah. Loading, kosong, error
-dan gagal sebagian punya tampilan berbeda. Badge identitas dipakai di Produk,
-grup dan antrean supplier; feed Pesanan umum belum memuat link kedua supplier.
+Keempat menu Supplier memakai `src/components/admin/SupplierAdminPanel.tsx`:
 
-QA browser Paseo dengan fixture pada lebar 1440/390 tidak menemukan overflow
-atau error console; bukan bukti transaksi, persistensi produksi atau deploy.
+- **Ringkas**: empat kartu dan tiga badge status. Saldo gagal dibaca tidak
+  ditampilkan sebagai nol; error per bagian menyertakan HTTP bila tersedia dan
+  tidak mengosongkan bagian lain. Waktu sinkron/antrean selalu WIB dengan tahun.
+- **Antrean**: enam kolom di desktop, informasi dan aksi setara di kartu HP.
+  Maksimal 100 link terbaru; retry berpagar, receipt dibuka lewat tindakan
+  eksplisit, dan pemeriksaan batch Buff TUNVN tidak membeli ulang.
+- **Markup**: cari varian dalam kartu keluarga (tanpa kalimat rumus harga; keputusan owner 19 Nov); harga manual kosong kembali
+  ke rumus, nol ditolak, dan Simpan hanya mengirim field yang berubah. Muat ulang
+  tidak membuang draf baris lain. Status induk dikelola dari Produk. Slot khusus:
+  Grosir AIVault, Buff dan deskripsi terlipat TUNVN, serta modal StoreBat Muse per
+  miliar token. TUNVN #60 tidak muncul di daftar atau hitungan.
+- **Alat**: tombol petir untuk sinkron katalog, dengan alasan manusiawi bila
+  dilewati. USD 2–4 desimal untuk modal, dua untuk saldo; USDT empat untuk modal, dua untuk saldo; harga jual
+  tetap Rupiah.
+
+QA fixture 1440/390 mencakup seluruh kombinasi supplier/tab; bukan bukti
+autentikasi, transaksi, persistensi produksi, atau deploy.
 
 ## Baris harga supplier TUNVN/AIVault (15 November 2026, lokal saja)
 

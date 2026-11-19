@@ -148,16 +148,19 @@ describe("atomic snapshot and eligibility",() => {
 
 describe("admin gates and data access",() => {
   const patch=async (id:number,body:unknown) => (await import("@/app/api/admin/tunvn/products/[id]/route")).PATCH(req(`/api/admin/tunvn/products/${id}`,body,"PATCH"),{ params:Promise.resolve({ id:String(id) }) });
-  it("invalid request and activation without publication write nothing",async () => {
+  it("rejects obsolete switches and other unknown fields without a write",async () => {
     const before=fx.sql.prepare("SELECT * FROM tunvn_products WHERE supplier_product_id=86").get();
-    expect((await patch(86,{ markup_percent:90,axvara_is_active:true })).status).toBe(409);
+    expect((await patch(86,{ markup_percent:90,axvara_is_active:true })).status).toBe(400);
+    expect((await patch(86,{ markup_percent:90,publish_requested:true })).status).toBe(400);
     expect((await patch(86,{ markup_percent:90,extra:true })).status).toBe(400);
     expect(fx.sql.prepare("SELECT * FROM tunvn_products WHERE supplier_product_id=86").get()).toEqual(before);
   });
   it("variant-only fields require a synced variant and never write partial mirror state",async () => {
     fx.sql.exec("DELETE FROM product_variants WHERE id=3");
-    expect((await patch(86,{ is_active:true })).status).toBe(409);
-    expect(fx.sql.prepare("SELECT publish_requested,visible FROM tunvn_products WHERE supplier_product_id=86").get()).toEqual({ publish_requested:0,visible:0 });
+    const response = await patch(86,{ is_active:true, markup_percent:90 });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "variant_missing" });
+    expect(fx.sql.prepare("SELECT markup_percent,visible FROM tunvn_products WHERE supplier_product_id=86").get()).toEqual({ markup_percent:35,visible:0 });
   });
   it("admin catalog lists mapped variants by durable identity, not slug",async () => {
     fx.sql.exec("UPDATE tunvn_products SET axvara_product_id=2");
@@ -169,24 +172,47 @@ describe("admin gates and data access",() => {
   });
   it("rejects the excluded API TEST product and unknown mirror ids without writes",async () => {
     fx.sql.exec("INSERT INTO tunvn_products(supplier_product_id,name,price_usdt) VALUES(60,'API TEST',1)");
-    expect((await patch(60,{ markup_percent:50 })).status).toBe(409);
+    const response = await patch(60,{ markup_percent:50, is_active:true });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "excluded_product" });
     expect((await patch(9999,{ markup_percent:50 })).status).toBe(404);
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM tunvn_products WHERE supplier_product_id=60 AND markup_percent<>35").get()).toEqual({ n:0 });
   });
   it("activates either variant and deactivating one never hides the other",async () => {
-    expect((await patch(86,{ publish_requested:true,axvara_is_active:true })).status).toBe(200);
-    expect((await patch(83,{ publish_requested:true })).status).toBe(200);
-    expect((await patch(86,{ publish_requested:false })).status).toBe(200);
+    const readMirror = () => fx.sql.prepare("SELECT supplier_product_id,visible,publish_requested FROM tunvn_products ORDER BY supplier_product_id").all();
+    const activated = await patch(86,{ is_active:true, label:"Edited label", admin_name:"Edited name", admin_description:"Edited description" });
+    expect(activated.status).toBe(200);
+    const { item } = await activated.json();
+    expect(item).toMatchObject({ visible:0, admin_name:"Edited name", admin_description:"Edited description" });
+    expect(item).not.toHaveProperty("publish_requested");
+    expect(fx.sql.prepare("SELECT is_active,name,description FROM products WHERE id=2").get()).toEqual({ is_active:0, name:"Edited name", description:"Edited description" });
+    expect(fx.sql.prepare("SELECT is_active,label FROM product_variants WHERE id=3").get()).toEqual({ is_active:1, label:"Edited label" });
+    const { PUT }=await import("@/app/api/products/[id]/route");
+    expect((await PUT(req("/api/products/2",{ isActive:true },"PUT"),{ params:Promise.resolve({ id:"2" }) })).status).toBe(200);
+    expect(readMirror()).toContainEqual({ supplier_product_id:86, visible:1, publish_requested:0 });
+    expect((await patch(83,{ is_active:true })).status).toBe(200);
+    expect((await patch(86,{ is_active:false })).status).toBe(200);
+    expect(readMirror()).toEqual([{ supplier_product_id:83, visible:1, publish_requested:0 },{ supplier_product_id:86, visible:0, publish_requested:0 }]);
     expect(fx.sql.prepare("SELECT is_active FROM products WHERE id=2").get()).toEqual({ is_active:1 });
     expect(fx.sql.prepare("SELECT sku,is_active FROM product_variants WHERE product_id=2 ORDER BY id").all()).toEqual([{ sku:"TUNVN-86",is_active:0 },{ sku:"TUNVN-83",is_active:1 }]);
   });
   it("general Products activation removes the initial dead end and survives product off/on",async () => {
-    const { PUT }=await import("@/app/api/products/[id]/route");
+    const { PUT, DELETE }=await import("@/app/api/products/[id]/route");
     const put=(isActive:boolean) => PUT(req("/api/products/2",{ isActive },"PUT"),{ params:Promise.resolve({ id:"2" }) });
+    fx.sql.exec("UPDATE products SET price=999999 WHERE id=2; UPDATE tunvn_products SET publish_requested=1 WHERE supplier_product_id=83");
     expect((await put(true)).status).toBe(200);
-    fx.sql.exec("UPDATE product_variants SET is_active=0 WHERE id=4");
-    expect((await put(false)).status).toBe(200); expect((await put(true)).status).toBe(200);
+    expect(fx.sql.prepare("SELECT price,stock,is_active FROM products WHERE id=2").get()).toEqual({ price:112400, stock:22, is_active:1 });
+    expect(fx.sql.prepare("SELECT id,is_active FROM product_variants WHERE product_id=2 ORDER BY id").all()).toEqual([{ id:3,is_active:1 },{ id:4,is_active:0 }]);
+    const readVisibility = () => fx.sql.prepare("SELECT visible FROM tunvn_products WHERE supplier_product_id=86").get();
+    expect(readVisibility()).toEqual({ visible:1 });
+    expect((await put(false)).status).toBe(200);
+    expect(readVisibility()).toEqual({ visible:0 });
+    expect((await put(true)).status).toBe(200);
+    expect(readVisibility()).toEqual({ visible:1 });
     expect(fx.sql.prepare("SELECT is_active FROM product_variants WHERE id=4").get()).toEqual({ is_active:0 });
+    expect((await DELETE(new NextRequest("http://localhost/api/products/2",{ method:"DELETE" }),{ params:Promise.resolve({ id:"2" }) })).status).toBe(200);
+    expect(readVisibility()).toEqual({ visible:0 });
+    expect(fx.sql.prepare("SELECT publish_requested FROM tunvn_products WHERE supplier_product_id=83").get()).toEqual({ publish_requested:1 });
   });
   it("buyer input is detail-only and requires admin auth",async () => {
     await atomic();
@@ -257,7 +283,7 @@ describe("admin gates and data access",() => {
   it("0115 upgrades the old schema, retires bundles, and never stamps historical orders",() => {
     const base=fx.sql.prepare("SELECT * FROM product_variants WHERE id=2").get()!;
     fx.sql.exec(`UPDATE product_variants SET sku='TUNVN-BUFF-5B',tunvn_buff_quantity_b=5,tunvn_admin_price_idr=12345 WHERE id=1;
-      DROP TRIGGER tunvn_variant_publication; DROP TRIGGER tunvn_retired_bundle_update;
+      DROP TRIGGER IF EXISTS tunvn_variant_publication; DROP TRIGGER tunvn_retired_bundle_update;
       ALTER TABLE product_variants DROP COLUMN buyer_field_key; ALTER TABLE product_variants DROP COLUMN max_qty;
       ALTER TABLE telegram_carts DROP COLUMN buyer_fields;
       INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,variant_id) VALUES('AXV-20261109-11223344','Fixture','628000000000','[{"variant_id":1,"qty":1}]',12345,'qris',1);`);

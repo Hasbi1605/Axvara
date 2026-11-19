@@ -1,7 +1,7 @@
 "use client";
 
-import { SupplierCatalogManager } from "./SupplierCatalogManager";
+import { SupplierAdminPanel } from "./SupplierAdminPanel";
 
 export function MiraiManager() {
-  return <SupplierCatalogManager supplier="mirai" />;
+  return <SupplierAdminPanel supplier="mirai" />;
 }

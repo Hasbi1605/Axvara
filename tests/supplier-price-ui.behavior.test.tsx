@@ -27,7 +27,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const tunvnItem = (id: number, over: Record<string, unknown> = {}) => ({
   supplier_product_id: id, name: `Supplier ${id}`, price_vnd: 36000, price_usdt: 1.39, stock: 63, visible: 0,
   axvara_product_id: 5, markup_percent: 35, sell_price_idr: 34200, fx_idr_per_usdt: 18220, synced_at: null,
-  admin_name: null, admin_description: null, publish_requested: 0, axvara_name: "CapCut Pro", axvara_description: null,
+  admin_name: null, admin_description: null, axvara_name: "CapCut Pro", axvara_description: null,
   axvara_is_active: 0, variant_price: 34200, variant_is_active: 0, axvara_slug: "capcut-pro-tunvn", family: "capcut", family_key: "capcut",
   variant_id: id, variant_sku: `TUNVN-${id}`, variant_label: `Varian ${id}`, tunvn_admin_price_idr: null, excluded: 0, product_archived: 0, ...over,
 });
@@ -53,6 +53,7 @@ describe("TUNVN tab Markup", () => {
     vi.stubGlobal("fetch", tunvnFetch(calls));
     renderAdmin(<ToastProvider><TunvnManager /></ToastProvider>);
     expect(await screen.findByText("akun axv")).toBeTruthy();
+    expect(screen.getByText("2 dipetakan · 2 di katalog")).toBeTruthy();
     expect(document.body.textContent).not.toContain("VND");
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Markup" }), { button: 0 });
     await screen.findByText("CapCut Pro");
@@ -78,14 +79,21 @@ describe("TUNVN tab Markup", () => {
     expect((within(screen.getByRole("form", { name: "Harga Varian 44" })).getByLabelText("Markup %") as HTMLInputElement).value).toBe("50");
   });
 
-  it("Katalog: deskripsi supplier terlipat sebagai rujukan admin", async () => {
-    vi.stubGlobal("fetch", tunvnFetch([]));
+  it("Markup: deskripsi supplier terlipat dan saklar hanya mengirim is_active", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal("fetch", tunvnFetch(calls));
     renderAdmin(<ToastProvider><TunvnManager /></ToastProvider>);
-    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Katalog" }), { button: 0 });
+    expect(screen.queryByRole("tab", { name: "Katalog" })).toBeNull();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Markup" }), { button: 0 });
     const summary = await screen.findByText(/Deskripsi supplier/);
     expect(summary.closest("details")?.open).toBe(false);
     expect(screen.getByText("Capcut Pro 1 Month Team Plan - Full Warranty")).toBeTruthy();
     expect(screen.getAllByText(/Deskripsi supplier/)).toHaveLength(1);
+    fireEvent.click(screen.getByRole("switch", { name: "Aktif Varian 37" }));
+    await screen.findByText("Varian 37 diaktifkan.");
+    expect(calls.filter(call => call.init?.method === "PATCH").map(call => [call.url, JSON.parse(String(call.init?.body))])).toEqual([
+      ["/api/admin/tunvn/products/37", { is_active: true }],
+    ]);
   });
 
   it("menolak harga manual 0 di klien tanpa mengirim permintaan", async () => {
@@ -158,7 +166,7 @@ describe.each([
 
   it("saldo gagal tetapi katalog tetap tampil; arsip terkunci dan simpan hanya field berubah", async () => {
     const calls = setup({ failedBalance: true });
-    expect(await screen.findByText("Saldo: HTTP 503: balance_unavailable")).toBeTruthy();
+    expect(await screen.findByText("Saldo: HTTP 503: Saldo belum dapat dibaca.")).toBeTruthy();
     expect(screen.getByText("Pengiriman otomatis nonaktif")).toBeTruthy();
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Markup" }), { button: 0 });
     expect(await screen.findByText("Katalog AXVARA")).toBeTruthy();
@@ -166,7 +174,7 @@ describe.each([
     expect(screen.getByText("Arsip")).toBeTruthy();
     expect((within(screen.getByRole("form", { name: "Harga Paket B" })).getByLabelText("Markup %") as HTMLInputElement).disabled).toBe(true);
     const row = within(screen.getByRole("form", { name: "Harga Paket A" }));
-    expect(row.getByText(route === "mirai" ? /0,123456 USDT/ : /\$0\.125.*per 1 miliar token/)).toBeTruthy();
+    expect(row.getByText(route === "mirai" ? /0,1235 USDT/ : /\$0\.125.*per 1 miliar token/)).toBeTruthy();
     expect(document.body.textContent).not.toContain("VND");
     const input = row.getByLabelText("Harga manual (Rp)");
     const save = row.getByRole("button", { name: "Simpan" }) as HTMLButtonElement;
@@ -185,14 +193,19 @@ describe.each([
     const calls = setup();
     expect(await screen.findByText(route === "mirai" ? "2,50 USDT" : "$2.50")).toBeTruthy();
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Antrean" }), { button: 0 });
-    expect(screen.getAllByRole("button", { name: "Coba lagi" })).toHaveLength(1);
+    const table = within(screen.getByRole("table"));
+    const cards = within(screen.getByLabelText(`Kartu pengiriman ${name}`));
+    expect(table.getAllByRole("button", { name: "Coba lagi" })).toHaveLength(1);
+    expect(cards.getAllByRole("button", { name: "Coba lagi" })).toHaveLength(1);
     expect(screen.queryByText(/fixture-code/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Coba lagi" }));
+    fireEvent.click(table.getByRole("button", { name: "Coba lagi" }));
     await screen.findByText("Pesanan diproses ulang.");
-    fireEvent.click(screen.getByRole("button", { name: "Lihat receipt" }));
+    const reveal = cards.getByRole("button", { name: "Lihat receipt" });
+    fireEvent.click(reveal);
     expect(within(await screen.findByRole("dialog", { name: `Receipt ${name}` })).getByText(/fixture-code/)).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(reveal));
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Alat" }), { button: 0 });
     fireEvent.click(screen.getByRole("button", { name: "Sinkronkan katalog" }));
     expect(await screen.findByText("Sinkron katalog selesai.")).toBeTruthy();
@@ -212,4 +225,47 @@ describe.each([
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Markup" }), { button: 0 });
     expect(screen.getByText("Sinkronkan katalog dari tab Alat untuk memulai.")).toBeTruthy();
   });
+});
+
+it.each([
+  ["AIVault", AivaultManager, "USD"], ["TUNVN", TunvnManager, "USDT"],
+  ["StoreBat", StorebatManager, "USD"], ["Mirai", MiraiManager, "USDT"],
+] as const)("%s shares tabs, desktop and mobile queue status/formatting, and sync failure handling", async (name, Manager, currency) => {
+  const states = [
+    [{ status: "pending" }, "Menunggu"], [{ status: "claimed" }, "Memproses"], [{ status: "processing" }, "Menunggu supplier"],
+    [{ status: "completed" }, "Selesai"], [{ status: "needs_admin", last_error: "opaque_code" }, "Perlu diperiksa"],
+    [{ status: "needs_admin", last_error: "blocked_balance" }, "Saldo kurang"], [{ status: "failed" }, "Gagal"],
+    [{ status: "needs_admin", purchase_disabled: 1, can_retry: 1 }, "Penanganan manual"],
+  ] as const;
+  vi.stubGlobal("fetch", vi.fn(async (input: unknown) => {
+    const url = String(input);
+    if (url.endsWith("/balance")) return Response.json({ balance: 0, currency });
+    if (url.endsWith("/products")) return Response.json({ configured: true, items: [], last_sync_at: "2026-11-18 23:58:00", last_error: { at: "2026-11-19 00:00:00", error: "opaque_code" } });
+    if (url.endsWith("/buff")) return Response.json({ variants: [], probe: null, muse_product: null });
+    if (url.endsWith("/publish")) return Response.json({ skipped: "claimed_elsewhere" }, { status: 503 });
+    return Response.json({ items: [
+      ...states.map(([state], i) => ({ id: i, order_code: `FIXTURE-${i}`, item_index: 1, quantity: 2, cost_usd: 0.1, cost_usdt: 0.274,
+        created_at: "2026-11-18 01:00:00", updated_at: "2026-11-18 05:28:00", ...state })),
+      ...(name === "TUNVN" ? [{ id: 60, order_code: "EXCLUDED-60", source_product_id: 60, quantity: 1 }] : []),
+    ] });
+  }));
+  renderAdmin(<Manager />);
+  expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Ringkas", "Antrean", "Markup", "Alat"]);
+  expect(screen.getByText(`Katalog, harga, dan pengiriman otomatis ${name}.`)).toBeTruthy();
+  expect(await screen.findByText("19 Nov 2026, 06.58")).toBeTruthy();
+  expect(screen.getByText(currency === "USD" ? "$0.00" : "0,00 USDT")).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toContain("Sinkron gagal (19 Nov 2026, 07.00)");
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "Antrean" }), { button: 0 });
+  const table = within(screen.getByRole("table"));
+  expect(table.getAllByRole("columnheader").map(cell => cell.textContent)).toEqual(["Pesanan", "Unit", "Biaya", "Status", "Waktu", "Aksi"]);
+  for (const scope of [table, within(screen.getByLabelText(`Kartu pengiriman ${name}`))]) {
+    for (const [, label] of states) expect(scope.getByText(label)).toBeTruthy();
+    expect(scope.getAllByText("18 Nov 2026, 12.28")).toHaveLength(states.length);
+    expect(scope.getAllByText(currency === "USD" ? "$0.10" : "0,2740 USDT")).toHaveLength(states.length);
+    expect(scope.queryByText(/opaque_code|EXCLUDED-60|Siap dikirim/)).toBeNull();
+    expect(scope.queryByRole("button", { name: "Coba lagi" })).toBeNull();
+  }
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "Alat" }), { button: 0 });
+  fireEvent.click(screen.getByRole("button", { name: "Sinkronkan katalog" }));
+  expect(await screen.findByText("Sinkron: HTTP 503: Sinkron sedang berjalan di proses lain.")).toBeTruthy();
 });

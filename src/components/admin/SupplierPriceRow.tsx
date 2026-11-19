@@ -17,10 +17,10 @@ export function SupplierPriceHeader() {
   </div>;
 }
 
-export function SupplierPriceRow({ id, title, meta, badges, markup, manual, price, active, canEdit, locked, busy, notice, onToggle, onSave }: {
+export function SupplierPriceRow({ id, title, meta, badges, markup, manual, price, active, canEdit, locked, busy, notice, details, onToggle, onSave }: {
   id: string; title: ReactNode; meta: ReactNode; badges?: ReactNode;
   markup: number; manual: number | null; price: number | null; active: boolean;
-  canEdit: boolean; locked: boolean; busy: boolean; notice?: ReactNode;
+  canEdit: boolean; locked: boolean; busy: boolean; notice?: ReactNode; details?: ReactNode;
   onToggle: () => void; onSave: (body: SupplierPriceSave) => Promise<void>;
 }) {
   const [markupDraft, setMarkupDraft] = useState(String(markup));
@@ -58,10 +58,10 @@ export function SupplierPriceRow({ id, title, meta, badges, markup, manual, pric
     className="grid gap-3 rounded-lg border border-admin-border bg-admin-subtle/40 p-3 md:grid-cols-[minmax(0,1fr)_5.5rem_8rem_7.5rem_4.75rem_2.75rem] md:items-center">
     <div className="min-w-0">
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <p className="truncate font-medium text-admin-fg">{title}</p>
+        <p className="min-w-0 break-words font-medium text-admin-fg">{title}</p>
         {badges}
       </div>
-      <p className="mt-0.5 break-words text-xs text-admin-muted md:truncate">{meta}</p>
+      <p className="mt-0.5 break-words text-xs text-admin-muted">{meta}</p>
     </div>
     <div className="grid grid-cols-2 gap-3 md:contents">
       <label className="space-y-1 text-xs text-admin-muted md:space-y-0">
@@ -80,9 +80,10 @@ export function SupplierPriceRow({ id, title, meta, badges, markup, manual, pric
         <p className="font-semibold tabular-nums text-admin-fg"><span className="sr-only">Harga jual </span>{price != null ? formatRupiah(price) : "—"}</p>
         {price != null && <p className="text-[11px] text-admin-muted">{manual != null ? "manual" : "rumus"}</p>}
       </div>
-      <Button type="submit" size="sm" variant={dirty ? "default" : "outline"} disabled={!dirty || inputDisabled}>{busy ? "Menyimpan…" : "Simpan"}</Button>
+      <Button type="submit" size="sm" className="min-h-11 md:min-h-0" variant={dirty ? "default" : "outline"} disabled={!dirty || inputDisabled}>{busy ? "Menyimpan…" : "Simpan"}</Button>
       <div className="flex justify-end"><AdminStatusSwitch checked={active} label={`Aktif ${typeof title === "string" ? title : id}`} disabled={!canEdit || locked} busy={busy} onChange={onToggle} /></div>
     </div>
+    {details && <div className="min-w-0 md:col-span-full">{details}</div>}
     {(notice || error || dirty) && <div className="space-y-1 text-xs md:col-span-full" aria-live="polite">
       {notice && <p className="text-admin-muted">{notice}</p>}
       {error && <p role="alert" className="text-admin-danger">{error}</p>}

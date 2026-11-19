@@ -36,9 +36,7 @@ type Row = Record<string, unknown>;
 type MirrorRow = Row & {
   supplier_product_id: number; name: string;
   price_usdt: number | null; stock: number;
-  axvara_product_id: number | null; markup_percent: number;
-  admin_name: string | null; admin_description: string | null;
-  publish_requested: number;
+  markup_percent: number;
 };
 
 type ProductRow = Row & {
@@ -54,7 +52,7 @@ type VariantRow = Row & {
 const RETIRED_BUNDLE_SKUS = ["TUNVN-BUFF-5B", "TUNVN-BUFF-10B", "TUNVN-BUFF-20B", "TUNVN-BUFF-30B"];
 
 /** Terbitkan/perbarui katalog TUNVN dari mirror tersinkron + FX saat ini.
- *  Tidak pernah mengaktifkan produk/varian yang tidak diminta admin. */
+ *  Tidak pernah mengaktifkan produk atau varian. */
 export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number, opts: { force?: boolean; now?: number } = { force: true }): Promise<TunvnPublishResult> {
   if (!isTunvnSyncEnabled()) return { skipped: "not_configured" };
   if (!Number.isFinite(idrPerUsdt) || idrPerUsdt <= 0) return { ok: false, error: "fx_unavailable" };
@@ -70,7 +68,7 @@ export async function publishTunvnCatalog(db: DatabaseAccess, idrPerUsdt: number
     if ("ok" in synced && synced.ok === false) return { ok: false, error: synced.error };
     if ("skipped" in synced) return synced;
 
-    const mirrors = await db.queryAll("SELECT * FROM tunvn_products ORDER BY supplier_product_id") as MirrorRow[];
+    const mirrors = await db.queryAll("SELECT supplier_product_id, name, price_usdt, stock, markup_percent FROM tunvn_products ORDER BY supplier_product_id") as MirrorRow[];
     const families = planFamilies(mirrors);
     if (!families.length) {
       await recordSyncSuccess(db, "tunvn_catalog", now);
@@ -361,9 +359,8 @@ const UPDATE_MIRRORS_SQL = `UPDATE tunvn_products AS t
 SET axvara_product_id=(SELECT p.id FROM products p WHERE p.slug=json_extract(j.value,'$.slug')),
   sell_price_idr=json_extract(j.value,'$.sell'),
   fx_idr_per_usdt=?,
-  publish_requested=CASE WHEN EXISTS(SELECT 1 FROM product_variants pv WHERE pv.tunvn_source_product_id=t.supplier_product_id AND pv.is_active=1) THEN 1 ELSE 0 END,
   visible=CASE WHEN EXISTS(SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
-    WHERE pv.tunvn_source_product_id=t.supplier_product_id AND pv.is_active=1 AND p.is_active=1) THEN 1 ELSE 0 END,
+    WHERE pv.tunvn_source_product_id=t.supplier_product_id AND pv.is_active=1 AND p.is_active=1 AND p.archived_at IS NULL) THEN 1 ELSE 0 END,
   updated_at=datetime('now')
 FROM json_each(?) AS j
 WHERE t.supplier_product_id=json_extract(j.value,'$.sid')`;

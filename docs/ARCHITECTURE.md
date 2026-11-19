@@ -6172,6 +6172,8 @@ Menggantikan biaya rata 2% di §16.23. Tujuan: merchant menerima minimal nilai b
 
 ### 16.43 TUNVN — katalog penuh semua produk mirror sebagai family varian (15 November 2026, lokal, belum deploy)
 
+> Histori: trigger publikasi dan `publish_requested` pada bagian ini digantikan oleh §16.60.
+
 - **Keputusan owner 15 November 2026.** Seluruh baris `tunvn_products` (kecuali
   #60 API TEST) menjadi produk katalog AXVARA di menu admin "Produk", pola
   WR/SK. Produk serupa menjadi VARIAN satu produk induk; semua produk/varian
@@ -6631,6 +6633,36 @@ Winner mengatur tampilan katalog, bukan mengubah sumber pemenuhan order.
 
 Detail pengaman dan pemulihan: [StoreBat](agent-rules/storebat.md) / [Mirai](agent-rules/mirai.md).
 Publikasi melalui CI `main`; deployment belum dibuktikan.
+
+### 16.60 Aktivasi satu saklar varian TUNVN dan kontrak panel supplier — 19 November 2026 (backend lokal)
+
+Keputusan owner opsi B: `product_variants.is_active` adalah satu-satunya saklar
+varian TUNVN. Induk tetap dikelola dari menu Produk; `visible` pada mirror hanya
+mencerminkan varian aktif + induk aktif + `archived_at IS NULL`. Filter katalog
+publik/grup dan pagar checkout tidak diubah. Sync menyiapkan produk/varian baru
+nonaktif dan tidak mengaktifkan baris existing. Aktivasi induk dari Produk tanpa
+daftar varian eksplisit memilih varian akun TUNVN dengan ID terendah (kecuali
+#60) bila belum ada varian aktif, lalu menyegarkan harga/stok induk.
+
+`0142_tunvn_single_key_activation.sql` melepas `tunvn_variant_publication`,
+menonaktifkan varian akun aktif tanpa mirror yang memiliki nilai lama `1` (atau
+varian #60), lalu menghitung ulang `visible`. Tidak ada perubahan pada tabel
+induk; kolom `publish_requested` tetap di skema sebagai kolom deprecated.
+
+Kontrak `/api/admin/{supplier}/…` untuk panel bersama (UI paket terpisah):
+
+| Route | Perubahan payload |
+| --- | --- |
+| `GET tunvn/balance` | `balance` = `balance_usdt`, `currency: "USDT"`; `username` dan nilai saldo legacy tetap. |
+| `GET tunvn/products` | `dispatch_enabled`, `sync_enabled`, `last_error` katalog (`{at,error}` atau `null`); item menambah `id` (supplier ID), `variant_active`, `product_active`, `product_name`, `product_slug`, `label`, `cost_usdt`, `admin_price_idr`, dan `family: {key,name,slug,label}`. Nilai string `family` lama kini di `tunvn_family`; `family_key` tetap. `publish_requested` hilang; `counts.requested` alias `active_variants`. |
+| `PATCH tunvn/products/[id]` | `is_active` mengatur varian; `publish_requested` dan `axvara_is_active` tidak diterima. Markup, override harga (`0` ⇒ `NULL`), label dan salinan admin tetap. Aktivasi induk Arsip, varian belum dipetakan, dan #60 masing-masing mendapat 409. |
+| `GET aivault/products` | `dispatch_enabled`, `sync_enabled`, `last_error`; item menambah `product_slug`, `price_usd` dan `admin_price_idr` tanpa menghapus nama field lama. |
+| `GET {storebat,mirai}/products` | Item menambah `product_slug` (slug induk tersimpan). |
+| `GET {aivault,tunvn,storebat,mirai}/orders` | Item menambah `created_at`, `updated_at`; TUNVN juga `source_product_id`. |
+| `POST tunvn/publish` | `skipped` diteruskan bersama `error` yang berisi alasan sama; 503 bila gate sync mati, 502 bila publisher mengembalikan skip. |
+
+Saldo Mirai, endpoint Buff, dan aksi order tidak berubah. Belum ada migrasi
+remote, deployment, atau panggilan supplier untuk verifikasi paket ini.
 
 ### 16.58 Cache edge berbasis revisi & invalidasi katalog — 18 November 2026 (lokal, Paket B-H; belum deploy)
 

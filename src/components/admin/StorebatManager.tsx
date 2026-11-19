@@ -1,7 +1,7 @@
 "use client";
 
-import { SupplierCatalogManager } from "./SupplierCatalogManager";
+import { SupplierAdminPanel } from "./SupplierAdminPanel";
 
 export function StorebatManager() {
-  return <SupplierCatalogManager supplier="storebat" />;
+  return <SupplierAdminPanel supplier="storebat" />;
 }

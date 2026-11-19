@@ -11,7 +11,7 @@ const json=(v:unknown,status=200)=>NextResponse.json(v,{status,headers:{"Cache-C
 export async function GET(request: NextRequest) {
   if (!await requireAdmin(request)) return json({error:"unauthorized"},401);
   try {
-    const items=await createDatabaseAccess().queryAll(`SELECT id,order_code,item_index,storebat_product_id,kind,quantity,cost_usd,fx_idr_per_usd,refunded_usd,idempotency_key,provider_order_id,status,attempt_count,request_sent_at,last_error,completed_at,receipt_json,
+    const items=await createDatabaseAccess().queryAll(`SELECT id,order_code,item_index,storebat_product_id,kind,quantity,cost_usd,fx_idr_per_usd,refunded_usd,idempotency_key,provider_order_id,status,attempt_count,request_sent_at,last_error,completed_at,created_at,updated_at,receipt_json,
       CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt,
       CASE WHEN ${STOREBAT_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry FROM storebat_order_links ORDER BY id DESC LIMIT 100`);
     return json({ok:true,items});

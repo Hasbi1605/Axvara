@@ -8,7 +8,7 @@
 // 3. Pedia: identifier supplier hanya di detail terlipat + helper refill memuat ID.
 // 4. WR/SK & Pedia: angka tidak menampilkan nilai menyesatkan saat memuat (D6).
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { GamesManager } from "@/components/admin/GamesManager";
 import { render as renderAdmin } from "./setup/admin-render";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -106,6 +106,7 @@ describe("TUNVN: breakpoint tabel vs kartu", () => {
       return Response.json({ ok: true, configured: true, items: [], counts: { total: 0, published: 0, requested: 0, in_stock: 0 }, last_sync_at: null });
     }));
     renderAdmin(<ToastProvider><TunvnManager /></ToastProvider>);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Antrean" }), { button: 0 });
     const table = await screen.findByRole("table");
     // Pembungkus tabel: hidden di mobile, block mulai md (sama seperti kartu md:hidden).
     const wrapper = table.parentElement!.parentElement!;

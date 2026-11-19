@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!isTunvnSyncEnabled()) return NextResponse.json({ ok: false, error: "not_configured" }, { status: 503 });
+  if (!isTunvnSyncEnabled()) return NextResponse.json({ ok: false, error: "not_configured", skipped: "not_configured" }, { status: 503 });
   const fx = await loadCurrentFxSnapshot();
   const rational = fx ? parseRateRational(fx.rateText) : null;
   if (!fx || !rational) return NextResponse.json({ ok: false, error: "fx_unavailable" }, { status: 503 });
@@ -25,9 +25,8 @@ export async function POST(request: NextRequest) {
   }
   try {
     const result = await publishTunvnCatalog(createDatabaseAccess(), idrPerUsdt);
-    if (!("ok" in result) || result.ok !== true) {
-      return NextResponse.json({ ok: false, error: "error" in result ? result.error : "publish_failed" }, { status: 502 });
-    }
+    if ("skipped" in result) return NextResponse.json({ ok: false, error: result.skipped, skipped: result.skipped }, { status: 502 });
+    if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 502 });
     return NextResponse.json({ ...result, fx_source: fx.source, fx_effective_at: fx.effectiveAt });
   } catch {
     return NextResponse.json({ ok: false, error: "publish_failed" }, { status: 500 });

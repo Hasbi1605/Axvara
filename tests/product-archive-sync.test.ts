@@ -35,7 +35,7 @@ it('TUNVN accounts and Buff stay archived after publishing; panel activation ret
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>Response.json(String(url).endsWith('/buff/check')?{success:true,gross_cost_vnd:390,sell_price_vnd:390,sell_price_usdt:0.0588,fundable:true,orders_breakdown:[{invite_code:'AXVARA',quantity_b:1,valid:true}]}:{success:true,products:[{id:86,name:'ChatGPT Business',price_vnd:119000,price_usdt:4.6,stock:22,description:'d'}]})));
   expect(await publishTunvnCatalog(db(),20000,{force:true})).toMatchObject({ok:true});archiveAll();const before=graph();
   expect(await publishTunvnCatalog(db(),25000,{force:true})).toMatchObject({ok:true});expect(graph()).toEqual(before);
-  const r=await tunvnSwitch(new NextRequest('http://localhost/api/admin/tunvn/products/86',{method:'PATCH',body:JSON.stringify({axvara_is_active:true,publish_requested:true})}),{params:Promise.resolve({id:'86'})});expect(r.status).toBe(409);expect((await r.json()).error).toBe('Pulihkan dari Arsip dulu');
+  const r=await tunvnSwitch(new NextRequest('http://localhost/api/admin/tunvn/products/86',{method:'PATCH',body:JSON.stringify({is_active:true})}),{params:Promise.resolve({id:'86'})});expect(r.status).toBe(409);expect((await r.json()).error).toBe('Pulihkan dari Arsip dulu');
 });
 it('AIVault keeps archived family even if its slug changes; panel activation returns 409',async()=>{
   vi.stubGlobal('fetch',vi.fn(async()=>Response.json({currency:'USD',products:[{service_id:'service_gemini_plus_6m',name:'Gemini Plus',stock:5,custom_pricing:false,pricing_tiers:[{min:1,max:100,price:0.5}]}]})));

@@ -1892,6 +1892,7 @@ CREATE INDEX IF NOT EXISTS idx_tunvn_orders_due ON tunvn_order_links(status,next
 
 -- TUNVN hidden catalog (setup awal 2026-11-09): mirror katalog supplier
 -- TUNVN PREHUB untuk persiapan integrasi; tidak pernah tampil publik.
+-- publish_requested deprecated by 0142; kept for migration compatibility only.
 CREATE TABLE IF NOT EXISTS tunvn_products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   supplier_product_id INTEGER NOT NULL UNIQUE,
@@ -1925,12 +1926,6 @@ CREATE INDEX IF NOT EXISTS idx_tunvn_products_synced ON tunvn_products(synced_at
 -- tunvn_products.axvara_product_id/markup_percent/sell_price_idr/fx_idr_per_usdt
 -- dan product_variants.tunvn_* tercantum pada definisi tabel masing-masing.
 
--- Migrasi 0123: identitas durable (bukan daftar SKU ChatGPT) agar setiap
--- varian akun TUNVN menyinkronkan permintaan terbit mirror-nya.
-CREATE TRIGGER IF NOT EXISTS tunvn_variant_publication AFTER UPDATE OF is_active ON product_variants
-WHEN NEW.tunvn_source_product_id IS NOT NULL BEGIN
-  UPDATE tunvn_products SET publish_requested=NEW.is_active WHERE supplier_product_id=NEW.tunvn_source_product_id;
-END;
 CREATE TRIGGER IF NOT EXISTS tunvn_retired_bundle_update BEFORE UPDATE OF is_active ON product_variants
 WHEN NEW.sku IN ('TUNVN-BUFF-5B','TUNVN-BUFF-10B','TUNVN-BUFF-20B','TUNVN-BUFF-30B') AND NEW.is_active=1 BEGIN
   SELECT RAISE(ABORT,'retired_bundle');

@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
          v.mirai_admin_price_idr AS admin_price_idr,
          COALESCE(v.mirai_fx_idr_per_usdt, m.fx_idr_per_usdt) AS fx_idr_per_usdt,
          v.id AS variant_id, v.sku, v.label, v.price AS variant_price, v.is_active AS variant_active,
-         p.id AS axvara_product_id, p.name AS product_name, p.is_active AS product_active, p.archived_at AS product_archived_at
+         p.id AS axvara_product_id, p.name AS product_name, p.slug AS product_slug, p.is_active AS product_active, p.archived_at AS product_archived_at
        FROM mirai_packages m
        LEFT JOIN product_variants v ON v.mirai_package_code = m.package_code AND v.sku = 'MR-' || m.package_code
        LEFT JOIN products p ON p.id = v.product_id

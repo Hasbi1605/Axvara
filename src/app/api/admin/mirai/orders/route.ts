@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const rows = await createDatabaseAccess().queryAll(
       `SELECT id, order_code, item_index, package_code, quantity, cost_usdt, fx_idr_per_usdt,
          external_order_id, idempotency_key, provider_order_code, status, attempt_count,
-         request_sent_at, last_error, completed_at, receipt_json,
+         request_sent_at, last_error, completed_at, created_at, updated_at, receipt_json,
          CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt,
          CASE WHEN ${MIRAI_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry
        FROM mirai_order_links

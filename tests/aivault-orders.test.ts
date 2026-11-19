@@ -113,6 +113,15 @@ it("admin Products can activate the AIVault parent and keep SKU identity",async(
   const {PUT}=await import("@/app/api/products/[id]/route");const res=await PUT(new NextRequest("https://fixture.test/api/products/1",{method:"PUT",body:JSON.stringify({isActive:true})}),{params:Promise.resolve({id:"1"})});
   expect(res.status,await res.text()).toBe(200);expect(f.sql.prepare("SELECT is_active,stock FROM products").get()).toMatchObject({is_active:1,stock:10});expect(f.sql.prepare("SELECT is_active,aivault_service_id FROM product_variants").get()).toMatchObject({is_active:1,aivault_service_id:sid});
 });
+it("admin Products activation without explicit variants turns on only the first AV variant",async()=>{
+  f.sql.exec("UPDATE products SET is_active=0; UPDATE product_variants SET is_active=0");vi.stubEnv("PRODUCT_VARIANTS_WRITE","true");
+  const cols=(f.sql.prepare("PRAGMA table_info(product_variants)").all() as {name:string}[]).map(c=>c.name).filter(n=>n!=="id");
+  const pick=cols.map(n=>n==="sku"?"'AV-service_second'":n==="aivault_service_id"?"'service_second'":n).join(",");
+  f.sql.exec(`INSERT INTO product_variants(${cols.join(",")}) SELECT ${pick} FROM product_variants ORDER BY id LIMIT 1`);
+  const {PUT}=await import("@/app/api/products/[id]/route");const res=await PUT(new NextRequest("https://fixture.test/api/products/1",{method:"PUT",body:JSON.stringify({isActive:true})}),{params:Promise.resolve({id:"1"})});
+  expect(res.status,await res.text()).toBe(200);
+  expect(f.sql.prepare("SELECT sku,is_active FROM product_variants ORDER BY id").all()).toEqual([{sku:`AV-${sid}`,is_active:1},{sku:"AV-service_second",is_active:0}]);
+});
 it("public catalog advertises automatic delivery without supplier SKU",async()=>{
   vi.stubEnv("PRODUCT_VARIANTS_READ","true");const {getProductDetail}=await import("@/lib/catalog");const detail=await getProductDetail("gemini-plus-av");expect(detail?.variants[0]).toMatchObject({sku:"",automatic_delivery:true});
 });

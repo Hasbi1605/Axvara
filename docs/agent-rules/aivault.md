@@ -1,5 +1,13 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Aktivasi dari menu Produk — 19 November 2026 (keputusan owner)
+
+- `PUT /api/products/[id]` dengan `isActive:true` tanpa varian eksplisit kini hanya mengaktifkan **satu** varian AV (ID terkecil, SKU `AV-<service_id>`) bila belum ada varian aktif, sama seperti TUNVN, StoreBat, dan Mirai. Sebelumnya semua varian AV ikut aktif. Varian lain diaktifkan admin dari Markup/Produk.
+
+## Panel supplier bersama — 19 November 2026 (lokal)
+
+- Supplier → AIVault memakai Ringkas · Antrean · Markup · Alat yang sama dengan TUNVN, StoreBat, dan Mirai. **Grosir** tetap aksi per varian di Markup: dialog menampilkan simulasi harga, menyimpan `bulk_markup_tiers` saja, dan tidak menutup saat penyimpanan ditolak. Status induk tetap dikelola dari Produk.
+
 ## Retry katalog pasca-audit — 19 November 2026 (lokal)
 
 - Lease dan throttle sukses tetap 45 detik; kegagalan katalog memperpendek klaim miliknya menjadi 10 detik setelah gagal. Error durable memuat kode upstream/D1 yang aman, bukan body/secret.

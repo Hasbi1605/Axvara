@@ -21,9 +21,12 @@ const patchSchema = z.object({
   is_active: z.boolean().optional(),
   admin_name: z.string().trim().max(160).nullable().optional(),
   admin_description: z.string().trim().max(4000).nullable().optional(),
-  publish_requested: z.boolean().optional(),
-  axvara_is_active: z.boolean().optional(),
 }).strict().refine(v => Object.keys(v).length > 0, "Tidak ada perubahan.");
+
+const selectMirror = `SELECT id,supplier_product_id,name,description,price_vnd,price_usdt,stock,
+  discount_threshold,discount_price_vnd,discount_threshold_usdt,discount_price_usdt,
+  axvara_product_id,markup_percent,sell_price_idr,fx_idr_per_usdt,admin_name,admin_description,
+  visible,synced_at,created_at,updated_at FROM tunvn_products WHERE supplier_product_id=?`;
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!await requireAdmin(request)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -40,7 +43,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
   const db = createDatabaseAccess();
   try {
-    const mirror = await db.queryFirst("SELECT * FROM tunvn_products WHERE supplier_product_id=?", supplierId);
+    const mirror = await db.queryFirst(selectMirror, supplierId);
     if (!mirror) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
     const variant = await db.queryFirst(
@@ -52,23 +55,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: "variant_missing", message: "Jalankan Sinkron dulu agar varian TUNVN ini dibuat." }, { status: 409 });
     }
     const product = variant
-      ? await db.queryFirst("SELECT id, name, is_active, archived_at FROM products WHERE id=?", variant.product_id)
+      ? await db.queryFirst("SELECT id, name, archived_at FROM products WHERE id=?", variant.product_id)
       : mirror.axvara_product_id
-        ? await db.queryFirst("SELECT id, name, is_active, archived_at FROM products WHERE id=?", mirror.axvara_product_id)
+        ? await db.queryFirst("SELECT id, name, archived_at FROM products WHERE id=?", mirror.axvara_product_id)
         : null;
 
-    if (product?.archived_at && (body.is_active === true || body.publish_requested === true || body.axvara_is_active === true)) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
-
-    const isActive = body.is_active === undefined
-      ? (body.publish_requested === undefined ? null : Number(body.publish_requested))
-      : Number(body.is_active);
-    const requested = isActive !== null ? isActive : Number(mirror.publish_requested ?? 0);
-    if (body.axvara_is_active === true) {
-      const siblingActive = product
-        ? await db.queryFirst("SELECT id FROM product_variants WHERE product_id=? AND tunvn_source_product_id IS NOT ? AND is_active=1 LIMIT 1", product.id, supplierId)
-        : null;
-      if (requested !== 1 && !siblingActive) return NextResponse.json({ error: "publish_not_requested" }, { status: 409 });
-    }
+    if (product?.archived_at && body.is_active === true) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 });
 
     const markup = body.markup_percent ?? Number(mirror.markup_percent ?? 35);
     // 0 dari panel berarti "ikut rumus", bukan harga gratis; kolom override
@@ -84,31 +76,30 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     else if (fx > 0 && cost > 0) sell = tunvnSellPriceIdr(cost, fx, markup);
 
     const writes: [string, unknown[]][] = [[
-      `UPDATE tunvn_products SET markup_percent=?,admin_name=?,admin_description=?,publish_requested=?,
+      `UPDATE tunvn_products SET markup_percent=?,admin_name=?,admin_description=?,
          sell_price_idr=COALESCE(?,sell_price_idr),updated_at=datetime('now') WHERE supplier_product_id=?`,
       [markup,
         body.admin_name === undefined ? mirror.admin_name : body.admin_name || null,
         body.admin_description === undefined ? mirror.admin_description : body.admin_description || null,
-        requested, sell, supplierId],
+        sell, supplierId],
     ]];
     if (product) {
       // Copy hanya berubah bila admin mengirimkannya; publish tidak menulis ulang.
       if (body.admin_name !== undefined) writes.push(["UPDATE products SET name=? WHERE id=?", [body.admin_name || String(product.name), product.id]]);
       if (body.admin_description !== undefined) writes.push(["UPDATE products SET description=? WHERE id=?", [body.admin_description || tunvnDefaultDescription(String(product.name)), product.id]]);
-      if (body.axvara_is_active !== undefined) writes.push(["UPDATE products SET is_active=? WHERE id=?", [Number(body.axvara_is_active), product.id]]);
     }
     if (variant) {
       writes.push([
         `UPDATE product_variants SET label=?, tunvn_admin_price_idr=?,
-           price=COALESCE(?,price), is_active=?, updated_at=datetime('now') WHERE id=?`,
+           price=COALESCE(?,price), is_active=COALESCE(?,is_active), updated_at=datetime('now') WHERE id=?`,
         [body.label ?? String(variant.label), adminPrice, sell,
-          isActive === null ? Number(variant.is_active ?? 0) : isActive, variant.id],
+          body.is_active === undefined ? null : Number(body.is_active), variant.id],
       ]);
     }
     writes.push([
-      `UPDATE tunvn_products SET visible=CASE WHEN publish_requested=1 AND EXISTS(
+      `UPDATE tunvn_products SET visible=CASE WHEN EXISTS(
          SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id
-          WHERE pv.tunvn_source_product_id=tunvn_products.supplier_product_id AND pv.is_active=1 AND p.is_active=1
+          WHERE pv.tunvn_source_product_id=tunvn_products.supplier_product_id AND pv.is_active=1 AND p.is_active=1 AND p.archived_at IS NULL
        ) THEN 1 ELSE 0 END WHERE supplier_product_id=?`,
       [supplierId],
     ]);
@@ -125,6 +116,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     await db.d1.batch(writes.map(([sql, values]) => db.d1!.prepare(sql).bind(...values)));
     const { bumpCatalogRevision } = await import("@/lib/catalog-cache");
     await bumpCatalogRevision("market", db);
-    return NextResponse.json({ ok: true, item: await db.queryFirst("SELECT * FROM tunvn_products WHERE supplier_product_id=?", supplierId), fx_missing: !(fx > 0) });
+    return NextResponse.json({ ok: true, item: await db.queryFirst(selectMirror, supplierId), fx_missing: !(fx > 0) });
   } catch (error) { if (String(error).includes("product_archived")) return NextResponse.json({ error: ARCHIVED_MESSAGE }, { status: 409 }); return NextResponse.json({ error: "save_failed" }, { status: 500 }); }
 }

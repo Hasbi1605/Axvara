@@ -326,9 +326,9 @@ describe("publishTunvnCatalog", () => {
       .toEqual({ price: tunvnChatGptSellPriceIdr(4.6, 20_000) });
   });
 
-  it("honours admin publish request, markup, and copy without re-hiding on sync", async () => {
+  it("preserves single-key activation, markup, and copy across sync", async () => {
     await publishTunvnCatalog(db(), RATE);
-    fx.sql.exec(`UPDATE tunvn_products SET publish_requested=1, markup_percent=50,
+    fx.sql.exec(`UPDATE tunvn_products SET markup_percent=50,
       admin_name='ChatGPT Bisnis Spesial', admin_description='Deskripsi admin.' WHERE supplier_product_id=86`);
     fx.sql.exec("UPDATE products SET is_active=1,name='Copy admin',description='Deskripsi admin.' WHERE slug='chatgpt-tunvn'; UPDATE product_variants SET is_active=1 WHERE sku='TUNVN-86'");
     const result = await publishTunvnCatalog(db(), RATE);
@@ -336,8 +336,8 @@ describe("publishTunvnCatalog", () => {
     const business = fx.sql.prepare("SELECT * FROM products WHERE slug='chatgpt-tunvn'").get() as Record<string, unknown>;
     expect(business).toMatchObject({ name: "Copy admin", description: "Deskripsi admin.", is_active: 1, price: tunvnChatGptSellPriceIdr(4.6, RATE, 50) });
     expect(fx.sql.prepare("SELECT is_active FROM product_variants WHERE sku='TUNVN-86'").get()).toEqual({ is_active: 1 });
-    expect(fx.sql.prepare("SELECT visible FROM tunvn_products WHERE supplier_product_id=86").get()).toEqual({ visible: 1 });
-    // Produk lain yang tidak diminta tetap tersembunyi.
+    expect(fx.sql.prepare("SELECT visible,publish_requested FROM tunvn_products WHERE supplier_product_id=86").get()).toEqual({ visible: 1, publish_requested: 0 });
+    // Varian yang belum diaktifkan admin tetap tersembunyi.
     expect(fx.sql.prepare("SELECT is_active FROM product_variants WHERE sku='TUNVN-83'").get()).toEqual({ is_active: 0 });
   });
 

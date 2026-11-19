@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     ) SELECT f.*,v.id AS variant_id,v.sku,v.label,v.price AS variant_price,v.is_active AS variant_active,
       v.storebat_admin_price_idr AS admin_price_idr,v.storebat_fx_idr_per_usd AS fx_idr_per_usd,
       COALESCE(v.storebat_markup_percent,CASE WHEN f.id=124 THEN 40 ELSE 35 END) AS markup_percent,
-      p.id AS axvara_product_id,p.name AS product_name,p.is_active AS product_active,p.archived_at AS product_archived_at
+      p.id AS axvara_product_id,p.name AS product_name,p.slug AS product_slug,p.is_active AS product_active,p.archived_at AS product_archived_at
       FROM feed f LEFT JOIN product_variants v ON v.storebat_product_id=f.id AND v.sku=${STOREBAT_SKU_SQL("f.id")}
       LEFT JOIN products p ON p.id=v.product_id ORDER BY f.id`);
     const settings = await db.queryAll(`SELECT key,value FROM store_settings WHERE key IN ('storebat_catalog_success_at','storebat_catalog_last_error')`);

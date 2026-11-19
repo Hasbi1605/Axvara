@@ -1,5 +1,11 @@
 # CHANGELOG — AXVARA
 
+- 2026-11-19 — Aktivasi produk AIVault dari menu Produk tanpa varian eksplisit hanya menghidupkan varian AV pertama (setara TUNVN/StoreBat/Mirai); hapus kalimat rumus harga di tab Markup; modal USD tampil hingga 4 desimal — `src/app/api/products/[id]/route.ts`, `src/components/admin/{SupplierAdminPanel,supplier-admin-data}.ts(x)`, `docs/agent-rules/aivault.md`, `docs/DESIGN.md` — (verifikasi: test aktivasi AV baru + 57 tes AIVault/arsip lulus; suite penuh final dicatat di commit rilis)
+
+- 2026-11-19 — Satukan AIVault, TUNVN, StoreBat, dan Mirai dalam Ringkas/Antrean/Markup/Alat; hapus Katalog dan saklar lama TUNVN, pertahankan Buff/rekonsiliasi serta Grosir AIVault — `src/components/admin/SupplierAdminPanel.tsx`, `docs/DESIGN.md` — (verifikasi lokal: 6 file/129 tes fokus, 550 file/7.545 tes suite penuh, TypeScript, lint terarah, diff check, dan 32 tangkapan fixture 1440/390 tanpa overflow atau error console)
+
+- 2026-11-19 — Ganti permintaan terbit TUNVN dengan satu saklar aktif varian (0142, tanpa mengubah status induk); lengkapi kontrak admin TUNVN/AIVault/StoreBat/Mirai untuk panel bersama — `drizzle/`, `src/lib/tunvn/catalog.ts`, `src/app/api/admin/`, `src/app/api/products/[id]/route.ts` — (verifikasi lokal: 19 file/388 tes fokus dan 550 file/7.539 tes suite penuh lulus; tsc dan diff check lulus; UI mengikuti paket terpisah)
+
 - 2026-11-19 — Pertahankan lease dan beri backoff katalog 10 detik saat gagal dengan diagnosis aman; dahulukan watchdog cleanup; catat prioritas Workers Paid — `src/lib/{storebat,mirai,aivault,tunvn}/`, `src/app/api/cron/lite/route.ts`, `docs/agent-rules/platform-ops.md` — (verifikasi: 32 file/509 tes fokus, tsc, lint terarah, diff check lulus; review independen Argon APPROVE; PM review penuh + suite penuh final 548/548 file, 7.526/7.526 tes lulus, `npm run build:pages` lulus; detail error TUNVN tetap dipotong 200 karakter)
 
 - 2026-11-19 — Pasang 8 env Pages production StoreBat/Mirai (secret_text, sync+dispatch ON, produk tetap OFF) + catat bukti kontrak live StoreBat (1× produk tes $0.01: COMPLETED, replay idempoten tanpa debit kedua, lookup konsisten) — `docs/agent-rules/storebat.md` — (verifikasi: nama env production 84→92, preview tidak berubah, semua secret_text; `git diff --check`)

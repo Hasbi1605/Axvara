@@ -737,6 +737,11 @@ dijalankan — bukan status live.
   separuh. Tidak mengubah order lama/pembayaran/dispatch. Preflight paid tetap.
 - Lokal/tes fixture, bukan transaksi produksi; belum ada bukti deployment.
 
+## Keputusan owner 19 November 2026: aktivasi satu saklar varian TUNVN (backend lokal)
+
+- Seperti AIVault/StoreBat/Mirai, admin mengatur satu saklar aktif per varian di panel supplier dan mengatur status produk induk dari menu Produk. Tidak lagi ada langkah “Diminta terbit”; varian tampil hanya bila aktif dan produk induk aktif serta tidak diarsipkan.
+- Sync tetap tidak mengaktifkan produk/varian. #60 tetap bukan produk jual. Penyatuan panel dan penghapusan tab **Katalog** lama mengikuti paket UI terpisah.
+
 ## Keputusan owner 15 November 2026: katalog penuh TUNVN (lokal)
 
 - Seluruh produk mirror TUNVN (kecuali #60 API TEST) masuk katalog AXVARA sebagai

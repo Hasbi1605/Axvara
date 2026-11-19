@@ -13,8 +13,8 @@ const json = (body: unknown, status = 200) => NextResponse.json(body, { status, 
 export async function GET(request: NextRequest) {
   if (!await requireAdmin(request)) return json({ error: "unauthorized" }, 401);
   try {
-    const items = await createDatabaseAccess().queryAll(`SELECT id,order_code,item_index,kind,quantity,cost_usdt,currency,status,attempt_count,request_sent_at,
-      provider_order_group,provider_batch_id,provider_order_code,receipt_json,last_error,completed_at,
+    const items = await createDatabaseAccess().queryAll(`SELECT id,order_code,item_index,kind,source_product_id,quantity,cost_usdt,currency,status,attempt_count,request_sent_at,
+      provider_order_group,provider_batch_id,provider_order_code,receipt_json,last_error,completed_at,created_at,updated_at,
       CASE WHEN receipt_ciphertext IS NOT NULL THEN 1 ELSE 0 END AS has_receipt,
       (SELECT supplier_purchase_disabled FROM orders WHERE code=tunvn_order_links.order_code) AS purchase_disabled,
       CASE WHEN ${TUNVN_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry

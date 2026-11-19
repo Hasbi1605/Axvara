@@ -154,12 +154,12 @@ export function parseStoredSyncError(raw: unknown): { at: string | null; error: 
   return null;
 }
 
-/** Read the authoritative last-success timestamp, falling back to legacy key only when no error is recorded. */
-export async function readSyncTimestampSetting(
+/** Read the last success and error together; only use the legacy timestamp when no error is recorded. */
+export async function readSyncStatusSettings(
   db: DatabaseAccess,
   prefix: string,
   legacySyncKey: string,
-): Promise<string | null> {
+) {
   const rows = await db.queryAll(
     `SELECT key, value FROM store_settings WHERE key IN (?, ?, ?)`,
     `${prefix}_success_at`,
@@ -171,7 +171,10 @@ export async function readSyncTimestampSetting(
     return typeof v === "string" && v.trim() ? v.trim() : null;
   };
   const successAt = get(`${prefix}_success_at`);
-  if (successAt) return successAt;
-  if (get(`${prefix}_last_error`)) return null;
-  return get(legacySyncKey);
+  const error = get(`${prefix}_last_error`);
+  return { lastSyncAt: successAt ?? (error ? null : get(legacySyncKey)), lastError: parseStoredSyncError(error) };
+}
+
+export async function readSyncTimestampSetting(db: DatabaseAccess, prefix: string, legacySyncKey: string): Promise<string | null> {
+  return (await readSyncStatusSettings(db, prefix, legacySyncKey)).lastSyncAt;
 }

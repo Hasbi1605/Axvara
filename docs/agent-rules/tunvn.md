@@ -1,5 +1,12 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Aktivasi satu saklar varian — keputusan owner opsi B, 19 November 2026 (lokal)
+
+- TUNVN mengikuti AIVault, StoreBat, dan Mirai: panel supplier memakai `product_variants.is_active` saja sebagai saklar varian; status induk dikelola dari menu Produk. Varian hanya terlihat bila aktif, induk aktif, dan induk tidak diarsipkan. `tunvn_products.visible` mencerminkan status ini, bukan gerbang terpisah. Produk/varian baru tetap nonaktif; sinkronisasi tidak mengaktifkan apa pun.
+- Migrasi `0142_tunvn_single_key_activation.sql` melepas trigger `tunvn_variant_publication`, menonaktifkan hanya varian akun aktif yang mirror-nya tidak menyatakan pernah diminta terbit (termasuk mirror hilang dan #60), lalu menghitung ulang `visible`. Migrasi tidak pernah mengaktifkan apa pun atau mengubah status induk. Kolom `publish_requested` dipertahankan untuk kompatibilitas skema, tetapi tidak lagi dibaca/ditulis backend setelah migrasi.
+- `PATCH /api/admin/tunvn/products/[id]` hanya menerima `is_active` untuk aktivasi; `axvara_is_active` dan `publish_requested` ditolak. #60 tetap dikecualikan, varian belum dipetakan tidak bisa diaktifkan, dan induk Arsip harus dipulihkan dulu.
+- UI lokal U3 mengganti tab Katalog lama dengan panel Ringkas · Antrean · Markup · Alat bersama. Deskripsi supplier tetap terlipat di baris Markup dan bukan copy pembeli. Buff tetap di Markup; Periksa status tetap di Antrean dan hanya membaca batch yang telah diketahui. #60 tidak muncul di daftar atau hitungan panel.
+
 ## Retry katalog akun pasca-audit — 19 November 2026 (lokal)
 
 - Lease dan throttle akun yang sukses tetap 45 detik; kegagalan akun memperpendek klaim miliknya menjadi 10 detik setelah gagal. Error D1 menyimpan kelas kegagalan, bukan body/secret. Backoff probe Buff tetap tiga menit dan terpisah dari heartbeat akun.

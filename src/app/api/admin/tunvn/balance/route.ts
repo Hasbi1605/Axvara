@@ -14,5 +14,5 @@ export async function GET(request: NextRequest) {
   if (balance.kind !== "ok") {
     return NextResponse.json({ ok: false, configured: true, error: `balance_${balance.kind}` }, { status: 502 });
   }
-  return NextResponse.json({ ok: true, configured: true, ...balance });
+  return NextResponse.json({ ok: true, configured: true, ...balance, balance: balance.balance_usdt, currency: "USDT" });
 }
