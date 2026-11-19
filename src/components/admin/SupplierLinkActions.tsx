@@ -30,6 +30,7 @@ export type SupplierLink = {
   can_reconcile?: boolean;
   item_index?: number;
   purchase_disabled?: boolean;
+  resolved_manually?: boolean;
 };
 
 const SUPPLIER_NAME = { wr: "Warung Rebahan", sk: "Sekalipay", tunvn: "TUNVN", storebat: "StoreBat", mirai: "Mirai", aivault: "AIVault" } as const;
@@ -72,13 +73,14 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /** Link aktif = supplier masih bertanggung jawab (bukan handover manual).
- * needs_admin tanpa Retry aman sudah menjadi tugas admin, jadi bukan "Via supplier". */
+ * needs_admin tanpa Retry aman atau sudah diselesaikan manual (item delivered) bukan "Via supplier". */
 export function hasActiveSupplierLink(links: SupplierLink[] | undefined): boolean {
-  return (links ?? []).some((l) => !l.purchase_disabled && !["completed", "failed"].includes(l.status) && (l.status !== "needs_admin" || l.can_retry === true));
+  return (links ?? []).some((l) => !l.resolved_manually && !l.purchase_disabled && !["completed", "failed"].includes(l.status) && (l.status !== "needs_admin" || l.can_retry === true));
 }
 
 /** Cermin aturan route retry WR/SK: kuota tersisa, atau failed pra-kirim (WR). */
 export function canRetrySupplierLink(link: SupplierLink): boolean {
+  if (link.resolved_manually) return false;
   if (isPanelSupplier(link.supplier)) return false; // Actions stay in the supplier's Antrean.
   if (link.supplier === "tunvn") return !link.purchase_disabled && link.can_retry === true;
   if (!["pending", "retry", "failed", "blocked_balance"].includes(link.status)) return false;
@@ -94,6 +96,7 @@ function canVoid(link: SupplierLink): boolean {
 }
 
 function canCheck(link: SupplierLink): boolean {
+  if (link.resolved_manually) return false;
   if (isPanelSupplier(link.supplier)) return false;
   if (link.supplier === "tunvn" || link.can_reconcile === true) return link.can_reconcile === true;
   // sync-now = tanya status order yang SUDAH terkirim ke supplier sekarang
@@ -103,6 +106,7 @@ function canCheck(link: SupplierLink): boolean {
 }
 
 function toneOf(link: SupplierLink) {
+  if (link.resolved_manually) return "secondary" as const;
   if (link.status === "failed" || link.status === "blocked_balance" || link.status === "needs_admin") return "destructive" as const;
   if (link.status === "completed") return "success" as const;
   return "info" as const;
@@ -142,11 +146,14 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
   return <div className={cn("space-y-2", compact && "mt-2 space-y-1.5")}>
     {links.map((link) => {
       const key = `${link.supplier}:${link.id}`;
-      const heading = link.purchase_disabled
-        ? "Pembelian otomatis dinonaktifkan · penanganan manual"
-        : link.supplier === "tunvn" && link.last_error === "insufficient_balance" ? "Saldo supplier tidak cukup"
-        : STATUS_LABEL[link.status] ?? link.status;
-      const explanation = link.last_error && !link.purchase_disabled && !["completed"].includes(link.status)
+      const resolved = link.resolved_manually === true;
+      const heading = resolved
+        ? "Diselesaikan manual · sudah dikirim ke pembeli"
+        : link.purchase_disabled
+          ? "Pembelian otomatis dinonaktifkan · penanganan manual"
+          : link.supplier === "tunvn" && link.last_error === "insufficient_balance" ? "Saldo supplier tidak cukup"
+          : STATUS_LABEL[link.status] ?? link.status;
+      const explanation = link.last_error && !resolved && !link.purchase_disabled && !["completed"].includes(link.status)
         ? (link.supplier === "tunvn" ? TUNVN_ERROR_LABEL : link.supplier === "sk" ? SK_ERROR_LABEL : {})[link.last_error] ?? link.last_error
         : null;
       return <div key={key} className="rounded-md border border-admin-border bg-admin-subtle/40 p-3">
@@ -157,7 +164,7 @@ export function SupplierLinkActions({ links, onChanged, compact = false }: { lin
           {link.status === "completed" && link.delivery_status && link.delivery_status !== "delivered" && <span className="text-admin-muted">· kredensial: {link.delivery_status === "failed" ? "gagal kirim (dicoba ulang)" : "antre kirim"}</span>}
         </div>
         {explanation && <p className="mt-1 break-words text-xs leading-4 text-admin-muted">{explanation}</p>}
-        {isPanelSupplier(link.supplier) && !["completed"].includes(link.status) && <p className="mt-1 text-xs leading-4 text-admin-muted">Retry/Cek status: Supplier → {SUPPLIER_NAME[link.supplier]} → Antrean.</p>}
+        {isPanelSupplier(link.supplier) && !resolved && !["completed"].includes(link.status) && <p className="mt-1 text-xs leading-4 text-admin-muted">Retry/Cek status: Supplier → {SUPPLIER_NAME[link.supplier]} → Antrean.</p>}
         {(canRetrySupplierLink(link) || canCheck(link) || canVoid(link)) && <div className="mt-2 flex flex-wrap gap-2">
           {canRetrySupplierLink(link) && <Button variant="outline" size="sm" className="h-12 px-3 text-xs font-semibold" onClick={() => void run(link, "retry")} disabled={busy !== null}>{busy === `${key}:retry` ? <Spinner size={11} /> : <RefreshCw />} Retry</Button>}
           {canCheck(link) && <Button variant="outline" size="sm" className="h-12 px-3 text-xs font-semibold" onClick={() => void run(link, "sync-now")} disabled={busy !== null}>{busy === `${key}:sync-now` ? <Spinner size={11} /> : <RefreshCw />} Cek status</Button>}

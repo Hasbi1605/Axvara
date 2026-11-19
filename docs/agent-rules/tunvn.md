@@ -1,5 +1,12 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Resolusi manual turunan pasca-handover — 19 November 2026 (lokal)
+
+- Aturan turunan (tanpa mutasi link atau migrasi): link TUNVN, StoreBat, Mirai, atau AIVault dengan `status != 'completed'` yang baris `fulfillment_items`-nya `(order_code, item_index)` sudah `status = 'delivered'` diperlakukan sebagai selesai secara manual (`resolved_manually: true` di `GET /api/admin/orders`). Status-only metadata tetap terjaga tanpa receipt/invite.
+- Di Admin → Pesanan (baris dan Detail), link `resolved_manually` tampil sebagai kotak netral dengan heading "Diselesaikan manual · sudah dikirim ke pembeli" (badge netral `secondary` untuk TUNVN), tanpa penjelasan `last_error`, tanpa tombol Retry/Cek status, dan tanpa petunjuk Antrean; `hasActiveSupplierLink` dan `supplierHoldsItem` menganggapnya non-aktif.
+- Di Ringkasan (`src/lib/dashboard-report.ts`), `lines` menghitung `fi_delivered` sekali dari `LEFT JOIN fulfillment_items` existing sehingga link belum `completed` yang sudah `delivered` memiliki `estimated = 0` dan tetap memakai modal snapshot (`cost_usdt × fx`) sebagai modal final (contoh `AXV-20261119-0FC3511A`: `ROUND(0.583 × 18258.44) = 10645`).
+- Di Ringkasan Harian Telegram (`src/lib/telegram/daily-admin-summary.ts`), query order macet >30 menit mengecualikan link keempat supplier tersebut bila item fulfillment pasangannya sudah `delivered`.
+
 ## Handover manual untuk needs_admin tanpa Retry — 19 November 2026 (lokal)
 
 - Kasus produksi `AXV-20261119-0FC3511A` (link39, Buff 10B): `/api/buff/order` membalas HTTP500 tanpa `batch_id`, tetapi History bot TUNVN memuat #B50582 (0,5831 USDT). Fence benar: tanpa Retry/Cek status, sehingga admin buntu karena UI menyembunyikan "Kirim ke pembeli" untuk semua link TUNVN aktif.

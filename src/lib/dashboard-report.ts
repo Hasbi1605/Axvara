@@ -85,6 +85,7 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
       MAX(0,COALESCE(json_extract(j.value,'$.price'),0)) * MAX(1,CAST(COALESCE(json_extract(j.value,'$.qty'),fi.qty,1) AS INTEGER)) gross,
       s.source snapshot_source, s.unit_cost snapshot_cost, s.supplier_variant_id snapshot_supplier_id,
       pv.manual_cost, pv.wr_variant_id, pv.sk_variant_id, fi.wr_link_id, fi.sk_link_id, fi.id fi_id,
+      CASE WHEN fi.status='delivered' THEN 1 ELSE 0 END fi_delivered,
       pv.sku pv_sku, pv.aivault_service_id pv_aivault_service_id,
       pv.storebat_product_id pv_storebat_product_id,pv.storebat_cost_usd pv_storebat_cost,pv.storebat_fx_idr_per_usd pv_storebat_fx,
       pv.mirai_package_code pv_mirai_package_code,pv.mirai_cost_usdt pv_mirai_cost,pv.mirai_fx_idr_per_usdt pv_mirai_fx,
@@ -146,18 +147,18 @@ export function financialReportSql(now = new Date(), selection?: ReportSelection
         WHEN w.id IS NOT NULL THEN w.status NOT IN ('completed','failed')
         WHEN s.id IS NOT NULL THEN s.status NOT IN ('completed','failed')
         WHEN l.tunvn_elig IS NOT NULL OR l.pv_sku LIKE 'TUNVN-%' OR tl.id IS NOT NULL THEN
-          tl.id IS NULL OR tl.status!='completed'
+          tl.id IS NULL OR (tl.status!='completed' AND l.fi_delivered=0)
           OR COALESCE(tl.cost_usdt,l.tunvn_elig_cost,CASE WHEN l.pv_sku LIKE 'TUNVN-BUFF%' THEN l.pv_tunvn_cost ELSE tp.price_usdt END*l.qty) IS NULL
           OR COALESCE(tl.fx_idr_per_usdt,CASE WHEN l.pv_sku LIKE 'TUNVN-BUFF%' THEN l.pv_tunvn_fx ELSE tp.fx_idr_per_usdt END,
             CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
         WHEN l.aivault_elig IS NOT NULL OR l.pv_aivault_service_id IS NOT NULL OR al.id IS NOT NULL THEN
-          al.id IS NULL OR al.status!='completed'
+          al.id IS NULL OR (al.status!='completed' AND l.fi_delivered=0)
           OR COALESCE(al.cost_usd,l.aivault_elig_cost,ap.unit_price_usd*l.qty) IS NULL
           OR COALESCE(al.fx_idr_per_usd,ap.fx_idr_per_usd,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
         WHEN l.storebat_elig IS NOT NULL OR l.pv_storebat_product_id IS NOT NULL OR sb.id IS NOT NULL THEN
-          sb.id IS NULL OR (sb.status!='completed' AND COALESCE(sb.refunded_usd,0)<=0)
+          sb.id IS NULL OR (sb.status!='completed' AND COALESCE(sb.refunded_usd,0)<=0 AND l.fi_delivered=0)
         WHEN l.mirai_elig IS NOT NULL OR l.pv_mirai_package_code IS NOT NULL OR mr.id IS NOT NULL THEN
-          mr.id IS NULL OR mr.status!='completed'
+          mr.id IS NULL OR (mr.status!='completed' AND l.fi_delivered=0)
           OR COALESCE(mr.cost_usdt,l.mirai_elig_cost,mp.cost_usdt*l.qty,l.pv_mirai_cost*l.qty) IS NULL
           OR COALESCE(mr.fx_idr_per_usdt,mp.fx_idr_per_usdt,l.pv_mirai_fx,CASE WHEN CAST(cm.fx_rate_text AS REAL)>0 THEN CAST(cm.fx_rate_text AS REAL) END) IS NULL
         ELSE l.snapshot_cost IS NULL OR COALESCE(l.snapshot_source,'manual')!='manual' END estimated,

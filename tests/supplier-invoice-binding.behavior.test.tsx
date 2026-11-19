@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { render } from "./setup/admin-render";
 import userEvent from "@testing-library/user-event";
-import { SupplierLinkActions, type SupplierLink } from "@/components/admin/SupplierLinkActions";
+import { hasActiveSupplierLink, SupplierLinkActions, type SupplierLink } from "@/components/admin/SupplierLinkActions";
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/components/ui/Toast", () => ({ useToast: () => toast }));
 vi.mock("@/components/ui/IosIcon", async original => ({ ...await original<object>(),IosIcon: () => null }));
@@ -130,4 +130,37 @@ it.each(["storebat","mirai","aivault"] as const)("shows %s link status in Pesana
   order.supplier_links=[{...panel,status:"processing",last_error:null}];
   render(<OrdersManager/>);expect(await screen.findByText("Diproses supplier")).toBeTruthy();expect(screen.getByText("Via supplier")).toBeTruthy();
   expect(screen.queryByRole("button",{name:/Tindakan lain/})).toBeNull();
+});
+it.each(["tunvn","storebat","mirai","aivault"] as const)("renders a neutral manual-resolution box for %s in Pesanan row and detail without warnings, hints or actions",async supplier=>{
+  const {OrdersManager}=await import("@/components/admin/OrdersManager");
+  const resolvedLink:SupplierLink={
+    supplier,id:39,item_index:0,status:"needs_admin",attempt_count:1,max_attempts:3,
+    last_error:supplier==="tunvn"?"unconfirmed_buff_receipt":"attempts_exhausted",
+    supplier_order_id:supplier==="tunvn"?null:"SUP-39",delivery_status:null,
+    can_retry:true,can_reconcile:true,resolved_manually:true,
+  };
+  expect(hasActiveSupplierLink([resolvedLink])).toBe(false);
+  const order={code:"AXV-20261119-0FC3511A",status:"lunas",payment_status:"paid",fulfillment_status:"delivered",sales_channel:"web",payment_method:"qris",customer_name:"Fixture",subtotal:15000,items:[{name:"Buff",price:1500,qty:10}],supplier_links:[resolvedLink]};
+  vi.stubGlobal("fetch",vi.fn(async(url:string)=>Response.json(url.includes("/api/admin/orders?")?{orders:[order]}:{buyerInputs:[]})));
+  render(<OrdersManager/>);
+  expect(await screen.findByText("Diselesaikan manual · sudah dikirim ke pembeli")).toBeTruthy();
+  expect(screen.queryByText("Perlu pemeriksaan supplier")).toBeNull();
+  expect(screen.queryByText(/Jangan beli ulang; cek History bot TUNVN/)).toBeNull();
+  expect(screen.queryByText("attempts_exhausted")).toBeNull();
+  expect(screen.queryByText(/Retry\/Cek status: Supplier/)).toBeNull();
+  expect(screen.queryByRole("button",{name:"Retry"})).toBeNull();
+  expect(screen.queryByRole("button",{name:"Cek status"})).toBeNull();
+  expect(screen.queryByText("Via supplier")).toBeNull();
+  if (supplier==="tunvn") {
+    const badge=screen.getByText("TUNVN");
+    expect(badge.className).toContain("text-admin-muted");
+    expect(badge.className).not.toContain("text-admin-danger");
+  }
+  fireEvent.click(screen.getByRole("button",{name:"Detail"}));
+  await screen.findByRole("heading",{name:"Detail pesanan"});
+  expect(screen.getAllByText("Diselesaikan manual · sudah dikirim ke pembeli").length).toBeGreaterThanOrEqual(2);
+  expect(screen.queryByText("Perlu pemeriksaan supplier")).toBeNull();
+  expect(screen.queryByText(/Retry\/Cek status: Supplier/)).toBeNull();
+  expect(screen.queryByRole("button",{name:"Retry"})).toBeNull();
+  expect(screen.queryByRole("button",{name:"Cek status"})).toBeNull();
 });

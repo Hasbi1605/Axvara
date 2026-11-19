@@ -110,3 +110,64 @@ it("uses verified Jaspay cost during processing and keeps completed catalog pric
     expect(f.sql.prepare("SELECT status,wr_cost FROM wr_order_links").get()).toEqual({status:"processing",wr_cost:12000});
   } finally {attempt.mockRestore();}
 });
+
+it("treats manually delivered tunvn/aivault/storebat/mirai links as non-estimated while keeping snapshot cost (AXV-20261119-0FC3511A shape)",async()=>{
+  // Exact AXV-20261119-0FC3511A shape: TUNVN needs_admin + unconfirmed_buff_receipt, item delivered manually.
+  paid("AXV-20261119-0FC3511A",[{product_id:1,variant_id:1,price:1500,name:"Muse Buff 10B",qty:10}]);
+  f.sql.exec(`
+    INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,status,delivered_message_id,last_error)
+      VALUES('AXV-20261119-0FC3511A',0,1,1,10,'manual','delivered','manual','manual_handover:admin@axvara.tech');
+    INSERT INTO tunvn_order_links(order_code,item_index,variant_id,product_id,kind,quantity,cost_usdt,fx_idr_per_usdt,status,last_error)
+      VALUES('AXV-20261119-0FC3511A',0,1,1,'buff',10,0.583,18258.44,'needs_admin','unconfirmed_buff_receipt');
+  `);
+  const expectedCost = Math.round(0.583 * 18258.44);
+  expect(await readSelectedFinancialReport("today",now)).toMatchObject({
+    cost: expectedCost,
+    estimated_orders: 0,
+    estimated_order_codes: [],
+    suppliers: { tunvn: { orders: 1, cost: expectedCost } },
+  });
+
+  // Same link before delivery (manual_required) must stay estimated.
+  f.sql.exec("UPDATE fulfillment_items SET status='manual_required' WHERE order_code='AXV-20261119-0FC3511A'");
+  expect(await readSelectedFinancialReport("today",now)).toMatchObject({
+    cost: expectedCost,
+    estimated_orders: 1,
+    estimated_order_codes: ["AXV-20261119-0FC3511A"],
+  });
+  f.sql.exec("UPDATE fulfillment_items SET status='delivered' WHERE order_code='AXV-20261119-0FC3511A'");
+
+  // AIVault, StoreBat, Mirai non-completed links resolved manually by item_index.
+  paid("AIV-MAN",[{product_id:1,variant_id:1,price:20000,name:"AV",qty:1}]);
+  paid("SB-MAN",[{product_id:1,variant_id:1,price:20000,name:"SB",qty:1}]);
+  paid("MR-MAN",[{product_id:1,variant_id:1,price:20000,name:"MR",qty:1}]);
+  paid("MULTI-PART",[{product_id:1,variant_id:1,price:10000,name:"Item 0",qty:1},{product_id:1,variant_id:1,price:10000,name:"Item 1",qty:1}]);
+  f.sql.exec(`
+    INSERT INTO fulfillment_items(order_code,item_index,product_id,variant_id,qty,fulfillment_mode,status) VALUES
+      ('AIV-MAN',0,1,1,1,'manual','delivered'),
+      ('SB-MAN',0,1,1,1,'manual','delivered'),
+      ('MR-MAN',0,1,1,1,'manual','delivered'),
+      ('MULTI-PART',0,1,1,1,'manual','delivered'),
+      ('MULTI-PART',1,1,1,1,'manual','manual_required');
+    INSERT INTO aivault_order_links(order_code,item_index,variant_id,product_id,service_id,quantity,cost_usd,fx_idr_per_usd,external_order_id,status)
+      VALUES('AIV-MAN',0,1,1,'svc',1,0.5,16000,'av-1','needs_admin');
+    INSERT INTO storebat_order_links(order_code,item_index,variant_id,product_id,storebat_product_id,kind,quantity,cost_usd,fx_idr_per_usd,idempotency_key,status)
+      VALUES('SB-MAN',0,1,1,55,'product',1,0.4,16000,'sb-1','needs_admin');
+    INSERT INTO mirai_order_links(order_code,item_index,variant_id,product_id,package_code,quantity,cost_usdt,fx_idr_per_usdt,external_order_id,idempotency_key,status)
+      VALUES('MR-MAN',0,1,1,'PKG',1,0.3,17000,'mr-1','mr-k1','needs_admin');
+    INSERT INTO tunvn_order_links(order_code,item_index,variant_id,product_id,kind,quantity,cost_usdt,fx_idr_per_usdt,status) VALUES
+      ('MULTI-PART',0,1,1,'account',1,1,16000,'needs_admin'),
+      ('MULTI-PART',1,1,1,'account',1,1,16000,'needs_admin');
+  `);
+  const report = await readSelectedFinancialReport("today",now);
+  expect(report).toMatchObject({
+    estimated_orders: 1,
+    estimated_order_codes: ["MULTI-PART"],
+    suppliers: {
+      tunvn: { cost: expectedCost + 32000 },
+      aivault: { cost: 8000 },
+      storebat: { cost: 6400 },
+      mirai: { cost: 5100 },
+    },
+  });
+});

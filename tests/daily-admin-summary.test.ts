@@ -317,4 +317,41 @@ describe("sendDueDailyAdminSummary", () => {
       fx.close();
     }
   });
+
+  it("excludes manually delivered tunvn/aivault/storebat/mirai links from stuck >30m alerts while keeping undelivered needs_admin", async () => {
+    const fx = createD1Fixture();
+    try {
+      const { messages } = stubTelegram("true");
+      const now = new Date("2026-11-19T00:05:00Z"); // 07:05 WIB
+      fx.sql.exec(`
+        INSERT INTO products (id, name, slug, price, stock, is_active, fulfillment_mode) VALUES (1, 'Buff', 'buff', 15000, 10, 1, 'manual');
+        INSERT INTO product_variants (id, product_id, sku, label, price, stock, fulfillment_mode, is_active) VALUES (1, 1, 'SKU-1', '10B', 15000, 10, 'manual', 1);
+        INSERT INTO orders (code, customer_name, customer_wa, items, subtotal, payment_method, status, payment_status, sales_channel, paid_at, created_at, updated_at) VALUES
+          ('AXV-20261119-0FC3511A', 'A', '628', '[]', 15000, 'qris', 'lunas', 'paid', 'web', '2026-11-18 10:00:00', '2026-11-18 09:55:00', '2026-11-18 10:00:00'),
+          ('AXV-20261119-STUCK001', 'B', '628', '[]', 15000, 'qris', 'lunas', 'paid', 'web', '2026-11-18 10:00:00', '2026-11-18 09:55:00', '2026-11-18 10:00:00');
+        INSERT INTO fulfillment_items (order_code, item_index, product_id, variant_id, qty, fulfillment_mode, status) VALUES
+          ('AXV-20261119-0FC3511A', 0, 1, 1, 10, 'manual', 'delivered'),
+          ('AXV-20261119-0FC3511A', 1, 1, 1, 1, 'manual', 'delivered'),
+          ('AXV-20261119-0FC3511A', 2, 1, 1, 1, 'manual', 'delivered'),
+          ('AXV-20261119-0FC3511A', 3, 1, 1, 1, 'manual', 'delivered'),
+          ('AXV-20261119-STUCK001', 0, 1, 1, 1, 'manual', 'manual_required');
+        INSERT INTO tunvn_order_links (order_code, item_index, variant_id, product_id, kind, quantity, cost_usdt, status) VALUES
+          ('AXV-20261119-0FC3511A', 0, 1, 1, 'buff', 10, 0.583, 'needs_admin'),
+          ('AXV-20261119-STUCK001', 0, 1, 1, 'account', 1, 1, 'needs_admin');
+        INSERT INTO aivault_order_links (order_code, item_index, variant_id, product_id, service_id, quantity, cost_usd, external_order_id, status)
+          VALUES ('AXV-20261119-0FC3511A', 1, 1, 1, 'svc', 1, 0.5, 'av-1', 'needs_admin');
+        INSERT INTO storebat_order_links (order_code, item_index, variant_id, product_id, storebat_product_id, kind, quantity, cost_usd, fx_idr_per_usd, idempotency_key, status)
+          VALUES ('AXV-20261119-0FC3511A', 2, 1, 1, 55, 'product', 1, 0.5, 16000, 'sb-1', 'needs_admin');
+        INSERT INTO mirai_order_links (order_code, item_index, variant_id, product_id, package_code, quantity, cost_usdt, external_order_id, idempotency_key, status)
+          VALUES ('AXV-20261119-0FC3511A', 3, 1, 1, 'PKG', 1, 0.5, 'mr-1', 'mr-k1', 'needs_admin');
+      `);
+      const res = await sendDueDailyAdminSummary(createDatabaseAccess(fx.db), { now });
+      expect(res).toMatchObject({ due: true, sent: true });
+      expect(messages).toHaveLength(1);
+      expect(messages[0].text).not.toContain("AXV-20261119-0FC3511A");
+      expect(messages[0].text).toContain("AXV-20261119-STUCK001");
+    } finally {
+      fx.close();
+    }
+  });
 });

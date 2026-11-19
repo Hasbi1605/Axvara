@@ -30,7 +30,7 @@ it("measures report, facets, pagination, reservation and active queue costs in D
       "INSERT INTO fulfillment_inventory VALUES(5001,'O1','reserved')",
       "CREATE TABLE fulfillment_jobs(order_code TEXT UNIQUE,status TEXT,next_attempt_at TEXT)",
       "CREATE INDEX idx_fulfillment_jobs_status ON fulfillment_jobs(status)",
-      "ALTER TABLE fulfillment_items ADD COLUMN status TEXT", "ALTER TABLE fulfillment_items ADD COLUMN next_attempt_at TEXT",
+      "ALTER TABLE fulfillment_items ADD COLUMN next_attempt_at TEXT",
       "CREATE INDEX idx_fulfillment_items_next ON fulfillment_items(status)",
       "INSERT INTO fulfillment_jobs SELECT code,'delivered',NULL FROM orders",
       "INSERT INTO fulfillment_items(order_code,status) SELECT code,'delivered' FROM orders",

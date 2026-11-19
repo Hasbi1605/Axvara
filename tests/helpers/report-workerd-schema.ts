@@ -3,7 +3,7 @@ export const reportRuntimeSchema = [
       "CREATE TABLE orders(code TEXT PRIMARY KEY,subtotal INTEGER,order_kind TEXT,items TEXT,variant_id INTEGER,sales_channel TEXT,paid_at TEXT,updated_at TEXT,status TEXT)",
       "CREATE TABLE payment_transactions(order_code TEXT UNIQUE,payable_amount INTEGER,paid_at TEXT,gateway_fee INTEGER,provider TEXT)",
       "CREATE TABLE payment_proofs(order_code TEXT,reviewed_at TEXT,status TEXT)",
-      "CREATE TABLE fulfillment_items(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,product_id INTEGER,variant_id INTEGER,qty INTEGER,wr_link_id INTEGER,sk_link_id INTEGER)",
+      "CREATE TABLE fulfillment_items(id INTEGER PRIMARY KEY,order_code TEXT,item_index INTEGER,product_id INTEGER,variant_id INTEGER,qty INTEGER,status TEXT,wr_link_id INTEGER,sk_link_id INTEGER)",
       "CREATE TABLE order_item_costs(order_code TEXT,item_index INTEGER,source TEXT,unit_cost INTEGER,supplier_variant_id TEXT)",
       "CREATE TABLE product_variants(id INTEGER PRIMARY KEY,manual_cost INTEGER,wr_variant_id TEXT,sk_variant_id TEXT,sku TEXT,aivault_service_id TEXT,storebat_product_id INTEGER,storebat_cost_usd REAL,storebat_fx_idr_per_usd REAL,mirai_package_code TEXT,mirai_cost_usdt REAL,mirai_fx_idr_per_usdt REAL,tunvn_fx_idr_per_usdt REAL,tunvn_cost_usdt REAL)",
       "CREATE TABLE wr_variants(wr_variant_id TEXT PRIMARY KEY,axvara_variant_id INTEGER,wr_price INTEGER)",

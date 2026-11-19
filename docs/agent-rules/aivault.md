@@ -9,6 +9,7 @@
 ## Status supplier di Admin Pesanan — 19 November 2026 (lokal)
 
 - Admin Pesanan kini memuat link AIVault sebagai kotak status saja (label status, `last_error`, ID provider, petunjuk Supplier → AIVault → Antrean). Tidak ada Retry/Cek status di Pesanan; aksi tetap di Antrean. "Kirim ke pembeli" disembunyikan selama link pending/claimed/processing (cermin CAS `handover.ts`) dan tampil saat needs_admin.
+- Resolusi manual turunan (19 Nov 2026, lokal): link belum `completed` yang item `fulfillment_items(order_code, item_index)`-nya sudah `delivered` ditandai `resolved_manually: true` (kotak netral "Diselesaikan manual · sudah dikirim ke pembeli" tanpa `last_error`/petunjuk Antrean, `estimated = 0` di Ringkasan, dan tidak masuk daftar macet Ringkasan Harian).
 
 ## Aktivasi dari menu Produk — 19 November 2026 (keputusan owner)
 

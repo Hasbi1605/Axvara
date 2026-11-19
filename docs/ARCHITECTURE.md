@@ -437,7 +437,13 @@ Status: implementasi lokal; migrasi/deployment produksi belum diverifikasi.
   `net_profit` = untung kotor − biaya pembayaran − refund/replace − operasional;
   `estimated_order_codes` ≤20. Link WR/SK: `completed` didahulukan; link `failed`
   tanpa link completed = modal Rp0 dan bukan estimasi. Kurs TUNVN/AIVault memakai
-  kurs beku link, fallback rantai lama hanya bila NULL. Cache snapshot (memori +
+  kurs beku link, fallback rantai lama hanya bila NULL. Revisi 19 Nov 2026 (lokal):
+  CTE `lines` menurunkan `fi_delivered` sekali dari `LEFT JOIN fulfillment_items`
+  existing (hemat kedalaman ekspresi D1); link TUNVN/AIVault/StoreBat/Mirai yang
+  belum `completed` namun item fulfillment `(order_code, item_index)`-nya sudah
+  `delivered` dianggap final (`estimated=0`) dengan tetap memakai modal snapshot
+  link sebagai `own_cost` (baris tanpa link atau tanpa delivery mempertahankan
+  aturan estimasi lama). Cache snapshot (memori +
   terenkripsi) memasukkan `finance_revision` + nilai MDR ke kunci, sehingga
   edit pengeluaran/MDR langsung terlihat. Overview mengembalikan `generated_at`.
 - **Ekspor** PDF/XLSX menambah Biaya pembayaran, Refund & replace, Operasional,
@@ -5795,6 +5801,14 @@ Menggantikan kontrak satu-koin USDT-BSC di §16.17/§16.18 (catatan "buyer-fee/f
   tanpa receipt/invite/idempotency) sebagai kotak status saja — aksi tetap di
   Antrean panel. Handover ditahan untuk link mereka saat pending/claimed/processing
   (cermin CAS); needs_admin tanpa Retry tidak lagi berlabel "Via supplier".
+  Revisi resolusi manual 19 Nov 2026 (lokal, aturan turunan tanpa mutasi/migrasi):
+  link TUNVN/StoreBat/Mirai/AIVault dengan `status != 'completed'` dan baris
+  `fulfillment_items(order_code, item_index)` berstatus `delivered` membawa
+  `resolved_manually: true`; UI Pesanan merender kotak netral "Diselesaikan manual
+  · sudah dikirim ke pembeli" tanpa `last_error`, tombol Retry/Cek status, maupun
+  petunjuk Antrean (`hasActiveSupplierLink` & `supplierHoldsItem` false), dan
+  Ringkasan Harian Telegram (`daily-admin-summary.ts`) mengecualikannya dari
+  peringatan order macet >30 menit.
 - Operasi produksi atas instruksi owner: dua order Muse `AXV-20261110-81C2FADA` /
   `AXV-20261110-9C9B8FF4` diberi supplier_purchase_disabled=1 untuk penanganan manual
   owner via Telegram supplier; readback attempt0/sendNULL. Tidak mengubah status,

@@ -74,6 +74,16 @@ it("D1 executes all six report kinds in one query for empty and mixed carts", as
       .toMatchObject({ qty: 1, revenue: 15600, cost: 14825 });
     expect(gamesRows.find(row => row.kind === "summary" && row.period === "today"))
       .toMatchObject({ orders: 2, revenue: 65601, cost: 44825, estimated: 1 });
+    await db.batch([
+      db.prepare("INSERT INTO orders VALUES('TUNVN-MAN',15000,'apps',?,NULL,'web','2026-10-15T07:00:00Z','2026-10-15T07:00:00Z','lunas')").bind(JSON.stringify([{ product_id: 1, variant_id: 1, name: "Muse Buff 10B", price: 1500, qty: 10 }])),
+      db.prepare("INSERT INTO fulfillment_items(id,order_code,item_index,product_id,variant_id,qty,status) VALUES(99,'TUNVN-MAN',0,1,1,10,'delivered')"),
+      db.prepare("INSERT INTO tunvn_order_links(id,order_code,item_index,variant_id,kind,cost_usdt,status,fx_idr_per_usdt) VALUES(39,'TUNVN-MAN',0,1,'buff',0.583,'needs_admin',18258.44)"),
+    ]);
+    const manualRows: Record<string, unknown>[] = (await db.prepare(sql).all()).results;
+    expect(manualRows.find(row => row.kind === "supplier" && row.period === "today" && row.label === "tunvn"))
+      .toMatchObject({ orders: 1, revenue: 15000, cost: Math.round(0.583 * 18258.44) });
+    expect(manualRows.find(row => row.kind === "summary" && row.period === "today"))
+      .toMatchObject({ orders: 3, estimated: 1 });
   } finally {
     await runtime.dispose();
   }

@@ -329,6 +329,7 @@ export async function collectDailyAdminSummaryData(
          WHERE tl.status IN ('pending','claimed','processing','needs_admin')
            AND o.status = 'lunas' AND o.payment_status = 'paid'
            AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+           AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi WHERE fi.order_code = tl.order_code AND fi.item_index = tl.item_index AND fi.status = 'delivered')
          UNION ALL
          SELECT al.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
          FROM aivault_order_links al INDEXED BY idx_aivault_orders_due
@@ -336,6 +337,7 @@ export async function collectDailyAdminSummaryData(
          WHERE al.status IN ('pending','claimed','processing','needs_admin')
            AND o.status = 'lunas' AND o.payment_status = 'paid'
            AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+           AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi WHERE fi.order_code = al.order_code AND fi.item_index = al.item_index AND fi.status = 'delivered')
          UNION ALL
          SELECT al.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
          FROM storebat_order_links al INDEXED BY idx_storebat_orders_due
@@ -343,6 +345,7 @@ export async function collectDailyAdminSummaryData(
          WHERE al.status IN ('pending','claimed','processing','needs_admin')
            AND o.status = 'lunas' AND o.payment_status = 'paid'
            AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+           AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi WHERE fi.order_code = al.order_code AND fi.item_index = al.item_index AND fi.status = 'delivered')
          UNION ALL
          SELECT ml.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts
          FROM mirai_order_links ml INDEXED BY idx_mirai_orders_due
@@ -350,6 +353,7 @@ export async function collectDailyAdminSummaryData(
          WHERE ml.status IN ('pending','claimed','processing','needs_admin')
            AND o.status = 'lunas' AND o.payment_status = 'paid'
            AND datetime(COALESCE(o.paid_at, o.created_at)) <= datetime(?, '-30 minutes')
+           AND NOT EXISTS (SELECT 1 FROM fulfillment_items fi WHERE fi.order_code = ml.order_code AND fi.item_index = ml.item_index AND fi.status = 'delivered')
        )
        UNION ALL
        SELECT pi.order_code, COALESCE(o.paid_at, o.created_at) AS paid_ts

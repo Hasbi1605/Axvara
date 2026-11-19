@@ -360,6 +360,7 @@ export function OrdersManager({ onChanged }: { onChanged?: () => void }) {
 // tanpa batch_id) adalah jalan buntu: admin wajib bisa serah terima manual.
 // StoreBat/Mirai/AIVault memakai guard backend yang sama (pending/claimed/processing).
 function supplierHoldsItem(link:SupplierLink):boolean {
+  if (link.resolved_manually) return false;
   const owned=["pending","claimed","processing"].includes(link.status);
   if (link.supplier==="tunvn") return !link.purchase_disabled && (owned || Boolean(link.can_retry));
   return ["storebat","mirai","aivault"].includes(link.supplier) && owned;

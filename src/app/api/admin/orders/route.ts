@@ -135,6 +135,7 @@ type SupplierLink = {
   max_attempts: number; last_error: string | null; supplier_order_id: string | null;
   delivery_status: string | null;
   can_retry?: boolean; can_reconcile?: boolean; item_index?: number; purchase_disabled?: boolean;
+  resolved_manually?: boolean;
 };
 
 export type AdminPediaSummary = {
@@ -196,14 +197,18 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
       COALESCE(provider_batch_id,provider_order_group) AS supplier_order_id,NULL AS delivery_status,
       CASE WHEN ${TUNVN_RETRYABLE_SQL} THEN 1 ELSE 0 END AS can_retry,
       (SELECT supplier_purchase_disabled FROM orders WHERE code=tunvn_order_links.order_code) AS purchase_disabled,
-      CASE WHEN kind='buff' AND provider_batch_id IS NOT NULL AND status IN ('processing','needs_admin') THEN 1 ELSE 0 END AS can_reconcile
+      CASE WHEN kind='buff' AND provider_batch_id IS NOT NULL AND status IN ('processing','needs_admin') THEN 1 ELSE 0 END AS can_reconcile,
+      CASE WHEN status!='completed' AND EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=tunvn_order_links.order_code AND fi.item_index=tunvn_order_links.item_index AND fi.status='delivered') THEN 1 ELSE 0 END AS resolved_manually
       FROM tunvn_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes),
     // Status saja (tanpa receipt/invite/ciphertext); aksi tetap di Antrean panel supplier.
-    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id
+    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id,
+      CASE WHEN status!='completed' AND EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=storebat_order_links.order_code AND fi.item_index=storebat_order_links.item_index AND fi.status='delivered') THEN 1 ELSE 0 END AS resolved_manually
       FROM storebat_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
-    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_code AS supplier_order_id
+    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_code AS supplier_order_id,
+      CASE WHEN status!='completed' AND EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=mirai_order_links.order_code AND fi.item_index=mirai_order_links.item_index AND fi.status='delivered') THEN 1 ELSE 0 END AS resolved_manually
       FROM mirai_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
-    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id
+    queryAll(`SELECT id,order_code,item_index,status,attempt_count,last_error,provider_order_id AS supplier_order_id,
+      CASE WHEN status!='completed' AND EXISTS(SELECT 1 FROM fulfillment_items fi WHERE fi.order_code=aivault_order_links.order_code AND fi.item_index=aivault_order_links.item_index AND fi.status='delivered') THEN 1 ELSE 0 END AS resolved_manually
       FROM aivault_order_links WHERE order_code IN (${marks}) ORDER BY id`,...codes).catch(() => [] as Record<string, unknown>[]),
   ]);
   for (const [supplier, rows] of [["wr", wr], ["sk", sk], ["tunvn",tunvn], ["storebat",storebat], ["mirai",mirai], ["aivault",aivault]] as const) {
@@ -219,6 +224,7 @@ async function loadSupplierLinks(codes: string[]): Promise<Map<string, SupplierL
         ...(supplier === "wr" && Number(row.can_reconcile) === 1 ? { can_reconcile: true } : {}),
         ...(["storebat","mirai","aivault"].includes(supplier) ? { item_index:Number(row.item_index) } : {}),
         ...(supplier==="tunvn" ? {can_retry:Number(row.can_retry)===1,can_reconcile:Number(row.can_reconcile)===1,item_index:Number(row.item_index),purchase_disabled:Number(row.purchase_disabled)===1} : {}),
+        ...(supplier !== "wr" && supplier !== "sk" && Number(row.resolved_manually) === 1 ? { resolved_manually: true } : {}),
       });
       out.set(code, list);
     }

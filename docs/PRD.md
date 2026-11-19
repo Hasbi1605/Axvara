@@ -700,7 +700,12 @@ dijalankan — bukan status live.
   setelah admin mencocokkan History bot TUNVN; tidak ada pembelian ulang.
   Revisi 19 Nov 2026 (lokal): Pesanan juga menampilkan status supplier StoreBat,
   Mirai dan AIVault (label + alasan + petunjuk Antrean); Retry/Cek status tetap di
-  panel masing-masing.
+  panel masing-masing. Setelah admin menyelesaikan pesanan secara manual lewat
+  "Kirim ke pembeli" (`fulfillment_items.status='delivered'`), link TUNVN/StoreBat/
+  Mirai/AIVault yang belum `completed` tampil sebagai kotak netral "Diselesaikan
+  manual · sudah dikirim ke pembeli" tanpa peringatan error/tombol/petunjuk Antrean,
+  modal di Ringkasan tidak lagi ditandai estimasi, dan Ringkasan Harian Telegram
+  tidak melaporkannya sebagai macet >30 menit (aturan turunan tanpa mutasi link).
   Saldo kurang terkonfirmasi memberi instruksi top-up + Retry; saldo tidak dapat
   dibaca diberi alasan berbeda, tidak menyimpulkan saldo0 atau penyebab historis.
 - Retry hanya admin untuk kegagalan pra-pembelian yang terbukti: attempt0, tidak
