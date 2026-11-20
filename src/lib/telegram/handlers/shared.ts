@@ -38,8 +38,8 @@ export type ScreenSourceMeta = {
   isProtected?: boolean;
 };
 
-export const TG_WELCOME_BANNER_VERSION = "20261119";
-export const TG_CATALOG_BANNER_VERSION = "20261120";
+export const TG_WELCOME_BANNER_VERSION = "20261120";
+export const TG_CATALOG_BANNER_VERSION = "20261120b";
 
 export function tgBannerUrl(filename: string, version: string): string {
   const rawSite = (process.env.SITE_URL ?? "").trim().replace(/\/$/, "");
