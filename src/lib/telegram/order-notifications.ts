@@ -1,3 +1,4 @@
+import { ADMIN_PAID_TIMEOUT_PREFIX, ADMIN_PAID_TIMEOUT_COOLDOWN_SQL } from "@/lib/cron-queues";
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 
 type Row = Record<string, unknown>;
@@ -314,6 +315,21 @@ export async function notifyWhatsAppOrderCreated(orderCode: string, database: Da
   return true;
 }
 
+/** Timeout kirim notif admin bersifat ambigu: saat Bot API hang Telegram menahan
+ * pesan lalu tetap mengirimnya (insiden 20 Nov 2026 → spam). Order Telegram/WhatsApp
+ * tidak punya ledger, jadi timeout dicatat di `buyer_notice_log` kunci
+ * `admin-paid-timeout:<kode>` (status `failed`, tidak pernah `sent`) dan cron baru
+ * mengulang setelah 20 menit. Gagal pasti (ditolak) tetap diulang tiap run. */
+async function recordAdminPaidTimeout(database: DatabaseAccess, orderCode: string, description: unknown): Promise<void> {
+  if (String(description ?? "") !== "Request timeout") return;
+  await database.execRun(
+    `INSERT INTO buyer_notice_log (idempotency_key, order_code, channel, status, error)
+     VALUES (?, ?, 'telegram', 'failed', 'Request timeout')
+     ON CONFLICT(idempotency_key) DO UPDATE SET status='failed', error='Request timeout', updated_at=datetime('now')`,
+    `${ADMIN_PAID_TIMEOUT_PREFIX}${orderCode}`, orderCode,
+  ).catch(() => undefined);
+}
+
 /** Announce a paid WhatsApp order to the admin group (separate from order-created). */
 export async function notifyWhatsAppPaidAdmin(orderCode: string, database: DatabaseAccess = createDatabaseAccess()): Promise<boolean> {
   const { queryFirst, execRun } = database;
@@ -356,7 +372,7 @@ export async function notifyWhatsAppPaidAdmin(orderCode: string, database: Datab
       paidMarket: order.order_kind === "apps",
     }),
   });
-  if (!sent.ok) return false;
+  if (!sent.ok) { await recordAdminPaidTimeout(database, orderCode, sent.description); return false; }
 
   await execRun(
     `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
@@ -407,7 +423,7 @@ export async function notifyTelegramPaidAdmin(orderCode: string, database: Datab
       paidMarket: order.order_kind === "apps",
     }),
   });
-  if (!sent.ok) return false;
+  if (!sent.ok) { await recordAdminPaidTimeout(database, orderCode, sent.description); return false; }
 
   await execRun(
     `UPDATE orders SET telegram_paid_admin_notified_at=datetime('now'), updated_at=datetime('now')
@@ -680,7 +696,7 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
     const pendingPaidAdmin = await queryAll(
       `SELECT code, sales_channel FROM orders
        WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid'
-         AND telegram_paid_admin_notified_at IS NULL
+         AND telegram_paid_admin_notified_at IS NULL AND ${ADMIN_PAID_TIMEOUT_COOLDOWN_SQL}
        ORDER BY updated_at ASC LIMIT ?`,
       max,
     ).catch(() => [] as Row[]);

@@ -1,3 +1,10 @@
+/** Notif admin "Lunas" Telegram/WhatsApp yang timeout baru diulang setelah 20 menit
+ * (lihat recordAdminPaidTimeout di order-notifications). */
+export const ADMIN_PAID_TIMEOUT_PREFIX = "admin-paid-timeout:";
+export const ADMIN_PAID_TIMEOUT_COOLDOWN_SQL = `NOT EXISTS(SELECT 1 FROM buyer_notice_log bt
+  WHERE bt.idempotency_key='${ADMIN_PAID_TIMEOUT_PREFIX}' || orders.code
+    AND julianday(bt.updated_at) > julianday('now','-20 minutes'))`;
+
 /** A forced phase needs only its own probes. The legacy rotation still reads
  * every signal, preserving its admission and anti-starvation decisions. */
 export function operationQueueProbeSql(phase: string | null, qrisWhere: string, webPaidWhere: string): string | null {
@@ -13,7 +20,7 @@ export function operationQueueProbeSql(phase: string | null, qrisWhere: string, 
     ["fulfillment", "(SELECT COUNT(*) FROM fulfillment_jobs fj JOIN orders o ON o.code=fj.order_code WHERE fj.status IN ('queued','retry') AND o.status='lunas' AND o.payment_status='paid') AS jobs"],
     ["notify", "(SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND telegram_order_notified_at IS NULL) AS created"],
     ["notify", "(SELECT COUNT(*) FROM orders WHERE sales_channel='telegram' AND status='lunas' AND payment_status='paid' AND telegram_paid_notified_at IS NULL) AS paid"],
-    ["notify", "(SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL) AS paid_admin"],
+    ["notify", `(SELECT COUNT(*) FROM orders WHERE sales_channel IN ('telegram','whatsapp') AND status='lunas' AND payment_status='paid' AND telegram_paid_admin_notified_at IS NULL AND ${ADMIN_PAID_TIMEOUT_COOLDOWN_SQL}) AS paid_admin`],
     ["notify", `(SELECT COUNT(*) FROM orders o WHERE ${webPaidWhere}) AS paid_admin_web`],
     ["notify", `(SELECT EXISTS(SELECT 1 FROM buyer_notice_log
       WHERE idempotency_key >= 'email:credential_access:' AND idempotency_key < 'email:credential_access;'

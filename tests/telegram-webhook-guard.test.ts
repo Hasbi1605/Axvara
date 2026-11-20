@@ -267,6 +267,40 @@ describe("Telegram webhook guard (tg_webhook)", () => {
     }
   });
 
+  it("sendMessage timeout counts as delivered: stuck/recovery alerts are not resent every minute (incident 2026-11-20)", async () => {
+    const fx = createD1Fixture();
+    try {
+      const db = createDatabaseAccess(fx.db);
+      const t0 = Date.UTC(2026, 10, 20, 14, 10, 0);
+      let pending = 5;
+      const { calls } = mockTelegramFetch((method) => {
+        if (method === "sendMessage") throw new DOMException("aborted", "AbortError");
+        if (method === "getWebhookInfo") {
+          return { ok: true, result: { url: CANONICAL_URL, has_custom_certificate: false, pending_update_count: pending,
+            ...(pending > 0 ? { last_error_date: Math.floor(t0 / 1000) - 10, last_error_message: "Timeout" } : {}) } };
+        }
+        return { ok: true, result: true };
+      });
+      const r1 = await guardTelegramWebhook(db, { nowMs: t0 });
+      expect(r1.alerted).toBe(true);
+      calls.length = 0;
+      const r2 = await guardTelegramWebhook(db, { nowMs: t0 + 60_000 });
+      expect(r2.alerted).toBe(false);
+      expect(calls.filter((c) => c.method === "sendMessage")).toHaveLength(0);
+
+      pending = 0;
+      calls.length = 0;
+      const rRec = await guardTelegramWebhook(db, { nowMs: t0 + 2 * 60_000 });
+      expect(rRec).toMatchObject({ status: "recovered", recovery_alerted: true });
+      calls.length = 0;
+      const rNext = await guardTelegramWebhook(db, { nowMs: t0 + 3 * 60_000 });
+      expect(rNext.status).toBe("healthy");
+      expect(calls.filter((c) => c.method === "sendMessage")).toHaveLength(0);
+    } finally {
+      fx.close();
+    }
+  });
+
   it("wrong url triggers reset with canonical params and drop_pending_updates:false", async () => {
     const fx = createD1Fixture();
     try {

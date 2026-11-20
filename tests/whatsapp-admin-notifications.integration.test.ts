@@ -128,6 +128,48 @@ describe("WhatsApp orders notify the Telegram admin group", () => {
     expect(vi.mocked(sendMessage)).not.toHaveBeenCalled();
   });
 
+  it("timeout kirim notif Lunas → dicatat, tidak diulang sebelum 20 menit (insiden spam 2026-11-20)", async () => {
+    seedWhatsAppOrder("WA-TO", "lunas");
+    fixture.sql.prepare("UPDATE orders SET telegram_order_notified_at=datetime('now') WHERE code='WA-TO'").run();
+    const { sendMessage } = await import("@/lib/telegram/api");
+    const { createDatabaseAccess } = await import("@/lib/db-access");
+    const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
+    const { operationQueueProbeSql } = await import("@/lib/cron-queues");
+    const db = createDatabaseAccess(fixture.db);
+    vi.mocked(sendMessage).mockClear();
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "Request timeout" } as never);
+    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(0);
+    expect(fixture.sql.prepare("SELECT status,error FROM buyer_notice_log WHERE idempotency_key='admin-paid-timeout:WA-TO'").get())
+      .toMatchObject({ status: "failed", error: "Request timeout" });
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
+
+    // Masih dalam 20 menit: antrean dan retry sama-sama diam.
+    const probe = operationQueueProbeSql("notify", "0", "0")!;
+    expect(fixture.sql.prepare(probe).get()?.paid_admin).toBe(0);
+    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(0);
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
+
+    fixture.sql.prepare("UPDATE buyer_notice_log SET updated_at=datetime('now','-21 minutes') WHERE idempotency_key='admin-paid-timeout:WA-TO'").run();
+    expect(fixture.sql.prepare(probe).get()?.paid_admin).toBe(1);
+    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(1);
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(2);
+    expect(fixture.sql.prepare("SELECT telegram_paid_admin_notified_at FROM orders WHERE code='WA-TO'").get()?.telegram_paid_admin_notified_at).not.toBeNull();
+  });
+
+  it("gagal non-timeout (ditolak) tidak dicatat sebagai timeout dan tetap diulang run berikutnya", async () => {
+    seedWhatsAppOrder("WA-REJ", "lunas");
+    fixture.sql.prepare("UPDATE orders SET telegram_order_notified_at=datetime('now') WHERE code='WA-REJ'").run();
+    const { sendMessage } = await import("@/lib/telegram/api");
+    const { createDatabaseAccess } = await import("@/lib/db-access");
+    const { retryPendingTelegramNotifications } = await import("@/lib/telegram/order-notifications");
+    const db = createDatabaseAccess(fixture.db);
+    vi.mocked(sendMessage).mockClear();
+    vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "Bad Request: chat not found" } as never);
+    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(0);
+    expect(fixture.sql.prepare("SELECT 1 FROM buyer_notice_log WHERE idempotency_key='admin-paid-timeout:WA-REJ'").get()).toBeUndefined();
+    expect((await retryPendingTelegramNotifications(50, { paidAdmin: true }, db)).paidAdmin).toBe(1);
+  });
+
   it("hanya Lunas yang masuk grup — pending Telegram/WA tidak membunyikan admin (owner 2026-10-10)", async () => {
     seedWhatsAppOrder("WA-ROUTE", "pending");
     const items = [{ product_id: 1, variant_id: 1, name: "Fixture", price: 10000, qty: 1 }];

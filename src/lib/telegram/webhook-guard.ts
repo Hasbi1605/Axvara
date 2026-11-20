@@ -8,6 +8,12 @@ import {
   setWebhook,
 } from "@/lib/telegram/api";
 
+/** Timeout = ambigu: saat Bot API hang Telegram menahan lalu tetap mengirim pesan
+ * (insiden 20 Nov 2026). Untuk alert guard, anggap sudah terkirim agar run tiap
+ * menit tidak menumpuk salinan; kehilangan satu alert lebih baik daripada spam. */
+function alertDelivered(res: { ok?: boolean; description?: string }): boolean {
+  return res.ok === true || res.description === "Request timeout";
+}
 export const TG_WEBHOOK_GUARD_STATE_KEY = "tg_webhook_guard_state";
 export const STUCK_PENDING_THRESHOLD = 3;
 export const STUCK_ERROR_WINDOW_MS = 180_000;
@@ -190,7 +196,7 @@ export async function guardTelegramWebhook(
             text: "✅ Bot Telegram pulih (antrean kosong)",
             disable_web_page_preview: true,
           });
-          recoveryAlerted = recRes.ok;
+          recoveryAlerted = alertDelivered(recRes);
         }
         if (recoveryAlerted || !adminChatId) {
           await upsertGuardState(db, {
@@ -268,7 +274,7 @@ export async function guardTelegramWebhook(
         text: alertText,
         disable_web_page_preview: true,
       });
-      if (alertRes.ok) {
+      if (alertDelivered(alertRes)) {
         alerted = true;
         latestState = {
           ...latestState,
