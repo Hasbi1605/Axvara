@@ -39,11 +39,14 @@ export function welcomeMessage(firstName: string, bestsellers: TelegramBestselle
 
 export function catalogFlatMessage(total: number, opts?: { locale?: Locale }): string {
   const en = opts?.locale === "en";
+  if (total > 0) {
+    return en
+      ? `🛍 <b>AXVARA Catalog</b> · ${total} ${total === 1 ? "product" : "products"}`
+      : `🛍 <b>Katalog AXVARA</b> · ${total} produk`;
+  }
   return [
-    en ? "<b>🛍 AXVARA Catalog</b>" : "<b>🛍 Katalog AXVARA</b>",
-    total > 0
-      ? en ? `${total} products available.` : `${total} produk tersedia.`
-      : en ? "No products available." : "Belum ada produk tersedia.",
+    en ? "🛍 <b>AXVARA Catalog</b>" : "🛍 <b>Katalog AXVARA</b>",
+    en ? "No products available." : "Belum ada produk tersedia.",
   ].join("\n");
 }
 
@@ -54,9 +57,18 @@ export function categoriesMessage(opts?: { locale?: Locale }): string {
 export function categoryProductsMessage(categoryName: string, total: number, opts?: { locale?: Locale }): string {
   const name = escapeHtml(truncate(categoryName, 50));
   const en = opts?.locale === "en";
+  if (total > 0) {
+    return [
+      en
+        ? `🛍 <b>AXVARA Catalog</b> · ${total} ${total === 1 ? "product" : "products"}`
+        : `🛍 <b>Katalog AXVARA</b> · ${total} produk`,
+      `<b>${name}</b>`,
+    ].join("\n");
+  }
   return [
+    en ? "🛍 <b>AXVARA Catalog</b>" : "🛍 <b>Katalog AXVARA</b>",
     `<b>${name}</b>`,
-    total > 0 ? (en ? `${total} products available.` : `${total} produk tersedia.`) : (en ? "No products in this category." : "Kategori ini belum ada produk."),
+    en ? "No products in this category." : "Kategori ini belum ada produk.",
   ].join("\n");
 }
 

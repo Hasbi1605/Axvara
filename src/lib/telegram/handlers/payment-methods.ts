@@ -15,6 +15,7 @@ import {
   paymentMethodOfferMessage,
   paymentMethodOfferDetails,
   paymentMethodNoticeMessage,
+  cryptoPickerMessage,
 } from "@/lib/telegram/messages/purchase";
 import { tgCtxFor, tgUsdAlternate } from "@/lib/telegram/render-prefs";
 import {
@@ -208,7 +209,7 @@ export async function handlePayMethodSelect(
 }
 
 /**
- * Handle pmc:<nonce> (buka sub-menu koin crypto) dan pmb:<nonce> (kembali ke metode utama).
+ * Handle pmc:<nonce>[:<page>] (coin/network menus) and pmb:<nonce> (back to methods).
  * Tidak ada mutasi: hanya merender ulang dari array beku (nonce-bound, state quoted). Tap koin memakai
  * pm:<nonce>:<index> yang sama dengan metode lain, sehingga freeze/consent/claim tidak berubah.
  */
@@ -237,12 +238,13 @@ export async function handlePayCryptoMenu(
   const state = stored.state;
   if (state.st !== "quoted") return;
   if (parsed.kind === "open") {
-    if (!state.methods.some((method) => method.kind === "crypto")) return;
+    const keyboard = cryptoCoinKeyboard(state, ctx, parsed.page);
+    if (!keyboard) return;
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
-      text: paymentMethodNoticeMessage("crypto_pick_coin", { locale: ctx.locale }),
+      text: cryptoPickerMessage(state.methods, parsed.page, ctx),
       parse_mode: "HTML",
-      reply_markup: cryptoCoinKeyboard({ nonce: state.nonce, methods: state.methods }, { locale: ctx.locale }),
+      reply_markup: keyboard,
     });
     return;
   }

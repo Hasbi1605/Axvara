@@ -1,7 +1,8 @@
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 
 type Row = Record<string, unknown>;
-import { isFutureIso } from "@/lib/expiry";
+import { parseExpiry } from "@/lib/expiry";
+import { formatRupiah } from "@/lib/telegram/messages/format";
 import { sendMessage } from "@/lib/telegram/api";
 import {
   adminTelegramOrderCreatedMessage,
@@ -712,73 +713,82 @@ export async function retryPendingTelegramNotifications(limit = 50, only?: {
   return { created, paid, paidAdmin, paidAdminWeb };
 }
 
-// Reminder order pending Telegram: maksimal 2x per order (interval ≥60 mnt,
-// hanya saat invoice masih aktif). Marker telegram_reminder_count membuat
-// retry cron idempoten; order lunas/kadaluarsa otomatis tidak memenuhi
-// predicate sehingga tidak pernah diingatkan lagi.
 export const TELEGRAM_REMINDER_MAX = 2;
-export const TELEGRAM_REMINDER_INTERVAL_MINUTES = 60;
+
+// Both cron paths share this gate, including the CAS. NULL last-reminder is
+// not a bypass for invoice age. Use the TX, not the older order (QR renewal).
+// julianday handles stored ISO/SQL UTC timestamps; round to ms to avoid drift at boundaries.
+const reminderStart = "julianday(COALESCE(pt.invoice_issued_at, pt.created_at))";
+const reminderEnd = "julianday(pt.expires_at)";
+const msBetween = (later: string, earlier: string) => `ROUND((${later} - ${earlier}) * 86400000)`;
+const reminderLifetime = msBetween(reminderEnd, reminderStart);
+const reminderLeft = msBetween(reminderEnd, "clock.now_jd");
+const reminderAge = msBetween("clock.now_jd", reminderStart);
+// The SQL issue timestamp has second precision; the ISO deadline has milliseconds.
+const shortQris = `(pt.provider IN ('dana','gopay','klikqris') AND ${reminderLifetime} < 901000)`;
+const reminderDue = `o.sales_channel='telegram' AND o.status='pending'
+  AND o.payment_status IN ('unpaid','pending') AND COALESCE(o.telegram_chat_id,'')!=''
+  AND pt.status='pending' AND ${reminderLeft} > 60000
+  AND ${reminderAge} >= MAX(480000, ${reminderLifetime} * 0.6)
+  AND CASE WHEN ${shortQris} THEN o.telegram_reminder_count=0 AND ${reminderLeft} <= 300000
+    ELSE o.telegram_reminder_count < ${TELEGRAM_REMINDER_MAX} END
+  AND (o.telegram_reminder_sent_at IS NULL OR
+    ${msBetween("clock.now_jd", "julianday(o.telegram_reminder_sent_at)")} >= MAX(600000, ${reminderLifetime} / 3.0))`;
 
 export async function sendPendingOrderReminders(limit = 50, database: DatabaseAccess = createDatabaseAccess()): Promise<number> {
   const { queryAll, execRun } = database;
   if (!telegramNotificationsConfigured()) return 0;
-  // Same canonical JS expiry check as webhook/crons: only invoices whose
-  // ISO `expires_at` is still in the future are reminded.
-  const candidates = await queryAll(
-    `SELECT o.code, o.items, o.telegram_chat_id, o.telegram_reminder_count,
-            o.telegram_reminder_sent_at, pt.payable_amount, pt.expires_at, o.subtotal,
-            pt.provider, o.payment_method, o.locale
+  const pending = await queryAll(
+    `SELECT o.code, o.telegram_chat_id, o.telegram_reminder_count,
+            pt.id AS tx_id, pt.payable_amount, pt.expires_at, pt.price_amount_text, pt.price_currency,
+            pt.provider, o.payment_method, o.locale, o.subtotal
      FROM orders o
-     JOIN payment_transactions pt ON pt.order_code=o.code AND pt.status='pending'
-     WHERE o.sales_channel='telegram' AND o.status='pending'
-       AND o.payment_status IN ('unpaid','pending')
-       AND o.telegram_reminder_count < ?
-       AND (o.telegram_reminder_sent_at IS NULL
-         OR datetime(o.telegram_reminder_sent_at, '+' || ? || ' minutes') <= datetime('now'))
-     ORDER BY o.created_at ASC LIMIT ?`,
-    TELEGRAM_REMINDER_MAX, TELEGRAM_REMINDER_INTERVAL_MINUTES, limit * 4,
+     JOIN payment_transactions pt ON pt.order_code=o.code
+     CROSS JOIN (SELECT julianday(?) AS now_jd) clock
+     WHERE ${reminderDue}
+     ORDER BY ${reminderEnd}, o.code LIMIT ?`,
+    new Date(Date.now()).toISOString(), limit,
   );
-  const pending = candidates
-    .filter((order) => isFutureIso(order.expires_at))
-    .slice(0, limit);
   let sent = 0;
   for (const order of pending) {
     if (!database.canSpend(1)) break;
     const code = String(order.code);
     const chatId = String(order.telegram_chat_id || "");
-    if (!chatId) continue;
-    const attempt = Number(order.telegram_reminder_count || 0) + 1;
+    const expiresMs = parseExpiry(order.expires_at);
+    if (!chatId || expiresMs === null) continue;
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
     const claimed = await execRun(
-      `UPDATE orders SET telegram_reminder_count=telegram_reminder_count+1,
-         telegram_reminder_sent_at=datetime('now'), updated_at=datetime('now')
-       WHERE code=? AND status='pending' AND payment_status IN ('unpaid','pending')
-         AND telegram_reminder_count=?`,
-      code, Number(order.telegram_reminder_count || 0),
+      `UPDATE orders AS o SET telegram_reminder_count=telegram_reminder_count+1,
+         telegram_reminder_sent_at=?, updated_at=datetime('now')
+       WHERE o.code=? AND o.telegram_reminder_count=? AND EXISTS (
+         SELECT 1 FROM payment_transactions pt CROSS JOIN (SELECT julianday(?) AS now_jd) clock
+         WHERE pt.id=? AND pt.order_code=o.code AND pt.expires_at=? AND ${reminderDue})`,
+      nowIso, code, Number(order.telegram_reminder_count || 0), nowIso, order.tx_id, order.expires_at,
     );
     if (!claimed.changes) continue; // dimenangkan worker lain / sudah berubah
     try {
-      // R3: gateway/crypto orders (saved TX provider, else saved payment_method)
-      // get generic saved-locale copy + a refresh button — never QRIS wording.
       const method = String(order.payment_method ?? "");
-      const newRail = ["nowpayments", "sekalipay_gateway"].includes(String(order.provider ?? ""))
-        || method.startsWith("nowpayments:") || method.startsWith("sekalipay_gateway:");
+      const crypto = order.provider === "nowpayments" || method.startsWith("nowpayments:");
+      const newRail = crypto || order.provider === "sekalipay_gateway" || method.startsWith("sekalipay_gateway:");
+      const quote = String(order.price_amount_text ?? "");
+      const currency = String(order.price_currency ?? "").toUpperCase();
+      const total = crypto
+        ? (/^\d{1,24}(?:\.\d{1,18})?$/.test(quote) && ["USD", "IDR"].includes(currency) ? `${quote} ${currency}` : undefined)
+        : order.payable_amount != null ? formatRupiah(Number(order.payable_amount)) : undefined;
+      const locale = order.locale === "en" ? "en" : "id";
       const result = await sendMessage(newRail ? {
         chat_id: chatId,
-        text: providerOrderReminderMessage({
-          orderCode: code,
-          productName: productNames(order.items),
-          attempt,
-        }, { locale: String(order.locale ?? "") === "en" ? "en" : "id" }),
+        text: providerOrderReminderMessage({ orderCode: code, expiresMs, now, total }, { locale }),
         parse_mode: "HTML",
-        reply_markup: { inline_keyboard: [[{ text: String(order.locale ?? "") === "en" ? "🔄 Open payment details" : "🔄 Buka detail pembayaran", callback_data: `refresh:${code}` }]] },
+        reply_markup: { inline_keyboard: [[{ text: locale === "en" ? "🔄 Open payment details" : "🔄 Buka detail pembayaran", callback_data: `refresh:${code}` }]] },
       } : {
         chat_id: chatId,
         text: orderReminderMessage({
           orderCode: code,
-          productName: productNames(order.items),
           payableAmount: Number(order.payable_amount ?? order.subtotal ?? 0),
-          attempt,
-        }),
+          expiresMs, now,
+        }, { locale }),
         parse_mode: "HTML",
       });
       if (result.ok) sent++;

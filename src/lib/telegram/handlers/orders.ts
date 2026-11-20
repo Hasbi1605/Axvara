@@ -13,7 +13,7 @@ import { reissueDanaQrisInvoice } from "@/lib/payments/dana-qris";
 import { markInvoicePending, markInvoiceSent, isAmbiguousSendResult, settleAmbiguousInvoiceSend } from "@/lib/telegram/invoice-retry";
 import { SITE } from "@/lib/site";
 import { marketWarrantyClaim, marketWarrantyClaimEn, warrantyClaimRules } from "@/lib/warranty-policy";
-import { escapeHtml } from "@/lib/telegram/messages/format";
+import { escapeHtml, invoiceItemSummary } from "@/lib/telegram/messages/format";
 
 function orderItemsSummary(raw: unknown): string {
   try {
@@ -281,7 +281,7 @@ export async function handleOrderRefresh(chatId: number, messageId: number, rawO
         photo: String(order.qris_url),
         caption: invoiceMessage({
           orderCode,
-          productName: orderItemsSummary(order.items),
+          productName: invoiceItemSummary(order.items, locale === "en"),
           payableAmount: Number(order.payable_amount ?? order.subtotal),
           expiresAt: String(order.invoice_expires_at),
           paymentMethod: "qris",
@@ -376,24 +376,12 @@ export async function handleQrisRenew(chatId: number, rawOrderCode: string) {
 
   // Nama produk dibaca ulang dari snapshot order, bukan dari memori request
   // lama, agar caption selalu cocok dengan apa yang benar-benar dipesan.
-  let productLabel = "Pesanan";
-  try {
-    const items = JSON.parse(String(order.items ?? "[]")) as { name?: string; qty?: number }[];
-    if (Array.isArray(items) && items.length === 1) {
-      productLabel = String(items[0]?.name ?? "Pesanan");
-    } else if (Array.isArray(items) && items.length > 1) {
-      productLabel = `Keranjang (${items.length} item): ${items
-        .map((item) => `${String(item.name ?? "Item")} ×${Number(item.qty ?? 1)}`)
-        .join(", ")}`;
-    }
-  } catch { /* label fallback sudah aman */ }
-
   const photo = await sendPhoto({
     chat_id: chatId,
     photo: result.invoice.qrisUrl,
     caption: invoiceMessage({
       orderCode,
-      productName: productLabel,
+      productName: invoiceItemSummary(order.items, locale === "en"),
       payableAmount: result.invoice.payableAmount,
       expiresAt: result.invoice.expiresAt,
       paymentMethod: "qris",

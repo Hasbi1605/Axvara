@@ -91,12 +91,15 @@ export function whatsAppInputPromptMessage(orderCode: string, opts?: TgLocaleOpt
   ].join("\n");
 }
 
-export function orderExpiredMessage(orderCode: string, opts?: TgLocaleOpts): string {
+export function orderExpiredMessage(orderCode: string, opts?: TgLocaleOpts & { productName?: string; qris?: boolean }): string {
   const en = opts?.locale === "en";
   return [
-    en ? "<b>⌛ Invoice expired</b>" : "<b>⌛ Invoice kedaluwarsa</b>",
-    `<code>${escapeHtml(orderCode)}</code>`,
-    en ? "Payment deadline passed. Reorder via /katalog." : "Batas bayar habis. Order ulang di /katalog.",
+    en ? "⌛ <b>Payment expired</b>" : "⌛ <b>Pembayaran kedaluwarsa</b>",
+    `${en ? "Code" : "Kode"}   : <code>${escapeItemSummary(orderCode, 120)}</code>`,
+    `${en ? "Product" : "Produk"} : ${escapeItemSummary(opts?.productName || (en ? "Order" : "Pesanan"), 2800)}`,
+    opts?.qris
+      ? (en ? "This QR is no longer valid — do not pay it." : "QR ini sudah tidak berlaku — jangan dibayar.")
+      : (en ? "This invoice is no longer valid — do not pay it." : "Tagihan ini sudah tidak berlaku — jangan dibayar."),
   ].join("\n");
 }
 
@@ -206,13 +209,6 @@ export function invalidWhatsAppMessage(opts?: TgLocaleOpts): string {
   ].join("\n");
 }
 
-export function qrisExpiredMessage(orderCode: string, opts?: TgLocaleOpts): string {
-  const en = opts?.locale === "en";
-  return [
-    en ? "<b>QRIS expired</b>" : "<b>QRIS kedaluwarsa</b>",
-    `<code>${escapeHtml(orderCode)}</code>`,
-    en
-      ? "Expired after 15 min — do not pay old QR. Request 1 new QRIS below while active."
-      : "QRIS hangus (15 mnt) — jangan bayar QR lama. Minta QRIS baru 1× lewat tombol di bawah.",
-  ].join("\n");
+export function qrisExpiredMessage(orderCode: string, opts?: TgLocaleOpts & { productName?: string }): string {
+  return orderExpiredMessage(orderCode, { ...opts, qris: true });
 }

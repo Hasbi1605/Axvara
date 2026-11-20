@@ -67,7 +67,7 @@ it("offers renewal only in the first expired QR message, retries failed delivery
   vi.mocked(sendMessage).mockResolvedValueOnce({ ok: false, description: "timeout" });
   expect((await sendQrisExpiryNotifications()).sent).toBe(0);
   expect((await sendQrisExpiryNotifications()).sent).toBe(1);
-  expect(vi.mocked(sendMessage).mock.lastCall?.[0]).toMatchObject({ text: expect.stringContaining("QRIS kedaluwarsa") });
+  expect(vi.mocked(sendMessage).mock.lastCall?.[0]).toMatchObject({ text: expect.stringContaining("QR ini sudah tidak berlaku — jangan dibayar.") });
   expect(JSON.stringify(vi.mocked(sendMessage).mock.lastCall?.[0].reply_markup)).toContain(`qrenew:${code}`);
   expect((await sendQrisExpiryNotifications()).sent).toBe(0);
   expect(row().status).toBe("pending");
@@ -85,8 +85,12 @@ it("the replacement is the final QR; its deadline closes the order and restores 
   expire(true); await cron(); await cron(); await sendQrisExpiryNotifications();
   expect(row().status).toBe("kadaluarsa");
   expect(fixture.sql.prepare("SELECT stock FROM product_variants WHERE id=1").get()!.stock).toBe(100);
-  const terminal = vi.mocked(sendMessage).mock.calls.filter(([args]) => args.text.includes("Invoice kedaluwarsa"));
-  expect(terminal).toHaveLength(1); expect(terminal[0][0].reply_markup).toBeUndefined();
+  const terminal = vi.mocked(sendMessage).mock.calls.filter(([args]) => args.text.includes("Pembayaran kedaluwarsa"));
+  expect(terminal).toHaveLength(1);
+  expect(terminal[0][0].text).toContain("Produk : Fixture ×1");
+  expect(terminal[0][0].reply_markup).toEqual({ inline_keyboard: [[
+    { text: "🔁 Pesan Lagi", callback_data: "reorder:1" }, { text: "🛍 Katalog", callback_data: "catalog:0" },
+  ]] });
 });
 it("WA expiry creates a durable message once for the original conversation", async () => {
   await checkout("whatsapp"); expire(true); await cron();
@@ -110,8 +114,9 @@ it("Telegram variant selection goes straight to quantity controls", async () => 
   const { handleVariantConfirm } = await import("@/lib/telegram/handlers/catalog");
   await handleVariantConfirm(77, 1, 1);
   const message = vi.mocked(safeEditOrSend).mock.lastCall?.[0];
-  expect(message?.text).toContain("💰 ");
-  expect(message?.text).toContain("Stok ");
+  expect(message?.text).toContain("Pilih jumlah");
+  expect(message?.text).toMatch(/Harga\s*: .+ \/ pcs/);
+  expect(message?.text).toMatch(/Stok\s*: /);
   expect(message?.text).not.toContain("Konfirmasi Pembelian");
   expect(JSON.stringify(message?.reply_markup)).not.toContain("Saya Paham");
   expect(fixture.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='77'").get()!.pending_action).toBe("qty_for:1:1");

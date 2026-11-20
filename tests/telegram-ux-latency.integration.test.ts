@@ -18,6 +18,10 @@ const tg = vi.hoisted(() => ({
     ok: true,
     result: { message_id: 102, photo: [{ file_id: "AgAC-mock-edited-id", width: 1280, height: 853 }] },
   })),
+  editMessageCaption: vi.fn(async (_p?: Record<string, unknown>) => ({
+    ok: true,
+    result: { message_id: 102, photo: [{ file_id: "AgAC-mock-cat-id", width: 1536, height: 1024 }] },
+  })),
   deleteMessage: vi.fn(async (_chatId?: number | string, _msgId?: number) => ({ ok: true })),
   safeEditOrSend: vi.fn(async (params: { message_id?: number; text: string }) => {
     if (!params.message_id) return tg.sendMessage();
@@ -233,11 +237,14 @@ describe("W-A single active screen & protected messages", () => {
     expect(tg.sendMessage).toHaveBeenCalledTimes(1);
     expect(tg.deleteMessage).toHaveBeenCalledWith(buyer.id, 22);
 
-    // Protected invoice message tapped via callback -> keeps invoice intact (sends new msg, never edits/deletes)
+    // Protected invoice message tapped via callback -> keeps invoice intact (sends new catalog photo, never edits/deletes)
     tg.deleteMessage.mockClear();
     tg.editMessageText.mockClear();
+    tg.editMessageMedia.mockClear();
+    tg.editMessageCaption.mockClear();
     tg.safeEditOrSend.mockClear();
     tg.sendMessage.mockClear();
+    tg.sendPhoto.mockClear();
     const res = await POST(req({
       update_id: 9020,
       callback_query: {
@@ -256,7 +263,53 @@ describe("W-A single active screen & protected messages", () => {
     await flushWaitUntil(waitUntilTasks.splice(0));
     expect(tg.deleteMessage).not.toHaveBeenCalled();
     expect(tg.editMessageText).not.toHaveBeenCalled();
-    expect(tg.sendMessage).toHaveBeenCalledTimes(1);
+    expect(tg.editMessageMedia).not.toHaveBeenCalled();
+    expect(tg.editMessageCaption).not.toHaveBeenCalled();
+    expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
+    expect(tg.sendPhoto.mock.calls[0]?.[0]?.photo).toContain("/banners/tg-catalog.jpg?v=");
+    expect(tg.sendPhoto.mock.calls[0]?.[0]?.caption).toBe("🛍 <b>Katalog AXVARA</b> · 1 produk");
+
+    // Welcome photo -> catalog:0 uses editMessageMedia with tg-catalog.jpg; catalog photo -> catalog:1 / cats:0 / cat:1:0 edits ONLY caption+markup
+    tg.editMessageMedia.mockClear();
+    tg.editMessageCaption.mockClear();
+    tg.sendPhoto.mockClear();
+    await POST(req({
+      update_id: 9021,
+      callback_query: {
+        id: "cq-from-welcome",
+        from: buyer,
+        message: {
+          message_id: 100,
+          chat: { id: buyer.id },
+          photo: [{ file_id: "welcome-photo" }],
+          caption: "Halo, Tester 👋\nSelamat datang di AXVARA",
+        },
+        data: "catalog:0",
+      },
+    }));
+    expect(tg.editMessageMedia).toHaveBeenCalledTimes(1);
+    expect(tg.editMessageCaption).not.toHaveBeenCalled();
+
+    tg.editMessageMedia.mockClear();
+    tg.editMessageCaption.mockClear();
+    await POST(req({
+      update_id: 9022,
+      callback_query: {
+        id: "cq-cat-page",
+        from: buyer,
+        message: {
+          message_id: 100,
+          chat: { id: buyer.id },
+          photo: [{ file_id: "catalog-photo" }],
+          caption: "🛍 Katalog AXVARA · 1 produk",
+        },
+        data: "cats:0",
+      },
+    }));
+    expect(tg.editMessageCaption).toHaveBeenCalledTimes(1);
+    expect(tg.editMessageMedia).not.toHaveBeenCalled();
+    expect(tg.sendPhoto).not.toHaveBeenCalled();
+    expect(tg.deleteMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -288,7 +341,9 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
     const photoCall = tg.sendPhoto.mock.calls[0]?.[0];
     expect(photoCall?.photo).toContain("/banners/tg-welcome.jpg");
-    expect(photoCall?.caption).toBe("Halo, Tester 👋");
+    expect(photoCall?.caption).toBe(
+      "Halo, Tester 👋\nSelamat datang di <b>AXVARA</b>, toko aplikasi &amp; tools premium dengan pengiriman otomatis 24 jam.\n\n🛍 Ketuk <b>Katalog</b> untuk mulai belanja, atau ketik nama produk untuk mencari.",
+    );
     expect(photoCall?.caption).not.toContain("Paling laris");
     const welcomeKb = photoCall?.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string; style?: string }[][] };
     expect(welcomeKb.inline_keyboard).toEqual([
@@ -349,7 +404,9 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     await handleCallback("lang:en", buyer.id, 77, buyer, "cb-onboard");
     await flushWaitUntil(waitUntilTasks.splice(0));
     expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
-    expect(tg.sendPhoto.mock.calls[0]?.[0]?.caption).toBe("Hi, Tester 👋");
+    expect(tg.sendPhoto.mock.calls[0]?.[0]?.caption).toBe(
+      "Hi, Tester 👋\nWelcome to <b>AXVARA</b> — premium apps &amp; tools with 24/7 automatic delivery.\n\n🛍 Tap <b>Catalog</b> to start shopping, or type a product name to search.",
+    );
     expect(tg.deleteMessage).toHaveBeenCalledWith(buyer.id, 77);
     expect(tg.sendMessage).toHaveBeenCalledTimes(1);
     expect(tg.sendMessage).toHaveBeenCalledWith({
@@ -389,9 +446,11 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     expect(searchTelegramCatalog(catalog, "chatgtp")[0]?.name).toBe("ChatGPT Plus");
     expect(searchTelegramCatalog(catalog, "canfa")[0]?.name).toBe("Canva Pro");
 
-    // Free text search directly without pending state, and /cari with keyword directly
+    // Free text search directly without pending state, and /cari with keyword directly (stays text, not photo)
+    tg.sendPhoto.mockClear();
     await handleCommand("netflik", buyer.id, "private", buyer);
     expect(tg.sendMessage.mock.calls.at(-1)?.[0]?.text).toContain("Hasil untuk “netflik”");
+    expect(tg.sendPhoto).not.toHaveBeenCalled();
 
     await handleCommand("/cari doesnotexistxyz", buyer.id, "private", buyer);
     expect(tg.sendMessage.mock.calls.at(-1)?.[0]?.reply_markup).toEqual(searchNoResultsKeyboard({ locale: "id" }));
@@ -444,6 +503,6 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     expect(vk.inline_keyboard.flat().some((b) => b.callback_data === "soldout" && b.style === "danger" && b.text.startsWith("❌ "))).toBe(true);
 
     const methodDetails = paymentMethodOfferDetails([{ kind: "qris", label: "QRIS Dinamis" }]);
-    expect(methodDetails).toEqual(["• QRIS (tercepat)"]);
+    expect(methodDetails).toEqual(["QRIS: semua e-wallet &amp; m-banking."]);
   });
 });

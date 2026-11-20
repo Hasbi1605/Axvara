@@ -187,12 +187,12 @@ describe("R3 correction 1: gateway/crypto expiry + cancel push", () => {
     const sent = allSends();
     expect(sent).toHaveLength(1);
     const expected = locale === "en"
-      ? (status === "kadaluarsa" ? "Invoice expired" : "cancelled")
+      ? (status === "kadaluarsa" ? "Payment expired" : "cancelled")
       : (status === "kadaluarsa" ? "kedaluwarsa" : "dibatalkan");
     expect(sent[0].text.toLowerCase()).toContain(expected.toLowerCase());
     expect(sent[0].text).toContain(code);
     expect(sent[0].text + JSON.stringify(sent[0].markup ?? {})).not.toMatch(/QRIS|qrenew|0xBEEF|https?:\/\//i);
-    expect(buttons(sent[0]).map((b) => b.callback_data)).toEqual([`order:${code}`, "catalog:0"]);
+    expect(buttons(sent[0]).map((b) => b.callback_data)).toEqual([status === "dibatalkan" ? `order:${code}` : "reorder:1", "catalog:0"]);
     expect(vi.mocked(sendPhoto)).not.toHaveBeenCalled();
     // Exactly once: later ticks (and a concurrent pair) send nothing; probe drained.
     clearTg();
@@ -262,7 +262,7 @@ describe("R3 correction 1: gateway/crypto expiry + cancel push", () => {
     expect(allSends()).toHaveLength(0);
   });
 
-  it("QRIS baseline unchanged: terminal QRIS keeps its copy, shares the per-tick ceiling with the new rail", async () => {
+  it("terminal QRIS shares the existing per-tick ceiling with the new rail", async () => {
     const { code } = await cryptoOrder("en");
     terminate(code, "kadaluarsa", true);
     fx.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_user_id,telegram_chat_id,locale,expires_at) VALUES('AXV-20260101-QRISQRIS','b','','[]',9000,'qris','kadaluarsa','expired','telegram','55','55','id',datetime('now','-1 hour'))").run();
@@ -273,7 +273,8 @@ describe("R3 correction 1: gateway/crypto expiry + cancel push", () => {
     expect((await sendQrisExpiryNotifications(1)).sent).toBe(1);
     expect(allSends()).toHaveLength(2);
     const qris = allSends().find((m) => m.text.includes("AXV-20260101-QRISQRIS"))!;
-    expect(buttons(qris)).toHaveLength(0);
+    expect(qris.text).toContain("QR ini sudah tidak berlaku — jangan dibayar.");
+    expect(buttons(qris).map(b => b.callback_data)).toEqual(["catalog:0"]); // fixture has no product_id
     expect(fx.sql.prepare("SELECT expiry_notice_state AS s FROM payment_transactions WHERE order_code='AXV-20260101-QRISQRIS'").get()?.s).toBe("terminal");
     expect(await probeCount()).toBe(0);
   });
@@ -302,7 +303,7 @@ describe("R3 correction 1b: gateway terminal push", () => {
     await seedCartUser();
     fx.sql.prepare(`INSERT INTO orders(code,customer_name,customer_wa,customer_email,items,subtotal,payment_method,payment_status,status,sales_channel,telegram_chat_id,telegram_user_id,variant_id,variant_snapshot,expires_at,locale)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(code, "Fixture", "6281234567890", "buyer@example.test", "[]", 19000, "sekalipay_gateway:GATEVA", "pending", "pending", "telegram", String(buyer.id), String(buyer.id), 1, "{}", expires, locale);
+      .run(code, "Fixture", "6281234567890", "buyer@example.test", '[{"product_id":1,"qty":2,"name":"Fixture — Fixture"}]', 19000, "sekalipay_gateway:GATEVA", "pending", "pending", "telegram", String(buyer.id), String(buyer.id), 1, "{}", expires, locale);
     fx.sql.prepare(`INSERT INTO payment_transactions
       (order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,provider_payment_id,status,expires_at,gateway_fee,gateway_estimated_fee,gateway_fee_consent_required,gateway_channel,gateway_label,direct_url,gateway_virtual_account,gateway_is_sandbox)
       VALUES(?,'sekalipay_gateway','merchant',?,'sekalipay_gateway',19000,19700,'SPY-r3b','pending',?,700,500,1,'GATEVA','Gate VA','https://sekalipay.com/payment/SPY-r3b','888001',0)`)
@@ -324,7 +325,8 @@ describe("R3 correction 1b: gateway terminal push", () => {
     expect(sent[0].text).toContain(code);
     expect(sent[0].text).toMatch(status === "dibatalkan" ? (locale === "id" ? /dibatalkan/i : /cancelled/i) : (locale === "id" ? /kedaluwarsa/i : /expired/i));
     expect(sent[0].text + JSON.stringify(sent[0].markup ?? {})).not.toMatch(/QRIS|qrenew|888001|sekalipay\.com|SPY-r3b/);
-    expect(buttons(sent[0]).map((b) => b.callback_data)).toEqual([`order:${code}`, "catalog:0"]);
+    expect(buttons(sent[0]).map((b) => b.callback_data)).toEqual([status === "dibatalkan" ? `order:${code}` : "reorder:1", "catalog:0"]);
+    if (status === "kadaluarsa") expect(sent[0].text).toContain("Fixture ×2");
     clearTg();
     expect((await sendQrisExpiryNotifications(2)).sent).toBe(0);
     expect(await probeCount()).toBe(0);
@@ -436,7 +438,7 @@ describe("R3 correction 2: dispatch-vs-retry send fence", () => {
     const { code } = await cryptoOrder("id");
     const { showProviderInvoiceStatus } = await import("@/lib/telegram/handlers/payment-status");
     await showProviderInvoiceStatus(buyer.id, 21, code, buyer, { locale: "en", savedOnly: true });
-    expect(allSends().at(-1)?.text).toContain("Menunggu pembayaran crypto");
+    expect(allSends().at(-1)?.text).toContain("Menunggu pembayaran");
   });
 
   it("charges every retry query to the supplied cron budget", async () => {

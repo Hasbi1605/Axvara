@@ -9,16 +9,19 @@ import { createD1Fixture } from "./helpers/d1-fixture";
 
 vi.mock("@/lib/telegram/api", () => ({
   sendMessage: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
-  sendPhoto: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+  sendPhoto: vi.fn(async () => ({ ok: true, result: { message_id: 1, photo: [{ file_id: "AgAC-cat-1" }] } })),
   safeEditOrSend: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
   editMessageText: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+  editMessageMedia: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+  editMessageCaption: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+  deleteMessage: vi.fn(async () => ({ ok: true })),
   answerCallbackQuery: vi.fn(async () => ({ ok: true })),
   withLoadingIndicator: vi.fn(async (_chat, _label, work) => work(async () => {})),
   sendChatAction: vi.fn(async () => ({ ok: true })),
 }));
 
-import { sendMessage } from "@/lib/telegram/api";
-import { handleShowCatalog, handleShowProduct, listTelegramProducts } from "@/lib/telegram/handlers/catalog";
+import { sendMessage, sendPhoto, editMessageCaption } from "@/lib/telegram/api";
+import { handleShowCatalog, handleShowCatalogEdit, handleShowCategoriesEdit, handleShowProducts, handleShowProduct, listTelegramProducts } from "@/lib/telegram/handlers/catalog";
 import { handleSearchResults } from "@/lib/telegram/handlers/discovery";
 import { getBestsellers } from "@/lib/telegram/handlers/shared";
 import { catalogFlatKeyboard } from "@/lib/telegram/keyboards";
@@ -74,11 +77,46 @@ describe("katalog Telegram = produk yang bisa dibeli saja", () => {
 
   it("jumlah di pesan + tombol sama dengan produk tersedia", async () => {
     await handleShowCatalog(42);
-    const params = vi.mocked(sendMessage).mock.calls[0][0];
-    expect(params.text).toContain("2 produk tersedia");
+    const params = vi.mocked(sendPhoto).mock.calls[0][0];
+    expect(params.photo).toContain("/banners/tg-catalog.jpg?v=");
+    expect(params.caption).toBe("🛍 <b>Katalog AXVARA</b> · 2 produk");
     const buttons = (params.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard.flat().map((b) => b.text);
     expect(buttons.some((t) => t.includes("Alpha Ready"))).toBe(true);
     expect(buttons.some((t) => t.includes("Bravo Habis"))).toBe(false);
+  });
+
+  it("paging & kategori mengedit caption+markup saat pesan adalah foto katalog, jatuh ke teks jika sendPhoto gagal", async () => {
+    await handleShowCatalogEdit(42, 77, 0, undefined, { isPhoto: true, isCatalogPhoto: true });
+    expect(vi.mocked(editMessageCaption)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(editMessageCaption).mock.calls[0][0]).toMatchObject({
+      chat_id: 42,
+      message_id: 77,
+      caption: "🛍 <b>Katalog AXVARA</b> · 2 produk",
+      parse_mode: "HTML",
+    });
+    expect(vi.mocked(sendPhoto)).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    await handleShowCategoriesEdit(42, 77, 0, undefined, { isPhoto: true, isCatalogPhoto: true });
+    expect(vi.mocked(editMessageCaption)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(editMessageCaption).mock.calls[0][0]?.caption).toBe("<b>Kategori produk</b>");
+
+    vi.clearAllMocks();
+    fx.sql.prepare("UPDATE products SET category_id=1 WHERE id=1").run();
+    await handleShowProducts(42, 77, 1, 0, undefined, { isPhoto: true, isCatalogPhoto: true });
+    expect(vi.mocked(editMessageCaption)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(editMessageCaption).mock.calls[0][0]?.caption).toContain("🛍 <b>Katalog AXVARA</b> · 1 produk\n<b>");
+
+    // Fallback to text if sendPhoto fails
+    vi.clearAllMocks();
+    vi.mocked(sendPhoto).mockResolvedValueOnce({ ok: false, error_code: 500, description: "photo failed" } as never);
+    await handleShowCatalog(42);
+    expect(vi.mocked(sendMessage)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(sendMessage).mock.calls[0][0]).toMatchObject({
+      chat_id: 42,
+      text: "🛍 <b>Katalog AXVARA</b> · 2 produk",
+      parse_mode: "HTML",
+    });
   });
 
   it("realtime: stok berubah di D1 langsung berlaku di katalog berikutnya", async () => {

@@ -140,7 +140,7 @@ describe("Telegram currency follows language", () => {
     fx.sql.prepare("UPDATE telegram_users SET locale='id', display_currency='USD' WHERE user_id=?").run(String(userA.id));
     resetCryptoMarketMemo();
     await handleShowCatalog(userA.id, userA);
-    const idButtons = (api.send.mock.calls.at(-1)![0].reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard.flat().map((b) => b.text).join(" | ");
+    const idButtons = (api.photo.mock.calls.at(-1)![0].reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard.flat().map((b) => b.text).join(" | ");
     expect(idButtons).toContain("Rp19.500");
     expect(idButtons).not.toMatch(/\$|USD/);
 
@@ -148,7 +148,7 @@ describe("Telegram currency follows language", () => {
     vi.clearAllMocks();
     fx.sql.prepare("UPDATE telegram_users SET locale='en', display_currency='IDR' WHERE user_id=?").run(String(userA.id));
     await handleShowCatalog(userA.id, userA);
-    const enButtons = (api.send.mock.calls.at(-1)![0].reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard.flat().map((b) => b.text).join(" | ");
+    const enButtons = (api.photo.mock.calls.at(-1)![0].reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard.flat().map((b) => b.text).join(" | ");
     expect(enButtons).toContain("$1.22");
     expect(enButtons).not.toMatch(/USD|Rp/);
   });

@@ -56,6 +56,14 @@ const TelegramUpdateSchema = z.object({
   }).optional(),
 }).passthrough();
 
+function isCatalogCallbackMessage(msg: Record<string, unknown> | undefined): boolean {
+  if (!msg) return false;
+  const photos = msg.photo;
+  if (!Array.isArray(photos) || photos.length === 0) return false;
+  const caption = String(msg.caption ?? "").trim();
+  return /^(?:🛍\s*)?(?:Katalog AXVARA|AXVARA Catalog|Kategori produk|Product categories)(?:\s|$|·)/i.test(caption);
+}
+
 function isProtectedCallbackMessage(msg: Record<string, unknown> | undefined): boolean {
   if (!msg) return false;
   const content = `${String(msg.caption ?? "")}\n${String(msg.text ?? "")}`;
@@ -290,6 +298,7 @@ export async function POST(request: NextRequest) {
 
       const sourceMeta = {
         isPhoto: Boolean(cq.message?.photo && cq.message.photo.length > 0),
+        isCatalogPhoto: isCatalogCallbackMessage(cq.message as Record<string, unknown> | undefined),
         isProtected: isProtectedCallbackMessage(cq.message as Record<string, unknown> | undefined),
       };
 

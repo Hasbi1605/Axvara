@@ -278,7 +278,7 @@ describe("TG R3 provider invoice delivery fence + text retry", () => {
     recover();
     const { retryTelegramInvoiceDelivery } = await import("@/lib/telegram/invoice-retry");
     await retryTelegramInvoiceDelivery(code);
-    expect(withAddress()[0].text).toContain("Awaiting crypto payment");
+    expect(withAddress()[0].text).toContain("Awaiting payment");
     expect(withAddress()[0].text).not.toContain("Menunggu");
     expect(orderRow(code).locale).toBe("en");
   });
@@ -353,22 +353,25 @@ describe("TG R3 gateway consent-gated delivery, reminders, notices", () => {
     expect(count("orders")).toBe(1); expect(stock()).toBe(100); // legacy seed tidak mereservasi stok
   });
 
-  it("reminders: crypto order gets generic saved-locale copy with a refresh button (no QRIS wording/amount/address); QRIS reminder unchanged", async () => {
+  it("reminders show saved-locale countdowns and totals, without disclosing crypto payment instructions", async () => {
     const { code } = await createWithSendFailure(null);
     fx.sql.prepare("UPDATE telegram_users SET locale='id' WHERE user_id=?").run(String(buyer.id));
     fx.sql.prepare("INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_user_id,telegram_chat_id,locale,expires_at) VALUES('AXV-20260101-QRISQRIS','b','','[{\"name\":\"X\",\"qty\":1}]',9000,'qris','pending','pending','telegram',?,?,'id',datetime('now','+10 minutes'))").run(String(buyer.id), String(buyer.id));
     fx.sql.prepare("INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,qris_url,expires_at) VALUES('AXV-20260101-QRISQRIS','dana','static','po1','m',9000,9017,'pending','https://example.test/q.png',?)").run(new Date(Date.now() + 600_000).toISOString());
+    fx.sql.prepare("UPDATE payment_transactions SET invoice_issued_at=datetime('now','-11 minutes'), expires_at=datetime('now','+4 minutes')").run();
     vi.stubEnv("TELEGRAM_BOT_ENABLED", "true"); vi.stubEnv("TELEGRAM_BOT_TOKEN", "t");
     clearTg(); send.mockResolvedValue({ ok: true } as never);
     const { sendPendingOrderReminders } = await import("@/lib/telegram/order-notifications");
     expect(await sendPendingOrderReminders(8)).toBe(2);
     const mine = allSends().find((m) => m.text.includes(code))!;
-    expect(mine.text).toContain("Awaiting payment");
-    expect(mine.text).not.toMatch(/QRIS|1\.25|1\.19|Rp|IDR/i);
+    expect(mine.text).toContain("4 minutes left");
+    expect(mine.text).toMatch(/Total : <code>\d+\.\d+ USD<\/code>/);
+    expect(mine.text).not.toMatch(/QRIS|USDT|Rp|IDR/i);
     expect(mine.text).not.toContain(PAY_ADDR);
     expect(mine.markup?.inline_keyboard?.flat().map((b) => b.callback_data)).toEqual([`refresh:${code}`]);
     const qris = allSends().find((m) => m.text.includes("AXV-20260101-QRISQRIS"))!;
-    expect(qris.text).toMatch(/QRIS/);
+    expect(qris.text).toContain("4 menit lagi");
+    expect(qris.text).toContain("Total : <code>Rp9.017</code>");
   });
 
   it("paid notification for a crypto order uses the saved locale and the existing guarded copy (no QRIS wording)", async () => {
@@ -394,12 +397,12 @@ describe("TG R3 gateway consent-gated delivery, reminders, notices", () => {
     const { sendQrisExpiryNotifications } = await import("@/lib/payments/qris-expiry-notifications");
     expect((await sendQrisExpiryNotifications(5)).sent).toBe(1);
     expect(allSends()).toHaveLength(1);
-    expect(allSends()[0].text).toContain("Invoice expired");
+    expect(allSends()[0].text).toContain("Payment expired");
     expect(allSends()[0].text + JSON.stringify(allSends()[0].markup)).not.toMatch(/QRIS|qrenew/i);
     clearTg();
     await click(`refresh:${code}`);
     const view = allSends().map((m) => m.text).join("\n");
-    expect(view).toContain("Invoice expired");
+    expect(view).toContain("Payment expired");
     expect(view).not.toContain(PAY_ADDR);
     expect(view).not.toMatch(/QRIS/i);
     clearTg();

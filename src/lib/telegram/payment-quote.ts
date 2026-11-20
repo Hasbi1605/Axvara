@@ -92,11 +92,11 @@ export function payq1CryptoMenuCallback(nonce: string): string {
 export function payq1CryptoBackCallback(nonce: string): string {
   return `pmb:${nonce}`;
 }
-export function parsePayq1CryptoCallback(data: string): { kind: "open" | "back"; nonce: string } | null {
-  const match = /^pm([cb]):([0-9a-f]{16})$/.exec(data);
-  if (!match) return null;
+export function parsePayq1CryptoCallback(data: string): { kind: "open" | "back"; nonce: string; page?: string } | null {
+  const match = /^(?:pmc:([0-9a-f]{16})(?::(others|[A-Z0-9]{1,8}))?|pmb:([0-9a-f]{16}))$/.exec(data);
+  if (!match || match[0] !== data) return null;
   if (new TextEncoder().encode(data).length > PAYQ1_CALLBACK_MAX_BYTES) return null;
-  return { kind: match[1] === "c" ? "open" : "back", nonce: match[2] };
+  return match[3] ? { kind: "back", nonce: match[3] } : { kind: "open", nonce: match[1], ...(match[2] && { page: match[2] }) };
 }
 
 export function parsePayq1GoCallback(data: string): { nonce: string } | null {

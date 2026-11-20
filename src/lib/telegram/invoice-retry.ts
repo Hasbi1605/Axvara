@@ -34,6 +34,7 @@ import { isFutureIso } from "@/lib/expiry";
 import { execRun } from "@/lib/db";
 import { sendMessage, sendPhoto } from "@/lib/telegram/api";
 import { invoiceMessage } from "@/lib/telegram/messages";
+import { invoiceItemSummary } from "@/lib/telegram/messages/format";
 import { qrisInvoiceKeyboard } from "@/lib/telegram/keyboards";
 
 type InvoiceOrderRow = {
@@ -70,17 +71,6 @@ async function readInvoiceOrder(orderCode: string, database: DatabaseAccess = cr
     buyer_access_version: row.buyer_access_version,
     buyer_access_format: row.buyer_access_format,
   };
-}
-
-function productLabel(itemsRaw: string): string {
-  try {
-    const items = JSON.parse(itemsRaw) as { name?: string; qty?: number }[];
-    if (!Array.isArray(items) || !items.length) return "Pesanan";
-    if (items.length === 1) return String(items[0]?.name ?? "Pesanan");
-    return `Keranjang (${items.length} item): ${items.map((i) => `${String(i.name ?? "Item")} ×${Number(i.qty ?? 1)}`).join(", ")}`;
-  } catch {
-    return "Pesanan";
-  }
 }
 
 /**
@@ -269,7 +259,7 @@ export async function retryTelegramInvoiceDelivery(orderCode: string, database: 
     photo: String(ledger.qris_url ?? ""),
     caption: invoiceMessage({
       orderCode: order.code,
-      productName: productLabel(order.items),
+      productName: invoiceItemSummary(order.items, order.locale === "en"),
       payableAmount,
       expiresAt: String(ledger.expires_at ?? ""),
       paymentMethod: "qris",

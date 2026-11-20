@@ -1,5 +1,10 @@
 # ARCHITECTURE.md — AXVARA
 
+## Telegram TG-POLISH-B — 20 November 2026 (lokal)
+
+- `pmc:<nonce>[:<simbol>|:others]` membaca payq1 milik pembeli yang masih `quoted` dan belum kedaluwarsa; `pmb:<nonce>` kembali ke pemilih metode. Mengetuk jaringan tetap memakai `pm:<nonce>:<indeks asli>`, tanpa mutasi saat navigasi.
+- `cron/lite?job=notify_b` (tiap menit) dan `cron/operations` memakai predikat due yang sama di SELECT dan UPDATE CAS (`telegram_reminder_count`, ID/deadline transaksi pending). Gate memakai umur invoice, bukan umur order; detail cadence di `docs/agent-rules/payments.md` (menggantikan snapshot interval 60 menit di bawah). Tidak ada cron baru, migrasi, atau perubahan expiry/fulfillment.
+
 ## Wave 2 (B1/B2) supplier multi-link & cron fase paralel — 19 November 2026 (lokal, belum deploy)
 
 - **B1 supplier order (`src/lib/{tunvn,aivault,storebat,mirai}/orders.ts`):** `create*OrderLinks` menyisipkan semua baris eligible satu order dalam satu `INSERT OR IGNORE … SELECT … JOIN json_each(?)` (TUNVN/AIVault kini selaras StoreBat/Mirai; tautan `fulfillment_items.tunvn_link_id` di-backfill sekali per order dan hanya untuk baris tanpa `inventory_id`/WR/SK). `process*Orders` memperbaiki hingga `*_ORPHANS_PER_RUN = 8` order yatim lalu memproses hingga `*_ORDERS_PER_RUN = 8` link per panggilan (`options.limit` hanya menurunkan), berhenti saat `deadlineMs` habis, `db.canSpend` gagal, atau supplier membalas HTTP `429` (`processLink` mengembalikan `{claimed, rateLimited}`); `reconcileId` TUNVN tetap tepat 1 link. Deadline dicek sebelum poll dan tepat sebelum fence kirim: link pra-kirim kembali `pending` (`dispatch_deferred`), link terkirim tetap `processing` (`poll_deferred`/`lookup_deferred`); tidak ada pembelian ganda karena fence `request_sent_at`/`attempt_count` tidak berubah. `cron/lite` meneruskan `deadlineMs = deadline − 5 dtk`; `fulfillPaidOrder` (Queue) meneruskan `deadlineMs` ke keempat supplier. Perbaikan: `ensureFulfillmentItems(order, db)` tanpa plafon `1`, sehingga item index > 0 pada order multi-baris tidak lagi tersumbat `fulfillment_missing`.

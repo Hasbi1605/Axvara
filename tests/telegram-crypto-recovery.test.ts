@@ -323,7 +323,7 @@ describe("TG R2-A crypto creation + saved recovery (local only)", () => {
     vi.stubGlobal("fetch", nowpaymentsFetchImpl({ status: "expired" }));
     await click(`refresh:${code}`);
     const expiredText = lastText();
-    expect(expiredText).toMatch(/Invoice expired|Invoice kedaluwarsa/i);
+    expect(expiredText).toMatch(/Payment expired|Pembayaran kedaluwarsa/i);
     expect(expiredText).not.toContain(PAY_ADDR.slice(0, 12));
     expect(fx.sql.prepare("SELECT payment_status FROM orders WHERE code=?").get(code)?.payment_status).not.toBe("paid");
     // Manual review conceals details too.
@@ -423,7 +423,7 @@ describe("TG R2-A crypto creation + saved recovery (local only)", () => {
     await click(`refresh:${code}`);
     expect(unknownFetch.mock.calls.some(([u]) => String(u).includes("/payment/NP-unknown-zzz"))).toBe(true);
     expect(lastText()).toContain(PAY_ADDR.slice(0, 12));
-    expect(lastText()).toMatch(/Awaiting crypto payment|Menunggu pembayaran crypto/);
+    expect(lastText()).toMatch(/Awaiting payment|Menunggu pembayaran/);
     expect(fx.sql.prepare("SELECT payment_status FROM orders WHERE code=?").get(code)?.payment_status).not.toBe("paid");
     expect(fx.sql.prepare("SELECT COUNT(*) n FROM fulfillment_jobs").get()?.n).toBe(0);
   });

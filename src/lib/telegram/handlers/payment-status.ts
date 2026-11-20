@@ -10,21 +10,17 @@ import { queryFirst } from "@/lib/db";
 import type { DatabaseAccess } from "@/lib/db-access";
 import { isFutureIso } from "@/lib/expiry";
 import { sendMessage, safeEditOrSend as rawSafeEditOrSend } from "@/lib/telegram/api";
-import { minimalMenuKeyboard, orderTerminalKeyboard, paidOrderStatusKeyboard } from "@/lib/telegram/keyboards";
+import { minimalMenuKeyboard, orderTerminalKeyboard, paidOrderStatusKeyboard, paymentExpiredKeyboard } from "@/lib/telegram/keyboards";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
-import { escapeHtml, truncate } from "@/lib/telegram/messages/format";
+import { escapeHtml, invoiceItemSummary, truncate } from "@/lib/telegram/messages/format";
+import { pendingInvoiceMessage } from "@/lib/telegram/messages/purchase";
+import { orderExpiredMessage } from "@/lib/telegram/messages/status";
 import { formatIdr } from "@/lib/i18n/format";
 import type { Locale } from "@/lib/i18n/locale";
 import { displayCryptoAmount } from "@/lib/payments/crypto-display";
 
 function copyableAddr(address: string): string {
   return `<code>${escapeHtml(truncate(address, 220))}</code>`;
-}
-
-function expiredView(code: string, locale: Locale): string {
-  return locale === "en"
-    ? `<b>⌛ Invoice expired</b>\n<code>${escapeHtml(code)}</code>\nReorder via /katalog.`
-    : `<b>⌛ Invoice kedaluwarsa</b>\n<code>${escapeHtml(code)}</code>\nOrder ulang di /katalog.`;
 }
 
 function failedView(code: string, locale: Locale): string {
@@ -86,9 +82,9 @@ async function renderProviderInvoiceStatus(
   };
   const locale: Locale = opts?.locale ?? (await tgCtxFor(from.id).catch(() => ({ locale: "id" as Locale }))).locale;
   const order = await (opts?.database?.queryFirst ?? queryFirst)(
-    `SELECT o.code, o.locale, o.status, o.payment_status, o.subtotal,
+    `SELECT o.code, o.locale, o.status, o.payment_status, o.subtotal, o.items,
             pt.provider, pt.status AS transaction_status, pt.pay_currency, pt.pay_network,
-            pt.pay_amount_text, pt.pay_address, pt.price_amount_text,
+            pt.pay_amount_text, pt.pay_address, pt.price_amount_text, pt.price_currency,
             pt.expires_at, pt.provider_status_text, pt.direct_url, pt.gateway_virtual_account,
             pt.gateway_checkout_url, pt.gateway_label, pt.gateway_estimated_fee, pt.gateway_fee,
             pt.payable_amount, pt.gateway_fee_consent_required, pt.gateway_fee_consented_at,
@@ -104,6 +100,11 @@ async function renderProviderInvoiceStatus(
   const savedLocale: Locale = order.locale === "en" ? "en" : order.locale === "id" ? "id" : locale;
   const code = String(order.code);
   const provider = String(order.provider ?? "");
+  const en = savedLocale === "en";
+  const productName = invoiceItemSummary(order.items, en);
+  const expired = () => safeEditOrSend({ chat_id: chatId, message_id: messageId,
+    text: orderExpiredMessage(code, { locale: savedLocale, productName }), parse_mode: "HTML",
+    reply_markup: paymentExpiredKeyboard(order.items, { locale: savedLocale }) });
   if (order.payment_status === "paid" || order.status === "lunas") {
     const { orderPaidMessage } = await import("@/lib/telegram/messages/status");
     await safeEditOrSend({
@@ -121,7 +122,8 @@ async function renderProviderInvoiceStatus(
   const liveOrder = order.status === "pending" && ["pending", "unpaid"].includes(String(order.payment_status));
   const reviewSticky = /manual_review/i.test(String(order.last_error ?? ""));
   if (!liveOrder || reviewSticky) {
-    await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewSticky ? reviewView(code, savedLocale) : expiredView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
+    if (reviewSticky) await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: reviewView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
+    else await expired();
     return;
   }
 
@@ -145,7 +147,7 @@ async function renderProviderInvoiceStatus(
       return;
     }
     if (view.state === "expired") {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: expiredView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
+      await expired();
       return;
     }
     if (view.state === "failed") {
@@ -161,22 +163,21 @@ async function renderProviderInvoiceStatus(
     const networkLabel = escapeHtml(view.network_label || String(order.pay_network ?? "").toUpperCase());
     // Tampilan dibulatkan ke atas; pay_amount_text tersimpan/provider tidak berubah.
     const payAmount = escapeHtml(displayCryptoAmount(String(order.pay_amount_text ?? ""), String(view.amount_text ?? "") || null));
-    const totalUsd = escapeHtml(String(view.amount_text ?? ""));
-    const feeLine = view.surcharge_amount_text && view.surcharge_bps !== null
-      ? (savedLocale === "en"
-        ? `Order total: US$${totalUsd} (incl. crypto service fee US$${escapeHtml(view.surcharge_amount_text)})`
-        : `Total pesanan: US$${totalUsd} (termasuk biaya layanan crypto US$${escapeHtml(view.surcharge_amount_text)})`)
-      : (savedLocale === "en" ? `Order total: US$${totalUsd}` : `Total pesanan: US$${totalUsd}`);
-    const amountLine = savedLocale === "en"
-      ? `Send exactly <b>${payAmount} ${symbol}</b> on the <b>${networkLabel}</b> network only.\n${feeLine}`
-      : `Kirim tepat <b>${payAmount} ${symbol}</b> lewat jaringan <b>${networkLabel}</b> saja.\n${feeLine}`;
+    const amountLine = en
+      ? `Send exactly <b>${payAmount} ${symbol}</b> on the <b>${networkLabel}</b> network only.`
+      : `Kirim tepat <b>${payAmount} ${symbol}</b> lewat jaringan <b>${networkLabel}</b> saja.`;
     const address = String(order.pay_address ?? "");
     const warning = savedLocale === "en"
       ? "Wrong coin/network may lose funds. Gas paid by sender."
       : "Koin/jaringan salah berisiko dana hilang. Gas ditanggung pengirim.";
-    const text = savedLocale === "en"
-      ? `<b>⏳ Awaiting crypto payment</b>\n\n<code>${escapeHtml(code)}</code>\n\n${amountLine}\nTo: ${address ? copyableAddr(address) : "(preparing — refresh in a moment)"}\n\n${warning} Pay before: ${escapeHtml(String(order.expires_at ?? ""))}`
-      : `<b>⏳ Menunggu pembayaran crypto</b>\n\n<code>${escapeHtml(code)}</code>\n\n${amountLine}\nKe: ${address ? copyableAddr(address) : "(disiapkan — refresh sebentar lagi)"}\n\n${warning} Batas bayar: ${escapeHtml(String(order.expires_at ?? ""))}`;
+    const to = address ? copyableAddr(address) : en ? "(preparing — refresh in a moment)" : "(disiapkan — refresh sebentar lagi)";
+    const currency = String(order.price_currency ?? "").toUpperCase();
+    const fee = view.surcharge_amount_text && view.surcharge_bps !== null
+      ? (en ? ` (incl. crypto service fee US$${view.surcharge_amount_text})` : ` (termasuk biaya layanan crypto US$${view.surcharge_amount_text})`) : "";
+    const total = (currency === "USD" ? `US$${view.amount_text}` : `${view.amount_text} ${currency}`) + fee;
+    const text = pendingInvoiceMessage({ orderCode: code, productName, total,
+      expiresAt: String(order.expires_at ?? ""),
+      bullets: [`${amountLine}\n${en ? "To" : "Ke"}: ${to}`, warning] }, { locale: savedLocale });
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
       text,
@@ -203,7 +204,7 @@ async function renderProviderInvoiceStatus(
       return;
     }
     if (view.state === "expired") {
-      await safeEditOrSend({ chat_id: chatId, message_id: messageId, text: expiredView(code, savedLocale), parse_mode: "HTML", reply_markup: orderTerminalKeyboard({ locale: savedLocale }) });
+      await expired();
       return;
     }
     if (view.state === "manual_review" || view.state === "initializing") {
@@ -235,9 +236,9 @@ async function renderProviderInvoiceStatus(
       return;
     }
     const label = escapeHtml(truncate(String(view.label ?? "Gateway"), 80));
-    const text = savedLocale === "en"
-      ? `<b>⏳ Awaiting gateway payment</b>\n\n<code>${escapeHtml(code)}</code>\n\n${label}\n<b>Total: ${formatIdr(Number(view.total ?? 0), savedLocale)}</b>\n\nPay before: ${escapeHtml(String(view.expires_at ?? ""))}`
-      : `<b>⏳ Menunggu pembayaran gateway</b>\n\n<code>${escapeHtml(code)}</code>\n\n${label}\n<b>Total: ${formatIdr(Number(view.total ?? 0), savedLocale)}</b>\n\nBatas bayar: ${escapeHtml(String(view.expires_at ?? ""))}`;
+    const text = pendingInvoiceMessage({ orderCode: code, productName,
+      total: formatIdr(Number(view.total ?? 0), savedLocale), expiresAt: String(view.expires_at ?? ""),
+      bullets: [label] }, { locale: savedLocale });
     const buttons: { text: string; url?: string; callback_data?: string }[] = [];
     if (view.payment_link) buttons.push({ text: savedLocale === "en" ? "Open payment page" : "Buka halaman bayar", url: String(view.payment_link) });
     if (view.virtual_account) buttons.push({ text: `VA ${escapeHtml(String(view.virtual_account)).slice(0, 24)}`, callback_data: `noop:${code}` });

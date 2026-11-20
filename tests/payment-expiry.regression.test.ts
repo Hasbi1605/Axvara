@@ -69,7 +69,6 @@ describe("expiry paths use the canonical helper and guarded transitions", () => 
   it("webhook and admin retry share the canonical future-invoice check", () => {
     expect(read("src/app/api/webhook/dana/route.ts")).toContain("isFutureIso");
     expect(read("src/app/api/admin/payments/events/route.ts")).toContain("isFutureIso");
-    expect(read("src/lib/telegram/order-notifications.ts")).toContain("isFutureIso");
   });
 
   it("paid and expiry guards are mutually exclusive so concurrent runs settle deterministically", () => {

@@ -81,8 +81,7 @@ describe("Telegram WIB greeting", () => {
 
   it("flat catalog message shows count without repeated greeting/date/time", () => {
     const msg = catalogFlatMessage(5);
-    expect(msg).toContain("Katalog AXVARA");
-    expect(msg).toContain("5 produk tersedia");
+    expect(msg).toBe("🛍 <b>Katalog AXVARA</b> · 5 produk");
     expect(msg).not.toMatch(/Selamat (Pagi|Siang|Sore|Malam)/);
     expect(msg).not.toContain("WIB");
   });
@@ -284,7 +283,7 @@ describe("Telegram keyboards", () => {
     expect(datas.some(d => d.startsWith("pmentry:"))).toBe(false);
     expect(datas.some(d => d.startsWith("cadd:"))).toBe(false);
     expect(texts).toContain("✍️ Jumlah lain");
-    expect(texts).toContain("◀️ Kembali ke Produk");
+    expect(texts).toContain("◀️ Kembali");
     expect(texts).not.toContain("➖");
     expect(texts).not.toContain("➕");
   });
@@ -363,8 +362,8 @@ describe("Telegram buyer messages", () => {
     expect(msg).toContain("AXV-20260903-AB12CD34");
     expect(msg).toContain("89.123");
     expect(msg).toContain("ChatGPT Plus");
-    expect(msg).toContain("Bayar sebelum:");
-    expect(msg).not.toContain("━━━");
+    expect(msg).toContain("Batas  : 19:00 WIB");
+    expect(msg).toContain("━━━━━━━━━━━━━━━━");
     expect(msg).toContain("Lewat batas? Jangan bayar QR lama; hubungi admin untuk pemeriksaan manual.");
   });
 
@@ -463,8 +462,11 @@ describe("Telegram buyer messages", () => {
       bulkEnabled: true,
       bulkTiers: [{ min_qty: 5, unit_price: 4500 }],
     });
-    expect(msg).toContain("<b>Canva Pro · Pro Head 1 Bulan</b>");
-    expect(msg).toMatch(/💰 Rp\s?5\.000\/pcs · 📦 Stok ∞/);
+    expect(msg).toContain("🛒 <b>Pilih jumlah</b>");
+    expect(msg).toContain("Produk : <b>Canva Pro</b>");
+    expect(msg).toContain("Varian : Pro Head 1 Bulan");
+    expect(msg).toMatch(/Harga  : Rp\s?5\.000 \/ pcs/);
+    expect(msg).toContain("Stok   : ∞");
     expect(msg).toContain("<blockquote>");
     expect(msg).not.toContain("Minimal pembelian");
     expect(msg).not.toContain("Maks ");
@@ -942,30 +944,19 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(schema).toContain("telegram_reminder_count INTEGER NOT NULL DEFAULT 0");
   });
 
-  it("reminder is capped at 2x with 60-minute interval and active-invoice guard", () => {
+  it("both cron entry points use the shared reminder worker", () => {
     const lib = read("src/lib/telegram/order-notifications.ts");
     expect(lib).toContain("TELEGRAM_REMINDER_MAX = 2");
-    expect(lib).toContain("TELEGRAM_REMINDER_INTERVAL_MINUTES = 60");
-    expect(lib).toContain("telegram_reminder_count < ?");
-    // Canonical JS expiry (shared helper with both crons): raw SQL string
-    // comparison can never match ISO rows, so the active-invoice guard must
-    // go through isFutureIso.
-    expect(lib).toContain("isFutureIso");
-    expect(lib).toContain("pt.status='pending'");
-    expect(lib).toContain("payment_status IN ('unpaid','pending')");
+    expect(read("src/app/api/cron/lite/route.ts")).toContain("sendPendingOrderReminders(50, db)");
     const cron = read("src/app/api/cron/operations/route.ts");
     expect(cron).toContain("sendPendingOrderReminders");
     expect(cron).toContain("telegram_pending_reminders_sent");
   });
 
-  it("reminder copy escalates on second attempt and reassures paid buyers", () => {
-    const first = orderReminderMessage({ orderCode: "AXV-1", productName: "Canva", payableAmount: 5123, attempt: 1 });
-    expect(first).toContain("Menunggu pembayaran");
-    expect(first).toContain("AXV-1");
-    expect(first).toContain("5.123");
-    const second = orderReminderMessage({ orderCode: "AXV-1", productName: "Canva", payableAmount: 5123, attempt: 2 });
-    expect(second).toContain("Pengingat pembayaran terakhir");
-    expect(second).toContain("Abaikan jika sudah bayar");
+  it("reminder shows the countdown, exact amount, and WIB deadline", () => {
+    const expiresMs = Date.parse("2026-11-20T07:05:00Z");
+    expect(orderReminderMessage({ orderCode: "AXV-1", payableAmount: 5123, expiresMs, now: expiresMs - 300_000 })).toBe(
+      "⏰ <b>5 menit lagi</b>\nKode  : <code>AXV-1</code>\nTotal : <code>Rp5.123</code>\nSelesaikan pembayaran sebelum 14:05 WIB.");
   });
 
   it("cart callback data stays within 64 bytes", () => {

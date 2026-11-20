@@ -13,11 +13,12 @@ vi.mock("@/lib/telegram/api", () => ({
   answerCallbackQuery: vi.fn(async () => ({ ok: true })),
   safeEditOrSend: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
   editMessageText: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
+  editMessageCaption: vi.fn(async () => ({ ok: true, result: { message_id: 1 } })),
   showLoadingBar: vi.fn(async () => {}),
   sendChatAction: vi.fn(async () => ({ ok: true })),
 }));
 
-import { sendMessage } from "@/lib/telegram/api";
+import { sendMessage, sendPhoto } from "@/lib/telegram/api";
 import { handleCommand } from "@/lib/telegram/handlers/command";
 import { buttonPrice, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_WARRANTY, MENU_LABEL_HELP } from "@/lib/telegram/keyboards";
 import { invalidWhatsAppMessage } from "@/lib/telegram/messages";
@@ -57,7 +58,7 @@ describe("T-M4: pending wa_after_paid tidak menelan tombol menu", () => {
   it.each([MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_WARRANTY, MENU_LABEL_HELP])("tombol menu %s dijalankan, bukan dibalas 'Nomor WA tidak valid'", async (label) => {
     await handleCommand(label, 4242, "private", from);
     expect(repliedInvalidWa()).toBe(false);
-    expect(vi.mocked(sendMessage)).toHaveBeenCalled();
+    expect(vi.mocked(sendMessage).mock.calls.length + vi.mocked(sendPhoto).mock.calls.length).toBeGreaterThan(0);
     // Handler menu membersihkan state lama (Cari lalu memasang `search:`).
     expect(pending()).not.toBe(`wa_after_paid:${CODE}`);
   });

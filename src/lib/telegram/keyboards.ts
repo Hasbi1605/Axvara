@@ -12,6 +12,7 @@ import type { FxSnapshot } from "@/lib/payments/fx";
 import { tgDisplayPrice } from "./render-prefs";
 import { formatIdr } from "@/lib/i18n/format";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
+import { invoiceItems } from "./messages/format";
 import { isQrisOfferMethod, isUsdtOfferMethod, pickRepresentativeCryptoMethod } from "./messages/purchase";
 
 export type OfferMethodView = {
@@ -608,7 +609,7 @@ export function qtyKeyboard(params: {
     }]);
   }
   rows.push([
-    { text: en ? "◀️ Back to Product" : "◀️ Kembali ke Produk", callback_data: cb.product(productId), style: "primary" },
+    { text: en ? "◀️ Back" : "◀️ Kembali", callback_data: cb.product(productId), style: "primary" },
     { text: "🏠 Menu", callback_data: cb.home(), style: "primary" },
   ]);
   return { inline_keyboard: rows };
@@ -915,10 +916,23 @@ function refundAdminButton(siteUrl: string, code: string): InlineKeyboardButton[
 }
 
 /** Hanya ditampilkan bersama pesan QR pertama yang sudah kedaluwarsa. */
-export function qrisExpiredKeyboard(orderCode: string, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+export function paymentExpiredKeyboard(items: unknown, ctx?: TgLocaleCtx): InlineKeyboardMarkup {
+  const en = ctx?.locale === "en";
+  const lines = invoiceItems(items);
+  const productId = lines.length === 1 ? Number(lines[0].product_id) : 0;
+  return { inline_keyboard: [
+    [
+      ...(Number.isSafeInteger(productId) && productId > 0
+        ? [{ text: en ? "🔁 Buy Again" : "🔁 Pesan Lagi", callback_data: cb.reorder(productId) }] : []),
+      { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+    ],
+  ] };
+}
+
+export function qrisExpiredKeyboard(orderCode: string, ctx?: TgLocaleCtx, items?: unknown): InlineKeyboardMarkup {
   return { inline_keyboard: [
     [{ text: ctx?.locale === "en" ? "🔄 New QRIS" : "🔄 QRIS Baru", callback_data: cb.qrisRenew(orderCode) }],
-    ...qrisInvoiceKeyboard(orderCode, ctx).inline_keyboard,
+    ...paymentExpiredKeyboard(items, ctx).inline_keyboard,
   ] };
 }
 
@@ -936,14 +950,22 @@ export function otherMethodsEntryKeyboard(ctx?: TgLocaleCtx & { source?: Payq1Of
   return { inline_keyboard: [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: callbackData }]] };
 }
 
-/** R1 frozen offer keyboard: ordered by locale (ID: QRIS fastest then Crypto;
- * EN: Crypto USDT fastest then QRIS Indonesia only). Preserves exact frozen
- * pm:<nonce>:<originalIndex> callbacks and pmc:<nonce> coin-menu entry. */
+function formatCryptoButtonAmount(amount: string, locale: Locale): string {
+  if (locale !== "en" && /^\d+\.\d+$/.test(amount)) {
+    return amount.replace(".", ",");
+  }
+  return amount;
+}
+
+/** R1 frozen offer keyboard: ordered by locale (ID: QRIS then Crypto;
+ * EN: Crypto then QRIS). Preserves exact frozen pm:<nonce>:<originalIndex>
+ * callbacks and pmc:<nonce> coin-menu entry. */
 export function paymentMethodOfferKeyboard(
   state: { nonce: string; methods: OfferMethodView[]; source?: Payq1OfferSource; idrSubtotal?: number },
   ctx?: TgLocaleCtx,
 ): InlineKeyboardMarkup {
-  const en = ctx?.locale === "en";
+  const locale: Locale = ctx?.locale ?? "id";
+  const en = locale === "en";
   const rpTotal = state.idrSubtotal != null ? buttonPrice(state.idrSubtotal) : null;
   const qrisRows: InlineKeyboardButton[][] = [];
   const gatewayRows: InlineKeyboardButton[][] = [];
@@ -952,14 +974,12 @@ export function paymentMethodOfferKeyboard(
     if (method.kind === "crypto") return;
     const data = `pm:${state.nonce}:${index}`;
     if (isQrisOfferMethod(method)) {
-      const label = en
-        ? (rpTotal ? `QRIS (Indonesia only) · ${rpTotal}` : "QRIS (Indonesia only)")
-        : (rpTotal ? `QRIS · ${rpTotal} · Paling cepat` : "QRIS · Paling cepat");
+      const label = rpTotal ? `📱 QRIS · ${rpTotal}` : "📱 QRIS";
       qrisRows.push([{ text: label, callback_data: data }]);
       return;
     }
     if (method.kind === "gateway" && method.gateway) {
-      const label = `${method.label} · +${formatIdr(method.gateway.estimated_fee, ctx?.locale ?? "id")} · ${formatIdr(method.gateway.estimated_total, ctx?.locale ?? "id")}`;
+      const label = `${method.label} · +${formatIdr(method.gateway.estimated_fee, locale)} · ${formatIdr(method.gateway.estimated_total, locale)}`;
       gatewayRows.push([{ text: label.slice(0, 90), callback_data: data }]);
       return;
     }
@@ -969,11 +989,11 @@ export function paymentMethodOfferKeyboard(
   const cryptoRows: InlineKeyboardButton[][] = [];
   const crypto = pickRepresentativeCryptoMethod(state.methods.slice(0, 96));
   if (crypto) {
-    const amount = String(crypto.amount_text ?? "").trim();
+    const amount = formatCryptoButtonAmount(String(crypto.amount_text ?? "").trim(), locale);
     const usdt = isUsdtOfferMethod(crypto);
     const label = usdt
-      ? (en ? `Crypto (USDT) · ${amount} USDT · Fastest` : `Crypto (USDT) · ${amount} USDT`)
-      : (en ? `Crypto · $${amount} · Fastest` : `Crypto · $${amount}`);
+      ? (amount ? `🪙 Crypto · ${amount} USDT` : "🪙 Crypto · USDT")
+      : (amount ? `🪙 Crypto · $${amount}` : "🪙 Crypto");
     cryptoRows.push([{ text: label.slice(0, 90), callback_data: `pmc:${state.nonce}` }]);
   }
 
@@ -998,28 +1018,50 @@ export function paymentMethodOfferKeyboard(
   return { inline_keyboard: rows };
 }
 
-/**
- * Sub-menu koin crypto Telegram: Populer dulu, lalu Stablecoin, 2 tombol per baris, label `BTC` / `USDT · BSC`,
- * plus Kembali. Hanya koin TERSEDIA (frozen payq1 tidak pernah memuat yang nonaktif). Tap = `pm:<nonce>:<index>`
- * persis seperti memilih metode biasa (index ke array beku), jadi freeze/consent/claim tidak berubah.
- */
+// Standard emoji only: custom coin-logo emoji require Telegram Premium support.
+const CRYPTO_COIN_EMOJI = new Map([
+  ["USDT", "💵"], ["USDC", "🔵"], ["BTC", "🟠"], ["ETH", "🔷"],
+  ["BNB", "🟡"], ["TRX", "🔴"], ["TON", "💎"], ["LTC", "⚪"],
+]);
+
+/** Read-only menus; leaf buttons retain the original frozen array index. */
 export function cryptoCoinKeyboard(
   state: { nonce: string; methods: OfferMethodView[] },
   ctx?: TgLocaleCtx,
-): InlineKeyboardMarkup {
+  page?: string,
+): InlineKeyboardMarkup | null {
   const coins = state.methods.slice(0, 96).flatMap((method, index) => {
     const asset = method.kind === "crypto" ? getCryptoAsset(method.pay_currency) : null;
     return asset ? [{ asset, index }] : [];
-  });
-  const button = ({ asset, index }: (typeof coins)[number]): InlineKeyboardButton => ({
-    text: (asset.group === "stable" ? `${asset.symbol} · ${asset.network.toUpperCase()}` : asset.symbol).slice(0, 40),
-    callback_data: `pm:${state.nonce}:${index}`,
-  });
+  }).sort((a, b) => a.asset.order - b.asset.order);
+  if (!coins.length) return null;
+  const symbols = [...new Set(coins.map(({ asset }) => asset.symbol))];
+  const others = symbols.filter(symbol => !CRYPTO_COIN_EMOJI.has(symbol));
+  const en = ctx?.locale === "en";
+  const open = (target?: string) => cb.payCryptoMenu(state.nonce) + (target ? `:${target}` : "");
+  const select = (index: number) => `pm:${state.nonce}:${index}`;
+  const forSymbol = (symbol: string) => coins.filter(({ asset }) => asset.symbol === symbol);
   const rows: InlineKeyboardButton[][] = [];
-  for (const group of ["popular", "stable"] as const) {
-    const buttons = coins.filter((coin) => coin.asset.group === group).sort((a, b) => a.asset.order - b.asset.order).map(button);
-    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  let back = cb.payCryptoBack(state.nonce);
+  if (!page || page === "others") {
+    if (page && !others.length) return null;
+    const list = page ? others : [...CRYPTO_COIN_EMOJI.keys()].filter(symbol => symbols.includes(symbol));
+    for (const symbol of list) {
+      const options = forSymbol(symbol);
+      const emoji = CRYPTO_COIN_EMOJI.get(symbol);
+      rows.push([{ text: emoji ? `${emoji} ${symbol}` : symbol,
+        callback_data: options.length === 1 ? select(options[0].index) : open(symbol) }]);
+    }
+    if (page) back = open();
+    else if (others.length) rows.push([{ text: en ? "➕ Others" : "➕ Lainnya", callback_data: open("others") }]);
+  } else {
+    const options = forSymbol(page);
+    if (options.length < 2) return null;
+    for (const { asset, index } of options) {
+      rows.push([{ text: `${asset.symbol} · ${asset.network.toUpperCase()}`, callback_data: select(index) }]);
+    }
+    back = open(CRYPTO_COIN_EMOJI.has(page) ? undefined : "others");
   }
-  rows.push([{ text: ctx?.locale === "en" ? "⬅ Back" : "⬅ Kembali", callback_data: `pmb:${state.nonce}`, style: "primary" }]);
+  rows.push([{ text: en ? "◀️ Back" : "◀️ Kembali", callback_data: back, style: "primary" }]);
   return { inline_keyboard: rows };
 }

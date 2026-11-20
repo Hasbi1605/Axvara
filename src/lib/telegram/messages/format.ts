@@ -71,6 +71,38 @@ export const fulfillmentLabels: Record<string, string> = {
 // WIB TIME (ported from WhatsApp for interactive copy)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+export function invoiceDeadline(expiresMs: number | null, en: boolean, now = Date.now()) {
+  if (expiresMs === null) return { clock: "—", remaining: "—" };
+  const clock = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(expiresMs) + " WIB";
+  const minutes = Math.max(0, Math.ceil((expiresMs - now) / 60_000));
+  return { clock, remaining: `${minutes} ${en ? (minutes === 1 ? "minute" : "minutes") : "menit"}` };
+}
+
+export function invoiceItemName(product: string, variant: string, qty: number): string {
+  const norm = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
+  return `${product}${variant && norm(product) !== norm(variant) ? ` — ${variant}` : ""} ×${qty}`;
+}
+
+export function invoiceItems(raw: unknown): { name?: unknown; qty?: unknown; product_id?: unknown }[] {
+  try {
+    const items = JSON.parse(String(raw ?? "[]"));
+    return Array.isArray(items) ? items.filter(item => item && typeof item === "object") : [];
+  } catch { return []; }
+}
+
+export function invoiceItemSummary(raw: unknown, en = false): string {
+  const fallback = en ? "Order" : "Pesanan";
+  return invoiceItems(raw).slice(0, 20).map(item => {
+    const qty = Math.max(1, Number(item.qty) || 1);
+    const name = String(item.name || fallback).replace(/\s+/g, " ").trim();
+    // Historical snapshots store product and variant as a single label.
+    const [product, ...rest] = name.split(" — ");
+    return invoiceItemName(product, rest.join(" — "), qty);
+  }).join("\n") || fallback;
+}
+
 export function formatWIBTime(): { greeting: string; tanggal: string; jam: string } {
   const d = new Date();
   const wibOffset = 7 * 60; // WIB is UTC+7

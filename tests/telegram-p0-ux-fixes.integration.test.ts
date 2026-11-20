@@ -118,7 +118,7 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
 
     await click(expectedCb);
     const offerMsg = lastMsg();
-    expect(String(offerMsg.text)).toContain("Pilih metode pembayaran");
+    expect(String(offerMsg.text)).toContain("Pilih pembayaran");
     expect(callbacksOf(offerMsg)).toContain("q:1:1:3");
     expect(callbacksOf(offerMsg)).toContain("home");
 
@@ -157,7 +157,7 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
     resetLog();
     await click("pmentry:1:1:2:deadbeef");
     expect(String(lastMsg().text)).toContain("Canva Pro");
-    expect(String(lastMsg().text)).not.toContain("Pilih metode pembayaran");
+    expect(String(lastMsg().text)).not.toContain("Pilih pembayaran");
 
     // Below min_qty rejects and refreshes qty screen to min_qty.
     fx.sql.exec("UPDATE product_variants SET min_qty=3 WHERE id=1");
@@ -165,7 +165,7 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
     resetLog();
     await click(`pmentry:1:1:2:${badTag}`);
     expect(allMessages().some((m) => String(m.text).includes("Minimal pembelian 3"))).toBe(true);
-    expect(allMessages().some((m) => String(m.text).includes("Pilih metode pembayaran"))).toBe(false);
+    expect(allMessages().some((m) => String(m.text).includes("Pilih pembayaran"))).toBe(false);
     fx.sql.exec("UPDATE product_variants SET min_qty=1 WHERE id=1");
 
     // Out of stock blocks offer and shows home button.
@@ -174,14 +174,14 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
     resetLog();
     await click(`pmentry:1:1:1:${oosTag}`);
     expect(callbacksOf(lastMsg())).toContain("home");
-    expect(String(lastMsg().text)).not.toContain("Pilih metode pembayaran");
+    expect(String(lastMsg().text)).not.toContain("Pilih pembayaran");
     fx.sql.exec("UPDATE product_variants SET stock=100 WHERE id=1");
 
     // Maintenance blocks single pmentry.
     vi.stubEnv("NEXT_PUBLIC_PAYMENTS_MAINTENANCE", "true");
     resetLog();
     await click(`pmentry:1:1:1:${oosTag}`);
-    expect(String(lastMsg().text)).not.toContain("Pilih metode pembayaran");
+    expect(String(lastMsg().text)).not.toContain("Pilih pembayaran");
   });
 
   it("routes require_email products through email confirmation before single offer", async () => {
@@ -207,7 +207,7 @@ describe("P0-1: Single-product pmentry routing & backward compatibility", () => 
 
     await click(`pmentry:1:1:2:${tag}`);
     const offerMsg = lastMsg();
-    expect(String(offerMsg.text)).toContain("Pilih metode pembayaran");
+    expect(String(offerMsg.text)).toContain("Pilih pembayaran");
     const pending3 = fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id=?").get(String(buyer.id)) as { pending_action: string };
     const parsed = parsePayq1State(pending3.pending_action);
     expect(parsed?.source).toEqual({ kind: "single", productId: 1, variantId: 1, qty: 2 });

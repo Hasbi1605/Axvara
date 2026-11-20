@@ -1,5 +1,10 @@
 # PRD — AXVARA
 
+## Pemilih crypto, tagihan, dan pengingat Bot Telegram — 20 November 2026 (TG-POLISH-B, lokal)
+
+- **Pilih koin lalu jaringan:** setiap simbol yang tersedia punya satu tombol, koin lain dikelompokkan dalam Lainnya, dan koin satu jaringan langsung menuju konfirmasi metode. Tagihan pending ID/EN menampilkan kode, produk/jumlah, nominal tersimpan dan batas WIB; QRIS menyebut kode unik dan pemeriksaan manual bila lewat batas.
+- **Pengingat sesuai umur invoice:** mulai ≥8 menit dan ≥60% masa berlaku; QRIS 15 menit maks. sekali ketika ≤5 menit tersisa, lainnya maks. dua kali dengan jarak ≥10 menit dan ≥⅓ masa berlaku, tidak pada menit terakhir. Notis kedaluwarsa menawarkan Pesan Lagi untuk produk tunggal yang diketahui atau Katalog. Kontrak nominal, tenggat, pilihan metode utama, serta eligibility push tidak berubah.
+
 ## Alur pilih jumlah → review ketentuan sebelum bayar Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-QTYREVIEW, lokal)
 
 - **Alur beli produk tunggal:** dari pemilihan varian (`var:` / `qty:`), pembeli masuk ke layar jumlah sederhana (preset `[1][5][10]` atau kelipatan `min` sesuai batas `min..max` dan stok, plus `✍️ Jumlah lain` via ForceReply) → memilih jumlah membuka layar `"🧾 Baca sebelum bayar"` (`q:<pid>:<vid>:<qty>`) yang menampilkan ringkasan subtotal (termasuk tier grosir), detail paket, cara aktivasi, dan garansi/ketentuan per varian → mengetuk `✅ Sudah dibaca — Lanjut Bayar` masuk ke jalur `pmentry` (untuk produk `require_email`, melewati verifikasi email terlebih dahulu seperti sebelumnya; untuk non-email langsung ke pemilih metode bayar dengan `[◀️ Kembali]` ke review dan `[✖️ Batal]` ke kartu produk).

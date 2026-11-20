@@ -17,7 +17,10 @@ vi.mock("@/lib/telegram/api", () => ({
 
 let fx: ReturnType<typeof createD1Fixture>;
 const user = { id: 555001, first_name: "Locale" };
-const sentTexts = () => api.send.mock.calls.map((c) => String(c[0]?.text ?? ""));
+const sentTexts = () => [
+  ...api.send.mock.calls.map((c) => String(c[0]?.text ?? "")),
+  ...api.photo.mock.calls.map((c) => String(c[0]?.caption ?? "")),
+];
 const editTexts = () => api.edit.mock.calls.map((c) => String(c[0]?.text ?? ""));
 const allTexts = () => [...sentTexts(), ...editTexts()];
 const lastMarkup = () => {
@@ -66,8 +69,8 @@ describe("TG2a read commerce follows saved locale/currency", () => {
     expect(lastMarkup()).toContain("$10.00");
     vi.clearAllMocks();
     await handleCallback("var:11", user.id, 9, user, "cb-var");
-    expect(allTexts().join("\n")).toMatch(/Stock ∞/);
-    expect(allTexts().join("\n")).toMatch(/\$10\.00\/pcs/);
+    expect(allTexts().join("\n")).toMatch(/Stock\s+: ∞/);
+    expect(allTexts().join("\n")).toMatch(/Price\s+: \$10\.00 \/ pcs/);
     expect(allTexts().join("\n")).not.toMatch(/Stok|Jumlah pesanan|Harga satuan/);
     vi.clearAllMocks();
     await handleCallback("q:1:11:1", user.id, 9, user, "cb-rev");

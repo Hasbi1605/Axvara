@@ -135,6 +135,20 @@ export interface EditMessageMediaParams {
   reply_markup?: InlineKeyboardMarkup;
 }
 
+export interface EditMessageCaptionParams {
+  chat_id: number | string;
+  message_id: number;
+  caption?: string;
+  parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
+  reply_markup?: InlineKeyboardMarkup;
+}
+
+export interface EditMessageReplyMarkupParams {
+  chat_id: number | string;
+  message_id: number;
+  reply_markup?: InlineKeyboardMarkup;
+}
+
 export interface TelegramApiResponse<T = unknown> {
   ok: boolean;
   result?: T;

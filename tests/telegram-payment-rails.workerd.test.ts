@@ -88,6 +88,7 @@ export default {async fetch(req,env){
     if(body.op==='freeze'){const m=await import('./src/lib/telegram/payment-quote');const tag='0123456789ab';try{const r=await (m as any).freezePayq1({fromUserId:String(from.id),locale:'en',tag,identity:{kind:'cart'},idrSubtotal:19000,contactEmail:'buyer@example.test'});return Response.json({frozen:r,sent,edited});}catch(e){return Response.json({freezeError:String((e as Error)?.stack??(e as Error)?.message??e),sent,edited});}}
     if(body.op==='retry3'){const m=await import('./src/lib/telegram/invoice-retry');const r=await Promise.all([1,2,3].map(()=>(m as any).retryTelegramInvoiceDelivery(String(body.code))));return Response.json({retried:r,sent,edited});}
     if(body.op==='terminal3'){const m=await import('./src/lib/payments/qris-expiry-notifications');const r=await Promise.all([1,2,3].map(()=>(m as any).sendQrisExpiryNotifications(2)));return Response.json({ticks:r,sent,edited});}
+    if(body.op==='reminder'){const {sendPendingOrderReminders}=await import('./src/lib/telegram/order-notifications');const r=await Promise.all([sendPendingOrderReminders(2),sendPendingOrderReminders(2)]);return Response.json({reminders:r});}
     if(body.op==='phone'){const m=await import('./src/lib/telegram/handlers/payment-contact');const handled=await (m as any).handlePayq1PhoneInput(String(body.text),Number(body.chatId??from.id),from);return Response.json({handled,sent,edited});}
     if(body.op==='seed-email-required'){const db=env.DB;await db.prepare("UPDATE products SET require_email=1 WHERE id=1").run();await db.batch([db.prepare("INSERT OR REPLACE INTO telegram_users(user_id,chat_id,locale) VALUES(?,?,?)").bind(String(from.id),from.id,'en'),db.prepare("INSERT INTO telegram_carts(user_id,product_id,variant_id,qty) VALUES(?,?,?,?)").bind(String(from.id),1,1,2)]);}
     if(body.op==='seed-email-ok'){const db=env.DB;await db.batch([db.prepare("UPDATE telegram_users SET buyer_email='buyer@example.test',pending_action=NULL WHERE user_id=?").bind(String(from.id))]);}
@@ -258,6 +259,26 @@ async function makeHarness() {
   return { runtime, db, state, env, call, allText, buttons, rows, dispose: () => runtime.dispose() };
 }
 
+it("workerd D1 applies QRIS reminder age and atomic claim across concurrent ticks", async () => {
+  const h = await makeHarness();
+  const code = "AXV-20261120-REMINDER";
+  try {
+    await h.db.batch([
+      h.db.prepare(`INSERT INTO orders(code,customer_name,customer_wa,items,subtotal,payment_method,status,payment_status,sales_channel,telegram_chat_id,locale)
+        VALUES(?,'Buyer','','[]',9000,'qris','pending','pending','telegram','777001','en')`).bind(code),
+      h.db.prepare(`INSERT INTO payment_transactions(order_code,provider,provider_mode,provider_order_id,merchant_id,requested_amount,payable_amount,status,invoice_issued_at,expires_at)
+        VALUES(?,'klikqris','fixture',?,'merchant',9000,9123,'pending',datetime('now','-1 minute'),datetime('now','+14 minutes'))`).bind(code, code),
+    ]);
+    expect((await h.call({ op: "reminder" })).views).toHaveLength(0);
+    await h.db.prepare("UPDATE payment_transactions SET invoice_issued_at=datetime('now','-11 minutes'), expires_at=datetime('now','+4 minutes') WHERE order_code=?").bind(code).run();
+    const due = await h.call({ op: "reminder" });
+    expect(due.views).toHaveLength(1);
+    expect(due.views[0].text).toContain("4 minutes left");
+    expect((await h.rows("SELECT telegram_reminder_count AS n FROM orders WHERE code=?", code))[0].n).toBe(1);
+    expect((await h.call({ op: "reminder" })).views).toHaveLength(0);
+  } finally { await h.dispose(); }
+});
+
 it("workerd fences first crypto invoice HTTP against concurrent retry", async () => {
   const h = await makeHarness();
   let release!: () => void;
@@ -327,7 +348,7 @@ it("CRYPTO: frozen payq1 -> one order + one NOWPayments POST; replay/FX rotate/f
     // Captured buyer view: exact provider amount/address/currency/network, EN locale, no QRIS.
     const text = h.allText(first.views);
     expect(text).toContain("Send exactly <b>1.19 USDT</b> on the <b>BNB Smart Chain</b> network only.");
-    expect(text).toContain("Order total: US$2.49 (incl. crypto service fee US$0.11)");
+    expect(text).toContain("Total  : <code>US$2.49 (incl. crypto service fee US$0.11)</code>");
     expect(text).toContain("0xBEEFCAFE0123456789abcdef0123456789abc");
     expect(text).not.toMatch(/QRIS/i);
 
@@ -383,7 +404,7 @@ it("CRYPTO: frozen payq1 -> one order + one NOWPayments POST; replay/FX rotate/f
     await h.db.prepare("UPDATE payment_transactions SET status='expired' WHERE order_code=?").bind(code).run();
     const ticks = await h.call({ op: "terminal3" });
     expect(ticks.ticks?.reduce((n, t) => n + t.sent, 0)).toBe(1);
-    const notices = ticks.views.filter((v) => v.text.includes("Invoice expired"));
+    const notices = ticks.views.filter((v) => v.text.includes("Payment expired"));
     expect(notices).toHaveLength(1);
     expect(notices[0].text + JSON.stringify(notices[0].markup ?? {})).not.toMatch(/QRIS|qrenew|0xBEEF/i);
     expect((await h.rows("SELECT status FROM buyer_notice_log WHERE idempotency_key=?", `telegram:terminal:${code}`))[0].status).toBe("sent");
@@ -456,8 +477,8 @@ it("GATEWAY: legacy saved invoice consent (no VA/link before exact total) + repl
     // Valid control AFTER the negatives: exact shown-total consent succeeds.
     const ok = await h.call({ op: "click", data: goodData });
     const okText = h.allText(ok.views);
-    expect(okText).toMatch(/Awaiting gateway payment/);
-    expect(okText).toContain("Total: IDR 19,700");
+    expect(okText).toContain("Awaiting payment");
+    expect(okText).toContain("Total  : <code>IDR 19,700</code>");
     expect(h.buttons(ok.views).some((b) => b.url === "https://sekalipay.com/payment/SPY-r2b-worker")).toBe(true);
     expect(okText + JSON.stringify(h.buttons(ok.views))).toContain("888001");
     const tx1 = (await h.rows("SELECT * FROM payment_transactions WHERE order_code=?", code))[0];
@@ -466,7 +487,7 @@ it("GATEWAY: legacy saved invoice consent (no VA/link before exact total) + repl
 
     // Replay: same details, consent timestamp/fee/total untouched, no extra POST/order.
     const replay = await h.call({ op: "click", data: goodData });
-    expect(h.allText(replay.views)).toMatch(/Awaiting gateway payment/);
+    expect(h.allText(replay.views)).toContain("Awaiting payment");
     const tx2 = (await h.rows("SELECT * FROM payment_transactions WHERE order_code=?", code))[0];
     expect(tx2).toMatchObject({ gateway_fee_consented_at: tx1.gateway_fee_consented_at, gateway_fee: GATEWAY_FEE_ACTUAL, payable_amount: 19700 });
     expect(h.state.gwPosts).toHaveLength(0); // legacy read/consent never creates

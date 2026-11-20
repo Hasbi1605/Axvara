@@ -1,5 +1,6 @@
 import { marketRefundNotice } from "@/lib/warranty-policy";
-import { escapeHtml, escapeItemSummary, formatRupiah, truncate } from "./format";
+import { escapeHtml, escapeItemSummary, formatRupiah, invoiceDeadline, truncate } from "./format";
+import { parseExpiry } from "@/lib/expiry";
 import type { Locale } from "@/lib/i18n/locale";
 import type { BulkTier } from "@/lib/bulk-pricing";
 import { formatIdr } from "@/lib/i18n/format";
@@ -169,6 +170,11 @@ function truncatePlainForEscapedMax(plain: string, maxEscapedLen: number): strin
   return out.trimEnd() + suffix;
 }
 
+function sameNormalizedLabel(a: string, b: string): boolean {
+  const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+  return norm(a) === norm(b);
+}
+
 export function chooseQtyMessage(params: {
   productName: string;
   variantLabel: string;
@@ -193,16 +199,13 @@ export function chooseQtyMessage(params: {
   const formatPrimary = (idr: number) => (opts?.formatPrice ? opts.formatPrice(idr) : formatIdr(idr, locale));
   const minQty = Math.max(1, Math.floor(Number(params.minQty ?? 1) || 1));
   const maxQty = Math.max(1, Math.min(100, stock === -1 ? 100 : Math.max(1, stock), Math.floor(params.maxQty ?? 100)));
-  const stockPart = stock === -1
-    ? (en ? "Stock ∞" : "Stok ∞")
-    : stock > 0
-      ? (en ? `Stock ${stock}` : `Stok ${stock}`)
-      : (en ? "Stock 0" : "Stok 0");
+  const stockVal = stock === -1 ? "∞" : String(Math.max(0, stock));
   const unitPrice = Number(params.basePrice ?? price);
   const rawDur = params.duration?.trim() ?? "";
   const variantWithDur = rawDur && !variantLabel.toLowerCase().includes(rawDur.toLowerCase())
     ? `${variantLabel} · ${rawDur}`
     : variantLabel;
+  const showVariant = !sameNormalizedLabel(productName, variantWithDur);
   const tierPreview = tgTierPreview({
     basePrice: unitPrice,
     bulkTiers: params.bulkTiers,
@@ -214,10 +217,21 @@ export function chooseQtyMessage(params: {
     formatPrice: formatPrimary,
   });
 
-  const lines = [
-    `<b>${escapeHtml(truncate(productName, 80))} · ${escapeHtml(truncate(variantWithDur, 80))}</b>`,
-    `💰 ${escapeHtml(formatPrimary(unitPrice))}/pcs · 📦 ${stockPart}`,
-  ];
+  const lines = en
+    ? [
+        "🛒 <b>Choose quantity</b>",
+        `Product : <b>${escapeHtml(truncate(productName, 80))}</b>`,
+        ...(showVariant ? [`Variant : ${escapeHtml(truncate(variantWithDur, 80))}`] : []),
+        `Price   : ${escapeHtml(formatPrimary(unitPrice))} / pcs`,
+        `Stock   : ${stockVal}`,
+      ]
+    : [
+        "🛒 <b>Pilih jumlah</b>",
+        `Produk : <b>${escapeHtml(truncate(productName, 80))}</b>`,
+        ...(showVariant ? [`Varian : ${escapeHtml(truncate(variantWithDur, 80))}`] : []),
+        `Harga  : ${escapeHtml(formatPrimary(unitPrice))} / pcs`,
+        `Stok   : ${stockVal}`,
+      ];
   if (opts?.usdUnavailable) {
     lines.push(en ? "USD equivalent unavailable — shown in IDR." : "Perkiraan USD tidak tersedia — ditampilkan dalam IDR.");
   }
@@ -461,40 +475,27 @@ export function cartCheckoutSummaryMessage(lines: TelegramCartLine[], subtotal: 
 
 export function orderReminderMessage(params: {
   orderCode: string;
-  productName: string;
   payableAmount: number;
-  attempt: number;
+  expiresMs: number;
+  now?: number;
 }, opts?: TgMoneyOpts): string {
-  const { orderCode, productName, payableAmount, attempt } = params;
-  const en = opts?.locale === "en";
-  return [
-    en ? (attempt > 1 ? "<b>Final payment reminder</b>" : "<b>Awaiting payment</b>") : (attempt > 1 ? "<b>Pengingat pembayaran terakhir</b>" : "<b>Menunggu pembayaran</b>"),
-    "",
-    escapeItemSummary(productName, 2800),
-    `<code>${escapeHtml(truncate(orderCode, 120))}</code>`,
-    en ? `<b>Total to pay: ${formatRupiah(payableAmount)} (IDR via QRIS)</b>` : `<b>Total bayar: ${formatRupiah(payableAmount)} (IDR via QRIS)</b>`,
-    "",
-    en ? "Pay exact amount before deadline. Ignore if already paid." : "Bayar sesuai nominal sebelum batas waktu. Abaikan jika sudah bayar.",
-  ].join("\n");
+  return providerOrderReminderMessage({ ...params, total: formatRupiah(params.payableAmount) }, opts);
 }
 
-/** R3 reminder for gateway/crypto orders: generic, saved-locale copy. No QRIS
- * wording and NO amount/address/link/VA — details (and a gateway fee consent)
- * only ever come from the saved status view behind the refresh button. */
+/** Provider reminders never disclose payment instructions, address/link/VA. */
 export function providerOrderReminderMessage(params: {
   orderCode: string;
-  productName: string;
-  attempt: number;
+  expiresMs: number;
+  now?: number;
+  total?: string;
 }, opts?: TgMoneyOpts): string {
-  const { orderCode, productName, attempt } = params;
   const en = opts?.locale === "en";
+  const { clock, remaining } = invoiceDeadline(params.expiresMs, en, params.now);
   return [
-    en ? (attempt > 1 ? "<b>Final payment reminder</b>" : "<b>Awaiting payment</b>") : (attempt > 1 ? "<b>Pengingat pembayaran terakhir</b>" : "<b>Menunggu pembayaran</b>"),
-    "",
-    escapeItemSummary(productName, 2800),
-    `<code>${escapeHtml(truncate(orderCode, 120))}</code>`,
-    "",
-    en ? "Open payment details before deadline. Ignore if already paid." : "Buka detail pembayaran sebelum batas waktu. Abaikan jika sudah bayar.",
+    `⏰ <b>${remaining} ${en ? "left" : "lagi"}</b>`,
+    `${en ? "Code" : "Kode"}  : <code>${escapeItemSummary(params.orderCode, 120)}</code>`,
+    ...(params.total ? [`Total : <code>${escapeHtml(params.total)}</code>`] : []),
+    en ? `Complete payment before ${clock}.` : `Selesaikan pembayaran sebelum ${clock}.`,
   ].join("\n");
 }
 
@@ -522,69 +523,58 @@ export function pickRepresentativeCryptoMethod<
   return cryptoMethods.find((m) => isUsdtOfferMethod(m)) ?? cryptoMethods[0];
 }
 
+export function cryptoPickerMessage(methods: readonly { kind?: string; total_cents?: number }[], page?: string, opts?: TgMoneyOpts): string {
+  const en = opts?.locale === "en";
+  if (page === "others") return en ? "🪙 <b>Other coins</b>" : "🪙 <b>Koin lainnya</b>";
+  if (page) return `🪙 <b>${escapeHtml(page)}</b> · ${en ? "choose a network" : "pilih jaringan"}`;
+  const cents = methods.flatMap(m => m.kind === "crypto" && Number.isSafeInteger(m.total_cents) ? [m.total_cents!] : []);
+  // Fees vary by coin/network; don't present a representative quote as everyone's total.
+  const usd = (n: number) => (n / 100).toFixed(2);
+  const min = Math.min(...cents), max = Math.max(...cents);
+  const total = !cents.length ? "—" : min === max ? usd(min) : `${usd(min)}–${usd(max)}`;
+  return [
+    en ? "🪙 <b>Choose a coin</b>" : "🪙 <b>Pilih koin</b>",
+    `Total : <b>${total} USD</b> (${en ? "service fee included" : "biaya layanan termasuk"})`,
+    en ? "Send on the selected network; gas is paid by the sender." : "Kirim di jaringan yang dipilih; gas ditanggung pengirim.",
+  ].join("\n");
+}
+
 /** R1 frozen method offer copy (localized). */
 export function paymentMethodOfferMessage(
   params: { productName: string; subtotal: number },
   opts?: TgMoneyOpts,
 ): string {
-  const en = opts?.locale === "en";
+  const locale = opts?.locale ?? "id";
+  const en = locale === "en";
   return [
-    en ? "<b>Choose a payment method</b>" : "<b>Pilih metode pembayaran</b>",
-    "",
-    escapeItemSummary(params.productName, 220),
-    `Subtotal: ${formatIdr(params.subtotal, opts?.locale ?? "id")}`,
+    en ? "💳 <b>Choose payment</b>" : "💳 <b>Pilih pembayaran</b>",
+    en ? `Product : ${escapeItemSummary(params.productName, 220)}` : `Produk : ${escapeItemSummary(params.productName, 220)}`,
+    `${en ? "Total   :" : "Total  :"} <b>${formatIdr(params.subtotal, locale)}</b>`,
     ...(opts?.usdEquivalentText ? [`≈ ${opts.usdEquivalentText}`] : []),
   ].join("\n");
 }
 
-/** R1 frozen offer detail lines: ordered by locale (ID: QRIS fastest then Crypto;
- * EN: Crypto USDT fastest then QRIS Indonesia only). Each method shows its own
- * currency total (QRIS -> Rupiah, Crypto -> USDT/USD estimate). */
+/** R1 frozen offer detail lines: one short line per available method kind,
+ * ordered by locale (ID: QRIS then Crypto; EN: Crypto then QRIS). */
 export function paymentMethodOfferDetails(
   methods: { id?: string; kind?: string; label?: string; gateway?: { estimated_fee: number; estimated_total: number } | null; amount_text?: string; pay_currency?: string; network?: string }[],
   opts?: TgMoneyOpts & { subtotal?: number },
 ): string[] {
   const en = opts?.locale === "en";
-  const locale = opts?.locale ?? "id";
-  const qrisLines: string[] = [];
-  const gatewayLines: string[] = [];
-  for (const method of methods) {
-    if (method.kind === "crypto") continue;
-    const rawLabel = String(method.label ?? "").trim();
-    const displayLabel = /^qris\s+dinamis$/i.test(rawLabel) ? "QRIS" : rawLabel;
-    const label = escapeHtml(displayLabel.slice(0, 80) || "—");
-    if (isQrisOfferMethod(method)) {
-      const rp = opts?.subtotal != null ? `Rp${Math.max(0, Math.round(opts.subtotal)).toLocaleString("id-ID")}` : null;
-      if (en) {
-        qrisLines.push(rp ? `• QRIS (Indonesia only) — ${rp}` : "• QRIS (Indonesia only)");
-      } else {
-        qrisLines.push(rp ? `• QRIS — ${rp} (tercepat)` : "• QRIS (tercepat)");
-      }
-      continue;
-    }
-    if (method.kind === "gateway" && method.gateway) {
-      gatewayLines.push(en
-        ? `• ${label} — est. ${formatIdr(method.gateway.estimated_total, locale)} (fee ${formatIdr(method.gateway.estimated_fee, locale)})`
-        : `• ${label} — est. ${formatIdr(method.gateway.estimated_total, locale)} (biaya ${formatIdr(method.gateway.estimated_fee, locale)})`);
-      continue;
-    }
-    gatewayLines.push(`• ${label}`);
-  }
-  const cryptoLines: string[] = [];
-  const crypto = pickRepresentativeCryptoMethod(methods);
-  if (crypto) {
-    const amount = escapeHtml(String(crypto.amount_text ?? "").slice(0, 32));
-    const usdt = isUsdtOfferMethod(crypto);
-    if (en) {
-      cryptoLines.push(usdt
-        ? `• USDT — ${amount} USDT (fastest · service fee included)`
-        : `• Crypto — $${amount} (fastest · service fee included)`);
-    } else {
-      cryptoLines.push(usdt
-        ? `• USDT — ${amount} USDT (biaya layanan termasuk)`
-        : `• Crypto — $${amount} (biaya layanan termasuk)`);
-    }
-  }
+  const hasQris = methods.some((m) => m.kind !== "crypto" && isQrisOfferMethod(m));
+  const hasGateway = methods.some((m) => m.kind === "gateway");
+  const hasCrypto = methods.some((m) => m.kind === "crypto");
+
+  const qrisLines = hasQris
+    ? [en ? "QRIS: Indonesian e-wallets &amp; m-banking." : "QRIS: semua e-wallet &amp; m-banking."]
+    : [];
+  const gatewayLines = hasGateway
+    ? [en ? "Virtual Account &amp; e-wallet." : "Virtual Account &amp; e-wallet."]
+    : [];
+  const cryptoLines = hasCrypto
+    ? [en ? "Crypto: USDT, BTC, ETH, etc." : "Crypto: USDT, BTC, ETH, dll."]
+    : [];
+
   return en
     ? [...cryptoLines, ...gatewayLines, ...qrisLines]
     : [...qrisLines, ...gatewayLines, ...cryptoLines];
@@ -592,7 +582,7 @@ export function paymentMethodOfferDetails(
 
 /** R2 selection + expiry/refresh notices (localized, honest, no fallback). */
 export function paymentMethodNoticeMessage(
-  kind: "selected_other" | "expired" | "refreshed" | "deferred" | "unavailable" | "creating" | "create_failed" | "contact_needed" | "not_ready" | "method_unavailable" | "crypto_pick_coin",
+  kind: "selected_other" | "expired" | "refreshed" | "deferred" | "unavailable" | "creating" | "create_failed" | "contact_needed" | "not_ready" | "method_unavailable",
   opts?: TgMoneyOpts,
 ): string {
   const en = opts?.locale === "en";
@@ -617,10 +607,6 @@ export function paymentMethodNoticeMessage(
       return en
         ? "Method unavailable. Choose another method."
         : "Metode belum tersedia. Pilih metode lain.";
-    case "crypto_pick_coin":
-      return en
-        ? "<b>Crypto (USD)</b>\nPick the coin. USD total includes service fee. Send exact amount on matching network; network gas is paid by the sender."
-        : "<b>Crypto (USD)</b>\nPilih koin. Total USD termasuk biaya layanan. Kirim tepat di jaringan sesuai; gas jaringan ditanggung pengirim.";
     case "not_ready":
       return en
         ? "Preparing offer. Tap again shortly."
@@ -653,29 +639,41 @@ export function invoiceMessage(params: {
   /** Legacy field, never rendered: buyer PINs are email-only. */
   buyerAccessCode?: string;
 }, opts?: TgInvoiceOpts): string {
-  const { orderCode, productName, payableAmount, expiresAt, paymentMethod } = params;
-  const isQris = !paymentMethod || paymentMethod === "qris";
+  const isQris = !params.paymentMethod || params.paymentMethod === "qris";
   const en = opts?.locale === "en";
-  let expiryText: string;
-  try {
-    const d = new Date(expiresAt);
-    if (Number.isNaN(d.getTime())) throw new Error("invalid_expiry");
-    expiryText = d.toLocaleString(en ? "en-US" : "id-ID", { timeZone: "Asia/Jakarta" }) + " WIB";
-  } catch {
-    expiryText = expiresAt;
-  }
+  const total = formatRupiah(params.payableAmount);
+  const bullets = !isQris ? [] : en
+    ? ["Scan the QR above with any e-wallet or mobile banking app", `Pay exactly ${total} (last 3 digits include the unique code)`, TELEGRAM_QRIS_DEADLINE_NOTICE.en]
+    : ["Scan QR di atas pakai e-wallet/m-banking apa pun", `Bayar persis ${total} (3 digit terakhir kode unik)`, TELEGRAM_QRIS_DEADLINE_NOTICE.id];
+  return pendingInvoiceMessage({ ...params, total, bullets, maxLength: 1024,
+    chargeNote: isQris && en && opts?.chargeNote ? "Charged in IDR, even when your display currency is USD." : undefined }, opts);
+}
 
+/** QRIS photo and non-QRIS text share the same receipt layout. Bullets are caller-escaped HTML. */
+export function pendingInvoiceMessage(params: {
+  orderCode: string;
+  productName: string;
+  total: string;
+  expiresAt: string;
+  bullets: string[];
+  chargeNote?: string;
+  maxLength?: number;
+}, opts?: TgMoneyOpts): string {
+  const en = opts?.locale === "en";
+  const { clock, remaining } = invoiceDeadline(parseExpiry(params.expiresAt), en);
+  const divider = "━━━━━━━━━━━━━━━━";
   const header = [
-    en ? "<b>⏳ Awaiting payment</b>" : "<b>⏳ Menunggu pembayaran</b>",
-    `<code>${escapeItemSummary(orderCode, 120)}</code>`,
+    en ? "⏳ <b>Awaiting payment</b>" : "⏳ <b>Menunggu pembayaran</b>", divider,
+    `${en ? "Code" : "Kode"}   : <code>${escapeItemSummary(params.orderCode, 120)}</code>`,
+    `${en ? "Product" : "Produk"} : `,
   ].join("\n");
   const footer = [
-    // QRIS charge is ALWAYS actual IDR payable (incl. unique-code rules).
-    en ? `<b>Total to pay: ${formatRupiah(payableAmount)} (IDR via QRIS)</b>` : `<b>Total bayar: ${formatRupiah(payableAmount)} (IDR via QRIS)</b>`,
-    ...(opts?.chargeNote && isQris && en ? ["Charged in IDR, even when your display currency is USD."] : []),
-    en ? `Pay before: ${escapeItemSummary(expiryText, 80)}` : `Bayar sebelum: ${escapeItemSummary(expiryText, 80)}`,
-    ...(isQris ? [TELEGRAM_QRIS_DEADLINE_NOTICE[en ? "en" : "id"]] : []),
+    `Total  : <code>${escapeHtml(params.total)}</code>`,
+    `${en ? "Due" : "Batas"}  : ${clock} (${remaining})`, divider,
+    ...params.bullets.map(line => `• ${line}`),
+    ...(params.chargeNote ? [params.chargeNote] : []),
   ].join("\n");
-  // Invoices are also photo captions, whose HTML budget is 1024 characters.
-  return [header, escapeItemSummary(productName, 1023 - header.length - footer.length - 4), footer].join("\n\n");
+  const product = escapeItemSummary(params.productName.split("\n").slice(0, 20).join("\n"),
+    (params.maxLength ?? 4096) - header.length - footer.length - 1);
+  return `${header}${product}\n${footer}`;
 }

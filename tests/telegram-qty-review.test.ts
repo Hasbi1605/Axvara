@@ -36,11 +36,24 @@ function buttonsOf(msg: Pick<SendMessageParams, "reply_markup"> | undefined): In
 }
 
 describe("TG-QTYREVIEW unit layouts, copy, colors, and truncation", () => {
-  it("renders simple qty screen without min line when min=1, with tier blockquote when enabled", () => {
+  it("renders simple qty screen without min line when min=1, with tier blockquote when enabled, and hides duplicate variant line", () => {
     const plain = chooseQtyMessage({ productName: "Canva Pro", variantLabel: "1 Bulan", price: 15000, stock: -1 });
-    expect(plain).toBe("<b>Canva Pro · 1 Bulan</b>\n💰 Rp\u00a015.000/pcs · 📦 Stok ∞");
+    expect(plain).toBe(
+      "🛒 <b>Pilih jumlah</b>\nProduk : <b>Canva Pro</b>\nVarian : 1 Bulan\nHarga  : Rp\u00a015.000 / pcs\nStok   : ∞",
+    );
     expect(plain).not.toContain("Minimal pembelian");
     expect(plain).not.toContain("<blockquote>");
+
+    const dupVariant = chooseQtyMessage({
+      productName: "ChatGPT Go 3 Bulan",
+      variantLabel: "chatgpt  go  3  bulan",
+      price: 50000,
+      stock: 12,
+    });
+    expect(dupVariant).toBe(
+      "🛒 <b>Pilih jumlah</b>\nProduk : <b>ChatGPT Go 3 Bulan</b>\nHarga  : Rp\u00a050.000 / pcs\nStok   : 12",
+    );
+    expect(dupVariant).not.toContain("Varian :");
 
     const minAndBulk = chooseQtyMessage({
       productName: "Workspace",
@@ -51,8 +64,9 @@ describe("TG-QTYREVIEW unit layouts, copy, colors, and truncation", () => {
       bulkEnabled: true,
       bulkTiers: [{ min_qty: 10, unit_price: 8500 }],
     });
-    expect(minAndBulk).toContain("<b>Workspace · 1 Bulan</b>");
-    expect(minAndBulk).toContain("📦 Stok 50");
+    expect(minAndBulk).toContain("Produk : <b>Workspace</b>");
+    expect(minAndBulk).toContain("Varian : 1 Bulan");
+    expect(minAndBulk).toContain("Stok   : 50");
     expect(minAndBulk).toContain("<blockquote>");
     expect(minAndBulk).toContain("Harga grosir");
     expect(minAndBulk).toContain("8.500");
@@ -62,8 +76,15 @@ describe("TG-QTYREVIEW unit layouts, copy, colors, and truncation", () => {
       { productName: "Workspace", variantLabel: "1 Month", price: 10000, stock: -1, minQty: 3 },
       { locale: "en", formatPrice: () => "$0.65" },
     );
-    expect(enMsg).toContain("💰 $0.65/pcs · 📦 Stock ∞");
-    expect(enMsg).toContain("Minimum purchase 3");
+    expect(enMsg).toBe(
+      "🛒 <b>Choose quantity</b>\nProduct : <b>Workspace</b>\nVariant : 1 Month\nPrice   : $0.65 / pcs\nStock   : ∞\n\nMinimum purchase 3",
+    );
+
+    const enDup = chooseQtyMessage(
+      { productName: "ChatGPT Go 3 Months", variantLabel: "ChatGPT Go 3 Months", price: 10000, stock: 5 },
+      { locale: "en", formatPrice: () => "$0.65" },
+    );
+    expect(enDup).not.toContain("Variant :");
   });
 
   it("filters qty presets by min/max/stock, sets exact colors, and omits stepper/pay/cart", () => {
@@ -75,7 +96,7 @@ describe("TG-QTYREVIEW unit layouts, copy, colors, and truncation", () => {
     ]);
     expect(normal.inline_keyboard[1][0]).toMatchObject({ text: "✍️ Jumlah lain", callback_data: "qinput:1:2", style: "primary" });
     expect(normal.inline_keyboard[2].map((b) => [b.text, b.callback_data, b.style])).toEqual([
-      ["◀️ Kembali ke Produk", "prd:1", "primary"],
+      ["◀️ Kembali", "prd:1", "primary"],
       ["🏠 Menu", "home", "primary"],
     ]);
 
@@ -94,7 +115,7 @@ describe("TG-QTYREVIEW unit layouts, copy, colors, and truncation", () => {
     expect(singleMin.inline_keyboard[0].map((b) => b.text)).toEqual(["5"]);
 
     const enKb = applyButtonStyles(qtyKeyboard({ productId: 1, variantId: 2, stock: 20 }, { locale: "en" })) as { inline_keyboard: InlineKeyboardButton[][] };
-    expect(enKb.inline_keyboard.flat().map((b) => b.text)).toEqual(["1", "5", "10", "✍️ Custom quantity", "◀️ Back to Product", "🏠 Menu"]);
+    expect(enKb.inline_keyboard.flat().map((b) => b.text)).toEqual(["1", "5", "10", "✍️ Custom quantity", "◀️ Back", "🏠 Menu"]);
   });
 
   it("removes Keranjang/cadd from product, variant, qty, and review keyboards", () => {
@@ -216,7 +237,8 @@ describe("TG-QTYREVIEW D1 router flows, guards, and compatibility", () => {
   it("flows qty -> review (with bulk) -> pmentry picker -> Kembali to review -> Batal to product (0 orders)", async () => {
     await handleCallback("var:1", buyer.id, 10, buyer);
     const qtyMsg = lastEdited();
-    expect(qtyMsg?.text).toContain("<b>Canva Pro · Pro 1 Bulan</b>");
+    expect(qtyMsg?.text).toContain("Produk : <b>Canva Pro</b>");
+    expect(qtyMsg?.text).toContain("Varian : Pro 1 Bulan");
     expect(buttonsOf(qtyMsg).map((b) => b.callback_data)).toContain("q:1:1:10");
     expect(fx.sql.prepare("SELECT pending_action FROM telegram_users WHERE user_id='91001'").get()?.pending_action).toBe("qty_for:1:1");
 
@@ -233,7 +255,12 @@ describe("TG-QTYREVIEW D1 router flows, guards, and compatibility", () => {
 
     await handleCallback(contBtn!.callback_data!, buyer.id, 10, buyer);
     const pickerMsg = lastEdited();
+    expect(pickerMsg?.text).toContain("💳 <b>Pilih pembayaran</b>");
+    expect(pickerMsg?.text).toContain("Produk : Canva Pro · Pro 1 Bulan ×10");
+    expect(pickerMsg?.text).toContain("QRIS: semua e-wallet &amp; m-banking.");
+    expect(pickerMsg?.text).not.toContain("• QRIS");
     const pickerBtns = buttonsOf(pickerMsg);
+    expect(pickerBtns.some((b) => b.text === "📱 QRIS · Rp80.000" && b.style === "success")).toBe(true);
     expect(pickerBtns.some((b) => b.callback_data === "q:1:1:10" && b.style === "primary")).toBe(true);
     expect(pickerBtns.some((b) => b.callback_data === "prd:1" && b.style === "danger")).toBe(true);
 
@@ -263,7 +290,7 @@ describe("TG-QTYREVIEW D1 router flows, guards, and compatibility", () => {
     expect(lastEdited()?.text).toContain("Garansi penuh");
     await handleCallback("lang:en", buyer.id, 10, buyer);
     await handleCallback("qty:1:1", buyer.id, 10, buyer);
-    expect(lastEdited()?.text).toContain("Stock 50");
+    expect(lastEdited()?.text).toContain("Stock   : 50");
   });
 
   it("enforces guards on review/pmentry, re-renders review on tag mismatch, and keeps legacy pay + cadd", async () => {

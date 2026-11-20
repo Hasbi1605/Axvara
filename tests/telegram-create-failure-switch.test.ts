@@ -104,9 +104,11 @@ async function seededOffer(ticker = "usdtbsc") {
   const frozen = parsePayq1State(userRaw())!;
   const index = frozen.methods.findIndex((m) => m.id === `nowpayments:${ticker}`);
   expect(index).toBeGreaterThanOrEqual(0);
-  // Offer menampilkan SATU entri "Crypto (USD)" (pmc) → sub-menu koin.
+  // Crypto entry opens the coin picker; multi-network coins open one more level.
   await clickVisible(`pmc:${frozen.nonce}`);
-  await clickVisible(`pm:${frozen.nonce}:${index}`);
+  const leaf = `pm:${frozen.nonce}:${index}`;
+  if (!lastKeyboard().includes(leaf)) await clickVisible(`pmc:${frozen.nonce}:USDT`);
+  await clickVisible(leaf);
   return parsePayq1State(userRaw())!;
 }
 

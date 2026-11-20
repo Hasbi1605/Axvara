@@ -90,7 +90,8 @@ describe("TG2c1 transaction copy follows saved order.locale", () => {
     expect(order.locale).toBe("en");
     expect(order.subtotal).toBe(10000);
     // Charge is actual IDR payable even with USD display pref; caption charges IDR, no USDT/FX math.
-    expect(lastPhotoCaption()).toMatch(/IDR via QRIS/);
+    expect(lastPhotoCaption()).toMatch(/Total  : <code>Rp[\d.]+<\/code>/);
+    expect(lastPhotoCaption()).not.toContain("IDR via QRIS");
     expect(lastPhotoCaption()).toContain("Charged in IDR, even when your display currency is USD.");
     expect(lastPhotoCaption()).not.toMatch(/USDT/);
     expect(invoiceAmounts()).toEqual([10000]);
@@ -122,7 +123,7 @@ describe("TG2c1 transaction copy follows saved order.locale", () => {
     await handleShowReview(buyer.id, 1, 1, 11, 1, buyer);
     const tag = String(api.edit.mock.calls.at(-1)?.[0]?.reply_markup?.inline_keyboard?.flat().find((b: { callback_data?: string }) => b.callback_data?.startsWith("pmentry:"))?.callback_data ?? "").split(":").at(-1);
     await handlePayWithQris(buyer.id, 1, 1, 11, 1, buyer, false, tag);
-    expect(lastPhotoCaption()).toContain("IDR via QRIS");
+    expect(lastPhotoCaption()).not.toContain("IDR via QRIS");
     expect(lastPhotoCaption()).not.toContain("Ditagih dalam IDR");
     expect(lastPhotoCaption()).not.toContain("Charged in IDR");
   });

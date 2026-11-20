@@ -81,7 +81,7 @@ afterEach(() => {
 });
 
 describe("TG R1 frozen method selection (local only)", () => {
-  it("renders EN offer with QRIS (Indonesia only) and Rp total when crypto is off, no orders/provider writes", async () => {
+  it("renders EN offer with QRIS line and Rp button when crypto is off, no orders/provider writes", async () => {
     await seedCartUser();
     await click("pmentry");
     const message = lastMessage();
@@ -90,10 +90,13 @@ describe("TG R1 frozen method selection (local only)", () => {
     expect(callbacks.every((d) => Buffer.byteLength(d, "utf8") <= 64)).toBe(true);
     expect(callbacks[0]).toMatch(/^pm:[0-9a-f]{16}:0$/);
     const markupJson = JSON.stringify(message.reply_markup);
-    expect(markupJson).toContain("QRIS (Indonesia only) · Rp20.000");
+    expect(markupJson).toContain("📱 QRIS · Rp20.000");
     expect(markupJson).not.toContain("Fastest");
-    expect(lastText()).toContain("Choose a payment method");
-    expect(lastText()).toContain("• QRIS (Indonesia only) — Rp20.000");
+    expect(lastText()).toContain("💳 <b>Choose payment</b>");
+    expect(lastText()).toContain("Product : Keranjang (1 item)");
+    expect(lastText()).toContain("Total   : <b>IDR\u00a020,000</b>");
+    expect(lastText()).toContain("QRIS: Indonesian e-wallets &amp; m-banking.");
+    expect(lastText()).not.toContain("• QRIS");
     const raw = String(userState().pending_action ?? "");
     expect(raw.startsWith("payq1:")).toBe(true);
     expect(Buffer.byteLength(raw, "utf8")).toBeLessThanOrEqual(64 * 1024);
@@ -111,13 +114,16 @@ describe("TG R1 frozen method selection (local only)", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("renders ID offer with QRIS first, Rp total, and Paling cepat badge", async () => {
+  it("renders ID offer with QRIS first, Rp button, and concise method description", async () => {
     await seedCartUser();
     fx.sql.prepare("UPDATE telegram_users SET locale='id' WHERE user_id=?").run(String(buyer.id));
     await click("pmentry");
-    expect(JSON.stringify(lastMessage().reply_markup)).toContain("QRIS · Rp20.000 · Paling cepat");
-    expect(lastText()).toContain("Pilih metode pembayaran");
-    expect(lastText()).toContain("• QRIS — Rp20.000 (tercepat)");
+    expect(JSON.stringify(lastMessage().reply_markup)).toContain("📱 QRIS · Rp20.000");
+    expect(lastText()).toContain("💳 <b>Pilih pembayaran</b>");
+    expect(lastText()).toContain("Produk : Keranjang (1 item)");
+    expect(lastText()).toContain("Total  : <b>Rp\u00a020.000</b>");
+    expect(lastText()).toContain("QRIS: semua e-wallet &amp; m-banking.");
+    expect(lastText()).not.toContain("• QRIS");
   });
 
   it("Telegram offer never includes the gateway rail even with the flag on; the web builder still does", async () => {
@@ -226,42 +232,46 @@ describe("TG R1 frozen method selection (local only)", () => {
     const rowsOf = (message: { reply_markup?: unknown }) =>
       ((message.reply_markup as { inline_keyboard?: { text: string; callback_data?: string }[][] }).inline_keyboard ?? []);
 
-    it("EN orders Crypto (USDT) first with Fastest and QRIS (Indonesia only) second; ID orders QRIS (tercepat) first then Crypto (USDT)", async () => {
+    it("EN orders Crypto first and QRIS second; ID orders QRIS first then Crypto with comma decimals", async () => {
       fx.sql.exec("UPDATE payment_methods SET is_active=0 WHERE id!='qris'");
       await enableCrypto();
       await seedCartUser();
       await click("pmentry");
       const message = lastMessage();
       const rows = rowsOf(message);
-      expect(rows[0][0].text).toBe("Crypto (USDT) · 2.61 USDT · Fastest");
+      expect(rows[0][0].text).toBe("🪙 Crypto · 2.61 USDT");
       expect(rows[0][0].callback_data).toMatch(/^pmc:[0-9a-f]{16}$/);
-      expect(rows[1][0].text).toBe("QRIS (Indonesia only) · Rp20.000");
+      expect(rows[1][0].text).toBe("📱 QRIS · Rp20.000");
       expect(rows[1][0].callback_data).toMatch(/^pm:[0-9a-f]{16}:0$/);
       expect(rows.flat().some((b) => /^BTC/.test(b.text))).toBe(false);
-      expect(message.text).toContain("• USDT — 2.61 USDT (fastest · service fee included)");
-      expect(message.text).toContain("• QRIS (Indonesia only) — Rp20.000");
-      expect(message.text.indexOf("• USDT")).toBeLessThan(message.text.indexOf("• QRIS"));
+      expect(message.text).toContain("Crypto: USDT, BTC, ETH, etc.");
+      expect(message.text).toContain("QRIS: Indonesian e-wallets &amp; m-banking.");
+      expect(message.text).not.toContain("• USDT");
+      expect(message.text).not.toContain("• QRIS");
+      expect(message.text.indexOf("Crypto:")).toBeLessThan(message.text.indexOf("QRIS:"));
       expect(message.text).not.toMatch(/fee unknown|Provider fee/i);
       const frozen = parsePayq1State(String(userState().pending_action))!;
       expect(frozen.methods.filter((m) => m.kind === "crypto").map((m) => m.id)).toEqual([
         "nowpayments:btc", "nowpayments:eth", "nowpayments:trx", "nowpayments:usdtbsc", "nowpayments:usdttrc20",
       ]);
 
-      // ID locale: QRIS (tercepat) first, then Crypto (USDT).
+      // ID locale: QRIS first, then Crypto with comma decimal.
       fx.sql.prepare("UPDATE telegram_users SET locale='id', pending_action=NULL WHERE user_id=?").run(String(buyer.id));
       await click("pmentry");
       const idMsg = lastMessage();
       const idRows = rowsOf(idMsg);
-      expect(idRows[0][0].text).toBe("QRIS · Rp20.000 · Paling cepat");
+      expect(idRows[0][0].text).toBe("📱 QRIS · Rp20.000");
       expect(idRows[0][0].callback_data).toMatch(/^pm:[0-9a-f]{16}:0$/);
-      expect(idRows[1][0].text).toBe("Crypto (USDT) · 2.61 USDT");
+      expect(idRows[1][0].text).toBe("🪙 Crypto · 2,61 USDT");
       expect(idRows[1][0].callback_data).toMatch(/^pmc:[0-9a-f]{16}$/);
-      expect(idMsg.text).toContain("• QRIS — Rp20.000 (tercepat)");
-      expect(idMsg.text).toContain("• USDT — 2.61 USDT (biaya layanan termasuk)");
-      expect(idMsg.text.indexOf("• QRIS")).toBeLessThan(idMsg.text.indexOf("• USDT"));
+      expect(idMsg.text).toContain("QRIS: semua e-wallet &amp; m-banking.");
+      expect(idMsg.text).toContain("Crypto: USDT, BTC, ETH, dll.");
+      expect(idMsg.text).not.toContain("• QRIS");
+      expect(idMsg.text).not.toContain("• USDT");
+      expect(idMsg.text.indexOf("QRIS:")).toBeLessThan(idMsg.text.indexOf("Crypto:"));
     });
 
-    it("single-mode pmentry orders Crypto (USDT) first in EN and QRIS first in ID with both totals", async () => {
+    it("single-mode pmentry orders Crypto first in EN and QRIS first in ID with new button labels", async () => {
       vi.stubEnv("PRODUCT_VARIANTS_READ", "true");
       fx.sql.exec("UPDATE payment_methods SET is_active=0 WHERE id!='qris'");
       await enableCrypto();
@@ -271,22 +281,26 @@ describe("TG R1 frozen method selection (local only)", () => {
       await click(`pmentry:1:1:2:${tag}`);
       const enMsg = lastMessage();
       const enRows = rowsOf(enMsg);
-      expect(enRows[0][0].text).toBe("Crypto (USDT) · 2.61 USDT · Fastest");
-      expect(enRows[1][0].text).toBe("QRIS (Indonesia only) · Rp20.000");
-      expect(enMsg.text).toContain("• USDT — 2.61 USDT");
-      expect(enMsg.text).toContain("• QRIS (Indonesia only) — Rp20.000");
+      expect(enRows[0][0].text).toBe("🪙 Crypto · 2.61 USDT");
+      expect(enRows[1][0].text).toBe("📱 QRIS · Rp20.000");
+      expect(enMsg.text).toContain("💳 <b>Choose payment</b>");
+      expect(enMsg.text).toContain("Product : Fixture · Variant 1 ×2");
+      expect(enMsg.text).toContain("Crypto: USDT, BTC, ETH, etc.");
+      expect(enMsg.text).toContain("QRIS: Indonesian e-wallets &amp; m-banking.");
 
       fx.sql.prepare("UPDATE telegram_users SET locale='id', pending_action=NULL WHERE user_id=?").run(String(buyer.id));
       await click(`pmentry:1:1:2:${tag}`);
       const idMsg = lastMessage();
       const idRows = rowsOf(idMsg);
-      expect(idRows[0][0].text).toBe("QRIS · Rp20.000 · Paling cepat");
-      expect(idRows[1][0].text).toBe("Crypto (USDT) · 2.61 USDT");
-      expect(idMsg.text).toContain("• QRIS — Rp20.000 (tercepat)");
-      expect(idMsg.text).toContain("• USDT — 2.61 USDT");
+      expect(idRows[0][0].text).toBe("📱 QRIS · Rp20.000");
+      expect(idRows[1][0].text).toBe("🪙 Crypto · 2,61 USDT");
+      expect(idMsg.text).toContain("💳 <b>Pilih pembayaran</b>");
+      expect(idMsg.text).toContain("Produk : Fixture · Variant 1 ×2");
+      expect(idMsg.text).toContain("QRIS: semua e-wallet &amp; m-banking.");
+      expect(idMsg.text).toContain("Crypto: USDT, BTC, ETH, dll.");
     });
 
-    it("tapping the entry opens popular-first / stablecoin-second, 2 per row, with Back; callbacks <= 64 bytes", async () => {
+    it("opens one button per coin, keeps frozen network callbacks, and supports Back on both steps", async () => {
       await enableCrypto();
       await seedCartUser();
       await click("pmentry");
@@ -294,19 +308,30 @@ describe("TG R1 frozen method selection (local only)", () => {
       const rawBefore = String(userState().pending_action);
       await click(`pmc:${frozen.nonce}`);
       const rows = rowsOf(lastMessage());
-      expect(rows.map((row) => row.map((b) => b.text))).toEqual([["BTC", "ETH"], ["TRX"], ["USDT · BSC", "USDT · TRX"], ["⬅ Back"]]);
+      expect(rows.map((row) => row.map((b) => b.text))).toEqual([["💵 USDT"], ["🟠 BTC"], ["🔷 ETH"], ["🔴 TRX"], ["◀️ Back"]]);
       const callbacks = rows.flat().flatMap((b) => (b.callback_data ? [b.callback_data] : []));
       expect(callbacks.every((d) => Buffer.byteLength(d, "utf8") <= 64)).toBe(true);
       expect(callbacks.at(-1)).toBe(`pmb:${frozen.nonce}`);
       expect(parsePayq1CryptoCallback(callbacks.at(-1)!)).toEqual({ kind: "back", nonce: frozen.nonce });
       expect(parsePayq1CryptoCallback(`pmc:${frozen.nonce}`)).toEqual({ kind: "open", nonce: frozen.nonce });
-      expect(rows[0][0].callback_data).toBe(`pm:${frozen.nonce}:${frozen.methods.findIndex((m) => m.id === "nowpayments:btc")}`);
-      expect(lastText()).toContain("Pick the coin");
+      expect(rows[1][0].callback_data).toBe(`pm:${frozen.nonce}:${frozen.methods.findIndex((m) => m.id === "nowpayments:btc")}`);
+      expect(lastText()).toContain("🪙 <b>Choose a coin</b>");
+      expect(lastText()).toMatch(/Total : <b>\d\.\d{2}–\d\.\d{2} USD<\/b> \(service fee included\)/);
       expect(String(userState().pending_action)).toBe(rawBefore); // opening the menu mutates nothing
+      await click(rows[0][0].callback_data!);
+      expect(lastText()).toBe("🪙 <b>USDT</b> · choose a network");
+      const networks = rowsOf(lastMessage()).flat();
+      expect(networks.map(b => b.text)).toEqual(["USDT · BSC", "USDT · TRX", "◀️ Back"]);
+      expect(networks.map(b => b.callback_data)).toEqual([
+        ...["usdtbsc", "usdttrc20"].map(ticker => `pm:${frozen.nonce}:${frozen.methods.findIndex(m => m.pay_currency === ticker)}`),
+        `pmc:${frozen.nonce}`,
+      ]);
+      await click(networks[2].callback_data!);
+      expect(lastText()).toContain("Choose a coin");
       // Back returns to the main methods screen.
       await click(`pmb:${frozen.nonce}`);
-      expect(lastText()).toContain("Choose a payment method");
-      expect(rowsOf(lastMessage()).flat().some((b) => b.text.startsWith("Crypto (USDT)"))).toBe(true);
+      expect(lastText()).toContain("Choose payment");
+      expect(rowsOf(lastMessage()).flat().some((b) => b.text.startsWith("🪙 Crypto"))).toBe(true);
       expect(String(userState().pending_action)).toBe(rawBefore);
     });
 
@@ -316,7 +341,7 @@ describe("TG R1 frozen method selection (local only)", () => {
       await click("pmentry");
       const frozen = parsePayq1State(String(userState().pending_action))!;
       await click(`pmc:${frozen.nonce}`);
-      const btc = rowsOf(lastMessage())[0][0];
+      const btc = rowsOf(lastMessage()).flat().find(button => button.text === "🟠 BTC")!;
       await click(btc.callback_data!);
       expect(parsePayq1State(String(userState().pending_action))!.sel).toBe("nowpayments:btc");
       expect(lastCallbacks()).toContain(`pgo:${frozen.nonce}`);
@@ -329,9 +354,19 @@ describe("TG R1 frozen method selection (local only)", () => {
       await seedCartUser();
       await click("pmentry");
       const raw = String(userState().pending_action);
-      await click("pmc:0123456789abcdef");
+      await click("pmc:0123456789abcdef:USDT");
       expect(lastText()).toMatch(/expired|kedaluwarsa/i);
       expect(String(userState().pending_action)).toBe(raw);
+      const state = parsePayq1State(raw)!;
+      const previous = lastMessage();
+      await click(`pmc:${state.nonce}:BOGUS`);
+      expect(lastMessage()).toBe(previous);
+      const expired = `payq1:${JSON.stringify({ ...state, exp: Math.floor(Date.now() / 1000) - 1 })}`;
+      expect(payq1Expired(parsePayq1State(expired)!)).toBe(true);
+      fx.sql.prepare("UPDATE telegram_users SET pending_action=? WHERE user_id=?").run(expired, String(buyer.id));
+      await click(`pmc:${state.nonce}:USDT`);
+      expect(lastText()).toMatch(/expired|kedaluwarsa/i);
+      expect(String(userState().pending_action)).toBe(expired);
     });
 
     it("no AXVARA floor: a US$1.35 cart still shows coins whose provider minimum allows it; BTC is omitted", async () => {
@@ -343,7 +378,7 @@ describe("TG R1 frozen method selection (local only)", () => {
       const ids = state.methods.filter((m) => m.kind === "crypto").map((m) => m.id);
       expect(ids).toEqual(["nowpayments:eth", "nowpayments:trx", "nowpayments:usdtbsc", "nowpayments:usdttrc20"]);
       expect(ids).not.toContain("nowpayments:btc"); // ceil(1.95 x 1.15) = 2.25 > 1.47 (btc total)
-      expect(rowsOf(lastMessage()).flat().some((b) => b.text.startsWith("Crypto"))).toBe(true);
+      expect(rowsOf(lastMessage()).flat().some((b) => b.text.startsWith("🪙 Crypto"))).toBe(true);
     });
 
     it("per-coin minimum buffer: a coin whose provider minimum x1.15 exceeds its total is omitted, others stay", async () => {
@@ -365,11 +400,26 @@ describe("TG R1 frozen method selection (local only)", () => {
       const state = parsePayq1State(raw)!;
       expect(state).not.toBeNull();
       expect(state.methods.filter((m) => m.kind === "crypto")).toHaveLength(28);
-      await click(`pmc:${state.nonce}`);
-      const rows = rowsOf(lastMessage());
-      expect(rows.slice(0, -1).every((row) => row.length <= 2)).toBe(true);
-      expect(rows.flat().length).toBe(29);
-      expect(rows.flat().every((b) => Buffer.byteLength(b.callback_data ?? "", "utf8") <= 64)).toBe(true);
+      const readButtons = async (data: string) => {
+        await click(data);
+        const rows = rowsOf(lastMessage());
+        expect(rows.every(row => row.length === 1)).toBe(true);
+        expect(rows.flat().every(b => Buffer.byteLength(b.callback_data ?? "", "utf8") <= 64)).toBe(true);
+        return rows.flat();
+      };
+      const main = await readButtons(`pmc:${state.nonce}`);
+      expect(main.map(b => b.text)).toEqual(["💵 USDT", "🔵 USDC", "🟠 BTC", "🔷 ETH", "🟡 BNB", "🔴 TRX", "💎 TON", "⚪ LTC", "➕ Others", "◀️ Back"]);
+      const others = await readButtons(main[8].callback_data!);
+      expect(others.map(b => b.text)).toEqual(["DAI", "PYUSD", "FDUSD", "USDP", "◀️ Back"]);
+      const networkPages = [];
+      for (const button of [main[0], main[1], others[2]]) networkPages.push(...await readButtons(button.callback_data!));
+      expect(networkPages).toEqual(expect.arrayContaining([
+        expect.objectContaining({ text: "USDT · TON" }),
+        expect.objectContaining({ text: "◀️ Back", callback_data: others[2].callback_data!.replace(/FDUSD$/, "others") }),
+      ]));
+      const leaves = [...main, ...others, ...networkPages].filter(b => b.callback_data?.startsWith("pm:"));
+      expect(leaves.map(b => b.callback_data).sort()).toEqual(state.methods.flatMap((m, i) => m.kind === "crypto" ? [`pm:${state.nonce}:${i}`] : []).sort());
+      expect(String(userState().pending_action)).toBe(raw);
     });
   });
 

@@ -314,7 +314,7 @@ describe("TG R2 gateway create + consent (local only)", () => {
     await seedCartUser();
     const code = seedLegacyGateway({ consentRequired: false });
     await click(`refresh:${code}`);
-    expect(lastText()).toMatch(/Awaiting gateway payment|Menunggu pembayaran gateway/);
+    expect(lastText()).toMatch(/Awaiting payment|Menunggu pembayaran/);
     expect(lastText()).not.toMatch(/sekalipay\.com\/payment|888001/);
     for (const data of lastCallbacks()) expect(Buffer.byteLength(data, "utf8")).toBeLessThanOrEqual(64);
     expect(Buffer.byteLength(userRaw(), "utf8")).toBeLessThanOrEqual(16 * 1024);

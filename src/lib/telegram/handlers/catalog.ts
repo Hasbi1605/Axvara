@@ -41,7 +41,7 @@ import { getCatalogRevision } from "@/lib/catalog-cache";
 import { unwrapD1 } from "@/lib/db-access";
 import {
   clampQty, clearPendingAction, replaceWithPhoto, replaceWithText, runInBackground,
-  setPendingActionUnlessCreating, type ScreenSourceMeta,
+  sendOrReplaceCatalogPhoto, setPendingActionUnlessCreating, type ScreenSourceMeta,
 } from "./shared";
 
 type CatalogProduct = { id: number; name: string; price: number; stock: number };
@@ -131,23 +131,23 @@ async function tgCtx(userId: number): Promise<TgCtx> {
 export async function handleShowCatalog(chatId: number, from?: { id: number }) {
   const ctx = await tgCtx(from?.id ?? chatId);
   const products = await listTelegramProducts(undefined, ctx.locale);
-  await sendMessage({
-    chat_id: chatId,
-    text: catalogFlatMessage(products.length, { locale: ctx.locale }),
-    parse_mode: "HTML",
-    reply_markup: catalogFlatKeyboard(products, 0, 8, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
+  await sendOrReplaceCatalogPhoto({
+    chatId,
+    caption: catalogFlatMessage(products.length, { locale: ctx.locale }),
+    replyMarkup: catalogFlatKeyboard(products, 0, 8, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
   });
 }
 
 export async function handleShowCatalogEdit(chatId: number, messageId: number, page: number, from?: { id: number }, sourceMeta?: ScreenSourceMeta) {
   const ctx = await tgCtx(from?.id ?? chatId);
   const products = await listTelegramProducts(undefined, ctx.locale);
-  await replaceWithText({
-    chat_id: chatId, message_id: messageId,
-    text: catalogFlatMessage(products.length, { locale: ctx.locale }),
-    parse_mode: "HTML",
-    reply_markup: catalogFlatKeyboard(products, page, 8, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
-  }, sourceMeta);
+  await sendOrReplaceCatalogPhoto({
+    chatId,
+    messageId,
+    caption: catalogFlatMessage(products.length, { locale: ctx.locale }),
+    replyMarkup: catalogFlatKeyboard(products, page, 8, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
+    sourceMeta,
+  });
 }
 
 export async function handleShowCategoriesEdit(chatId: number, messageId: number, page: number, from?: { id: number }, sourceMeta?: ScreenSourceMeta) {
@@ -155,12 +155,13 @@ export async function handleShowCategoriesEdit(chatId: number, messageId: number
     tgCtx(from?.id ?? chatId),
     readTelegramCategories(),
   ]);
-  await replaceWithText({
-    chat_id: chatId, message_id: messageId,
-    text: categoriesMessage({ locale: ctx.locale }),
-    parse_mode: "HTML",
-    reply_markup: categoriesKeyboard(categories, page, { locale: ctx.locale }),
-  }, sourceMeta);
+  await sendOrReplaceCatalogPhoto({
+    chatId,
+    messageId,
+    caption: categoriesMessage({ locale: ctx.locale }),
+    replyMarkup: categoriesKeyboard(categories, page, { locale: ctx.locale }),
+    sourceMeta,
+  });
 }
 
 export async function handleShowProducts(chatId: number, messageId: number, categoryId: number, page: number, from?: { id: number }, sourceMeta?: ScreenSourceMeta) {
@@ -172,12 +173,13 @@ export async function handleShowProducts(chatId: number, messageId: number, cate
 
   const products = await listTelegramProducts(categoryId, ctx.locale);
 
-  await replaceWithText({
-    chat_id: chatId, message_id: messageId,
-    text: categoryProductsMessage(String(category.name), products.length, { locale: ctx.locale }),
-    parse_mode: "HTML",
-    reply_markup: productsKeyboard(products, categoryId, page, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
-  }, sourceMeta);
+  await sendOrReplaceCatalogPhoto({
+    chatId,
+    messageId,
+    caption: categoryProductsMessage(String(category.name), products.length, { locale: ctx.locale }),
+    replyMarkup: productsKeyboard(products, categoryId, page, { locale: ctx.locale, displayCurrency: ctx.displayCurrency, fx: ctx.fx }),
+    sourceMeta,
+  });
 }
 
 export async function handleShowProduct(chatId: number, messageId: number, requestedProductId: number, from?: { id: number }, sourceMeta?: ScreenSourceMeta) {

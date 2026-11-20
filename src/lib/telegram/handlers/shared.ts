@@ -34,8 +34,18 @@ export function runInBackground(work: Promise<unknown>): void {
 
 export type ScreenSourceMeta = {
   isPhoto?: boolean;
+  isCatalogPhoto?: boolean;
   isProtected?: boolean;
 };
+
+export const TG_WELCOME_BANNER_VERSION = "20261119";
+export const TG_CATALOG_BANNER_VERSION = "20261120";
+
+export function tgBannerUrl(filename: string, version: string): string {
+  const rawSite = (process.env.SITE_URL ?? "").trim().replace(/\/$/, "");
+  const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
+  return `${siteUrl}/banners/${filename}?v=${version}`;
+}
 
 const TG_PHOTO_FILE_IDS_KEY = "tg_photo_file_ids";
 const PHOTO_HYDRATE_TTL_MS = 10 * 60 * 1000;
@@ -396,6 +406,75 @@ export function installReplyMenu(chatId: number, locale: Locale): void {
   );
 }
 
+export async function sendOrReplaceCatalogPhoto(params: {
+  chatId: number | string;
+  messageId?: number;
+  caption: string;
+  replyMarkup: InlineKeyboardMarkup;
+  sourceMeta?: ScreenSourceMeta;
+}): Promise<void> {
+  const photoUrl = tgBannerUrl("tg-catalog.jpg", TG_CATALOG_BANNER_VERSION);
+  const msgId = params.messageId && !params.sourceMeta?.isProtected ? params.messageId : 0;
+
+  if (params.caption.length <= 1024) {
+    if (
+      msgId > 0 &&
+      params.sourceMeta?.isPhoto &&
+      params.sourceMeta?.isCatalogPhoto &&
+      typeof tgApi.editMessageCaption === "function"
+    ) {
+      const capRes = await tgApi.editMessageCaption({
+        chat_id: params.chatId,
+        message_id: msgId,
+        caption: params.caption,
+        parse_mode: "HTML",
+        reply_markup: params.replyMarkup,
+      }).catch(() => ({ ok: false as const, error_code: undefined, description: undefined }));
+      if (capRes?.ok) return;
+      const desc = String(capRes?.description || "");
+      if (/message is not modified/i.test(desc)) return;
+      if (capRes?.error_code !== 400) return;
+    }
+
+    const photoRes = await (msgId > 0
+      ? replaceWithPhoto({
+          chat_id: params.chatId,
+          message_id: msgId,
+          photo: photoUrl,
+          caption: params.caption,
+          parse_mode: "HTML",
+          reply_markup: params.replyMarkup,
+        }, params.sourceMeta)
+      : sendCachedPhoto({
+          chat_id: params.chatId,
+          photo: photoUrl,
+          caption: params.caption,
+          parse_mode: "HTML",
+          reply_markup: params.replyMarkup,
+        })
+    ).catch(() => ({ ok: false as const }));
+
+    if (photoRes?.ok) return;
+  }
+
+  if (msgId > 0) {
+    await replaceWithText({
+      chat_id: params.chatId,
+      message_id: msgId,
+      text: params.caption,
+      parse_mode: "HTML",
+      reply_markup: params.replyMarkup,
+    }, params.sourceMeta);
+  } else {
+    await tgApi.sendMessage({
+      chat_id: params.chatId,
+      text: params.caption,
+      parse_mode: "HTML",
+      reply_markup: params.replyMarkup,
+    });
+  }
+}
+
 /**
  * Send or replace the home screen as ONE message: welcome banner photo
  * (file_id cached) + localized greeting/bestsellers caption + inline
@@ -414,9 +493,7 @@ export async function sendTgHome(params: {
   ctx?: TgPriceCtx;
   installMenu?: boolean;
 }): Promise<void> {
-  const rawSite = (process.env.SITE_URL ?? "").trim().replace(/\/$/, "");
-  const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
-  const photoUrl = `${siteUrl}/banners/tg-welcome.jpg?v=20261119`;
+  const photoUrl = tgBannerUrl("tg-welcome.jpg", TG_WELCOME_BANNER_VERSION);
   const caption = welcomeMessageLocalized(params.locale, params.firstName);
   const keyboard = homeKeyboard(params.locale);
 

@@ -1,7 +1,8 @@
 import { createDatabaseAccess, type DatabaseAccess } from "@/lib/db-access";
 import { sendMessage } from "@/lib/telegram/api";
-import { qrisExpiredKeyboard } from "@/lib/telegram/keyboards";
+import { paymentExpiredKeyboard, qrisExpiredKeyboard } from "@/lib/telegram/keyboards";
 import { orderCancelledMessage, orderExpiredMessage, qrisExpiredMessage } from "@/lib/telegram/messages/status";
+import { invoiceItemSummary } from "@/lib/telegram/messages/format";
 import { qrisExpiredMessage as waExpiredMessage } from "@/lib/whatsapp/messages";
 
 // Separate invoice expiry (one renewal available) from terminal order expiry.
@@ -83,8 +84,9 @@ async function sendNewRailTerminalNotice(database: DatabaseAccess, row: Record<s
   const en = locale === "en";
   const result = await sendMessage({
     chat_id: String(row.telegram_chat_id), parse_mode: "HTML",
-    text: row.status === "dibatalkan" ? orderCancelledMessage(code, { locale }) : orderExpiredMessage(code, { locale }),
-    reply_markup: { inline_keyboard: [
+    text: row.status === "dibatalkan" ? orderCancelledMessage(code, { locale })
+      : orderExpiredMessage(code, { locale, productName: invoiceItemSummary(row.items, en) }),
+    reply_markup: row.status !== "dibatalkan" ? paymentExpiredKeyboard(row.items, { locale }) : { inline_keyboard: [
       [{ text: en ? "📦 View order" : "📦 Lihat pesanan", callback_data: `order:${code}` }],
       [{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: "catalog:0" }],
     ] },
@@ -174,7 +176,7 @@ export async function sendQrisExpiryNotifications(
   // terminal), lalu diambil bergiliran, jadi masing-masing jalur tetap mendapat
   // giliran adil. Di dalam jalur, yang TERBARU dulu agar baris gagal tenggelam.
   const rows = await database.queryAll(`SELECT * FROM (
-      SELECT o.code, o.status, o.sales_channel, o.telegram_chat_id,
+      SELECT o.code, o.status, o.sales_channel, o.telegram_chat_id, o.items,
         o.channel_conversation_id, o.customer_email, pt.expires_at, pt.provider, o.payment_method, o.locale,
         ROW_NUMBER() OVER (PARTITION BY o.status='pending'
                            ORDER BY julianday(COALESCE(pt.expires_at,o.expires_at)) DESC, o.code) AS lane_rank
@@ -223,9 +225,11 @@ export async function sendQrisExpiryNotifications(
         continue;
       } else {
         if (!row.telegram_chat_id) continue;
+        const locale = row.locale === "en" ? "en" : "id";
+        const productName = invoiceItemSummary(row.items, locale === "en");
         const result = await sendMessage({ chat_id: String(row.telegram_chat_id), parse_mode: "HTML",
-          text: terminal ? orderExpiredMessage(code) : qrisExpiredMessage(code),
-          reply_markup: terminal ? undefined : qrisExpiredKeyboard(code) });
+          text: qrisExpiredMessage(code, { locale, productName }),
+          reply_markup: terminal ? paymentExpiredKeyboard(row.items, { locale }) : qrisExpiredKeyboard(code, { locale }, row.items) });
         if (!result.ok) continue;
       }
       // A renewal racing delivery must not mark the new invoice as notified.

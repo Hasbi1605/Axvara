@@ -1,5 +1,10 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Bot Telegram TG-POLISH-B — 20 November 2026 (lokal)
+
+- **Cadence pengingat:** `notify_b` dan cron operations memakai `sendPendingOrderReminders`. Invoice pending harus berumur ≥ `max(8 menit, 60% umur total)`, dihitung dari `payment_transactions.invoice_issued_at` (fallback `created_at` transaksi) hingga deadline invoice tersimpan. QRIS 15 menit: maks. 1 pengingat per order, dengan ≤5 menit tersisa; lainnya: maks. `TELEGRAM_REMINDER_MAX`, jarak ≥ `max(10 menit, ⅓ umur total)`. Tidak ada pengingat pada menit terakhir. Predikat waktu diperiksa lagi saat klaim CAS; penanda kirim tetap dicatat sebelum pengiriman agar race tidak mengirim ganda. Interval 60 menit lama hanya membatasi kiriman berikutnya, bukan kiriman pertama (`sent_at IS NULL`).
+- **Kontrak tagihan tetap:** caption menonjolkan jumlah IDR persis dan tetap meminta pemeriksaan manual bila lewat tenggat; tidak mengubah kode unik, deadline, eligibility push kedaluwarsa, reissue, consent atau fulfillment. Submenu crypto memakai metode payq1 beku (nonce dan indeks `pm:` tetap) tanpa menghitung/menetapkan ulang nominal.
+
 ## Bot Telegram TG-CURLANG (tampilan & urutan metode bayar) — 20 November 2026 (lokal)
 
 - **Hanya tampilan & urutan:** `tgCtxFor` (`src/lib/telegram/render-prefs.ts`) menurunkan `displayCurrency` dari bahasa (`en` → `USD`, `id` → `IDR`; snapshot FX hanya dimuat untuk EN dengan fallback senyap ke Rupiah), dan `paymentMethodOfferDetails`/`paymentMethodOfferKeyboard` mengurutkan EN Crypto USDT lebih dulu lalu `QRIS (Indonesia only)` (ID tetap QRIS lebih dulu lalu Crypto USDT). Perhitungan quote, nominal tagihan QRIS (selalu IDR), snapshot USD/USDT crypto, nonce, approval tag, `callback_data`, penyedia bayar, maupun pembuatan invoice sama sekali tidak berubah.

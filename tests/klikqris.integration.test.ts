@@ -281,7 +281,7 @@ describe("KlikQRIS invoice contract and durable creation",()=>{
  it("keeps invoice captions within Telegram limits while warning about late payment",async()=>{
   const {invoiceMessage}=await import("@/lib/telegram/messages");
   const text=invoiceMessage({orderCode:A,productName:"Produk ".repeat(100),payableAmount:1089,expiresAt:new Date(Date.now()+900000).toISOString()});
-  expect(text).toContain("pemeriksaan manual");expect(text.length).toBeLessThan(1024);
+  expect(text).toContain("pemeriksaan manual");expect(text.length).toBeLessThanOrEqual(1024);
  });
  it("applies the additive migration without altering a legacy DANA invoice",async()=>{
   await seed();const qr="00020101021153033605802ID6304";

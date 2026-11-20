@@ -25,7 +25,7 @@ import { createChannelOrderAtomic } from "@/lib/commerce";
 import { trackFunnelEvent } from "@/lib/analytics/funnel";
 import { activeQrisProvider } from "@/lib/payments/dana-qris";
 import { clearCart, type CartLine } from "@/lib/telegram/cart";
-import { cartLineLabel } from "./shared";
+import { invoiceItemName } from "@/lib/telegram/messages/format";
 import { readCheckoutEmail } from "@/lib/telegram/checkout-email";
 
 /**
@@ -193,9 +193,7 @@ export async function createAndSendCartInvoice(
       photo: invoiceResult.qrisUrl,
       caption: invoiceMessage({
         orderCode,
-        productName: lines.length === 1
-          ? cartLineLabel(lines[0])
-          : `Keranjang (${lines.length} item): ${lines.map((line) => `${line.variantLabel} ×${line.qty}`).join(", ")}`,
+        productName: lines.map(line => invoiceItemName(line.productName, line.variantLabel, line.qty)).join("\n"),
         payableAmount: invoiceResult.payableAmount,
         expiresAt: invoiceResult.expiresAt,
         paymentMethod: "qris",

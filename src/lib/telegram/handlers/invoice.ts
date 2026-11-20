@@ -18,6 +18,7 @@ import { orderStatusKeyboard, qrisInvoiceKeyboard, minimalMenuKeyboard } from "@
 import {
   outOfStockMessage, alreadyPendingMessage, errorMessage, invoiceMessage,
 } from "@/lib/telegram/messages";
+import { invoiceItemName } from "@/lib/telegram/messages/format";
 import { getActiveVariant, formatDuration, formatVariantLabel, buyerWarrantyLabel, effectiveVariantStock, type VariantSummary } from "@/lib/catalog";
 import { isCriticalSendResult } from "@/lib/telegram/webhook-errors";
 import { generateOrderCode } from "@/lib/security";
@@ -355,7 +356,7 @@ export async function createAndSendVariantInvoice(
     // TG2c1: caption + keyboard mengikuti locale order yang baru dibuat.
     await markInvoicePending(orderCode);
     const tgVariantLabel = formatVariantLabel(variant, tgLocale);
-    const displayName = qty > 1 ? `${productName} — ${tgVariantLabel} ×${qty}` : `${productName} — ${tgVariantLabel}`;
+    const displayName = invoiceItemName(productName, tgVariantLabel, qty);
     const variantPhoto = await sendPhoto({
       chat_id: chatId,
       photo: invoiceResult.qrisUrl,

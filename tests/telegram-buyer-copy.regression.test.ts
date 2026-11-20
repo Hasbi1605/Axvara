@@ -44,14 +44,14 @@ describe("plain Indonesian Telegram buyer copy", () => {
       cartMessage([]), cartMessage([item]), cartAddedMessage("Produk A", "Bulanan", 2, 1),
       cartCheckoutSummaryMessage([item], 10000),
       invoiceMessage({ orderCode, productName: "Produk A", payableAmount: 10123, expiresAt }),
-      orderReminderMessage({ orderCode, productName: "Produk A", payableAmount: 10123, attempt: 1 }),
+      orderReminderMessage({ orderCode, payableAmount: 10123, expiresMs: Date.parse(expiresAt), now: Date.parse(expiresAt) - 300_000 }),
       orderPaidMessage(orderCode, "Produk A"), orderPaidMessage(orderCode, "Produk A", false, "instant"),
       orderExpiredMessage(orderCode), orderCancelledMessage(orderCode),
       outOfStockMessage(), errorMessage(), qrisRenewRejectedMessage("amount_unavailable"),
       ...credentialMessages({ plaintext: "account:password" }),
     ];
     for (const message of transactionalMessages) {
-      expect(message).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇/u);
+      expect(message.replaceAll("━━━━━━━━━━━━━━━━", "")).not.toMatch(/[━🧭]|Langkah \d|Gerbang semua|favoritmu|\b1 menit|jauh lebih hemat|SEKALI|SATU QRIS|👇/u);
       expect((message.match(/\p{Extended_Pictographic}/gu) ?? []).length).toBeLessThanOrEqual(1);
       parsed(message);
     }
@@ -92,12 +92,12 @@ describe("plain Indonesian Telegram buyer copy", () => {
 
   it("uses clear stock/min labels on qty and exact total on review without claiming unique scarcity", () => {
     const single = chooseQtyMessage({ ...item, stock: 1, qty: 1 });
-    expect(single).toContain("Stok 1");
+    expect(single).toContain("Stok   : 1");
     expect(single).not.toContain("Minimal pembelian");
     expect(single).not.toMatch(/unik|bulk/i);
     const limited = chooseQtyMessage({ ...item, stock: 50, qty: 2, minQty: 2, maxQty: 4 });
     expect(limited).toContain("Minimal pembelian 2");
-    expect(limited).toContain("Stok 50");
+    expect(limited).toContain("Stok   : 50");
     const review = reviewPurchaseMessage({ productName: "Produk A", variantLabel: "Bulanan", qty: 2, unitPrice: 5000 });
     expect(parsed(review.text).body.textContent ?? "").toMatch(/Jumlah 2 × Rp\s?5\.000 = Rp\s?10\.000/);
   });
@@ -141,10 +141,9 @@ describe("plain Indonesian Telegram buyer copy", () => {
     const html = invoiceMessage({ orderCode, productName: summaries.join("\n"), payableAmount: 10123, expiresAt });
     const text = parsed(html, 1024).body.textContent ?? "";
     for (const summary of summaries) expect(text).toContain(summary);
-    expect(text).toContain("Total bayar: Rp10.123");
-    expect(text).toContain("Bayar sebelum:");
-    expect(text).toContain("29/10/2026");
-    expect(text).toContain("19.00.00 WIB");
+    expect(text).toContain("Total  : Rp10.123");
+    expect(text).toContain("Batas  : 19:00 WIB");
+    expect(text).toContain("• Bayar persis Rp10.123 (3 digit terakhir kode unik)");
     expect(text).toContain(TELEGRAM_QRIS_DEADLINE_NOTICE.id);
     expect(text).not.toContain("Subtotal");
   });
