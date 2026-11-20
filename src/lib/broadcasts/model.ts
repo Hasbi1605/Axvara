@@ -8,6 +8,12 @@ export type BroadcastPromoPayload = {
   businessDate: string;
   slot: 'morning' | 'evening';
   bannerUrl: string;
+  /**
+   * 'link_preview' (sejak 2026-11-20): banner tampil sebagai pratinjau besar
+   * di atas teks chunk pertama → satu bubble, judul hanya sekali, tanpa
+   * sendPhoto. Absen = snapshot lama (sendPhoto + captionHtml lalu chunk).
+   */
+  bannerMode?: 'link_preview';
   captionHtml: string;
   messagesHtml: string[];
   expiresAt: string;

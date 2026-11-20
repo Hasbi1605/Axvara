@@ -11,7 +11,6 @@ import {
 import { TELEGRAM_ELIGIBLE, contentFingerprint } from "@/lib/broadcasts/store";
 import {
   loadPromoProducts,
-  promoBannerCaption,
   promoSlotAt,
   promoTelegramMessages,
   type PromoSlot,
@@ -79,7 +78,6 @@ export async function enqueueDueTelegramPromo(
   }
 
   const title = promoCampaignTitle(due.businessDate, due.slot);
-  const captionHtml = promoBannerCaption(due.slot);
   const messagesHtml = promoTelegramMessages(due.slot, products);
   const bannerUrl = `${siteOrigin()}${TELEGRAM_PROMO_BANNER_PATH}`;
   const expiresAt = promoSlotExpiresAt(due.businessDate, due.slot);
@@ -94,7 +92,10 @@ export async function enqueueDueTelegramPromo(
       businessDate: due.businessDate,
       slot: due.slot,
       bannerUrl,
-      captionHtml,
+      // Satu bubble: banner = pratinjau di atas chunk pertama (yang sudah
+      // memuat judul), jadi tidak ada caption terpisah → judul tidak dobel.
+      bannerMode: "link_preview",
+      captionHtml: "",
       messagesHtml,
       expiresAt,
     },

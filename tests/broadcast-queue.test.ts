@@ -17,7 +17,6 @@ import {
   processBroadcasts,
   TELEGRAM_RECIPIENT_PACE_MS,
 } from "@/lib/broadcasts/worker";
-import { TELEGRAM_SAME_CHAT_PACE_MS } from "@/lib/broadcasts/sender";
 import { POST as broadcastOriginPost } from "@/app/api/internal/queue/broadcast/route";
 import { POST as cronLitePost } from "@/app/api/cron/lite/route";
 import {
@@ -254,32 +253,23 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
       }
     }
 
-    // Verify all 388 delivered exactly once (388 sendPhoto + 388 sendMessage)
+    // Verify all 388 delivered exactly once: ONE sendMessage per recipient
+    // (banner rides as link preview above the text, no separate sendPhoto)
     const photos = events.filter((e) => e.method === "sendPhoto");
     const texts = events.filter((e) => e.method === "sendMessage");
-    expect(photos).toHaveLength(388);
+    expect(photos).toHaveLength(0);
     expect(texts).toHaveLength(388);
-    expect(new Set(photos.map((e) => e.chatId)).size).toBe(388);
     expect(new Set(texts.map((e) => e.chatId)).size).toBe(388);
 
-    // Verify exact pacing: >=300ms photo->text same chat, >=250ms between consecutive recipients
-    for (let i = 0; i < 388; i++) {
-      const p = events[i * 2];
-      const t = events[i * 2 + 1];
-      expect(p.method).toBe("sendPhoto");
-      expect(t.method).toBe("sendMessage");
-      expect(p.chatId).toBe(t.chatId);
-      expect(t.atMs - p.atMs).toBeGreaterThanOrEqual(TELEGRAM_SAME_CHAT_PACE_MS);
-      if (i > 0) {
-        const prevText = events[(i - 1) * 2 + 1];
-        expect(p.atMs - prevText.atMs).toBeGreaterThanOrEqual(TELEGRAM_RECIPIENT_PACE_MS);
-      }
+    // Verify pacing: >=250ms between consecutive recipients
+    for (let i = 1; i < 388; i++) {
+      expect(events[i].atMs - events[i - 1].atMs).toBeGreaterThanOrEqual(TELEGRAM_RECIPIENT_PACE_MS);
     }
 
     // Verify total simulated duration <= 5 minutes (300,000 ms)
     const elapsedMs = events[events.length - 1].atMs - startMs;
     expect(elapsedMs).toBeLessThanOrEqual(5 * 60 * 1000);
-    expect(elapsedMs).toBeGreaterThanOrEqual(387 * (TELEGRAM_SAME_CHAT_PACE_MS + TELEGRAM_RECIPIENT_PACE_MS));
+    expect(elapsedMs).toBeGreaterThanOrEqual(387 * TELEGRAM_RECIPIENT_PACE_MS);
 
     // Campaign completed
     expect(
@@ -297,7 +287,7 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
     });
     expect(dupRes.status).toBe(200);
     expect(await dupRes.json()).toMatchObject({ ok: true, settled: true, sent: 0 });
-    expect(events).toHaveLength(776);
+    expect(events).toHaveLength(388);
   });
 
   it("never double-sends when duplicate queue messages or cron backstop overlap mid-send", async () => {
@@ -328,7 +318,7 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
       }),
     );
 
-    // Start first origin batch (blocks on user 1 sendPhoto while holding global lease + row 1 'sending')
+    // Start first origin batch (blocks on user 1 sendMessage while holding global lease + row 1 'sending')
     const first = postOrigin({
       v: 1,
       kind: "broadcast_deliveries",
@@ -357,11 +347,11 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
     releaseFirstPhoto();
     const firstJson = await (await first).json();
     expect(firstJson).toMatchObject({ ok: true, settled: true, state: "done", sent: 3 });
-    expect(calls.filter((c) => c.endsWith(":sendPhoto"))).toHaveLength(3);
+    expect(calls.filter((c) => c.endsWith(":sendPhoto"))).toHaveLength(0);
     expect(calls.filter((c) => c.endsWith(":sendMessage"))).toHaveLength(3);
   }, 15_000);
 
-  it("429 mid-batch stops immediately, returns settled:false with retrySec, and retry skips already-sent photo", async () => {
+  it("429 mid-batch stops immediately, returns settled:false with retrySec, and retry resends only the deferred recipient", async () => {
     vi.useFakeTimers();
     const t0 = Date.parse("2026-11-19T02:05:00.000Z");
     vi.setSystemTime(t0);
@@ -381,9 +371,8 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
         const method = String(url).split("/").pop() || "";
         const body = JSON.parse(String(init?.body ?? "{}")) as { chat_id: string };
         calls.push(`${body.chat_id}:${method}`);
-        // User 100001 succeeds (photo #1 + msg #2)
-        // User 100002 photo succeeds (#3), text hits 429 retry_after=17 (#4) once
-        if (!triggered429 && calls.length === 4) {
+        // User 100001 succeeds (msg #1); user 100002 hits 429 retry_after=17 (#2) once
+        if (!triggered429 && calls.length === 2) {
           triggered429 = true;
           return Response.json({ ok: false, error_code: 429, parameters: { retry_after: 17 } });
         }
@@ -411,19 +400,17 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
     });
     // Users 100003 and 100004 were NEVER touched after 429!
     expect(calls).toEqual([
-      "100001:sendPhoto",
       "100001:sendMessage",
-      "100002:sendPhoto",
       "100002:sendMessage",
     ]);
 
-    // User 100002 retains photoId and did not burn attempts
+    // User 100002 stays pending without progress and did not burn attempts
     const row2 = fx.sql
       .prepare("SELECT status, attempts, provider_id FROM broadcast_deliveries WHERE recipient_id='100002'")
-      .get() as { status: string; attempts: number; provider_id: string };
+      .get() as { status: string; attempts: number; provider_id: string | null };
     expect(row2.status).toBe("pending");
     expect(row2.attempts).toBe(0);
-    expect(JSON.parse(row2.provider_id)).toMatchObject({ photoId: "3", sentChunks: 0 });
+    expect(row2.provider_id).toBeNull();
 
     // Calling again during cooldown does not hit Telegram
     calls.length = 0;
@@ -439,7 +426,7 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
     expect(earlyRetry).toMatchObject({ ok: true, settled: false, state: "rate_limited" });
     expect(calls).toEqual([]);
 
-    // Advance past 17s cooldown and retry same message -> user 100002 sends ONLY sendMessage (no double photo!)
+    // Advance past 17s cooldown and retry same message -> each remaining user gets exactly one sendMessage
     vi.setSystemTime(Date.now() + 18_000);
     const pass2Promise = postOrigin({
       v: 1,
@@ -454,9 +441,7 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
     expect(pass2).toMatchObject({ ok: true, settled: true, state: "done", sent: 3, deferred: 0 });
     expect(calls).toEqual([
       "100002:sendMessage",
-      "100003:sendPhoto",
       "100003:sendMessage",
-      "100004:sendPhoto",
       "100004:sendMessage",
     ]);
   });
@@ -506,7 +491,7 @@ describe("Broadcast Cloudflare Queue end-to-end", () => {
     const res = await (await runPromise).json();
 
     expect(res).toMatchObject({ ok: true, settled: true, state: "done", sent: 1, skipped: 2 });
-    expect(calls).toEqual(["100001:sendPhoto", "100005:sendPhoto", "100005:sendMessage"]);
+    expect(calls).toEqual(["100001:sendMessage", "100005:sendMessage"]);
     expect(
       (fx.sql.prepare("SELECT is_blocked FROM telegram_users WHERE user_id='100001'").get() as { is_blocked: number })
         .is_blocked,

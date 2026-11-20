@@ -96,7 +96,8 @@ async function sendTelegramPromo(
     return { state: 'skipped', error: 'promo_slot_expired', providerId: serializePromoProgress(progress) };
   }
   let sentInCall = false;
-  if (!progress.photoId) {
+  const linkPreview = promo.bannerMode === 'link_preview';
+  if (!linkPreview && !progress.photoId) {
     try {
       const photoRes = await sendPhoto({
         chat_id: destination,
@@ -118,12 +119,21 @@ async function sendTelegramPromo(
       await new Promise<void>((resolve) => setTimeout(resolve, TELEGRAM_SAME_CHAT_PACE_MS));
     }
     try {
-      const msgRes = await sendMessage({
-        chat_id: destination,
-        text: promo.messagesHtml[i],
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      });
+      // Mode link_preview: chunk pertama membawa banner sebagai pratinjau
+      // besar DI ATAS teks (satu bubble). Chunk lanjutan tanpa pratinjau.
+      const msgRes = await sendMessage(linkPreview && i === 0
+        ? {
+            chat_id: destination,
+            text: promo.messagesHtml[i],
+            parse_mode: 'HTML',
+            link_preview_options: { url: promo.bannerUrl, prefer_large_media: true, show_above_text: true },
+          }
+        : {
+            chat_id: destination,
+            text: promo.messagesHtml[i],
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+          });
       if (!msgRes.ok || !msgRes.result?.message_id) {
         return classifyTelegramError(msgRes, serializePromoProgress(progress));
       }

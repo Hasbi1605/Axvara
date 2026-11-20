@@ -141,9 +141,7 @@ it("workerd D1 + native BROADCAST_QUEUE producer: sendBatch chunks enqueue and o
       sentCalls: Array<{ method: string; chat_id: string }>;
     };
     expect(calls.sentCalls).toEqual([
-      { method: "sendPhoto", chat_id: "101" },
       { method: "sendMessage", chat_id: "101" },
-      { method: "sendPhoto", chat_id: "102" },
       { method: "sendMessage", chat_id: "102" },
     ]);
   } finally {

@@ -35,7 +35,7 @@ function seedCatalogAndUsers(fx: ReturnType<typeof createD1Fixture>) {
 }
 
 describe("Telegram automatic promo broadcast", () => {
-  it("enqueues once per (businessDate, slot), freezes snapshot, hides system template, and delivers photo + HTML with /stop footer", async () => {
+  it("enqueues once per (businessDate, slot), freezes snapshot, hides system template, and delivers one bubble (banner preview + HTML) with /stop footer", async () => {
     const fx = createD1Fixture();
     try {
       seedCatalogAndUsers(fx);
@@ -83,26 +83,25 @@ describe("Telegram automatic promo broadcast", () => {
 
       const workerResult = await processBroadcasts(db, 8, 20000);
       expect(workerResult).toMatchObject({ sent: 2, skipped: 0, unknown: 0, failed: 0 });
-      expect(tgCalls).toHaveLength(4);
-      // User 101: photo then HTML message
+      // One bubble per user: no sendPhoto, banner rides as a large link
+      // preview above the text, and the slot header appears exactly once.
+      expect(tgCalls).toHaveLength(2);
+      expect(tgCalls.some((c) => c.method === "sendPhoto")).toBe(false);
       expect(tgCalls[0]).toMatchObject({
-        method: "sendPhoto",
-        body: {
-          chat_id: "101",
-          photo: "https://axvara.tech/banners/ready-promo.jpg",
-          caption: "🔥 <b>PRODUK AXVARA READY PAGI INI</b>",
-          parse_mode: "HTML",
-        },
-      });
-      expect(tgCalls[1]).toMatchObject({
         method: "sendMessage",
         body: {
           chat_id: "101",
           parse_mode: "HTML",
-          disable_web_page_preview: true,
+          link_preview_options: {
+            url: "https://axvara.tech/banners/ready-promo.jpg",
+            prefer_large_media: true,
+            show_above_text: true,
+          },
         },
       });
-      const text = String(tgCalls[1].body.text);
+      expect(tgCalls[0].body).not.toHaveProperty("disable_web_page_preview");
+      const text = String(tgCalls[0].body.text);
+      expect(text.split("PRODUK AXVARA READY PAGI INI")).toHaveLength(2);
       expect(text).toContain("Rp15.000");
       expect(text).not.toContain("999.999");
       expect(text).toContain(TELEGRAM_PROMO_FOOTER);
@@ -176,7 +175,7 @@ describe("Telegram automatic promo broadcast", () => {
     }
   });
 
-  it("tracks retry after photo without resending photo and quarantines ambiguous send via processBroadcasts", async () => {
+  it("retries a rate-limited one-bubble promo once and quarantines ambiguous send via processBroadcasts", async () => {
     const fx = createD1Fixture();
     try {
       seedCatalogAndUsers(fx);
@@ -194,27 +193,24 @@ describe("Telegram automatic promo broadcast", () => {
         const method = String(url).split("/").pop() || "";
         calls.push(method);
         callIndex++;
-        // Pass 1 (user 101): photo ok (#1), message 429 (#2) -> worker sets global telegram_after cooldown, deferring 102
-        if (callIndex === 1) return Response.json({ ok: true, result: { message_id: 500 } });
-        if (callIndex === 2) return Response.json({ ok: false, error_code: 429, parameters: { retry_after: 5 } });
-        // Pass 2 (after cooldown): user 101 retries message ONLY (no photo) -> ok (#3);
-        // user 102 sends photo ok (#4), message timeout (#5) -> quarantined as unknown
-        if (callIndex === 3) return Response.json({ ok: true, result: { message_id: 600 } });
-        if (callIndex === 4) return Response.json({ ok: true, result: { message_id: 501 } });
+        // Pass 1 (user 101): message 429 (#1) -> global cooldown, deferring 102
+        if (callIndex === 1) return Response.json({ ok: false, error_code: 429, parameters: { retry_after: 5 } });
+        // Pass 2: user 101 message ok (#2); user 102 message timeout (#3) -> unknown
+        if (callIndex === 2) return Response.json({ ok: true, result: { message_id: 600 } });
         return Response.json({ ok: false, description: "timeout" });
       }));
 
       const firstPass = await processBroadcasts(db, 8, 20000);
       expect(firstPass).toMatchObject({ deferred: 1, unknown: 0, sent: 0 });
-      expect(calls).toEqual(["sendPhoto", "sendMessage"]);
+      expect(calls).toEqual(["sendMessage"]);
 
       // Advance past retry_after (5s)
       vi.setSystemTime(new Date("2026-11-19T02:05:10Z"));
       calls.length = 0;
       const secondPass = await processBroadcasts(db, 8, 20000);
-      // User 101 sends only sendMessage (NO sendPhoto); user 102 sends photo + message(timeout -> unknown)
+      // One sendMessage each; user 102 timeout -> unknown (never blindly resent)
       expect(secondPass).toMatchObject({ sent: 1, deferred: 0, unknown: 1 });
-      expect(calls).toEqual(["sendMessage", "sendPhoto", "sendMessage"]);
+      expect(calls).toEqual(["sendMessage", "sendMessage"]);
 
       // Pass 3: user 102 stays unknown and is never retried blindly
       vi.setSystemTime(new Date("2026-11-19T02:06:00Z"));
@@ -264,7 +260,7 @@ describe("Telegram automatic promo broadcast", () => {
       expect(disp.sent).toBe(2);
       expect(budgeted.used).toBeLessThanOrEqual(38);
       // Never sent to admin chat -1001! Only to user 101 and 102
-      expect(sentChatIds).toEqual(["101", "101", "102", "102"]);
+      expect(sentChatIds).toEqual(["101", "102"]);
 
       // Also verify POST /api/cron/operations?phase=notify does NOT send admin promo digest
       sentChatIds.length = 0;

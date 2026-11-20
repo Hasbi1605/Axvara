@@ -59,7 +59,7 @@ it("workerd D1: concurrent promo enqueue is idempotent and expired deliveries sk
 
     const firstBatch = await processBroadcasts(db, 1, 20000);
     expect(firstBatch).toMatchObject({ sent: 1, skipped: 0 });
-    expect(fetchMock).toHaveBeenCalledTimes(2); // sendPhoto + sendMessage
+    expect(fetchMock).toHaveBeenCalledTimes(1); // one sendMessage (banner = link preview)
 
     vi.setSystemTime(new Date("2026-11-19T05:00:01Z")); // 12:00:01 WIB
     fetchMock.mockClear();

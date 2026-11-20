@@ -70,3 +70,32 @@ it('sends Telegram promo photo first then HTML chunks and never resends photo on
  const third=await sendBroadcast('telegram',{...row,destination:'22'},promoSnapshot);
  expect(third).toEqual({state:'unknown',error:'telegram_delivery_unknown',providerId:JSON.stringify({photoId:'20',sentChunks:0})});
 });
+it('link_preview promo sends banner above chunk 0 in one bubble, no sendPhoto, resumes without re-sending chunk 0',async()=>{
+ vi.stubEnv('TELEGRAM_BOT_ENABLED','true');vi.stubEnv('TELEGRAM_BOT_TOKEN','fixture');
+ vi.mocked(sendPhoto).mockClear();vi.mocked(sendMessage).mockReset();
+ const promoSnapshot={
+  name:'Promo otomatis sore 2026-11-21',title:'Promo otomatis sore 2026-11-21',body:'',cta_label:'',cta_url:'',
+  promo:{
+   kind:'telegram_promo' as const,businessDate:'2026-11-21',slot:'evening' as const,
+   bannerUrl:'https://axvara.tech/banners/ready-promo.jpg',bannerMode:'link_preview' as const,captionHtml:'',
+   messagesHtml:['🔥 <b>PRODUK AXVARA READY SORE INI</b>\nPart 1','Part 2'],
+   expiresAt:'2099-11-21T20:00:00+07:00',
+  },
+ };
+ vi.mocked(sendMessage)
+  .mockResolvedValueOnce({ok:true,result:{message_id:31} as never})
+  .mockResolvedValueOnce({ok:false,error_code:429,parameters:{retry_after:5}});
+ const first=await sendBroadcast('telegram',{...row,destination:'33'},promoSnapshot);
+ expect(first).toMatchObject({state:'retry',retryAfter:5});
+ expect(sendPhoto).not.toHaveBeenCalled();
+ expect(vi.mocked(sendMessage).mock.calls[0][0]).toEqual({chat_id:'33',text:'🔥 <b>PRODUK AXVARA READY SORE INI</b>\nPart 1',parse_mode:'HTML',link_preview_options:{url:'https://axvara.tech/banners/ready-promo.jpg',prefer_large_media:true,show_above_text:true}});
+ expect(vi.mocked(sendMessage).mock.calls[1][0]).toMatchObject({text:'Part 2',disable_web_page_preview:true});
+ expect(vi.mocked(sendMessage).mock.calls[1][0]).not.toHaveProperty('link_preview_options');
+ vi.mocked(sendMessage).mockReset();
+ vi.mocked(sendMessage).mockResolvedValueOnce({ok:true,result:{message_id:32} as never});
+ const second=await sendBroadcast('telegram',{...row,destination:'33',provider_id:first.providerId},promoSnapshot);
+ expect(second).toMatchObject({state:'sent'});
+ expect(sendMessage).toHaveBeenCalledTimes(1);
+ expect(vi.mocked(sendMessage).mock.calls[0][0].text).toBe('Part 2');
+ expect(sendPhoto).not.toHaveBeenCalled();
+});

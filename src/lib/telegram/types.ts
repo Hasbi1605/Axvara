@@ -102,6 +102,13 @@ export interface SendMessageParams {
   reply_markup?: AnyReplyMarkup;
   disable_web_page_preview?: boolean;
   disable_notification?: boolean;
+  /** Bot API 7.0+: dipakai promo untuk menampilkan banner di atas teks dalam SATU bubble. */
+  link_preview_options?: {
+    is_disabled?: boolean;
+    url?: string;
+    prefer_large_media?: boolean;
+    show_above_text?: boolean;
+  };
 }
 
 export interface SendPhotoParams {
