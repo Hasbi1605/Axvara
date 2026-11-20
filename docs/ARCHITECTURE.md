@@ -84,6 +84,7 @@ Migrasi D1 `0137_market_refund_estimates.sql`: trigger insert `orders` Market me
 ## C-H: consumer Queue pengiriman instan & DLQ (`axvara-mcp`) — 18 November 2026 (lokal, belum deploy)
 
 - **Konfigurasi `mcp-worker/wrangler.toml`:**
+  - `[observability] enabled = true`, `head_sampling_rate = 1`, `[observability.logs] invocation_logs = true` (Workers Logs persisten, 20 Nov 2026; lihat §10).
   - `[vars] QUEUE_CONSUMER_MODE = "active"` (default `"active"`; bila `"off"`, consumer langsung `ack()` tanpa memanggil origin sehingga cron 1-menitan tetap menjadi backstop).
   - `[[queues.consumers]]` utama `axvara-order-fulfillment` (`max_batch_size = 5`, `max_batch_timeout = 1`, `max_retries = 4`, `dead_letter_queue = "axvara-order-fulfillment-dlq"`) dan consumer DLQ `axvara-order-fulfillment-dlq` (`max_batch_size = 5`, `max_batch_timeout = 5`, `max_retries = 2`). Resource Queue dibuat manual oleh PM sebelum push/deploy; producer Pages (`ORDER_FULFILLMENT_QUEUE` di `wrangler.json`) dan endpoint origin `/api/internal/queue/fulfill` dikerjakan di paket C-S terpisah.
 - **Handler consumer & DLQ (`mcp-worker/src/queue.ts`, diekspor lewat `queue(batch, env, ctx)` di `mcp-worker/src/index.ts`):**
@@ -2758,6 +2759,8 @@ render RSC per kunjungan beranda); `decideAllWinners` (aksi `pairs` di
 - Cloudflare Web Analytics (gratis, privacy-friendly) untuk traffic
 - D1 + R2 metrics di dashboard Cloudflare
 - P1: tambah logging terstruktur + alert WA jika error rate naik
+
+**Workers Logs `axvara-mcp` — 20 November 2026 (keputusan owner; aktif setelah rilis CI).** `mcp-worker/wrangler.toml` menambah `[observability] enabled = true`, `head_sampling_rate = 1`, dan `[observability.logs] invocation_logs = true` → log persisten 7 hari di dashboard **Workers → axvara-mcp → Observability** (invocation logs otomatis ON). Estimasi ~2.190 invocation/hari, ~0,05–0,4 GB/bulan vs jatah 50 GB Workers Paid; pricing berbasis GB mulai 1 Des 2026 ($0,25/GB ingest, $0,10/GB-month). Cek pasca-deploy: buka satu fetch `/mcp` dan pastikan nilai header `authorization` **tidak** tersimpan; jika tersimpan set `invocation_logs = false` via CI. Rollback: `enabled = false` lalu redeploy (jangan hapus blok — default Wrangler bisa menyala). **Pages Functions tidak punya log persisten** (Workers Logs/Logpush/Tail Workers unsupported di matrix kompatibilitas); insiden Pages memakai dashboard **View details → Functions** atau `npx wrangler pages deployment tail` (live, tak disimpan; >100 rps 5 menit menyembunyikan log, maks 10 penonton). Runbook & follow-up di `docs/agent-rules/platform-ops.md`. `temp-mail` tetap memakai `observability.enabled = true` existing (tidak diubah).
 
 ---
 

@@ -15,6 +15,15 @@ crons = ["* * * * *"]
 [limits]
 cpu_ms = 1000
 
+# Workers Logs (2026-11-20, owner): persistent logs 7 hari, dashboard Observability.
+# Rollback: set enabled = false (JANGAN hapus blok — default Wrangler bisa menyala).
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+invocation_logs = true
+
 # State alarm cron (mulai/pengingat 6 jam/pulih) — 2026-10-04, KV gratis.
 [[kv_namespaces]]
 binding = "CRON_STATE"
