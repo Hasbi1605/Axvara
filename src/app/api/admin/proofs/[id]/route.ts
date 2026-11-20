@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { queryFirst, execRun, getD1, D1Statement, incrementSoldCountForOrder } from "@/lib/db";
 import { z } from "zod";
 import { authoritativePaymentMethodForProof } from "@/lib/payment-proofs";
@@ -31,8 +32,9 @@ export async function POST(
   const proofId = Number(id);
   if (!Number.isInteger(proofId) || proofId <= 0) return NextResponse.json({ error: "invalid_id" }, { status: 400 });
 
-  const body = await request.json().catch(() => null);
-  const parsed = ReviewSchema.safeParse(body);
+  const body = await readJsonBody(request, 8_000);
+  if (!body.ok) return body.response;
+  const parsed = ReviewSchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_input", details: parsed.error.flatten() }, { status: 400 });
   }

@@ -1,5 +1,27 @@
 # Aturan agent — Admin Access, hardening OWASP, checkout anti-abuse
 
+## S: password admin upgrade-on-login + body cap admin mutation — 21 November 2026 (lokal, audit AU-B1-1/B1-3)
+
+- **Upgrade-on-login (AU-B1-1).** Hash admin legacy tetap SHA-256 satu putaran
+  (64 hex tanpa salt) DITERIMA agar admin lama tidak terkunci, tetapi pada login
+  sukses pertama (jalur password, bukan proof browser) `upgradeAdminPasswordHash`
+  menggantinya dengan PBKDF2 dan menyimpan `{source,hash}` di D1
+  `store_settings.admin_password_hash`; `resolveAdminStoredHash` memakainya bila
+  `source` = sidik jari `ADMIN_PASSWORD_SHA256` saat ini, sehingga rotasi secret
+  Pages langsung berlaku kembali. Login GET lapor `pbkdf2-proof` setelah upgrade.
+  Jangan mengunci login tanpa jalur upgrade; hash legacy jangan dibuang sebelum
+  admin terbukti sudah PBKDF2. Event `admin_password_upgraded` dicatat sanitized
+  via console (tanpa hash/plaintext).
+- **Body cap admin mutation (AU-B1-3).** SEMUA route `src/app/api/admin/**` yang
+  mem-parse JSON wajib lewat `readJsonBody(req, <cap>)` / `readTextBody`, bukan
+  `req.json()`. Cap default 2–8 KB untuk aksi skalar; 64 KB untuk batch editor
+  (pedia products/settings bulk, markup bulk, broadcasts, fulfillment DELETE);
+  512 KB untuk import inventory fulfillment (100 kredensial × 2000 byte) dan bulk
+  varian. Oversize → 413 `{"error":"payload_too_large"}` (dari stream aktual,
+  bukan hanya Content-Length); malformed di bawah cap → 400. Upload multipart/raw
+  tetap terpisah. Guard statis `tests/admin-body-caps.integration.test.ts`
+  menolak `req.json()` baru di admin.
+
 ## A-S: exception quote synthetic dan CSP Analytics — 18 November 2026 (lokal)
 
 - Hanya header `x-axvara-synthetic:1` + Bearer `CRON_SECRET` sah constant-time

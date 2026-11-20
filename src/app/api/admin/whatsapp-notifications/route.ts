@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { salesGatewayControl } from "@/lib/whatsapp/gateway";
 import { SALES_CONFIG_KEY, SALES_GROUP_NAME, readSalesConfig, parseSalesConfig } from "@/lib/whatsapp/sales-notifications";
@@ -16,8 +17,10 @@ export async function GET(req: NextRequest) {
 }
 export async function POST(req: NextRequest) {
   if (!(await requireAdmin(req))) return json({ error: "Unauthorized" }, 401);
-  const body = await req.json().catch(() => null);
-  if (!["pair", "enable", "disable", "number"].includes(body?.action)) return json({ error: "Aksi tidak valid." }, 400);
+  const bounded = await readJsonBody(req, 8_000);
+  if (!bounded.ok) return bounded.response;
+  const body = (bounded.data ?? {}) as { action?: string; botNumber?: string; botRevision?: string; newBotNumber?: string };
+  if (!["pair", "enable", "disable", "number"].includes(body.action ?? "")) return json({ error: "Aksi tidak valid." }, 400);
   const identity = { botNumber: body.botNumber ?? DEFAULT_SALES_BOT_NUMBER, botRevision: body.botRevision ?? "initial" };
   if (normalizeBotNumber(identity.botNumber) !== identity.botNumber || !validBotRevision(identity.botRevision)) return json({ error: "Konfigurasi nomor tidak valid. Cek koneksi kembali." }, 400);
   const newBotNumber = body.action === "number" ? normalizeBotNumber(body.newBotNumber) : null;

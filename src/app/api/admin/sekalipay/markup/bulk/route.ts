@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { calculateSkSellPrice } from "@/lib/sekalipay/sync";
 import { saveSupplierMarkup } from "@/lib/supplier/admin-markup";
@@ -23,7 +24,9 @@ const bulkSchema = z.object({
 export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const parsed = bulkSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 64_000);
+  if (!body.ok) return body.response;
+  const parsed = bulkSchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "validation_failed" }, { status: 400 });
   }

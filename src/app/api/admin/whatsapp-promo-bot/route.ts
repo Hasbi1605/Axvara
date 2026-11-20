@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { DEFAULT_SALES_BOT_NUMBER, normalizeBotNumber, validBotRevision } from "@/lib/whatsapp/bot-number";
 import { readSalesConfig } from "@/lib/whatsapp/sales-notifications";
@@ -24,8 +25,12 @@ export async function GET(req: NextRequest) {
 }
 export async function POST(req: NextRequest) {
   if (!(await requireAdmin(req))) return json({ error: "Unauthorized" }, 401);
-  const body = await req.json().catch(() => null);
-  if (!["number", "pair", "save_groups", "enable", "disable"].includes(body?.action)) return json({ error: "Aksi tidak valid." }, 400);
+  const bounded = await readJsonBody(req, 16_000);
+  if (!bounded.ok) return bounded.response;
+  const body = (bounded.data ?? {}) as {
+    action?: string; botNumber?: string; botRevision?: string; newBotNumber?: string; groupIds?: unknown;
+  };
+  if (!["number", "pair", "save_groups", "enable", "disable"].includes(body.action ?? "")) return json({ error: "Aksi tidak valid." }, 400);
   const db = createDatabaseAccess();
   try {
     const raw = (await db.queryFirst("SELECT value FROM store_settings WHERE key=?", PROMO_BOT_CONFIG_KEY))?.value ?? null;

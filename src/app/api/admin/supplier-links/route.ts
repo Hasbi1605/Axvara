@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { queryAll, queryFirst, execRun } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { z } from "zod";
@@ -45,7 +46,9 @@ export async function POST(request: NextRequest) {
   if (!checkRateLimit(request, "products:write")) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
-  const parsed = createSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 8_000);
+  if (!body.ok) return body.response;
+  const parsed = createSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "validation_failed" }, { status: 400 });
   const { slug, destination, title } = parsed.data;
   if (!isValidSupplierSlug(slug)) {
@@ -80,7 +83,9 @@ export async function PUT(request: NextRequest) {
   if (!checkRateLimit(request, "products:write")) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
-  const parsed = updateSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 8_000);
+  if (!body.ok) return body.response;
+  const parsed = updateSchema.safeParse(body.data);
   if (!parsed.success) return NextResponse.json({ error: "validation_failed" }, { status: 400 });
   const { id, destination, title, is_active } = parsed.data;
   const sets: string[] = [];

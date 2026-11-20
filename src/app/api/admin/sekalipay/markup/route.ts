@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { queryAll, queryFirst } from "@/lib/db";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { computeVariantLiveStatus, loadProductGroupLosers } from "@/lib/product-live-status";
@@ -92,7 +93,9 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const parsed = updateSchema.safeParse(await request.json().catch(() => null));
+  const body = await readJsonBody(request, 2_000);
+  if (!body.ok) return body.response;
+  const parsed = updateSchema.safeParse(body.data);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "validation_failed" }, { status: 400 });
   }

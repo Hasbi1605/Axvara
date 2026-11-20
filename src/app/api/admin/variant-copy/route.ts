@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { execRun, isD1Mode, queryAll, queryFirst } from "@/lib/db";
 import { rateLimit, rateLimitKey } from "@/lib/rateLimit";
 import {
@@ -63,8 +64,9 @@ export async function PUT(req: NextRequest) {
   }
   if (!(await requireAdmin(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!isD1Mode()) return NextResponse.json({ error: "Butuh database D1" }, { status: 503 });
-  let body: unknown;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Body tidak valid" }, { status: 400 }); }
+  const bounded = await readJsonBody(req, 64_000);
+  if (!bounded.ok) return bounded.response;
+  const body = bounded.data;
   const parsed = putSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
 

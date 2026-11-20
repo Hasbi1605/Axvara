@@ -7,6 +7,7 @@ import { CUSTOM_COMMENT_MAX_LINES, pediaServiceTypeFor } from "@/lib/pedia/custo
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess } from "@/lib/db-access";
 import { computePediaPrice } from "@/lib/pedia/pricing";
 import { pediaMinOrderRp } from "@/lib/pedia/ops-config";
@@ -140,7 +141,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const bounded = await readJsonBody(request, 64_000);
+  if (!bounded.ok) return bounded.response;
+  const body = (bounded.data ?? null) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   const db = createDatabaseAccess();
 
@@ -233,7 +236,9 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const bounded = await readJsonBody(request, 64_000);
+  if (!bounded.ok) return bounded.response;
+  const body = (bounded.data ?? null) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   const db = createDatabaseAccess();
 

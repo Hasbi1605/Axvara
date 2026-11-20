@@ -4,6 +4,7 @@ import { isActiveQrisConfigured, activeQrisProvider } from "@/lib/payments/dana-
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { setWebhook, getWebhookInfo, deleteWebhook, setMyCommands, canonicalWebhookUrl } from "@/lib/telegram/api";
 
 export const runtime = "edge";
@@ -12,7 +13,9 @@ export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const body = await request.json() as { action?: string };
+  const bounded = await readJsonBody(request, 1_000);
+  if (!bounded.ok) return bounded.response;
+  const body = (bounded.data ?? {}) as { action?: string };
   // SITE_URL bisa kosong di worker (§16.4): `??` menghasilkan URL webhook relatif.
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
   const botToken = process.env.TELEGRAM_BOT_TOKEN;

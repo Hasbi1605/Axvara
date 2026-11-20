@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createAdminPasswordProofChallenge, createAdminToken, cookieForIdle, cookieForToken, createIdleToken, getAdminCredentials, getAdminPasswordProofConfig, isSecureForRequest, verifyAdminPasswordProof, verifyPassword } from "@/lib/auth";
+import { createAdminPasswordProofChallenge, createAdminToken, cookieForIdle, cookieForToken, createIdleToken, getAdminCredentials, getAdminPasswordProofConfig, isLegacyStoredHash, isSecureForRequest, resolveAdminStoredHash, upgradeAdminPasswordHash, verifyAdminPasswordProof, verifyPassword } from "@/lib/auth";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { readJsonBody } from "@/lib/http-body";
 import { createDatabaseAccess } from "@/lib/db-access";
@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
   if (!access.ok) return accessFailureResponse(access);
   try {
     const cred = getAdminCredentials();
-    const config = getAdminPasswordProofConfig(cred.sha256);
+    const effectiveHash = await resolveAdminStoredHash(cred.sha256);
+    const config = getAdminPasswordProofConfig(effectiveHash);
     if (!config) return NextResponse.json({ mode: "password" }, { headers: { "Cache-Control": "no-store" } });
     const challenge = await createAdminPasswordProofChallenge(cred.email);
     return NextResponse.json({ mode: "pbkdf2-proof", ...config, challenge }, { headers: { "Cache-Control": "no-store" } });
@@ -66,8 +67,11 @@ export async function POST(req: NextRequest) {
   }
   const audit = (event: "login_failed" | "login_succeeded") => recordSecurityEvent(event, clientHash, "/api/auth/login", "POST", db);
   let cred: ReturnType<typeof getAdminCredentials>;
+  let effectiveHash: string;
   try {
     cred = getAdminCredentials();
+    // Legacy env hash tetap diterima; bila sudah pernah di-upgrade, pakai PBKDF2 D1.
+    effectiveHash = await resolveAdminStoredHash(cred.sha256);
   } catch {
     return NextResponse.json({ error: "Layanan login sedang tidak siap. Coba lagi sebentar." }, { status: 503 });
   }
@@ -75,8 +79,8 @@ export async function POST(req: NextRequest) {
   let ok = false;
   try {
     ok = password_proof && challenge
-      ? await verifyAdminPasswordProof(cred.email, cred.sha256, challenge, password_proof)
-      : await verifyPassword(password!, cred.sha256);
+      ? await verifyAdminPasswordProof(cred.email, effectiveHash, challenge, password_proof)
+      : await verifyPassword(password!, effectiveHash);
   } catch {
     // A malformed secret must not turn the login endpoint into an opaque
     // platform-level 500 response. Keep the configuration detail private.
@@ -85,6 +89,12 @@ export async function POST(req: NextRequest) {
   if (!ok || email.toLowerCase() !== cred.email.toLowerCase()) {
     await audit("login_failed");
     return NextResponse.json({ error: "Email atau password salah." }, { status: 401 });
+  }
+
+  // Plaintext hanya tersedia di jalur password (bukan proof browser). Ganti hash
+  // legacy dengan PBKDF2 D1 sekali; kegagalan tidak menggagalkan login ini.
+  if (password && isLegacyStoredHash(cred.sha256) && isLegacyStoredHash(effectiveHash)) {
+    await upgradeAdminPasswordHash(password, effectiveHash);
   }
 
   let session: Awaited<ReturnType<typeof createAdminToken>>;
