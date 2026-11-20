@@ -129,7 +129,12 @@ export async function PUT(req: NextRequest) {
   // perbaikan kurasi berikutnya dan perubahan supplier tetap mengalir.
   const sameAsAuto = incoming !== null
     && JSON.stringify(serializeVariantCopy(incoming)) === JSON.stringify(serializeVariantCopy(supplier.auto));
-  const clear = incoming === null || sameAsAuto;
+  // Audit AU-H2-7 (21 Nov 2026): dulu "clear" hanya melihat ID lalu menghapus
+  // EN juga — admin menyimpan EN tanpa menimpa ID kehilangan EN diam-diam.
+  // Sekarang ID kosong/identik-otomatis tetap kembali otomatis, TAPI EN yang
+  // diisi admin selalu disimpan sendiri (ID null, EN terisi).
+  const clearId = incoming === null || sameAsAuto;
+  const hasEn = termsEn !== "" || activationEn !== "";
   // Compare sumber dan suntingan dalam UPDATE yang sama, bukan hanya sebelum tulis.
   const result = await execRun(
     `UPDATE product_variants SET admin_terms=?, admin_activation=?, admin_terms_en=?, admin_activation_en=?, admin_copy_fingerprint=?,
@@ -139,8 +144,9 @@ export async function PUT(req: NextRequest) {
         AND pv.wr_variant_id IS ? AND pv.sk_variant_id IS ?
         AND wv.wr_terms IS ? AND wv.wr_delivery_terms IS ?
         AND sp.sk_description IS ? AND sp.sk_seller_note IS ?)`,
-    clear ? null : terms || null, clear ? null : activation || null,
-    clear ? null : termsEn || null, clear ? null : activationEn || null, clear ? null : supplier.supplierKey,
+    clearId ? null : terms || null, clearId ? null : activation || null,
+    hasEn ? termsEn || null : null, hasEn ? activationEn || null : null,
+    clearId ? null : supplier.supplierKey,
     variantId, row.admin_terms ?? null, row.admin_activation ?? null, row.admin_terms_en ?? null, row.admin_activation_en ?? null, row.admin_copy_fingerprint ?? null,
     variantId, row.wr_variant_id ?? null, row.sk_variant_id ?? null,
     row.wr_terms ?? null, row.wr_delivery_terms ?? null, row.sk_description ?? null, row.sk_seller_note ?? null,

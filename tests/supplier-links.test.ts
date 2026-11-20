@@ -50,6 +50,16 @@ describe("supplier-links lib — validasi slug + destination", () => {
     expect(normalizeSupplierDestination("")).toBeNull();
   });
 
+  // Audit AU-H2-12 (21 Nov 2026): "//evil.com" dulu lolos sebagai "path" lalu
+  // di-redirect() mentah = open-redirect. Skema http juga melanggar kontrak
+  // modul (hanya https + path internal).
+  it("destination: protocol-relative dan http ditolak (open-redirect)", () => {
+    expect(normalizeSupplierDestination("//evil.com/phish")).toBeNull();
+    expect(normalizeSupplierDestination("//axvara.tech/go/otp")).toBeNull();
+    expect(normalizeSupplierDestination("http://netflix-codes.sekalipay.com/mailbox")).toBeNull();
+    expect(normalizeSupplierDestination("http://axvara.tech/go/otp")).toBeNull();
+  });
+
   it("normalizeSupplierLink: is_active/click dinormalisasi", () => {
     const link = normalizeSupplierLink({ id: 1, slug: "otp", destination: "https://x.test/", is_active: 1, click_count: 7 });
     expect(link).toMatchObject({ id: 1, slug: "otp", is_active: true, click_count: 7, title: "" });

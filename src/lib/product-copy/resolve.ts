@@ -93,19 +93,22 @@ export function resolveVariantCopyDetailed(
   const adminCopyEn = admin ? parseAdminVariantCopy(admin.termsEn, admin.activationEn) : null;
   const fingerprint = admin?.fingerprint ?? "";
   const hasAdmin = adminCopy !== null;
+  const hasAdminEn = adminCopyEn !== null;
   const adminFresh = hasAdmin && fingerprint === supplierKey;
-  const adminStale = !adminFresh && (hasAdmin || adminCopyEn !== null);
-  // Suntingan admin tetap tampil walau sidik jari supplier berubah; EN hanya
-  // memakai admin EN bila diisi, tanpa EN jatuh ke kurasi EN/WR.
-  const copy = hasAdmin ? (locale === "en" ? adminCopyEn ?? auto : adminCopy) : auto;
-  const status: VariantCopyStatus = hasAdmin
-    ? (locale === "en" ? (adminCopyEn ? "admin" : auto ? auto.source : "none") : "admin")
+  const adminStale = !adminFresh && (hasAdmin || hasAdminEn);
+  // Suntingan admin tetap tampil walau sidik jari supplier berubah. EN memakai
+  // suntingan EN bila diisi, TANPA bergantung pada override ID (audit AU-H2-7):
+  // dulu `hasAdmin ? … : auto` membuat EN-only tak pernah terlihat pembeli EN.
+  const copy = locale === "en" ? (hasAdminEn ? adminCopyEn : auto) : (hasAdmin ? adminCopy : auto);
+  const localeOverride = locale === "en" ? hasAdminEn : hasAdmin;
+  const status: VariantCopyStatus = localeOverride
+    ? "admin"
     : auto ? auto.source : "none";
   // Tinjauan dihitung dari salinan ID (bukan locale): admin menyunting teks ID.
   // "reviewed" = teks supplier yang tampil persis sama dengan sidik jari yang
-  // sudah ditandai admin, tanpa override ID.
+  // sudah ditandai admin, tanpa override ID (EN-only juga berarti ada tinjauan).
   const idStatus: VariantCopyStatus = hasAdmin ? "admin" : auto ? auto.source : "none";
-  const noOverride = !hasAdmin;
+  const noOverride = !hasAdmin && !hasAdminEn;
   const reviewed = noOverride && fingerprint !== "" && fingerprint === supplierKey && idStatus === "pemasok";
   let reviewKind: VariantCopyReviewKind = null;
   if (adminStale || (noOverride && fingerprint !== "" && fingerprint !== supplierKey && idStatus === "pemasok")) reviewKind = "changed";
@@ -136,10 +139,25 @@ export type StorefrontVariant = VariantSummary & { copy: VariantCopy | null; cop
 export type StorefrontProductDetail = Omit<ProductDetail, "variants"> & { variants: StorefrontVariant[] };
 
 /**
+ * Kolom internal yang TIDAK boleh sampai ke pembeli (audit AU-C1-1 21 Nov 2026):
+ * modal/cost supplier + ID tautan supplier. Rute admin (/api/products/[id])
+ * tetap mengembalikannya; hanya payload publik /api/catalog yang dibersihkan.
+ */
+const PUBLIC_VARIANT_DENYLIST = [
+  "manual_cost", "wr_variant_id", "sk_variant_id", "wr_auto_managed", "sk_auto_managed",
+  "tunvn_source_product_id", "tunvn_buff_quantity_b", "aivault_service_id", "storebat_product_id",
+  "mirai_package_code", "supplier_cost", "supplier_cost_source", "cost_usd", "cost_snapshot",
+] as const;
+
+/**
  * Detail produk untuk storefront: teks mentah (WR & admin) diganti salinan
  * siap tampil. Kedua locale dikirim sekaligus agar cache publik `/api/catalog`
  * tidak bergantung cookie; klien memilih `copy_en` saat EN.
  * Salinan bersumber "pemasok" ikut disanitasi memakai link aktif.
+ *
+ * Payload publik juga membuang modal/cost + ID supplier (AU-C1-1) dan
+ * menggantinya dengan penanda turunan yang dibutuhkan storefront:
+ * `supplier_variant` ("wr"|"sk"|null) dan `automatic_processing` (WR3 Jaspay).
  */
 export function withVariantCopy(detail: ProductDetail, links?: SupplierLinkMap): StorefrontProductDetail {
   return {
@@ -149,7 +167,11 @@ export function withVariantCopy(detail: ProductDetail, links?: SupplierLinkMap):
       const copy = resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "id");
       const copyEn = resolveVariantCopy(variant.terms, variant.delivery_terms, admin, "en");
       const skDuration = variant.sk_duration ?? deriveSkDuration(variant);
-      return {
+      const wrId = variant.wr_variant_id == null ? "" : String(variant.wr_variant_id).trim();
+      const supplierVariant: "wr" | "sk" | null = wrId
+        ? "wr"
+        : variant.sk_variant_id != null && String(variant.sk_variant_id).trim() !== "" ? "sk" : null;
+      const out: StorefrontVariant = {
         ...variant,
         terms: null,
         delivery_terms: null,
@@ -160,9 +182,13 @@ export function withVariantCopy(detail: ProductDetail, links?: SupplierLinkMap):
         admin_terms_en: undefined,
         admin_activation_en: undefined,
         admin_copy_fingerprint: undefined,
+        supplier_variant: supplierVariant,
+        ...(wrId.startsWith("jaspay:") ? { automatic_processing: true } : {}),
         copy: links ? sanitizeSupplierCopy(copy, links) : copy,
         copy_en: links ? sanitizeSupplierCopy(copyEn, links) : copyEn,
       };
+      for (const key of PUBLIC_VARIANT_DENYLIST) delete (out as Record<string, unknown>)[key];
+      return out;
     }),
   };
 }

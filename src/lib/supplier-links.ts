@@ -43,14 +43,16 @@ export function isValidSupplierSlug(slug: string): boolean {
 
 /**
  * Normalisasi + validasi tujuan. Kembalikan destination kanonis atau null.
- * - Path internal "/..." (artikel/produk/halaman) → apa adanya.
+ * - Path internal "/..." (artikel/produk/halaman) → apa adanya. TIDAK boleh
+ *   protocol-relative "//host" (audit AU-H2-12: itu open-redirect ke host lain).
  * - Bare axvara.tech/... → path internal.
- * - https://... host lain → URL penuh (hanya http/https).
+ * - https://... host lain → URL penuh (HANYA https; modul kontrak menolak http).
  */
 export function normalizeSupplierDestination(raw: string): string | null {
   const text = String(raw ?? "").trim().replace(/[.,;:!?)\]]+$/, "");
   if (!text || text.length > 2048) return null;
   if (text.startsWith("/")) {
+    if (text.startsWith("//")) return null;
     return /^\/[a-z0-9\-_./?#&=%]*$/i.test(text) ? text : null;
   }
   let candidate = text;
@@ -61,7 +63,7 @@ export function normalizeSupplierDestination(raw: string): string | null {
   } catch {
     return null;
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  if (parsed.protocol !== "https:") return null;
   if (!parsed.hostname.includes(".")) return null;
   if (/^(?:www\.)?axvara\.tech$/i.test(parsed.hostname)) {
     const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;

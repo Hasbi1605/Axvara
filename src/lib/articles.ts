@@ -20,7 +20,7 @@ export function isSafeMarkdown(value: string): boolean {
     if (doc.type !== "doc") return true;
     const nodes = new Set(["doc","paragraph","text","heading","bulletList","orderedList","listItem","blockquote","hardBreak","horizontalRule","image"]);
     const marks = new Set(["bold","italic","strike","link"]);
-    const walk=(node:unknown):boolean=>{if(!node||typeof node!=="object")return true;const n=node as {type?:string;marks?:{type?:string;attrs?:{href?:string}}[];content?:unknown[]};if(!n.type||!nodes.has(n.type))return false;if(n.marks?.some(m=>!m.type||!marks.has(m.type)||(m.type==="link"&&!/^https:\/\//.test(m.attrs?.href??""))))return false;return !n.content||n.content.every(walk)};
+    const walk=(node:unknown):boolean=>{if(!node||typeof node!=="object")return true;const n=node as {type?:string;attrs?:{href?:string;src?:string};marks?:{type?:string;attrs?:{href?:string}}[];content?:unknown[]};if(!n.type||!nodes.has(n.type))return false;if(n.type==="image"&&!(typeof n.attrs?.src==="string"&&n.attrs.src.startsWith("/r2/articles/content/")))return false;if(n.marks?.some(m=>!m.type||!marks.has(m.type)||(m.type==="link"&&!/^https:\/\//.test(m.attrs?.href??""))))return false;return !n.content||n.content.every(walk)};
     return walk(doc);
   } catch { return true; }
 }
@@ -30,11 +30,29 @@ export function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 72) || "artikel";
 }
 
+/**
+ * Ekstrak teks polos dari dokumen TipTap JSON (audit AU-H2-6): jalan rekursif
+ * hanya mengambil `node.text`, tanda pemisah antar-blok (paragraf/heading/
+ * listItem) jadi spasi, lalu normalisasi + potong 160 karakter. JANGAN
+ * stringify seluruh JSON — kunci (`type`, `content`, `marks`, …) dulu bocor
+ * ke excerpt publik/SEO.
+ */
+function tipTapPlainText(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const n = node as { type?: string; text?: unknown; content?: unknown[]; attrs?: { src?: unknown } };
+  if (n.type === "text") return typeof n.text === "string" ? n.text : "";
+  if (n.type === "hardBreak") return " ";
+  if (!Array.isArray(n.content) || n.content.length === 0) return "";
+  const block = n.type === "paragraph" || n.type === "heading" || n.type === "listItem" || n.type === "blockquote";
+  const inner = n.content.map(tipTapPlainText).join(block ? " " : "");
+  return block ? ` ${inner} ` : inner;
+}
+
 export function excerptFromMarkdown(value: string): string {
   try {
     const json = JSON.parse(value) as { type?: string; content?: unknown[] };
     if (json.type === "doc") {
-      const text = JSON.stringify(json.content ?? []).replace(/"text":"([^"]*)"/g, "$1").replace(/[{}\[\]",:]/g, " ").replace(/\s+/g, " ").trim();
+      const text = tipTapPlainText(json).replace(/\s+/g, " ").trim();
       return text.length > 160 ? `${text.slice(0,157).trimEnd()}…` : text;
     }
   } catch { /* legacy Markdown */ }
