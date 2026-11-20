@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../mcp-worker/src/index";
 import { syntheticResponse } from "./helpers/synthetic-response";
 import {
-  ALARM_KV_KEY, ALARM_REMINDER_MS, runOperationsTick,
-  type AlarmState, type CronEnv, type KvLike,
+  ALARM_KV_KEY, ALARM_REMINDER_MS, formatAlert, formatRecovery, normalizeErrorText, runOperationsTick,
+  type AlarmState, type CronEnv, type KvLike, type PhaseOutcome,
 } from "../mcp-worker/src/cron";
 
 const baseEnv = {
@@ -146,7 +146,7 @@ describe("per-step cron alarm", () => {
     expect(f.state().pendingFailures).toEqual([]);
   });
 
-  it("start and recovery retain all nine hard step identities", async () => {
+  it("start and recovery collapse correlated failures into one compact line", async () => {
     let failing = true;
     const jobs = ["payments", "expiry", "fulfillment", "wr_orders", "sk_orders", "tunvn_orders", "aivault_orders", "pedia_orders", "games_orders"];
     const f = fixture((job) => failing && jobs.includes(job) ? fail() : ok());
@@ -155,10 +155,15 @@ describe("per-step cron alarm", () => {
     expect(f.state().lastFailures).toHaveLength(9);
     failing = false;
     for (let minute = 2; minute <= 4; minute++) await f.tick(minute);
-    for (const job of jobs) {
-      expect(f.messages[0]).toContain(`lite:${job}: HTTP 500`);
-      expect(f.messages[1]).toContain(`lite:${job}: HTTP 500`);
-    }
+    // 9 kegagalan dengan error identik → satu baris grup, bukan 9 baris.
+    const bullets = f.messages[0].split("\n").filter((line) => line.startsWith("• "));
+    expect(bullets).toHaveLength(1);
+    expect(bullets[0]).toContain("9 job: lite:payments, lite:expiry, lite:fulfillment, +6 lainnya");
+    expect(bullets[0]).not.toContain("games_orders");
+    // Recovery tidak mengulang daftar penuh.
+    const recovery = f.messages[1].split("\n");
+    expect(recovery.some((line) => line === "9 job sempat gagal: lite:payments, lite:expiry, lite:fulfillment, +6 lainnya")).toBe(true);
+    expect(recovery.some((line) => line.startsWith("• "))).toBe(false);
   });
 
   it.each(["reminder", "recovered"] as const)("failed Telegram %s is retried, not acknowledged", async (action) => {
@@ -182,6 +187,47 @@ describe("per-step cron alarm", () => {
     f.env.TELEGRAM_BOT_TOKEN = baseEnv.TELEGRAM_BOT_TOKEN;
     expect((await f.tick(minute + 1)).action).toBe(action);
     expect(f.messages).toHaveLength(2);
+  });
+});
+
+describe("alert text grouping", () => {
+  const d1 = (step: string, ref: string): PhaseOutcome => ({
+    step, calls: 1, ok: false, status: 500, error: `D1_ERROR: internal error; reference = ${ref}`,
+  });
+  const outcome = (step: string, error: string): PhaseOutcome => ({ step, calls: 1, ok: false, status: 503, error });
+
+  it("12 identical D1 errors with different references collapse to one grouped line", () => {
+    const failures = [
+      ...Array.from({ length: 12 }, (_, i) => d1(`lite:job_${i + 1}`, `e_${i}abcdef`)),
+      ...Array.from({ length: 4 }, (_, i) => outcome(`lite:fx_${i + 1}`, "fx_unavailable")),
+      outcome("lite:solo_step", "origin temporarily unavailable"),
+    ];
+    const text = formatAlert(failures, at(30));
+    const bullets = text.split("\n").filter((line) => line.startsWith("• "));
+    expect(bullets).toHaveLength(3);
+    expect(bullets[0]).toBe("• HTTP 500 — D1_ERROR: internal error · 12 job: lite:job_1, lite:job_2, lite:job_3, +9 lainnya");
+    expect(bullets[0]).not.toContain("reference");
+    expect(bullets[0]).not.toContain("e_");
+    expect(bullets[1]).toBe("• HTTP 503 — fx_unavailable · 4 job: lite:fx_1, lite:fx_2, lite:fx_3, +1 lainnya");
+    expect(bullets[2]).toBe("• lite:solo_step: HTTP 503 — origin temporarily unavailable");
+    expect(text).toContain("Periksa error origin");
+  });
+
+  it("formatRecovery summarizes 17 names in one line without error bodies", () => {
+    const names = Array.from({ length: 17 }, (_, i) => `lite:job_${i + 1}: HTTP 500 — D1_ERROR: internal error; reference = e_${i}`);
+    const text = formatRecovery(at(0), at(120), names);
+    const lines = text.split("\n");
+    expect(lines[0]).toBe("✅ Cron AXVARA pulih (09:00 WIB)");
+    expect(lines[1]).toBe("Gangguan sejak 07:00 WIB, ±2 jam 0 mnt.");
+    expect(lines[2]).toBe("17 job sempat gagal: lite:job_1, lite:job_2, lite:job_3, +14 lainnya");
+    expect(text).not.toContain("• ");
+    expect(text).not.toContain("HTTP 500");
+  });
+
+  it("normalizeErrorText strips the reference token and keeps the rest", () => {
+    expect(normalizeErrorText("D1_ERROR: internal error; reference = e_abc123")).toBe("D1_ERROR: internal error");
+    expect(normalizeErrorText("prefix, reference = e_x; trailing detail")).toBe("prefix; trailing detail");
+    expect(normalizeErrorText("timeout")).toBe("timeout");
   });
 });
 
