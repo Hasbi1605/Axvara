@@ -17,7 +17,7 @@ export const TUNVN_RETRYABLE_SQL = `status='needs_admin' AND attempt_count=0 AND
   AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.tunvn_link_id=tunvn_order_links.id
     AND f.order_code=tunvn_order_links.order_code AND f.item_index=tunvn_order_links.item_index
     AND f.status IN ('queued','retry','failed','manual_required') AND f.fulfillment_mode='manual'
-    AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.inventory_id IS NULL AND f.delivered_ciphertext IS NULL AND f.delivered_iv IS NULL)`;
+    AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.aivault_link_id IS NULL AND f.storebat_link_id IS NULL AND f.mirai_link_id IS NULL AND f.inventory_id IS NULL AND f.delivered_ciphertext IS NULL AND f.delivered_iv IS NULL)`;
 // ponytail: recover pre-send failures for 24h; older orders need explicit admin Retry.
 const AUTO_RECOVERY_SQL = `((${TUNVN_RETRYABLE_SQL}) AND last_error!='dispatch_unconfirmed'
   AND EXISTS(SELECT 1 FROM orders o WHERE o.code=tunvn_order_links.order_code AND datetime(o.created_at)>datetime('now','-24 hours')))
@@ -83,7 +83,7 @@ export async function createTunvnOrderLinks(orderCode:string,db:DatabaseAccess=c
     WHERE o.code=? AND o.items=? AND o.status='lunas' AND o.payment_status='paid' AND o.supplier_purchase_disabled=0 AND COALESCE(o.order_kind,'apps')='apps'`,
     JSON.stringify(rows),orderCode,order.items);
   await db.execRun(`UPDATE fulfillment_items SET tunvn_link_id=(SELECT id FROM tunvn_order_links WHERE order_code=fulfillment_items.order_code AND item_index=fulfillment_items.item_index)
-    WHERE order_code=? AND tunvn_link_id IS NULL AND wr_link_id IS NULL AND sk_link_id IS NULL AND inventory_id IS NULL AND status!='delivered'
+    WHERE order_code=? AND tunvn_link_id IS NULL AND wr_link_id IS NULL AND sk_link_id IS NULL AND aivault_link_id IS NULL AND storebat_link_id IS NULL AND mirai_link_id IS NULL AND inventory_id IS NULL AND status NOT IN ('delivered','sending')
       AND EXISTS(SELECT 1 FROM tunvn_order_links l WHERE l.order_code=fulfillment_items.order_code AND l.item_index=fulfillment_items.item_index)`,orderCode);
   return Number(result.changes ?? 0);
 }
@@ -102,7 +102,7 @@ async function preflight(link:Row):Promise<number> {
   let fundable=true;
   if (link.kind==="account") {
     const catalog=await fetchTunvnProducts();
-    if (catalog.kind!=="ok") throw new PreflightError("catalog_unavailable");
+    if (catalog.kind!=="ok") throw new PreflightError("catalog_unavailable",catalog.kind==="ambiguous" && catalog.reason==="http_429");
     const product=catalog.items.find(item=>item.supplier_product_id===link.source_product_id);
     if (!product?.price_usdt || product.stock<Number(link.quantity)) throw new PreflightError("stock_unavailable");
     price=product.price_usdt*Number(link.quantity);
@@ -121,7 +121,7 @@ async function preflight(link:Row):Promise<number> {
   }
   if (!Number.isFinite(price) || price<=0) throw new PreflightError(link.kind==="buff" ? "buff_unavailable" : "catalog_unavailable");
   const balance=await fetchTunvnBalance();
-  if (balance.kind!=="ok") throw new PreflightError("balance_unavailable");
+  if (balance.kind!=="ok") throw new PreflightError("balance_unavailable",balance.kind==="ambiguous" && balance.reason==="http_429");
   if (balance.balance_usdt<price) throw new PreflightError("insufficient_balance");
   if (!fundable) throw new PreflightError("buff_unavailable");
   // Upstream has no max_price or idempotency parameter. A later price/balance
@@ -207,8 +207,8 @@ async function processLink(db:DatabaseAccess,id:number,reconcile=false,deadlineM
       fulfillment=await db.queryFirst("SELECT * FROM fulfillment_items WHERE order_code=? AND item_index=?",link.order_code,link.item_index);
     }
     if (!fulfillment) { await db.execRun("UPDATE tunvn_order_links SET status='pending',lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND lease_owner=?",id,owner); return { claimed:true, rateLimited:false }; }
-    if (fulfillment.product_id!==link.product_id || fulfillment.variant_id!==link.variant_id || fulfillment.qty!==link.quantity || fulfillment.fulfillment_mode!=="manual" || ["delivered","sending"].includes(String(fulfillment.status)) || fulfillment.wr_link_id || fulfillment.sk_link_id || fulfillment.inventory_id || (fulfillment.tunvn_link_id && fulfillment.tunvn_link_id!==id)) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return { claimed:true, rateLimited:false }; }
-    if (fulfillment.tunvn_link_id==null) await db.execRun("UPDATE fulfillment_items SET tunvn_link_id=? WHERE id=? AND tunvn_link_id IS NULL AND wr_link_id IS NULL AND sk_link_id IS NULL",id,fulfillment.id);
+    if (fulfillment.product_id!==link.product_id || fulfillment.variant_id!==link.variant_id || fulfillment.qty!==link.quantity || fulfillment.fulfillment_mode!=="manual" || ["delivered","sending"].includes(String(fulfillment.status)) || fulfillment.wr_link_id || fulfillment.sk_link_id || fulfillment.aivault_link_id || fulfillment.storebat_link_id || fulfillment.mirai_link_id || fulfillment.inventory_id || (fulfillment.tunvn_link_id && fulfillment.tunvn_link_id!==id)) { await settle(db,link,"needs_admin","fulfillment_owned_elsewhere"); return { claimed:true, rateLimited:false }; }
+    if (fulfillment.tunvn_link_id==null) await db.execRun("UPDATE fulfillment_items SET tunvn_link_id=? WHERE id=? AND tunvn_link_id IS NULL AND wr_link_id IS NULL AND sk_link_id IS NULL AND aivault_link_id IS NULL AND storebat_link_id IS NULL AND mirai_link_id IS NULL AND inventory_id IS NULL AND status NOT IN ('delivered','sending')",id,fulfillment.id);
     if (link.provider_batch_id && link.status==="processing") {
       if (Date.now()>=deadlineMs) { await settle(db,link,"processing","poll_deferred"); return { claimed:true, rateLimited:false }; }
       rateLimited=await pollBuff(db,link);
@@ -222,8 +222,8 @@ async function processLink(db:DatabaseAccess,id:number,reconcile=false,deadlineM
     }
     if (Number(link.attempt_count)>=3) { await settle(db,link,"needs_admin","attempts_exhausted"); return { claimed:true, rateLimited:false }; }
     if (Date.now()>=deadlineMs) { await deferPreSend(); return { claimed:true, rateLimited:false }; }
-    const variant=await db.queryFirst(`SELECT pv.sku,pv.tunvn_buff_quantity_b,pv.tunvn_source_product_id,pv.buyer_field_key,pv.max_qty,pv.fulfillment_mode,pv.is_active,p.slug,p.is_active AS product_active,pv.wr_variant_id,pv.sk_variant_id,p.source,p.wr_product_id,p.sk_product_id,p.wr_auto_managed,p.sk_auto_managed FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=?`,link.variant_id,link.product_id);
-    const valid=variant && variant.fulfillment_mode==="manual" && variant.is_active===1 && variant.product_active===1 && !variant.wr_variant_id && !variant.sk_variant_id && !variant.wr_product_id && !variant.sk_product_id && !Number(variant.wr_auto_managed) && !Number(variant.sk_auto_managed) && variant.source==="manual" && (link.kind==="account"
+    const variant=await db.queryFirst(`SELECT pv.sku,pv.tunvn_buff_quantity_b,pv.tunvn_source_product_id,pv.buyer_field_key,pv.max_qty,pv.fulfillment_mode,pv.is_active,pv.aivault_service_id,pv.storebat_product_id,pv.mirai_package_code,p.slug,p.is_active AS product_active,p.archived_at,pv.wr_variant_id,pv.sk_variant_id,p.source,p.wr_product_id,p.sk_product_id,p.wr_auto_managed,p.sk_auto_managed,p.aivault_family,p.storebat_family,p.mirai_family FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=?`,link.variant_id,link.product_id);
+    const valid=variant && variant.fulfillment_mode==="manual" && variant.is_active===1 && variant.product_active===1 && variant.archived_at==null && !variant.wr_variant_id && !variant.sk_variant_id && !variant.aivault_service_id && !variant.storebat_product_id && !variant.mirai_package_code && !variant.wr_product_id && !variant.sk_product_id && !variant.aivault_family && !variant.storebat_family && !variant.mirai_family && !Number(variant.wr_auto_managed) && !Number(variant.sk_auto_managed) && variant.source==="manual" && (link.kind==="account"
       ? variant.sku===`TUNVN-${link.source_product_id}` && Number(variant.tunvn_source_product_id)===Number(link.source_product_id)
       : variant.slug==="muse-ai-1-miliar-token" && variant.sku==="TUNVN-BUFF-1B" && variant.tunvn_buff_quantity_b===1 && variant.buyer_field_key==="muse_invite_code" && variant.max_qty===30);
     if (!valid) { await settle(db,link,"needs_admin","source_changed"); return { claimed:true, rateLimited:false }; }
@@ -232,8 +232,8 @@ async function processLink(db:DatabaseAccess,id:number,reconcile=false,deadlineM
     const sent=await db.execRun(`UPDATE tunvn_order_links SET request_sent_at=?,attempt_count=attempt_count+1 WHERE id=? AND lease_owner=? AND status='claimed' AND attempt_count<3 AND request_sent_at IS NULL
       AND datetime(lease_expires_at)>datetime('now')
       AND EXISTS(SELECT 1 FROM orders WHERE code=? AND status='lunas' AND payment_status='paid' AND supplier_purchase_disabled=0 AND items=?)
-      AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.id=? AND f.tunvn_link_id=? AND f.status NOT IN ('delivered','sending') AND f.fulfillment_mode='manual' AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.inventory_id IS NULL AND f.product_id=tunvn_order_links.product_id AND f.variant_id=tunvn_order_links.variant_id AND f.qty=tunvn_order_links.quantity)
-      AND EXISTS(SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=? AND pv.sku=? AND p.slug=? AND p.source='manual' AND pv.fulfillment_mode='manual' AND pv.is_active=1 AND p.is_active=1 AND pv.wr_variant_id IS NULL AND pv.sk_variant_id IS NULL AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0 AND pv.buyer_field_key IS ? AND pv.max_qty IS ? AND pv.tunvn_buff_quantity_b IS ? AND pv.tunvn_source_product_id IS ?)`,new Date().toISOString(),id,owner,link.order_code,order.items,fulfillment.id,id,link.variant_id,link.product_id,variant!.sku,variant!.slug,variant!.buyer_field_key,variant!.max_qty,variant!.tunvn_buff_quantity_b,variant!.tunvn_source_product_id ?? null);
+      AND EXISTS(SELECT 1 FROM fulfillment_items f WHERE f.id=? AND f.tunvn_link_id=? AND f.status NOT IN ('delivered','sending') AND f.fulfillment_mode='manual' AND f.wr_link_id IS NULL AND f.sk_link_id IS NULL AND f.aivault_link_id IS NULL AND f.storebat_link_id IS NULL AND f.mirai_link_id IS NULL AND f.inventory_id IS NULL AND f.product_id=tunvn_order_links.product_id AND f.variant_id=tunvn_order_links.variant_id AND f.qty=tunvn_order_links.quantity)
+      AND EXISTS(SELECT 1 FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=? AND pv.product_id=? AND pv.sku=? AND p.slug=? AND p.source='manual' AND pv.fulfillment_mode='manual' AND pv.is_active=1 AND p.is_active=1 AND p.archived_at IS NULL AND pv.wr_variant_id IS NULL AND pv.sk_variant_id IS NULL AND pv.aivault_service_id IS NULL AND pv.storebat_product_id IS NULL AND pv.mirai_package_code IS NULL AND p.wr_product_id IS NULL AND p.sk_product_id IS NULL AND p.aivault_family IS NULL AND p.storebat_family IS NULL AND p.mirai_family IS NULL AND p.wr_auto_managed=0 AND p.sk_auto_managed=0 AND pv.buyer_field_key IS ? AND pv.max_qty IS ? AND pv.tunvn_buff_quantity_b IS ? AND pv.tunvn_source_product_id IS ?)`,new Date().toISOString(),id,owner,link.order_code,order.items,fulfillment.id,id,link.variant_id,link.product_id,variant!.sku,variant!.slug,variant!.buyer_field_key,variant!.max_qty,variant!.tunvn_buff_quantity_b,variant!.tunvn_source_product_id ?? null);
     if (!sent.changes) return { claimed:true, rateLimited:false };
     link.attempt_count=Number(link.attempt_count)+1;
     const response=link.kind==="account" ? await buyTunvnProduct(Number(link.source_product_id),Number(link.quantity)) : await orderTunvnBuff(String(link.invite_code),Number(link.quantity));

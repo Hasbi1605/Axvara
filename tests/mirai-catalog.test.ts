@@ -446,3 +446,23 @@ it("allocates distinct category-tail sort_order (+10 each after non-archived max
     { mirai_family: "full", sort_order: 520 },
   ]);
 });
+
+it("H2-3/H2-14: projects supplier min_qty, tightens max_qty and clears compare_price", async () => {
+  const db = createDatabaseAccess(f.db);
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({ success: true, data: [pkg()] }));
+  await publishMiraiCatalog(db, 16000, { force: true });
+  expect(
+    f.sql.prepare("SELECT min_qty,max_qty,price FROM product_variants WHERE mirai_package_code='GPT_10M'").get(),
+  ).toEqual({ min_qty: 1, max_qty: 100, price: 5600 });
+
+  // Admin sets a strikethrough just above the current price.
+  f.sql.exec("UPDATE product_variants SET compare_price=5601 WHERE mirai_package_code='GPT_10M'");
+  // Supplier raises the minimum, lowers the maximum and the resale price rises above compare_price.
+  vi.mocked(fetch).mockResolvedValueOnce(
+    Response.json({ success: true, data: [pkg({ min_quantity: 5, max_quantity: 10, reseller_price_vnd: 8000 })] }),
+  );
+  expect(await publishMiraiCatalog(db, 16000, { force: true })).toMatchObject({ ok: true });
+  expect(
+    f.sql.prepare("SELECT min_qty,max_qty,price,compare_price FROM product_variants WHERE mirai_package_code='GPT_10M'").get(),
+  ).toEqual({ min_qty: 5, max_qty: 10, price: 6700, compare_price: null });
+});

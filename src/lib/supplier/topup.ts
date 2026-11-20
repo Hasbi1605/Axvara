@@ -390,6 +390,25 @@ async function refreshSekalipayTopup(db: DatabaseAccess, item: SupplierTopupItem
       await setStatus(db, item.id, "unknown", "missing_channel", now);
       return;
     }
+    // A create that failed its channel read leaves no local status/range proof;
+    // re-validate channels here so a repost never bypasses a disabled/out-of-range channel.
+    let channels: SkTopupChannel[];
+    try {
+      channels = await fetchSkTopupChannels();
+    } catch (error) {
+      const cls = classifySkTopupFailure(error);
+      await setStatus(db, item.id, cls.kind, cls.code, now);
+      throw new SupplierTopupError(502, cls.code);
+    }
+    const repostChannel = channels.find((c) => c.service === code);
+    if (!repostChannel || repostChannel.status !== "on") {
+      await setStatus(db, item.id, "failed", "channel_unavailable", now);
+      return;
+    }
+    if (amount < repostChannel.minimum || amount > repostChannel.maximum) {
+      await setStatus(db, item.id, "failed", "amount_out_of_range", now);
+      return;
+    }
     try {
       const invoice = await createSkTopup({ refId: item.ref_id, code, amount });
       await storeSkInvoice(db, item.id, invoice, now);
@@ -468,6 +487,13 @@ async function refreshTunvnTopup(db: DatabaseAccess, item: SupplierTopupItem, no
       now,
       item.id,
     );
+    return;
+  }
+  // Upstream can expire an undated invoice (no expires_in_minutes) without a
+  // local deadline; honour that status instead of leaving it pending forever.
+  if (parsed.status.toLowerCase() === "expired") {
+    if (item.status !== "expired") await setStatus(db, item.id, "expired", item.error, now);
+    else await touch(db, item.id, now);
     return;
   }
   if (item.expires_at !== null && now > item.expires_at) {

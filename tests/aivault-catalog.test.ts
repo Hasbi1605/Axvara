@@ -213,3 +213,13 @@ it("allocates distinct category-tail sort_order (+10 each after non-archived max
     {aivault_family:"service:service_claude_extra",sort_order:520},
   ]);
 });
+
+it("H2-14: clears compare_price when FX pushes the projected price above it",async()=>{
+  const db=createDatabaseAccess(f.db);
+  await publishAivaultCatalog(db,20000,{force:true});
+  const before=f.sql.prepare("SELECT price FROM product_variants WHERE aivault_service_id='service_gemini_plus_6m'").get() as {price:number};
+  f.sql.exec(`UPDATE product_variants SET compare_price=${Number(before.price)+1} WHERE aivault_service_id='service_gemini_plus_6m'`);
+  expect(await publishAivaultCatalog(db,25000,{force:true})).toMatchObject({ok:true});
+  expect(f.sql.prepare("SELECT price,compare_price FROM product_variants WHERE aivault_service_id='service_gemini_plus_6m'").get())
+    .toEqual({price:16900,compare_price:null});
+});

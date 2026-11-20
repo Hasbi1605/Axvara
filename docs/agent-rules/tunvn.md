@@ -1,5 +1,9 @@
 # Aturan agent — Supplier TUNVN PREHUB (reseller Telegram)
 
+## Perbaikan audit H2 — 21 November 2026 (lokal)
+
+- Dispatch: preflight `fetchTunvnProducts`/`fetchTunvnBalance` memetakan HTTP 429 ke `rateLimited` sehingga batch berhenti setelah link pertama; gerbang retryable/bind/fence memeriksa kolom supplier saudara (`aivault/storebat/mirai`) dan `archived_at`; handover manual diblokir oleh link TUNVN aktif berdasarkan `(order_code, item_index)` walau `fulfillment_items.tunvn_link_id` belum terikat. Topup: invoice tanpa `expires_at` mengikuti status upstream `expired`. Katalog mengosongkan `compare_price` bila harga proyeksi menyentuh/melampauinya. Status: implementasi lokal + test.
+
 ## Deposit saldo TUNVN dari admin — keputusan owner 20 November 2026 (lokal)
 
 - **Menggantikan** aturan setup "`POST /api/deposit` sengaja tidak diimplementasikan" hanya untuk scope ini: admin boleh membuat **invoice deposit saldo TUNVN** dari AXVARA. AXVARA hanya membuat invoice + melacak status; owner transfer sendiri. **Tidak ada auto payout, tidak ada dana dikirim AXVARA**, dan tidak ada deposit untuk QA.

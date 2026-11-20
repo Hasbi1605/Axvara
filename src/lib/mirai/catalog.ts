@@ -29,7 +29,7 @@ export async function projectMiraiCatalog(db: DatabaseAccess, fx: number) {
        v.mirai_markup_percent AS v_markup_percent,
        v.mirai_cost_usdt AS v_cost_usdt,
        v.mirai_fx_idr_per_usdt AS v_fx,
-       v.id AS v_id, v.price AS v_price, v.stock AS v_stock, v.max_qty AS v_max_qty
+       v.id AS v_id, v.price AS v_price, v.stock AS v_stock, v.min_qty AS v_min_qty, v.max_qty AS v_max_qty
      FROM mirai_packages m
      LEFT JOIN product_variants v ON v.mirai_package_code = m.package_code AND v.sku = 'MR-' || m.package_code
      ORDER BY m.quota_tokens ASC, m.duration_seconds ASC, m.package_code ASC`,
@@ -65,7 +65,14 @@ export async function projectMiraiCatalog(db: DatabaseAccess, fx: number) {
     const price = m.admin_price == null ? miraiSellPriceIdr(costUsdt, fx, effectiveMarkup) : Number(m.admin_price);
     const mirrorActive = Number(m.is_active ?? 1);
     const stock = mirrorActive === 1 ? (Number(m.unlimited) === 1 ? -1 : Math.max(0, Number(m.remaining_today ?? 0))) : 0;
-    const maxQty = Math.max(1, Math.min(100, Number(m.max_quantity ?? 100)));
+    // Supplier [min,max] must gate checkout: never allow a quantity the supplier
+    // rejects post-payment, while preserving a stricter admin cap already stored.
+    const supplierMin = Math.min(100, Math.max(1, Math.trunc(Number(m.min_quantity ?? 1) || 1)));
+    const supplierMax = Math.max(supplierMin, Math.min(100, Math.trunc(Number(m.max_quantity ?? 100) || 100)));
+    const currentMin = m.v_id == null ? null : Number(m.v_min_qty);
+    const currentMax = m.v_id == null ? null : Number(m.v_max_qty);
+    const minQty = currentMin == null || !Number.isSafeInteger(currentMin) || currentMin < 1 ? supplierMin : Math.max(currentMin, supplierMin);
+    const maxQty = currentMax == null || !Number.isSafeInteger(currentMax) || currentMax < 1 ? supplierMax : Math.max(minQty, Math.min(currentMax, supplierMax));
     const sortOrder = miraiVariantSortOrder(m.quota_tokens, m.duration_seconds);
     const durationDays =
       m.duration_seconds >= 86400 && m.duration_seconds % 86400 === 0 ? m.duration_seconds / 86400 : null;
@@ -77,7 +84,9 @@ export async function projectMiraiCatalog(db: DatabaseAccess, fx: number) {
       Number(m.v_cost_usdt ?? 0) !== costUsdt ||
       Number(m.v_fx ?? 0) !== fx ||
       m.v_max_qty == null ||
-      Number(m.v_max_qty) > 100
+      Number(m.v_max_qty) > 100 ||
+      Number(m.v_min_qty ?? 1) !== minQty ||
+      Number(m.v_max_qty ?? maxQty) !== maxQty
     ) {
       anyVariantChanged = true;
     }
@@ -98,6 +107,7 @@ export async function projectMiraiCatalog(db: DatabaseAccess, fx: number) {
       admin_activation_en: variantCopy?.admin_activation_en ?? null,
       price,
       stock,
+      min_qty: minQty,
       max_qty: maxQty,
       sort_order: sortOrder,
       duration_value: durationDays,
@@ -140,10 +150,10 @@ export async function projectMiraiCatalog(db: DatabaseAccess, fx: number) {
   );
 
   const newVarRes = await db.execRun(
-    `INSERT OR IGNORE INTO product_variants(product_id,sku,label,duration_value,duration_unit,price,stock,max_qty,fulfillment_mode,is_active,sort_order,mirai_package_code,mirai_markup_percent,mirai_cost_usdt,mirai_fx_idr_per_usdt,admin_terms,admin_terms_en,admin_activation,admin_activation_en)
+    `INSERT OR IGNORE INTO product_variants(product_id,sku,label,duration_value,duration_unit,price,stock,min_qty,max_qty,fulfillment_mode,is_active,sort_order,mirai_package_code,mirai_markup_percent,mirai_cost_usdt,mirai_fx_idr_per_usdt,admin_terms,admin_terms_en,admin_activation,admin_activation_en)
      SELECT m.axvara_product_id,'MR-'||m.package_code,json_extract(j.value,'$.label'),
        json_extract(j.value,'$.duration_value'),json_extract(j.value,'$.duration_unit'),
-       json_extract(j.value,'$.price'),json_extract(j.value,'$.stock'),json_extract(j.value,'$.max_qty'),
+       json_extract(j.value,'$.price'),json_extract(j.value,'$.stock'),json_extract(j.value,'$.min_qty'),json_extract(j.value,'$.max_qty'),
        'manual',0,json_extract(j.value,'$.sort_order'),m.package_code,NULL,m.cost_usdt,?,
        json_extract(j.value,'$.admin_terms'),json_extract(j.value,'$.admin_terms_en'),
        json_extract(j.value,'$.admin_activation'),json_extract(j.value,'$.admin_activation_en')
@@ -161,7 +171,9 @@ export async function projectMiraiCatalog(db: DatabaseAccess, fx: number) {
          stock=(SELECT json_extract(j.value,'$.stock') FROM json_each(?) j WHERE json_extract(j.value,'$.package_code')=product_variants.mirai_package_code),
          mirai_cost_usdt=(SELECT json_extract(j.value,'$.cost_usdt') FROM json_each(?) j WHERE json_extract(j.value,'$.package_code')=product_variants.mirai_package_code),
          mirai_fx_idr_per_usdt=?,
-         max_qty=CASE WHEN max_qty IS NULL OR max_qty > 100 THEN 100 ELSE max_qty END,
+         min_qty=(SELECT json_extract(j.value,'$.min_qty') FROM json_each(?) j WHERE json_extract(j.value,'$.package_code')=product_variants.mirai_package_code),
+         max_qty=(SELECT json_extract(j.value,'$.max_qty') FROM json_each(?) j WHERE json_extract(j.value,'$.package_code')=product_variants.mirai_package_code),
+         compare_price=CASE WHEN compare_price IS NOT NULL AND compare_price <= (SELECT json_extract(j.value,'$.price') FROM json_each(?) j WHERE json_extract(j.value,'$.package_code')=product_variants.mirai_package_code) THEN NULL ELSE compare_price END,
          updated_at=datetime('now')
      WHERE EXISTS(SELECT 1 FROM products archive_parent WHERE archive_parent.id=product_variants.product_id AND archive_parent.archived_at IS NULL)
        AND sku='MR-'||mirai_package_code
@@ -182,6 +194,9 @@ export async function projectMiraiCatalog(db: DatabaseAccess, fx: number) {
     json,
     json,
     fx,
+    json,
+    json,
+    json,
     json,
   );
 
