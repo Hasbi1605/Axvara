@@ -876,7 +876,7 @@ Tombol tambah Kategori/Artikel dimiliki toolbar di atas daftar, bukan header.
 duplikat di `StoreSettingsManager` dihapus. Tidak ada route, env, migrasi atau
 kontrak API baru. Publikasi melalui CI; deployment belum diverifikasi.
 
-## Admin round 2: anatomi seragam, alur pembeli WA pensiun, rekonsiliasi "sudah dicek" (13 November 2026, implementasi lokal)
+## Admin round 2: anatomi seragam, alur pembeli WA pensiun, rekonsiliasi "sudah dicek" (13 November 2026; label awal "implementasi lokal")
 
 Status: **implementasi terintegrasi dan terverifikasi lokal; deployment belum
 diverifikasi.** Seluruh paket round 2 (keputusan owner 13 November 2026) mencakup
@@ -890,6 +890,15 @@ baru di `Panel` bersama (non-blocking). Review visual PM PASS dari tangkapan UI4
 1280/390 + TUNVN 390 terang/gelap) — semuanya fixture browser, **bukan** transaksi
 atau sesi admin produksi. Publishing lewat CI, deployment terverifikasi dan klaim
 live tetap langkah terpisah: jangan menyatakan bagian ini live.
+
+> **Update (audit FX-13, 21 November 2026):** label "implementasi lokal" pada
+> judul di atas adalah snapshot 13 November, BUKAN status deployment. Alur
+> pembeli WA (pensiun) sudah benar-benar DIHAPUS dari kode di `main` —
+> `src/lib/whatsapp/handlers/{catalog,payment,proof}.ts` dan `whatsapp/session.ts`
+> tidak ada; webhook membalas `buyerFlowsRetiredMessage`, dan
+> `GET /api/admin/bot/health` melaporkan `whatsapp_discovery/payment/proof_intake=false`
+> + `whatsapp_buyer_flows:"retired"`. Klaim live per-fitur lain tetap butuh bukti
+> deployment terpisah; jangan memperluas label ini jadi klaim live umum.
 
 ### Kontrak backend (BE, terintegrasi lokal)
 Sudah dirinci di "Status Rollout Produksi WhatsApp" (pensiun pembeli WA + kontrak

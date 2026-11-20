@@ -1,15 +1,26 @@
-import { isPaymentMaintenanceEnabled, PAYMENT_MAINTENANCE_MESSAGE, PAYMENT_MANUAL_ORDER_URL } from "@/lib/payment-maintenance";
+import { isPaymentMaintenanceEnabled, PAYMENT_MANUAL_ORDER_URL } from "@/lib/payment-maintenance";
 import { sendMessage } from "./api";
 
 export async function notifyPaymentMaintenance(chatId: number): Promise<boolean> {
   if (!isPaymentMaintenanceEnabled()) return false;
+  // Bilingual ID+EN: gate ini berjalan SEBELUM locale dibaca (nol query DB),
+  // jadi kedua bahasa ditulis sekaligus. CTA mengarah ke hub admin `/wa`
+  // (kontak admin), bukan "order manual via WhatsApp" — alur beli WA pensiun.
   const sent = await sendMessage({
     chat_id: chatId,
-    text: `<b>Pembayaran sedang maintenance</b>\n\n${PAYMENT_MAINTENANCE_MESSAGE}\n\nSudah membayar? Simpan bukti pembayaran dan hubungi admin dengan kode pesananmu.`,
+    text: [
+      "<b>Pembayaran sedang maintenance / Payment under maintenance</b>",
+      "",
+      "Pembayaran otomatis sedang maintenance. Untuk sementara, silakan hubungi admin lewat website untuk dibantu order manual.",
+      "Automatic payment is under maintenance. For now, please contact the admin via the website to place a manual order.",
+      "",
+      "Sudah membayar? Simpan bukti pembayaran dan hubungi admin dengan kode pesananmu.",
+      "Already paid? Keep your payment proof and contact the admin with your order code.",
+    ].join("\n"),
     parse_mode: "HTML",
     disable_web_page_preview: true,
     reply_markup: { inline_keyboard: [
-      [{ text: "Order manual via WhatsApp", url: PAYMENT_MANUAL_ORDER_URL }],
+      [{ text: "💬 Hubungi admin / Contact admin", url: PAYMENT_MANUAL_ORDER_URL }],
       [{ text: "Lihat katalog", callback_data: "catalog:0" }, { text: "Pesanan saya", callback_data: "myorders" }],
     ] },
   });

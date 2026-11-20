@@ -1,5 +1,17 @@
 # Aturan agent — WhatsApp gateway, grup, siaran
 
+Privasi broadcast grup 21 November 2026 (audit FX-13, lokal): notifikasi LUNAS
+order WA historis (`paymentDetectedMessage`, `src/lib/whatsapp/messages.ts`)
+kini menyamarkan kode order (`maskOrderCode`, kepala + `••••` + 4 ekor) dan
+nominal (`MASKED_TOTAL = "Rp•••••"`) karena grup dibaca seluruh anggota; nada
+perayaan + nama produk + ucapan terima kasih dipertahankan, kalimat penutup
+netral "Pesanan lunas sedang diproses admin. Pembeli tidak perlu membayar ulang."
+(menggantikan "Pesanan kamu…" yang ambigu di grup). Jangan mengembalikan kode
+order/nominal persis ke broadcast grup. Teks QRIS kedaluwarsa WA juga diperbaiki
+menjadi "QRIS di grup WhatsApp tidak bisa diperpanjang; buat pesanan baru di
+website atau Telegram" — order WA memang dikecualikan dari reissue
+(`sales_channel !== 'whatsapp'`), jadi ini akurat per-kanal, bukan klaim global.
+
 Auth webhook header-only 21 November 2026 (audit AU-B1-2, lokal): `authenticateWebhook`
 (`src/lib/whatsapp/gateway.ts`) HANYA menerima token dari header `x-webhook-token`
 (atau `Authorization: Bearer`) yang dikirim gateway kanonis

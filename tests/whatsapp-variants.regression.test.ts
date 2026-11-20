@@ -316,7 +316,7 @@ describe("WhatsApp Message Formatting", () => {
     expect(msg).toContain("Bukti tidak otomatis berarti pembayaran sudah sah");
   });
 
-  it("formats payment detected message with celebratory style and product details", () => {
+  it("formats payment detected message with celebratory style and masked details", () => {
     const msg = waMsg.paymentDetectedMessage({
       orderCode: "AXV-20260906-TEST5678",
       productName: "CHATGPT PLUS",
@@ -325,10 +325,13 @@ describe("WhatsApp Message Formatting", () => {
       method: "QRIS",
     });
     expect(msg).toContain("🎊🎉 *PEMBAYARAN BERHASIL!* 🎉🎊");
-    expect(msg).toContain("AXV-20260906-TEST5678");
+    // X4-4: broadcast grup menyamarkan kode order + nominal (privacy pembeli).
+    expect(msg).toContain("AXV-••••5678");
+    expect(msg).not.toContain("AXV-20260906-TEST5678");
     expect(msg).toContain("CHATGPT PLUS");
     expect(msg).toContain("1 Bulan");
-    expect(msg).toContain("Rp89.000");
+    expect(msg).toContain("Rp•••••");
+    expect(msg).not.toContain("Rp89.000");
     expect(msg).toContain("QRIS");
     expect(msg).toContain("Terima kasih");
     expect(msg).toContain("axvara.tech");
@@ -337,7 +340,8 @@ describe("WhatsApp Message Formatting", () => {
 
   it("formats payment detected message with minimal params", () => {
     const msg = waMsg.paymentDetectedMessage({ orderCode: "AXV-MINIMAL" });
-    expect(msg).toContain("AXV-MINIMAL");
+    expect(msg).toContain("AXV-••••IMAL");
+    expect(msg).not.toContain("AXV-MINIMAL");
     expect(msg).toContain("PEMBAYARAN BERHASIL");
     expect(msg).not.toContain("undefined");
   });

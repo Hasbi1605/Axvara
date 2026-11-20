@@ -4,6 +4,7 @@
 // ONCE via the actual core adapters. Never clears intent before a known
 // recoverable invoice/order is terminal. Replays resume the SAME code/rail.
 import { execRun, queryFirst, isD1Mode } from "@/lib/db";
+import { isValidWaNumber } from "@/lib/order-contact";
 import type { Payq1State } from "./payment-quote";
 
 export type Payq1CreateEligibility =
@@ -122,7 +123,7 @@ export async function claimPayq1Creating(
   if (selected.kind === "gateway" && !current.contact?.phone) {
     return { ok: false, reason: "contact_missing", state: current };
   }
-  if (selected.kind === "gateway" && current.contact?.phone && !/^\+?[0-9]{8,20}$/.test(current.contact.phone)) {
+  if (selected.kind === "gateway" && current.contact?.phone && !isValidWaNumber(current.contact.phone)) {
     return { ok: false, reason: "contact_invalid", state: current };
   }
   const orderCode = (await import("@/lib/security")).generateOrderCode();

@@ -405,7 +405,8 @@ OD1, bukan `games_reference_prices`.] `sell_price` dihitung ulang dari
 - §7.4: **terbuka**, belum transaksi nyata yang membuktikan go-live.
 - PM memasang75env (79/128 termasuk4sistem), empat env Digiflazz `secret_text`.
   CNAME/custom domain telah ditambahkan dengan status awal initializing; aktif
-  belum diverifikasi. Tidak ada klaim live/sinkron selesai/pembayaran nyata.
+  belum diverifikasi. Tidak ada klaim live/sinkron selesai/pembayaran nyata
+  (snapshot 9 Nov; status live 18 Nov ada di poin §7.3 di atas).
 
 ### 12.7 Admin data Games (P1–P3, 9 November 2026, lokal → CI)
 
@@ -491,7 +492,7 @@ lewat `readJsonBody`.
   data produksi, atau pengisian tabel harga referensi. Kolom `reference_price` /
   `games_reference_prices` tetap ada di DB untuk kompatibilitas API.
 
-### 12.8 API pembeli B1 + B2 — QRIS, gateway, crypto (9 November 2026, lokal; belum deploy)
+### 12.8 API pembeli B1 + B2 — QRIS, gateway, crypto (snapshot 9 November 2026, lokal; SUPERSEEDED — status live 18 November 2026 di §13–15)
 
 - **Registry:** `src/lib/games/registry.ts` adalah sumber tunggal slug, brand, field
   ID/EN, regex dan `buildCustomerNo`: `free-fire`/`free-fire-max` memakai `playerId`,
