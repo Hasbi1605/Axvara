@@ -6,21 +6,28 @@
   (64 hex tanpa salt) DITERIMA agar admin lama tidak terkunci, tetapi pada login
   sukses pertama (jalur password, bukan proof browser) `upgradeAdminPasswordHash`
   menggantinya dengan PBKDF2 dan menyimpan `{source,hash}` di D1
-  `store_settings.admin_password_hash`; `resolveAdminStoredHash` memakainya bila
-  `source` = sidik jari `ADMIN_PASSWORD_SHA256` saat ini, sehingga rotasi secret
-  Pages langsung berlaku kembali. Login GET lapor `pbkdf2-proof` setelah upgrade.
+  `store_settings.admin_password_hash`; `source` adalah HMAC-SHA256 atas hash
+  legacy `ADMIN_PASSWORD_SHA256` dan penggantinya, memakai `ADMIN_JWT_SECRET`
+  existing dan divalidasi dengan perbandingan timing-safe. Bila override hilang,
+  rusak, tidak cocok, atau kunci HMAC tidak tersedia, pakai hash env. Rotasi
+  salah satu secret membatalkan override. Format sidik jari FX-6 lama belum
+  pernah dideploy; tidak perlu migrasi. Login GET lapor `pbkdf2-proof` setelah upgrade.
   Jangan mengunci login tanpa jalur upgrade; hash legacy jangan dibuang sebelum
   admin terbukti sudah PBKDF2. Event `admin_password_upgraded` dicatat sanitized
   via console (tanpa hash/plaintext).
-- **Body cap admin mutation (AU-B1-3).** SEMUA route `src/app/api/admin/**` yang
-  mem-parse JSON wajib lewat `readJsonBody(req, <cap>)` / `readTextBody`, bukan
-  `req.json()`. Cap default 2–8 KB untuk aksi skalar; 64 KB untuk batch editor
-  (pedia products/settings bulk, markup bulk, broadcasts, fulfillment DELETE);
-  512 KB untuk import inventory fulfillment (100 kredensial × 2000 byte) dan bulk
-  varian. Oversize → 413 `{"error":"payload_too_large"}` (dari stream aktual,
-  bukan hanya Content-Length); malformed di bawah cap → 400. Upload multipart/raw
-  tetap terpisah. Guard statis `tests/admin-body-caps.integration.test.ts`
-  menolak `req.json()` baru di admin.
+- **Body cap admin mutation (AU-B1-3).** Mutasi JSON berautentikasi, termasuk di
+  luar `src/app/api/admin/**` (produk, artikel, banner, kategori, pengaturan toko
+  dan metode pembayaran), wajib memakai `readJsonBody` / `readTextBody` setelah
+  autentikasi. Cap per kelas: 2–8 KB untuk aksi skalar, 16 KB untuk editor banner
+  dan fulfillment DELETE, 64 KB untuk batch/reorder, 128 KB untuk variant-copy
+  (4 × 4.000 code unit termasuk JSON escape), 512 KB untuk varian bulk dan editor
+  produk/artikel (50.000 code unit konten artikel dapat melebihi 128 KB), 1 MB
+  untuk POST fulfillment (100 kredensial × 2.000 code unit; sekitar 600 KB untuk
+  UTF-8 multibyte biasa). Batas berlaku pada byte JSON di wire, termasuk escape.
+  Oversize → 413 `{"error":"payload_too_large"}` dari stream aktual, bukan hanya
+  Content-Length; malformed di bawah cap → 400. Upload multipart/raw dan cap
+  publik/webhook tetap terpisah. Guard statis `tests/admin-body-caps.integration.test.ts`
+  menolak parser body langsung di route berprivilege, kecuali upload yang didaftar.
 
 ## A-S: exception quote synthetic dan CSP Analytics — 18 November 2026 (lokal)
 

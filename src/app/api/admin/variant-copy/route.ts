@@ -64,7 +64,8 @@ export async function PUT(req: NextRequest) {
   }
   if (!(await requireAdmin(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!isD1Mode()) return NextResponse.json({ error: "Butuh database D1" }, { status: 503 });
-  const bounded = await readJsonBody(req, 64_000);
+  // Four 4,000-code-unit fields can take about 96 KB with JSON Unicode escapes.
+  const bounded = await readJsonBody(req, 128_000);
   if (!bounded.ok) return bounded.response;
   const body = bounded.data;
   const parsed = putSchema.safeParse(body);

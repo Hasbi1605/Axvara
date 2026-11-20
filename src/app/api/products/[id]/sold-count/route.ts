@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { queryFirst, execRun, getD1 } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 export const runtime = "edge";
@@ -29,7 +30,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
   if (!(await requireAdmin(request))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  const parsed = input.safeParse(await request.json().catch(() => null));
+  const bounded = await readJsonBody(request, 8_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = input.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) return NextResponse.json({ error: "Angka Terjual tidak valid (0–9999999)." }, { status: 400 });
 
   const existing = await queryFirst("SELECT id, sold_count FROM products WHERE id=?", id) as { id: number; sold_count: number | null } | undefined;

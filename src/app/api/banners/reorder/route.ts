@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { queryAll } from "@/lib/db";
 import { BannerOrderConflict, reorderBanners } from "@/lib/banner-order";
 export const runtime = "edge";
@@ -9,7 +10,9 @@ const ids = z.array(z.number().int().positive().max(Number.MAX_SAFE_INTEGER)).ma
 const schema = z.object({ ids, expected_ids: ids }).strict();
 export async function POST(req: NextRequest) {
   if (!await requireAdmin(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const parsed = schema.safeParse(await req.json().catch(() => null));
+  const bounded = await readJsonBody(req, 64_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = schema.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) return NextResponse.json({ error: "Urutan banner tidak valid." }, { status: 400 });
   const { ids: next, expected_ids: before } = parsed.data;
   if (new Set(next).size !== next.length || new Set(before).size !== before.length || next.length !== before.length || next.some(id => !before.includes(id))) return NextResponse.json({ error: "Kirim seluruh ID banner tepat satu kali." }, { status: 400 });

@@ -1,6 +1,7 @@
 import * as jose from "jose";
 import { z } from "zod";
 import { checkCloudflareAccess } from "@/lib/cloudflare-access";
+import { constantTimeEqual } from "@/lib/security";
 import { idrToUsdCents, parseFxTimestamp, parseRateRational, type FxSource } from "@/lib/payments/fx";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
 import { CRYPTO_SURCHARGE_BPS, centsToUsdText, cryptoPricing } from "@/lib/payments/crypto-pricing";
@@ -218,15 +219,18 @@ const ADMIN_HASH_UPGRADED_AT_KEY = "admin_password_upgraded_at";
 
 type LegacyUpgradeRecord = { source: string; hash: string };
 
-function legacySourceFingerprint(stored: string): Promise<string> {
-  return sha256Hex(`axvara-admin-legacy-source-v1:${normalizeStoredHash(stored)}`);
+function legacySourceFingerprint(stored: string, upgradedHash: string): Promise<string> | null {
+  const secret = process.env.ADMIN_JWT_SECRET?.trim();
+  if (!secret) return null;
+  // Bind the replacement hash too: a valid tag cannot be copied to a different override.
+  return hmacHex(new TextEncoder().encode(secret), `axvara-admin-legacy-source-v2:${normalizeStoredHash(stored)}:${upgradedHash}`);
 }
 
 function parseLegacyUpgrade(raw: string | null): LegacyUpgradeRecord | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Partial<LegacyUpgradeRecord> | null;
-    if (typeof value?.source !== "string" || typeof value.hash !== "string") return null;
+    if (typeof value?.source !== "string" || !/^[a-f0-9]{64}$/.test(value.source) || typeof value.hash !== "string") return null;
     const parsed = parseStoredHash(value.hash);
     if (parsed.kind !== "pbkdf2") return null;
     return { source: value.source, hash: normalizeStoredHash(value.hash) };
@@ -265,7 +269,14 @@ export async function resolveAdminStoredHash(envHash?: string): Promise<string> 
   if (stored === "dev-placeholder" && isDev()) return stored;
   if (!isLegacyStoredHash(stored)) return stored;
   const override = parseLegacyUpgrade(await readStoreSetting(ADMIN_HASH_OVERRIDE_KEY));
-  if (override && override.source === await legacySourceFingerprint(stored)) return override.hash;
+  if (override) {
+    try {
+      const source = await legacySourceFingerprint(stored, override.hash);
+      if (source && constantTimeEqual(source, override.source)) return override.hash;
+    } catch {
+      // An unavailable HMAC must not block verification with the env hash.
+    }
+  }
   return stored;
 }
 
@@ -277,7 +288,8 @@ export async function upgradeAdminPasswordHash(plain: string, verifiedStored: st
     const { isD1Mode } = await import("@/lib/db");
     if (!isD1Mode()) return false;
     const hash = await hashPasswordPbkdf2(plain, randomSessionId());
-    const source = await legacySourceFingerprint(verifiedStored);
+    const source = await legacySourceFingerprint(verifiedStored, hash);
+    if (!source) return false;
     if (!(await writeStoreSetting(ADMIN_HASH_OVERRIDE_KEY, JSON.stringify({ source, hash })))) return false;
     await writeStoreSetting(ADMIN_HASH_UPGRADED_AT_KEY, new Date().toISOString());
     console.info("[security]", JSON.stringify({ event: "admin_password_upgraded", route: "/api/auth/login", method: "POST" }));

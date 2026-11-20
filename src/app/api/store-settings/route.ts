@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { execRun, queryAll } from "@/lib/db";
 import { DEFAULT_STORE_SETTINGS, storeSettingsFromRows } from "@/lib/site";
 
@@ -47,7 +48,9 @@ export async function PUT(request: NextRequest) {
   if (!(await requireAdmin(request))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const parsed = settingsSchema.safeParse(await request.json().catch(() => null));
+  const bounded = await readJsonBody(request, 8_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = settingsSchema.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validasi gagal" }, { status: 400 });
   }

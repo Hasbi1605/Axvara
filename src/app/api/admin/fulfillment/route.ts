@@ -100,7 +100,8 @@ export async function POST(request: NextRequest) {
   const admin = await requireAdmin(request);
   if (!admin) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const bounded = await readJsonBody(request, 512_000);
+  // 100 × 2,000 code units can exceed 512 KB when encoded as UTF-8.
+  const bounded = await readJsonBody(request, 1_000_000);
   if (!bounded.ok) return bounded.response;
   const raw = bounded.data;
   if (!raw || typeof raw !== "object") {

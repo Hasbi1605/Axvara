@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { readJsonBody } from "@/lib/http-body";
 import { execRun, queryFirst } from "@/lib/db";
 import { isCategoryIconName } from "@/lib/category-icons";
 
@@ -23,7 +24,9 @@ export async function PUT(
   if (!(await queryFirst("SELECT id FROM categories WHERE id=?", id))) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const parsed = patchSchema.safeParse(await request.json().catch(() => null));
+  const bounded = await readJsonBody(request, 8_000);
+  if (!bounded.ok && bounded.response.status === 413) return bounded.response;
+  const parsed = patchSchema.safeParse(bounded.ok ? bounded.data : null);
   if (!parsed.success) return NextResponse.json({ error: "Validasi gagal" }, { status: 400 });
 
   const fields: string[] = [];
