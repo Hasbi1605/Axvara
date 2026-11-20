@@ -1,5 +1,9 @@
 # AIVault Hub — keputusan owner 15 November 2026
 
+## Family eksplisit Duolingo Super + foto — 20 November 2026
+
+- Permintaan owner: produk fallback `Duolingo Super 12M` (id51946, tanpa foto) dipasangi foto. `families.ts` menambah family `duolingo` → "Duolingo Super", slug `duolingo-super-av`, label "Super 12 Bulan", kandidat gambar `duolingo-sk`/`duolingo-sb`. Migrasi `0145_aivault_duolingo_family.sql` mengikuti guard 0125 (hanya baris fallback nonaktif, foto/deskripsi/label hanya bila masih bawaan). Cek baca-saja produksi 20 Nov: guard tepat 1 produk + 1 varian. Produk tetap nonaktif; aktivasi dan salinan deskripsi milik admin.
+
 ## Migrasi host + API key supplier — 20 November 2026
 
 - AIVault memindahkan bot/API reseller: base URL kini `https://api.aivaulthub.store` (dokumentasi `/api/v1/docs`), key baru akun yang sama (`chat_id` sama). Key baru ditolak host lama (401 `invalid_api_key`); key lama di host lama masih hidup dengan saldo $0 dan stok basi, jadi **jangan kembali ke `reseller.aivaulthub.store`**.

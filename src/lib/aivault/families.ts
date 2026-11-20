@@ -6,6 +6,7 @@ const specs: { key:string; name:string; slug:string; images:string[]; services:R
   { key: "apple-music", name: "Apple Music", slug: "apple-music-av", images: ["apple-music","apple-music-sk"], services: { service_1789191878: "5 Bulan" } },
   { key: "notion", name: "Notion Education Plus", slug: "notion-plus-av", images: [], services: { service_notion_plus: "Plus 12 Bulan" } },
   { key: "udemy", name: "Udemy Personal Plan", slug: "udemy-av", images: [], services: { service_udemy_1m: "1 Bulan" } },
+  { key: "duolingo", name: "Duolingo Super", slug: "duolingo-super-av", images: ["duolingo-sk","duolingo-sb"], services: { service_duolingo_12m: "Super 12 Bulan" } },
 ];
 /** FNV-1a 32-bit: stable, dependency-free short hash for buyer-visible fallback slugs. */
 export function aivaultSlugHash(value: string): string {

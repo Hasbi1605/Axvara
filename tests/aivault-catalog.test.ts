@@ -3,6 +3,7 @@ import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {createD1Fixture} from "./helpers/d1-fixture";
 import {createBudgetedDatabase,createDatabaseAccess} from "@/lib/db-access";
 import {publishAivaultCatalog,projectAivaultCatalog} from "@/lib/aivault/catalog";
+import {aivaultFamily} from "@/lib/aivault/families";
 let f:ReturnType<typeof createD1Fixture>;
 const upstream=(id="service_gemini_plus_6m")=>({service_id:id,name:"Gemini Plus",stock:5,custom_pricing:false,pricing_tiers:[{min:1,max:100,price:0.5}]});
 beforeEach(()=>{f=createD1Fixture();vi.stubEnv("AIVAULT_ENABLED","true");vi.stubEnv("AIVAULT_SYNC_ENABLED","true");vi.stubEnv("AIVAULT_API_KEY","fixture");vi.stubEnv("AIVAULT_BASE_URL","https://supplier.test");vi.stubGlobal("fetch",vi.fn(async()=>Response.json({currency:"USD",products:[upstream()]})));});
@@ -89,6 +90,31 @@ it("0125 leaves an active row, admin copy and custom image untouched",()=>{
   expect(f.sql.prepare("SELECT aivault_family,slug,name,image_url,images FROM products WHERE id=175").get())
     .toEqual({aivault_family:"service:service_chatgpt_plus_1m",slug:"chatgpt-owner-av",name:"Admin ChatGPT",image_url:"/r2/admin.webp",images:'["/r2/admin.webp"]'});
   expect(f.sql.prepare("SELECT label,is_active FROM product_variants WHERE aivault_service_id='service_chatgpt_plus_1m'").get()).toEqual({label:"Admin label",is_active:1});
+});
+
+const MIGRATION_0145=readFileSync("drizzle/migrations/0145_aivault_duolingo_family.sql","utf8");
+const DUO_IMAGE="/r2/products/2de7b838e34432f6ec7a8129c1a4d210.webp";
+it("maps service_duolingo_12m to the explicit Duolingo family",()=>{
+  expect(aivaultFamily("service_duolingo_12m","Duolingo Super 12M")).toMatchObject({key:"duolingo",name:"Duolingo Super",slug:"duolingo-super-av",label:"Super 12 Bulan",images:["duolingo-sk","duolingo-sb"]});
+});
+it("0145 moves only the exact inactive Duolingo fallback row, sets the image and is idempotent",()=>{
+  f.sql.exec(`INSERT INTO products(id,name,slug,price,stock,is_active,aivault_family,description,image_url,images)
+    VALUES(51946,'Duolingo Super 12M','duolingo-super-12m-64cf01f1-av',0,0,0,'service:service_duolingo_12m','Duolingo Super 12M. Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.',NULL,NULL);
+    INSERT INTO product_variants(product_id,sku,label,price,stock,fulfillment_mode,is_active,aivault_service_id)
+    VALUES(51946,'AV-service_duolingo_12m','Duolingo Super 12M',0,0,'manual',0,'service_duolingo_12m');`);
+  f.sql.exec(MIGRATION_0145); f.sql.exec(MIGRATION_0145);
+  expect(f.sql.prepare("SELECT aivault_family,slug,name,image_url,images,description FROM products WHERE id=51946").get()).toEqual({
+    aivault_family:"duolingo",slug:"duolingo-super-av",name:"Duolingo Super",image_url:DUO_IMAGE,images:`["${DUO_IMAGE}"]`,
+    description:"Duolingo Super. Pilih varian sesuai kebutuhan; garansi mengikuti varian. Stok dan harga dapat berubah.",
+  });
+  expect(f.sql.prepare("SELECT sku,label FROM product_variants WHERE aivault_service_id='service_duolingo_12m'").get()).toEqual({sku:"AV-service_duolingo_12m",label:"Super 12 Bulan"});
+});
+it("0145 leaves an active Duolingo row with admin image untouched",()=>{
+  f.sql.exec(`INSERT INTO products(id,name,slug,price,stock,is_active,aivault_family,description,image_url,images)
+    VALUES(51947,'Admin Duo','duo-owner-av',5000,4,1,'service:service_duolingo_12m','Admin copy','/r2/admin.webp','["/r2/admin.webp"]');`);
+  f.sql.exec(MIGRATION_0145);
+  expect(f.sql.prepare("SELECT aivault_family,slug,name,image_url FROM products WHERE id=51947").get())
+    .toEqual({aivault_family:"service:service_duolingo_12m",slug:"duo-owner-av",name:"Admin Duo",image_url:"/r2/admin.webp"});
 });
 
 it("throttles repeated cron within 45s, runs at 45s, uses 45s lease, and rejects malformed catalogs without zeroing stock",async()=>{
