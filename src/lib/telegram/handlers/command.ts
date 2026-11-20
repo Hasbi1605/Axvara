@@ -16,13 +16,12 @@ import {
 } from "@/lib/telegram/keyboards";
 import { welcomeMessage, helpMessage, warrantyFullMessage } from "@/lib/telegram/messages";
 import {
-  languageChooserMessage, welcomeCaption, welcomeMessageLocalized, settingsMessage,
+  languageChooserMessage, welcomeMessageLocalized, settingsMessage,
   currencyChooserMessage, resumePayloadMessage,
 } from "@/lib/telegram/messages/preferences";
 import { readTgPreferences, isValidTgLocale } from "@/lib/telegram/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
-import type { Locale } from "@/lib/i18n/locale";
-import { clearPayq1DraftForCancel, clearPendingAction, getBestsellers, runInBackground, sendCachedPhoto } from "./shared";
+import { clearPayq1DraftForCancel, clearPendingAction, getBestsellers, runInBackground, sendTgHome } from "./shared";
 import { handleShowCatalog, handleShowProduct } from "./catalog";
 import {
   handleSearchPrompt, handleSearchResults, handleMyOrders, handlePendingSearchInput,
@@ -80,37 +79,6 @@ export async function handleCommand(
     return;
   }
 
-  async function sendTgHome(
-    targetChatId: number,
-    firstName: string,
-    locale: Locale,
-  ): Promise<void> {
-    const [bestsellers, ctx] = await Promise.all([
-      getBestsellers(3),
-      tgCtxFor(from?.id ?? targetChatId),
-    ]);
-    const rawSite = (process.env.SITE_URL ?? "").trim().replace(/\/$/, "");
-    const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
-    const photoUrl = `${siteUrl}/banners/tg-welcome.jpg?v=20261119`;
-
-    // Install persistent 3x2 reply keyboard on the welcome banner photo (never a junk bubble),
-    // followed by the welcome card message carrying inline bestsellers + action buttons.
-    await sendCachedPhoto({
-      chat_id: targetChatId,
-      photo: photoUrl,
-      caption: welcomeCaption(locale),
-      parse_mode: "HTML",
-      reply_markup: mainReplyMenu(locale),
-    }).catch(() => {});
-
-    await sendMessage({
-      chat_id: targetChatId,
-      text: welcomeMessageLocalized(locale, firstName, bestsellers),
-      parse_mode: "HTML",
-      reply_markup: homeKeyboard(locale, bestsellers, ctx),
-    });
-  }
-
   if (cmd === "/start") {
     if (await notifyPaymentMaintenance(chatId)) return;
     if (typeof tgApi.sendChatAction === "function") {
@@ -143,7 +111,13 @@ export async function handleCommand(
       }
     }
     const firstName = from?.first_name ?? "Pengguna";
-    await sendTgHome(chatId, firstName, prefs.locale);
+    await sendTgHome({
+      chatId,
+      firstName,
+      locale: prefs.locale,
+      userId: from?.id,
+      installMenu: true,
+    });
     if (payload) {
       await sendMessage({
         chat_id: chatId,

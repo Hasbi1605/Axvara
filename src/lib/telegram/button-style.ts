@@ -16,6 +16,10 @@ const DANGER_ACTIONS = new Set(["cancel", "cancelok", "cclear", "crm"]);
 const DANGER_TEXT_RE = /\b(?:batal|batalkan|hapus|kosongkan|cancel|remove|clear)\b/i;
 
 const SUCCESS_ACTIONS = new Set([
+  "prd",
+  "buy",
+  "vars",
+  "var",
   "pay",
   "epay",
   "cconfirm",

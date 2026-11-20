@@ -69,7 +69,7 @@ describe("TG1 onboarding chooser + independent preferences", () => {
     await handleCallback("lang:en", userA.id, 7, userA, "cb-1");
     expect(prefs(userA.id)).toMatchObject({ locale: "en", display_currency: "USD" });
     expect(api.answer).toHaveBeenCalledWith("cb-1", undefined, false);
-    expect(editTexts().join("\n")).toMatch(/Hello/);
+    expect(String(api.photo.mock.calls.at(-1)?.[0]?.caption ?? "")).toMatch(/Hello/);
     vi.clearAllMocks();
     await handleCommand("/start", userA.id, "private", userA);
     expect(api.send.mock.calls.filter((c) => /Pilih bahasa/.test(String(c[0]?.text ?? "")))).toHaveLength(0);

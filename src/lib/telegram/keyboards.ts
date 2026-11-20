@@ -259,7 +259,7 @@ export function homeKeyboard(
     .map((item) => [{
       text: `🔥 ${productButtonText({ name: item.name, price: item.price, stock: item.stock }, { ...ctx, locale }, 24)}`,
       callback_data: cb.product(item.productId),
-      style: "primary" as const,
+      style: "success" as const,
     }]);
   return {
     inline_keyboard: [

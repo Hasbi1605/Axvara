@@ -14,7 +14,7 @@ import { queryFirst, execRun } from "@/lib/db";
 import { sendMessage, safeEditOrSend, answerCallbackQuery } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard, orderStatusKeyboard, parseCallback, cancelConfirmationKeyboard,
-  languageChooserKeyboard, currencyKeyboard, settingsKeyboard, helpKeyboard, minimalMenuKeyboard, mainReplyMenu,
+  languageChooserKeyboard, currencyKeyboard, settingsKeyboard, helpKeyboard, minimalMenuKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
   helpMessage, warrantyFullMessage, alreadyPendingMessage,
@@ -26,7 +26,7 @@ import {
 } from "@/lib/telegram/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
 import { getCartSummary, clearCart } from "@/lib/telegram/cart";
-import { clearPendingAction, getBestsellers, replaceWithText, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
+import { clearPendingAction, getBestsellers, installReplyMenu, replaceWithText, sendTgHome, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
 import {
   handleShowCatalogEdit, handleShowCategoriesEdit, handleShowProducts,
   handleShowProduct, handleShowVariants, handleVariantConfirm, handleShowQty,
@@ -149,20 +149,27 @@ export async function handleCallback(
       const payload = before.locale == null ? await consumeOnboardingPayload(String(from.id)) : null;
       const after = await readTgPreferences(String(from.id));
       const savedLocale = after.locale ?? want;
-      const { welcomeMessageLocalized } = await import("@/lib/telegram/messages/preferences");
-      const [bestsellers, langCtx] = await Promise.all([getBestsellers(3), tgCtxFor(from.id)]);
-      await safeEditOrSend({
-        chat_id: chatId, message_id: messageId,
-        text: welcomeMessageLocalized(savedLocale, from.first_name, bestsellers),
-        parse_mode: "HTML",
-        reply_markup: homeKeyboard(savedLocale, bestsellers, langCtx),
-      });
-      await sendMessage({
-        chat_id: chatId,
-        text: tgPrefText(want, "language_saved"),
-        parse_mode: "HTML",
-        reply_markup: mainReplyMenu(savedLocale),
-      });
+      if (before.locale == null) {
+        await sendTgHome({
+          chatId,
+          firstName: from.first_name,
+          locale: savedLocale,
+          userId: from.id,
+          replaceMessageId: messageId,
+          sourceMeta,
+          installMenu: true,
+        });
+      } else {
+        const { welcomeMessageLocalized } = await import("@/lib/telegram/messages/preferences");
+        const [bestsellers, langCtx] = await Promise.all([getBestsellers(3), tgCtxFor(from.id)]);
+        await safeEditOrSend({
+          chat_id: chatId, message_id: messageId,
+          text: welcomeMessageLocalized(savedLocale, from.first_name, bestsellers),
+          parse_mode: "HTML",
+          reply_markup: homeKeyboard(savedLocale, bestsellers, langCtx),
+        });
+        installReplyMenu(chatId, savedLocale);
+      }
       if (payload) {
         const prdMatch = /^prd_(\d+)$/i.exec(payload);
         if (prdMatch) {
@@ -251,6 +258,20 @@ export async function handleCallback(
       }
       const { welcomeMessageLocalized: homeWelcome } = await import("@/lib/telegram/messages/preferences");
       const [homeCtx, bestsellers] = await Promise.all([tgCtxFor(from.id), getBestsellers(3)]);
+      if (sourceMeta?.isPhoto || sourceMeta?.isProtected || !messageId) {
+        await sendTgHome({
+          chatId,
+          firstName: from.first_name,
+          locale: homeCtx.locale,
+          userId: from.id,
+          replaceMessageId: messageId,
+          sourceMeta,
+          bestsellers,
+          ctx: homeCtx,
+          installMenu: false,
+        });
+        break;
+      }
       await replaceWithText({
         chat_id: chatId, message_id: messageId,
         text: homeWelcome(homeCtx.locale, from.first_name, bestsellers),

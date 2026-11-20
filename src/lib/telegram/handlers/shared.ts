@@ -7,8 +7,11 @@
 
 import { execRun, getD1, isD1Mode, queryFirst } from "@/lib/db";
 import * as tgApi from "@/lib/telegram/api";
-import { TELEGRAM_MAX_QTY } from "@/lib/telegram/keyboards";
+import { homeKeyboard, mainReplyMenu, TELEGRAM_MAX_QTY, type TgPriceCtx } from "@/lib/telegram/keyboards";
 import type { TelegramBestseller } from "@/lib/telegram/messages";
+import { welcomeMessageLocalized } from "@/lib/telegram/messages/preferences";
+import { tgCtxFor } from "@/lib/telegram/render-prefs";
+import type { Locale } from "@/lib/i18n/locale";
 import type { CartLine } from "@/lib/telegram/cart";
 import type { InlineKeyboardMarkup, SendMessageParams, SendPhotoParams, TelegramApiResponse, TelegramMessage } from "@/lib/telegram/types";
 import { unwrapD1 } from "@/lib/db-access";
@@ -367,4 +370,102 @@ export function clampQty(raw: number): number {
 
 export function cartLineLabel(line: CartLine): string {
   return `${line.productName} — ${line.variantLabel} ×${line.qty}`;
+}
+
+/**
+ * Install the bottom reply menu (mainReplyMenu, is_persistent: false) via a
+ * silent carrier message that is deleted immediately afterward so no junk
+ * bubble stays in chat. Telegram clients retain the reply keyboard after
+ * deletion (PM verifies on live Telegram). Runs in background (`waitUntil`)
+ * so it never delays the home card; errors are swallowed.
+ */
+export function installReplyMenu(chatId: number, locale: Locale): void {
+  runInBackground(
+    (async () => {
+      const sent = await tgApi.sendMessage({
+        chat_id: chatId,
+        text: "⌨️",
+        reply_markup: mainReplyMenu(locale),
+        disable_notification: true,
+      });
+      const carrierId = sent?.ok ? sent.result?.message_id : undefined;
+      if (carrierId && typeof tgApi.deleteMessage === "function") {
+        await tgApi.deleteMessage(chatId, carrierId).catch(() => {});
+      }
+    })().catch(() => {}),
+  );
+}
+
+/**
+ * Send or replace the home screen as ONE message: welcome banner photo
+ * (file_id cached) + localized greeting/bestsellers caption + inline
+ * homeKeyboard, falling back to ONE text message with the same caption and
+ * keyboard if sendPhoto fails. Optionally installs the bottom reply menu in
+ * background via deleted carrier on /start and onboarding completion.
+ */
+export async function sendTgHome(params: {
+  chatId: number;
+  firstName: string;
+  locale: Locale;
+  userId?: number;
+  replaceMessageId?: number;
+  sourceMeta?: ScreenSourceMeta;
+  bestsellers?: TelegramBestseller[];
+  ctx?: TgPriceCtx;
+  installMenu?: boolean;
+}): Promise<void> {
+  const [bestsellers, ctx] = params.bestsellers && params.ctx
+    ? [params.bestsellers, params.ctx]
+    : await Promise.all([
+        params.bestsellers ? Promise.resolve(params.bestsellers) : getBestsellers(3),
+        params.ctx ? Promise.resolve(params.ctx) : tgCtxFor(params.userId ?? params.chatId),
+      ]);
+
+  const rawSite = (process.env.SITE_URL ?? "").trim().replace(/\/$/, "");
+  const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
+  const photoUrl = `${siteUrl}/banners/tg-welcome.jpg?v=20261119`;
+  const caption = welcomeMessageLocalized(params.locale, params.firstName, bestsellers);
+  const keyboard = homeKeyboard(params.locale, bestsellers, { ...ctx, locale: params.locale });
+
+  const canReplace = Boolean(params.replaceMessageId && !params.sourceMeta?.isProtected);
+  const photoRes = await (canReplace
+    ? replaceWithPhoto({
+        chat_id: params.chatId,
+        message_id: params.replaceMessageId,
+        photo: photoUrl,
+        caption,
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+      }, params.sourceMeta)
+    : sendCachedPhoto({
+        chat_id: params.chatId,
+        photo: photoUrl,
+        caption,
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+      })
+  ).catch(() => ({ ok: false as const }));
+
+  if (!photoRes?.ok) {
+    if (canReplace) {
+      await replaceWithText({
+        chat_id: params.chatId,
+        message_id: params.replaceMessageId,
+        text: caption,
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+      }, params.sourceMeta);
+    } else {
+      await tgApi.sendMessage({
+        chat_id: params.chatId,
+        text: caption,
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+      });
+    }
+  }
+
+  if (params.installMenu) {
+    installReplyMenu(params.chatId, params.locale);
+  }
 }

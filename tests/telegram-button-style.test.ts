@@ -37,9 +37,15 @@ describe("applyButtonStyles", () => {
     }
   });
 
-  it("applies success style to purchase/confirm/payment callbacks and texts", () => {
+  it("applies success style to purchase/product/variant/confirm/payment callbacks and texts", () => {
     const markup: InlineKeyboardMarkup = {
       inline_keyboard: [
+        [
+          { text: "Canva Pro · Rp15.000", callback_data: "prd:3" },
+          { text: "Pilih Varian", callback_data: "buy:3" },
+          { text: "Ganti Varian", callback_data: "vars:3" },
+          { text: "1 Bulan · Rp15.000 · stok 5", callback_data: "var:7" },
+        ],
         [
           { text: "A", callback_data: "pay:1:2:1" },
           { text: "B", callback_data: "epay:1:2:1:tag:n" },
@@ -56,6 +62,8 @@ describe("applyButtonStyles", () => {
           { text: "K", callback_data: "gconsent:AXV-1:100:ab" },
           { text: "L", callback_data: "cadd:1:2:1" },
           { text: "M", callback_data: "claimstart:AXV-1" },
+          { text: "N", callback_data: "confirm:1" },
+          { text: "O", callback_data: "cfv:1:7" },
         ],
         [
           { text: "Bayar Sekarang", callback_data: "noop" },
@@ -77,13 +85,13 @@ describe("applyButtonStyles", () => {
     }
   });
 
-  it("applies primary style to navigation, catalog, product, variant, qty steppers, presets, URLs, and avoids false positives on pembeli/pembayaran", () => {
+  it("applies primary style to navigation, catalog, qty steppers, presets, restock, terms, URLs, and keeps soldout danger explicit", () => {
     const markup: InlineKeyboardMarkup = {
       inline_keyboard: [
         [
           { text: "🛍 Katalog", callback_data: "catalog:0" },
-          { text: "Canva Pro · Rp15.000", callback_data: "prd:3" },
-          { text: "1 Bulan · Rp15.000 · stok 5", callback_data: "var:7" },
+          { text: "📂 Kategori", callback_data: "cats:0" },
+          { text: "AI", callback_data: "cat:1:0" },
           { text: "➖ Kurangi", callback_data: "q:1:7:1" },
           { text: "10", callback_data: "q:1:7:10" },
         ],
@@ -91,9 +99,20 @@ describe("applyButtonStyles", () => {
           { text: "🏠 Menu", callback_data: "home" },
           { text: "◀️ Kembali", callback_data: "q:1:7:2" },
           { text: "💬 Bantuan", callback_data: "help" },
-          { text: "💬 WhatsApp Admin", url: "https://axvara.tech/wa" },
+          { text: "🛡 Garansi", callback_data: "warranty" },
+          { text: "🌐 Bahasa", callback_data: "langmenu" },
+          { text: "💱 Mata Uang", callback_data: "curmenu" },
         ],
         [
+          { text: "🔔 Kabari saat restok", callback_data: "rst:3" },
+          { text: "📋 Ketentuan", callback_data: "terms:3:0" },
+          { text: "📦 Pesanan", callback_data: "myorders" },
+          { text: "🔎 Cari", callback_data: "search" },
+          { text: "🛒 Keranjang", callback_data: "cart" },
+          { text: "1/3", callback_data: "noop" },
+        ],
+        [
+          { text: "💬 WhatsApp Admin", url: "https://axvara.tech/wa" },
           { text: "👁 Lihat pesanan pembeli", url: "https://axvara.tech/lacak-pesanan?code=AXV-1" },
           { text: "💬 WA Pembeli", url: "https://wa.me/628123456789" },
           { text: "🔄 Buka detail pembayaran", callback_data: "refresh:AXV-1" },
@@ -105,6 +124,15 @@ describe("applyButtonStyles", () => {
     for (const btn of styled.inline_keyboard.flat()) {
       expect(btn.style).toBe("primary");
     }
+
+    const soldoutMarkup = applyButtonStyles<InlineKeyboardMarkup>({
+      inline_keyboard: [[
+        { text: "1 Bulan · Rp15.000 · stok 5", callback_data: "var:7" },
+        { text: "❌ 3 Bulan · Habis", callback_data: "soldout", style: "danger" },
+      ]],
+    });
+    expect(soldoutMarkup.inline_keyboard[0][0].style).toBe("success");
+    expect(soldoutMarkup.inline_keyboard[0][1].style).toBe("danger");
   });
 
   it("preserves explicit style already set on buttons without mutating input", () => {

@@ -790,9 +790,12 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(route).toContain("handleCartCheckout");
     expect(route).toContain("createAndSendCartInvoice");
     expect(route).toContain('"cconfirm"');
-    // /start memasang persistent reply keyboard langsung pada banner foto welcome
-    // tanpa pesan bubble sampah terpisah ("Menu Cepat", "—", dsb).
+    // /start mengirim satu banner foto welcome + inline keyboard lalu memasang
+    // reply keyboard via carrier senyap yang langsung dihapus agar tidak ada
+    // pesan bubble sampah tersisa ("Menu Cepat", "—", dsb).
     expect(route).toContain("mainReplyMenu(locale)");
+    expect(route).toContain("installReplyMenu");
+    expect(route).toContain("deleteMessage");
     expect(route).not.toContain('"Menu Cepat"');
     const api = read("src/lib/telegram/api.ts");
     expect(api).toContain('command: "cart"');

@@ -101,6 +101,7 @@ export interface SendMessageParams {
   parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
   reply_markup?: AnyReplyMarkup;
   disable_web_page_preview?: boolean;
+  disable_notification?: boolean;
 }
 
 export interface SendPhotoParams {

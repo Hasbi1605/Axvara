@@ -247,7 +247,12 @@ describe("W-A single active screen & protected messages", () => {
 });
 
 describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, wiring", () => {
-  it("installs 3x2 reply menu on /start banner photo and /batal, routes menu labels before pending state", async () => {
+  it("sends ONE /start banner photo + inline homeKeyboard and installs 3x2 reply menu via deleted carrier, with text fallback", async () => {
+    const waitUntilTasks: Promise<unknown>[] = [];
+    (globalThis as Record<symbol, unknown>)[CF_CTX_SYM] = {
+      ctx: { waitUntil: (p: Promise<unknown>) => waitUntilTasks.push(p) },
+    };
+
     const idMenu = mainReplyMenu("id");
     expect(idMenu.keyboard).toHaveLength(3);
     expect(idMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
@@ -266,14 +271,46 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
     ]);
 
     await handleCommand("/start", buyer.id, "private", buyer);
+    await flushWaitUntil(waitUntilTasks.splice(0));
     expect(tg.withLoadingIndicator).not.toHaveBeenCalled();
-    expect(tg.sendPhoto).toHaveBeenCalledWith(expect.objectContaining({
-      photo: expect.stringContaining("/banners/tg-welcome.jpg"),
-      reply_markup: mainReplyMenu("id"),
-    }));
-    const welcomeKb = tg.sendMessage.mock.calls.at(-1)?.[0]?.reply_markup as { inline_keyboard: { text: string; style?: string }[][] };
+    expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
+    const photoCall = tg.sendPhoto.mock.calls[0]?.[0];
+    expect(photoCall?.photo).toContain("/banners/tg-welcome.jpg");
+    expect(photoCall?.caption).toContain("Halo, Tester");
+    expect(photoCall?.caption).toContain("Paling laris");
+    const welcomeKb = photoCall?.reply_markup as { inline_keyboard: { text: string; style?: string }[][] };
     expect(welcomeKb.inline_keyboard[0][0].text).toContain("🔥 Netflix Private");
-    expect(welcomeKb.inline_keyboard[0][0].style).toBe("primary");
+    expect(welcomeKb.inline_keyboard[0][0].style).toBe("success");
+
+    // Carrier message installs mainReplyMenu silently and is immediately deleted (no junk bubble).
+    expect(tg.sendMessage).toHaveBeenCalledTimes(1);
+    expect(tg.sendMessage).toHaveBeenCalledWith({
+      chat_id: buyer.id,
+      text: "⌨️",
+      reply_markup: mainReplyMenu("id"),
+      disable_notification: true,
+    });
+    expect(tg.deleteMessage).toHaveBeenCalledWith(buyer.id, 101);
+
+    // Fallback: when sendPhoto fails, sends ONE text message with the same caption + inline keyboard.
+    vi.clearAllMocks();
+    tg.sendPhoto.mockResolvedValueOnce({ ok: false, error_code: 500, description: "photo failed" } as never);
+    await handleCommand("/start", buyer.id, "private", buyer);
+    await flushWaitUntil(waitUntilTasks.splice(0));
+    expect(tg.sendMessage).toHaveBeenCalledTimes(2);
+    expect(tg.sendMessage.mock.calls[0]?.[0]).toMatchObject({
+      chat_id: buyer.id,
+      text: expect.stringContaining("Halo, Tester"),
+      parse_mode: "HTML",
+      reply_markup: expect.objectContaining({ inline_keyboard: expect.any(Array) }),
+    });
+    expect(tg.sendMessage.mock.calls[1]?.[0]).toMatchObject({
+      chat_id: buyer.id,
+      text: "⌨️",
+      reply_markup: mainReplyMenu("id"),
+      disable_notification: true,
+    });
+    expect(tg.deleteMessage).toHaveBeenCalledWith(buyer.id, 101);
 
     // Menu tap overrides non-creating pending_action
     fx.sql.prepare("UPDATE telegram_users SET pending_action='email_for:1:1:1' WHERE user_id=?").run(String(buyer.id));
@@ -284,6 +321,38 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
     // /batal re-installs mainReplyMenu
     await handleCommand("/batal", buyer.id, "private", buyer);
     expect(tg.sendMessage.mock.calls.at(-1)?.[0]?.reply_markup).toEqual(mainReplyMenu("id"));
+
+    // Onboarding completion (locale was null) sends ONE home banner photo + deletes old chooser + installs reply menu via deleted carrier
+    fx.sql.prepare("UPDATE telegram_users SET locale=NULL WHERE user_id=?").run(String(buyer.id));
+    vi.clearAllMocks();
+    await handleCallback("lang:en", buyer.id, 77, buyer, "cb-onboard");
+    await flushWaitUntil(waitUntilTasks.splice(0));
+    expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
+    expect(tg.sendPhoto.mock.calls[0]?.[0]?.caption).toContain("Best sellers");
+    expect(tg.deleteMessage).toHaveBeenCalledWith(buyer.id, 77);
+    expect(tg.sendMessage).toHaveBeenCalledTimes(1);
+    expect(tg.sendMessage).toHaveBeenCalledWith({
+      chat_id: buyer.id,
+      text: "⌨️",
+      reply_markup: mainReplyMenu("en"),
+      disable_notification: true,
+    });
+    expect(tg.deleteMessage).toHaveBeenCalledWith(buyer.id, 101);
+
+    // Home callback from a text message edits in place without installing reply menu; from protected message sends new banner photo without carrier
+    vi.clearAllMocks();
+    await handleCallback("home", buyer.id, 88, buyer, "cb-home-edit", { isPhoto: false, isProtected: false });
+    await flushWaitUntil(waitUntilTasks.splice(0));
+    expect(tg.safeEditOrSend).toHaveBeenCalledTimes(1);
+    expect(tg.sendPhoto).not.toHaveBeenCalled();
+    expect(tg.sendMessage).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    await handleCallback("home", buyer.id, 89, buyer, "cb-home-prot", { isPhoto: true, isProtected: true });
+    await flushWaitUntil(waitUntilTasks.splice(0));
+    expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
+    expect(tg.deleteMessage).not.toHaveBeenCalled();
+    expect(tg.sendMessage).not.toHaveBeenCalled();
   });
 
   it("scores exact > prefix > substring > typo tolerance (netflik, chatgtp, canfa) across name/aliases", async () => {
@@ -340,7 +409,7 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
     expect(ik.inline_keyboard.flat().find((b) => b.callback_data === "cancel:AXV-1")?.style).toBe("danger");
 
     const hk = homeKeyboard("id", [{ productId: 1, name: "Netflix", price: 25000, stock: -1 }]);
-    expect(hk.inline_keyboard[0][0]).toMatchObject({ text: "🔥 Netflix · Rp25.000 · stok ∞", style: "primary" });
+    expect(hk.inline_keyboard[0][0]).toMatchObject({ text: "🔥 Netflix · Rp25.000 · stok ∞", style: "success" });
     expect(hk.inline_keyboard[1][0]?.style).toBe("primary");
 
     const vk = variantsKeyboard(9, [
