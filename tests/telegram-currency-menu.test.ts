@@ -47,7 +47,7 @@ beforeEach(() => {
 afterEach(() => { fx.close(); resetCryptoMarketMemo(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("Telegram currency menu", () => {
-  it("native menu lists /currency and the main menu offers a localized currency button", async () => {
+  it("native menu lists /settings and the main menu offers a localized settings button", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:fixture");
     const fetchMock = vi.fn(async () => ({ json: async () => ({ ok: true, result: true }) }));
     vi.stubGlobal("fetch", fetchMock);
@@ -55,17 +55,16 @@ describe("Telegram currency menu", () => {
     await actual.setMyCommands();
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(String(init.body)) as { commands: { command: string; description: string }[] };
-    expect(body.commands.map((c) => c.command)).toContain("currency");
-    expect(body.commands.find((c) => c.command === "currency")?.description).toMatch(/Mata uang|Currency/);
+    expect(body.commands.map((c) => c.command)).toContain("settings");
+    expect(body.commands.find((c) => c.command === "settings")?.description).toMatch(/Pengaturan/);
 
     const id = JSON.stringify(homeKeyboard("id"));
     const en = JSON.stringify(homeKeyboard("en"));
-    expect(id).toContain("💱 Mata Uang");
-    expect(en).toContain("💱 Currency");
-    expect(id).toContain('"curmenu"');
-    expect(en).toContain('"curmenu"');
+    expect(id).toContain("⚙️ Pengaturan");
+    expect(en).toContain("⚙️ Settings");
+    expect(id).toContain('"settings"');
+    expect(en).toContain('"settings"');
     expect(id).toContain("https://axvara.tech");
-    expect(id).toContain('"langmenu"');
   });
 
   it("/currency opens the picker without inventing a default: saved USD vs unset", async () => {

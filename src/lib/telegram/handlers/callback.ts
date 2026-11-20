@@ -26,7 +26,7 @@ import {
 } from "@/lib/telegram/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
 import { getCartSummary, clearCart } from "@/lib/telegram/cart";
-import { clearPendingAction, getBestsellers, installReplyMenu, replaceWithText, sendTgHome, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
+import { clearPendingAction, installReplyMenu, replaceWithText, sendTgHome, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
 import {
   handleShowCatalogEdit, handleShowCategoriesEdit, handleShowProducts,
   handleShowProduct, handleShowVariants, handleVariantConfirm, handleShowQty,
@@ -161,12 +161,11 @@ export async function handleCallback(
         });
       } else {
         const { welcomeMessageLocalized } = await import("@/lib/telegram/messages/preferences");
-        const [bestsellers, langCtx] = await Promise.all([getBestsellers(3), tgCtxFor(from.id)]);
         await safeEditOrSend({
           chat_id: chatId, message_id: messageId,
-          text: welcomeMessageLocalized(savedLocale, from.first_name, bestsellers),
+          text: welcomeMessageLocalized(savedLocale, from.first_name),
           parse_mode: "HTML",
-          reply_markup: homeKeyboard(savedLocale, bestsellers, langCtx),
+          reply_markup: homeKeyboard(savedLocale),
         });
         installReplyMenu(chatId, savedLocale);
       }
@@ -246,6 +245,29 @@ export async function handleCallback(
       break;
     }
 
+    case "settings": {
+      if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== from.id) break;
+      const menuPrefs = await readTgPreferences(String(from.id));
+      if (!menuPrefs.locale) {
+        await replaceWithText({
+          chat_id: chatId,
+          message_id: messageId,
+          text: languageChooserMessage(),
+          parse_mode: "HTML",
+          reply_markup: languageChooserKeyboard(),
+        }, sourceMeta);
+        break;
+      }
+      await replaceWithText({
+        chat_id: chatId,
+        message_id: messageId,
+        text: settingsMessage(menuPrefs.locale, menuPrefs.currency),
+        parse_mode: "HTML",
+        reply_markup: settingsKeyboard(menuPrefs.locale, menuPrefs.currency),
+      }, sourceMeta);
+      break;
+    }
+
     case "home": {
       if (await notifyPaymentMaintenance(chatId)) return;
       // Guard COMMON clear (same creating-preserve rule as navigation).
@@ -257,7 +279,7 @@ export async function handleCallback(
         }
       }
       const { welcomeMessageLocalized: homeWelcome } = await import("@/lib/telegram/messages/preferences");
-      const [homeCtx, bestsellers] = await Promise.all([tgCtxFor(from.id), getBestsellers(3)]);
+      const homeCtx = await tgCtxFor(from.id);
       if (sourceMeta?.isPhoto || sourceMeta?.isProtected || !messageId) {
         await sendTgHome({
           chatId,
@@ -266,7 +288,6 @@ export async function handleCallback(
           userId: from.id,
           replaceMessageId: messageId,
           sourceMeta,
-          bestsellers,
           ctx: homeCtx,
           installMenu: false,
         });
@@ -274,9 +295,9 @@ export async function handleCallback(
       }
       await replaceWithText({
         chat_id: chatId, message_id: messageId,
-        text: homeWelcome(homeCtx.locale, from.first_name, bestsellers),
+        text: homeWelcome(homeCtx.locale, from.first_name),
         parse_mode: "HTML",
-        reply_markup: homeKeyboard(homeCtx.locale, bestsellers, homeCtx),
+        reply_markup: homeKeyboard(homeCtx.locale),
       }, sourceMeta);
       break;
     }

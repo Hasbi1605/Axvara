@@ -498,7 +498,9 @@ describe("Telegram actual catalog labels, inventory and callback budgets", () =>
     await click(button(product, "var:1"));
     expect(edited().text).toContain("Google Head 18Bulan");
     expect(edited().text).not.toMatch(/1\s*(month|bulan)\b/i);
-    await click(button(edited(), "cadd:"));
+    // Add-to-cart button is hidden from qty UI, but legacy cadd: callback still works.
+    expect(callbacks(edited()).some((d) => d.startsWith("cadd:"))).toBe(false);
+    await click("cadd:1:1:1");
     await click("cart");
     expect(edited().text).toContain("Google Head 18Bulan");
     expect(edited().text).not.toMatch(/1\s*(month|bulan)\b/i);

@@ -69,12 +69,12 @@ describe("TG1 onboarding chooser + independent preferences", () => {
     await handleCallback("lang:en", userA.id, 7, userA, "cb-1");
     expect(prefs(userA.id)).toMatchObject({ locale: "en", display_currency: "USD" });
     expect(api.answer).toHaveBeenCalledWith("cb-1", undefined, false);
-    expect(String(api.photo.mock.calls.at(-1)?.[0]?.caption ?? "")).toMatch(/Hello/);
+    expect(String(api.photo.mock.calls.at(-1)?.[0]?.caption ?? "")).toBe("Hi, A 👋");
     vi.clearAllMocks();
     await handleCommand("/start", userA.id, "private", userA);
     expect(api.send.mock.calls.filter((c) => /Pilih bahasa/.test(String(c[0]?.text ?? "")))).toHaveLength(0);
     const homeCaption = String(api.photo.mock.calls.at(-1)?.[0]?.caption ?? "");
-    expect(homeCaption).toMatch(/AXVARA|Type a product name/);
+    expect(homeCaption).toBe("Hi, A 👋");
   });
 
   it("/language changes locale only, currency stays USD", async () => {

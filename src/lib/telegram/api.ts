@@ -190,15 +190,10 @@ export async function setMyCommands(): Promise<TelegramApiResponse> {
   return callApi("setMyCommands", {
     commands: [
       { command: "start", description: "🏠 Menu utama" },
-      { command: "katalog", description: "🛍 Lihat katalog produk" },
-      { command: "cari", description: "🔎 Cari produk" },
-      { command: "cart", description: "🛒 Keranjang belanja" },
-      { command: "orders", description: "📦 Riwayat pesanan saya" },
-      { command: "pesanan", description: "📋 Cek status pesanan" },
-      { command: "bantuan", description: "❓ Bantuan & cara beli" },
-      { command: "garansi", description: "🛡 Garansi & replace" },
-      { command: "bahasa", description: "🌐 Bahasa / Language" },
-      { command: "currency", description: "💱 Mata uang / Currency" },
+      { command: "katalog", description: "🛍 Katalog produk" },
+      { command: "orders", description: "📦 Pesanan saya" },
+      { command: "bantuan", description: "💬 Bantuan" },
+      { command: "settings", description: "⚙️ Pengaturan" },
     ],
   });
 }

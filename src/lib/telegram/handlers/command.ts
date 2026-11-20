@@ -9,10 +9,12 @@ import { notifyPaymentMaintenance } from "@/lib/telegram/payment-maintenance";
 
 import * as tgApi from "@/lib/telegram/api";
 import { sendMessage } from "@/lib/telegram/api";
+import { SITE } from "@/lib/site";
 import {
-  homeKeyboard, warrantyKeyboard, languageChooserKeyboard, currencyKeyboard, settingsKeyboard,
+  cb, homeKeyboard, warrantyKeyboard, languageChooserKeyboard, currencyKeyboard, settingsKeyboard,
   helpKeyboard, mainReplyMenu, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS,
-  MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY, MENU_LABEL_CART, MENU_LABEL_EN,
+  MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY, MENU_LABEL_CART, MENU_LABEL_SETTINGS,
+  MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import { welcomeMessage, helpMessage, warrantyFullMessage } from "@/lib/telegram/messages";
 import {
@@ -21,7 +23,7 @@ import {
 } from "@/lib/telegram/messages/preferences";
 import { readTgPreferences, isValidTgLocale } from "@/lib/telegram/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
-import { clearPayq1DraftForCancel, clearPendingAction, getBestsellers, runInBackground, sendTgHome } from "./shared";
+import { clearPayq1DraftForCancel, clearPendingAction, runInBackground, sendTgHome } from "./shared";
 import { handleShowCatalog, handleShowProduct } from "./catalog";
 import {
   handleSearchPrompt, handleSearchResults, handleMyOrders, handlePendingSearchInput,
@@ -148,12 +150,11 @@ export async function handleCommand(
         const { saveTgLocaleOnly } = await import("@/lib/telegram/preferences");
         await saveTgLocaleOnly(String(from.id), want);
         const { tgPrefText } = await import("@/lib/telegram/messages/preferences");
-        const [bestsellers, ctx] = await Promise.all([getBestsellers(3), tgCtxFor(from.id)]);
         await sendMessage({
           chat_id: chatId,
           text: tgPrefText(want, "language_saved"),
           parse_mode: "HTML",
-          reply_markup: homeKeyboard(want, bestsellers, ctx),
+          reply_markup: homeKeyboard(want),
         });
         return;
       }
@@ -178,7 +179,7 @@ export async function handleCommand(
       chat_id: chatId,
       text: settingsMessage(prefs.locale, prefs.currency),
       parse_mode: "HTML",
-      reply_markup: settingsKeyboard(),
+      reply_markup: settingsKeyboard(prefs.locale, prefs.currency),
     });
     return;
   }
@@ -319,7 +320,48 @@ export async function handleCommand(
   ) {
     await clearPendingUnlessCreating(from);
     const locale = from ? (await readTgPreferences(String(from.id)).catch(() => ({ locale: null as null }))).locale ?? "id" : "id";
-    await sendMessage({ chat_id: chatId, text: helpMessage({ locale }), parse_mode: "HTML", reply_markup: helpKeyboard({ locale }) });
+    const en = locale === "en";
+    await sendMessage({
+      chat_id: chatId,
+      text: en ? "Need help? Chat admin on WhatsApp." : "Butuh bantuan? Chat admin di WhatsApp.",
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "💬 WhatsApp Admin", url: `${SITE.webUrl}/wa` },
+          { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
+        ]],
+      },
+    });
+    return;
+  }
+
+  if (trimmed === MENU_LABEL_SETTINGS || trimmed === MENU_LABEL_EN.settings) {
+    await clearPendingUnlessCreating(from);
+    if (from && chatType === "private" && chatId === from.id) {
+      const prefs = await readTgPreferences(String(from.id));
+      if (!prefs.locale) {
+        await sendMessage({
+          chat_id: chatId,
+          text: languageChooserMessage(),
+          parse_mode: "HTML",
+          reply_markup: languageChooserKeyboard(),
+        });
+        return;
+      }
+      await sendMessage({
+        chat_id: chatId,
+        text: settingsMessage(prefs.locale, prefs.currency),
+        parse_mode: "HTML",
+        reply_markup: settingsKeyboard(prefs.locale, prefs.currency),
+      });
+    } else {
+      await sendMessage({
+        chat_id: chatId,
+        text: settingsMessage("id", null),
+        parse_mode: "HTML",
+        reply_markup: settingsKeyboard("id", null),
+      });
+    }
     return;
   }
 
@@ -352,16 +394,13 @@ export async function handleCommand(
   if (photoFileId && !trimmed) return;
 
   // Unknown command or single-character message: show welcome in saved locale.
-  const [fallbackCtx, bestsellers] = await Promise.all([
-    tgCtxFor(from?.id ?? chatId).catch(() => ({ locale: "id" as const, displayCurrency: null, fx: null })),
-    getBestsellers(3),
-  ]);
+  const fallbackCtx = await tgCtxFor(from?.id ?? chatId).catch(() => ({ locale: "id" as const, displayCurrency: null, fx: null }));
   await sendMessage({
     chat_id: chatId,
     text: fallbackCtx.locale === "en"
-      ? welcomeMessageLocalized(fallbackCtx.locale, from?.first_name ?? "Pengguna", bestsellers)
-      : welcomeMessage(from?.first_name ?? "Pengguna", bestsellers),
+      ? welcomeMessageLocalized(fallbackCtx.locale, from?.first_name ?? "Pengguna")
+      : welcomeMessage(from?.first_name ?? "Pengguna"),
     parse_mode: "HTML",
-    reply_markup: homeKeyboard(fallbackCtx.locale, bestsellers, fallbackCtx),
+    reply_markup: homeKeyboard(fallbackCtx.locale),
   });
 }

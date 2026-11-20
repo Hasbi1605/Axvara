@@ -38,7 +38,7 @@ beforeEach(() => {
 afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("Telegram language menu", () => {
-  it("native command menu lists /bahasa and no /chatid", async () => {
+  it("native command menu lists /settings and no /chatid", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:fixture");
     const fetchMock = vi.fn(async () => ({ json: async () => ({ ok: true, result: true }) }));
     vi.stubGlobal("fetch", fetchMock);
@@ -48,17 +48,17 @@ describe("Telegram language menu", () => {
     const body = JSON.parse(String(init.body)) as { commands: { command: string; description: string }[] };
     const commands = body.commands.map((c) => c.command);
     expect(commands).not.toContain("chatid");
-    expect(commands).toContain("bahasa");
-    expect(body.commands.find((c) => c.command === "bahasa")?.description).toMatch(/Bahasa|Language/);
+    expect(commands).toContain("settings");
+    expect(body.commands.find((c) => c.command === "settings")?.description).toMatch(/Pengaturan/);
   });
 
-  it("main inline menu exposes a language button in both locales", () => {
+  it("main inline menu exposes a settings button (merging language & currency) in both locales", () => {
     const id = JSON.stringify(homeKeyboard("id"));
     const en = JSON.stringify(homeKeyboard("en"));
-    expect(id).toContain('"langmenu"');
-    expect(id).toContain("🌐 Bahasa");
-    expect(en).toContain('"langmenu"');
-    expect(en).toContain("🌐 Language");
+    expect(id).toContain('"settings"');
+    expect(id).toContain("⚙️ Pengaturan");
+    expect(en).toContain('"settings"');
+    expect(en).toContain("⚙️ Settings");
   });
 
   it("/bahasa always opens the id/en picker for a returning user without changing prefs", async () => {
@@ -87,7 +87,20 @@ describe("Telegram language menu", () => {
     expect(userRow(userA.id)).toMatchObject({ locale: "id", display_currency: "USD" });
     const lastEdit = api.edit.mock.calls.at(-1)![0];
     expect(String(lastEdit.text)).toMatch(/Halo/);
-    expect(JSON.stringify(lastEdit.reply_markup)).toContain("🌐 Bahasa");
+    expect(JSON.stringify(lastEdit.reply_markup)).toContain("⚙️ Pengaturan");
+  });
+
+  it("settings callback opens combined Bahasa + Mata Uang picker without clearing pending_action", async () => {
+    fx.sql.prepare("UPDATE telegram_users SET locale='id', display_currency='USD', pending_action='search:' WHERE user_id=?").run(String(userA.id));
+    await handleCallback("settings", userA.id, 7, userA, "cb-settings");
+    const edited = api.edit.mock.calls.at(-1)![0];
+    expect(String(edited.text)).toContain("Pengaturan");
+    const markup = JSON.stringify(edited.reply_markup);
+    expect(markup).toContain("lang:id");
+    expect(markup).toContain("lang:en");
+    expect(markup).toContain("cur:IDR");
+    expect(markup).toContain("cur:USD");
+    expect(userRow(userA.id)).toMatchObject({ locale: "id", display_currency: "USD", pending_action: "search:" });
   });
 
   it("invalid locale values remain rejected without a write", async () => {

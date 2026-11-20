@@ -50,17 +50,13 @@ export function welcomeCaption(locale: Locale): string {
 export function welcomeMessageLocalized(
   locale: Locale,
   firstName: string,
-  bestsellers: { name: string; price?: number }[] = [],
+  _bestsellers: { name: string; price?: number }[] = [],
 ): string {
   const name = escapeHtml(truncate(firstName, 50));
   if (locale === "en") {
-    return bestsellers.length > 0
-      ? `Hello, ${name} 👋\n🔥 <b>Best sellers</b>`
-      : `Hello, ${name} 👋\nType a product name to search.`;
+    return `Hi, ${name} 👋`;
   }
-  return bestsellers.length > 0
-    ? `Halo, ${name} 👋\n🔥 <b>Paling laris</b>`
-    : `Halo, ${name} 👋\nKetik nama produk untuk mencari.`;
+  return `Halo, ${name} 👋`;
 }
 
 /** Dedicated display-currency picker copy. `null` is reported as unset with

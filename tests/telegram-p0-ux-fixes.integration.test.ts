@@ -8,7 +8,10 @@ import { handleCallback } from "@/lib/telegram/handlers/callback";
 import { handleCommand } from "@/lib/telegram/handlers/command";
 import { handleOrderStatus } from "@/lib/telegram/handlers/orders";
 import { resendTelegramCredentials } from "@/lib/telegram/credential-delivery";
-import { MENU_LABEL_HELP, MENU_LABEL_EN } from "@/lib/telegram/keyboards";
+import {
+  MENU_LABEL_CATALOG, MENU_LABEL_ORDERS, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY,
+  MENU_LABEL_SETTINGS, MENU_LABEL_SEARCH, MENU_LABEL_CART, MENU_LABEL_WARRANTY, MENU_LABEL_EN,
+} from "@/lib/telegram/keyboards";
 import { parsePayq1State } from "@/lib/telegram/payment-quote";
 import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
 
@@ -288,27 +291,90 @@ describe("P0-2: Ambil Ulang permanent missing vs transient failures", () => {
 });
 
 describe("P0-3: Bantuan, payment offer, and order status keyboards", () => {
-  it("renders Bantuan keyboard and updated payment copy for slash command, menu label, and callback (ID+EN)", async () => {
-    for (const cmd of ["/bantuan", MENU_LABEL_HELP]) {
+  it("renders Bantuan keyboard for /bantuan & legacy callback, and routes reply-menu Bantuan directly to /wa", async () => {
+    resetLog();
+    await handleCommand("/bantuan", buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Bantuan AXVARA");
+    expect(callbacksOf(lastMsg())).toEqual(expect.arrayContaining(["catalog:0", "myorders", "home"]));
+    expect(urlsOf(lastMsg()).some((u) => u.includes("/wa"))).toBe(true);
+    expect(urlsOf(lastMsg()).some((u) => u.includes("t.me/axvara_support"))).toBe(true);
+
+    for (const label of [MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY]) {
       resetLog();
-      await handleCommand(cmd, buyer.id, "private", buyer);
-      expect(String(lastMsg().text)).toContain("Bantuan AXVARA");
-      expect(callbacksOf(lastMsg())).toEqual(expect.arrayContaining(["catalog:0", "myorders", "home"]));
-      expect(urlsOf(lastMsg()).some((u) => u.includes("/wa"))).toBe(true);
-      expect(urlsOf(lastMsg()).some((u) => u.includes("t.me/axvara_support"))).toBe(true);
+      await handleCommand(label, buyer.id, "private", buyer);
+      expect(String(lastMsg().text)).toBe("Butuh bantuan? Chat admin di WhatsApp.");
+      expect(urlsOf(lastMsg())).toContain("https://axvara.tech/wa");
+      expect(callbacksOf(lastMsg())).toContain("home");
     }
 
     fx.sql.prepare("UPDATE telegram_users SET locale='en' WHERE user_id=?").run(String(buyer.id));
-    for (const trigger of ["/help", MENU_LABEL_EN.help]) {
+    resetLog();
+    await handleCommand("/help", buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("AXVARA Help");
+    expect(callbacksOf(lastMsg())).toEqual(expect.arrayContaining(["catalog:0", "myorders", "home"]));
+
+    for (const label of [MENU_LABEL_EN.help, MENU_LABEL_EN.helpLegacy]) {
       resetLog();
-      await handleCommand(trigger, buyer.id, "private", buyer);
-      expect(String(lastMsg().text)).toContain("AXVARA Help");
-      expect(callbacksOf(lastMsg())).toEqual(expect.arrayContaining(["catalog:0", "myorders", "home"]));
+      await handleCommand(label, buyer.id, "private", buyer);
+      expect(String(lastMsg().text)).toBe("Need help? Chat admin on WhatsApp.");
+      expect(urlsOf(lastMsg())).toContain("https://axvara.tech/wa");
+      expect(callbacksOf(lastMsg())).toContain("home");
     }
 
     resetLog();
     await click("help");
     expect(callbacksOf(lastMsg())).toEqual(expect.arrayContaining(["catalog:0", "myorders", "home"]));
+  });
+
+  it("routes all new and legacy reply-menu labels (ID+EN) cleanly", async () => {
+    // New ID labels
+    resetLog();
+    await handleCommand(MENU_LABEL_CATALOG, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Katalog AXVARA");
+
+    resetLog();
+    await handleCommand(MENU_LABEL_ORDERS, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toMatch(/Pesanan|Belum ada pesanan/i);
+
+    resetLog();
+    await handleCommand(MENU_LABEL_SETTINGS, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Pengaturan");
+    expect(callbacksOf(lastMsg())).toEqual(expect.arrayContaining(["lang:id", "lang:en", "cur:IDR", "cur:USD", "home"]));
+
+    // Legacy ID labels
+    resetLog();
+    await handleCommand(MENU_LABEL_SEARCH, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Cari produk");
+
+    resetLog();
+    await handleCommand(MENU_LABEL_CART, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Keranjang");
+
+    resetLog();
+    await handleCommand(MENU_LABEL_WARRANTY, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("WAJIB BACA");
+
+    // EN new + legacy labels
+    fx.sql.prepare("UPDATE telegram_users SET locale='en' WHERE user_id=?").run(String(buyer.id));
+    resetLog();
+    await handleCommand(MENU_LABEL_EN.catalog, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("AXVARA Catalog");
+
+    resetLog();
+    await handleCommand(MENU_LABEL_EN.settings, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Settings");
+
+    resetLog();
+    await handleCommand(MENU_LABEL_EN.search, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Search products");
+
+    resetLog();
+    await handleCommand(MENU_LABEL_EN.cart, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Cart");
+
+    resetLog();
+    await handleCommand(MENU_LABEL_EN.warranty, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("WAJIB BACA");
   });
 
   it("includes Daftar Pesanan button on pending, paid, and terminal order status screens", async () => {

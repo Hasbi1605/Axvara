@@ -246,28 +246,26 @@ describe("W-A single active screen & protected messages", () => {
   });
 });
 
-describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, wiring", () => {
-  it("sends ONE /start banner photo + inline homeKeyboard and installs 3x2 reply menu via deleted carrier, with text fallback", async () => {
+describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, wiring", () => {
+  it("sends ONE /start banner photo + simplified inline homeKeyboard and installs 2x2 reply menu via deleted carrier, with text fallback", async () => {
     const waitUntilTasks: Promise<unknown>[] = [];
     (globalThis as Record<symbol, unknown>)[CF_CTX_SYM] = {
       ctx: { waitUntil: (p: Promise<unknown>) => waitUntilTasks.push(p) },
     };
 
     const idMenu = mainReplyMenu("id");
-    expect(idMenu.keyboard).toHaveLength(3);
+    expect(idMenu.keyboard).toHaveLength(2);
     expect(idMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
-      ["🛍 Katalog", "🔎 Cari"],
-      ["🛒 Keranjang", "📦 Pesanan"],
-      ["🛡 Garansi", "💬 Bantuan"],
+      ["🛍 Katalog", "📦 Pesanan"],
+      ["💬 Bantuan", "⚙️ Pengaturan"],
     ]);
     expect(idMenu.is_persistent).toBe(false);
     expect(idMenu.resize_keyboard).toBe(true);
 
     const enMenu = mainReplyMenu("en");
     expect(enMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
-      ["🛍 Catalog", "🔎 Search"],
-      ["🛒 Cart", "📦 Orders"],
-      ["🛡 Warranty", "💬 Help"],
+      ["🛍 Catalog", "📦 Orders"],
+      ["💬 Help", "⚙️ Settings"],
     ]);
 
     await handleCommand("/start", buyer.id, "private", buyer);
@@ -276,11 +274,20 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
     expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
     const photoCall = tg.sendPhoto.mock.calls[0]?.[0];
     expect(photoCall?.photo).toContain("/banners/tg-welcome.jpg");
-    expect(photoCall?.caption).toContain("Halo, Tester");
-    expect(photoCall?.caption).toContain("Paling laris");
-    const welcomeKb = photoCall?.reply_markup as { inline_keyboard: { text: string; style?: string }[][] };
-    expect(welcomeKb.inline_keyboard[0][0].text).toContain("🔥 Netflix Private");
-    expect(welcomeKb.inline_keyboard[0][0].style).toBe("success");
+    expect(photoCall?.caption).toBe("Halo, Tester 👋");
+    expect(photoCall?.caption).not.toContain("Paling laris");
+    const welcomeKb = photoCall?.reply_markup as { inline_keyboard: { text: string; callback_data?: string; url?: string; style?: string }[][] };
+    expect(welcomeKb.inline_keyboard).toEqual([
+      [{ text: "🛍 Katalog", callback_data: "catalog:0", style: "success" }],
+      [
+        { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
+        { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
+      ],
+      [
+        { text: "⚙️ Pengaturan", callback_data: "settings" },
+        { text: "🌐 Web", url: "https://axvara.tech" },
+      ],
+    ]);
 
     // Carrier message installs mainReplyMenu silently and is immediately deleted (no junk bubble).
     expect(tg.sendMessage).toHaveBeenCalledTimes(1);
@@ -328,7 +335,7 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
     await handleCallback("lang:en", buyer.id, 77, buyer, "cb-onboard");
     await flushWaitUntil(waitUntilTasks.splice(0));
     expect(tg.sendPhoto).toHaveBeenCalledTimes(1);
-    expect(tg.sendPhoto.mock.calls[0]?.[0]?.caption).toContain("Best sellers");
+    expect(tg.sendPhoto.mock.calls[0]?.[0]?.caption).toBe("Hi, Tester 👋");
     expect(tg.deleteMessage).toHaveBeenCalledWith(buyer.id, 77);
     expect(tg.sendMessage).toHaveBeenCalledTimes(1);
     expect(tg.sendMessage).toHaveBeenCalledWith({
@@ -396,7 +403,7 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
     ]); // 50 excluded because stock is 48
     const flatQty = qk.inline_keyboard.flat();
     expect(flatQty.find((b) => b.callback_data?.startsWith("pay:"))?.style).toBe("success");
-    expect(flatQty.find((b) => b.callback_data?.startsWith("cadd:"))?.style).toBe("primary");
+    expect(flatQty.some((b) => b.callback_data?.startsWith("cadd:"))).toBe(false);
 
     const ck = cartKeyboard({ lines: [{ variantId: 1, qty: 1, stock: 5, fulfillmentMode: "manual", label: "Canva" }] });
     const flatCart = ck.inline_keyboard.flat();
@@ -408,8 +415,8 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
     expect(ik.inline_keyboard.flat().find((b) => b.callback_data === "refresh:AXV-1")?.style).toBe("primary");
     expect(ik.inline_keyboard.flat().find((b) => b.callback_data === "cancel:AXV-1")?.style).toBe("danger");
 
-    const hk = homeKeyboard("id", [{ productId: 1, name: "Netflix", price: 25000, stock: -1 }]);
-    expect(hk.inline_keyboard[0][0]).toMatchObject({ text: "🔥 Netflix · Rp25.000 · stok ∞", style: "success" });
+    const hk = homeKeyboard("id");
+    expect(hk.inline_keyboard[0][0]).toMatchObject({ text: "🛍 Katalog", callback_data: "catalog:0", style: "success" });
     expect(hk.inline_keyboard[1][0]?.style).toBe("primary");
 
     const vk = variantsKeyboard(9, [

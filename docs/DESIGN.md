@@ -1,5 +1,14 @@
 # DESIGN.md — AXVARA Design System
 
+## Penyederhanaan navigasi Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-MINIMAL, lokal)
+
+- **`/start` home minimal (`sendTgHome` & `homeKeyboard`):** satu banner foto (`public/banners/tg-welcome.jpg`) + caption sapaan singkat saja (`Halo, <Nama> 👋` / `Hi, <Nama> 👋`, tanpa daftar terlaris maupun query `getBestsellers`), dan inline keyboard tepat 3 baris:
+  1. `[🛍 Katalog]` (`catalog:0`, `style: "success"`)
+  2. `[📦 Pesanan Saya]` (`myorders`, `primary`) + `[💬 Bantuan]` (URL `${SITE.webUrl}/wa`, `primary`)
+  3. `[⚙️ Pengaturan]` (`settings`, `primary`, membuka `settingsKeyboard` Bahasa + Mata Uang) + `[🌐 Web]` (`https://axvara.tech`, `primary`)
+- **Reply menu 2×2 (`mainReplyMenu`, `is_persistent: false`):** ID `[[🛍 Katalog, 📦 Pesanan], [💬 Bantuan, ⚙️ Pengaturan]]` dan EN `[[🛍 Catalog, 📦 Orders], [💬 Help, ⚙️ Settings]]` (placeholder input tetap `"Cari produk atau ketik nama produk…"`). Mengetuk `💬 Bantuan` membalas 1 pesan singkat (`"Butuh bantuan? Chat admin di WhatsApp."` / `"Need help? Chat admin on WhatsApp."`) dengan tombol `[💬 WhatsApp Admin → ${SITE.webUrl}/wa]` + `[🏠 Menu]`. Label reply lama (`🔎 Cari`, `🛒 Keranjang`, `🛡 Garansi`, `❓ Bantuan`, padanan EN) tetap dirutekan di `command.ts`.
+- **Pembersihan entry point UI & `setMyCommands`:** tombol Keranjang (`home`, `catalogFlatKeyboard`, `variantsKeyboard`, `qtyKeyboard`), Cari Produk (`home`, `catalogFlatKeyboard`, `searchResultsKeyboard` `"Cari Lagi"`), dan Garansi (`home`, `mainReplyMenu`) dihapus dari UI (backend, `/cart`, `/cari`, `/garansi`, serta seluruh callback lama tetap berfungsi). Baris bawah katalog datar menjadi `[📂 Kategori | 🏠 Menu]`; kartu produk menjadi varian tersedia, `❌` sold-out, `🔔` restok, `📋 Detail & Ketentuan`, `[🛍 Katalog | 🏠 Menu]`; hasil pencarian menjadi `[🛍 Katalog | 🏠 Menu]`; seluruh tombol inline `💬 Bantuan` (`homeKeyboard`, `searchNoResultsKeyboard`) memakai URL `${SITE.webUrl}/wa`. `setMyCommands()` disederhanakan menjadi 5 perintah (`start`, `katalog`, `orders`, `bantuan`, `settings`).
+
 ## Welcome satu pesan & hierarki warna tombol Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-WELCOME, lokal)
 
 - **Welcome `/start` satu pesan + reply menu via carrier terhapus (`sendTgHome` & `installReplyMenu` di `src/lib/telegram/handlers/shared.ts`):**

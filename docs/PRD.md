@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## Penyederhanaan alur & navigasi Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-MINIMAL, lokal)
+
+- **Alur checkout per produk di UI:** entry point keranjang (`🛒 Keranjang` / `🛒 Tambah ke Keranjang`), tombol pencarian (`🔎 Cari Produk` / `🔎 Cari Lagi`), tombol garansi global (`🛡 Garansi & Ketentuan`), dan blok terlaris beranda disembunyikan dari UI bot (home, katalog, kartu produk, layar jumlah, reply menu). Pembeli masuk ke `🛍 Katalog` → produk/varian → jumlah → `💳 Bayar QRIS` / `💳 Metode pembayaran lain`, atau langsung mengetik nama produk (pencarian teks bebas ≥2 huruf tetap aktif).
+- **Bantuan & Pengaturan terpadu:** seluruh tombol inline `💬 Bantuan` membuka `${SITE.webUrl}/wa` langsung; tombol reply `💬 Bantuan` mengirim pesan singkat + tautan `${SITE.webUrl}/wa` + `🏠 Menu`; `/bantuan` tetap menampilkan ringkasan singkat beserta keyboard-nya. Bahasa (`lang:`) dan Mata Uang (`cur:`) digabung dalam satu layar `⚙️ Pengaturan` (`settings` callback & `/settings`). Menu perintah native (`setMyCommands`) menampilkan 5 perintah utama (`start`, `katalog`, `orders`, `bantuan`, `settings`; belum diterapkan ke Telegram sampai admin memanggil setup).
+- **Kompatibilitas mundur penuh:** backend keranjang, tabel `telegram_carts`, `/cart`, `/cari`, `/garansi`, `/bahasa`, `/currency`, label reply lama, dan seluruh callback pesan lama (`cadd`, `cart`, `ccheckout`, `cconfirm`, `cclear`, `crm`, `cinc`, `cdec`, `search`, `warranty`, `help`, `langmenu`, `curmenu`) tetap berjalan normal.
+
 ## Overhaul UX & Latensi Bot Telegram (`@Axvara_bot`) — 19 November 2026 (W-A, lokal)
 
 - **Katalog, terlaris & pencarian langsung:** tombol terlaris di `/start` (maks 3 item `🔥` yang dapat langsung diketuk), perintah langsung `/cari <kata>` / `/search <kata>`, serta pencarian teks bebas (minimal 2 karakter non-perintah tanpa state pending) dengan peringkat toleran typo (`exact > prefix > substring > Damerau-Levenshtein` ≤1 edit untuk 3–5 huruf dan ≤2 untuk ≥6 huruf pada nama, `name_en`, `whatsapp_alias`, `aliases[]`). Layar hasil kosong menawarkan `[📂 Kategori | 🛍 Katalog]` dan `[💬 Bantuan | 🏠 Menu]`.

@@ -45,6 +45,7 @@ export const MENU_LABEL_WARRANTY = "🛡 Garansi";
 export const MENU_LABEL_HELP = "💬 Bantuan";
 export const MENU_LABEL_HELP_LEGACY = "❓ Bantuan";
 export const MENU_LABEL_CART = "🛒 Keranjang";
+export const MENU_LABEL_SETTINGS = "⚙️ Pengaturan";
 
 /**
  * Harga untuk label tombol dalam format penuh pemisah titik (`Rp19.500`),
@@ -138,6 +139,8 @@ export const cb = {
   langMenu: () => "langmenu",
   /** Buka pemilih mata uang tampilan (dipilih lewat cb.currency). */
   currencyMenu: () => "curmenu",
+  /** Buka layar pengaturan gabungan Bahasa + Mata Uang. */
+  settings: () => "settings",
   /** TG1 onboarding: explicit language choice from chooser. */
   lang: (locale: "id" | "en") => `lang:${locale}`,
   /** TG1 independent display-currency control. */
@@ -161,9 +164,8 @@ export function mainReplyMenu(locale: "id" | "en" = "id"): ReplyKeyboardMarkup {
   if (locale === "en") {
     return {
       keyboard: [
-        [{ text: MENU_LABEL_EN.catalog }, { text: MENU_LABEL_EN.search }],
-        [{ text: MENU_LABEL_EN.cart }, { text: MENU_LABEL_EN.orders }],
-        [{ text: MENU_LABEL_EN.warranty }, { text: MENU_LABEL_EN.help }],
+        [{ text: MENU_LABEL_EN.catalog }, { text: MENU_LABEL_EN.orders }],
+        [{ text: MENU_LABEL_EN.help }, { text: MENU_LABEL_EN.settings }],
       ],
       resize_keyboard: true,
       // false: Telegram shows the keyboard toggle icon in the input field so
@@ -175,9 +177,8 @@ export function mainReplyMenu(locale: "id" | "en" = "id"): ReplyKeyboardMarkup {
   }
   return {
     keyboard: [
-      [{ text: MENU_LABEL_CATALOG }, { text: MENU_LABEL_SEARCH }],
-      [{ text: MENU_LABEL_CART }, { text: MENU_LABEL_ORDERS }],
-      [{ text: MENU_LABEL_WARRANTY }, { text: MENU_LABEL_HELP }],
+      [{ text: MENU_LABEL_CATALOG }, { text: MENU_LABEL_ORDERS }],
+      [{ text: MENU_LABEL_HELP }, { text: MENU_LABEL_SETTINGS }],
     ],
     resize_keyboard: true,
     is_persistent: false,
@@ -217,25 +218,27 @@ export function currencyKeyboard(locale: "id" | "en" = "id", currency: DisplayCu
   };
 }
 
-export function settingsKeyboard(): InlineKeyboardMarkup {
+export function settingsKeyboard(locale?: Locale, currency?: DisplayCurrency | null): InlineKeyboardMarkup {
+  const selLang = (l: Locale) => (locale === l ? "✅ " : "");
+  const selCur = (c: DisplayCurrency) => (currency === c ? "✅ " : "");
   return {
     inline_keyboard: [
       [
-        { text: "🇮🇩 Bahasa Indonesia", callback_data: cb.lang("id") },
-        { text: "🇬🇧 English", callback_data: cb.lang("en") },
+        { text: `${selLang("id")}🇮🇩 Bahasa Indonesia`, callback_data: cb.lang("id") },
+        { text: `${selLang("en")}🇬🇧 English`, callback_data: cb.lang("en") },
       ],
       [
-        { text: "Rp IDR", callback_data: cb.currency("IDR") },
-        { text: "$ USD", callback_data: cb.currency("USD") },
+        { text: `${selCur("IDR")}Rp IDR`, callback_data: cb.currency("IDR") },
+        { text: `${selCur("USD")}$ USD`, callback_data: cb.currency("USD") },
       ],
-      [{ text: "🏠", callback_data: cb.home() }],
+      [{ text: locale === "en" ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() }],
     ],
   };
 }
 
 /**
  * TG2a: localized labels for the SAME callback targets (catalog/cart/orders/
- * search/help). Existing ID MENU_LABEL_* retained for old keyboards/policy.
+ * search/help/settings). Existing ID MENU_LABEL_* retained for old keyboards/policy.
  */
 export const MENU_LABEL_EN = {
   catalog: "🛍 Catalog",
@@ -245,42 +248,26 @@ export const MENU_LABEL_EN = {
   help: "💬 Help",
   helpLegacy: "❓ Help",
   cart: "🛒 Cart",
+  settings: "⚙️ Settings",
 } as const;
 
 export function homeKeyboard(
   locale: "id" | "en" = "id",
-  bestsellers: { productId: number; name: string; price: number; stock?: number }[] = [],
-  ctx?: TgPriceCtx,
+  _bestsellers: { productId: number; name: string; price: number; stock?: number }[] = [],
+  _ctx?: TgPriceCtx,
 ): InlineKeyboardMarkup {
   const en = locale === "en";
-  const topRows: InlineKeyboardButton[][] = bestsellers
-    .filter((item) => item.productId > 0)
-    .slice(0, 3)
-    .map((item) => [{
-      text: `🔥 ${productButtonText({ name: item.name, price: item.price, stock: item.stock }, { ...ctx, locale }, 24)}`,
-      callback_data: cb.product(item.productId),
-      style: "success" as const,
-    }]);
   return {
     inline_keyboard: [
-      ...topRows,
+      [{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog(), style: "success" }],
       [
-        { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog(), style: "primary" },
-        { text: en ? "🛒 Cart" : "🛒 Keranjang", callback_data: cb.cart() },
+        { text: en ? "📦 My Orders" : "📦 Pesanan Saya", callback_data: cb.myOrders(), style: "primary" },
+        { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa`, style: "primary" },
       ],
       [
-        { text: en ? "📦 My Orders" : "📦 Pesanan Saya", callback_data: "myorders" },
-        { text: en ? "🔎 Search Products" : "🔎 Cari Produk", callback_data: cb.search() },
+        { text: en ? "⚙️ Settings" : "⚙️ Pengaturan", callback_data: cb.settings() },
+        { text: "🌐 Web", url: SITE.webUrl },
       ],
-      [
-        { text: en ? "🛡 Warranty & Terms" : "🛡 Garansi & Ketentuan", callback_data: "warranty" },
-        { text: en ? "💬 Help" : "💬 Bantuan", callback_data: "help" },
-      ],
-      [
-        { text: en ? "🌐 Language" : "🌐 Bahasa", callback_data: cb.langMenu() },
-        { text: en ? "💱 Currency" : "💱 Mata Uang", callback_data: cb.currencyMenu() },
-      ],
-      [{ text: "🌐 Web", url: "https://axvara.tech" }],
     ],
   };
 }
@@ -311,10 +298,9 @@ export function catalogFlatKeyboard(
 
   // Optional category filter + home (categories no longer mandatory)
   rows.push([
-    { text: en ? "🔎 Search Products" : "🔎 Cari Produk", callback_data: cb.search() },
-    { text: en ? "🛒 Cart" : "🛒 Keranjang", callback_data: cb.cart() },
+    { text: en ? "📂 Categories" : "📂 Kategori", callback_data: cb.categories() },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
   ]);
-  rows.push([{ text: en ? "📦 My Orders" : "📦 Pesanan Saya", callback_data: cb.myOrders() }, { text: en ? "📂 Categories" : "📂 Kategori", callback_data: cb.categories() }]);
   return { inline_keyboard: rows };
 }
 
@@ -433,10 +419,9 @@ export function searchResultsKeyboard(
     return [{ text: productButtonText(p, ctx, 28), callback_data: cb.product(p.id) }];
   });
   rows.push([
-    { text: en ? "🔎 Search Again" : "🔎 Cari Lagi", callback_data: cb.search() },
     { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() },
+    { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
   ]);
-  rows.push([{ text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() }]);
   return { inline_keyboard: rows };
 }
 
@@ -449,7 +434,7 @@ export function searchNoResultsKeyboard(ctx?: TgLocaleCtx): InlineKeyboardMarkup
         { text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog(), style: "primary" },
       ],
       [
-        { text: en ? "💬 Help" : "💬 Bantuan", callback_data: "help" },
+        { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa` },
         { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() },
       ],
     ],
@@ -576,7 +561,7 @@ export function variantsKeyboard(
   }
 
   rows.push([{ text: en ? "📋 Details & Terms" : "📋 Detail & Ketentuan", callback_data: cb.terms(productId) }]);
-  rows.push([{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() }, { text: en ? "🛒 Cart" : "🛒 Keranjang", callback_data: cb.cart() }]);
+  rows.push([{ text: en ? "🛍 Catalog" : "🛍 Katalog", callback_data: cb.catalog() }, { text: en ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() }]);
 
   return { inline_keyboard: rows };
 }
@@ -648,7 +633,6 @@ export function qtyKeyboard(params: {
       ...(!params.requiresEmail ? [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: cb.payMethodsEntry(productId, variantId, qty, params.approvalTag) }]] : []),
       [
         { text: en ? "📋 Terms" : "📋 Ketentuan", callback_data: cb.terms(productId, variantId) },
-        { text: en ? "🛒 Add to Cart" : "🛒 Tambah ke Keranjang", callback_data: cb.cartAdd(productId, variantId, qty), style: "primary" },
       ],
       [
         { text: en ? "Change Variant" : "Ganti Varian", callback_data: cb.variants(productId) },

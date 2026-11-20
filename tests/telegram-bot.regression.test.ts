@@ -14,12 +14,12 @@ import {
 import {
   cb, parseCallback, homeKeyboard, warrantyKeyboard, categoriesKeyboard,
   productsKeyboard, catalogFlatKeyboard, qtyKeyboard, qrisInvoiceKeyboard,
-  orderPaidKeyboard, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard,
+  orderPaidKeyboard, mainReplyMenu, myOrdersKeyboard, searchResultsKeyboard, searchNoResultsKeyboard,
   cartKeyboard, productDetailKeyboard, variantsKeyboard, emailConfirmationKeyboard,
   helpKeyboard, orderStatusKeyboard, paidOrderStatusKeyboard, orderTerminalKeyboard,
-  paymentMethodOfferKeyboard, credentialResendOutcomeKeyboard,
+  paymentMethodOfferKeyboard, credentialResendOutcomeKeyboard, settingsKeyboard,
   MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS, MENU_LABEL_HELP,
-  MENU_LABEL_CART,
+  MENU_LABEL_CART, MENU_LABEL_SETTINGS, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import fs from "node:fs";
 import path from "node:path";
@@ -132,18 +132,36 @@ describe("Telegram callback data", () => {
 });
 
 describe("Telegram keyboards", () => {
-  it("home keyboard has katalog, keranjang, pesanan, cari, garansi, bantuan", () => {
-    const kb = homeKeyboard();
-    const allTexts = kb.inline_keyboard.flat().map(b => b.text);
-    const allData = kb.inline_keyboard.flat().map(b => b.callback_data ?? "");
-    expect(allTexts.some(t => t.includes("Katalog"))).toBe(true);
-    expect(allTexts.some(t => t.includes("Bantuan"))).toBe(true);
-    expect(allTexts.some(t => t.includes("Pesanan"))).toBe(true);
-    expect(allTexts.some(t => t.includes("Garansi"))).toBe(true);
-    expect(allTexts.some(t => t.includes("Keranjang"))).toBe(true);
-    expect(allTexts.some(t => t.includes("Cari"))).toBe(true);
-    expect(allData).toContain("cart");
-    expect(allData).toContain("search");
+  it("home keyboard has exact simplified 3-row layout in ID and EN without bestsellers/cart/search/warranty", () => {
+    const idKb = homeKeyboard("id");
+    expect(idKb.inline_keyboard).toEqual([
+      [{ text: "🛍 Katalog", callback_data: "catalog:0", style: "success" }],
+      [
+        { text: "📦 Pesanan Saya", callback_data: "myorders", style: "primary" },
+        { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
+      ],
+      [
+        { text: "⚙️ Pengaturan", callback_data: "settings" },
+        { text: "🌐 Web", url: "https://axvara.tech" },
+      ],
+    ]);
+
+    const enKb = homeKeyboard("en");
+    expect(enKb.inline_keyboard).toEqual([
+      [{ text: "🛍 Catalog", callback_data: "catalog:0", style: "success" }],
+      [
+        { text: "📦 My Orders", callback_data: "myorders", style: "primary" },
+        { text: "💬 Help", url: "https://axvara.tech/wa", style: "primary" },
+      ],
+      [
+        { text: "⚙️ Settings", callback_data: "settings" },
+        { text: "🌐 Web", url: "https://axvara.tech" },
+      ],
+    ]);
+
+    const snr = searchNoResultsKeyboard({ locale: "id" });
+    const helpBtn = snr.inline_keyboard.flat().find((b) => b.text.includes("Bantuan"));
+    expect(helpBtn).toEqual({ text: "💬 Bantuan", url: "https://axvara.tech/wa" });
   });
 
   it("warranty keyboard routes back to catalog and home", () => {
@@ -189,8 +207,11 @@ describe("Telegram keyboards", () => {
     const allTexts = kb.inline_keyboard.flat().map(b => b.text);
     expect(allTexts.some(t => t.includes("Canva Pro"))).toBe(true);
     expect(allTexts.some(t => t.includes("ChatGPT") && t.includes("89.000"))).toBe(true);
-    // Categories only as optional filter
-    expect(allTexts.some(t => t.includes("Kategori"))).toBe(true);
+    // Bottom row: [Kategori | Menu] only (no search/cart/orders)
+    expect(kb.inline_keyboard.at(-1)).toEqual([
+      { text: "📂 Kategori", callback_data: "cats:0" },
+      { text: "🏠 Menu", callback_data: "home" },
+    ]);
   });
 
   it("flat catalog keyboard paginates with page indicator", () => {
@@ -241,6 +262,11 @@ describe("Telegram keyboards", () => {
     expect(buttons[2].text).toBe("🔔 Kabari saat restok");
     expect(buttons[2].callback_data).toBe("rst:7");
     expect(buttons).toContainEqual({ text: "📋 Detail & Ketentuan", callback_data: "terms:7:0" });
+    expect(kb.inline_keyboard.at(-1)).toEqual([
+      { text: "🛍 Katalog", callback_data: "catalog:0" },
+      { text: "🏠 Menu", callback_data: "home" },
+    ]);
+    expect(buttons.some((b) => b.callback_data === "cart")).toBe(false);
   });
 
   it("qty keyboard uses one clear stepper and a direct QRIS CTA", () => {
@@ -656,35 +682,46 @@ describe("Telegram warranty anti-refund copy", () => {
 });
 
 describe("Telegram Fase 1: navigasi & marketing", () => {
-  it("persistent reply menu exposes catalog, search, orders, help", () => {
+  it("persistent reply menu exposes 2x2 catalog, orders, help, settings in ID and EN", () => {
     const menu = mainReplyMenu();
-    const labels = menu.keyboard.flat().map((b) => b.text);
-    expect(labels).toContain(MENU_LABEL_CATALOG);
-    expect(labels).toContain(MENU_LABEL_SEARCH);
-    expect(labels).toContain(MENU_LABEL_ORDERS);
-    expect(labels).toContain("🛡 Garansi");
-    expect(labels).toContain(MENU_LABEL_HELP);
+    expect(menu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
+      [MENU_LABEL_CATALOG, MENU_LABEL_ORDERS],
+      [MENU_LABEL_HELP, MENU_LABEL_SETTINGS],
+    ]);
     expect(menu.is_persistent).toBe(false);
     expect(menu.resize_keyboard).toBe(true);
+    expect(menu.input_field_placeholder).toBe("Cari produk atau ketik nama produk…");
+
+    const enMenu = mainReplyMenu("en");
+    expect(enMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
+      [MENU_LABEL_EN.catalog, MENU_LABEL_EN.orders],
+      [MENU_LABEL_EN.help, MENU_LABEL_EN.settings],
+    ]);
   });
 
-  it("webhook routes reply-menu labels and new commands", () => {
+  it("webhook routes new and legacy reply-menu labels and commands", () => {
     const route = readWebhook();
     expect(route).toContain("MENU_LABEL_CATALOG");
     expect(route).toContain("MENU_LABEL_SEARCH");
     expect(route).toContain("MENU_LABEL_ORDERS");
     expect(route).toContain("MENU_LABEL_HELP");
+    expect(route).toContain("MENU_LABEL_SETTINGS");
     expect(route).toContain('cmd === "/cari"');
     expect(route).toContain('cmd === "/orders"');
+    expect(route).toContain('cmd === "/settings"');
     expect(route).toContain("handleSearchPrompt");
     expect(route).toContain("handleMyOrders");
     expect(route).toContain("handlePendingSearchInput");
   });
 
-  it("registers new slash commands in BotFather menu", () => {
+  it("registers simplified 5-command list in BotFather menu", () => {
     const api = read("src/lib/telegram/api.ts");
-    expect(api).toContain('command: "cari"');
-    expect(api).toContain('command: "orders"');
+    for (const c of ["start", "katalog", "orders", "bantuan", "settings"]) {
+      expect(api).toContain(`command: "${c}"`);
+    }
+    expect(api).not.toContain('command: "cari"');
+    expect(api).not.toContain('command: "cart"');
+    expect(api).not.toContain('command: "garansi"');
   });
 
   it("welcome landing shows bestsellers with sold counts", () => {
@@ -768,7 +805,11 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
     const kb = searchResultsKeyboard([{ id: 5, name: "Canva Pro", price: 45000 }]);
     const datas = kb.inline_keyboard.flat().map((b) => b.callback_data ?? "");
     expect(datas.some((d) => d === "prd:5")).toBe(true);
-    expect(datas.some((d) => d === "search")).toBe(true);
+    expect(datas.some((d) => d === "search")).toBe(false);
+    expect(kb.inline_keyboard.at(-1)).toEqual([
+      { text: "🛍 Katalog", callback_data: "catalog:0" },
+      { text: "🏠 Menu", callback_data: "home" },
+    ]);
   });
 
   it("callback data stays within 64 bytes including new actions", () => {
@@ -779,10 +820,10 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
 });
 
 describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
-  it("persistent menu includes cart label routed by webhook", () => {
+  it("legacy cart label and /cart stay routed while reply menu hides cart", () => {
     const menu = mainReplyMenu();
     const labels = menu.keyboard.flat().map((b) => b.text);
-    expect(labels).toContain(MENU_LABEL_CART);
+    expect(labels).not.toContain(MENU_LABEL_CART);
     const route = readWebhook();
     expect(route).toContain("MENU_LABEL_CART");
     expect(route).toContain('cmd === "/cart"');
@@ -798,14 +839,18 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(route).toContain("deleteMessage");
     expect(route).not.toContain('"Menu Cepat"');
     const api = read("src/lib/telegram/api.ts");
-    expect(api).toContain('command: "cart"');
+    expect(api).toContain('command: "settings"');
+    expect(settingsKeyboard("id", "IDR").inline_keyboard.flat().map((b) => b.callback_data)).toEqual(
+      expect.arrayContaining(["lang:id", "lang:en", "cur:IDR", "cur:USD", "home"]),
+    );
   });
 
-  it("qty step offers add-to-cart alongside direct QRIS checkout", () => {
-    const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: -1, qty: 2, price: 5000 });
+  it("qty step offers direct QRIS and other payment methods without add-to-cart", () => {
+    const kb = qtyKeyboard({ productId: 1, variantId: 2, stock: -1, qty: 2, price: 5000, approvalTag: "tag1" });
     const datas = kb.inline_keyboard.flat().map((b) => b.callback_data ?? "");
-    expect(datas.some((d) => d === "pay:1:2:2")).toBe(true);
-    expect(datas.some((d) => d === "cadd:1:2:2")).toBe(true);
+    expect(datas.some((d) => d === "pay:1:2:2:tag1")).toBe(true);
+    expect(datas.some((d) => d === "pmentry:1:2:2:tag1")).toBe(true);
+    expect(datas.some((d) => d.startsWith("cadd:"))).toBe(false);
   });
 
   it("cart keyboard exposes adjust, remove, checkout, and clear", () => {

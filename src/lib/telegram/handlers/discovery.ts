@@ -28,7 +28,7 @@ import { readCheckoutEmail, checkoutEmailFingerprint } from "@/lib/telegram/chec
 import { cartCheckoutSummaryMessage, escapeHtml } from "@/lib/telegram/messages";
 import { productDisplayName } from "@/lib/i18n/product-name";
 import { countInventory } from "@/lib/fulfillment/inventory";
-import { clampQty, getBestsellers, replaceWithText, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
+import { clampQty, replaceWithText, setPendingActionUnlessCreating, type ScreenSourceMeta } from "./shared";
 import { handleShowCatalog, handleShowQty, handleShowVariants } from "./catalog";
 
 /**
@@ -191,10 +191,7 @@ export async function handleMyOrders(
     const { handleExtraCallback } = await import("./extras");
     if (await handleExtraCallback("mo", [], chatId, messageId ?? 0, from)) return;
   }
-  const [ctx, bestsellers] = await Promise.all([
-    tgCtxFor(from?.id ?? chatId),
-    getBestsellers(3),
-  ]);
+  const ctx = await tgCtxFor(from?.id ?? chatId);
   if (!from || !isD1Mode()) {
     await replaceWithText({
       chat_id: chatId,
@@ -244,7 +241,7 @@ export async function handleMyOrders(
     parse_mode: "HTML",
     reply_markup: orders.length > 0
       ? myOrdersKeyboard(orders.map((order) => ({ code: order.code, productId: order.productId ?? null })), { locale: ctx.locale })
-      : homeKeyboard(ctx.locale, bestsellers, ctx),
+      : homeKeyboard(ctx.locale),
   }, sourceMeta);
 }
 

@@ -414,18 +414,11 @@ export async function sendTgHome(params: {
   ctx?: TgPriceCtx;
   installMenu?: boolean;
 }): Promise<void> {
-  const [bestsellers, ctx] = params.bestsellers && params.ctx
-    ? [params.bestsellers, params.ctx]
-    : await Promise.all([
-        params.bestsellers ? Promise.resolve(params.bestsellers) : getBestsellers(3),
-        params.ctx ? Promise.resolve(params.ctx) : tgCtxFor(params.userId ?? params.chatId),
-      ]);
-
   const rawSite = (process.env.SITE_URL ?? "").trim().replace(/\/$/, "");
   const siteUrl = /^https?:\/\//i.test(rawSite) ? rawSite : "https://axvara.tech";
   const photoUrl = `${siteUrl}/banners/tg-welcome.jpg?v=20261119`;
-  const caption = welcomeMessageLocalized(params.locale, params.firstName, bestsellers);
-  const keyboard = homeKeyboard(params.locale, bestsellers, { ...ctx, locale: params.locale });
+  const caption = welcomeMessageLocalized(params.locale, params.firstName);
+  const keyboard = homeKeyboard(params.locale);
 
   const canReplace = Boolean(params.replaceMessageId && !params.sourceMeta?.isProtected);
   const photoRes = await (canReplace
