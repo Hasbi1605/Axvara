@@ -3,8 +3,16 @@ name: AXVARA CI/CD
 on:
   push:
     branches: [main]
+    # Hemat menit Actions: commit yang HANYA mengubah dokumentasi tidak
+    # memerlukan test/build/deploy (tidak ada artefak yang berubah).
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
 
 permissions:
   contents: read
@@ -16,8 +24,12 @@ concurrency:
 
 jobs:
   verify-and-deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Runner bisa dialihkan tanpa edit workflow lewat repo variable
+    # CI_RUNS_ON (JSON), mis. '["self-hosted","axvara"]' saat kuota menit
+    # GitHub-hosted habis. Default: GitHub-hosted ubuntu-latest.
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
+    # Run terakhir ~19 menit (test 12,5 mnt di runner 2-core); 20 mnt terlalu mepet.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4

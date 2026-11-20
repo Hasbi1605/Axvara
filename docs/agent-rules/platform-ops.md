@@ -1,5 +1,12 @@
 # Aturan agent — Workers Paid, unit unik, operasional D1
 
+### Kuota menit GitHub Actions — 20 November 2026
+
+- **Pengamatan 20 Nov 2026 (estimasi dari durasi job, bukan angka billing resmi):** 1–20 Nov ≈ 2.816 menit (`AXVARA CI/CD` 266 run ≈ 2.745 mnt, D1 usage monitor 68, backup 3); proyeksi akhir bulan ≈ 4.400 menit. Kuota bawaan repo privat: Free 2.000/bulan, Pro 3.000/bulan; kelebihan Linux ditagih ~US$0,008/menit bila budget mengizinkan, bila tidak run tidak dijalankan. Satu run CI ≈ 10–19 mnt (test 12,5 mnt di runner 2-core).
+- **Cek pemakaian (lokal, 0 menit Actions):** `node scripts/gh-actions-usage.mjs [--month YYYY-MM] [--limit 2000]`. Angka resmi: `gh auth refresh -h github.com -s user` lalu `node scripts/gh-actions-usage.mjs --official`, atau GitHub Settings → Billing.
+- **Hemat:** commit yang hanya mengubah `docs/**` / `*.md` tidak memicu `ci.yml` (`paths-ignore`). Gabungkan perubahan kecil dalam satu push; setiap push ke `main` membatalkan run sebelumnya (`cancel-in-progress`) tetapi menit run yang dibatalkan tetap terpakai.
+- **Bila kuota habis (urutan):** (1) owner menaikkan budget Actions di GitHub Billing (mis. US$5–10/bulan ≈ 600–1.250 menit) atau upgrade Pro; (2) alihkan runner tanpa edit workflow: set repo variable `CI_RUNS_ON` ke JSON label runner sendiri, mis. `["self-hosted","axvara"]` (runner self-hosted gratis; hapus variable untuk kembali ke `ubuntu-latest`); runner perlu Node 22, akses jaringan ke Cloudflare/Heroku/GitHub, dan tidak boleh menyimpan secret di disk di luar mekanisme Actions; (3) deploy manual hanya sebagai recovery atas permintaan eksplisit owner (aturan AGENTS.md tetap).
+
 ### Telegram post-purchase & batas hemat Free dilonggarkan — 19 November 2026 (lokal, belum deploy)
 
 - **Batas Telegram (Workers Paid):** `retryPendingTelegramNotifications`/`sendPendingOrderReminders` per panggilan `20 → 50` (`TELEGRAM_REMINDER_MAX=2` dan interval 60 mnt anti-spam tetap), `retryInvoicePendingTelegramInvoices` `12 → 25` (`attempts<5` + backoff claim provider 60 dtk tetap). `cron/lite` `notify_a` memakai 50/25; `notify_b` pengingat 50. Pemanggil lama tetap memakai default fungsi; jangan menaikkan lagi tanpa mengukur 429.
