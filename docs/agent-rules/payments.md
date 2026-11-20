@@ -1,5 +1,9 @@
 # Aturan agent — Pembayaran (GoPay, KlikQRIS, NOWPayments, maintenance)
 
+## Bot Telegram TG-CURLANG (tampilan & urutan metode bayar) — 20 November 2026 (lokal)
+
+- **Hanya tampilan & urutan:** `tgCtxFor` (`src/lib/telegram/render-prefs.ts`) menurunkan `displayCurrency` dari bahasa (`en` → `USD`, `id` → `IDR`; snapshot FX hanya dimuat untuk EN dengan fallback senyap ke Rupiah), dan `paymentMethodOfferDetails`/`paymentMethodOfferKeyboard` mengurutkan EN Crypto USDT lebih dulu lalu `QRIS (Indonesia only)` (ID tetap QRIS lebih dulu lalu Crypto USDT). Perhitungan quote, nominal tagihan QRIS (selalu IDR), snapshot USD/USDT crypto, nonce, approval tag, `callback_data`, penyedia bayar, maupun pembuatan invoice sama sekali tidak berubah.
+
 ## W1 percepatan rekonsiliasi & polling non-QRIS (Workers Paid) — 19 November 2026 (lokal, belum deploy)
 
 - **Rekonsiliasi latar (A2):** `KLIKQRIS_BACKGROUND_LIMIT` `4 → 20` (`src/lib/payments/klikqris-reconcile.ts`), `NOWPAYMENTS_BACKGROUND_LIMIT` `4 → 20` dan `NOWPAYMENTS_LATE_LIMIT` `4 → 20` (`src/lib/payments/payment-view.ts`). Untuk Sekalipay gateway, live naik `4 → 12` (`SEKALIPAY_GATEWAY_BACKGROUND_LIMIT = 12`), late tetap `4` (`SEKALIPAY_GATEWAY_LATE_LIMIT = 4`), dan stale tetap `5` (`SEKALIPAY_GATEWAY_STALE_LIMIT = 5`, kontrak G2) agar tetap memberi ruang di bawah admission global `sekalipay_gateway_status_budget` **20 GET/menit** (`src/lib/payments/sekalipay-gateway.ts:207`) untuk poll pembeli, callback, dan `confirmGatewayInvoiceAbsent`.

@@ -352,6 +352,28 @@ export function providerOrderReminderMessage(params: {
 
 export type TgInvoiceOpts = TgMoneyOpts & { chargeNote?: boolean };
 
+/** Shared offer crypto helpers: prefer USDT as representative summary, keeping exact quoted amount. */
+export function isUsdtOfferMethod(method: { id?: string; label?: string; pay_currency?: string }): boolean {
+  const pc = String(method.pay_currency ?? "").toLowerCase();
+  const id = String(method.id ?? "").toLowerCase();
+  const lbl = String(method.label ?? "").toUpperCase();
+  return pc.startsWith("usdt") || id.includes(":usdt") || lbl === "USDT";
+}
+
+export function isQrisOfferMethod(method: { kind?: string; label?: string }): boolean {
+  const rawLabel = String(method.label ?? "").trim();
+  const displayLabel = /^qris\s+dinamis$/i.test(rawLabel) ? "QRIS" : rawLabel;
+  return method.kind === "qris" || /^qris$/i.test(displayLabel);
+}
+
+export function pickRepresentativeCryptoMethod<
+  T extends { id?: string; kind?: string; label?: string; amount_text?: string; pay_currency?: string }
+>(methods: readonly T[]): T | null {
+  const cryptoMethods = methods.filter((m) => m.kind === "crypto");
+  if (cryptoMethods.length === 0) return null;
+  return cryptoMethods.find((m) => isUsdtOfferMethod(m)) ?? cryptoMethods[0];
+}
+
 /** R1 frozen method offer copy (localized). */
 export function paymentMethodOfferMessage(
   params: { productName: string; subtotal: number },
@@ -363,44 +385,61 @@ export function paymentMethodOfferMessage(
     "",
     escapeItemSummary(params.productName, 220),
     `Subtotal: ${formatIdr(params.subtotal, opts?.locale ?? "id")}`,
+    ...(opts?.usdEquivalentText ? [`≈ ${opts.usdEquivalentText}`] : []),
   ].join("\n");
 }
 
-/** R1 frozen offer detail lines: QRIS shows subtotal + fastest, gateway shows
- * estimated fee/total; crypto = ONE compact USD line (service fee included;
- * coin + sender-gas note live on the coin-selection screen). */
+/** R1 frozen offer detail lines: ordered by locale (ID: QRIS fastest then Crypto;
+ * EN: Crypto USDT fastest then QRIS Indonesia only). Each method shows its own
+ * currency total (QRIS -> Rupiah, Crypto -> USDT/USD estimate). */
 export function paymentMethodOfferDetails(
-  methods: { kind?: string; label?: string; gateway?: { estimated_fee: number; estimated_total: number } | null; amount_text?: string; pay_currency?: string; network?: string }[],
+  methods: { id?: string; kind?: string; label?: string; gateway?: { estimated_fee: number; estimated_total: number } | null; amount_text?: string; pay_currency?: string; network?: string }[],
   opts?: TgMoneyOpts & { subtotal?: number },
 ): string[] {
   const en = opts?.locale === "en";
   const locale = opts?.locale ?? "id";
-  let cryptoLineAdded = false;
-  return methods.flatMap((method) => {
-    if (method.kind === "crypto") {
-      if (cryptoLineAdded) return [];
-      cryptoLineAdded = true;
-      const amount = escapeHtml(String(method.amount_text ?? "").slice(0, 32));
-      return [en
-        ? `• Crypto — ${amount} USD (service fee included)`
-        : `• Crypto — ${amount} USD (biaya layanan termasuk)`];
-    }
+  const qrisLines: string[] = [];
+  const gatewayLines: string[] = [];
+  for (const method of methods) {
+    if (method.kind === "crypto") continue;
     const rawLabel = String(method.label ?? "").trim();
     const displayLabel = /^qris\s+dinamis$/i.test(rawLabel) ? "QRIS" : rawLabel;
     const label = escapeHtml(displayLabel.slice(0, 80) || "—");
-    if (method.kind === "qris" || /^qris$/i.test(displayLabel)) {
-      const fast = en ? "fastest" : "tercepat";
-      return [opts?.subtotal != null
-        ? `• QRIS — ${formatIdr(opts.subtotal, locale)} (${fast})`
-        : `• QRIS (${fast})`];
+    if (isQrisOfferMethod(method)) {
+      const rp = opts?.subtotal != null ? `Rp${Math.max(0, Math.round(opts.subtotal)).toLocaleString("id-ID")}` : null;
+      if (en) {
+        qrisLines.push(rp ? `• QRIS (Indonesia only) — ${rp}` : "• QRIS (Indonesia only)");
+      } else {
+        qrisLines.push(rp ? `• QRIS — ${rp} (tercepat)` : "• QRIS (tercepat)");
+      }
+      continue;
     }
     if (method.kind === "gateway" && method.gateway) {
-      return [en
+      gatewayLines.push(en
         ? `• ${label} — est. ${formatIdr(method.gateway.estimated_total, locale)} (fee ${formatIdr(method.gateway.estimated_fee, locale)})`
-        : `• ${label} — est. ${formatIdr(method.gateway.estimated_total, locale)} (biaya ${formatIdr(method.gateway.estimated_fee, locale)})`];
+        : `• ${label} — est. ${formatIdr(method.gateway.estimated_total, locale)} (biaya ${formatIdr(method.gateway.estimated_fee, locale)})`);
+      continue;
     }
-    return [`• ${label}`];
-  });
+    gatewayLines.push(`• ${label}`);
+  }
+  const cryptoLines: string[] = [];
+  const crypto = pickRepresentativeCryptoMethod(methods);
+  if (crypto) {
+    const amount = escapeHtml(String(crypto.amount_text ?? "").slice(0, 32));
+    const usdt = isUsdtOfferMethod(crypto);
+    if (en) {
+      cryptoLines.push(usdt
+        ? `• USDT — ${amount} USDT (fastest · service fee included)`
+        : `• Crypto — $${amount} (fastest · service fee included)`);
+    } else {
+      cryptoLines.push(usdt
+        ? `• USDT — ${amount} USDT (biaya layanan termasuk)`
+        : `• Crypto — $${amount} (biaya layanan termasuk)`);
+    }
+  }
+  return en
+    ? [...cryptoLines, ...gatewayLines, ...qrisLines]
+    : [...qrisLines, ...gatewayLines, ...cryptoLines];
 }
 
 /** R2 selection + expiry/refresh notices (localized, honest, no fallback). */
@@ -485,7 +524,7 @@ export function invoiceMessage(params: {
   const footer = [
     // QRIS charge is ALWAYS actual IDR payable (incl. unique-code rules).
     en ? `<b>Total to pay: ${formatRupiah(payableAmount)} (IDR via QRIS)</b>` : `<b>Total bayar: ${formatRupiah(payableAmount)} (IDR via QRIS)</b>`,
-    ...(opts?.chargeNote ? [en ? "Charged in IDR, even when your display currency is USD." : "Ditagih dalam IDR, walau mata uang tampilanmu USD."] : []),
+    ...(opts?.chargeNote && isQris && en ? ["Charged in IDR, even when your display currency is USD."] : []),
     en ? `Pay before: ${escapeItemSummary(expiryText, 80)}` : `Bayar sebelum: ${escapeItemSummary(expiryText, 80)}`,
     ...(isQris ? [TELEGRAM_QRIS_DEADLINE_NOTICE[en ? "en" : "id"]] : []),
   ].join("\n");

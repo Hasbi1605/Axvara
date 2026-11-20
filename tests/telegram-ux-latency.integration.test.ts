@@ -131,6 +131,20 @@ describe("W-A latency & waitUntil", () => {
     expect(tg.withLoadingIndicator).not.toHaveBeenCalled();
   });
 
+  it("skips FX snapshot load for ID locale even when stored display_currency is USD", async () => {
+    fx.sql.prepare("UPDATE telegram_users SET locale='id', display_currency='USD' WHERE user_id=?").run(String(buyer.id));
+    const executedSql: string[] = [];
+    const origPrepare = fx.db.prepare.bind(fx.db);
+    vi.spyOn(fx.db, "prepare").mockImplementation((sql: string) => {
+      executedSql.push(sql);
+      return origPrepare(sql);
+    });
+    const { tgCtxFor } = await import("@/lib/telegram/render-prefs");
+    const ctx = await tgCtxFor(buyer.id);
+    expect(ctx).toEqual({ locale: "id", displayCurrency: "IDR", fx: null });
+    expect(executedSql.some((s) => /crypto_market_snapshot/i.test(s))).toBe(false);
+  });
+
   it("/start always forces ensurePrivateRecipient in waitUntil even within 10-min debounce window", async () => {
     const waitUntilTasks: Promise<unknown>[] = [];
     (globalThis as Record<symbol, unknown>)[CF_CTX_SYM] = {
@@ -257,7 +271,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     expect(idMenu.keyboard).toHaveLength(2);
     expect(idMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
       ["🛍 Katalog", "📦 Pesanan"],
-      ["💬 Bantuan", "⚙️ Pengaturan"],
+      ["💬 Bantuan", "🌐 Bahasa"],
     ]);
     expect(idMenu.is_persistent).toBe(false);
     expect(idMenu.resize_keyboard).toBe(true);
@@ -265,7 +279,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
     const enMenu = mainReplyMenu("en");
     expect(enMenu.keyboard.map((r) => r.map((b) => b.text))).toEqual([
       ["🛍 Catalog", "📦 Orders"],
-      ["💬 Help", "⚙️ Settings"],
+      ["💬 Help", "🌐 Language"],
     ]);
 
     await handleCommand("/start", buyer.id, "private", buyer);
@@ -284,7 +298,7 @@ describe("W-A UX: persistent 2x2 menu, typo search, qty presets, colors, copy, w
         { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
       ],
       [
-        { text: "⚙️ Pengaturan", callback_data: "settings" },
+        { text: "🌐 Bahasa", callback_data: "settings" },
         { text: "🌐 Web", url: "https://axvara.tech" },
       ],
     ]);

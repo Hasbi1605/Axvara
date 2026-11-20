@@ -10,7 +10,7 @@ import { handleOrderStatus } from "@/lib/telegram/handlers/orders";
 import { resendTelegramCredentials } from "@/lib/telegram/credential-delivery";
 import {
   MENU_LABEL_CATALOG, MENU_LABEL_ORDERS, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY,
-  MENU_LABEL_SETTINGS, MENU_LABEL_SEARCH, MENU_LABEL_CART, MENU_LABEL_WARRANTY, MENU_LABEL_EN,
+  MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_SEARCH, MENU_LABEL_CART, MENU_LABEL_WARRANTY, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import { parsePayq1State } from "@/lib/telegram/payment-quote";
 import { sendMessage, safeEditOrSend } from "@/lib/telegram/api";
@@ -338,8 +338,13 @@ describe("P0-3: Bantuan, payment offer, and order status keyboards", () => {
 
     resetLog();
     await handleCommand(MENU_LABEL_SETTINGS, buyer.id, "private", buyer);
-    expect(String(lastMsg().text)).toContain("Pengaturan");
-    expect(callbacksOf(lastMsg())).toEqual(expect.arrayContaining(["lang:id", "lang:en", "cur:IDR", "cur:USD", "home"]));
+    expect(String(lastMsg().text)).toContain("Bahasa");
+    expect(callbacksOf(lastMsg())).toEqual(["lang:id", "lang:en", "home"]);
+
+    resetLog();
+    await handleCommand(MENU_LABEL_SETTINGS_LEGACY, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Bahasa");
+    expect(callbacksOf(lastMsg())).toEqual(["lang:id", "lang:en", "home"]);
 
     // Legacy ID labels
     resetLog();
@@ -362,7 +367,13 @@ describe("P0-3: Bantuan, payment offer, and order status keyboards", () => {
 
     resetLog();
     await handleCommand(MENU_LABEL_EN.settings, buyer.id, "private", buyer);
-    expect(String(lastMsg().text)).toContain("Settings");
+    expect(String(lastMsg().text)).toContain("Language");
+    expect(callbacksOf(lastMsg())).toEqual(["lang:id", "lang:en", "home"]);
+
+    resetLog();
+    await handleCommand(MENU_LABEL_EN.settingsLegacy, buyer.id, "private", buyer);
+    expect(String(lastMsg().text)).toContain("Language");
+    expect(callbacksOf(lastMsg())).toEqual(["lang:id", "lang:en", "home"]);
 
     resetLog();
     await handleCommand(MENU_LABEL_EN.search, buyer.id, "private", buyer);

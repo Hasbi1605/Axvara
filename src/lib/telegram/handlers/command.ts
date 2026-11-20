@@ -11,15 +11,15 @@ import * as tgApi from "@/lib/telegram/api";
 import { sendMessage } from "@/lib/telegram/api";
 import { SITE } from "@/lib/site";
 import {
-  cb, homeKeyboard, warrantyKeyboard, languageChooserKeyboard, currencyKeyboard, settingsKeyboard,
+  cb, homeKeyboard, warrantyKeyboard, languageChooserKeyboard, settingsKeyboard,
   helpKeyboard, mainReplyMenu, MENU_LABEL_CATALOG, MENU_LABEL_SEARCH, MENU_LABEL_ORDERS,
-  MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY, MENU_LABEL_CART, MENU_LABEL_SETTINGS,
-  MENU_LABEL_EN,
+  MENU_LABEL_WARRANTY, MENU_LABEL_HELP, MENU_LABEL_HELP_LEGACY, MENU_LABEL_CART,
+  MENU_LABEL_SETTINGS, MENU_LABEL_SETTINGS_LEGACY, MENU_LABEL_EN,
 } from "@/lib/telegram/keyboards";
 import { welcomeMessage, helpMessage, warrantyFullMessage } from "@/lib/telegram/messages";
 import {
   languageChooserMessage, welcomeMessageLocalized, settingsMessage,
-  currencyChooserMessage, resumePayloadMessage,
+  resumePayloadMessage,
 } from "@/lib/telegram/messages/preferences";
 import { readTgPreferences, isValidTgLocale } from "@/lib/telegram/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
@@ -166,20 +166,11 @@ export async function handleCommand(
       });
       return;
     }
-    if (cmd === "/bahasa") {
-      await sendMessage({
-        chat_id: chatId,
-        text: languageChooserMessage(),
-        parse_mode: "HTML",
-        reply_markup: languageChooserKeyboard(),
-      });
-      return;
-    }
     await sendMessage({
       chat_id: chatId,
-      text: settingsMessage(prefs.locale, prefs.currency),
+      text: settingsMessage(prefs.locale),
       parse_mode: "HTML",
-      reply_markup: settingsKeyboard(prefs.locale, prefs.currency),
+      reply_markup: settingsKeyboard(prefs.locale),
     });
     return;
   }
@@ -195,20 +186,11 @@ export async function handleCommand(
       });
       return;
     }
-    const parts = trimmed.split(/\s+/).slice(1);
-    const want = parts[0]?.toUpperCase();
-    const { isValidTgCurrency, saveTgCurrencyChoice } = await import("@/lib/telegram/preferences");
-    const { tgPrefText } = await import("@/lib/telegram/messages/preferences");
-    if (isValidTgCurrency(want)) {
-      await saveTgCurrencyChoice(String(from.id), want);
-      await sendMessage({ chat_id: chatId, text: tgPrefText(prefs.locale, "currency_saved"), parse_mode: "HTML" });
-      return;
-    }
     await sendMessage({
       chat_id: chatId,
-      text: currencyChooserMessage(prefs.locale, prefs.currency),
+      text: settingsMessage(prefs.locale, null, { currencyNote: true }),
       parse_mode: "HTML",
-      reply_markup: currencyKeyboard(prefs.locale, prefs.currency),
+      reply_markup: settingsKeyboard(prefs.locale),
     });
     return;
   }
@@ -335,7 +317,12 @@ export async function handleCommand(
     return;
   }
 
-  if (trimmed === MENU_LABEL_SETTINGS || trimmed === MENU_LABEL_EN.settings) {
+  if (
+    trimmed === MENU_LABEL_SETTINGS ||
+    trimmed === MENU_LABEL_SETTINGS_LEGACY ||
+    trimmed === MENU_LABEL_EN.settings ||
+    trimmed === MENU_LABEL_EN.settingsLegacy
+  ) {
     await clearPendingUnlessCreating(from);
     if (from && chatType === "private" && chatId === from.id) {
       const prefs = await readTgPreferences(String(from.id));
@@ -350,16 +337,16 @@ export async function handleCommand(
       }
       await sendMessage({
         chat_id: chatId,
-        text: settingsMessage(prefs.locale, prefs.currency),
+        text: settingsMessage(prefs.locale),
         parse_mode: "HTML",
-        reply_markup: settingsKeyboard(prefs.locale, prefs.currency),
+        reply_markup: settingsKeyboard(prefs.locale),
       });
     } else {
       await sendMessage({
         chat_id: chatId,
-        text: settingsMessage("id", null),
+        text: settingsMessage("id"),
         parse_mode: "HTML",
-        reply_markup: settingsKeyboard("id", null),
+        reply_markup: settingsKeyboard("id"),
       });
     }
     return;

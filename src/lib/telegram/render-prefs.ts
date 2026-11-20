@@ -9,19 +9,18 @@ import { idrToUsdCents, type FxSnapshot } from "@/lib/payments/fx";
 import { loadCurrentFxSnapshot } from "@/lib/payments/market-snapshot";
 import { formatIdr, formatUsdCents } from "@/lib/i18n/format";
 
-export type TgRenderPrefs = { locale: Locale; displayCurrency: DisplayCurrency | null };
+export type TgRenderPrefs = { locale: Locale; displayCurrency: DisplayCurrency };
 
-/** Saved prefs once; unsaved => locale "id" with currency null (honest
- * IDR fallback rendered by callers). */
+/** Saved prefs once; display currency ALWAYS follows locale (EN -> USD, ID -> IDR),
+ * ignoring any legacy stored display_currency column value. */
 export async function tgRenderPrefs(from?: { id: number } | null): Promise<TgRenderPrefs> {
-  if (!from) return { locale: "id", displayCurrency: null };
-  const saved = await readTgPreferences(String(from.id));
-  return { locale: saved.locale ?? "id", displayCurrency: saved.currency };
+  const saved = from ? await readTgPreferences(String(from.id)) : { locale: null, currency: null };
+  const locale: Locale = saved.locale ?? "id";
+  return { locale, displayCurrency: locale === "en" ? "USD" : "IDR" };
 }
 
-/** TG2a per-update context: saved prefs + FX snapshot, resolved ONCE per
- * handler. `userId` is the private owner id (from.id, falling back to chatId
- * for legacy callers); group chats simply have no saved row => id/IDR. */
+/** TG2a per-update context: saved locale + derived display currency + FX snapshot,
+ * resolved ONCE per handler. FX snapshot is loaded only when locale is EN. */
 export type TgCtx = { locale: Locale; displayCurrency: DisplayCurrency | null; fx: FxSnapshot | null };
 
 export async function tgCtxFor(userId: number | null | undefined): Promise<TgCtx> {

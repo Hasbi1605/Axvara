@@ -1,5 +1,11 @@
 # PRD — AXVARA
 
+## Mata uang tampilan & urutan metode bayar Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-CURLANG, lokal)
+
+- **Mata uang tampilan mengikuti bahasa:** pemilih mata uang terpisah dihapus dari UI `@Axvara_bot`; pembeli ID melihat harga Rupiah (`Rp19.500`) dan pembeli EN melihat perkiraan USD (`$1.22` dari snapshot FX/crypto, fallback ke Rupiah bila FX tidak tersedia/basi). Nominal tagihan tidak berubah (QRIS selalu ditagih dalam IDR dengan catatan `"Charged in IDR…"` khusus pada invoice QRIS EN; crypto memakai estimasi USD/USDT quote).
+- **Urutan pemilih metode bayar (single & cart):** ID mendahulukan QRIS (`tercepat`) lalu Crypto USDT; EN mendahulukan Crypto USDT (`fastest`) lalu `QRIS (Indonesia only)`, masing-masing menampilkan total dalam mata uangnya sendiri.
+- **Layar bahasa & kompatibilitas:** tombol beranda, reply menu 2×2, dan `setMyCommands` memakai `🌐 Bahasa` / `🌐 Language` (`/bahasa`), layar menampilkan `[🇮🇩 Indonesia (Rupiah)]` dan `[🇬🇧 English (USD)]`, dan onboarding `/start` memakai `"🇮🇩 Indonesia · Rupiah"` dan `"🇬🇧 English · USD"`. Perintah/callback lama (`/currency`, `curmenu`, `cur:*`, serta label reply `⚙️ Pengaturan`/`⚙️ Settings`) tetap diterima tanpa error dan membuka layar bahasa.
+
 ## Penyederhanaan alur & navigasi Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-MINIMAL, lokal)
 
 - **Alur checkout per produk di UI:** entry point keranjang (`🛒 Keranjang` / `🛒 Tambah ke Keranjang`), tombol pencarian (`🔎 Cari Produk` / `🔎 Cari Lagi`), tombol garansi global (`🛡 Garansi & Ketentuan`), dan blok terlaris beranda disembunyikan dari UI bot (home, katalog, kartu produk, layar jumlah, reply menu). Pembeli masuk ke `🛍 Katalog` → produk/varian → jumlah → `💳 Bayar QRIS` / `💳 Metode pembayaran lain`, atau langsung mengetik nama produk (pencarian teks bebas ≥2 huruf tetap aktif).

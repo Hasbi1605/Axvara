@@ -141,7 +141,7 @@ describe("Telegram keyboards", () => {
         { text: "💬 Bantuan", url: "https://axvara.tech/wa", style: "primary" },
       ],
       [
-        { text: "⚙️ Pengaturan", callback_data: "settings" },
+        { text: "🌐 Bahasa", callback_data: "settings" },
         { text: "🌐 Web", url: "https://axvara.tech" },
       ],
     ]);
@@ -154,7 +154,7 @@ describe("Telegram keyboards", () => {
         { text: "💬 Help", url: "https://axvara.tech/wa", style: "primary" },
       ],
       [
-        { text: "⚙️ Settings", callback_data: "settings" },
+        { text: "🌐 Language", callback_data: "settings" },
         { text: "🌐 Web", url: "https://axvara.tech" },
       ],
     ]);
@@ -716,9 +716,10 @@ describe("Telegram Fase 1: navigasi & marketing", () => {
 
   it("registers simplified 5-command list in BotFather menu", () => {
     const api = read("src/lib/telegram/api.ts");
-    for (const c of ["start", "katalog", "orders", "bantuan", "settings"]) {
+    for (const c of ["start", "katalog", "orders", "bantuan", "bahasa"]) {
       expect(api).toContain(`command: "${c}"`);
     }
+    expect(api).not.toContain('command: "settings"');
     expect(api).not.toContain('command: "cari"');
     expect(api).not.toContain('command: "cart"');
     expect(api).not.toContain('command: "garansi"');
@@ -839,9 +840,9 @@ describe("Telegram Fase 2: cart + reminder (tanpa review/promo)", () => {
     expect(route).toContain("deleteMessage");
     expect(route).not.toContain('"Menu Cepat"');
     const api = read("src/lib/telegram/api.ts");
-    expect(api).toContain('command: "settings"');
-    expect(settingsKeyboard("id", "IDR").inline_keyboard.flat().map((b) => b.callback_data)).toEqual(
-      expect.arrayContaining(["lang:id", "lang:en", "cur:IDR", "cur:USD", "home"]),
+    expect(api).toContain('command: "bahasa"');
+    expect(settingsKeyboard("id").inline_keyboard.flat().map((b) => b.callback_data)).toEqual(
+      ["lang:id", "lang:en", "home"],
     );
   });
 

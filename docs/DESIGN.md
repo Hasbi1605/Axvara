@@ -1,5 +1,14 @@
 # DESIGN.md — AXVARA Design System
 
+## Mata uang tampilan mengikuti bahasa & urutan pemilih metode Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-CURLANG, lokal)
+
+- **Tampilan mata uang mengikuti bahasa (`tgCtxFor` di `src/lib/telegram/render-prefs.ts`):** `displayCurrency` diturunkan langsung dari `locale` (`en` → `USD`, `id` → `IDR`), mengabaikan nilai kolom `display_currency` tersimpan (kolom tetap dipertahankan). Snapshot FX hanya dimuat untuk `en`; bila FX tidak tersedia/basi, tampilan jatuh ke Rupiah tanpa pernah menampilkan `$0`. Format harga tombol EN memakai `"$1.22"` (2 desimal, awalan `$`, tanpa akhiran `USD`; kartu boleh memuat `"≈ $1.22"`), ID tetap `"Rp19.500"`. Catatan `"Charged in IDR, even when your display currency is USD."` tetap tampil hanya pada invoice QRIS EN.
+- **Urutan & label pemilih metode bayar (`paymentMethodOfferDetails` & `paymentMethodOfferKeyboard`, single + cart):**
+  - ID: `QRIS` (`Rp…` · `tercepat`/`Paling cepat`) lebih dulu, lalu `Crypto (USDT)` (`… USDT`).
+  - EN: `Crypto (USDT)` (`… USDT` · `fastest`/`Fastest`) lebih dulu, lalu `QRIS (Indonesia only)` (`Rp…`).
+  - Quote, nominal tagihan, nonce, approval tag, dan format `callback_data` (`pm:<nonce>:<index>`, `pmc:<nonce>`) tidak berubah.
+- **Layar bahasa & onboarding (`keyboards.ts`, `messages/preferences.ts`, `api.ts`):** tombol beranda dan reply menu 2×2 menjadi `"🌐 Bahasa"` / `"🌐 Language"` (menggantikan `"⚙️ Pengaturan"` / `"⚙️ Settings"`; label reply lama tetap dirutekan ke layar bahasa). Layar bahasa menampilkan `[🇮🇩 Indonesia (Rupiah)]` dan `[🇬🇧 English (USD)]` dengan tanda `✅` pada bahasa aktif (tanpa tombol mata uang di keyboard mana pun). Onboarding `/start` pertama memakai `"🇮🇩 Indonesia · Rupiah"` dan `"🇬🇧 English · USD"`. Callback legacy `cur:*`, `curmenu`, dan `/currency` membuka layar bahasa dengan satu baris `"Mata uang mengikuti bahasa."` / `"Currency follows language."`. `setMyCommands()` mengganti `settings` menjadi `bahasa` (`"🌐 Bahasa / Language"`, belum dipanggil ke Telegram).
+
 ## Penyederhanaan navigasi Bot Telegram (`@Axvara_bot`) — 20 November 2026 (TG-MINIMAL, lokal)
 
 - **`/start` home minimal (`sendTgHome` & `homeKeyboard`):** satu banner foto (`public/banners/tg-welcome.jpg`) + caption sapaan singkat saja (`Halo, <Nama> 👋` / `Hi, <Nama> 👋`, tanpa daftar terlaris maupun query `getBestsellers`), dan inline keyboard tepat 3 baris:

@@ -16,7 +16,7 @@ import {
   paymentMethodOfferDetails,
   paymentMethodNoticeMessage,
 } from "@/lib/telegram/messages/purchase";
-import { tgCtxFor } from "@/lib/telegram/render-prefs";
+import { tgCtxFor, tgUsdAlternate } from "@/lib/telegram/render-prefs";
 import {
   freezePayq1,
   parsePayq1Callback,
@@ -75,9 +75,9 @@ export async function showPaymentMethodOffer(
   await safeEditOrSend({
     chat_id: chatId,
     message_id: messageId,
-    text: `${paymentMethodOfferMessage({ productName: title, subtotal: target.subtotal }, { locale: ctx.locale })}\n\n${details.join("\n")}`,
+    text: `${paymentMethodOfferMessage({ productName: title, subtotal: target.subtotal }, { locale: ctx.locale, ...tgUsdAlternate(target.subtotal, ctx) })}\n\n${details.join("\n")}`,
     parse_mode: "HTML",
-    reply_markup: paymentMethodOfferKeyboard({ nonce: frozen.state.nonce, methods: frozen.state.methods, source: frozen.state.source }, { locale: ctx.locale }),
+    reply_markup: paymentMethodOfferKeyboard({ nonce: frozen.state.nonce, methods: frozen.state.methods, source: frozen.state.source, idrSubtotal: target.subtotal }, { locale: ctx.locale }),
   });
 }
 
@@ -203,7 +203,7 @@ export async function handlePayMethodSelect(
     chat_id: chatId, message_id: messageId,
     text: paymentMethodNoticeMessage("selected_other", { locale: ctx.locale }),
     parse_mode: "HTML",
-    reply_markup: { inline_keyboard: [[{ text: ctx.locale === "en" ? "▶ Continue" : "▶ Lanjut", callback_data: `pgo:${next.nonce}` }], ...paymentMethodOfferKeyboard({ nonce: next.nonce, methods: next.methods, source: next.source }, { locale: ctx.locale }).inline_keyboard] },
+    reply_markup: { inline_keyboard: [[{ text: ctx.locale === "en" ? "▶ Continue" : "▶ Lanjut", callback_data: `pgo:${next.nonce}` }], ...paymentMethodOfferKeyboard({ nonce: next.nonce, methods: next.methods, source: next.source, idrSubtotal: next.idrSubtotal }, { locale: ctx.locale }).inline_keyboard] },
   });
 }
 
@@ -249,9 +249,9 @@ export async function handlePayCryptoMenu(
   const details = paymentMethodOfferDetails(state.methods, { locale: ctx.locale, subtotal: state.idrSubtotal });
   await safeEditOrSend({
     chat_id: chatId, message_id: messageId,
-    text: `${paymentMethodOfferMessage({ productName: ctx.locale === "en" ? "Your order" : "Pesananmu", subtotal: state.idrSubtotal }, { locale: ctx.locale })}\n\n${details.join("\n")}`,
+    text: `${paymentMethodOfferMessage({ productName: ctx.locale === "en" ? "Your order" : "Pesananmu", subtotal: state.idrSubtotal }, { locale: ctx.locale, ...tgUsdAlternate(state.idrSubtotal, ctx) })}\n\n${details.join("\n")}`,
     parse_mode: "HTML",
-    reply_markup: paymentMethodOfferKeyboard({ nonce: state.nonce, methods: state.methods, source: state.source }, { locale: ctx.locale }),
+    reply_markup: paymentMethodOfferKeyboard({ nonce: state.nonce, methods: state.methods, source: state.source, idrSubtotal: state.idrSubtotal }, { locale: ctx.locale }),
   });
 }
 

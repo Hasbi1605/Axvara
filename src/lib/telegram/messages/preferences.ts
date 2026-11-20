@@ -16,18 +16,18 @@ export type TgPrefTextKey =
 const TEXTS: Record<Locale, Record<TgPrefTextKey, string>> = {
   id: {
     choose_language: "Pilih bahasa / Choose language:",
-    language_saved: "Bahasa disimpan: Bahasa Indonesia. Mata uang tampilan tidak berubah.",
-    currency_saved: "Mata uang tampilan disimpan.",
+    language_saved: "Bahasa disimpan: Indonesia (Rupiah).",
+    currency_saved: "Mata uang mengikuti bahasa.",
     invalid_choice: "Pilihan tidak valid.",
-    settings_title: "Pengaturan",
+    settings_title: "Bahasa",
     welcome_resume: "Lanjut:",
   },
   en: {
     choose_language: "Pilih bahasa / Choose language:",
-    language_saved: "Language saved: English. Display currency unchanged.",
-    currency_saved: "Display currency saved.",
+    language_saved: "Language saved: English (USD).",
+    currency_saved: "Currency follows language.",
     invalid_choice: "Invalid choice.",
-    settings_title: "Settings",
+    settings_title: "Language",
     welcome_resume: "Continue:",
   },
 };
@@ -59,40 +59,28 @@ export function welcomeMessageLocalized(
   return `Halo, ${name} 👋`;
 }
 
-/** Dedicated display-currency picker copy. `null` is reported as unset with
- * the honest IDR fallback used by render-prefs — never a locale-based default. */
-export function currencyChooserMessage(locale: Locale, currency: DisplayCurrency | null): string {
-  const current = currency == null
-    ? (locale === "en" ? "Not set — IDR." : "Belum dipilih — IDR.")
-    : currency;
-  if (locale === "en") {
-    return [
-      "<b>Display Currency</b>",
-      `Current: ${current}`,
-      "Display only — invoices keep their original currency.",
-    ].join("\n");
-  }
-  return [
-    "<b>Mata Uang Tampilan</b>",
-    `Saat ini: ${current}`,
-    "Hanya tampilan — tagihan tetap memakai mata uang aslinya.",
-  ].join("\n");
+/** Legacy currency-chooser entrypoint: redirects to language screen with notice. */
+export function currencyChooserMessage(locale: Locale, _currency?: DisplayCurrency | null): string {
+  return settingsMessage(locale, null, { currencyNote: true });
 }
 
-export function settingsMessage(locale: Locale, currency: DisplayCurrency | null): string {
-  const cur = currency ?? "IDR";
-  if (locale === "en") {
-    return [
-      "<b>Settings</b>",
-      `Language: English · Display: ${cur}`,
-      "Language and currency are independent.",
-    ].join("\n");
-  }
-  return [
-    "<b>Pengaturan</b>",
-    `Bahasa: Indonesia · Tampilan: ${cur}`,
-    "Bahasa dan mata uang terpisah.",
-  ].join("\n");
+export function settingsMessage(
+  locale: Locale,
+  _currency?: DisplayCurrency | null,
+  opts?: { currencyNote?: boolean },
+): string {
+  const lines = locale === "en"
+    ? [
+        ...(opts?.currencyNote ? ["Currency follows language.", ""] : []),
+        "<b>Language</b>",
+        "Current: English (USD)",
+      ]
+    : [
+        ...(opts?.currencyNote ? ["Mata uang mengikuti bahasa.", ""] : []),
+        "<b>Bahasa</b>",
+        "Saat ini: Indonesia (Rupiah)",
+      ];
+  return lines.join("\n");
 }
 
 /** Resume line after language choice when a deep-link payload was preserved. */

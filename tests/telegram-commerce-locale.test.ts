@@ -87,38 +87,37 @@ describe("TG2a read commerce follows saved locale/currency", () => {
     expect(sentTexts().join("\n")).toMatch(/Bantuan AXVARA/);
   });
 
-  it("EN+IDR and ID+USD are independent", async () => {
+  it("display currency always follows language and ignores stored display_currency", async () => {
     await handleCallback("lang:en", user.id, 7, user, "cb-en");
-    await handleCallback("cur:IDR", user.id, 8, user, "cb-idr");
-    expect(fx.sql.prepare("SELECT locale,display_currency FROM telegram_users WHERE user_id=?").get(String(user.id)))
-      .toMatchObject({ locale: "en", display_currency: "IDR" });
+    fx.sql.prepare("UPDATE telegram_users SET display_currency='IDR' WHERE user_id=?").run(String(user.id));
     vi.clearAllMocks();
     await handleCommand("/katalog", user.id, "private", user);
     expect(sentTexts().join("\n")).toMatch(/AXVARA Catalog/);
-    expect(lastMarkup()).toMatch(/Rp/);
+    expect(lastMarkup()).toContain("$10.00");
+    expect(lastMarkup()).not.toMatch(/USD|Rp/);
+
     await handleCallback("lang:id", user.id, 9, user, "cb-id");
-    await handleCallback("cur:USD", user.id, 10, user, "cb-usd");
-    expect(fx.sql.prepare("SELECT locale,display_currency FROM telegram_users WHERE user_id=?").get(String(user.id)))
-      .toMatchObject({ locale: "id", display_currency: "USD" });
+    fx.sql.prepare("UPDATE telegram_users SET display_currency='USD' WHERE user_id=?").run(String(user.id));
+    vi.clearAllMocks();
+    await handleCommand("/katalog", user.id, "private", user);
+    expect(sentTexts().join("\n")).toMatch(/Katalog AXVARA/);
+    expect(lastMarkup()).toContain("Rp160.000");
+    expect(lastMarkup()).not.toMatch(/\$|USD/);
   });
 
-  it("ID+USD shows single USD price with honest IDR alternate, never USDT", async () => {
+  it("ID with stored display_currency=USD still renders Rupiah everywhere", async () => {
     await handleCallback("lang:id", user.id, 7, user, "cb-id");
-    await handleCallback("cur:USD", user.id, 8, user, "cb-usd");
+    fx.sql.prepare("UPDATE telegram_users SET display_currency='USD' WHERE user_id=?").run(String(user.id));
     vi.clearAllMocks();
     await handleCommand("/katalog", user.id, "private", user);
     const markup = lastMarkup();
-    // Single display-currency price: USD text from shared formatUsdCents.
-    expect(markup).toMatch(/\$/);
-    expect(markup).not.toMatch(/USDT/);
-    // One primary display price per button: no Rp + $ in the same label.
-    const labels = JSON.parse(markup).inline_keyboard?.flat().map((b: { text: string }) => b.text).join(" | ") ?? "";
-    expect(labels).not.toMatch(/Rp.*\$|\$.*Rp/);
+    expect(markup).toContain("Rp160.000");
+    expect(markup).not.toMatch(/\$|USDT|USD/);
     vi.clearAllMocks();
     await handleCallback("prd:1", user.id, 9, user, "cb-prd2");
     const detail = allTexts().join("\n");
-    expect(detail).toMatch(/\$/);
-    expect(detail).not.toMatch(/USDT/);
+    expect(detail).toContain("Rp");
+    expect(detail).not.toMatch(/\$|USDT/);
   });
 
   it("missing/stale FX keeps USD choice with honest IDR fallback, no $0", async () => {

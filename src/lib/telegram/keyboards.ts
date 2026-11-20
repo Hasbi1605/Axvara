@@ -12,6 +12,7 @@ import type { FxSnapshot } from "@/lib/payments/fx";
 import { tgDisplayPrice } from "./render-prefs";
 import { formatIdr } from "@/lib/i18n/format";
 import { getCryptoAsset } from "@/lib/payments/crypto-assets";
+import { isQrisOfferMethod, isUsdtOfferMethod, pickRepresentativeCryptoMethod } from "./messages/purchase";
 
 export type OfferMethodView = {
   id: string;
@@ -29,8 +30,9 @@ export type TgLocaleCtx = { locale?: Locale };
  * currencies. USD only with fresh FX; otherwise honest IDR (dot-thousands). */
 function priceButtonText(price: number, ctx?: TgPriceCtx): string {
   const amount = Math.max(0, Math.round(Number(price) || 0));
-  if (ctx?.displayCurrency === "USD" && ctx?.fx) {
-    return tgDisplayPrice(amount, { locale: ctx.locale ?? "id", displayCurrency: "USD", fx: ctx.fx });
+  const displayCurrency = ctx?.displayCurrency ?? (ctx?.locale === "en" ? "USD" : "IDR");
+  if (displayCurrency === "USD" && ctx?.fx) {
+    return tgDisplayPrice(amount, { locale: ctx?.locale ?? "en", displayCurrency: "USD", fx: ctx.fx });
   }
   return buttonPrice(amount);
 }
@@ -45,7 +47,8 @@ export const MENU_LABEL_WARRANTY = "🛡 Garansi";
 export const MENU_LABEL_HELP = "💬 Bantuan";
 export const MENU_LABEL_HELP_LEGACY = "❓ Bantuan";
 export const MENU_LABEL_CART = "🛒 Keranjang";
-export const MENU_LABEL_SETTINGS = "⚙️ Pengaturan";
+export const MENU_LABEL_SETTINGS = "🌐 Bahasa";
+export const MENU_LABEL_SETTINGS_LEGACY = "⚙️ Pengaturan";
 
 /**
  * Harga untuk label tombol dalam format penuh pemisah titik (`Rp19.500`),
@@ -196,40 +199,25 @@ export function languageChooserKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "🇮🇩 Bahasa Indonesia", callback_data: cb.lang("id") },
-        { text: "🇬🇧 English", callback_data: cb.lang("en") },
+        { text: "🇮🇩 Indonesia · Rupiah", callback_data: cb.lang("id") },
+        { text: "🇬🇧 English · USD", callback_data: cb.lang("en") },
       ],
     ],
   };
 }
 
-/** Display-currency picker: shows the saved choice without inventing a
- * default. `null` means unset; render-prefs keeps showing IDR in that case. */
-export function currencyKeyboard(locale: "id" | "en" = "id", currency: DisplayCurrency | null = null): InlineKeyboardMarkup {
-  const selected = (value: DisplayCurrency) => (currency === value ? "✅ " : "");
-  return {
-    inline_keyboard: [
-      [
-        { text: `${selected("IDR")}Rp IDR`, callback_data: cb.currency("IDR") },
-        { text: `${selected("USD")}$ USD`, callback_data: cb.currency("USD") },
-      ],
-      [{ text: locale === "en" ? "🏠 Main Menu" : "🏠 Menu Utama", callback_data: cb.home() }],
-    ],
-  };
+/** Legacy helper kept exported without any currency buttons (redirects to language screen). */
+export function currencyKeyboard(locale: "id" | "en" = "id", _currency: DisplayCurrency | null = null): InlineKeyboardMarkup {
+  return settingsKeyboard(locale);
 }
 
-export function settingsKeyboard(locale?: Locale, currency?: DisplayCurrency | null): InlineKeyboardMarkup {
+export function settingsKeyboard(locale?: Locale, _currency?: DisplayCurrency | null): InlineKeyboardMarkup {
   const selLang = (l: Locale) => (locale === l ? "✅ " : "");
-  const selCur = (c: DisplayCurrency) => (currency === c ? "✅ " : "");
   return {
     inline_keyboard: [
       [
-        { text: `${selLang("id")}🇮🇩 Bahasa Indonesia`, callback_data: cb.lang("id") },
-        { text: `${selLang("en")}🇬🇧 English`, callback_data: cb.lang("en") },
-      ],
-      [
-        { text: `${selCur("IDR")}Rp IDR`, callback_data: cb.currency("IDR") },
-        { text: `${selCur("USD")}$ USD`, callback_data: cb.currency("USD") },
+        { text: `${selLang("id")}🇮🇩 Indonesia (Rupiah)`, callback_data: cb.lang("id") },
+        { text: `${selLang("en")}🇬🇧 English (USD)`, callback_data: cb.lang("en") },
       ],
       [{ text: locale === "en" ? "🏠 Home" : "🏠 Menu", callback_data: cb.home() }],
     ],
@@ -248,7 +236,8 @@ export const MENU_LABEL_EN = {
   help: "💬 Help",
   helpLegacy: "❓ Help",
   cart: "🛒 Cart",
-  settings: "⚙️ Settings",
+  settings: "🌐 Language",
+  settingsLegacy: "⚙️ Settings",
 } as const;
 
 export function homeKeyboard(
@@ -265,7 +254,7 @@ export function homeKeyboard(
         { text: en ? "💬 Help" : "💬 Bantuan", url: `${SITE.webUrl}/wa`, style: "primary" },
       ],
       [
-        { text: en ? "⚙️ Settings" : "⚙️ Pengaturan", callback_data: cb.settings() },
+        { text: en ? "🌐 Language" : "🌐 Bahasa", callback_data: cb.settings() },
         { text: "🌐 Web", url: SITE.webUrl },
       ],
     ],
@@ -606,7 +595,8 @@ export function qtyKeyboard(params: {
   const qty = Math.min(Math.max(minQty, Math.floor(params.qty || minQty)), max);
   const minusQty = Math.max(minQty, qty - 1);
   const plusQty = Math.min(max, qty + 1);
-  const total = tgDisplayPrice(price * qty, { locale: ctx?.locale ?? "id", displayCurrency: ctx?.displayCurrency ?? null, fx: ctx?.fx ?? null });
+  const displayCurrency = ctx?.displayCurrency ?? (ctx?.locale === "en" ? "USD" : "IDR");
+  const total = tgDisplayPrice(price * qty, { locale: ctx?.locale ?? "id", displayCurrency, fx: ctx?.fx ?? null });
   const minusCb = qty > minQty ? cb.setQty(productId, variantId, minusQty) : "noop";
   const minusLabel = qty > minQty ? (en ? "➖ Decrease" : "➖ Kurangi") : "➖";
   const presets = [1, 5, 10, 50]
@@ -936,41 +926,51 @@ export function otherMethodsEntryKeyboard(ctx?: TgLocaleCtx & { source?: Payq1Of
   return { inline_keyboard: [[{ text: en ? "💳 Other payment methods" : "💳 Metode pembayaran lain", callback_data: callbackData }]] };
 }
 
-/** R1 frozen offer keyboard: QRIS first + Paling cepat/Fastest badge, gateway
- * rows with estimated fee/total, ONE collapsed "Crypto (USD)" row (total
- * incl. the per-coin crypto service fee; opens the coin sub-keyboard). Selection callbacks
- * pm:<nonce>:<index> (<=64B). No
- * order creation from this screen. Labels escape owner/provider strings;
- * currency display honors the independence rule (USD shown only as the
- * frozen provider USD amount, never relabeled IDR). */
+/** R1 frozen offer keyboard: ordered by locale (ID: QRIS fastest then Crypto;
+ * EN: Crypto USDT fastest then QRIS Indonesia only). Preserves exact frozen
+ * pm:<nonce>:<originalIndex> callbacks and pmc:<nonce> coin-menu entry. */
 export function paymentMethodOfferKeyboard(
-  state: { nonce: string; methods: OfferMethodView[]; source?: Payq1OfferSource },
+  state: { nonce: string; methods: OfferMethodView[]; source?: Payq1OfferSource; idrSubtotal?: number },
   ctx?: TgLocaleCtx,
 ): InlineKeyboardMarkup {
   const en = ctx?.locale === "en";
-  const rowFor = (method: OfferMethodView, index: number): InlineKeyboardButton[] => {
+  const rpTotal = state.idrSubtotal != null ? buttonPrice(state.idrSubtotal) : null;
+  const qrisRows: InlineKeyboardButton[][] = [];
+  const gatewayRows: InlineKeyboardButton[][] = [];
+
+  state.methods.slice(0, 96).forEach((method, index) => {
+    if (method.kind === "crypto") return;
     const data = `pm:${state.nonce}:${index}`;
-    if (method.kind === "qris") {
-      const badge = en ? "Fastest" : "Paling cepat";
-      return [{ text: `QRIS · ${badge}`, callback_data: data }];
+    if (isQrisOfferMethod(method)) {
+      const label = en
+        ? (rpTotal ? `QRIS (Indonesia only) · ${rpTotal}` : "QRIS (Indonesia only)")
+        : (rpTotal ? `QRIS · ${rpTotal} · Paling cepat` : "QRIS · Paling cepat");
+      qrisRows.push([{ text: label, callback_data: data }]);
+      return;
     }
     if (method.kind === "gateway" && method.gateway) {
       const label = `${method.label} · +${formatIdr(method.gateway.estimated_fee, ctx?.locale ?? "id")} · ${formatIdr(method.gateway.estimated_total, ctx?.locale ?? "id")}`;
-      return [{ text: label.slice(0, 90), callback_data: data }];
+      gatewayRows.push([{ text: label.slice(0, 90), callback_data: data }]);
+      return;
     }
-    return [{ text: String(method.id).slice(0, 90), callback_data: data }];
-  };
-  // Crypto multi-koin: SATU entri "Crypto (USD)" (membuka sub-menu koin), bukan satu baris per koin.
-  let cryptoEntryAdded = false;
-  const rows: InlineKeyboardButton[][] = [];
-  state.methods.slice(0, 96).forEach((method, index) => {
-    if (method.kind !== "crypto") {
-      rows.push(rowFor(method, index));
-    } else if (!cryptoEntryAdded) {
-      cryptoEntryAdded = true;
-      rows.push([{ text: `Crypto (USD) · ${method.amount_text} USD`, callback_data: `pmc:${state.nonce}` }]);
-    }
+    gatewayRows.push([{ text: String(method.id).slice(0, 90), callback_data: data }]);
   });
+
+  const cryptoRows: InlineKeyboardButton[][] = [];
+  const crypto = pickRepresentativeCryptoMethod(state.methods.slice(0, 96));
+  if (crypto) {
+    const amount = String(crypto.amount_text ?? "").trim();
+    const usdt = isUsdtOfferMethod(crypto);
+    const label = usdt
+      ? (en ? `Crypto (USDT) · ${amount} USDT · Fastest` : `Crypto (USDT) · ${amount} USDT`)
+      : (en ? `Crypto · $${amount} · Fastest` : `Crypto · $${amount}`);
+    cryptoRows.push([{ text: label.slice(0, 90), callback_data: `pmc:${state.nonce}` }]);
+  }
+
+  const rows: InlineKeyboardButton[][] = en
+    ? [...cryptoRows, ...gatewayRows, ...qrisRows]
+    : [...qrisRows, ...gatewayRows, ...cryptoRows];
+
   const backCallback = state.source?.kind === "single"
     ? cb.setQty(state.source.productId, state.source.variantId, state.source.qty)
     : cb.cartCheckout();

@@ -56,11 +56,13 @@ beforeEach(() => {
 afterEach(() => { fx.close(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("TG1 onboarding chooser + independent preferences", () => {
-  it("very first /start with language hint still shows explicit chooser", async () => {
+  it("very first /start with language hint still shows explicit chooser with currency labels", async () => {
     await handleCommand("/start", userA.id, "private", { ...userA, language_code: "en" } as never);
     expect(prefs(userA.id)?.locale).toBeNull();
     const last = api.send.mock.calls.at(-1)![0];
     expect(String(last.text)).toMatch(/Pilih bahasa \/ Choose your language/);
+    expect(JSON.stringify(last.reply_markup)).toContain("🇮🇩 Indonesia · Rupiah");
+    expect(JSON.stringify(last.reply_markup)).toContain("🇬🇧 English · USD");
     expect(JSON.stringify(last.reply_markup)).toContain("lang:id");
     expect(JSON.stringify(last.reply_markup)).toContain("lang:en");
   });
@@ -86,10 +88,11 @@ describe("TG1 onboarding chooser + independent preferences", () => {
     expect(prefs(userA.id)).toMatchObject({ locale: "id", display_currency: "USD" });
   });
 
-  it("/currency changes currency only, locale stays EN", async () => {
+  it("legacy cur:IDR opens language screen with notice without mutating display_currency", async () => {
     await handleCallback("lang:en", userA.id, 7, userA, "cb-1");
     await handleCallback("cur:IDR", userA.id, 8, userA, "cb-2");
-    expect(prefs(userA.id)).toMatchObject({ locale: "en", display_currency: "IDR" });
+    expect(prefs(userA.id)).toMatchObject({ locale: "en", display_currency: "USD" });
+    expect(editTexts().at(-1)).toContain("Currency follows language.");
     expect(api.answer).toHaveBeenCalledWith("cb-2", undefined, false);
   });
 
@@ -225,11 +228,13 @@ describe("TG1 onboarding chooser + independent preferences", () => {
     expect(sentTexts().join("\n")).toMatch(/Pilih bahasa/);
   });
 
-  it("settings command shows saved state; currency display-only IDR", async () => {
+  it("settings command shows language-only screen with active selection", async () => {
     await handleCallback("lang:id", userA.id, 7, userA, "cb-1");
     vi.clearAllMocks();
     await handleCommand("/settings", userA.id, "private", userA);
-    expect(sentTexts().join("\n")).toMatch(/Pengaturan|IDR/);
+    expect(sentTexts().join("\n")).toContain("Bahasa");
+    expect(sentTexts().join("\n")).toContain("Indonesia (Rupiah)");
+    expect(JSON.stringify(api.send.mock.calls.at(-1)?.[0]?.reply_markup)).not.toContain("cur:");
   });
 
   it("no secrets/messages executed: fetch never called, no real network", async () => {

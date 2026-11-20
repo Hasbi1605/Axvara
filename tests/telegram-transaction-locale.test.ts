@@ -91,6 +91,7 @@ describe("TG2c1 transaction copy follows saved order.locale", () => {
     expect(order.subtotal).toBe(10000);
     // Charge is actual IDR payable even with USD display pref; caption charges IDR, no USDT/FX math.
     expect(lastPhotoCaption()).toMatch(/IDR via QRIS/);
+    expect(lastPhotoCaption()).toContain("Charged in IDR, even when your display currency is USD.");
     expect(lastPhotoCaption()).not.toMatch(/USDT/);
     expect(invoiceAmounts()).toEqual([10000]);
     fx.sql.prepare("UPDATE telegram_users SET locale='id', display_currency='IDR' WHERE user_id='888001'").run();
@@ -113,6 +114,17 @@ describe("TG2c1 transaction copy follows saved order.locale", () => {
     await handleQrisRenew(buyer.id, order.code);
     expect(lastPhotoCaption()).toMatch(/Awaiting payment/);
     expect(api.send.mock.calls.map((c) => String(c[0]?.text ?? "")).join("\n")).not.toMatch(/Menunggu pembayaran/);
+  });
+
+  it("ID QRIS invoice omits USD charge note since display currency is already Rupiah", async () => {
+    await handleCallback("lang:id", buyer.id, 7, buyer, "cb-id-1");
+    const { handleShowQty } = await import("@/lib/telegram/handlers/catalog");
+    await handleShowQty(buyer.id, 1, 1, 11, 1, buyer);
+    const tag = String(api.edit.mock.calls.at(-1)?.[0]?.reply_markup?.inline_keyboard?.flat().find((b: { text: string }) => b.text.includes("QRIS"))?.callback_data ?? "").split(":").at(-1);
+    await handlePayWithQris(buyer.id, 1, 1, 11, 1, buyer, false, tag);
+    expect(lastPhotoCaption()).toContain("IDR via QRIS");
+    expect(lastPhotoCaption()).not.toContain("Ditagih dalam IDR");
+    expect(lastPhotoCaption()).not.toContain("Charged in IDR");
   });
 
   it("legacy order without locale renders ID even when current pref is EN", async () => {

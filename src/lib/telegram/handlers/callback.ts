@@ -14,15 +14,14 @@ import { queryFirst, execRun } from "@/lib/db";
 import { sendMessage, safeEditOrSend, answerCallbackQuery } from "@/lib/telegram/api";
 import {
   homeKeyboard, warrantyKeyboard, orderStatusKeyboard, parseCallback, cancelConfirmationKeyboard,
-  languageChooserKeyboard, currencyKeyboard, settingsKeyboard, helpKeyboard, minimalMenuKeyboard,
+  languageChooserKeyboard, settingsKeyboard, helpKeyboard, minimalMenuKeyboard,
 } from "@/lib/telegram/keyboards";
 import {
   helpMessage, warrantyFullMessage, alreadyPendingMessage,
-  languageChooserMessage, tgPrefText, settingsMessage, currencyChooserMessage, resumePayloadMessage,
+  languageChooserMessage, tgPrefText, settingsMessage, resumePayloadMessage,
 } from "@/lib/telegram/messages";
 import {
-  readTgPreferences, saveTgLocaleChoice, saveTgLocaleOnly, saveTgCurrencyChoice,
-  isValidTgLocale, isValidTgCurrency,
+  readTgPreferences, saveTgLocaleChoice, saveTgLocaleOnly, isValidTgLocale,
 } from "@/lib/telegram/preferences";
 import { tgCtxFor } from "@/lib/telegram/render-prefs";
 import { getCartSummary, clearCart } from "@/lib/telegram/cart";
@@ -98,9 +97,8 @@ export async function handleCallback(
     const { handleExtraCallback } = await import("./extras");
     if (await handleExtraCallback(action, params, chatId, messageId, from)) return;
   }
-  // Dedicated currency picker from the main menu: render only. The route
-  // pre-answers non lang:/cur: callbacks, so this handler must not answer.
-  // Opening the picker never clears pending state, locale or order snapshots.
+  // Legacy currency picker callback: currency now follows language, so open
+  // the language screen with a one-line notice without clearing pending state.
   if (action === "curmenu") {
     if (!Number.isSafeInteger(chatId) || chatId <= 0 || chatId !== from.id) return;
     const menuPrefs = await readTgPreferences(String(from.id));
@@ -115,9 +113,9 @@ export async function handleCallback(
     }
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
-      text: currencyChooserMessage(menuPrefs.locale, menuPrefs.currency),
+      text: settingsMessage(menuPrefs.locale, null, { currencyNote: true }),
       parse_mode: "HTML",
-      reply_markup: currencyKeyboard(menuPrefs.locale, menuPrefs.currency),
+      reply_markup: settingsKeyboard(menuPrefs.locale),
     });
     return;
   }
@@ -186,15 +184,11 @@ export async function handleCallback(
       }
       return;
     }
-    const want = String(params[0] || "").toUpperCase();
-    if (!isValidTgCurrency(want)) {
-      await answer(tgPrefText("id", "invalid_choice"), true);
-      return;
-    }
+    // Legacy cur:* callbacks keep working without error: open language screen
+    // with one line explaining currency follows language (no DB write).
     const prefs = await readTgPreferences(String(from.id));
+    await answer();
     if (prefs.locale == null) {
-      // No locale yet: ask language first, never persist currency alone.
-      await answer();
       await sendMessage({
         chat_id: chatId,
         text: languageChooserMessage(),
@@ -203,22 +197,12 @@ export async function handleCallback(
       });
       return;
     }
-    const ok = await saveTgCurrencyChoice(String(from.id), want);
-    if (!ok) {
-      await answer();
-      return;
-    }
-    await answer();
-    // Confirm the chosen currency AND re-render the picker with the saved
-    // value selected so the result is visible. Locale is untouched.
-    const afterCurrency = await readTgPreferences(String(from.id)).catch(() => prefs);
     await safeEditOrSend({
       chat_id: chatId, message_id: messageId,
-      text: currencyChooserMessage(prefs.locale, afterCurrency.currency),
+      text: settingsMessage(prefs.locale, null, { currencyNote: true }),
       parse_mode: "HTML",
-      reply_markup: currencyKeyboard(prefs.locale, afterCurrency.currency),
+      reply_markup: settingsKeyboard(prefs.locale),
     });
-    await sendMessage({ chat_id: chatId, text: tgPrefText(prefs.locale, "currency_saved"), parse_mode: "HTML" });
     return;
   }
   if (["cats", "cat", "prd", "vars", "buy", "myorders", "cart", "help", "warranty"].includes(action)) {
@@ -261,9 +245,9 @@ export async function handleCallback(
       await replaceWithText({
         chat_id: chatId,
         message_id: messageId,
-        text: settingsMessage(menuPrefs.locale, menuPrefs.currency),
+        text: settingsMessage(menuPrefs.locale),
         parse_mode: "HTML",
-        reply_markup: settingsKeyboard(menuPrefs.locale, menuPrefs.currency),
+        reply_markup: settingsKeyboard(menuPrefs.locale),
       }, sourceMeta);
       break;
     }
