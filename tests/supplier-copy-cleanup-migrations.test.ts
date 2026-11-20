@@ -54,3 +54,29 @@ it("0147 leaves #118 alone if the supplier relists it with stock", () => {
     expect(sql.prepare("SELECT archived_at FROM products WHERE id=51944").get()).toEqual({ archived_at: null });
   } finally { close(); }
 });
+
+it("0148 rewrites only TUNVN-111 Muse 1B copy to the Gmail + 2FA format and adds the guide shortlink", () => {
+  const { sql, close } = createD1Fixture();
+  try {
+    const m = readFileSync("drizzle/migrations/0148_tunvn_muse_1b_gmail_copy.sql", "utf8");
+    sql.exec(`INSERT INTO products(id,name,slug,price,is_active,description) VALUES (112,'Muse AI','muse-ai-1-miliar-token',0,1,'Owner copy');
+      INSERT INTO product_variants(product_id,sku,label,price,is_active,admin_terms,admin_activation) VALUES
+      (112,'TUNVN-111','Akun 1B Token (garansi 2 hari)',4700,1,'Hotmail API mail','old'),
+      (112,'TUNVN-97','Akun 1B Token (tanpa garansi)',3000,1,'Keep','Keep');`);
+    sql.exec(m); sql.exec(m);
+    const v = sql.prepare("SELECT admin_terms,admin_terms_en,admin_activation,admin_activation_en FROM product_variants WHERE sku='TUNVN-111'").get() as Record<string, string>;
+    expect(v.admin_terms).toContain("Format: Email | Password | Kode 2FA");
+    expect(v.admin_terms).toContain("Garansi 2 hari");
+    expect(Object.values(v).join("\n")).not.toMatch(/Hotmail|API mail|mail-dongvan/);
+    expect(v.admin_activation).toContain("axvara.tech/go/otp-2fa");
+    expect(v.admin_activation_en).toContain("axvara.tech/go/muse-login-gmail");
+    expect(sql.prepare("SELECT admin_terms FROM product_variants WHERE sku='TUNVN-97'").get()).toEqual({ admin_terms: "Keep" });
+    const p = sql.prepare("SELECT description,description_en FROM products WHERE id=112").get() as { description: string; description_en: string };
+    expect(p.description).toMatch(/^AI agent otonom dari Meta/);
+    expect(p.description.split("\n").filter(l => l.startsWith("- ")).length).toBe(5);
+    expect(p.description.length).toBeLessThan(500);
+    expect(p.description_en).toMatch(/^Autonomous AI agent from Meta/);
+    expect(sql.prepare("SELECT destination FROM supplier_links WHERE slug='muse-login-gmail'").get())
+      .toEqual({ destination: "https://drive.google.com/file/d/1v95Q95v2jB8LkWLwQlw3WTwO7U3Ma2d4/view?usp=drivesdk" });
+  } finally { close(); }
+});
