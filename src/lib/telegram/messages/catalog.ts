@@ -180,9 +180,9 @@ export function productDetailMessage(product: {
       lines.push(en ? `• +${purchasable.length - visible.length} more variants` : `• +${purchasable.length - visible.length} varian lainnya`);
     }
   }
-  if (oosCount > 0) {
-    lines.push(en ? `🔔 ${oosCount} other variant(s) currently out of stock` : `🔔 ${oosCount} varian lain sedang habis`);
-  }
+  // Varian habis sudah tampil sebagai tombol merah ❌ (owner 2026-11-20);
+  // tidak perlu baris hitungan terpisah di kartu.
+  void oosCount;
 
   // Warranty summary line (factual, from variant metadata only).
   const warrantyList = product.warrantySummary?.trim()

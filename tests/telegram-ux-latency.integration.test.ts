@@ -348,7 +348,8 @@ describe("W-A UX: persistent 3x2 menu, typo search, qty presets, colors, copy, w
       { id: 2, label: "Sol", price: 29500, stock: 0 },
     ]);
     expect(vk.inline_keyboard.flat().some((b) => b.callback_data === "rst:9")).toBe(true);
-    expect(vk.inline_keyboard.flat().some((b) => b.callback_data === "soldout")).toBe(false);
+    // Owner 2026-11-20: sold-out variants stay visible as red ❌ buttons.
+    expect(vk.inline_keyboard.flat().some((b) => b.callback_data === "soldout" && b.style === "danger" && b.text.startsWith("❌ "))).toBe(true);
 
     const methodDetails = paymentMethodOfferDetails([{ kind: "qris", label: "QRIS Dinamis" }]);
     expect(methodDetails).toEqual(["• QRIS (tercepat)"]);

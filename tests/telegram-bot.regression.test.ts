@@ -237,8 +237,9 @@ describe("Telegram keyboards", () => {
     const buttons = kb.inline_keyboard.flat();
     expect(buttons[0].text).toBe("Anti Limit · 28 Hari · Rp26.000 · stok 4");
     expect(buttons[0].callback_data).toBe("var:2");
-    expect(buttons[1].text).toBe("🔔 Kabari saat restok (1 habis)");
-    expect(buttons[1].callback_data).toBe("rst:7");
+    expect(buttons[1]).toMatchObject({ text: "❌ Legal · 28 Hari · Habis", callback_data: "soldout", style: "danger" });
+    expect(buttons[2].text).toBe("🔔 Kabari saat restok");
+    expect(buttons[2].callback_data).toBe("rst:7");
     expect(buttons).toContainEqual({ text: "📋 Detail & Ketentuan", callback_data: "terms:7:0" });
   });
 
@@ -367,7 +368,7 @@ describe("Telegram buyer messages", () => {
     });
     expect(msg).toContain("<b>Varian tersedia</b>");
     expect(msg).toMatch(/Pro Head 1 Bulan — 1 Bulan · Rp\s?5\.000 · stok ∞/);
-    expect(msg).toContain("🔔 1 varian lain sedang habis");
+    expect(msg).not.toContain("varian lain sedang habis");
     expect(msg).toContain("Full Garansi 1 Bulan");
     expect(msg).not.toContain("Pro Invite 1 Bulan");
     expect(msg).not.toContain("Garansi Terbatas 7 Hari");

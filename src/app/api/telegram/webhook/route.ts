@@ -294,7 +294,7 @@ export async function POST(request: NextRequest) {
       };
 
       if (cq.data === "soldout") {
-        await answerCallbackQuery(cq.id, "Varian produk habis. Silakan pilih produk lain.", true);
+        await answerCallbackQuery(cq.id, "Varian ini habis. Ketuk 🔔 Kabari saat restok untuk dikabari saat stok tersedia.", true);
       } else if (typeof cq.data === "string" && (cq.data === "lang:id" || cq.data === "lang:en" || cq.data.startsWith("lang:") || cq.data.startsWith("cur:"))) {
         await handleCallback(cq.data, cqChatId, messageId, cq.from, cq.id, sourceMeta);
       } else {
